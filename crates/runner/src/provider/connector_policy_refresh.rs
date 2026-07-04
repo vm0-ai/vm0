@@ -8,7 +8,6 @@ use chrono::{DateTime, Utc};
 use tokio::sync::{
     Mutex, mpsc,
     mpsc::error::{TrySendError, TrySendError::Closed, TrySendError::Full},
-    oneshot,
 };
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
@@ -63,34 +62,19 @@ pub(crate) struct ConnectorPolicyRefreshRegistration<'a> {
     pub(crate) source_ip: &'a str,
     pub(crate) registry: ProxyRegistryHandle,
     pub(crate) connector_refs: HashSet<String>,
-    pub(crate) initial_refresh_connector_refs: HashSet<String>,
     pub(crate) refreshes: Option<&'a HashMap<String, ConnectorPolicyRefresh>>,
 }
 
 #[derive(Clone, Copy)]
 enum RefreshTrigger {
-    Initial,
     Notification,
     Scheduled,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum RefreshAttemptStatus {
-    Applied,
-    NotApplied,
 }
 
 struct RefreshRequest {
     run_id: RunId,
     connector_ref: String,
     trigger: RefreshTrigger,
-    completion: Option<oneshot::Sender<RefreshAttemptStatus>>,
-}
-
-impl RefreshTrigger {
-    fn fail_closed_on_error(self) -> bool {
-        matches!(self, Self::Notification | Self::Scheduled)
-    }
 }
 
 impl ConnectorPolicyRefreshHandle {
@@ -184,12 +168,6 @@ impl ConnectorPolicyRefreshCore {
             self.unregister_run(registration.run_id).await;
             return;
         }
-        let initial_refresh_connector_refs: Vec<String> = registration
-            .initial_refresh_connector_refs
-            .iter()
-            .filter(|connector_ref| registration.connector_refs.contains(*connector_ref))
-            .cloned()
-            .collect();
 
         let run_cancel = CancellationToken::new();
         let mut old_tasks = Vec::new();
@@ -219,37 +197,9 @@ impl ConnectorPolicyRefreshCore {
 
         if let Some(refreshes) = registration.refreshes {
             for (connector_ref, refresh) in refreshes {
-                if initial_refresh_connector_refs
-                    .iter()
-                    .any(|initial| initial == connector_ref)
-                {
-                    continue;
-                }
                 self.replace_schedule(
                     registration.run_id,
                     connector_ref,
-                    Some(refresh.next_refresh_at.clone()),
-                )
-                .await;
-            }
-        }
-
-        for connector_ref in initial_refresh_connector_refs {
-            let status = self
-                .refresh_initial_connector_until_cancelled(
-                    registration.run_id,
-                    connector_ref.clone(),
-                    &run_cancel,
-                )
-                .await;
-            if status == Some(RefreshAttemptStatus::NotApplied)
-                && let Some(refresh) = registration
-                    .refreshes
-                    .and_then(|refreshes| refreshes.get(&connector_ref))
-            {
-                self.replace_schedule(
-                    registration.run_id,
-                    &connector_ref,
                     Some(refresh.next_refresh_at.clone()),
                 )
                 .await;
@@ -299,7 +249,6 @@ impl ConnectorPolicyRefreshCore {
             run_id,
             connector_ref,
             trigger: RefreshTrigger::Notification,
-            completion: None,
         };
         if let Err(error) = self.request_tx.try_send(request) {
             self.handle_notification_enqueue_error(error).await;
@@ -317,47 +266,6 @@ impl ConnectorPolicyRefreshCore {
             .connector_refs
             .contains(connector_ref)
             .then(|| active.cancel.clone())
-    }
-
-    async fn refresh_initial_connector_until_cancelled(
-        &self,
-        run_id: RunId,
-        connector_ref: String,
-        cancel: &CancellationToken,
-    ) -> Option<RefreshAttemptStatus> {
-        let (completion_tx, completion_rx) = oneshot::channel();
-        let sent = self
-            .enqueue_refresh_until_cancelled(
-                RefreshRequest {
-                    run_id,
-                    connector_ref,
-                    trigger: RefreshTrigger::Initial,
-                    completion: Some(completion_tx),
-                },
-                cancel,
-            )
-            .await;
-        if !sent {
-            return None;
-        }
-
-        let status = tokio::select! {
-            biased;
-            () = self.inner.cancel.cancelled() => None,
-            () = cancel.cancelled() => None,
-            result = completion_rx => {
-                match result {
-                    Ok(status) => Some(status),
-                    Err(_) => {
-                        if !self.inner.cancel.is_cancelled() && !cancel.is_cancelled() {
-                            warn!(run_id = %run_id, "initial connector policy refresh worker stopped before completion");
-                        }
-                        None
-                    }
-                }
-            }
-        };
-        status
     }
 
     async fn enqueue_refresh_until_cancelled(
@@ -415,10 +323,10 @@ impl ConnectorPolicyRefreshCore {
         &self,
         run_id: RunId,
         connector_ref: String,
-        trigger: RefreshTrigger,
-    ) -> RefreshAttemptStatus {
+        _trigger: RefreshTrigger,
+    ) {
         let Some(snapshot) = self.active_snapshot(run_id, &connector_ref).await else {
-            return RefreshAttemptStatus::NotApplied;
+            return;
         };
 
         let response = match self
@@ -435,10 +343,8 @@ impl ConnectorPolicyRefreshCore {
                     error = %error,
                     "connector policy refresh failed"
                 );
-                if trigger.fail_closed_on_error() {
-                    fail_closed_connector_policy(run_id, &connector_ref, snapshot).await;
-                }
-                return RefreshAttemptStatus::NotApplied;
+                fail_closed_connector_policy(run_id, &connector_ref, snapshot).await;
+                return;
             }
         };
 
@@ -449,16 +355,14 @@ impl ConnectorPolicyRefreshCore {
                 response_connector_ref = response.connector_ref,
                 "connector policy refresh returned mismatched connector"
             );
-            if trigger.fail_closed_on_error()
-                && let Some(snapshot) = self.active_snapshot(run_id, &connector_ref).await
-            {
+            if let Some(snapshot) = self.active_snapshot(run_id, &connector_ref).await {
                 fail_closed_connector_policy(run_id, &connector_ref, snapshot).await;
             }
-            return RefreshAttemptStatus::NotApplied;
+            return;
         }
 
         let Some(snapshot) = self.active_snapshot(run_id, &connector_ref).await else {
-            return RefreshAttemptStatus::NotApplied;
+            return;
         };
         match patch_connector_policy(run_id, &connector_ref, snapshot, response.network_policy)
             .await
@@ -471,11 +375,9 @@ impl ConnectorPolicyRefreshCore {
                 );
                 self.replace_schedule(run_id, &connector_ref, response.next_refresh_at)
                     .await;
-                RefreshAttemptStatus::Applied
             }
             Ok(false) => {
                 self.unregister_run(run_id).await;
-                RefreshAttemptStatus::NotApplied
             }
             Err(error) => {
                 warn!(
@@ -484,12 +386,9 @@ impl ConnectorPolicyRefreshCore {
                     error = %error,
                     "failed to patch refreshed connector policy"
                 );
-                if trigger.fail_closed_on_error()
-                    && let Some(snapshot) = self.active_snapshot(run_id, &connector_ref).await
-                {
+                if let Some(snapshot) = self.active_snapshot(run_id, &connector_ref).await {
                     fail_closed_connector_policy(run_id, &connector_ref, snapshot).await;
                 }
-                RefreshAttemptStatus::NotApplied
             }
         }
     }
@@ -551,7 +450,6 @@ impl ConnectorPolicyRefreshCore {
                                 run_id,
                                 connector_ref: task_connector_ref.clone(),
                                 trigger: RefreshTrigger::Scheduled,
-                                completion: None,
                             },
                             &enqueue_cancel,
                         )
@@ -603,25 +501,21 @@ async fn run_refresh_worker(
                     run_id,
                     connector_ref,
                     trigger,
-                    completion,
                 } = request;
-                let status = tokio::select! {
+                let completed = tokio::select! {
                     () = handle.inner.cancel.cancelled() => {
-                        None
+                        false
                     }
-                    status = handle.refresh_connector_now(
+                    () = handle.refresh_connector_now(
                         run_id,
                         connector_ref,
                         trigger,
                     ) => {
-                        Some(status)
+                        true
                     }
                 };
-                let Some(status) = status else {
+                if !completed {
                     break;
-                };
-                if let Some(completion) = completion {
-                    let _ = completion.send(status);
                 }
             }
         }
@@ -739,9 +633,6 @@ fn abort_tasks(tasks: impl IntoIterator<Item = tokio::task::JoinHandle<()>>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::future::Future;
-    use std::pin::Pin;
-    use std::task::{Context, Poll};
 
     use httpmock::{Method::POST, MockServer};
     use serde_json::json;
@@ -779,12 +670,6 @@ mod tests {
             },
             request_rx,
         )
-    }
-
-    fn poll_once<F: Future>(future: Pin<&mut F>) -> Poll<F::Output> {
-        let waker = std::task::Waker::noop();
-        let mut context = Context::from_waker(waker);
-        future.poll(&mut context)
     }
 
     async fn recv_refresh_request(
@@ -886,7 +771,6 @@ mod tests {
                     source_ip,
                     registry: registry.clone(),
                     connector_refs: HashSet::from(["slack".to_string()]),
-                    initial_refresh_connector_refs: HashSet::new(),
                     refreshes: None,
                 })
                 .await;
@@ -1096,7 +980,6 @@ mod tests {
                 source_ip: "10.200.0.2",
                 registry,
                 connector_refs: HashSet::from(["slack".to_string()]),
-                initial_refresh_connector_refs: HashSet::new(),
                 refreshes: Some(&refreshes),
             })
             .await;
@@ -1130,172 +1013,11 @@ mod tests {
                 source_ip: "10.200.0.2",
                 registry,
                 connector_refs: HashSet::from(["slack".to_string()]),
-                initial_refresh_connector_refs: HashSet::from(["slack".to_string()]),
                 refreshes: None,
             })
             .await;
 
         assert!(handle.core.inner.active_runs.lock().await.is_empty());
-    }
-
-    #[tokio::test]
-    async fn register_run_waits_for_initial_refresh_to_patch_registry() {
-        let server = MockServer::start();
-        let run_id = RunId::nil();
-        server.mock(|when, then| {
-            when.method(POST).path(format!(
-                "/api/runners/runs/{run_id}/connector-network-policy"
-            ));
-            then.status(200)
-                .header("content-type", "application/json")
-                .json_body(json!({
-                    "connectorRef": "slack",
-                    "networkPolicy": {
-                        "allow": ["files:write"],
-                        "deny": ["chat:write"],
-                        "ask": [],
-                        "unknownPolicy": "deny",
-                    },
-                    "nextRefreshAt": null,
-                }));
-        });
-        let handle = ConnectorPolicyRefreshHandle::new(api_client_for_server(&server));
-        let (_dir, registry, registry_path, _lock_path) = registered_slack_registry(run_id).await;
-
-        handle
-            .core
-            .register_run(ConnectorPolicyRefreshRegistration {
-                run_id,
-                source_ip: "10.200.0.2",
-                registry,
-                connector_refs: HashSet::from(["slack".to_string()]),
-                initial_refresh_connector_refs: HashSet::from(["slack".to_string()]),
-                refreshes: None,
-            })
-            .await;
-
-        let policy = load_slack_policy(&registry_path).await;
-        assert_eq!(policy["allow"], json!(["files:write"]));
-        assert_eq!(policy["deny"], json!(["chat:write"]));
-        assert_eq!(policy["ask"], json!([]));
-        assert_eq!(policy["unknownPolicy"], json!("deny"));
-
-        handle.shutdown().await;
-    }
-
-    #[tokio::test]
-    async fn register_run_initial_refresh_supersedes_claim_schedule() {
-        let server = MockServer::start();
-        let run_id = RunId::nil();
-        let refresh_mock = server.mock(|when, then| {
-            when.method(POST).path(format!(
-                "/api/runners/runs/{run_id}/connector-network-policy"
-            ));
-            then.status(200)
-                .header("content-type", "application/json")
-                .json_body(json!({
-                    "connectorRef": "slack",
-                    "networkPolicy": {
-                        "allow": ["files:write"],
-                        "deny": ["chat:write"],
-                        "ask": [],
-                        "unknownPolicy": "deny",
-                    },
-                    "nextRefreshAt": null,
-                }));
-        });
-        let handle = ConnectorPolicyRefreshHandle::new(api_client_for_server(&server));
-        let (_dir, registry, registry_path, _lock_path) = registered_slack_registry(run_id).await;
-        let refreshes = HashMap::from([(
-            "slack".to_string(),
-            ConnectorPolicyRefresh {
-                next_refresh_at: "1970-01-01T00:00:00Z".to_string(),
-            },
-        )]);
-
-        handle
-            .core
-            .register_run(ConnectorPolicyRefreshRegistration {
-                run_id,
-                source_ip: "10.200.0.2",
-                registry,
-                connector_refs: HashSet::from(["slack".to_string()]),
-                initial_refresh_connector_refs: HashSet::from(["slack".to_string()]),
-                refreshes: Some(&refreshes),
-            })
-            .await;
-
-        let policy = load_slack_policy(&registry_path).await;
-        assert_eq!(policy["unknownPolicy"], json!("deny"));
-        assert!(
-            handle
-                .core
-                .inner
-                .active_runs
-                .lock()
-                .await
-                .get(&run_id)
-                .is_some_and(|active| active.refresh_tasks.is_empty()),
-            "fresh initial refresh response should replace the stale claim schedule"
-        );
-        refresh_mock.assert_calls_async(1).await;
-
-        handle.shutdown().await;
-    }
-
-    #[tokio::test]
-    async fn register_run_restores_claim_schedule_after_initial_refresh_failure() {
-        let server = MockServer::start();
-        let run_id = RunId::nil();
-        server.mock(|when, then| {
-            when.method(POST).path(format!(
-                "/api/runners/runs/{run_id}/connector-network-policy"
-            ));
-            then.status(500)
-                .header("content-type", "application/json")
-                .json_body(json!({
-                    "error": {
-                        "code": "INTERNAL_SERVER_ERROR",
-                        "message": "refresh failed",
-                    },
-                }));
-        });
-        let handle = ConnectorPolicyRefreshHandle::new(api_client_for_server(&server));
-        let (_dir, registry, registry_path, _lock_path) = registered_slack_registry(run_id).await;
-        let refreshes = HashMap::from([(
-            "slack".to_string(),
-            ConnectorPolicyRefresh {
-                next_refresh_at: "2999-01-01T00:00:00Z".to_string(),
-            },
-        )]);
-
-        handle
-            .core
-            .register_run(ConnectorPolicyRefreshRegistration {
-                run_id,
-                source_ip: "10.200.0.2",
-                registry,
-                connector_refs: HashSet::from(["slack".to_string()]),
-                initial_refresh_connector_refs: HashSet::from(["slack".to_string()]),
-                refreshes: Some(&refreshes),
-            })
-            .await;
-
-        let policy = load_slack_policy(&registry_path).await;
-        assert_original_policy(&policy);
-        assert!(
-            handle
-                .core
-                .inner
-                .active_runs
-                .lock()
-                .await
-                .get(&run_id)
-                .is_some_and(|active| active.refresh_tasks.len() == 1),
-            "claim schedule should remain as fallback when initial refresh cannot apply"
-        );
-
-        handle.shutdown().await;
     }
 
     #[tokio::test]
@@ -1360,7 +1082,6 @@ mod tests {
                     run_id,
                     connector_ref: "slack".to_string(),
                     trigger: RefreshTrigger::Scheduled,
-                    completion: None,
                 })
                 .expect("refresh queue should accept request");
         }
@@ -1373,53 +1094,6 @@ mod tests {
         )
         .await
         .expect("cancelled notification should not wait for queue capacity");
-
-        let mut queued = 0;
-        while requests.try_recv().is_ok() {
-            queued += 1;
-        }
-        assert_eq!(queued, REFRESH_REQUEST_QUEUE_CAPACITY);
-    }
-
-    #[tokio::test]
-    async fn unregister_cancels_initial_refresh_waiting_for_queue_capacity() {
-        let server = MockServer::start();
-        let (core, mut requests) = core_without_worker(&server);
-        let run_id = RunId::nil();
-        let dir = tempfile::tempdir().expect("tempdir should be created");
-        let registry = ProxyRegistryHandle::new(
-            dir.path().join("proxy-registry.json"),
-            dir.path().join("proxy-registry.lock"),
-        );
-        for _ in 0..REFRESH_REQUEST_QUEUE_CAPACITY {
-            core.request_tx
-                .try_send(RefreshRequest {
-                    run_id,
-                    connector_ref: "slack".to_string(),
-                    trigger: RefreshTrigger::Scheduled,
-                    completion: None,
-                })
-                .expect("refresh queue should accept request");
-        }
-
-        let register = core.register_run(ConnectorPolicyRefreshRegistration {
-            run_id,
-            source_ip: "10.200.0.2",
-            registry,
-            connector_refs: HashSet::from(["slack".to_string()]),
-            initial_refresh_connector_refs: HashSet::from(["slack".to_string()]),
-            refreshes: None,
-        });
-        tokio::pin!(register);
-        assert!(
-            matches!(poll_once(register.as_mut()), Poll::Pending),
-            "initial refresh should wait for refresh queue capacity before unregister"
-        );
-
-        core.unregister_run(run_id).await;
-        tokio::time::timeout(Duration::from_secs(1), register.as_mut())
-            .await
-            .expect("unregister should cancel initial refresh waiting for queue capacity");
 
         let mut queued = 0;
         while requests.try_recv().is_ok() {
@@ -1445,7 +1119,6 @@ mod tests {
                     run_id,
                     connector_ref: "slack".to_string(),
                     trigger: RefreshTrigger::Scheduled,
-                    completion: None,
                 })
                 .expect("refresh queue should accept request");
         }
@@ -1486,7 +1159,6 @@ mod tests {
                     run_id,
                     connector_ref: "slack".to_string(),
                     trigger: RefreshTrigger::Scheduled,
-                    completion: None,
                 })
                 .expect("refresh queue should accept request");
         }
@@ -1574,7 +1246,6 @@ mod tests {
                     run_id,
                     connector_ref: "slack".to_string(),
                     trigger: RefreshTrigger::Notification,
-                    completion: None,
                 })
                 .expect("refresh queue should accept request");
         }
@@ -1618,11 +1289,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn initial_mismatched_connector_refresh_keeps_claim_policy() {
-        assert_mismatched_connector_refresh_fail_closed(RefreshTrigger::Initial, false).await;
-    }
-
-    #[tokio::test]
     async fn scheduled_failed_connector_refresh_fails_closed() {
         assert_failed_connector_refresh_fail_closed(RefreshTrigger::Scheduled, true).await;
     }
@@ -1630,11 +1296,6 @@ mod tests {
     #[tokio::test]
     async fn notification_failed_connector_refresh_fails_closed() {
         assert_failed_connector_refresh_fail_closed(RefreshTrigger::Notification, true).await;
-    }
-
-    #[tokio::test]
-    async fn initial_failed_connector_refresh_keeps_claim_policy() {
-        assert_failed_connector_refresh_fail_closed(RefreshTrigger::Initial, false).await;
     }
 
     async fn assert_failed_connector_refresh_fail_closed(
