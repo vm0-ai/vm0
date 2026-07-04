@@ -299,7 +299,7 @@ interface ZeroChatComposerProps {
   /**
    * When true, render skeleton placeholders in place of the right-side
    * action cluster (model picker, mic, send/stop). Used during thread switch
-   * while thread data is still resolving — prevents briefly flashing stale
+   * while remote thread detail is still resolving — prevents briefly flashing stale
    * picker state and a wrong send/stop button derived from prior
    * `allFinished`.
    */

@@ -20,8 +20,11 @@ import {
 import { renameDialogInput$ } from "../../zero-page/zero-sidebar-state.ts";
 import { sidebarChatThreadIds$ } from "../sidebar-chat-thread-ids.ts";
 import { setChatThreadOnlyUnread$ } from "../chat-thread-only-unread.ts";
-import { openRenameChatThreadDialogFromThreadData$ } from "../chat-thread-rename.ts";
-import { registerOptimisticChatThreadEvent$ } from "../chat-thread-event-sourcing.ts";
+import { openRenameChatThreadDialogFromThreadMeta$ } from "../chat-thread-rename.ts";
+import {
+  eventDrivenChatThreadMeta,
+  registerOptimisticChatThreadEvent$,
+} from "../chat-thread-event-sourcing.ts";
 import { createIdbCachedDataSource } from "../idb-cached-chat-thread-data-source.ts";
 
 const idbThreadEventStoreMock = vi.hoisted(() => {
@@ -438,25 +441,14 @@ describe("chat thread event sourcing local-first list", () => {
 
     const dataSource = createIdbCachedDataSource(OPTIMISTIC_THREAD_ID);
     await expect(
-      context.store.get(dataSource.getThread$),
+      context.store.get(dataSource.remoteThreadDetail$),
+    ).resolves.toBeNull();
+    await expect(
+      context.store.get(eventDrivenChatThreadMeta(OPTIMISTIC_THREAD_ID)),
     ).resolves.toStrictEqual({
-      id: OPTIMISTIC_THREAD_ID,
-      title: null,
+      threadId: OPTIMISTIC_THREAD_ID,
       agentId: AGENT_ID,
-      createdAt: "2026-07-03T05:00:00.000Z",
-      updatedAt: "2026-07-03T05:00:00.000Z",
-      lastReadMessageId: null,
-      lastReadAt: null,
-      lastMessageAt: "2026-07-03T05:00:00.000Z",
-      pinnedAt: null,
-      activeRunIds: [],
-      isLegacySession: false,
-      draftContent: null,
-      draftAttachments: null,
-      modelProviderId: null,
-      selectedModel: null,
-      codexServiceTier: null,
-      computerUseHostId: null,
+      title: null,
     });
   });
 
@@ -578,7 +570,7 @@ describe("chat thread event sourcing local-first list", () => {
 
     detailRequests = 0;
     await context.store.set(
-      openRenameChatThreadDialogFromThreadData$,
+      openRenameChatThreadDialogFromThreadMeta$,
       {
         threadId: THREAD_ID,
         title: "Cached renamed title",

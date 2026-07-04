@@ -5003,7 +5003,7 @@ describe("chat lifecycle", () => {
   });
 
   it("shows automation run messages as automation links in chat history", async () => {
-    const threadId = "thread-automation-message";
+    const threadId = "b0000000-0000-4000-a000-000000000721";
     const automationId = "f0000001-0000-4000-a000-000000000721";
     mockChatLifecycle(context, {
       threadId,

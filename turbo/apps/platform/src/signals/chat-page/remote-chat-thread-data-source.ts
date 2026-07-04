@@ -457,37 +457,39 @@ export function createRemoteChatThreadDataSource(
   const reloadCounter$ = state(0);
   const subscribeRealtime$ = createSubscribeRealtime();
 
-  const getThread$ = computed(async (get): Promise<ChatThread | null> => {
-    get(reloadCounter$);
-    const threadClient = get(zeroClient$)(chatThreadByIdContract);
-    const threadResult = await accept(
-      threadClient.get({ params: { id: threadId } }),
-      [200, 404],
-    );
-    if (threadResult.status === 404) {
-      return null;
-    }
-    const body = threadResult.body;
-    return {
-      id: threadId,
-      title: body.title ?? null,
-      agentId: body.agentId,
-      createdAt: body.createdAt,
-      updatedAt: body.updatedAt,
-      lastReadMessageId: body.lastReadMessageId ?? null,
-      lastReadAt: body.lastReadAt ?? null,
-      lastMessageAt: body.lastMessageAt ?? body.updatedAt,
-      pinnedAt: body.pinnedAt ?? null,
-      activeRunIds: body.activeRunIds,
-      isLegacySession: false,
-      draftContent: body.draftContent ?? null,
-      draftAttachments: body.draftAttachments ?? null,
-      computerUseHostId: body.computerUseHostId ?? null,
-      modelProviderId: body.modelProviderId ?? null,
-      selectedModel: body.selectedModel ?? null,
-      codexServiceTier: body.codexServiceTier ?? null,
-    };
-  });
+  const remoteThreadDetail$ = computed(
+    async (get): Promise<ChatThread | null> => {
+      get(reloadCounter$);
+      const threadClient = get(zeroClient$)(chatThreadByIdContract);
+      const threadResult = await accept(
+        threadClient.get({ params: { id: threadId } }),
+        [200, 404],
+      );
+      if (threadResult.status === 404) {
+        return null;
+      }
+      const body = threadResult.body;
+      return {
+        id: threadId,
+        title: body.title ?? null,
+        agentId: body.agentId,
+        createdAt: body.createdAt,
+        updatedAt: body.updatedAt,
+        lastReadMessageId: body.lastReadMessageId ?? null,
+        lastReadAt: body.lastReadAt ?? null,
+        lastMessageAt: body.lastMessageAt ?? body.updatedAt,
+        pinnedAt: body.pinnedAt ?? null,
+        activeRunIds: body.activeRunIds,
+        isLegacySession: false,
+        draftContent: body.draftContent ?? null,
+        draftAttachments: body.draftAttachments ?? null,
+        computerUseHostId: body.computerUseHostId ?? null,
+        modelProviderId: body.modelProviderId ?? null,
+        selectedModel: body.selectedModel ?? null,
+        codexServiceTier: body.codexServiceTier ?? null,
+      };
+    },
+  );
 
   const reloadThread$ = command(({ set }) => {
     set(reloadCounter$, (v) => {
@@ -502,8 +504,8 @@ export function createRemoteChatThreadDataSource(
       [200, 404],
     );
     if (result.status === 404) {
-      // detects this via threadData$ being null and routes home; returning
-      // an empty page keeps the messages stream from rejecting in parallel.
+      // The pane detects this via remoteThreadDetail$ being null; returning an
+      // empty page keeps the messages stream from rejecting in parallel.
       return { messages: [], hasHistoryBefore: false };
     }
     const hasHistoryBefore = result.body.hasHistoryBefore ?? false;
@@ -520,7 +522,7 @@ export function createRemoteChatThreadDataSource(
   });
 
   return {
-    getThread$,
+    remoteThreadDetail$,
     reloadThread$,
     initialPage$,
     patchDraft$,

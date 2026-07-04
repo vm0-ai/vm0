@@ -102,7 +102,7 @@ export interface SubscribeRealtimeArgs {
 }
 
 export interface ChatThreadDataSource {
-  getThread$: Computed<Promise<ChatThread | null>>;
+  remoteThreadDetail$: Computed<Promise<ChatThread | null>>;
   reloadThread$: Command<void, []>;
   initialPage$: Computed<Promise<InitialPage>>;
   patchDraft$: Command<Promise<void>, [PatchDraftArgs, AbortSignal]>;

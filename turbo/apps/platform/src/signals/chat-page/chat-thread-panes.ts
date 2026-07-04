@@ -68,15 +68,15 @@ const loadDraft$ = command(
     isNew: boolean,
     signal: AbortSignal,
   ) => {
-    const threadData = await get(thread.threadData$);
+    const remoteThreadDetail = await get(thread.remoteThreadDetail$);
     signal.throwIfAborted();
 
-    if (!threadData) {
-      throw new Error("Thread data missing");
+    if (!remoteThreadDetail) {
+      return;
     }
 
-    const hasDraftContent = threadData.draftContent !== null;
-    const draftAttachments = threadData.draftAttachments;
+    const hasDraftContent = remoteThreadDetail.draftContent !== null;
+    const draftAttachments = remoteThreadDetail.draftAttachments;
     const hasDraftAttachments =
       draftAttachments !== null && draftAttachments.length > 0;
     if (isNew && (hasDraftContent || hasDraftAttachments)) {
@@ -85,7 +85,7 @@ const loadDraft$ = command(
       );
       set(
         thread.draft.seed$,
-        threadData.draftContent ?? "",
+        remoteThreadDetail.draftContent ?? "",
         restoredAttachments,
       );
     }
