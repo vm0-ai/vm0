@@ -71,6 +71,7 @@ describe("CHAT-01 chat thread lifecycle", () => {
     detail = await api.readThread(actor, created.id);
     expect(detail.draftContent).toBe("follow up on the launch");
     expect(detail.draftAttachments).toHaveLength(1);
+    await expect(api.listThreadDrafts(actor)).resolves.toContain(created.id);
 
     await api.renameThread(actor, created.id, "Renamed launch notes");
     detail = await api.readThread(actor, created.id);
@@ -124,6 +125,11 @@ describe("CHAT-01 chat thread lifecycle", () => {
     const peerRead = await api.requestReadThread(peer, thread.id, [404]);
     expectApiError(peerRead.body);
     expect(peerRead.body.error.code).toBe("NOT_FOUND");
+    await api.patchThread(owner, thread.id, {
+      draftContent: "private draft",
+      draftAttachments: null,
+    });
+    await expect(api.listThreadDrafts(peer)).resolves.not.toContain(thread.id);
 
     const outsiderRead = await api.requestReadThread(
       outsider,
