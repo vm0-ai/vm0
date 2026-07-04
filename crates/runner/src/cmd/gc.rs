@@ -1470,17 +1470,17 @@ async fn collect_config_image_refs(
             return;
         }
     };
-    for (profile_name, profile_ref) in config.profiles {
+    for (_, profile_ref) in config.profiles {
         if image_hash::validate_or_err(&profile_ref.rootfs_hash).is_err() {
             warn!(
-                "runner image refs: {source} config {} profile {profile_name} has an invalid rootfs hash, skipping profile",
+                "runner image refs: {source} config {} has a profile with an invalid rootfs hash, skipping profile",
                 config_path.display()
             );
             continue;
         }
         if image_hash::validate_or_err(&profile_ref.snapshot_hash).is_err() {
             warn!(
-                "runner image refs: {source} config {} profile {profile_name} has an invalid snapshot hash, skipping profile",
+                "runner image refs: {source} config {} has a profile with an invalid snapshot hash, skipping profile",
                 config_path.display()
             );
             continue;
