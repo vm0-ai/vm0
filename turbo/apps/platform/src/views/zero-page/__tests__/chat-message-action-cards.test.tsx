@@ -367,6 +367,51 @@ describe("chat message action cards", () => {
     expect(screen.queryByText("GitHub")).not.toBeInTheDocument();
   });
 
+  it("renders catalog-visible unsupported connector action cards as disabled", async () => {
+    const connectorAuthorizeUrl = `https://app.vm0.ai/connectors/future-connector/authorize?agentId=${AGENT_ID}`;
+    mockConnectorCatalogStatus([
+      publicConnectorStatusItem({
+        connectorRef: "future-connector",
+        label: "Catalog Future Connector",
+        description: "Catalog future connector help text",
+      }),
+    ]);
+    mockChatLifecycle(context, {
+      threadId: `${THREAD_ID}-future-connector`,
+      threadTitle: "Future connector",
+      chatMessages: [
+        {
+          id: "msg-user-future-connector",
+          role: "user",
+          content: "Connect future connector",
+          runId: "run-future-connector",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-assistant-future-connector-card",
+          role: "assistant",
+          content: connectorAuthorizeUrl,
+          runId: "run-future-connector",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}-future-connector`,
+    });
+
+    const connectorCard = await screen.findByTestId("connector-action-card");
+    expect(
+      within(connectorCard).getByText("Catalog Future Connector"),
+    ).toBeInTheDocument();
+    expect(
+      within(connectorCard).getByText("Catalog future connector help text"),
+    ).toBeInTheDocument();
+    expect(buttonByText("Unavailable", connectorCard)).toBeDisabled();
+  });
+
   it("fails closed when permission action metadata is hidden", async () => {
     const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=hidden-connector&permission=hidden.permission&action=allow&expiresIn=1h`;
     context.mocks.api(

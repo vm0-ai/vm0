@@ -5614,9 +5614,11 @@ function ConnectorActionCard({ block }: { block: ConnectorActionBlock }) {
   const activating = activateLoadable.state === "loading";
   const connectorType = block.connectorType;
 
-  if (!available || !displayMetadata || connectorType === null) {
+  if (!available || !displayMetadata) {
     return null;
   }
+
+  const canActivate = connectorType !== null;
 
   return (
     <div
@@ -5625,7 +5627,11 @@ function ConnectorActionCard({ block }: { block: ConnectorActionBlock }) {
     >
       <div className="flex min-w-0 items-center gap-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/40">
-          <ConnectorIcon type={connectorType} size={22} />
+          {connectorType ? (
+            <ConnectorIcon type={connectorType} size={22} />
+          ) : (
+            <IconPackage size={22} />
+          )}
         </div>
         <div className="min-w-0">
           <div className="truncate text-[0.9375rem] font-medium text-foreground">
@@ -5638,14 +5644,14 @@ function ConnectorActionCard({ block }: { block: ConnectorActionBlock }) {
       </div>
       <button
         type="button"
-        disabled={complete || activating}
+        disabled={complete || activating || !canActivate}
         onClick={() => {
           detach(activate(pageSignal), Reason.DomCallback);
         }}
         className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
       >
         {activating && <IconLoader2 size={15} className="animate-spin" />}
-        {complete ? "Connected" : "Connect"}
+        {!canActivate ? "Unavailable" : complete ? "Connected" : "Connect"}
       </button>
     </div>
   );

@@ -186,7 +186,7 @@ export function createConnectorActionBlock(
 
   const available$ = computed(async (get): Promise<boolean> => {
     const displayMetadata = await get(displayMetadata$);
-    return displayMetadata !== null && descriptor.connectorType !== null;
+    return displayMetadata !== null;
   });
 
   const connected$ = computed(async (get): Promise<boolean> => {
