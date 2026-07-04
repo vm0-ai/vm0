@@ -1,4 +1,4 @@
-import { useEffect, type MouseEvent } from "react";
+import type { MouseEvent } from "react";
 import {
   useGet,
   useSet,
@@ -105,6 +105,8 @@ const CHAT_THREAD_VIRTUAL_ROW_HEIGHT = 36;
 const CHAT_THREAD_VIRTUAL_OVERSCAN = 8;
 const CHAT_THREAD_VIRTUAL_FALLBACK_VIEWPORT_HEIGHT =
   CHAT_THREAD_VIRTUAL_ROW_HEIGHT * 12;
+const CHAT_THREAD_VIRTUAL_SCROLL_QUEUED_KEY =
+  "vm0ChatThreadVirtualScrollQueuedKey";
 
 function SessionStateIndicator({ state }: { state: IndicatorState }) {
   if (state === "running") {
@@ -774,6 +776,97 @@ function getFixedVirtualRange({
   };
 }
 
+function queueChatThreadVirtualTargetScroll({
+  chatThreadCount,
+  scrollMargin,
+  scrollTargetThreadId,
+  scrollViewport,
+  setScrollTargetThreadId,
+  targetIndex,
+  viewportHeight,
+}: {
+  chatThreadCount: number;
+  scrollMargin: number;
+  scrollTargetThreadId: string | null;
+  scrollViewport: HTMLElement | null;
+  setScrollTargetThreadId: (threadId: string | null) => void;
+  targetIndex: number;
+  viewportHeight: number;
+}) {
+  if (scrollTargetThreadId === null) {
+    return;
+  }
+
+  if (targetIndex === -1) {
+    if (chatThreadCount === 0) {
+      return;
+    }
+    const key = `missing:${scrollTargetThreadId}:${chatThreadCount}`;
+    if (
+      document.documentElement.dataset[
+        CHAT_THREAD_VIRTUAL_SCROLL_QUEUED_KEY
+      ] === key
+    ) {
+      return;
+    }
+    document.documentElement.dataset[CHAT_THREAD_VIRTUAL_SCROLL_QUEUED_KEY] =
+      key;
+    queueMicrotask(() => {
+      if (
+        document.documentElement.dataset[
+          CHAT_THREAD_VIRTUAL_SCROLL_QUEUED_KEY
+        ] === key
+      ) {
+        delete document.documentElement.dataset[
+          CHAT_THREAD_VIRTUAL_SCROLL_QUEUED_KEY
+        ];
+      }
+      setScrollTargetThreadId(null);
+    });
+    return;
+  }
+
+  if (!scrollViewport) {
+    return;
+  }
+
+  const key = [
+    scrollTargetThreadId,
+    targetIndex,
+    scrollMargin,
+    viewportHeight,
+  ].join(":");
+  if (
+    document.documentElement.dataset[CHAT_THREAD_VIRTUAL_SCROLL_QUEUED_KEY] ===
+    key
+  ) {
+    return;
+  }
+  document.documentElement.dataset[CHAT_THREAD_VIRTUAL_SCROLL_QUEUED_KEY] = key;
+  queueMicrotask(() => {
+    if (
+      document.documentElement.dataset[
+        CHAT_THREAD_VIRTUAL_SCROLL_QUEUED_KEY
+      ] === key
+    ) {
+      delete document.documentElement.dataset[
+        CHAT_THREAD_VIRTUAL_SCROLL_QUEUED_KEY
+      ];
+    }
+    const rowTop = scrollMargin + targetIndex * CHAT_THREAD_VIRTUAL_ROW_HEIGHT;
+    const rowBottom = rowTop + CHAT_THREAD_VIRTUAL_ROW_HEIGHT;
+    const viewportTop = scrollViewport.scrollTop;
+    const viewportBottom = viewportTop + viewportHeight;
+    if (rowTop < viewportTop || rowBottom > viewportBottom) {
+      scrollViewport.scrollTop = Math.max(
+        0,
+        rowTop - CHAT_THREAD_VIRTUAL_ROW_HEIGHT,
+      );
+    }
+    setScrollTargetThreadId(null);
+  });
+}
+
 function VirtualizedChatThreads({
   chatThreads,
 }: {
@@ -808,39 +901,15 @@ function VirtualizedChatThreads({
   });
   const visibleChatThreads = chatThreads.slice(startIndex, endIndex);
 
-  useEffect(() => {
-    if (scrollTargetThreadId === null) {
-      return;
-    }
-    if (targetIndex === -1) {
-      if (chatThreads.length > 0) {
-        setScrollTargetThreadId(null);
-      }
-      return;
-    }
-    if (!scrollViewport) {
-      return;
-    }
-    const rowTop = scrollMargin + targetIndex * CHAT_THREAD_VIRTUAL_ROW_HEIGHT;
-    const rowBottom = rowTop + CHAT_THREAD_VIRTUAL_ROW_HEIGHT;
-    const viewportTop = scrollViewport.scrollTop;
-    const viewportBottom = viewportTop + viewportHeight;
-    if (rowTop < viewportTop || rowBottom > viewportBottom) {
-      scrollViewport.scrollTop = Math.max(
-        0,
-        rowTop - CHAT_THREAD_VIRTUAL_ROW_HEIGHT,
-      );
-    }
-    setScrollTargetThreadId(null);
-  }, [
-    chatThreads.length,
+  queueChatThreadVirtualTargetScroll({
+    chatThreadCount: chatThreads.length,
     scrollMargin,
     scrollTargetThreadId,
     scrollViewport,
     setScrollTargetThreadId,
     targetIndex,
     viewportHeight,
-  ]);
+  });
 
   return (
     <div

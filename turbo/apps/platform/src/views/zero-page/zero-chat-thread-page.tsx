@@ -3792,7 +3792,7 @@ function buildCompletedWorkFolding(
   const visibleMessages: EnrichedChatMessage[] = [];
   const folds: CompletedWorkFold[] = [];
 
-  for (let index = 0; index < messages.length;) {
+  for (let index = 0; index < messages.length; ) {
     const runId = messages[index]!.runId;
     if (runId === undefined) {
       visibleMessages.push(messages[index]!);
