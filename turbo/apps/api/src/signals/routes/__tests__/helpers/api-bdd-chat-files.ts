@@ -19,7 +19,6 @@ import {
   type ChatSearchResponse,
   type ChatThreadArtifactRun,
   type ChatThreadDetail,
-  type ChatThreadListItem,
   type ChatThreadSnapshotProjection,
   type ChatRunOptionsRequest,
   type CodexServiceTier,
@@ -468,29 +467,6 @@ export function createChatFilesBddApi(context: TestContext) {
       );
     },
 
-    async listThreads(
-      actor: ApiTestUser,
-      query: {
-        readonly agentId: string;
-        readonly cursor?: string;
-        readonly filter?: "unread";
-      },
-    ): Promise<{
-      readonly pinned: readonly ChatThreadListItem[];
-      readonly threads: readonly ChatThreadListItem[];
-      readonly hasMore: boolean;
-      readonly nextCursor: string | null;
-    }> {
-      const response = await accept(
-        threadsClient().list({
-          headers: authenticate(context, actor),
-          query,
-        }),
-        [200],
-      );
-      return response.body;
-    },
-
     async getThreadSnapshot(actor: ApiTestUser): Promise<{
       readonly chatThreads: readonly ChatThreadSnapshotProjection[];
       readonly latestEventId: string | null;
@@ -511,24 +487,6 @@ export function createChatFilesBddApi(context: TestContext) {
     ) {
       return await accept(
         threadsClient().events({
-          headers: authenticate(context, actor),
-          query,
-        }),
-        statuses,
-      );
-    },
-
-    async requestListThreads(
-      actor: ApiTestUser | null,
-      query: {
-        readonly agentId: string;
-        readonly cursor?: string;
-        readonly filter?: "unread";
-      },
-      statuses: readonly (200 | 401 | 404)[],
-    ) {
-      return await accept(
-        threadsClient().list({
           headers: authenticate(context, actor),
           query,
         }),

@@ -37,7 +37,7 @@ const MODEL_FIRST_SELECTION_PROVIDER_ID =
   "00000000-0000-4000-8000-000000000000";
 
 describe("CHAT-01 chat thread lifecycle", () => {
-  it("creates, mutates, lists, searches, and deletes a thread through visible APIs", async () => {
+  it("creates, mutates, searches, and deletes a thread through visible APIs", async () => {
     const actor = bdd.user();
     const compose = await api.createComposeForChatThread(actor);
     const created = await api.createThread(actor, {
@@ -133,12 +133,14 @@ describe("CHAT-01 chat thread lifecycle", () => {
     expectApiError(outsiderRead.body);
     expect(outsiderRead.body.error.code).toBe("NOT_FOUND");
 
-    const peerList = await api.listThreads(peer, {
-      agentId: compose.composeId,
-    });
+    const peerEvents = await api.requestThreadEvents(peer, {}, [200]);
+    expect(peerEvents.status).toBe(200);
+    if (peerEvents.status !== 200) {
+      throw new Error("Expected chat thread events to load");
+    }
     expect(
-      [...peerList.pinned, ...peerList.threads].some((item) => {
-        return item.id === thread.id;
+      peerEvents.body.events.some((event) => {
+        return event.chatThreadId === thread.id;
       }),
     ).toBeFalsy();
   });
@@ -168,19 +170,13 @@ describe("CHAT-01 chat thread lifecycle", () => {
       unreads: [],
     });
 
-    const pinnedList = await api.listThreads(owner, {
-      agentId: agent.agentId,
-    });
-    expect(pinnedList.pinned).toHaveLength(1);
-    expect(pinnedList.pinned[0]).toMatchObject({
+    let detail = await api.readThread(owner, thread.id);
+    expect(detail).toMatchObject({
       id: thread.id,
       title: "Pinned launch plan",
       pinnedAt: expect.any(String),
       renamedAt: expect.any(String),
     });
-    expect(pinnedList.threads).toStrictEqual([]);
-
-    let detail = await api.readThread(owner, thread.id);
     expect(detail.selectedModel).toBe("gpt-5.4-mini");
     expect(detail.lastReadMessageId ?? null).toBeNull();
 
@@ -225,18 +221,12 @@ describe("CHAT-01 chat thread lifecycle", () => {
     await api.unpinThread(owner, thread.id);
     await api.updateThreadModelSelection(owner, thread.id, null);
 
-    const unpinnedList = await api.listThreads(owner, {
-      agentId: agent.agentId,
-    });
-    expect(unpinnedList.pinned).toStrictEqual([]);
-    expect(unpinnedList.threads).toHaveLength(1);
-    expect(unpinnedList.threads[0]).toMatchObject({
+    detail = await api.readThread(owner, thread.id);
+    expect(detail).toMatchObject({
       id: thread.id,
       title: "Pinned launch plan",
       pinnedAt: null,
     });
-
-    detail = await api.readThread(owner, thread.id);
     expect(detail.selectedModel).toBeNull();
   });
 });

@@ -4,7 +4,6 @@ import {
   type ChatSearchResult,
   type ChatThreadArtifactRun,
   type ChatThreadDetail,
-  type ChatThreadListItem,
   type CodexServiceTier,
   type PagedChatMessage,
   type PersistedAttachment,
@@ -51,7 +50,6 @@ import {
 import { z } from "zod";
 
 import { type Db, db$, writeDb$ } from "../external/db";
-import { safeJsonParse } from "../utils";
 import {
   inferMimetype,
   insertAssistantEventMessages$,
@@ -733,57 +731,6 @@ export function zeroChatThreadDetail(args: {
   });
 }
 
-const SIDEBAR_CHAT_THREAD_LIMIT = 25;
-
-interface ChatThreadListCursor {
-  readonly lastMessageAt: Date;
-  readonly id: string;
-}
-
-function encodeChatThreadListCursor(cursor: ChatThreadListCursor): string {
-  return Buffer.from(
-    JSON.stringify({
-      ts: cursor.lastMessageAt.toISOString(),
-      id: cursor.id,
-    }),
-    "utf8",
-  ).toString("base64url");
-}
-
-function decodeChatThreadListCursor(
-  raw: string | undefined,
-): ChatThreadListCursor | null {
-  if (!raw) {
-    return null;
-  }
-  const parsed = safeJsonParse(Buffer.from(raw, "base64url").toString("utf8"));
-  if (
-    typeof parsed !== "object" ||
-    parsed === null ||
-    !("ts" in parsed) ||
-    !("id" in parsed)
-  ) {
-    return null;
-  }
-  const ts = (parsed as { ts: unknown }).ts;
-  const id = (parsed as { id: unknown }).id;
-  if (typeof ts !== "string" || typeof id !== "string") {
-    return null;
-  }
-  const date = new Date(ts);
-  if (Number.isNaN(date.getTime())) {
-    return null;
-  }
-  return { lastMessageAt: date, id };
-}
-
-interface ChatThreadListPage {
-  readonly pinned: readonly ChatThreadListItem[];
-  readonly threads: readonly ChatThreadListItem[];
-  readonly hasMore: boolean;
-  readonly nextCursor: string | null;
-}
-
 function lastVisibleMessageSubquery(db: Pick<Db, "select">) {
   return db
     .select({
@@ -801,176 +748,6 @@ function lastVisibleMessageSubquery(db: Pick<Db, "select">) {
     .orderBy(desc(chatMessages.createdAt), desc(chatMessages.id))
     .limit(1)
     .as("last_message");
-}
-
-function chatThreadListProjection() {
-  return {
-    id: chatThreads.id,
-    title: chatThreads.title,
-    agentId: chatThreads.agentComposeId,
-    agentAvatarUrl: zeroAgents.avatarUrl,
-    createdAt: chatThreads.createdAt,
-    updatedAt: chatThreads.updatedAt,
-    pinnedAt: chatThreads.pinnedAt,
-    renamedAt: chatThreads.renamedAt,
-    lastMessageAt: chatThreads.lastMessageAt,
-    running: sql<boolean>`EXISTS (
-      SELECT 1
-      FROM ${zeroRuns}
-      INNER JOIN ${agentRuns} ON ${agentRuns.id} = ${zeroRuns.id}
-      WHERE ${zeroRuns.chatThreadId} = ${chatThreads.id}
-        AND ${agentRuns.status} IN (${activeRunStatusSqlList()})
-    )`,
-  } as const;
-}
-
-type ChatThreadListRow = {
-  readonly id: string;
-  readonly title: string | null;
-  readonly agentId: string;
-  readonly agentAvatarUrl: string | null;
-  readonly createdAt: Date;
-  readonly updatedAt: Date;
-  readonly pinnedAt: Date | null;
-  readonly renamedAt: Date | null;
-  readonly lastMessageAt: Date;
-  readonly running: boolean;
-};
-
-function rowToChatThreadListItem(
-  thread: ChatThreadListRow,
-): ChatThreadListItem {
-  return {
-    id: thread.id,
-    title: thread.title,
-    agent: {
-      id: thread.agentId,
-      avatarUrl: thread.agentAvatarUrl,
-    },
-    createdAt: thread.createdAt.toISOString(),
-    updatedAt: thread.updatedAt.toISOString(),
-    running: thread.running,
-    pinnedAt: thread.pinnedAt?.toISOString() ?? null,
-    renamedAt: thread.renamedAt?.toISOString() ?? null,
-  };
-}
-
-function cursorAdvanceFilter(cursor: ChatThreadListCursor) {
-  return or(
-    lt(chatThreads.lastMessageAt, cursor.lastMessageAt),
-    and(
-      eq(chatThreads.lastMessageAt, cursor.lastMessageAt),
-      lt(chatThreads.id, cursor.id),
-    ),
-  )!;
-}
-
-export function zeroChatThreadList(args: {
-  readonly userId: string;
-  readonly orgId: string;
-  readonly agentComposeId: string;
-  readonly cursor?: string;
-  readonly filter?: "unread";
-}): Computed<Promise<ChatThreadListPage>> {
-  return computed(async (get): Promise<ChatThreadListPage> => {
-    const db = get(db$);
-    const cursor = decodeChatThreadListCursor(args.cursor);
-    const lastMessage =
-      args.filter === "unread" ? lastVisibleMessageSubquery(db) : null;
-
-    const projection = chatThreadListProjection();
-
-    const scopedFilters = [
-      eq(chatThreads.userId, args.userId),
-      eq(zeroAgents.orgId, args.orgId),
-      eq(chatThreads.agentComposeId, args.agentComposeId),
-    ];
-    if (lastMessage) {
-      scopedFilters.push(
-        isNotNull(lastMessage.id),
-        or(
-          isNull(chatThreads.lastReadMessageId),
-          sql`${chatThreads.lastReadMessageId} <> ${lastMessage.id}`,
-        )!,
-      );
-    }
-
-    const nonPinnedFilters = [...scopedFilters, isNull(chatThreads.pinnedAt)];
-    if (cursor) {
-      nonPinnedFilters.push(cursorAdvanceFilter(cursor));
-    }
-
-    // Pinned segment is only returned on the first page (no cursor).
-    // Honours the same agent scope as the non-pinned segment so the sidebar
-    // never surfaces another agent's pinned threads while you're viewing one.
-    // Both segments are independent, so they run in parallel to avoid
-    // stacking two sequential round-trips on this hot path.
-    const [pinnedRows, nonPinnedRows] = await Promise.all([
-      cursor
-        ? []
-        : lastMessage
-          ? db
-              .select(projection)
-              .from(chatThreads)
-              .innerJoin(
-                zeroAgents,
-                eq(zeroAgents.id, chatThreads.agentComposeId),
-              )
-              .leftJoinLateral(lastMessage, sql`true`)
-              .where(and(...scopedFilters, isNotNull(chatThreads.pinnedAt)))
-              .orderBy(desc(chatThreads.lastMessageAt), desc(chatThreads.id))
-          : db
-              .select(projection)
-              .from(chatThreads)
-              .innerJoin(
-                zeroAgents,
-                eq(zeroAgents.id, chatThreads.agentComposeId),
-              )
-              .where(and(...scopedFilters, isNotNull(chatThreads.pinnedAt)))
-              .orderBy(desc(chatThreads.lastMessageAt), desc(chatThreads.id)),
-      lastMessage
-        ? db
-            .select(projection)
-            .from(chatThreads)
-            .innerJoin(
-              zeroAgents,
-              eq(zeroAgents.id, chatThreads.agentComposeId),
-            )
-            .leftJoinLateral(lastMessage, sql`true`)
-            .where(and(...nonPinnedFilters))
-            .orderBy(desc(chatThreads.lastMessageAt), desc(chatThreads.id))
-            .limit(SIDEBAR_CHAT_THREAD_LIMIT + 1)
-        : db
-            .select(projection)
-            .from(chatThreads)
-            .innerJoin(
-              zeroAgents,
-              eq(zeroAgents.id, chatThreads.agentComposeId),
-            )
-            .where(and(...nonPinnedFilters))
-            .orderBy(desc(chatThreads.lastMessageAt), desc(chatThreads.id))
-            .limit(SIDEBAR_CHAT_THREAD_LIMIT + 1),
-    ]);
-
-    const hasMore = nonPinnedRows.length > SIDEBAR_CHAT_THREAD_LIMIT;
-    const pageRows = hasMore
-      ? nonPinnedRows.slice(0, SIDEBAR_CHAT_THREAD_LIMIT)
-      : nonPinnedRows;
-    const lastRow = hasMore ? pageRows[pageRows.length - 1] : undefined;
-    const nextCursor = lastRow
-      ? encodeChatThreadListCursor({
-          lastMessageAt: lastRow.lastMessageAt,
-          id: lastRow.id,
-        })
-      : null;
-
-    return {
-      pinned: pinnedRows.map(rowToChatThreadListItem),
-      threads: pageRows.map(rowToChatThreadListItem),
-      hasMore,
-      nextCursor,
-    };
-  });
 }
 
 /**

@@ -27,7 +27,6 @@ import {
   zeroChatThreadDetail,
   zeroChatThreadMessageById,
   zeroChatThreadDraftIds,
-  zeroChatThreadList,
   zeroChatThreadMessagesPage,
   zeroChatThreadUnreadAgentIds,
   zeroChatThreadUnreads,
@@ -200,33 +199,6 @@ const getChatThreadMessageInner$ = computed(async (get) => {
   return { status: 200 as const, body: message };
 });
 
-const listChatThreadsInner$ = computed(async (get) => {
-  const auth = get(organizationAuthContext$);
-  const query = get(queryOf(chatThreadsContract.list));
-
-  // No existence check on agentId: the list query already scopes by
-  // org + agentComposeId, so an unknown agent yields an empty list.
-  const page = await get(
-    zeroChatThreadList({
-      userId: auth.userId,
-      orgId: auth.orgId,
-      agentComposeId: query.agentId,
-      cursor: query.cursor,
-      filter: query.filter,
-    }),
-  );
-
-  return {
-    status: 200 as const,
-    body: {
-      pinned: [...page.pinned],
-      threads: [...page.threads],
-      hasMore: page.hasMore,
-      nextCursor: page.nextCursor,
-    },
-  };
-});
-
 const listChatThreadDraftsInner$ = computed(async (get) => {
   const auth = get(authContext$);
   const query = get(queryOf(chatThreadsContract.drafts));
@@ -396,13 +368,6 @@ export const zeroChatThreadRoutes: readonly RouteEntry[] = [
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
       listChatThreadActiveIdsInner$,
-    ),
-  },
-  {
-    route: chatThreadsContract.list,
-    handler: authRoute(
-      { requireOrganization: true, missingOrganizationStatus: 401 },
-      listChatThreadsInner$,
     ),
   },
   {

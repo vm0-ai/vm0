@@ -101,14 +101,6 @@ export function mockSubagentThread(context: TestContext, threadId: string) {
       draftAttachments: null,
     });
   });
-  context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-    return respond(200, {
-      pinned: [],
-      threads: [],
-      hasMore: false,
-      nextCursor: null,
-    });
-  });
   context.mocks.api(zeroAgentsByIdContract.get, ({ params, respond }) => {
     const agents: Record<
       string,
@@ -207,41 +199,8 @@ interface ThreadListItem {
   renamedAt?: string | null;
 }
 
-type PagedThreadItem = ThreadListItem & {
-  pinnedAt?: string | null;
-  renamedAt?: string | null;
-};
-
 const UUID_PATTERN =
   /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/;
-
-/**
- * Splits a flat ThreadListItem array into the new paged response shape that
- * the chatThreadsContract.list endpoint returns. Pinned items go to `pinned`,
- * the rest to `threads`; pagination metadata defaults to "no more pages"
- * since fixtures rarely care about cursor mechanics.
- */
-export function splitChatThreadListResponse(
-  threads: readonly PagedThreadItem[],
-): {
-  pinned: PagedThreadItem[];
-  threads: PagedThreadItem[];
-  hasMore: boolean;
-  nextCursor: string | null;
-} {
-  const pinned = threads.filter((t) => {
-    return t.pinnedAt !== null && t.pinnedAt !== undefined;
-  });
-  const nonPinned = threads.filter((t) => {
-    return t.pinnedAt === null || t.pinnedAt === undefined;
-  });
-  return {
-    pinned,
-    threads: nonPinned,
-    hasMore: false,
-    nextCursor: null,
-  };
-}
 
 export function threadListSnapshot(threads: readonly ThreadListItem[]) {
   return threads.map((thread) => {
@@ -831,9 +790,6 @@ export function mockChatLifecycle(
       return respond(204);
     },
   );
-  context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-    return respond(200, splitChatThreadListResponse(threadList));
-  });
   context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
     return respond(200, {
       chatThreads: threadListSnapshot(threadList),

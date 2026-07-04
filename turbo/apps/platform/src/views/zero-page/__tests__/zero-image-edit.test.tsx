@@ -6,7 +6,6 @@ import { describe, expect, it } from "vitest";
 import {
   chatThreadByIdContract,
   chatThreadMessagesContract,
-  chatThreadsContract,
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroImageIoGenerateContract } from "@vm0/api-contracts/contracts/zero-image-io-generate";
@@ -97,14 +96,6 @@ function setupChatThread({
       return respond(200, { messages: [] });
     }
     return respond(200, { messages, hasHistoryBefore: false });
-  });
-  context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-    return respond(200, {
-      pinned: [],
-      threads: [],
-      hasMore: false,
-      nextCursor: null,
-    });
   });
 
   detachedSetupPage({

@@ -427,7 +427,7 @@ const chatRunOptionsRequestSchema = z.object({
 });
 
 /**
- * Chat threads list route contract (/api/chat-threads)
+ * Chat thread collection route contract.
  */
 export const chatThreadsContract = c.router({
   snapshot: {
@@ -495,52 +495,6 @@ export const chatThreadsContract = c.router({
       404: apiErrorSchema,
     },
     summary: "Create a new chat thread",
-  },
-  list: {
-    method: "GET",
-    path: "/api/zero/chat-threads",
-    headers: authHeadersSchema,
-    query: z.object({
-      agentId: z.string().min(1),
-      /**
-       * Opaque cursor returned by a prior page in `nextCursor`. When set,
-       * `pinned` is empty (pinned threads are only included on the first
-       * page) and `threads` continues from the position after the cursor.
-       */
-      cursor: z.string().optional(),
-      /**
-       * Optional server-side list filter. `unread` returns only threads whose
-       * latest visible message is newer than the caller's read cursor.
-       */
-      filter: z.enum(["unread"]).optional(),
-    }),
-    responses: {
-      200: z.object({
-        /**
-         * All pinned threads in the caller's org, ordered by last activity desc.
-         * Always returned in full on the first page (no `cursor`) and empty on
-         * subsequent pages. Non-pinned threads use the fixed sidebar page size.
-         */
-        pinned: z.array(chatThreadListItemSchema),
-        /**
-         * Non-pinned threads for this page, ordered by last activity desc.
-         */
-        threads: z.array(chatThreadListItemSchema),
-        /**
-         * True when more non-pinned threads exist beyond this page.
-         */
-        hasMore: z.boolean(),
-        /**
-         * Opaque cursor for fetching the next page, or null when `hasMore`
-         * is false.
-         */
-        nextCursor: z.string().nullable(),
-      }),
-      401: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary:
-      "List chat threads for an agent. An unknown agentId yields an empty list. Pinned threads are returned in full for the caller's org on the first page; non-pinned threads use cursor pagination with a fixed sidebar page size.",
   },
   drafts: {
     method: "GET",

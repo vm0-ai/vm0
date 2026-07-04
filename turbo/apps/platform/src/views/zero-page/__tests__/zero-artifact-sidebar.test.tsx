@@ -9,7 +9,6 @@ import {
   chatThreadByIdContract,
   chatThreadArtifactsContract,
   chatThreadMessagesContract,
-  chatThreadsContract,
   type ChatThreadArtifactFile,
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
@@ -127,14 +126,6 @@ function setupChatThread({
       return respond(200, { messages: [] });
     }
     return respond(200, { messages, hasHistoryBefore: false });
-  });
-  context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-    return respond(200, {
-      pinned: [],
-      threads: [],
-      hasMore: false,
-      nextCursor: null,
-    });
   });
   if (artifactFiles) {
     context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {

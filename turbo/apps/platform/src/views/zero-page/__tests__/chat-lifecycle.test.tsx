@@ -56,7 +56,6 @@ import {
   PLACEHOLDER,
   sendQueuedMessage,
   sendMessageInUI,
-  splitChatThreadListResponse,
   threadListSnapshot,
 } from "./chat-test-helpers.ts";
 import { CREATE_WORKFLOW_WITH_CHAT_PROMPT } from "../workflow-chat-prompts.ts";
@@ -357,10 +356,6 @@ function mockKeyboardNavigationThreads({
       pinnedAt: null,
     };
   });
-
-  context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-    return respond(200, splitChatThreadListResponse(threadList));
-  });
   context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
     return respond(200, {
       chatThreads: threadListSnapshot(threadList),
@@ -598,9 +593,6 @@ function mockServerQueuedThreadStories(): void {
       updatedAt: "2024-01-01T00:00:00Z",
     },
   ]);
-  context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-    return respond(200, splitChatThreadListResponse(threadList));
-  });
   context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
     return respond(200, {
       chatThreads: threadListSnapshot(threadList),
@@ -7356,14 +7348,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
         running: false,
       },
     ];
-    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, {
-        pinned: [],
-        threads,
-        hasMore: false,
-        nextCursor: null,
-      });
-    });
     context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
       return respond(200, {
         chatThreads: threadListSnapshot(threads),

@@ -11,6 +11,7 @@ import {
   chatThreadRenameContract,
   chatThreadUnpinContract,
   chatThreadsContract,
+  type ChatThreadListItem,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
@@ -24,10 +25,7 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { createMockAutomationView } from "../../../mocks/handlers/automations-store.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import {
-  PLACEHOLDER,
-  splitChatThreadListResponse,
-} from "./chat-test-helpers.ts";
+import { PLACEHOLDER } from "./chat-test-helpers.ts";
 
 const context = testContext();
 
@@ -40,7 +38,7 @@ const AUTOMATION_THREAD_ID = "b0000000-0000-4000-a000-000000000003";
 const ARCHIVED_THREAD_ID = "b0000000-0000-4000-a000-000000000004";
 const RESEARCH_THREAD_ID = "b0000000-0000-4000-a000-000000000005";
 
-type SidebarThread = Parameters<typeof splitChatThreadListResponse>[0][number];
+type SidebarThread = ChatThreadListItem;
 
 function prepareDefaultAgent(): void {
   context.mocks.data.team([
@@ -282,21 +280,6 @@ function mockSidebarThreadStory(
     return [...threads, ...extraThreads];
   });
 
-  context.mocks.api(chatThreadsContract.list, ({ query, respond }) => {
-    if (query.cursor === "next-page") {
-      return respond(200, {
-        pinned: [],
-        threads: extraThreads,
-        hasMore: false,
-        nextCursor: null,
-      });
-    }
-    return respond(200, {
-      ...splitChatThreadListResponse(threads),
-      hasMore: extraThreads.length > 0,
-      nextCursor: extraThreads.length > 0 ? "next-page" : null,
-    });
-  });
   context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
     const thread = [...threads, ...extraThreads].find((candidate) => {
       return candidate.id === params.id;
@@ -370,10 +353,6 @@ describe("zero sidebar", () => {
         running: false,
       },
     ];
-
-    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, splitChatThreadListResponse(threads));
-    });
     mockChatThreadSnapshot(() => {
       return threads;
     });
@@ -451,9 +430,6 @@ describe("zero sidebar", () => {
       activeIdsRequests += 1;
       return never();
     });
-    context.mocks.api(chatThreadsContract.list, ({ never }) => {
-      return never();
-    });
 
     setupSidebarPage({
       context,
@@ -508,10 +484,6 @@ describe("zero sidebar", () => {
         pinnedAt: null,
       },
     ];
-
-    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, splitChatThreadListResponse(serverOrderedThreads));
-    });
     mockChatThreadSnapshot(() => {
       return serverOrderedThreads;
     });
@@ -589,10 +561,6 @@ describe("zero sidebar", () => {
         running: false,
       },
     ];
-
-    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, splitChatThreadListResponse(threads));
-    });
     mockChatThreadSnapshot(() => {
       return threads;
     });
@@ -664,15 +632,6 @@ describe("zero sidebar", () => {
     ];
     let unreadsRequests = 0;
 
-    context.mocks.api(chatThreadsContract.list, ({ query, respond }) => {
-      if (query.filter === "unread") {
-        return respond(
-          200,
-          splitChatThreadListResponse([pinnedUnreadThread, unreadThread]),
-        );
-      }
-      return respond(200, splitChatThreadListResponse(allThreads));
-    });
     mockChatThreadSnapshot(() => {
       return allThreads;
     });
@@ -771,12 +730,6 @@ describe("zero sidebar", () => {
     });
     const unpinnedThread = createThread(INCIDENT_THREAD_ID, "Incident notes");
 
-    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-      return respond(
-        200,
-        splitChatThreadListResponse([pinnedThread, unpinnedThread]),
-      );
-    });
     mockChatThreadSnapshot(() => {
       return [pinnedThread, unpinnedThread];
     });
@@ -1265,11 +1218,6 @@ describe("zero sidebar", () => {
       },
     );
 
-    context.mocks.api(chatThreadsContract.list, ({ query, respond }) => {
-      const threads =
-        query.agentId === RESEARCH_AGENT_ID ? [researchThread] : [];
-      return respond(200, splitChatThreadListResponse(threads));
-    });
     mockChatThreadSnapshot(() => {
       return [researchThread];
     });
@@ -1371,9 +1319,6 @@ describe("zero sidebar", () => {
 
   it("opens the agent picker from the global shortcut", async () => {
     prepareAgentTeam();
-    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, splitChatThreadListResponse([]));
-    });
 
     setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
@@ -1394,9 +1339,6 @@ describe("zero sidebar", () => {
 
   it("opens the agent picker from the global shortcut while composer is focused", async () => {
     prepareAgentTeam();
-    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, splitChatThreadListResponse([]));
-    });
 
     setupSidebarPage({
       context,
@@ -1445,9 +1387,6 @@ describe("zero sidebar", () => {
 
   it("opens shortcut help from the agent chat page when composer is not focused", async () => {
     prepareAgentTeam();
-    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, splitChatThreadListResponse([]));
-    });
 
     detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
@@ -1465,9 +1404,6 @@ describe("zero sidebar", () => {
 
   it("ignores global shortcuts while a dialog is open", async () => {
     prepareAgentTeam();
-    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, splitChatThreadListResponse([]));
-    });
 
     setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
@@ -1491,9 +1427,6 @@ describe("zero sidebar", () => {
 
   it("selects an agent from the picker with arrow keys and enter", async () => {
     prepareAgentTeam();
-    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, splitChatThreadListResponse([]));
-    });
 
     setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
@@ -1536,9 +1469,6 @@ describe("zero sidebar", () => {
     prepareAgentTeam();
     context.mocks.data.userPreferences({
       pinnedAgentIds: [RESEARCH_AGENT_ID],
-    });
-    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, splitChatThreadListResponse([]));
     });
 
     let unreadAgentIds = [RESEARCH_AGENT_ID, SUPPORT_AGENT_ID];
@@ -1640,9 +1570,6 @@ describe("zero sidebar", () => {
     context.mocks.data.userPreferences({
       pinnedAgentIds: [RESEARCH_AGENT_ID],
     });
-    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, splitChatThreadListResponse([]));
-    });
 
     let unreadAgentIds = [RESEARCH_AGENT_ID, SUPPORT_AGENT_ID];
     const markedAgentIds: string[] = [];
@@ -1692,9 +1619,6 @@ describe("zero sidebar", () => {
 
   it("marks all default agent chats read from the default agent menu", async () => {
     prepareAgentTeam();
-    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, splitChatThreadListResponse([]));
-    });
 
     let unreadAgentIds = [AGENT_ID, SUPPORT_AGENT_ID];
     const markedAgentIds: string[] = [];
@@ -1749,9 +1673,6 @@ describe("zero sidebar", () => {
 
   it("collapses and reopens the sidebar", async () => {
     prepareDefaultAgent();
-    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, splitChatThreadListResponse([]));
-    });
 
     setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
@@ -1772,9 +1693,6 @@ describe("zero sidebar", () => {
 
   it("collapses and reopens the manage navigation section", async () => {
     prepareDefaultAgent();
-    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, splitChatThreadListResponse([]));
-    });
 
     setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
@@ -1834,9 +1752,6 @@ describe("zero sidebar", () => {
 
   it("shows workflows in the sidebar manage navigation when enabled", async () => {
     prepareDefaultAgent();
-    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, splitChatThreadListResponse([]));
-    });
 
     setupSidebarPage({
       context,
@@ -1860,9 +1775,6 @@ describe("zero sidebar", () => {
 
   it("hides workflows in the sidebar manage navigation when disabled", async () => {
     prepareDefaultAgent();
-    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, splitChatThreadListResponse([]));
-    });
 
     setupSidebarPage({
       context,

@@ -1,5 +1,4 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { describe, expect, it } from "vitest";
 
 import { mockedClerk } from "../../../__tests__/mock-auth.ts";
@@ -22,14 +21,6 @@ function mockAPIs(): void {
       updatedAt: "2024-01-01T00:00:00Z",
     },
   ]);
-  context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-    return respond(200, {
-      pinned: [],
-      threads: [],
-      hasMore: false,
-      nextCursor: null,
-    });
-  });
 }
 
 describe("link navigation", () => {

@@ -810,14 +810,21 @@ describe("CHAT-02: completed chat callback", () => {
       "Most recent assistant reply:\nfinal answer",
     );
 
-    const threads = await chat.listThreads(actor, { agentId });
-    const orderedIds = [...threads.pinned, ...threads.threads].map((thread) => {
-      return thread.id;
+    const threadEvents = await chat.requestThreadEvents(actor, {}, [200]);
+    expect(threadEvents.status).toBe(200);
+    if (threadEvents.status !== 200) {
+      throw new Error("Expected chat thread events to load");
+    }
+    const relevantEvents = threadEvents.body.events.filter((event) => {
+      return (
+        event.chatThreadId === first.threadId ||
+        event.chatThreadId === sentinel.threadId
+      );
     });
-    expect(orderedIds.indexOf(first.threadId)).toBeGreaterThanOrEqual(0);
-    expect(orderedIds.indexOf(sentinel.threadId)).toBeGreaterThan(
-      orderedIds.indexOf(first.threadId),
-    );
+    expect(relevantEvents.at(-1)).toMatchObject({
+      kind: "sort_touched",
+      chatThreadId: first.threadId,
+    });
 
     await expect
       .poll(() => {

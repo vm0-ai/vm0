@@ -174,16 +174,6 @@ export const apiAgentsHandlers = [
     return respond(204);
   }),
 
-  // GET /api/zero/chat-threads
-  mockApi(chatThreadsContract.list, ({ respond }) => {
-    return respond(200, {
-      pinned: [],
-      threads: [],
-      hasMore: false,
-      nextCursor: null,
-    });
-  }),
-
   // GET /api/zero/chat-threads/snapshot
   mockApi(chatThreadsContract.snapshot, ({ respond }) => {
     return respond(200, {
