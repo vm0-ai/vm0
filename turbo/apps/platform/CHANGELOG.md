@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.547.1](https://github.com/vm0-ai/vm0/compare/app-v0.547.0...app-v0.547.1) (2026-07-04)
+
+
+### Bug Fixes
+
+* keep sidebar thread list rendered during thread switch ([#20111](https://github.com/vm0-ai/vm0/issues/20111)) ([cc762d6](https://github.com/vm0-ai/vm0/commit/cc762d64fa36f669afd168568cffd7d24187489d))
+
 ## [0.547.0](https://github.com/vm0-ai/vm0/compare/app-v0.546.0...app-v0.547.0) (2026-07-04)
 
 
