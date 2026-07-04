@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.554.2](https://github.com/vm0-ai/vm0/compare/app-v0.554.1...app-v0.554.2) (2026-07-04)
+
+
+### Refactoring
+
+* use catalog metadata for connector display ([#20142](https://github.com/vm0-ai/vm0/issues/20142)) ([0fff4f7](https://github.com/vm0-ai/vm0/commit/0fff4f7293bd312ed88feebfc39334b4e151a3d9))
+* use event-sourced thread metadata in chat pages ([#20151](https://github.com/vm0-ai/vm0/issues/20151)) ([1f74fe8](https://github.com/vm0-ai/vm0/commit/1f74fe84fa4f4f8fc1a639ba3d1eaafad372cbf6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.153.3
+    * @vm0/connectors bumped to 1.135.1
+    * @vm0/core bumped to 8.399.1
+
 ## [0.554.1](https://github.com/vm0-ai/vm0/compare/app-v0.554.0...app-v0.554.1) (2026-07-04)
 
 
