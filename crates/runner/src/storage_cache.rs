@@ -115,6 +115,7 @@ enum GroupOutcome {
         outcome_target_index: usize,
         outcome: TargetOutcome,
     },
+    #[cfg(test)]
     PerTarget(Vec<TargetOutcome>),
 }
 
@@ -209,6 +210,7 @@ enum TargetKind {
 
 enum TargetOutcome {
     Hit,
+    #[cfg(test)]
     Miss {
         download_duration: Duration,
     },
@@ -242,6 +244,22 @@ enum CachedArchive {
     Missing,
     Empty,
     OverSize { observed_size: u64 },
+}
+
+enum CacheFetchOutcome {
+    Downloaded {
+        bytes: Bytes,
+        download_duration: Duration,
+    },
+    Skipped(TargetOutcome),
+}
+
+enum BackgroundFillOutcome {
+    Filled,
+    AlreadyCached,
+    Busy,
+    Skipped,
+    RetryableSkipped,
 }
 
 #[derive(Default)]
@@ -756,6 +774,7 @@ fn should_background_fill(outcome: &GroupOutcome) -> bool {
         GroupOutcome::Shared { outcome, .. } => {
             matches!(outcome, TargetOutcome::MissPassthrough { .. })
         }
+        #[cfg(test)]
         GroupOutcome::PerTarget(outcomes) => outcomes
             .iter()
             .any(|outcome| matches!(outcome, TargetOutcome::MissPassthrough { .. })),
@@ -785,8 +804,7 @@ async fn run_background_fill_groups(groups: Vec<CacheTargetGroup>, home: HomePat
             };
             let name = first_target.name.clone();
             let version = first_target.version.clone();
-            let mut metrics = CacheProcessMetrics::default();
-            if let Err(error) = process_group(&group, &http, &home, &mut metrics).await {
+            if let Err(error) = process_group_background_fill(&group, &http, &home).await {
                 warn!(
                     %error,
                     vas_storage_name = name,
@@ -893,6 +911,7 @@ fn cache_target_from_entry(
     })
 }
 
+#[cfg(test)]
 async fn process_group(
     group: &CacheTargetGroup,
     http: &Client,
@@ -938,6 +957,20 @@ async fn process_group(
     })
 }
 
+async fn process_group_background_fill(
+    group: &CacheTargetGroup,
+    http: &Client,
+    home: &HomePaths,
+) -> RunnerResult<BackgroundFillOutcome> {
+    for target in &group.targets {
+        match process_one_background_fill(target, http, home).await? {
+            BackgroundFillOutcome::RetryableSkipped => {}
+            outcome => return Ok(outcome),
+        }
+    }
+    Ok(BackgroundFillOutcome::Skipped)
+}
+
 async fn process_group_hit_or_passthrough(
     group: &CacheTargetGroup,
     home: &HomePaths,
@@ -961,6 +994,7 @@ async fn process_group_hit_or_passthrough(
     })
 }
 
+#[cfg(test)]
 async fn process_one(
     target: &CacheTarget,
     http: &Client,
@@ -1026,11 +1060,97 @@ async fn process_one(
         }
     }
 
+    let (bytes, download_duration) = match fetch_cache_target(target, http).await? {
+        CacheFetchOutcome::Downloaded {
+            bytes,
+            download_duration,
+        } => (bytes, download_duration),
+        CacheFetchOutcome::Skipped(outcome) => {
+            return Ok(ProcessedTarget {
+                outcome,
+                stage_write: None,
+            });
+        }
+    };
+
+    write_to_cache(&cache_dir, &bytes).await?;
+    let guest_path = guest_archive_path(&target.name, &target.version);
+    drop(writer);
+
+    Ok(ProcessedTarget {
+        outcome: TargetOutcome::Miss { download_duration },
+        stage_write: Some(GuestStageWrite { guest_path, bytes }),
+    })
+}
+
+async fn process_one_background_fill(
+    target: &CacheTarget,
+    http: &Client,
+    home: &HomePaths,
+) -> RunnerResult<BackgroundFillOutcome> {
+    let lock_path = home.storage_lock(&target.name, &target.version);
+    let cache_dir = home.storage_cache_dir(&target.name, &target.version);
+    let archive_path = cache_dir.join("archive.tar.gz");
+
+    let writer = match lock::try_acquire_or_busy(lock_path).await? {
+        lock::TryLock::Acquired(lock) => lock,
+        lock::TryLock::Busy => return Ok(BackgroundFillOutcome::Busy),
+    };
+
+    match fs::metadata(&archive_path).await {
+        Ok(metadata) if metadata.len() == 0 => {
+            evict_empty_cache(target, &cache_dir).await?;
+        }
+        Ok(metadata) if metadata.len() <= CACHE_MAX_SIZE => {
+            touch_mtime(&cache_dir);
+            drop(writer);
+            return Ok(BackgroundFillOutcome::AlreadyCached);
+        }
+        Ok(metadata) => {
+            evict_oversized_cache(target, &cache_dir, metadata.len()).await?;
+        }
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+        Err(e) => {
+            return Err(RunnerError::Internal(format!(
+                "stat cached {}: {e}",
+                archive_path.display()
+            )));
+        }
+    }
+
+    let outcome = match fetch_cache_target(target, http).await? {
+        CacheFetchOutcome::Downloaded {
+            bytes,
+            download_duration,
+        } => {
+            let _ = download_duration;
+            write_to_cache(&cache_dir, &bytes).await?;
+            BackgroundFillOutcome::Filled
+        }
+        CacheFetchOutcome::Skipped(TargetOutcome::SkippedHeadFailed { .. })
+        | CacheFetchOutcome::Skipped(TargetOutcome::SkippedInvalidDownload { .. }) => {
+            BackgroundFillOutcome::RetryableSkipped
+        }
+        CacheFetchOutcome::Skipped(TargetOutcome::SkippedOverSize) => {
+            BackgroundFillOutcome::Skipped
+        }
+        CacheFetchOutcome::Skipped(_) => {
+            return Err(RunnerError::Internal(
+                "background cache fill got unsupported fetch outcome".to_string(),
+            ));
+        }
+    };
+    drop(writer);
+    Ok(outcome)
+}
+
+async fn fetch_cache_target(
+    target: &CacheTarget,
+    http: &Client,
+) -> RunnerResult<CacheFetchOutcome> {
     // Miss path: probe size via `GET` + `Range: bytes=0-0`. A probe failure is
     // treated as passthrough — the entry keeps its original R2 URL and the
-    // guest downloads it as today. The exclusive lock stays held through cache
-    // population so same-key runners do not duplicate downloads or race on the
-    // staging directory.
+    // guest downloads it as today.
     let size = match retry_cache_fetch(|| probe_size(http, &target.archive_url)).await {
         Ok(SizeProbe::Known(n)) => n,
         Ok(SizeProbe::Unknown(reason)) => {
@@ -1041,12 +1161,11 @@ async fn process_one(
                 reason,
                 "storage_cache: probe returned no usable size header, passthrough"
             );
-            return Ok(ProcessedTarget {
-                outcome: TargetOutcome::SkippedHeadFailed {
+            return Ok(CacheFetchOutcome::Skipped(
+                TargetOutcome::SkippedHeadFailed {
                     reason: reason.to_string(),
                 },
-                stage_write: None,
-            });
+            ));
         }
         Err(e) => {
             let reason = e.to_string();
@@ -1056,10 +1175,9 @@ async fn process_one(
                 error = %reason,
                 "storage_cache: probe failed, passthrough"
             );
-            return Ok(ProcessedTarget {
-                outcome: TargetOutcome::SkippedHeadFailed { reason },
-                stage_write: None,
-            });
+            return Ok(CacheFetchOutcome::Skipped(
+                TargetOutcome::SkippedHeadFailed { reason },
+            ));
         }
     };
     if size > CACHE_MAX_SIZE {
@@ -1069,14 +1187,9 @@ async fn process_one(
             size,
             "storage_cache: entry over size limit, passthrough"
         );
-        return Ok(ProcessedTarget {
-            outcome: TargetOutcome::SkippedOverSize,
-            stage_write: None,
-        });
+        return Ok(CacheFetchOutcome::Skipped(TargetOutcome::SkippedOverSize));
     }
 
-    // Download, stage, fsync, atomic rename, then release cache ownership before
-    // pushing the bytes to the guest.
     let t = Instant::now();
     let bytes =
         match retry_cache_fetch(|| download_tarball(http, &target.archive_url, CACHE_MAX_SIZE))
@@ -1093,10 +1206,9 @@ async fn process_one(
                             error = %reason,
                             "storage_cache: full download failed, passthrough"
                         );
-                        return Ok(ProcessedTarget {
-                            outcome: TargetOutcome::SkippedInvalidDownload { reason },
-                            stage_write: None,
-                        });
+                        return Ok(CacheFetchOutcome::Skipped(
+                            TargetOutcome::SkippedInvalidDownload { reason },
+                        ));
                     }
                     CacheDownloadError::Internal(e) => return Err(e),
                 }
@@ -1110,12 +1222,11 @@ async fn process_one(
                 version = %target.version,
                 "storage_cache: full download returned empty archive, passthrough"
             );
-            return Ok(ProcessedTarget {
-                outcome: TargetOutcome::SkippedInvalidDownload {
+            return Ok(CacheFetchOutcome::Skipped(
+                TargetOutcome::SkippedInvalidDownload {
                     reason: "empty-download".to_string(),
                 },
-                stage_write: None,
-            });
+            ));
         }
         DownloadBody::OverSize { observed_size } => {
             warn!(
@@ -1142,22 +1253,16 @@ async fn process_one(
             observed_size,
             "storage_cache: full download size differed from probe, passthrough"
         );
-        return Ok(ProcessedTarget {
-            outcome: TargetOutcome::SkippedInvalidDownload {
+        return Ok(CacheFetchOutcome::Skipped(
+            TargetOutcome::SkippedInvalidDownload {
                 reason: "size-mismatch".to_string(),
             },
-            stage_write: None,
-        });
+        ));
     }
-    write_to_cache(&cache_dir, &bytes).await?;
-    let guest_path = guest_archive_path(&target.name, &target.version);
-    drop(writer);
 
-    Ok(ProcessedTarget {
-        outcome: TargetOutcome::Miss {
-            download_duration: t.elapsed(),
-        },
-        stage_write: Some(GuestStageWrite { guest_path, bytes }),
+    Ok(CacheFetchOutcome::Downloaded {
+        bytes,
+        download_duration: t.elapsed(),
     })
 }
 
@@ -1237,12 +1342,15 @@ async fn process_one_hit_or_passthrough(
             outcome: TargetOutcome::MissPassthrough { reason: "empty" },
             stage_write: None,
         }),
-        CachedArchive::OverSize { .. } => Ok(ProcessedTarget {
-            outcome: TargetOutcome::MissPassthrough {
-                reason: "over-size",
-            },
-            stage_write: None,
-        }),
+        CachedArchive::OverSize { observed_size } => {
+            let _ = observed_size;
+            Ok(ProcessedTarget {
+                outcome: TargetOutcome::MissPassthrough {
+                    reason: "over-size",
+                },
+                stage_write: None,
+            })
+        }
     }
 }
 
@@ -1887,7 +1995,7 @@ fn apply_group_outcome(
 ) {
     match group_outcome {
         GroupOutcome::Shared {
-            outcome_target_index,
+            outcome_target_index: _outcome_target_index,
             outcome,
         } => match outcome {
             TargetOutcome::Hit => {
@@ -1895,13 +2003,14 @@ fn apply_group_outcome(
                     apply_outcome(manifest, target, outcome, telemetry);
                 }
             }
+            #[cfg(test)]
             TargetOutcome::Miss { .. } => {
                 // The representative miss already staged the group archive in
                 // the guest. Other same-key entries are equivalent to cache
                 // hits for both rewrite behavior and entry-level telemetry.
                 let hit = TargetOutcome::Hit;
                 for (index, target) in group.targets.iter().enumerate() {
-                    if index == *outcome_target_index {
+                    if index == *_outcome_target_index {
                         apply_outcome(manifest, target, outcome, telemetry);
                     } else {
                         apply_outcome(manifest, target, &hit, telemetry);
@@ -1918,6 +2027,7 @@ fn apply_group_outcome(
                 }
             }
         },
+        #[cfg(test)]
         GroupOutcome::PerTarget(outcomes) => {
             debug_assert_eq!(group.targets.len(), outcomes.len());
             for (target, outcome) in group.targets.iter().zip(outcomes) {
@@ -1938,6 +2048,7 @@ fn apply_outcome(
             rewrite_url(manifest, target);
             telemetry.record("storage_cache_hit", Duration::ZERO, true, None);
         }
+        #[cfg(test)]
         TargetOutcome::Miss { download_duration } => {
             rewrite_url(manifest, target);
             telemetry.record("storage_cache_miss", Duration::ZERO, true, None);
@@ -2003,6 +2114,7 @@ fn record_passthrough_summary(
             GroupOutcome::Shared { outcome, .. } => {
                 add_passthrough_summary(&mut summary, outcome, group.targets.len());
             }
+            #[cfg(test)]
             GroupOutcome::PerTarget(target_outcomes) => {
                 for outcome in target_outcomes {
                     add_passthrough_summary(&mut summary, outcome, 1);
@@ -2040,8 +2152,9 @@ fn add_passthrough_summary(
         TargetOutcome::Hit => summary.hit_targets += target_count,
         TargetOutcome::MissPassthrough { .. } => summary.miss_targets += target_count,
         TargetOutcome::LockBusyPassthrough => summary.lock_busy_targets += target_count,
-        TargetOutcome::Miss { .. }
-        | TargetOutcome::SkippedOverSize
+        #[cfg(test)]
+        TargetOutcome::Miss { .. } => {}
+        TargetOutcome::SkippedOverSize
         | TargetOutcome::SkippedHeadFailed { .. }
         | TargetOutcome::SkippedInvalidDownload { .. } => {}
     }
@@ -2833,6 +2946,34 @@ mod tests {
         assert_op_error(&ops, STORAGE_CACHE_MISS_PASSTHROUGH, "missing");
         assert_no_op(&ops, "storage_cache_miss");
         assert_no_op(&ops, "storage_cache_download");
+    }
+
+    #[tokio::test]
+    async fn background_fill_skips_busy_cache_lock_without_http() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let name = "background-busy";
+        let version = "v1";
+        let _writer = lock::acquire(home.storage_lock(name, version))
+            .await
+            .unwrap();
+        let group = CacheTargetGroup {
+            targets: vec![CacheTarget {
+                kind: TargetKind::Storage,
+                index: 0,
+                name: name.to_string(),
+                version: version.to_string(),
+                archive_url: "http://127.0.0.1:9/archive.tar.gz".to_string(),
+            }],
+        };
+        let http = Client::builder().build().unwrap();
+
+        let outcome = process_group_background_fill(&group, &http, &home)
+            .await
+            .unwrap();
+
+        assert!(matches!(outcome, BackgroundFillOutcome::Busy));
+        assert!(!home.storage_cache_dir(name, version).exists());
     }
 
     #[tokio::test]
