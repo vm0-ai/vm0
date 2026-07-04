@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.219.1](https://github.com/vm0-ai/vm0/compare/api-v1.219.0...api-v1.219.1) (2026-07-04)
+
+
+### Refactoring
+
+* tighten google meet event schema ([#20105](https://github.com/vm0-ai/vm0/issues/20105)) ([c0f810c](https://github.com/vm0-ai/vm0/commit/c0f810c40ef6d139f1739f5b19b14ec07363793a))
+
 ## [1.219.0](https://github.com/vm0-ai/vm0/compare/api-v1.218.3...api-v1.219.0) (2026-07-03)
 
 
