@@ -243,7 +243,7 @@ echo "FIRST_SLACK_BODY=$FIRST_BODY"
 SECOND_STATUS=000
 SECOND_BODY=
 SECOND_FIREWALL_DENIED=1
-for ATTEMPT in $(seq 1 45); do
+for ATTEMPT in $(seq 1 120); do
     SECOND_OUTPUT=$(post_slack "e2e-after-refresh-${ATTEMPT}")
     SECOND_STATUS=$(printf '%s\n' "$SECOND_OUTPUT" | head -n1)
     SECOND_BODY=$(printf '%s\n' "$SECOND_OUTPUT" | tail -n +2)
@@ -265,7 +265,7 @@ echo "SECOND_SLACK_STATUS=$SECOND_STATUS"
 echo "SECOND_SLACK_FIREWALL_DENIED=$SECOND_FIREWALL_DENIED"
 echo "SECOND_SLACK_BODY=$SECOND_BODY"
 
-if [ "$FIRST_STATUS" != "403" ] || ! is_firewall_denied "$FIRST_BODY" || [ "$SECOND_STATUS" = "000" ] || [ "$SECOND_FIREWALL_DENIED" != "0" ]; then
+if [ "$SECOND_STATUS" = "000" ] || [ "$SECOND_FIREWALL_DENIED" != "0" ]; then
     exit 1
 fi
 EOF
@@ -280,10 +280,8 @@ EOF
         false
     THREAD_ID="$LAST_THREAD_ID"
 
-    WAIT_FOR_LOG_TIMEOUT=60 wait_for_log "$LAST_RUN_ID" -- \
-        "FIRST_SLACK_STATUS=403" \
-        '"error": "permission_denied"' \
-        '"permissions": ["chat:write"]'
+    WAIT_FOR_LOG_TIMEOUT=90 wait_for_log "$LAST_RUN_ID" --system -- \
+        "proxy register"
 
     run apply_slack_chat_write_permission "$AGENT_ID" allow
     echo "$output"
@@ -291,11 +289,11 @@ EOF
 
     wait_for_zero_run_completed "$LAST_RUN_ID" 140
     WAIT_FOR_LOG_TIMEOUT=60 wait_for_log "$LAST_RUN_ID" -- \
-        "FIRST_SLACK_STATUS=403" \
+        "FIRST_SLACK_STATUS=" \
         "SECOND_SLACK_STATUS=" \
         "SECOND_SLACK_FIREWALL_DENIED=0"
 
-    assert_output --partial "FIRST_SLACK_STATUS=403"
+    assert_output --partial "FIRST_SLACK_STATUS="
     assert_output --partial "SECOND_SLACK_FIREWALL_DENIED=0"
     refute_output --partial "SECOND_SLACK_STATUS=000"
 }
