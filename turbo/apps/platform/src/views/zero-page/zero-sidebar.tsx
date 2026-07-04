@@ -32,7 +32,7 @@ import {
 } from "../../signals/zero-page/zero-nav.ts";
 import { activeRoute$ } from "../../signals/active-route.ts";
 import type { RouteKey } from "../../signals/route-paths.ts";
-import { defaultAgentName$ } from "../../signals/agent.ts";
+import { currentAgentId$, defaultAgentName$ } from "../../signals/agent.ts";
 import { currentChatAgentId$ } from "../../signals/agent-chat.ts";
 import {
   isScrolled$,
@@ -138,8 +138,9 @@ const FOOTER_NAV = [
 // useLastResolved keeps the previously-resolved agent ID during re-loads, preventing unnecessary
 // remounts of ChatThreadsSection that would cause the chat list to flash.
 function ChatThreadsSectionWithKey() {
+  const routeAgentId = useGet(currentAgentId$);
   const currentChatAgentId = useLastResolved(currentChatAgentId$);
-  return <ChatThreadsSection key={currentChatAgentId} />;
+  return <ChatThreadsSection key={routeAgentId ?? currentChatAgentId} />;
 }
 
 // Shared subscription hooks. Each sibling component pulls its own state from

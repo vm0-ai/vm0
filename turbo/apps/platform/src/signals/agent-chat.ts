@@ -70,14 +70,28 @@ const currentChatThreadAgentId$ = computed(
 
 export const currentChatAgentId$ = computed(
   async (get): Promise<string | null> => {
-    return (
-      (await get(currentChatThreadAgentId$)) ??
-      get(internalChatAgentId$) ??
-      get(currentAgentId$) ??
-      (await get(defaultAgentId$))
-    );
+    return resolveCurrentChatAgentId({
+      threadAgentId: await get(currentChatThreadAgentId$),
+      routeAgentId: get(currentAgentId$),
+      internalAgentId: get(internalChatAgentId$),
+      defaultAgentId: await get(defaultAgentId$),
+    });
   },
 );
+
+export function resolveCurrentChatAgentId({
+  defaultAgentId,
+  internalAgentId,
+  routeAgentId,
+  threadAgentId,
+}: {
+  readonly defaultAgentId: string | null;
+  readonly internalAgentId: string | null;
+  readonly routeAgentId: string | null;
+  readonly threadAgentId: string | null;
+}): string | null {
+  return threadAgentId ?? routeAgentId ?? internalAgentId ?? defaultAgentId;
+}
 
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
