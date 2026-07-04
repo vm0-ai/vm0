@@ -26,6 +26,7 @@ export const RESUME_SESSION_HISTORY_MAX_BYTES = 128 * 1024 * 1024;
 export const SESSION_HISTORY_ENCODING_IDENTITY = "identity";
 export const SESSION_HISTORY_ENCODING_GZIP = "gzip";
 export const SESSION_HISTORY_GZIP_MIN_BYTES = 64 * 1024;
+export const CONNECTOR_NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX = 256;
 export const sessionHistoryEncodingSchema = z.enum([
   SESSION_HISTORY_ENCODING_IDENTITY,
   SESSION_HISTORY_ENCODING_GZIP,
@@ -455,7 +456,10 @@ export const runnersConnectorNetworkPolicyContract = c.router({
       runId: z.uuid(),
     }),
     body: z.object({
-      connectorRefs: z.array(z.string().min(1).max(64)).min(1).max(256),
+      connectorRefs: z
+        .array(z.string().min(1).max(64))
+        .min(1)
+        .max(CONNECTOR_NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX),
     }),
     responses: {
       200: z.object({

@@ -4,6 +4,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex as StdMutex};
 use std::time::Duration;
 
+use api_contracts::generated::constants::runners::CONNECTOR_NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX;
 use chrono::{DateTime, Utc};
 use tokio::sync::{
     Mutex, mpsc,
@@ -18,7 +19,8 @@ use crate::proxy::ProxyRegistryHandle;
 use crate::types::{ConnectorPolicyRefresh, NetworkPolicy};
 
 const REFRESH_REQUEST_QUEUE_CAPACITY: usize = 256;
-const CONNECTOR_POLICY_REFRESH_BATCH_MAX: usize = 256;
+const CONNECTOR_POLICY_REFRESH_BATCH_MAX: usize =
+    CONNECTOR_NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX as usize;
 const EXPIRED_REFRESH_DEADLINE_RETRY_DELAY: Duration = Duration::from_millis(250);
 const SCHEDULED_REFRESH_COALESCE_WINDOW: Duration = Duration::from_millis(100);
 

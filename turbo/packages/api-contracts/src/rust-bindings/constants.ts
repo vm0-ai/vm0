@@ -5,6 +5,7 @@ import {
 import {
   CANONICAL_GUEST_HOME_DIR,
   CANONICAL_WORKING_DIR,
+  CONNECTOR_NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX,
   RESUME_SESSION_HISTORY_MAX_BYTES,
   SESSION_HISTORY_ENCODING_GZIP,
   SESSION_HISTORY_ENCODING_IDENTITY,
@@ -151,6 +152,15 @@ function rustU64(value: number): RustConstantValue {
 }
 
 export const rustConstantBindings = [
+  {
+    rustModulePath: ["runners"],
+    rustConstName: "CONNECTOR_NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX",
+    value: rustU64(CONNECTOR_NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX),
+    rustDoc: [
+      "Maximum connector refs accepted by the runner connector network policy refresh endpoint.",
+      "Rust runners use this shared contract value to split refresh requests before calling the API.",
+    ],
+  },
   {
     rustModulePath: ["runners"],
     rustConstName: "RESUME_SESSION_HISTORY_MAX_BYTES",

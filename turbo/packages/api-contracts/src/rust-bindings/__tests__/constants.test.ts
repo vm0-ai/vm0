@@ -16,6 +16,7 @@ import {
 import {
   CANONICAL_GUEST_HOME_DIR,
   CANONICAL_WORKING_DIR,
+  CONNECTOR_NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX,
   RESUME_SESSION_HISTORY_MAX_BYTES,
   SESSION_HISTORY_ENCODING_GZIP,
   SESSION_HISTORY_ENCODING_IDENTITY,
@@ -38,6 +39,10 @@ const canonicalWorkingDirDoc = [
 const resumeSessionHistoryMaxBytesDoc = [
   "Maximum resume session history blob size accepted by the API, runner, and guest verifier.",
   "Rust and TypeScript components use this shared contract value when validating resume history refs, downloads, and idle-reuse verification.",
+] as const;
+const connectorNetworkPolicyRefreshConnectorRefsMaxDoc = [
+  "Maximum connector refs accepted by the runner connector network policy refresh endpoint.",
+  "Rust runners use this shared contract value to split refresh requests before calling the API.",
 ] as const;
 const sessionHistoryEncodingGzipDoc = [
   "Wire and blob metadata value for gzip-compressed resume session history.",
@@ -68,6 +73,12 @@ function placeholderRustDoc(name: string): readonly string[] {
 }
 
 const expectedBindings = [
+  {
+    rustModulePath: ["runners"],
+    rustConstName: "CONNECTOR_NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX",
+    value: rustU64(CONNECTOR_NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX),
+    rustDoc: connectorNetworkPolicyRefreshConnectorRefsMaxDoc,
+  },
   {
     rustModulePath: ["runners"],
     rustConstName: "RESUME_SESSION_HISTORY_MAX_BYTES",
@@ -263,6 +274,9 @@ describe("Rust constant bindings", () => {
     );
     expect(firstRender).toContain(
       `pub const RESUME_SESSION_HISTORY_MAX_BYTES: u64 = ${RESUME_SESSION_HISTORY_MAX_BYTES};`,
+    );
+    expect(firstRender).toContain(
+      `pub const CONNECTOR_NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX: u64 = ${CONNECTOR_NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX};`,
     );
     expect(firstRender).toContain(
       `pub const SESSION_HISTORY_ENCODING_GZIP: &str = "${SESSION_HISTORY_ENCODING_GZIP}";`,
