@@ -2518,20 +2518,15 @@ mod tests {
     }
 
     async fn wait_cached_archive(home: &HomePaths, name: &str, version: &str) -> Vec<u8> {
+        let lock_path = home.storage_lock(name, version);
         let path = home.storage_cache_dir(name, version).join("archive.tar.gz");
-        tokio::time::timeout(Duration::from_secs(5), async {
-            loop {
-                match fs::read(&path).await {
-                    Ok(bytes) => break bytes,
-                    Err(e) if e.kind() == io::ErrorKind::NotFound => {
-                        tokio::task::yield_now().await;
-                    }
-                    Err(e) => panic!("failed to read cached archive {}: {e}", path.display()),
-                }
-            }
-        })
-        .await
-        .expect("background fill should write cached archive")
+        let _reader = tokio::time::timeout(Duration::from_secs(5), lock::acquire_shared(lock_path))
+            .await
+            .expect("background fill should release cache lock")
+            .expect("cache lock should be readable");
+        fs::read(&path)
+            .await
+            .unwrap_or_else(|e| panic!("failed to read cached archive {}: {e}", path.display()))
     }
 
     fn status_response(status: &str) -> Vec<u8> {
