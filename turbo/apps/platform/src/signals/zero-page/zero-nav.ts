@@ -6,10 +6,7 @@ import { openQueueDrawer$ } from "../queue-page/queue-drawer-state.ts";
 import { setupGlobalShortcut } from "../../lib/setup-global-shortcut.ts";
 import { currentChatAgentId$ } from "../agent-chat.ts";
 import { activeRoute$ } from "../active-route.ts";
-import {
-  eventDrivenChatThreadMeta,
-  eventDrivenChatThreads$,
-} from "../chat-page/chat-thread-event-sourcing.ts";
+import { eventDrivenChatThreads$ } from "../chat-page/chat-thread-event-sourcing.ts";
 import { setChatShortcutHelpOpen$ } from "../chat-page/chat-shortcut-help.ts";
 import { openAgentListDialog$ } from "./zero-sidebar-state.ts";
 import { pinnedAgents$ } from "./zero-pinned-agents.ts";
@@ -64,10 +61,8 @@ const firstChatThreadIdForAgent$ = command(
     const threads = await get(eventDrivenChatThreads$);
     signal.throwIfAborted();
     for (const thread of threads) {
-      const meta = await get(eventDrivenChatThreadMeta(thread.id));
-      signal.throwIfAborted();
-      if (meta?.agentId === agentId) {
-        return meta.threadId;
+      if (thread.agentId === agentId) {
+        return thread.id;
       }
     }
     return null;

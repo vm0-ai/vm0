@@ -135,9 +135,6 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.RelationshipMemory]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.AgentUnreadIndicators]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.ChatThreadSidebarVirtualList]).toBe(
-      true,
-    );
     expect(staffOrgStates[FeatureSwitchKey.HtmlArtifactCommentEditing]).toBe(
       false,
     );
@@ -159,9 +156,6 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.RelationshipMemory]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.AgentUnreadIndicators]).toBe(true);
-    expect(otherOrgStates[FeatureSwitchKey.ChatThreadSidebarVirtualList]).toBe(
-      true,
-    );
     expect(otherOrgStates[FeatureSwitchKey.HtmlArtifactCommentEditing]).toBe(
       false,
     );

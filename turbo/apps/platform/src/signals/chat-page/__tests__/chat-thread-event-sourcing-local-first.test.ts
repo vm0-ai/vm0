@@ -22,8 +22,8 @@ import { sidebarChatThreadIds$ } from "../sidebar-chat-thread-ids.ts";
 import { setChatThreadOnlyUnread$ } from "../chat-thread-only-unread.ts";
 import { openRenameChatThreadDialogFromThreadMeta$ } from "../chat-thread-rename.ts";
 import {
-  eventDrivenChatThreadMeta,
   registerOptimisticChatThreadEvent$,
+  threadMeta,
 } from "../chat-thread-event-sourcing.ts";
 import { createIdbCachedDataSource } from "../idb-cached-chat-thread-data-source.ts";
 
@@ -323,7 +323,7 @@ describe("chat thread event sourcing local-first list", () => {
     expect(unreadsRequests).toBe(1);
   });
 
-  it("keeps current thread navigation ids untruncated by sidebar page size", async () => {
+  it("keeps sidebar threads and navigation ids untruncated", async () => {
     context.store.set(setChatAgentId$, AGENT_ID);
     const baseTime = Date.parse("2026-07-03T00:00:00.000Z");
     const snapshotThreads = Array.from({ length: 26 }, (_, index) => {
@@ -364,14 +364,11 @@ describe("chat thread event sourcing local-first list", () => {
         activeOrg: { id: "org_1", name: "Test Org" },
         memberships: [{ id: "org_1" }],
       },
-      featureSwitches: {
-        [FeatureSwitchKey.ChatThreadSidebarVirtualList]: false,
-      },
     });
 
     const visibleThreads = await context.store.get(chatThreads$);
 
-    expect(visibleThreads).toHaveLength(25);
+    expect(visibleThreads).toHaveLength(snapshotThreads.length);
     await expect(
       context.store.get(currentChatThreadListIds$),
     ).resolves.toStrictEqual(
@@ -434,6 +431,14 @@ describe("chat thread event sourcing local-first list", () => {
         renamedAt: null,
       },
     ]);
+    await expect(
+      context.store.get(threadMeta(OPTIMISTIC_THREAD_ID)),
+    ).resolves.toStrictEqual({
+      id: OPTIMISTIC_THREAD_ID,
+      agentId: AGENT_ID,
+      title: null,
+      pinnedAt: null,
+    });
 
     context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
       expect(params.id).toBe(OPTIMISTIC_THREAD_ID);
@@ -446,13 +451,6 @@ describe("chat thread event sourcing local-first list", () => {
     await expect(
       context.store.get(dataSource.remoteThreadDetail$),
     ).resolves.toBeNull();
-    await expect(
-      context.store.get(eventDrivenChatThreadMeta(OPTIMISTIC_THREAD_ID)),
-    ).resolves.toStrictEqual({
-      threadId: OPTIMISTIC_THREAD_ID,
-      agentId: AGENT_ID,
-      title: null,
-    });
   });
 
   it("settles optimistic create events once the matching persisted event arrives", async () => {

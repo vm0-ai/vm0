@@ -17,6 +17,7 @@ import {
   markRouteSetupBegin$,
 } from "../../lib/posthog.ts";
 import { reloadUserModelPreference$ } from "../external/user-model-preference.ts";
+import { setChatThreadVirtualScrollTarget$ } from "../zero-page/zero-sidebar-state.ts";
 
 const internalSetupChatPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -28,6 +29,7 @@ const internalSetupChatPage$ = command(
     }
 
     set(updatePage$, createElement(ZeroChatThreadPage), "sidebar");
+    set(setChatThreadVirtualScrollTarget$, threadId);
 
     set(captureNavigationTiming$);
 

@@ -20,7 +20,6 @@ import { settle, withCleanup } from "../utils.ts";
 import { replayChatThreadEvents } from "./chat-thread-event-replay.ts";
 
 const L = logger("ChatThreadEventSourcing");
-const CHAT_THREAD_VISIBLE_PAGE_SIZE = 25;
 
 type Stores = ReturnType<typeof createIdbChatThreadEventStores>;
 type ChatThreadsClient = InitClientReturn<ChatThreadsContract, InitClientArgs>;
@@ -36,13 +35,13 @@ interface ChatThreadSnapshotData {
 }
 
 export interface ThreadMeta {
-  readonly threadId: string;
+  readonly id: string;
   readonly agentId: string;
   readonly title: string | null;
+  readonly pinnedAt: string | null;
 }
 
 const optimisticChatThreadEventsState$ = state<readonly ChatThreadEvent[]>([]);
-const chatThreadMaxItemState$ = state(CHAT_THREAD_VISIBLE_PAGE_SIZE);
 const chatThreadEventSyncVersionState$ = state(0);
 const chatThreadEventSyncInFlightState$ = state(false);
 const activeRunChatThreadIdsState$ = state<ReadonlySet<string>>(new Set());
@@ -86,10 +85,6 @@ async function readChatThreadEventData(
     events,
   };
 }
-
-export const chatThreadMaxItem$ = computed((get) => {
-  return get(chatThreadMaxItemState$);
-});
 
 export const eventDrivenActiveRunChatThreadIds$ = computed((get) => {
   return get(activeRunChatThreadIdsState$);
@@ -195,7 +190,7 @@ const chatThreadEventData$ = computed(
   },
 );
 
-const syncEventDrivenChatThreads$ = command(
+export const syncEventDrivenChatThreads$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<void> => {
     const store = await get(chatThreadEventStores$);
     signal.throwIfAborted();
@@ -347,24 +342,25 @@ export function optimisticChatThreadCreateUnsettled(threadId: string) {
   });
 }
 
-const eventDrivenChatThreadMetaMap$ = computed(async (get) => {
+export const chatThreadMetaMap$ = computed(async (get) => {
   return new Map<string, ThreadMeta>(
     (await get(eventDrivenChatThreads$)).map((thread) => {
       return [
         thread.id,
         {
-          threadId: thread.id,
+          id: thread.id,
           agentId: thread.agentId,
           title: thread.title,
+          pinnedAt: thread.pinnedAt,
         },
       ];
     }),
   );
 });
 
-export function eventDrivenChatThreadMeta(threadId: string) {
+export function threadMeta(threadId: string) {
   return computed(async (get): Promise<ThreadMeta | null> => {
-    return (await get(eventDrivenChatThreadMetaMap$)).get(threadId) ?? null;
+    return (await get(chatThreadMetaMap$)).get(threadId) ?? null;
   });
 }
 
@@ -390,9 +386,3 @@ export const reconcileOptimisticChatThreadEvents$ = command(
     });
   },
 );
-
-export const loadMoreEventDrivenChatThreads$ = command(({ set }) => {
-  set(chatThreadMaxItemState$, (count) => {
-    return count + CHAT_THREAD_VISIBLE_PAGE_SIZE;
-  });
-});

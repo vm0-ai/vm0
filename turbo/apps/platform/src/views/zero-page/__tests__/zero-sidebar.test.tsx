@@ -24,7 +24,12 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { createMockAutomationView } from "../../../mocks/handlers/automations-store.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { reloadChatThreads$ } from "../../../signals/agent-chat.ts";
 import { pathname } from "../../../signals/location.ts";
+import {
+  chatThreadVirtualScrollTarget$,
+  setChatThreadVirtualScrollTarget$,
+} from "../../../signals/zero-page/zero-sidebar-state.ts";
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
 
 const context = testContext();
@@ -1058,7 +1063,6 @@ describe("zero sidebar", () => {
       // triggers own the automation lifecycle.
       featureSwitches: {
         [FeatureSwitchKey.WorkflowAutomation]: false,
-        [FeatureSwitchKey.ChatThreadSidebarVirtualList]: false,
       },
     });
 
@@ -1067,14 +1071,7 @@ describe("zero sidebar", () => {
       expect(
         within(sidebar()).getByText("Scheduled launch"),
       ).toBeInTheDocument();
-    });
-
-    click(screen.getByTestId("sidebar-chat-threads-load-more"));
-
-    await waitFor(() => {
-      expect(
-        within(sidebar()).getByText("Archived context"),
-      ).toBeInTheDocument();
+      expect(screen.queryByTestId("sidebar-chat-threads-load-more")).toBeNull();
     });
 
     openThreadMenu("Scheduled launch");
@@ -1122,7 +1119,7 @@ describe("zero sidebar", () => {
     });
   });
 
-  it("virtualizes sidebar chats behind the feature switch", async () => {
+  it("virtualizes sidebar chats", async () => {
     prepareDefaultAgent();
     const overflowThreads = Array.from({ length: 23 }, (_, index) => {
       return createThread(
@@ -1144,9 +1141,6 @@ describe("zero sidebar", () => {
     setupSidebarPage({
       context,
       path: `/chats/${EXISTING_THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatThreadSidebarVirtualList]: true,
-      },
     });
 
     await waitFor(() => {
@@ -1185,6 +1179,91 @@ describe("zero sidebar", () => {
     await waitFor(() => {
       expect(
         within(sidebar()).getByText("Archived context"),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("scrolls the current chat into the virtualized sidebar on page setup", async () => {
+    prepareDefaultAgent();
+    const leadingThreads = Array.from({ length: 24 }, (_, index) => {
+      return createThread(
+        `b3000000-0000-4000-a000-${String(index).padStart(12, "0")}`,
+        `Leading chat ${index + 1}`,
+      );
+    });
+    mockSidebarThreadStory([
+      ...leadingThreads,
+      createThread(EXISTING_THREAD_ID, "Release plan"),
+      createThread(AUTOMATION_THREAD_ID, "Scheduled launch"),
+    ]);
+
+    setupSidebarPage({
+      context,
+      path: `/chats/${EXISTING_THREAD_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("sidebar-chat-threads-virtual-list"),
+      ).toBeInTheDocument();
+      expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
+    });
+  });
+
+  it("retains a virtual scroll target while the rendered chat list is stale", async () => {
+    prepareDefaultAgent();
+    let threads = Array.from({ length: 24 }, (_, index) => {
+      return createThread(
+        `b4000000-0000-4000-a000-${String(index).padStart(12, "0")}`,
+        `Cached chat ${index + 1}`,
+      );
+    });
+    const delayedThread = createThread(RESEARCH_THREAD_ID, "Delayed release");
+    mockChatThreadSnapshot(() => {
+      return threads;
+    });
+    context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
+      const thread = [...threads, delayedThread].find((candidate) => {
+        return candidate.id === params.id;
+      });
+      return respond(200, {
+        id: params.id,
+        title: thread?.title ?? null,
+        agentId: thread?.agent.id ?? AGENT_ID,
+        activeRunIds: [],
+        draftContent: null,
+        draftAttachments: null,
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-10T00:00:00Z",
+        lastMessageAt: thread?.updatedAt ?? "2026-03-10T00:00:00Z",
+        pinnedAt: thread?.pinnedAt ?? null,
+      });
+    });
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("sidebar-chat-threads-virtual-list"),
+      ).toBeInTheDocument();
+      expect(within(sidebar()).getByText("Cached chat 1")).toBeInTheDocument();
+    });
+
+    context.store.set(setChatThreadVirtualScrollTarget$, RESEARCH_THREAD_ID);
+    await Promise.resolve();
+    expect(context.store.get(chatThreadVirtualScrollTarget$)).toBe(
+      RESEARCH_THREAD_ID,
+    );
+
+    threads = [...threads, delayedThread];
+    context.store.set(reloadChatThreads$);
+
+    await waitFor(() => {
+      expect(
+        within(sidebar()).getByText("Delayed release"),
       ).toBeInTheDocument();
     });
   });

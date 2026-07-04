@@ -3257,13 +3257,12 @@ type LoadableValue<T> =
   | { state: "hasError"; error: unknown };
 
 function resolveSessionError(
-  remoteThreadDetailLoadable: LoadableValue<ChatThread | null>,
   threadMetaLoadable: LoadableValue<ThreadMeta | null>,
   groupsLoadable: LoadableValue<GroupedChatMessageGroup[]>,
 ): string | null {
-  if (remoteThreadDetailLoadable.state === "hasError") {
-    return remoteThreadDetailLoadable.error instanceof Error
-      ? remoteThreadDetailLoadable.error.message
+  if (threadMetaLoadable.state === "hasError") {
+    return threadMetaLoadable.error instanceof Error
+      ? threadMetaLoadable.error.message
       : "Failed to load chat";
   }
   if (groupsLoadable.state === "hasError") {
@@ -3272,8 +3271,6 @@ function resolveSessionError(
       : "Failed to load messages";
   }
   if (
-    remoteThreadDetailLoadable.state === "hasData" &&
-    remoteThreadDetailLoadable.data === null &&
     threadMetaLoadable.state === "hasData" &&
     threadMetaLoadable.data === null
   ) {
@@ -4168,15 +4165,8 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
   const renderedGroupsLoadable = useLastLoadable(
     thread.renderedGroupedChatMessages$,
   );
-  const remoteThreadDetailLoadable = useLastLoadable(
-    thread.remoteThreadDetail$,
-  );
   const threadMetaLoadable = useLastLoadable(thread.threadMeta$);
-  const sessionError = resolveSessionError(
-    remoteThreadDetailLoadable,
-    threadMetaLoadable,
-    groupsLoadable,
-  );
+  const sessionError = resolveSessionError(threadMetaLoadable, groupsLoadable);
   const messagesLoading = groupsLoadable.state === "loading";
   const groups = groupsLoadable.state === "hasData" ? groupsLoadable.data : [];
   const renderedGroups =
@@ -4608,9 +4598,6 @@ function useChatComposerModel(
   // useLastResolved so the picker keeps the previous value during the
   // remoteThreadDetail$ refetches triggered by chatThreadRunUpdated Ably events —
   // otherwise the picker briefly flips to a skeleton on every run change.
-  const remoteThreadDetailResolved = useLastResolved(
-    thread.remoteThreadDetail$,
-  );
   const modelSelectionResolved = useLastResolved(thread.modelSelection$);
   const defaultModelSelectionResolved = useLastResolved(
     thread.defaultModelSelection$,
@@ -4636,7 +4623,6 @@ function useChatComposerModel(
   // Explicit thread selections can render before default model selection
   // resolves; only inherited selections need that fallback before showing.
   const modelPickerLoading =
-    remoteThreadDetailResolved === undefined ||
     modelSelectionResolved === undefined ||
     (modelSelectionResolved === null &&
       defaultModelSelectionResolved === undefined);

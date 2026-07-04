@@ -35,8 +35,9 @@ export interface ChatThreadSignals {
   threadTitleEmoji$: Computed<Promise<string | null>>;
   threadTitleText$: Computed<Promise<string>>;
   // -- Composer model override ---------------------------------------------
-  // Seeded from remoteThreadDetail$ on first resolve; user edits via setModelSelection$
-  // take over and are preserved across subsequent remoteThreadDetail$ reloads.
+  // Seeded from remoteThreadDetail$ on first resolve; user edits via
+  // setModelSelection$ take over and are preserved across subsequent
+  // remoteThreadDetail$ reloads.
   modelSelection$: Computed<Promise<ModelProviderSelection | null>>;
   setModelSelection$: Command<
     Promise<void>,
@@ -85,7 +86,7 @@ export interface ChatThreadSignals {
     (() => void) | undefined,
     [HTMLElement | null]
   >;
-  // -- Agent info (local meta first, remote detail fallback) ----------------
+  // -- Agent info (derived from threadMeta$.agentId) ------------------------
   agentId$: Computed<Promise<string | null>>;
   agentDisplayName$: Computed<Promise<string | null>>;
   defaultModelSelection$: Computed<Promise<ModelProviderSelection | null>>;

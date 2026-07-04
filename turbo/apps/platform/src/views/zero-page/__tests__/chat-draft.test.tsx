@@ -324,7 +324,7 @@ describe("chat drafts", () => {
 
   it("persists edited draft attachments and clears the server draft after sending", async () => {
     const user = userEvent.setup({ delay: null });
-    const threadId = "thread-draft-sync";
+    const threadId = "b1000000-0000-4000-a000-000000000102";
     const draftPatches: Record<string, unknown>[] = [];
     mockChatLifecycle(context, { threadId });
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
