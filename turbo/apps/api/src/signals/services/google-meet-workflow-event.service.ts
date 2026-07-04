@@ -96,6 +96,29 @@ const pubSubPushSchema = z.object({
   subscription: z.string().optional(),
 });
 
+const cloudEventNamedResourceSchema = z
+  .object({
+    name: z.string().optional(),
+  })
+  .passthrough();
+
+const workspaceCloudEventDataSchema = z
+  .object({
+    subscription: cloudEventNamedResourceSchema
+      .extend({
+        expire_time: z.string().optional(),
+        state: z.string().optional(),
+      })
+      .optional(),
+    transcript: cloudEventNamedResourceSchema.optional(),
+    conferenceRecord: cloudEventNamedResourceSchema
+      .extend({
+        transcript: cloudEventNamedResourceSchema.optional(),
+      })
+      .optional(),
+  })
+  .passthrough();
+
 const workspaceCloudEventSchema = z
   .object({
     id: z.string(),
@@ -106,7 +129,7 @@ const workspaceCloudEventSchema = z
     specversion: z.string().optional(),
     spec_version: z.string().optional(),
     datacontenttype: z.string().optional(),
-    data: z.unknown().optional(),
+    data: workspaceCloudEventDataSchema.optional(),
   })
   .passthrough();
 
