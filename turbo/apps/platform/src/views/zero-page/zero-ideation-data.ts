@@ -1,6 +1,6 @@
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
-export interface UseCase {
+interface UseCase {
   readonly title: string;
   readonly description: string;
   readonly prompt: string;
@@ -8,7 +8,7 @@ export interface UseCase {
   readonly featureFlag?: FeatureSwitchKey;
 }
 
-export interface Category {
+interface Category {
   readonly id: string;
   readonly title: string;
   readonly cases: readonly UseCase[];
