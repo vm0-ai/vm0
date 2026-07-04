@@ -94,14 +94,23 @@ function configureGmailBackfillMocks(
     readonly duplicateMessage?: boolean;
     readonly bodyText?: string;
     readonly mimeType?: "text/plain" | "text/html";
+    readonly expectedQueryIncludes?: readonly string[];
+    readonly from?: string;
+    readonly labelIds?: readonly string[];
+    readonly messageId?: string;
+    readonly subject?: string;
+    readonly threadId?: string;
+    readonly to?: readonly string[];
+    readonly cc?: readonly string[];
   } = {},
-): void {
+): string[] {
+  const messageId = args.messageId ?? "msg-backfill-1";
+  const threadId = args.threadId ?? "thread-backfill-1";
   const messages = [
-    { id: "msg-backfill-1", threadId: "thread-backfill-1" },
-    ...(args.duplicateMessage
-      ? [{ id: "msg-backfill-1", threadId: "thread-backfill-1" }]
-      : []),
+    { id: messageId, threadId },
+    ...(args.duplicateMessage ? [{ id: messageId, threadId }] : []),
   ];
+  const queries: string[] = [];
   server.use(
     http.get(
       "https://gmail.googleapis.com/gmail/v1/users/me/messages",
@@ -109,9 +118,13 @@ function configureGmailBackfillMocks(
         expect(request.headers.get("authorization")).toBe(
           "Bearer gmail-access-token",
         );
-        expect(new URL(request.url).searchParams.get("q")).toContain(
+        const query = new URL(request.url).searchParams.get("q") ?? "";
+        queries.push(query);
+        for (const expected of args.expectedQueryIncludes ?? [
           "newer_than:180d",
-        );
+        ]) {
+          expect(query).toContain(expected);
+        }
         return HttpResponse.json({
           messages,
           resultSizeEstimate: messages.length,
@@ -122,18 +135,22 @@ function configureGmailBackfillMocks(
       "https://gmail.googleapis.com/gmail/v1/users/me/messages/:messageId",
       () => {
         return HttpResponse.json({
-          id: "msg-backfill-1",
-          threadId: "thread-backfill-1",
-          labelIds: ["INBOX"],
+          id: messageId,
+          threadId,
+          labelIds: args.labelIds ?? ["INBOX"],
           payload: {
             mimeType: args.mimeType ?? "text/plain",
             headers: [
               {
                 name: "From",
-                value: "Customer Example <customer@example.com>",
+                value: args.from ?? "Customer Example <customer@example.com>",
               },
-              { name: "To", value: gmailEmail },
-              { name: "Subject", value: "Security review follow-up" },
+              { name: "To", value: (args.to ?? [gmailEmail]).join(", ") },
+              ...(args.cc ? [{ name: "Cc", value: args.cc.join(", ") }] : []),
+              {
+                name: "Subject",
+                value: args.subject ?? "Security review follow-up",
+              },
             ],
             body: {
               data: gmailBodyData(
@@ -145,6 +162,7 @@ function configureGmailBackfillMocks(
       },
     ),
   );
+  return queries;
 }
 
 function configureRelationshipExtractionMock(): void {
@@ -382,6 +400,107 @@ describe("GET /api/zero/relationships/*", () => {
         return relationship.entity.primaryEmail === "customer@example.com";
       }),
     ).toBeTruthy();
+  });
+
+  it("restarts Gmail backfill across archived and sent mail without re-enqueueing processed messages", async () => {
+    const fixture = await track(seedRelationshipFixture());
+    const gmailEmail = `relationship-${randomUUID()}@example.com`;
+    configureGmailEnv();
+    configureGmailWatchMock();
+    const queries = configureGmailBackfillMocks(gmailEmail, {
+      expectedQueryIncludes: ["in:anywhere", "newer_than:365d"],
+      labelIds: ["SENT"],
+      from: `Relationship User <${gmailEmail}>`,
+      to: ["Recipient Example <recipient@example.com>"],
+      subject: "Partnership follow-up",
+      bodyText: "Following up about the partnership plan.",
+    });
+    await connectGmail(fixture, gmailEmail);
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const firstBackfill = await accept(
+      relationshipsClient().gmailBackfill({
+        headers: authHeaders(),
+        body: {
+          days: 365,
+          includeArchived: true,
+          includeSent: true,
+        },
+      }),
+      [200],
+    );
+    expect(firstBackfill.body).toMatchObject({
+      enabled: true,
+      watchEnabled: true,
+      backfill: { status: "pending", scannedCount: 0, enqueuedCount: 0 },
+    });
+
+    const firstDrain = await accept(
+      cronClient().drain({
+        headers: cronHeaders(),
+      }),
+      [200],
+    );
+    expect(firstDrain.body.backfill).toStrictEqual({
+      processed: 1,
+      failed: 0,
+      scanned: 1,
+      enqueued: 1,
+    });
+    expect(queries.at(-1)).not.toContain("in:inbox");
+    expect(queries.at(-1)).not.toContain("-in:sent");
+
+    const search = await accept(
+      relationshipsClient().search({
+        headers: authHeaders(),
+        query: { q: "recipient" },
+      }),
+      [200],
+    );
+    expect(
+      search.body.relationships.some((relationship) => {
+        return relationship.entity.primaryEmail === "recipient@example.com";
+      }),
+    ).toBeTruthy();
+
+    await accept(
+      relationshipsClient().gmailBackfill({
+        headers: authHeaders(),
+        body: {
+          days: 365,
+          includeArchived: true,
+          includeSent: true,
+        },
+      }),
+      [200],
+    );
+    const secondDrain = await accept(
+      cronClient().drain({
+        headers: cronHeaders(),
+      }),
+      [200],
+    );
+    expect(secondDrain.body.backfill).toStrictEqual({
+      processed: 1,
+      failed: 0,
+      scanned: 1,
+      enqueued: 0,
+    });
+
+    const restartedStatus = await accept(
+      relationshipsClient().gmailStatus({
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+    expect(restartedStatus.body).toMatchObject({
+      enabled: true,
+      backfill: {
+        status: "done",
+        scannedCount: 1,
+        enqueuedCount: 0,
+      },
+    });
   });
 
   it("stores generated Gmail interaction summaries instead of raw body excerpts", async () => {

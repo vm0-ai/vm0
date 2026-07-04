@@ -1,5 +1,6 @@
 import { command } from "ccstate";
 import { z } from "zod";
+import type { GmailRelationshipBackfillRequest } from "@vm0/api-contracts/contracts/zero-relationships";
 import {
   relationshipBackfillJobs,
   relationshipMemorySettings,
@@ -28,20 +29,19 @@ import { settle } from "../utils";
 import {
   ensureGmailWatchForUser,
   fetchGmailMessageContextById,
-  messageIsInbound,
   resolveGmailAccess,
 } from "./gmail-workflow-event.service";
-import { enqueueGmailRelationshipRefreshJob } from "./relationship-memory-gmail-queue.service";
+import {
+  enqueueGmailRelationshipRefreshJob,
+  type GmailRelationshipMessageDirection,
+} from "./relationship-memory-gmail-queue.service";
 
 const log = logger("api:relationship-memory-gmail-backfill");
 const GMAIL_API_BASE = "https://gmail.googleapis.com/gmail/v1/users/me";
-const GMAIL_BACKFILL_QUERY =
-  "in:inbox newer_than:180d -in:sent -in:drafts -in:trash -in:spam";
 const GMAIL_BACKFILL_PAGE_SIZE = 20;
 const GMAIL_BACKFILL_SYNC_PRIORITY = 50;
 const BACKFILL_LOCK_STALE_MS = 5 * 60 * 1000;
 const MAX_BACKFILL_JOBS_PER_DRAIN = 1;
-
 const gmailBackfillListSchema = z.object({
   messages: z
     .array(
@@ -84,6 +84,41 @@ interface GmailRelationshipStatus {
 type EnableGmailRelationshipResult =
   | { readonly kind: "ok"; readonly status: GmailRelationshipStatus }
   | { readonly kind: "bad-request"; readonly message: string };
+
+function defaultGmailBackfillOptions(): GmailRelationshipBackfillRequest {
+  return {
+    days: 180,
+    includeArchived: true,
+    includeSent: true,
+  };
+}
+
+function buildGmailBackfillQuery(
+  options: GmailRelationshipBackfillRequest,
+): string {
+  return [
+    options.includeArchived ? "in:anywhere" : "in:inbox",
+    `newer_than:${options.days}d`,
+    options.includeSent ? null : "-in:sent",
+    "-in:drafts",
+    "-in:trash",
+    "-in:spam",
+  ]
+    .filter((part): part is string => {
+      return part !== null;
+    })
+    .join(" ");
+}
+
+function relationshipDirectionFromLabels(
+  labelIds: readonly string[],
+): GmailRelationshipMessageDirection | null {
+  const labels = new Set(labelIds);
+  if (labels.has("DRAFT") || labels.has("TRASH") || labels.has("SPAM")) {
+    return null;
+  }
+  return labels.has("SENT") ? "sent" : "received";
+}
 
 function serializeDate(value: Date | null): string | null {
   return value ? value.toISOString() : null;
@@ -237,8 +272,11 @@ async function upsertBackfillJob(args: {
   readonly db: Db;
   readonly scope: RelationshipScope;
   readonly connectorId: string;
+  readonly options: GmailRelationshipBackfillRequest;
+  readonly restart: boolean;
 }): Promise<"pending" | "done"> {
   const currentTime = nowDate();
+  const query = buildGmailBackfillQuery(args.options);
   const [existing] = await args.db
     .select({
       status: relationshipBackfillJobs.status,
@@ -260,14 +298,14 @@ async function upsertBackfillJob(args: {
       provider: "gmail",
       connectorId: args.connectorId,
       status: "pending",
-      query: GMAIL_BACKFILL_QUERY,
+      query,
       createdAt: currentTime,
       updatedAt: currentTime,
     });
     return "pending";
   }
 
-  if (existing.status === "done") {
+  if (existing.status === "done" && !args.restart) {
     await args.db
       .update(relationshipBackfillJobs)
       .set({
@@ -289,7 +327,15 @@ async function upsertBackfillJob(args: {
     .set({
       connectorId: args.connectorId,
       status: "pending",
+      query,
+      nextPageToken: null,
+      estimatedTotal: null,
+      scannedCount: 0,
+      enqueuedCount: 0,
       lockedAt: null,
+      lastRunAt: null,
+      completedAt: null,
+      attempts: 0,
       lastError: null,
       updatedAt: currentTime,
     })
@@ -303,10 +349,12 @@ async function upsertBackfillJob(args: {
   return "pending";
 }
 
-export async function enableGmailRelationshipMemory(args: {
+async function startGmailRelationshipBackfill(args: {
   readonly db: Db;
   readonly orgId: string;
   readonly userId: string;
+  readonly options: GmailRelationshipBackfillRequest;
+  readonly restart: boolean;
   readonly signal: AbortSignal;
 }): Promise<EnableGmailRelationshipResult> {
   const access = await resolveGmailAccess(args);
@@ -326,6 +374,8 @@ export async function enableGmailRelationshipMemory(args: {
     db: args.db,
     scope,
     connectorId: access.access.connectorId,
+    options: args.options,
+    restart: args.restart,
   });
   args.signal.throwIfAborted();
   await upsertEnabledSettings(args.db, scope, backfillStatus);
@@ -335,6 +385,32 @@ export async function enableGmailRelationshipMemory(args: {
     kind: "ok",
     status: await getGmailRelationshipStatus(args.db, scope),
   };
+}
+
+export async function enableGmailRelationshipMemory(args: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly signal: AbortSignal;
+}): Promise<EnableGmailRelationshipResult> {
+  return await startGmailRelationshipBackfill({
+    ...args,
+    options: defaultGmailBackfillOptions(),
+    restart: false,
+  });
+}
+
+export async function restartGmailRelationshipBackfill(args: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly options: GmailRelationshipBackfillRequest;
+  readonly signal: AbortSignal;
+}): Promise<EnableGmailRelationshipResult> {
+  return await startGmailRelationshipBackfill({
+    ...args,
+    restart: true,
+  });
 }
 
 async function listBackfillMessages(args: {
@@ -402,7 +478,10 @@ async function processBackfillJob(
       signal,
     });
     signal.throwIfAborted();
-    if (!context || !messageIsInbound(context)) {
+    const direction = context
+      ? relationshipDirectionFromLabels(context.labelIds)
+      : null;
+    if (!context || !direction) {
       continue;
     }
 
@@ -417,6 +496,7 @@ async function processBackfillJob(
         historyId: `backfill:${job.id}`,
         messageId: context.messageId,
         threadId: context.threadId,
+        direction,
         from: context.from,
         to: context.to,
         cc: context.cc,
