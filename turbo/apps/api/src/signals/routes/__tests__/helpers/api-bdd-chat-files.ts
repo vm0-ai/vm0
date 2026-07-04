@@ -494,14 +494,11 @@ export function createChatFilesBddApi(context: TestContext) {
       );
     },
 
-    async listThreadDrafts(
-      actor: ApiTestUser,
-      threadIds: readonly string[],
-    ): Promise<readonly string[]> {
+    async listThreadDrafts(actor: ApiTestUser): Promise<readonly string[]> {
       const response = await accept(
         threadsClient().drafts({
           headers: authenticate(context, actor),
-          query: { threadIds: threadIds.join(",") },
+          query: {},
         }),
         [200],
       );

@@ -476,11 +476,6 @@ function useChatThreadItemState(session: ChatThreadListItem) {
   const onChatPage = urlMainThreadId !== null;
   const isCurrentPage = urlMainThreadId === session.id;
   const isHighlighted = isCurrentPage || urlSidebarThreadId === session.id;
-  const selectedPane = isCurrentPage
-    ? "main"
-    : urlSidebarThreadId === session.id
-      ? "side"
-      : "";
   const paneIndicator = getChatThreadPaneIndicator({
     isCurrentPage,
     sidebarThreadId: urlSidebarThreadId,
@@ -506,7 +501,6 @@ function useChatThreadItemState(session: ChatThreadListItem) {
     onChatPage,
     pageSignal,
     paneIndicator,
-    selectedPane,
     setSidebarExpanded,
     unloadRightThread,
     indicatorState,
@@ -532,9 +526,6 @@ function ChatThreadItemLink({
       pathname="/chats/:threadId"
       options={{ pathParams: { threadId: session.id } }}
       aria-current={state.isCurrentPage ? "page" : undefined}
-      data-chat-thread-id={session.id}
-      data-chat-thread-title={session.title ?? ""}
-      data-selected={state.selectedPane}
       onClick={(e) => {
         handleChatThreadClick(e, {
           closeSidebarOnSelect,

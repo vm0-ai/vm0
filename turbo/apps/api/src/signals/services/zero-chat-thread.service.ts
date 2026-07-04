@@ -858,25 +858,20 @@ export function zeroChatThreadActiveRunThreadIds(args: {
 }
 
 /**
- * Of the given thread ids, the ones owned by the user that currently hold an
- * unsent composer draft (non-empty `draftContent` or one+ `draftAttachments`).
+ * Thread ids owned by the user that currently hold an unsent composer draft
+ * (non-empty `draftContent` or one+ `draftAttachments`).
  */
-export function zeroChatThreadDraftIds(args: {
-  readonly userId: string;
-  readonly threadIds: readonly string[];
-}): Computed<Promise<readonly string[]>> {
+export function zeroChatThreadDraftIds(
+  userId: string,
+): Computed<Promise<readonly string[]>> {
   return computed(async (get): Promise<readonly string[]> => {
-    if (args.threadIds.length === 0) {
-      return [];
-    }
     const db = get(db$);
     const rows = await db
       .select({ id: chatThreads.id })
       .from(chatThreads)
       .where(
         and(
-          eq(chatThreads.userId, args.userId),
-          inArray(chatThreads.id, [...args.threadIds]),
+          eq(chatThreads.userId, userId),
           sql`(
             COALESCE(${chatThreads.draftContent}, '') <> ''
             OR (

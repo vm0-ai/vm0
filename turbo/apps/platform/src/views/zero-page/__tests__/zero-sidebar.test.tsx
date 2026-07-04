@@ -24,6 +24,7 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { createMockAutomationView } from "../../../mocks/handlers/automations-store.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { pathname } from "../../../signals/location.ts";
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
 
 const context = testContext();
@@ -1485,6 +1486,111 @@ describe("zero sidebar", () => {
     const dialog = await screen.findByRole("dialog", { name: "Talk to" });
     expect(within(dialog).getByText("Research Agent")).toBeInTheDocument();
     expect(within(dialog).getByText("Support Agent")).toBeInTheDocument();
+  });
+
+  it("moves to the next pinned agent chat from the composer", async () => {
+    prepareAgentTeam();
+    context.mocks.data.userPreferences({
+      pinnedAgentIds: [RESEARCH_AGENT_ID, SUPPORT_AGENT_ID],
+    });
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: false },
+    });
+
+    const composer = await screen.findByPlaceholderText(PLACEHOLDER);
+    composer.focus();
+    fireEvent.keyDown(composer, {
+      key: "}",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    await waitFor(() => {
+      expect(pathname()).toBe(`/agents/${RESEARCH_AGENT_ID}/chat`);
+    });
+  });
+
+  it("moves to the first chat thread for the next pinned agent from a chat thread", async () => {
+    prepareAgentTeam();
+    context.mocks.data.userPreferences({
+      pinnedAgentIds: [RESEARCH_AGENT_ID, SUPPORT_AGENT_ID],
+    });
+    const researchThread = createThread(
+      RESEARCH_THREAD_ID,
+      "Research kickoff",
+      {
+        agent: { id: RESEARCH_AGENT_ID, avatarUrl: null },
+      },
+    );
+    const supportThread = createThread(
+      INCIDENT_THREAD_ID,
+      "Support escalation",
+      {
+        agent: { id: SUPPORT_AGENT_ID, avatarUrl: null },
+      },
+    );
+    const olderSupportThread = createThread(
+      AUTOMATION_THREAD_ID,
+      "Support archive",
+      {
+        agent: { id: SUPPORT_AGENT_ID, avatarUrl: null },
+      },
+    );
+    mockSidebarThreadStory([researchThread, supportThread, olderSupportThread]);
+
+    setupSidebarPage({ context, path: `/chats/${RESEARCH_THREAD_ID}` });
+
+    await waitFor(() => {
+      expect(
+        within(sidebar()).getByText("Research kickoff"),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.keyDown(document.body, {
+      key: "}",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    await waitFor(() => {
+      expect(pathname()).toBe(`/chats/${INCIDENT_THREAD_ID}`);
+    });
+  });
+
+  it("falls back to the pinned agent chat when the next pinned agent has no thread", async () => {
+    prepareAgentTeam();
+    context.mocks.data.userPreferences({
+      pinnedAgentIds: [RESEARCH_AGENT_ID, SUPPORT_AGENT_ID],
+    });
+    const researchThread = createThread(
+      RESEARCH_THREAD_ID,
+      "Research kickoff",
+      {
+        agent: { id: RESEARCH_AGENT_ID, avatarUrl: null },
+      },
+    );
+    mockSidebarThreadStory([researchThread]);
+
+    setupSidebarPage({ context, path: `/chats/${RESEARCH_THREAD_ID}` });
+
+    await waitFor(() => {
+      expect(
+        within(sidebar()).getByText("Research kickoff"),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.keyDown(document.body, {
+      key: "}",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    await waitFor(() => {
+      expect(pathname()).toBe(`/agents/${SUPPORT_AGENT_ID}/chat`);
+    });
   });
 
   it("toggles the sidebar with mod+b while the chat composer is focused", async () => {
