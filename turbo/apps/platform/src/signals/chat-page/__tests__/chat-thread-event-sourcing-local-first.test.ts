@@ -361,6 +361,9 @@ describe("chat thread event sourcing local-first list", () => {
         activeOrg: { id: "org_1", name: "Test Org" },
         memberships: [{ id: "org_1" }],
       },
+      featureSwitches: {
+        [FeatureSwitchKey.ChatThreadSidebarVirtualList]: false,
+      },
     });
 
     const visibleThreads = await context.store.get(chatThreads$);
