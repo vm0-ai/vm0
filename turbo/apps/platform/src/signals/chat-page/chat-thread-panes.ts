@@ -9,6 +9,7 @@ import {
 import { resetSignal } from "../utils.ts";
 import { createRestoredAttachment } from "../zero-page/chat-draft.ts";
 import { clearArtifactPreview$ } from "../zero-page/zero-artifact-sidebar.ts";
+import { setChatThreadVirtualScrollTarget$ } from "../zero-page/zero-sidebar-state.ts";
 import { createChatThreadSignals, ensureDraft$ } from "./create-chat-thread.ts";
 import type { ChatThreadSignals } from "./chat-thread-signals.ts";
 import { closeHeaderAutomationSidebar$ } from "./header-automation-sidebar.ts";
@@ -72,7 +73,7 @@ const loadDraft$ = command(
     signal.throwIfAborted();
 
     if (!threadData) {
-      throw new Error("Thread data missing");
+      return;
     }
 
     const hasDraftContent = threadData.draftContent !== null;
@@ -139,6 +140,7 @@ const setupPaneThread$ = command(
       set(thread.showSkeleton$);
     };
     set(spec.setPaneThread$, thread);
+    set(setChatThreadVirtualScrollTarget$, threadId);
 
     await set(
       resolvePaneThread$,

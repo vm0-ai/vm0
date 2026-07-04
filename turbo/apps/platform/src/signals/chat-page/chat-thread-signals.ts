@@ -85,7 +85,7 @@ export interface ChatThreadSignals {
     (() => void) | undefined,
     [HTMLElement | null]
   >;
-  // -- Agent info (derived from threadData$.agentId) ------------------------
+  // -- Agent info (derived from threadMeta$.agentId) ------------------------
   agentId$: Computed<Promise<string | null>>;
   agentDisplayName$: Computed<Promise<string | null>>;
   defaultModelSelection$: Computed<Promise<ModelProviderSelection | null>>;

@@ -346,12 +346,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "After chat sends, keep auto-scroll moving only until the latest rendered user message reaches the top of the thread viewport instead of always pinning to the absolute bottom.",
     enabled: false,
   },
-  [FeatureSwitchKey.ChatThreadSidebarVirtualList]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Render the Zero sidebar chat thread list with a fixed-row virtual list backed by the local event-driven thread cache.",
-    enabled: false,
-  },
   [FeatureSwitchKey.TeamsIntegration]: {
     maintainer: "linghan@vm0.ai",
     description:

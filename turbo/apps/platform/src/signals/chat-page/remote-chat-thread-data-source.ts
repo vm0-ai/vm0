@@ -469,21 +469,10 @@ export function createRemoteChatThreadDataSource(
     }
     const body = threadResult.body;
     return {
-      id: threadId,
-      title: body.title ?? null,
-      agentId: body.agentId,
-      createdAt: body.createdAt,
-      updatedAt: body.updatedAt,
       lastReadMessageId: body.lastReadMessageId ?? null,
-      lastReadAt: body.lastReadAt ?? null,
-      lastMessageAt: body.lastMessageAt ?? body.updatedAt,
-      pinnedAt: body.pinnedAt ?? null,
-      activeRunIds: body.activeRunIds,
-      isLegacySession: false,
       draftContent: body.draftContent ?? null,
       draftAttachments: body.draftAttachments ?? null,
       computerUseHostId: body.computerUseHostId ?? null,
-      modelProviderId: body.modelProviderId ?? null,
       selectedModel: body.selectedModel ?? null,
       codexServiceTier: body.codexServiceTier ?? null,
     };
@@ -502,8 +491,8 @@ export function createRemoteChatThreadDataSource(
       [200, 404],
     );
     if (result.status === 404) {
-      // detects this via threadData$ being null and routes home; returning
-      // an empty page keeps the messages stream from rejecting in parallel.
+      // Thread metadata owns not-found routing; returning an empty page keeps
+      // the messages stream from rejecting in parallel.
       return { messages: [], hasHistoryBefore: false };
     }
     const hasHistoryBefore = result.body.hasHistoryBefore ?? false;

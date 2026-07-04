@@ -20,7 +20,10 @@ import { renameDialogInput$ } from "../../zero-page/zero-sidebar-state.ts";
 import { sidebarChatThreadIds$ } from "../sidebar-chat-thread-ids.ts";
 import { setChatThreadOnlyUnread$ } from "../chat-thread-only-unread.ts";
 import { openRenameChatThreadDialogFromThreadData$ } from "../chat-thread-rename.ts";
-import { registerOptimisticChatThreadEvent$ } from "../chat-thread-event-sourcing.ts";
+import {
+  registerOptimisticChatThreadEvent$,
+  threadMeta,
+} from "../chat-thread-event-sourcing.ts";
 import { createIdbCachedDataSource } from "../idb-cached-chat-thread-data-source.ts";
 
 const idbThreadEventStoreMock = vi.hoisted(() => {
@@ -372,6 +375,14 @@ describe("chat thread event sourcing local-first list", () => {
         renamedAt: null,
       },
     ]);
+    await expect(
+      context.store.get(threadMeta(OPTIMISTIC_THREAD_ID)),
+    ).resolves.toStrictEqual({
+      id: OPTIMISTIC_THREAD_ID,
+      agentId: AGENT_ID,
+      title: null,
+      pinnedAt: null,
+    });
 
     context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
       expect(params.id).toBe(OPTIMISTIC_THREAD_ID);
@@ -381,27 +392,7 @@ describe("chat thread event sourcing local-first list", () => {
     });
 
     const dataSource = createIdbCachedDataSource(OPTIMISTIC_THREAD_ID);
-    await expect(
-      context.store.get(dataSource.getThread$),
-    ).resolves.toStrictEqual({
-      id: OPTIMISTIC_THREAD_ID,
-      title: null,
-      agentId: AGENT_ID,
-      createdAt: "2026-07-03T05:00:00.000Z",
-      updatedAt: "2026-07-03T05:00:00.000Z",
-      lastReadMessageId: null,
-      lastReadAt: null,
-      lastMessageAt: "2026-07-03T05:00:00.000Z",
-      pinnedAt: null,
-      activeRunIds: [],
-      isLegacySession: false,
-      draftContent: null,
-      draftAttachments: null,
-      modelProviderId: null,
-      selectedModel: null,
-      codexServiceTier: null,
-      computerUseHostId: null,
-    });
+    await expect(context.store.get(dataSource.getThread$)).resolves.toBeNull();
   });
 
   it("settles optimistic create events once the matching persisted event arrives", async () => {

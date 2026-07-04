@@ -1,11 +1,10 @@
-import type { MouseEvent } from "react";
+import { useEffect, type MouseEvent } from "react";
 import {
   useGet,
   useSet,
   useLastResolved,
   useLastLoadable,
 } from "ccstate-react";
-import { useLoadableSet } from "ccstate-react/experimental";
 import {
   IconPlus,
   IconChevronRight,
@@ -69,18 +68,8 @@ import {
   type OptimisticChatPane,
   sidebarChatThreads$,
 } from "../../signals/chat-page/optimistic-chat-thread-page.ts";
-import {
-  chatThreadsHasMore$,
-  chatThreadsNextCursor$,
-  currentChatAgentId$,
-} from "../../signals/agent-chat.ts";
+import { currentChatAgentId$ } from "../../signals/agent-chat.ts";
 import { eventDrivenActiveRunChatThreadIds$ } from "../../signals/chat-page/chat-thread-event-sourcing.ts";
-import {
-  loadMoreSidebarChatThreads$,
-  sidebarChatThreadsExtraHasMore$,
-  sidebarChatThreadsHasLoadedExtraPages$,
-  sidebarChatThreadsLatestCursor$,
-} from "../../signals/chat-page/sidebar-chat-threads-pagination.ts";
 import { pathParams$, searchParams$ } from "../../signals/route.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { setSidebarExpanded$ } from "../../signals/zero-page/zero-nav.ts";
@@ -105,6 +94,8 @@ import {
   overlayScrollViewport$,
   chatThreadVirtualListElement$,
   setChatThreadVirtualListElement$,
+  chatThreadVirtualScrollTarget$,
+  setChatThreadVirtualScrollTarget$,
 } from "../../signals/zero-page/zero-sidebar-state.ts";
 import { Link } from "../router/link.tsx";
 
@@ -693,26 +684,6 @@ function ChatThreadRenameDialog() {
   );
 }
 
-function LoadMoreThreadsButton({
-  loadingMore,
-  onLoadMore,
-}: {
-  loadingMore: boolean;
-  onLoadMore: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onLoadMore}
-      disabled={loadingMore}
-      className="flex h-8 items-center justify-center rounded-lg px-2 text-[13px] leading-5 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors disabled:pointer-events-none disabled:opacity-50"
-      data-testid="sidebar-chat-threads-load-more"
-    >
-      {loadingMore ? "Loading…" : "Load more"}
-    </button>
-  );
-}
-
 function DeleteChatThreadDialogContent({
   onCancel,
   onConfirm,
@@ -821,19 +792,64 @@ function VirtualizedChatThreads({
   const scrollMetrics = useGet(overlayScrollMetrics$);
   const virtualListElement = useGet(chatThreadVirtualListElement$);
   const setVirtualListElement = useSet(setChatThreadVirtualListElement$);
+  const scrollTargetThreadId = useGet(chatThreadVirtualScrollTarget$);
+  const setScrollTargetThreadId = useSet(setChatThreadVirtualScrollTarget$);
   const scrollMargin = virtualListElement?.offsetTop ?? 0;
   const viewportHeight =
     scrollMetrics.clientHeight ||
     scrollViewport?.clientHeight ||
     CHAT_THREAD_VIRTUAL_FALLBACK_VIEWPORT_HEIGHT;
-  const scrollTop = scrollMetrics.scrollTop || scrollViewport?.scrollTop || 0;
+  const scrollTop = scrollMetrics.scrollTop ?? scrollViewport?.scrollTop ?? 0;
+  const targetIndex = scrollTargetThreadId
+    ? chatThreads.findIndex((thread) => {
+        return thread.id === scrollTargetThreadId;
+      })
+    : -1;
+  const targetScrollTop =
+    targetIndex >= 0
+      ? scrollMargin + targetIndex * CHAT_THREAD_VIRTUAL_ROW_HEIGHT
+      : null;
   const { startIndex, endIndex, totalHeight } = getFixedVirtualRange({
     itemCount: chatThreads.length,
     scrollMargin,
-    scrollTop,
+    scrollTop: targetScrollTop ?? scrollTop,
     viewportHeight,
   });
   const visibleChatThreads = chatThreads.slice(startIndex, endIndex);
+
+  useEffect(() => {
+    if (scrollTargetThreadId === null) {
+      return;
+    }
+    if (targetIndex === -1) {
+      if (chatThreads.length > 0) {
+        setScrollTargetThreadId(null);
+      }
+      return;
+    }
+    if (!scrollViewport) {
+      return;
+    }
+    const rowTop = scrollMargin + targetIndex * CHAT_THREAD_VIRTUAL_ROW_HEIGHT;
+    const rowBottom = rowTop + CHAT_THREAD_VIRTUAL_ROW_HEIGHT;
+    const viewportTop = scrollViewport.scrollTop;
+    const viewportBottom = viewportTop + viewportHeight;
+    if (rowTop < viewportTop || rowBottom > viewportBottom) {
+      scrollViewport.scrollTop = Math.max(
+        0,
+        rowTop - CHAT_THREAD_VIRTUAL_ROW_HEIGHT,
+      );
+    }
+    setScrollTargetThreadId(null);
+  }, [
+    chatThreads.length,
+    scrollMargin,
+    scrollTargetThreadId,
+    scrollViewport,
+    setScrollTargetThreadId,
+    targetIndex,
+    viewportHeight,
+  ]);
 
   return (
     <div
@@ -869,42 +885,7 @@ function ChatThreads({
 }: {
   chatThreads: readonly ChatThreadListItem[];
 }) {
-  const pageSignal = useGet(pageSignal$);
-
   const unreadOnly = useGet(chatThreadOnlyUnread$);
-  const features = useGet(featureSwitch$);
-  const virtualListEnabled =
-    features[FeatureSwitchKey.ChatThreadSidebarVirtualList] ?? false;
-  const firstPageHasMoreLoadable = useLastLoadable(chatThreadsHasMore$);
-  const firstPageNextCursorLoadable = useLastLoadable(chatThreadsNextCursor$);
-  const firstPageHasMore =
-    firstPageHasMoreLoadable.state === "hasData"
-      ? firstPageHasMoreLoadable.data
-      : false;
-  const firstPageNextCursor =
-    firstPageNextCursorLoadable.state === "hasData"
-      ? firstPageNextCursorLoadable.data
-      : null;
-  const hasLoadedExtraPages =
-    useLastResolved(sidebarChatThreadsHasLoadedExtraPages$) ?? false;
-  const extraHasMore =
-    useLastResolved(sidebarChatThreadsExtraHasMore$) ?? false;
-  const extraLatestCursor = useLastResolved(sidebarChatThreadsLatestCursor$);
-  const [loadMoreLoadable, loadMore] = useLoadableSet(
-    loadMoreSidebarChatThreads$,
-  );
-  const loadingMore = loadMoreLoadable.state === "loading";
-  const hasMore = hasLoadedExtraPages ? extraHasMore : firstPageHasMore;
-  const cursorForLoadMore = hasLoadedExtraPages
-    ? extraLatestCursor
-    : firstPageNextCursor;
-
-  function handleLoadMore() {
-    if (!cursorForLoadMore || loadingMore) {
-      return;
-    }
-    detach(loadMore(cursorForLoadMore, pageSignal), Reason.DomCallback);
-  }
 
   if (chatThreads.length === 0) {
     return (
@@ -915,22 +896,7 @@ function ChatThreads({
       </p>
     );
   }
-  if (virtualListEnabled) {
-    return <VirtualizedChatThreads chatThreads={chatThreads} />;
-  }
-  return (
-    <>
-      {chatThreads.map((session) => {
-        return <ChatThreadItem key={session.id} session={session} />;
-      })}
-      {hasMore && cursorForLoadMore && (
-        <LoadMoreThreadsButton
-          loadingMore={loadingMore}
-          onLoadMore={handleLoadMore}
-        />
-      )}
-    </>
-  );
+  return <VirtualizedChatThreads chatThreads={chatThreads} />;
 }
 
 function ChatThreadsTitle() {

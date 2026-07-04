@@ -89,8 +89,8 @@ import {
 } from "./parse-body-blocks.ts";
 import { getChatThreadTitleParts } from "./chat-thread-title.ts";
 import {
-  eventDrivenChatThreadMeta,
   optimisticChatThreadCreateUnsettled,
+  threadMeta,
   type ThreadMeta,
 } from "./chat-thread-event-sourcing.ts";
 import {
@@ -514,27 +514,8 @@ function createThreadData(dataSource: ChatThreadDataSource) {
   };
 }
 
-function threadMetaFromThreadData(threadData: ChatThread): ThreadMeta {
-  return {
-    threadId: threadData.id,
-    agentId: threadData.agentId,
-    title: threadData.title,
-  };
-}
-
-function createThreadMeta(
-  threadId: string,
-  threadData$: Computed<Promise<ChatThread | null>>,
-) {
-  const eventDrivenThreadMeta$ = eventDrivenChatThreadMeta(threadId);
-  return computed(async (get): Promise<ThreadMeta | null> => {
-    const eventMeta = await get(eventDrivenThreadMeta$);
-    if (eventMeta) {
-      return eventMeta;
-    }
-    const threadData = await get(threadData$);
-    return threadData ? threadMetaFromThreadData(threadData) : null;
-  });
+function createThreadMeta(threadId: string) {
+  return threadMeta(threadId);
 }
 
 function createThreadTitleParts(
@@ -741,13 +722,13 @@ function createComposerFileInput() {
 
 function createAgentInfoSignals(
   threadId: string,
-  threadData$: Computed<Promise<ChatThread | null>>,
+  threadMeta$: Computed<Promise<ThreadMeta | null>>,
 ) {
   // agentId$ is read by avatar and pinned UI on first paint.
-  // Resolving it via threadData$ blocks the avatar render on the
+  // Resolving it via threadMeta$ avoids blocking the avatar render on the
   // chat-threads/:id round-trip, even though the agentId rarely changes
-  // for a given thread. Consult the IDB cache first; on miss, fall back
-  // to threadData$ and backfill so the next visit hits the cache.
+  // for a given thread. Consult the IDB cache first; on miss, fall back to
+  // event-sourced metadata and backfill so the next visit hits the cache.
   const agentId$ = computed(async (get): Promise<string | null> => {
     const clerk = await get(clerk$);
     const userId = clerk?.user?.id ?? null;
@@ -759,8 +740,8 @@ function createAgentInfoSignals(
         return meta.agentId;
       }
     }
-    const thread = await get(threadData$);
-    const agentId = thread?.agentId ?? null;
+    const meta = await get(threadMeta$);
+    const agentId = meta?.agentId ?? null;
     if (agentId && userId !== null && orgId !== null) {
       await patchThreadMeta$(userId, orgId, threadId, { agentId });
     }
@@ -1674,7 +1655,7 @@ function createFetchUpdatedMessageCommand({
 
 function createPagedMessages(
   threadId: string,
-  threadData$: Computed<Promise<ChatThread | null>>,
+  threadMeta$: Computed<Promise<ThreadMeta | null>>,
   dataSource: ChatThreadDataSource,
 ) {
   const loadedHistoryHasMore$ = state<boolean | null>(null);
@@ -1787,7 +1768,7 @@ function createPagedMessages(
 
   const loadHistory$ = createLoadHistoryCommand({
     threadId,
-    threadData$,
+    threadMeta$,
     earliestChatMessageId$,
     historyMessages$,
     loadedHistoryHasMore$,
@@ -1817,14 +1798,14 @@ function createPagedMessages(
 
 function createChatThreadMessagePipeline({
   threadId,
-  threadData$,
+  threadMeta$,
   dataSource,
   recordScrollHeightForPrepend$,
   clearScrollHeightForPrepend$,
   awayFromBottom$,
 }: {
   threadId: string;
-  threadData$: Computed<Promise<ChatThread | null>>;
+  threadMeta$: Computed<Promise<ThreadMeta | null>>;
   dataSource: ChatThreadDataSource;
   recordScrollHeightForPrepend$: Command<
     PrependScrollCompensationToken | null,
@@ -1836,7 +1817,7 @@ function createChatThreadMessagePipeline({
   >;
   awayFromBottom$: Computed<boolean>;
 }) {
-  const pagedMessages = createPagedMessages(threadId, threadData$, dataSource);
+  const pagedMessages = createPagedMessages(threadId, threadMeta$, dataSource);
   const renderedMessages = createChatRenderWindow({
     threadId,
     groupedChatMessages$: pagedMessages.groupedChatMessages$,
@@ -1872,7 +1853,7 @@ function createChatThreadMessagePipeline({
 
 function createLoadHistoryCommand({
   threadId,
-  threadData$,
+  threadMeta$,
   earliestChatMessageId$,
   historyMessages$,
   loadedHistoryHasMore$,
@@ -1881,7 +1862,7 @@ function createLoadHistoryCommand({
   dataSource,
 }: {
   threadId: string;
-  threadData$: Computed<Promise<ChatThread | null>>;
+  threadMeta$: Computed<Promise<ThreadMeta | null>>;
   earliestChatMessageId$: Computed<Promise<string | undefined>>;
   historyMessages$: State<PagedChatMessage[]>;
   loadedHistoryHasMore$: State<boolean | null>;
@@ -1891,9 +1872,9 @@ function createLoadHistoryCommand({
 }): Command<Promise<LoadHistoryResult>, [AbortSignal]> {
   return command(
     async ({ get, set }, signal: AbortSignal): Promise<LoadHistoryResult> => {
-      const thread = await get(threadData$);
+      const meta = await get(threadMeta$);
       signal.throwIfAborted();
-      if (!thread) {
+      if (!meta) {
         set(loadedHistoryHasMore$, false);
         return { hasMore: false };
       }
@@ -2391,7 +2372,6 @@ function createRunTracking({
   const onSubscribed$ = command(async ({ get, set }, sig: AbortSignal) => {
     L.debug("subscribeChatThread$ catchup start", { threadId });
     set(reloadThread$);
-    await get(threadData$);
     sig.throwIfAborted();
     if (await set(shouldRunSubscribeReadyCatchup$, sig)) {
       await set(fetchNextPage$, sig);
@@ -2434,12 +2414,11 @@ function createRunTracking({
       },
     );
 
-    const onRunChanged$ = command(async ({ get, set }, sig: AbortSignal) => {
+    const onRunChanged$ = command(async ({ set }, sig: AbortSignal) => {
       L.debug("onRunChanged$ fired", { threadId });
       set(reloadThread$);
       await set(refreshLatestMessages$, sig);
       sig.throwIfAborted();
-      await get(threadData$);
       animationFrame(
         () => {
           set(autoScroll$);
@@ -2592,7 +2571,7 @@ function hasVisualDraftAttachments(
 
 interface SendMessageDeps {
   threadId: string;
-  threadData$: Computed<Promise<ChatThread | null>>;
+  threadMeta$: Computed<Promise<ThreadMeta | null>>;
   draft: DraftSignals;
   cancelDraftSync$: Command<void, []>;
   flushDraftClear$: Command<Promise<void>, [AbortSignal]>;
@@ -2604,7 +2583,7 @@ interface SendMessageDeps {
 function createSendMessage(deps: SendMessageDeps) {
   const {
     threadId,
-    threadData$,
+    threadMeta$,
     draft,
     cancelDraftSync$,
     flushDraftClear$,
@@ -2626,9 +2605,9 @@ function createSendMessage(deps: SendMessageDeps) {
       if (get(optimisticCreateUnsettled$)) {
         return;
       }
-      const thread = await get(threadData$);
+      const meta = await get(threadMeta$);
       signal.throwIfAborted();
-      const agentId = thread?.agentId;
+      const agentId = meta?.agentId;
       if (!agentId) {
         L.debug("sendMessage$ no agentId, abort", { threadId });
         return;
@@ -2734,7 +2713,7 @@ function createSendMessage(deps: SendMessageDeps) {
 
 interface QueueMessageDeps {
   threadId: string;
-  threadData$: Computed<Promise<ChatThread | null>>;
+  threadMeta$: Computed<Promise<ThreadMeta | null>>;
   modelSelection$: Computed<Promise<ModelProviderSelection | null>>;
   draft: DraftSignals;
   cancelDraftSync$: Command<void, []>;
@@ -2747,7 +2726,7 @@ interface QueueMessageDeps {
 function createQueueMessage(deps: QueueMessageDeps) {
   const {
     threadId,
-    threadData$,
+    threadMeta$,
     modelSelection$,
     draft,
     cancelDraftSync$,
@@ -2773,10 +2752,10 @@ function createQueueMessage(deps: QueueMessageDeps) {
         });
         return;
       }
-      const thread = await get(threadData$);
+      const meta = await get(threadMeta$);
       signal.throwIfAborted();
-      if (!thread) {
-        L.debug("queueMessage$ no thread data, abort", { threadId });
+      if (!meta) {
+        L.debug("queueMessage$ no thread metadata, abort", { threadId });
         return;
       }
       const generationTemplate = get(draft.generationTemplate$);
@@ -2838,7 +2817,7 @@ function createQueueMessage(deps: QueueMessageDeps) {
           dataSource.appendQueuedMessage$,
           {
             threadId,
-            agentId: thread.agentId,
+            agentId: meta.agentId,
             content: result.prompt,
             attachments: result.attachments ?? null,
             clientMessageId,
@@ -2861,7 +2840,7 @@ function createQueueMessage(deps: QueueMessageDeps) {
 
 interface RecallMessageDeps {
   threadId: string;
-  threadData$: Computed<Promise<ChatThread | null>>;
+  threadMeta$: Computed<Promise<ThreadMeta | null>>;
   draft: DraftSignals;
   refreshGroupedChatMessagesCache$: Command<Promise<void>, [AbortSignal]>;
   dataSource: ChatThreadDataSource;
@@ -2870,7 +2849,7 @@ interface RecallMessageDeps {
 function createRecallMessage(deps: RecallMessageDeps) {
   const {
     threadId,
-    threadData$,
+    threadMeta$,
     draft,
     refreshGroupedChatMessagesCache$,
     dataSource,
@@ -2886,9 +2865,9 @@ function createRecallMessage(deps: RecallMessageDeps) {
         return;
       }
 
-      const thread = await get(threadData$);
+      const meta = await get(threadMeta$);
       signal.throwIfAborted();
-      if (!thread) {
+      if (!meta) {
         return;
       }
 
@@ -2915,7 +2894,7 @@ function createRecallMessage(deps: RecallMessageDeps) {
         dataSource.recallMessage$,
         {
           threadId,
-          agentId: thread.agentId,
+          agentId: meta.agentId,
           revokesMessageId: message.id,
           clientMessageId,
         },
@@ -2951,14 +2930,14 @@ function createThreadMessageActions(deps: ThreadMessageActionsDeps) {
 
 function createCancelRunWithQueuedRecall({
   threadId,
-  threadData$,
+  threadMeta$,
   rawMessages$,
   groupedChatMessages$,
   refreshGroupedChatMessagesCache$,
   dataSource,
 }: {
   threadId: string;
-  threadData$: Computed<Promise<ChatThread | null>>;
+  threadMeta$: Computed<Promise<ThreadMeta | null>>;
   rawMessages$: Computed<Promise<ChatMessageProjectionEntry[]>>;
   groupedChatMessages$: Computed<Promise<GroupedChatMessageGroup[]>>;
   refreshGroupedChatMessagesCache$: Command<Promise<void>, [AbortSignal]>;
@@ -2973,9 +2952,9 @@ function createCancelRunWithQueuedRecall({
       });
       return;
     }
-    const thread = await get(threadData$);
+    const meta = await get(threadMeta$);
     signal.throwIfAborted();
-    if (!thread) {
+    if (!meta) {
       return;
     }
 
@@ -3026,7 +3005,7 @@ function createCancelRunWithQueuedRecall({
       });
       return {
         threadId,
-        agentId: thread.agentId,
+        agentId: meta.agentId,
         revokesMessageId: message.id,
         clientMessageId,
       };
@@ -3042,7 +3021,7 @@ function createCancelRunWithQueuedRecall({
         dataSource.cancelRuns$,
         {
           threadId,
-          agentId: thread.agentId,
+          agentId: meta.agentId,
           interrupts: interruptRequests,
         },
         signal,
@@ -3561,7 +3540,7 @@ export function createChatThreadSignals(
   dataSource: ChatThreadDataSource = createRemoteChatThreadDataSource(threadId),
 ): ChatThreadSignals {
   const { threadData$, reloadThread$ } = createThreadData(dataSource);
-  const threadMeta$ = createThreadMeta(threadId, threadData$);
+  const threadMeta$ = createThreadMeta(threadId);
   const { threadTitleEmoji$, threadTitleText$ } =
     createThreadTitleParts(threadMeta$);
   const { modelSelection$, setModelSelection$ } = createModelSelection(
@@ -3586,11 +3565,11 @@ export function createChatThreadSignals(
   const { composerFileInput$, setComposerFileInput$ } =
     createComposerFileInput();
   const { agentId$, agentDisplayName$, defaultModelSelection$, agentPinned$ } =
-    createAgentInfoSignals(threadId, threadData$);
+    createAgentInfoSignals(threadId, threadMeta$);
   const threadUi = createThreadUIState();
   const messages = createChatThreadMessagePipeline({
     threadId,
-    threadData$,
+    threadMeta$,
     dataSource,
     recordScrollHeightForPrepend$,
     clearScrollHeightForPrepend$,
@@ -3616,7 +3595,7 @@ export function createChatThreadSignals(
 
   const messageActions = createThreadMessageActions({
     threadId,
-    threadData$,
+    threadMeta$,
     modelSelection$,
     rawMessages$: messages.rawMessages$,
     groupedChatMessages$: messages.groupedChatMessages$,

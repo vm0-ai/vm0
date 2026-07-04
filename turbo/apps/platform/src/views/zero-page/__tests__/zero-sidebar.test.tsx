@@ -611,7 +611,7 @@ describe("zero sidebar", () => {
     });
   });
 
-  it("requests unread chat threads and keeps the current chat at the front of the unpinned section", async () => {
+  it("requests unread chat threads and filters the sidebar list", async () => {
     prepareDefaultAgent();
     const pinnedUnreadThread = createThread(
       AUTOMATION_THREAD_ID,
@@ -685,12 +685,8 @@ describe("zero sidebar", () => {
     await waitFor(() => {
       expect(unreadsRequests).toBeGreaterThan(0);
       expect(
-        visibleThreadTitles([
-          "Pinned incident",
-          "Release plan",
-          "Incident notes",
-        ]),
-      ).toStrictEqual(["Pinned incident", "Release plan", "Incident notes"]);
+        visibleThreadTitles(["Pinned incident", "Incident notes"]),
+      ).toStrictEqual(["Pinned incident", "Incident notes"]);
       expect(
         within(sidebar()).queryByText("Archived context"),
       ).not.toBeInTheDocument();
@@ -715,7 +711,7 @@ describe("zero sidebar", () => {
     expect(screen.queryByRole("switch", { name: "Unread" })).toBeNull();
   });
 
-  it("keeps a missing pinned current chat at the front of the pinned section", async () => {
+  it("does not merge a missing pinned current chat into the sidebar list", async () => {
     prepareDefaultAgent();
     const pinnedCurrentThread = createThread(
       EXISTING_THREAD_ID,
@@ -759,12 +755,9 @@ describe("zero sidebar", () => {
 
     await waitFor(() => {
       expect(
-        visibleThreadTitles([
-          "Release plan",
-          "Pinned incident",
-          "Incident notes",
-        ]),
-      ).toStrictEqual(["Release plan", "Pinned incident", "Incident notes"]);
+        visibleThreadTitles(["Pinned incident", "Incident notes"]),
+      ).toStrictEqual(["Pinned incident", "Incident notes"]);
+      expect(within(sidebar()).queryByText("Release plan")).toBeNull();
     });
   });
 
@@ -1012,24 +1005,12 @@ describe("zero sidebar", () => {
     });
   });
 
-  it("loads more sidebar chats and deletes a chat without checking legacy automations", async () => {
+  it("deletes a chat without checking legacy automations", async () => {
     prepareDefaultAgent();
-    const overflowThreads = Array.from({ length: 23 }, (_, index) => {
-      return createThread(
-        `b1000000-0000-4000-a000-${String(index).padStart(12, "0")}`,
-        `Overflow ${index + 1}`,
-      );
-    });
-    mockSidebarThreadStory(
-      [
-        createThread(EXISTING_THREAD_ID, "Release plan"),
-        createThread(AUTOMATION_THREAD_ID, "Scheduled launch"),
-      ],
-      [
-        ...overflowThreads,
-        createThread(ARCHIVED_THREAD_ID, "Archived context"),
-      ],
-    );
+    mockSidebarThreadStory([
+      createThread(EXISTING_THREAD_ID, "Release plan"),
+      createThread(AUTOMATION_THREAD_ID, "Scheduled launch"),
+    ]);
     context.mocks.data.automations([
       createMockAutomationView({
         id: "f0000001-0000-4000-a000-000000000401",
@@ -1059,14 +1040,6 @@ describe("zero sidebar", () => {
       expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
       expect(
         within(sidebar()).getByText("Scheduled launch"),
-      ).toBeInTheDocument();
-    });
-
-    click(screen.getByTestId("sidebar-chat-threads-load-more"));
-
-    await waitFor(() => {
-      expect(
-        within(sidebar()).getByText("Archived context"),
       ).toBeInTheDocument();
     });
 
@@ -1115,7 +1088,7 @@ describe("zero sidebar", () => {
     });
   });
 
-  it("virtualizes sidebar chats behind the feature switch", async () => {
+  it("virtualizes sidebar chats", async () => {
     prepareDefaultAgent();
     const overflowThreads = Array.from({ length: 23 }, (_, index) => {
       return createThread(
@@ -1137,13 +1110,9 @@ describe("zero sidebar", () => {
     setupSidebarPage({
       context,
       path: `/chats/${EXISTING_THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatThreadSidebarVirtualList]: true,
-      },
     });
 
     await waitFor(() => {
-      expect(screen.queryByTestId("sidebar-chat-threads-load-more")).toBeNull();
       expect(
         screen.getByTestId("sidebar-chat-threads-virtual-list"),
       ).toBeInTheDocument();

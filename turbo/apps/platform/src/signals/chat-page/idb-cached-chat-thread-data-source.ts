@@ -16,10 +16,7 @@ import {
   readThreadMeta$,
 } from "../external/idb-thread-meta-store.ts";
 import { logger } from "../log.ts";
-import type { ChatThread } from "../agent-chat.ts";
 import { createRemoteChatThreadDataSource } from "./remote-chat-thread-data-source.ts";
-import { eventDrivenChatThread } from "./chat-thread-event-sourcing.ts";
-import type { EventDrivenChatThread } from "./chat-thread-event-replay.ts";
 import type {
   ChatThreadDataSource,
   GetMessageArgs,
@@ -37,45 +34,6 @@ type ListMessagesAfterResult = {
   messages: PagedChatMessage[];
   reachedEnd: boolean;
 };
-
-function eventDrivenThreadToChatThread(
-  thread: EventDrivenChatThread,
-): ChatThread {
-  return {
-    id: thread.id,
-    title: thread.title,
-    agentId: thread.agentId,
-    createdAt: thread.createdAt,
-    updatedAt: thread.updatedAt,
-    lastReadMessageId: null,
-    lastReadAt: null,
-    lastMessageAt: thread.sortAt,
-    pinnedAt: thread.pinnedAt,
-    activeRunIds: [],
-    isLegacySession: false,
-    draftContent: null,
-    draftAttachments: null,
-    modelProviderId: null,
-    selectedModel: null,
-    codexServiceTier: null,
-    computerUseHostId: null,
-  };
-}
-
-function createGetThreadWithEventFallback(
-  threadId: string,
-  remote: ChatThreadDataSource,
-) {
-  const eventDrivenThread$ = eventDrivenChatThread(threadId);
-  return computed(async (get): Promise<ChatThread | null> => {
-    const remoteThread = await get(remote.getThread$);
-    if (remoteThread) {
-      return remoteThread;
-    }
-    const eventThread = await get(eventDrivenThread$);
-    return eventThread ? eventDrivenThreadToChatThread(eventThread) : null;
-  });
-}
 
 const warmListMessagesAfter$ = command(
   async (
@@ -562,10 +520,8 @@ export function createIdbCachedDataSource(
 
   const listMessagesAfter$ = createListMessagesAfter(remote, getStores);
   const getMessage$ = createGetMessage(remote, getStores);
-  const getThread$ = createGetThreadWithEventFallback(threadId, remote);
-
   return {
-    getThread$,
+    getThread$: remote.getThread$,
     reloadThread$: remote.reloadThread$,
     initialPage$,
     patchDraft$: remote.patchDraft$,

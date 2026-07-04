@@ -5,7 +5,6 @@ import {
   type CodexServiceTier,
   type PersistedAttachment,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { agentById, currentAgentId$, defaultAgentId$ } from "./agent.ts";
 import { zeroClient$ } from "./api-client.ts";
 import { accept } from "../lib/accept.ts";
@@ -19,13 +18,11 @@ import { clerk$ } from "./auth.ts";
 import { readThreadMeta$ } from "./external/idb-thread-meta-store.ts";
 import { chatThreadOnlyUnread$ } from "./chat-page/chat-thread-only-unread.ts";
 import {
-  chatThreadMaxItem$,
   eventDrivenActiveRunChatThreadIds$,
-  eventDrivenChatThreadMeta,
+  chatThreadMetaMap$,
   eventDrivenChatThreads$,
 } from "./chat-page/chat-thread-event-sourcing.ts";
 import type { EventDrivenChatThread } from "./chat-page/chat-thread-event-replay.ts";
-import { featureSwitch$ } from "./external/feature-switch.ts";
 
 export { reloadChatThreads$ } from "./chat-thread-list-reload.ts";
 
@@ -62,7 +59,7 @@ const currentChatThreadAgentId$ = computed(
     const meta = await readThreadMeta$(userId, orgId, threadId);
     return (
       meta?.agentId ??
-      (await get(eventDrivenChatThreadMeta(threadId)))?.agentId ??
+      (await get(chatThreadMetaMap$)).get(threadId)?.agentId ??
       null
     );
   },
@@ -111,24 +108,9 @@ export const currentChatAgentDisplayName$ = computed(async (get) => {
 });
 
 export interface ChatThread {
-  id: string;
-  agentId: string;
-  title: string | null;
-  createdAt?: string;
-  updatedAt?: string;
   lastReadMessageId: string | null;
-  lastReadAt: string | null;
-  lastMessageAt: string;
-  pinnedAt?: string | null;
-  activeRunIds: string[];
-  isLegacySession: boolean;
   draftContent: string | null;
   draftAttachments: PersistedAttachment[] | null;
-  /**
-   * Per-thread selected model pin. Provider routing is resolved from the
-   * current org policy when sending.
-   */
-  modelProviderId: string | null;
   selectedModel: string | null;
   codexServiceTier: CodexServiceTier | null;
   computerUseHostId: string | null;
@@ -172,21 +154,12 @@ const eventDrivenFilteredChatThreads$ = computed(
   },
 );
 
-export const chatThreadSidebarVirtualListEnabled$ = computed((get) => {
-  return (
-    get(featureSwitch$)[FeatureSwitchKey.ChatThreadSidebarVirtualList] ?? false
-  );
-});
-
 const eventDrivenVisibleChatThreads$ = computed(
   async (get): Promise<ChatThreadListItem[]> => {
     const threads = await get(eventDrivenFilteredChatThreads$);
-    const visibleThreads = get(chatThreadSidebarVirtualListEnabled$)
-      ? threads
-      : threads.slice(0, get(chatThreadMaxItem$));
     const activeRunThreadIds = get(eventDrivenActiveRunChatThreadIds$);
 
-    return visibleThreads.map((thread) => {
+    return threads.map((thread) => {
       return eventDrivenThreadToListItem(thread, activeRunThreadIds);
     });
   },
@@ -226,23 +199,3 @@ export const allChatThreadListItems$ = computed(
     });
   },
 );
-
-/**
- * True when more non-pinned threads exist beyond the sidebar's 25-row cap.
- * Drives the "Load more" button rendered at the bottom of the sidebar list.
- */
-export const chatThreadsHasMore$ = computed(async (get) => {
-  if (get(chatThreadSidebarVirtualListEnabled$)) {
-    return false;
-  }
-  const threads = await get(eventDrivenFilteredChatThreads$);
-  return threads.length > get(chatThreadMaxItem$);
-});
-
-export const chatThreadsNextCursor$ = computed(async (get) => {
-  if (get(chatThreadSidebarVirtualListEnabled$)) {
-    return null;
-  }
-  const threads = await get(eventDrivenFilteredChatThreads$);
-  return threads.length > get(chatThreadMaxItem$) ? "event-driven" : null;
-});

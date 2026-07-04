@@ -274,7 +274,7 @@ import {
   removeChatThreadEmoji,
   CHAT_THREAD_EMOJI_OPTIONS,
 } from "../../signals/chat-page/chat-thread-title.ts";
-import type { ChatThread } from "../../signals/agent-chat.ts";
+import type { ThreadMeta } from "../../signals/chat-page/chat-thread-event-sourcing.ts";
 import { ATTACH_ONLY_PLACEHOLDER } from "../../signals/chat-page/resolve-draft-attachments.ts";
 import {
   ZeroChatComposer,
@@ -3260,12 +3260,12 @@ type LoadableValue<T> =
   | { state: "hasError"; error: unknown };
 
 function resolveSessionError(
-  threadDataLoadable: LoadableValue<ChatThread | null>,
+  threadMetaLoadable: LoadableValue<ThreadMeta | null>,
   groupsLoadable: LoadableValue<GroupedChatMessageGroup[]>,
 ): string | null {
-  if (threadDataLoadable.state === "hasError") {
-    return threadDataLoadable.error instanceof Error
-      ? threadDataLoadable.error.message
+  if (threadMetaLoadable.state === "hasError") {
+    return threadMetaLoadable.error instanceof Error
+      ? threadMetaLoadable.error.message
       : "Failed to load chat";
   }
   if (groupsLoadable.state === "hasError") {
@@ -3274,8 +3274,8 @@ function resolveSessionError(
       : "Failed to load messages";
   }
   if (
-    threadDataLoadable.state === "hasData" &&
-    threadDataLoadable.data === null
+    threadMetaLoadable.state === "hasData" &&
+    threadMetaLoadable.data === null
   ) {
     return "Chat not found";
   }
@@ -3792,7 +3792,7 @@ function buildCompletedWorkFolding(
   const visibleMessages: EnrichedChatMessage[] = [];
   const folds: CompletedWorkFold[] = [];
 
-  for (let index = 0; index < messages.length; ) {
+  for (let index = 0; index < messages.length;) {
     const runId = messages[index]!.runId;
     if (runId === undefined) {
       visibleMessages.push(messages[index]!);
@@ -4168,8 +4168,8 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
   const renderedGroupsLoadable = useLastLoadable(
     thread.renderedGroupedChatMessages$,
   );
-  const threadDataLoadable = useLastLoadable(thread.threadData$);
-  const sessionError = resolveSessionError(threadDataLoadable, groupsLoadable);
+  const threadMetaLoadable = useLastLoadable(thread.threadMeta$);
+  const sessionError = resolveSessionError(threadMetaLoadable, groupsLoadable);
   const messagesLoading = groupsLoadable.state === "loading";
   const groups = groupsLoadable.state === "hasData" ? groupsLoadable.data : [];
   const renderedGroups =
@@ -4599,9 +4599,7 @@ function useChatComposerModel(
   // internally flips to a user-override once `setModelSelection$` is called,
   // so unsaved edits survive subsequent threadData$ reloads. Read with
   // useLastResolved so the picker keeps the previous value during the
-  // threadData$ refetches triggered by chatThreadRunUpdated Ably events —
-  // otherwise the picker briefly flips to a skeleton on every run change.
-  const threadDataResolved = useLastResolved(thread.threadData$);
+  // threadData$ refetches triggered by chatThreadRunUpdated Ably events.
   const modelSelectionResolved = useLastResolved(thread.modelSelection$);
   const defaultModelSelectionResolved = useLastResolved(
     thread.defaultModelSelection$,
@@ -4627,7 +4625,6 @@ function useChatComposerModel(
   // Explicit thread selections can render before default model selection
   // resolves; only inherited selections need that fallback before showing.
   const modelPickerLoading =
-    threadDataResolved === undefined ||
     modelSelectionResolved === undefined ||
     (modelSelectionResolved === null &&
       defaultModelSelectionResolved === undefined);

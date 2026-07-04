@@ -16,17 +16,11 @@ import { nowDate } from "../../lib/time.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
 import {
   chatThreads$,
-  currentChatAgentId$,
   currentChatThreadId$,
   reloadChatThreads$,
-  type ChatThread,
 } from "../agent-chat.ts";
 import { detachedNavigateTo$, searchParams$ } from "../route.ts";
-import {
-  currentLeftThread$,
-  currentRightThread$,
-  loadRightThread$,
-} from "./chat-thread-panes.ts";
+import { loadRightThread$ } from "./chat-thread-panes.ts";
 import {
   clearArtifactSidebarParams,
   clearChatAutomationSidebarParams,
@@ -45,7 +39,6 @@ import {
   appendOptimisticChatMessage$,
   type OptimisticChatMessageEntry,
 } from "./optimistic-chat-messages.ts";
-import { sidebarChatThreadsExtraThreads$ } from "./sidebar-chat-threads-pagination.ts";
 import { resolveModelFirstUserDefaultSelection } from "../zero-page/model-default-selection.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import { userModelPreference$ } from "../external/user-model-preference.ts";
@@ -57,7 +50,6 @@ import {
 } from "./model-selection-request.ts";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import { registerOptimisticChatThreadEvent$ } from "./chat-thread-event-sourcing.ts";
-import type { ChatThreadSignals } from "./chat-thread-signals.ts";
 
 export type OptimisticChatPane = "main" | "sidebar";
 
@@ -376,106 +368,9 @@ export const createNewChatThreadOptimistically$ = command(
   },
 );
 
-function threadToSidebarListItem(thread: ChatThread): ChatThreadListItem {
-  return {
-    id: thread.id,
-    title: thread.title,
-    agent: { id: thread.agentId, avatarUrl: null },
-    createdAt: thread.createdAt ?? thread.lastMessageAt,
-    updatedAt: thread.updatedAt ?? thread.lastMessageAt,
-    running: thread.activeRunIds.length > 0,
-    pinnedAt: thread.pinnedAt ?? null,
-  };
-}
-
-function mergeMissingSidebarThreads(
-  threads: readonly ChatThreadListItem[],
-  missingThreads: readonly ChatThreadListItem[],
-): ChatThreadListItem[] {
-  if (missingThreads.length === 0) {
-    return [...threads];
-  }
-
-  const existingIds = new Set(
-    threads.map((thread) => {
-      return thread.id;
-    }),
-  );
-  const seenMissingIds = new Set<string>();
-  const dedupedMissingThreads = missingThreads.filter((thread) => {
-    if (existingIds.has(thread.id) || seenMissingIds.has(thread.id)) {
-      return false;
-    }
-    seenMissingIds.add(thread.id);
-    return true;
-  });
-  if (dedupedMissingThreads.length === 0) {
-    return [...threads];
-  }
-
-  const missingPinned = dedupedMissingThreads.filter((thread) => {
-    return thread.pinnedAt !== null && thread.pinnedAt !== undefined;
-  });
-  const missingUnpinned = dedupedMissingThreads.filter((thread) => {
-    return thread.pinnedAt === null || thread.pinnedAt === undefined;
-  });
-  const firstUnpinnedIndex = threads.findIndex((thread) => {
-    return thread.pinnedAt === null || thread.pinnedAt === undefined;
-  });
-
-  if (firstUnpinnedIndex === -1) {
-    return [...missingPinned, ...threads, ...missingUnpinned];
-  }
-
-  return [
-    ...missingPinned,
-    ...threads.slice(0, firstUnpinnedIndex),
-    ...missingUnpinned,
-    ...threads.slice(firstUnpinnedIndex),
-  ];
-}
-
 export const sidebarChatThreads$ = computed(
   async (get): Promise<ChatThreadListItem[]> => {
-    const persisted = await get(chatThreads$);
-    const extraPersisted = await get(sidebarChatThreadsExtraThreads$);
-    const currentAgentId = await get(currentChatAgentId$);
-    if (!currentAgentId) {
-      return [...persisted, ...extraPersisted];
-    }
-
-    const mergedThreads = [...persisted, ...extraPersisted];
-    const mergedThreadIds = new Set(
-      mergedThreads.map((thread) => {
-        return thread.id;
-      }),
-    );
-    const activePaneThreads = [
-      get(currentLeftThread$),
-      get(currentRightThread$),
-    ].filter((thread): thread is ChatThreadSignals => {
-      return thread !== null && !mergedThreadIds.has(thread.threadId);
-    });
-
-    if (activePaneThreads.length === 0) {
-      return mergedThreads;
-    }
-
-    const activeItems = (
-      await Promise.all(
-        activePaneThreads.map(async (thread) => {
-          const threadData = await get(thread.threadData$);
-          if (!threadData || threadData.agentId !== currentAgentId) {
-            return null;
-          }
-          return threadToSidebarListItem(threadData);
-        }),
-      )
-    ).filter((thread): thread is ChatThreadListItem => {
-      return thread !== null;
-    });
-
-    return mergeMissingSidebarThreads(mergedThreads, activeItems);
+    return await get(chatThreads$);
   },
 );
 

@@ -124,6 +124,19 @@ export const setSessionListCollapsed$ = command(
 );
 
 // ---------------------------------------------------------------------------
+// Chat thread virtual list one-shot scroll target
+// ---------------------------------------------------------------------------
+const internalChatThreadVirtualScrollTarget$ = state<string | null>(null);
+export const chatThreadVirtualScrollTarget$ = computed((get) => {
+  return get(internalChatThreadVirtualScrollTarget$);
+});
+export const setChatThreadVirtualScrollTarget$ = command(
+  ({ set }, threadId: string | null) => {
+    set(internalChatThreadVirtualScrollTarget$, threadId);
+  },
+);
+
+// ---------------------------------------------------------------------------
 // Manage section collapse state (ZeroSidebar) — persisted in localStorage
 // ---------------------------------------------------------------------------
 const {

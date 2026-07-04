@@ -8,7 +8,6 @@ import {
   loadRightThread$,
 } from "./chat-thread-panes.ts";
 import {
-  clickAdjacentSidebarThread,
   sidebarThreadTitleForPane,
   type SidebarThreadPane,
 } from "./chat-sidebar-dom.ts";
@@ -19,7 +18,7 @@ import {
   setChatThreadEmojiFromThreadData$,
   type RenameChatThreadDialogRequest,
 } from "./chat-thread-rename.ts";
-import { eventDrivenChatThreadMeta } from "./chat-thread-event-sourcing.ts";
+import { chatThreadMetaMap$ } from "./chat-thread-event-sourcing.ts";
 import { CHAT_THREAD_EMOJI_OPTIONS } from "./chat-thread-title.ts";
 import type { ScrollStepDirection } from "../auto-scroll.ts";
 import { onRef } from "../utils.ts";
@@ -382,7 +381,7 @@ const renameDialogRequestForThread$ = command(
   ): Promise<RenameChatThreadDialogRequest> => {
     const threadMeta = thread
       ? await get(thread.threadMeta$)
-      : await get(eventDrivenChatThreadMeta(threadId));
+      : ((await get(chatThreadMetaMap$)).get(threadId) ?? null);
     signal.throwIfAborted();
     return {
       threadId,
@@ -540,14 +539,7 @@ export const setChatKeyboardScrollRoot$ = onRef(
       if (!pane) {
         return;
       }
-      if (
-        get(featureSwitch$)[FeatureSwitchKey.ChatThreadSidebarVirtualList] ??
-        false
-      ) {
-        return navigateAdjacentSidebarThreadFromSignals(pane, direction);
-      }
-      clickAdjacentSidebarThread(el, pane, direction);
-      return;
+      return navigateAdjacentSidebarThreadFromSignals(pane, direction);
     };
 
     const navigateAdjacentSidebarThreadFromSignals = async (
