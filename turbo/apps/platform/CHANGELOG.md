@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.546.0](https://github.com/vm0-ai/vm0/compare/app-v0.545.1...app-v0.546.0) (2026-07-03)
+
+
+### Features
+
+* enable chat thread event sourcing globally ([#20082](https://github.com/vm0-ai/vm0/issues/20082)) ([548a68e](https://github.com/vm0-ai/vm0/commit/548a68eca8f4b700d639d83470b16e026444b851))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.395.0
+
 ## [0.545.1](https://github.com/vm0-ai/vm0/compare/app-v0.545.0...app-v0.545.1) (2026-07-03)
 
 
