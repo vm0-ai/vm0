@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.222.2](https://github.com/vm0-ai/vm0/compare/api-v1.222.1...api-v1.222.2) (2026-07-04)
+
+
+### Bug Fixes
+
+* fetch all draft chat thread ids ([#20149](https://github.com/vm0-ai/vm0/issues/20149)) ([7b02fa2](https://github.com/vm0-ai/vm0/commit/7b02fa272811f75f9b897f92ab82da618d818110))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.153.2
+    * @vm0/core bumped to 8.398.1
+    * @vm0/db bumped to 1.91.2
+
 ## [1.222.1](https://github.com/vm0-ai/vm0/compare/api-v1.222.0...api-v1.222.1) (2026-07-04)
 
 
