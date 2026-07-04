@@ -97,11 +97,6 @@ import {
   previousRunGroupVisualWindowStartIndex,
   runGroupVisualWindowStartIndex,
 } from "./run-group-folding.ts";
-import { clerk$ } from "../auth.ts";
-import {
-  patchThreadMeta$,
-  readThreadMeta$,
-} from "../external/idb-thread-meta-store.ts";
 import { reloadBillingStatus$ } from "../zero-page/billing.ts";
 import { subscribeComputerUseHostsChanged$ } from "../zero-page/computer-use-hosts.ts";
 import type {
@@ -743,28 +738,18 @@ function createAgentInfoSignals(
   threadId: string,
   threadData$: Computed<Promise<ChatThread | null>>,
 ) {
-  // agentId$ is read by avatar and pinned UI on first paint.
-  // Resolving it via threadData$ blocks the avatar render on the
-  // chat-threads/:id round-trip, even though the agentId rarely changes
-  // for a given thread. Consult the IDB cache first; on miss, fall back
-  // to threadData$ and backfill so the next visit hits the cache.
-  const agentId$ = computed(async (get): Promise<string | null> => {
-    const clerk = await get(clerk$);
-    const userId = clerk?.user?.id ?? null;
-    const orgId = clerk?.organization?.id ?? null;
+  const eventDrivenThreadMeta$ = eventDrivenChatThreadMeta(threadId);
 
-    if (userId !== null && orgId !== null) {
-      const meta = await readThreadMeta$(userId, orgId, threadId);
-      if (meta?.agentId) {
-        return meta.agentId;
-      }
+  // agentId$ is read by avatar and pinned UI on first paint. The event-driven
+  // thread meta cache resolves without the chat-threads/:id round-trip when the
+  // sidebar snapshot is already available.
+  const agentId$ = computed(async (get): Promise<string | null> => {
+    const eventMeta = await get(eventDrivenThreadMeta$);
+    if (eventMeta) {
+      return eventMeta.agentId;
     }
     const thread = await get(threadData$);
-    const agentId = thread?.agentId ?? null;
-    if (agentId && userId !== null && orgId !== null) {
-      await patchThreadMeta$(userId, orgId, threadId, { agentId });
-    }
-    return agentId;
+    return thread?.agentId ?? null;
   });
 
   const agentDisplayName$ = computed(async (get): Promise<string | null> => {
