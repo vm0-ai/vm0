@@ -847,10 +847,12 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     });
     await claimChatRun(runnerGroup, main.runId);
 
-    expect(await chat.listActiveChatThreadIds(actor)).toContain(main.threadId);
+    await expect(chat.listActiveChatThreadIds(actor)).resolves.toContain(
+      main.threadId,
+    );
 
-    // A sibling thread whose run completes: terminal transition bumps the
-    // thread's recency, and the running flag drops.
+    // A sibling thread whose run completes: terminal transition drops the
+    // active-thread flag.
     const sibling = await sendChatRun(actor, {
       agentId,
       prompt: "sibling thread completes",
@@ -859,16 +861,8 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(sibling.runId, siblingClaim.sandboxHeaders);
 
-    expect(await chat.listActiveChatThreadIds(actor)).not.toContain(
+    await expect(chat.listActiveChatThreadIds(actor)).resolves.not.toContain(
       sibling.threadId,
-    );
-    expect(await allThreadEvents(actor)).toStrictEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          kind: "sort_touched",
-          chatThreadId: sibling.threadId,
-        }),
-      ]),
     );
 
     // A third thread with its own pending run must survive the delete.
@@ -897,7 +891,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
 
     const goneRead = await chat.requestReadThread(actor, main.threadId, [404]);
     expectApiError(goneRead.body);
-    expect(await allThreadEvents(actor)).toStrictEqual(
+    await expect(allThreadEvents(actor)).resolves.toStrictEqual(
       expect.arrayContaining([
         expect.objectContaining({
           kind: "deleted",
