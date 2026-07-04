@@ -155,6 +155,12 @@ const cronDrainRelationshipMemoryResponseSchema = z.object({
   processed: z.number(),
   failed: z.number(),
   relationshipsUpdated: z.number(),
+  backfill: z.object({
+    processed: z.number(),
+    failed: z.number(),
+    scanned: z.number(),
+    enqueued: z.number(),
+  }),
 });
 
 const cronRefreshSystemStoragePresignedUrlsResponseSchema = z.object({

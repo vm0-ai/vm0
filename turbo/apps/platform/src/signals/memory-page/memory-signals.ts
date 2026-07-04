@@ -12,6 +12,7 @@ import {
   type MemoryDevRefreshResponse,
 } from "@vm0/api-contracts/contracts/zero-memory-dev-refresh";
 import {
+  type GmailRelationshipStatusResponse,
   zeroRelationshipsContract,
   type RelationshipSearchResponse,
 } from "@vm0/api-contracts/contracts/zero-relationships";
@@ -56,6 +57,8 @@ const internalMemoryRelationshipSearch$ = state("");
 const internalMemoryRelationshipFilter$ =
   state<MemoryRelationshipFilter>("all");
 const internalSelectedMemoryRelationshipId$ = state<string | null>(null);
+const internalMemoryRelationshipsReload$ = state(0);
+const internalGmailRelationshipStatusReload$ = state(0);
 
 export const memoryRelationshipSearch$ = computed((get) => {
   return get(internalMemoryRelationshipSearch$);
@@ -86,6 +89,18 @@ export const setSelectedMemoryRelationshipId$ = command(
     set(internalSelectedMemoryRelationshipId$, relationshipId);
   },
 );
+
+export const reloadMemoryRelationships$ = command(({ set }) => {
+  set(internalMemoryRelationshipsReload$, (current) => {
+    return current + 1;
+  });
+});
+
+export const reloadGmailRelationshipStatus$ = command(({ set }) => {
+  set(internalGmailRelationshipStatusReload$, (current) => {
+    return current + 1;
+  });
+});
 
 const memoryActivityReload$ = state(0);
 
@@ -137,6 +152,7 @@ export const memoryActivity$ = computed(
 
 export const memoryRelationships$ = computed(
   async (get): Promise<RelationshipSearchResponse> => {
+    get(internalMemoryRelationshipsReload$);
     const search = get(memoryRelationshipSearch$).trim();
     const client = get(zeroClient$)(zeroRelationshipsContract);
     const result = await accept(
@@ -149,6 +165,26 @@ export const memoryRelationships$ = computed(
       [200],
     );
     return result.body;
+  },
+);
+
+export const gmailRelationshipStatus$ = computed(
+  async (get): Promise<GmailRelationshipStatusResponse> => {
+    get(internalGmailRelationshipStatusReload$);
+    const client = get(zeroClient$)(zeroRelationshipsContract);
+    const result = await accept(client.gmailStatus(), [200]);
+    return result.body;
+  },
+);
+
+export const enableGmailRelationships$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    const client = get(zeroClient$)(zeroRelationshipsContract);
+    await accept(client.gmailEnable({ fetchOptions: { signal } }), [200]);
+    signal.throwIfAborted();
+    toast.success("Gmail relationship backfill started");
+    set(reloadGmailRelationshipStatus$);
+    set(reloadMemoryRelationships$);
   },
 );
 

@@ -65,12 +65,42 @@ export const relationshipSearchResponseSchema = z.object({
   relationships: z.array(relationshipRecordSchema),
 });
 
+export const gmailRelationshipBackfillStatusSchema = z.enum([
+  "idle",
+  "pending",
+  "running",
+  "done",
+  "failed",
+]);
+
+export const gmailRelationshipBackfillSchema = z.object({
+  status: gmailRelationshipBackfillStatusSchema,
+  estimatedTotal: z.number().int().nonnegative().nullable(),
+  scannedCount: z.number().int().nonnegative(),
+  enqueuedCount: z.number().int().nonnegative(),
+  pendingSyncJobs: z.number().int().nonnegative(),
+  lastError: z.string().nullable(),
+  updatedAt: z.string().nullable(),
+  completedAt: z.string().nullable(),
+});
+
+export const gmailRelationshipStatusResponseSchema = z.object({
+  provider: z.literal("gmail"),
+  connectorConnected: z.boolean(),
+  enabled: z.boolean(),
+  watchEnabled: z.boolean(),
+  backfill: gmailRelationshipBackfillSchema,
+});
+
 export type RelationshipRecord = z.infer<typeof relationshipRecordSchema>;
 export type RelationshipResolveResponse = z.infer<
   typeof relationshipResolveResponseSchema
 >;
 export type RelationshipSearchResponse = z.infer<
   typeof relationshipSearchResponseSchema
+>;
+export type GmailRelationshipStatusResponse = z.infer<
+  typeof gmailRelationshipStatusResponseSchema
 >;
 
 const resolveQuerySchema = z
@@ -90,6 +120,31 @@ const resolveQuerySchema = z
   );
 
 export const zeroRelationshipsContract = c.router({
+  gmailStatus: {
+    method: "GET",
+    path: "/api/zero/relationships/gmail/status",
+    headers: authHeadersSchema,
+    responses: {
+      200: gmailRelationshipStatusResponseSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Read Gmail relationship memory enable and backfill status",
+  },
+  gmailEnable: {
+    method: "POST",
+    path: "/api/zero/relationships/gmail/enable",
+    headers: authHeadersSchema,
+    responses: {
+      200: gmailRelationshipStatusResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Enable Gmail relationship memory and start backfill",
+  },
   resolve: {
     method: "GET",
     path: "/api/zero/relationships/resolve",

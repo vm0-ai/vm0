@@ -207,7 +207,6 @@ async function relationshipMemoryFeatureEnabled(
 function gmailRefreshDedupeKey(args: {
   readonly orgId: string;
   readonly userId: string;
-  readonly threadId: string | null;
   readonly messageId: string;
 }): string {
   return [
@@ -215,7 +214,7 @@ function gmailRefreshDedupeKey(args: {
     args.userId,
     "gmail",
     "gmail_relationship_refresh",
-    args.threadId ?? args.messageId,
+    args.messageId,
   ].join(":");
 }
 
@@ -226,6 +225,8 @@ export async function enqueueGmailRelationshipRefreshJob(
     readonly userId: string;
     readonly connectorId: string;
     readonly message: GmailRelationshipMessage;
+    readonly priority?: number;
+    readonly reason?: "gmail_webhook" | "gmail_backfill";
   },
 ): Promise<boolean> {
   if (
@@ -253,40 +254,56 @@ export async function enqueueGmailRelationshipRefreshJob(
     gmailMessageIds: [args.message.messageId],
     historyId: args.message.historyId,
     gmailMessage,
-    reason: "gmail_webhook",
+    reason: args.reason ?? "gmail_webhook",
+  };
+  const priority = args.priority ?? 0;
+  const dedupeKey = gmailRefreshDedupeKey({
+    orgId: args.orgId,
+    userId: args.userId,
+    messageId: args.message.messageId,
+  });
+  const jobValues: typeof relationshipSyncJobs.$inferInsert = {
+    orgId: args.orgId,
+    userId: args.userId,
+    kind: "gmail_relationship_refresh",
+    provider: "gmail",
+    status: "pending",
+    priority,
+    dedupeKey,
+    payload,
+    runAfterAt: currentTime,
+    attempts: 0,
+    createdAt: currentTime,
+    updatedAt: currentTime,
   };
 
-  await db
-    .insert(relationshipSyncJobs)
-    .values({
-      orgId: args.orgId,
-      userId: args.userId,
-      kind: "gmail_relationship_refresh",
-      provider: "gmail",
-      status: "pending",
-      dedupeKey: gmailRefreshDedupeKey({
-        orgId: args.orgId,
-        userId: args.userId,
-        threadId: args.message.threadId,
-        messageId: args.message.messageId,
-      }),
-      payload,
-      runAfterAt: currentTime,
-      attempts: 0,
-      createdAt: currentTime,
-      updatedAt: currentTime,
-    })
-    .onConflictDoUpdate({
-      target: relationshipSyncJobs.dedupeKey,
-      set: {
-        status: "pending",
-        payload,
-        runAfterAt: currentTime,
-        lockedAt: null,
-        lastError: null,
-        updatedAt: currentTime,
-      },
-    });
+  if (args.reason === "gmail_backfill") {
+    const inserted = await db
+      .insert(relationshipSyncJobs)
+      .values(jobValues)
+      .onConflictDoNothing({ target: relationshipSyncJobs.dedupeKey })
+      .returning({ id: relationshipSyncJobs.id });
+
+    if (inserted.length === 0) {
+      return false;
+    }
+  } else {
+    await db
+      .insert(relationshipSyncJobs)
+      .values(jobValues)
+      .onConflictDoUpdate({
+        target: relationshipSyncJobs.dedupeKey,
+        set: {
+          status: "pending",
+          payload,
+          priority,
+          runAfterAt: currentTime,
+          lockedAt: null,
+          lastError: null,
+          updatedAt: currentTime,
+        },
+      });
+  }
 
   await db
     .insert(relationshipMemorySettings)
@@ -763,7 +780,10 @@ export const drainRelationshipSyncJobs$ = command(
           lte(relationshipSyncJobs.runAfterAt, currentTime),
         ),
       )
-      .orderBy(asc(relationshipSyncJobs.runAfterAt))
+      .orderBy(
+        asc(relationshipSyncJobs.priority),
+        asc(relationshipSyncJobs.runAfterAt),
+      )
       .limit(MAX_JOBS_PER_DRAIN);
     signal.throwIfAborted();
 
