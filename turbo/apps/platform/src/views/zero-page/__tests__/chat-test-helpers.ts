@@ -212,6 +212,9 @@ type PagedThreadItem = ThreadListItem & {
   renamedAt?: string | null;
 };
 
+const UUID_PATTERN =
+  /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/;
+
 /**
  * Splits a flat ThreadListItem array into the new paged response shape that
  * the chatThreadsContract.list endpoint returns. Pinned items go to `pinned`,
@@ -240,7 +243,7 @@ export function splitChatThreadListResponse(
   };
 }
 
-function threadListSnapshot(threads: readonly ThreadListItem[]) {
+export function threadListSnapshot(threads: readonly ThreadListItem[]) {
   return threads.map((thread) => {
     return {
       id: thread.id,
@@ -469,7 +472,7 @@ export function mockChatLifecycle(
     onMessageGet?: (messageId: string) => void;
   },
 ): MockLifecycleControl {
-  let threadId = options?.threadId ?? "thread-test-1";
+  let threadId = options?.threadId ?? "b0000000-0000-4000-a000-000000000900";
   const historyMessages = options?.historyMessages ?? [];
   const chatMessages = options?.chatMessages ?? [];
 
@@ -852,7 +855,11 @@ export function mockChatLifecycle(
     ) {
       activeThreadIds.add(threadId);
     }
-    return respond(200, { threadIds: [...activeThreadIds] });
+    return respond(200, {
+      threadIds: [...activeThreadIds].filter((id) => {
+        return UUID_PATTERN.test(id);
+      }),
+    });
   });
   context.mocks.api(chatThreadsContract.create, ({ body, respond }) => {
     threadId = body.clientThreadId ?? threadId;

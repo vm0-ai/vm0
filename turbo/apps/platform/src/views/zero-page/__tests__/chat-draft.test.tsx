@@ -23,6 +23,9 @@ import {
 import { mockChatLifecycle, PLACEHOLDER } from "./chat-test-helpers.ts";
 
 const context = testContext();
+const THREAD_ONE_ID = "b0000000-0000-4000-a000-000000000801";
+const THREAD_TWO_ID = "b0000000-0000-4000-a000-000000000802";
+const THREAD_UPLOADS_ID = "b0000000-0000-4000-a000-000000000803";
 
 function detachedSetupPage(
   options: Parameters<typeof baseDetachedSetupPage>[0],
@@ -33,7 +36,7 @@ function detachedSetupPage(
 function mockThreadDetails(): void {
   const threads = [
     {
-      id: "thread-1",
+      id: THREAD_ONE_ID,
       title: "Thread 1",
       agent: {
         id: "c0000000-0000-4000-a000-000000000001",
@@ -44,7 +47,7 @@ function mockThreadDetails(): void {
       running: false,
     },
     {
-      id: "thread-2",
+      id: THREAD_TWO_ID,
       title: "Thread 2",
       agent: {
         id: "c0000000-0000-4000-a000-000000000001",
@@ -55,7 +58,7 @@ function mockThreadDetails(): void {
       running: false,
     },
     {
-      id: "thread-uploads",
+      id: THREAD_UPLOADS_ID,
       title: "Uploads",
       agent: {
         id: "c0000000-0000-4000-a000-000000000001",
@@ -268,25 +271,25 @@ describe("chat drafts", () => {
     });
     mockThreadDetails();
 
-    detachedSetupPage({ context, path: "/chats/thread-1" });
+    detachedSetupPage({ context, path: `/chats/${THREAD_ONE_ID}` });
 
     await waitFor(() => {
       expect(textarea()).toBeInTheDocument();
     });
     await fill(textarea(), "draft for thread 1");
 
-    await navigateToThread("thread-2");
+    await navigateToThread(THREAD_TWO_ID);
     await waitFor(() => {
       expect(textarea()).toHaveValue("");
     });
     await fill(textarea(), "draft for thread 2");
 
-    await navigateToThread("thread-1");
+    await navigateToThread(THREAD_ONE_ID);
     await waitFor(() => {
       expect(textarea()).toHaveValue("draft for thread 1");
     });
 
-    await navigateToThread("thread-2");
+    await navigateToThread(THREAD_TWO_ID);
     await waitFor(() => {
       expect(textarea()).toHaveValue("draft for thread 2");
     });
@@ -458,7 +461,7 @@ describe("chat drafts", () => {
       },
     );
 
-    detachedSetupPage({ context, path: "/chats/thread-1" });
+    detachedSetupPage({ context, path: `/chats/${THREAD_ONE_ID}` });
 
     await waitFor(() => {
       expect(textarea()).toBeInTheDocument();
@@ -478,7 +481,7 @@ describe("chat drafts", () => {
       ).toBeInTheDocument();
     });
 
-    await navigateToThread("thread-2");
+    await navigateToThread(THREAD_TWO_ID);
     await waitFor(() => {
       expect(textarea()).toHaveValue("");
       expect(screen.queryByLabelText(/photo\.png/)).not.toBeInTheDocument();
@@ -486,7 +489,7 @@ describe("chat drafts", () => {
 
     uploadRequest!.resolve(new HttpResponse(null, { status: 200 }));
 
-    await navigateToThread("thread-1");
+    await navigateToThread(THREAD_ONE_ID);
     await waitFor(() => {
       expect(screen.getByLabelText("Remove photo.png")).toBeInTheDocument();
     });
@@ -531,7 +534,7 @@ describe("chat drafts", () => {
       return new HttpResponse(null, { status: 500 });
     });
 
-    detachedSetupPage({ context, path: "/chats/thread-uploads" });
+    detachedSetupPage({ context, path: `/chats/${THREAD_UPLOADS_ID}` });
 
     await waitFor(() => {
       expect(textarea()).toBeInTheDocument();
@@ -583,7 +586,7 @@ describe("chat drafts", () => {
       },
     );
 
-    detachedSetupPage({ context, path: "/chats/thread-uploads" });
+    detachedSetupPage({ context, path: `/chats/${THREAD_UPLOADS_ID}` });
 
     await waitFor(() => {
       expect(textarea()).toBeInTheDocument();
@@ -610,7 +613,7 @@ describe("chat drafts", () => {
   });
 
   it("uploads dropped files and reports oversized drops", async () => {
-    const threadId = "thread-uploads";
+    const threadId = THREAD_UPLOADS_ID;
     const oversizedFile = new File(["video"], "launch-recording.mov", {
       type: "video/quicktime",
     });
