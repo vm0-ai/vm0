@@ -311,6 +311,9 @@ describe("zero workflows", () => {
       [200],
     );
     expect(preparedSource.body.chatThreadId).toBe(sourceThread.id);
+    expect(preparedSource.body.prompt).toBe(
+      `help me refine the workflow /${sourceWorkflow.body.name}`,
+    );
 
     const targetWorkflow = await createWorkflow(actor, {
       agentId: targetAgent.agentId,

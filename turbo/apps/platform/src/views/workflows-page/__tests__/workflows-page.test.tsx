@@ -855,7 +855,7 @@ function mockOpenWorkflowChat(onOpen: (workflowId: string) => void): void {
       onOpen(params.workflowId);
       return respond(200, {
         chatThreadId: WORKFLOW_CHAT_THREAD_ID,
-        prompt: "/sales-research",
+        prompt: "help me refine the workflow /sales-research",
       });
     },
   );
@@ -1286,7 +1286,7 @@ describe("workflow detail page", () => {
     ).toBeInTheDocument();
   });
 
-  it("opens the shared workflow chat thread with the workflow slash command", async () => {
+  it("opens the shared workflow chat thread with the workflow refinement prompt", async () => {
     const openedWorkflowIds: string[] = [];
     mockChatLifecycle(context, { threadId: WORKFLOW_CHAT_THREAD_ID });
     mockWorkflowApis([salesResearch()]);
@@ -1309,7 +1309,7 @@ describe("workflow detail page", () => {
     });
     expect(pathname()).toBe(`/chats/${WORKFLOW_CHAT_THREAD_ID}`);
     expect(search()).toBe("");
-    await expectComposerText("/sales-research");
+    await expectComposerText("help me refine the workflow /sales-research");
   });
 
   it("orders workflow info sections without audit metadata", async () => {

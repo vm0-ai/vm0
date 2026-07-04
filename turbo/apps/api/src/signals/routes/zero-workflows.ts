@@ -897,6 +897,10 @@ function workflowSlashPrompt(workflow: Pick<WorkflowRow, "name">): string {
   return `/${workflow.name}`;
 }
 
+function workflowRefinePrompt(workflow: Pick<WorkflowRow, "name">): string {
+  return `help me refine the workflow ${workflowSlashPrompt(workflow)}`;
+}
+
 const prepareWorkflowChatThreadInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
@@ -936,7 +940,7 @@ const prepareWorkflowChatThreadInner$ = command(
       status: 200 as const,
       body: {
         chatThreadId,
-        prompt: workflowSlashPrompt(workflow),
+        prompt: workflowRefinePrompt(workflow),
       },
     };
   },
