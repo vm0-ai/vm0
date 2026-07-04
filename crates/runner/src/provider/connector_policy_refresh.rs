@@ -19,6 +19,7 @@ use crate::types::{ConnectorPolicyRefresh, NetworkPolicy};
 
 const REFRESH_REQUEST_QUEUE_CAPACITY: usize = 256;
 const EXPIRED_REFRESH_DEADLINE_RETRY_DELAY: Duration = Duration::from_millis(250);
+const SCHEDULED_REFRESH_COALESCE_WINDOW: Duration = Duration::from_millis(100);
 
 #[derive(Clone)]
 pub(crate) struct ConnectorPolicyRefreshHandle {
@@ -49,6 +50,7 @@ struct ActiveRunPolicyState {
 
 struct ScheduledRefreshTask {
     id: u64,
+    deadline: tokio::time::Instant,
     handle: tokio::task::JoinHandle<()>,
 }
 
@@ -68,7 +70,7 @@ pub(crate) struct ConnectorPolicyRefreshRegistration<'a> {
 
 struct RefreshRequest {
     run_id: RunId,
-    connector_ref: String,
+    connector_refs: Vec<String>,
 }
 
 impl ConnectorPolicyRefreshHandle {
@@ -241,7 +243,7 @@ impl ConnectorPolicyRefreshCore {
         }
         let request = RefreshRequest {
             run_id,
-            connector_ref,
+            connector_refs: vec![connector_ref],
         };
         if let Err(error) = self.request_tx.try_send(request) {
             self.handle_notification_enqueue_error(error).await;
@@ -266,25 +268,18 @@ impl ConnectorPolicyRefreshCore {
             Full(request) => {
                 warn!(
                     run_id = %request.run_id,
-                    connector_ref = %request.connector_ref,
+                    connector_count = request.connector_refs.len(),
+                    connector_refs = ?request.connector_refs,
                     "connector policy refresh queue full; failing closed after permission refresh notification"
                 );
-                if let Some(snapshot) = self
-                    .active_snapshot(request.run_id, &request.connector_ref)
-                    .await
-                {
-                    try_fail_closed_connector_policy(
-                        request.run_id,
-                        &request.connector_ref,
-                        snapshot,
-                    )
+                self.try_fail_closed_active_connectors(request.run_id, &request.connector_refs)
                     .await;
-                }
             }
             Closed(error) => {
                 warn!(
                     run_id = %error.run_id,
-                    connector_ref = %error.connector_ref,
+                    connector_count = error.connector_refs.len(),
+                    connector_refs = ?error.connector_refs,
                     "connector policy refresh queue closed"
                 );
             }
@@ -306,92 +301,161 @@ impl ConnectorPolicyRefreshCore {
             Full(request) => {
                 warn!(
                     run_id = %request.run_id,
-                    connector_ref = %request.connector_ref,
+                    connector_count = request.connector_refs.len(),
+                    connector_refs = ?request.connector_refs,
                     "connector policy refresh queue full; failing closed after scheduled refresh deadline"
                 );
-                if let Some(snapshot) = self
-                    .active_snapshot(request.run_id, &request.connector_ref)
-                    .await
-                {
-                    fail_closed_connector_policy(request.run_id, &request.connector_ref, snapshot)
-                        .await;
-                }
+                self.fail_closed_active_connectors(request.run_id, &request.connector_refs)
+                    .await;
             }
             Closed(error) => {
                 warn!(
                     run_id = %error.run_id,
-                    connector_ref = %error.connector_ref,
+                    connector_count = error.connector_refs.len(),
+                    connector_refs = ?error.connector_refs,
                     "connector policy refresh queue closed"
                 );
             }
         }
     }
 
-    async fn refresh_connector_now(&self, run_id: RunId, connector_ref: String) {
-        let Some(snapshot) = self.active_snapshot(run_id, &connector_ref).await else {
+    async fn refresh_connectors_now(&self, run_id: RunId, connector_refs: Vec<String>) {
+        let active_connector_refs = self
+            .active_connector_refs(run_id, unique_connector_refs(connector_refs))
+            .await;
+        if active_connector_refs.is_empty() {
             return;
-        };
+        }
 
         let response = match self
             .inner
             .api
-            .refresh_connector_policy(run_id, &connector_ref)
+            .refresh_connector_policies(run_id, &active_connector_refs)
             .await
         {
             Ok(response) => response,
             Err(error) => {
                 warn!(
                     run_id = %run_id,
-                    connector_ref,
+                    connector_count = active_connector_refs.len(),
+                    connector_refs = ?active_connector_refs,
                     error = %error,
                     "connector policy refresh failed"
                 );
-                fail_closed_connector_policy(run_id, &connector_ref, snapshot).await;
+                self.fail_closed_active_connectors(run_id, &active_connector_refs)
+                    .await;
                 return;
             }
         };
 
-        if response.connector_ref != connector_ref {
-            warn!(
-                run_id = %run_id,
-                requested_connector_ref = connector_ref,
-                response_connector_ref = response.connector_ref,
-                "connector policy refresh returned mismatched connector"
-            );
-            if let Some(snapshot) = self.active_snapshot(run_id, &connector_ref).await {
-                fail_closed_connector_policy(run_id, &connector_ref, snapshot).await;
+        let requested_connector_refs: HashSet<String> =
+            active_connector_refs.iter().cloned().collect();
+        let mut responses_by_connector = HashMap::new();
+        let mut duplicate_connector_refs = HashSet::new();
+        for refresh in response.refreshes {
+            if !requested_connector_refs.contains(refresh.connector_ref.as_str()) {
+                warn!(
+                    run_id = %run_id,
+                    response_connector_ref = refresh.connector_ref,
+                    requested_connector_refs = ?active_connector_refs,
+                    "connector policy refresh returned unexpected connector"
+                );
+                continue;
             }
-            return;
+            let response_connector_ref = refresh.connector_ref.clone();
+            if responses_by_connector
+                .insert(response_connector_ref.clone(), refresh)
+                .is_some()
+            {
+                warn!(
+                    run_id = %run_id,
+                    connector_ref = response_connector_ref,
+                    "connector policy refresh returned duplicate connector"
+                );
+                duplicate_connector_refs.insert(response_connector_ref);
+            }
         }
 
-        let Some(snapshot) = self.active_snapshot(run_id, &connector_ref).await else {
-            return;
-        };
-        match patch_connector_policy(run_id, &connector_ref, snapshot, response.network_policy)
-            .await
-        {
-            Ok(true) => {
-                info!(
-                    run_id = %run_id,
-                    connector_ref,
-                    "refreshed connector policy"
-                );
-                self.replace_schedule(run_id, &connector_ref, response.next_refresh_at)
-                    .await;
+        for connector_ref in active_connector_refs {
+            if duplicate_connector_refs.contains(&connector_ref) {
+                if let Some(snapshot) = self.active_snapshot(run_id, &connector_ref).await {
+                    fail_closed_connector_policy(run_id, &connector_ref, snapshot).await;
+                }
+                continue;
             }
-            Ok(false) => {
-                self.unregister_run(run_id).await;
-            }
-            Err(error) => {
+            let Some(response) = responses_by_connector.remove(&connector_ref) else {
                 warn!(
                     run_id = %run_id,
                     connector_ref,
-                    error = %error,
-                    "failed to patch refreshed connector policy"
+                    "connector policy refresh response omitted requested connector"
                 );
                 if let Some(snapshot) = self.active_snapshot(run_id, &connector_ref).await {
                     fail_closed_connector_policy(run_id, &connector_ref, snapshot).await;
                 }
+                continue;
+            };
+
+            let Some(snapshot) = self.active_snapshot(run_id, &connector_ref).await else {
+                continue;
+            };
+            match patch_connector_policy(run_id, &connector_ref, snapshot, response.network_policy)
+                .await
+            {
+                Ok(true) => {
+                    info!(
+                        run_id = %run_id,
+                        connector_ref,
+                        "refreshed connector policy"
+                    );
+                    self.replace_schedule(run_id, &connector_ref, response.next_refresh_at)
+                        .await;
+                }
+                Ok(false) => {
+                    self.unregister_run(run_id).await;
+                    return;
+                }
+                Err(error) => {
+                    warn!(
+                        run_id = %run_id,
+                        connector_ref,
+                        error = %error,
+                        "failed to patch refreshed connector policy"
+                    );
+                    if let Some(snapshot) = self.active_snapshot(run_id, &connector_ref).await {
+                        fail_closed_connector_policy(run_id, &connector_ref, snapshot).await;
+                    }
+                }
+            }
+        }
+    }
+
+    async fn active_connector_refs(
+        &self,
+        run_id: RunId,
+        connector_refs: Vec<String>,
+    ) -> Vec<String> {
+        let active_runs = self.inner.active_runs.lock().await;
+        let Some(active) = active_runs.get(&run_id) else {
+            return Vec::new();
+        };
+        connector_refs
+            .into_iter()
+            .filter(|connector_ref| active.connector_refs.contains(connector_ref))
+            .collect()
+    }
+
+    async fn try_fail_closed_active_connectors(&self, run_id: RunId, connector_refs: &[String]) {
+        for connector_ref in connector_refs {
+            if let Some(snapshot) = self.active_snapshot(run_id, connector_ref).await {
+                try_fail_closed_connector_policy(run_id, connector_ref, snapshot).await;
+            }
+        }
+    }
+
+    async fn fail_closed_active_connectors(&self, run_id: RunId, connector_refs: &[String]) {
+        for connector_ref in connector_refs {
+            if let Some(snapshot) = self.active_snapshot(run_id, connector_ref).await {
+                fail_closed_connector_policy(run_id, connector_ref, snapshot).await;
             }
         }
     }
@@ -437,7 +501,6 @@ impl ConnectorPolicyRefreshCore {
         let task_id = active.next_refresh_task_id;
         active.next_refresh_task_id += 1;
         let cancel = active.cancel.clone();
-        let enqueue_cancel = cancel.clone();
         let global_cancel = self.inner.cancel.clone();
         let connector_ref = connector_ref.to_string();
         let handle = self.clone();
@@ -447,18 +510,20 @@ impl ConnectorPolicyRefreshCore {
                 () = global_cancel.cancelled() => {}
                 () = cancel.cancelled() => {}
                 () = tokio::time::sleep_until(deadline) => {
-                    handle
-                        .enqueue_scheduled_refresh(
-                            RefreshRequest {
-                                run_id,
-                                connector_ref: task_connector_ref.clone(),
-                            },
-                            &enqueue_cancel,
-                        )
-                        .await;
-                    handle
-                        .clear_completed_schedule(run_id, &task_connector_ref, task_id)
-                        .await;
+                    if let Some((connector_refs, enqueue_cancel)) = handle
+                        .take_due_scheduled_refreshes(run_id, &task_connector_ref, task_id)
+                        .await
+                    {
+                        handle
+                            .enqueue_scheduled_refresh(
+                                RefreshRequest {
+                                    run_id,
+                                    connector_refs,
+                                },
+                                &enqueue_cancel,
+                            )
+                            .await;
+                    }
                 }
             }
         });
@@ -466,23 +531,54 @@ impl ConnectorPolicyRefreshCore {
             connector_ref,
             ScheduledRefreshTask {
                 id: task_id,
+                deadline,
                 handle: task,
             },
         );
     }
 
-    async fn clear_completed_schedule(&self, run_id: RunId, connector_ref: &str, task_id: u64) {
-        let mut active_runs = self.inner.active_runs.lock().await;
-        let Some(active) = active_runs.get_mut(&run_id) else {
-            return;
+    async fn take_due_scheduled_refreshes(
+        &self,
+        run_id: RunId,
+        connector_ref: &str,
+        task_id: u64,
+    ) -> Option<(Vec<String>, CancellationToken)> {
+        let mut handles_to_abort = Vec::new();
+        let (connector_refs, cancel) = {
+            let mut active_runs = self.inner.active_runs.lock().await;
+            let active = active_runs.get_mut(&run_id)?;
+            if active
+                .refresh_tasks
+                .get(connector_ref)
+                .is_none_or(|task| task.id != task_id)
+            {
+                return None;
+            }
+
+            let coalesce_deadline = tokio::time::Instant::now() + SCHEDULED_REFRESH_COALESCE_WINDOW;
+            let mut due_connector_refs = active
+                .refresh_tasks
+                .iter()
+                .filter(|(_, task)| task.deadline <= coalesce_deadline)
+                .map(|(connector_ref, _)| connector_ref.clone())
+                .collect::<Vec<_>>();
+            due_connector_refs.sort();
+
+            let mut connector_refs = Vec::with_capacity(due_connector_refs.len());
+            for due_connector_ref in due_connector_refs {
+                if let Some(task) = active.refresh_tasks.remove(&due_connector_ref) {
+                    if due_connector_ref != connector_ref {
+                        handles_to_abort.push(task.handle);
+                    }
+                    connector_refs.push(due_connector_ref);
+                }
+            }
+
+            (connector_refs, active.cancel.clone())
         };
-        if active
-            .refresh_tasks
-            .get(connector_ref)
-            .is_some_and(|task| task.id == task_id)
-        {
-            active.refresh_tasks.remove(connector_ref);
-        }
+
+        abort_tasks(handles_to_abort);
+        (!connector_refs.is_empty()).then_some((connector_refs, cancel))
     }
 }
 
@@ -501,15 +597,15 @@ async fn run_refresh_worker(
                 };
                 let RefreshRequest {
                     run_id,
-                    connector_ref,
+                    connector_refs,
                 } = request;
                 let completed = tokio::select! {
                     () = handle.inner.cancel.cancelled() => {
                         false
                     }
-                    () = handle.refresh_connector_now(
+                    () = handle.refresh_connectors_now(
                         run_id,
-                        connector_ref,
+                        connector_refs,
                     ) => {
                         true
                     }
@@ -622,6 +718,17 @@ fn parse_refresh_deadline(value: &str) -> Option<tokio::time::Instant> {
         .to_std()
         .unwrap_or(EXPIRED_REFRESH_DEADLINE_RETRY_DELAY);
     Some(tokio::time::Instant::now() + delay)
+}
+
+fn unique_connector_refs(connector_refs: Vec<String>) -> Vec<String> {
+    let mut seen = HashSet::new();
+    let mut unique = Vec::with_capacity(connector_refs.len());
+    for connector_ref in connector_refs {
+        if seen.insert(connector_ref.clone()) {
+            unique.push(connector_ref);
+        }
+    }
+    unique
 }
 
 fn abort_tasks(tasks: impl IntoIterator<Item = tokio::task::JoinHandle<()>>) {
@@ -787,7 +894,7 @@ mod tests {
         async fn refresh_slack(&self) {
             self.handle
                 .core
-                .refresh_connector_now(self.run_id, "slack".to_string())
+                .refresh_connectors_now(self.run_id, vec!["slack".to_string()])
                 .await;
         }
 
@@ -824,13 +931,30 @@ mod tests {
     }
 
     fn active_run_policy_state(registry: ProxyRegistryHandle) -> ActiveRunPolicyState {
+        active_run_policy_state_with_connectors(registry, ["slack"])
+    }
+
+    fn active_run_policy_state_with_connectors(
+        registry: ProxyRegistryHandle,
+        connector_refs: impl IntoIterator<Item = &'static str>,
+    ) -> ActiveRunPolicyState {
         ActiveRunPolicyState {
             source_ip: "10.200.0.2".to_string(),
             registry,
-            connector_refs: HashSet::from(["slack".to_string()]),
+            connector_refs: connector_refs
+                .into_iter()
+                .map(|connector_ref| connector_ref.to_string())
+                .collect(),
             cancel: CancellationToken::new(),
             refresh_tasks: HashMap::new(),
             next_refresh_task_id: 0,
+        }
+    }
+
+    fn refresh_request(run_id: RunId, connector_ref: &str) -> RefreshRequest {
+        RefreshRequest {
+            run_id,
+            connector_refs: vec![connector_ref.to_string()],
         }
     }
 
@@ -1057,7 +1181,7 @@ mod tests {
             .try_recv()
             .expect("active connector notification should enqueue refresh");
         assert_eq!(request.run_id, run_id);
-        assert_eq!(request.connector_ref, "slack");
+        assert_eq!(request.connector_refs, vec!["slack".to_string()]);
     }
 
     #[tokio::test]
@@ -1077,10 +1201,7 @@ mod tests {
             .insert(run_id, active_run_policy_state(registry));
         for _ in 0..REFRESH_REQUEST_QUEUE_CAPACITY {
             core.request_tx
-                .try_send(RefreshRequest {
-                    run_id,
-                    connector_ref: "slack".to_string(),
-                })
+                .try_send(refresh_request(run_id, "slack"))
                 .expect("refresh queue should accept request");
         }
         let cancel = CancellationToken::new();
@@ -1113,10 +1234,7 @@ mod tests {
             .insert(run_id, active_run_policy_state(registry));
         for _ in 0..REFRESH_REQUEST_QUEUE_CAPACITY {
             core.request_tx
-                .try_send(RefreshRequest {
-                    run_id,
-                    connector_ref: "slack".to_string(),
-                })
+                .try_send(refresh_request(run_id, "slack"))
                 .expect("refresh queue should accept request");
         }
 
@@ -1152,10 +1270,7 @@ mod tests {
             .insert(run_id, active_run_policy_state(registry));
         for _ in 0..REFRESH_REQUEST_QUEUE_CAPACITY {
             core.request_tx
-                .try_send(RefreshRequest {
-                    run_id,
-                    connector_ref: "slack".to_string(),
-                })
+                .try_send(refresh_request(run_id, "slack"))
                 .expect("refresh queue should accept request");
         }
         let lock_guard = crate::lock::acquire(lock_path)
@@ -1216,13 +1331,56 @@ mod tests {
         tokio::time::advance(EXPIRED_REFRESH_DEADLINE_RETRY_DELAY).await;
         let request = recv_refresh_request(&mut requests).await;
         assert_eq!(request.run_id, run_id);
-        assert_eq!(request.connector_ref, "slack");
+        assert_eq!(request.connector_refs, vec!["slack".to_string()]);
         wait_until_scheduled_refresh_task_clears(&core, run_id).await;
         let active_runs = core.inner.active_runs.lock().await;
         let active = active_runs
             .get(&run_id)
             .expect("run should remain active after scheduled refresh fires");
         assert!(active.refresh_tasks.is_empty());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn scheduled_refresh_coalesces_due_connectors_for_run() {
+        let server = MockServer::start();
+        let (core, mut requests) = core_without_worker(&server);
+        let run_id = RunId::nil();
+        let dir = tempfile::tempdir().expect("tempdir should be created");
+        let registry = ProxyRegistryHandle::new(
+            dir.path().join("proxy-registry.json"),
+            dir.path().join("proxy-registry.lock"),
+        );
+        core.inner.active_runs.lock().await.insert(
+            run_id,
+            active_run_policy_state_with_connectors(registry, ["slack", "github"]),
+        );
+
+        for connector_ref in ["slack", "github"] {
+            core.replace_schedule(
+                run_id,
+                connector_ref,
+                Some("1970-01-01T00:00:00.000Z".to_string()),
+            )
+            .await;
+        }
+        assert!(matches!(
+            requests.try_recv(),
+            Err(tokio::sync::mpsc::error::TryRecvError::Empty)
+        ));
+
+        tokio::time::advance(EXPIRED_REFRESH_DEADLINE_RETRY_DELAY).await;
+        let request = recv_refresh_request(&mut requests).await;
+        assert_eq!(request.run_id, run_id);
+        assert_eq!(
+            request.connector_refs,
+            vec!["github".to_string(), "slack".to_string()]
+        );
+        wait_until_scheduled_refresh_task_clears(&core, run_id).await;
+        tokio::task::yield_now().await;
+        assert!(matches!(
+            requests.try_recv(),
+            Err(tokio::sync::mpsc::error::TryRecvError::Empty)
+        ));
     }
 
     #[tokio::test(start_paused = true)]
@@ -1242,10 +1400,7 @@ mod tests {
             .insert(run_id, active_run_policy_state(registry));
         for _ in 0..REFRESH_REQUEST_QUEUE_CAPACITY {
             core.request_tx
-                .try_send(RefreshRequest {
-                    run_id,
-                    connector_ref: "slack".to_string(),
-                })
+                .try_send(refresh_request(run_id, "slack"))
                 .expect("refresh queue should accept request");
         }
 
@@ -1290,10 +1445,7 @@ mod tests {
             .insert(run_id, active_run_policy_state(registry));
         for _ in 0..REFRESH_REQUEST_QUEUE_CAPACITY {
             core.request_tx
-                .try_send(RefreshRequest {
-                    run_id,
-                    connector_ref: "slack".to_string(),
-                })
+                .try_send(refresh_request(run_id, "slack"))
                 .expect("refresh queue should accept request");
         }
 
@@ -1311,7 +1463,10 @@ mod tests {
             queued += 1;
         }
         assert_eq!(queued, REFRESH_REQUEST_QUEUE_CAPACITY);
-        let policy = load_slack_policy(&registry_path).await;
+        let policy = wait_until_slack_policy(&registry_path, |policy| {
+            policy["unknownPolicy"] == json!("deny")
+        })
+        .await;
         assert_fail_closed_policy(&policy);
     }
 
@@ -1330,7 +1485,7 @@ mod tests {
         let run_id = RunId::nil();
         server.mock(|when, then| {
             when.method(POST).path(format!(
-                "/api/runners/runs/{run_id}/connector-network-policy"
+                "/api/runners/runs/{run_id}/connector-network-policies"
             ));
             then.status(500)
                 .header("content-type", "application/json")
@@ -1355,19 +1510,23 @@ mod tests {
         let run_id = RunId::nil();
         server.mock(|when, then| {
             when.method(POST).path(format!(
-                "/api/runners/runs/{run_id}/connector-network-policy"
+                "/api/runners/runs/{run_id}/connector-network-policies"
             ));
             then.status(200)
                 .header("content-type", "application/json")
                 .json_body(json!({
-                    "connectorRef": "github",
-                    "networkPolicy": {
-                        "allow": ["repos:read"],
-                        "deny": [],
-                        "ask": [],
-                        "unknownPolicy": "allow",
-                    },
-                    "nextRefreshAt": null,
+                    "refreshes": [
+                        {
+                            "connectorRef": "github",
+                            "networkPolicy": {
+                                "allow": ["repos:read"],
+                                "deny": [],
+                                "ask": [],
+                                "unknownPolicy": "allow",
+                            },
+                            "nextRefreshAt": null,
+                        },
+                    ],
                 }));
         });
 

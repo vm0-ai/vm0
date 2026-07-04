@@ -225,6 +225,12 @@ pub struct ConnectorPolicyRefreshResponse {
     pub next_refresh_at: Option<String>,
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectorPolicyRefreshBatchResponse {
+    pub refreshes: Vec<ConnectorPolicyRefreshResponse>,
+}
+
 /// Runner-derived manifest written to `guest-download`.
 ///
 /// This is intentionally separate from the API `StorageManifest`: `cached`,

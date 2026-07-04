@@ -1867,26 +1867,31 @@ const connectorNetworkPolicyInner$ = command(
       return authError;
     }
 
-    const [refresh] = await resolveActiveConnectorPolicyRefreshes(
+    const connectorRefs = [...new Set(body.data.connectorRefs)];
+    const refreshes = await resolveActiveConnectorPolicyRefreshes(
       db,
       {
         orgId: run.orgId,
         userId: run.userId,
         agentId: run.agentId,
       },
-      [body.data.connectorRef],
+      connectorRefs,
     );
     signal.throwIfAborted();
-    if (!refresh) {
-      return notFound(`Connector not found: ${body.data.connectorRef}`);
+    if (refreshes.length === 0) {
+      return notFound(`Connectors not found: ${connectorRefs.join(", ")}`);
     }
 
     return {
       status: 200 as const,
       body: {
-        connectorRef: refresh.connectorRef,
-        networkPolicy: refresh.networkPolicy,
-        nextRefreshAt: refresh.nextRefreshAt,
+        refreshes: refreshes.map((refresh) => {
+          return {
+            connectorRef: refresh.connectorRef,
+            networkPolicy: refresh.networkPolicy,
+            nextRefreshAt: refresh.nextRefreshAt,
+          };
+        }),
       },
     };
   },

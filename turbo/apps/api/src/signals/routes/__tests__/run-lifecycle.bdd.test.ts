@@ -4528,7 +4528,9 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     if (sameUserRefresh.status !== 200) {
       throw new Error("Expected same-user connector policy refresh to succeed");
     }
-    expect(sameUserRefresh.body.networkPolicy.deny).toContain("chat:write");
+    expect(sameUserRefresh.body.refreshes[0]?.networkPolicy.deny).toContain(
+      "chat:write",
+    );
     const otherUserRefresh = await api.requestRefreshRunnerConnectorPolicyAs(
       `Bearer ${memberRunnerKey.token}`,
       snapshotRun.runId,

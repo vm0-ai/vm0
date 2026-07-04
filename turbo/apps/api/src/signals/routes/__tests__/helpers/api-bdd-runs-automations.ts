@@ -422,11 +422,17 @@ export function createRunsAutomationsApi(context: TestContext) {
         ).refresh({
           headers: runnerHeaders(true),
           params: { runId },
-          body: { connectorRef },
+          body: { connectorRefs: [connectorRef] },
         }),
         [200],
       );
-      return response.body;
+      const [refresh] = response.body.refreshes;
+      if (!refresh) {
+        throw new Error(
+          `Expected refreshed connector policy for ${connectorRef}`,
+        );
+      }
+      return refresh;
     },
 
     async requestRefreshRunnerConnectorPolicyAs(
@@ -441,7 +447,7 @@ export function createRunsAutomationsApi(context: TestContext) {
         ).refresh({
           headers: authorization === undefined ? {} : { authorization },
           params: { runId },
-          body: { connectorRef },
+          body: { connectorRefs: [connectorRef] },
         }),
         statuses,
       );

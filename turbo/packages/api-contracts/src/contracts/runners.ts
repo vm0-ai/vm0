@@ -449,19 +449,23 @@ export const runnersJobClaimContract = c.router({
 export const runnersConnectorNetworkPolicyContract = c.router({
   refresh: {
     method: "POST",
-    path: "/api/runners/runs/:runId/connector-network-policy",
+    path: "/api/runners/runs/:runId/connector-network-policies",
     headers: authHeadersSchema,
     pathParams: z.object({
       runId: z.uuid(),
     }),
     body: z.object({
-      connectorRef: z.string().min(1).max(64),
+      connectorRefs: z.array(z.string().min(1).max(64)).min(1).max(256),
     }),
     responses: {
       200: z.object({
-        connectorRef: z.string(),
-        networkPolicy: networkPolicySchema,
-        nextRefreshAt: z.string().datetime({ offset: true }).nullable(),
+        refreshes: z.array(
+          z.object({
+            connectorRef: z.string(),
+            networkPolicy: networkPolicySchema,
+            nextRefreshAt: z.string().datetime({ offset: true }).nullable(),
+          }),
+        ),
       }),
       400: apiErrorSchema,
       401: apiErrorSchema,
@@ -469,7 +473,7 @@ export const runnersConnectorNetworkPolicyContract = c.router({
       404: apiErrorSchema,
       500: apiErrorSchema,
     },
-    summary: "Refresh one active run connector network policy",
+    summary: "Refresh active run connector network policies",
   },
 });
 

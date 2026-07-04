@@ -24,7 +24,7 @@ use crate::http::HttpClient;
 use crate::ids::RunId;
 use crate::run_cancellation::SharedRunCancellationMap;
 use crate::types::{
-    CompleteRequest, ConnectorPolicyRefreshResponse, ExecutionContext, HeartbeatState, Job,
+    CompleteRequest, ConnectorPolicyRefreshBatchResponse, ExecutionContext, HeartbeatState, Job,
     PollResponse, SandboxReuseResult,
 };
 use sandbox::SandboxId;
@@ -528,14 +528,14 @@ impl ApiClient {
         decode_api_json(resp, "realtime token").await
     }
 
-    pub(super) async fn refresh_connector_policy(
+    pub(super) async fn refresh_connector_policies(
         &self,
         run_id: RunId,
-        connector_ref: &str,
-    ) -> RunnerResult<ConnectorPolicyRefreshResponse> {
+        connector_refs: &[String],
+    ) -> RunnerResult<ConnectorPolicyRefreshBatchResponse> {
         let run_id = run_id.to_string();
         let resp = send_api(
-            self.connector_policy_refresh_request(&run_id, connector_ref),
+            self.connector_policy_refresh_request(&run_id, connector_refs),
             "connector policy refresh",
         )
         .await?;
@@ -547,17 +547,17 @@ impl ApiClient {
     fn connector_policy_refresh_request(
         &self,
         run_id: &str,
-        connector_ref: &str,
+        connector_refs: &[String],
     ) -> RequestBuilder {
         self.http
             .request_resolved_route(
-                routes::runners::runs::by_run_id::connector_network_policy::route(
-                    routes::runners::runs::by_run_id::connector_network_policy::Params { run_id },
+                routes::runners::runs::by_run_id::connector_network_policies::route(
+                    routes::runners::runs::by_run_id::connector_network_policies::Params { run_id },
                 ),
                 &self.token,
             )
             .timeout(CONNECTOR_POLICY_REFRESH_TIMEOUT)
-            .json(&serde_json::json!({ "connectorRef": connector_ref }))
+            .json(&serde_json::json!({ "connectorRefs": connector_refs }))
     }
 }
 
@@ -904,11 +904,25 @@ mod tests {
         let api = api_client_for_server(&server);
 
         let request = api
-            .connector_policy_refresh_request("00000000-0000-0000-0000-000000000001", "slack")
+            .connector_policy_refresh_request(
+                "00000000-0000-0000-0000-000000000001",
+                &["slack".to_string()],
+            )
             .build()
             .expect("connector policy refresh request should build");
 
         assert_eq!(request.timeout(), Some(&CONNECTOR_POLICY_REFRESH_TIMEOUT));
+        assert_eq!(
+            request.url().path(),
+            "/api/runners/runs/00000000-0000-0000-0000-000000000001/connector-network-policies"
+        );
+        assert_eq!(
+            request
+                .body()
+                .and_then(reqwest::Body::as_bytes)
+                .expect("request should include JSON body"),
+            br#"{"connectorRefs":["slack"]}"#
+        );
     }
 
     fn assert_api_error(err: RunnerError, expected: &str) {

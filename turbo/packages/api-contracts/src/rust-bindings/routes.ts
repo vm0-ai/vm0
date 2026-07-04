@@ -45,7 +45,7 @@ export const rustRouteBindings = [
       "runners",
       "runs",
       "by_run_id",
-      "connector_network_policy",
+      "connector_network_policies",
     ],
     rustConstName: "REFRESH",
   },
