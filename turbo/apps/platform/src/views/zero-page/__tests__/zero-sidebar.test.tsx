@@ -1294,6 +1294,97 @@ describe("zero sidebar", () => {
     expect(within(dialog).getByText("Support Agent")).toBeInTheDocument();
   });
 
+  it("shows chat thread title results in the picker behind the unified search switch", async () => {
+    prepareAgentTeam();
+    const defaultThread = createThread(EXISTING_THREAD_ID, "Incident notes");
+    const researchThread = createThread(
+      RESEARCH_THREAD_ID,
+      "Research kickoff",
+      {
+        agent: { id: RESEARCH_AGENT_ID, avatarUrl: null },
+      },
+    );
+    const supportThread = createThread(
+      INCIDENT_THREAD_ID,
+      "Support escalation",
+      {
+        agent: { id: SUPPORT_AGENT_ID, avatarUrl: null },
+        running: true,
+      },
+    );
+    mockSidebarThreadStory([defaultThread, researchThread, supportThread]);
+    context.mocks.api(chatThreadsContract.unreads, ({ respond }) => {
+      return respond(200, {
+        unreads: [
+          {
+            threadId: EXISTING_THREAD_ID,
+            unreadAt: "2026-03-10T00:05:00Z",
+          },
+        ],
+      });
+    });
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.AgentUnreadIndicators]: true,
+        [FeatureSwitchKey.ChatThreadUnifiedSearch]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(sidebar()).toBeInTheDocument();
+    });
+
+    fireEvent.keyDown(document.body, {
+      key: "a",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    const dialog = await screen.findByRole("dialog", { name: "Talk to" });
+    const search = within(dialog).getByPlaceholderText(
+      "Search agents and chats...",
+    );
+
+    await waitFor(() => {
+      expect(within(dialog).getByText("Incident notes")).toBeInTheDocument();
+      expect(
+        within(dialog).getByText("Support escalation"),
+      ).toBeInTheDocument();
+      expect(
+        within(agentRowByName(dialog, "Incident notes")).getByLabelText(
+          "Unread",
+        ),
+      ).toBeInTheDocument();
+      expect(
+        within(agentRowByName(dialog, "Support escalation")).getByLabelText(
+          "Running",
+        ),
+      ).toBeInTheDocument();
+    });
+
+    await fill(search, "research");
+
+    await waitFor(() => {
+      expect(within(dialog).getByText("Research kickoff")).toBeInTheDocument();
+      expect(
+        within(dialog).queryByText("Support escalation"),
+      ).not.toBeInTheDocument();
+    });
+
+    await fill(search, "support");
+    click(within(dialog).getByText("Support escalation"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Talk to" }),
+      ).not.toBeInTheDocument();
+      expect(document.title).toBe("Support escalation | VM0");
+    });
+  });
+
   it("opens the agent picker from the global shortcut while composer is focused", async () => {
     prepareAgentTeam();
 

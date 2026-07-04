@@ -177,19 +177,7 @@ const eventDrivenVisibleChatThreads$ = computed(
     const activeRunThreadIds = get(eventDrivenActiveRunChatThreadIds$);
 
     return threads.slice(0, maxItems).map((thread) => {
-      return {
-        id: thread.id,
-        title: thread.title,
-        agent: {
-          id: thread.agentId,
-          avatarUrl: null,
-        },
-        createdAt: thread.createdAt,
-        updatedAt: thread.updatedAt,
-        running: activeRunThreadIds.has(thread.id),
-        pinnedAt: thread.pinnedAt,
-        renamedAt: thread.renamedAt,
-      };
+      return eventDrivenThreadToListItem(thread, activeRunThreadIds);
     });
   },
 );
@@ -198,6 +186,34 @@ export const chatThreads$ = computed(
   async (get): Promise<ChatThreadListItem[]> => {
     get(reloadChatThreadsCounter$);
     return await get(eventDrivenVisibleChatThreads$);
+  },
+);
+
+function eventDrivenThreadToListItem(
+  thread: EventDrivenChatThread,
+  activeRunThreadIds: ReadonlySet<string>,
+): ChatThreadListItem {
+  return {
+    id: thread.id,
+    title: thread.title,
+    agent: {
+      id: thread.agentId,
+      avatarUrl: null,
+    },
+    createdAt: thread.createdAt,
+    updatedAt: thread.updatedAt,
+    running: activeRunThreadIds.has(thread.id),
+    pinnedAt: thread.pinnedAt,
+    renamedAt: thread.renamedAt,
+  };
+}
+
+export const allChatThreadListItems$ = computed(
+  async (get): Promise<ChatThreadListItem[]> => {
+    const activeRunThreadIds = get(eventDrivenActiveRunChatThreadIds$);
+    return (await get(eventDrivenChatThreads$)).map((thread) => {
+      return eventDrivenThreadToListItem(thread, activeRunThreadIds);
+    });
   },
 );
 
