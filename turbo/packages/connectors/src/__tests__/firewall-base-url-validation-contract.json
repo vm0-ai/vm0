@@ -1,0 +1,136 @@
+{
+  "baseUrlValidationCases": [
+    {
+      "category": "valid",
+      "name": "static https base",
+      "base": "https://api.example.com",
+      "expectedValid": true
+    },
+    {
+      "category": "valid",
+      "name": "static http base",
+      "base": "http://api.example.com",
+      "expectedValid": true
+    },
+    {
+      "category": "valid",
+      "name": "static base with path",
+      "base": "https://api.example.com/v1",
+      "expectedValid": true
+    },
+    {
+      "category": "valid",
+      "name": "parameterized host base",
+      "base": "https://{sub}.example.com",
+      "expectedValid": true
+    },
+    {
+      "category": "valid",
+      "name": "leftmost star-greedy host parameter",
+      "base": "https://{sub*}.example.com",
+      "expectedValid": true
+    },
+    {
+      "category": "valid",
+      "name": "parameterized path base",
+      "base": "https://api.example.com/v1/{org}",
+      "expectedValid": true
+    },
+    {
+      "category": "query-fragment",
+      "name": "query string is invalid",
+      "base": "https://api.example.com?token=1",
+      "expectedValid": false
+    },
+    {
+      "category": "query-fragment",
+      "name": "fragment is invalid",
+      "base": "https://api.example.com#section",
+      "expectedValid": false
+    },
+    {
+      "category": "authority",
+      "name": "userinfo is invalid",
+      "base": "https://user:pass@api.example.com",
+      "expectedValid": false
+    },
+    {
+      "category": "authority",
+      "name": "empty port is invalid",
+      "base": "https://api.example.com:",
+      "expectedValid": false
+    },
+    {
+      "category": "authority",
+      "name": "non-numeric port is invalid",
+      "base": "https://api.example.com:bad",
+      "expectedValid": false
+    },
+    {
+      "category": "scheme",
+      "name": "unsupported scheme is invalid",
+      "base": "ftp://api.example.com",
+      "expectedValid": false
+    },
+    {
+      "category": "raw-syntax",
+      "name": "backslash is invalid",
+      "base": "https://api.example.com\\v1",
+      "expectedValid": false
+    },
+    {
+      "category": "raw-syntax",
+      "name": "raw path whitespace is invalid",
+      "base": "https://api.example.com/pa th",
+      "expectedValid": false
+    },
+    {
+      "category": "raw-syntax",
+      "name": "raw control character is invalid",
+      "base": "https://api.example.com/pa\u0000th",
+      "expectedValid": false
+    },
+    {
+      "category": "authority",
+      "name": "raw wildcard host is invalid",
+      "base": "https://*.example.com",
+      "expectedValid": false
+    },
+    {
+      "category": "authority",
+      "name": "percent-encoded authority syntax is invalid",
+      "base": "https://api%2eexample.com",
+      "expectedValid": false
+    },
+    {
+      "category": "parameters",
+      "name": "duplicate host parameter name is invalid",
+      "base": "https://{sub}.{sub}.example.com",
+      "expectedValid": false
+    },
+    {
+      "category": "parameters",
+      "name": "host without static segment is invalid",
+      "base": "https://{a}.{b}",
+      "expectedValid": false
+    },
+    {
+      "category": "parameters",
+      "name": "non-leftmost greedy host parameter is invalid",
+      "base": "https://api.{sub+}.example.com",
+      "expectedValid": false
+    },
+    {
+      "category": "parameters",
+      "name": "greedy path parameter is invalid",
+      "base": "https://api.example.com/{path+}",
+      "expectedValid": false
+    },
+    {
+      "category": "parameters",
+      "name": "duplicate host and path parameter name is invalid",
+      "base": "https://{org}.example.com/{org}",
+      "expectedValid": false
+    }
+  ]
+}
