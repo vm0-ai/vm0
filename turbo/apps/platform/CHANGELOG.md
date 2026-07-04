@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.548.0](https://github.com/vm0-ai/vm0/compare/app-v0.547.2...app-v0.548.0) (2026-07-04)
+
+
+### Features
+
+* add codex reset controls ([#20119](https://github.com/vm0-ai/vm0/issues/20119)) ([c1f9d22](https://github.com/vm0-ai/vm0/commit/c1f9d22b253bdeb60e4436e13a90793553865230))
+* enable gmail relationship backfill from memory ([#20114](https://github.com/vm0-ai/vm0/issues/20114)) ([fd84afd](https://github.com/vm0-ai/vm0/commit/fd84afd077a35a750f4fa01abb6bba87b207f02b))
+
+
+### Bug Fixes
+
+* preserve presentation html backgrounds in pptx export ([#20123](https://github.com/vm0-ai/vm0/issues/20123)) ([67a03cf](https://github.com/vm0-ai/vm0/commit/67a03cf835bc5e0091900810c053b82122f1405f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.152.0
+    * @vm0/core bumped to 8.396.2
+
 ## [0.547.2](https://github.com/vm0-ai/vm0/compare/app-v0.547.1...app-v0.547.2) (2026-07-04)
 
 
