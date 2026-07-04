@@ -12,6 +12,7 @@ import {
   type MemoryDevRefreshResponse,
 } from "@vm0/api-contracts/contracts/zero-memory-dev-refresh";
 import {
+  type GmailRelationshipBackfillRequest,
   type GmailRelationshipStatusResponse,
   zeroRelationshipsContract,
   type RelationshipSearchResponse,
@@ -30,6 +31,14 @@ export type MemoryRelationshipFilter =
 export type MemoryTab = "updates" | "relationships" | "raw";
 
 export const MEMORY_ACTIVITY_RECENT_LIMIT = 7;
+
+function defaultGmailRelationshipBackfillRequest(): GmailRelationshipBackfillRequest {
+  return {
+    days: 180,
+    includeArchived: true,
+    includeSent: true,
+  };
+}
 
 const internalSelectedMemoryFilePath$ = state<string | null>(null);
 
@@ -59,6 +68,11 @@ const internalMemoryRelationshipFilter$ =
 const internalSelectedMemoryRelationshipId$ = state<string | null>(null);
 const internalMemoryRelationshipsReload$ = state(0);
 const internalGmailRelationshipStatusReload$ = state(0);
+const internalGmailRelationshipBackfillDialogOpen$ = state(false);
+const internalGmailRelationshipBackfillRequest$ =
+  state<GmailRelationshipBackfillRequest>(
+    defaultGmailRelationshipBackfillRequest(),
+  );
 
 export const memoryRelationshipSearch$ = computed((get) => {
   return get(internalMemoryRelationshipSearch$);
@@ -101,6 +115,34 @@ export const reloadGmailRelationshipStatus$ = command(({ set }) => {
     return current + 1;
   });
 });
+
+export const gmailRelationshipBackfillDialogOpen$ = computed((get) => {
+  return get(internalGmailRelationshipBackfillDialogOpen$);
+});
+
+export const setGmailRelationshipBackfillDialogOpen$ = command(
+  ({ set }, open: boolean) => {
+    set(internalGmailRelationshipBackfillDialogOpen$, open);
+    if (open) {
+      set(
+        internalGmailRelationshipBackfillRequest$,
+        defaultGmailRelationshipBackfillRequest(),
+      );
+    }
+  },
+);
+
+export const gmailRelationshipBackfillRequest$ = computed((get) => {
+  return get(internalGmailRelationshipBackfillRequest$);
+});
+
+export const updateGmailRelationshipBackfillRequest$ = command(
+  ({ set }, patch: Partial<GmailRelationshipBackfillRequest>) => {
+    set(internalGmailRelationshipBackfillRequest$, (current) => {
+      return { ...current, ...patch };
+    });
+  },
+);
 
 const memoryActivityReload$ = state(0);
 
@@ -177,10 +219,17 @@ export const gmailRelationshipStatus$ = computed(
   },
 );
 
-export const enableGmailRelationships$ = command(
-  async ({ get, set }, signal: AbortSignal): Promise<void> => {
+export const startGmailRelationshipBackfill$ = command(
+  async (
+    { get, set },
+    options: GmailRelationshipBackfillRequest,
+    signal: AbortSignal,
+  ): Promise<void> => {
     const client = get(zeroClient$)(zeroRelationshipsContract);
-    await accept(client.gmailEnable({ fetchOptions: { signal } }), [200]);
+    await accept(
+      client.gmailBackfill({ body: options, fetchOptions: { signal } }),
+      [200],
+    );
     signal.throwIfAborted();
     toast.success("Gmail relationship backfill started");
     set(reloadGmailRelationshipStatus$);

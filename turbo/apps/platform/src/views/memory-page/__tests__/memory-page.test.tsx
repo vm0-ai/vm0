@@ -62,6 +62,22 @@ function getButtonContaining(text: string): HTMLElement {
   return button;
 }
 
+function getBackfillDialogButtonContaining(text: string): HTMLElement {
+  const dialog = screen
+    .getByText("Backfill Gmail relationships")
+    .closest('[role="dialog"]');
+  if (!dialog) {
+    throw new Error("Could not find Gmail backfill dialog");
+  }
+  const button = queryAllByRoleFast("button", dialog).find((el) => {
+    return el.textContent?.includes(text);
+  });
+  if (!button) {
+    throw new Error(`Could not find dialog button containing: ${text}`);
+  }
+  return button;
+}
+
 function gmailRelationshipStatus(
   overrides: Partial<GmailRelationshipStatusResponse> = {},
 ): GmailRelationshipStatusResponse {
@@ -589,23 +605,31 @@ describe("memory page", () => {
     context.mocks.api(zeroRelationshipsContract.gmailStatus, ({ respond }) => {
       return respond(200, status);
     });
-    context.mocks.api(zeroRelationshipsContract.gmailEnable, ({ respond }) => {
-      status = gmailRelationshipStatus({
-        enabled: true,
-        watchEnabled: true,
-        backfill: {
-          status: "pending",
-          estimatedTotal: null,
-          scannedCount: 0,
-          enqueuedCount: 0,
-          pendingSyncJobs: 0,
-          lastError: null,
-          updatedAt: `${localDateDaysAgo(0)}T12:00:00Z`,
-          completedAt: null,
-        },
-      });
-      return respond(200, status);
-    });
+    context.mocks.api(
+      zeroRelationshipsContract.gmailBackfill,
+      ({ body, respond }) => {
+        expect(body).toStrictEqual({
+          days: 180,
+          includeArchived: true,
+          includeSent: true,
+        });
+        status = gmailRelationshipStatus({
+          enabled: true,
+          watchEnabled: true,
+          backfill: {
+            status: "pending",
+            estimatedTotal: null,
+            scannedCount: 0,
+            enqueuedCount: 0,
+            pendingSyncJobs: 0,
+            lastError: null,
+            updatedAt: `${localDateDaysAgo(0)}T12:00:00Z`,
+            completedAt: null,
+          },
+        });
+        return respond(200, status);
+      },
+    );
 
     detachedSetupPage({
       context,
@@ -627,6 +651,12 @@ describe("memory page", () => {
     });
 
     click(getButtonContaining("Enable Gmail"));
+    await waitFor(() => {
+      expect(
+        screen.getByText("Backfill Gmail relationships"),
+      ).toBeInTheDocument();
+    });
+    click(getBackfillDialogButtonContaining("Enable Gmail"));
 
     await waitFor(() => {
       expect(
@@ -664,23 +694,31 @@ describe("memory page", () => {
     context.mocks.api(zeroRelationshipsContract.gmailStatus, ({ respond }) => {
       return respond(200, status);
     });
-    context.mocks.api(zeroRelationshipsContract.gmailEnable, ({ respond }) => {
-      status = gmailRelationshipStatus({
-        enabled: true,
-        watchEnabled: true,
-        backfill: {
-          status: "pending",
-          estimatedTotal: null,
-          scannedCount: 0,
-          enqueuedCount: 0,
-          pendingSyncJobs: 0,
-          lastError: null,
-          updatedAt: `${localDateDaysAgo(0)}T12:00:00Z`,
-          completedAt: null,
-        },
-      });
-      return respond(200, status);
-    });
+    context.mocks.api(
+      zeroRelationshipsContract.gmailBackfill,
+      ({ body, respond }) => {
+        expect(body).toStrictEqual({
+          days: 180,
+          includeArchived: true,
+          includeSent: true,
+        });
+        status = gmailRelationshipStatus({
+          enabled: true,
+          watchEnabled: true,
+          backfill: {
+            status: "pending",
+            estimatedTotal: null,
+            scannedCount: 0,
+            enqueuedCount: 0,
+            pendingSyncJobs: 0,
+            lastError: null,
+            updatedAt: `${localDateDaysAgo(0)}T12:00:00Z`,
+            completedAt: null,
+          },
+        });
+        return respond(200, status);
+      },
+    );
 
     detachedSetupPage({
       context,
@@ -702,6 +740,12 @@ describe("memory page", () => {
     });
 
     click(getButtonContaining("Start backfill"));
+    await waitFor(() => {
+      expect(
+        screen.getByText("Backfill Gmail relationships"),
+      ).toBeInTheDocument();
+    });
+    click(getBackfillDialogButtonContaining("Start backfill"));
 
     await waitFor(() => {
       expect(

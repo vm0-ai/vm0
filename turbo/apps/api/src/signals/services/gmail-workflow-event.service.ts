@@ -1549,6 +1549,7 @@ async function dispatchGmailNewMessageHistoryEvent(args: {
         historyId: args.event.historyId,
         messageId: message.messageId,
         threadId: message.threadId,
+        direction: "received",
         from: message.from,
         to: message.to,
         cc: message.cc,

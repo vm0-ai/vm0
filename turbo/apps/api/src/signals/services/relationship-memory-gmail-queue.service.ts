@@ -10,11 +10,14 @@ import type { Db, ReadonlyDb } from "../external/db";
 import { nowDate } from "../external/time";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 
+export type GmailRelationshipMessageDirection = "received" | "sent";
+
 interface GmailRelationshipMessageBase {
   readonly mailboxEmail: string;
   readonly historyId: string;
   readonly messageId: string;
   readonly threadId: string | null;
+  readonly direction: GmailRelationshipMessageDirection | null;
   readonly from: string | null;
   readonly to: readonly string[];
   readonly cc: readonly string[];
@@ -106,34 +109,52 @@ function displayNameFromDomain(domain: string): string {
 export function relationshipTargets(
   message: GmailRelationshipMessageBase,
 ): readonly RelationshipTarget[] {
-  const sender = parseEmailAddress(message.from);
-  if (!sender || isSystemSender(sender)) {
-    return [];
-  }
+  const addresses =
+    message.direction === "sent"
+      ? [...message.to, ...message.cc]
+      : [message.from];
+  const targets = new Map<string, RelationshipTarget>();
 
-  const personSummary = `${sender.displayName} has recent Gmail interactions with the user.`;
-  const organizationName = displayNameFromDomain(sender.domain);
+  for (const value of addresses) {
+    const address = parseEmailAddress(value);
+    if (!address || isSystemSender(address)) {
+      continue;
+    }
 
-  return [
-    {
+    if (address.email === normalizeEmail(message.mailboxEmail)) {
+      continue;
+    }
+
+    const personSummary =
+      message.direction === "sent"
+        ? `${address.displayName} received recent Gmail messages from the user.`
+        : `${address.displayName} has recent Gmail interactions with the user.`;
+    const organizationName = displayNameFromDomain(address.domain);
+
+    targets.set(`person:${address.email}`, {
       type: "person",
-      identityKey: `person:${sender.email}`,
-      displayName: sender.displayName,
-      primaryEmail: sender.email,
-      domain: sender.domain,
+      identityKey: `person:${address.email}`,
+      displayName: address.displayName,
+      primaryEmail: address.email,
+      domain: address.domain,
       relationshipType: "External contact",
       fallbackSummary: personSummary,
-    },
-    {
+    });
+    targets.set(`organization:${address.domain}`, {
       type: "organization",
-      identityKey: `organization:${sender.domain}`,
+      identityKey: `organization:${address.domain}`,
       displayName: organizationName,
       primaryEmail: null,
-      domain: sender.domain,
+      domain: address.domain,
       relationshipType: "Organization",
       fallbackSummary: `${organizationName} appears in recent Gmail interactions.`,
-    },
-  ];
+    });
+  }
+
+  if (targets.size === 0) {
+    return [];
+  }
+  return [...targets.values()];
 }
 
 export async function relationshipMemoryFeatureEnabled(
@@ -183,6 +204,7 @@ export async function enqueueGmailRelationshipRefreshJob(
     historyId: args.message.historyId,
     messageId: args.message.messageId,
     threadId: args.message.threadId,
+    direction: args.message.direction,
     from: args.message.from,
     to: args.message.to,
     cc: args.message.cc,

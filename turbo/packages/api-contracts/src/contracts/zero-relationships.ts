@@ -92,6 +92,12 @@ export const gmailRelationshipStatusResponseSchema = z.object({
   backfill: gmailRelationshipBackfillSchema,
 });
 
+export const gmailRelationshipBackfillRequestSchema = z.object({
+  days: z.union([z.literal(30), z.literal(90), z.literal(180), z.literal(365)]),
+  includeArchived: z.boolean(),
+  includeSent: z.boolean(),
+});
+
 export type RelationshipRecord = z.infer<typeof relationshipRecordSchema>;
 export type RelationshipResolveResponse = z.infer<
   typeof relationshipResolveResponseSchema
@@ -101,6 +107,9 @@ export type RelationshipSearchResponse = z.infer<
 >;
 export type GmailRelationshipStatusResponse = z.infer<
   typeof gmailRelationshipStatusResponseSchema
+>;
+export type GmailRelationshipBackfillRequest = z.infer<
+  typeof gmailRelationshipBackfillRequestSchema
 >;
 
 const resolveQuerySchema = z
@@ -144,6 +153,20 @@ export const zeroRelationshipsContract = c.router({
       500: apiErrorSchema,
     },
     summary: "Enable Gmail relationship memory and start backfill",
+  },
+  gmailBackfill: {
+    method: "POST",
+    path: "/api/zero/relationships/gmail/backfill",
+    headers: authHeadersSchema,
+    body: gmailRelationshipBackfillRequestSchema,
+    responses: {
+      200: gmailRelationshipStatusResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Start or restart Gmail relationship memory backfill",
   },
   resolve: {
     method: "GET",

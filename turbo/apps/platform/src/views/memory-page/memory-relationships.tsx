@@ -11,22 +11,43 @@ import {
   IconUser,
 } from "@tabler/icons-react";
 import type {
+  GmailRelationshipBackfillRequest,
   GmailRelationshipStatusResponse,
   RelationshipRecord,
 } from "@vm0/api-contracts/contracts/zero-relationships";
 import { Button, cn, Input } from "@vm0/ui";
+import { Checkbox } from "@vm0/ui/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@vm0/ui/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@vm0/ui/components/ui/select";
 
 import {
-  enableGmailRelationships$,
+  gmailRelationshipBackfillDialogOpen$,
+  gmailRelationshipBackfillRequest$,
   gmailRelationshipStatus$,
   memoryRelationshipFilter$,
   memoryRelationshipSearch$,
   memoryRelationships$,
   reloadGmailRelationshipStatus$,
   selectedMemoryRelationshipId$,
+  setGmailRelationshipBackfillDialogOpen$,
   setMemoryRelationshipFilter$,
   setMemoryRelationshipSearch$,
   setSelectedMemoryRelationshipId$,
+  startGmailRelationshipBackfill$,
+  updateGmailRelationshipBackfillRequest$,
   type MemoryRelationshipFilter,
 } from "../../signals/memory-page/memory-signals.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -43,6 +64,13 @@ const RELATIONSHIP_FILTERS: readonly {
   { value: "organizations", label: "Organizations" },
   { value: "open-loops", label: "Open loops" },
 ];
+
+const GMAIL_BACKFILL_DAY_OPTIONS = [
+  { value: 30, label: "Last 30 days" },
+  { value: 90, label: "Last 90 days" },
+  { value: 180, label: "Last 180 days" },
+  { value: 365, label: "Last 365 days" },
+] as const;
 
 function formatShortDate(value: string | null): string {
   if (!value) {
@@ -395,10 +423,10 @@ function gmailRelationshipStatusText(
 
 function gmailRelationshipEnableLabel(
   status: GmailRelationshipStatusResponse,
-  enabling: boolean,
+  starting: boolean,
 ): string {
-  if (enabling) {
-    return "Enabling";
+  if (starting) {
+    return "Starting";
   }
   if (!status.enabled) {
     return "Enable Gmail";
@@ -406,25 +434,210 @@ function gmailRelationshipEnableLabel(
   if (status.backfill.status === "failed") {
     return "Retry backfill";
   }
+  if (status.backfill.status === "done") {
+    return "Backfill again";
+  }
   return "Start backfill";
 }
 
-function canEnableGmailRelationships(
+function canStartGmailBackfill(
   status: GmailRelationshipStatusResponse,
 ): boolean {
   return (
     !status.enabled ||
     status.backfill.status === "idle" ||
-    status.backfill.status === "failed"
+    status.backfill.status === "failed" ||
+    status.backfill.status === "done"
+  );
+}
+
+function GmailBackfillOptionsFields() {
+  const options = useGet(gmailRelationshipBackfillRequest$);
+  const updateOptions = useSet(updateGmailRelationshipBackfillRequest$);
+
+  return (
+    <div className="grid gap-4">
+      <div className="grid gap-2">
+        <label
+          htmlFor="gmail-relationship-backfill-days"
+          className="text-sm font-medium text-foreground"
+        >
+          Mail range
+        </label>
+        <Select
+          value={String(options.days)}
+          onValueChange={(value) => {
+            updateOptions({
+              days: Number(value) as GmailRelationshipBackfillRequest["days"],
+            });
+          }}
+        >
+          <SelectTrigger id="gmail-relationship-backfill-days" className="h-9">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {GMAIL_BACKFILL_DAY_OPTIONS.map((option) => {
+              return (
+                <SelectItem key={option.value} value={String(option.value)}>
+                  {option.label}
+                </SelectItem>
+              );
+            })}
+          </SelectContent>
+        </Select>
+      </div>
+      <label className="flex items-center gap-3 text-sm text-foreground">
+        <Checkbox
+          checked={options.includeArchived}
+          onCheckedChange={(checked) => {
+            updateOptions({ includeArchived: checked === true });
+          }}
+        />
+        <span>Include archived mail</span>
+      </label>
+      <label className="flex items-center gap-3 text-sm text-foreground">
+        <Checkbox
+          checked={options.includeSent}
+          onCheckedChange={(checked) => {
+            updateOptions({ includeSent: checked === true });
+          }}
+        />
+        <span>Include sent mail</span>
+      </label>
+    </div>
+  );
+}
+
+function GmailRelationshipBackfillDialog({
+  actionLabel,
+  loading,
+  onOpenChange,
+  onSubmit,
+  open,
+}: {
+  readonly actionLabel: string;
+  readonly loading: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+  readonly onSubmit: (options: GmailRelationshipBackfillRequest) => void;
+  readonly open: boolean;
+}) {
+  const options = useGet(gmailRelationshipBackfillRequest$);
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!loading) {
+          onOpenChange(nextOpen);
+        }
+      }}
+    >
+      <DialogContent className="max-w-md">
+        <form
+          className="grid gap-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            onSubmit(options);
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>Backfill Gmail relationships</DialogTitle>
+            <DialogDescription>
+              Choose the Gmail range for this backfill run.
+            </DialogDescription>
+          </DialogHeader>
+          <GmailBackfillOptionsFields />
+          <DialogFooter className="gap-2 sm:gap-2 sm:space-x-0">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={loading}
+              onClick={() => {
+                onOpenChange(false);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={loading} className="gap-2">
+              {loading ? (
+                <IconLoader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <IconMail className="h-4 w-4" />
+              )}
+              <span>{actionLabel}</span>
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function GmailRelationshipStatusActions({
+  actionLabel,
+  onOpenBackfillDialog,
+  onRefreshStatus,
+  starting,
+  status,
+}: {
+  readonly actionLabel: string;
+  readonly onOpenBackfillDialog: () => void;
+  readonly onRefreshStatus: () => void;
+  readonly starting: boolean;
+  readonly status: GmailRelationshipStatusResponse;
+}) {
+  if (!status.connectorConnected) {
+    return (
+      <Button asChild variant="outline" size="sm" className="h-8 text-xs">
+        <a href="/connectors">Connect Gmail</a>
+      </Button>
+    );
+  }
+
+  return (
+    <>
+      {canStartGmailBackfill(status) ? (
+        <Button
+          type="button"
+          size="sm"
+          className="h-8 gap-1.5 px-2.5 text-xs"
+          disabled={starting}
+          onClick={onOpenBackfillDialog}
+        >
+          {starting ? (
+            <IconLoader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <IconMail className="h-3.5 w-3.5" />
+          )}
+          <span>{actionLabel}</span>
+        </Button>
+      ) : null}
+      {status.enabled ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-8 gap-1.5 px-2.5 text-xs"
+          onClick={onRefreshStatus}
+        >
+          <IconRefresh className="h-3.5 w-3.5" />
+          <span>Refresh</span>
+        </Button>
+      ) : null}
+    </>
   );
 }
 
 function GmailRelationshipStatusPanel() {
   const statusLoadable = useLoadable(gmailRelationshipStatus$);
-  const [enableLoadable, enable] = useLoadableSet(enableGmailRelationships$);
+  const [backfillLoadable, startBackfill] = useLoadableSet(
+    startGmailRelationshipBackfill$,
+  );
   const reloadStatus = useSet(reloadGmailRelationshipStatus$);
   const pageSignal = useGet(pageSignal$);
-  const enabling = enableLoadable.state === "loading";
+  const backfillDialogOpen = useGet(gmailRelationshipBackfillDialogOpen$);
+  const setBackfillDialogOpen = useSet(setGmailRelationshipBackfillDialogOpen$);
+  const starting = backfillLoadable.state === "loading";
 
   if (statusLoadable.state === "loading") {
     return (
@@ -454,7 +667,7 @@ function GmailRelationshipStatusPanel() {
 
   const status = statusLoadable.data;
   const backfillFailed = status.backfill.status === "failed";
-  const showEnableAction = canEnableGmailRelationships(status);
+  const backfillActionLabel = gmailRelationshipEnableLabel(status, starting);
 
   return (
     <div className="flex min-h-16 flex-col gap-3 border-b border-border/70 bg-muted/20 px-3 py-3 md:flex-row md:items-center md:justify-between">
@@ -490,41 +703,32 @@ function GmailRelationshipStatusPanel() {
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-2">
-        {!status.connectorConnected ? (
-          <Button asChild variant="outline" size="sm" className="h-8 text-xs">
-            <a href="/connectors">Connect Gmail</a>
-          </Button>
-        ) : showEnableAction ? (
-          <Button
-            type="button"
-            size="sm"
-            className="h-8 gap-1.5 px-2.5 text-xs"
-            disabled={enabling}
-            onClick={() => {
-              detach(enable(pageSignal), Reason.DomCallback);
-            }}
-          >
-            {enabling ? (
-              <IconLoader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <IconMail className="h-3.5 w-3.5" />
-            )}
-            <span>{gmailRelationshipEnableLabel(status, enabling)}</span>
-          </Button>
-        ) : (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="h-8 gap-1.5 px-2.5 text-xs"
-            onClick={() => {
-              reloadStatus();
-            }}
-          >
-            <IconRefresh className="h-3.5 w-3.5" />
-            <span>Refresh</span>
-          </Button>
-        )}
+        <GmailRelationshipStatusActions
+          actionLabel={backfillActionLabel}
+          starting={starting}
+          status={status}
+          onOpenBackfillDialog={() => {
+            setBackfillDialogOpen(true);
+          }}
+          onRefreshStatus={() => {
+            reloadStatus();
+          }}
+        />
+        <GmailRelationshipBackfillDialog
+          actionLabel={backfillActionLabel}
+          loading={starting}
+          open={backfillDialogOpen}
+          onOpenChange={setBackfillDialogOpen}
+          onSubmit={(options) => {
+            detach(
+              (async () => {
+                await startBackfill(options, pageSignal);
+                setBackfillDialogOpen(false);
+              })(),
+              Reason.DomCallback,
+            );
+          }}
+        />
       </div>
     </div>
   );

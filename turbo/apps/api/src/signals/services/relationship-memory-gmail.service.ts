@@ -88,9 +88,14 @@ function transientBodyExcerptFromMessage(
   return text ? truncate(text, MAX_TRANSIENT_BODY_EXCERPT_LENGTH) : null;
 }
 
-function fallbackInteractionSummary(target: RelationshipTarget): string {
+function fallbackInteractionSummary(
+  target: RelationshipTarget,
+  message: RelationshipMemoryMessage,
+): string {
   return truncate(
-    `${target.displayName} sent a Gmail message.`,
+    message.direction === "sent"
+      ? `The user sent ${target.displayName} a Gmail message.`
+      : `${target.displayName} sent a Gmail message.`,
     MAX_INTERACTION_SUMMARY_LENGTH,
   );
 }
@@ -126,6 +131,7 @@ async function extractRelationshipMemory(args: {
           "Return strict JSON only.",
           "Allowed item kinds: key_fact, preference, open_loop.",
           "Paraphrase; do not return direct quotes, raw email text, or HTML.",
+          "Use gmail.direction: sent means the user sent the message; received means the user received it.",
           "Every item must be directly supported by the email.",
           "Do not invent facts. If there is no durable memory, return an empty items array.",
         ].join("\n"),
@@ -142,6 +148,7 @@ async function extractRelationshipMemory(args: {
               existingSummary: args.existingSummary,
             },
             gmail: {
+              direction: args.message.direction ?? "unknown",
               from: args.message.from,
               to: args.message.to,
               cc: args.message.cc,
@@ -408,7 +415,7 @@ async function recordInteraction(args: {
       snippet: args.snippet,
       occurredAt: args.occurredAt,
       metadata: {
-        direction: "received",
+        direction: args.message.direction ?? "unknown",
         participants: [
           args.message.from,
           ...args.message.to,
@@ -457,7 +464,12 @@ async function loadMessageForRelationshipExtraction(
     signal,
   });
   signal.throwIfAborted();
-  if (!context || !messageIsInbound(context)) {
+  if (!context) {
+    return null;
+  }
+  const direction =
+    message.direction ?? (messageIsInbound(context) ? "received" : null);
+  if (!direction) {
     return null;
   }
 
@@ -466,6 +478,7 @@ async function loadMessageForRelationshipExtraction(
     historyId: message.historyId,
     messageId: context.messageId,
     threadId: context.threadId,
+    direction,
     from: context.from ?? message.from,
     to: context.to.length > 0 ? context.to : message.to,
     cc: context.cc.length > 0 ? context.cc : message.cc,
@@ -528,7 +541,8 @@ async function processGmailRelationshipRefreshJob(
       });
     }
     const interactionSummary =
-      extraction.interactionSummary ?? fallbackInteractionSummary(target);
+      extraction.interactionSummary ??
+      fallbackInteractionSummary(target, message);
 
     const state = await upsertRelationshipState({
       db,

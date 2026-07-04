@@ -78,6 +78,7 @@ export interface RelationshipSyncJobPayload {
     readonly historyId: string;
     readonly messageId: string;
     readonly threadId: string | null;
+    readonly direction?: "received" | "sent" | null;
     readonly from: string | null;
     readonly to: readonly string[];
     readonly cc: readonly string[];
