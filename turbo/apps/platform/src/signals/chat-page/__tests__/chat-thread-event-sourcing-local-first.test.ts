@@ -381,7 +381,9 @@ describe("chat thread event sourcing local-first list", () => {
     });
 
     const dataSource = createIdbCachedDataSource(OPTIMISTIC_THREAD_ID);
-    await expect(context.store.get(dataSource.getThread$)).resolves.toEqual({
+    await expect(
+      context.store.get(dataSource.getThread$),
+    ).resolves.toStrictEqual({
       id: OPTIMISTIC_THREAD_ID,
       title: null,
       agentId: AGENT_ID,
@@ -443,7 +445,10 @@ describe("chat thread event sourcing local-first list", () => {
     });
 
     await vi.waitFor(() => {
-      expect(idbThreadEventStoreMock.upsertEvents).toHaveBeenCalled();
+      expect(idbThreadEventStoreMock.upsertEvents).toHaveBeenCalledWith(
+        [createdEvent],
+        expect.any(AbortSignal),
+      );
     });
     await expect(
       context.store.get(sidebarChatThreadIds$),

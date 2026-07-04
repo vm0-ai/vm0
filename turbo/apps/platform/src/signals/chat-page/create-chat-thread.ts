@@ -2624,9 +2624,6 @@ function createSendMessage(deps: SendMessageDeps) {
     ) => {
       L.debug("sendMessage$ start", { threadId, promptLen: prompt.length });
       if (get(optimisticCreateUnsettled$)) {
-        L.debug("sendMessage$ optimistic thread create unsettled, abort", {
-          threadId,
-        });
         return;
       }
       const thread = await get(threadData$);
@@ -2731,10 +2728,6 @@ function createSendMessage(deps: SendMessageDeps) {
       }
 
       set(reloadChatThreads$);
-      L.debug("sendMessage$ done", {
-        threadId,
-        runId: sendResult.body.runId,
-      });
     },
   );
 }

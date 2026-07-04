@@ -87,10 +87,16 @@ describe("chat run queue", () => {
     });
   });
 
-  it("recalls a queued follow-up while an optimistic new thread settles", async () => {
+  it("does not queue follow-ups while an optimistic new thread create is unsettled", async () => {
     const user = userEvent.setup({ delay: null });
     const sendGate = context.mocks.deferred<void>();
-    mockChatLifecycle(context, { sendGate: sendGate.promise });
+    const queuedBodies: QueuedMessageCapture[] = [];
+    mockChatLifecycle(context, {
+      sendGate: sendGate.promise,
+      onQueuedMessageAppend: (body) => {
+        queuedBodies.push(body);
+      },
+    });
 
     detachedSetupPage({ context, path: AGENT_CHAT_PATH });
 
@@ -104,98 +110,17 @@ describe("chat run queue", () => {
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
     });
 
-    await sendQueuedMessage(user, "First queued follow-up");
-    await expectQueuedMessages(["First queued follow-up"]);
-
-    click(screen.getAllByLabelText("Remove queued message")[0]!);
+    await sendQueuedMessage(user, "Blocked follow-up");
 
     await waitFor(() => {
-      expect(screen.getByPlaceholderText(/Type your next message/)).toHaveValue(
-        "First queued follow-up",
-      );
+      expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();
+      expect(queuedBodies).toHaveLength(0);
     });
 
     sendGate.resolve();
 
     await waitFor(() => {
       expect(screen.getByText("First new-thread message")).toBeInTheDocument();
-    });
-  });
-
-  it("keeps optimistic new-thread follow-ups queued after the first send resolves", async () => {
-    const user = userEvent.setup({ delay: null });
-    const sendGate = context.mocks.deferred<void>();
-    const queuedBodies: QueuedMessageCapture[] = [];
-    mockChatLifecycle(context, {
-      sendGate: sendGate.promise,
-      onQueuedMessageAppend: (body) => {
-        queuedBodies.push(body);
-      },
-    });
-    context.mocks.upload.success({
-      id: "upload-optimistic-notes",
-      filename: "notes.txt",
-      contentType: "text/plain",
-      size: 12,
-      url: "https://cdn.vm7.io/artifacts/test/upload-optimistic-notes/notes.txt",
-    });
-
-    detachedSetupPage({ context, path: AGENT_CHAT_PATH });
-
-    const textarea = await waitFor(() => {
-      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
-    });
-    await sendMessageInUI(user, textarea, "Start the optimistic thread");
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("Start the optimistic thread"),
-      ).toBeInTheDocument();
-      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
-    });
-
-    await sendQueuedMessage(user, "Add the launch checklist");
-    const fileInput =
-      document.querySelector<HTMLInputElement>('input[type="file"]');
-    if (!fileInput) {
-      throw new Error("file input not found");
-    }
-    await user.upload(
-      fileInput,
-      new File(["launch notes"], "notes.txt", { type: "text/plain" }),
-    );
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Remove notes.txt")).toBeInTheDocument();
-    });
-
-    await user.click(screen.getByLabelText("Send"));
-
-    await expectQueuedMessages([
-      "Add the launch checklist",
-      "(see attached files)",
-    ]);
-
-    sendGate.resolve();
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("Start the optimistic thread"),
-      ).toBeInTheDocument();
-      expect(queuedBodies).toHaveLength(2);
-      expect(queuedBodies[1]).toMatchObject({
-        content: "(see attached files)",
-        hasTextContent: false,
-        attachments: [
-          {
-            id: "upload-optimistic-notes",
-            filename: "notes.txt",
-            contentType: "text/plain",
-            size: 12,
-            url: "https://cdn.vm7.io/artifacts/test/upload-optimistic-notes/notes.txt",
-          },
-        ],
-      });
     });
   });
 
