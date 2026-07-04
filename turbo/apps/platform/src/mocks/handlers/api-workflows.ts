@@ -255,7 +255,7 @@ export const apiWorkflowsHandlers = [
     }
     return respond(200, {
       chatThreadId: "00000000-0000-4000-a000-000000000fff",
-      prompt: `/${workflow.name}`,
+      prompt: `help me refine the workflow /${workflow.name}`,
     });
   }),
 
