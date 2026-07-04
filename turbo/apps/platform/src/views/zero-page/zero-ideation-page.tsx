@@ -36,6 +36,13 @@ export function ZeroIdeationPage() {
   const setSearchQuery = useSet(setIdeationSearchQuery$);
   const navigate = useSet(detachedNavigateTo$);
   const agentId = useGet(currentAgentId$);
+  const selectedTab =
+    activeTab === "all" ||
+    categories.some((category) => {
+      return category.id === activeTab;
+    })
+      ? activeTab
+      : "all";
 
   const navigateToChat = () => {
     if (agentId) {
@@ -46,10 +53,10 @@ export function ZeroIdeationPage() {
   };
 
   const baseCategories =
-    activeTab === "all"
+    selectedTab === "all"
       ? categories
       : categories.filter((c) => {
-          return c.id === activeTab;
+          return c.id === selectedTab;
         });
   const searchNeedle = searchQuery.trim().toLowerCase();
   const visibleCategories =
@@ -124,7 +131,7 @@ export function ZeroIdeationPage() {
                     type="button"
                     className={cn(
                       "h-7 shrink-0 rounded-md border border-border px-2.5 text-sm font-medium leading-none transition-colors cursor-pointer",
-                      activeTab === "all"
+                      selectedTab === "all"
                         ? "bg-muted text-foreground"
                         : "bg-background text-muted-foreground hover:bg-muted/50 hover:text-foreground",
                     )}
@@ -141,7 +148,7 @@ export function ZeroIdeationPage() {
                         type="button"
                         className={cn(
                           "h-7 shrink-0 rounded-md border border-border px-2.5 text-sm font-medium leading-none transition-colors cursor-pointer",
-                          activeTab === category.id
+                          selectedTab === category.id
                             ? "bg-muted text-foreground"
                             : "bg-background text-muted-foreground hover:bg-muted/50 hover:text-foreground",
                         )}

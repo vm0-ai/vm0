@@ -12,6 +12,7 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { setIdeationActiveTab$ } from "../../../signals/zero-page/zero-ideation.ts";
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
 
 const context = testContext();
@@ -133,6 +134,24 @@ describe("zero ideation page", () => {
     expect(
       screen.getByText("No use cases match your search."),
     ).toBeInTheDocument();
+  });
+
+  it("falls back to all use cases when the selected tab is hidden by catalog filtering", async () => {
+    mockConnectorCatalogStatus([]);
+    context.store.set(setIdeationActiveTab$, "reports");
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${agentId}/ideas`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Browser screenshots")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Reports")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("No use cases match your search."),
+    ).not.toBeInTheDocument();
   });
 
   it("does not render connector-dependent suggested prompts when catalog is empty", async () => {
