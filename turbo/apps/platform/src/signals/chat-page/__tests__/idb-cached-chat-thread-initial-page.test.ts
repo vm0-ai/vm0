@@ -145,6 +145,54 @@ describe("createIdbCachedDataSource initial page cache", () => {
 
     expect(idbStoreMock.readLatest.mock.calls[0]?.length).toBe(1);
     expect(ids(initialPage.messages)).toStrictEqual(ids(cachedMessages));
+    expect(initialPage.needsHistoryBackfill).toBeTruthy();
+  });
+
+  it("remembers a remote-confirmed history boundary in memory for cached re-entry", async () => {
+    mockUser({ id: "user_2", fullName: "Test User" }, { token: "token" });
+    mockOrganization({
+      activeOrg: { id: "org_2", name: "Test Org" },
+      memberships: [{ id: "org_2" }],
+    });
+
+    const threadId = "00000000-0000-4000-8000-000000000997";
+    let requestCount = 0;
+    ctx.mocks.api(chatThreadMessagesContract.list, ({ query, respond }) => {
+      requestCount += 1;
+      if (query.beforeId) {
+        return respond(200, {
+          messages: [],
+          hasHistoryBefore: false,
+        });
+      }
+      return respond(200, {
+        messages: range(1, 2),
+        hasHistoryBefore: false,
+      });
+    });
+
+    const { createIdbCachedDataSource } =
+      await import("../idb-cached-chat-thread-data-source.ts");
+    const remoteDataSource = createIdbCachedDataSource(threadId);
+
+    const remotePage = await ctx.store.get(remoteDataSource.initialPage$);
+
+    expect(remotePage.fetchedFromRemote).toBeTruthy();
+    expect(ids(remotePage.messages)).toStrictEqual(ids(range(1, 2)));
+
+    await ctx.store.set(
+      remoteDataSource.listMessagesBefore$,
+      { threadId, beforeId: message(1).id },
+      ctx.signal,
+    );
+
+    const cachedDataSource = createIdbCachedDataSource(threadId);
+    const cachedPage = await ctx.store.get(cachedDataSource.initialPage$);
+
+    expect(requestCount).toBe(2);
+    expect(ids(cachedPage.messages)).toStrictEqual(ids(range(1, 2)));
+    expect(cachedPage.hasHistoryBefore).toBeFalsy();
+    expect(cachedPage.needsHistoryBackfill).toBeFalsy();
   });
 
   it("warms latest messages from the cached cursor until the remote reaches the end", async () => {
