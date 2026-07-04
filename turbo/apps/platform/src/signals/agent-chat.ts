@@ -5,6 +5,7 @@ import {
   type CodexServiceTier,
   type PersistedAttachment,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { agentById, currentAgentId$, defaultAgentId$ } from "./agent.ts";
 import { zeroClient$ } from "./api-client.ts";
 import { accept } from "../lib/accept.ts";
@@ -24,6 +25,7 @@ import {
   eventDrivenChatThreads$,
 } from "./chat-page/chat-thread-event-sourcing.ts";
 import type { EventDrivenChatThread } from "./chat-page/chat-thread-event-replay.ts";
+import { featureSwitch$ } from "./external/feature-switch.ts";
 
 export { reloadChatThreads$ } from "./chat-thread-list-reload.ts";
 
@@ -170,13 +172,21 @@ const eventDrivenFilteredChatThreads$ = computed(
   },
 );
 
+export const chatThreadSidebarVirtualListEnabled$ = computed((get) => {
+  return (
+    get(featureSwitch$)[FeatureSwitchKey.ChatThreadSidebarVirtualList] ?? false
+  );
+});
+
 const eventDrivenVisibleChatThreads$ = computed(
   async (get): Promise<ChatThreadListItem[]> => {
     const threads = await get(eventDrivenFilteredChatThreads$);
-    const maxItems = get(chatThreadMaxItem$);
+    const visibleThreads = get(chatThreadSidebarVirtualListEnabled$)
+      ? threads
+      : threads.slice(0, get(chatThreadMaxItem$));
     const activeRunThreadIds = get(eventDrivenActiveRunChatThreadIds$);
 
-    return threads.slice(0, maxItems).map((thread) => {
+    return visibleThreads.map((thread) => {
       return eventDrivenThreadToListItem(thread, activeRunThreadIds);
     });
   },
@@ -222,11 +232,17 @@ export const allChatThreadListItems$ = computed(
  * Drives the "Load more" button rendered at the bottom of the sidebar list.
  */
 export const chatThreadsHasMore$ = computed(async (get) => {
+  if (get(chatThreadSidebarVirtualListEnabled$)) {
+    return false;
+  }
   const threads = await get(eventDrivenFilteredChatThreads$);
   return threads.length > get(chatThreadMaxItem$);
 });
 
 export const chatThreadsNextCursor$ = computed(async (get) => {
+  if (get(chatThreadSidebarVirtualListEnabled$)) {
+    return null;
+  }
   const threads = await get(eventDrivenFilteredChatThreads$);
   return threads.length > get(chatThreadMaxItem$) ? "event-driven" : null;
 });

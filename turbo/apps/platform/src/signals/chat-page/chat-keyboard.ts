@@ -4,6 +4,8 @@ import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   currentLeftThread$,
   currentRightThread$,
+  loadLeftThread$,
+  loadRightThread$,
 } from "./chat-thread-panes.ts";
 import {
   clickAdjacentSidebarThread,
@@ -24,6 +26,7 @@ import { onRef } from "../utils.ts";
 import { openChatThreadEmojiMenu$ } from "../zero-page/zero-sidebar-state.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
 import { currentChatThreadId$ } from "../agent-chat.ts";
+import { sidebarChatThreadIds$ } from "./sidebar-chat-thread-ids.ts";
 import {
   setupGlobalShortcut,
   type GlobalShortcutBindings,
@@ -196,7 +199,7 @@ interface ChatPageShortcutActions {
 interface ChatPageShortcutSetup {
   doc: Document;
   focusedThread: () => ChatThreadSignals | null;
-  navigateFocusedThread: (direction: "prev" | "next") => void;
+  navigateFocusedThread: (direction: "prev" | "next") => void | Promise<void>;
   root: HTMLElement;
   sidebarTitleForThread: (
     thread: ChatThreadSignals,
@@ -299,10 +302,10 @@ const setupChatPageShortcutActions$ = command(
           }
         },
         navigateNext: () => {
-          navigateFocusedThread("next");
+          return navigateFocusedThread("next");
         },
         navigatePrev: () => {
-          navigateFocusedThread("prev");
+          return navigateFocusedThread("prev");
         },
         scrollBottom: () => {
           const thread = focusedThread();
@@ -534,9 +537,50 @@ export const setChatKeyboardScrollRoot$ = onRef(
         get(currentRightThread$),
         focusedThread(),
       );
-      if (pane) {
-        clickAdjacentSidebarThread(el, pane, direction);
+      if (!pane) {
+        return;
       }
+      if (
+        get(featureSwitch$)[FeatureSwitchKey.ChatThreadSidebarVirtualList] ??
+        false
+      ) {
+        return navigateAdjacentSidebarThreadFromSignals(pane, direction);
+      }
+      clickAdjacentSidebarThread(el, pane, direction);
+      return;
+    };
+
+    const navigateAdjacentSidebarThreadFromSignals = async (
+      pane: SidebarThreadPane,
+      direction: "prev" | "next",
+    ) => {
+      const leftThread = get(currentLeftThread$);
+      const rightThread = get(currentRightThread$);
+      const currentId =
+        pane === "main" ? leftThread?.threadId : rightThread?.threadId;
+      if (!currentId) {
+        return;
+      }
+      const otherPaneThreadId =
+        pane === "main" ? rightThread?.threadId : leftThread?.threadId;
+      const ids = (await get(sidebarChatThreadIds$)).filter((id) => {
+        return id !== otherPaneThreadId;
+      });
+      const currentIndex = ids.indexOf(currentId);
+      if (currentIndex === -1) {
+        return;
+      }
+      const targetIndex =
+        direction === "prev" ? currentIndex - 1 : currentIndex + 1;
+      const targetId = ids[targetIndex];
+      if (!targetId) {
+        return;
+      }
+      const promise =
+        pane === "main"
+          ? set(loadLeftThread$, targetId, signal)
+          : set(loadRightThread$, targetId, signal);
+      await promise;
     };
 
     el.addEventListener("focusin", markActiveThread, { signal });

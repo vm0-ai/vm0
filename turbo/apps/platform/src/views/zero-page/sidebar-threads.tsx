@@ -1,3 +1,4 @@
+import type { MouseEvent } from "react";
 import {
   useGet,
   useSet,
@@ -100,11 +101,19 @@ import {
   setRenameDialogInput$,
   sessionListCollapsed$,
   setSessionListCollapsed$,
+  overlayScrollMetrics$,
+  overlayScrollViewport$,
+  chatThreadVirtualListElement$,
+  setChatThreadVirtualListElement$,
 } from "../../signals/zero-page/zero-sidebar-state.ts";
 import { Link } from "../router/link.tsx";
 
 type IndicatorState = "running" | "unread" | "draft";
 type ChatThreadPaneIndicator = "main" | "sidebar";
+const CHAT_THREAD_VIRTUAL_ROW_HEIGHT = 36;
+const CHAT_THREAD_VIRTUAL_OVERSCAN = 8;
+const CHAT_THREAD_VIRTUAL_FALLBACK_VIEWPORT_HEIGHT =
+  CHAT_THREAD_VIRTUAL_ROW_HEIGHT * 12;
 
 function SessionStateIndicator({ state }: { state: IndicatorState }) {
   if (state === "running") {
@@ -182,7 +191,7 @@ function isChatThreadRunning(
 }
 
 function handleChatThreadClick(
-  e: React.MouseEvent<HTMLAnchorElement>,
+  e: MouseEvent<HTMLAnchorElement>,
   {
     closeSidebarOnSelect,
     currentLeftId,
@@ -296,7 +305,7 @@ function ChatThreadMenu({
     }
   }
 
-  function handleMenuTriggerClick(e: React.MouseEvent) {
+  function handleMenuTriggerClick(e: MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
   }
@@ -768,6 +777,93 @@ function DeleteChatThreadDialog() {
   );
 }
 
+function getFixedVirtualRange({
+  itemCount,
+  scrollMargin,
+  scrollTop,
+  viewportHeight,
+}: {
+  itemCount: number;
+  scrollMargin: number;
+  scrollTop: number;
+  viewportHeight: number;
+}) {
+  const localScrollTop = Math.max(0, scrollTop - scrollMargin);
+  const firstVisibleIndex = Math.floor(
+    localScrollTop / CHAT_THREAD_VIRTUAL_ROW_HEIGHT,
+  );
+  const visibleCount = Math.max(
+    1,
+    Math.ceil(viewportHeight / CHAT_THREAD_VIRTUAL_ROW_HEIGHT),
+  );
+  const startIndex = Math.max(
+    0,
+    firstVisibleIndex - CHAT_THREAD_VIRTUAL_OVERSCAN,
+  );
+  const endIndex = Math.min(
+    itemCount,
+    firstVisibleIndex + visibleCount + CHAT_THREAD_VIRTUAL_OVERSCAN,
+  );
+
+  return {
+    endIndex,
+    startIndex,
+    totalHeight: itemCount * CHAT_THREAD_VIRTUAL_ROW_HEIGHT,
+  };
+}
+
+function VirtualizedChatThreads({
+  chatThreads,
+}: {
+  chatThreads: readonly ChatThreadListItem[];
+}) {
+  const scrollViewport = useGet(overlayScrollViewport$);
+  const scrollMetrics = useGet(overlayScrollMetrics$);
+  const virtualListElement = useGet(chatThreadVirtualListElement$);
+  const setVirtualListElement = useSet(setChatThreadVirtualListElement$);
+  const scrollMargin = virtualListElement?.offsetTop ?? 0;
+  const viewportHeight =
+    scrollMetrics.clientHeight ||
+    scrollViewport?.clientHeight ||
+    CHAT_THREAD_VIRTUAL_FALLBACK_VIEWPORT_HEIGHT;
+  const scrollTop = scrollMetrics.scrollTop || scrollViewport?.scrollTop || 0;
+  const { startIndex, endIndex, totalHeight } = getFixedVirtualRange({
+    itemCount: chatThreads.length,
+    scrollMargin,
+    scrollTop,
+    viewportHeight,
+  });
+  const visibleChatThreads = chatThreads.slice(startIndex, endIndex);
+
+  return (
+    <div
+      ref={setVirtualListElement}
+      className="relative w-full"
+      data-testid="sidebar-chat-threads-virtual-list"
+      style={{ height: totalHeight }}
+    >
+      {visibleChatThreads.map((session, visibleOffset) => {
+        const index = startIndex + visibleOffset;
+        return (
+          <div
+            key={session.id}
+            data-index={index}
+            data-testid="sidebar-chat-thread-virtual-row"
+            className="absolute left-0 top-0 w-full pb-1"
+            style={{
+              transform: `translateY(${
+                index * CHAT_THREAD_VIRTUAL_ROW_HEIGHT
+              }px)`,
+            }}
+          >
+            <ChatThreadItem session={session} />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function ChatThreads({
   chatThreads,
 }: {
@@ -776,6 +872,9 @@ function ChatThreads({
   const pageSignal = useGet(pageSignal$);
 
   const unreadOnly = useGet(chatThreadOnlyUnread$);
+  const features = useGet(featureSwitch$);
+  const virtualListEnabled =
+    features[FeatureSwitchKey.ChatThreadSidebarVirtualList] ?? false;
   const firstPageHasMoreLoadable = useLastLoadable(chatThreadsHasMore$);
   const firstPageNextCursorLoadable = useLastLoadable(chatThreadsNextCursor$);
   const firstPageHasMore =
@@ -815,6 +914,9 @@ function ChatThreads({
           : "Start a conversation and it'll show up here"}
       </p>
     );
+  }
+  if (virtualListEnabled) {
+    return <VirtualizedChatThreads chatThreads={chatThreads} />;
   }
   return (
     <>

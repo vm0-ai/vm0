@@ -1115,6 +1115,73 @@ describe("zero sidebar", () => {
     });
   });
 
+  it("virtualizes sidebar chats behind the feature switch", async () => {
+    prepareDefaultAgent();
+    const overflowThreads = Array.from({ length: 23 }, (_, index) => {
+      return createThread(
+        `b2000000-0000-4000-a000-${String(index).padStart(12, "0")}`,
+        `Virtual overflow ${index + 1}`,
+      );
+    });
+    mockSidebarThreadStory(
+      [
+        createThread(EXISTING_THREAD_ID, "Release plan"),
+        createThread(AUTOMATION_THREAD_ID, "Scheduled launch"),
+      ],
+      [
+        ...overflowThreads,
+        createThread(ARCHIVED_THREAD_ID, "Archived context"),
+      ],
+    );
+
+    setupSidebarPage({
+      context,
+      path: `/chats/${EXISTING_THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatThreadSidebarVirtualList]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("sidebar-chat-threads-load-more")).toBeNull();
+      expect(
+        screen.getByTestId("sidebar-chat-threads-virtual-list"),
+      ).toBeInTheDocument();
+    });
+
+    const scrollArea = screen.getByTestId("sidebar-scroll-area");
+    Object.defineProperty(scrollArea, "clientHeight", {
+      configurable: true,
+      value: 200,
+    });
+    Object.defineProperty(scrollArea, "scrollHeight", {
+      configurable: true,
+      value: 1000,
+    });
+    Object.defineProperty(scrollArea, "scrollTop", {
+      configurable: true,
+      value: 0,
+    });
+    fireEvent.scroll(scrollArea);
+
+    await waitFor(() => {
+      expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
+    });
+    expect(within(sidebar()).queryByText("Archived context")).toBeNull();
+
+    Object.defineProperty(scrollArea, "scrollTop", {
+      configurable: true,
+      value: 780,
+    });
+    fireEvent.scroll(scrollArea);
+
+    await waitFor(() => {
+      expect(
+        within(sidebar()).getByText("Archived context"),
+      ).toBeInTheDocument();
+    });
+  });
+
   it("cancels and confirms deleting a regular chat from the sidebar", async () => {
     prepareDefaultAgent();
     mockSidebarThreadStory([

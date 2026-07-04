@@ -1,10 +1,12 @@
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode, UIEvent } from "react";
 import { useGet, useSet } from "ccstate-react";
 import {
   thumbStyle$,
   setThumbStyle$,
   hovering$,
   setHovering$,
+  setOverlayScrollMetrics$,
+  setOverlayScrollViewport$,
 } from "../../signals/zero-page/zero-sidebar-state.ts";
 
 /** Overlay scroll area: hides native scrollbar, renders a custom thin indicator. */
@@ -17,19 +19,22 @@ export function OverlayScrollArea({
 }: {
   className?: string;
   children: ReactNode;
-  onScroll?: (e: React.UIEvent<HTMLDivElement>) => void;
-  style?: React.CSSProperties;
+  onScroll?: (e: UIEvent<HTMLDivElement>) => void;
+  style?: CSSProperties;
   "data-testid"?: string;
 }) {
   const thumbStyleValue = useGet(thumbStyle$);
   const setThumbStyleFn = useSet(setThumbStyle$);
   const hovering = useGet(hovering$);
   const setHoveringFn = useSet(setHovering$);
+  const setOverlayScrollMetricsFn = useSet(setOverlayScrollMetrics$);
+  const setViewportRef = useSet(setOverlayScrollViewport$);
 
-  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+  const handleScroll = (e: UIEvent<HTMLDivElement>) => {
     onScroll?.(e);
     const el = e.currentTarget;
     const { scrollTop, scrollHeight, clientHeight } = el;
+    setOverlayScrollMetricsFn({ scrollTop, scrollHeight, clientHeight });
     if (scrollHeight <= clientHeight) {
       setThumbStyleFn({
         top: thumbStyleValue.top,
@@ -58,6 +63,7 @@ export function OverlayScrollArea({
       }}
     >
       <div
+        ref={setViewportRef}
         className="h-full overflow-y-auto overflow-x-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         style={style}
         onScroll={handleScroll}
