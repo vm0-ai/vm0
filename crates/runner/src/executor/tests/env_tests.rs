@@ -164,6 +164,20 @@ fn execution_context_validation_rejects_user_timezone_nul_before_sandbox() {
 }
 
 #[test]
+fn execution_context_validation_ignores_runner_owned_user_env_before_sandbox() {
+    let mut ctx = minimal_context();
+    ctx.environment = Some(HashMap::from([
+        ("VM0_PROMPT".into(), "ignored\0secret".into()),
+        ("CUSTOM_ENV".into(), "kept".into()),
+    ]));
+
+    assert!(validate_context_for_test(&ctx).is_ok());
+    let user_env = build_user_env_json(&ctx);
+    assert_eq!(user_env.get("CUSTOM_ENV").unwrap(), "kept");
+    assert!(!user_env.contains_key("VM0_PROMPT"));
+}
+
+#[test]
 fn execution_context_validation_rejects_tuning_env_nul_before_sandbox() {
     let secret = "3\0";
     let ctx = context_with_env(HashMap::from([(
@@ -180,7 +194,7 @@ fn execution_context_validation_rejects_tuning_env_nul_before_sandbox() {
 }
 
 #[test]
-fn execution_context_validation_rejects_bootstrap_env_nul_before_sandbox() {
+fn execution_context_validation_rejects_prompt_nul_before_sandbox() {
     let secret = "before\0after";
     let mut ctx = minimal_context();
     ctx.prompt = secret.into();
@@ -191,6 +205,65 @@ fn execution_context_validation_rejects_bootstrap_env_nul_before_sandbox() {
     assert!(error.contains("NUL byte"));
     assert!(error.contains("VM0_PROMPT"));
     assert!(!error.contains(secret));
+}
+
+#[test]
+fn execution_context_validation_rejects_append_system_prompt_nul_before_sandbox() {
+    let secret = "system\0prompt";
+    let mut ctx = minimal_context();
+    ctx.append_system_prompt = Some(secret.into());
+
+    let error = validate_context_for_test(&ctx).unwrap_err();
+
+    assert!(error.contains("run payload"));
+    assert!(error.contains("NUL byte"));
+    assert!(error.contains("VM0_APPEND_SYSTEM_PROMPT"));
+    assert!(!error.contains(secret));
+}
+
+#[test]
+fn execution_context_validation_rejects_claude_settings_nul_before_sandbox() {
+    let secret = "{\"hooks\":\"bad\0value\"}";
+    let mut ctx = minimal_context();
+    ctx.settings = Some(secret.into());
+
+    let error = validate_context_for_test(&ctx).unwrap_err();
+
+    assert!(error.contains("run payload"));
+    assert!(error.contains("NUL byte"));
+    assert!(error.contains("VM0_SETTINGS"));
+    assert!(!error.contains(secret));
+}
+
+#[test]
+fn execution_context_validation_ignores_codex_settings_nul_before_sandbox() {
+    let mut ctx = minimal_context();
+    ctx.cli_agent_type = "codex".into();
+    ctx.settings = Some("{\"hooks\":\"bad\0value\"}".into());
+
+    assert!(validate_context_for_test(&ctx).is_ok());
+    assert!(build_run_payload_for_run(&ctx).unwrap().settings.is_empty());
+}
+
+#[test]
+fn execution_context_validation_accepts_raw_secret_value_nul_before_sandbox() {
+    let mut ctx = minimal_context();
+    ctx.secret_values = Some(vec!["secret\0value".into()]);
+
+    assert!(validate_context_for_test(&ctx).is_ok());
+    let payload = build_run_payload_for_run(&ctx).unwrap();
+    assert!(!payload.secret_values.contains('\0'));
+}
+
+#[test]
+fn execution_context_validation_rejects_tool_nul_before_sandbox() {
+    let mut ctx = minimal_context();
+    ctx.tools = Some(vec!["Bash\0Read".into()]);
+
+    let error = validate_context_for_test(&ctx).unwrap_err();
+
+    assert!(error.contains("VM0_TOOLS"));
+    assert!(error.contains("NUL"));
 }
 
 #[test]
@@ -1123,6 +1196,23 @@ fn build_env_json_empty_append_system_prompt_omitted() {
 }
 
 #[test]
+fn build_run_payload_for_run_rejects_prompt_nul() {
+    let secret = "before\0after";
+    let mut ctx = minimal_context();
+    ctx.prompt = secret.into();
+
+    let error = match build_run_payload_for_run(&ctx) {
+        Err(RunnerError::Internal(error)) => error,
+        other => panic!("expected internal error, got {other:?}"),
+    };
+
+    assert!(error.contains("run payload"));
+    assert!(error.contains("NUL byte"));
+    assert!(error.contains("VM0_PROMPT"));
+    assert!(!error.contains(secret));
+}
+
+#[test]
 fn build_env_json_with_user_timezone() {
     let mut ctx = minimal_context();
     ctx.user_timezone = Some("Asia/Shanghai".into());
@@ -1390,6 +1480,7 @@ fn build_env_json_rejects_invalid_disallowed_tools_entries() {
         ("", "must not be empty"),
         ("   ", "must not be empty"),
         ("CronCreate,CronDelete", "must not contain commas"),
+        ("CronCreate\0CronDelete", "must not contain NUL bytes"),
         ("--help", "must not start with a hyphen"),
         (" -v", "must not start with a hyphen"),
     ] {
@@ -1406,6 +1497,7 @@ fn build_env_json_rejects_invalid_tools_entries() {
         ("", "must not be empty"),
         ("   ", "must not be empty"),
         ("Bash,Read", "must not contain commas"),
+        ("Bash\0Read", "must not contain NUL bytes"),
         ("--help", "must not start with a hyphen"),
         (" -x", "must not start with a hyphen"),
     ] {

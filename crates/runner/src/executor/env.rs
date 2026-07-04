@@ -127,18 +127,17 @@ pub(super) fn validate_execution_context_before_sandbox_with_host_env(
     validate_model_provider_env_placeholders(context)?;
     validate_user_environment_for_guest(context)?;
     validate_claude_tool_lists(context)?;
+    validate_run_payload_fields_before_sandbox(context)?;
     let bootstrap_env =
         build_env_json_with_host_env(context, api_url, sandbox_id, reuse_result, host_env)
             .map_err(|error| error.to_string())?;
     validate_bootstrap_environment_for_guest(&bootstrap_env)?;
-    let run_payload = build_run_payload_for_run(context).map_err(|error| error.to_string())?;
-    validate_run_payload_for_guest(&run_payload)?;
     Ok(())
 }
 
 fn validate_user_environment_for_guest(context: &ExecutionContext) -> Result<(), String> {
-    let user_env = build_user_env_json(context);
-    let mut entries: Vec<(&String, &String)> = user_env.iter().collect();
+    let mut entries: Vec<(&str, &str)> = Vec::new();
+    for_each_guest_user_env_entry(context, |key, value| entries.push((key, value)));
     entries.sort_by_key(|(key, _)| *key);
 
     for (key, value) in entries {
@@ -156,6 +155,30 @@ fn validate_user_environment_for_guest(context: &ExecutionContext) -> Result<(),
         }
     }
 
+    Ok(())
+}
+
+fn validate_run_payload_fields_before_sandbox(context: &ExecutionContext) -> Result<(), String> {
+    validate_run_payload_field(guest_contracts::env::PROMPT_ENV, &context.prompt)?;
+    validate_run_payload_field(
+        guest_contracts::env::APPEND_SYSTEM_PROMPT_ENV,
+        context.append_system_prompt.as_deref().unwrap_or_default(),
+    )?;
+
+    if effective_cli_framework(&context.cli_agent_type) == EffectiveCliFramework::ClaudeCode
+        && let Some(settings) = &context.settings
+        && !settings.is_empty()
+    {
+        validate_run_payload_field(guest_contracts::env::SETTINGS_ENV, settings)?;
+    }
+
+    Ok(())
+}
+
+fn validate_run_payload_field(name: &str, value: &str) -> Result<(), String> {
+    if value.contains('\0') {
+        return Err(format!("run payload contains NUL byte for {name}"));
+    }
     Ok(())
 }
 
@@ -219,24 +242,34 @@ pub(super) fn validate_claude_tool_lists(context: &ExecutionContext) -> Result<(
 pub(super) fn build_user_env_json(context: &ExecutionContext) -> HashMap<String, String> {
     let mut env = HashMap::new();
 
+    for_each_guest_user_env_entry(context, |key, value| {
+        env.insert(key.to_string(), value.to_string());
+    });
+
+    env
+}
+
+fn for_each_guest_user_env_entry<'a>(
+    context: &'a ExecutionContext,
+    mut visit: impl FnMut(&'a str, &'a str),
+) {
     if let Some(user_env) = &context.environment {
-        for (k, v) in user_env {
-            env.insert(k.clone(), v.clone());
+        for (key, value) in user_env {
+            if !is_runner_owned_env_key(key) {
+                visit(key, value);
+            }
         }
     }
-    scrub_runner_owned_env(&mut env);
 
     if let Some(tz) = &context.user_timezone {
         let has_tz = context
             .environment
             .as_ref()
-            .is_some_and(|e| e.contains_key("TZ"));
+            .is_some_and(|env| env.contains_key("TZ"));
         if !has_tz {
-            env.insert("TZ".into(), tz.clone());
+            visit("TZ", tz);
         }
     }
-
-    env
 }
 
 pub(super) fn guest_user_env_file_path(run_id: RunId) -> RunnerResult<String> {
@@ -571,10 +604,6 @@ pub(super) fn is_runner_owned_env_key(key: &str) -> bool {
     guest_contracts::env::is_runner_owned_env_key(key)
 }
 
-pub(super) fn scrub_runner_owned_env(env: &mut HashMap<String, String>) {
-    env.retain(|key, _| !is_runner_owned_env_key(key));
-}
-
 pub(super) fn insert_claude_code_env(
     env: &mut HashMap<String, String>,
     context: &ExecutionContext,
@@ -618,6 +647,11 @@ pub(super) fn validate_claude_tool_env_entries(
         if tool.contains(',') {
             return Err(format!(
                 "{env_name} entry at index {index} must not contain commas"
+            ));
+        }
+        if tool.contains('\0') {
+            return Err(format!(
+                "{env_name} entry at index {index} must not contain NUL bytes"
             ));
         }
         if tool.trim_start().starts_with('-') {
