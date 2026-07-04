@@ -1,26 +1,10 @@
 import { readdirSync, statSync } from "node:fs";
 import path from "node:path";
+import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const appRoot = path.resolve(__dirname, "..");
-
-const checkedRoots = ["src", "public"];
-const staticAssetExtensions = new Set([
-  ".gif",
-  ".ico",
-  ".jpeg",
-  ".jpg",
-  ".png",
-  ".svg",
-  ".webp",
-]);
-
-const sameOriginAssetAllowlist = new Set([
-  "public/icons/icon-192.png",
-  "public/icons/icon-512-maskable.png",
-  "public/icons/icon-512.png",
-]);
 
 function toPosixPath(value) {
   return value.split(path.sep).join("/");
@@ -41,33 +25,53 @@ function collectFiles(dir) {
   return files;
 }
 
-const violations = [];
+function checkStaticAssets() {
+  const checkedRoots = ["src", "public"];
+  const staticAssetExtensions = new Set([
+    ".gif",
+    ".ico",
+    ".jpeg",
+    ".jpg",
+    ".png",
+    ".svg",
+    ".webp",
+  ]);
+  const sameOriginAssetAllowlist = new Set([
+    "public/icons/icon-192.png",
+    "public/icons/icon-512-maskable.png",
+    "public/icons/icon-512.png",
+  ]);
+  const violations = [];
 
-for (const root of checkedRoots) {
-  const rootPath = path.join(appRoot, root);
-  if (!statSync(rootPath, { throwIfNoEntry: false })?.isDirectory()) {
-    continue;
-  }
-
-  for (const file of collectFiles(rootPath)) {
-    const relativePath = toPosixPath(path.relative(appRoot, file));
-    const extension = path.extname(relativePath).toLowerCase();
-    if (!staticAssetExtensions.has(extension)) {
+  for (const root of checkedRoots) {
+    const rootPath = path.join(appRoot, root);
+    if (!statSync(rootPath, { throwIfNoEntry: false })?.isDirectory()) {
       continue;
     }
-    if (sameOriginAssetAllowlist.has(relativePath)) {
-      continue;
-    }
-    violations.push(relativePath);
-  }
-}
 
-if (violations.length > 0) {
-  process.stderr.write(`Platform static asset lint failed.
+    for (const file of collectFiles(rootPath)) {
+      const relativePath = toPosixPath(path.relative(appRoot, file));
+      const extension = path.extname(relativePath).toLowerCase();
+      if (!staticAssetExtensions.has(extension)) {
+        continue;
+      }
+      if (sameOriginAssetAllowlist.has(relativePath)) {
+        continue;
+      }
+      violations.push(relativePath);
+    }
+  }
+
+  if (violations.length > 0) {
+    process.stderr.write(`Platform static asset lint failed.
 
 These files look like UI illustrations, empty states, brand/logo images, connector/provider icons, or other build-stable png/webp/svg assets:
 
-${violations.map((file) => `  - ${file}`).join("\n")}
+${violations
+  .map((file) => {
+    return `  - ${file}`;
+  })
+  .join("\n")}
 
 Do not commit this kind of asset to vm0. Add it to vm0-ai/static-files under static.vm0.io/platform/... using a versioned or content-hashed path.
 
@@ -79,5 +83,8 @@ In platform code, reference the CDN asset with platformStaticAssetUrl("..."), or
 
 Only same-origin browser assets such as manifest or push-notification icons should be allowlisted here, with a narrow path-specific exception.
 `);
-  process.exit(1);
+    process.exit(1);
+  }
 }
+
+checkStaticAssets();

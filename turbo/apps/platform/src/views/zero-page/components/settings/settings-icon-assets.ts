@@ -452,10 +452,9 @@ export const SETTINGS_ICON_ASSETS: Readonly<
   Record<SettingsIconAssetKey, string>
 > = Object.freeze(
   Object.fromEntries(
-    Object.entries(SETTINGS_ICON_ASSET_PATHS).map(([key, path]) => [
-      key,
-      platformStaticAssetUrl(path),
-    ]),
+    Object.entries(SETTINGS_ICON_ASSET_PATHS).map(([key, path]) => {
+      return [key, platformStaticAssetUrl(path)];
+    }),
   ) as Record<SettingsIconAssetKey, string>,
 );
 
