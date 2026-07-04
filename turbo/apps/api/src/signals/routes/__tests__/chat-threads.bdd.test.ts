@@ -2716,9 +2716,6 @@ describe("CHAT-01 v1 chat threads for personal access tokens", () => {
       expiresInDays: 30,
     });
     const bearer = `Bearer ${key.token}`;
-    await connectorsApi.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.ChatInitialThinkingIndicator]: true,
-    });
     mockOptionalEnv("OPENROUTER_API_KEY", "thinking-v1-key");
     let initialThinkingRequests = 0;
     server.use(

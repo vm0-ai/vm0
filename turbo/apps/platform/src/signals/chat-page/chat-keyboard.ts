@@ -17,10 +17,7 @@ import {
   setChatThreadEmojiFromThreadData$,
   type RenameChatThreadDialogRequest,
 } from "./chat-thread-rename.ts";
-import {
-  eventDrivenChatThreadMeta,
-  type ThreadMeta,
-} from "./chat-thread-event-sourcing.ts";
+import { eventDrivenChatThreadMeta } from "./chat-thread-event-sourcing.ts";
 import { CHAT_THREAD_EMOJI_OPTIONS } from "./chat-thread-title.ts";
 import type { ScrollStepDirection } from "../auto-scroll.ts";
 import { onRef } from "../utils.ts";
@@ -380,14 +377,9 @@ const renameDialogRequestForThread$ = command(
     threadId: string,
     signal: AbortSignal,
   ): Promise<RenameChatThreadDialogRequest> => {
-    let threadMeta: ThreadMeta | null = null;
-    if (get(featureSwitch$)[FeatureSwitchKey.ChatThreadEventSourcing]) {
-      threadMeta = thread
-        ? await get(thread.threadMeta$)
-        : await get(eventDrivenChatThreadMeta(threadId));
-    } else if (thread) {
-      threadMeta = await get(thread.threadMeta$);
-    }
+    const threadMeta = thread
+      ? await get(thread.threadMeta$)
+      : await get(eventDrivenChatThreadMeta(threadId));
     signal.throwIfAborted();
     return {
       threadId,

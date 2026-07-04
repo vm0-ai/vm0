@@ -137,7 +137,6 @@ describe("chat thread event sourcing local-first list", () => {
       user: null,
       session: null,
       org: { activeOrg: null, memberships: [] },
-      featureSwitches: { [FeatureSwitchKey.ChatThreadEventSourcing]: true },
     });
 
     expect(activeIdsRequests).toBe(0);
@@ -211,7 +210,6 @@ describe("chat thread event sourcing local-first list", () => {
         activeOrg: { id: "org_1", name: "Test Org" },
         memberships: [{ id: "org_1" }],
       },
-      featureSwitches: { [FeatureSwitchKey.ChatThreadEventSourcing]: true },
     });
 
     await vi.waitFor(() => {
@@ -307,7 +305,6 @@ describe("chat thread event sourcing local-first list", () => {
       },
       featureSwitches: {
         [FeatureSwitchKey.AgentUnreadIndicators]: true,
-        [FeatureSwitchKey.ChatThreadEventSourcing]: true,
       },
     });
 
@@ -355,7 +352,6 @@ describe("chat thread event sourcing local-first list", () => {
         activeOrg: { id: "org_1", name: "Test Org" },
         memberships: [{ id: "org_1" }],
       },
-      featureSwitches: { [FeatureSwitchKey.ChatThreadEventSourcing]: true },
     });
 
     const { draft } = context.store.set(ensureDraft$, LEGACY_PENDING_THREAD_ID);
@@ -462,7 +458,6 @@ describe("chat thread event sourcing local-first list", () => {
         activeOrg: { id: "org_1", name: "Test Org" },
         memberships: [{ id: "org_1" }],
       },
-      featureSwitches: { [FeatureSwitchKey.ChatThreadEventSourcing]: true },
     });
 
     detailRequests = 0;

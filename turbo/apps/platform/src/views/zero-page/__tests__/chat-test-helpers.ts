@@ -204,12 +204,16 @@ interface ThreadListItem {
   updatedAt: string;
   running: boolean;
   pinnedAt?: string | null;
+  renamedAt?: string | null;
 }
 
 type PagedThreadItem = ThreadListItem & {
   pinnedAt?: string | null;
   renamedAt?: string | null;
 };
+
+const UUID_PATTERN =
+  /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/;
 
 /**
  * Splits a flat ThreadListItem array into the new paged response shape that
@@ -237,6 +241,21 @@ export function splitChatThreadListResponse(
     hasMore: false,
     nextCursor: null,
   };
+}
+
+export function threadListSnapshot(threads: readonly ThreadListItem[]) {
+  return threads.map((thread) => {
+    return {
+      id: thread.id,
+      agentId: thread.agent.id,
+      title: thread.title,
+      sortAt: thread.updatedAt,
+      createdAt: thread.createdAt,
+      updatedAt: thread.updatedAt,
+      pinnedAt: thread.pinnedAt ?? null,
+      renamedAt: thread.renamedAt ?? null,
+    };
+  });
 }
 
 interface MockLifecycleControl {
@@ -453,7 +472,7 @@ export function mockChatLifecycle(
     onMessageGet?: (messageId: string) => void;
   },
 ): MockLifecycleControl {
-  let threadId = options?.threadId ?? "thread-test-1";
+  let threadId = options?.threadId ?? "b0000000-0000-4000-a000-000000000900";
   const historyMessages = options?.historyMessages ?? [];
   const chatMessages = options?.chatMessages ?? [];
 
@@ -814,6 +833,33 @@ export function mockChatLifecycle(
   );
   context.mocks.api(chatThreadsContract.list, ({ respond }) => {
     return respond(200, splitChatThreadListResponse(threadList));
+  });
+  context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
+    return respond(200, {
+      chatThreads: threadListSnapshot(threadList),
+      latestEventId: null,
+    });
+  });
+  context.mocks.api(chatThreadsContract.events, ({ respond }) => {
+    return respond(200, { events: [], hasMore: false });
+  });
+  context.mocks.api(chatThreadsContract.activeIds, ({ respond }) => {
+    const activeThreadIds = new Set(
+      threadList.flatMap((thread) => {
+        return thread.running ? [thread.id] : [];
+      }),
+    );
+    if (
+      optionActiveRunIds.length > 0 ||
+      (runAssociated && !terminal.has(runStatus))
+    ) {
+      activeThreadIds.add(threadId);
+    }
+    return respond(200, {
+      threadIds: [...activeThreadIds].filter((id) => {
+        return UUID_PATTERN.test(id);
+      }),
+    });
   });
   context.mocks.api(chatThreadsContract.create, ({ body, respond }) => {
     threadId = body.clientThreadId ?? threadId;

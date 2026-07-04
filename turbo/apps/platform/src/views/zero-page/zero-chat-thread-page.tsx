@@ -5404,9 +5404,6 @@ function ThinkingIndicator({
     "--zb-c3": c3,
   } as CSSProperties;
 
-  const features = useLastResolved(featureSwitch$);
-  const initialThinkingEnabled =
-    features?.[FeatureSwitchKey.ChatInitialThinkingIndicator] ?? false;
   const messageRunIndicatorStateLoadable = useLastLoadable(
     thread.messageRunIndicatorState$,
   );
@@ -5419,7 +5416,7 @@ function ThinkingIndicator({
     groups,
     messageRunIndicatorState,
     messageRunIndicatorResolved,
-    initialThinkingEnabled,
+    initialThinkingEnabled: true,
   });
   const rotatingLabel = useGet(thread.rotatingPhrase$);
   const donePhrase = useGet(thread.donePhrase$);

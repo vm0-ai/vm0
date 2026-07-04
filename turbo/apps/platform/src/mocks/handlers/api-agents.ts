@@ -184,6 +184,22 @@ export const apiAgentsHandlers = [
     });
   }),
 
+  // GET /api/zero/chat-threads/snapshot
+  mockApi(chatThreadsContract.snapshot, ({ respond }) => {
+    return respond(200, {
+      chatThreads: [],
+      latestEventId: null,
+    });
+  }),
+
+  // GET /api/zero/chat-threads/events
+  mockApi(chatThreadsContract.events, ({ respond }) => {
+    return respond(200, {
+      events: [],
+      hasMore: false,
+    });
+  }),
+
   // GET /api/zero/chat-threads/active-ids
   mockApi(chatThreadsContract.activeIds, ({ respond }) => {
     return respond(200, { threadIds: [] });
