@@ -128,9 +128,8 @@ const setupAutomationsPage$ = lazyRouteSetup(async () => {
   return module.setupAutomationsPage$;
 });
 const setupAutomationDetailPage$ = lazyRouteSetup(async () => {
-  const module = await import(
-    "./automation-page/automation-detail-page-setup.ts"
-  );
+  const module =
+    await import("./automation-page/automation-detail-page-setup.ts");
   return module.setupAutomationDetailPage$;
 });
 const setupAgentChatPage$ = lazyRouteSetup(async () => {
@@ -162,27 +161,23 @@ const setupConnectorsPage$ = lazyRouteSetup(async () => {
   return module.setupConnectorsPage$;
 });
 const setupCustomConnectorProposalPage$ = lazyRouteSetup(async () => {
-  const module = await import(
-    "./connectors-page/custom-connector-proposal-page-setup.ts"
-  );
+  const module =
+    await import("./connectors-page/custom-connector-proposal-page-setup.ts");
   return module.setupCustomConnectorProposalPage$;
 });
 const setupComputerUseAuthorizationPage$ = lazyRouteSetup(async () => {
-  const module = await import(
-    "./computer-use-authorization/computer-use-authorization-page-setup.ts"
-  );
+  const module =
+    await import("./computer-use-authorization/computer-use-authorization-page-setup.ts");
   return module.setupComputerUseAuthorizationPage$;
 });
 const setupDirectedConnectPage$ = lazyRouteSetup(async () => {
-  const module = await import(
-    "./connectors-page/directed-connect-page-setup.ts"
-  );
+  const module =
+    await import("./connectors-page/directed-connect-page-setup.ts");
   return module.setupDirectedConnectPage$;
 });
 const setupDirectedAuthorizePage$ = lazyRouteSetup(async () => {
-  const module = await import(
-    "./connectors-page/directed-authorize-page-setup.ts"
-  );
+  const module =
+    await import("./connectors-page/directed-authorize-page-setup.ts");
   return module.setupDirectedAuthorizePage$;
 });
 const setupSignInTokenPage$ = lazyRouteSetup(async () => {
@@ -198,9 +193,8 @@ const setupSignUpPage$ = lazyRouteSetup(async () => {
   return module.setupSignUpPage$;
 });
 const setupPermissionAllowPage$ = lazyRouteSetup(async () => {
-  const module = await import(
-    "./permission-allow/permission-allow-page-setup.ts"
-  );
+  const module =
+    await import("./permission-allow/permission-allow-page-setup.ts");
   return module.setupPermissionAllowPage$;
 });
 const setupReportErrorPage$ = lazyRouteSetup(async () => {
@@ -212,9 +206,8 @@ const setupLabPage$ = lazyRouteSetup(async () => {
   return module.setupLabPage$;
 });
 const setupNetworkInsightsPage$ = lazyRouteSetup(async () => {
-  const module = await import(
-    "./network-insights/network-insights-page-setup.ts"
-  );
+  const module =
+    await import("./network-insights/network-insights-page-setup.ts");
   return module.setupNetworkInsightsPage$;
 });
 const setupUsagePage$ = lazyRouteSetup(async () => {
@@ -234,9 +227,8 @@ const setupErrorPage$ = lazyRouteSetup(async () => {
   return module.setupErrorPage$;
 });
 const setupRedeemCampaignPage$ = lazyRouteSetup(async () => {
-  const module = await import(
-    "./redeem-campaign/redeem-campaign-page-setup.ts"
-  );
+  const module =
+    await import("./redeem-campaign/redeem-campaign-page-setup.ts");
   return module.setupRedeemCampaignPage$;
 });
 

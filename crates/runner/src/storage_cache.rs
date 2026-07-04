@@ -3,9 +3,10 @@
 //! Sits between `apply_storage_fingerprint_reuse` and `download_storages` in
 //! `run_in_sandbox`. For each eligible manifest entry, checks a host-local
 //! cache keyed by `(vasStorageName, vasVersionId)`. On hit, reads the cached
-//! tarball from disk and pushes it into the guest via vsock; on miss,
-//! downloads the archive from R2 into the cache first. Once guest staging
-//! succeeds, the entry's `archive_url` is rewritten to
+//! tarball from disk and pushes it into the guest via vsock. On miss, leaves
+//! the original URL for the current guest download and starts a background
+//! cache fill for future runs. Once guest staging succeeds, the entry's
+//! `archive_url` is rewritten to
 //! `file:///tmp/vm0-storage-cache/<hash(name)>-<hash(version)>.tar.gz`
 //! so `guest-download` reads the guest-local staged archive instead of
 //! re-fetching.
@@ -28,6 +29,7 @@ use std::collections::{HashMap, hash_map::Entry};
 use std::fmt;
 use std::future::Future;
 use std::io;
+use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -77,6 +79,8 @@ const STORAGE_CACHE_PROCESS_GROUP_FAILED: &str = "storage-cache-process-group-fa
 const STORAGE_CACHE_LOCK_WAIT: &str = "storage_cache_lock_wait";
 const STORAGE_CACHE_LOCK_WAIT_FAILED: &str = "storage-cache-lock-wait-failed";
 const STORAGE_CACHE_HIT_READ: &str = "storage_cache_hit_read";
+const STORAGE_CACHE_MISS_PASSTHROUGH: &str = "storage_cache_miss_passthrough";
+const STORAGE_CACHE_LOCK_BUSY_PASSTHROUGH: &str = "storage_cache_lock_busy_passthrough";
 
 /// Guest-side filename for a cached archive.
 ///
@@ -101,6 +105,7 @@ struct CacheTarget {
     archive_url: String,
 }
 
+#[derive(Clone)]
 struct CacheTargetGroup {
     targets: Vec<CacheTarget>,
 }
@@ -110,6 +115,7 @@ enum GroupOutcome {
         outcome_target_index: usize,
         outcome: TargetOutcome,
     },
+    #[cfg(test)]
     PerTarget(Vec<TargetOutcome>),
 }
 
@@ -204,6 +210,7 @@ enum TargetKind {
 
 enum TargetOutcome {
     Hit,
+    #[cfg(test)]
     Miss {
         download_duration: Duration,
     },
@@ -220,6 +227,10 @@ enum TargetOutcome {
     SkippedInvalidDownload {
         reason: String,
     },
+    MissPassthrough {
+        reason: &'static str,
+    },
+    LockBusyPassthrough,
 }
 
 enum DownloadBody {
@@ -233,6 +244,22 @@ enum CachedArchive {
     Missing,
     Empty,
     OverSize { observed_size: u64 },
+}
+
+enum CacheFetchOutcome {
+    Downloaded {
+        bytes: Bytes,
+        download_duration: Duration,
+    },
+    Skipped(TargetOutcome),
+}
+
+enum BackgroundFillOutcome {
+    Filled,
+    AlreadyCached,
+    Busy,
+    Skipped,
+    RetryableSkipped,
 }
 
 #[derive(Default)]
@@ -518,11 +545,87 @@ async fn stage_joined_processed_group(
 /// and both `vas_storage_name` and `vas_version_id` are non-empty. Entries that
 /// `apply_storage_fingerprint_reuse` marked as reuse-in-place (`archive_url = None`)
 /// are left untouched.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ForegroundCacheMode {
+    HitOrPassthrough,
+    #[cfg(test)]
+    HitOrPassthroughWithoutBackgroundFill,
+    #[cfg(test)]
+    BlockingFill,
+}
+
+impl ForegroundCacheMode {
+    fn uses_hit_or_passthrough(self) -> bool {
+        match self {
+            Self::HitOrPassthrough => true,
+            #[cfg(test)]
+            Self::HitOrPassthroughWithoutBackgroundFill => true,
+            #[cfg(test)]
+            Self::BlockingFill => false,
+        }
+    }
+
+    fn schedules_background_fill(self) -> bool {
+        matches!(self, Self::HitOrPassthrough)
+    }
+}
+
 pub async fn populate_cache(
     manifest: &mut GuestDownloadManifest,
     sandbox: &dyn Sandbox,
     home: &HomePaths,
     telemetry: &mut JobTelemetry,
+) -> RunnerResult<()> {
+    populate_cache_with_mode(
+        manifest,
+        sandbox,
+        home,
+        telemetry,
+        ForegroundCacheMode::HitOrPassthrough,
+    )
+    .await
+}
+
+#[cfg(test)]
+async fn populate_cache_passthrough_without_background(
+    manifest: &mut GuestDownloadManifest,
+    sandbox: &dyn Sandbox,
+    home: &HomePaths,
+    telemetry: &mut JobTelemetry,
+) -> RunnerResult<()> {
+    populate_cache_with_mode(
+        manifest,
+        sandbox,
+        home,
+        telemetry,
+        ForegroundCacheMode::HitOrPassthroughWithoutBackgroundFill,
+    )
+    .await
+}
+
+#[cfg(test)]
+async fn populate_cache_blocking(
+    manifest: &mut GuestDownloadManifest,
+    sandbox: &dyn Sandbox,
+    home: &HomePaths,
+    telemetry: &mut JobTelemetry,
+) -> RunnerResult<()> {
+    populate_cache_with_mode(
+        manifest,
+        sandbox,
+        home,
+        telemetry,
+        ForegroundCacheMode::BlockingFill,
+    )
+    .await
+}
+
+async fn populate_cache_with_mode(
+    manifest: &mut GuestDownloadManifest,
+    sandbox: &dyn Sandbox,
+    home: &HomePaths,
+    telemetry: &mut JobTelemetry,
+    mode: ForegroundCacheMode,
 ) -> RunnerResult<()> {
     let targets = collect_targets(manifest);
     if targets.is_empty() {
@@ -530,9 +633,17 @@ pub async fn populate_cache(
     }
     let target_groups = group_targets(targets);
 
-    let http = Client::builder()
-        .build()
-        .map_err(|e| RunnerError::Internal(format!("build http client: {e}")))?;
+    #[cfg(test)]
+    let blocking_http = if mode == ForegroundCacheMode::BlockingFill {
+        Some(
+            Client::builder()
+                .build()
+                .map_err(|e| RunnerError::Internal(format!("build http client: {e}")))?,
+        )
+    } else {
+        None
+    };
+
     let guest_writes = GuestWriteLocks::default();
     let mut stage_metrics = StorageCacheStageMetrics::start();
 
@@ -566,25 +677,52 @@ pub async fn populate_cache(
                 .await?;
             }
 
-            let http = http.clone();
             let home = home.clone();
-            groups.spawn(async move {
-                let mut metrics = CacheProcessMetrics::default();
-                let started_at = Instant::now();
-                let processed = process_group(&group, &http, &home, &mut metrics).await;
-                let success = processed.is_ok();
-                metrics.record(
-                    STORAGE_CACHE_PROCESS_GROUP,
-                    started_at.elapsed(),
-                    success,
-                    (!success).then_some(STORAGE_CACHE_PROCESS_GROUP_FAILED),
-                );
-                ProcessedGroupTask {
-                    group,
-                    metrics,
-                    processed,
+            if mode.uses_hit_or_passthrough() {
+                groups.spawn(async move {
+                    let mut metrics = CacheProcessMetrics::default();
+                    let started_at = Instant::now();
+                    let processed =
+                        process_group_hit_or_passthrough(&group, &home, &mut metrics).await;
+                    let success = processed.is_ok();
+                    metrics.record(
+                        STORAGE_CACHE_PROCESS_GROUP,
+                        started_at.elapsed(),
+                        success,
+                        (!success).then_some(STORAGE_CACHE_PROCESS_GROUP_FAILED),
+                    );
+                    ProcessedGroupTask {
+                        group,
+                        metrics,
+                        processed,
+                    }
+                });
+            } else {
+                #[cfg(test)]
+                {
+                    let http = blocking_http
+                        .as_ref()
+                        .expect("blocking storage cache mode builds an http client")
+                        .clone();
+                    groups.spawn(async move {
+                        let mut metrics = CacheProcessMetrics::default();
+                        let started_at = Instant::now();
+                        let processed = process_group(&group, &http, &home, &mut metrics).await;
+                        let success = processed.is_ok();
+                        metrics.record(
+                            STORAGE_CACHE_PROCESS_GROUP,
+                            started_at.elapsed(),
+                            success,
+                            (!success).then_some(STORAGE_CACHE_PROCESS_GROUP_FAILED),
+                        );
+                        ProcessedGroupTask {
+                            group,
+                            metrics,
+                            processed,
+                        }
+                    });
                 }
-            });
+            }
         }
 
         while let Some(task) = join_next_processed_group(&mut groups).await? {
@@ -604,10 +742,91 @@ pub async fn populate_cache(
     stage_metrics.record_total(telemetry);
     let outcomes = stage_result?;
 
+    if mode.uses_hit_or_passthrough() {
+        record_passthrough_summary(&outcomes, telemetry);
+        if mode.schedules_background_fill() {
+            spawn_background_fill_groups(&outcomes, home.clone());
+        }
+    }
     for (group, outcome) in outcomes {
         apply_group_outcome(manifest, &group, &outcome, telemetry);
     }
     Ok(())
+}
+
+fn spawn_background_fill_groups(outcomes: &[(CacheTargetGroup, GroupOutcome)], home: HomePaths) {
+    let groups = outcomes
+        .iter()
+        .filter(|(_, outcome)| should_background_fill(outcome))
+        .map(|(group, _)| group.clone())
+        .collect::<Vec<_>>();
+    if groups.is_empty() {
+        return;
+    }
+
+    tokio::spawn(async move {
+        run_background_fill_groups(groups, home).await;
+    });
+}
+
+fn should_background_fill(outcome: &GroupOutcome) -> bool {
+    match outcome {
+        GroupOutcome::Shared { outcome, .. } => {
+            matches!(outcome, TargetOutcome::MissPassthrough { .. })
+        }
+        #[cfg(test)]
+        GroupOutcome::PerTarget(outcomes) => outcomes
+            .iter()
+            .any(|outcome| matches!(outcome, TargetOutcome::MissPassthrough { .. })),
+    }
+}
+
+async fn run_background_fill_groups(groups: Vec<CacheTargetGroup>, home: HomePaths) {
+    let http = match Client::builder().build() {
+        Ok(http) => http,
+        Err(error) => {
+            warn!(%error, "storage_cache: failed to build background fill http client");
+            return;
+        }
+    };
+
+    let mut fills = JoinSet::new();
+    for group in groups {
+        while fills.len() >= CONCURRENCY {
+            join_next_background_fill(&mut fills).await;
+        }
+
+        let http = http.clone();
+        let home = home.clone();
+        fills.spawn(async move {
+            let Some(first_target) = group.targets.first() else {
+                return;
+            };
+            let name = first_target.name.clone();
+            let version = first_target.version.clone();
+            if let Err(error) = process_group_background_fill(&group, &http, &home).await {
+                warn!(
+                    %error,
+                    vas_storage_name = name,
+                    vas_version_id = version,
+                    "storage_cache: background fill failed"
+                );
+            }
+        });
+    }
+
+    while !fills.is_empty() {
+        join_next_background_fill(&mut fills).await;
+    }
+}
+
+async fn join_next_background_fill(fills: &mut JoinSet<()>) {
+    match fills.join_next().await {
+        Some(Ok(())) | None => {}
+        Some(Err(error)) => {
+            warn!(%error, "storage_cache: background fill task failed");
+        }
+    }
 }
 
 fn group_targets(targets: Vec<CacheTarget>) -> Vec<CacheTargetGroup> {
@@ -692,6 +911,7 @@ fn cache_target_from_entry(
     })
 }
 
+#[cfg(test)]
 async fn process_group(
     group: &CacheTargetGroup,
     http: &Client,
@@ -737,6 +957,44 @@ async fn process_group(
     })
 }
 
+async fn process_group_background_fill(
+    group: &CacheTargetGroup,
+    http: &Client,
+    home: &HomePaths,
+) -> RunnerResult<BackgroundFillOutcome> {
+    for target in &group.targets {
+        match process_one_background_fill(target, http, home).await? {
+            BackgroundFillOutcome::RetryableSkipped => {}
+            outcome => return Ok(outcome),
+        }
+    }
+    Ok(BackgroundFillOutcome::Skipped)
+}
+
+async fn process_group_hit_or_passthrough(
+    group: &CacheTargetGroup,
+    home: &HomePaths,
+    metrics: &mut CacheProcessMetrics,
+) -> RunnerResult<ProcessedGroup> {
+    let target = group
+        .targets
+        .first()
+        .ok_or_else(|| RunnerError::Internal("empty storage cache target group".into()))?;
+    let ProcessedTarget {
+        outcome,
+        stage_write,
+    } = process_one_hit_or_passthrough(target, home, metrics).await?;
+
+    Ok(ProcessedGroup {
+        outcome: GroupOutcome::Shared {
+            outcome_target_index: 0,
+            outcome,
+        },
+        stage_write,
+    })
+}
+
+#[cfg(test)]
 async fn process_one(
     target: &CacheTarget,
     http: &Client,
@@ -802,11 +1060,97 @@ async fn process_one(
         }
     }
 
+    let (bytes, download_duration) = match fetch_cache_target(target, http).await? {
+        CacheFetchOutcome::Downloaded {
+            bytes,
+            download_duration,
+        } => (bytes, download_duration),
+        CacheFetchOutcome::Skipped(outcome) => {
+            return Ok(ProcessedTarget {
+                outcome,
+                stage_write: None,
+            });
+        }
+    };
+
+    write_to_cache(&cache_dir, &bytes).await?;
+    let guest_path = guest_archive_path(&target.name, &target.version);
+    drop(writer);
+
+    Ok(ProcessedTarget {
+        outcome: TargetOutcome::Miss { download_duration },
+        stage_write: Some(GuestStageWrite { guest_path, bytes }),
+    })
+}
+
+async fn process_one_background_fill(
+    target: &CacheTarget,
+    http: &Client,
+    home: &HomePaths,
+) -> RunnerResult<BackgroundFillOutcome> {
+    let lock_path = home.storage_lock(&target.name, &target.version);
+    let cache_dir = home.storage_cache_dir(&target.name, &target.version);
+    let archive_path = cache_dir.join("archive.tar.gz");
+
+    let writer = match lock::try_acquire_or_busy(lock_path).await? {
+        lock::TryLock::Acquired(lock) => lock,
+        lock::TryLock::Busy => return Ok(BackgroundFillOutcome::Busy),
+    };
+
+    match fs::metadata(&archive_path).await {
+        Ok(metadata) if metadata.len() == 0 => {
+            evict_empty_cache(target, &cache_dir).await?;
+        }
+        Ok(metadata) if metadata.len() <= CACHE_MAX_SIZE => {
+            touch_mtime(&cache_dir);
+            drop(writer);
+            return Ok(BackgroundFillOutcome::AlreadyCached);
+        }
+        Ok(metadata) => {
+            evict_oversized_cache(target, &cache_dir, metadata.len()).await?;
+        }
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+        Err(e) => {
+            return Err(RunnerError::Internal(format!(
+                "stat cached {}: {e}",
+                archive_path.display()
+            )));
+        }
+    }
+
+    let outcome = match fetch_cache_target(target, http).await? {
+        CacheFetchOutcome::Downloaded {
+            bytes,
+            download_duration,
+        } => {
+            let _ = download_duration;
+            write_to_cache(&cache_dir, &bytes).await?;
+            BackgroundFillOutcome::Filled
+        }
+        CacheFetchOutcome::Skipped(TargetOutcome::SkippedHeadFailed { .. })
+        | CacheFetchOutcome::Skipped(TargetOutcome::SkippedInvalidDownload { .. }) => {
+            BackgroundFillOutcome::RetryableSkipped
+        }
+        CacheFetchOutcome::Skipped(TargetOutcome::SkippedOverSize) => {
+            BackgroundFillOutcome::Skipped
+        }
+        CacheFetchOutcome::Skipped(_) => {
+            return Err(RunnerError::Internal(
+                "background cache fill got unsupported fetch outcome".to_string(),
+            ));
+        }
+    };
+    drop(writer);
+    Ok(outcome)
+}
+
+async fn fetch_cache_target(
+    target: &CacheTarget,
+    http: &Client,
+) -> RunnerResult<CacheFetchOutcome> {
     // Miss path: probe size via `GET` + `Range: bytes=0-0`. A probe failure is
     // treated as passthrough — the entry keeps its original R2 URL and the
-    // guest downloads it as today. The exclusive lock stays held through cache
-    // population so same-key runners do not duplicate downloads or race on the
-    // staging directory.
+    // guest downloads it as today.
     let size = match retry_cache_fetch(|| probe_size(http, &target.archive_url)).await {
         Ok(SizeProbe::Known(n)) => n,
         Ok(SizeProbe::Unknown(reason)) => {
@@ -817,12 +1161,11 @@ async fn process_one(
                 reason,
                 "storage_cache: probe returned no usable size header, passthrough"
             );
-            return Ok(ProcessedTarget {
-                outcome: TargetOutcome::SkippedHeadFailed {
+            return Ok(CacheFetchOutcome::Skipped(
+                TargetOutcome::SkippedHeadFailed {
                     reason: reason.to_string(),
                 },
-                stage_write: None,
-            });
+            ));
         }
         Err(e) => {
             let reason = e.to_string();
@@ -832,10 +1175,9 @@ async fn process_one(
                 error = %reason,
                 "storage_cache: probe failed, passthrough"
             );
-            return Ok(ProcessedTarget {
-                outcome: TargetOutcome::SkippedHeadFailed { reason },
-                stage_write: None,
-            });
+            return Ok(CacheFetchOutcome::Skipped(
+                TargetOutcome::SkippedHeadFailed { reason },
+            ));
         }
     };
     if size > CACHE_MAX_SIZE {
@@ -845,14 +1187,9 @@ async fn process_one(
             size,
             "storage_cache: entry over size limit, passthrough"
         );
-        return Ok(ProcessedTarget {
-            outcome: TargetOutcome::SkippedOverSize,
-            stage_write: None,
-        });
+        return Ok(CacheFetchOutcome::Skipped(TargetOutcome::SkippedOverSize));
     }
 
-    // Download, stage, fsync, atomic rename, then release cache ownership before
-    // pushing the bytes to the guest.
     let t = Instant::now();
     let bytes =
         match retry_cache_fetch(|| download_tarball(http, &target.archive_url, CACHE_MAX_SIZE))
@@ -869,10 +1206,9 @@ async fn process_one(
                             error = %reason,
                             "storage_cache: full download failed, passthrough"
                         );
-                        return Ok(ProcessedTarget {
-                            outcome: TargetOutcome::SkippedInvalidDownload { reason },
-                            stage_write: None,
-                        });
+                        return Ok(CacheFetchOutcome::Skipped(
+                            TargetOutcome::SkippedInvalidDownload { reason },
+                        ));
                     }
                     CacheDownloadError::Internal(e) => return Err(e),
                 }
@@ -886,12 +1222,11 @@ async fn process_one(
                 version = %target.version,
                 "storage_cache: full download returned empty archive, passthrough"
             );
-            return Ok(ProcessedTarget {
-                outcome: TargetOutcome::SkippedInvalidDownload {
+            return Ok(CacheFetchOutcome::Skipped(
+                TargetOutcome::SkippedInvalidDownload {
                     reason: "empty-download".to_string(),
                 },
-                stage_write: None,
-            });
+            ));
         }
         DownloadBody::OverSize { observed_size } => {
             warn!(
@@ -918,23 +1253,143 @@ async fn process_one(
             observed_size,
             "storage_cache: full download size differed from probe, passthrough"
         );
-        return Ok(ProcessedTarget {
-            outcome: TargetOutcome::SkippedInvalidDownload {
+        return Ok(CacheFetchOutcome::Skipped(
+            TargetOutcome::SkippedInvalidDownload {
                 reason: "size-mismatch".to_string(),
             },
-            stage_write: None,
-        });
+        ));
     }
-    write_to_cache(&cache_dir, &bytes).await?;
-    let guest_path = guest_archive_path(&target.name, &target.version);
-    drop(writer);
 
-    Ok(ProcessedTarget {
-        outcome: TargetOutcome::Miss {
-            download_duration: t.elapsed(),
-        },
-        stage_write: Some(GuestStageWrite { guest_path, bytes }),
+    Ok(CacheFetchOutcome::Downloaded {
+        bytes,
+        download_duration: t.elapsed(),
     })
+}
+
+async fn process_one_hit_or_passthrough(
+    target: &CacheTarget,
+    home: &HomePaths,
+    metrics: &mut CacheProcessMetrics,
+) -> RunnerResult<ProcessedTarget> {
+    let lock_path = home.storage_lock(&target.name, &target.version);
+    let cache_dir = home.storage_cache_dir(&target.name, &target.version);
+    let archive_path = cache_dir.join("archive.tar.gz");
+    let archive_may_exist = cached_archive_exists(&archive_path).await?;
+    let started_at = Instant::now();
+    let reader_result = lock::try_acquire_existing_shared_or_missing(lock_path.clone()).await;
+    let success = reader_result.is_ok();
+    metrics.record(
+        STORAGE_CACHE_LOCK_WAIT,
+        started_at.elapsed(),
+        success,
+        (!success).then_some(STORAGE_CACHE_LOCK_WAIT_FAILED),
+    );
+    let reader = match reader_result? {
+        lock::ExistingTryLock::Acquired(lock) => lock,
+        lock::ExistingTryLock::Busy => {
+            return Ok(ProcessedTarget {
+                outcome: TargetOutcome::LockBusyPassthrough,
+                stage_write: None,
+            });
+        }
+        lock::ExistingTryLock::Missing => {
+            if !archive_may_exist || !cached_archive_exists(&archive_path).await? {
+                return Ok(ProcessedTarget {
+                    outcome: TargetOutcome::MissPassthrough { reason: "missing" },
+                    stage_write: None,
+                });
+            }
+
+            let started_at = Instant::now();
+            let reader_result = lock::try_acquire_shared_or_busy(lock_path.clone()).await;
+            let success = reader_result.is_ok();
+            metrics.record(
+                STORAGE_CACHE_LOCK_WAIT,
+                started_at.elapsed(),
+                success,
+                (!success).then_some(STORAGE_CACHE_LOCK_WAIT_FAILED),
+            );
+            match reader_result? {
+                lock::TryLock::Acquired(lock) => lock,
+                lock::TryLock::Busy => {
+                    return Ok(ProcessedTarget {
+                        outcome: TargetOutcome::LockBusyPassthrough,
+                        stage_write: None,
+                    });
+                }
+            }
+        }
+    };
+
+    match read_cache_entry(&cache_dir, &archive_path, metrics).await? {
+        CachedArchive::Hit(bytes) => {
+            let guest_path = guest_archive_path(&target.name, &target.version);
+            drop(reader);
+            Ok(ProcessedTarget {
+                outcome: TargetOutcome::Hit,
+                stage_write: Some(GuestStageWrite { guest_path, bytes }),
+            })
+        }
+        CachedArchive::Missing => {
+            drop(reader);
+            remove_storage_lock_after_missing_cache(&lock_path, &archive_path).await;
+            Ok(ProcessedTarget {
+                outcome: TargetOutcome::MissPassthrough { reason: "missing" },
+                stage_write: None,
+            })
+        }
+        CachedArchive::Empty => Ok(ProcessedTarget {
+            outcome: TargetOutcome::MissPassthrough { reason: "empty" },
+            stage_write: None,
+        }),
+        CachedArchive::OverSize { observed_size } => {
+            let _ = observed_size;
+            Ok(ProcessedTarget {
+                outcome: TargetOutcome::MissPassthrough {
+                    reason: "over-size",
+                },
+                stage_write: None,
+            })
+        }
+    }
+}
+
+async fn remove_storage_lock_after_missing_cache(lock_path: &Path, archive_path: &Path) {
+    let lock = match lock::try_acquire_existing_or_missing(lock_path.to_path_buf()).await {
+        Ok(lock::ExistingTryLock::Acquired(lock)) => lock,
+        Ok(lock::ExistingTryLock::Busy | lock::ExistingTryLock::Missing) => return,
+        Err(_) => return,
+    };
+
+    match cached_archive_exists(archive_path).await {
+        Ok(false) => {}
+        Ok(true) | Err(_) => return,
+    }
+
+    let Ok(lock_meta) = lock.metadata() else {
+        return;
+    };
+
+    match fs::symlink_metadata(lock_path).await {
+        Ok(path_meta)
+            if path_meta.dev() == lock_meta.dev() && path_meta.ino() == lock_meta.ino() => {}
+        Ok(_) => return,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return,
+        Err(_) => return,
+    }
+
+    let _ = fs::remove_file(lock_path).await;
+}
+
+async fn cached_archive_exists(archive_path: &Path) -> RunnerResult<bool> {
+    match fs::metadata(archive_path).await {
+        Ok(_) => Ok(true),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(RunnerError::Internal(format!(
+            "stat cached {}: {e}",
+            archive_path.display()
+        ))),
+    }
 }
 
 async fn read_cache_entry(
@@ -1540,7 +1995,7 @@ fn apply_group_outcome(
 ) {
     match group_outcome {
         GroupOutcome::Shared {
-            outcome_target_index,
+            outcome_target_index: _outcome_target_index,
             outcome,
         } => match outcome {
             TargetOutcome::Hit => {
@@ -1548,13 +2003,14 @@ fn apply_group_outcome(
                     apply_outcome(manifest, target, outcome, telemetry);
                 }
             }
+            #[cfg(test)]
             TargetOutcome::Miss { .. } => {
                 // The representative miss already staged the group archive in
                 // the guest. Other same-key entries are equivalent to cache
                 // hits for both rewrite behavior and entry-level telemetry.
                 let hit = TargetOutcome::Hit;
                 for (index, target) in group.targets.iter().enumerate() {
-                    if index == *outcome_target_index {
+                    if index == *_outcome_target_index {
                         apply_outcome(manifest, target, outcome, telemetry);
                     } else {
                         apply_outcome(manifest, target, &hit, telemetry);
@@ -1563,12 +2019,15 @@ fn apply_group_outcome(
             }
             TargetOutcome::SkippedOverSize
             | TargetOutcome::SkippedHeadFailed { .. }
-            | TargetOutcome::SkippedInvalidDownload { .. } => {
+            | TargetOutcome::SkippedInvalidDownload { .. }
+            | TargetOutcome::MissPassthrough { .. }
+            | TargetOutcome::LockBusyPassthrough => {
                 for target in &group.targets {
                     apply_outcome(manifest, target, outcome, telemetry);
                 }
             }
         },
+        #[cfg(test)]
         GroupOutcome::PerTarget(outcomes) => {
             debug_assert_eq!(group.targets.len(), outcomes.len());
             for (target, outcome) in group.targets.iter().zip(outcomes) {
@@ -1589,6 +2048,7 @@ fn apply_outcome(
             rewrite_url(manifest, target);
             telemetry.record("storage_cache_hit", Duration::ZERO, true, None);
         }
+        #[cfg(test)]
         TargetOutcome::Miss { download_duration } => {
             rewrite_url(manifest, target);
             telemetry.record("storage_cache_miss", Duration::ZERO, true, None);
@@ -1618,6 +2078,144 @@ fn apply_outcome(
                 Some(reason.as_str()),
             );
         }
+        TargetOutcome::MissPassthrough { reason } => {
+            telemetry.record(
+                STORAGE_CACHE_MISS_PASSTHROUGH,
+                Duration::ZERO,
+                true,
+                Some(reason),
+            );
+        }
+        TargetOutcome::LockBusyPassthrough => {
+            telemetry.record(
+                STORAGE_CACHE_LOCK_BUSY_PASSTHROUGH,
+                Duration::ZERO,
+                true,
+                None,
+            );
+        }
+    }
+}
+
+#[derive(Default)]
+struct PassthroughSummary {
+    hit_targets: usize,
+    miss_targets: usize,
+    lock_busy_targets: usize,
+}
+
+fn record_passthrough_summary(
+    outcomes: &[(CacheTargetGroup, GroupOutcome)],
+    telemetry: &mut JobTelemetry,
+) {
+    let mut summary = PassthroughSummary::default();
+    for (group, group_outcome) in outcomes {
+        match group_outcome {
+            GroupOutcome::Shared { outcome, .. } => {
+                add_passthrough_summary(&mut summary, outcome, group.targets.len());
+            }
+            #[cfg(test)]
+            GroupOutcome::PerTarget(target_outcomes) => {
+                for outcome in target_outcomes {
+                    add_passthrough_summary(&mut summary, outcome, 1);
+                }
+            }
+        }
+    }
+
+    telemetry.record(
+        passthrough_hit_count_action(summary.hit_targets),
+        Duration::ZERO,
+        true,
+        None,
+    );
+    telemetry.record(
+        passthrough_miss_count_action(summary.miss_targets),
+        Duration::ZERO,
+        true,
+        None,
+    );
+    telemetry.record(
+        passthrough_lock_busy_count_action(summary.lock_busy_targets),
+        Duration::ZERO,
+        true,
+        None,
+    );
+}
+
+fn add_passthrough_summary(
+    summary: &mut PassthroughSummary,
+    outcome: &TargetOutcome,
+    target_count: usize,
+) {
+    match outcome {
+        TargetOutcome::Hit => summary.hit_targets += target_count,
+        TargetOutcome::MissPassthrough { .. } => summary.miss_targets += target_count,
+        TargetOutcome::LockBusyPassthrough => summary.lock_busy_targets += target_count,
+        #[cfg(test)]
+        TargetOutcome::Miss { .. } => {}
+        TargetOutcome::SkippedOverSize
+        | TargetOutcome::SkippedHeadFailed { .. }
+        | TargetOutcome::SkippedInvalidDownload { .. } => {}
+    }
+}
+
+fn passthrough_hit_count_action(count: usize) -> &'static str {
+    match count_bucket(count) {
+        CountBucket::Zero => "storage_cache_passthrough_hit_count_0",
+        CountBucket::One => "storage_cache_passthrough_hit_count_1",
+        CountBucket::Two => "storage_cache_passthrough_hit_count_2",
+        CountBucket::ThreeToFour => "storage_cache_passthrough_hit_count_3_4",
+        CountBucket::FiveToEight => "storage_cache_passthrough_hit_count_5_8",
+        CountBucket::NineToSixteen => "storage_cache_passthrough_hit_count_9_16",
+        CountBucket::SeventeenPlus => "storage_cache_passthrough_hit_count_17_plus",
+    }
+}
+
+fn passthrough_miss_count_action(count: usize) -> &'static str {
+    match count_bucket(count) {
+        CountBucket::Zero => "storage_cache_passthrough_miss_count_0",
+        CountBucket::One => "storage_cache_passthrough_miss_count_1",
+        CountBucket::Two => "storage_cache_passthrough_miss_count_2",
+        CountBucket::ThreeToFour => "storage_cache_passthrough_miss_count_3_4",
+        CountBucket::FiveToEight => "storage_cache_passthrough_miss_count_5_8",
+        CountBucket::NineToSixteen => "storage_cache_passthrough_miss_count_9_16",
+        CountBucket::SeventeenPlus => "storage_cache_passthrough_miss_count_17_plus",
+    }
+}
+
+fn passthrough_lock_busy_count_action(count: usize) -> &'static str {
+    match count_bucket(count) {
+        CountBucket::Zero => "storage_cache_passthrough_lock_busy_count_0",
+        CountBucket::One => "storage_cache_passthrough_lock_busy_count_1",
+        CountBucket::Two => "storage_cache_passthrough_lock_busy_count_2",
+        CountBucket::ThreeToFour => "storage_cache_passthrough_lock_busy_count_3_4",
+        CountBucket::FiveToEight => "storage_cache_passthrough_lock_busy_count_5_8",
+        CountBucket::NineToSixteen => "storage_cache_passthrough_lock_busy_count_9_16",
+        CountBucket::SeventeenPlus => "storage_cache_passthrough_lock_busy_count_17_plus",
+    }
+}
+
+#[derive(Clone, Copy)]
+enum CountBucket {
+    Zero,
+    One,
+    Two,
+    ThreeToFour,
+    FiveToEight,
+    NineToSixteen,
+    SeventeenPlus,
+}
+
+fn count_bucket(count: usize) -> CountBucket {
+    match count {
+        0 => CountBucket::Zero,
+        1 => CountBucket::One,
+        2 => CountBucket::Two,
+        3 | 4 => CountBucket::ThreeToFour,
+        5..=8 => CountBucket::FiveToEight,
+        9..=16 => CountBucket::NineToSixteen,
+        _ => CountBucket::SeventeenPlus,
     }
 }
 
@@ -1810,6 +2408,22 @@ mod tests {
         }
     }
 
+    fn manifest_single_artifact(url: String, name: &str, version: &str) -> GuestDownloadManifest {
+        GuestDownloadManifest {
+            storages: Vec::new(),
+            artifacts: vec![GuestDownloadArtifactEntry {
+                mount_path: format!("/mnt/artifact-{name}"),
+                archive_url: Some(url),
+                cached: false,
+                vas_storage_name: name.to_string(),
+                vas_storage_id: format!("{name}-id"),
+                vas_version_id: version.to_string(),
+                missing_root_policy: None,
+            }],
+            cleanup_paths: Vec::new(),
+        }
+    }
+
     fn tarball_bytes() -> Vec<u8> {
         let mut bytes = Vec::new();
         {
@@ -1833,6 +2447,10 @@ mod tests {
         let cache_dir = home.storage_cache_dir(name, version);
         std::fs::create_dir_all(&cache_dir).unwrap();
         std::fs::write(cache_dir.join("archive.tar.gz"), bytes).unwrap();
+    }
+
+    fn write_storage_lock(home: &HomePaths, name: &str, version: &str) {
+        drop(lock::open_lock_file(&home.storage_lock(name, version)).unwrap());
     }
 
     struct SamePathConcurrentWriteDetectingSandbox {
@@ -2012,6 +2630,18 @@ mod tests {
             .expect("raw HTTP sequence server should not fail");
     }
 
+    async fn wait_cached_archive(home: &HomePaths, name: &str, version: &str) -> Vec<u8> {
+        let lock_path = home.storage_lock(name, version);
+        let path = home.storage_cache_dir(name, version).join("archive.tar.gz");
+        let _reader = tokio::time::timeout(Duration::from_secs(5), lock::acquire_shared(lock_path))
+            .await
+            .expect("background fill should release cache lock")
+            .expect("cache lock should be readable");
+        fs::read(&path)
+            .await
+            .unwrap_or_else(|e| panic!("failed to read cached archive {}: {e}", path.display()))
+    }
+
     fn status_response(status: &str) -> Vec<u8> {
         format!("HTTP/1.1 {status}\r\nContent-Length: 0\r\n\r\n").into_bytes()
     }
@@ -2101,7 +2731,7 @@ mod tests {
             version,
         );
 
-        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
             .unwrap();
 
@@ -2124,6 +2754,471 @@ mod tests {
         assert_eq!(batches.len(), 1);
         assert_eq!(batches[0].files.len(), 1);
         assert_eq!(batches[0].files[0].path, guest_archive_path(name, version));
+    }
+
+    #[tokio::test]
+    async fn guarded_hit_path_reads_from_disk_and_rewrites_url() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry();
+
+        let name = "guarded-hit";
+        let version = "v1";
+        write_cached_archive(&home, name, version, &tarball_bytes());
+        write_storage_lock(&home, name, version);
+        let mut manifest = manifest_single_storage(
+            "https://r2.example.com/never-called.tar.gz".into(),
+            name,
+            version,
+        );
+
+        populate_cache_passthrough_without_background(
+            &mut manifest,
+            &sandbox,
+            &home,
+            &mut telemetry,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            manifest.storages[0].archive_url.as_deref(),
+            Some(format!("file://{}", guest_archive_path(name, version)).as_str())
+        );
+        let batches = sandbox.write_files_calls();
+        assert_eq!(batches.len(), 1);
+        assert_eq!(batches[0].files.len(), 1);
+        assert_eq!(batches[0].files[0].path, guest_archive_path(name, version));
+        let ops = telemetry.pending_ops_snapshot();
+        assert_op(&ops, "storage_cache_hit", true);
+        assert_op(&ops, "storage_cache_passthrough_hit_count_1", true);
+        assert_op(&ops, "storage_cache_passthrough_miss_count_0", true);
+        assert_no_op(&ops, "storage_cache_miss");
+        assert_no_op(&ops, "storage_cache_download");
+    }
+
+    #[tokio::test]
+    async fn guarded_archive_without_lock_recreates_lock_and_hits() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry();
+        let name = "guarded-missing-lock";
+        let version = "v1";
+        let original = "https://r2.example.com/recreate-lock.tar.gz".to_string();
+        write_cached_archive(&home, name, version, &tarball_bytes());
+        let lock_path = home.storage_lock(name, version);
+        assert!(!lock_path.exists());
+        let mut manifest = manifest_single_storage(original.clone(), name, version);
+
+        populate_cache_passthrough_without_background(
+            &mut manifest,
+            &sandbox,
+            &home,
+            &mut telemetry,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            manifest.storages[0].archive_url.as_deref(),
+            Some(format!("file://{}", guest_archive_path(name, version)).as_str())
+        );
+        assert!(lock_path.exists());
+        let batches = sandbox.write_files_calls();
+        assert_eq!(batches.len(), 1);
+        assert_eq!(batches[0].files.len(), 1);
+        assert_eq!(batches[0].files[0].path, guest_archive_path(name, version));
+        let ops = telemetry.pending_ops_snapshot();
+        assert_op(&ops, "storage_cache_hit", true);
+        assert_no_op(&ops, STORAGE_CACHE_MISS_PASSTHROUGH);
+    }
+
+    #[tokio::test]
+    async fn guarded_miss_passthrough_keeps_url_without_http_or_cache_write() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry();
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let (hit_tx, mut hit_rx) = tokio::sync::oneshot::channel();
+        let server_task = tokio::spawn(async move {
+            if let Ok((mut socket, _)) = listener.accept().await {
+                let _ = hit_tx.send(());
+                let _ = socket
+                    .write_all(b"HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\n\r\n")
+                    .await;
+            }
+        });
+        let name = "guarded-miss";
+        let version = "v1";
+        let original = format!("http://{addr}/archive.tar.gz");
+        let mut manifest = manifest_single_storage(original.clone(), name, version);
+
+        populate_cache_passthrough_without_background(
+            &mut manifest,
+            &sandbox,
+            &home,
+            &mut telemetry,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            manifest.storages[0].archive_url.as_deref(),
+            Some(original.as_str())
+        );
+        assert!(
+            hit_rx.try_recv().is_err(),
+            "guarded miss should not contact the archive URL"
+        );
+        server_task.abort();
+        let _ = server_task.await;
+        assert!(!home.storage_cache_dir(name, version).exists());
+        assert!(!home.storage_lock(name, version).exists());
+        assert!(sandbox.write_file_calls().is_empty());
+        assert!(sandbox.write_files_calls().is_empty());
+        let ops = telemetry.pending_ops_snapshot();
+        assert_op_error(&ops, STORAGE_CACHE_MISS_PASSTHROUGH, "missing");
+        assert_op(&ops, "storage_cache_passthrough_miss_count_1", true);
+        assert_op(&ops, "storage_cache_passthrough_hit_count_0", true);
+        assert_no_op(&ops, "storage_cache_miss");
+        assert_no_op(&ops, "storage_cache_download");
+        assert_no_op(&ops, "storage_cache_skipped_head_failed");
+    }
+
+    #[tokio::test]
+    async fn miss_passthrough_fills_cache_in_background() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry();
+        let body = tarball_bytes();
+        let expected_body = body.clone();
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let (allow_tx, allow_rx) = tokio::sync::oneshot::channel();
+        let server_task = tokio::spawn(async move {
+            let mut allow_rx = Some(allow_rx);
+            for response in [partial_content_response(body.len()), ok_response(&body)] {
+                let (mut socket, _) = listener.accept().await?;
+                let mut request = [0u8; 1024];
+                let _ = tokio::io::AsyncReadExt::read(&mut socket, &mut request).await?;
+                if let Some(allow_rx) = allow_rx.take() {
+                    let _ = allow_rx.await;
+                }
+                socket.write_all(&response).await?;
+            }
+            Ok::<(), std::io::Error>(())
+        });
+        let name = "background-miss";
+        let version = "v1";
+        let original = format!("http://{addr}/archive.tar.gz");
+        let mut manifest = manifest_single_storage(original.clone(), name, version);
+
+        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            manifest.storages[0].archive_url.as_deref(),
+            Some(original.as_str())
+        );
+        assert!(
+            !home
+                .storage_cache_dir(name, version)
+                .join("archive.tar.gz")
+                .exists()
+        );
+        assert!(sandbox.write_file_calls().is_empty());
+        assert!(sandbox.write_files_calls().is_empty());
+
+        allow_tx.send(()).unwrap();
+        await_raw_http_sequence(server_task).await;
+        assert_eq!(
+            wait_cached_archive(&home, name, version).await,
+            expected_body
+        );
+
+        let ops = telemetry.pending_ops_snapshot();
+        assert_op_error(&ops, STORAGE_CACHE_MISS_PASSTHROUGH, "missing");
+        assert_no_op(&ops, "storage_cache_miss");
+        assert_no_op(&ops, "storage_cache_download");
+    }
+
+    #[tokio::test]
+    async fn background_fill_skips_busy_cache_lock_without_http() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let name = "background-busy";
+        let version = "v1";
+        let _writer = lock::acquire(home.storage_lock(name, version))
+            .await
+            .unwrap();
+        let group = CacheTargetGroup {
+            targets: vec![CacheTarget {
+                kind: TargetKind::Storage,
+                index: 0,
+                name: name.to_string(),
+                version: version.to_string(),
+                archive_url: "http://127.0.0.1:9/archive.tar.gz".to_string(),
+            }],
+        };
+        let http = Client::builder().build().unwrap();
+
+        let outcome = process_group_background_fill(&group, &http, &home)
+            .await
+            .unwrap();
+
+        assert!(matches!(outcome, BackgroundFillOutcome::Busy));
+        assert!(!home.storage_cache_dir(name, version).exists());
+    }
+
+    #[tokio::test]
+    async fn guarded_missing_archive_with_existing_lock_removes_orphan_lock() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry();
+        let name = "guarded-orphan-lock";
+        let version = "v1";
+        let original = "https://r2.example.com/orphan-lock.tar.gz".to_string();
+        write_storage_lock(&home, name, version);
+        let lock_path = home.storage_lock(name, version);
+        assert!(lock_path.exists());
+        assert!(!home.storage_cache_dir(name, version).exists());
+        let mut manifest = manifest_single_storage(original.clone(), name, version);
+
+        populate_cache_passthrough_without_background(
+            &mut manifest,
+            &sandbox,
+            &home,
+            &mut telemetry,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            manifest.storages[0].archive_url.as_deref(),
+            Some(original.as_str())
+        );
+        assert!(!lock_path.exists());
+        assert!(sandbox.write_file_calls().is_empty());
+        assert!(sandbox.write_files_calls().is_empty());
+        let ops = telemetry.pending_ops_snapshot();
+        assert_op_error(&ops, STORAGE_CACHE_MISS_PASSTHROUGH, "missing");
+        assert_no_op(&ops, "storage_cache_hit");
+    }
+
+    #[tokio::test]
+    async fn guarded_missing_archive_keeps_lock_when_another_reader_holds_it() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry();
+        let name = "guarded-orphan-lock-shared";
+        let version = "v1";
+        let original = "https://r2.example.com/orphan-lock-shared.tar.gz".to_string();
+        let lock_path = home.storage_lock(name, version);
+        let _other_reader = lock::acquire_shared(lock_path.clone()).await.unwrap();
+        assert!(lock_path.exists());
+        assert!(!home.storage_cache_dir(name, version).exists());
+        let mut manifest = manifest_single_storage(original.clone(), name, version);
+
+        populate_cache_passthrough_without_background(
+            &mut manifest,
+            &sandbox,
+            &home,
+            &mut telemetry,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            manifest.storages[0].archive_url.as_deref(),
+            Some(original.as_str())
+        );
+        assert!(
+            lock_path.exists(),
+            "cleanup must not remove a lock while another reader still holds it"
+        );
+        assert!(sandbox.write_file_calls().is_empty());
+        assert!(sandbox.write_files_calls().is_empty());
+        let ops = telemetry.pending_ops_snapshot();
+        assert_op_error(&ops, STORAGE_CACHE_MISS_PASSTHROUGH, "missing");
+        assert_no_op(&ops, "storage_cache_hit");
+    }
+
+    #[tokio::test]
+    async fn guarded_empty_and_oversized_cached_archives_passthrough_without_eviction() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry();
+        let empty_name = "guarded-empty";
+        let oversized_name = "guarded-oversized";
+        let version = "v1";
+        let empty_dir = home.storage_cache_dir(empty_name, version);
+        std::fs::create_dir_all(&empty_dir).unwrap();
+        std::fs::write(empty_dir.join("archive.tar.gz"), b"").unwrap();
+        write_storage_lock(&home, empty_name, version);
+        let oversized_dir = home.storage_cache_dir(oversized_name, version);
+        std::fs::create_dir_all(&oversized_dir).unwrap();
+        let oversized_file = std::fs::File::create(oversized_dir.join("archive.tar.gz")).unwrap();
+        oversized_file.set_len(CACHE_MAX_SIZE + 1).unwrap();
+        write_storage_lock(&home, oversized_name, version);
+        let empty_url = "https://r2.example.com/empty.tar.gz".to_string();
+        let oversized_url = "https://r2.example.com/oversized.tar.gz".to_string();
+        let mut manifest = GuestDownloadManifest {
+            storages: vec![
+                GuestDownloadStorageEntry {
+                    mount_path: "/mnt/empty".into(),
+                    archive_url: Some(empty_url.clone()),
+                    cached: false,
+                    instructions_target_filename: None,
+                    vas_storage_name: empty_name.to_string(),
+                    vas_version_id: version.to_string(),
+                },
+                GuestDownloadStorageEntry {
+                    mount_path: "/mnt/oversized".into(),
+                    archive_url: Some(oversized_url.clone()),
+                    cached: false,
+                    instructions_target_filename: None,
+                    vas_storage_name: oversized_name.to_string(),
+                    vas_version_id: version.to_string(),
+                },
+            ],
+            artifacts: Vec::new(),
+            cleanup_paths: Vec::new(),
+        };
+
+        populate_cache_passthrough_without_background(
+            &mut manifest,
+            &sandbox,
+            &home,
+            &mut telemetry,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            manifest.storages[0].archive_url.as_deref(),
+            Some(empty_url.as_str())
+        );
+        assert_eq!(
+            manifest.storages[1].archive_url.as_deref(),
+            Some(oversized_url.as_str())
+        );
+        assert!(empty_dir.join("archive.tar.gz").exists());
+        assert!(oversized_dir.join("archive.tar.gz").exists());
+        let ops = telemetry.pending_ops_snapshot();
+        assert_op(&ops, "storage_cache_passthrough_miss_count_2", true);
+        assert_op_count(&ops, STORAGE_CACHE_MISS_PASSTHROUGH, 2);
+        assert_no_op(&ops, "storage_cache_skipped_over_size");
+        assert_no_op(&ops, "storage_cache_miss");
+    }
+
+    #[tokio::test]
+    async fn guarded_same_key_duplicate_misses_preserve_each_original_url() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry();
+        let name = "guarded-duplicate";
+        let version = "v1";
+        let first_url = "https://r2.example.com/first.tar.gz".to_string();
+        let second_url = "https://mirror.example.com/second.tar.gz".to_string();
+        let mut manifest =
+            manifest_duplicate_storages(first_url.clone(), second_url.clone(), name, version);
+
+        populate_cache_passthrough_without_background(
+            &mut manifest,
+            &sandbox,
+            &home,
+            &mut telemetry,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            manifest.storages[0].archive_url.as_deref(),
+            Some(first_url.as_str())
+        );
+        assert_eq!(
+            manifest.storages[1].archive_url.as_deref(),
+            Some(second_url.as_str())
+        );
+        let ops = telemetry.pending_ops_snapshot();
+        assert_op(&ops, "storage_cache_passthrough_miss_count_2", true);
+        assert_op_count(&ops, STORAGE_CACHE_MISS_PASSTHROUGH, 2);
+        assert_no_op(&ops, "storage_cache_miss");
+    }
+
+    #[tokio::test]
+    async fn guarded_artifact_miss_passthrough_keeps_url() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry();
+        let name = "guarded-artifact";
+        let version = "v1";
+        let original = "https://r2.example.com/artifact.tar.gz".to_string();
+        let mut manifest = manifest_single_artifact(original.clone(), name, version);
+
+        populate_cache_passthrough_without_background(
+            &mut manifest,
+            &sandbox,
+            &home,
+            &mut telemetry,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            manifest.artifacts[0].archive_url.as_deref(),
+            Some(original.as_str())
+        );
+        assert!(!home.storage_cache_dir(name, version).exists());
+        assert!(!home.storage_lock(name, version).exists());
+        let ops = telemetry.pending_ops_snapshot();
+        assert_op(&ops, STORAGE_CACHE_MISS_PASSTHROUGH, true);
+        assert_no_op(&ops, "storage_cache_miss");
+    }
+
+    #[tokio::test]
+    async fn guarded_lock_busy_passthrough_does_not_wait_for_writer() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry();
+        let name = "guarded-busy";
+        let version = "v1";
+        let original = "https://r2.example.com/busy.tar.gz".to_string();
+        let _writer = lock::acquire(home.storage_lock(name, version))
+            .await
+            .unwrap();
+        let mut manifest = manifest_single_storage(original.clone(), name, version);
+
+        populate_cache_passthrough_without_background(
+            &mut manifest,
+            &sandbox,
+            &home,
+            &mut telemetry,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            manifest.storages[0].archive_url.as_deref(),
+            Some(original.as_str())
+        );
+        let ops = telemetry.pending_ops_snapshot();
+        assert_op(&ops, STORAGE_CACHE_LOCK_BUSY_PASSTHROUGH, true);
+        assert_op(&ops, "storage_cache_passthrough_lock_busy_count_1", true);
+        assert_no_op(&ops, STORAGE_CACHE_MISS_PASSTHROUGH);
+        assert_no_op(&ops, "storage_cache_miss");
     }
 
     #[tokio::test]
@@ -2162,7 +3257,7 @@ mod tests {
             cleanup_paths: Vec::new(),
         };
 
-        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
             .unwrap();
 
@@ -2208,7 +3303,7 @@ mod tests {
         write_cached_archive(&home, name, version, &tarball_bytes());
         let mut manifest = manifest_single_storage(original.clone(), name, version);
 
-        let err = populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+        let err = populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
             .unwrap_err();
 
@@ -2264,7 +3359,7 @@ mod tests {
         let version = "v2";
         let mut manifest = manifest_single_storage(url, name, version);
 
-        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
             .unwrap();
 
@@ -2316,7 +3411,7 @@ mod tests {
         let version = "v1";
         let mut manifest = manifest_single_storage(url, name, version);
 
-        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
             .unwrap();
         await_raw_http_sequence(handle).await;
@@ -2366,7 +3461,7 @@ mod tests {
         let version = "v1";
         let mut manifest = manifest_single_storage(original.clone(), name, version);
 
-        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
             .unwrap();
 
@@ -2401,7 +3496,7 @@ mod tests {
         let version = "v1";
         let mut manifest = manifest_single_storage(original.clone(), name, version);
 
-        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
             .unwrap();
 
@@ -2439,7 +3534,7 @@ mod tests {
         let version = "v1";
         let mut manifest = manifest_single_storage(url, name, version);
 
-        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
             .unwrap();
         await_raw_http_sequence(handle).await;
@@ -2475,7 +3570,7 @@ mod tests {
         let version = "v1";
         let mut manifest = manifest_single_storage(url, name, version);
 
-        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
             .unwrap();
         await_raw_http_sequence(handle).await;
@@ -2530,7 +3625,7 @@ mod tests {
         let version = "v1";
         let mut manifest = manifest_single_storage(original.clone(), name, version);
 
-        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
             .unwrap();
 
@@ -2597,7 +3692,7 @@ mod tests {
         let version = "v1";
         let mut manifest = manifest_single_storage(original.clone(), name, version);
 
-        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
             .unwrap();
 
@@ -2667,7 +3762,7 @@ mod tests {
         let version = "v1";
         let mut manifest = manifest_single_storage(original.clone(), name, version);
 
-        let err = populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+        let err = populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
             .unwrap_err();
 
@@ -2726,7 +3821,7 @@ mod tests {
         let version = "v9";
         let mut manifest = manifest_single_storage(original.clone(), name, version);
 
-        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
             .unwrap();
 
@@ -2784,7 +3879,7 @@ mod tests {
         let version = "v1";
         let mut manifest = manifest_single_storage(original.clone(), name, version);
 
-        let err = populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+        let err = populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
             .unwrap_err();
 
@@ -2848,7 +3943,7 @@ mod tests {
         let version = "v1";
         let mut manifest = manifest_single_storage(original.clone(), name, version);
 
-        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
             .unwrap();
 
@@ -2902,7 +3997,7 @@ mod tests {
         let version = "v1";
         let mut manifest = manifest_single_storage(original.clone(), name, version);
 
-        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
             .unwrap();
 
@@ -2958,7 +4053,7 @@ mod tests {
         let version = "v1";
         let mut manifest = manifest_single_storage(original.clone(), name, version);
 
-        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
             .unwrap();
 
@@ -3012,7 +4107,7 @@ mod tests {
         let version = "v1";
         let mut manifest = manifest_single_storage(original.clone(), name, version);
 
-        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
             .unwrap();
 
@@ -3054,7 +4149,7 @@ mod tests {
             cleanup_paths: Vec::new(),
         };
 
-        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
             .unwrap();
 
@@ -3086,7 +4181,7 @@ mod tests {
             cleanup_paths: Vec::new(),
         };
 
-        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
             .unwrap();
 
@@ -3122,7 +4217,7 @@ mod tests {
         let mut manifest =
             manifest_single_storage("https://r2.example.com/ignored.tar.gz".into(), name, "v2");
 
-        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
             .unwrap();
 
@@ -3173,7 +4268,7 @@ mod tests {
         let url = server.url("/revalidated.tar.gz");
         let mut manifest = manifest_single_storage(url, name, version);
 
-        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
             .unwrap();
 
@@ -3235,7 +4330,7 @@ mod tests {
         let url = server.url("/empty-revalidated.tar.gz");
         let mut manifest = manifest_single_storage(url, name, version);
 
-        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
             .unwrap();
 
@@ -3297,7 +4392,7 @@ mod tests {
         let url = server.url("/should-not-revalidate.tar.gz");
         let mut manifest = manifest_single_storage(url, name, version);
 
-        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
             .unwrap();
 
@@ -3354,7 +4449,7 @@ mod tests {
             cleanup_paths: Vec::new(),
         };
 
-        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
             .unwrap();
 
@@ -3387,7 +4482,7 @@ mod tests {
         );
         let mut manifest = manifest_single_storage(original.clone(), "broken-skill", "v1");
 
-        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
             .unwrap();
 
@@ -3435,7 +4530,7 @@ mod tests {
         let version = "v1";
         let mut manifest = manifest_single_storage(original.clone(), name, version);
 
-        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
             .unwrap();
         await_raw_http_sequence(handle).await;
@@ -3527,7 +4622,7 @@ mod tests {
         let version = "v1";
         let mut manifest = manifest_single_storage(original.clone(), name, version);
 
-        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
             .unwrap();
 
@@ -3585,7 +4680,7 @@ mod tests {
         let version = "v1";
         let mut manifest = manifest_single_storage(original.clone(), name, version);
 
-        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
             .unwrap();
 
@@ -3635,7 +4730,7 @@ mod tests {
         let version = "v1";
         let mut manifest = manifest_single_storage(original.clone(), name, version);
 
-        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
             .unwrap();
 
@@ -3852,7 +4947,7 @@ mod tests {
                     version,
                 );
                 let mut telemetry = new_telemetry();
-                populate_cache(&mut manifest, sandbox.as_ref(), &home, &mut telemetry)
+                populate_cache_blocking(&mut manifest, sandbox.as_ref(), &home, &mut telemetry)
                     .await
                     .unwrap();
                 manifest
@@ -3877,7 +4972,7 @@ mod tests {
                     version,
                 );
                 let mut telemetry = new_telemetry();
-                populate_cache(&mut manifest, sandbox.as_ref(), &home, &mut telemetry)
+                populate_cache_blocking(&mut manifest, sandbox.as_ref(), &home, &mut telemetry)
                     .await
                     .unwrap();
                 manifest
@@ -4056,7 +5151,8 @@ mod tests {
                     cleanup_paths: Vec::new(),
                 };
                 let mut telemetry = new_telemetry();
-                populate_cache(&mut manifest, sandbox.as_ref(), &home, &mut telemetry).await?;
+                populate_cache_blocking(&mut manifest, sandbox.as_ref(), &home, &mut telemetry)
+                    .await?;
                 Ok::<GuestDownloadManifest, RunnerError>(manifest)
             })
         };
@@ -4121,7 +5217,8 @@ mod tests {
                     version,
                 );
                 let mut telemetry = new_telemetry();
-                populate_cache(&mut manifest, sandbox.as_ref(), &home, &mut telemetry).await?;
+                populate_cache_blocking(&mut manifest, sandbox.as_ref(), &home, &mut telemetry)
+                    .await?;
                 Ok::<GuestDownloadManifest, RunnerError>(manifest)
             })
         };
@@ -4207,7 +5304,7 @@ mod tests {
             version,
         );
 
-        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
             .unwrap();
 
@@ -4287,7 +5384,7 @@ mod tests {
             cleanup_paths: Vec::new(),
         };
 
-        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
             .unwrap();
 
@@ -4369,7 +5466,7 @@ mod tests {
             version,
         );
 
-        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
             .unwrap();
 
@@ -4465,7 +5562,7 @@ mod tests {
             version,
         );
 
-        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
             .unwrap();
 
@@ -4553,7 +5650,7 @@ mod tests {
         let mut manifest =
             manifest_duplicate_storages(original_a.clone(), original_b.clone(), name, version);
 
-        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
             .unwrap();
 
@@ -4647,7 +5744,7 @@ mod tests {
         let mut manifest =
             manifest_duplicate_storages(original_a.clone(), original_b.clone(), name, version);
 
-        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
             .unwrap();
 
@@ -4728,7 +5825,7 @@ mod tests {
             cleanup_paths: Vec::new(),
         };
 
-        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
             .unwrap();
 
@@ -4775,7 +5872,7 @@ mod tests {
             cleanup_paths: Vec::new(),
         };
 
-        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
             .unwrap();
 
@@ -4832,8 +5929,8 @@ mod tests {
         let mut manifest_b = manifest_single_storage(url.clone(), name, version);
 
         let (res_a, res_b) = tokio::join!(
-            populate_cache(&mut manifest_a, &sandbox_a, &home, &mut telemetry_a),
-            populate_cache(&mut manifest_b, &sandbox_b, &home, &mut telemetry_b),
+            populate_cache_blocking(&mut manifest_a, &sandbox_a, &home, &mut telemetry_a),
+            populate_cache_blocking(&mut manifest_b, &sandbox_b, &home, &mut telemetry_b),
         );
         res_a.unwrap();
         res_b.unwrap();
@@ -4940,7 +6037,7 @@ mod tests {
         let version = "v1";
         let mut manifest = manifest_single_storage(url, name, version);
 
-        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
             .unwrap();
 
@@ -4991,7 +6088,7 @@ mod tests {
         let version = "v1";
         let mut manifest = manifest_single_storage(original.clone(), name, version);
 
-        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
             .unwrap();
 
@@ -5044,7 +6141,7 @@ mod tests {
         let version = "v1";
         let mut manifest = manifest_single_storage(original.clone(), name, version);
 
-        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
             .unwrap();
 
@@ -5120,7 +6217,7 @@ mod tests {
             let version = "v1";
             let mut manifest = manifest_single_storage(original.clone(), name.as_str(), version);
 
-            populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+            populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
                 .await
                 .unwrap();
 

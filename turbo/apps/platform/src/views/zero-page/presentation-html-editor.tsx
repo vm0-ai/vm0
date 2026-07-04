@@ -628,9 +628,8 @@ function downloadEditedPptx(params: {
       (async () => {
         // Dynamic import optimizes loading performance: PPTX export is only
         // needed after the user explicitly downloads the edited deck.
-        const { downloadPresentationHtmlStringPptx } = await import(
-          "./presentation-html-pptx-download.ts"
-        );
+        const { downloadPresentationHtmlStringPptx } =
+          await import("./presentation-html-pptx-download.ts");
         await downloadPresentationHtmlStringPptx(params);
       })(),
       (error) => {

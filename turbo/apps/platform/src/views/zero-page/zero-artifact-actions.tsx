@@ -206,9 +206,8 @@ function downloadPresentationPptx(params: {
       (async () => {
         // Dynamic import optimizes loading performance: PPTX export is only
         // needed after the user explicitly chooses the PPTX download action.
-        const { downloadPresentationHtmlPptx } = await import(
-          "./presentation-html-pptx-download.ts"
-        );
+        const { downloadPresentationHtmlPptx } =
+          await import("./presentation-html-pptx-download.ts");
         await downloadPresentationHtmlPptx(params);
       })(),
       (error) => {
