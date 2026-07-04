@@ -92,7 +92,7 @@ async function signInWithClerkTestingHelper(
     await page.evaluate(async (organizationId) => {
       await window.Clerk?.setActive({ organization: organizationId });
     }, options.activeOrganizationId);
-    await page.goto("about:blank", { waitUntil: "domcontentloaded" });
+    await gotoAboutBlankAfterClerkNavigation(page);
     await page.goto(helperUrl.toString(), { waitUntil: "domcontentloaded" });
     await page.waitForFunction(
       () => Boolean(window.Clerk?.loaded && window.Clerk?.session),
@@ -130,10 +130,33 @@ async function signInWithClerkTestingHelper(
   if (redirectUrl && options.followRedirect !== false) {
     await page.goto(redirectUrl, { waitUntil: "domcontentloaded" });
   } else {
-    await page.goto("about:blank", { waitUntil: "domcontentloaded" });
+    await gotoAboutBlankAfterClerkNavigation(page);
   }
 
   return { token };
+}
+
+async function gotoAboutBlankAfterClerkNavigation(page: Page): Promise<void> {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      await page.goto("about:blank", { waitUntil: "domcontentloaded" });
+      return;
+    } catch (error) {
+      if (!isAboutBlankInterruptedByRedirect(error) || attempt === 2) {
+        throw error;
+      }
+      await page.waitForLoadState("domcontentloaded", { timeout: 30_000 });
+    }
+  }
+}
+
+function isAboutBlankInterruptedByRedirect(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    error.message.includes(
+      'Navigation to "about:blank" is interrupted by another navigation',
+    )
+  );
 }
 
 async function mirrorBrowserStateToUrl(
