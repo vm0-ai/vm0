@@ -212,6 +212,8 @@ function runnerHeartbeatBody(
     readonly runnerId?: string;
     readonly group?: string;
     readonly profiles?: RunnerHeartbeatBody["profiles"];
+    readonly admittableProfiles?: RunnerHeartbeatBody["admittableProfiles"];
+    readonly omitAdmittableProfiles?: boolean;
     readonly availableProfiles?: RunnerHeartbeatBody["availableProfiles"];
     readonly omitAvailableProfiles?: boolean;
     readonly maxConcurrent?: RunnerHeartbeatBody["maxConcurrent"];
@@ -237,6 +239,10 @@ function runnerHeartbeatBody(
     heldSessionStates: args.heldSessionStates ?? [],
     mode: args.mode ?? "running",
   };
+  if (!args.omitAdmittableProfiles) {
+    body.admittableProfiles =
+      args.admittableProfiles ?? args.availableProfiles ?? profiles;
+  }
   if (!args.omitAvailableProfiles) {
     body.availableProfiles = args.availableProfiles ?? profiles;
   }
@@ -854,6 +860,8 @@ export function createRunsAutomationsApi(context: TestContext) {
       args: {
         readonly group?: string;
         readonly profiles?: RunnerHeartbeatBody["profiles"];
+        readonly admittableProfiles?: RunnerHeartbeatBody["admittableProfiles"];
+        readonly omitAdmittableProfiles?: boolean;
         readonly availableProfiles?: RunnerHeartbeatBody["availableProfiles"];
         readonly omitAvailableProfiles?: boolean;
         readonly maxConcurrent?: RunnerHeartbeatBody["maxConcurrent"];
@@ -879,6 +887,7 @@ export function createRunsAutomationsApi(context: TestContext) {
           headers: runnerHeaders(true),
           body: {
             group: group ?? "vm0/test",
+            supportedProfiles: ["vm0/default"],
             profiles: ["vm0/default"],
           },
         }),

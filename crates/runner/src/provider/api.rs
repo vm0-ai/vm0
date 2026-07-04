@@ -91,7 +91,7 @@ pub struct ApiProvider {
     group: String,
     /// Profile names this runner supports (e.g., ["vm0/default"]).
     /// Sent in poll requests so the server only returns jobs this runner can handle.
-    profiles: Vec<String>,
+    supported_profiles: Vec<String>,
     /// Coalesced poll wakeup state updated by the Ably supervisor.
     poll_wakeups: Arc<PollWakeups>,
     /// Supported direct job candidates delivered by Ably notifications.
@@ -108,7 +108,7 @@ impl ApiProvider {
         http: HttpClient,
         token: String,
         group: String,
-        profiles: Vec<String>,
+        supported_profiles: Vec<String>,
         cancel: CancellationToken,
         cancel_tokens: SharedRunCancellationMap,
     ) -> Arc<Self> {
@@ -118,7 +118,7 @@ impl ApiProvider {
         let ably_supervisor = AblySupervisor::spawn(AblySupervisorConfig {
             api: api.clone(),
             group: group.clone(),
-            profiles: profiles.clone(),
+            profiles: supported_profiles.clone(),
             poll_wakeups: Arc::clone(&poll_wakeups),
             direct_candidates: Arc::clone(&direct_candidates),
             cancel_tokens,
@@ -128,7 +128,7 @@ impl ApiProvider {
         Arc::new(Self {
             api,
             group,
-            profiles,
+            supported_profiles,
             poll_wakeups,
             direct_candidates,
             ably_supervisor,
@@ -209,7 +209,7 @@ impl JobProvider for ApiProvider {
                     }
                     return None;
                 }
-                result = self.api.poll(&self.group, &self.profiles, reason) => result,
+                result = self.api.poll(&self.group, &self.supported_profiles, reason) => result,
             };
 
             match poll_result {
@@ -387,10 +387,10 @@ impl ApiClient {
     async fn poll(
         &self,
         group: &str,
-        profiles: &[String],
+        supported_profiles: &[String],
         reason: PollReason,
     ) -> RunnerResult<PollApiResult> {
-        let body = poll_request_body(group, profiles, reason);
+        let body = poll_request_body(group, supported_profiles, reason);
         let poll_started_at = Instant::now();
         let resp = send_api(
             self.http
@@ -544,10 +544,15 @@ fn claim_telemetry_duration_ms(duration: Duration) -> u64 {
     duration_ms(duration).min(CLAIM_TELEMETRY_DURATION_MS_MAX)
 }
 
-fn poll_request_body(group: &str, profiles: &[String], reason: PollReason) -> serde_json::Value {
+fn poll_request_body(
+    group: &str,
+    supported_profiles: &[String],
+    reason: PollReason,
+) -> serde_json::Value {
     serde_json::json!({
         "group": group,
-        "profiles": profiles,
+        "supportedProfiles": supported_profiles,
+        "profiles": supported_profiles,
         "telemetry": {
             "pollReason": poll_reason_value(reason),
         },
@@ -871,7 +876,7 @@ mod tests {
                 "runner-token".to_string(),
             ),
             group: "default".to_string(),
-            profiles: Vec::new(),
+            supported_profiles: vec![crate::profile::DEFAULT_PROFILE.to_string()],
             poll_wakeups,
             direct_candidates: DirectCandidateInbox::new(DIRECT_CANDIDATE_INBOX_CAPACITY),
             ably_supervisor: AblySupervisor::disabled(),
@@ -985,6 +990,10 @@ mod tests {
         let body = poll_request_body("vm0/test", &profiles, PollReason::Immediate);
 
         assert_eq!(body["group"], "vm0/test");
+        assert_eq!(
+            body["supportedProfiles"][0],
+            crate::profile::DEFAULT_PROFILE
+        );
         assert_eq!(body["profiles"][0], crate::profile::DEFAULT_PROFILE);
         assert_eq!(body["telemetry"]["pollReason"], "immediate");
         assert!(body.get("heldSessionStates").is_none());
@@ -1278,7 +1287,8 @@ mod tests {
                     .path(routes::runners::poll::POLL.path)
                     .json_body(serde_json::json!({
                         "group": "default",
-                        "profiles": [],
+                        "supportedProfiles": [crate::profile::DEFAULT_PROFILE],
+                        "profiles": [crate::profile::DEFAULT_PROFILE],
                         "telemetry": {
                             "pollReason": "immediate"
                         }
