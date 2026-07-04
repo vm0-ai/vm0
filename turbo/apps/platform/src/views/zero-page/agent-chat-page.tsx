@@ -75,7 +75,7 @@ import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
-import { sendNewThreadOptimistically$ } from "../../signals/chat-page/optimistic-chat-thread-page.ts";
+import { sendNewThread$ } from "../../signals/chat-page/optimistic-chat-thread-page.ts";
 import { startChatNavigationTiming$ } from "../../lib/posthog.ts";
 import {
   typewriterDisplayed$,
@@ -490,7 +490,7 @@ function useAgentChatSendMessage({
   message: string,
   selectedGenerationTemplate: GenerationTemplateRequest | undefined,
 ) => void {
-  const sendNewThread = useSet(sendNewThreadOptimistically$);
+  const sendNewThread = useSet(sendNewThread$);
   const rootSignal = useGet(rootSignal$);
 
   return (message, selectedGenerationTemplate) => {

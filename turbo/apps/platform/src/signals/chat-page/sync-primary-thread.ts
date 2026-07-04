@@ -4,6 +4,7 @@ import { updateDocumentTitle$ } from "../document-title.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { resetSignal } from "../utils.ts";
 import { createIdbCachedDataSource } from "./idb-cached-chat-thread-data-source.ts";
+import { eventDrivenChatThreadMeta } from "./chat-thread-event-sourcing.ts";
 
 const resetSyncPrimarySignal$ = resetSignal();
 
@@ -15,8 +16,8 @@ const resetSyncPrimarySignal$ = resetSignal();
  *
  * Lifecycle: call once per primary-thread switch with the new threadId
  * and parentSignal. The internal reset signal aborts any previous Ably
- * loop before the new one starts. 404 silently returns — the pane setup
- * path already throws on missing thread data; no need to double-error.
+ * loop before the new one starts. Missing remote detail silently returns:
+ * the visible pane renders its own missing-thread state.
  *
  * Owns its own data source (Option A from the plan) so it doesn't have to
  * thread state through the pane wiring. On non-IDB users this issues one
@@ -35,27 +36,37 @@ export const syncPrimaryThread$ = command(
     // very first frame after the pane switch.
     set(updateDocumentTitle$, "Chat");
 
-    const dataSource = createIdbCachedDataSource(threadId);
-
-    const threadData = await get(dataSource.getThread$);
+    const threadMeta = await get(eventDrivenChatThreadMeta(threadId));
     signal.throwIfAborted();
-    if (!threadData) {
-      // pane setup throws "Thread data missing" on the same condition; no
-      // value in double-erroring here.
+    if (threadMeta) {
+      const currentAgentId = await get(currentChatAgentId$);
+      signal.throwIfAborted();
+      if (currentAgentId !== threadMeta.agentId) {
+        set(setChatAgentId$, threadMeta.agentId);
+      }
+
+      set(updateDocumentTitle$, threadMeta.title ?? "New chat");
+    }
+
+    const dataSource = createIdbCachedDataSource(threadId);
+    const remoteThreadDetail = await get(dataSource.remoteThreadDetail$);
+    signal.throwIfAborted();
+    if (!threadMeta && !remoteThreadDetail) {
       return;
     }
 
-    const currentAgentId = await get(currentChatAgentId$);
-    signal.throwIfAborted();
-    if (currentAgentId !== threadData.agentId) {
-      set(setChatAgentId$, threadData.agentId);
+    if (!threadMeta && remoteThreadDetail) {
+      const currentAgentId = await get(currentChatAgentId$);
+      signal.throwIfAborted();
+      if (currentAgentId !== remoteThreadDetail.agentId) {
+        set(setChatAgentId$, remoteThreadDetail.agentId);
+      }
+      set(updateDocumentTitle$, remoteThreadDetail.title ?? "New chat");
     }
-
-    set(updateDocumentTitle$, threadData.title ?? "New chat");
 
     // Forever-running Ably loop until signal aborts.
     const onThreadUpdated$ = command(async ({ get, set }, sig: AbortSignal) => {
-      const data = await get(dataSource.getThread$);
+      const data = await get(dataSource.remoteThreadDetail$);
       sig.throwIfAborted();
       if (data) {
         set(updateDocumentTitle$, data.title ?? "New chat");

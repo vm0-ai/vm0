@@ -612,7 +612,7 @@ describe("zero sidebar", () => {
     });
   });
 
-  it("requests unread chat threads and keeps the current chat at the front of the unpinned section", async () => {
+  it("requests unread chat threads and filters the event-sourced list", async () => {
     prepareDefaultAgent();
     const pinnedUnreadThread = createThread(
       AUTOMATION_THREAD_ID,
@@ -686,12 +686,11 @@ describe("zero sidebar", () => {
     await waitFor(() => {
       expect(unreadsRequests).toBeGreaterThan(0);
       expect(
-        visibleThreadTitles([
-          "Pinned incident",
-          "Release plan",
-          "Incident notes",
-        ]),
-      ).toStrictEqual(["Pinned incident", "Release plan", "Incident notes"]);
+        visibleThreadTitles(["Pinned incident", "Incident notes"]),
+      ).toStrictEqual(["Pinned incident", "Incident notes"]);
+      expect(
+        within(sidebar()).queryByText("Release plan"),
+      ).not.toBeInTheDocument();
       expect(
         within(sidebar()).queryByText("Archived context"),
       ).not.toBeInTheDocument();
@@ -720,7 +719,7 @@ describe("zero sidebar", () => {
     expect(screen.queryByRole("switch", { name: "Unread" })).toBeNull();
   });
 
-  it("keeps a missing pinned current chat at the front of the pinned section", async () => {
+  it("keeps an event-sourced pinned current chat at the front of the pinned section", async () => {
     prepareDefaultAgent();
     const pinnedCurrentThread = createThread(
       EXISTING_THREAD_ID,
@@ -735,7 +734,7 @@ describe("zero sidebar", () => {
     const unpinnedThread = createThread(INCIDENT_THREAD_ID, "Incident notes");
 
     mockChatThreadSnapshot(() => {
-      return [pinnedThread, unpinnedThread];
+      return [pinnedCurrentThread, pinnedThread, unpinnedThread];
     });
     context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
       const thread = [pinnedCurrentThread, pinnedThread, unpinnedThread].find(
