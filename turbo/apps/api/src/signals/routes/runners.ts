@@ -563,7 +563,7 @@ interface ClaimedRun {
   readonly resumedFromCheckpointId: string | null;
 }
 
-interface ActiveRunPolicyScope {
+interface ActiveRunNetworkPolicyScope {
   readonly runId: string;
   readonly userId: string;
   readonly orgId: string;
@@ -579,11 +579,11 @@ function isClaimableJob(value: ClaimLookupResult): value is ClaimableJob {
   return "job" in value;
 }
 
-async function getActiveRunPolicyScope(
+async function getActiveRunNetworkPolicyScope(
   db: Db,
   runId: string,
   signal: AbortSignal,
-): Promise<ActiveRunPolicyScope | undefined> {
+): Promise<ActiveRunNetworkPolicyScope | undefined> {
   const [row] = await db
     .select({
       runId: agentRuns.id,
@@ -604,7 +604,7 @@ async function getActiveRunPolicyScope(
 
 function runnerRunAuthorizationError(
   auth: RunnerAuthContext,
-  run: Pick<ActiveRunPolicyScope, "userId">,
+  run: Pick<ActiveRunNetworkPolicyScope, "userId">,
 ) {
   if (auth.type === "official-runner") {
     return null;
@@ -1857,7 +1857,7 @@ const networkPolicyRefreshInner$ = command(
       pathParamsOf(runnersNetworkPolicyRefreshContract.refresh),
     ).runId;
     const db = set(writeDb$);
-    const run = await getActiveRunPolicyScope(db, runId, signal);
+    const run = await getActiveRunNetworkPolicyScope(db, runId, signal);
     if (!run) {
       return notFound("Run not found");
     }

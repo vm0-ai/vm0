@@ -42,11 +42,11 @@ struct NetworkPolicyRefreshCore {
 
 struct NetworkPolicyRefreshState {
     api: ApiClient,
-    active_runs: Mutex<HashMap<RunId, ActiveRunPolicyState>>,
+    active_runs: Mutex<HashMap<RunId, ActiveRunNetworkPolicyState>>,
     cancel: CancellationToken,
 }
 
-struct ActiveRunPolicyState {
+struct ActiveRunNetworkPolicyState {
     source_ip: String,
     registry: ProxyRegistryHandle,
     connector_refs: HashSet<String>,
@@ -62,7 +62,7 @@ struct ScheduledRefreshTask {
 }
 
 #[derive(Clone)]
-struct ActiveRunPolicySnapshot {
+struct ActiveRunNetworkPolicySnapshot {
     source_ip: String,
     registry: ProxyRegistryHandle,
 }
@@ -192,7 +192,7 @@ impl NetworkPolicyRefreshCore {
 
             active_runs.insert(
                 registration.run_id,
-                ActiveRunPolicyState {
+                ActiveRunNetworkPolicyState {
                     source_ip: registration.source_ip.to_string(),
                     registry: registration.registry,
                     connector_refs: registration.connector_refs,
@@ -494,13 +494,13 @@ impl NetworkPolicyRefreshCore {
         &self,
         run_id: RunId,
         connector_ref: &str,
-    ) -> Option<ActiveRunPolicySnapshot> {
+    ) -> Option<ActiveRunNetworkPolicySnapshot> {
         let active_runs = self.inner.active_runs.lock().await;
         let active = active_runs.get(&run_id)?;
         active
             .connector_refs
             .contains(connector_ref)
-            .then(|| ActiveRunPolicySnapshot {
+            .then(|| ActiveRunNetworkPolicySnapshot {
                 source_ip: active.source_ip.clone(),
                 registry: active.registry.clone(),
             })
@@ -651,7 +651,7 @@ async fn run_refresh_worker(
 async fn patch_network_policy(
     run_id: RunId,
     connector_ref: &str,
-    snapshot: ActiveRunPolicySnapshot,
+    snapshot: ActiveRunNetworkPolicySnapshot,
     policy: NetworkPolicy,
 ) -> crate::error::RunnerResult<bool> {
     snapshot
@@ -668,7 +668,7 @@ async fn patch_network_policy(
 async fn try_fail_closed_network_policy(
     run_id: RunId,
     connector_ref: &str,
-    snapshot: ActiveRunPolicySnapshot,
+    snapshot: ActiveRunNetworkPolicySnapshot,
 ) {
     match snapshot
         .registry
@@ -701,7 +701,7 @@ async fn try_fail_closed_network_policy(
 async fn fail_closed_network_policy(
     run_id: RunId,
     connector_ref: &str,
-    snapshot: ActiveRunPolicySnapshot,
+    snapshot: ActiveRunNetworkPolicySnapshot,
 ) {
     match snapshot
         .registry
@@ -960,19 +960,21 @@ mod tests {
         assert_eq!(policy["unknownPolicy"], json!("allow"));
     }
 
-    fn active_run_policy_state(registry: ProxyRegistryHandle) -> ActiveRunPolicyState {
-        active_run_policy_state_with_connectors(registry, ["slack"])
+    fn active_run_network_policy_state(
+        registry: ProxyRegistryHandle,
+    ) -> ActiveRunNetworkPolicyState {
+        active_run_network_policy_state_with_connectors(registry, ["slack"])
     }
 
-    fn active_run_policy_state_with_connectors<I, S>(
+    fn active_run_network_policy_state_with_connectors<I, S>(
         registry: ProxyRegistryHandle,
         connector_refs: I,
-    ) -> ActiveRunPolicyState
+    ) -> ActiveRunNetworkPolicyState
     where
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        ActiveRunPolicyState {
+        ActiveRunNetworkPolicyState {
             source_ip: "10.200.0.2".to_string(),
             registry,
             connector_refs: connector_refs.into_iter().map(Into::into).collect(),
@@ -1243,7 +1245,7 @@ mod tests {
             .active_runs
             .lock()
             .await
-            .insert(run_id, active_run_policy_state(registry));
+            .insert(run_id, active_run_network_policy_state(registry));
 
         core.notify_network_policy_refresh(run_id, "slack".to_string())
             .await;
@@ -1269,7 +1271,7 @@ mod tests {
             .active_runs
             .lock()
             .await
-            .insert(run_id, active_run_policy_state(registry));
+            .insert(run_id, active_run_network_policy_state(registry));
         for _ in 0..REFRESH_REQUEST_QUEUE_CAPACITY {
             core.request_tx
                 .try_send(refresh_request(run_id, "slack"))
@@ -1306,7 +1308,7 @@ mod tests {
             .active_runs
             .lock()
             .await
-            .insert(run_id, active_run_policy_state(registry));
+            .insert(run_id, active_run_network_policy_state(registry));
         for _ in 0..REFRESH_REQUEST_QUEUE_CAPACITY {
             core.request_tx
                 .try_send(refresh_request(run_id, "slack"))
@@ -1342,7 +1344,7 @@ mod tests {
             .active_runs
             .lock()
             .await
-            .insert(run_id, active_run_policy_state(registry));
+            .insert(run_id, active_run_network_policy_state(registry));
         for _ in 0..REFRESH_REQUEST_QUEUE_CAPACITY {
             core.request_tx
                 .try_send(refresh_request(run_id, "slack"))
@@ -1390,7 +1392,7 @@ mod tests {
             .active_runs
             .lock()
             .await
-            .insert(run_id, active_run_policy_state(registry));
+            .insert(run_id, active_run_network_policy_state(registry));
 
         core.replace_schedule(
             run_id,
@@ -1427,7 +1429,7 @@ mod tests {
         );
         core.inner.active_runs.lock().await.insert(
             run_id,
-            active_run_policy_state_with_connectors(registry, ["slack", "github"]),
+            active_run_network_policy_state_with_connectors(registry, ["slack", "github"]),
         );
 
         for connector_ref in ["slack", "github"] {
@@ -1472,7 +1474,7 @@ mod tests {
             .active_runs
             .lock()
             .await
-            .insert(run_id, active_run_policy_state(registry));
+            .insert(run_id, active_run_network_policy_state(registry));
         for _ in 0..REFRESH_REQUEST_QUEUE_CAPACITY {
             core.request_tx
                 .try_send(refresh_request(run_id, "slack"))
@@ -1517,7 +1519,7 @@ mod tests {
             .active_runs
             .lock()
             .await
-            .insert(run_id, active_run_policy_state(registry));
+            .insert(run_id, active_run_network_policy_state(registry));
         for _ in 0..REFRESH_REQUEST_QUEUE_CAPACITY {
             core.request_tx
                 .try_send(refresh_request(run_id, "slack"))
@@ -1599,7 +1601,7 @@ mod tests {
         let registry = ProxyRegistryHandle::new(registry_path, dir.path().join("registry.lock"));
         core.inner.active_runs.lock().await.insert(
             run_id,
-            active_run_policy_state_with_connectors(registry, connector_refs.clone()),
+            active_run_network_policy_state_with_connectors(registry, connector_refs.clone()),
         );
 
         core.refresh_network_policies_now(run_id, connector_refs)
