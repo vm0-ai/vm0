@@ -112,6 +112,27 @@ authorize_slack_for_agent() {
         >/dev/null
 }
 
+apply_slack_chat_write_permission() {
+    local agent_id="$1"
+    local action="$2"
+    local payload
+
+    if [[ "$action" == "allow" ]]; then
+        payload=$(jq -nc \
+            --arg agentId "$agent_id" \
+            '{agentId: $agentId, connectorRef: "slack", mode: "patch", grants: [{permission: "chat:write", action: "allow", expiresIn: "1h"}]}')
+    else
+        payload=$(jq -nc \
+            --arg agentId "$agent_id" \
+            '{agentId: $agentId, connectorRef: "slack", mode: "patch", grants: [{permission: "chat:write", action: "deny"}]}')
+    fi
+
+    zero_curl "/api/zero/user-permission-grants/apply" \
+        -X PUT \
+        -d "$payload" \
+        >/dev/null
+}
+
 @test "firewall: placeholder env vars" {
     # Connectors are set up in setup_file() to avoid parallel write races.
     # No firewalls needed — connector auto-add provides firewalls.
@@ -173,6 +194,103 @@ EOF
     assert_output --partial "SLACK_WRITE_STATUS=403"
     assert_output --partial '"error": "permission_denied"'
     assert_output --partial '"permissions": ["chat:write"]'
+}
+
+@test "firewall: active zero run refreshes slack write permission changes" {
+    AGENT_ID=$(create_private_zero_agent "${AGENT_NAME}-slack-refresh") || {
+        echo "# Failed to create private zero agent" >&2
+        return 1
+    }
+
+    run authorize_slack_for_agent "$AGENT_ID"
+    echo "$output"
+    assert_success
+
+    run apply_slack_chat_write_permission "$AGENT_ID" deny
+    echo "$output"
+    assert_success
+
+    local prompt
+    prompt=$(cat <<'EOF'
+post_slack() {
+    local text="$1"
+    local body_file status
+    body_file=$(mktemp)
+    status=$(curl -sS -o "$body_file" -w '%{http_code}' -X POST https://slack.com/api/chat.postMessage -H "Authorization: Bearer $SLACK_TOKEN" -H 'Content-Type: application/json' --data "{\"channel\":\"C0000000000\",\"text\":\"${text}\"}" || true)
+    [ -n "$status" ] || status=000
+    printf '%s\n' "$status"
+    cat "$body_file"
+    rm -f "$body_file"
+}
+
+is_firewall_denied() {
+    printf '%s' "$1" | grep -q '"permission_denied"'
+}
+
+FIRST_OUTPUT=$(post_slack e2e-before-refresh)
+FIRST_STATUS=$(printf '%s\n' "$FIRST_OUTPUT" | head -n1)
+FIRST_BODY=$(printf '%s\n' "$FIRST_OUTPUT" | tail -n +2)
+echo "FIRST_SLACK_STATUS=$FIRST_STATUS"
+echo "FIRST_SLACK_BODY=$FIRST_BODY"
+
+SECOND_STATUS=000
+SECOND_BODY=
+SECOND_FIREWALL_DENIED=1
+for ATTEMPT in $(seq 1 45); do
+    SECOND_OUTPUT=$(post_slack "e2e-after-refresh-${ATTEMPT}")
+    SECOND_STATUS=$(printf '%s\n' "$SECOND_OUTPUT" | head -n1)
+    SECOND_BODY=$(printf '%s\n' "$SECOND_OUTPUT" | tail -n +2)
+    if is_firewall_denied "$SECOND_BODY"; then
+        SECOND_FIREWALL_DENIED=1
+    else
+        SECOND_FIREWALL_DENIED=0
+    fi
+    echo "SECOND_SLACK_ATTEMPT_${ATTEMPT}_STATUS=$SECOND_STATUS"
+    echo "SECOND_SLACK_ATTEMPT_${ATTEMPT}_FIREWALL_DENIED=$SECOND_FIREWALL_DENIED"
+    echo "SECOND_SLACK_ATTEMPT_${ATTEMPT}_BODY=$SECOND_BODY"
+    if [ "$SECOND_STATUS" != "000" ] && [ "$SECOND_FIREWALL_DENIED" = "0" ]; then
+        break
+    fi
+    sleep 1
+done
+
+echo "SECOND_SLACK_STATUS=$SECOND_STATUS"
+echo "SECOND_SLACK_FIREWALL_DENIED=$SECOND_FIREWALL_DENIED"
+echo "SECOND_SLACK_BODY=$SECOND_BODY"
+
+if [ "$FIRST_STATUS" != "403" ] || ! is_firewall_denied "$FIRST_BODY" || [ "$SECOND_STATUS" = "000" ] || [ "$SECOND_FIREWALL_DENIED" != "0" ]; then
+    exit 1
+fi
+EOF
+)
+
+    zero_chat_run_with_model_selection \
+        "$AGENT_ID" \
+        "$prompt" \
+        "$(zero_model_first_selection_provider_id)" \
+        "claude-sonnet-4-6" \
+        false \
+        false
+    THREAD_ID="$LAST_THREAD_ID"
+
+    WAIT_FOR_LOG_TIMEOUT=60 wait_for_log "$LAST_RUN_ID" -- \
+        "FIRST_SLACK_STATUS=403" \
+        '"error": "permission_denied"' \
+        '"permissions": ["chat:write"]'
+
+    run apply_slack_chat_write_permission "$AGENT_ID" allow
+    echo "$output"
+    assert_success
+
+    wait_for_zero_run_completed "$LAST_RUN_ID" 140
+    WAIT_FOR_LOG_TIMEOUT=60 wait_for_log "$LAST_RUN_ID" -- \
+        "FIRST_SLACK_STATUS=403" \
+        "SECOND_SLACK_STATUS=" \
+        "SECOND_SLACK_FIREWALL_DENIED=0"
+
+    assert_output --partial "FIRST_SLACK_STATUS=403"
+    assert_output --partial "SECOND_SLACK_FIREWALL_DENIED=0"
+    refute_output --partial "SECOND_SLACK_STATUS=000"
 }
 
 @test "firewall: connector auto-adds firewall without firewalls" {
