@@ -160,10 +160,13 @@ slack_mock_state() {
 wait_for_slack_mock_marker() {
     local team_id="$1"
     local expected_text="$2"
-    local timeout="${3:-60}"
+    local run_id="$3"
+    local timeout="${4:-60}"
     local start=$SECONDS
     local state=""
     local match=""
+    local run_body=""
+    local run_status=""
 
     while ((SECONDS - start < timeout)); do
         state=$(slack_mock_state "$team_id" 2>&1 || true)
@@ -177,12 +180,28 @@ wait_for_slack_mock_marker() {
         if [[ "$match" =~ ^[0-9]+$ ]] && ((match > 0)); then
             return 0
         fi
+        if run_body=$(zero_run_response "$run_id" 2>&1); then
+            run_status=$(printf '%s' "$run_body" | jq -r '.status // ""')
+            case "$run_status" in
+                completed|failed|timeout|cancelled)
+                    echo "# Run $run_id reached terminal status before Slack mock marker: $run_status" >&2
+                    echo "# Run response: $run_body" >&2
+                    echo "# Last slack mock state: $state" >&2
+                    return 1
+                    ;;
+            esac
+        fi
         sleep 2
     done
 
     echo "# Timed out (${timeout}s) waiting for Slack mock marker $expected_text" >&2
+    echo "# Last run response: $(zero_run_response "$run_id" 2>&1 || true)" >&2
     echo "# Last slack mock state: $state" >&2
     return 1
+}
+
+shell_quote() {
+    printf '%q' "$1"
 }
 
 @test "firewall: placeholder env vars" {
@@ -269,10 +288,10 @@ EOF
 
     local prompt
     prompt=$(cat <<'EOF'
-SLACK_MOCK_URL="__SLACK_MOCK_URL__"
-MARKER_TEAM_ID="__MARKER_TEAM_ID__"
-MARKER_TEXT="__MARKER_TEXT__"
-BYPASS_SECRET="__BYPASS_SECRET__"
+SLACK_MOCK_URL=__SLACK_MOCK_URL__
+MARKER_TEAM_ID=__MARKER_TEAM_ID__
+MARKER_TEXT=__MARKER_TEXT__
+BYPASS_SECRET=__BYPASS_SECRET__
 
 post_slack() {
     local text="$1"
@@ -347,10 +366,10 @@ if [ "$FIRST_STATUS" != "403" ] || ! is_firewall_denied "$FIRST_BODY" || [ "$SEC
 fi
 EOF
 )
-    prompt=${prompt//__SLACK_MOCK_URL__/$slack_mock_url}
-    prompt=${prompt//__MARKER_TEAM_ID__/$marker_team_id}
-    prompt=${prompt//__MARKER_TEXT__/$marker_text}
-    prompt=${prompt//__BYPASS_SECRET__/${VERCEL_AUTOMATION_BYPASS_SECRET:-}}
+    prompt=${prompt//__SLACK_MOCK_URL__/$(shell_quote "$slack_mock_url")}
+    prompt=${prompt//__MARKER_TEAM_ID__/$(shell_quote "$marker_team_id")}
+    prompt=${prompt//__MARKER_TEXT__/$(shell_quote "$marker_text")}
+    prompt=${prompt//__BYPASS_SECRET__/$(shell_quote "${VERCEL_AUTOMATION_BYPASS_SECRET:-}")}
 
     zero_chat_run_with_model_selection \
         "$AGENT_ID" \
@@ -361,7 +380,10 @@ EOF
         false
     THREAD_ID="$LAST_THREAD_ID"
 
-    wait_for_slack_mock_marker "$marker_team_id" "$marker_text" 60
+    wait_for_slack_mock_marker "$marker_team_id" "$marker_text" "$LAST_RUN_ID" 60 || {
+        zero_curl "/api/zero/runs/$LAST_RUN_ID/cancel" -X POST >/dev/null 2>&1 || true
+        return 1
+    }
 
     run apply_slack_chat_write_permission "$AGENT_ID" allow
     echo "$output"

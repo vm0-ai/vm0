@@ -648,6 +648,10 @@ async function applyRowsAndPublishNetworkPolicyRefreshes(
     return rows;
   }
 
+  if (!isNetworkPolicyRefreshConnectorRef(args.apply.connectorRef)) {
+    return rows;
+  }
+
   const responseScope = applyPermissionGrantResponseScope(args);
   await publishActiveNetworkPolicyRefreshes(
     db,
