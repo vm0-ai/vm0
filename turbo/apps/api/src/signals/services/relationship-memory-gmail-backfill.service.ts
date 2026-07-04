@@ -73,7 +73,7 @@ interface GmailRelationshipBackfillProgress {
   readonly completedAt: string | null;
 }
 
-export interface GmailRelationshipStatus {
+interface GmailRelationshipStatus {
   readonly provider: "gmail";
   readonly connectorConnected: boolean;
   readonly enabled: boolean;

@@ -169,13 +169,13 @@ const gmailPubSubDataSchema = z.object({
     .transform(String),
 });
 
-export interface GmailAccess {
+interface GmailAccess {
   readonly connectorId: string;
   readonly emailAddress: string | null;
   readonly accessToken: string;
 }
 
-export type GmailAccessResult =
+type GmailAccessResult =
   | { readonly kind: "ok"; readonly access: GmailAccess }
   | { readonly kind: "bad_request"; readonly message: string };
 
@@ -231,7 +231,7 @@ type GmailHistoryMessageEvent =
   | GmailHistoryMessageAdded
   | GmailHistoryLabelAdded;
 
-export interface GmailMessageContext {
+interface GmailMessageContext {
   readonly messageId: string;
   readonly threadId: string | null;
   readonly labelIds: readonly string[];
