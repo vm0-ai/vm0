@@ -4,8 +4,8 @@ import { updateDocumentTitle$ } from "../document-title.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { resetSignal } from "../utils.ts";
 import {
-  chatThreadMetaMap$,
   syncEventDrivenChatThreads$,
+  threadMeta,
 } from "./chat-thread-event-sourcing.ts";
 
 const resetSyncPrimarySignal$ = resetSignal();
@@ -32,7 +32,8 @@ export const syncPrimaryThread$ = command(
     // very first frame after the pane switch.
     set(updateDocumentTitle$, "Chat");
 
-    const meta = (await get(chatThreadMetaMap$)).get(threadId) ?? null;
+    const threadMeta$ = threadMeta(threadId);
+    const meta = await get(threadMeta$);
     signal.throwIfAborted();
     if (!meta) {
       return;
@@ -50,7 +51,7 @@ export const syncPrimaryThread$ = command(
     const onThreadUpdated$ = command(async ({ get, set }, sig: AbortSignal) => {
       await set(syncEventDrivenChatThreads$, sig);
       sig.throwIfAborted();
-      const updatedMeta = (await get(chatThreadMetaMap$)).get(threadId) ?? null;
+      const updatedMeta = await get(threadMeta$);
       sig.throwIfAborted();
       if (updatedMeta) {
         set(updateDocumentTitle$, updatedMeta.title ?? "New chat");

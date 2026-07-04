@@ -9,7 +9,6 @@ import {
 import { resetSignal } from "../utils.ts";
 import { createRestoredAttachment } from "../zero-page/chat-draft.ts";
 import { clearArtifactPreview$ } from "../zero-page/zero-artifact-sidebar.ts";
-import { setChatThreadVirtualScrollTarget$ } from "../zero-page/zero-sidebar-state.ts";
 import { createChatThreadSignals, ensureDraft$ } from "./create-chat-thread.ts";
 import type { ChatThreadSignals } from "./chat-thread-signals.ts";
 import { closeHeaderAutomationSidebar$ } from "./header-automation-sidebar.ts";
@@ -69,15 +68,15 @@ const loadDraft$ = command(
     isNew: boolean,
     signal: AbortSignal,
   ) => {
-    const threadData = await get(thread.threadData$);
+    const remoteThreadDetail = await get(thread.remoteThreadDetail$);
     signal.throwIfAborted();
 
-    if (!threadData) {
+    if (!remoteThreadDetail) {
       return;
     }
 
-    const hasDraftContent = threadData.draftContent !== null;
-    const draftAttachments = threadData.draftAttachments;
+    const hasDraftContent = remoteThreadDetail.draftContent !== null;
+    const draftAttachments = remoteThreadDetail.draftAttachments;
     const hasDraftAttachments =
       draftAttachments !== null && draftAttachments.length > 0;
     if (isNew && (hasDraftContent || hasDraftAttachments)) {
@@ -86,7 +85,7 @@ const loadDraft$ = command(
       );
       set(
         thread.draft.seed$,
-        threadData.draftContent ?? "",
+        remoteThreadDetail.draftContent ?? "",
         restoredAttachments,
       );
     }
@@ -140,7 +139,6 @@ const setupPaneThread$ = command(
       set(thread.showSkeleton$);
     };
     set(spec.setPaneThread$, thread);
-    set(setChatThreadVirtualScrollTarget$, threadId);
 
     await set(
       resolvePaneThread$,

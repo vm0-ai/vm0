@@ -29,14 +29,15 @@ export interface SendMessageOptions {
 export interface ChatThreadSignals {
   threadId: string;
   // -- Data signals ----------------------------------------------------------
-  threadData$: Computed<Promise<ChatThread | null>>;
+  remoteThreadDetail$: Computed<Promise<ChatThread | null>>;
   threadMeta$: Computed<Promise<ThreadMeta | null>>;
   reloadThread$: Command<void, []>;
   threadTitleEmoji$: Computed<Promise<string | null>>;
   threadTitleText$: Computed<Promise<string>>;
   // -- Composer model override ---------------------------------------------
-  // Seeded from threadData$ on first resolve; user edits via setModelSelection$
-  // take over and are preserved across subsequent threadData$ reloads.
+  // Seeded from remoteThreadDetail$ on first resolve; user edits via
+  // setModelSelection$ take over and are preserved across subsequent
+  // remoteThreadDetail$ reloads.
   modelSelection$: Computed<Promise<ModelProviderSelection | null>>;
   setModelSelection$: Command<
     Promise<void>,

@@ -136,7 +136,7 @@ export function ArtifactSidebar({
 }: ArtifactSidebarProps) {
   if (thread) {
     return (
-      <ArtifactSidebarWithThreadData
+      <ArtifactSidebarWithThreadContext
         artifactRef={artifactRef}
         onBack={onBack}
         onClose={onClose}
@@ -185,7 +185,7 @@ type ArtifactSidebarContentProps = {
 type HtmlArtifactHeaderState = "idle" | "editing" | "working" | "preview";
 type HtmlEditState = ReturnType<typeof createHtmlEditState>;
 
-function ArtifactSidebarWithThreadData({
+function ArtifactSidebarWithThreadContext({
   artifactRef,
   onBack,
   onClose,

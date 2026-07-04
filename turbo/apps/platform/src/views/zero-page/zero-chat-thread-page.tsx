@@ -268,13 +268,13 @@ import {
   type PagedChatMessage,
 } from "../../signals/chat-page/chat-message.ts";
 import type { ChatThreadSignals } from "../../signals/chat-page/chat-thread-signals.ts";
-import { reloadChatThreadDataForId$ } from "../../signals/chat-page/chat-thread-rename.ts";
+import type { ThreadMeta } from "../../signals/chat-page/chat-thread-event-sourcing.ts";
 import {
   applyChatThreadEmoji,
   removeChatThreadEmoji,
   CHAT_THREAD_EMOJI_OPTIONS,
 } from "../../signals/chat-page/chat-thread-title.ts";
-import type { ThreadMeta } from "../../signals/chat-page/chat-thread-event-sourcing.ts";
+import type { ChatThread } from "../../signals/agent-chat.ts";
 import { ATTACH_ONLY_PLACEHOLDER } from "../../signals/chat-page/resolve-draft-attachments.ts";
 import {
   ZeroChatComposer,
@@ -1126,7 +1126,6 @@ function useChatThreadEmojiMenuActions({
   const openChatThreadEmojiMenu = useSet(openChatThreadEmojiMenu$);
   const closeChatThreadEmojiMenu = useSet(closeChatThreadEmojiMenu$);
   const renameChatThread = useSet(renameChatThread$);
-  const reloadChatThreadDataForId = useSet(reloadChatThreadDataForId$);
   const focusChatThreadContainer = useSet(focusChatThreadContainer$);
   const pageSignal = useGet(pageSignal$);
   const open = emojiMenuThreadId === threadId;
@@ -1155,7 +1154,6 @@ function useChatThreadEmojiMenuActions({
           },
           pageSignal,
         );
-        reloadChatThreadDataForId(activeThreadId);
         closeMenu();
       })(),
       Reason.DomCallback,
@@ -1178,7 +1176,6 @@ function useChatThreadEmojiMenuActions({
           { threadId: activeThreadId, title: nextTitle },
           pageSignal,
         );
-        reloadChatThreadDataForId(activeThreadId);
         closeMenu();
       })(),
       Reason.DomCallback,
@@ -4594,12 +4591,13 @@ function useChatComposerModel(
   pageSignal: AbortSignal,
 ) {
   // Per-thread composer state lives in ccstate signals on the factory so the
-  // initial value seeds from threadData once it resolves (a React useState
+  // initial value seeds from remoteThreadDetail once it resolves (a React useState
   // initializer would snapshot `undefined` on first render). `modelSelection$`
   // internally flips to a user-override once `setModelSelection$` is called,
-  // so unsaved edits survive subsequent threadData$ reloads. Read with
+  // so unsaved edits survive subsequent remoteThreadDetail$ reloads. Read with
   // useLastResolved so the picker keeps the previous value during the
-  // threadData$ refetches triggered by chatThreadRunUpdated Ably events.
+  // remoteThreadDetail$ refetches triggered by chatThreadRunUpdated Ably events —
+  // otherwise the picker briefly flips to a skeleton on every run change.
   const modelSelectionResolved = useLastResolved(thread.modelSelection$);
   const defaultModelSelectionResolved = useLastResolved(
     thread.defaultModelSelection$,

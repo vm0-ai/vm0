@@ -9,9 +9,9 @@ import {
 } from "./chat-thread-panes.ts";
 import type { ChatThreadSignals } from "./chat-thread-signals.ts";
 import {
-  clearChatThreadEmojiFromThreadData$,
-  openRenameChatThreadDialogFromThreadData$,
-  setChatThreadEmojiFromThreadData$,
+  clearChatThreadEmojiFromThreadMeta$,
+  openRenameChatThreadDialogFromThreadMeta$,
+  setChatThreadEmojiFromThreadMeta$,
   type RenameChatThreadDialogRequest,
 } from "./chat-thread-rename.ts";
 import { chatThreadMetaMap$ } from "./chat-thread-event-sourcing.ts";
@@ -235,7 +235,7 @@ const setFocusedThreadEmoji$ = command(
       return;
     }
     await set(
-      setChatThreadEmojiFromThreadData$,
+      setChatThreadEmojiFromThreadMeta$,
       {
         threadId: args.thread.threadId,
         emoji: args.emoji,
@@ -276,7 +276,7 @@ const setupChatPageShortcutActions$ = command(
               signal,
             );
             await set(
-              openRenameChatThreadDialogFromThreadData$,
+              openRenameChatThreadDialogFromThreadMeta$,
               request,
               signal,
             );
@@ -324,7 +324,7 @@ const clearFocusedThreadEmoji$ = command(
       return;
     }
     await set(
-      clearChatThreadEmojiFromThreadData$,
+      clearChatThreadEmojiFromThreadMeta$,
       {
         threadId: args.thread.threadId,
       },

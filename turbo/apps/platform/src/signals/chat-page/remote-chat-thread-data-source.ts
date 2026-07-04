@@ -457,26 +457,28 @@ export function createRemoteChatThreadDataSource(
   const reloadCounter$ = state(0);
   const subscribeRealtime$ = createSubscribeRealtime();
 
-  const getThread$ = computed(async (get): Promise<ChatThread | null> => {
-    get(reloadCounter$);
-    const threadClient = get(zeroClient$)(chatThreadByIdContract);
-    const threadResult = await accept(
-      threadClient.get({ params: { id: threadId } }),
-      [200, 404],
-    );
-    if (threadResult.status === 404) {
-      return null;
-    }
-    const body = threadResult.body;
-    return {
-      lastReadMessageId: body.lastReadMessageId ?? null,
-      draftContent: body.draftContent ?? null,
-      draftAttachments: body.draftAttachments ?? null,
-      computerUseHostId: body.computerUseHostId ?? null,
-      selectedModel: body.selectedModel ?? null,
-      codexServiceTier: body.codexServiceTier ?? null,
-    };
-  });
+  const remoteThreadDetail$ = computed(
+    async (get): Promise<ChatThread | null> => {
+      get(reloadCounter$);
+      const threadClient = get(zeroClient$)(chatThreadByIdContract);
+      const threadResult = await accept(
+        threadClient.get({ params: { id: threadId } }),
+        [200, 404],
+      );
+      if (threadResult.status === 404) {
+        return null;
+      }
+      const body = threadResult.body;
+      return {
+        lastReadMessageId: body.lastReadMessageId ?? null,
+        draftContent: body.draftContent ?? null,
+        draftAttachments: body.draftAttachments ?? null,
+        computerUseHostId: body.computerUseHostId ?? null,
+        selectedModel: body.selectedModel ?? null,
+        codexServiceTier: body.codexServiceTier ?? null,
+      };
+    },
+  );
 
   const reloadThread$ = command(({ set }) => {
     set(reloadCounter$, (v) => {
@@ -509,7 +511,7 @@ export function createRemoteChatThreadDataSource(
   });
 
   return {
-    getThread$,
+    remoteThreadDetail$,
     reloadThread$,
     initialPage$,
     patchDraft$,

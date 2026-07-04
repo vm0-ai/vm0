@@ -529,8 +529,9 @@ export function createIdbCachedDataSource(
 
   const listMessagesAfter$ = createListMessagesAfter(remote, getStores);
   const getMessage$ = createGetMessage(remote, getStores);
+
   return {
-    getThread$: remote.getThread$,
+    remoteThreadDetail$: remote.remoteThreadDetail$,
     reloadThread$: remote.reloadThread$,
     initialPage$,
     patchDraft$: remote.patchDraft$,

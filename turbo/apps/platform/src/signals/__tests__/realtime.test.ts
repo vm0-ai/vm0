@@ -108,7 +108,7 @@ function createFailingSubscribeDataSource(): ChatThreadDataSource {
   };
 
   return {
-    getThread$: computed(() => {
+    remoteThreadDetail$: computed(() => {
       return Promise.resolve(thread);
     }),
     reloadThread$: command(() => {}),

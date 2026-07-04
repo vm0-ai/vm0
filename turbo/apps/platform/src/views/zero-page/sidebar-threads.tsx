@@ -49,10 +49,7 @@ import {
   unpinChatThread$,
   renameChatThread$,
 } from "../../signals/chat-page/chat-message.ts";
-import {
-  openRenameChatThreadDialogForThreadId$,
-  reloadChatThreadDataForId$,
-} from "../../signals/chat-page/chat-thread-rename.ts";
+import { openRenameChatThreadDialogForThreadId$ } from "../../signals/chat-page/chat-thread-rename.ts";
 import {
   SIDEBAR_PARAM,
   currentLeftThread$,
@@ -63,9 +60,9 @@ import {
 } from "../../signals/chat-page/chat-thread-panes.ts";
 import { focusChatThreadContainer$ } from "../../signals/chat-page/chat-keyboard.ts";
 import {
-  createNewChatThreadOptimistically$,
+  createNewChatThread$,
   newChatThreadDisabled$,
-  type OptimisticChatPane,
+  type NewChatThreadPane,
   sidebarChatThreads$,
 } from "../../signals/chat-page/optimistic-chat-thread-page.ts";
 import { currentChatAgentId$ } from "../../signals/agent-chat.ts";
@@ -581,7 +578,6 @@ function ChatThreadRenameDialog() {
   const setRenameDialogAgentId = useSet(setRenameDialogAgentId$);
   const setRenameDialogThreadId = useSet(setRenameDialogThreadId$);
   const renameChatThread = useSet(renameChatThread$);
-  const reloadChatThreadDataForId = useSet(reloadChatThreadDataForId$);
   const focusChatThreadContainer = useSet(focusChatThreadContainer$);
   const pageSignal = useGet(pageSignal$);
 
@@ -607,7 +603,6 @@ function ChatThreadRenameDialog() {
     detach(
       (async () => {
         await renameChatThread({ threadId, title, agentId }, pageSignal);
-        reloadChatThreadDataForId(threadId);
       })(),
       Reason.DomCallback,
     );
@@ -961,12 +956,12 @@ function ChatThreads({
 
 function ChatThreadsTitle() {
   const currentChatAgentId = useLastResolved(currentChatAgentId$) ?? null;
-  const createNewChat = useSet(createNewChatThreadOptimistically$);
+  const createNewChat = useSet(createNewChatThread$);
   const setExpanded = useSet(setSidebarExpanded$);
   const rootSignal = useGet(rootSignal$);
   const { titleLabel } = useChatThreadsTitleLabels();
   const newChatDisabled = useGet(newChatThreadDisabled$);
-  const onNewChat = (pane: OptimisticChatPane) => {
+  const onNewChat = (pane: NewChatThreadPane) => {
     if (!currentChatAgentId) {
       return;
     }

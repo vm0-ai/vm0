@@ -6,7 +6,6 @@ import {
   type AttachFile,
   type ChatThreadEvent,
   type GenerationTemplateRequest,
-  type ChatThreadListItem,
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { accept } from "../../lib/accept.ts";
@@ -49,11 +48,11 @@ import {
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import { registerOptimisticChatThreadEvent$ } from "./chat-thread-event-sourcing.ts";
 
-export type OptimisticChatPane = "main" | "sidebar";
+export type NewChatThreadPane = "main" | "sidebar";
 
 const SIDEBAR_PARAM = "sidebar";
 
-const L = logger("OptimisticChat");
+const L = logger("NewChatThread");
 
 export const newChatThreadDisabled$ = computed(() => {
   return false;
@@ -186,22 +185,20 @@ const settleNewThreadSend$ = command(
   },
 );
 
-const routeMainOptimisticChatThread$ = command(
-  ({ get, set }, threadId: string) => {
-    const next = new URLSearchParams(get(searchParams$));
-    if (next.get(SIDEBAR_PARAM) === threadId) {
-      next.delete(SIDEBAR_PARAM);
-    }
-    clearArtifactSidebarParams(next);
-    clearChatAutomationSidebarParams(next);
-    set(detachedNavigateTo$, "/chats/:threadId", {
-      pathParams: { threadId },
-      searchParams: next,
-    });
-  },
-);
+const routeMainChatThread$ = command(({ get, set }, threadId: string) => {
+  const next = new URLSearchParams(get(searchParams$));
+  if (next.get(SIDEBAR_PARAM) === threadId) {
+    next.delete(SIDEBAR_PARAM);
+  }
+  clearArtifactSidebarParams(next);
+  clearChatAutomationSidebarParams(next);
+  set(detachedNavigateTo$, "/chats/:threadId", {
+    pathParams: { threadId },
+    searchParams: next,
+  });
+});
 
-const routeSidebarOptimisticChatThread$ = command(
+const routeSidebarChatThread$ = command(
   async (
     { get, set },
     threadId: string,
@@ -214,14 +211,14 @@ const routeSidebarOptimisticChatThread$ = command(
   },
 );
 
-const routeOptimisticChatThread$ = command(
+const routeChatThread$ = command(
   async (
     { set },
     {
       pane,
       threadId,
     }: {
-      readonly pane: OptimisticChatPane;
+      readonly pane: NewChatThreadPane;
       readonly threadId: string;
     },
     signal: AbortSignal,
@@ -229,9 +226,9 @@ const routeOptimisticChatThread$ = command(
     signal.throwIfAborted();
 
     if (pane === "main") {
-      set(routeMainOptimisticChatThread$, threadId);
+      set(routeMainChatThread$, threadId);
     } else {
-      await set(routeSidebarOptimisticChatThread$, threadId, signal);
+      await set(routeSidebarChatThread$, threadId, signal);
     }
   },
 );
@@ -246,11 +243,11 @@ const mintOptimisticThreadWithEvent$ = command(
     },
     signal: AbortSignal,
   ): void => {
+    signal.throwIfAborted();
     L.debug("optimistic thread minted", {
       threadId: args.threadId,
       agentId: args.agentId,
     });
-    signal.throwIfAborted();
     const createdAt = nowDate().toISOString();
     set(registerOptimisticChatThreadEvent$, {
       id: args.eventId,
@@ -286,7 +283,7 @@ async function createChatThread(args: {
   );
 }
 
-const createNewChatThread$ = command(
+const startNewChatThreadCreate$ = command(
   async (
     { get, set },
     agentId: string,
@@ -304,7 +301,7 @@ const createNewChatThread$ = command(
     );
 
     const createClient = get(zeroClient$);
-    L.debug("createNewChatThread$ POST chat-threads start", { threadId });
+    L.debug("startNewChatThreadCreate$ POST chat-threads start", { threadId });
     const createResult = (async (): Promise<void> => {
       await createChatThread({
         createClient,
@@ -314,7 +311,7 @@ const createNewChatThread$ = command(
         clientThreadId: threadId,
         eventId,
       });
-      L.debug("createNewChatThread$ POST chat-threads 201", { threadId });
+      L.debug("startNewChatThreadCreate$ POST chat-threads 201", { threadId });
       signal.throwIfAborted();
     })();
 
@@ -322,19 +319,19 @@ const createNewChatThread$ = command(
   },
 );
 
-export const createNewChatThreadOptimistically$ = command(
+export const createNewChatThread$ = command(
   async (
     { get, set },
     agentId: string,
-    pane: OptimisticChatPane,
+    pane: NewChatThreadPane,
     signal: AbortSignal,
   ) => {
     const targetPane =
       pane === "sidebar" && get(currentChatThreadId$) ? "sidebar" : "main";
-    const result = await set(createNewChatThread$, agentId, signal);
+    const result = await set(startNewChatThreadCreate$, agentId, signal);
 
     await set(
-      routeOptimisticChatThread$,
+      routeChatThread$,
       { pane: targetPane, threadId: result.threadId },
       signal,
     );
@@ -342,11 +339,7 @@ export const createNewChatThreadOptimistically$ = command(
   },
 );
 
-export const sidebarChatThreads$ = computed(
-  async (get): Promise<ChatThreadListItem[]> => {
-    return await get(chatThreads$);
-  },
-);
+export const sidebarChatThreads$ = chatThreads$;
 
 const sendNewThreadMessage$ = command(
   async (
@@ -436,7 +429,7 @@ const sendNewThreadMessage$ = command(
   },
 );
 
-export const sendNewThreadOptimistically$ = command(
+export const sendNewThread$ = command(
   async (
     { set },
     request: SendNewThreadMessageRequest,
@@ -448,7 +441,7 @@ export const sendNewThreadOptimistically$ = command(
     }
 
     await set(
-      routeOptimisticChatThread$,
+      routeChatThread$,
       { pane: "main", threadId: result.threadId },
       signal,
     );

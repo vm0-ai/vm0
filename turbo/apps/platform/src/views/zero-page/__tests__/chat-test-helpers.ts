@@ -217,30 +217,6 @@ export function threadListSnapshot(threads: readonly ThreadListItem[]) {
   });
 }
 
-function defaultThreadListItem({
-  running,
-  threadId,
-  title,
-}: {
-  running: boolean;
-  threadId: string;
-  title: string | null;
-}): ThreadListItem {
-  return {
-    id: threadId,
-    title,
-    agent: {
-      id: DEFAULT_AGENT_ID,
-      avatarUrl: null,
-    },
-    createdAt: "2026-03-10T00:00:00Z",
-    updatedAt: "2026-03-10T00:00:00Z",
-    running,
-    pinnedAt: null,
-    renamedAt: null,
-  };
-}
-
 interface MockLifecycleControl {
   setRunStatus: (status: RunStatus) => void;
   setQueuePosition: (n: number) => void;
@@ -464,6 +440,7 @@ export function mockChatLifecycle(
   let events: AgentEvent[] = [];
   let queuePosition = 0;
   let resultContent = "";
+  let threadListOverride: ThreadListItem[] | null = null;
   let runPrompt: string | null = null;
   let runUserMessageId = "msg-user-sent";
   let runAssociated = false;
@@ -474,16 +451,6 @@ export function mockChatLifecycle(
   let computerUseHostId: string | null = options?.computerUseHostId ?? null;
   const queuedMessages: MockPagedMessage[] = [];
   const optionActiveRunIds = options?.activeRunIds ?? [];
-  let threadList: ThreadListItem[] =
-    options?.threadId === undefined
-      ? []
-      : [
-          defaultThreadListItem({
-            running: optionActiveRunIds.length > 0,
-            threadId,
-            title: threadTitle,
-          }),
-        ];
   // Version counter: bumped whenever the run reaches a terminal state so
   // subsequent polls discover a "new" assistant message row (simulating the
   // real server inserting event-backed rows on run completion).
@@ -557,6 +524,29 @@ export function mockChatLifecycle(
       optionActiveRunIds.length > 0 ||
       (runAssociated && !terminal.has(runStatus))
     );
+  };
+
+  const effectiveThreadList = () => {
+    if (threadListOverride !== null) {
+      return threadListOverride;
+    }
+    if (!UUID_PATTERN.test(threadId)) {
+      return [];
+    }
+    return [
+      {
+        id: threadId,
+        title: threadTitle,
+        agent: {
+          id: "c0000000-0000-4000-a000-000000000001",
+          avatarUrl: null,
+        },
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-10T00:00:00Z",
+        running: hasActiveRun(),
+        pinnedAt: null,
+      },
+    ];
   };
 
   const buildPagedMessages = () => {
@@ -825,7 +815,7 @@ export function mockChatLifecycle(
   );
   context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
     return respond(200, {
-      chatThreads: threadListSnapshot(threadList),
+      chatThreads: threadListSnapshot(effectiveThreadList()),
       latestEventId: null,
     });
   });
@@ -834,7 +824,7 @@ export function mockChatLifecycle(
   });
   context.mocks.api(chatThreadsContract.activeIds, ({ respond }) => {
     const activeThreadIds = new Set(
-      threadList.flatMap((thread) => {
+      effectiveThreadList().flatMap((thread) => {
         return thread.running ? [thread.id] : [];
       }),
     );
@@ -942,7 +932,7 @@ export function mockChatLifecycle(
       events = e;
     },
     setThreadList: (list) => {
-      threadList = list;
+      threadListOverride = list;
     },
     completeRun: (content?: string) => {
       runStatus = "completed";

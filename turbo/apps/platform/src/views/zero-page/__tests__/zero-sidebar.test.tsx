@@ -612,7 +612,7 @@ describe("zero sidebar", () => {
     });
   });
 
-  it("requests unread chat threads and filters the sidebar list", async () => {
+  it("requests unread chat threads and filters the event-sourced list", async () => {
     prepareDefaultAgent();
     const pinnedUnreadThread = createThread(
       AUTOMATION_THREAD_ID,
@@ -689,6 +689,9 @@ describe("zero sidebar", () => {
         visibleThreadTitles(["Pinned incident", "Incident notes"]),
       ).toStrictEqual(["Pinned incident", "Incident notes"]);
       expect(
+        within(sidebar()).queryByText("Release plan"),
+      ).not.toBeInTheDocument();
+      expect(
         within(sidebar()).queryByText("Archived context"),
       ).not.toBeInTheDocument();
     });
@@ -716,7 +719,7 @@ describe("zero sidebar", () => {
     expect(screen.queryByRole("switch", { name: "Unread" })).toBeNull();
   });
 
-  it("does not merge a missing pinned current chat into the sidebar list", async () => {
+  it("keeps an event-sourced pinned current chat at the front of the pinned section", async () => {
     prepareDefaultAgent();
     const pinnedCurrentThread = createThread(
       EXISTING_THREAD_ID,
@@ -731,7 +734,7 @@ describe("zero sidebar", () => {
     const unpinnedThread = createThread(INCIDENT_THREAD_ID, "Incident notes");
 
     mockChatThreadSnapshot(() => {
-      return [pinnedThread, unpinnedThread];
+      return [pinnedCurrentThread, pinnedThread, unpinnedThread];
     });
     context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
       const thread = [pinnedCurrentThread, pinnedThread, unpinnedThread].find(
@@ -760,9 +763,12 @@ describe("zero sidebar", () => {
 
     await waitFor(() => {
       expect(
-        visibleThreadTitles(["Pinned incident", "Incident notes"]),
-      ).toStrictEqual(["Pinned incident", "Incident notes"]);
-      expect(within(sidebar()).queryByText("Release plan")).toBeNull();
+        visibleThreadTitles([
+          "Release plan",
+          "Pinned incident",
+          "Incident notes",
+        ]),
+      ).toStrictEqual(["Release plan", "Pinned incident", "Incident notes"]);
     });
   });
 
@@ -1010,12 +1016,24 @@ describe("zero sidebar", () => {
     });
   });
 
-  it("deletes a chat without checking legacy automations", async () => {
+  it("loads more sidebar chats and deletes a chat without checking legacy automations", async () => {
     prepareDefaultAgent();
-    mockSidebarThreadStory([
-      createThread(EXISTING_THREAD_ID, "Release plan"),
-      createThread(AUTOMATION_THREAD_ID, "Scheduled launch"),
-    ]);
+    const overflowThreads = Array.from({ length: 23 }, (_, index) => {
+      return createThread(
+        `b1000000-0000-4000-a000-${String(index).padStart(12, "0")}`,
+        `Overflow ${index + 1}`,
+      );
+    });
+    mockSidebarThreadStory(
+      [
+        createThread(EXISTING_THREAD_ID, "Release plan"),
+        createThread(AUTOMATION_THREAD_ID, "Scheduled launch"),
+      ],
+      [
+        ...overflowThreads,
+        createThread(ARCHIVED_THREAD_ID, "Archived context"),
+      ],
+    );
     context.mocks.data.automations([
       createMockAutomationView({
         id: "f0000001-0000-4000-a000-000000000401",
@@ -1048,6 +1066,7 @@ describe("zero sidebar", () => {
       expect(
         within(sidebar()).getByText("Scheduled launch"),
       ).toBeInTheDocument();
+      expect(screen.queryByTestId("sidebar-chat-threads-load-more")).toBeNull();
     });
 
     openThreadMenu("Scheduled launch");
@@ -1120,6 +1139,7 @@ describe("zero sidebar", () => {
     });
 
     await waitFor(() => {
+      expect(screen.queryByTestId("sidebar-chat-threads-load-more")).toBeNull();
       expect(
         screen.getByTestId("sidebar-chat-threads-virtual-list"),
       ).toBeInTheDocument();

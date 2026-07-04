@@ -20,7 +20,7 @@ import {
 import { renameDialogInput$ } from "../../zero-page/zero-sidebar-state.ts";
 import { sidebarChatThreadIds$ } from "../sidebar-chat-thread-ids.ts";
 import { setChatThreadOnlyUnread$ } from "../chat-thread-only-unread.ts";
-import { openRenameChatThreadDialogFromThreadData$ } from "../chat-thread-rename.ts";
+import { openRenameChatThreadDialogFromThreadMeta$ } from "../chat-thread-rename.ts";
 import {
   registerOptimisticChatThreadEvent$,
   threadMeta,
@@ -448,7 +448,9 @@ describe("chat thread event sourcing local-first list", () => {
     });
 
     const dataSource = createIdbCachedDataSource(OPTIMISTIC_THREAD_ID);
-    await expect(context.store.get(dataSource.getThread$)).resolves.toBeNull();
+    await expect(
+      context.store.get(dataSource.remoteThreadDetail$),
+    ).resolves.toBeNull();
   });
 
   it("settles optimistic create events once the matching persisted event arrives", async () => {
@@ -569,7 +571,7 @@ describe("chat thread event sourcing local-first list", () => {
 
     detailRequests = 0;
     await context.store.set(
-      openRenameChatThreadDialogFromThreadData$,
+      openRenameChatThreadDialogFromThreadMeta$,
       {
         threadId: THREAD_ID,
         title: "Cached renamed title",
