@@ -275,8 +275,14 @@ function resolvedConnectorFirewallPolicies(
   return permissionGrantsToFirewallPolicies(grants) ?? {};
 }
 
-function isNetworkPolicyRefreshRef(connectorRef: string): boolean {
+function isNetworkPolicyRefreshConnectorRef(connectorRef: string): boolean {
   return !connectorRef.startsWith("model-provider:");
+}
+
+export function networkPolicyRefreshConnectorRefs(
+  connectorRefs: readonly string[],
+): string[] {
+  return [...new Set(connectorRefs.filter(isNetworkPolicyRefreshConnectorRef))];
 }
 
 export async function resolveActiveNetworkPolicyRefreshes(
@@ -289,9 +295,7 @@ export async function resolveActiveNetworkPolicyRefreshes(
     return [];
   }
 
-  const uniqueConnectorRefs = [
-    ...new Set(connectorRefs.filter(isNetworkPolicyRefreshRef)),
-  ];
+  const uniqueConnectorRefs = networkPolicyRefreshConnectorRefs(connectorRefs);
   if (uniqueConnectorRefs.length === 0) {
     return [];
   }

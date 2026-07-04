@@ -45,6 +45,7 @@ import { dispatchCompleteSideEffects$ } from "../services/agent-webhook-complete
 import {
   networkPolicyRefreshesRecord,
   mergeNetworkPolicyRefreshes,
+  networkPolicyRefreshConnectorRefs,
   resolveActiveNetworkPolicyRefreshes,
 } from "../services/zero-user-permission-grants.service";
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
@@ -942,7 +943,9 @@ async function refreshClaimNetworkPolicies(args: {
 }): Promise<
   Pick<StoredExecutionContext, "networkPolicies" | "networkPolicyRefreshes">
 > {
-  const connectorRefs = Object.keys(args.storedContext.networkPolicies ?? {});
+  const connectorRefs = networkPolicyRefreshConnectorRefs(
+    Object.keys(args.storedContext.networkPolicies ?? {}),
+  );
   if (connectorRefs.length === 0) {
     return {
       networkPolicies: args.storedContext.networkPolicies,

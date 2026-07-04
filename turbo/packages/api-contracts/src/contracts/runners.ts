@@ -328,7 +328,7 @@ export const storedExecutionContextSchema = z.object({
   firewalls: executionFirewallsSchema.optional(),
   // Per-firewall network policies: which permissions are granted + unknownPolicy
   networkPolicies: networkPoliciesSchema.optional(),
-  // Per-connector runtime policy refresh deadlines. Used by runners to refresh
+  // Per-connector runtime network policy refresh deadlines. Used by runners to refresh
   // active sandbox policy when temporary allow grants expire.
   networkPolicyRefreshes: networkPolicyRefreshesSchema.optional(),
   // Tools to disable in Claude CLI (passed as --disallowed-tools)
@@ -397,7 +397,7 @@ export const executionContextSchema = z.object({
   firewalls: executionFirewallsSchema.optional(),
   // Per-firewall network policies: which permissions are granted + unknownPolicy
   networkPolicies: networkPoliciesSchema.optional(),
-  // Per-connector runtime policy refresh deadlines. Used by runners to refresh
+  // Per-connector runtime network policy refresh deadlines. Used by runners to refresh
   // active sandbox policy when temporary allow grants expire.
   networkPolicyRefreshes: networkPolicyRefreshesSchema.optional(),
   // Tools to disable in Claude CLI (passed as --disallowed-tools)

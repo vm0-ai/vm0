@@ -209,7 +209,7 @@ pub struct NetworkPolicy {
     pub unknown_policy: String,
 }
 
-/// Per-connector runtime refresh boundary supplied by the API.
+/// Per-connector runtime network policy refresh boundary supplied by the API.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NetworkPolicyRefresh {
