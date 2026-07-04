@@ -114,13 +114,7 @@ const apiTestServiceImportPatterns = [
   "src/signals/services/**/*",
 ];
 
-const apiServiceTestParentImportPatterns = [
-  "../*.service",
-  "../*.utils",
-  "../assistant-message-id",
-  "../automations/*",
-  "../automations/**/*",
-];
+const apiServiceTestParentImportPatterns = ["../*", "../**/*"];
 
 export default [
   ...config,
