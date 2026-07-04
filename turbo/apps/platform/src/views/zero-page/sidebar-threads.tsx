@@ -1,4 +1,10 @@
-import { useGet, useSet, useLastResolved, useLoadable } from "ccstate-react";
+import {
+  useGet,
+  useSet,
+  useLastResolved,
+  useLoadable,
+  useLastLoadable,
+} from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import {
   IconPlus,
@@ -1065,7 +1071,10 @@ function ChatThreadsSkeleton() {
 }
 
 function ChatThreadsContent() {
-  const chatThreadsLoadable = useLoadable(sidebarChatThreads$);
+  // useLastLoadable keeps the previous resolved list rendered while
+  // sidebarChatThreads$ recomputes on a pane/thread switch; useLoadable would
+  // flash the skeleton on every switch.
+  const chatThreadsLoadable = useLastLoadable(sidebarChatThreads$);
   const chatThreads =
     chatThreadsLoadable.state === "hasData" ? chatThreadsLoadable.data : [];
   const chatThreadsLoading = chatThreadsLoadable.state === "loading";
