@@ -841,7 +841,7 @@ mod tests {
         .expect("scheduled refresh task should clear itself before timeout");
     }
 
-    struct RefreshPolicyHarness {
+    struct NetworkPolicyRefreshHarness {
         _dir: tempfile::TempDir,
         handle: NetworkPolicyRefreshHandle,
         registry_path: std::path::PathBuf,
@@ -849,7 +849,7 @@ mod tests {
         source_ip: String,
     }
 
-    impl RefreshPolicyHarness {
+    impl NetworkPolicyRefreshHarness {
         async fn new(server: &MockServer, run_id: RunId) -> Self {
             let dir = tempfile::tempdir().expect("tempdir should be created");
             let registry_path = dir.path().join("proxy-registry.json");
@@ -1625,7 +1625,7 @@ mod tests {
                 }));
         });
 
-        let harness = RefreshPolicyHarness::new(&server, run_id).await;
+        let harness = NetworkPolicyRefreshHarness::new(&server, run_id).await;
         harness.refresh_slack().await;
         let policy = harness.slack_policy().await;
         assert_fail_closed_policy(&policy);
@@ -1657,7 +1657,7 @@ mod tests {
                 }));
         });
 
-        let harness = RefreshPolicyHarness::new(&server, run_id).await;
+        let harness = NetworkPolicyRefreshHarness::new(&server, run_id).await;
         harness.refresh_slack().await;
         let policy = harness.slack_policy().await;
         assert_fail_closed_policy(&policy);
