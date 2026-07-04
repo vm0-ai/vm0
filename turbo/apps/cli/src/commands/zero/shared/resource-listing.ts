@@ -30,8 +30,8 @@ export function formatRegistryListing(
 
 /**
  * Canonicalize a user-supplied registry id by prepending the resource-kind
- * prefix when missing. Accepts either `apple` or `design-system:apple`,
- * `saas-landing` or `template:saas-landing`, etc.
+ * prefix when missing. For example, with prefix `template`, accepts either
+ * `example` or `template:example`.
  */
 export function canonicalizeRegistryId(prefix: string, value: string): string {
   const fullPrefix = `${prefix}:`;
