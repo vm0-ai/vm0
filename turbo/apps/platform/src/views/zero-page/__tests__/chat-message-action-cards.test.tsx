@@ -2,6 +2,7 @@ import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-s
 import {
   zeroConnectorCatalogContract,
   type PublicConnectorCatalogPermissionDetail,
+  type PublicConnectorCatalogStatusItem,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import {
@@ -85,6 +86,45 @@ function connectedConnector(
   };
 }
 
+function publicConnectorStatusItem(
+  overrides: Partial<PublicConnectorCatalogStatusItem> &
+    Pick<PublicConnectorCatalogStatusItem, "connectorRef" | "label">,
+): PublicConnectorCatalogStatusItem {
+  const { connectorRef, label, ...rest } = overrides;
+  return {
+    connectorRef,
+    label,
+    description: `${label} public help text`,
+    category: "data-automation-infrastructure",
+    generation: [],
+    tags: [],
+    authMethods: [],
+    permissionSummary: {
+      hasPermissions: false,
+      permissionCount: 0,
+      hasCategories: false,
+      hasDefaultPolicyOverrides: false,
+    },
+    connection: null,
+    connected: false,
+    connectionStatus: "not-connected",
+    scopeMismatch: false,
+    authMethodSupportsRefresh: false,
+    tokenExpiresAt: null,
+    singleAuthCodeAuthMethodId: null,
+    connectNotice: null,
+    ...rest,
+  };
+}
+
+function mockConnectorCatalogStatus(
+  connectors: readonly PublicConnectorCatalogStatusItem[],
+): void {
+  context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
+    return respond(200, { connectors: [...connectors] });
+  });
+}
+
 function mockAgentConnectorAuthorizations(
   initialTypes: readonly string[],
 ): void {
@@ -160,6 +200,21 @@ describe("chat message action cards", () => {
         externalUsername: "octocat",
       }),
     ]);
+    mockConnectorCatalogStatus([
+      publicConnectorStatusItem({
+        connectorRef: "github",
+        label: "Catalog GitHub",
+        description: "Catalog GitHub server help text",
+        connected: true,
+        connectionStatus: "connected",
+        connection: {
+          authMethod: "oauth",
+          externalUsername: "octocat",
+          externalEmail: null,
+          reconnectReason: null,
+        },
+      }),
+    ]);
     mockAgentConnectorAuthorizations([]);
     context.mocks.api(
       zeroConnectorCatalogContract.permissions,
@@ -227,7 +282,12 @@ describe("chat message action cards", () => {
     });
 
     const connectorCard = await screen.findByTestId("connector-action-card");
-    expect(within(connectorCard).getByText("GitHub")).toBeInTheDocument();
+    expect(
+      within(connectorCard).getByText("Catalog GitHub"),
+    ).toBeInTheDocument();
+    expect(
+      within(connectorCard).getByText("Catalog GitHub server help text"),
+    ).toBeInTheDocument();
     await user.click(within(connectorCard).getByText("Connect"));
 
     await waitFor(() => {
@@ -264,6 +324,104 @@ describe("chat message action cards", () => {
         ],
       });
     });
+  });
+
+  it("omits connector action cards when catalog metadata is hidden", async () => {
+    const hiddenConnectorAuthorizeUrl = `https://app.vm0.ai/connectors/github/authorize?agentId=${AGENT_ID}`;
+    const visibleConnectorAuthorizeUrl = `https://app.vm0.ai/connectors/slack/authorize?agentId=${AGENT_ID}`;
+    mockConnectorCatalogStatus([
+      publicConnectorStatusItem({
+        connectorRef: "slack",
+        label: "Catalog Slack",
+        description: "Catalog Slack server help text",
+      }),
+    ]);
+    mockChatLifecycle(context, {
+      threadId: `${THREAD_ID}-hidden-connector-metadata`,
+      threadTitle: "Hidden connector metadata",
+      chatMessages: [
+        {
+          id: "msg-user-hidden-connector",
+          role: "user",
+          content: "Connect hidden catalog connector",
+          runId: "run-hidden-connector",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-assistant-hidden-connector-card",
+          role: "assistant",
+          content: `${hiddenConnectorAuthorizeUrl}\n\n${visibleConnectorAuthorizeUrl}`,
+          runId: "run-hidden-connector",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}-hidden-connector-metadata`,
+    });
+
+    const userMessage = await screen.findByText(
+      "Connect hidden catalog connector",
+    );
+    expect(userMessage).toBeInTheDocument();
+    const connectorCards = await screen.findAllByTestId(
+      "connector-action-card",
+    );
+    expect(connectorCards).toHaveLength(1);
+    expect(
+      within(connectorCards[0]!).getByText("Catalog Slack"),
+    ).toBeInTheDocument();
+    expect(
+      within(connectorCards[0]!).getByText("Catalog Slack server help text"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("GitHub")).not.toBeInTheDocument();
+  });
+
+  it("renders catalog-visible unsupported connector action cards as disabled", async () => {
+    const connectorAuthorizeUrl = `https://app.vm0.ai/connectors/future-connector/authorize?agentId=${AGENT_ID}`;
+    mockConnectorCatalogStatus([
+      publicConnectorStatusItem({
+        connectorRef: "future-connector",
+        label: "Catalog Future Connector",
+        description: "Catalog future connector help text",
+      }),
+    ]);
+    mockChatLifecycle(context, {
+      threadId: `${THREAD_ID}-future-connector`,
+      threadTitle: "Future connector",
+      chatMessages: [
+        {
+          id: "msg-user-future-connector",
+          role: "user",
+          content: "Connect future connector",
+          runId: "run-future-connector",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-assistant-future-connector-card",
+          role: "assistant",
+          content: connectorAuthorizeUrl,
+          runId: "run-future-connector",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}-future-connector`,
+    });
+
+    const connectorCard = await screen.findByTestId("connector-action-card");
+    expect(
+      within(connectorCard).getByText("Catalog Future Connector"),
+    ).toBeInTheDocument();
+    expect(
+      within(connectorCard).getByText("Catalog future connector help text"),
+    ).toBeInTheDocument();
+    expect(buttonByText("Unavailable", connectorCard)).toBeDisabled();
   });
 
   it("fails closed when permission action metadata is hidden", async () => {

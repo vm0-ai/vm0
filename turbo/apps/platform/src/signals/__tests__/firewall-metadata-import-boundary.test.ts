@@ -3,8 +3,13 @@ import { describe, expect, it } from "vitest";
 const SERVER_FIREWALL_METADATA_SPECIFIER =
   "@vm0/connectors/firewall-metadata/server";
 const ROOT_FIREWALL_METADATA_SPECIFIER = "@vm0/connectors/firewall-metadata";
+const CONNECTORS_SPECIFIER = "@vm0/connectors/connectors";
 const IMPORT_SPECIFIER_PATTERN =
   /\bfrom\s+["']([^"']+)["']|\bimport\s*\(\s*["']([^"']+)["']\s*\)|\bimport\s+["']([^"']+)["']|\brequire\s*\(\s*["']([^"']+)["']\s*\)/g;
+const CONNECTORS_IMPORT_STATEMENT_PATTERN =
+  /\bimport\s+(?!type\b)(?<clause>[^;]*?)\s+from\s*["']@vm0\/connectors\/connectors["']/g;
+const CONNECTORS_NAMESPACE_IMPORT_PATTERN =
+  /\bimport\s+\*\s+as\s+(?<namespace>[A-Za-z_$][\w$]*)\s+from\s*["']@vm0\/connectors\/connectors["']/g;
 
 const PLATFORM_SRC_PREFIX = "../../";
 const productionSourceModules = import.meta.glob<string>(
@@ -54,6 +59,43 @@ function importsExactSpecifier(source: string, specifier: string): boolean {
   return importSpecifiers(source).some((importedSpecifier) => {
     return importedSpecifier === specifier;
   });
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, String.raw`\$&`);
+}
+
+function importsConnectorTypesValue(source: string): boolean {
+  const namedImport = [
+    ...source.matchAll(CONNECTORS_IMPORT_STATEMENT_PATTERN),
+  ].some((match) => {
+    const namedImports =
+      match.groups?.clause.match(/\{(?<imports>[\s\S]*?)\}/u)?.groups
+        ?.imports ?? "";
+    return namedImports.split(",").some((specifier) => {
+      const trimmed = specifier.trim();
+      if (trimmed.startsWith("type ")) {
+        return false;
+      }
+      return trimmed.split(/\s+as\s+/u)[0]?.trim() === "CONNECTOR_TYPES";
+    });
+  });
+  if (namedImport) {
+    return true;
+  }
+
+  return [...source.matchAll(CONNECTORS_NAMESPACE_IMPORT_PATTERN)].some(
+    (match) => {
+      const namespace = match.groups?.namespace;
+      if (!namespace) {
+        return false;
+      }
+      return new RegExp(
+        `\\b${escapeRegExp(namespace)}\\.CONNECTOR_TYPES\\b`,
+        "u",
+      ).test(source);
+    },
+  );
 }
 
 describe("firewall metadata import boundary", () => {
@@ -110,6 +152,26 @@ describe("firewall metadata import boundary", () => {
           staticCategorySymbols.some((symbol) => {
             return source.includes(symbol);
           })
+        );
+      });
+
+    expect(
+      offenders.map((offender) => {
+        return offender.path;
+      }),
+    ).toStrictEqual([]);
+  });
+
+  it("keeps static connector registry value imports out of platform production source", () => {
+    const offenders = Object.entries(productionSourceModules)
+      .map(([path, source]) => {
+        return { path: sourcePathFromGlobKey(path), source };
+      })
+      .filter(({ path, source }) => {
+        return (
+          isProductionSourcePath(path) &&
+          importsExactSpecifier(source, CONNECTORS_SPECIFIER) &&
+          importsConnectorTypesValue(source)
         );
       });
 

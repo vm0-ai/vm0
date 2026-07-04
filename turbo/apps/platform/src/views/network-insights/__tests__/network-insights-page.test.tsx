@@ -4,6 +4,10 @@ import {
   zeroInsightsContract,
   type InsightsResponse,
 } from "@vm0/api-contracts/contracts/zero-insights";
+import {
+  zeroConnectorCatalogContract,
+  type PublicConnectorCatalogStatusItem,
+} from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -21,6 +25,45 @@ const user = userEvent.setup();
 beforeEach(() => {
   mockNow();
 });
+
+function publicConnectorStatusItem(
+  overrides: Partial<PublicConnectorCatalogStatusItem> &
+    Pick<PublicConnectorCatalogStatusItem, "connectorRef" | "label">,
+): PublicConnectorCatalogStatusItem {
+  const { connectorRef, label, ...rest } = overrides;
+  return {
+    connectorRef,
+    label,
+    description: `${label} public help text`,
+    category: "data-automation-infrastructure",
+    generation: [],
+    tags: [],
+    authMethods: [],
+    permissionSummary: {
+      hasPermissions: false,
+      permissionCount: 0,
+      hasCategories: false,
+      hasDefaultPolicyOverrides: false,
+    },
+    connection: null,
+    connected: false,
+    connectionStatus: "not-connected",
+    scopeMismatch: false,
+    authMethodSupportsRefresh: false,
+    tokenExpiresAt: null,
+    singleAuthCodeAuthMethodId: null,
+    connectNotice: null,
+    ...rest,
+  };
+}
+
+function mockConnectorCatalogStatus(
+  connectors: readonly PublicConnectorCatalogStatusItem[],
+): void {
+  context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
+    return respond(200, { connectors: [...connectors] });
+  });
+}
 
 function localDateDaysAgo(daysAgo: number): string {
   const date = nowDate();
@@ -482,6 +525,78 @@ describe("network insights page", () => {
     expect(screen.queryByText("Hidden chat")).not.toBeInTheDocument();
     await user.click(screen.getByText("+1 more chat"));
     expect(screen.getByText("Hidden chat")).toBeInTheDocument();
+  });
+
+  it("uses connector labels from public catalog metadata", async () => {
+    mockConnectorCatalogStatus([
+      publicConnectorStatusItem({
+        connectorRef: "slack",
+        label: "Catalog Slack",
+      }),
+      publicConnectorStatusItem({
+        connectorRef: "github",
+        label: "Catalog GitHub",
+      }),
+      publicConnectorStatusItem({
+        connectorRef: "google-calendar",
+        label: "Catalog Calendar",
+      }),
+    ]);
+    context.mocks.api(zeroInsightsContract.get, ({ respond }) => {
+      return respond(200, insightsResponse());
+    });
+
+    detachedSetupPage({ context, path: "/insights" });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Insights" }),
+      ).toBeInTheDocument();
+      expect(screen.getAllByText("Catalog Slack").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("Catalog GitHub").length).toBeGreaterThan(0);
+    });
+  });
+
+  it("uses fallback connector labels when catalog metadata omits a ref", async () => {
+    const data = insightsResponse();
+    const day = data.days[0]!;
+    mockConnectorCatalogStatus([]);
+    context.mocks.api(zeroInsightsContract.get, ({ respond }) => {
+      return respond(200, {
+        ...data,
+        days: [
+          {
+            ...day,
+            services: [
+              {
+                domain: "github",
+                calls: 2,
+                agentNames: ["Research Bot"],
+              },
+            ],
+            permissions: [
+              {
+                label: "repo-read",
+                connectorType: "github",
+                allowed: 1,
+                denied: 0,
+                agentNames: ["Research Bot"],
+              },
+            ],
+          },
+        ],
+      });
+    });
+
+    detachedSetupPage({ context, path: "/insights" });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Insights" }),
+      ).toBeInTheDocument();
+      expect(screen.getAllByText("Github").length).toBeGreaterThan(0);
+    });
+    expect(screen.queryByText("GitHub")).not.toBeInTheDocument();
   });
 
   it("shows a no-activity message when the selected range excludes older data", async () => {

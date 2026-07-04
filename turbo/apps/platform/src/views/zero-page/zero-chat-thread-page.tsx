@@ -110,7 +110,6 @@ import type {
 import type { PublicConnectorCatalogPermissionDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { emptyArtifactImg, emptyChatImg } from "./platform-assets.ts";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { CONNECTOR_TYPES } from "@vm0/connectors/connectors";
 import type { FirewallPolicyValue } from "@vm0/connectors/firewall-types";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { Markdown } from "../components/markdown.tsx";
@@ -5605,13 +5604,16 @@ function ConnectorActionCard({ block }: { block: ConnectorActionBlock }) {
   const pageSignal = useGet(pageSignal$);
   const available = useLastResolved(block.available$) ?? false;
   const complete = useLastResolved(block.complete$) ?? false;
+  const displayMetadata = useLastResolved(block.displayMetadata$);
   const [activateLoadable, activate] = useLoadableSet(block.activate$);
   const activating = activateLoadable.state === "loading";
-  const config = CONNECTOR_TYPES[block.connectorType];
+  const connectorType = block.connectorType;
 
-  if (!available) {
+  if (!available || !displayMetadata) {
     return null;
   }
+
+  const canActivate = connectorType !== null;
 
   return (
     <div
@@ -5620,27 +5622,31 @@ function ConnectorActionCard({ block }: { block: ConnectorActionBlock }) {
     >
       <div className="flex min-w-0 items-center gap-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/40">
-          <ConnectorIcon type={block.connectorType} size={22} />
+          {connectorType ? (
+            <ConnectorIcon type={connectorType} size={22} />
+          ) : (
+            <IconPackage size={22} />
+          )}
         </div>
         <div className="min-w-0">
           <div className="truncate text-[0.9375rem] font-medium text-foreground">
-            {config.label}
+            {displayMetadata.label}
           </div>
           <div className="mt-0.5 line-clamp-2 text-sm leading-5 text-muted-foreground">
-            {config.helpText}
+            {displayMetadata.helpText}
           </div>
         </div>
       </div>
       <button
         type="button"
-        disabled={complete || activating}
+        disabled={complete || activating || !canActivate}
         onClick={() => {
           detach(activate(pageSignal), Reason.DomCallback);
         }}
         className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
       >
         {activating && <IconLoader2 size={15} className="animate-spin" />}
-        {complete ? "Connected" : "Connect"}
+        {!canActivate ? "Unavailable" : complete ? "Connected" : "Connect"}
       </button>
     </div>
   );
