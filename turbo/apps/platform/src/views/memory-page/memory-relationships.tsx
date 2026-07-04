@@ -393,6 +393,32 @@ function gmailRelationshipStatusText(
   return `${watchText} - ${backfillProgressText(status.backfill)}${syncText}`;
 }
 
+function gmailRelationshipEnableLabel(
+  status: GmailRelationshipStatusResponse,
+  enabling: boolean,
+): string {
+  if (enabling) {
+    return "Enabling";
+  }
+  if (!status.enabled) {
+    return "Enable Gmail";
+  }
+  if (status.backfill.status === "failed") {
+    return "Retry backfill";
+  }
+  return "Start backfill";
+}
+
+function canEnableGmailRelationships(
+  status: GmailRelationshipStatusResponse,
+): boolean {
+  return (
+    !status.enabled ||
+    status.backfill.status === "idle" ||
+    status.backfill.status === "failed"
+  );
+}
+
 function GmailRelationshipStatusPanel() {
   const statusLoadable = useLoadable(gmailRelationshipStatus$);
   const [enableLoadable, enable] = useLoadableSet(enableGmailRelationships$);
@@ -428,6 +454,7 @@ function GmailRelationshipStatusPanel() {
 
   const status = statusLoadable.data;
   const backfillFailed = status.backfill.status === "failed";
+  const showEnableAction = canEnableGmailRelationships(status);
 
   return (
     <div className="flex min-h-16 flex-col gap-3 border-b border-border/70 bg-muted/20 px-3 py-3 md:flex-row md:items-center md:justify-between">
@@ -467,7 +494,7 @@ function GmailRelationshipStatusPanel() {
           <Button asChild variant="outline" size="sm" className="h-8 text-xs">
             <a href="/connectors">Connect Gmail</a>
           </Button>
-        ) : !status.enabled ? (
+        ) : showEnableAction ? (
           <Button
             type="button"
             size="sm"
@@ -482,7 +509,7 @@ function GmailRelationshipStatusPanel() {
             ) : (
               <IconMail className="h-3.5 w-3.5" />
             )}
-            <span>{enabling ? "Enabling" : "Enable Gmail"}</span>
+            <span>{gmailRelationshipEnableLabel(status, enabling)}</span>
           </Button>
         ) : (
           <Button

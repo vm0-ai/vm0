@@ -32,6 +32,7 @@ const mocks = createZeroRouteMocks(context);
 const connectorsApi = createConnectorBddApi(context);
 const GMAIL_TOPIC_NAME = "projects/vm0-ai-488909/topics/gmail-events";
 const CRON_SECRET = "test-cron-secret";
+const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
 interface RelationshipFixture {
   readonly orgId: string;
@@ -89,7 +90,11 @@ function gmailBodyData(text: string): string {
 
 function configureGmailBackfillMocks(
   gmailEmail: string,
-  args: { readonly duplicateMessage?: boolean } = {},
+  args: {
+    readonly duplicateMessage?: boolean;
+    readonly bodyText?: string;
+    readonly mimeType?: "text/plain" | "text/html";
+  } = {},
 ): void {
   const messages = [
     { id: "msg-backfill-1", threadId: "thread-backfill-1" },
@@ -121,7 +126,7 @@ function configureGmailBackfillMocks(
           threadId: "thread-backfill-1",
           labelIds: ["INBOX"],
           payload: {
-            mimeType: "text/plain",
+            mimeType: args.mimeType ?? "text/plain",
             headers: [
               {
                 name: "From",
@@ -131,12 +136,49 @@ function configureGmailBackfillMocks(
               { name: "Subject", value: "Security review follow-up" },
             ],
             body: {
-              data: gmailBodyData("Please send the security review answer."),
+              data: gmailBodyData(
+                args.bodyText ?? "Please send the security review answer.",
+              ),
             },
           },
         });
       },
     ),
+  );
+}
+
+function configureRelationshipExtractionMock(): void {
+  server.use(
+    http.post(OPENROUTER_URL, async ({ request }) => {
+      expect(request.headers.get("authorization")).toBe(
+        "Bearer test-openrouter-key",
+      );
+      const requestText = await request.text();
+      expect(requestText).toContain("INTERNAL_RAW_HTML_MARKER");
+      return HttpResponse.json({
+        choices: [
+          {
+            finish_reason: "stop",
+            message: {
+              content: JSON.stringify({
+                summary:
+                  "Customer Example is waiting on a security review answer.",
+                relationshipType: "External contact",
+                interactionSummary:
+                  "Customer Example asked for the security review answer.",
+                items: [
+                  {
+                    kind: "open_loop",
+                    text: "Send the security review answer.",
+                    confidence: 90,
+                  },
+                ],
+              }),
+            },
+          },
+        ],
+      });
+    }),
   );
 }
 
@@ -340,5 +382,57 @@ describe("GET /api/zero/relationships/*", () => {
         return relationship.entity.primaryEmail === "customer@example.com";
       }),
     ).toBeTruthy();
+  });
+
+  it("stores generated Gmail interaction summaries instead of raw body excerpts", async () => {
+    const fixture = await track(seedRelationshipFixture());
+    const gmailEmail = `relationship-${randomUUID()}@example.com`;
+    configureGmailEnv();
+    mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+    configureGmailWatchMock();
+    configureGmailBackfillMocks(gmailEmail, {
+      mimeType: "text/html",
+      bodyText:
+        "<center><style>.hidden{display:none}</style><div>INTERNAL_RAW_HTML_MARKER: please send the security review answer.</div></center>",
+    });
+    configureRelationshipExtractionMock();
+    await connectGmail(fixture, gmailEmail);
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    await accept(
+      relationshipsClient().gmailEnable({
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+    await accept(
+      cronClient().drain({
+        headers: cronHeaders(),
+      }),
+      [200],
+    );
+
+    const search = await accept(
+      relationshipsClient().search({
+        headers: authHeaders(),
+        query: { q: "customer" },
+      }),
+      [200],
+    );
+    const serialized = JSON.stringify(search.body);
+    expect(serialized).toContain(
+      "Customer Example asked for the security review answer.",
+    );
+    expect(serialized).not.toContain("<center>");
+    expect(serialized).not.toContain("<style>");
+    expect(serialized).not.toContain("INTERNAL_RAW_HTML_MARKER");
+
+    const customer = search.body.relationships.find((relationship) => {
+      return relationship.entity.primaryEmail === "customer@example.com";
+    });
+    expect(customer?.recentInteractions[0]?.snippet).toBe(
+      "Customer Example asked for the security review answer.",
+    );
+    expect(customer?.items[0]?.sources[0]?.quote).toBeNull();
   });
 });
