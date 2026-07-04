@@ -25,7 +25,9 @@ import {
 } from "../../signals/zero-page/telegram-connect-params.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
-import telegramIconImg from "./components/settings/icons/telegram.svg";
+import { settingsIconAssetUrl } from "./components/settings/settings-icon-assets.ts";
+
+const telegramIconImg = settingsIconAssetUrl("telegram");
 
 function signInHref(): string {
   return resolveAppAuthUrl("/sign-in", { redirectUrl: location.href });

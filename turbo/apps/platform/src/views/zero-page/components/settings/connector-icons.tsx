@@ -3,6 +3,7 @@ import {
   type ConnectorType,
 } from "@vm0/connectors/connectors";
 import { cn } from "@vm0/ui";
+import { maybeSettingsIconAssetUrl } from "./settings-icon-assets.ts";
 
 const CONNECTOR_ICON_ALIASES = {
   "slack-webhook": "slack",
@@ -12,17 +13,6 @@ const CONNECTOR_ICON_ALIASES = {
 
 const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze(
   (() => {
-    const allIcons = Object.fromEntries(
-      Object.entries(
-        import.meta.glob<string>("./icons/*.{svg,png}", {
-          eager: true,
-          import: "default",
-        }),
-      ).map(([path, url]) => {
-        return [path.replace("./icons/", "").replace(/\.(svg|png)$/, ""), url];
-      }),
-    );
-
     const connectorKeys = CONNECTOR_TYPE_KEYS;
     const filtered: Record<string, string> = {};
     for (const key of connectorKeys) {
@@ -30,10 +20,10 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze(
         key in CONNECTOR_ICON_ALIASES
           ? CONNECTOR_ICON_ALIASES[key as keyof typeof CONNECTOR_ICON_ALIASES]
           : key;
-      const icon = allIcons[iconKey];
+      const icon = maybeSettingsIconAssetUrl(iconKey);
       if (typeof icon !== "string") {
         throw new Error(
-          `Missing SVG icon for connector type "${key}". Add icons/${iconKey}.svg.`,
+          `Missing static icon for connector type "${key}". Add the icon to vm0-ai/static-files and update settings-icon-assets.ts for "${iconKey}".`,
         );
       }
       filtered[key] = icon;

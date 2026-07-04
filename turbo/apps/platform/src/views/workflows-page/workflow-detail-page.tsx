@@ -183,7 +183,7 @@ import {
 } from "./workflow-shared.tsx";
 import { WorkflowHoverContent } from "./workflows-page.tsx";
 import { TriggerListIcon } from "../zero-page/workflow-trigger-automations-page.tsx";
-import emptyAutomationsImg from "../zero-page/assets/empty-automations.webp";
+import { emptyAutomationsImg } from "../zero-page/platform-assets.ts";
 
 const FIELD_CLASS =
   "h-9 w-full rounded-md border border-border/60 bg-background px-2.5 text-sm outline-none focus:border-primary";

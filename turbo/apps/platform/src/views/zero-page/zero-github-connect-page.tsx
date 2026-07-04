@@ -21,7 +21,9 @@ import {
 } from "../../signals/zero-page/github-connect-params.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
-import githubIconImg from "./components/settings/icons/github.svg";
+import { settingsIconAssetUrl } from "./components/settings/settings-icon-assets.ts";
+
+const githubIconImg = settingsIconAssetUrl("github");
 
 function signInHref(): string {
   return resolveAppAuthUrl("/sign-in", { redirectUrl: location.href });

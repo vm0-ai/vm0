@@ -104,7 +104,7 @@ import type {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { AttachmentChips } from "./zero-attachment-chips.tsx";
 import { TiptapWorkflowComposer } from "./tiptap-workflow-composer.tsx";
-import computerUseIllustration from "./assets/computer-use-illustration.png";
+import { computerUseIllustrationImg } from "./platform-assets.ts";
 import type { ComposerPasteEvent } from "./composer-input-types.ts";
 import {
   parsePresentationEditDraft,
@@ -5881,7 +5881,7 @@ function ComputerUseDownloadDialog({
       <DialogContent className="max-w-md gap-0 overflow-hidden p-0">
         <div className="flex h-44 items-center justify-center border-b border-border bg-gray-50">
           <img
-            src={computerUseIllustration}
+            src={computerUseIllustrationImg}
             alt=""
             className="h-40 w-40 object-contain"
           />

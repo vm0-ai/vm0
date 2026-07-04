@@ -18,7 +18,9 @@ import {
 } from "../../signals/zero-page/agentphone-connect-params.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
-import imessageIconImg from "./components/settings/icons/imessage.svg";
+import { settingsIconAssetUrl } from "./components/settings/settings-icon-assets.ts";
+
+const imessageIconImg = settingsIconAssetUrl("imessage");
 
 function BackLink() {
   return (

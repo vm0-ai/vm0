@@ -48,7 +48,7 @@ import {
 import { userPreferences$ } from "../../signals/zero-page/settings/user-preferences.ts";
 import { AgentAvatarImg } from "../zero-page/zero-sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
-import emptyWorkflowImg from "../zero-page/assets/empty-workflow.webp";
+import { emptyWorkflowImg } from "../zero-page/platform-assets.ts";
 import {
   CreateWorkflowAutomationDialog,
   humanReadableTriggerRuleLabel,
