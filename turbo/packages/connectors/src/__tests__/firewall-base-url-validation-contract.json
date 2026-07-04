@@ -56,6 +56,18 @@
     },
     {
       "category": "authority",
+      "name": "empty authority is invalid",
+      "base": "https:///v1",
+      "expectedValid": false
+    },
+    {
+      "category": "authority",
+      "name": "bracketed non-ipv6 authority is invalid",
+      "base": "https://[v1.invalid]",
+      "expectedValid": false
+    },
+    {
+      "category": "authority",
       "name": "empty port is invalid",
       "base": "https://api.example.com:",
       "expectedValid": false
