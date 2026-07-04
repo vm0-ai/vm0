@@ -207,7 +207,6 @@ async function relationshipMemoryFeatureEnabled(
 function gmailRefreshDedupeKey(args: {
   readonly orgId: string;
   readonly userId: string;
-  readonly threadId: string | null;
   readonly messageId: string;
 }): string {
   return [
@@ -215,7 +214,7 @@ function gmailRefreshDedupeKey(args: {
     args.userId,
     "gmail",
     "gmail_relationship_refresh",
-    args.threadId ?? args.messageId,
+    args.messageId,
   ].join(":");
 }
 
@@ -226,6 +225,8 @@ export async function enqueueGmailRelationshipRefreshJob(
     readonly userId: string;
     readonly connectorId: string;
     readonly message: GmailRelationshipMessage;
+    readonly priority?: number;
+    readonly reason?: "gmail_webhook" | "gmail_backfill";
   },
 ): Promise<boolean> {
   if (
@@ -253,7 +254,7 @@ export async function enqueueGmailRelationshipRefreshJob(
     gmailMessageIds: [args.message.messageId],
     historyId: args.message.historyId,
     gmailMessage,
-    reason: "gmail_webhook",
+    reason: args.reason ?? "gmail_webhook",
   };
 
   await db
@@ -264,10 +265,10 @@ export async function enqueueGmailRelationshipRefreshJob(
       kind: "gmail_relationship_refresh",
       provider: "gmail",
       status: "pending",
+      priority: args.priority ?? 0,
       dedupeKey: gmailRefreshDedupeKey({
         orgId: args.orgId,
         userId: args.userId,
-        threadId: args.message.threadId,
         messageId: args.message.messageId,
       }),
       payload,
@@ -281,6 +282,7 @@ export async function enqueueGmailRelationshipRefreshJob(
       set: {
         status: "pending",
         payload,
+        priority: args.priority ?? 0,
         runAfterAt: currentTime,
         lockedAt: null,
         lastError: null,
@@ -763,7 +765,10 @@ export const drainRelationshipSyncJobs$ = command(
           lte(relationshipSyncJobs.runAfterAt, currentTime),
         ),
       )
-      .orderBy(asc(relationshipSyncJobs.runAfterAt))
+      .orderBy(
+        asc(relationshipSyncJobs.priority),
+        asc(relationshipSyncJobs.runAfterAt),
+      )
       .limit(MAX_JOBS_PER_DRAIN);
     signal.throwIfAborted();
 

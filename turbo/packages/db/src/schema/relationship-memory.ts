@@ -49,6 +49,15 @@ export const RELATIONSHIP_SYNC_JOB_STATUSES = [
 export type RelationshipSyncJobStatus =
   (typeof RELATIONSHIP_SYNC_JOB_STATUSES)[number];
 
+export const RELATIONSHIP_BACKFILL_JOB_STATUSES = [
+  "pending",
+  "running",
+  "done",
+  "failed",
+] as const;
+export type RelationshipBackfillJobStatus =
+  (typeof RELATIONSHIP_BACKFILL_JOB_STATUSES)[number];
+
 export const RELATIONSHIP_MEMORY_BOOTSTRAP_STATUSES = [
   "idle",
   "pending",
@@ -338,6 +347,49 @@ export const relationshipMemorySettings = pgTable(
   },
 );
 
+export const relationshipBackfillJobs = pgTable(
+  "relationship_backfill_jobs",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    orgId: text("org_id").notNull(),
+    userId: text("user_id").notNull(),
+    provider: varchar("provider", { length: 50 })
+      .$type<RelationshipMemoryProvider>()
+      .notNull(),
+    connectorId: uuid("connector_id"),
+    status: varchar("status", { length: 32 })
+      .$type<RelationshipBackfillJobStatus>()
+      .default("pending")
+      .notNull(),
+    query: text("query").notNull(),
+    nextPageToken: text("next_page_token"),
+    estimatedTotal: integer("estimated_total"),
+    scannedCount: integer("scanned_count").default(0).notNull(),
+    enqueuedCount: integer("enqueued_count").default(0).notNull(),
+    lockedAt: timestamp("locked_at"),
+    lastRunAt: timestamp("last_run_at"),
+    completedAt: timestamp("completed_at"),
+    attempts: integer("attempts").default(0).notNull(),
+    lastError: text("last_error"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => {
+    return [
+      uniqueIndex("idx_relationship_backfill_jobs_provider").on(
+        table.orgId,
+        table.userId,
+        table.provider,
+      ),
+      index("idx_relationship_backfill_jobs_status").on(
+        table.provider,
+        table.status,
+        table.updatedAt,
+      ),
+    ];
+  },
+);
+
 export const relationshipSyncJobs = pgTable(
   "relationship_sync_jobs",
   {
@@ -354,6 +406,7 @@ export const relationshipSyncJobs = pgTable(
       .$type<RelationshipSyncJobStatus>()
       .default("pending")
       .notNull(),
+    priority: integer("priority").default(100).notNull(),
     dedupeKey: varchar("dedupe_key", { length: 512 }).notNull(),
     payload: jsonb("payload").$type<RelationshipSyncJobPayload>().notNull(),
     runAfterAt: timestamp("run_after_at").defaultNow().notNull(),
@@ -368,6 +421,7 @@ export const relationshipSyncJobs = pgTable(
       uniqueIndex("idx_relationship_sync_jobs_dedupe").on(table.dedupeKey),
       index("idx_relationship_sync_jobs_pending").on(
         table.status,
+        table.priority,
         table.runAfterAt,
       ),
       index("idx_relationship_sync_jobs_scope_provider").on(

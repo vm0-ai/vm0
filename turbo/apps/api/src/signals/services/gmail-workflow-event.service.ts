@@ -169,13 +169,13 @@ const gmailPubSubDataSchema = z.object({
     .transform(String),
 });
 
-interface GmailAccess {
+export interface GmailAccess {
   readonly connectorId: string;
   readonly emailAddress: string | null;
   readonly accessToken: string;
 }
 
-type GmailAccessResult =
+export type GmailAccessResult =
   | { readonly kind: "ok"; readonly access: GmailAccess }
   | { readonly kind: "bad_request"; readonly message: string };
 
@@ -231,7 +231,7 @@ type GmailHistoryMessageEvent =
   | GmailHistoryMessageAdded
   | GmailHistoryLabelAdded;
 
-interface GmailMessageContext {
+export interface GmailMessageContext {
   readonly messageId: string;
   readonly threadId: string | null;
   readonly labelIds: readonly string[];
@@ -449,7 +449,7 @@ async function refreshGmailAccessToken(args: {
   };
 }
 
-async function resolveGmailAccess(args: {
+export async function resolveGmailAccess(args: {
   readonly db: Db;
   readonly orgId: string;
   readonly userId: string;
@@ -847,7 +847,7 @@ function collectBodyText(part: GmailMessagePart | undefined): string {
     .join("\n");
 }
 
-function messageIsInbound(message: GmailMessageContext): boolean {
+export function messageIsInbound(message: GmailMessageContext): boolean {
   const labels = new Set(message.labelIds);
   if (!labels.has("INBOX")) {
     return false;
@@ -900,6 +900,26 @@ async function fetchGmailMessageContext(args: {
     subject: firstHeaderValue(headers, "Subject"),
     bodyText: bodyText.length > 0 ? bodyText : null,
   };
+}
+
+export async function fetchGmailMessageContextById(args: {
+  readonly accessToken: string;
+  readonly messageId: string;
+  readonly threadId: string | null;
+  readonly labelIds: readonly string[];
+  readonly historyId?: string;
+  readonly signal: AbortSignal;
+}): Promise<GmailMessageContext | null> {
+  return await fetchGmailMessageContext({
+    accessToken: args.accessToken,
+    event: {
+      historyId: args.historyId ?? args.messageId,
+      messageId: args.messageId,
+      threadId: args.threadId,
+      labelIds: args.labelIds,
+    },
+    signal: args.signal,
+  });
 }
 
 function includesIgnoreCase(haystack: string, needle: string): boolean {
