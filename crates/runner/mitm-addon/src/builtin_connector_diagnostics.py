@@ -34,6 +34,11 @@ class SharedBaseOwnershipResolution:
 
 
 @dataclass(frozen=True)
+class _SharedBaseDiagnosticResolution:
+    candidate: ConnectorDiagnosticCandidate | None
+
+
+@dataclass(frozen=True)
 class _DiagnosticConnectorMatcher:
     base_authorities: frozenset[str]
     compiled_firewalls: matching.CompiledFirewallSet | None
@@ -80,6 +85,15 @@ def find_candidate(
     if _matches_model_provider_exclusion(url, method, catalog):
         return None
 
+    shared_base_resolution = _find_shared_base_candidate(
+        url,
+        method,
+        catalog,
+        active_firewall_names=active_firewall_names,
+    )
+    if shared_base_resolution is not None:
+        return shared_base_resolution.candidate
+
     match = matching.match_compiled_firewall_request(
         url,
         method,
@@ -92,6 +106,27 @@ def find_candidate(
         return None
 
     return _candidate_from_match(match)
+
+
+def _find_shared_base_candidate(
+    url: str,
+    method: str,
+    catalog: _DiagnosticCatalog,
+    *,
+    active_firewall_names: set[str],
+) -> _SharedBaseDiagnosticResolution | None:
+    matches = _ownership_matches(url, method, catalog)
+    if len(matches) < _SHARED_BASE_MIN_CANDIDATES:
+        return None
+
+    route_matches = [match for match in matches if match.route_specific]
+    if len(route_matches) != 1:
+        return _SharedBaseDiagnosticResolution(candidate=None)
+
+    selected = route_matches[0].candidate
+    if selected.connector_type in active_firewall_names:
+        return _SharedBaseDiagnosticResolution(candidate=None)
+    return _SharedBaseDiagnosticResolution(candidate=selected)
 
 
 def resolve_shared_base_ownership(

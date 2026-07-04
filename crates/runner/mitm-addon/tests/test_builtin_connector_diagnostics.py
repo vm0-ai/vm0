@@ -194,6 +194,135 @@ def test_classifies_connector_permission_path_on_model_provider_host():
     assert candidate.env_names == ("ANTHROPIC_MANAGED_AGENTS_TOKEN",)
 
 
+def test_find_candidate_suppresses_shared_base_only_candidate(monkeypatch):
+    _patch_connector_diagnostics(
+        monkeypatch,
+        [
+            _shared_base_firewall("first", "FIRST_TOKEN"),
+            _shared_base_firewall("second", "SECOND_TOKEN"),
+        ],
+    )
+
+    candidate = builtin_connector_diagnostics.find_candidate(
+        "https://shared.example.com/messages/123",
+        "GET",
+        active_firewall_names=set(),
+    )
+
+    assert candidate is None
+
+
+def test_find_candidate_selects_shared_base_route_specific_inactive_owner(monkeypatch):
+    _patch_connector_diagnostics(
+        monkeypatch,
+        [
+            _shared_base_firewall("active", "ACTIVE_TOKEN"),
+            _shared_base_firewall(
+                "inactive",
+                "INACTIVE_TOKEN",
+                permissions=[{"name": "inactive-read", "rules": ["GET /messages/{id}"]}],
+            ),
+        ],
+    )
+
+    candidate = builtin_connector_diagnostics.find_candidate(
+        "https://shared.example.com/messages/123",
+        "GET",
+        active_firewall_names={"active"},
+    )
+
+    assert candidate is not None
+    assert candidate.connector_type == "inactive"
+    assert candidate.env_names == ("INACTIVE_TOKEN",)
+
+
+def test_find_candidate_suppresses_shared_base_active_route_owner(monkeypatch):
+    _patch_connector_diagnostics(
+        monkeypatch,
+        [
+            _shared_base_firewall(
+                "active",
+                "ACTIVE_TOKEN",
+                permissions=[{"name": "active-read", "rules": ["GET /messages/{id}"]}],
+            ),
+            _shared_base_firewall("inactive", "INACTIVE_TOKEN"),
+        ],
+    )
+
+    candidate = builtin_connector_diagnostics.find_candidate(
+        "https://shared.example.com/messages/123",
+        "GET",
+        active_firewall_names={"active"},
+    )
+
+    assert candidate is None
+
+
+def test_find_candidate_suppresses_shared_base_multiple_route_owners(monkeypatch):
+    _patch_connector_diagnostics(
+        monkeypatch,
+        [
+            _shared_base_firewall(
+                "first",
+                "FIRST_TOKEN",
+                permissions=[{"name": "first-read", "rules": ["GET /messages/{id}"]}],
+            ),
+            _shared_base_firewall(
+                "second",
+                "SECOND_TOKEN",
+                permissions=[{"name": "second-read", "rules": ["GET /messages/{id}"]}],
+            ),
+        ],
+    )
+
+    candidate = builtin_connector_diagnostics.find_candidate(
+        "https://shared.example.com/messages/123",
+        "GET",
+        active_firewall_names=set(),
+    )
+
+    assert candidate is None
+
+
+def test_find_candidate_suppresses_current_graph_mail_and_calendar_base_only_diagnostics():
+    for url in (
+        "https://graph.microsoft.com/v1.0/me/messages",
+        "https://graph.microsoft.com/v1.0/me/events",
+    ):
+        candidate = builtin_connector_diagnostics.find_candidate(
+            url,
+            "GET",
+            active_firewall_names=set(),
+        )
+
+        assert candidate is None
+
+
+def test_find_candidate_keeps_current_graph_route_specific_microsoft_365_diagnostic():
+    candidate = builtin_connector_diagnostics.find_candidate(
+        "https://graph.microsoft.com/v1.0/teams",
+        "GET",
+        active_firewall_names=set(),
+    )
+
+    assert candidate is not None
+    assert candidate.connector_type == "microsoft-365"
+
+
+def test_find_candidate_suppresses_current_shared_base_only_diagnostics():
+    for url, method in (
+        ("https://backboard.railway.com/graphql/v2", "POST"),
+        ("https://graph.facebook.com/v22.0/123/ads_posts", "GET"),
+    ):
+        candidate = builtin_connector_diagnostics.find_candidate(
+            url,
+            method,
+            active_firewall_names=set(),
+        )
+
+        assert candidate is None
+
+
 def test_shared_base_ownership_selects_route_specific_inactive_sibling(monkeypatch):
     _patch_connector_diagnostics(
         monkeypatch,
