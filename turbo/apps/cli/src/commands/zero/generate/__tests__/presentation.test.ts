@@ -54,7 +54,7 @@ describe("zero generate presentation command", () => {
     expect(stdout).toContain("## Candidate Registry Slice");
     expect(stdout).toContain("API migration plan");
     expect(stdout).toContain("skill:article-magazine");
-    expect(stdout).toContain("template:html-ppt-graphify-dark-graph");
+    expect(stdout).not.toContain("template:html-ppt-graphify-dark-graph");
     expect(stdout).not.toContain("template:saas-landing");
     expect(stdout).toContain(
       "Write the artifact under `./generated/mockups/api-migration-plan/`.",
@@ -152,13 +152,16 @@ describe("zero generate presentation command", () => {
 
     expect(helpOutput).toContain("Design Systems:");
     expect(helpOutput).toContain("design-system:apple");
-    expect(helpOutput).toContain("Templates (presentation):");
-    expect(helpOutput).toContain("template:html-ppt-pitch-deck");
+    expect(helpOutput).toContain("Templates (presentation runbook):");
+    expect(helpOutput).toContain("template:html-ppt-playful-launch");
+    expect(helpOutput).toContain("Templates (presentation registry):");
+    expect(helpOutput).toContain("(no presentation templates registered)");
+    expect(helpOutput).not.toContain("template:html-ppt-pitch-deck");
     // Website-only template should NOT appear in presentation help
     expect(helpOutput).not.toContain("template:saas-landing");
   });
 
-  it("should accept --design-system and --template from the registry", async () => {
+  it("should accept --design-system without an Open Design presentation template", async () => {
     await generateCommand.parseAsync([
       "node",
       "cli",
@@ -167,8 +170,6 @@ describe("zero generate presentation command", () => {
       "investor pitch",
       "--design-system",
       "apple",
-      "--template",
-      "html-ppt-pitch-deck",
       "--title",
       "Pitch",
     ]);
@@ -177,9 +178,7 @@ describe("zero generate presentation command", () => {
     expect(stdout).toContain(
       "Selected design system: design-system:apple (Apple)",
     );
-    expect(stdout).toContain(
-      "Selected template: template:html-ppt-pitch-deck (HTML PPT Pitch Deck)",
-    );
+    expect(stdout).toContain("Selected template: agent decides");
   });
 
   it("resolves a picker template to runbook instructions, ignoring --design-system", async () => {

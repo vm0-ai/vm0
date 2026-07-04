@@ -9,6 +9,7 @@ import {
   findDesignSystem,
   findPresentationRunbookPackage,
   findTemplate,
+  listTemplates,
 } from "../resource-registry";
 
 const FORBIDDEN_ASSET_URL_PARTS = [
@@ -329,25 +330,6 @@ const PICKER_PROMPT_SCENARIOS = [
   },
 ] as const;
 
-function expectOpenDesignSource(
-  id: string,
-  sourcePathPrefix: "design-systems/" | "design-templates/",
-): void {
-  const entry = id.startsWith("template:")
-    ? findTemplate(id)
-    : findDesignSystem(id);
-
-  expect(entry, id).toBeDefined();
-  if (!entry) {
-    throw new Error(`missing registry entry ${id}`);
-  }
-
-  expect(entry.source.path).toMatch(new RegExp(`^${sourcePathPrefix}`));
-  expect(entry.source.repo).toBeUndefined();
-  expect(entry.source.ref).toBeUndefined();
-  expect(entry.source.archive).toBeUndefined();
-}
-
 function expectPinnedPickerPreviewImages(
   slug: string,
   expectedPreviewImages: readonly string[],
@@ -414,14 +396,13 @@ describe("presentation template items", () => {
     }
   });
 
-  it("resolves legacy items against the registry and picker items against runbook packages", () => {
+  it("keeps legacy items out of the presentation registry and picker items on runbook packages", () => {
     for (const item of PRESENTATION_TEMPLATE_ITEMS) {
       const designSystem = findDesignSystem(item.designSystemId);
       const template = findTemplate(item.templateId);
 
       expect(designSystem, item.designSystemId).toBeDefined();
-      expect(template, item.templateId).toBeDefined();
-      expect(template?.targets).toContain("presentation");
+      expect(template?.targets ?? []).not.toContain("presentation");
     }
 
     for (const item of PRESENTATION_TEMPLATE_PICKER_ITEMS) {
@@ -497,7 +478,7 @@ describe("presentation template items", () => {
     );
   });
 
-  it("keeps the legacy catalog available and resolvable", () => {
+  it("keeps the legacy catalog as demo-only data", () => {
     const legacyItem = PRESENTATION_TEMPLATE_ITEMS.find((candidate) => {
       return candidate.slug === "starship-v3-investor-update";
     });
@@ -511,15 +492,16 @@ describe("presentation template items", () => {
     expect(legacyItem?.designSystemId).toBe("design-system:spacex");
     expect(legacyItem?.templateId).toBe("template:html-ppt-pitch-deck");
     expect(findDesignSystem(legacyItem?.designSystemId ?? "")).toBeDefined();
-    expect(findTemplate(legacyItem?.templateId ?? "")?.targets).toContain(
-      "presentation",
-    );
+    expect(findTemplate(legacyItem?.templateId ?? "")).toBeUndefined();
   });
 
-  it("keeps legacy presentation templates on the Open Design source path", () => {
+  it("does not expose Open Design presentation template registry entries", () => {
+    expect(listTemplates("presentation")).toHaveLength(0);
+
     for (const item of PRESENTATION_TEMPLATE_ITEMS) {
-      expectOpenDesignSource(item.designSystemId, "design-systems/");
-      expectOpenDesignSource(item.templateId, "design-templates/");
+      expect(findTemplate(item.templateId)?.targets ?? []).not.toContain(
+        "presentation",
+      );
     }
   });
 
