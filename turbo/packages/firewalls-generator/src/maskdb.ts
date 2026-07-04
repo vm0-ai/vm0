@@ -35,8 +35,12 @@ const DEFAULT_ALLOWED: string[] = ["db:metadata", "db:query", "policy:read"];
 const PERMISSIONS: { name: string; description: string; rules: string[] }[] = [
   {
     name: "db:query",
-    description: "Run read-only structured queries (results masked).",
-    rules: ["POST /v1/databases/{db}/query"],
+    description:
+      "Run read-only structured and aggregate queries (results masked).",
+    rules: [
+      "POST /v1/databases/{db}/aggregate",
+      "POST /v1/databases/{db}/query",
+    ],
   },
   {
     name: "db:metadata",

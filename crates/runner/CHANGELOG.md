@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.132.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.132.9...runner-rs-v0.132.10) (2026-07-03)
+
+
+### Bug Fixes
+
+* validate runner config image artifacts under locks ([#20095](https://github.com/vm0-ai/vm0/issues/20095)) ([3d2adce](https://github.com/vm0-ai/vm0/commit/3d2adce2dcf933ad4c4fd7deb1e4f45a857cf61f))
+
+## [0.132.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.132.8...runner-rs-v0.132.9) (2026-07-03)
+
+
+### Refactoring
+
+* share runner status file reader ([#20096](https://github.com/vm0-ai/vm0/issues/20096)) ([df6d7d6](https://github.com/vm0-ai/vm0/commit/df6d7d62c1dfbd3a6ff5fe11179f25f47b1006b2))
+
+## [0.132.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.132.7...runner-rs-v0.132.8) (2026-07-03)
+
+
+### Refactoring
+
+* centralize firewall base url malformed checks ([#20090](https://github.com/vm0-ai/vm0/issues/20090)) ([2aab7f4](https://github.com/vm0-ai/vm0/commit/2aab7f43daf38d0a86a2a8bcff99f12e18cb873a))
+* **runner:** centralize job candidate defaults ([#20092](https://github.com/vm0-ai/vm0/issues/20092)) ([bfa917c](https://github.com/vm0-ai/vm0/commit/bfa917c064ca5599ebd35ee78264b665a66a0e27))
+
+## [0.132.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.132.6...runner-rs-v0.132.7) (2026-07-03)
+
+
+### Bug Fixes
+
+* allow maskdb aggregate queries through firewall ([#20083](https://github.com/vm0-ai/vm0/issues/20083)) ([18ab86f](https://github.com/vm0-ai/vm0/commit/18ab86f8e78ada958f1a2f94cbc940dc51227212))
+
 ## [0.132.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.132.5...runner-rs-v0.132.6) (2026-07-03)
 
 

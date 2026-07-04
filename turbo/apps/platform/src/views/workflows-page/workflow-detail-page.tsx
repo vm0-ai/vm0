@@ -39,6 +39,7 @@ import {
   IconTrash,
   IconUpload,
   IconDotsVertical,
+  IconEye,
   IconVideo,
 } from "@tabler/icons-react";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
@@ -52,6 +53,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -97,6 +99,8 @@ import {
   openWorkflowChat$,
   pauseWorkflowTriggers$,
   reloadWorkflows$,
+  revealWebhookSecretTriggerId$,
+  revealWorkflowWebhookSecret$,
   resetWorkflowMetadataForm$,
   runWorkflowTriggerNow$,
   selectedWorkflowFilePath$,
@@ -106,6 +110,7 @@ import {
   setEditingGithubLabelActor$,
   setEditingScheduleCronFields$,
   setEditingWorkflowTriggerId$,
+  setRevealWebhookSecretTriggerId$,
   setSelectedWorkflowFilePath$,
   setWorkflowActionDialog$,
   setWorkflowDetailActiveTab$,
@@ -119,9 +124,13 @@ import {
   updateWorkflowScheduleTrigger$,
   updateWorkflow$,
   workflowActionDialog$,
+  setWorkflowTriggerPickerCategory$,
+  setWorkflowTriggerPickerOpen$,
   workflowCopyForm$,
   workflowDetailActiveTab$,
   workflowTriggerCreateDialog$,
+  workflowTriggerPickerCategory$,
+  workflowTriggerPickerOpen$,
   workflowFileDraft$,
   workflowDetail,
   type WorkflowCopyFormState,
@@ -2279,207 +2288,218 @@ type TriggerCreateDialogKind =
   | "google-meet-transcript-generated"
   | "webhook";
 
-function TriggerCreateMenuItem({
-  icon,
-  title,
-  description,
-  onSelect,
-}: {
-  readonly icon: ReactNode;
+type TriggerCategoryKey = "schedule" | "email" | "calendar" | "integrations";
+
+type TriggerCreateOption = {
+  readonly kind: TriggerCreateDialogKind;
   readonly title: string;
   readonly description: string;
+  readonly icon: typeof IconClock;
+};
+
+type TriggerCreateCategory = {
+  readonly key: TriggerCategoryKey;
+  readonly label: string;
+  readonly icon: typeof IconClock;
+  readonly options: readonly TriggerCreateOption[];
+};
+
+// Each category owns a single hue that colours only the card icon chip on the
+// right; the category rail stays neutral and mirrors the app sidebar.
+const TRIGGER_CATEGORY_CHIP: Readonly<Record<TriggerCategoryKey, string>> =
+  Object.freeze({
+    schedule: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
+    email: "bg-violet-500/10 text-violet-600 dark:text-violet-400",
+    calendar: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+    integrations: "bg-amber-500/10 text-amber-600 dark:text-amber-500",
+  });
+
+function buildTriggerCreateCategories({
+  githubLabelTriggersEnabled,
+  googleCalendarTriggersEnabled,
+  googleMeetTriggersEnabled,
+  webhookTriggersEnabled,
+}: {
+  readonly githubLabelTriggersEnabled: boolean;
+  readonly googleCalendarTriggersEnabled: boolean;
+  readonly googleMeetTriggersEnabled: boolean;
+  readonly webhookTriggersEnabled: boolean;
+}): readonly TriggerCreateCategory[] {
+  const calendarOptions: TriggerCreateOption[] = [];
+  if (googleCalendarTriggersEnabled) {
+    calendarOptions.push(
+      {
+        kind: "google-calendar-created",
+        title: "Google Calendar event created",
+        description: "Run when a calendar event is created.",
+        icon: IconCalendarTime,
+      },
+      {
+        kind: "google-calendar-updated",
+        title: "Google Calendar event updated",
+        description: "Run when a calendar event is updated.",
+        icon: IconCalendarTime,
+      },
+      {
+        kind: "google-calendar-cancelled",
+        title: "Google Calendar event cancelled",
+        description: "Run when a calendar event is cancelled.",
+        icon: IconCalendarTime,
+      },
+    );
+  }
+  if (googleMeetTriggersEnabled) {
+    calendarOptions.push({
+      kind: "google-meet-transcript-generated",
+      title: "Google Meet transcript ready",
+      description: "Run when Meet finishes generating a transcript.",
+      icon: IconVideo,
+    });
+  }
+
+  const integrationOptions: TriggerCreateOption[] = [];
+  if (githubLabelTriggersEnabled) {
+    integrationOptions.push({
+      kind: "github-label",
+      title: "GitHub label applied",
+      description: "Run when an issue or pull request gets a label.",
+      icon: IconBrandGithub,
+    });
+  }
+  if (webhookTriggersEnabled) {
+    integrationOptions.push({
+      kind: "webhook",
+      title: "Webhook",
+      description: "Run this workflow from a signed POST.",
+      icon: IconLink,
+    });
+  }
+
+  const categories: readonly TriggerCreateCategory[] = [
+    {
+      key: "schedule",
+      label: "Schedule",
+      icon: IconClock,
+      options: [
+        {
+          kind: "interval",
+          title: "Interval",
+          description: "Run this workflow on a fixed interval.",
+          icon: IconRepeat,
+        },
+        {
+          kind: "scheduled",
+          title: "Scheduled time",
+          description: "Run this workflow from a time rule.",
+          icon: IconClock,
+        },
+        {
+          kind: "once",
+          title: "One-time run",
+          description: "Run this workflow once at a date and time.",
+          icon: IconClock,
+        },
+      ],
+    },
+    {
+      key: "email",
+      label: "Email",
+      icon: IconMail,
+      options: [
+        {
+          kind: "gmail",
+          title: "Gmail new message",
+          description: "Run this workflow from matching email.",
+          icon: IconMail,
+        },
+        {
+          kind: "gmail-label",
+          title: "Gmail label applied",
+          description: "Run when a named Gmail label is applied.",
+          icon: IconMail,
+        },
+      ],
+    },
+    {
+      key: "calendar",
+      label: "Calendar",
+      icon: IconCalendarTime,
+      options: calendarOptions,
+    },
+    {
+      key: "integrations",
+      label: "Integrations",
+      icon: IconLink,
+      options: integrationOptions,
+    },
+  ];
+
+  return categories.filter((category) => {
+    return category.options.length > 0;
+  });
+}
+
+function TriggerCreateCategoryButton({
+  category,
+  active,
+  onSelect,
+}: {
+  readonly category: TriggerCreateCategory;
+  readonly active: boolean;
   readonly onSelect: () => void;
 }) {
+  const Icon = category.icon;
+  // Mirror the app sidebar nav row: neutral gray active state, plain icon,
+  // h-8 rounded-lg row — no category colour on the rail.
   return (
-    <DropdownMenuItem className="items-start gap-2 py-2" onSelect={onSelect}>
-      {icon}
-      <span className="min-w-0">
-        <span className="block text-sm font-medium">{title}</span>
-        <span className="block text-xs text-muted-foreground">
-          {description}
+    <button
+      type="button"
+      onClick={onSelect}
+      aria-current={active ? "page" : undefined}
+      className={cn(
+        "flex h-8 w-full shrink-0 items-center gap-2 rounded-lg px-2 text-left text-sm leading-5 transition-colors duration-200",
+        active
+          ? "bg-gray-200 font-medium text-gray-900"
+          : "text-sidebar-foreground hover:bg-gray-50",
+      )}
+    >
+      <Icon size={16} className="shrink-0" />
+      <span className="truncate">{category.label}</span>
+    </button>
+  );
+}
+
+function TriggerCreateOptionCard({
+  option,
+  accentChip,
+  onSelect,
+}: {
+  readonly option: TriggerCreateOption;
+  readonly accentChip: string;
+  readonly onSelect: () => void;
+}) {
+  const Icon = option.icon;
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className="flex min-h-[8rem] flex-col items-start gap-3.5 rounded-2xl border-[0.7px] border-[hsl(var(--gray-400))] bg-card p-5 text-left transition-colors hover:border-[hsl(var(--gray-500))] hover:bg-gray-50"
+    >
+      <span
+        className={cn(
+          "flex size-11 items-center justify-center rounded-xl",
+          accentChip,
+        )}
+      >
+        <Icon size={20} stroke={1.5} />
+      </span>
+      <span className="flex min-w-0 flex-col gap-1">
+        <span className="text-sm font-semibold">{option.title}</span>
+        <span className="text-xs text-muted-foreground">
+          {option.description}
         </span>
       </span>
-    </DropdownMenuItem>
-  );
-}
-
-function GithubLabelTriggerCreateMenuItem({
-  onSelect,
-}: {
-  readonly onSelect: () => void;
-}) {
-  return (
-    <TriggerCreateMenuItem
-      title="GitHub label applied"
-      description="Run when an issue or pull request gets a label."
-      icon={
-        <IconBrandGithub
-          size={15}
-          stroke={1.5}
-          className="mt-0.5 shrink-0 text-muted-foreground"
-        />
-      }
-      onSelect={onSelect}
-    />
-  );
-}
-
-function GoogleCalendarTriggerCreateMenuItem({
-  title,
-  description,
-  onSelect,
-}: {
-  readonly title: string;
-  readonly description: string;
-  readonly onSelect: () => void;
-}) {
-  return (
-    <TriggerCreateMenuItem
-      title={title}
-      description={description}
-      icon={
-        <IconCalendarTime
-          size={15}
-          stroke={1.5}
-          className="mt-0.5 shrink-0 text-muted-foreground"
-        />
-      }
-      onSelect={onSelect}
-    />
-  );
-}
-
-function GoogleCalendarTriggerCreateMenuItems({
-  onSelect,
-}: {
-  readonly onSelect: (kind: TriggerCreateDialogKind) => void;
-}) {
-  return (
-    <>
-      <GoogleCalendarTriggerCreateMenuItem
-        title="Google Calendar event created"
-        description="Run when a calendar event is created."
-        onSelect={() => {
-          onSelect("google-calendar-created");
-        }}
-      />
-      <GoogleCalendarTriggerCreateMenuItem
-        title="Google Calendar event updated"
-        description="Run when a calendar event is updated."
-        onSelect={() => {
-          onSelect("google-calendar-updated");
-        }}
-      />
-      <GoogleCalendarTriggerCreateMenuItem
-        title="Google Calendar event cancelled"
-        description="Run when a calendar event is cancelled."
-        onSelect={() => {
-          onSelect("google-calendar-cancelled");
-        }}
-      />
-    </>
-  );
-}
-
-function GoogleMeetTriggerCreateMenuItem({
-  onSelect,
-}: {
-  readonly onSelect: () => void;
-}) {
-  return (
-    <TriggerCreateMenuItem
-      title="Google Meet transcript ready"
-      description="Run when Meet finishes generating a transcript."
-      icon={
-        <IconVideo
-          size={15}
-          stroke={1.5}
-          className="mt-0.5 shrink-0 text-muted-foreground"
-        />
-      }
-      onSelect={onSelect}
-    />
-  );
-}
-
-function BaseTriggerCreateMenuItems({
-  onSelect,
-}: {
-  readonly onSelect: (kind: TriggerCreateDialogKind) => void;
-}) {
-  return (
-    <>
-      <TriggerCreateMenuItem
-        title="Interval"
-        description="Run this workflow on a fixed interval."
-        icon={
-          <IconRepeat
-            size={15}
-            stroke={1.5}
-            className="mt-0.5 shrink-0 text-muted-foreground"
-          />
-        }
-        onSelect={() => {
-          onSelect("interval");
-        }}
-      />
-      <TriggerCreateMenuItem
-        title="Scheduled time"
-        description="Run this workflow from a time rule."
-        icon={
-          <IconClock
-            size={15}
-            stroke={1.5}
-            className="mt-0.5 shrink-0 text-muted-foreground"
-          />
-        }
-        onSelect={() => {
-          onSelect("scheduled");
-        }}
-      />
-      <TriggerCreateMenuItem
-        title="One-time run"
-        description="Run this workflow once at a date and time."
-        icon={
-          <IconClock
-            size={15}
-            stroke={1.5}
-            className="mt-0.5 shrink-0 text-muted-foreground"
-          />
-        }
-        onSelect={() => {
-          onSelect("once");
-        }}
-      />
-      <TriggerCreateMenuItem
-        title="Gmail new message"
-        description="Run this workflow from matching email."
-        icon={
-          <IconMail
-            size={15}
-            stroke={1.5}
-            className="mt-0.5 shrink-0 text-muted-foreground"
-          />
-        }
-        onSelect={() => {
-          onSelect("gmail");
-        }}
-      />
-      <TriggerCreateMenuItem
-        title="Gmail label applied"
-        description="Run when a named Gmail label is applied."
-        icon={
-          <IconMail
-            size={15}
-            stroke={1.5}
-            className="mt-0.5 shrink-0 text-muted-foreground"
-          />
-        }
-        onSelect={() => {
-          onSelect("gmail-label");
-        }}
-      />
-    </>
+    </button>
   );
 }
 
@@ -2496,9 +2516,27 @@ function TriggerCreateMenu({
   readonly googleMeetTriggersEnabled: boolean;
   readonly webhookTriggersEnabled: boolean;
 }) {
+  const open = useGet(workflowTriggerPickerOpen$);
+  const setOpen = useSet(setWorkflowTriggerPickerOpen$);
+  const activeKey = useGet(workflowTriggerPickerCategory$);
+  const setActiveKey = useSet(setWorkflowTriggerPickerCategory$);
+  const categories = buildTriggerCreateCategories({
+    githubLabelTriggersEnabled,
+    googleCalendarTriggersEnabled,
+    googleMeetTriggersEnabled,
+    webhookTriggersEnabled,
+  });
+  const activeCategory =
+    categories.find((category) => {
+      return category.key === activeKey;
+    }) ?? categories[0];
+  const activeChip = activeCategory
+    ? TRIGGER_CATEGORY_CHIP[activeCategory.key]
+    : "";
+
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
         <button
           type="button"
           className="zero-btn-morandi inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg px-3 text-sm font-medium"
@@ -2506,44 +2544,47 @@ function TriggerCreateMenu({
           <IconPlus size={14} stroke={1.5} />
           <span>Add automation</span>
         </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-64">
-        <BaseTriggerCreateMenuItems onSelect={onSelect} />
-        {githubLabelTriggersEnabled ? (
-          <GithubLabelTriggerCreateMenuItem
-            onSelect={() => {
-              onSelect("github-label");
-            }}
-          />
-        ) : null}
-        {googleCalendarTriggersEnabled ? (
-          <GoogleCalendarTriggerCreateMenuItems onSelect={onSelect} />
-        ) : null}
-        {googleMeetTriggersEnabled ? (
-          <GoogleMeetTriggerCreateMenuItem
-            onSelect={() => {
-              onSelect("google-meet-transcript-generated");
-            }}
-          />
-        ) : null}
-        {webhookTriggersEnabled ? (
-          <TriggerCreateMenuItem
-            title="Webhook"
-            description="Run this workflow from a signed POST."
-            icon={
-              <IconLink
-                size={15}
-                stroke={1.5}
-                className="mt-0.5 shrink-0 text-muted-foreground"
-              />
-            }
-            onSelect={() => {
-              onSelect("webhook");
-            }}
-          />
-        ) : null}
-      </DropdownMenuContent>
-    </DropdownMenu>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-[880px]">
+        <DialogHeader>
+          <DialogTitle>Add automation</DialogTitle>
+          <DialogDescription>
+            Choose a trigger to start this workflow.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex flex-col gap-5 sm:flex-row sm:gap-7">
+          <nav className="-ml-2 flex gap-1 overflow-x-auto pb-1 sm:w-44 sm:shrink-0 sm:flex-col sm:gap-1 sm:overflow-visible sm:border-r sm:border-border/60 sm:pb-0 sm:pr-4">
+            {categories.map((category) => {
+              return (
+                <TriggerCreateCategoryButton
+                  key={category.key}
+                  category={category}
+                  active={category.key === activeCategory?.key}
+                  onSelect={() => {
+                    setActiveKey(category.key);
+                  }}
+                />
+              );
+            })}
+          </nav>
+          <div className="grid min-w-0 flex-1 grid-cols-1 gap-4 sm:grid-cols-2">
+            {activeCategory?.options.map((option) => {
+              return (
+                <TriggerCreateOptionCard
+                  key={option.kind}
+                  option={option}
+                  accentChip={activeChip}
+                  onSelect={() => {
+                    onSelect(option.kind);
+                    setOpen(false);
+                  }}
+                />
+              );
+            })}
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -3516,14 +3557,15 @@ function CreateGmailNewMessageTriggerDialog({
 }
 
 function signedWebhookCurlExample(
-  trigger: WebhookWorkflowTriggerSummary,
+  trigger: Pick<WebhookWorkflowTriggerSummary, "webhookSecret" | "webhookUrl">,
 ): string {
   const secret = trigger.webhookSecret ?? "<signing-secret>";
+  const webhookUrl = trigger.webhookUrl ?? "<webhook-url>";
   return [
     `BODY='{"hello":"world"}'`,
     "TIMESTAMP=$(date +%s)",
     `SIGNATURE=$(printf "%s.%s" "$TIMESTAMP" "$BODY" | openssl dgst -sha256 -hmac "${secret}" -hex | awk '{print $2}')`,
-    `curl -X POST "${trigger.webhookUrl}" \\`,
+    `curl -X POST "${webhookUrl}" \\`,
     '  -H "Content-Type: application/json" \\',
     '  -H "X-VM0-Timestamp: $TIMESTAMP" \\',
     '  -H "X-VM0-Signature: $SIGNATURE" \\',
@@ -4080,12 +4122,14 @@ function CreatedWebhookTriggerView({
     <div className="flex min-w-0 flex-col gap-3">
       <label className="flex min-w-0 flex-col gap-1 text-xs text-muted-foreground">
         Webhook URL
-        <WebhookReadonlyField
-          value={trigger.webhookUrl}
-          onCopy={() => {
-            copyText(trigger.webhookUrl);
-          }}
-        />
+        {trigger.webhookUrl ? (
+          <WebhookReadonlyField
+            value={trigger.webhookUrl}
+            onCopy={() => {
+              copyText(trigger.webhookUrl ?? "");
+            }}
+          />
+        ) : null}
       </label>
       {trigger.webhookSecret ? (
         <label className="flex min-w-0 flex-col gap-1 text-xs text-muted-foreground">
@@ -4141,6 +4185,118 @@ function WebhookReadonlyField({
         Copy
       </Button>
     </div>
+  );
+}
+
+function RevealWebhookSecretDialog({
+  trigger,
+  onOpenChange,
+}: {
+  readonly trigger: WebhookWorkflowTriggerSummary;
+  readonly onOpenChange: (open: boolean) => void;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const [revealLoadable, revealSecret] = useLoadableSet(
+    revealWorkflowWebhookSecret$,
+  );
+  const secret =
+    revealLoadable.state === "hasData" ? revealLoadable.data : null;
+  const revealing = revealLoadable.state === "loading";
+  const curlExample = secret ? signedWebhookCurlExample(secret) : null;
+
+  return (
+    <Dialog open onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>View webhook secret</DialogTitle>
+          <DialogDescription>
+            Reveal the signed endpoint and secret ending in{" "}
+            {trigger.secretLastFour}.
+          </DialogDescription>
+        </DialogHeader>
+        {secret ? (
+          <div className="flex min-w-0 flex-col gap-3">
+            <label className="flex min-w-0 flex-col gap-1 text-xs text-muted-foreground">
+              Webhook URL
+              <WebhookReadonlyField
+                value={secret.webhookUrl}
+                onCopy={() => {
+                  copyText(secret.webhookUrl);
+                }}
+              />
+            </label>
+            <label className="flex min-w-0 flex-col gap-1 text-xs text-muted-foreground">
+              Signing secret
+              <WebhookReadonlyField
+                value={secret.webhookSecret}
+                onCopy={() => {
+                  copyText(secret.webhookSecret);
+                }}
+              />
+            </label>
+            {curlExample ? (
+              <div className="flex min-w-0 flex-col gap-1 text-xs text-muted-foreground">
+                Signed curl
+                <div className="relative min-w-0">
+                  <pre className="max-h-56 overflow-y-auto whitespace-pre-wrap break-all rounded-md border border-border/60 bg-muted/40 p-3 pr-20 font-mono text-xs leading-5 text-foreground">
+                    {curlExample}
+                  </pre>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="absolute right-2 top-2 h-7 px-2 text-xs"
+                    onClick={() => {
+                      copyText(curlExample);
+                    }}
+                  >
+                    <IconCopy size={13} />
+                    Copy
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+            Secret values are hidden from the automation list. Reveal them only
+            when you need to configure or test this webhook.
+          </div>
+        )}
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              onOpenChange(false);
+            }}
+          >
+            {secret ? "Done" : "Cancel"}
+          </Button>
+          {!secret ? (
+            <Button
+              type="button"
+              disabled={revealing}
+              onClick={() => {
+                detach(
+                  (async () => {
+                    await revealSecret({ triggerId: trigger.id }, pageSignal);
+                  })(),
+                  Reason.DomCallback,
+                  "reveal workflow webhook secret",
+                );
+              }}
+            >
+              {revealing ? (
+                <IconLoader2 size={14} className="animate-spin" />
+              ) : (
+                <IconEye size={14} stroke={1.5} />
+              )}
+              Reveal secret
+            </Button>
+          ) : null}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -4314,7 +4470,7 @@ function workflowTriggerSubtitle(
     return matchSummary;
   }
   if (isWebhookWorkflowTrigger(trigger)) {
-    return trigger.webhookUrl;
+    return "Webhook URL hidden";
   }
   return triggerKindLabel(trigger);
 }
@@ -4402,10 +4558,17 @@ function TriggerControls({
   const navigate = useSet(detachedNavigateTo$);
   const setEditingTriggerId = useSet(setEditingWorkflowTriggerId$);
   const setEditingScheduleCronFields = useSet(setEditingScheduleCronFields$);
+  const revealWebhookSecretTriggerId = useGet(revealWebhookSecretTriggerId$);
+  const setRevealWebhookSecretTriggerId = useSet(
+    setRevealWebhookSecretTriggerId$,
+  );
   const [runNowLoadable, runNow] = useLoadableSet(runWorkflowTriggerNow$);
   const busy = runNowLoadable.state === "loading";
   const running = busy;
   const canEdit = canEditWorkflowTrigger(trigger);
+  const revealWebhookSecretOpen =
+    revealWebhookSecretTriggerId === trigger.id &&
+    isWebhookWorkflowTrigger(trigger);
 
   return (
     <div className="flex min-w-0 items-center justify-end pr-1.5">
@@ -4477,9 +4640,29 @@ function TriggerControls({
               </TooltipContent>
             </Tooltip>
           ) : null}
-          <TriggerMoreActionsMenu trigger={trigger} disabled={busy} />
+          <TriggerMoreActionsMenu
+            trigger={trigger}
+            disabled={busy}
+            onRevealWebhookSecret={
+              isWebhookWorkflowTrigger(trigger)
+                ? () => {
+                    setRevealWebhookSecretTriggerId(trigger.id);
+                  }
+                : undefined
+            }
+          />
         </div>
       </TooltipProvider>
+      {revealWebhookSecretOpen && isWebhookWorkflowTrigger(trigger) ? (
+        <RevealWebhookSecretDialog
+          trigger={trigger}
+          onOpenChange={(open) => {
+            if (!open) {
+              setRevealWebhookSecretTriggerId(null);
+            }
+          }}
+        />
+      ) : null}
     </div>
   );
 }
@@ -4487,9 +4670,11 @@ function TriggerControls({
 function TriggerMoreActionsMenu({
   trigger,
   disabled,
+  onRevealWebhookSecret,
 }: {
   readonly trigger: ZeroWorkflowTriggerSummary;
   readonly disabled: boolean;
+  readonly onRevealWebhookSecret?: () => void;
 }) {
   const pageSignal = useGet(pageSignal$);
   const [deleteLoadable, deleteTrigger] = useLoadableSet(
@@ -4519,6 +4704,16 @@ function TriggerMoreActionsMenu({
         </TooltipContent>
       </Tooltip>
       <DropdownMenuContent align="end" className="w-44">
+        {onRevealWebhookSecret ? (
+          <DropdownMenuItem
+            disabled={deleting}
+            className="gap-2"
+            onClick={onRevealWebhookSecret}
+          >
+            <IconEye size={14} stroke={1.5} />
+            View webhook secret
+          </DropdownMenuItem>
+        ) : null}
         <DropdownMenuItem
           disabled={deleting}
           className="gap-2 text-destructive focus:text-destructive"

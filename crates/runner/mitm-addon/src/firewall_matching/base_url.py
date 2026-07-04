@@ -21,7 +21,11 @@ from firewall_matching.patterns import (
     _parse_segment,
     _split_path_segments,
 )
-from host_normalization import normalize_idna_hostname
+from host_normalization import (
+    normalize_hostname_separators,
+    normalize_idna_hostname,
+    translate_idna_dot_separators,
+)
 from url_syntax import (
     has_raw_whitespace,
     has_unsafe_runtime_url_syntax,
@@ -31,13 +35,6 @@ from url_syntax import (
 
 _MIN_HOST_SEGMENTS = 2
 _ASCII_MAX = 0x7F
-_IDNA_DOT_TRANSLATION = str.maketrans(
-    {
-        "\u3002": ".",
-        "\uff0e": ".",
-        "\uff61": ".",
-    }
-)
 _FORBIDDEN_AUTHORITY_HOST_CHARS = frozenset("#%/<>?@[\\]^|[]")
 _FORBIDDEN_RUNTIME_AUTHORITY_HOST_CHARS = _FORBIDDEN_AUTHORITY_HOST_CHARS | frozenset("{}")
 _PERCENT_DECODED_AUTHORITY_SYNTAX_CHARS = frozenset("{}*.\u3002\uff0e\uff61")
@@ -73,6 +70,11 @@ class _CompiledBase(NamedTuple):
     path_segments: tuple[ParsedSegment, ...]
 
 
+class _CompiledFirewallConfigBase(NamedTuple):
+    base: _CompiledBase
+    malformed: bool
+
+
 class _RawAuthorityHost(NamedTuple):
     hostname: str
     bracketed: bool
@@ -99,7 +101,7 @@ def _percent_decode_authority_host(host: str) -> tuple[str, bool]:
     if decoded.invalid_encoding:
         return decoded.value, True
     if decoded.decoded_syntax:
-        return decoded.value.translate(_IDNA_DOT_TRANSLATION), True
+        return translate_idna_dot_separators(decoded.value), True
     if ":" in decoded.value:
         return decoded.value, True
     return decoded.value, False
@@ -129,21 +131,12 @@ def _extract_raw_hostname(netloc: str) -> _RawAuthorityHost | None:
     return _RawAuthorityHost(authority, bracketed=False)
 
 
-def _normalize_host_pattern_dots(host: str) -> str:
-    normalized = host.translate(_IDNA_DOT_TRANSLATION)
-    if normalized.endswith("."):
-        normalized = normalized[:-1]
-        if not normalized or normalized.endswith("."):
-            raise UnicodeError("empty IDNA label")
-    return normalized
-
-
 def _format_param_segment(parsed: SegmentParam) -> str:
     return f"{parsed.prefix.lower()}{{{parsed.name}{parsed.greedy}}}{parsed.suffix.lower()}"
 
 
 def _normalize_parameterized_authority_host(host: str) -> tuple[str, bool]:
-    normalized = _normalize_host_pattern_dots(host)
+    normalized = normalize_hostname_separators(host)
     labels: list[str] = []
     malformed = False
 
@@ -389,20 +382,26 @@ def _compiled_base_params_are_valid(base: _CompiledBase) -> bool:
     return True
 
 
-def firewall_base_config_is_valid(raw_base: str) -> bool:
-    """Return whether a firewall base URL is valid for runtime matching."""
+def _compile_firewall_config_base(raw_base: str) -> _CompiledFirewallConfigBase | None:
     base = _compile_base(raw_base)
     if base is None:
-        return False
-    return not (
+        return None
+    return _CompiledFirewallConfigBase(
+        base,
         base.has_query_or_fragment
         or base.raw_syntax_malformed
         or base.param_parse_malformed
         or base.parts.host_malformed
         or base.parts.has_userinfo
         or base.parts.port_malformed
-        or not _compiled_base_params_are_valid(base)
+        or not _compiled_base_params_are_valid(base),
     )
+
+
+def firewall_base_config_is_valid(raw_base: str) -> bool:
+    """Return whether a firewall base URL is valid for runtime matching."""
+    compiled_config_base = _compile_firewall_config_base(raw_base)
+    return compiled_config_base is not None and not compiled_config_base.malformed
 
 
 def static_firewall_base_config_key(raw_base: str) -> str | None:
@@ -441,6 +440,8 @@ def match_url_authority_key(url: str) -> str | None:
 
 
 def _compiled_base_is_invalid_for_match_base_url(base: _CompiledBase) -> bool:
+    # Direct base matching intentionally has narrower semantics than firewall
+    # config validation, where malformed-but-compilable bases fail closed.
     return (
         base.has_query_or_fragment
         or has_unsafe_runtime_url_syntax(base.raw)

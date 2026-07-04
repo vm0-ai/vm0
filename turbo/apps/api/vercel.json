@@ -9,10 +9,6 @@
       "schedule": "* * * * *"
     },
     {
-      "path": "/api/cron/execute-automations",
-      "schedule": "* * * * *"
-    },
-    {
       "path": "/api/cron/execute-workflow-triggers",
       "schedule": "* * * * *"
     },

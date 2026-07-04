@@ -42,7 +42,7 @@ export const setJobsVisibility$ = command(
 
 // -- Active tab -------------------------------------------------------------
 
-const internalActiveTab$ = state<"public" | "private">("private");
+const internalActiveTab$ = state<"public" | "private">("public");
 export const jobsActiveTab$ = computed((get) => {
   return get(internalActiveTab$);
 });

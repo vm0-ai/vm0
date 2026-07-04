@@ -176,6 +176,7 @@ interface ClerkUserListUser {
   readonly primaryEmailAddressId: string | null;
   readonly firstName: string | null;
   readonly username: string | null;
+  readonly imageUrl?: string | null;
 }
 
 interface ClerkOrganizationMembership {
@@ -429,10 +430,16 @@ async function resolveUserNames(
 
     await db
       .insert(userCache)
-      .values({ userId: user.id, email, name, cachedAt: now })
+      .values({
+        userId: user.id,
+        email,
+        name,
+        imageUrl: user.imageUrl ?? null,
+        cachedAt: now,
+      })
       .onConflictDoUpdate({
         target: userCache.userId,
-        set: { email, name, cachedAt: now },
+        set: { email, name, imageUrl: user.imageUrl ?? null, cachedAt: now },
       });
     signal.throwIfAborted();
   }

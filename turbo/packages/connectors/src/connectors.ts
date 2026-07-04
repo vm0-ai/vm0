@@ -316,6 +316,7 @@ export {
   CONNECTOR_DISPLAY_CATEGORY_META,
   CONNECTOR_DISPLAY_CATEGORY_ORDER,
   CONNECTOR_PLATFORM_SECRET_NAMES,
+  connectorDisplayCategoryMetadataForItems,
   connectorAuthMethodIdSchema,
 } from "./connector-config";
 export type {
@@ -333,7 +334,11 @@ export type {
   ConnectorDeviceAuthStartOptionsConfig,
   ConnectorDeviceAuthStartSelectOptionChoiceConfig,
   ConnectorDeviceAuthStartSelectOptionConfig,
+  ConnectorDisplayCategorizedItem,
   ConnectorDisplayCategory,
+  ConnectorDisplayCategoryMetadata,
+  ConnectorDisplayCategoryMetadataCategory,
+  ConnectorDisplayCategoryMetadataGroup,
   ConnectorDisplayCategoryGroup,
   ConnectorEnvBindingValue,
   ConnectorEnvBindings,

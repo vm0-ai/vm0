@@ -94,4 +94,29 @@ describe("firewall metadata import boundary", () => {
       }),
     ).toStrictEqual([]);
   });
+
+  it("keeps static connector category metadata out of platform production source", () => {
+    const staticCategorySymbols = [
+      "CONNECTOR_DISPLAY_CATEGORY_",
+      "ConnectorDisplayCategory",
+    ];
+    const offenders = Object.entries(productionSourceModules)
+      .map(([path, source]) => {
+        return { path: sourcePathFromGlobKey(path), source };
+      })
+      .filter(({ path, source }) => {
+        return (
+          isProductionSourcePath(path) &&
+          staticCategorySymbols.some((symbol) => {
+            return source.includes(symbol);
+          })
+        );
+      });
+
+    expect(
+      offenders.map((offender) => {
+        return offender.path;
+      }),
+    ).toStrictEqual([]);
+  });
 });

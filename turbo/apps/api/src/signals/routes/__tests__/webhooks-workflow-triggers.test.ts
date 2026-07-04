@@ -176,6 +176,7 @@ describe("POST /api/webhooks/workflow-triggers/:token", () => {
     if (
       created.body.kind !== "event" ||
       created.body.eventType !== "webhook-received" ||
+      !created.body.webhookUrl ||
       !created.body.webhookSecret
     ) {
       throw new Error("Expected a webhook trigger with a one-time secret");
@@ -292,7 +293,8 @@ describe("POST /api/webhooks/workflow-triggers/:token", () => {
     );
     if (
       created.body.kind !== "event" ||
-      created.body.eventType !== "webhook-received"
+      created.body.eventType !== "webhook-received" ||
+      !created.body.webhookUrl
     ) {
       throw new Error("Expected a webhook trigger");
     }
@@ -334,6 +336,7 @@ describe("POST /api/webhooks/workflow-triggers/:token", () => {
     if (
       created.body.kind !== "event" ||
       created.body.eventType !== "webhook-received" ||
+      !created.body.webhookUrl ||
       !created.body.webhookSecret
     ) {
       throw new Error("Expected a webhook trigger with a one-time secret");
@@ -378,6 +381,7 @@ describe("POST /api/webhooks/workflow-triggers/:token", () => {
     if (
       created.body.kind !== "event" ||
       created.body.eventType !== "webhook-received" ||
+      !created.body.webhookUrl ||
       !created.body.webhookSecret
     ) {
       throw new Error("Expected a webhook trigger with a one-time secret");

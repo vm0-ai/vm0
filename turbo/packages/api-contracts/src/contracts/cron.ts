@@ -96,7 +96,7 @@ const cronSyncSkillsResponseSchema = z.object({
   total: z.number(),
 });
 
-const cronExecuteAutomationsResponseSchema = z.object({
+const cronExecuteWorkflowTriggersResponseSchema = z.object({
   success: z.literal(true),
   executed: z.number(),
   skipped: z.number(),
@@ -316,26 +316,13 @@ export const cronSyncSkillsContract = c.router({
   },
 });
 
-export const cronExecuteAutomationsContract = c.router({
-  execute: {
-    method: "GET",
-    path: "/api/cron/execute-automations",
-    headers: authHeadersSchema,
-    responses: {
-      200: cronExecuteAutomationsResponseSchema,
-      401: apiErrorSchema,
-    },
-    summary: "Execute due automation triggers",
-  },
-});
-
 export const cronExecuteWorkflowTriggersContract = c.router({
   execute: {
     method: "GET",
     path: "/api/cron/execute-workflow-triggers",
     headers: authHeadersSchema,
     responses: {
-      200: cronExecuteAutomationsResponseSchema,
+      200: cronExecuteWorkflowTriggersResponseSchema,
       401: apiErrorSchema,
     },
     summary: "Execute due workflow schedule triggers",
@@ -436,8 +423,6 @@ export type CronComputerUseScreenshotCleanupContract =
   typeof cronComputerUseScreenshotCleanupContract;
 export type CronDrainEmailOutboxContract = typeof cronDrainEmailOutboxContract;
 export type CronSyncSkillsContract = typeof cronSyncSkillsContract;
-export type CronExecuteAutomationsContract =
-  typeof cronExecuteAutomationsContract;
 export type CronRenewGmailWatchesContract =
   typeof cronRenewGmailWatchesContract;
 export type CronRenewGoogleCalendarWatchesContract =
@@ -457,7 +442,7 @@ export {
   cronComputerUseScreenshotCleanupResponseSchema,
   cronDrainEmailOutboxResponseSchema,
   cronSyncSkillsResponseSchema,
-  cronExecuteAutomationsResponseSchema,
+  cronExecuteWorkflowTriggersResponseSchema,
   cronRenewGmailWatchesResponseSchema,
   cronRenewGoogleCalendarWatchesResponseSchema,
   cronRenewGoogleWorkspaceEventSubscriptionsResponseSchema,

@@ -27,6 +27,24 @@ const publicConnectorCatalogPermissionSummarySchema = z.object({
   hasDefaultPolicyOverrides: z.boolean(),
 });
 
+const publicConnectorCatalogCategoryGroupSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  menuLabel: z.string(),
+});
+
+const publicConnectorCatalogCategorySchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  menuLabel: z.string(),
+  groupId: z.string().nullable(),
+});
+
+const publicConnectorCatalogCategoryMetadataSchema = z.object({
+  categories: z.array(publicConnectorCatalogCategorySchema),
+  groups: z.array(publicConnectorCatalogCategoryGroupSchema),
+});
+
 const publicConnectorCatalogItemSchema = z.object({
   connectorRef: connectorRefSchema,
   label: z.string(),
@@ -73,6 +91,7 @@ const publicConnectorCatalogDetailSchema =
 
 const publicConnectorCatalogListResponseSchema = z.object({
   connectors: z.array(publicConnectorCatalogItemSchema),
+  categoryMetadata: publicConnectorCatalogCategoryMetadataSchema.optional(),
 });
 
 const publicConnectorCatalogDetailResponseSchema = z.object({
@@ -107,6 +126,7 @@ const publicConnectorCatalogStatusItemSchema =
 
 const publicConnectorCatalogStatusResponseSchema = z.object({
   connectors: z.array(publicConnectorCatalogStatusItemSchema),
+  categoryMetadata: publicConnectorCatalogCategoryMetadataSchema.optional(),
 });
 
 const publicFirewallPolicyValueSchema = z.enum(["allow", "deny", "ask"]);
@@ -149,6 +169,15 @@ export type PublicConnectorCatalogAuthMethodSummary = z.infer<
 >;
 export type PublicConnectorCatalogPermissionSummary = z.infer<
   typeof publicConnectorCatalogPermissionSummarySchema
+>;
+export type PublicConnectorCatalogCategoryGroup = z.infer<
+  typeof publicConnectorCatalogCategoryGroupSchema
+>;
+export type PublicConnectorCatalogCategory = z.infer<
+  typeof publicConnectorCatalogCategorySchema
+>;
+export type PublicConnectorCatalogCategoryMetadata = z.infer<
+  typeof publicConnectorCatalogCategoryMetadataSchema
 >;
 export type PublicConnectorCatalogItem = z.infer<
   typeof publicConnectorCatalogItemSchema

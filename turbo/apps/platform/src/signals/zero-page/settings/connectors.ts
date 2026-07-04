@@ -5,13 +5,11 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 import { accept } from "../../../lib/accept.ts";
 import { now } from "../../../lib/time.ts";
 import {
-  CONNECTOR_DISPLAY_CATEGORY_ORDER,
   connectorAuthMethodIdSchema,
   connectorTypeSchema,
   type ConnectorAuthMethodId,
   type ConnectorDeviceAuthStartOptions,
   type ConnectorType,
-  type ConnectorDisplayCategory,
 } from "@vm0/connectors/connectors";
 import {
   zeroConnectorScopeDiffContract,
@@ -88,7 +86,7 @@ export interface ConnectorTypeWithStatus {
   type: ConnectorType;
   label: string;
   helpText: string;
-  category: ConnectorDisplayCategory;
+  category: string;
   /** Lowercase aliases/keywords used by connector search. */
   tags: readonly string[];
   connected: boolean;
@@ -326,14 +324,6 @@ export function connectorReconnectReasonTooltipText(
   return reason ? reconnectReasonTooltipText[reason] : null;
 }
 
-function isConnectorDisplayCategory(
-  value: string,
-): value is ConnectorDisplayCategory {
-  return CONNECTOR_DISPLAY_CATEGORY_ORDER.some((category) => {
-    return category === value;
-  });
-}
-
 function parseConnectorAuthMethodId(
   value: string | null,
 ): ConnectorAuthMethodId | null {
@@ -348,7 +338,7 @@ function connectorCatalogStatusItemToConnectorType(
   item: PublicConnectorCatalogStatusItem,
 ): ConnectorTypeWithStatus | null {
   const type = connectorTypeSchema.safeParse(item.connectorRef);
-  if (!type.success || !isConnectorDisplayCategory(item.category)) {
+  if (!type.success) {
     return null;
   }
   const availableAuthMethods = item.authMethods.flatMap((authMethod) => {

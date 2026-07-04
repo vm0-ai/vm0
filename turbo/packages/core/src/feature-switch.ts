@@ -348,7 +348,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Render the chat sidebar from local chat thread snapshots plus lifecycle events instead of the paged thread list response.",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.ChatThreadLatestUserMessageScrollAnchor]: {
     maintainer: "ethan@vm0.ai",

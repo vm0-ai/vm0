@@ -1,5 +1,64 @@
 # Changelog
 
+## [0.546.0](https://github.com/vm0-ai/vm0/compare/app-v0.545.1...app-v0.546.0) (2026-07-03)
+
+
+### Features
+
+* enable chat thread event sourcing globally ([#20082](https://github.com/vm0-ai/vm0/issues/20082)) ([548a68e](https://github.com/vm0-ai/vm0/commit/548a68eca8f4b700d639d83470b16e026444b851))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.395.0
+
+## [0.545.1](https://github.com/vm0-ai/vm0/compare/app-v0.545.0...app-v0.545.1) (2026-07-03)
+
+
+### Refactoring
+
+* serve connector category metadata from catalog api ([#20089](https://github.com/vm0-ai/vm0/issues/20089)) ([99bafd7](https://github.com/vm0-ai/vm0/commit/99bafd7d276f1ae151c4cd7b409e8268a8487848))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.150.3
+    * @vm0/connectors bumped to 1.132.3
+    * @vm0/core bumped to 8.394.6
+
+## [0.545.0](https://github.com/vm0-ai/vm0/compare/app-v0.544.2...app-v0.545.0) (2026-07-03)
+
+
+### Features
+
+* redesign automation trigger picker as a categorized modal ([#20065](https://github.com/vm0-ai/vm0/issues/20065)) ([938c44b](https://github.com/vm0-ai/vm0/commit/938c44be0ea5d4b94f687d1ada5b5c955496574d))
+
+
+### Bug Fixes
+
+* show shortcut help across sidebar pages ([#20091](https://github.com/vm0-ai/vm0/issues/20091)) ([68d2c41](https://github.com/vm0-ai/vm0/commit/68d2c41b814d75a308306e2fd919e3d6a2cf5e42))
+
+## [0.544.2](https://github.com/vm0-ai/vm0/compare/app-v0.544.1...app-v0.544.2) (2026-07-03)
+
+
+### Bug Fixes
+
+* cache workflow avatars and reveal webhook secrets on demand ([#20073](https://github.com/vm0-ai/vm0/issues/20073)) ([d39c8eb](https://github.com/vm0-ai/vm0/commit/d39c8eb9b3fe014795aaef38f2baab2dbd67704b))
+* use create events for event-sourced optimistic chat threads ([#20079](https://github.com/vm0-ai/vm0/issues/20079)) ([8d6477a](https://github.com/vm0-ai/vm0/commit/8d6477a867645795dac03a60e70f7d112954f6ad))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.150.2
+    * @vm0/connectors bumped to 1.132.2
+    * @vm0/core bumped to 8.394.5
+
 ## [0.544.1](https://github.com/vm0-ai/vm0/compare/app-v0.544.0...app-v0.544.1) (2026-07-03)
 
 

@@ -16,19 +16,15 @@ from firewall_auth_config import (
     auth_config_injects_credentials,
     auth_config_injects_ordinary_upstream_credentials,
 )
-from host_normalization import normalize_idna_hostname
+from host_normalization import (
+    normalize_idna_hostname,
+    translate_idna_dot_separators,
+)
 from url_syntax import has_raw_whitespace, has_unsafe_url_codepoint
 
 BUILTIN_HOST_POLICY_RUNTIME_MARKER = "_builtinHostPolicyRuntime"
 _DEFAULT_HTTPS_PORT = 443
 _MIN_FIXED_HOST_OWNERSHIP_LABELS = 2
-_HOST_DOT_EQUIVALENT_TRANSLATION = str.maketrans(
-    {
-        "\u3002": ".",
-        "\uff0e": ".",
-        "\uff61": ".",
-    }
-)
 _HOST_POLICY_HOST_FORBIDDEN_CHARS = frozenset("%*[]/?#@\\:{}")
 _IPV4_LITERAL_COMPONENT_PATTERN = re.compile(r"(?:0[xX][0-9a-fA-F]+|[0-9]+)")
 _IPV4_LITERAL_MAX_COMPONENTS = 4
@@ -181,7 +177,7 @@ def _parsed_port(
 
 
 def _normalize_host_policy_hostname(hostname: str) -> str:
-    normalized = hostname.translate(_HOST_DOT_EQUIVALENT_TRANSLATION).lower()
+    normalized = translate_idna_dot_separators(hostname).lower()
     if normalized.endswith("."):
         return normalized[:-1]
     return normalized

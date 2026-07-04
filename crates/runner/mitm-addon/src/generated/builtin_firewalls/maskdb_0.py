@@ -16,6 +16,7 @@ JSON_PART = r"""{
         {
           "name": "db:query",
           "rules": [
+            "POST /v1/databases/{db}/aggregate",
             "POST /v1/databases/{db}/query"
           ]
         },

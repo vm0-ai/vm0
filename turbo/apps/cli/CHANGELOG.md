@@ -1,5 +1,46 @@
 # Changelog
 
+## [9.222.12](https://github.com/vm0-ai/vm0/compare/cli-v9.222.11...cli-v9.222.12) (2026-07-03)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.395.0
+
+## [9.222.11](https://github.com/vm0-ai/vm0/compare/cli-v9.222.10...cli-v9.222.11) (2026-07-03)
+
+
+### Refactoring
+
+* remove legacy automation poller, mutating routes, and the cli command ([#20103](https://github.com/vm0-ai/vm0/issues/20103)) ([2245f83](https://github.com/vm0-ai/vm0/commit/2245f83430aefa545077e5da1e8929d9c4968628))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.150.3
+    * @vm0/connectors bumped to 1.132.3
+    * @vm0/core bumped to 8.394.6
+
+## [9.222.10](https://github.com/vm0-ai/vm0/compare/cli-v9.222.9...cli-v9.222.10) (2026-07-03)
+
+
+### Bug Fixes
+
+* cache workflow avatars and reveal webhook secrets on demand ([#20073](https://github.com/vm0-ai/vm0/issues/20073)) ([d39c8eb](https://github.com/vm0-ai/vm0/commit/d39c8eb9b3fe014795aaef38f2baab2dbd67704b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.150.2
+    * @vm0/connectors bumped to 1.132.2
+    * @vm0/core bumped to 8.394.5
+
 ## [9.222.9](https://github.com/vm0-ai/vm0/compare/cli-v9.222.8...cli-v9.222.9) (2026-07-03)
 
 

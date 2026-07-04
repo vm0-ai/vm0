@@ -16,6 +16,7 @@ import {
   type WebhookReceivedEventConfig,
   type ZeroWorkflowEventType,
   type ZeroWorkflowSchedule,
+  type ZeroWorkflowWebhookSecretResponse,
   type ZeroWorkflowTriggerAutomationEntry,
   type ZeroWorkflowTriggerSummary,
 } from "@vm0/api-contracts/contracts/zero-workflows";
@@ -34,7 +35,7 @@ import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { publishChatThreadAutomationsChangedSafely } from "../external/realtime";
 import { nowDate } from "../../lib/time";
 import { isValidTimeZone, safeSync } from "../utils";
-import { calculateNextRun } from "./automations/time-trigger";
+import { calculateNextRun } from "./time-trigger";
 import {
   loadVisibleWorkflowById,
   visibleWorkflowCondition,
@@ -60,6 +61,7 @@ import {
   hashWorkflowWebhookToken,
   mintWorkflowWebhookSecret,
   mintWorkflowWebhookToken,
+  revealWorkflowWebhookSecretFields,
 } from "./workflow-webhook-trigger.service";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import {
@@ -341,22 +343,33 @@ function rowSummaryBase(row: TriggerRow, chatThreadId: string | null) {
   };
 }
 
+interface RowToSummaryOptions {
+  readonly chatThreadId?: string | null;
+  readonly webhookToken?: string;
+  readonly webhookSecret?: string;
+}
+
+async function resolveTriggerChatThreadId(
+  db: ReadonlyDb,
+  row: TriggerRow,
+  options: RowToSummaryOptions,
+): Promise<string | null> {
+  if ("chatThreadId" in options) {
+    return options.chatThreadId ?? null;
+  }
+  return await loadWorkflowUserTriggerThreadId(db, {
+    orgId: row.orgId,
+    userId: row.ownerUserId,
+    workflowId: row.workflowId,
+  });
+}
+
 async function rowToSummary(
   db: ReadonlyDb,
   row: TriggerRow,
-  options: {
-    readonly chatThreadId?: string | null;
-    readonly webhookSecret?: string;
-  } = {},
+  options: RowToSummaryOptions = {},
 ): Promise<ZeroWorkflowTriggerSummary> {
-  const chatThreadId =
-    "chatThreadId" in options
-      ? (options.chatThreadId ?? null)
-      : await loadWorkflowUserTriggerThreadId(db, {
-          orgId: row.orgId,
-          userId: row.ownerUserId,
-          workflowId: row.workflowId,
-        });
+  const chatThreadId = await resolveTriggerChatThreadId(db, row, options);
   if (row.kind === "event" && row.eventType === "gmail-new-message") {
     return {
       ...rowSummaryBase(row, chatThreadId),
@@ -457,6 +470,7 @@ async function rowToSummary(
       scheduleSummary: null,
       ...(await buildWorkflowWebhookSummaryFields(db, {
         trigger: row,
+        webhookToken: options.webhookToken,
         webhookSecret: options.webhookSecret,
       })),
     };
@@ -909,6 +923,37 @@ export async function getWorkflowTrigger(
   return await rowToPublicSummary(db, trigger);
 }
 
+export async function revealWorkflowWebhookSecret(
+  db: ReadonlyDb,
+  args: {
+    readonly orgId: string;
+    readonly member: WorkflowMember;
+    readonly triggerId: string;
+  },
+): Promise<ZeroWorkflowWebhookSecretResponse | null> {
+  const trigger = await loadTriggerRow(db, {
+    orgId: args.orgId,
+    triggerId: args.triggerId,
+  });
+  if (
+    !trigger ||
+    trigger.kind !== "event" ||
+    trigger.eventType !== "webhook-received" ||
+    trigger.ownerUserId !== args.member.userId
+  ) {
+    return null;
+  }
+  const visible = await loadVisibleWorkflowById(db, {
+    orgId: args.orgId,
+    member: args.member,
+    workflowId: trigger.workflowId,
+  });
+  if (!visible) {
+    return null;
+  }
+  return await revealWorkflowWebhookSecretFields(db, { trigger });
+}
+
 interface CreateScheduleTriggerInput {
   readonly orgId: string;
   readonly member: WorkflowMember;
@@ -1112,7 +1157,11 @@ async function insertWebhookEventTrigger(
       updatedAt: args.currentTime,
     });
 
-    return await rowToSummary(tx, row, { chatThreadId, webhookSecret: secret });
+    return await rowToSummary(tx, row, {
+      chatThreadId,
+      webhookToken: token,
+      webhookSecret: secret,
+    });
   });
 }
 
