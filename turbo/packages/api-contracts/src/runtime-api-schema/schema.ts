@@ -79,9 +79,7 @@ export async function readRuntimeApiSchemaDocument(
 function parseRuntimeApiSchemaDocument(
   value: unknown,
 ): RuntimeApiSchemaDocument {
-  const document = runtimeApiSchemaDocumentSchema.parse(
-    value,
-  ) as unknown as RuntimeApiSchemaDocument;
+  const document = runtimeApiSchemaDocumentSchema.parse(value);
   if (document.schemaFormatVersion !== runtimeApiSchemaFormatVersion) {
     throw new Error(
       `Unsupported runtime API schema format version ${document.schemaFormatVersion}`,
@@ -187,10 +185,11 @@ function isZodSchema(schema: unknown): schema is z.ZodType {
 }
 
 function normalizeJsonValue(value: unknown, label: string): JsonObject {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
+  const parsed = jsonObjectSchema.safeParse(value);
+  if (!parsed.success) {
     throw new Error(`${label} JSON Schema must be an object`);
   }
-  return value as JsonObject;
+  return parsed.data;
 }
 
 function validateString(value: unknown, label: string): string {
@@ -224,10 +223,26 @@ function sortJsonValue(value: unknown): unknown {
   return value;
 }
 
-const runtimeSchemaSnapshotSchema = z.union([
+const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() => {
+  return z.union([
+    z.string(),
+    z.number(),
+    z.boolean(),
+    z.null(),
+    z.array(jsonValueSchema),
+    z.record(z.string(), jsonValueSchema),
+  ]);
+});
+
+const jsonObjectSchema: z.ZodType<JsonObject> = z.record(
+  z.string(),
+  jsonValueSchema,
+);
+
+const runtimeSchemaSnapshotSchema: z.ZodType<RuntimeSchemaSnapshot> = z.union([
   z.object({
     kind: z.literal("json-schema"),
-    schema: z.record(z.string(), z.unknown()),
+    schema: jsonObjectSchema,
   }),
   z.object({
     kind: z.literal("opaque"),
@@ -235,26 +250,28 @@ const runtimeSchemaSnapshotSchema = z.union([
   }),
 ]);
 
-const runtimeApiRouteSnapshotSchema = z.object({
-  id: z.string().min(1),
-  owner: z.enum(["runner", "guest-agent", "mitm-addon"]),
-  method: z.string().min(1),
-  path: z.string().min(1),
-  summary: z.string().optional(),
-  contentType: z.string().optional(),
-  request: z.object({
-    headers: runtimeSchemaSnapshotSchema.optional(),
-    query: runtimeSchemaSnapshotSchema.optional(),
-    pathParams: runtimeSchemaSnapshotSchema.optional(),
-    body: runtimeSchemaSnapshotSchema.optional(),
-  }),
-  responses: z.record(z.string(), runtimeSchemaSnapshotSchema),
-});
+const runtimeApiRouteSnapshotSchema: z.ZodType<RuntimeApiRouteSnapshot> =
+  z.object({
+    id: z.string().min(1),
+    owner: z.enum(["runner", "guest-agent", "mitm-addon"]),
+    method: z.string().min(1),
+    path: z.string().min(1),
+    summary: z.string().optional(),
+    contentType: z.string().optional(),
+    request: z.object({
+      headers: runtimeSchemaSnapshotSchema.optional(),
+      query: runtimeSchemaSnapshotSchema.optional(),
+      pathParams: runtimeSchemaSnapshotSchema.optional(),
+      body: runtimeSchemaSnapshotSchema.optional(),
+    }),
+    responses: z.record(z.string(), runtimeSchemaSnapshotSchema),
+  });
 
-const runtimeApiSchemaDocumentSchema = z.object({
-  schemaFormatVersion: z.number(),
-  packageName: z.string(),
-  packageVersion: z.string(),
-  generatedAt: z.string(),
-  routes: z.array(runtimeApiRouteSnapshotSchema),
-});
+const runtimeApiSchemaDocumentSchema: z.ZodType<RuntimeApiSchemaDocument> =
+  z.object({
+    schemaFormatVersion: z.number(),
+    packageName: z.string(),
+    packageVersion: z.string(),
+    generatedAt: z.string(),
+    routes: z.array(runtimeApiRouteSnapshotSchema),
+  });
