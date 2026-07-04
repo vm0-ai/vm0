@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.398.0](https://github.com/vm0-ai/vm0/compare/core-v8.397.1...core-v8.398.0) (2026-07-04)
+
+
+### Features
+
+* virtualize sidebar chat threads behind switch ([#20140](https://github.com/vm0-ai/vm0/issues/20140)) ([e79dfe6](https://github.com/vm0-ai/vm0/commit/e79dfe6f860b463799329bf644d6c71e95935dcf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.153.1
+    * @vm0/connectors bumped to 1.135.0
+
 ## [8.397.1](https://github.com/vm0-ai/vm0/compare/core-v8.397.0...core-v8.397.1) (2026-07-04)
 
 
