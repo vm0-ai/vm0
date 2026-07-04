@@ -65,16 +65,9 @@ pub(crate) struct ConnectorPolicyRefreshRegistration<'a> {
     pub(crate) refreshes: Option<&'a HashMap<String, ConnectorPolicyRefresh>>,
 }
 
-#[derive(Clone, Copy)]
-enum RefreshTrigger {
-    Notification,
-    Scheduled,
-}
-
 struct RefreshRequest {
     run_id: RunId,
     connector_ref: String,
-    trigger: RefreshTrigger,
 }
 
 impl ConnectorPolicyRefreshHandle {
@@ -248,7 +241,6 @@ impl ConnectorPolicyRefreshCore {
         let request = RefreshRequest {
             run_id,
             connector_ref,
-            trigger: RefreshTrigger::Notification,
         };
         if let Err(error) = self.request_tx.try_send(request) {
             self.handle_notification_enqueue_error(error).await;
@@ -319,12 +311,7 @@ impl ConnectorPolicyRefreshCore {
         }
     }
 
-    async fn refresh_connector_now(
-        &self,
-        run_id: RunId,
-        connector_ref: String,
-        _trigger: RefreshTrigger,
-    ) {
+    async fn refresh_connector_now(&self, run_id: RunId, connector_ref: String) {
         let Some(snapshot) = self.active_snapshot(run_id, &connector_ref).await else {
             return;
         };
@@ -449,7 +436,6 @@ impl ConnectorPolicyRefreshCore {
                             RefreshRequest {
                                 run_id,
                                 connector_ref: task_connector_ref.clone(),
-                                trigger: RefreshTrigger::Scheduled,
                             },
                             &enqueue_cancel,
                         )
@@ -500,7 +486,6 @@ async fn run_refresh_worker(
                 let RefreshRequest {
                     run_id,
                     connector_ref,
-                    trigger,
                 } = request;
                 let completed = tokio::select! {
                     () = handle.inner.cancel.cancelled() => {
@@ -509,7 +494,6 @@ async fn run_refresh_worker(
                     () = handle.refresh_connector_now(
                         run_id,
                         connector_ref,
-                        trigger,
                     ) => {
                         true
                     }
@@ -784,10 +768,10 @@ mod tests {
             }
         }
 
-        async fn refresh_slack(&self, trigger: RefreshTrigger) {
+        async fn refresh_slack(&self) {
             self.handle
                 .core
-                .refresh_connector_now(self.run_id, "slack".to_string(), trigger)
+                .refresh_connector_now(self.run_id, "slack".to_string())
                 .await;
         }
 
@@ -1058,7 +1042,6 @@ mod tests {
             .expect("active connector notification should enqueue refresh");
         assert_eq!(request.run_id, run_id);
         assert_eq!(request.connector_ref, "slack");
-        assert!(matches!(request.trigger, RefreshTrigger::Notification));
     }
 
     #[tokio::test]
@@ -1081,7 +1064,6 @@ mod tests {
                 .try_send(RefreshRequest {
                     run_id,
                     connector_ref: "slack".to_string(),
-                    trigger: RefreshTrigger::Scheduled,
                 })
                 .expect("refresh queue should accept request");
         }
@@ -1118,7 +1100,6 @@ mod tests {
                 .try_send(RefreshRequest {
                     run_id,
                     connector_ref: "slack".to_string(),
-                    trigger: RefreshTrigger::Scheduled,
                 })
                 .expect("refresh queue should accept request");
         }
@@ -1158,7 +1139,6 @@ mod tests {
                 .try_send(RefreshRequest {
                     run_id,
                     connector_ref: "slack".to_string(),
-                    trigger: RefreshTrigger::Scheduled,
                 })
                 .expect("refresh queue should accept request");
         }
@@ -1216,7 +1196,6 @@ mod tests {
         let request = recv_refresh_request(&mut requests).await;
         assert_eq!(request.run_id, run_id);
         assert_eq!(request.connector_ref, "slack");
-        assert!(matches!(request.trigger, RefreshTrigger::Scheduled));
         wait_until_scheduled_refresh_task_clears(&core, run_id).await;
         let active_runs = core.inner.active_runs.lock().await;
         let active = active_runs
@@ -1245,7 +1224,6 @@ mod tests {
                 .try_send(RefreshRequest {
                     run_id,
                     connector_ref: "slack".to_string(),
-                    trigger: RefreshTrigger::Notification,
                 })
                 .expect("refresh queue should accept request");
         }
@@ -1279,29 +1257,16 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn scheduled_mismatched_connector_refresh_fails_closed() {
-        assert_mismatched_connector_refresh_fail_closed(RefreshTrigger::Scheduled, true).await;
+    async fn mismatched_connector_refresh_fails_closed() {
+        assert_mismatched_connector_refresh_fail_closed().await;
     }
 
     #[tokio::test]
-    async fn notification_mismatched_connector_refresh_fails_closed() {
-        assert_mismatched_connector_refresh_fail_closed(RefreshTrigger::Notification, true).await;
+    async fn failed_connector_refresh_fails_closed() {
+        assert_failed_connector_refresh_fail_closed().await;
     }
 
-    #[tokio::test]
-    async fn scheduled_failed_connector_refresh_fails_closed() {
-        assert_failed_connector_refresh_fail_closed(RefreshTrigger::Scheduled, true).await;
-    }
-
-    #[tokio::test]
-    async fn notification_failed_connector_refresh_fails_closed() {
-        assert_failed_connector_refresh_fail_closed(RefreshTrigger::Notification, true).await;
-    }
-
-    async fn assert_failed_connector_refresh_fail_closed(
-        trigger: RefreshTrigger,
-        expect_fail_closed: bool,
-    ) {
+    async fn assert_failed_connector_refresh_fail_closed() {
         let server = MockServer::start();
         let run_id = RunId::nil();
         server.mock(|when, then| {
@@ -1319,21 +1284,14 @@ mod tests {
         });
 
         let harness = RefreshPolicyHarness::new(&server, run_id).await;
-        harness.refresh_slack(trigger).await;
+        harness.refresh_slack().await;
         let policy = harness.slack_policy().await;
-        if expect_fail_closed {
-            assert_fail_closed_policy(&policy);
-        } else {
-            assert_original_policy(&policy);
-        }
+        assert_fail_closed_policy(&policy);
 
         harness.shutdown().await;
     }
 
-    async fn assert_mismatched_connector_refresh_fail_closed(
-        trigger: RefreshTrigger,
-        expect_fail_closed: bool,
-    ) {
+    async fn assert_mismatched_connector_refresh_fail_closed() {
         let server = MockServer::start();
         let run_id = RunId::nil();
         server.mock(|when, then| {
@@ -1355,13 +1313,9 @@ mod tests {
         });
 
         let harness = RefreshPolicyHarness::new(&server, run_id).await;
-        harness.refresh_slack(trigger).await;
+        harness.refresh_slack().await;
         let policy = harness.slack_policy().await;
-        if expect_fail_closed {
-            assert_fail_closed_policy(&policy);
-        } else {
-            assert_original_policy(&policy);
-        }
+        assert_fail_closed_policy(&policy);
 
         harness.shutdown().await;
     }
