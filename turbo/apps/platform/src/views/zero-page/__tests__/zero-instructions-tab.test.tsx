@@ -13,6 +13,15 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 const context = testContext();
 
 const AGENT_ID = "a0000000-0000-4000-a000-000000000010";
+const PAGE_LOAD_TIMEOUT_MS = 5000;
+
+async function waitForResearchAgentPage(): Promise<void> {
+  await screen.findByRole(
+    "heading",
+    { name: "Research Agent" },
+    { timeout: PAGE_LOAD_TIMEOUT_MS },
+  );
+}
 
 function prepareAgentInstructions(content: string | null): void {
   context.mocks.data.team([
@@ -70,10 +79,8 @@ describe("zero instructions tab", () => {
       path: `/agents/${AGENT_ID}?tab=instructions`,
     });
 
+    await waitForResearchAgentPage();
     await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Research Agent" }),
-      ).toBeInTheDocument();
       expect(screen.getByText(/Keep replies concise/u)).toBeInTheDocument();
       const editor = document.querySelector('[contenteditable="true"]');
       expect(editor?.textContent).toContain("const ready = true;");
@@ -135,6 +142,7 @@ describe("zero instructions tab", () => {
       path: `/agents/${AGENT_ID}?tab=instructions`,
     });
 
+    await waitForResearchAgentPage();
     await waitFor(() => {
       expect(screen.getByText("Review release notes")).toBeInTheDocument();
     });

@@ -159,6 +159,8 @@ export function clearMockedAuth() {
   mockedClerk.createOrganization.mockReset();
   mockedClerk.sessionGetToken.mockReset();
   mockedClerk.sessionGetToken.mockImplementation(defaultGetTokenImpl);
+  mockedClerk.load.mockReset();
+  mockedClerk.load.mockImplementation(defaultLoadImpl);
   mockedClerk.clientSignInCreate.mockReset();
   mockedClerk.clientSignInCreate.mockResolvedValue({
     status: "complete",
@@ -189,6 +191,9 @@ const clientSignInCreate = vi.fn(
 );
 const defaultBuildUrlWithAuthImpl = (to: string) => {
   return to;
+};
+const defaultLoadImpl = () => {
+  return Promise.resolve();
 };
 
 export const mockedClerk = {
@@ -223,9 +228,7 @@ export const mockedClerk = {
   openUserProfile: vi.fn(() => {
     return Promise.resolve();
   }),
-  load: () => {
-    return Promise.resolve();
-  },
+  load: vi.fn(defaultLoadImpl),
   addListener: (cb: () => void) => {
     clerkListeners.push(cb);
     return () => {
