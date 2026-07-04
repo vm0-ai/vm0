@@ -1,7 +1,5 @@
 import { command } from "ccstate";
 import { z } from "zod";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import {
   relationshipEntities,
   relationshipInteractions,
@@ -14,321 +12,87 @@ import {
   type RelationshipSyncJobPayload,
 } from "@vm0/db/schema/relationship-memory";
 import { and, asc, eq, isNull, lte, sql } from "drizzle-orm";
+import { htmlToText } from "html-to-text";
 
 import { logger } from "../../lib/log";
 import { generateText, isLlmConfigured } from "../external/openrouter";
-import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
+import { writeDb$, type Db } from "../external/db";
 import { nowDate } from "../external/time";
 import { safeJsonParse, settle } from "../utils";
-import { loadUserFeatureSwitchContext } from "./feature-switches.service";
+import {
+  fetchGmailMessageContextById,
+  messageIsInbound,
+  resolveGmailAccess,
+} from "./gmail-workflow-event.service";
+import {
+  relationshipMemoryFeatureEnabled,
+  relationshipTargets,
+  type GmailRelationshipMessage,
+  type RelationshipTarget,
+} from "./relationship-memory-gmail-queue.service";
 
 const RELATIONSHIP_MEMORY_EXTRACTION_MODEL = "google/gemini-3.5-flash";
 
 const log = logger("api:relationship-memory-gmail");
 const MAX_JOBS_PER_DRAIN = 20;
-const MAX_SOURCE_QUOTE_LENGTH = 320;
+const MAX_TRANSIENT_BODY_EXCERPT_LENGTH = 320;
+const MAX_INTERACTION_SUMMARY_LENGTH = 280;
 const RETRY_DELAY_MS = 5 * 60 * 1000;
 
-interface GmailRelationshipMessageBase {
-  readonly mailboxEmail: string;
-  readonly historyId: string;
-  readonly messageId: string;
-  readonly threadId: string | null;
-  readonly from: string | null;
-  readonly to: readonly string[];
-  readonly cc: readonly string[];
-  readonly subject: string | null;
-}
-
-interface GmailRelationshipMessage extends GmailRelationshipMessageBase {
-  readonly bodyText: string | null;
-}
-
-interface PersistedGmailRelationshipMessage extends GmailRelationshipMessageBase {
-  readonly bodyExcerpt: string | null;
-}
-
-type RelationshipMemoryMessage =
-  | GmailRelationshipMessage
-  | PersistedGmailRelationshipMessage;
-
-interface ParsedEmailAddress {
-  readonly displayName: string;
-  readonly email: string;
-  readonly domain: string;
-}
-
-interface RelationshipTarget {
-  readonly type: "person" | "organization";
-  readonly identityKey: string;
-  readonly displayName: string;
-  readonly primaryEmail: string | null;
-  readonly domain: string | null;
-  readonly relationshipType: string;
-  readonly fallbackSummary: string;
-}
+type RelationshipMemoryMessage = GmailRelationshipMessage;
 
 const extractionItemSchema = z.object({
   kind: z.enum(["key_fact", "preference", "open_loop"]),
   text: z.string().min(1).max(500),
-  sourceQuote: z.string().min(1).max(MAX_SOURCE_QUOTE_LENGTH),
   confidence: z.number().int().min(0).max(100).default(80),
 });
 
 const extractionSchema = z.object({
   summary: z.string().min(1).max(900).nullable().default(null),
   relationshipType: z.string().min(1).max(80).nullable().default(null),
+  interactionSummary: z
+    .string()
+    .min(1)
+    .max(MAX_INTERACTION_SUMMARY_LENGTH)
+    .nullable()
+    .default(null),
   items: z.array(extractionItemSchema).max(8).default([]),
 });
 
 type RelationshipExtraction = z.infer<typeof extractionSchema>;
 
-function normalizeEmail(value: string): string {
-  return value.trim().toLowerCase();
-}
-
-function normalizeDomain(value: string): string {
-  return value.trim().toLowerCase();
-}
-
 function truncate(value: string, maxLength: number): string {
   return value.length <= maxLength ? value : value.slice(0, maxLength).trim();
 }
 
-function parseEmailAddress(value: string | null): ParsedEmailAddress | null {
-  if (!value) {
-    return null;
-  }
-  const emailMatch = value.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
-  const emailValue = emailMatch?.[0];
-  if (!emailValue) {
-    return null;
-  }
-  const email = normalizeEmail(emailValue);
-
-  const domain = email.split("@")[1];
-  if (!domain) {
-    return null;
-  }
-
-  const rawName = value
-    .replace(emailValue, "")
-    .replace(/[<>"()]/g, " ")
+function cleanEmailBodyText(value: string): string {
+  return htmlToText(value, {
+    wordwrap: false,
+    selectors: [
+      { selector: "img", format: "skip" },
+      { selector: "script", format: "skip" },
+      { selector: "style", format: "skip" },
+    ],
+  })
     .replace(/\s+/g, " ")
     .trim();
-  const localPart = email.split("@")[0] ?? email;
-  const displayName =
-    rawName.length > 0
-      ? rawName
-      : localPart
-          .split(/[._-]+/)
-          .filter(Boolean)
-          .map((part) => {
-            return `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`;
-          })
-          .join(" ");
-
-  return {
-    displayName: displayName || email,
-    email,
-    domain: normalizeDomain(domain),
-  };
 }
 
-function isSystemSender(address: ParsedEmailAddress): boolean {
-  const localPart = address.email.split("@")[0] ?? "";
-  return /^(no-?reply|do-?not-?reply|notifications?|newsletter|mailer|support|noreply)$/i.test(
-    localPart,
-  );
-}
-
-function displayNameFromDomain(domain: string): string {
-  const base = domain.split(".")[0] ?? domain;
-  return `${base.slice(0, 1).toUpperCase()}${base.slice(1)}`;
-}
-
-function excerptFromMessage(message: RelationshipMemoryMessage): string {
-  const text =
-    "bodyExcerpt" in message
-      ? message.bodyExcerpt?.replace(/\s+/g, " ").trim()
-      : message.bodyText?.replace(/\s+/g, " ").trim();
-  if (text) {
-    return truncate(text, MAX_SOURCE_QUOTE_LENGTH);
+function transientBodyExcerptFromMessage(
+  message: RelationshipMemoryMessage,
+): string | null {
+  if (!message.bodyText) {
+    return null;
   }
+  const text = cleanEmailBodyText(message.bodyText);
+  return text ? truncate(text, MAX_TRANSIENT_BODY_EXCERPT_LENGTH) : null;
+}
+
+function fallbackInteractionSummary(target: RelationshipTarget): string {
   return truncate(
-    message.subject ?? "Gmail interaction",
-    MAX_SOURCE_QUOTE_LENGTH,
+    `${target.displayName} sent a Gmail message.`,
+    MAX_INTERACTION_SUMMARY_LENGTH,
   );
-}
-
-function relationshipTargets(
-  message: GmailRelationshipMessageBase,
-): readonly RelationshipTarget[] {
-  const sender = parseEmailAddress(message.from);
-  if (!sender || isSystemSender(sender)) {
-    return [];
-  }
-
-  const subject = message.subject?.trim() || "a Gmail thread";
-  const personSummary = `${sender.displayName} emailed about ${subject}.`;
-  const organizationName = displayNameFromDomain(sender.domain);
-
-  return [
-    {
-      type: "person",
-      identityKey: `person:${sender.email}`,
-      displayName: sender.displayName,
-      primaryEmail: sender.email,
-      domain: sender.domain,
-      relationshipType: "External contact",
-      fallbackSummary: personSummary,
-    },
-    {
-      type: "organization",
-      identityKey: `organization:${sender.domain}`,
-      displayName: organizationName,
-      primaryEmail: null,
-      domain: sender.domain,
-      relationshipType: "Organization",
-      fallbackSummary: `${organizationName} is represented in recent Gmail conversations about ${subject}.`,
-    },
-  ];
-}
-
-async function relationshipMemoryFeatureEnabled(
-  db: ReadonlyDb,
-  orgId: string,
-  userId: string,
-): Promise<boolean> {
-  const context = await loadUserFeatureSwitchContext(db, orgId, userId);
-  return isFeatureEnabled(FeatureSwitchKey.RelationshipMemory, context);
-}
-
-function gmailRefreshDedupeKey(args: {
-  readonly orgId: string;
-  readonly userId: string;
-  readonly messageId: string;
-}): string {
-  return [
-    args.orgId,
-    args.userId,
-    "gmail",
-    "gmail_relationship_refresh",
-    args.messageId,
-  ].join(":");
-}
-
-export async function enqueueGmailRelationshipRefreshJob(
-  db: Db,
-  args: {
-    readonly orgId: string;
-    readonly userId: string;
-    readonly connectorId: string;
-    readonly message: GmailRelationshipMessage;
-    readonly priority?: number;
-    readonly reason?: "gmail_webhook" | "gmail_backfill";
-  },
-): Promise<boolean> {
-  if (
-    !(await relationshipMemoryFeatureEnabled(db, args.orgId, args.userId)) ||
-    relationshipTargets(args.message).length === 0
-  ) {
-    return false;
-  }
-
-  const currentTime = nowDate();
-  const gmailMessage: PersistedGmailRelationshipMessage = {
-    mailboxEmail: args.message.mailboxEmail,
-    historyId: args.message.historyId,
-    messageId: args.message.messageId,
-    threadId: args.message.threadId,
-    from: args.message.from,
-    to: args.message.to,
-    cc: args.message.cc,
-    subject: args.message.subject,
-    bodyExcerpt: excerptFromMessage(args.message),
-  };
-  const payload: RelationshipSyncJobPayload = {
-    connectorId: args.connectorId,
-    gmailThreadId: args.message.threadId ?? undefined,
-    gmailMessageIds: [args.message.messageId],
-    historyId: args.message.historyId,
-    gmailMessage,
-    reason: args.reason ?? "gmail_webhook",
-  };
-  const priority = args.priority ?? 0;
-  const dedupeKey = gmailRefreshDedupeKey({
-    orgId: args.orgId,
-    userId: args.userId,
-    messageId: args.message.messageId,
-  });
-  const jobValues: typeof relationshipSyncJobs.$inferInsert = {
-    orgId: args.orgId,
-    userId: args.userId,
-    kind: "gmail_relationship_refresh",
-    provider: "gmail",
-    status: "pending",
-    priority,
-    dedupeKey,
-    payload,
-    runAfterAt: currentTime,
-    attempts: 0,
-    createdAt: currentTime,
-    updatedAt: currentTime,
-  };
-
-  if (args.reason === "gmail_backfill") {
-    const inserted = await db
-      .insert(relationshipSyncJobs)
-      .values(jobValues)
-      .onConflictDoNothing({ target: relationshipSyncJobs.dedupeKey })
-      .returning({ id: relationshipSyncJobs.id });
-
-    if (inserted.length === 0) {
-      return false;
-    }
-  } else {
-    await db
-      .insert(relationshipSyncJobs)
-      .values(jobValues)
-      .onConflictDoUpdate({
-        target: relationshipSyncJobs.dedupeKey,
-        set: {
-          status: "pending",
-          payload,
-          priority,
-          runAfterAt: currentTime,
-          lockedAt: null,
-          lastError: null,
-          updatedAt: currentTime,
-        },
-      });
-  }
-
-  await db
-    .insert(relationshipMemorySettings)
-    .values({
-      orgId: args.orgId,
-      userId: args.userId,
-      provider: "gmail",
-      enabled: true,
-      bootstrapStatus: "pending",
-      createdAt: currentTime,
-      updatedAt: currentTime,
-    })
-    .onConflictDoUpdate({
-      target: [
-        relationshipMemorySettings.orgId,
-        relationshipMemorySettings.userId,
-        relationshipMemorySettings.provider,
-      ],
-      set: {
-        enabled: true,
-        updatedAt: currentTime,
-      },
-    });
-
-  return true;
 }
 
 function extractJsonObject(text: string): unknown {
@@ -344,7 +108,12 @@ async function extractRelationshipMemory(args: {
   readonly message: RelationshipMemoryMessage;
 }): Promise<RelationshipExtraction> {
   if (!isLlmConfigured()) {
-    return { summary: null, relationshipType: null, items: [] };
+    return {
+      summary: null,
+      relationshipType: null,
+      interactionSummary: null,
+      items: [],
+    };
   }
 
   const generated = await generateText(
@@ -356,7 +125,8 @@ async function extractRelationshipMemory(args: {
           "Extract relationship memory from Gmail evidence.",
           "Return strict JSON only.",
           "Allowed item kinds: key_fact, preference, open_loop.",
-          "Every item must be directly supported by the email and include a short sourceQuote.",
+          "Paraphrase; do not return direct quotes, raw email text, or HTML.",
+          "Every item must be directly supported by the email.",
           "Do not invent facts. If there is no durable memory, return an empty items array.",
         ].join("\n"),
       },
@@ -376,13 +146,15 @@ async function extractRelationshipMemory(args: {
               to: args.message.to,
               cc: args.message.cc,
               subject: args.message.subject,
-              bodyExcerpt: excerptFromMessage(args.message),
+              bodyExcerpt: transientBodyExcerptFromMessage(args.message),
             },
             outputSchema: {
               summary: "string|null",
               relationshipType: "string|null",
+              interactionSummary:
+                "string|null; one short user-facing sentence that paraphrases the interaction",
               items:
-                "Array<{ kind: 'key_fact'|'preference'|'open_loop', text: string, sourceQuote: string, confidence: 0-100 }>",
+                "Array<{ kind: 'key_fact'|'preference'|'open_loop', text: string, confidence: 0-100 }>",
             },
           },
           null,
@@ -394,7 +166,12 @@ async function extractRelationshipMemory(args: {
   );
 
   if (!generated) {
-    return { summary: null, relationshipType: null, items: [] };
+    return {
+      summary: null,
+      relationshipType: null,
+      interactionSummary: null,
+      items: [],
+    };
   }
 
   const parsed = extractionSchema.safeParse(extractJsonObject(generated));
@@ -530,7 +307,6 @@ async function upsertRelationshipItem(args: {
   readonly kind: RelationshipItemKind;
   readonly text: string;
   readonly confidence: number;
-  readonly sourceQuote: string;
   readonly message: RelationshipMemoryMessage;
   readonly occurredAt: Date;
 }) {
@@ -598,7 +374,7 @@ async function upsertRelationshipItem(args: {
       ].join(":"),
       threadId: args.message.threadId,
       messageId: args.message.messageId,
-      quote: truncate(args.sourceQuote, MAX_SOURCE_QUOTE_LENGTH),
+      quote: null,
       occurredAt: args.occurredAt,
       createdAt: currentTime,
     })
@@ -613,6 +389,7 @@ async function recordInteraction(args: {
   readonly entityId: string;
   readonly connectorId: string | null;
   readonly message: RelationshipMemoryMessage;
+  readonly snippet: string;
   readonly occurredAt: Date;
 }) {
   await args.db
@@ -627,8 +404,8 @@ async function recordInteraction(args: {
       externalId: args.message.messageId,
       threadId: args.message.threadId,
       messageId: args.message.messageId,
-      subject: args.message.subject,
-      snippet: excerptFromMessage(args.message),
+      subject: null,
+      snippet: args.snippet,
       occurredAt: args.occurredAt,
       metadata: {
         direction: "received",
@@ -645,6 +422,58 @@ async function recordInteraction(args: {
     .onConflictDoNothing();
 }
 
+async function loadMessageForRelationshipExtraction(
+  db: Db,
+  job: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly payload: RelationshipSyncJobPayload;
+  },
+  signal: AbortSignal,
+): Promise<GmailRelationshipMessage | null> {
+  const message = job.payload.gmailMessage;
+  if (!message) {
+    return null;
+  }
+
+  const access = await resolveGmailAccess({
+    db,
+    orgId: job.orgId,
+    userId: job.userId,
+    connectorId: job.payload.connectorId,
+    signal,
+  });
+  signal.throwIfAborted();
+  if (access.kind !== "ok") {
+    throw new Error(access.message);
+  }
+
+  const context = await fetchGmailMessageContextById({
+    accessToken: access.access.accessToken,
+    messageId: message.messageId,
+    threadId: message.threadId,
+    labelIds: [],
+    historyId: message.historyId,
+    signal,
+  });
+  signal.throwIfAborted();
+  if (!context || !messageIsInbound(context)) {
+    return null;
+  }
+
+  return {
+    mailboxEmail: message.mailboxEmail,
+    historyId: message.historyId,
+    messageId: context.messageId,
+    threadId: context.threadId,
+    from: context.from ?? message.from,
+    to: context.to.length > 0 ? context.to : message.to,
+    cc: context.cc.length > 0 ? context.cc : message.cc,
+    subject: context.subject ?? message.subject,
+    bodyText: context.bodyText,
+  };
+}
+
 async function processGmailRelationshipRefreshJob(
   db: Db,
   job: {
@@ -652,13 +481,14 @@ async function processGmailRelationshipRefreshJob(
     readonly userId: string;
     readonly payload: RelationshipSyncJobPayload;
   },
+  signal: AbortSignal,
 ): Promise<number> {
-  const message = job.payload.gmailMessage;
-  if (!message) {
+  if (!(await relationshipMemoryFeatureEnabled(db, job.orgId, job.userId))) {
     return 0;
   }
 
-  if (!(await relationshipMemoryFeatureEnabled(db, job.orgId, job.userId))) {
+  const message = await loadMessageForRelationshipExtraction(db, job, signal);
+  if (!message) {
     return 0;
   }
 
@@ -682,7 +512,12 @@ async function processGmailRelationshipRefreshJob(
     );
     const extraction = extractionResult.ok
       ? extractionResult.value
-      : { summary: null, relationshipType: null, items: [] };
+      : {
+          summary: null,
+          relationshipType: null,
+          interactionSummary: null,
+          items: [],
+        };
     if (!extractionResult.ok) {
       log.warn("Relationship memory extraction failed", {
         messageId: message.messageId,
@@ -692,6 +527,8 @@ async function processGmailRelationshipRefreshJob(
             : String(extractionResult.error),
       });
     }
+    const interactionSummary =
+      extraction.interactionSummary ?? fallbackInteractionSummary(target);
 
     const state = await upsertRelationshipState({
       db,
@@ -710,6 +547,7 @@ async function processGmailRelationshipRefreshJob(
       entityId: state.entityId,
       connectorId: job.payload.connectorId ?? null,
       message,
+      snippet: interactionSummary,
       occurredAt,
     });
 
@@ -722,7 +560,6 @@ async function processGmailRelationshipRefreshJob(
         kind: item.kind,
         text: item.text,
         confidence: item.confidence,
-        sourceQuote: item.sourceQuote,
         message,
         occurredAt,
       });
@@ -805,7 +642,7 @@ export const drainRelationshipSyncJobs$ = command(
 
       const result = await settle(
         job.kind === "gmail_relationship_refresh"
-          ? processGmailRelationshipRefreshJob(db, job)
+          ? processGmailRelationshipRefreshJob(db, job, signal)
           : Promise.resolve(0),
       );
       signal.throwIfAborted();

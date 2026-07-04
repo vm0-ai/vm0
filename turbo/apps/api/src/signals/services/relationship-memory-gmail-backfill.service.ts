@@ -31,7 +31,7 @@ import {
   messageIsInbound,
   resolveGmailAccess,
 } from "./gmail-workflow-event.service";
-import { enqueueGmailRelationshipRefreshJob } from "./relationship-memory-gmail.service";
+import { enqueueGmailRelationshipRefreshJob } from "./relationship-memory-gmail-queue.service";
 
 const log = logger("api:relationship-memory-gmail-backfill");
 const GMAIL_API_BASE = "https://gmail.googleapis.com/gmail/v1/users/me";
