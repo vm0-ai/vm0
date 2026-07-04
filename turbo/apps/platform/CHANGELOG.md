@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.552.0](https://github.com/vm0-ai/vm0/compare/app-v0.551.0...app-v0.552.0) (2026-07-04)
+
+
+### Features
+
+* **platform:** serve platform ui assets from static cdn ([#20139](https://github.com/vm0-ai/vm0/issues/20139)) ([12d4121](https://github.com/vm0-ai/vm0/commit/12d41218cdfe50dfe348749b3e50e307a033d025))
+
+
+### Refactoring
+
+* remove pending chat thread creation path ([#20137](https://github.com/vm0-ai/vm0/issues/20137)) ([1be8c77](https://github.com/vm0-ai/vm0/commit/1be8c77e557e91d5820a96d9bd5b878c5baac353))
+
 ## [0.551.0](https://github.com/vm0-ai/vm0/compare/app-v0.550.0...app-v0.551.0) (2026-07-04)
 
 
