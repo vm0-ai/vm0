@@ -253,7 +253,7 @@ const SETTINGS_ICON_ASSET_PATHS = {
   "shortio": "views/zero-page/components/settings/icons/shortio-775376bc8c7d.svg",
   "silmaril": "views/zero-page/components/settings/icons/silmaril-2f64fe3445c8.png",
   "similarweb": "views/zero-page/components/settings/icons/similarweb-872d9e66300b.svg",
-  "slack": "views/zero-page/components/settings/icons/slack-198390069136.svg",
+  "slack": "views/zero-page/components/settings/icons/slack-198390069136.svg?v=568fa471",
   "slock": "views/zero-page/components/settings/icons/slock-f419faf6c6c4.svg",
   "smol-machines": "views/zero-page/components/settings/icons/smol-machines-41c59d345b00.svg",
   "snowflake": "views/zero-page/components/settings/icons/snowflake-fd2f3b315278.svg",

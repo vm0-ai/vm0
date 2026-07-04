@@ -25,7 +25,7 @@ export const emptyWorkflowImg = zeroPageAssetUrl(
   "assets/empty-workflow-96e709d12911.webp",
 );
 export const computerUseIllustrationImg = zeroPageAssetUrl(
-  "assets/computer-use-illustration-eecea534a3ac.png",
+  "assets/computer-use-illustration-eecea534a3ac.png?v=568fa471",
 );
 export const noConnectorImg = zeroPageAssetUrl("assets/no-connector.webp");
 export const noPermissionIllustration = zeroPageAssetUrl(
