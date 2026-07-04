@@ -484,7 +484,10 @@ describe("memory page", () => {
     detachedSetupPage({
       context,
       path: "/memory",
-      featureSwitches: { [FeatureSwitchKey.MemoryViewer]: true },
+      featureSwitches: {
+        [FeatureSwitchKey.MemoryViewer]: true,
+        [FeatureSwitchKey.RelationshipMemory]: false,
+      },
     });
 
     await waitFor(() => {

@@ -230,11 +230,11 @@ async function seedRelationshipFixture(
     { orgId, userId, role: "admin" },
     context.signal,
   );
-  if (enabled) {
+  if (!enabled) {
     await updateFeatureSwitchesForUser(
       context,
       { orgId, userId },
-      { [FeatureSwitchKey.RelationshipMemory]: true },
+      { [FeatureSwitchKey.RelationshipMemory]: false },
     );
   }
   mocks.clerk.session(userId, orgId);

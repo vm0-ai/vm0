@@ -278,8 +278,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Show the experimental relationship memory tab in the Memory page for org-user-scoped relationship context.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.HtmlArtifactCommentEditing]: {
     maintainer: "bingjie@vm0.ai",
@@ -311,14 +310,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Show chat unread indicators in sidebar pinned agent lists and the conversation picker.",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.ChatThreadUnifiedSearch]: {
     maintainer: "ethan@vm0.ai",
     description:
       "Show chat thread title results from the local event-driven thread cache in the command-shift-a conversation picker.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.ImageArtifactKeyboardNavigation]: {
     maintainer: "bingjie@vm0.ai",

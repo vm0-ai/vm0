@@ -701,7 +701,11 @@ describe("zero sidebar", () => {
       return respond(200, { unreads: [] });
     });
 
-    setupSidebarPage({ context, path: `/chats/${EXISTING_THREAD_ID}` });
+    setupSidebarPage({
+      context,
+      path: `/chats/${EXISTING_THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.AgentUnreadIndicators]: false },
+    });
 
     await waitFor(() => {
       expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
@@ -1034,7 +1038,9 @@ describe("zero sidebar", () => {
       path: `/chats/${EXISTING_THREAD_ID}`,
       // Legacy linked automations no longer affect chat deletion; schedule
       // triggers own the automation lifecycle.
-      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: false },
+      featureSwitches: {
+        [FeatureSwitchKey.WorkflowAutomation]: false,
+      },
     });
 
     await waitFor(() => {
@@ -1224,7 +1230,11 @@ describe("zero sidebar", () => {
       });
     });
 
-    setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: { [FeatureSwitchKey.ChatThreadUnifiedSearch]: false },
+    });
 
     const sidebar = await waitFor(() => {
       return screen.getByRole("navigation", { name: "Sidebar" });
@@ -1618,7 +1628,11 @@ describe("zero sidebar", () => {
   it("selects an agent from the picker with arrow keys and enter", async () => {
     prepareAgentTeam();
 
-    setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: { [FeatureSwitchKey.ChatThreadUnifiedSearch]: false },
+    });
 
     await waitFor(() => {
       expect(sidebar()).toBeInTheDocument();
