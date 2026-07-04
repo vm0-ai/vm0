@@ -284,7 +284,7 @@ async function hydrateRelationshipRows(
   db: ReadonlyDb,
   scope: RelationshipScope,
   rows: readonly RelationshipBaseRow[],
-): Promise<readonly RelationshipRecord[]> {
+): Promise<RelationshipRecord[]> {
   const stateIds = rows.map((row) => {
     return row.stateId;
   });
@@ -364,7 +364,7 @@ async function loadResolvedRelationshipRow(
   return row ?? null;
 }
 
-export async function resolveRelationshipMemory(
+async function resolveRelationshipMemory(
   db: ReadonlyDb,
   params: RelationshipResolveParams,
 ): Promise<RelationshipResolveResponse> {
@@ -440,7 +440,7 @@ async function loadSearchStateIds(
   return stateIds;
 }
 
-export async function searchRelationshipMemory(
+async function searchRelationshipMemory(
   db: ReadonlyDb,
   params: RelationshipSearchParams,
 ): Promise<RelationshipSearchResponse> {

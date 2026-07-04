@@ -18,6 +18,7 @@ describe("zero CLI program", () => {
       "model-provider",
       "agent",
       "connector",
+      "relationship",
       "credit",
       "doctor",
       "logs",
@@ -67,7 +68,7 @@ describe("zero CLI program", () => {
     }
   });
 
-  it("should have exactly 31 commands", () => {
-    expect(commandNames).toHaveLength(31);
+  it("should have exactly 32 commands", () => {
+    expect(commandNames).toHaveLength(32);
   });
 });

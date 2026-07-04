@@ -73,7 +73,7 @@ export interface RelationshipSyncJobPayload {
     readonly to: readonly string[];
     readonly cc: readonly string[];
     readonly subject: string | null;
-    readonly bodyText: string | null;
+    readonly bodyExcerpt: string | null;
   };
   readonly historyId?: string;
   readonly reason?: string;

@@ -22,14 +22,14 @@ import { nowDate } from "../external/time";
 import { safeJsonParse, settle } from "../utils";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 
-export const RELATIONSHIP_MEMORY_EXTRACTION_MODEL = "google/gemini-3.5-flash";
+const RELATIONSHIP_MEMORY_EXTRACTION_MODEL = "google/gemini-3.5-flash";
 
 const log = logger("api:relationship-memory-gmail");
 const MAX_JOBS_PER_DRAIN = 20;
 const MAX_SOURCE_QUOTE_LENGTH = 320;
 const RETRY_DELAY_MS = 5 * 60 * 1000;
 
-interface GmailRelationshipMessage {
+interface GmailRelationshipMessageBase {
   readonly mailboxEmail: string;
   readonly historyId: string;
   readonly messageId: string;
@@ -38,8 +38,19 @@ interface GmailRelationshipMessage {
   readonly to: readonly string[];
   readonly cc: readonly string[];
   readonly subject: string | null;
+}
+
+interface GmailRelationshipMessage extends GmailRelationshipMessageBase {
   readonly bodyText: string | null;
 }
+
+interface PersistedGmailRelationshipMessage extends GmailRelationshipMessageBase {
+  readonly bodyExcerpt: string | null;
+}
+
+type RelationshipMemoryMessage =
+  | GmailRelationshipMessage
+  | PersistedGmailRelationshipMessage;
 
 interface ParsedEmailAddress {
   readonly displayName: string;
@@ -89,10 +100,11 @@ function parseEmailAddress(value: string | null): ParsedEmailAddress | null {
     return null;
   }
   const emailMatch = value.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
-  const email = emailMatch?.[0] ? normalizeEmail(emailMatch[0]) : null;
-  if (!email) {
+  const emailValue = emailMatch?.[0];
+  if (!emailValue) {
     return null;
   }
+  const email = normalizeEmail(emailValue);
 
   const domain = email.split("@")[1];
   if (!domain) {
@@ -100,7 +112,7 @@ function parseEmailAddress(value: string | null): ParsedEmailAddress | null {
   }
 
   const rawName = value
-    .replace(emailMatch[0], "")
+    .replace(emailValue, "")
     .replace(/[<>"()]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
@@ -135,8 +147,11 @@ function displayNameFromDomain(domain: string): string {
   return `${base.slice(0, 1).toUpperCase()}${base.slice(1)}`;
 }
 
-function excerptFromMessage(message: GmailRelationshipMessage): string {
-  const text = message.bodyText?.replace(/\s+/g, " ").trim();
+function excerptFromMessage(message: RelationshipMemoryMessage): string {
+  const text =
+    "bodyExcerpt" in message
+      ? message.bodyExcerpt?.replace(/\s+/g, " ").trim()
+      : message.bodyText?.replace(/\s+/g, " ").trim();
   if (text) {
     return truncate(text, MAX_SOURCE_QUOTE_LENGTH);
   }
@@ -147,7 +162,7 @@ function excerptFromMessage(message: GmailRelationshipMessage): string {
 }
 
 function relationshipTargets(
-  message: GmailRelationshipMessage,
+  message: GmailRelationshipMessageBase,
 ): readonly RelationshipTarget[] {
   const sender = parseEmailAddress(message.from);
   if (!sender || isSystemSender(sender)) {
@@ -221,12 +236,23 @@ export async function enqueueGmailRelationshipRefreshJob(
   }
 
   const currentTime = nowDate();
+  const gmailMessage: PersistedGmailRelationshipMessage = {
+    mailboxEmail: args.message.mailboxEmail,
+    historyId: args.message.historyId,
+    messageId: args.message.messageId,
+    threadId: args.message.threadId,
+    from: args.message.from,
+    to: args.message.to,
+    cc: args.message.cc,
+    subject: args.message.subject,
+    bodyExcerpt: excerptFromMessage(args.message),
+  };
   const payload: RelationshipSyncJobPayload = {
     connectorId: args.connectorId,
     gmailThreadId: args.message.threadId ?? undefined,
     gmailMessageIds: [args.message.messageId],
     historyId: args.message.historyId,
-    gmailMessage: args.message,
+    gmailMessage,
     reason: "gmail_webhook",
   };
 
@@ -298,7 +324,7 @@ function extractJsonObject(text: string): unknown {
 async function extractRelationshipMemory(args: {
   readonly target: RelationshipTarget;
   readonly existingSummary: string | null;
-  readonly message: GmailRelationshipMessage;
+  readonly message: RelationshipMemoryMessage;
 }): Promise<RelationshipExtraction> {
   if (!isLlmConfigured()) {
     return { summary: null, relationshipType: null, items: [] };
@@ -333,7 +359,7 @@ async function extractRelationshipMemory(args: {
               to: args.message.to,
               cc: args.message.cc,
               subject: args.message.subject,
-              bodyText: args.message.bodyText,
+              bodyExcerpt: excerptFromMessage(args.message),
             },
             outputSchema: {
               summary: "string|null",
@@ -488,7 +514,7 @@ async function upsertRelationshipItem(args: {
   readonly text: string;
   readonly confidence: number;
   readonly sourceQuote: string;
-  readonly message: GmailRelationshipMessage;
+  readonly message: RelationshipMemoryMessage;
   readonly occurredAt: Date;
 }) {
   const currentTime = nowDate();
@@ -569,7 +595,7 @@ async function recordInteraction(args: {
   readonly stateId: string;
   readonly entityId: string;
   readonly connectorId: string | null;
-  readonly message: GmailRelationshipMessage;
+  readonly message: RelationshipMemoryMessage;
   readonly occurredAt: Date;
 }) {
   await args.db
