@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { useGet, useLastLoadable, useLoadable, useSet } from "ccstate-react";
 import { IconDotsVertical } from "@tabler/icons-react";
 import {
@@ -18,6 +17,8 @@ import {
   personalActionPromise$,
   personalConfiguredProviders$,
   resetPersonalCodexSubscriptionUsage$,
+  setSettingsCodexResetDialog$,
+  settingsCodexResetDialog$,
 } from "../../../../signals/zero-page/settings/personal-model-providers.ts";
 import { setClaudeCodeDeviceAuthDialogStatePersonal$ } from "../../../../signals/zero-page/settings/claude-code-device-auth.ts";
 import { setCodexDeviceAuthDialogStatePersonal$ } from "../../../../signals/zero-page/settings/codex-device-auth.ts";
@@ -60,9 +61,10 @@ function OAuthCredentialsSection() {
   const resetCodexSubscriptionUsage = useSet(
     resetPersonalCodexSubscriptionUsage$,
   );
+  const resetDialog = useGet(settingsCodexResetDialog$);
+  const setResetDialog = useSet(setSettingsCodexResetDialog$);
   const actionLoadable = useLoadable(personalActionPromise$);
   const pageSignal = useGet(pageSignal$);
-  const [resetCodexConfirmOpen, setResetCodexConfirmOpen] = useState(false);
 
   const isLoading = providersLoadable.state === "loading";
   const providers =
@@ -92,10 +94,17 @@ function OAuthCredentialsSection() {
     detach(
       (async () => {
         await resetCodexSubscriptionUsage(pageSignal);
-        setResetCodexConfirmOpen(false);
+        setResetDialog({ open: false, resetCredits: null });
       })(),
       Reason.DomCallback,
     );
+  };
+
+  const setCodexResetOpen = (open: boolean) => {
+    setResetDialog({
+      open,
+      resetCredits: open ? resetDialog.resetCredits : null,
+    });
   };
 
   return (
@@ -115,96 +124,144 @@ function OAuthCredentialsSection() {
           </>
         ) : (
           <>
-            <OAuthCredentialRow
-              type="claude-code-oauth-token"
-              title="Claude Code OAuth"
-              description="Connect with Claude Code login for Claude-backed model routes."
+            <ClaudeOAuthCredentialRow
+              actionPending={actionPending}
               provider={claudeCode}
               status={getOpenAIStatus(claudeCode)}
-              menuItems={
-                claudeCode
-                  ? [
-                      {
-                        label: "Replace",
-                        onSelect: connectClaudeCode,
-                      },
-                      {
-                        label: "Disconnect",
-                        disabled: actionPending,
-                        onSelect: () => {
-                          detach(
-                            disconnectCredential(
-                              "claude-code-oauth-token",
-                              pageSignal,
-                            ),
-                            Reason.DomCallback,
-                          );
-                        },
-                      },
-                    ]
-                  : []
-              }
               onAction={connectClaudeCode}
-              testId="oauth-card-claude-code-oauth-token"
+              onDisconnect={() => {
+                detach(
+                  disconnectCredential("claude-code-oauth-token", pageSignal),
+                  Reason.DomCallback,
+                );
+              }}
             />
-            <OAuthCredentialRow
-              type="codex-oauth-token"
-              title="ChatGPT (Codex)"
-              description="Connect with Codex device login for Codex-backed model routes."
+            <CodexOAuthCredentialRow
+              actionPending={actionPending}
               provider={openAI}
+              resetCredits={codexResetCredits}
               status={openAIStatus}
-              menuItems={
-                openAI
-                  ? [
-                      {
-                        kind: "status",
-                        label: formatCodexResetCredits(codexResetCredits),
-                      },
-                      {
-                        kind: "separator",
-                        label: "codex-reset-separator",
-                      },
-                      {
-                        label: "Reset usage",
-                        disabled: actionPending || codexResetCredits === 0,
-                        onSelect: () => {
-                          setResetCodexConfirmOpen(true);
-                        },
-                      },
-                      {
-                        label: "Replace",
-                        onSelect: connectOpenAI,
-                      },
-                      {
-                        label: "Disconnect",
-                        disabled: actionPending,
-                        onSelect: () => {
-                          detach(
-                            disconnectCredential(
-                              "codex-oauth-token",
-                              pageSignal,
-                            ),
-                            Reason.DomCallback,
-                          );
-                        },
-                      },
-                    ]
-                  : []
-              }
               onAction={connectOpenAI}
-              testId="oauth-card-codex-oauth-token"
+              onDisconnect={() => {
+                detach(
+                  disconnectCredential("codex-oauth-token", pageSignal),
+                  Reason.DomCallback,
+                );
+              }}
+              onOpenReset={() => {
+                setResetDialog({ open: true, resetCredits: codexResetCredits });
+              }}
             />
             <CodexResetUsageDialog
-              open={resetCodexConfirmOpen}
-              resetCredits={codexResetCredits}
+              open={resetDialog.open}
+              resetCredits={resetDialog.resetCredits}
               resetting={actionPending}
-              onOpenChange={setResetCodexConfirmOpen}
+              onOpenChange={setCodexResetOpen}
               onConfirm={confirmCodexReset}
             />
           </>
         )}
       </div>
     </section>
+  );
+}
+
+function ClaudeOAuthCredentialRow({
+  actionPending,
+  provider,
+  status,
+  onAction,
+  onDisconnect,
+}: {
+  actionPending: boolean;
+  provider: ModelProviderResponse | undefined;
+  status: OAuthStatus;
+  onAction: () => void;
+  onDisconnect: () => void;
+}) {
+  return (
+    <OAuthCredentialRow
+      type="claude-code-oauth-token"
+      title="Claude Code OAuth"
+      description="Connect with Claude Code login for Claude-backed model routes."
+      provider={provider}
+      status={status}
+      menuItems={
+        provider
+          ? [
+              {
+                label: "Replace",
+                onSelect: onAction,
+              },
+              {
+                label: "Disconnect",
+                disabled: actionPending,
+                onSelect: onDisconnect,
+              },
+            ]
+          : []
+      }
+      onAction={onAction}
+      testId="oauth-card-claude-code-oauth-token"
+    />
+  );
+}
+
+function CodexOAuthCredentialRow({
+  actionPending,
+  provider,
+  resetCredits,
+  status,
+  onAction,
+  onDisconnect,
+  onOpenReset,
+}: {
+  actionPending: boolean;
+  provider: ModelProviderResponse | undefined;
+  resetCredits: number | null;
+  status: OAuthStatus;
+  onAction: () => void;
+  onDisconnect: () => void;
+  onOpenReset: () => void;
+}) {
+  return (
+    <OAuthCredentialRow
+      type="codex-oauth-token"
+      title="ChatGPT (Codex)"
+      description="Connect with Codex device login for Codex-backed model routes."
+      provider={provider}
+      status={status}
+      menuItems={
+        provider
+          ? [
+              {
+                kind: "status",
+                label: formatCodexResetCredits(resetCredits),
+              },
+              {
+                kind: "separator",
+                label: "codex-reset-separator",
+              },
+              {
+                label: "Reset usage",
+                disabled: actionPending || resetCredits === 0,
+                onSelect: onOpenReset,
+              },
+              {
+                label: "Replace",
+                onSelect: onAction,
+              },
+              {
+                label: "Disconnect",
+                disabled: actionPending,
+                onSelect: onDisconnect,
+              },
+            ]
+          : []
+      }
+      onAction={onAction}
+      testId="oauth-card-codex-oauth-token"
+    />
   );
 }
 

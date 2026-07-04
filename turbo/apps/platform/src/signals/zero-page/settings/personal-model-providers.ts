@@ -15,10 +15,38 @@ import {
 // ---------------------------------------------------------------------------
 
 const internalPersonalActionPromise$ = state<Promise<unknown> | null>(null);
+const internalSettingsCodexResetDialog$ = state({
+  open: false,
+  resetCredits: null as number | null,
+});
+const internalAccountMenuCodexResetDialog$ = state({
+  open: false,
+  resetCredits: null as number | null,
+});
 
 export const personalActionPromise$ = computed((get) => {
   return get(internalPersonalActionPromise$);
 });
+
+export const settingsCodexResetDialog$ = computed((get) => {
+  return get(internalSettingsCodexResetDialog$);
+});
+
+export const accountMenuCodexResetDialog$ = computed((get) => {
+  return get(internalAccountMenuCodexResetDialog$);
+});
+
+export const setSettingsCodexResetDialog$ = command(
+  ({ set }, dialog: { open: boolean; resetCredits: number | null }) => {
+    set(internalSettingsCodexResetDialog$, dialog);
+  },
+);
+
+export const setAccountMenuCodexResetDialog$ = command(
+  ({ set }, dialog: { open: boolean; resetCredits: number | null }) => {
+    set(internalAccountMenuCodexResetDialog$, dialog);
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Derived state
@@ -55,25 +83,32 @@ export const disconnectPersonalOAuthCredential$ = command(
 export const resetPersonalCodexSubscriptionUsage$ = command(
   async ({ set }, signal: AbortSignal) => {
     const promise = (async () => {
-      const result = await set(resetPersonalCodexSubscriptionUsageRequest$, {
-        idempotencyKey: crypto.randomUUID(),
+      const result = await set(
+        resetPersonalCodexSubscriptionUsageRequest$,
+        {
+          idempotencyKey: crypto.randomUUID(),
+        },
         signal,
-      });
+      );
       signal.throwIfAborted();
 
       switch (result.outcome) {
-        case "reset":
+        case "reset": {
           toast.success("Codex usage reset");
           break;
-        case "nothingToReset":
+        }
+        case "nothingToReset": {
           toast.info("Codex usage does not need a reset right now");
           break;
-        case "noCredit":
+        }
+        case "noCredit": {
           toast.error("No Codex usage resets available");
           break;
-        case "alreadyRedeemed":
+        }
+        case "alreadyRedeemed": {
           toast.success("Codex usage reset");
           break;
+        }
       }
     })();
 

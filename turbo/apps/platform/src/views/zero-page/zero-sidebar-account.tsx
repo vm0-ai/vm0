@@ -1,6 +1,5 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
-import { useState } from "react";
 import {
   useGet,
   useLoadable,
@@ -52,8 +51,10 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import { billingStatusAsync$ } from "../../signals/zero-page/billing.ts";
 import {
+  accountMenuCodexResetDialog$,
   personalActionPromise$,
   resetPersonalCodexSubscriptionUsage$,
+  setAccountMenuCodexResetDialog$,
 } from "../../signals/zero-page/settings/personal-model-providers.ts";
 import { CodexResetUsageDialog } from "./components/preferences/codex-reset-usage-dialog.tsx";
 import {
@@ -590,16 +591,14 @@ export function AccountDropdown({
   const resetCodexSubscriptionUsage = useSet(
     resetPersonalCodexSubscriptionUsage$,
   );
+  const resetDialog = useGet(accountMenuCodexResetDialog$);
+  const setResetDialog = useSet(setAccountMenuCodexResetDialog$);
   const actionLoadable = useLoadable(personalActionPromise$);
   const setSidebarExpanded = useSet(setSidebarExpanded$);
   const suppressUnauthorizedRedirectForAuthTransition = useSet(
     suppressUnauthorizedRedirectForAuthTransition$,
   );
   const pageSignal = useGet(pageSignal$);
-  const [resetCodexConfirmOpen, setResetCodexConfirmOpen] = useState(false);
-  const [resetCodexCredits, setResetCodexCredits] = useState<number | null>(
-    null,
-  );
 
   const current = accounts.find((a) => {
     return a.isActive;
@@ -672,8 +671,7 @@ export function AccountDropdown({
   };
 
   const handleOpenCodexReset = (resetCredits: number | null) => {
-    setResetCodexCredits(resetCredits);
-    setResetCodexConfirmOpen(true);
+    setResetDialog({ open: true, resetCredits });
   };
 
   const handleConfirmCodexReset = () => {
@@ -681,10 +679,17 @@ export function AccountDropdown({
       (async () => {
         await resetCodexSubscriptionUsage(pageSignal);
         await reloadSubscriptions(subscriptionRowsCacheKey, pageSignal);
-        setResetCodexConfirmOpen(false);
+        setResetDialog({ open: false, resetCredits: null });
       })(),
       Reason.DomCallback,
     );
+  };
+
+  const handleCodexResetOpenChange = (open: boolean) => {
+    setResetDialog({
+      open,
+      resetCredits: open ? resetDialog.resetCredits : null,
+    });
   };
 
   const handleMenuOpenChange = (open: boolean) => {
@@ -745,10 +750,10 @@ export function AccountDropdown({
         </DropdownMenuContent>
       </DropdownMenu>
       <CodexResetUsageDialog
-        open={resetCodexConfirmOpen}
-        resetCredits={resetCodexCredits}
+        open={resetDialog.open}
+        resetCredits={resetDialog.resetCredits}
         resetting={actionPending}
-        onOpenChange={setResetCodexConfirmOpen}
+        onOpenChange={handleCodexResetOpenChange}
         onConfirm={handleConfirmCodexReset}
       />
     </>

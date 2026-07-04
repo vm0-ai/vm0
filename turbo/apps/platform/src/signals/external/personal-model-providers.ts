@@ -51,8 +51,8 @@ export const resetPersonalCodexSubscriptionUsage$ = command(
     { get, set },
     args: {
       readonly idempotencyKey: string;
-      readonly signal: AbortSignal;
     },
+    signal: AbortSignal,
   ): Promise<ResetPersonalModelProviderSubscriptionUsageResponse> => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroPersonalModelProvidersByTypeContract);
@@ -60,10 +60,11 @@ export const resetPersonalCodexSubscriptionUsage$ = command(
       client.resetSubscriptionUsage({
         params: { type: "codex-oauth-token" },
         body: { idempotencyKey: args.idempotencyKey },
-        fetchOptions: { signal: args.signal },
+        fetchOptions: { signal },
       }),
       [200],
     );
+    signal.throwIfAborted();
 
     set(internalReloadPersonalModelProviders$, (x) => {
       return x + 1;

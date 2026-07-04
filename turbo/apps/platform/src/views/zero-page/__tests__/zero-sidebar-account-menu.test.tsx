@@ -354,7 +354,15 @@ describe("zero sidebar account menu", () => {
     expect(
       within(confirmDialog).getByText(/2 resets left/),
     ).toBeInTheDocument();
-    click(within(confirmDialog).getByRole("button", { name: "Reset usage" }));
+    const resetButton = queryAllByRoleFast("button", confirmDialog).find(
+      (button) => {
+        return button.textContent === "Reset usage";
+      },
+    );
+    if (!resetButton) {
+      throw new Error("Reset usage button not found");
+    }
+    click(resetButton);
 
     await waitFor(() => {
       expect(

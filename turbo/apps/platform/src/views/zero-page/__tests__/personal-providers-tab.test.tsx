@@ -374,7 +374,9 @@ describe("personal model providers settings", () => {
     ).not.toBeInTheDocument();
 
     click(within(codexRow).getByLabelText("More options"));
-    expect(await screen.findByText("2 resets left")).toBeInTheDocument();
+    await expect(
+      screen.findByText("2 resets left"),
+    ).resolves.toBeInTheDocument();
     click(screen.getByText("Reset usage"));
 
     const confirmDialog = await screen.findByRole("dialog", {
@@ -383,7 +385,15 @@ describe("personal model providers settings", () => {
     expect(
       within(confirmDialog).getByText(/2 resets left/),
     ).toBeInTheDocument();
-    click(within(confirmDialog).getByRole("button", { name: "Reset usage" }));
+    const resetButton = queryAllByRoleFast("button", confirmDialog).find(
+      (button) => {
+        return button.textContent === "Reset usage";
+      },
+    );
+    if (!resetButton) {
+      throw new Error("Reset usage button not found");
+    }
+    click(resetButton);
 
     await waitFor(() => {
       expect(
@@ -392,7 +402,9 @@ describe("personal model providers settings", () => {
     });
 
     click(within(codexRow).getByLabelText("More options"));
-    expect(await screen.findByText("1 reset left")).toBeInTheDocument();
+    await expect(
+      screen.findByText("1 reset left"),
+    ).resolves.toBeInTheDocument();
   });
 
   it("falls back to stored Claude Code reset metadata when usage is unavailable", async () => {

@@ -343,14 +343,18 @@ function codexResetCreditOutcome(
   code: z.infer<typeof codexRateLimitResetCreditConsumeResponseSchema>["code"],
 ): CodexRateLimitResetCreditOutcome {
   switch (code) {
-    case "reset":
+    case "reset": {
       return "reset";
-    case "nothing_to_reset":
+    }
+    case "nothing_to_reset": {
       return "nothingToReset";
-    case "no_credit":
+    }
+    case "no_credit": {
       return "noCredit";
-    case "already_redeemed":
+    }
+    case "already_redeemed": {
       return "alreadyRedeemed";
+    }
   }
 }
 

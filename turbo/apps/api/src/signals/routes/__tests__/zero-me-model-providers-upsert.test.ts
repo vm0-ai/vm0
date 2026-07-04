@@ -362,7 +362,7 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
           expect(request.headers.get("chatgpt-account-id")).toBe(
             "ws_acct_from_id_token_personal",
           );
-          expect(await request.json()).toEqual({
+          await expect(request.json()).resolves.toStrictEqual({
             redeem_request_id: idempotencyKey,
           });
           return HttpResponse.json({
@@ -400,7 +400,7 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
       [200],
     );
 
-    expect(response.body).toEqual({ outcome: "reset" });
+    expect(response.body).toStrictEqual({ outcome: "reset" });
   });
 
   it("returns 400 CODEX_AUTH_JSON_SHAPE_INVALID on malformed JSON", async () => {
