@@ -48,6 +48,7 @@ import { ROUTES } from "../../../signals/route-paths.ts";
 const context = testContext();
 const zeroAgentId = "c0000000-0000-4000-a000-000000000001";
 const researchAgentId = "a0000000-0000-4000-a000-000000000401";
+const PAGE_LOAD_TIMEOUT_MS = 5000;
 
 function detachedSetupPage(
   options: Parameters<typeof baseDetachedSetupPage>[0],
@@ -440,10 +441,13 @@ describe("team page navigation", () => {
     click(agentLink!);
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Research Agent" }),
-      ).toBeInTheDocument();
+      expect(pathname()).toBe(`/agents/${researchAgentId}`);
     });
+    await screen.findByRole(
+      "heading",
+      { name: "Research Agent" },
+      { timeout: PAGE_LOAD_TIMEOUT_MS },
+    );
     await waitFor(() => {
       expect(screen.getByText("@octocat")).toBeInTheDocument();
       expect(screen.getByText("@workspace")).toBeInTheDocument();
