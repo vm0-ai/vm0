@@ -318,6 +318,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Show chat thread title results from the local event-driven thread cache in the command-shift-a conversation picker.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ImageArtifactKeyboardNavigation]: {
     maintainer: "bingjie@vm0.ai",
