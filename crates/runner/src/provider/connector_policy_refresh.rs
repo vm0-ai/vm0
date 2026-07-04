@@ -27,7 +27,12 @@ const SCHEDULED_REFRESH_COALESCE_WINDOW: Duration = Duration::from_millis(100);
 #[derive(Clone)]
 pub(crate) struct ConnectorPolicyRefreshHandle {
     core: ConnectorPolicyRefreshCore,
-    worker_task: Arc<StdMutex<Option<tokio::task::JoinHandle<()>>>>,
+    worker: Arc<ConnectorPolicyRefreshWorker>,
+}
+
+struct ConnectorPolicyRefreshWorker {
+    core: ConnectorPolicyRefreshCore,
+    task: StdMutex<Option<tokio::task::JoinHandle<()>>>,
 }
 
 #[derive(Clone)]
@@ -89,8 +94,11 @@ impl ConnectorPolicyRefreshHandle {
         };
         let worker_task = tokio::spawn(run_refresh_worker(core.clone(), request_rx));
         Self {
-            core,
-            worker_task: Arc::new(StdMutex::new(Some(worker_task))),
+            core: core.clone(),
+            worker: Arc::new(ConnectorPolicyRefreshWorker {
+                core,
+                task: StdMutex::new(Some(worker_task)),
+            }),
         }
     }
 
@@ -130,20 +138,23 @@ impl ConnectorPolicyRefreshHandle {
     }
 
     fn take_worker_task(&self) -> Option<tokio::task::JoinHandle<()>> {
-        self.worker_task
+        self.worker.take_task()
+    }
+}
+
+impl ConnectorPolicyRefreshWorker {
+    fn take_task(&self) -> Option<tokio::task::JoinHandle<()>> {
+        self.task
             .lock()
             .unwrap_or_else(|poison| poison.into_inner())
             .take()
     }
 }
 
-impl Drop for ConnectorPolicyRefreshHandle {
+impl Drop for ConnectorPolicyRefreshWorker {
     fn drop(&mut self) {
-        if Arc::strong_count(&self.worker_task) != 1 {
-            return;
-        }
         self.core.inner.cancel.cancel();
-        if let Some(worker_task) = self.take_worker_task() {
+        if let Some(worker_task) = self.take_task() {
             worker_task.abort();
         }
     }
@@ -1079,7 +1090,8 @@ mod tests {
             .expect("connector policy refresh shutdown timed out");
 
         let worker_task = handle
-            .worker_task
+            .worker
+            .task
             .lock()
             .unwrap_or_else(|poison| poison.into_inner());
         assert!(worker_task.is_none());
@@ -1099,6 +1111,45 @@ mod tests {
             .await
             .expect("dropping the last handle should cancel the worker task")
             .expect("worker task should not panic");
+    }
+
+    #[tokio::test]
+    async fn dropping_concurrent_last_handles_releases_refresh_state() {
+        let server = MockServer::start();
+        let handle = ConnectorPolicyRefreshHandle::new(api_client_for_server(&server));
+        let other_handle = handle.clone();
+        let weak_state = Arc::downgrade(&handle.core.inner);
+        let barrier = Arc::new(tokio::sync::Barrier::new(3));
+        let first_drop = {
+            let barrier = Arc::clone(&barrier);
+            tokio::spawn(async move {
+                barrier.wait().await;
+                drop(handle);
+            })
+        };
+        let second_drop = {
+            let barrier = Arc::clone(&barrier);
+            tokio::spawn(async move {
+                barrier.wait().await;
+                drop(other_handle);
+            })
+        };
+
+        barrier.wait().await;
+        first_drop
+            .await
+            .expect("first concurrent drop task should finish");
+        second_drop
+            .await
+            .expect("second concurrent drop task should finish");
+
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while weak_state.upgrade().is_some() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("concurrent last handle drops should release refresh state");
     }
 
     #[tokio::test]
