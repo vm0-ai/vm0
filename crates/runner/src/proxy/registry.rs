@@ -193,20 +193,6 @@ impl ProxyRegistryHandle {
             .await
     }
 
-    pub async fn try_fail_closed_network_policy_if_run_matches(
-        &self,
-        source_ip: &str,
-        run_id: &str,
-        connector_ref: &str,
-    ) -> RunnerResult<bool> {
-        let _guard = match lock::try_acquire_or_busy(self.lock_path.clone()).await? {
-            lock::TryLock::Acquired(guard) => guard,
-            lock::TryLock::Busy => return Ok(false),
-        };
-        self.fail_closed_network_policy_locked(source_ip, run_id, connector_ref)
-            .await
-    }
-
     async fn fail_closed_network_policy_locked(
         &self,
         source_ip: &str,

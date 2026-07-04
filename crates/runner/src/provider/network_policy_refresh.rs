@@ -285,7 +285,7 @@ impl NetworkPolicyRefreshCore {
                     connector_refs = ?request.connector_refs,
                     "network policy refresh queue full; failing closed after network policy refresh notification"
                 );
-                self.try_fail_closed_active_connectors(request.run_id, &request.connector_refs)
+                self.fail_closed_active_connectors(request.run_id, &request.connector_refs)
                     .await;
             }
             Closed(error) => {
@@ -474,14 +474,6 @@ impl NetworkPolicyRefreshCore {
             .collect()
     }
 
-    async fn try_fail_closed_active_connectors(&self, run_id: RunId, connector_refs: &[String]) {
-        for connector_ref in connector_refs {
-            if let Some(snapshot) = self.active_snapshot(run_id, connector_ref).await {
-                try_fail_closed_network_policy(run_id, connector_ref, snapshot).await;
-            }
-        }
-    }
-
     async fn fail_closed_active_connectors(&self, run_id: RunId, connector_refs: &[String]) {
         for connector_ref in connector_refs {
             if let Some(snapshot) = self.active_snapshot(run_id, connector_ref).await {
@@ -663,39 +655,6 @@ async fn patch_network_policy(
             policy,
         )
         .await
-}
-
-async fn try_fail_closed_network_policy(
-    run_id: RunId,
-    connector_ref: &str,
-    snapshot: ActiveRunNetworkPolicySnapshot,
-) {
-    match snapshot
-        .registry
-        .try_fail_closed_network_policy_if_run_matches(
-            &snapshot.source_ip,
-            &run_id.to_string(),
-            connector_ref,
-        )
-        .await
-    {
-        Ok(true) => {
-            warn!(
-                run_id = %run_id,
-                connector_ref,
-                "failed closed network policy after network policy refresh queue overflow"
-            );
-        }
-        Ok(false) => {}
-        Err(error) => {
-            warn!(
-                run_id = %run_id,
-                connector_ref,
-                error = %error,
-                "failed to fail close network policy after network policy refresh queue overflow"
-            );
-        }
-    }
 }
 
 async fn fail_closed_network_policy(
@@ -953,13 +912,6 @@ mod tests {
         assert_eq!(policy["unknownPolicy"], json!("deny"));
     }
 
-    fn assert_original_policy(policy: &serde_json::Value) {
-        assert_eq!(policy["allow"], json!(["chat:write"]));
-        assert_eq!(policy["deny"], json!(["files:write"]));
-        assert_eq!(policy["ask"], json!(["channels:read"]));
-        assert_eq!(policy["unknownPolicy"], json!("allow"));
-    }
-
     fn active_run_network_policy_state(
         registry: ProxyRegistryHandle,
     ) -> ActiveRunNetworkPolicyState {
@@ -1069,16 +1021,6 @@ mod tests {
         })
         .await
         .expect("slack policy should match before timeout")
-    }
-
-    async fn load_slack_policy(registry_path: &std::path::Path) -> serde_json::Value {
-        let registry_json: serde_json::Value = serde_json::from_str(
-            &tokio::fs::read_to_string(registry_path)
-                .await
-                .expect("registry should be readable"),
-        )
-        .expect("registry should be valid JSON");
-        registry_json["vms"]["10.200.0.2"]["networkPolicies"]["slack"].clone()
     }
 
     #[tokio::test]
@@ -1299,7 +1241,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn full_queue_network_policy_notification_fails_closed_without_waiting() {
+    async fn full_queue_network_policy_notification_fails_closed() {
         let server = MockServer::start();
         let (core, mut requests) = core_without_worker(&server);
         let run_id = RunId::nil();
@@ -1320,7 +1262,7 @@ mod tests {
             core.notify_network_policy_refresh(run_id, "slack".to_string()),
         )
         .await
-        .expect("full queue notification should fail closed without waiting for capacity");
+        .expect("full queue notification should fail closed");
 
         let mut queued = 0;
         while requests.try_recv().is_ok() {
@@ -1335,7 +1277,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn full_queue_notification_skips_busy_registry_lock_without_waiting() {
+    async fn full_queue_notification_waits_for_busy_registry_lock_to_fail_closed() {
         let server = MockServer::start();
         let (core, mut requests) = core_without_worker(&server);
         let run_id = RunId::nil();
@@ -1354,12 +1296,23 @@ mod tests {
             .await
             .expect("registry lock should be acquired");
 
-        tokio::time::timeout(
-            Duration::from_secs(1),
-            core.notify_network_policy_refresh(run_id, "slack".to_string()),
-        )
-        .await
-        .expect("full queue notification should not wait for registry lock");
+        let notify_core = core.clone();
+        let notify = tokio::spawn(async move {
+            notify_core
+                .notify_network_policy_refresh(run_id, "slack".to_string())
+                .await;
+        });
+        tokio::task::yield_now().await;
+        assert!(
+            !notify.is_finished(),
+            "full queue notification should wait for registry lock before fail-closing"
+        );
+        drop(lock_guard);
+
+        tokio::time::timeout(Duration::from_secs(1), notify)
+            .await
+            .expect("full queue notification should finish after registry lock release")
+            .expect("notification task should not panic");
 
         let mut queued = 0;
         while requests.try_recv().is_ok() {
@@ -1367,15 +1320,10 @@ mod tests {
         }
         assert_eq!(queued, REFRESH_REQUEST_QUEUE_CAPACITY);
         let policy = wait_until_slack_policy(&registry_path, |policy| {
-            policy["unknownPolicy"] == json!("allow")
+            policy["unknownPolicy"] == json!("deny")
         })
         .await;
-        assert_original_policy(&policy);
-
-        drop(lock_guard);
-        tokio::task::yield_now().await;
-        let policy = load_slack_policy(&registry_path).await;
-        assert_original_policy(&policy);
+        assert_fail_closed_policy(&policy);
     }
 
     #[tokio::test(start_paused = true)]
