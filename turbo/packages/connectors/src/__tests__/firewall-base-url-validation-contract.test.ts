@@ -13,9 +13,23 @@ const baseUrlValidationCaseSchema = z.object({
   expectedValid: z.boolean(),
 });
 
-const contractSchema = z.object({
-  baseUrlValidationCases: z.array(baseUrlValidationCaseSchema),
-});
+const contractSchema = z
+  .object({
+    baseUrlValidationCases: z.array(baseUrlValidationCaseSchema).min(1),
+  })
+  .superRefine((contract, ctx) => {
+    const seenNames = new Set<string>();
+    for (const [index, testCase] of contract.baseUrlValidationCases.entries()) {
+      if (seenNames.has(testCase.name)) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["baseUrlValidationCases", index, "name"],
+          message: `duplicate case name "${testCase.name}"`,
+        });
+      }
+      seenNames.add(testCase.name);
+    }
+  });
 
 type BaseUrlValidationCase = z.infer<typeof baseUrlValidationCaseSchema>;
 

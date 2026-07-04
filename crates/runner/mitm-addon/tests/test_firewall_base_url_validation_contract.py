@@ -19,11 +19,14 @@ _CONTRACT_PATH = (
 
 
 def _load_cases() -> list[dict[str, object]]:
-    raw_contract = json.loads(_CONTRACT_PATH.read_text())
+    raw_contract = json.loads(_CONTRACT_PATH.read_text(encoding="utf-8"))
     assert isinstance(raw_contract, dict)
     cases = raw_contract["baseUrlValidationCases"]
     assert isinstance(cases, list)
+    assert cases
     assert all(isinstance(case, dict) for case in cases)
+    names = [_case_name(case) for case in cases]
+    assert len(names) == len(set(names))
     return cases
 
 
