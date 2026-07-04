@@ -528,7 +528,7 @@ async fn gc_nested_images_with_protected_refs(
             if is_protected_image_ref(protected_image_refs, &rootfs_hash, &snap_hash) {
                 mark_rootfs_survives(&mut rootfs_states, rootfs_idx);
                 info!(
-                    "images/{rootfs_hash}/snapshots/{snap_hash}: referenced by retained runner config, keeping"
+                    "images/{rootfs_hash}/snapshots/{snap_hash}: referenced by retained runner or service config, keeping"
                 );
                 continue;
             }

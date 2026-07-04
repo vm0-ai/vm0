@@ -49,16 +49,64 @@ fn extract_flag_value(line: &str, flag: &str) -> Option<PathBuf> {
     if after.is_empty() {
         return None;
     }
-    let path_str = if after.starts_with('"') {
-        let end = after.get(1..)?.find('"')?;
-        after.get(1..1 + end)?
+    let path = if after.starts_with('"') {
+        parse_quoted_systemd_value(after.get(1..)?)?
     } else {
         let end = after
             .find(|c: char| c.is_ascii_whitespace())
             .unwrap_or(after.len());
-        after.get(..end)?
+        unescape_systemd_value(after.get(..end)?)
     };
-    Some(PathBuf::from(path_str))
+    Some(PathBuf::from(path))
+}
+
+fn parse_quoted_systemd_value(input: &str) -> Option<String> {
+    let mut value = String::new();
+    let mut chars = input.chars().peekable();
+    while let Some(ch) = chars.next() {
+        match ch {
+            '"' => return Some(value),
+            '\\' => match chars.next() {
+                Some(next @ ('\\' | '"')) => value.push(next),
+                Some(next) => {
+                    value.push('\\');
+                    value.push(next);
+                }
+                None => return None,
+            },
+            '%' if chars.peek() == Some(&'%') => {
+                chars.next();
+                value.push('%');
+            }
+            '%' => value.push('%'),
+            _ => value.push(ch),
+        }
+    }
+    None
+}
+
+fn unescape_systemd_value(input: &str) -> String {
+    let mut value = String::new();
+    let mut chars = input.chars().peekable();
+    while let Some(ch) = chars.next() {
+        match ch {
+            '\\' => match chars.next() {
+                Some(next @ ('\\' | '"')) => value.push(next),
+                Some(next) => {
+                    value.push('\\');
+                    value.push(next);
+                }
+                None => value.push('\\'),
+            },
+            '%' if chars.peek() == Some(&'%') => {
+                chars.next();
+                value.push('%');
+            }
+            '%' => value.push('%'),
+            _ => value.push(ch),
+        }
+    }
+    value
 }
 
 #[cfg(test)]
@@ -80,6 +128,15 @@ mod tests {
         assert_eq!(
             parse_exec_start_config(line),
             Some(PathBuf::from("/opt/my config/runner.yaml"))
+        );
+    }
+
+    #[test]
+    fn parse_config_quoted_path_with_escaped_characters() {
+        let line = r#""/usr/bin/runner" start --config "/tmp/a\"b\\c%%d.yaml""#;
+        assert_eq!(
+            parse_exec_start_config(line),
+            Some(PathBuf::from(r#"/tmp/a"b\c%d.yaml"#))
         );
     }
 
@@ -128,6 +185,15 @@ mod tests {
         assert_eq!(
             parse_exec_start_config(line),
             Some(PathBuf::from("/data/my config/runner.yaml"))
+        );
+    }
+
+    #[test]
+    fn parse_config_equals_form_unescapes_percent() {
+        let line = r#""/usr/bin/runner" start --config=/data/runner%%config.yaml"#;
+        assert_eq!(
+            parse_exec_start_config(line),
+            Some(PathBuf::from("/data/runner%config.yaml"))
         );
     }
 
