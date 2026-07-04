@@ -635,6 +635,81 @@ describe("memory page", () => {
     });
   });
 
+  it("starts Gmail backfill when relationships are already enabled but idle", async () => {
+    context.mocks.api(zeroMemoryActivityContract.get, ({ query, respond }) => {
+      expect(query.limit).toBe(7);
+      return respond(200, memoryActivityPage(query.cursor));
+    });
+    context.mocks.api(zeroMemoryContract.get, ({ respond }) => {
+      return respond(200, memoryDetailResponse());
+    });
+    context.mocks.api(zeroRelationshipsContract.search, ({ respond }) => {
+      return respond(200, { relationships: [] });
+    });
+
+    let status = gmailRelationshipStatus({
+      enabled: true,
+      watchEnabled: true,
+      backfill: {
+        status: "idle",
+        estimatedTotal: null,
+        scannedCount: 0,
+        enqueuedCount: 0,
+        pendingSyncJobs: 0,
+        lastError: null,
+        updatedAt: null,
+        completedAt: null,
+      },
+    });
+    context.mocks.api(zeroRelationshipsContract.gmailStatus, ({ respond }) => {
+      return respond(200, status);
+    });
+    context.mocks.api(zeroRelationshipsContract.gmailEnable, ({ respond }) => {
+      status = gmailRelationshipStatus({
+        enabled: true,
+        watchEnabled: true,
+        backfill: {
+          status: "pending",
+          estimatedTotal: null,
+          scannedCount: 0,
+          enqueuedCount: 0,
+          pendingSyncJobs: 0,
+          lastError: null,
+          updatedAt: `${localDateDaysAgo(0)}T12:00:00Z`,
+          completedAt: null,
+        },
+      });
+      return respond(200, status);
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/memory",
+      featureSwitches: {
+        [FeatureSwitchKey.MemoryViewer]: true,
+        [FeatureSwitchKey.RelationshipMemory]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("launch preferences")).toBeInTheDocument();
+    });
+
+    click(getTabByText("Relationships"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Start backfill")).toBeInTheDocument();
+    });
+
+    click(getButtonContaining("Start backfill"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Watch active - Backfilling Gmail - 0 scanned"),
+      ).toBeInTheDocument();
+    });
+  });
+
   it("shows empty memory activity and raw memory states", async () => {
     context.mocks.api(zeroMemoryActivityContract.get, ({ respond }) => {
       return respond(200, { entries: [], nextCursor: null });
