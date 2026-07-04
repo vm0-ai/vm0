@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.223.0](https://github.com/vm0-ai/vm0/compare/api-v1.222.2...api-v1.223.0) (2026-07-04)
+
+
+### Features
+
+* roll out chat and memory switches to all orgs ([#20145](https://github.com/vm0-ai/vm0/issues/20145)) ([8cd0184](https://github.com/vm0-ai/vm0/commit/8cd0184b1227f36b76a3919f5a3574e96304d511))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.399.0
+    * @vm0/db bumped to 1.91.3
+
 ## [1.222.2](https://github.com/vm0-ai/vm0/compare/api-v1.222.1...api-v1.222.2) (2026-07-04)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.399.0](https://github.com/vm0-ai/vm0/compare/core-v8.398.1...core-v8.399.0) (2026-07-04)
+
+
+### Features
+
+* roll out chat and memory switches to all orgs ([#20145](https://github.com/vm0-ai/vm0/issues/20145)) ([8cd0184](https://github.com/vm0-ai/vm0/commit/8cd0184b1227f36b76a3919f5a3574e96304d511))
+
 ## [8.398.1](https://github.com/vm0-ai/vm0/compare/core-v8.398.0...core-v8.398.1) (2026-07-04)
 
 
