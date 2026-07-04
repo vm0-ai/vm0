@@ -2,6 +2,7 @@ import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-s
 import {
   zeroConnectorCatalogContract,
   type PublicConnectorCatalogPermissionDetail,
+  type PublicConnectorCatalogStatusItem,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import {
@@ -85,6 +86,45 @@ function connectedConnector(
   };
 }
 
+function publicConnectorStatusItem(
+  overrides: Partial<PublicConnectorCatalogStatusItem> &
+    Pick<PublicConnectorCatalogStatusItem, "connectorRef" | "label">,
+): PublicConnectorCatalogStatusItem {
+  const { connectorRef, label, ...rest } = overrides;
+  return {
+    connectorRef,
+    label,
+    description: `${label} public help text`,
+    category: "data-automation-infrastructure",
+    generation: [],
+    tags: [],
+    authMethods: [],
+    permissionSummary: {
+      hasPermissions: false,
+      permissionCount: 0,
+      hasCategories: false,
+      hasDefaultPolicyOverrides: false,
+    },
+    connection: null,
+    connected: false,
+    connectionStatus: "not-connected",
+    scopeMismatch: false,
+    authMethodSupportsRefresh: false,
+    tokenExpiresAt: null,
+    singleAuthCodeAuthMethodId: null,
+    connectNotice: null,
+    ...rest,
+  };
+}
+
+function mockConnectorCatalogStatus(
+  connectors: readonly PublicConnectorCatalogStatusItem[],
+): void {
+  context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
+    return respond(200, { connectors: [...connectors] });
+  });
+}
+
 function mockAgentConnectorAuthorizations(
   initialTypes: readonly string[],
 ): void {
@@ -160,6 +200,21 @@ describe("chat message action cards", () => {
         externalUsername: "octocat",
       }),
     ]);
+    mockConnectorCatalogStatus([
+      publicConnectorStatusItem({
+        connectorRef: "github",
+        label: "Catalog GitHub",
+        description: "Catalog GitHub server help text",
+        connected: true,
+        connectionStatus: "connected",
+        connection: {
+          authMethod: "oauth",
+          externalUsername: "octocat",
+          externalEmail: null,
+          reconnectReason: null,
+        },
+      }),
+    ]);
     mockAgentConnectorAuthorizations([]);
     context.mocks.api(
       zeroConnectorCatalogContract.permissions,
@@ -227,7 +282,12 @@ describe("chat message action cards", () => {
     });
 
     const connectorCard = await screen.findByTestId("connector-action-card");
-    expect(within(connectorCard).getByText("GitHub")).toBeInTheDocument();
+    expect(
+      within(connectorCard).getByText("Catalog GitHub"),
+    ).toBeInTheDocument();
+    expect(
+      within(connectorCard).getByText("Catalog GitHub server help text"),
+    ).toBeInTheDocument();
     await user.click(within(connectorCard).getByText("Connect"));
 
     await waitFor(() => {
@@ -264,6 +324,47 @@ describe("chat message action cards", () => {
         ],
       });
     });
+  });
+
+  it("does not render connector action cards when catalog metadata is hidden", async () => {
+    const connectorAuthorizeUrl = `https://app.vm0.ai/connectors/github/authorize?agentId=${AGENT_ID}`;
+    mockConnectorCatalogStatus([]);
+    mockChatLifecycle(context, {
+      threadId: `${THREAD_ID}-hidden-connector-metadata`,
+      threadTitle: "Hidden connector metadata",
+      chatMessages: [
+        {
+          id: "msg-user-hidden-connector",
+          role: "user",
+          content: "Connect hidden catalog connector",
+          runId: "run-hidden-connector",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-assistant-hidden-connector-card",
+          role: "assistant",
+          content: connectorAuthorizeUrl,
+          runId: "run-hidden-connector",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}-hidden-connector-metadata`,
+    });
+
+    const userMessage = await screen.findByText(
+      "Connect hidden catalog connector",
+    );
+    expect(userMessage).toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("connector-action-card"),
+      ).not.toBeInTheDocument();
+    });
+    expect(screen.queryByText("GitHub")).not.toBeInTheDocument();
   });
 
   it("fails closed when permission action metadata is hidden", async () => {

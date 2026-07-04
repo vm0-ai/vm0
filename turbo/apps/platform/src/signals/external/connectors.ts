@@ -5,6 +5,7 @@ import {
 } from "@vm0/api-contracts/contracts/zero-connectors";
 import {
   zeroConnectorCatalogContract,
+  type PublicConnectorCatalogStatusItem,
   type PublicConnectorCatalogStatusResponse,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import type { ConnectorType } from "@vm0/connectors/connectors";
@@ -12,6 +13,12 @@ import type { ConnectorListResponse } from "@vm0/api-contracts/contracts/connect
 import { zeroClient$ } from "../api-client";
 import { accept } from "../../lib/accept.ts";
 import { featureSwitch$ } from "./feature-switch.ts";
+
+export interface ConnectorCatalogDisplayMetadata {
+  readonly connectorRef: string;
+  readonly label: string;
+  readonly helpText: string;
+}
 
 /**
  * Reload trigger for connector signals.
@@ -47,6 +54,37 @@ export const connectorCatalogStatus$ = computed(async (get) => {
   const client = createClient(zeroConnectorCatalogContract);
   const result = await accept(client.status(), [200]);
   return result.body as PublicConnectorCatalogStatusResponse;
+});
+
+export const connectorCatalogStatusByRef$ = computed(async (get) => {
+  const { connectors } = await get(connectorCatalogStatus$);
+  return new Map(
+    connectors.map((connector) => {
+      return [connector.connectorRef, connector];
+    }),
+  );
+});
+
+function connectorCatalogDisplayMetadata(
+  connector: PublicConnectorCatalogStatusItem,
+): ConnectorCatalogDisplayMetadata {
+  return {
+    connectorRef: connector.connectorRef,
+    label: connector.label,
+    helpText: connector.description,
+  };
+}
+
+export const connectorCatalogDisplayMetadataByRef$ = computed(async (get) => {
+  const connectorsByRef = await get(connectorCatalogStatusByRef$);
+  return new Map(
+    [...connectorsByRef.values()].map((connector) => {
+      return [
+        connector.connectorRef,
+        connectorCatalogDisplayMetadata(connector),
+      ];
+    }),
+  );
 });
 
 /**

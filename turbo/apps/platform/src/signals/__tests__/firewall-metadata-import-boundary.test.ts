@@ -119,4 +119,22 @@ describe("firewall metadata import boundary", () => {
       }),
     ).toStrictEqual([]);
   });
+
+  it("keeps static connector registry values out of platform production source", () => {
+    const offenders = Object.entries(productionSourceModules)
+      .map(([path, source]) => {
+        return { path: sourcePathFromGlobKey(path), source };
+      })
+      .filter(({ path, source }) => {
+        return (
+          isProductionSourcePath(path) && source.includes("CONNECTOR_TYPES")
+        );
+      });
+
+    expect(
+      offenders.map((offender) => {
+        return offender.path;
+      }),
+    ).toStrictEqual([]);
+  });
 });
