@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.223.0](https://github.com/vm0-ai/vm0/compare/cli-v9.222.12...cli-v9.223.0) (2026-07-04)
+
+
+### Features
+
+* add relationship memory foundation ([#20077](https://github.com/vm0-ai/vm0/issues/20077)) ([805a79e](https://github.com/vm0-ai/vm0/commit/805a79ed91fc55a6261bf6f7180fa4b3c663af7d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.151.0
+    * @vm0/connectors bumped to 1.133.0
+    * @vm0/core bumped to 8.396.0
+
 ## [9.222.12](https://github.com/vm0-ai/vm0/compare/cli-v9.222.11...cli-v9.222.12) (2026-07-03)
 
 
