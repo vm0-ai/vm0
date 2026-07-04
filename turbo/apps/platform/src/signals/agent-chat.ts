@@ -15,8 +15,6 @@ import {
   reloadChatThreadsCounter$,
   reloadChatUnreadStateCounter$,
 } from "./chat-thread-list-reload.ts";
-import { clerk$ } from "./auth.ts";
-import { readThreadMeta$ } from "./external/idb-thread-meta-store.ts";
 import { chatThreadOnlyUnread$ } from "./chat-page/chat-thread-only-unread.ts";
 import {
   chatThreadMaxItem$,
@@ -51,20 +49,7 @@ const currentChatThreadAgentId$ = computed(
     if (!threadId) {
       return null;
     }
-
-    const clerk = await get(clerk$);
-    const userId = clerk.user?.id;
-    const orgId = clerk.organization?.id;
-    if (!userId || !orgId) {
-      return null;
-    }
-
-    const meta = await readThreadMeta$(userId, orgId, threadId);
-    return (
-      meta?.agentId ??
-      (await get(eventDrivenChatThreadMeta(threadId)))?.agentId ??
-      null
-    );
+    return (await get(eventDrivenChatThreadMeta(threadId)))?.agentId ?? null;
   },
 );
 

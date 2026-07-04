@@ -1,4 +1,4 @@
-import { command, computed } from "ccstate";
+import { command, computed, state } from "ccstate";
 import {
   chatThreadMessagesContract,
   type PagedChatMessage,
@@ -11,10 +11,6 @@ import {
   chatIdbWriteBestEffort,
 } from "../external/chat-idb-safe.ts";
 import { createIdbMessageStores } from "../external/idb-message-store.ts";
-import {
-  patchThreadMeta$,
-  readThreadMeta$,
-} from "../external/idb-thread-meta-store.ts";
 import { logger } from "../log.ts";
 import type { ChatThread } from "../agent-chat.ts";
 import { createRemoteChatThreadDataSource } from "./remote-chat-thread-data-source.ts";
@@ -31,12 +27,45 @@ import type {
 
 const L = logger("ChatIdbCache");
 const MESSAGE_PAGE_SIZE = 50;
+const threadStartMessageIds$ = state<ReadonlyMap<string, string>>(new Map());
 
 type Stores = ReturnType<typeof createIdbMessageStores>;
 type ListMessagesAfterResult = {
   messages: PagedChatMessage[];
   reachedEnd: boolean;
 };
+
+function threadStartMessageKey(
+  userId: string,
+  orgId: string,
+  threadId: string,
+): string {
+  return `${userId}:${orgId}:${threadId}`;
+}
+
+function readThreadStartMessageId(
+  threadStartMessageIds: ReadonlyMap<string, string>,
+  userId: string,
+  orgId: string,
+  threadId: string,
+): string | null {
+  return (
+    threadStartMessageIds.get(threadStartMessageKey(userId, orgId, threadId)) ??
+    null
+  );
+}
+
+function rememberThreadStartMessageId(
+  threadStartMessageIds: ReadonlyMap<string, string>,
+  userId: string,
+  orgId: string,
+  threadId: string,
+  startMessageId: string,
+): ReadonlyMap<string, string> {
+  const next = new Map(threadStartMessageIds);
+  next.set(threadStartMessageKey(userId, orgId, threadId), startMessageId);
+  return next;
+}
 
 function eventDrivenThreadToChatThread(
   thread: EventDrivenChatThread,
@@ -209,19 +238,16 @@ function createListMessagesBefore(
 
       const stores = getStores(userId, orgId);
       const readStore = stores.readStore;
-      const meta = await chatIdbReadOr(
-        "cachedDataSource:readThreadMetaBefore",
-        () => {
-          return readThreadMeta$(userId, orgId, tid, signal);
-        },
-        null,
-        signal,
-      );
       const cached = await readCachedMessagesBeforeUntilMiss(
         readStore,
         tid,
         beforeId,
-        meta?.startMessageId ?? null,
+        readThreadStartMessageId(
+          get(threadStartMessageIds$),
+          userId,
+          orgId,
+          tid,
+        ),
         signal,
       );
 
@@ -259,19 +285,15 @@ function createListMessagesBefore(
 
       if (!result.hasMore) {
         const startMessageId = result.messages[0]?.id ?? beforeId;
-        await chatIdbWriteBestEffort(
-          "cachedDataSource:patchThreadMetaBefore",
-          () => {
-            return patchThreadMeta$(
-              userId,
-              orgId,
-              tid,
-              { startMessageId },
-              signal,
-            );
-          },
-          signal,
-        );
+        set(threadStartMessageIds$, (previous) => {
+          return rememberThreadStartMessageId(
+            previous,
+            userId,
+            orgId,
+            tid,
+            startMessageId,
+          );
+        });
       }
 
       return result;
@@ -514,14 +536,12 @@ export function createIdbCachedDataSource(
     );
 
     if (cached.length > 0) {
-      const meta = await chatIdbReadOr(
-        "cachedDataSource:initialReadThreadMeta",
-        () => {
-          return readThreadMeta$(userId, orgId, threadId);
-        },
-        null,
+      const startMessageId = readThreadStartMessageId(
+        get(threadStartMessageIds$),
+        userId,
+        orgId,
+        threadId,
       );
-      const startMessageId = meta?.startMessageId ?? null;
       const hasReachedStart = reachedStart(cached, startMessageId);
       const needsHistoryBackfill = !hasReachedStart && startMessageId === null;
       const hasHistoryBefore = !hasReachedStart && !needsHistoryBackfill;
@@ -545,17 +565,6 @@ export function createIdbCachedDataSource(
       threadId,
       count: page.messages.length,
     });
-
-    if (!page.hasHistoryBefore && page.messages.length > 0) {
-      await chatIdbWriteBestEffort(
-        "cachedDataSource:initialPatchThreadMeta",
-        () => {
-          return patchThreadMeta$(userId, orgId, threadId, {
-            startMessageId: page.messages[0].id,
-          });
-        },
-      );
-    }
 
     return page;
   });
