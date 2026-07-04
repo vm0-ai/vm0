@@ -7,9 +7,13 @@ import {
   IconSearch,
 } from "@tabler/icons-react";
 import { Card, CardContent, cn, Input } from "@vm0/ui";
-import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
+import {
+  ConnectorIcon,
+  isConnectorIconType,
+} from "./components/settings/connector-icons.tsx";
 import { getCategories } from "./zero-ideation-data.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+import { connectorCatalogStatusByRef$ } from "../../signals/external/connectors.ts";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { currentAgentId$ } from "../../signals/agent.ts";
 import {
@@ -20,7 +24,12 @@ import {
 } from "../../signals/zero-page/zero-ideation.ts";
 export function ZeroIdeationPage() {
   const features = useLastResolved(featureSwitch$);
-  const categories = getCategories(features).slice(0, 5);
+  const connectorStatusByRef = useLastResolved(connectorCatalogStatusByRef$);
+  const visibleConnectorRefs = new Set(connectorStatusByRef?.keys() ?? []);
+  const categories = getCategories({
+    features,
+    visibleConnectorRefs,
+  }).slice(0, 5);
   const activeTab = useGet(ideationActiveTab$);
   const setActiveTab = useSet(setIdeationActiveTab$);
   const searchQuery = useGet(ideationSearchQuery$);
@@ -184,6 +193,9 @@ export function ZeroIdeationPage() {
 
                       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                         {category.cases.map((useCase) => {
+                          const connectorIconTypes =
+                            useCase.connectors?.filter(isConnectorIconType) ??
+                            [];
                           return (
                             <Card
                               key={useCase.title}
@@ -204,24 +216,23 @@ export function ZeroIdeationPage() {
                                 <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
                                   {useCase.description}
                                 </p>
-                                {useCase.connectors &&
-                                  useCase.connectors.length > 0 && (
-                                    <div className="flex items-center gap-1.5 mt-2.5">
-                                      {useCase.connectors.map((type) => {
-                                        return (
-                                          <span
-                                            key={type}
-                                            className="flex h-7 w-7 items-center justify-center rounded-md border border-border/60 bg-background"
-                                          >
-                                            <ConnectorIcon
-                                              type={type}
-                                              size={14}
-                                            />
-                                          </span>
-                                        );
-                                      })}
-                                    </div>
-                                  )}
+                                {connectorIconTypes.length > 0 && (
+                                  <div className="flex items-center gap-1.5 mt-2.5">
+                                    {connectorIconTypes.map((type) => {
+                                      return (
+                                        <span
+                                          key={type}
+                                          className="flex h-7 w-7 items-center justify-center rounded-md border border-border/60 bg-background"
+                                        >
+                                          <ConnectorIcon
+                                            type={type}
+                                            size={14}
+                                          />
+                                        </span>
+                                      );
+                                    })}
+                                  </div>
+                                )}
                               </CardContent>
                             </Card>
                           );

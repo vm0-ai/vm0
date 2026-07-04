@@ -2,6 +2,7 @@ import { command, computed, state } from "ccstate";
 import { talkDraft$ } from "./chat-draft.ts";
 import { getRandomPrompts } from "../../views/zero-page/zero-ideation-data.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
+import { connectorCatalogStatusByRef$ } from "../external/connectors.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import { userModelPreference$ } from "../external/user-model-preference.ts";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
@@ -33,7 +34,11 @@ export const chatPageTaglineIndex$ = computed((get) => {
 
 export const suggestedPrompts$ = computed(async (get) => {
   const features = await get(featureSwitch$);
-  return getRandomPrompts(2, features);
+  const connectorStatusByRef = await get(connectorCatalogStatusByRef$);
+  return getRandomPrompts(2, {
+    features,
+    visibleConnectorRefs: new Set(connectorStatusByRef.keys()),
+  });
 });
 
 // ---------------------------------------------------------------------------

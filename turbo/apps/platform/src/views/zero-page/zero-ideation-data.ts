@@ -1,18 +1,22 @@
-import type { ConnectorType } from "@vm0/connectors/connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
-interface UseCase {
+export interface UseCase {
   readonly title: string;
   readonly description: string;
   readonly prompt: string;
-  readonly connectors?: readonly ConnectorType[];
+  readonly connectors?: readonly string[];
   readonly featureFlag?: FeatureSwitchKey;
 }
 
-interface Category {
+export interface Category {
   readonly id: string;
   readonly title: string;
   readonly cases: readonly UseCase[];
+}
+
+interface IdeationFilterOptions {
+  readonly features?: Partial<Record<FeatureSwitchKey, boolean>>;
+  readonly visibleConnectorRefs: ReadonlySet<string>;
 }
 
 const categories: readonly Category[] = [
@@ -639,15 +643,40 @@ function isEnabled(
   return !!features?.[useCase.featureFlag];
 }
 
+function filterUseCase(
+  useCase: UseCase,
+  options: IdeationFilterOptions,
+): UseCase | null {
+  if (!isEnabled(useCase, options.features)) {
+    return null;
+  }
+
+  if (!useCase.connectors) {
+    return useCase;
+  }
+
+  const connectors = useCase.connectors.filter((connectorRef) => {
+    return options.visibleConnectorRefs.has(connectorRef);
+  });
+  if (connectors.length === 0) {
+    return null;
+  }
+  if (connectors.length === useCase.connectors.length) {
+    return useCase;
+  }
+  return { ...useCase, connectors };
+}
+
 export function getCategories(
-  features?: Partial<Record<FeatureSwitchKey, boolean>>,
+  options: IdeationFilterOptions,
 ): readonly Category[] {
   return categories
     .map((c) => {
       return {
         ...c,
-        cases: c.cases.filter((u) => {
-          return isEnabled(u, features);
+        cases: c.cases.flatMap((u) => {
+          const useCase = filterUseCase(u, options);
+          return useCase ? [useCase] : [];
         }),
       };
     })
@@ -658,11 +687,11 @@ export function getCategories(
 
 export function getRandomPrompts(
   count: number,
-  features?: Partial<Record<FeatureSwitchKey, boolean>>,
+  options: IdeationFilterOptions,
 ): UseCase[] {
-  const all = categories.flatMap((c) => {
+  const all = getCategories(options).flatMap((c) => {
     return c.cases.filter((u) => {
-      return u.connectors && u.connectors.length > 0 && isEnabled(u, features);
+      return u.connectors && u.connectors.length > 0;
     });
   });
   const shuffled = [...all].sort(() => {
