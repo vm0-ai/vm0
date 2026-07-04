@@ -1,36 +1,24 @@
 import type { ModelProviderType } from "@vm0/api-contracts/contracts/model-providers";
 import { cn } from "@vm0/ui";
-
-import anthropicIcon from "./icons/anthropic.svg";
-import azureIcon from "./icons/azure.svg";
-import bedrockIcon from "./icons/bedrock.svg";
-import chatglmIcon from "./icons/chatglm.svg";
-import claudeCodeIcon from "./icons/claude-code.svg";
-import deepseekIcon from "./icons/deepseek.svg";
-import kimiIcon from "./icons/kimi.svg";
-import minimaxIcon from "./icons/minimax.svg";
-import openaiIcon from "./icons/openai.svg";
-import openrouterIcon from "./icons/openrouter.svg";
-import vercelIcon from "./icons/vercel.svg";
-import vm0Icon from "./icons/vm0.svg";
+import { settingsIconAssetUrl } from "./settings-icon-assets.ts";
 
 const PROVIDER_ICONS: Readonly<Record<ModelProviderType, string>> =
   Object.freeze({
-    "claude-code-oauth-token": claudeCodeIcon,
-    "anthropic-api-key": anthropicIcon,
-    "openrouter-api-key": openrouterIcon,
-    "minimax-api-key": minimaxIcon,
-    "deepseek-api-key": deepseekIcon,
-    "zai-api-key": chatglmIcon,
-    "moonshot-api-key": kimiIcon,
-    "vercel-ai-gateway": vercelIcon,
-    "openrouter-codex": openrouterIcon,
-    "vercel-ai-gateway-codex": vercelIcon,
-    "openai-api-key": openaiIcon,
-    "codex-oauth-token": openaiIcon,
-    "azure-foundry": azureIcon,
-    "aws-bedrock": bedrockIcon,
-    vm0: vm0Icon,
+    "claude-code-oauth-token": settingsIconAssetUrl("claude-code"),
+    "anthropic-api-key": settingsIconAssetUrl("anthropic"),
+    "openrouter-api-key": settingsIconAssetUrl("openrouter"),
+    "minimax-api-key": settingsIconAssetUrl("minimax"),
+    "deepseek-api-key": settingsIconAssetUrl("deepseek"),
+    "zai-api-key": settingsIconAssetUrl("chatglm"),
+    "moonshot-api-key": settingsIconAssetUrl("kimi"),
+    "vercel-ai-gateway": settingsIconAssetUrl("vercel"),
+    "openrouter-codex": settingsIconAssetUrl("openrouter"),
+    "vercel-ai-gateway-codex": settingsIconAssetUrl("vercel"),
+    "openai-api-key": settingsIconAssetUrl("openai"),
+    "codex-oauth-token": settingsIconAssetUrl("openai"),
+    "azure-foundry": settingsIconAssetUrl("azure"),
+    "aws-bedrock": settingsIconAssetUrl("bedrock"),
+    vm0: settingsIconAssetUrl("vm0"),
   });
 
 const DARK_INVERT_PROVIDER_ICONS: Readonly<

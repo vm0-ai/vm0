@@ -1,6 +1,11 @@
 import { IconMoon, IconSun } from "@tabler/icons-react";
 import { useGet, useSet } from "ccstate-react";
 import type { ReactNode } from "react";
+import {
+  platformCheckmarkPrimaryImg,
+  platformVm0LogoDarkImg,
+  platformVm0LogoImg,
+} from "../../lib/static-assets.ts";
 import { setTheme$, theme$ } from "../../signals/theme.ts";
 
 const CLERK_CSS = `
@@ -329,7 +334,7 @@ a[class*="resendCode"] {
 .cl-formFieldCheckboxInput input[type="checkbox"]:checked {
   background-color: transparent !important;
   border-color: hsl(var(--primary)) !important;
-  background-image: url("/checkmark-primary.svg") !important;
+  background-image: url("${platformCheckmarkPrimaryImg}") !important;
   background-repeat: no-repeat !important;
   background-position: center !important;
   background-size: 70% !important;
@@ -388,8 +393,8 @@ export function AuthLayout({ children }: AuthLayoutProps) {
           <img
             src={
               theme === "dark"
-                ? "/assets/vm0-logo.svg"
-                : "/assets/vm0-logo-dark.svg"
+                ? platformVm0LogoImg
+                : platformVm0LogoDarkImg
             }
             alt="VM0"
             width={82}

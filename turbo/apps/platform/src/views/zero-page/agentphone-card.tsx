@@ -54,7 +54,9 @@ import {
 import { AGENTPHONE_SMS_MMS_CONNECT_RISK_MESSAGE } from "../../signals/zero-page/agentphone-connect-params.ts";
 import { writeToClipboard } from "../../signals/zero-page/clipboard.ts";
 import { detach, Reason } from "../../signals/utils.ts";
-import imessageIconImg from "./components/settings/icons/imessage.svg";
+import { settingsIconAssetUrl } from "./components/settings/settings-icon-assets.ts";
+
+const imessageIconImg = settingsIconAssetUrl("imessage");
 
 /** Render a US/Canada E.164 number as `+1 (NXX) NXX-XXXX`; other formats are
  *  returned unchanged. */

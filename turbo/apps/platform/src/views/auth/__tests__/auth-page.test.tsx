@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { mockedClerk } from "../../../__tests__/mock-auth.ts";
+import { platformVm0LogoDarkImg } from "../../../lib/static-assets.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 
@@ -54,7 +55,7 @@ describe("app auth pages", () => {
     expect(screen.getByTestId("clerk-sign-in")).toHaveTextContent("/sign-in");
     expect(screen.getByAltText("VM0")).toHaveAttribute(
       "src",
-      "/assets/vm0-logo-dark.svg",
+      platformVm0LogoDarkImg,
     );
   });
 

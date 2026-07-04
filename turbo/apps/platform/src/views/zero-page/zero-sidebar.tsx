@@ -19,7 +19,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@vm0/ui";
-import slackIcon from "./components/settings/icons/slack.svg";
+import { settingsIconAssetUrl } from "./components/settings/settings-icon-assets.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   sidebarOff$,
@@ -54,6 +54,8 @@ import { SidebarUpgradeCard } from "./zero-sidebar-upgrade.tsx";
 export { AccountDropdown } from "./zero-sidebar-account.tsx";
 
 type NavIcon = (props: { size?: number; className?: string }) => ReactNode;
+
+const slackIcon = settingsIconAssetUrl("slack");
 
 interface ManageNavItem {
   readonly id: SidebarNavId;
