@@ -674,7 +674,7 @@ jobs:
       - name: Test Other Packages
         working-directory: turbo
         run: pnpm vitest run --project=@vm0/core --project=@vm0/ui --project=@vm0/firewalls-generator --project=@vm0/api-contracts --project=@vm0/db --coverage.enabled --coverage.reporter=json
-      - name: Test Connectors Firewall Semantics Contract
+      - name: Test Connectors Firewall Contracts
         working-directory: turbo
         run: pnpm -F @vm0/connectors exec vitest run src/__tests__/firewall-semantics-contract.test.ts src/__tests__/firewall-base-url-validation-contract.test.ts --reporter=default
       - name: Upload coverage to Codecov
