@@ -20,6 +20,30 @@
     },
     {
       "category": "valid",
+      "name": "static base with default https port",
+      "base": "https://api.example.com:443",
+      "expectedValid": true
+    },
+    {
+      "category": "valid",
+      "name": "static base with trailing host dot",
+      "base": "https://api.example.com.",
+      "expectedValid": true
+    },
+    {
+      "category": "valid",
+      "name": "static ipv6 base",
+      "base": "https://[2001:db8::1]",
+      "expectedValid": true
+    },
+    {
+      "category": "valid",
+      "name": "percent-encoded unicode host is valid",
+      "base": "https://%E2%98%83.example.com",
+      "expectedValid": true
+    },
+    {
+      "category": "valid",
       "name": "parameterized host base",
       "base": "https://{sub}.example.com",
       "expectedValid": true
@@ -40,6 +64,18 @@
       "category": "valid",
       "name": "parameterized path base",
       "base": "https://api.example.com/v1/{org}",
+      "expectedValid": true
+    },
+    {
+      "category": "valid",
+      "name": "parameterized host with trailing dot",
+      "base": "https://{sub}.example.com.",
+      "expectedValid": true
+    },
+    {
+      "category": "valid",
+      "name": "parameterized path with explicit empty segment",
+      "base": "https://api.example.com/v1//{org}",
       "expectedValid": true
     },
     {
@@ -82,6 +118,18 @@
       "category": "authority",
       "name": "non-numeric port is invalid",
       "base": "https://api.example.com:bad",
+      "expectedValid": false
+    },
+    {
+      "category": "authority",
+      "name": "out-of-range port is invalid",
+      "base": "https://api.example.com:99999",
+      "expectedValid": false
+    },
+    {
+      "category": "authority",
+      "name": "empty host label is invalid",
+      "base": "https://api..example.com",
       "expectedValid": false
     },
     {
@@ -130,6 +178,24 @@
       "category": "parameters",
       "name": "host without static segment is invalid",
       "base": "https://{a}.{b}",
+      "expectedValid": false
+    },
+    {
+      "category": "parameters",
+      "name": "parameterized out-of-range port is invalid",
+      "base": "https://{sub}.example.com:99999",
+      "expectedValid": false
+    },
+    {
+      "category": "parameters",
+      "name": "parameterized empty host label is invalid",
+      "base": "https://{sub}..example.com",
+      "expectedValid": false
+    },
+    {
+      "category": "parameters",
+      "name": "parameterized ipv6 base is invalid",
+      "base": "https://[2001:db8::1]/v1/{org}",
       "expectedValid": false
     },
     {
