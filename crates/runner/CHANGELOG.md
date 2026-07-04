@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.132.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.132.11...runner-rs-v0.132.12) (2026-07-04)
+
+
+### Performance Improvements
+
+* **runner:** avoid preflight guest payload materialization ([#20165](https://github.com/vm0-ai/vm0/issues/20165)) ([6094b05](https://github.com/vm0-ai/vm0/commit/6094b0566638303a687fdc7c178eef50841d3610))
+
 ## [0.132.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.132.10...runner-rs-v0.132.11) (2026-07-04)
 
 
