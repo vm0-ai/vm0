@@ -87,7 +87,16 @@ function gmailBodyData(text: string): string {
     .replace(/=+$/, "");
 }
 
-function configureGmailBackfillMocks(gmailEmail: string): void {
+function configureGmailBackfillMocks(
+  gmailEmail: string,
+  args: { readonly duplicateMessage?: boolean } = {},
+): void {
+  const messages = [
+    { id: "msg-backfill-1", threadId: "thread-backfill-1" },
+    ...(args.duplicateMessage
+      ? [{ id: "msg-backfill-1", threadId: "thread-backfill-1" }]
+      : []),
+  ];
   server.use(
     http.get(
       "https://gmail.googleapis.com/gmail/v1/users/me/messages",
@@ -99,8 +108,8 @@ function configureGmailBackfillMocks(gmailEmail: string): void {
           "newer_than:180d",
         );
         return HttpResponse.json({
-          messages: [{ id: "msg-backfill-1", threadId: "thread-backfill-1" }],
-          resultSizeEstimate: 1,
+          messages,
+          resultSizeEstimate: messages.length,
         });
       },
     ),
@@ -217,6 +226,37 @@ describe("GET /api/zero/relationships/*", () => {
     expect(response.body.error.message).toBe(
       "Relationship memory is not enabled for this organization.",
     );
+  });
+
+  it("does not enqueue duplicate Gmail backfill messages twice", async () => {
+    const fixture = await track(seedRelationshipFixture());
+    const gmailEmail = `relationship-${randomUUID()}@example.com`;
+    configureGmailEnv();
+    configureGmailWatchMock();
+    configureGmailBackfillMocks(gmailEmail, { duplicateMessage: true });
+    await connectGmail(fixture, gmailEmail);
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    await accept(
+      relationshipsClient().gmailEnable({
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+
+    const drained = await accept(
+      cronClient().drain({
+        headers: cronHeaders(),
+      }),
+      [200],
+    );
+
+    expect(drained.body.backfill).toStrictEqual({
+      processed: 1,
+      failed: 0,
+      scanned: 2,
+      enqueued: 1,
+    });
   });
 
   it("enables Gmail relationships and advances historical backfill from cron", async () => {

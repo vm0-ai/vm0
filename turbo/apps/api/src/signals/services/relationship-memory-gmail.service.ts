@@ -256,39 +256,54 @@ export async function enqueueGmailRelationshipRefreshJob(
     gmailMessage,
     reason: args.reason ?? "gmail_webhook",
   };
+  const priority = args.priority ?? 0;
+  const dedupeKey = gmailRefreshDedupeKey({
+    orgId: args.orgId,
+    userId: args.userId,
+    messageId: args.message.messageId,
+  });
+  const jobValues: typeof relationshipSyncJobs.$inferInsert = {
+    orgId: args.orgId,
+    userId: args.userId,
+    kind: "gmail_relationship_refresh",
+    provider: "gmail",
+    status: "pending",
+    priority,
+    dedupeKey,
+    payload,
+    runAfterAt: currentTime,
+    attempts: 0,
+    createdAt: currentTime,
+    updatedAt: currentTime,
+  };
 
-  await db
-    .insert(relationshipSyncJobs)
-    .values({
-      orgId: args.orgId,
-      userId: args.userId,
-      kind: "gmail_relationship_refresh",
-      provider: "gmail",
-      status: "pending",
-      priority: args.priority ?? 0,
-      dedupeKey: gmailRefreshDedupeKey({
-        orgId: args.orgId,
-        userId: args.userId,
-        messageId: args.message.messageId,
-      }),
-      payload,
-      runAfterAt: currentTime,
-      attempts: 0,
-      createdAt: currentTime,
-      updatedAt: currentTime,
-    })
-    .onConflictDoUpdate({
-      target: relationshipSyncJobs.dedupeKey,
-      set: {
-        status: "pending",
-        payload,
-        priority: args.priority ?? 0,
-        runAfterAt: currentTime,
-        lockedAt: null,
-        lastError: null,
-        updatedAt: currentTime,
-      },
-    });
+  if (args.reason === "gmail_backfill") {
+    const inserted = await db
+      .insert(relationshipSyncJobs)
+      .values(jobValues)
+      .onConflictDoNothing({ target: relationshipSyncJobs.dedupeKey })
+      .returning({ id: relationshipSyncJobs.id });
+
+    if (inserted.length === 0) {
+      return false;
+    }
+  } else {
+    await db
+      .insert(relationshipSyncJobs)
+      .values(jobValues)
+      .onConflictDoUpdate({
+        target: relationshipSyncJobs.dedupeKey,
+        set: {
+          status: "pending",
+          payload,
+          priority,
+          runAfterAt: currentTime,
+          lockedAt: null,
+          lastError: null,
+          updatedAt: currentTime,
+        },
+      });
+  }
 
   await db
     .insert(relationshipMemorySettings)
