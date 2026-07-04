@@ -2,7 +2,10 @@ import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { HttpResponse, http } from "msw";
 
-import { zeroPersonalModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-personal-model-providers";
+import {
+  zeroPersonalModelProvidersByTypeContract,
+  zeroPersonalModelProvidersMainContract,
+} from "@vm0/api-contracts/contracts/zero-personal-model-providers";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
@@ -46,6 +49,7 @@ function makeJwt(payload: Record<string, unknown>): string {
 function makeIdToken(opts: {
   accountId: string;
   planType: string;
+  email?: string;
   workspaceName?: string;
 }): string {
   const auth: Record<string, unknown> = {
@@ -56,6 +60,7 @@ function makeIdToken(opts: {
     auth.organization = { title: opts.workspaceName };
   }
   return makeJwt({
+    email: opts.email ?? "codex.user@example.com",
     "https://api.openai.com/auth": auth,
     exp: Math.floor(now() / 1000) + 3600,
   });
@@ -277,6 +282,9 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
               used_percent: 40,
             },
           },
+          rate_limit_reset_credits: {
+            available_count: 3,
+          },
         });
       }),
     );
@@ -316,6 +324,8 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
     expect(listed.body.modelProviders).toHaveLength(1);
     expect(listed.body.modelProviders[0]).toMatchObject({
       type: "codex-oauth-token",
+      accountEmail: "codex.user@example.com",
+      subscriptionResetCredits: 3,
       subscriptionUsage: {
         fiveHour: {
           usedPercent: 25,
@@ -331,6 +341,66 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
         },
       },
     });
+  });
+
+  it("consumes a Codex subscription reset credit", async () => {
+    const fixture = uniqueOrgUser("zmmp-codex-reset");
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const idempotencyKey = randomUUID();
+    server.use(
+      http.get("https://chatgpt.com/backend-api/wham/usage", () => {
+        return HttpResponse.json({
+          plan_type: "pro",
+          rate_limit_reset_credits: {
+            available_count: 2,
+          },
+        });
+      }),
+      http.post(
+        "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume",
+        async ({ request }) => {
+          expect(request.headers.get("chatgpt-account-id")).toBe(
+            "ws_acct_from_id_token_personal",
+          );
+          expect(await request.json()).toEqual({
+            redeem_request_id: idempotencyKey,
+          });
+          return HttpResponse.json({
+            code: "reset",
+            windows_reset: 2,
+          });
+        },
+      ),
+    );
+
+    const mainClient = setupApp({ context })(
+      zeroPersonalModelProvidersMainContract,
+    );
+    await accept(
+      mainClient.upsert({
+        body: {
+          type: "codex-oauth-token",
+          authMethod: "auth_json",
+          secrets: { CODEX_AUTH_JSON: makeAuthJson() },
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [201],
+    );
+
+    const byTypeClient = setupApp({ context })(
+      zeroPersonalModelProvidersByTypeContract,
+    );
+    const response = await accept(
+      byTypeClient.resetSubscriptionUsage({
+        params: { type: "codex-oauth-token" },
+        body: { idempotencyKey },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toEqual({ outcome: "reset" });
   });
 
   it("returns 400 CODEX_AUTH_JSON_SHAPE_INVALID on malformed JSON", async () => {

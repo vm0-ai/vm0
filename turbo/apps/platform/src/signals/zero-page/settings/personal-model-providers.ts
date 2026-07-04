@@ -7,6 +7,7 @@ import {
 import {
   deletePersonalModelProvider$,
   personalModelProviders$,
+  resetPersonalCodexSubscriptionUsage$ as resetPersonalCodexSubscriptionUsageRequest$,
 } from "../../external/personal-model-providers.ts";
 
 // ---------------------------------------------------------------------------
@@ -39,6 +40,41 @@ export const disconnectPersonalOAuthCredential$ = command(
       await set(deletePersonalModelProvider$, providerType, signal);
       signal.throwIfAborted();
       toast.success(`${providerLabel} disconnected`);
+    })();
+
+    set(internalPersonalActionPromise$, promise);
+    signal.addEventListener("abort", () => {
+      set(internalPersonalActionPromise$, null);
+    });
+
+    await promise;
+    signal.throwIfAborted();
+  },
+);
+
+export const resetPersonalCodexSubscriptionUsage$ = command(
+  async ({ set }, signal: AbortSignal) => {
+    const promise = (async () => {
+      const result = await set(resetPersonalCodexSubscriptionUsageRequest$, {
+        idempotencyKey: crypto.randomUUID(),
+        signal,
+      });
+      signal.throwIfAborted();
+
+      switch (result.outcome) {
+        case "reset":
+          toast.success("Codex usage reset");
+          break;
+        case "nothingToReset":
+          toast.info("Codex usage does not need a reset right now");
+          break;
+        case "noCredit":
+          toast.error("No Codex usage resets available");
+          break;
+        case "alreadyRedeemed":
+          toast.success("Codex usage reset");
+          break;
+      }
     })();
 
     set(internalPersonalActionPromise$, promise);

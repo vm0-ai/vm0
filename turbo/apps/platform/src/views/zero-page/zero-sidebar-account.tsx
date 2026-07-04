@@ -1,5 +1,6 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
+import { useState } from "react";
 import {
   useGet,
   useLoadable,
@@ -50,6 +51,11 @@ import { openSettingsDialogAt$ } from "../../signals/zero-page/settings/settings
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import { billingStatusAsync$ } from "../../signals/zero-page/billing.ts";
+import {
+  personalActionPromise$,
+  resetPersonalCodexSubscriptionUsage$,
+} from "../../signals/zero-page/settings/personal-model-providers.ts";
+import { CodexResetUsageDialog } from "./components/preferences/codex-reset-usage-dialog.tsx";
 import {
   AccountMenuSubscriptionsPanel,
   useSubscriptionUsageRows,
@@ -222,10 +228,14 @@ function CurrentAccountHeader({
 
 function AccountUsageGroup({
   onOpenCreditBalance,
+  onResetCodexUsage,
+  resetPending,
   subscriptionRowsCacheKey,
   subscriptionsEnabled,
 }: {
   onOpenCreditBalance: () => void;
+  onResetCodexUsage: (resetCredits: number | null) => void;
+  resetPending: boolean;
   subscriptionRowsCacheKey: AccountMenuSubscriptionUsageRowsCacheKey;
   subscriptionsEnabled: boolean;
 }) {
@@ -237,10 +247,14 @@ function AccountUsageGroup({
     return isAdmin ? (
       <AccountUsageGroupWithCredit
         onOpenCreditBalance={onOpenCreditBalance}
+        onResetCodexUsage={onResetCodexUsage}
+        resetPending={resetPending}
         subscriptionRowsCacheKey={subscriptionRowsCacheKey}
       />
     ) : (
       <AccountSubscriptionsGroup
+        onResetCodexUsage={onResetCodexUsage}
+        resetPending={resetPending}
         subscriptionRowsCacheKey={subscriptionRowsCacheKey}
       />
     );
@@ -284,9 +298,13 @@ function AccountCreditBalanceGroup({
 
 function AccountUsageGroupWithCredit({
   onOpenCreditBalance,
+  onResetCodexUsage,
+  resetPending,
   subscriptionRowsCacheKey,
 }: {
   onOpenCreditBalance: () => void;
+  onResetCodexUsage: (resetCredits: number | null) => void;
+  resetPending: boolean;
   subscriptionRowsCacheKey: AccountMenuSubscriptionUsageRowsCacheKey;
 }) {
   const billingLoadable = useLastLoadable(billingStatusAsync$);
@@ -320,6 +338,8 @@ function AccountUsageGroupWithCredit({
       {showSubscriptions && (
         <AccountMenuSubscriptionsPanel
           loading={subscriptionsLoading}
+          onResetCodexUsage={onResetCodexUsage}
+          resetPending={resetPending}
           rows={rows}
         />
       )}
@@ -329,8 +349,12 @@ function AccountUsageGroupWithCredit({
 }
 
 function AccountSubscriptionsGroup({
+  onResetCodexUsage,
+  resetPending,
   subscriptionRowsCacheKey,
 }: {
+  onResetCodexUsage: (resetCredits: number | null) => void;
+  resetPending: boolean;
   subscriptionRowsCacheKey: AccountMenuSubscriptionUsageRowsCacheKey;
 }) {
   const { loading, rows } = useSubscriptionUsageRows({
@@ -344,7 +368,12 @@ function AccountSubscriptionsGroup({
 
   return (
     <>
-      <AccountMenuSubscriptionsPanel loading={loading} rows={rows} />
+      <AccountMenuSubscriptionsPanel
+        loading={loading}
+        onResetCodexUsage={onResetCodexUsage}
+        resetPending={resetPending}
+        rows={rows}
+      />
       <DropdownMenuSeparator />
     </>
   );
@@ -558,11 +587,19 @@ export function AccountDropdown({
   const selectNav = useSet(handleZeroNavSelect$);
   const openSettings = useSet(openSettingsDialogAt$);
   const reloadSubscriptions = useSet(reloadAccountMenuSubscriptionUsageRows$);
+  const resetCodexSubscriptionUsage = useSet(
+    resetPersonalCodexSubscriptionUsage$,
+  );
+  const actionLoadable = useLoadable(personalActionPromise$);
   const setSidebarExpanded = useSet(setSidebarExpanded$);
   const suppressUnauthorizedRedirectForAuthTransition = useSet(
     suppressUnauthorizedRedirectForAuthTransition$,
   );
   const pageSignal = useGet(pageSignal$);
+  const [resetCodexConfirmOpen, setResetCodexConfirmOpen] = useState(false);
+  const [resetCodexCredits, setResetCodexCredits] = useState<number | null>(
+    null,
+  );
 
   const current = accounts.find((a) => {
     return a.isActive;
@@ -576,6 +613,7 @@ export function AccountDropdown({
   const others = accounts.filter((a) => {
     return !a.isActive;
   });
+  const actionPending = actionLoadable.state === "loading";
 
   const handleAccountAction = (action: ZeroAccountAction) => {
     if (action === "signout") {
@@ -633,6 +671,22 @@ export function AccountDropdown({
     detach(openSettings("usage", pageSignal), Reason.DomCallback);
   };
 
+  const handleOpenCodexReset = (resetCredits: number | null) => {
+    setResetCodexCredits(resetCredits);
+    setResetCodexConfirmOpen(true);
+  };
+
+  const handleConfirmCodexReset = () => {
+    detach(
+      (async () => {
+        await resetCodexSubscriptionUsage(pageSignal);
+        await reloadSubscriptions(subscriptionRowsCacheKey, pageSignal);
+        setResetCodexConfirmOpen(false);
+      })(),
+      Reason.DomCallback,
+    );
+  };
+
   const handleMenuOpenChange = (open: boolean) => {
     if (!open || hidePreferences || !subscriptionsEnabled) {
       return;
@@ -646,46 +700,57 @@ export function AccountDropdown({
   };
 
   return (
-    <DropdownMenu onOpenChange={handleMenuOpenChange}>
-      <DropdownMenuTrigger asChild>
-        {renderAccountTrigger(accountDisplay, collapsed)}
-      </DropdownMenuTrigger>
+    <>
+      <DropdownMenu onOpenChange={handleMenuOpenChange}>
+        <DropdownMenuTrigger asChild>
+          {renderAccountTrigger(accountDisplay, collapsed)}
+        </DropdownMenuTrigger>
 
-      <DropdownMenuContent
-        side="top"
-        align="start"
-        sideOffset={8}
-        className="w-[240px]"
-      >
-        <CurrentAccountHeader
-          display={accountDisplay}
-          visible={current !== undefined || user !== undefined}
-        />
-        {!hidePreferences && (
-          <AccountUsageGroup
-            onOpenCreditBalance={handleOpenCreditBalance}
-            subscriptionRowsCacheKey={subscriptionRowsCacheKey}
-            subscriptionsEnabled={subscriptionsEnabled}
+        <DropdownMenuContent
+          side="top"
+          align="start"
+          sideOffset={8}
+          className="w-[240px]"
+        >
+          <CurrentAccountHeader
+            display={accountDisplay}
+            visible={current !== undefined || user !== undefined}
           />
-        )}
-        {!hidePreferences && (
-          <UnifiedSettingsGroup
-            memoryEnabled={memoryEnabled}
-            labEnabled={labEnabled}
-            onOpenMemory={handleOpenMemory}
-            onAccountAction={handleAccountAction}
-            onOpenSettings={handleOpenSettings}
+          {!hidePreferences && (
+            <AccountUsageGroup
+              onOpenCreditBalance={handleOpenCreditBalance}
+              onResetCodexUsage={handleOpenCodexReset}
+              resetPending={actionPending}
+              subscriptionRowsCacheKey={subscriptionRowsCacheKey}
+              subscriptionsEnabled={subscriptionsEnabled}
+            />
+          )}
+          {!hidePreferences && (
+            <UnifiedSettingsGroup
+              memoryEnabled={memoryEnabled}
+              labEnabled={labEnabled}
+              onOpenMemory={handleOpenMemory}
+              onAccountAction={handleAccountAction}
+              onOpenSettings={handleOpenSettings}
+            />
+          )}
+          <AccountManagementGroup
+            others={others}
+            onSwitchSession={handleSwitchSession}
+            onAddAccount={handleAddAccount}
           />
-        )}
-        <AccountManagementGroup
-          others={others}
-          onSwitchSession={handleSwitchSession}
-          onAddAccount={handleAddAccount}
-        />
-        <ExtraAccountActions />
-        <DropdownMenuSeparator />
-        <SignOutItem onAccountAction={handleAccountAction} />
-      </DropdownMenuContent>
-    </DropdownMenu>
+          <ExtraAccountActions />
+          <DropdownMenuSeparator />
+          <SignOutItem onAccountAction={handleAccountAction} />
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <CodexResetUsageDialog
+        open={resetCodexConfirmOpen}
+        resetCredits={resetCodexCredits}
+        resetting={actionPending}
+        onOpenChange={setResetCodexConfirmOpen}
+        onConfirm={handleConfirmCodexReset}
+      />
+    </>
   );
 }

@@ -1352,6 +1352,7 @@ export const modelProviderResponseSchema = z.object({
   updatedAt: z.string(),
   // OAuth account metadata populated by provider-specific connect flows. Other
   // provider types omit these.
+  accountEmail: z.string().nullable().optional(),
   workspaceName: z.string().nullable().optional(),
   planType: z.string().nullable().optional(),
   // Subscription quota metadata. Providers omit these until an upstream source
@@ -1359,6 +1360,12 @@ export const modelProviderResponseSchema = z.object({
   subscriptionResetPeriod: z.string().nullable().optional(),
   subscriptionNextResetAt: z.string().nullable().optional(),
   subscriptionUsage: modelProviderSubscriptionUsageSchema.nullable().optional(),
+  subscriptionResetCredits: z
+    .number()
+    .int()
+    .nonnegative()
+    .nullable()
+    .optional(),
   // OAuth refresh state. `needsReconnect` flips to true when the firewall's
   // refresh attempt fails (#11921 writes this on the model_providers row).
   // `lastRefreshErrorCode` carries the typed code from `ChatgptRefreshError`
