@@ -140,6 +140,37 @@ apply_slack_chat_write_permission() {
         >/dev/null
 }
 
+wait_for_zero_run_status() {
+    local run_id="$1"
+    local expected_status="$2"
+    local timeout="${3:-60}"
+    local interval="${ZERO_RUN_STATUS_POLL_INTERVAL_S:-1}"
+    local start=$SECONDS
+    local body=""
+    local status_value=""
+
+    while ((SECONDS - start < timeout)); do
+        if body=$(zero_run_response "$run_id" 2>&1); then
+            status_value=$(printf '%s' "$body" | jq -r '.status // ""')
+            if [[ "$status_value" == "$expected_status" ]]; then
+                return 0
+            fi
+            case "$status_value" in
+                completed|failed|timeout|cancelled)
+                    echo "# Run $run_id reached terminal status before $expected_status: $status_value" >&2
+                    echo "# Run response: $body" >&2
+                    return 1
+                    ;;
+            esac
+        fi
+        sleep "$interval"
+    done
+
+    echo "# Timed out (${timeout}s) waiting for run $run_id to reach $expected_status" >&2
+    echo "# Last run response: $body" >&2
+    return 1
+}
+
 @test "firewall: placeholder env vars" {
     # Connectors are set up in setup_file() to avoid parallel write races.
     # No firewalls needed — connector auto-add provides firewalls.
@@ -243,7 +274,7 @@ echo "FIRST_SLACK_BODY=$FIRST_BODY"
 SECOND_STATUS=000
 SECOND_BODY=
 SECOND_FIREWALL_DENIED=1
-for ATTEMPT in $(seq 1 120); do
+for ATTEMPT in $(seq 1 60); do
     SECOND_OUTPUT=$(post_slack "e2e-after-refresh-${ATTEMPT}")
     SECOND_STATUS=$(printf '%s\n' "$SECOND_OUTPUT" | head -n1)
     SECOND_BODY=$(printf '%s\n' "$SECOND_OUTPUT" | tail -n +2)
@@ -280,12 +311,23 @@ EOF
         false
     THREAD_ID="$LAST_THREAD_ID"
 
-    WAIT_FOR_LOG_TIMEOUT=90 wait_for_log "$LAST_RUN_ID" --system -- \
-        "proxy register"
+    wait_for_zero_run_status "$LAST_RUN_ID" running 90
 
-    run apply_slack_chat_write_permission "$AGENT_ID" allow
-    echo "$output"
-    assert_success
+    local run_body run_status
+    for ATTEMPT in $(seq 1 15); do
+        run apply_slack_chat_write_permission "$AGENT_ID" allow
+        echo "$output"
+        assert_success
+
+        run_body=$(zero_run_response "$LAST_RUN_ID" 2>&1 || true)
+        run_status=$(printf '%s' "$run_body" | jq -r '.status // ""' 2>/dev/null || true)
+        case "$run_status" in
+            completed|failed|timeout|cancelled)
+                break
+                ;;
+        esac
+        sleep 2
+    done
 
     wait_for_zero_run_completed "$LAST_RUN_ID" 140
     WAIT_FOR_LOG_TIMEOUT=60 wait_for_log "$LAST_RUN_ID" -- \
