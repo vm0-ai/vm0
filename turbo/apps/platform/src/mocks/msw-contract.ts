@@ -130,8 +130,9 @@ const methodMap = {
 
 function routePattern(route: AppRoute): string {
   if (route.path === "/api/zero/chat-threads/:id") {
-    // Keep thread detail mocks from swallowing static sibling routes like /snapshot.
-    return "*/api/zero/chat-threads/:id([0-9a-fA-F-]{36})";
+    // Keep thread detail mocks from swallowing static sibling routes while
+    // still accepting the descriptive non-UUID thread ids used by UI tests.
+    return "*/api/zero/chat-threads/:id((?!snapshot$|events$|active-ids$)[^/]+)";
   }
   return `*${route.path}`;
 }
