@@ -1431,7 +1431,7 @@ jobs:
         with:
           node-version: 22
       - name: Download CLI artifact
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v8.0.1
         with:
           name: cli-dist
           path: /tmp/cli-deploy
@@ -1451,7 +1451,7 @@ jobs:
           vm0 --help
           zero --help
       - name: Download E2E test tokens
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v8.0.1
         with:
           name: e2e-tokens
           path: /tmp
@@ -1794,7 +1794,7 @@ jobs:
         with:
           node-version: 22
       - name: Download CLI artifact
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v8.0.1
         with:
           name: cli-dist
           path: /tmp/cli-deploy
@@ -1814,7 +1814,7 @@ jobs:
           vm0 --help
           zero --help
       - name: Download E2E test tokens
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v8.0.1
         with:
           name: e2e-tokens
           path: /tmp
@@ -1886,7 +1886,7 @@ jobs:
         with:
           node-version: 22
       - name: Download CLI artifact
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v8.0.1
         with:
           name: cli-dist
           path: /tmp/cli-deploy
@@ -1908,7 +1908,7 @@ jobs:
       - name: Install GNU parallel for bats
         run: sudo curl -fsSL --retry 5 --retry-delay 2 --retry-max-time 60 --retry-all-errors https://raw.githubusercontent.com/martinda/gnu-parallel/master/src/parallel -o /usr/local/bin/parallel && sudo chmod +x /usr/local/bin/parallel
       - name: Download E2E test tokens
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v8.0.1
         with:
           name: e2e-tokens
           path: /tmp
