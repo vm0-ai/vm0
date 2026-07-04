@@ -4467,6 +4467,9 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(
       grantedContext.claim.connectorPolicyRefreshes?.slack?.nextRefreshAt,
     ).toStrictEqual(expect.any(String));
+    expect(grantedContext.claim.connectorPolicyRefreshes).not.toHaveProperty(
+      "model-provider:anthropic-api-key",
+    );
     expect(granted.allow).toContain("chat:write");
     expect(granted.allow).toContain("files:read");
     expect(granted.deny).not.toContain("chat:write");

@@ -275,6 +275,10 @@ function resolvedConnectorFirewallPolicies(
   return permissionGrantsToFirewallPolicies(grants) ?? {};
 }
 
+function isConnectorPolicyRefreshRef(connectorRef: string): boolean {
+  return !connectorRef.startsWith("model-provider:");
+}
+
 export async function resolveActiveConnectorPolicyRefreshes(
   db: ReadonlyDb,
   scope: UserPermissionGrantScope,
@@ -285,9 +289,15 @@ export async function resolveActiveConnectorPolicyRefreshes(
     return [];
   }
 
+  const uniqueConnectorRefs = [
+    ...new Set(connectorRefs.filter(isConnectorPolicyRefreshRef)),
+  ];
+  if (uniqueConnectorRefs.length === 0) {
+    return [];
+  }
+
   const grants = await loadActiveUserPermissionGrants(db, scope, checkedAt);
   const policies = resolvedConnectorFirewallPolicies(grants);
-  const uniqueConnectorRefs = [...new Set(connectorRefs)];
 
   const indexes = await Promise.all(
     uniqueConnectorRefs.map(async (connectorRef) => {
