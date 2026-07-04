@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.221.1](https://github.com/vm0-ai/vm0/compare/api-v1.221.0...api-v1.221.1) (2026-07-04)
+
+
+### Bug Fixes
+
+* avoid storing raw gmail relationship excerpts ([#20130](https://github.com/vm0-ai/vm0/issues/20130)) ([cc3643d](https://github.com/vm0-ai/vm0/commit/cc3643d435314f8ee5da7c7859367ccd4664e7ab))
+* prefill workflow refine prompts ([#20131](https://github.com/vm0-ai/vm0/issues/20131)) ([7c6847f](https://github.com/vm0-ai/vm0/commit/7c6847f0e76035a4821d32ac27a483869057ba3a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.90.1
+
 ## [1.221.0](https://github.com/vm0-ai/vm0/compare/api-v1.220.1...api-v1.221.0) (2026-07-04)
 
 
