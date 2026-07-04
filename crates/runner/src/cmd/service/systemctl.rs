@@ -51,6 +51,17 @@ pub(crate) async fn is_unit_active(unit: &RunnerServiceUnit) -> RunnerResult<boo
     unit_active_from_systemctl_show(svc, &properties, &output.status, &values, &output.stderr)
 }
 
+/// Check whether a systemd unit is enabled for boot.
+pub(crate) async fn is_unit_enabled(unit: &RunnerServiceUnit) -> RunnerResult<bool> {
+    let svc = unit.service_name();
+    let output = tokio::process::Command::new("systemctl")
+        .args(["is-enabled", svc])
+        .output()
+        .await
+        .map_err(|e| RunnerError::Internal(format!("spawn systemctl is-enabled: {e}")))?;
+    unit_enabled_from_systemctl_is_enabled(svc, &output.status, &output.stdout, &output.stderr)
+}
+
 /// Get the main PID of a systemd unit.
 pub(super) async fn get_service_pid(unit: &RunnerServiceUnit) -> RunnerResult<Option<u32>> {
     let svc = unit.service_name();
@@ -207,6 +218,48 @@ fn parse_main_pid(svc: &str, value: &str) -> RunnerResult<Option<u32>> {
         ))
     })?;
     if pid == 0 { Ok(None) } else { Ok(Some(pid)) }
+}
+
+fn unit_enabled_from_systemctl_is_enabled(
+    svc: &str,
+    status: &ExitStatus,
+    stdout: &[u8],
+    stderr: &[u8],
+) -> RunnerResult<bool> {
+    let state = std::str::from_utf8(stdout).map_err(|e| {
+        RunnerError::Internal(format!(
+            "systemctl is-enabled {svc} returned non-UTF-8 output: {e}"
+        ))
+    })?;
+    let state = state.trim();
+    match state {
+        "enabled" | "enabled-runtime" => Ok(true),
+        "alias" | "disabled" | "generated" | "indirect" | "linked" | "linked-runtime"
+        | "masked" | "masked-runtime" | "static" | "transient" => Ok(false),
+        "" if !status.success() => Err(systemctl_is_enabled_status_error(svc, status, stderr)),
+        other if !status.success() => {
+            tracing::debug!(
+                "systemctl is-enabled {svc} exited with {status} and state {other:?}; treating as disabled"
+            );
+            Ok(false)
+        }
+        other => Err(RunnerError::Internal(format!(
+            "unknown UnitFileState for {svc}: {other:?}"
+        ))),
+    }
+}
+
+fn systemctl_is_enabled_status_error(svc: &str, status: &ExitStatus, stderr: &[u8]) -> RunnerError {
+    let stderr = String::from_utf8_lossy(stderr);
+    let stderr = stderr.trim();
+    if stderr.is_empty() {
+        RunnerError::Internal(format!("systemctl is-enabled {svc} exited with {status}"))
+    } else {
+        RunnerError::Internal(format!(
+            "systemctl is-enabled {svc} exited with {status}: stderr={:?}",
+            status_field_preview(stderr)
+        ))
+    }
 }
 
 fn ensure_systemctl_show_status(
@@ -437,6 +490,71 @@ mod tests {
         let message = err.to_string();
 
         assert!(message.contains("unknown ActiveState"));
+    }
+
+    #[test]
+    fn unit_enabled_from_systemctl_is_enabled_accepts_enabled_states() {
+        use std::os::unix::process::ExitStatusExt;
+
+        let status = ExitStatus::from_raw(0);
+        for state in ["enabled", "enabled-runtime"] {
+            assert!(
+                unit_enabled_from_systemctl_is_enabled(
+                    "vm0-runner-test.service",
+                    &status,
+                    format!("{state}\n").as_bytes(),
+                    b"",
+                )
+                .unwrap()
+            );
+        }
+    }
+
+    #[test]
+    fn unit_enabled_from_systemctl_is_enabled_rejects_disabled_states() {
+        use std::os::unix::process::ExitStatusExt;
+
+        let status = ExitStatus::from_raw(0x100);
+        for state in [
+            "alias",
+            "disabled",
+            "generated",
+            "indirect",
+            "linked",
+            "linked-runtime",
+            "masked",
+            "masked-runtime",
+            "static",
+            "transient",
+        ] {
+            assert!(
+                !unit_enabled_from_systemctl_is_enabled(
+                    "vm0-runner-test.service",
+                    &status,
+                    format!("{state}\n").as_bytes(),
+                    b"",
+                )
+                .unwrap(),
+                "{state} should not be treated as enabled"
+            );
+        }
+    }
+
+    #[test]
+    fn unit_enabled_from_systemctl_is_enabled_rejects_unknown_success_state() {
+        use std::os::unix::process::ExitStatusExt;
+
+        let status = ExitStatus::from_raw(0);
+        let err = unit_enabled_from_systemctl_is_enabled(
+            "vm0-runner-test.service",
+            &status,
+            b"half-enabled\n",
+            b"",
+        )
+        .unwrap_err();
+        let message = err.to_string();
+
+        assert!(message.contains("unknown UnitFileState"));
     }
 
     #[test]
