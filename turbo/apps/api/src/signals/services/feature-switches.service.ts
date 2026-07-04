@@ -10,9 +10,7 @@ import { nowDate } from "../external/time";
 const ORG_SENTINEL_USER_ID = "__org__";
 
 const ORG_SCOPED_FEATURE_SWITCH_KEYS: readonly string[] = [
-  FeatureSwitchKey.DataExport,
   FeatureSwitchKey.AgentUnreadIndicators,
-  FeatureSwitchKey.ChatThreadEventSourcing,
 ];
 
 function isOrgScopedFeatureSwitchKey(key: string): boolean {

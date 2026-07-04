@@ -65,13 +65,7 @@ const context = testContext();
 function detachedSetupPage(
   options: Parameters<typeof baseDetachedSetupPage>[0],
 ): void {
-  baseDetachedSetupPage({
-    ...options,
-    featureSwitches: {
-      [FeatureSwitchKey.ChatThreadEventSourcing]: false,
-      ...options.featureSwitches,
-    },
-  });
+  baseDetachedSetupPage(options);
 }
 
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
@@ -3736,7 +3730,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${EVENT_SOURCED_RENAME_THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.ChatThreadEventSourcing]: true },
     });
 
     const threadRegion = await screen.findByLabelText("Chat thread");
@@ -7539,9 +7532,6 @@ describe("initial thinking indicator", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatInitialThinkingIndicator]: true,
-      },
     });
 
     const label = await screen.findByLabelText("Reading the prompt");
@@ -7610,9 +7600,6 @@ describe("initial thinking indicator", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatInitialThinkingIndicator]: true,
-      },
     });
 
     const label = await screen.findByLabelText(thinking);
@@ -7669,9 +7656,6 @@ describe("initial thinking indicator", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatInitialThinkingIndicator]: true,
-      },
     });
 
     const label = await screen.findByLabelText("Reviewing your request");
@@ -7717,9 +7701,6 @@ describe("initial thinking indicator", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatInitialThinkingIndicator]: true,
-      },
     });
 
     await screen.findByText("Here is the checklist.");

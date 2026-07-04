@@ -5,7 +5,6 @@ import {
   type CodexServiceTier,
   type PersistedAttachment,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { agentById, currentAgentId$, defaultAgentId$ } from "./agent.ts";
 import { zeroClient$ } from "./api-client.ts";
 import { accept } from "../lib/accept.ts";
@@ -18,10 +17,10 @@ import {
 import { clerk$ } from "./auth.ts";
 import { readThreadMeta$ } from "./external/idb-thread-meta-store.ts";
 import { chatThreadOnlyUnread$ } from "./chat-page/chat-thread-only-unread.ts";
-import { featureSwitch$ } from "./external/feature-switch.ts";
 import {
   chatThreadMaxItem$,
   eventDrivenActiveRunChatThreadIds$,
+  eventDrivenChatThreadMeta,
   eventDrivenChatThreads$,
 } from "./chat-page/chat-thread-event-sourcing.ts";
 import type { EventDrivenChatThread } from "./chat-page/chat-thread-event-replay.ts";
@@ -59,7 +58,11 @@ const currentChatThreadAgentId$ = computed(
     }
 
     const meta = await readThreadMeta$(userId, orgId, threadId);
-    return meta?.agentId ?? null;
+    return (
+      meta?.agentId ??
+      (await get(eventDrivenChatThreadMeta(threadId)))?.agentId ??
+      null
+    );
   },
 );
 
@@ -129,52 +132,9 @@ export interface ChatThread {
   computerUseHostId: string | null;
 }
 
-/**
- * First-page sidebar fetch: pinned (full) + up to 25 non-pinned. Returns the
- * raw page so derived signals (chatThreads$, hasMore, nextCursor) can share a
- * single network round-trip.
- */
-export const chatThreadEventSourcingEnabled$ = computed((get) => {
-  return get(featureSwitch$)[FeatureSwitchKey.ChatThreadEventSourcing] ?? false;
-});
-
-const legacyChatThreadsFirstPage$ = computed(async (get) => {
-  get(reloadChatThreadsCounter$);
-
-  const agentId = await get(currentChatAgentId$);
-  if (!agentId) {
-    return null;
-  }
-  const onlyUnread = get(chatThreadEventSourcingEnabled$)
-    ? false
-    : get(chatThreadOnlyUnread$);
-
-  const client = get(zeroClient$)(chatThreadsContract);
-  const result = await accept(
-    client.list({
-      query: {
-        agentId: agentId,
-        ...(onlyUnread ? { filter: "unread" as const } : {}),
-      },
-    }),
-    [200],
-  );
-  return result.body;
-});
-
-const legacyChatThreads$ = computed(
-  async (get): Promise<ChatThreadListItem[]> => {
-    const page = await get(legacyChatThreadsFirstPage$);
-    if (!page) {
-      return [];
-    }
-    return [...page.pinned, ...page.threads];
-  },
-);
-
 const filteredThreadIds$ = computed(
   async (get): Promise<ReadonlySet<string> | null> => {
-    if (!get(chatThreadEventSourcingEnabled$) || !get(chatThreadOnlyUnread$)) {
+    if (!get(chatThreadOnlyUnread$)) {
       return null;
     }
     get(reloadChatUnreadStateCounter$);
@@ -236,10 +196,8 @@ const eventDrivenVisibleChatThreads$ = computed(
 
 export const chatThreads$ = computed(
   async (get): Promise<ChatThreadListItem[]> => {
-    if (get(chatThreadEventSourcingEnabled$)) {
-      return await get(eventDrivenVisibleChatThreads$);
-    }
-    return await get(legacyChatThreads$);
+    get(reloadChatThreadsCounter$);
+    return await get(eventDrivenVisibleChatThreads$);
   },
 );
 
@@ -248,19 +206,11 @@ export const chatThreads$ = computed(
  * Drives the "Load more" button rendered at the bottom of the sidebar list.
  */
 export const chatThreadsHasMore$ = computed(async (get) => {
-  if (get(chatThreadEventSourcingEnabled$)) {
-    const threads = await get(eventDrivenFilteredChatThreads$);
-    return threads.length > get(chatThreadMaxItem$);
-  }
-  const page = await get(legacyChatThreadsFirstPage$);
-  return page?.hasMore ?? false;
+  const threads = await get(eventDrivenFilteredChatThreads$);
+  return threads.length > get(chatThreadMaxItem$);
 });
 
 export const chatThreadsNextCursor$ = computed(async (get) => {
-  if (get(chatThreadEventSourcingEnabled$)) {
-    const threads = await get(eventDrivenFilteredChatThreads$);
-    return threads.length > get(chatThreadMaxItem$) ? "event-driven" : null;
-  }
-  const page = await get(legacyChatThreadsFirstPage$);
-  return page?.nextCursor ?? null;
+  const threads = await get(eventDrivenFilteredChatThreads$);
+  return threads.length > get(chatThreadMaxItem$) ? "event-driven" : null;
 });

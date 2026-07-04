@@ -52,13 +52,7 @@ const researchAgentId = "a0000000-0000-4000-a000-000000000401";
 function detachedSetupPage(
   options: Parameters<typeof baseDetachedSetupPage>[0],
 ): void {
-  baseDetachedSetupPage({
-    ...options,
-    featureSwitches: {
-      [FeatureSwitchKey.ChatThreadEventSourcing]: false,
-      ...options.featureSwitches,
-    },
-  });
+  baseDetachedSetupPage(options);
 }
 
 function applyUserConnectorUpdate(

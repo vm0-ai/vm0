@@ -216,7 +216,6 @@ interface PreparedNormalSend {
 
 interface NormalSendFeatureSwitches {
   readonly codexFastModeEnabled: boolean;
-  readonly initialThinkingEnabled: boolean;
 }
 
 interface ResolvedComputerUseHostGrant {
@@ -1331,7 +1330,6 @@ async function resolveNormalSendFeatureSwitches(
   db: Db,
   orgId: string,
   userId: string,
-  zeroPreCreateSource: ZeroPreCreateSource | undefined,
 ): Promise<NormalSendFeatureSwitches> {
   const context = await loadUserFeatureSwitchContext(db, orgId, userId);
   return {
@@ -1339,11 +1337,6 @@ async function resolveNormalSendFeatureSwitches(
       FeatureSwitchKey.CodexFastMode,
       context,
     ),
-    initialThinkingEnabled:
-      isFeatureEnabled(
-        FeatureSwitchKey.ChatInitialThinkingIndicator,
-        context,
-      ) && zeroPreCreateSource === undefined,
   };
 }
 
@@ -2244,7 +2237,6 @@ const prepareNormalSend$ = command(
       db,
       args.orgId,
       args.userId,
-      args.zeroPreCreateSource,
     );
     signal.throwIfAborted();
     const codexServiceTierError = await validateCodexServiceTierBeforeThread({
@@ -2329,7 +2321,7 @@ const prepareNormalSend$ = command(
       generationTemplatePrompt,
       computerUseHostGrant,
       persistedExplicitSelection,
-      initialThinkingEnabled: featureSwitches.initialThinkingEnabled,
+      initialThinkingEnabled: args.zeroPreCreateSource === undefined,
       codexFastModeEnabled: featureSwitches.codexFastModeEnabled,
     };
   },

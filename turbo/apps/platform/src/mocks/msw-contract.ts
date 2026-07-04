@@ -128,6 +128,14 @@ const methodMap = {
   DELETE: http.delete,
 } as const;
 
+function routePattern(route: AppRoute): string {
+  if (route.path === "/api/zero/chat-threads/:id") {
+    // Keep thread detail mocks from swallowing static sibling routes like /snapshot.
+    return "*/api/zero/chat-threads/:id([0-9a-fA-F-]{36})";
+  }
+  return `*${route.path}`;
+}
+
 function createSignal(
   requestSignal: AbortSignal,
   context?: SignalContextLike,
@@ -161,7 +169,7 @@ function createBoundMockApi(context?: SignalContextLike) {
     handler: MockHandler<R>,
   ): HttpHandler {
     const register = methodMap[route.method];
-    const pattern = `*${route.path}`;
+    const pattern = routePattern(route);
     const respond: Respond<R> = (...args) => {
       const [status, body] = args;
       return { status, body } as AnyResponse<R>;

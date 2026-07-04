@@ -195,26 +195,15 @@ describe("OPS-01: feature switches and report-error routes", () => {
         headers: headersFor(owner),
         body: {
           switches: {
-            [FeatureSwitchKey.DataExport]: true,
             [FeatureSwitchKey.AgentUnreadIndicators]: true,
-            [FeatureSwitchKey.ChatThreadEventSourcing]: true,
             [FeatureSwitchKey.Dummy]: false,
           },
         },
       }),
       [200],
     );
-    expect(ownerUpdate.body.switches[FeatureSwitchKey.DataExport]).toBeTruthy();
     expect(
       ownerUpdate.body.switches[FeatureSwitchKey.AgentUnreadIndicators],
-    ).toBeTruthy();
-    expect(
-      ownerUpdate.body.switches[FeatureSwitchKey.ChatThreadEventSourcing],
-    ).toBeTruthy();
-    expect(
-      ownerUpdate.body.effectiveSwitches[
-        FeatureSwitchKey.ChatThreadEventSourcing
-      ],
     ).toBeTruthy();
     expect(ownerUpdate.body.switches[FeatureSwitchKey.Dummy]).toBeFalsy();
 
@@ -222,15 +211,8 @@ describe("OPS-01: feature switches and report-error routes", () => {
       featureSwitchesClient().get({ headers: headersFor(peer) }),
       [200],
     );
-    expect(peerRead.body.switches[FeatureSwitchKey.DataExport]).toBeTruthy();
     expect(
       peerRead.body.switches[FeatureSwitchKey.AgentUnreadIndicators],
-    ).toBeTruthy();
-    expect(
-      peerRead.body.switches[FeatureSwitchKey.ChatThreadEventSourcing],
-    ).toBeTruthy();
-    expect(
-      peerRead.body.effectiveSwitches[FeatureSwitchKey.ChatThreadEventSourcing],
     ).toBeTruthy();
     expect(peerRead.body.switches[FeatureSwitchKey.Dummy]).toBeUndefined();
 
@@ -239,44 +221,22 @@ describe("OPS-01: feature switches and report-error routes", () => {
       [200],
     );
     expect(
-      outsiderRead.body.switches[FeatureSwitchKey.DataExport],
-    ).toBeUndefined();
-    expect(
       outsiderRead.body.switches[FeatureSwitchKey.AgentUnreadIndicators],
     ).toBeUndefined();
-    expect(
-      outsiderRead.body.switches[FeatureSwitchKey.ChatThreadEventSourcing],
-    ).toBeUndefined();
-    expect(
-      outsiderRead.body.effectiveSwitches[
-        FeatureSwitchKey.ChatThreadEventSourcing
-      ],
-    ).toBeTruthy();
 
     const peerUpdate = await accept(
       featureSwitchesClient().update({
         headers: headersFor(peer),
         body: {
           switches: {
-            [FeatureSwitchKey.DataExport]: false,
             [FeatureSwitchKey.AgentUnreadIndicators]: false,
-            [FeatureSwitchKey.ChatThreadEventSourcing]: false,
           },
         },
       }),
       [200],
     );
-    expect(peerUpdate.body.switches[FeatureSwitchKey.DataExport]).toBeFalsy();
     expect(
       peerUpdate.body.switches[FeatureSwitchKey.AgentUnreadIndicators],
-    ).toBeFalsy();
-    expect(
-      peerUpdate.body.switches[FeatureSwitchKey.ChatThreadEventSourcing],
-    ).toBeFalsy();
-    expect(
-      peerUpdate.body.effectiveSwitches[
-        FeatureSwitchKey.ChatThreadEventSourcing
-      ],
     ).toBeFalsy();
     expect(peerUpdate.body.switches[FeatureSwitchKey.Dummy]).toBeUndefined();
 
@@ -285,16 +245,8 @@ describe("OPS-01: feature switches and report-error routes", () => {
       [200],
     );
     expect(
-      ownerReadAfterPeerUpdate.body.switches[FeatureSwitchKey.DataExport],
-    ).toBeFalsy();
-    expect(
       ownerReadAfterPeerUpdate.body.switches[
         FeatureSwitchKey.AgentUnreadIndicators
-      ],
-    ).toBeFalsy();
-    expect(
-      ownerReadAfterPeerUpdate.body.switches[
-        FeatureSwitchKey.ChatThreadEventSourcing
       ],
     ).toBeFalsy();
     expect(
@@ -312,15 +264,7 @@ describe("OPS-01: feature switches and report-error routes", () => {
       [200],
     );
     expect(
-      peerReadAfterDelete.body.switches[FeatureSwitchKey.DataExport],
-    ).toBeUndefined();
-    expect(
       peerReadAfterDelete.body.switches[FeatureSwitchKey.AgentUnreadIndicators],
-    ).toBeUndefined();
-    expect(
-      peerReadAfterDelete.body.switches[
-        FeatureSwitchKey.ChatThreadEventSourcing
-      ],
     ).toBeUndefined();
     expect(
       peerReadAfterDelete.body.switches[FeatureSwitchKey.Dummy],

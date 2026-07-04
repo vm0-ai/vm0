@@ -1,10 +1,4 @@
-import {
-  useGet,
-  useSet,
-  useLastResolved,
-  useLastLoadable,
-  useLoadable,
-} from "ccstate-react";
+import { useGet, useSet, useLastResolved, useLoadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import {
   IconPlus,
@@ -46,7 +40,6 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
-  chatThreads$,
   deleteChatThread$,
   pinChatThread$,
   unpinChatThread$,
@@ -883,13 +876,24 @@ function DeleteChatThreadDialog() {
   );
 }
 
-function ChatThreads() {
+function ChatThreads({
+  chatThreads,
+}: {
+  chatThreads: readonly ChatThreadListItem[];
+}) {
   const pageSignal = useGet(pageSignal$);
 
-  const chatThreads = useLastResolved(sidebarChatThreads$) ?? [];
   const unreadOnly = useGet(chatThreadOnlyUnread$);
-  const firstPageHasMore = useLastResolved(chatThreadsHasMore$) ?? false;
-  const firstPageNextCursor = useLastResolved(chatThreadsNextCursor$);
+  const firstPageHasMoreLoadable = useLoadable(chatThreadsHasMore$);
+  const firstPageNextCursorLoadable = useLoadable(chatThreadsNextCursor$);
+  const firstPageHasMore =
+    firstPageHasMoreLoadable.state === "hasData"
+      ? firstPageHasMoreLoadable.data
+      : false;
+  const firstPageNextCursor =
+    firstPageNextCursorLoadable.state === "hasData"
+      ? firstPageNextCursorLoadable.data
+      : null;
   const hasLoadedExtraPages =
     useLastResolved(sidebarChatThreadsHasLoadedExtraPages$) ?? false;
   const extraHasMore =
@@ -1061,14 +1065,21 @@ function ChatThreadsSkeleton() {
 }
 
 function ChatThreadsContent() {
-  const chatThreadsLoading = useLastLoadable(chatThreads$).state === "loading";
+  const chatThreadsLoadable = useLoadable(sidebarChatThreads$);
+  const chatThreads =
+    chatThreadsLoadable.state === "hasData" ? chatThreadsLoadable.data : [];
+  const chatThreadsLoading = chatThreadsLoadable.state === "loading";
   const collapsed = useGet(sessionListCollapsed$);
 
   return (
     !collapsed && (
       <div className="mt-1">
         <div className="flex flex-col gap-1">
-          {chatThreadsLoading ? <ChatThreadsSkeleton /> : <ChatThreads />}
+          {chatThreadsLoading ? (
+            <ChatThreadsSkeleton />
+          ) : (
+            <ChatThreads chatThreads={chatThreads} />
+          )}
         </div>
       </div>
     )

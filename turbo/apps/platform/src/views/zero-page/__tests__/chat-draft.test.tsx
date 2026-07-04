@@ -27,57 +27,72 @@ const context = testContext();
 function detachedSetupPage(
   options: Parameters<typeof baseDetachedSetupPage>[0],
 ): void {
-  baseDetachedSetupPage({
-    ...options,
-    featureSwitches: {
-      [FeatureSwitchKey.ChatThreadEventSourcing]: false,
-      ...options.featureSwitches,
-    },
-  });
+  baseDetachedSetupPage(options);
 }
 
 function mockThreadDetails(): void {
+  const threads = [
+    {
+      id: "thread-1",
+      title: "Thread 1",
+      agent: {
+        id: "c0000000-0000-4000-a000-000000000001",
+        avatarUrl: null,
+      },
+      createdAt: "2026-03-10T00:00:00Z",
+      updatedAt: "2026-03-10T00:00:00Z",
+      running: false,
+    },
+    {
+      id: "thread-2",
+      title: "Thread 2",
+      agent: {
+        id: "c0000000-0000-4000-a000-000000000001",
+        avatarUrl: null,
+      },
+      createdAt: "2026-03-10T00:01:00Z",
+      updatedAt: "2026-03-10T00:01:00Z",
+      running: false,
+    },
+    {
+      id: "thread-uploads",
+      title: "Uploads",
+      agent: {
+        id: "c0000000-0000-4000-a000-000000000001",
+        avatarUrl: null,
+      },
+      createdAt: "2026-03-10T00:02:00Z",
+      updatedAt: "2026-03-10T00:02:00Z",
+      running: false,
+    },
+  ];
   context.mocks.api(chatThreadsContract.list, ({ respond }) => {
     return respond(200, {
       pinned: [],
-      threads: [
-        {
-          id: "thread-1",
-          title: "Thread 1",
-          agent: {
-            id: "c0000000-0000-4000-a000-000000000001",
-            avatarUrl: null,
-          },
-          createdAt: "2026-03-10T00:00:00Z",
-          updatedAt: "2026-03-10T00:00:00Z",
-          running: false,
-        },
-        {
-          id: "thread-2",
-          title: "Thread 2",
-          agent: {
-            id: "c0000000-0000-4000-a000-000000000001",
-            avatarUrl: null,
-          },
-          createdAt: "2026-03-10T00:01:00Z",
-          updatedAt: "2026-03-10T00:01:00Z",
-          running: false,
-        },
-        {
-          id: "thread-uploads",
-          title: "Uploads",
-          agent: {
-            id: "c0000000-0000-4000-a000-000000000001",
-            avatarUrl: null,
-          },
-          createdAt: "2026-03-10T00:02:00Z",
-          updatedAt: "2026-03-10T00:02:00Z",
-          running: false,
-        },
-      ],
+      threads,
       hasMore: false,
       nextCursor: null,
     });
+  });
+  context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
+    return respond(200, {
+      chatThreads: threads.map((thread) => {
+        return {
+          id: thread.id,
+          agentId: thread.agent.id,
+          title: thread.title,
+          sortAt: thread.updatedAt,
+          createdAt: thread.createdAt,
+          updatedAt: thread.updatedAt,
+          pinnedAt: null,
+          renamedAt: null,
+        };
+      }),
+      latestEventId: null,
+    });
+  });
+  context.mocks.api(chatThreadsContract.events, ({ respond }) => {
+    return respond(200, { events: [], hasMore: false });
   });
   context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
     return respond(200, {

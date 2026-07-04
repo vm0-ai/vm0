@@ -204,6 +204,7 @@ interface ThreadListItem {
   updatedAt: string;
   running: boolean;
   pinnedAt?: string | null;
+  renamedAt?: string | null;
 }
 
 type PagedThreadItem = ThreadListItem & {
@@ -237,6 +238,21 @@ export function splitChatThreadListResponse(
     hasMore: false,
     nextCursor: null,
   };
+}
+
+function threadListSnapshot(threads: readonly ThreadListItem[]) {
+  return threads.map((thread) => {
+    return {
+      id: thread.id,
+      agentId: thread.agent.id,
+      title: thread.title,
+      sortAt: thread.updatedAt,
+      createdAt: thread.createdAt,
+      updatedAt: thread.updatedAt,
+      pinnedAt: thread.pinnedAt ?? null,
+      renamedAt: thread.renamedAt ?? null,
+    };
+  });
 }
 
 interface MockLifecycleControl {
@@ -814,6 +830,29 @@ export function mockChatLifecycle(
   );
   context.mocks.api(chatThreadsContract.list, ({ respond }) => {
     return respond(200, splitChatThreadListResponse(threadList));
+  });
+  context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
+    return respond(200, {
+      chatThreads: threadListSnapshot(threadList),
+      latestEventId: null,
+    });
+  });
+  context.mocks.api(chatThreadsContract.events, ({ respond }) => {
+    return respond(200, { events: [], hasMore: false });
+  });
+  context.mocks.api(chatThreadsContract.activeIds, ({ respond }) => {
+    const activeThreadIds = new Set(
+      threadList.flatMap((thread) => {
+        return thread.running ? [thread.id] : [];
+      }),
+    );
+    if (
+      optionActiveRunIds.length > 0 ||
+      (runAssociated && !terminal.has(runStatus))
+    ) {
+      activeThreadIds.add(threadId);
+    }
+    return respond(200, { threadIds: [...activeThreadIds] });
   });
   context.mocks.api(chatThreadsContract.create, ({ body, respond }) => {
     threadId = body.clientThreadId ?? threadId;

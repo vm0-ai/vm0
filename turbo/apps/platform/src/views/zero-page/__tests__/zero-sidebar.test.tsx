@@ -131,6 +131,40 @@ function createThread(
   };
 }
 
+function mockChatThreadSnapshot(threads: () => readonly SidebarThread[]): void {
+  context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
+    const snapshotThreads = threads();
+    return respond(200, {
+      chatThreads: snapshotThreads.map((thread, index) => {
+        return {
+          id: thread.id,
+          agentId: thread.agent.id,
+          title: thread.title,
+          sortAt: new Date(
+            Date.parse("2026-03-10T00:00:00Z") +
+              (snapshotThreads.length - index) * 1000,
+          ).toISOString(),
+          createdAt: thread.createdAt,
+          updatedAt: thread.updatedAt,
+          pinnedAt: thread.pinnedAt ?? null,
+          renamedAt: thread.renamedAt ?? null,
+        };
+      }),
+      latestEventId: null,
+    });
+  });
+  context.mocks.api(chatThreadsContract.events, ({ respond }) => {
+    return respond(200, { events: [], hasMore: false });
+  });
+  context.mocks.api(chatThreadsContract.activeIds, ({ respond }) => {
+    return respond(200, {
+      threadIds: threads().flatMap((thread) => {
+        return thread.running ? [thread.id] : [];
+      }),
+    });
+  });
+}
+
 function menuItemByText(text: string): HTMLElement {
   const item = queryMenuItemByText(text);
   if (!item) {
@@ -167,13 +201,7 @@ function sidebar(): HTMLElement {
 function setupSidebarPage(
   options: Parameters<typeof detachedSetupPage>[0],
 ): void {
-  detachedSetupPage({
-    ...options,
-    featureSwitches: {
-      [FeatureSwitchKey.ChatThreadEventSourcing]: false,
-      ...options.featureSwitches,
-    },
-  });
+  detachedSetupPage(options);
 }
 
 function threadRowByTitle(title: string): HTMLElement {
@@ -249,6 +277,10 @@ function mockSidebarThreadStory(
   threads: SidebarThread[];
 } {
   let threads = [...firstPageThreads];
+
+  mockChatThreadSnapshot(() => {
+    return [...threads, ...extraThreads];
+  });
 
   context.mocks.api(chatThreadsContract.list, ({ query, respond }) => {
     if (query.cursor === "next-page") {
@@ -328,21 +360,22 @@ describe("zero sidebar", () => {
   it("keeps known threads visible while creating a new chat", async () => {
     prepareDefaultAgent();
     const createDeferred = context.mocks.deferred<void>();
+    const threads = [
+      {
+        id: EXISTING_THREAD_ID,
+        title: "Existing conversation",
+        agent: { id: AGENT_ID, avatarUrl: null },
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-10T00:00:00Z",
+        running: false,
+      },
+    ];
 
     context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-      return respond(
-        200,
-        splitChatThreadListResponse([
-          {
-            id: EXISTING_THREAD_ID,
-            title: "Existing conversation",
-            agent: { id: AGENT_ID, avatarUrl: null },
-            createdAt: "2026-03-10T00:00:00Z",
-            updatedAt: "2026-03-10T00:00:00Z",
-            running: false,
-          },
-        ]),
-      );
+      return respond(200, splitChatThreadListResponse(threads));
+    });
+    mockChatThreadSnapshot(() => {
+      return threads;
     });
     context.mocks.api(chatThreadsContract.create, async ({ body, respond }) => {
       await createDeferred.promise;
@@ -425,7 +458,6 @@ describe("zero sidebar", () => {
     setupSidebarPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: { [FeatureSwitchKey.ChatThreadEventSourcing]: true },
     });
 
     await waitFor(() => {
@@ -479,6 +511,9 @@ describe("zero sidebar", () => {
 
     context.mocks.api(chatThreadsContract.list, ({ respond }) => {
       return respond(200, splitChatThreadListResponse(serverOrderedThreads));
+    });
+    mockChatThreadSnapshot(() => {
+      return serverOrderedThreads;
     });
     context.mocks.api(chatThreadsContract.create, async ({ body, respond }) => {
       await createDeferred.promise;
@@ -544,21 +579,22 @@ describe("zero sidebar", () => {
     const artifactUrl = encodeURIComponent(
       "https://cdn.vm7.io/artifacts/test/archive.zip",
     );
+    const threads = [
+      {
+        id: EXISTING_THREAD_ID,
+        title: "Existing conversation",
+        agent: { id: AGENT_ID, avatarUrl: null },
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-10T00:00:00Z",
+        running: false,
+      },
+    ];
 
     context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-      return respond(
-        200,
-        splitChatThreadListResponse([
-          {
-            id: EXISTING_THREAD_ID,
-            title: "Existing conversation",
-            agent: { id: AGENT_ID, avatarUrl: null },
-            createdAt: "2026-03-10T00:00:00Z",
-            updatedAt: "2026-03-10T00:00:00Z",
-            running: false,
-          },
-        ]),
-      );
+      return respond(200, splitChatThreadListResponse(threads));
+    });
+    mockChatThreadSnapshot(() => {
+      return threads;
     });
     context.mocks.api(chatThreadsContract.create, ({ body, respond }) => {
       return respond(201, {
@@ -620,33 +656,28 @@ describe("zero sidebar", () => {
     const currentThread = createThread(EXISTING_THREAD_ID, "Release plan");
     const unreadThread = createThread(INCIDENT_THREAD_ID, "Incident notes");
     const archivedThread = createThread(ARCHIVED_THREAD_ID, "Archived context");
-    const listQueries: unknown[] = [];
+    const allThreads = [
+      pinnedUnreadThread,
+      currentThread,
+      unreadThread,
+      archivedThread,
+    ];
+    let unreadsRequests = 0;
 
     context.mocks.api(chatThreadsContract.list, ({ query, respond }) => {
-      listQueries.push(query);
       if (query.filter === "unread") {
         return respond(
           200,
           splitChatThreadListResponse([pinnedUnreadThread, unreadThread]),
         );
       }
-      return respond(
-        200,
-        splitChatThreadListResponse([
-          pinnedUnreadThread,
-          currentThread,
-          unreadThread,
-          archivedThread,
-        ]),
-      );
+      return respond(200, splitChatThreadListResponse(allThreads));
+    });
+    mockChatThreadSnapshot(() => {
+      return allThreads;
     });
     context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
-      const thread = [
-        pinnedUnreadThread,
-        currentThread,
-        unreadThread,
-        archivedThread,
-      ].find((candidate) => {
+      const thread = allThreads.find((candidate) => {
         return candidate.id === params.id;
       });
       return respond(200, {
@@ -663,6 +694,7 @@ describe("zero sidebar", () => {
       });
     });
     context.mocks.api(chatThreadsContract.unreads, ({ respond }) => {
+      unreadsRequests += 1;
       return respond(200, {
         unreads: [
           {
@@ -693,9 +725,7 @@ describe("zero sidebar", () => {
     fireEvent.keyDown(document.body, { key: "Escape" });
 
     await waitFor(() => {
-      expect(listQueries).toContainEqual(
-        expect.objectContaining({ filter: "unread" }),
-      );
+      expect(unreadsRequests).toBeGreaterThan(0);
       expect(
         visibleThreadTitles([
           "Pinned incident",
@@ -746,6 +776,9 @@ describe("zero sidebar", () => {
         200,
         splitChatThreadListResponse([pinnedThread, unpinnedThread]),
       );
+    });
+    mockChatThreadSnapshot(() => {
+      return [pinnedThread, unpinnedThread];
     });
     context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
       const thread = [pinnedCurrentThread, pinnedThread, unpinnedThread].find(
@@ -871,17 +904,12 @@ describe("zero sidebar", () => {
 
     setupSidebarPage({
       context,
-      path: `/chats/${EXISTING_THREAD_ID}?sidebar=detached-thread`,
+      path: `/chats/${EXISTING_THREAD_ID}`,
     });
 
     await waitFor(() => {
       expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
       expect(within(sidebar()).getByText("Incident notes")).toBeInTheDocument();
-      expect(
-        within(threadRowByTitle("Release plan")).getByTestId(
-          "chat-thread-list-pane-icon-main",
-        ),
-      ).toBeInTheDocument();
       expect(
         within(threadRowByTitle("Incident notes")).getByLabelText("Unread"),
       ).toBeInTheDocument();
@@ -950,7 +978,7 @@ describe("zero sidebar", () => {
 
     const dialog = await screen.findByRole("dialog", { name: "Rename chat" });
     const titleInput = within(dialog).getByPlaceholderText("Chat title");
-    expect(titleInput).toHaveValue("Thread data release plan");
+    expect(titleInput).toHaveValue("Release plan");
 
     await fill(titleInput, "Launch plan");
     const renameForm = titleInput.closest("form");
@@ -965,7 +993,7 @@ describe("zero sidebar", () => {
     });
   });
 
-  it("does not prefill sidebar rename from the list title", async () => {
+  it("prefills sidebar rename from event-driven thread metadata", async () => {
     prepareDefaultAgent();
     mockSidebarThreadStory([
       createThread(EXISTING_THREAD_ID, "Release plan"),
@@ -986,7 +1014,9 @@ describe("zero sidebar", () => {
     click(menuItemByText("Rename chat"));
 
     const dialog = await screen.findByRole("dialog", { name: "Rename chat" });
-    expect(within(dialog).getByPlaceholderText("Chat title")).toHaveValue("");
+    expect(within(dialog).getByPlaceholderText("Chat title")).toHaveValue(
+      "Incident notes",
+    );
   });
 
   it("renames a chat thread by double-clicking from the sidebar", async () => {
@@ -1017,7 +1047,7 @@ describe("zero sidebar", () => {
 
     const dialog = await screen.findByRole("dialog", { name: "Rename chat" });
     const titleInput = within(dialog).getByPlaceholderText("Chat title");
-    expect(titleInput).toHaveValue("Thread data release plan");
+    expect(titleInput).toHaveValue("Release plan");
 
     await fill(titleInput, "Launch plan");
     click(buttonByText("Rename", dialog));
@@ -1032,12 +1062,21 @@ describe("zero sidebar", () => {
 
   it("loads more sidebar chats and confirms deleting a chat with automations", async () => {
     prepareDefaultAgent();
+    const overflowThreads = Array.from({ length: 23 }, (_, index) => {
+      return createThread(
+        `b1000000-0000-4000-a000-${String(index).padStart(12, "0")}`,
+        `Overflow ${index + 1}`,
+      );
+    });
     mockSidebarThreadStory(
       [
         createThread(EXISTING_THREAD_ID, "Release plan"),
         createThread(AUTOMATION_THREAD_ID, "Scheduled launch"),
       ],
-      [createThread(ARCHIVED_THREAD_ID, "Archived context")],
+      [
+        ...overflowThreads,
+        createThread(ARCHIVED_THREAD_ID, "Archived context"),
+      ],
     );
     context.mocks.data.automations([
       createMockAutomationView({
@@ -1218,17 +1257,21 @@ describe("zero sidebar", () => {
   it("pins an agent from the conversation picker and opens that agent chat", async () => {
     prepareAgentTeam();
     let createRequests = 0;
+    const researchThread = createThread(
+      RESEARCH_THREAD_ID,
+      "Research kickoff",
+      {
+        agent: { id: RESEARCH_AGENT_ID, avatarUrl: null },
+      },
+    );
 
     context.mocks.api(chatThreadsContract.list, ({ query, respond }) => {
       const threads =
-        query.agentId === RESEARCH_AGENT_ID
-          ? [
-              createThread(RESEARCH_THREAD_ID, "Research kickoff", {
-                agent: { id: RESEARCH_AGENT_ID, avatarUrl: null },
-              }),
-            ]
-          : [];
+        query.agentId === RESEARCH_AGENT_ID ? [researchThread] : [];
       return respond(200, splitChatThreadListResponse(threads));
+    });
+    mockChatThreadSnapshot(() => {
+      return [researchThread];
     });
     context.mocks.api(chatThreadsContract.create, ({ body, respond }) => {
       createRequests += 1;
