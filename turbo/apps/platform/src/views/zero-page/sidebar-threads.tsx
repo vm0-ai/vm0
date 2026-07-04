@@ -2,7 +2,6 @@ import {
   useGet,
   useSet,
   useLastResolved,
-  useLoadable,
   useLastLoadable,
 } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
@@ -12,7 +11,6 @@ import {
   IconTrash,
   IconPencil,
   IconDots,
-  IconLoader2,
   IconPin,
   IconPinnedOff,
 } from "@tabler/icons-react";
@@ -85,12 +83,6 @@ import {
 import { pathParams$, searchParams$ } from "../../signals/route.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { setSidebarExpanded$ } from "../../signals/zero-page/zero-nav.ts";
-import {
-  headerAutomationMenu$,
-  automationsForThread,
-  reloadHeaderAutomationMenu$,
-  type HeaderAutomationEntry,
-} from "../../signals/chat-page/header-automation-menu.ts";
 import { sidebarDraftThreadIds$ } from "../../signals/chat-page/sidebar-draft-threads.ts";
 import { sidebarUnreadThreadIds$ } from "../../signals/chat-page/sidebar-unread-threads.ts";
 import {
@@ -289,15 +281,11 @@ function ChatThreadMenu({
   usePinnedIndicatorTrigger: boolean;
 }) {
   const setPendingDeleteThreadId = useSet(setPendingDeleteThreadId$);
-  const reloadAutomations = useSet(reloadHeaderAutomationMenu$);
   const pinChatThread = useSet(pinChatThread$);
   const unpinChatThread = useSet(unpinChatThread$);
   const openRenameChatThreadDialog = useSet(
     openRenameChatThreadDialogForThreadId$,
   );
-  const features = useGet(featureSwitch$);
-  const workflowAutomationEnabled =
-    features[FeatureSwitchKey.WorkflowAutomation] ?? false;
   const pageSignal = useGet(pageSignal$);
 
   function handleTogglePin() {
@@ -381,13 +369,6 @@ function ChatThreadMenu({
           </DropdownMenuItem>
           <DropdownMenuItem
             onSelect={() => {
-              // Refetch automations so the delete confirmation reflects the
-              // thread's current linked automations. Skipped when workflow
-              // automation is on: triggers live on the workflow, not the
-              // thread, so deleting the thread never affects them.
-              if (!workflowAutomationEnabled) {
-                reloadAutomations();
-              }
               setPendingDeleteThreadId(threadId);
             }}
             className="text-destructive focus:text-destructive"
@@ -724,112 +705,30 @@ function LoadMoreThreadsButton({
 }
 
 function DeleteChatThreadDialogContent({
-  checkingAutomations,
-  pendingDeleteAutomations,
   onCancel,
   onConfirm,
 }: {
-  checkingAutomations: boolean;
-  pendingDeleteAutomations: readonly HeaderAutomationEntry[];
   onCancel: () => void;
   onConfirm: () => void;
 }) {
-  const automationCount = pendingDeleteAutomations.length;
-  const hasAutomations = !checkingAutomations && automationCount > 0;
-
   return (
     <DialogContent>
       <DialogHeader>
-        <DialogTitle>
-          {hasAutomations ? "Delete chat and automations?" : "Delete chat?"}
-        </DialogTitle>
+        <DialogTitle>Delete chat?</DialogTitle>
         <DialogDescription>
-          {hasAutomations
-            ? `This will permanently delete this chat and its ${automationCount} linked ${
-                automationCount === 1 ? "automation" : "automations"
-              }. Any task currently running in this chat will be stopped immediately. This action cannot be undone.`
-            : "This will permanently delete this chat. Any task currently running in this chat will be stopped immediately. This action cannot be undone."}
+          This will permanently delete this chat. Any task currently running in
+          this chat will be stopped immediately. This action cannot be undone.
         </DialogDescription>
       </DialogHeader>
-      {checkingAutomations && (
-        <div
-          className="flex items-center gap-2 text-sm text-muted-foreground"
-          data-testid="delete-chat-thread-checking"
-        >
-          <IconLoader2 size={16} className="animate-spin" />
-          Checking thread content…
-        </div>
-      )}
-      {hasAutomations && (
-        <div className="flex flex-col gap-1.5">
-          <p className="text-sm font-medium">
-            These automations will be deleted
-          </p>
-          <ul className="flex list-disc flex-col gap-1 pl-5">
-            {pendingDeleteAutomations.map((automation) => {
-              return (
-                <li
-                  key={automation.id}
-                  className="break-words text-sm text-muted-foreground"
-                >
-                  {automation.description?.trim() || "No description"}
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      )}
       <DialogFooter>
         <Button variant="outline" onClick={onCancel}>
           Cancel
         </Button>
-        <Button
-          variant="destructive"
-          disabled={checkingAutomations}
-          onClick={onConfirm}
-        >
-          {hasAutomations ? "Delete chat and automations" : "Delete"}
+        <Button variant="destructive" onClick={onConfirm}>
+          Delete
         </Button>
       </DialogFooter>
     </DialogContent>
-  );
-}
-
-/**
- * Legacy automations are 1:1 with a chat thread and are deleted along with it,
- * so this checks for and warns about that side effect before confirming. Only
- * mounted when workflow automation is off: workflow triggers live on the
- * workflow, not the thread, so deleting a thread never touches them and no
- * check is needed.
- */
-function DeleteChatThreadAutomationsCheck({
-  threadId,
-  onCancel,
-  onConfirm,
-}: {
-  threadId: string;
-  onCancel: () => void;
-  onConfirm: () => void;
-}) {
-  // useLoadable (not useLastLoadable): the delete menu item bumps a refetch,
-  // and the dialog must reflect that in-flight check rather than render a
-  // stale automation list as if it were current.
-  const automationsLoadable = useLoadable(headerAutomationMenu$);
-  const checkingAutomations = automationsLoadable.state === "loading";
-  const allAutomations =
-    automationsLoadable.state === "hasData" ? automationsLoadable.data : [];
-  const pendingDeleteAutomations = automationsForThread(
-    allAutomations,
-    threadId,
-  );
-
-  return (
-    <DeleteChatThreadDialogContent
-      checkingAutomations={checkingAutomations}
-      pendingDeleteAutomations={pendingDeleteAutomations}
-      onCancel={onCancel}
-      onConfirm={onConfirm}
-    />
   );
 }
 
@@ -838,9 +737,6 @@ function DeleteChatThreadDialog() {
   const setPendingDeleteThreadId = useSet(setPendingDeleteThreadId$);
   const deleteChatThread = useSet(deleteChatThread$);
   const pageSignal = useGet(pageSignal$);
-  const features = useGet(featureSwitch$);
-  const workflowAutomationEnabled =
-    features[FeatureSwitchKey.WorkflowAutomation] ?? false;
 
   function confirmDelete() {
     if (!pendingDeleteThreadId) {
@@ -864,20 +760,10 @@ function DeleteChatThreadDialog() {
         }
       }}
     >
-      {!workflowAutomationEnabled && pendingDeleteThreadId ? (
-        <DeleteChatThreadAutomationsCheck
-          threadId={pendingDeleteThreadId}
-          onCancel={cancelDelete}
-          onConfirm={confirmDelete}
-        />
-      ) : (
-        <DeleteChatThreadDialogContent
-          checkingAutomations={false}
-          pendingDeleteAutomations={[]}
-          onCancel={cancelDelete}
-          onConfirm={confirmDelete}
-        />
-      )}
+      <DeleteChatThreadDialogContent
+        onCancel={cancelDelete}
+        onConfirm={confirmDelete}
+      />
     </Dialog>
   );
 }
@@ -890,8 +776,8 @@ function ChatThreads({
   const pageSignal = useGet(pageSignal$);
 
   const unreadOnly = useGet(chatThreadOnlyUnread$);
-  const firstPageHasMoreLoadable = useLoadable(chatThreadsHasMore$);
-  const firstPageNextCursorLoadable = useLoadable(chatThreadsNextCursor$);
+  const firstPageHasMoreLoadable = useLastLoadable(chatThreadsHasMore$);
+  const firstPageNextCursorLoadable = useLastLoadable(chatThreadsNextCursor$);
   const firstPageHasMore =
     firstPageHasMoreLoadable.state === "hasData"
       ? firstPageHasMoreLoadable.data

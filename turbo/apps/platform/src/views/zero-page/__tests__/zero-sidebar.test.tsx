@@ -15,7 +15,6 @@ import {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
-import { automationsMainContract } from "@vm0/api-contracts/contracts/automations";
 
 import {
   click,
@@ -1013,7 +1012,7 @@ describe("zero sidebar", () => {
     });
   });
 
-  it("loads more sidebar chats and confirms deleting a chat with automations", async () => {
+  it("loads more sidebar chats and deletes a chat without checking legacy automations", async () => {
     prepareDefaultAgent();
     const overflowThreads = Array.from({ length: 23 }, (_, index) => {
       return createThread(
@@ -1051,8 +1050,8 @@ describe("zero sidebar", () => {
     setupSidebarPage({
       context,
       path: `/chats/${EXISTING_THREAD_ID}`,
-      // The legacy automations delete-check only renders when the globally-on
-      // workflowAutomation switch is overridden off (#19959).
+      // Legacy linked automations no longer affect chat deletion; schedule
+      // triggers own the automation lifecycle.
       featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: false },
     });
 
@@ -1075,20 +1074,24 @@ describe("zero sidebar", () => {
     click(menuItemByText("Delete chat"));
 
     const dialog = await screen.findByRole("dialog", {
-      name: "Delete chat and automations?",
+      name: "Delete chat?",
     });
     expect(
-      within(dialog).getByText(/2 linked automations/u),
-    ).toBeInTheDocument();
-    expect(within(dialog).getByText("Launch cadence")).toBeInTheDocument();
-    expect(within(dialog).getByText("Release risk review")).toBeInTheDocument();
+      within(dialog).queryByText(/linked automations/u),
+    ).not.toBeInTheDocument();
+    expect(
+      within(dialog).queryByText("Launch cadence"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(dialog).queryByText("Release risk review"),
+    ).not.toBeInTheDocument();
 
     click(buttonByText("Cancel", dialog));
 
     await waitFor(() => {
       expect(
         screen.queryByRole("dialog", {
-          name: "Delete chat and automations?",
+          name: "Delete chat?",
         }),
       ).not.toBeInTheDocument();
       expect(
@@ -1100,61 +1103,15 @@ describe("zero sidebar", () => {
     click(menuItemByText("Delete chat"));
 
     const confirmDialog = await screen.findByRole("dialog", {
-      name: "Delete chat and automations?",
+      name: "Delete chat?",
     });
-    click(buttonByText("Delete chat and automations", confirmDialog));
+    click(buttonByText("Delete", confirmDialog));
 
     await waitFor(() => {
       expect(
         within(sidebar()).queryByText("Scheduled launch"),
       ).not.toBeInTheDocument();
       expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
-    });
-  });
-
-  it("skips the automations check when deleting a chat with workflow automation enabled", async () => {
-    prepareDefaultAgent();
-    mockSidebarThreadStory([
-      createThread(EXISTING_THREAD_ID, "Release plan"),
-      createThread(AUTOMATION_THREAD_ID, "Scheduled launch"),
-    ]);
-
-    // Never resolves: if the delete flow still queried automations, the
-    // dialog would be stuck showing the "checking" state forever.
-    const automationsRequested = context.mocks.deferred<void>();
-    context.mocks.api(automationsMainContract.list, async ({ respond }) => {
-      await automationsRequested.promise;
-      return respond(200, { automations: [] });
-    });
-
-    setupSidebarPage({
-      context,
-      path: `/chats/${EXISTING_THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: true },
-    });
-
-    await waitFor(() => {
-      expect(
-        within(sidebar()).getByText("Scheduled launch"),
-      ).toBeInTheDocument();
-    });
-
-    openThreadMenu("Scheduled launch");
-    click(menuItemByText("Delete chat"));
-
-    const dialog = await screen.findByRole("dialog", {
-      name: "Delete chat?",
-    });
-    expect(
-      screen.queryByTestId("delete-chat-thread-checking"),
-    ).not.toBeInTheDocument();
-
-    click(buttonByText("Delete", dialog));
-
-    await waitFor(() => {
-      expect(
-        within(sidebar()).queryByText("Scheduled launch"),
-      ).not.toBeInTheDocument();
     });
   });
 
