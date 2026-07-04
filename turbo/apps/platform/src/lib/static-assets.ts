@@ -1,4 +1,4 @@
-const DEFAULT_STATIC_ASSETS_BASE_URL = "https://static.vm7.io";
+const DEFAULT_STATIC_ASSETS_BASE_URL = "https://static.vm0.io";
 
 function staticAssetsBaseUrl() {
   return (

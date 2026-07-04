@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.549.0](https://github.com/vm0-ai/vm0/compare/app-v0.548.0...app-v0.549.0) (2026-07-04)
+
+
+### Features
+
+* use optimized bb0 onboarding icon assets ([#20127](https://github.com/vm0-ai/vm0/issues/20127)) ([e87093b](https://github.com/vm0-ai/vm0/commit/e87093b69f5ae3dbe8ce20cc435bacb2d6c8c0c4))
+
+
+### Bug Fixes
+
+* **platform:** stabilize sidebar thread pagination state ([#20124](https://github.com/vm0-ai/vm0/issues/20124)) ([cc5dd8e](https://github.com/vm0-ai/vm0/commit/cc5dd8e09b813104d4e46c878911a6e3d02ee4f1))
+
 ## [0.548.0](https://github.com/vm0-ai/vm0/compare/app-v0.547.2...app-v0.548.0) (2026-07-04)
 
 
