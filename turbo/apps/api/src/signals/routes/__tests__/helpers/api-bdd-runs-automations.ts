@@ -429,6 +429,24 @@ export function createRunsAutomationsApi(context: TestContext) {
       return response.body;
     },
 
+    async requestRefreshRunnerConnectorPolicyAs(
+      authorization: string | undefined,
+      runId: string,
+      connectorRef: string,
+      statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
+    ) {
+      return await accept(
+        runsAutomationApp(context)(
+          runnersConnectorNetworkPolicyContract,
+        ).refresh({
+          headers: authorization === undefined ? {} : { authorization },
+          params: { runId },
+          body: { connectorRef },
+        }),
+        statuses,
+      );
+    },
+
     async createApiKey(actor: ApiTestUser): Promise<{
       readonly id: string;
       readonly token: string;

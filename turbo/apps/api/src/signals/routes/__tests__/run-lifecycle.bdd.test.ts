@@ -4517,6 +4517,32 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(snapshotClaim.networkPolicies?.slack?.allow).not.toContain(
       "chat:write",
     );
+    const actorRunnerKey = await api.createApiKey(actor);
+    const memberRunnerKey = await api.createApiKey(member);
+    const sameUserRefresh = await api.requestRefreshRunnerConnectorPolicyAs(
+      `Bearer ${actorRunnerKey.token}`,
+      snapshotRun.runId,
+      "slack",
+      [200],
+    );
+    if (sameUserRefresh.status !== 200) {
+      throw new Error("Expected same-user connector policy refresh to succeed");
+    }
+    expect(sameUserRefresh.body.networkPolicy.deny).toContain("chat:write");
+    const otherUserRefresh = await api.requestRefreshRunnerConnectorPolicyAs(
+      `Bearer ${memberRunnerKey.token}`,
+      snapshotRun.runId,
+      "slack",
+      [403],
+    );
+    if (otherUserRefresh.status !== 403) {
+      throw new Error(
+        "Expected other-user connector policy refresh to be forbidden",
+      );
+    }
+    expect(otherUserRefresh.body.error.message).toBe(
+      "Run does not belong to user",
+    );
     context.mocks.ably.publish.mockClear();
     await api.applyUserPermissionGrant(actor, {
       agentId,
