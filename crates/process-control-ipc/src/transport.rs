@@ -4,17 +4,51 @@ use std::os::fd::{AsRawFd, FromRawFd, IntoRawFd, OwnedFd};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::time::{Duration, Instant};
 
+const ENDPOINT_PREFIX: &str = "vm0-process-control-";
+const MAX_U32_DECIMAL_DIGITS: usize = 10;
+const NONCE_HEX_LEN: usize = 16 * 2;
+
 /// Build the abstract socket name for an operation-control endpoint.
 ///
 /// The name includes the guest operation sequence number and a hexadecimal
 /// encoding of the 16-byte control nonce. The returned string is suitable for
 /// [`bind_abstract_listener`], [`connect_abstract`], and [`crate::BOOTSTRAP_ENV`].
 pub fn endpoint_name(seq: u32, nonce: &[u8; 16]) -> String {
-    let mut out = format!("vm0-process-control-{seq}-");
+    let mut out =
+        String::with_capacity(ENDPOINT_PREFIX.len() + MAX_U32_DECIMAL_DIGITS + 1 + NONCE_HEX_LEN);
+    out.push_str(ENDPOINT_PREFIX);
+    push_decimal_u32(&mut out, seq);
+    out.push('-');
     for byte in nonce {
-        out.push_str(&format!("{byte:02x}"));
+        out.push(lower_hex_digit(byte >> 4));
+        out.push(lower_hex_digit(byte & 0x0f));
     }
     out
+}
+
+fn push_decimal_u32(out: &mut String, mut value: u32) {
+    let mut digits = [0_u8; MAX_U32_DECIMAL_DIGITS];
+    let mut len = 0;
+    for slot in digits.iter_mut().rev() {
+        *slot = b'0' + (value % 10) as u8;
+        len += 1;
+        value /= 10;
+        if value == 0 {
+            break;
+        }
+    }
+    for digit in digits.iter().skip(MAX_U32_DECIMAL_DIGITS - len) {
+        out.push(char::from(*digit));
+    }
+}
+
+fn lower_hex_digit(nibble: u8) -> char {
+    let digit = if nibble < 10 {
+        b'0' + nibble
+    } else {
+        b'a' + (nibble - 10)
+    };
+    char::from(digit)
 }
 
 /// Bind a Linux abstract Unix listener for an operation-control endpoint name.
@@ -211,6 +245,24 @@ mod tests {
         assert_eq!(
             endpoint_name(7, &nonce),
             "vm0-process-control-7-30313233343536373839616263646566"
+        );
+    }
+
+    #[test]
+    fn endpoint_name_zero_pads_lowercase_nonce_hex() {
+        let nonce = [
+            0x00, 0x0f, 0x10, 0xff, 0xab, 0xcd, 0xef, 0x01, 0x23, 0x45, 0x67, 0x89, 0x02, 0x03,
+            0x04, 0x05,
+        ];
+        assert_eq!(
+            endpoint_name(u32::MAX, &nonce),
+            "vm0-process-control-4294967295-000f10ffabcdef012345678902030405"
+        );
+
+        let zero_nonce = [0_u8; 16];
+        assert_eq!(
+            endpoint_name(0, &zero_nonce),
+            "vm0-process-control-0-00000000000000000000000000000000"
         );
     }
 
