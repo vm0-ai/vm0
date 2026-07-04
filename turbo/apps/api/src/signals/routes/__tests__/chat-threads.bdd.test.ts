@@ -915,6 +915,9 @@ describe("CHAT-01 chat thread read state", () => {
       displayName: "Unread agent B",
     });
 
+    await connectorsApi.updateFeatureSwitches(owner, {
+      [FeatureSwitchKey.AgentUnreadIndicators]: false,
+    });
     const disabled = await chat.requestListUnreadAgents(owner, [403]);
     expectApiError(disabled.body);
     expect(disabled.body.error.code).toBe("FORBIDDEN");
@@ -1101,6 +1104,9 @@ describe("CHAT-01 chat thread read state", () => {
       displayName: "Mark-read agent B",
     });
 
+    await connectorsApi.updateFeatureSwitches(owner, {
+      [FeatureSwitchKey.AgentUnreadIndicators]: false,
+    });
     const disabled = await chat.requestMarkAgentThreadsRead(
       owner,
       agentA.agentId,
