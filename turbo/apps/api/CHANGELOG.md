@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.222.0](https://github.com/vm0-ai/vm0/compare/api-v1.221.2...api-v1.222.0) (2026-07-04)
+
+
+### Features
+
+* add Gmail relationship backfill options ([#20135](https://github.com/vm0-ai/vm0/issues/20135)) ([f2170eb](https://github.com/vm0-ai/vm0/commit/f2170eb06db7a20da76fe571635ce80eb5907dd8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.153.0
+    * @vm0/core bumped to 8.397.1
+    * @vm0/db bumped to 1.91.0
+
 ## [1.221.2](https://github.com/vm0-ai/vm0/compare/api-v1.221.1...api-v1.221.2) (2026-07-04)
 
 
