@@ -128,13 +128,27 @@ const methodMap = {
   DELETE: http.delete,
 } as const;
 
-function routePattern(route: AppRoute): string {
+function routePattern(route: AppRoute): string | RegExp {
   if (route.path === "/api/zero/chat-threads/:id") {
     // Keep thread detail mocks from swallowing static sibling routes while
     // still accepting the descriptive non-UUID thread ids used by UI tests.
-    return "*/api/zero/chat-threads/:id((?!snapshot$|events$|active-ids$)[^/]+)";
+    return /\/api\/zero\/chat-threads\/(?!snapshot$|events$|active-ids$)([^/]+)$/;
   }
   return `*${route.path}`;
+}
+
+function routeParamsForRequest<R extends AppRoute>(
+  route: R,
+  params: PathParams,
+  url: URL,
+): InferParams<R> {
+  if (route.path === "/api/zero/chat-threads/:id") {
+    return {
+      ...params,
+      id: url.pathname.split("/").pop() ?? "",
+    } as InferParams<R>;
+  }
+  return params as InferParams<R>;
 }
 
 function createSignal(
@@ -179,6 +193,7 @@ function createBoundMockApi(context?: SignalContextLike) {
       const signal = createSignal(request.signal, context);
       const helpers = createHelpers(signal);
       const url = new URL(request.url);
+      const routeParams = routeParamsForRequest(route, params, url);
       const rawQuery = Object.fromEntries(url.searchParams.entries());
       const querySchema = route.query as
         | { safeParse: (v: unknown) => { success: boolean; data?: unknown } }
@@ -200,7 +215,7 @@ function createBoundMockApi(context?: SignalContextLike) {
       const result = await withSignal(
         Promise.resolve(
           handler({
-            params: params as InferParams<R>,
+            params: routeParams,
             query,
             body,
             request,
