@@ -157,7 +157,7 @@ export const rustConstantBindings = [
     rustConstName: "CONNECTOR_NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX",
     value: rustU64(CONNECTOR_NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX),
     rustDoc: [
-      "Maximum connector refs accepted by the runner connector network policy refresh endpoint.",
+      "Maximum connector refs accepted by the runner network policy refresh endpoint.",
       "Rust runners use this shared contract value to split refresh requests before calling the API.",
     ],
   },

@@ -61,7 +61,7 @@ pub mod model_provider_env {
 
 /// Runner contract constants shared by TypeScript and Rust.
 pub mod runners {
-    /// Maximum connector refs accepted by the runner connector network policy refresh endpoint.
+    /// Maximum connector refs accepted by the runner network policy refresh endpoint.
     /// Rust runners use this shared contract value to split refresh requests before calling the API.
     pub const CONNECTOR_NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX: u64 = 256;
 

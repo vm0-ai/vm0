@@ -26,7 +26,7 @@ use super::api::ApiClient;
 use super::api_direct_candidates::{
     DirectCandidateInbox, DirectCandidateInsertOutcome, DirectJobCandidate,
 };
-use super::connector_policy_refresh::ConnectorPolicyRefreshHandle;
+use super::network_policy_refresh::NetworkPolicyRefreshHandle;
 use crate::ids::RunId;
 use crate::retry::{RetryState, recv_retry, sleep_until_retry};
 use crate::run_cancellation::{RunCancellationHandle, SharedRunCancellationMap};
@@ -425,7 +425,7 @@ pub(super) struct AblySupervisorConfig {
     pub(super) poll_wakeups: Arc<PollWakeups>,
     pub(super) direct_candidates: Arc<DirectCandidateInbox>,
     pub(super) cancel_tokens: SharedRunCancellationMap,
-    pub(super) connector_policy_refresh: ConnectorPolicyRefreshHandle,
+    pub(super) network_policy_refresh: NetworkPolicyRefreshHandle,
     pub(super) provider_cancel: CancellationToken,
 }
 
@@ -436,7 +436,7 @@ struct SupervisorTaskConfig {
     poll_wakeups: Arc<PollWakeups>,
     direct_candidates: Arc<DirectCandidateInbox>,
     cancel_tokens: SharedRunCancellationMap,
-    connector_policy_refresh: ConnectorPolicyRefreshHandle,
+    network_policy_refresh: NetworkPolicyRefreshHandle,
     provider_cancel: CancellationToken,
     shutdown: CancellationToken,
 }
@@ -452,7 +452,7 @@ impl AblySupervisor {
             poll_wakeups: config.poll_wakeups,
             direct_candidates: config.direct_candidates,
             cancel_tokens: config.cancel_tokens,
-            connector_policy_refresh: config.connector_policy_refresh,
+            network_policy_refresh: config.network_policy_refresh,
             provider_cancel: config.provider_cancel,
             shutdown: task_shutdown,
         };
@@ -531,13 +531,13 @@ async fn run_supervisor(config: SupervisorTaskConfig) {
             event = recv_ably(&mut ably) => {
                 match event {
                     Some(ably_subscriber::Event::Message(msg)) => {
-                        handle_ably_message_with_connector_policy_refresh(
+                        handle_ably_message_with_network_policy_refresh(
                             &msg,
                             &config.profiles,
                             &config.poll_wakeups,
                             &config.direct_candidates,
                             &config.cancel_tokens,
-                            Some(&config.connector_policy_refresh),
+                            Some(&config.network_policy_refresh),
                             Some(&config.shutdown),
                         )
                         .await;
@@ -612,7 +612,7 @@ async fn handle_ably_message(
     direct_candidates: &DirectCandidateInbox,
     cancel_tokens: &Mutex<HashMap<RunId, RunCancellationHandle>>,
 ) {
-    handle_ably_message_with_connector_policy_refresh(
+    handle_ably_message_with_network_policy_refresh(
         msg,
         profiles,
         poll_wakeups,
@@ -624,14 +624,14 @@ async fn handle_ably_message(
     .await;
 }
 
-async fn handle_ably_message_with_connector_policy_refresh(
+async fn handle_ably_message_with_network_policy_refresh(
     msg: &ably_subscriber::Message,
     profiles: &[String],
     poll_wakeups: &PollWakeups,
     direct_candidates: &DirectCandidateInbox,
     cancel_tokens: &Mutex<HashMap<RunId, RunCancellationHandle>>,
-    connector_policy_refresh: Option<&ConnectorPolicyRefreshHandle>,
-    connector_policy_refresh_cancel: Option<&CancellationToken>,
+    network_policy_refresh: Option<&NetworkPolicyRefreshHandle>,
+    network_policy_refresh_cancel: Option<&CancellationToken>,
 ) {
     if let Some(run_id) = parse_cancel_notification(msg) {
         let handle = cancel_tokens.lock().await.get(&run_id).cloned();
@@ -642,21 +642,21 @@ async fn handle_ably_message_with_connector_policy_refresh(
         return;
     }
 
-    if let Some(notification) = parse_permission_refresh_notification(msg) {
-        let Some(connector_policy_refresh) = connector_policy_refresh else {
+    if let Some(notification) = parse_network_policy_refresh_notification(msg) {
+        let Some(network_policy_refresh) = network_policy_refresh else {
             return;
         };
-        if let Some(cancel) = connector_policy_refresh_cancel {
-            connector_policy_refresh
-                .notify_permission_refresh_until_cancelled(
+        if let Some(cancel) = network_policy_refresh_cancel {
+            network_policy_refresh
+                .notify_network_policy_refresh_until_cancelled(
                     notification.run_id,
                     notification.connector_ref,
                     cancel,
                 )
                 .await;
         } else {
-            connector_policy_refresh
-                .notify_permission_refresh(notification.run_id, notification.connector_ref)
+            network_policy_refresh
+                .notify_network_policy_refresh(notification.run_id, notification.connector_ref)
                 .await;
         }
         return;
@@ -721,7 +721,7 @@ struct JobNotification<'a> {
     affinity_protected_until: Option<&'a str>,
 }
 
-struct PermissionRefreshNotification {
+struct NetworkPolicyRefreshNotification {
     run_id: RunId,
     connector_ref: String,
 }
@@ -775,10 +775,10 @@ fn parse_cancel_notification(msg: &ably_subscriber::Message) -> Option<RunId> {
     }
 }
 
-fn parse_permission_refresh_notification(
+fn parse_network_policy_refresh_notification(
     msg: &ably_subscriber::Message,
-) -> Option<PermissionRefreshNotification> {
-    if msg.name.as_deref() != Some("permission-refresh") {
+) -> Option<NetworkPolicyRefreshNotification> {
+    if msg.name.as_deref() != Some("network-policy-refresh") {
         return None;
     }
     let run_id_raw = msg.data.get("runId").and_then(|v| v.as_str());
@@ -786,12 +786,12 @@ fn parse_permission_refresh_notification(
         Some(value) => match value.parse() {
             Ok(run_id) => run_id,
             Err(error) => {
-                warn!(value, error = %error, "ably: invalid permission-refresh runId");
+                warn!(value, error = %error, "ably: invalid network-policy-refresh runId");
                 return None;
             }
         },
         None => {
-            warn!("ably: permission-refresh message missing runId");
+            warn!("ably: network-policy-refresh message missing runId");
             return None;
         }
     };
@@ -801,11 +801,11 @@ fn parse_permission_refresh_notification(
         .and_then(|v| v.as_str())
         .filter(|value| !value.is_empty())
     else {
-        warn!("ably: permission-refresh message missing connectorRef");
+        warn!("ably: network-policy-refresh message missing connectorRef");
         return None;
     };
 
-    Some(PermissionRefreshNotification {
+    Some(NetworkPolicyRefreshNotification {
         run_id,
         connector_ref: connector_ref.to_string(),
     })
@@ -2043,16 +2043,16 @@ mod tests {
     }
 
     #[test]
-    fn parse_permission_refresh_notification_valid() {
+    fn parse_network_policy_refresh_notification_valid() {
         let msg = make_message(
-            Some("permission-refresh"),
+            Some("network-policy-refresh"),
             serde_json::json!({
                 "runId": "00000000-0000-0000-0000-000000000003",
                 "connectorRef": "github"
             }),
         );
 
-        let notification = parse_permission_refresh_notification(&msg).unwrap();
+        let notification = parse_network_policy_refresh_notification(&msg).unwrap();
 
         assert_eq!(
             notification.run_id.to_string(),

@@ -198,7 +198,7 @@ impl ExecutorInvocation {
                 }
             }
             Err(e) => {
-                if let Some(refresh) = exec_config_for_panic.connector_policy_refresh.as_ref() {
+                if let Some(refresh) = exec_config_for_panic.network_policy_refresh.as_ref() {
                     refresh.unregister_run(run_id).await;
                 }
                 // Panic lost the in-flight telemetry buffer; substitute an

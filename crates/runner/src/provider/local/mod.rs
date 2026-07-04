@@ -194,7 +194,7 @@ impl JobProvider for LocalProvider {
             capture_network_bodies: None,
             firewalls: None,
             network_policies: None,
-            connector_policy_refreshes: None,
+            network_policy_refreshes: None,
             disallowed_tools: None,
             tools: None,
             settings: None,

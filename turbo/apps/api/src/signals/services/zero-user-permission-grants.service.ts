@@ -21,14 +21,14 @@ import type {
 
 import { notFound } from "../../lib/error";
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
-import { publishConnectorPolicyRefreshToRunnerGroup } from "../external/realtime";
+import { publishNetworkPolicyRefreshToRunnerGroup } from "../external/realtime";
 import { nowDate } from "../external/time";
 
 type UserPermissionGrantRow = typeof userPermissionGrants.$inferSelect;
 type StoredPermissionGrantRow = UserPermissionGrantRow;
 type UserPermissionGrantAction = UserPermissionGrantResponse["action"];
 
-interface ActiveConnectorPolicyRefresh {
+interface ActiveNetworkPolicyRefresh {
   readonly connectorRef: string;
   readonly networkPolicy: NetworkPolicy;
   readonly nextRefreshAt: string | null;
@@ -83,7 +83,7 @@ type ApplyUserPermissionGrantsResult =
   | NotFoundResponse
   | ValidationErrorResponse;
 
-interface ActivePermissionRefreshRun {
+interface ActiveNetworkPolicyRefreshRun {
   readonly runId: string;
   readonly runnerGroup: string | null;
 }
@@ -275,22 +275,22 @@ function resolvedConnectorFirewallPolicies(
   return permissionGrantsToFirewallPolicies(grants) ?? {};
 }
 
-function isConnectorPolicyRefreshRef(connectorRef: string): boolean {
+function isNetworkPolicyRefreshRef(connectorRef: string): boolean {
   return !connectorRef.startsWith("model-provider:");
 }
 
-export async function resolveActiveConnectorPolicyRefreshes(
+export async function resolveActiveNetworkPolicyRefreshes(
   db: ReadonlyDb,
   scope: UserPermissionGrantScope,
   connectorRefs: readonly string[],
   checkedAt: Date = nowDate(),
-): Promise<readonly ActiveConnectorPolicyRefresh[]> {
+): Promise<readonly ActiveNetworkPolicyRefresh[]> {
   if (connectorRefs.length === 0) {
     return [];
   }
 
   const uniqueConnectorRefs = [
-    ...new Set(connectorRefs.filter(isConnectorPolicyRefreshRef)),
+    ...new Set(connectorRefs.filter(isNetworkPolicyRefreshRef)),
   ];
   if (uniqueConnectorRefs.length === 0) {
     return [];
@@ -308,7 +308,7 @@ export async function resolveActiveConnectorPolicyRefreshes(
     }),
   );
 
-  const refreshes: ActiveConnectorPolicyRefresh[] = [];
+  const refreshes: ActiveNetworkPolicyRefresh[] = [];
   for (const { connectorRef, index } of indexes) {
     if (!index) {
       continue;
@@ -336,8 +336,8 @@ export async function resolveActiveConnectorPolicyRefreshes(
   return refreshes;
 }
 
-export function connectorPolicyRefreshesRecord(
-  refreshes: readonly ActiveConnectorPolicyRefresh[],
+export function networkPolicyRefreshesRecord(
+  refreshes: readonly ActiveNetworkPolicyRefresh[],
 ): Record<string, { readonly nextRefreshAt: string }> | undefined {
   const entries = refreshes.flatMap((refresh) => {
     if (refresh.nextRefreshAt === null) {
@@ -350,9 +350,9 @@ export function connectorPolicyRefreshesRecord(
   return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 }
 
-export function mergeConnectorNetworkPolicyRefreshes(
+export function mergeNetworkPolicyRefreshes(
   networkPolicies: NetworkPolicies | undefined,
-  refreshes: readonly ActiveConnectorPolicyRefresh[],
+  refreshes: readonly ActiveNetworkPolicyRefresh[],
 ): NetworkPolicies | undefined {
   if (!networkPolicies && refreshes.length === 0) {
     return undefined;
@@ -578,10 +578,10 @@ async function applyVisibleAgentGrantRows(
   });
 }
 
-async function loadActivePermissionRefreshRuns(
+async function loadActiveNetworkPolicyRefreshRuns(
   db: ReadonlyDb,
   scope: UserPermissionGrantScope,
-): Promise<readonly ActivePermissionRefreshRun[]> {
+): Promise<readonly ActiveNetworkPolicyRefreshRun[]> {
   return await db
     .select({
       runId: agentRuns.id,
@@ -603,18 +603,18 @@ async function loadActivePermissionRefreshRuns(
     );
 }
 
-async function publishActiveConnectorPolicyRefreshes(
+async function publishActiveNetworkPolicyRefreshes(
   db: ReadonlyDb,
   scope: UserPermissionGrantScope,
   connectorRef: string,
 ): Promise<void> {
-  const runs = await loadActivePermissionRefreshRuns(db, scope);
+  const runs = await loadActiveNetworkPolicyRefreshRuns(db, scope);
   await Promise.all(
     runs.flatMap((run) => {
       if (!run.runnerGroup) {
         return [];
       }
-      return publishConnectorPolicyRefreshToRunnerGroup(
+      return publishNetworkPolicyRefreshToRunnerGroup(
         run.runnerGroup,
         run.runId,
         connectorRef,
@@ -635,7 +635,7 @@ function applyPermissionGrantResponseScope(
   return { agentId: requireAgentGrantApply(args.apply).agentId };
 }
 
-async function applyRowsAndPublishConnectorPolicyRefreshes(
+async function applyRowsAndPublishNetworkPolicyRefreshes(
   db: Db,
   args: ApplyUserPermissionGrantsArgs,
 ): Promise<readonly StoredPermissionGrantRow[] | NotFoundResponse> {
@@ -645,7 +645,7 @@ async function applyRowsAndPublishConnectorPolicyRefreshes(
   }
 
   const responseScope = applyPermissionGrantResponseScope(args);
-  await publishActiveConnectorPolicyRefreshes(
+  await publishActiveNetworkPolicyRefreshes(
     db,
     {
       orgId: args.orgId,
@@ -701,10 +701,7 @@ export const applyUserPermissionGrants$ = command(
     }
 
     const writeDb = set(writeDb$);
-    const rows = await applyRowsAndPublishConnectorPolicyRefreshes(
-      writeDb,
-      args,
-    );
+    const rows = await applyRowsAndPublishNetworkPolicyRefreshes(writeDb, args);
     signal.throwIfAborted();
 
     if ("status" in rows) {

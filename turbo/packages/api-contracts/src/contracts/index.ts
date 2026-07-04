@@ -860,7 +860,7 @@ export {
   type Job,
   type ExecutionContext,
   type StoredExecutionContext,
-  type ConnectorPolicyRefresh,
+  type NetworkPolicyRefresh,
   type SecretConnectorMetadata,
   type StorageEntry,
   type ArtifactEntry,

@@ -252,7 +252,7 @@ fn build_mock_run_config_with_runtime(
             network_log_manager: NetworkLogManager::new(),
             network_log_drain: NetworkLogDrainCoordinator::noop(),
             mitm_jsonl_flush: None,
-            connector_policy_refresh: None,
+            network_policy_refresh: None,
             home,
             workspace_cache: None,
         }),

@@ -72,13 +72,13 @@ const runnerPollTelemetrySchema = z.object({
 
 const runnerProfileListSchema = z.array(z.string());
 
-const connectorPolicyRefreshSchema = z.object({
+const networkPolicyRefreshSchema = z.object({
   nextRefreshAt: z.string().datetime({ offset: true }),
 });
 
-const connectorPolicyRefreshesSchema = z.record(
+const networkPolicyRefreshesSchema = z.record(
   z.string(),
-  connectorPolicyRefreshSchema,
+  networkPolicyRefreshSchema,
 );
 
 /**
@@ -330,7 +330,7 @@ export const storedExecutionContextSchema = z.object({
   networkPolicies: networkPoliciesSchema.optional(),
   // Per-connector runtime policy refresh deadlines. Used by runners to refresh
   // active sandbox policy when temporary allow grants expire.
-  connectorPolicyRefreshes: connectorPolicyRefreshesSchema.optional(),
+  networkPolicyRefreshes: networkPolicyRefreshesSchema.optional(),
   // Tools to disable in Claude CLI (passed as --disallowed-tools)
   disallowedTools: z.array(z.string()).optional(),
   // Tools to make available in Claude CLI (passed as --tools)
@@ -399,7 +399,7 @@ export const executionContextSchema = z.object({
   networkPolicies: networkPoliciesSchema.optional(),
   // Per-connector runtime policy refresh deadlines. Used by runners to refresh
   // active sandbox policy when temporary allow grants expire.
-  connectorPolicyRefreshes: connectorPolicyRefreshesSchema.optional(),
+  networkPolicyRefreshes: networkPolicyRefreshesSchema.optional(),
   // Tools to disable in Claude CLI (passed as --disallowed-tools)
   disallowedTools: z.array(z.string()).optional(),
   // Tools to make available in Claude CLI (passed as --tools)
@@ -548,9 +548,7 @@ export type ExecutionContext = z.infer<typeof executionContextSchema>;
 export type StoredExecutionContext = z.infer<
   typeof storedExecutionContextSchema
 >;
-export type ConnectorPolicyRefresh = z.infer<
-  typeof connectorPolicyRefreshSchema
->;
+export type NetworkPolicyRefresh = z.infer<typeof networkPolicyRefreshSchema>;
 export type SecretConnectorMetadata = z.infer<
   typeof secretConnectorMetadataSchema
 >;

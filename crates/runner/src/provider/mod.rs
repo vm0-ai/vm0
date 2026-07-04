@@ -7,16 +7,16 @@
 mod api;
 mod api_ably_supervisor;
 mod api_direct_candidates;
-mod connector_policy_refresh;
 mod local;
 #[cfg(test)]
 pub mod mock;
+mod network_policy_refresh;
 
 pub use api::ApiProvider;
-pub(crate) use connector_policy_refresh::{
-    ConnectorPolicyRefreshHandle, ConnectorPolicyRefreshRegistration,
-};
 pub use local::LocalProvider;
+pub(crate) use network_policy_refresh::{
+    NetworkPolicyRefreshHandle, NetworkPolicyRefreshRegistration,
+};
 
 use chrono::{DateTime, Utc};
 use sandbox::SandboxId;

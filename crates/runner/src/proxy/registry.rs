@@ -165,7 +165,7 @@ impl ProxyRegistryHandle {
         Ok(())
     }
 
-    /// Patch one connector policy only if the source IP still belongs to `run_id`.
+    /// Patch one network policy only if the source IP still belongs to `run_id`.
     ///
     /// Returns `Ok(false)` when the VM is gone, belongs to another run, or does
     /// not contain the requested connector firewall.
@@ -176,11 +176,11 @@ impl ProxyRegistryHandle {
         connector_ref: &str,
         policy: NetworkPolicy,
     ) -> RunnerResult<bool> {
-        self.patch_existing_connector_policy(source_ip, run_id, connector_ref, policy)
+        self.patch_existing_network_policy(source_ip, run_id, connector_ref, policy)
             .await
     }
 
-    /// Replace one connector policy with deny-all if the source IP still belongs
+    /// Replace one network policy with deny-all if the source IP still belongs
     /// to `run_id`.
     pub async fn fail_closed_network_policy_if_run_matches(
         &self,
@@ -242,7 +242,7 @@ impl ProxyRegistryHandle {
         Ok(true)
     }
 
-    async fn patch_existing_connector_policy(
+    async fn patch_existing_network_policy(
         &self,
         source_ip: &str,
         run_id: &str,

@@ -415,7 +415,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       return response.body;
     },
 
-    async refreshRunnerConnectorPolicy(runId: string, connectorRef: string) {
+    async refreshRunnerNetworkPolicy(runId: string, connectorRef: string) {
       const response = await accept(
         runsAutomationApp(context)(
           runnersConnectorNetworkPolicyContract,
@@ -429,13 +429,13 @@ export function createRunsAutomationsApi(context: TestContext) {
       const [refresh] = response.body.refreshes;
       if (!refresh) {
         throw new Error(
-          `Expected refreshed connector policy for ${connectorRef}`,
+          `Expected refreshed network policy for ${connectorRef}`,
         );
       }
       return refresh;
     },
 
-    async requestRefreshRunnerConnectorPolicyAs(
+    async requestRefreshRunnerNetworkPolicyAs(
       authorization: string | undefined,
       runId: string,
       connectorRef: string,

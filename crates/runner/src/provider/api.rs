@@ -14,7 +14,7 @@ use super::api_ably_supervisor::{
     AblySupervisor, AblySupervisorConfig, PollDue, PollOutcome, PollReason, PollWakeups,
 };
 use super::api_direct_candidates::{DirectCandidateInbox, DirectJobCandidate};
-use super::connector_policy_refresh::ConnectorPolicyRefreshHandle;
+use super::network_policy_refresh::NetworkPolicyRefreshHandle;
 use super::{
     ClaimedJob, CompletionAuth, CompletionAuthError, JobCandidate, JobDiscoverySource, JobProvider,
 };
@@ -24,7 +24,7 @@ use crate::http::HttpClient;
 use crate::ids::RunId;
 use crate::run_cancellation::SharedRunCancellationMap;
 use crate::types::{
-    CompleteRequest, ConnectorPolicyRefreshBatchResponse, ExecutionContext, HeartbeatState, Job,
+    CompleteRequest, ExecutionContext, HeartbeatState, Job, NetworkPolicyRefreshBatchResponse,
     PollResponse, SandboxReuseResult,
 };
 use sandbox::SandboxId;
@@ -70,7 +70,7 @@ const POLL_FAST: Duration = Duration::from_secs(5);
 /// Retry delay after a job-notification wakeup reaches poll but poll fails.
 const POLL_WAKEUP_RETRY: Duration = POLL_FAST;
 const DIRECT_CANDIDATE_INBOX_CAPACITY: usize = 128;
-const CONNECTOR_POLICY_REFRESH_TIMEOUT: Duration = Duration::from_secs(3);
+const NETWORK_POLICY_REFRESH_TIMEOUT: Duration = Duration::from_secs(3);
 
 enum DiscoveryWakeup {
     Direct(DirectJobCandidate),
@@ -101,7 +101,7 @@ pub struct ApiProvider {
     direct_candidates: Arc<DirectCandidateInbox>,
     /// Background Ably control-plane task.
     ably_supervisor: AblySupervisor,
-    connector_policy_refresh: ConnectorPolicyRefreshHandle,
+    network_policy_refresh: NetworkPolicyRefreshHandle,
     /// Shutdown signal.
     cancel: CancellationToken,
 }
@@ -117,7 +117,7 @@ impl ApiProvider {
         cancel_tokens: SharedRunCancellationMap,
     ) -> Arc<Self> {
         let api = ApiClient::new(http, token);
-        let connector_policy_refresh = ConnectorPolicyRefreshHandle::new(api.clone());
+        let network_policy_refresh = NetworkPolicyRefreshHandle::new(api.clone());
         let poll_wakeups = Arc::new(PollWakeups::new(false));
         let direct_candidates = DirectCandidateInbox::new(DIRECT_CANDIDATE_INBOX_CAPACITY);
         let ably_supervisor = AblySupervisor::spawn(AblySupervisorConfig {
@@ -127,7 +127,7 @@ impl ApiProvider {
             poll_wakeups: Arc::clone(&poll_wakeups),
             direct_candidates: Arc::clone(&direct_candidates),
             cancel_tokens,
-            connector_policy_refresh: connector_policy_refresh.clone(),
+            network_policy_refresh: network_policy_refresh.clone(),
             provider_cancel: cancel.clone(),
         });
 
@@ -138,13 +138,13 @@ impl ApiProvider {
             poll_wakeups,
             direct_candidates,
             ably_supervisor,
-            connector_policy_refresh,
+            network_policy_refresh,
             cancel,
         })
     }
 
-    pub(crate) fn connector_policy_refresh_handle(&self) -> ConnectorPolicyRefreshHandle {
-        self.connector_policy_refresh.clone()
+    pub(crate) fn network_policy_refresh_handle(&self) -> NetworkPolicyRefreshHandle {
+        self.network_policy_refresh.clone()
     }
 
     async fn try_recv_direct_candidate(&self) -> Option<DirectJobCandidate> {
@@ -329,7 +329,7 @@ impl JobProvider for ApiProvider {
 
     async fn shutdown(&self) {
         self.ably_supervisor.shutdown().await;
-        self.connector_policy_refresh.shutdown().await;
+        self.network_policy_refresh.shutdown().await;
     }
 
     async fn complete(
@@ -528,23 +528,23 @@ impl ApiClient {
         decode_api_json(resp, "realtime token").await
     }
 
-    pub(super) async fn refresh_connector_policies(
+    pub(super) async fn refresh_network_policies(
         &self,
         run_id: RunId,
         connector_refs: &[String],
-    ) -> RunnerResult<ConnectorPolicyRefreshBatchResponse> {
+    ) -> RunnerResult<NetworkPolicyRefreshBatchResponse> {
         let run_id = run_id.to_string();
         let resp = send_api(
-            self.connector_policy_refresh_request(&run_id, connector_refs),
-            "connector policy refresh",
+            self.network_policy_refresh_request(&run_id, connector_refs),
+            "network policy refresh",
         )
         .await?;
 
-        let resp = check_api_status(resp, "connector policy refresh").await?;
-        decode_api_json(resp, "connector policy refresh").await
+        let resp = check_api_status(resp, "network policy refresh").await?;
+        decode_api_json(resp, "network policy refresh").await
     }
 
-    fn connector_policy_refresh_request(
+    fn network_policy_refresh_request(
         &self,
         run_id: &str,
         connector_refs: &[String],
@@ -556,7 +556,7 @@ impl ApiClient {
                 ),
                 &self.token,
             )
-            .timeout(CONNECTOR_POLICY_REFRESH_TIMEOUT)
+            .timeout(NETWORK_POLICY_REFRESH_TIMEOUT)
             .json(&serde_json::json!({ "connectorRefs": connector_refs }))
     }
 }
@@ -899,19 +899,19 @@ mod tests {
     }
 
     #[test]
-    fn connector_policy_refresh_request_uses_short_timeout() {
+    fn network_policy_refresh_request_uses_short_timeout() {
         let server = MockServer::start();
         let api = api_client_for_server(&server);
 
         let request = api
-            .connector_policy_refresh_request(
+            .network_policy_refresh_request(
                 "00000000-0000-0000-0000-000000000001",
                 &["slack".to_string()],
             )
             .build()
-            .expect("connector policy refresh request should build");
+            .expect("network policy refresh request should build");
 
-        assert_eq!(request.timeout(), Some(&CONNECTOR_POLICY_REFRESH_TIMEOUT));
+        assert_eq!(request.timeout(), Some(&NETWORK_POLICY_REFRESH_TIMEOUT));
         assert_eq!(
             request.url().path(),
             "/api/runners/runs/00000000-0000-0000-0000-000000000001/connector-network-policies"
@@ -946,7 +946,7 @@ mod tests {
             "runner-token".to_string(),
         );
         Arc::new(ApiProvider {
-            connector_policy_refresh: ConnectorPolicyRefreshHandle::new(api.clone()),
+            network_policy_refresh: NetworkPolicyRefreshHandle::new(api.clone()),
             api,
             group: "default".to_string(),
             supported_profiles: vec![crate::profile::DEFAULT_PROFILE.to_string()],

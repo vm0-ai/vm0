@@ -4465,9 +4465,9 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const grantedContext = await claimSlackContext("granted permissions");
     const granted = grantedContext.policy;
     expect(
-      grantedContext.claim.connectorPolicyRefreshes?.slack?.nextRefreshAt,
+      grantedContext.claim.networkPolicyRefreshes?.slack?.nextRefreshAt,
     ).toStrictEqual(expect.any(String));
-    expect(grantedContext.claim.connectorPolicyRefreshes).not.toHaveProperty(
+    expect(grantedContext.claim.networkPolicyRefreshes).not.toHaveProperty(
       "model-provider:anthropic-api-key",
     );
     expect(granted.allow).toContain("chat:write");
@@ -4493,7 +4493,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(unknownDenied.allow).toContain("conversations:read");
     expect(unknownDenied.deny).toContain("chat:write");
 
-    // Queued runs refresh connector policy at claim time, so permission changes
+    // Queued runs refresh network policy at claim time, so permission changes
     // made after creation are visible before the sandbox starts.
     await api.applyUserPermissionGrant(actor, {
       agentId,
@@ -4519,19 +4519,19 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     );
     const actorRunnerKey = await api.createApiKey(actor);
     const memberRunnerKey = await api.createApiKey(member);
-    const sameUserRefresh = await api.requestRefreshRunnerConnectorPolicyAs(
+    const sameUserRefresh = await api.requestRefreshRunnerNetworkPolicyAs(
       `Bearer ${actorRunnerKey.token}`,
       snapshotRun.runId,
       "slack",
       [200],
     );
     if (sameUserRefresh.status !== 200) {
-      throw new Error("Expected same-user connector policy refresh to succeed");
+      throw new Error("Expected same-user network policy refresh to succeed");
     }
     expect(sameUserRefresh.body.refreshes[0]?.networkPolicy.deny).toContain(
       "chat:write",
     );
-    const otherUserRefresh = await api.requestRefreshRunnerConnectorPolicyAs(
+    const otherUserRefresh = await api.requestRefreshRunnerNetworkPolicyAs(
       `Bearer ${memberRunnerKey.token}`,
       snapshotRun.runId,
       "slack",
@@ -4539,7 +4539,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     );
     if (otherUserRefresh.status !== 403) {
       throw new Error(
-        "Expected other-user connector policy refresh to be forbidden",
+        "Expected other-user network policy refresh to be forbidden",
       );
     }
     expect(otherUserRefresh.body.error.message).toBe(
@@ -4553,10 +4553,10 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       action: "allow",
     });
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
-      "permission-refresh",
+      "network-policy-refresh",
       { runId: snapshotRun.runId, connectorRef: "slack" },
     );
-    const refreshedPolicy = await api.refreshRunnerConnectorPolicy(
+    const refreshedPolicy = await api.refreshRunnerNetworkPolicy(
       snapshotRun.runId,
       "slack",
     );
@@ -4566,7 +4566,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(refreshedPolicy.nextRefreshAt).toStrictEqual(expect.any(String));
 
     context.mocks.ably.publish.mockRejectedValueOnce(
-      new Error("permission refresh publish failed"),
+      new Error("network policy refresh publish failed"),
     );
     const failedRefreshNotification = await api.requestUserPermissionGrant(
       actor,

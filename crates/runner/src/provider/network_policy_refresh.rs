@@ -1,4 +1,4 @@
-//! Runtime connector policy refresh for active API-backed runs.
+//! Runtime network policy refresh for active API-backed runs.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex as StdMutex};
@@ -16,32 +16,32 @@ use tracing::{info, warn};
 use super::api::ApiClient;
 use crate::ids::RunId;
 use crate::proxy::ProxyRegistryHandle;
-use crate::types::{ConnectorPolicyRefresh, NetworkPolicy};
+use crate::types::{NetworkPolicy, NetworkPolicyRefresh};
 
 const REFRESH_REQUEST_QUEUE_CAPACITY: usize = 256;
-const CONNECTOR_POLICY_REFRESH_BATCH_MAX: usize =
+const NETWORK_POLICY_REFRESH_BATCH_MAX: usize =
     CONNECTOR_NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX as usize;
 const EXPIRED_REFRESH_DEADLINE_RETRY_DELAY: Duration = Duration::from_millis(250);
 const SCHEDULED_REFRESH_COALESCE_WINDOW: Duration = Duration::from_millis(100);
 
 #[derive(Clone)]
-pub(crate) struct ConnectorPolicyRefreshHandle {
-    core: ConnectorPolicyRefreshCore,
-    worker: Arc<ConnectorPolicyRefreshWorker>,
+pub(crate) struct NetworkPolicyRefreshHandle {
+    core: NetworkPolicyRefreshCore,
+    worker: Arc<NetworkPolicyRefreshWorker>,
 }
 
-struct ConnectorPolicyRefreshWorker {
-    core: ConnectorPolicyRefreshCore,
+struct NetworkPolicyRefreshWorker {
+    core: NetworkPolicyRefreshCore,
     task: StdMutex<Option<tokio::task::JoinHandle<()>>>,
 }
 
 #[derive(Clone)]
-struct ConnectorPolicyRefreshCore {
-    inner: Arc<ConnectorPolicyRefreshState>,
+struct NetworkPolicyRefreshCore {
+    inner: Arc<NetworkPolicyRefreshState>,
     request_tx: mpsc::Sender<RefreshRequest>,
 }
 
-struct ConnectorPolicyRefreshState {
+struct NetworkPolicyRefreshState {
     api: ApiClient,
     active_runs: Mutex<HashMap<RunId, ActiveRunPolicyState>>,
     cancel: CancellationToken,
@@ -68,12 +68,12 @@ struct ActiveRunPolicySnapshot {
     registry: ProxyRegistryHandle,
 }
 
-pub(crate) struct ConnectorPolicyRefreshRegistration<'a> {
+pub(crate) struct NetworkPolicyRefreshRegistration<'a> {
     pub(crate) run_id: RunId,
     pub(crate) source_ip: &'a str,
     pub(crate) registry: ProxyRegistryHandle,
     pub(crate) connector_refs: HashSet<String>,
-    pub(crate) refreshes: Option<&'a HashMap<String, ConnectorPolicyRefresh>>,
+    pub(crate) refreshes: Option<&'a HashMap<String, NetworkPolicyRefresh>>,
 }
 
 struct RefreshRequest {
@@ -81,11 +81,11 @@ struct RefreshRequest {
     connector_refs: Vec<String>,
 }
 
-impl ConnectorPolicyRefreshHandle {
+impl NetworkPolicyRefreshHandle {
     pub(super) fn new(api: ApiClient) -> Self {
         let (request_tx, request_rx) = mpsc::channel(REFRESH_REQUEST_QUEUE_CAPACITY);
-        let core = ConnectorPolicyRefreshCore {
-            inner: Arc::new(ConnectorPolicyRefreshState {
+        let core = NetworkPolicyRefreshCore {
+            inner: Arc::new(NetworkPolicyRefreshState {
                 api,
                 active_runs: Mutex::new(HashMap::new()),
                 cancel: CancellationToken::new(),
@@ -95,7 +95,7 @@ impl ConnectorPolicyRefreshHandle {
         let worker_task = tokio::spawn(run_refresh_worker(core.clone(), request_rx));
         Self {
             core: core.clone(),
-            worker: Arc::new(ConnectorPolicyRefreshWorker {
+            worker: Arc::new(NetworkPolicyRefreshWorker {
                 core,
                 task: StdMutex::new(Some(worker_task)),
             }),
@@ -108,11 +108,11 @@ impl ConnectorPolicyRefreshHandle {
         if let Some(worker_task) = worker_task
             && let Err(error) = worker_task.await
         {
-            warn!(error = %error, "connector policy refresh worker failed during shutdown");
+            warn!(error = %error, "network policy refresh worker failed during shutdown");
         }
     }
 
-    pub(crate) async fn register_run(&self, registration: ConnectorPolicyRefreshRegistration<'_>) {
+    pub(crate) async fn register_run(&self, registration: NetworkPolicyRefreshRegistration<'_>) {
         self.core.register_run(registration).await;
     }
 
@@ -120,20 +120,20 @@ impl ConnectorPolicyRefreshHandle {
         self.core.unregister_run(run_id).await;
     }
 
-    pub(crate) async fn notify_permission_refresh(&self, run_id: RunId, connector_ref: String) {
+    pub(crate) async fn notify_network_policy_refresh(&self, run_id: RunId, connector_ref: String) {
         self.core
-            .notify_permission_refresh(run_id, connector_ref)
+            .notify_network_policy_refresh(run_id, connector_ref)
             .await;
     }
 
-    pub(crate) async fn notify_permission_refresh_until_cancelled(
+    pub(crate) async fn notify_network_policy_refresh_until_cancelled(
         &self,
         run_id: RunId,
         connector_ref: String,
         cancel: &CancellationToken,
     ) {
         self.core
-            .notify_permission_refresh_until_cancelled(run_id, connector_ref, cancel)
+            .notify_network_policy_refresh_until_cancelled(run_id, connector_ref, cancel)
             .await;
     }
 
@@ -142,7 +142,7 @@ impl ConnectorPolicyRefreshHandle {
     }
 }
 
-impl ConnectorPolicyRefreshWorker {
+impl NetworkPolicyRefreshWorker {
     fn take_task(&self) -> Option<tokio::task::JoinHandle<()>> {
         self.task
             .lock()
@@ -151,7 +151,7 @@ impl ConnectorPolicyRefreshWorker {
     }
 }
 
-impl Drop for ConnectorPolicyRefreshWorker {
+impl Drop for NetworkPolicyRefreshWorker {
     fn drop(&mut self) {
         self.core.inner.cancel.cancel();
         if let Some(worker_task) = self.take_task() {
@@ -160,7 +160,7 @@ impl Drop for ConnectorPolicyRefreshWorker {
     }
 }
 
-impl ConnectorPolicyRefreshCore {
+impl NetworkPolicyRefreshCore {
     async fn shutdown_active_runs(&self) {
         self.inner.cancel.cancel();
         let old_runs = std::mem::take(&mut *self.inner.active_runs.lock().await);
@@ -170,7 +170,7 @@ impl ConnectorPolicyRefreshCore {
         }
     }
 
-    async fn register_run(&self, registration: ConnectorPolicyRefreshRegistration<'_>) {
+    async fn register_run(&self, registration: NetworkPolicyRefreshRegistration<'_>) {
         if self.inner.cancel.is_cancelled() {
             return;
         }
@@ -225,22 +225,22 @@ impl ConnectorPolicyRefreshCore {
         }
     }
 
-    async fn notify_permission_refresh(&self, run_id: RunId, connector_ref: String) {
-        self.notify_permission_refresh_inner(run_id, connector_ref, None)
+    async fn notify_network_policy_refresh(&self, run_id: RunId, connector_ref: String) {
+        self.notify_network_policy_refresh_inner(run_id, connector_ref, None)
             .await;
     }
 
-    async fn notify_permission_refresh_until_cancelled(
+    async fn notify_network_policy_refresh_until_cancelled(
         &self,
         run_id: RunId,
         connector_ref: String,
         cancel: &CancellationToken,
     ) {
-        self.notify_permission_refresh_inner(run_id, connector_ref, Some(cancel))
+        self.notify_network_policy_refresh_inner(run_id, connector_ref, Some(cancel))
             .await;
     }
 
-    async fn notify_permission_refresh_inner(
+    async fn notify_network_policy_refresh_inner(
         &self,
         run_id: RunId,
         connector_ref: String,
@@ -284,7 +284,7 @@ impl ConnectorPolicyRefreshCore {
                     run_id = %request.run_id,
                     connector_count = request.connector_refs.len(),
                     connector_refs = ?request.connector_refs,
-                    "connector policy refresh queue full; failing closed after permission refresh notification"
+                    "network policy refresh queue full; failing closed after network policy refresh notification"
                 );
                 self.try_fail_closed_active_connectors(request.run_id, &request.connector_refs)
                     .await;
@@ -294,7 +294,7 @@ impl ConnectorPolicyRefreshCore {
                     run_id = %error.run_id,
                     connector_count = error.connector_refs.len(),
                     connector_refs = ?error.connector_refs,
-                    "connector policy refresh queue closed"
+                    "network policy refresh queue closed"
                 );
             }
         }
@@ -317,7 +317,7 @@ impl ConnectorPolicyRefreshCore {
                     run_id = %request.run_id,
                     connector_count = request.connector_refs.len(),
                     connector_refs = ?request.connector_refs,
-                    "connector policy refresh queue full; failing closed after scheduled refresh deadline"
+                    "network policy refresh queue full; failing closed after scheduled refresh deadline"
                 );
                 self.fail_closed_active_connectors(request.run_id, &request.connector_refs)
                     .await;
@@ -327,13 +327,13 @@ impl ConnectorPolicyRefreshCore {
                     run_id = %error.run_id,
                     connector_count = error.connector_refs.len(),
                     connector_refs = ?error.connector_refs,
-                    "connector policy refresh queue closed"
+                    "network policy refresh queue closed"
                 );
             }
         }
     }
 
-    async fn refresh_connectors_now(&self, run_id: RunId, connector_refs: Vec<String>) {
+    async fn refresh_network_policies_now(&self, run_id: RunId, connector_refs: Vec<String>) {
         let active_connector_refs = self
             .active_connector_refs(run_id, unique_connector_refs(connector_refs))
             .await;
@@ -341,9 +341,9 @@ impl ConnectorPolicyRefreshCore {
             return;
         }
 
-        for connector_refs in active_connector_refs.chunks(CONNECTOR_POLICY_REFRESH_BATCH_MAX) {
+        for connector_refs in active_connector_refs.chunks(NETWORK_POLICY_REFRESH_BATCH_MAX) {
             if !self
-                .refresh_connector_batch_now(run_id, connector_refs)
+                .refresh_network_policy_batch_now(run_id, connector_refs)
                 .await
             {
                 return;
@@ -351,7 +351,7 @@ impl ConnectorPolicyRefreshCore {
         }
     }
 
-    async fn refresh_connector_batch_now(
+    async fn refresh_network_policy_batch_now(
         &self,
         run_id: RunId,
         active_connector_refs: &[String],
@@ -359,7 +359,7 @@ impl ConnectorPolicyRefreshCore {
         let response = match self
             .inner
             .api
-            .refresh_connector_policies(run_id, active_connector_refs)
+            .refresh_network_policies(run_id, active_connector_refs)
             .await
         {
             Ok(response) => response,
@@ -369,7 +369,7 @@ impl ConnectorPolicyRefreshCore {
                     connector_count = active_connector_refs.len(),
                     connector_refs = ?active_connector_refs,
                     error = %error,
-                    "connector policy refresh failed"
+                    "network policy refresh failed"
                 );
                 self.fail_closed_active_connectors(run_id, active_connector_refs)
                     .await;
@@ -387,7 +387,7 @@ impl ConnectorPolicyRefreshCore {
                     run_id = %run_id,
                     response_connector_ref = refresh.connector_ref,
                     requested_connector_refs = ?active_connector_refs,
-                    "connector policy refresh returned unexpected connector"
+                    "network policy refresh returned unexpected connector"
                 );
                 continue;
             }
@@ -399,7 +399,7 @@ impl ConnectorPolicyRefreshCore {
                 warn!(
                     run_id = %run_id,
                     connector_ref = response_connector_ref,
-                    "connector policy refresh returned duplicate connector"
+                    "network policy refresh returned duplicate connector"
                 );
                 duplicate_connector_refs.insert(response_connector_ref);
             }
@@ -409,7 +409,7 @@ impl ConnectorPolicyRefreshCore {
             let connector_ref = connector_ref.as_str();
             if duplicate_connector_refs.contains(connector_ref) {
                 if let Some(snapshot) = self.active_snapshot(run_id, connector_ref).await {
-                    fail_closed_connector_policy(run_id, connector_ref, snapshot).await;
+                    fail_closed_network_policy(run_id, connector_ref, snapshot).await;
                 }
                 continue;
             }
@@ -417,10 +417,10 @@ impl ConnectorPolicyRefreshCore {
                 warn!(
                     run_id = %run_id,
                     connector_ref,
-                    "connector policy refresh response omitted requested connector"
+                    "network policy refresh response omitted requested connector"
                 );
                 if let Some(snapshot) = self.active_snapshot(run_id, connector_ref).await {
-                    fail_closed_connector_policy(run_id, connector_ref, snapshot).await;
+                    fail_closed_network_policy(run_id, connector_ref, snapshot).await;
                 }
                 continue;
             };
@@ -428,14 +428,14 @@ impl ConnectorPolicyRefreshCore {
             let Some(snapshot) = self.active_snapshot(run_id, connector_ref).await else {
                 continue;
             };
-            match patch_connector_policy(run_id, connector_ref, snapshot, response.network_policy)
+            match patch_network_policy(run_id, connector_ref, snapshot, response.network_policy)
                 .await
             {
                 Ok(true) => {
                     info!(
                         run_id = %run_id,
                         connector_ref,
-                        "refreshed connector policy"
+                        "refreshed network policy"
                     );
                     self.replace_schedule(run_id, connector_ref, response.next_refresh_at)
                         .await;
@@ -449,10 +449,10 @@ impl ConnectorPolicyRefreshCore {
                         run_id = %run_id,
                         connector_ref,
                         error = %error,
-                        "failed to patch refreshed connector policy"
+                        "failed to patch refreshed network policy"
                     );
                     if let Some(snapshot) = self.active_snapshot(run_id, connector_ref).await {
-                        fail_closed_connector_policy(run_id, connector_ref, snapshot).await;
+                        fail_closed_network_policy(run_id, connector_ref, snapshot).await;
                     }
                 }
             }
@@ -478,7 +478,7 @@ impl ConnectorPolicyRefreshCore {
     async fn try_fail_closed_active_connectors(&self, run_id: RunId, connector_refs: &[String]) {
         for connector_ref in connector_refs {
             if let Some(snapshot) = self.active_snapshot(run_id, connector_ref).await {
-                try_fail_closed_connector_policy(run_id, connector_ref, snapshot).await;
+                try_fail_closed_network_policy(run_id, connector_ref, snapshot).await;
             }
         }
     }
@@ -486,7 +486,7 @@ impl ConnectorPolicyRefreshCore {
     async fn fail_closed_active_connectors(&self, run_id: RunId, connector_refs: &[String]) {
         for connector_ref in connector_refs {
             if let Some(snapshot) = self.active_snapshot(run_id, connector_ref).await {
-                fail_closed_connector_policy(run_id, connector_ref, snapshot).await;
+                fail_closed_network_policy(run_id, connector_ref, snapshot).await;
             }
         }
     }
@@ -614,7 +614,7 @@ impl ConnectorPolicyRefreshCore {
 }
 
 async fn run_refresh_worker(
-    handle: ConnectorPolicyRefreshCore,
+    handle: NetworkPolicyRefreshCore,
     mut request_rx: mpsc::Receiver<RefreshRequest>,
 ) {
     loop {
@@ -634,7 +634,7 @@ async fn run_refresh_worker(
                     () = handle.inner.cancel.cancelled() => {
                         false
                     }
-                    () = handle.refresh_connectors_now(
+                    () = handle.refresh_network_policies_now(
                         run_id,
                         connector_refs,
                     ) => {
@@ -649,7 +649,7 @@ async fn run_refresh_worker(
     }
 }
 
-async fn patch_connector_policy(
+async fn patch_network_policy(
     run_id: RunId,
     connector_ref: &str,
     snapshot: ActiveRunPolicySnapshot,
@@ -666,7 +666,7 @@ async fn patch_connector_policy(
         .await
 }
 
-async fn try_fail_closed_connector_policy(
+async fn try_fail_closed_network_policy(
     run_id: RunId,
     connector_ref: &str,
     snapshot: ActiveRunPolicySnapshot,
@@ -684,7 +684,7 @@ async fn try_fail_closed_connector_policy(
             warn!(
                 run_id = %run_id,
                 connector_ref,
-                "failed closed connector policy after connector policy refresh queue overflow"
+                "failed closed network policy after network policy refresh queue overflow"
             );
         }
         Ok(false) => {}
@@ -693,13 +693,13 @@ async fn try_fail_closed_connector_policy(
                 run_id = %run_id,
                 connector_ref,
                 error = %error,
-                "failed to fail close connector policy after connector policy refresh queue overflow"
+                "failed to fail close network policy after network policy refresh queue overflow"
             );
         }
     }
 }
 
-async fn fail_closed_connector_policy(
+async fn fail_closed_network_policy(
     run_id: RunId,
     connector_ref: &str,
     snapshot: ActiveRunPolicySnapshot,
@@ -717,7 +717,7 @@ async fn fail_closed_connector_policy(
             warn!(
                 run_id = %run_id,
                 connector_ref,
-                "failed closed connector policy after connector policy refresh failure"
+                "failed closed network policy after network policy refresh failure"
             );
         }
         Ok(false) => {}
@@ -726,7 +726,7 @@ async fn fail_closed_connector_policy(
                 run_id = %run_id,
                 connector_ref,
                 error = %error,
-                "failed to fail close connector policy"
+                "failed to fail close network policy"
             );
         }
     }
@@ -739,7 +739,7 @@ fn parse_refresh_deadline(value: &str) -> Option<tokio::time::Instant> {
             warn!(
                 next_refresh_at = value,
                 error = %error,
-                "invalid connector policy refresh deadline"
+                "invalid network policy refresh deadline"
             );
             return None;
         }
@@ -793,13 +793,13 @@ mod tests {
     fn core_without_worker(
         server: &MockServer,
     ) -> (
-        ConnectorPolicyRefreshCore,
+        NetworkPolicyRefreshCore,
         tokio::sync::mpsc::Receiver<RefreshRequest>,
     ) {
         let (request_tx, request_rx) = mpsc::channel(REFRESH_REQUEST_QUEUE_CAPACITY);
         (
-            ConnectorPolicyRefreshCore {
-                inner: Arc::new(ConnectorPolicyRefreshState {
+            NetworkPolicyRefreshCore {
+                inner: Arc::new(NetworkPolicyRefreshState {
                     api: api_client_for_server(server),
                     active_runs: Mutex::new(HashMap::new()),
                     cancel: CancellationToken::new(),
@@ -820,7 +820,7 @@ mod tests {
     }
 
     async fn wait_until_scheduled_refresh_task_clears(
-        core: &ConnectorPolicyRefreshCore,
+        core: &NetworkPolicyRefreshCore,
         run_id: RunId,
     ) {
         tokio::time::timeout(Duration::from_secs(1), async {
@@ -844,7 +844,7 @@ mod tests {
 
     struct RefreshPolicyHarness {
         _dir: tempfile::TempDir,
-        handle: ConnectorPolicyRefreshHandle,
+        handle: NetworkPolicyRefreshHandle,
         registry_path: std::path::PathBuf,
         run_id: RunId,
         source_ip: String,
@@ -901,10 +901,10 @@ mod tests {
                 .await
                 .expect("vm should be registered");
 
-            let handle = ConnectorPolicyRefreshHandle::new(api_client_for_server(server));
+            let handle = NetworkPolicyRefreshHandle::new(api_client_for_server(server));
             handle
                 .core
-                .register_run(ConnectorPolicyRefreshRegistration {
+                .register_run(NetworkPolicyRefreshRegistration {
                     run_id,
                     source_ip,
                     registry: registry.clone(),
@@ -925,7 +925,7 @@ mod tests {
         async fn refresh_slack(&self) {
             self.handle
                 .core
-                .refresh_connectors_now(self.run_id, vec!["slack".to_string()])
+                .refresh_network_policies_now(self.run_id, vec!["slack".to_string()])
                 .await;
         }
 
@@ -1083,11 +1083,11 @@ mod tests {
     #[tokio::test]
     async fn shutdown_awaits_refresh_worker_task() {
         let server = MockServer::start();
-        let handle = ConnectorPolicyRefreshHandle::new(api_client_for_server(&server));
+        let handle = NetworkPolicyRefreshHandle::new(api_client_for_server(&server));
 
         tokio::time::timeout(Duration::from_secs(1), handle.shutdown())
             .await
-            .expect("connector policy refresh shutdown timed out");
+            .expect("network policy refresh shutdown timed out");
 
         let worker_task = handle
             .worker
@@ -1100,7 +1100,7 @@ mod tests {
     #[tokio::test]
     async fn drop_last_handle_cancels_refresh_worker_task() {
         let server = MockServer::start();
-        let handle = ConnectorPolicyRefreshHandle::new(api_client_for_server(&server));
+        let handle = NetworkPolicyRefreshHandle::new(api_client_for_server(&server));
         let worker_task = handle
             .take_worker_task()
             .expect("refresh worker task should be running");
@@ -1116,7 +1116,7 @@ mod tests {
     #[tokio::test]
     async fn dropping_concurrent_last_handles_releases_refresh_state() {
         let server = MockServer::start();
-        let handle = ConnectorPolicyRefreshHandle::new(api_client_for_server(&server));
+        let handle = NetworkPolicyRefreshHandle::new(api_client_for_server(&server));
         let other_handle = handle.clone();
         let weak_state = Arc::downgrade(&handle.core.inner);
         let barrier = Arc::new(tokio::sync::Barrier::new(3));
@@ -1155,7 +1155,7 @@ mod tests {
     #[tokio::test]
     async fn drop_last_handle_releases_refresh_state_with_scheduled_task() {
         let server = MockServer::start();
-        let handle = ConnectorPolicyRefreshHandle::new(api_client_for_server(&server));
+        let handle = NetworkPolicyRefreshHandle::new(api_client_for_server(&server));
         let weak_state = Arc::downgrade(&handle.core.inner);
         let run_id = RunId::nil();
         let dir = tempfile::tempdir().expect("tempdir should be created");
@@ -1165,13 +1165,13 @@ mod tests {
         );
         let refreshes = HashMap::from([(
             "slack".to_string(),
-            ConnectorPolicyRefresh {
+            NetworkPolicyRefresh {
                 next_refresh_at: "2999-01-01T00:00:00Z".to_string(),
             },
         )]);
         handle
             .core
-            .register_run(ConnectorPolicyRefreshRegistration {
+            .register_run(NetworkPolicyRefreshRegistration {
                 run_id,
                 source_ip: "10.200.0.2",
                 registry,
@@ -1194,7 +1194,7 @@ mod tests {
     #[tokio::test]
     async fn register_after_shutdown_is_ignored() {
         let server = MockServer::start();
-        let handle = ConnectorPolicyRefreshHandle::new(api_client_for_server(&server));
+        let handle = NetworkPolicyRefreshHandle::new(api_client_for_server(&server));
         handle.shutdown().await;
         let dir = tempfile::tempdir().expect("tempdir should be created");
         let registry = ProxyRegistryHandle::new(
@@ -1204,7 +1204,7 @@ mod tests {
 
         handle
             .core
-            .register_run(ConnectorPolicyRefreshRegistration {
+            .register_run(NetworkPolicyRefreshRegistration {
                 run_id: RunId::nil(),
                 source_ip: "10.200.0.2",
                 registry,
@@ -1217,11 +1217,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn inactive_permission_notification_is_not_enqueued() {
+    async fn inactive_network_policy_notification_is_not_enqueued() {
         let server = MockServer::start();
         let (core, mut requests) = core_without_worker(&server);
 
-        core.notify_permission_refresh(RunId::nil(), "slack".to_string())
+        core.notify_network_policy_refresh(RunId::nil(), "slack".to_string())
             .await;
 
         assert!(matches!(
@@ -1231,7 +1231,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn active_permission_notification_is_enqueued() {
+    async fn active_network_policy_notification_is_enqueued() {
         let server = MockServer::start();
         let (core, mut requests) = core_without_worker(&server);
         let run_id = RunId::nil();
@@ -1246,7 +1246,7 @@ mod tests {
             .await
             .insert(run_id, active_run_policy_state(registry));
 
-        core.notify_permission_refresh(run_id, "slack".to_string())
+        core.notify_network_policy_refresh(run_id, "slack".to_string())
             .await;
 
         let request = requests
@@ -1257,7 +1257,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn cancelled_permission_notification_does_not_wait_for_queue_capacity() {
+    async fn cancelled_network_policy_notification_does_not_wait_for_queue_capacity() {
         let server = MockServer::start();
         let (core, mut requests) = core_without_worker(&server);
         let run_id = RunId::nil();
@@ -1281,7 +1281,11 @@ mod tests {
 
         tokio::time::timeout(
             Duration::from_secs(1),
-            core.notify_permission_refresh_until_cancelled(run_id, "slack".to_string(), &cancel),
+            core.notify_network_policy_refresh_until_cancelled(
+                run_id,
+                "slack".to_string(),
+                &cancel,
+            ),
         )
         .await
         .expect("cancelled notification should not wait for queue capacity");
@@ -1294,7 +1298,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn full_queue_permission_notification_fails_closed_without_waiting() {
+    async fn full_queue_network_policy_notification_fails_closed_without_waiting() {
         let server = MockServer::start();
         let (core, mut requests) = core_without_worker(&server);
         let run_id = RunId::nil();
@@ -1312,7 +1316,7 @@ mod tests {
 
         tokio::time::timeout(
             Duration::from_secs(1),
-            core.notify_permission_refresh(run_id, "slack".to_string()),
+            core.notify_network_policy_refresh(run_id, "slack".to_string()),
         )
         .await
         .expect("full queue notification should fail closed without waiting for capacity");
@@ -1351,7 +1355,7 @@ mod tests {
 
         tokio::time::timeout(
             Duration::from_secs(1),
-            core.notify_permission_refresh(run_id, "slack".to_string()),
+            core.notify_network_policy_refresh(run_id, "slack".to_string()),
         )
         .await
         .expect("full queue notification should not wait for registry lock");
@@ -1543,24 +1547,24 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn mismatched_connector_refresh_fails_closed() {
-        assert_mismatched_connector_refresh_fail_closed().await;
+    async fn mismatched_network_policy_refresh_fails_closed() {
+        assert_mismatched_network_policy_refresh_fail_closed().await;
     }
 
     #[tokio::test]
-    async fn failed_connector_refresh_fails_closed() {
-        assert_failed_connector_refresh_fail_closed().await;
+    async fn failed_network_policy_refresh_fails_closed() {
+        assert_failed_network_policy_refresh_fail_closed().await;
     }
 
     #[tokio::test]
-    async fn connector_refresh_splits_batches_to_match_api_contract() {
+    async fn network_policy_refresh_splits_batches_to_match_api_contract() {
         let server = MockServer::start();
         let run_id = RunId::nil();
-        let connector_refs = (0..=CONNECTOR_POLICY_REFRESH_BATCH_MAX)
+        let connector_refs = (0..=NETWORK_POLICY_REFRESH_BATCH_MAX)
             .map(|index| format!("connector-{index}"))
             .collect::<Vec<_>>();
-        let first_batch = connector_refs[..CONNECTOR_POLICY_REFRESH_BATCH_MAX].to_vec();
-        let second_batch = connector_refs[CONNECTOR_POLICY_REFRESH_BATCH_MAX..].to_vec();
+        let first_batch = connector_refs[..NETWORK_POLICY_REFRESH_BATCH_MAX].to_vec();
+        let second_batch = connector_refs[NETWORK_POLICY_REFRESH_BATCH_MAX..].to_vec();
         let first_mock = server.mock(|when, then| {
             when.method(POST)
                 .path(format!(
@@ -1603,13 +1607,14 @@ mod tests {
             active_run_policy_state_with_connectors(registry, connector_refs.clone()),
         );
 
-        core.refresh_connectors_now(run_id, connector_refs).await;
+        core.refresh_network_policies_now(run_id, connector_refs)
+            .await;
 
         first_mock.assert_calls(1);
         second_mock.assert_calls(1);
     }
 
-    async fn assert_failed_connector_refresh_fail_closed() {
+    async fn assert_failed_network_policy_refresh_fail_closed() {
         let server = MockServer::start();
         let run_id = RunId::nil();
         server.mock(|when, then| {
@@ -1634,7 +1639,7 @@ mod tests {
         harness.shutdown().await;
     }
 
-    async fn assert_mismatched_connector_refresh_fail_closed() {
+    async fn assert_mismatched_network_policy_refresh_fail_closed() {
         let server = MockServer::start();
         let run_id = RunId::nil();
         server.mock(|when, then| {

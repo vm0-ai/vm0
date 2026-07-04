@@ -56,7 +56,7 @@ use crate::network_log_drain::NetworkLogDrainCoordinator;
 use crate::network_log_manager::NetworkLogManager;
 use crate::paths::{HomePaths, LogPaths, RunnerPaths, touch_mtime};
 use crate::prefetch;
-use crate::provider::{ApiProvider, ConnectorPolicyRefreshHandle, JobProvider, LocalProvider};
+use crate::provider::{ApiProvider, JobProvider, LocalProvider, NetworkPolicyRefreshHandle};
 use crate::proxy;
 use crate::resource_budget::ResourceBudget;
 use crate::retry::{RetryState, recv_retry, sleep_until_retry};
@@ -579,10 +579,10 @@ async fn run_start_with_home(
     // Create provider — handles discovery + claim + complete
     let (usage_flush_tx, usage_flush_rx) = mpsc::channel(1);
 
-    let (provider, group_name, connector_policy_refresh): (
+    let (provider, group_name, network_policy_refresh): (
         Arc<dyn JobProvider>,
         String,
-        Option<ConnectorPolicyRefreshHandle>,
+        Option<NetworkPolicyRefreshHandle>,
     ) = if let Some(group_dir) = local_group_dir {
         let profiles: Vec<String> = runner_config.profiles.keys().cloned().collect();
         let provider = LocalProvider::new(
@@ -604,8 +604,8 @@ async fn run_start_with_home(
             Arc::clone(&cancel_tokens),
         )
         .await;
-        let connector_policy_refresh = provider.connector_policy_refresh_handle();
-        (provider, group_name, Some(connector_policy_refresh))
+        let network_policy_refresh = provider.network_policy_refresh_handle();
+        (provider, group_name, Some(network_policy_refresh))
     };
 
     let exec_config = Arc::new(ExecutorConfig {
@@ -616,7 +616,7 @@ async fn run_start_with_home(
         network_log_manager,
         network_log_drain,
         mitm_jsonl_flush: Some(mitm.jsonl_flush_handle(usage_flush_tx.clone())),
-        connector_policy_refresh,
+        network_policy_refresh,
         home: home.clone(),
         workspace_cache: Some(SessionWorkspaceCache::shared(
             paths.clone(),

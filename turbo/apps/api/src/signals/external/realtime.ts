@@ -235,15 +235,15 @@ export async function publishCancelToRunnerGroup(
   L.debug(`Published cancel ${runId} to runner-group:${group}`);
 }
 
-export async function publishConnectorPolicyRefreshToRunnerGroup(
+export async function publishNetworkPolicyRefreshToRunnerGroup(
   group: string,
   runId: string,
   connectorRef: string,
 ): Promise<void> {
   const channel = ablyClient().channels.get(`runner-group:${group}`);
-  await channel.publish("permission-refresh", { runId, connectorRef });
+  await channel.publish("network-policy-refresh", { runId, connectorRef });
   L.debug(
-    `Published connector policy refresh ${runId}/${connectorRef} to runner-group:${group}`,
+    `Published network policy refresh ${runId}/${connectorRef} to runner-group:${group}`,
   );
 }
 

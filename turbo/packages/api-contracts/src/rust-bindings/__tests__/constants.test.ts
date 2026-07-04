@@ -40,8 +40,8 @@ const resumeSessionHistoryMaxBytesDoc = [
   "Maximum resume session history blob size accepted by the API, runner, and guest verifier.",
   "Rust and TypeScript components use this shared contract value when validating resume history refs, downloads, and idle-reuse verification.",
 ] as const;
-const connectorNetworkPolicyRefreshConnectorRefsMaxDoc = [
-  "Maximum connector refs accepted by the runner connector network policy refresh endpoint.",
+const networkPolicyRefreshConnectorRefsMaxDoc = [
+  "Maximum connector refs accepted by the runner network policy refresh endpoint.",
   "Rust runners use this shared contract value to split refresh requests before calling the API.",
 ] as const;
 const sessionHistoryEncodingGzipDoc = [
@@ -77,7 +77,7 @@ const expectedBindings = [
     rustModulePath: ["runners"],
     rustConstName: "CONNECTOR_NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX",
     value: rustU64(CONNECTOR_NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX),
-    rustDoc: connectorNetworkPolicyRefreshConnectorRefsMaxDoc,
+    rustDoc: networkPolicyRefreshConnectorRefsMaxDoc,
   },
   {
     rustModulePath: ["runners"],

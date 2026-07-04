@@ -27,7 +27,7 @@ use super::{
 use crate::duration::duration_ms;
 use crate::ids::RunId;
 use crate::network_log_manager::NetworkLogSession;
-use crate::provider::ConnectorPolicyRefreshRegistration;
+use crate::provider::NetworkPolicyRefreshRegistration;
 use crate::proxy;
 use crate::telemetry::JobTelemetry;
 use crate::types::{ExecutionContext, FirewallEntry};
@@ -752,15 +752,15 @@ pub(super) async fn register_proxy(
         .network_log_manager
         .register_source_ip(source_ip, network_log_path)
         .await;
-    if let Some(refresh) = config.connector_policy_refresh.as_ref() {
+    if let Some(refresh) = config.network_policy_refresh.as_ref() {
         let connector_refs = active_connector_refs(context);
         refresh
-            .register_run(ConnectorPolicyRefreshRegistration {
+            .register_run(NetworkPolicyRefreshRegistration {
                 run_id: context.run_id,
                 source_ip,
                 registry: config.registry.clone(),
                 connector_refs,
-                refreshes: context.connector_policy_refreshes.as_ref(),
+                refreshes: context.network_policy_refreshes.as_ref(),
             })
             .await;
     }
@@ -848,7 +848,7 @@ pub(super) async fn unregister_proxy_registry(
         .unregister_vm(source_ip)
         .await
         .map_err(|e| RunnerError::Internal(format!("unregister VM from proxy registry: {e}")));
-    if let Some(refresh) = config.connector_policy_refresh.as_ref() {
+    if let Some(refresh) = config.network_policy_refresh.as_ref() {
         refresh.unregister_run(run_id).await;
     }
     result

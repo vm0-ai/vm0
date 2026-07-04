@@ -43,9 +43,9 @@ import { generateSandboxToken } from "../auth/tokens";
 import { decryptPersistentSecretsMap } from "../services/crypto.utils";
 import { dispatchCompleteSideEffects$ } from "../services/agent-webhook-complete.service";
 import {
-  connectorPolicyRefreshesRecord,
-  mergeConnectorNetworkPolicyRefreshes,
-  resolveActiveConnectorPolicyRefreshes,
+  networkPolicyRefreshesRecord,
+  mergeNetworkPolicyRefreshes,
+  resolveActiveNetworkPolicyRefreshes,
 } from "../services/zero-user-permission-grants.service";
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import {
@@ -543,7 +543,7 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 });
 
 const claimBody$ = bodyResultOf(runnersJobClaimContract.claim);
-const connectorNetworkPolicyBody$ = bodyResultOf(
+const networkPolicyRefreshBody$ = bodyResultOf(
   runnersConnectorNetworkPolicyContract.refresh,
 );
 
@@ -940,13 +940,13 @@ async function refreshClaimConnectorPolicies(args: {
   readonly run: ClaimedRun;
   readonly storedContext: StoredExecutionContext;
 }): Promise<
-  Pick<StoredExecutionContext, "networkPolicies" | "connectorPolicyRefreshes">
+  Pick<StoredExecutionContext, "networkPolicies" | "networkPolicyRefreshes">
 > {
   const connectorRefs = Object.keys(args.storedContext.networkPolicies ?? {});
   if (connectorRefs.length === 0) {
     return {
       networkPolicies: args.storedContext.networkPolicies,
-      connectorPolicyRefreshes: undefined,
+      networkPolicyRefreshes: undefined,
     };
   }
 
@@ -954,11 +954,11 @@ async function refreshClaimConnectorPolicies(args: {
   if (!agentId) {
     return {
       networkPolicies: args.storedContext.networkPolicies,
-      connectorPolicyRefreshes: undefined,
+      networkPolicyRefreshes: undefined,
     };
   }
 
-  const refreshes = await resolveActiveConnectorPolicyRefreshes(
+  const refreshes = await resolveActiveNetworkPolicyRefreshes(
     args.db,
     {
       orgId: args.run.orgId,
@@ -968,11 +968,11 @@ async function refreshClaimConnectorPolicies(args: {
     connectorRefs,
   );
   return {
-    networkPolicies: mergeConnectorNetworkPolicyRefreshes(
+    networkPolicies: mergeNetworkPolicyRefreshes(
       args.storedContext.networkPolicies,
       refreshes,
     ),
-    connectorPolicyRefreshes: connectorPolicyRefreshesRecord(refreshes),
+    networkPolicyRefreshes: networkPolicyRefreshesRecord(refreshes),
   };
 }
 
@@ -1345,7 +1345,7 @@ async function buildClaimResponseBody(args: {
         sandboxToken,
         secretValues,
         networkPolicies: refreshedPolicies.networkPolicies,
-        connectorPolicyRefreshes: refreshedPolicies.connectorPolicyRefreshes,
+        networkPolicyRefreshes: refreshedPolicies.networkPolicyRefreshes,
       };
     },
   );
@@ -1839,7 +1839,7 @@ const runnerRealtimeTokenBody$ = bodyResultOf(
   runnerRealtimeTokenContract.create,
 );
 
-const connectorNetworkPolicyInner$ = command(
+const networkPolicyRefreshInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = await set(runnerAuth$, get(authorization$), signal);
     signal.throwIfAborted();
@@ -1847,7 +1847,7 @@ const connectorNetworkPolicyInner$ = command(
       return unauthorizedAuthenticationRequired;
     }
 
-    const body = await get(connectorNetworkPolicyBody$);
+    const body = await get(networkPolicyRefreshBody$);
     signal.throwIfAborted();
     if (!body.ok) {
       return body.response;
@@ -1868,7 +1868,7 @@ const connectorNetworkPolicyInner$ = command(
     }
 
     const connectorRefs = [...new Set(body.data.connectorRefs)];
-    const refreshes = await resolveActiveConnectorPolicyRefreshes(
+    const refreshes = await resolveActiveNetworkPolicyRefreshes(
       db,
       {
         orgId: run.orgId,
@@ -1942,7 +1942,7 @@ export const runnersRoutes: readonly RouteEntry[] = [
   },
   {
     route: runnersConnectorNetworkPolicyContract.refresh,
-    handler: connectorNetworkPolicyInner$,
+    handler: networkPolicyRefreshInner$,
   },
   {
     route: runnerRealtimeTokenContract.create,

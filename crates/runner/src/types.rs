@@ -100,8 +100,7 @@ pub struct ExecutionContext {
     #[serde(default)]
     pub network_policies: Option<std::collections::HashMap<String, NetworkPolicy>>,
     #[serde(default)]
-    pub connector_policy_refreshes:
-        Option<std::collections::HashMap<String, ConnectorPolicyRefresh>>,
+    pub network_policy_refreshes: Option<std::collections::HashMap<String, NetworkPolicyRefresh>>,
     #[serde(default)]
     pub disallowed_tools: Option<Vec<String>>,
     #[serde(default)]
@@ -213,13 +212,13 @@ pub struct NetworkPolicy {
 /// Per-connector runtime refresh boundary supplied by the API.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ConnectorPolicyRefresh {
+pub struct NetworkPolicyRefresh {
     pub next_refresh_at: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ConnectorPolicyRefreshResponse {
+pub struct NetworkPolicyRefreshResponse {
     pub connector_ref: String,
     pub network_policy: NetworkPolicy,
     pub next_refresh_at: Option<String>,
@@ -227,8 +226,8 @@ pub struct ConnectorPolicyRefreshResponse {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ConnectorPolicyRefreshBatchResponse {
-    pub refreshes: Vec<ConnectorPolicyRefreshResponse>,
+pub struct NetworkPolicyRefreshBatchResponse {
+    pub refreshes: Vec<NetworkPolicyRefreshResponse>,
 }
 
 /// Runner-derived manifest written to `guest-download`.

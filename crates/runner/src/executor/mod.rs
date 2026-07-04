@@ -157,7 +157,7 @@ pub struct ExecutorConfig {
     pub network_log_manager: NetworkLogManager,
     pub network_log_drain: NetworkLogDrainCoordinator,
     pub mitm_jsonl_flush: Option<MitmJsonlFlushHandle>,
-    pub(crate) connector_policy_refresh: Option<crate::provider::ConnectorPolicyRefreshHandle>,
+    pub(crate) network_policy_refresh: Option<crate::provider::NetworkPolicyRefreshHandle>,
     pub home: HomePaths,
     pub workspace_cache: Option<SessionWorkspaceCache>,
 }
