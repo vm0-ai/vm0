@@ -21,92 +21,97 @@ pub(crate) fn parse_unit_config_path(content: &str) -> Option<PathBuf> {
 /// Handles both quoted (`--config "/path with spaces/f.yaml"`) and unquoted
 /// (`--config /simple/path.yaml`) forms. Only the argument value is extracted.
 pub(crate) fn parse_exec_start_config(line: &str) -> Option<PathBuf> {
-    extract_flag_value(line, "--config").or_else(|| extract_flag_value(line, "-c"))
-}
-
-/// Find `flag` in `line` as a standalone token, then return the next
-/// whitespace-delimited or quote-delimited value after it.
-///
-/// Supports both `--config /path` and `--config=/path` forms.
-fn extract_flag_value(line: &str, flag: &str) -> Option<PathBuf> {
-    let idx = line
-        .match_indices(flag)
-        .find(|&(i, _)| {
-            let before_ok = i == 0
-                || line
-                    .as_bytes()
-                    .get(i - 1)
-                    .is_some_and(|b| b.is_ascii_whitespace());
-            let after_ok = line
-                .as_bytes()
-                .get(i + flag.len())
-                .is_none_or(|b| b.is_ascii_whitespace() || b == &b'=');
-            before_ok && after_ok
-        })?
-        .0;
-    let after = line.get(idx + flag.len()..)?;
-    let after = after.strip_prefix('=').unwrap_or(after).trim_ascii_start();
-    if after.is_empty() {
-        return None;
-    }
-    let path = if after.starts_with('"') {
-        parse_quoted_systemd_value(after.get(1..)?)?
-    } else {
-        let end = after
-            .find(|c: char| c.is_ascii_whitespace())
-            .unwrap_or(after.len());
-        unescape_systemd_value(after.get(..end)?)
-    };
-    Some(PathBuf::from(path))
-}
-
-fn parse_quoted_systemd_value(input: &str) -> Option<String> {
-    let mut value = String::new();
-    let mut chars = input.chars().peekable();
-    while let Some(ch) = chars.next() {
-        match ch {
-            '"' => return Some(value),
-            '\\' => match chars.next() {
-                Some(next @ ('\\' | '"')) => value.push(next),
-                Some(next) => {
-                    value.push('\\');
-                    value.push(next);
-                }
-                None => return None,
-            },
-            '%' if chars.peek() == Some(&'%') => {
-                chars.next();
-                value.push('%');
+    let tokens = tokenize_systemd_exec_start(line)?;
+    for (idx, token) in tokens.iter().enumerate() {
+        if token == "--config" || token == "-c" {
+            let value = tokens.get(idx + 1)?;
+            if !value.is_empty() {
+                return Some(PathBuf::from(value));
             }
-            '%' => value.push('%'),
-            _ => value.push(ch),
+            continue;
+        }
+        if let Some(value) = token
+            .strip_prefix("--config=")
+            .or_else(|| token.strip_prefix("-c="))
+            && !value.is_empty()
+        {
+            return Some(PathBuf::from(value));
         }
     }
     None
 }
 
-fn unescape_systemd_value(input: &str) -> String {
-    let mut value = String::new();
+fn tokenize_systemd_exec_start(input: &str) -> Option<Vec<String>> {
+    let mut tokens = Vec::new();
+    let mut token = String::new();
     let mut chars = input.chars().peekable();
+    let mut in_quote = false;
+    let mut has_token = false;
     while let Some(ch) = chars.next() {
-        match ch {
-            '\\' => match chars.next() {
-                Some(next @ ('\\' | '"')) => value.push(next),
-                Some(next) => {
-                    value.push('\\');
-                    value.push(next);
+        if in_quote {
+            match ch {
+                '"' => in_quote = false,
+                '\\' => match chars.next() {
+                    Some(next @ ('\\' | '"')) => token.push(next),
+                    Some(next) => {
+                        token.push('\\');
+                        token.push(next);
+                    }
+                    None => return None,
+                },
+                '%' if chars.peek() == Some(&'%') => {
+                    chars.next();
+                    token.push('%');
                 }
-                None => value.push('\\'),
-            },
-            '%' if chars.peek() == Some(&'%') => {
-                chars.next();
-                value.push('%');
+                '%' => token.push('%'),
+                _ => token.push(ch),
             }
-            '%' => value.push('%'),
-            _ => value.push(ch),
+        } else {
+            match ch {
+                ch if ch.is_ascii_whitespace() => {
+                    if has_token {
+                        tokens.push(std::mem::take(&mut token));
+                        has_token = false;
+                    }
+                }
+                '"' => {
+                    in_quote = true;
+                    has_token = true;
+                }
+                '\\' => {
+                    has_token = true;
+                    match chars.next() {
+                        Some(next @ ('\\' | '"')) => token.push(next),
+                        Some(next) => {
+                            token.push('\\');
+                            token.push(next);
+                        }
+                        None => token.push('\\'),
+                    }
+                }
+                '%' if chars.peek() == Some(&'%') => {
+                    chars.next();
+                    token.push('%');
+                    has_token = true;
+                }
+                '%' => {
+                    token.push('%');
+                    has_token = true;
+                }
+                _ => {
+                    token.push(ch);
+                    has_token = true;
+                }
+            }
         }
     }
-    value
+    if in_quote {
+        return None;
+    }
+    if has_token {
+        tokens.push(token);
+    }
+    Some(tokens)
 }
 
 #[cfg(test)]
@@ -200,6 +205,15 @@ mod tests {
     #[test]
     fn parse_config_ignores_flag_substring_in_exe_path() {
         let line = r#""/opt/nice-cli/runner" start -c "/data/runner.yaml""#;
+        assert_eq!(
+            parse_exec_start_config(line),
+            Some(PathBuf::from("/data/runner.yaml"))
+        );
+    }
+
+    #[test]
+    fn parse_config_ignores_flag_token_inside_quoted_exe_path() {
+        let line = r#""/opt/my --config fake/runner" start --config "/data/runner.yaml""#;
         assert_eq!(
             parse_exec_start_config(line),
             Some(PathBuf::from("/data/runner.yaml"))
