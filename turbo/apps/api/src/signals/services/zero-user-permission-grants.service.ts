@@ -23,6 +23,10 @@ import { notFound } from "../../lib/error";
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { publishNetworkPolicyRefreshToRunnerGroup } from "../external/realtime";
 import { nowDate } from "../external/time";
+import {
+  defaultFirewallPolicyForPermissionIndex,
+  networkPolicyForFirewallPolicy,
+} from "./firewall-network-policy.service";
 
 type UserPermissionGrantRow = typeof userPermissionGrants.$inferSelect;
 type StoredPermissionGrantRow = UserPermissionGrantRow;
@@ -210,45 +214,6 @@ function resolvedExpiresAt({
   );
 }
 
-function networkPolicyForFirewallPolicy(
-  permissionNames: readonly string[],
-  policy: FirewallPolicy,
-): NetworkPolicy {
-  const allow: string[] = [];
-  const deny: string[] = [];
-  const ask: string[] = [];
-  for (const name of permissionNames) {
-    const value = policy.policies[name];
-    if (value === "allow") {
-      allow.push(name);
-    } else if (value === "deny") {
-      deny.push(name);
-    } else if (value === "ask") {
-      ask.push(name);
-    }
-  }
-
-  return {
-    allow,
-    deny,
-    ask,
-    unknownPolicy: policy.unknownPolicy ?? "allow",
-  };
-}
-
-function defaultFirewallPolicyForIndex(
-  index: NonNullable<Awaited<ReturnType<typeof loadFirewallPermissionIndex>>>,
-): FirewallPolicy {
-  const policies: FirewallPolicy["policies"] = {};
-  for (const name of index.permissionNames) {
-    policies[name] = index.policyResolver.permission(name);
-  }
-  return {
-    policies,
-    unknownPolicy: index.policyResolver.unknown(),
-  };
-}
-
 function earliestTemporaryAllowExpiresAt(
   grants: readonly StoredPermissionGrantRow[],
   connectorRef: string,
@@ -318,7 +283,7 @@ export async function resolveActiveNetworkPolicyRefreshes(
       continue;
     }
 
-    const defaultPolicy = defaultFirewallPolicyForIndex(index);
+    const defaultPolicy = defaultFirewallPolicyForPermissionIndex(index);
     const overlay = policies[connectorRef];
     const policy: FirewallPolicy = overlay
       ? {
