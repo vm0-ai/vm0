@@ -458,6 +458,11 @@ async function processBackfillJob(
   if (access.kind !== "ok") {
     throw new Error(access.message);
   }
+  if (!access.access.emailAddress) {
+    throw new Error(
+      "Gmail account email is required for relationship backfill",
+    );
+  }
 
   const listed = await listBackfillMessages({
     accessToken: access.access.accessToken,
@@ -481,7 +486,7 @@ async function processBackfillJob(
     const direction = context
       ? relationshipDirectionFromLabels(context.labelIds)
       : null;
-    if (!context || !direction) {
+    if (!context || !direction || !context.occurredAt) {
       continue;
     }
 
@@ -492,10 +497,11 @@ async function processBackfillJob(
       priority: GMAIL_BACKFILL_SYNC_PRIORITY,
       reason: "gmail_backfill",
       message: {
-        mailboxEmail: access.access.emailAddress ?? "me",
+        mailboxEmail: access.access.emailAddress,
         historyId: `backfill:${job.id}`,
         messageId: context.messageId,
         threadId: context.threadId,
+        occurredAt: context.occurredAt,
         direction,
         from: context.from,
         to: context.to,
