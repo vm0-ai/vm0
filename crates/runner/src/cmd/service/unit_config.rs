@@ -7,16 +7,24 @@ pub(crate) async fn read_unit_config_path(unit_path: &Path) -> Option<PathBuf> {
 }
 
 pub(crate) fn parse_unit_config_path(content: &str) -> Option<PathBuf> {
+    let mut config_path = None;
     for line in logical_unit_lines(content) {
         let trimmed = line.trim();
-        if let Some((key, rest)) = trimmed.split_once('=')
-            && key.trim() == "ExecStart"
-            && let Some(config_path) = parse_exec_start_config(rest)
-        {
-            return Some(config_path);
+        let Some((key, rest)) = trimmed.split_once('=') else {
+            continue;
+        };
+        if key.trim() != "ExecStart" {
+            continue;
+        }
+        if rest.trim().is_empty() {
+            config_path = None;
+            continue;
+        }
+        if let Some(next_config_path) = parse_exec_start_config(rest) {
+            config_path = Some(next_config_path);
         }
     }
-    None
+    config_path
 }
 
 fn logical_unit_lines(content: &str) -> Vec<String> {
@@ -342,6 +350,32 @@ ExecStart="/usr/bin/runner" start \
             parse_unit_config_path(content),
             Some(PathBuf::from("/etc/runner.yaml"))
         );
+    }
+
+    #[test]
+    fn parse_unit_config_path_honors_exec_start_reset() {
+        let content = r#"
+[Service]
+ExecStart="/usr/bin/runner" start --config "/etc/old-runner.yaml"
+ExecStart=
+ExecStart="/usr/bin/runner" start --config "/etc/new-runner.yaml"
+"#;
+
+        assert_eq!(
+            parse_unit_config_path(content),
+            Some(PathBuf::from("/etc/new-runner.yaml"))
+        );
+    }
+
+    #[test]
+    fn parse_unit_config_path_reset_without_replacement_returns_none() {
+        let content = r#"
+[Service]
+ExecStart="/usr/bin/runner" start --config "/etc/old-runner.yaml"
+ExecStart=
+"#;
+
+        assert_eq!(parse_unit_config_path(content), None);
     }
 
     #[test]
