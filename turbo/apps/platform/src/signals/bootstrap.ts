@@ -19,8 +19,49 @@ import { ROUTES, type RoutePath } from "./route-paths.ts";
 
 import { setupGlobalMethod$ } from "./bootstrap/global-method.ts";
 import { setupLoggers$ } from "./bootstrap/loggers.ts";
+import { setupSlackConnectPage$ } from "./zero-page/slack-connect-page.ts";
+import { setupAgentPhoneConnectPage$ } from "./zero-page/agentphone-connect-page.ts";
+import { setupGithubConnectPage$ } from "./zero-page/github-connect-page.ts";
+import { setupTeamsConnectPage$ } from "./zero-page/teams-connect-page.ts";
+import { setupTelegramConnectPage$ } from "./zero-page/telegram-connect-page.ts";
+import { setupTelegramSettingsPage$ } from "./zero-page/telegram-settings-page.ts";
+import { setupActivityPage$ } from "./activity-page/activity-page-setup.ts";
+import { setupActivityDetailPage$ } from "./activity-page/activity-detail-page-setup.ts";
+import { setupActivityInspectPage$ } from "./activity-page/activity-inspect-page-setup.ts";
+import { setupAgentsPage$ } from "./agents-page/agents-page-setup.ts";
+import { setupAgentDetailPage$ } from "./agents-page/agent-detail-page-setup.ts";
+import { setupWorkflowsPage$ } from "./workflows-page/workflows-page-setup.ts";
+import { setupWorkflowDetailPage$ } from "./workflows-page/workflow-detail-page-setup.ts";
+import { setupMemoryPage$ } from "./memory-page/memory-page-setup.ts";
+import { setupWorksPage$ } from "./works-page/works-page-setup.ts";
+import { setupPreferencesPage$ } from "./preferences-page/preferences-page-setup.ts";
+import { setupApiKeysPage$ } from "./api-keys-page/api-keys-page-setup.ts";
+import { setupBb0DevicePage$ } from "./device-bb0-page/device-bb0-page-setup.ts";
+import { setupAutomationsPage$ } from "./automation-page/automation-page-setup.ts";
+import { setupAutomationDetailPage$ } from "./automation-page/automation-detail-page-setup.ts";
+import { setupAgentChatPage$ } from "./zero-page/agent-chat-page-setup.ts";
+import { setupHomePage$ } from "./zero-page/home-page-setup.ts";
+import { setupChatPage$ } from "./chat-page/chat-page-setup.ts";
+import { setupPromptPage$ } from "./prompt-page/prompt-page-setup.ts";
+import { setupOnboardingRedirectPage$ } from "./zero-page/onboard-guard.ts";
+import { setupIdeationPage$ } from "./zero-page/ideation-page-setup.ts";
+import { setupConnectorsPage$ } from "./connectors-page/connectors-page-setup.ts";
+import { setupCustomConnectorProposalPage$ } from "./connectors-page/custom-connector-proposal-page-setup.ts";
+import { setupComputerUseAuthorizationPage$ } from "./computer-use-authorization/computer-use-authorization-page-setup.ts";
+import { setupDirectedConnectPage$ } from "./connectors-page/directed-connect-page-setup.ts";
+import { setupDirectedAuthorizePage$ } from "./connectors-page/directed-authorize-page-setup.ts";
+import { setupSignInTokenPage$ } from "./sign-in-token-setup.ts";
+import { setupSignInPage$, setupSignUpPage$ } from "./auth-page-setup.ts";
+import { setupPermissionAllowPage$ } from "./permission-allow/permission-allow-page-setup.ts";
+import { setupReportErrorPage$ } from "./report-error/report-error-page-setup.ts";
+import { setupLabPage$ } from "./lab-page/lab-page-setup.ts";
+import { setupNetworkInsightsPage$ } from "./network-insights/network-insights-page-setup.ts";
+import { setupUsagePage$ } from "./usage-page/usage-page-setup.ts";
+import { setupExportPage$ } from "./export-page/export-page-setup.ts";
 import { initSlackOrg$ as handleSlackRedirect$ } from "./zero-page/zero-slack.ts";
+import { setupSkeletonPage$, setupErrorPage$ } from "./skeleton-page-setup.ts";
 import { hideAppSkeleton$, startSkeletonCycling$ } from "./app-skeleton.ts";
+import { setupRedeemCampaignPage$ } from "./redeem-campaign/redeem-campaign-page-setup.ts";
 import { setupRealtime$ } from "./realtime.ts";
 import { updatePage$ } from "./react-router.ts";
 import { NotFoundPage } from "../views/not-found-page.tsx";
@@ -30,206 +71,9 @@ import { reloadFeatureSwitch$ } from "./external/feature-switch.ts";
 import { reloadBillingStatus$ } from "./zero-page/billing.ts";
 import { checkUnifiedSettingsParam$ } from "./zero-page/settings/settings-dialog.ts";
 
-type RouteSetupCommand = Command<Promise<void> | void, [AbortSignal]>;
-
 const setupNotFoundPage$ = command(async ({ set }, signal: AbortSignal) => {
   set(updatePage$, createElement(NotFoundPage));
   await set(hideAppSkeleton$, signal);
-});
-
-function asRouteSetupCommand(setup: unknown): RouteSetupCommand {
-  return setup as RouteSetupCommand;
-}
-
-function lazyRouteSetup(load: () => Promise<unknown>): RouteSetupCommand {
-  return command(async ({ set }, signal: AbortSignal) => {
-    const setupPage = asRouteSetupCommand(await load());
-    signal.throwIfAborted();
-    await set(setupPage, signal);
-  });
-}
-
-// Dynamic route imports optimize loading performance by keeping inactive pages
-// out of the initial application bundle.
-const setupSlackConnectPage$ = lazyRouteSetup(async () => {
-  const module = await import("./zero-page/slack-connect-page.ts");
-  return module.setupSlackConnectPage$;
-});
-const setupAgentPhoneConnectPage$ = lazyRouteSetup(async () => {
-  const module = await import("./zero-page/agentphone-connect-page.ts");
-  return module.setupAgentPhoneConnectPage$;
-});
-const setupGithubConnectPage$ = lazyRouteSetup(async () => {
-  const module = await import("./zero-page/github-connect-page.ts");
-  return module.setupGithubConnectPage$;
-});
-const setupTeamsConnectPage$ = lazyRouteSetup(async () => {
-  const module = await import("./zero-page/teams-connect-page.ts");
-  return module.setupTeamsConnectPage$;
-});
-const setupTelegramConnectPage$ = lazyRouteSetup(async () => {
-  const module = await import("./zero-page/telegram-connect-page.ts");
-  return module.setupTelegramConnectPage$;
-});
-const setupTelegramSettingsPage$ = lazyRouteSetup(async () => {
-  const module = await import("./zero-page/telegram-settings-page.ts");
-  return module.setupTelegramSettingsPage$;
-});
-const setupActivityPage$ = lazyRouteSetup(async () => {
-  const module = await import("./activity-page/activity-page-setup.ts");
-  return module.setupActivityPage$;
-});
-const setupActivityDetailPage$ = lazyRouteSetup(async () => {
-  const module = await import("./activity-page/activity-detail-page-setup.ts");
-  return module.setupActivityDetailPage$;
-});
-const setupActivityInspectPage$ = lazyRouteSetup(async () => {
-  const module = await import("./activity-page/activity-inspect-page-setup.ts");
-  return module.setupActivityInspectPage$;
-});
-const setupAgentsPage$ = lazyRouteSetup(async () => {
-  const module = await import("./agents-page/agents-page-setup.ts");
-  return module.setupAgentsPage$;
-});
-const setupAgentDetailPage$ = lazyRouteSetup(async () => {
-  const module = await import("./agents-page/agent-detail-page-setup.ts");
-  return module.setupAgentDetailPage$;
-});
-const setupWorkflowsPage$ = lazyRouteSetup(async () => {
-  const module = await import("./workflows-page/workflows-page-setup.ts");
-  return module.setupWorkflowsPage$;
-});
-const setupWorkflowDetailPage$ = lazyRouteSetup(async () => {
-  const module = await import("./workflows-page/workflow-detail-page-setup.ts");
-  return module.setupWorkflowDetailPage$;
-});
-const setupMemoryPage$ = lazyRouteSetup(async () => {
-  const module = await import("./memory-page/memory-page-setup.ts");
-  return module.setupMemoryPage$;
-});
-const setupWorksPage$ = lazyRouteSetup(async () => {
-  const module = await import("./works-page/works-page-setup.ts");
-  return module.setupWorksPage$;
-});
-const setupPreferencesPage$ = lazyRouteSetup(async () => {
-  const module = await import("./preferences-page/preferences-page-setup.ts");
-  return module.setupPreferencesPage$;
-});
-const setupApiKeysPage$ = lazyRouteSetup(async () => {
-  const module = await import("./api-keys-page/api-keys-page-setup.ts");
-  return module.setupApiKeysPage$;
-});
-const setupBb0DevicePage$ = lazyRouteSetup(async () => {
-  const module = await import("./device-bb0-page/device-bb0-page-setup.ts");
-  return module.setupBb0DevicePage$;
-});
-const setupAutomationsPage$ = lazyRouteSetup(async () => {
-  const module = await import("./automation-page/automation-page-setup.ts");
-  return module.setupAutomationsPage$;
-});
-const setupAutomationDetailPage$ = lazyRouteSetup(async () => {
-  const module =
-    await import("./automation-page/automation-detail-page-setup.ts");
-  return module.setupAutomationDetailPage$;
-});
-const setupAgentChatPage$ = lazyRouteSetup(async () => {
-  const module = await import("./zero-page/agent-chat-page-setup.ts");
-  return module.setupAgentChatPage$;
-});
-const setupHomePage$ = lazyRouteSetup(async () => {
-  const module = await import("./zero-page/home-page-setup.ts");
-  return module.setupHomePage$;
-});
-const setupChatPage$ = lazyRouteSetup(async () => {
-  const module = await import("./chat-page/chat-page-setup.ts");
-  return module.setupChatPage$;
-});
-const setupPromptPage$ = lazyRouteSetup(async () => {
-  const module = await import("./prompt-page/prompt-page-setup.ts");
-  return module.setupPromptPage$;
-});
-const setupOnboardingRedirectPage$ = lazyRouteSetup(async () => {
-  const module = await import("./zero-page/onboard-guard.ts");
-  return module.setupOnboardingRedirectPage$;
-});
-const setupIdeationPage$ = lazyRouteSetup(async () => {
-  const module = await import("./zero-page/ideation-page-setup.ts");
-  return module.setupIdeationPage$;
-});
-const setupConnectorsPage$ = lazyRouteSetup(async () => {
-  const module = await import("./connectors-page/connectors-page-setup.ts");
-  return module.setupConnectorsPage$;
-});
-const setupCustomConnectorProposalPage$ = lazyRouteSetup(async () => {
-  const module =
-    await import("./connectors-page/custom-connector-proposal-page-setup.ts");
-  return module.setupCustomConnectorProposalPage$;
-});
-const setupComputerUseAuthorizationPage$ = lazyRouteSetup(async () => {
-  const module =
-    await import("./computer-use-authorization/computer-use-authorization-page-setup.ts");
-  return module.setupComputerUseAuthorizationPage$;
-});
-const setupDirectedConnectPage$ = lazyRouteSetup(async () => {
-  const module =
-    await import("./connectors-page/directed-connect-page-setup.ts");
-  return module.setupDirectedConnectPage$;
-});
-const setupDirectedAuthorizePage$ = lazyRouteSetup(async () => {
-  const module =
-    await import("./connectors-page/directed-authorize-page-setup.ts");
-  return module.setupDirectedAuthorizePage$;
-});
-const setupSignInTokenPage$ = lazyRouteSetup(async () => {
-  const module = await import("./sign-in-token-setup.ts");
-  return module.setupSignInTokenPage$;
-});
-const setupSignInPage$ = lazyRouteSetup(async () => {
-  const module = await import("./auth-page-setup.ts");
-  return module.setupSignInPage$;
-});
-const setupSignUpPage$ = lazyRouteSetup(async () => {
-  const module = await import("./auth-page-setup.ts");
-  return module.setupSignUpPage$;
-});
-const setupPermissionAllowPage$ = lazyRouteSetup(async () => {
-  const module =
-    await import("./permission-allow/permission-allow-page-setup.ts");
-  return module.setupPermissionAllowPage$;
-});
-const setupReportErrorPage$ = lazyRouteSetup(async () => {
-  const module = await import("./report-error/report-error-page-setup.ts");
-  return module.setupReportErrorPage$;
-});
-const setupLabPage$ = lazyRouteSetup(async () => {
-  const module = await import("./lab-page/lab-page-setup.ts");
-  return module.setupLabPage$;
-});
-const setupNetworkInsightsPage$ = lazyRouteSetup(async () => {
-  const module =
-    await import("./network-insights/network-insights-page-setup.ts");
-  return module.setupNetworkInsightsPage$;
-});
-const setupUsagePage$ = lazyRouteSetup(async () => {
-  const module = await import("./usage-page/usage-page-setup.ts");
-  return module.setupUsagePage$;
-});
-const setupExportPage$ = lazyRouteSetup(async () => {
-  const module = await import("./export-page/export-page-setup.ts");
-  return module.setupExportPage$;
-});
-const setupSkeletonPage$ = lazyRouteSetup(async () => {
-  const module = await import("./skeleton-page-setup.ts");
-  return module.setupSkeletonPage$;
-});
-const setupErrorPage$ = lazyRouteSetup(async () => {
-  const module = await import("./skeleton-page-setup.ts");
-  return module.setupErrorPage$;
-});
-const setupRedeemCampaignPage$ = lazyRouteSetup(async () => {
-  const module =
-    await import("./redeem-campaign/redeem-campaign-page-setup.ts");
-  return module.setupRedeemCampaignPage$;
 });
 
 /**
