@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.556.1](https://github.com/vm0-ai/vm0/compare/app-v0.556.0...app-v0.556.1) (2026-07-05)
+
+
+### Bug Fixes
+
+* align sidebar virtual thread scrolling ([#20235](https://github.com/vm0-ai/vm0/issues/20235)) ([6ee7f7f](https://github.com/vm0-ai/vm0/commit/6ee7f7f884e068cbf8da30095e56bea3c5147414))
+
 ## [0.556.0](https://github.com/vm0-ai/vm0/compare/app-v0.555.2...app-v0.556.0) (2026-07-05)
 
 
