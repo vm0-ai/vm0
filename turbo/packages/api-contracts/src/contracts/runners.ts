@@ -71,6 +71,7 @@ const runnerPollTelemetrySchema = z.object({
 });
 
 const runnerProfileListSchema = z.array(z.string());
+const runnerSupportedProfileListSchema = runnerProfileListSchema.min(1);
 
 const networkPolicyRefreshSchema = z.object({
   nextRefreshAt: z.string().datetime({ offset: true }),
@@ -97,25 +98,11 @@ export const runnerGroupSchema = z
     "Runner group must be in vm0/<name> format (e.g., vm0/production)",
   );
 
-const runnersPollBodySchema = z
-  .object({
-    group: runnerGroupSchema,
-    supportedProfiles: runnerProfileListSchema.optional(),
-    profiles: runnerProfileListSchema.optional(),
-    telemetry: runnerPollTelemetrySchema.optional(),
-  })
-  .superRefine((body, ctx) => {
-    const supportedProfiles = body.supportedProfiles ?? body.profiles;
-    if (supportedProfiles !== undefined && supportedProfiles.length > 0) {
-      return;
-    }
-
-    ctx.addIssue({
-      code: "custom",
-      path: ["supportedProfiles"],
-      message: "supportedProfiles is required",
-    });
-  });
+const runnersPollBodySchema = z.object({
+  group: runnerGroupSchema,
+  supportedProfiles: runnerSupportedProfileListSchema,
+  telemetry: runnerPollTelemetrySchema.optional(),
+});
 
 /**
  * Job schema for polling response
@@ -484,38 +471,20 @@ export const runnersNetworkPolicyRefreshContract = c.router({
 /**
  * Runner heartbeat body — periodic state report from each runner
  */
-export const heartbeatBodySchema = z
-  .object({
-    runnerId: z.uuid(),
-    runnerName: z.string(),
-    group: runnerGroupSchema,
-    profiles: runnerProfileListSchema.optional(),
-    totalVcpu: z.number().int().nonnegative(),
-    totalMemoryMb: z.number().int().nonnegative(),
-    maxConcurrent: z.number().int().nonnegative(),
-    allocatedVcpu: z.number().int().nonnegative(),
-    allocatedMemoryMb: z.number().int().nonnegative(),
-    runningCount: z.number().int().nonnegative(),
-    admittableProfiles: runnerProfileListSchema.optional(),
-    availableProfiles: runnerProfileListSchema.optional(),
-    heldSessionStates: z.array(heldSessionStateSchema).max(1024),
-    mode: z.enum(["running", "draining", "stopping"]),
-  })
-  .superRefine((body, ctx) => {
-    if (
-      body.admittableProfiles !== undefined ||
-      body.availableProfiles !== undefined ||
-      body.profiles !== undefined
-    ) {
-      return;
-    }
-
-    ctx.addIssue({
-      code: "custom",
-      path: ["admittableProfiles"],
-      message: "admittableProfiles is required",
-    });
-  });
+export const heartbeatBodySchema = z.object({
+  runnerId: z.uuid(),
+  runnerName: z.string(),
+  group: runnerGroupSchema,
+  totalVcpu: z.number().int().nonnegative(),
+  totalMemoryMb: z.number().int().nonnegative(),
+  maxConcurrent: z.number().int().nonnegative(),
+  allocatedVcpu: z.number().int().nonnegative(),
+  allocatedMemoryMb: z.number().int().nonnegative(),
+  runningCount: z.number().int().nonnegative(),
+  admittableProfiles: runnerProfileListSchema,
+  heldSessionStates: z.array(heldSessionStateSchema).max(1024),
+  mode: z.enum(["running", "draining", "stopping"]),
+});
 
 /**
  * Runners heartbeat contract - POST /api/runners/heartbeat
