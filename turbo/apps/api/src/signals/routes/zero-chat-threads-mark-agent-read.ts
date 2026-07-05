@@ -13,8 +13,6 @@ import { bodyResultOf } from "../context/request";
 import { type Db, writeDb$ } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
-import { excludeGoalMarkerCondition } from "../services/zero-chat-goal-marker.service";
-import { visibleChatMessageCondition } from "../services/zero-chat-message-shared.service";
 import type { RouteEntry } from "../route-entry";
 
 const markAgentReadBody$ = bodyResultOf(
@@ -28,7 +26,7 @@ function forbidden(message: string) {
   };
 }
 
-function lastVisibleMessageSubquery(db: Pick<Db, "select">) {
+function lastRunFinishMessageSubquery(db: Pick<Db, "select">) {
   return db
     .select({
       id: chatMessages.id,
@@ -38,8 +36,7 @@ function lastVisibleMessageSubquery(db: Pick<Db, "select">) {
     .where(
       and(
         eq(chatMessages.chatThreadId, chatThreads.id),
-        visibleChatMessageCondition(),
-        excludeGoalMarkerCondition(),
+        isNotNull(chatMessages.runLifecycleEvent),
       ),
     )
     .orderBy(desc(chatMessages.createdAt), desc(chatMessages.id))
@@ -74,35 +71,35 @@ const markAgentReadInner$ = command(
 
     const writeDb = set(writeDb$);
     const updatedThreadIds = await writeDb.transaction(async (tx) => {
-      const lastMessage = lastVisibleMessageSubquery(tx);
+      const lastRunFinish = lastRunFinishMessageSubquery(tx);
       const unreadRows = await tx
         .select({
           threadId: chatThreads.id,
-          latestMessageId: lastMessage.id,
+          latestRunFinishAt: lastRunFinish.createdAt,
         })
         .from(chatThreads)
         .innerJoin(zeroAgents, eq(zeroAgents.id, chatThreads.agentComposeId))
-        .leftJoinLateral(lastMessage, sql`true`)
+        .leftJoinLateral(lastRunFinish, sql`true`)
         .where(
           and(
             eq(chatThreads.userId, auth.userId),
             eq(zeroAgents.orgId, auth.orgId),
             eq(chatThreads.agentComposeId, bodyResult.data.agentId),
-            isNotNull(lastMessage.id),
+            isNotNull(lastRunFinish.id),
             or(
-              isNull(chatThreads.lastReadMessageId),
-              sql`${chatThreads.lastReadMessageId} <> ${lastMessage.id}`,
+              isNull(chatThreads.lastReadAt),
+              sql`${lastRunFinish.createdAt} > ${chatThreads.lastReadAt}`,
             )!,
           ),
         );
 
       for (const row of unreadRows) {
-        if (row.latestMessageId === null) {
+        if (row.latestRunFinishAt === null) {
           continue;
         }
         await tx
           .update(chatThreads)
-          .set({ lastReadMessageId: row.latestMessageId })
+          .set({ lastReadAt: row.latestRunFinishAt })
           .where(
             and(
               eq(chatThreads.id, row.threadId),

@@ -138,7 +138,6 @@ type ChatThreadRow = {
   readonly computerUseHostId: string | null;
   readonly orgId: string | null;
   readonly lastReadAt: Date | null;
-  readonly lastReadMessageId: string | null;
   readonly lastMessageAt: Date;
   readonly pinnedAt: Date | null;
   readonly renamedAt: Date | null;
@@ -386,7 +385,6 @@ function ownedChatThread(
         codexServiceTier: chatThreads.codexServiceTier,
         orgId: zeroAgents.orgId,
         lastReadAt: chatThreads.lastReadAt,
-        lastReadMessageId: chatThreads.lastReadMessageId,
         lastMessageAt: chatThreads.lastMessageAt,
         pinnedAt: chatThreads.pinnedAt,
         renamedAt: chatThreads.renamedAt,
@@ -414,8 +412,7 @@ function ownedChatThread(
       computerUseHostId: thread.computerUseHostId,
       codexServiceTier: thread.codexServiceTier ?? null,
       orgId: thread.orgId ?? null,
-      lastReadAt: thread.lastReadAt ?? null,
-      lastReadMessageId: thread.lastReadMessageId ?? null,
+      lastReadAt: thread.lastReadAt,
       lastMessageAt: thread.lastMessageAt,
       pinnedAt: thread.pinnedAt ?? null,
       renamedAt: thread.renamedAt ?? null,
@@ -659,7 +656,6 @@ export function zeroChatThreadDetail(args: {
       id: thread.id,
       title: thread.title,
       agentId: thread.agentComposeId,
-      lastReadMessageId: thread.lastReadMessageId,
       lastReadAt: thread.lastReadAt?.toISOString() ?? null,
       lastMessageAt: thread.lastMessageAt.toISOString(),
       activeRunIds: [...pickActiveRunIds(runSummaries)],
@@ -676,7 +672,7 @@ export function zeroChatThreadDetail(args: {
   });
 }
 
-function lastVisibleMessageSubquery(db: Pick<Db, "select">) {
+function lastRunFinishMessageSubquery(db: Pick<Db, "select">) {
   return db
     .select({
       id: chatMessages.id,
@@ -686,8 +682,7 @@ function lastVisibleMessageSubquery(db: Pick<Db, "select">) {
     .where(
       and(
         eq(chatMessages.chatThreadId, chatThreads.id),
-        visibleChatMessageCondition(),
-        excludeGoalMarkerCondition(),
+        isNotNull(chatMessages.runLifecycleEvent),
       ),
     )
     .orderBy(desc(chatMessages.createdAt), desc(chatMessages.id))
@@ -697,9 +692,8 @@ function lastVisibleMessageSubquery(db: Pick<Db, "select">) {
 
 /**
  * The user's unread threads under an agent, each with the creation time of
- * the latest visible message — the one that made the thread unread. A thread
- * is unread when it has at least one visible message and the read cursor
- * (`lastReadMessageId`) doesn't point at the latest one.
+ * the latest run-finish marker. A thread is unread only when it has at least
+ * one run-finish marker and that marker is newer than the read watermark.
  */
 export function zeroChatThreadUnreads(args: {
   readonly userId: string;
@@ -707,27 +701,27 @@ export function zeroChatThreadUnreads(args: {
 }): Computed<Promise<readonly { threadId: string; unreadAt: string }[]>> {
   return computed(async (get) => {
     const db = get(db$);
-    const lastMessage = lastVisibleMessageSubquery(db);
+    const lastRunFinish = lastRunFinishMessageSubquery(db);
     const rows = await db
       .select({
         threadId: chatThreads.id,
-        unreadAt: lastMessage.createdAt,
+        unreadAt: lastRunFinish.createdAt,
       })
       .from(chatThreads)
-      .leftJoinLateral(lastMessage, sql`true`)
+      .leftJoinLateral(lastRunFinish, sql`true`)
       .where(
         and(
           eq(chatThreads.userId, args.userId),
           eq(chatThreads.agentComposeId, args.agentComposeId),
-          isNotNull(lastMessage.id),
+          isNotNull(lastRunFinish.id),
           or(
-            isNull(chatThreads.lastReadMessageId),
-            sql`${chatThreads.lastReadMessageId} <> ${lastMessage.id}`,
+            isNull(chatThreads.lastReadAt),
+            sql`${lastRunFinish.createdAt} > ${chatThreads.lastReadAt}`,
           ),
         ),
       );
     return rows.flatMap((row) => {
-      // Always present: the isNotNull(lastMessage.id) filter guarantees a
+      // Always present: the isNotNull(lastRunFinish.id) filter guarantees a
       // joined row, but the left-lateral type keeps the column nullable.
       if (row.unreadAt === null) {
         return [];
@@ -739,7 +733,7 @@ export function zeroChatThreadUnreads(args: {
 
 /**
  * Agents that currently have at least one unread thread for the user. Uses
- * the same read-cursor comparison as `zeroChatThreadUnreads`.
+ * the same timestamp watermark comparison as `zeroChatThreadUnreads`.
  */
 export function zeroChatThreadUnreadAgentIds(args: {
   readonly userId: string;
@@ -747,20 +741,20 @@ export function zeroChatThreadUnreadAgentIds(args: {
 }): Computed<Promise<readonly string[]>> {
   return computed(async (get) => {
     const db = get(db$);
-    const lastMessage = lastVisibleMessageSubquery(db);
+    const lastRunFinish = lastRunFinishMessageSubquery(db);
     const rows = await db
       .selectDistinct({ agentId: chatThreads.agentComposeId })
       .from(chatThreads)
       .innerJoin(zeroAgents, eq(zeroAgents.id, chatThreads.agentComposeId))
-      .leftJoinLateral(lastMessage, sql`true`)
+      .leftJoinLateral(lastRunFinish, sql`true`)
       .where(
         and(
           eq(chatThreads.userId, args.userId),
           eq(zeroAgents.orgId, args.orgId),
-          isNotNull(lastMessage.id),
+          isNotNull(lastRunFinish.id),
           or(
-            isNull(chatThreads.lastReadMessageId),
-            sql`${chatThreads.lastReadMessageId} <> ${lastMessage.id}`,
+            isNull(chatThreads.lastReadAt),
+            sql`${lastRunFinish.createdAt} > ${chatThreads.lastReadAt}`,
           ),
           noActiveRunsForCurrentThreadCondition(),
         ),

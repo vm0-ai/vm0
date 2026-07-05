@@ -330,6 +330,29 @@ async function sendNoCreditMessage(
   return sent.body.threadId;
 }
 
+async function seedCompletedRunFinish(
+  actor: ApiTestUser,
+  args: {
+    readonly agentId: string;
+    readonly threadId: string;
+  },
+): Promise<void> {
+  if (!actor.orgId) {
+    throw new Error("Expected actor to belong to an org");
+  }
+  await store.set(
+    seedZeroChatThreadRun$,
+    {
+      userId: actor.userId,
+      orgId: actor.orgId,
+      agentId: args.agentId,
+      threadId: args.threadId,
+      status: "completed",
+    },
+    context.signal,
+  );
+}
+
 const malformedChatThreadIdRequests = [
   { method: "GET", path: "/api/zero/chat-threads/:id", paramName: "id" },
   { method: "PATCH", path: "/api/zero/chat-threads/:id", paramName: "id" },
@@ -996,9 +1019,17 @@ describe("CHAT-01 chat thread read state", () => {
       agentId: agentA.agentId,
       prompt: "unread aggregate A",
     });
+    await seedCompletedRunFinish(owner, {
+      agentId: agentA.agentId,
+      threadId: threadA,
+    });
     const threadB = await sendNoCreditMessage(owner, {
       agentId: agentB.agentId,
       prompt: "unread aggregate B",
+    });
+    await seedCompletedRunFinish(owner, {
+      agentId: agentB.agentId,
+      threadId: threadB,
     });
 
     const unreadAgents = await chat.listUnreadAgents(owner);
@@ -1157,13 +1188,25 @@ describe("CHAT-01 chat thread read state", () => {
       agentId: agentA.agentId,
       prompt: "mark all read A one",
     });
+    await seedCompletedRunFinish(owner, {
+      agentId: agentA.agentId,
+      threadId: firstThreadA,
+    });
     const secondThreadA = await sendNoCreditMessage(owner, {
       agentId: agentA.agentId,
       prompt: "mark all read A two",
     });
+    await seedCompletedRunFinish(owner, {
+      agentId: agentA.agentId,
+      threadId: secondThreadA,
+    });
     const threadB = await sendNoCreditMessage(owner, {
       agentId: agentB.agentId,
       prompt: "mark all read B",
+    });
+    await seedCompletedRunFinish(owner, {
+      agentId: agentB.agentId,
+      threadId: threadB,
     });
 
     expect(

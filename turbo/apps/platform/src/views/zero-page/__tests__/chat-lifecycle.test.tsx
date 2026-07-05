@@ -395,6 +395,7 @@ function mockKeyboardNavigationThreads({
       id: thread.id,
       title: thread.detailTitle,
       agentId: AGENT_ID,
+      lastReadAt: null,
       activeRunIds: [],
       createdAt: "2026-06-01T00:00:00Z",
       updatedAt: "2026-06-01T00:00:00Z",
@@ -644,7 +645,7 @@ function mockServerQueuedThreadStories(): void {
     },
   );
   context.mocks.api(chatThreadMarkReadContract.markRead, ({ respond }) => {
-    return respond(200, { lastReadMessageId: null, unreads: [] });
+    return respond(200, { lastReadAt: null, unreads: [] });
   });
 }
 
@@ -3186,6 +3187,7 @@ describe("chat lifecycle", () => {
         id: threadId,
         title: null,
         agentId: AGENT_ID,
+        lastReadAt: null,
         activeRunIds: [],
         createdAt: "2026-05-01T00:00:00Z",
         updatedAt: "2026-05-01T00:00:00Z",
@@ -3206,7 +3208,7 @@ describe("chat lifecycle", () => {
     });
     context.mocks.api(chatThreadMarkReadContract.markRead, ({ respond }) => {
       return respond(200, {
-        lastReadMessageId: null,
+        lastReadAt: null,
         unreads: [],
       });
     });
@@ -3376,7 +3378,7 @@ describe("chat lifecycle", () => {
     context.mocks.api(chatThreadMarkReadContract.markRead, ({ respond }) => {
       markReadCalls += 1;
       return respond(200, {
-        lastReadMessageId: "render-window-message-23",
+        lastReadAt: "2026-06-09T10:23:00Z",
         unreads: [],
       });
     });
@@ -7499,6 +7501,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
         id: params.id,
         title: null,
         agentId: AGENT_ID,
+        lastReadAt: null,
         activeRunIds: running ? ["run-active"] : [],
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:00Z",

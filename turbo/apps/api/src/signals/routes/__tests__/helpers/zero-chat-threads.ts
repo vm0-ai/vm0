@@ -25,7 +25,6 @@ interface SeedChatThreadOptions {
   readonly pinnedAt?: Date | null;
   readonly renamedAt?: Date | null;
   readonly lastReadAt?: Date | null;
-  readonly lastReadMessageId?: string | null;
   readonly draftContent?: string | null;
   readonly draftAttachments?: readonly PersistedAttachment[] | null;
   readonly createdAt?: Date;
@@ -134,7 +133,6 @@ export const seedZeroChatThread$ = command(
       pinned_at: dateToWire(options.pinnedAt),
       renamed_at: dateToWire(options.renamedAt),
       last_read_at: dateToWire(options.lastReadAt),
-      last_read_message_id: options.lastReadMessageId,
       draft_content: options.draftContent,
       draft_attachments: options.draftAttachments
         ? [...options.draftAttachments]

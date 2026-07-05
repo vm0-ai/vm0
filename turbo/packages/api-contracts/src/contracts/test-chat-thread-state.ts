@@ -40,7 +40,6 @@ export const testChatThreadStateActionBodySchema = z.discriminatedUnion(
       pinned_at: nullableDateStringSchema.optional(),
       renamed_at: nullableDateStringSchema.optional(),
       last_read_at: nullableDateStringSchema.optional(),
-      last_read_message_id: z.string().nullable().optional(),
       draft_content: z.string().nullable().optional(),
       draft_attachments: z
         .array(persistedAttachmentSchema)

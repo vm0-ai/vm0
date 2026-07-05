@@ -788,7 +788,7 @@ export function createChatFilesBddApi(context: TestContext) {
       actor: ApiTestUser,
       threadId: string,
     ): Promise<{
-      readonly lastReadMessageId: string | null;
+      readonly lastReadAt: string | null;
       readonly unreads: readonly { threadId: string; unreadAt: string }[];
     }> {
       const response = await accept(

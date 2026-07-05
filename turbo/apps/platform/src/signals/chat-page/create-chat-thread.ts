@@ -1471,6 +1471,25 @@ function latestServerMessageId(
   return undefined;
 }
 
+function latestRunFinishCreatedAtFromRaw(
+  raw: readonly ChatMessageProjectionEntry[],
+): string | undefined {
+  for (let index = raw.length - 1; index >= 0; index--) {
+    const entry = raw[index]!;
+    if (!isServerProjectionEntry(entry)) {
+      continue;
+    }
+    const { message } = entry;
+    if (
+      message.role === "assistant" &&
+      message.runLifecycleEvent !== undefined
+    ) {
+      return message.createdAt;
+    }
+  }
+  return undefined;
+}
+
 function latestAssistantTextCreatedAtFromRaw(
   raw: readonly ChatMessageProjectionEntry[],
 ): string | undefined {
@@ -1725,6 +1744,13 @@ function createPagedMessages(
     },
   );
 
+  const latestRunFinishCreatedAt$ = computed(
+    async (get): Promise<string | undefined> => {
+      const raw = await get(rawMessages$);
+      return latestRunFinishCreatedAtFromRaw(raw);
+    },
+  );
+
   const latestAssistantTextCreatedAt$ = computed(
     async (get): Promise<string | undefined> => {
       const raw = await get(rawMessages$);
@@ -1787,6 +1813,7 @@ function createPagedMessages(
     initialPage$,
     earliestChatMessageId$,
     latestChatMessageId$,
+    latestRunFinishCreatedAt$,
     latestAssistantTextCreatedAt$,
     groupedChatMessages$,
     refreshGroupedChatMessagesCache$,
@@ -2136,6 +2163,7 @@ interface RunTrackingDeps {
   reloadThread$: Command<void, []>;
   remoteThreadDetail$: Computed<Promise<ChatThread | null>>;
   latestChatMessageId$: Computed<Promise<string | undefined>>;
+  latestRunFinishCreatedAt$: Computed<Promise<string | undefined>>;
   latestRunStatus$: Computed<Promise<string | null>>;
   initialPage$: Computed<Promise<InitialPage>>;
   fetchNextPage$: Command<Promise<boolean>, [AbortSignal]>;
@@ -2149,8 +2177,8 @@ interface RunTrackingDeps {
 interface MarkThreadReadDeps {
   threadId: string;
   remoteThreadDetail$: Computed<Promise<ChatThread | null>>;
-  latestChatMessageId$: Computed<Promise<string | undefined>>;
-  locallyMarkedReadMessageId$: State<string | undefined>;
+  latestRunFinishCreatedAt$: Computed<Promise<string | undefined>>;
+  locallyMarkedReadAt$: State<string | undefined>;
   dataSource: ChatThreadDataSource;
 }
 
@@ -2275,42 +2303,43 @@ function createChatRenderWindow({
 function createMarkThreadReadIfNeeded({
   threadId,
   remoteThreadDetail$,
-  latestChatMessageId$,
-  locallyMarkedReadMessageId$,
+  latestRunFinishCreatedAt$,
+  locallyMarkedReadAt$,
   dataSource,
 }: MarkThreadReadDeps) {
   const optimisticCreateUnsettled$ =
     optimisticChatThreadCreateUnsettled(threadId);
   return command(async ({ get, set }, sig: AbortSignal) => {
-    const latestMessageId = await get(latestChatMessageId$);
+    const latestRunFinishCreatedAt = await get(latestRunFinishCreatedAt$);
     sig.throwIfAborted();
-    if (!latestMessageId) {
+    if (!latestRunFinishCreatedAt) {
       return;
     }
     if (get(optimisticCreateUnsettled$)) {
       L.debug("markRead$ optimistic thread create unsettled, skip", {
         threadId,
-        latestMessageId,
+        latestRunFinishCreatedAt,
       });
       return;
     }
 
     const thread = await get(remoteThreadDetail$);
     sig.throwIfAborted();
-    const lastReadMessageId =
-      get(locallyMarkedReadMessageId$) ?? thread?.lastReadMessageId ?? null;
-    if (lastReadMessageId === latestMessageId) {
+    if (thread === null) {
+      return;
+    }
+    const lastReadAt = get(locallyMarkedReadAt$) ?? thread.lastReadAt;
+    if (
+      lastReadAt !== null &&
+      compareCreatedAt(lastReadAt, latestRunFinishCreatedAt) >= 0
+    ) {
       return;
     }
 
-    const newLastReadId = await set(
-      dataSource.markRead$,
-      { threadId, latestMessageId },
-      sig,
-    );
+    const newLastReadAt = await set(dataSource.markRead$, { threadId }, sig);
     sig.throwIfAborted();
-    if (newLastReadId !== null) {
-      set(locallyMarkedReadMessageId$, newLastReadId);
+    if (newLastReadAt !== null) {
+      set(locallyMarkedReadAt$, newLastReadAt);
     }
     // No sidebar reload needed: markRead$ records an optimistic read mark
     // and applies the response's unread snapshot, so the unread dot clears
@@ -2323,6 +2352,7 @@ function createRunTracking({
   reloadThread$,
   remoteThreadDetail$,
   latestChatMessageId$,
+  latestRunFinishCreatedAt$,
   latestRunStatus$,
   initialPage$,
   fetchNextPage$,
@@ -2332,7 +2362,7 @@ function createRunTracking({
   autoScroll$,
   dataSource,
 }: RunTrackingDeps) {
-  const locallyMarkedReadMessageId$ = state<string | undefined>(undefined);
+  const locallyMarkedReadAt$ = state<string | undefined>(undefined);
   const resetChatSubscriptionSignal$ = resetSignalScope();
 
   const allFinished$ = computed(async (get) => {
@@ -2342,8 +2372,8 @@ function createRunTracking({
   const markThreadReadIfNeeded$ = createMarkThreadReadIfNeeded({
     threadId,
     remoteThreadDetail$,
-    latestChatMessageId$,
-    locallyMarkedReadMessageId$,
+    latestRunFinishCreatedAt$,
+    locallyMarkedReadAt$,
     dataSource,
   });
 
@@ -3576,6 +3606,7 @@ export function createChatThreadSignals(
     reloadThread$,
     remoteThreadDetail$,
     latestChatMessageId$: messages.latestChatMessageId$,
+    latestRunFinishCreatedAt$: messages.latestRunFinishCreatedAt$,
     latestRunStatus$: messages.latestRunStatus$,
     initialPage$: messages.initialPage$,
     fetchNextPage$: messages.fetchNextPage$,
@@ -3634,6 +3665,7 @@ export function createChatThreadSignals(
     queueDraftSync$,
     earliestChatMessageId$: messages.earliestChatMessageId$,
     latestChatMessageId$: messages.latestChatMessageId$,
+    latestRunFinishCreatedAt$: messages.latestRunFinishCreatedAt$,
     latestAssistantTextCreatedAt$: messages.latestAssistantTextCreatedAt$,
     groupedChatMessages$: messages.groupedChatMessages$,
     renderedGroupedChatMessages$: messages.renderedGroupedChatMessages$,

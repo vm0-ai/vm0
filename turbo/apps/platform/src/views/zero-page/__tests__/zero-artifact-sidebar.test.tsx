@@ -114,6 +114,7 @@ function setupChatThread({
       id: THREAD_ID,
       title: null,
       agentId: AGENT_ID,
+      lastReadAt: null,
       activeRunIds: [],
       createdAt: "2026-03-10T00:00:00Z",
       updatedAt: "2026-03-10T00:00:00Z",

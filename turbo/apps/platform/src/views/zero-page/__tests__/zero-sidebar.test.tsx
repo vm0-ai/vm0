@@ -296,6 +296,7 @@ function mockSidebarThreadStory(
       id: params.id,
       title: detailTitle ?? null,
       agentId: thread?.agent.id ?? AGENT_ID,
+      lastReadAt: null,
       activeRunIds: [],
       createdAt: "2026-03-10T00:00:00Z",
       updatedAt: "2026-03-10T00:00:00Z",
@@ -373,6 +374,7 @@ describe("zero sidebar", () => {
         title:
           params.id === EXISTING_THREAD_ID ? "Existing conversation" : null,
         agentId: AGENT_ID,
+        lastReadAt: null,
         activeRunIds: [],
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:00Z",
@@ -505,6 +507,7 @@ describe("zero sidebar", () => {
         id: params.id,
         title: thread?.title ?? null,
         agentId: AGENT_ID,
+        lastReadAt: null,
         activeRunIds: [],
         createdAt: thread?.createdAt ?? "2026-03-12T12:00:00Z",
         updatedAt: thread?.updatedAt ?? "2026-03-12T12:00:00Z",
@@ -580,6 +583,7 @@ describe("zero sidebar", () => {
         title:
           params.id === EXISTING_THREAD_ID ? "Existing conversation" : null,
         agentId: AGENT_ID,
+        lastReadAt: null,
         activeRunIds: [],
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:00Z",
@@ -641,6 +645,7 @@ describe("zero sidebar", () => {
         id: params.id,
         title: thread?.title ?? null,
         agentId: thread?.agent.id ?? AGENT_ID,
+        lastReadAt: null,
         activeRunIds: [],
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:00Z",
@@ -742,6 +747,7 @@ describe("zero sidebar", () => {
         id: params.id,
         title: thread?.title ?? null,
         agentId: thread?.agent.id ?? AGENT_ID,
+        lastReadAt: null,
         activeRunIds: [],
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:00Z",
@@ -795,6 +801,7 @@ describe("zero sidebar", () => {
                     id: "incident-message-1",
                     role: "assistant",
                     content: "Incident update",
+                    runLifecycleEvent: "completed",
                     createdAt: "2026-03-10T00:05:00Z",
                   },
                 ]
@@ -809,7 +816,7 @@ describe("zero sidebar", () => {
         markReadCalls += 1;
         await markReadDeferred.promise;
         return respond(200, {
-          lastReadMessageId: "incident-message-1",
+          lastReadAt: "2026-03-10T00:05:00Z",
           unreads: [],
         });
       },
