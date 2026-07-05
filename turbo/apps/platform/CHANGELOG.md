@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.555.1](https://github.com/vm0-ai/vm0/compare/app-v0.555.0...app-v0.555.1) (2026-07-05)
+
+
+### Refactoring
+
+* filter ideation connectors by catalog ([#20174](https://github.com/vm0-ai/vm0/issues/20174)) ([7bca8c5](https://github.com/vm0-ai/vm0/commit/7bca8c5e35cddd1c89875dedbba90ff026a1254e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.154.1
+    * @vm0/connectors bumped to 1.136.0
+    * @vm0/core bumped to 8.399.7
+
 ## [0.555.0](https://github.com/vm0-ai/vm0/compare/app-v0.554.7...app-v0.555.0) (2026-07-05)
 
 
