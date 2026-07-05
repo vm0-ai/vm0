@@ -10,11 +10,12 @@ import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
 import type { OrgResponse } from "@vm0/api-contracts/contracts/orgs";
 import type { OrgListResponse } from "@vm0/api-contracts/contracts/org-list";
-import type {
-  OrgMessageResponse,
-  OrgMember,
-  OrgMembersResponse,
-  OrgRole,
+import {
+  orgRoleSchema,
+  type OrgMessageResponse,
+  type OrgMember,
+  type OrgMembersResponse,
+  type OrgRole,
 } from "@vm0/api-contracts/contracts/org-members";
 import type { User } from "@clerk/backend";
 
@@ -316,12 +317,22 @@ export const zeroOrgDetail$ = command(
       signal.throwIfAborted();
     }
 
+    const cachedRole = membership[0]?.role;
+    const role =
+      args.orgRole ??
+      (cachedRole ? orgRoleSchema.parse(cachedRole) : undefined);
+    if (!role) {
+      throw new Error(
+        `Missing organization membership role for user ${args.userId} in org ${args.orgId}`,
+      );
+    }
+
     return {
       id: args.orgId,
       slug: identity.slug,
       name: identity.name,
       tier: meta[0]?.tier ?? "pro-suspend",
-      role: args.orgRole ?? (membership[0]?.role as OrgRole) ?? "member",
+      role,
       createdBy: identity.createdBy ?? undefined,
     };
   },
