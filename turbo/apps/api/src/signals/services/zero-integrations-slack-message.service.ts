@@ -5,7 +5,6 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { automations } from "@vm0/db/schema/automation";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, eq } from "drizzle-orm";
 
@@ -30,19 +29,6 @@ async function resolveAgentLabel(
     .where(eq(agentRuns.id, runId))
     .limit(1);
   return row?.displayName ?? row?.name ?? undefined;
-}
-
-async function resolveAutomationLabel(
-  db: ReadonlyDb,
-  runId: string,
-): Promise<string | undefined> {
-  const [row] = await db
-    .select({ description: automations.description })
-    .from(zeroRuns)
-    .innerJoin(automations, eq(zeroRuns.automationId, automations.id))
-    .where(eq(zeroRuns.id, runId))
-    .limit(1);
-  return row?.description ?? undefined;
 }
 
 async function resolveSelectedModel(
@@ -100,27 +86,18 @@ export function slackMessageSendFooterText(args: {
     const runId = args.authRunId;
 
     const noop = (): void => {};
-    const [agentLabel, automationLabel, userMention, selectedModel] =
-      await Promise.all([
-        tapError(resolveAgentLabel(db, runId), noop),
-        tapError(resolveAutomationLabel(db, runId), noop),
-        tapError(resolveUserMention(db, runId), noop),
-        tapError(resolveSelectedModel(db, runId), noop),
-      ]);
+    const [agentLabel, userMention, selectedModel] = await Promise.all([
+      tapError(resolveAgentLabel(db, runId), noop),
+      tapError(resolveUserMention(db, runId), noop),
+      tapError(resolveSelectedModel(db, runId), noop),
+    ]);
 
     const parts: string[] = [];
     if (agentLabel) {
       parts.push(`Sent via ${agentLabel}`);
     }
-    if (automationLabel) {
-      parts.push(`Triggered by automation "${automationLabel}"`);
-    }
     if (userMention) {
-      parts.push(
-        automationLabel
-          ? `Created by ${userMention}`
-          : `Triggered by ${userMention}`,
-      );
+      parts.push(`Triggered by ${userMention}`);
     }
     if (selectedModel) {
       parts.push(getModelDisplayName(selectedModel));

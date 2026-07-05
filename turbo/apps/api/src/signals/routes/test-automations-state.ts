@@ -480,22 +480,9 @@ async function loadRunsForAutomations(
   db: Db,
   automationIds: readonly string[],
 ) {
-  if (automationIds.length === 0) {
-    return [];
-  }
-  const rows = await db
-    .select({
-      id: zeroRuns.id,
-      automationId: zeroRuns.automationId,
-    })
-    .from(zeroRuns)
-    .where(inArray(zeroRuns.automationId, [...automationIds]));
-  return rows.map((row) => {
-    return {
-      id: row.id,
-      automation_id: row.automationId,
-    };
-  });
+  void db;
+  void automationIds;
+  return [];
 }
 
 async function loadRunState(db: Db, runId: string | undefined) {
@@ -505,8 +492,6 @@ async function loadRunState(db: Db, runId: string | undefined) {
   const [zeroRun] = await db
     .select({
       triggerSource: zeroRuns.triggerSource,
-      automationId: zeroRuns.automationId,
-      triggerId: zeroRuns.triggerId,
       chatThreadId: zeroRuns.chatThreadId,
     })
     .from(zeroRuns)
@@ -541,8 +526,8 @@ async function loadRunState(db: Db, runId: string | undefined) {
     zero_run: zeroRun
       ? {
           trigger_source: zeroRun.triggerSource,
-          automation_id: zeroRun.automationId,
-          trigger_id: zeroRun.triggerId,
+          automation_id: null,
+          trigger_id: null,
           chat_thread_id: zeroRun.chatThreadId,
         }
       : null,

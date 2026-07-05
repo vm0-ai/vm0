@@ -47,7 +47,6 @@ export interface LogEntry {
   framework: string | null;
   triggerSource: TriggerSource | null;
   triggerAgentName: string | null;
-  automationId: string | null;
   status: LogStatus;
   prompt: string;
   createdAt: string;
@@ -71,7 +70,6 @@ export interface LogDetail {
   selectedModel: string | null;
   triggerSource: TriggerSource | null;
   triggerAgentName: string | null;
-  automationId: string | null;
   status: LogStatus;
   prompt: string;
   appendSystemPrompt: string | null;

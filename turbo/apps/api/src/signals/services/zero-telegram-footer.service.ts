@@ -13,7 +13,6 @@ import { modelProviders } from "@vm0/db/schema/model-provider";
 import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
 import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { automations } from "@vm0/db/schema/automation";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, eq } from "drizzle-orm";
 
@@ -190,19 +189,6 @@ async function resolveRunAgentLabel(
   return row ? displayLabel(row) : undefined;
 }
 
-async function resolveRunAutomationLabel(
-  db: ReadonlyDb,
-  runId: string,
-): Promise<string | undefined> {
-  const [row] = await db
-    .select({ description: automations.description })
-    .from(zeroRuns)
-    .innerJoin(automations, eq(zeroRuns.automationId, automations.id))
-    .where(eq(zeroRuns.id, runId))
-    .limit(1);
-  return row?.description ?? undefined;
-}
-
 async function resolveRunUserLabel(
   db: ReadonlyDb,
   args: { readonly runId: string; readonly botId: string },
@@ -264,30 +250,21 @@ export function telegramMessageSendFooterText(args: {
     }
     const db = get(db$);
 
-    const [agentLabel, automationLabel, userLabel, selectedModel] =
-      await Promise.all([
-        resolveRunAgentLabel(db, args.authRunId),
-        resolveRunAutomationLabel(db, args.authRunId),
-        resolveRunUserLabel(db, {
-          runId: args.authRunId,
-          botId: args.botId,
-        }),
-        resolveRunSelectedModel(db, args.authRunId),
-      ]);
+    const [agentLabel, userLabel, selectedModel] = await Promise.all([
+      resolveRunAgentLabel(db, args.authRunId),
+      resolveRunUserLabel(db, {
+        runId: args.authRunId,
+        botId: args.botId,
+      }),
+      resolveRunSelectedModel(db, args.authRunId),
+    ]);
 
     const parts: string[] = [];
     if (agentLabel) {
       parts.push(`Sent via ${escapeHtml(agentLabel)}`);
     }
-    if (automationLabel) {
-      parts.push(`Triggered by automation "${escapeHtml(automationLabel)}"`);
-    }
     if (userLabel) {
-      parts.push(
-        automationLabel
-          ? `Created by ${userLabel}`
-          : `Triggered by ${userLabel}`,
-      );
+      parts.push(`Triggered by ${userLabel}`);
     }
     if (selectedModel) {
       parts.push(escapeHtml(getModelDisplayName(selectedModel)));

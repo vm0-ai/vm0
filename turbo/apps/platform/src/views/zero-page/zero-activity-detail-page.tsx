@@ -180,7 +180,6 @@ export function ActivityHeaderCard({
     selectedModel?: string | null;
     framework?: string | null;
     error?: string | null;
-    automationId?: string | null;
   };
   logDetail?: LogDetail;
   duration: string | null | undefined;
@@ -901,7 +900,6 @@ function downloadJson(
       completedAt: detail.completedAt,
       agentId: detail.agentId,
       sessionId: detail.sessionId,
-      automationId: detail.automationId,
     },
     events,
   };

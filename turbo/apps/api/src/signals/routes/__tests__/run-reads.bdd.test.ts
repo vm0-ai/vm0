@@ -3541,7 +3541,6 @@ describe("RUN-04/OPS-01: zero run logs", () => {
       displayName: "BDD logs agent one",
       framework: "claude-code",
       triggerSource: "web",
-      automationId: null,
       status: "cancelled",
       prompt: "web run on agent one",
     });
@@ -3552,7 +3551,6 @@ describe("RUN-04/OPS-01: zero run logs", () => {
       agentId: null,
       displayName: null,
       triggerSource: "cli",
-      automationId: null,
     });
     const pageOne = await reads.requestListLogs(actor, { limit: 1 }, [200]);
     mustOk(pageOne, "the first log page");

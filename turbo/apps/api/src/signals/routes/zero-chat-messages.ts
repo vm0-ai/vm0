@@ -11,7 +11,6 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import {
   chatMessages,
   type ChatMessageAttachFileMetadata,
-  type ChatMessageAutomationSnapshot,
   type ChatMessageGenerationTemplate,
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
@@ -1876,13 +1875,6 @@ async function appendAssociatedUserMessage(params: {
   // When false, the thread's in-progress draft is preserved. Automation posts
   // are not user-initiated typing, so they must not clear the user's draft.
   readonly clearDraft: boolean;
-  // Set when this message is posted by a firing automation. `automationSnapshot`
-  // snapshots the automation's basic display details at send time so the bubble
-  // keeps its label even after an edit/delete. `automationTitle` is retained for
-  // legacy fallback display.
-  readonly automationId?: string;
-  readonly automationTitle?: string;
-  readonly automationSnapshot?: ChatMessageAutomationSnapshot;
 }): Promise<void> {
   await params.db.transaction(async (tx) => {
     if (params.clearDraft) {
@@ -1903,11 +1895,6 @@ async function appendAssociatedUserMessage(params: {
         attachFiles: fileIds,
         attachFileMetadata: fileMetadata,
         generationTemplate: params.generationTemplate,
-        // #17307 D3: only the automation_* columns receive writes; the legacy
-        // schedule_* columns are frozen and drop in the next phase.
-        automationId: params.automationId,
-        automationTitle: params.automationTitle,
-        automationSnapshot: params.automationSnapshot,
       })
       .onConflictDoNothing({ target: chatMessages.id })
       .returning({ createdAt: chatMessages.createdAt });

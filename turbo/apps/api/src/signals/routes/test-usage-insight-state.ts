@@ -380,7 +380,6 @@ async function seedRun(
   await db.insert(zeroRuns).values({
     id: run.id,
     triggerSource: args.triggerSource ?? "cli",
-    automationId: args.automationId ?? null,
     chatThreadId: args.chatThreadId ?? null,
     selectedModel: args.selectedModel ?? null,
   });
@@ -668,7 +667,6 @@ async function seedAutomationBatch(
       await db.insert(zeroRuns).values({
         id: run.id,
         triggerSource: "automation",
-        automationId: automationRow.id,
       });
       await db.insert(usageEvent).values({
         runId: run.id,

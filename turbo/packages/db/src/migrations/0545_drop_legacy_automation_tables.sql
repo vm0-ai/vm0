@@ -46,9 +46,6 @@ FROM "mapped_legacy_runs" "mapped"
 WHERE "zr"."id" = "mapped"."run_id";--> statement-breakpoint
 
 -- Once a message's run points at a workflow trigger, keep its grouping aligned.
--- Leave legacy automation metadata in place as display fallback for the case
--- where the workflow is later deleted and zero_runs.workflow_trigger_id is set
--- back to NULL by the FK.
 UPDATE "chat_messages" "cm"
 SET
   "run_group_id" = "zr"."workflow_trigger_id"
@@ -57,22 +54,36 @@ WHERE "cm"."run_id" = "zr"."id"
   AND "zr"."workflow_trigger_id" IS NOT NULL
   AND "cm"."run_group_id" IS DISTINCT FROM "zr"."workflow_trigger_id";--> statement-breakpoint
 
--- Delete only legacy automation rows that have a corresponding migrated
--- workflow trigger. Unmapped legacy rows are kept as inert historical fallback
--- data instead of being blindly purged.
-DELETE FROM "automations" "a"
-USING "automation_triggers" "t", "zero_workflow_triggers" "zwt", "zero_workflows" "zw"
-WHERE "t"."automation_id" = "a"."id"
-  AND "zwt"."id" = "t"."id"
-  AND "zw"."id" = "zwt"."workflow_id"
-  AND "zw"."id" = "a"."id";--> statement-breakpoint
+-- Any legacy run that could not be mapped to a workflow trigger should behave
+-- as if the deleted automation no longer exists.
+UPDATE "zero_runs"
+SET
+  "automation_id" = NULL,
+  "trigger_id" = NULL,
+  "run_group_id" = CASE
+    WHEN "workflow_trigger_id" IS NULL THEN NULL
+    ELSE "run_group_id"
+  END
+WHERE "automation_id" IS NOT NULL
+   OR "trigger_id" IS NOT NULL;--> statement-breakpoint
 
-UPDATE "automation_triggers"
-SET "enabled" = false,
-    "updated_at" = now()
-WHERE "enabled" = true;--> statement-breakpoint
+UPDATE "chat_messages" "cm"
+SET
+  "automation_id" = NULL,
+  "automation_title" = NULL,
+  "automation_snapshot" = NULL,
+  "run_group_id" = CASE
+    WHEN "zr"."workflow_trigger_id" IS NULL THEN NULL
+    ELSE "cm"."run_group_id"
+  END
+FROM "zero_runs" "zr"
+WHERE "cm"."run_id" = "zr"."id"
+  AND ("cm"."automation_id" IS NOT NULL
+    OR "cm"."automation_title" IS NOT NULL
+    OR "cm"."automation_snapshot" IS NOT NULL);--> statement-breakpoint
 
-UPDATE "automations"
-SET "enabled" = false,
-    "updated_at" = now()
-WHERE "enabled" = true;
+ALTER TABLE "zero_runs" DROP COLUMN "automation_id";--> statement-breakpoint
+ALTER TABLE "zero_runs" DROP COLUMN "trigger_id";--> statement-breakpoint
+
+DROP TABLE "automation_triggers";--> statement-breakpoint
+DROP TABLE "automations";

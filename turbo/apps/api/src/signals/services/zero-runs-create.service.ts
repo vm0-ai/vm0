@@ -126,8 +126,6 @@ type RunCallback = HttpRunCallback | InternalRunCallback;
 
 interface ZeroRunMetadata {
   readonly triggerAgentId?: string;
-  readonly automationId?: string;
-  readonly triggerId?: string;
   readonly workflowTriggerId?: string;
   readonly triggerBrief?: string;
   readonly runGroupId?: string;

@@ -164,7 +164,6 @@ function buildInspectDetail(meta: InspectLogData["meta"]) {
     selectedModel: nullableStringValue(meta?.selectedModel),
     framework: nullableStringValue(meta?.framework),
     error: nullableStringValue(meta?.error),
-    automationId: nullableStringValue(meta?.automationId),
   };
 }
 

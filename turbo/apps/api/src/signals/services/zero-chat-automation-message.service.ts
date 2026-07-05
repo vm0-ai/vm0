@@ -1,6 +1,5 @@
 import {
   chatMessages,
-  type ChatMessageAutomationSnapshot,
   type ChatMessageGoalSnapshot,
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
@@ -157,8 +156,6 @@ export async function postAutomationUserMessage(params: {
   readonly prompt: string;
   readonly appendQueueMarker: boolean;
   readonly runGroupId?: string;
-  readonly automationTitle?: string;
-  readonly automationSnapshot?: ChatMessageAutomationSnapshot;
   readonly goalSnapshot?: ChatMessageGoalSnapshot;
 }): Promise<void> {
   await params.db.transaction(async (tx) => {
@@ -170,8 +167,6 @@ export async function postAutomationUserMessage(params: {
         content: params.prompt,
         runId: params.runId,
         runGroupId: params.runGroupId,
-        automationTitle: params.automationTitle,
-        automationSnapshot: params.automationSnapshot,
         goalSnapshot: params.goalSnapshot,
       })
       .returning({ createdAt: chatMessages.createdAt });

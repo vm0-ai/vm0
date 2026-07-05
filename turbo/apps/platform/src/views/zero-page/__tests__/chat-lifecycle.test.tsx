@@ -7350,7 +7350,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
         selectedModel: null,
         triggerSource: "web",
         triggerAgentName: null,
-        automationId: null,
         status: "running",
         prompt: "Active task prompt",
         appendSystemPrompt: null,

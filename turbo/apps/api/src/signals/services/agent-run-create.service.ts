@@ -286,10 +286,6 @@ interface PreparedAdditionalVolumes {
 
 interface ZeroRunMetadata {
   readonly triggerAgentId?: string;
-  // Run provenance: the automation + the trigger that fired this run (set by the
-  // webhook inbound path). Persisted as first-class zero_runs columns.
-  readonly automationId?: string;
-  readonly triggerId?: string;
   // Run provenance for workflow schedule triggers.
   readonly workflowTriggerId?: string;
   readonly triggerBrief?: string;
@@ -4510,8 +4506,6 @@ async function insertZeroRunRecord(
   await tx.insert(zeroRuns).values({
     id: args.runId,
     triggerSource: args.body.triggerSource ?? "cli",
-    automationId: metadata.automationId ?? null,
-    triggerId: metadata.triggerId ?? null,
     workflowTriggerId: metadata.workflowTriggerId ?? null,
     triggerBrief: metadata.triggerBrief ?? null,
     runGroupId: metadata.runGroupId ?? null,

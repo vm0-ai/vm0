@@ -3821,7 +3821,7 @@
       "idx": 545,
       "version": "7",
       "when": 1783223965118,
-      "tag": "0545_backfill_legacy_automation_workflow_history",
+      "tag": "0545_drop_legacy_automation_tables",
       "breakpoints": true
     }
   ]

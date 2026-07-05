@@ -174,9 +174,8 @@ export const chatMessages = pgTable(
     // Stable grouping key for repeated automation/workflow/goal-triggered
     // runs rendered in a chat thread.
     runGroupId: uuid("run_group_id"),
-    // Set when this user message was posted by a firing automation rather than
-    // typed by the user; the snapshot preserves the basic display details at
-    // send time so the bubble keeps its label after an edit/delete.
+    // Deprecated legacy schedule automation metadata. Migration 0545 clears
+    // existing values; new message writes no longer populate these fields.
     automationId: uuid("automation_id"),
     automationTitle: text("automation_title"),
     automationSnapshot: jsonb(

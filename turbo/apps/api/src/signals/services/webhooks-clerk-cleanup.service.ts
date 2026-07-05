@@ -32,7 +32,6 @@ import { userCache } from "@vm0/db/schema/user-cache";
 import { users } from "@vm0/db/schema/user";
 import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
 import { variables } from "@vm0/db/schema/variable";
-import { automations, automationTriggers } from "@vm0/db/schema/automation";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { command, computed, type Computed } from "ccstate";
 import { and, count, eq, inArray, isNotNull } from "drizzle-orm";
@@ -132,23 +131,6 @@ async function cancelLastAdminOrgsStripeSubscriptions(
       );
     }
   }
-}
-
-async function disableUserAutomations(db: Db, userId: string): Promise<void> {
-  await db
-    .update(automations)
-    .set({ enabled: false })
-    .where(eq(automations.userId, userId));
-
-  const userAutomationIds = db
-    .select({ id: automations.id })
-    .from(automations)
-    .where(eq(automations.userId, userId));
-
-  await db
-    .update(automationTriggers)
-    .set({ nextRunAt: null })
-    .where(inArray(automationTriggers.automationId, userAutomationIds));
 }
 
 async function cancelUserRuns(db: Db, userId: string): Promise<void> {
@@ -732,7 +714,6 @@ async function deleteOrgData(db: Db, orgId: string): Promise<void> {
     await cleanupWorkspaceInstallation(db, installation.slackWorkspaceId);
   }
 
-  await db.delete(automations).where(eq(automations.orgId, orgId));
   await db.delete(agentRuns).where(eq(agentRuns.orgId, orgId));
   await db.delete(agentComposes).where(eq(agentComposes.orgId, orgId));
   await db.delete(storages).where(eq(storages.orgId, orgId));
@@ -805,7 +786,6 @@ async function deleteUserData(db: Db, userId: string): Promise<void> {
   await db.delete(variables).where(eq(variables.userId, userId));
   await db.delete(usageDaily).where(eq(usageDaily.userId, userId));
   await db.delete(exportJobs).where(eq(exportJobs.userId, userId));
-  await db.delete(automations).where(eq(automations.userId, userId));
   await db.delete(cliTokens).where(eq(cliTokens.userId, userId));
   await db.delete(composeJobs).where(eq(composeJobs.userId, userId));
   await db
@@ -888,8 +868,6 @@ export const cleanupClerkBannedUser$ = command(
   async ({ set }, userId: string, signal: AbortSignal): Promise<void> => {
     const db = set(writeDb$);
     await cancelUserRuns(db, userId);
-    signal.throwIfAborted();
-    await disableUserAutomations(db, userId);
     signal.throwIfAborted();
     await cancelLastAdminOrgsStripeSubscriptions(db, userId);
   },

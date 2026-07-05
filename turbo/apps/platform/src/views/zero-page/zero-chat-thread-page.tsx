@@ -3796,10 +3796,6 @@ function runGroupFoldMessages(fold: RunGroupFold): EnrichedChatMessage[] {
 
 function runGroupFoldSourceLabel(fold: RunGroupFold): string {
   const messages = runGroupFoldMessages(fold);
-  const automationMessage = messages.find(isAutomationUserMessage);
-  if (automationMessage) {
-    return normalizedInlineLabel(automationMessageLabel(automationMessage));
-  }
   const workflowLabel = runGroupFoldWorkflowLabel(fold);
   if (workflowLabel) {
     return workflowLabel;
@@ -3849,7 +3845,6 @@ function isGoalUserMessage(
   return (
     message.role === "user" &&
     message.isGoalRun === true &&
-    !hasAutomationMessageMetadata(message) &&
     !hasWorkflowMessageMetadata(message) &&
     goalUserMessageBrief(message) !== null
   );
@@ -6556,20 +6551,6 @@ function PagedUserGroup({
   );
 }
 
-function isAutomationUserMessage(
-  message: EnrichedChatMessage,
-): message is EnrichedChatMessage & { role: "user" } {
-  return message.role === "user" && hasAutomationMessageMetadata(message);
-}
-
-function hasAutomationMessageMetadata(message: EnrichedChatMessage): boolean {
-  return (
-    message.automationSnapshot !== undefined ||
-    message.automationTitle !== undefined ||
-    message.automationId !== undefined
-  );
-}
-
 function isWorkflowUserMessage(
   message: EnrichedChatMessage,
 ): message is EnrichedChatMessage & { role: "user" } {
@@ -6578,17 +6559,6 @@ function isWorkflowUserMessage(
 
 function hasWorkflowMessageMetadata(message: EnrichedChatMessage): boolean {
   return message.workflowSnapshot !== undefined;
-}
-
-function automationMessageLabel(
-  message: EnrichedChatMessage & { role: "user" },
-): string {
-  return (
-    message.automationSnapshot?.description?.trim() ||
-    message.automationSnapshot?.title?.trim() ||
-    message.automationTitle?.trim() ||
-    "Automation run"
-  );
 }
 
 function workflowSnapshotTitle(
@@ -6915,34 +6885,6 @@ function UserMessageGenerationTemplate({
   );
 }
 
-function AutomationUserMessage({
-  automationLabel,
-}: {
-  automationId: string | undefined;
-  automationLabel: string;
-}) {
-  const cardClassName =
-    "zero-chat-bubble-user inline-flex items-center gap-2 rounded-xl px-3.5 py-2.5 max-w-[85%] text-sm text-muted-foreground transition-colors duration-150";
-  const body = (
-    <>
-      <IconClock size={15} className="shrink-0" />
-      <span className="min-w-0 truncate font-medium text-foreground">
-        {automationLabel}
-      </span>
-    </>
-  );
-  return (
-    <div data-role="user" className="group">
-      <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
-        <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
-        <div className="flex w-full flex-col items-end">
-          <div className={cardClassName}>{body}</div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function WorkflowUserMessage({
   message,
 }: {
@@ -7102,15 +7044,6 @@ function PagedUserMessage({
 
   if (isWorkflowUserMessage(message)) {
     return <WorkflowUserMessage message={message} />;
-  }
-
-  if (isAutomationUserMessage(message)) {
-    return (
-      <AutomationUserMessage
-        automationId={message.automationId}
-        automationLabel={automationMessageLabel(message)}
-      />
-    );
   }
 
   if (isGoalUserMessage(message)) {
