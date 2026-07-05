@@ -1,4 +1,4 @@
-import { screen } from "@testing-library/react";
+import { screen, waitForElementToBeRemoved } from "@testing-library/react";
 import {
   zeroConnectorCatalogContract,
   type PublicConnectorCatalogStatusItem,
@@ -128,6 +128,34 @@ describe("zero ideation page", () => {
     expect(
       screen.queryByText("RevenueCat subscription digest"),
     ).not.toBeInTheDocument();
+  });
+
+  it("does not treat pending catalog status as an empty catalog", async () => {
+    const catalogReady = context.mocks.deferred<void>();
+    context.mocks.api(
+      zeroConnectorCatalogContract.status,
+      async ({ respond }) => {
+        await catalogReady.promise;
+        return respond(200, {
+          connectors: [],
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${agentId}/ideas`,
+    });
+
+    await expect(
+      screen.findByText("Daily standup report"),
+    ).resolves.toBeInTheDocument();
+
+    catalogReady.resolve();
+    await waitForElementToBeRemoved(() => {
+      return screen.queryByText("Daily standup report");
+    });
+    expect(screen.getByText("Browser screenshots")).toBeInTheDocument();
   });
 
   it("falls back to all use cases when the selected tab is hidden by catalog filtering", async () => {

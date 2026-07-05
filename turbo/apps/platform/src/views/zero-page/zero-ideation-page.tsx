@@ -25,7 +25,9 @@ import {
 export function ZeroIdeationPage() {
   const features = useLastResolved(featureSwitch$);
   const connectorStatusByRef = useLastResolved(connectorCatalogStatusByRef$);
-  const visibleConnectorRefs = new Set(connectorStatusByRef?.keys() ?? []);
+  const visibleConnectorRefs = connectorStatusByRef
+    ? new Set(connectorStatusByRef.keys())
+    : undefined;
   const categories = getCategories({
     features,
     visibleConnectorRefs,

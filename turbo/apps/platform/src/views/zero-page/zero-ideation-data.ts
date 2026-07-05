@@ -16,7 +16,7 @@ interface Category {
 
 interface IdeationFilterOptions {
   readonly features?: Partial<Record<FeatureSwitchKey, boolean>>;
-  readonly visibleConnectorRefs: ReadonlySet<string>;
+  readonly visibleConnectorRefs?: ReadonlySet<string>;
 }
 
 const categories: readonly Category[] = [
@@ -647,16 +647,21 @@ function filterUseCase(
   useCase: UseCase,
   options: IdeationFilterOptions,
 ): UseCase | null {
+  const visibleConnectorRefs = options.visibleConnectorRefs;
   if (!isEnabled(useCase, options.features)) {
     return null;
   }
 
-  if (!useCase.connectors || useCase.connectors.length === 0) {
+  if (
+    !useCase.connectors ||
+    useCase.connectors.length === 0 ||
+    !visibleConnectorRefs
+  ) {
     return useCase;
   }
 
   const connectors = useCase.connectors.filter((connectorRef) => {
-    return options.visibleConnectorRefs.has(connectorRef);
+    return visibleConnectorRefs.has(connectorRef);
   });
   if (connectors.length === 0) {
     return null;
