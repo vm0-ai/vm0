@@ -1299,6 +1299,32 @@ interface ChatMessageProjectionEntry {
   optimisticUserMessageAssociation?: OptimisticChatMessageEntry["optimisticUserMessageAssociation"];
 }
 
+function projectRawMessages({
+  serverMessageSets,
+  optimisticEntries,
+}: {
+  serverMessageSets: readonly (readonly PagedChatMessage[])[];
+  optimisticEntries: readonly OptimisticChatMessageEntry[];
+}): ChatMessageProjectionEntry[] {
+  const server = mergeServerMessages(serverMessageSets);
+  const serverIds = new Set(
+    server.map((message) => {
+      return message.id;
+    }),
+  );
+  const optimistic = optimisticEntries.filter((entry) => {
+    return !serverIds.has(entry.message.id);
+  });
+  return [
+    ...server.map((message) => {
+      return { message, source: "server" as const };
+    }),
+    ...optimistic.map((entry) => {
+      return { ...entry, source: "optimistic" as const };
+    }),
+  ];
+}
+
 function createRawMessagesComputed({
   initialPage$,
   historyMessages$,
@@ -1312,31 +1338,29 @@ function createRawMessagesComputed({
   serverMessages$: State<PagedChatMessage[]>;
   optimisticMessages$: Computed<OptimisticChatMessageEntry[]>;
 }): Computed<Promise<ChatMessageProjectionEntry[]>> {
+  let resolvedInitialPage: InitialPage | null = null;
   return computed(async (get): Promise<ChatMessageProjectionEntry[]> => {
-    const initial = await get(initialPage$);
     const history = get(historyMessages$);
-    const server = mergeServerMessages([
-      history,
-      initial.messages,
-      get(serverMessages$),
-    ]);
-    const serverIds = new Set(
-      server.map((message) => {
-        return message.id;
-      }),
-    );
-    const optimistic = get(optimisticMessages$).filter((entry) => {
-      return !serverIds.has(entry.message.id);
+    const serverMessages = get(serverMessages$);
+    const optimisticEntries = get(optimisticMessages$);
+    if (
+      resolvedInitialPage === null &&
+      (history.length > 0 ||
+        serverMessages.length > 0 ||
+        optimisticEntries.length > 0)
+    ) {
+      return projectRawMessages({
+        serverMessageSets: [history, serverMessages],
+        optimisticEntries,
+      });
+    }
+
+    const initial = resolvedInitialPage ?? (await get(initialPage$));
+    resolvedInitialPage = initial;
+    return projectRawMessages({
+      serverMessageSets: [history, initial.messages, serverMessages],
+      optimisticEntries: get(optimisticMessages$),
     });
-    const raw: ChatMessageProjectionEntry[] = [
-      ...server.map((message) => {
-        return { message, source: "server" as const };
-      }),
-      ...optimistic.map((entry) => {
-        return { ...entry, source: "optimistic" as const };
-      }),
-    ];
-    return raw;
   });
 }
 
@@ -1961,20 +1985,6 @@ export const ensureDraft$ = command(
     return { draft, isNew: true };
   },
 );
-
-function createSkeletonSignals() {
-  const internalSkeletonVisible$ = state(false);
-  const skeletonVisible$ = computed((get) => {
-    return get(internalSkeletonVisible$);
-  });
-  const showSkeleton$ = command(({ set }) => {
-    set(internalSkeletonVisible$, true);
-  });
-  const hideSkeleton$ = command(({ set }) => {
-    set(internalSkeletonVisible$, false);
-  });
-  return { skeletonVisible$, showSkeleton$, hideSkeleton$ };
-}
 
 function createContainerRef() {
   const internalContainerEl$ = state<HTMLElement | null>(null);
@@ -3542,8 +3552,6 @@ export function createChatThreadSignals(
     awayFromBottom$,
     ...scrollSignals
   } = createChatThreadScrollSignals(threadId);
-  const { skeletonVisible$, showSkeleton$, hideSkeleton$ } =
-    createSkeletonSignals();
   const { containerEl$, setContainerRef$ } = createContainerRef();
   const { composerFileInput$, setComposerFileInput$ } =
     createComposerFileInput();
@@ -3614,9 +3622,6 @@ export function createChatThreadSignals(
     containerEl$,
     setContainerRef$,
     awayFromBottom$,
-    skeletonVisible$,
-    showSkeleton$,
-    hideSkeleton$,
     draft,
     composerFileInput$,
     setComposerFileInput$,

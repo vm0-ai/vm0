@@ -77,13 +77,6 @@ export interface ChatThreadSignals {
   // True when the message list is scrolled away from the bottom - drives the
   // feature-gated scroll-to-bottom button. Read-only outside scroll signals.
   awayFromBottom$: Computed<boolean>;
-  // -- Initial-load skeleton ------------------------------------------------
-  // Starts hidden - `setupChatThreadInitScroll$` flips it on only when the
-  // IDB cache misses, so cache hits skip the skeleton entirely. Flipped off
-  // once messages resolve and the viewport is scrolled into place.
-  skeletonVisible$: Computed<boolean>;
-  showSkeleton$: Command<void, []>;
-  hideSkeleton$: Command<void, []>;
   draft: DraftSignals;
   composerFileInput$: Computed<HTMLElement | null>;
   setComposerFileInput$: Command<

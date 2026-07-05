@@ -124,19 +124,6 @@ export const setSessionListCollapsed$ = command(
 );
 
 // ---------------------------------------------------------------------------
-// Chat thread virtual list one-shot scroll target
-// ---------------------------------------------------------------------------
-const internalChatThreadVirtualScrollTarget$ = state<string | null>(null);
-export const chatThreadVirtualScrollTarget$ = computed((get) => {
-  return get(internalChatThreadVirtualScrollTarget$);
-});
-export const setChatThreadVirtualScrollTarget$ = command(
-  ({ set }, threadId: string | null) => {
-    set(internalChatThreadVirtualScrollTarget$, threadId);
-  },
-);
-
-// ---------------------------------------------------------------------------
 // Manage section collapse state (ZeroSidebar) — persisted in localStorage
 // ---------------------------------------------------------------------------
 const {
@@ -276,6 +263,9 @@ export const setOverlayScrollMetrics$ = command(
 // ---------------------------------------------------------------------------
 // Chat thread virtual list DOM state (RecentChatSection)
 // ---------------------------------------------------------------------------
+export const CHAT_THREAD_VIRTUAL_ROW_HEIGHT = 36;
+const CHAT_THREAD_VIRTUAL_FALLBACK_VIEWPORT_HEIGHT =
+  CHAT_THREAD_VIRTUAL_ROW_HEIGHT * 12;
 const internalChatThreadVirtualListElement$ = state<HTMLElement | null>(null);
 export const chatThreadVirtualListElement$ = computed((get) => {
   return get(internalChatThreadVirtualListElement$);
@@ -283,6 +273,42 @@ export const chatThreadVirtualListElement$ = computed((get) => {
 export const setChatThreadVirtualListElement$ = command(
   ({ set }, element: HTMLElement | null) => {
     set(internalChatThreadVirtualListElement$, element);
+  },
+);
+export const scrollChatThreadVirtualListToIndex$ = command(
+  ({ get, set }, index: number): boolean => {
+    if (!Number.isInteger(index) || index < 0) {
+      return false;
+    }
+
+    const scrollViewport = get(internalOverlayScrollViewport$);
+    const virtualListElement = get(internalChatThreadVirtualListElement$);
+    if (!scrollViewport || !virtualListElement) {
+      return false;
+    }
+
+    const currentMetrics = get(internalOverlayScrollMetrics$);
+    const scrollMargin = virtualListElement.offsetTop;
+    const viewportHeight =
+      currentMetrics.clientHeight ||
+      scrollViewport.clientHeight ||
+      CHAT_THREAD_VIRTUAL_FALLBACK_VIEWPORT_HEIGHT;
+    const rowTop = scrollMargin + index * CHAT_THREAD_VIRTUAL_ROW_HEIGHT;
+    const rowBottom = rowTop + CHAT_THREAD_VIRTUAL_ROW_HEIGHT;
+    const viewportTop = scrollViewport.scrollTop;
+    const viewportBottom = viewportTop + viewportHeight;
+    const nextScrollTop =
+      rowTop < viewportTop || rowBottom > viewportBottom
+        ? Math.max(0, rowTop - CHAT_THREAD_VIRTUAL_ROW_HEIGHT)
+        : viewportTop;
+
+    scrollViewport.scrollTop = nextScrollTop;
+    set(internalOverlayScrollMetrics$, {
+      scrollTop: nextScrollTop,
+      scrollHeight: scrollViewport.scrollHeight,
+      clientHeight: scrollViewport.clientHeight,
+    });
+    return true;
   },
 );
 
