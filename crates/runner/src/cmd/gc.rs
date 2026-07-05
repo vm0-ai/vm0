@@ -139,8 +139,9 @@ pub async fn run_gc(args: GcArgs) -> RunnerResult<()> {
 
 /// Delete R2 image cache objects older than `keep_days`. Errors (R2 not
 /// configured, network blip, etc.) are logged and swallowed: GC must not
-/// fail the deploy because the cache layer is misconfigured. Returns
-/// `(deleted_count, freed_bytes)`.
+/// fail the deploy because the cache layer is misconfigured. Returns the
+/// successful full-pass `(deleted_count, freed_bytes)`, or `(0, 0)` on init or
+/// scan failure. A failed scan may have already deleted earlier pages.
 ///
 /// Idempotent across the fleet — every host runs the same scan; DELETE on
 /// already-absent keys is a no-op success.
