@@ -4,22 +4,21 @@ use std::path::{Path, PathBuf};
 /// Parse the ExecStart line of a systemd unit file for a runner `--config` path.
 pub(crate) async fn read_unit_config_path(unit_path: &Path) -> Option<PathBuf> {
     let mut content = tokio::fs::read_to_string(unit_path).await.ok()?;
-    content.push_str(&read_unit_dropin_content(unit_path).await?);
+    content.push_str(&read_unit_dropin_content(unit_path).await);
     parse_unit_config_path(&content)
 }
 
-async fn read_unit_dropin_content(unit_path: &Path) -> Option<String> {
+async fn read_unit_dropin_content(unit_path: &Path) -> String {
     let mut dir = OsString::from(unit_path.as_os_str());
     dir.push(".d");
     let dir = PathBuf::from(dir);
     let mut entries = match tokio::fs::read_dir(&dir).await {
         Ok(entries) => entries,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Some(String::new()),
-        Err(_) => return None,
+        Err(_) => return String::new(),
     };
 
     let mut paths = Vec::new();
-    while let Some(entry) = entries.next_entry().await.ok()? {
+    while let Ok(Some(entry)) = entries.next_entry().await {
         let path = entry.path();
         if path
             .extension()
@@ -32,10 +31,12 @@ async fn read_unit_dropin_content(unit_path: &Path) -> Option<String> {
 
     let mut content = String::new();
     for path in paths {
-        content.push('\n');
-        content.push_str(&tokio::fs::read_to_string(path).await.ok()?);
+        if let Ok(dropin) = tokio::fs::read_to_string(path).await {
+            content.push('\n');
+            content.push_str(&dropin);
+        }
     }
-    Some(content)
+    content
 }
 
 pub(crate) fn parse_unit_config_path(content: &str) -> Option<PathBuf> {
@@ -451,6 +452,28 @@ ExecStart="/usr/bin/runner" start --config "/etc/new-runner.yaml"
         assert_eq!(
             read_unit_config_path(&unit_path).await,
             Some(PathBuf::from("/etc/new-runner.yaml"))
+        );
+    }
+
+    #[tokio::test]
+    async fn read_unit_config_path_ignores_unreadable_dropin_entries() {
+        let dir = tempfile::tempdir().unwrap();
+        let unit_path = dir.path().join("vm0-runner-v1.0.0.service");
+        std::fs::write(
+            &unit_path,
+            r#"
+[Service]
+ExecStart="/usr/bin/runner" start --config "/etc/runner.yaml"
+"#,
+        )
+        .unwrap();
+        let dropin_dir = dir.path().join("vm0-runner-v1.0.0.service.d");
+        std::fs::create_dir(&dropin_dir).unwrap();
+        std::fs::create_dir(dropin_dir.join("10-broken.conf")).unwrap();
+
+        assert_eq!(
+            read_unit_config_path(&unit_path).await,
+            Some(PathBuf::from("/etc/runner.yaml"))
         );
     }
 }
