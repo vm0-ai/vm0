@@ -31,6 +31,7 @@ import {
   expectApiError,
   type ApiTestUser,
 } from "./helpers/api-bdd";
+import { createDeferredPromise } from "../../utils";
 import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
@@ -1274,14 +1275,18 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       compose.composeId,
     );
 
-    let releaseEmptyUploads = (): void => {};
-    const emptyUploadsGate = new Promise<void>((resolve) => {
-      releaseEmptyUploads = resolve;
-    });
-    let markEmptyUploadStarted = (): void => {};
-    const emptyUploadStarted = new Promise<void>((resolve) => {
-      markEmptyUploadStarted = resolve;
-    });
+    const emptyUploadsGate = createDeferredPromise<void>(context.signal);
+    const releaseEmptyUploads = (): void => {
+      if (!emptyUploadsGate.settled()) {
+        emptyUploadsGate.resolve(undefined);
+      }
+    };
+    const emptyUploadStarted = createDeferredPromise<void>(context.signal);
+    const markEmptyUploadStarted = (): void => {
+      if (!emptyUploadStarted.settled()) {
+        emptyUploadStarted.resolve(undefined);
+      }
+    };
 
     let blockedEmptyPutCount = 0;
     context.mocks.s3.send.mockImplementation((command: unknown) => {
@@ -1291,7 +1296,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       ) {
         blockedEmptyPutCount += 1;
         markEmptyUploadStarted();
-        return emptyUploadsGate.then(() => {
+        return emptyUploadsGate.promise.then(() => {
           return {};
         });
       }
@@ -1318,7 +1323,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     });
 
     const gateResult = await Promise.race([
-      emptyUploadStarted.then(() => {
+      emptyUploadStarted.promise.then(() => {
         return "empty-upload-started" as const;
       }),
       staleInitializerRun.then(() => {
