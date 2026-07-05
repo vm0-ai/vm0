@@ -545,56 +545,28 @@ function htmlDomEditPrompt(body: HtmlEditDraftDocument): readonly {
       content: `Create patches for these comments on the existing HTML document.
 
 Output:
-- Return only JSON.
-- Output shape: {"kind":"html-dom-edit-patch","version":1,"patches":[...]}.
-- Each patch must include commentId, operation, and the operation-specific fields.
-- DOM patch operations must include targetNodeId.
-- Script patch operations must include scriptId and oldSha256 except script_add.
-- Supported operations:
-  - {"operation":"update","outerHTML":"<tag>...</tag>"} replaces the target DOM node with the updated DOM node.
-  - {"operation":"insert","position":"before","html":"..."} inserts HTML before the target element.
-  - {"operation":"insert","position":"after","html":"..."} inserts HTML after the target element.
-  - {"operation":"insert","position":"append_child","html":"..."} appends HTML inside the target element.
-  - {"operation":"insert","position":"prepend_child","html":"..."} prepends HTML inside the target element.
-  - {"operation":"remove"} removes the target element.
-  - {"operation":"script_update","scriptId":"...","oldSha256":"...","content":"..."} replaces the complete body of an existing inline script.
-  - {"operation":"script_text_replace","scriptId":"...","oldSha256":"...","oldText":"...","newText":"..."} replaces one exact text occurrence inside an existing inline script.
-  - {"operation":"script_delete","scriptId":"...","oldSha256":"..."} removes an existing script.
-  - {"operation":"script_add","placement":"end_of_body","content":"..."} inserts a new inline script immediately before </body>.
-- Treat target node IDs as intent anchors, not edit boundaries.
-- Before choosing patches, inspect the HTML section and the Scripts section to determine the source of truth for each requested change.
-- Use DOM update for static DOM changes, including text, color, background, icon, attributes, classes, or nested markup.
-- For update, keep the same tag when possible and include all attributes and children that should remain.
-- Prefer the smallest DOM target that satisfies the comment when the change belongs in DOM.
-- Return DOM-only patches only when page scripts do not control, derive, render, or overwrite the requested visible change.
-- If an inline script controls, derives, renders, or overwrites the targeted content or behavior, a DOM-only patch is incomplete; update the script's backing data or source so the requested change survives script execution.
-- When script data/source is the source of truth for selected visible content, keep any corresponding static DOM fallback synchronized with the same final user-facing value. Do not leave the fallback in the old language or a different paraphrase.
-- If the same requested user-facing text appears in both DOM fallback and script backing data, update both to the same final text unless the comment explicitly asks for different values.
-- Check whether scripts reference target ids, classes, data attributes, selectors, rendered data objects, render functions, reset handlers, or event handlers related to the selected nodes.
-- Use script_update when an existing inline script is the backing source for the requested change.
-- Prefer script_text_replace for small script text or data changes, especially when the HTML section is focused context instead of the complete document.
-- Use script_delete only when a comment asks to remove script behavior.
-- Use script_add only when the requested behavior cannot be represented by updating existing DOM or inline script.
-- For script_update, preserve the existing script structure and behavior. Make the smallest data, text, or configuration change needed for the comment, and do not rewrite unrelated functions, control flow, event handlers, timers, or state.
-- For script_text_replace, oldText must be copied exactly from the HTML section or Target-script context, and it must uniquely identify the intended script text.
-- For script_update and script_add, content must be the script body only. Do not include <script> tags.
-- For script_update, script_text_replace, and script_delete, copy the exact scriptId and oldSha256 from the Scripts section.
-- Do not introduce unrelated side effects, network calls, imports, globals, timers, or script element creation unless the requested change specifically requires them.
-- Do not return the complete HTML document.
-- Do not include vm0-only editing attributes such as data-vm0-node-id, data-vm0-script-id, or data-vm0-html-edit-* in returned HTML fragments.
-- Do not add comment markers, overlays, annotations, explanations, or deployment commands.
-- Do not add script tags in new HTML fragments.
+- Return only JSON: {"kind":"html-dom-edit-patch","version":1,"patches":[...]}.
+- Every patch includes commentId and operation.
+- DOM operations require targetNodeId:
+  - {"operation":"update","outerHTML":"<tag>...</tag>"}
+  - {"operation":"insert","position":"before|after|append_child|prepend_child","html":"..."}
+  - {"operation":"remove"}
+- Script operations:
+  - {"operation":"script_update","scriptId":"...","oldSha256":"...","content":"..."}
+  - {"operation":"script_text_replace","scriptId":"...","oldSha256":"...","oldText":"...","newText":"..."}
+  - {"operation":"script_delete","scriptId":"...","oldSha256":"..."}
+  - {"operation":"script_add","placement":"end_of_body","content":"..."}
 
-Editing rules:
-- Use the target node IDs to locate the intended elements in the HTML.
-- The HTML section contains either the current DOM snapshot or focused target context, and the Scripts section lists the document's scripts. Do not assume the selected DOM node is the source of truth.
-- Before choosing patches, inspect the HTML section, Scripts section, and any Target-script context to determine whether the requested change belongs in static DOM, script data, or script behavior.
-- Target-script context, when present, is derived from the same HTML by matching selected target ids, classes, attributes, and text against inline scripts. Use it as a navigation aid for source-of-truth analysis.
-- If Target-script context shows script snippets that reference the selected target or its visible text, inspect those scripts carefully. If a script renders, derives, resets, or overwrites the selected visible content, update the script or backing data that produces that content. A DOM-only patch is incomplete in that case.
+Rules:
+- HTML may be a full snapshot or focused target context. Use target node IDs as intent anchors; do not assume selected DOM is the source of truth.
+- Inspect HTML, Scripts, and Target-script context. Use DOM patches for static markup, including text, color, background, icon, attributes, classes, and nested markup.
+- If inline script data/source renders, derives, resets, or overwrites selected content or behavior, patch that script or backing data too.
+- Keep DOM fallback and script value synchronized when they represent the same user-facing text.
+- Prefer the smallest patch: script_text_replace for exact small script text/data changes, script_update for larger inline script edits, script_delete only when requested, and script_add only when existing DOM/script cannot satisfy the requested behavior.
+- For script_update/script_add, content is script body only, without <script> tags. For script_text_replace, oldText must be exact and unique. For script_update/script_text_replace/script_delete, copy exact scriptId and oldSha256.
+- Keep unrelated content, formatting, assets, language, and behavior stable. Do not introduce unrelated side effects, network calls, imports, globals, timers, or script element creation.
+- Do not return the complete HTML document, explanations, deployment commands, overlays, annotations, comment markers, vm0-only editing attributes, or <script> tags in DOM fragments.
 - Apply every requested change exactly once.
-- Keep unrelated content and formatting as stable as practical.
-- Preserve relative and absolute asset URLs.
-- Preserve the page's primary language and tone.
 
 Comments:
 ${comments}

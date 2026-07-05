@@ -575,11 +575,9 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
     });
     expect(upstreamAuthorization).toBe("Bearer bdd-html-edit-key");
     expect(upstreamPrompt).toContain("vm0-node-1");
+    expect(upstreamPrompt).toContain("HTML may be a full snapshot");
     expect(upstreamPrompt).toContain(
-      "The HTML section contains either the current DOM snapshot or focused target context",
-    );
-    expect(upstreamPrompt).toContain(
-      "Do not assume the selected DOM node is the source of truth",
+      "do not assume selected DOM is the source of truth",
     );
     expect(upstreamPrompt).toContain("html-dom-edit-patch");
     expect(upstreamPrompt).toContain('"operation":"update"');
