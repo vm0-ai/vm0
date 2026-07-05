@@ -75,8 +75,16 @@ fn path_with_suffix(path: &Path, suffix: &str) -> PathBuf {
 
 pub(crate) fn parse_unit_config_path(content: &str) -> Option<PathBuf> {
     let mut config_path = None;
+    let mut in_service_section = false;
     for line in logical_unit_lines(content) {
         let trimmed = line.trim();
+        if let Some(section) = unit_section_name(trimmed) {
+            in_service_section = section == "Service";
+            continue;
+        }
+        if !in_service_section {
+            continue;
+        }
         let Some((key, rest)) = trimmed.split_once('=') else {
             continue;
         };
@@ -94,11 +102,24 @@ pub(crate) fn parse_unit_config_path(content: &str) -> Option<PathBuf> {
     config_path
 }
 
+fn unit_section_name(line: &str) -> Option<&str> {
+    let section = line.strip_prefix('[')?.strip_suffix(']')?;
+    Some(section.trim())
+}
+
 fn logical_unit_lines(content: &str) -> Vec<String> {
     let mut lines = Vec::new();
     let mut continued = String::new();
     for raw_line in content.lines() {
         let line = raw_line.trim_end();
+        let trimmed_start = line.trim_start();
+        if !continued.is_empty()
+            && (trimmed_start.is_empty()
+                || trimmed_start.starts_with('#')
+                || trimmed_start.starts_with(';'))
+        {
+            continue;
+        }
         if let Some(prefix) = line.strip_suffix('\\') {
             continued.push_str(prefix);
             continued.push(' ');
@@ -405,12 +426,44 @@ ExecStart = "/usr/bin/runner" start --config "/etc/runner.yaml"
     }
 
     #[test]
+    fn parse_unit_config_path_ignores_exec_start_outside_service_section() {
+        let content = r#"
+[Service]
+ExecStart="/usr/bin/runner" start --config "/etc/runner.yaml"
+
+[Unit]
+ExecStart="/usr/bin/runner" start --config "/etc/wrong-runner.yaml"
+"#;
+
+        assert_eq!(
+            parse_unit_config_path(content),
+            Some(PathBuf::from("/etc/runner.yaml"))
+        );
+    }
+
+    #[test]
     fn parse_unit_config_path_handles_continued_exec_start() {
         let content = r#"
 [Service]
 ExecStart="/usr/bin/runner" start \
   --config "/etc/runner.yaml" \
   --local
+"#;
+
+        assert_eq!(
+            parse_unit_config_path(content),
+            Some(PathBuf::from("/etc/runner.yaml"))
+        );
+    }
+
+    #[test]
+    fn parse_unit_config_path_continues_past_comment_lines() {
+        let content = r#"
+[Service]
+ExecStart="/usr/bin/runner" start \
+  # comment between continued lines
+  ; another comment
+  --config "/etc/runner.yaml"
 "#;
 
         assert_eq!(
