@@ -44,6 +44,7 @@ import {
 } from "../../../mocks/handlers/automations-store.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { eventDrivenChatThread } from "../../../signals/chat-page/chat-thread-event-sourcing.ts";
+import { CHAT_THREAD_VIRTUAL_ROW_HEIGHT } from "../../../signals/zero-page/zero-sidebar-state.ts";
 import {
   click,
   detachedSetupPage as baseDetachedSetupPage,
@@ -3623,9 +3624,19 @@ describe("chat lifecycle", () => {
 
     const sidebarScrollArea = screen.getByTestId("sidebar-scroll-area");
     Object.defineProperties(sidebarScrollArea, {
-      clientHeight: { configurable: true, value: 36 },
-      scrollHeight: { configurable: true, value: 108 },
-      scrollTop: { configurable: true, value: 0, writable: true },
+      clientHeight: {
+        configurable: true,
+        value: CHAT_THREAD_VIRTUAL_ROW_HEIGHT * 2,
+      },
+      scrollHeight: {
+        configurable: true,
+        value: CHAT_THREAD_VIRTUAL_ROW_HEIGHT * 24,
+      },
+      scrollTop: {
+        configurable: true,
+        value: CHAT_THREAD_VIRTUAL_ROW_HEIGHT * 20,
+        writable: true,
+      },
     });
     fireEvent.scroll(sidebarScrollArea);
 
@@ -3641,9 +3652,9 @@ describe("chat lifecycle", () => {
       expect(screen.getByText("Next thread launch note")).toBeInTheDocument();
     });
     await waitFor(() => {
-      expect(
-        screen.getByTestId("sidebar-scroll-area").scrollTop,
-      ).toBeGreaterThan(0);
+      expect(screen.getByTestId("sidebar-scroll-area").scrollTop).toBe(
+        CHAT_THREAD_VIRTUAL_ROW_HEIGHT * 21,
+      );
     });
 
     composer = chatComposerTextarea();

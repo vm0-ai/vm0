@@ -267,6 +267,7 @@ export const CHAT_THREAD_VIRTUAL_ROW_HEIGHT = 36;
 const CHAT_THREAD_VIRTUAL_FALLBACK_VIEWPORT_HEIGHT =
   CHAT_THREAD_VIRTUAL_ROW_HEIGHT * 12;
 const internalChatThreadVirtualListElement$ = state<HTMLElement | null>(null);
+export type ChatThreadVirtualListScrollAlign = "top" | "bottom";
 
 function hasUsableLayoutPosition(rect: DOMRectReadOnly): boolean {
   return rect.top !== 0 || rect.left !== 0;
@@ -304,7 +305,11 @@ export const setChatThreadVirtualListElement$ = command(
   },
 );
 export const scrollChatThreadVirtualListToIndex$ = command(
-  ({ get, set }, index: number): boolean => {
+  (
+    { get, set },
+    index: number,
+    align: ChatThreadVirtualListScrollAlign = "top",
+  ): boolean => {
     if (!Number.isInteger(index) || index < 0) {
       return false;
     }
@@ -328,11 +333,15 @@ export const scrollChatThreadVirtualListToIndex$ = command(
     const rowBottom = rowTop + CHAT_THREAD_VIRTUAL_ROW_HEIGHT;
     const viewportTop = scrollViewport.scrollTop;
     const viewportBottom = viewportTop + viewportHeight;
-    const targetScrollTop = Math.max(0, rowTop);
-    const nextScrollTop =
-      rowTop < viewportTop || rowBottom > viewportBottom
-        ? targetScrollTop
-        : viewportTop;
+    let nextScrollTop = viewportTop;
+    if (rowBottom > viewportBottom) {
+      nextScrollTop =
+        align === "bottom"
+          ? Math.max(0, rowBottom - viewportHeight)
+          : Math.max(0, rowTop);
+    } else if (rowTop < viewportTop) {
+      nextScrollTop = Math.max(0, rowTop);
+    }
 
     scrollViewport.scrollTop = nextScrollTop;
     set(internalOverlayScrollMetrics$, {

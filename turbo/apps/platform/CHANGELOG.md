@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.557.1](https://github.com/vm0-ai/vm0/compare/app-v0.557.0...app-v0.557.1) (2026-07-05)
+
+
+### Bug Fixes
+
+* restore generated chat video preview size ([#20257](https://github.com/vm0-ai/vm0/issues/20257)) ([5921d61](https://github.com/vm0-ai/vm0/commit/5921d6129b8a4d03f4d1a66edc37578f9f6e9d10))
+* tighten html draft discard flow ([#20254](https://github.com/vm0-ai/vm0/issues/20254)) ([d875845](https://github.com/vm0-ai/vm0/commit/d8758451aa4f767599655cd3b2ce6d4148d14671))
+
 ## [0.557.0](https://github.com/vm0-ai/vm0/compare/app-v0.556.1...app-v0.557.0) (2026-07-05)
 
 
