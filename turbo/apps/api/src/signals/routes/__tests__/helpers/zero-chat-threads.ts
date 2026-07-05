@@ -39,6 +39,7 @@ type ChatThreadRunStatus =
   | "pending"
   | "queued"
   | "running";
+type ChatThreadGoalStatus = "active" | "paused" | "blocked" | "complete";
 
 interface SeedChatThreadRunOptions {
   readonly userId: string;
@@ -46,6 +47,14 @@ interface SeedChatThreadRunOptions {
   readonly agentId: string;
   readonly threadId: string;
   readonly status: ChatThreadRunStatus;
+}
+
+interface SeedChatThreadGoalOptions {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly agentId: string;
+  readonly threadId: string;
+  readonly status: ChatThreadGoalStatus;
 }
 
 function dateToWire(value: Date | null | undefined): string | null | undefined {
@@ -180,6 +189,27 @@ export const seedZeroChatThreadRun$ = command(
       throw new Error("seedZeroChatThreadRun$: response missing run id");
     }
     return response.run_id;
+  },
+);
+
+export const seedZeroChatThreadGoal$ = command(
+  async (
+    _,
+    options: SeedChatThreadGoalOptions,
+    signal: AbortSignal,
+  ): Promise<string> => {
+    const response = await postAction(signal, {
+      action: "seed-thread-goal",
+      user_id: options.userId,
+      org_id: options.orgId,
+      agent_id: options.agentId,
+      thread_id: options.threadId,
+      status: options.status,
+    });
+    if (!response.goal_id) {
+      throw new Error("seedZeroChatThreadGoal$: response missing goal id");
+    }
+    return response.goal_id;
   },
 );
 
