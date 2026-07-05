@@ -3910,13 +3910,10 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     );
     expect(claim.networkPolicies?.[internalName]?.unknownPolicy).toBe("allow");
 
-    if (!claim.encryptedSecrets) {
-      throw new Error("Expected the custom claim to carry encrypted secrets");
-    }
     const resolved = await fw.requestFirewallAuth(
       { authorization: `Bearer ${claim.sandboxToken}` },
       {
-        encryptedSecrets: claim.encryptedSecrets,
+        encryptedSecrets: fw.encryptedSecretsBody({}),
         authHeaders: {
           Authorization: `Bearer \${{ secrets.${secretKey} }}`,
         },
@@ -3981,11 +3978,19 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       agentId,
     });
 
+    await enableAutomationsFakeKms(context);
+    onTestFinished(async () => {
+      await resetAutomationsFakeKms(context);
+    });
+
     const run = await api.createRun(actor, {
       agentId,
       prompt: "use the custom connector auth ref",
       modelProvider: "anthropic-api-key",
     });
+    await expect(readAutomationsFakeKmsDecryptCallCount(context)).resolves.toBe(
+      0,
+    );
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
 
@@ -4192,11 +4197,19 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       agentId,
     });
 
+    await enableAutomationsFakeKms(context);
+    onTestFinished(async () => {
+      await resetAutomationsFakeKms(context);
+    });
+
     const run = await api.createRun(actor, {
       agentId,
       prompt: "use the proposed custom connector",
       modelProvider: "anthropic-api-key",
     });
+    await expect(readAutomationsFakeKmsDecryptCallCount(context)).resolves.toBe(
+      1,
+    );
     const timingEvents = apiDispatchTimingEventsForRun(run.runId);
     expectApiDispatchActions(
       timingEvents,
@@ -4225,13 +4238,10 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       `\${{ secrets.${variableKey} }}`,
     );
 
-    if (!claim.encryptedSecrets) {
-      throw new Error("Expected the custom claim to carry encrypted secrets");
-    }
     const resolved = await fw.requestFirewallAuth(
       { authorization: `Bearer ${claim.sandboxToken}` },
       {
-        encryptedSecrets: claim.encryptedSecrets,
+        encryptedSecrets: fw.encryptedSecretsBody({}),
         authHeaders: {
           Authorization: `Bearer \${{ secrets.${secretKey} }}`,
         },
@@ -4328,13 +4338,10 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(JSON.stringify(customApis)).not.toContain(secondarySecretKey);
     expect(JSON.stringify(customApis)).not.toContain(tenantVarKey);
 
-    if (!claim.encryptedSecrets) {
-      throw new Error("Expected the custom claim to carry encrypted secrets");
-    }
     const resolved = await fw.requestFirewallAuth(
       { authorization: `Bearer ${claim.sandboxToken}` },
       {
-        encryptedSecrets: claim.encryptedSecrets,
+        encryptedSecrets: fw.encryptedSecretsBody({}),
         authHeaders: {
           Authorization: `Bearer \${{ secrets.${secretKey} }}`,
         },
