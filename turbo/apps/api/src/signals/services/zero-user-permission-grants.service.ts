@@ -1,5 +1,8 @@
 import { command } from "ccstate";
-import { loadFirewallPermissionIndex } from "@vm0/connectors/firewall-metadata/server";
+import {
+  isFirewallExecutionMetadataConnectorType,
+  loadFirewallPermissionIndex,
+} from "@vm0/connectors/firewall-metadata/server";
 import { permissionGrantsToFirewallPolicies } from "@vm0/connectors/firewall-metadata";
 import {
   UNKNOWN_PERMISSION_GRANT,
@@ -241,7 +244,7 @@ function resolvedConnectorFirewallPolicies(
 }
 
 function isNetworkPolicyRefreshConnectorRef(connectorRef: string): boolean {
-  return !connectorRef.startsWith("model-provider:");
+  return isFirewallExecutionMetadataConnectorType(connectorRef);
 }
 
 export function networkPolicyRefreshConnectorRefs(
