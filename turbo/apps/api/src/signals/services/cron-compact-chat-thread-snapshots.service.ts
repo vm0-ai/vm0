@@ -33,6 +33,7 @@ function toApiEvent(row: {
   readonly chatThreadId: string;
   readonly agentComposeId: string;
   readonly title: string | null;
+  readonly selectedModel: string | null;
   readonly createdAt: Date;
 }): ChatThreadEvent {
   return {
@@ -41,6 +42,7 @@ function toApiEvent(row: {
     chatThreadId: row.chatThreadId,
     agentId: row.agentComposeId,
     title: row.title,
+    selectedModel: row.selectedModel,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -75,6 +77,7 @@ function applyChatThreadEvent(
       updatedAt: event.createdAt,
       pinnedAt: null,
       renamedAt: null,
+      selectedModel: event.selectedModel,
     });
     return;
   }
@@ -117,6 +120,15 @@ function applyChatThreadEvent(
     return;
   }
 
+  if (event.kind === "model_selection_updated") {
+    threads.set(event.chatThreadId, {
+      ...thread,
+      selectedModel: event.selectedModel,
+      updatedAt: event.createdAt,
+    });
+    return;
+  }
+
   threads.set(event.chatThreadId, {
     ...thread,
     sortAt: event.createdAt,
@@ -133,7 +145,10 @@ function compactSnapshot(
 } {
   const threads = new Map<string, ChatThreadSnapshotProjection>();
   for (const thread of snapshot) {
-    threads.set(thread.id, { ...thread });
+    threads.set(thread.id, {
+      ...thread,
+      selectedModel: thread.selectedModel ?? null,
+    });
   }
   for (const event of events) {
     applyChatThreadEvent(threads, event);
@@ -255,6 +270,7 @@ async function loadEventsAfterMarker(
       chatThreadId: chatThreadEvents.chatThreadId,
       agentComposeId: chatThreadEvents.agentComposeId,
       title: chatThreadEvents.title,
+      selectedModel: chatThreadEvents.selectedModel,
       createdAt: chatThreadEvents.createdAt,
     })
     .from(chatThreadEvents)

@@ -6,6 +6,7 @@ import {
   chatThreadModelSelectionContract,
   chatThreadMessagesContract,
   chatMessagesContract,
+  type ChatThreadEvent,
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { accept } from "../../lib/accept.ts";
@@ -28,6 +29,10 @@ import {
   applyUnreadSnapshot$,
   recordOptimisticReadMark$,
 } from "./sidebar-unread-threads.ts";
+import {
+  chatThreadMetaMap$,
+  registerOptimisticChatThreadEvent$,
+} from "./chat-thread-event-sourcing.ts";
 import type { ChatThread } from "../agent-chat.ts";
 import type {
   CancelRunsArgs,
@@ -84,10 +89,25 @@ const patchDraft$ = command(
 
 const patchModelSelection$ = command(
   async (
-    { get },
+    { get, set },
     { threadId, modelSelection }: PatchModelSelectionArgs,
     signal: AbortSignal,
   ) => {
+    const eventId = crypto.randomUUID();
+    const threadMeta = (await get(chatThreadMetaMap$)).get(threadId);
+    signal.throwIfAborted();
+    if (threadMeta) {
+      set(registerOptimisticChatThreadEvent$, {
+        id: eventId,
+        kind: "model_selection_updated",
+        chatThreadId: threadId,
+        agentId: threadMeta.agentId,
+        title: null,
+        selectedModel: modelSelection?.selectedModel ?? null,
+        createdAt: nowDate().toISOString(),
+      } satisfies ChatThreadEvent);
+    }
+
     const client = get(zeroClient$)(chatThreadModelSelectionContract);
     await accept(
       client.update({
@@ -95,6 +115,7 @@ const patchModelSelection$ = command(
         body: {
           modelSelection: modelSelectionRequestFromSelection(modelSelection),
           codexServiceTier: threadCodexServiceTierFromSelection(modelSelection),
+          eventId,
         },
         fetchOptions: { signal },
       }),

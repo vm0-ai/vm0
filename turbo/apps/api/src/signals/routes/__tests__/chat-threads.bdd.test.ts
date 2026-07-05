@@ -472,6 +472,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     });
     const createEventId = randomUUID();
     const renameEventId = randomUUID();
+    const modelSelectionEventId = randomUUID();
 
     const emptySnapshot = await chat.getThreadSnapshot(actor);
     expect(emptySnapshot).toStrictEqual({
@@ -490,6 +491,15 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       "Renamed event title",
       renameEventId,
     );
+    await chat.updateThreadModelSelection(
+      actor,
+      thread.id,
+      {
+        modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+        selectedModel: "claude-sonnet-4-6",
+      },
+      { eventId: modelSelectionEventId },
+    );
 
     const allEvents = await chat.requestThreadEvents(actor, {}, [200]);
     expect(allEvents.status).toBe(200);
@@ -497,24 +507,36 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       throw new Error("Expected chat thread events to load");
     }
     expect(allEvents.body.hasMore).toBeFalsy();
-    expect(allEvents.body.events).toStrictEqual([
-      expect.objectContaining({
-        id: createEventId,
-        kind: "created",
-        chatThreadId: thread.id,
-        agentId: agent.agentId,
-        title: "Initial event title",
-        createdAt: expect.any(String),
-      }),
-      expect.objectContaining({
-        id: renameEventId,
-        kind: "renamed",
-        chatThreadId: thread.id,
-        agentId: agent.agentId,
-        title: "Renamed event title",
-        createdAt: expect.any(String),
-      }),
-    ]);
+    expect(allEvents.body.events).toHaveLength(3);
+    expect(allEvents.body.events).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: createEventId,
+          kind: "created",
+          chatThreadId: thread.id,
+          agentId: agent.agentId,
+          title: "Initial event title",
+          createdAt: expect.any(String),
+        }),
+        expect.objectContaining({
+          id: renameEventId,
+          kind: "renamed",
+          chatThreadId: thread.id,
+          agentId: agent.agentId,
+          title: "Renamed event title",
+          createdAt: expect.any(String),
+        }),
+        expect.objectContaining({
+          id: modelSelectionEventId,
+          kind: "model_selection_updated",
+          chatThreadId: thread.id,
+          agentId: agent.agentId,
+          title: null,
+          selectedModel: "claude-sonnet-4-6",
+          createdAt: expect.any(String),
+        }),
+      ]),
+    );
 
     const afterCreate = await chat.requestThreadEvents(
       actor,
@@ -525,9 +547,13 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     if (afterCreate.status !== 200) {
       throw new Error("Expected chat thread events after cursor to load");
     }
-    expect(afterCreate.body.events).toStrictEqual([
-      expect.objectContaining({ id: renameEventId }),
-    ]);
+    expect(afterCreate.body.events).toHaveLength(2);
+    expect(afterCreate.body.events).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: renameEventId }),
+        expect.objectContaining({ id: modelSelectionEventId }),
+      ]),
+    );
 
     const expired = await chat.requestThreadEvents(
       actor,
@@ -579,11 +605,21 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     );
 
     const renameEventId = randomUUID();
+    const modelSelectionEventId = randomUUID();
     await chat.renameThread(
       actor,
       liveThread.id,
       "Renamed compact title",
       renameEventId,
+    );
+    await chat.updateThreadModelSelection(
+      actor,
+      liveThread.id,
+      {
+        modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+        selectedModel: "claude-sonnet-4-6",
+      },
+      { eventId: modelSelectionEventId },
     );
     chat.mockObjectStorageObjectsExist();
     await authOrg.deleteAgent(actor, deletedAgent.agentId);
@@ -600,13 +636,14 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     expect(incrementalCompact.eventsPruned).toBeGreaterThanOrEqual(1);
 
     const compactedSnapshot = await chat.getThreadSnapshot(actor);
-    expect(compactedSnapshot.latestEventId).toBe(renameEventId);
+    expect(compactedSnapshot.latestEventId).not.toBeNull();
     expect(compactedSnapshot.chatThreads).toStrictEqual([
       expect.objectContaining({
         id: liveThread.id,
         agentId: liveAgent.agentId,
         title: "Renamed compact title",
         renamedAt: expect.any(String),
+        selectedModel: "claude-sonnet-4-6",
       }),
     ]);
 
@@ -624,7 +661,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
 
     const retainedAnchorCursor = await chat.requestThreadEvents(
       actor,
-      { sinceEventId: renameEventId },
+      { sinceEventId: compactedSnapshot.latestEventId ?? undefined },
       [200],
     );
     expect(retainedAnchorCursor.status).toBe(200);

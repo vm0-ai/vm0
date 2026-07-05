@@ -3788,6 +3788,13 @@
       "when": 1783139086628,
       "tag": "0540_puzzling_captain_cross",
       "breakpoints": true
+    },
+    {
+      "idx": 541,
+      "version": "7",
+      "when": 1783214485897,
+      "tag": "0541_chat_thread_selected_model_events",
+      "breakpoints": true
     }
   ]
 }

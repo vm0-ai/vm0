@@ -37,6 +37,7 @@ function applyEvent(
       updatedAt: event.createdAt,
       pinnedAt: null,
       renamedAt: null,
+      selectedModel: event.selectedModel,
     });
     return;
   }
@@ -79,6 +80,15 @@ function applyEvent(
     return;
   }
 
+  if (event.kind === "model_selection_updated") {
+    threads.set(event.chatThreadId, {
+      ...thread,
+      selectedModel: event.selectedModel,
+      updatedAt: event.createdAt,
+    });
+    return;
+  }
+
   threads.set(event.chatThreadId, {
     ...thread,
     sortAt: event.createdAt,
@@ -91,7 +101,10 @@ export function replayChatThreadEvents(
 ): EventDrivenChatThread[] {
   const threads = new Map<string, EventDrivenChatThread>();
   for (const thread of snapshot) {
-    threads.set(thread.id, { ...thread });
+    threads.set(thread.id, {
+      ...thread,
+      selectedModel: thread.selectedModel ?? null,
+    });
   }
   for (const event of events) {
     applyEvent(threads, event);

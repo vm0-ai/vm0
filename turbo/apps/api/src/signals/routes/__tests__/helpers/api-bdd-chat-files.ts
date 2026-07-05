@@ -784,7 +784,10 @@ export function createChatFilesBddApi(context: TestContext) {
       actor: ApiTestUser,
       threadId: string,
       modelSelection: ModelSelectionRequest | null,
-      options?: { readonly codexServiceTier?: CodexServiceTier | null },
+      options?: {
+        readonly codexServiceTier?: CodexServiceTier | null;
+        readonly eventId?: string;
+      },
     ): Promise<void> {
       await accept(
         threadModelSelectionClient().update({
@@ -793,6 +796,7 @@ export function createChatFilesBddApi(context: TestContext) {
           body: {
             modelSelection,
             codexServiceTier: options?.codexServiceTier,
+            eventId: options?.eventId,
           },
         }),
         [204],
@@ -804,7 +808,10 @@ export function createChatFilesBddApi(context: TestContext) {
       threadId: string,
       modelSelection: ModelSelectionRequest | null,
       statuses: readonly (204 | 400 | 401 | 402 | 404)[],
-      options?: { readonly codexServiceTier?: CodexServiceTier | null },
+      options?: {
+        readonly codexServiceTier?: CodexServiceTier | null;
+        readonly eventId?: string;
+      },
     ) {
       return await accept(
         threadModelSelectionClient().update({
@@ -813,6 +820,7 @@ export function createChatFilesBddApi(context: TestContext) {
           body: {
             modelSelection,
             codexServiceTier: options?.codexServiceTier,
+            eventId: options?.eventId,
           },
         }),
         statuses,
