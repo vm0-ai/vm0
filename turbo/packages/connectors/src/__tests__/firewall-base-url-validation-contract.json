@@ -50,6 +50,12 @@
     },
     {
       "category": "valid",
+      "name": "static canonical ipv4 base",
+      "base": "https://127.0.0.1",
+      "expectedValid": true
+    },
+    {
+      "category": "valid",
       "name": "percent-encoded unicode host is valid",
       "base": "https://%E2%98%83.example.com",
       "expectedValid": true
@@ -208,6 +214,30 @@
       "category": "authority",
       "name": "percent-encoded authority delimiter is invalid",
       "base": "https://api%2Cexample.com",
+      "expectedValid": false
+    },
+    {
+      "category": "authority",
+      "name": "percent-encoded slash in authority is invalid",
+      "base": "https://api%2Fexample.com",
+      "expectedValid": false
+    },
+    {
+      "category": "authority",
+      "name": "percent-encoded control character in authority is invalid",
+      "base": "https://api%00example.com",
+      "expectedValid": false
+    },
+    {
+      "category": "authority",
+      "name": "non-canonical ipv4 with leading zeros is invalid",
+      "base": "https://127.000.000.001",
+      "expectedValid": false
+    },
+    {
+      "category": "authority",
+      "name": "single-number ipv4 literal is invalid",
+      "base": "https://2130706433",
       "expectedValid": false
     },
     {
