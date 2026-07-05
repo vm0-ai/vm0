@@ -7,10 +7,12 @@ use super::{
 
 impl R2ImageCache {
     /// Delete legacy rootfs objects and shared template objects older
-    /// than `max_age`. Returns `(deleted_count, freed_bytes)`. Idempotent under
-    /// concurrent fleet execution: every host runs the same scan and
-    /// `DeleteObjects` returns success for already-absent keys (S3 spec). Each
-    /// invocation costs ~1 LIST + 1 batched DELETE per non-empty page.
+    /// than `max_age`. Returns `(deleted_count, freed_bytes)`. Scans
+    /// `runner-images/` and `runner-templates/`; each prefix costs at least
+    /// one LIST, paginated prefixes cost one LIST per page, and DELETE is
+    /// issued only for pages with expired objects. Idempotent under concurrent
+    /// fleet execution: every host runs the same scan and `DeleteObjects`
+    /// returns success for already-absent keys (S3 spec).
     ///
     /// Per-key errors (e.g. AccessDenied — NOT NoSuchKey) are surfaced via
     /// `tracing::warn!` and excluded from `deleted_count`.
