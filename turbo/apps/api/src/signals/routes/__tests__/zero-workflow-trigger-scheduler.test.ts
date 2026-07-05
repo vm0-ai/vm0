@@ -256,6 +256,16 @@ async function loadTrigger(
   return optionalRecord(response.trigger, "trigger state");
 }
 
+async function loadChatThread(
+  threadId: string,
+): Promise<Record<string, unknown> | null> {
+  const response = await postWorkflowStateAction({
+    action: "get-chat-thread",
+    thread_id: threadId,
+  });
+  return optionalRecord(response.thread, "chat thread");
+}
+
 function pastDate(): Date {
   return new Date(now() - 3_600_000);
 }
@@ -542,6 +552,8 @@ describe("zero workflow trigger scheduler", () => {
     const state = await runStateForTrigger(triggerId);
     const binding = optionalRecord(state.binding, "workflow trigger binding");
     expect(binding?.chatThreadId).toStrictEqual(expect.any(String));
+    const thread = await loadChatThread(String(binding?.chatThreadId));
+    expect(thread?.selectedModel).toBe("claude-sonnet-4-6");
 
     const messages = records(state.messages);
     expect(

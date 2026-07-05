@@ -386,6 +386,7 @@ export function mockChatLifecycle(
       attachments?: PersistedAttachment[];
       clientMessageId: string;
       generationTemplate?: GenerationTemplateRequest;
+      modelSelection?: ModelSelectionRequest | null;
       runOptions?: ChatRunOptionsRequest;
     }) => void;
     onRecallMessageAppend?: (body: {
@@ -439,8 +440,15 @@ export function mockChatLifecycle(
     }) => void;
     onSendRequest?: (body: {
       clientThreadId?: string;
-      modelSelectionEventId?: string;
       modelSelection?: ModelSelectionRequest | null;
+    }) => void;
+    onThreadCreate?: (body: {
+      clientThreadId?: string;
+      modelSelection: ModelSelectionRequest;
+    }) => void;
+    onModelSelectionUpdate?: (body: {
+      modelSelection?: ModelSelectionRequest | null;
+      codexServiceTier?: CodexServiceTier | null;
     }) => void;
     onMessageGet?: (messageId: string) => void;
   },
@@ -645,6 +653,7 @@ export function mockChatLifecycle(
     clientMessageId?: string;
     hasTextContent?: boolean;
     generationTemplate?: GenerationTemplateRequest;
+    modelSelection?: ModelSelectionRequest | null;
     runOptions?: ChatRunOptionsRequest;
   }) => {
     const clientMessageId = body.clientMessageId ?? crypto.randomUUID();
@@ -660,6 +669,7 @@ export function mockChatLifecycle(
       attachments: attachFiles,
       clientMessageId,
       generationTemplate: body.generationTemplate,
+      modelSelection: body.modelSelection,
       runOptions: body.runOptions,
     });
     if (options?.appendGate) {
@@ -818,6 +828,10 @@ export function mockChatLifecycle(
     ({ body, respond }) => {
       selectedModel = body.modelSelection?.selectedModel ?? null;
       codexServiceTier = body.codexServiceTier ?? null;
+      options?.onModelSelectionUpdate?.({
+        modelSelection: body.modelSelection,
+        codexServiceTier: body.codexServiceTier,
+      });
       return respond(204);
     },
   );
@@ -860,6 +874,11 @@ export function mockChatLifecycle(
   });
   context.mocks.api(chatThreadsContract.create, ({ body, respond }) => {
     threadId = body.clientThreadId ?? threadId;
+    selectedModel = body.modelSelection.selectedModel;
+    options?.onThreadCreate?.({
+      clientThreadId: body.clientThreadId,
+      modelSelection: body.modelSelection,
+    });
     return respond(201, {
       id: threadId,
       title: null,
@@ -878,7 +897,6 @@ export function mockChatLifecycle(
 
     options?.onSendRequest?.({
       clientThreadId: body.clientThreadId,
-      modelSelectionEventId: body.modelSelectionEventId,
       modelSelection: body.modelSelection,
     });
     threadId = body.clientThreadId ?? threadId;

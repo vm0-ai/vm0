@@ -592,7 +592,7 @@ describe("CHAT-02 chat messages and visible validation", () => {
     }
     expect(modelSelectedEvents.body.events).toContainEqual(
       expect.objectContaining({
-        kind: "model_selection_updated",
+        kind: "created",
         chatThreadId: modelSelected.body.threadId,
         selectedModel: "gpt-5.4-mini",
       }),

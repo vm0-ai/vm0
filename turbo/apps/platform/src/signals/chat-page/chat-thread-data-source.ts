@@ -54,7 +54,6 @@ export interface AppendQueuedMessageArgs {
   clientMessageId: string;
   chatThreadSortEventId: string;
   hasTextContent: boolean;
-  modelSelection: ModelSelectionRequest | null;
   runOptions?: ChatRunOptionsRequest;
   generationTemplate: GenerationTemplateRequest | undefined;
   computerUseHostId?: string | null;

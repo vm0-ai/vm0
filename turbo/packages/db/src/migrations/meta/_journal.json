@@ -3816,6 +3816,13 @@
       "when": 1783245126730,
       "tag": "0544_illegal_sway",
       "breakpoints": true
+    },
+    {
+      "idx": 545,
+      "version": "7",
+      "when": 1783245126731,
+      "tag": "0545_backfill_chat_thread_selected_model",
+      "breakpoints": true
     }
   ]
 }

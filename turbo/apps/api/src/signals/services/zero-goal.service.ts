@@ -21,6 +21,10 @@ import {
 } from "./zero-chat-goal-marker.service";
 import { generateGoalObjectiveBrief } from "./zero-goal-objective-brief.service";
 import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
+import {
+  chatThreadModelPinColumns,
+  resolveRequiredDefaultChatThreadModelPin,
+} from "./zero-chat-thread-model.service";
 
 export interface GoalBootstrap {
   readonly goalId: string;
@@ -213,12 +217,17 @@ async function createGoalThread(
     readonly createdAt: Date;
   },
 ): Promise<string> {
+  const pin = await resolveRequiredDefaultChatThreadModelPin(tx as Db, {
+    orgId: args.orgId,
+    userId: args.userId,
+  });
   const [thread] = await tx
     .insert(chatThreads)
     .values({
       userId: args.userId,
       agentComposeId: args.agentId,
       title: args.objective,
+      ...chatThreadModelPinColumns(pin),
       lastMessageAt: args.createdAt,
       createdAt: args.createdAt,
       updatedAt: args.createdAt,
@@ -234,6 +243,7 @@ async function createGoalThread(
     chatThreadId: thread.id,
     agentComposeId: args.agentId,
     title: args.objective,
+    selectedModel: pin.selectedModel,
     createdAt: thread.createdAt,
   });
   return thread.id;

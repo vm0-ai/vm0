@@ -1280,7 +1280,7 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("projects the first-run model from the optimistic model update event", async () => {
+  it("projects the first-run model from the optimistic created event", async () => {
     const user = userEvent.setup({ delay: null });
     const prompt = "Start with my preferred model";
     const sendGate = context.mocks.deferred<void>();
@@ -1291,10 +1291,9 @@ describe("chat lifecycle", () => {
     });
     mockChatLifecycle(context, {
       sendGate: sendGate.promise,
-      onSendRequest: (body) => {
+      onThreadCreate: (body) => {
         clientThreadId = body.clientThreadId;
-        expect(body.modelSelectionEventId).toStrictEqual(expect.any(String));
-        expect(body.modelSelection?.selectedModel).toBe("claude-sonnet-4-6");
+        expect(body.modelSelection.selectedModel).toBe("claude-sonnet-4-6");
       },
     });
 

@@ -172,7 +172,6 @@ interface ChatRunSendBody {
   readonly prompt: string;
   readonly threadId?: string;
   readonly clientThreadId?: string;
-  readonly modelSelectionEventId?: string;
   readonly clientMessageId?: string;
   readonly modelSelection?: ModelSelectionRequest;
   readonly runOptions?: ChatRunOptionsRequest;
@@ -215,7 +214,7 @@ async function sendChatRun(
   return { runId: sent.body.runId, threadId: sent.body.threadId };
 }
 
-async function expectThreadModelEvent(
+async function expectThreadCreatedModelEvent(
   actor: ApiTestUser,
   threadId: string,
   selectedModel: string,
@@ -226,6 +225,25 @@ async function expectThreadModelEvent(
     throw new Error("Expected chat thread events to load");
   }
   expect(threadEvents.body.events).toContainEqual(
+    expect.objectContaining({
+      kind: "created",
+      chatThreadId: threadId,
+      selectedModel,
+    }),
+  );
+}
+
+async function expectNoThreadModelUpdateEvent(
+  actor: ApiTestUser,
+  threadId: string,
+  selectedModel: string,
+): Promise<void> {
+  const threadEvents = await chat.requestThreadEvents(actor, {}, [200]);
+  expect(threadEvents.status).toBe(200);
+  if (threadEvents.status !== 200) {
+    throw new Error("Expected chat thread events to load");
+  }
+  expect(threadEvents.body.events).not.toContainEqual(
     expect.objectContaining({
       kind: "model_selection_updated",
       chatThreadId: threadId,
@@ -1652,12 +1670,10 @@ describe("CHAT-02: explicit provider pins", () => {
       type: "deepseek-api-key",
       secret: "selected-deepseek-key",
     });
-    const modelSelectionEventId = randomUUID();
 
     const run = await sendChatRun(actor, {
       agentId,
       prompt: "run with the selected deepseek provider",
-      modelSelectionEventId,
       modelSelection: {
         modelProviderId: deepseekId,
         selectedModel: "deepseek-v4-pro",
@@ -1679,11 +1695,11 @@ describe("CHAT-02: explicit provider pins", () => {
     expect(environment.CLAUDE_CODE_DISABLE_ATTACHMENTS).toBe("1");
     expect(environment.ANTHROPIC_API_KEY).toBeUndefined();
 
-    // Explicit pins persist through thread model events, while detail stays
-    // independent of the event-driven model projection.
+    // The new thread's initial model is recorded on the created event. The
+    // send route does not emit a model_selection_updated event.
     const thread = await chat.readThread(actor, run.threadId);
     expect(thread).not.toHaveProperty("selectedModel");
-    expect(thread.modelProviderId ?? null).toBeNull();
+    expect(thread.modelProviderId ?? null).toBe(deepseekId);
     const threadEvents = await chat.requestThreadEvents(actor, {}, [200]);
     expect(threadEvents.status).toBe(200);
     if (threadEvents.status !== 200) {
@@ -1691,7 +1707,13 @@ describe("CHAT-02: explicit provider pins", () => {
     }
     expect(threadEvents.body.events).toContainEqual(
       expect.objectContaining({
-        id: modelSelectionEventId,
+        kind: "created",
+        chatThreadId: run.threadId,
+        selectedModel: "deepseek-v4-pro",
+      }),
+    );
+    expect(threadEvents.body.events).not.toContainEqual(
+      expect.objectContaining({
         kind: "model_selection_updated",
         chatThreadId: run.threadId,
         selectedModel: "deepseek-v4-pro",
@@ -1701,6 +1723,25 @@ describe("CHAT-02: explicit provider pins", () => {
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(run.runId, sandboxHeaders);
     expect((await api.readRun(actor, run.runId)).status).toBe("completed");
+
+    const followUp = await sendChatRun(actor, {
+      agentId,
+      threadId: run.threadId,
+      prompt: "follow up without a send-time model override",
+    });
+    const { claim: followUpClaim } = await claimChatRun(
+      runnerGroup,
+      followUp.runId,
+    );
+    const followUpEnvironment = claimEnvironment(followUpClaim);
+    expect(followUpEnvironment.ANTHROPIC_AUTH_TOKEN).toBe(
+      modelProviderSecretPlaceholder("deepseek-api-key", "DEEPSEEK_API_KEY"),
+    );
+    expect(followUpEnvironment.ANTHROPIC_BASE_URL).toBe(
+      "https://api.deepseek.com/anthropic",
+    );
+    expect(followUpEnvironment.ANTHROPIC_MODEL).toBe("deepseek-v4-pro");
+    await cancelChatRun(actor, followUp.runId);
 
     // A vm0 provider pin in an entitled org passes the spendable-credits
     // admission. The outcome past admission is race-dependent on the shared
@@ -1975,7 +2016,7 @@ describe("CHAT-02: explicit provider pins", () => {
 
     const thread = await chat.readThread(actor, run.threadId);
     expect(thread).not.toHaveProperty("selectedModel");
-    expect(thread.modelProviderId ?? null).toBeNull();
+    expect(thread.modelProviderId ?? null).toBe(providerId);
     const threadEvents = await chat.requestThreadEvents(actor, {}, [200]);
     expect(threadEvents.status).toBe(200);
     if (threadEvents.status !== 200) {
@@ -1983,7 +2024,7 @@ describe("CHAT-02: explicit provider pins", () => {
     }
     expect(threadEvents.body.events).toContainEqual(
       expect.objectContaining({
-        kind: "model_selection_updated",
+        kind: "created",
         chatThreadId: run.threadId,
         selectedModel: "claude-opus-4-7",
       }),
@@ -2179,8 +2220,8 @@ describe("CHAT-02: explicit provider pins", () => {
   }, 60_000);
 });
 
-describe("CHAT-02: server-side model switches", () => {
-  it("switches models server-side and starts a fresh session with prior web context", async () => {
+describe("CHAT-02: run-level model overrides", () => {
+  it("uses send model overrides for the run without mutating the thread model", async () => {
     const { actor, agentId, runnerGroup, providerId } =
       await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -2202,7 +2243,14 @@ describe("CHAT-02: server-side model switches", () => {
     ]);
 
     const firstPrompt = "first turn on the default opus policy";
-    const first = await sendChatRun(actor, { agentId, prompt: firstPrompt });
+    const first = await sendChatRun(actor, {
+      agentId,
+      prompt: firstPrompt,
+      modelSelection: {
+        modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+        selectedModel: "claude-opus-4-6",
+      },
+    });
     const firstClaim = await claimChatRun(runnerGroup, first.runId);
     expect(claimEnvironment(firstClaim.claim).ANTHROPIC_MODEL).toBe(
       "claude-opus-4-6",
@@ -2216,12 +2264,16 @@ describe("CHAT-02: server-side model switches", () => {
         return message.content === "opus answer";
       });
     });
-    await expectThreadModelEvent(actor, first.threadId, "claude-opus-4-6");
+    await expectThreadCreatedModelEvent(
+      actor,
+      first.threadId,
+      "claude-opus-4-6",
+    );
     expect(
       (await api.readRun(actor, first.runId)).result?.agentSessionId,
     ).toMatch(/[0-9a-f-]{36}/);
 
-    // Sentinel selection of another model starts a fresh session that carries
+    // A run-level override of another model starts a fresh session that carries
     // the prior web round as context instead of resuming the CLI session.
     const second = await sendChatRun(actor, {
       agentId,
@@ -2244,33 +2296,31 @@ describe("CHAT-02: server-side model switches", () => {
     expect(claimEnvironment(secondClaim.claim).ANTHROPIC_MODEL).toBe(
       "claude-sonnet-4-6",
     );
-    await expectThreadModelEvent(actor, first.threadId, "claude-sonnet-4-6");
+    await expectNoThreadModelUpdateEvent(
+      actor,
+      first.threadId,
+      "claude-sonnet-4-6",
+    );
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(second.runId, secondClaim.sandboxHeaders);
 
-    // Same-model follow-ups resume the previous turn's CLI session.
+    // Follow-ups without a send model override go back to the thread's stored
+    // model. Because the latest run used a different run-level override, this
+    // starts a fresh session instead of resuming the previous CLI session.
     const third = await sendChatRun(actor, {
       agentId,
       threadId: first.threadId,
-      prompt: "continue on sonnet",
+      prompt: "continue on the thread model",
     });
     const thirdClaim = await claimChatRun(runnerGroup, third.runId);
-    expect(thirdClaim.claim.resumeSession?.sessionId).toBe(
-      `bdd-cli-${second.runId}`,
+    expect(thirdClaim.claim.resumeSession).toBeNull();
+    expect(claimEnvironment(thirdClaim.claim).ANTHROPIC_MODEL).toBe(
+      "claude-opus-4-6",
     );
     await cancelChatRun(actor, third.runId);
-
-    // The sentinel selection also became the user's model preference, so a
-    // fresh thread without a selection pins the preferred model.
-    const fourth = await sendChatRun(actor, {
-      agentId,
-      prompt: "fresh thread uses the sentinel preference",
-    });
-    await expectThreadModelEvent(actor, fourth.threadId, "claude-sonnet-4-6");
-    await cancelChatRun(actor, fourth.runId);
   }, 90_000);
 
-  it("re-resolves the provider route from current policy on follow-up sends", async () => {
+  it("uses the stored provider pin on follow-up sends", async () => {
     const { actor, agentId, runnerGroup, providerId } =
       await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -2288,12 +2338,16 @@ describe("CHAT-02: server-side model switches", () => {
     await completeChatRunOk(first.runId, firstClaim.sandboxHeaders);
     const pinned = await chat.readThread(actor, first.threadId);
     expect(pinned).not.toHaveProperty("selectedModel");
-    expect(pinned.modelProviderId ?? null).toBeNull();
-    await expectThreadModelEvent(actor, first.threadId, "claude-sonnet-4-6");
+    expect(pinned.modelProviderId ?? null).toBe(providerId);
+    await expectThreadCreatedModelEvent(
+      actor,
+      first.threadId,
+      "claude-sonnet-4-6",
+    );
 
     // Org providers are per-type singletons, so the public rotation surface
-    // is re-upserting the same provider with a new secret. The model-only
-    // thread pin re-resolves the policy route on every follow-up send.
+    // is re-upserting the same provider with a new secret. Follow-up sends use
+    // the stored provider pin and pick up the rotated provider configuration.
     const rotated = await upsertOrgModelProvider(actor, {
       type: "anthropic-api-key",
       secret: "rotated-anthropic-key",
@@ -2316,8 +2370,12 @@ describe("CHAT-02: server-side model switches", () => {
     );
     const after = await chat.readThread(actor, first.threadId);
     expect(after).not.toHaveProperty("selectedModel");
-    expect(after.modelProviderId ?? null).toBeNull();
-    await expectThreadModelEvent(actor, first.threadId, "claude-sonnet-4-6");
+    expect(after.modelProviderId ?? null).toBe(providerId);
+    await expectThreadCreatedModelEvent(
+      actor,
+      first.threadId,
+      "claude-sonnet-4-6",
+    );
     await cancelChatRun(actor, second.runId);
   }, 90_000);
 

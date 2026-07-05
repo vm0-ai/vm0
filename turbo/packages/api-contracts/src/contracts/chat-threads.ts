@@ -481,6 +481,7 @@ export const chatThreadsContract = c.router({
       agentId: z.string().min(1),
       clientThreadId: z.string().uuid().optional(),
       eventId: chatThreadEventIdSchema.optional(),
+      modelSelection: modelSelectionRequestSchema,
       title: z.string().optional(),
     }),
     responses: {
@@ -490,6 +491,7 @@ export const chatThreadsContract = c.router({
         createdAt: z.string(),
       }),
       401: apiErrorSchema,
+      402: apiErrorSchema,
       404: apiErrorSchema,
     },
     summary: "Create a new chat thread",
@@ -842,13 +844,14 @@ export const chatMessagesContract = c.router({
         // Client-generated UUID for the sort touch created by direct user sends.
         // Lets event-sourced clients reconcile optimistic sidebar recency by id.
         chatThreadSortEventId: chatThreadEventIdSchema.optional(),
-        modelSelectionEventId: chatThreadEventIdSchema.optional(),
         modelProvider: z.string().optional(),
         /**
-         * Per-run model override; persisted on the thread so subsequent runs
-         * inherit the same choice. `undefined` = leave current thread override
-         * untouched (backward-compat for older clients). `null` = clear the
-         * thread override and fall back to agent/org defaults.
+         * Per-run model override. This does not mutate the thread's selected
+         * model; thread model changes are persisted through
+         * `chatThreadModelSelectionContract.update`.
+         *
+         * When omitted, the run resolves from the thread's persisted
+         * `selected_model`.
          */
         modelSelection: modelSelectionRequestSchema.nullable().optional(),
         runOptions: chatRunOptionsRequestSchema.optional(),
@@ -881,7 +884,6 @@ export const chatMessagesContract = c.router({
         clientThreadId: z.undefined().optional(),
         chatThreadEventId: z.undefined().optional(),
         chatThreadSortEventId: z.undefined().optional(),
-        modelSelectionEventId: z.undefined().optional(),
         modelProvider: z.undefined().optional(),
         modelSelection: z.undefined().optional(),
         runOptions: z.undefined().optional(),
@@ -902,7 +904,6 @@ export const chatMessagesContract = c.router({
         clientThreadId: z.undefined().optional(),
         chatThreadEventId: z.undefined().optional(),
         chatThreadSortEventId: z.undefined().optional(),
-        modelSelectionEventId: z.undefined().optional(),
         modelProvider: z.undefined().optional(),
         modelSelection: z.undefined().optional(),
         runOptions: z.undefined().optional(),

@@ -1549,7 +1549,10 @@ describe("zero workflow triggers", () => {
       action: "get-chat-thread",
       thread_id: threadId,
     });
-    expect(threadState.thread).toStrictEqual({ id: threadId });
+    expect(threadState.thread).toStrictEqual({
+      id: threadId,
+      selectedModel: "claude-sonnet-4-6",
+    });
   });
 
   it("runs a trigger immediately in its bound chat thread", async () => {

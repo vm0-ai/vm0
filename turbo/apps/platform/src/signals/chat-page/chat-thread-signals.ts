@@ -38,10 +38,9 @@ export interface ChatThreadSignals {
   reloadThread$: Command<void, []>;
   threadTitleEmoji$: Computed<Promise<string | null>>;
   threadTitleText$: Computed<Promise<string>>;
-  // -- Composer model override ---------------------------------------------
-  // Seeded from remoteThreadDetail$ on first resolve; user edits via
-  // setModelSelection$ take over and are preserved across subsequent
-  // remoteThreadDetail$ reloads.
+  // -- Composer model selection --------------------------------------------
+  // Derived from the thread event projection; user edits register optimistic
+  // model_selection_updated events and then persist through the thread API.
   modelSelection$: Computed<Promise<ModelProviderSelection | null>>;
   setModelSelection$: Command<
     Promise<void>,
@@ -86,7 +85,6 @@ export interface ChatThreadSignals {
   // -- Agent info (derived from threadMeta$.agentId) ------------------------
   agentId$: Computed<Promise<string | null>>;
   agentDisplayName$: Computed<Promise<string | null>>;
-  defaultModelSelection$: Computed<Promise<ModelProviderSelection | null>>;
   agentPinned$: Computed<Promise<boolean | null>>;
   // -- Per-thread UI state --------------------------------------------------
   timelineExpandedIds$: Computed<Set<string>>;
