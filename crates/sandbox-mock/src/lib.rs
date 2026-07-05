@@ -6,8 +6,8 @@
 //! [`MockSandboxControl::push_exec_remote_result`], or
 //! [`MockSandboxControl::push_kill_remote_result`] to queue custom responses
 //! consumed in FIFO order.
-//! Write-file results also apply to batched writes; see the method docs for
-//! details.
+//! Results queued with [`MockSandbox::push_write_file_result`] also apply to
+//! batched writes; see the method docs for details.
 //!
 //! For advanced control, create [`MockSandboxOverrides`] and pass it via
 //! [`MockSandboxRuntime::with_overrides`]. This enables pattern-matched exec
