@@ -280,6 +280,6 @@ export const apiAgentsHandlers = [
 
   // POST /api/zero/chat-threads/:id/mark-read
   mockApi(chatThreadMarkReadContract.markRead, ({ respond }) => {
-    return respond(200, { lastReadMessageId: null, unreads: [] });
+    return respond(200, { lastReadAt: null, unreads: [] });
   }),
 ];

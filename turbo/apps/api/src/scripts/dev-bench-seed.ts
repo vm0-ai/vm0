@@ -964,7 +964,6 @@ async function seedProfile(
     .update(chatThreads)
     .set({
       lastReadAt: lastReadRow?.createdAt ?? null,
-      lastReadMessageId: lastReadRow?.id ?? null,
       lastMessageAt:
         rows.messageRows[rows.messageRows.length - 1]?.createdAt ?? endAt,
       updatedAt: endAt,

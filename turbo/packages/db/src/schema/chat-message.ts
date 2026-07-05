@@ -210,6 +210,9 @@ export const chatMessages = pgTable(
         table.chatThreadId,
         table.createdAt,
       ),
+      index("idx_chat_messages_thread_run_finish_created")
+        .on(table.chatThreadId, table.createdAt.desc())
+        .where(sql`${table.runLifecycleEvent} IS NOT NULL`),
       index("idx_chat_messages_run_id").on(table.runId),
       index("chat_messages_usage_run_id_idx")
         .on(table.runId)
