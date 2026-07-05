@@ -299,7 +299,7 @@ mod tests {
     }
 
     #[test]
-    fn claim_tightens_owner_only_lock_file_permissions() {
+    fn claim_tightens_world_readable_lock_file_permissions() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = device_lock_path_in(7, dir.path());
         std::fs::write(&path, b"").expect("write lock path");
