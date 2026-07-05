@@ -97,6 +97,7 @@ interface NormalSendBody {
   readonly threadId?: string;
   readonly clientThreadId?: string;
   readonly chatThreadEventId?: string;
+  readonly modelSelectionEventId?: string;
   readonly modelProvider?: string;
   readonly modelSelection?: {
     readonly modelProviderId: string;
@@ -1149,6 +1150,7 @@ async function persistThreadPinIfUnset(params: {
   readonly userId: string;
   readonly orgId: string;
   readonly pin: ThreadModelPin;
+  readonly eventId: string | undefined;
 }): Promise<ThreadModelPin> {
   if (!params.pin.selectedModel) {
     return params.pin;
@@ -1181,6 +1183,7 @@ async function persistThreadPinIfUnset(params: {
       orgId: params.orgId,
       chatThreadId: thread.id,
       agentComposeId: thread.agentComposeId,
+      eventId: params.eventId,
       selectedModel: params.pin.selectedModel,
       createdAt: updatedAt,
     });
@@ -1194,6 +1197,7 @@ async function persistThreadPinForExplicitSelection(params: {
   readonly userId: string;
   readonly orgId: string;
   readonly pin: ThreadModelPin;
+  readonly eventId: string | undefined;
 }): Promise<ThreadModelPin> {
   await params.db.transaction(async (tx) => {
     const updatedAt = nowDate();
@@ -1222,6 +1226,7 @@ async function persistThreadPinForExplicitSelection(params: {
       orgId: params.orgId,
       chatThreadId: thread.id,
       agentComposeId: thread.agentComposeId,
+      eventId: params.eventId,
       selectedModel: params.pin.selectedModel,
       createdAt: updatedAt,
     });
@@ -1235,6 +1240,7 @@ async function resolveRunModelPin(params: {
   readonly userId: string;
   readonly threadId: string;
   readonly modelSelection: IncomingModelSelection;
+  readonly eventId: string | undefined;
 }): Promise<
   | ThreadModelPin
   | ReturnType<typeof providerDeleted>
@@ -1261,6 +1267,7 @@ async function resolveRunModelPin(params: {
       userId: params.userId,
       orgId: params.orgId,
       pin,
+      eventId: params.eventId,
     });
   }
 
@@ -1282,6 +1289,7 @@ async function resolveRunModelPin(params: {
         userId: params.userId,
         orgId: params.orgId,
         pin,
+        eventId: params.eventId,
       })
     : persistThreadPinForExplicitSelection({
         db: params.db,
@@ -1289,6 +1297,7 @@ async function resolveRunModelPin(params: {
         userId: params.userId,
         orgId: params.orgId,
         pin,
+        eventId: params.eventId,
       });
 }
 
@@ -2650,6 +2659,7 @@ async function resolveTimedRunModelPin(
         userId: args.userId,
         threadId: prepared.thread.threadId,
         modelSelection: args.body.modelSelection,
+        eventId: args.body.modelSelectionEventId,
       });
     },
   );

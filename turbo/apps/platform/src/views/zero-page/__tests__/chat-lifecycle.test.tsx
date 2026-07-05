@@ -1291,6 +1291,7 @@ describe("chat lifecycle", () => {
       sendGate: sendGate.promise,
       onSendRequest: (body) => {
         clientThreadId = body.clientThreadId;
+        expect(body.modelSelectionEventId).toStrictEqual(expect.any(String));
         expect(body.modelSelection?.selectedModel).toBe("claude-sonnet-4-6");
       },
     });
