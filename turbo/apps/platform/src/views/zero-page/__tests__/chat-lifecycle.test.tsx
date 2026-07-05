@@ -1289,9 +1289,9 @@ describe("chat lifecycle", () => {
     });
     mockChatLifecycle(context, {
       sendGate: sendGate.promise,
-      onSendRequest: (body) => {
+      onThreadCreate: (body) => {
         clientThreadId = body.clientThreadId;
-        expect(body.modelSelection?.selectedModel).toBe("claude-sonnet-4-6");
+        expect(body.modelSelection.selectedModel).toBe("claude-sonnet-4-6");
       },
     });
 
