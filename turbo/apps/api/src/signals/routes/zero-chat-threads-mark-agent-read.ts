@@ -44,6 +44,17 @@ function lastRunFinishMessageSubquery(db: Pick<Db, "select">) {
     .as("last_message");
 }
 
+function latestRunFinishCreatedAtSql() {
+  return sql<Date>`(
+    SELECT ${chatMessages.createdAt}
+    FROM ${chatMessages}
+    WHERE ${chatMessages.chatThreadId} = ${chatThreads.id}
+      AND ${chatMessages.runLifecycleEvent} IS NOT NULL
+    ORDER BY ${chatMessages.createdAt} DESC, ${chatMessages.id} DESC
+    LIMIT 1
+  )`;
+}
+
 const markAgentReadInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
@@ -75,7 +86,6 @@ const markAgentReadInner$ = command(
       const unreadRows = await tx
         .select({
           threadId: chatThreads.id,
-          latestRunFinishAt: lastRunFinish.createdAt,
         })
         .from(chatThreads)
         .innerJoin(zeroAgents, eq(zeroAgents.id, chatThreads.agentComposeId))
@@ -94,12 +104,9 @@ const markAgentReadInner$ = command(
         );
 
       for (const row of unreadRows) {
-        if (row.latestRunFinishAt === null) {
-          continue;
-        }
         await tx
           .update(chatThreads)
-          .set({ lastReadAt: row.latestRunFinishAt })
+          .set({ lastReadAt: latestRunFinishCreatedAtSql() })
           .where(
             and(
               eq(chatThreads.id, row.threadId),

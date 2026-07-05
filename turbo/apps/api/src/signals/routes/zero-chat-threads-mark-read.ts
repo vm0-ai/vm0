@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { and, desc, eq, isNotNull } from "drizzle-orm";
+import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { chatThreadMarkReadContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
@@ -12,6 +12,17 @@ import { publishUserSignal } from "../external/realtime";
 import { notFound } from "../../lib/error";
 import { zeroChatThreadUnreads } from "../services/zero-chat-thread.service";
 import type { RouteEntry } from "../route-entry";
+
+function latestRunFinishCreatedAtSql() {
+  return sql<Date>`(
+    SELECT ${chatMessages.createdAt}
+    FROM ${chatMessages}
+    WHERE ${chatMessages.chatThreadId} = ${chatThreads.id}
+      AND ${chatMessages.runLifecycleEvent} IS NOT NULL
+    ORDER BY ${chatMessages.createdAt} DESC, ${chatMessages.id} DESC
+    LIMIT 1
+  )`;
+}
 
 const markReadInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(authContext$);
@@ -46,25 +57,26 @@ const markReadInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return [...unreads];
   };
 
-  const [latest] = await writeDb
-    .select({ createdAt: chatMessages.createdAt })
-    .from(chatMessages)
+  const lastReadAt = thread.lastReadAt?.toISOString() ?? null;
+  const latestRunFinishAt = latestRunFinishCreatedAtSql();
+  const [updated] = await writeDb
+    .update(chatThreads)
+    .set({ lastReadAt: latestRunFinishAt })
     .where(
       and(
-        eq(chatMessages.chatThreadId, params.id),
-        isNotNull(chatMessages.runLifecycleEvent),
+        eq(chatThreads.id, params.id),
+        eq(chatThreads.userId, auth.userId),
+        sql`${latestRunFinishAt} IS NOT NULL`,
+        or(
+          isNull(chatThreads.lastReadAt),
+          sql`${latestRunFinishAt} > ${chatThreads.lastReadAt}`,
+        )!,
       ),
     )
-    .orderBy(desc(chatMessages.createdAt), desc(chatMessages.id))
-    .limit(1);
+    .returning({ lastReadAt: chatThreads.lastReadAt });
   signal.throwIfAborted();
 
-  const lastReadAt = thread.lastReadAt?.toISOString() ?? null;
-  const latestRunFinishAt = latest?.createdAt ?? null;
-  if (
-    latestRunFinishAt === null ||
-    (thread.lastReadAt !== null && thread.lastReadAt >= latestRunFinishAt)
-  ) {
+  if (!updated) {
     return {
       status: 200 as const,
       body: {
@@ -74,27 +86,19 @@ const markReadInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     };
   }
 
-  await writeDb
-    .update(chatThreads)
-    .set({ lastReadAt: latestRunFinishAt })
-    .where(
-      and(eq(chatThreads.id, params.id), eq(chatThreads.userId, auth.userId)),
-    );
-  signal.throwIfAborted();
-
   // Read-state invalidation only. Thread-list shape is unchanged, and
   // clients refetch unread snapshots from this generic user-level topic.
   await publishUserSignal([auth.userId], "chatThreadReadCursorUpdated", {
     threadId: params.id,
     agentId: thread.agentComposeId,
-    lastReadAt: latestRunFinishAt.toISOString(),
+    lastReadAt: updated.lastReadAt?.toISOString() ?? null,
   });
   signal.throwIfAborted();
 
   return {
     status: 200 as const,
     body: {
-      lastReadAt: latestRunFinishAt.toISOString(),
+      lastReadAt: updated.lastReadAt?.toISOString() ?? null,
       unreads: await agentUnreads(),
     },
   };
