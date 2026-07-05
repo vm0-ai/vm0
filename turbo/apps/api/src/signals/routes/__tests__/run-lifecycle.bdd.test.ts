@@ -3941,20 +3941,45 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const fw = createFirewallApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
-    const slug = `bdd-auth-ref-${randomUUID().slice(0, 8)}`;
-    const custom = await connectors.createCustomConnector(actor, {
-      slug,
-      displayName: "BDD Auth Ref API",
-      prefixes: ["https://auth-ref.example.com/api/"],
-      headerName: "Authorization",
-      headerTemplate: "Bearer {{secret}}",
+    const rand = randomUUID().slice(0, 8);
+    const saved = await connectors.saveCustomConnectorProposal(actor, {
+      proposal: {
+        operation: "create",
+        displayName: "BDD Auth Ref API",
+        prefixTemplates: [`https://auth-ref-${rand}.example.com/api/`],
+        fields: [
+          {
+            key: "api_key",
+            label: "API key",
+            kind: "secret",
+            required: true,
+          },
+          {
+            key: "tenant_id",
+            label: "Tenant ID",
+            kind: "variable",
+            required: true,
+          },
+        ],
+        headerInjections: [
+          {
+            name: "Authorization",
+            valueTemplate: "Bearer {{secrets.api_key}}",
+          },
+        ],
+        queryInjections: [
+          {
+            name: "tenant",
+            valueTemplate: "{{variables.tenant_id}}",
+          },
+        ],
+      },
+      values: [
+        { key: "api_key", kind: "secret", value: "auth-ref-secret" },
+        { key: "tenant_id", kind: "variable", value: "auth-ref-tenant" },
+      ],
+      agentId,
     });
-    await connectors.setCustomConnectorSecret(
-      actor,
-      custom.id,
-      "auth-ref-secret",
-    );
-    await connectors.updateAgentCustomConnectors(actor, agentId, [custom.id]);
 
     const run = await api.createRun(actor, {
       agentId,
@@ -3964,13 +3989,17 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
 
-    const idPart = custom.id.replaceAll("-", "");
+    const idPart = saved.connector.id.replaceAll("-", "");
     const internalName = `custom_connector_${idPart}`;
-    const secretKey = `CUSTOM_${idPart}_S_SECRET`;
+    const secretKey = `CUSTOM_${idPart}_S_API_KEY`;
+    const tenantVarKey = `CUSTOM_${idPart}_V_TENANT_ID`;
     const missingSecretKey = `CUSTOM_${idPart}_S_MISSING`;
     const customApis = inlineFirewallApis(claim.firewalls, internalName);
     expect(customApis[0]?.auth?.headers?.Authorization).toBe(
       `Bearer \${{ secrets.${secretKey} }}`,
+    );
+    expect(customApis[0]?.auth?.query?.tenant).toBe(
+      `\${{ secrets.${tenantVarKey} }}`,
     );
 
     const resolvedFromRef = await fw.requestFirewallAuth(
@@ -3979,6 +4008,9 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
         encryptedSecrets: fw.encryptedSecretsBody({}),
         authHeaders: {
           Authorization: `Bearer \${{ secrets.${secretKey} }}`,
+        },
+        authQuery: {
+          tenant: `\${{ secrets.${tenantVarKey} }}`,
         },
       },
       [200],
@@ -3989,15 +4021,22 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(resolvedFromRef.body.headers).toStrictEqual({
       Authorization: "Bearer auth-ref-secret",
     });
+    expect(resolvedFromRef.body.query).toStrictEqual({
+      tenant: "auth-ref-tenant",
+    });
 
     const resolvedFromBody = await fw.requestFirewallAuth(
       { authorization: `Bearer ${claim.sandboxToken}` },
       {
         encryptedSecrets: fw.encryptedSecretsBody({
           [secretKey]: "explicit-secret",
+          [tenantVarKey]: "explicit-tenant",
         }),
         authHeaders: {
           Authorization: `Bearer \${{ secrets.${secretKey} }}`,
+        },
+        authQuery: {
+          tenant: `\${{ secrets.${tenantVarKey} }}`,
         },
       },
       [200],
@@ -4007,6 +4046,9 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     }
     expect(resolvedFromBody.body.headers).toStrictEqual({
       Authorization: "Bearer explicit-secret",
+    });
+    expect(resolvedFromBody.body.query).toStrictEqual({
+      tenant: "explicit-tenant",
     });
 
     const missing = await fw.requestFirewallAuth(
