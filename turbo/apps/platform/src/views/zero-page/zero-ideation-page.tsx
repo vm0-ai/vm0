@@ -1,6 +1,11 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
-import { useGet, useLastResolved, useSet } from "ccstate-react";
+import {
+  useGet,
+  useLastLoadable,
+  useLastResolved,
+  useSet,
+} from "ccstate-react";
 import {
   IconArrowUpRight,
   IconMessageCircle,
@@ -24,10 +29,14 @@ import {
 } from "../../signals/zero-page/zero-ideation.ts";
 export function ZeroIdeationPage() {
   const features = useLastResolved(featureSwitch$);
+  const connectorStatusLoadable = useLastLoadable(connectorCatalogStatusByRef$);
   const connectorStatusByRef = useLastResolved(connectorCatalogStatusByRef$);
-  const visibleConnectorRefs = connectorStatusByRef
-    ? new Set(connectorStatusByRef.keys())
-    : undefined;
+  const visibleConnectorRefs =
+    connectorStatusByRef !== undefined
+      ? new Set(connectorStatusByRef.keys())
+      : connectorStatusLoadable.state === "loading"
+        ? undefined
+        : new Set<string>();
   const categories = getCategories({
     features,
     visibleConnectorRefs,

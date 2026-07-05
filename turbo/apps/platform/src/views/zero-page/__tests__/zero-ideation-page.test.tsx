@@ -191,6 +191,34 @@ describe("zero ideation page", () => {
     expect(screen.getByText("Browser screenshots")).toBeInTheDocument();
   });
 
+  it("fails closed when catalog status errors on the ideas page", async () => {
+    const catalogReady = context.mocks.deferred<void>();
+    context.mocks.api(
+      zeroConnectorCatalogContract.status,
+      async ({ respond }) => {
+        await catalogReady.promise;
+        return respond(403, {
+          error: { message: "Forbidden", code: "FORBIDDEN" },
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${agentId}/ideas`,
+    });
+
+    await expect(
+      screen.findByText("Daily standup report"),
+    ).resolves.toBeInTheDocument();
+
+    catalogReady.resolve();
+    await waitForElementToBeRemoved(() => {
+      return screen.queryByText("Daily standup report");
+    });
+    expect(screen.getByText("Browser screenshots")).toBeInTheDocument();
+  });
+
   it("falls back to all use cases when the selected tab is hidden by catalog filtering", async () => {
     mockConnectorCatalogStatus([]);
     context.store.set(setIdeationActiveTab$, "reports");
@@ -231,6 +259,32 @@ describe("zero ideation page", () => {
         await catalogReady.promise;
         return respond(200, {
           connectors: [],
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${agentId}/chat`,
+    });
+
+    const promptGrid = await suggestedPromptGrid();
+    const pendingButtons = queryAllByRoleFast("button", promptGrid);
+    expect(pendingButtons).toHaveLength(3);
+
+    catalogReady.resolve();
+    await waitForElementToBeRemoved(pendingButtons.slice(0, 2));
+    expect(queryAllByRoleFast("button", promptGrid)).toHaveLength(1);
+  });
+
+  it("fails closed when catalog status errors for suggested prompts", async () => {
+    const catalogReady = context.mocks.deferred<void>();
+    context.mocks.api(
+      zeroConnectorCatalogContract.status,
+      async ({ respond }) => {
+        await catalogReady.promise;
+        return respond(403, {
+          error: { message: "Forbidden", code: "FORBIDDEN" },
         });
       },
     );
