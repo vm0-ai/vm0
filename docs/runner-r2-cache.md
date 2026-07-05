@@ -34,8 +34,10 @@ R2_JURISDICTION=eu \
   scripts/apply-runner-r2-cache-lifecycle.sh
 ```
 
-The apply script uses `npx --yes wrangler` by default. Set `WRANGLER_BIN` to use
-an already-installed Wrangler binary.
+The apply script uses the repo-pinned Wrangler from
+`turbo/apps/host-worker` when `pnpm` is available. Set `WRANGLER_BIN` to use a
+specific Wrangler binary. If neither is available, it falls back to
+`npx --yes wrangler@4.91.0`.
 
 Cloudflare applies lifecycle deletes asynchronously. Do not expect deploy-time
 deleted object counts or exact freed bytes from `runner gc`.
