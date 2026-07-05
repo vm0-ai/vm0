@@ -146,6 +146,13 @@ fn validate_lock_file(file: &File, path: &Path) -> io::Result<()> {
         )));
     }
 
+    if metadata.nlink() > 1 {
+        return Err(permission_denied(format!(
+            "{} has multiple hard links",
+            path.display()
+        )));
+    }
+
     let mode = metadata.mode() & 0o7777;
     if mode & GROUP_OR_OTHER_WRITE_BITS != 0 {
         return Err(permission_denied(format!(
@@ -355,6 +362,35 @@ mod tests {
         assert!(
             error.to_string().contains("not a regular lock file"),
             "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn claim_rejects_hard_link_lock_path_without_chmod_target() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = device_lock_path_in(7, dir.path());
+        let target = dir.path().join("target.lock");
+        std::fs::write(&target, b"target").expect("write target");
+        std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o644))
+            .expect("set target permissions");
+        std::fs::hard_link(&target, &path).expect("create lock hard link");
+
+        let error = try_acquire_device_claim_in(7, dir.path())
+            .expect_err("hard-linked lock path should fail");
+
+        assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
+        assert!(
+            error.to_string().contains("multiple hard links"),
+            "unexpected error: {error}"
+        );
+        assert_eq!(std::fs::read(&target).expect("read target"), b"target");
+        assert_eq!(
+            std::fs::metadata(&target)
+                .expect("target metadata")
+                .permissions()
+                .mode()
+                & 0o777,
+            0o644
         );
     }
 
