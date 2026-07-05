@@ -91,6 +91,7 @@ import {
   overlayScrollViewport$,
   chatThreadVirtualListElement$,
   setChatThreadVirtualListElement$,
+  getChatThreadVirtualListScrollMargin,
   CHAT_THREAD_VIRTUAL_ROW_HEIGHT,
 } from "../../signals/zero-page/zero-sidebar-state.ts";
 import { Link } from "../router/link.tsx";
@@ -776,7 +777,10 @@ function VirtualizedChatThreads({
   const scrollMetrics = useGet(overlayScrollMetrics$);
   const virtualListElement = useGet(chatThreadVirtualListElement$);
   const setVirtualListElement = useSet(setChatThreadVirtualListElement$);
-  const scrollMargin = virtualListElement?.offsetTop ?? 0;
+  const scrollMargin = getChatThreadVirtualListScrollMargin(
+    scrollViewport,
+    virtualListElement,
+  );
   const viewportHeight =
     scrollMetrics.clientHeight ||
     scrollViewport?.clientHeight ||

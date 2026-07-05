@@ -267,6 +267,34 @@ export const CHAT_THREAD_VIRTUAL_ROW_HEIGHT = 36;
 const CHAT_THREAD_VIRTUAL_FALLBACK_VIEWPORT_HEIGHT =
   CHAT_THREAD_VIRTUAL_ROW_HEIGHT * 12;
 const internalChatThreadVirtualListElement$ = state<HTMLElement | null>(null);
+
+function hasUsableLayoutPosition(rect: DOMRectReadOnly): boolean {
+  return rect.top !== 0 || rect.left !== 0;
+}
+
+export function getChatThreadVirtualListScrollMargin(
+  scrollViewport: HTMLElement | null,
+  virtualListElement: HTMLElement | null,
+): number {
+  if (!scrollViewport || !virtualListElement) {
+    return 0;
+  }
+
+  const viewportRect = scrollViewport.getBoundingClientRect();
+  const virtualListRect = virtualListElement.getBoundingClientRect();
+  if (
+    hasUsableLayoutPosition(viewportRect) ||
+    hasUsableLayoutPosition(virtualListRect)
+  ) {
+    return Math.max(
+      0,
+      scrollViewport.scrollTop + virtualListRect.top - viewportRect.top,
+    );
+  }
+
+  return Math.max(0, virtualListElement.offsetTop - scrollViewport.offsetTop);
+}
+
 export const chatThreadVirtualListElement$ = computed((get) => {
   return get(internalChatThreadVirtualListElement$);
 });
@@ -288,7 +316,10 @@ export const scrollChatThreadVirtualListToIndex$ = command(
     }
 
     const currentMetrics = get(internalOverlayScrollMetrics$);
-    const scrollMargin = virtualListElement.offsetTop;
+    const scrollMargin = getChatThreadVirtualListScrollMargin(
+      scrollViewport,
+      virtualListElement,
+    );
     const viewportHeight =
       currentMetrics.clientHeight ||
       scrollViewport.clientHeight ||
@@ -297,9 +328,10 @@ export const scrollChatThreadVirtualListToIndex$ = command(
     const rowBottom = rowTop + CHAT_THREAD_VIRTUAL_ROW_HEIGHT;
     const viewportTop = scrollViewport.scrollTop;
     const viewportBottom = viewportTop + viewportHeight;
+    const targetScrollTop = Math.max(0, rowTop);
     const nextScrollTop =
       rowTop < viewportTop || rowBottom > viewportBottom
-        ? Math.max(0, rowTop - CHAT_THREAD_VIRTUAL_ROW_HEIGHT)
+        ? targetScrollTop
         : viewportTop;
 
     scrollViewport.scrollTop = nextScrollTop;
