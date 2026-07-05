@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use tracing::{info, warn};
 
@@ -34,9 +35,9 @@ pub(crate) struct LocalCancelMarker {
 }
 
 /// Shared file-state checks for the local queue protocol.
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct LocalQueue {
-    group_dir: PathBuf,
+    group_dir: Arc<PathBuf>,
 }
 
 enum CancelTargetLookup {
@@ -73,11 +74,13 @@ impl JobPresenceScan {
 
 impl LocalQueue {
     pub(crate) fn new(group_dir: PathBuf) -> Self {
-        Self { group_dir }
+        Self {
+            group_dir: Arc::new(group_dir),
+        }
     }
 
     pub(crate) fn group_dir(&self) -> &Path {
-        &self.group_dir
+        self.group_dir.as_ref()
     }
 
     pub(crate) fn discover_candidate_sync(

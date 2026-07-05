@@ -66,12 +66,12 @@ impl LocalProvider {
     ) -> Arc<Self> {
         supported_profiles.sort();
         supported_profiles.dedup();
+        let queue = LocalQueue::new(group_dir);
         info!(
-            path = %group_dir.display(),
+            path = %queue.group_dir().display(),
             profiles = ?supported_profiles,
             "local provider watching"
         );
-        let queue = LocalQueue::new(group_dir.clone());
         let owned_claims = Arc::new(tokio::sync::Mutex::new(HashSet::new()));
         let cancel_scanner = LocalCancelScanner::new(queue.clone(), cancel_tokens, owned_claims);
         let cancel_watcher = if start_cancel_watcher {
@@ -204,10 +204,7 @@ impl JobProvider for LocalProvider {
             model_usage_provider: None,
         };
         let active_input_source = req.active_input.unwrap_or(false).then(|| {
-            crate::active_input::ActiveInputSource::local_queue(
-                self.queue.group_dir().to_path_buf(),
-                run_id,
-            )
+            crate::active_input::ActiveInputSource::local_queue(self.queue.clone(), run_id)
         });
         match ClaimedJob::local_with_active_input_source(run_id, context, active_input_source) {
             Ok(claimed) => {
