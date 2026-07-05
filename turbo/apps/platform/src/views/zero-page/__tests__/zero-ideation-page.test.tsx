@@ -126,14 +126,12 @@ describe("zero ideation page", () => {
 
     await fill(screen.getByLabelText("Search use cases"), "RevenueCat");
 
-    await waitFor(() => {
-      expect(
-        screen.queryByText("RevenueCat subscription digest"),
-      ).not.toBeInTheDocument();
-    });
     expect(
-      screen.getByText("No use cases match your search."),
+      await screen.findByText("No use cases match your search."),
     ).toBeInTheDocument();
+    expect(
+      screen.queryByText("RevenueCat subscription digest"),
+    ).not.toBeInTheDocument();
   });
 
   it("falls back to all use cases when the selected tab is hidden by catalog filtering", async () => {
