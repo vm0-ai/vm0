@@ -64,6 +64,19 @@ async function cardByTitle(title: string): Promise<HTMLElement> {
   return card;
 }
 
+async function suggestedPromptGrid(): Promise<HTMLElement> {
+  const ideasTitle = await screen.findByText("Ideas & use cases");
+  const ideasButton = ideasTitle.closest("button");
+  if (!(ideasButton instanceof HTMLElement)) {
+    throw new Error("Ideas & use cases button not found");
+  }
+  const promptGrid = ideasButton.parentElement;
+  if (!(promptGrid instanceof HTMLElement)) {
+    throw new Error("Suggested prompt grid not found");
+  }
+  return promptGrid;
+}
+
 describe("zero ideation page", () => {
   it("filters use cases and starts an agent chat from a selected idea", async () => {
     detachedSetupPage({
@@ -184,17 +197,35 @@ describe("zero ideation page", () => {
       path: `/agents/${agentId}/chat`,
     });
 
-    const ideasTitle = await screen.findByText("Ideas & use cases");
-    const ideasButton = ideasTitle.closest("button");
-    if (!(ideasButton instanceof HTMLElement)) {
-      throw new Error("Ideas & use cases button not found");
-    }
-    const promptGrid = ideasButton.parentElement;
-    if (!(promptGrid instanceof HTMLElement)) {
-      throw new Error("Suggested prompt grid not found");
-    }
+    const promptGrid = await suggestedPromptGrid();
 
     expect(queryAllByRoleFast("button", promptGrid)).toHaveLength(1);
     expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
+  });
+
+  it("does not treat pending catalog status as empty for suggested prompts", async () => {
+    const catalogReady = context.mocks.deferred<void>();
+    context.mocks.api(
+      zeroConnectorCatalogContract.status,
+      async ({ respond }) => {
+        await catalogReady.promise;
+        return respond(200, {
+          connectors: [],
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${agentId}/chat`,
+    });
+
+    const promptGrid = await suggestedPromptGrid();
+    const pendingButtons = queryAllByRoleFast("button", promptGrid);
+    expect(pendingButtons).toHaveLength(3);
+
+    catalogReady.resolve();
+    await waitForElementToBeRemoved(pendingButtons.slice(0, 2));
+    expect(queryAllByRoleFast("button", promptGrid)).toHaveLength(1);
   });
 });

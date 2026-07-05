@@ -55,6 +55,7 @@ import {
   resetChatPageModelSelection$,
   chatPageTaglineIndex$,
   suggestedPrompts$,
+  unfilteredSuggestedPrompts$,
 } from "../../signals/zero-page/zero-chat-page.ts";
 import {
   newThreadGenerationTemplate$,
@@ -364,7 +365,10 @@ function SuggestedPromptsGrid({
 }: {
   onSelectPrompt: (prompt: string) => void;
 }) {
-  const suggestedPrompts = useLastResolved(suggestedPrompts$) ?? [];
+  const unfilteredSuggestedPrompts =
+    useLastResolved(unfilteredSuggestedPrompts$) ?? [];
+  const suggestedPrompts =
+    useLastResolved(suggestedPrompts$) ?? unfilteredSuggestedPrompts;
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 w-full">
       {suggestedPrompts.map((item) => {

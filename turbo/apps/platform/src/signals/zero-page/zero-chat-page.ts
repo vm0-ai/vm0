@@ -29,8 +29,13 @@ export const chatPageTaglineIndex$ = computed((get) => {
 });
 
 // ---------------------------------------------------------------------------
-// Suggested prompts — filtered by active feature switches
+// Suggested prompts — filtered by active feature switches and connector catalog
 // ---------------------------------------------------------------------------
+
+export const unfilteredSuggestedPrompts$ = computed((get) => {
+  const features = get(featureSwitch$);
+  return getRandomPrompts(2, { features });
+});
 
 export const suggestedPrompts$ = computed(async (get) => {
   const features = await get(featureSwitch$);
