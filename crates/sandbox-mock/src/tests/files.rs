@@ -519,3 +519,49 @@ async fn sandbox_write_file_lifecycle_gate_blocks_until_released() {
     gate.release_one();
     task.await.unwrap().unwrap();
 }
+
+#[tokio::test]
+async fn sandbox_write_files_lifecycle_gate_blocks_batch_until_released() {
+    let sandbox = Arc::new(MockSandbox::new("test-1"));
+    let gate = MockLifecycleGate::new();
+    sandbox.set_write_file_lifecycle_gate(gate.clone());
+
+    let task = {
+        let sandbox = Arc::clone(&sandbox);
+        tokio::spawn(async move {
+            let files = [
+                WriteFileEntry {
+                    path: "/tmp/a.txt",
+                    content: b"a",
+                },
+                WriteFileEntry {
+                    path: "/tmp/b.txt",
+                    content: b"b",
+                },
+            ];
+            sandbox.write_files(&files).await
+        })
+    };
+
+    assert_eq!(gate.wait_entered(1, test_timeout()).await.unwrap(), 1);
+    assert_eq!(gate.entered_count(), 1);
+
+    let batch_calls = sandbox.write_files_calls();
+    assert_eq!(batch_calls.len(), 1);
+    assert_eq!(batch_calls[0].files.len(), 2);
+    assert_eq!(batch_calls[0].files[0].path, "/tmp/a.txt");
+    assert_eq!(batch_calls[0].files[1].path, "/tmp/b.txt");
+
+    let write_calls = sandbox.write_file_calls();
+    assert_eq!(write_calls.len(), 2);
+    assert_eq!(write_calls[0].path, "/tmp/a.txt");
+    assert_eq!(write_calls[1].path, "/tmp/b.txt");
+    assert!(
+        !task.is_finished(),
+        "write_files must wait for one batch gate release"
+    );
+
+    gate.release_one();
+    task.await.unwrap().unwrap();
+    assert_eq!(gate.entered_count(), 1);
+}
