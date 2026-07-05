@@ -17,14 +17,37 @@ require_env HEAD_SHA
 require_env METAL_HOSTS
 require_env METAL_USER
 
-r2_cache_credentials_set=false
-if [ -n "${R2_ACCOUNT_ID:-}" ] || [ -n "${R2_ACCESS_KEY_ID:-}" ] || [ -n "${R2_SECRET_ACCESS_KEY:-}" ]; then
-  r2_cache_credentials_set=true
-fi
-if [ "$r2_cache_credentials_set" = true ] && [ -z "${R2_RUNNER_CACHE_BUCKET_NAME:-}" ]; then
-  echo "R2_RUNNER_CACHE_BUCKET_NAME is required when runner R2 cache credentials are set" >&2
-  exit 2
-fi
+count_present_runner_r2_vars() {
+  local count=0
+  local name
+  for name in R2_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_RUNNER_CACHE_BUCKET_NAME; do
+    if [ -n "${!name:-}" ]; then
+      count=$((count + 1))
+    fi
+  done
+  printf '%s\n' "$count"
+}
+
+runner_r2_var_count="$(count_present_runner_r2_vars)"
+case "$runner_r2_var_count" in
+  0 | 4)
+    ;;
+  *)
+    # Transitional compatibility for PR/staging runner-image builds until
+    # #20252 provisions R2_RUNNER_CACHE_BUCKET_NAME. The cache is optional for
+    # correctness, so legacy-only configuration disables R2 instead of failing.
+    if [ -z "${R2_RUNNER_CACHE_BUCKET_NAME:-}" ] && [ -n "${R2_USER_STORAGES_BUCKET_NAME:-}" ]; then
+      echo "R2_RUNNER_CACHE_BUCKET_NAME is not configured; disabling R2 runner cache for this build" >&2
+      R2_ACCOUNT_ID=""
+      R2_ACCESS_KEY_ID=""
+      R2_SECRET_ACCESS_KEY=""
+      R2_USER_STORAGES_BUCKET_NAME=""
+    else
+      echo "runner R2 cache is partially configured; set or unset R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, and R2_RUNNER_CACHE_BUCKET_NAME together" >&2
+      exit 2
+    fi
+    ;;
+esac
 
 TARGET_TRIPLE="${TARGET_TRIPLE-aarch64-unknown-linux-musl}"
 PROFILE="${PROFILE:-vm0/default}"

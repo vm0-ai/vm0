@@ -104,12 +104,27 @@ if JOB_REF=pr-123 \
   R2_ACCOUNT_ID=test-account \
   R2_ACCESS_KEY_ID=test-access-key \
   R2_SECRET_ACCESS_KEY=test-secret \
+  R2_USER_STORAGES_BUCKET_NAME=legacy-user-storage \
+  TARGET_TRIPLE=powerpc-unknown-linux-musl \
+  EXPECTED_REMOTE_ARCH=aarch64 \
+  "$PREPARE" >"${TMPDIR}/legacy-r2-runner-cache-bucket.out" 2>"${TMPDIR}/legacy-r2-runner-cache-bucket.err"; then
+  fail "expected unsupported target to fail after legacy R2 cache is disabled"
+fi
+grep -q "R2_RUNNER_CACHE_BUCKET_NAME is not configured; disabling R2 runner cache for this build" "${TMPDIR}/legacy-r2-runner-cache-bucket.err" || fail "expected legacy R2 cache disable message"
+grep -q "unsupported runner image target: powerpc-unknown-linux-musl" "${TMPDIR}/legacy-r2-runner-cache-bucket.err" || fail "expected unsupported target after legacy R2 cache warning"
+
+if JOB_REF=pr-123 \
+  HEAD_SHA=abc \
+  METAL_HOSTS=dev-1 \
+  METAL_USER=ci \
+  R2_ACCOUNT_ID=test-account \
+  R2_RUNNER_CACHE_BUCKET_NAME=test-runner-cache \
   TARGET_TRIPLE=aarch64-unknown-linux-musl \
   EXPECTED_REMOTE_ARCH=aarch64 \
-  "$PREPARE" >"${TMPDIR}/missing-r2-runner-cache-bucket.out" 2>"${TMPDIR}/missing-r2-runner-cache-bucket.err"; then
-  fail "expected missing R2 runner cache bucket to fail"
+  "$PREPARE" >"${TMPDIR}/partial-r2-runner-cache.out" 2>"${TMPDIR}/partial-r2-runner-cache.err"; then
+  fail "expected partial R2 runner cache config to fail"
 fi
-grep -q "R2_RUNNER_CACHE_BUCKET_NAME is required when runner R2 cache credentials are set" "${TMPDIR}/missing-r2-runner-cache-bucket.err" || fail "expected missing R2 runner cache bucket message"
+grep -q "runner R2 cache is partially configured" "${TMPDIR}/partial-r2-runner-cache.err" || fail "expected partial R2 runner cache config message"
 
 if JOB_REF=pr-123 \
   HEAD_SHA=abc \
