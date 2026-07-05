@@ -28,9 +28,13 @@ count_present_runner_r2_vars() {
   printf '%s\n' "$count"
 }
 
+runner_r2_cache_enabled=0
 runner_r2_var_count="$(count_present_runner_r2_vars)"
 case "$runner_r2_var_count" in
-  0 | 4)
+  0)
+    ;;
+  4)
+    runner_r2_cache_enabled=1
     ;;
   *)
     # Transitional compatibility for PR/staging runner-image builds until
@@ -290,9 +294,13 @@ done
 [ "$FAILED" -eq 0 ] || exit 1
 
 WARM_HOST="${HOSTS[0]}"
-if ! warm_rootfs_cache "$WARM_HOST" 2>&1 | tee "${LOG_DIR}/warm-rootfs-cache.log"; then
-  echo "::error::Shared template cache warm failed on ${WARM_HOST}"
-  exit 1
+if [ "$runner_r2_cache_enabled" -eq 1 ]; then
+  if ! warm_rootfs_cache "$WARM_HOST" 2>&1 | tee "${LOG_DIR}/warm-rootfs-cache.log"; then
+    echo "::error::Shared template cache warm failed on ${WARM_HOST}"
+    exit 1
+  fi
+else
+  echo "=== Skipping shared template cache warm: R2 runner cache disabled ==="
 fi
 
 PIDS=()

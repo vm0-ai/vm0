@@ -113,6 +113,74 @@ fi
 grep -q "R2_RUNNER_CACHE_BUCKET_NAME is not configured; disabling R2 runner cache for this build" "${TMPDIR}/legacy-r2-runner-cache-bucket.err" || fail "expected legacy R2 cache disable message"
 grep -q "unsupported runner image target: powerpc-unknown-linux-musl" "${TMPDIR}/legacy-r2-runner-cache-bucket.err" || fail "expected unsupported target after legacy R2 cache warning"
 
+STUB_BIN="${TMPDIR}/bin"
+mkdir -p "$STUB_BIN"
+cat >"${STUB_BIN}/cargo" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+target="aarch64-unknown-linux-musl"
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "--target" ]; then
+    shift
+    target="$1"
+  fi
+  shift || true
+done
+mkdir -p "target/${target}/ci"
+for binary in guest-agent guest-download guest-init guest-mock-claude guest-mock-codex guest-reseed guest-write-file runner; do
+  printf '%s\n' "$binary" >"target/${target}/ci/${binary}"
+  chmod +x "target/${target}/ci/${binary}"
+done
+STUB
+chmod +x "${STUB_BIN}/cargo"
+cat >"${STUB_BIN}/ssh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+shift
+printf '%s\n' "$*" >>"${SSH_LOG}"
+case "$*" in
+  "uname -m")
+    echo "aarch64"
+    ;;
+  *"--warm-rootfs-cache"*)
+    echo "warm should be skipped when runner R2 cache is disabled" >&2
+    exit 99
+    ;;
+  *"/runner build --profile "*)
+    echo "rootfs_hash=rootfs-test"
+    echo "snapshot_hash=snapshot-test"
+    ;;
+  bash\ -s\ --*|sudo\ install\ -m\ 755\ /dev/stdin*)
+    cat >/dev/null
+    ;;
+esac
+STUB
+chmod +x "${STUB_BIN}/ssh"
+
+if ! PATH="${STUB_BIN}:$PATH" \
+  SSH_LOG="${TMPDIR}/legacy-r2-success.ssh.log" \
+  JOB_REF=pr-123 \
+  HEAD_SHA=abc \
+  METAL_HOSTS=dev-1 \
+  METAL_USER=ci \
+  R2_ACCOUNT_ID=test-account \
+  R2_ACCESS_KEY_ID=test-access-key \
+  R2_SECRET_ACCESS_KEY=test-secret \
+  R2_USER_STORAGES_BUCKET_NAME=legacy-user-storage \
+  TARGET_TRIPLE=aarch64-unknown-linux-musl \
+  EXPECTED_REMOTE_ARCH=aarch64 \
+  MANIFEST_PATH="${TMPDIR}/legacy-r2-success-manifest.json" \
+  "$PREPARE" >"${TMPDIR}/legacy-r2-success.out" 2>"${TMPDIR}/legacy-r2-success.err"; then
+  fail "expected legacy R2-only config to skip warm cache and still build"
+fi
+grep -q "R2_RUNNER_CACHE_BUCKET_NAME is not configured; disabling R2 runner cache for this build" "${TMPDIR}/legacy-r2-success.err" || fail "expected legacy R2 disable warning"
+grep -q "Skipping shared template cache warm: R2 runner cache disabled" "${TMPDIR}/legacy-r2-success.out" || fail "expected warm cache skip message"
+if grep -q -- "--warm-rootfs-cache" "${TMPDIR}/legacy-r2-success.ssh.log"; then
+  fail "expected warm-rootfs-cache not to run when runner R2 cache is disabled"
+fi
+grep -q "/runner build --profile vm0/default" "${TMPDIR}/legacy-r2-success.ssh.log" || fail "expected full image build to run"
+test -s "${TMPDIR}/legacy-r2-success-manifest.json" || fail "expected manifest to be written"
+
 if JOB_REF=pr-123 \
   HEAD_SHA=abc \
   METAL_HOSTS=dev-1 \
