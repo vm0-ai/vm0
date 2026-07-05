@@ -15,6 +15,7 @@ import type {
   GmailRelationshipBackfillRequest,
   GmailRelationshipStatusResponse,
   RelationshipRecord,
+  RelationshipSearchResponse,
 } from "@vm0/api-contracts/contracts/zero-relationships";
 import { Button, cn, Input } from "@vm0/ui";
 import { Checkbox } from "@vm0/ui/components/ui/checkbox";
@@ -39,7 +40,14 @@ import {
   gmailRelationshipBackfillDialogOpen$,
   gmailRelationshipBackfillRequest$,
   gmailRelationshipStatus$,
+  goBackTwoMemoryRelationshipPages$,
+  goForwardTwoMemoryRelationshipPages$,
+  goToNextMemoryRelationshipPage$,
+  goToPrevMemoryRelationshipPage$,
+  memoryRelationshipHasPrev$,
   memoryRelationshipFilter$,
+  memoryRelationshipLimit$,
+  memoryRelationshipPage$,
   memoryRelationshipSearch$,
   memoryRelationships$,
   reloadGmailRelationshipStatus$,
@@ -47,6 +55,7 @@ import {
   setGmailRelationshipBackfillDialogOpen$,
   setMemoryRelationshipFilter$,
   setMemoryRelationshipSearch$,
+  setMemoryRelationshipRowsPerPage$,
   setSelectedMemoryRelationshipId$,
   startGmailRelationshipBackfill$,
   stopGmailRelationshipBackfill$,
@@ -55,6 +64,7 @@ import {
 } from "../../signals/memory-page/memory-signals.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
+import { Pagination } from "../components/pagination.tsx";
 
 type RelationshipItemKind = RelationshipRecord["items"][number]["kind"];
 
@@ -85,28 +95,6 @@ function formatShortDate(value: string | null): string {
   }).format(new Date(value));
 }
 
-function matchesFilter(
-  relationship: RelationshipRecord,
-  filter: MemoryRelationshipFilter,
-): boolean {
-  switch (filter) {
-    case "people": {
-      return relationship.entity.type === "person";
-    }
-    case "organizations": {
-      return relationship.entity.type === "organization";
-    }
-    case "open-loops": {
-      return relationship.items.some((item) => {
-        return item.kind === "open_loop";
-      });
-    }
-    case "all": {
-      return true;
-    }
-  }
-}
-
 function relationshipSubtitle(relationship: RelationshipRecord): string {
   const primary =
     relationship.entity.primaryEmail ?? relationship.entity.domain ?? null;
@@ -126,6 +114,25 @@ function relationshipItems(
 
 function relationshipItemCount(relationship: RelationshipRecord): number {
   return relationship.items.length;
+}
+
+function relationshipCountLabel(
+  pagination: RelationshipSearchResponse["pagination"],
+  visibleCount: number,
+): string {
+  if (pagination.total === 0) {
+    return "0";
+  }
+  if (visibleCount === 0) {
+    return `0 of ${pagination.total}`;
+  }
+
+  const start = (pagination.page - 1) * pagination.pageSize + 1;
+  const end = Math.min(start + visibleCount - 1, pagination.total);
+  if (start === 1 && end === pagination.total) {
+    return String(pagination.total);
+  }
+  return `${start}-${end} of ${pagination.total}`;
 }
 
 function RelationshipAvatar({
@@ -860,10 +867,12 @@ function RelationshipsToolbar({
 
 function RelationshipList({
   relationships,
+  pagination,
   selectedRelationship,
   setSelectedId,
 }: {
   readonly relationships: readonly RelationshipRecord[];
+  readonly pagination: RelationshipSearchResponse["pagination"];
   readonly selectedRelationship: RelationshipRecord | null;
   readonly setSelectedId: (value: string) => void;
 }) {
@@ -874,7 +883,7 @@ function RelationshipList({
           Relationships
         </span>
         <span className="text-xs text-muted-foreground">
-          {relationships.length}
+          {relationshipCountLabel(pagination, relationships.length)}
         </span>
       </div>
       <div className="max-h-[360px] overflow-auto p-2 lg:max-h-none">
@@ -944,9 +953,17 @@ export function MemoryRelationships() {
   const search = useGet(memoryRelationshipSearch$);
   const filter = useGet(memoryRelationshipFilter$);
   const selectedId = useGet(selectedMemoryRelationshipId$);
+  const currentPage = useGet(memoryRelationshipPage$);
+  const rowsPerPage = useGet(memoryRelationshipLimit$);
+  const hasPrev = useGet(memoryRelationshipHasPrev$);
   const setSearch = useSet(setMemoryRelationshipSearch$);
   const setFilter = useSet(setMemoryRelationshipFilter$);
   const setSelectedId = useSet(setSelectedMemoryRelationshipId$);
+  const goToNext = useSet(goToNextMemoryRelationshipPage$);
+  const goToPrev = useSet(goToPrevMemoryRelationshipPage$);
+  const goForwardTwo = useSet(goForwardTwoMemoryRelationshipPages$);
+  const goBackTwo = useSet(goBackTwoMemoryRelationshipPages$);
+  const setRowsPerPage = useSet(setMemoryRelationshipRowsPerPage$);
   const relationshipsLoadable = useLoadable(memoryRelationships$);
 
   if (relationshipsLoadable.state === "loading") {
@@ -956,11 +973,8 @@ export function MemoryRelationships() {
     return <MemoryRelationshipsError />;
   }
 
-  const relationships = relationshipsLoadable.data.relationships.filter(
-    (relationship) => {
-      return matchesFilter(relationship, filter);
-    },
-  );
+  const relationships = relationshipsLoadable.data.relationships;
+  const pagination = relationshipsLoadable.data.pagination;
   const selectedRelationship =
     relationships.find((relationship) => {
       return relationship.id === selectedId;
@@ -982,12 +996,42 @@ export function MemoryRelationships() {
       <div className="grid min-h-[420px] min-w-0 lg:grid-cols-[320px_minmax(0,1fr)]">
         <RelationshipList
           relationships={relationships}
+          pagination={pagination}
           selectedRelationship={selectedRelationship}
           setSelectedId={setSelectedId}
         />
 
         <RelationshipDetail relationship={selectedRelationship} />
       </div>
+
+      {pagination.total > 0 ? (
+        <div className="border-t border-border/70 px-3 py-3">
+          <Pagination
+            currentPage={currentPage}
+            totalPages={pagination.totalPages}
+            rowsPerPage={rowsPerPage}
+            hasNext={pagination.hasMore}
+            hasPrev={hasPrev}
+            labelClassName="font-normal text-muted-foreground"
+            buttonClassName="bg-transparent border-border/70"
+            onNextPage={() => {
+              return goToNext(pagination.totalPages);
+            }}
+            onPrevPage={() => {
+              return goToPrev();
+            }}
+            onForwardTwoPages={() => {
+              return goForwardTwo(pagination.totalPages);
+            }}
+            onBackTwoPages={() => {
+              return goBackTwo();
+            }}
+            onRowsPerPageChange={(limit) => {
+              return setRowsPerPage(limit);
+            }}
+          />
+        </div>
+      ) : null}
     </section>
   );
 }
