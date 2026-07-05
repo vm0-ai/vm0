@@ -1961,9 +1961,9 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
     expect(
       lifecycleMarkers(messages.messages, fourth.runId, "completed"),
     ).toHaveLength(1);
-    expect(await readThreadTitleFromEvents(actor, first.threadId)).toBe(
-      beforeTitle,
-    );
+    await expect(
+      readThreadTitleFromEvents(actor, first.threadId),
+    ).resolves.toBe(beforeTitle);
   }, 90_000);
 });
 
@@ -2505,9 +2505,9 @@ describe("CHAT-02: auto-send across a model switch", () => {
 
     const thread = await chat.readThread(actor, first.threadId);
     expect(thread).not.toHaveProperty("selectedModel");
-    expect(await readThreadTitleFromEvents(actor, first.threadId)).toBe(
-      "Working with JSON",
-    );
+    await expect(
+      readThreadTitleFromEvents(actor, first.threadId),
+    ).resolves.toBe("Working with JSON");
     const threadEvents = await chat.requestThreadEvents(actor, {}, [200]);
     expect(threadEvents.status).toBe(200);
     if (threadEvents.status !== 200) {

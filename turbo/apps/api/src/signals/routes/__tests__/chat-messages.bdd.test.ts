@@ -960,10 +960,11 @@ describe("CHAT-02: web chat send and client-id idempotency", () => {
       runId,
     });
 
-    await expect(chat.readThread(actor, clientThreadId)).resolves.toMatchObject(
+    await expect(chat.readThread(actor, clientThreadId)).resolves.toStrictEqual(
       {
-        id: clientThreadId,
-        agentId,
+        lastReadAt: null,
+        computerUseHostId: null,
+        codexServiceTier: null,
       },
     );
 
@@ -2710,9 +2711,9 @@ describe("CHAT-02: prior rounds and thread titles", () => {
       threadId: first.threadId,
       prompt: "follow-up question",
     });
-    expect(await readThreadTitleFromEvents(actor, first.threadId)).toBe(
-      "Migration Plan",
-    );
+    await expect(
+      readThreadTitleFromEvents(actor, first.threadId),
+    ).resolves.toBe("Migration Plan");
     expect(titleRequests).toBe(1);
     const secondRun = await api.readRun(actor, second.runId);
     const appended = secondRun.appendSystemPrompt ?? "";
@@ -2732,9 +2733,9 @@ describe("CHAT-02: prior rounds and thread titles", () => {
       threadId: first.threadId,
       prompt: "manual title should stay",
     });
-    expect(await readThreadTitleFromEvents(actor, first.threadId)).toBe(
-      "Manual Migration Title",
-    );
+    await expect(
+      readThreadTitleFromEvents(actor, first.threadId),
+    ).resolves.toBe("Manual Migration Title");
     expect(titleRequests).toBe(1);
     await cancelChatRun(actor, third.runId);
   }, 90_000);
