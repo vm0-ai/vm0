@@ -1,9 +1,41 @@
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 /// Parse the ExecStart line of a systemd unit file for a runner `--config` path.
 pub(crate) async fn read_unit_config_path(unit_path: &Path) -> Option<PathBuf> {
-    let content = tokio::fs::read_to_string(unit_path).await.ok()?;
+    let mut content = tokio::fs::read_to_string(unit_path).await.ok()?;
+    content.push_str(&read_unit_dropin_content(unit_path).await?);
     parse_unit_config_path(&content)
+}
+
+async fn read_unit_dropin_content(unit_path: &Path) -> Option<String> {
+    let mut dir = OsString::from(unit_path.as_os_str());
+    dir.push(".d");
+    let dir = PathBuf::from(dir);
+    let mut entries = match tokio::fs::read_dir(&dir).await {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Some(String::new()),
+        Err(_) => return None,
+    };
+
+    let mut paths = Vec::new();
+    while let Some(entry) = entries.next_entry().await.ok()? {
+        let path = entry.path();
+        if path
+            .extension()
+            .is_some_and(|extension| extension == "conf")
+        {
+            paths.push(path);
+        }
+    }
+    paths.sort();
+
+    let mut content = String::new();
+    for path in paths {
+        content.push('\n');
+        content.push_str(&tokio::fs::read_to_string(path).await.ok()?);
+    }
+    Some(content)
 }
 
 pub(crate) fn parse_unit_config_path(content: &str) -> Option<PathBuf> {
@@ -389,6 +421,36 @@ ExecStart="/usr/bin/runner" start --config "/etc/runner.yaml"
         assert_eq!(
             parse_unit_config_path(content),
             Some(PathBuf::from("/etc/runner.yaml"))
+        );
+    }
+
+    #[tokio::test]
+    async fn read_unit_config_path_applies_dropin_exec_start_override() {
+        let dir = tempfile::tempdir().unwrap();
+        let unit_path = dir.path().join("vm0-runner-v1.0.0.service");
+        std::fs::write(
+            &unit_path,
+            r#"
+[Service]
+ExecStart="/usr/bin/runner" start --config "/etc/old-runner.yaml"
+"#,
+        )
+        .unwrap();
+        let dropin_dir = dir.path().join("vm0-runner-v1.0.0.service.d");
+        std::fs::create_dir(&dropin_dir).unwrap();
+        std::fs::write(
+            dropin_dir.join("10-override.conf"),
+            r#"
+[Service]
+ExecStart=
+ExecStart="/usr/bin/runner" start --config "/etc/new-runner.yaml"
+"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            read_unit_config_path(&unit_path).await,
+            Some(PathBuf::from("/etc/new-runner.yaml"))
         );
     }
 }
