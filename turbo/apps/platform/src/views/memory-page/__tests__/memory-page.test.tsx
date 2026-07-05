@@ -664,7 +664,7 @@ describe("memory page", () => {
     context.mocks.api(zeroMemoryContract.get, ({ respond }) => {
       return respond(200, memoryDetailResponse());
     });
-    const queries: Array<{ page: number; limit: number }> = [];
+    const queries: { page: number; limit: number }[] = [];
     context.mocks.api(
       zeroRelationshipsContract.search,
       ({ query, respond }) => {

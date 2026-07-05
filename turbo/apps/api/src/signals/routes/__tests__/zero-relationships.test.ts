@@ -4,24 +4,22 @@ import { randomUUID } from "node:crypto";
 import { cronDrainRelationshipMemoryContract } from "@vm0/api-contracts/contracts/cron";
 import { zeroRelationshipsContract } from "@vm0/api-contracts/contracts/zero-relationships";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import {
-  relationshipEntities,
-  relationshipItems,
-  relationshipStates,
-} from "@vm0/db/schema/relationship-memory";
-import { command, createStore } from "ccstate";
-import { and, eq } from "drizzle-orm";
+import { createStore } from "ccstate";
 import { HttpResponse, http } from "msw";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
-import { writeDb$ } from "../../external/db";
 import { server } from "../../../mocks/server";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
+import {
+  deleteRelationshipRowsForFixture$,
+  seedRelationshipRows$,
+  type RelationshipFixture,
+} from "./helpers/zero-relationships";
 import type { ApiTestUser } from "./helpers/api-bdd";
 import {
   createConnectorBddApi,
@@ -47,11 +45,6 @@ const DEFAULT_GMAIL_INTERNAL_DATE = String(
 afterEach(() => {
   clearMockNow();
 });
-
-interface RelationshipFixture {
-  readonly orgId: string;
-  readonly userId: string;
-}
 
 function authHeaders() {
   return { authorization: "Bearer clerk-session" };
@@ -243,97 +236,6 @@ async function connectGmail(
   });
 }
 
-const deleteRelationshipRowsForFixture$ = command(
-  async ({ set }, fixture: RelationshipFixture) => {
-    await set(writeDb$)
-      .delete(relationshipEntities)
-      .where(
-        and(
-          eq(relationshipEntities.orgId, fixture.orgId),
-          eq(relationshipEntities.userId, fixture.userId),
-        ),
-      );
-  },
-);
-
-const seedRelationshipRows$ = command(
-  async (
-    { set },
-    args: { readonly fixture: RelationshipFixture; readonly count: number },
-    signal: AbortSignal,
-  ): Promise<void> => {
-    const { fixture, count } = args;
-    const db = set(writeDb$);
-    const entities = await db
-      .insert(relationshipEntities)
-      .values(
-        Array.from({ length: count }, (_, index) => {
-          const entityType: "person" | "organization" =
-            index % 2 === 0 ? "person" : "organization";
-          return {
-            orgId: fixture.orgId,
-            userId: fixture.userId,
-            type: entityType,
-            identityKey: `${entityType}-${index}@relationship.test`,
-            displayName: `Relationship ${String(index + 1).padStart(3, "0")}`,
-            primaryEmail:
-              entityType === "person"
-                ? `person-${index}@relationship.test`
-                : null,
-            domain: `relationship-${index}.test`,
-          };
-        }),
-      )
-      .returning({ id: relationshipEntities.id });
-    signal.throwIfAborted();
-
-    const states = await db
-      .insert(relationshipStates)
-      .values(
-        entities.map((entity, index) => {
-          return {
-            orgId: fixture.orgId,
-            userId: fixture.userId,
-            entityId: entity.id,
-            relationshipType:
-              index % 2 === 0 ? "Customer contact" : "Organization",
-            summary: `Relationship pagination fixture ${index + 1}`,
-            lastInteractionAt: new Date(
-              Date.parse("2026-07-05T12:00:00.000Z") - index * 60_000,
-            ),
-          };
-        }),
-      )
-      .returning({ id: relationshipStates.id });
-    signal.throwIfAborted();
-
-    const openLoopItems = states
-      .map((state, index) => {
-        if (index % 10 !== 0) {
-          return null;
-        }
-        return {
-          orgId: fixture.orgId,
-          userId: fixture.userId,
-          relationshipStateId: state.id,
-          kind: "open_loop" as const,
-          text: `Follow up with relationship ${index + 1}`,
-          confidence: 90,
-          lastSeenAt: new Date(
-            Date.parse("2026-07-05T12:00:00.000Z") - index * 60_000,
-          ),
-        };
-      })
-      .filter((item): item is NonNullable<typeof item> => {
-        return item !== null;
-      });
-    if (openLoopItems.length > 0) {
-      await db.insert(relationshipItems).values(openLoopItems);
-    }
-    signal.throwIfAborted();
-  },
-);
-
 async function seedRelationshipFixture(
   enabled = true,
 ): Promise<RelationshipFixture> {
@@ -356,7 +258,7 @@ async function seedRelationshipFixture(
 async function deleteRelationshipFixture(
   fixture: RelationshipFixture,
 ): Promise<void> {
-  await store.set(deleteRelationshipRowsForFixture$, fixture);
+  await store.set(deleteRelationshipRowsForFixture$, fixture, context.signal);
   await deleteFeatureSwitchesForUser(context, fixture);
 }
 
