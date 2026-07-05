@@ -304,6 +304,33 @@ function resultAppRecords(
   });
 }
 
+function resultAccessibilityAppStateSnapshot(
+  result: Parameters<typeof resultRequiredString>[0],
+): AccessibilityAppStateSnapshot {
+  resultRequiredString(result, "app");
+  resultRequiredString(result, "snapshotId");
+  const elements = result.elements;
+  if (!Array.isArray(elements)) {
+    throw new ComputerUseNativeHelperError(
+      "accessibility_unavailable",
+      "Native Computer Use helper returned invalid accessibility elements",
+    );
+  }
+  for (const element of elements) {
+    if (!isRecord(element) || !resultOptionalString(element, "id")) {
+      throw new ComputerUseNativeHelperError(
+        "accessibility_unavailable",
+        "Native Computer Use helper returned invalid accessibility element",
+      );
+    }
+  }
+  return result as typeof result & {
+    readonly app: string;
+    readonly snapshotId: string;
+    readonly elements: AccessibilityAppStateSnapshot["elements"];
+  };
+}
+
 function resultOptionalString(
   result: Record<string, unknown>,
   key: string,
@@ -848,7 +875,7 @@ export function createComputerUseNativeBackend(
         snapshotId,
         ...(settle ? { settle: true } : {}),
       });
-      return result as unknown as AccessibilityAppStateSnapshot;
+      return resultAccessibilityAppStateSnapshot(result);
     },
     openApp: async (app) => {
       return await run({ kind: "app.open", app });
