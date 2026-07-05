@@ -1244,10 +1244,12 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 22
+      - name: Install pnpm
+        run: corepack enable pnpm
       - name: Install E2E dependencies
-        run: cd e2e && npm ci
+        run: cd e2e && pnpm install --frozen-lockfile
       - name: Install Playwright browsers
-        run: cd e2e && npx playwright install --with-deps chromium
+        run: cd e2e && pnpm exec playwright install --with-deps chromium
       - name: Start Stripe webhook forwarding
         # Staging receives webhooks from the Dashboard endpoint; PR previews use
         # the long-running listener from deploy-stripe-listener.
