@@ -87,7 +87,7 @@ describe("CHAT-01 chat thread lifecycle", () => {
 
     const markedRead = await api.markThreadRead(actor, created.id);
     expect(markedRead).toStrictEqual({
-      lastReadMessageId: null,
+      lastReadAt: expect.any(String),
       unreads: [],
     });
 
@@ -183,7 +183,7 @@ describe("CHAT-01 chat thread lifecycle", () => {
     const readEmpty = await api.markThreadRead(owner, thread.id);
 
     expect(readEmpty).toStrictEqual({
-      lastReadMessageId: null,
+      lastReadAt: expect.any(String),
       unreads: [],
     });
 
@@ -206,7 +206,7 @@ describe("CHAT-01 chat thread lifecycle", () => {
         selectedModel: "gpt-5.4-mini",
       }),
     );
-    expect(detail.lastReadMessageId ?? null).toBeNull();
+    expect(detail.lastReadAt).toStrictEqual(expect.any(String));
 
     const peerRename = await api.requestRenameThread(
       peer,

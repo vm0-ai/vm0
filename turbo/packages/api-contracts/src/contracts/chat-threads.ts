@@ -111,7 +111,7 @@ const persistedAttachmentSchema = z.object({
 
 /**
  * Per-agent unread snapshot. `unreadAt` is the creation time of the latest
- * visible message — the one that made the thread unread.
+ * run-finish marker — the one that made the thread unread.
  */
 const chatThreadUnreadsSchema = z.object({
   unreads: z.array(
@@ -350,19 +350,13 @@ const chatThreadDetailSchema = z.object({
   title: z.string().nullable(),
   agentId: z.string(),
   /**
-   * ID of the latest message this user has marked read in this thread.
-   * Null when the thread has never been explicitly marked read. Optional for
-   * back-compat with fixtures/tests that predate the read marker field.
+   * Read-state watermark. A thread is unread when its latest run-finish marker
+   * is newer than this timestamp.
    */
-  lastReadMessageId: z.string().nullable().optional(),
-  /**
-   * Primary read-state watermark. `lastReadMessageId` remains for legacy
-   * clients only and should not be used for new read-state logic.
-   */
-  lastReadAt: z.string().nullable().optional(),
+  lastReadAt: z.string().nullable(),
   /**
    * ISO timestamp of the latest assistant text result that should affect
-   * unread state and sidebar recency.
+   * sidebar recency.
    */
   lastMessageAt: z.string().optional(),
   activeRunIds: z.array(z.string()),
@@ -633,7 +627,7 @@ export const chatThreadDraftContract = c.router({
 });
 
 /**
- * Mark a chat thread as read up to its current latest message.
+ * Mark a chat thread as read up to its current latest run-finish marker.
  * Separate contract so it can be served by its own route file.
  */
 export const chatThreadMarkReadContract = c.router({
@@ -645,11 +639,11 @@ export const chatThreadMarkReadContract = c.router({
     body: c.noBody(),
     responses: {
       200: z.object({
-        lastReadMessageId: z.string().nullable(),
+        lastReadAt: z.string().nullable(),
         /**
          * Fresh unread snapshot for the thread's agent (same shape as the
-         * unreads endpoint). Kept for response compatibility; clients should
-         * treat `chatThreadReadCursorUpdated` as read-state invalidation.
+         * unreads endpoint). Clients should treat
+         * `chatThreadReadCursorUpdated` as read-state invalidation.
          */
         unreads: chatThreadUnreadsSchema.shape.unreads,
       }),
@@ -657,7 +651,7 @@ export const chatThreadMarkReadContract = c.router({
       401: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Mark a chat thread as read up to the latest message",
+    summary: "Mark a chat thread as read up to the latest run-finish marker",
   },
 });
 

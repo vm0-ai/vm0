@@ -3809,6 +3809,13 @@
       "when": 1783241421723,
       "tag": "0543_chilly_imperial_guard",
       "breakpoints": true
+    },
+    {
+      "idx": 544,
+      "version": "7",
+      "when": 1783245126730,
+      "tag": "0544_illegal_sway",
+      "breakpoints": true
     }
   ]
 }

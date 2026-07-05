@@ -92,7 +92,7 @@ export const currentChatAgentDisplayName$ = computed(async (get) => {
 });
 
 export interface ChatThread {
-  lastReadMessageId: string | null;
+  lastReadAt: string | null;
   codexServiceTier: CodexServiceTier | null;
   computerUseHostId: string | null;
 }

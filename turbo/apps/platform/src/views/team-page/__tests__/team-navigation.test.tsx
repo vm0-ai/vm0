@@ -724,7 +724,6 @@ describe("team page navigation", () => {
         activeRunIds: [],
         createdAt: "2026-06-01T00:00:00Z",
         updatedAt: "2026-06-01T00:02:00Z",
-        lastReadMessageId: null,
         lastReadAt: null,
         lastMessageAt: "2026-06-01T00:02:00Z",
         pinnedAt: null,
