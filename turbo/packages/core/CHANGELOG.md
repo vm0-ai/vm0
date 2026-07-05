@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.399.4](https://github.com/vm0-ai/vm0/compare/core-v8.399.3...core-v8.399.4) (2026-07-05)
+
+
+### Bug Fixes
+
+* narrow org-scoped feature switch rollouts ([#20196](https://github.com/vm0-ai/vm0/issues/20196)) ([639c9f1](https://github.com/vm0-ai/vm0/commit/639c9f1e34a8d31802c8936ccfa006b9dde0b65f))
+
 ## [8.399.3](https://github.com/vm0-ai/vm0/compare/core-v8.399.2...core-v8.399.3) (2026-07-05)
 
 
