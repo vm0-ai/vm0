@@ -32,7 +32,7 @@ export function memoryContentHash(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
-export async function memorySubstrateEnabled(
+async function memorySubstrateEnabled(
   db: ReadonlyDb,
   scope: MemoryScope,
 ): Promise<boolean> {
