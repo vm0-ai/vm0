@@ -35,7 +35,7 @@ pub(crate) struct LocalCancelMarker {
 }
 
 /// Shared file-state checks for the local queue protocol.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone)]
 pub(crate) struct LocalQueue {
     group_dir: Arc<PathBuf>,
 }

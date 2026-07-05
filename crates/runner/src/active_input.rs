@@ -58,12 +58,12 @@ pub(crate) fn active_input_payload_len(text: &str) -> Result<usize, serde_json::
     Ok(counter.len())
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone)]
 pub(crate) enum ActiveInputSource {
     LocalQueue(LocalQueueActiveInputSource),
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone)]
 pub(crate) struct LocalQueueActiveInputSource {
     pub(crate) queue: LocalQueue,
     pub(crate) run_id: RunId,
