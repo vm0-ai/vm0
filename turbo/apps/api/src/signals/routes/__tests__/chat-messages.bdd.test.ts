@@ -1847,10 +1847,25 @@ describe("CHAT-02: explicit provider pins", () => {
       },
       { codexServiceTier: null },
     );
-    await expect(chat.readThread(actor, fast.threadId)).resolves.toMatchObject({
-      selectedModel: "gpt-5.4",
-      codexServiceTier: null,
-    });
+    const updatedFastThread = await chat.readThread(actor, fast.threadId);
+    expect(updatedFastThread).not.toHaveProperty("selectedModel");
+    expect(updatedFastThread.codexServiceTier).toBeNull();
+    const updatedFastThreadEvents = await chat.requestThreadEvents(
+      actor,
+      {},
+      [200],
+    );
+    expect(updatedFastThreadEvents.status).toBe(200);
+    if (updatedFastThreadEvents.status !== 200) {
+      throw new Error("Expected chat thread events to load");
+    }
+    expect(updatedFastThreadEvents.body.events).toContainEqual(
+      expect.objectContaining({
+        kind: "model_selection_updated",
+        chatThreadId: fast.threadId,
+        selectedModel: "gpt-5.4",
+      }),
+    );
 
     const standard = await sendChatRun(actor, {
       agentId,
