@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.223.5](https://github.com/vm0-ai/vm0/compare/api-v1.223.4...api-v1.223.5) (2026-07-05)
+
+
+### Bug Fixes
+
+* use Gmail message time for relationship memory ([#20197](https://github.com/vm0-ai/vm0/issues/20197)) ([616c316](https://github.com/vm0-ai/vm0/commit/616c316061891266deb4773ae32dff44e33ebc57))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.91.8
+
 ## [1.223.4](https://github.com/vm0-ai/vm0/compare/api-v1.223.3...api-v1.223.4) (2026-07-05)
 
 
