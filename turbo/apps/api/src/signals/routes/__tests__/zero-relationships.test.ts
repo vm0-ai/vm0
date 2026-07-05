@@ -606,6 +606,91 @@ describe("GET /api/zero/relationships/*", () => {
     });
   });
 
+  it("stops and deletes a Gmail backfill job before restarting it", async () => {
+    const fixture = await track(seedRelationshipFixture());
+    const gmailEmail = `relationship-${randomUUID()}@example.com`;
+    configureGmailEnv();
+    configureGmailWatchMock();
+    await connectGmail(fixture, gmailEmail);
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const enabled = await accept(
+      relationshipsClient().gmailEnable({
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+    expect(enabled.body).toMatchObject({
+      enabled: true,
+      watchEnabled: true,
+      backfill: { status: "pending" },
+    });
+
+    const stopped = await accept(
+      relationshipsClient().gmailStopBackfill({
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+    expect(stopped.body).toMatchObject({
+      enabled: true,
+      backfill: { status: "stopped" },
+    });
+
+    const drained = await accept(
+      cronClient().drain({
+        headers: cronHeaders(),
+      }),
+      [200],
+    );
+    expect(drained.body.backfill).toStrictEqual({
+      processed: 0,
+      failed: 0,
+      scanned: 0,
+      enqueued: 0,
+    });
+
+    const deleted = await accept(
+      relationshipsClient().gmailDeleteStoppedBackfill({
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+    expect(deleted.body).toMatchObject({
+      enabled: true,
+      backfill: { status: "idle", scannedCount: 0, enqueuedCount: 0 },
+    });
+
+    const restarted = await accept(
+      relationshipsClient().gmailBackfill({
+        headers: authHeaders(),
+        body: {
+          days: 180,
+          includeArchived: true,
+          includeSent: true,
+        },
+      }),
+      [200],
+    );
+    expect(restarted.body).toMatchObject({
+      enabled: true,
+      backfill: { status: "pending" },
+    });
+
+    await accept(
+      relationshipsClient().gmailStopBackfill({
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+    await accept(
+      relationshipsClient().gmailDeleteStoppedBackfill({
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+  });
+
   it("stores generated Gmail interaction summaries instead of raw body excerpts", async () => {
     const fixture = await track(seedRelationshipFixture());
     const gmailEmail = `relationship-${randomUUID()}@example.com`;

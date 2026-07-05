@@ -81,7 +81,7 @@ interface GmailRelationshipStatus {
   readonly backfill: GmailRelationshipBackfillProgress;
 }
 
-type EnableGmailRelationshipResult =
+type GmailRelationshipMutationResult =
   | { readonly kind: "ok"; readonly status: GmailRelationshipStatus }
   | { readonly kind: "bad-request"; readonly message: string };
 
@@ -356,7 +356,7 @@ async function startGmailRelationshipBackfill(args: {
   readonly options: GmailRelationshipBackfillRequest;
   readonly restart: boolean;
   readonly signal: AbortSignal;
-}): Promise<EnableGmailRelationshipResult> {
+}): Promise<GmailRelationshipMutationResult> {
   const access = await resolveGmailAccess(args);
   args.signal.throwIfAborted();
   if (access.kind !== "ok") {
@@ -392,7 +392,7 @@ export async function enableGmailRelationshipMemory(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly signal: AbortSignal;
-}): Promise<EnableGmailRelationshipResult> {
+}): Promise<GmailRelationshipMutationResult> {
   return await startGmailRelationshipBackfill({
     ...args,
     options: defaultGmailBackfillOptions(),
@@ -406,11 +406,118 @@ export async function restartGmailRelationshipBackfill(args: {
   readonly userId: string;
   readonly options: GmailRelationshipBackfillRequest;
   readonly signal: AbortSignal;
-}): Promise<EnableGmailRelationshipResult> {
+}): Promise<GmailRelationshipMutationResult> {
   return await startGmailRelationshipBackfill({
     ...args,
     restart: true,
   });
+}
+
+export async function stopGmailRelationshipBackfill(args: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly signal: AbortSignal;
+}): Promise<GmailRelationshipMutationResult> {
+  const scope = { orgId: args.orgId, userId: args.userId };
+  const currentTime = nowDate();
+  await args.db
+    .update(relationshipBackfillJobs)
+    .set({
+      status: "stopped",
+      lockedAt: null,
+      lastError: null,
+      updatedAt: currentTime,
+    })
+    .where(
+      and(
+        eq(relationshipBackfillJobs.orgId, scope.orgId),
+        eq(relationshipBackfillJobs.userId, scope.userId),
+        eq(relationshipBackfillJobs.provider, "gmail"),
+        inArray(relationshipBackfillJobs.status, ["pending", "running"]),
+      ),
+    );
+  args.signal.throwIfAborted();
+
+  await args.db
+    .update(relationshipMemorySettings)
+    .set({
+      bootstrapStatus: "idle",
+      lastError: null,
+      updatedAt: currentTime,
+    })
+    .where(
+      and(
+        eq(relationshipMemorySettings.orgId, scope.orgId),
+        eq(relationshipMemorySettings.userId, scope.userId),
+        eq(relationshipMemorySettings.provider, "gmail"),
+      ),
+    );
+  args.signal.throwIfAborted();
+
+  return {
+    kind: "ok",
+    status: await getGmailRelationshipStatus(args.db, scope),
+  };
+}
+
+export async function deleteStoppedGmailRelationshipBackfill(args: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly signal: AbortSignal;
+}): Promise<GmailRelationshipMutationResult> {
+  const scope = { orgId: args.orgId, userId: args.userId };
+  const [job] = await args.db
+    .select({
+      id: relationshipBackfillJobs.id,
+      status: relationshipBackfillJobs.status,
+    })
+    .from(relationshipBackfillJobs)
+    .where(
+      and(
+        eq(relationshipBackfillJobs.orgId, scope.orgId),
+        eq(relationshipBackfillJobs.userId, scope.userId),
+        eq(relationshipBackfillJobs.provider, "gmail"),
+      ),
+    )
+    .limit(1);
+  args.signal.throwIfAborted();
+
+  if (job && job.status !== "stopped") {
+    return {
+      kind: "bad-request",
+      message: "Stop the Gmail relationship backfill before deleting it.",
+    };
+  }
+
+  if (job) {
+    await args.db
+      .delete(relationshipBackfillJobs)
+      .where(eq(relationshipBackfillJobs.id, job.id));
+    args.signal.throwIfAborted();
+  }
+
+  await args.db
+    .update(relationshipMemorySettings)
+    .set({
+      bootstrapStatus: "idle",
+      lastError: null,
+      updatedAt: nowDate(),
+    })
+    .where(
+      and(
+        eq(relationshipMemorySettings.orgId, scope.orgId),
+        eq(relationshipMemorySettings.userId, scope.userId),
+        eq(relationshipMemorySettings.provider, "gmail"),
+      ),
+    );
+  args.signal.throwIfAborted();
+
+  return {
+    kind: "ok",
+    status: await getGmailRelationshipStatus(args.db, scope),
+  };
 }
 
 async function listBackfillMessages(args: {
@@ -517,7 +624,7 @@ async function processBackfillJob(
 
   const completed = !listed.nextPageToken;
   const currentTime = nowDate();
-  await db
+  const [updatedJob] = await db
     .update(relationshipBackfillJobs)
     .set({
       status: completed ? "done" : "pending",
@@ -532,8 +639,18 @@ async function processBackfillJob(
       lastError: null,
       updatedAt: currentTime,
     })
-    .where(eq(relationshipBackfillJobs.id, job.id));
+    .where(
+      and(
+        eq(relationshipBackfillJobs.id, job.id),
+        eq(relationshipBackfillJobs.status, "running"),
+      ),
+    )
+    .returning({ id: relationshipBackfillJobs.id });
   signal.throwIfAborted();
+
+  if (!updatedJob) {
+    return { scanned: messages.length, enqueued };
+  }
 
   await db
     .insert(relationshipMemorySettings)
@@ -573,7 +690,7 @@ async function markBackfillFailed(args: {
     args.error instanceof Error ? args.error.message : String(args.error);
   const retry = args.job.attempts + 1 < 3;
   const currentTime = nowDate();
-  await args.db
+  const [updated] = await args.db
     .update(relationshipBackfillJobs)
     .set({
       status: retry ? "pending" : "failed",
@@ -582,7 +699,17 @@ async function markBackfillFailed(args: {
       lastError: message,
       updatedAt: currentTime,
     })
-    .where(eq(relationshipBackfillJobs.id, args.job.id));
+    .where(
+      and(
+        eq(relationshipBackfillJobs.id, args.job.id),
+        eq(relationshipBackfillJobs.status, "running"),
+      ),
+    )
+    .returning({ id: relationshipBackfillJobs.id });
+
+  if (!updated) {
+    return;
+  }
 
   await args.db
     .update(relationshipMemorySettings)
@@ -640,6 +767,7 @@ export const advanceGmailRelationshipBackfillJobs$ = command(
         .where(
           and(
             eq(relationshipBackfillJobs.id, job.id),
+            inArray(relationshipBackfillJobs.status, ["pending", "running"]),
             or(
               isNull(relationshipBackfillJobs.lockedAt),
               lt(relationshipBackfillJobs.lockedAt, staleBefore),
