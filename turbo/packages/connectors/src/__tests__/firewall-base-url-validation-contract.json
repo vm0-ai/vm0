@@ -121,9 +121,27 @@
       "expectedValid": false
     },
     {
+      "category": "query-fragment",
+      "name": "parameterized query string is invalid",
+      "base": "https://{sub}.example.com?token=1",
+      "expectedValid": false
+    },
+    {
+      "category": "query-fragment",
+      "name": "parameterized fragment is invalid",
+      "base": "https://{sub}.example.com#section",
+      "expectedValid": false
+    },
+    {
       "category": "authority",
       "name": "userinfo is invalid",
       "base": "https://user:pass@api.example.com",
+      "expectedValid": false
+    },
+    {
+      "category": "authority",
+      "name": "parameterized userinfo is invalid",
+      "base": "https://user:pass@{sub}.example.com",
       "expectedValid": false
     },
     {
@@ -364,6 +382,12 @@
       "category": "parameters",
       "name": "duplicate host and path parameter name is invalid",
       "base": "https://{org}.example.com/{org}",
+      "expectedValid": false
+    },
+    {
+      "category": "parameters",
+      "name": "duplicate path parameter name is invalid",
+      "base": "https://api.example.com/{org}/{org}",
       "expectedValid": false
     }
   ]
