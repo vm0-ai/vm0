@@ -1143,48 +1143,90 @@ async function resolveStoredModelFirstPin(params: {
   });
 }
 
-async function persistThreadPinIfUnset(
-  db: Db,
-  threadId: string,
-  pin: ThreadModelPin,
-): Promise<ThreadModelPin> {
-  if (!pin.selectedModel) {
-    return pin;
+async function persistThreadPinIfUnset(params: {
+  readonly db: Db;
+  readonly threadId: string;
+  readonly userId: string;
+  readonly orgId: string;
+  readonly pin: ThreadModelPin;
+}): Promise<ThreadModelPin> {
+  if (!params.pin.selectedModel) {
+    return params.pin;
   }
-  await db
-    .update(chatThreads)
-    .set({
-      ...modelOnlyModelFirstPin(pin.selectedModel),
-      updatedAt: nowDate(),
-    })
-    .where(and(eq(chatThreads.id, threadId), isNull(chatThreads.selectedModel)))
-    .returning({ selectedModel: chatThreads.selectedModel });
-  return pin;
-}
-
-async function persistThreadPinForExplicitSelection(
-  db: Db,
-  threadId: string,
-  pin: ThreadModelPin,
-): Promise<ThreadModelPin> {
-  if (!pin.selectedModel) {
-    await db
+  await params.db.transaction(async (tx) => {
+    const updatedAt = nowDate();
+    const [thread] = await tx
       .update(chatThreads)
       .set({
-        ...modelOnlyModelFirstPin(null),
-        updatedAt: nowDate(),
+        ...modelOnlyModelFirstPin(params.pin.selectedModel),
+        updatedAt,
       })
-      .where(eq(chatThreads.id, threadId));
-    return pin;
-  }
-  await db
-    .update(chatThreads)
-    .set({
-      ...modelOnlyModelFirstPin(pin.selectedModel),
-      updatedAt: nowDate(),
-    })
-    .where(eq(chatThreads.id, threadId));
-  return pin;
+      .where(
+        and(
+          eq(chatThreads.id, params.threadId),
+          eq(chatThreads.userId, params.userId),
+          isNull(chatThreads.selectedModel),
+        ),
+      )
+      .returning({
+        id: chatThreads.id,
+        agentComposeId: chatThreads.agentComposeId,
+      });
+    if (!thread) {
+      return;
+    }
+    await appendChatThreadEvent(tx, {
+      kind: "model_selection_updated",
+      userId: params.userId,
+      orgId: params.orgId,
+      chatThreadId: thread.id,
+      agentComposeId: thread.agentComposeId,
+      selectedModel: params.pin.selectedModel,
+      createdAt: updatedAt,
+    });
+  });
+  return params.pin;
+}
+
+async function persistThreadPinForExplicitSelection(params: {
+  readonly db: Db;
+  readonly threadId: string;
+  readonly userId: string;
+  readonly orgId: string;
+  readonly pin: ThreadModelPin;
+}): Promise<ThreadModelPin> {
+  await params.db.transaction(async (tx) => {
+    const updatedAt = nowDate();
+    const [thread] = await tx
+      .update(chatThreads)
+      .set({
+        ...modelOnlyModelFirstPin(params.pin.selectedModel),
+        updatedAt,
+      })
+      .where(
+        and(
+          eq(chatThreads.id, params.threadId),
+          eq(chatThreads.userId, params.userId),
+        ),
+      )
+      .returning({
+        id: chatThreads.id,
+        agentComposeId: chatThreads.agentComposeId,
+      });
+    if (!thread) {
+      return;
+    }
+    await appendChatThreadEvent(tx, {
+      kind: "model_selection_updated",
+      userId: params.userId,
+      orgId: params.orgId,
+      chatThreadId: thread.id,
+      agentComposeId: thread.agentComposeId,
+      selectedModel: params.pin.selectedModel,
+      createdAt: updatedAt,
+    });
+  });
+  return params.pin;
 }
 
 async function resolveRunModelPin(params: {
@@ -1213,7 +1255,13 @@ async function resolveRunModelPin(params: {
     if ("status" in pin) {
       return pin;
     }
-    return persistThreadPinIfUnset(params.db, params.threadId, pin);
+    return persistThreadPinIfUnset({
+      db: params.db,
+      threadId: params.threadId,
+      userId: params.userId,
+      orgId: params.orgId,
+      pin,
+    });
   }
 
   const pin = params.modelSelection
@@ -1228,8 +1276,20 @@ async function resolveRunModelPin(params: {
     return pin;
   }
   return params.modelSelection === undefined
-    ? persistThreadPinIfUnset(params.db, params.threadId, pin)
-    : persistThreadPinForExplicitSelection(params.db, params.threadId, pin);
+    ? persistThreadPinIfUnset({
+        db: params.db,
+        threadId: params.threadId,
+        userId: params.userId,
+        orgId: params.orgId,
+        pin,
+      })
+    : persistThreadPinForExplicitSelection({
+        db: params.db,
+        threadId: params.threadId,
+        userId: params.userId,
+        orgId: params.orgId,
+        pin,
+      });
 }
 
 async function validateModelSelection(params: {
@@ -1557,6 +1617,7 @@ async function createChatThread(
           agentComposeId: args.agentId,
           eventId: args.chatThreadEventId,
           title: null,
+          selectedModel: args.pin.selectedModel,
           createdAt: thread.createdAt,
         });
         return { id: thread.id, clientThreadAlreadyExisted: false };
@@ -1603,6 +1664,7 @@ async function createChatThread(
       agentComposeId: args.agentId,
       eventId: args.chatThreadEventId,
       title: null,
+      selectedModel: args.pin.selectedModel,
       createdAt: thread.createdAt,
     });
     return { id: thread.id, clientThreadAlreadyExisted: false };

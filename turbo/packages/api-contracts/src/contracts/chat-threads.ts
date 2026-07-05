@@ -171,6 +171,7 @@ const chatThreadSnapshotProjectionSchema = z.object({
   updatedAt: z.string(),
   pinnedAt: z.string().nullable(),
   renamedAt: z.string().nullable(),
+  selectedModel: z.string().nullable().default(null),
 });
 
 const chatThreadEventSchema = z.object({
@@ -181,11 +182,13 @@ const chatThreadEventSchema = z.object({
     "deleted",
     "pinned",
     "unpinned",
+    "model_selection_updated",
     "sort_touched",
   ]),
   chatThreadId: z.string().uuid(),
   agentId: z.string().uuid(),
   title: z.string().nullable(),
+  selectedModel: z.string().nullable().default(null),
   createdAt: z.string(),
 });
 
@@ -791,6 +794,7 @@ export const chatThreadModelSelectionContract = c.router({
     body: z.object({
       modelSelection: modelSelectionRequestSchema.nullable(),
       codexServiceTier: codexServiceTierSchema.nullable().optional(),
+      eventId: chatThreadEventIdSchema.optional(),
     }),
     responses: {
       204: c.noBody(),

@@ -22,6 +22,7 @@ import { sidebarChatThreadIds$ } from "../sidebar-chat-thread-ids.ts";
 import { setChatThreadOnlyUnread$ } from "../chat-thread-only-unread.ts";
 import { openRenameChatThreadDialogFromThreadMeta$ } from "../chat-thread-rename.ts";
 import {
+  eventDrivenChatThread,
   registerOptimisticChatThreadEvent$,
   threadMeta,
 } from "../chat-thread-event-sourcing.ts";
@@ -177,6 +178,7 @@ describe("chat thread event sourcing local-first list", () => {
             updatedAt: "2026-07-03T02:00:00.000Z",
             pinnedAt: null,
             renamedAt: null,
+            selectedModel: null,
           },
         ],
       },
@@ -187,6 +189,7 @@ describe("chat thread event sourcing local-first list", () => {
           chatThreadId: THREAD_ID,
           agentId: AGENT_ID,
           title: "Cached renamed title",
+          selectedModel: null,
           createdAt: "2026-07-03T03:00:00.000Z",
         },
       ],
@@ -264,6 +267,7 @@ describe("chat thread event sourcing local-first list", () => {
             updatedAt: "2026-07-03T03:00:00.000Z",
             pinnedAt: null,
             renamedAt: null,
+            selectedModel: null,
           },
           {
             id: OTHER_THREAD_ID,
@@ -274,6 +278,7 @@ describe("chat thread event sourcing local-first list", () => {
             updatedAt: "2026-07-03T02:00:00.000Z",
             pinnedAt: null,
             renamedAt: null,
+            selectedModel: null,
           },
         ],
       },
@@ -337,6 +342,7 @@ describe("chat thread event sourcing local-first list", () => {
         updatedAt: timestamp,
         pinnedAt: null,
         renamedAt: null,
+        selectedModel: null,
       } satisfies ChatThreadSnapshotProjection;
     });
 
@@ -378,6 +384,65 @@ describe("chat thread event sourcing local-first list", () => {
     );
   });
 
+  it("applies optimistic selected model updates over cached thread projections", async () => {
+    context.store.set(setChatAgentId$, AGENT_ID);
+
+    idbThreadEventStoreMock.setData({
+      snapshot: {
+        latestEventId: EVENT_ID,
+        chatThreads: [
+          {
+            id: THREAD_ID,
+            agentId: AGENT_ID,
+            title: "Cached model thread",
+            sortAt: "2026-07-03T02:00:00.000Z",
+            createdAt: "2026-07-03T01:00:00.000Z",
+            updatedAt: "2026-07-03T02:00:00.000Z",
+            pinnedAt: null,
+            renamedAt: null,
+            selectedModel: null,
+          },
+        ],
+      },
+      events: [],
+    });
+    context.mocks.api(chatThreadsContract.events, ({ respond }) => {
+      return respond(200, { events: [], hasMore: false });
+    });
+    context.mocks.api(chatThreadsContract.activeIds, ({ respond }) => {
+      return respond(200, { threadIds: [] });
+    });
+    await setupPage({
+      context,
+      path: "/error",
+      withoutRender: true,
+      user: { id: "user_1", fullName: "Test User" },
+      session: { token: "token" },
+      org: {
+        activeOrg: { id: "org_1", name: "Test Org" },
+        memberships: [{ id: "org_1" }],
+      },
+    });
+
+    context.store.set(registerOptimisticChatThreadEvent$, {
+      id: OPTIMISTIC_EVENT_ID,
+      kind: "model_selection_updated",
+      chatThreadId: THREAD_ID,
+      agentId: AGENT_ID,
+      title: null,
+      selectedModel: "claude-sonnet-4-6",
+      createdAt: "2026-07-03T05:00:00.000Z",
+    });
+
+    await expect(
+      context.store.get(eventDrivenChatThread(THREAD_ID)),
+    ).resolves.toMatchObject({
+      selectedModel: "claude-sonnet-4-6",
+      sortAt: "2026-07-03T02:00:00.000Z",
+      updatedAt: "2026-07-03T05:00:00.000Z",
+    });
+  });
+
   it("uses optimistic create events for event-sourced sidebar ids", async () => {
     context.store.set(setChatAgentId$, AGENT_ID);
 
@@ -413,6 +478,7 @@ describe("chat thread event sourcing local-first list", () => {
       chatThreadId: OPTIMISTIC_THREAD_ID,
       agentId: AGENT_ID,
       title: null,
+      selectedModel: null,
       createdAt: "2026-07-03T05:00:00.000Z",
     });
 
@@ -470,6 +536,7 @@ describe("chat thread event sourcing local-first list", () => {
       chatThreadId: OPTIMISTIC_THREAD_ID,
       agentId: AGENT_ID,
       title: null,
+      selectedModel: null,
       createdAt: "2026-07-03T05:00:00.000Z",
     } satisfies ChatThreadEvent;
 
@@ -533,6 +600,7 @@ describe("chat thread event sourcing local-first list", () => {
             updatedAt: "2026-07-03T02:00:00.000Z",
             pinnedAt: null,
             renamedAt: null,
+            selectedModel: null,
           },
         ],
       },
@@ -543,6 +611,7 @@ describe("chat thread event sourcing local-first list", () => {
           chatThreadId: THREAD_ID,
           agentId: AGENT_ID,
           title: "Cached renamed title",
+          selectedModel: null,
           createdAt: "2026-07-03T03:00:00.000Z",
         },
       ],

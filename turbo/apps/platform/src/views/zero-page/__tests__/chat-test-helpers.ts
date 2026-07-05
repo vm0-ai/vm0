@@ -202,6 +202,7 @@ interface ThreadListItem {
   running: boolean;
   pinnedAt?: string | null;
   renamedAt?: string | null;
+  selectedModel?: string | null;
 }
 
 const UUID_PATTERN =
@@ -218,6 +219,7 @@ export function threadListSnapshot(threads: readonly ThreadListItem[]) {
       updatedAt: thread.updatedAt,
       pinnedAt: thread.pinnedAt ?? null,
       renamedAt: thread.renamedAt ?? null,
+      selectedModel: thread.selectedModel ?? null,
     };
   });
 }

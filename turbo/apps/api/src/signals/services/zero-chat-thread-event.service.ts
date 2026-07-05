@@ -25,6 +25,7 @@ export async function appendChatThreadEvent(
     readonly agentComposeId: string;
     readonly eventId?: string;
     readonly title?: string | null;
+    readonly selectedModel?: string | null;
     readonly createdAt?: Date;
   },
 ): Promise<void> {
@@ -52,6 +53,7 @@ export async function appendChatThreadEvent(
       kind: args.kind,
       agentComposeId: args.agentComposeId,
       title: args.title ?? null,
+      selectedModel: args.selectedModel ?? null,
       ...(args.createdAt !== undefined ? { createdAt: args.createdAt } : {}),
     })
     .onConflictDoNothing({ target: chatThreadEvents.id });
@@ -82,7 +84,13 @@ export async function getChatThreadSnapshot(
     .limit(1);
 
   return {
-    chatThreads: snapshot?.chatThreads ?? [],
+    chatThreads:
+      snapshot?.chatThreads.map((thread) => {
+        return {
+          ...thread,
+          selectedModel: thread.selectedModel ?? null,
+        };
+      }) ?? [],
     latestEventId: snapshot?.latestEventId ?? null,
   };
 }
@@ -93,6 +101,7 @@ function toApiChatThreadEvent(row: {
   readonly chatThreadId: string;
   readonly agentComposeId: string;
   readonly title: string | null;
+  readonly selectedModel: string | null;
   readonly createdAt: Date;
 }): ChatThreadEvent {
   return {
@@ -101,6 +110,7 @@ function toApiChatThreadEvent(row: {
     chatThreadId: row.chatThreadId,
     agentId: row.agentComposeId,
     title: row.title,
+    selectedModel: row.selectedModel,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -166,6 +176,7 @@ export async function getChatThreadEventsSince(
       chatThreadId: chatThreadEvents.chatThreadId,
       agentComposeId: chatThreadEvents.agentComposeId,
       title: chatThreadEvents.title,
+      selectedModel: chatThreadEvents.selectedModel,
       createdAt: chatThreadEvents.createdAt,
     })
     .from(chatThreadEvents)

@@ -82,6 +82,7 @@ function mockThreadDetails(): void {
           updatedAt: thread.updatedAt,
           pinnedAt: null,
           renamedAt: null,
+          selectedModel: null,
         };
       }),
       latestEventId: null,

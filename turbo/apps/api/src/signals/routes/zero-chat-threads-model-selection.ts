@@ -13,6 +13,7 @@ import { publishThreadListChanged } from "../external/realtime";
 import { nowDate } from "../external/time";
 import { badRequestMessage, notFound } from "../../lib/error";
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
+import { appendChatThreadEvent } from "../services/zero-chat-thread-event.service";
 import {
   resolveModelFirstProviderAdmission,
   resolveModelSelectionPin,
@@ -115,23 +116,46 @@ const updateModelSelectionInner$ = command(
       return codexServiceTierError;
     }
 
-    const updated = await writeDb
-      .update(chatThreads)
-      .set({
-        modelProviderId: pin.modelProviderId,
-        modelProviderType: pin.modelProviderType,
-        modelProviderCredentialScope: pin.modelProviderCredentialScope,
+    const updated = await writeDb.transaction(async (tx) => {
+      const updatedAt = nowDate();
+      const [thread] = await tx
+        .update(chatThreads)
+        .set({
+          modelProviderId: pin.modelProviderId,
+          modelProviderType: pin.modelProviderType,
+          modelProviderCredentialScope: pin.modelProviderCredentialScope,
+          selectedModel: pin.selectedModel,
+          codexServiceTier: body.data.codexServiceTier ?? null,
+          updatedAt,
+        })
+        .where(
+          and(
+            eq(chatThreads.id, params.id),
+            eq(chatThreads.userId, auth.userId),
+          ),
+        )
+        .returning({
+          id: chatThreads.id,
+          agentComposeId: chatThreads.agentComposeId,
+        });
+      if (!thread) {
+        return false;
+      }
+      await appendChatThreadEvent(tx, {
+        kind: "model_selection_updated",
+        userId: auth.userId,
+        orgId: auth.orgId,
+        chatThreadId: thread.id,
+        agentComposeId: thread.agentComposeId,
+        eventId: body.data.eventId,
         selectedModel: pin.selectedModel,
-        codexServiceTier: body.data.codexServiceTier ?? null,
-        updatedAt: nowDate(),
-      })
-      .where(
-        and(eq(chatThreads.id, params.id), eq(chatThreads.userId, auth.userId)),
-      )
-      .returning({ id: chatThreads.id });
+        createdAt: updatedAt,
+      });
+      return true;
+    });
     signal.throwIfAborted();
 
-    if (updated.length === 0) {
+    if (!updated) {
       return notFound("Chat thread not found");
     }
 

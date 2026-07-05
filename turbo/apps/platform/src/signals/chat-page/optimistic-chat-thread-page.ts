@@ -255,6 +255,7 @@ const mintOptimisticThreadWithEvent$ = command(
       chatThreadId: args.threadId,
       agentId: args.agentId,
       title: null,
+      selectedModel: null,
       createdAt,
     } satisfies ChatThreadEvent);
   },
