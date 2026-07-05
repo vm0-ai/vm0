@@ -3802,6 +3802,13 @@
       "when": 1783220848532,
       "tag": "0542_reset_relationship_memory_data",
       "breakpoints": true
+    },
+    {
+      "idx": 543,
+      "version": "7",
+      "when": 1783241421723,
+      "tag": "0543_chilly_imperial_guard",
+      "breakpoints": true
     }
   ]
 }
