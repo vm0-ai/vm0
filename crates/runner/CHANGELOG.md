@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.133.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.133.1...runner-rs-v0.133.2) (2026-07-05)
+
+
+### Performance Improvements
+
+* **runner:** adapt active input idle polling ([#20250](https://github.com/vm0-ai/vm0/issues/20250)) ([bbe0608](https://github.com/vm0-ai/vm0/commit/bbe0608afc5f90d874b5d71eaba1cf431a576952))
+* **runner:** avoid sorting local queue discovery ([#20251](https://github.com/vm0-ai/vm0/issues/20251)) ([9eea0de](https://github.com/vm0-ai/vm0/commit/9eea0deca3e4ab64e2b827c76d3c9065959fb2a3))
+
 ## [0.133.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.133.0...runner-rs-v0.133.1) (2026-07-05)
 
 

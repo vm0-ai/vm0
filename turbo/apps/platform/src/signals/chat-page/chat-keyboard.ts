@@ -532,7 +532,14 @@ export const setChatKeyboardScrollRoot$ = onRef(
           : set(loadRightThread$, targetId, signal);
       await Promise.all([
         promise,
-        set(scrollToThread$, targetId, get(rootSignal$)),
+        set(
+          scrollToThread$,
+          {
+            threadId: targetId,
+            align: direction === "next" ? "bottom" : "top",
+          },
+          get(rootSignal$),
+        ),
       ]);
     };
     const navigateFocusedThread = (direction: "prev" | "next") => {

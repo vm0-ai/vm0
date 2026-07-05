@@ -821,11 +821,15 @@ async function insertAssistantErrorMessage(args: {
         target: chatMessages.runId,
         where: sql`${chatMessages.runLifecycleEvent} IS NOT NULL`,
       })
-      .returning({ id: chatMessages.id });
+      .returning({ id: chatMessages.id, createdAt: chatMessages.createdAt });
     if (message.length === 0) {
       return false;
     }
-    await touchChatThreadLastMessageAt(tx, args.threadId);
+    await touchChatThreadLastMessageAt(
+      tx,
+      args.threadId,
+      message[0]!.createdAt,
+    );
     return true;
   });
   if (!inserted) {
@@ -879,21 +883,7 @@ async function insertRunLifecycleMarker(args: {
     if (marker.length === 0) {
       return false;
     }
-    const [assistantText] = await tx
-      .select({ id: chatMessages.id })
-      .from(chatMessages)
-      .where(
-        and(
-          eq(chatMessages.runId, args.runId),
-          eq(chatMessages.role, "assistant"),
-          isNotNull(chatMessages.content),
-          sql`${chatMessages.content} <> ''`,
-        ),
-      )
-      .limit(1);
-    if (assistantText) {
-      await touchChatThreadLastMessageAt(tx, args.threadId);
-    }
+    await touchChatThreadLastMessageAt(tx, args.threadId, markerCreatedAt);
     return true;
   });
   if (!inserted) {
