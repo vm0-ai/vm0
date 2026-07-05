@@ -24,10 +24,12 @@ import {
   currentChatThreadId$,
   currentChatThreadListIds$,
 } from "../agent-chat.ts";
+import { rootSignal$ } from "../root-signal.ts";
 import {
   setupGlobalShortcut,
   type GlobalShortcutBindings,
 } from "../../lib/setup-global-shortcut.ts";
+import { scrollToThread$ } from "./sidebar-chat-thread-scroll.ts";
 
 type ChatThreadPane = "main" | "side";
 
@@ -528,7 +530,10 @@ export const setChatKeyboardScrollRoot$ = onRef(
         pane === "main"
           ? set(loadLeftThread$, targetId, signal)
           : set(loadRightThread$, targetId, signal);
-      await promise;
+      await Promise.all([
+        promise,
+        set(scrollToThread$, targetId, get(rootSignal$)),
+      ]);
     };
     const navigateFocusedThread = (direction: "prev" | "next") => {
       const pane = paneForThread(

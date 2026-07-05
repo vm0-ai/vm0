@@ -91,19 +91,15 @@ import {
   overlayScrollViewport$,
   chatThreadVirtualListElement$,
   setChatThreadVirtualListElement$,
-  chatThreadVirtualScrollTarget$,
-  setChatThreadVirtualScrollTarget$,
+  CHAT_THREAD_VIRTUAL_ROW_HEIGHT,
 } from "../../signals/zero-page/zero-sidebar-state.ts";
 import { Link } from "../router/link.tsx";
 
 type IndicatorState = "running" | "unread" | "draft";
 type ChatThreadPaneIndicator = "main" | "sidebar";
-const CHAT_THREAD_VIRTUAL_ROW_HEIGHT = 36;
 const CHAT_THREAD_VIRTUAL_OVERSCAN = 8;
 const CHAT_THREAD_VIRTUAL_FALLBACK_VIEWPORT_HEIGHT =
   CHAT_THREAD_VIRTUAL_ROW_HEIGHT * 12;
-const CHAT_THREAD_VIRTUAL_SCROLL_QUEUED_KEY =
-  "vm0ChatThreadVirtualScrollQueuedKey";
 
 function SessionStateIndicator({ state }: { state: IndicatorState }) {
   if (state === "running") {
@@ -771,70 +767,6 @@ function getFixedVirtualRange({
   };
 }
 
-function queueChatThreadVirtualTargetScroll({
-  scrollMargin,
-  scrollTargetThreadId,
-  scrollViewport,
-  setScrollTargetThreadId,
-  targetIndex,
-  viewportHeight,
-}: {
-  scrollMargin: number;
-  scrollTargetThreadId: string | null;
-  scrollViewport: HTMLElement | null;
-  setScrollTargetThreadId: (threadId: string | null) => void;
-  targetIndex: number;
-  viewportHeight: number;
-}) {
-  if (scrollTargetThreadId === null) {
-    return;
-  }
-
-  if (targetIndex === -1) {
-    return;
-  }
-
-  if (!scrollViewport) {
-    return;
-  }
-
-  const key = [
-    scrollTargetThreadId,
-    targetIndex,
-    scrollMargin,
-    viewportHeight,
-  ].join(":");
-  if (
-    document.documentElement.dataset[CHAT_THREAD_VIRTUAL_SCROLL_QUEUED_KEY] ===
-    key
-  ) {
-    return;
-  }
-  document.documentElement.dataset[CHAT_THREAD_VIRTUAL_SCROLL_QUEUED_KEY] = key;
-  queueMicrotask(() => {
-    if (
-      document.documentElement.dataset[
-        CHAT_THREAD_VIRTUAL_SCROLL_QUEUED_KEY
-      ] === key
-    ) {
-      delete document.documentElement.dataset[
-        CHAT_THREAD_VIRTUAL_SCROLL_QUEUED_KEY
-      ];
-    }
-    const rowTop = scrollMargin + targetIndex * CHAT_THREAD_VIRTUAL_ROW_HEIGHT;
-    const rowBottom = rowTop + CHAT_THREAD_VIRTUAL_ROW_HEIGHT;
-    const viewportTop = scrollViewport.scrollTop;
-    const viewportBottom = viewportTop + viewportHeight;
-    if (rowTop < viewportTop || rowBottom > viewportBottom) {
-      scrollViewport.scrollTop = Math.max(
-        0,
-        rowTop - CHAT_THREAD_VIRTUAL_ROW_HEIGHT,
-      );
-    }
-    setScrollTargetThreadId(null);
-  });
-}
-
 function VirtualizedChatThreads({
   chatThreads,
 }: {
@@ -844,39 +776,19 @@ function VirtualizedChatThreads({
   const scrollMetrics = useGet(overlayScrollMetrics$);
   const virtualListElement = useGet(chatThreadVirtualListElement$);
   const setVirtualListElement = useSet(setChatThreadVirtualListElement$);
-  const scrollTargetThreadId = useGet(chatThreadVirtualScrollTarget$);
-  const setScrollTargetThreadId = useSet(setChatThreadVirtualScrollTarget$);
   const scrollMargin = virtualListElement?.offsetTop ?? 0;
   const viewportHeight =
     scrollMetrics.clientHeight ||
     scrollViewport?.clientHeight ||
     CHAT_THREAD_VIRTUAL_FALLBACK_VIEWPORT_HEIGHT;
   const scrollTop = scrollMetrics.scrollTop ?? scrollViewport?.scrollTop ?? 0;
-  const targetIndex = scrollTargetThreadId
-    ? chatThreads.findIndex((thread) => {
-        return thread.id === scrollTargetThreadId;
-      })
-    : -1;
-  const targetScrollTop =
-    targetIndex >= 0
-      ? scrollMargin + targetIndex * CHAT_THREAD_VIRTUAL_ROW_HEIGHT
-      : null;
   const { startIndex, endIndex, totalHeight } = getFixedVirtualRange({
     itemCount: chatThreads.length,
     scrollMargin,
-    scrollTop: targetScrollTop ?? scrollTop,
+    scrollTop,
     viewportHeight,
   });
   const visibleChatThreads = chatThreads.slice(startIndex, endIndex);
-
-  queueChatThreadVirtualTargetScroll({
-    scrollMargin,
-    scrollTargetThreadId,
-    scrollViewport,
-    setScrollTargetThreadId,
-    targetIndex,
-    viewportHeight,
-  });
 
   return (
     <div
