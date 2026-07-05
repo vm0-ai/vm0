@@ -560,6 +560,7 @@ interface ClaimedRun {
   readonly prompt: string;
   readonly appendSystemPrompt: string | null;
   readonly agentComposeVersionId: string | null;
+  readonly agentId: string | null;
   readonly vars: unknown;
   readonly resumedFromCheckpointId: string | null;
 }
@@ -630,12 +631,17 @@ async function getClaimableJob(
         prompt: agentRuns.prompt,
         appendSystemPrompt: agentRuns.appendSystemPrompt,
         agentComposeVersionId: agentRuns.agentComposeVersionId,
+        agentId: agentComposeVersions.composeId,
         vars: agentRuns.vars,
         resumedFromCheckpointId: agentRuns.resumedFromCheckpointId,
       },
     })
     .from(runnerJobQueue)
     .innerJoin(agentRuns, eq(runnerJobQueue.runId, agentRuns.id))
+    .leftJoin(
+      agentComposeVersions,
+      eq(agentComposeVersions.id, agentRuns.agentComposeVersionId),
+    )
     .where(
       and(
         eq(runnerJobQueue.runId, runId),
@@ -920,22 +926,6 @@ async function secretValuesForRunner(
   });
 }
 
-async function agentIdForRun(
-  db: Pick<Db, "select">,
-  run: Pick<ClaimedRun, "agentComposeVersionId">,
-): Promise<string | undefined> {
-  if (!run.agentComposeVersionId) {
-    return undefined;
-  }
-
-  const [version] = await db
-    .select({ agentId: agentComposeVersions.composeId })
-    .from(agentComposeVersions)
-    .where(eq(agentComposeVersions.id, run.agentComposeVersionId))
-    .limit(1);
-  return version?.agentId ?? undefined;
-}
-
 async function refreshClaimNetworkPolicies(args: {
   readonly db: Db;
   readonly run: ClaimedRun;
@@ -953,8 +943,7 @@ async function refreshClaimNetworkPolicies(args: {
     };
   }
 
-  const agentId = await agentIdForRun(args.db, args.run);
-  if (!agentId) {
+  if (!args.run.agentId) {
     return {
       networkPolicies: args.storedContext.networkPolicies,
       networkPolicyRefreshes: undefined,
@@ -966,7 +955,7 @@ async function refreshClaimNetworkPolicies(args: {
     {
       orgId: args.run.orgId,
       userId: args.run.userId,
-      agentId,
+      agentId: args.run.agentId,
     },
     connectorRefs,
   );
