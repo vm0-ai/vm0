@@ -69,6 +69,7 @@ export const gmailRelationshipBackfillStatusSchema = z.enum([
   "idle",
   "pending",
   "running",
+  "stopped",
   "done",
   "failed",
 ]);
@@ -167,6 +168,31 @@ export const zeroRelationshipsContract = c.router({
       500: apiErrorSchema,
     },
     summary: "Start or restart Gmail relationship memory backfill",
+  },
+  gmailStopBackfill: {
+    method: "POST",
+    path: "/api/zero/relationships/gmail/backfill/stop",
+    headers: authHeadersSchema,
+    responses: {
+      200: gmailRelationshipStatusResponseSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Stop the current Gmail relationship memory backfill",
+  },
+  gmailDeleteStoppedBackfill: {
+    method: "DELETE",
+    path: "/api/zero/relationships/gmail/backfill/stopped",
+    headers: authHeadersSchema,
+    responses: {
+      200: gmailRelationshipStatusResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Delete a stopped Gmail relationship memory backfill job",
   },
   resolve: {
     method: "GET",

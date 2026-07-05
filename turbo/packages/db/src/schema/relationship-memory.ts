@@ -52,6 +52,7 @@ export type RelationshipSyncJobStatus =
 export const RELATIONSHIP_BACKFILL_JOB_STATUSES = [
   "pending",
   "running",
+  "stopped",
   "done",
   "failed",
 ] as const;

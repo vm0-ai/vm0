@@ -237,6 +237,31 @@ export const startGmailRelationshipBackfill$ = command(
   },
 );
 
+export const stopGmailRelationshipBackfill$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    const client = get(zeroClient$)(zeroRelationshipsContract);
+    await accept(client.gmailStopBackfill({ fetchOptions: { signal } }), [200]);
+    signal.throwIfAborted();
+    toast.success("Gmail relationship backfill stopped");
+    set(reloadGmailRelationshipStatus$);
+    set(reloadMemoryRelationships$);
+  },
+);
+
+export const deleteStoppedGmailRelationshipBackfill$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    const client = get(zeroClient$)(zeroRelationshipsContract);
+    await accept(
+      client.gmailDeleteStoppedBackfill({ fetchOptions: { signal } }),
+      [200],
+    );
+    signal.throwIfAborted();
+    toast.success("Stopped Gmail backfill job deleted");
+    set(reloadGmailRelationshipStatus$);
+    set(reloadMemoryRelationships$);
+  },
+);
+
 function memoryDevRefreshMessage(body: MemoryDevRefreshResponse): string {
   if ("skipped" in body) {
     return "No memory summaries changed";

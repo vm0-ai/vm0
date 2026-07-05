@@ -14,9 +14,11 @@ import {
   zeroRelationshipSearch,
 } from "../services/zero-relationships.service";
 import {
+  deleteStoppedGmailRelationshipBackfill,
   enableGmailRelationshipMemory,
   getGmailRelationshipStatus,
   restartGmailRelationshipBackfill,
+  stopGmailRelationshipBackfill,
 } from "../services/relationship-memory-gmail-backfill.service";
 
 const relationshipReadAuth = {
@@ -138,6 +140,72 @@ const gmailBackfillInner$ = command(
   },
 );
 
+const gmailStopBackfillInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    if (
+      !(await isRelationshipMemoryEnabled(get(db$), auth.orgId, auth.userId))
+    ) {
+      return relationshipMemoryDisabled;
+    }
+    signal.throwIfAborted();
+
+    const result = await stopGmailRelationshipBackfill({
+      db: set(writeDb$),
+      orgId: auth.orgId,
+      userId: auth.userId,
+      signal,
+    });
+    signal.throwIfAborted();
+    if (result.kind !== "ok") {
+      return {
+        status: 400 as const,
+        body: {
+          error: {
+            message: result.message,
+            code: "BAD_REQUEST",
+          },
+        },
+      };
+    }
+
+    return { status: 200 as const, body: result.status };
+  },
+);
+
+const gmailDeleteStoppedBackfillInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    if (
+      !(await isRelationshipMemoryEnabled(get(db$), auth.orgId, auth.userId))
+    ) {
+      return relationshipMemoryDisabled;
+    }
+    signal.throwIfAborted();
+
+    const result = await deleteStoppedGmailRelationshipBackfill({
+      db: set(writeDb$),
+      orgId: auth.orgId,
+      userId: auth.userId,
+      signal,
+    });
+    signal.throwIfAborted();
+    if (result.kind !== "ok") {
+      return {
+        status: 400 as const,
+        body: {
+          error: {
+            message: result.message,
+            code: "BAD_REQUEST",
+          },
+        },
+      };
+    }
+
+    return { status: 200 as const, body: result.status };
+  },
+);
+
 const resolveInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   if (!(await isRelationshipMemoryEnabled(get(db$), auth.orgId, auth.userId))) {
@@ -187,6 +255,17 @@ export const zeroRelationshipsRoutes: readonly RouteEntry[] = [
   {
     route: zeroRelationshipsContract.gmailBackfill,
     handler: authRoute(relationshipSessionAuth, gmailBackfillInner$),
+  },
+  {
+    route: zeroRelationshipsContract.gmailStopBackfill,
+    handler: authRoute(relationshipSessionAuth, gmailStopBackfillInner$),
+  },
+  {
+    route: zeroRelationshipsContract.gmailDeleteStoppedBackfill,
+    handler: authRoute(
+      relationshipSessionAuth,
+      gmailDeleteStoppedBackfillInner$,
+    ),
   },
   {
     route: zeroRelationshipsContract.resolve,

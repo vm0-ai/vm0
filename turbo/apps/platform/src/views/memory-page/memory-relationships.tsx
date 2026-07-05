@@ -5,6 +5,7 @@ import {
   IconClock,
   IconLoader2,
   IconMail,
+  IconPlayerStop,
   IconRefresh,
   IconSearch,
   IconTrash,
@@ -34,6 +35,7 @@ import {
 } from "@vm0/ui/components/ui/select";
 
 import {
+  deleteStoppedGmailRelationshipBackfill$,
   gmailRelationshipBackfillDialogOpen$,
   gmailRelationshipBackfillRequest$,
   gmailRelationshipStatus$,
@@ -47,6 +49,7 @@ import {
   setMemoryRelationshipSearch$,
   setSelectedMemoryRelationshipId$,
   startGmailRelationshipBackfill$,
+  stopGmailRelationshipBackfill$,
   updateGmailRelationshipBackfillRequest$,
   type MemoryRelationshipFilter,
 } from "../../signals/memory-page/memory-signals.ts";
@@ -391,6 +394,9 @@ function backfillProgressText(
   if (backfill.status === "failed") {
     return "Backfill failed";
   }
+  if (backfill.status === "stopped") {
+    return `Backfill stopped - ${backfill.scannedCount} scanned`;
+  }
   if (backfill.status === "done") {
     return `Backfill complete - ${backfill.scannedCount} scanned`;
   }
@@ -448,6 +454,14 @@ function canStartGmailBackfill(
     status.backfill.status === "idle" ||
     status.backfill.status === "failed" ||
     status.backfill.status === "done"
+  );
+}
+
+function canStopGmailBackfill(status: GmailRelationshipStatusResponse) {
+  return (
+    status.enabled &&
+    (status.backfill.status === "pending" ||
+      status.backfill.status === "running")
   );
 }
 
@@ -575,16 +589,24 @@ function GmailRelationshipBackfillDialog({
 
 function GmailRelationshipStatusActions({
   actionLabel,
+  deletingStopped,
+  onDeleteStoppedBackfill,
   onOpenBackfillDialog,
   onRefreshStatus,
+  onStopBackfill,
   starting,
   status,
+  stopping,
 }: {
   readonly actionLabel: string;
+  readonly deletingStopped: boolean;
+  readonly onDeleteStoppedBackfill: () => void;
   readonly onOpenBackfillDialog: () => void;
   readonly onRefreshStatus: () => void;
+  readonly onStopBackfill: () => void;
   readonly starting: boolean;
   readonly status: GmailRelationshipStatusResponse;
+  readonly stopping: boolean;
 }) {
   if (!status.connectorConnected) {
     return (
@@ -612,6 +634,40 @@ function GmailRelationshipStatusActions({
           <span>{actionLabel}</span>
         </Button>
       ) : null}
+      {canStopGmailBackfill(status) ? (
+        <Button
+          type="button"
+          variant="destructive"
+          size="sm"
+          className="h-8 gap-1.5 px-2.5 text-xs"
+          disabled={stopping}
+          onClick={onStopBackfill}
+        >
+          {stopping ? (
+            <IconLoader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <IconPlayerStop className="h-3.5 w-3.5" />
+          )}
+          <span>{stopping ? "Stopping" : "Stop job"}</span>
+        </Button>
+      ) : null}
+      {status.backfill.status === "stopped" ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-8 gap-1.5 border-destructive/40 px-2.5 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
+          disabled={deletingStopped}
+          onClick={onDeleteStoppedBackfill}
+        >
+          {deletingStopped ? (
+            <IconLoader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <IconTrash className="h-3.5 w-3.5" />
+          )}
+          <span>{deletingStopped ? "Deleting" : "Delete stopped job"}</span>
+        </Button>
+      ) : null}
       {status.enabled ? (
         <Button
           type="button"
@@ -633,11 +689,19 @@ function GmailRelationshipStatusPanel() {
   const [backfillLoadable, startBackfill] = useLoadableSet(
     startGmailRelationshipBackfill$,
   );
+  const [stopBackfillLoadable, stopBackfill] = useLoadableSet(
+    stopGmailRelationshipBackfill$,
+  );
+  const [deleteStoppedBackfillLoadable, deleteStoppedBackfill] = useLoadableSet(
+    deleteStoppedGmailRelationshipBackfill$,
+  );
   const reloadStatus = useSet(reloadGmailRelationshipStatus$);
   const pageSignal = useGet(pageSignal$);
   const backfillDialogOpen = useGet(gmailRelationshipBackfillDialogOpen$);
   const setBackfillDialogOpen = useSet(setGmailRelationshipBackfillDialogOpen$);
   const starting = backfillLoadable.state === "loading";
+  const stopping = stopBackfillLoadable.state === "loading";
+  const deletingStopped = deleteStoppedBackfillLoadable.state === "loading";
 
   if (statusLoadable.state === "loading") {
     return (
@@ -702,16 +766,24 @@ function GmailRelationshipStatusPanel() {
           ) : null}
         </div>
       </div>
-      <div className="flex shrink-0 items-center gap-2">
+      <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
         <GmailRelationshipStatusActions
           actionLabel={backfillActionLabel}
+          deletingStopped={deletingStopped}
           starting={starting}
           status={status}
+          stopping={stopping}
+          onDeleteStoppedBackfill={() => {
+            detach(deleteStoppedBackfill(pageSignal), Reason.DomCallback);
+          }}
           onOpenBackfillDialog={() => {
             setBackfillDialogOpen(true);
           }}
           onRefreshStatus={() => {
             reloadStatus();
+          }}
+          onStopBackfill={() => {
+            detach(stopBackfill(pageSignal), Reason.DomCallback);
           }}
         />
         <GmailRelationshipBackfillDialog
