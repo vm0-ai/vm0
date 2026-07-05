@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.554.5](https://github.com/vm0-ai/vm0/compare/app-v0.554.4...app-v0.554.5) (2026-07-05)
+
+
+### Bug Fixes
+
+* avoid chat skeleton for optimistic new messages ([#20186](https://github.com/vm0-ai/vm0/issues/20186)) ([54a2004](https://github.com/vm0-ai/vm0/commit/54a2004e6d0f9637205c907776aea8321f2e3dfd))
+
+
+### Refactoring
+
+* simplify sidebar thread auto-scroll ([#20191](https://github.com/vm0-ai/vm0/issues/20191)) ([45c35a6](https://github.com/vm0-ai/vm0/commit/45c35a604ef7175267e77977e033b676f6cc29df))
+* split chat thread draft read API ([#20192](https://github.com/vm0-ai/vm0/issues/20192)) ([61c4e87](https://github.com/vm0-ai/vm0/commit/61c4e87c3015982d8a419f5f176cc6280549eef4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.153.5
+    * @vm0/core bumped to 8.399.3
+
 ## [0.554.4](https://github.com/vm0-ai/vm0/compare/app-v0.554.3...app-v0.554.4) (2026-07-05)
 
 
