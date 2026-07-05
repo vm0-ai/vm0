@@ -17,6 +17,15 @@ require_env HEAD_SHA
 require_env METAL_HOSTS
 require_env METAL_USER
 
+r2_cache_credentials_set=false
+if [ -n "${R2_ACCOUNT_ID:-}" ] || [ -n "${R2_ACCESS_KEY_ID:-}" ] || [ -n "${R2_SECRET_ACCESS_KEY:-}" ]; then
+  r2_cache_credentials_set=true
+fi
+if [ "$r2_cache_credentials_set" = true ] && [ -z "${R2_RUNNER_CACHE_BUCKET_NAME:-}" ]; then
+  echo "R2_RUNNER_CACHE_BUCKET_NAME is required when runner R2 cache credentials are set" >&2
+  exit 2
+fi
+
 TARGET_TRIPLE="${TARGET_TRIPLE-aarch64-unknown-linux-musl}"
 PROFILE="${PROFILE:-vm0/default}"
 MANIFEST_PATH="${MANIFEST_PATH:-runner-image-manifest/manifest.json}"
@@ -190,10 +199,6 @@ REMOTE_SCRIPT
   fi
 
   if ! ssh "$remote" sudo \
-    R2_ACCOUNT_ID="${R2_ACCOUNT_ID:-}" \
-    R2_ACCESS_KEY_ID="${R2_ACCESS_KEY_ID:-}" \
-    R2_SECRET_ACCESS_KEY="${R2_SECRET_ACCESS_KEY:-}" \
-    R2_USER_STORAGES_BUCKET_NAME="${R2_USER_STORAGES_BUCKET_NAME:-}" \
     "${BIN_DIR}/runner" gc --keep-latest 6; then
     return 1
   fi
@@ -212,6 +217,7 @@ warm_rootfs_cache() {
     R2_ACCOUNT_ID="${R2_ACCOUNT_ID:-}" \
     R2_ACCESS_KEY_ID="${R2_ACCESS_KEY_ID:-}" \
     R2_SECRET_ACCESS_KEY="${R2_SECRET_ACCESS_KEY:-}" \
+    R2_RUNNER_CACHE_BUCKET_NAME="${R2_RUNNER_CACHE_BUCKET_NAME:-}" \
     R2_USER_STORAGES_BUCKET_NAME="${R2_USER_STORAGES_BUCKET_NAME:-}" \
     "${BIN_DIR}/runner" build --profile "$PROFILE" --warm-rootfs-cache; then
     return 1
@@ -227,6 +233,7 @@ build_snapshot_on_host() {
     R2_ACCOUNT_ID="${R2_ACCOUNT_ID:-}" \
     R2_ACCESS_KEY_ID="${R2_ACCESS_KEY_ID:-}" \
     R2_SECRET_ACCESS_KEY="${R2_SECRET_ACCESS_KEY:-}" \
+    R2_RUNNER_CACHE_BUCKET_NAME="${R2_RUNNER_CACHE_BUCKET_NAME:-}" \
     R2_USER_STORAGES_BUCKET_NAME="${R2_USER_STORAGES_BUCKET_NAME:-}" \
     "${BIN_DIR}/runner" build --profile "$PROFILE"; then
     return 1

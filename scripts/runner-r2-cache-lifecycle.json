@@ -1,0 +1,24 @@
+{
+  "Rules": [
+    {
+      "ID": "expire-runner-images",
+      "Status": "Enabled",
+      "Filter": {
+        "Prefix": "runner-images/"
+      },
+      "Expiration": {
+        "Days": 7
+      }
+    },
+    {
+      "ID": "expire-runner-templates",
+      "Status": "Enabled",
+      "Filter": {
+        "Prefix": "runner-templates/"
+      },
+      "Expiration": {
+        "Days": 7
+      }
+    }
+  ]
+}

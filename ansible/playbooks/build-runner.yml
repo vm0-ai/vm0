@@ -19,17 +19,19 @@
 #     -e "r2_account_id=xxx" \
 #     -e "r2_access_key_id=xxx" \
 #     -e "r2_secret_access_key=xxx" \
-#     -e "r2_bucket=xxx"
+#     -e "r2_runner_cache_bucket=xxx"
 #
 # Required Variables:
 #   - runner_version: Semantic version of the runner being built, without leading v
 #   - runner_target: Rust target triple for the copied runner binary
 #   - official_runner_secret: Runner authentication secret (baked into config)
 #   - api_url: vm0 API URL (baked into config)
-#   - r2_account_id / r2_access_key_id / r2_secret_access_key / r2_bucket:
-#       Shared template cache credentials. Required so the pre-fan-out
-#       warm step can fail visibly instead of allowing every host to rebuild
-#       the same template locally.
+#   - r2_account_id / r2_access_key_id / r2_secret_access_key /
+#     r2_runner_cache_bucket:
+#       Dedicated runner template cache credentials. Required so the
+#       pre-fan-out warm step can fail visibly instead of allowing every host
+#       to rebuild the same template locally.
+#   - r2_bucket: Optional legacy runner cache bucket for older runner binaries.
 
 - name: Build VM0 Runner
   hosts: all
@@ -74,12 +76,13 @@
         --profile vm0/default
         --warm-rootfs-cache
       environment:
-        # Fail visibly if the shared R2 cache cannot be warmed. This prevents
-        # every production host from stampeding into the slow local rootfs
-        # template build path during a new template_hash deploy.
+        # Fail visibly if the dedicated R2 runner cache cannot be warmed. This
+        # prevents every production host from stampeding into the slow local
+        # rootfs template build path during a new template_hash deploy.
         R2_ACCOUNT_ID: "{{ r2_account_id | default('') }}"
         R2_ACCESS_KEY_ID: "{{ r2_access_key_id | default('') }}"
         R2_SECRET_ACCESS_KEY: "{{ r2_secret_access_key | default('') }}"
+        R2_RUNNER_CACHE_BUCKET_NAME: "{{ r2_runner_cache_bucket | default('') }}"
         R2_USER_STORAGES_BUCKET_NAME: "{{ r2_bucket | default('') }}"
       register: default_rootfs_warm_output
 
@@ -95,6 +98,7 @@
         R2_ACCOUNT_ID: "{{ r2_account_id | default('') }}"
         R2_ACCESS_KEY_ID: "{{ r2_access_key_id | default('') }}"
         R2_SECRET_ACCESS_KEY: "{{ r2_secret_access_key | default('') }}"
+        R2_RUNNER_CACHE_BUCKET_NAME: "{{ r2_runner_cache_bucket | default('') }}"
         R2_USER_STORAGES_BUCKET_NAME: "{{ r2_bucket | default('') }}"
       register: default_build_output
 

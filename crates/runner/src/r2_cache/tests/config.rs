@@ -4,6 +4,8 @@ use super::super::{
     keys::{key_for_hash, key_for_template_hash},
 };
 
+const LEGACY_USER_STORAGE_BUCKET_ENV: &str = "R2_USER_STORAGES_BUCKET_NAME";
+
 #[test]
 fn key_format() {
     assert_eq!(key_for_hash("abc123"), "runner-images/abc123.tar.zst");
@@ -13,7 +15,7 @@ fn key_format() {
     );
 }
 
-/// `from_env` requires all-or-nothing on the four env vars.
+/// `from_env` requires all-or-nothing on the four runner cache env vars.
 /// Tests use a single var with each scenario via temporary process env;
 /// concurrent execution is safe — `with_clean_r2_env` serializes via
 /// `ENV_LOCK` so the snapshot/mutate/restore window is exclusive.
@@ -34,7 +36,7 @@ async fn from_env_returns_some_when_all_present() {
             std::env::set_var("R2_ACCOUNT_ID", "test-account");
             std::env::set_var("R2_ACCESS_KEY_ID", "test-key");
             std::env::set_var("R2_SECRET_ACCESS_KEY", "test-secret");
-            std::env::set_var("R2_USER_STORAGES_BUCKET_NAME", "test-bucket");
+            std::env::set_var("R2_RUNNER_CACHE_BUCKET_NAME", "test-bucket");
         }
         let result = R2ImageCache::from_env().await.unwrap();
         assert!(result.is_some(), "all four set → Some");
@@ -66,7 +68,7 @@ async fn from_env_errors_on_partial_config() {
     with_clean_r2_env(|| async {
         unsafe {
             std::env::set_var("R2_ACCOUNT_ID", "test");
-            std::env::set_var("R2_USER_STORAGES_BUCKET_NAME", "test");
+            std::env::set_var("R2_RUNNER_CACHE_BUCKET_NAME", "test");
         }
         let err = R2ImageCache::from_env().await.unwrap_err();
         match err {
@@ -74,7 +76,7 @@ async fn from_env_errors_on_partial_config() {
                 assert_eq!(present.len(), 2);
                 assert_eq!(missing.len(), 2);
                 assert!(present.contains(&"R2_ACCOUNT_ID".to_string()));
-                assert!(present.contains(&"R2_USER_STORAGES_BUCKET_NAME".to_string()));
+                assert!(present.contains(&"R2_RUNNER_CACHE_BUCKET_NAME".to_string()));
                 assert!(missing.contains(&"R2_ACCESS_KEY_ID".to_string()));
                 assert!(missing.contains(&"R2_SECRET_ACCESS_KEY".to_string()));
             }
@@ -102,12 +104,14 @@ where
     Fut: std::future::Future<Output = ()> + Send + 'static,
 {
     let _guard = ENV_LOCK.lock().await;
-    let saved: Vec<(&str, Option<String>)> = ENV_VARS
+    let mut env_vars = ENV_VARS.to_vec();
+    env_vars.push(LEGACY_USER_STORAGE_BUCKET_ENV);
+    let saved: Vec<(&str, Option<String>)> = env_vars
         .iter()
         .map(|v| (*v, std::env::var(v).ok()))
         .collect();
     unsafe {
-        for v in &ENV_VARS {
+        for v in &env_vars {
             std::env::remove_var(v);
         }
     }
@@ -135,7 +139,7 @@ async fn from_env_errors_on_partial_with_some_empty_strings() {
             std::env::set_var("R2_ACCOUNT_ID", "real-value");
             std::env::set_var("R2_ACCESS_KEY_ID", ""); // typo'd to empty
             std::env::set_var("R2_SECRET_ACCESS_KEY", ""); // typo'd to empty
-            std::env::set_var("R2_USER_STORAGES_BUCKET_NAME", "real-value");
+            std::env::set_var("R2_RUNNER_CACHE_BUCKET_NAME", "real-value");
         }
         let err = R2ImageCache::from_env().await.unwrap_err();
         match err {
@@ -162,7 +166,7 @@ async fn debug_format_does_not_leak_credentials() {
             std::env::set_var("R2_ACCOUNT_ID", "secret-account-id-do-not-leak");
             std::env::set_var("R2_ACCESS_KEY_ID", "AKIAEXAMPLEDONOTLEAK");
             std::env::set_var("R2_SECRET_ACCESS_KEY", "secret-key-MUST-NOT-appear-in-logs");
-            std::env::set_var("R2_USER_STORAGES_BUCKET_NAME", "test-bucket");
+            std::env::set_var("R2_RUNNER_CACHE_BUCKET_NAME", "test-bucket");
         }
         let cache = R2ImageCache::from_env().await.unwrap().unwrap();
         let dbg = format!("{cache:?}");
@@ -182,6 +186,31 @@ async fn debug_format_does_not_leak_credentials() {
             dbg.contains("test-bucket"),
             "Debug should still expose bucket for diagnostic value: {dbg}"
         );
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn from_env_does_not_use_user_storage_bucket_for_runner_cache() {
+    with_clean_r2_env(|| async {
+        unsafe {
+            std::env::set_var("R2_ACCOUNT_ID", "test-account");
+            std::env::set_var("R2_ACCESS_KEY_ID", "test-key");
+            std::env::set_var("R2_SECRET_ACCESS_KEY", "test-secret");
+            std::env::set_var("R2_USER_STORAGES_BUCKET_NAME", "user-storage-bucket");
+        }
+        let err = R2ImageCache::from_env().await.unwrap_err();
+        match err {
+            R2Error::PartialConfig { present, missing } => {
+                assert_eq!(present.len(), 3);
+                assert_eq!(missing, vec!["R2_RUNNER_CACHE_BUCKET_NAME".to_string()]);
+                assert!(
+                    !present.contains(&"R2_USER_STORAGES_BUCKET_NAME".to_string()),
+                    "user storage bucket must not satisfy runner cache config"
+                );
+            }
+            e => panic!("expected PartialConfig, got {e:?}"),
+        }
     })
     .await;
 }

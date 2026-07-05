@@ -101,6 +101,20 @@ if JOB_REF=pr-123 \
   HEAD_SHA=abc \
   METAL_HOSTS=dev-1 \
   METAL_USER=ci \
+  R2_ACCOUNT_ID=test-account \
+  R2_ACCESS_KEY_ID=test-access-key \
+  R2_SECRET_ACCESS_KEY=test-secret \
+  TARGET_TRIPLE=aarch64-unknown-linux-musl \
+  EXPECTED_REMOTE_ARCH=aarch64 \
+  "$PREPARE" >"${TMPDIR}/missing-r2-runner-cache-bucket.out" 2>"${TMPDIR}/missing-r2-runner-cache-bucket.err"; then
+  fail "expected missing R2 runner cache bucket to fail"
+fi
+grep -q "R2_RUNNER_CACHE_BUCKET_NAME is required when runner R2 cache credentials are set" "${TMPDIR}/missing-r2-runner-cache-bucket.err" || fail "expected missing R2 runner cache bucket message"
+
+if JOB_REF=pr-123 \
+  HEAD_SHA=abc \
+  METAL_HOSTS=dev-1 \
+  METAL_USER=ci \
   TARGET_TRIPLE=aarch64-unknown-linux-musl \
   EXPECTED_REMOTE_ARCH= \
   "$PREPARE" >"${TMPDIR}/arch-empty.out" 2>"${TMPDIR}/arch-empty.err"; then

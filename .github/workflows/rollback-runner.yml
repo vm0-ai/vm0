@@ -226,8 +226,7 @@ jobs:
       # re-runs idempotent `runner build` which hits the local content-
       # addressed cache. On the rebuild path (gc evicted the target bin
       # dir), the build falls back to local rootfs construction — slower
-      # but works offline. R2 sweep in `runner gc` is likewise a nice-to-
-      # have, not required for correctness.
+      # but works offline.
       - name: Roll back runner on production hosts with Ansible
         env:
           RUNNER_HOSTS: ${{ steps.matrix-hosts.outputs.hosts }}

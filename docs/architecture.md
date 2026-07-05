@@ -282,6 +282,9 @@ Cloudflare R2 is S3-compatible object storage with zero egress fees.
 - SDK: `@aws-sdk/client-s3` with S3-compatible API
 - Region: Auto (global)
 
+Runner image/template cache uses a separate disposable R2 bucket. See
+[Runner R2 Cache](./runner-r2-cache.md).
+
 #### Storage Format
 
 - Archives: tar.gz compressed

@@ -1834,9 +1834,9 @@ jobs:
                   type: mrkdwn
                   text: "*CLI* ❌ Publish failed\n📦 Version: `${{ needs.release-please.outputs.cli_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/cli-v${{ needs.release-please.outputs.cli_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
 
-  # Resolve repo-level R2 vars for the shared image cache bucket.
+  # Resolve repo-level R2 vars for the dedicated runner image cache bucket.
   # Must run WITHOUT `environment:` so vars/secrets resolve to repo-level
-  # (dev bucket), not the production-scoped user-storage bucket.
+  # values, not production-scoped user-storage values.
   resolve-image-cache:
     runs-on: ubuntu-latest
     needs: [release-please]
@@ -1845,26 +1845,31 @@ jobs:
       r2-account-id: ${{ steps.resolve.outputs.r2-account-id }}
       r2-access-key-id: ${{ steps.resolve.outputs.r2-access-key-id }}
       r2-secret-access-key: ${{ steps.resolve.outputs.r2-secret-access-key }}
-      r2-bucket: ${{ steps.resolve.outputs.r2-bucket }}
+      r2-runner-cache-bucket: ${{ steps.resolve.outputs.r2-runner-cache-bucket }}
+      r2-user-storages-bucket: ${{ steps.resolve.outputs.r2-user-storages-bucket }}
     steps:
       - id: resolve
         env:
           R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          R2_BUCKET: ${{ vars.R2_USER_STORAGES_BUCKET_NAME }}
+          R2_RUNNER_CACHE_BUCKET: ${{ vars.R2_RUNNER_CACHE_BUCKET_NAME }}
+          R2_USER_STORAGES_BUCKET: ${{ vars.R2_USER_STORAGES_BUCKET_NAME }}
           # Borrow an existing repo-level-only secret as the symmetric
           # encryption passphrase.  GRAFANA_CLOUD_API_KEY exists at repo
           # level but NOT in the "production" environment, so both this
-          # job (no environment) and build-runner-production /
-          # promote-runner-production (environment: production, falls
-          # back to repo level) resolve it to the same
-          # value.  Because it is a registered secret GitHub masks it as
-          # *** in all logs, keeping the passphrase invisible.
+          # job (no environment) and build-runner-production
+          # (environment: production, falls back to repo level) resolve it
+          # to the same value.  Because it is a registered secret GitHub masks
+          # it as *** in all logs, keeping the passphrase invisible.
           PASSPHRASE: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
         shell: bash
         run: |
           set -euo pipefail
+          if [ -z "$R2_RUNNER_CACHE_BUCKET" ]; then
+            echo "::error::Missing repository variable R2_RUNNER_CACHE_BUCKET_NAME"
+            exit 1
+          fi
           # GitHub redacts raw secret values AND their base64 encodings
           # from job outputs, so we AES-encrypt them before writing.
           # The ciphertext does not match any registered secret and
@@ -1873,7 +1878,8 @@ jobs:
             echo "r2-account-id=$R2_ACCOUNT_ID"
             echo "r2-access-key-id=$(echo -n "$R2_ACCESS_KEY_ID" | openssl enc -aes-128-cbc -pbkdf2 -pass "pass:$PASSPHRASE" -a -A)"
             echo "r2-secret-access-key=$(echo -n "$R2_SECRET_ACCESS_KEY" | openssl enc -aes-128-cbc -pbkdf2 -pass "pass:$PASSPHRASE" -a -A)"
-            echo "r2-bucket=$R2_BUCKET"
+            echo "r2-runner-cache-bucket=$R2_RUNNER_CACHE_BUCKET"
+            echo "r2-user-storages-bucket=$R2_USER_STORAGES_BUCKET"
           } >> "$GITHUB_OUTPUT"
 
   # Publish runner release binaries for every supported host architecture.
@@ -2282,12 +2288,15 @@ jobs:
           RUNNER_VERSION: ${{ needs.release-please.outputs.runner_rs_version }}
           RUNNER_TARGET: ${{ matrix.target }}
           API_URL: ${{ vars.VM0_API_URL }}
-          # R2 image cache credentials — from resolve-image-cache job (repo-level,
-          # not production-scoped) so the runner uses the same bucket as CI.
+          # R2 image cache credentials — from resolve-image-cache job
+          # (repo-level) so the runner uses the same dedicated cache bucket
+          # as CI. The user-storage bucket is passed only for older runner
+          # binaries that still read the legacy cache variable.
           # R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY come from $GITHUB_ENV
           # (decoded in previous step).
           R2_ACCOUNT_ID: ${{ needs.resolve-image-cache.outputs.r2-account-id }}
-          R2_USER_STORAGES_BUCKET_NAME: ${{ needs.resolve-image-cache.outputs.r2-bucket }}
+          R2_RUNNER_CACHE_BUCKET_NAME: ${{ needs.resolve-image-cache.outputs.r2-runner-cache-bucket }}
+          R2_USER_STORAGES_BUCKET_NAME: ${{ needs.resolve-image-cache.outputs.r2-user-storages-bucket }}
         run: |
           cd ansible
           ansible-playbook \
@@ -2301,6 +2310,7 @@ jobs:
             -e "r2_account_id=${R2_ACCOUNT_ID:-}" \
             -e "r2_access_key_id=${R2_ACCESS_KEY_ID:-}" \
             -e "r2_secret_access_key=${R2_SECRET_ACCESS_KEY:-}" \
+            -e "r2_runner_cache_bucket=${R2_RUNNER_CACHE_BUCKET_NAME:-}" \
             -e "r2_bucket=${R2_USER_STORAGES_BUCKET_NAME:-}" \
             -v
 
@@ -2360,7 +2370,6 @@ jobs:
         release-please,
         builds-complete,
         promote-api-production,
-        resolve-image-cache,
         build-runner-production,
         runner-production-host-groups,
       ]
@@ -2431,27 +2440,6 @@ jobs:
           host_count=$(printf '%s\n' "$hosts" | tr ',' '\n' | sed '/^$/d' | wc -l | tr -d ' ')
           echo "Resolved ${host_count} metal host(s) for ${RUNNER_HOST_GROUP_ID}"
 
-      # Same decrypt as build; needed here so `runner gc` (inside
-      # promote-runner.yml) can sweep stale image cache objects in R2.
-      - name: Decrypt R2 image cache credentials
-        env:
-          _PASSPHRASE: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
-          _ENC_AK: ${{ needs.resolve-image-cache.outputs.r2-access-key-id }}
-          _ENC_SK: ${{ needs.resolve-image-cache.outputs.r2-secret-access-key }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          AK=$(echo -n "$_ENC_AK" | openssl enc -aes-128-cbc -pbkdf2 -pass "pass:$_PASSPHRASE" -d -a -A)
-          SK=$(echo -n "$_ENC_SK" | openssl enc -aes-128-cbc -pbkdf2 -pass "pass:$_PASSPHRASE" -d -a -A)
-          if [ -z "$AK" ] || [ -z "$SK" ]; then
-            echo "::error::R2 credential decryption produced empty values"
-            exit 1
-          fi
-          {
-            echo "R2_ACCESS_KEY_ID=$AK"
-            echo "R2_SECRET_ACCESS_KEY=$SK"
-          } >> "$GITHUB_ENV"
-
       - name: Promote runner on production hosts with Ansible
         env:
           RUNNER_HOSTS: ${{ steps.matrix-hosts.outputs.hosts }}
@@ -2460,8 +2448,6 @@ jobs:
           AXIOM_TOKEN_TELEMETRY: ${{ secrets.AXIOM_TOKEN_TELEMETRY }}
           RUNNER_VERSION: ${{ needs.release-please.outputs.runner_rs_version }}
           RUNNER_TARGET: ${{ matrix.target }}
-          R2_ACCOUNT_ID: ${{ needs.resolve-image-cache.outputs.r2-account-id }}
-          R2_USER_STORAGES_BUCKET_NAME: ${{ needs.resolve-image-cache.outputs.r2-bucket }}
         run: |
           cd ansible
           ansible-playbook \
@@ -2473,10 +2459,6 @@ jobs:
             -e "axiom_dataset_suffix=prod" \
             -e "runner_version=${RUNNER_VERSION}" \
             -e "runner_target=${RUNNER_TARGET}" \
-            -e "r2_account_id=${R2_ACCOUNT_ID:-}" \
-            -e "r2_access_key_id=${R2_ACCESS_KEY_ID:-}" \
-            -e "r2_secret_access_key=${R2_SECRET_ACCESS_KEY:-}" \
-            -e "r2_bucket=${R2_USER_STORAGES_BUCKET_NAME:-}" \
             -v
 
       - name: Global health check (non-blocking)

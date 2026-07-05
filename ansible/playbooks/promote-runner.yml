@@ -23,8 +23,6 @@
 #   - axiom_token_telemetry / axiom_dataset_suffix:
 #       Forwarded to the systemd unit as AXIOM_TOKEN_TELEMETRY /
 #       AXIOM_DATASET_SUFFIX. Both must be set for Axiom telemetry to activate.
-#   - r2_account_id / r2_access_key_id / r2_secret_access_key / r2_bucket:
-#       Passed to `runner gc` so R2-side cache cleanup runs.
 
 - name: Promote VM0 Runner
   hosts: all
@@ -85,13 +83,6 @@
 
     - name: Garbage collect old artifacts
       command: "{{ bin_dir }}/runner gc --keep-latest 6 --protect-version {{ runner_name }}"
-      environment:
-        # R2 credentials so `runner gc` can sweep stale image cache objects.
-        # Without these, R2-side cleanup is skipped (objects accumulate forever).
-        R2_ACCOUNT_ID: "{{ r2_account_id | default('') }}"
-        R2_ACCESS_KEY_ID: "{{ r2_access_key_id | default('') }}"
-        R2_SECRET_ACCESS_KEY: "{{ r2_secret_access_key | default('') }}"
-        R2_USER_STORAGES_BUCKET_NAME: "{{ r2_bucket | default('') }}"
 
     # ========================================
     # Phase 6: Final health check

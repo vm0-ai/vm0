@@ -59,11 +59,12 @@
 #
 # Optional Variables:
 #   - sentry_dsn: Forwarded to the systemd unit as SENTRY_DSN
-#   - r2_account_id / r2_access_key_id / r2_secret_access_key / r2_bucket:
-#       Passed to `runner build` for best-effort template cache download/upload
-#       and to `runner gc` for best-effort R2-side cleanup. Rollback does not
-#       run the newer `--warm-rootfs-cache` path because the target rollback
-#       binary may predate that flag.
+#   - r2_account_id / r2_access_key_id / r2_secret_access_key /
+#     r2_runner_cache_bucket:
+#       Passed to `runner build` for best-effort template cache download/upload.
+#       Rollback does not run the newer `--warm-rootfs-cache` path because the
+#       target rollback binary may predate that flag.
+#   - r2_bucket: Optional legacy runner cache bucket for older rollback binaries.
 
 - name: Rollback VM0 Runner
   hosts: all
@@ -334,8 +335,8 @@
     # guests + recipe; if target's rootfs/snapshot are already on disk at
     # the matching hash path, this returns in ~1s. When R2 credentials are
     # provided, the build can best-effort download/upload rootfs through the
-    # shared cache. Without R2 credentials, rollback intentionally preserves
-    # the old offline-capable local path.
+    # dedicated runner cache. Without R2 credentials, rollback intentionally
+    # preserves the old offline-capable local path.
     - name: Rebuild default rootfs and snapshot
       when: not (skip_install | default(false))
       command: >
@@ -345,6 +346,7 @@
         R2_ACCOUNT_ID: "{{ r2_account_id | default('') }}"
         R2_ACCESS_KEY_ID: "{{ r2_access_key_id | default('') }}"
         R2_SECRET_ACCESS_KEY: "{{ r2_secret_access_key | default('') }}"
+        R2_RUNNER_CACHE_BUCKET_NAME: "{{ r2_runner_cache_bucket | default('') }}"
         R2_USER_STORAGES_BUCKET_NAME: "{{ r2_bucket | default('') }}"
       register: default_build_output
 
@@ -458,11 +460,6 @@
     # gc respects `--protect-version` so the rollback target is never swept.
     - name: Garbage collect old artifacts
       command: "{{ bin_dir }}/runner gc --keep-latest 6 --protect-version {{ runner_name }}"
-      environment:
-        R2_ACCOUNT_ID: "{{ r2_account_id | default('') }}"
-        R2_ACCESS_KEY_ID: "{{ r2_access_key_id | default('') }}"
-        R2_SECRET_ACCESS_KEY: "{{ r2_secret_access_key | default('') }}"
-        R2_USER_STORAGES_BUCKET_NAME: "{{ r2_bucket | default('') }}"
 
     - name: Verify runner health after cleanup
       command: "{{ bin_dir }}/runner doctor --name {{ runner_name }}"

@@ -6,15 +6,18 @@ use super::{
 };
 
 impl R2ImageCache {
-    /// Delete legacy rootfs objects and shared template objects older
-    /// than `max_age`. Returns `(deleted_count, freed_bytes)`. Attempts to
-    /// scan `runner-images/` and `runner-templates/`; on a full pass, each
-    /// prefix costs at least one LIST, paginated prefixes cost one LIST per
-    /// page, and DELETE is issued only for pages with expired objects.
-    /// Idempotent under concurrent fleet execution: hosts can attempt the same
-    /// scan and `DeleteObjects` returns success for already-absent keys (S3
-    /// spec). Per-host returned counts are best-effort and are not fleet-unique
-    /// when hosts race on the same keys.
+    /// Manually delete legacy rootfs objects and shared template objects older
+    /// than `max_age`. Normal expiration is owned by R2 lifecycle rules; this
+    /// method is kept for explicit rollout/diagnostic cleanup.
+    ///
+    /// Returns `(deleted_count, freed_bytes)`. Attempts to scan
+    /// `runner-images/` and `runner-templates/`; on a full pass, each prefix
+    /// costs at least one LIST, paginated prefixes cost one LIST per page, and
+    /// DELETE is issued only for pages with expired objects. Idempotent under
+    /// concurrent execution: hosts can attempt the same scan and
+    /// `DeleteObjects` returns success for already-absent keys (S3 spec).
+    /// Returned counts are best-effort and are not fleet-unique when callers
+    /// race on the same keys.
     ///
     /// Per-key errors (e.g. AccessDenied — NOT NoSuchKey) are surfaced via
     /// `tracing::warn!` and excluded from `deleted_count`.
@@ -96,9 +99,7 @@ impl R2ImageCache {
             // Both branches below validate at the S3-API boundary. They
             // surface as `R2Error::S3` (rather than silently breaking the
             // loop) so operators see clear errors when S3 misbehaves
-            // instead of a quietly under-deleted GC cycle. `runner gc`
-            // already logs and swallows R2 errors at the outer call site
-            // (R2 errors never fail the deploy — see #9120).
+            // instead of a quietly under-deleted manual GC cycle.
             let next_token = resp
                 .next_continuation_token()
                 .ok_or_else(|| {

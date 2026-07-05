@@ -147,17 +147,17 @@ cmd_deploy() {
 
   # R2 creds passed as sudo args so they survive sudo's env scrub. Empty
   # values are treated as "unset" by r2_cache.rs, matching
-  # ansible/playbooks/build-runner.yml's R2 env block. Applied to both
-  # `gc` (sweeps shared R2 objects older than 7d) and `build` (pulls
-  # cached rootfs instead of rebuilding ~3-5min locally).
+  # ansible/playbooks/build-runner.yml's R2 env block. Applied only to
+  # `build`; host-local `gc` no longer scans dedicated R2 cache prefixes.
   R2_ENV="$(shell_env_assignments \
     R2_ACCOUNT_ID "${R2_ACCOUNT_ID:-}" \
     R2_ACCESS_KEY_ID "${R2_ACCESS_KEY_ID:-}" \
     R2_SECRET_ACCESS_KEY "${R2_SECRET_ACCESS_KEY:-}" \
+    R2_RUNNER_CACHE_BUCKET_NAME "${R2_RUNNER_CACHE_BUCKET_NAME:-}" \
     R2_USER_STORAGES_BUCKET_NAME "${R2_USER_STORAGES_BUCKET_NAME:-}")"
 
   # Clean up old images (keep 3 most recent deploys)
-  ssh_cmd "sudo $R2_ENV $REMOTE_BIN_DIR/runner gc --keep-latest 3"
+  ssh_cmd "sudo $REMOTE_BIN_DIR/runner gc --keep-latest 3"
 
   # Build unified image (rootfs + snapshot)
   PROFILES=("vm0/default")

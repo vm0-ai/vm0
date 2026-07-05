@@ -24,7 +24,7 @@ fn cutoff_saturates_to_zero_when_age_exceeds_now() {
 
 #[test]
 fn cutoff_zero_max_age_equals_now() {
-    // `--r2-keep-days 0` is rejected at the CLI layer; this test exists
+    // `runner r2-cache gc --keep-days 0` is rejected at the CLI layer; this test exists
     // so a future caller can't silently regress that contract here.
     let now = std::time::UNIX_EPOCH + std::time::Duration::from_secs(42);
     let zero = std::time::Duration::from_secs(0);
@@ -305,8 +305,8 @@ async fn gc_excludes_per_key_failures_from_count() {
 /// `gc_older_than` MUST surface (not silently break) when S3 returns
 /// `is_truncated=true` with no `next_continuation_token` — a spec
 /// violation that, if silently accepted, would silently under-delete.
-/// Returning `Err` lets `runner gc` log a clear cause instead of a
-/// quietly skipped page tail.
+/// Returning `Err` lets the manual cleanup command report a clear cause
+/// instead of a quietly skipped page tail.
 #[tokio::test]
 async fn gc_errors_on_truncated_with_no_token() {
     use aws_sdk_s3::Client;

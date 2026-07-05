@@ -1,9 +1,11 @@
 //! R2 cache for `runner build` template artifacts.
 //!
 //! The current shared cache stores reusable template objects at
-//! `runner-templates/{template_hash}.tar.zst` in the existing
-//! `R2_USER_STORAGES_BUCKET_NAME` bucket. Rootfs images are customized locally
-//! because they contain guest binaries and host-local CA material.
+//! `runner-templates/{template_hash}.tar.zst` in the dedicated
+//! `R2_RUNNER_CACHE_BUCKET_NAME` bucket. Rootfs images are customized locally
+//! because they contain guest binaries and host-local CA material. User storage
+//! continues to use `R2_USER_STORAGES_BUCKET_NAME`; runner cache objects are
+//! disposable infrastructure cache and intentionally live in a separate bucket.
 //! Snapshot files are always created locally because they contain host-specific
 //! state (page cache, kernel metadata).
 //!
@@ -51,19 +53,25 @@
 //! bump or template build script change produces a new template hash and
 //! orphans the previous object.
 //!
-//! Cleanup happens via `gc_older_than`, called from `runner gc` (which the
-//! deploy playbook runs after every release). Default TTL is 7 days. Each
-//! host attempts the same scan independently over the legacy rootfs prefix
-//! (`runner-images/`) and the shared template prefix (`runner-templates/`).
-//! Request cost for a full pass scales with scanned prefixes and pagination:
-//! at least one LIST per prefix, one additional LIST per extra page, and one
-//! batched DELETE for each page that contains expired objects. `DeleteObjects`
-//! is idempotent for already-absent keys, so concurrent fleet execution is
-//! safe; per-host deleted-count and freed-byte logs are best-effort and are
-//! not fleet-unique when hosts race on the same keys.
+//! Normal completed-object expiration is owned by the R2 bucket lifecycle
+//! policy on the dedicated runner cache bucket. The default policy expires
+//! objects under the legacy rootfs prefix (`runner-images/`) and the shared
+//! template prefix (`runner-templates/`) after 7 days. Lifecycle expiration is
+//! asynchronous, so deploy-time `runner gc` does not report exact R2
+//! deleted-object counts or freed bytes.
+//!
+//! `gc_older_than` remains available behind the explicit manual
+//! `runner r2-cache gc` command for rollout/diagnostic cleanup. It scans both
+//! prefixes, costs at least one LIST per prefix plus one additional LIST per
+//! extra page, and issues one batched DELETE for each page that contains
+//! expired objects. `DeleteObjects` is idempotent for already-absent keys, so
+//! concurrent manual execution is safe; returned deleted-count and freed-byte
+//! logs are best-effort and are not fleet-unique when hosts race on the same
+//! keys.
 //!
 //! R2's default 7-day lifecycle rule only cleans abandoned multipart
-//! segments, **not** completed objects — which is why we need our own scan.
+//! segments, **not** completed objects — which is why the dedicated lifecycle
+//! rules are required for normal cache expiration.
 //!
 //! **Clock skew caveat**: `gc_older_than` uses local `SystemTime::now()` to
 //! compute the cutoff. If the host clock drifts ahead of R2 server time by

@@ -10,7 +10,7 @@ pub(super) const ENV_VARS: [&str; 4] = [
     "R2_ACCOUNT_ID",
     "R2_ACCESS_KEY_ID",
     "R2_SECRET_ACCESS_KEY",
-    "R2_USER_STORAGES_BUCKET_NAME",
+    "R2_RUNNER_CACHE_BUCKET_NAME",
 ];
 
 impl R2ImageCache {
@@ -46,7 +46,7 @@ impl R2ImageCache {
         let account_id = std::env::var("R2_ACCOUNT_ID").map_err(io_other)?;
         let access_key = std::env::var("R2_ACCESS_KEY_ID").map_err(io_other)?;
         let secret_key = std::env::var("R2_SECRET_ACCESS_KEY").map_err(io_other)?;
-        let bucket = std::env::var("R2_USER_STORAGES_BUCKET_NAME").map_err(io_other)?;
+        let bucket = std::env::var("R2_RUNNER_CACHE_BUCKET_NAME").map_err(io_other)?;
 
         let endpoint = format!("https://{account_id}.r2.cloudflarestorage.com");
         let creds = Credentials::new(access_key, secret_key, None, None, "r2-env");

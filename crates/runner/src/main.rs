@@ -94,6 +94,8 @@ enum Command {
     Kill(cmd::KillArgs),
     /// Clean up unused image directories
     Gc(cmd::GcArgs),
+    /// Inspect and manually clean up R2 runner cache objects
+    R2Cache(cmd::R2CacheArgs),
     /// Inspect and clean up session workspace image cache entries
     WorkspaceImageCache(cmd::WorkspaceImageCacheArgs),
     /// Runtime health diagnostics for all runners on the host
@@ -281,6 +283,7 @@ async fn main() -> ExitCode {
             .map(|()| ExitCode::SUCCESS),
         Command::Service(args) => cmd::run_service(args).await.map(|()| ExitCode::SUCCESS),
         Command::Gc(args) => cmd::run_gc(args).await.map(|()| ExitCode::SUCCESS),
+        Command::R2Cache(args) => cmd::run_r2_cache(args).await.map(|()| ExitCode::SUCCESS),
         Command::WorkspaceImageCache(args) => cmd::run_workspace_image_cache(args)
             .await
             .map(|()| ExitCode::SUCCESS),
@@ -354,6 +357,14 @@ mod tests {
         assert!(
             Cli::try_parse_from(["runner", "workspace-image-cache", "gc", "--dry-run"]).is_ok(),
             "workspace-image-cache gc should be registered"
+        );
+    }
+
+    #[test]
+    fn r2_cache_command_is_registered() {
+        assert!(
+            Cli::try_parse_from(["runner", "r2-cache", "gc", "--keep-days", "1"]).is_ok(),
+            "r2-cache gc should be registered"
         );
     }
 

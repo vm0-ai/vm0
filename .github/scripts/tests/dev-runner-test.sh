@@ -117,9 +117,21 @@ run_deploy() {
     "$@" "${root}/scripts/dev-runner.sh" deploy
 }
 
-run_deploy arm64-success aarch64 env >"${TMPDIR}/arm64-success.out" 2>"${TMPDIR}/arm64-success.err"
+run_deploy arm64-success aarch64 env \
+  R2_ACCOUNT_ID=test-account \
+  R2_ACCESS_KEY_ID=test-access-key \
+  R2_SECRET_ACCESS_KEY=test-secret-key \
+  R2_RUNNER_CACHE_BUCKET_NAME=test-runner-cache \
+  R2_USER_STORAGES_BUCKET_NAME=test-user-storage \
+  >"${TMPDIR}/arm64-success.out" 2>"${TMPDIR}/arm64-success.err"
 grep -q -- "--target aarch64-unknown-linux-musl" "${TMPDIR}/arm64-success/cargo.log" || fail "expected ARM64 cargo target"
 grep -q "service stop" "${TMPDIR}/arm64-success/service-stop.log" || fail "expected ARM64 service stop"
+grep -q "R2_RUNNER_CACHE_BUCKET_NAME='test-runner-cache'.* build --profile" "${TMPDIR}/arm64-success/cf-ssh.log" || fail "expected build to receive runner cache bucket"
+grep -q "R2_USER_STORAGES_BUCKET_NAME='test-user-storage'.* build --profile" "${TMPDIR}/arm64-success/cf-ssh.log" || fail "expected build to retain legacy bucket for compatibility"
+grep -q "^sudo /var/lib/vm0-runner/bin/local-test/runner gc --keep-latest 3$" "${TMPDIR}/arm64-success/cf-ssh.log" || fail "expected gc without R2 env"
+if grep -q "R2_.* gc --keep-latest 3" "${TMPDIR}/arm64-success/cf-ssh.log"; then
+  fail "gc should not receive R2 env"
+fi
 
 run_deploy x86-success x86_64 env >"${TMPDIR}/x86-success.out" 2>"${TMPDIR}/x86-success.err"
 grep -q -- "--target x86_64-unknown-linux-musl" "${TMPDIR}/x86-success/cargo.log" || fail "expected x86_64 cargo target"
