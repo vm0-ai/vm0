@@ -1,11 +1,17 @@
 # Deployment Compatibility
 
-VM0 has three independently deployed surfaces:
+This document focuses on three independently deployed surfaces that have
+cross-version API or persisted-state compatibility boundaries:
 
 - **Frontend**: browser-delivered web application code.
 - **Backend**: API service code in `turbo/apps/api`, plus any intentional
   web-origin rewrites that forward selected `/api/*` paths to the API service.
-- **Runner**: long-running runner processes plus the guest binaries shipped with that runner.
+- **Runner**: long-running runner processes plus the guest binaries shipped
+  with that runner.
+
+Other release artifacts, such as the desktop app and host-worker deployments,
+have their own release paths and are outside this compatibility model unless
+they interact with these frontend, backend, or runner boundaries.
 
 New versions are normally deployed together, but they do not become active at the
 same instant. Code and tests must account for short periods where different
