@@ -25,6 +25,10 @@ import {
 import { createMockAutomationView } from "../../../mocks/handlers/automations-store.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { pathname } from "../../../signals/location.ts";
+import {
+  CHAT_THREAD_VIRTUAL_ROW_HEIGHT,
+  getChatThreadVirtualListScrollMargin,
+} from "../../../signals/zero-page/zero-sidebar-state.ts";
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
 
 const context = testContext();
@@ -1195,6 +1199,65 @@ describe("zero sidebar", () => {
       expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
       expect(scrollArea.scrollTop).toBeGreaterThan(0);
     });
+  });
+
+  it("aligns the current virtualized chat row with the sidebar scroll area top on page setup", async () => {
+    prepareDefaultAgent();
+    const leadingThreads = Array.from({ length: 24 }, (_, index) => {
+      return createThread(
+        `b3100000-0000-4000-a000-${String(index).padStart(12, "0")}`,
+        `Leading precise chat ${index + 1}`,
+      );
+    });
+    mockSidebarThreadStory([
+      ...leadingThreads,
+      createThread(EXISTING_THREAD_ID, "Release plan"),
+      createThread(AUTOMATION_THREAD_ID, "Scheduled launch"),
+    ]);
+
+    setupSidebarPage({
+      context,
+      path: `/chats/${EXISTING_THREAD_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
+    });
+
+    const scrollArea = screen.getByTestId("sidebar-scroll-area");
+    const virtualList = screen.getByTestId("sidebar-chat-threads-virtual-list");
+    const currentRow = threadLinkByTitle("Release plan").closest(
+      '[data-testid="sidebar-chat-thread-virtual-row"]',
+    );
+    if (!(currentRow instanceof HTMLElement)) {
+      throw new Error("Release plan virtual row not found");
+    }
+    const currentIndex = Number(currentRow.dataset.index);
+    const scrollMargin = getChatThreadVirtualListScrollMargin(
+      scrollArea,
+      virtualList,
+    );
+
+    expect(scrollArea.scrollTop).toBe(
+      scrollMargin + currentIndex * CHAT_THREAD_VIRTUAL_ROW_HEIGHT,
+    );
+  });
+
+  it("computes the virtual chat list margin relative to the scroll viewport", () => {
+    const scrollViewport = document.createElement("div");
+    const virtualList = document.createElement("div");
+    Object.defineProperty(scrollViewport, "offsetTop", {
+      configurable: true,
+      value: 8,
+    });
+    Object.defineProperty(virtualList, "offsetTop", {
+      configurable: true,
+      value: 88,
+    });
+
+    expect(
+      getChatThreadVirtualListScrollMargin(scrollViewport, virtualList),
+    ).toBe(80);
   });
 
   it("cancels and confirms deleting a regular chat from the sidebar", async () => {
