@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.223.4](https://github.com/vm0-ai/vm0/compare/api-v1.223.3...api-v1.223.4) (2026-07-05)
+
+
+### Bug Fixes
+
+* narrow org-scoped feature switch rollouts ([#20196](https://github.com/vm0-ai/vm0/issues/20196)) ([639c9f1](https://github.com/vm0-ai/vm0/commit/639c9f1e34a8d31802c8936ccfa006b9dde0b65f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.399.4
+    * @vm0/db bumped to 1.91.7
+
 ## [1.223.3](https://github.com/vm0-ai/vm0/compare/api-v1.223.2...api-v1.223.3) (2026-07-05)
 
 
