@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.226.2](https://github.com/vm0-ai/vm0/compare/api-v1.226.1...api-v1.226.2) (2026-07-05)
+
+
+### Refactoring
+
+* remove runner profile compatibility fields ([#20255](https://github.com/vm0-ai/vm0/issues/20255)) ([7972fa3](https://github.com/vm0-ai/vm0/commit/7972fa3a2aa317e99ba40503b5d6dae35e0d6df8))
+
+
+### Performance Improvements
+
+* lazily materialize custom connector auth ([#20258](https://github.com/vm0-ai/vm0/issues/20258)) ([57d47d7](https://github.com/vm0-ai/vm0/commit/57d47d729ad48e626b63d71fcd69f93deec7c692))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.155.2
+    * @vm0/core bumped to 8.401.3
+    * @vm0/db bumped to 1.92.6
+
 ## [1.226.1](https://github.com/vm0-ai/vm0/compare/api-v1.226.0...api-v1.226.1) (2026-07-05)
 
 
