@@ -1056,13 +1056,20 @@ async fn process_group_background_fill(
     http: &Client,
     home: &HomePaths,
 ) -> RunnerResult<BackgroundFillOutcome> {
+    let mut saw_retryable_skipped = false;
     for target in &group.targets {
         match process_one_background_fill(target, http, home).await? {
-            BackgroundFillOutcome::RetryableSkipped => {}
+            BackgroundFillOutcome::RetryableSkipped => {
+                saw_retryable_skipped = true;
+            }
             outcome => return Ok(outcome),
         }
     }
-    Ok(BackgroundFillOutcome::Skipped)
+    if saw_retryable_skipped {
+        Ok(BackgroundFillOutcome::RetryableSkipped)
+    } else {
+        Ok(BackgroundFillOutcome::Skipped)
+    }
 }
 
 async fn process_group_hit_or_passthrough(
@@ -3209,6 +3216,17 @@ mod tests {
         .into_records();
         assert_eq!(busy.len(), 1);
         assert_eq!(busy[0].action_type, STORAGE_CACHE_BACKGROUND_FILL_BUSY);
+
+        let retryable_skipped = BackgroundFillReport::from_outcome(
+            BackgroundFillOutcome::RetryableSkipped,
+            Duration::from_millis(6),
+        )
+        .into_records();
+        assert_eq!(retryable_skipped.len(), 1);
+        assert_eq!(
+            retryable_skipped[0].action_type,
+            STORAGE_CACHE_BACKGROUND_FILL_RETRYABLE_SKIPPED
+        );
 
         let failed = BackgroundFillReport::failed(Duration::from_millis(7)).into_records();
         assert_eq!(failed.len(), 1);
