@@ -4506,20 +4506,19 @@ interface ChatComposerModelPickerConfig {
   value: ModelProviderSelection | null;
   onChange: (value: ModelProviderSelection | null) => void;
   disabled: boolean;
-  defaultSelection: ModelProviderSelection | null;
+  resolveDefaultSelection: boolean;
 }
 
 function resolveChatComposerModelPicker(params: {
   modelSelection: ModelProviderSelection | null;
   setModelSelection: (value: ModelProviderSelection | null) => void;
   disabled: boolean;
-  defaultSelection: ModelProviderSelection | null;
 }): ChatComposerModelPickerConfig {
   return {
     value: params.modelSelection,
     onChange: params.setModelSelection,
     disabled: params.disabled,
-    defaultSelection: params.defaultSelection,
+    resolveDefaultSelection: false,
   };
 }
 
@@ -4589,20 +4588,19 @@ function useChatComposerModel(
   thread: ChatThreadSignals,
   pageSignal: AbortSignal,
 ) {
-  // Per-thread composer state lives in ccstate signals on the factory so the
-  // initial value seeds from remoteThreadDetail once it resolves (a React useState
-  // initializer would snapshot `undefined` on first render). `modelSelection$`
-  // internally flips to a user-override once `setModelSelection$` is called,
-  // so unsaved edits survive subsequent remoteThreadDetail$ reloads. Read with
-  // useLastResolved so the picker keeps the previous value during the
-  // remoteThreadDetail$ refetches triggered by chatThreadRunUpdated Ably events —
-  // otherwise the picker briefly flips to a skeleton on every run change.
+  // Per-thread composer selection comes from the event projection. Read with
+  // useLastResolved so the picker keeps the previous value while realtime
+  // callbacks refetch the thread detail for non-selection fields.
   const modelSelectionResolved = useLastResolved(thread.modelSelection$);
-  const defaultModelSelectionResolved = useLastResolved(
-    thread.defaultModelSelection$,
-  );
-  const modelSelection = modelSelectionResolved ?? null;
-  const defaultModelSelection = defaultModelSelectionResolved ?? null;
+  const threadDetail = useLastResolved(thread.remoteThreadDetail$);
+  const baseModelSelection = modelSelectionResolved ?? null;
+  const modelSelection =
+    baseModelSelection && threadDetail?.codexServiceTier
+      ? {
+          ...baseModelSelection,
+          codexServiceTier: threadDetail.codexServiceTier,
+        }
+      : baseModelSelection;
   const setModelSelection = useSet(thread.setModelSelection$);
   const modelFirstOauthState = useLastResolved(modelFirstPersonalOauthState$);
   const openPersonalOauthConfiguration = usePersonalOauthConfigurationAction();
@@ -4617,14 +4615,8 @@ function useChatComposerModel(
     modelSelection,
     setModelSelection: handleModelSelectionChange,
     disabled: false,
-    defaultSelection: defaultModelSelection,
   });
-  // Explicit thread selections can render before default model selection
-  // resolves; only inherited selections need that fallback before showing.
-  const modelPickerLoading =
-    modelSelectionResolved === undefined ||
-    (modelSelectionResolved === null &&
-      defaultModelSelectionResolved === undefined);
+  const modelPickerLoading = modelSelectionResolved === undefined;
   const submitBlockerProps = resolveChatComposerSubmitBlocker({
     state: modelFirstOauthState,
     modelSelection,

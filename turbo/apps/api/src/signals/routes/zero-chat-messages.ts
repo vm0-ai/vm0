@@ -74,7 +74,6 @@ import {
   type ModelFirstPin,
   modelOnlyModelFirstPin,
   modelProviderPinAvailable,
-  resolveDefaultModelFirstPin,
   resolveModelFirstProviderAdmission,
   resolveModelSelectionPin,
 } from "../services/zero-model-selection.service";
@@ -97,7 +96,6 @@ interface NormalSendBody {
   readonly threadId?: string;
   readonly clientThreadId?: string;
   readonly chatThreadEventId?: string;
-  readonly modelSelectionEventId?: string;
   readonly modelProvider?: string;
   readonly modelSelection?: {
     readonly modelProviderId: string;
@@ -779,24 +777,12 @@ async function latestSessionForThread(
   return undefined;
 }
 
-async function selectedModelForSessionDecision(params: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
+function selectedModelForSessionDecision(params: {
   readonly modelSelection: IncomingModelSelection;
   readonly threadSelectedModel: string | null;
-}): Promise<string | null> {
-  if (params.modelSelection !== undefined) {
-    return (
-      params.modelSelection?.selectedModel ??
-      (
-        await resolveDefaultModelFirstPin(
-          params.db,
-          params.orgId,
-          params.userId,
-        )
-      ).selectedModel
-    );
+}): string | null {
+  if (params.modelSelection) {
+    return params.modelSelection.selectedModel;
   }
   return params.threadSelectedModel;
 }
@@ -1061,40 +1047,6 @@ async function getStoredThreadModelPin(
   return modelOnlyModelFirstPin(thread.selectedModel);
 }
 
-async function getFirstRunModelPin(
-  db: Db,
-  threadId: string,
-): Promise<ThreadModelPin | null> {
-  const [run] = await db
-    .select({ selectedModel: zeroRuns.selectedModel })
-    .from(chatMessages)
-    .innerJoin(zeroRuns, eq(zeroRuns.id, chatMessages.runId))
-    .where(
-      and(
-        eq(chatMessages.chatThreadId, threadId),
-        eq(chatMessages.role, "user"),
-        isNotNull(chatMessages.runId),
-        isNotNull(zeroRuns.selectedModel),
-      ),
-    )
-    .orderBy(asc(chatMessages.createdAt), asc(chatMessages.id))
-    .limit(1);
-  if (!run?.selectedModel) {
-    return null;
-  }
-  return modelOnlyModelFirstPin(run.selectedModel);
-}
-
-async function existingModelFirstThreadPin(
-  db: Db,
-  threadId: string,
-): Promise<ThreadModelPin | null> {
-  return (
-    (await getStoredThreadModelPin(db, threadId)) ??
-    (await getFirstRunModelPin(db, threadId))
-  );
-}
-
 function emptyModelFirstThreadPin(): ThreadModelPin {
   return {
     modelProviderId: null,
@@ -1144,114 +1096,23 @@ async function resolveStoredModelFirstPin(params: {
   });
 }
 
-async function persistThreadPinIfUnset(params: {
-  readonly db: Db;
-  readonly threadId: string;
-  readonly userId: string;
-  readonly orgId: string;
-  readonly pin: ThreadModelPin;
-  readonly eventId: string | undefined;
-}): Promise<ThreadModelPin> {
-  if (!params.pin.selectedModel) {
-    return params.pin;
-  }
-  await params.db.transaction(async (tx) => {
-    const updatedAt = nowDate();
-    const [thread] = await tx
-      .update(chatThreads)
-      .set({
-        ...modelOnlyModelFirstPin(params.pin.selectedModel),
-        updatedAt,
-      })
-      .where(
-        and(
-          eq(chatThreads.id, params.threadId),
-          eq(chatThreads.userId, params.userId),
-          isNull(chatThreads.selectedModel),
-        ),
-      )
-      .returning({
-        id: chatThreads.id,
-        agentComposeId: chatThreads.agentComposeId,
-      });
-    if (!thread) {
-      return;
-    }
-    await appendChatThreadEvent(tx, {
-      kind: "model_selection_updated",
-      userId: params.userId,
-      orgId: params.orgId,
-      chatThreadId: thread.id,
-      agentComposeId: thread.agentComposeId,
-      eventId: params.eventId,
-      selectedModel: params.pin.selectedModel,
-      createdAt: updatedAt,
-    });
-  });
-  return params.pin;
-}
-
-async function persistThreadPinForExplicitSelection(params: {
-  readonly db: Db;
-  readonly threadId: string;
-  readonly userId: string;
-  readonly orgId: string;
-  readonly pin: ThreadModelPin;
-  readonly eventId: string | undefined;
-}): Promise<ThreadModelPin> {
-  await params.db.transaction(async (tx) => {
-    const updatedAt = nowDate();
-    const [thread] = await tx
-      .update(chatThreads)
-      .set({
-        ...modelOnlyModelFirstPin(params.pin.selectedModel),
-        updatedAt,
-      })
-      .where(
-        and(
-          eq(chatThreads.id, params.threadId),
-          eq(chatThreads.userId, params.userId),
-        ),
-      )
-      .returning({
-        id: chatThreads.id,
-        agentComposeId: chatThreads.agentComposeId,
-      });
-    if (!thread) {
-      return;
-    }
-    await appendChatThreadEvent(tx, {
-      kind: "model_selection_updated",
-      userId: params.userId,
-      orgId: params.orgId,
-      chatThreadId: thread.id,
-      agentComposeId: thread.agentComposeId,
-      eventId: params.eventId,
-      selectedModel: params.pin.selectedModel,
-      createdAt: updatedAt,
-    });
-  });
-  return params.pin;
-}
-
 async function resolveRunModelPin(params: {
   readonly db: Db;
   readonly orgId: string;
   readonly userId: string;
   readonly threadId: string;
   readonly modelSelection: IncomingModelSelection;
-  readonly eventId: string | undefined;
 }): Promise<
   | ThreadModelPin
   | ReturnType<typeof providerDeleted>
   | ReturnType<typeof badRequestMessage>
   | ReturnType<typeof insufficientCredits>
 > {
-  const existing =
-    params.modelSelection === undefined
-      ? await existingModelFirstThreadPin(params.db, params.threadId)
-      : null;
-  if (existing) {
+  if (!params.modelSelection) {
+    const existing = await getStoredThreadModelPin(params.db, params.threadId);
+    if (!existing) {
+      return badRequestMessage("A model selection is required");
+    }
     const pin = await resolveStoredModelFirstPin({
       db: params.db,
       orgId: params.orgId,
@@ -1261,44 +1122,19 @@ async function resolveRunModelPin(params: {
     if ("status" in pin) {
       return pin;
     }
-    return persistThreadPinIfUnset({
-      db: params.db,
-      threadId: params.threadId,
-      userId: params.userId,
-      orgId: params.orgId,
-      pin,
-      eventId: params.eventId,
-    });
+    return pin;
   }
 
-  const pin = params.modelSelection
-    ? await resolveModelSelectionPin({
-        db: params.db,
-        orgId: params.orgId,
-        userId: params.userId,
-        modelSelection: params.modelSelection,
-      })
-    : await resolveDefaultModelFirstPin(params.db, params.orgId, params.userId);
+  const pin = await resolveModelSelectionPin({
+    db: params.db,
+    orgId: params.orgId,
+    userId: params.userId,
+    modelSelection: params.modelSelection,
+  });
   if ("status" in pin) {
     return pin;
   }
-  return params.modelSelection === undefined
-    ? persistThreadPinIfUnset({
-        db: params.db,
-        threadId: params.threadId,
-        userId: params.userId,
-        orgId: params.orgId,
-        pin,
-        eventId: params.eventId,
-      })
-    : persistThreadPinForExplicitSelection({
-        db: params.db,
-        threadId: params.threadId,
-        userId: params.userId,
-        orgId: params.orgId,
-        pin,
-        eventId: params.eventId,
-      });
+  return pin;
 }
 
 async function validateModelSelection(params: {
@@ -1344,25 +1180,22 @@ async function resolveCodexServiceTierValidationPin(params: {
       modelSelection: params.body.modelSelection,
     });
   }
-  if (params.body.modelSelection === undefined && params.body.threadId) {
-    const existing = await existingModelFirstThreadPin(
+  if (params.body.threadId) {
+    const existing = await getStoredThreadModelPin(
       params.db,
       params.body.threadId,
     );
-    if (existing) {
-      return await resolveStoredModelFirstPin({
-        db: params.db,
-        orgId: params.orgId,
-        userId: params.userId,
-        pin: existing,
-      });
+    if (!existing) {
+      return badRequestMessage("A model selection is required");
     }
+    return await resolveStoredModelFirstPin({
+      db: params.db,
+      orgId: params.orgId,
+      userId: params.userId,
+      pin: existing,
+    });
   }
-  return await resolveDefaultModelFirstPin(
-    params.db,
-    params.orgId,
-    params.userId,
-  );
+  return badRequestMessage("A model selection is required");
 }
 
 async function validateCodexServiceTierBeforeThread(params: {
@@ -1609,9 +1442,9 @@ async function createChatThread(
           userId: args.userId,
           agentComposeId: args.agentId,
           title: null,
-          modelProviderId: null,
-          modelProviderType: null,
-          modelProviderCredentialScope: null,
+          modelProviderId: args.pin.modelProviderId,
+          modelProviderType: args.pin.modelProviderType,
+          modelProviderCredentialScope: args.pin.modelProviderCredentialScope,
           selectedModel: args.pin.selectedModel,
           codexServiceTier: args.codexServiceTier,
         })
@@ -1655,9 +1488,9 @@ async function createChatThread(
         userId: args.userId,
         agentComposeId: args.agentId,
         title: null,
-        modelProviderId: null,
-        modelProviderType: null,
-        modelProviderCredentialScope: null,
+        modelProviderId: args.pin.modelProviderId,
+        modelProviderType: args.pin.modelProviderType,
+        modelProviderCredentialScope: args.pin.modelProviderCredentialScope,
         selectedModel: args.pin.selectedModel,
         codexServiceTier: args.codexServiceTier,
       })
@@ -1678,6 +1511,38 @@ async function createChatThread(
     });
     return { id: thread.id, clientThreadAlreadyExisted: false };
   });
+}
+
+async function resolveInitialThreadModelPin(params: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly existingThreadId: string | undefined;
+  readonly modelSelection: IncomingModelSelection;
+}): Promise<
+  | ThreadModelPin
+  | ReturnType<typeof badRequestMessage>
+  | ReturnType<typeof insufficientCredits>
+> {
+  if (params.existingThreadId) {
+    return emptyModelFirstThreadPin();
+  }
+  if (!params.modelSelection) {
+    return badRequestMessage("A model selection is required");
+  }
+  const pin = await resolveModelSelectionPin({
+    db: params.db,
+    orgId: params.orgId,
+    userId: params.userId,
+    modelSelection: params.modelSelection,
+  });
+  if ("status" in pin) {
+    return pin;
+  }
+  if (!pin.selectedModel) {
+    return badRequestMessage("A model selection is required");
+  }
+  return pin;
 }
 
 async function resolveThread(params: {
@@ -1741,10 +1606,7 @@ async function resolveThread(params: {
   ]);
   const startNewSession = shouldStartNewSessionForSelectedModel({
     latestSession,
-    nextSelectedModel: await selectedModelForSessionDecision({
-      db: params.db,
-      orgId: params.orgId,
-      userId: params.userId,
+    nextSelectedModel: selectedModelForSessionDecision({
       modelSelection: params.modelSelection,
       threadSelectedModel: thread.selectedModel,
     }),
@@ -2330,6 +2192,18 @@ const prepareNormalSend$ = command(
       }
     }
 
+    const initialPin = await resolveInitialThreadModelPin({
+      db,
+      orgId: args.orgId,
+      userId: args.userId,
+      existingThreadId: args.body.threadId,
+      modelSelection: args.body.modelSelection,
+    });
+    signal.throwIfAborted();
+    if ("status" in initialPin) {
+      return initialPin;
+    }
+
     const thread = await resolveThread({
       db,
       orgId: args.orgId,
@@ -2338,7 +2212,7 @@ const prepareNormalSend$ = command(
       existingThreadId: args.body.threadId,
       clientThreadId: args.body.clientThreadId,
       chatThreadEventId: args.body.chatThreadEventId,
-      initialPin: emptyModelFirstThreadPin(),
+      initialPin,
       codexServiceTier: args.body.runOptions?.codexServiceTier ?? null,
       modelSelection: args.body.modelSelection,
     });
@@ -2659,7 +2533,6 @@ async function resolveTimedRunModelPin(
         userId: args.userId,
         threadId: prepared.thread.threadId,
         modelSelection: args.body.modelSelection,
-        eventId: args.body.modelSelectionEventId,
       });
     },
   );

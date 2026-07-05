@@ -95,6 +95,16 @@ import { createZeroRouteMocks } from "./zero-route-test";
 export { hostedTextFile } from "./api-bdd-host-files";
 export { storageTextFile } from "./api-bdd-storage-files";
 
+const MODEL_FIRST_SELECTION_PROVIDER_ID =
+  "00000000-0000-4000-8000-000000000000";
+
+function defaultCreateThreadModelSelection(): ModelSelectionRequest {
+  return {
+    modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+    selectedModel: "claude-sonnet-4-6",
+  };
+}
+
 type StorageType = "volume" | "artifact";
 
 interface AuthHeaders {
@@ -160,7 +170,6 @@ type BddSendMessageBody =
       readonly prompt: string;
       readonly threadId?: string;
       readonly clientThreadId?: string;
-      readonly modelSelectionEventId?: string;
       readonly modelProvider?: string;
       readonly modelSelection?: ModelSelectionRequest | null;
       readonly runOptions?: ChatRunOptionsRequest;
@@ -443,12 +452,17 @@ export function createChatFilesBddApi(context: TestContext) {
         readonly title?: string;
         readonly clientThreadId?: string;
         readonly eventId?: string;
+        readonly modelSelection?: ModelSelectionRequest;
       },
     ): Promise<{ readonly id: string; readonly title: string | null }> {
       const response = await accept(
         threadsClient().create({
           headers: authenticate(context, actor),
-          body,
+          body: {
+            ...body,
+            modelSelection:
+              body.modelSelection ?? defaultCreateThreadModelSelection(),
+          },
         }),
         [201],
       );
@@ -462,13 +476,18 @@ export function createChatFilesBddApi(context: TestContext) {
         readonly title?: string;
         readonly clientThreadId?: string;
         readonly eventId?: string;
+        readonly modelSelection?: ModelSelectionRequest;
       },
-      statuses: readonly (201 | 401 | 404)[],
+      statuses: readonly (201 | 401 | 402 | 404)[],
     ) {
       return await accept(
         threadsClient().create({
           headers: authenticate(context, actor),
-          body,
+          body: {
+            ...body,
+            modelSelection:
+              body.modelSelection ?? defaultCreateThreadModelSelection(),
+          },
         }),
         statuses,
       );
@@ -1133,48 +1152,51 @@ export function createChatFilesBddApi(context: TestContext) {
         : chatMessagesClient();
       const requestBody =
         "prompt" in body
-          ? {
-              agentId: body.agentId,
-              prompt: body.prompt,
-              ...(body.threadId === undefined
-                ? {}
-                : { threadId: body.threadId }),
-              ...(body.clientThreadId === undefined
-                ? {}
-                : { clientThreadId: body.clientThreadId }),
-              ...(body.modelSelectionEventId === undefined
-                ? {}
-                : { modelSelectionEventId: body.modelSelectionEventId }),
-              ...(body.modelProvider === undefined
-                ? {}
-                : { modelProvider: body.modelProvider }),
-              ...(body.modelSelection === undefined
-                ? {}
-                : { modelSelection: body.modelSelection }),
-              ...(body.runOptions === undefined
-                ? {}
-                : { runOptions: body.runOptions }),
-              ...(body.generationTemplate === undefined
-                ? {}
-                : { generationTemplate: body.generationTemplate }),
-              ...(body.hasTextContent === undefined
-                ? {}
-                : { hasTextContent: body.hasTextContent }),
-              ...(body.attachFiles === undefined
-                ? {}
-                : { attachFiles: [...body.attachFiles] }),
-              // Explicit null clears the thread's sticky computer-use host;
-              // omitting the field keeps it, so the two must stay distinct.
-              ...(body.computerUseHostId === undefined
-                ? {}
-                : { computerUseHostId: body.computerUseHostId }),
-              ...(body.clientMessageId === undefined
-                ? {}
-                : { clientMessageId: body.clientMessageId }),
-              ...(body.revokesMessageId === undefined
-                ? {}
-                : { revokesMessageId: body.revokesMessageId }),
-            }
+          ? (() => {
+              const modelSelection =
+                body.modelSelection !== undefined
+                  ? body.modelSelection
+                  : body.threadId === undefined
+                    ? defaultCreateThreadModelSelection()
+                    : undefined;
+              return {
+                agentId: body.agentId,
+                prompt: body.prompt,
+                ...(body.threadId === undefined
+                  ? {}
+                  : { threadId: body.threadId }),
+                ...(body.clientThreadId === undefined
+                  ? {}
+                  : { clientThreadId: body.clientThreadId }),
+                ...(body.modelProvider === undefined
+                  ? {}
+                  : { modelProvider: body.modelProvider }),
+                ...(modelSelection === undefined ? {} : { modelSelection }),
+                ...(body.runOptions === undefined
+                  ? {}
+                  : { runOptions: body.runOptions }),
+                ...(body.generationTemplate === undefined
+                  ? {}
+                  : { generationTemplate: body.generationTemplate }),
+                ...(body.hasTextContent === undefined
+                  ? {}
+                  : { hasTextContent: body.hasTextContent }),
+                ...(body.attachFiles === undefined
+                  ? {}
+                  : { attachFiles: [...body.attachFiles] }),
+                // Explicit null clears the thread's sticky computer-use host;
+                // omitting the field keeps it, so the two must stay distinct.
+                ...(body.computerUseHostId === undefined
+                  ? {}
+                  : { computerUseHostId: body.computerUseHostId }),
+                ...(body.clientMessageId === undefined
+                  ? {}
+                  : { clientMessageId: body.clientMessageId }),
+                ...(body.revokesMessageId === undefined
+                  ? {}
+                  : { revokesMessageId: body.revokesMessageId }),
+              };
+            })()
           : "interruptsRunId" in body
             ? {
                 agentId: body.agentId,

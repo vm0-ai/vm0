@@ -47,7 +47,6 @@ import {
 } from "../../signals/chat-page/workflow-prompt-action.ts";
 import { AttachmentLightbox } from "./zero-attachment-chips.tsx";
 import {
-  chatPageDefaultModelSelection$,
   chatPageInput$,
   chatPageModelSelection$,
   setChatPageInput$,
@@ -393,19 +392,12 @@ function SuggestedPromptsGrid({
 
 function useAgentChatComposerModel(pageSignal: AbortSignal) {
   const modelSelectionLoadable = useLastLoadable(chatPageModelSelection$);
-  const defaultModelSelectionLoadable = useLastLoadable(
-    chatPageDefaultModelSelection$,
-  );
   const modelSelection =
     modelSelectionLoadable.state === "hasData"
       ? modelSelectionLoadable.data
       : null;
   const setModelSelection = useSet(setChatPageModelSelection$);
   const updateUserModelPreference = useSet(updateUserModelPreference$);
-  const defaultModelSelection =
-    defaultModelSelectionLoadable.state === "hasData"
-      ? defaultModelSelectionLoadable.data
-      : null;
   const modelFirstOauthState = useLastResolved(modelFirstPersonalOauthState$);
   const openPersonalOauthConfiguration = usePersonalOauthConfigurationAction();
 
@@ -425,16 +417,14 @@ function useAgentChatComposerModel(pageSignal: AbortSignal) {
   const modelPicker = {
     value: modelSelection,
     onChange: handleModelSelectionChange,
-    defaultSelection: defaultModelSelection,
+    resolveDefaultSelection: false,
   };
   const submitBlockerProps = resolveChatComposerSubmitBlocker({
     state: modelFirstOauthState,
     modelSelection,
     onAction: openPersonalOauthConfiguration,
   });
-  const modelPickerLoading =
-    modelSelectionLoadable.state === "loading" ||
-    defaultModelSelectionLoadable.state === "loading";
+  const modelPickerLoading = modelSelectionLoadable.state === "loading";
 
   return {
     modelSelection,

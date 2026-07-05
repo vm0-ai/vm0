@@ -438,7 +438,6 @@ export function mockChatLifecycle(
     }) => void;
     onSendRequest?: (body: {
       clientThreadId?: string;
-      modelSelectionEventId?: string;
       modelSelection?: ModelSelectionRequest | null;
     }) => void;
     onMessageGet?: (messageId: string) => void;
@@ -859,6 +858,7 @@ export function mockChatLifecycle(
   });
   context.mocks.api(chatThreadsContract.create, ({ body, respond }) => {
     threadId = body.clientThreadId ?? threadId;
+    selectedModel = body.modelSelection.selectedModel;
     return respond(201, {
       id: threadId,
       title: null,
@@ -877,7 +877,6 @@ export function mockChatLifecycle(
 
     options?.onSendRequest?.({
       clientThreadId: body.clientThreadId,
-      modelSelectionEventId: body.modelSelectionEventId,
       modelSelection: body.modelSelection,
     });
     threadId = body.clientThreadId ?? threadId;

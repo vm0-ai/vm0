@@ -315,8 +315,7 @@ interface ZeroChatComposerProps {
     onChange: (value: ModelProviderSelection | null) => void;
     // When true, picker is read-only for the current composer state.
     disabled?: boolean;
-    /** Effective default model from user preference, then workspace default. */
-    defaultSelection?: ModelProviderSelection | null;
+    resolveDefaultSelection?: boolean;
   };
   templatePicker?: {
     value: GenerationTemplateRequest | undefined;
@@ -442,9 +441,6 @@ function resolveComposerModelForSelection(
   }
   if (selection) {
     return selection;
-  }
-  if (modelPicker.defaultSelection) {
-    return modelPicker.defaultSelection;
   }
   return null;
 }
@@ -6456,6 +6452,7 @@ function ComposerModelPickerSlot({
           open={modelPickerOpen}
           onOpenChange={onModelPickerOpenChange}
           disabled={modelPicker.disabled}
+          resolveDefaultSelection={modelPicker.resolveDefaultSelection}
         />
       )}
     </>

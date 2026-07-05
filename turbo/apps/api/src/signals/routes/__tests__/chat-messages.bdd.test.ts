@@ -172,7 +172,6 @@ interface ChatRunSendBody {
   readonly prompt: string;
   readonly threadId?: string;
   readonly clientThreadId?: string;
-  readonly modelSelectionEventId?: string;
   readonly clientMessageId?: string;
   readonly modelSelection?: ModelSelectionRequest;
   readonly runOptions?: ChatRunOptionsRequest;
@@ -215,7 +214,7 @@ async function sendChatRun(
   return { runId: sent.body.runId, threadId: sent.body.threadId };
 }
 
-async function expectThreadModelEvent(
+async function expectThreadCreatedModelEvent(
   actor: ApiTestUser,
   threadId: string,
   selectedModel: string,
@@ -226,6 +225,25 @@ async function expectThreadModelEvent(
     throw new Error("Expected chat thread events to load");
   }
   expect(threadEvents.body.events).toContainEqual(
+    expect.objectContaining({
+      kind: "created",
+      chatThreadId: threadId,
+      selectedModel,
+    }),
+  );
+}
+
+async function expectNoThreadModelUpdateEvent(
+  actor: ApiTestUser,
+  threadId: string,
+  selectedModel: string,
+): Promise<void> {
+  const threadEvents = await chat.requestThreadEvents(actor, {}, [200]);
+  expect(threadEvents.status).toBe(200);
+  if (threadEvents.status !== 200) {
+    throw new Error("Expected chat thread events to load");
+  }
+  expect(threadEvents.body.events).not.toContainEqual(
     expect.objectContaining({
       kind: "model_selection_updated",
       chatThreadId: threadId,
@@ -1652,12 +1670,10 @@ describe("CHAT-02: explicit provider pins", () => {
       type: "deepseek-api-key",
       secret: "selected-deepseek-key",
     });
-    const modelSelectionEventId = randomUUID();
 
     const run = await sendChatRun(actor, {
       agentId,
       prompt: "run with the selected deepseek provider",
-      modelSelectionEventId,
       modelSelection: {
         modelProviderId: deepseekId,
         selectedModel: "deepseek-v4-pro",
@@ -1679,11 +1695,11 @@ describe("CHAT-02: explicit provider pins", () => {
     expect(environment.CLAUDE_CODE_DISABLE_ATTACHMENTS).toBe("1");
     expect(environment.ANTHROPIC_API_KEY).toBeUndefined();
 
-    // Explicit pins persist through thread model events, while detail stays
-    // independent of the event-driven model projection.
+    // The new thread's initial model is recorded on the created event. The
+    // send route does not emit a model_selection_updated event.
     const thread = await chat.readThread(actor, run.threadId);
     expect(thread).not.toHaveProperty("selectedModel");
-    expect(thread.modelProviderId ?? null).toBeNull();
+    expect(thread.modelProviderId ?? null).toBe(deepseekId);
     const threadEvents = await chat.requestThreadEvents(actor, {}, [200]);
     expect(threadEvents.status).toBe(200);
     if (threadEvents.status !== 200) {
@@ -1691,7 +1707,13 @@ describe("CHAT-02: explicit provider pins", () => {
     }
     expect(threadEvents.body.events).toContainEqual(
       expect.objectContaining({
-        id: modelSelectionEventId,
+        kind: "created",
+        chatThreadId: run.threadId,
+        selectedModel: "deepseek-v4-pro",
+      }),
+    );
+    expect(threadEvents.body.events).not.toContainEqual(
+      expect.objectContaining({
         kind: "model_selection_updated",
         chatThreadId: run.threadId,
         selectedModel: "deepseek-v4-pro",
@@ -2179,8 +2201,8 @@ describe("CHAT-02: explicit provider pins", () => {
   }, 60_000);
 });
 
-describe("CHAT-02: server-side model switches", () => {
-  it("switches models server-side and starts a fresh session with prior web context", async () => {
+describe("CHAT-02: run-level model overrides", () => {
+  it("uses send model overrides for the run without mutating the thread model", async () => {
     const { actor, agentId, runnerGroup, providerId } =
       await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -2202,7 +2224,14 @@ describe("CHAT-02: server-side model switches", () => {
     ]);
 
     const firstPrompt = "first turn on the default opus policy";
-    const first = await sendChatRun(actor, { agentId, prompt: firstPrompt });
+    const first = await sendChatRun(actor, {
+      agentId,
+      prompt: firstPrompt,
+      modelSelection: {
+        modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+        selectedModel: "claude-opus-4-6",
+      },
+    });
     const firstClaim = await claimChatRun(runnerGroup, first.runId);
     expect(claimEnvironment(firstClaim.claim).ANTHROPIC_MODEL).toBe(
       "claude-opus-4-6",
@@ -2216,12 +2245,16 @@ describe("CHAT-02: server-side model switches", () => {
         return message.content === "opus answer";
       });
     });
-    await expectThreadModelEvent(actor, first.threadId, "claude-opus-4-6");
+    await expectThreadCreatedModelEvent(
+      actor,
+      first.threadId,
+      "claude-opus-4-6",
+    );
     expect(
       (await api.readRun(actor, first.runId)).result?.agentSessionId,
     ).toMatch(/[0-9a-f-]{36}/);
 
-    // Sentinel selection of another model starts a fresh session that carries
+    // A run-level override of another model starts a fresh session that carries
     // the prior web round as context instead of resuming the CLI session.
     const second = await sendChatRun(actor, {
       agentId,
@@ -2244,30 +2277,28 @@ describe("CHAT-02: server-side model switches", () => {
     expect(claimEnvironment(secondClaim.claim).ANTHROPIC_MODEL).toBe(
       "claude-sonnet-4-6",
     );
-    await expectThreadModelEvent(actor, first.threadId, "claude-sonnet-4-6");
+    await expectNoThreadModelUpdateEvent(
+      actor,
+      first.threadId,
+      "claude-sonnet-4-6",
+    );
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(second.runId, secondClaim.sandboxHeaders);
 
-    // Same-model follow-ups resume the previous turn's CLI session.
+    // Follow-ups without a send model override go back to the thread's stored
+    // model. Because the latest run used a different run-level override, this
+    // starts a fresh session instead of resuming the previous CLI session.
     const third = await sendChatRun(actor, {
       agentId,
       threadId: first.threadId,
-      prompt: "continue on sonnet",
+      prompt: "continue on the thread model",
     });
     const thirdClaim = await claimChatRun(runnerGroup, third.runId);
-    expect(thirdClaim.claim.resumeSession?.sessionId).toBe(
-      `bdd-cli-${second.runId}`,
+    expect(thirdClaim.claim.resumeSession).toBeNull();
+    expect(claimEnvironment(thirdClaim.claim).ANTHROPIC_MODEL).toBe(
+      "claude-opus-4-6",
     );
     await cancelChatRun(actor, third.runId);
-
-    // The sentinel selection also became the user's model preference, so a
-    // fresh thread without a selection pins the preferred model.
-    const fourth = await sendChatRun(actor, {
-      agentId,
-      prompt: "fresh thread uses the sentinel preference",
-    });
-    await expectThreadModelEvent(actor, fourth.threadId, "claude-sonnet-4-6");
-    await cancelChatRun(actor, fourth.runId);
   }, 90_000);
 
   it("re-resolves the provider route from current policy on follow-up sends", async () => {
@@ -2289,7 +2320,11 @@ describe("CHAT-02: server-side model switches", () => {
     const pinned = await chat.readThread(actor, first.threadId);
     expect(pinned).not.toHaveProperty("selectedModel");
     expect(pinned.modelProviderId ?? null).toBeNull();
-    await expectThreadModelEvent(actor, first.threadId, "claude-sonnet-4-6");
+    await expectThreadCreatedModelEvent(
+      actor,
+      first.threadId,
+      "claude-sonnet-4-6",
+    );
 
     // Org providers are per-type singletons, so the public rotation surface
     // is re-upserting the same provider with a new secret. The model-only
@@ -2317,7 +2352,11 @@ describe("CHAT-02: server-side model switches", () => {
     const after = await chat.readThread(actor, first.threadId);
     expect(after).not.toHaveProperty("selectedModel");
     expect(after.modelProviderId ?? null).toBeNull();
-    await expectThreadModelEvent(actor, first.threadId, "claude-sonnet-4-6");
+    await expectThreadCreatedModelEvent(
+      actor,
+      first.threadId,
+      "claude-sonnet-4-6",
+    );
     await cancelChatRun(actor, second.runId);
   }, 90_000);
 

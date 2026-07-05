@@ -30,7 +30,6 @@ import {
 } from "../zero-page/chat-draft.ts";
 import {
   collectSuccessfulAttachmentInfos,
-  isVisualAttachment,
   prepareUserMessageFromDraft$,
   shouldExcludeVisualAttachmentsForModel,
 } from "./resolve-draft-attachments.ts";
@@ -61,14 +60,9 @@ import { captureTaskCompletedSuccessfully } from "../../lib/posthog.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { agentById } from "../agent.ts";
 import { chatMessageOrderSequence } from "../chat-message-order.ts";
-import { orgModelPolicies$ } from "../external/org-model-policies.ts";
-import { userModelPreference$ } from "../external/user-model-preference.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
 import { pinnedAgentIds$ } from "../zero-page/zero-pinned-agents.ts";
-import {
-  MODEL_FIRST_SELECTION_PROVIDER_ID,
-  resolveModelFirstUserDefaultSelection,
-} from "../zero-page/model-default-selection.ts";
+import { MODEL_FIRST_SELECTION_PROVIDER_ID } from "../zero-page/model-default-selection.ts";
 import {
   writeChatMessageToClipboard,
   type ChatClipboardPayload,
@@ -537,56 +531,27 @@ function createThreadTitleParts(
 function createModelSelection(
   threadId: string,
   threadMeta$: Computed<Promise<ThreadMeta | null>>,
-  remoteThreadDetail$: Computed<Promise<ChatThread | null>>,
   dataSource: ChatThreadDataSource,
 ) {
-  const optimisticCreateUnsettled$ =
-    optimisticChatThreadCreateUnsettled(threadId);
-  // Discriminated union so we can tell "user hasn't picked anything yet" from
-  // "user explicitly picked inherit (null)". Without the flag, clearing the
-  // selection would be indistinguishable from the initial unset state and we'd
-  // fall back to server data forever.
-  const internalUserOverride$ = state<
-    { kind: "unset" } | { kind: "set"; value: ModelProviderSelection | null }
-  >({ kind: "unset" });
-
   const modelSelection$ = computed(
     async (get): Promise<ModelProviderSelection | null> => {
-      const user = get(internalUserOverride$);
-      if (user.kind === "set") {
-        return user.value;
-      }
       const threadMeta = await get(threadMeta$);
       if (threadMeta?.selectedModel) {
-        const thread = await get(remoteThreadDetail$);
         return {
           modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
           selectedModel: threadMeta.selectedModel,
-          ...(thread?.codexServiceTier
-            ? { codexServiceTier: thread.codexServiceTier }
-            : {}),
         };
       }
-      // Unstarted model-first threads inherit the current user preference;
-      // started threads carry selectedModel through the event projection.
       return null;
     },
   );
 
   const setModelSelection$ = command(
     async (
-      { get, set },
+      { set },
       value: ModelProviderSelection | null,
       signal: AbortSignal,
     ) => {
-      set(internalUserOverride$, { kind: "set", value });
-      if (get(optimisticCreateUnsettled$)) {
-        L.debug("setModelSelection$ optimistic thread create unsettled, skip", {
-          threadId,
-        });
-        return;
-      }
-
       await set(
         dataSource.patchModelSelection$,
         { threadId, modelSelection: value },
@@ -739,17 +704,6 @@ function createAgentInfoSignals(
     return agent?.displayName ?? null;
   });
 
-  const defaultModelSelection$ = computed(
-    async (get): Promise<ModelProviderSelection | null> => {
-      const policies = await get(orgModelPolicies$);
-      const userPreference = await get(userModelPreference$);
-      return resolveModelFirstUserDefaultSelection({
-        userPreference,
-        policies,
-      });
-    },
-  );
-
   const agentPinned$ = computed(async (get): Promise<boolean | null> => {
     const agentId = await get(agentId$);
     if (!agentId) {
@@ -759,7 +713,7 @@ function createAgentInfoSignals(
     return ids.includes(agentId);
   });
 
-  return { agentId$, agentDisplayName$, defaultModelSelection$, agentPinned$ };
+  return { agentId$, agentDisplayName$, agentPinned$ };
 }
 
 // ---------------------------------------------------------------------------
@@ -2544,7 +2498,6 @@ function sendMessageRequestBody(params: {
     threadId: params.threadId,
     hasTextContent: params.result.hasTextContent,
     clientMessageId: params.clientMessageId,
-    modelSelection: modelSelectionRequestFromSelection(params.modelSelection),
     ...(runOptions ? { runOptions } : {}),
     generationTemplate: params.generationTemplate,
     ...(params.options && "computerUseHostId" in params.options
@@ -2553,14 +2506,6 @@ function sendMessageRequestBody(params: {
     attachFiles: params.result.attachFiles,
     ...sendMessageRevocationPatch(params.options),
   };
-}
-
-function hasVisualDraftAttachments(
-  attachments: readonly { contentType: string; filename: string }[],
-): boolean {
-  return attachments.some((attachment) => {
-    return isVisualAttachment(attachment);
-  });
 }
 
 interface SendMessageDeps {
@@ -2607,21 +2552,6 @@ function createSendMessage(deps: SendMessageDeps) {
         return;
       }
       const generationTemplate = get(draft.generationTemplate$);
-      const hasVisualAttachments = hasVisualDraftAttachments(
-        get(draft.attachments$),
-      );
-      let effectiveSelectedModel = modelSelection?.selectedModel;
-      if (!effectiveSelectedModel && hasVisualAttachments) {
-        const policies = await get(orgModelPolicies$);
-        signal.throwIfAborted();
-        const userPreference = await get(userModelPreference$);
-        signal.throwIfAborted();
-        effectiveSelectedModel =
-          resolveModelFirstUserDefaultSelection({
-            userPreference,
-            policies,
-          })?.selectedModel ?? undefined;
-      }
       const result =
         options?.includeDraftAttachments === false
           ? prepareTextOnlyUserMessage(prompt)
@@ -2632,7 +2562,7 @@ function createSendMessage(deps: SendMessageDeps) {
               {
                 excludeVisualAttachments:
                   shouldExcludeVisualAttachmentsForModel(
-                    effectiveSelectedModel,
+                    modelSelection?.selectedModel,
                   ),
               },
               signal,
@@ -3541,7 +3471,6 @@ export function createChatThreadSignals(
   const { modelSelection$, setModelSelection$ } = createModelSelection(
     threadId,
     threadMeta$,
-    remoteThreadDetail$,
     dataSource,
   );
   const computerUseHostSelection = createComputerUseHostSelection(

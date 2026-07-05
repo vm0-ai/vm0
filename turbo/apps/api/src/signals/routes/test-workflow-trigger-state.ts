@@ -1122,7 +1122,7 @@ async function getChatThreadForAction(
     return actionBadRequest("thread_id is required");
   }
   const [thread] = await db
-    .select({ id: chatThreads.id })
+    .select({ id: chatThreads.id, selectedModel: chatThreads.selectedModel })
     .from(chatThreads)
     .where(eq(chatThreads.id, threadId))
     .limit(1);

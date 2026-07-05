@@ -446,16 +446,16 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     expectApiError(crossOrg.body);
     expect(crossOrg.body.error.message).toBe("Agent not found");
 
-    // Loose-auth path: an authenticated session without an organization gets
-    // 404 (not 401) because no compose can belong to the empty org.
+    // Thread creation now resolves the model route up front, so callers must
+    // have an active organization before body-level compose lookup runs.
     const orgless = bdd.user({ orgId: null });
     const noOrg = await chat.requestCreateThread(
       orgless,
       { agentId: foreignAgent.agentId, title: "no org" },
-      [404],
+      [401],
     );
     expectApiError(noOrg.body);
-    expect(noOrg.body.error.message).toBe("Agent not found");
+    expect(noOrg.body.error.code).toBe("UNAUTHORIZED");
 
     // The foreign agent's event stream is unaffected by the rejected creates.
     expect(
@@ -731,6 +731,10 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
 
     const thread = await chat.createThread(actor, {
       agentId,
+      modelSelection: {
+        modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+        selectedModel: "MiniMax-M3",
+      },
       title: "limited free model pin",
     });
     for (const selectedModel of [

@@ -1531,6 +1531,28 @@ describe("chat composer models", () => {
     await expectComposerModel("Claude Sonnet 4.6");
   });
 
+  it("does not fall back to defaults when thread projection has no model", async () => {
+    mockOrgModelRoutes("kimi-k2.7-code");
+    context.mocks.data.userModelPreference({
+      selectedModel: "claude-opus-4-7",
+      updatedAt: "2026-03-10T00:00:00Z",
+    });
+    mockAgent();
+    mockThread({ selectedModel: null });
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    await expect(
+      screen.findByRole("combobox", { name: "Default" }),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.queryByRole("combobox", { name: "Kimi K2.7 Code" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("combobox", { name: "Claude Opus 4.7" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("edits thread override before user default model selection resolves", async () => {
     const user = userEvent.setup({ delay: null });
     const pendingPreference = context.mocks.deferred<void>();
@@ -1634,7 +1656,10 @@ describe("chat composer models", () => {
         modelProviderId: MOONSHOT_PROVIDER_ID,
       }),
     ]);
-    mockChatLifecycle(context, { threadId: THREAD_ID });
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      selectedModel: "claude-sonnet-4-6",
+    });
 
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 

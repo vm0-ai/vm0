@@ -12,6 +12,7 @@ import {
   persistedAttachmentSchema,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
+import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
 import {
   type HostedArtifactKind,
   hostedArtifactKindSchema,
@@ -1205,6 +1206,10 @@ export const createChatThread$ = command(
       readonly title: string | undefined;
       readonly clientThreadId: string | undefined;
       readonly eventId: string | undefined;
+      readonly modelProviderId: string | null;
+      readonly modelProviderType: string | null;
+      readonly modelProviderCredentialScope: ModelProviderCredentialScope | null;
+      readonly selectedModel: string | null;
     },
     signal: AbortSignal,
   ): Promise<{ id: string; createdAt: Date }> => {
@@ -1220,6 +1225,10 @@ export const createChatThread$ = command(
           agentComposeId: args.agentComposeId,
           title: args.title ?? null,
           lastReadAt: sql`NOW()`,
+          modelProviderId: args.modelProviderId,
+          modelProviderType: args.modelProviderType,
+          modelProviderCredentialScope: args.modelProviderCredentialScope,
+          selectedModel: args.selectedModel,
         })
         .returning({ id: chatThreads.id, createdAt: chatThreads.createdAt });
       if (!createdThread) {
@@ -1233,6 +1242,7 @@ export const createChatThread$ = command(
         agentComposeId: args.agentComposeId,
         eventId: args.eventId,
         title: args.title ?? null,
+        selectedModel: args.selectedModel,
         createdAt: createdThread.createdAt,
       });
       return createdThread;
