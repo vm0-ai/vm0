@@ -160,6 +160,7 @@ type BddSendMessageBody =
       readonly prompt: string;
       readonly threadId?: string;
       readonly clientThreadId?: string;
+      readonly modelSelectionEventId?: string;
       readonly modelProvider?: string;
       readonly modelSelection?: ModelSelectionRequest | null;
       readonly runOptions?: ChatRunOptionsRequest;
@@ -1141,6 +1142,9 @@ export function createChatFilesBddApi(context: TestContext) {
               ...(body.clientThreadId === undefined
                 ? {}
                 : { clientThreadId: body.clientThreadId }),
+              ...(body.modelSelectionEventId === undefined
+                ? {}
+                : { modelSelectionEventId: body.modelSelectionEventId }),
               ...(body.modelProvider === undefined
                 ? {}
                 : { modelProvider: body.modelProvider }),

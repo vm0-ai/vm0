@@ -438,6 +438,7 @@ export function mockChatLifecycle(
     }) => void;
     onSendRequest?: (body: {
       clientThreadId?: string;
+      modelSelectionEventId?: string;
       modelSelection?: ModelSelectionRequest | null;
     }) => void;
     onMessageGet?: (messageId: string) => void;
@@ -876,6 +877,7 @@ export function mockChatLifecycle(
 
     options?.onSendRequest?.({
       clientThreadId: body.clientThreadId,
+      modelSelectionEventId: body.modelSelectionEventId,
       modelSelection: body.modelSelection,
     });
     threadId = body.clientThreadId ?? threadId;

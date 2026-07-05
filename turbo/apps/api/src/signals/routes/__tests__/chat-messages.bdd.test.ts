@@ -172,6 +172,7 @@ interface ChatRunSendBody {
   readonly prompt: string;
   readonly threadId?: string;
   readonly clientThreadId?: string;
+  readonly modelSelectionEventId?: string;
   readonly clientMessageId?: string;
   readonly modelSelection?: ModelSelectionRequest;
   readonly runOptions?: ChatRunOptionsRequest;
@@ -1651,10 +1652,12 @@ describe("CHAT-02: explicit provider pins", () => {
       type: "deepseek-api-key",
       secret: "selected-deepseek-key",
     });
+    const modelSelectionEventId = randomUUID();
 
     const run = await sendChatRun(actor, {
       agentId,
       prompt: "run with the selected deepseek provider",
+      modelSelectionEventId,
       modelSelection: {
         modelProviderId: deepseekId,
         selectedModel: "deepseek-v4-pro",
@@ -1688,6 +1691,7 @@ describe("CHAT-02: explicit provider pins", () => {
     }
     expect(threadEvents.body.events).toContainEqual(
       expect.objectContaining({
+        id: modelSelectionEventId,
         kind: "model_selection_updated",
         chatThreadId: run.threadId,
         selectedModel: "deepseek-v4-pro",

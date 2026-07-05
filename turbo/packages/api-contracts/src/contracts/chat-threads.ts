@@ -845,6 +845,7 @@ export const chatMessagesContract = c.router({
         threadId: z.string().optional(),
         clientThreadId: z.string().uuid().optional(),
         chatThreadEventId: chatThreadEventIdSchema.optional(),
+        modelSelectionEventId: chatThreadEventIdSchema.optional(),
         modelProvider: z.string().optional(),
         /**
          * Per-run model override; persisted on the thread so subsequent runs
@@ -882,6 +883,7 @@ export const chatMessagesContract = c.router({
         prompt: z.undefined().optional(),
         clientThreadId: z.undefined().optional(),
         chatThreadEventId: z.undefined().optional(),
+        modelSelectionEventId: z.undefined().optional(),
         modelProvider: z.undefined().optional(),
         modelSelection: z.undefined().optional(),
         runOptions: z.undefined().optional(),
@@ -901,6 +903,7 @@ export const chatMessagesContract = c.router({
         prompt: z.undefined().optional(),
         clientThreadId: z.undefined().optional(),
         chatThreadEventId: z.undefined().optional(),
+        modelSelectionEventId: z.undefined().optional(),
         modelProvider: z.undefined().optional(),
         modelSelection: z.undefined().optional(),
         runOptions: z.undefined().optional(),

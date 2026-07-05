@@ -104,6 +104,7 @@ function newThreadSendBody({
   threadId,
   clientMessageId,
   chatThreadEventId,
+  modelSelectionEventId,
   prepared,
   modelSelection,
   codexFastModeEnabled,
@@ -114,6 +115,7 @@ function newThreadSendBody({
   threadId: string;
   clientMessageId: string;
   chatThreadEventId: string;
+  modelSelectionEventId: string | undefined;
   prepared: PreparedNewThreadPayload;
   modelSelection: ModelProviderSelection | null;
   codexFastModeEnabled: boolean;
@@ -129,6 +131,7 @@ function newThreadSendBody({
     prompt: prepared.prompt,
     clientThreadId: threadId,
     chatThreadEventId,
+    ...(modelSelectionEventId ? { modelSelectionEventId } : {}),
     hasTextContent: prepared.hasTextContent,
     clientMessageId,
     modelSelection: modelSelectionRequestFromSelection(modelSelection),
@@ -231,6 +234,7 @@ const mintOptimisticThreadWithEvent$ = command(
       readonly eventId: string;
       readonly agentId: string;
       readonly selectedModel: string | null;
+      readonly modelSelectionEventId: string | undefined;
     },
     signal: AbortSignal,
   ): void => {
@@ -249,9 +253,9 @@ const mintOptimisticThreadWithEvent$ = command(
       selectedModel: null,
       createdAt,
     } satisfies ChatThreadEvent);
-    if (args.selectedModel) {
+    if (args.selectedModel && args.modelSelectionEventId) {
       set(registerOptimisticChatThreadEvent$, {
-        id: crypto.randomUUID(),
+        id: args.modelSelectionEventId,
         kind: "model_selection_updated",
         chatThreadId: args.threadId,
         agentId: args.agentId,
@@ -299,7 +303,13 @@ const startNewChatThreadCreate$ = command(
     const eventId = crypto.randomUUID();
     await set(
       mintOptimisticThreadWithEvent$,
-      { threadId, eventId, agentId, selectedModel: null },
+      {
+        threadId,
+        eventId,
+        agentId,
+        selectedModel: null,
+        modelSelectionEventId: undefined,
+      },
       signal,
     );
 
@@ -385,6 +395,9 @@ const sendNewThreadMessage$ = command(
     const threadId = crypto.randomUUID();
     const clientMessageId = crypto.randomUUID();
     const chatThreadEventId = crypto.randomUUID();
+    const modelSelectionEventId = effectiveSelectedModel
+      ? crypto.randomUUID()
+      : undefined;
     set(
       appendOptimisticChatMessage$,
       createNewThreadOptimisticMessageEntry({
@@ -401,6 +414,7 @@ const sendNewThreadMessage$ = command(
         eventId: chatThreadEventId,
         agentId,
         selectedModel: effectiveSelectedModel ?? null,
+        modelSelectionEventId,
       },
       signal,
     );
@@ -417,6 +431,7 @@ const sendNewThreadMessage$ = command(
           threadId,
           clientMessageId,
           chatThreadEventId,
+          modelSelectionEventId,
           prepared,
           modelSelection,
           codexFastModeEnabled: codexFastModeSwitchEnabled(get(featureSwitch$)),
