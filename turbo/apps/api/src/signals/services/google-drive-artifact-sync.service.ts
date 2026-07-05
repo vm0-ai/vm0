@@ -29,7 +29,7 @@ import {
   downloadS3Buffer,
   s3ObjectExists,
 } from "../external/s3";
-import { safeSync, settle } from "../utils";
+import { createDeferredPromise, safeSync, settle } from "../utils";
 import { decryptStoredSecretValue } from "./crypto.utils";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
 
@@ -461,26 +461,51 @@ function zipEntryPath(path: string): string {
   return segments.join("/");
 }
 
-async function assembleZip(entries: readonly ZipEntry[]): Promise<Buffer> {
+async function assembleZip(
+  entries: readonly ZipEntry[],
+  signal: AbortSignal,
+): Promise<Buffer> {
   const archive = archiver("zip", { zlib: { level: 6 } });
   const chunks: Buffer[] = [];
+  const done = createDeferredPromise<Buffer>(signal);
 
-  const done = new Promise<Buffer>((resolve, reject) => {
-    archive.on("data", (chunk: Buffer) => {
-      return chunks.push(chunk);
-    });
-    archive.on("end", () => {
-      return resolve(Buffer.concat(chunks));
-    });
-    archive.on("error", reject);
+  archive.on("data", (chunk: Buffer) => {
+    chunks.push(chunk);
+  });
+  archive.on("end", () => {
+    if (!done.settled()) {
+      done.resolve(Buffer.concat(chunks));
+    }
+  });
+  archive.on("error", (error) => {
+    if (!done.settled()) {
+      done.reject(error);
+    }
   });
 
-  for (const entry of entries) {
-    archive.append(entry.content, { name: entry.path });
+  const appendResult = safeSync(() => {
+    for (const entry of entries) {
+      archive.append(entry.content, { name: entry.path });
+    }
+  });
+  if ("error" in appendResult) {
+    if (!done.settled()) {
+      done.reject(appendResult.error);
+    }
+    return await done.promise;
   }
 
-  await archive.finalize();
-  return done;
+  const finalized = (async () => {
+    const result = await settle(archive.finalize(), signal);
+    if (!result.ok && !done.settled()) {
+      done.reject(result.error);
+    }
+    return await done.promise;
+  })();
+  return await Promise.race([
+    done.promise,
+    finalized,
+  ]);
 }
 
 async function loadArtifactFile(
@@ -673,6 +698,7 @@ function resolveHostedArtifactContent(
   db: ReadonlyDb,
   artifact: ArtifactFileRow,
   userId: string,
+  signal: AbortSignal,
 ): Computed<Promise<ResolvedArtifactContent | null>> {
   return computed(async (get): Promise<ResolvedArtifactContent | null> => {
     const metadata = hostedArtifactMetadata(artifact.metadata);
@@ -721,7 +747,7 @@ function resolveHostedArtifactContent(
       }
       return {
         contentType: "application/zip",
-        file: await assembleZip(entries),
+        file: await assembleZip(entries, signal),
         filename: `${deployment.manifest.publicSlug}.zip`,
       };
     }
@@ -1035,7 +1061,7 @@ export const syncArtifactToGoogleDrive$ = command(
     }
 
     const hostedContent = await get(
-      resolveHostedArtifactContent(db, artifact, args.userId),
+      resolveHostedArtifactContent(db, artifact, args.userId, signal),
     );
     signal.throwIfAborted();
     const s3Object = hostedContent

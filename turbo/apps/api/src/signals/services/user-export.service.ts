@@ -39,7 +39,7 @@ import {
   putS3Object,
 } from "../external/s3";
 import { nowDate } from "../external/time";
-import { settle } from "../utils";
+import { createDeferredPromise, safeSync, settle } from "../utils";
 import {
   normalizeSessionHistoryBlobEncoding,
   resumeSessionHistoryBlobKey,
@@ -865,31 +865,56 @@ async function collectUserData(
   return { zipEntries };
 }
 
-async function assembleZip(entries: readonly ZipEntry[]): Promise<Buffer> {
+async function assembleZip(
+  entries: readonly ZipEntry[],
+  signal: AbortSignal,
+): Promise<Buffer> {
   const archive = archiver("zip", { zlib: { level: 6 } });
   const chunks: Buffer[] = [];
+  const done = createDeferredPromise<Buffer>(signal);
 
-  const done = new Promise<Buffer>((resolve, reject) => {
-    archive.on("data", (chunk: Buffer) => {
-      return chunks.push(chunk);
-    });
-    archive.on("end", () => {
-      return resolve(Buffer.concat(chunks));
-    });
-    archive.on("error", reject);
+  archive.on("data", (chunk: Buffer) => {
+    chunks.push(chunk);
+  });
+  archive.on("end", () => {
+    if (!done.settled()) {
+      done.resolve(Buffer.concat(chunks));
+    }
+  });
+  archive.on("error", (error) => {
+    if (!done.settled()) {
+      done.reject(error);
+    }
   });
 
-  for (const entry of entries) {
-    archive.append(
-      typeof entry.content === "string"
-        ? Buffer.from(entry.content)
-        : entry.content,
-      { name: entry.path },
-    );
+  const appendResult = safeSync(() => {
+    for (const entry of entries) {
+      archive.append(
+        typeof entry.content === "string"
+          ? Buffer.from(entry.content)
+          : entry.content,
+        { name: entry.path },
+      );
+    }
+  });
+  if ("error" in appendResult) {
+    if (!done.settled()) {
+      done.reject(appendResult.error);
+    }
+    return await done.promise;
   }
 
-  await archive.finalize();
-  return done;
+  const finalized = (async () => {
+    const result = await settle(archive.finalize(), signal);
+    if (!result.ok && !done.settled()) {
+      done.reject(result.error);
+    }
+    return await done.promise;
+  })();
+  return await Promise.race([
+    done.promise,
+    finalized,
+  ]);
 }
 
 async function isUserUnsubscribed(db: Db, userId: string): Promise<boolean> {
@@ -1036,7 +1061,7 @@ async function runExportJob(
   );
   runtime.signal.throwIfAborted();
 
-  const zipBuffer = await assembleZip(zipEntries);
+  const zipBuffer = await assembleZip(zipEntries, runtime.signal);
   runtime.signal.throwIfAborted();
 
   const s3Key = `exports/${args.userId}/${args.jobId}.zip`;

@@ -20,7 +20,7 @@ import { clerk$ } from "../external/clerk";
 import { getDatasetName, queryAxiom } from "../external/axiom";
 import { generatePresignedGetUrl, putS3Object } from "../external/s3";
 import { db$, type Db } from "../external/db";
-import { settle, tapError } from "../utils";
+import { createDeferredPromise, safeSync, settle, tapError } from "../utils";
 import { zeroConnectorList } from "./zero-connector-data.service";
 import { createPlainSupportThread } from "./plain-support.service";
 import { normalizeRunContextSnapshot } from "./run-context-snapshot.service";
@@ -117,26 +117,51 @@ interface UploadResult {
   readonly expiresAt: string;
 }
 
-async function assembleZip(entries: readonly ZipEntry[]): Promise<Buffer> {
+async function assembleZip(
+  entries: readonly ZipEntry[],
+  signal: AbortSignal,
+): Promise<Buffer> {
   const archive = archiver("zip", { zlib: { level: 6 } });
   const chunks: Buffer[] = [];
+  const done = createDeferredPromise<Buffer>(signal);
 
-  const done = new Promise<Buffer>((resolve, reject) => {
-    archive.on("data", (chunk: Buffer) => {
-      chunks.push(chunk);
-    });
-    archive.on("end", () => {
-      resolve(Buffer.concat(chunks));
-    });
-    archive.on("error", reject);
+  archive.on("data", (chunk: Buffer) => {
+    chunks.push(chunk);
+  });
+  archive.on("end", () => {
+    if (!done.settled()) {
+      done.resolve(Buffer.concat(chunks));
+    }
+  });
+  archive.on("error", (error) => {
+    if (!done.settled()) {
+      done.reject(error);
+    }
   });
 
-  for (const entry of entries) {
-    archive.append(Buffer.from(entry.content), { name: entry.path });
+  const appendResult = safeSync(() => {
+    for (const entry of entries) {
+      archive.append(Buffer.from(entry.content), { name: entry.path });
+    }
+  });
+  if ("error" in appendResult) {
+    if (!done.settled()) {
+      done.reject(appendResult.error);
+    }
+    return await done.promise;
   }
 
-  await archive.finalize();
-  return done;
+  const finalized = (async () => {
+    const result = await settle(archive.finalize(), signal);
+    if (!result.ok && !done.settled()) {
+      done.reject(result.error);
+    }
+    return await done.promise;
+  })();
+  return await Promise.race([
+    done.promise,
+    finalized,
+  ]);
 }
 
 export function submitDiagnosticBundle(
@@ -421,7 +446,7 @@ function uploadDiagnosticZip(params: {
   readonly reference: string;
 }): Computed<Promise<UploadResult>> {
   return computed(async (get): Promise<UploadResult> => {
-    const zipBuffer = await assembleZip(params.zipEntries);
+    const zipBuffer = await assembleZip(params.zipEntries, AbortSignal.any([]));
     const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
     const s3Key = `${params.s3PathPrefix}/${params.orgId}/${params.reference}.zip`;
     await get(putS3Object(bucket, s3Key, zipBuffer, "application/zip"));
