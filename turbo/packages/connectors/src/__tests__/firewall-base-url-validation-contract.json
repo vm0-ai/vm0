@@ -241,6 +241,36 @@
       "expectedValid": false
     },
     {
+      "category": "authority",
+      "name": "unicode decimal ipv4-like host is invalid",
+      "base": "https://\u0668.\u0668.\u0668.\u0668",
+      "expectedValid": false
+    },
+    {
+      "category": "authority",
+      "name": "unicode dot ipv4-like host is invalid",
+      "base": "https://127\u30020\u30020\u30021",
+      "expectedValid": false
+    },
+    {
+      "category": "authority",
+      "name": "unsafe idna compatibility mapping is invalid",
+      "base": "https://\u212a.example",
+      "expectedValid": false
+    },
+    {
+      "category": "authority",
+      "name": "percent-encoded unsafe idna compatibility mapping is invalid",
+      "base": "https://%E2%84%AA.example",
+      "expectedValid": false
+    },
+    {
+      "category": "authority",
+      "name": "parameterized percent-encoded unsafe idna suffix is invalid",
+      "base": "https://{sub}.%EF%BC%A1.example",
+      "expectedValid": false
+    },
+    {
       "category": "parameters",
       "name": "duplicate host parameter name is invalid",
       "base": "https://{sub}.{sub}.example.com",
