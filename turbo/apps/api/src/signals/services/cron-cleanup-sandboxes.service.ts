@@ -482,6 +482,25 @@ async function cleanupExpiredCustomConnectorAuthRefs(
   return deletedCount;
 }
 
+async function cleanupExpiredCustomConnectorAuthRefsSafely(
+  db: Db,
+  signal: AbortSignal,
+): Promise<number> {
+  const result = await settle(
+    cleanupExpiredCustomConnectorAuthRefs(db, signal),
+    signal,
+  );
+  if (result.ok) {
+    return result.value;
+  }
+
+  L.error("Failed to cleanup expired custom connector auth refs", {
+    error:
+      result.error instanceof Error ? result.error.message : "Unknown error",
+  });
+  return 0;
+}
+
 export const cleanupSandboxes$ = command(
   async ({ set }, signal: AbortSignal): Promise<CleanupSandboxesResult> => {
     const db = set(writeDb$);
@@ -536,7 +555,7 @@ export const cleanupSandboxes$ = command(
     const expiredRunnerJobCount = await cleanupExpiredRunnerJobs(db, signal);
     signal.throwIfAborted();
     const expiredCustomConnectorAuthRefCount =
-      await cleanupExpiredCustomConnectorAuthRefs(db, signal);
+      await cleanupExpiredCustomConnectorAuthRefsSafely(db, signal);
     signal.throwIfAborted();
     const drainedCount = await set(drainStaleQueues$, signal);
     signal.throwIfAborted();

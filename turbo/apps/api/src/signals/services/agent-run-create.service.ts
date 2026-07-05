@@ -5310,13 +5310,13 @@ async function replaceRunCustomConnectorAuthRefs(
     readonly refs: readonly CustomConnectorAuthRef[];
   },
 ): Promise<void> {
+  await tx
+    .delete(agentRunCustomConnectorAuthRefs)
+    .where(eq(agentRunCustomConnectorAuthRefs.runId, args.runId));
   if (args.refs.length === 0) {
     return;
   }
 
-  await tx
-    .delete(agentRunCustomConnectorAuthRefs)
-    .where(eq(agentRunCustomConnectorAuthRefs.runId, args.runId));
   const expiresAt = new Date(now() + CUSTOM_CONNECTOR_AUTH_REF_TTL_MS);
   await tx.insert(agentRunCustomConnectorAuthRefs).values(
     args.refs.map((ref) => {
