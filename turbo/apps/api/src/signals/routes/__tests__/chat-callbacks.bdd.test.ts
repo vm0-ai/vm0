@@ -24,6 +24,7 @@ import { testContext } from "../../../__tests__/test-context";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { now } from "../../external/time";
+import { createDeferredPromise } from "../../utils";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { mockClerkMembership } from "./helpers/api-bdd-clerk";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
@@ -643,16 +644,18 @@ function deferredGate(): {
   readonly wait: () => Promise<void>;
   readonly release: () => void;
 } {
-  let releaseGate = (): void => {};
-  const promise = new Promise<void>((resolve) => {
-    releaseGate = resolve;
-  });
+  const gate = createDeferredPromise<void>(context.signal);
+  const releaseGate = (): void => {
+    if (!gate.settled()) {
+      gate.resolve(undefined);
+    }
+  };
   onTestFinished(() => {
     releaseGate();
   });
   return {
     wait: () => {
-      return promise;
+      return gate.promise;
     },
     release: releaseGate,
   };
