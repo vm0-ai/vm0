@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.227.0](https://github.com/vm0-ai/vm0/compare/api-v1.226.2...api-v1.227.0) (2026-07-05)
+
+
+### Features
+
+* add provider-neutral memory substrate ([#20273](https://github.com/vm0-ai/vm0/issues/20273)) ([67f5573](https://github.com/vm0-ai/vm0/commit/67f5573e2f4c290a94eb016fc45c5ce46df289a4))
+
+
+### Refactoring
+
+* narrow chat thread detail payload ([#20267](https://github.com/vm0-ai/vm0/issues/20267)) ([9717d60](https://github.com/vm0-ai/vm0/commit/9717d60b535745157f9bc2a743f42c20be58ec0b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.155.3
+    * @vm0/core bumped to 8.401.4
+    * @vm0/db bumped to 1.93.0
+
 ## [1.226.2](https://github.com/vm0-ai/vm0/compare/api-v1.226.1...api-v1.226.2) (2026-07-05)
 
 
