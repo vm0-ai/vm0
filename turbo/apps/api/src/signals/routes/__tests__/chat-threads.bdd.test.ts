@@ -995,8 +995,10 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     );
     expectApiError(peerDelete.body);
     expect(peerDelete.body.error.code).toBe("NOT_FOUND");
-    await expect(chat.readThread(actor, main.threadId)).resolves.toMatchObject({
-      id: main.threadId,
+    await expect(chat.readThread(actor, main.threadId)).resolves.toStrictEqual({
+      lastReadAt: null,
+      computerUseHostId: null,
+      codexServiceTier: null,
     });
 
     const deleted = await chat.requestDeleteThread(actor, main.threadId, [204]);
