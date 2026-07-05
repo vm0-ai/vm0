@@ -4042,6 +4042,15 @@ describe("zero attachment chips", () => {
       expect(screen.getByLabelText("Download archive.bin")).toBeInTheDocument();
     });
 
+    const bodyVideoPreview = screen.getByLabelText("Preview demo.mp4");
+    expect(bodyVideoPreview).toHaveClass(
+      "aspect-[16/10]",
+      "w-[min(100%,400px)]",
+      "max-w-full",
+      "bg-black",
+    );
+    expect(bodyVideoPreview).not.toHaveClass("w-[50px]");
+
     click(screen.getByLabelText("Open audio preview for briefing.mp3"));
 
     await waitFor(() => {
