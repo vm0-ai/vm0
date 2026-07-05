@@ -1579,6 +1579,35 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn invalid_initial_network_policy_refresh_deadline_fails_closed() {
+        let server = MockServer::start();
+        let (core, _requests) = core_without_worker(&server);
+        let run_id = RunId::nil();
+        let (_dir, registry, registry_path, _lock_path) = registered_slack_registry(run_id).await;
+        let refreshes = HashMap::from([(
+            "slack".to_string(),
+            NetworkPolicyRefresh {
+                next_refresh_at: "not-a-date".to_string(),
+            },
+        )]);
+
+        core.register_run(NetworkPolicyRefreshRegistration {
+            run_id,
+            source_ip: "10.200.0.2",
+            registry,
+            connector_refs: HashSet::from(["slack".to_string()]),
+            refreshes: Some(&refreshes),
+        })
+        .await;
+
+        let policy = wait_until_slack_policy(&registry_path, |policy| {
+            policy["unknownPolicy"] == json!("deny")
+        })
+        .await;
+        assert_fail_closed_policy(&policy);
+    }
+
+    #[tokio::test]
     async fn network_policy_refresh_splits_batches_to_match_api_contract() {
         let server = MockServer::start();
         let run_id = RunId::nil();
