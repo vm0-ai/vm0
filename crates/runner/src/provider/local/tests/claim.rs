@@ -15,7 +15,7 @@ async fn claim_attaches_active_input_source_when_requested() {
     assert!(matches!(
         claimed.active_input_source(),
         Some(crate::active_input::ActiveInputSource::LocalQueue(source))
-            if source.run_id == job_id && source.group_dir == dir.path()
+            if source.run_id == job_id && source.queue.group_dir() == dir.path()
     ));
 }
 
