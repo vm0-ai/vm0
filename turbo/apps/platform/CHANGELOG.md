@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.555.2](https://github.com/vm0-ai/vm0/compare/app-v0.555.1...app-v0.555.2) (2026-07-05)
+
+
+### Bug Fixes
+
+* **platform:** inline route setup imports ([#20218](https://github.com/vm0-ai/vm0/issues/20218)) ([1a871b5](https://github.com/vm0-ai/vm0/commit/1a871b596c09f88297bb2a18ca7094732ef2583f))
+
 ## [0.555.1](https://github.com/vm0-ai/vm0/compare/app-v0.555.0...app-v0.555.1) (2026-07-05)
 
 
