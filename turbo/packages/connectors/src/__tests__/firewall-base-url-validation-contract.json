@@ -140,6 +140,12 @@
     },
     {
       "category": "authority",
+      "name": "bracketed ipv4 authority is invalid",
+      "base": "https://[127.0.0.1]",
+      "expectedValid": false
+    },
+    {
+      "category": "authority",
       "name": "empty port is invalid",
       "base": "https://api.example.com:",
       "expectedValid": false
@@ -218,8 +224,26 @@
     },
     {
       "category": "authority",
+      "name": "invalid authority percent encoding is invalid",
+      "base": "https://api%ZZexample.com",
+      "expectedValid": false
+    },
+    {
+      "category": "authority",
+      "name": "percent-encoded userinfo delimiter is invalid",
+      "base": "https://api%40example.com",
+      "expectedValid": false
+    },
+    {
+      "category": "authority",
       "name": "percent-encoded slash in authority is invalid",
       "base": "https://api%2Fexample.com",
+      "expectedValid": false
+    },
+    {
+      "category": "authority",
+      "name": "percent-encoded backslash in authority is invalid",
+      "base": "https://api%5Cexample.com",
       "expectedValid": false
     },
     {
