@@ -2,6 +2,7 @@
   "name": "e2e",
   "version": "1.0.0",
   "description": "E2E tests for VM0 CLI",
+  "packageManager": "pnpm@10.33.4",
   "main": "index.js",
   "directories": {
     "test": "tests"
