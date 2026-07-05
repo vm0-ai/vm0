@@ -44,6 +44,7 @@ import {
   setUsageOrgTier$,
 } from "./helpers/zero-usage";
 import {
+  seedZeroChatThreadGoal$,
   seedZeroChatThreadRun$,
   updateZeroChatThreadRunStatus$,
 } from "./helpers/zero-chat-threads";
@@ -992,6 +993,42 @@ describe("CHAT-01 chat thread read state", () => {
     await chat.markThreadRead(owner, activeUnreadThread);
     await expect(chat.listUnreadAgents(owner)).resolves.toStrictEqual([]);
 
+    const activeGoalThread = await sendNoCreditMessage(owner, {
+      agentId: agentA.agentId,
+      prompt: "unread aggregate with active goal",
+    });
+    const completeGoalThread = await sendNoCreditMessage(owner, {
+      agentId: agentB.agentId,
+      prompt: "unread aggregate with complete goal",
+    });
+    await store.set(
+      seedZeroChatThreadGoal$,
+      {
+        userId: owner.userId,
+        orgId: owner.orgId,
+        agentId: agentA.agentId,
+        threadId: activeGoalThread,
+        status: "active",
+      },
+      context.signal,
+    );
+    await store.set(
+      seedZeroChatThreadGoal$,
+      {
+        userId: owner.userId,
+        orgId: owner.orgId,
+        agentId: agentB.agentId,
+        threadId: completeGoalThread,
+        status: "complete",
+      },
+      context.signal,
+    );
+    await expect(chat.listUnreadAgents(owner)).resolves.toStrictEqual([
+      agentB.agentId,
+    ]);
+    await chat.markThreadRead(owner, completeGoalThread);
+    await expect(chat.listUnreadAgents(owner)).resolves.toStrictEqual([]);
+
     const threadA = await sendNoCreditMessage(owner, {
       agentId: agentA.agentId,
       prompt: "unread aggregate A",
@@ -1125,6 +1162,101 @@ describe("CHAT-01 chat thread read state", () => {
 
     expect(new Set(await chat.listActiveChatThreadIds(owner))).toStrictEqual(
       new Set([queuedThread]),
+    );
+  }, 60_000);
+
+  it("excludes unread chat threads that have active runs or goals", async () => {
+    const owner = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    const agent = await bdd.createAgent(owner, {
+      displayName: "Unread active state agent",
+    });
+
+    const runningThread = await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      prompt: "unread thread with active run",
+    });
+    const completedThread = await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      prompt: "unread thread with completed run",
+    });
+    const activeGoalThread = await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      prompt: "unread thread with active goal",
+    });
+    const completeGoalThread = await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      prompt: "unread thread with complete goal",
+    });
+    if (!owner.orgId) {
+      throw new Error("Expected owner to belong to an org");
+    }
+    const runningRunId = await store.set(
+      seedZeroChatThreadRun$,
+      {
+        userId: owner.userId,
+        orgId: owner.orgId,
+        agentId: agent.agentId,
+        threadId: runningThread,
+        status: "running",
+      },
+      context.signal,
+    );
+    await store.set(
+      seedZeroChatThreadRun$,
+      {
+        userId: owner.userId,
+        orgId: owner.orgId,
+        agentId: agent.agentId,
+        threadId: completedThread,
+        status: "completed",
+      },
+      context.signal,
+    );
+    await store.set(
+      seedZeroChatThreadGoal$,
+      {
+        userId: owner.userId,
+        orgId: owner.orgId,
+        agentId: agent.agentId,
+        threadId: activeGoalThread,
+        status: "active",
+      },
+      context.signal,
+    );
+    await store.set(
+      seedZeroChatThreadGoal$,
+      {
+        userId: owner.userId,
+        orgId: owner.orgId,
+        agentId: agent.agentId,
+        threadId: completeGoalThread,
+        status: "complete",
+      },
+      context.signal,
+    );
+
+    expect(
+      new Set(
+        (await chat.listThreadUnreads(owner, agent.agentId)).map((unread) => {
+          return unread.threadId;
+        }),
+      ),
+    ).toStrictEqual(new Set([completedThread, completeGoalThread]));
+
+    await store.set(
+      updateZeroChatThreadRunStatus$,
+      { runId: runningRunId, status: "completed" },
+      context.signal,
+    );
+    expect(
+      new Set(
+        (await chat.listThreadUnreads(owner, agent.agentId)).map((unread) => {
+          return unread.threadId;
+        }),
+      ),
+    ).toStrictEqual(
+      new Set([runningThread, completedThread, completeGoalThread]),
     );
   }, 60_000);
 

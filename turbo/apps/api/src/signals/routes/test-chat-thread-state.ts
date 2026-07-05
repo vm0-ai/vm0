@@ -14,6 +14,7 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { threadGoals } from "@vm0/db/schema/thread-goal";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { eq, inArray } from "drizzle-orm";
@@ -265,6 +266,33 @@ async function seedThreadRunForAction(
   };
 }
 
+async function seedThreadGoalForAction(
+  db: Db,
+  body: ChatThreadStateAction<"seed-thread-goal">,
+  signal: AbortSignal,
+) {
+  const [goal] = await db
+    .insert(threadGoals)
+    .values({
+      orgId: body.org_id,
+      ownerUserId: body.user_id,
+      agentId: body.agent_id,
+      chatThreadId: body.thread_id,
+      status: body.status,
+      objective: "bdd unread goal",
+      objectiveBrief: "bdd unread goal",
+    })
+    .returning({ id: threadGoals.id });
+  signal.throwIfAborted();
+  if (!goal) {
+    throw new Error("seedThreadGoalForAction: goal insert returned no row");
+  }
+  return {
+    status: 200 as const,
+    body: { ok: true as const, goal_id: goal.id },
+  };
+}
+
 async function updateThreadRunStatusForAction(
   db: Db,
   body: ChatThreadStateAction<"update-thread-run-status">,
@@ -341,6 +369,9 @@ const mutateTestChatThreadState$ = command(
       }
       case "seed-thread-run": {
         return await seedThreadRunForAction(db, body, signal);
+      }
+      case "seed-thread-goal": {
+        return await seedThreadGoalForAction(db, body, signal);
       }
       case "update-thread-run-status": {
         return await updateThreadRunStatusForAction(db, body, signal);
