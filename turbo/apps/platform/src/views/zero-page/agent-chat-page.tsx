@@ -24,7 +24,6 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-  cn,
 } from "@vm0/ui";
 import {
   currentChatAgentId$,
@@ -387,20 +386,6 @@ function MobileUnreadThreadShortcuts() {
       className="md:hidden flex flex-col gap-2"
       aria-label="Unread chats"
     >
-      <div className="flex items-center justify-between gap-3 px-1">
-        <div className="flex min-w-0 items-center gap-1.5">
-          <span
-            className="h-2 w-2 shrink-0 rounded-full bg-sky-600"
-            aria-hidden
-          />
-          <h3 className="truncate text-sm font-semibold text-foreground">
-            Unread chats
-          </h3>
-        </div>
-        <span className="shrink-0 text-xs font-medium text-muted-foreground">
-          {unreadThreads.length}
-        </span>
-      </div>
       <div className="zero-card divide-y divide-border/60 overflow-hidden">
         {unreadThreads.map((thread) => {
           return (
@@ -410,18 +395,9 @@ function MobileUnreadThreadShortcuts() {
               options={{ pathParams: { threadId: thread.id } }}
               className="flex min-h-12 items-center gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-muted/40"
             >
-              <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-sky-600" />
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm font-semibold leading-5 text-foreground">
                   {thread.title ?? "New chat"}
-                </span>
-                <span
-                  className={cn(
-                    "block truncate text-xs leading-4 text-muted-foreground",
-                    thread.running ? "text-primary" : "",
-                  )}
-                >
-                  {thread.running ? "Running now" : "Unread"}
                 </span>
               </span>
               {thread.running ? (
