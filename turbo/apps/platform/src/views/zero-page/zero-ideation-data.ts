@@ -651,7 +651,7 @@ function filterUseCase(
     return null;
   }
 
-  if (!useCase.connectors) {
+  if (!useCase.connectors || useCase.connectors.length === 0) {
     return useCase;
   }
 
