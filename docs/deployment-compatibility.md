@@ -50,8 +50,9 @@ traffic.
 This is a traffic-promotion guarantee, not a guarantee that no deployment
 preparation has happened yet. Staged Vercel builds, runner rootfs/snapshot
 builds, host provisioning, and other non-serving preparation jobs may complete
-before migrations run; new production traffic must not be promoted until the
-required migrations have completed.
+before migrations run. API traffic promotion must wait until the required
+migrations have completed; app and runner promotion also wait for API promotion
+when the same release changes the API.
 
 Backend changes must be safe with:
 
