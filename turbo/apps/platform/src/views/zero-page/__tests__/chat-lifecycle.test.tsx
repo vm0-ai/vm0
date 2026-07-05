@@ -313,13 +313,28 @@ function makeMessage(id: string, text: string): PagedChatMessage {
 }
 
 function mockKeyboardNavigationThreads({
+  leadingThreadCount = 0,
   currentTitle = "Current keyboard thread",
   currentDetailTitle = currentTitle,
 }: {
+  leadingThreadCount?: number;
   currentTitle?: string;
   currentDetailTitle?: string | null;
 } = {}): void {
+  const leadingFixtures = Array.from(
+    { length: leadingThreadCount },
+    (_, index) => {
+      const itemNumber = index + 1;
+      return {
+        id: `b0000000-0000-4000-a000-${String(720 + index).padStart(12, "0")}`,
+        title: `Leading keyboard thread ${itemNumber}`,
+        detailTitle: `Leading keyboard thread ${itemNumber}`,
+        message: `Leading thread launch note ${itemNumber}`,
+      };
+    },
+  );
   const threadFixtures = [
+    ...leadingFixtures,
     {
       id: KEYBOARD_PREV_THREAD_ID,
       title: "Previous keyboard thread",
@@ -3550,7 +3565,7 @@ describe("chat lifecycle", () => {
 
   it("moves between chat threads with page shortcuts from the composer", async () => {
     mockResizeObserver();
-    mockKeyboardNavigationThreads();
+    mockKeyboardNavigationThreads({ leadingThreadCount: 20 });
 
     detachedSetupPage({
       context,
@@ -3561,28 +3576,40 @@ describe("chat lifecycle", () => {
       expect(
         screen.getByText("Current thread launch note"),
       ).toBeInTheDocument();
-      expect(screen.getByText("Previous keyboard thread")).toBeInTheDocument();
-      expect(screen.getByText("Next keyboard thread")).toBeInTheDocument();
+      expect(
+        screen.getByTestId("sidebar-chat-threads-virtual-list"),
+      ).toBeInTheDocument();
     });
+
+    const sidebarScrollArea = screen.getByTestId("sidebar-scroll-area");
+    Object.defineProperties(sidebarScrollArea, {
+      clientHeight: { configurable: true, value: 36 },
+      scrollHeight: { configurable: true, value: 108 },
+      scrollTop: { configurable: true, value: 0, writable: true },
+    });
+    fireEvent.scroll(sidebarScrollArea);
 
     let composer = chatComposerTextarea();
     composer.focus();
     fireEvent.keyDown(composer, {
-      key: "ArrowUp",
+      key: "ArrowDown",
       ctrlKey: true,
       shiftKey: true,
     });
 
     await waitFor(() => {
+      expect(screen.getByText("Next thread launch note")).toBeInTheDocument();
+    });
+    await waitFor(() => {
       expect(
-        screen.getByText("Previous thread launch note"),
-      ).toBeInTheDocument();
+        screen.getByTestId("sidebar-scroll-area").scrollTop,
+      ).toBeGreaterThan(0);
     });
 
     composer = chatComposerTextarea();
     composer.focus();
     fireEvent.keyDown(composer, {
-      key: "ArrowDown",
+      key: "ArrowUp",
       ctrlKey: true,
       shiftKey: true,
     });
