@@ -5303,19 +5303,20 @@ async function insertRunnerJobQueueRow(
   return runnerJob.createdAt;
 }
 
-async function replaceRunCustomConnectorAuthRefs(
+async function persistRunCustomConnectorAuthRefs(
   tx: DbTransaction,
   args: {
     readonly runId: string;
     readonly refs: readonly CustomConnectorAuthRef[];
   },
 ): Promise<void> {
-  await tx
-    .delete(agentRunCustomConnectorAuthRefs)
-    .where(eq(agentRunCustomConnectorAuthRefs.runId, args.runId));
   if (args.refs.length === 0) {
     return;
   }
+
+  await tx
+    .delete(agentRunCustomConnectorAuthRefs)
+    .where(eq(agentRunCustomConnectorAuthRefs.runId, args.runId));
 
   const expiresAt = new Date(now() + CUSTOM_CONNECTOR_AUTH_REF_TTL_MS);
   await tx.insert(agentRunCustomConnectorAuthRefs).values(
@@ -5368,7 +5369,7 @@ async function persistRunnerJobQueueForDispatch(
           "api_dispatch_persist_custom_connector_auth_refs",
           "nested",
           async () => {
-            await replaceRunCustomConnectorAuthRefs(tx, {
+            await persistRunCustomConnectorAuthRefs(tx, {
               runId: args.runId,
               refs: args.customConnectorAuthRefs,
             });
@@ -5524,7 +5525,7 @@ function enqueueRunForConcurrency(
             : { status: currentRun.status };
         }
 
-        await replaceRunCustomConnectorAuthRefs(tx, {
+        await persistRunCustomConnectorAuthRefs(tx, {
           runId: args.run.id,
           refs: launch.customConnectorAuthRefs,
         });
@@ -5701,7 +5702,7 @@ async function commitQueuedPreparedLaunch(
     status: "queued",
     runnerGroup: payload.runnerGroup,
   });
-  await replaceRunCustomConnectorAuthRefs(tx, {
+  await persistRunCustomConnectorAuthRefs(tx, {
     runId: args.identity.runId,
     refs: args.launch.customConnectorAuthRefs,
   });
@@ -5746,7 +5747,7 @@ async function commitPendingPreparedLaunch(
         "api_dispatch_persist_custom_connector_auth_refs",
         "nested",
         async () => {
-          await replaceRunCustomConnectorAuthRefs(tx, {
+          await persistRunCustomConnectorAuthRefs(tx, {
             runId: args.identity.runId,
             refs: args.launch.customConnectorAuthRefs,
           });
