@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.554.4](https://github.com/vm0-ai/vm0/compare/app-v0.554.3...app-v0.554.4) (2026-07-05)
+
+
+### Bug Fixes
+
+* hardcode platform static asset host ([#20185](https://github.com/vm0-ai/vm0/issues/20185)) ([31f62e4](https://github.com/vm0-ai/vm0/commit/31f62e42e6e58d1d4286209f36a7dca58b143451))
+
 ## [0.554.3](https://github.com/vm0-ai/vm0/compare/app-v0.554.2...app-v0.554.3) (2026-07-04)
 
 
