@@ -2320,7 +2320,7 @@ describe("CHAT-02: run-level model overrides", () => {
     await cancelChatRun(actor, third.runId);
   }, 90_000);
 
-  it("re-resolves the provider route from current policy on follow-up sends", async () => {
+  it("uses the stored provider pin on follow-up sends", async () => {
     const { actor, agentId, runnerGroup, providerId } =
       await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -2338,7 +2338,7 @@ describe("CHAT-02: run-level model overrides", () => {
     await completeChatRunOk(first.runId, firstClaim.sandboxHeaders);
     const pinned = await chat.readThread(actor, first.threadId);
     expect(pinned).not.toHaveProperty("selectedModel");
-    expect(pinned.modelProviderId ?? null).toBeNull();
+    expect(pinned.modelProviderId ?? null).toBe(providerId);
     await expectThreadCreatedModelEvent(
       actor,
       first.threadId,
@@ -2346,8 +2346,8 @@ describe("CHAT-02: run-level model overrides", () => {
     );
 
     // Org providers are per-type singletons, so the public rotation surface
-    // is re-upserting the same provider with a new secret. The model-only
-    // thread pin re-resolves the policy route on every follow-up send.
+    // is re-upserting the same provider with a new secret. Follow-up sends use
+    // the stored provider pin and pick up the rotated provider configuration.
     const rotated = await upsertOrgModelProvider(actor, {
       type: "anthropic-api-key",
       secret: "rotated-anthropic-key",
@@ -2370,7 +2370,7 @@ describe("CHAT-02: run-level model overrides", () => {
     );
     const after = await chat.readThread(actor, first.threadId);
     expect(after).not.toHaveProperty("selectedModel");
-    expect(after.modelProviderId ?? null).toBeNull();
+    expect(after.modelProviderId ?? null).toBe(providerId);
     await expectThreadCreatedModelEvent(
       actor,
       first.threadId,

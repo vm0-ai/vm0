@@ -1165,6 +1165,14 @@ describe("chat composer models", () => {
           runOptions?: { codexServiceTier?: "fast" };
         }
       | undefined;
+    let createdBody:
+      | {
+          modelSelection: {
+            modelProviderId: string;
+            selectedModel: string;
+          };
+        }
+      | undefined;
 
     context.mocks.data.orgModelPolicies([
       buildModelPolicy({
@@ -1179,6 +1187,9 @@ describe("chat composer models", () => {
     context.mocks.data.personalModelProviders([codexProvider]);
     mockAgent();
     mockChatLifecycle(context, {
+      onThreadCreate: (body) => {
+        createdBody = body;
+      },
       onRunCreate: (body) => {
         sentBody = body;
       },
@@ -1211,10 +1222,11 @@ describe("chat composer models", () => {
     );
 
     await waitFor(() => {
-      expect(sentBody?.modelSelection).toStrictEqual({
+      expect(createdBody?.modelSelection).toStrictEqual({
         modelProviderId: "00000000-0000-4000-8000-000000000000",
         selectedModel: "gpt-5.5",
       });
+      expect(sentBody?.modelSelection).toBeUndefined();
       expect(sentBody?.runOptions).toStrictEqual({
         codexServiceTier: "fast",
       });
@@ -1280,10 +1292,7 @@ describe("chat composer models", () => {
     );
 
     await waitFor(() => {
-      expect(sentBody?.modelSelection).toStrictEqual({
-        modelProviderId: "00000000-0000-4000-8000-000000000000",
-        selectedModel: "gpt-5.5",
-      });
+      expect(sentBody?.modelSelection).toBeUndefined();
       expect(sentBody?.runOptions).toStrictEqual({
         codexServiceTier: "fast",
       });
@@ -1309,6 +1318,15 @@ describe("chat composer models", () => {
           runOptions?: { codexServiceTier?: "fast" };
         }
       | undefined;
+    let updatedModelSelection:
+      | {
+          modelSelection?: {
+            modelProviderId: string;
+            selectedModel: string;
+          } | null;
+          codexServiceTier?: "fast" | null;
+        }
+      | undefined;
 
     context.mocks.data.orgModelPolicies([
       buildModelPolicy({
@@ -1332,6 +1350,9 @@ describe("chat composer models", () => {
       threadId: THREAD_ID,
       selectedModel: "gpt-5.5",
       codexServiceTier: "fast",
+      onModelSelectionUpdate: (body) => {
+        updatedModelSelection = body;
+      },
       onRunCreate: (body) => {
         sentBody = body;
       },
@@ -1358,10 +1379,12 @@ describe("chat composer models", () => {
     );
 
     await waitFor(() => {
-      expect(sentBody?.modelSelection).toStrictEqual({
+      expect(updatedModelSelection?.modelSelection).toStrictEqual({
         modelProviderId: "00000000-0000-4000-8000-000000000000",
         selectedModel: "gpt-5.4",
       });
+      expect(updatedModelSelection?.codexServiceTier).toBeNull();
+      expect(sentBody?.modelSelection).toBeUndefined();
       expect(sentBody?.runOptions).toBeUndefined();
     });
   });

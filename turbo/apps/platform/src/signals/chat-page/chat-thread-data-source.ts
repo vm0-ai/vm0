@@ -53,7 +53,6 @@ export interface AppendQueuedMessageArgs {
   attachments: PersistedAttachment[] | null;
   clientMessageId: string;
   hasTextContent: boolean;
-  modelSelection: ModelSelectionRequest | null;
   runOptions?: ChatRunOptionsRequest;
   generationTemplate: GenerationTemplateRequest | undefined;
   computerUseHostId?: string | null;

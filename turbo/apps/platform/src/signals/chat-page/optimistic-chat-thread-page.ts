@@ -105,7 +105,6 @@ function newThreadSendBody({
   agentId,
   threadId,
   clientMessageId,
-  chatThreadEventId,
   prepared,
   modelSelection,
   codexFastModeEnabled,
@@ -115,7 +114,6 @@ function newThreadSendBody({
   agentId: string;
   threadId: string;
   clientMessageId: string;
-  chatThreadEventId: string;
   prepared: PreparedNewThreadPayload;
   modelSelection: ModelProviderSelection;
   codexFastModeEnabled: boolean;
@@ -129,11 +127,9 @@ function newThreadSendBody({
   return {
     agentId,
     prompt: prepared.prompt,
-    clientThreadId: threadId,
-    chatThreadEventId,
+    threadId,
     hasTextContent: prepared.hasTextContent,
     clientMessageId,
-    modelSelection: modelSelectionRequestFromSelection(modelSelection),
     ...(runOptions ? { runOptions } : {}),
     generationTemplate,
     ...(computerUseHostId === undefined ? {} : { computerUseHostId }),
@@ -168,21 +164,22 @@ const settleNewThreadSend$ = command(
     { set },
     args: {
       readonly clearDraftResult: Promise<void>;
+      readonly createResult: Promise<void>;
       readonly createClient: ZeroClientFactory;
       readonly body: ReturnType<typeof newThreadSendBody>;
     },
     signal: AbortSignal,
   ): Promise<SendNewThreadMessageResult> => {
-    const [, result] = await Promise.all([
-      args.clearDraftResult,
-      accept(
-        args.createClient(chatMessagesContract).send({
-          body: args.body,
-          fetchOptions: { signal },
-        }),
-        [201],
-      ),
-    ]);
+    await Promise.all([args.clearDraftResult, args.createResult]);
+    signal.throwIfAborted();
+
+    const result = await accept(
+      args.createClient(chatMessagesContract).send({
+        body: args.body,
+        fetchOptions: { signal },
+      }),
+      [201],
+    );
     signal.throwIfAborted();
     L.debug("sendNewThreadMessage$ POST chat/messages 201", {
       threadId: result.body.threadId,
@@ -437,16 +434,30 @@ const sendNewThreadMessage$ = command(
     set(draft.clear$);
     const clearDraftResult = set(clearAgentDraftById$, agentId, signal);
     const createClient = get(zeroClient$);
+    L.debug("sendNewThreadMessage$ POST chat-threads start", { threadId });
+    const createResult = (async (): Promise<void> => {
+      await createChatThread({
+        createClient,
+        agentId,
+        signal,
+        title: undefined,
+        clientThreadId: threadId,
+        eventId: chatThreadEventId,
+        modelSelection: resolvedModelSelection,
+      });
+      L.debug("sendNewThreadMessage$ POST chat-threads 201", { threadId });
+      signal.throwIfAborted();
+    })();
     const sendResult = set(
       settleNewThreadSend$,
       {
         clearDraftResult,
+        createResult,
         createClient,
         body: newThreadSendBody({
           agentId,
           threadId,
           clientMessageId,
-          chatThreadEventId,
           prepared,
           modelSelection: resolvedModelSelection,
           codexFastModeEnabled: codexFastModeSwitchEnabled(get(featureSwitch$)),

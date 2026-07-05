@@ -1,7 +1,10 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import type { PersistedAttachment } from "@vm0/api-contracts/contracts/chat-threads";
+import type {
+  ModelSelectionRequest,
+  PersistedAttachment,
+} from "@vm0/api-contracts/contracts/chat-threads";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
   click,
@@ -29,6 +32,7 @@ interface QueuedMessageCapture {
   hasTextContent?: boolean;
   attachments?: PersistedAttachment[];
   clientMessageId: string;
+  modelSelection?: ModelSelectionRequest | null;
 }
 
 async function startActiveRun(
@@ -159,6 +163,48 @@ describe("chat run queue", () => {
       "Second queued follow-up",
       "Replayed follow-up",
     ]);
+  });
+
+  it("omits model selection when queueing a follow-up on an existing thread", async () => {
+    const user = userEvent.setup({ delay: null });
+    const queuedBodies: QueuedMessageCapture[] = [];
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      selectedModel: "claude-sonnet-4-6",
+      chatMessages: [
+        {
+          id: `${THREAD_ID}-active-user`,
+          role: "user",
+          content: "Start the active run",
+          runId: "run-active",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: `${THREAD_ID}-active-assistant`,
+          role: "assistant",
+          content: null,
+          runId: "run-active",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+      ],
+      activeRunIds: ["run-active"],
+      onQueuedMessageAppend: (body) => {
+        queuedBodies.push(body);
+      },
+    });
+
+    detachedSetupPage({ context, path: CHAT_PATH });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+    });
+
+    await sendQueuedMessage(user, "Queued follow-up");
+
+    await waitFor(() => {
+      expect(queuedBodies).toHaveLength(1);
+    });
+    expect(queuedBodies[0]?.modelSelection).toBeUndefined();
   });
 
   it("queues an attachment-only follow-up during an active run", async () => {

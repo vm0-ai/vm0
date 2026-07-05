@@ -28,9 +28,11 @@ import {
 } from "@vm0/db/schema/google-calendar-event";
 import { githubInstallations } from "@vm0/db/schema/github-installation";
 import { githubUserLinks } from "@vm0/db/schema/github-user-link";
+import { modelProviders } from "@vm0/db/schema/model-provider";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { secrets } from "@vm0/db/schema/secret";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
@@ -60,6 +62,8 @@ import {
 } from "./test-oauth-provider-helpers";
 
 const actionBody$ = bodyResultOf(testWorkflowTriggerStateContract.action);
+const ORG_SENTINEL_USER_ID = "__org__";
+const WORKFLOW_TEST_DEFAULT_MODEL = "claude-sonnet-4-6";
 
 function actionOk(extra: Record<string, unknown> = {}) {
   return {
@@ -81,6 +85,76 @@ type WorkflowTriggerStateActionHandler = (
   body: Record<string, unknown>,
   signal: AbortSignal,
 ) => Promise<WorkflowTriggerStateActionResponse>;
+
+async function seedDefaultWorkflowModelPolicy(
+  db: Db,
+  args: { readonly orgId: string; readonly userId: string },
+  signal: AbortSignal,
+): Promise<void> {
+  const [existingProvider] = await db
+    .select({ id: modelProviders.id })
+    .from(modelProviders)
+    .where(
+      and(
+        eq(modelProviders.orgId, args.orgId),
+        eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
+        eq(modelProviders.type, "anthropic-api-key"),
+      ),
+    )
+    .limit(1);
+  signal.throwIfAborted();
+
+  let providerId = existingProvider?.id;
+  if (!providerId) {
+    const [secret] = await db
+      .insert(secrets)
+      .values({
+        orgId: args.orgId,
+        userId: ORG_SENTINEL_USER_ID,
+        name: "ANTHROPIC_API_KEY",
+        encryptedValue: await encryptStoredSecretValue(
+          "workflow-trigger-test-anthropic-key",
+        ),
+        type: "model-provider",
+      })
+      .returning({ id: secrets.id });
+    signal.throwIfAborted();
+    if (!secret) {
+      throw new Error("Failed to seed workflow default model secret");
+    }
+
+    const [provider] = await db
+      .insert(modelProviders)
+      .values({
+        orgId: args.orgId,
+        userId: ORG_SENTINEL_USER_ID,
+        type: "anthropic-api-key",
+        secretId: secret.id,
+      })
+      .returning({ id: modelProviders.id });
+    signal.throwIfAborted();
+    if (!provider) {
+      throw new Error("Failed to seed workflow default model provider");
+    }
+    providerId = provider.id;
+  }
+
+  await db
+    .delete(orgModelPolicies)
+    .where(eq(orgModelPolicies.orgId, args.orgId));
+  signal.throwIfAborted();
+  await db.insert(orgModelPolicies).values({
+    orgId: args.orgId,
+    model: WORKFLOW_TEST_DEFAULT_MODEL,
+    isDefault: true,
+    defaultProviderType: "anthropic-api-key",
+    credentialScope: "org",
+    modelProviderId: providerId,
+    createdByUserId: args.userId,
+    updatedByUserId: args.userId,
+  });
+  signal.throwIfAborted();
+}
 
 function readString(body: Record<string, unknown>, key: string): string | null {
   const value = body[key];
@@ -192,6 +266,7 @@ async function seedScenarioForAction(
     .values({ userId, email: `${userId}@example.com` })
     .onConflictDoNothing();
   signal.throwIfAborted();
+  await seedDefaultWorkflowModelPolicy(db, { orgId, userId }, signal);
 
   await db.insert(agentComposes).values({
     id: agentId,
@@ -362,6 +437,7 @@ async function seedWorkflowsFixtureForAction(
     .values({ userId, email: `${userId}@example.com` })
     .onConflictDoNothing();
   signal.throwIfAborted();
+  await seedDefaultWorkflowModelPolicy(db, { orgId, userId }, signal);
   return actionOk({
     fixture: {
       org_id: orgId,
@@ -1241,6 +1317,10 @@ async function deleteScenarioForAction(
     .where(eq(githubInstallations.orgId, orgId));
   signal.throwIfAborted();
   await db.delete(connectors).where(eq(connectors.orgId, orgId));
+  signal.throwIfAborted();
+  await db.delete(orgModelPolicies).where(eq(orgModelPolicies.orgId, orgId));
+  signal.throwIfAborted();
+  await db.delete(modelProviders).where(eq(modelProviders.orgId, orgId));
   signal.throwIfAborted();
   await db.delete(secrets).where(eq(secrets.orgId, orgId));
   signal.throwIfAborted();

@@ -50,10 +50,7 @@ import {
 } from "@vm0/api-contracts/contracts/chat-threads";
 
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
-import {
-  modelSelectionRequestFromSelection,
-  runOptionsFromModelProviderSelection,
-} from "./model-selection-request.ts";
+import { runOptionsFromModelProviderSelection } from "./model-selection-request.ts";
 import { accept } from "../../lib/accept.ts";
 import { nowDate } from "../../lib/time.ts";
 import { captureTaskCompletedSuccessfully } from "../../lib/posthog.ts";
@@ -2746,7 +2743,6 @@ function createQueueMessage(deps: QueueMessageDeps) {
             attachments: result.attachments ?? null,
             clientMessageId,
             hasTextContent: result.hasTextContent,
-            modelSelection: modelSelectionRequestFromSelection(modelSelection),
             ...(runOptions ? { runOptions } : {}),
             generationTemplate,
             ...(computerUseHostId === undefined ? {} : { computerUseHostId }),
