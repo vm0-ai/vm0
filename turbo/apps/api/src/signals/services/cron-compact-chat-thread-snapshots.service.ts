@@ -66,18 +66,28 @@ function compareThreadOrder(
 function applyChatThreadEvent(
   threads: Map<string, ChatThreadSnapshotProjection>,
   event: ChatThreadEvent,
+  pendingSelectedModelUpdates: Map<string, ChatThreadEvent>,
 ) {
   if (event.kind === "created") {
+    const pendingSelectedModelUpdate = pendingSelectedModelUpdates.get(
+      event.chatThreadId,
+    );
+    pendingSelectedModelUpdates.delete(event.chatThreadId);
+    const selectedModelUpdate =
+      pendingSelectedModelUpdate &&
+      pendingSelectedModelUpdate.createdAt.localeCompare(event.createdAt) >= 0
+        ? pendingSelectedModelUpdate
+        : null;
     threads.set(event.chatThreadId, {
       id: event.chatThreadId,
       agentId: event.agentId,
       title: event.title,
       sortAt: event.createdAt,
       createdAt: event.createdAt,
-      updatedAt: event.createdAt,
+      updatedAt: selectedModelUpdate?.createdAt ?? event.createdAt,
       pinnedAt: null,
       renamedAt: null,
-      selectedModel: event.selectedModel,
+      selectedModel: selectedModelUpdate?.selectedModel ?? event.selectedModel,
     });
     return;
   }
@@ -89,6 +99,9 @@ function applyChatThreadEvent(
 
   const thread = threads.get(event.chatThreadId);
   if (!thread) {
+    if (event.kind === "model_selection_updated") {
+      pendingSelectedModelUpdates.set(event.chatThreadId, event);
+    }
     return;
   }
 
@@ -150,8 +163,9 @@ function compactSnapshot(
       selectedModel: thread.selectedModel ?? null,
     });
   }
+  const pendingSelectedModelUpdates = new Map<string, ChatThreadEvent>();
   for (const event of events) {
-    applyChatThreadEvent(threads, event);
+    applyChatThreadEvent(threads, event, pendingSelectedModelUpdates);
   }
 
   let removedDeletedAgentThreads = 0;

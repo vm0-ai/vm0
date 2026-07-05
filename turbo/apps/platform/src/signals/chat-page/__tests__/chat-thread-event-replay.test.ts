@@ -196,4 +196,44 @@ describe("replayChatThreadEvents", () => {
       },
     ]);
   });
+
+  it("applies selected model updates that arrive before same-timestamp creation", () => {
+    const sameTimestamp = "2026-07-01T05:00:00.000Z";
+    const result = replayChatThreadEvents(
+      [],
+      [
+        event({
+          id: "event-1",
+          kind: "model_selection_updated",
+          chatThreadId: "thread-a",
+          agentId: "agent-1",
+          title: null,
+          selectedModel: "claude-sonnet-4-6",
+          createdAt: sameTimestamp,
+        }),
+        event({
+          id: "event-2",
+          kind: "created",
+          chatThreadId: "thread-a",
+          agentId: "agent-1",
+          title: "Created thread",
+          createdAt: sameTimestamp,
+        }),
+      ],
+    );
+
+    expect(result).toStrictEqual([
+      {
+        id: "thread-a",
+        agentId: "agent-1",
+        title: "Created thread",
+        sortAt: sameTimestamp,
+        createdAt: sameTimestamp,
+        updatedAt: sameTimestamp,
+        pinnedAt: null,
+        renamedAt: null,
+        selectedModel: "claude-sonnet-4-6",
+      },
+    ]);
+  });
 });

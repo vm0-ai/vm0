@@ -146,6 +146,7 @@ function mockChatThreadSnapshot(threads: () => readonly SidebarThread[]): void {
           updatedAt: thread.updatedAt,
           pinnedAt: thread.pinnedAt ?? null,
           renamedAt: thread.renamedAt ?? null,
+          selectedModel: null,
         };
       }),
       latestEventId: null,
@@ -418,6 +419,7 @@ describe("zero sidebar", () => {
             updatedAt: "2026-03-10T00:00:00Z",
             pinnedAt: null,
             renamedAt: null,
+            selectedModel: null,
           },
         ],
         latestEventId: null,

@@ -3784,6 +3784,7 @@ describe("chat lifecycle", () => {
             updatedAt: "2026-06-01T00:00:00.000Z",
             pinnedAt: null,
             renamedAt: null,
+            selectedModel: null,
           },
         ],
         latestEventId: null,

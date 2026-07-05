@@ -701,6 +701,7 @@ describe("team page navigation", () => {
             updatedAt: thread.updatedAt,
             pinnedAt: thread.pinnedAt,
             renamedAt: null,
+            selectedModel: null,
           };
         }),
         latestEventId: null,
