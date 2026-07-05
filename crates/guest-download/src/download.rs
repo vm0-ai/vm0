@@ -124,7 +124,7 @@ fn download_all_parallel_with_runner(tasks: Vec<DownloadTask>, task_runner: Task
     record_download_attribution(&tasks);
     if tasks.is_empty() {
         record_sandbox_op(
-            guest_download_mount_conflict_count_action(0),
+            guest_download_mount_conflict_deferral_count_action(0),
             Duration::ZERO,
             true,
             None,
@@ -194,7 +194,7 @@ fn download_all_parallel_with_runner(tasks: Vec<DownloadTask>, task_runner: Task
         all_success && pending.is_empty()
     });
     record_sandbox_op(
-        guest_download_mount_conflict_count_action(stats.mount_conflict_deferrals),
+        guest_download_mount_conflict_deferral_count_action(stats.mount_conflict_deferrals),
         Duration::ZERO,
         true,
         None,
@@ -238,15 +238,15 @@ fn guest_download_file_url_count_action(count: usize) -> &'static str {
     }
 }
 
-fn guest_download_mount_conflict_count_action(count: usize) -> &'static str {
+fn guest_download_mount_conflict_deferral_count_action(count: usize) -> &'static str {
     match count_bucket(count) {
-        CountBucket::Zero => "guest_download_mount_conflict_count_0",
-        CountBucket::One => "guest_download_mount_conflict_count_1",
-        CountBucket::Two => "guest_download_mount_conflict_count_2",
-        CountBucket::ThreeToFour => "guest_download_mount_conflict_count_3_4",
-        CountBucket::FiveToEight => "guest_download_mount_conflict_count_5_8",
-        CountBucket::NineToSixteen => "guest_download_mount_conflict_count_9_16",
-        CountBucket::SeventeenPlus => "guest_download_mount_conflict_count_17_plus",
+        CountBucket::Zero => "guest_download_mount_conflict_deferral_count_0",
+        CountBucket::One => "guest_download_mount_conflict_deferral_count_1",
+        CountBucket::Two => "guest_download_mount_conflict_deferral_count_2",
+        CountBucket::ThreeToFour => "guest_download_mount_conflict_deferral_count_3_4",
+        CountBucket::FiveToEight => "guest_download_mount_conflict_deferral_count_5_8",
+        CountBucket::NineToSixteen => "guest_download_mount_conflict_deferral_count_9_16",
+        CountBucket::SeventeenPlus => "guest_download_mount_conflict_deferral_count_17_plus",
     }
 }
 
