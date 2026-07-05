@@ -660,16 +660,13 @@ function filterUseCase(
     return useCase;
   }
 
-  const connectors = useCase.connectors.filter((connectorRef) => {
+  const allConnectorsVisible = useCase.connectors.every((connectorRef) => {
     return visibleConnectorRefs.has(connectorRef);
   });
-  if (connectors.length === 0) {
+  if (!allConnectorsVisible) {
     return null;
   }
-  if (connectors.length === useCase.connectors.length) {
-    return useCase;
-  }
-  return { ...useCase, connectors };
+  return useCase;
 }
 
 export function getCategories(

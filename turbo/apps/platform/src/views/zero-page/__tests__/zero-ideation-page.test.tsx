@@ -107,8 +107,14 @@ describe("zero ideation page", () => {
     );
   });
 
-  it("renders only catalog-visible connector chips for use cases", async () => {
-    mockConnectorCatalogStatus(["github", "slack"]);
+  it("renders use case connector chips when all connectors are catalog-visible", async () => {
+    mockConnectorCatalogStatus([
+      "github",
+      "sentry",
+      "axiom",
+      "plausible",
+      "slack",
+    ]);
 
     detachedSetupPage({
       context,
@@ -117,7 +123,21 @@ describe("zero ideation page", () => {
 
     const card = await cardByTitle("Daily standup report");
 
-    expect(card.querySelectorAll("img")).toHaveLength(2);
+    expect(card.querySelectorAll("img")).toHaveLength(5);
+  });
+
+  it("hides use cases when any required connector is omitted from catalog", async () => {
+    mockConnectorCatalogStatus(["github", "slack"]);
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${agentId}/ideas`,
+    });
+
+    await expect(
+      screen.findByText("GitHub progress weekly"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.queryByText("Daily standup report")).not.toBeInTheDocument();
   });
 
   it("hides connector-only use cases when catalog omits all refs", async () => {
