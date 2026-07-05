@@ -248,6 +248,7 @@ mod tests {
                     .map_err(|error| error.to_string());
                 let holds_claim = matches!(&claim, Ok(Some(_)));
                 let _ = result_tx.send(result);
+                drop(result_tx);
                 if holds_claim {
                     let _ = release_rx.recv();
                 }
@@ -257,9 +258,13 @@ mod tests {
         drop(result_tx);
 
         start.wait();
-        let results = (0..worker_count)
-            .map(|_| result_rx.recv().expect("worker result"))
-            .collect::<Vec<_>>();
+        let mut results = Vec::with_capacity(worker_count);
+        while results.len() < worker_count {
+            let Ok(result) = result_rx.recv() else {
+                break;
+            };
+            results.push(result);
+        }
         for release_tx in release_txs {
             let _ = release_tx.send(());
         }
@@ -268,6 +273,7 @@ mod tests {
             handle.join().expect("worker should not panic");
         }
 
+        assert_eq!(results.len(), worker_count);
         let winner_count = results
             .into_iter()
             .map(|result| result.expect("lock attempt should not fail"))
