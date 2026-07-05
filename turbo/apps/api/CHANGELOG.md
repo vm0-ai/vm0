@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.224.0](https://github.com/vm0-ai/vm0/compare/api-v1.223.6...api-v1.224.0) (2026-07-05)
+
+
+### Features
+
+* add gmail backfill stop controls ([#20213](https://github.com/vm0-ai/vm0/issues/20213)) ([97ab218](https://github.com/vm0-ai/vm0/commit/97ab2184f5dd9daa1d00856add3531f2f6999bbb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.154.0
+    * @vm0/core bumped to 8.399.6
+    * @vm0/db bumped to 1.92.0
+
 ## [1.223.6](https://github.com/vm0-ai/vm0/compare/api-v1.223.5...api-v1.223.6) (2026-07-05)
 
 
