@@ -256,10 +256,15 @@ function HtmlDomCommentToolbar({
         >
           <button
             type="button"
-            className="relative inline-flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-45"
+            className={`relative inline-flex h-9 w-9 items-center justify-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${
+              model.commentsOpen
+                ? "bg-blue-50 text-blue-700 ring-2 ring-blue-500/20 hover:bg-blue-100"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            }`}
             disabled={disabled}
             onClick={toggleCommentsOpen}
             aria-label="Show comments"
+            aria-pressed={model.commentsOpen}
             data-testid="html-dom-toolbar-comments"
           >
             <IconMessageCircle size={18} stroke={1.9} />

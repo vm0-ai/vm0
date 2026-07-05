@@ -2280,8 +2280,13 @@ describe("zero attachment chips", () => {
       ).toHaveLength(2);
     });
 
-    click(screen.getByTestId("html-dom-toolbar-comments"));
+    const commentsButton = screen.getByTestId("html-dom-toolbar-comments");
+    expect(commentsButton).toHaveAttribute("aria-pressed", "false");
+
+    click(commentsButton);
     const commentsList = await screen.findByTestId("html-dom-comments-list");
+    expect(commentsButton).toHaveAttribute("aria-pressed", "true");
+    expect(commentsButton).toHaveClass("bg-blue-50");
     expect(within(commentsList).queryByText("Comment 1")).toBeNull();
     const heroListItem = within(commentsList).getByText(
       "Make the hero headline shorter",
@@ -2352,7 +2357,11 @@ describe("zero attachment chips", () => {
       ).toHaveTextContent("1");
     });
 
-    click(screen.getByTestId("html-dom-toolbar-comments"));
+    click(commentsButton);
+    await waitFor(() => {
+      expect(screen.queryByTestId("html-dom-comments-list")).toBeNull();
+      expect(commentsButton).toHaveAttribute("aria-pressed", "false");
+    });
     fireEvent.click(bodyCopy!);
     await waitFor(() => {
       expect(screen.getByTestId("html-dom-comment-textarea")).toHaveValue("");
