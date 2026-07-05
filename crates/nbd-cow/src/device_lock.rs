@@ -6,6 +6,7 @@
 
 use std::fs::{File, OpenOptions};
 use std::io;
+use std::os::fd::AsRawFd;
 use std::os::unix::fs::MetadataExt;
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
@@ -14,6 +15,8 @@ use nix::fcntl::{Flock, FlockArg};
 
 const LOCK_FILE_PREFIX: &str = "vm0-nbd";
 const MAX_STALE_INODE_RETRIES: usize = 16;
+const PRIVATE_FILE_MODE: u32 = 0o600;
+const GROUP_OR_OTHER_WRITE_BITS: u32 = 0o022;
 
 /// Owned host-global claim for one NBD device index.
 ///
@@ -100,26 +103,87 @@ fn open_lock_file(path: &Path) -> io::Result<File> {
 
 fn base_open_options() -> OpenOptions {
     let mut options = OpenOptions::new();
-    options.write(true).custom_flags(libc::O_NOFOLLOW);
+    options
+        .read(true)
+        .write(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC | libc::O_NONBLOCK);
     options
 }
 
 fn open_existing_lock_file(path: &Path) -> io::Result<File> {
-    base_open_options().open(path)
+    let file = base_open_options().open(path)?;
+    validate_lock_file(&file, path)?;
+    Ok(file)
 }
 
 fn create_lock_file(path: &Path) -> io::Result<File> {
     let mut options = base_open_options();
-    options.create(true).truncate(false).open(path)
+    let file = options
+        .create(true)
+        .truncate(false)
+        .mode(PRIVATE_FILE_MODE)
+        .open(path)?;
+    validate_lock_file(&file, path)?;
+    Ok(file)
+}
+
+fn validate_lock_file(file: &File, path: &Path) -> io::Result<()> {
+    let metadata = file.metadata()?;
+    if !metadata.is_file() {
+        return Err(permission_denied(format!(
+            "{} is not a regular lock file",
+            path.display()
+        )));
+    }
+
+    // SAFETY: `geteuid` has no preconditions and does not mutate Rust-owned memory.
+    let expected_uid = unsafe { libc::geteuid() };
+    if metadata.uid() != expected_uid {
+        return Err(permission_denied(format!(
+            "{} is owned by uid {}, but current euid is {expected_uid}",
+            path.display(),
+            metadata.uid()
+        )));
+    }
+
+    let mode = metadata.mode() & 0o7777;
+    if mode & GROUP_OR_OTHER_WRITE_BITS != 0 {
+        return Err(permission_denied(format!(
+            "{} is group/other writable",
+            path.display()
+        )));
+    }
+    if mode != PRIVATE_FILE_MODE {
+        chmod_lock_file(file, path)?;
+    }
+    Ok(())
+}
+
+fn chmod_lock_file(file: &File, path: &Path) -> io::Result<()> {
+    // SAFETY: `fchmod` operates on the live fd and does not affect Rust aliasing.
+    let result = unsafe { libc::fchmod(file.as_raw_fd(), PRIVATE_FILE_MODE as libc::mode_t) };
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(io::Error::other(format!(
+            "chmod lock file {}: {}",
+            path.display(),
+            io::Error::last_os_error()
+        )))
+    }
+}
+
+fn permission_denied(message: String) -> io::Error {
+    io::Error::new(io::ErrorKind::PermissionDenied, message)
 }
 
 fn metadata_inode_is_current(lock_meta: std::fs::Metadata, path: &Path) -> io::Result<bool> {
-    let path_meta = match std::fs::metadata(path) {
+    let path_meta = match std::fs::symlink_metadata(path) {
         Ok(meta) => meta,
         Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(false),
         Err(e) => return Err(e),
     };
-    Ok(lock_meta.ino() == path_meta.ino())
+    Ok(lock_meta.dev() == path_meta.dev() && lock_meta.ino() == path_meta.ino())
 }
 
 fn lock_inode_is_current(lock: &Flock<File>, path: &Path) -> io::Result<bool> {
@@ -132,6 +196,8 @@ fn file_inode_is_current(file: &File, path: &Path) -> io::Result<bool> {
 
 #[cfg(test)]
 mod tests {
+    use std::os::unix::fs::{PermissionsExt, symlink};
+
     use super::*;
 
     #[test]
@@ -170,6 +236,105 @@ mod tests {
         assert!(
             !lock_inode_is_current(&claim._lock, &path).expect("inode comparison"),
             "held claim should detect that the path was replaced"
+        );
+    }
+
+    #[test]
+    fn claim_rejects_symlink_lock_path_without_touching_target() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = device_lock_path_in(7, dir.path());
+        let target = dir.path().join("target.lock");
+        std::fs::write(&target, b"target").expect("write target");
+        symlink(&target, &path).expect("create lock path symlink");
+
+        try_acquire_device_claim_in(7, dir.path()).expect_err("symlink lock path should fail");
+
+        assert_eq!(std::fs::read(&target).expect("read target"), b"target");
+        assert!(
+            std::fs::symlink_metadata(&path)
+                .expect("lock path metadata")
+                .file_type()
+                .is_symlink(),
+            "lock path should remain a symlink"
+        );
+    }
+
+    #[test]
+    fn held_claim_rejects_symlink_replacement_to_same_inode() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = device_lock_path_in(7, dir.path());
+        let alias = dir.path().join("alias.lock");
+        let claim = try_acquire_device_claim_in(7, dir.path())
+            .expect("lock")
+            .expect("claim");
+
+        std::fs::hard_link(&path, &alias).expect("create lock alias");
+        std::fs::remove_file(&path).expect("remove lock path");
+        symlink(&alias, &path).expect("replace lock path with symlink");
+
+        assert!(
+            !lock_inode_is_current(&claim._lock, &path).expect("inode comparison"),
+            "held claim should reject a symlink replacement even when it resolves to the same inode"
+        );
+    }
+
+    #[test]
+    fn claim_rejects_fifo_lock_path_without_blocking() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = device_lock_path_in(7, dir.path());
+        nix::unistd::mkfifo(
+            &path,
+            nix::sys::stat::Mode::from_bits_truncate(PRIVATE_FILE_MODE),
+        )
+        .expect("create fifo lock path");
+
+        let error =
+            try_acquire_device_claim_in(7, dir.path()).expect_err("fifo lock path should fail");
+
+        assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
+        assert!(
+            error.to_string().contains("not a regular lock file"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn claim_tightens_owner_only_lock_file_permissions() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = device_lock_path_in(7, dir.path());
+        std::fs::write(&path, b"").expect("write lock path");
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644))
+            .expect("set loose lock permissions");
+
+        let _claim = try_acquire_device_claim_in(7, dir.path())
+            .expect("lock")
+            .expect("claim");
+
+        assert_eq!(
+            std::fs::metadata(&path)
+                .expect("lock metadata")
+                .permissions()
+                .mode()
+                & 0o777,
+            PRIVATE_FILE_MODE
+        );
+    }
+
+    #[test]
+    fn claim_rejects_group_writable_lock_file() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = device_lock_path_in(7, dir.path());
+        std::fs::write(&path, b"").expect("write lock path");
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o620))
+            .expect("set group-writable lock permissions");
+
+        let error = try_acquire_device_claim_in(7, dir.path())
+            .expect_err("group-writable lock path should fail");
+
+        assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
+        assert!(
+            error.to_string().contains("group/other writable"),
+            "unexpected error: {error}"
         );
     }
 }
