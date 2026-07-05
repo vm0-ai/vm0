@@ -197,6 +197,7 @@ fn file_inode_is_current(file: &File, path: &Path) -> io::Result<bool> {
 #[cfg(test)]
 mod tests {
     use std::os::unix::fs::{PermissionsExt, symlink};
+    use std::sync::{Arc, Barrier, mpsc};
 
     use super::*;
 
@@ -220,6 +221,53 @@ mod tests {
                 .expect("third lock")
                 .is_some()
         );
+    }
+
+    #[test]
+    fn concurrent_claims_for_same_index_have_single_winner() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let lock_dir = Arc::new(dir.path().to_owned());
+        let worker_count = 8;
+        let start = Arc::new(Barrier::new(worker_count + 1));
+        let finish = Arc::new(Barrier::new(worker_count + 1));
+        let (result_tx, result_rx) = mpsc::channel();
+        let mut handles = Vec::with_capacity(worker_count);
+
+        for _ in 0..worker_count {
+            let lock_dir = Arc::clone(&lock_dir);
+            let start = Arc::clone(&start);
+            let finish = Arc::clone(&finish);
+            let result_tx = result_tx.clone();
+            handles.push(std::thread::spawn(move || {
+                start.wait();
+                let claim = try_acquire_device_claim_in(7, &lock_dir);
+                let result = claim
+                    .as_ref()
+                    .map(|claim| claim.is_some())
+                    .map_err(|error| error.to_string());
+                let _ = result_tx.send(result);
+                finish.wait();
+                drop(claim);
+            }));
+        }
+        drop(result_tx);
+
+        start.wait();
+        let results = (0..worker_count)
+            .map(|_| result_rx.recv().expect("worker result"))
+            .collect::<Vec<_>>();
+        finish.wait();
+
+        for handle in handles {
+            handle.join().expect("worker should not panic");
+        }
+
+        let winner_count = results
+            .into_iter()
+            .map(|result| result.expect("lock attempt should not fail"))
+            .filter(|acquired| *acquired)
+            .count();
+        assert_eq!(winner_count, 1);
     }
 
     #[test]
@@ -310,6 +358,35 @@ mod tests {
             .expect("lock")
             .expect("claim");
 
+        assert_eq!(
+            std::fs::metadata(&path)
+                .expect("lock metadata")
+                .permissions()
+                .mode()
+                & 0o777,
+            PRIVATE_FILE_MODE
+        );
+    }
+
+    #[test]
+    fn claim_reports_busy_for_held_legacy_world_readable_lock_file() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = device_lock_path_in(7, dir.path());
+        std::fs::write(&path, b"").expect("write lock path");
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644))
+            .expect("set legacy lock permissions");
+        let legacy_file = std::fs::OpenOptions::new()
+            .write(true)
+            .open(&path)
+            .expect("open legacy lock file");
+        let _legacy_lock = Flock::lock(legacy_file, FlockArg::LockExclusiveNonblock)
+            .map_err(|(_file, errno)| errno)
+            .expect("hold legacy lock");
+
+        let claim =
+            try_acquire_device_claim_in(7, dir.path()).expect("new lock attempt should not fail");
+
+        assert!(claim.is_none());
         assert_eq!(
             std::fs::metadata(&path)
                 .expect("lock metadata")
