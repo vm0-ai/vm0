@@ -3902,7 +3902,7 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     const doomedBearer = `Bearer ${doomedKey.token}`;
     const livePoll = await runs.requestPollRunnerAs(
       doomedBearer,
-      { group: runnerGroup, profiles: ["vm0/default"] },
+      { group: runnerGroup, supportedProfiles: ["vm0/default"] },
       [200],
     );
     expect(livePoll.status).toBe(200);
@@ -3970,7 +3970,7 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
       .poll(async () => {
         revokedPoll = await runs.requestPollRunnerAs(
           doomedBearer,
-          { group: runnerGroup, profiles: ["vm0/default"] },
+          { group: runnerGroup, supportedProfiles: ["vm0/default"] },
           [200, 401],
         );
         return revokedPoll.status;

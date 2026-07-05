@@ -1707,12 +1707,28 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const api = createRunsAutomationsApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
-    const missingSupport = await api.requestPollRunner(
+    const missingSupport = await api.requestMalformedPollRunner(
       true,
       { group: runnerGroup },
       [400],
     );
     expectApiError(missingSupport.body);
+    const legacySupport = await api.requestMalformedPollRunner(
+      true,
+      { group: runnerGroup, profiles: ["vm0/default"] },
+      [400],
+    );
+    expectApiError(legacySupport.body);
+    const conflictingLegacySupport = await api.requestMalformedPollRunner(
+      true,
+      {
+        group: runnerGroup,
+        supportedProfiles: ["vm0/default"],
+        profiles: ["vm0/large"],
+      },
+      [400],
+    );
+    expectApiError(conflictingLegacySupport.body);
     const emptySupport = await api.requestPollRunner(
       true,
       { group: runnerGroup, supportedProfiles: [] },
@@ -1731,7 +1747,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       {
         group: runnerGroup,
         supportedProfiles: ["vm0/large"],
-        profiles: ["vm0/default"],
       },
       [200],
     );
@@ -1827,20 +1842,12 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     );
 
     async function heartbeatHolder(args: {
-      readonly profiles?: string[];
       readonly admittableProfiles?: string[];
-      readonly omitAdmittableProfiles?: boolean;
-      readonly availableProfiles?: string[];
-      readonly omitAvailableProfiles?: boolean;
       readonly mode?: "running" | "draining" | "stopping";
     }): Promise<void> {
       await api.requestHeartbeatRunner(true, [200], {
         group: runnerGroup,
-        profiles: args.profiles,
         admittableProfiles: args.admittableProfiles,
-        omitAdmittableProfiles: args.omitAdmittableProfiles,
-        availableProfiles: args.availableProfiles,
-        omitAvailableProfiles: args.omitAvailableProfiles,
         heldSessionStates: [
           {
             sessionId: cliAgentSessionId,
@@ -1873,9 +1880,55 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       return { run, job: poll.body.job };
     }
 
+    function legacyHeartbeatBody(
+      extra: Record<string, unknown>,
+    ): Record<string, unknown> {
+      return {
+        runnerId: randomUUID(),
+        runnerName: "legacy-bdd-runner",
+        group: runnerGroup,
+        totalVcpu: 8,
+        totalMemoryMb: 16_384,
+        maxConcurrent: 2,
+        allocatedVcpu: 0,
+        allocatedMemoryMb: 0,
+        runningCount: 0,
+        heldSessionStates: [
+          {
+            sessionId: cliAgentSessionId,
+            lastCompletedAt: nowDate().toISOString(),
+          },
+        ],
+        mode: "running",
+        ...extra,
+      };
+    }
+
+    const legacyAvailableHeartbeat = await api.requestMalformedHeartbeatRunner(
+      true,
+      [400],
+      legacyHeartbeatBody({ availableProfiles: ["vm0/default"] }),
+    );
+    expectApiError(legacyAvailableHeartbeat.body);
+    const legacyStaticHeartbeat = await api.requestMalformedHeartbeatRunner(
+      true,
+      [400],
+      legacyHeartbeatBody({ profiles: ["vm0/default"] }),
+    );
+    expectApiError(legacyStaticHeartbeat.body);
+    const conflictingLegacyHeartbeat =
+      await api.requestMalformedHeartbeatRunner(
+        true,
+        [400],
+        legacyHeartbeatBody({
+          admittableProfiles: ["vm0/default"],
+          profiles: ["vm0/large"],
+        }),
+      );
+    expectApiError(conflictingLegacyHeartbeat.body);
+
     await heartbeatHolder({
       admittableProfiles: [],
-      availableProfiles: ["vm0/default"],
     });
     const unavailableHolder = await pollFollowUp(
       "continue when holder is full",
@@ -1902,9 +1955,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(staleHolder.job?.affinityProtectedUntil).toBeNull();
 
     await heartbeatHolder({
-      profiles: ["vm0/default", "vm0/large"],
       admittableProfiles: ["vm0/large"],
-      availableProfiles: ["vm0/default"],
     });
     const profileIncompatibleHolder = await pollFollowUp(
       "continue when holder cannot run requested profile",
@@ -1925,37 +1976,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(drainingHolder.job?.affinityProtectedUntil).toBeNull();
 
     await heartbeatHolder({
-      omitAdmittableProfiles: true,
-      omitAvailableProfiles: true,
-    });
-    const legacyHeartbeatFollowUp = await api.createRun(actor, {
-      agentId,
-      sessionId: first.sessionId,
-      prompt: "continue with legacy holder heartbeat",
-      modelProvider: "anthropic-api-key",
-    });
-    const legacyHeartbeatPoll = await api.requestPollRunner(
-      true,
-      { group: runnerGroup, profiles: ["vm0/default"] },
-      [200],
-    );
-    if (legacyHeartbeatPoll.status !== 200) {
-      throw new Error("Expected legacy heartbeat affinity poll to return 200");
-    }
-    expect(legacyHeartbeatPoll.body.job?.runId).toBe(
-      legacyHeartbeatFollowUp.runId,
-    );
-    expect(legacyHeartbeatPoll.body.job?.cliAgentSessionId).toBe(
-      cliAgentSessionId,
-    );
-    expect(legacyHeartbeatPoll.body.job?.affinityProtectedUntil).toStrictEqual(
-      expect.any(String),
-    );
-    await api.requestCancelRun(actor, legacyHeartbeatFollowUp.runId, [200]);
-
-    await heartbeatHolder({
       admittableProfiles: ["vm0/default"],
-      availableProfiles: [],
     });
     const protectedFollowUp = await api.createRun(actor, {
       agentId,
@@ -5140,7 +5161,7 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
       bearer,
       {
         group: runnerGroup,
-        profiles: ["vm0/default"],
+        supportedProfiles: ["vm0/default"],
         telemetry: { pollReason: "deferred" },
       },
       [200],
@@ -5361,7 +5382,7 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     const outsiderBearer = `Bearer ${outsiderKey.token}`;
     const outsiderPoll = await api.requestPollRunnerAs(
       outsiderBearer,
-      { group: runnerGroup, profiles: ["vm0/default"] },
+      { group: runnerGroup, supportedProfiles: ["vm0/default"] },
       [200],
     );
     if (outsiderPoll.status !== 200) {
@@ -5410,7 +5431,10 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     const api = createRunsAutomationsApi(context);
     const bdd = createBddApi(context);
     const actor = bdd.user();
-    const pollBody = { group: "vm0/bdd-auth", profiles: ["vm0/default"] };
+    const pollBody = {
+      group: "vm0/bdd-auth",
+      supportedProfiles: ["vm0/default"],
+    };
 
     const rejectedAuthorizations = [
       "Basic vm0_official_credentials",

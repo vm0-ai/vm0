@@ -300,16 +300,8 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   const heldSessionStates =
     canonicalizeHeldSessionStates(body.data.heldSessionStates) ?? [];
-  // Stage 1 wire compatibility: accept legacy heartbeat fields until #20162.
-  const admittableProfiles =
-    body.data.admittableProfiles ??
-    body.data.availableProfiles ??
-    body.data.profiles;
-  if (admittableProfiles === undefined) {
-    return badRequestMessage("admittableProfiles is required");
-  }
-  // Stage 1 compatibility: remove the legacy static profile write in #20163.
-  const staticProfiles = body.data.profiles ?? [];
+  const admittableProfiles = body.data.admittableProfiles;
+  const staticProfiles: string[] = [];
   const currentDate = nowDate();
   const db = set(writeDb$);
   await db
@@ -437,11 +429,7 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   const { group } = body.data;
-  // Stage 1 wire compatibility: accept legacy poll profiles until #20162.
-  const supportedProfiles = body.data.supportedProfiles ?? body.data.profiles;
-  if (supportedProfiles === undefined || supportedProfiles.length === 0) {
-    return badRequestMessage("supportedProfiles is required");
-  }
+  const supportedProfiles = body.data.supportedProfiles;
   const whereConditions: SQL<unknown>[] = [
     eq(runnerJobQueue.runnerGroup, group),
     isNull(runnerJobQueue.claimedAt),

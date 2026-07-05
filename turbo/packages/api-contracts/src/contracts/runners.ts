@@ -71,6 +71,7 @@ const runnerPollTelemetrySchema = z.object({
 });
 
 const runnerProfileListSchema = z.array(z.string());
+const runnerSupportedProfileListSchema = runnerProfileListSchema.min(1);
 
 const networkPolicyRefreshSchema = z.object({
   nextRefreshAt: z.string().datetime({ offset: true }),
@@ -100,22 +101,10 @@ export const runnerGroupSchema = z
 const runnersPollBodySchema = z
   .object({
     group: runnerGroupSchema,
-    supportedProfiles: runnerProfileListSchema.optional(),
-    profiles: runnerProfileListSchema.optional(),
+    supportedProfiles: runnerSupportedProfileListSchema,
     telemetry: runnerPollTelemetrySchema.optional(),
   })
-  .superRefine((body, ctx) => {
-    const supportedProfiles = body.supportedProfiles ?? body.profiles;
-    if (supportedProfiles !== undefined && supportedProfiles.length > 0) {
-      return;
-    }
-
-    ctx.addIssue({
-      code: "custom",
-      path: ["supportedProfiles"],
-      message: "supportedProfiles is required",
-    });
-  });
+  .strict();
 
 /**
  * Job schema for polling response
@@ -489,33 +478,17 @@ export const heartbeatBodySchema = z
     runnerId: z.uuid(),
     runnerName: z.string(),
     group: runnerGroupSchema,
-    profiles: runnerProfileListSchema.optional(),
     totalVcpu: z.number().int().nonnegative(),
     totalMemoryMb: z.number().int().nonnegative(),
     maxConcurrent: z.number().int().nonnegative(),
     allocatedVcpu: z.number().int().nonnegative(),
     allocatedMemoryMb: z.number().int().nonnegative(),
     runningCount: z.number().int().nonnegative(),
-    admittableProfiles: runnerProfileListSchema.optional(),
-    availableProfiles: runnerProfileListSchema.optional(),
+    admittableProfiles: runnerProfileListSchema,
     heldSessionStates: z.array(heldSessionStateSchema).max(1024),
     mode: z.enum(["running", "draining", "stopping"]),
   })
-  .superRefine((body, ctx) => {
-    if (
-      body.admittableProfiles !== undefined ||
-      body.availableProfiles !== undefined ||
-      body.profiles !== undefined
-    ) {
-      return;
-    }
-
-    ctx.addIssue({
-      code: "custom",
-      path: ["admittableProfiles"],
-      message: "admittableProfiles is required",
-    });
-  });
+  .strict();
 
 /**
  * Runners heartbeat contract - POST /api/runners/heartbeat

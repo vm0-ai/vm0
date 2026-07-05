@@ -596,7 +596,6 @@ fn poll_request_body(
     serde_json::json!({
         "group": group,
         "supportedProfiles": supported_profiles,
-        "profiles": supported_profiles,
         "telemetry": {
             "pollReason": poll_reason_value(reason),
         },
@@ -1067,7 +1066,7 @@ mod tests {
             body["supportedProfiles"][0],
             crate::profile::DEFAULT_PROFILE
         );
-        assert_eq!(body["profiles"][0], crate::profile::DEFAULT_PROFILE);
+        assert!(body.get("profiles").is_none());
         assert_eq!(body["telemetry"]["pollReason"], "immediate");
         assert!(body.get("heldSessionStates").is_none());
     }
@@ -1361,7 +1360,6 @@ mod tests {
                     .json_body(serde_json::json!({
                         "group": "default",
                         "supportedProfiles": [crate::profile::DEFAULT_PROFILE],
-                        "profiles": [crate::profile::DEFAULT_PROFILE],
                         "telemetry": {
                             "pollReason": "immediate"
                         }

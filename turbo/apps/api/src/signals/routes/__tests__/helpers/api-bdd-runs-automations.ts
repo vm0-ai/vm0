@@ -213,11 +213,7 @@ function runnerHeartbeatBody(
   args: {
     readonly runnerId?: string;
     readonly group?: string;
-    readonly profiles?: RunnerHeartbeatBody["profiles"];
     readonly admittableProfiles?: RunnerHeartbeatBody["admittableProfiles"];
-    readonly omitAdmittableProfiles?: boolean;
-    readonly availableProfiles?: RunnerHeartbeatBody["availableProfiles"];
-    readonly omitAvailableProfiles?: boolean;
     readonly maxConcurrent?: RunnerHeartbeatBody["maxConcurrent"];
     readonly allocatedVcpu?: RunnerHeartbeatBody["allocatedVcpu"];
     readonly allocatedMemoryMb?: RunnerHeartbeatBody["allocatedMemoryMb"];
@@ -226,29 +222,20 @@ function runnerHeartbeatBody(
     readonly mode?: RunnerHeartbeatBody["mode"];
   } = {},
 ): RunnerHeartbeatBody {
-  const profiles = args.profiles ?? ["vm0/default"];
-  const body: RunnerHeartbeatBody = {
+  return {
     runnerId: args.runnerId ?? randomUUID(),
     runnerName: "bdd-runner",
     group: args.group ?? "vm0/test",
-    profiles,
     totalVcpu: 8,
     totalMemoryMb: 16_384,
     maxConcurrent: args.maxConcurrent ?? 2,
     allocatedVcpu: args.allocatedVcpu ?? 0,
     allocatedMemoryMb: args.allocatedMemoryMb ?? 0,
     runningCount: args.runningCount ?? 0,
+    admittableProfiles: args.admittableProfiles ?? ["vm0/default"],
     heldSessionStates: args.heldSessionStates ?? [],
     mode: args.mode ?? "running",
   };
-  if (!args.omitAdmittableProfiles) {
-    body.admittableProfiles =
-      args.admittableProfiles ?? args.availableProfiles ?? profiles;
-  }
-  if (!args.omitAvailableProfiles) {
-    body.availableProfiles = args.availableProfiles ?? profiles;
-  }
-  return body;
 }
 
 export function createRunsAutomationsApi(context: TestContext) {
@@ -925,11 +912,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 500)[],
       args: {
         readonly group?: string;
-        readonly profiles?: RunnerHeartbeatBody["profiles"];
         readonly admittableProfiles?: RunnerHeartbeatBody["admittableProfiles"];
-        readonly omitAdmittableProfiles?: boolean;
-        readonly availableProfiles?: RunnerHeartbeatBody["availableProfiles"];
-        readonly omitAvailableProfiles?: boolean;
         readonly maxConcurrent?: RunnerHeartbeatBody["maxConcurrent"];
         readonly allocatedVcpu?: RunnerHeartbeatBody["allocatedVcpu"];
         readonly allocatedMemoryMb?: RunnerHeartbeatBody["allocatedMemoryMb"];
@@ -947,6 +930,20 @@ export function createRunsAutomationsApi(context: TestContext) {
       );
     },
 
+    async requestMalformedHeartbeatRunner(
+      validAuth: boolean,
+      statuses: readonly (400 | 401 | 500)[],
+      body: unknown,
+    ) {
+      return await accept(
+        runsAutomationApp(context)(runnersHeartbeatContract).heartbeat({
+          headers: runnerHeaders(validAuth),
+          body: body as RunnerHeartbeatBody,
+        }),
+        statuses,
+      );
+    },
+
     async pollRunner(group?: string) {
       return await accept(
         runsAutomationApp(context)(runnersPollContract).poll({
@@ -954,7 +951,6 @@ export function createRunsAutomationsApi(context: TestContext) {
           body: {
             group: group ?? "vm0/test",
             supportedProfiles: ["vm0/default"],
-            profiles: ["vm0/default"],
           },
         }),
         [200],
@@ -970,6 +966,20 @@ export function createRunsAutomationsApi(context: TestContext) {
         runsAutomationApp(context)(runnersPollContract).poll({
           headers: runnerHeaders(validAuth),
           body,
+        }),
+        statuses,
+      );
+    },
+
+    async requestMalformedPollRunner(
+      validAuth: boolean,
+      body: unknown,
+      statuses: readonly (400 | 401 | 500)[],
+    ) {
+      return await accept(
+        runsAutomationApp(context)(runnersPollContract).poll({
+          headers: runnerHeaders(validAuth),
+          body: body as RunnerPollBody,
         }),
         statuses,
       );
