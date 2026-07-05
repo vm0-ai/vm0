@@ -98,8 +98,8 @@ struct NetnsPoolInner {
 /// Maintains a buffer of `BUFFER_SIZE` ready namespaces for the active queue
 /// selected by [`NetnsPoolConfig`]. Without a proxy port, the active queue is
 /// the plain queue; with a proxy port, it is the proxy queue. After each
-/// [`acquire`](Self::acquire), the pool spawns a background task to replenish
-/// the active queue. Namespaces returned via [`release`](Self::release) are
+/// [`acquire`](Self::acquire), the pool spawns background tasks as needed to
+/// replenish the active queue. Namespaces returned via [`release`](Self::release) are
 /// recycled back into that queue.
 pub struct NetnsPool {
     inner: NetnsPoolInner,
@@ -335,6 +335,13 @@ impl NetnsPoolState {
         self.spawn_creation(NetnsKind::Proxy)
     }
 
+    fn spawn_creation_for_kind(&mut self, kind: NetnsKind) -> Result<()> {
+        match kind {
+            NetnsKind::Plain => self.spawn_plain_creation(),
+            NetnsKind::Proxy => self.spawn_proxy_creation(),
+        }
+    }
+
     fn spawn_initial_warmup(&mut self) {
         if BUFFER_SIZE == 0 {
             return;
@@ -424,6 +431,14 @@ impl NetnsPoolState {
         let id = self.reserve_pending_id();
         self.pending_plain.insert(id);
         spawn_creation_worker(id, NetnsKind::Plain, self.creation_notifier(), future);
+    }
+
+    #[cfg(test)]
+    fn reserve_pending_creation_for_test(&mut self, kind: NetnsKind) -> Result<()> {
+        self.reserve_ns_index()?;
+        let id = self.reserve_pending_id();
+        self.pending_set_mut(kind).insert(id);
+        Ok(())
     }
 
     fn checkout_or_requeue(&mut self, info: NetnsInfo, kind: NetnsKind) -> Result<NetnsLease> {
@@ -569,21 +584,25 @@ impl NetnsPoolState {
     }
 
     fn maybe_replenish_kind(&mut self, kind: NetnsKind) {
+        self.replenish_kind_with(kind, Self::spawn_creation_for_kind);
+    }
+
+    fn replenish_kind_with(
+        &mut self,
+        kind: NetnsKind,
+        mut spawn: impl FnMut(&mut Self, NetnsKind) -> Result<()>,
+    ) {
         if matches!(kind, NetnsKind::Proxy) && self.proxy_port.is_none() {
             return;
         }
-        if self.target_queue(kind).len() + self.pending_set(kind).len() >= BUFFER_SIZE
-            || !self.pending_set(kind).is_empty()
-            || self.next_ns_index >= MAX_NAMESPACES
-        {
-            return;
-        }
-        let result = match kind {
-            NetnsKind::Plain => self.spawn_plain_creation(),
-            NetnsKind::Proxy => self.spawn_proxy_creation(),
-        };
-        if let Err(e) = result {
-            warn!(kind = ?kind, error = %e, "failed to replenish namespace pool");
+        while self.target_queue(kind).len() + self.pending_set(kind).len() < BUFFER_SIZE {
+            if self.next_ns_index >= MAX_NAMESPACES {
+                return;
+            }
+            if let Err(e) = spawn(self, kind) {
+                warn!(kind = ?kind, error = %e, "failed to replenish namespace pool");
+                return;
+            }
         }
     }
 
@@ -1352,6 +1371,79 @@ mod tests {
         let handle = NetnsPoolHandle::from_state_for_test(pool);
 
         assert_eq!(handle.host_device_pattern().await, "vm0-ve-0a-*");
+    }
+
+    #[test]
+    fn runtime_replenish_fills_pending_to_buffer_with_existing_pending() {
+        let mut pool = NetnsPoolState::inactive_for_test();
+        pool.reserve_pending_creation_for_test(NetnsKind::Plain)
+            .unwrap();
+
+        pool.replenish_kind_with(
+            NetnsKind::Plain,
+            NetnsPoolState::reserve_pending_creation_for_test,
+        );
+
+        assert_eq!(pool.plain_queue.len(), 0);
+        assert_eq!(pool.pending_plain.len(), BUFFER_SIZE);
+        assert!(pool.pending_proxy.is_empty());
+        assert_eq!(usize::try_from(pool.next_ns_index), Ok(BUFFER_SIZE));
+        pool.pending_plain.clear();
+    }
+
+    #[test]
+    fn runtime_replenish_stops_at_namespace_limit() {
+        let mut pool = NetnsPoolState::inactive_for_test();
+        pool.next_ns_index = MAX_NAMESPACES - 1;
+
+        pool.replenish_kind_with(
+            NetnsKind::Plain,
+            NetnsPoolState::reserve_pending_creation_for_test,
+        );
+
+        assert_eq!(pool.pending_plain.len(), 1);
+        assert_eq!(pool.next_ns_index, MAX_NAMESPACES);
+
+        pool.replenish_kind_with(
+            NetnsKind::Plain,
+            NetnsPoolState::reserve_pending_creation_for_test,
+        );
+
+        assert_eq!(pool.pending_plain.len(), 1);
+        assert_eq!(pool.next_ns_index, MAX_NAMESPACES);
+        pool.pending_plain.clear();
+    }
+
+    #[test]
+    fn runtime_replenish_uses_proxy_queue_in_proxy_mode() {
+        let mut pool = NetnsPoolState::inactive_for_test();
+        pool.proxy_port = Some(8080);
+        pool.proxy_queue.push_back(test_info("ready-proxy"));
+
+        pool.replenish_kind_with(
+            NetnsKind::Proxy,
+            NetnsPoolState::reserve_pending_creation_for_test,
+        );
+
+        assert_eq!(pool.proxy_queue.len(), 1);
+        assert_eq!(pool.pending_proxy.len(), BUFFER_SIZE - 1);
+        assert!(pool.pending_plain.is_empty());
+        assert_eq!(usize::try_from(pool.next_ns_index), Ok(BUFFER_SIZE - 1));
+        pool.pending_proxy.clear();
+    }
+
+    #[test]
+    fn runtime_replenish_ignores_proxy_kind_when_proxy_disabled() {
+        let mut pool = NetnsPoolState::inactive_for_test();
+
+        pool.replenish_kind_with(
+            NetnsKind::Proxy,
+            NetnsPoolState::reserve_pending_creation_for_test,
+        );
+
+        assert!(pool.pending_plain.is_empty());
+        assert!(pool.pending_proxy.is_empty());
+        assert_eq!(pool.next_ns_index, 0);
     }
 
     #[tokio::test]
