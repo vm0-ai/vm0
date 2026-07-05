@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.226.1](https://github.com/vm0-ai/vm0/compare/api-v1.226.0...api-v1.226.1) (2026-07-05)
+
+
+### Bug Fixes
+
+* persist chat thread model selection at creation ([#20229](https://github.com/vm0-ai/vm0/issues/20229)) ([ded7688](https://github.com/vm0-ai/vm0/commit/ded7688a0d9ef4b703d1037d15af43389ff3f65a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.155.1
+    * @vm0/core bumped to 8.401.2
+    * @vm0/db bumped to 1.92.5
+
 ## [1.226.0](https://github.com/vm0-ai/vm0/compare/api-v1.225.0...api-v1.226.0) (2026-07-05)
 
 
