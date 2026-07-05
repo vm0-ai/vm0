@@ -9,7 +9,7 @@ import { HttpResponse, http } from "msw";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
-import { now } from "../../../lib/time";
+import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import {
   createFixtureTracker,
@@ -33,6 +33,13 @@ const connectorsApi = createConnectorBddApi(context);
 const GMAIL_TOPIC_NAME = "projects/vm0-ai-488909/topics/gmail-events";
 const CRON_SECRET = "test-cron-secret";
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+const DEFAULT_GMAIL_INTERNAL_DATE = String(
+  Date.parse("2026-01-02T03:04:05.000Z"),
+);
+
+afterEach(() => {
+  clearMockNow();
+});
 
 interface RelationshipFixture {
   readonly orgId: string;
@@ -98,6 +105,8 @@ function configureGmailBackfillMocks(
     readonly from?: string;
     readonly labelIds?: readonly string[];
     readonly messageId?: string;
+    readonly internalDate?: string | null;
+    readonly dateHeader?: string;
     readonly subject?: string;
     readonly threadId?: string;
     readonly to?: readonly string[];
@@ -138,9 +147,16 @@ function configureGmailBackfillMocks(
           id: messageId,
           threadId,
           labelIds: args.labelIds ?? ["INBOX"],
+          internalDate:
+            args.internalDate === null
+              ? undefined
+              : (args.internalDate ?? DEFAULT_GMAIL_INTERNAL_DATE),
           payload: {
             mimeType: args.mimeType ?? "text/plain",
             headers: [
+              ...(args.dateHeader
+                ? [{ name: "Date", value: args.dateHeader }]
+                : []),
               {
                 name: "From",
                 value: args.from ?? "Customer Example <customer@example.com>",
@@ -400,6 +416,95 @@ describe("GET /api/zero/relationships/*", () => {
         return relationship.entity.primaryEmail === "customer@example.com";
       }),
     ).toBeTruthy();
+  });
+
+  it("uses the Gmail message time for relationship interaction dates", async () => {
+    const messageOccurredAt = "2026-02-03T04:05:06.000Z";
+    const jobRunAt = new Date("2026-05-06T07:08:09.000Z");
+    mockNow(jobRunAt);
+    const fixture = await track(seedRelationshipFixture());
+    const gmailEmail = `relationship-${randomUUID()}@example.com`;
+    configureGmailEnv();
+    configureGmailWatchMock();
+    configureGmailBackfillMocks(gmailEmail, {
+      internalDate: String(Date.parse(messageOccurredAt)),
+      dateHeader: "Fri, 01 Jan 2040 00:00:00 +0000",
+    });
+    await connectGmail(fixture, gmailEmail);
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    await accept(
+      relationshipsClient().gmailEnable({
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+
+    const drained = await accept(
+      cronClient().drain({
+        headers: cronHeaders(),
+      }),
+      [200],
+    );
+    expect(drained.body.processed).toBe(1);
+
+    const search = await accept(
+      relationshipsClient().search({
+        headers: authHeaders(),
+        query: { q: "customer" },
+      }),
+      [200],
+    );
+    const customer = search.body.relationships.find((relationship) => {
+      return relationship.entity.primaryEmail === "customer@example.com";
+    });
+    expect(customer?.lastInteractionAt).toBe(messageOccurredAt);
+    expect(customer?.recentInteractions[0]?.occurredAt).toBe(messageOccurredAt);
+    expect(customer?.lastInteractionAt).not.toBe(jobRunAt.toISOString());
+  });
+
+  it("does not create relationship memory when Gmail internalDate is unavailable", async () => {
+    const fixture = await track(seedRelationshipFixture());
+    const gmailEmail = `relationship-${randomUUID()}@example.com`;
+    configureGmailEnv();
+    configureGmailWatchMock();
+    configureGmailBackfillMocks(gmailEmail, {
+      internalDate: null,
+      dateHeader: "Fri, 01 Jan 2040 00:00:00 +0000",
+    });
+    await connectGmail(fixture, gmailEmail);
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    await accept(
+      relationshipsClient().gmailEnable({
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+
+    const drained = await accept(
+      cronClient().drain({
+        headers: cronHeaders(),
+      }),
+      [200],
+    );
+    expect(drained.body.backfill).toStrictEqual({
+      processed: 1,
+      failed: 0,
+      scanned: 1,
+      enqueued: 0,
+    });
+    expect(drained.body.processed).toBe(0);
+    expect(drained.body.relationshipsUpdated).toBe(0);
+
+    const search = await accept(
+      relationshipsClient().search({
+        headers: authHeaders(),
+        query: { q: "customer" },
+      }),
+      [200],
+    );
+    expect(search.body.relationships).toStrictEqual([]);
   });
 
   it("restarts Gmail backfill across archived and sent mail without re-enqueueing processed messages", async () => {
