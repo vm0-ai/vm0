@@ -10,10 +10,12 @@ mod gate;
 mod signal;
 mod systemctl;
 mod target;
+mod unit_config;
 mod unit_file;
 
-pub(crate) use systemctl::is_unit_active;
+pub(crate) use systemctl::{is_unit_active, is_unit_enabled};
 pub(crate) use target::RunnerServiceUnit;
+pub(crate) use unit_config::read_unit_config_path;
 
 use gate::{check_active_jobs_gate, read_runner_status, runner_base_dir};
 use signal::{ServiceSignalOutcome, signal_service_main};

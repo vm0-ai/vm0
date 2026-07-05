@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::ffi::OsString;
 use std::os::unix::ffi::OsStringExt;
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
@@ -10,8 +10,10 @@ use nix::fcntl::{Flock, FlockArg};
 use tracing::{info, warn};
 
 use crate::cmd::service;
+use crate::config;
 use crate::error::{RunnerError, RunnerResult};
 use crate::host_file;
+use crate::image_hash;
 use crate::lock;
 use crate::paths::{HomePaths, LogPaths, base_dir_lock_name};
 use crate::r2_cache::R2ImageCache;
@@ -63,8 +65,17 @@ pub struct GcArgs {
 
 pub async fn run_gc(args: GcArgs) -> RunnerResult<()> {
     let home = HomePaths::new()?;
+    let version_analysis =
+        analyze_version_gc(&home, args.protect_version.as_deref(), args.keep_latest).await?;
+    let protected_image_refs = protected_image_refs_for_gc(&home, &version_analysis).await;
 
-    let images_freed = gc_nested_images(&home, args.keep_latest, args.dry_run).await?;
+    let images_freed = gc_nested_images_with_protected_refs(
+        &home,
+        args.keep_latest,
+        args.dry_run,
+        &protected_image_refs,
+    )
+    .await?;
 
     // Workspace GC must run BEFORE orphaned lock cleanup: it reads base_dir
     // paths from lock files to discover workspaces from dead runners. If
@@ -76,13 +87,7 @@ pub async fn run_gc(args: GcArgs) -> RunnerResult<()> {
     let locks_removed =
         gc_orphaned_locks(&home, args.dry_run).await? + workspace_gc.base_dir_locks_removed;
     let (job_logs_removed, job_logs_freed) = gc_job_logs(&home, args.dry_run).await?;
-    let versions_removed = gc_versions(
-        &home,
-        args.dry_run,
-        args.protect_version.as_deref(),
-        args.keep_latest,
-    )
-    .await?;
+    let versions_removed = gc_versions_with_analysis(&home, args.dry_run, version_analysis).await?;
     let version_service_locks_removed =
         gc_orphaned_version_service_locks(&home, args.dry_run).await?;
 
@@ -197,6 +202,40 @@ struct GcCandidate {
     /// Exclusive lock held until the candidate is deleted or explicitly kept.
     /// Prevents a `runner start` from acquiring a shared lock between probe and delete.
     _lock: Flock<std::fs::File>,
+}
+
+type ProtectedImageRefs = HashMap<String, HashSet<String>>;
+
+#[derive(serde::Deserialize)]
+struct ConfigImageRefs {
+    profiles: BTreeMap<String, ConfigProfileImageRef>,
+}
+
+#[derive(serde::Deserialize)]
+struct ConfigProfileImageRef {
+    rootfs_hash: String,
+    snapshot_hash: String,
+}
+
+fn insert_protected_image_ref(
+    protected_image_refs: &mut ProtectedImageRefs,
+    rootfs_hash: String,
+    snapshot_hash: String,
+) {
+    protected_image_refs
+        .entry(rootfs_hash)
+        .or_default()
+        .insert(snapshot_hash);
+}
+
+fn is_protected_image_ref(
+    protected_image_refs: &ProtectedImageRefs,
+    rootfs_hash: &str,
+    snapshot_hash: &str,
+) -> bool {
+    protected_image_refs
+        .get(rootfs_hash)
+        .is_some_and(|snapshot_hashes| snapshot_hashes.contains(snapshot_hash))
 }
 
 /// Per-rootfs state carried through the two-phase global GC for rootfs
@@ -355,10 +394,21 @@ async fn gc_template_warm_dir(
 /// accumulated many distinct rootfs hashes (e.g. per-PR builds) can be
 /// trimmed down — per-rootfs top-N kept every rootfs forever whenever
 /// each had ≤ N snapshots.
+#[cfg(test)]
 async fn gc_nested_images(
     home: &HomePaths,
     keep_latest: Option<usize>,
     dry_run: bool,
+) -> RunnerResult<u64> {
+    let protected_image_refs = ProtectedImageRefs::new();
+    gc_nested_images_with_protected_refs(home, keep_latest, dry_run, &protected_image_refs).await
+}
+
+async fn gc_nested_images_with_protected_refs(
+    home: &HomePaths,
+    keep_latest: Option<usize>,
+    dry_run: bool,
+    protected_image_refs: &ProtectedImageRefs,
 ) -> RunnerResult<u64> {
     let images_dir = home.images_dir();
     let Some(mut rootfs_entries) = read_dir_or_missing(&images_dir).await? else {
@@ -473,6 +523,14 @@ async fn gc_nested_images(
                     );
                     continue;
                 }
+            }
+
+            if is_protected_image_ref(protected_image_refs, &rootfs_hash, &snap_hash) {
+                mark_rootfs_survives(&mut rootfs_states, rootfs_idx);
+                info!(
+                    "images/{rootfs_hash}/snapshots/{snap_hash}: referenced by retained runner or service config, keeping"
+                );
+                continue;
             }
 
             let lock_path = home.snapshot_lock(&snap_hash);
@@ -1241,31 +1299,206 @@ async fn version_gc_age(home: &HomePaths, bin_dir: &Path, name: &str) -> Duratio
         .unwrap_or_default()
 }
 
-/// Remove old deployment version directories that are not actively running.
-///
-/// Scans `home.bin_dir()` for semver-named subdirectories (e.g. `v0.2.0`) and
-/// deletes inactive versions (bin dir, runner config dir, and systemd unit).
-///
-/// Survival rules (any one keeps the version):
-/// - `--protect-version` matches the name.
-/// - The version is in the top `keep_latest` by semver descending. This covers
-///   the "staged but not yet installed" case where two overlapping releases
-///   race: the older release's promote must not wipe the newer release's
-///   just-staged binary even though the newer unit isn't active yet.
-/// - The version binary, config file, or their directories are too recent to
-///   safely delete.
-/// - The corresponding service lifecycle lock is held by another install,
-///   uninstall, or GC pass.
-/// - The corresponding systemd unit is active.
-async fn gc_versions(
+/// Why a version survives the current GC pass.
+#[derive(Debug, Clone, Eq, PartialEq)]
+enum VersionRetentionReason {
+    ProtectVersion,
+    KeepLatest,
+    Recent(Duration),
+    InvalidServiceSuffix(String),
+    ServiceLockHeld,
+    ServiceLockProbeError(String),
+    Active,
+}
+
+impl VersionRetentionReason {
+    fn log_skip(&self, name: &str) {
+        match self {
+            Self::ProtectVersion => {
+                info!("version {name}: protected (--protect-version), skipping");
+            }
+            Self::KeepLatest => {
+                info!("version {name}: within --keep-latest, skipping");
+            }
+            Self::Recent(age) => {
+                info!("version {name}: too recent ({}s), skipping", age.as_secs());
+            }
+            Self::InvalidServiceSuffix(error) => {
+                warn!("version {name}: invalid service unit suffix ({error}), skipping");
+            }
+            Self::ServiceLockHeld => {
+                info!("version {name}: service lock held, skipping");
+            }
+            Self::ServiceLockProbeError(error) => {
+                warn!("version {name}: cannot probe service lock ({error}), skipping");
+            }
+            Self::Active => {
+                info!("version {name}: active, skipping");
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+struct VersionGcEntry {
+    name: String,
+    retained: Option<VersionRetentionReason>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+struct VersionGcAnalysis {
+    entries: Vec<VersionGcEntry>,
+}
+
+impl VersionGcAnalysis {
+    fn retained_entries(&self) -> impl Iterator<Item = &VersionGcEntry> {
+        self.entries.iter().filter(|entry| entry.retained.is_some())
+    }
+}
+
+async fn protected_image_refs_for_gc(
     home: &HomePaths,
-    dry_run: bool,
+    version_analysis: &VersionGcAnalysis,
+) -> ProtectedImageRefs {
+    let mut refs = ProtectedImageRefs::new();
+    collect_retained_version_image_refs(home, version_analysis, &mut refs).await;
+    collect_enabled_service_image_refs(&mut refs).await;
+    refs
+}
+
+async fn collect_retained_version_image_refs(
+    home: &HomePaths,
+    version_analysis: &VersionGcAnalysis,
+    refs: &mut ProtectedImageRefs,
+) {
+    for entry in version_analysis.retained_entries() {
+        let config_path = home.runners_dir().join(&entry.name).join("runner.yaml");
+        collect_config_image_refs(&config_path, "retained version", refs).await;
+    }
+}
+
+async fn collect_enabled_service_image_refs(refs: &mut ProtectedImageRefs) {
+    for config_path in enabled_runner_service_config_paths(Path::new("/etc/systemd/system")).await {
+        collect_config_image_refs(&config_path, "enabled service", refs).await;
+    }
+}
+
+async fn enabled_runner_service_config_paths(system_dir: &Path) -> Vec<PathBuf> {
+    let Some(mut entries) = (match read_dir_or_missing(system_dir).await {
+        Ok(entries) => entries,
+        Err(e) => {
+            warn!(
+                "runner service image refs: cannot read {} ({e}), skipping service-derived refs",
+                system_dir.display()
+            );
+            return Vec::new();
+        }
+    }) else {
+        return Vec::new();
+    };
+
+    let mut paths = Vec::new();
+    while let Some(entry) =
+        next_entry_warn(&mut entries, "runner_service_config_refs", system_dir).await
+    {
+        let file_name = entry.file_name();
+        let Some(file_name) = file_name.to_str() else {
+            continue;
+        };
+        let Some(unit) = runner_service_unit_from_file_name(file_name) else {
+            continue;
+        };
+        match service::is_unit_enabled(&unit).await {
+            Ok(true) => {}
+            Ok(false) => continue,
+            Err(e) => {
+                warn!(
+                    "runner service image refs: cannot check whether {} is enabled ({e}), skipping",
+                    unit.service_name()
+                );
+                continue;
+            }
+        }
+        let Some(config_path) = service::read_unit_config_path(&entry.path()).await else {
+            warn!(
+                "runner service image refs: enabled service {} has no parseable config path, skipping",
+                unit.service_name()
+            );
+            continue;
+        };
+        paths.push(config_path);
+    }
+    paths
+}
+
+fn runner_service_unit_from_file_name(file_name: &str) -> Option<service::RunnerServiceUnit> {
+    let suffix = file_name
+        .strip_prefix("vm0-runner-")?
+        .strip_suffix(".service")?;
+    service::RunnerServiceUnit::from_suffix(suffix).ok()
+}
+
+async fn collect_config_image_refs(
+    config_path: &Path,
+    source: &str,
+    refs: &mut ProtectedImageRefs,
+) {
+    let Some(content) = (match config::read_diagnostic_config_to_string(config_path).await {
+        Ok(content) => content,
+        Err(e) => {
+            warn!(
+                "runner image refs: cannot read {source} config {} ({e}), skipping",
+                config_path.display()
+            );
+            return;
+        }
+    }) else {
+        warn!(
+            "runner image refs: {source} config {} is missing, skipping",
+            config_path.display()
+        );
+        return;
+    };
+
+    let config = match serde_yaml_ng::from_str::<ConfigImageRefs>(&content) {
+        Ok(config) => config,
+        Err(_) => {
+            warn!(
+                "runner image refs: cannot parse {source} config {}, skipping",
+                config_path.display()
+            );
+            return;
+        }
+    };
+    for (_, profile_ref) in config.profiles {
+        if image_hash::validate_or_err(&profile_ref.rootfs_hash).is_err() {
+            warn!(
+                "runner image refs: {source} config {} has a profile with an invalid rootfs hash, skipping profile",
+                config_path.display()
+            );
+            continue;
+        }
+        if image_hash::validate_or_err(&profile_ref.snapshot_hash).is_err() {
+            warn!(
+                "runner image refs: {source} config {} has a profile with an invalid snapshot hash, skipping profile",
+                config_path.display()
+            );
+            continue;
+        }
+        insert_protected_image_ref(refs, profile_ref.rootfs_hash, profile_ref.snapshot_hash);
+    }
+}
+
+async fn analyze_version_gc(
+    home: &HomePaths,
     protect: Option<&str>,
     keep_latest: Option<usize>,
-) -> RunnerResult<Vec<String>> {
+) -> RunnerResult<VersionGcAnalysis> {
     let bin_dir = home.bin_dir();
     let Some(mut entries) = read_dir_or_missing(&bin_dir).await? else {
-        return Ok(Vec::new());
+        return Ok(VersionGcAnalysis {
+            entries: Vec::new(),
+        });
     };
 
     // First pass: collect all semver-named dirs. We need the full set to
@@ -1308,15 +1541,110 @@ async fn gc_versions(
             .collect()
     };
 
-    let mut removed: Vec<String> = Vec::new();
+    let mut entries = Vec::new();
     for (name, _) in &semver_dirs {
-        if protect == Some(name.as_str()) {
-            info!("version {name}: protected (--protect-version), skipping");
-            continue;
-        }
+        let retained =
+            version_retention_reason(home, &bin_dir, name, protect, &kept_by_latest).await;
+        entries.push(VersionGcEntry {
+            name: name.clone(),
+            retained,
+        });
+    }
 
-        if kept_by_latest.contains(name) {
-            info!("version {name}: within --keep-latest, skipping");
+    Ok(VersionGcAnalysis { entries })
+}
+
+async fn version_retention_reason(
+    home: &HomePaths,
+    bin_dir: &Path,
+    name: &str,
+    protect: Option<&str>,
+    kept_by_latest: &HashSet<String>,
+) -> Option<VersionRetentionReason> {
+    if protect == Some(name) {
+        return Some(VersionRetentionReason::ProtectVersion);
+    }
+
+    if kept_by_latest.contains(name) {
+        return Some(VersionRetentionReason::KeepLatest);
+    }
+
+    let age = version_gc_age(home, bin_dir, name).await;
+    if age < GC_MIN_AGE {
+        return Some(VersionRetentionReason::Recent(age));
+    }
+
+    let unit = match service::RunnerServiceUnit::from_suffix(name) {
+        Ok(unit) => unit,
+        Err(e) => return Some(VersionRetentionReason::InvalidServiceSuffix(e.to_string())),
+    };
+    let service_lock_path = home.service_lock(unit.unit_name());
+    let service_lock_parent = host_file::file_parent(&service_lock_path);
+    match tokio::fs::symlink_metadata(service_lock_parent).await {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Ok(_) => match probe_existing_lock(&service_lock_path) {
+            ExistingLockProbe::Free(_) | ExistingLockProbe::Missing => {}
+            ExistingLockProbe::Held => return Some(VersionRetentionReason::ServiceLockHeld),
+            ExistingLockProbe::Error(e) => {
+                return Some(VersionRetentionReason::ServiceLockProbeError(e));
+            }
+        },
+        Err(e) => {
+            return Some(VersionRetentionReason::ServiceLockProbeError(format!(
+                "inspect service lock parent {}: {e}",
+                service_lock_parent.display()
+            )));
+        }
+    }
+
+    match service::is_unit_active(&unit).await {
+        Ok(true) => Some(VersionRetentionReason::Active),
+        Ok(false) => None,
+        Err(e) => {
+            warn!("version {name}: cannot check unit status ({e}), assuming inactive");
+            None
+        }
+    }
+}
+
+#[cfg(test)]
+async fn gc_versions(
+    home: &HomePaths,
+    dry_run: bool,
+    protect: Option<&str>,
+    keep_latest: Option<usize>,
+) -> RunnerResult<Vec<String>> {
+    let analysis = analyze_version_gc(home, protect, keep_latest).await?;
+    gc_versions_with_analysis(home, dry_run, analysis).await
+}
+
+/// Remove old deployment version directories that are not actively running.
+///
+/// Scans `home.bin_dir()` for semver-named subdirectories (e.g. `v0.2.0`) and
+/// deletes inactive versions (bin dir, runner config dir, and systemd unit).
+///
+/// Survival rules (any one keeps the version):
+/// - `--protect-version` matches the name.
+/// - The version is in the top `keep_latest` by semver descending. This covers
+///   the "staged but not yet installed" case where two overlapping releases
+///   race: the older release's promote must not wipe the newer release's
+///   just-staged binary even though the newer unit isn't active yet.
+/// - The version binary, config file, or their directories are too recent to
+///   safely delete.
+/// - The corresponding service lifecycle lock is held by another install,
+///   uninstall, or GC pass.
+/// - The corresponding systemd unit is active.
+async fn gc_versions_with_analysis(
+    home: &HomePaths,
+    dry_run: bool,
+    analysis: VersionGcAnalysis,
+) -> RunnerResult<Vec<String>> {
+    let bin_dir = home.bin_dir();
+    let mut removed: Vec<String> = Vec::new();
+    for entry in &analysis.entries {
+        let name = &entry.name;
+        if let Some(reason) = &entry.retained {
+            reason.log_skip(name);
             continue;
         }
 
@@ -2856,6 +3184,104 @@ mod tests {
         }
     }
 
+    fn test_hash(ch: char) -> String {
+        std::iter::repeat_n(ch, 64).collect()
+    }
+
+    fn write_test_runner_config(
+        home: &HomePaths,
+        version: &str,
+        rootfs_hash: &str,
+        snapshot_hash: &str,
+    ) -> PathBuf {
+        let config_dir = home.runners_dir().join(version);
+        std::fs::create_dir_all(&config_dir).unwrap();
+        let config_path = config_dir.join("runner.yaml");
+        std::fs::write(
+            &config_path,
+            format!(
+                r#"name: {version}
+group: vm0/test
+base_dir: /tmp/{version}
+ca_dir: /tmp/{version}/ca
+firecracker:
+  binary: /tmp/firecracker
+  kernel: /tmp/vmlinux
+profiles:
+  vm0/default:
+    rootfs_hash: {rootfs_hash}
+    snapshot_hash: {snapshot_hash}
+    vcpu: 1
+    memory_mb: 1024
+    rootfs_disk_mb: 8192
+    workspace_disk_mb: 8192
+server:
+  url: https://api.example.test
+  token: test-secret-token
+"#
+            ),
+        )
+        .unwrap();
+        config_path
+    }
+
+    fn create_test_version_with_config(
+        home: &HomePaths,
+        version: &str,
+        rootfs_hash: &str,
+        snapshot_hash: &str,
+    ) -> PathBuf {
+        std::fs::create_dir_all(home.bin_dir().join(version)).unwrap();
+        let config_path = write_test_runner_config(home, version, rootfs_hash, snapshot_hash);
+        age_version_past_gc_min_age(home, version);
+        config_path
+    }
+
+    fn create_old_test_snapshot(
+        home: &HomePaths,
+        rootfs_hash: &str,
+        snapshot_hash: &str,
+    ) -> PathBuf {
+        let rootfs_dir = home.images_dir().join(rootfs_hash);
+        let snapshot_dir = rootfs_dir.join("snapshots").join(snapshot_hash);
+        std::fs::create_dir_all(&snapshot_dir).unwrap();
+        std::fs::write(rootfs_dir.join("rootfs.ext4"), b"rootfs").unwrap();
+        std::fs::write(snapshot_dir.join("snapshot.bin"), b"snapshot").unwrap();
+        let old_time = old_gc_time();
+        for path in [&rootfs_dir, &snapshot_dir] {
+            std::fs::File::open(path)
+                .unwrap()
+                .set_times(std::fs::FileTimes::new().set_modified(old_time))
+                .unwrap();
+        }
+        snapshot_dir
+    }
+
+    async fn protected_refs_from_versions(
+        home: &HomePaths,
+        protect: Option<&str>,
+        keep_latest: Option<usize>,
+    ) -> ProtectedImageRefs {
+        let analysis = analyze_version_gc(home, protect, keep_latest)
+            .await
+            .unwrap();
+        let mut refs = ProtectedImageRefs::new();
+        collect_retained_version_image_refs(home, &analysis, &mut refs).await;
+        refs
+    }
+
+    fn protected_refs_from_pairs(pairs: &[(&str, &str)]) -> ProtectedImageRefs {
+        let mut refs = ProtectedImageRefs::new();
+        for (rootfs_hash, snapshot_hash) in pairs {
+            insert_protected_image_ref(
+                &mut refs,
+                (*rootfs_hash).to_string(),
+                (*snapshot_hash).to_string(),
+            );
+        }
+        refs
+    }
+
     #[tokio::test]
     async fn gc_debootstrap_missing_cache_dir_does_not_create_lock() {
         let dir = tempfile::tempdir().unwrap();
@@ -3813,6 +4239,203 @@ mod tests {
         let removed = gc_versions(&home, false, None, Some(1)).await.unwrap();
         assert_eq!(removed, ["v0.9.0"]);
         assert!(bin_dir.join("v0.10.0").exists());
+    }
+
+    #[tokio::test]
+    async fn protected_version_config_ref_keeps_image_snapshot() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let rootfs_hash = test_hash('a');
+        let snapshot_hash = test_hash('b');
+        let snapshot_dir = create_old_test_snapshot(&home, &rootfs_hash, &snapshot_hash);
+        create_test_version_with_config(&home, "v1.0.0", &rootfs_hash, &snapshot_hash);
+        let refs = protected_refs_from_versions(&home, Some("v1.0.0"), None).await;
+
+        let freed = gc_nested_images_with_protected_refs(&home, Some(0), false, &refs)
+            .await
+            .unwrap();
+
+        assert_eq!(freed, 0);
+        assert!(
+            snapshot_dir.exists(),
+            "protect-version config refs must keep the referenced snapshot"
+        );
+        assert!(home.images_dir().join(&rootfs_hash).exists());
+    }
+
+    #[tokio::test]
+    async fn keep_latest_version_config_ref_keeps_image_snapshot() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let old_rootfs = test_hash('a');
+        let old_snapshot = test_hash('b');
+        let new_rootfs = test_hash('c');
+        let new_snapshot = test_hash('d');
+        let old_snapshot_dir = create_old_test_snapshot(&home, &old_rootfs, &old_snapshot);
+        let new_snapshot_dir = create_old_test_snapshot(&home, &new_rootfs, &new_snapshot);
+        create_test_version_with_config(&home, "v1.0.0", &old_rootfs, &old_snapshot);
+        create_test_version_with_config(&home, "v2.0.0", &new_rootfs, &new_snapshot);
+        let refs = protected_refs_from_versions(&home, None, Some(1)).await;
+
+        let freed = gc_nested_images_with_protected_refs(&home, Some(0), false, &refs)
+            .await
+            .unwrap();
+
+        assert!(freed > 0);
+        assert!(
+            new_snapshot_dir.exists(),
+            "newest retained version should protect its config snapshot"
+        );
+        assert!(
+            !old_snapshot_dir.exists(),
+            "removable version config should not protect its snapshot"
+        );
+    }
+
+    #[tokio::test]
+    async fn protected_image_refs_do_not_consume_keep_latest_slots() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let protected_rootfs = test_hash('a');
+        let protected_snapshot = test_hash('b');
+        let older_rootfs = test_hash('c');
+        let older_snapshot = test_hash('d');
+        let newer_rootfs = test_hash('e');
+        let newer_snapshot = test_hash('f');
+        let protected_dir = create_old_test_snapshot(&home, &protected_rootfs, &protected_snapshot);
+        let older_dir = create_old_test_snapshot(&home, &older_rootfs, &older_snapshot);
+        let newer_dir = create_old_test_snapshot(&home, &newer_rootfs, &newer_snapshot);
+        set_mtime(&older_dir, old_gc_time());
+        set_mtime(
+            &newer_dir,
+            SystemTime::UNIX_EPOCH + Duration::from_secs(2_000_000),
+        );
+        let refs = protected_refs_from_pairs(&[(&protected_rootfs, &protected_snapshot)]);
+
+        let freed = gc_nested_images_with_protected_refs(&home, Some(1), false, &refs)
+            .await
+            .unwrap();
+
+        assert!(freed > 0);
+        assert!(protected_dir.exists(), "protected snapshot must survive");
+        assert!(
+            newer_dir.exists(),
+            "image keep_latest slot should still apply to newest eligible snapshot"
+        );
+        assert!(
+            !older_dir.exists(),
+            "older eligible snapshot should be deleted"
+        );
+    }
+
+    #[tokio::test]
+    async fn protected_image_ref_keeps_only_exact_snapshot_pair() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let rootfs_hash = test_hash('a');
+        let protected_snapshot = test_hash('b');
+        let sibling_snapshot = test_hash('c');
+        let protected_dir = create_old_test_snapshot(&home, &rootfs_hash, &protected_snapshot);
+        let sibling_dir = create_old_test_snapshot(&home, &rootfs_hash, &sibling_snapshot);
+        let refs = protected_refs_from_pairs(&[(&rootfs_hash, &protected_snapshot)]);
+
+        let freed = gc_nested_images_with_protected_refs(&home, Some(0), false, &refs)
+            .await
+            .unwrap();
+
+        assert!(freed > 0);
+        assert!(
+            protected_dir.exists(),
+            "exact protected snapshot must survive"
+        );
+        assert!(
+            !sibling_dir.exists(),
+            "unreferenced sibling snapshot under same rootfs should remain eligible"
+        );
+        assert!(
+            home.images_dir().join(&rootfs_hash).exists(),
+            "rootfs with protected snapshot should survive"
+        );
+    }
+
+    #[tokio::test]
+    async fn removable_version_config_does_not_protect_image_snapshot() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let rootfs_hash = test_hash('a');
+        let snapshot_hash = test_hash('b');
+        let snapshot_dir = create_old_test_snapshot(&home, &rootfs_hash, &snapshot_hash);
+        create_test_version_with_config(&home, "v1.0.0", &rootfs_hash, &snapshot_hash);
+        let refs = protected_refs_from_versions(&home, None, None).await;
+
+        let freed = gc_nested_images_with_protected_refs(&home, Some(0), false, &refs)
+            .await
+            .unwrap();
+
+        assert!(freed > 0);
+        assert!(
+            !snapshot_dir.exists(),
+            "old removable version config should not pin image artifacts"
+        );
+    }
+
+    #[tokio::test]
+    async fn malformed_retained_version_config_is_ignored_for_image_refs() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let version = "v1.0.0";
+        std::fs::create_dir_all(home.bin_dir().join(version)).unwrap();
+        let config_dir = home.runners_dir().join(version);
+        std::fs::create_dir_all(&config_dir).unwrap();
+        std::fs::write(
+            config_dir.join("runner.yaml"),
+            "server:\n  token: should-not-appear-in-errors\nprofiles: [",
+        )
+        .unwrap();
+        age_version_past_gc_min_age(&home, version);
+
+        let refs = protected_refs_from_versions(&home, Some(version), None).await;
+
+        assert!(
+            refs.is_empty(),
+            "malformed retained config should be skipped instead of protecting images"
+        );
+    }
+
+    #[tokio::test]
+    async fn service_config_image_ref_keeps_image_snapshot() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let rootfs_hash = test_hash('a');
+        let snapshot_hash = test_hash('b');
+        let snapshot_dir = create_old_test_snapshot(&home, &rootfs_hash, &snapshot_hash);
+        let config_path =
+            write_test_runner_config(&home, "service-config", &rootfs_hash, &snapshot_hash);
+        let mut refs = ProtectedImageRefs::new();
+        collect_config_image_refs(&config_path, "enabled service", &mut refs).await;
+
+        let freed = gc_nested_images_with_protected_refs(&home, Some(0), false, &refs)
+            .await
+            .unwrap();
+
+        assert_eq!(freed, 0);
+        assert!(
+            snapshot_dir.exists(),
+            "enabled service config refs must keep the referenced snapshot"
+        );
+    }
+
+    #[test]
+    fn runner_service_unit_from_file_name_accepts_only_runner_services() {
+        assert_eq!(
+            runner_service_unit_from_file_name("vm0-runner-v1.0.0.service")
+                .unwrap()
+                .service_name(),
+            "vm0-runner-v1.0.0.service"
+        );
+        assert!(runner_service_unit_from_file_name("other-v1.0.0.service").is_none());
+        assert!(runner_service_unit_from_file_name("vm0-runner-v1.0.0.timer").is_none());
+        assert!(runner_service_unit_from_file_name("vm0-runner-.service").is_none());
     }
 
     #[tokio::test]
