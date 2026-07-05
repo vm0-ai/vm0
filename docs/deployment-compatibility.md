@@ -47,6 +47,12 @@ briefly run against the migrated schema. Migrations must be backward-compatible
 with the currently deployed backend until that backend is no longer serving
 traffic.
 
+This is a traffic-promotion guarantee, not a guarantee that no deployment
+preparation has happened yet. Staged Vercel builds, runner rootfs/snapshot
+builds, host provisioning, and other non-serving preparation jobs may complete
+before migrations run; new production traffic must not be promoted until the
+required migrations have completed.
+
 Backend changes must be safe with:
 
 - old frontend -> new backend
