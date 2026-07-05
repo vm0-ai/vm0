@@ -1,6 +1,9 @@
 use std::collections::BTreeSet;
+use std::fs::File;
 use std::os::unix::fs::MetadataExt;
+use std::path::PathBuf;
 
+use nix::fcntl::Flock;
 use tokio::fs;
 use tracing::{info, warn};
 
@@ -28,6 +31,11 @@ pub(super) struct GcCandidate {
     file_dev: u64,
     file_ino: u64,
     pub(super) last_used_at: String,
+}
+
+struct GcCacheEntry {
+    cache_key: String,
+    entry_dir: PathBuf,
 }
 
 #[derive(Default)]
@@ -163,16 +171,14 @@ impl SessionWorkspaceCache {
         Ok(freed)
     }
 
-    async fn gc_unusable_current_entries(&self, dry_run: bool) -> RunnerResult<GcEntryCleanup> {
+    async fn gc_cache_entries(&self) -> RunnerResult<Vec<GcCacheEntry>> {
         let root = self.workspace_image_cache_dir().to_path_buf();
         let mut entries = match fs::read_dir(&root).await {
             Ok(entries) => entries,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                return Ok(GcEntryCleanup::default());
-            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
             Err(e) => return Err(e.into()),
         };
-        let mut cleanup = GcEntryCleanup::default();
+        let mut cache_entries = Vec::new();
         while let Some(entry) = entries.next_entry().await? {
             if !entry_file_type_is_dir(&entry).await? {
                 continue;
@@ -183,14 +189,38 @@ impl SessionWorkspaceCache {
             if !is_cache_key_name(&cache_key) {
                 continue;
             }
-            let Ok(lock) = crate::lock::try_acquire(self.entry_lock_path(&cache_key)).await else {
+            cache_entries.push(GcCacheEntry {
+                cache_key,
+                entry_dir: entry.path(),
+            });
+        }
+        Ok(cache_entries)
+    }
+
+    async fn try_lock_gc_cache_entry(
+        &self,
+        entry: GcCacheEntry,
+    ) -> RunnerResult<Option<(GcCacheEntry, Flock<File>)>> {
+        let Ok(lock) = crate::lock::try_acquire(self.entry_lock_path(&entry.cache_key)).await
+        else {
+            return Ok(None);
+        };
+        if !cache_entry_dir_is_dir(&entry.entry_dir).await? {
+            return Ok(None);
+        }
+        Ok(Some((entry, lock)))
+    }
+
+    async fn gc_unusable_current_entries(&self, dry_run: bool) -> RunnerResult<GcEntryCleanup> {
+        let mut cleanup = GcEntryCleanup::default();
+        for entry in self.gc_cache_entries().await? {
+            let Some((entry, lock)) = self.try_lock_gc_cache_entry(entry).await? else {
                 continue;
             };
-            let entry_dir = entry.path();
-            if !cache_entry_dir_is_dir(&entry_dir).await? {
-                drop(lock);
-                continue;
-            }
+            let GcCacheEntry {
+                cache_key,
+                entry_dir,
+            } = entry;
             let current = self.session_workspace_cache_current_image(&cache_key);
             let current_metadata = match fs::symlink_metadata(&current).await {
                 Ok(metadata) => metadata,
@@ -291,33 +321,15 @@ impl SessionWorkspaceCache {
         &self,
         dry_run: bool,
     ) -> RunnerResult<GcEntryCleanup> {
-        let root = self.workspace_image_cache_dir().to_path_buf();
-        let mut entries = match fs::read_dir(&root).await {
-            Ok(entries) => entries,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                return Ok(GcEntryCleanup::default());
-            }
-            Err(e) => return Err(e.into()),
-        };
         let mut cleanup = GcEntryCleanup::default();
-        while let Some(entry) = entries.next_entry().await? {
-            if !entry_file_type_is_dir(&entry).await? {
-                continue;
-            }
-            let Some(cache_key) = entry.file_name().to_str().map(str::to_owned) else {
+        for entry in self.gc_cache_entries().await? {
+            let Some((entry, lock)) = self.try_lock_gc_cache_entry(entry).await? else {
                 continue;
             };
-            if !is_cache_key_name(&cache_key) {
-                continue;
-            }
-            let Ok(lock) = crate::lock::try_acquire(self.entry_lock_path(&cache_key)).await else {
-                continue;
-            };
-            let entry_dir = entry.path();
-            if !cache_entry_dir_is_dir(&entry_dir).await? {
-                drop(lock);
-                continue;
-            }
+            let GcCacheEntry {
+                cache_key,
+                entry_dir,
+            } = entry;
             let current = self.session_workspace_cache_current_image(&cache_key);
             match fs::symlink_metadata(&current).await {
                 Ok(_) => {
@@ -365,34 +377,18 @@ impl SessionWorkspaceCache {
         dry_run: bool,
         skip_entry_keys: &BTreeSet<String>,
     ) -> RunnerResult<u64> {
-        let root = self.workspace_image_cache_dir().to_path_buf();
-        let mut entries = match fs::read_dir(&root).await {
-            Ok(entries) => entries,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
-            Err(e) => return Err(e.into()),
-        };
         let mut freed: u64 = 0;
-        while let Some(entry) = entries.next_entry().await? {
-            if !entry_file_type_is_dir(&entry).await? {
+        for entry in self.gc_cache_entries().await? {
+            if skip_entry_keys.contains(&entry.cache_key) {
                 continue;
             }
-            let Some(cache_key) = entry.file_name().to_str().map(str::to_owned) else {
+            let Some((entry, lock)) = self.try_lock_gc_cache_entry(entry).await? else {
                 continue;
             };
-            if !is_cache_key_name(&cache_key) {
-                continue;
-            }
-            if skip_entry_keys.contains(&cache_key) {
-                continue;
-            }
-            let Ok(lock) = crate::lock::try_acquire(self.entry_lock_path(&cache_key)).await else {
-                continue;
-            };
-            let entry_dir = entry.path();
-            if !cache_entry_dir_is_dir(&entry_dir).await? {
-                drop(lock);
-                continue;
-            }
+            let GcCacheEntry {
+                cache_key,
+                entry_dir,
+            } = entry;
             let mut files = match fs::read_dir(&entry_dir).await {
                 Ok(files) => files,
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -449,24 +445,9 @@ impl SessionWorkspaceCache {
     }
 
     pub(super) async fn gc_candidates(&self) -> RunnerResult<Vec<GcCandidate>> {
-        let root = self.workspace_image_cache_dir().to_path_buf();
-        let mut entries = match fs::read_dir(&root).await {
-            Ok(entries) => entries,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-            Err(e) => return Err(e.into()),
-        };
         let mut candidates = Vec::new();
-        while let Some(entry) = entries.next_entry().await? {
-            if !entry_file_type_is_dir(&entry).await? {
-                continue;
-            }
-            let Some(cache_key) = entry.file_name().to_str().map(str::to_owned) else {
-                continue;
-            };
-            if !is_cache_key_name(&cache_key) {
-                continue;
-            }
-            let Some(candidate) = self.gc_candidate(cache_key).await else {
+        for entry in self.gc_cache_entries().await? {
+            let Some(candidate) = self.gc_candidate(entry.cache_key).await else {
                 continue;
             };
             candidates.push(candidate);
