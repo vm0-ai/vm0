@@ -171,14 +171,16 @@ impl SessionWorkspaceCache {
         Ok(freed)
     }
 
-    async fn gc_cache_entries(&self) -> RunnerResult<Vec<GcCacheEntry>> {
+    async fn gc_cache_entry_reader(&self) -> RunnerResult<Option<fs::ReadDir>> {
         let root = self.workspace_image_cache_dir().to_path_buf();
-        let mut entries = match fs::read_dir(&root).await {
-            Ok(entries) => entries,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-            Err(e) => return Err(e.into()),
-        };
-        let mut cache_entries = Vec::new();
+        match fs::read_dir(&root).await {
+            Ok(entries) => Ok(Some(entries)),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    async fn next_gc_cache_entry(entries: &mut fs::ReadDir) -> RunnerResult<Option<GcCacheEntry>> {
         while let Some(entry) = entries.next_entry().await? {
             if !entry_file_type_is_dir(&entry).await? {
                 continue;
@@ -189,12 +191,12 @@ impl SessionWorkspaceCache {
             if !is_cache_key_name(&cache_key) {
                 continue;
             }
-            cache_entries.push(GcCacheEntry {
+            return Ok(Some(GcCacheEntry {
                 cache_key,
                 entry_dir: entry.path(),
-            });
+            }));
         }
-        Ok(cache_entries)
+        Ok(None)
     }
 
     async fn try_lock_gc_cache_entry(
@@ -212,8 +214,11 @@ impl SessionWorkspaceCache {
     }
 
     async fn gc_unusable_current_entries(&self, dry_run: bool) -> RunnerResult<GcEntryCleanup> {
+        let Some(mut entries) = self.gc_cache_entry_reader().await? else {
+            return Ok(GcEntryCleanup::default());
+        };
         let mut cleanup = GcEntryCleanup::default();
-        for entry in self.gc_cache_entries().await? {
+        while let Some(entry) = Self::next_gc_cache_entry(&mut entries).await? {
             let Some((entry, lock)) = self.try_lock_gc_cache_entry(entry).await? else {
                 continue;
             };
@@ -321,8 +326,11 @@ impl SessionWorkspaceCache {
         &self,
         dry_run: bool,
     ) -> RunnerResult<GcEntryCleanup> {
+        let Some(mut entries) = self.gc_cache_entry_reader().await? else {
+            return Ok(GcEntryCleanup::default());
+        };
         let mut cleanup = GcEntryCleanup::default();
-        for entry in self.gc_cache_entries().await? {
+        while let Some(entry) = Self::next_gc_cache_entry(&mut entries).await? {
             let Some((entry, lock)) = self.try_lock_gc_cache_entry(entry).await? else {
                 continue;
             };
@@ -377,8 +385,11 @@ impl SessionWorkspaceCache {
         dry_run: bool,
         skip_entry_keys: &BTreeSet<String>,
     ) -> RunnerResult<u64> {
+        let Some(mut entries) = self.gc_cache_entry_reader().await? else {
+            return Ok(0);
+        };
         let mut freed: u64 = 0;
-        for entry in self.gc_cache_entries().await? {
+        while let Some(entry) = Self::next_gc_cache_entry(&mut entries).await? {
             if skip_entry_keys.contains(&entry.cache_key) {
                 continue;
             }
@@ -445,8 +456,11 @@ impl SessionWorkspaceCache {
     }
 
     pub(super) async fn gc_candidates(&self) -> RunnerResult<Vec<GcCandidate>> {
+        let Some(mut entries) = self.gc_cache_entry_reader().await? else {
+            return Ok(Vec::new());
+        };
         let mut candidates = Vec::new();
-        for entry in self.gc_cache_entries().await? {
+        while let Some(entry) = Self::next_gc_cache_entry(&mut entries).await? {
             let Some(candidate) = self.gc_candidate(entry.cache_key).await else {
                 continue;
             };
