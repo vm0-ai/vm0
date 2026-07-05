@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.132.14](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.132.13...runner-rs-v0.132.14) (2026-07-05)
+
+
+### Refactoring
+
+* clarify runner profile availability contract ([#20171](https://github.com/vm0-ai/vm0/issues/20171)) ([ef94c04](https://github.com/vm0-ai/vm0/commit/ef94c04b34a0eacb9a3ddc7ffd1cabc419c19113))
+
 ## [0.132.13](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.132.12...runner-rs-v0.132.13) (2026-07-04)
 
 
