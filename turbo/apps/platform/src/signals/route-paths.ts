@@ -16,8 +16,6 @@ export const ROUTES = {
   activityDetail: "/activities/:activityRunId",
   chat: "/chats/:threadId",
   prompt: "/prompt",
-  automations: "/automations",
-  automationDetail: "/automations/:automationId",
   works: "/works",
   ideas: "/ideas",
   connectors: "/connectors",

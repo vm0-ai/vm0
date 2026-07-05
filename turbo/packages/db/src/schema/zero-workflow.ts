@@ -142,8 +142,7 @@ export const workflowUserTriggerThreads = pgTable(
  * - `loop`: re-scheduled `interval_seconds` after each completion (no overlap).
  * - `once`: fires once at `at_time`, then auto-disables.
  *
- * Aligned with Automation's time-trigger semantics so the same scheduling
- * primitives (`TimeTrigger`) can be reused.
+ * Uses the same schedule semantics as the retired automation trigger rows.
  */
 export type ZeroWorkflowScheduleType = "cron" | "loop" | "once";
 export type ZeroWorkflowTriggerKind = "schedule" | "event";

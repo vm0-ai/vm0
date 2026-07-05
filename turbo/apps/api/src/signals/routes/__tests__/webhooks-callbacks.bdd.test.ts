@@ -516,8 +516,8 @@ describe("WHCB-01: third-party webhook verification boundaries", () => {
 
   // The membership-deleted automation-suspension scenario was removed with
   // the automation -> workflow cutover (#19959): the frozen legacy API can
-  // no longer create automations. Poller-level owner-suspension coverage
-  // lives in automations.test.ts on seeded rows.
+  // no longer create automations. Owner-suspension coverage now uses
+  // workflow trigger and seeded legacy-row fixtures.
 
   it("rejects GitHub requests with missing headers or invalid signatures", async () => {
     api.configureGithubWebhookSecret();

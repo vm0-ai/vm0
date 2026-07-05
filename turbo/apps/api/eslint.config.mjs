@@ -118,8 +118,6 @@ const apiServiceTestParentImportPatterns = [
   "../*.service",
   "../*.utils",
   "../assistant-message-id",
-  "../automations/*",
-  "../automations/**/*",
 ];
 
 export default [

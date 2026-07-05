@@ -1690,7 +1690,7 @@ function createPagedMessages(
   const latestRunStatus$ = messageRunIndicatorState$;
 
   // The thread's active goal, folded from the (goal-marker) message stream so
-  // the composer reads it without polling /api/automations. Reads rawMessages$
+  // the composer reads it without polling a separate resource. Reads rawMessages$
   // because goal markers are control rows, not transcript rows.
   const activeGoal$ = computed(async (get): Promise<ActiveGoalState | null> => {
     const raw = await get(rawMessages$);

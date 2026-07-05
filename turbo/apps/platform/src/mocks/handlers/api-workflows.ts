@@ -14,7 +14,7 @@ import { mockApi } from "../msw-contract.ts";
 import {
   getMockWorkflowTriggers,
   setMockWorkflowTriggers,
-} from "./automations-store.ts";
+} from "./workflow-triggers-store.ts";
 
 const DEFAULT_WORKFLOWS: ZeroWorkflowDetailResponse[] = [];
 

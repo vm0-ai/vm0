@@ -637,8 +637,8 @@ export async function loadWorkflowTriggers(
 
 /**
  * List the caller's workflow triggers across every visible workflow in one
- * lightweight projection for the /automations surface. This deliberately avoids
- * workflow detail loading, so it does not read workflow volume files from R2.
+ * lightweight projection. This deliberately avoids workflow detail loading, so
+ * it does not read workflow volume files from R2.
  */
 export async function listWorkspaceWorkflowTriggers(
   db: ReadonlyDb,

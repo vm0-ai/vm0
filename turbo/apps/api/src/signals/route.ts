@@ -3,7 +3,6 @@ import { healthContract } from "@vm0/api-contracts/contracts/health";
 
 import { agentCheckpointsRoutes } from "./routes/agent-checkpoints-id";
 import { agentComposesByIdRoutes } from "./routes/agent-composes-id";
-import { automationsRoutes } from "./routes/automations";
 import { agentComposesReadRoutes } from "./routes/agent-composes-read";
 import { agentComposesRoutes } from "./routes/agent-composes";
 import { agentRunsCancelRoutes } from "./routes/agent-runs-cancel";
@@ -218,8 +217,6 @@ export const ROUTES: readonly RouteEntry[] = [
     handler: apiBuildInfo$,
   },
   ...authMeRoutes,
-  // Legacy automations: read-only provenance rows after the workflow cutover.
-  ...automationsRoutes,
   ...cliAuthRoutes,
   ...cliAuthTestRoutes,
   ...desktopAuthRoutes,

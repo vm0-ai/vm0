@@ -123,15 +123,6 @@ const setupBb0DevicePage$ = lazyRouteSetup(async () => {
   const module = await import("./device-bb0-page/device-bb0-page-setup.ts");
   return module.setupBb0DevicePage$;
 });
-const setupAutomationsPage$ = lazyRouteSetup(async () => {
-  const module = await import("./automation-page/automation-page-setup.ts");
-  return module.setupAutomationsPage$;
-});
-const setupAutomationDetailPage$ = lazyRouteSetup(async () => {
-  const module =
-    await import("./automation-page/automation-detail-page-setup.ts");
-  return module.setupAutomationDetailPage$;
-});
 const setupAgentChatPage$ = lazyRouteSetup(async () => {
   const module = await import("./zero-page/agent-chat-page-setup.ts");
   return module.setupAgentChatPage$;
@@ -429,14 +420,6 @@ const ROUTE_CONFIG = [
   {
     path: ROUTES.deviceBb0,
     setup: setupAuthSidebarPageWrapper(setupBb0DevicePage$),
-  },
-  {
-    path: ROUTES.automationDetail,
-    setup: setupAuthSidebarPageWrapper(setupAutomationDetailPage$),
-  },
-  {
-    path: ROUTES.automations,
-    setup: setupAuthSidebarPageWrapper(setupAutomationsPage$),
   },
   {
     path: ROUTES.lab,

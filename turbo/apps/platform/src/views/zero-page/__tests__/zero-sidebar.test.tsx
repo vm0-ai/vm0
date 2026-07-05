@@ -22,7 +22,6 @@ import {
   fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
-import { createMockAutomationView } from "../../../mocks/handlers/automations-store.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { pathname } from "../../../signals/location.ts";
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
@@ -1024,28 +1023,9 @@ describe("zero sidebar", () => {
         createThread(ARCHIVED_THREAD_ID, "Archived context"),
       ],
     );
-    context.mocks.data.automations([
-      createMockAutomationView({
-        id: "f0000001-0000-4000-a000-000000000401",
-        name: "launch-cadence",
-        chatThreadId: AUTOMATION_THREAD_ID,
-        description: "Launch cadence",
-        prompt: "Post the launch cadence",
-      }),
-      createMockAutomationView({
-        id: "f0000001-0000-4000-a000-000000000402",
-        name: "release-risk-review",
-        chatThreadId: AUTOMATION_THREAD_ID,
-        description: "Release risk review",
-        prompt: "Review release risks",
-      }),
-    ]);
-
     setupSidebarPage({
       context,
       path: `/chats/${EXISTING_THREAD_ID}`,
-      // Legacy linked automations no longer affect chat deletion; schedule
-      // triggers own the automation lifecycle.
     });
 
     await waitFor(() => {
@@ -1065,13 +1045,6 @@ describe("zero sidebar", () => {
     expect(
       within(dialog).queryByText(/linked automations/u),
     ).not.toBeInTheDocument();
-    expect(
-      within(dialog).queryByText("Launch cadence"),
-    ).not.toBeInTheDocument();
-    expect(
-      within(dialog).queryByText("Release risk review"),
-    ).not.toBeInTheDocument();
-
     click(buttonByText("Cancel", dialog));
 
     await waitFor(() => {

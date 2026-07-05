@@ -11,7 +11,6 @@
     "src/signals/routes/__tests__/agentphone.bdd.test.ts",
     "src/signals/routes/__tests__/auth-device.bdd.test.ts",
     "src/signals/routes/__tests__/auth-org-agents.bdd.test.ts",
-    "src/signals/routes/__tests__/automations.bdd.test.ts",
     "src/signals/routes/__tests__/billing-usage-media.bdd.test.ts",
     "src/signals/routes/__tests__/chat-callbacks.bdd.test.ts",
     "src/signals/routes/__tests__/chat-files.bdd.test.ts",

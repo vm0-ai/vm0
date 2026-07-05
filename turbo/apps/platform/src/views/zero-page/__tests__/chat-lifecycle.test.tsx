@@ -38,10 +38,9 @@ import {
   type ZeroWorkflowTriggerUpdateRequest,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import {
-  createMockAutomationView,
   createMockWorkflowTrigger,
   setMockWorkflowTriggers,
-} from "../../../mocks/handlers/automations-store.ts";
+} from "../../../mocks/handlers/workflow-triggers-store.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { eventDrivenChatThread } from "../../../signals/chat-page/chat-thread-event-sourcing.ts";
 import {
@@ -444,42 +443,6 @@ function mockAutomationThread(): void {
       },
     ],
   });
-  context.mocks.data.automations([
-    createMockAutomationView({
-      id: "f0000001-0000-4000-a000-000000000701",
-      agentId: AGENT_ID,
-      chatThreadId: AUTOMATION_THREAD_ID,
-      name: "launch-review",
-      description: "Launch review",
-      prompt: "Review launch risks",
-      cronExpression: "30 15 * * 1-5",
-      triggerType: "cron",
-      nextRunAt: "2026-06-10T15:30:00.000Z",
-    }),
-    createMockAutomationView({
-      id: "f0000001-0000-4000-a000-000000000702",
-      agentId: AGENT_ID,
-      chatThreadId: AUTOMATION_THREAD_ID,
-      name: "paused-launch-audit",
-      description: "Paused launch audit",
-      prompt: "Audit launch readiness",
-      cronExpression: "0 12 * * 1",
-      triggerType: "cron",
-      enabled: false,
-      nextRunAt: null,
-    }),
-    createMockAutomationView({
-      id: "f0000001-0000-4000-a000-000000000703",
-      agentId: AGENT_ID,
-      chatThreadId: AUTOMATION_THREAD_ID,
-      name: "manual-launch-reminder",
-      description: "Manual launch reminder",
-      prompt: "Remind the team about launch blockers",
-      cronExpression: "0 18 * * 5",
-      triggerType: "cron",
-      nextRunAt: null,
-    }),
-  ]);
 }
 
 function mockWorkflowTriggerUpdate(
@@ -4583,92 +4546,6 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("shows linked automations from the chat header sidebar", async () => {
-    mockAutomationThread();
-    context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
-      return respond(200, { runs: [] });
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${AUTOMATION_THREAD_ID}`,
-    });
-
-    await waitFor(() => {
-      expect(
-        screen.getAllByText("Scheduled launch review").length,
-      ).toBeGreaterThan(0);
-      expect(buttonByLabel("Automations")).toBeInTheDocument();
-    });
-
-    click(buttonByLabel("Automations"));
-
-    await waitFor(() => {
-      expect(screen.getByTestId("automation-sidebar")).toBeInTheDocument();
-    });
-
-    const sidebar = screen.getByTestId("automation-sidebar");
-    expect(within(sidebar).getByText("Launch review")).toBeInTheDocument();
-    expect(
-      within(sidebar).getByText("Paused launch audit"),
-    ).toBeInTheDocument();
-    expect(
-      within(sidebar).getByText("Manual launch reminder"),
-    ).toBeInTheDocument();
-    expect(within(sidebar).getAllByText("Status")).toHaveLength(3);
-    expect(within(sidebar).getAllByText("Schedule")).toHaveLength(3);
-    expect(within(sidebar).getAllByText("Next run")).toHaveLength(3);
-    expect(within(sidebar).queryByText("Run now")).not.toBeInTheDocument();
-    expect(within(sidebar).getAllByText("Open")).toHaveLength(3);
-    expect(within(sidebar).getAllByText("No upcoming run")).toHaveLength(2);
-    expect(within(sidebar).queryByText("Description")).not.toBeInTheDocument();
-    expect(
-      within(sidebar).queryByText(/linked to this chat/u),
-    ).not.toBeInTheDocument();
-    expect(
-      within(sidebar).queryByText(/active.*paused/u),
-    ).not.toBeInTheDocument();
-    expect(within(sidebar).queryByRole("searchbox")).not.toBeInTheDocument();
-
-    click(screen.getByLabelText("Open artifacts"));
-
-    await waitFor(() => {
-      expect(screen.getByTestId("artifact-inbox")).toBeInTheDocument();
-      expect(
-        screen.queryByTestId("automation-sidebar"),
-      ).not.toBeInTheDocument();
-    });
-  });
-
-  it("opens a linked automation detail from the chat header", async () => {
-    mockAutomationThread();
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${AUTOMATION_THREAD_ID}`,
-    });
-
-    await waitFor(() => {
-      expect(buttonByLabel("Automations")).toBeInTheDocument();
-    });
-
-    click(buttonByLabel("Automations"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Launch review")).toBeInTheDocument();
-    });
-
-    click(
-      within(screen.getByTestId("automation-sidebar")).getAllByText("Open")[0]!,
-    );
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Launch review" }),
-      ).toBeInTheDocument();
-    });
-  });
-
   it("lists workflow automations in the sidebar", async () => {
     mockAutomationThread();
     setMockWorkflowTriggers([
@@ -5089,8 +4966,8 @@ describe("chat lifecycle", () => {
       expect(screen.getByText("Automation message")).toBeInTheDocument();
       expect(screen.getByText("Launch review")).toBeInTheDocument();
       expect(
-        screen.getByLabelText("Open automation Launch review"),
-      ).toHaveAttribute("href", `/automations/${automationId}`);
+        screen.queryByLabelText("Open automation Launch review"),
+      ).not.toBeInTheDocument();
       expect(screen.queryByText("Review launch risks")).not.toBeInTheDocument();
     });
   });

@@ -30,14 +30,12 @@ export {
   saveAgentConnectors$,
 } from "./connectors.ts";
 
-export { agentAutomationEntries$ } from "./automation.ts";
-
 export { deleteAgent$ } from "./delete.ts";
 
 // ---------------------------------------------------------------------------
-// Set active agent — sets the agent name and resets draft states.
-// All async data (detail, instructions, automation, connectors, permissions) will
-// re-evaluate reactively through the async computed dependency chain.
+// Set active agent — sets the agent name and resets draft states. Async detail,
+// instructions, connectors, and permissions re-evaluate through the computed
+// dependency chain.
 // ---------------------------------------------------------------------------
 
 export const setActiveAgent$ = command(({ set }, agentName: string) => {

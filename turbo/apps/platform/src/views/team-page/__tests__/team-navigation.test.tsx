@@ -39,7 +39,6 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
 import { isoFromNowMs, mockNow } from "../../../__tests__/time.ts";
-import { createMockAutomationView } from "../../../mocks/handlers/automations-store.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedNavigateTo$ } from "../../../signals/route.ts";
 import { ROUTES } from "../../../signals/route-paths.ts";
@@ -323,23 +322,6 @@ function mockTeamAPIs({
     createConnector("github", "octocat"),
     createConnector("axiom", "workspace"),
     createConnector("slack", "ops"),
-  ]);
-  context.mocks.data.automations([
-    createMockAutomationView({
-      id: "f0000001-0000-4000-a000-000000000401",
-      agentId: researchAgentId,
-      displayName: "Research Agent",
-      name: "research-digest-loop",
-      triggerType: "loop",
-      cronExpression: null,
-      intervalSeconds: 1800,
-      timezone: "UTC",
-      prompt: "Summarize open research requests",
-      description: "Research digest",
-      enabled: true,
-      createdAt: "2026-03-02T00:00:00Z",
-      updatedAt: "2026-03-02T00:00:00Z",
-    }),
   ]);
   const enabledTypesByAgent = new Map<string, string[]>();
   const enabledCustomConnectorIdsByAgent = new Map<string, string[]>();

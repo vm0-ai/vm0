@@ -1088,11 +1088,7 @@ function DayAutomationsCard({
             const pct = (row.credits / maxValue) * 100;
             return (
               <li key={row.automationId}>
-                <Link
-                  pathname="/automations/:automationId"
-                  options={{ pathParams: { automationId: row.automationId } }}
-                  className="flex items-center gap-2 -mx-1.5 px-1.5 py-0.5 rounded-md hover:bg-foreground/5 transition-colors"
-                >
+                <div className="flex items-center gap-2 -mx-1.5 px-1.5 py-0.5 rounded-md">
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <span className="text-sm font-medium flex-1 truncate decoration-dotted underline decoration-foreground/40 decoration-[1px] underline-offset-2">
@@ -1107,9 +1103,6 @@ function DayAutomationsCard({
                       <p className="text-xs whitespace-normal break-words">
                         {fullName}
                       </p>
-                      <p className="text-[11px] mt-1.5 pt-1.5 border-t border-white/15 opacity-80">
-                        Click to open →
-                      </p>
                     </TooltipContent>
                   </Tooltip>
                   <div className="w-16 h-1.5 rounded-full bg-foreground/10 overflow-hidden shrink-0">
@@ -1121,7 +1114,7 @@ function DayAutomationsCard({
                   <span className="text-xs opacity-60 tabular-nums shrink-0">
                     {formatCardValue(row.credits)}
                   </span>
-                </Link>
+                </div>
               </li>
             );
           })}

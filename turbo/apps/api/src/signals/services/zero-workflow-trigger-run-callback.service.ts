@@ -4,7 +4,7 @@ import { and, eq } from "drizzle-orm";
 
 import { writeDb$, type Db } from "../external/db";
 import { nowDate } from "../external/time";
-import { TimeTrigger } from "./time-trigger";
+import { advanceTimeTriggerAfterCompletion } from "./time-trigger";
 import type {
   InternalRunCallbackDispatchResult,
   InternalRunCallbackEnvelope,
@@ -88,7 +88,7 @@ export async function handleWorkflowTriggerInternalCallback(
   const consecutiveFailures =
     input.callback.status === "completed" ? 0 : trigger.consecutiveFailures + 1;
   const shouldDisable = consecutiveFailures >= MAX_CONSECUTIVE_FAILURES;
-  const nextRunAt = new TimeTrigger().advanceAfterCompletion({
+  const nextRunAt = advanceTimeTriggerAfterCompletion({
     triggerType: payload.kind,
     cronExpression:
       payload.kind === "cron" ? payload.data.cronExpression : undefined,

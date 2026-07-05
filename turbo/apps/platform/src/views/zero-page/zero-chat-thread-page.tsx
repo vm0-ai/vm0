@@ -206,15 +206,12 @@ import {
   setGithubPrTrackingOpenThreadId$,
 } from "../../signals/chat-page/github-pr-tracking.ts";
 import {
-  headerAutomationMenu$,
   headerWorkflowTriggersForThread,
   runHeaderWorkflowTriggerNow$,
   reloadHeaderAutomationMenu$,
   updateHeaderWorkflowGmailLabelAppliedTrigger$,
   updateHeaderWorkflowGmailNewMessageTrigger$,
   updateHeaderWorkflowScheduleTrigger$,
-  automationsForThread,
-  type HeaderAutomationEntry,
   type HeaderWorkflowTriggerEntry,
 } from "../../signals/chat-page/header-automation-menu.ts";
 import { pauseChatThreadGoal$ } from "../../signals/chat-page/chat-goal.ts";
@@ -965,25 +962,18 @@ export function AutomationMenuButton({
   const reloadAutomations = useSet(reloadHeaderAutomationMenu$);
   const openAutomationSidebar = useSet(openHeaderAutomationSidebar$);
   const openThreadId = useGet(currentHeaderAutomationThreadId$);
-  const automationsLoadable = useLastLoadable(headerAutomationMenu$);
-  const lastResolvedAutomations = useLastResolved(headerAutomationMenu$);
   const workflowTriggers$ = headerWorkflowTriggersForThread(threadId);
   const workflowTriggersLoadable = useLastLoadable(workflowTriggers$);
   const lastResolvedTriggers = useLastResolved(workflowTriggers$);
-  const allAutomations =
-    automationsLoadable.state === "hasData"
-      ? automationsLoadable.data
-      : (lastResolvedAutomations ?? []);
-  const automations = automationsForThread(allAutomations, threadId);
   const workflowTriggers =
     workflowTriggersLoadable.state === "hasData"
       ? workflowTriggersLoadable.data
       : (lastResolvedTriggers ?? []);
   const open = openThreadId === threadId;
 
-  // Show the opener when the thread has an automation or workflow trigger.
+  // Show the opener when the thread has a workflow trigger.
   // Goals live in the composer, so a goal-only thread has nothing here.
-  if (automations.length === 0 && workflowTriggers.length === 0) {
+  if (workflowTriggers.length === 0) {
     return null;
   }
 
@@ -2134,28 +2124,6 @@ function ChatArtifactInboxSlot({
   return <ChatArtifactInboxList thread={thread} />;
 }
 
-function formatAutomationNextRun(automation: HeaderAutomationEntry): string {
-  if (!automation.enabled || !automation.nextRunAt) {
-    return "No upcoming run";
-  }
-
-  const date = new Date(automation.nextRunAt);
-  if (Number.isNaN(date.getTime())) {
-    return "No upcoming run";
-  }
-
-  return date.toLocaleString("en-US", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone: automation.timezone,
-  });
-}
-
-function automationDescription(automation: HeaderAutomationEntry): string {
-  const description = automation.description?.trim();
-  return description && description.length > 0 ? description : "No description";
-}
-
 function formatHeaderWorkflowTriggerRun(value: string | null): string {
   if (!value) {
     return "No runs yet";
@@ -2289,70 +2257,6 @@ function headerWorkflowTriggerRows(
     rows.splice(1, 0, { label: "Match", value: matchSummary });
   }
   return rows;
-}
-
-function HeaderAutomationSidebarCard({
-  automation,
-}: {
-  automation: HeaderAutomationEntry;
-}) {
-  return (
-    <article
-      className={cn(
-        "rounded-lg border border-border bg-background p-4 transition-colors",
-        !automation.enabled && "opacity-75",
-      )}
-    >
-      <p
-        className={cn(
-          "line-clamp-2 text-sm font-medium leading-snug",
-          automation.enabled ? "text-foreground" : "text-muted-foreground",
-        )}
-      >
-        {automationDescription(automation)}
-      </p>
-
-      <dl className="mt-3 text-xs">
-        <div className="flex items-center justify-between gap-3 border-b border-border/50 py-2.5">
-          <dt className="shrink-0 text-muted-foreground">Status</dt>
-          <dd className="flex shrink-0 items-center gap-2">
-            <span
-              className={cn(
-                "font-medium",
-                automation.enabled
-                  ? "text-foreground"
-                  : "text-muted-foreground",
-              )}
-            >
-              {automation.enabled ? "Active" : "Paused"}
-            </span>
-          </dd>
-        </div>
-        <div className="flex items-center justify-between gap-3 border-b border-border/50 py-2.5">
-          <dt className="shrink-0 text-muted-foreground">Schedule</dt>
-          <dd className="min-w-0 truncate text-right font-medium text-foreground">
-            {automation.rule}
-          </dd>
-        </div>
-        <div className="flex items-center justify-between gap-3 py-2.5">
-          <dt className="shrink-0 text-muted-foreground">Next run</dt>
-          <dd className="min-w-0 truncate text-right font-medium text-foreground">
-            {formatAutomationNextRun(automation)}
-          </dd>
-        </div>
-      </dl>
-
-      <div className="mt-4 flex min-w-0 items-center justify-between gap-2">
-        <Link
-          pathname="/automations/:automationId"
-          options={{ pathParams: { automationId: automation.id } }}
-          className="text-xs font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-        >
-          Open
-        </Link>
-      </div>
-    </article>
-  );
 }
 
 function HeaderWorkflowTriggerCard({
@@ -2841,26 +2745,16 @@ function HeaderGmailLabelTriggerEditForm({
   );
 }
 function HeaderAutomationSidebar({ threadId }: { threadId: string }) {
-  const automationsLoadable = useLastLoadable(headerAutomationMenu$);
-  const lastResolvedAutomations = useLastResolved(headerAutomationMenu$);
   const workflowTriggers$ = headerWorkflowTriggersForThread(threadId);
   const workflowTriggersLoadable = useLastLoadable(workflowTriggers$);
   const lastResolvedTriggers = useLastResolved(workflowTriggers$);
   const close = useSet(closeHeaderAutomationSidebar$);
-  const allAutomations =
-    automationsLoadable.state === "hasData"
-      ? automationsLoadable.data
-      : (lastResolvedAutomations ?? []);
-  const automations = automationsForThread(allAutomations, threadId);
   const workflowTriggers =
     workflowTriggersLoadable.state === "hasData"
       ? workflowTriggersLoadable.data
       : (lastResolvedTriggers ?? []);
-  const isEmpty = automations.length === 0 && workflowTriggers.length === 0;
-  const loading =
-    isEmpty &&
-    (automationsLoadable.state === "loading" ||
-      workflowTriggersLoadable.state === "loading");
+  const isEmpty = workflowTriggers.length === 0;
+  const loading = isEmpty && workflowTriggersLoadable.state === "loading";
 
   return (
     <aside
@@ -2896,18 +2790,6 @@ function HeaderAutomationSidebar({ threadId }: { threadId: string }) {
           </div>
         ) : (
           <div className="grid gap-6">
-            {automations.length > 0 ? (
-              <div className="grid gap-3">
-                {automations.map((automation) => {
-                  return (
-                    <HeaderAutomationSidebarCard
-                      key={automation.id}
-                      automation={automation}
-                    />
-                  );
-                })}
-              </div>
-            ) : null}
             {workflowTriggers.length > 0 ? (
               <div className="grid gap-3">
                 {workflowTriggers.map((trigger) => {
@@ -4503,7 +4385,7 @@ function useChatComposerQueue(
   return { queuedItems, onRemoveQueuedItem };
 }
 
-// The thread's active goal (folded from goal-state markers, no /api/automations
+// The thread's active goal (folded from goal-state markers, no separate
 // poll) plus its cancel handler. Cancelling pauses the goal through the goal API;
 // the backend then emits a goal_event marker, so the row folds away.
 function useChatComposerActiveGoal(
@@ -4860,7 +4742,7 @@ function ChatThreadComposer({
     groups,
   );
   // The active goal row above the composer, with its cancel handler folded from
-  // the thread's message stream, no /api/automations poll.
+  // the thread's message stream, no separate resource poll.
   const { activeGoal, onCancelActiveGoal } = useChatComposerActiveGoal(
     thread,
     pageSignal,
@@ -7038,7 +6920,6 @@ function UserMessageGenerationTemplate({
 }
 
 function AutomationUserMessage({
-  automationId,
   automationLabel,
 }: {
   automationId: string | undefined;
@@ -7059,18 +6940,7 @@ function AutomationUserMessage({
       <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
         <div className="flex w-full flex-col items-end">
-          {automationId ? (
-            <Link
-              pathname="/automations/:automationId"
-              options={{ pathParams: { automationId } }}
-              className={cn(cardClassName, "cursor-pointer hover:opacity-80")}
-              aria-label={`Open automation ${automationLabel}`}
-            >
-              {body}
-            </Link>
-          ) : (
-            <div className={cardClassName}>{body}</div>
-          )}
+          <div className={cardClassName}>{body}</div>
         </div>
       </div>
     </div>

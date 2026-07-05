@@ -75,7 +75,7 @@ describe("decodeZeroTokenPayload", () => {
       runId: "run-1",
       orgId: "org-1",
       scope: "zero",
-      capabilities: ["agent:read", "automation:read"],
+      capabilities: ["agent:read", "relationship:read"],
       iat: 1000,
       exp: 2000,
     });
@@ -85,7 +85,7 @@ describe("decodeZeroTokenPayload", () => {
       runId: "run-1",
       orgId: "org-1",
       scope: "zero",
-      capabilities: ["agent:read", "automation:read"],
+      capabilities: ["agent:read", "relationship:read"],
       iat: 1000,
       exp: 2000,
     });
@@ -137,7 +137,7 @@ describe("registerZeroCommands", () => {
   it("should hide unmapped commands and show capable ones with valid token", () => {
     const token = buildZeroToken({
       scope: "zero",
-      capabilities: ["agent:read", "automation:read"],
+      capabilities: ["agent:read", "relationship:read"],
     });
     vi.stubEnv("ZERO_TOKEN", token);
 
@@ -707,7 +707,7 @@ describe("registerZeroCommands", () => {
   it("should hide agent when agent:read capability is missing", () => {
     const token = buildZeroToken({
       scope: "zero",
-      capabilities: ["automation:read"],
+      capabilities: ["relationship:read"],
     });
     vi.stubEnv("ZERO_TOKEN", token);
 
@@ -730,7 +730,7 @@ describe("registerZeroCommands", () => {
     // rename notice instead of an unknown-command error.
     const token = buildZeroToken({
       scope: "zero",
-      capabilities: ["automation:read"],
+      capabilities: ["relationship:read"],
     });
     vi.stubEnv("ZERO_TOKEN", token);
 

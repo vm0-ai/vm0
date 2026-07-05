@@ -3816,6 +3816,13 @@
       "when": 1783223965117,
       "tag": "0544_drop_chat_threads_source_schedule_run_id",
       "breakpoints": true
+    },
+    {
+      "idx": 545,
+      "version": "7",
+      "when": 1783223965118,
+      "tag": "0545_purge_legacy_automation_rows",
+      "breakpoints": true
     }
   ]
 }

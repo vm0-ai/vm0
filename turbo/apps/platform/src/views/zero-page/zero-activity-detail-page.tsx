@@ -36,7 +36,6 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 import { searchParams$, updateSearchParams$ } from "../../signals/route.ts";
 import { Link } from "../router/link.tsx";
 import {
-  TRIGGER_SOURCE_LABELS,
   getTriggerSourceLabel,
   type LogStatus,
   type TriggerSource,
@@ -211,21 +210,9 @@ export function ActivityHeaderCard({
             <>
               <div className="flex items-center gap-1.5 px-3">
                 <span className="text-muted-foreground shrink-0">Source</span>
-                {triggerSource === "automation" && detail.automationId ? (
-                  <Link
-                    pathname="/automations/:automationId"
-                    options={{
-                      pathParams: { automationId: detail.automationId },
-                    }}
-                    className="text-foreground whitespace-nowrap underline decoration-foreground/40 hover:decoration-foreground transition-colors"
-                  >
-                    {TRIGGER_SOURCE_LABELS[triggerSource]}
-                  </Link>
-                ) : (
-                  <span className="text-foreground whitespace-nowrap">
-                    {getTriggerSourceLabel(triggerSource, triggerAgentName)}
-                  </span>
-                )}
+                <span className="text-foreground whitespace-nowrap">
+                  {getTriggerSourceLabel(triggerSource, triggerAgentName)}
+                </span>
               </div>
               <span
                 className="w-px h-3.5 shrink-0 bg-border self-center"

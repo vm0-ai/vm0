@@ -1246,7 +1246,6 @@ export {
   type RunContextResponse,
   type RunRunnerResponse,
 } from "./zero-runs";
-export { automationViewSchema, type AutomationView } from "./automation-view";
 export {
   zeroModelProvidersMainContract,
   zeroModelProvidersByTypeContract,
@@ -1714,19 +1713,6 @@ export {
   type ZeroBuiltInGenerationAcceptedResponse,
   type ZeroBuiltInGenerationResponse,
 } from "./zero-built-in-generation";
-export {
-  automationsMainContract,
-  automationsByRefContract,
-  automationTriggersContract,
-  automationTriggerResponseSchema,
-  automationResponseSchema,
-  automationListResponseSchema,
-  type AutomationsMainContract,
-  type AutomationsByRefContract,
-  type AutomationTriggersContract,
-  type AutomationResponse,
-  type AutomationTriggerResponse,
-} from "./automations";
 export {
   internalCallbackBodySchema,
   internalCallbackErrorSchema,

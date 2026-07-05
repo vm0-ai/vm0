@@ -188,7 +188,6 @@ export type SidebarNavId =
   | "agents"
   | "memory"
   | "connectors"
-  | "automations"
   | "workflows"
   | "activities"
   | "insights"
@@ -215,7 +214,6 @@ export const handleZeroNavSelect$ = command(
         agents: ROUTES.agents,
         memory: ROUTES.memory,
         connectors: ROUTES.connectors,
-        automations: ROUTES.automations,
         workflows: ROUTES.workflows,
         activities: ROUTES.activities,
         insights: ROUTES.insights,
