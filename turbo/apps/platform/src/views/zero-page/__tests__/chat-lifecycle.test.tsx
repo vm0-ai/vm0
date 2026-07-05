@@ -1278,7 +1278,7 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("projects the first-run model from the optimistic new thread event", async () => {
+  it("projects the first-run model from the optimistic model update event", async () => {
     const user = userEvent.setup({ delay: null });
     const prompt = "Start with my preferred model";
     const sendGate = context.mocks.deferred<void>();

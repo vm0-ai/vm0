@@ -246,9 +246,20 @@ const mintOptimisticThreadWithEvent$ = command(
       chatThreadId: args.threadId,
       agentId: args.agentId,
       title: null,
-      selectedModel: args.selectedModel,
+      selectedModel: null,
       createdAt,
     } satisfies ChatThreadEvent);
+    if (args.selectedModel) {
+      set(registerOptimisticChatThreadEvent$, {
+        id: crypto.randomUUID(),
+        kind: "model_selection_updated",
+        chatThreadId: args.threadId,
+        agentId: args.agentId,
+        title: null,
+        selectedModel: args.selectedModel,
+        createdAt,
+      } satisfies ChatThreadEvent);
+    }
   },
 );
 
