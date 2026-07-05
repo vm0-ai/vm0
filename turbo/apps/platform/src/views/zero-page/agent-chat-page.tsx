@@ -10,7 +10,6 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
 import { user$ } from "../../signals/auth.ts";
 import { IconArrowUpRight, IconPin, IconUserPlus } from "@tabler/icons-react";
-import type { ConnectorType } from "@vm0/connectors/connectors";
 import { isSupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
 import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/chat-threads";
 import {
@@ -56,6 +55,7 @@ import {
   resetChatPageModelSelection$,
   chatPageTaglineIndex$,
   suggestedPrompts$,
+  unfilteredSuggestedPrompts$,
 } from "../../signals/zero-page/zero-chat-page.ts";
 import {
   newThreadGenerationTemplate$,
@@ -71,7 +71,10 @@ import {
   ZERO_DESKTOP_DOWNLOAD_URL,
 } from "../../signals/zero-page/computer-use-hosts.ts";
 import { lightboxUrl$ as attachmentLightboxUrl$ } from "../../signals/zero-page/zero-attachment-chips.ts";
-import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
+import {
+  ConnectorIcon,
+  isConnectorIconType,
+} from "./components/settings/connector-icons.tsx";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
@@ -273,7 +276,7 @@ interface SuggestedPrompt {
   title: string;
   description: string;
   prompt: string;
-  connectors?: readonly ConnectorType[];
+  connectors?: readonly string[];
 }
 
 function SuggestedPromptButton({
@@ -283,6 +286,7 @@ function SuggestedPromptButton({
   item: SuggestedPrompt;
   onSelectPrompt: (prompt: string) => void;
 }) {
+  const connectorIconTypes = item.connectors?.filter(isConnectorIconType) ?? [];
   return (
     <button
       type="button"
@@ -300,9 +304,9 @@ function SuggestedPromptButton({
       <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
         {item.description}
       </p>
-      {item.connectors && item.connectors.length > 0 && (
+      {connectorIconTypes.length > 0 && (
         <div className="flex items-center gap-1.5 mt-auto pt-2.5">
-          {item.connectors.map((type) => {
+          {connectorIconTypes.map((type) => {
             return (
               <span
                 key={type}
@@ -361,7 +365,16 @@ function SuggestedPromptsGrid({
 }: {
   onSelectPrompt: (prompt: string) => void;
 }) {
-  const suggestedPrompts = useLastResolved(suggestedPrompts$) ?? [];
+  const unfilteredSuggestedPrompts =
+    useLastResolved(unfilteredSuggestedPrompts$) ?? [];
+  const suggestedPromptsLoadable = useLoadable(suggestedPrompts$);
+  const lastSuggestedPrompts = useLastResolved(suggestedPrompts$);
+  const suggestedPrompts =
+    suggestedPromptsLoadable.state === "hasData"
+      ? suggestedPromptsLoadable.data
+      : suggestedPromptsLoadable.state === "loading"
+        ? (lastSuggestedPrompts ?? unfilteredSuggestedPrompts)
+        : [];
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 w-full">
       {suggestedPrompts.map((item) => {

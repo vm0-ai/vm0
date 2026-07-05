@@ -15,6 +15,11 @@ interface Category {
   readonly cases: readonly UseCase[];
 }
 
+interface IdeationFilterOptions {
+  readonly features?: Partial<Record<FeatureSwitchKey, boolean>>;
+  readonly visibleConnectorRefs?: ReadonlySet<string>;
+}
+
 const categories: readonly Category[] = [
   {
     id: "reports",
@@ -639,15 +644,42 @@ function isEnabled(
   return !!features?.[useCase.featureFlag];
 }
 
+function filterUseCase(
+  useCase: UseCase,
+  options: IdeationFilterOptions,
+): UseCase | null {
+  const visibleConnectorRefs = options.visibleConnectorRefs;
+  if (!isEnabled(useCase, options.features)) {
+    return null;
+  }
+
+  if (
+    !useCase.connectors ||
+    useCase.connectors.length === 0 ||
+    !visibleConnectorRefs
+  ) {
+    return useCase;
+  }
+
+  const allConnectorsVisible = useCase.connectors.every((connectorRef) => {
+    return visibleConnectorRefs.has(connectorRef);
+  });
+  if (!allConnectorsVisible) {
+    return null;
+  }
+  return useCase;
+}
+
 export function getCategories(
-  features?: Partial<Record<FeatureSwitchKey, boolean>>,
+  options: IdeationFilterOptions,
 ): readonly Category[] {
   return categories
     .map((c) => {
       return {
         ...c,
-        cases: c.cases.filter((u) => {
-          return isEnabled(u, features);
+        cases: c.cases.flatMap((u) => {
+          const useCase = filterUseCase(u, options);
+          return useCase ? [useCase] : [];
         }),
       };
     })
@@ -658,11 +690,11 @@ export function getCategories(
 
 export function getRandomPrompts(
   count: number,
-  features?: Partial<Record<FeatureSwitchKey, boolean>>,
+  options: IdeationFilterOptions,
 ): UseCase[] {
-  const all = categories.flatMap((c) => {
+  const all = getCategories(options).flatMap((c) => {
     return c.cases.filter((u) => {
-      return u.connectors && u.connectors.length > 0 && isEnabled(u, features);
+      return u.connectors && u.connectors.length > 0;
     });
   });
   const shuffled = [...all].sort(() => {
