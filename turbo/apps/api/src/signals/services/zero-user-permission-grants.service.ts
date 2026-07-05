@@ -12,7 +12,7 @@ import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentComposeVersions } from "@vm0/db/schema/agent-compose";
-import { and, asc, eq, gt, isNotNull, isNull, or } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNotNull, isNull, or } from "drizzle-orm";
 import type {
   ApplyUserPermissionGrantsRequest,
   UserPermissionGrantExpiresIn,
@@ -265,7 +265,12 @@ export async function resolveActiveNetworkPolicyRefreshes(
     return [];
   }
 
-  const grants = await loadActiveUserPermissionGrants(db, scope, checkedAt);
+  const grants = await loadActiveUserPermissionGrantsForConnectorRefs(
+    db,
+    scope,
+    uniqueConnectorRefs,
+    checkedAt,
+  );
   const policies = resolvedConnectorFirewallPolicies(grants);
 
   const indexes = await Promise.all(
@@ -372,6 +377,30 @@ export async function loadActiveUserPermissionGrants(
         eq(userPermissionGrants.orgId, scope.orgId),
         eq(userPermissionGrants.userId, scope.userId),
         eq(userPermissionGrants.agentId, scope.agentId),
+        activeGrantCondition(checkedAt),
+      ),
+    )
+    .orderBy(
+      asc(userPermissionGrants.connectorRef),
+      asc(userPermissionGrants.permission),
+    );
+}
+
+async function loadActiveUserPermissionGrantsForConnectorRefs(
+  db: ReadonlyDb,
+  scope: UserPermissionGrantScope,
+  connectorRefs: readonly string[],
+  checkedAt: Date,
+): Promise<readonly StoredPermissionGrantRow[]> {
+  return await db
+    .select()
+    .from(userPermissionGrants)
+    .where(
+      and(
+        eq(userPermissionGrants.orgId, scope.orgId),
+        eq(userPermissionGrants.userId, scope.userId),
+        eq(userPermissionGrants.agentId, scope.agentId),
+        inArray(userPermissionGrants.connectorRef, connectorRefs),
         activeGrantCondition(checkedAt),
       ),
     )
