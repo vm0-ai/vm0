@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.223.6](https://github.com/vm0-ai/vm0/compare/api-v1.223.5...api-v1.223.6) (2026-07-05)
+
+
+### Refactoring
+
+* read chat thread selected model from event projection ([#20204](https://github.com/vm0-ai/vm0/issues/20204)) ([2a76f6d](https://github.com/vm0-ai/vm0/commit/2a76f6dfbe6ad7bbc32e2d5803d8c3207e976284))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.153.6
+    * @vm0/core bumped to 8.399.5
+    * @vm0/db bumped to 1.91.9
+
 ## [1.223.5](https://github.com/vm0-ai/vm0/compare/api-v1.223.4...api-v1.223.5) (2026-07-05)
 
 
