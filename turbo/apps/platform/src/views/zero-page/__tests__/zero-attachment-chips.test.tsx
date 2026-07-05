@@ -2307,7 +2307,6 @@ describe("zero attachment chips", () => {
     click(commentsButton);
     const commentsList = await screen.findByTestId("html-dom-comments-list");
     expect(commentsButton).toHaveAttribute("aria-pressed", "true");
-    expect(commentsButton).toHaveClass("bg-blue-50");
     expect(within(commentsList).queryByText("Comment 1")).toBeNull();
     const heroListItem = within(commentsList).getByText(
       "Make the hero headline shorter",

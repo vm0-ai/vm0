@@ -95,14 +95,9 @@ function waitForIframePaint(
 
   let firstFrameId: number | null = null;
   let secondFrameId: number | null = null;
-  let timeoutId: number | null = null;
 
   function cleanup(): void {
     signal.removeEventListener("abort", handleAbort);
-    if (timeoutId !== null) {
-      frameView.clearTimeout(timeoutId);
-      timeoutId = null;
-    }
     if (firstFrameId !== null) {
       frameView.cancelAnimationFrame(firstFrameId);
       firstFrameId = null;
@@ -128,7 +123,6 @@ function waitForIframePaint(
   firstFrameId = frameView.requestAnimationFrame(() => {
     secondFrameId = frameView.requestAnimationFrame(finish);
   });
-  timeoutId = frameView.setTimeout(finish, 100);
   return deferred.promise;
 }
 
