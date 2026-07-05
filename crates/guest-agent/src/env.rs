@@ -445,39 +445,10 @@ fn validate_run_payload_file_path_for_runtime(
 }
 
 fn validate_run_payload(payload: &guest_contracts::env::RunPayload) -> Result<(), String> {
-    for (name, value) in [
-        (guest_contracts::env::PROMPT_ENV, payload.prompt.as_str()),
-        (
-            guest_contracts::env::APPEND_SYSTEM_PROMPT_ENV,
-            payload.append_system_prompt.as_str(),
-        ),
-        (
-            guest_contracts::env::SECRET_VALUES_ENV,
-            payload.secret_values.as_str(),
-        ),
-        (
-            guest_contracts::env::DISALLOWED_TOOLS_ENV,
-            payload.disallowed_tools.as_str(),
-        ),
-        (guest_contracts::env::TOOLS_ENV, payload.tools.as_str()),
-        (
-            guest_contracts::env::SETTINGS_ENV,
-            payload.settings.as_str(),
-        ),
-        (
-            guest_contracts::env::ARTIFACTS_ENV,
-            payload.artifacts.as_str(),
-        ),
-        (
-            guest_contracts::env::FEATURE_FLAGS_ENV,
-            payload.feature_flags.as_str(),
-        ),
-    ] {
-        if value.contains('\0') {
-            return Err(format!(
-                "{RUN_PAYLOAD_FILE_ENV_KEY} contains NUL byte for {name}"
-            ));
-        }
+    if let Some(name) = payload.first_nul_field() {
+        return Err(format!(
+            "{RUN_PAYLOAD_FILE_ENV_KEY} contains NUL byte for {name}"
+        ));
     }
 
     Ok(())

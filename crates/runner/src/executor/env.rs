@@ -531,37 +531,8 @@ fn serialize_feature_flags_payload(context: &ExecutionContext) -> RunnerResult<S
 fn validate_run_payload_for_guest(
     payload: &guest_contracts::env::RunPayload,
 ) -> Result<(), String> {
-    for (name, value) in [
-        (guest_contracts::env::PROMPT_ENV, payload.prompt.as_str()),
-        (
-            guest_contracts::env::APPEND_SYSTEM_PROMPT_ENV,
-            payload.append_system_prompt.as_str(),
-        ),
-        (
-            guest_contracts::env::SECRET_VALUES_ENV,
-            payload.secret_values.as_str(),
-        ),
-        (
-            guest_contracts::env::DISALLOWED_TOOLS_ENV,
-            payload.disallowed_tools.as_str(),
-        ),
-        (guest_contracts::env::TOOLS_ENV, payload.tools.as_str()),
-        (
-            guest_contracts::env::SETTINGS_ENV,
-            payload.settings.as_str(),
-        ),
-        (
-            guest_contracts::env::ARTIFACTS_ENV,
-            payload.artifacts.as_str(),
-        ),
-        (
-            guest_contracts::env::FEATURE_FLAGS_ENV,
-            payload.feature_flags.as_str(),
-        ),
-    ] {
-        if value.contains('\0') {
-            return Err(format!("run payload contains NUL byte for {name}"));
-        }
+    if let Some(name) = payload.first_nul_field() {
+        return Err(format!("run payload contains NUL byte for {name}"));
     }
 
     Ok(())
