@@ -292,7 +292,16 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   const heldSessionStates =
     canonicalizeHeldSessionStates(body.data.heldSessionStates) ?? [];
-  const availableProfiles = body.data.availableProfiles ?? body.data.profiles;
+  // Stage 1 wire compatibility: accept legacy heartbeat fields until #20162.
+  const admittableProfiles =
+    body.data.admittableProfiles ??
+    body.data.availableProfiles ??
+    body.data.profiles;
+  if (admittableProfiles === undefined) {
+    return badRequestMessage("admittableProfiles is required");
+  }
+  // Stage 1 compatibility: remove the legacy static profile write in #20163.
+  const staticProfiles = body.data.profiles ?? [];
   const currentDate = nowDate();
   const db = set(writeDb$);
   await db
@@ -301,14 +310,14 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       runnerId: body.data.runnerId,
       runnerName: body.data.runnerName,
       runnerGroup: body.data.group,
-      profiles: body.data.profiles,
+      profiles: staticProfiles,
       totalVcpu: body.data.totalVcpu,
       totalMemoryMb: body.data.totalMemoryMb,
       maxConcurrent: body.data.maxConcurrent,
       allocatedVcpu: body.data.allocatedVcpu,
       allocatedMemoryMb: body.data.allocatedMemoryMb,
       runningCount: body.data.runningCount,
-      availableProfiles,
+      availableProfiles: admittableProfiles,
       heldSessionStates,
       mode: body.data.mode,
       lastSeenAt: currentDate,
@@ -318,14 +327,14 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       set: {
         runnerName: body.data.runnerName,
         runnerGroup: body.data.group,
-        profiles: body.data.profiles,
+        profiles: staticProfiles,
         totalVcpu: body.data.totalVcpu,
         totalMemoryMb: body.data.totalMemoryMb,
         maxConcurrent: body.data.maxConcurrent,
         allocatedVcpu: body.data.allocatedVcpu,
         allocatedMemoryMb: body.data.allocatedMemoryMb,
         runningCount: body.data.runningCount,
-        availableProfiles,
+        availableProfiles: admittableProfiles,
         heldSessionStates,
         mode: body.data.mode,
         lastSeenAt: currentDate,
@@ -419,7 +428,12 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return body.response;
   }
 
-  const { group, profiles } = body.data;
+  const { group } = body.data;
+  // Stage 1 wire compatibility: accept legacy poll profiles until #20162.
+  const supportedProfiles = body.data.supportedProfiles ?? body.data.profiles;
+  if (supportedProfiles === undefined || supportedProfiles.length === 0) {
+    return badRequestMessage("supportedProfiles is required");
+  }
   const whereConditions: SQL<unknown>[] = [
     eq(runnerJobQueue.runnerGroup, group),
     isNull(runnerJobQueue.claimedAt),
@@ -438,9 +452,7 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     whereConditions.push(eq(agentRuns.userId, auth.userId));
   }
 
-  if (profiles && profiles.length > 0) {
-    whereConditions.push(inArray(runnerJobQueue.profile, profiles));
-  }
+  whereConditions.push(inArray(runnerJobQueue.profile, supportedProfiles));
   const db = set(writeDb$);
   const pendingJobLookupStartedAtMs = now();
   const [pendingJob] = await db

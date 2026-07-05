@@ -661,7 +661,7 @@ struct JobNotification<'a> {
 }
 
 fn supports_profile(profiles: &[String], profile: &str) -> bool {
-    profiles.is_empty() || profiles.iter().any(|candidate| candidate == profile)
+    profiles.iter().any(|candidate| candidate == profile)
 }
 
 async fn enqueue_direct_candidate(
@@ -1611,6 +1611,35 @@ mod tests {
             serde_json::json!({
                 "runId": "00000000-0000-0000-0000-000000000001",
                 "profile": "vm0/large"
+            }),
+        );
+
+        handle_ably_message(&msg, &profiles, &wakeups, &direct_candidates, &tokens).await;
+
+        assert_no_direct_candidate(&direct_candidates).await;
+        let snapshot = wakeups.snapshot().await;
+        assert!(!snapshot.poll_now);
+        assert!(snapshot.deferred_poll_at.is_none());
+    }
+
+    #[tokio::test]
+    async fn empty_profile_support_job_notification_is_ignored() {
+        let tokens = Mutex::new(HashMap::new());
+        let wakeups = PollWakeups::new(true);
+        let direct_candidates = direct_candidate_inbox();
+        let profiles = Vec::new();
+        let _ = wakeups
+            .wait_for_poll_due(
+                &CancellationToken::new(),
+                Duration::from_secs(30),
+                Duration::from_secs(5),
+            )
+            .await;
+        let msg = make_message(
+            Some("job"),
+            serde_json::json!({
+                "runId": "00000000-0000-0000-0000-000000000001",
+                "profile": "vm0/default"
             }),
         );
 
