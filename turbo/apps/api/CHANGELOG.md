@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.225.0](https://github.com/vm0-ai/vm0/compare/api-v1.224.2...api-v1.225.0) (2026-07-05)
+
+
+### Features
+
+* support safe script patches for html edits ([#19810](https://github.com/vm0-ai/vm0/issues/19810)) ([72a6222](https://github.com/vm0-ai/vm0/commit/72a622216dca7282a8e84f0f91804b90c628eacd))
+
+
+### Bug Fixes
+
+* exclude active runs and goals from unread thread ids ([#20243](https://github.com/vm0-ai/vm0/issues/20243)) ([5cf4b03](https://github.com/vm0-ai/vm0/commit/5cf4b03408e6049e83f7f313dcba790f51f8c85f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.154.3
+    * @vm0/connectors bumped to 1.138.0
+    * @vm0/core bumped to 8.401.0
+    * @vm0/db bumped to 1.92.3
+
 ## [1.224.2](https://github.com/vm0-ai/vm0/compare/api-v1.224.1...api-v1.224.2) (2026-07-05)
 
 
