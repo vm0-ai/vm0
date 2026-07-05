@@ -301,7 +301,6 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const heldSessionStates =
     canonicalizeHeldSessionStates(body.data.heldSessionStates) ?? [];
   const admittableProfiles = body.data.admittableProfiles;
-  const staticProfiles: string[] = [];
   const currentDate = nowDate();
   const db = set(writeDb$);
   await db
@@ -310,14 +309,13 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       runnerId: body.data.runnerId,
       runnerName: body.data.runnerName,
       runnerGroup: body.data.group,
-      profiles: staticProfiles,
       totalVcpu: body.data.totalVcpu,
       totalMemoryMb: body.data.totalMemoryMb,
       maxConcurrent: body.data.maxConcurrent,
       allocatedVcpu: body.data.allocatedVcpu,
       allocatedMemoryMb: body.data.allocatedMemoryMb,
       runningCount: body.data.runningCount,
-      availableProfiles: admittableProfiles,
+      admittableProfiles,
       heldSessionStates,
       mode: body.data.mode,
       lastSeenAt: currentDate,
@@ -327,14 +325,13 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       set: {
         runnerName: body.data.runnerName,
         runnerGroup: body.data.group,
-        profiles: staticProfiles,
         totalVcpu: body.data.totalVcpu,
         totalMemoryMb: body.data.totalMemoryMb,
         maxConcurrent: body.data.maxConcurrent,
         allocatedVcpu: body.data.allocatedVcpu,
         allocatedMemoryMb: body.data.allocatedMemoryMb,
         runningCount: body.data.runningCount,
-        availableProfiles: admittableProfiles,
+        admittableProfiles,
         heldSessionStates,
         mode: body.data.mode,
         lastSeenAt: currentDate,

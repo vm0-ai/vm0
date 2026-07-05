@@ -60,7 +60,7 @@ export async function runnerSessionAffinityProtection(args: {
   const heldSessionProbe = JSON.stringify([
     { sessionId: args.cliAgentSessionId },
   ]);
-  const availableProfileProbe = JSON.stringify([args.profile]);
+  const admittableProfileProbe = JSON.stringify([args.profile]);
   const [holder] = await args.db
     .select({ runnerId: runnerState.runnerId })
     .from(runnerState)
@@ -70,7 +70,7 @@ export async function runnerSessionAffinityProtection(args: {
         eq(runnerState.mode, "running"),
         gt(runnerState.lastSeenAt, freshAfter),
         sql`${runnerState.heldSessionStates} @> ${heldSessionProbe}::jsonb`,
-        sql`${runnerState.availableProfiles} @> ${availableProfileProbe}::jsonb`,
+        sql`${runnerState.admittableProfiles} @> ${admittableProfileProbe}::jsonb`,
       ),
     )
     .limit(1);
