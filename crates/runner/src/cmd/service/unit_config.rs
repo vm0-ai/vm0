@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
@@ -9,34 +10,67 @@ pub(crate) async fn read_unit_config_path(unit_path: &Path) -> Option<PathBuf> {
 }
 
 async fn read_unit_dropin_content(unit_path: &Path) -> String {
-    let mut dir = OsString::from(unit_path.as_os_str());
-    dir.push(".d");
-    let dir = PathBuf::from(dir);
-    let mut entries = match tokio::fs::read_dir(&dir).await {
-        Ok(entries) => entries,
-        Err(_) => return String::new(),
-    };
-
-    let mut paths = Vec::new();
-    while let Ok(Some(entry)) = entries.next_entry().await {
-        let path = entry.path();
-        if path
-            .extension()
-            .is_some_and(|extension| extension == "conf")
-        {
-            paths.push(path);
+    let mut dropins = BTreeMap::new();
+    for (specificity, dir) in unit_dropin_dirs(unit_path).into_iter().enumerate() {
+        let mut entries = match tokio::fs::read_dir(&dir).await {
+            Ok(entries) => entries,
+            Err(_) => continue,
+        };
+        while let Ok(Some(entry)) = entries.next_entry().await {
+            let path = entry.path();
+            if path.extension().is_none_or(|extension| extension != "conf") {
+                continue;
+            }
+            let Some(file_name) = path.file_name() else {
+                continue;
+            };
+            dropins
+                .entry(file_name.to_os_string())
+                .and_modify(|(current_specificity, current_path)| {
+                    if specificity >= *current_specificity {
+                        *current_specificity = specificity;
+                        *current_path = path.clone();
+                    }
+                })
+                .or_insert((specificity, path));
         }
     }
-    paths.sort();
 
     let mut content = String::new();
-    for path in paths {
+    for (_, path) in dropins.into_values() {
         if let Ok(dropin) = tokio::fs::read_to_string(path).await {
             content.push('\n');
             content.push_str(&dropin);
         }
     }
     content
+}
+
+fn unit_dropin_dirs(unit_path: &Path) -> Vec<PathBuf> {
+    let Some(parent) = unit_path.parent() else {
+        return vec![path_with_suffix(unit_path, ".d")];
+    };
+    let Some(file_name) = unit_path.file_name().and_then(|name| name.to_str()) else {
+        return vec![path_with_suffix(unit_path, ".d")];
+    };
+    let Some((unit_name, unit_type)) = file_name.rsplit_once('.') else {
+        return vec![path_with_suffix(unit_path, ".d")];
+    };
+
+    let mut dirs = vec![parent.join(format!("{unit_type}.d"))];
+    for (idx, ch) in unit_name.char_indices() {
+        if ch == '-' {
+            dirs.push(parent.join(format!("{}.{unit_type}.d", &unit_name[..=idx])));
+        }
+    }
+    dirs.push(parent.join(format!("{file_name}.d")));
+    dirs
+}
+
+fn path_with_suffix(path: &Path, suffix: &str) -> PathBuf {
+    let mut value = OsString::from(path.as_os_str());
+    value.push(suffix);
+    PathBuf::from(value)
 }
 
 pub(crate) fn parse_unit_config_path(content: &str) -> Option<PathBuf> {
@@ -452,6 +486,107 @@ ExecStart="/usr/bin/runner" start --config "/etc/new-runner.yaml"
         assert_eq!(
             read_unit_config_path(&unit_path).await,
             Some(PathBuf::from("/etc/new-runner.yaml"))
+        );
+    }
+
+    #[tokio::test]
+    async fn read_unit_config_path_applies_prefix_dropin_override() {
+        let dir = tempfile::tempdir().unwrap();
+        let unit_path = dir.path().join("vm0-runner-v1.0.0.service");
+        std::fs::write(
+            &unit_path,
+            r#"
+[Service]
+ExecStart="/usr/bin/runner" start --config "/etc/old-runner.yaml"
+"#,
+        )
+        .unwrap();
+        let dropin_dir = dir.path().join("vm0-runner-.service.d");
+        std::fs::create_dir(&dropin_dir).unwrap();
+        std::fs::write(
+            dropin_dir.join("10-override.conf"),
+            r#"
+[Service]
+ExecStart=
+ExecStart="/usr/bin/runner" start --config "/etc/prefix-runner.yaml"
+"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            read_unit_config_path(&unit_path).await,
+            Some(PathBuf::from("/etc/prefix-runner.yaml"))
+        );
+    }
+
+    #[tokio::test]
+    async fn read_unit_config_path_applies_service_type_dropin_override() {
+        let dir = tempfile::tempdir().unwrap();
+        let unit_path = dir.path().join("vm0-runner-v1.0.0.service");
+        std::fs::write(
+            &unit_path,
+            r#"
+[Service]
+ExecStart="/usr/bin/runner" start --config "/etc/old-runner.yaml"
+"#,
+        )
+        .unwrap();
+        let dropin_dir = dir.path().join("service.d");
+        std::fs::create_dir(&dropin_dir).unwrap();
+        std::fs::write(
+            dropin_dir.join("10-override.conf"),
+            r#"
+[Service]
+ExecStart=
+ExecStart="/usr/bin/runner" start --config "/etc/type-runner.yaml"
+"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            read_unit_config_path(&unit_path).await,
+            Some(PathBuf::from("/etc/type-runner.yaml"))
+        );
+    }
+
+    #[tokio::test]
+    async fn read_unit_config_path_applies_most_specific_same_named_dropin() {
+        let dir = tempfile::tempdir().unwrap();
+        let unit_path = dir.path().join("vm0-runner-v1.0.0.service");
+        std::fs::write(
+            &unit_path,
+            r#"
+[Service]
+ExecStart="/usr/bin/runner" start --config "/etc/old-runner.yaml"
+"#,
+        )
+        .unwrap();
+        let prefix_dropin_dir = dir.path().join("vm0-runner-.service.d");
+        std::fs::create_dir(&prefix_dropin_dir).unwrap();
+        std::fs::write(
+            prefix_dropin_dir.join("10-override.conf"),
+            r#"
+[Service]
+ExecStart=
+ExecStart="/usr/bin/runner" start --config "/etc/prefix-runner.yaml"
+"#,
+        )
+        .unwrap();
+        let exact_dropin_dir = dir.path().join("vm0-runner-v1.0.0.service.d");
+        std::fs::create_dir(&exact_dropin_dir).unwrap();
+        std::fs::write(
+            exact_dropin_dir.join("10-override.conf"),
+            r#"
+[Service]
+ExecStart=
+ExecStart="/usr/bin/runner" start --config "/etc/exact-runner.yaml"
+"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            read_unit_config_path(&unit_path).await,
+            Some(PathBuf::from("/etc/exact-runner.yaml"))
         );
     }
 
