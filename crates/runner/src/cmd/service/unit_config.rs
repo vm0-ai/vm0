@@ -9,8 +9,10 @@ pub(crate) async fn read_unit_config_path(unit_path: &Path) -> Option<PathBuf> {
 pub(crate) fn parse_unit_config_path(content: &str) -> Option<PathBuf> {
     for line in content.lines() {
         let trimmed = line.trim();
-        if let Some(rest) = trimmed.strip_prefix("ExecStart=") {
-            return parse_exec_start_config(rest);
+        if let Some(rest) = trimmed.strip_prefix("ExecStart=")
+            && let Some(config_path) = parse_exec_start_config(rest)
+        {
+            return Some(config_path);
         }
     }
     None
@@ -251,6 +253,20 @@ mod tests {
 Description=runner
 
 [Service]
+ExecStart="/usr/bin/runner" start --config "/etc/runner.yaml"
+"#;
+
+        assert_eq!(
+            parse_unit_config_path(content),
+            Some(PathBuf::from("/etc/runner.yaml"))
+        );
+    }
+
+    #[test]
+    fn parse_unit_config_path_skips_unparseable_exec_start() {
+        let content = r#"
+[Service]
+ExecStart=
 ExecStart="/usr/bin/runner" start --config "/etc/runner.yaml"
 "#;
 
