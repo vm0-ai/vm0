@@ -10,7 +10,10 @@ import {
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
 
-import { detachedSetupPage as baseDetachedSetupPage } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage as baseDetachedSetupPage,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
 
@@ -447,9 +450,10 @@ describe("zero chat thread IndexedDB fallback", () => {
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("link", { name: THREAD_TITLE }),
-      ).toBeInTheDocument();
+      const threadLink = queryAllByRoleFast("link").find((link) => {
+        return link.textContent?.includes(THREAD_TITLE);
+      });
+      expect(threadLink).toBeDefined();
       expect(screen.getAllByText(THREAD_TITLE).length).toBeGreaterThan(1);
     });
     expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
