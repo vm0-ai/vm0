@@ -1,11 +1,12 @@
-import type { ConnectorType } from "@vm0/connectors/connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+
+type IdeationConnectorRef = string;
 
 interface UseCase {
   readonly title: string;
   readonly description: string;
   readonly prompt: string;
-  readonly connectors?: readonly ConnectorType[];
+  readonly connectors?: readonly IdeationConnectorRef[];
   readonly featureFlag?: FeatureSwitchKey;
 }
 
