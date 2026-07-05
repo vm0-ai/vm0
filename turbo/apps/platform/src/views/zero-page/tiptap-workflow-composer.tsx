@@ -36,6 +36,7 @@ import {
   type SlashWorkflowRange,
 } from "./slash-workflow.tsx";
 import type { ComposerPasteEvent } from "./composer-input-types.ts";
+import { composerInputMinHeightClass } from "./composer-input-layout.ts";
 
 // Match the textarea metrics so swapping inputs is visually seamless. The editor
 // element itself scrolls (single layer), so there is no overlay to sync. The
@@ -47,13 +48,8 @@ const EDITOR_CONTENT_CLASS =
   "caret-foreground outline-none focus:outline-none [&_p]:m-0 " +
   "selection:bg-primary/20";
 
-// Resting height: a single line on mobile (below the md breakpoint) when the
-// switch is on, otherwise the three-line desktop height on every viewport. This
-// mirrors the textarea composer in zero-chat-composer.tsx.
 function editorContentClass(singleLineOnMobile: boolean): string {
-  return singleLineOnMobile
-    ? `${EDITOR_CONTENT_CLASS} min-h-[44px] md:min-h-[96px]`
-    : `${EDITOR_CONTENT_CLASS} min-h-[96px]`;
+  return `${EDITOR_CONTENT_CLASS} ${composerInputMinHeightClass(singleLineOnMobile)}`;
 }
 
 const WORKFLOW_HIGHLIGHT_CLASS = "text-primary";
@@ -621,7 +617,7 @@ export function TiptapWorkflowComposer({
     <Popover open={showSlashWorkflowMenu}>
       <SlashCaretAnchor editor={editor} slashRange={slashRange} />
       <div
-        className={`relative ${singleLineOnMobile ? "min-h-[44px] md:min-h-[96px]" : "min-h-[96px]"}`}
+        className={`relative ${composerInputMinHeightClass(singleLineOnMobile)}`}
       >
         {input === "" && (
           <div

@@ -764,10 +764,10 @@ describe("chat composer models", () => {
     const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
     expect(textarea).toHaveAttribute("rows", "3");
     expect(textarea).toHaveClass("min-h-[96px]");
-    expect(textarea).not.toHaveClass("min-h-[44px]");
+    expect(textarea).not.toHaveClass("min-h-[72px]");
   });
 
-  it("uses the mobile single-line height in chat thread composers", async () => {
+  it("uses a larger mobile tap target in chat thread composers", async () => {
     mockOrgModelRoutes("kimi-k2.7-code");
     mockAgent();
     mockThread();
@@ -780,7 +780,7 @@ describe("chat composer models", () => {
 
     const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
     expect(textarea).toHaveAttribute("rows", "1");
-    expect(textarea).toHaveClass("min-h-[44px]", "md:min-h-[96px]");
+    expect(textarea).toHaveClass("min-h-[72px]", "md:min-h-[96px]");
   });
 
   it("keeps the agent chat slash composer at three-line height", async () => {
@@ -800,10 +800,10 @@ describe("chat composer models", () => {
 
     const editor = await findComposerEditor();
     expect(editor).toHaveClass("min-h-[96px]");
-    expect(editor).not.toHaveClass("min-h-[44px]");
+    expect(editor).not.toHaveClass("min-h-[72px]");
   });
 
-  it("uses the mobile single-line height in chat thread slash composers", async () => {
+  it("uses a larger mobile tap target in chat thread slash composers", async () => {
     mockOrgModelRoutes("kimi-k2.7-code");
     mockAgent();
     mockThread();
@@ -820,7 +820,7 @@ describe("chat composer models", () => {
     });
 
     const editor = await findComposerEditor();
-    expect(editor).toHaveClass("min-h-[44px]", "md:min-h-[96px]");
+    expect(editor).toHaveClass("min-h-[72px]", "md:min-h-[96px]");
   });
 
   it("suggests current agent workflows from slash input and highlights inserted workflow tokens", async () => {

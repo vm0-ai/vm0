@@ -106,6 +106,7 @@ import { AttachmentChips } from "./zero-attachment-chips.tsx";
 import { TiptapWorkflowComposer } from "./tiptap-workflow-composer.tsx";
 import { computerUseIllustrationImg } from "./platform-assets.ts";
 import type { ComposerPasteEvent } from "./composer-input-types.ts";
+import { composerInputMinHeightClass } from "./composer-input-layout.ts";
 import {
   parsePresentationEditDraft,
   previewPresentationHtml,
@@ -6202,10 +6203,7 @@ function ComposerTextarea({
       }}
       className={cn(
         "relative z-10 w-full resize-none bg-transparent px-4 pt-4 pb-0 text-[0.9375rem] leading-6 text-foreground caret-foreground placeholder:text-muted-foreground/40 border-0 focus:outline-none focus:ring-0 selection:bg-primary/20",
-        // The resting height is floored by min-height; rows is kept at 1 so the
-        // floor governs. Mobile rests at a single line and grows back to the
-        // three-line desktop height from the md breakpoint up.
-        singleLineOnMobile ? "min-h-[44px] md:min-h-[96px]" : "min-h-[96px]",
+        composerInputMinHeightClass(singleLineOnMobile),
       )}
       rows={singleLineOnMobile ? 1 : 3}
       placeholder={
@@ -6278,7 +6276,7 @@ function ComposerInputSlot({
     <div
       className={cn(
         "relative",
-        singleLineOnMobile ? "min-h-[44px] md:min-h-[96px]" : "min-h-[96px]",
+        composerInputMinHeightClass(singleLineOnMobile),
       )}
     >
       <ComposerTextarea
