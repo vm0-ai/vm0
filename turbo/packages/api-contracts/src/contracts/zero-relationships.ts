@@ -4,13 +4,20 @@ import { apiErrorSchema } from "./errors";
 
 const c = initContract();
 
-export const RELATIONSHIP_SEARCH_DEFAULT_LIMIT = 20;
-export const RELATIONSHIP_SEARCH_MAX_LIMIT = 50;
+export const RELATIONSHIP_SEARCH_DEFAULT_LIMIT = 100;
+export const RELATIONSHIP_SEARCH_MAX_LIMIT = 100;
 export const RELATIONSHIP_RECENT_INTERACTION_LIMIT = 5;
+
+const relationshipEntityTypeSchema = z.enum(["person", "organization"]);
+const relationshipItemKindSchema = z.enum([
+  "key_fact",
+  "preference",
+  "open_loop",
+]);
 
 const relationshipEntitySchema = z.object({
   id: z.string().uuid(),
-  type: z.enum(["person", "organization"]),
+  type: relationshipEntityTypeSchema,
   displayName: z.string(),
   primaryEmail: z.string().nullable(),
   domain: z.string().nullable(),
@@ -28,7 +35,7 @@ const relationshipSourceSchema = z.object({
 
 const relationshipItemSchema = z.object({
   id: z.string().uuid(),
-  kind: z.enum(["key_fact", "preference", "open_loop"]),
+  kind: relationshipItemKindSchema,
   text: z.string(),
   confidence: z.number().int().min(0).max(100),
   lastSeenAt: z.string(),
@@ -63,6 +70,13 @@ export const relationshipResolveResponseSchema = z.object({
 
 export const relationshipSearchResponseSchema = z.object({
   relationships: z.array(relationshipRecordSchema),
+  pagination: z.object({
+    page: z.number().int().positive(),
+    pageSize: z.number().int().positive(),
+    total: z.number().int().nonnegative(),
+    totalPages: z.number().int().positive(),
+    hasMore: z.boolean(),
+  }),
 });
 
 export const gmailRelationshipBackfillStatusSchema = z.enum([
@@ -214,12 +228,15 @@ export const zeroRelationshipsContract = c.router({
     headers: authHeadersSchema,
     query: z.object({
       q: z.string().max(300).optional(),
+      page: z.coerce.number().int().positive().default(1),
       limit: z.coerce
         .number()
         .int()
         .min(1)
         .max(RELATIONSHIP_SEARCH_MAX_LIMIT)
         .default(RELATIONSHIP_SEARCH_DEFAULT_LIMIT),
+      entityType: relationshipEntityTypeSchema.optional(),
+      itemKind: relationshipItemKindSchema.optional(),
     }),
     responses: {
       200: relationshipSearchResponseSchema,

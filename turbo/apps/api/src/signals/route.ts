@@ -201,6 +201,7 @@ import { testTelegramStateRoutes } from "./routes/test-telegram-state";
 import { testGenerationStateRoutes } from "./routes/test-generation-state";
 import { testOnboardingStatusStateRoutes } from "./routes/test-onboarding-status-state";
 import { testMemoryStateRoutes } from "./routes/test-memory-state";
+import { testRelationshipStateRoutes } from "./routes/test-relationship-state";
 import { testUsageInsightStateRoutes } from "./routes/test-usage-insight-state";
 import { testUsageStateRoutes } from "./routes/test-usage-state";
 import { testUserExportStateRoutes } from "./routes/test-user-export-state";
@@ -415,6 +416,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...testGenerationStateRoutes,
   ...testOnboardingStatusStateRoutes,
   ...testMemoryStateRoutes,
+  ...testRelationshipStateRoutes,
   ...testUsageInsightStateRoutes,
   ...testUsageStateRoutes,
   ...testUserExportStateRoutes,

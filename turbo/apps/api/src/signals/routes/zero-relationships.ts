@@ -237,7 +237,10 @@ const searchInner$ = computed(async (get) => {
       orgId: auth.orgId,
       userId: auth.userId,
       q: query.q,
+      page: query.page,
       limit: query.limit,
+      entityType: query.entityType,
+      itemKind: query.itemKind,
     }),
   );
   return { status: 200 as const, body: result };
