@@ -1838,13 +1838,15 @@ function appendUnassociatedUserMessage(params: {
       })
       .onConflictDoNothing({ target: chatMessages.id })
       .returning({ createdAt: chatMessages.createdAt });
-    if (inserted && params.touchThreadSort) {
-      await touchChatThreadLastMessageAt(
-        tx,
-        params.threadId,
-        inserted.createdAt,
-        params.chatThreadSortEventId,
-      );
+    if (inserted) {
+      if (params.touchThreadSort) {
+        await touchChatThreadLastMessageAt(
+          tx,
+          params.threadId,
+          inserted.createdAt,
+          params.chatThreadSortEventId,
+        );
+      }
       return { kind: "queued", createdAt: inserted.createdAt, inserted: true };
     }
     if (!explicitId) {
