@@ -2,6 +2,7 @@ import type { Command, Computed } from "ccstate";
 import type {
   ChatRunOptionsRequest,
   CodexServiceTier,
+  ChatThreadDraft,
   ModelSelectionRequest,
   GenerationTemplateRequest,
   PagedChatMessage,
@@ -103,6 +104,7 @@ export interface SubscribeRealtimeArgs {
 
 export interface ChatThreadDataSource {
   remoteThreadDetail$: Computed<Promise<ChatThread | null>>;
+  threadDraft$: Computed<Promise<ChatThreadDraft | null>>;
   reloadThread$: Command<void, []>;
   initialPage$: Computed<Promise<InitialPage>>;
   patchDraft$: Command<Promise<void>, [PatchDraftArgs, AbortSignal]>;

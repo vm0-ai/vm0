@@ -15,6 +15,7 @@ import {
 import {
   chatThreadsContract,
   chatThreadByIdContract,
+  chatThreadDraftContract,
   chatThreadMarkAgentReadContract,
   chatThreadMarkReadContract,
   chatThreadComputerUseHostContract,
@@ -235,9 +236,15 @@ export const apiAgentsHandlers = [
       lastMessageAt: "2026-03-10T00:00:00Z",
       createdAt: "2026-03-10T00:00:00Z",
       updatedAt: "2026-03-10T00:00:00Z",
+      codexServiceTier: null,
+    });
+  }),
+
+  // GET /api/zero/chat-threads/:id/draft
+  mockApi(chatThreadDraftContract.get, ({ respond }) => {
+    return respond(200, {
       draftContent: null,
       draftAttachments: null,
-      codexServiceTier: null,
     });
   }),
 

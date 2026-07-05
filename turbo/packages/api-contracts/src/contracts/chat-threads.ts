@@ -371,8 +371,6 @@ const chatThreadDetailSchema = z.object({
    * it is omitted from the paged list response.
    */
   pinnedAt: z.string().nullable().optional(),
-  draftContent: z.string().nullable().optional(),
-  draftAttachments: z.array(persistedAttachmentSchema).nullable().optional(),
   computerUseHostId: z.string().uuid().nullable().optional(),
   /**
    * Per-thread selected model pin. Provider route fields are retained for
@@ -397,6 +395,11 @@ const chatThreadDetailSchema = z.object({
 const chatThreadMetadataSchema = z.object({
   id: z.string(),
   title: z.string().nullable(),
+});
+
+const chatThreadDraftSchema = z.object({
+  draftContent: z.string().nullable(),
+  draftAttachments: z.array(persistedAttachmentSchema).nullable(),
 });
 
 /**
@@ -605,6 +608,26 @@ export const chatThreadByIdContract = c.router({
     },
     summary: "Delete a chat thread",
     body: c.noBody(),
+  },
+});
+
+/**
+ * Thread-scoped composer draft endpoint. Kept separate from thread detail so
+ * draft hydration does not require the larger current-thread detail payload.
+ */
+export const chatThreadDraftContract = c.router({
+  get: {
+    method: "GET",
+    path: "/api/zero/chat-threads/:id/draft",
+    headers: authHeadersSchema,
+    pathParams: chatThreadIdPathParamsSchema,
+    responses: {
+      200: chatThreadDraftSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Get chat thread draft content and attachments",
   },
 });
 
@@ -1128,6 +1151,7 @@ export const chatThreadGithubPrsContract = c.router({
 
 export type ChatThreadsContract = typeof chatThreadsContract;
 export type ChatThreadByIdContract = typeof chatThreadByIdContract;
+export type ChatThreadDraftContract = typeof chatThreadDraftContract;
 export type ChatThreadMarkReadContract = typeof chatThreadMarkReadContract;
 export type ChatThreadMarkAgentReadContract =
   typeof chatThreadMarkAgentReadContract;
@@ -1154,6 +1178,7 @@ export {
   chatThreadEventSchema,
   chatThreadDetailSchema,
   chatThreadMetadataSchema,
+  chatThreadDraftSchema,
   modelSelectionRequestSchema,
   chatRunOptionsRequestSchema,
   generationTemplateRequestSchema,
@@ -1220,6 +1245,7 @@ export type ChatThreadSnapshotProjection = z.infer<
 export type ChatThreadEvent = z.infer<typeof chatThreadEventSchema>;
 export type ChatThreadDetail = z.infer<typeof chatThreadDetailSchema>;
 export type ChatThreadMetadata = z.infer<typeof chatThreadMetadataSchema>;
+export type ChatThreadDraft = z.infer<typeof chatThreadDraftSchema>;
 export type PagedChatMessage = z.infer<typeof pagedChatMessageSchema>;
 export type ChatMessageUsagePayload = z.infer<
   typeof chatMessageUsagePayloadSchema

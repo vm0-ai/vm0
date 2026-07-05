@@ -3,7 +3,6 @@ import {
   chatThreadsContract,
   type ChatThreadListItem,
   type CodexServiceTier,
-  type PersistedAttachment,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { agentById, currentAgentId$, defaultAgentId$ } from "./agent.ts";
 import { zeroClient$ } from "./api-client.ts";
@@ -94,8 +93,6 @@ export const currentChatAgentDisplayName$ = computed(async (get) => {
 
 export interface ChatThread {
   lastReadMessageId: string | null;
-  draftContent: string | null;
-  draftAttachments: PersistedAttachment[] | null;
   selectedModel: string | null;
   codexServiceTier: CodexServiceTier | null;
   computerUseHostId: string | null;

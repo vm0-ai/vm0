@@ -382,8 +382,6 @@ function mockKeyboardNavigationThreads({
       activeRunIds: [],
       createdAt: "2026-06-01T00:00:00Z",
       updatedAt: "2026-06-01T00:00:00Z",
-      draftContent: null,
-      draftAttachments: null,
     });
   });
   context.mocks.api(
@@ -615,8 +613,6 @@ function mockServerQueuedThreadStories(): void {
       lastMessageAt: "2026-06-09T10:00:00Z",
       createdAt: "2026-06-09T10:00:00Z",
       updatedAt: "2026-06-09T10:00:00Z",
-      draftContent: null,
-      draftAttachments: null,
     });
   });
   context.mocks.api(
@@ -3104,8 +3100,6 @@ describe("chat lifecycle", () => {
         title: null,
         agentId: AGENT_ID,
         activeRunIds: [],
-        draftContent: null,
-        draftAttachments: null,
         createdAt: "2026-05-01T00:00:00Z",
         updatedAt: "2026-05-01T00:00:00Z",
       });
@@ -7406,8 +7400,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
         title: null,
         agentId: AGENT_ID,
         activeRunIds: running ? ["run-active"] : [],
-        draftContent: null,
-        draftAttachments: null,
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:00Z",
       });

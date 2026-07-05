@@ -727,8 +727,6 @@ describe("team page navigation", () => {
         lastReadAt: null,
         lastMessageAt: "2026-06-01T00:02:00Z",
         pinnedAt: null,
-        draftContent: null,
-        draftAttachments: null,
         computerUseHostId: null,
         modelProviderId: null,
         selectedModel: null,

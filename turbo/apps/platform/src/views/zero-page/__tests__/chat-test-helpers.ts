@@ -11,6 +11,7 @@ import {
   chatThreadsContract,
   chatThreadByIdContract,
   chatThreadComputerUseHostContract,
+  chatThreadDraftContract,
   chatThreadModelSelectionContract,
   chatThreadMessagesContract,
   chatMessagesContract,
@@ -97,6 +98,10 @@ export function mockSubagentThread(context: TestContext, threadId: string) {
       activeRunIds: [],
       createdAt: "2026-03-10T00:00:00Z",
       updatedAt: "2026-03-10T00:00:00Z",
+    });
+  });
+  context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
+    return respond(200, {
       draftContent: null,
       draftAttachments: null,
     });
@@ -788,11 +793,15 @@ export function mockChatLifecycle(
       lastMessageAt: "2026-03-10T00:00:00Z",
       createdAt: "2026-03-10T00:00:00Z",
       updatedAt: "2026-03-10T00:00:00Z",
-      draftContent: null,
-      draftAttachments: null,
       selectedModel,
       codexServiceTier,
       computerUseHostId,
+    });
+  });
+  context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
+    return respond(200, {
+      draftContent: null,
+      draftAttachments: null,
     });
   });
   context.mocks.api(

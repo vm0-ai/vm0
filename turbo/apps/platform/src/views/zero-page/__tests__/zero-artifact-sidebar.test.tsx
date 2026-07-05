@@ -115,8 +115,6 @@ function setupChatThread({
       title: null,
       agentId: AGENT_ID,
       activeRunIds: [],
-      draftContent: null,
-      draftAttachments: null,
       createdAt: "2026-03-10T00:00:00Z",
       updatedAt: "2026-03-10T00:00:00Z",
     });

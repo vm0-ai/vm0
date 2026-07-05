@@ -100,8 +100,6 @@ function unexpectedDataSourceCall(name: string): never {
 function createFailingSubscribeDataSource(): ChatThreadDataSource {
   const thread: ChatThread = {
     lastReadMessageId: null,
-    draftContent: null,
-    draftAttachments: null,
     selectedModel: null,
     codexServiceTier: null,
     computerUseHostId: null,
@@ -110,6 +108,12 @@ function createFailingSubscribeDataSource(): ChatThreadDataSource {
   return {
     remoteThreadDetail$: computed(() => {
       return Promise.resolve(thread);
+    }),
+    threadDraft$: computed(() => {
+      return Promise.resolve({
+        draftContent: null,
+        draftAttachments: null,
+      });
     }),
     reloadThread$: command(() => {}),
     initialPage$: computed(() => {

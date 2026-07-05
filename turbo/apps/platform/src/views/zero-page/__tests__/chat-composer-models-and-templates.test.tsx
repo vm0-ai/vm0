@@ -342,8 +342,6 @@ function mockThread(options?: {
       activeRunIds: options?.activeRunIds ?? [],
       createdAt: "2026-03-10T00:00:00Z",
       updatedAt: "2026-03-10T00:00:00Z",
-      draftContent: null,
-      draftAttachments: null,
       modelProviderId: null,
       selectedModel: options?.selectedModel ?? null,
     });

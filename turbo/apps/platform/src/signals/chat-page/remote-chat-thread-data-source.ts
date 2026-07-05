@@ -1,6 +1,7 @@
 import { command, computed, state, type Command } from "ccstate";
 import {
   chatThreadByIdContract,
+  chatThreadDraftContract,
   chatThreadMarkReadContract,
   chatThreadComputerUseHostContract,
   chatThreadModelSelectionContract,
@@ -471,14 +472,24 @@ export function createRemoteChatThreadDataSource(
       const body = threadResult.body;
       return {
         lastReadMessageId: body.lastReadMessageId ?? null,
-        draftContent: body.draftContent ?? null,
-        draftAttachments: body.draftAttachments ?? null,
         computerUseHostId: body.computerUseHostId ?? null,
         selectedModel: body.selectedModel ?? null,
         codexServiceTier: body.codexServiceTier ?? null,
       };
     },
   );
+
+  const threadDraft$ = computed(async (get) => {
+    const client = get(zeroClient$)(chatThreadDraftContract);
+    const result = await accept(
+      client.get({ params: { id: threadId } }),
+      [200, 404],
+    );
+    if (result.status === 404) {
+      return null;
+    }
+    return result.body;
+  });
 
   const reloadThread$ = command(({ set }) => {
     set(reloadCounter$, (v) => {
@@ -512,6 +523,7 @@ export function createRemoteChatThreadDataSource(
 
   return {
     remoteThreadDetail$,
+    threadDraft$,
     reloadThread$,
     initialPage$,
     patchDraft$,

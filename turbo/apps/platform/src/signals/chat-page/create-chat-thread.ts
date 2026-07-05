@@ -499,12 +499,13 @@ function cancellableRunIdsFromRawMessages(
 // Sub-factory: remote thread detail fetching
 // ---------------------------------------------------------------------------
 
-// The data source owns both `remoteThreadDetail$` (the resolved thread) and
-// `reloadThread$` (the invalidation lever). Local mode never reloads;
-// remote mode bumps an internal counter on its `remoteThreadDetail$` computed.
+// The data source owns remote thread detail/draft reads plus `reloadThread$`
+// as the detail invalidation lever. Local mode never reloads; remote mode bumps
+// an internal counter on its `remoteThreadDetail$` computed.
 function createRemoteThreadDetail(dataSource: ChatThreadDataSource) {
   return {
     remoteThreadDetail$: dataSource.remoteThreadDetail$,
+    threadDraft$: dataSource.threadDraft$,
     reloadThread$: dataSource.reloadThread$,
   };
 }
@@ -3520,7 +3521,7 @@ export function createChatThreadSignals(
   draft: DraftSignals,
   dataSource: ChatThreadDataSource = createRemoteChatThreadDataSource(threadId),
 ): ChatThreadSignals {
-  const { remoteThreadDetail$, reloadThread$ } =
+  const { remoteThreadDetail$, threadDraft$, reloadThread$ } =
     createRemoteThreadDetail(dataSource);
   const threadMeta$ = createThreadMeta(threadId);
   const { threadTitleEmoji$, threadTitleText$ } =
@@ -3600,6 +3601,7 @@ export function createChatThreadSignals(
   return {
     threadId,
     remoteThreadDetail$,
+    threadDraft$,
     threadMeta$,
     reloadThread$,
     threadTitleEmoji$,
