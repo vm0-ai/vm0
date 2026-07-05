@@ -143,7 +143,7 @@ pub async fn run_gc(args: GcArgs) -> RunnerResult<()> {
 /// successful full-pass `(deleted_count, freed_bytes)`, or `(0, 0)` on init or
 /// scan failure. A failed scan may have already deleted earlier pages.
 ///
-/// Idempotent across the fleet — every host runs the same scan; DELETE on
+/// Idempotent across the fleet — every host attempts the same scan; DELETE on
 /// already-absent keys is a no-op success.
 async fn gc_r2(keep_days: u64, dry_run: bool) -> (u64, u64) {
     let cache = match R2ImageCache::from_env().await {
