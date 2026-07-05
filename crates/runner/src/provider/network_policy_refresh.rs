@@ -206,12 +206,21 @@ impl NetworkPolicyRefreshCore {
 
         if let Some(refreshes) = registration.refreshes {
             for (connector_ref, refresh) in refreshes {
-                self.replace_schedule(
-                    registration.run_id,
-                    connector_ref,
-                    Some(refresh.next_refresh_at.clone()),
-                )
-                .await;
+                if self
+                    .replace_schedule(
+                        registration.run_id,
+                        connector_ref,
+                        Some(refresh.next_refresh_at.clone()),
+                    )
+                    .await
+                    .is_err()
+                {
+                    self.fail_closed_active_connectors(
+                        registration.run_id,
+                        std::slice::from_ref(connector_ref),
+                    )
+                    .await;
+                }
             }
         }
     }
@@ -424,6 +433,16 @@ impl NetworkPolicyRefreshCore {
                 continue;
             };
 
+            let deadline =
+                match parse_optional_refresh_deadline(response.next_refresh_at.as_deref()) {
+                    Ok(deadline) => deadline,
+                    Err(()) => {
+                        if let Some(snapshot) = self.active_snapshot(run_id, connector_ref).await {
+                            fail_closed_network_policy(run_id, connector_ref, snapshot).await;
+                        }
+                        continue;
+                    }
+                };
             let Some(snapshot) = self.active_snapshot(run_id, connector_ref).await else {
                 continue;
             };
@@ -436,7 +455,7 @@ impl NetworkPolicyRefreshCore {
                         connector_ref,
                         "refreshed network policy"
                     );
-                    self.replace_schedule(run_id, connector_ref, response.next_refresh_at)
+                    self.replace_schedule_deadline(run_id, connector_ref, deadline)
                         .await;
                 }
                 Ok(false) => {
@@ -503,8 +522,19 @@ impl NetworkPolicyRefreshCore {
         run_id: RunId,
         connector_ref: &str,
         next_refresh_at: Option<String>,
+    ) -> Result<(), ()> {
+        let deadline = parse_optional_refresh_deadline(next_refresh_at.as_deref())?;
+        self.replace_schedule_deadline(run_id, connector_ref, deadline)
+            .await;
+        Ok(())
+    }
+
+    async fn replace_schedule_deadline(
+        &self,
+        run_id: RunId,
+        connector_ref: &str,
+        deadline: Option<tokio::time::Instant>,
     ) {
-        let deadline = next_refresh_at.as_deref().and_then(parse_refresh_deadline);
         let mut active_runs = self.inner.active_runs.lock().await;
         let Some(active) = active_runs.get_mut(&run_id) else {
             return;
@@ -690,7 +720,13 @@ async fn fail_closed_network_policy(
     }
 }
 
-fn parse_refresh_deadline(value: &str) -> Option<tokio::time::Instant> {
+fn parse_optional_refresh_deadline(
+    value: Option<&str>,
+) -> Result<Option<tokio::time::Instant>, ()> {
+    value.map(parse_refresh_deadline).transpose()
+}
+
+fn parse_refresh_deadline(value: &str) -> Result<tokio::time::Instant, ()> {
     let deadline = match DateTime::parse_from_rfc3339(value) {
         Ok(deadline) => deadline.with_timezone(&Utc),
         Err(error) => {
@@ -699,14 +735,14 @@ fn parse_refresh_deadline(value: &str) -> Option<tokio::time::Instant> {
                 error = %error,
                 "invalid network policy refresh deadline"
             );
-            return None;
+            return Err(());
         }
     };
     let delay = deadline
         .signed_duration_since(Utc::now())
         .to_std()
         .unwrap_or(EXPIRED_REFRESH_DEADLINE_RETRY_DELAY);
-    Some(tokio::time::Instant::now() + delay)
+    Ok(tokio::time::Instant::now() + delay)
 }
 
 fn unique_connector_refs(connector_refs: Vec<String>) -> Vec<String> {
@@ -1347,7 +1383,8 @@ mod tests {
             "slack",
             Some("1970-01-01T00:00:00.000Z".to_string()),
         )
-        .await;
+        .await
+        .expect("valid refresh deadline should schedule");
         assert!(matches!(
             requests.try_recv(),
             Err(tokio::sync::mpsc::error::TryRecvError::Empty)
@@ -1386,7 +1423,8 @@ mod tests {
                 connector_ref,
                 Some("1970-01-01T00:00:00.000Z".to_string()),
             )
-            .await;
+            .await
+            .expect("valid refresh deadline should schedule");
         }
         assert!(matches!(
             requests.try_recv(),
@@ -1434,7 +1472,8 @@ mod tests {
             "slack",
             Some("1970-01-01T00:00:00.000Z".to_string()),
         )
-        .await;
+        .await
+        .expect("valid refresh deadline should schedule");
         assert!(
             core.inner
                 .active_runs
@@ -1479,7 +1518,8 @@ mod tests {
             "slack",
             Some("1970-01-01T00:00:00.000Z".to_string()),
         )
-        .await;
+        .await
+        .expect("valid refresh deadline should schedule");
         tokio::time::advance(EXPIRED_REFRESH_DEADLINE_RETRY_DELAY).await;
 
         wait_until_scheduled_refresh_task_clears(&core, run_id).await;
@@ -1503,6 +1543,39 @@ mod tests {
     #[tokio::test]
     async fn failed_network_policy_refresh_fails_closed() {
         assert_failed_network_policy_refresh_fail_closed().await;
+    }
+
+    #[tokio::test]
+    async fn invalid_network_policy_refresh_deadline_fails_closed() {
+        let server = MockServer::start();
+        let run_id = RunId::nil();
+        server.mock(|when, then| {
+            when.method(POST)
+                .path(format!("/api/runners/runs/{run_id}/network-policy-refresh"));
+            then.status(200)
+                .header("content-type", "application/json")
+                .json_body(json!({
+                    "refreshes": [
+                        {
+                            "connectorRef": "slack",
+                            "networkPolicy": {
+                                "allow": ["chat:write", "files:write"],
+                                "deny": [],
+                                "ask": [],
+                                "unknownPolicy": "allow",
+                            },
+                            "nextRefreshAt": "not-a-date",
+                        },
+                    ],
+                }));
+        });
+
+        let harness = NetworkPolicyRefreshHarness::new(&server, run_id).await;
+        harness.refresh_slack().await;
+        let policy = harness.slack_policy().await;
+        assert_fail_closed_policy(&policy);
+
+        harness.shutdown().await;
     }
 
     #[tokio::test]
