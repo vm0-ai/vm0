@@ -560,7 +560,7 @@ Output:
 Rules:
 - HTML may be a full snapshot or focused target context. Use target node IDs as intent anchors; do not assume selected DOM is the source of truth.
 - Inspect HTML, Scripts, and Target-script context. Use DOM patches for static markup, including text, color, background, icon, attributes, classes, and nested markup.
-- If inline script data/source renders, derives, resets, or overwrites selected content or behavior, patch that script or backing data too.
+- Source-of-truth rule: when Target-script context or inline scripts reference the selected node, its selectors, or its visible text, check whether that script renders, derives, resets, or overwrites the requested content or behavior. If yes, a DOM-only response is invalid; include script_text_replace or script_update for the script/backing data.
 - Keep DOM fallback and script value synchronized when they represent the same user-facing text.
 - Prefer the smallest patch: script_text_replace for exact small script text/data changes, script_update for larger inline script edits, script_delete only when requested, and script_add only when existing DOM/script cannot satisfy the requested behavior.
 - For script_update/script_add, content is script body only, without <script> tags. For script_text_replace, oldText must be exact and unique. For script_update/script_text_replace/script_delete, copy exact scriptId and oldSha256.

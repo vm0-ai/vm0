@@ -579,6 +579,7 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
     expect(upstreamPrompt).toContain(
       "do not assume selected DOM is the source of truth",
     );
+    expect(upstreamPrompt).toContain("a DOM-only response is invalid");
     expect(upstreamPrompt).toContain("html-dom-edit-patch");
     expect(upstreamPrompt).toContain('"operation":"update"');
     expect(upstreamPrompt).toContain("color, background, icon");
