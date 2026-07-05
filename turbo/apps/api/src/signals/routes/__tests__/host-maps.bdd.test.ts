@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
@@ -42,6 +42,17 @@ const GOOGLE_PLACE_DETAILS_URL =
 const OPENSTREETMAP_OVERPASS_URL = "https://overpass-api.de/api/interpreter";
 const OPENROUTER_CHAT_COMPLETIONS_URL =
   "https://openrouter.ai/api/v1/chat/completions";
+
+function sha256Hex(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+const HTML_SCRIPT_TAG_NAME = "script";
+
+function scriptTag(content: string, attributes?: string): string {
+  const attributeText = attributes ? ` ${attributes}` : "";
+  return `<${HTML_SCRIPT_TAG_NAME}${attributeText}>${content}</${HTML_SCRIPT_TAG_NAME}>`;
+}
 
 function expectPublicSlugSegment(value: string): void {
   expect(value).toMatch(/^[a-f0-9]{8}$/);
@@ -571,11 +582,19 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
     });
     expect(upstreamAuthorization).toBe("Bearer bdd-html-edit-key");
     expect(upstreamPrompt).toContain("vm0-node-1");
+    expect(upstreamPrompt).toContain("HTML may be a full snapshot");
+    expect(upstreamPrompt).toContain(
+      "do not assume selected DOM is the source of truth",
+    );
+    expect(upstreamPrompt).toContain("a DOM-only response is invalid");
     expect(upstreamPrompt).toContain("html-dom-edit-patch");
     expect(upstreamPrompt).toContain('"operation":"update"');
     expect(upstreamPrompt).toContain("color, background, icon");
-    expect(upstreamPrompt).toContain("Do not add comment markers");
+    expect(upstreamPrompt).toContain("comment markers");
     expect(upstreamPrompt).toContain("Do not return the complete HTML");
+    expect(upstreamPrompt).not.toContain(
+      "No target-related script context was found.",
+    );
     expect(upstreamPrompt).not.toContain("zero host");
 
     const snapshotUrl =
@@ -663,6 +682,658 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
     expect(invalid.body.error.message).toBe(
       "HTML edit generation returned invalid patch JSON",
     );
+  });
+
+  it("applies HTML edit script update, delete, and add patches [HOST-G]", async () => {
+    const bdd = createBddApi(context);
+    const api = createHostMapsBddApi(context);
+    const actor = bdd.user();
+    mockOptionalEnv("OPENROUTER_API_KEY", "bdd-html-edit-key");
+
+    const oldScriptContent = [
+      'const state = { title: "Draft headline" };',
+      'document.getElementById("title").textContent = state.title;',
+    ].join("\n");
+    const newScriptContent = [
+      'const state = { title: "Published headline" };',
+      'document.getElementById("title").textContent = state.title;',
+    ].join("\n");
+    const removableScriptContent = 'console.log("remove me");';
+    const oldScriptSha = sha256Hex(
+      scriptTag(oldScriptContent, 'data-vm0-script-id="vm0-script-1"'),
+    );
+    const removableScriptSha = sha256Hex(
+      scriptTag(removableScriptContent, 'data-vm0-script-id="vm0-script-2"'),
+    );
+    let upstreamPrompt: string | null = null;
+
+    server.use(
+      http.post(OPENROUTER_CHAT_COMPLETIONS_URL, async ({ request }) => {
+        const requestBody = (await request.json()) as {
+          readonly messages?: readonly { readonly content?: string }[];
+        };
+        upstreamPrompt = requestBody.messages?.at(-1)?.content ?? null;
+        return HttpResponse.json({
+          choices: [
+            {
+              finish_reason: "stop",
+              message: {
+                content: JSON.stringify({
+                  kind: "html-dom-edit-patch",
+                  version: 1,
+                  patches: [
+                    {
+                      commentId: "comment-1",
+                      targetNodeId: "vm0-node-1",
+                      operation: "update",
+                      outerHTML: '<h1 id="title">Published headline</h1>',
+                    },
+                    {
+                      commentId: "comment-1",
+                      scriptId: "vm0-script-1",
+                      oldSha256: oldScriptSha,
+                      operation: "script_update",
+                      content: newScriptContent,
+                    },
+                    {
+                      commentId: "comment-2",
+                      scriptId: "vm0-script-2",
+                      oldSha256: removableScriptSha,
+                      operation: "script_delete",
+                    },
+                    {
+                      commentId: "comment-3",
+                      operation: "script_add",
+                      placement: "end_of_body",
+                      content:
+                        'document.documentElement.dataset.edited = "true";',
+                    },
+                  ],
+                }),
+              },
+            },
+          ],
+        });
+      }),
+    );
+
+    const generated = await api.requestCreateHtmlEditDraft(
+      actor,
+      {
+        html: `<!doctype html><html><body><h1 id="title" data-vm0-node-id="vm0-node-1">Draft headline</h1>${scriptTag(oldScriptContent)}${scriptTag(removableScriptContent)}</body></html>`,
+        comments: [
+          {
+            id: "comment-1",
+            targetNodeIds: ["vm0-node-1"],
+            comment: "Update the title and keep runtime state in sync",
+          },
+          {
+            id: "comment-2",
+            targetNodeIds: ["vm0-node-1"],
+            comment: "Remove the obsolete console logging behavior",
+          },
+          {
+            id: "comment-3",
+            targetNodeIds: ["vm0-node-1"],
+            comment: "Mark the document as edited at runtime",
+          },
+        ],
+      },
+      [200],
+    );
+
+    expect(generated.body).toStrictEqual({
+      kind: "html-edit-draft",
+      version: 1,
+      html: `<!doctype html><html><body><h1 id="title">Published headline</h1>${scriptTag(newScriptContent)}${scriptTag('document.documentElement.dataset.edited = "true";')}</body></html>`,
+    });
+    expect(upstreamPrompt).toContain("scriptId: vm0-script-1");
+    expect(upstreamPrompt).toContain(`oldSha256: ${oldScriptSha}`);
+    expect(upstreamPrompt).toContain("Target-script context");
+    expect(upstreamPrompt).toContain("Target search terms: title");
+    expect(upstreamPrompt).toContain('document.getElementById("title")');
+    expect(upstreamPrompt).toContain(
+      'const state = { title: "Draft headline" };',
+    );
+    expect(upstreamPrompt).toContain('"operation":"script_update"');
+    expect(upstreamPrompt).toContain('"operation":"script_text_replace"');
+    expect(upstreamPrompt).toContain('"operation":"script_delete"');
+    expect(upstreamPrompt).toContain('"operation":"script_add"');
+    expect(upstreamPrompt).not.toContain("script_replace");
+  });
+
+  it("uses focused HTML edit context for large documents [HOST-H]", async () => {
+    const bdd = createBddApi(context);
+    const api = createHostMapsBddApi(context);
+    const actor = bdd.user();
+    mockOptionalEnv("OPENROUTER_API_KEY", "bdd-html-edit-key");
+
+    const oldScriptContent = [
+      'const state = { title: "Draft headline" };',
+      'document.getElementById("title").textContent = state.title;',
+    ].join("\n");
+    const oldScriptSha = sha256Hex(
+      scriptTag(oldScriptContent, 'data-vm0-script-id="vm0-script-1"'),
+    );
+    const largeFiller = `<section>${"large-filler ".repeat(6000)}</section>`;
+    let upstreamPrompt: string | null = null;
+
+    server.use(
+      http.post(OPENROUTER_CHAT_COMPLETIONS_URL, async ({ request }) => {
+        const requestBody = (await request.json()) as {
+          readonly messages?: readonly { readonly content?: string }[];
+        };
+        upstreamPrompt = requestBody.messages?.at(-1)?.content ?? null;
+        return HttpResponse.json({
+          choices: [
+            {
+              finish_reason: "stop",
+              message: {
+                content: JSON.stringify({
+                  kind: "html-dom-edit-patch",
+                  version: 1,
+                  patches: [
+                    {
+                      commentId: "comment-1",
+                      targetNodeId: "vm0-node-1",
+                      operation: "update",
+                      outerHTML: '<h1 id="title">Published headline</h1>',
+                    },
+                    {
+                      commentId: "comment-1",
+                      scriptId: "vm0-script-1",
+                      oldSha256: oldScriptSha,
+                      operation: "script_text_replace",
+                      oldText: '"Draft headline"',
+                      newText: '"Published headline"',
+                    },
+                  ],
+                }),
+              },
+            },
+          ],
+        });
+      }),
+    );
+
+    const generated = await api.requestCreateHtmlEditDraft(
+      actor,
+      {
+        html: `<!doctype html><html><body><h1 id="title" data-vm0-node-id="vm0-node-1">Draft headline</h1>${largeFiller}${scriptTag(oldScriptContent)}</body></html>`,
+        comments: [
+          {
+            id: "comment-1",
+            targetNodeIds: ["vm0-node-1"],
+            comment: "Update the title and runtime state",
+          },
+        ],
+      },
+      [200],
+    );
+
+    if ("error" in generated.body) {
+      throw new Error(generated.body.error.message);
+    }
+    expect(generated.body.html).toContain(
+      '<h1 id="title">Published headline</h1>',
+    );
+    expect(generated.body.html).toContain(
+      'const state = { title: "Published headline" };',
+    );
+    expect(upstreamPrompt).toContain("Focused HTML context");
+    expect(upstreamPrompt).toContain(
+      '<h1 id="title" data-vm0-node-id="vm0-node-1">Draft headline</h1>',
+    );
+    expect(upstreamPrompt).toContain('"operation":"script_text_replace"');
+    expect(upstreamPrompt).not.toContain(largeFiller);
+  });
+
+  it("applies HTML edit script add patches that use browser APIs [HOST-I]", async () => {
+    const bdd = createBddApi(context);
+    const api = createHostMapsBddApi(context);
+    const actor = bdd.user();
+    mockOptionalEnv("OPENROUTER_API_KEY", "bdd-html-edit-key");
+
+    server.use(
+      http.post(OPENROUTER_CHAT_COMPLETIONS_URL, () => {
+        return HttpResponse.json({
+          choices: [
+            {
+              finish_reason: "stop",
+              message: {
+                content: JSON.stringify({
+                  kind: "html-dom-edit-patch",
+                  version: 1,
+                  patches: [
+                    {
+                      commentId: "comment-1",
+                      operation: "script_add",
+                      placement: "end_of_body",
+                      content: 'fetch("/collect");',
+                    },
+                  ],
+                }),
+              },
+            },
+          ],
+        });
+      }),
+    );
+
+    const generated = await api.requestCreateHtmlEditDraft(
+      actor,
+      {
+        html: '<!doctype html><html><body><h1 data-vm0-node-id="vm0-node-1">Launch</h1></body></html>',
+        comments: [
+          {
+            id: "comment-1",
+            targetNodeIds: ["vm0-node-1"],
+            comment: "Add a runtime marker",
+          },
+        ],
+      },
+      [200],
+    );
+
+    expect(generated.body).toStrictEqual({
+      kind: "html-edit-draft",
+      version: 1,
+      html: `<!doctype html><html><body><h1>Launch</h1>${scriptTag('fetch("/collect");')}</body></html>`,
+    });
+  });
+
+  it("applies HTML edit script updates that mutate browser API calls [HOST-J]", async () => {
+    const bdd = createBddApi(context);
+    const api = createHostMapsBddApi(context);
+    const actor = bdd.user();
+    mockOptionalEnv("OPENROUTER_API_KEY", "bdd-html-edit-key");
+
+    const oldScriptContent =
+      'fetch("/old-endpoint");\nconst title = "Draft headline";';
+    const oldScriptSha = sha256Hex(
+      scriptTag(oldScriptContent, 'data-vm0-script-id="vm0-script-1"'),
+    );
+
+    server.use(
+      http.post(OPENROUTER_CHAT_COMPLETIONS_URL, () => {
+        return HttpResponse.json({
+          choices: [
+            {
+              finish_reason: "stop",
+              message: {
+                content: JSON.stringify({
+                  kind: "html-dom-edit-patch",
+                  version: 1,
+                  patches: [
+                    {
+                      commentId: "comment-1",
+                      scriptId: "vm0-script-1",
+                      oldSha256: oldScriptSha,
+                      operation: "script_update",
+                      content:
+                        'fetch("/collect");\nconst title = "Published headline";',
+                    },
+                  ],
+                }),
+              },
+            },
+          ],
+        });
+      }),
+    );
+
+    const generated = await api.requestCreateHtmlEditDraft(
+      actor,
+      {
+        html: `<!doctype html><html><body><h1 data-vm0-node-id="vm0-node-1">Draft headline</h1>${scriptTag(oldScriptContent)}</body></html>`,
+        comments: [
+          {
+            id: "comment-1",
+            targetNodeIds: ["vm0-node-1"],
+            comment: "Update the title",
+          },
+        ],
+      },
+      [200],
+    );
+
+    expect(generated.body).toStrictEqual({
+      kind: "html-edit-draft",
+      version: 1,
+      html: `<!doctype html><html><body><h1>Draft headline</h1>${scriptTag('fetch("/collect");\nconst title = "Published headline";')}</body></html>`,
+    });
+  });
+
+  it("applies HTML edit script updates that add imports or parameterized JavaScript fetches [HOST-K]", async () => {
+    const bdd = createBddApi(context);
+    const api = createHostMapsBddApi(context);
+    const actor = bdd.user();
+    mockOptionalEnv("OPENROUTER_API_KEY", "bdd-html-edit-key");
+
+    const importScriptContent = 'const title = "Draft headline";';
+    const importScriptSha = sha256Hex(
+      scriptTag(
+        importScriptContent,
+        'type="module" data-vm0-script-id="vm0-script-1"',
+      ),
+    );
+
+    server.use(
+      http.post(OPENROUTER_CHAT_COMPLETIONS_URL, () => {
+        return HttpResponse.json({
+          choices: [
+            {
+              finish_reason: "stop",
+              message: {
+                content: JSON.stringify({
+                  kind: "html-dom-edit-patch",
+                  version: 1,
+                  patches: [
+                    {
+                      commentId: "comment-1",
+                      scriptId: "vm0-script-1",
+                      oldSha256: importScriptSha,
+                      operation: "script_update",
+                      content:
+                        'import tracker from "/tracker.js";\nconst title = "Published headline";\ntracker();',
+                    },
+                  ],
+                }),
+              },
+            },
+          ],
+        });
+      }),
+    );
+
+    const importGenerated = await api.requestCreateHtmlEditDraft(
+      actor,
+      {
+        html: `<!doctype html><html><body><h1 data-vm0-node-id="vm0-node-1">Draft headline</h1>${scriptTag(importScriptContent, 'type="module"')}</body></html>`,
+        comments: [
+          {
+            id: "comment-1",
+            targetNodeIds: ["vm0-node-1"],
+            comment: "Update the title",
+          },
+        ],
+      },
+      [200],
+    );
+
+    expect(importGenerated.body).toStrictEqual({
+      kind: "html-edit-draft",
+      version: 1,
+      html: `<!doctype html><html><body><h1>Draft headline</h1>${scriptTag('import tracker from "/tracker.js";\nconst title = "Published headline";\ntracker();', 'type="module"')}</body></html>`,
+    });
+
+    const fetchScriptContent = 'const title = "Draft headline";';
+    const fetchScriptSha = sha256Hex(
+      scriptTag(
+        fetchScriptContent,
+        'type="text/javascript; charset=utf-8" data-vm0-script-id="vm0-script-1"',
+      ),
+    );
+
+    server.use(
+      http.post(OPENROUTER_CHAT_COMPLETIONS_URL, () => {
+        return HttpResponse.json({
+          choices: [
+            {
+              finish_reason: "stop",
+              message: {
+                content: JSON.stringify({
+                  kind: "html-dom-edit-patch",
+                  version: 1,
+                  patches: [
+                    {
+                      commentId: "comment-1",
+                      scriptId: "vm0-script-1",
+                      oldSha256: fetchScriptSha,
+                      operation: "script_update",
+                      content:
+                        'const title = "Published headline";\nfetch("/collect");',
+                    },
+                  ],
+                }),
+              },
+            },
+          ],
+        });
+      }),
+    );
+
+    const fetchGenerated = await api.requestCreateHtmlEditDraft(
+      actor,
+      {
+        html: `<!doctype html><html><body><h1 data-vm0-node-id="vm0-node-1">Draft headline</h1>${scriptTag(fetchScriptContent, 'type="text/javascript; charset=utf-8"')}</body></html>`,
+        comments: [
+          {
+            id: "comment-1",
+            targetNodeIds: ["vm0-node-1"],
+            comment: "Update the title",
+          },
+        ],
+      },
+      [200],
+    );
+
+    expect(fetchGenerated.body).toStrictEqual({
+      kind: "html-edit-draft",
+      version: 1,
+      html: `<!doctype html><html><body><h1>Draft headline</h1>${scriptTag('const title = "Published headline";\nfetch("/collect");', 'type="text/javascript; charset=utf-8"')}</body></html>`,
+    });
+  });
+
+  it("rejects HTML edit script patches that break out of script tags [HOST-L]", async () => {
+    const bdd = createBddApi(context);
+    const api = createHostMapsBddApi(context);
+    const actor = bdd.user();
+    mockOptionalEnv("OPENROUTER_API_KEY", "bdd-html-edit-key");
+
+    server.use(
+      http.post(OPENROUTER_CHAT_COMPLETIONS_URL, () => {
+        return HttpResponse.json({
+          choices: [
+            {
+              finish_reason: "stop",
+              message: {
+                content: JSON.stringify({
+                  kind: "html-dom-edit-patch",
+                  version: 1,
+                  patches: [
+                    {
+                      commentId: "comment-1",
+                      operation: "script_add",
+                      placement: "end_of_body",
+                      content: `</${HTML_SCRIPT_TAG_NAME}><img src=x alt="">`,
+                    },
+                  ],
+                }),
+              },
+            },
+          ],
+        });
+      }),
+    );
+
+    const rejected = await api.requestCreateHtmlEditDraft(
+      actor,
+      {
+        html: '<!doctype html><html><body><h1 data-vm0-node-id="vm0-node-1">Launch</h1></body></html>',
+        comments: [
+          {
+            id: "comment-1",
+            targetNodeIds: ["vm0-node-1"],
+            comment: "Add a runtime marker",
+          },
+        ],
+      },
+      [400],
+    );
+
+    expectApiError(rejected.body);
+    expect(rejected.body.error.message).toBe(
+      "HTML DOM edit script patches cannot contain closing script tags",
+    );
+  });
+
+  it("updates HTML edit scripts that contain script-like text [HOST-M]", async () => {
+    const bdd = createBddApi(context);
+    const api = createHostMapsBddApi(context);
+    const actor = bdd.user();
+    mockOptionalEnv("OPENROUTER_API_KEY", "bdd-html-edit-key");
+
+    const scriptLikeTemplate = `const template = "<${HTML_SCRIPT_TAG_NAME} data-demo=\\"x\\">";`;
+    const oldScriptContent = [
+      scriptLikeTemplate,
+      'const priority = "important draft";',
+      'const state = { title: "Draft headline" };',
+      'document.getElementById("title").textContent = state.title;',
+    ].join("\n");
+    const newScriptContent = [
+      scriptLikeTemplate,
+      'const priority = "important published";',
+      'const state = { title: "Published headline" };',
+      'document.getElementById("title").textContent = state.title;',
+    ].join("\n");
+    const oldScriptSha = sha256Hex(
+      scriptTag(oldScriptContent, 'data-vm0-script-id="vm0-script-1"'),
+    );
+
+    server.use(
+      http.post(OPENROUTER_CHAT_COMPLETIONS_URL, () => {
+        return HttpResponse.json({
+          choices: [
+            {
+              finish_reason: "stop",
+              message: {
+                content: JSON.stringify({
+                  kind: "html-dom-edit-patch",
+                  version: 1,
+                  patches: [
+                    {
+                      commentId: "comment-1",
+                      targetNodeId: "vm0-node-1",
+                      operation: "update",
+                      outerHTML: '<h1 id="title">Published headline</h1>',
+                    },
+                    {
+                      commentId: "comment-1",
+                      scriptId: "vm0-script-1",
+                      oldSha256: oldScriptSha,
+                      operation: "script_update",
+                      content: newScriptContent,
+                    },
+                  ],
+                }),
+              },
+            },
+          ],
+        });
+      }),
+    );
+
+    const generated = await api.requestCreateHtmlEditDraft(
+      actor,
+      {
+        html: `<!doctype html><html><body><h1 id="title" data-vm0-node-id="vm0-node-1">Draft headline</h1>${scriptTag(oldScriptContent)}</body></html>`,
+        comments: [
+          {
+            id: "comment-1",
+            targetNodeIds: ["vm0-node-1"],
+            comment: "Update the title and runtime state",
+          },
+        ],
+      },
+      [200],
+    );
+
+    expect(generated.body).toStrictEqual({
+      kind: "html-edit-draft",
+      version: 1,
+      html: `<!doctype html><html><body><h1 id="title">Published headline</h1>${scriptTag(newScriptContent)}</body></html>`,
+    });
+  });
+
+  it("updates HTML edit scripts with unchanged existing imports [HOST-N]", async () => {
+    const bdd = createBddApi(context);
+    const api = createHostMapsBddApi(context);
+    const actor = bdd.user();
+    mockOptionalEnv("OPENROUTER_API_KEY", "bdd-html-edit-key");
+
+    const oldScriptContent = [
+      'import tracker from "/tracker.js";',
+      'const state = { title: "Draft headline" };',
+      'document.getElementById("title").textContent = state.title;',
+      "tracker.ready();",
+    ].join("\n");
+    const newScriptContent = [
+      'import tracker from "/tracker.js";',
+      'const state = { title: "Published headline" };',
+      'document.getElementById("title").textContent = state.title;',
+      "tracker.ready();",
+    ].join("\n");
+    const oldScriptSha = sha256Hex(
+      scriptTag(
+        oldScriptContent,
+        'type="module" data-vm0-script-id="vm0-script-1"',
+      ),
+    );
+
+    server.use(
+      http.post(OPENROUTER_CHAT_COMPLETIONS_URL, () => {
+        return HttpResponse.json({
+          choices: [
+            {
+              finish_reason: "stop",
+              message: {
+                content: JSON.stringify({
+                  kind: "html-dom-edit-patch",
+                  version: 1,
+                  patches: [
+                    {
+                      commentId: "comment-1",
+                      targetNodeId: "vm0-node-1",
+                      operation: "update",
+                      outerHTML: '<h1 id="title">Published headline</h1>',
+                    },
+                    {
+                      commentId: "comment-1",
+                      scriptId: "vm0-script-1",
+                      oldSha256: oldScriptSha,
+                      operation: "script_update",
+                      content: newScriptContent,
+                    },
+                  ],
+                }),
+              },
+            },
+          ],
+        });
+      }),
+    );
+
+    const generated = await api.requestCreateHtmlEditDraft(
+      actor,
+      {
+        html: `<!doctype html><html><body><h1 id="title" data-vm0-node-id="vm0-node-1">Draft headline</h1>${scriptTag(oldScriptContent, 'type="module"')}</body></html>`,
+        comments: [
+          {
+            id: "comment-1",
+            targetNodeIds: ["vm0-node-1"],
+            comment: "Update the title and runtime state",
+          },
+        ],
+      },
+      [200],
+    );
+
+    expect(generated.body).toStrictEqual({
+      kind: "html-edit-draft",
+      version: 1,
+      html: `<!doctype html><html><body><h1 id="title">Published headline</h1>${scriptTag(newScriptContent, 'type="module"')}</body></html>`,
+    });
   });
 });
 
