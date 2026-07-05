@@ -911,10 +911,7 @@ async function assembleZip(
     }
     return await done.promise;
   })();
-  return await Promise.race([
-    done.promise,
-    finalized,
-  ]);
+  return await Promise.race([done.promise, finalized]);
 }
 
 async function isUserUnsubscribed(db: Db, userId: string): Promise<boolean> {
