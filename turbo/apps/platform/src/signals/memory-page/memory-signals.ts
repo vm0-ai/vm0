@@ -367,9 +367,10 @@ const reloadMemoryActivity$ = command(({ set }): void => {
 export const refreshMemoryDevSummaries$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<void> => {
     const client = get(zeroClient$)(zeroMemoryDevRefreshContract);
-    const result = await accept(client.refresh({ fetchOptions: { signal } }), [
-      200,
-    ]);
+    const result = await accept(
+      client.refresh({ fetchOptions: { signal } }),
+      [200],
+    );
     signal.throwIfAborted();
     toast.success(memoryDevRefreshMessage(result.body));
     set(reloadMemoryActivity$);
