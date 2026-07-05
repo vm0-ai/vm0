@@ -314,6 +314,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.MobileUnreadChatThreadShortcuts]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Show unread chat thread shortcuts between the mobile agent chat composer and suggested prompt cards.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ChatThreadUnifiedSearch]: {
     maintainer: "ethan@vm0.ai",
     description:

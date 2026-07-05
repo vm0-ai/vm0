@@ -3,6 +3,7 @@ import {
   agentComposeVersions,
   agentComposes,
 } from "@vm0/db/schema/agent-compose";
+import { agentRunCustomConnectorAuthRefs } from "@vm0/db/schema/agent-run-custom-connector-auth-ref";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { exportJobs } from "@vm0/db/schema/export-job";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
@@ -462,6 +463,44 @@ async function cleanupExpiredRunnerJobs(
   return deletedCount;
 }
 
+async function cleanupExpiredCustomConnectorAuthRefs(
+  db: Db,
+  signal: AbortSignal,
+): Promise<number> {
+  const result = await db.execute(sql`
+    DELETE FROM ${agentRunCustomConnectorAuthRefs}
+    WHERE ${agentRunCustomConnectorAuthRefs.expiresAt} <= now()
+  `);
+  signal.throwIfAborted();
+
+  const deletedCount = Number(result.rowCount ?? 0);
+  if (deletedCount > 0) {
+    L.debug("Cleaned up expired custom connector auth refs", {
+      count: deletedCount,
+    });
+  }
+  return deletedCount;
+}
+
+async function cleanupExpiredCustomConnectorAuthRefsSafely(
+  db: Db,
+  signal: AbortSignal,
+): Promise<number> {
+  const result = await settle(
+    cleanupExpiredCustomConnectorAuthRefs(db, signal),
+    signal,
+  );
+  if (result.ok) {
+    return result.value;
+  }
+
+  L.error("Failed to cleanup expired custom connector auth refs", {
+    error:
+      result.error instanceof Error ? result.error.message : "Unknown error",
+  });
+  return 0;
+}
+
 export const cleanupSandboxes$ = command(
   async ({ set }, signal: AbortSignal): Promise<CleanupSandboxesResult> => {
     const db = set(writeDb$);
@@ -515,6 +554,9 @@ export const cleanupSandboxes$ = command(
     signal.throwIfAborted();
     const expiredRunnerJobCount = await cleanupExpiredRunnerJobs(db, signal);
     signal.throwIfAborted();
+    const expiredCustomConnectorAuthRefCount =
+      await cleanupExpiredCustomConnectorAuthRefsSafely(db, signal);
+    signal.throwIfAborted();
     const drainedCount = await set(drainStaleQueues$, signal);
     signal.throwIfAborted();
     const queuedTerminalRuns = [
@@ -525,6 +567,7 @@ export const cleanupSandboxes$ = command(
       expiredQueueResult.deletedCount > 0 ||
       queuedTerminalRuns.length > 0 ||
       expiredRunnerJobCount > 0 ||
+      expiredCustomConnectorAuthRefCount > 0 ||
       drainedCount > 0
     ) {
       L.debug("Queue maintenance completed", {
@@ -532,6 +575,7 @@ export const cleanupSandboxes$ = command(
         expiredTimedOut: expiredQueueResult.timedOutRuns.length,
         launchOrphansTimedOut: queuedOrphanResult.timedOutRuns.length,
         expiredRunnerJobs: expiredRunnerJobCount,
+        expiredCustomConnectorAuthRefs: expiredCustomConnectorAuthRefCount,
         drained: drainedCount,
       });
     }

@@ -2,6 +2,7 @@ import { command, computed, state } from "ccstate";
 import {
   chatThreadMarkAgentReadContract,
   chatThreadsContract,
+  type ChatThreadListItem,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { accept } from "../../lib/accept.ts";
@@ -13,6 +14,10 @@ import {
   reloadChatUnreadStateCounter$,
 } from "../chat-thread-list-reload.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
+import {
+  eventDrivenActiveRunChatThreadIds$,
+  eventDrivenChatThreads$,
+} from "./chat-thread-event-sourcing.ts";
 
 type UnreadSnapshot = readonly { threadId: string; unreadAt: string }[];
 
@@ -92,6 +97,43 @@ export const unreadAgentIds$ = computed(
       toast: false,
     });
     return new Set(result.body.agentIds);
+  },
+);
+
+export const currentAgentUnreadChatThreads$ = computed(
+  async (get): Promise<ChatThreadListItem[]> => {
+    const features = get(featureSwitch$);
+    if (!features[FeatureSwitchKey.MobileUnreadChatThreadShortcuts]) {
+      return [];
+    }
+    const agentId = await get(currentChatAgentId$);
+    if (!agentId) {
+      return [];
+    }
+    const unreadThreadIds = await get(sidebarUnreadThreadIds$);
+    if (unreadThreadIds.size === 0) {
+      return [];
+    }
+    const activeRunThreadIds = get(eventDrivenActiveRunChatThreadIds$);
+    return (await get(eventDrivenChatThreads$))
+      .filter((thread) => {
+        return thread.agentId === agentId && unreadThreadIds.has(thread.id);
+      })
+      .map((thread) => {
+        return {
+          id: thread.id,
+          title: thread.title,
+          agent: {
+            id: thread.agentId,
+            avatarUrl: null,
+          },
+          createdAt: thread.createdAt,
+          updatedAt: thread.updatedAt,
+          running: activeRunThreadIds.has(thread.id),
+          pinnedAt: thread.pinnedAt,
+          renamedAt: thread.renamedAt,
+        };
+      });
   },
 );
 

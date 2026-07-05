@@ -74,6 +74,7 @@ const TEST_DATA_KEY = Buffer.from("0123456789abcdef0123456789abcdef", "utf8");
 const MODEL_FIRST_SELECTION_PROVIDER_ID =
   "00000000-0000-4000-8000-000000000000";
 const API_DISPATCH_QUEUE_PERSISTENCE_ACTION_TYPES = [
+  "api_dispatch_persist_custom_connector_auth_refs",
   "api_dispatch_insert_runner_job_queue",
 ] as const;
 const EXPECTED_ZERO_RUN_DISALLOWED_TOOLS = [
@@ -3928,6 +3929,142 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(resolved.body.headers).toStrictEqual({
       Authorization: "Bearer custom-secret-value",
     });
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
+  });
+
+  it("resolves custom connector auth from run-scoped refs when encrypted secrets omit aliases", async () => {
+    const api = createRunsAutomationsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const fw = createFirewallApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    const rand = randomUUID().slice(0, 8);
+    const saved = await connectors.saveCustomConnectorProposal(actor, {
+      proposal: {
+        operation: "create",
+        displayName: "BDD Auth Ref API",
+        prefixTemplates: [`https://auth-ref-${rand}.example.com/api/`],
+        fields: [
+          {
+            key: "api_key",
+            label: "API key",
+            kind: "secret",
+            required: true,
+          },
+          {
+            key: "tenant_id",
+            label: "Tenant ID",
+            kind: "variable",
+            required: true,
+          },
+        ],
+        headerInjections: [
+          {
+            name: "Authorization",
+            valueTemplate: "Bearer {{secrets.api_key}}",
+          },
+        ],
+        queryInjections: [
+          {
+            name: "tenant",
+            valueTemplate: "{{variables.tenant_id}}",
+          },
+        ],
+      },
+      values: [
+        { key: "api_key", kind: "secret", value: "auth-ref-secret" },
+        { key: "tenant_id", kind: "variable", value: "auth-ref-tenant" },
+      ],
+      agentId,
+    });
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "use the custom connector auth ref",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+
+    const idPart = saved.connector.id.replaceAll("-", "");
+    const internalName = `custom_connector_${idPart}`;
+    const secretKey = `CUSTOM_${idPart}_S_API_KEY`;
+    const tenantVarKey = `CUSTOM_${idPart}_V_TENANT_ID`;
+    const missingSecretKey = `CUSTOM_${idPart}_S_MISSING`;
+    const customApis = inlineFirewallApis(claim.firewalls, internalName);
+    expect(customApis[0]?.auth?.headers?.Authorization).toBe(
+      `Bearer \${{ secrets.${secretKey} }}`,
+    );
+    expect(customApis[0]?.auth?.query?.tenant).toBe(
+      `\${{ secrets.${tenantVarKey} }}`,
+    );
+
+    const resolvedFromRef = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      {
+        encryptedSecrets: fw.encryptedSecretsBody({}),
+        authHeaders: {
+          Authorization: `Bearer \${{ secrets.${secretKey} }}`,
+        },
+        authQuery: {
+          tenant: `\${{ secrets.${tenantVarKey} }}`,
+        },
+      },
+      [200],
+    );
+    if (resolvedFromRef.status !== 200) {
+      throw new Error("Expected the custom auth ref to resolve");
+    }
+    expect(resolvedFromRef.body.headers).toStrictEqual({
+      Authorization: "Bearer auth-ref-secret",
+    });
+    expect(resolvedFromRef.body.query).toStrictEqual({
+      tenant: "auth-ref-tenant",
+    });
+
+    const resolvedFromBody = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      {
+        encryptedSecrets: fw.encryptedSecretsBody({
+          [secretKey]: "explicit-secret",
+          [tenantVarKey]: "explicit-tenant",
+        }),
+        authHeaders: {
+          Authorization: `Bearer \${{ secrets.${secretKey} }}`,
+        },
+        authQuery: {
+          tenant: `\${{ secrets.${tenantVarKey} }}`,
+        },
+      },
+      [200],
+    );
+    if (resolvedFromBody.status !== 200) {
+      throw new Error("Expected the explicit encrypted secret to resolve");
+    }
+    expect(resolvedFromBody.body.headers).toStrictEqual({
+      Authorization: "Bearer explicit-secret",
+    });
+    expect(resolvedFromBody.body.query).toStrictEqual({
+      tenant: "explicit-tenant",
+    });
+
+    const missing = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      {
+        encryptedSecrets: fw.encryptedSecretsBody({}),
+        authHeaders: {
+          Authorization: `Bearer \${{ secrets.${missingSecretKey} }}`,
+        },
+      },
+      [424],
+    );
+    if (missing.status !== 424) {
+      throw new Error("Expected missing custom auth ref to fail closed");
+    }
+    expect(missing.body.error.code).toBe("CONNECTOR_NOT_CONFIGURED");
 
     await api.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await api.readRun(actor, run.runId);

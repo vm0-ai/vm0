@@ -54,6 +54,7 @@ export enum FeatureSwitchKey {
   DesktopX64Download = "desktopX64Download",
   PresentationImageUnsplashPreferred = "presentationImageUnsplashPreferred",
   AgentUnreadIndicators = "agentUnreadIndicators",
+  MobileUnreadChatThreadShortcuts = "mobileUnreadChatThreadShortcuts",
   ChatThreadUnifiedSearch = "chatThreadUnifiedSearch",
   ImageArtifactKeyboardNavigation = "imageArtifactKeyboardNavigation",
   AgentsPageRedesign = "agentsPageRedesign",

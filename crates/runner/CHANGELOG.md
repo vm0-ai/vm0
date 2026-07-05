@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.133.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.133.0...runner-rs-v0.133.1) (2026-07-05)
+
+
+### Bug Fixes
+
+* **runner:** guard service activation image artifacts ([#20227](https://github.com/vm0-ai/vm0/issues/20227)) ([90b5196](https://github.com/vm0-ai/vm0/commit/90b519609f54f32970a1342c97d2520b3d03c93e))
+
+
+### Refactoring
+
+* centralize run payload field validation ([#20225](https://github.com/vm0-ai/vm0/issues/20225)) ([8a293a7](https://github.com/vm0-ai/vm0/commit/8a293a762a48b4828780e8e99ca59e48ca915415))
+* **runner:** centralize workspace cache gc traversal ([#20226](https://github.com/vm0-ai/vm0/issues/20226)) ([23d52a6](https://github.com/vm0-ai/vm0/commit/23d52a65d63e3c10463fc2d9cfbe63e7c9144a50))
+
 ## [0.133.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.132.14...runner-rs-v0.133.0) (2026-07-05)
 
 
