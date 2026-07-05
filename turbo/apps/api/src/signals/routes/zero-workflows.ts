@@ -42,7 +42,7 @@ import {
   mintWorkflowWebhookSecret,
   mintWorkflowWebhookToken,
 } from "../services/workflow-webhook-trigger.service";
-import { workflowWebhookTriggerCreationEnabledForOwner } from "../services/workflow-automation-feature-switch.service";
+import { workflowWebhookTriggerCreationEnabledForOwner } from "../services/workflow-webhook-trigger-feature-switch.service";
 import {
   loadVisibleWorkflowById,
   requireWorkflowPermission,

@@ -1046,9 +1046,6 @@ describe("zero sidebar", () => {
       path: `/chats/${EXISTING_THREAD_ID}`,
       // Legacy linked automations no longer affect chat deletion; schedule
       // triggers own the automation lifecycle.
-      featureSwitches: {
-        [FeatureSwitchKey.WorkflowAutomation]: false,
-      },
     });
 
     await waitFor(() => {
@@ -1477,9 +1474,6 @@ describe("zero sidebar", () => {
     setupSidebarPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      // Pin the legacy composer (workflowAutomation overridden off) so the
-      // plain-textarea placeholder targeted below stays rendered.
-      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: false },
     });
 
     const composer = await screen.findByPlaceholderText(PLACEHOLDER);
@@ -1504,7 +1498,6 @@ describe("zero sidebar", () => {
     setupSidebarPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: false },
     });
 
     const composer = await screen.findByPlaceholderText(PLACEHOLDER);
@@ -1993,13 +1986,12 @@ describe("zero sidebar", () => {
     });
   });
 
-  it("shows workflows in the sidebar manage navigation when enabled", async () => {
+  it("shows workflows in the sidebar manage navigation", async () => {
     prepareDefaultAgent();
 
     setupSidebarPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: true },
     });
 
     const nav = await waitFor(() => {
@@ -2014,24 +2006,5 @@ describe("zero sidebar", () => {
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(within(nav).queryByText("Automations")).not.toBeInTheDocument();
-  });
-
-  it("hides workflows in the sidebar manage navigation when disabled", async () => {
-    prepareDefaultAgent();
-
-    setupSidebarPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-      // Globally enabled since #19959; disabling now requires a user override.
-      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: false },
-    });
-
-    const nav = await waitFor(() => {
-      return sidebar();
-    });
-
-    expect(within(nav).getByText("Agents")).toBeInTheDocument();
-    expect(within(nav).getByText("Automations")).toBeInTheDocument();
-    expect(within(nav).queryByText("Workflows")).not.toBeInTheDocument();
   });
 });

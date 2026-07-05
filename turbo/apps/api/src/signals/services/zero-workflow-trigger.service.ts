@@ -49,10 +49,7 @@ import {
 import { ensureGoogleCalendarWatchForUser } from "./google-calendar-workflow-event.service";
 import { ensureGoogleMeetTranscriptGeneratedSubscriptionForUser } from "./google-meet-workflow-event.service";
 import { prepareGithubLabelEventConfigForPersist } from "./github-workflow-event.service";
-import {
-  workflowAutomationEnabledForOwner,
-  workflowWebhookTriggerCreationEnabledForOwner,
-} from "./workflow-automation-feature-switch.service";
+import { workflowWebhookTriggerCreationEnabledForOwner } from "./workflow-webhook-trigger-feature-switch.service";
 import {
   buildWorkflowWebhookSummaryFields,
   defaultWebhookReceivedEventConfig,
@@ -1420,17 +1417,6 @@ const createEventTriggerForWorkflow$ = command(
     }
 
     if (input.eventType === "github-label-applied") {
-      const featureEnabled = await get(
-        workflowAutomationEnabledForOwner(input.orgId, input.member.userId),
-      );
-      signal.throwIfAborted();
-      if (!featureEnabled) {
-        return {
-          kind: "bad-request",
-          message: "GitHub label workflow event triggers are not enabled",
-        };
-      }
-
       return await createGithubLabelEventTriggerForWorkflow({
         context: args,
         input,
@@ -1439,17 +1425,6 @@ const createEventTriggerForWorkflow$ = command(
     }
 
     if (triggerCreateInputIsGoogleCalendar(input)) {
-      const featureEnabled = await get(
-        workflowAutomationEnabledForOwner(input.orgId, input.member.userId),
-      );
-      signal.throwIfAborted();
-      if (!featureEnabled) {
-        return {
-          kind: "bad-request",
-          message: "Google Calendar workflow event triggers are not enabled",
-        };
-      }
-
       return await createGoogleCalendarEventTriggerForWorkflow({
         context: args,
         input,
@@ -1458,17 +1433,6 @@ const createEventTriggerForWorkflow$ = command(
     }
 
     if (triggerCreateInputIsGoogleMeet(input)) {
-      const featureEnabled = await get(
-        workflowAutomationEnabledForOwner(input.orgId, input.member.userId),
-      );
-      signal.throwIfAborted();
-      if (!featureEnabled) {
-        return {
-          kind: "bad-request",
-          message: "Google Meet workflow event triggers are not enabled",
-        };
-      }
-
       return await createGoogleMeetEventTriggerForWorkflow({
         context: args,
         input,
@@ -1480,17 +1444,6 @@ const createEventTriggerForWorkflow$ = command(
       return {
         kind: "bad-request",
         message: "Unsupported workflow event trigger type",
-      };
-    }
-
-    const featureEnabled = await get(
-      workflowAutomationEnabledForOwner(input.orgId, input.member.userId),
-    );
-    signal.throwIfAborted();
-    if (!featureEnabled) {
-      return {
-        kind: "bad-request",
-        message: "Gmail workflow event triggers are not enabled",
       };
     }
 
@@ -1704,7 +1657,7 @@ async function updateTriggerEventConfig(
 
 const updateEventTriggerForWorkflow$ = command(
   async (
-    { get },
+    _,
     args: {
       readonly db: Db;
       readonly orgId: string;
@@ -1748,16 +1701,6 @@ const updateEventTriggerForWorkflow$ = command(
         return {
           kind: "bad-request",
           message: "eventConfig must be a GitHub label applied config",
-        };
-      }
-      const featureEnabled = await get(
-        workflowAutomationEnabledForOwner(args.orgId, args.member.userId),
-      );
-      signal.throwIfAborted();
-      if (!featureEnabled) {
-        return {
-          kind: "bad-request",
-          message: "GitHub label workflow event triggers are not enabled",
         };
       }
       const preparedConfig = await prepareGithubLabelEventConfigForPersist(
@@ -2030,7 +1973,7 @@ export const deleteWorkflowTrigger$ = command(
 
 const ensureEventTriggerCanBeEnabled$ = command(
   async (
-    { get },
+    _,
     args: {
       readonly db: Db;
       readonly orgId: string;
@@ -2040,17 +1983,6 @@ const ensureEventTriggerCanBeEnabled$ = command(
     signal: AbortSignal,
   ): Promise<TriggerActionFailure | null> => {
     if (args.trigger.eventType === "gmail-new-message") {
-      const featureEnabled = await get(
-        workflowAutomationEnabledForOwner(args.orgId, args.member.userId),
-      );
-      signal.throwIfAborted();
-      if (!featureEnabled) {
-        return {
-          kind: "bad-request",
-          message: "Gmail workflow event triggers are not enabled",
-        };
-      }
-
       const watchResult = await ensureGmailWatchForUser({
         db: args.db,
         orgId: args.orgId,
@@ -2065,16 +1997,6 @@ const ensureEventTriggerCanBeEnabled$ = command(
     }
 
     if (args.trigger.eventType === "github-label-applied") {
-      const featureEnabled = await get(
-        workflowAutomationEnabledForOwner(args.orgId, args.member.userId),
-      );
-      signal.throwIfAborted();
-      if (!featureEnabled) {
-        return {
-          kind: "bad-request",
-          message: "GitHub label workflow event triggers are not enabled",
-        };
-      }
       const config = githubLabelAppliedEventConfigSchema.parse(
         args.trigger.eventConfig,
       );
@@ -2091,16 +2013,6 @@ const ensureEventTriggerCanBeEnabled$ = command(
     }
 
     if (supportedGoogleCalendarEventType(args.trigger.eventType)) {
-      const featureEnabled = await get(
-        workflowAutomationEnabledForOwner(args.orgId, args.member.userId),
-      );
-      signal.throwIfAborted();
-      if (!featureEnabled) {
-        return {
-          kind: "bad-request",
-          message: "Google Calendar workflow event triggers are not enabled",
-        };
-      }
       const config = parseGoogleCalendarEventConfig(
         args.trigger.eventType,
         args.trigger.eventConfig,
@@ -2120,16 +2032,6 @@ const ensureEventTriggerCanBeEnabled$ = command(
     }
 
     if (supportedGoogleMeetEventType(args.trigger.eventType)) {
-      const featureEnabled = await get(
-        workflowAutomationEnabledForOwner(args.orgId, args.member.userId),
-      );
-      signal.throwIfAborted();
-      if (!featureEnabled) {
-        return {
-          kind: "bad-request",
-          message: "Google Meet workflow event triggers are not enabled",
-        };
-      }
       const subscriptionResult =
         await ensureGoogleMeetTranscriptGeneratedSubscriptionForUser({
           db: args.db,
@@ -2142,16 +2044,6 @@ const ensureEventTriggerCanBeEnabled$ = command(
         return { kind: "bad-request", message: subscriptionResult.message };
       }
       return null;
-    }
-
-    if (args.trigger.eventType === "webhook-received") {
-      const featureEnabled = await get(
-        workflowAutomationEnabledForOwner(args.orgId, args.member.userId),
-      );
-      signal.throwIfAborted();
-      if (!featureEnabled) {
-        return workflowWebhookTriggersDisabledResult();
-      }
     }
     return null;
   },

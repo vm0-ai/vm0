@@ -1,5 +1,4 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { screen, waitFor } from "@testing-library/react";
 import {
   logsListContract,
   type LogsListResponse,
@@ -7,11 +6,7 @@ import {
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import { describe, expect, it } from "vitest";
 
-import {
-  click,
-  detachedSetupPage,
-  queryAllByRoleFast,
-} from "../../../__tests__/page-helper.ts";
+import { click, detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { createMockAutomationView } from "../../../mocks/handlers/automations-store.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
@@ -32,58 +27,6 @@ function createZeroAgent(): TeamComposeItem {
     headVersionId: "version_1",
     updatedAt: "2026-03-10T00:00:00Z",
   };
-}
-
-function buttonByText(text: string): HTMLElement {
-  const button = queryAllByRoleFast("button").find((candidate) => {
-    return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
-  });
-  if (!button) {
-    throw new Error(`${text} button not found`);
-  }
-  return button;
-}
-
-function tabByText(text: string): HTMLElement {
-  const tab = queryAllByRoleFast("tab").find((candidate) => {
-    return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
-  });
-  if (!tab) {
-    throw new Error(`${text} tab not found`);
-  }
-  return tab;
-}
-
-function normalizeText(element: Element): string {
-  return element.textContent?.replace(/\s+/g, " ").trim() ?? "";
-}
-
-function selectOptionByLabel(
-  label: string,
-  option: string | RegExp,
-  container: HTMLElement = document.body,
-): void {
-  click(within(container).getByLabelText(label));
-  click(screen.getByRole("option", { name: option }));
-}
-
-function selectTimeComboboxByIndex(index: number, option: string): void {
-  const trigger = screen.getAllByRole("combobox").filter((candidate) => {
-    return /^\d{2}$/u.test(normalizeText(candidate));
-  })[index];
-  if (!trigger) {
-    throw new Error(`time combobox ${index} not found`);
-  }
-  click(trigger);
-  click(screen.getByRole("option", { name: option }));
-}
-
-function expectTextPresent(text: string | RegExp): void {
-  expect(
-    screen.getAllByText(text).some((element) => {
-      return normalizeText(element).length > 0;
-    }),
-  ).toBeTruthy();
 }
 
 function mockAutomationDetailStory(): void {
@@ -121,6 +64,7 @@ function mockAutomationDetailStory(): void {
   ];
 
   context.mocks.data.team([createZeroAgent()]);
+  context.mocks.data.userPreferences({ timezone: "UTC" });
   context.mocks.data.automations([
     createMockAutomationView({
       id: automationId,
@@ -164,14 +108,13 @@ describe("zero automation detail page", () => {
     await waitFor(() => {
       expect(screen.getByText("Automation not found")).toBeInTheDocument();
       expect(
-        screen.getByText("This automation doesn't exist or was removed."),
+        screen.getByText("This automation does not exist or was removed."),
       ).toBeInTheDocument();
       expect(screen.getByText("Back to automations")).toBeInTheDocument();
     });
   });
 
-  it("edits and discards automation instructions", async () => {
-    const user = userEvent.setup({ delay: null });
+  it("shows read-only automation details", async () => {
     mockAutomationDetailStory();
 
     detachedSetupPage({ context, path: `/automations/${automationId}` });
@@ -182,182 +125,15 @@ describe("zero automation detail page", () => {
       ).toBeInTheDocument();
     });
 
-    click(tabByText("Instructions"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByText(
-          "This instruction runs each time this automation executes.",
-        ),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByText("Send morning brief to the team channel"),
-      ).toBeInTheDocument();
-    });
-
-    const editor = document.querySelector('[contenteditable="true"]');
-    if (!(editor instanceof HTMLElement)) {
-      throw new Error("automation instructions editor not found");
-    }
-
-    await user.click(editor);
-    await user.keyboard("{Control>}a{/Control}Send a concise launch brief");
-
-    await waitFor(() => {
-      expect(screen.getByText("You have unsaved changes")).toBeInTheDocument();
-    });
-
-    click(buttonByText("Discard"));
-
-    await waitFor(() => {
-      expect(
-        screen.queryByText("You have unsaved changes"),
-      ).not.toBeInTheDocument();
-      expect(
-        screen.getByText("Send morning brief to the team channel"),
-      ).toBeInTheDocument();
-    });
-
-    const resetEditor = document.querySelector('[contenteditable="true"]');
-    if (!(resetEditor instanceof HTMLElement)) {
-      throw new Error("reset automation instructions editor not found");
-    }
-
-    await user.click(resetEditor);
-    await user.keyboard("{Control>}a{/Control}Send a concise launch brief");
-
-    await waitFor(() => {
-      expect(screen.getByText("You have unsaved changes")).toBeInTheDocument();
-    });
-
-    click(buttonByText("Save"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Automation updated")).toBeInTheDocument();
-      expect(
-        screen.getByText("Send a concise launch brief"),
-      ).toBeInTheDocument();
-    });
-  });
-
-  it("discards automation settings changes", async () => {
-    mockAutomationDetailStory();
-
-    detachedSetupPage({ context, path: `/automations/${automationId}` });
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Morning brief" }),
-      ).toBeInTheDocument();
-    });
+    expect(screen.getAllByText("Status").length).toBeGreaterThan(0);
     expect(screen.getByText("Active")).toBeInTheDocument();
-    expectTextPresent(/Every weekday/u);
-    expect(screen.getByText("Danger zone")).toBeInTheDocument();
-
-    fireEvent.change(screen.getByDisplayValue("Morning brief"), {
-      target: { value: "Draft update" },
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("You have unsaved changes")).toBeInTheDocument();
-    });
-
-    click(buttonByText("Discard"));
-
-    await waitFor(() => {
-      expect(
-        screen.queryByText("You have unsaved changes"),
-      ).not.toBeInTheDocument();
-      expect(screen.getByDisplayValue("Morning brief")).toBeInTheDocument();
-    });
-  });
-
-  it("updates automation to a loop schedule", async () => {
-    mockAutomationDetailStory();
-
-    detachedSetupPage({ context, path: `/automations/${automationId}` });
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Morning brief" }),
-      ).toBeInTheDocument();
-    });
-
-    fireEvent.change(screen.getByDisplayValue("Morning brief"), {
-      target: { value: "Team morning brief" },
-    });
-
-    selectOptionByLabel("Time", "Loop");
-
-    await waitFor(() => {
-      expect(screen.getByText("Every")).toBeInTheDocument();
-      expect(screen.getByText("15 minutes")).toBeInTheDocument();
-    });
-
-    selectOptionByLabel("Every", "60 minutes");
-    expect(screen.getByText("60 minutes")).toBeInTheDocument();
-
-    await waitFor(() => {
-      expect(screen.getByText("You have unsaved changes")).toBeInTheDocument();
-    });
-
-    click(buttonByText("Save"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Automation updated")).toBeInTheDocument();
-    });
-    expect(screen.getByDisplayValue(/Team morning brief/u)).toBeInTheDocument();
-  });
-
-  it("updates automation to a one-time schedule", async () => {
-    mockAutomationDetailStory();
-
-    detachedSetupPage({ context, path: `/automations/${automationId}` });
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Morning brief" }),
-      ).toBeInTheDocument();
-    });
-
-    selectOptionByLabel("Time", "Once");
-    fireEvent.change(screen.getByLabelText("Date"), {
-      target: { value: "2099-06-12" },
-    });
-    expect(screen.getByDisplayValue("2099-06-12")).toBeInTheDocument();
-    selectTimeComboboxByIndex(0, "16");
-    selectTimeComboboxByIndex(1, "45");
-    selectOptionByLabel(
-      "Timezone",
-      /^\(GMT[+-]\d{2}:\d{2}\) Eastern Time \(ET\)$/u,
-    );
-    expect(screen.getByText(/Eastern Time \(ET\)/u)).toBeInTheDocument();
-
-    await waitFor(() => {
-      expect(screen.getByText("You have unsaved changes")).toBeInTheDocument();
-    });
-
-    click(buttonByText("Save"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Automation updated")).toBeInTheDocument();
-    });
-  });
-
-  it("shows the schedule settings section", async () => {
-    mockAutomationDetailStory();
-
-    detachedSetupPage({ context, path: `/automations/${automationId}` });
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Morning brief" }),
-      ).toBeInTheDocument();
-    });
-
-    expect(screen.getByText("Runs at")).toBeInTheDocument();
-    expect(screen.queryByText("Trigger")).not.toBeInTheDocument();
-    expectTextPresent(/Every weekday/u);
+    expect(screen.getByText("Schedule")).toBeInTheDocument();
+    expect(screen.getByText("Every weekday at 2:30 PM")).toBeInTheDocument();
+    expect(screen.getByText("Next run")).toBeInTheDocument();
+    expect(screen.getByText("Run history")).toBeInTheDocument();
+    expect(screen.queryByText("Danger zone")).not.toBeInTheDocument();
+    expect(screen.queryByText("Run now")).not.toBeInTheDocument();
+    expect(screen.queryByText("Delete automation")).not.toBeInTheDocument();
   });
 
   it("filters automation run history", async () => {
@@ -369,11 +145,6 @@ describe("zero automation detail page", () => {
       expect(
         screen.getByRole("heading", { name: "Morning brief" }),
       ).toBeInTheDocument();
-    });
-
-    click(tabByText("Run History"));
-
-    await waitFor(() => {
       expect(screen.getByText("Done")).toBeInTheDocument();
     });
     expect(screen.getByText("Failed")).toBeInTheDocument();
@@ -398,12 +169,6 @@ describe("zero automation detail page", () => {
       expect(screen.getByText("Failed")).toBeInTheDocument();
       expect(screen.getByText("3.0s")).toBeInTheDocument();
       expect(screen.getByText("5.0s")).toBeInTheDocument();
-    });
-
-    click(tabByText("Settings"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Danger zone")).toBeInTheDocument();
     });
   });
 
@@ -456,11 +221,6 @@ describe("zero automation detail page", () => {
       expect(
         screen.getByRole("heading", { name: "Morning brief" }),
       ).toBeInTheDocument();
-    });
-
-    click(tabByText("Run History"));
-
-    await waitFor(() => {
       expect(screen.getByText("Page 1 of 2")).toBeInTheDocument();
       expect(screen.getByText("Done")).toBeInTheDocument();
       expect(screen.getByText("1.0s")).toBeInTheDocument();
@@ -480,88 +240,6 @@ describe("zero automation detail page", () => {
       expect(screen.getByText("Page 1 of 2")).toBeInTheDocument();
       expect(screen.getByText("Done")).toBeInTheDocument();
       expect(screen.getByText("1.0s")).toBeInTheDocument();
-    });
-  });
-
-  it("pauses an automation and cancels deletion", async () => {
-    const user = userEvent.setup({ delay: null });
-    mockAutomationDetailStory();
-
-    detachedSetupPage({ context, path: `/automations/${automationId}` });
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Morning brief" }),
-      ).toBeInTheDocument();
-    });
-    expect(screen.getByText("Active")).toBeInTheDocument();
-
-    click(screen.getByLabelText("Disable this automation"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Paused")).toBeInTheDocument();
-    });
-    expect(screen.getByLabelText("Enable this automation")).toBeInTheDocument();
-
-    click(buttonByText("Delete automation"));
-
-    await waitFor(() => {
-      expect(screen.getByRole("dialog")).toBeInTheDocument();
-    });
-    expect(screen.getByText("Delete automation?")).toBeInTheDocument();
-
-    await user.keyboard("{Escape}");
-
-    await waitFor(() => {
-      expect(screen.queryByText("Delete automation?")).not.toBeInTheDocument();
-    });
-
-    click(buttonByText("Delete automation"));
-
-    await waitFor(() => {
-      expect(screen.getByRole("dialog")).toBeInTheDocument();
-    });
-
-    click(buttonByText("Cancel"));
-
-    await waitFor(() => {
-      expect(screen.queryByText("Delete automation?")).not.toBeInTheDocument();
-    });
-  });
-
-  it("runs and deletes an automation", async () => {
-    mockAutomationDetailStory();
-
-    detachedSetupPage({ context, path: `/automations/${automationId}` });
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Morning brief" }),
-      ).toBeInTheDocument();
-    });
-
-    click(buttonByText("Run now"));
-
-    await waitFor(() => {
-      expect(screen.getByText(/Run started/u)).toBeInTheDocument();
-      expect(screen.getByText("View activity")).toBeInTheDocument();
-    });
-
-    click(buttonByText("Delete automation"));
-
-    await waitFor(() => {
-      expect(screen.getByRole("dialog")).toBeInTheDocument();
-    });
-
-    click(buttonByText("Delete"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Automation deleted")).toBeInTheDocument();
-      // Deletion returns to the automations surface, which renders the
-      // Automations product noun now that the switch is globally on (#17307).
-      expect(
-        screen.getByRole("heading", { name: "Automations" }),
-      ).toBeInTheDocument();
     });
   });
 });

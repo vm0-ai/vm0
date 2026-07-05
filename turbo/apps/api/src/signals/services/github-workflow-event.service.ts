@@ -19,7 +19,6 @@ import { testOverride } from "../../lib/singleton";
 import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { nowDate } from "../external/time";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
-import { workflowAutomationEnabledForOwner } from "./workflow-automation-feature-switch.service";
 import {
   WorkflowEventSourceTiming,
   type WorkflowEventRunTiming,
@@ -532,7 +531,6 @@ async function startGithubWorkflowRunOverride(
 }
 
 async function matchedLabelForTrigger(args: {
-  readonly gateEnabled: boolean;
   readonly db: Db;
   readonly installation: GithubInstallationRecord;
   readonly trigger: GithubLabelEventTriggerRow;
@@ -541,9 +539,6 @@ async function matchedLabelForTrigger(args: {
   readonly sender: GithubUser;
   readonly signal: AbortSignal;
 }): Promise<string | null> {
-  if (!args.gateEnabled) {
-    return null;
-  }
   if (
     !subjectMatchesConfig({
       subjectKind: args.subjectKind,
@@ -571,7 +566,7 @@ async function matchedLabelForTrigger(args: {
 
 const dispatchMatchedGithubTriggers$ = command(
   async (
-    { get, set },
+    { set },
     args: {
       readonly db: Db;
       readonly installation: GithubInstallationRecord;
@@ -589,23 +584,10 @@ const dispatchMatchedGithubTriggers$ = command(
     let duplicates = 0;
     for (const trigger of args.triggers) {
       const runTiming = args.sourceTiming.createRunTiming();
-      const gateEnabled = await runTiming.measure(
-        "api_dispatch_pre_create_zero_workflow_event_check_feature_gate",
-        async () => {
-          return await get(
-            workflowAutomationEnabledForOwner(
-              trigger.trigger.orgId,
-              trigger.trigger.ownerUserId,
-            ),
-          );
-        },
-      );
-      signal.throwIfAborted();
       const matchedLabelName = await runTiming.measure(
         "api_dispatch_pre_create_zero_workflow_event_match_triggers",
         async () => {
           return await matchedLabelForTrigger({
-            gateEnabled,
             db: args.db,
             installation: args.installation,
             trigger,

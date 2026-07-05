@@ -3802,6 +3802,20 @@
       "when": 1783220848532,
       "tag": "0542_reset_relationship_memory_data",
       "breakpoints": true
+    },
+    {
+      "idx": 543,
+      "version": "7",
+      "when": 1783223965116,
+      "tag": "0543_remove_workflow_automation_feature_switch",
+      "breakpoints": true
+    },
+    {
+      "idx": 544,
+      "version": "7",
+      "when": 1783223965117,
+      "tag": "0544_drop_chat_threads_source_schedule_run_id",
+      "breakpoints": true
     }
   ]
 }

@@ -13,16 +13,13 @@ import {
   IconFileText,
   IconUserCircle,
   IconShield,
-  IconCalendar,
   IconUsers,
   IconAdjustmentsHorizontal,
   IconSearch,
   IconX,
   IconMessageCircle,
   IconWand,
-  IconListCheck,
 } from "@tabler/icons-react";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import type { ConnectorType } from "@vm0/connectors/connectors";
 import {
   Button,
@@ -42,20 +39,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@vm0/ui";
-import { ZeroAutomationTab } from "../zero-page/zero-automation-tab.tsx";
 import { ZeroInstructionsTab } from "../zero-page/zero-instructions-tab.tsx";
 import { LoadingSwitch } from "../components/loading-switch.tsx";
 import { ZeroSettingsTab } from "../zero-page/zero-settings-tab.tsx";
 
 import { TONE_OPTIONS, type Tone } from "../zero-page/zero-tone-constants.ts";
-import type { AutomationEntry } from "../zero-page/zero-automation-card.tsx";
 import {
   agentDetail$,
   agentInstructions$,
-  agentAutomationEntries$,
-  saveAgentAutomation$,
-  deleteAgentAutomation$,
-  toggleAgentAutomationEnabled$,
   agentEditedContent$,
   agentInstructionsDirty$,
   setAgentEditedContent$,
@@ -70,7 +61,6 @@ import {
   agentActiveTab$,
   setAgentActiveTab$,
 } from "../../signals/zero-page/zero-job-detail.ts";
-import { runAutomationNow$ } from "../../signals/zero-page/zero-automations.ts";
 import { zeroOnboardingStatus$ } from "../../signals/zero-page/zero-onboarding.ts";
 import { Link } from "../router/link.tsx";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
@@ -85,7 +75,6 @@ import { openAvatarMaker$ } from "../../signals/zero-page/settings/avatar-maker.
 import { currentAgent$, currentAgentId$ } from "../../signals/agent.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import { user$ } from "../../signals/auth.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { ZeroNoPermissionIllustration } from "../zero-page/components/zero-no-permission-illustration.tsx";
 import { ConnectorIcon } from "../zero-page/components/settings/connector-icons.tsx";
 import { PermissionsDrawer } from "../zero-page/components/settings/permissions-dialog.tsx";
@@ -117,8 +106,6 @@ import type { FirewallPolicies } from "@vm0/connectors/firewall-types";
 import { permissionGrantsToFirewallPolicies } from "@vm0/connectors/firewall-metadata/policy";
 import type { PublicConnectorCatalogPermissionDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import type { UserPermissionGrantResponse } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
-import { agentVisibleWorkflows$ } from "../../signals/workflows-page/workflows-signals.ts";
-import { WorkflowListPanel } from "../workflows-page/workflows-page.tsx";
 import {
   DetailPageBreadcrumbBar,
   DetailPageHeader,
@@ -240,25 +227,14 @@ function DetailError({ error, agentId }: { error: string; agentId: string }) {
 const TAB_TRIGGER_CLASS =
   "gap-1.5 text-sm data-[state=active]:bg-background px-3";
 
-/** Coerce hidden tabs back to "authorization". */
 function resolveVisibleTab(
   rawTab: string,
   hideProfileAndInstructions: boolean,
-  showAutomations: boolean,
-  showWorkflows: boolean,
 ): string {
-  if (!showAutomations && rawTab === "automations") {
+  if (rawTab === "automations" || rawTab === "workflows") {
     return "authorization";
   }
-  if (!showWorkflows && rawTab === "workflows") {
-    return "authorization";
-  }
-  if (
-    hideProfileAndInstructions &&
-    rawTab !== "authorization" &&
-    rawTab !== "automations" &&
-    rawTab !== "workflows"
-  ) {
+  if (hideProfileAndInstructions && rawTab !== "authorization") {
     return "authorization";
   }
   return rawTab;
@@ -268,14 +244,10 @@ function AgentTabNav({
   activeTab,
   onTabChange,
   showProfileAndInstructions,
-  showAutomations,
-  showWorkflows,
 }: {
   activeTab: string;
   onTabChange: (tab: string) => void;
   showProfileAndInstructions: boolean;
-  showAutomations: boolean;
-  showWorkflows: boolean;
 }) {
   return (
     <Tabs
@@ -291,12 +263,6 @@ function AgentTabNav({
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="authorization">Authorization</SelectItem>
-            {showAutomations && (
-              <SelectItem value="automations">Automations</SelectItem>
-            )}
-            {showWorkflows && (
-              <SelectItem value="workflows">Workflows</SelectItem>
-            )}
             {showProfileAndInstructions && (
               <SelectItem value="profile">Profile</SelectItem>
             )}
@@ -312,18 +278,6 @@ function AgentTabNav({
           <IconShield size={14} stroke={1.5} />
           Authorization
         </TabsTrigger>
-        {showAutomations && (
-          <TabsTrigger value="automations" className={TAB_TRIGGER_CLASS}>
-            <IconCalendar size={14} stroke={1.5} />
-            Automations
-          </TabsTrigger>
-        )}
-        {showWorkflows && (
-          <TabsTrigger value="workflows" className={TAB_TRIGGER_CLASS}>
-            <IconListCheck size={14} stroke={1.5} />
-            Workflows
-          </TabsTrigger>
-        )}
         {showProfileAndInstructions && (
           <TabsTrigger value="profile" className={TAB_TRIGGER_CLASS}>
             <IconUserCircle size={14} stroke={1.5} />
@@ -828,76 +782,6 @@ function JobPermissionsTab({
   );
 }
 
-function JobAutomationsTab({ displayName }: { displayName: string }) {
-  const features = useLastResolved(featureSwitch$);
-  if (features?.[FeatureSwitchKey.WorkflowAutomation]) {
-    return null;
-  }
-
-  return <JobLegacyAutomationsTab displayName={displayName} />;
-}
-
-function JobLegacyAutomationsTab({ displayName }: { displayName: string }) {
-  const automationLoadable = useLoadable(agentAutomationEntries$);
-  const entries = useLastResolved(agentAutomationEntries$) ?? [];
-  const loading = automationLoadable.state === "loading";
-  const automationError = loadableErrorMessage(automationLoadable);
-  const saveAutomationTracked = useSet(saveAgentAutomation$);
-  const deleteAutomation = useSet(deleteAgentAutomation$);
-  const toggleEnabled = useSet(toggleAgentAutomationEnabled$);
-  const runAutomationNow = useSet(runAutomationNow$);
-  const nav = useSet(detachedNavigateTo$);
-  const pageSignal = useGet(pageSignal$);
-
-  const handleRunNow = async (entry: AutomationEntry) => {
-    await runAutomationNow(entry.id, pageSignal);
-  };
-
-  const handleOpenDetails = (entry: AutomationEntry) => {
-    nav("/automations/:automationId", {
-      pathParams: { automationId: entry.id },
-    });
-  };
-
-  return (
-    <ZeroAutomationTab
-      displayName={displayName}
-      entries={entries}
-      loading={loading}
-      automationError={automationError}
-      onSave={(params) => {
-        return saveAutomationTracked(params, pageSignal);
-      }}
-      onDelete={(name) => {
-        return deleteAutomation(name, pageSignal);
-      }}
-      onToggleEnabled={(params) => {
-        return toggleEnabled(params, pageSignal);
-      }}
-      onRunNow={handleRunNow}
-      onOpenDetails={handleOpenDetails}
-    />
-  );
-}
-
-function JobWorkflowsTab({ agentId }: { agentId: string }) {
-  const workflowsLoadable = useLoadable(agentVisibleWorkflows$(agentId));
-  const workflows =
-    workflowsLoadable.state === "hasData" ? workflowsLoadable.data : null;
-  const loading = workflowsLoadable.state === "loading" && !workflows;
-
-  return (
-    <div className="mx-auto flex max-w-[900px] flex-col gap-3">
-      <WorkflowListPanel
-        workflows={workflows}
-        loading={loading}
-        showAgentColumn={false}
-        emptyDescription="Workflows attached to this agent appear here."
-      />
-    </div>
-  );
-}
-
 function JobInstructionsTab() {
   const pageSignal = useGet(pageSignal$);
   const instructionsLoadable = useLoadable(agentInstructions$);
@@ -951,8 +835,6 @@ function AgentHeader({
   activeTab,
   onTabChange,
   showProfileAndInstructions,
-  showAutomations,
-  showWorkflows,
 }: {
   displayName: string;
   description: string;
@@ -960,8 +842,6 @@ function AgentHeader({
   activeTab: string;
   onTabChange: (tab: string) => void;
   showProfileAndInstructions: boolean;
-  showAutomations: boolean;
-  showWorkflows: boolean;
 }) {
   const nav = useSet(detachedNavigateTo$);
   const openMaker = useSet(openAvatarMaker$);
@@ -1013,8 +893,6 @@ function AgentHeader({
           activeTab={activeTab}
           onTabChange={onTabChange}
           showProfileAndInstructions={showProfileAndInstructions}
-          showAutomations={showAutomations}
-          showWorkflows={showWorkflows}
         />
         <Button
           variant="outline"
@@ -1068,12 +946,6 @@ function AgentTabContent({
   switch (activeTab) {
     case "authorization": {
       return <JobPermissionsTab agentId={agentId} displayName={displayName} />;
-    }
-    case "automations": {
-      return <JobAutomationsTab displayName={displayName} />;
-    }
-    case "workflows": {
-      return <JobWorkflowsTab agentId={agentId} />;
     }
     case "profile": {
       return (
@@ -1146,27 +1018,13 @@ function useTabVisibility(agentId: string, ownerId: string) {
 
   const rawTab = useGet(agentActiveTab$);
   const setActiveTab = useSet(setAgentActiveTab$);
-  const features = useLastResolved(featureSwitch$);
-  const showAutomations = !(
-    features?.[FeatureSwitchKey.WorkflowAutomation] ?? false
-  );
-  const showWorkflows =
-    showAutomations &&
-    (features?.[FeatureSwitchKey.WorkflowAutomation] ?? false);
   const hideProfileAndInstructions = !isAdmin && !isOwner;
-  const activeTab = resolveVisibleTab(
-    rawTab,
-    hideProfileAndInstructions,
-    showAutomations,
-    showWorkflows,
-  );
+  const activeTab = resolveVisibleTab(rawTab, hideProfileAndInstructions);
 
   return {
     isDefaultAgent,
     hideProfileAndInstructions,
     isOwner,
-    showAutomations,
-    showWorkflows,
     activeTab,
     setActiveTab,
   };
@@ -1182,8 +1040,6 @@ export function ZeroJobDetailPage() {
     isDefaultAgent,
     hideProfileAndInstructions,
     isOwner,
-    showAutomations,
-    showWorkflows,
     activeTab,
     setActiveTab,
   } = useTabVisibility(fields.agentId, fields.ownerId);
@@ -1206,8 +1062,6 @@ export function ZeroJobDetailPage() {
         activeTab={activeTab}
         onTabChange={setActiveTab}
         showProfileAndInstructions={!hideProfileAndInstructions}
-        showAutomations={showAutomations}
-        showWorkflows={showWorkflows}
       />
       <DetailPageMain>
         <AgentTabContent

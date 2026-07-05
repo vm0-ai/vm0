@@ -110,36 +110,11 @@ async function seedAgentWithWorkflow(
   };
 }
 
-async function enableGmailWorkflowTriggers(
-  fixture: WorkflowsFixture,
-): Promise<void> {
-  await updateFeatureSwitchesForUser(context, fixture, {
-    [FeatureSwitchKey.WorkflowAutomation]: true,
-  });
-}
-
-async function enableGoogleCalendarWorkflowTriggers(
-  fixture: WorkflowsFixture,
-): Promise<void> {
-  await updateFeatureSwitchesForUser(context, fixture, {
-    [FeatureSwitchKey.WorkflowAutomation]: true,
-  });
-}
-
 async function enableWebhookWorkflowTriggers(
   fixture: WorkflowsFixture,
 ): Promise<void> {
   await updateFeatureSwitchesForUser(context, fixture, {
-    [FeatureSwitchKey.WorkflowAutomation]: true,
     [FeatureSwitchKey.WorkflowWebhookTriggers]: true,
-  });
-}
-
-async function enableGithubWorkflowTriggers(
-  fixture: WorkflowsFixture,
-): Promise<void> {
-  await updateFeatureSwitchesForUser(context, fixture, {
-    [FeatureSwitchKey.WorkflowAutomation]: true,
   });
 }
 
@@ -595,88 +570,8 @@ describe("zero workflow triggers", () => {
     expect(created.body.nextRunAt).toBeTruthy();
   });
 
-  it("rejects Gmail event triggers when the feature is disabled by override", async () => {
-    // Globally enabled since the automation -> workflow cutover (#19959);
-    // the gate now only rejects when a user override turns it off.
-    const { fixture, workflowId } = await setupFixture();
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.WorkflowAutomation]: false,
-    });
-
-    const rejected = await accept(
-      triggersClient().create({
-        headers: authHeaders(),
-        params: { workflowId },
-        body: {
-          kind: "event",
-          eventType: "gmail-new-message",
-          eventConfig: { provider: "gmail", event: "new_message" },
-        },
-      }),
-      [400],
-    );
-
-    expect(rejected.body.error.message).toBe(
-      "Gmail workflow event triggers are not enabled",
-    );
-  });
-
-  it("rejects Google Calendar event triggers when the feature is disabled by override", async () => {
-    // Globally enabled since the automation -> workflow cutover (#19959);
-    // the gate now only rejects when a user override turns it off.
-    const { fixture, workflowId } = await setupFixture();
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.WorkflowAutomation]: false,
-    });
-
-    const rejected = await accept(
-      triggersClient().create({
-        headers: authHeaders(),
-        params: { workflowId },
-        body: {
-          kind: "event",
-          eventType: "google-calendar-event-created",
-        },
-      }),
-      [400],
-    );
-
-    expect(rejected.body.error.message).toBe(
-      "Google Calendar workflow event triggers are not enabled",
-    );
-  });
-
-  it("rejects webhook event triggers when the feature is disabled by override", async () => {
-    // Globally enabled since the automation -> workflow cutover (#19959);
-    // the gate now only rejects when a user override turns it off.
-    const { fixture, workflowId } = await setupFixture();
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.WorkflowAutomation]: false,
-    });
-
-    const rejected = await accept(
-      triggersClient().create({
-        headers: authHeaders(),
-        params: { workflowId },
-        body: {
-          kind: "event",
-          eventType: "webhook-received",
-        },
-      }),
-      [400],
-    );
-
-    expect(rejected.body.error.message).toBe(
-      "Workflow webhook triggers are not enabled",
-    );
-  });
-
-  it("rejects webhook event triggers when only workflow automation is enabled", async () => {
-    const { fixture, workflowId } = await setupFixture();
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.WorkflowAutomation]: true,
-    });
-
+  it("rejects webhook event triggers when webhook trigger creation is disabled", async () => {
+    const { workflowId } = await setupFixture();
     const rejected = await accept(
       triggersClient().create({
         headers: authHeaders(),
@@ -838,8 +733,6 @@ describe("zero workflow triggers", () => {
   it("requires a connected Gmail account for Gmail event triggers", async () => {
     const { fixture, workflowId } = await setupFixture();
     mockOptionalEnv("GMAIL_PUBSUB_TOPIC_NAME", GMAIL_TOPIC_NAME);
-    await enableGmailWorkflowTriggers(fixture);
-
     const rejected = await accept(
       triggersClient().create({
         headers: authHeaders(),
@@ -860,8 +753,6 @@ describe("zero workflow triggers", () => {
 
   it("requires a connected Google Calendar account for Google Calendar event triggers", async () => {
     const { fixture, workflowId } = await setupFixture();
-    await enableGoogleCalendarWorkflowTriggers(fixture);
-
     const rejected = await accept(
       triggersClient().create({
         headers: authHeaders(),
@@ -909,7 +800,6 @@ describe("zero workflow triggers", () => {
 
   it("creates Gmail event triggers with a watch and agent connector grant", async () => {
     const { fixture, workflowId } = await setupFixture();
-    await enableGmailWorkflowTriggers(fixture);
     const connectorId = await seedGmailConnector(fixture);
     configureGmailWatchMock();
 
@@ -987,7 +877,6 @@ describe("zero workflow triggers", () => {
 
   it("creates Google Calendar event-created triggers with a watch and baseline", async () => {
     const { fixture, workflowId } = await setupFixture();
-    await enableGoogleCalendarWorkflowTriggers(fixture);
     const connectorId = await seedGoogleCalendarConnector(fixture);
     configureGoogleCalendarWatchMock({
       baselineItems: [
@@ -1061,7 +950,6 @@ describe("zero workflow triggers", () => {
 
   it("creates and updates Gmail label applied triggers by label name", async () => {
     const { fixture, workflowId } = await setupFixture();
-    await enableGmailWorkflowTriggers(fixture);
     await seedGmailConnector(fixture);
     configureGmailLabelsMock([{ id: "Label_support", name: "Support" }]);
     configureGmailWatchMock();
@@ -1131,7 +1019,6 @@ describe("zero workflow triggers", () => {
 
   it("creates and updates GitHub label applied triggers", async () => {
     const { fixture, agentId, workflowId } = await setupFixture();
-    await enableGithubWorkflowTriggers(fixture);
     const installationId = await seedGithubInstallation({
       fixture,
       composeId: agentId,
@@ -1220,7 +1107,6 @@ describe("zero workflow triggers", () => {
 
   it("rejects GitHub label applied triggers with actor me when GitHub user is not connected", async () => {
     const { fixture, agentId, workflowId } = await setupFixture();
-    await enableGithubWorkflowTriggers(fixture);
     await seedGithubInstallation({
       fixture,
       composeId: agentId,

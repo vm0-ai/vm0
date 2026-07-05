@@ -4475,9 +4475,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.WorkflowAutomation]: true,
-      },
     });
 
     const assistantMessage = await screen.findByText(assistantReply);
@@ -4544,9 +4541,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.WorkflowAutomation]: true,
-      },
     });
 
     const editor = await findWorkflowComposerEditor();
@@ -4589,42 +4583,6 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("hides the workflow prompt action when workflow automation is disabled", async () => {
-    const threadId = "assistant-message-create-workflow-disabled";
-    const assistantReply = "This could be automated later.";
-    mockChatLifecycle(context, {
-      threadId,
-      threadTitle: "Assistant workflow disabled",
-      chatMessages: [
-        {
-          id: "msg-workflow-disabled-user",
-          role: "user",
-          content: "Can this repeat?",
-          runId: "run-workflow-disabled",
-          createdAt: "2026-06-09T10:00:00Z",
-        },
-        {
-          id: "msg-workflow-disabled-assistant",
-          role: "assistant",
-          content: assistantReply,
-          runId: "run-workflow-disabled",
-          createdAt: "2026-06-09T10:01:00Z",
-        },
-      ],
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${threadId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.WorkflowAutomation]: false,
-      },
-    });
-
-    await screen.findByText(assistantReply);
-    expect(screen.queryByLabelText("Create workflow")).not.toBeInTheDocument();
-  });
-
   it("shows linked automations from the chat header sidebar", async () => {
     mockAutomationThread();
     context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
@@ -4660,8 +4618,8 @@ describe("chat lifecycle", () => {
     expect(within(sidebar).getAllByText("Status")).toHaveLength(3);
     expect(within(sidebar).getAllByText("Schedule")).toHaveLength(3);
     expect(within(sidebar).getAllByText("Next run")).toHaveLength(3);
-    expect(within(sidebar).getAllByText("Run now")).toHaveLength(3);
-    expect(within(sidebar).getAllByText("Edit")).toHaveLength(3);
+    expect(within(sidebar).queryByText("Run now")).not.toBeInTheDocument();
+    expect(within(sidebar).getAllByText("Open")).toHaveLength(3);
     expect(within(sidebar).getAllByText("No upcoming run")).toHaveLength(2);
     expect(within(sidebar).queryByText("Description")).not.toBeInTheDocument();
     expect(
@@ -4701,7 +4659,7 @@ describe("chat lifecycle", () => {
     });
 
     click(
-      within(screen.getByTestId("automation-sidebar")).getAllByText("Edit")[0]!,
+      within(screen.getByTestId("automation-sidebar")).getAllByText("Open")[0]!,
     );
 
     await waitFor(() => {

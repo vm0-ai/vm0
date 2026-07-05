@@ -30,12 +30,7 @@ export {
   saveAgentConnectors$,
 } from "./connectors.ts";
 
-export {
-  agentAutomationEntries$,
-  saveAgentAutomation$,
-  toggleAgentAutomationEnabled$,
-  deleteAgentAutomation$,
-} from "./automation.ts";
+export { agentAutomationEntries$ } from "./automation.ts";
 
 export { deleteAgent$ } from "./delete.ts";
 

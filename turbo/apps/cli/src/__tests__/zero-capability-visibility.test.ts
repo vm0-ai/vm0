@@ -137,7 +137,7 @@ describe("registerZeroCommands", () => {
   it("should hide unmapped commands and show capable ones with valid token", () => {
     const token = buildZeroToken({
       scope: "zero",
-      capabilities: ["agent:read", "automation:read", "automation:write"],
+      capabilities: ["agent:read", "automation:read"],
     });
     vi.stubEnv("ZERO_TOKEN", token);
 

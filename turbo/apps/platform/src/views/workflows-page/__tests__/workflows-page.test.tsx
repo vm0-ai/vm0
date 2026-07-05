@@ -67,7 +67,6 @@ function detachedSetupWorkflowDetailPage(
     context,
     path,
     featureSwitches: {
-      [FeatureSwitchKey.WorkflowAutomation]: true,
       ...featureSwitches,
     },
   });
@@ -998,32 +997,35 @@ async function openCopyDialog(): Promise<HTMLElement> {
 }
 
 describe("workflows routes", () => {
-  it("redirects the workspace workflows index when workflows are disabled", async () => {
+  it("renders the workspace workflows index", async () => {
+    mockWorkflowApis([salesResearch()]);
+
     detachedSetupPage({
       context,
       path: "/workflows",
-      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: false },
     });
 
     await waitFor(() => {
-      expect(pathname()).not.toBe("/workflows");
+      expect(pathname()).toBe("/workflows");
+      expect(
+        screen.getByRole("heading", { name: "Workflows" }),
+      ).toBeInTheDocument();
     });
-    expect(
-      screen.queryByRole("heading", { name: "Workflows" }),
-    ).not.toBeInTheDocument();
+    expect(screen.getByText("Sales Research")).toBeInTheDocument();
   });
 
-  it("redirects the workspace workflow detail when workflows are disabled", async () => {
+  it("renders the workspace workflow detail", async () => {
+    mockWorkflowApis([salesResearch()]);
+    mockConnectedTriggerConnectors();
+
     detachedSetupPage({
       context,
       path: `/workflows/${SALES_WORKFLOW_ID}/automations`,
-      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: false },
     });
 
     await waitFor(() => {
-      expect(pathname()).not.toBe(
-        `/workflows/${SALES_WORKFLOW_ID}/automations`,
-      );
+      expect(pathname()).toBe(`/workflows/${SALES_WORKFLOW_ID}/automations`);
+      expect(screen.getAllByText("Sales Research").length).toBeGreaterThan(0);
     });
     expect(screen.queryByText("Workflow not found.")).not.toBeInTheDocument();
   });
@@ -1042,7 +1044,6 @@ describe("workflows routes", () => {
     detachedSetupPage({
       context,
       path: "/workflows",
-      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: true },
     });
 
     await waitFor(() => {
@@ -1136,7 +1137,7 @@ describe("workflows routes", () => {
     await expectComposerText(CREATE_WORKFLOW_WITH_CHAT_PROMPT);
   });
 
-  it("redirects the legacy agent workflows tab when workflow automation is enabled", async () => {
+  it("redirects the legacy agent workflows tab", async () => {
     mockAgentPageApis();
     mockWorkflowApis([
       salesResearch(),
@@ -1148,7 +1149,6 @@ describe("workflows routes", () => {
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}?tab=workflows`,
-      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: true },
     });
 
     await waitFor(() => {
@@ -1272,7 +1272,6 @@ describe("workflow detail page", () => {
     detachedSetupPage({
       context,
       path: `/workflows/${OPS_WORKFLOW_ID}/info`,
-      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: true },
     });
 
     const publishSwitch = await screen.findByRole("switch", {
@@ -1753,9 +1752,7 @@ describe("workflow detail page", () => {
       createBodies.push(body);
     });
 
-    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"), {
-      [FeatureSwitchKey.WorkflowAutomation]: true,
-    });
+    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"), {});
 
     await waitFor(() => {
       expect(buttonByText("Add automation")).toBeInTheDocument();
@@ -1796,9 +1793,7 @@ describe("workflow detail page", () => {
       createBodies.push(body);
     });
 
-    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"), {
-      [FeatureSwitchKey.WorkflowAutomation]: true,
-    });
+    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"), {});
 
     await waitFor(() => {
       expect(buttonByText("Add automation")).toBeInTheDocument();
@@ -1839,9 +1834,7 @@ describe("workflow detail page", () => {
       createBodies.push(body);
     });
 
-    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"), {
-      [FeatureSwitchKey.WorkflowAutomation]: true,
-    });
+    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"), {});
 
     await waitFor(() => {
       expect(buttonByText("Add automation")).toBeInTheDocument();
@@ -1879,7 +1872,6 @@ describe("workflow detail page", () => {
     });
 
     detachedSetupWorkflowDetailPage(workflowDetailPath("automations"), {
-      [FeatureSwitchKey.WorkflowAutomation]: true,
       [FeatureSwitchKey.WorkflowWebhookTriggers]: true,
     });
 
@@ -1934,7 +1926,6 @@ describe("workflow detail page", () => {
     mockWorkflowApis([workflow]);
 
     detachedSetupWorkflowDetailPage(workflowDetailPath("automations"), {
-      [FeatureSwitchKey.WorkflowAutomation]: true,
       [FeatureSwitchKey.WorkflowWebhookTriggers]: true,
     });
 
@@ -1961,7 +1952,6 @@ describe("workflow detail page", () => {
     mockWorkflowApis([salesResearch()]);
 
     detachedSetupWorkflowDetailPage(workflowDetailPath("automations"), {
-      [FeatureSwitchKey.WorkflowAutomation]: true,
       [FeatureSwitchKey.WorkflowWebhookTriggers]: false,
     });
 
@@ -1992,8 +1982,8 @@ describe("workflow detail page", () => {
       }),
     ).toBeTruthy();
 
-    // The Integrations category offers GitHub but hides Webhook while its
-    // feature switch is off.
+    // The Integrations category offers GitHub but hides Webhook while the
+    // webhook trigger switch is off.
     openCategory("Integrations");
     const integrationCards = queryAllByRoleFast("button", dialog);
     expect(

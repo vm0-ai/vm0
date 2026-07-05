@@ -29,7 +29,6 @@ import {
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -230,16 +229,6 @@ function menuItemByText(text: string): HTMLElement {
     throw new Error(`${text} menu item not found`);
   }
   return item;
-}
-
-function tabByText(text: string): HTMLElement {
-  const tab = queryAllByRoleFast("tab").find((candidate) => {
-    return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
-  });
-  if (!tab) {
-    throw new Error(`${text} tab not found`);
-  }
-  return tab;
 }
 
 function queryTabByText(text: string): HTMLElement | null {
@@ -854,72 +843,12 @@ describe("team page navigation", () => {
     });
   });
 
-  it("edits and creates automations from an agent page", async () => {
-    mockTeamAPIs();
-    detachedSetupPage({ context, path: `/agents/${researchAgentId}` });
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Research Agent" }),
-      ).toBeInTheDocument();
-    });
-    click(tabByText("Automations"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("Research Agent's automations"),
-      ).toBeInTheDocument();
-    });
-    expect(screen.getAllByText("Research digest")[0]).toBeInTheDocument();
-    expect(screen.getAllByText(/Every 30 minutes/)[0]).toBeInTheDocument();
-
-    click(screen.getAllByLabelText("More actions for Every 30 minutes")[0]);
-    click(menuItemByText("Edit"));
-
-    const editDialog = await screen.findByRole("dialog");
-    expect(within(editDialog).getByText("Edit automation")).toBeInTheDocument();
-    await fill(
-      within(editDialog).getByDisplayValue("Research digest"),
-      "Research digest summary",
-    );
-    click(buttonByText("Save"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Automation updated")).toBeInTheDocument();
-      expect(
-        screen.getAllByText("Research digest summary")[0],
-      ).toBeInTheDocument();
-    });
-
-    click(buttonByText("Add automation"));
-
-    const createAutomationDialog = await screen.findByRole("dialog");
-    expect(
-      within(createAutomationDialog).getByText("Add automation"),
-    ).toBeInTheDocument();
-    await fill(
-      within(createAutomationDialog).getByLabelText("Prompt"),
-      "Collect weekly research links",
-    );
-    click(buttonByText("Create"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Automation created")).toBeInTheDocument();
-      expect(
-        screen.getAllByText("Collect weekly research links")[0],
-      ).toBeInTheDocument();
-    });
-  });
-
-  it("hides agent automation and workflow tabs when workflow automation is enabled", async () => {
+  it("hides legacy agent automation and workflow tabs", async () => {
     mockTeamAPIs();
 
     detachedSetupPage({
       context,
       path: `/agents/${researchAgentId}?tab=automations`,
-      featureSwitches: {
-        [FeatureSwitchKey.WorkflowAutomation]: true,
-      },
     });
 
     await waitFor(() => {
@@ -939,60 +868,6 @@ describe("team page navigation", () => {
     expect(
       screen.queryByText("Workflow automations attached to Research Agent."),
     ).not.toBeInTheDocument();
-  });
-
-  it("runs an agent automation and opens its detail page", async () => {
-    mockTeamAPIs();
-    detachedSetupPage({ context, path: `/agents/${researchAgentId}` });
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Research Agent" }),
-      ).toBeInTheDocument();
-    });
-    click(tabByText("Automations"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("Research Agent's automations"),
-      ).toBeInTheDocument();
-    });
-    expect(screen.getAllByText("Research digest")[0]).toBeInTheDocument();
-
-    click(screen.getAllByLabelText("More actions for Every 30 minutes")[0]);
-    click(menuItemByText("Run now"));
-
-    await waitFor(() => {
-      expect(buttonByText("Add automation")).toBeInTheDocument();
-    });
-
-    click(
-      screen.getAllByLabelText(
-        "Open automation Summarize open research requests",
-      )[0],
-    );
-
-    await waitFor(() => {
-      expect(screen.getAllByText("Research digest")[0]).toBeInTheDocument();
-    });
-
-    const breadcrumbLink = screen
-      .getAllByText("Agents")
-      .map((el) => {
-        return el.closest("a");
-      })
-      .find((link) => {
-        return link?.getAttribute("href") === "/agents";
-      });
-    expect(breadcrumbLink).toBeTruthy();
-
-    click(breadcrumbLink!);
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { level: 1, name: /agents/i }),
-      ).toBeInTheDocument();
-    });
   });
 
   it("discards connector permission policy drafts when closing the drawer", async () => {

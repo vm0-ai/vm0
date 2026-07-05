@@ -3,7 +3,6 @@ import { useLastResolved, useGet, useSet } from "ccstate-react";
 import {
   IconChartLine,
   IconLayoutGrid,
-  IconCalendar,
   IconRoute,
   IconUsers,
   IconEdit,
@@ -64,7 +63,6 @@ interface ManageNavItem {
   readonly label: string;
   readonly icon: NavIcon;
   readonly featureGate?: FeatureSwitchKey;
-  readonly hideWhenFeatureEnabled?: FeatureSwitchKey;
 }
 
 const MANAGE_NAV: readonly ManageNavItem[] = [
@@ -87,7 +85,6 @@ const MANAGE_NAV: readonly ManageNavItem[] = [
     pathname: "/workflows",
     label: "Workflows",
     icon: IconRoute as NavIcon,
-    featureGate: FeatureSwitchKey.WorkflowAutomation,
   },
   {
     id: "connectors",
@@ -95,14 +92,6 @@ const MANAGE_NAV: readonly ManageNavItem[] = [
     pathname: "/connectors",
     label: "Connectors",
     icon: IconPlug as NavIcon,
-  },
-  {
-    id: "automations",
-    activeKeys: ["automations", "automationDetail"],
-    pathname: "/automations",
-    label: "Automations",
-    icon: IconCalendar as NavIcon,
-    hideWhenFeatureEnabled: FeatureSwitchKey.WorkflowAutomation,
   },
   {
     id: "activities",
@@ -149,12 +138,6 @@ function useResolvedNavItems() {
   const features = useLastResolved(featureSwitch$);
   const defaultDisplayName = useLastResolved(defaultAgentName$) ?? "Zero";
   const manageNav = MANAGE_NAV.filter((item) => {
-    if (
-      item.hideWhenFeatureEnabled &&
-      features?.[item.hideWhenFeatureEnabled]
-    ) {
-      return false;
-    }
     if (item.featureGate && !features?.[item.featureGate]) {
       return false;
     }

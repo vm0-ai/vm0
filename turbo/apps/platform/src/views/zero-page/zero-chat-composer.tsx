@@ -228,16 +228,6 @@ import { Markdown } from "../components/markdown.tsx";
 
 const MAX_FILE_SIZE = 1024 * 1024 * 1024; // 1 GB — keep in sync with web constants
 
-// iOS auto-focus pops the on-screen keyboard and scrolls the viewport, which is
-// jarring when landing on a chat page. Desktop/Android behavior is unchanged.
-function isIOSDevice(): boolean {
-  const ua = navigator.userAgent;
-  return (
-    /iPad|iPhone|iPod/.test(ua) ||
-    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
-  );
-}
-
 function isHappyDomTestEnvironment(): boolean {
   return (
     typeof globalThis.window !== "undefined" && "happyDOM" in globalThis.window
@@ -5369,15 +5359,13 @@ function TemplatePickerButton({
 
 function ComposerTemplatePickerSlot({
   picker,
-  workflowAutomationEnabled,
 }: {
   picker: ComposerTemplatePicker | undefined;
-  workflowAutomationEnabled: boolean;
 }) {
   const hasPptTab = true;
   const hasIllustrationTab = true;
   const hasVideoTab = true;
-  const hasWorkflowTab = workflowAutomationEnabled;
+  const hasWorkflowTab = true;
   const presentationItems = PRESENTATION_TEMPLATE_PICKER_ITEMS;
   if (!picker) {
     return null;
@@ -5421,13 +5409,11 @@ function CreateWorkflowPromptButton({
 }
 
 function ComposerWorkflowPromptSlot({
-  workflowAutomationEnabled,
   onCreateWorkflowPrompt,
 }: {
-  workflowAutomationEnabled: boolean;
   onCreateWorkflowPrompt: (() => void) | undefined;
 }) {
-  if (!workflowAutomationEnabled || !onCreateWorkflowPrompt) {
+  if (!onCreateWorkflowPrompt) {
     return null;
   }
   return (
@@ -6169,71 +6155,6 @@ function toPersistedAttachments(
 
 type KeyboardSendAction = "none" | "send" | "queue";
 
-function ComposerTextarea({
-  input,
-  onInputChange,
-  sending,
-  autoFocus,
-  setInputRef,
-  onKeyDown,
-  onPaste,
-  onAfterInputChange,
-  onPointerSelectionChange,
-  singleLineOnMobile,
-}: {
-  readonly input: string;
-  readonly onInputChange: (value: string) => void;
-  readonly sending: boolean | undefined;
-  readonly autoFocus: boolean | undefined;
-  readonly setInputRef: ((el: HTMLElement | null) => void) | undefined;
-  readonly onKeyDown: (e: KeyboardEventLike) => void;
-  readonly onPaste: (e: ComposerPasteEvent) => void;
-  readonly onAfterInputChange?: (textarea: HTMLTextAreaElement) => void;
-  readonly onPointerSelectionChange?: (textarea: HTMLTextAreaElement) => void;
-  readonly singleLineOnMobile: boolean;
-}) {
-  return (
-    <textarea
-      ref={(el) => {
-        if (el && autoFocus && !isIOSDevice()) {
-          el.focus();
-        }
-        setInputRef?.(el);
-      }}
-      className={cn(
-        "relative z-10 w-full resize-none bg-transparent px-4 pt-4 pb-0 text-[0.9375rem] leading-6 text-foreground caret-foreground placeholder:text-muted-foreground/40 border-0 focus:outline-none focus:ring-0 selection:bg-primary/20",
-        // The resting height is floored by min-height; rows is kept at 1 so the
-        // floor governs. Mobile rests at a single line and grows back to the
-        // three-line desktop height from the md breakpoint up.
-        singleLineOnMobile ? "min-h-[44px] md:min-h-[96px]" : "min-h-[96px]",
-      )}
-      rows={singleLineOnMobile ? 1 : 3}
-      placeholder={
-        sending
-          ? "Type your next message\u2026"
-          : "Ask me to automate workflows, manage tasks..."
-      }
-      value={input}
-      onChange={(e) => {
-        onInputChange(e.target.value);
-        onAfterInputChange?.(e.target);
-      }}
-      onClick={(e) => {
-        onPointerSelectionChange?.(e.currentTarget);
-      }}
-      onKeyUp={(e) => {
-        onPointerSelectionChange?.(e.currentTarget);
-      }}
-      onSelect={(e) => {
-        onPointerSelectionChange?.(e.currentTarget);
-      }}
-      enterKeyHint="enter"
-      onKeyDown={onKeyDown}
-      onPaste={onPaste}
-    />
-  );
-}
-
 function ComposerInputSlot({
   input,
   onInputChange,
@@ -6255,43 +6176,20 @@ function ComposerInputSlot({
   readonly onKeyDown: (e: KeyboardEventLike) => void;
   readonly onPaste: (e: ComposerPasteEvent) => void;
 }) {
-  const slashWorkflowCommandsEnabled = useWorkflowAutomationEnabled();
   const singleLineOnMobile = enableMobileSingleLine;
 
-  if (slashWorkflowCommandsEnabled) {
-    return (
-      <TiptapWorkflowComposer
-        input={input}
-        onInputChange={onInputChange}
-        onDraftChange={onDraftChange}
-        sending={sending}
-        autoFocus={autoFocus}
-        setInputRef={setInputRef}
-        onKeyDown={onKeyDown}
-        onPaste={onPaste}
-        singleLineOnMobile={singleLineOnMobile}
-      />
-    );
-  }
-
   return (
-    <div
-      className={cn(
-        "relative",
-        singleLineOnMobile ? "min-h-[44px] md:min-h-[96px]" : "min-h-[96px]",
-      )}
-    >
-      <ComposerTextarea
-        input={input}
-        onInputChange={onInputChange}
-        sending={sending}
-        autoFocus={autoFocus}
-        setInputRef={setInputRef}
-        onKeyDown={onKeyDown}
-        onPaste={onPaste}
-        singleLineOnMobile={singleLineOnMobile}
-      />
-    </div>
+    <TiptapWorkflowComposer
+      input={input}
+      onInputChange={onInputChange}
+      onDraftChange={onDraftChange}
+      sending={sending}
+      autoFocus={autoFocus}
+      setInputRef={setInputRef}
+      onKeyDown={onKeyDown}
+      onPaste={onPaste}
+      singleLineOnMobile={singleLineOnMobile}
+    />
   );
 }
 
@@ -6466,11 +6364,6 @@ function ComposerModelPickerSlot({
 // Main composer
 // ---------------------------------------------------------------------------
 
-function useWorkflowAutomationEnabled(): boolean {
-  const features = useLastResolved(featureSwitch$);
-  return features?.[FeatureSwitchKey.WorkflowAutomation] ?? false;
-}
-
 function useCodexFastModeEnabled(): boolean {
   const features = useLastResolved(featureSwitch$);
   return features?.[FeatureSwitchKey.CodexFastMode] ?? false;
@@ -6512,7 +6405,6 @@ export function ZeroChatComposer({
   const modelPickerOpen = useGet(modelPickerOpen$);
   const setModelPickerOpen = useSet(setModelPickerOpen$);
   const openGoalDialog = useSet(openChatThreadGoalDialog$);
-  const workflowAutomationEnabled = useWorkflowAutomationEnabled();
   const codexFastModeEnabled = useCodexFastModeEnabled();
 
   const resolved = useResolvedComposerSignals(
@@ -6628,6 +6520,7 @@ export function ZeroChatComposer({
         continue;
       }
       if (file.size > MAX_FILE_SIZE) {
+        e.preventDefault();
         toast.error(`${file.name} exceeds the 1 GB limit`);
         continue;
       }
@@ -6957,12 +6850,8 @@ export function ZeroChatComposer({
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
-                  <ComposerTemplatePickerSlot
-                    picker={templatePicker}
-                    workflowAutomationEnabled={workflowAutomationEnabled}
-                  />
+                  <ComposerTemplatePickerSlot picker={templatePicker} />
                   <ComposerWorkflowPromptSlot
-                    workflowAutomationEnabled={workflowAutomationEnabled}
                     onCreateWorkflowPrompt={onCreateWorkflowPrompt}
                   />
                   <ConnectorsPopoverButton

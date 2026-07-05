@@ -67,9 +67,7 @@ function sandboxOperationEventsForRun(
 async function enableGoogleCalendarWorkflowTriggers(
   fixture: WorkflowsFixture,
 ): Promise<void> {
-  await updateFeatureSwitchesForUser(context, fixture, {
-    [FeatureSwitchKey.WorkflowAutomation]: true,
-  });
+  await updateFeatureSwitchesForUser(context, fixture, {});
 }
 
 async function seedGoogleCalendarConnector(
@@ -316,7 +314,6 @@ describe("POST /api/webhooks/google-calendar", () => {
       "api_dispatch_pre_create_zero_workflow_event_load_source_state",
       "api_dispatch_pre_create_zero_workflow_event_load_external_events",
       "api_dispatch_pre_create_zero_workflow_event_load_triggers",
-      "api_dispatch_pre_create_zero_workflow_event_check_feature_gate",
       "api_dispatch_pre_create_zero_workflow_event_match_triggers",
       "api_dispatch_pre_create_zero_workflow_event_record_processed_event",
       "api_dispatch_pre_create_zero_workflow_event_build_run_input",

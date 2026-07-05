@@ -1,12 +1,5 @@
 import { command, computed, state, type StateArg } from "ccstate";
 import { nowDate } from "../../lib/time.ts";
-import type { CombinedEntry } from "../../views/zero-page/automation-utils.ts";
-import { userPreferences$ } from "../zero-page/settings/user-preferences.ts";
-import { agents$ } from "../agent.ts";
-import { zeroOnboardingStatus$ } from "../zero-page/zero-onboarding.ts";
-import { createDefaultFormData, initDialogForm$ } from "./automation-form.ts";
-import { toggleOrgAutomationEnabled$ } from "../zero-page/zero-automations.ts";
-import { withCleanup } from "../utils.ts";
 
 // ---------------------------------------------------------------------------
 // Helper: creates a private state atom with exported computed (read) and
@@ -24,94 +17,6 @@ function cell<T>(initial: T) {
     }),
   });
 }
-
-// ---------------------------------------------------------------------------
-// Automation page UI state
-// ---------------------------------------------------------------------------
-
-const internalCreateDialogOpen$ = state(false);
-export const createDialogOpen$ = computed((get) => {
-  return get(internalCreateDialogOpen$);
-});
-
-export const openCreateAutomationDialog$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const [prefs, allAgents, status] = await Promise.all([
-      get(userPreferences$),
-      get(agents$),
-      get(zeroOnboardingStatus$),
-    ]);
-    signal.throwIfAborted();
-    const agentId = status?.defaultAgentId ?? allAgents[0]?.id;
-    if (!agentId) {
-      return;
-    }
-    const defaults = createDefaultFormData();
-    set(initDialogForm$, {
-      ...defaults,
-      timezone: prefs?.timezone ?? defaults.timezone,
-      agentId,
-    });
-    set(internalCreateDialogOpen$, true);
-  },
-);
-
-export const closeCreateAutomationDialog$ = command(({ set }) => {
-  set(internalCreateDialogOpen$, false);
-});
-
-export const { get$: creatingOrgAutomation$, set$: setCreatingOrgAutomation$ } =
-  cell(false);
-
-const internalPageTogglingIds$ = state<Set<string>>(new Set());
-export const pageTogglingIds$ = computed((get) => {
-  return get(internalPageTogglingIds$);
-});
-
-function addPendingId(id: string) {
-  return (prev: Set<string>) => {
-    return new Set([...prev, id]);
-  };
-}
-
-function removePendingId(id: string) {
-  return (prev: Set<string>) => {
-    const next = new Set(prev);
-    next.delete(id);
-    return next;
-  };
-}
-
-export const togglePageAutomationEnabled$ = command(
-  async (
-    { set },
-    params: { id: string; name: string; enabled: boolean; agentId: string },
-    signal: AbortSignal,
-  ) => {
-    set(internalPageTogglingIds$, addPendingId(params.id));
-    await withCleanup(
-      set(
-        toggleOrgAutomationEnabled$,
-        {
-          name: params.name,
-          enabled: params.enabled,
-          agentId: params.agentId,
-        },
-        signal,
-      ),
-      () => {
-        set(internalPageTogglingIds$, removePendingId(params.id));
-      },
-    );
-  },
-);
-
-export const { get$: pageRunningIds$, set$: setPageRunningIds$ } = cell<
-  Set<string>
->(new Set());
-
-export const { get$: pagePendingDelete$, set$: setPagePendingDelete$ } =
-  cell<CombinedEntry | null>(null);
 
 // ---------------------------------------------------------------------------
 // Calendar view state

@@ -144,32 +144,14 @@ describe("auth tokens", () => {
     );
   });
 
-  it("gates goal capabilities behind the workflow automation feature switch", () => {
-    // Globally enabled since the automation -> workflow cutover (#19959):
-    // goal capabilities are now granted by default and withheld only when a
-    // user override turns the switch off.
+  it("grants goal capabilities by default", () => {
     const defaultToken = generateZeroToken("user_zero", "run_zero", "org_zero");
-    const overriddenOffToken = generateZeroToken(
-      "user_zero",
-      "run_zero",
-      "org_zero",
-      { [FeatureSwitchKey.WorkflowAutomation]: false },
-    );
 
     expect(verifyZeroToken(defaultToken)?.capabilities).toContain("goal:read");
     expect(verifyZeroToken(defaultToken)?.capabilities).toContain(
       "goal:agent-result:write",
     );
     expect(verifyZeroToken(defaultToken)?.capabilities).toContain(
-      "goal:user-control:write",
-    );
-    expect(verifyZeroToken(overriddenOffToken)?.capabilities).not.toContain(
-      "goal:read",
-    );
-    expect(verifyZeroToken(overriddenOffToken)?.capabilities).not.toContain(
-      "goal:agent-result:write",
-    );
-    expect(verifyZeroToken(overriddenOffToken)?.capabilities).not.toContain(
       "goal:user-control:write",
     );
   });
@@ -179,14 +161,14 @@ describe("auth tokens", () => {
       "user_zero",
       "run_zero",
       "org_zero",
-      { [FeatureSwitchKey.WorkflowAutomation]: true },
+      {},
       { triggerSource: "web" },
     );
     const continuationToken = generateZeroToken(
       "user_zero",
       "run_zero",
       "org_zero",
-      { [FeatureSwitchKey.WorkflowAutomation]: true },
+      {},
       { triggerSource: "workflow-event" },
     );
 

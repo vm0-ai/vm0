@@ -248,9 +248,7 @@ async function enableGoalWorkflows(actor: ApiTestUser): Promise<void> {
       orgId: actor.orgId,
       orgRole: actor.orgRole,
     },
-    {
-      [FeatureSwitchKey.WorkflowAutomation]: true,
-    },
+    {},
   );
 }
 

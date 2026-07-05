@@ -126,7 +126,7 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
   {
     name: "schedule",
     description:
-      "(removed: use `zero automation`) Schedules are Automations now",
+      "(removed: use `zero workflow`) Schedules are workflow triggers now",
     load: async () => {
       return (await import("./commands/zero/schedule")).zeroScheduleCommand;
     },

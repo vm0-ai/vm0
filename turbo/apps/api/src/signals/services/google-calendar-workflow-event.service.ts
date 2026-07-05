@@ -34,7 +34,6 @@ import {
   decryptStoredSecretValue,
   encryptStoredSecretValue,
 } from "./crypto.utils";
-import { workflowAutomationEnabledForOwner } from "./workflow-automation-feature-switch.service";
 import {
   WorkflowEventSourceTiming,
   type WorkflowEventRunTiming,
@@ -210,11 +209,6 @@ interface CalendarEventChange {
   readonly previousSnapshot: Record<string, unknown> | null;
   readonly changedFields: readonly string[];
 }
-
-type GoogleCalendarFeatureGateChecker = (
-  orgId: string,
-  userId: string,
-) => Promise<boolean>;
 
 type GoogleCalendarRunStarter = (args: {
   readonly trigger: GoogleCalendarEventTriggerRow;
@@ -1659,25 +1653,10 @@ async function dispatchGoogleCalendarWatchState(args: {
   readonly db: Db;
   readonly state: GoogleCalendarWatchStateRow;
   readonly notification: GoogleCalendarWebhookNotification;
-  readonly isFeatureEnabledForOwner: GoogleCalendarFeatureGateChecker;
   readonly sourceTiming: WorkflowEventSourceTiming;
   readonly startRun: GoogleCalendarRunStarter;
   readonly signal: AbortSignal;
 }): Promise<GoogleCalendarDispatchStateResult> {
-  const gateEnabled = await args.sourceTiming.measure(
-    "api_dispatch_pre_create_zero_workflow_event_check_feature_gate",
-    async () => {
-      return await args.isFeatureEnabledForOwner(
-        args.state.orgId,
-        args.state.userId,
-      );
-    },
-  );
-  args.signal.throwIfAborted();
-  if (!gateEnabled) {
-    return { kind: "ok", dispatched: 0, duplicates: 0 };
-  }
-
   const access = await args.sourceTiming.measure(
     "api_dispatch_pre_create_zero_workflow_event_load_source_state",
     async () => {
@@ -1779,7 +1758,7 @@ async function dispatchGoogleCalendarWatchState(args: {
 
 export const dispatchGoogleCalendarWebhook$ = command(
   async (
-    { get, set },
+    { set },
     args: {
       readonly headers: Headers;
       readonly apiStartTime: number;
@@ -1814,12 +1793,6 @@ export const dispatchGoogleCalendarWebhook$ = command(
       return { kind: "unauthorized" };
     }
 
-    const isFeatureEnabledForOwner: GoogleCalendarFeatureGateChecker = async (
-      orgId,
-      userId,
-    ) => {
-      return await get(workflowAutomationEnabledForOwner(orgId, userId));
-    };
     const runStarterOverride = googleCalendarRunStarterOverride.get();
     const startRun: GoogleCalendarRunStarter = runStarterOverride
       ? async ({ trigger, state, event }) => {
@@ -1878,7 +1851,6 @@ export const dispatchGoogleCalendarWebhook$ = command(
       db,
       state,
       notification,
-      isFeatureEnabledForOwner,
       sourceTiming,
       startRun,
       signal,

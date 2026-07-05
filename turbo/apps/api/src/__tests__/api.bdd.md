@@ -39,7 +39,7 @@ BDD helpers should be thin wrappers over route calls:
 - Connector helpers: `listConnectors`, `searchConnectors`, `readConnectorByType`, `startOAuth`, `completeOAuth`, `connectManualGrant`, `createCustomConnector`, `setConnectorSecret`, `deleteConnectorSecret`, `readIntegrationStatus`.
 - Billing and usage helpers: `readBillingStatus`, `startCheckout`, `openPortal`, `redeemCredit`, `readUsage`, `readUsageMembers`, `readUsageRuns`, `readInsights`, `runUsageCron`.
 - File and media helpers: `prepareUpload`, `completeUpload`, `readFile`, `readArtifact`, `readHostedContent`, `startImageGeneration`, `startVideoGeneration`, `startVoiceGeneration`, `readGenerationStatus`.
-- Automation and webhook helpers: `deployAutomation`, `listAutomations`, `enableAutomation`, `disableAutomation`, `runAutomationNow`, `deleteAutomation`, `postSignedCallback`, `postSignedWebhook`.
+- Automation and webhook helpers: `listAutomations`, `postSignedCallback`, `postSignedWebhook`.
 
 If a helper cannot be implemented with API calls, mark the BDD case as `needs visible API/helper` and do not silently fall back to direct database setup.
 

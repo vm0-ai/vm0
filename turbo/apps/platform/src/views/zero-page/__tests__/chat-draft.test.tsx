@@ -14,7 +14,6 @@ import {
 } from "@vm0/api-contracts/contracts/zero-agents";
 import { zeroTeamContract } from "@vm0/api-contracts/contracts/zero-team";
 import { zeroWorkflowsCollectionContract } from "@vm0/api-contracts/contracts/zero-workflows";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
   click,
@@ -779,9 +778,6 @@ describe("chat drafts", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.WorkflowAutomation]: true,
-      },
     });
 
     const editor = await findComposerEditor();

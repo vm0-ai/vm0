@@ -4729,13 +4729,11 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     expect(cancelled.status).toBe("cancelled");
   });
 
-  it("keeps workflow automation from denying invalid goal tool names", async () => {
+  it("keeps goal tools allowed when no feature flags are enabled", async () => {
     const api = createRunsAutomationsApi(context);
     const connectors = createConnectorBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
-    await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.WorkflowAutomation]: true,
-    });
+    await connectors.updateFeatureSwitches(actor, {});
 
     const run = await api.createRun(actor, {
       agentId,
@@ -4745,9 +4743,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
 
-    expect(claim.featureFlags).toMatchObject({
-      [FeatureSwitchKey.WorkflowAutomation]: true,
-    });
+    expect(claim.featureFlags).toMatchObject({});
     expect(claim.disallowedTools).toStrictEqual(
       EXPECTED_ZERO_RUN_DISALLOWED_TOOLS,
     );

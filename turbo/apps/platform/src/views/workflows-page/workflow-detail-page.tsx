@@ -554,20 +554,16 @@ function WorkflowTabNav({
 function TriggerCreateAction() {
   const setCreateDialog = useSet(setWorkflowTriggerCreateDialog$);
   const features = useGet(featureSwitch$);
-  const workflowAutomationEnabled =
-    features[FeatureSwitchKey.WorkflowAutomation] ?? false;
   const workflowWebhookTriggersEnabled =
     features[FeatureSwitchKey.WorkflowWebhookTriggers] ?? false;
 
   return (
     <TriggerCreateMenu
       onSelect={setCreateDialog}
-      githubLabelTriggersEnabled={workflowAutomationEnabled}
-      googleCalendarTriggersEnabled={workflowAutomationEnabled}
-      googleMeetTriggersEnabled={workflowAutomationEnabled}
-      webhookTriggersEnabled={
-        workflowAutomationEnabled && workflowWebhookTriggersEnabled
-      }
+      githubLabelTriggersEnabled
+      googleCalendarTriggersEnabled
+      googleMeetTriggersEnabled
+      webhookTriggersEnabled={workflowWebhookTriggersEnabled}
     />
   );
 }

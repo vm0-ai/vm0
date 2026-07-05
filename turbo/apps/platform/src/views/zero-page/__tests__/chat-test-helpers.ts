@@ -159,10 +159,10 @@ export function mockSubagentThread(context: TestContext, threadId: string) {
 
 export async function sendMessageInUI(
   user: ReturnType<typeof userEvent.setup>,
-  textarea: HTMLTextAreaElement,
+  input: Element,
   text: string,
 ): Promise<void> {
-  await fill(textarea, text);
+  await fill(input, text);
   await user.keyboard("{Enter}");
 }
 

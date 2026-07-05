@@ -41,7 +41,7 @@ function AutomationListRow<T extends AutomationEntry>({
   running: boolean;
   showAgent: boolean;
   agentLabel?: string;
-  onEdit: (entry: T) => void;
+  onEdit?: (entry: T) => void;
   onToggle?: (entry: T, enabled: boolean) => void;
   onDelete?: (entry: T) => void;
   onRunNow?: (entry: T) => void;
@@ -49,6 +49,7 @@ function AutomationListRow<T extends AutomationEntry>({
 }) {
   const dimmed = entry.enabled === false;
   const clickable = !!onOpenDetails;
+  const hasActions = !!onEdit || !!onDelete || !!onRunNow;
   const instructionLabel = entry.description || entry.prompt;
   const runsAtLabel = entry.timezone
     ? `${entry.time} · ${entry.timezone.replace(/_/g, " ")}`
@@ -146,22 +147,24 @@ function AutomationListRow<T extends AutomationEntry>({
           </div>
         </td>
       )}
-      <td
-        className="py-2.5 pl-2 align-middle text-right w-10"
-        onClick={(e) => {
-          return e.stopPropagation();
-        }}
-      >
-        <div className="inline-flex justify-end">
-          <RowActions
-            entry={entry}
-            running={running}
-            onEdit={onEdit}
-            onDelete={onDelete}
-            onRunNow={onRunNow}
-          />
-        </div>
-      </td>
+      {hasActions && (
+        <td
+          className="py-2.5 pl-2 align-middle text-right w-10"
+          onClick={(e) => {
+            return e.stopPropagation();
+          }}
+        >
+          <div className="inline-flex justify-end">
+            <RowActions
+              entry={entry}
+              running={running}
+              onEdit={onEdit}
+              onDelete={onDelete}
+              onRunNow={onRunNow}
+            />
+          </div>
+        </td>
+      )}
     </tr>
   );
 }
@@ -179,7 +182,7 @@ function RowActions<T extends AutomationEntry>({
 }: {
   entry: T;
   running: boolean;
-  onEdit: (entry: T) => void;
+  onEdit?: (entry: T) => void;
   onDelete?: (entry: T) => void;
   onRunNow?: (entry: T) => void;
 }) {
@@ -209,15 +212,17 @@ function RowActions<T extends AutomationEntry>({
             {running ? "Starting\u2026" : "Run now"}
           </DropdownMenuItem>
         )}
-        <DropdownMenuItem
-          className="gap-2"
-          onClick={() => {
-            return onEdit(entry);
-          }}
-        >
-          <IconPencil size={14} stroke={1.5} />
-          Edit
-        </DropdownMenuItem>
+        {onEdit && (
+          <DropdownMenuItem
+            className="gap-2"
+            onClick={() => {
+              return onEdit(entry);
+            }}
+          >
+            <IconPencil size={14} stroke={1.5} />
+            Open
+          </DropdownMenuItem>
+        )}
         {onDelete && entry.name !== undefined && (
           <DropdownMenuItem
             className="gap-2 text-destructive focus:text-destructive"
@@ -255,7 +260,7 @@ function AutomationListCard<T extends AutomationEntry>({
   running: boolean;
   showAgent: boolean;
   agentLabel?: string;
-  onEdit: (entry: T) => void;
+  onEdit?: (entry: T) => void;
   onToggle?: (entry: T, enabled: boolean) => void;
   onDelete?: (entry: T) => void;
   onRunNow?: (entry: T) => void;
@@ -263,6 +268,7 @@ function AutomationListCard<T extends AutomationEntry>({
 }) {
   const dimmed = entry.enabled === false;
   const clickable = !!onOpenDetails;
+  const hasActions = !!onEdit || !!onDelete || !!onRunNow || !!onToggle;
 
   return (
     <div
@@ -314,25 +320,29 @@ function AutomationListCard<T extends AutomationEntry>({
       </div>
 
       {/* Right: toggle + more button — relative + z-10 so they sit above the link overlay */}
-      <div className="relative z-10 flex items-center gap-4 shrink-0">
-        {onToggle && (
-          <LoadingSwitch
-            checked={entry.enabled !== false}
-            loading={toggling}
-            onCheckedChange={(checked) => {
-              onToggle(entry, checked);
-            }}
-            ariaLabel={`${entry.enabled !== false ? "Disable" : "Enable"} ${entry.time}`}
-          />
-        )}
-        <RowActions
-          entry={entry}
-          running={running}
-          onEdit={onEdit}
-          onDelete={onDelete}
-          onRunNow={onRunNow}
-        />
-      </div>
+      {hasActions && (
+        <div className="relative z-10 flex items-center gap-4 shrink-0">
+          {onToggle && (
+            <LoadingSwitch
+              checked={entry.enabled !== false}
+              loading={toggling}
+              onCheckedChange={(checked) => {
+                onToggle(entry, checked);
+              }}
+              ariaLabel={`${entry.enabled !== false ? "Disable" : "Enable"} ${entry.time}`}
+            />
+          )}
+          {(onEdit || onDelete || onRunNow) && (
+            <RowActions
+              entry={entry}
+              running={running}
+              onEdit={onEdit}
+              onDelete={onDelete}
+              onRunNow={onRunNow}
+            />
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -354,10 +364,10 @@ export function AutomationListView<T extends AutomationEntry>({
   onOpenDetails,
 }: {
   entries: T[];
-  togglingIds: Set<string>;
+  togglingIds?: ReadonlySet<string>;
   runningIds?: Set<string>;
   getAgentLabel?: (entry: T) => string;
-  onEdit: (entry: T) => void;
+  onEdit?: (entry: T) => void;
   onToggle?: (entry: T, enabled: boolean) => void;
   onDelete?: (entry: T) => void;
   onNew?: () => void;
@@ -377,7 +387,7 @@ export function AutomationListView<T extends AutomationEntry>({
             No upcoming runs
           </p>
           <p className="text-xs text-muted-foreground mt-1">
-            Set up an automation and your agents will handle the rest.
+            Legacy scheduled automations will appear here.
           </p>
         </div>
         {onNew && (
@@ -396,6 +406,7 @@ export function AutomationListView<T extends AutomationEntry>({
   }
 
   const showAgent = !!getAgentLabel;
+  const hasActions = !!onToggle || !!onEdit || !!onDelete || !!onRunNow;
 
   return (
     <>
@@ -408,7 +419,7 @@ export function AutomationListView<T extends AutomationEntry>({
             <AutomationListCard
               key={entry.id}
               entry={entry}
-              toggling={togglingIds.has(entry.id)}
+              toggling={togglingIds?.has(entry.id) ?? false}
               running={runningIds?.has(entry.id) ?? false}
               showAgent={showAgent}
               agentLabel={getAgentLabel?.(entry)}
@@ -455,9 +466,11 @@ export function AutomationListView<T extends AutomationEntry>({
                   Status
                 </th>
               )}
-              <th className="w-10 py-3 pl-2 align-middle" scope="col">
-                <span className="sr-only">Actions</span>
-              </th>
+              {hasActions && (
+                <th className="w-10 py-3 pl-2 align-middle" scope="col">
+                  <span className="sr-only">Actions</span>
+                </th>
+              )}
             </tr>
           </thead>
           <tbody>
@@ -466,7 +479,7 @@ export function AutomationListView<T extends AutomationEntry>({
                 <AutomationListRow
                   key={entry.id}
                   entry={entry}
-                  toggling={togglingIds.has(entry.id)}
+                  toggling={togglingIds?.has(entry.id) ?? false}
                   running={runningIds?.has(entry.id) ?? false}
                   showAgent={showAgent}
                   agentLabel={getAgentLabel?.(entry)}

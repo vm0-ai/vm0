@@ -649,7 +649,6 @@ describe("zero workflows", () => {
       [201],
     );
     await updateFeatureSwitchesForUser(context, featureSwitchActor, {
-      [FeatureSwitchKey.WorkflowAutomation]: true,
       [FeatureSwitchKey.WorkflowWebhookTriggers]: true,
     });
     const webhookTrigger = await accept(
@@ -668,7 +667,6 @@ describe("zero workflows", () => {
       eventType: "webhook-received",
     });
     await updateFeatureSwitchesForUser(context, featureSwitchActor, {
-      [FeatureSwitchKey.WorkflowAutomation]: true,
       [FeatureSwitchKey.WorkflowWebhookTriggers]: false,
     });
 

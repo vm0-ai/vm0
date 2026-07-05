@@ -225,10 +225,6 @@ import {
   openHeaderAutomationSidebar$,
   setEditingHeaderWorkflowTriggerId$,
 } from "../../signals/chat-page/header-automation-sidebar.ts";
-import {
-  runAutomationNow$,
-  toggleOrgAutomationEnabled$,
-} from "../../signals/zero-page/zero-automations.ts";
 import { openQueueDrawer$ } from "../../signals/queue-page/queue-drawer-state.ts";
 import {
   closeChatThreadEmojiMenu$,
@@ -236,7 +232,6 @@ import {
   emojiMenuTitle$,
   openChatThreadEmojiMenu$,
 } from "../../signals/zero-page/zero-sidebar-state.ts";
-import { LoadingSwitch } from "../components/loading-switch.tsx";
 import { Link } from "../router/link.tsx";
 import { ROUTES } from "../../signals/route-paths.ts";
 import {
@@ -2301,42 +2296,6 @@ function HeaderAutomationSidebarCard({
 }: {
   automation: HeaderAutomationEntry;
 }) {
-  const pageSignal = useGet(pageSignal$);
-  const reloadAutomations = useSet(reloadHeaderAutomationMenu$);
-  const [runningLoadable, runAutomationNowTracked] =
-    useLoadableSet(runAutomationNow$);
-  const [togglingLoadable, toggleEnabledTracked] = useLoadableSet(
-    toggleOrgAutomationEnabled$,
-  );
-  const running = runningLoadable.state === "loading";
-  const toggling = togglingLoadable.state === "loading";
-
-  const runNow = () => {
-    detach(
-      runAutomationNowTracked(automation.id, pageSignal),
-      Reason.DomCallback,
-      "run header automation now",
-    );
-  };
-
-  const toggleEnabled = (enabled: boolean) => {
-    detach(
-      (async () => {
-        await toggleEnabledTracked(
-          {
-            agentId: automation.agentId,
-            enabled,
-            name: automation.name,
-          },
-          pageSignal,
-        );
-        reloadAutomations();
-      })(),
-      Reason.DomCallback,
-      "toggle header automation enabled",
-    );
-  };
-
   return (
     <article
       className={cn(
@@ -2367,12 +2326,6 @@ function HeaderAutomationSidebarCard({
             >
               {automation.enabled ? "Active" : "Paused"}
             </span>
-            <LoadingSwitch
-              checked={automation.enabled}
-              loading={toggling}
-              onCheckedChange={toggleEnabled}
-              ariaLabel={`${automation.enabled ? "Disable" : "Enable"} automation`}
-            />
           </dd>
         </div>
         <div className="flex items-center justify-between gap-3 border-b border-border/50 py-2.5">
@@ -2395,23 +2348,8 @@ function HeaderAutomationSidebarCard({
           options={{ pathParams: { automationId: automation.id } }}
           className="text-xs font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
         >
-          Edit
+          Open
         </Link>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="zero-btn-morandi h-8 shrink-0 gap-1.5 rounded-lg px-3 text-xs font-medium transition-colors hover:bg-accent"
-          disabled={running}
-          onClick={runNow}
-        >
-          {running ? (
-            <IconLoader2 size={14} className="animate-spin" />
-          ) : (
-            <IconPlayerPlay size={14} stroke={1.5} />
-          )}
-          {running ? "Starting…" : "Run now"}
-        </Button>
       </div>
     </article>
   );
@@ -4825,11 +4763,8 @@ function useChatThreadComposerWorkflowPrompt({
   const clearDraft = useSet(thread.draft.clear$);
   const queueDraftSync = useSet(thread.queueDraftSync$);
   const focusComposer = useSet(thread.focusInput$);
-  const features = useGet(featureSwitch$);
   const replaceDraftTarget = useGet(replaceWorkflowPromptDraftTarget$);
   const setReplaceDraftTarget = useSet(setReplaceWorkflowPromptDraftTarget$);
-  const workflowAutomationEnabled =
-    features[FeatureSwitchKey.WorkflowAutomation] ?? false;
   const workflowPromptDraftTarget = `composer:${thread.threadId}`;
   const hasComposerDraft = input.trim().length > 0 || attachments.length > 0;
   const replaceDraftDialogOpen =
@@ -4860,9 +4795,7 @@ function useChatThreadComposerWorkflowPrompt({
   };
 
   return {
-    onCreateWorkflowPrompt: workflowAutomationEnabled
-      ? handleCreateWorkflowPrompt
-      : undefined,
+    onCreateWorkflowPrompt: handleCreateWorkflowPrompt,
     replaceDraftDialogOpen,
     onConfirmReplaceDraft: handleConfirmReplaceDraft,
     onReplaceDialogOpenChange: handleReplaceDialogOpenChange,

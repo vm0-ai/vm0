@@ -4,7 +4,7 @@ import { useGet, useSet } from "ccstate-react";
 import {
   IconChevronLeft,
   IconChevronRight,
-  IconPencil,
+  IconExternalLink,
 } from "@tabler/icons-react";
 import {
   cn,
@@ -54,7 +54,7 @@ function getAgentCellClasses(
 }
 
 // ---------------------------------------------------------------------------
-// Calendar entry popover (hover to show, double-click to edit)
+// Calendar entry popover (hover to show, double-click to open details)
 // ---------------------------------------------------------------------------
 
 function CalendarEntryPopover<T extends AutomationEntry>({
@@ -66,7 +66,7 @@ function CalendarEntryPopover<T extends AutomationEntry>({
   entry: T;
   agentOrder?: readonly string[];
   getAgentLabel?: (entry: T) => string;
-  onEdit: (entry: T) => void;
+  onEdit?: (entry: T) => void;
 }) {
   const popoverEntryId = useGet(calendarPopoverEntryId$);
   const setPopoverEntryId = useSet(setCalendarPopoverEntryId$);
@@ -92,9 +92,13 @@ function CalendarEntryPopover<T extends AutomationEntry>({
           onMouseLeave={() => {
             return setOpen(false);
           }}
-          onDoubleClick={() => {
-            return onEdit(entry);
-          }}
+          onDoubleClick={
+            onEdit
+              ? () => {
+                  return onEdit(entry);
+                }
+              : undefined
+          }
           className={cn(
             "w-full min-h-0 rounded px-1.5 py-0.5 text-[11px] leading-tight line-clamp-2 break-words border text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             cellClass,
@@ -116,18 +120,20 @@ function CalendarEntryPopover<T extends AutomationEntry>({
         }}
       >
         <div className="relative flex flex-col gap-1.5 pr-8">
-          <div className="absolute top-0 right-0">
-            <button
-              type="button"
-              onClick={() => {
-                return onEdit(entry);
-              }}
-              className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-              aria-label={`Edit ${entry.time}`}
-            >
-              <IconPencil size={14} stroke={1.5} />
-            </button>
-          </div>
+          {onEdit && (
+            <div className="absolute top-0 right-0">
+              <button
+                type="button"
+                onClick={() => {
+                  return onEdit(entry);
+                }}
+                className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                aria-label={`Open ${entry.time}`}
+              >
+                <IconExternalLink size={14} stroke={1.5} />
+              </button>
+            </div>
+          )}
           {agentLabel && (
             <p className="text-xs text-muted-foreground font-medium">
               {agentLabel}
@@ -166,7 +172,7 @@ export function AutomationCalendarView<T extends AutomationEntry>({
   entries: T[];
   agentOrder?: readonly string[];
   getAgentLabel?: (entry: T) => string;
-  onEdit: (entry: T) => void;
+  onEdit?: (entry: T) => void;
 }) {
   const enabledEntries = entries.filter((e) => {
     return e.enabled !== false;
@@ -424,16 +430,18 @@ export function AutomationCalendarView<T extends AutomationEntry>({
                           </span>
                         )}
                         <span className="text-foreground">{entry.time}</span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            return onEdit(entry);
-                          }}
-                          className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-                          aria-label={`Edit ${entry.time}`}
-                        >
-                          <IconPencil size={12} stroke={1.5} />
-                        </button>
+                        {onEdit && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              return onEdit(entry);
+                            }}
+                            className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                            aria-label={`Open ${entry.time}`}
+                          >
+                            <IconExternalLink size={12} stroke={1.5} />
+                          </button>
+                        )}
                       </div>
                     );
                   })}

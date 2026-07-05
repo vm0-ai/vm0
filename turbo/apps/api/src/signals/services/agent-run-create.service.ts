@@ -71,10 +71,8 @@ import {
 } from "@vm0/core/frameworks";
 import {
   getAllFeatureStates,
-  isFeatureEnabled,
   type FeatureSwitchContext,
 } from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { resolveSkillRef, parseGitHubTreeUrl } from "@vm0/core/github-url";
 import {
   getCustomSkillStorageName,
@@ -680,13 +678,8 @@ function skillMountPath(
 function buildSystemSkillVolumes(
   connectorTypes: readonly ConnectorType[],
   framework: SupportedFramework,
-  goalSeedEnabled: boolean,
 ): readonly AdditionalVolume[] {
-  // The `goal` skill is mounted only when workflow automation is on, so it
-  // is appended here rather than living in the always-on SEED_SKILLS list.
-  const seedNames = goalSeedEnabled
-    ? [...SEED_SKILLS, GOAL_SKILL_NAME]
-    : SEED_SKILLS;
+  const seedNames = [...SEED_SKILLS, GOAL_SKILL_NAME];
   const allSkillNames = [...new Set([...seedNames, ...connectorTypes])];
   return allSkillNames.flatMap((skillName) => {
     const url = resolveSkillRef(skillName);
@@ -727,18 +720,13 @@ function buildInjectedSkillVolumes(
     readonly allowedConnectorTypes: readonly ConnectorType[] | undefined;
   },
   framework: SupportedFramework,
-  goalSeedEnabled: boolean,
 ): readonly PreparedAdditionalVolume[] | undefined {
   if (!args.injectSkillVolumes) {
     return undefined;
   }
   return [
     ...(prepareAdditionalVolumesWithSource(
-      buildSystemSkillVolumes(
-        args.allowedConnectorTypes ?? [],
-        framework,
-        goalSeedEnabled,
-      ),
+      buildSystemSkillVolumes(args.allowedConnectorTypes ?? [], framework),
       "system_skill",
     ) ?? []),
     ...(prepareAdditionalVolumesWithSource(
@@ -6126,10 +6114,6 @@ function preparedRunAdditionalVolumes(args: {
         allowedConnectorTypes: args.connectorScope.allowedConnectorTypes,
       },
       args.framework,
-      isFeatureEnabled(
-        FeatureSwitchKey.WorkflowAutomation,
-        args.featureSwitchContext,
-      ),
     ),
     base: prepareAdditionalVolumesWithSource(
       bodyAdditionalVolumes ?? args.resolved.additionalVolumes,

@@ -1,19 +1,13 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
-import {
-  automationsByRefContract,
-  automationsMainContract,
-} from "@vm0/api-contracts/contracts/automations";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { automationsMainContract } from "@vm0/api-contracts/contracts/automations";
 import { describe, expect, it } from "vitest";
 
 import {
   click,
   detachedSetupPage,
-  fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
-import { mockNow } from "../../../__tests__/time.ts";
 import { toMockAutomationResponse } from "../../../mocks/handlers/api-automations.ts";
 import { createMockAutomationView } from "../../../mocks/handlers/automations-store.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -37,29 +31,6 @@ function createAgent(id: string, displayName: string): TeamComposeItem {
   };
 }
 
-function buttonByText(
-  text: string,
-  container: ParentNode = document.body,
-): HTMLElement {
-  const button = queryAllByRoleFast("button", container).find((candidate) => {
-    return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
-  });
-  if (!button) {
-    throw new Error(`${text} button not found`);
-  }
-  return button;
-}
-
-function menuItemByText(text: string): HTMLElement {
-  const item = queryAllByRoleFast("menuitem").find((candidate) => {
-    return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
-  });
-  if (!item) {
-    throw new Error(`${text} menu item not found`);
-  }
-  return item;
-}
-
 function tabByText(text: string): HTMLElement {
   const tab = queryAllByRoleFast("tab").find((candidate) => {
     return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
@@ -68,15 +39,6 @@ function tabByText(text: string): HTMLElement {
     throw new Error(`${text} tab not found`);
   }
   return tab;
-}
-
-function selectOptionByLabel(
-  label: string,
-  option: string,
-  container: HTMLElement,
-): void {
-  click(within(container).getByLabelText(label));
-  click(screen.getByRole("option", { name: option }));
 }
 
 function mockAutomationsPageStory(): void {
@@ -137,11 +99,12 @@ function mockAutomationsPageStory(): void {
   ]);
 }
 
-function mockAutomationCreateStory(): void {
+function mockEmptyAutomationsStory(): void {
   context.mocks.data.team([
     createAgent(zeroAgentId, "Zero"),
     createAgent(researchAgentId, "Research Agent"),
   ]);
+  context.mocks.data.userPreferences({ timezone: "UTC" });
   context.mocks.data.automations([]);
 }
 
@@ -202,43 +165,13 @@ async function openAutomationList(): Promise<void> {
   });
 }
 
-async function openAutomationsList(): Promise<void> {
-  detachedSetupPage({ context, path: "/automations" });
-
-  await waitFor(() => {
-    expect(
-      screen.getByRole("heading", { name: "Automations" }),
-    ).toBeInTheDocument();
-    expect(screen.getByText("Week view")).toBeInTheDocument();
-  });
-  click(tabByText("List"));
-
-  await waitFor(() => {
-    expect(screen.getByText("Instruction")).toBeInTheDocument();
-    expect(screen.getByText("Runs at")).toBeInTheDocument();
-  });
-}
-
-async function openCreateDialog(): Promise<HTMLElement> {
-  mockAutomationCreateStory();
-
-  await openAutomationsPage();
-
-  click(buttonByText("Add automation"));
-
-  return await screen.findByRole("dialog");
-}
-
 describe("zero automations page", () => {
-  it("keeps the legacy automations page when workflow automation is enabled", async () => {
+  it("keeps the legacy automations page available as read-only history", async () => {
     mockAutomationsPageStory();
 
     detachedSetupPage({
       context,
       path: "/automations",
-      featureSwitches: {
-        [FeatureSwitchKey.WorkflowAutomation]: true,
-      },
     });
 
     await waitFor(() => {
@@ -248,25 +181,20 @@ describe("zero automations page", () => {
     });
 
     expect(
-      screen.queryByText("Workflow triggers running across your workspace."),
-    ).not.toBeInTheDocument();
+      screen.getByText("Legacy scheduled automations in your workspace."),
+    ).toBeInTheDocument();
     expect(screen.getByText("Calendar")).toBeInTheDocument();
     expect(screen.getByText("List")).toBeInTheDocument();
     expect(screen.getAllByText("Morning brief")[0]).toBeInTheDocument();
-    expect(
-      screen.queryByText("When an inbound webhook is received"),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Add automation")).not.toBeInTheDocument();
   });
 
-  it("opens legacy automation detail paths when workflow automation is enabled", async () => {
+  it("opens legacy automation detail paths", async () => {
     mockAutomationsPageStory();
 
     detachedSetupPage({
       context,
       path: "/automations/f0000001-0000-4000-a000-000000000301",
-      featureSwitches: {
-        [FeatureSwitchKey.WorkflowAutomation]: true,
-      },
     });
 
     await waitFor(() => {
@@ -274,10 +202,9 @@ describe("zero automations page", () => {
         screen.getByRole("heading", { name: "Morning brief" }),
       ).toBeInTheDocument();
     });
-    expect(
-      screen.queryByText("Workflow triggers running across your workspace."),
-    ).not.toBeInTheDocument();
-    expect(tabByText("Settings")).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("Run history")).toBeInTheDocument();
+    expect(screen.getByText("Every weekday at 2:30 PM")).toBeInTheDocument();
+    expect(screen.queryByText("Settings")).not.toBeInTheDocument();
   });
 
   it("shows scheduled work in the calendar", async () => {
@@ -308,152 +235,6 @@ describe("zero automations page", () => {
     expect(screen.queryByText("3:00 AM")).not.toBeInTheDocument();
   });
 
-  it("detects unsaved basic-field edits in the create dialog", async () => {
-    const createDialog = await openCreateDialog();
-    expect(
-      within(createDialog).getByText("Add automation"),
-    ).toBeInTheDocument();
-    expect(within(createDialog).getByText("Agent")).toBeInTheDocument();
-    expect(within(createDialog).getByText("Prompt")).toBeInTheDocument();
-    await fill(
-      within(createDialog).getByLabelText("Prompt"),
-      "Draft the weekly support handoff",
-    );
-
-    selectOptionByLabel("Agent", "Research Agent", createDialog);
-    await waitFor(() => {
-      expect(
-        within(createDialog).getByText("Research Agent"),
-      ).toBeInTheDocument();
-    });
-
-    click(buttonByText("Cancel", createDialog));
-
-    const confirmClose = await screen.findByRole("alertdialog");
-    expect(
-      within(confirmClose).getByText("You have unsaved changes"),
-    ).toBeInTheDocument();
-  });
-
-  it("switches frequency fields while keeping unsaved prompt edits", async () => {
-    const createDialog = await openCreateDialog();
-    await fill(
-      within(createDialog).getByLabelText("Prompt"),
-      "Draft the weekly support handoff",
-    );
-
-    selectOptionByLabel("Time", "Loop", createDialog);
-    await waitFor(() => {
-      expect(within(createDialog).getByText("Every")).toBeInTheDocument();
-      expect(within(createDialog).getByText("15 minutes")).toBeInTheDocument();
-    });
-
-    selectOptionByLabel("Every", "60 minutes", createDialog);
-    await waitFor(() => {
-      expect(within(createDialog).getByText("60 minutes")).toBeInTheDocument();
-    });
-
-    selectOptionByLabel("Time", "Every week", createDialog);
-    await waitFor(() => {
-      expect(within(createDialog).getByText("Day of week")).toBeInTheDocument();
-    });
-    expect(buttonByText("Mon", createDialog)).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
-    click(buttonByText("Wed", createDialog));
-    expect(buttonByText("Wed", createDialog)).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
-
-    selectOptionByLabel("Time", "Every month", createDialog);
-    await waitFor(() => {
-      expect(
-        within(createDialog).getByText("Day of month"),
-      ).toBeInTheDocument();
-    });
-    selectOptionByLabel("Day of month", "12", createDialog);
-    await waitFor(() => {
-      expect(within(createDialog).getByText("12")).toBeInTheDocument();
-    });
-
-    selectOptionByLabel("Time", "Once", createDialog);
-    await waitFor(() => {
-      expect(within(createDialog).getByLabelText("Date")).toBeInTheDocument();
-    });
-
-    expect(
-      within(createDialog).getByDisplayValue(
-        "Draft the weekly support handoff",
-      ),
-    ).toBeInTheDocument();
-  });
-
-  it("keeps unsaved create edits after continuing editing", async () => {
-    const createDialog = await openCreateDialog();
-    await fill(
-      within(createDialog).getByLabelText("Prompt"),
-      "Draft the weekly support handoff",
-    );
-
-    click(buttonByText("Cancel", createDialog));
-
-    const confirmClose = await screen.findByRole("alertdialog");
-    expect(
-      within(confirmClose).getByText("You have unsaved changes"),
-    ).toBeInTheDocument();
-    click(buttonByText("Continue Editing", confirmClose));
-
-    await waitFor(() => {
-      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
-    });
-    expect(
-      within(createDialog).getByDisplayValue(
-        "Draft the weekly support handoff",
-      ),
-    ).toBeInTheDocument();
-  });
-
-  it("discards unsaved create edits and closes the dialog", async () => {
-    const createDialog = await openCreateDialog();
-    await fill(
-      within(createDialog).getByLabelText("Prompt"),
-      "Draft the weekly support handoff",
-    );
-
-    click(buttonByText("Cancel", createDialog));
-    const discardChanges = await screen.findByRole("alertdialog");
-    click(buttonByText("Discard Changes", discardChanges));
-
-    await waitFor(() => {
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    });
-  });
-
-  it("creates an automation and opens the new detail page", async () => {
-    mockAutomationCreateStory();
-
-    await openAutomationsPage();
-
-    click(buttonByText("Add automation"));
-
-    const createDialog = await screen.findByRole("dialog");
-    await fill(
-      within(createDialog).getByLabelText("Prompt"),
-      "Draft the weekly support handoff",
-    );
-    click(buttonByText("Create", createDialog));
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", {
-          name: "Draft the weekly support handoff",
-        }),
-      ).toBeInTheDocument();
-    });
-  });
-
   it("shows scheduled work in the list", async () => {
     mockAutomationsPageStory();
 
@@ -475,6 +256,8 @@ describe("zero automations page", () => {
         "Open automation Send morning brief to the team channel",
       )[0],
     ).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Disable/u)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/More actions/u)).not.toBeInTheDocument();
   });
 
   it("keeps GMT+8 saved schedule time in the list after refresh", async () => {
@@ -487,8 +270,8 @@ describe("zero automations page", () => {
     expect(screen.queryByText("Every day at 3:00 AM")).not.toBeInTheDocument();
   });
 
-  it("opens automation creation from the empty list", async () => {
-    mockAutomationCreateStory();
+  it("shows read-only empty list copy", async () => {
+    mockEmptyAutomationsStory();
 
     await openAutomationsPage();
     click(tabByText("List"));
@@ -496,25 +279,10 @@ describe("zero automations page", () => {
     await waitFor(() => {
       expect(screen.getByText("No upcoming runs")).toBeInTheDocument();
       expect(
-        screen.getByText(
-          "Set up an automation and your agents will handle the rest.",
-        ),
+        screen.getByText("Legacy scheduled automations will appear here."),
       ).toBeInTheDocument();
     });
-
-    const addAutomationButtons = queryAllByRoleFast("button").filter(
-      (candidate) => {
-        return (
-          candidate.textContent?.replace(/\s+/g, " ").trim() ===
-          "Add automation"
-        );
-      },
-    );
-    click(addAutomationButtons[addAutomationButtons.length - 1]!);
-
-    const createDialog = await screen.findByRole("dialog");
-    expect(within(createDialog).getByText("Agent")).toBeInTheDocument();
-    expect(within(createDialog).getByText("Prompt")).toBeInTheDocument();
+    expect(screen.queryByText("Add automation")).not.toBeInTheDocument();
   });
 
   it("keeps the list loading state visible until automations resolve", async () => {
@@ -588,9 +356,6 @@ describe("zero automations page", () => {
     expect(
       screen.getAllByText("Every weekday at 9:07 AM")[0],
     ).toBeInTheDocument();
-    expect(
-      screen.getAllByLabelText("Enable Every weekday at 9:07 AM")[0],
-    ).toBeInTheDocument();
 
     click(
       screen.getAllByLabelText(
@@ -603,166 +368,6 @@ describe("zero automations page", () => {
         screen.getByRole("heading", { name: "Review overnight escalations" }),
       ).toBeInTheDocument();
     });
-  });
-
-  it("toggles and runs automations from the list", async () => {
-    mockAutomationsPageStory();
-
-    await openAutomationList();
-
-    click(screen.getAllByLabelText("Disable Every weekday at 2:30 PM")[0]);
-
-    await waitFor(() => {
-      expect(
-        screen.getAllByLabelText("Enable Every weekday at 2:30 PM")[0],
-      ).toBeInTheDocument();
-    });
-
-    click(screen.getAllByLabelText("More actions for Every 45 minutes")[0]);
-    click(menuItemByText("Run now"));
-
-    await waitFor(() => {
-      expect(screen.getByText(/Run started/u)).toBeInTheDocument();
-      expect(screen.getByText("View activity")).toBeInTheDocument();
-      expect(screen.getAllByText("Office AC")[0]).toBeInTheDocument();
-    });
-  });
-
-  it("manages automations through the automations page surface", async () => {
-    mockNow();
-    mockAutomationsPageStory();
-
-    await openAutomationsList();
-
-    expect(
-      screen.getByRole("heading", { name: "Automations" }),
-    ).toBeInTheDocument();
-    expect(screen.getAllByText("Morning brief")[0]).toBeInTheDocument();
-
-    click(screen.getAllByLabelText("Disable Every weekday at 2:30 PM")[0]);
-
-    await waitFor(() => {
-      expect(
-        screen.getAllByLabelText("Enable Every weekday at 2:30 PM")[0],
-      ).toBeInTheDocument();
-    });
-
-    click(screen.getAllByLabelText("Enable Every weekday at 2:30 PM")[0]);
-
-    await waitFor(() => {
-      expect(
-        screen.getAllByLabelText("Disable Every weekday at 2:30 PM")[0],
-      ).toBeInTheDocument();
-    });
-
-    click(screen.getAllByLabelText("More actions for Every 45 minutes")[0]);
-    click(menuItemByText("Run now"));
-
-    await waitFor(() => {
-      expect(screen.getByText(/Run started/u)).toBeInTheDocument();
-      expect(screen.getByText("View activity")).toBeInTheDocument();
-    });
-
-    click(
-      screen.getAllByLabelText("More actions for Every weekday at 2:30 PM")[0],
-    );
-    click(menuItemByText("Delete"));
-
-    const deleteDialog = await screen.findByRole("dialog");
-    click(buttonByText("Delete", deleteDialog));
-
-    await waitFor(() => {
-      expect(screen.queryByText("Morning brief")).not.toBeInTheDocument();
-    });
-
-    click(buttonByText("Add automation"));
-
-    const createDialog = await screen.findByRole("dialog");
-    await fill(
-      within(createDialog).getByLabelText("Prompt"),
-      "Review automation coverage",
-    );
-    click(buttonByText("Create", createDialog));
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Review automation coverage" }),
-      ).toBeInTheDocument();
-    });
-  });
-
-  it("surfaces run-now failures from the automation list", async () => {
-    mockAutomationsPageStory();
-    context.mocks.api(automationsByRefContract.run, ({ respond }) => {
-      return respond(503, {
-        error: {
-          message: "Runner queue unavailable",
-          code: "PROVIDER_UNAVAILABLE",
-        },
-      });
-    });
-
-    await openAutomationList();
-
-    click(screen.getAllByLabelText("More actions for Every 45 minutes")[0]);
-    click(menuItemByText("Run now"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Runner queue unavailable")).toBeInTheDocument();
-      expect(screen.getAllByText("Office AC")[0]).toBeInTheDocument();
-    });
-  });
-
-  it("deletes an automation from the list after confirmation", async () => {
-    mockAutomationsPageStory();
-
-    await openAutomationList();
-
-    click(
-      screen.getAllByLabelText("More actions for Every weekday at 2:30 PM")[0],
-    );
-    click(menuItemByText("Delete"));
-
-    const deleteDialog = await screen.findByRole("dialog");
-    expect(
-      within(deleteDialog).getByText("Delete automation?"),
-    ).toBeInTheDocument();
-    expect(
-      within(deleteDialog).getByText("weekday-morning-brief"),
-    ).toBeInTheDocument();
-
-    click(buttonByText("Cancel", deleteDialog));
-
-    await waitFor(() => {
-      expect(screen.queryByText("Delete automation?")).not.toBeInTheDocument();
-    });
-
-    click(
-      screen.getAllByLabelText("More actions for Every weekday at 2:30 PM")[0],
-    );
-    click(menuItemByText("Delete"));
-
-    const confirmDeleteDialog = await screen.findByRole("dialog");
-    click(buttonByText("Delete", confirmDeleteDialog));
-
-    await waitFor(() => {
-      expect(screen.queryByText("Morning brief")).not.toBeInTheDocument();
-    });
-    expect(screen.getAllByText("Office AC")[0]).toBeInTheDocument();
-  });
-
-  it("opens an automation detail from the list", async () => {
-    mockAutomationsPageStory();
-
-    await openAutomationList();
-
-    click(screen.getAllByLabelText("More actions for Every 45 minutes")[0]);
-    click(menuItemByText("Edit"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Office AC" }),
-      ).toBeInTheDocument();
-    });
+    expect(screen.getByText("Paused")).toBeInTheDocument();
   });
 });

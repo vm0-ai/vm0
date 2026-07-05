@@ -1,7 +1,5 @@
 import { randomBytes } from "node:crypto";
 
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { command } from "ccstate";
@@ -11,7 +9,6 @@ import { logger } from "../../lib/log";
 import { writeDb$, type Db } from "../external/db";
 import { now } from "../external/time";
 import type { DispatchFailedRunCallbacks } from "./agent-run-create.service";
-import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import type { InternalRunCallbackKind } from "./internal-run-callback";
 import {
   postAutomationUserMessage,
@@ -167,21 +164,6 @@ async function loadTerminatingRun(
     .limit(1);
 
   return row ?? null;
-}
-
-async function featureEnabledForRun(
-  db: Db,
-  run: TerminatingRunContext,
-): Promise<boolean> {
-  const featureSwitchContext = await loadUserFeatureSwitchContext(
-    db,
-    run.orgId,
-    run.userId,
-  );
-  return isFeatureEnabled(
-    FeatureSwitchKey.WorkflowAutomation,
-    featureSwitchContext,
-  );
 }
 
 async function threadIsIdle(db: Db, chatThreadId: string): Promise<boolean> {
@@ -401,11 +383,6 @@ export const continueGoalIfIdle$ = command(
     if (!isTerminalStatus(run.status)) {
       return { kind: "skipped", reason: "run-not-terminal" };
     }
-    if (!(await featureEnabledForRun(db, run))) {
-      return { kind: "skipped", reason: "feature-disabled" };
-    }
-    signal.throwIfAborted();
-
     const goal = await loadActiveGoalForThread(db, {
       orgId: run.orgId,
       threadId: run.chatThreadId,

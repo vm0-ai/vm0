@@ -36,7 +36,6 @@ import {
   decryptStoredSecretValue,
   encryptStoredSecretValue,
 } from "./crypto.utils";
-import { workflowAutomationEnabledForOwner } from "./workflow-automation-feature-switch.service";
 import {
   WorkflowEventSourceTiming,
   type WorkflowEventRunTiming,
@@ -1110,11 +1109,6 @@ interface GmailEventTriggerRow {
   readonly config: GmailWorkflowEventConfig;
 }
 
-type GmailFeatureGateChecker = (
-  orgId: string,
-  userId: string,
-) => Promise<boolean>;
-
 type GmailRunStarter = (args: {
   readonly trigger: GmailEventTriggerRow;
   readonly decoded: DecodedGmailPubSubPush;
@@ -1789,25 +1783,10 @@ async function dispatchGmailWatchState(args: {
   readonly state: GmailWatchStateRow;
   readonly decoded: DecodedGmailPubSubPush;
   readonly topicName: string;
-  readonly isFeatureEnabledForOwner: GmailFeatureGateChecker;
   readonly sourceTiming: WorkflowEventSourceTiming;
   readonly startRun: GmailRunStarter;
   readonly signal: AbortSignal;
 }): Promise<GmailDispatchStateResult> {
-  const gateEnabled = await args.sourceTiming.measure(
-    "api_dispatch_pre_create_zero_workflow_event_check_feature_gate",
-    async () => {
-      return await args.isFeatureEnabledForOwner(
-        args.state.orgId,
-        args.state.userId,
-      );
-    },
-  );
-  args.signal.throwIfAborted();
-  if (!gateEnabled) {
-    return { kind: "ok", dispatched: 0, duplicates: 0 };
-  }
-
   const access = await args.sourceTiming.measure(
     "api_dispatch_pre_create_zero_workflow_event_load_source_state",
     async () => {
@@ -1955,7 +1934,7 @@ const startGmailWorkflowRun$ = command(
 
 export const dispatchGmailPubSubPush$ = command(
   async (
-    { get, set },
+    { set },
     args: {
       readonly authorization: string | null;
       readonly rawBody: string;
@@ -2002,12 +1981,6 @@ export const dispatchGmailPubSubPush$ = command(
       },
     );
     signal.throwIfAborted();
-    const isFeatureEnabledForOwner: GmailFeatureGateChecker = async (
-      orgId,
-      userId,
-    ) => {
-      return await get(workflowAutomationEnabledForOwner(orgId, userId));
-    };
     const runStarterOverride = gmailRunStarterOverride.get();
     const startRun: GmailRunStarter = runStarterOverride
       ? async ({ trigger, decoded, message }) => {
@@ -2047,7 +2020,6 @@ export const dispatchGmailPubSubPush$ = command(
         state,
         decoded,
         topicName,
-        isFeatureEnabledForOwner,
         sourceTiming: sourceTiming.fork(),
         startRun,
         signal,

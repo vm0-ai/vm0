@@ -1721,16 +1721,11 @@ export {
   automationTriggerResponseSchema,
   automationResponseSchema,
   automationListResponseSchema,
-  automationMutationResponseSchema,
-  triggerMutationResponseSchema,
-  automationRunResponseSchema,
-  createTriggerRequestSchema,
   type AutomationsMainContract,
   type AutomationsByRefContract,
   type AutomationTriggersContract,
   type AutomationResponse,
   type AutomationTriggerResponse,
-  type CreateTriggerRequest,
 } from "./automations";
 export {
   internalCallbackBodySchema,

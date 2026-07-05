@@ -40,8 +40,6 @@ import type { ModelProviderSelection } from "./components/model-provider-picker.
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
 import { ReplaceComposerDraftDialog } from "./replace-composer-draft-dialog.tsx";
 import { CREATE_WORKFLOW_WITH_CHAT_PROMPT } from "./workflow-chat-prompts.ts";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import {
   replaceWorkflowPromptDraftTarget$,
   setReplaceWorkflowPromptDraftTarget$,
@@ -534,11 +532,8 @@ function useAgentChatComposerWorkflowPrompt({
   onConfirmReplaceDraft: () => void;
   onReplaceDialogOpenChange: (open: boolean) => void;
 } {
-  const features = useGet(featureSwitch$);
   const replaceDraftTarget = useGet(replaceWorkflowPromptDraftTarget$);
   const setReplaceDraftTarget = useSet(setReplaceWorkflowPromptDraftTarget$);
-  const workflowAutomationEnabled =
-    features[FeatureSwitchKey.WorkflowAutomation] ?? false;
   const workflowPromptDraftTarget = "composer:new-thread";
   const replaceDraftDialogOpen =
     replaceDraftTarget === workflowPromptDraftTarget;
@@ -566,9 +561,7 @@ function useAgentChatComposerWorkflowPrompt({
   };
 
   return {
-    onCreateWorkflowPrompt: workflowAutomationEnabled
-      ? handleCreateWorkflowPrompt
-      : undefined,
+    onCreateWorkflowPrompt: handleCreateWorkflowPrompt,
     replaceDraftDialogOpen,
     onConfirmReplaceDraft: handleConfirmReplaceDraft,
     onReplaceDialogOpenChange: handleReplaceDialogOpenChange,

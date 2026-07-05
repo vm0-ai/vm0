@@ -10,7 +10,6 @@ import {
   setRunHistoryAutomationId$,
   seedAutomationRunCursorHistory$,
 } from "./automation-run-history.ts";
-import { initAutomationDetailTab$ } from "./automation-detail-tab.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
 
@@ -21,7 +20,6 @@ export const setupAutomationDetailPage$ = command(
     }
 
     set(updatePage$, createElement(ZeroAutomationDetailPage), "sidebar");
-    set(initAutomationDetailTab$);
     // Initialize run history with the current automation ID from the URL
     const params = get(pathParams$);
     const automationId =
