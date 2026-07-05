@@ -26,21 +26,30 @@ pub(crate) fn parse_exec_start_config(line: &str) -> Option<PathBuf> {
     let tokens = tokenize_systemd_exec_start(line)?;
     for (idx, token) in tokens.iter().enumerate() {
         if token == "--config" || token == "-c" {
-            let value = tokens.get(idx + 1)?;
-            if !value.is_empty() {
-                return Some(PathBuf::from(value));
+            if let Some(config_path) = tokens
+                .get(idx + 1)
+                .and_then(|value| config_path_from_arg(value))
+            {
+                return Some(config_path);
             }
             continue;
         }
         if let Some(value) = token
             .strip_prefix("--config=")
             .or_else(|| token.strip_prefix("-c="))
-            && !value.is_empty()
+            .and_then(config_path_from_arg)
         {
-            return Some(PathBuf::from(value));
+            return Some(value);
         }
     }
     None
+}
+
+fn config_path_from_arg(value: &str) -> Option<PathBuf> {
+    if value.is_empty() || value.starts_with('-') {
+        return None;
+    }
+    Some(PathBuf::from(value))
 }
 
 fn tokenize_systemd_exec_start(input: &str) -> Option<Vec<String>> {
@@ -175,6 +184,15 @@ mod tests {
     fn parse_config_flag_at_end_without_value() {
         let line = r#""/usr/bin/runner" start --config"#;
         assert_eq!(parse_exec_start_config(line), None);
+    }
+
+    #[test]
+    fn parse_config_skips_flag_value_before_valid_config() {
+        let line = r#""/usr/bin/runner" start --config --local --config "/data/runner.yaml""#;
+        assert_eq!(
+            parse_exec_start_config(line),
+            Some(PathBuf::from("/data/runner.yaml"))
+        );
     }
 
     #[test]
