@@ -74,6 +74,7 @@ const TEST_DATA_KEY = Buffer.from("0123456789abcdef0123456789abcdef", "utf8");
 const MODEL_FIRST_SELECTION_PROVIDER_ID =
   "00000000-0000-4000-8000-000000000000";
 const API_DISPATCH_QUEUE_PERSISTENCE_ACTION_TYPES = [
+  "api_dispatch_persist_custom_connector_auth_refs",
   "api_dispatch_insert_runner_job_queue",
 ] as const;
 const EXPECTED_ZERO_RUN_DISALLOWED_TOOLS = [
@@ -3928,6 +3929,100 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(resolved.body.headers).toStrictEqual({
       Authorization: "Bearer custom-secret-value",
     });
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
+  });
+
+  it("resolves custom connector auth from run-scoped refs when encrypted secrets omit aliases", async () => {
+    const api = createRunsAutomationsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const fw = createFirewallApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    const slug = `bdd-auth-ref-${randomUUID().slice(0, 8)}`;
+    const custom = await connectors.createCustomConnector(actor, {
+      slug,
+      displayName: "BDD Auth Ref API",
+      prefixes: ["https://auth-ref.example.com/api/"],
+      headerName: "Authorization",
+      headerTemplate: "Bearer {{secret}}",
+    });
+    await connectors.setCustomConnectorSecret(
+      actor,
+      custom.id,
+      "auth-ref-secret",
+    );
+    await connectors.updateAgentCustomConnectors(actor, agentId, [custom.id]);
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "use the custom connector auth ref",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+
+    const idPart = custom.id.replaceAll("-", "");
+    const internalName = `custom_connector_${idPart}`;
+    const secretKey = `CUSTOM_${idPart}_S_SECRET`;
+    const missingSecretKey = `CUSTOM_${idPart}_S_MISSING`;
+    const customApis = inlineFirewallApis(claim.firewalls, internalName);
+    expect(customApis[0]?.auth?.headers?.Authorization).toBe(
+      `Bearer \${{ secrets.${secretKey} }}`,
+    );
+
+    const resolvedFromRef = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      {
+        encryptedSecrets: fw.encryptedSecretsBody({}),
+        authHeaders: {
+          Authorization: `Bearer \${{ secrets.${secretKey} }}`,
+        },
+      },
+      [200],
+    );
+    if (resolvedFromRef.status !== 200) {
+      throw new Error("Expected the custom auth ref to resolve");
+    }
+    expect(resolvedFromRef.body.headers).toStrictEqual({
+      Authorization: "Bearer auth-ref-secret",
+    });
+
+    const resolvedFromBody = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      {
+        encryptedSecrets: fw.encryptedSecretsBody({
+          [secretKey]: "explicit-secret",
+        }),
+        authHeaders: {
+          Authorization: `Bearer \${{ secrets.${secretKey} }}`,
+        },
+      },
+      [200],
+    );
+    if (resolvedFromBody.status !== 200) {
+      throw new Error("Expected the explicit encrypted secret to resolve");
+    }
+    expect(resolvedFromBody.body.headers).toStrictEqual({
+      Authorization: "Bearer explicit-secret",
+    });
+
+    const missing = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      {
+        encryptedSecrets: fw.encryptedSecretsBody({}),
+        authHeaders: {
+          Authorization: `Bearer \${{ secrets.${missingSecretKey} }}`,
+        },
+      },
+      [424],
+    );
+    if (missing.status !== 424) {
+      throw new Error("Expected missing custom auth ref to fail closed");
+    }
+    expect(missing.body.error.code).toBe("CONNECTOR_NOT_CONFIGURED");
 
     await api.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await api.readRun(actor, run.runId);

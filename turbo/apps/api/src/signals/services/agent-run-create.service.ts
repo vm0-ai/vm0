@@ -94,6 +94,7 @@ import {
 } from "@vm0/db/schema/agent-compose";
 import { connectors } from "@vm0/db/schema/connector";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
+import { agentRunCustomConnectorAuthRefs } from "@vm0/db/schema/agent-run-custom-connector-auth-ref";
 import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
@@ -384,10 +385,22 @@ interface DerivedPersistenceResult {
 }
 
 type RunnerJobPayload = ReturnType<typeof queuedRunnerJobPayload>;
+const CUSTOM_CONNECTOR_AUTH_REF_TTL_MS = 5 * 60 * 60 * 1000;
+
+type CustomConnectorAuthRefKind = "secret" | "variable";
+
+interface CustomConnectorAuthRef {
+  readonly secretName: string;
+  readonly connectorId: string;
+  readonly kind: CustomConnectorAuthRefKind;
+  readonly key: string;
+  readonly encryptedValue: string;
+}
 
 interface PreparedRunnerLaunch {
   readonly runnerJobPayload: RunnerJobPayload;
   readonly runContextSnapshot: RunContextAxiomSnapshot;
+  readonly customConnectorAuthRefs: readonly CustomConnectorAuthRef[];
 }
 
 type AgentRunCallbackInsert = typeof agentRunCallbacks.$inferInsert;
@@ -603,6 +616,42 @@ interface CreditCheckRow extends Record<string, unknown> {
 interface CustomConnectorRuntimeContext {
   readonly firewalls: readonly ExpandedFirewallConfig[];
   readonly secrets: Record<string, string> | undefined;
+  readonly authRefs: readonly CustomConnectorAuthRef[];
+}
+
+function customConnectorAuthRefsForApis(args: {
+  readonly connectorId: string;
+  readonly values: readonly {
+    readonly connectorId: string;
+    readonly kind: CustomConnectorAuthRefKind;
+    readonly key: string;
+    readonly encryptedValue: string;
+  }[];
+  readonly apis: ExpandedFirewallConfig["apis"];
+}): readonly CustomConnectorAuthRef[] {
+  const authSecretNames = new Set(extractSecretNamesFromApis(args.apis));
+  if (authSecretNames.size === 0) {
+    return [];
+  }
+
+  return args.values.flatMap((value): readonly CustomConnectorAuthRef[] => {
+    const secretName = customConnectorSecretKey({
+      connectorId: args.connectorId,
+      kind: value.kind,
+      key: value.key,
+    });
+    return authSecretNames.has(secretName)
+      ? [
+          {
+            secretName,
+            connectorId: value.connectorId,
+            kind: value.kind,
+            key: value.key,
+            encryptedValue: value.encryptedValue,
+          },
+        ]
+      : [];
+  });
 }
 
 function forbidden(message: string): ApiErrorResponse<403, "FORBIDDEN"> {
@@ -3197,6 +3246,7 @@ async function buildCustomConnectorRuntimeContext(args: {
 }): Promise<CustomConnectorRuntimeContext> {
   const firewalls: ExpandedFirewallConfig[] = [];
   const secrets: Record<string, string> = {};
+  const authRefs: CustomConnectorAuthRef[] = [];
   const stats = new CustomConnectorRuntimeBuildStats(args.rows);
   for (const row of args.rows) {
     const missingRequiredStartedAt = now();
@@ -3279,6 +3329,13 @@ async function buildCustomConnectorRuntimeContext(args: {
       description: row.connector.displayName,
       apis,
     });
+    authRefs.push(
+      ...customConnectorAuthRefsForApis({
+        connectorId: row.connector.id,
+        values: row.values,
+        apis,
+      }),
+    );
     for (const value of row.values) {
       const field = row.connector.fields.find((candidate) => {
         return candidate.kind === value.kind && candidate.key === value.key;
@@ -3302,7 +3359,7 @@ async function buildCustomConnectorRuntimeContext(args: {
   }
 
   const finalAssemblyStartedAt = now();
-  const result = { firewalls, secrets: compactRecord(secrets) };
+  const result = { firewalls, secrets: compactRecord(secrets), authRefs };
   stats.recordPhaseDuration("assembleFirewalls", finalAssemblyStartedAt);
   stats.flush(args.timing);
   return result;
@@ -3319,7 +3376,7 @@ async function loadCustomConnectorContext(
   timing?: ApiDispatchTimingCollector,
 ): Promise<CustomConnectorRuntimeContext> {
   if (args.allowedCustomConnectorIds?.length === 0) {
-    return { firewalls: [], secrets: undefined };
+    return { firewalls: [], secrets: undefined, authRefs: [] };
   }
 
   const rows = await loadCustomConnectorRuntimeData(db, {
@@ -3340,7 +3397,7 @@ async function loadCustomConnectorContext(
     },
   });
   if (rows.length === 0) {
-    return { firewalls: [], secrets: undefined };
+    return { firewalls: [], secrets: undefined, authRefs: [] };
   }
 
   return await measureApiDispatchTiming(
@@ -5191,6 +5248,7 @@ function buildRunnerJobPayload(
         executionContext: storedContext,
       }),
       runContextSnapshot,
+      customConnectorAuthRefs: args.customConnectorContext.authRefs,
     };
   });
 }
@@ -5245,11 +5303,42 @@ async function insertRunnerJobQueueRow(
   return runnerJob.createdAt;
 }
 
+async function replaceRunCustomConnectorAuthRefs(
+  tx: DbTransaction,
+  args: {
+    readonly runId: string;
+    readonly refs: readonly CustomConnectorAuthRef[];
+  },
+): Promise<void> {
+  if (args.refs.length === 0) {
+    return;
+  }
+
+  await tx
+    .delete(agentRunCustomConnectorAuthRefs)
+    .where(eq(agentRunCustomConnectorAuthRefs.runId, args.runId));
+  const expiresAt = new Date(now() + CUSTOM_CONNECTOR_AUTH_REF_TTL_MS);
+  await tx.insert(agentRunCustomConnectorAuthRefs).values(
+    args.refs.map((ref) => {
+      return {
+        runId: args.runId,
+        secretName: ref.secretName,
+        connectorId: ref.connectorId,
+        kind: ref.kind,
+        key: ref.key,
+        encryptedValue: ref.encryptedValue,
+        expiresAt,
+      };
+    }),
+  );
+}
+
 async function persistRunnerJobQueueForDispatch(
   db: Db,
   args: {
     readonly runId: string;
     readonly payload: RunnerJobPayload;
+    readonly customConnectorAuthRefs: readonly CustomConnectorAuthRef[];
     readonly timing: ApiDispatchTimingCollector;
   },
 ): Promise<DerivedPersistenceResult> {
@@ -5273,6 +5362,18 @@ async function persistRunnerJobQueueForDispatch(
         if (currentRun.status !== "pending") {
           return currentRun;
         }
+
+        await measureApiDispatchTiming(
+          args.timing,
+          "api_dispatch_persist_custom_connector_auth_refs",
+          "nested",
+          async () => {
+            await replaceRunCustomConnectorAuthRefs(tx, {
+              runId: args.runId,
+              refs: args.customConnectorAuthRefs,
+            });
+          },
+        );
 
         const runnerJobCreatedAt = await measureApiDispatchTiming(
           args.timing,
@@ -5344,6 +5445,7 @@ function dispatchRun(
     const persisted = await persistRunnerJobQueueForDispatch(db, {
       runId: args.run.id,
       payload,
+      customConnectorAuthRefs: launch.customConnectorAuthRefs,
       timing: args.timing,
     });
 
@@ -5422,6 +5524,10 @@ function enqueueRunForConcurrency(
             : { status: currentRun.status };
         }
 
+        await replaceRunCustomConnectorAuthRefs(tx, {
+          runId: args.run.id,
+          refs: launch.customConnectorAuthRefs,
+        });
         await tx.insert(agentRunQueue).values({
           runId: args.run.id,
           userId: args.userId,
@@ -5595,6 +5701,10 @@ async function commitQueuedPreparedLaunch(
     status: "queued",
     runnerGroup: payload.runnerGroup,
   });
+  await replaceRunCustomConnectorAuthRefs(tx, {
+    runId: args.identity.runId,
+    refs: args.launch.customConnectorAuthRefs,
+  });
   await tx.insert(agentRunQueue).values({
     runId: args.identity.runId,
     userId: args.createArgs.userId,
@@ -5632,6 +5742,16 @@ async function commitPendingPreparedLaunch(
     "api_dispatch_persist_runner_job_queue",
     "top_level",
     async () => {
+      await args.timing.measure(
+        "api_dispatch_persist_custom_connector_auth_refs",
+        "nested",
+        async () => {
+          await replaceRunCustomConnectorAuthRefs(tx, {
+            runId: args.identity.runId,
+            refs: args.launch.customConnectorAuthRefs,
+          });
+        },
+      );
       return await args.timing.measure(
         "api_dispatch_insert_runner_job_queue",
         "nested",
