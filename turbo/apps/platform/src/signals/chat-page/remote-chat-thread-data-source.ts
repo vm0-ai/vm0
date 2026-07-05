@@ -494,7 +494,6 @@ export function createRemoteChatThreadDataSource(
       return {
         lastReadMessageId: body.lastReadMessageId ?? null,
         computerUseHostId: body.computerUseHostId ?? null,
-        selectedModel: body.selectedModel ?? null,
         codexServiceTier: body.codexServiceTier ?? null,
       };
     },

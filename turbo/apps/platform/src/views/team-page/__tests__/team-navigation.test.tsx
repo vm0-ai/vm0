@@ -730,7 +730,6 @@ describe("team page navigation", () => {
         pinnedAt: null,
         computerUseHostId: null,
         modelProviderId: null,
-        selectedModel: null,
       });
     });
     context.mocks.api(

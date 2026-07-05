@@ -504,6 +504,7 @@ describe("chat thread event sourcing local-first list", () => {
       agentId: AGENT_ID,
       title: null,
       pinnedAt: null,
+      selectedModel: null,
     });
 
     context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {

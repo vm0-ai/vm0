@@ -376,16 +376,14 @@ const chatThreadDetailSchema = z.object({
   pinnedAt: z.string().nullable().optional(),
   computerUseHostId: z.string().uuid().nullable().optional(),
   /**
-   * Per-thread selected model pin. Provider route fields are retained for
-   * backwards-compatible responses but model-first sends re-resolve provider
-   * routing from current org policy.
+   * Legacy provider route fields are retained for backwards-compatible
+   * responses; thread model state is exposed through event-driven projections.
    */
   modelProviderId: z.string().nullable().optional(),
   modelProviderType: modelProviderTypeSchema.nullable().optional(),
   modelProviderCredentialScope: modelProviderCredentialScopeSchema
     .nullable()
     .optional(),
-  selectedModel: z.string().nullable().optional(),
   codexServiceTier: codexServiceTierSchema.nullable().optional(),
   /**
    * ISO timestamp at which the user manually renamed this thread. Null/undefined

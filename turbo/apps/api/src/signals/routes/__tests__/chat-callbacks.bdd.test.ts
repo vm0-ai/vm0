@@ -2474,8 +2474,20 @@ describe("CHAT-02: auto-send across a model switch", () => {
     );
 
     const thread = await chat.readThread(actor, first.threadId);
-    expect(thread.selectedModel).toBe("claude-sonnet-4-6");
+    expect(thread).not.toHaveProperty("selectedModel");
     expect(thread.title).toBe("Working with JSON");
+    const threadEvents = await chat.requestThreadEvents(actor, {}, [200]);
+    expect(threadEvents.status).toBe(200);
+    if (threadEvents.status !== 200) {
+      throw new Error("Expected chat thread events to load");
+    }
+    expect(threadEvents.body.events).toContainEqual(
+      expect.objectContaining({
+        kind: "model_selection_updated",
+        chatThreadId: first.threadId,
+        selectedModel: "claude-sonnet-4-6",
+      }),
+    );
 
     expect(titlePrompts).toHaveLength(1);
     const initialTitlePrompt = titlePrompts[0];

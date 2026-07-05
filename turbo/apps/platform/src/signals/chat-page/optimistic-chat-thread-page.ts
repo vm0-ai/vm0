@@ -22,13 +22,9 @@ import {
   clearArtifactSidebarParams,
   clearChatAutomationSidebarParams,
 } from "../zero-page/right-sidebar-search-params.ts";
-import {
-  talkDraft$,
-  type ZeroChatAttachment,
-} from "../zero-page/chat-draft.ts";
+import { talkDraft$ } from "../zero-page/chat-draft.ts";
 import { clearAgentDraftById$ } from "../zero-page/agent-draft.ts";
 import {
-  isVisualAttachment,
   prepareUserMessageFromDraft$,
   shouldExcludeVisualAttachmentsForModel,
 } from "./resolve-draft-attachments.ts";
@@ -149,12 +145,6 @@ function codexFastModeSwitchEnabled(
   return switches[FeatureSwitchKey.CodexFastMode] ?? false;
 }
 
-function hasVisualDraftAttachments(
-  attachments: readonly ZeroChatAttachment[],
-): boolean {
-  return attachments.some(isVisualAttachment);
-}
-
 const settleNewThreadSend$ = command(
   async (
     { set },
@@ -240,6 +230,7 @@ const mintOptimisticThreadWithEvent$ = command(
       readonly threadId: string;
       readonly eventId: string;
       readonly agentId: string;
+      readonly selectedModel: string | null;
     },
     signal: AbortSignal,
   ): void => {
@@ -255,7 +246,7 @@ const mintOptimisticThreadWithEvent$ = command(
       chatThreadId: args.threadId,
       agentId: args.agentId,
       title: null,
-      selectedModel: null,
+      selectedModel: args.selectedModel,
       createdAt,
     } satisfies ChatThreadEvent);
   },
@@ -297,7 +288,7 @@ const startNewChatThreadCreate$ = command(
     const eventId = crypto.randomUUID();
     await set(
       mintOptimisticThreadWithEvent$,
-      { threadId, eventId, agentId },
+      { threadId, eventId, agentId, selectedModel: null },
       signal,
     );
 
@@ -354,11 +345,8 @@ const sendNewThreadMessage$ = command(
     const { agentId, prompt, modelSelection, generationTemplate } = request;
     const { computerUseHostId } = request;
     const draft = get(talkDraft$);
-    const hasVisualAttachments = hasVisualDraftAttachments(
-      get(draft.attachments$),
-    );
     let effectiveSelectedModel = modelSelection?.selectedModel;
-    if (!effectiveSelectedModel && hasVisualAttachments) {
+    if (!effectiveSelectedModel) {
       const policies = await get(orgModelPolicies$);
       signal.throwIfAborted();
       const userPreference = await get(userModelPreference$);
@@ -401,6 +389,7 @@ const sendNewThreadMessage$ = command(
         threadId,
         eventId: chatThreadEventId,
         agentId,
+        selectedModel: effectiveSelectedModel ?? null,
       },
       signal,
     );

@@ -24,6 +24,7 @@ import {
 import {
   chatThreadByIdContract,
   chatThreadMessagesContract,
+  chatThreadsContract,
   type GenerationTemplateRequest,
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
@@ -343,7 +344,35 @@ function mockThread(options?: {
       createdAt: "2026-03-10T00:00:00Z",
       updatedAt: "2026-03-10T00:00:00Z",
       modelProviderId: null,
-      selectedModel: options?.selectedModel ?? null,
+    });
+  });
+  context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
+    return respond(200, {
+      chatThreads: [
+        {
+          id: THREAD_ID,
+          agentId: AGENT_ID,
+          title: "My thread",
+          sortAt: "2026-03-10T00:00:00Z",
+          createdAt: "2026-03-10T00:00:00Z",
+          updatedAt: "2026-03-10T00:00:00Z",
+          pinnedAt: null,
+          renamedAt: null,
+          selectedModel: options?.selectedModel ?? null,
+        },
+      ],
+      latestEventId: null,
+    });
+  });
+  context.mocks.api(chatThreadsContract.events, ({ respond }) => {
+    return respond(200, { events: [], hasMore: false });
+  });
+  context.mocks.api(chatThreadsContract.activeIds, ({ respond }) => {
+    return respond(200, {
+      threadIds:
+        options?.activeRunIds && options.activeRunIds.length > 0
+          ? [THREAD_ID]
+          : [],
     });
   });
   context.mocks.api(chatThreadMessagesContract.list, ({ respond }) => {

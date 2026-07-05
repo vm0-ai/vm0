@@ -39,6 +39,7 @@ export interface ThreadMeta {
   readonly agentId: string;
   readonly title: string | null;
   readonly pinnedAt: string | null;
+  readonly selectedModel: string | null;
 }
 
 const optimisticChatThreadEventsState$ = state<readonly ChatThreadEvent[]>([]);
@@ -352,6 +353,7 @@ export const chatThreadMetaMap$ = computed(async (get) => {
           agentId: thread.agentId,
           title: thread.title,
           pinnedAt: thread.pinnedAt,
+          selectedModel: thread.selectedModel,
         },
       ];
     }),

@@ -536,6 +536,7 @@ function createThreadTitleParts(
 
 function createModelSelection(
   threadId: string,
+  threadMeta$: Computed<Promise<ThreadMeta | null>>,
   remoteThreadDetail$: Computed<Promise<ChatThread | null>>,
   dataSource: ChatThreadDataSource,
 ) {
@@ -555,18 +556,19 @@ function createModelSelection(
       if (user.kind === "set") {
         return user.value;
       }
-      const thread = await get(remoteThreadDetail$);
-      if (thread?.selectedModel) {
+      const threadMeta = await get(threadMeta$);
+      if (threadMeta?.selectedModel) {
+        const thread = await get(remoteThreadDetail$);
         return {
           modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-          selectedModel: thread.selectedModel,
-          ...(thread.codexServiceTier
+          selectedModel: threadMeta.selectedModel,
+          ...(thread?.codexServiceTier
             ? { codexServiceTier: thread.codexServiceTier }
             : {}),
         };
       }
       // Unstarted model-first threads inherit the current user preference;
-      // started threads carry selectedModel on the thread row.
+      // started threads carry selectedModel through the event projection.
       return null;
     },
   );
@@ -3538,6 +3540,7 @@ export function createChatThreadSignals(
     createThreadTitleParts(threadMeta$);
   const { modelSelection$, setModelSelection$ } = createModelSelection(
     threadId,
+    threadMeta$,
     remoteThreadDetail$,
     dataSource,
   );

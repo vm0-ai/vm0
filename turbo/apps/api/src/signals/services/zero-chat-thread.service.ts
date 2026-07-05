@@ -134,10 +134,6 @@ type ChatThreadRow = {
   readonly agentComposeId: string;
   readonly draftContent: string | null;
   readonly draftAttachments: readonly PersistedAttachment[] | null;
-  readonly modelProviderId: string | null;
-  readonly modelProviderType: string | null;
-  readonly modelProviderCredentialScope: string | null;
-  readonly selectedModel: string | null;
   readonly codexServiceTier: CodexServiceTier | null;
   readonly computerUseHostId: string | null;
   readonly orgId: string | null;
@@ -148,13 +144,6 @@ type ChatThreadRow = {
   readonly renamedAt: Date | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
-};
-
-type ChatThreadModelPin = {
-  readonly modelProviderId: string | null;
-  readonly modelProviderType: string | null;
-  readonly modelProviderCredentialScope: string | null;
-  readonly selectedModel: string | null;
 };
 
 function effectiveChatMessageRunId() {
@@ -394,7 +383,6 @@ function ownedChatThread(
         draftContent: chatThreads.draftContent,
         draftAttachments: chatThreads.draftAttachments,
         computerUseHostId: chatThreads.computerUseHostId,
-        selectedModel: chatThreads.selectedModel,
         codexServiceTier: chatThreads.codexServiceTier,
         orgId: zeroAgents.orgId,
         lastReadAt: chatThreads.lastReadAt,
@@ -424,10 +412,6 @@ function ownedChatThread(
         .nullable()
         .parse(thread.draftAttachments ?? null),
       computerUseHostId: thread.computerUseHostId,
-      modelProviderId: null,
-      modelProviderType: null,
-      modelProviderCredentialScope: null,
-      selectedModel: thread.selectedModel ?? null,
       codexServiceTier: thread.codexServiceTier ?? null,
       orgId: thread.orgId ?? null,
       lastReadAt: thread.lastReadAt ?? null,
@@ -457,57 +441,6 @@ export function zeroChatThreadDraft(args: {
         ? [...thread.draftAttachments]
         : null,
     };
-  });
-}
-
-function firstRunModelPinForThread(
-  threadId: string,
-): Computed<Promise<ChatThreadModelPin | null>> {
-  return computed(async (get): Promise<ChatThreadModelPin | null> => {
-    const [run] = await get(db$)
-      .select({ selectedModel: zeroRuns.selectedModel })
-      .from(chatMessages)
-      .innerJoin(zeroRuns, eq(zeroRuns.id, chatMessages.runId))
-      .where(
-        and(
-          eq(chatMessages.chatThreadId, threadId),
-          eq(chatMessages.role, "user"),
-          isNotNull(chatMessages.runId),
-          isNotNull(zeroRuns.selectedModel),
-        ),
-      )
-      .orderBy(asc(chatMessages.createdAt), asc(chatMessages.id))
-      .limit(1);
-
-    if (!run?.selectedModel) {
-      return null;
-    }
-    return {
-      modelProviderId: null,
-      modelProviderType: null,
-      modelProviderCredentialScope: null,
-      selectedModel: run.selectedModel,
-    };
-  });
-}
-
-function effectiveModelFirstThreadPin(params: {
-  readonly thread: ChatThreadRow;
-  readonly userId: string;
-}): Computed<Promise<ChatThreadModelPin | null>> {
-  return computed(async (get): Promise<ChatThreadModelPin | null> => {
-    if (params.thread.selectedModel !== null) {
-      return {
-        modelProviderId: null,
-        modelProviderType: null,
-        modelProviderCredentialScope: null,
-        selectedModel: params.thread.selectedModel,
-      };
-    }
-    if (!params.thread.orgId) {
-      return null;
-    }
-    return await get(firstRunModelPinForThread(params.thread.id));
   });
 }
 
@@ -721,10 +654,7 @@ export function zeroChatThreadDetail(args: {
       return null;
     }
 
-    const [runSummaries, modelPin] = await Promise.all([
-      get(threadRunSummaries(args.threadId)),
-      get(effectiveModelFirstThreadPin({ thread, userId: args.userId })),
-    ]);
+    const runSummaries = await get(threadRunSummaries(args.threadId));
     return {
       id: thread.id,
       title: thread.title,
@@ -740,7 +670,6 @@ export function zeroChatThreadDetail(args: {
       modelProviderId: null,
       modelProviderType: null,
       modelProviderCredentialScope: null,
-      selectedModel: modelPin?.selectedModel ?? thread.selectedModel,
       codexServiceTier: thread.codexServiceTier,
       renamedAt: thread.renamedAt?.toISOString() ?? null,
     };

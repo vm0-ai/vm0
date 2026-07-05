@@ -422,6 +422,7 @@ export function mockChatLifecycle(
     onRunCreate?: (body: {
       prompt?: string;
       clientMessageId?: string;
+      clientThreadId?: string;
       attachFiles?: {
         id: string;
         filename: string;
@@ -434,6 +435,10 @@ export function mockChatLifecycle(
       runOptions?: ChatRunOptionsRequest;
       computerUseHostId?: string | null;
       revokesMessageId?: string;
+    }) => void;
+    onSendRequest?: (body: {
+      clientThreadId?: string;
+      modelSelection?: ModelSelectionRequest | null;
     }) => void;
     onMessageGet?: (messageId: string) => void;
   },
@@ -552,6 +557,7 @@ export function mockChatLifecycle(
         updatedAt: "2026-03-10T00:00:00Z",
         running: hasActiveRun(),
         pinnedAt: null,
+        selectedModel,
       },
     ];
   };
@@ -795,7 +801,6 @@ export function mockChatLifecycle(
       lastMessageAt: "2026-03-10T00:00:00Z",
       createdAt: "2026-03-10T00:00:00Z",
       updatedAt: "2026-03-10T00:00:00Z",
-      selectedModel,
       codexServiceTier,
       computerUseHostId,
     });
@@ -869,6 +874,10 @@ export function mockChatLifecycle(
       return respond(201, appendInterruptControlMessage(body));
     }
 
+    options?.onSendRequest?.({
+      clientThreadId: body.clientThreadId,
+      modelSelection: body.modelSelection,
+    });
     threadId = body.clientThreadId ?? threadId;
     const responseBody = hasActiveRun()
       ? await appendQueuedUserMessage(body)

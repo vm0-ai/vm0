@@ -214,6 +214,25 @@ async function sendChatRun(
   return { runId: sent.body.runId, threadId: sent.body.threadId };
 }
 
+async function expectThreadModelEvent(
+  actor: ApiTestUser,
+  threadId: string,
+  selectedModel: string,
+): Promise<void> {
+  const threadEvents = await chat.requestThreadEvents(actor, {}, [200]);
+  expect(threadEvents.status).toBe(200);
+  if (threadEvents.status !== 200) {
+    throw new Error("Expected chat thread events to load");
+  }
+  expect(threadEvents.body.events).toContainEqual(
+    expect.objectContaining({
+      kind: "model_selection_updated",
+      chatThreadId: threadId,
+      selectedModel,
+    }),
+  );
+}
+
 async function claimChatRun(
   runnerGroup: string,
   runId: string,
@@ -1657,10 +1676,23 @@ describe("CHAT-02: explicit provider pins", () => {
     expect(environment.CLAUDE_CODE_DISABLE_ATTACHMENTS).toBe("1");
     expect(environment.ANTHROPIC_API_KEY).toBeUndefined();
 
-    // Explicit pins persist on the thread as model-only state.
+    // Explicit pins persist through thread model events, while detail stays
+    // independent of the event-driven model projection.
     const thread = await chat.readThread(actor, run.threadId);
-    expect(thread.selectedModel).toBe("deepseek-v4-pro");
+    expect(thread).not.toHaveProperty("selectedModel");
     expect(thread.modelProviderId ?? null).toBeNull();
+    const threadEvents = await chat.requestThreadEvents(actor, {}, [200]);
+    expect(threadEvents.status).toBe(200);
+    if (threadEvents.status !== 200) {
+      throw new Error("Expected chat thread events to load");
+    }
+    expect(threadEvents.body.events).toContainEqual(
+      expect.objectContaining({
+        kind: "model_selection_updated",
+        chatThreadId: run.threadId,
+        selectedModel: "deepseek-v4-pro",
+      }),
+    );
 
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(run.runId, sandboxHeaders);
@@ -1923,8 +1955,20 @@ describe("CHAT-02: explicit provider pins", () => {
     expect(resolved.body.resolvedSecrets).toStrictEqual(["OPENROUTER_API_KEY"]);
 
     const thread = await chat.readThread(actor, run.threadId);
-    expect(thread.selectedModel).toBe("claude-opus-4-7");
+    expect(thread).not.toHaveProperty("selectedModel");
     expect(thread.modelProviderId ?? null).toBeNull();
+    const threadEvents = await chat.requestThreadEvents(actor, {}, [200]);
+    expect(threadEvents.status).toBe(200);
+    if (threadEvents.status !== 200) {
+      throw new Error("Expected chat thread events to load");
+    }
+    expect(threadEvents.body.events).toContainEqual(
+      expect.objectContaining({
+        kind: "model_selection_updated",
+        chatThreadId: run.threadId,
+        selectedModel: "claude-opus-4-7",
+      }),
+    );
 
     await api.requestCancelRun(actor, run.runId, [200]);
   }, 90_000);
@@ -2153,9 +2197,7 @@ describe("CHAT-02: server-side model switches", () => {
         return message.content === "opus answer";
       });
     });
-    expect((await chat.readThread(actor, first.threadId)).selectedModel).toBe(
-      "claude-opus-4-6",
-    );
+    await expectThreadModelEvent(actor, first.threadId, "claude-opus-4-6");
     expect(
       (await api.readRun(actor, first.runId)).result?.agentSessionId,
     ).toMatch(/[0-9a-f-]{36}/);
@@ -2183,9 +2225,7 @@ describe("CHAT-02: server-side model switches", () => {
     expect(claimEnvironment(secondClaim.claim).ANTHROPIC_MODEL).toBe(
       "claude-sonnet-4-6",
     );
-    expect((await chat.readThread(actor, first.threadId)).selectedModel).toBe(
-      "claude-sonnet-4-6",
-    );
+    await expectThreadModelEvent(actor, first.threadId, "claude-sonnet-4-6");
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(second.runId, secondClaim.sandboxHeaders);
 
@@ -2207,9 +2247,7 @@ describe("CHAT-02: server-side model switches", () => {
       agentId,
       prompt: "fresh thread uses the sentinel preference",
     });
-    expect((await chat.readThread(actor, fourth.threadId)).selectedModel).toBe(
-      "claude-sonnet-4-6",
-    );
+    await expectThreadModelEvent(actor, fourth.threadId, "claude-sonnet-4-6");
     await cancelChatRun(actor, fourth.runId);
   }, 90_000);
 
@@ -2230,8 +2268,9 @@ describe("CHAT-02: server-side model switches", () => {
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(first.runId, firstClaim.sandboxHeaders);
     const pinned = await chat.readThread(actor, first.threadId);
-    expect(pinned.selectedModel).toBe("claude-sonnet-4-6");
+    expect(pinned).not.toHaveProperty("selectedModel");
     expect(pinned.modelProviderId ?? null).toBeNull();
+    await expectThreadModelEvent(actor, first.threadId, "claude-sonnet-4-6");
 
     // Org providers are per-type singletons, so the public rotation surface
     // is re-upserting the same provider with a new secret. The model-only
@@ -2257,8 +2296,9 @@ describe("CHAT-02: server-side model switches", () => {
       `bdd-cli-${first.runId}`,
     );
     const after = await chat.readThread(actor, first.threadId);
-    expect(after.selectedModel).toBe("claude-sonnet-4-6");
+    expect(after).not.toHaveProperty("selectedModel");
     expect(after.modelProviderId ?? null).toBeNull();
+    await expectThreadModelEvent(actor, first.threadId, "claude-sonnet-4-6");
     await cancelChatRun(actor, second.runId);
   }, 90_000);
 
