@@ -839,6 +839,9 @@ export const chatMessagesContract = c.router({
         threadId: z.string().optional(),
         clientThreadId: z.string().uuid().optional(),
         chatThreadEventId: chatThreadEventIdSchema.optional(),
+        // Client-generated UUID for the sort touch created by direct user sends.
+        // Lets event-sourced clients reconcile optimistic sidebar recency by id.
+        chatThreadSortEventId: chatThreadEventIdSchema.optional(),
         modelSelectionEventId: chatThreadEventIdSchema.optional(),
         modelProvider: z.string().optional(),
         /**
@@ -877,6 +880,7 @@ export const chatMessagesContract = c.router({
         prompt: z.undefined().optional(),
         clientThreadId: z.undefined().optional(),
         chatThreadEventId: z.undefined().optional(),
+        chatThreadSortEventId: z.undefined().optional(),
         modelSelectionEventId: z.undefined().optional(),
         modelProvider: z.undefined().optional(),
         modelSelection: z.undefined().optional(),
@@ -897,6 +901,7 @@ export const chatMessagesContract = c.router({
         prompt: z.undefined().optional(),
         clientThreadId: z.undefined().optional(),
         chatThreadEventId: z.undefined().optional(),
+        chatThreadSortEventId: z.undefined().optional(),
         modelSelectionEventId: z.undefined().optional(),
         modelProvider: z.undefined().optional(),
         modelSelection: z.undefined().optional(),

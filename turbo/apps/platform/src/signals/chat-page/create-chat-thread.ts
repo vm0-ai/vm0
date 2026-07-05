@@ -91,6 +91,7 @@ import { getChatThreadTitleParts } from "./chat-thread-title.ts";
 import {
   optimisticChatThreadCreateUnsettled,
   threadMeta,
+  touchOptimisticChatThreadSort$,
   type ThreadMeta,
 } from "./chat-thread-event-sourcing.ts";
 import {
@@ -2521,12 +2522,14 @@ function prepareTextOnlyUserMessage(
 function createSendOptimisticMessageEntry({
   threadId,
   clientMessageId,
+  createdAt,
   result,
   generationTemplate,
   options,
 }: {
   threadId: string;
   clientMessageId: string;
+  createdAt: string;
   result: PreparedSendMessageResult;
   generationTemplate: GenerationTemplateRequest | undefined;
   options: SendMessageOptions | undefined;
@@ -2541,7 +2544,7 @@ function createSendOptimisticMessageEntry({
       attachFiles: result.attachments,
       generationTemplate,
       ...sendMessageRevocationPatch(options),
-      createdAt: nowDate().toISOString(),
+      createdAt,
     },
   };
 }
@@ -2558,6 +2561,7 @@ function sendMessageRequestBody(params: {
   readonly agentId: string;
   readonly threadId: string;
   readonly clientMessageId: string;
+  readonly chatThreadSortEventId: string;
   readonly result: PreparedSendMessageResult;
   readonly modelSelection: ModelProviderSelection | null;
   readonly codexFastModeEnabled: boolean;
@@ -2574,6 +2578,7 @@ function sendMessageRequestBody(params: {
     threadId: params.threadId,
     hasTextContent: params.result.hasTextContent,
     clientMessageId: params.clientMessageId,
+    chatThreadSortEventId: params.chatThreadSortEventId,
     modelSelection: modelSelectionRequestFromSelection(params.modelSelection),
     ...(runOptions ? { runOptions } : {}),
     generationTemplate: params.generationTemplate,
@@ -2584,6 +2589,40 @@ function sendMessageRequestBody(params: {
     ...sendMessageRevocationPatch(params.options),
   };
 }
+
+const appendOptimisticSendMessage$ = command(
+  (
+    { set },
+    args: {
+      readonly threadId: string;
+      readonly agentId: string;
+      readonly clientMessageId: string;
+      readonly chatThreadSortEventId: string;
+      readonly createdAt: string;
+      readonly result: PreparedSendMessageResult;
+      readonly generationTemplate: GenerationTemplateRequest | undefined;
+      readonly options: SendMessageOptions | undefined;
+    },
+  ) => {
+    set(touchOptimisticChatThreadSort$, {
+      id: args.chatThreadSortEventId,
+      threadId: args.threadId,
+      agentId: args.agentId,
+      createdAt: args.createdAt,
+    });
+    set(
+      appendOptimisticChatMessage$,
+      createSendOptimisticMessageEntry({
+        threadId: args.threadId,
+        clientMessageId: args.clientMessageId,
+        createdAt: args.createdAt,
+        result: args.result,
+        generationTemplate: args.generationTemplate,
+        options: args.options,
+      }),
+    );
+  },
+);
 
 function hasVisualDraftAttachments(
   attachments: readonly { contentType: string; filename: string }[],
@@ -2603,6 +2642,50 @@ interface SendMessageDeps {
   fetchNextPage$: Command<Promise<boolean>, [AbortSignal]>;
   refreshGroupedChatMessagesCache$: Command<Promise<void>, [AbortSignal]>;
 }
+
+const postSendMessage$ = command(
+  async (
+    { get, set },
+    args: {
+      readonly agentId: string;
+      readonly threadId: string;
+      readonly clientMessageId: string;
+      readonly chatThreadSortEventId: string;
+      readonly result: PreparedSendMessageResult;
+      readonly modelSelection: ModelProviderSelection | null;
+      readonly generationTemplate: GenerationTemplateRequest | undefined;
+      readonly options: SendMessageOptions | undefined;
+      readonly flushDraftClear$: Command<Promise<void>, [AbortSignal]>;
+    },
+    signal: AbortSignal,
+  ): Promise<string | null> => {
+    const codexFastModeEnabled =
+      get(featureSwitch$)[FeatureSwitchKey.CodexFastMode] ?? false;
+    const client = get(zeroClient$)(chatMessagesContract);
+    const [, sendResult] = await Promise.all([
+      set(args.flushDraftClear$, signal),
+      accept(
+        client.send({
+          body: sendMessageRequestBody({
+            agentId: args.agentId,
+            clientMessageId: args.clientMessageId,
+            chatThreadSortEventId: args.chatThreadSortEventId,
+            threadId: args.threadId,
+            result: args.result,
+            modelSelection: args.modelSelection,
+            codexFastModeEnabled,
+            generationTemplate: args.generationTemplate,
+            options: args.options,
+          }),
+          fetchOptions: { signal },
+        }),
+        [201],
+      ),
+    ]);
+    signal.throwIfAborted();
+    return sendResult.body.runId;
+  },
+);
 
 function createSendMessage(deps: SendMessageDeps) {
   const {
@@ -2675,16 +2758,18 @@ function createSendMessage(deps: SendMessageDeps) {
       set(cancelDraftSync$);
       set(draft.clear$);
       const clientMessageId = crypto.randomUUID();
-      set(
-        appendOptimisticChatMessage$,
-        createSendOptimisticMessageEntry({
-          threadId,
-          clientMessageId,
-          result,
-          generationTemplate,
-          options,
-        }),
-      );
+      const chatThreadSortEventId = crypto.randomUUID();
+      const createdAt = nowDate().toISOString();
+      set(appendOptimisticSendMessage$, {
+        threadId,
+        agentId,
+        clientMessageId,
+        chatThreadSortEventId,
+        createdAt,
+        result,
+        generationTemplate,
+        options,
+      });
       await set(refreshGroupedChatMessagesCache$, signal);
       signal.throwIfAborted();
       animationFrame(
@@ -2693,43 +2778,31 @@ function createSendMessage(deps: SendMessageDeps) {
         },
         { signal },
       );
-
-      const codexFastModeEnabled =
-        get(featureSwitch$)[FeatureSwitchKey.CodexFastMode] ?? false;
-      const client = get(zeroClient$)(chatMessagesContract);
-      const [, sendResult] = await Promise.all([
-        set(flushDraftClear$, signal),
-        accept(
-          client.send({
-            body: sendMessageRequestBody({
-              agentId,
-              clientMessageId,
-              threadId,
-              result,
-              modelSelection,
-              codexFastModeEnabled,
-              generationTemplate,
-              options,
-            }),
-            fetchOptions: { signal },
-          }),
-          [201],
-        ),
-      ]);
-      signal.throwIfAborted();
-
+      const runId = await set(
+        postSendMessage$,
+        {
+          agentId,
+          threadId,
+          clientMessageId,
+          chatThreadSortEventId,
+          result,
+          modelSelection,
+          generationTemplate,
+          options,
+          flushDraftClear$,
+        },
+        signal,
+      );
       L.debug("sendMessage$ POST accepted", {
         threadId,
-        runId: sendResult.body.runId,
+        runId,
       });
-
-      if (sendResult.body.runId === null) {
+      if (runId === null) {
         set(reloadBillingStatus$);
         await set(fetchNextPage$, signal);
         signal.throwIfAborted();
         set(scrollToBottom$);
       }
-
       set(reloadChatThreads$);
     },
   );
@@ -2807,7 +2880,14 @@ function createQueueMessage(deps: QueueMessageDeps) {
       set(draft.clear$);
 
       const clientMessageId = crypto.randomUUID();
+      const chatThreadSortEventId = crypto.randomUUID();
       const nowIso = nowDate().toISOString();
+      set(touchOptimisticChatThreadSort$, {
+        id: chatThreadSortEventId,
+        threadId,
+        agentId: meta.agentId,
+        createdAt: nowIso,
+      });
       set(appendOptimisticChatMessage$, {
         threadId,
         optimisticUserMessageAssociation: "queue",
@@ -2845,6 +2925,7 @@ function createQueueMessage(deps: QueueMessageDeps) {
             content: result.prompt,
             attachments: result.attachments ?? null,
             clientMessageId,
+            chatThreadSortEventId,
             hasTextContent: result.hasTextContent,
             modelSelection: modelSelectionRequestFromSelection(modelSelection),
             ...(runOptions ? { runOptions } : {}),
