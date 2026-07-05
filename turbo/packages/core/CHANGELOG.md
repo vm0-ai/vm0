@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.400.0](https://github.com/vm0-ai/vm0/compare/core-v8.399.7...core-v8.400.0) (2026-07-05)
+
+
+### Features
+
+* add mobile unread chat shortcuts to agent chat ([#20221](https://github.com/vm0-ai/vm0/issues/20221)) ([5c594ca](https://github.com/vm0-ai/vm0/commit/5c594cabb426ad6984eaac2152922f1363ba9e73))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.154.2
+    * @vm0/connectors bumped to 1.137.0
+
 ## [8.399.7](https://github.com/vm0-ai/vm0/compare/core-v8.399.6...core-v8.399.7) (2026-07-05)
 
 
