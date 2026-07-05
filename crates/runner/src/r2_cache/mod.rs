@@ -58,7 +58,9 @@
 //! Request cost scales with scanned prefixes and pagination: at least one LIST
 //! per prefix, one additional LIST per extra page, and one batched DELETE for
 //! each page that contains expired objects. `DeleteObjects` is idempotent for
-//! already-absent keys, so concurrent fleet execution is safe.
+//! already-absent keys, so concurrent fleet execution is safe; per-host
+//! deleted-count and freed-byte logs are best-effort and are not fleet-unique
+//! when hosts race on the same keys.
 //!
 //! R2's default 7-day lifecycle rule only cleans abandoned multipart
 //! segments, **not** completed objects — which is why we need our own scan.
