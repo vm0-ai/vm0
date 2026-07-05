@@ -5,6 +5,7 @@ import { singleton } from "../lib/singleton";
 export enum Mechanism {
   WaitUntil = "wait_until",
   BestEffortCleanup = "best_effort_cleanup",
+  Deferred = "deferred",
 }
 
 const IN_VITEST = env("VITEST") === "true";
@@ -146,6 +147,12 @@ type Settled<T> =
   | { readonly ok: true; readonly value: T }
   | { readonly ok: false; readonly error: unknown };
 
+interface PromiseResolvers<T> {
+  readonly promise: Promise<T>;
+  readonly resolve: (value: T | PromiseLike<T>) => void;
+  readonly reject: (reason?: unknown) => void;
+}
+
 /**
  * Settle `p` into a discriminated union. AbortError propagates (re-throws),
  * either from `p` itself or from `signal` if one is passed — so the returned
@@ -195,6 +202,68 @@ export function detach(
       tracker().descriptions.set(promise, description);
     }
   }
+}
+
+export function createDeferredPromise<T>(signal: AbortSignal): {
+  readonly promise: Promise<T>;
+  readonly resolve: (value: T) => void;
+  readonly reject: (reason?: unknown) => void;
+  readonly settled: () => boolean;
+} {
+  const { promise, resolve, reject } = (
+    Promise as PromiseConstructor & {
+      withResolvers<T>(): PromiseResolvers<T>;
+    }
+  ).withResolvers<T>();
+  let settled = false;
+  let removeAbortListener = () => {};
+
+  const settleOnce = (settlePromise: () => void) => {
+    if (settled) {
+      throw new Error("Deferred promise already settled");
+    }
+    settled = true;
+    removeAbortListener();
+    settlePromise();
+  };
+
+  detach(promise, Mechanism.Deferred);
+
+  const guardedResolve = (value: T) => {
+    settleOnce(() => {
+      resolve(value);
+    });
+  };
+
+  const guardedReject = (reason?: unknown) => {
+    settleOnce(() => {
+      reject(reason);
+    });
+  };
+
+  const onAbort = () => {
+    if (!settled) {
+      guardedReject(signal.reason);
+    }
+  };
+
+  if (signal.aborted) {
+    guardedReject(signal.reason);
+  } else {
+    removeAbortListener = () => {
+      signal.removeEventListener("abort", onAbort);
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+  }
+
+  return {
+    promise,
+    resolve: guardedResolve,
+    reject: guardedReject,
+    settled: () => {
+      return settled;
+    },
+  };
 }
 
 export async function clearAllDetached(): Promise<void> {

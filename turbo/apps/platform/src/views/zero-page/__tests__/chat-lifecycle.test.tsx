@@ -1266,6 +1266,33 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("renders the optimistic new chat message without skeleton when the initial message list is blocked", async () => {
+    const user = userEvent.setup({ delay: null });
+    const prompt = "Show this while the initial list is blocked";
+    const initialMessageList = context.mocks.deferred<void>();
+    mockChatLifecycle(context);
+    context.mocks.api(chatThreadMessagesContract.list, async ({ respond }) => {
+      await initialMessageList.promise;
+      return respond(200, { messages: [], hasHistoryBefore: false });
+    });
+
+    try {
+      detachedSetupPage({ context, path: AGENT_CHAT_PATH });
+
+      const textarea = await waitFor(() => {
+        return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+      });
+      await sendMessageInUI(user, textarea, prompt);
+
+      await waitFor(() => {
+        expect(screen.getByText(prompt)).toBeInTheDocument();
+        expect(document.querySelector("[data-chat-skeleton]")).toBeNull();
+      });
+    } finally {
+      initialMessageList.resolve();
+    }
+  });
+
   it("renders completed markdown and returns the composer to send mode", async () => {
     const user = userEvent.setup({ delay: null });
     const lifecycle = mockChatLifecycle(context);
@@ -1287,6 +1314,7 @@ describe("chat lifecycle", () => {
       expect(screen.getByText("result")).toBeInTheDocument();
       expect(screen.getByLabelText("Send")).toBeInTheDocument();
       expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
+      expect(document.querySelector("[data-chat-skeleton]")).toBeNull();
     });
   });
 
