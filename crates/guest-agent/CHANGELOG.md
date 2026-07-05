@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.46.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.46.4...guest-agent-v0.46.5) (2026-07-05)
+
+
+### Refactoring
+
+* centralize run payload field validation ([#20225](https://github.com/vm0-ai/vm0/issues/20225)) ([8a293a7](https://github.com/vm0-ai/vm0/commit/8a293a762a48b4828780e8e99ca59e48ca915415))
+
 ## [0.46.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.46.3...guest-agent-v0.46.4) (2026-07-05)
 
 ## [0.46.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.46.2...guest-agent-v0.46.3) (2026-07-04)

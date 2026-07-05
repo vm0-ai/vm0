@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.556.0](https://github.com/vm0-ai/vm0/compare/app-v0.555.2...app-v0.556.0) (2026-07-05)
+
+
+### Features
+
+* add mobile unread chat shortcuts to agent chat ([#20221](https://github.com/vm0-ai/vm0/issues/20221)) ([5c594ca](https://github.com/vm0-ai/vm0/commit/5c594cabb426ad6984eaac2152922f1363ba9e73))
+
+
+### Refactoring
+
+* decouple ideation connector refs from runtime enum ([#20230](https://github.com/vm0-ai/vm0/issues/20230)) ([a1b2781](https://github.com/vm0-ai/vm0/commit/a1b278116de89a41f9ca58857a0ee4b7222b0a76))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.154.2
+    * @vm0/connectors bumped to 1.137.0
+    * @vm0/core bumped to 8.400.0
+
 ## [0.555.2](https://github.com/vm0-ai/vm0/compare/app-v0.555.1...app-v0.555.2) (2026-07-05)
 
 
