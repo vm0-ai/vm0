@@ -562,6 +562,10 @@ async fn sandbox_write_files_lifecycle_gate_blocks_batch_until_released() {
     );
 
     gate.release_one();
-    task.await.unwrap().unwrap();
+    tokio::time::timeout(test_timeout(), task)
+        .await
+        .expect("write_files must finish after one batch gate release")
+        .unwrap()
+        .unwrap();
     assert_eq!(gate.entered_count(), 1);
 }
