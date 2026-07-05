@@ -196,7 +196,7 @@ fn download_all_parallel_with_runner(tasks: Vec<DownloadTask>, task_runner: Task
     record_sandbox_op(
         guest_download_mount_conflict_count_action(stats.mount_conflict_deferrals),
         Duration::ZERO,
-        success,
+        true,
         None,
     );
     success

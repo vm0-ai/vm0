@@ -46,17 +46,25 @@ fn run_binary_with_manifest_stdin(
     child.wait_with_output()
 }
 
-fn sandbox_op_action_types(content: &str) -> Result<Vec<String>, String> {
+fn sandbox_ops(content: &str) -> Result<Vec<serde_json::Value>, String> {
     content
         .lines()
         .map(|line| {
-            let entry = serde_json::from_str::<serde_json::Value>(line)
-                .map_err(|error| format!("invalid sandbox op JSON {line:?}: {error}"))?;
+            serde_json::from_str::<serde_json::Value>(line)
+                .map_err(|error| format!("invalid sandbox op JSON {line:?}: {error}"))
+        })
+        .collect()
+}
+
+fn sandbox_op_action_types(content: &str) -> Result<Vec<String>, String> {
+    sandbox_ops(content)?
+        .into_iter()
+        .map(|entry| {
             entry
                 .get("action_type")
                 .and_then(serde_json::Value::as_str)
                 .map(str::to_owned)
-                .ok_or_else(|| format!("missing action_type in sandbox op JSON {line:?}"))
+                .ok_or_else(|| format!("missing action_type in sandbox op JSON {entry:?}"))
         })
         .collect()
 }
@@ -211,6 +219,66 @@ fn binary_records_download_scheduler_attribution() {
     assert_action_present(&actions, "storage_download");
     assert_action_present(&actions, "artifact_download");
     assert_action_present(&actions, "download_total");
+}
+
+#[test]
+fn binary_records_scheduler_attribution_for_failed_download() {
+    let server = MockServer::start();
+    let remote_mock = server.mock(|when, then| {
+        when.method(GET).path("/missing.tar.gz");
+        then.status(404);
+    });
+
+    let dir = tempfile::tempdir().unwrap();
+    let local_tar = create_tar_gz(&[("local.txt", b"local")]).unwrap();
+    let local_archive = dir.path().join("local.tar.gz");
+    std::fs::write(&local_archive, local_tar).unwrap();
+    let parent_mount = dir.path().join("mount");
+    let child_mount = parent_mount.join("child");
+    let remote_url = server.url("/missing.tar.gz");
+    let local_url = format!("file://{}", local_archive.display());
+    let manifest = write_manifest(
+        &dir,
+        &[(parent_mount.to_str().unwrap(), Some(&remote_url))],
+        Some((child_mount.to_str().unwrap(), Some(&local_url))),
+    )
+    .unwrap();
+    let run_id = unique_run_id("scheduler-attribution-failure");
+    let logs = RuntimeLogPaths::new(&dir);
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_guest-download"))
+        .arg(&manifest)
+        .env("VM0_RUN_ID", &run_id)
+        .env(
+            guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+            &logs.runtime_dir,
+        )
+        .output()
+        .unwrap();
+
+    assert!(
+        !output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    remote_mock.assert_calls(1);
+    assert_eq!(
+        std::fs::read_to_string(child_mount.join("local.txt")).unwrap(),
+        "local"
+    );
+
+    let ops_content = std::fs::read_to_string(&logs.ops_log).unwrap();
+    let ops = sandbox_ops(&ops_content).unwrap();
+    let conflict = ops
+        .iter()
+        .find(|entry| entry["action_type"] == "guest_download_mount_conflict_count_1")
+        .unwrap_or_else(|| panic!("missing mount conflict count in {ops:?}"));
+    assert_eq!(conflict["success"], true);
+    let total = ops
+        .iter()
+        .find(|entry| entry["action_type"] == "download_total")
+        .unwrap_or_else(|| panic!("missing download_total in {ops:?}"));
+    assert_eq!(total["success"], false);
 }
 
 #[test]
