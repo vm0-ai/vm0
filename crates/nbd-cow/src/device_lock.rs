@@ -229,15 +229,16 @@ mod tests {
         let lock_dir = Arc::new(dir.path().to_owned());
         let worker_count = 8;
         let start = Arc::new(Barrier::new(worker_count + 1));
-        let finish = Arc::new(Barrier::new(worker_count + 1));
         let (result_tx, result_rx) = mpsc::channel();
+        let mut release_txs = Vec::with_capacity(worker_count);
         let mut handles = Vec::with_capacity(worker_count);
 
         for _ in 0..worker_count {
             let lock_dir = Arc::clone(&lock_dir);
             let start = Arc::clone(&start);
-            let finish = Arc::clone(&finish);
             let result_tx = result_tx.clone();
+            let (release_tx, release_rx) = mpsc::channel();
+            release_txs.push(release_tx);
             handles.push(std::thread::spawn(move || {
                 start.wait();
                 let claim = try_acquire_device_claim_in(7, &lock_dir);
@@ -245,8 +246,11 @@ mod tests {
                     .as_ref()
                     .map(|claim| claim.is_some())
                     .map_err(|error| error.to_string());
+                let holds_claim = matches!(&claim, Ok(Some(_)));
                 let _ = result_tx.send(result);
-                finish.wait();
+                if holds_claim {
+                    let _ = release_rx.recv();
+                }
                 drop(claim);
             }));
         }
@@ -256,7 +260,9 @@ mod tests {
         let results = (0..worker_count)
             .map(|_| result_rx.recv().expect("worker result"))
             .collect::<Vec<_>>();
-        finish.wait();
+        for release_tx in release_txs {
+            let _ = release_tx.send(());
+        }
 
         for handle in handles {
             handle.join().expect("worker should not panic");
