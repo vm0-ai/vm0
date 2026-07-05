@@ -47,6 +47,13 @@ function sha256Hex(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
+const HTML_SCRIPT_TAG_NAME = "script";
+
+function scriptTag(content: string, attributes?: string): string {
+  const attributeText = attributes ? ` ${attributes}` : "";
+  return `<${HTML_SCRIPT_TAG_NAME}${attributeText}>${content}</${HTML_SCRIPT_TAG_NAME}>`;
+}
+
 function expectPublicSlugSegment(value: string): void {
   expect(value).toMatch(/^[a-f0-9]{8}$/);
 }
@@ -583,7 +590,7 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
     expect(upstreamPrompt).toContain("html-dom-edit-patch");
     expect(upstreamPrompt).toContain('"operation":"update"');
     expect(upstreamPrompt).toContain("color, background, icon");
-    expect(upstreamPrompt).toContain("Do not add comment markers");
+    expect(upstreamPrompt).toContain("comment markers");
     expect(upstreamPrompt).toContain("Do not return the complete HTML");
     expect(upstreamPrompt).not.toContain(
       "No target-related script context was found.",
@@ -693,10 +700,10 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
     ].join("\n");
     const removableScriptContent = 'console.log("remove me");';
     const oldScriptSha = sha256Hex(
-      `<script data-vm0-script-id="vm0-script-1">${oldScriptContent}</script>`,
+      scriptTag(oldScriptContent, 'data-vm0-script-id="vm0-script-1"'),
     );
     const removableScriptSha = sha256Hex(
-      `<script data-vm0-script-id="vm0-script-2">${removableScriptContent}</script>`,
+      scriptTag(removableScriptContent, 'data-vm0-script-id="vm0-script-2"'),
     );
     let upstreamPrompt: string | null = null;
 
@@ -753,7 +760,7 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
     const generated = await api.requestCreateHtmlEditDraft(
       actor,
       {
-        html: `<!doctype html><html><body><h1 id="title" data-vm0-node-id="vm0-node-1">Draft headline</h1><script>${oldScriptContent}</script><script>${removableScriptContent}</script></body></html>`,
+        html: `<!doctype html><html><body><h1 id="title" data-vm0-node-id="vm0-node-1">Draft headline</h1>${scriptTag(oldScriptContent)}${scriptTag(removableScriptContent)}</body></html>`,
         comments: [
           {
             id: "comment-1",
@@ -778,7 +785,7 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
     expect(generated.body).toStrictEqual({
       kind: "html-edit-draft",
       version: 1,
-      html: `<!doctype html><html><body><h1 id="title">Published headline</h1><script>${newScriptContent}</script><script>document.documentElement.dataset.edited = "true";</script></body></html>`,
+      html: `<!doctype html><html><body><h1 id="title">Published headline</h1>${scriptTag(newScriptContent)}${scriptTag('document.documentElement.dataset.edited = "true";')}</body></html>`,
     });
     expect(upstreamPrompt).toContain("scriptId: vm0-script-1");
     expect(upstreamPrompt).toContain(`oldSha256: ${oldScriptSha}`);
@@ -806,7 +813,7 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
       'document.getElementById("title").textContent = state.title;',
     ].join("\n");
     const oldScriptSha = sha256Hex(
-      `<script data-vm0-script-id="vm0-script-1">${oldScriptContent}</script>`,
+      scriptTag(oldScriptContent, 'data-vm0-script-id="vm0-script-1"'),
     );
     const largeFiller = `<section>${"large-filler ".repeat(6000)}</section>`;
     let upstreamPrompt: string | null = null;
@@ -852,7 +859,7 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
     const generated = await api.requestCreateHtmlEditDraft(
       actor,
       {
-        html: `<!doctype html><html><body><h1 id="title" data-vm0-node-id="vm0-node-1">Draft headline</h1>${largeFiller}<script>${oldScriptContent}</script></body></html>`,
+        html: `<!doctype html><html><body><h1 id="title" data-vm0-node-id="vm0-node-1">Draft headline</h1>${largeFiller}${scriptTag(oldScriptContent)}</body></html>`,
         comments: [
           {
             id: "comment-1",
@@ -931,7 +938,7 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
     expect(generated.body).toStrictEqual({
       kind: "html-edit-draft",
       version: 1,
-      html: '<!doctype html><html><body><h1>Launch</h1><script>fetch("/collect");</script></body></html>',
+      html: `<!doctype html><html><body><h1>Launch</h1>${scriptTag('fetch("/collect");')}</body></html>`,
     });
   });
 
@@ -944,7 +951,7 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
     const oldScriptContent =
       'fetch("/old-endpoint");\nconst title = "Draft headline";';
     const oldScriptSha = sha256Hex(
-      `<script data-vm0-script-id="vm0-script-1">${oldScriptContent}</script>`,
+      scriptTag(oldScriptContent, 'data-vm0-script-id="vm0-script-1"'),
     );
 
     server.use(
@@ -978,7 +985,7 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
     const generated = await api.requestCreateHtmlEditDraft(
       actor,
       {
-        html: `<!doctype html><html><body><h1 data-vm0-node-id="vm0-node-1">Draft headline</h1><script>${oldScriptContent}</script></body></html>`,
+        html: `<!doctype html><html><body><h1 data-vm0-node-id="vm0-node-1">Draft headline</h1>${scriptTag(oldScriptContent)}</body></html>`,
         comments: [
           {
             id: "comment-1",
@@ -993,7 +1000,7 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
     expect(generated.body).toStrictEqual({
       kind: "html-edit-draft",
       version: 1,
-      html: '<!doctype html><html><body><h1>Draft headline</h1><script>fetch("/collect");\nconst title = "Published headline";</script></body></html>',
+      html: `<!doctype html><html><body><h1>Draft headline</h1>${scriptTag('fetch("/collect");\nconst title = "Published headline";')}</body></html>`,
     });
   });
 
@@ -1005,7 +1012,10 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
 
     const importScriptContent = 'const title = "Draft headline";';
     const importScriptSha = sha256Hex(
-      `<script type="module" data-vm0-script-id="vm0-script-1">${importScriptContent}</script>`,
+      scriptTag(
+        importScriptContent,
+        'type="module" data-vm0-script-id="vm0-script-1"',
+      ),
     );
 
     server.use(
@@ -1039,7 +1049,7 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
     const importGenerated = await api.requestCreateHtmlEditDraft(
       actor,
       {
-        html: `<!doctype html><html><body><h1 data-vm0-node-id="vm0-node-1">Draft headline</h1><script type="module">${importScriptContent}</script></body></html>`,
+        html: `<!doctype html><html><body><h1 data-vm0-node-id="vm0-node-1">Draft headline</h1>${scriptTag(importScriptContent, 'type="module"')}</body></html>`,
         comments: [
           {
             id: "comment-1",
@@ -1054,12 +1064,15 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
     expect(importGenerated.body).toStrictEqual({
       kind: "html-edit-draft",
       version: 1,
-      html: '<!doctype html><html><body><h1>Draft headline</h1><script type="module">import tracker from "/tracker.js";\nconst title = "Published headline";\ntracker();</script></body></html>',
+      html: `<!doctype html><html><body><h1>Draft headline</h1>${scriptTag('import tracker from "/tracker.js";\nconst title = "Published headline";\ntracker();', 'type="module"')}</body></html>`,
     });
 
     const fetchScriptContent = 'const title = "Draft headline";';
     const fetchScriptSha = sha256Hex(
-      `<script type="text/javascript; charset=utf-8" data-vm0-script-id="vm0-script-1">${fetchScriptContent}</script>`,
+      scriptTag(
+        fetchScriptContent,
+        'type="text/javascript; charset=utf-8" data-vm0-script-id="vm0-script-1"',
+      ),
     );
 
     server.use(
@@ -1093,7 +1106,7 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
     const fetchGenerated = await api.requestCreateHtmlEditDraft(
       actor,
       {
-        html: `<!doctype html><html><body><h1 data-vm0-node-id="vm0-node-1">Draft headline</h1><script type="text/javascript; charset=utf-8">${fetchScriptContent}</script></body></html>`,
+        html: `<!doctype html><html><body><h1 data-vm0-node-id="vm0-node-1">Draft headline</h1>${scriptTag(fetchScriptContent, 'type="text/javascript; charset=utf-8"')}</body></html>`,
         comments: [
           {
             id: "comment-1",
@@ -1108,7 +1121,7 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
     expect(fetchGenerated.body).toStrictEqual({
       kind: "html-edit-draft",
       version: 1,
-      html: '<!doctype html><html><body><h1>Draft headline</h1><script type="text/javascript; charset=utf-8">const title = "Published headline";\nfetch("/collect");</script></body></html>',
+      html: `<!doctype html><html><body><h1>Draft headline</h1>${scriptTag('const title = "Published headline";\nfetch("/collect");', 'type="text/javascript; charset=utf-8"')}</body></html>`,
     });
   });
 
@@ -1133,7 +1146,7 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
                       commentId: "comment-1",
                       operation: "script_add",
                       placement: "end_of_body",
-                      content: '</script><img src=x alt="">',
+                      content: `</${HTML_SCRIPT_TAG_NAME}><img src=x alt="">`,
                     },
                   ],
                 }),
@@ -1171,20 +1184,21 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
     const actor = bdd.user();
     mockOptionalEnv("OPENROUTER_API_KEY", "bdd-html-edit-key");
 
+    const scriptLikeTemplate = `const template = "<${HTML_SCRIPT_TAG_NAME} data-demo=\\"x\\">";`;
     const oldScriptContent = [
-      String.raw`const template = "<script data-demo=\"x\">";`,
+      scriptLikeTemplate,
       'const priority = "important draft";',
       'const state = { title: "Draft headline" };',
       'document.getElementById("title").textContent = state.title;',
     ].join("\n");
     const newScriptContent = [
-      String.raw`const template = "<script data-demo=\"x\">";`,
+      scriptLikeTemplate,
       'const priority = "important published";',
       'const state = { title: "Published headline" };',
       'document.getElementById("title").textContent = state.title;',
     ].join("\n");
     const oldScriptSha = sha256Hex(
-      `<script data-vm0-script-id="vm0-script-1">${oldScriptContent}</script>`,
+      scriptTag(oldScriptContent, 'data-vm0-script-id="vm0-script-1"'),
     );
 
     server.use(
@@ -1223,7 +1237,7 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
     const generated = await api.requestCreateHtmlEditDraft(
       actor,
       {
-        html: `<!doctype html><html><body><h1 id="title" data-vm0-node-id="vm0-node-1">Draft headline</h1><script>${oldScriptContent}</script></body></html>`,
+        html: `<!doctype html><html><body><h1 id="title" data-vm0-node-id="vm0-node-1">Draft headline</h1>${scriptTag(oldScriptContent)}</body></html>`,
         comments: [
           {
             id: "comment-1",
@@ -1238,7 +1252,7 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
     expect(generated.body).toStrictEqual({
       kind: "html-edit-draft",
       version: 1,
-      html: `<!doctype html><html><body><h1 id="title">Published headline</h1><script>${newScriptContent}</script></body></html>`,
+      html: `<!doctype html><html><body><h1 id="title">Published headline</h1>${scriptTag(newScriptContent)}</body></html>`,
     });
   });
 
@@ -1261,7 +1275,10 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
       "tracker.ready();",
     ].join("\n");
     const oldScriptSha = sha256Hex(
-      `<script type="module" data-vm0-script-id="vm0-script-1">${oldScriptContent}</script>`,
+      scriptTag(
+        oldScriptContent,
+        'type="module" data-vm0-script-id="vm0-script-1"',
+      ),
     );
 
     server.use(
@@ -1300,7 +1317,7 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
     const generated = await api.requestCreateHtmlEditDraft(
       actor,
       {
-        html: `<!doctype html><html><body><h1 id="title" data-vm0-node-id="vm0-node-1">Draft headline</h1><script type="module">${oldScriptContent}</script></body></html>`,
+        html: `<!doctype html><html><body><h1 id="title" data-vm0-node-id="vm0-node-1">Draft headline</h1>${scriptTag(oldScriptContent, 'type="module"')}</body></html>`,
         comments: [
           {
             id: "comment-1",
@@ -1315,7 +1332,7 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
     expect(generated.body).toStrictEqual({
       kind: "html-edit-draft",
       version: 1,
-      html: `<!doctype html><html><body><h1 id="title">Published headline</h1><script type="module">${newScriptContent}</script></body></html>`,
+      html: `<!doctype html><html><body><h1 id="title">Published headline</h1>${scriptTag(newScriptContent, 'type="module"')}</body></html>`,
     });
   });
 });

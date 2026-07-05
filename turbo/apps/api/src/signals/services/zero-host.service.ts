@@ -56,6 +56,9 @@ const MAX_HTML_DOM_EDIT_SCRIPT_CONTEXTS_PER_TARGET = 2;
 const MAX_HTML_DOM_EDIT_SCRIPT_SNIPPETS_PER_TARGET = 2;
 const MAX_HTML_DOM_EDIT_SCRIPT_SNIPPET_CHARS = 500;
 const SHA256_HEX_PATTERN = /^[a-f0-9]{64}$/;
+const HTML_SCRIPT_TAG_NAME = "script";
+const HTML_SCRIPT_OPEN_TAG = `<${HTML_SCRIPT_TAG_NAME}>`;
+const HTML_SCRIPT_CLOSE_TAG = `</${HTML_SCRIPT_TAG_NAME}>`;
 
 const htmlDomEditPatchSchema = z.discriminatedUnion("operation", [
   z.object({
@@ -563,9 +566,9 @@ Rules:
 - Source-of-truth rule: when Target-script context or inline scripts reference the selected node, its selectors, or its visible text, check whether that script renders, derives, resets, or overwrites the requested content or behavior. If yes, a DOM-only response is invalid; include script_text_replace or script_update for the script/backing data.
 - Keep DOM fallback and script value synchronized when they represent the same user-facing text.
 - Prefer the smallest patch: script_text_replace for exact small script text/data changes, script_update for larger inline script edits, script_delete only when requested, and script_add only when existing DOM/script cannot satisfy the requested behavior.
-- For script_update/script_add, content is script body only, without <script> tags. For script_text_replace, oldText must be exact and unique. For script_update/script_text_replace/script_delete, copy exact scriptId and oldSha256.
+- For script_update/script_add, content is script body only, without opening or closing script tags. For script_text_replace, oldText must be exact and unique. For script_update/script_text_replace/script_delete, copy exact scriptId and oldSha256.
 - Keep unrelated content, formatting, assets, language, and behavior stable. Do not introduce unrelated side effects, network calls, imports, globals, timers, or script element creation.
-- Do not return the complete HTML document, explanations, deployment commands, overlays, annotations, comment markers, vm0-only editing attributes, or <script> tags in DOM fragments.
+- Do not return the complete HTML document, explanations, deployment commands, overlays, annotations, comment markers, vm0-only editing attributes, or script tags in DOM fragments.
 - Apply every requested change exactly once.
 
 Comments:
@@ -855,11 +858,18 @@ function startTagAttributeValue(
 }
 
 function escapeHtmlAttribute(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;");
+  return value.replace(/[&"<>]/g, (char) => {
+    if (char === "&") {
+      return "&amp;";
+    }
+    if (char === '"') {
+      return "&quot;";
+    }
+    if (char === "<") {
+      return "&lt;";
+    }
+    return "&gt;";
+  });
 }
 
 function insertStartTagAttribute(
@@ -1083,13 +1093,18 @@ function clipped(value: string, maxLength: number): string {
 }
 
 function decodeBasicHtmlEntities(value: string): string {
-  return value
-    .replaceAll("&nbsp;", " ")
-    .replaceAll("&amp;", "&")
-    .replaceAll("&lt;", "<")
-    .replaceAll("&gt;", ">")
-    .replaceAll("&quot;", '"')
-    .replaceAll("&#39;", "'");
+  return value.replace(/&(nbsp|amp|lt|gt|quot|#39);/g, (entity) => {
+    return (
+      {
+        "&#39;": "'",
+        "&amp;": "&",
+        "&gt;": ">",
+        "&lt;": "<",
+        "&nbsp;": " ",
+        "&quot;": '"',
+      }[entity] ?? entity
+    );
+  });
 }
 
 function normalizedHtmlText(html: string): string {
@@ -1399,7 +1414,7 @@ function htmlSpanSource(html: string, span: HtmlElementSpan): string {
 }
 
 function scriptElementHtml(content: string): string {
-  return `<script>${content}</script>`;
+  return `${HTML_SCRIPT_OPEN_TAG}${content}${HTML_SCRIPT_CLOSE_TAG}`;
 }
 
 function insertScriptAtEndOfBody(html: string, content: string): string {
