@@ -5,11 +5,7 @@ import { hostedArtifactKindSchema } from "./zero-host";
 import { runStatusSchema } from "./runs";
 import { zeroGoalEventSchema } from "./zero-goals";
 import { triggerSourceSchema } from "./logs";
-import {
-  isSupportedRunModel,
-  modelProviderCredentialScopeSchema,
-  modelProviderTypeSchema,
-} from "./model-providers";
+import { isSupportedRunModel } from "./model-providers";
 
 const c = initContract();
 const MODEL_FIRST_SELECTION_PROVIDER_ID =
@@ -346,45 +342,13 @@ const pagedChatMessageSchema = z.discriminatedUnion("role", [
 ]);
 
 const chatThreadDetailSchema = z.object({
-  id: z.string(),
-  title: z.string().nullable(),
-  agentId: z.string(),
   /**
    * Read-state watermark. A thread is unread when its latest run-finish marker
    * is newer than this timestamp.
    */
   lastReadAt: z.string().nullable(),
-  /**
-   * ISO timestamp of the latest assistant text result that should affect
-   * sidebar recency.
-   */
-  lastMessageAt: z.string().optional(),
-  activeRunIds: z.array(z.string()),
-  createdAt: z.string(),
-  updatedAt: z.string(),
-  /**
-   * ISO timestamp at which the user pinned this thread. Exposed on detail so
-   * the current thread can be placed in the correct sidebar segment even when
-   * it is omitted from the paged list response.
-   */
-  pinnedAt: z.string().nullable().optional(),
-  computerUseHostId: z.string().uuid().nullable().optional(),
-  /**
-   * Legacy provider route fields are retained for backwards-compatible
-   * responses; thread model state is exposed through event-driven projections.
-   */
-  modelProviderId: z.string().nullable().optional(),
-  modelProviderType: modelProviderTypeSchema.nullable().optional(),
-  modelProviderCredentialScope: modelProviderCredentialScopeSchema
-    .nullable()
-    .optional(),
-  codexServiceTier: codexServiceTierSchema.nullable().optional(),
-  /**
-   * ISO timestamp at which the user manually renamed this thread. Null/undefined
-   * means never renamed. When set, automated title generation is suppressed.
-   * Optional for back-compat with fixtures that predate the field.
-   */
-  renamedAt: z.string().nullable().optional(),
+  computerUseHostId: z.string().uuid().nullable(),
+  codexServiceTier: codexServiceTierSchema.nullable(),
 });
 
 const chatThreadMetadataSchema = z.object({
@@ -568,7 +532,7 @@ export const chatThreadByIdContract = c.router({
       401: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Get chat thread detail with messages",
+    summary: "Get chat thread detail",
   },
   patch: {
     method: "PATCH",

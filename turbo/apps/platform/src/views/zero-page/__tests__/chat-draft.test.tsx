@@ -91,15 +91,11 @@ function mockThreadDetails(): void {
   context.mocks.api(chatThreadsContract.events, ({ respond }) => {
     return respond(200, { events: [], hasMore: false });
   });
-  context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
+  context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
     return respond(200, {
-      id: params.id,
-      title: null,
-      agentId: "c0000000-0000-4000-a000-000000000001",
       lastReadAt: null,
-      activeRunIds: [],
-      createdAt: "2026-03-10T00:00:00Z",
-      updatedAt: "2026-03-10T00:00:00Z",
+      computerUseHostId: null,
+      codexServiceTier: null,
     });
   });
   context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
@@ -300,15 +296,11 @@ describe("chat drafts", () => {
       updatedAt: "2026-03-10T00:00:00Z",
     });
     mockThreadDetails();
-    context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
+    context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
-        id: params.id,
-        title: "Saved draft",
-        agentId: "c0000000-0000-4000-a000-000000000001",
         lastReadAt: null,
-        activeRunIds: [],
-        createdAt: "2026-03-10T00:00:00Z",
-        updatedAt: "2026-03-10T00:00:00Z",
+        computerUseHostId: null,
+        codexServiceTier: null,
       });
     });
     context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
@@ -341,13 +333,9 @@ describe("chat drafts", () => {
     mockChatLifecycle(context, { threadId });
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
-        id: threadId,
-        title: "Draft sync",
-        agentId: "c0000000-0000-4000-a000-000000000001",
         lastReadAt: null,
-        activeRunIds: [],
-        createdAt: "2026-03-10T00:00:00Z",
-        updatedAt: "2026-03-10T00:00:00Z",
+        computerUseHostId: null,
+        codexServiceTier: null,
       });
     });
     context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {

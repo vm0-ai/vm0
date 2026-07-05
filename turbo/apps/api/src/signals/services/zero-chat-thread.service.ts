@@ -155,6 +155,12 @@ type ChatThreadRow = {
   readonly updatedAt: Date;
 };
 
+type ChatThreadDetailRow = {
+  readonly lastReadAt: Date | null;
+  readonly computerUseHostId: string | null;
+  readonly codexServiceTier: CodexServiceTier | null;
+};
+
 function effectiveChatMessageRunId() {
   return chatMessages.runId;
 }
@@ -600,14 +606,7 @@ function toPagedMessage(
   });
 }
 
-// Single zero_runs JOIN agent_runs scan used to derive activeRunIds in JS,
-// paying the join cost once on the hot chat-thread detail path. Rows are
-// ordered newest-first.
 const ACTIVE_RUN_STATUSES = ["queued", "pending", "running"] as const;
-
-function isActiveRunStatus(status: string): boolean {
-  return (ACTIVE_RUN_STATUSES as readonly string[]).includes(status);
-}
 
 function activeRunStatusSqlList() {
   return sql.join(
@@ -637,37 +636,31 @@ function noActiveGoalsForCurrentThreadCondition() {
   )`;
 }
 
-interface ThreadRunSummaryRow {
-  readonly id: string;
-  readonly status: string;
-}
-
-function threadRunSummaries(
+function ownedChatThreadDetail(
   threadId: string,
-): Computed<Promise<readonly ThreadRunSummaryRow[]>> {
-  return computed(async (get): Promise<readonly ThreadRunSummaryRow[]> => {
-    return await get(db$)
+  userId: string,
+): Computed<Promise<ChatThreadDetailRow | null>> {
+  return computed(async (get): Promise<ChatThreadDetailRow | null> => {
+    const [thread] = await get(db$)
       .select({
-        id: zeroRuns.id,
-        status: agentRuns.status,
+        lastReadAt: chatThreads.lastReadAt,
+        computerUseHostId: chatThreads.computerUseHostId,
+        codexServiceTier: chatThreads.codexServiceTier,
       })
-      .from(zeroRuns)
-      .innerJoin(agentRuns, eq(zeroRuns.id, agentRuns.id))
-      .where(eq(zeroRuns.chatThreadId, threadId))
-      .orderBy(desc(agentRuns.createdAt), desc(agentRuns.id));
-  });
-}
+      .from(chatThreads)
+      .where(and(eq(chatThreads.id, threadId), eq(chatThreads.userId, userId)))
+      .limit(1);
 
-function pickActiveRunIds(
-  rows: readonly ThreadRunSummaryRow[],
-): readonly string[] {
-  const active: string[] = [];
-  for (const row of rows) {
-    if (isActiveRunStatus(row.status)) {
-      active.push(row.id);
+    if (!thread) {
+      return null;
     }
-  }
-  return active;
+
+    return {
+      lastReadAt: thread.lastReadAt,
+      computerUseHostId: thread.computerUseHostId,
+      codexServiceTier: thread.codexServiceTier ?? null,
+    };
+  });
 }
 
 export function zeroChatThreadDetail(args: {
@@ -675,28 +668,15 @@ export function zeroChatThreadDetail(args: {
   readonly userId: string;
 }): Computed<Promise<ChatThreadDetail | null>> {
   return computed(async (get): Promise<ChatThreadDetail | null> => {
-    const thread = await get(ownedChatThread(args.threadId, args.userId));
+    const thread = await get(ownedChatThreadDetail(args.threadId, args.userId));
     if (!thread) {
       return null;
     }
 
-    const runSummaries = await get(threadRunSummaries(args.threadId));
     return {
-      id: thread.id,
-      title: thread.title,
-      agentId: thread.agentComposeId,
       lastReadAt: thread.lastReadAt?.toISOString() ?? null,
-      lastMessageAt: thread.lastMessageAt.toISOString(),
-      activeRunIds: [...pickActiveRunIds(runSummaries)],
-      createdAt: thread.createdAt.toISOString(),
-      updatedAt: thread.updatedAt.toISOString(),
-      pinnedAt: thread.pinnedAt?.toISOString() ?? null,
       computerUseHostId: thread.computerUseHostId,
-      modelProviderId: thread.modelProviderId,
-      modelProviderType: thread.modelProviderType,
-      modelProviderCredentialScope: thread.modelProviderCredentialScope,
       codexServiceTier: thread.codexServiceTier,
-      renamedAt: thread.renamedAt?.toISOString() ?? null,
     };
   });
 }

@@ -44,7 +44,7 @@ const DEFAULT_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const MOCK_RUN_ID = "d0000000-0000-4000-a000-000000000001";
 const SUB_AGENT_ID = "a1111111-0000-4000-a000-000000000001";
 
-export function mockSubagentThread(context: TestContext, threadId: string) {
+export function mockSubagentThread(context: TestContext, _threadId: string) {
   context.mocks.data.team([
     {
       id: DEFAULT_AGENT_ID,
@@ -92,13 +92,9 @@ export function mockSubagentThread(context: TestContext, threadId: string) {
   });
   context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
     return respond(200, {
-      id: threadId,
-      title: null,
-      agentId: SUB_AGENT_ID,
       lastReadAt: null,
-      activeRunIds: [],
-      createdAt: "2026-03-10T00:00:00Z",
-      updatedAt: "2026-03-10T00:00:00Z",
+      computerUseHostId: null,
+      codexServiceTier: null,
     });
   });
   context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
@@ -801,20 +797,10 @@ export function mockChatLifecycle(
     if (options?.threadGate) {
       await options.threadGate;
     }
-    const lifecycleActiveRunIds =
-      runAssociated && !terminal.has(runStatus) ? [MOCK_RUN_ID] : [];
-    const activeRunIds = [...optionActiveRunIds, ...lifecycleActiveRunIds];
     return respond(200, {
-      id: threadId,
-      title: threadTitle,
-      agentId: "c0000000-0000-4000-a000-000000000001",
-      activeRunIds,
       lastReadAt: "2026-03-10T00:00:00Z",
-      lastMessageAt: "2026-03-10T00:00:00Z",
-      createdAt: "2026-03-10T00:00:00Z",
-      updatedAt: "2026-03-10T00:00:00Z",
-      codexServiceTier,
       computerUseHostId,
+      codexServiceTier,
     });
   });
   context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {

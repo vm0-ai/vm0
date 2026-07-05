@@ -766,14 +766,16 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
 
     let detail = await chat.readThread(actor, run.threadId);
     expect(detail).not.toHaveProperty("selectedModel");
-    expect(detail.activeRunIds).toContain(run.runId);
+    await expect(chat.listActiveChatThreadIds(actor)).resolves.toContain(
+      run.threadId,
+    );
 
     await chat.updateThreadModelSelection(actor, run.threadId, null);
     detail = await chat.readThread(actor, run.threadId);
     expect(detail).not.toHaveProperty("selectedModel");
-    expect(detail.modelProviderId).toBeNull();
-    expect(detail.modelProviderType).toBeNull();
-    expect(detail.modelProviderCredentialScope).toBeNull();
+    expect(detail).not.toHaveProperty("modelProviderId");
+    expect(detail).not.toHaveProperty("modelProviderType");
+    expect(detail).not.toHaveProperty("modelProviderCredentialScope");
 
     const invalidSelection = await chat.requestUpdateThreadModelSelection(
       actor,
@@ -788,8 +790,9 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     expect(invalidSelection.body.error.code).toBe("BAD_REQUEST");
 
     await cancelChatRun(actor, run.runId);
-    detail = await chat.readThread(actor, run.threadId);
-    expect(detail.activeRunIds).toStrictEqual([]);
+    await expect(chat.listActiveChatThreadIds(actor)).resolves.not.toContain(
+      run.threadId,
+    );
   }, 90_000);
 
   it("rejects restricted model pins for limited-free-1 workspaces", async () => {
@@ -859,9 +862,9 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     );
     expectApiError(byokSelection.body);
     expect(byokSelection.body.error.code).toBe("INSUFFICIENT_CREDITS");
-    await expect(chat.readThread(actor, thread.id)).resolves.toMatchObject({
-      modelProviderId: null,
-    });
+    await expect(chat.readThread(actor, thread.id)).resolves.not.toHaveProperty(
+      "modelProviderId",
+    );
 
     await chat.updateThreadModelSelection(actor, thread.id, {
       modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
@@ -992,8 +995,10 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     );
     expectApiError(peerDelete.body);
     expect(peerDelete.body.error.code).toBe("NOT_FOUND");
-    await expect(chat.readThread(actor, main.threadId)).resolves.toMatchObject({
-      id: main.threadId,
+    await expect(chat.readThread(actor, main.threadId)).resolves.toStrictEqual({
+      lastReadAt: null,
+      computerUseHostId: null,
+      codexServiceTier: null,
     });
 
     const deleted = await chat.requestDeleteThread(actor, main.threadId, [204]);
