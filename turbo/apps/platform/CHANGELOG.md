@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.557.0](https://github.com/vm0-ai/vm0/compare/app-v0.556.1...app-v0.557.0) (2026-07-05)
+
+
+### Features
+
+* gate icon-only collapsed manage nav ([#20241](https://github.com/vm0-ai/vm0/issues/20241)) ([36c7282](https://github.com/vm0-ai/vm0/commit/36c72824d5d61db302ffa7cb69a185c1f8889a14))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.154.3
+    * @vm0/connectors bumped to 1.138.0
+    * @vm0/core bumped to 8.401.0
+
 ## [0.556.1](https://github.com/vm0-ai/vm0/compare/app-v0.556.0...app-v0.556.1) (2026-07-05)
 
 
