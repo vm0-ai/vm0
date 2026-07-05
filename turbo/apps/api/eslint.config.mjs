@@ -1,5 +1,5 @@
 import { config, oxlint } from "@vm0/eslint-config/base";
-import { apiLintPlugin } from "./custom-eslint/index.ts";
+import { apiLintPlugin } from "@vm0/eslint-rules/api";
 
 const restrictedSyntax = [
   {
@@ -125,7 +125,7 @@ const apiServiceTestParentImportPatterns = [
 export default [
   ...config,
   {
-    files: ["src/**/*.ts", "custom-eslint/**/*.ts"],
+    files: ["src/**/*.ts"],
     plugins: {
       api: apiLintPlugin,
     },
