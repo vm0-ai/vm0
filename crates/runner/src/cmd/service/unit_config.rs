@@ -9,7 +9,8 @@ pub(crate) async fn read_unit_config_path(unit_path: &Path) -> Option<PathBuf> {
 pub(crate) fn parse_unit_config_path(content: &str) -> Option<PathBuf> {
     for line in content.lines() {
         let trimmed = line.trim();
-        if let Some(rest) = trimmed.strip_prefix("ExecStart=")
+        if let Some((key, rest)) = trimmed.split_once('=')
+            && key.trim() == "ExecStart"
             && let Some(config_path) = parse_exec_start_config(rest)
         {
             return Some(config_path);
@@ -56,14 +57,14 @@ fn tokenize_systemd_exec_start(input: &str) -> Option<Vec<String>> {
     let mut tokens = Vec::new();
     let mut token = String::new();
     let mut chars = input.chars().peekable();
-    let mut in_quote = false;
+    let mut quote = None;
     let mut has_token = false;
     while let Some(ch) = chars.next() {
-        if in_quote {
+        if let Some(quote_char) = quote {
             match ch {
-                '"' => in_quote = false,
+                ch if ch == quote_char => quote = None,
                 '\\' => match chars.next() {
-                    Some(next @ ('\\' | '"')) => token.push(next),
+                    Some(next @ ('\\' | '"' | '\'')) => token.push(next),
                     Some(next) => {
                         token.push('\\');
                         token.push(next);
@@ -85,14 +86,14 @@ fn tokenize_systemd_exec_start(input: &str) -> Option<Vec<String>> {
                         has_token = false;
                     }
                 }
-                '"' => {
-                    in_quote = true;
+                '"' | '\'' => {
+                    quote = Some(ch);
                     has_token = true;
                 }
                 '\\' => {
                     has_token = true;
                     match chars.next() {
-                        Some(next @ ('\\' | '"')) => token.push(next),
+                        Some(next @ ('\\' | '"' | '\'')) => token.push(next),
                         Some(next) => {
                             token.push('\\');
                             token.push(next);
@@ -116,7 +117,7 @@ fn tokenize_systemd_exec_start(input: &str) -> Option<Vec<String>> {
             }
         }
     }
-    if in_quote {
+    if quote.is_some() {
         return None;
     }
     if has_token {
@@ -141,6 +142,15 @@ mod tests {
     #[test]
     fn parse_config_quoted_path_with_spaces() {
         let line = r#""/opt/my runner/vm0-runner" start --config "/opt/my config/runner.yaml""#;
+        assert_eq!(
+            parse_exec_start_config(line),
+            Some(PathBuf::from("/opt/my config/runner.yaml"))
+        );
+    }
+
+    #[test]
+    fn parse_config_single_quoted_path_with_spaces() {
+        let line = r#""/usr/bin/runner" start --config '/opt/my config/runner.yaml'"#;
         assert_eq!(
             parse_exec_start_config(line),
             Some(PathBuf::from("/opt/my config/runner.yaml"))
@@ -272,6 +282,19 @@ Description=runner
 
 [Service]
 ExecStart="/usr/bin/runner" start --config "/etc/runner.yaml"
+"#;
+
+        assert_eq!(
+            parse_unit_config_path(content),
+            Some(PathBuf::from("/etc/runner.yaml"))
+        );
+    }
+
+    #[test]
+    fn parse_unit_config_path_allows_space_before_equals() {
+        let content = r#"
+[Service]
+ExecStart = "/usr/bin/runner" start --config "/etc/runner.yaml"
 "#;
 
         assert_eq!(
