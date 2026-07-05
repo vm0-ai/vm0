@@ -29,6 +29,7 @@ import {
   type ChatMessageGoalSnapshot,
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { threadGoals } from "@vm0/db/schema/thread-goal";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { automations } from "@vm0/db/schema/automation";
@@ -608,6 +609,15 @@ function noActiveRunsForCurrentThreadCondition() {
   )`;
 }
 
+function noActiveGoalsForCurrentThreadCondition() {
+  return sql<boolean>`NOT EXISTS (
+    SELECT 1
+    FROM ${threadGoals}
+    WHERE ${threadGoals.chatThreadId} = ${chatThreads.id}
+      AND ${threadGoals.status} = 'active'
+  )`;
+}
+
 interface ThreadRunSummaryRow {
   readonly id: string;
   readonly status: string;
@@ -718,6 +728,8 @@ export function zeroChatThreadUnreads(args: {
             isNull(chatThreads.lastReadAt),
             sql`${lastRunFinish.createdAt} > ${chatThreads.lastReadAt}`,
           ),
+          noActiveRunsForCurrentThreadCondition(),
+          noActiveGoalsForCurrentThreadCondition(),
         ),
       );
     return rows.flatMap((row) => {
@@ -757,6 +769,7 @@ export function zeroChatThreadUnreadAgentIds(args: {
             sql`${lastRunFinish.createdAt} > ${chatThreads.lastReadAt}`,
           ),
           noActiveRunsForCurrentThreadCondition(),
+          noActiveGoalsForCurrentThreadCondition(),
         ),
       );
     return rows.map((row) => {

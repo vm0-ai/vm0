@@ -1,4 +1,5 @@
-use std::collections::HashSet;
+use std::cmp::Reverse;
+use std::collections::{BinaryHeap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -124,12 +125,12 @@ impl LocalQueue {
                 }
                 let path = entry.path();
                 if path.extension().and_then(|e| e.to_str()) == Some("job") {
-                    job_paths.push(path);
+                    job_paths.push(Reverse(path));
                 }
             }
-            job_paths.sort();
 
-            for path in job_paths {
+            let mut job_paths = BinaryHeap::from(job_paths);
+            while let Some(Reverse(path)) = job_paths.pop() {
                 let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
                     continue;
                 };
@@ -807,6 +808,10 @@ mod tests {
         cancel_path
     }
 
+    fn run_id(raw: &str) -> RunId {
+        raw.parse().unwrap()
+    }
+
     fn collect_marker_states(queue: &LocalQueue) -> HashMap<RunId, CancelTargetState> {
         queue
             .collect_cancel_markers_sync()
@@ -1199,6 +1204,40 @@ mod tests {
                 .is_none(),
             "a dangling claim symlink should still occupy the atomic claim path"
         );
+    }
+
+    #[test]
+    fn discover_candidate_returns_first_eligible_job_in_lexicographic_order() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let queue = LocalQueue::new(group_dir.to_path_buf());
+        let profile = crate::profile::DEFAULT_PROFILE;
+        let claimed = run_id("00000000-0000-0000-0000-000000000001");
+        let completed = run_id("00000000-0000-0000-0000-000000000002");
+        let eligible = run_id("00000000-0000-0000-0000-000000000003");
+        let later = run_id("00000000-0000-0000-0000-000000000004");
+
+        write_job_request(group_dir, later, profile);
+        let eligible_path = write_job_request(group_dir, eligible, profile);
+        write_job_request(group_dir, completed, profile);
+        write_job_request(group_dir, claimed, profile);
+
+        let profile_dir = super::super::profile_jobs_dir(group_dir, profile).unwrap();
+        std::fs::write(
+            profile_dir.join("00000000-0000-0000-0000-000000000000x.job"),
+            b"{}",
+        )
+        .unwrap();
+        std::fs::create_dir_all(super::super::claims_dir(group_dir)).unwrap();
+        std::fs::write(super::super::claim_path(group_dir, claimed), b"").unwrap();
+        assert!(queue.write_result_sync(completed, 0, None));
+
+        let candidate = queue
+            .discover_candidate_sync(&[profile.to_owned()], 0)
+            .expect("eligible job should be discovered");
+
+        assert_eq!(candidate.run_id, eligible);
+        assert_eq!(candidate.job_path, eligible_path);
     }
 
     #[test]
