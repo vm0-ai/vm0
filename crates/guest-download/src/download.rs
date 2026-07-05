@@ -52,6 +52,14 @@ impl DownloadTask {
         &self.mount_path
     }
 
+    fn is_remote_url(&self) -> bool {
+        self.url.starts_with("http://") || self.url.starts_with("https://")
+    }
+
+    fn is_file_url(&self) -> bool {
+        self.url.starts_with("file://")
+    }
+
     fn failure_detail(&self, error: &DownloadError) -> String {
         format!("{} download failed: {}", self.label, error)
     }
@@ -67,6 +75,16 @@ struct DownloadCompletion {
     outcome: DownloadOutcome,
 }
 
+#[derive(Default)]
+struct DownloadScheduleStats {
+    mount_conflict_deferrals: usize,
+}
+
+struct StartableDownload {
+    selected: Option<(usize, PathBuf)>,
+    mount_conflict_deferrals: usize,
+}
+
 enum DownloadOutcome {
     Finished(bool),
     Panicked(String),
@@ -79,8 +97,38 @@ pub(crate) fn download_all_parallel(tasks: Vec<DownloadTask>) -> bool {
     download_all_parallel_with_runner(tasks, run_download_task)
 }
 
+fn record_download_attribution(tasks: &[DownloadTask]) {
+    record_sandbox_op(
+        guest_download_task_count_action(tasks.len()),
+        Duration::ZERO,
+        true,
+        None,
+    );
+    let remote_urls = tasks.iter().filter(|task| task.is_remote_url()).count();
+    record_sandbox_op(
+        guest_download_remote_url_count_action(remote_urls),
+        Duration::ZERO,
+        true,
+        None,
+    );
+    let file_urls = tasks.iter().filter(|task| task.is_file_url()).count();
+    record_sandbox_op(
+        guest_download_file_url_count_action(file_urls),
+        Duration::ZERO,
+        true,
+        None,
+    );
+}
+
 fn download_all_parallel_with_runner(tasks: Vec<DownloadTask>, task_runner: TaskRunner) -> bool {
+    record_download_attribution(&tasks);
     if tasks.is_empty() {
+        record_sandbox_op(
+            guest_download_mount_conflict_count_action(0),
+            Duration::ZERO,
+            true,
+            None,
+        );
         return true;
     }
 
@@ -91,7 +139,8 @@ fn download_all_parallel_with_runner(tasks: Vec<DownloadTask>, task_runner: Task
         MAX_CONCURRENT
     );
 
-    thread::scope(|scope| {
+    let mut stats = DownloadScheduleStats::default();
+    let success = thread::scope(|scope| {
         let (completion_tx, completion_rx) = mpsc::channel();
         let mut pending = VecDeque::from(tasks);
         let mut active = Vec::new();
@@ -105,6 +154,7 @@ fn download_all_parallel_with_runner(tasks: Vec<DownloadTask>, task_runner: Task
             &completion_tx,
             &mut next_id,
             task_runner,
+            &mut stats,
         );
 
         while !active.is_empty() {
@@ -137,11 +187,90 @@ fn download_all_parallel_with_runner(tasks: Vec<DownloadTask>, task_runner: Task
                 &completion_tx,
                 &mut next_id,
                 task_runner,
+                &mut stats,
             );
         }
 
         all_success && pending.is_empty()
-    })
+    });
+    record_sandbox_op(
+        guest_download_mount_conflict_count_action(stats.mount_conflict_deferrals),
+        Duration::ZERO,
+        success,
+        None,
+    );
+    success
+}
+
+fn guest_download_task_count_action(count: usize) -> &'static str {
+    match count_bucket(count) {
+        CountBucket::Zero => "guest_download_task_count_0",
+        CountBucket::One => "guest_download_task_count_1",
+        CountBucket::Two => "guest_download_task_count_2",
+        CountBucket::ThreeToFour => "guest_download_task_count_3_4",
+        CountBucket::FiveToEight => "guest_download_task_count_5_8",
+        CountBucket::NineToSixteen => "guest_download_task_count_9_16",
+        CountBucket::SeventeenPlus => "guest_download_task_count_17_plus",
+    }
+}
+
+fn guest_download_remote_url_count_action(count: usize) -> &'static str {
+    match count_bucket(count) {
+        CountBucket::Zero => "guest_download_remote_url_count_0",
+        CountBucket::One => "guest_download_remote_url_count_1",
+        CountBucket::Two => "guest_download_remote_url_count_2",
+        CountBucket::ThreeToFour => "guest_download_remote_url_count_3_4",
+        CountBucket::FiveToEight => "guest_download_remote_url_count_5_8",
+        CountBucket::NineToSixteen => "guest_download_remote_url_count_9_16",
+        CountBucket::SeventeenPlus => "guest_download_remote_url_count_17_plus",
+    }
+}
+
+fn guest_download_file_url_count_action(count: usize) -> &'static str {
+    match count_bucket(count) {
+        CountBucket::Zero => "guest_download_file_url_count_0",
+        CountBucket::One => "guest_download_file_url_count_1",
+        CountBucket::Two => "guest_download_file_url_count_2",
+        CountBucket::ThreeToFour => "guest_download_file_url_count_3_4",
+        CountBucket::FiveToEight => "guest_download_file_url_count_5_8",
+        CountBucket::NineToSixteen => "guest_download_file_url_count_9_16",
+        CountBucket::SeventeenPlus => "guest_download_file_url_count_17_plus",
+    }
+}
+
+fn guest_download_mount_conflict_count_action(count: usize) -> &'static str {
+    match count_bucket(count) {
+        CountBucket::Zero => "guest_download_mount_conflict_count_0",
+        CountBucket::One => "guest_download_mount_conflict_count_1",
+        CountBucket::Two => "guest_download_mount_conflict_count_2",
+        CountBucket::ThreeToFour => "guest_download_mount_conflict_count_3_4",
+        CountBucket::FiveToEight => "guest_download_mount_conflict_count_5_8",
+        CountBucket::NineToSixteen => "guest_download_mount_conflict_count_9_16",
+        CountBucket::SeventeenPlus => "guest_download_mount_conflict_count_17_plus",
+    }
+}
+
+#[derive(Clone, Copy)]
+enum CountBucket {
+    Zero,
+    One,
+    Two,
+    ThreeToFour,
+    FiveToEight,
+    NineToSixteen,
+    SeventeenPlus,
+}
+
+fn count_bucket(count: usize) -> CountBucket {
+    match count {
+        0 => CountBucket::Zero,
+        1 => CountBucket::One,
+        2 => CountBucket::Two,
+        3 | 4 => CountBucket::ThreeToFour,
+        5..=8 => CountBucket::FiveToEight,
+        9..=16 => CountBucket::NineToSixteen,
+        _ => CountBucket::SeventeenPlus,
+    }
 }
 
 fn start_ready_downloads<'scope, 'env: 'scope>(
@@ -151,9 +280,12 @@ fn start_ready_downloads<'scope, 'env: 'scope>(
     completion_tx: &mpsc::Sender<DownloadCompletion>,
     next_id: &mut usize,
     task_runner: TaskRunner,
+    stats: &mut DownloadScheduleStats,
 ) {
     while active.len() < MAX_CONCURRENT {
-        let Some((index, mount_path)) = find_startable_download(pending, active) else {
+        let startable = find_startable_download(pending, active);
+        stats.mount_conflict_deferrals += startable.mount_conflict_deferrals;
+        let Some((index, mount_path)) = startable.selected else {
             break;
         };
         let Some(task) = pending.remove(index) else {
@@ -178,18 +310,32 @@ fn start_ready_downloads<'scope, 'env: 'scope>(
 fn find_startable_download(
     pending: &VecDeque<DownloadTask>,
     active: &[ActiveDownload],
-) -> Option<(usize, PathBuf)> {
+) -> StartableDownload {
     // Scan the pending queue instead of using strict FIFO so an active
     // parent/child mount-path conflict does not leave a slot idle when a later
     // independent task can start.
-    pending.iter().enumerate().find_map(|(index, task)| {
+    let mut mount_conflict_deferrals = 0;
+    for (index, task) in pending.iter().enumerate() {
         let mount_path = normalize_mount_path(task.mount_path());
         let has_conflict = active.iter().any(|download| {
             mount_paths_conflict(mount_path.as_path(), download.mount_path.as_path())
         });
 
-        (!has_conflict).then_some((index, mount_path))
-    })
+        if has_conflict {
+            mount_conflict_deferrals += 1;
+            continue;
+        }
+
+        return StartableDownload {
+            selected: Some((index, mount_path)),
+            mount_conflict_deferrals,
+        };
+    }
+
+    StartableDownload {
+        selected: None,
+        mount_conflict_deferrals,
+    }
 }
 
 fn normalize_mount_path(path: &str) -> PathBuf {
@@ -370,6 +516,35 @@ mod tests {
         });
 
         assert!(matches!(result, Ok(false)));
+    }
+
+    #[test]
+    fn find_startable_download_counts_mount_conflict_deferrals() {
+        let pending = VecDeque::from(vec![
+            DownloadTask::new(
+                "blocked child".to_owned(),
+                "storage_download",
+                "file:///tmp/archive.tar.gz".to_owned(),
+                "/tmp/mount/child".to_owned(),
+                NotFoundPolicy::Fail,
+            ),
+            DownloadTask::new(
+                "independent".to_owned(),
+                "artifact_download",
+                "https://example.com/archive.tar.gz".to_owned(),
+                "/tmp/other".to_owned(),
+                NotFoundPolicy::Fail,
+            ),
+        ]);
+        let active = vec![ActiveDownload {
+            id: 0,
+            mount_path: normalize_mount_path("/tmp/mount"),
+        }];
+
+        let startable = find_startable_download(&pending, &active);
+
+        assert_eq!(startable.mount_conflict_deferrals, 1);
+        assert_eq!(startable.selected.map(|(index, _)| index), Some(1));
     }
 
     #[test]

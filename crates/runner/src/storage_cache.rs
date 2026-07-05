@@ -45,7 +45,7 @@ use tracing::{info, warn};
 use crate::error::{RunnerError, RunnerResult};
 use crate::lock;
 use crate::paths::{HomePaths, short_digest, touch_mtime};
-use crate::telemetry::JobTelemetry;
+use crate::telemetry::{JobTelemetry, SandboxOpRecord, SandboxOpReporter};
 use crate::types::GuestDownloadManifest;
 
 /// Archive sizes strictly larger than this are passthrough.
@@ -81,6 +81,15 @@ const STORAGE_CACHE_LOCK_WAIT_FAILED: &str = "storage-cache-lock-wait-failed";
 const STORAGE_CACHE_HIT_READ: &str = "storage_cache_hit_read";
 const STORAGE_CACHE_MISS_PASSTHROUGH: &str = "storage_cache_miss_passthrough";
 const STORAGE_CACHE_LOCK_BUSY_PASSTHROUGH: &str = "storage_cache_lock_busy_passthrough";
+const STORAGE_CACHE_BACKGROUND_FILL_FILLED: &str = "storage_cache_background_fill_filled";
+const STORAGE_CACHE_BACKGROUND_FILL_ALREADY_CACHED: &str =
+    "storage_cache_background_fill_already_cached";
+const STORAGE_CACHE_BACKGROUND_FILL_BUSY: &str = "storage_cache_background_fill_busy";
+const STORAGE_CACHE_BACKGROUND_FILL_RETRYABLE_SKIPPED: &str =
+    "storage_cache_background_fill_retryable_skipped";
+const STORAGE_CACHE_BACKGROUND_FILL_SKIPPED: &str = "storage_cache_background_fill_skipped";
+const STORAGE_CACHE_BACKGROUND_FILL_FAILED: &str = "storage_cache_background_fill_failed";
+const STORAGE_CACHE_BACKGROUND_FILL_FAILED_ERROR: &str = "background-fill-failed";
 
 /// Guest-side filename for a cached archive.
 ///
@@ -255,11 +264,65 @@ enum CacheFetchOutcome {
 }
 
 enum BackgroundFillOutcome {
-    Filled,
-    AlreadyCached,
+    Filled { size: u64 },
+    AlreadyCached { size: u64 },
     Busy,
     Skipped,
     RetryableSkipped,
+}
+
+struct BackgroundFillReport {
+    outcome: SandboxOpRecord,
+    size_bucket: Option<SandboxOpRecord>,
+}
+
+impl BackgroundFillReport {
+    fn from_outcome(outcome: BackgroundFillOutcome, duration: Duration) -> Self {
+        let (action_type, size) = match outcome {
+            BackgroundFillOutcome::Filled { size } => {
+                (STORAGE_CACHE_BACKGROUND_FILL_FILLED, Some(size))
+            }
+            BackgroundFillOutcome::AlreadyCached { size } => {
+                (STORAGE_CACHE_BACKGROUND_FILL_ALREADY_CACHED, Some(size))
+            }
+            BackgroundFillOutcome::Busy => (STORAGE_CACHE_BACKGROUND_FILL_BUSY, None),
+            BackgroundFillOutcome::RetryableSkipped => {
+                (STORAGE_CACHE_BACKGROUND_FILL_RETRYABLE_SKIPPED, None)
+            }
+            BackgroundFillOutcome::Skipped => (STORAGE_CACHE_BACKGROUND_FILL_SKIPPED, None),
+        };
+        Self {
+            outcome: SandboxOpRecord::new(action_type, duration, true, None),
+            size_bucket: size.map(|size| {
+                SandboxOpRecord::new(
+                    background_fill_size_bucket_action(size),
+                    Duration::ZERO,
+                    true,
+                    None,
+                )
+            }),
+        }
+    }
+
+    fn failed(duration: Duration) -> Self {
+        Self {
+            outcome: SandboxOpRecord::new(
+                STORAGE_CACHE_BACKGROUND_FILL_FAILED,
+                duration,
+                false,
+                Some(STORAGE_CACHE_BACKGROUND_FILL_FAILED_ERROR),
+            ),
+            size_bucket: None,
+        }
+    }
+
+    fn into_records(self) -> Vec<SandboxOpRecord> {
+        let mut records = vec![self.outcome];
+        if let Some(size_bucket) = self.size_bucket {
+            records.push(size_bucket);
+        }
+        records
+    }
 }
 
 #[derive(Default)]
@@ -745,7 +808,7 @@ async fn populate_cache_with_mode(
     if mode.uses_hit_or_passthrough() {
         record_passthrough_summary(&outcomes, telemetry);
         if mode.schedules_background_fill() {
-            spawn_background_fill_groups(&outcomes, home.clone());
+            spawn_background_fill_groups(&outcomes, home.clone(), telemetry);
         }
     }
     for (group, outcome) in outcomes {
@@ -754,7 +817,11 @@ async fn populate_cache_with_mode(
     Ok(())
 }
 
-fn spawn_background_fill_groups(outcomes: &[(CacheTargetGroup, GroupOutcome)], home: HomePaths) {
+fn spawn_background_fill_groups(
+    outcomes: &[(CacheTargetGroup, GroupOutcome)],
+    home: HomePaths,
+    telemetry: &mut JobTelemetry,
+) {
     let groups = outcomes
         .iter()
         .filter(|(_, outcome)| should_background_fill(outcome))
@@ -764,8 +831,15 @@ fn spawn_background_fill_groups(outcomes: &[(CacheTargetGroup, GroupOutcome)], h
         return;
     }
 
+    telemetry.record(
+        background_fill_scheduled_count_action(groups.len()),
+        Duration::ZERO,
+        true,
+        None,
+    );
+    let reporter = telemetry.reporter();
     tokio::spawn(async move {
-        run_background_fill_groups(groups, home).await;
+        run_background_fill_groups(groups, home, reporter).await;
     });
 }
 
@@ -781,50 +855,70 @@ fn should_background_fill(outcome: &GroupOutcome) -> bool {
     }
 }
 
-async fn run_background_fill_groups(groups: Vec<CacheTargetGroup>, home: HomePaths) {
+async fn run_background_fill_groups(
+    groups: Vec<CacheTargetGroup>,
+    home: HomePaths,
+    reporter: SandboxOpReporter,
+) {
     let http = match Client::builder().build() {
         Ok(http) => http,
         Err(error) => {
             warn!(%error, "storage_cache: failed to build background fill http client");
+            let records = (0..groups.len())
+                .map(|_| {
+                    SandboxOpRecord::new(
+                        STORAGE_CACHE_BACKGROUND_FILL_FAILED,
+                        Duration::ZERO,
+                        false,
+                        Some(STORAGE_CACHE_BACKGROUND_FILL_FAILED_ERROR),
+                    )
+                })
+                .collect();
+            reporter.report(records).await;
             return;
         }
     };
 
     let mut fills = JoinSet::new();
+    let mut reports = Vec::new();
     for group in groups {
         while fills.len() >= CONCURRENCY {
-            join_next_background_fill(&mut fills).await;
+            if let Some(report) = join_next_background_fill(&mut fills).await {
+                reports.extend(report.into_records());
+            }
         }
 
         let http = http.clone();
         let home = home.clone();
         fills.spawn(async move {
-            let Some(first_target) = group.targets.first() else {
-                return;
-            };
-            let name = first_target.name.clone();
-            let version = first_target.version.clone();
-            if let Err(error) = process_group_background_fill(&group, &http, &home).await {
-                warn!(
-                    %error,
-                    vas_storage_name = name,
-                    vas_version_id = version,
-                    "storage_cache: background fill failed"
-                );
+            let started_at = Instant::now();
+            match process_group_background_fill(&group, &http, &home).await {
+                Ok(outcome) => BackgroundFillReport::from_outcome(outcome, started_at.elapsed()),
+                Err(error) => {
+                    warn!(%error, "storage_cache: background fill failed");
+                    BackgroundFillReport::failed(started_at.elapsed())
+                }
             }
         });
     }
 
     while !fills.is_empty() {
-        join_next_background_fill(&mut fills).await;
+        if let Some(report) = join_next_background_fill(&mut fills).await {
+            reports.extend(report.into_records());
+        }
     }
+    reporter.report(reports).await;
 }
 
-async fn join_next_background_fill(fills: &mut JoinSet<()>) {
+async fn join_next_background_fill(
+    fills: &mut JoinSet<BackgroundFillReport>,
+) -> Option<BackgroundFillReport> {
     match fills.join_next().await {
-        Some(Ok(())) | None => {}
+        Some(Ok(report)) => Some(report),
+        None => None,
         Some(Err(error)) => {
             warn!(%error, "storage_cache: background fill task failed");
+            Some(BackgroundFillReport::failed(Duration::ZERO))
         }
     }
 }
@@ -1102,9 +1196,10 @@ async fn process_one_background_fill(
             evict_empty_cache(target, &cache_dir).await?;
         }
         Ok(metadata) if metadata.len() <= CACHE_MAX_SIZE => {
+            let size = metadata.len();
             touch_mtime(&cache_dir);
             drop(writer);
-            return Ok(BackgroundFillOutcome::AlreadyCached);
+            return Ok(BackgroundFillOutcome::AlreadyCached { size });
         }
         Ok(metadata) => {
             evict_oversized_cache(target, &cache_dir, metadata.len()).await?;
@@ -1124,8 +1219,9 @@ async fn process_one_background_fill(
             download_duration,
         } => {
             let _ = download_duration;
+            let size = bytes.len() as u64;
             write_to_cache(&cache_dir, &bytes).await?;
-            BackgroundFillOutcome::Filled
+            BackgroundFillOutcome::Filled { size }
         }
         CacheFetchOutcome::Skipped(TargetOutcome::SkippedHeadFailed { .. })
         | CacheFetchOutcome::Skipped(TargetOutcome::SkippedInvalidDownload { .. }) => {
@@ -2196,6 +2292,34 @@ fn passthrough_lock_busy_count_action(count: usize) -> &'static str {
     }
 }
 
+fn background_fill_scheduled_count_action(count: usize) -> &'static str {
+    match count_bucket(count) {
+        CountBucket::Zero => "storage_cache_background_fill_scheduled_count_0",
+        CountBucket::One => "storage_cache_background_fill_scheduled_count_1",
+        CountBucket::Two => "storage_cache_background_fill_scheduled_count_2",
+        CountBucket::ThreeToFour => "storage_cache_background_fill_scheduled_count_3_4",
+        CountBucket::FiveToEight => "storage_cache_background_fill_scheduled_count_5_8",
+        CountBucket::NineToSixteen => "storage_cache_background_fill_scheduled_count_9_16",
+        CountBucket::SeventeenPlus => "storage_cache_background_fill_scheduled_count_17_plus",
+    }
+}
+
+fn background_fill_size_bucket_action(size: u64) -> &'static str {
+    if size < 64 * 1024 {
+        "storage_cache_background_fill_size_lt_64_kib"
+    } else if size < 256 * 1024 {
+        "storage_cache_background_fill_size_64_256_kib"
+    } else if size < 1024 * 1024 {
+        "storage_cache_background_fill_size_256_kib_1_mib"
+    } else if size < 4 * 1024 * 1024 {
+        "storage_cache_background_fill_size_1_4_mib"
+    } else if size <= CACHE_MAX_SIZE {
+        "storage_cache_background_fill_size_4_8_mib"
+    } else {
+        "storage_cache_background_fill_size_gt_8_mib"
+    }
+}
+
 #[derive(Clone, Copy)]
 enum CountBucket {
     Zero,
@@ -2301,8 +2425,12 @@ mod tests {
     };
 
     fn new_telemetry() -> JobTelemetry {
+        new_telemetry_for_api_url("http://localhost:0")
+    }
+
+    fn new_telemetry_for_api_url(api_url: &str) -> JobTelemetry {
         let http = HttpClient::new(HttpClientConfig {
-            api_url: "http://localhost:0".to_string(),
+            api_url: api_url.to_string(),
             vercel_bypass: None,
         })
         .unwrap();
@@ -2630,6 +2758,50 @@ mod tests {
             .expect("raw HTTP sequence server should not fail");
     }
 
+    fn http_headers_end(buf: &[u8]) -> Option<usize> {
+        buf.windows(4)
+            .position(|window| window == b"\r\n\r\n")
+            .map(|index| index + 4)
+    }
+
+    fn content_length(headers: &str) -> usize {
+        headers
+            .lines()
+            .filter_map(|line| line.split_once(':'))
+            .find_map(|(name, value)| {
+                name.eq_ignore_ascii_case("content-length")
+                    .then(|| value.trim().parse::<usize>().unwrap())
+            })
+            .unwrap_or(0)
+    }
+
+    async fn read_http_request(socket: &mut tokio::net::TcpStream) -> String {
+        use tokio::io::AsyncReadExt as _;
+
+        let mut buf = Vec::new();
+        let header_end = loop {
+            let mut chunk = [0; 1024];
+            let len = socket.read(&mut chunk).await.unwrap();
+            assert!(len > 0, "connection closed before HTTP headers completed");
+            buf.extend_from_slice(&chunk[..len]);
+
+            if let Some(header_end) = http_headers_end(&buf) {
+                break header_end;
+            }
+        };
+
+        let headers = String::from_utf8_lossy(&buf[..header_end]);
+        let body_len = content_length(&headers);
+        while buf.len() < header_end + body_len {
+            let mut chunk = [0; 1024];
+            let len = socket.read(&mut chunk).await.unwrap();
+            assert!(len > 0, "connection closed before HTTP body completed");
+            buf.extend_from_slice(&chunk[..len]);
+        }
+
+        String::from_utf8(buf).unwrap()
+    }
+
     async fn wait_cached_archive(home: &HomePaths, name: &str, version: &str) -> Vec<u8> {
         let lock_path = home.storage_lock(name, version);
         let path = home.storage_cache_dir(name, version).join("archive.tar.gz");
@@ -2944,8 +3116,108 @@ mod tests {
 
         let ops = telemetry.pending_ops_snapshot();
         assert_op_error(&ops, STORAGE_CACHE_MISS_PASSTHROUGH, "missing");
+        assert_op(
+            &ops,
+            "storage_cache_background_fill_scheduled_count_1",
+            true,
+        );
         assert_no_op(&ops, "storage_cache_miss");
         assert_no_op(&ops, "storage_cache_download");
+    }
+
+    #[tokio::test]
+    async fn background_fill_reports_filled_outcome_batch() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let body = tarball_bytes();
+        let (archive_url, archive_server) = raw_http_sequence_url(vec![
+            partial_content_response(body.len()),
+            ok_response(&body),
+        ])
+        .await;
+        let telemetry_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let telemetry_api_url = format!("http://{}", telemetry_listener.local_addr().unwrap());
+        let telemetry_server = tokio::spawn(async move {
+            let (mut socket, _) = telemetry_listener.accept().await.unwrap();
+            let request = read_http_request(&mut socket).await;
+            socket
+                .write_all(
+                    concat!(
+                        "HTTP/1.1 200 OK\r\n",
+                        "content-length: 16\r\n",
+                        "content-type: application/json\r\n",
+                        "connection: close\r\n",
+                        "\r\n",
+                        r#"{"success":true}"#
+                    )
+                    .as_bytes(),
+                )
+                .await
+                .unwrap();
+            request
+        });
+        let reporter = new_telemetry_for_api_url(&telemetry_api_url).reporter();
+        let name = "background-report";
+        let version = "v1";
+        let group = CacheTargetGroup {
+            targets: vec![CacheTarget {
+                kind: TargetKind::Storage,
+                index: 0,
+                name: name.to_string(),
+                version: version.to_string(),
+                archive_url,
+            }],
+        };
+
+        run_background_fill_groups(vec![group], home.clone(), reporter).await;
+
+        await_raw_http_sequence(archive_server).await;
+        assert_eq!(wait_cached_archive(&home, name, version).await, body);
+        let request = tokio::time::timeout(Duration::from_secs(1), telemetry_server)
+            .await
+            .expect("telemetry server should receive background fill payload")
+            .unwrap();
+        assert!(request.contains(r#""action_type":"storage_cache_background_fill_filled""#));
+        assert!(
+            request.contains(r#""action_type":"storage_cache_background_fill_size_lt_64_kib""#)
+        );
+        assert!(!request.contains(name));
+        assert!(!request.contains(version));
+        assert!(!request.contains("archive.tar.gz"));
+    }
+
+    #[test]
+    fn background_fill_report_uses_fixed_outcome_and_size_actions() {
+        let filled = BackgroundFillReport::from_outcome(
+            BackgroundFillOutcome::Filled { size: 70 * 1024 },
+            Duration::from_millis(12),
+        )
+        .into_records();
+        assert_eq!(filled.len(), 2);
+        assert_eq!(filled[0].action_type, STORAGE_CACHE_BACKGROUND_FILL_FILLED);
+        assert_eq!(filled[0].duration, Duration::from_millis(12));
+        assert!(filled[0].success);
+        assert_eq!(
+            filled[1].action_type,
+            "storage_cache_background_fill_size_64_256_kib"
+        );
+
+        let busy = BackgroundFillReport::from_outcome(
+            BackgroundFillOutcome::Busy,
+            Duration::from_millis(5),
+        )
+        .into_records();
+        assert_eq!(busy.len(), 1);
+        assert_eq!(busy[0].action_type, STORAGE_CACHE_BACKGROUND_FILL_BUSY);
+
+        let failed = BackgroundFillReport::failed(Duration::from_millis(7)).into_records();
+        assert_eq!(failed.len(), 1);
+        assert_eq!(failed[0].action_type, STORAGE_CACHE_BACKGROUND_FILL_FAILED);
+        assert!(!failed[0].success);
+        assert_eq!(
+            failed[0].error,
+            Some(STORAGE_CACHE_BACKGROUND_FILL_FAILED_ERROR)
+        );
     }
 
     #[tokio::test]

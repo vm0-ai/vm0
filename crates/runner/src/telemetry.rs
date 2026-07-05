@@ -150,6 +150,14 @@ impl JobTelemetry {
         );
     }
 
+    pub(crate) fn reporter(&self) -> SandboxOpReporter {
+        SandboxOpReporter {
+            http: self.http.clone(),
+            run_id: self.run_id,
+            sandbox_token: self.sandbox_token.clone(),
+        }
+    }
+
     fn record_inner(
         &mut self,
         action_type: &str,
@@ -159,23 +167,14 @@ impl JobTelemetry {
         encoding: Option<&'static str>,
         metadata: Option<SessionHistoryTelemetryMetadata>,
     ) {
-        self.pending_ops.push(SandboxOp {
-            ts: Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
-            action_type: action_type.to_string(),
-            duration_ms: duration_ms(duration),
+        self.pending_ops.push(sandbox_op(
+            action_type,
+            duration,
             success,
-            error: error.map(String::from),
-            encoding: encoding.map(String::from),
-            session_history_raw_size_bucket: metadata
-                .map(SessionHistoryTelemetryMetadata::raw_size_bucket)
-                .map(String::from),
-            session_history_encoded_size_bucket: metadata
-                .map(SessionHistoryTelemetryMetadata::encoded_size_bucket)
-                .map(String::from),
-            session_history_compression_ratio_bucket: metadata
-                .map(SessionHistoryTelemetryMetadata::compression_ratio_bucket)
-                .map(String::from),
-        });
+            error,
+            encoding,
+            metadata,
+        ));
         if self.oldest_pending.is_none() {
             self.oldest_pending = Some(Instant::now());
         }
@@ -277,6 +276,56 @@ impl JobTelemetry {
     }
 }
 
+#[derive(Clone)]
+pub(crate) struct SandboxOpReporter {
+    http: HttpClient,
+    run_id: RunId,
+    sandbox_token: String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct SandboxOpRecord {
+    pub(crate) action_type: &'static str,
+    pub(crate) duration: Duration,
+    pub(crate) success: bool,
+    pub(crate) error: Option<&'static str>,
+}
+
+impl SandboxOpRecord {
+    pub(crate) const fn new(
+        action_type: &'static str,
+        duration: Duration,
+        success: bool,
+        error: Option<&'static str>,
+    ) -> Self {
+        Self {
+            action_type,
+            duration,
+            success,
+            error,
+        }
+    }
+}
+
+impl SandboxOpReporter {
+    pub(crate) async fn report(&self, records: Vec<SandboxOpRecord>) {
+        let ops = records
+            .into_iter()
+            .map(|record| {
+                sandbox_op(
+                    record.action_type,
+                    record.duration,
+                    record.success,
+                    record.error,
+                    None,
+                    None,
+                )
+            })
+            .collect();
+        send_telemetry(&self.http, self.run_id, &self.sandbox_token, ops).await;
+    }
+}
+
 #[cfg(test)]
 type SessionHistoryTelemetrySnapshot = (
     String,
@@ -287,6 +336,33 @@ type SessionHistoryTelemetrySnapshot = (
     Option<String>,
     Option<String>,
 );
+
+fn sandbox_op(
+    action_type: &str,
+    duration: Duration,
+    success: bool,
+    error: Option<&str>,
+    encoding: Option<&'static str>,
+    metadata: Option<SessionHistoryTelemetryMetadata>,
+) -> SandboxOp {
+    SandboxOp {
+        ts: Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+        action_type: action_type.to_string(),
+        duration_ms: duration_ms(duration),
+        success,
+        error: error.map(String::from),
+        encoding: encoding.map(String::from),
+        session_history_raw_size_bucket: metadata
+            .map(SessionHistoryTelemetryMetadata::raw_size_bucket)
+            .map(String::from),
+        session_history_encoded_size_bucket: metadata
+            .map(SessionHistoryTelemetryMetadata::encoded_size_bucket)
+            .map(String::from),
+        session_history_compression_ratio_bucket: metadata
+            .map(SessionHistoryTelemetryMetadata::compression_ratio_bucket)
+            .map(String::from),
+    }
+}
 
 const fn session_history_encoding_value(encoding: ResumeSessionHistoryEncoding) -> &'static str {
     match encoding {
@@ -676,5 +752,63 @@ mod tests {
             .await
             .expect("server should exit")
             .unwrap();
+    }
+
+    #[tokio::test]
+    async fn detached_reporter_sends_sandbox_operations_payload() {
+        use tokio::io::AsyncWriteExt;
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let api_url = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let request = read_http_request(&mut socket).await;
+            socket
+                .write_all(
+                    concat!(
+                        "HTTP/1.1 200 OK\r\n",
+                        "content-length: 16\r\n",
+                        "content-type: application/json\r\n",
+                        "connection: close\r\n",
+                        "\r\n",
+                        r#"{"success":true}"#
+                    )
+                    .as_bytes(),
+                )
+                .await
+                .unwrap();
+            request
+        });
+
+        let telemetry = JobTelemetry::new(
+            http_client_for_api_url(&api_url),
+            RunId::nil(),
+            "tok".to_string(),
+        );
+        let reporter = telemetry.reporter();
+
+        reporter
+            .report(vec![SandboxOpRecord::new(
+                "storage_cache_background_fill_filled",
+                Duration::from_millis(42),
+                true,
+                None,
+            )])
+            .await;
+
+        let request = tokio::time::timeout(Duration::from_secs(1), server)
+            .await
+            .expect("server should receive reporter request")
+            .unwrap();
+        assert!(request.starts_with("POST /api/webhooks/agent/telemetry "));
+        assert!(
+            request
+                .to_ascii_lowercase()
+                .contains("authorization: bearer tok")
+        );
+        assert!(request.contains(r#""runId":"00000000-0000-0000-0000-000000000000""#));
+        assert!(request.contains(r#""action_type":"storage_cache_background_fill_filled""#));
+        assert!(request.contains(r#""duration_ms":42"#));
+        assert!(request.contains(r#""success":true"#));
     }
 }
