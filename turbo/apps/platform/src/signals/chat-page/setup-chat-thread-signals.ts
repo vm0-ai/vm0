@@ -10,7 +10,6 @@ export const setupChatThreadInitScroll$ = command(
     animationFrame(
       () => {
         set(thread.scrollToBottom$);
-        set(thread.hideSkeleton$);
       },
       { signal },
     );

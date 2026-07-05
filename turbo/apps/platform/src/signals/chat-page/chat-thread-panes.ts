@@ -130,14 +130,8 @@ const setupPaneThread$ = command(
     L.debug("setupPaneThread$ start", { threadId });
 
     const { draft, isNew } = set(ensureDraft$, threadId);
-    let onIdbMiss: () => void = () => {};
-    const dataSource = createIdbCachedDataSource(threadId, () => {
-      onIdbMiss();
-    });
+    const dataSource = createIdbCachedDataSource(threadId);
     const thread = createChatThreadSignals(threadId, draft, dataSource);
-    onIdbMiss = () => {
-      set(thread.showSkeleton$);
-    };
     set(spec.setPaneThread$, thread);
 
     await set(
