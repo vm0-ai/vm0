@@ -368,11 +368,12 @@ function SuggestedPromptsGrid({
   const unfilteredSuggestedPrompts =
     useLastResolved(unfilteredSuggestedPrompts$) ?? [];
   const suggestedPromptsLoadable = useLoadable(suggestedPrompts$);
+  const lastSuggestedPrompts = useLastResolved(suggestedPrompts$);
   const suggestedPrompts =
     suggestedPromptsLoadable.state === "hasData"
       ? suggestedPromptsLoadable.data
       : suggestedPromptsLoadable.state === "loading"
-        ? unfilteredSuggestedPrompts
+        ? (lastSuggestedPrompts ?? unfilteredSuggestedPrompts)
         : [];
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 w-full">

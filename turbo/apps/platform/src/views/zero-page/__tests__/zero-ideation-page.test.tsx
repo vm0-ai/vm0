@@ -164,6 +164,44 @@ describe("zero ideation page", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("keeps the last resolved ideas page catalog while a reload is pending", async () => {
+    mockConnectorCatalogStatus([]);
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${agentId}/ideas`,
+    });
+
+    await expect(
+      screen.findByText("Browser screenshots"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.queryByText("Daily standup report")).not.toBeInTheDocument();
+
+    const catalogRequested = context.mocks.deferred<void>();
+    const catalogReady = context.mocks.deferred<void>();
+    context.mocks.api(
+      zeroConnectorCatalogContract.status,
+      async ({ respond }) => {
+        catalogRequested.resolve();
+        await catalogReady.promise;
+        return respond(200, {
+          connectors: ["github", "sentry", "axiom", "plausible", "slack"].map(
+            publicConnectorStatusItem,
+          ),
+        });
+      },
+    );
+    context.store.set(reloadConnectors$);
+
+    await catalogRequested.promise;
+    expect(screen.queryByText("Daily standup report")).not.toBeInTheDocument();
+
+    catalogReady.resolve();
+    await expect(
+      screen.findByText("Daily standup report"),
+    ).resolves.toBeInTheDocument();
+  });
+
   it("does not treat pending catalog status as an empty catalog", async () => {
     const catalogReady = context.mocks.deferred<void>();
     context.mocks.api(
@@ -288,6 +326,42 @@ describe("zero ideation page", () => {
 
     expect(queryAllByRoleFast("button", promptGrid)).toHaveLength(1);
     expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
+  });
+
+  it("keeps the last resolved suggested prompt catalog while a reload is pending", async () => {
+    mockConnectorCatalogStatus([]);
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${agentId}/chat`,
+    });
+
+    const promptGrid = await suggestedPromptGrid();
+    expect(queryAllByRoleFast("button", promptGrid)).toHaveLength(1);
+
+    const catalogRequested = context.mocks.deferred<void>();
+    const catalogReady = context.mocks.deferred<void>();
+    context.mocks.api(
+      zeroConnectorCatalogContract.status,
+      async ({ respond }) => {
+        catalogRequested.resolve();
+        await catalogReady.promise;
+        return respond(200, {
+          connectors: ["github", "sentry", "axiom", "plausible", "slack"].map(
+            publicConnectorStatusItem,
+          ),
+        });
+      },
+    );
+    context.store.set(reloadConnectors$);
+
+    await catalogRequested.promise;
+    expect(queryAllByRoleFast("button", promptGrid)).toHaveLength(1);
+
+    catalogReady.resolve();
+    await expect(
+      screen.findByPlaceholderText(PLACEHOLDER),
+    ).resolves.toBeInTheDocument();
   });
 
   it("does not treat pending catalog status as empty for suggested prompts", async () => {

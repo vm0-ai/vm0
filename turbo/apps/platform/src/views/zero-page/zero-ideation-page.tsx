@@ -25,9 +25,18 @@ import {
 export function ZeroIdeationPage() {
   const features = useLastResolved(featureSwitch$);
   const connectorStatusLoadable = useLoadable(connectorCatalogStatusByRef$);
-  const visibleConnectorRefs =
+  const lastConnectorStatusByRef = useLastResolved(
+    connectorCatalogStatusByRef$,
+  );
+  const connectorStatusByRef =
     connectorStatusLoadable.state === "hasData"
-      ? new Set(connectorStatusLoadable.data.keys())
+      ? connectorStatusLoadable.data
+      : connectorStatusLoadable.state === "loading"
+        ? lastConnectorStatusByRef
+        : undefined;
+  const visibleConnectorRefs =
+    connectorStatusByRef !== undefined
+      ? new Set(connectorStatusByRef.keys())
       : connectorStatusLoadable.state === "loading"
         ? undefined
         : new Set<string>();
