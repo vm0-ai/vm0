@@ -5,6 +5,7 @@ import {
   text,
   timestamp,
   uuid,
+  varchar,
 } from "drizzle-orm/pg-core";
 
 export const chatThreadEventKind = pgEnum("chat_thread_event_kind", [
@@ -13,6 +14,7 @@ export const chatThreadEventKind = pgEnum("chat_thread_event_kind", [
   "deleted",
   "pinned",
   "unpinned",
+  "model_selection_updated",
   "sort_touched",
 ]);
 
@@ -29,6 +31,7 @@ export const chatThreadEvents = pgTable(
     kind: chatThreadEventKind("kind").notNull(),
     agentComposeId: uuid("agent_compose_id").notNull(),
     title: text("title"),
+    selectedModel: varchar("selected_model", { length: 255 }),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => {

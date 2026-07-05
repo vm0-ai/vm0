@@ -1702,6 +1702,60 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expectApiError(uncancellable.body);
   });
 
+  it("filters runner polls by supported profiles without widening malformed polls", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    const missingSupport = await api.requestPollRunner(
+      true,
+      { group: runnerGroup },
+      [400],
+    );
+    expectApiError(missingSupport.body);
+    const emptySupport = await api.requestPollRunner(
+      true,
+      { group: runnerGroup, supportedProfiles: [] },
+      [400],
+    );
+    expectApiError(emptySupport.body);
+
+    const created = await api.createRun(actor, {
+      agentId,
+      prompt: "poll with explicit support list",
+      modelProvider: "anthropic-api-key",
+    });
+
+    const incompatiblePoll = await api.requestPollRunner(
+      true,
+      {
+        group: runnerGroup,
+        supportedProfiles: ["vm0/large"],
+        profiles: ["vm0/default"],
+      },
+      [200],
+    );
+    if (incompatiblePoll.status !== 200) {
+      throw new Error(
+        "Expected incompatible supportedProfiles poll to return 200",
+      );
+    }
+    expect(incompatiblePoll.body.job).toBeNull();
+
+    const compatiblePoll = await api.requestPollRunner(
+      true,
+      { group: runnerGroup, supportedProfiles: ["vm0/default"] },
+      [200],
+    );
+    if (compatiblePoll.status !== 200) {
+      throw new Error(
+        "Expected compatible supportedProfiles poll to return 200",
+      );
+    }
+    expect(compatiblePoll.body.job?.runId).toBe(created.runId);
+
+    await api.requestCancelRun(actor, created.runId, [200]);
+  });
+
   it("resumes the previous session when a run is created with the same sessionId", async () => {
     const api = createRunsAutomationsApi(context);
     const { actor, agentId } = await entitledRunActor();
@@ -1773,6 +1827,8 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
 
     async function heartbeatHolder(args: {
       readonly profiles?: string[];
+      readonly admittableProfiles?: string[];
+      readonly omitAdmittableProfiles?: boolean;
       readonly availableProfiles?: string[];
       readonly omitAvailableProfiles?: boolean;
       readonly mode?: "running" | "draining" | "stopping";
@@ -1780,6 +1836,8 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       await api.requestHeartbeatRunner(true, [200], {
         group: runnerGroup,
         profiles: args.profiles,
+        admittableProfiles: args.admittableProfiles,
+        omitAdmittableProfiles: args.omitAdmittableProfiles,
         availableProfiles: args.availableProfiles,
         omitAvailableProfiles: args.omitAvailableProfiles,
         heldSessionStates: [
@@ -1801,7 +1859,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       });
       const poll = await api.requestPollRunner(
         true,
-        { group: runnerGroup, profiles: ["vm0/default"] },
+        { group: runnerGroup, supportedProfiles: ["vm0/default"] },
         [200],
       );
       if (poll.status !== 200) {
@@ -1814,7 +1872,10 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       return { run, job: poll.body.job };
     }
 
-    await heartbeatHolder({ availableProfiles: [] });
+    await heartbeatHolder({
+      admittableProfiles: [],
+      availableProfiles: ["vm0/default"],
+    });
     const unavailableHolder = await pollFollowUp(
       "continue when holder is full",
       false,
@@ -1831,7 +1892,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     onTestFinished(() => {
       clearMockNow();
     });
-    await heartbeatHolder({ availableProfiles: ["vm0/default"] });
+    await heartbeatHolder({ admittableProfiles: ["vm0/default"] });
     clearMockNow();
     const staleHolder = await pollFollowUp(
       "continue after holder heartbeat is stale",
@@ -1841,7 +1902,8 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
 
     await heartbeatHolder({
       profiles: ["vm0/default", "vm0/large"],
-      availableProfiles: ["vm0/large"],
+      admittableProfiles: ["vm0/large"],
+      availableProfiles: ["vm0/default"],
     });
     const profileIncompatibleHolder = await pollFollowUp(
       "continue when holder cannot run requested profile",
@@ -1852,7 +1914,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(profileIncompatibleHolder.job?.affinityProtectedUntil).toBeNull();
 
     await heartbeatHolder({
-      availableProfiles: ["vm0/default"],
+      admittableProfiles: ["vm0/default"],
       mode: "draining",
     });
     const drainingHolder = await pollFollowUp(
@@ -1861,7 +1923,10 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(drainingHolder.job?.cliAgentSessionId).toBe(cliAgentSessionId);
     expect(drainingHolder.job?.affinityProtectedUntil).toBeNull();
 
-    await heartbeatHolder({ omitAvailableProfiles: true });
+    await heartbeatHolder({
+      omitAdmittableProfiles: true,
+      omitAvailableProfiles: true,
+    });
     const legacyHeartbeatFollowUp = await api.createRun(actor, {
       agentId,
       sessionId: first.sessionId,
@@ -1887,7 +1952,10 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     );
     await api.requestCancelRun(actor, legacyHeartbeatFollowUp.runId, [200]);
 
-    await heartbeatHolder({ availableProfiles: ["vm0/default"] });
+    await heartbeatHolder({
+      admittableProfiles: ["vm0/default"],
+      availableProfiles: [],
+    });
     const protectedFollowUp = await api.createRun(actor, {
       agentId,
       sessionId: first.sessionId,
@@ -1897,7 +1965,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
 
     const protectedPoll = await api.requestPollRunner(
       true,
-      { group: runnerGroup, profiles: ["vm0/default"] },
+      { group: runnerGroup, supportedProfiles: ["vm0/default"] },
       [200],
     );
     if (protectedPoll.status !== 200) {

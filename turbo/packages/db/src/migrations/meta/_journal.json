@@ -3792,8 +3792,15 @@
     {
       "idx": 541,
       "version": "7",
+      "when": 1783214485897,
+      "tag": "0541_chat_thread_selected_model_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 542,
+      "version": "7",
       "when": 1783220848532,
-      "tag": "0541_reset_relationship_memory_data",
+      "tag": "0542_reset_relationship_memory_data",
       "breakpoints": true
     }
   ]

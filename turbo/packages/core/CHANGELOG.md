@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.399.3](https://github.com/vm0-ai/vm0/compare/core-v8.399.2...core-v8.399.3) (2026-07-05)
+
+
+### Refactoring
+
+* split chat thread draft read API ([#20192](https://github.com/vm0-ai/vm0/issues/20192)) ([61c4e87](https://github.com/vm0-ai/vm0/commit/61c4e87c3015982d8a419f5f176cc6280549eef4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.153.5
+
 ## [8.399.2](https://github.com/vm0-ai/vm0/compare/core-v8.399.1...core-v8.399.2) (2026-07-04)
 
 

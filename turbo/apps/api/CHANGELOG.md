@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.223.3](https://github.com/vm0-ai/vm0/compare/api-v1.223.2...api-v1.223.3) (2026-07-05)
+
+
+### Bug Fixes
+
+* **api:** enforce signal-aware deferred promises ([#20187](https://github.com/vm0-ai/vm0/issues/20187)) ([a37afd6](https://github.com/vm0-ai/vm0/commit/a37afd65548e181f76a34a851285bbd34b0a6f6e))
+
+
+### Refactoring
+
+* split chat thread draft read API ([#20192](https://github.com/vm0-ai/vm0/issues/20192)) ([61c4e87](https://github.com/vm0-ai/vm0/commit/61c4e87c3015982d8a419f5f176cc6280549eef4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.153.5
+    * @vm0/core bumped to 8.399.3
+    * @vm0/db bumped to 1.91.6
+
 ## [1.223.2](https://github.com/vm0-ai/vm0/compare/api-v1.223.1...api-v1.223.2) (2026-07-04)
 
 
