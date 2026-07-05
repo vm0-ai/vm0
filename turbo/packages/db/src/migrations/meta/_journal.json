@@ -3823,6 +3823,13 @@
       "when": 1783245126731,
       "tag": "0545_backfill_chat_thread_selected_model",
       "breakpoints": true
+    },
+    {
+      "idx": 546,
+      "version": "7",
+      "when": 1783269386042,
+      "tag": "0546_low_shadow_king",
+      "breakpoints": true
     }
   ]
 }

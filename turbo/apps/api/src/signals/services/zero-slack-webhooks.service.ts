@@ -75,6 +75,10 @@ import {
   resolveIntegrationModelRouteForUser$,
   type IntegrationModelRoutePin,
 } from "./integration-model-route.service";
+import {
+  memoryContentHash,
+  recordMemorySource,
+} from "./memory-substrate.service";
 import { canReuseIntegrationSessionForModelRoute } from "./integration-session-model-compatibility.service";
 import { formatIntegrationRunError$ } from "./integration-run-errors.service";
 import { listOrgModelPolicies$ } from "./zero-model-policy.service";
@@ -110,6 +114,7 @@ interface SlackEventCallback {
   readonly event:
     | SlackAppMentionEvent
     | SlackDirectMessageEvent
+    | SlackChannelMessageEvent
     | SlackAppHomeOpenedEvent
     | SlackAppUninstalledEvent
     | SlackTokensRevokedEvent;
@@ -134,6 +139,19 @@ interface SlackAppMentionEvent {
 interface SlackDirectMessageEvent {
   readonly type: "message";
   readonly channel_type: "im";
+  readonly user: string;
+  readonly text: string;
+  readonly ts: string;
+  readonly channel: string;
+  readonly thread_ts?: string;
+  readonly subtype?: string;
+  readonly bot_id?: string;
+  readonly files?: readonly SlackFile[];
+}
+
+interface SlackChannelMessageEvent {
+  readonly type: "message";
+  readonly channel_type?: "channel" | "group" | "mpim";
   readonly user: string;
   readonly text: string;
   readonly ts: string;
@@ -227,7 +245,18 @@ interface RunAgentParams {
   readonly timing: ApiDispatchTimingCollector;
 }
 
+interface SlackEventCallbackArgs {
+  readonly db: Db;
+  readonly payload: SlackEventCallback;
+  readonly apiStartTime: number;
+  readonly backgroundScheduledAt: number;
+  readonly timing: ApiDispatchTimingCollector;
+  readonly signal: AbortSignal;
+}
+
 type SlackChannelType = "channel" | "dm" | "group_dm";
+
+type SlackMemoryChannelType = "channel" | "group" | "mpim" | "im" | "unknown";
 
 interface WorkspaceAgentSummary {
   readonly id: string;
@@ -379,6 +408,77 @@ function buildOrgConnectUrl(
     params.set("t", threadTs);
   }
   return `${env("APP_URL")}/settings/slack?${params.toString()}`;
+}
+
+function dateFromSlackTs(value: string): Date | null {
+  const [secondsText] = value.split(".");
+  const seconds = Number(secondsText);
+  return Number.isFinite(seconds) ? new Date(seconds * 1000) : null;
+}
+
+function slackMemoryExternalId(args: {
+  readonly workspaceId: string;
+  readonly channelId: string;
+  readonly messageTs: string;
+}): string {
+  return [args.workspaceId, args.channelId, args.messageTs].join(":");
+}
+
+function slackMemorySourceTitle(channelType: SlackMemoryChannelType): string {
+  switch (channelType) {
+    case "im": {
+      return "Slack direct message";
+    }
+    case "mpim": {
+      return "Slack group direct message";
+    }
+    case "group": {
+      return "Slack private channel message";
+    }
+    case "channel": {
+      return "Slack channel message";
+    }
+    case "unknown": {
+      return "Slack message";
+    }
+  }
+}
+
+async function recordSlackMessageMemorySource(args: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly workspaceId: string;
+  readonly channelId: string;
+  readonly channelType: SlackMemoryChannelType;
+  readonly slackUserId: string;
+  readonly messageText: string;
+  readonly messageTs: string;
+  readonly threadTs?: string;
+  readonly files?: readonly SlackFile[];
+}): Promise<void> {
+  await recordMemorySource(args.db, {
+    orgId: args.orgId,
+    userId: args.userId,
+    provider: "slack",
+    sourceType: "slack_message",
+    externalId: slackMemoryExternalId(args),
+    occurredAt: dateFromSlackTs(args.messageTs),
+    title: slackMemorySourceTitle(args.channelType),
+    contentHash: args.messageText ? memoryContentHash(args.messageText) : null,
+    metadata: {
+      workspaceId: args.workspaceId,
+      channelId: args.channelId,
+      channelType: args.channelType,
+      threadId: args.threadTs ?? null,
+      messageTs: args.messageTs,
+      senderId: args.slackUserId,
+      participantIds: [args.slackUserId],
+      fileIds: (args.files ?? []).flatMap((file) => {
+        return file.id ? [file.id] : [];
+      }),
+    },
+  });
 }
 
 function buildNotInstalledMessage(detail?: string): unknown[] {
@@ -1668,6 +1768,25 @@ const handleSlackAgentMessage$ = command(
       return;
     }
 
+    await recordSlackMessageMemorySource({
+      db: args.db,
+      orgId: resolved.installation.orgId,
+      userId: resolved.connection.vm0UserId,
+      workspaceId: args.workspaceId,
+      channelId: args.channelId,
+      channelType:
+        args.channelType === "group_dm"
+          ? "mpim"
+          : args.channelType === "dm"
+            ? "im"
+            : "channel",
+      slackUserId: args.slackUserId,
+      messageText: args.messageText,
+      messageTs: args.messageTs,
+      threadTs: args.threadTs,
+      files: args.files,
+    });
+
     await measureApiDispatchTiming(
       args.timing,
       "api_dispatch_pre_create_zero_slack_set_thread_status",
@@ -1691,6 +1810,53 @@ const handleSlackAgentMessage$ = command(
     );
     const result = await set(runAgentForSlackOrg$, runParams, args.signal);
     await set(handleSlackRunResult$, { message: args, resolved, result });
+  },
+);
+
+const handleSlackMemoryOnlyMessage$ = command(
+  async (
+    _,
+    args: {
+      readonly db: Db;
+      readonly workspaceId: string;
+      readonly channelId: string;
+      readonly channelType: SlackMemoryChannelType;
+      readonly slackUserId: string;
+      readonly messageText: string;
+      readonly messageTs: string;
+      readonly threadTs?: string;
+      readonly files?: readonly SlackFile[];
+    },
+  ): Promise<void> => {
+    const installation = await installationForWorkspace(
+      args.db,
+      args.workspaceId,
+    );
+    if (!installation?.orgId) {
+      return;
+    }
+    const connection = await connectionForSlackUser(
+      args.db,
+      args.workspaceId,
+      args.slackUserId,
+    );
+    if (!connection) {
+      return;
+    }
+
+    await recordSlackMessageMemorySource({
+      db: args.db,
+      orgId: installation.orgId,
+      userId: connection.vm0UserId,
+      workspaceId: args.workspaceId,
+      channelId: args.channelId,
+      channelType: args.channelType,
+      slackUserId: args.slackUserId,
+      messageText: args.messageText,
+      messageTs: args.messageTs,
+      threadTs: args.threadTs,
+      files: args.files,
+    });
   },
 );
 
@@ -1800,83 +1966,133 @@ const handleMessagesTabOpened$ = command(
   },
 );
 
-const handleEventCallback$ = command(
+type SlackChannelMemoryMessageEvent = SlackChannelMessageEvent & {
+  readonly channel_type: "channel" | "group" | "mpim";
+};
+
+function isSlackUserMessageEvent(
+  event: SlackDirectMessageEvent | SlackChannelMessageEvent,
+): boolean {
+  return (!event.subtype || event.subtype === "file_share") && !event.bot_id;
+}
+
+function isSlackDirectAgentMessageEvent(
+  event: SlackEventCallback["event"],
+): event is SlackDirectMessageEvent {
+  return (
+    event.type === "message" &&
+    event.channel_type === "im" &&
+    isSlackUserMessageEvent(event)
+  );
+}
+
+function isSlackChannelMemoryMessageEvent(
+  event: SlackEventCallback["event"],
+): event is SlackChannelMemoryMessageEvent {
+  return (
+    event.type === "message" &&
+    (event.channel_type === "channel" ||
+      event.channel_type === "group" ||
+      event.channel_type === "mpim") &&
+    isSlackUserMessageEvent(event)
+  );
+}
+
+function slackAppMentionChannelType(
+  event: SlackAppMentionEvent,
+): SlackChannelType {
+  if (event.channel_type === "im") {
+    return "dm";
+  }
+  if (event.channel_type === "mpim") {
+    return "group_dm";
+  }
+  return "channel";
+}
+
+const scheduleSlackAgentMessageEvent$ = command(
   (
     { set },
     args: {
-      readonly db: Db;
-      readonly payload: SlackEventCallback;
-      readonly apiStartTime: number;
-      readonly backgroundScheduledAt: number;
-      readonly timing: ApiDispatchTimingCollector;
-      readonly signal: AbortSignal;
+      readonly callback: SlackEventCallbackArgs;
+      readonly event: SlackAppMentionEvent | SlackDirectMessageEvent;
+      readonly channelType: SlackChannelType;
+      readonly errorMessage: string;
     },
   ): void => {
-    const event = args.payload.event;
-    if (event.type === "app_mention") {
-      waitUntil(
-        tapError(
-          set(handleSlackAgentMessage$, {
-            db: args.db,
-            apiStartTime: args.apiStartTime,
-            backgroundScheduledAt: args.backgroundScheduledAt,
-            timing: args.timing,
-            signal: args.signal,
-            workspaceId: args.payload.team_id,
-            channelId: event.channel,
-            channelType:
-              event.channel_type === "im"
-                ? "dm"
-                : event.channel_type === "mpim"
-                  ? "group_dm"
-                  : "channel",
-            slackUserId: event.user,
-            messageText: event.text,
-            messageTs: event.ts,
-            threadTs: event.thread_ts,
-            files: event.files,
-          }),
-          (error) => {
-            L.error("Error handling org app_mention", { error });
-          },
-        ),
-      );
-    }
+    waitUntil(
+      tapError(
+        set(handleSlackAgentMessage$, {
+          db: args.callback.db,
+          apiStartTime: args.callback.apiStartTime,
+          backgroundScheduledAt: args.callback.backgroundScheduledAt,
+          timing: args.callback.timing,
+          signal: args.callback.signal,
+          workspaceId: args.callback.payload.team_id,
+          channelId: args.event.channel,
+          channelType: args.channelType,
+          slackUserId: args.event.user,
+          messageText: args.event.text,
+          messageTs: args.event.ts,
+          threadTs: args.event.thread_ts,
+          files: args.event.files,
+        }),
+        (error) => {
+          L.error(args.errorMessage, { error });
+        },
+      ),
+    );
+  },
+);
 
-    if (
-      event.type === "message" &&
-      event.channel_type === "im" &&
-      (!event.subtype || event.subtype === "file_share") &&
-      !event.bot_id
-    ) {
-      waitUntil(
-        tapError(
-          set(handleSlackAgentMessage$, {
-            db: args.db,
-            apiStartTime: args.apiStartTime,
-            backgroundScheduledAt: args.backgroundScheduledAt,
-            timing: args.timing,
-            signal: args.signal,
-            workspaceId: args.payload.team_id,
-            channelId: event.channel,
-            channelType: "dm",
-            slackUserId: event.user,
-            messageText: event.text,
-            messageTs: event.ts,
-            threadTs: event.thread_ts,
-            files: event.files,
-          }),
-          (error) => {
-            L.error("Error handling org direct_message", { error });
-          },
-        ),
-      );
-    }
+const scheduleSlackChannelMemoryMessage$ = command(
+  (
+    { set },
+    args: {
+      readonly callback: SlackEventCallbackArgs;
+      readonly event: SlackChannelMemoryMessageEvent;
+    },
+  ): void => {
+    waitUntil(
+      tapError(
+        set(handleSlackMemoryOnlyMessage$, {
+          db: args.callback.db,
+          workspaceId: args.callback.payload.team_id,
+          channelId: args.event.channel,
+          channelType: args.event.channel_type,
+          slackUserId: args.event.user,
+          messageText: args.event.text,
+          messageTs: args.event.ts,
+          threadTs: args.event.thread_ts,
+          files: args.event.files,
+        }),
+        (error) => {
+          L.error("Error recording org channel message memory source", {
+            error,
+          });
+        },
+      ),
+    );
+  },
+);
 
-    if (event.type === "app_home_opened" && event.tab === "home") {
+const scheduleSlackAppHomeEvent$ = command(
+  (
+    { set },
+    args: {
+      readonly callback: SlackEventCallbackArgs;
+      readonly event: SlackAppHomeOpenedEvent;
+    },
+  ): void => {
+    if (args.event.tab === "home") {
       waitUntil(
         tapError(
-          set(handleAppHomeOpened$, args.db, args.payload.team_id, event.user),
+          set(
+            handleAppHomeOpened$,
+            args.callback.db,
+            args.callback.payload.team_id,
+            args.event.user,
+          ),
           (error) => {
             L.error("Error handling org app_home_opened", { error });
           },
@@ -1884,15 +2100,15 @@ const handleEventCallback$ = command(
       );
     }
 
-    if (event.type === "app_home_opened" && event.tab === "messages") {
+    if (args.event.tab === "messages") {
       waitUntil(
         tapError(
           set(
             handleMessagesTabOpened$,
-            args.db,
-            args.payload.team_id,
-            event.user,
-            event.channel,
+            args.callback.db,
+            args.callback.payload.team_id,
+            args.event.user,
+            args.event.channel,
           ),
           (error) => {
             L.error("Error handling org messages_tab_opened", { error });
@@ -1900,37 +2116,80 @@ const handleEventCallback$ = command(
         ),
       );
     }
+  },
+);
+
+const scheduleSlackInstallationCleanup$ = command(
+  (
+    { set },
+    args: {
+      readonly callback: SlackEventCallbackArgs;
+      readonly errorMessage: string;
+    },
+  ): void => {
+    waitUntil(
+      tapError(
+        set(
+          cleanupWorkspaceInstallation$,
+          args.callback.db,
+          args.callback.payload.team_id,
+          args.callback.signal,
+        ),
+        (error) => {
+          L.error(args.errorMessage, { error });
+        },
+      ),
+    );
+  },
+);
+
+const handleEventCallback$ = command(
+  ({ set }, args: SlackEventCallbackArgs): void => {
+    const event = args.payload.event;
+    if (event.type === "app_mention") {
+      set(scheduleSlackAgentMessageEvent$, {
+        callback: args,
+        event,
+        channelType: slackAppMentionChannelType(event),
+        errorMessage: "Error handling org app_mention",
+      });
+    }
+
+    if (isSlackDirectAgentMessageEvent(event)) {
+      set(scheduleSlackAgentMessageEvent$, {
+        callback: args,
+        event,
+        channelType: "dm",
+        errorMessage: "Error handling org direct_message",
+      });
+    }
+
+    if (isSlackChannelMemoryMessageEvent(event)) {
+      set(scheduleSlackChannelMemoryMessage$, {
+        callback: args,
+        event,
+      });
+    }
+
+    if (event.type === "app_home_opened") {
+      set(scheduleSlackAppHomeEvent$, {
+        callback: args,
+        event,
+      });
+    }
 
     if (event.type === "app_uninstalled") {
-      waitUntil(
-        tapError(
-          set(
-            cleanupWorkspaceInstallation$,
-            args.db,
-            args.payload.team_id,
-            args.signal,
-          ),
-          (error) => {
-            L.error("Error handling app_uninstalled", { error });
-          },
-        ),
-      );
+      set(scheduleSlackInstallationCleanup$, {
+        callback: args,
+        errorMessage: "Error handling app_uninstalled",
+      });
     }
 
     if (event.type === "tokens_revoked" && event.tokens.bot?.length) {
-      waitUntil(
-        tapError(
-          set(
-            cleanupWorkspaceInstallation$,
-            args.db,
-            args.payload.team_id,
-            args.signal,
-          ),
-          (error) => {
-            L.error("Error handling tokens_revoked", { error });
-          },
-        ),
-      );
+      set(scheduleSlackInstallationCleanup$, {
+        callback: args,
+        errorMessage: "Error handling tokens_revoked",
+      });
     }
   },
 );

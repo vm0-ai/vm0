@@ -9,6 +9,7 @@ import {
 import type { Db, ReadonlyDb } from "../external/db";
 import { nowDate } from "../external/time";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
+import { recordMemorySource } from "./memory-substrate.service";
 
 export type GmailRelationshipMessageDirection = "received" | "sent";
 
@@ -167,6 +168,14 @@ function gmailRefreshDedupeKey(args: {
   ].join(":");
 }
 
+function parsedOccurredAt(value: string | null): Date | null {
+  if (!value) {
+    return null;
+  }
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 export async function enqueueGmailRelationshipRefreshJob(
   db: Db,
   args: {
@@ -272,6 +281,28 @@ export async function enqueueGmailRelationshipRefreshJob(
         updatedAt: currentTime,
       },
     });
+
+  await recordMemorySource(db, {
+    orgId: args.orgId,
+    userId: args.userId,
+    provider: "gmail",
+    sourceType: "gmail_message",
+    externalId: args.message.messageId,
+    connectorId: args.connectorId,
+    occurredAt: parsedOccurredAt(args.message.occurredAt),
+    title: args.message.subject,
+    metadata: {
+      mailboxEmail: args.message.mailboxEmail,
+      historyId: args.message.historyId,
+      threadId: args.message.threadId,
+      messageId: args.message.messageId,
+      direction: args.message.direction ?? "unknown",
+      from: args.message.from,
+      to: args.message.to,
+      cc: args.message.cc,
+      reason: args.reason ?? "gmail_webhook",
+    },
+  });
 
   return true;
 }
