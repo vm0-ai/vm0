@@ -3267,6 +3267,28 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn background_fill_preserves_retryable_skipped_outcome() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let group = CacheTargetGroup {
+            targets: vec![CacheTarget {
+                kind: TargetKind::Storage,
+                index: 0,
+                name: "background-retryable".to_string(),
+                version: "v1".to_string(),
+                archive_url: "http://127.0.0.1:9/archive.tar.gz".to_string(),
+            }],
+        };
+        let http = Client::builder().build().unwrap();
+
+        let outcome = process_group_background_fill(&group, &http, &home)
+            .await
+            .unwrap();
+
+        assert!(matches!(outcome, BackgroundFillOutcome::RetryableSkipped));
+    }
+
+    #[tokio::test]
     async fn guarded_missing_archive_with_existing_lock_removes_orphan_lock() {
         let temp = tempfile::tempdir().unwrap();
         let home = home_at(&temp);
