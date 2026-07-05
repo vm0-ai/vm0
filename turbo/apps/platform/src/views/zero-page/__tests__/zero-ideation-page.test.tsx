@@ -1,8 +1,15 @@
-import { screen, waitForElementToBeRemoved } from "@testing-library/react";
+import {
+  screen,
+  waitFor,
+  waitForElementToBeRemoved,
+  within,
+} from "@testing-library/react";
+import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   zeroConnectorCatalogContract,
   type PublicConnectorCatalogStatusItem,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -13,8 +20,9 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { reloadConnectors$ } from "../../../signals/external/connectors.ts";
+import { pathname } from "../../../signals/location.ts";
 import { setIdeationActiveTab$ } from "../../../signals/zero-page/zero-ideation.ts";
-import { PLACEHOLDER } from "./chat-test-helpers.ts";
+import { PLACEHOLDER, threadListSnapshot } from "./chat-test-helpers.ts";
 
 const context = testContext();
 
@@ -52,6 +60,73 @@ function mockConnectorCatalogStatus(connectorRefs: readonly string[]): void {
   context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
     return respond(200, {
       connectors: connectorRefs.map(publicConnectorStatusItem),
+    });
+  });
+}
+
+function mockUnreadShortcutThreads(): void {
+  const currentAgentUnreadThreadId = "b0000000-0000-4000-a000-000000000901";
+  const currentAgentRunningThreadId = "b0000000-0000-4000-a000-000000000902";
+  const otherAgentUnreadThreadId = "b0000000-0000-4000-a000-000000000903";
+  const otherAgentId = "c0000000-0000-4000-a000-000000000099";
+  const threads = [
+    {
+      id: currentAgentUnreadThreadId,
+      title: "Unread research brief",
+      agent: { id: agentId, avatarUrl: null },
+      createdAt: "2026-06-01T00:00:00Z",
+      updatedAt: "2026-06-01T00:03:00Z",
+      running: false,
+      pinnedAt: null,
+    },
+    {
+      id: currentAgentRunningThreadId,
+      title: "Running incident follow-up",
+      agent: { id: agentId, avatarUrl: null },
+      createdAt: "2026-06-01T00:00:00Z",
+      updatedAt: "2026-06-01T00:02:00Z",
+      running: true,
+      pinnedAt: null,
+    },
+    {
+      id: otherAgentUnreadThreadId,
+      title: "Other agent unread chat",
+      agent: { id: otherAgentId, avatarUrl: null },
+      createdAt: "2026-06-01T00:00:00Z",
+      updatedAt: "2026-06-01T00:01:00Z",
+      running: false,
+      pinnedAt: null,
+    },
+  ];
+
+  context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
+    return respond(200, {
+      chatThreads: threadListSnapshot(threads),
+      latestEventId: null,
+    });
+  });
+  context.mocks.api(chatThreadsContract.events, ({ respond }) => {
+    return respond(200, { events: [], hasMore: false });
+  });
+  context.mocks.api(chatThreadsContract.activeIds, ({ respond }) => {
+    return respond(200, { threadIds: [currentAgentRunningThreadId] });
+  });
+  context.mocks.api(chatThreadsContract.unreads, ({ respond }) => {
+    return respond(200, {
+      unreads: [
+        {
+          threadId: currentAgentUnreadThreadId,
+          unreadAt: "2026-06-01T00:03:00Z",
+        },
+        {
+          threadId: currentAgentRunningThreadId,
+          unreadAt: "2026-06-01T00:02:00Z",
+        },
+        {
+          threadId: otherAgentUnreadThreadId,
+          unreadAt: "2026-06-01T00:01:00Z",
+        },
+      ],
     });
   });
 }
@@ -326,6 +401,67 @@ describe("zero ideation page", () => {
 
     expect(queryAllByRoleFast("button", promptGrid)).toHaveLength(1);
     expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
+  });
+
+  it("shows current-agent unread chat shortcuts on mobile behind the feature switch", async () => {
+    mockConnectorCatalogStatus([]);
+    mockUnreadShortcutThreads();
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${agentId}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.MobileUnreadChatThreadShortcuts]: true,
+      },
+    });
+
+    const unreadRegion = await screen.findByRole("region", {
+      name: "Unread chats",
+    });
+    expect(unreadRegion).toHaveClass("md:hidden");
+    expect(within(unreadRegion).getByText("2")).toBeInTheDocument();
+    expect(
+      within(unreadRegion).getByText("Unread research brief"),
+    ).toBeInTheDocument();
+    expect(
+      within(unreadRegion).getByText("Running incident follow-up"),
+    ).toBeInTheDocument();
+    expect(within(unreadRegion).getByText("Running now")).toBeInTheDocument();
+    expect(
+      screen.queryByText("Other agent unread chat"),
+    ).not.toBeInTheDocument();
+
+    const shortcut = within(unreadRegion)
+      .getByText("Unread research brief")
+      .closest("a");
+    if (!shortcut) {
+      throw new Error("Unread research shortcut not found");
+    }
+    click(shortcut);
+
+    await waitFor(() => {
+      expect(pathname()).toBe("/chats/b0000000-0000-4000-a000-000000000901");
+    });
+  });
+
+  it("hides current-agent unread chat shortcuts when the feature switch is off", async () => {
+    mockConnectorCatalogStatus([]);
+    mockUnreadShortcutThreads();
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${agentId}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.MobileUnreadChatThreadShortcuts]: false,
+      },
+    });
+
+    await expect(
+      screen.findByPlaceholderText(PLACEHOLDER),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.queryByRole("region", { name: "Unread chats" }),
+    ).not.toBeInTheDocument();
   });
 
   it("keeps the last resolved suggested prompt catalog while a reload is pending", async () => {
