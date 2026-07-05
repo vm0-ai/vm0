@@ -45,23 +45,17 @@ SET
 FROM "mapped_legacy_runs" "mapped"
 WHERE "zr"."id" = "mapped"."run_id";--> statement-breakpoint
 
--- Once a message's run points at a workflow trigger, the API can synthesize
--- workflowSnapshot dynamically. Clear legacy automation metadata so the client
--- uses the workflow message renderer and links to the workflow detail page.
+-- Once a message's run points at a workflow trigger, keep its grouping aligned.
+-- Leave legacy automation metadata in place as display fallback for the case
+-- where the workflow is later deleted and zero_runs.workflow_trigger_id is set
+-- back to NULL by the FK.
 UPDATE "chat_messages" "cm"
 SET
-  "run_group_id" = "zr"."workflow_trigger_id",
-  "automation_id" = NULL,
-  "automation_title" = NULL,
-  "automation_snapshot" = NULL
+  "run_group_id" = "zr"."workflow_trigger_id"
 FROM "zero_runs" "zr"
 WHERE "cm"."run_id" = "zr"."id"
   AND "zr"."workflow_trigger_id" IS NOT NULL
-  AND (
-    "cm"."automation_id" IS NOT NULL
-    OR "cm"."automation_title" IS NOT NULL
-    OR "cm"."automation_snapshot" IS NOT NULL
-  );--> statement-breakpoint
+  AND "cm"."run_group_id" IS DISTINCT FROM "zr"."workflow_trigger_id";--> statement-breakpoint
 
 -- Delete only legacy automation rows that have a corresponding migrated
 -- workflow trigger. Unmapped legacy rows are kept as inert historical fallback

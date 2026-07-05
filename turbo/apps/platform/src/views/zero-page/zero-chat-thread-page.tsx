@@ -6573,11 +6573,7 @@ function hasAutomationMessageMetadata(message: EnrichedChatMessage): boolean {
 function isWorkflowUserMessage(
   message: EnrichedChatMessage,
 ): message is EnrichedChatMessage & { role: "user" } {
-  return (
-    message.role === "user" &&
-    hasWorkflowMessageMetadata(message) &&
-    !hasAutomationMessageMetadata(message)
-  );
+  return message.role === "user" && hasWorkflowMessageMetadata(message);
 }
 
 function hasWorkflowMessageMetadata(message: EnrichedChatMessage): boolean {
@@ -7104,6 +7100,10 @@ function PagedUserMessage({
     );
   };
 
+  if (isWorkflowUserMessage(message)) {
+    return <WorkflowUserMessage message={message} />;
+  }
+
   if (isAutomationUserMessage(message)) {
     return (
       <AutomationUserMessage
@@ -7111,10 +7111,6 @@ function PagedUserMessage({
         automationLabel={automationMessageLabel(message)}
       />
     );
-  }
-
-  if (isWorkflowUserMessage(message)) {
-    return <WorkflowUserMessage message={message} />;
   }
 
   if (isGoalUserMessage(message)) {
