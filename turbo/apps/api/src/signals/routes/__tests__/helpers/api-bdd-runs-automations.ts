@@ -911,6 +911,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       validAuth: boolean,
       statuses: readonly (200 | 400 | 401 | 500)[],
       args: {
+        readonly runnerId?: string;
         readonly group?: string;
         readonly admittableProfiles?: RunnerHeartbeatBody["admittableProfiles"];
         readonly maxConcurrent?: RunnerHeartbeatBody["maxConcurrent"];
@@ -930,9 +931,9 @@ export function createRunsAutomationsApi(context: TestContext) {
       );
     },
 
-    async requestMalformedHeartbeatRunner(
+    async requestRawHeartbeatRunner(
       validAuth: boolean,
-      statuses: readonly (400 | 401 | 500)[],
+      statuses: readonly (200 | 400 | 401 | 500)[],
       body: unknown,
     ) {
       return await accept(
@@ -971,10 +972,10 @@ export function createRunsAutomationsApi(context: TestContext) {
       );
     },
 
-    async requestMalformedPollRunner(
+    async requestRawPollRunner(
       validAuth: boolean,
       body: unknown,
-      statuses: readonly (400 | 401 | 500)[],
+      statuses: readonly (200 | 400 | 401 | 500)[],
     ) {
       return await accept(
         runsAutomationApp(context)(runnersPollContract).poll({

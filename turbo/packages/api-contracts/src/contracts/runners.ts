@@ -98,13 +98,11 @@ export const runnerGroupSchema = z
     "Runner group must be in vm0/<name> format (e.g., vm0/production)",
   );
 
-const runnersPollBodySchema = z
-  .object({
-    group: runnerGroupSchema,
-    supportedProfiles: runnerSupportedProfileListSchema,
-    telemetry: runnerPollTelemetrySchema.optional(),
-  })
-  .strict();
+const runnersPollBodySchema = z.object({
+  group: runnerGroupSchema,
+  supportedProfiles: runnerSupportedProfileListSchema,
+  telemetry: runnerPollTelemetrySchema.optional(),
+});
 
 /**
  * Job schema for polling response
@@ -473,22 +471,20 @@ export const runnersNetworkPolicyRefreshContract = c.router({
 /**
  * Runner heartbeat body — periodic state report from each runner
  */
-export const heartbeatBodySchema = z
-  .object({
-    runnerId: z.uuid(),
-    runnerName: z.string(),
-    group: runnerGroupSchema,
-    totalVcpu: z.number().int().nonnegative(),
-    totalMemoryMb: z.number().int().nonnegative(),
-    maxConcurrent: z.number().int().nonnegative(),
-    allocatedVcpu: z.number().int().nonnegative(),
-    allocatedMemoryMb: z.number().int().nonnegative(),
-    runningCount: z.number().int().nonnegative(),
-    admittableProfiles: runnerProfileListSchema,
-    heldSessionStates: z.array(heldSessionStateSchema).max(1024),
-    mode: z.enum(["running", "draining", "stopping"]),
-  })
-  .strict();
+export const heartbeatBodySchema = z.object({
+  runnerId: z.uuid(),
+  runnerName: z.string(),
+  group: runnerGroupSchema,
+  totalVcpu: z.number().int().nonnegative(),
+  totalMemoryMb: z.number().int().nonnegative(),
+  maxConcurrent: z.number().int().nonnegative(),
+  allocatedVcpu: z.number().int().nonnegative(),
+  allocatedMemoryMb: z.number().int().nonnegative(),
+  runningCount: z.number().int().nonnegative(),
+  admittableProfiles: runnerProfileListSchema,
+  heldSessionStates: z.array(heldSessionStateSchema).max(1024),
+  mode: z.enum(["running", "draining", "stopping"]),
+});
 
 /**
  * Runners heartbeat contract - POST /api/runners/heartbeat
