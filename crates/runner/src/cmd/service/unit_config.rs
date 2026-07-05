@@ -7,7 +7,7 @@ pub(crate) async fn read_unit_config_path(unit_path: &Path) -> Option<PathBuf> {
 }
 
 pub(crate) fn parse_unit_config_path(content: &str) -> Option<PathBuf> {
-    for line in content.lines() {
+    for line in logical_unit_lines(content) {
         let trimmed = line.trim();
         if let Some((key, rest)) = trimmed.split_once('=')
             && key.trim() == "ExecStart"
@@ -17,6 +17,32 @@ pub(crate) fn parse_unit_config_path(content: &str) -> Option<PathBuf> {
         }
     }
     None
+}
+
+fn logical_unit_lines(content: &str) -> Vec<String> {
+    let mut lines = Vec::new();
+    let mut continued = String::new();
+    for raw_line in content.lines() {
+        let line = raw_line.trim_end();
+        if let Some(prefix) = line.strip_suffix('\\') {
+            continued.push_str(prefix);
+            continued.push(' ');
+            continue;
+        }
+
+        if continued.is_empty() {
+            lines.push(line.to_string());
+        } else {
+            continued.push_str(line.trim_start());
+            lines.push(std::mem::take(&mut continued));
+        }
+    }
+
+    if !continued.is_empty() {
+        lines.push(continued);
+    }
+
+    lines
 }
 
 /// Extract the value following `--config` or `-c` from an `ExecStart` line body.
@@ -295,6 +321,21 @@ ExecStart="/usr/bin/runner" start --config "/etc/runner.yaml"
         let content = r#"
 [Service]
 ExecStart = "/usr/bin/runner" start --config "/etc/runner.yaml"
+"#;
+
+        assert_eq!(
+            parse_unit_config_path(content),
+            Some(PathBuf::from("/etc/runner.yaml"))
+        );
+    }
+
+    #[test]
+    fn parse_unit_config_path_handles_continued_exec_start() {
+        let content = r#"
+[Service]
+ExecStart="/usr/bin/runner" start \
+  --config "/etc/runner.yaml" \
+  --local
 "#;
 
         assert_eq!(
