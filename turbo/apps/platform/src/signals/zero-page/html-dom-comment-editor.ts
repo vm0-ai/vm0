@@ -86,6 +86,7 @@ interface HtmlDomImageEdits {
 
 export interface HtmlDomCommentEditorModel {
   readonly activeColorPanelProperty: HtmlDomStyleProperty | null;
+  readonly activeFrameKey: number;
   readonly canApplyStyleEdits: boolean;
   readonly canAddComment: boolean;
   readonly canDiscard: boolean;
@@ -104,6 +105,7 @@ export interface HtmlDomCommentEditorModel {
   readonly imageLinkValue: string;
   readonly imagePendingAction: HtmlDomImagePendingAction | null;
   readonly loadState: EditorLoadState;
+  readonly pendingFrameKey: number | null;
   readonly popoverTextAreaKey: string;
   readonly prepared: boolean;
   readonly selectedImage: HtmlDomSelectedImage | null;
@@ -204,6 +206,8 @@ const SUPPORTED_IMAGE_UPLOAD_CONTENT_TYPES = [
   "image/webp",
 ] as const;
 const internalLoadState$ = state<EditorLoadState>({ status: "loading" });
+const internalActiveFrameKey$ = state(0);
+const internalPendingFrameKey$ = state<number | null>(null);
 const internalStageElement$ = state<HTMLDivElement | null>(null);
 const internalIframeElement$ = state<HTMLIFrameElement | null>(null);
 const internalSelectedNodeIds$ = state<readonly string[]>([]);
@@ -1260,32 +1264,6 @@ function rgbChannelsToHex(red: number, green: number, blue: number): string {
     .toUpperCase()}`;
 }
 
-function restoreFrameDocumentHtml(params: {
-  readonly doc: Document;
-  readonly html: string;
-}): void {
-  const Parser = params.doc.defaultView?.DOMParser ?? DOMParser;
-  const parser = new Parser();
-  const nextDocument = parser.parseFromString(params.html, "text/html");
-  for (const attr of Array.from(params.doc.documentElement.attributes)) {
-    params.doc.documentElement.removeAttribute(attr.name);
-  }
-  for (const attr of Array.from(nextDocument.documentElement.attributes)) {
-    params.doc.documentElement.setAttribute(attr.name, attr.value);
-  }
-  params.doc.head.replaceChildren(
-    ...Array.from(nextDocument.head.childNodes, (node) => {
-      return params.doc.importNode(node, true);
-    }),
-  );
-  params.doc.body.replaceChildren(
-    ...Array.from(nextDocument.body.childNodes, (node) => {
-      return params.doc.importNode(node, true);
-    }),
-  );
-  installFrameStyles(params.doc);
-}
-
 function commentForSelectedNodes(params: {
   readonly comments: readonly HtmlDomEditComment[];
   readonly selectedNodeIds: readonly string[];
@@ -1307,7 +1285,6 @@ function canDiscardHtmlDomEditorDraft(params: {
   readonly hasPendingStyleEdits: boolean;
   readonly imageBusy: boolean;
   readonly loadState: EditorLoadState;
-  readonly selectedNodeIds: readonly string[];
   readonly submitting: boolean;
 }): boolean {
   if (
@@ -1322,7 +1299,6 @@ function canDiscardHtmlDomEditorDraft(params: {
     params.hasPendingStyleEdits ||
     params.hasPendingImageEdits ||
     params.commentText.trim() !== "" ||
-    params.selectedNodeIds.length > 0 ||
     params.editingCommentId !== null
   );
 }
@@ -2202,6 +2178,8 @@ const resetHtmlDomCommentEditor$ = command(({ set }) => {
   set(cleanupCurrentFrameBinding$);
   set(resetHtmlDomImageEditSignal$);
   set(internalLoadState$, { status: "loading" });
+  set(internalActiveFrameKey$, 0);
+  set(internalPendingFrameKey$, null);
   set(internalStageElement$, null);
   set(internalIframeElement$, null);
   set(internalSelectedNodeIds$, []);
@@ -2253,13 +2231,15 @@ export const setHtmlDomCommentStageRef$ = onRef(
 );
 
 export const setHtmlDomCommentIframeRef$ = onRef(
-  command(({ set }, iframe: HTMLIFrameElement, signal: AbortSignal) => {
+  command(({ get, set }, iframe: HTMLIFrameElement, signal: AbortSignal) => {
     set(internalIframeElement$, iframe);
     signal.addEventListener(
       "abort",
       () => {
-        set(cleanupCurrentFrameBinding$);
-        set(internalIframeElement$, null);
+        if (get(internalIframeElement$) === iframe) {
+          set(cleanupCurrentFrameBinding$);
+          set(internalIframeElement$, null);
+        }
       },
       { once: true },
     );
@@ -2650,6 +2630,7 @@ function updateFrameSelectedNodeIds(params: {
 export const bindHtmlDomCommentFrame$ = command(
   ({ get, set }, iframe: HTMLIFrameElement) => {
     set(cleanupCurrentFrameBinding$);
+    set(internalIframeElement$, iframe);
 
     const doc = iframe.contentDocument;
     const stage = get(internalStageElement$);
@@ -2769,6 +2750,20 @@ export const bindHtmlDomCommentFrame$ = command(
       },
     });
     syncMarkers();
+  },
+);
+
+export const activatePendingHtmlDomCommentFrame$ = command(
+  (
+    { get, set },
+    params: { readonly frameKey: number; readonly iframe: HTMLIFrameElement },
+  ) => {
+    if (get(internalPendingFrameKey$) !== params.frameKey) {
+      return;
+    }
+    set(bindHtmlDomCommentFrame$, params.iframe);
+    set(internalActiveFrameKey$, params.frameKey);
+    set(internalPendingFrameKey$, null);
   },
 );
 
@@ -3192,11 +3187,14 @@ export const discardHtmlDomComments$ = command(({ get, set }) => {
   set(internalImageLinkOpen$, false);
   set(internalImageLinkValue$, "");
   set(internalImagePendingAction$, null);
-  if (readyLoadState.status === "ready" && doc) {
-    restoreFrameDocumentHtml({
-      doc,
-      html: readyLoadState.html,
-    });
+  if (readyLoadState.status === "ready") {
+    set(
+      internalPendingFrameKey$,
+      Math.max(
+        get(internalActiveFrameKey$),
+        get(internalPendingFrameKey$) ?? 0,
+      ) + 1,
+    );
   } else {
     syncFrameCommentMarkers(doc, []);
   }
@@ -3406,6 +3404,7 @@ export const htmlDomCommentEditorModel$ = computed(
 
     return {
       activeColorPanelProperty: get(internalActiveColorPanelProperty$),
+      activeFrameKey: get(internalActiveFrameKey$),
       canApplyStyleEdits:
         loadState.status === "ready" &&
         comments.length === 0 &&
@@ -3426,7 +3425,6 @@ export const htmlDomCommentEditorModel$ = computed(
         hasPendingStyleEdits,
         imageBusy,
         loadState,
-        selectedNodeIds,
         submitting,
       }),
       canEditSelectedStyle: editableStyleProperties.length > 0,
@@ -3448,6 +3446,7 @@ export const htmlDomCommentEditorModel$ = computed(
       imageLinkValue: get(internalImageLinkValue$),
       imagePendingAction: get(internalImagePendingAction$),
       loadState,
+      pendingFrameKey: get(internalPendingFrameKey$),
       popoverTextAreaKey: [
         selectedNodeIds.join(":"),
         editingCommentId ?? "new",

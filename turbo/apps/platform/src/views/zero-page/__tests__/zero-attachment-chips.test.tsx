@@ -1779,7 +1779,7 @@ describe("zero attachment chips", () => {
         `<!doctype html>
         <html>
           <head><title>Launch site</title></head>
-          <body>
+          <body class="launch-page" data-theme="retro">
             <main>
               <h1>Launch faster</h1>
               <p>Ship the first version today.</p>
@@ -1896,7 +1896,7 @@ describe("zero attachment chips", () => {
       ).toBeInTheDocument();
       expect(screen.queryByLabelText("Exit comment mode")).toBeNull();
     });
-    const frame = (await screen.findByTestId(
+    let frame = (await screen.findByTestId(
       "html-dom-comment-frame",
     )) as HTMLIFrameElement;
     expect(frame).toHaveAttribute("sandbox", "allow-same-origin allow-scripts");
@@ -1906,6 +1906,13 @@ describe("zero attachment chips", () => {
           ?.querySelector("h1")
           ?.hasAttribute(HTML_DOM_NODE_ID_ATTR),
       ).toBeTruthy();
+    });
+    await waitFor(() => {
+      expect(frame.contentDocument?.body).toHaveClass("launch-page");
+      expect(frame.contentDocument?.body).toHaveAttribute(
+        "data-theme",
+        "retro",
+      );
     });
     let title = frame.contentDocument?.querySelector("h1");
     expect(title).not.toBeNull();
@@ -2003,15 +2010,24 @@ describe("zero attachment chips", () => {
       screen.getByTestId("html-dom-toolbar-comments-count"),
     ).toHaveTextContent("1");
 
+    const frameBeforeDiscard = frame;
     title!.textContent = "Changed during edit";
     click(screen.getByTestId("html-dom-toolbar-discard"));
     await waitFor(() => {
-      expect(screen.getByTestId("html-dom-comment-frame")).toBeInTheDocument();
-      expect(frame.contentDocument?.querySelector("h1")).toHaveTextContent(
+      const nextFrame = screen.getByTestId(
+        "html-dom-comment-frame",
+      ) as HTMLIFrameElement;
+      expect(nextFrame).not.toBe(frameBeforeDiscard);
+      expect(nextFrame.contentDocument?.querySelector("h1")).toHaveTextContent(
         "Launch faster",
       );
+      expect(nextFrame.contentDocument?.body).toHaveClass("launch-page");
+      expect(nextFrame.contentDocument?.body).toHaveAttribute(
+        "data-theme",
+        "retro",
+      );
       expect(
-        frame.contentDocument?.querySelector(
+        nextFrame.contentDocument?.querySelector(
           "[data-testid='html-dom-comment-marker']",
         ),
       ).toBeNull();
@@ -2024,6 +2040,7 @@ describe("zero attachment chips", () => {
       ).toHaveTextContent("Editing");
     });
 
+    frame = screen.getByTestId("html-dom-comment-frame") as HTMLIFrameElement;
     title = frame.contentDocument?.querySelector("h1");
     expect(title).not.toBeNull();
     mockElementRect(title!, {
@@ -2033,6 +2050,10 @@ describe("zero attachment chips", () => {
       width: 32,
     });
     fireEvent.click(title!);
+    await waitFor(() => {
+      expect(screen.getByTestId("html-dom-comment-textarea")).toHaveValue("");
+      expect(screen.getByTestId("html-dom-toolbar-discard")).toBeDisabled();
+    });
     const nextCommentTextArea = await screen.findByTestId(
       "html-dom-comment-textarea",
     );
