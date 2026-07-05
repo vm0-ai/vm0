@@ -24,9 +24,11 @@ import {
 import type { ZeroClientFactory } from "../../../signals/api-client.ts";
 import { syncArtifactFileToGoogleDrive } from "../../../signals/chat-page/artifact-google-drive-sync.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { resetSignal } from "../../../signals/utils.ts";
+import { createDeferredPromise, resetSignal } from "../../../signals/utils.ts";
 import {
+  applyHtmlDomEditPreview$,
   artifactPanelWidth$,
+  closeArtifactHtmlEditMode$,
   saveCapturedHtmlEditSnapshotDraft$,
 } from "../../../signals/zero-page/zero-artifact-sidebar.ts";
 import { ARTIFACT_HTML_EDIT_PARAM } from "../../../signals/zero-page/right-sidebar-search-params.ts";
@@ -360,6 +362,7 @@ function setupHostedSiteArtifactThread(
   siteUrl: string,
   html = "<!doctype html><html><body><h1>Original site</h1></body></html>",
   artifactUrl = siteUrl,
+  path = `${THREAD_PATH}?artifact=${encodeURIComponent(siteUrl)}`,
 ): void {
   const filename =
     new URL(artifactUrl).pathname.split("/").pop() || "site.html";
@@ -382,8 +385,22 @@ function setupHostedSiteArtifactThread(
     featureSwitches: {
       [FeatureSwitchKey.HtmlArtifactCommentEditing]: true,
     },
-    path: `${THREAD_PATH}?artifact=${encodeURIComponent(siteUrl)}`,
+    path,
   });
+}
+
+function hostedSiteEditPath(siteUrl: string): string {
+  const params = new URLSearchParams();
+  params.set("artifact", siteUrl);
+  params.set(ARTIFACT_HTML_EDIT_PARAM, "1");
+  return `${THREAD_PATH}?${params.toString()}`;
+}
+
+async function enterHostedSiteEditMode(
+  user: ReturnType<typeof userEvent.setup>,
+) {
+  const sidebar = await screen.findByTestId("artifact-sidebar");
+  await user.click(within(sidebar).getByLabelText("Edit page"));
 }
 
 function assetBackedPresentationHtml(assetUrl: string): string {
@@ -617,6 +634,79 @@ describe("zero artifact sidebar", () => {
     });
   });
 
+  it("offers to resume a saved HTML edit snapshot after entering edit mode from preview", async () => {
+    const user = userEvent.setup({ delay: null });
+    const siteUrl = "https://resume-after-preview.sites.vm7.io/index.html";
+    const snapshotUrl =
+      "https://cdn.vm7.io/artifacts/html-edit-drafts/resume-after-preview.html?v=1";
+    let snapshotLoads = 0;
+
+    context.mocks.api(
+      chatThreadArtifactsContract.getHtmlEditSnapshot,
+      ({ respond }) => {
+        snapshotLoads += 1;
+        return respond(200, {
+          snapshot: {
+            artifactUrl: siteUrl,
+            snapshotUrl,
+            updatedAt: "2026-03-10T00:05:00Z",
+          },
+        });
+      },
+    );
+    context.mocks.http.get("*/__vm0-dev-artifact-fetch", () => {
+      return new Response(
+        "<!doctype html><html><body><h1>Saved draft</h1></body></html>",
+        { headers: { "Content-Type": "text/html" } },
+      );
+    });
+    setupHostedSiteArtifactThread(siteUrl);
+
+    const sidebar = await screen.findByTestId("artifact-sidebar");
+    expect(screen.queryByText("Resume HTML draft?")).not.toBeInTheDocument();
+    expect(snapshotLoads).toBe(0);
+
+    await user.click(within(sidebar).getByLabelText("Edit page"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Resume HTML draft?")).toBeInTheDocument();
+      expect(snapshotLoads).toBe(1);
+    });
+  });
+
+  it("does not offer to resume a saved HTML edit snapshot from the initial chat load", async () => {
+    const siteUrl = "https://resume-initial-load.sites.vm7.io/index.html";
+    const snapshotUrl =
+      "https://cdn.vm7.io/artifacts/html-edit-drafts/resume-initial-load.html?v=1";
+    let snapshotLoads = 0;
+
+    context.mocks.api(
+      chatThreadArtifactsContract.getHtmlEditSnapshot,
+      ({ respond }) => {
+        snapshotLoads += 1;
+        return respond(200, {
+          snapshot: {
+            artifactUrl: siteUrl,
+            snapshotUrl,
+            updatedAt: "2026-03-10T00:05:00Z",
+          },
+        });
+      },
+    );
+    setupHostedSiteArtifactThread(
+      siteUrl,
+      undefined,
+      siteUrl,
+      hostedSiteEditPath(siteUrl),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("html-dom-comment-editor")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Resume HTML draft?")).not.toBeInTheDocument();
+    expect(snapshotLoads).toBe(0);
+  });
+
   it("offers to resume a saved HTML edit snapshot", async () => {
     const user = userEvent.setup({ delay: null });
     const siteUrl = "https://resume-draft.sites.vm7.io/index.html";
@@ -667,6 +757,7 @@ describe("zero artifact sidebar", () => {
       },
     );
     setupHostedSiteArtifactThread(siteUrl);
+    await enterHostedSiteEditMode(user);
 
     // Content is prefetched once when the draft is detected, before Resume.
     await waitFor(() => {
@@ -693,6 +784,68 @@ describe("zero artifact sidebar", () => {
       context.store.get(searchParams$).get(ARTIFACT_HTML_EDIT_PARAM),
     ).toBeNull();
     expect(savedBodies).toStrictEqual([]);
+  });
+
+  it("shows loading while resuming a saved HTML edit snapshot", async () => {
+    const user = userEvent.setup({ delay: null });
+    const siteUrl = "https://resume-loading.sites.vm7.io/index.html";
+    const snapshotUrl =
+      "https://cdn.vm7.io/artifacts/html-edit-drafts/resume-loading.html?v=1";
+    const restoredHtml =
+      "<!doctype html><html><body><h1>Saved draft</h1></body></html>";
+    const fetchReleased = createDeferredPromise<void>(context.signal);
+
+    context.mocks.api(
+      chatThreadArtifactsContract.getHtmlEditSnapshot,
+      ({ respond }) => {
+        return respond(200, {
+          snapshot: {
+            artifactUrl: siteUrl,
+            snapshotUrl,
+            updatedAt: "2026-03-10T00:05:00Z",
+          },
+        });
+      },
+    );
+    context.mocks.http.get("*/__vm0-dev-artifact-fetch", async () => {
+      await fetchReleased.promise;
+      return new Response(restoredHtml, {
+        headers: { "Content-Type": "text/html" },
+      });
+    });
+    context.mocks.api(
+      chatThreadArtifactsContract.deleteHtmlEditSnapshot,
+      ({ respond }) => {
+        return respond(204);
+      },
+    );
+    setupHostedSiteArtifactThread(siteUrl);
+    await enterHostedSiteEditMode(user);
+
+    await waitFor(() => {
+      expect(screen.getByText("Resume HTML draft?")).toBeInTheDocument();
+    });
+    const resumeButton = queryAllByRoleFast("button").find((button) => {
+      return button.textContent?.trim() === "Resume";
+    });
+    if (!resumeButton) {
+      throw new Error("Resume button not found");
+    }
+    await user.click(resumeButton);
+
+    await waitFor(() => {
+      expect(resumeButton).toBeDisabled();
+      expect(resumeButton).toHaveAttribute("aria-busy", "true");
+    });
+    fetchReleased.resolve();
+
+    await waitFor(() => {
+      expect(screen.queryByText("Resume HTML draft?")).not.toBeInTheDocument();
+      expect(screen.getByTestId("artifact-sidebar-body-html")).toHaveAttribute(
+        "srcdoc",
+        expect.stringContaining("Saved draft"),
+      );
+    });
   });
 
   it("applies the resumed draft as a publishable preview state", async () => {
@@ -738,6 +891,7 @@ describe("zero artifact sidebar", () => {
       });
     });
     setupHostedSiteArtifactThread(siteUrl);
+    await enterHostedSiteEditMode(user);
 
     await waitFor(() => {
       expect(screen.getByText("Resume HTML draft?")).toBeInTheDocument();
@@ -793,12 +947,110 @@ describe("zero artifact sidebar", () => {
     });
   });
 
+  it("discards a generated HTML edit draft without reopening the restore dialog", async () => {
+    const user = userEvent.setup({ delay: null });
+    const siteUrl = "https://discard-generated-draft.sites.vm7.io/index.html";
+    const snapshotUrl =
+      "https://cdn.vm7.io/artifacts/html-edit-drafts/discard-generated-draft.html?v=1";
+    const draftHtml =
+      "<!doctype html><html><body><h1>Generated draft</h1></body></html>";
+    const deletedUrls: string[] = [];
+    const savedBodies: string[] = [];
+    const deleteFinished = createDeferredPromise<void>(context.signal);
+    const deleteStarted = createDeferredPromise<void>(context.signal);
+    let snapshotLoads = 0;
+
+    context.mocks.api(
+      chatThreadArtifactsContract.getHtmlEditSnapshot,
+      ({ respond }) => {
+        snapshotLoads += 1;
+        return respond(200, {
+          snapshot:
+            savedBodies.length > 0
+              ? {
+                  artifactUrl: siteUrl,
+                  snapshotUrl,
+                  updatedAt: "2026-03-10T00:06:00Z",
+                }
+              : null,
+        });
+      },
+    );
+    context.mocks.http.get("*/__vm0-dev-artifact-fetch", () => {
+      return new Response(draftHtml, {
+        headers: { "Content-Type": "text/html" },
+      });
+    });
+    context.mocks.api(
+      chatThreadArtifactsContract.upsertHtmlEditSnapshot,
+      ({ body, respond }) => {
+        savedBodies.push(body.html);
+        return respond(200, {
+          artifactUrl: body.url,
+          snapshotUrl,
+          updatedAt: "2026-03-10T00:06:00Z",
+        });
+      },
+    );
+    context.mocks.api(
+      chatThreadArtifactsContract.deleteHtmlEditSnapshot,
+      async ({ query, respond }) => {
+        deletedUrls.push(query.url);
+        deleteStarted.resolve();
+        await deleteFinished.promise;
+        return respond(204);
+      },
+    );
+    setupHostedSiteArtifactThread(siteUrl);
+    await enterHostedSiteEditMode(user);
+
+    await waitFor(() => {
+      expect(snapshotLoads).toBe(1);
+    });
+    expect(screen.queryByText("Resume HTML draft?")).not.toBeInTheDocument();
+
+    context.store.set(saveCapturedHtmlEditSnapshotDraft$, {
+      html: draftHtml,
+      threadId: THREAD_ID,
+      url: siteUrl,
+    });
+    await waitFor(() => {
+      expect(savedBodies).toStrictEqual([draftHtml]);
+    });
+    context.store.set(applyHtmlDomEditPreview$, {
+      html: draftHtml,
+      url: siteUrl,
+    });
+    context.store.set(closeArtifactHtmlEditMode$);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("html-dom-draft-toolbar")).toBeInTheDocument();
+    });
+    await user.click(screen.getByTestId("html-dom-draft-discard"));
+    await deleteStarted.promise;
+    await Promise.resolve();
+
+    expect(screen.queryByText("Resume HTML draft?")).not.toBeInTheDocument();
+    expect(snapshotLoads).toBe(1);
+    expect(deletedUrls).toStrictEqual([siteUrl]);
+    expect(
+      screen.queryByTestId("html-dom-draft-toolbar"),
+    ).not.toBeInTheDocument();
+    expect(screen.getByTestId("html-dom-comment-editor")).toBeInTheDocument();
+    expect(screen.getByTestId("html-dom-toolbar-discard")).toBeDisabled();
+    expect(screen.queryByTestId("html-dom-toolbar-comments-count")).toBeNull();
+    deleteFinished.resolve();
+  });
+
   it("discards a saved HTML edit snapshot from the restore dialog", async () => {
     const user = userEvent.setup({ delay: null });
     const siteUrl = "https://discard-draft.sites.vm7.io/index.html";
     const snapshotUrl =
       "https://cdn.vm7.io/artifacts/html-edit-drafts/discard-draft.html?v=1";
     const deletedUrls: string[] = [];
+    const deleteFinished = createDeferredPromise<void>(context.signal);
+    const deleteStarted = createDeferredPromise<void>(context.signal);
+    const deleteCompleted = createDeferredPromise<void>(context.signal);
 
     context.mocks.api(
       chatThreadArtifactsContract.getHtmlEditSnapshot,
@@ -820,28 +1072,37 @@ describe("zero artifact sidebar", () => {
     });
     context.mocks.api(
       chatThreadArtifactsContract.deleteHtmlEditSnapshot,
-      ({ query, respond }) => {
+      async ({ query, respond }) => {
         deletedUrls.push(query.url);
+        deleteStarted.resolve();
+        await deleteFinished.promise;
+        deleteCompleted.resolve();
         return respond(204);
       },
     );
     setupHostedSiteArtifactThread(siteUrl);
+    await enterHostedSiteEditMode(user);
 
     await waitFor(() => {
       expect(screen.getByText("Resume HTML draft?")).toBeInTheDocument();
     });
-    await user.click(screen.getByText("Discard"));
+    await user.click(
+      within(screen.getByTestId("html-edit-snapshot-restore-dialog")).getByText(
+        "Discard",
+      ),
+    );
 
     await waitFor(() => {
       expect(screen.queryByText("Resume HTML draft?")).not.toBeInTheDocument();
-      expect(deletedUrls).toStrictEqual([siteUrl]);
     });
     expect(
       screen.queryByTestId("html-dom-draft-toolbar"),
     ).not.toBeInTheDocument();
-    expect(
-      screen.getByTestId("artifact-sidebar-body-html"),
-    ).not.toHaveAttribute("srcdoc");
+    expect(screen.getByTestId("html-dom-comment-editor")).toBeInTheDocument();
+    await deleteStarted.promise;
+    expect(deletedUrls).toStrictEqual([siteUrl]);
+    deleteFinished.resolve();
+    await deleteCompleted.promise;
   });
 
   it("dismisses the restore dialog with Escape without deleting the draft", async () => {
@@ -877,6 +1138,7 @@ describe("zero artifact sidebar", () => {
       },
     );
     setupHostedSiteArtifactThread(siteUrl);
+    await enterHostedSiteEditMode(user);
 
     await waitFor(() => {
       expect(screen.getByText("Resume HTML draft?")).toBeInTheDocument();
@@ -891,9 +1153,7 @@ describe("zero artifact sidebar", () => {
     expect(
       screen.queryByTestId("html-dom-draft-toolbar"),
     ).not.toBeInTheDocument();
-    expect(
-      screen.getByTestId("artifact-sidebar-body-html"),
-    ).not.toHaveAttribute("srcdoc");
+    expect(screen.getByTestId("html-dom-comment-editor")).toBeInTheDocument();
   });
 
   it("resizes the artifact preview pane and persists the width", async () => {

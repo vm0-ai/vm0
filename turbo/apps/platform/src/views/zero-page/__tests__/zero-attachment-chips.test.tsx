@@ -2405,6 +2405,10 @@ describe("zero attachment chips", () => {
       expect(
         screen.getByTestId("html-dom-comment-toolbar"),
       ).toBeInTheDocument();
+      expect(screen.getByTestId("html-dom-toolbar-discard")).toBeDisabled();
+      expect(
+        screen.queryByTestId("html-dom-toolbar-comments-count"),
+      ).toBeNull();
       expect(
         within(sidebar).getByTestId("artifact-sidebar-html-edit-status"),
       ).toHaveTextContent("Editing");

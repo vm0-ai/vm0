@@ -86,6 +86,10 @@ interface HtmlEditSnapshotSaveArgs {
 
 const internalHtmlEditSnapshotRestoreDraft$ =
   state<HtmlEditSnapshotRestoreDraft | null>(null);
+const internalHtmlEditSnapshotRestorePendingResumeKey$ = state<string | null>(
+  null,
+);
+const internalHtmlEditSnapshotRestoreIntentUrl$ = state<string | null>(null);
 const internalActiveHtmlEditSnapshotTarget$ =
   state<ActiveHtmlEditSnapshotTarget | null>(null);
 // In-flight save chain per `threadId\nurl`, so delete can await it.
@@ -338,6 +342,7 @@ export const openArtifactSidebarHtmlEdit$ = command(
     const params = new URLSearchParams(get(searchParams$));
     const args =
       typeof value === "string" ? { fullscreen: false, url: value } : value;
+    set(internalHtmlEditSnapshotRestoreIntentUrl$, args.url);
     setArtifactPreviewParams(params, {
       fullscreen: args.fullscreen,
       htmlEdit: true,
@@ -470,6 +475,36 @@ export const htmlEditSnapshotRestoreDraft$ = computed((get) => {
   return get(internalHtmlEditSnapshotRestoreDraft$);
 });
 
+export const htmlEditSnapshotRestorePendingResumeKey$ = computed((get) => {
+  return get(internalHtmlEditSnapshotRestorePendingResumeKey$);
+});
+
+export const htmlEditSnapshotRestoreIntentUrl$ = computed((get) => {
+  return get(internalHtmlEditSnapshotRestoreIntentUrl$);
+});
+
+export const setHtmlEditSnapshotRestorePendingResumeKey$ = command(
+  ({ set }, key: string) => {
+    set(internalHtmlEditSnapshotRestorePendingResumeKey$, key);
+  },
+);
+
+export const clearHtmlEditSnapshotRestorePendingResumeKey$ = command(
+  ({ get, set }, key: string) => {
+    if (get(internalHtmlEditSnapshotRestorePendingResumeKey$) === key) {
+      set(internalHtmlEditSnapshotRestorePendingResumeKey$, null);
+    }
+  },
+);
+
+const clearHtmlEditSnapshotRestoreIntentForUrl$ = command(
+  ({ get, set }, url: string) => {
+    if (get(internalHtmlEditSnapshotRestoreIntentUrl$) === url) {
+      set(internalHtmlEditSnapshotRestoreIntentUrl$, null);
+    }
+  },
+);
+
 // Dismiss the restore prompt without acting on it (the draft stays in the DB and
 // is offered again next time the artifact is opened).
 export const dismissHtmlEditSnapshotRestoreDraft$ = command(({ set }) => {
@@ -547,6 +582,9 @@ export const loadHtmlEditSnapshotRestoreDraft$ = command(
       return;
     }
     const { snapshotUrl } = response.body.snapshot;
+    const key = htmlEditSnapshotKey(args.threadId, args.url);
+    const deleteEpoch =
+      get(internalHtmlEditSnapshotDeleteEpochByKey$)[key] ?? 0;
     set(internalHtmlEditSnapshotRestoreDraft$, {
       threadId: args.threadId,
       updatedAt: response.body.snapshot.updatedAt,
@@ -563,6 +601,8 @@ export const loadHtmlEditSnapshotRestoreDraft$ = command(
     loadSignal.throwIfAborted();
     if (
       typeof html === "string" &&
+      (get(internalHtmlEditSnapshotDeleteEpochByKey$)[key] ?? 0) ===
+        deleteEpoch &&
       htmlEditSnapshotTargetMatches(
         get(internalActiveHtmlEditSnapshotTarget$),
         args,
@@ -589,6 +629,18 @@ export const deleteHtmlEditSnapshotDraft$ = command(
       ...get(internalHtmlEditSnapshotDeleteEpochByKey$),
       [key]: (get(internalHtmlEditSnapshotDeleteEpochByKey$)[key] ?? 0) + 1,
     });
+    const restoreDraft = get(internalHtmlEditSnapshotRestoreDraft$);
+    if (
+      restoreDraft?.threadId === args.threadId &&
+      restoreDraft.url === args.url
+    ) {
+      set(internalHtmlEditSnapshotRestoreDraft$, null);
+    }
+    if (key in get(internalHtmlEditSnapshotContentByKey$)) {
+      const nextContent = { ...get(internalHtmlEditSnapshotContentByKey$) };
+      delete nextContent[key];
+      set(internalHtmlEditSnapshotContentByKey$, nextContent);
+    }
     // Let any in-flight save settle first so its upsert can't land after the
     // delete and resurrect a stale snapshot.
     await set(
@@ -615,16 +667,10 @@ export const deleteHtmlEditSnapshotDraft$ = command(
     );
     signal.throwIfAborted();
 
-    const nextContent = { ...get(internalHtmlEditSnapshotContentByKey$) };
-    delete nextContent[key];
-    set(internalHtmlEditSnapshotContentByKey$, nextContent);
-
-    const restoreDraft = get(internalHtmlEditSnapshotRestoreDraft$);
-    if (
-      restoreDraft?.threadId === args.threadId &&
-      restoreDraft.url === args.url
-    ) {
-      set(internalHtmlEditSnapshotRestoreDraft$, null);
+    if (key in get(internalHtmlEditSnapshotContentByKey$)) {
+      const nextContent = { ...get(internalHtmlEditSnapshotContentByKey$) };
+      delete nextContent[key];
+      set(internalHtmlEditSnapshotContentByKey$, nextContent);
     }
   },
 );
@@ -754,6 +800,7 @@ export const discardHtmlDomEditPreviewDraft$ = command(
     const next = { ...get(internalHtmlDomEditPreviewHtmlByUrl$) };
     delete next[url];
     set(internalHtmlDomEditPreviewHtmlByUrl$, next);
+    set(clearHtmlEditSnapshotRestoreIntentForUrl$, url);
 
     const params = new URLSearchParams(get(searchParams$));
     params.set(ARTIFACT_HTML_EDIT_PARAM, "1");
@@ -850,6 +897,10 @@ export const clearHtmlDomEditPending$ = command(
 
 export const openArtifactHtmlEditMode$ = command(({ get, set }) => {
   const params = new URLSearchParams(get(searchParams$));
+  const artifactRef = get(currentArtifactRef$);
+  if (artifactRef?.source === "url" && artifactRef.kind === "html") {
+    set(internalHtmlEditSnapshotRestoreIntentUrl$, artifactRef.url);
+  }
   params.set(ARTIFACT_HTML_EDIT_PARAM, "1");
   set(replaceSearchParams$, params);
 });

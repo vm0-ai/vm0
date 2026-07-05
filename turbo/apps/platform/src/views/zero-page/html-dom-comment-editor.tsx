@@ -275,7 +275,7 @@ function HtmlDomCommentToolbar({
           <button
             type="button"
             className="inline-flex h-9 items-center justify-center rounded-full px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-45"
-            disabled={disabled}
+            disabled={disabled || !model.canDiscard}
             onClick={discardComments}
             data-testid="html-dom-toolbar-discard"
           >

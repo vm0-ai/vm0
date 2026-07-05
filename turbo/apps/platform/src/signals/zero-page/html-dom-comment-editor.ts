@@ -88,6 +88,7 @@ export interface HtmlDomCommentEditorModel {
   readonly activeColorPanelProperty: HtmlDomStyleProperty | null;
   readonly canApplyStyleEdits: boolean;
   readonly canAddComment: boolean;
+  readonly canDiscard: boolean;
   readonly canEditSelectedStyle: boolean;
   readonly canSend: boolean;
   readonly colorPopoverOffset: HtmlDomColorPopoverOffset;
@@ -1295,6 +1296,34 @@ function commentForSelectedNodes(params: {
         return params.selectedNodeIds.includes(nodeId);
       });
     }) ?? null
+  );
+}
+
+function canDiscardHtmlDomEditorDraft(params: {
+  readonly comments: readonly HtmlDomEditComment[];
+  readonly commentText: string;
+  readonly editingCommentId: string | null;
+  readonly hasPendingImageEdits: boolean;
+  readonly hasPendingStyleEdits: boolean;
+  readonly imageBusy: boolean;
+  readonly loadState: EditorLoadState;
+  readonly selectedNodeIds: readonly string[];
+  readonly submitting: boolean;
+}): boolean {
+  if (
+    params.loadState.status !== "ready" ||
+    params.submitting ||
+    params.imageBusy
+  ) {
+    return false;
+  }
+  return (
+    params.comments.length > 0 ||
+    params.hasPendingStyleEdits ||
+    params.hasPendingImageEdits ||
+    params.commentText.trim() !== "" ||
+    params.selectedNodeIds.length > 0 ||
+    params.editingCommentId !== null
   );
 }
 
@@ -3174,6 +3203,32 @@ export const discardHtmlDomComments$ = command(({ get, set }) => {
   set(resetHtmlDomCommentDraft$);
 });
 
+export const clearHtmlDomCommentEditorDraft$ = command(({ get, set }) => {
+  const doc = currentFrameDocument(get(internalIframeElement$));
+  set(resetHtmlDomImageEditSignal$);
+  set(internalComments$, []);
+  set(internalCommentsOpen$, false);
+  set(internalCommentText$, "");
+  set(internalSelectedNodeIds$, []);
+  set(internalCommentPopoverAnchor$, null);
+  set(internalEditingCommentId$, null);
+  set(internalPreparedPayload$, null);
+  set(internalActiveColorPanelProperty$, null);
+  set(internalColorPopoverOffset$, { left: 0, top: 0 });
+  set(internalStyleEditsByNodeId$, {});
+  set(internalOriginalStylesByNodeId$, {});
+  set(internalImageEditsByNodeId$, {});
+  set(internalImageBusy$, false);
+  set(internalImageLinkOpen$, false);
+  set(internalImageLinkValue$, "");
+  set(internalImagePendingAction$, null);
+  syncFrameEditState(doc, {
+    hoveredNodeId: get(internalHoveredNodeId$),
+    selectedNodeIds: [],
+  });
+  syncFrameCommentMarkers(doc, []);
+});
+
 export const sendHtmlDomEditRequest$ = command(
   async (
     { get, set },
@@ -3226,6 +3281,7 @@ export const sendHtmlDomEditRequest$ = command(
           html: draftHtml,
         });
         signal.throwIfAborted();
+        set(clearHtmlDomCommentEditorDraft$);
         toast.success("Edit draft applied");
         return;
       }
@@ -3336,6 +3392,8 @@ export const htmlDomCommentEditorModel$ = computed(
     const styleEditsByNodeId = get(internalStyleEditsByNodeId$);
     const imageEditsByNodeId = get(internalImageEditsByNodeId$);
     const imageBusy = get(internalImageBusy$);
+    const hasPendingStyleEdits = hasStyleEdits(styleEditsByNodeId);
+    const hasPendingImageEdits = hasImageEdits(imageEditsByNodeId);
     const doc = currentFrameDocument(get(internalIframeElement$));
     const editableStyleProperties = editableStylePropertiesForSelectedNodes({
       doc,
@@ -3351,8 +3409,7 @@ export const htmlDomCommentEditorModel$ = computed(
       canApplyStyleEdits:
         loadState.status === "ready" &&
         comments.length === 0 &&
-        (hasStyleEdits(styleEditsByNodeId) ||
-          hasImageEdits(imageEditsByNodeId)) &&
+        (hasPendingStyleEdits || hasPendingImageEdits) &&
         !submitting &&
         !imageBusy,
       canAddComment: editingCommentId
@@ -3361,6 +3418,17 @@ export const htmlDomCommentEditorModel$ = computed(
           commentText.trim() !== "" &&
           !hasCommentForSelectedNodes({ comments, selectedNodeIds }) &&
           !imageBusy,
+      canDiscard: canDiscardHtmlDomEditorDraft({
+        comments,
+        commentText,
+        editingCommentId,
+        hasPendingImageEdits,
+        hasPendingStyleEdits,
+        imageBusy,
+        loadState,
+        selectedNodeIds,
+        submitting,
+      }),
       canEditSelectedStyle: editableStyleProperties.length > 0,
       canSend:
         loadState.status === "ready" &&

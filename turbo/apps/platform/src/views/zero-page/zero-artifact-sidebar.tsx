@@ -46,11 +46,14 @@ import {
   clearHtmlDomEditPending$,
   closeArtifactHtmlEditMode$,
   closeArtifact$,
+  clearHtmlEditSnapshotRestorePendingResumeKey$,
   deleteHtmlEditSnapshotDraft$,
   dismissHtmlEditSnapshotRestoreDraft$,
   discardHtmlDomEditPreviewDraft$,
   continueHtmlEditSnapshotDraft$,
   htmlEditSnapshotRestoreDraft$,
+  htmlEditSnapshotRestoreIntentUrl$,
+  htmlEditSnapshotRestorePendingResumeKey$,
   htmlDomEditPreviewHtmlByUrl$,
   htmlDomEditPendingUrl$,
   htmlDomEditPublishingUrl$,
@@ -61,6 +64,7 @@ import {
   publishHtmlDomEditPreviewDraft$,
   saveCapturedHtmlEditSnapshotDraft$,
   setHtmlEditSnapshotControllerRef$,
+  setHtmlEditSnapshotRestorePendingResumeKey$,
   toggleArtifactFullscreen$,
 } from "../../signals/zero-page/zero-artifact-sidebar.ts";
 import {
@@ -80,7 +84,12 @@ import {
 } from "../../signals/zero-page/zero-image-edit.ts";
 import { Markdown } from "../components/markdown.tsx";
 import { pageSignal$ } from "../../signals/page-signal.ts";
-import { detach, jsonParseOr, Reason } from "../../signals/utils.ts";
+import {
+  detach,
+  jsonParseOr,
+  Reason,
+  withCleanup,
+} from "../../signals/utils.ts";
 import { resetZoomableImageCanvasZoom$ } from "../../signals/view-component-state.ts";
 import {
   ZoomableArtifactImageCanvas,
@@ -326,18 +335,34 @@ function htmlEditSnapshotRestoreDraftForTarget(
 
 function htmlEditSnapshotTargetForDisplay({
   display,
-  htmlEditEnabled,
+  htmlCommentMode,
   threadId,
 }: {
   readonly display: ArtifactDisplay | null;
-  readonly htmlEditEnabled: boolean;
+  readonly htmlCommentMode: boolean;
   readonly threadId?: string;
 }): HtmlEditSnapshotTargetView | null {
   return threadId &&
-    htmlEditEnabled &&
+    htmlCommentMode &&
     display?.kind === "html" &&
     display.artifactKind === "hosted-site"
     ? { threadId, url: display.url }
+    : null;
+}
+
+function htmlEditSnapshotRestoreTargetForDisplay({
+  display,
+  htmlCommentMode,
+  restoreIntentUrl,
+  threadId,
+}: {
+  readonly display: ArtifactDisplay | null;
+  readonly htmlCommentMode: boolean;
+  readonly restoreIntentUrl: string | null;
+  readonly threadId?: string;
+}): HtmlEditSnapshotTargetView | null {
+  return restoreIntentUrl === display?.url
+    ? htmlEditSnapshotTargetForDisplay({ display, htmlCommentMode, threadId })
     : null;
 }
 
@@ -361,6 +386,39 @@ function HtmlEditSnapshotRestoreDialog({
   readonly signal: AbortSignal;
 }) {
   const open = Boolean(restoreDraft);
+  const restoreDraftKey = restoreDraft
+    ? `${restoreDraft.threadId}\n${restoreDraft.url}\n${restoreDraft.updatedAt}`
+    : null;
+  const pendingResumeDraftKey = useGet(
+    htmlEditSnapshotRestorePendingResumeKey$,
+  );
+  const setPendingResumeDraftKey = useSet(
+    setHtmlEditSnapshotRestorePendingResumeKey$,
+  );
+  const clearPendingResumeDraftKey = useSet(
+    clearHtmlEditSnapshotRestorePendingResumeKey$,
+  );
+  const resumePending =
+    restoreDraftKey !== null && pendingResumeDraftKey === restoreDraftKey;
+  const resumeDraft = async (
+    currentDraft: HtmlEditSnapshotRestoreDraftView,
+    currentDraftKey: string,
+  ): Promise<void> => {
+    setPendingResumeDraftKey(currentDraftKey);
+    await withCleanup(
+      onContinue(
+        {
+          threadId: currentDraft.threadId,
+          url: currentDraft.url,
+        },
+        signal,
+      ),
+      () => {
+        clearPendingResumeDraftKey(currentDraftKey);
+      },
+    );
+  };
+
   return (
     <Dialog
       open={open}
@@ -380,6 +438,7 @@ function HtmlEditSnapshotRestoreDialog({
         <DialogFooter>
           <Button
             variant="outline"
+            disabled={resumePending}
             onClick={() => {
               if (restoreDraft) {
                 onDiscard(restoreDraft);
@@ -389,23 +448,22 @@ function HtmlEditSnapshotRestoreDialog({
             Discard
           </Button>
           <Button
+            aria-busy={resumePending ? true : undefined}
+            disabled={resumePending}
             onClick={() => {
-              if (!restoreDraft) {
+              if (!restoreDraft || !restoreDraftKey || resumePending) {
                 return;
               }
               detach(
-                onContinue(
-                  {
-                    threadId: restoreDraft.threadId,
-                    url: restoreDraft.url,
-                  },
-                  signal,
-                ),
+                resumeDraft(restoreDraft, restoreDraftKey),
                 Reason.DomCallback,
                 "continueHtmlEditSnapshotDraft",
               );
             }}
           >
+            {resumePending ? (
+              <IconLoader2 size={16} className="animate-spin" />
+            ) : null}
             Resume
           </Button>
         </DialogFooter>
@@ -466,6 +524,9 @@ function ArtifactSidebarContent({
   const requestedHtmlCommentMode = useGet(artifactHtmlEditMode$);
   const requestedImageEditMode = useGet(artifactImageEditMode$);
   const htmlDomEditPreviewHtmlByUrl = useGet(htmlDomEditPreviewHtmlByUrl$);
+  const htmlEditSnapshotRestoreIntentUrl = useGet(
+    htmlEditSnapshotRestoreIntentUrl$,
+  );
   const htmlDomEditPendingUrl = useGet(htmlDomEditPendingUrl$);
   const htmlDomEditPublishingUrl = useGet(htmlDomEditPublishingUrl$);
   const applyHtmlDomEditPreview = useSet(applyHtmlDomEditPreview$);
@@ -489,14 +550,22 @@ function ArtifactSidebarContent({
 
   const display = resolveArtifactDisplay(artifactRef, item);
   const htmlEditEnabled = isHtmlEditFeatureEnabled(features);
-  const htmlEditSnapshotTarget = htmlEditSnapshotTargetForDisplay({
-    display,
-    htmlEditEnabled,
-    threadId,
-  });
   const htmlCommentMode =
     htmlEditEnabled &&
     shouldOpenHtmlCommentMode(display, requestedHtmlCommentMode);
+  const htmlEditSnapshotTarget = htmlEditSnapshotTargetForDisplay({
+    display,
+    htmlCommentMode,
+    threadId,
+  });
+  const htmlEditSnapshotRestoreTarget = htmlEditSnapshotRestoreTargetForDisplay(
+    {
+      display,
+      htmlCommentMode,
+      restoreIntentUrl: htmlEditSnapshotRestoreIntentUrl,
+      threadId,
+    },
+  );
   const syncTarget = artifactSidebarSyncTargetForItem({
     agentId,
     item,
@@ -538,7 +607,7 @@ function ArtifactSidebarContent({
       display={display}
       fullscreen={fullscreen}
       htmlCommentMode={htmlCommentMode}
-      htmlEditSnapshotTarget={htmlEditSnapshotTarget}
+      htmlEditSnapshotRestoreTarget={htmlEditSnapshotRestoreTarget}
       htmlEditState={htmlEditState}
       htmlHeaderState={htmlHeaderState}
       imageEditActive={imageEditActive}
@@ -562,7 +631,7 @@ function ArtifactSidebarResolvedContent({
   display,
   fullscreen,
   htmlCommentMode,
-  htmlEditSnapshotTarget,
+  htmlEditSnapshotRestoreTarget,
   htmlEditState,
   htmlHeaderState,
   imageEditActive,
@@ -582,7 +651,7 @@ function ArtifactSidebarResolvedContent({
   readonly display: ArtifactDisplay;
   readonly fullscreen: boolean;
   readonly htmlCommentMode: boolean;
-  readonly htmlEditSnapshotTarget: HtmlEditSnapshotTargetView | null;
+  readonly htmlEditSnapshotRestoreTarget: HtmlEditSnapshotTargetView | null;
   readonly htmlEditState: HtmlEditState;
   readonly htmlHeaderState: HtmlArtifactHeaderState | undefined;
   readonly imageEditActive: boolean;
@@ -670,7 +739,7 @@ function ArtifactSidebarResolvedContent({
       <HtmlEditSnapshotController
         previewHtml={htmlEditState.previewHtml}
         signal={pageSignal}
-        target={htmlEditSnapshotTarget}
+        target={htmlEditSnapshotRestoreTarget}
       />
     </ArtifactSidebarSurface>
   );
