@@ -15,6 +15,7 @@ const runStatusSchema = z.enum([
   "queued",
   "running",
 ]);
+const goalStatusSchema = z.enum(["active", "paused", "blocked", "complete"]);
 
 export const testChatThreadStateErrorSchema = z.object({
   error: z.string(),
@@ -62,6 +63,14 @@ export const testChatThreadStateActionBodySchema = z.discriminatedUnion(
       status: runStatusSchema,
     }),
     z.object({
+      action: z.literal("seed-thread-goal"),
+      user_id: z.string(),
+      org_id: z.string(),
+      agent_id: z.string(),
+      thread_id: z.string(),
+      status: goalStatusSchema,
+    }),
+    z.object({
       action: z.literal("update-thread-run-status"),
       run_id: z.string(),
       status: runStatusSchema,
@@ -73,6 +82,7 @@ export const testChatThreadStateActionResponseSchema = z.object({
   ok: z.literal(true),
   fixture: testChatThreadStateFixtureSchema.optional(),
   run_id: z.string().optional(),
+  goal_id: z.string().optional(),
 });
 
 export const testChatThreadStateContract = c.router({
