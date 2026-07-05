@@ -45,7 +45,20 @@ const MAX_PUBLIC_SLUG_ATTEMPTS = 5;
 const PRESENTATION_SPEAKER_NOTES_MODEL = "openai/gpt-4.1-mini";
 const HTML_DOM_EDIT_MODEL = "openai/gpt-4.1-mini";
 const HTML_DOM_NODE_ID_ATTR = "data-vm0-node-id";
+const HTML_DOM_SCRIPT_ID_ATTR = "data-vm0-script-id";
+const DEFAULT_SCRIPT_ID_PREFIX = "vm0-script";
 const MAX_HTML_EDIT_SNAPSHOT_BYTES = 5 * 1024 * 1024;
+const MAX_HTML_DOM_EDIT_PROMPT_HTML_CHARS = 60_000;
+const MAX_HTML_DOM_EDIT_TARGET_CONTEXTS = 10;
+const MAX_HTML_DOM_EDIT_TARGET_OUTER_HTML_CHARS = 1500;
+const MAX_HTML_DOM_EDIT_TARGET_TEXT_CHARS = 400;
+const MAX_HTML_DOM_EDIT_SCRIPT_CONTEXTS_PER_TARGET = 2;
+const MAX_HTML_DOM_EDIT_SCRIPT_SNIPPETS_PER_TARGET = 2;
+const MAX_HTML_DOM_EDIT_SCRIPT_SNIPPET_CHARS = 500;
+const SHA256_HEX_PATTERN = /^[a-f0-9]{64}$/;
+const HTML_SCRIPT_TAG_NAME = "script";
+const HTML_SCRIPT_OPEN_TAG = `<${HTML_SCRIPT_TAG_NAME}>`;
+const HTML_SCRIPT_CLOSE_TAG = `</${HTML_SCRIPT_TAG_NAME}>`;
 
 const htmlDomEditPatchSchema = z.discriminatedUnion("operation", [
   z.object({
@@ -66,6 +79,33 @@ const htmlDomEditPatchSchema = z.discriminatedUnion("operation", [
     targetNodeId: z.string().min(1),
     operation: z.literal("remove"),
   }),
+  z.object({
+    commentId: z.string().min(1),
+    scriptId: z.string().min(1),
+    oldSha256: z.string().regex(SHA256_HEX_PATTERN),
+    operation: z.literal("script_update"),
+    content: z.string(),
+  }),
+  z.object({
+    commentId: z.string().min(1),
+    scriptId: z.string().min(1),
+    oldSha256: z.string().regex(SHA256_HEX_PATTERN),
+    operation: z.literal("script_text_replace"),
+    oldText: z.string().min(1),
+    newText: z.string(),
+  }),
+  z.object({
+    commentId: z.string().min(1),
+    placement: z.literal("end_of_body"),
+    operation: z.literal("script_add"),
+    content: z.string().min(1),
+  }),
+  z.object({
+    commentId: z.string().min(1),
+    scriptId: z.string().min(1),
+    oldSha256: z.string().regex(SHA256_HEX_PATTERN),
+    operation: z.literal("script_delete"),
+  }),
 ]);
 
 const htmlDomEditPatchResultSchema = z.object({
@@ -76,6 +116,20 @@ const htmlDomEditPatchResultSchema = z.object({
 
 type HtmlDomEditPatch = z.infer<typeof htmlDomEditPatchSchema>;
 type HtmlDomEditPatchResult = z.infer<typeof htmlDomEditPatchResultSchema>;
+type HtmlDomEditDomPatch = Extract<
+  HtmlDomEditPatch,
+  { readonly operation: "insert" | "remove" | "update" }
+>;
+type HtmlDomEditScriptPatch = Extract<
+  HtmlDomEditPatch,
+  {
+    readonly operation:
+      | "script_add"
+      | "script_delete"
+      | "script_text_replace"
+      | "script_update";
+  }
+>;
 
 interface HtmlElementSpan {
   readonly start: number;
@@ -83,6 +137,34 @@ interface HtmlElementSpan {
   readonly closeTagStart: number | null;
   readonly end: number;
   readonly tagName: string;
+}
+
+interface HtmlDomEditScriptInfo {
+  readonly hasSrc: boolean;
+  readonly inline: boolean;
+  readonly oldSha256: string;
+  readonly scriptId: string;
+}
+
+interface HtmlDomEditRelatedScriptContext {
+  readonly matchedTerms: readonly string[];
+  readonly oldSha256: string;
+  readonly scriptId: string;
+  readonly snippets: readonly string[];
+}
+
+interface HtmlDomEditTargetContext {
+  readonly commentId: string;
+  readonly relatedScripts: readonly HtmlDomEditRelatedScriptContext[];
+  readonly searchTerms: readonly string[];
+  readonly targetNodeId: string;
+  readonly targetOuterHTML: string;
+  readonly targetTextContent?: string;
+}
+
+interface HtmlDomEditPromptHtmlContext {
+  readonly focused: boolean;
+  readonly html: string;
 }
 
 interface PrepareDeploymentArgs {
@@ -127,6 +209,10 @@ interface CreateHtmlEditDraftArgs {
 interface HtmlEditDraftDocument {
   readonly comments: CreateHtmlEditDraftRequest["comments"];
   readonly html: string;
+  readonly promptHtml?: string;
+  readonly promptHtmlIsFocused?: boolean;
+  readonly scripts?: readonly HtmlDomEditScriptInfo[];
+  readonly targetContexts?: readonly HtmlDomEditTargetContext[];
 }
 
 interface GetHostedSiteFilesArgs {
@@ -299,11 +385,10 @@ ${html}`,
   ];
 }
 
-function htmlDomEditPrompt(body: HtmlEditDraftDocument): readonly {
-  readonly role: "system" | "user";
-  readonly content: string;
-}[] {
-  const comments = body.comments
+function htmlDomEditPromptComments(
+  comments: CreateHtmlEditDraftRequest["comments"],
+): string {
+  return comments
     .map((comment, index) => {
       return [
         `${index + 1}. Comment ID: ${comment.id}`,
@@ -312,48 +397,188 @@ function htmlDomEditPrompt(body: HtmlEditDraftDocument): readonly {
       ].join("\n");
     })
     .join("\n\n");
+}
+
+function htmlDomEditPromptScripts(
+  scripts: readonly HtmlDomEditScriptInfo[] | undefined,
+): string {
+  return scripts && scripts.length > 0
+    ? scripts
+        .map((script, index) => {
+          return [
+            `${index + 1}. scriptId: ${script.scriptId}`,
+            `   oldSha256: ${script.oldSha256}`,
+            `   inline: ${script.inline ? "true" : "false"}`,
+            `   hasSrc: ${script.hasSrc ? "true" : "false"}`,
+          ].join("\n");
+        })
+        .join("\n\n")
+    : "No editable inline scripts were found.";
+}
+
+function htmlDomEditPromptRelatedScripts(
+  scripts: readonly HtmlDomEditRelatedScriptContext[],
+): string {
+  return scripts
+    .map((script) => {
+      return [
+        `   - scriptId: ${script.scriptId}`,
+        `     oldSha256: ${script.oldSha256}`,
+        `     matchedTerms: ${script.matchedTerms.join(", ")}`,
+        "     snippets:",
+        ...script.snippets.map((snippet) => {
+          return `       ${snippet}`;
+        }),
+      ].join("\n");
+    })
+    .join("\n");
+}
+
+function htmlDomEditPromptTargetContexts(
+  contexts: readonly HtmlDomEditTargetContext[] | undefined,
+): string | null {
+  const scriptContexts = contexts?.filter((context) => {
+    return context.relatedScripts.length > 0;
+  });
+  if (!scriptContexts || scriptContexts.length === 0) {
+    return null;
+  }
+  return scriptContexts
+    .map((context, index) => {
+      return [
+        `${index + 1}. Comment ID: ${context.commentId}`,
+        `   Target node ID: ${context.targetNodeId}`,
+        `   Target outerHTML: ${context.targetOuterHTML}`,
+        context.targetTextContent
+          ? `   Target textContent: ${context.targetTextContent}`
+          : null,
+        context.searchTerms.length > 0
+          ? `   Target search terms: ${context.searchTerms.join(", ")}`
+          : null,
+        "   Related script snippets:",
+        htmlDomEditPromptRelatedScripts(context.relatedScripts),
+      ]
+        .filter((line) => {
+          return line !== null;
+        })
+        .join("\n");
+    })
+    .join("\n\n");
+}
+
+function htmlDomEditPromptFocusedContext(
+  contexts: readonly HtmlDomEditTargetContext[] | undefined,
+): string | null {
+  if (!contexts || contexts.length === 0) {
+    return null;
+  }
+  return contexts
+    .map((context, index) => {
+      return [
+        `${index + 1}. Comment ID: ${context.commentId}`,
+        `   Target node ID: ${context.targetNodeId}`,
+        `   Target outerHTML: ${context.targetOuterHTML}`,
+        context.targetTextContent
+          ? `   Target textContent: ${context.targetTextContent}`
+          : null,
+        context.searchTerms.length > 0
+          ? `   Target search terms: ${context.searchTerms.join(", ")}`
+          : null,
+        context.relatedScripts.length > 0
+          ? [
+              "   Related script snippets:",
+              htmlDomEditPromptRelatedScripts(context.relatedScripts),
+            ].join("\n")
+          : null,
+      ]
+        .filter((line) => {
+          return line !== null;
+        })
+        .join("\n");
+    })
+    .join("\n\n");
+}
+
+function htmlDomEditPromptHtml(body: HtmlEditDraftDocument): string {
+  if (!body.promptHtmlIsFocused) {
+    return body.promptHtml ?? body.html;
+  }
+  return [
+    "Focused HTML context for the selected targets. This is not the complete document.",
+    "Use targetNodeId and scriptId values from this context; patches will be applied to the complete document.",
+    "",
+    body.promptHtml ?? "",
+  ].join("\n");
+}
+
+function htmlDomEditPromptHtmlContext(params: {
+  readonly html: string;
+  readonly targetContexts: readonly HtmlDomEditTargetContext[];
+}): HtmlDomEditPromptHtmlContext {
+  if (params.html.length <= MAX_HTML_DOM_EDIT_PROMPT_HTML_CHARS) {
+    return { focused: false, html: params.html };
+  }
+  const focusedContext = htmlDomEditPromptFocusedContext(params.targetContexts);
+  if (!focusedContext) {
+    return { focused: false, html: params.html };
+  }
+  return { focused: true, html: focusedContext };
+}
+
+function htmlDomEditPrompt(body: HtmlEditDraftDocument): readonly {
+  readonly role: "system" | "user";
+  readonly content: string;
+}[] {
+  const comments = htmlDomEditPromptComments(body.comments);
+  const scripts = htmlDomEditPromptScripts(body.scripts);
+  const targetContexts = htmlDomEditPromptTargetContexts(body.targetContexts);
+  const targetContextSection = targetContexts
+    ? `\n\nTarget-script context:\n${targetContexts}`
+    : "";
+  const html = htmlDomEditPromptHtml(body);
 
   return [
     {
       role: "system",
       content:
-        "You edit the user's own HTML document by returning compact DOM patches. Return valid JSON matching the requested schema. Do not deploy, publish, host, upload, or describe commands. Preserve existing scripts, styles, assets, layout, and language unless a comment asks for a change.",
+        "You edit the user's own HTML document by returning compact DOM and inline script patches. Return valid JSON matching the requested schema. Do not deploy, publish, host, upload, or describe commands. Preserve existing scripts, styles, assets, layout, and language unless a comment asks for a change.",
     },
     {
       role: "user",
-      content: `Create DOM patches for these comments on the existing HTML document.
+      content: `Create patches for these comments on the existing HTML document.
 
 Output:
-- Return only JSON.
-- Output shape: {"kind":"html-dom-edit-patch","version":1,"patches":[...]}.
-- Each patch must include commentId, targetNodeId, operation, and the operation-specific field.
-- Supported operations:
-  - {"operation":"update","outerHTML":"<tag>...</tag>"} replaces the target DOM node with the updated DOM node.
-  - {"operation":"insert","position":"before","html":"..."} inserts HTML before the target element.
-  - {"operation":"insert","position":"after","html":"..."} inserts HTML after the target element.
-  - {"operation":"insert","position":"append_child","html":"..."} appends HTML inside the target element.
-  - {"operation":"insert","position":"prepend_child","html":"..."} prepends HTML inside the target element.
-  - {"operation":"remove"} removes the target element.
-- Use update for any change to an existing DOM node, including text, color, background, icon, attributes, classes, or nested markup.
-- For update, keep the same tag when possible and include all attributes and children that should remain.
-- Prefer the smallest target node that satisfies the comment.
-- Do not return the complete HTML document.
-- Do not include vm0-only editing attributes such as data-vm0-node-id or data-vm0-html-edit-* in returned HTML fragments.
-- Do not add comment markers, overlays, annotations, explanations, or deployment commands.
-- Do not add script tags in new HTML fragments.
+- Return only JSON: {"kind":"html-dom-edit-patch","version":1,"patches":[...]}.
+- Every patch includes commentId and operation.
+- DOM operations require targetNodeId:
+  - {"operation":"update","outerHTML":"<tag>...</tag>"}
+  - {"operation":"insert","position":"before|after|append_child|prepend_child","html":"..."}
+  - {"operation":"remove"}
+- Script operations:
+  - {"operation":"script_update","scriptId":"...","oldSha256":"...","content":"..."}
+  - {"operation":"script_text_replace","scriptId":"...","oldSha256":"...","oldText":"...","newText":"..."}
+  - {"operation":"script_delete","scriptId":"...","oldSha256":"..."}
+  - {"operation":"script_add","placement":"end_of_body","content":"..."}
 
-Editing rules:
-- Use the target node IDs to locate the intended elements in the HTML.
+Rules:
+- HTML may be a full snapshot or focused target context. Use target node IDs as intent anchors; do not assume selected DOM is the source of truth.
+- Inspect HTML, Scripts, and Target-script context. Use DOM patches for static markup, including text, color, background, icon, attributes, classes, and nested markup.
+- Source-of-truth rule: when Target-script context or inline scripts reference the selected node, its selectors, or its visible text, check whether that script renders, derives, resets, or overwrites the requested content or behavior. If yes, a DOM-only response is invalid; include script_text_replace or script_update for the script/backing data.
+- Keep DOM fallback and script value synchronized when they represent the same user-facing text.
+- Prefer the smallest patch: script_text_replace for exact small script text/data changes, script_update for larger inline script edits, script_delete only when requested, and script_add only when existing DOM/script cannot satisfy the requested behavior.
+- For script_update/script_add, content is script body only, without opening or closing script tags. For script_text_replace, oldText must be exact and unique. For script_update/script_text_replace/script_delete, copy exact scriptId and oldSha256.
+- Keep unrelated content, formatting, assets, language, and behavior stable. Do not introduce unrelated side effects, network calls, imports, globals, timers, or script element creation.
+- Do not return the complete HTML document, explanations, deployment commands, overlays, annotations, comment markers, vm0-only editing attributes, or script tags in DOM fragments.
 - Apply every requested change exactly once.
-- Keep unrelated content and formatting as stable as practical.
-- Preserve relative and absolute asset URLs.
-- Preserve the page's primary language and tone.
 
 Comments:
 ${comments}
 
+Scripts:
+${scripts}${targetContextSection}
+
 HTML:
-${body.html}`,
+${html}`,
     },
   ];
 }
@@ -632,6 +857,38 @@ function startTagAttributeValue(
   return null;
 }
 
+function escapeHtmlAttribute(value: string): string {
+  return value.replace(/[&"<>]/g, (char) => {
+    if (char === "&") {
+      return "&amp;";
+    }
+    if (char === '"') {
+      return "&quot;";
+    }
+    if (char === "<") {
+      return "&lt;";
+    }
+    return "&gt;";
+  });
+}
+
+function insertStartTagAttribute(
+  tagSource: string,
+  attributeName: string,
+  attributeValue: string,
+): string {
+  const insertionIndex = tagSource.endsWith("/>")
+    ? tagSource.length - 2
+    : tagSource.length - 1;
+  return `${tagSource.slice(0, insertionIndex)} ${attributeName}="${escapeHtmlAttribute(
+    attributeValue,
+  )}"${tagSource.slice(insertionIndex)}`;
+}
+
+function sha256Hex(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
 function findStartTagWithAttributeValue(
   html: string,
   attributeName: string,
@@ -699,18 +956,10 @@ function findNextTagByName(
   return null;
 }
 
-function findHtmlElementSpan(
+function htmlElementSpanFromStartTag(
   html: string,
-  targetNodeId: string,
+  startTag: HtmlTagMatch,
 ): HtmlElementSpan | null {
-  const startTag = findStartTagWithAttributeValue(
-    html,
-    HTML_DOM_NODE_ID_ATTR,
-    targetNodeId,
-  );
-  if (!startTag) {
-    return null;
-  }
   if (
     isVoidElement(startTag.tagName) ||
     isSelfClosingStartTag(startTag.source)
@@ -750,6 +999,339 @@ function findHtmlElementSpan(
   return null;
 }
 
+function htmlScriptRawTextElementSpanFromStartTag(
+  html: string,
+  startTag: HtmlTagMatch,
+): HtmlElementSpan | null {
+  if (isSelfClosingStartTag(startTag.source)) {
+    return {
+      start: startTag.start,
+      startTagEnd: startTag.end,
+      closeTagStart: null,
+      end: startTag.end + 1,
+      tagName: startTag.tagName,
+    };
+  }
+
+  const closeTagPattern = /<\/\s*script\s*>/gi;
+  closeTagPattern.lastIndex = startTag.end + 1;
+  const closeTagMatch = closeTagPattern.exec(html);
+  if (!closeTagMatch) {
+    return null;
+  }
+  return {
+    start: startTag.start,
+    startTagEnd: startTag.end,
+    closeTagStart: closeTagMatch.index,
+    end: closeTagMatch.index + closeTagMatch[0].length,
+    tagName: startTag.tagName,
+  };
+}
+
+function htmlScriptElementSpanFromStartTag(
+  html: string,
+  startTag: HtmlTagMatch,
+): HtmlElementSpan | null {
+  return htmlScriptRawTextElementSpanFromStartTag(html, startTag);
+}
+
+function findHtmlElementSpanByAttribute(
+  html: string,
+  params: {
+    readonly attributeName: string;
+    readonly attributeValue: string;
+    readonly tagName?: string;
+  },
+): HtmlElementSpan | null {
+  const startTag = findStartTagWithAttributeValue(
+    html,
+    params.attributeName,
+    params.attributeValue,
+  );
+  if (!startTag) {
+    return null;
+  }
+  if (params.tagName && startTag.tagName.toLowerCase() !== params.tagName) {
+    return null;
+  }
+  if (startTag.tagName.toLowerCase() === "script") {
+    return htmlScriptElementSpanFromStartTag(html, startTag);
+  }
+  return htmlElementSpanFromStartTag(html, startTag);
+}
+
+function findHtmlElementSpan(
+  html: string,
+  targetNodeId: string,
+): HtmlElementSpan | null {
+  return findHtmlElementSpanByAttribute(html, {
+    attributeName: HTML_DOM_NODE_ID_ATTR,
+    attributeValue: targetNodeId,
+  });
+}
+
+function findScriptElementSpan(
+  html: string,
+  scriptId: string,
+): HtmlElementSpan | null {
+  return findHtmlElementSpanByAttribute(html, {
+    attributeName: HTML_DOM_SCRIPT_ID_ATTR,
+    attributeValue: scriptId,
+    tagName: "script",
+  });
+}
+
+function stripHtmlDomEditScriptAttributes(html: string): string {
+  return html.replace(
+    /\s+data-vm0-script-id(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+))?/g,
+    "",
+  );
+}
+
+function clipped(value: string, maxLength: number): string {
+  return value.length > maxLength ? value.slice(0, maxLength) : value;
+}
+
+function decodeBasicHtmlEntities(value: string): string {
+  return value.replace(/&(nbsp|amp|lt|gt|quot|#39);/g, (entity) => {
+    return (
+      {
+        "&#39;": "'",
+        "&amp;": "&",
+        "&gt;": ">",
+        "&lt;": "<",
+        "&nbsp;": " ",
+        "&quot;": '"',
+      }[entity] ?? entity
+    );
+  });
+}
+
+function normalizedHtmlText(html: string): string {
+  return decodeBasicHtmlEntities(
+    html
+      .replace(/<\s*(script|style)\b[\s\S]*?<\s*\/\s*\1\s*>/gi, " ")
+      .replace(/<[^>]*>/g, " "),
+  )
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function attributeValuesFromStartTag(
+  startTagSource: string,
+): readonly string[] {
+  const values: string[] = [];
+  const attributePattern =
+    /\s([^\s"'<>/=]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g;
+  let match: RegExpExecArray | null;
+  while ((match = attributePattern.exec(startTagSource))) {
+    const name = match[1]?.toLowerCase();
+    const value = match[2] ?? match[3] ?? match[4];
+    if (!name || !value || name.startsWith("data-vm0-") || name === "style") {
+      continue;
+    }
+    if (name === "class") {
+      values.push(...value.split(/\s+/));
+      continue;
+    }
+    values.push(value);
+  }
+  return values;
+}
+
+function addUniqueSearchTerm(terms: string[], value: string): void {
+  const normalized = value.trim();
+  if (normalized.length < 2 || normalized.length > 180) {
+    return;
+  }
+  if (!terms.includes(normalized)) {
+    terms.push(normalized);
+  }
+}
+
+function targetSearchTerms(params: {
+  readonly startTagSource: string;
+  readonly targetTextContent?: string;
+}): readonly string[] {
+  const terms: string[] = [];
+  for (const value of attributeValuesFromStartTag(params.startTagSource)) {
+    addUniqueSearchTerm(terms, value);
+  }
+  if (params.targetTextContent) {
+    addUniqueSearchTerm(terms, params.targetTextContent);
+  }
+  return terms;
+}
+
+function scriptBodyFromSpan(
+  html: string,
+  span: HtmlElementSpan,
+): string | null {
+  if (span.closeTagStart === null) {
+    return null;
+  }
+  return html.slice(span.startTagEnd + 1, span.closeTagStart);
+}
+
+function scriptSnippetAround(content: string, index: number): string {
+  const halfLength = Math.floor(MAX_HTML_DOM_EDIT_SCRIPT_SNIPPET_CHARS / 2);
+  const start = Math.max(0, index - halfLength);
+  const end = Math.min(content.length, index + halfLength);
+  const prefix = start > 0 ? "..." : "";
+  const suffix = end < content.length ? "..." : "";
+  return `${prefix}${content.slice(start, end)}${suffix}`;
+}
+
+function relatedScriptContextForTerms(params: {
+  readonly html: string;
+  readonly script: HtmlDomEditScriptInfo;
+  readonly searchTerms: readonly string[];
+}): HtmlDomEditRelatedScriptContext | null {
+  if (!params.script.inline || params.script.hasSrc) {
+    return null;
+  }
+  const span = findScriptElementSpan(params.html, params.script.scriptId);
+  if (!span) {
+    return null;
+  }
+  const content = scriptBodyFromSpan(params.html, span);
+  if (content === null) {
+    return null;
+  }
+
+  const matchedTerms: string[] = [];
+  const snippets: string[] = [];
+  for (const term of params.searchTerms) {
+    const index = content.indexOf(term);
+    if (index === -1) {
+      continue;
+    }
+    matchedTerms.push(term);
+    if (snippets.length < MAX_HTML_DOM_EDIT_SCRIPT_SNIPPETS_PER_TARGET) {
+      snippets.push(scriptSnippetAround(content, index));
+    }
+  }
+  if (matchedTerms.length === 0) {
+    return null;
+  }
+  return {
+    matchedTerms,
+    oldSha256: params.script.oldSha256,
+    scriptId: params.script.scriptId,
+    snippets,
+  };
+}
+
+function htmlDomEditTargetContexts(params: {
+  readonly comments: CreateHtmlEditDraftRequest["comments"];
+  readonly html: string;
+  readonly scripts: readonly HtmlDomEditScriptInfo[];
+}): readonly HtmlDomEditTargetContext[] {
+  const contexts: HtmlDomEditTargetContext[] = [];
+  for (const comment of params.comments) {
+    for (const targetNodeId of comment.targetNodeIds) {
+      if (contexts.length >= MAX_HTML_DOM_EDIT_TARGET_CONTEXTS) {
+        return contexts;
+      }
+      const span = findHtmlElementSpan(params.html, targetNodeId);
+      if (!span) {
+        continue;
+      }
+      const targetOuterHTML = htmlSpanSource(params.html, span);
+      const targetTextContent = normalizedHtmlText(targetOuterHTML);
+      const searchTerms = targetSearchTerms({
+        startTagSource: params.html.slice(span.start, span.startTagEnd + 1),
+        targetTextContent,
+      });
+      const relatedScripts = params.scripts
+        .map((script) => {
+          return relatedScriptContextForTerms({
+            html: params.html,
+            script,
+            searchTerms,
+          });
+        })
+        .filter((script): script is HtmlDomEditRelatedScriptContext => {
+          return script !== null;
+        })
+        .slice(0, MAX_HTML_DOM_EDIT_SCRIPT_CONTEXTS_PER_TARGET);
+
+      contexts.push({
+        commentId: comment.id,
+        relatedScripts,
+        searchTerms,
+        targetNodeId,
+        targetOuterHTML: clipped(
+          targetOuterHTML,
+          MAX_HTML_DOM_EDIT_TARGET_OUTER_HTML_CHARS,
+        ),
+        ...(targetTextContent
+          ? {
+              targetTextContent: clipped(
+                targetTextContent,
+                MAX_HTML_DOM_EDIT_TARGET_TEXT_CHARS,
+              ),
+            }
+          : {}),
+      });
+    }
+  }
+  return contexts;
+}
+
+function instrumentHtmlDomEditScripts(html: string): {
+  readonly html: string;
+  readonly scripts: readonly HtmlDomEditScriptInfo[];
+} {
+  const source = stripHtmlDomEditScriptAttributes(html);
+  const scripts: HtmlDomEditScriptInfo[] = [];
+  let nextId = 1;
+  let output = "";
+  let cursor = 0;
+  let searchStart = 0;
+
+  while (searchStart < source.length) {
+    const startTag = findNextTagByName(source, "script", searchStart);
+    if (!startTag) {
+      break;
+    }
+    if (startTag.isClosing) {
+      searchStart = startTag.end + 1;
+      continue;
+    }
+
+    const span = htmlScriptElementSpanFromStartTag(source, startTag);
+    if (!span) {
+      break;
+    }
+
+    const scriptId = `${DEFAULT_SCRIPT_ID_PREFIX}-${nextId}`;
+    nextId += 1;
+    const startTagWithId = insertStartTagAttribute(
+      startTag.source,
+      HTML_DOM_SCRIPT_ID_ATTR,
+      scriptId,
+    );
+    const restOfScript = source.slice(startTag.end + 1, span.end);
+    const scriptSource = `${startTagWithId}${restOfScript}`;
+
+    output += source.slice(cursor, startTag.start);
+    output += scriptSource;
+    scripts.push({
+      hasSrc: startTagAttributeValue(startTag.source, "src") !== null,
+      inline: startTagAttributeValue(startTag.source, "src") === null,
+      oldSha256: sha256Hex(scriptSource),
+      scriptId,
+    });
+
+    cursor = span.end;
+    searchStart = span.end;
+  }
+
+  output += source.slice(cursor);
+  return { html: output, scripts };
+}
+
 function assertSafeHtmlFragment(html: string): string | null {
   if (/<\s*script\b/i.test(html)) {
     return "HTML DOM edit patches cannot add script tags";
@@ -757,9 +1339,16 @@ function assertSafeHtmlFragment(html: string): string | null {
   return null;
 }
 
+function assertScriptPatchContentCanBeEmbedded(content: string): string | null {
+  if (/<\/\s*script/i.test(content)) {
+    return "HTML DOM edit script patches cannot contain closing script tags";
+  }
+  return null;
+}
+
 function applyHtmlDomEditPatch(
   html: string,
-  patch: HtmlDomEditPatch,
+  patch: HtmlDomEditDomPatch,
 ): { readonly html: string } | { readonly message: string } {
   const span = findHtmlElementSpan(html, patch.targetNodeId);
   if (!span) {
@@ -820,9 +1409,164 @@ function applyHtmlDomEditPatch(
   };
 }
 
+function htmlSpanSource(html: string, span: HtmlElementSpan): string {
+  return html.slice(span.start, span.end);
+}
+
+function scriptElementHtml(content: string): string {
+  return `${HTML_SCRIPT_OPEN_TAG}${content}${HTML_SCRIPT_CLOSE_TAG}`;
+}
+
+function insertScriptAtEndOfBody(html: string, content: string): string {
+  const script = scriptElementHtml(content);
+  const bodyClose = /<\/\s*body\s*>/i.exec(html);
+  if (!bodyClose) {
+    return `${html}${script}`;
+  }
+  return `${html.slice(0, bodyClose.index)}${script}${html.slice(
+    bodyClose.index,
+  )}`;
+}
+
+function applyHtmlDomEditScriptUpdatePatch(
+  html: string,
+  patch: Extract<HtmlDomEditPatch, { readonly operation: "script_update" }>,
+): { readonly html: string } | { readonly message: string } {
+  const span = findScriptElementSpan(html, patch.scriptId);
+  if (!span) {
+    return { message: `HTML edit script was not found: ${patch.scriptId}` };
+  }
+
+  if (sha256Hex(htmlSpanSource(html, span)) !== patch.oldSha256) {
+    return { message: `HTML edit script was stale: ${patch.scriptId}` };
+  }
+
+  const startTagSource = html.slice(span.start, span.startTagEnd + 1);
+  if (startTagAttributeValue(startTagSource, "src") !== null) {
+    return {
+      message: `HTML edit script cannot update external scripts: ${patch.scriptId}`,
+    };
+  }
+
+  if (span.closeTagStart === null) {
+    return { message: `HTML edit script cannot be updated: ${patch.scriptId}` };
+  }
+  const unsafe = assertScriptPatchContentCanBeEmbedded(patch.content);
+  if (unsafe) {
+    return { message: unsafe };
+  }
+
+  return {
+    html: `${html.slice(0, span.startTagEnd + 1)}${patch.content}${html.slice(
+      span.closeTagStart,
+    )}`,
+  };
+}
+
+function applyHtmlDomEditScriptTextReplacePatch(
+  html: string,
+  patch: Extract<
+    HtmlDomEditPatch,
+    { readonly operation: "script_text_replace" }
+  >,
+): { readonly html: string } | { readonly message: string } {
+  const span = findScriptElementSpan(html, patch.scriptId);
+  if (!span) {
+    return { message: `HTML edit script was not found: ${patch.scriptId}` };
+  }
+
+  if (sha256Hex(htmlSpanSource(html, span)) !== patch.oldSha256) {
+    return { message: `HTML edit script was stale: ${patch.scriptId}` };
+  }
+
+  const startTagSource = html.slice(span.start, span.startTagEnd + 1);
+  if (startTagAttributeValue(startTagSource, "src") !== null) {
+    return {
+      message: `HTML edit script cannot update external scripts: ${patch.scriptId}`,
+    };
+  }
+
+  if (span.closeTagStart === null) {
+    return { message: `HTML edit script cannot be updated: ${patch.scriptId}` };
+  }
+  const unsafe = assertScriptPatchContentCanBeEmbedded(patch.newText);
+  if (unsafe) {
+    return { message: unsafe };
+  }
+
+  const content = html.slice(span.startTagEnd + 1, span.closeTagStart);
+  const firstIndex = content.indexOf(patch.oldText);
+  if (firstIndex === -1) {
+    return {
+      message: `HTML edit script text was not found: ${patch.scriptId}`,
+    };
+  }
+  if (
+    content.indexOf(patch.oldText, firstIndex + patch.oldText.length) !== -1
+  ) {
+    return {
+      message: `HTML edit script text was not unique: ${patch.scriptId}`,
+    };
+  }
+
+  return {
+    html: `${html.slice(0, span.startTagEnd + 1)}${content.slice(
+      0,
+      firstIndex,
+    )}${patch.newText}${content.slice(firstIndex + patch.oldText.length)}${html.slice(
+      span.closeTagStart,
+    )}`,
+  };
+}
+
+function applyHtmlDomEditScriptAddPatch(
+  html: string,
+  patch: Extract<HtmlDomEditPatch, { readonly operation: "script_add" }>,
+): { readonly html: string } | { readonly message: string } {
+  const unsafe = assertScriptPatchContentCanBeEmbedded(patch.content);
+  if (unsafe) {
+    return { message: unsafe };
+  }
+  return { html: insertScriptAtEndOfBody(html, patch.content) };
+}
+
+function applyHtmlDomEditScriptDeletePatch(
+  html: string,
+  patch: Extract<HtmlDomEditPatch, { readonly operation: "script_delete" }>,
+): { readonly html: string } | { readonly message: string } {
+  const span = findScriptElementSpan(html, patch.scriptId);
+  if (!span) {
+    return { message: `HTML edit script was not found: ${patch.scriptId}` };
+  }
+
+  if (sha256Hex(htmlSpanSource(html, span)) !== patch.oldSha256) {
+    return { message: `HTML edit script was stale: ${patch.scriptId}` };
+  }
+
+  return {
+    html: `${html.slice(0, span.start)}${html.slice(span.end)}`,
+  };
+}
+
+function applyHtmlDomEditScriptPatch(
+  html: string,
+  patch: HtmlDomEditScriptPatch,
+): { readonly html: string } | { readonly message: string } {
+  if (patch.operation === "script_update") {
+    return applyHtmlDomEditScriptUpdatePatch(html, patch);
+  }
+  if (patch.operation === "script_text_replace") {
+    return applyHtmlDomEditScriptTextReplacePatch(html, patch);
+  }
+  if (patch.operation === "script_add") {
+    return applyHtmlDomEditScriptAddPatch(html, patch);
+  }
+  return applyHtmlDomEditScriptDeletePatch(html, patch);
+}
+
 function stripHtmlDomEditAttributes(html: string): string {
   return html.replace(
-    /\s+data-vm0-(?:node-id|html-edit-[\w-]+)(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+))?/g,
+    /\s+data-vm0-(?:node-id|script-id|html-edit-[\w-]+)(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+))?/g,
     "",
   );
 }
@@ -832,13 +1576,44 @@ function applyHtmlDomEditPatches(params: {
   readonly patchResult: HtmlDomEditPatchResult;
 }): { readonly html: string } | { readonly message: string } {
   let html = params.html;
+  const scriptPatchInputs: HtmlDomEditScriptPatch[] = [];
+
   for (const patch of params.patchResult.patches) {
+    if (
+      patch.operation === "script_update" ||
+      patch.operation === "script_text_replace" ||
+      patch.operation === "script_add" ||
+      patch.operation === "script_delete"
+    ) {
+      scriptPatchInputs.push(patch);
+      continue;
+    }
+
     const result = applyHtmlDomEditPatch(html, patch);
     if ("message" in result) {
       return result;
     }
     html = result.html;
   }
+
+  const touchedScriptIds = new Set<string>();
+  for (const patch of scriptPatchInputs) {
+    if (patch.operation !== "script_add") {
+      if (touchedScriptIds.has(patch.scriptId)) {
+        return {
+          message: `HTML edit script received multiple patches: ${patch.scriptId}`,
+        };
+      }
+      touchedScriptIds.add(patch.scriptId);
+    }
+
+    const result = applyHtmlDomEditScriptPatch(html, patch);
+    if ("message" in result) {
+      return result;
+    }
+    html = result.html;
+  }
+
   return { html: stripHtmlDomEditAttributes(html) };
 }
 
@@ -1686,10 +2461,30 @@ export const createHtmlEditDraft$ = command(
         message: document.message,
       };
     }
+    const scriptInstrumentedDocument = instrumentHtmlDomEditScripts(
+      document.html,
+    );
+    const targetContexts = htmlDomEditTargetContexts({
+      comments: document.comments,
+      html: scriptInstrumentedDocument.html,
+      scripts: scriptInstrumentedDocument.scripts,
+    });
+    const promptHtmlContext = htmlDomEditPromptHtmlContext({
+      html: scriptInstrumentedDocument.html,
+      targetContexts,
+    });
+    const editDocument: HtmlEditDraftDocument = {
+      comments: document.comments,
+      html: scriptInstrumentedDocument.html,
+      promptHtml: promptHtmlContext.html,
+      promptHtmlIsFocused: promptHtmlContext.focused,
+      scripts: scriptInstrumentedDocument.scripts,
+      targetContexts,
+    };
 
     const generated = await generateText(
       HTML_DOM_EDIT_MODEL,
-      htmlDomEditPrompt(document),
+      htmlDomEditPrompt(editDocument),
       8192,
     );
     signal.throwIfAborted();
@@ -1707,7 +2502,7 @@ export const createHtmlEditDraft$ = command(
       };
     }
     const applied = applyHtmlDomEditPatches({
-      html: document.html,
+      html: editDocument.html,
       patchResult,
     });
     if ("message" in applied) {

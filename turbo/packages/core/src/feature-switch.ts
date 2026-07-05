@@ -341,6 +341,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "New Agents page with Public/Private tabs, a public-slot indicator, a Created by footer on every card, a name-first create dialog with a visibility select, and a private empty state.",
     enabled: false,
   },
+  [FeatureSwitchKey.SidebarManageIconCollapse]: {
+    maintainer: "ming@vm0.ai",
+    description:
+      "Show icon-only manage navigation buttons when the expanded sidebar manage section is collapsed.",
+    enabled: false,
+  },
   [FeatureSwitchKey.SidebarSubscriptionUsage]: {
     maintainer: "ethan@vm0.ai",
     description:
