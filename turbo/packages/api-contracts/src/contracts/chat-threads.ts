@@ -376,16 +376,14 @@ const chatThreadDetailSchema = z.object({
   pinnedAt: z.string().nullable().optional(),
   computerUseHostId: z.string().uuid().nullable().optional(),
   /**
-   * Per-thread selected model pin. Provider route fields are retained for
-   * backwards-compatible responses but model-first sends re-resolve provider
-   * routing from current org policy.
+   * Legacy provider route fields are retained for backwards-compatible
+   * responses; thread model state is exposed through event-driven projections.
    */
   modelProviderId: z.string().nullable().optional(),
   modelProviderType: modelProviderTypeSchema.nullable().optional(),
   modelProviderCredentialScope: modelProviderCredentialScopeSchema
     .nullable()
     .optional(),
-  selectedModel: z.string().nullable().optional(),
   codexServiceTier: codexServiceTierSchema.nullable().optional(),
   /**
    * ISO timestamp at which the user manually renamed this thread. Null/undefined
@@ -847,6 +845,7 @@ export const chatMessagesContract = c.router({
         threadId: z.string().optional(),
         clientThreadId: z.string().uuid().optional(),
         chatThreadEventId: chatThreadEventIdSchema.optional(),
+        modelSelectionEventId: chatThreadEventIdSchema.optional(),
         modelProvider: z.string().optional(),
         /**
          * Per-run model override; persisted on the thread so subsequent runs
@@ -884,6 +883,7 @@ export const chatMessagesContract = c.router({
         prompt: z.undefined().optional(),
         clientThreadId: z.undefined().optional(),
         chatThreadEventId: z.undefined().optional(),
+        modelSelectionEventId: z.undefined().optional(),
         modelProvider: z.undefined().optional(),
         modelSelection: z.undefined().optional(),
         runOptions: z.undefined().optional(),
@@ -903,6 +903,7 @@ export const chatMessagesContract = c.router({
         prompt: z.undefined().optional(),
         clientThreadId: z.undefined().optional(),
         chatThreadEventId: z.undefined().optional(),
+        modelSelectionEventId: z.undefined().optional(),
         modelProvider: z.undefined().optional(),
         modelSelection: z.undefined().optional(),
         runOptions: z.undefined().optional(),

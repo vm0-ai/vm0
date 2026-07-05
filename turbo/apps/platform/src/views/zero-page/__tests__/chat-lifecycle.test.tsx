@@ -43,6 +43,7 @@ import {
   setMockWorkflowTriggers,
 } from "../../../mocks/handlers/automations-store.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { eventDrivenChatThread } from "../../../signals/chat-page/chat-thread-event-sourcing.ts";
 import {
   click,
   detachedSetupPage as baseDetachedSetupPage,
@@ -1275,6 +1276,49 @@ describe("chat lifecycle", () => {
       ).toBeInTheDocument();
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
     });
+  });
+
+  it("projects the first-run model from the optimistic model update event", async () => {
+    const user = userEvent.setup({ delay: null });
+    const prompt = "Start with my preferred model";
+    const sendGate = context.mocks.deferred<void>();
+    let clientThreadId: string | undefined;
+    context.mocks.data.userModelPreference({
+      selectedModel: "claude-sonnet-4-6",
+      updatedAt: "2026-03-10T00:00:00Z",
+    });
+    mockChatLifecycle(context, {
+      sendGate: sendGate.promise,
+      onSendRequest: (body) => {
+        clientThreadId = body.clientThreadId;
+        expect(body.modelSelectionEventId).toStrictEqual(expect.any(String));
+        expect(body.modelSelection?.selectedModel).toBe("claude-sonnet-4-6");
+      },
+    });
+
+    try {
+      detachedSetupPage({ context, path: AGENT_CHAT_PATH });
+
+      const textarea = await waitFor(() => {
+        return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+      });
+      await sendMessageInUI(user, textarea, prompt);
+
+      await waitFor(() => {
+        expect(clientThreadId).toBeDefined();
+      });
+      if (!clientThreadId) {
+        throw new Error("Expected client thread id to be captured");
+      }
+
+      await expect(
+        context.store.get(eventDrivenChatThread(clientThreadId)),
+      ).resolves.toMatchObject({
+        selectedModel: "claude-sonnet-4-6",
+      });
+    } finally {
+      sendGate.resolve();
+    }
   });
 
   it("renders the optimistic new chat message without skeleton when the initial message list is blocked", async () => {

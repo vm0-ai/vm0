@@ -121,6 +121,7 @@ const OTHER_THREAD_ID = "b0000000-0000-4000-a000-000000000002";
 const OPTIMISTIC_THREAD_ID = "b0000000-0000-4000-a000-000000000003";
 const EVENT_ID = "d0000000-0000-4000-a000-000000000001";
 const OPTIMISTIC_EVENT_ID = "d0000000-0000-4000-a000-000000000002";
+const OPTIMISTIC_MODEL_EVENT_ID = "d0000000-0000-4000-a000-000000000003";
 
 function expectCallback(callback: (() => void) | null): () => void {
   expect(callback).not.toBeNull();
@@ -443,7 +444,7 @@ describe("chat thread event sourcing local-first list", () => {
     });
   });
 
-  it("uses optimistic create events for event-sourced sidebar ids", async () => {
+  it("uses optimistic create and model update events for event-sourced sidebar ids", async () => {
     context.store.set(setChatAgentId$, AGENT_ID);
 
     idbThreadEventStoreMock.setData({
@@ -481,6 +482,15 @@ describe("chat thread event sourcing local-first list", () => {
       selectedModel: null,
       createdAt: "2026-07-03T05:00:00.000Z",
     });
+    context.store.set(registerOptimisticChatThreadEvent$, {
+      id: OPTIMISTIC_MODEL_EVENT_ID,
+      kind: "model_selection_updated",
+      chatThreadId: OPTIMISTIC_THREAD_ID,
+      agentId: AGENT_ID,
+      title: null,
+      selectedModel: "claude-sonnet-4-6",
+      createdAt: "2026-07-03T05:00:01.000Z",
+    });
 
     await expect(
       context.store.get(sidebarChatThreadIds$),
@@ -491,7 +501,7 @@ describe("chat thread event sourcing local-first list", () => {
         title: null,
         agent: { id: AGENT_ID, avatarUrl: null },
         createdAt: "2026-07-03T05:00:00.000Z",
-        updatedAt: "2026-07-03T05:00:00.000Z",
+        updatedAt: "2026-07-03T05:00:01.000Z",
         running: false,
         pinnedAt: null,
         renamedAt: null,
@@ -504,6 +514,7 @@ describe("chat thread event sourcing local-first list", () => {
       agentId: AGENT_ID,
       title: null,
       pinnedAt: null,
+      selectedModel: "claude-sonnet-4-6",
     });
 
     context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {

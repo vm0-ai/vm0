@@ -673,7 +673,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     expect(retainedAnchorCursor.body.events).toStrictEqual([]);
   });
 
-  it("falls back to the first run model on detail after the explicit pin is cleared", async () => {
+  it("keeps thread detail independent from thread model projection state", async () => {
     const { actor, agentId } = await entitledChatActor(
       "Thread detail model pin agent",
     );
@@ -689,14 +689,12 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     });
 
     let detail = await chat.readThread(actor, run.threadId);
-    expect(detail.selectedModel).toBe("claude-sonnet-4-6");
+    expect(detail).not.toHaveProperty("selectedModel");
     expect(detail.activeRunIds).toContain(run.runId);
 
-    // Clearing the explicit pin keeps the detail's model: the first run that
-    // carried a selected model backfills it, with no provider route.
     await chat.updateThreadModelSelection(actor, run.threadId, null);
     detail = await chat.readThread(actor, run.threadId);
-    expect(detail.selectedModel).toBe("claude-sonnet-4-6");
+    expect(detail).not.toHaveProperty("selectedModel");
     expect(detail.modelProviderId).toBeNull();
     expect(detail.modelProviderType).toBeNull();
     expect(detail.modelProviderCredentialScope).toBeNull();
@@ -758,9 +756,9 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
         code: "INSUFFICIENT_CREDITS",
       });
 
-      await expect(chat.readThread(actor, thread.id)).resolves.toMatchObject({
-        selectedModel: null,
-      });
+      await expect(
+        chat.readThread(actor, thread.id),
+      ).resolves.not.toHaveProperty("selectedModel");
     }
 
     const { providerId: byokProviderId } = await api.createOrgModelProvider(
@@ -783,7 +781,6 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     expect(byokSelection.body.error.code).toBe("INSUFFICIENT_CREDITS");
     await expect(chat.readThread(actor, thread.id)).resolves.toMatchObject({
       modelProviderId: null,
-      selectedModel: null,
     });
 
     await chat.updateThreadModelSelection(actor, thread.id, {
@@ -791,7 +788,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       selectedModel: "MiniMax-M3",
     });
     const detail = await chat.readThread(actor, thread.id);
-    expect(detail.selectedModel).toBe("MiniMax-M3");
+    expect(detail).not.toHaveProperty("selectedModel");
   }, 90_000);
 
   it("updates the Computer Use host binding on a chat thread", async () => {

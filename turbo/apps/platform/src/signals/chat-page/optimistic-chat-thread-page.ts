@@ -22,13 +22,9 @@ import {
   clearArtifactSidebarParams,
   clearChatAutomationSidebarParams,
 } from "../zero-page/right-sidebar-search-params.ts";
-import {
-  talkDraft$,
-  type ZeroChatAttachment,
-} from "../zero-page/chat-draft.ts";
+import { talkDraft$ } from "../zero-page/chat-draft.ts";
 import { clearAgentDraftById$ } from "../zero-page/agent-draft.ts";
 import {
-  isVisualAttachment,
   prepareUserMessageFromDraft$,
   shouldExcludeVisualAttachmentsForModel,
 } from "./resolve-draft-attachments.ts";
@@ -108,6 +104,7 @@ function newThreadSendBody({
   threadId,
   clientMessageId,
   chatThreadEventId,
+  modelSelectionEventId,
   prepared,
   modelSelection,
   codexFastModeEnabled,
@@ -118,6 +115,7 @@ function newThreadSendBody({
   threadId: string;
   clientMessageId: string;
   chatThreadEventId: string;
+  modelSelectionEventId: string | undefined;
   prepared: PreparedNewThreadPayload;
   modelSelection: ModelProviderSelection | null;
   codexFastModeEnabled: boolean;
@@ -133,6 +131,7 @@ function newThreadSendBody({
     prompt: prepared.prompt,
     clientThreadId: threadId,
     chatThreadEventId,
+    ...(modelSelectionEventId ? { modelSelectionEventId } : {}),
     hasTextContent: prepared.hasTextContent,
     clientMessageId,
     modelSelection: modelSelectionRequestFromSelection(modelSelection),
@@ -147,12 +146,6 @@ function codexFastModeSwitchEnabled(
   switches: Partial<Record<FeatureSwitchKey, boolean>>,
 ): boolean {
   return switches[FeatureSwitchKey.CodexFastMode] ?? false;
-}
-
-function hasVisualDraftAttachments(
-  attachments: readonly ZeroChatAttachment[],
-): boolean {
-  return attachments.some(isVisualAttachment);
 }
 
 const settleNewThreadSend$ = command(
@@ -240,6 +233,8 @@ const mintOptimisticThreadWithEvent$ = command(
       readonly threadId: string;
       readonly eventId: string;
       readonly agentId: string;
+      readonly selectedModel: string | null;
+      readonly modelSelectionEventId: string | undefined;
     },
     signal: AbortSignal,
   ): void => {
@@ -258,6 +253,17 @@ const mintOptimisticThreadWithEvent$ = command(
       selectedModel: null,
       createdAt,
     } satisfies ChatThreadEvent);
+    if (args.selectedModel && args.modelSelectionEventId) {
+      set(registerOptimisticChatThreadEvent$, {
+        id: args.modelSelectionEventId,
+        kind: "model_selection_updated",
+        chatThreadId: args.threadId,
+        agentId: args.agentId,
+        title: null,
+        selectedModel: args.selectedModel,
+        createdAt,
+      } satisfies ChatThreadEvent);
+    }
   },
 );
 
@@ -297,7 +303,13 @@ const startNewChatThreadCreate$ = command(
     const eventId = crypto.randomUUID();
     await set(
       mintOptimisticThreadWithEvent$,
-      { threadId, eventId, agentId },
+      {
+        threadId,
+        eventId,
+        agentId,
+        selectedModel: null,
+        modelSelectionEventId: undefined,
+      },
       signal,
     );
 
@@ -354,11 +366,8 @@ const sendNewThreadMessage$ = command(
     const { agentId, prompt, modelSelection, generationTemplate } = request;
     const { computerUseHostId } = request;
     const draft = get(talkDraft$);
-    const hasVisualAttachments = hasVisualDraftAttachments(
-      get(draft.attachments$),
-    );
     let effectiveSelectedModel = modelSelection?.selectedModel;
-    if (!effectiveSelectedModel && hasVisualAttachments) {
+    if (!effectiveSelectedModel) {
       const policies = await get(orgModelPolicies$);
       signal.throwIfAborted();
       const userPreference = await get(userModelPreference$);
@@ -386,6 +395,9 @@ const sendNewThreadMessage$ = command(
     const threadId = crypto.randomUUID();
     const clientMessageId = crypto.randomUUID();
     const chatThreadEventId = crypto.randomUUID();
+    const modelSelectionEventId = effectiveSelectedModel
+      ? crypto.randomUUID()
+      : undefined;
     set(
       appendOptimisticChatMessage$,
       createNewThreadOptimisticMessageEntry({
@@ -401,6 +413,8 @@ const sendNewThreadMessage$ = command(
         threadId,
         eventId: chatThreadEventId,
         agentId,
+        selectedModel: effectiveSelectedModel ?? null,
+        modelSelectionEventId,
       },
       signal,
     );
@@ -417,6 +431,7 @@ const sendNewThreadMessage$ = command(
           threadId,
           clientMessageId,
           chatThreadEventId,
+          modelSelectionEventId,
           prepared,
           modelSelection,
           codexFastModeEnabled: codexFastModeSwitchEnabled(get(featureSwitch$)),

@@ -93,7 +93,7 @@ describe("CHAT-01 chat thread lifecycle", () => {
 
     await api.updateThreadModelSelection(actor, created.id, null);
     detail = await api.readThread(actor, created.id);
-    expect(detail.selectedModel).toBeNull();
+    expect(detail).not.toHaveProperty("selectedModel");
 
     const messages = await api.listThreadMessages(actor, created.id);
     expect(messages.messages).toStrictEqual([]);
@@ -194,7 +194,18 @@ describe("CHAT-01 chat thread lifecycle", () => {
       pinnedAt: expect.any(String),
       renamedAt: expect.any(String),
     });
-    expect(detail.selectedModel).toBe("gpt-5.4-mini");
+    const ownerEvents = await api.requestThreadEvents(owner, {}, [200]);
+    expect(ownerEvents.status).toBe(200);
+    if (ownerEvents.status !== 200) {
+      throw new Error("Expected owner chat thread events to load");
+    }
+    expect(ownerEvents.body.events).toContainEqual(
+      expect.objectContaining({
+        kind: "model_selection_updated",
+        chatThreadId: thread.id,
+        selectedModel: "gpt-5.4-mini",
+      }),
+    );
     expect(detail.lastReadMessageId ?? null).toBeNull();
 
     const peerRename = await api.requestRenameThread(
@@ -233,7 +244,7 @@ describe("CHAT-01 chat thread lifecycle", () => {
 
     detail = await api.readThread(owner, thread.id);
     expect(detail.title).toBe("Pinned launch plan");
-    expect(detail.selectedModel).toBe("gpt-5.4-mini");
+    expect(detail).not.toHaveProperty("selectedModel");
 
     await api.unpinThread(owner, thread.id);
     await api.updateThreadModelSelection(owner, thread.id, null);
@@ -244,7 +255,19 @@ describe("CHAT-01 chat thread lifecycle", () => {
       title: "Pinned launch plan",
       pinnedAt: null,
     });
-    expect(detail.selectedModel).toBeNull();
+    const clearedEvents = await api.requestThreadEvents(owner, {}, [200]);
+    expect(clearedEvents.status).toBe(200);
+    if (clearedEvents.status !== 200) {
+      throw new Error("Expected cleared chat thread events to load");
+    }
+    expect(clearedEvents.body.events).toContainEqual(
+      expect.objectContaining({
+        kind: "model_selection_updated",
+        chatThreadId: thread.id,
+        selectedModel: null,
+      }),
+    );
+    expect(detail).not.toHaveProperty("selectedModel");
   });
 });
 
@@ -561,7 +584,19 @@ describe("CHAT-02 chat messages and visible validation", () => {
       actor,
       modelSelected.body.threadId,
     );
-    expect(modelSelectedThread.selectedModel).toBe("gpt-5.4-mini");
+    expect(modelSelectedThread).not.toHaveProperty("selectedModel");
+    const modelSelectedEvents = await api.requestThreadEvents(actor, {}, [200]);
+    expect(modelSelectedEvents.status).toBe(200);
+    if (modelSelectedEvents.status !== 200) {
+      throw new Error("Expected model-selected thread events to load");
+    }
+    expect(modelSelectedEvents.body.events).toContainEqual(
+      expect.objectContaining({
+        kind: "model_selection_updated",
+        chatThreadId: modelSelected.body.threadId,
+        selectedModel: "gpt-5.4-mini",
+      }),
+    );
   });
 
   it("lists visible messages and rejects invalid send requests without hidden fixtures", async () => {
