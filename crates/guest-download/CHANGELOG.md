@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.49](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.48...guest-download-v0.20.49) (2026-07-05)
+
+
+### Performance Improvements
+
+* add storage miss attribution telemetry ([#20200](https://github.com/vm0-ai/vm0/issues/20200)) ([606892b](https://github.com/vm0-ai/vm0/commit/606892bc50a64df8e93208e5946a9aecd373c26a))
+
 ## [0.20.48](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.47...guest-download-v0.20.48) (2026-07-03)
 
 ## [0.20.47](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.46...guest-download-v0.20.47) (2026-07-03)

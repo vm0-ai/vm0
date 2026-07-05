@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.133.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.132.14...runner-rs-v0.133.0) (2026-07-05)
+
+
+### Features
+
+* refresh active connector permission policies ([#20035](https://github.com/vm0-ai/vm0/issues/20035)) ([8d7cec2](https://github.com/vm0-ai/vm0/commit/8d7cec2537cd512d12bd3e550abc43c07cb2026a))
+
+
+### Bug Fixes
+
+* **runner:** protect retained config image refs during gc ([#20172](https://github.com/vm0-ai/vm0/issues/20172)) ([07e35c2](https://github.com/vm0-ai/vm0/commit/07e35c23262ca656ad5390fca9535a95a514ecb1))
+
+
+### Performance Improvements
+
+* add storage miss attribution telemetry ([#20200](https://github.com/vm0-ai/vm0/issues/20200)) ([606892b](https://github.com/vm0-ai/vm0/commit/606892bc50a64df8e93208e5946a9aecd373c26a))
+
 ## [0.132.14](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.132.13...runner-rs-v0.132.14) (2026-07-05)
 
 
