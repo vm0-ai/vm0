@@ -273,9 +273,6 @@ function openChatListMenu(): void {
 function mockSidebarThreadStory(
   firstPageThreads: SidebarThread[],
   extraThreads: SidebarThread[] = [],
-  options: {
-    readonly detailTitles?: Readonly<Record<string, string | null>>;
-  } = {},
 ): {
   threads: SidebarThread[];
 } {
@@ -285,23 +282,11 @@ function mockSidebarThreadStory(
     return [...threads, ...extraThreads];
   });
 
-  context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
-    const thread = [...threads, ...extraThreads].find((candidate) => {
-      return candidate.id === params.id;
-    });
-    const detailTitle = Object.hasOwn(options.detailTitles ?? {}, params.id)
-      ? options.detailTitles?.[params.id]
-      : thread?.title;
+  context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
     return respond(200, {
-      id: params.id,
-      title: detailTitle ?? null,
-      agentId: thread?.agent.id ?? AGENT_ID,
       lastReadAt: null,
-      activeRunIds: [],
-      createdAt: "2026-03-10T00:00:00Z",
-      updatedAt: "2026-03-10T00:00:00Z",
-      lastMessageAt: thread?.updatedAt ?? "2026-03-10T00:00:00Z",
-      pinnedAt: thread?.pinnedAt ?? null,
+      computerUseHostId: null,
+      codexServiceTier: null,
     });
   });
   context.mocks.api(chatThreadPinContract.pin, ({ params, respond }) => {
@@ -368,16 +353,11 @@ describe("zero sidebar", () => {
         createdAt: "2026-03-10T00:00:00Z",
       });
     });
-    context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
+    context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
-        id: params.id,
-        title:
-          params.id === EXISTING_THREAD_ID ? "Existing conversation" : null,
-        agentId: AGENT_ID,
         lastReadAt: null,
-        activeRunIds: [],
-        createdAt: "2026-03-10T00:00:00Z",
-        updatedAt: "2026-03-10T00:00:00Z",
+        computerUseHostId: null,
+        codexServiceTier: null,
       });
     });
 
@@ -499,18 +479,11 @@ describe("zero sidebar", () => {
         createdAt: "2026-03-12T12:00:00Z",
       });
     });
-    context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
-      const thread = serverOrderedThreads.find((candidate) => {
-        return candidate.id === params.id;
-      });
+    context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
-        id: params.id,
-        title: thread?.title ?? null,
-        agentId: AGENT_ID,
         lastReadAt: null,
-        activeRunIds: [],
-        createdAt: thread?.createdAt ?? "2026-03-12T12:00:00Z",
-        updatedAt: thread?.updatedAt ?? "2026-03-12T12:00:00Z",
+        computerUseHostId: null,
+        codexServiceTier: null,
       });
     });
 
@@ -577,16 +550,11 @@ describe("zero sidebar", () => {
     context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
       return respond(200, { runs: [] });
     });
-    context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
+    context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
-        id: params.id,
-        title:
-          params.id === EXISTING_THREAD_ID ? "Existing conversation" : null,
-        agentId: AGENT_ID,
         lastReadAt: null,
-        activeRunIds: [],
-        createdAt: "2026-03-10T00:00:00Z",
-        updatedAt: "2026-03-10T00:00:00Z",
+        computerUseHostId: null,
+        codexServiceTier: null,
       });
     });
 
@@ -637,20 +605,11 @@ describe("zero sidebar", () => {
     mockChatThreadSnapshot(() => {
       return allThreads;
     });
-    context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
-      const thread = allThreads.find((candidate) => {
-        return candidate.id === params.id;
-      });
+    context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
-        id: params.id,
-        title: thread?.title ?? null,
-        agentId: thread?.agent.id ?? AGENT_ID,
         lastReadAt: null,
-        activeRunIds: [],
-        createdAt: "2026-03-10T00:00:00Z",
-        updatedAt: "2026-03-10T00:00:00Z",
-        lastMessageAt: thread?.updatedAt ?? "2026-03-10T00:00:00Z",
-        pinnedAt: thread?.pinnedAt ?? null,
+        computerUseHostId: null,
+        codexServiceTier: null,
       });
     });
     context.mocks.api(chatThreadsContract.unreads, ({ respond }) => {
@@ -737,22 +696,11 @@ describe("zero sidebar", () => {
     mockChatThreadSnapshot(() => {
       return [pinnedCurrentThread, pinnedThread, unpinnedThread];
     });
-    context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
-      const thread = [pinnedCurrentThread, pinnedThread, unpinnedThread].find(
-        (candidate) => {
-          return candidate.id === params.id;
-        },
-      );
+    context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
-        id: params.id,
-        title: thread?.title ?? null,
-        agentId: thread?.agent.id ?? AGENT_ID,
         lastReadAt: null,
-        activeRunIds: [],
-        createdAt: "2026-03-10T00:00:00Z",
-        updatedAt: "2026-03-10T00:00:00Z",
-        lastMessageAt: thread?.updatedAt ?? "2026-03-10T00:00:00Z",
-        pinnedAt: thread?.pinnedAt ?? null,
+        computerUseHostId: null,
+        codexServiceTier: null,
       });
     });
     context.mocks.api(chatThreadsContract.unreads, ({ respond }) => {
@@ -913,11 +861,6 @@ describe("zero sidebar", () => {
         createThread(INCIDENT_THREAD_ID, "Incident notes"),
       ],
       [],
-      {
-        detailTitles: {
-          [EXISTING_THREAD_ID]: "Thread data release plan",
-        },
-      },
     );
 
     setupSidebarPage({
@@ -984,11 +927,6 @@ describe("zero sidebar", () => {
         createThread(INCIDENT_THREAD_ID, "Incident notes"),
       ],
       [],
-      {
-        detailTitles: {
-          [EXISTING_THREAD_ID]: "Thread data release plan",
-        },
-      },
     );
 
     setupSidebarPage({

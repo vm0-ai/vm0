@@ -337,14 +337,9 @@ function mockThread(options?: {
 }): void {
   context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
     return respond(200, {
-      id: THREAD_ID,
-      title: "My thread",
-      agentId: AGENT_ID,
       lastReadAt: null,
-      activeRunIds: options?.activeRunIds ?? [],
-      createdAt: "2026-03-10T00:00:00Z",
-      updatedAt: "2026-03-10T00:00:00Z",
-      modelProviderId: null,
+      computerUseHostId: null,
+      codexServiceTier: null,
     });
   });
   context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {

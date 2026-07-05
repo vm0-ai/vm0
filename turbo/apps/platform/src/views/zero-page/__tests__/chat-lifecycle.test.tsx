@@ -393,13 +393,9 @@ function mockKeyboardNavigationThreads({
       });
     }
     return respond(200, {
-      id: thread.id,
-      title: thread.detailTitle,
-      agentId: AGENT_ID,
       lastReadAt: null,
-      activeRunIds: [],
-      createdAt: "2026-06-01T00:00:00Z",
-      updatedAt: "2026-06-01T00:00:00Z",
+      computerUseHostId: null,
+      codexServiceTier: null,
     });
   });
   context.mocks.api(
@@ -623,14 +619,9 @@ function mockServerQueuedThreadStories(): void {
       });
     }
     return respond(200, {
-      id: thread.id,
-      title: thread.title,
-      agentId: AGENT_ID,
-      activeRunIds: thread.activeRunIds,
       lastReadAt: "2026-06-09T10:00:00Z",
-      lastMessageAt: "2026-06-09T10:00:00Z",
-      createdAt: "2026-06-09T10:00:00Z",
-      updatedAt: "2026-06-09T10:00:00Z",
+      computerUseHostId: null,
+      codexServiceTier: null,
     });
   });
   context.mocks.api(
@@ -3184,13 +3175,9 @@ describe("chat lifecycle", () => {
     mockSubagentThread(context, threadId);
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
-        id: threadId,
-        title: null,
-        agentId: AGENT_ID,
         lastReadAt: null,
-        activeRunIds: [],
-        createdAt: "2026-05-01T00:00:00Z",
-        updatedAt: "2026-05-01T00:00:00Z",
+        computerUseHostId: null,
+        codexServiceTier: null,
       });
     });
     context.mocks.api(chatThreadMessagesContract.list, ({ query, respond }) => {
@@ -7505,16 +7492,11 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
         });
       },
     );
-    context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
-      const running = params.id === RUNNING_THREAD_ID;
+    context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
-        id: params.id,
-        title: null,
-        agentId: AGENT_ID,
         lastReadAt: null,
-        activeRunIds: running ? ["run-active"] : [],
-        createdAt: "2026-03-10T00:00:00Z",
-        updatedAt: "2026-03-10T00:00:00Z",
+        computerUseHostId: null,
+        codexServiceTier: null,
       });
     });
     context.mocks.api(logsByIdContract.getById, ({ respond }) => {

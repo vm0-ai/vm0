@@ -321,9 +321,39 @@ async function waitForThreadTitle(
 ): Promise<void> {
   await expect
     .poll(async () => {
-      return (await chat.readThread(actor, threadId)).title;
+      return await readThreadTitleFromEvents(actor, threadId);
     })
     .toBe(title);
+}
+
+async function readThreadTitleFromEvents(
+  actor: ApiTestUser,
+  threadId: string,
+): Promise<string | null> {
+  const events = await chat.requestThreadEvents(actor, {}, [200]);
+  if (events.status !== 200) {
+    throw new Error("Expected chat thread events to load");
+  }
+
+  let latestTitleEvent:
+    | { readonly title: string | null; readonly createdAt: string }
+    | undefined;
+  for (const event of events.body.events) {
+    if (
+      event.chatThreadId !== threadId ||
+      (event.kind !== "created" && event.kind !== "renamed")
+    ) {
+      continue;
+    }
+    if (
+      latestTitleEvent === undefined ||
+      Date.parse(event.createdAt) >= Date.parse(latestTitleEvent.createdAt)
+    ) {
+      latestTitleEvent = event;
+    }
+  }
+
+  return latestTitleEvent?.title ?? null;
 }
 
 async function waitForRunStatus(
@@ -1902,7 +1932,7 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
       }),
     ).toStrictEqual(["Already streamed."]);
 
-    const beforeTitle = (await chat.readThread(actor, first.threadId)).title;
+    const beforeTitle = await readThreadTitleFromEvents(actor, first.threadId);
     expect(beforeTitle).toBeNull();
     mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");
     chatCallbacks.mockOpenRouterFailure();
@@ -1931,7 +1961,7 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
     expect(
       lifecycleMarkers(messages.messages, fourth.runId, "completed"),
     ).toHaveLength(1);
-    expect((await chat.readThread(actor, first.threadId)).title).toBe(
+    expect(await readThreadTitleFromEvents(actor, first.threadId)).toBe(
       beforeTitle,
     );
   }, 90_000);
@@ -2475,7 +2505,9 @@ describe("CHAT-02: auto-send across a model switch", () => {
 
     const thread = await chat.readThread(actor, first.threadId);
     expect(thread).not.toHaveProperty("selectedModel");
-    expect(thread.title).toBe("Working with JSON");
+    expect(await readThreadTitleFromEvents(actor, first.threadId)).toBe(
+      "Working with JSON",
+    );
     const threadEvents = await chat.requestThreadEvents(actor, {}, [200]);
     expect(threadEvents.status).toBe(200);
     if (threadEvents.status !== 200) {
