@@ -12,6 +12,7 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { reloadConnectors$ } from "../../../signals/external/connectors.ts";
 import { setIdeationActiveTab$ } from "../../../signals/zero-page/zero-ideation.ts";
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
 
@@ -219,6 +220,44 @@ describe("zero ideation page", () => {
     expect(screen.getByText("Browser screenshots")).toBeInTheDocument();
   });
 
+  it("does not reuse stale catalog data after an ideas page catalog reload errors", async () => {
+    mockConnectorCatalogStatus([
+      "github",
+      "sentry",
+      "axiom",
+      "plausible",
+      "slack",
+    ]);
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${agentId}/ideas`,
+    });
+
+    await expect(
+      screen.findByText("Daily standup report"),
+    ).resolves.toBeInTheDocument();
+
+    const catalogReady = context.mocks.deferred<void>();
+    context.mocks.api(
+      zeroConnectorCatalogContract.status,
+      async ({ respond }) => {
+        await catalogReady.promise;
+        return respond(403, {
+          error: { message: "Forbidden", code: "FORBIDDEN" },
+        });
+      },
+    );
+    context.store.set(reloadConnectors$);
+
+    expect(screen.getByText("Daily standup report")).toBeInTheDocument();
+    catalogReady.resolve();
+    await waitForElementToBeRemoved(() => {
+      return screen.queryByText("Daily standup report");
+    });
+    expect(screen.getByText("Browser screenshots")).toBeInTheDocument();
+  });
+
   it("falls back to all use cases when the selected tab is hidden by catalog filtering", async () => {
     mockConnectorCatalogStatus([]);
     context.store.set(setIdeationActiveTab$, "reports");
@@ -300,6 +339,46 @@ describe("zero ideation page", () => {
 
     catalogReady.resolve();
     await waitForElementToBeRemoved(pendingButtons.slice(0, 2));
+    expect(queryAllByRoleFast("button", promptGrid)).toHaveLength(1);
+  });
+
+  it("does not reuse stale catalog data after a suggested prompt catalog reload errors", async () => {
+    mockConnectorCatalogStatus([
+      "github",
+      "sentry",
+      "axiom",
+      "plausible",
+      "slack",
+    ]);
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${agentId}/chat`,
+    });
+
+    const promptGrid = await suggestedPromptGrid();
+    await expect(
+      screen.findByPlaceholderText(PLACEHOLDER),
+    ).resolves.toBeInTheDocument();
+    expect(queryAllByRoleFast("button", promptGrid)).toHaveLength(3);
+
+    const catalogReady = context.mocks.deferred<void>();
+    context.mocks.api(
+      zeroConnectorCatalogContract.status,
+      async ({ respond }) => {
+        await catalogReady.promise;
+        return respond(403, {
+          error: { message: "Forbidden", code: "FORBIDDEN" },
+        });
+      },
+    );
+    context.store.set(reloadConnectors$);
+
+    const loadingButtons = queryAllByRoleFast("button", promptGrid);
+    expect(loadingButtons).toHaveLength(3);
+
+    catalogReady.resolve();
+    await waitForElementToBeRemoved(loadingButtons.slice(0, 2));
     expect(queryAllByRoleFast("button", promptGrid)).toHaveLength(1);
   });
 });
