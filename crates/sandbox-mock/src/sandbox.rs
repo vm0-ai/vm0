@@ -170,9 +170,9 @@ impl MockSandbox {
     ///
     /// Batch entries are also expanded into [`Self::write_file_calls`] so tests
     /// that only need path/content assertions can use one observation surface.
-    /// That expansion is only for call recording: queued write results and the
-    /// write lifecycle gate are consumed per write operation, not per expanded
-    /// file entry.
+    /// That expansion is only for call recording: queued write results are
+    /// consumed, and the write lifecycle gate is entered, per write operation
+    /// rather than per expanded file entry.
     pub fn write_files_calls(&self) -> Vec<WriteFilesCall> {
         self.write_files_calls.lock_ignoring_poison().clone()
     }
@@ -204,7 +204,7 @@ impl MockSandbox {
         *self.write_file_gate.lock_ignoring_poison() = Some(gate);
     }
 
-    /// Remove the durable write-operation gate for future write calls.
+    /// Remove the durable write-operation gate for future write operations.
     ///
     /// Already-entered writes keep waiting on their cloned gate until the test
     /// releases it.
