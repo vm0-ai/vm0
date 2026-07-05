@@ -15,7 +15,7 @@
 //! discover work through HTTP polling.
 
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex as StdMutex};
 use std::time::{Duration, Instant as StdInstant};
 
 use tokio::sync::{Mutex, Notify};
@@ -26,6 +26,7 @@ use super::api::ApiClient;
 use super::api_direct_candidates::{
     DirectCandidateInbox, DirectCandidateInsertOutcome, DirectJobCandidate,
 };
+use super::network_policy_refresh::NetworkPolicyRefreshHandle;
 use crate::ids::RunId;
 use crate::retry::{RetryState, recv_retry, sleep_until_retry};
 use crate::run_cancellation::{RunCancellationHandle, SharedRunCancellationMap};
@@ -414,7 +415,7 @@ pub(super) struct PollWakeupsSnapshot {
 
 pub(super) struct AblySupervisor {
     shutdown: CancellationToken,
-    task: Mutex<Option<tokio::task::JoinHandle<()>>>,
+    task: StdMutex<Option<tokio::task::JoinHandle<()>>>,
 }
 
 pub(super) struct AblySupervisorConfig {
@@ -424,6 +425,7 @@ pub(super) struct AblySupervisorConfig {
     pub(super) poll_wakeups: Arc<PollWakeups>,
     pub(super) direct_candidates: Arc<DirectCandidateInbox>,
     pub(super) cancel_tokens: SharedRunCancellationMap,
+    pub(super) network_policy_refresh: NetworkPolicyRefreshHandle,
     pub(super) provider_cancel: CancellationToken,
 }
 
@@ -434,6 +436,7 @@ struct SupervisorTaskConfig {
     poll_wakeups: Arc<PollWakeups>,
     direct_candidates: Arc<DirectCandidateInbox>,
     cancel_tokens: SharedRunCancellationMap,
+    network_policy_refresh: NetworkPolicyRefreshHandle,
     provider_cancel: CancellationToken,
     shutdown: CancellationToken,
 }
@@ -449,6 +452,7 @@ impl AblySupervisor {
             poll_wakeups: config.poll_wakeups,
             direct_candidates: config.direct_candidates,
             cancel_tokens: config.cancel_tokens,
+            network_policy_refresh: config.network_policy_refresh,
             provider_cancel: config.provider_cancel,
             shutdown: task_shutdown,
         };
@@ -457,13 +461,13 @@ impl AblySupervisor {
         });
         Self {
             shutdown,
-            task: Mutex::new(Some(task)),
+            task: StdMutex::new(Some(task)),
         }
     }
 
     pub(super) async fn shutdown(&self) {
         self.shutdown.cancel();
-        let task = self.task.lock().await.take();
+        let task = self.take_task();
         if let Some(task) = task
             && let Err(e) = task.await
         {
@@ -475,7 +479,7 @@ impl AblySupervisor {
     pub(super) fn disabled() -> Self {
         Self {
             shutdown: CancellationToken::new(),
-            task: Mutex::new(None),
+            task: StdMutex::new(None),
         }
     }
 
@@ -488,8 +492,21 @@ impl AblySupervisor {
         let task = tokio::spawn(build(shutdown.clone()));
         Self {
             shutdown,
-            task: Mutex::new(Some(task)),
+            task: StdMutex::new(Some(task)),
         }
+    }
+
+    fn take_task(&self) -> Option<tokio::task::JoinHandle<()>> {
+        self.task
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .take()
+    }
+}
+
+impl Drop for AblySupervisor {
+    fn drop(&mut self) {
+        self.shutdown.cancel();
     }
 }
 
@@ -514,12 +531,14 @@ async fn run_supervisor(config: SupervisorTaskConfig) {
             event = recv_ably(&mut ably) => {
                 match event {
                     Some(ably_subscriber::Event::Message(msg)) => {
-                        handle_ably_message(
+                        handle_ably_message_with_network_policy_refresh(
                             &msg,
                             &config.profiles,
                             &config.poll_wakeups,
                             &config.direct_candidates,
                             &config.cancel_tokens,
+                            Some(&config.network_policy_refresh),
+                            Some(&config.shutdown),
                         )
                         .await;
                     }
@@ -585,6 +604,7 @@ async fn run_supervisor(config: SupervisorTaskConfig) {
     }
 }
 
+#[cfg(test)]
 async fn handle_ably_message(
     msg: &ably_subscriber::Message,
     profiles: &[String],
@@ -592,11 +612,52 @@ async fn handle_ably_message(
     direct_candidates: &DirectCandidateInbox,
     cancel_tokens: &Mutex<HashMap<RunId, RunCancellationHandle>>,
 ) {
+    handle_ably_message_with_network_policy_refresh(
+        msg,
+        profiles,
+        poll_wakeups,
+        direct_candidates,
+        cancel_tokens,
+        None,
+        None,
+    )
+    .await;
+}
+
+async fn handle_ably_message_with_network_policy_refresh(
+    msg: &ably_subscriber::Message,
+    profiles: &[String],
+    poll_wakeups: &PollWakeups,
+    direct_candidates: &DirectCandidateInbox,
+    cancel_tokens: &Mutex<HashMap<RunId, RunCancellationHandle>>,
+    network_policy_refresh: Option<&NetworkPolicyRefreshHandle>,
+    network_policy_refresh_cancel: Option<&CancellationToken>,
+) {
     if let Some(run_id) = parse_cancel_notification(msg) {
         let handle = cancel_tokens.lock().await.get(&run_id).cloned();
         if let Some(handle) = handle {
             info!(run_id = %run_id, "ably: cancel notification, killing job");
             handle.cancel().await;
+        }
+        return;
+    }
+
+    if let Some(notification) = parse_network_policy_refresh_notification(msg) {
+        let Some(network_policy_refresh) = network_policy_refresh else {
+            return;
+        };
+        if let Some(cancel) = network_policy_refresh_cancel {
+            network_policy_refresh
+                .notify_network_policy_refresh_until_cancelled(
+                    notification.run_id,
+                    notification.connector_ref,
+                    cancel,
+                )
+                .await;
+        } else {
+            network_policy_refresh
+                .notify_network_policy_refresh(notification.run_id, notification.connector_ref)
+                .await;
         }
         return;
     }
@@ -660,6 +721,11 @@ struct JobNotification<'a> {
     affinity_protected_until: Option<&'a str>,
 }
 
+struct NetworkPolicyRefreshNotification {
+    run_id: RunId,
+    connector_ref: String,
+}
+
 fn supports_profile(profiles: &[String], profile: &str) -> bool {
     profiles.iter().any(|candidate| candidate == profile)
 }
@@ -707,6 +773,42 @@ fn parse_cancel_notification(msg: &ably_subscriber::Message) -> Option<RunId> {
             None
         }
     }
+}
+
+fn parse_network_policy_refresh_notification(
+    msg: &ably_subscriber::Message,
+) -> Option<NetworkPolicyRefreshNotification> {
+    if msg.name.as_deref() != Some("network-policy-refresh") {
+        return None;
+    }
+    let run_id_raw = msg.data.get("runId").and_then(|v| v.as_str());
+    let run_id = match run_id_raw {
+        Some(value) => match value.parse() {
+            Ok(run_id) => run_id,
+            Err(error) => {
+                warn!(value, error = %error, "ably: invalid network-policy-refresh runId");
+                return None;
+            }
+        },
+        None => {
+            warn!("ably: network-policy-refresh message missing runId");
+            return None;
+        }
+    };
+    let Some(connector_ref) = msg
+        .data
+        .get("connectorRef")
+        .and_then(|v| v.as_str())
+        .filter(|value| !value.is_empty())
+    else {
+        warn!("ably: network-policy-refresh message missing connectorRef");
+        return None;
+    };
+
+    Some(NetworkPolicyRefreshNotification {
+        run_id,
+        connector_ref: connector_ref.to_string(),
+    })
 }
 
 fn parse_job_notification(msg: &ably_subscriber::Message) -> Option<JobNotification<'_>> {
@@ -1900,6 +2002,25 @@ mod tests {
             .unwrap();
     }
 
+    #[tokio::test]
+    async fn supervisor_drop_cancels_task() {
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let (done_tx, done_rx) = tokio::sync::oneshot::channel();
+        let supervisor = AblySupervisor::spawn_test_task(|shutdown| async move {
+            let _ = started_tx.send(());
+            shutdown.cancelled().await;
+            let _ = done_tx.send(());
+        });
+        started_rx.await.expect("supervisor test task should start");
+
+        drop(supervisor);
+
+        tokio::time::timeout(Duration::from_secs(1), done_rx)
+            .await
+            .expect("dropping supervisor should cancel the task")
+            .unwrap();
+    }
+
     #[test]
     fn parse_job_notification_ignores_target_runner_id() {
         let msg = make_message(
@@ -1919,6 +2040,25 @@ mod tests {
             notif.affinity_protected_until,
             Some("2999-01-01T00:00:00.000Z")
         );
+    }
+
+    #[test]
+    fn parse_network_policy_refresh_notification_valid() {
+        let msg = make_message(
+            Some("network-policy-refresh"),
+            serde_json::json!({
+                "runId": "00000000-0000-0000-0000-000000000003",
+                "connectorRef": "github"
+            }),
+        );
+
+        let notification = parse_network_policy_refresh_notification(&msg).unwrap();
+
+        assert_eq!(
+            notification.run_id.to_string(),
+            "00000000-0000-0000-0000-000000000003"
+        );
+        assert_eq!(notification.connector_ref, "github");
     }
 
     #[test]

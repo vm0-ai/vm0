@@ -4371,10 +4371,13 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     });
     await api.enableAgentConnectors(actor, agentId, ["slack"]);
 
-    async function claimSlackPolicy(prompt: string): Promise<{
-      readonly allow: readonly string[];
-      readonly deny: readonly string[];
-      readonly unknownPolicy?: string;
+    async function claimSlackContext(prompt: string): Promise<{
+      readonly claim: Awaited<ReturnType<typeof api.claimRunnerJob>>;
+      readonly policy: {
+        readonly allow: readonly string[];
+        readonly deny: readonly string[];
+        readonly unknownPolicy?: string;
+      };
     }> {
       const run = await api.createRun(actor, {
         agentId,
@@ -4387,7 +4390,15 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       if (!policy) {
         throw new Error("Expected a slack network policy on the claim");
       }
-      return policy;
+      return { claim, policy };
+    }
+
+    async function claimSlackPolicy(prompt: string): Promise<{
+      readonly allow: readonly string[];
+      readonly deny: readonly string[];
+      readonly unknownPolicy?: string;
+    }> {
+      return (await claimSlackContext(prompt)).policy;
     }
 
     await api.heartbeatRunner(runnerGroup);
@@ -4451,7 +4462,14 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       action: "allow",
     });
 
-    const granted = await claimSlackPolicy("granted permissions");
+    const grantedContext = await claimSlackContext("granted permissions");
+    const granted = grantedContext.policy;
+    expect(
+      grantedContext.claim.networkPolicyRefreshes?.slack?.nextRefreshAt,
+    ).toStrictEqual(expect.any(String));
+    expect(grantedContext.claim.networkPolicyRefreshes).not.toHaveProperty(
+      "model-provider:anthropic-api-key",
+    );
     expect(granted.allow).toContain("chat:write");
     expect(granted.allow).toContain("files:read");
     expect(granted.deny).not.toContain("chat:write");
@@ -4475,8 +4493,8 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(unknownDenied.allow).toContain("conversations:read");
     expect(unknownDenied.deny).toContain("chat:write");
 
-    // The grant snapshot is baked into the queued run: flipping the grant
-    // after creation does not change the already-created run's policy.
+    // Queued runs refresh network policy at claim time, so permission changes
+    // made after creation are visible before the sandbox starts.
     await api.applyUserPermissionGrant(actor, {
       agentId,
       connectorRef: "slack",
@@ -4495,10 +4513,72 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       action: "deny",
     });
     const snapshotClaim = await api.claimRunnerJob(snapshotRun.runId);
-    expect(snapshotClaim.networkPolicies?.slack?.allow).toContain("chat:write");
-    expect(snapshotClaim.networkPolicies?.slack?.deny).not.toContain(
+    expect(snapshotClaim.networkPolicies?.slack?.deny).toContain("chat:write");
+    expect(snapshotClaim.networkPolicies?.slack?.allow).not.toContain(
       "chat:write",
     );
+    const actorRunnerKey = await api.createApiKey(actor);
+    const memberRunnerKey = await api.createApiKey(member);
+    const sameUserRefresh = await api.requestRefreshRunnerNetworkPolicyAs(
+      `Bearer ${actorRunnerKey.token}`,
+      snapshotRun.runId,
+      "slack",
+      [200],
+    );
+    if (sameUserRefresh.status !== 200) {
+      throw new Error("Expected same-user network policy refresh to succeed");
+    }
+    expect(sameUserRefresh.body.refreshes[0]?.networkPolicy.deny).toContain(
+      "chat:write",
+    );
+    const otherUserRefresh = await api.requestRefreshRunnerNetworkPolicyAs(
+      `Bearer ${memberRunnerKey.token}`,
+      snapshotRun.runId,
+      "slack",
+      [403],
+    );
+    if (otherUserRefresh.status !== 403) {
+      throw new Error(
+        "Expected other-user network policy refresh to be forbidden",
+      );
+    }
+    expect(otherUserRefresh.body.error.message).toBe(
+      "Run does not belong to user",
+    );
+    context.mocks.ably.publish.mockClear();
+    await api.applyUserPermissionGrant(actor, {
+      agentId,
+      connectorRef: "slack",
+      permission: "files:write",
+      action: "allow",
+    });
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "network-policy-refresh",
+      { runId: snapshotRun.runId, connectorRef: "slack" },
+    );
+    const refreshedPolicy = await api.refreshRunnerNetworkPolicy(
+      snapshotRun.runId,
+      "slack",
+    );
+    expect(refreshedPolicy.networkPolicy.deny).toContain("chat:write");
+    expect(refreshedPolicy.networkPolicy.allow).not.toContain("chat:write");
+    expect(refreshedPolicy.networkPolicy.allow).toContain("files:write");
+    expect(refreshedPolicy.nextRefreshAt).toStrictEqual(expect.any(String));
+
+    context.mocks.ably.publish.mockRejectedValueOnce(
+      new Error("network policy refresh publish failed"),
+    );
+    const failedRefreshNotification = await api.requestUserPermissionGrant(
+      actor,
+      {
+        agentId,
+        connectorRef: "slack",
+        permission: "files:write",
+        action: "deny",
+      },
+      [500],
+    );
+    expect(failedRefreshNotification.status).toBe(500);
 
     await api.requestCancelRun(actor, snapshotRun.runId, [200]);
     const drained = await api.readRunQueue(actor);

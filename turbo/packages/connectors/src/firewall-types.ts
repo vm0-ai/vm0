@@ -219,7 +219,7 @@ export const firewallPolicyValueSchema = z.enum(["allow", "deny", "ask"]);
 export type FirewallPolicyValue = z.infer<typeof firewallPolicyValueSchema>;
 
 /**
- * Per-connector policy: permission map + unknown endpoint handling.
+ * Per-firewall permission policy: permission map + unknown endpoint handling.
  */
 export const firewallPolicySchema = z.object({
   policies: z.record(z.string(), firewallPolicyValueSchema),
@@ -228,7 +228,7 @@ export const firewallPolicySchema = z.object({
 export type FirewallPolicy = z.infer<typeof firewallPolicySchema>;
 
 /**
- * Firewall policies — map of firewall name → connector policy.
+ * Firewall policies — map of firewall name → firewall permission policy.
  * Example: { "github": { policies: { "repo-read": "allow" }, unknownPolicy: "allow" } }
  */
 export const firewallPoliciesSchema = z.record(
@@ -242,15 +242,16 @@ export type FirewallPolicies = z.infer<typeof firewallPoliciesSchema>;
  * what policy applies to unknown endpoints (not matching any permission rule).
  * Refs absent from the map are fully permissive (all granted + allow unknown).
  */
-const networkPolicySchema = z.object({
+export const networkPolicySchema = z.object({
   allow: z.array(z.string()),
   deny: z.array(z.string()),
   ask: z.array(z.string()),
   unknownPolicy: firewallPolicyValueSchema,
 });
+export type NetworkPolicy = z.infer<typeof networkPolicySchema>;
 
 /**
- * Network policies map — firewall name → policy config.
+ * Network policies map — firewall name → runtime network policy config.
  * Example: { "github": { allow: ["repo-read"], deny: ["admin"], ask: [], unknownPolicy: "deny" } }
  */
 export const networkPoliciesSchema = z.record(z.string(), networkPolicySchema);

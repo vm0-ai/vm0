@@ -10,9 +10,13 @@ mod api_direct_candidates;
 mod local;
 #[cfg(test)]
 pub mod mock;
+mod network_policy_refresh;
 
 pub use api::ApiProvider;
 pub use local::LocalProvider;
+pub(crate) use network_policy_refresh::{
+    NetworkPolicyRefreshHandle, NetworkPolicyRefreshRegistration,
+};
 
 use chrono::{DateTime, Utc};
 use sandbox::SandboxId;

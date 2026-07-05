@@ -56,7 +56,7 @@ use crate::network_log_drain::NetworkLogDrainCoordinator;
 use crate::network_log_manager::NetworkLogManager;
 use crate::paths::{HomePaths, LogPaths, RunnerPaths, touch_mtime};
 use crate::prefetch;
-use crate::provider::{ApiProvider, JobProvider, LocalProvider};
+use crate::provider::{ApiProvider, JobProvider, LocalProvider, NetworkPolicyRefreshHandle};
 use crate::proxy;
 use crate::resource_budget::ResourceBudget;
 use crate::retry::{RetryState, recv_retry, sleep_until_retry};
@@ -579,30 +579,34 @@ async fn run_start_with_home(
     // Create provider — handles discovery + claim + complete
     let (usage_flush_tx, usage_flush_rx) = mpsc::channel(1);
 
-    let (provider, group_name): (Arc<dyn JobProvider>, String) =
-        if let Some(group_dir) = local_group_dir {
-            let profiles: Vec<String> = runner_config.profiles.keys().cloned().collect();
-            let provider = LocalProvider::new(
-                group_dir,
-                profiles,
-                cancel.clone(),
-                Arc::clone(&cancel_tokens),
-            );
-            (provider, group)
-        } else {
-            let group_name = group.clone();
-            let profiles: Vec<String> = runner_config.profiles.keys().cloned().collect();
-            let provider = ApiProvider::new(
-                http.clone(),
-                server.token,
-                group,
-                profiles,
-                cancel.clone(),
-                Arc::clone(&cancel_tokens),
-            )
-            .await;
-            (provider, group_name)
-        };
+    let (provider, group_name, network_policy_refresh): (
+        Arc<dyn JobProvider>,
+        String,
+        Option<NetworkPolicyRefreshHandle>,
+    ) = if let Some(group_dir) = local_group_dir {
+        let profiles: Vec<String> = runner_config.profiles.keys().cloned().collect();
+        let provider = LocalProvider::new(
+            group_dir,
+            profiles,
+            cancel.clone(),
+            Arc::clone(&cancel_tokens),
+        );
+        (provider, group, None)
+    } else {
+        let group_name = group.clone();
+        let profiles: Vec<String> = runner_config.profiles.keys().cloned().collect();
+        let provider = ApiProvider::new(
+            http.clone(),
+            server.token,
+            group,
+            profiles,
+            cancel.clone(),
+            Arc::clone(&cancel_tokens),
+        )
+        .await;
+        let network_policy_refresh = provider.network_policy_refresh_handle();
+        (provider, group_name, Some(network_policy_refresh))
+    };
 
     let exec_config = Arc::new(ExecutorConfig {
         api_url: server.url,
@@ -612,6 +616,7 @@ async fn run_start_with_home(
         network_log_manager,
         network_log_drain,
         mitm_jsonl_flush: Some(mitm.jsonl_flush_handle(usage_flush_tx.clone())),
+        network_policy_refresh,
         home: home.clone(),
         workspace_cache: Some(SessionWorkspaceCache::shared(
             paths.clone(),

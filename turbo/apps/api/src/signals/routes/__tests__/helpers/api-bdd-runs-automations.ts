@@ -14,6 +14,7 @@ import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-bil
 import {
   zeroUserPermissionGrantsContract,
   type ApplyUserPermissionGrant,
+  type ApplyUserPermissionGrantsRequest,
   type UserPermissionGrantResponse,
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { runnerRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
@@ -29,6 +30,7 @@ import {
   cronTelegramCleanupContract,
 } from "@vm0/api-contracts/contracts/cron";
 import {
+  runnersNetworkPolicyRefreshContract,
   runnersHeartbeatContract,
   runnersJobClaimContract,
   runnersPollContract,
@@ -250,6 +252,31 @@ function runnerHeartbeatBody(
 }
 
 export function createRunsAutomationsApi(context: TestContext) {
+  const applyUserPermissionGrantRequestBody = (
+    body: {
+      readonly agentId: string;
+      readonly connectorRef: string;
+    } & ApplyUserPermissionGrant,
+  ): ApplyUserPermissionGrantsRequest => {
+    const grant: ApplyUserPermissionGrant =
+      body.action === "allow"
+        ? {
+            permission: body.permission,
+            action: "allow",
+            ...(body.expiresIn ? { expiresIn: body.expiresIn } : {}),
+          }
+        : {
+            permission: body.permission,
+            action: "deny",
+          };
+    return {
+      agentId: body.agentId,
+      connectorRef: body.connectorRef,
+      mode: "patch",
+      grants: [grant],
+    };
+  };
+
   return {
     configureRunnerGroup(): string {
       const group = `vm0/bdd-${randomUUID().slice(0, 8)}`;
@@ -386,6 +413,44 @@ export function createRunsAutomationsApi(context: TestContext) {
         [200],
       );
       return response.body;
+    },
+
+    async refreshRunnerNetworkPolicy(runId: string, connectorRef: string) {
+      const response = await accept(
+        runsAutomationApp(context)(runnersNetworkPolicyRefreshContract).refresh(
+          {
+            headers: runnerHeaders(true),
+            params: { runId },
+            body: { connectorRefs: [connectorRef] },
+          },
+        ),
+        [200],
+      );
+      const [refresh] = response.body.refreshes;
+      if (!refresh) {
+        throw new Error(
+          `Expected refreshed network policy for ${connectorRef}`,
+        );
+      }
+      return refresh;
+    },
+
+    async requestRefreshRunnerNetworkPolicyAs(
+      authorization: string | undefined,
+      runId: string,
+      connectorRef: string,
+      statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
+    ) {
+      return await accept(
+        runsAutomationApp(context)(runnersNetworkPolicyRefreshContract).refresh(
+          {
+            headers: authorization === undefined ? {} : { authorization },
+            params: { runId },
+            body: { connectorRefs: [connectorRef] },
+          },
+        ),
+        statuses,
+      );
     },
 
     async createApiKey(actor: ApiTestUser): Promise<{
@@ -531,23 +596,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       const response = await accept(
         runsAutomationApp(context)(zeroUserPermissionGrantsContract).apply({
           headers: authenticate(context, actor),
-          body: {
-            agentId: body.agentId,
-            connectorRef: body.connectorRef,
-            mode: "patch",
-            grants: [
-              body.action === "allow"
-                ? {
-                    permission: body.permission,
-                    action: "allow",
-                    ...(body.expiresIn ? { expiresIn: body.expiresIn } : {}),
-                  }
-                : {
-                    permission: body.permission,
-                    action: "deny",
-                  },
-            ],
-          },
+          body: applyUserPermissionGrantRequestBody(body),
         }),
         [200],
       );
@@ -556,6 +605,23 @@ export function createRunsAutomationsApi(context: TestContext) {
         throw new Error("User permission grant apply did not return a grant");
       }
       return grant;
+    },
+
+    async requestUserPermissionGrant(
+      actor: ApiTestUser,
+      body: {
+        readonly agentId: string;
+        readonly connectorRef: string;
+      } & ApplyUserPermissionGrant,
+      statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
+    ) {
+      return await accept(
+        runsAutomationApp(context)(zeroUserPermissionGrantsContract).apply({
+          headers: authenticate(context, actor),
+          body: applyUserPermissionGrantRequestBody(body),
+        }),
+        statuses,
+      );
     },
 
     async listUserPermissionGrants(

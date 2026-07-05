@@ -164,6 +164,155 @@ impl ProxyRegistryHandle {
         info!(source_ip, "unregistered VM from proxy registry");
         Ok(())
     }
+
+    /// Patch one network policy only if the source IP still belongs to `run_id`.
+    ///
+    /// Returns `Ok(false)` when the VM is gone, belongs to another run, or does
+    /// not contain the requested connector firewall.
+    pub async fn patch_network_policy_if_run_matches(
+        &self,
+        source_ip: &str,
+        run_id: &str,
+        connector_ref: &str,
+        policy: NetworkPolicy,
+    ) -> RunnerResult<bool> {
+        self.patch_existing_network_policy(source_ip, run_id, connector_ref, policy)
+            .await
+    }
+
+    /// Replace one network policy with deny-all if the source IP still belongs
+    /// to `run_id`.
+    pub async fn fail_closed_network_policy_if_run_matches(
+        &self,
+        source_ip: &str,
+        run_id: &str,
+        connector_ref: &str,
+    ) -> RunnerResult<bool> {
+        let _guard = lock::acquire(self.lock_path.clone()).await?;
+        self.fail_closed_network_policy_locked(source_ip, run_id, connector_ref)
+            .await
+    }
+
+    async fn fail_closed_network_policy_locked(
+        &self,
+        source_ip: &str,
+        run_id: &str,
+        connector_ref: &str,
+    ) -> RunnerResult<bool> {
+        let mut registry = read_registry(&self.registry_path).await?;
+        let Some(vm) = registry.vms.get_mut(source_ip) else {
+            return Ok(false);
+        };
+        if vm.run_id != run_id {
+            return Ok(false);
+        }
+
+        let Some(permission_names) = connector_known_permission_names(vm, connector_ref) else {
+            return Ok(false);
+        };
+        let policy = NetworkPolicy {
+            allow: Vec::new(),
+            deny: permission_names,
+            ask: Vec::new(),
+            unknown_policy: "deny".to_string(),
+        };
+        vm.network_policies
+            .get_or_insert_with(HashMap::new)
+            .insert(connector_ref.to_string(), policy);
+        registry.updated_at = chrono::Utc::now().timestamp_millis();
+        write_registry(&self.registry_path, &registry).await?;
+        info!(
+            source_ip,
+            run_id, connector_ref, "failed closed connector network policy in proxy registry"
+        );
+        Ok(true)
+    }
+
+    async fn patch_existing_network_policy(
+        &self,
+        source_ip: &str,
+        run_id: &str,
+        connector_ref: &str,
+        policy: NetworkPolicy,
+    ) -> RunnerResult<bool> {
+        let _guard = lock::acquire(self.lock_path.clone()).await?;
+
+        let mut registry = read_registry(&self.registry_path).await?;
+        let Some(vm) = registry.vms.get_mut(source_ip) else {
+            return Ok(false);
+        };
+        if vm.run_id != run_id || !vm_has_connector_firewall(vm, connector_ref) {
+            return Ok(false);
+        }
+
+        vm.network_policies
+            .get_or_insert_with(HashMap::new)
+            .insert(connector_ref.to_string(), policy);
+        registry.updated_at = chrono::Utc::now().timestamp_millis();
+        write_registry(&self.registry_path, &registry).await?;
+        info!(
+            source_ip,
+            run_id, connector_ref, "patched connector network policy in proxy registry"
+        );
+        Ok(true)
+    }
+}
+
+fn connector_known_permission_names(vm: &VmEntry, connector_ref: &str) -> Option<Vec<String>> {
+    if !vm_has_connector_firewall(vm, connector_ref) {
+        return None;
+    }
+
+    if let Some(policy) = vm
+        .network_policies
+        .as_ref()
+        .and_then(|policies| policies.get(connector_ref))
+    {
+        let mut names = policy.allow.clone();
+        names.extend(policy.deny.iter().cloned());
+        names.extend(policy.ask.iter().cloned());
+        names.sort();
+        names.dedup();
+        return Some(names);
+    }
+
+    let firewalls = vm.firewalls.as_deref()?;
+    firewalls
+        .iter()
+        .find_map(|entry| inline_firewall_permission_names(entry, connector_ref))
+        .or_else(|| Some(Vec::new()))
+}
+
+fn vm_has_connector_firewall(vm: &VmEntry, connector_ref: &str) -> bool {
+    vm.firewalls.as_deref().is_some_and(|firewalls| {
+        firewalls
+            .iter()
+            .any(|entry| firewall_entry_matches(entry, connector_ref))
+    })
+}
+
+fn firewall_entry_matches(entry: &FirewallEntry, connector_ref: &str) -> bool {
+    match entry {
+        FirewallEntry::Builtin { name, .. } => name == connector_ref,
+        FirewallEntry::Inline { firewall } => firewall.name == connector_ref,
+    }
+}
+
+fn inline_firewall_permission_names(
+    entry: &FirewallEntry,
+    connector_ref: &str,
+) -> Option<Vec<String>> {
+    match entry {
+        FirewallEntry::Inline { firewall } if firewall.name == connector_ref => Some(
+            firewall
+                .apis
+                .iter()
+                .flat_map(|api| api.permissions.as_deref().unwrap_or_default())
+                .map(|permission| permission.name.clone())
+                .collect(),
+        ),
+        _ => None,
+    }
 }
 
 pub(super) async fn write_empty_registry(path: &Path) -> RunnerResult<()> {
@@ -234,6 +383,44 @@ mod tests {
             capture_network_bodies: false,
             billable_firewalls: &[],
             model_usage_provider: None,
+        }
+    }
+
+    fn test_firewalls() -> Vec<FirewallEntry> {
+        vec![FirewallEntry::Inline {
+            firewall: Firewall {
+                name: "github".to_string(),
+                apis: vec![FirewallApi {
+                    id: "github-rest".to_string(),
+                    base: "https://api.github.com".to_string(),
+                    auth: FirewallAuth {
+                        headers: HashMap::new(),
+                        base: None,
+                        query: None,
+                    },
+                    permissions: Some(vec![
+                        FirewallPermission {
+                            name: "repos.read".to_string(),
+                            description: None,
+                            rules: vec!["GET /repos/{owner}/{repo}".to_string()],
+                        },
+                        FirewallPermission {
+                            name: "issues.write".to_string(),
+                            description: None,
+                            rules: vec!["POST /repos/{owner}/{repo}/issues".to_string()],
+                        },
+                    ]),
+                }],
+            },
+        }]
+    }
+
+    fn policy(allow: &[&str], deny: &[&str], ask: &[&str], unknown_policy: &str) -> NetworkPolicy {
+        NetworkPolicy {
+            allow: allow.iter().map(|value| (*value).to_string()).collect(),
+            deny: deny.iter().map(|value| (*value).to_string()).collect(),
+            ask: ask.iter().map(|value| (*value).to_string()).collect(),
+            unknown_policy: unknown_policy.to_string(),
         }
     }
 
@@ -494,6 +681,117 @@ mod tests {
 
         // Unregister non-existent IP is a no-op.
         harness.handle.unregister_vm("10.200.0.99").await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn patch_network_policy_requires_matching_run_and_connector() {
+        let harness = RegistryHarness::new().await;
+        let firewalls = test_firewalls();
+        let mut network_policies = HashMap::new();
+        network_policies.insert(
+            "github".to_string(),
+            policy(&["repos.read"], &[], &[], "ask"),
+        );
+        let registration = VmRegistration {
+            run_id: "run-1",
+            firewalls: Some(&firewalls),
+            network_policies: Some(&network_policies),
+            ..base_registration()
+        };
+        harness
+            .handle
+            .register_vm("10.200.0.2", &registration)
+            .await
+            .unwrap();
+
+        let updated = harness
+            .handle
+            .patch_network_policy_if_run_matches(
+                "10.200.0.2",
+                "run-2",
+                "github",
+                policy(&[], &["repos.read"], &[], "deny"),
+            )
+            .await
+            .unwrap();
+        assert!(!updated);
+
+        let updated = harness
+            .handle
+            .patch_network_policy_if_run_matches(
+                "10.200.0.2",
+                "run-1",
+                "slack",
+                policy(&[], &["chat.write"], &[], "deny"),
+            )
+            .await
+            .unwrap();
+        assert!(!updated);
+
+        let updated = harness
+            .handle
+            .patch_network_policy_if_run_matches(
+                "10.200.0.2",
+                "run-1",
+                "github",
+                policy(&[], &["repos.read"], &["issues.write"], "deny"),
+            )
+            .await
+            .unwrap();
+        assert!(updated);
+
+        let loaded = read_registry(harness.registry_path()).await.unwrap();
+        let policy = loaded
+            .vms
+            .get("10.200.0.2")
+            .and_then(|vm| vm.network_policies.as_ref())
+            .and_then(|policies| policies.get("github"))
+            .unwrap();
+        assert_eq!(policy.allow, Vec::<String>::new());
+        assert_eq!(policy.deny, vec!["repos.read"]);
+        assert_eq!(policy.ask, vec!["issues.write"]);
+        assert_eq!(policy.unknown_policy, "deny");
+    }
+
+    #[tokio::test]
+    async fn fail_closed_network_policy_uses_existing_policy_names() {
+        let harness = RegistryHarness::new().await;
+        let firewalls = test_firewalls();
+        let mut network_policies = HashMap::new();
+        network_policies.insert(
+            "github".to_string(),
+            policy(&["repos.read"], &["issues.write"], &[], "allow"),
+        );
+        let registration = VmRegistration {
+            run_id: "run-1",
+            firewalls: Some(&firewalls),
+            network_policies: Some(&network_policies),
+            ..base_registration()
+        };
+        harness
+            .handle
+            .register_vm("10.200.0.2", &registration)
+            .await
+            .unwrap();
+
+        let updated = harness
+            .handle
+            .fail_closed_network_policy_if_run_matches("10.200.0.2", "run-1", "github")
+            .await
+            .unwrap();
+        assert!(updated);
+
+        let loaded = read_registry(harness.registry_path()).await.unwrap();
+        let policy = loaded
+            .vms
+            .get("10.200.0.2")
+            .and_then(|vm| vm.network_policies.as_ref())
+            .and_then(|policies| policies.get("github"))
+            .unwrap();
+        assert_eq!(policy.allow, Vec::<String>::new());
+        assert_eq!(policy.deny, vec!["issues.write", "repos.read"]);
+        assert_eq!(policy.ask, Vec::<String>::new());
+        assert_eq!(policy.unknown_policy, "deny");
     }
 
     #[tokio::test]

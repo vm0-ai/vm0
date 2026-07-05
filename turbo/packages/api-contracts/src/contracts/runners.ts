@@ -2,6 +2,7 @@ import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import {
   executionFirewallsSchema,
+  networkPolicySchema,
   networkPoliciesSchema,
 } from "@vm0/connectors/firewall-types";
 import { apiErrorSchema } from "./errors";
@@ -25,6 +26,7 @@ export const RESUME_SESSION_HISTORY_MAX_BYTES = 128 * 1024 * 1024;
 export const SESSION_HISTORY_ENCODING_IDENTITY = "identity";
 export const SESSION_HISTORY_ENCODING_GZIP = "gzip";
 export const SESSION_HISTORY_GZIP_MIN_BYTES = 64 * 1024;
+export const NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX = 256;
 export const sessionHistoryEncodingSchema = z.enum([
   SESSION_HISTORY_ENCODING_IDENTITY,
   SESSION_HISTORY_ENCODING_GZIP,
@@ -69,6 +71,15 @@ const runnerPollTelemetrySchema = z.object({
 });
 
 const runnerProfileListSchema = z.array(z.string());
+
+const networkPolicyRefreshSchema = z.object({
+  nextRefreshAt: z.string().datetime({ offset: true }),
+});
+
+const networkPolicyRefreshesSchema = z.record(
+  z.string(),
+  networkPolicyRefreshSchema,
+);
 
 /**
  * Default profile when none is specified.
@@ -317,6 +328,9 @@ export const storedExecutionContextSchema = z.object({
   firewalls: executionFirewallsSchema.optional(),
   // Per-firewall network policies: which permissions are granted + unknownPolicy
   networkPolicies: networkPoliciesSchema.optional(),
+  // Per-connector runtime network policy refresh deadlines. Used by runners to refresh
+  // active sandbox policy when temporary allow grants expire.
+  networkPolicyRefreshes: networkPolicyRefreshesSchema.optional(),
   // Tools to disable in Claude CLI (passed as --disallowed-tools)
   disallowedTools: z.array(z.string()).optional(),
   // Tools to make available in Claude CLI (passed as --tools)
@@ -383,6 +397,9 @@ export const executionContextSchema = z.object({
   firewalls: executionFirewallsSchema.optional(),
   // Per-firewall network policies: which permissions are granted + unknownPolicy
   networkPolicies: networkPoliciesSchema.optional(),
+  // Per-connector runtime network policy refresh deadlines. Used by runners to refresh
+  // active sandbox policy when temporary allow grants expire.
+  networkPolicyRefreshes: networkPolicyRefreshesSchema.optional(),
   // Tools to disable in Claude CLI (passed as --disallowed-tools)
   disallowedTools: z.array(z.string()).optional(),
   // Tools to make available in Claude CLI (passed as --tools)
@@ -427,6 +444,40 @@ export const runnersJobClaimContract = c.router({
       500: apiErrorSchema,
     },
     summary: "Claim a pending job for execution",
+  },
+});
+
+export const runnersNetworkPolicyRefreshContract = c.router({
+  refresh: {
+    method: "POST",
+    path: "/api/runners/runs/:runId/network-policy-refresh",
+    headers: authHeadersSchema,
+    pathParams: z.object({
+      runId: z.uuid(),
+    }),
+    body: z.object({
+      connectorRefs: z
+        .array(z.string().min(1).max(64))
+        .min(1)
+        .max(NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX),
+    }),
+    responses: {
+      200: z.object({
+        refreshes: z.array(
+          z.object({
+            connectorRef: z.string(),
+            networkPolicy: networkPolicySchema,
+            nextRefreshAt: z.string().datetime({ offset: true }).nullable(),
+          }),
+        ),
+      }),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Refresh active run network policies",
   },
 });
 
@@ -488,6 +539,8 @@ export const runnersHeartbeatContract = c.router({
 
 export type RunnersPollContract = typeof runnersPollContract;
 export type RunnersJobClaimContract = typeof runnersJobClaimContract;
+export type RunnersNetworkPolicyRefreshContract =
+  typeof runnersNetworkPolicyRefreshContract;
 export type RunnersHeartbeatContract = typeof runnersHeartbeatContract;
 export type Job = z.infer<typeof jobSchema>;
 export type HeldSessionState = z.infer<typeof heldSessionStateSchema>;
@@ -495,6 +548,7 @@ export type ExecutionContext = z.infer<typeof executionContextSchema>;
 export type StoredExecutionContext = z.infer<
   typeof storedExecutionContextSchema
 >;
+export type NetworkPolicyRefresh = z.infer<typeof networkPolicyRefreshSchema>;
 export type SecretConnectorMetadata = z.infer<
   typeof secretConnectorMetadataSchema
 >;

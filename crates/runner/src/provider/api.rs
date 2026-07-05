@@ -14,6 +14,7 @@ use super::api_ably_supervisor::{
     AblySupervisor, AblySupervisorConfig, PollDue, PollOutcome, PollReason, PollWakeups,
 };
 use super::api_direct_candidates::{DirectCandidateInbox, DirectJobCandidate};
+use super::network_policy_refresh::NetworkPolicyRefreshHandle;
 use super::{
     ClaimedJob, CompletionAuth, CompletionAuthError, JobCandidate, JobDiscoverySource, JobProvider,
 };
@@ -23,7 +24,8 @@ use crate::http::HttpClient;
 use crate::ids::RunId;
 use crate::run_cancellation::SharedRunCancellationMap;
 use crate::types::{
-    CompleteRequest, ExecutionContext, HeartbeatState, Job, PollResponse, SandboxReuseResult,
+    CompleteRequest, ExecutionContext, HeartbeatState, Job, NetworkPolicyRefreshBatchResponse,
+    PollResponse, SandboxReuseResult,
 };
 use sandbox::SandboxId;
 
@@ -68,6 +70,7 @@ const POLL_FAST: Duration = Duration::from_secs(5);
 /// Retry delay after a job-notification wakeup reaches poll but poll fails.
 const POLL_WAKEUP_RETRY: Duration = POLL_FAST;
 const DIRECT_CANDIDATE_INBOX_CAPACITY: usize = 128;
+const NETWORK_POLICY_REFRESH_TIMEOUT: Duration = Duration::from_secs(3);
 
 enum DiscoveryWakeup {
     Direct(DirectJobCandidate),
@@ -98,6 +101,7 @@ pub struct ApiProvider {
     direct_candidates: Arc<DirectCandidateInbox>,
     /// Background Ably control-plane task.
     ably_supervisor: AblySupervisor,
+    network_policy_refresh: NetworkPolicyRefreshHandle,
     /// Shutdown signal.
     cancel: CancellationToken,
 }
@@ -113,6 +117,7 @@ impl ApiProvider {
         cancel_tokens: SharedRunCancellationMap,
     ) -> Arc<Self> {
         let api = ApiClient::new(http, token);
+        let network_policy_refresh = NetworkPolicyRefreshHandle::new(api.clone());
         let poll_wakeups = Arc::new(PollWakeups::new(false));
         let direct_candidates = DirectCandidateInbox::new(DIRECT_CANDIDATE_INBOX_CAPACITY);
         let ably_supervisor = AblySupervisor::spawn(AblySupervisorConfig {
@@ -122,6 +127,7 @@ impl ApiProvider {
             poll_wakeups: Arc::clone(&poll_wakeups),
             direct_candidates: Arc::clone(&direct_candidates),
             cancel_tokens,
+            network_policy_refresh: network_policy_refresh.clone(),
             provider_cancel: cancel.clone(),
         });
 
@@ -132,8 +138,13 @@ impl ApiProvider {
             poll_wakeups,
             direct_candidates,
             ably_supervisor,
+            network_policy_refresh,
             cancel,
         })
+    }
+
+    pub(crate) fn network_policy_refresh_handle(&self) -> NetworkPolicyRefreshHandle {
+        self.network_policy_refresh.clone()
     }
 
     async fn try_recv_direct_candidate(&self) -> Option<DirectJobCandidate> {
@@ -318,6 +329,7 @@ impl JobProvider for ApiProvider {
 
     async fn shutdown(&self) {
         self.ably_supervisor.shutdown().await;
+        self.network_policy_refresh.shutdown().await;
     }
 
     async fn complete(
@@ -379,7 +391,7 @@ pub(super) struct ApiClient {
 }
 
 impl ApiClient {
-    fn new(http: HttpClient, token: String) -> Self {
+    pub(super) fn new(http: HttpClient, token: String) -> Self {
         Self { http, token }
     }
 
@@ -514,6 +526,38 @@ impl ApiClient {
 
         let resp = check_api_status(resp, "realtime token").await?;
         decode_api_json(resp, "realtime token").await
+    }
+
+    pub(super) async fn refresh_network_policies(
+        &self,
+        run_id: RunId,
+        connector_refs: &[String],
+    ) -> RunnerResult<NetworkPolicyRefreshBatchResponse> {
+        let run_id = run_id.to_string();
+        let resp = send_api(
+            self.network_policy_refresh_request(&run_id, connector_refs),
+            "network policy refresh",
+        )
+        .await?;
+
+        let resp = check_api_status(resp, "network policy refresh").await?;
+        decode_api_json(resp, "network policy refresh").await
+    }
+
+    fn network_policy_refresh_request(
+        &self,
+        run_id: &str,
+        connector_refs: &[String],
+    ) -> RequestBuilder {
+        self.http
+            .request_resolved_route(
+                routes::runners::runs::by_run_id::network_policy_refresh::route(
+                    routes::runners::runs::by_run_id::network_policy_refresh::Params { run_id },
+                ),
+                &self.token,
+            )
+            .timeout(NETWORK_POLICY_REFRESH_TIMEOUT)
+            .json(&serde_json::json!({ "connectorRefs": connector_refs }))
     }
 }
 
@@ -854,6 +898,33 @@ mod tests {
         )
     }
 
+    #[test]
+    fn network_policy_refresh_request_uses_short_timeout() {
+        let server = MockServer::start();
+        let api = api_client_for_server(&server);
+
+        let request = api
+            .network_policy_refresh_request(
+                "00000000-0000-0000-0000-000000000001",
+                &["slack".to_string()],
+            )
+            .build()
+            .expect("network policy refresh request should build");
+
+        assert_eq!(request.timeout(), Some(&NETWORK_POLICY_REFRESH_TIMEOUT));
+        assert_eq!(
+            request.url().path(),
+            "/api/runners/runs/00000000-0000-0000-0000-000000000001/network-policy-refresh"
+        );
+        assert_eq!(
+            request
+                .body()
+                .and_then(reqwest::Body::as_bytes)
+                .expect("request should include JSON body"),
+            br#"{"connectorRefs":["slack"]}"#
+        );
+    }
+
     fn assert_api_error(err: RunnerError, expected: &str) {
         match err {
             RunnerError::Api(message) => assert_eq!(message, expected),
@@ -866,15 +937,17 @@ mod tests {
         cancel: CancellationToken,
         poll_wakeups: Arc<PollWakeups>,
     ) -> Arc<ApiProvider> {
+        let api = ApiClient::new(
+            HttpClient::new(HttpClientConfig {
+                api_url,
+                vercel_bypass: None,
+            })
+            .unwrap(),
+            "runner-token".to_string(),
+        );
         Arc::new(ApiProvider {
-            api: ApiClient::new(
-                HttpClient::new(HttpClientConfig {
-                    api_url,
-                    vercel_bypass: None,
-                })
-                .unwrap(),
-                "runner-token".to_string(),
-            ),
+            network_policy_refresh: NetworkPolicyRefreshHandle::new(api.clone()),
+            api,
             group: "default".to_string(),
             supported_profiles: vec![crate::profile::DEFAULT_PROFILE.to_string()],
             poll_wakeups,

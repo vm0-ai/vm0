@@ -163,6 +163,10 @@ import {
   connectorRuntimeCredentialStatus,
   type ConnectorCredentialStatus,
 } from "./connector-credential-status.service";
+import {
+  defaultFirewallPolicyForPermissionIndex,
+  networkPolicyForFirewallPolicy,
+} from "./firewall-network-policy.service";
 import { logger } from "../../lib/log";
 import { recordSandboxOperation } from "../external/sandbox-op-log";
 import type { InternalRunCallbackKind } from "./internal-run-callback";
@@ -3378,19 +3382,6 @@ function allAllowPolicyForPermissions(
   };
 }
 
-function defaultPolicyForPermissionIndex(
-  index: FirewallPermissionIndex,
-): FirewallPolicy {
-  const policies: Record<string, FirewallPolicy["policies"][string]> = {};
-  for (const name of index.permissionNames) {
-    policies[name] = index.policyResolver.permission(name);
-  }
-  return {
-    policies,
-    unknownPolicy: index.policyResolver.unknown(),
-  };
-}
-
 async function loadRequiredFirewallPermissionIndex(
   type: string,
 ): Promise<FirewallPermissionIndex> {
@@ -3409,32 +3400,6 @@ function getRequiredFirewallExecutionMetadata(
     throw new Error(`Missing firewall execution metadata: ${type}`);
   }
   return metadata;
-}
-
-function networkPolicyForFirewallPolicy(
-  permissionNames: readonly string[],
-  policy: FirewallPolicy,
-): NetworkPolicies[string] {
-  const allow: string[] = [];
-  const deny: string[] = [];
-  const ask: string[] = [];
-  for (const name of permissionNames) {
-    const value = policy.policies[name];
-    if (value === "allow") {
-      allow.push(name);
-    } else if (value === "deny") {
-      deny.push(name);
-    } else if (value === "ask") {
-      ask.push(name);
-    }
-  }
-
-  return {
-    allow,
-    deny,
-    ask,
-    unknownPolicy: policy.unknownPolicy ?? "allow",
-  };
 }
 
 const BASE_URL_VAR_PATTERN = /\$\{\{\s*vars\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
@@ -3641,7 +3606,7 @@ function applyBuiltinConnectorMetadataPolicies(
   for (const source of sources) {
     const name = source.metadata.type;
     const permissionNames = [...source.permissionIndex.permissionNames];
-    const defaultPolicy = defaultPolicyForPermissionIndex(
+    const defaultPolicy = defaultFirewallPolicyForPermissionIndex(
       source.permissionIndex,
     );
     const policy = policies?.[name];

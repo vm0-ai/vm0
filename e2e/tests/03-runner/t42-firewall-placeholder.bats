@@ -112,6 +112,98 @@ authorize_slack_for_agent() {
         >/dev/null
 }
 
+apply_slack_chat_write_permission() {
+    local agent_id="$1"
+    local action="$2"
+    local payload
+
+    case "$action" in
+        allow)
+            payload=$(jq -nc \
+                --arg agentId "$agent_id" \
+                '{agentId: $agentId, connectorRef: "slack", mode: "patch", grants: [{permission: "chat:write", action: "allow", expiresIn: "1h"}]}')
+            ;;
+        deny)
+            payload=$(jq -nc \
+                --arg agentId "$agent_id" \
+                '{agentId: $agentId, connectorRef: "slack", mode: "patch", grants: [{permission: "chat:write", action: "deny"}]}')
+            ;;
+        *)
+            echo "Unsupported Slack chat:write grant action: $action" >&2
+            return 1
+            ;;
+    esac
+
+    zero_curl "/api/zero/user-permission-grants/apply" \
+        -X PUT \
+        -d "$payload" \
+        >/dev/null
+}
+
+slack_test_endpoint_headers() {
+    local -n out="$1"
+    out=()
+    if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
+        out+=(-H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET")
+        out+=(-H "x-vm0-test-endpoint-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET")
+    fi
+}
+
+slack_mock_state() {
+    local team_id="$1"
+    local -a headers
+    slack_test_endpoint_headers headers
+    curl -fsS "${headers[@]}" \
+        "$(zero_api_url)/api/test/slack-state?team_id=$team_id"
+}
+
+wait_for_slack_mock_marker() {
+    local team_id="$1"
+    local expected_text="$2"
+    local run_id="$3"
+    local timeout="${4:-60}"
+    local start=$SECONDS
+    local state=""
+    local match=""
+    local run_body=""
+    local run_status=""
+
+    while ((SECONDS - start < timeout)); do
+        state=$(slack_mock_state "$team_id" 2>&1 || true)
+        match=$(printf '%s' "$state" \
+            | jq -er --arg expected "$expected_text" '
+                [.mock_calls[]
+                 | select(.method == "chat.postMessage")
+                 | select(.bodyJson.text == $expected)]
+                | length
+            ' 2>/dev/null || true)
+        if [[ "$match" =~ ^[0-9]+$ ]] && ((match > 0)); then
+            return 0
+        fi
+        if run_body=$(zero_run_response "$run_id" 2>&1); then
+            run_status=$(printf '%s' "$run_body" | jq -r '.status // ""')
+            case "$run_status" in
+                completed|failed|timeout|cancelled)
+                    echo "# Run $run_id reached terminal status before Slack mock marker: $run_status" >&2
+                    echo "# Run response: $run_body" >&2
+                    echo "# Last slack mock state: $state" >&2
+                    return 1
+                    ;;
+            esac
+        fi
+        sleep 2
+    done
+
+    echo "# Timed out (${timeout}s) waiting for Slack mock marker $expected_text" >&2
+    echo "# Last run response: $(zero_run_response "$run_id" 2>&1 || true)" >&2
+    echo "# Last slack mock state: $state" >&2
+    return 1
+}
+
+shell_quote() {
+    printf '%q' "$1"
+}
+
 @test "firewall: placeholder env vars" {
     # Connectors are set up in setup_file() to avoid parallel write races.
     # No firewalls needed — connector auto-add provides firewalls.
@@ -173,6 +265,141 @@ EOF
     assert_output --partial "SLACK_WRITE_STATUS=403"
     assert_output --partial '"error": "permission_denied"'
     assert_output --partial '"permissions": ["chat:write"]'
+}
+
+@test "firewall: active zero run refreshes slack write permission changes" {
+    AGENT_ID=$(create_private_zero_agent "${AGENT_NAME}-slack-refresh") || {
+        echo "# Failed to create private zero agent" >&2
+        return 1
+    }
+
+    run authorize_slack_for_agent "$AGENT_ID"
+    echo "$output"
+    assert_success
+
+    run apply_slack_chat_write_permission "$AGENT_ID" deny
+    echo "$output"
+    assert_success
+
+    local marker_team_id="T_FIREWALL_REFRESH_${UNIQUE_ID//-/_}"
+    local marker_text="first-deny-${UNIQUE_ID}"
+    local slack_mock_url
+    slack_mock_url="$(zero_api_url)/api/test/slack-mock/chat.postMessage"
+
+    local prompt
+    prompt=$(cat <<'EOF'
+SLACK_MOCK_URL=__SLACK_MOCK_URL__
+MARKER_TEAM_ID=__MARKER_TEAM_ID__
+MARKER_TEXT=__MARKER_TEXT__
+BYPASS_SECRET=__BYPASS_SECRET__
+
+post_slack() {
+    local text="$1"
+    local body_file status
+    body_file=$(mktemp)
+    status=$(curl -sS -o "$body_file" -w '%{http_code}' -X POST https://slack.com/api/chat.postMessage -H "Authorization: Bearer $SLACK_TOKEN" -H 'Content-Type: application/json' --data "{\"channel\":\"C0000000000\",\"text\":\"${text}\"}" || true)
+    [ -n "$status" ] || status=000
+    printf '%s\n' "$status"
+    cat "$body_file"
+    rm -f "$body_file"
+}
+
+is_firewall_denied() {
+    printf '%s' "$1" | grep -q '"permission_denied"'
+}
+
+post_marker() {
+    local body status
+    body="{\"team_id\":\"${MARKER_TEAM_ID}\",\"channel\":\"C0000000000\",\"text\":\"${MARKER_TEXT}\"}"
+    if [ -n "$BYPASS_SECRET" ]; then
+        status=$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$SLACK_MOCK_URL" \
+            -H "x-vercel-protection-bypass: $BYPASS_SECRET" \
+            -H "x-vm0-test-endpoint-bypass: $BYPASS_SECRET" \
+            -H 'Content-Type: application/json' \
+            --data "$body" || true)
+    else
+        status=$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$SLACK_MOCK_URL" \
+            -H 'Content-Type: application/json' \
+            --data "$body" || true)
+    fi
+    [ -n "$status" ] || status=000
+    printf '%s\n' "$status"
+}
+
+FIRST_OUTPUT=$(post_slack e2e-before-refresh)
+FIRST_STATUS=$(printf '%s\n' "$FIRST_OUTPUT" | head -n1)
+FIRST_BODY=$(printf '%s\n' "$FIRST_OUTPUT" | tail -n +2)
+echo "FIRST_SLACK_STATUS=$FIRST_STATUS"
+echo "FIRST_SLACK_BODY=$FIRST_BODY"
+if [ "$FIRST_STATUS" = "403" ] && is_firewall_denied "$FIRST_BODY"; then
+    MARKER_STATUS=$(post_marker)
+    echo "MARKER_STATUS=$MARKER_STATUS"
+fi
+
+SECOND_STATUS=000
+SECOND_BODY=
+SECOND_FIREWALL_DENIED=1
+for ATTEMPT in $(seq 1 60); do
+    SECOND_OUTPUT=$(post_slack "e2e-after-refresh-${ATTEMPT}")
+    SECOND_STATUS=$(printf '%s\n' "$SECOND_OUTPUT" | head -n1)
+    SECOND_BODY=$(printf '%s\n' "$SECOND_OUTPUT" | tail -n +2)
+    if is_firewall_denied "$SECOND_BODY"; then
+        SECOND_FIREWALL_DENIED=1
+    else
+        SECOND_FIREWALL_DENIED=0
+    fi
+    echo "SECOND_SLACK_ATTEMPT_${ATTEMPT}_STATUS=$SECOND_STATUS"
+    echo "SECOND_SLACK_ATTEMPT_${ATTEMPT}_FIREWALL_DENIED=$SECOND_FIREWALL_DENIED"
+    echo "SECOND_SLACK_ATTEMPT_${ATTEMPT}_BODY=$SECOND_BODY"
+    if [ "$SECOND_STATUS" != "000" ] && [ "$SECOND_FIREWALL_DENIED" = "0" ]; then
+        break
+    fi
+    sleep 1
+done
+
+echo "SECOND_SLACK_STATUS=$SECOND_STATUS"
+echo "SECOND_SLACK_FIREWALL_DENIED=$SECOND_FIREWALL_DENIED"
+echo "SECOND_SLACK_BODY=$SECOND_BODY"
+
+if [ "$FIRST_STATUS" != "403" ] || ! is_firewall_denied "$FIRST_BODY" || [ "$SECOND_STATUS" = "000" ] || [ "$SECOND_FIREWALL_DENIED" != "0" ]; then
+    exit 1
+fi
+EOF
+)
+    prompt=${prompt//__SLACK_MOCK_URL__/$(shell_quote "$slack_mock_url")}
+    prompt=${prompt//__MARKER_TEAM_ID__/$(shell_quote "$marker_team_id")}
+    prompt=${prompt//__MARKER_TEXT__/$(shell_quote "$marker_text")}
+    prompt=${prompt//__BYPASS_SECRET__/$(shell_quote "${VERCEL_AUTOMATION_BYPASS_SECRET:-}")}
+
+    zero_chat_run_with_model_selection \
+        "$AGENT_ID" \
+        "$prompt" \
+        "$(zero_model_first_selection_provider_id)" \
+        "claude-sonnet-4-6" \
+        false \
+        false
+    THREAD_ID="$LAST_THREAD_ID"
+
+    wait_for_slack_mock_marker "$marker_team_id" "$marker_text" "$LAST_RUN_ID" 60 || {
+        zero_curl "/api/zero/runs/$LAST_RUN_ID/cancel" -X POST >/dev/null 2>&1 || true
+        return 1
+    }
+
+    run apply_slack_chat_write_permission "$AGENT_ID" allow
+    echo "$output"
+    assert_success
+
+    wait_for_zero_run_completed "$LAST_RUN_ID" 140
+    WAIT_FOR_LOG_TIMEOUT=60 wait_for_log "$LAST_RUN_ID" -- \
+        "FIRST_SLACK_STATUS=403" \
+        'FIRST_SLACK_BODY={"error": "permission_denied"' \
+        "SECOND_SLACK_STATUS=" \
+        "SECOND_SLACK_FIREWALL_DENIED=0"
+
+    assert_output --partial "FIRST_SLACK_STATUS=403"
+    assert_output --partial 'FIRST_SLACK_BODY={"error": "permission_denied"'
+    assert_output --partial "SECOND_SLACK_FIREWALL_DENIED=0"
+    refute_output --partial "SECOND_SLACK_STATUS=000"
 }
 
 @test "firewall: connector auto-adds firewall without firewalls" {

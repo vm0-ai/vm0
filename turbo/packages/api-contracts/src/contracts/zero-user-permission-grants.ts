@@ -89,6 +89,7 @@ export const zeroUserPermissionGrantsContract = c.router({
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
+      500: apiErrorSchema,
     },
     summary:
       "Apply current user's explicit permission grant changes for one connector",
