@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.558.0](https://github.com/vm0-ai/vm0/compare/app-v0.557.1...app-v0.558.0) (2026-07-05)
+
+
+### Features
+
+* paginate relationship memory search ([#20262](https://github.com/vm0-ai/vm0/issues/20262)) ([f1d4130](https://github.com/vm0-ai/vm0/commit/f1d4130ff818bda248280d0bfc37a08060c1c64a))
+
+
+### Bug Fixes
+
+* use run-finish timestamps for chat thread unread state ([#20236](https://github.com/vm0-ai/vm0/issues/20236)) ([9e4cb65](https://github.com/vm0-ai/vm0/commit/9e4cb659f32a0449d3f506232f4b4ca8dabc6a29))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.155.0
+    * @vm0/core bumped to 8.401.1
+
 ## [0.557.1](https://github.com/vm0-ai/vm0/compare/app-v0.557.0...app-v0.557.1) (2026-07-05)
 
 
