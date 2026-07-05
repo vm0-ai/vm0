@@ -993,6 +993,42 @@ describe("CHAT-01 chat thread read state", () => {
     await chat.markThreadRead(owner, activeUnreadThread);
     await expect(chat.listUnreadAgents(owner)).resolves.toStrictEqual([]);
 
+    const activeGoalThread = await sendNoCreditMessage(owner, {
+      agentId: agentA.agentId,
+      prompt: "unread aggregate with active goal",
+    });
+    const completeGoalThread = await sendNoCreditMessage(owner, {
+      agentId: agentB.agentId,
+      prompt: "unread aggregate with complete goal",
+    });
+    await store.set(
+      seedZeroChatThreadGoal$,
+      {
+        userId: owner.userId,
+        orgId: owner.orgId,
+        agentId: agentA.agentId,
+        threadId: activeGoalThread,
+        status: "active",
+      },
+      context.signal,
+    );
+    await store.set(
+      seedZeroChatThreadGoal$,
+      {
+        userId: owner.userId,
+        orgId: owner.orgId,
+        agentId: agentB.agentId,
+        threadId: completeGoalThread,
+        status: "complete",
+      },
+      context.signal,
+    );
+    await expect(chat.listUnreadAgents(owner)).resolves.toStrictEqual([
+      agentB.agentId,
+    ]);
+    await chat.markThreadRead(owner, completeGoalThread);
+    await expect(chat.listUnreadAgents(owner)).resolves.toStrictEqual([]);
+
     const threadA = await sendNoCreditMessage(owner, {
       agentId: agentA.agentId,
       prompt: "unread aggregate A",
