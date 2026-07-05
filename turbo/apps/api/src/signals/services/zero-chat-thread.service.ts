@@ -12,7 +12,12 @@ import {
   persistedAttachmentSchema,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
-import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
+import {
+  modelProviderCredentialScopeSchema,
+  modelProviderTypeSchema,
+  type ModelProviderCredentialScope,
+  type ModelProviderType,
+} from "@vm0/api-contracts/contracts/model-providers";
 import {
   type HostedArtifactKind,
   hostedArtifactKindSchema,
@@ -135,6 +140,9 @@ type ChatThreadRow = {
   readonly agentComposeId: string;
   readonly draftContent: string | null;
   readonly draftAttachments: readonly PersistedAttachment[] | null;
+  readonly modelProviderId: string | null;
+  readonly modelProviderType: ModelProviderType | null;
+  readonly modelProviderCredentialScope: ModelProviderCredentialScope | null;
   readonly codexServiceTier: CodexServiceTier | null;
   readonly computerUseHostId: string | null;
   readonly orgId: string | null;
@@ -384,6 +392,9 @@ function ownedChatThread(
         draftContent: chatThreads.draftContent,
         draftAttachments: chatThreads.draftAttachments,
         computerUseHostId: chatThreads.computerUseHostId,
+        modelProviderId: chatThreads.modelProviderId,
+        modelProviderType: chatThreads.modelProviderType,
+        modelProviderCredentialScope: chatThreads.modelProviderCredentialScope,
         codexServiceTier: chatThreads.codexServiceTier,
         orgId: zeroAgents.orgId,
         lastReadAt: chatThreads.lastReadAt,
@@ -413,6 +424,13 @@ function ownedChatThread(
         .nullable()
         .parse(thread.draftAttachments ?? null),
       computerUseHostId: thread.computerUseHostId,
+      modelProviderId: thread.modelProviderId,
+      modelProviderType: modelProviderTypeSchema
+        .nullable()
+        .parse(thread.modelProviderType),
+      modelProviderCredentialScope: modelProviderCredentialScopeSchema
+        .nullable()
+        .parse(thread.modelProviderCredentialScope),
       codexServiceTier: thread.codexServiceTier ?? null,
       orgId: thread.orgId ?? null,
       lastReadAt: thread.lastReadAt ?? null,
@@ -668,9 +686,9 @@ export function zeroChatThreadDetail(args: {
       updatedAt: thread.updatedAt.toISOString(),
       pinnedAt: thread.pinnedAt?.toISOString() ?? null,
       computerUseHostId: thread.computerUseHostId,
-      modelProviderId: null,
-      modelProviderType: null,
-      modelProviderCredentialScope: null,
+      modelProviderId: thread.modelProviderId,
+      modelProviderType: thread.modelProviderType,
+      modelProviderCredentialScope: thread.modelProviderCredentialScope,
       codexServiceTier: thread.codexServiceTier,
       renamedAt: thread.renamedAt?.toISOString() ?? null,
     };

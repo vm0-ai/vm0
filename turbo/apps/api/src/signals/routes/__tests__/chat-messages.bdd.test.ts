@@ -1724,6 +1724,25 @@ describe("CHAT-02: explicit provider pins", () => {
     await completeChatRunOk(run.runId, sandboxHeaders);
     expect((await api.readRun(actor, run.runId)).status).toBe("completed");
 
+    const followUp = await sendChatRun(actor, {
+      agentId,
+      threadId: run.threadId,
+      prompt: "follow up without a send-time model override",
+    });
+    const { claim: followUpClaim } = await claimChatRun(
+      runnerGroup,
+      followUp.runId,
+    );
+    const followUpEnvironment = claimEnvironment(followUpClaim);
+    expect(followUpEnvironment.ANTHROPIC_AUTH_TOKEN).toBe(
+      modelProviderSecretPlaceholder("deepseek-api-key", "DEEPSEEK_API_KEY"),
+    );
+    expect(followUpEnvironment.ANTHROPIC_BASE_URL).toBe(
+      "https://api.deepseek.com/anthropic",
+    );
+    expect(followUpEnvironment.ANTHROPIC_MODEL).toBe("deepseek-v4-pro");
+    await cancelChatRun(actor, followUp.runId);
+
     // A vm0 provider pin in an entitled org passes the spendable-credits
     // admission. The outcome past admission is race-dependent on the shared
     // database: 503 when no vm0 execution key exists (no public provisioning
@@ -1997,7 +2016,7 @@ describe("CHAT-02: explicit provider pins", () => {
 
     const thread = await chat.readThread(actor, run.threadId);
     expect(thread).not.toHaveProperty("selectedModel");
-    expect(thread.modelProviderId ?? null).toBeNull();
+    expect(thread.modelProviderId ?? null).toBe(providerId);
     const threadEvents = await chat.requestThreadEvents(actor, {}, [200]);
     expect(threadEvents.status).toBe(200);
     if (threadEvents.status !== 200) {
@@ -2005,7 +2024,7 @@ describe("CHAT-02: explicit provider pins", () => {
     }
     expect(threadEvents.body.events).toContainEqual(
       expect.objectContaining({
-        kind: "model_selection_updated",
+        kind: "created",
         chatThreadId: run.threadId,
         selectedModel: "claude-opus-4-7",
       }),

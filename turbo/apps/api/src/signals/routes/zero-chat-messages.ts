@@ -7,6 +7,10 @@ import {
   type CodexServiceTier,
   type GenerationTemplateRequest,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import {
+  modelProviderCredentialScopeSchema,
+  modelProviderTypeSchema,
+} from "@vm0/api-contracts/contracts/model-providers";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import {
   chatMessages,
@@ -72,7 +76,6 @@ import { generateAndPersistInitialThinkingMessage } from "../services/zero-chat-
 import {
   MODEL_FIRST_SELECTION_PROVIDER_ID,
   type ModelFirstPin,
-  modelOnlyModelFirstPin,
   modelProviderPinAvailable,
   resolveModelFirstProviderAdmission,
   resolveModelSelectionPin,
@@ -1037,14 +1040,28 @@ async function getStoredThreadModelPin(
   threadId: string,
 ): Promise<ThreadModelPin | null> {
   const [thread] = await db
-    .select({ selectedModel: chatThreads.selectedModel })
+    .select({
+      modelProviderId: chatThreads.modelProviderId,
+      modelProviderType: chatThreads.modelProviderType,
+      modelProviderCredentialScope: chatThreads.modelProviderCredentialScope,
+      selectedModel: chatThreads.selectedModel,
+    })
     .from(chatThreads)
     .where(eq(chatThreads.id, threadId))
     .limit(1);
   if (!thread?.selectedModel) {
     return null;
   }
-  return modelOnlyModelFirstPin(thread.selectedModel);
+  return {
+    modelProviderId: thread.modelProviderId,
+    modelProviderType: modelProviderTypeSchema
+      .nullable()
+      .parse(thread.modelProviderType),
+    modelProviderCredentialScope: modelProviderCredentialScopeSchema
+      .nullable()
+      .parse(thread.modelProviderCredentialScope),
+    selectedModel: thread.selectedModel,
+  };
 }
 
 function emptyModelFirstThreadPin(): ThreadModelPin {
