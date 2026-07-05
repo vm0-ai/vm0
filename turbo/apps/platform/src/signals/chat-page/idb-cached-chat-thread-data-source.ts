@@ -459,7 +459,6 @@ function createSubscribeRealtime(remote: ChatThreadDataSource) {
 
 export function createIdbCachedDataSource(
   threadId: string,
-  onInitialPageCacheMiss?: () => void,
 ): ChatThreadDataSource {
   const remote = createRemoteChatThreadDataSource(threadId);
 
@@ -479,7 +478,6 @@ export function createIdbCachedDataSource(
 
     if (!userId || !orgId) {
       L.debug("initialPage:noAuth", { threadId });
-      onInitialPageCacheMiss?.();
       return get(remote.initialPage$);
     }
 
@@ -513,7 +511,6 @@ export function createIdbCachedDataSource(
     }
 
     L.debug("initialPage:cacheMiss", { threadId });
-    onInitialPageCacheMiss?.();
     const page = await get(remote.initialPage$);
     const writeStore = stores.writeStore;
     await chatIdbWriteBestEffort("cachedDataSource:initialUpsert", () => {

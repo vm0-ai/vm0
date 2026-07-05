@@ -4176,7 +4176,7 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
   const setScrollContainer = useSet(thread.setScrollContainer$);
   const loadMoreRenderedChatGroups = useSet(thread.loadMoreRenderedChatGroups$);
   const pageSignal = useGet(pageSignal$);
-  const skeletonVisible = useGet(thread.skeletonVisible$);
+  const skeletonVisible = messagesLoading;
   const githubPrTrackingOpen = useGithubPrTrackingOpen(thread);
 
   const handleScroll = (event: ReactUIEvent<HTMLDivElement>) => {
@@ -4946,7 +4946,7 @@ function ChatThreadComposer({
       clearComputerUseHostOverride,
     });
   const sending = !allFinished || sendLoading;
-  const skeletonVisible = useGet(thread.skeletonVisible$);
+  const skeletonVisible = groupsLoadable.state === "loading";
   const { composerSending, queueWhileSending } =
     resolveChatThreadComposerActivity({
       groups,
