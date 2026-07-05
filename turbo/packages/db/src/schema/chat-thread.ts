@@ -111,10 +111,11 @@ export const chatThreads = pgTable(
     renamedAt: timestamp("renamed_at"),
     /**
      * Most recent message timestamp, denormalized from chat_messages.
-     * Maintained app-side for terminal runs with visible assistant text via
-     * GREATEST() — monotonic, never rewound. Billing rows and pure lifecycle
-     * markers do not advance it. Powers the sidebar recency and unread
-     * watermark comparisons with index-driven thread queries.
+     * Maintained app-side for direct user messages and terminal run-finished
+     * markers via GREATEST() — monotonic, never rewound. Triggered/goal user
+     * messages, billing rows, and other control rows do not advance it. Powers
+     * the sidebar recency and unread watermark comparisons with index-driven
+     * thread queries.
      */
     lastMessageAt: timestamp("last_message_at").defaultNow().notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),

@@ -20,6 +20,7 @@ import {
   publishUserSignal,
 } from "../external/realtime";
 import { listS3Objects } from "../external/s3";
+import { nowDate } from "../external/time";
 import { assistantMessageIdForRunEvent } from "./assistant-message-id";
 import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
 
@@ -73,11 +74,13 @@ export function inferMimetype(filename: string): string {
 export async function touchChatThreadLastMessageAt(
   tx: Pick<Db, "insert" | "select" | "update">,
   threadId: string,
+  touchedAt: Date = nowDate(),
+  eventId?: string,
 ): Promise<void> {
   const [thread] = await tx
     .update(chatThreads)
     .set({
-      lastMessageAt: sql`GREATEST(${chatThreads.lastMessageAt}, NOW())`,
+      lastMessageAt: sql`GREATEST(${chatThreads.lastMessageAt}, ${touchedAt})`,
     })
     .where(eq(chatThreads.id, threadId))
     .returning({
@@ -94,6 +97,7 @@ export async function touchChatThreadLastMessageAt(
     userId: thread.userId,
     chatThreadId: thread.id,
     agentComposeId: thread.agentComposeId,
+    eventId,
     createdAt: thread.lastMessageAt,
   });
 }

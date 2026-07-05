@@ -18,9 +18,16 @@ import {
   IconUpload,
 } from "@tabler/icons-react";
 import { useGet, useSet } from "ccstate-react";
-import { detach, Reason, tapError, withCleanup } from "../../signals/utils.ts";
+import {
+  createDeferredPromise,
+  detach,
+  Reason,
+  tapError,
+  withCleanup,
+} from "../../signals/utils.ts";
 import {
   addHtmlDomComment$,
+  activatePendingHtmlDomCommentFrame$,
   applySelectedHtmlDomImageLayout$,
   applyHtmlDomColorStyle$,
   applyHtmlDomStyleEdits$,
@@ -67,6 +74,58 @@ interface HtmlDomCommentEditorProps {
   readonly url: string;
 }
 
+function waitForIframePaint(
+  iframe: HTMLIFrameElement,
+  signal: AbortSignal,
+): Promise<void> {
+  const view = iframe.contentWindow;
+  if (
+    !view ||
+    typeof view.requestAnimationFrame !== "function" ||
+    typeof view.cancelAnimationFrame !== "function"
+  ) {
+    return Promise.resolve();
+  }
+  const frameView = view;
+
+  const deferred = createDeferredPromise<void>(signal);
+  if (signal.aborted) {
+    return deferred.promise;
+  }
+
+  let firstFrameId: number | null = null;
+  let secondFrameId: number | null = null;
+
+  function cleanup(): void {
+    signal.removeEventListener("abort", handleAbort);
+    if (firstFrameId !== null) {
+      frameView.cancelAnimationFrame(firstFrameId);
+      firstFrameId = null;
+    }
+    if (secondFrameId !== null) {
+      frameView.cancelAnimationFrame(secondFrameId);
+      secondFrameId = null;
+    }
+  }
+
+  function finish(): void {
+    cleanup();
+    if (!deferred.settled()) {
+      deferred.resolve(undefined);
+    }
+  }
+
+  function handleAbort(): void {
+    cleanup();
+  }
+
+  signal.addEventListener("abort", handleAbort, { once: true });
+  firstFrameId = frameView.requestAnimationFrame(() => {
+    secondFrameId = frameView.requestAnimationFrame(finish);
+  });
+  return deferred.promise;
+}
+
 function HtmlDomCommentStage({
   filename,
   model,
@@ -91,10 +150,17 @@ function HtmlDomCommentStage({
   readonly url: string;
 }) {
   const bindFrame = useSet(bindHtmlDomCommentFrame$);
+  const activatePendingFrame = useSet(activatePendingHtmlDomCommentFrame$);
   const setIframeRef = useSet(setHtmlDomCommentIframeRef$);
   const setStageRef = useSet(setHtmlDomCommentStageRef$);
   const loadState = model.loadState;
   const working = status === "working" || model.submitting;
+  const frameKeys =
+    loadState.status === "ready"
+      ? model.pendingFrameKey === null
+        ? [model.activeFrameKey]
+        : [model.activeFrameKey, model.pendingFrameKey]
+      : [];
 
   return (
     <div
@@ -113,19 +179,45 @@ function HtmlDomCommentStage({
           {loadState.message}
         </div>
       )}
-      {loadState.status === "ready" && (
-        <iframe
-          ref={setIframeRef}
-          srcDoc={loadState.html}
-          title={`${filename} comment preview`}
-          sandbox="allow-same-origin allow-scripts"
-          className="block h-full w-full border-0 bg-background"
-          data-testid="html-dom-comment-frame"
-          onLoad={(event) => {
-            bindFrame(event.currentTarget);
-          }}
-        />
-      )}
+      {loadState.status === "ready" &&
+        frameKeys.map((frameKey) => {
+          const active = frameKey === model.activeFrameKey;
+          return (
+            <iframe
+              key={frameKey}
+              ref={active ? setIframeRef : undefined}
+              srcDoc={loadState.html}
+              title={`${filename} comment preview`}
+              sandbox="allow-same-origin allow-scripts"
+              className={
+                active
+                  ? "block h-full w-full border-0 bg-background"
+                  : "pointer-events-none absolute inset-0 h-full w-full border-0 bg-background opacity-0"
+              }
+              aria-hidden={active ? undefined : true}
+              data-testid={
+                active
+                  ? "html-dom-comment-frame"
+                  : "html-dom-comment-frame-pending"
+              }
+              onLoad={(event) => {
+                const iframe = event.currentTarget;
+                if (active) {
+                  bindFrame(iframe);
+                  return;
+                }
+                detach(
+                  (async () => {
+                    await waitForIframePaint(iframe, pageSignal);
+                    activatePendingFrame({ frameKey, iframe });
+                  })(),
+                  Reason.DomCallback,
+                  "activatePendingHtmlDomCommentFrame",
+                );
+              }}
+            />
+          );
+        })}
       {!working && (
         <HtmlDomCommentPopover model={model} pageSignal={pageSignal} />
       )}
@@ -256,10 +348,15 @@ function HtmlDomCommentToolbar({
         >
           <button
             type="button"
-            className="relative inline-flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-45"
+            className={`relative inline-flex h-9 w-9 items-center justify-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${
+              model.commentsOpen
+                ? "bg-blue-50 text-blue-700 ring-2 ring-blue-500/20 hover:bg-blue-100"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            }`}
             disabled={disabled}
             onClick={toggleCommentsOpen}
             aria-label="Show comments"
+            aria-pressed={model.commentsOpen}
             data-testid="html-dom-toolbar-comments"
           >
             <IconMessageCircle size={18} stroke={1.9} />
@@ -275,7 +372,7 @@ function HtmlDomCommentToolbar({
           <button
             type="button"
             className="inline-flex h-9 items-center justify-center rounded-full px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-45"
-            disabled={disabled}
+            disabled={disabled || !model.canDiscard}
             onClick={discardComments}
             data-testid="html-dom-toolbar-discard"
           >
