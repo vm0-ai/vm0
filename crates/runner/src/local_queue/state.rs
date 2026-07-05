@@ -1223,7 +1223,11 @@ mod tests {
         write_job_request(group_dir, claimed, profile);
 
         let profile_dir = super::super::profile_jobs_dir(group_dir, profile).unwrap();
-        std::fs::write(profile_dir.join("not-a-run-id.job"), b"{}").unwrap();
+        std::fs::write(
+            profile_dir.join("00000000-0000-0000-0000-000000000000x.job"),
+            b"{}",
+        )
+        .unwrap();
         std::fs::create_dir_all(super::super::claims_dir(group_dir)).unwrap();
         std::fs::write(super::super::claim_path(group_dir, claimed), b"").unwrap();
         assert!(queue.write_result_sync(completed, 0, None));
