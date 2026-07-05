@@ -6,6 +6,7 @@ import {
   chatThreadArtifactsContract,
   chatThreadByIdContract,
   chatThreadComputerUseHostContract,
+  chatThreadDraftContract,
   chatThreadGithubPrsContract,
   chatThreadMarkAgentReadContract,
   chatThreadMarkReadContract,
@@ -19,6 +20,7 @@ import {
   type ChatSearchResponse,
   type ChatThreadArtifactRun,
   type ChatThreadDetail,
+  type ChatThreadDraft,
   type ChatThreadSnapshotProjection,
   type ChatRunOptionsRequest,
   type CodexServiceTier,
@@ -280,6 +282,10 @@ export function createChatFilesBddApi(context: TestContext) {
 
   function threadByIdClient() {
     return chatFilesApp(context)(chatThreadByIdContract);
+  }
+
+  function threadDraftClient() {
+    return chatFilesApp(context)(chatThreadDraftContract);
   }
 
   function threadMessagesClient() {
@@ -601,6 +607,34 @@ export function createChatFilesBddApi(context: TestContext) {
     ) {
       return await accept(
         threadByIdClient().get({
+          headers: authenticate(context, actor),
+          params: { id: threadId },
+        }),
+        statuses,
+      );
+    },
+
+    async readThreadDraft(
+      actor: ApiTestUser,
+      threadId: string,
+    ): Promise<ChatThreadDraft> {
+      const response = await accept(
+        threadDraftClient().get({
+          headers: authenticate(context, actor),
+          params: { id: threadId },
+        }),
+        [200],
+      );
+      return response.body;
+    },
+
+    async requestReadThreadDraft(
+      actor: ApiTestUser | null,
+      threadId: string,
+      statuses: readonly (200 | 400 | 401 | 404)[],
+    ) {
+      return await accept(
+        threadDraftClient().get({
           headers: authenticate(context, actor),
           params: { id: threadId },
         }),

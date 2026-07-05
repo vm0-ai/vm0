@@ -2,6 +2,7 @@ import { command, computed, type Computed } from "ccstate";
 import {
   type ChatSearchMessage,
   type ChatSearchResult,
+  type ChatThreadDraft,
   type ChatThreadArtifactRun,
   type ChatThreadDetail,
   type CodexServiceTier,
@@ -440,6 +441,25 @@ function ownedChatThread(
   });
 }
 
+export function zeroChatThreadDraft(args: {
+  readonly threadId: string;
+  readonly userId: string;
+}): Computed<Promise<ChatThreadDraft | null>> {
+  return computed(async (get): Promise<ChatThreadDraft | null> => {
+    const thread = await get(ownedChatThread(args.threadId, args.userId));
+    if (!thread) {
+      return null;
+    }
+
+    return {
+      draftContent: thread.draftContent,
+      draftAttachments: thread.draftAttachments
+        ? [...thread.draftAttachments]
+        : null,
+    };
+  });
+}
+
 function firstRunModelPinForThread(
   threadId: string,
 ): Computed<Promise<ChatThreadModelPin | null>> {
@@ -716,10 +736,6 @@ export function zeroChatThreadDetail(args: {
       createdAt: thread.createdAt.toISOString(),
       updatedAt: thread.updatedAt.toISOString(),
       pinnedAt: thread.pinnedAt?.toISOString() ?? null,
-      draftContent: thread.draftContent,
-      draftAttachments: thread.draftAttachments
-        ? [...thread.draftAttachments]
-        : null,
       computerUseHostId: thread.computerUseHostId,
       modelProviderId: null,
       modelProviderType: null,

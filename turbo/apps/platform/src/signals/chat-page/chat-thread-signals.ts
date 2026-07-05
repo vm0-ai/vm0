@@ -1,5 +1,8 @@
 import type { Command, Computed } from "ccstate";
-import type { ChatThreadArtifactRun } from "@vm0/api-contracts/contracts/chat-threads";
+import type {
+  ChatThreadArtifactRun,
+  ChatThreadDraft,
+} from "@vm0/api-contracts/contracts/chat-threads";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import type { ScrollStepDirection } from "../auto-scroll.ts";
 import type { ChatThread } from "../agent-chat.ts";
@@ -30,6 +33,7 @@ export interface ChatThreadSignals {
   threadId: string;
   // -- Data signals ----------------------------------------------------------
   remoteThreadDetail$: Computed<Promise<ChatThread | null>>;
+  threadDraft$: Computed<Promise<ChatThreadDraft | null>>;
   threadMeta$: Computed<Promise<ThreadMeta | null>>;
   reloadThread$: Command<void, []>;
   threadTitleEmoji$: Computed<Promise<string | null>>;

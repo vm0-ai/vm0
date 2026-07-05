@@ -53,9 +53,13 @@ describe("CHAT-01 chat thread lifecycle", () => {
       title: "Launch notes",
       agentId: compose.composeId,
       activeRunIds: [],
-      draftContent: null,
-      draftAttachments: null,
     });
+    await expect(api.readThreadDraft(actor, created.id)).resolves.toStrictEqual(
+      {
+        draftContent: null,
+        draftAttachments: null,
+      },
+    );
 
     await api.patchThread(actor, created.id, {
       draftContent: "follow up on the launch",
@@ -68,9 +72,9 @@ describe("CHAT-01 chat thread lifecycle", () => {
         ),
       ],
     });
-    detail = await api.readThread(actor, created.id);
-    expect(detail.draftContent).toBe("follow up on the launch");
-    expect(detail.draftAttachments).toHaveLength(1);
+    const draft = await api.readThreadDraft(actor, created.id);
+    expect(draft.draftContent).toBe("follow up on the launch");
+    expect(draft.draftAttachments).toHaveLength(1);
     await expect(api.listThreadDrafts(actor)).resolves.toContain(created.id);
 
     await api.renameThread(actor, created.id, "Renamed launch notes");
@@ -125,6 +129,13 @@ describe("CHAT-01 chat thread lifecycle", () => {
     const peerRead = await api.requestReadThread(peer, thread.id, [404]);
     expectApiError(peerRead.body);
     expect(peerRead.body.error.code).toBe("NOT_FOUND");
+    const peerDraftRead = await api.requestReadThreadDraft(
+      peer,
+      thread.id,
+      [404],
+    );
+    expectApiError(peerDraftRead.body);
+    expect(peerDraftRead.body.error.code).toBe("NOT_FOUND");
     await api.patchThread(owner, thread.id, {
       draftContent: "private draft",
       draftAttachments: null,
@@ -278,6 +289,8 @@ describe("CHAT-02 chat messages and visible validation", () => {
     expect(detail).toMatchObject({
       id: threadId,
       agentId: agent.agentId,
+    });
+    await expect(api.readThreadDraft(actor, threadId)).resolves.toStrictEqual({
       draftContent: null,
       draftAttachments: null,
     });

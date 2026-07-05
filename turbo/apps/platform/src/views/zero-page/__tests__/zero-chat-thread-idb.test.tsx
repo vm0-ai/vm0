@@ -238,8 +238,6 @@ function mockCurrentThreadDetail(): void {
       lastMessageAt: "2026-03-10T00:00:02Z",
       createdAt: "2026-03-10T00:00:00Z",
       updatedAt: "2026-03-10T00:00:02Z",
-      draftContent: null,
-      draftAttachments: null,
     });
   });
 }

@@ -529,6 +529,7 @@ export function createIdbCachedDataSource(
 
   return {
     remoteThreadDetail$: remote.remoteThreadDetail$,
+    threadDraft$: remote.threadDraft$,
     reloadThread$: remote.reloadThread$,
     initialPage$,
     patchDraft$: remote.patchDraft$,

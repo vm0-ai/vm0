@@ -5,6 +5,7 @@ import { HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
 import {
   chatThreadByIdContract,
+  chatThreadDraftContract,
   chatThreadsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
@@ -95,10 +96,14 @@ function mockThreadDetails(): void {
       title: null,
       agentId: "c0000000-0000-4000-a000-000000000001",
       activeRunIds: [],
-      draftContent: null,
-      draftAttachments: null,
       createdAt: "2026-03-10T00:00:00Z",
       updatedAt: "2026-03-10T00:00:00Z",
+    });
+  });
+  context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
+    return respond(200, {
+      draftContent: null,
+      draftAttachments: null,
     });
   });
 }
@@ -299,6 +304,12 @@ describe("chat drafts", () => {
         title: "Saved draft",
         agentId: "c0000000-0000-4000-a000-000000000001",
         activeRunIds: [],
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-10T00:00:00Z",
+      });
+    });
+    context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
+      return respond(200, {
         draftContent: "Review the saved launch brief",
         draftAttachments: [
           {
@@ -309,8 +320,6 @@ describe("chat drafts", () => {
             url: "https://cdn.vm7.io/artifacts/test/drafts/brief.md",
           },
         ],
-        createdAt: "2026-03-10T00:00:00Z",
-        updatedAt: "2026-03-10T00:00:00Z",
       });
     });
 
@@ -333,6 +342,12 @@ describe("chat drafts", () => {
         title: "Draft sync",
         agentId: "c0000000-0000-4000-a000-000000000001",
         activeRunIds: [],
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-10T00:00:00Z",
+      });
+    });
+    context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
+      return respond(200, {
         draftContent: "Review the saved launch brief",
         draftAttachments: [
           {
@@ -343,8 +358,6 @@ describe("chat drafts", () => {
             url: "https://cdn.vm7.io/artifacts/test/drafts/brief.md",
           },
         ],
-        createdAt: "2026-03-10T00:00:00Z",
-        updatedAt: "2026-03-10T00:00:00Z",
       });
     });
     context.mocks.api(chatThreadByIdContract.patch, ({ body, respond }) => {
