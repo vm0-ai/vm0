@@ -52,6 +52,7 @@ export interface AppendQueuedMessageArgs {
   content: string | null;
   attachments: PersistedAttachment[] | null;
   clientMessageId: string;
+  chatThreadSortEventId: string;
   hasTextContent: boolean;
   modelSelection: ModelSelectionRequest | null;
   runOptions?: ChatRunOptionsRequest;

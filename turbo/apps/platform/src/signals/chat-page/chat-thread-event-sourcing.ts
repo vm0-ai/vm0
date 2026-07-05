@@ -381,6 +381,28 @@ export const registerOptimisticChatThreadEvent$ = command(
   },
 );
 
+export const touchOptimisticChatThreadSort$ = command(
+  (
+    { set },
+    args: {
+      readonly id: string;
+      readonly threadId: string;
+      readonly agentId: string;
+      readonly createdAt: string;
+    },
+  ) => {
+    set(registerOptimisticChatThreadEvent$, {
+      id: args.id,
+      kind: "sort_touched",
+      chatThreadId: args.threadId,
+      agentId: args.agentId,
+      title: null,
+      selectedModel: null,
+      createdAt: args.createdAt,
+    } satisfies ChatThreadEvent);
+  },
+);
+
 export const reconcileOptimisticChatThreadEvents$ = command(
   ({ set }, persisted: ChatThreadEventData) => {
     set(optimisticChatThreadEventsState$, (events) => {

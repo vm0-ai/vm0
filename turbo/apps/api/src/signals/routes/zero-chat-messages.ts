@@ -37,7 +37,10 @@ import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import { waitUntil } from "../context/wait-until";
 import { writeDb$, type Db } from "../external/db";
-import { publishUserSignal } from "../external/realtime";
+import {
+  publishThreadListChanged,
+  publishUserSignal,
+} from "../external/realtime";
 import { now, nowDate } from "../external/time";
 import {
   badRequestMessage,
@@ -78,7 +81,10 @@ import {
   resolveModelFirstProviderAdmission,
   resolveModelSelectionPin,
 } from "../services/zero-model-selection.service";
-import { visibleChatMessageCondition } from "../services/zero-chat-message-shared.service";
+import {
+  touchChatThreadLastMessageAt,
+  visibleChatMessageCondition,
+} from "../services/zero-chat-message-shared.service";
 import { appendQueuedRunAssistantMarker } from "../services/zero-chat-queue-marker.service";
 import { appendChatThreadEvent } from "../services/zero-chat-thread-event.service";
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
@@ -97,6 +103,7 @@ interface NormalSendBody {
   readonly threadId?: string;
   readonly clientThreadId?: string;
   readonly chatThreadEventId?: string;
+  readonly chatThreadSortEventId?: string;
   readonly modelSelectionEventId?: string;
   readonly modelProvider?: string;
   readonly modelSelection?: {
@@ -213,6 +220,17 @@ interface PreparedNormalSend {
   readonly persistedExplicitSelection: boolean;
   readonly initialThinkingEnabled: boolean;
   readonly codexFastModeEnabled: boolean;
+}
+
+function shouldTouchThreadSortFromNormalSend(
+  source: ZeroPreCreateSource | undefined,
+  isNewThread: boolean,
+): boolean {
+  return (
+    !isNewThread &&
+    source !== "chat_callback_auto_send" &&
+    source !== "workflow_slash_command"
+  );
 }
 
 interface NormalSendFeatureSwitches {
@@ -1788,6 +1806,8 @@ function appendUnassociatedUserMessage(params: {
   readonly prompt: string;
   readonly attachFiles: readonly AttachFile[] | undefined;
   readonly clientMessageId: string | undefined;
+  readonly chatThreadSortEventId: string | undefined;
+  readonly touchThreadSort: boolean;
   readonly generationTemplate: IncomingGenerationTemplate;
 }): Promise<ClientMessageIdResolution> {
   return params.db.transaction(async (tx) => {
@@ -1818,7 +1838,13 @@ function appendUnassociatedUserMessage(params: {
       })
       .onConflictDoNothing({ target: chatMessages.id })
       .returning({ createdAt: chatMessages.createdAt });
-    if (inserted) {
+    if (inserted && params.touchThreadSort) {
+      await touchChatThreadLastMessageAt(
+        tx,
+        params.threadId,
+        inserted.createdAt,
+        params.chatThreadSortEventId,
+      );
       return { kind: "queued", createdAt: inserted.createdAt, inserted: true };
     }
     if (!explicitId) {
@@ -1870,6 +1896,8 @@ async function appendAssociatedUserMessage(params: {
   readonly runId: string;
   readonly attachFiles: readonly AttachFile[] | undefined;
   readonly clientMessageId: string | undefined;
+  readonly chatThreadSortEventId: string | undefined;
+  readonly touchThreadSort: boolean;
   readonly revokesMessageId: string | undefined;
   readonly generationTemplate: IncomingGenerationTemplate;
   readonly appendQueueMarker: boolean;
@@ -1883,8 +1911,8 @@ async function appendAssociatedUserMessage(params: {
   readonly automationId?: string;
   readonly automationTitle?: string;
   readonly automationSnapshot?: ChatMessageAutomationSnapshot;
-}): Promise<void> {
-  await params.db.transaction(async (tx) => {
+}): Promise<boolean> {
+  return await params.db.transaction(async (tx) => {
     if (params.clearDraft) {
       await clearThreadDraft(tx, params.threadId, params.userId);
     }
@@ -1911,6 +1939,14 @@ async function appendAssociatedUserMessage(params: {
       })
       .onConflictDoNothing({ target: chatMessages.id })
       .returning({ createdAt: chatMessages.createdAt });
+    if (inserted && params.touchThreadSort) {
+      await touchChatThreadLastMessageAt(
+        tx,
+        params.threadId,
+        inserted.createdAt,
+        params.chatThreadSortEventId,
+      );
+    }
     if (params.appendQueueMarker) {
       await appendQueuedRunAssistantMarker(tx, {
         chatThreadId: params.threadId,
@@ -1918,6 +1954,7 @@ async function appendAssociatedUserMessage(params: {
         createdAfter: inserted?.createdAt ?? nowDate(),
       });
     }
+    return inserted !== undefined;
   });
 }
 
@@ -2147,9 +2184,6 @@ async function publishChatMessageCreated(
   userId: string,
   threadId: string,
 ): Promise<void> {
-  // No threadListChanged: every caller is a user-initiated post into the
-  // user's own open thread, so the acting client already reloads locally
-  // and sidebar ordering only moves on run-terminal events.
   await publishUserSignal([userId], `chatThreadMessageCreated:${threadId}`);
 }
 
@@ -2402,6 +2436,7 @@ async function queueUnassociatedNormalMessage(params: {
   readonly prepared: PreparedNormalSend;
   readonly body: NormalSendBody;
   readonly userId: string;
+  readonly touchThreadSort: boolean;
 }): Promise<
   | CreatedChatMessageResponse
   | ReturnType<typeof duplicateClientMessageIdResponse>
@@ -2413,6 +2448,8 @@ async function queueUnassociatedNormalMessage(params: {
     prompt: params.body.prompt,
     attachFiles: params.body.attachFiles,
     clientMessageId: params.body.clientMessageId,
+    chatThreadSortEventId: params.body.chatThreadSortEventId,
+    touchThreadSort: params.touchThreadSort,
     generationTemplate: params.body.generationTemplate,
   });
   if (message.kind === "queued" && message.inserted) {
@@ -2420,6 +2457,7 @@ async function queueUnassociatedNormalMessage(params: {
       params.userId,
       params.prepared.thread.threadId,
     );
+    await publishThreadListChanged(params.userId);
   }
   const response = clientMessageIdResolutionResponse(
     message,
@@ -2465,10 +2503,11 @@ function scheduleAssociatedUserMessage(params: {
   readonly runId: string;
   readonly appendQueueMarker: boolean;
   readonly appendInitialThinking: boolean;
+  readonly touchThreadSort: boolean;
 }): void {
   waitUntil(
     (async () => {
-      await appendAssociatedUserMessage({
+      const inserted = await appendAssociatedUserMessage({
         db: params.db,
         threadId: params.threadId,
         userId: params.userId,
@@ -2476,15 +2515,20 @@ function scheduleAssociatedUserMessage(params: {
         runId: params.runId,
         attachFiles: params.body.attachFiles,
         clientMessageId: params.body.clientMessageId,
+        chatThreadSortEventId: params.body.chatThreadSortEventId,
+        touchThreadSort: params.touchThreadSort,
         revokesMessageId: params.body.revokesMessageId,
         generationTemplate: params.body.generationTemplate,
         appendQueueMarker: params.appendQueueMarker,
         clearDraft: true,
       });
-      await publishUserSignal(
-        [params.userId],
-        `chatThreadMessageCreated:${params.threadId}`,
-      );
+      if (inserted) {
+        await publishUserSignal(
+          [params.userId],
+          `chatThreadMessageCreated:${params.threadId}`,
+        );
+        await publishThreadListChanged(params.userId);
+      }
       await publishUserSignal(
         [params.userId],
         `chatThreadRunCreated:${params.threadId}`,
@@ -2500,9 +2544,8 @@ function scheduleAssociatedUserMessage(params: {
           }),
         );
       }
-      // No threadListChanged here: the sending client reloads its own
-      // sidebar after the POST, sorting only moves on run-terminal events,
-      // and the terminal callback broadcasts to other clients.
+      // Direct user messages move sidebar recency; the terminal callback will
+      // publish again when the run-finished marker lands.
     })(),
   );
 }
@@ -2516,6 +2559,7 @@ function scheduleCreatedChatRunSideEffects(params: {
   readonly runId: string;
   readonly runStatus: string;
   readonly initialThinkingEnabled: boolean;
+  readonly touchThreadSort: boolean;
 }): void {
   scheduleChatTitleGeneration({
     db: params.db,
@@ -2536,6 +2580,7 @@ function scheduleCreatedChatRunSideEffects(params: {
       params.runStatus !== "queued" &&
       params.body.hasTextContent !== false &&
       params.body.prompt.trim().length > 0,
+    touchThreadSort: params.touchThreadSort,
   });
 }
 
@@ -2570,6 +2615,7 @@ async function appendInsufficientCreditsMessages(params: {
   readonly body: NormalSendBody;
   readonly userId: string;
   readonly orgId: string;
+  readonly touchThreadSort: boolean;
 }): Promise<CreatedChatMessageResponse> {
   const assistantContent = await buildInsufficientCreditsAssistantMessage({
     db: params.prepared.db,
@@ -2613,6 +2659,14 @@ async function appendInsufficientCreditsMessages(params: {
       .returning({ createdAt: chatMessages.createdAt });
 
     const createdAt = userMessage?.createdAt ?? userCreatedAt;
+    if (userMessage && params.touchThreadSort) {
+      await touchChatThreadLastMessageAt(
+        tx,
+        params.prepared.thread.threadId,
+        createdAt,
+        params.body.chatThreadSortEventId,
+      );
+    }
     await tx.insert(chatMessages).values({
       chatThreadId: params.prepared.thread.threadId,
       role: "assistant",
@@ -2622,13 +2676,16 @@ async function appendInsufficientCreditsMessages(params: {
       createdAt: assistantCreatedAt,
       runId: null,
     });
-    return { createdAt };
+    return { createdAt, inserted: userMessage !== undefined };
   });
 
   await publishChatMessageCreated(
     params.userId,
     params.prepared.thread.threadId,
   );
+  if (result.inserted) {
+    await publishThreadListChanged(params.userId);
+  }
 
   return {
     status: 201,
@@ -2851,6 +2908,10 @@ const createNormalChatRun$ = command(
         body: args.body,
         userId: args.userId,
         orgId: args.orgId,
+        touchThreadSort: shouldTouchThreadSortFromNormalSend(
+          args.zeroPreCreateSource,
+          prepared.thread.isNewThread,
+        ),
       });
     }
 
@@ -2905,6 +2966,10 @@ const createNormalChatRun$ = command(
       runId: runResult.body.runId,
       runStatus: runResult.body.status,
       initialThinkingEnabled: prepared.initialThinkingEnabled,
+      touchThreadSort: shouldTouchThreadSortFromNormalSend(
+        args.zeroPreCreateSource,
+        prepared.thread.isNewThread,
+      ),
     });
 
     if (prepared.persistedExplicitSelection && modelPin.selectedModel) {
@@ -3011,6 +3076,10 @@ export const sendNormalMessage$ = command(
         prepared,
         body: args.body,
         userId: args.userId,
+        touchThreadSort: shouldTouchThreadSortFromNormalSend(
+          args.zeroPreCreateSource,
+          prepared.thread.isNewThread,
+        ),
       });
       signal.throwIfAborted();
       return response;

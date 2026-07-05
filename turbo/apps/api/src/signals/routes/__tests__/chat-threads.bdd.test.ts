@@ -163,6 +163,7 @@ async function sendChatRun(
     readonly agentId: string;
     readonly prompt: string;
     readonly threadId?: string;
+    readonly chatThreadSortEventId?: string;
     readonly modelSelection?: {
       readonly modelProviderId: string;
       readonly selectedModel: string;
@@ -567,6 +568,57 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       },
     });
   });
+
+  it("touches thread sort from existing direct user sends and run-finished markers", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor(
+      "Thread sort touch agent",
+    );
+    const directSendSortEventId = randomUUID();
+    const thread = await chat.createThread(actor, {
+      agentId,
+      title: "Existing sort touch thread",
+    });
+
+    const run = await sendChatRun(actor, {
+      agentId,
+      threadId: thread.id,
+      prompt: "move this thread when I send it",
+      chatThreadSortEventId: directSendSortEventId,
+    });
+    await waitForThreadMessages(actor, run.threadId, (messages) => {
+      return userMessages(messages).some((message) => {
+        return message.content === "move this thread when I send it";
+      });
+    });
+    await flushWaitUntilForTest();
+
+    let sortTouches = (await allThreadEvents(actor)).filter((event) => {
+      return (
+        event.chatThreadId === run.threadId && event.kind === "sort_touched"
+      );
+    });
+    expect(sortTouches).toHaveLength(1);
+    expect(sortTouches[0]?.id).toBe(directSendSortEventId);
+
+    const claim = await claimChatRun(runnerGroup, run.runId);
+    await completeChatRunOk(run.runId, claim.sandboxHeaders);
+    await waitForThreadMessages(actor, run.threadId, (messages) => {
+      return assistantMessages(messages).some((message) => {
+        return (
+          message.runId === run.runId &&
+          message.runLifecycleEvent === "completed"
+        );
+      });
+    });
+    await flushWaitUntilForTest();
+
+    sortTouches = (await allThreadEvents(actor)).filter((event) => {
+      return (
+        event.chatThreadId === run.threadId && event.kind === "sort_touched"
+      );
+    });
+    expect(sortTouches).toHaveLength(2);
+  }, 90_000);
 
   it("compacts chat thread snapshots from event markers and prunes deleted agent threads", async () => {
     mockEnv("CRON_SECRET", CHAT_THREAD_SNAPSHOT_CRON_SECRET);
