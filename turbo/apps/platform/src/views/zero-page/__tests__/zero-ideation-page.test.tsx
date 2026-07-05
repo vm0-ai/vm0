@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import {
   zeroConnectorCatalogContract,
   type PublicConnectorCatalogStatusItem,
@@ -55,8 +55,9 @@ function mockConnectorCatalogStatus(connectorRefs: readonly string[]): void {
   });
 }
 
-function cardByTitle(title: string): HTMLElement {
-  const card = screen.getByText(title).closest(".zero-card");
+async function cardByTitle(title: string): Promise<HTMLElement> {
+  const titleElement = await screen.findByText(title);
+  const card = titleElement.closest(".zero-card");
   if (!(card instanceof HTMLElement)) {
     throw new Error(`${title} card not found`);
   }
@@ -70,27 +71,24 @@ describe("zero ideation page", () => {
       path: `/agents/${agentId}/ideas`,
     });
 
-    await waitFor(() => {
-      expect(screen.getAllByText("Ideas & Use Cases")[0]).toBeInTheDocument();
-    });
-    await waitFor(() => {
-      expect(screen.getByText("Daily standup report")).toBeInTheDocument();
-    });
+    const pageTitles = await screen.findAllByText("Ideas & Use Cases");
+    expect(pageTitles[0]).toBeInTheDocument();
+    await expect(
+      screen.findByText("Daily standup report"),
+    ).resolves.toBeInTheDocument();
 
     await fill(screen.getByLabelText("Search use cases"), "RevenueCat");
 
-    await waitFor(() => {
-      expect(
-        screen.getByText("RevenueCat subscription digest"),
-      ).toBeInTheDocument();
-    });
+    await expect(
+      screen.findByText("RevenueCat subscription digest"),
+    ).resolves.toBeInTheDocument();
     expect(screen.queryByText("Daily standup report")).not.toBeInTheDocument();
 
     click(screen.getByText("RevenueCat subscription digest"));
 
-    const composer = await waitFor(() => {
-      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
-    });
+    const composer = (await screen.findByPlaceholderText(
+      PLACEHOLDER,
+    )) as HTMLTextAreaElement;
     expect(composer).toHaveValue(
       "Set up a daily RevenueCat digest that tracks new subscriptions, renewals, and cancellations in Google Sheets and alerts on Slack for churn spikes",
     );
@@ -104,9 +102,7 @@ describe("zero ideation page", () => {
       path: `/agents/${agentId}/ideas`,
     });
 
-    const card = await waitFor(() => {
-      return cardByTitle("Daily standup report");
-    });
+    const card = await cardByTitle("Daily standup report");
 
     expect(card.querySelectorAll("img")).toHaveLength(2);
   });
@@ -119,16 +115,16 @@ describe("zero ideation page", () => {
       path: `/agents/${agentId}/ideas`,
     });
 
-    await waitFor(() => {
-      expect(screen.getByText("Browser screenshots")).toBeInTheDocument();
-    });
+    await expect(
+      screen.findByText("Browser screenshots"),
+    ).resolves.toBeInTheDocument();
     expect(screen.queryByText("Daily standup report")).not.toBeInTheDocument();
 
     await fill(screen.getByLabelText("Search use cases"), "RevenueCat");
 
-    expect(
-      await screen.findByText("No use cases match your search."),
-    ).toBeInTheDocument();
+    await expect(
+      screen.findByText("No use cases match your search."),
+    ).resolves.toBeInTheDocument();
     expect(
       screen.queryByText("RevenueCat subscription digest"),
     ).not.toBeInTheDocument();
@@ -143,9 +139,9 @@ describe("zero ideation page", () => {
       path: `/agents/${agentId}/ideas`,
     });
 
-    await waitFor(() => {
-      expect(screen.getByText("Browser screenshots")).toBeInTheDocument();
-    });
+    await expect(
+      screen.findByText("Browser screenshots"),
+    ).resolves.toBeInTheDocument();
     expect(screen.queryByText("Reports")).not.toBeInTheDocument();
     expect(
       screen.queryByText("No use cases match your search."),
