@@ -98,8 +98,8 @@ struct NetnsPoolInner {
 /// Maintains a buffer of `BUFFER_SIZE` ready namespaces for the active queue
 /// selected by [`NetnsPoolConfig`]. Without a proxy port, the active queue is
 /// the plain queue; with a proxy port, it is the proxy queue. After each
-/// [`acquire`](Self::acquire), the pool spawns a background task to replenish
-/// the active queue. Namespaces returned via [`release`](Self::release) are
+/// [`acquire`](Self::acquire), the pool spawns background tasks as needed to
+/// replenish the active queue. Namespaces returned via [`release`](Self::release) are
 /// recycled back into that queue.
 pub struct NetnsPool {
     inner: NetnsPoolInner,
