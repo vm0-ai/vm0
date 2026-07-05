@@ -317,7 +317,7 @@ function resultAccessibilityAppStateSnapshot(
     );
   }
   for (const element of elements) {
-    if (!isRecord(element) || !resultOptionalString(element, "id")) {
+    if (!isRecord(element)) {
       throw new ComputerUseNativeHelperError(
         "accessibility_unavailable",
         "Native Computer Use helper returned invalid accessibility element",
