@@ -152,6 +152,12 @@
     },
     {
       "category": "authority",
+      "name": "parameterized empty authority is invalid",
+      "base": "https:///{org}",
+      "expectedValid": false
+    },
+    {
+      "category": "authority",
       "name": "bracketed non-ipv6 authority is invalid",
       "base": "https://[v1.invalid]",
       "expectedValid": false
@@ -202,6 +208,12 @@
       "category": "scheme",
       "name": "missing scheme delimiter is invalid",
       "base": "https:/api.example.com",
+      "expectedValid": false
+    },
+    {
+      "category": "scheme",
+      "name": "parameterized scheme is invalid",
+      "base": "{scheme}://api.example.com",
       "expectedValid": false
     },
     {
