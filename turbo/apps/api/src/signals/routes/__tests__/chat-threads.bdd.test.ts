@@ -1046,6 +1046,14 @@ describe("CHAT-01 chat thread read state", () => {
       },
       context.signal,
     );
+    await seedCompletedRunFinish(owner, {
+      agentId: agentA.agentId,
+      threadId: activeGoalThread,
+    });
+    await seedCompletedRunFinish(owner, {
+      agentId: agentB.agentId,
+      threadId: completeGoalThread,
+    });
     await expect(chat.listUnreadAgents(owner)).resolves.toStrictEqual([
       agentB.agentId,
     ]);
@@ -1266,6 +1274,14 @@ describe("CHAT-01 chat thread read state", () => {
       },
       context.signal,
     );
+    await seedCompletedRunFinish(owner, {
+      agentId: agent.agentId,
+      threadId: activeGoalThread,
+    });
+    await seedCompletedRunFinish(owner, {
+      agentId: agent.agentId,
+      threadId: completeGoalThread,
+    });
 
     expect(
       new Set(
