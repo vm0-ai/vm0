@@ -257,15 +257,13 @@ pub(super) fn collect_heartbeat_state(
         runner_id: runner_id.to_string(),
         runner_name: name.to_string(),
         group: group.to_string(),
-        profiles: profiles.keys().cloned().collect(),
         total_vcpu: budget.effective_vcpu(),
         total_memory_mb: budget.effective_memory_mb(),
         max_concurrent: budget.max_concurrent(),
         allocated_vcpu,
         allocated_memory_mb,
         running_count,
-        admittable_profiles: admittable_profiles.clone(),
-        available_profiles: admittable_profiles,
+        admittable_profiles,
         held_session_states: idle_pool.held_session_states(),
         mode: match mode {
             RunnerMode::Running => "running".to_string(),
@@ -441,7 +439,6 @@ mod tests {
         );
 
         assert_eq!(state.admittable_profiles, vec!["vm0/default"]);
-        assert_eq!(state.available_profiles, vec!["vm0/default"]);
     }
 
     #[test]
@@ -471,7 +468,6 @@ mod tests {
         );
 
         assert!(state.admittable_profiles.is_empty());
-        assert!(state.available_profiles.is_empty());
     }
 
     #[test]
@@ -494,7 +490,6 @@ mod tests {
         );
 
         assert!(state.admittable_profiles.is_empty());
-        assert!(state.available_profiles.is_empty());
     }
 
     #[tokio::test(flavor = "current_thread")]

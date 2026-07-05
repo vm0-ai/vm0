@@ -414,7 +414,6 @@ pub struct HeartbeatState {
     pub runner_id: String,
     pub runner_name: String,
     pub group: String,
-    pub profiles: Vec<String>,
     pub total_vcpu: u32,
     pub total_memory_mb: u32,
     pub max_concurrent: usize,
@@ -422,7 +421,6 @@ pub struct HeartbeatState {
     pub allocated_memory_mb: u32,
     pub running_count: usize,
     pub admittable_profiles: Vec<String>,
-    pub available_profiles: Vec<String>,
     pub held_session_states: Vec<HeldSessionState>,
     pub mode: String,
 }
@@ -1060,7 +1058,6 @@ mod tests {
             runner_id: "550e8400-e29b-41d4-a716-446655440000".into(),
             runner_name: "runner-1".into(),
             group: "vm0/production".into(),
-            profiles: vec!["vm0/default".into()],
             total_vcpu: 16,
             total_memory_mb: 32768,
             max_concurrent: 8,
@@ -1068,7 +1065,6 @@ mod tests {
             allocated_memory_mb: 6144,
             running_count: 2,
             admittable_profiles: vec!["vm0/default".into()],
-            available_profiles: vec!["vm0/default".into()],
             held_session_states: vec![HeldSessionState {
                 session_id: "session-abc".into(),
                 last_completed_at: "2026-05-28T00:00:00.000Z".into(),
@@ -1085,7 +1081,8 @@ mod tests {
         assert_eq!(json["allocatedMemoryMb"], 6144);
         assert_eq!(json["runningCount"], 2);
         assert_eq!(json["admittableProfiles"], json!(["vm0/default"]));
-        assert_eq!(json["availableProfiles"], json!(["vm0/default"]));
+        assert!(json.get("profiles").is_none());
+        assert!(json.get("availableProfiles").is_none());
         assert_eq!(
             json["heldSessionStates"],
             json!([{
