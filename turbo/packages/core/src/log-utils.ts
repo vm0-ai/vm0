@@ -44,11 +44,17 @@ function serializeErrorWithSeen(
   const serialized: Record<string, unknown> = {
     name: typeof name === "string" ? name : "Error",
     message: typeof message === "string" ? message : UNREADABLE_MARKER,
-    stack: safeReadValue(() => {
-      return err.stack;
-    }),
   };
   seen.add(err);
+  const stack = safeReadValue(() => {
+    return err.stack;
+  });
+  if (stack !== undefined) {
+    serialized.stack =
+      typeof stack === "string"
+        ? stack
+        : serializeErrorValue(stack, seen, depth + 1);
+  }
   const cause = safeReadValue(() => {
     return err.cause;
   });

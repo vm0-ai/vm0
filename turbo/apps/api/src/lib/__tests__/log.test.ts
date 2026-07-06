@@ -435,6 +435,29 @@ describe("serializeError via logging", () => {
     }).not.toThrow();
   });
 
+  it("serializes non-string error stacks into JSON-safe values", () => {
+    const log = logger("non-string-stack-test");
+    const err = new Error("request failed");
+    Object.defineProperty(err, "stack", {
+      get() {
+        return 1n;
+      },
+    });
+
+    expect(() => {
+      log.error(err);
+    }).not.toThrow();
+
+    const fields = axiomLogging.error.mock.calls[0]?.[1] as
+      | Record<string, unknown>
+      | undefined;
+    const serializedError = fields?.error as Record<string, unknown>;
+    expect(serializedError.stack).toBe("1");
+    expect(() => {
+      JSON.stringify(serializedError);
+    }).not.toThrow();
+  });
+
   it("surfaces custom enumerable properties on Error", () => {
     const log = logger("custom-err");
     const err = new Error("custom") as Error & Record<string, unknown>;
