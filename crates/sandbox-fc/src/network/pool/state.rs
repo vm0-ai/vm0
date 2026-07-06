@@ -1593,51 +1593,45 @@ mod tests {
 
     #[test]
     fn netns_high_water_completion_retains_ready_entries_above_buffer() {
-        let mut pool = NetnsPoolState::inactive_for_test();
-        pool.active = true;
-        for index in 0..BUFFER_SIZE {
-            pool.plain_queue
-                .push_back(test_info(&format!("ready-ns-{index}")));
+        for (kind, proxy_port) in [(NetnsKind::Plain, None), (NetnsKind::Proxy, Some(8080))] {
+            let mut pool = NetnsPoolState::inactive_for_test();
+            pool.active = true;
+            pool.proxy_port = proxy_port;
+            for index in 0..BUFFER_SIZE {
+                pool.target_queue_mut(kind)
+                    .push_back(test_info(&format!("ready-ns-{index}")));
+            }
+            pool.reserve_pending_creation_for_test(kind).unwrap();
+            pool.reserve_pending_creation_for_test(kind).unwrap();
+            let pending_ids: Vec<PendingId> = pool.pending_set(kind).iter().copied().collect();
+            assert_eq!(pending_ids.len(), 2);
+
+            pool.completion_tx
+                .send(CreationCompletion {
+                    id: pending_ids[0],
+                    kind,
+                    result: Ok(test_info("completed-ns-0")),
+                })
+                .unwrap();
+            pool.completion_tx
+                .send(CreationCompletion {
+                    id: pending_ids[1],
+                    kind,
+                    result: Ok(test_info("completed-ns-1")),
+                })
+                .unwrap();
+
+            let delete = pool.drain_completed(false);
+            let queue = pool.target_queue(kind);
+
+            assert!(delete.is_empty());
+            assert!(pool.pending_set(kind).is_empty());
+            assert_eq!(queue.len(), BUFFER_SIZE + 2);
+            assert!(queue.iter().any(|ns| ns.name == "completed-ns-0"));
+            assert!(queue.iter().any(|ns| ns.name == "completed-ns-1"));
+            pool.active = false;
+            pool.target_queue_mut(kind).clear();
         }
-        pool.reserve_pending_creation_for_test(NetnsKind::Plain)
-            .unwrap();
-        pool.reserve_pending_creation_for_test(NetnsKind::Plain)
-            .unwrap();
-        let pending_ids: Vec<PendingId> = pool.pending_plain.iter().copied().collect();
-        assert_eq!(pending_ids.len(), 2);
-
-        pool.completion_tx
-            .send(CreationCompletion {
-                id: pending_ids[0],
-                kind: NetnsKind::Plain,
-                result: Ok(test_info("completed-ns-0")),
-            })
-            .unwrap();
-        pool.completion_tx
-            .send(CreationCompletion {
-                id: pending_ids[1],
-                kind: NetnsKind::Plain,
-                result: Ok(test_info("completed-ns-1")),
-            })
-            .unwrap();
-
-        let delete = pool.drain_completed(false);
-
-        assert!(delete.is_empty());
-        assert!(pool.pending_plain.is_empty());
-        assert_eq!(pool.plain_queue.len(), BUFFER_SIZE + 2);
-        assert!(
-            pool.plain_queue
-                .iter()
-                .any(|ns| ns.name == "completed-ns-0")
-        );
-        assert!(
-            pool.plain_queue
-                .iter()
-                .any(|ns| ns.name == "completed-ns-1")
-        );
-        pool.active = false;
-        pool.plain_queue.clear();
     }
 
     #[tokio::test]
@@ -2132,44 +2126,38 @@ mod tests {
 
     #[tokio::test]
     async fn netns_high_water_release_retains_ready_entries_above_buffer() {
-        let mut state = NetnsPoolState::inactive_for_test();
-        state.active = true;
-        let mut leases: Vec<Option<NetnsLease>> = (0..BUFFER_SIZE + 2)
-            .map(|index| {
-                Some(
-                    state
-                        .checkout(test_info(&format!("released-ns-{index}")))
-                        .unwrap(),
-                )
-            })
-            .collect();
-        let mut pool = NetnsPool::from_state_for_test(state);
+        for (kind, proxy_port) in [(NetnsKind::Plain, None), (NetnsKind::Proxy, Some(8080))] {
+            let mut state = NetnsPoolState::inactive_for_test();
+            state.active = true;
+            state.proxy_port = proxy_port;
+            let mut leases: Vec<Option<NetnsLease>> = (0..BUFFER_SIZE + 2)
+                .map(|index| {
+                    Some(
+                        state
+                            .checkout(test_info(&format!("released-ns-{index}")))
+                            .unwrap(),
+                    )
+                })
+                .collect();
+            let mut pool = NetnsPool::from_state_for_test(state);
 
-        for lease in &mut leases {
-            pool.release(lease).await.unwrap();
+            for lease in &mut leases {
+                pool.release(lease).await.unwrap();
+            }
+
+            assert!(leases.iter().all(Option::is_none));
+            {
+                let state = pool.inner.state.lock().await;
+                let queue = state.target_queue(kind);
+                let last_released_name = format!("released-ns-{}", BUFFER_SIZE + 1);
+                assert!(state.in_flight.is_empty());
+                assert_eq!(queue.len(), BUFFER_SIZE + 2);
+                assert!(queue.iter().any(|ns| ns.name == "released-ns-0"));
+                assert!(queue.iter().any(|ns| ns.name == last_released_name));
+            }
+
+            pool.cleanup().await.unwrap();
         }
-
-        assert!(leases.iter().all(Option::is_none));
-        {
-            let state = pool.inner.state.lock().await;
-            let last_released_name = format!("released-ns-{}", BUFFER_SIZE + 1);
-            assert!(state.in_flight.is_empty());
-            assert_eq!(state.plain_queue.len(), BUFFER_SIZE + 2);
-            assert!(
-                state
-                    .plain_queue
-                    .iter()
-                    .any(|ns| ns.name == "released-ns-0")
-            );
-            assert!(
-                state
-                    .plain_queue
-                    .iter()
-                    .any(|ns| ns.name == last_released_name)
-            );
-        }
-
-        pool.cleanup().await.unwrap();
     }
 
     #[tokio::test]
