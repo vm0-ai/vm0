@@ -51,7 +51,7 @@ const OPENAI_AUDIO_SPEECH_URL = "https://api.openai.com/v1/audio/speech";
 const OPENAI_AUDIO_TRANSCRIPTIONS_URL =
   "https://api.openai.com/v1/audio/transcriptions";
 const BYTEPLUS_ASR_FLASH_URL =
-  "https://byteplus-proxy.vm0.ai/api/v3/auc/bigmodel/recognize/flash";
+  "https://voice.ap-southeast-1.bytepluses.com/api/v3/auc/bigmodel/recognize/flash";
 const VOICE_IO_TTS_MODEL = "gpt-4o-mini-tts";
 const VOICE_IO_STT_VERBOSE_MODEL = "whisper-1";
 const SPEECH_CONTENT_TYPE = "audio/wav";
