@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.232.0](https://github.com/vm0-ai/vm0/compare/api-v1.231.3...api-v1.232.0) (2026-07-06)
+
+
+### Features
+
+* add steam player connector ([#20359](https://github.com/vm0-ai/vm0/issues/20359)) ([830096d](https://github.com/vm0-ai/vm0/commit/830096d68b93cd490769ed98c0c91090bcde6f31))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.159.0
+    * @vm0/connectors bumped to 1.143.0
+    * @vm0/core bumped to 8.408.0
+    * @vm0/db bumped to 1.96.4
+
 ## [1.231.3](https://github.com/vm0-ai/vm0/compare/api-v1.231.2...api-v1.231.3) (2026-07-06)
 
 
