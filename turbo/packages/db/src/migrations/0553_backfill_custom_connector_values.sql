@@ -43,11 +43,16 @@ BEGIN
 	END IF;
 
 	IF TG_OP = 'DELETE' THEN
+		-- Only remove the value row if it is still the legacy-synced copy.
+		-- New API instances write values directly during rollout.
 		DELETE FROM "org_custom_connector_values"
 		WHERE "connector_id" = OLD."connector_id"
+			AND "org_id" = OLD."org_id"
 			AND "user_id" = OLD."user_id"
 			AND "kind" = 'secret'
-			AND "key" = 'secret';
+			AND "key" = 'secret'
+			AND "encrypted_value" = OLD."encrypted_value"
+			AND "updated_at" = OLD."updated_at";
 		RETURN OLD;
 	END IF;
 
