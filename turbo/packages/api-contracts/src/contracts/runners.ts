@@ -502,13 +502,6 @@ export const heartbeatBodySchema = z
         message: "admittableProfiles is required",
       });
     }
-  })
-  .transform(({ availableProfiles, profiles, ...body }) => {
-    return {
-      ...body,
-      admittableProfiles:
-        body.admittableProfiles ?? availableProfiles ?? profiles ?? [],
-    };
   });
 
 /**

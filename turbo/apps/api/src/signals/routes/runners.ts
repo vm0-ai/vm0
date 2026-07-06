@@ -281,6 +281,19 @@ function canonicalizeHeldSessionStates(
 
 const heartbeatBody$ = bodyResultOf(runnersHeartbeatContract.heartbeat);
 
+function normalizedHeartbeatAdmittableProfiles(body: {
+  readonly admittableProfiles?: string[];
+  readonly availableProfiles?: string[];
+  readonly profiles?: string[];
+}): string[] {
+  const profiles =
+    body.admittableProfiles ?? body.availableProfiles ?? body.profiles;
+  if (!profiles) {
+    throw new Error("Heartbeat profile list missing after validation");
+  }
+  return profiles;
+}
+
 const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = await set(runnerAuth$, get(authorization$), signal);
   signal.throwIfAborted();
@@ -300,7 +313,7 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   const heldSessionStates =
     canonicalizeHeldSessionStates(body.data.heldSessionStates) ?? [];
-  const admittableProfiles = body.data.admittableProfiles;
+  const admittableProfiles = normalizedHeartbeatAdmittableProfiles(body.data);
   const currentDate = nowDate();
   const db = set(writeDb$);
   await db
