@@ -10,8 +10,13 @@ const UNREADABLE_MARKER = "[Unreadable]";
 export function formatMessage(args: unknown[]): string {
   if (args.length === 0) return "";
   if (typeof args[0] === "string") return args[0];
-  if (args[0] instanceof Error) return args[0].message;
-  return String(args[0]);
+  if (args[0] instanceof Error) {
+    const message = safeReadValue(() => {
+      return args[0] instanceof Error ? args[0].message : undefined;
+    });
+    return typeof message === "string" ? message : UNREADABLE_MARKER;
+  }
+  return safeString(args[0]);
 }
 
 /**
@@ -78,22 +83,95 @@ function safeObjectEntries(value: object): readonly [string, unknown][] | null {
   }
 }
 
+function safeString(value: unknown): string {
+  const result = safeReadValue(() => {
+    return String(value);
+  });
+  return typeof result === "string" ? result : UNREADABLE_MARKER;
+}
+
+function serializeFunctionValue(value: { readonly name: string }): string {
+  const name = safeReadValue(() => {
+    return value.name;
+  });
+  return typeof name === "string" && name ? `[Function ${name}]` : "[Function]";
+}
+
+function serializeNonObjectValue(value: unknown): unknown {
+  if (typeof value === "bigint" || typeof value === "symbol") {
+    return safeString(value);
+  }
+  if (typeof value === "function") {
+    return serializeFunctionValue(value);
+  }
+  return value;
+}
+
+function isObjectValue(value: unknown): value is object {
+  return value !== null && typeof value === "object";
+}
+
+function serializeDateValue(value: Date): unknown {
+  const time = safeReadValue(() => {
+    return value.getTime();
+  });
+  if (typeof time !== "number" || Number.isNaN(time)) {
+    return safeString(value);
+  }
+  const iso = safeReadValue(() => {
+    return value.toISOString();
+  });
+  return typeof iso === "string" ? iso : UNREADABLE_MARKER;
+}
+
+function serializeArrayValue(
+  value: readonly unknown[],
+  seen: WeakSet<object>,
+  depth: number,
+): unknown {
+  const entries = safeObjectEntries(value);
+  if (!entries) {
+    return UNREADABLE_MARKER;
+  }
+  const items = entries.slice(0, SERIALIZED_OBJECT_MAX_ENTRIES).map((item) => {
+    const [, child] = item;
+    return serializeErrorValue(child, seen, depth + 1);
+  });
+  if (entries.length > SERIALIZED_OBJECT_MAX_ENTRIES) {
+    items.push(TRUNCATED_MARKER);
+  }
+  return items;
+}
+
+function serializePlainObjectValue(
+  value: object,
+  seen: WeakSet<object>,
+  depth: number,
+): unknown {
+  const entries = safeObjectEntries(value);
+  if (!entries) {
+    return UNREADABLE_MARKER;
+  }
+  const serialized: Record<string, unknown> = {};
+  let entryCount = 0;
+  for (const [key, child] of entries) {
+    if (entryCount >= SERIALIZED_OBJECT_MAX_ENTRIES) {
+      serialized.__truncated = true;
+      break;
+    }
+    serialized[key] = serializeErrorValue(child, seen, depth + 1);
+    entryCount += 1;
+  }
+  return serialized;
+}
+
 function serializeErrorValue(
   value: unknown,
   seen: WeakSet<object>,
   depth: number,
 ): unknown {
-  if (typeof value === "bigint") {
-    return value.toString();
-  }
-  if (typeof value === "symbol") {
-    return value.toString();
-  }
-  if (typeof value === "function") {
-    return value.name ? `[Function ${value.name}]` : "[Function]";
-  }
-  if (value === null || typeof value !== "object") {
-    return value;
+  if (!isObjectValue(value)) {
+    return serializeNonObjectValue(value);
   }
   if (seen.has(value)) {
     return CIRCULAR_MARKER;
@@ -105,46 +183,17 @@ function serializeErrorValue(
     return serializeErrorWithSeen(value, seen, depth);
   }
   if (value instanceof Date) {
-    const time = value.getTime();
-    return Number.isNaN(time) ? value.toString() : value.toISOString();
+    return serializeDateValue(value);
   }
   if (value instanceof RegExp) {
-    return value.toString();
+    return safeString(value);
   }
 
   seen.add(value);
   if (Array.isArray(value)) {
-    const entries = safeObjectEntries(value);
-    if (!entries) {
-      return UNREADABLE_MARKER;
-    }
-    const items = entries
-      .slice(0, SERIALIZED_OBJECT_MAX_ENTRIES)
-      .map((item) => {
-        const [, child] = item;
-        return serializeErrorValue(child, seen, depth + 1);
-      });
-    if (entries.length > SERIALIZED_OBJECT_MAX_ENTRIES) {
-      items.push(TRUNCATED_MARKER);
-    }
-    return items;
+    return serializeArrayValue(value, seen, depth);
   }
-
-  const serialized: Record<string, unknown> = {};
-  let entryCount = 0;
-  const entries = safeObjectEntries(value);
-  if (!entries) {
-    return UNREADABLE_MARKER;
-  }
-  for (const [key, child] of entries) {
-    if (entryCount >= SERIALIZED_OBJECT_MAX_ENTRIES) {
-      serialized.__truncated = true;
-      break;
-    }
-    serialized[key] = serializeErrorValue(child, seen, depth + 1);
-    entryCount += 1;
-  }
-  return serialized;
+  return serializePlainObjectValue(value, seen, depth);
 }
 
 /**

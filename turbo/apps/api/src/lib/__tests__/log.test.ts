@@ -74,6 +74,24 @@ describe("logToAxiom level dispatch", () => {
       expect.objectContaining({ [EVENT]: { source: "api" } }),
     );
   });
+
+  it("uses a fallback Axiom message when string conversion throws", () => {
+    const log = logger("test-bad-string");
+    const value = {
+      [Symbol.toPrimitive]() {
+        throw new Error("string conversion failed");
+      },
+    };
+
+    expect(() => {
+      log.info(value);
+    }).not.toThrow();
+
+    expect(axiomLogging.info).toHaveBeenCalledWith(
+      "[Unreadable]",
+      expect.objectContaining({ [EVENT]: { source: "api" } }),
+    );
+  });
 });
 
 // ── Axiom log calls include [EVENT]: { source: "api" } ───────────────────────────────────
@@ -97,6 +115,30 @@ describe("Axiom log source field", () => {
     expect(axiomLogging.error).toHaveBeenCalledWith(
       "fail",
       expect.objectContaining({ [EVENT]: { source: "api" } }),
+    );
+  });
+
+  it("uses a fallback Axiom message when Error.message is unreadable", () => {
+    const log = logger("source-unreadable-err");
+    const err = new Error("fail");
+    Object.defineProperty(err, "message", {
+      get() {
+        throw new Error("message getter failed");
+      },
+    });
+
+    expect(() => {
+      log.error(err);
+    }).not.toThrow();
+
+    expect(axiomLogging.error).toHaveBeenCalledWith(
+      "[Unreadable]",
+      expect.objectContaining({
+        error: expect.objectContaining({
+          message: "[Unreadable]",
+        }),
+        [EVENT]: { source: "api" },
+      }),
     );
   });
 
