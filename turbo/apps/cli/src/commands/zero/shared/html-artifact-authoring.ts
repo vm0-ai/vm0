@@ -16,20 +16,6 @@ interface HtmlArtifactAuthoringOptions {
   readonly artifactRules: readonly string[];
 }
 
-interface HtmlArtifactOutputPlanOptions {
-  readonly kind: HtmlArtifactKind;
-  readonly prompt: string;
-  readonly slugSource?: string;
-  readonly siteSlug?: string;
-}
-
-interface HtmlArtifactOutputPlan {
-  readonly outputDir: string;
-  readonly site: string;
-  readonly hostCommand: string;
-  readonly primaryArtifactPath: string;
-}
-
 interface HtmlArtifactAuthoringPacket {
   readonly type: "generation-source-selection";
   readonly kind: HtmlArtifactKind;
@@ -103,26 +89,6 @@ function outputDirForSite(site: string): string {
   return `./generated/mockups/${site}`;
 }
 
-export function createHtmlArtifactOutputPlan(
-  options: HtmlArtifactOutputPlanOptions,
-): HtmlArtifactOutputPlan {
-  const site =
-    options.siteSlug ?? slugify(options.slugSource ?? options.prompt);
-  const outputDir = outputDirForSite(site);
-  const artifactKindFlag =
-    options.kind === "presentation" ? " --artifact-kind presentation-html" : "";
-  const hostCommand = `zero host ${outputDir} --site ${site}${artifactKindFlag}${
-    options.kind === "website" ? " --spa" : ""
-  }`;
-
-  return {
-    outputDir,
-    site,
-    hostCommand,
-    primaryArtifactPath: `${outputDir}/index.html`,
-  };
-}
-
 function formatCandidateSource(
   source: ResourceCandidateSlice["sources"][number],
 ): string {
@@ -135,8 +101,14 @@ function formatCandidateSource(
 export function createHtmlArtifactAuthoringPacket(
   options: HtmlArtifactAuthoringOptions,
 ): HtmlArtifactAuthoringPacket {
-  const { site, outputDir, hostCommand, primaryArtifactPath } =
-    createHtmlArtifactOutputPlan(options);
+  const site =
+    options.siteSlug ?? slugify(options.slugSource ?? options.prompt);
+  const outputDir = outputDirForSite(site);
+  const artifactKindFlag =
+    options.kind === "presentation" ? " --artifact-kind presentation-html" : "";
+  const hostCommand = `zero host ${outputDir} --site ${site}${artifactKindFlag}${
+    options.kind === "website" ? " --spa" : ""
+  }`;
   const title = titleForKind(options.kind);
   const candidateSlice = selectResourceCandidates(options.kind);
   const selectionSchema = {
@@ -153,7 +125,7 @@ export function createHtmlArtifactAuthoringPacket(
     outputMode: "primary-artifact-with-supporting-assets",
     primaryArtifact: {
       kind: options.kind as GenerationOutputKind,
-      path: primaryArtifactPath,
+      path: `${outputDir}/index.html`,
     },
     supportingAssets: [
       {
