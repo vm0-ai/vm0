@@ -238,6 +238,32 @@ async function seedCustomConnectorLegacyBackfillRows(
         orgId,
       ],
     );
+
+    await client.query(
+      `
+      INSERT INTO org_custom_connector_values (
+        connector_id,
+        user_id,
+        org_id,
+        kind,
+        key,
+        encrypted_value,
+        created_at,
+        updated_at
+      )
+      VALUES (
+        $1,
+        $2,
+        $3,
+        'secret',
+        'secret',
+        'stale-undeclared-secret',
+        '2026-01-01',
+        '2026-01-01'
+      )
+      `,
+      [undeclaredSecretConnectorId, userId, orgId],
+    );
   } finally {
     await client.end();
   }

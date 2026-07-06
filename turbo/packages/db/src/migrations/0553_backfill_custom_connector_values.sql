@@ -112,3 +112,15 @@ INNER JOIN "org_custom_connectors" connectors
 		OR connectors."fields" @> '[{"kind":"secret","key":"secret"}]'::jsonb
 	)
 ON CONFLICT ("connector_id", "user_id", "kind", "key") DO NOTHING;
+--> statement-breakpoint
+
+DELETE FROM "org_custom_connector_values" stored_values
+USING "org_custom_connectors" connectors
+WHERE connectors."id" = stored_values."connector_id"
+	AND connectors."org_id" = stored_values."org_id"
+	AND connectors."fields" <> '[]'::jsonb
+	AND NOT (
+		connectors."fields" @> jsonb_build_array(
+			jsonb_build_object('kind', stored_values."kind", 'key', stored_values."key")
+		)
+	);
