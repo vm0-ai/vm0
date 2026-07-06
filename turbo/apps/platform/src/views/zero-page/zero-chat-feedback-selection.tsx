@@ -1,68 +1,23 @@
-import type { CSSProperties, RefCallback } from "react";
-import { IconCheck, IconCopy, IconMessageCircle } from "@tabler/icons-react";
+import type { CSSProperties } from "react";
+import { IconCopy, IconMessageCircle } from "@tabler/icons-react";
 import { useGet, useSet } from "ccstate-react";
-import { Popover, PopoverAnchor, PopoverContent } from "@vm0/ui";
+import {
+  getShortcutParts,
+  Popover,
+  PopoverAnchor,
+  PopoverContent,
+} from "@vm0/ui";
 import { rootSignal$ } from "../../signals/root-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
-  captureFeedbackSelection$,
+  closeFeedbackSelectionToolbar$,
   copyFeedbackSelection$,
-  dismissFeedbackOnScroll$,
-  dismissFeedbackSelection$,
-  feedbackCopiedValue$,
   feedbackSelectionValue$,
+  setFeedbackSelectionListenersRef$,
+  setFeedbackSelectionToolbarRef$,
   startFeedback$,
   type FeedbackSelection,
 } from "../../signals/zero-page/chat-feedback.ts";
-
-// Watches document selection (and dismisses the toolbar on scroll) for the
-// whole thread, via a ref on a persistent hidden node — the platform's
-// listener-lifecycle idiom in place of an effect.
-function selectionListenersRef(
-  capture: () => void,
-  dismissOnScroll: () => void,
-): RefCallback<HTMLSpanElement> {
-  let detachListeners: (() => void) | null = null;
-  return (element) => {
-    detachListeners?.();
-    detachListeners = null;
-    if (!element) {
-      return;
-    }
-    // A mouse click inside an existing selection collapses it *after* the
-    // mouseup event fires, so reading the selection synchronously here would
-    // still see the stale range and keep the toolbar floating once the
-    // highlight is gone. Defer the read to the next tick so the selection has
-    // settled — clicking to clear the selection then dismisses the toolbar.
-    let captureTimerId: number | null = null;
-    const captureDeferred = () => {
-      if (captureTimerId !== null) {
-        window.clearTimeout(captureTimerId);
-      }
-      captureTimerId = window.setTimeout(() => {
-        captureTimerId = null;
-        capture();
-      }, 0);
-    };
-    document.addEventListener("mouseup", captureDeferred);
-    document.addEventListener("keyup", capture);
-    document.addEventListener("scroll", dismissOnScroll, {
-      capture: true,
-      passive: true,
-    });
-    detachListeners = () => {
-      if (captureTimerId !== null) {
-        window.clearTimeout(captureTimerId);
-        captureTimerId = null;
-      }
-      document.removeEventListener("mouseup", captureDeferred);
-      document.removeEventListener("keyup", capture);
-      document.removeEventListener("scroll", dismissOnScroll, {
-        capture: true,
-      });
-    };
-  };
-}
 
 function anchorStyle(selection: FeedbackSelection): CSSProperties {
   return {
@@ -75,12 +30,27 @@ function anchorStyle(selection: FeedbackSelection): CSSProperties {
   };
 }
 
+function ShortcutHint({ shortcut }: { readonly shortcut: string }) {
+  return (
+    <span aria-hidden="true" className="ml-0.5 inline-flex items-center gap-1">
+      {getShortcutParts(shortcut).map((part) => {
+        return (
+          <kbd
+            key={part}
+            className='inline-flex h-5 min-w-5 items-center justify-center rounded-md bg-background px-1 text-[10px] font-medium leading-none text-muted-foreground shadow-[inset_0_-1px_0_hsl(var(--border)),0_0_0_1px_hsl(var(--border))] font-["-apple-system",BlinkMacSystemFont,"Segoe_UI",system-ui,sans-serif]'
+          >
+            {part.length === 1 ? part.toUpperCase() : part}
+          </kbd>
+        );
+      })}
+    </span>
+  );
+}
+
 function FeedbackToolbar({
-  copied,
   onCopy,
   onProvideFeedback,
 }: {
-  copied: boolean;
   onCopy: () => void;
   onProvideFeedback: () => void;
 }) {
@@ -98,23 +68,23 @@ function FeedbackToolbar({
         <button
           type="button"
           onClick={onCopy}
+          aria-keyshortcuts="c"
           className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
         >
-          {copied ? (
-            <IconCheck size={14} stroke={2} />
-          ) : (
-            <IconCopy size={14} stroke={2} />
-          )}
-          {copied ? "Copied" : "Copy"}
+          <IconCopy size={14} stroke={2} />
+          Copy
+          <ShortcutHint shortcut="c" />
         </button>
         <div className="h-4 w-px bg-border" />
         <button
           type="button"
           onClick={onProvideFeedback}
+          aria-keyshortcuts="f"
           className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
         >
           <IconMessageCircle size={14} stroke={2} />
           Provide feedback
+          <ShortcutHint shortcut="f" />
         </button>
       </div>
     </PopoverContent>
@@ -127,31 +97,34 @@ function FeedbackToolbar({
 // in zero-chat-composer.tsx) — there is no separate feedback panel.
 export function ChatFeedbackSelection() {
   const selection = useGet(feedbackSelectionValue$);
-  const copied = useGet(feedbackCopiedValue$);
   const rootSignal = useGet(rootSignal$);
-  const capture = useSet(captureFeedbackSelection$);
-  const dismissOnScroll = useSet(dismissFeedbackOnScroll$);
+  const setFeedbackSelectionListenersRef = useSet(
+    setFeedbackSelectionListenersRef$,
+  );
+  const setFeedbackSelectionToolbarRef = useSet(
+    setFeedbackSelectionToolbarRef$,
+  );
   const startFeedback = useSet(startFeedback$);
-  const dismissSelection = useSet(dismissFeedbackSelection$);
+  const closeSelectionToolbar = useSet(closeFeedbackSelectionToolbar$);
   const copy = useSet(copyFeedbackSelection$);
 
   return (
     <>
-      <span ref={selectionListenersRef(capture, dismissOnScroll)} hidden />
+      <span ref={setFeedbackSelectionListenersRef} hidden />
       {selection ? (
         <Popover
           open
           onOpenChange={(next) => {
             if (!next) {
-              dismissSelection();
+              closeSelectionToolbar();
             }
           }}
         >
           <PopoverAnchor asChild>
             <div style={anchorStyle(selection)} aria-hidden />
           </PopoverAnchor>
+          <span ref={setFeedbackSelectionToolbarRef} hidden />
           <FeedbackToolbar
-            copied={copied}
             onCopy={() => {
               return detach(copy(rootSignal), Reason.DomCallback);
             }}
