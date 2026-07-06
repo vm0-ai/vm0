@@ -39,6 +39,9 @@ const TEAMS_APP_TENANT_ID = "11111111-1111-1111-1111-111111111111";
 const SERVICE_URL = "https://smba.trafficmanager.net/amer/";
 const APP_ORIGIN = "https://app.vm0.test";
 const KEY_ID = "teams-test-key";
+const TEAMS_LOGIN_PROMPT_FALLBACK_TEXT = "Please connect your account first";
+const TEAMS_LOGIN_PROMPT_CARD_TEXT =
+  "To use Zero in Teams, please connect your account first.";
 const BOT_FRAMEWORK_METADATA_URL =
   "https://login.botframework.com/v1/.well-known/openidconfiguration";
 const BOT_FRAMEWORK_KEYS_URL =
@@ -531,7 +534,7 @@ describe("POST /api/zero/teams/bot", () => {
       connectUrl: expect.stringContaining(
         `${APP_ORIGIN}/api/zero/teams/connect`,
       ),
-      replyText: expect.stringContaining("Please connect your account first"),
+      replyText: TEAMS_LOGIN_PROMPT_FALLBACK_TEXT,
     });
     expect(outboundRequests).toHaveLength(1);
     expect(outboundRequests[0]).toMatchObject({
@@ -539,13 +542,39 @@ describe("POST /api/zero/teams/bot", () => {
       activityId: "activity-1",
       body: {
         type: "message",
-        text: expect.stringContaining("Please connect your account first"),
+        summary: TEAMS_LOGIN_PROMPT_FALLBACK_TEXT,
         replyToId: "activity-1",
+        attachments: [
+          {
+            contentType: "application/vnd.microsoft.card.adaptive",
+            content: {
+              type: "AdaptiveCard",
+              version: "1.4",
+              body: [
+                {
+                  type: "TextBlock",
+                  text: TEAMS_LOGIN_PROMPT_CARD_TEXT,
+                  wrap: true,
+                },
+              ],
+              actions: [
+                {
+                  type: "Action.OpenUrl",
+                  title: "Connect",
+                  url: expect.stringContaining(
+                    `${APP_ORIGIN}/api/zero/teams/connect`,
+                  ),
+                },
+              ],
+            },
+          },
+        ],
         channelData: {
           tenant: { id: "tenant-1" },
         },
       },
     });
+    expect(outboundRequests[0]?.body).not.toHaveProperty("text");
 
     mocks.clerk.session(
       "user_teams_bot_test",
@@ -637,7 +666,7 @@ describe("POST /api/zero/teams/bot", () => {
       },
       dispatch: {
         kind: "notice",
-        replyText: expect.stringContaining("Please connect your account first"),
+        replyText: TEAMS_LOGIN_PROMPT_FALLBACK_TEXT,
       },
     });
     expect(outboundRequests).toHaveLength(1);
@@ -646,10 +675,36 @@ describe("POST /api/zero/teams/bot", () => {
       activityId: "activity-personal-dm",
       body: {
         type: "message",
-        text: expect.stringContaining("Please connect your account first"),
+        summary: TEAMS_LOGIN_PROMPT_FALLBACK_TEXT,
         replyToId: "activity-personal-dm",
+        attachments: [
+          {
+            contentType: "application/vnd.microsoft.card.adaptive",
+            content: {
+              type: "AdaptiveCard",
+              version: "1.4",
+              body: [
+                {
+                  type: "TextBlock",
+                  text: TEAMS_LOGIN_PROMPT_CARD_TEXT,
+                  wrap: true,
+                },
+              ],
+              actions: [
+                {
+                  type: "Action.OpenUrl",
+                  title: "Connect",
+                  url: expect.stringContaining(
+                    `${APP_ORIGIN}/api/zero/teams/connect`,
+                  ),
+                },
+              ],
+            },
+          },
+        ],
       },
     });
+    expect(outboundRequests[0]?.body).not.toHaveProperty("text");
   });
 
   it("preserves non-bot Teams mentions in message text", async () => {

@@ -35,6 +35,7 @@ import { buildTeamsConnectUrlForActivity } from "./zero-teams-connect.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
 
 const L = logger("TeamsDispatch");
+const TEAMS_LOGIN_PROMPT_FALLBACK_TEXT = "Please connect your account first";
 
 type TeamsInstallation = typeof teamsOrgInstallations.$inferSelect;
 type BoundTeamsInstallation = TeamsInstallation & { readonly orgId: string };
@@ -787,9 +788,7 @@ function connectNotice(
   });
   return {
     kind: "notice",
-    replyText: connectUrl
-      ? `Please connect your account first\n\n${connectUrl}`
-      : "Please connect your account first",
+    replyText: TEAMS_LOGIN_PROMPT_FALLBACK_TEXT,
     ...(connectUrl ? { connectUrl } : {}),
   };
 }

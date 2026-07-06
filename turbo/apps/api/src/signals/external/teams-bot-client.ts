@@ -82,11 +82,37 @@ interface TeamsBotCredentials {
   readonly appPassword: string;
 }
 
+interface TeamsAdaptiveCardTextBlock {
+  readonly type: "TextBlock";
+  readonly text: string;
+  readonly wrap?: boolean;
+}
+
+interface TeamsAdaptiveCardOpenUrlAction {
+  readonly type: "Action.OpenUrl";
+  readonly title: string;
+  readonly url: string;
+}
+
+export interface TeamsAdaptiveCard {
+  readonly type: "AdaptiveCard";
+  readonly version: "1.4";
+  readonly body: readonly TeamsAdaptiveCardTextBlock[];
+  readonly actions?: readonly TeamsAdaptiveCardOpenUrlAction[];
+}
+
+interface TeamsActivityAttachment {
+  readonly contentType: "application/vnd.microsoft.card.adaptive";
+  readonly content: TeamsAdaptiveCard;
+}
+
 interface TeamsActivityBody {
   readonly type: "message" | "typing";
   readonly text?: string;
   readonly textFormat?: "markdown";
+  readonly summary?: string;
   readonly replyToId?: string;
+  readonly attachments?: readonly TeamsActivityAttachment[];
   readonly channelData?: {
     readonly tenant?: { readonly id: string };
   };
@@ -367,6 +393,7 @@ export function sendTeamsMessageReply(args: {
   readonly activityId?: string;
   readonly tenantId: string;
   readonly text: string;
+  readonly card?: TeamsAdaptiveCard;
   readonly signal: AbortSignal;
 }): Promise<SendTeamsActivityResult> {
   return postTeamsActivity({
@@ -377,9 +404,20 @@ export function sendTeamsMessageReply(args: {
     signal: args.signal,
     activity: {
       type: "message",
-      text: args.text,
-      textFormat: "markdown",
+      ...(args.card
+        ? { summary: args.text }
+        : { text: args.text, textFormat: "markdown" }),
       replyToId: args.activityId,
+      ...(args.card
+        ? {
+            attachments: [
+              {
+                contentType: "application/vnd.microsoft.card.adaptive",
+                content: args.card,
+              },
+            ],
+          }
+        : {}),
       channelData: {
         tenant: { id: args.tenantId },
       },
