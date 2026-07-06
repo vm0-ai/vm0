@@ -4294,6 +4294,105 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(cancelled.status).toBe("cancelled");
   });
 
+  it("does not expose custom connector base-only variables as runtime secrets", async () => {
+    const api = createRunsAutomationsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const fw = createFirewallApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const rand = randomUUID().replace(/-/g, "").slice(0, 8);
+
+    const saved = await connectors.saveCustomConnectorProposal(actor, {
+      proposal: {
+        operation: "create",
+        displayName: "BDD Base Variable Runtime",
+        prefixTemplates: [`https://{{variables.subdomain}}.${rand}.test/v1/`],
+        fields: [
+          {
+            key: "api_key",
+            label: "API key",
+            kind: "secret",
+            required: true,
+          },
+          {
+            key: "subdomain",
+            label: "Subdomain",
+            kind: "variable",
+            required: true,
+          },
+        ],
+        headerInjections: [
+          {
+            name: "Authorization",
+            valueTemplate: "Bearer {{secrets.api_key}}",
+          },
+        ],
+        queryInjections: [],
+      },
+      values: [
+        { key: "api_key", kind: "secret", value: "runtime-base-secret" },
+        { key: "subdomain", kind: "variable", value: "base-only" },
+      ],
+      agentId,
+    });
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "use the base variable custom connector",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+
+    const idPart = saved.connector.id.replaceAll("-", "");
+    const internalName = `custom_connector_${idPart}`;
+    const secretKey = `CUSTOM_${idPart}_S_API_KEY`;
+    const baseVariableKey = `CUSTOM_${idPart}_V_SUBDOMAIN`;
+    const customApis = inlineFirewallApis(claim.firewalls, internalName);
+    expect(customApis[0]?.base).toBe(`https://base-only.${rand}.test/v1/`);
+    expect(customApis[0]?.auth?.headers?.Authorization).toBe(
+      `Bearer \${{ secrets.${secretKey} }}`,
+    );
+    expect(JSON.stringify(customApis)).not.toContain(baseVariableKey);
+
+    if (!claim.encryptedSecrets) {
+      throw new Error("Expected the custom claim to carry encrypted secrets");
+    }
+    const resolvedSecret = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      {
+        encryptedSecrets: claim.encryptedSecrets,
+        authHeaders: {
+          Authorization: `Bearer \${{ secrets.${secretKey} }}`,
+        },
+      },
+      [200],
+    );
+    if (resolvedSecret.status !== 200) {
+      throw new Error("Expected the custom firewall secret auth to resolve");
+    }
+    expect(resolvedSecret.body.headers).toStrictEqual({
+      Authorization: "Bearer runtime-base-secret",
+    });
+
+    const baseOnlyVariable = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      {
+        encryptedSecrets: claim.encryptedSecrets,
+        authHeaders: {},
+        authQuery: {
+          subdomain: `\${{ secrets.${baseVariableKey} }}`,
+        },
+      },
+      [424],
+    );
+    expectApiError(baseOnlyVariable.body);
+    expect(baseOnlyVariable.body.error.code).toBe("CONNECTOR_NOT_CONFIGURED");
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
+  });
+
   it("omits custom connector auth entries backed only by missing optional fields", async () => {
     const api = createRunsAutomationsApi(context);
     const connectors = createConnectorBddApi(context);
