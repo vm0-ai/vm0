@@ -118,7 +118,7 @@ async function fetchSteamJson<T>(
   params: Readonly<Record<string, string>>,
   schema: z.ZodType<T>,
   signal: AbortSignal,
-): Promise<T | null> {
+): Promise<T> {
   const url = new URL(path, STEAM_API_BASE_URL);
   url.searchParams.set("key", steamApiKey());
   for (const [name, value] of Object.entries(params)) {
@@ -161,7 +161,7 @@ async function fetchSteamProfile(
     steamPlayerSummariesResponseSchema,
     signal,
   );
-  const player = result?.response.players[0];
+  const player = result.response.players[0];
   if (!player) {
     return null;
   }
@@ -190,9 +190,6 @@ async function fetchSteamOwnedGames(
     steamOwnedGamesResponseSchema,
     signal,
   );
-  if (!result) {
-    return null;
-  }
 
   const gameCount = result.response.game_count;
   const games = result.response.games;
@@ -216,9 +213,6 @@ async function fetchSteamRecentlyPlayedGames(
     steamRecentlyPlayedGamesResponseSchema,
     signal,
   );
-  if (!result) {
-    return null;
-  }
 
   const totalCount = result.response.total_count;
   const games = result.response.games;
@@ -242,7 +236,7 @@ async function fetchSteamLevel(
     steamLevelResponseSchema,
     signal,
   );
-  return result?.response.player_level ?? null;
+  return result.response.player_level ?? null;
 }
 
 async function fetchSteamBadges(
@@ -255,9 +249,6 @@ async function fetchSteamBadges(
     steamBadgesResponseSchema,
     signal,
   );
-  if (!result) {
-    return null;
-  }
 
   return {
     playerXp: result.response.player_xp ?? null,

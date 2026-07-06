@@ -103,7 +103,8 @@ function steamCallbackQuery(authorizationUrl: URL) {
     "openid.return_to": returnTo,
     "openid.response_nonce": "2026-07-06T00:00:00Znonce",
     "openid.assoc_handle": "assoc-handle",
-    "openid.signed": "op_endpoint,claimed_id,identity,return_to,response_nonce",
+    "openid.signed":
+      "op_endpoint,claimed_id,identity,return_to,response_nonce,assoc_handle",
     "openid.sig": "signature",
   };
 }

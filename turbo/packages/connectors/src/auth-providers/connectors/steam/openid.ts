@@ -5,7 +5,15 @@ export const STEAM_OPENID_NS = "http://specs.openid.net/auth/2.0";
 const STEAM_OPENID_IDENTIFIER_SELECT =
   "http://specs.openid.net/auth/2.0/identifier_select";
 const STEAM_CLAIMED_ID_PATTERN =
-  /^https:\/\/steamcommunity\.com\/openid\/id\/(?<steamId>\d{17})$/u;
+  /^https?:\/\/steamcommunity\.com\/openid\/id\/(?<steamId>\d{17})$/u;
+const REQUIRED_SIGNED_OPENID_FIELDS = [
+  "op_endpoint",
+  "return_to",
+  "response_nonce",
+  "assoc_handle",
+  "claimed_id",
+  "identity",
+] as const;
 
 const steamOpenIdVerificationResponseSchema = z.object({
   ns: z.string().optional(),
@@ -52,6 +60,23 @@ function parseSteamClaimedId(value: string): string {
   return steamId;
 }
 
+function validateSignedFields(params: Readonly<Record<string, string>>): void {
+  requiredOpenIdParam(params, "openid.sig");
+  const signedFields = new Set(
+    requiredOpenIdParam(params, "openid.signed")
+      .split(",")
+      .map((field) => {
+        return field.trim();
+      }),
+  );
+
+  for (const field of REQUIRED_SIGNED_OPENID_FIELDS) {
+    if (!signedFields.has(field)) {
+      throw new Error("Steam OpenID callback did not sign required fields");
+    }
+  }
+}
+
 function validateSteamOpenIdCallback(args: {
   readonly params: Readonly<Record<string, string>>;
   readonly expectedReturnTo: string;
@@ -80,6 +105,7 @@ function validateSteamOpenIdCallback(args: {
   if (callbackRealm && callbackRealm !== args.expectedRealm) {
     throw new Error("Steam OpenID callback used an unexpected realm");
   }
+  validateSignedFields(args.params);
 
   const claimedSteamId = parseSteamClaimedId(
     requiredOpenIdParam(args.params, "openid.claimed_id"),

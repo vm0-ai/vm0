@@ -24,7 +24,8 @@ function callbackParams(
     "openid.return_to": RETURN_TO,
     "openid.response_nonce": "2026-07-06T00:00:00Znonce",
     "openid.assoc_handle": "assoc-handle",
-    "openid.signed": "op_endpoint,claimed_id,identity,return_to,response_nonce",
+    "openid.signed":
+      "op_endpoint,claimed_id,identity,return_to,response_nonce,assoc_handle",
     "openid.sig": "signature",
     ...overrides,
   };
@@ -148,7 +149,7 @@ describe("Steam OpenID provider", () => {
     ).rejects.toThrow("invalid claimed ID");
   });
 
-  it("rejects non-HTTPS claimed IDs", async () => {
+  it("accepts the official HTTP claimed ID format", async () => {
     mockSteamVerification({ valid: true });
 
     await expect(
@@ -161,6 +162,19 @@ describe("Steam OpenID provider", () => {
         expectedRealm: REALM,
         signal: new AbortController().signal,
       }),
-    ).rejects.toThrow("invalid claimed ID");
+    ).resolves.toStrictEqual({ steamId: STEAM_ID });
+  });
+
+  it("rejects assertions that do not sign required identity fields", async () => {
+    await expect(
+      verifySteamOpenIdCallback({
+        callbackParams: callbackParams({
+          "openid.signed": "op_endpoint,return_to,response_nonce,assoc_handle",
+        }),
+        expectedReturnTo: RETURN_TO,
+        expectedRealm: REALM,
+        signal: new AbortController().signal,
+      }),
+    ).rejects.toThrow("did not sign required fields");
   });
 });
