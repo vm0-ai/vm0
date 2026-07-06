@@ -932,6 +932,39 @@ fn filter_removed_framework_home_non_instruction_storage_uses_cleanup_path() {
 }
 
 #[test]
+fn filter_removed_tainted_framework_home_storage_uses_instruction_cleanup() {
+    let manifest = GuestDownloadManifest {
+        storages: vec![guest_storage(
+            "/home/user/.codex/skills/foo",
+            "skill-foo",
+            "v1",
+            Some("https://s3/foo"),
+        )],
+        artifacts: vec![],
+        cleanup_paths: vec![],
+        instruction_cleanups: Vec::new(),
+    };
+    let prev = StorageFingerprints {
+        storages: HashMap::from([
+            ("/home/user/.codex".into(), StorageFingerprint::tainted()),
+            ("/home/user/.codex/skills/foo".into(), fp("skill-foo", "v1")),
+        ]),
+        artifacts: HashMap::new(),
+    };
+
+    let result = apply_storage_fingerprint_reuse(&manifest, &prev);
+
+    assert!(result.cleanup_paths.is_empty());
+    assert_eq!(result.instruction_cleanups.len(), 1);
+    assert_eq!(
+        result.instruction_cleanups[0].mount_path,
+        "/home/user/.codex"
+    );
+    assert_eq!(result.instruction_cleanups[0].target_filename, None);
+    assert!(result.storages[0].cached);
+}
+
+#[test]
 fn filter_removed_framework_home_artifact_uses_cleanup_path() {
     let manifest = GuestDownloadManifest {
         storages: vec![],

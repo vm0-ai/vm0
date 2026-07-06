@@ -203,9 +203,10 @@ fn is_framework_home_path(path: &str) -> bool {
 
 fn is_removed_framework_home_instruction(path: &str, fingerprint: &StorageFingerprint) -> bool {
     is_framework_home_path(path)
-        && fingerprint
-            .vas_storage_name()
-            .is_some_and(|name| name.starts_with(AGENT_INSTRUCTIONS_STORAGE_NAME_PREFIX))
+        && (fingerprint.is_tainted()
+            || fingerprint
+                .vas_storage_name()
+                .is_some_and(|name| name.starts_with(AGENT_INSTRUCTIONS_STORAGE_NAME_PREFIX)))
 }
 
 /// Download storage volumes into the guest.
