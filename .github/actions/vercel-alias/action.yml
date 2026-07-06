@@ -60,15 +60,37 @@ runs:
         HTTP_STATUS="$(node - "$DEPLOYMENT_REF" "$ALIAS_URL" "$VERCEL_ORG_ID" "$VERCEL_TOKEN" "$RESPONSE_FILE" <<'NODE'
         const fs = require("node:fs");
 
-        async function main() {
-          const [deploymentRef, alias, teamId, token, responseFile] =
-            process.argv.slice(2);
+        function parsePayload(text) {
+          try {
+            return JSON.parse(text);
+          } catch {
+            return undefined;
+          }
+        }
+
+        function responseMessage(text) {
+          const payload = parsePayload(text);
+          return payload?.error?.message ?? payload?.message ?? text;
+        }
+
+        async function fetchText(url, init) {
+          const response = await fetch(url, init);
+          return {
+            status: response.status,
+            text: await response.text(),
+          };
+        }
+
+        function aliasesUrl(deploymentRef, teamId) {
           const requestUrl = new URL(
             `https://api.vercel.com/v2/deployments/${encodeURIComponent(deploymentRef)}/aliases`,
           );
           requestUrl.searchParams.set("teamId", teamId);
+          return requestUrl;
+        }
 
-          const response = await fetch(requestUrl, {
+        async function assignAlias(deploymentRef, alias, teamId, token) {
+          return fetchText(aliasesUrl(deploymentRef, teamId), {
             method: "POST",
             headers: {
               Authorization: `Bearer ${token}`,
@@ -76,14 +98,66 @@ runs:
             },
             body: JSON.stringify({ alias }),
           });
+        }
 
-          fs.writeFileSync(responseFile, await response.text());
-          process.stdout.write(String(response.status));
+        async function resolveAliasDeploymentRef(aliasRef, teamId, token) {
+          const requestUrl = new URL("https://api.vercel.com/v4/aliases");
+          requestUrl.searchParams.set("domain", aliasRef);
+          requestUrl.searchParams.set("teamId", teamId);
+
+          const result = await fetchText(requestUrl, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+          });
+
+          if (result.status < 200 || result.status >= 300) {
+            throw new Error(
+              `Could not resolve source alias ${aliasRef}: ${responseMessage(result.text)}`,
+            );
+          }
+
+          const payload = parsePayload(result.text);
+          const aliases = Array.isArray(payload?.aliases) ? payload.aliases : [];
+          const alias =
+            aliases.find((entry) => entry.alias === aliasRef) ?? aliases[0];
+          const deploymentRef =
+            alias?.deploymentId ?? alias?.deployment?.id ?? alias?.deployment?.url;
+
+          if (!deploymentRef) {
+            throw new Error(
+              `Could not resolve source alias ${aliasRef} to a deployment`,
+            );
+          }
+
+          return deploymentRef;
+        }
+
+        async function main() {
+          const [deploymentRef, alias, teamId, token, responseFile] =
+            process.argv.slice(2);
+
+          let result = await assignAlias(deploymentRef, alias, teamId, token);
+          if (result.status === 404) {
+            const resolvedDeploymentRef = await resolveAliasDeploymentRef(
+              deploymentRef,
+              teamId,
+              token,
+            );
+            result = await assignAlias(resolvedDeploymentRef, alias, teamId, token);
+          }
+
+          fs.writeFileSync(responseFile, result.text);
+          process.stdout.write(String(result.status));
         }
 
         main().catch((error) => {
-          console.error(error);
-          process.exit(1);
+          fs.writeFileSync(
+            process.argv[6],
+            JSON.stringify({ error: { message: error.message } }),
+          );
+          process.stdout.write("500");
         });
         NODE
         )"
@@ -93,8 +167,12 @@ runs:
         const fs = require("node:fs");
 
         const raw = fs.readFileSync(process.argv[2], "utf8");
-        const payload = JSON.parse(raw);
-        process.stdout.write(payload.error?.message ?? payload.message ?? raw);
+        try {
+          const payload = JSON.parse(raw);
+          process.stdout.write(payload.error?.message ?? payload.message ?? raw);
+        } catch {
+          process.stdout.write(raw);
+        }
         NODE
           )"
           if [[ "$RESPONSE_MESSAGE" == *"already assigned"* ]]; then
