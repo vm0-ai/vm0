@@ -10,6 +10,7 @@ import {
   STEAM_PERMISSION_MANIFEST,
   STEAM_WEB_API_METHOD_DOC_URLS,
   validateSteamPermissionManifest,
+  validateSteamOverview,
   type SteamSupportedApiList,
 } from "../steam";
 
@@ -270,5 +271,27 @@ describe("Steam permission manifest", () => {
         ]),
       );
     }).toThrow("read-only");
+  });
+});
+
+describe("Steam overview validation", () => {
+  it("requires api.steampowered.com as a parsed URL hostname", () => {
+    expect(() => {
+      validateSteamOverview(
+        '<a href="https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/">Steam Web API</a>',
+      );
+    }).not.toThrow();
+
+    expect(() => {
+      validateSteamOverview(
+        '<a href="https://attacker.example/redirect?next=https://api.steampowered.com">Steam Web API</a>',
+      );
+    }).toThrow("Steam Web API overview no longer documents");
+
+    expect(() => {
+      validateSteamOverview(
+        '<a href="https://api.steampowered.com.attacker.example/">Steam Web API</a>',
+      );
+    }).toThrow("Steam Web API overview no longer documents");
   });
 });

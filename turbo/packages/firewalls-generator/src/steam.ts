@@ -44,6 +44,7 @@ export const STEAM_WEB_API_DOC_URLS = [
 ] as const;
 
 const STEAM_API_BASE_URL = "https://api.steampowered.com";
+const STEAM_API_HOSTNAME = new URL(STEAM_API_BASE_URL).hostname;
 const PLACEHOLDER_VALUE = "C0FFEESAFELOCALC0FFEESAFELOCAL";
 
 interface SteamWebApiEndpoint {
@@ -316,8 +317,21 @@ export function buildSteamPermissions(
   });
 }
 
-function validateSteamOverview(html: string): void {
-  if (!html.includes("api.steampowered.com")) {
+function steamOverviewDocumentsApiHost(html: string): boolean {
+  const urlPattern = /https?:\/\/[^\s"'<>]+/giu;
+  for (const match of html.matchAll(urlPattern)) {
+    if (
+      URL.canParse(match[0]) &&
+      new URL(match[0]).hostname === STEAM_API_HOSTNAME
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export function validateSteamOverview(html: string): void {
+  if (!steamOverviewDocumentsApiHost(html)) {
     throw new Error(
       "Steam Web API overview no longer documents api.steampowered.com",
     );
