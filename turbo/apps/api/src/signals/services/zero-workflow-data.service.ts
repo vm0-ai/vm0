@@ -62,7 +62,7 @@ interface WorkflowShadow {
   readonly displayName: string | null;
 }
 
-export interface WorkflowOwnerProfile {
+interface WorkflowOwnerProfile {
   readonly displayName: string | null;
   readonly imageUrl: string | null;
 }
