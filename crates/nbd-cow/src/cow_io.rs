@@ -72,8 +72,11 @@ impl CowIo {
     }
 
     pub(crate) async fn save_bitmap(&self, path: PathBuf) -> Result<()> {
-        self.run("save bitmap", move |cow| cow.save_bitmap(&path))
-            .await
+        self.run("save bitmap", move |cow| {
+            cow.sync()?;
+            cow.save_bitmap(&path)
+        })
+        .await
     }
 
     /// Return a consistent snapshot of COW counters.
@@ -133,4 +136,66 @@ fn closed_error(operation: &str) -> NbdCowError {
     NbdCowError::Io(std::io::Error::other(format!(
         "COW I/O operation slot closed before {operation}",
     )))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::Write as _;
+
+    use tempfile::NamedTempFile;
+
+    use super::*;
+    use crate::{BLOCK_SIZE, cow::bitmap_path_for};
+
+    #[tokio::test]
+    async fn save_bitmap_flushes_buffered_writes() {
+        let mut base = NamedTempFile::new().unwrap();
+        base.write_all(&vec![0x11; BLOCK_SIZE]).unwrap();
+        base.flush().unwrap();
+        let cow_file = NamedTempFile::new().unwrap();
+        let cow = CowLayer::new(
+            base.path(),
+            cow_file.path(),
+            BLOCK_SIZE as u64,
+            BLOCK_SIZE,
+            BLOCK_SIZE * 4,
+        )
+        .unwrap();
+        let cow = CowIo::new(cow);
+
+        let write_data = vec![0x22; BLOCK_SIZE];
+        cow.write(0, write_data.clone()).await.unwrap();
+        assert_eq!(
+            cow.status().await.unwrap(),
+            CowIoStatus {
+                dirty_blocks: 0,
+                buffered_blocks: 1,
+                buffer_bytes: BLOCK_SIZE,
+            }
+        );
+
+        cow.save_bitmap(bitmap_path_for(cow_file.path()))
+            .await
+            .unwrap();
+
+        assert_eq!(
+            cow.status().await.unwrap(),
+            CowIoStatus {
+                dirty_blocks: 1,
+                buffered_blocks: 0,
+                buffer_bytes: 0,
+            }
+        );
+        let restored = CowLayer::new(
+            base.path(),
+            cow_file.path(),
+            BLOCK_SIZE as u64,
+            BLOCK_SIZE,
+            BLOCK_SIZE * 4,
+        )
+        .unwrap();
+        let mut restored_data = vec![0; BLOCK_SIZE];
+        restored.read(0, &mut restored_data).unwrap();
+        assert_eq!(restored_data, write_data);
+    }
 }
