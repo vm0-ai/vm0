@@ -31,6 +31,7 @@ export {
   zeroChatAttachmentUploadSummary$,
   restoreZeroAttachments$,
   removeZeroAttachment$,
+  appendZeroChatInput$,
   zeroDragOver$,
   setZeroDragOver$,
   canSendZeroChat$,

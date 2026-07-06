@@ -29,6 +29,8 @@ import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 
 const context = testContext();
 const appUrl = "http://localhost:3002";
+const BYTEPLUS_ASR_FLASH_URL =
+  "https://byteplus-proxy.vm0.ai/api/v3/auc/bigmodel/recognize/flash";
 type ApiUuid = `${string}-${string}-${string}-${string}-${string}`;
 
 function apiUuid(value: string): ApiUuid {
@@ -1626,7 +1628,14 @@ describe("FILE-02: audio transcription v1 provider contract", () => {
     const runsApi = createRunsAutomationsApi(context);
     await runsApi.grantProEntitlement(admin);
 
+    mockEnv("BYTEPLUS_STT_API_KEY", "test-byteplus-stt-key");
     server.use(
+      http.post(BYTEPLUS_ASR_FLASH_URL, () => {
+        return HttpResponse.json(
+          { result: { text: "bdd duration probe" } },
+          { headers: { "x-api-status-code": "20000000" } },
+        );
+      }),
       http.post("https://api.openai.com/v1/audio/transcriptions", () => {
         return HttpResponse.json({ text: "bdd duration probe" });
       }),

@@ -94,6 +94,7 @@ import {
   uploadZeroAttachment$ as singletonUpload$,
   restoreZeroAttachments$ as singletonRestore$,
   removeZeroAttachment$ as singletonRemove$,
+  appendZeroChatInput$ as singletonAppendInput$,
   canSendZeroChat$ as singletonCanSend$,
   zeroDragOver$ as singletonDragOver$,
   setZeroDragOver$ as singletonSetDragOver$,
@@ -214,6 +215,7 @@ import {
 import {
   audioInputAvailable$,
   audioInputQuota$,
+  openAudioInputQuotaRecovery$,
   sttRecording$,
   sttStarting$,
   sttTranscribing$,
@@ -221,11 +223,6 @@ import {
   startRecording$,
   stopAndTranscribe$,
 } from "../../signals/voice-io/voice-io-stt.ts";
-import {
-  setActiveOrgManageTab$,
-  setBillingSubPage$,
-} from "../../signals/zero-page/settings/org-manage-tabs-state.ts";
-import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
 import { readChatMessageFromClipboard } from "../../signals/zero-page/clipboard.ts";
 import type { FeedbackItem } from "../../signals/zero-page/chat-feedback.ts";
 import { Markdown } from "../components/markdown.tsx";
@@ -5952,13 +5949,54 @@ function ComputerUseDownloadDialog({
 // Voice input mic button
 // ---------------------------------------------------------------------------
 
+interface MicButtonStatus {
+  readonly recording: boolean;
+  readonly starting: boolean;
+  readonly transcribing: boolean;
+  readonly quotaLoading: boolean;
+}
+
+function micButtonAriaLabel(status: MicButtonStatus): string {
+  if (status.recording) {
+    return "Stop recording";
+  }
+  if (status.starting) {
+    return "Starting voice input";
+  }
+  if (status.transcribing) {
+    return "Transcribing";
+  }
+  if (status.quotaLoading) {
+    return "Checking voice input limit";
+  }
+  return "Voice input";
+}
+
+function micButtonTooltip(status: MicButtonStatus): string {
+  if (status.recording) {
+    return "Stop recording";
+  }
+  if (status.starting) {
+    return "Opening microphone...";
+  }
+  if (status.transcribing) {
+    return "Transcribing...";
+  }
+  if (status.quotaLoading) {
+    return "Checking voice input limit";
+  }
+  return "Voice input";
+}
+
 function MicButton({
   onTranscribed,
 }: {
   onTranscribed: (text: string) => void;
 }) {
   const available = useLastResolved(audioInputAvailable$) ?? false;
+  const quotaLoadable = useLoadable(audioInputQuota$);
   const quota = useLastResolved(audioInputQuota$) ?? null;
+  const quotaResolved = quota !== null;
   const recording = useGet(sttRecording$);
   const starting = useGet(sttStarting$);
   const transcribing = useGet(sttTranscribing$);
@@ -5966,10 +6004,15 @@ function MicButton({
   const voiceLevelFill = `${Math.round((voiceLevel / 3) * 100)}%`;
   const startRec = useSet(startRecording$);
   const stopAndTranscribe = useSet(stopAndTranscribe$);
-  const setTab = useSet(setActiveOrgManageTab$);
-  const setSubPage = useSet(setBillingSubPage$);
-  const openOrgManage = useSet(setOrgManageDialogOpen$);
+  const openQuotaRecovery = useSet(openAudioInputQuotaRecovery$);
   const signal = useGet(pageSignal$);
+  const disabled = starting || transcribing || (!recording && !quotaResolved);
+  const status = {
+    recording,
+    starting,
+    transcribing,
+    quotaLoading: quotaLoadable.state === "loading" && !quotaResolved,
+  };
 
   if (!available) {
     return null;
@@ -5989,15 +6032,19 @@ function MicButton({
         })(),
         Reason.DomCallback,
       );
-    } else {
-      if (quota && !quota.allowed) {
-        setTab("billing");
-        setSubPage(true);
-        detach(openOrgManage(true, signal), Reason.DomCallback);
-        return;
-      }
-      detach(startRec(signal), Reason.DomCallback);
+      return;
     }
+    if (!quota) {
+      return;
+    }
+    if (!quota.allowed) {
+      detach(openQuotaRecovery(signal), Reason.DomCallback);
+      return;
+    }
+    detach(
+      startRec(onTranscribed, quota.limit === null, signal),
+      Reason.DomCallback,
+    );
   };
 
   return (
@@ -6013,16 +6060,8 @@ function MicButton({
                 : "text-muted-foreground hover:bg-accent hover:text-foreground",
             )}
             onClick={handleClick}
-            disabled={starting || transcribing}
-            aria-label={
-              recording
-                ? "Stop recording"
-                : starting
-                  ? "Starting voice input"
-                  : transcribing
-                    ? "Transcribing"
-                    : "Voice input"
-            }
+            disabled={disabled}
+            aria-label={micButtonAriaLabel(status)}
           >
             {starting || transcribing ? (
               <span className="mic-starting-spinner" aria-hidden="true" />
@@ -6045,13 +6084,7 @@ function MicButton({
           </button>
         </TooltipTrigger>
         <TooltipContent side="top" className="text-xs">
-          {recording
-            ? "Stop recording"
-            : starting
-              ? "Opening microphone..."
-              : transcribing
-                ? "Transcribing..."
-                : "Voice input"}
+          {micButtonTooltip(status)}
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
@@ -6203,6 +6236,9 @@ function useResolvedComposerSignals(
   const setDragOver = useSet(
     draft ? draft.setDragOver$ : singletonSetDragOver$,
   );
+  const appendInput = useSet(
+    draft ? draft.appendInput$ : singletonAppendInput$,
+  );
 
   return {
     canSend,
@@ -6215,6 +6251,7 @@ function useResolvedComposerSignals(
     setFileInputEl,
     dragOver,
     setDragOver,
+    appendInput,
   };
 }
 
@@ -6562,6 +6599,7 @@ export function ZeroChatComposer({
     setFileInputEl,
     dragOver,
     setDragOver,
+    appendInput,
   } = resolved;
 
   const ensurePushSubscription = useSet(ensurePushSubscription$);
@@ -7015,10 +7053,7 @@ export function ZeroChatComposer({
                   <div className="mx-0 h-5 w-px bg-border/60 sm:mx-0.5" />
                   <MicButton
                     onTranscribed={(text) => {
-                      const base = input;
-                      const separator =
-                        base.length > 0 && !base.endsWith(" ") ? " " : "";
-                      onInputChange(base + separator + text);
+                      appendInput(text);
                       onDraftChange?.();
                     }}
                   />

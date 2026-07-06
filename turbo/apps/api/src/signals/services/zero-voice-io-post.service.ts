@@ -17,6 +17,13 @@ import { nowDate } from "../external/time";
 import { putS3Object } from "../external/s3";
 import { settle } from "../utils";
 import { recordWebUploadedFile$ } from "./run-uploaded-files.service";
+import {
+  AUDIO_INPUT_BEHAVIOR_KEY,
+  DAILY_DURATION_LIMITS,
+  DAILY_RATE_LIMITS,
+  sttDailyDurationKey,
+  sttDailyRateKey,
+} from "./voice-io-limits";
 import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
 
 const L = logger("ZeroVoiceIoPost");
@@ -25,7 +32,7 @@ export const OPENAI_AUDIO_SPEECH_URL = "https://api.openai.com/v1/audio/speech";
 const OPENAI_AUDIO_TRANSCRIPTIONS_URL =
   "https://api.openai.com/v1/audio/transcriptions";
 const BYTEPLUS_ASR_FLASH_URL =
-  "https://voice.ap-southeast-1.bytepluses.com/api/v3/auc/bigmodel/recognize/flash";
+  "https://byteplus-proxy.vm0.ai/api/v3/auc/bigmodel/recognize/flash";
 const BYTEPLUS_ASR_RESOURCE_ID = "volc.seedasr.auc_turbo";
 const BYTEPLUS_ASR_MODEL = "bigmodel";
 const BYTEPLUS_ERROR_BODY_LOG_MAX_LENGTH = 4000;
@@ -42,28 +49,9 @@ export const MAX_STT_REQUEST_DURATION_SECONDS = 5 * 60;
 const USAGE_KIND = "audio";
 const USAGE_PROVIDER = VOICE_IO_TTS_MODEL;
 const USAGE_CATEGORY = "output_audio_seconds";
-const AUDIO_INPUT_BEHAVIOR_KEY = "audio_input";
-const DAILY_RATE_KEY_PREFIX = "audio_input_daily";
-const DAILY_DURATION_KEY_PREFIX = "audio_input_dur";
 const MAX_DURATION_READ_BYTES = 4096;
 const DEFAULT_TIMECODE_SCALE_NS = 1_000_000;
 const EBML_HEADER = [0x1a, 0x45, 0xdf, 0xa3] as const;
-
-const DAILY_RATE_LIMITS: Readonly<Record<OrgTier, number>> = {
-  free: 10,
-  "limited-free-1": 10,
-  "pro-suspend": 0,
-  pro: 300,
-  team: 500,
-};
-
-const DAILY_DURATION_LIMITS: Readonly<Record<OrgTier, number>> = {
-  free: 10 * 60,
-  "limited-free-1": 10 * 60,
-  "pro-suspend": 0,
-  pro: 200 * 60,
-  team: 500 * 60,
-};
 
 const ALLOWED_STT_MIME_TYPES = [
   "audio/webm",
@@ -524,14 +512,6 @@ export function isSpeechVoice(value: string): boolean {
   return SPEECH_VOICES.some((voice) => {
     return voice === value;
   });
-}
-
-function sttDailyRateKey(date: Date = nowDate()): string {
-  return `${DAILY_RATE_KEY_PREFIX}_${date.toISOString().slice(0, 10)}`;
-}
-
-function sttDailyDurationKey(date: Date = nowDate()): string {
-  return `${DAILY_DURATION_KEY_PREFIX}_${date.toISOString().slice(0, 10)}`;
 }
 
 function estimatedSpeechCredits(

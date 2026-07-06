@@ -10,6 +10,9 @@ import {
 describe("isFeatureEnabled", () => {
   it("should return true for globally enabled switch", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.Dummy, {})).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.BytePlusVoiceInputStt, {})).toBe(
+      true,
+    );
   });
 
   it("should return true for globally enabled switch even with context", () => {
@@ -89,6 +92,7 @@ describe("getAllFeatureStates", () => {
     const states = getAllFeatureStates();
     // Globally enabled switches should be true
     expect(states[FeatureSwitchKey.Dummy]).toBe(true);
+    expect(states[FeatureSwitchKey.BytePlusVoiceInputStt]).toBe(true);
   });
 
   it("should enable switches when orgId matches enabledOrgIdHashes", () => {
@@ -158,6 +162,7 @@ describe("getAllFeatureStates", () => {
       false,
     );
     expect(otherOrgStates[FeatureSwitchKey.WebsiteTemplates]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.BytePlusVoiceInputStt]).toBe(true);
   });
 
   it("should apply overrides to enable disabled features", () => {
