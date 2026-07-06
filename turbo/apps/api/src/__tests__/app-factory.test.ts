@@ -189,6 +189,35 @@ describe("createApp", () => {
     expect(message).toBe(`Unhandled request error: ${expectedSummary}`);
   });
 
+  it("handles cyclic error causes while logging unhandled errors", async () => {
+    const error = new Error("cyclic failure");
+    Object.defineProperty(error, "cause", { value: error });
+    const handler$ = computed((): never => {
+      throw error;
+    });
+    const client = setupApp({
+      context,
+      routes: [...ROUTES, { route: errorTestContract.boom, handler: handler$ }],
+    })(errorTestContract);
+
+    const response = await accept(client.boom(), [500]);
+
+    expect(response.body).toStrictEqual({ error: "Internal server error" });
+
+    const [message, fields] =
+      context.mocks.axiomLogging.error.mock.calls.at(-1) ?? [];
+    const logFields = fields as Record<PropertyKey, unknown>;
+    expect(message).toBe("Unhandled request error: cyclic failure");
+    expect(logFields).toMatchObject({
+      type: "unhandled_request_error",
+      errorSummary: "cyclic failure",
+      error: expect.objectContaining({
+        message: "cyclic failure",
+        cause: "[Circular]",
+      }),
+    });
+  });
+
   it("summarizes response validation failures without schema details", async () => {
     const handler$ = computed(() => {
       return { status: 500, body: { error: 123 } };

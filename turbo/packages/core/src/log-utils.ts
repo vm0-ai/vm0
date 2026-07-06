@@ -14,22 +14,39 @@ export function formatMessage(args: unknown[]): string {
  * an Error loses them. This explicitly copies them plus any additional
  * enumerable own properties (e.g. code, statusCode on custom errors).
  */
-export function serializeError(err: Error): Record<string, unknown> {
+function serializeErrorWithSeen(
+  err: Error,
+  seen: WeakSet<Error>,
+): Record<string, unknown> {
   const serialized: Record<string, unknown> = {
     name: err.name,
     message: err.message,
     stack: err.stack,
   };
+  seen.add(err);
   if (err.cause !== undefined) {
     serialized.cause =
-      err.cause instanceof Error ? serializeError(err.cause) : err.cause;
+      err.cause instanceof Error
+        ? seen.has(err.cause)
+          ? "[Circular]"
+          : serializeErrorWithSeen(err.cause, seen)
+        : err.cause;
   }
   for (const [key, value] of Object.entries(err)) {
     if (!(key in serialized)) {
-      serialized[key] = value;
+      serialized[key] =
+        value instanceof Error
+          ? seen.has(value)
+            ? "[Circular]"
+            : serializeErrorWithSeen(value, seen)
+          : value;
     }
   }
   return serialized;
+}
+
+export function serializeError(err: Error): Record<string, unknown> {
+  return serializeErrorWithSeen(err, new WeakSet<Error>());
 }
 
 /**

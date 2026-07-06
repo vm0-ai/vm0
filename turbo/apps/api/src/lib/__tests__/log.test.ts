@@ -258,6 +258,24 @@ describe("serializeError via logging", () => {
     );
   });
 
+  it("serializes cyclic error causes without throwing", () => {
+    const log = logger("cyclic-cause-test");
+    const err = new Error("wrapped");
+    Object.defineProperty(err, "cause", { value: err });
+
+    log.error(err);
+
+    expect(axiomLogging.error).toHaveBeenCalledWith(
+      "wrapped",
+      expect.objectContaining({
+        error: expect.objectContaining({
+          message: "wrapped",
+          cause: "[Circular]",
+        }),
+      }),
+    );
+  });
+
   it("surfaces custom enumerable properties on Error", () => {
     const log = logger("custom-err");
     const err = new Error("custom") as Error & Record<string, unknown>;
