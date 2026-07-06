@@ -4,8 +4,9 @@ import { zeroCustomConnectorByIdContract } from "@vm0/api-contracts/contracts/ze
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
+import { notFound } from "../../lib/error";
 import {
-  serialiseCustomConnector,
+  getCustomConnectorResponse,
   updateCustomConnectorDefinition$,
 } from "../services/zero-custom-connector.service";
 import type { RouteEntry } from "../route-entry";
@@ -48,9 +49,20 @@ const updateInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   if ("status" in result) {
     return result;
   }
+  const connector = await get(
+    getCustomConnectorResponse({
+      orgId: auth.orgId,
+      userId: auth.userId,
+      connectorId: params.id,
+    }),
+  );
+  signal.throwIfAborted();
+  if (!connector) {
+    return notFound("Custom connector not found");
+  }
   return {
     status: 200 as const,
-    body: serialiseCustomConnector({ row: result, valueMarkers: [] }),
+    body: connector,
   };
 });
 

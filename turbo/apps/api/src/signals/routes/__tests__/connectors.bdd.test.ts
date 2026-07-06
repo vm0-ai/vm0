@@ -1363,8 +1363,18 @@ describe("CONN-03: custom connectors and connector-owned values", () => {
     ).toBeTruthy();
     expectNoVisibleSecret(afterValues, secretValue);
 
-    await connectorsApi.patchCustomConnector(admin, created.id, {
+    const patched = await connectorsApi.patchCustomConnector(
+      admin,
+      created.id,
+      {
+        displayName: "BDD Custom Connector Renamed",
+      },
+    );
+    expect(patched).toMatchObject({
       displayName: "BDD Custom Connector Renamed",
+      connected: true,
+      configuredFieldKeys: ["secret"],
+      missingRequiredFields: [],
     });
 
     const listAfterPatch = await connectorsApi.listCustomConnectors(admin);
@@ -1655,17 +1665,26 @@ describe("CONN-03: custom connectors and connector-owned values", () => {
       { key: "subdomain", kind: "variable", value: "acme" },
     ]);
 
-    await connectorsApi.updateCustomConnector(admin, connector.id, {
-      displayName: "BDD Prune Removed Values API",
-      prefixTemplates: [prefixTemplate],
-      fields: [subdomainField],
-      headerInjections: [],
-      queryInjections: [
-        {
-          name: "tenant",
-          valueTemplate: "{{variables.subdomain}}",
-        },
-      ],
+    const removedField = await connectorsApi.updateCustomConnector(
+      admin,
+      connector.id,
+      {
+        displayName: "BDD Prune Removed Values API",
+        prefixTemplates: [prefixTemplate],
+        fields: [subdomainField],
+        headerInjections: [],
+        queryInjections: [
+          {
+            name: "tenant",
+            valueTemplate: "{{variables.subdomain}}",
+          },
+        ],
+      },
+    );
+    expect(removedField).toMatchObject({
+      connected: true,
+      configuredFieldKeys: ["subdomain"],
+      missingRequiredFields: [],
     });
 
     const afterRemove = await connectorsApi.listCustomConnectors(admin);
@@ -1679,17 +1698,26 @@ describe("CONN-03: custom connectors and connector-owned values", () => {
       missingRequiredFields: [],
     });
 
-    await connectorsApi.updateCustomConnector(admin, connector.id, {
-      displayName: "BDD Prune Removed Values API",
-      prefixTemplates: [prefixTemplate],
-      fields: [apiKeyField, subdomainField],
-      headerInjections: [
-        {
-          name: "Authorization",
-          valueTemplate: "Bearer {{secrets.api_key}}",
-        },
-      ],
-      queryInjections: [],
+    const readdedField = await connectorsApi.updateCustomConnector(
+      admin,
+      connector.id,
+      {
+        displayName: "BDD Prune Removed Values API",
+        prefixTemplates: [prefixTemplate],
+        fields: [apiKeyField, subdomainField],
+        headerInjections: [
+          {
+            name: "Authorization",
+            valueTemplate: "Bearer {{secrets.api_key}}",
+          },
+        ],
+        queryInjections: [],
+      },
+    );
+    expect(readdedField).toMatchObject({
+      connected: false,
+      configuredFieldKeys: ["subdomain"],
+      missingRequiredFields: ["api_key"],
     });
 
     const afterReadd = await connectorsApi.listCustomConnectors(admin);
