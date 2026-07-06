@@ -3801,6 +3801,12 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     expect(claim.secretConnectorMap).toMatchObject({
       GOOGLE_ADS_TOKEN: "google-ads",
     });
+    expect(claim.secretConnectorMap ?? {}).not.toHaveProperty(
+      "GOOGLE_ADS_DEVELOPER_TOKEN",
+    );
+    expect(claim.secretConnectorMetadataMap ?? {}).not.toHaveProperty(
+      "GOOGLE_ADS_DEVELOPER_TOKEN",
+    );
     expect(
       claim.firewalls?.map((firewall) => {
         return firewallEntryName(firewall);

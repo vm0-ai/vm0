@@ -53,6 +53,7 @@ import {
   getConnectorAuthMethodDeviceAuthStartOptionsConfig,
   getConnectorAuthMethodAccessMetadata,
   getConnectorAuthMethodRuntimeMetadata,
+  getConnectorRuntimeBindingPlatformSecretName,
   getConnectorGrantOutputTarget,
   getConnectorRefreshOutputTarget,
   getConnectorStoredSecretDisplayInfo,
@@ -3056,9 +3057,14 @@ describe("getConnectorAuthMethodRuntimeMetadata", () => {
   });
 
   it("represents platform secrets as platform runtime sources", () => {
-    expect(
-      getConnectorAuthMethodRuntimeMetadata("google-ads", "oauth"),
-    ).toStrictEqual({
+    const metadata = getConnectorAuthMethodRuntimeMetadata(
+      "google-ads",
+      "oauth",
+    );
+    if (!metadata) {
+      throw new Error("Expected Google Ads OAuth runtime metadata");
+    }
+    expect(metadata).toStrictEqual({
       storage: {
         secrets: ["GOOGLE_ADS_ACCESS_TOKEN", "GOOGLE_ADS_REFRESH_TOKEN"],
         variables: [],
@@ -3084,6 +3090,18 @@ describe("getConnectorAuthMethodRuntimeMetadata", () => {
         },
       ],
     });
+    expect(
+      getConnectorRuntimeBindingPlatformSecretName(
+        metadata,
+        "GOOGLE_ADS_DEVELOPER_TOKEN",
+      ),
+    ).toBe("GOOGLE_ADS_DEVELOPER_TOKEN");
+    expect(
+      getConnectorRuntimeBindingPlatformSecretName(
+        metadata,
+        "GOOGLE_ADS_TOKEN",
+      ),
+    ).toBeUndefined();
   });
 
   it("returns Meta Ads runtime token binding metadata", () => {
