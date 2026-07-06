@@ -142,7 +142,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.HtmlArtifactCommentEditing]).toBe(
       true,
     );
-    expect(staffOrgStates[FeatureSwitchKey.WebsiteTemplates]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.WebsiteTemplates]).toBe(false);
 
     const otherOrgStates = getAllFeatureStates({
       orgId: "org_nonexistent",
