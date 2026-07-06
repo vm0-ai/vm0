@@ -21,7 +21,7 @@ describe("illustration template items", () => {
     for (const item of ILLUSTRATION_TEMPLATE_ITEMS) {
       expect(item.previewImage).toContain(ILLUSTRATION_ASSET_BASE);
       expect(item.cardPreviewImage).toMatch(
-        /^https:\/\/cdn\.vm0\.io\/artifacts\/.+\.jpg$/u,
+        /^https:\/\/static\.vm0\.io\/vm0\/artifact-templates\/illustration\/card-previews\/.+\.jpg$/u,
       );
       expect(item.cardPreviewImage).not.toContain("/cdn-cgi/image/");
       expect(item.previewImages.length).toBe(item.variationCount);
