@@ -59,6 +59,7 @@ function botFixture(): TeamsConnectFixture {
     teamsTeamId: "team-1",
     teamsTeamName: "Team One",
     teamsUserId: "29:user-1",
+    teamsAadObjectId: "aad-user-1",
     serviceUrl: SERVICE_URL,
   });
 }
@@ -67,6 +68,13 @@ function teamsInstallUrl(): string {
   const url = new URL(`https://teams.microsoft.com/l/app/${BOT_APP_ID}`);
   url.searchParams.set("installAppPackage", "true");
   url.searchParams.set("appTenantId", TEAMS_APP_TENANT_ID);
+  return url.toString();
+}
+
+function teamsOauthConnectUrl(fixture: TeamsConnectFixture): string {
+  const url = new URL("https://www.vm0.test/api/zero/teams/oauth/connect");
+  url.searchParams.set("orgId", fixture.orgId);
+  url.searchParams.set("vm0UserId", fixture.userId);
   return url.toString();
 }
 
@@ -323,7 +331,7 @@ function teamsMessageActivity(
     from: {
       id: fixture.teamsUserId,
       name: "Ada Lovelace",
-      aadObjectId: "aad-user-1",
+      aadObjectId: fixture.teamsAadObjectId,
       userPrincipalName: "ada@example.com",
     },
     recipient: { id: "28:bot-1", name: "Zero" },
@@ -414,7 +422,7 @@ async function connectTeamsFixture(
       headers: { authorization: "Bearer clerk-session" },
       body: {
         tenantId: fixture.teamsTenantId,
-        teamsUserId: fixture.teamsUserId,
+        teamsAadObjectId: fixture.teamsAadObjectId,
         teamsUserDisplayName: "Ada Lovelace",
         teamsUserPrincipalName: "ada@example.com",
       },
@@ -527,11 +535,22 @@ describe("POST /api/zero/teams/bot", () => {
       },
     });
     expect(body.connectUrl).toContain(`${APP_ORIGIN}/settings/teams`);
-    expect(body.connectUrl).toContain("tenantId=tenant-1");
-    expect(body.connectUrl).toContain("tenantName=Tenant+One");
-    expect(body.connectUrl).toContain("teamsUserId=29%3Auser-1");
-    expect(body.connectUrl).toContain("teamId=team-1");
-    expect(body.connectUrl).toContain("teamName=Team+One");
+    const connectUrl = new URL(String(body.connectUrl));
+    expect(connectUrl.searchParams.get("tenantId")).toBe("tenant-1");
+    expect(connectUrl.searchParams.get("tenantName")).toBe("Tenant One");
+    expect(connectUrl.searchParams.get("teamsUserId")).toBe("29:user-1");
+    expect(connectUrl.searchParams.get("teamsAadObjectId")).toBe("aad-user-1");
+    expect(connectUrl.searchParams.get("activityId")).toBe("activity-1");
+    expect(connectUrl.searchParams.get("teamsUserDisplayName")).toBe(
+      "Ada Lovelace",
+    );
+    expect(connectUrl.searchParams.get("teamsUserPrincipalName")).toBe(
+      "ada@example.com",
+    );
+    expect(connectUrl.searchParams.get("displayName")).toBeNull();
+    expect(connectUrl.searchParams.get("upn")).toBeNull();
+    expect(connectUrl.searchParams.get("teamId")).toBe("team-1");
+    expect(connectUrl.searchParams.get("teamName")).toBe("Team One");
     expect(body.dispatch).toMatchObject({
       kind: "notice",
       connectUrl: expect.stringContaining(`${APP_ORIGIN}/settings/teams`),
@@ -587,6 +606,7 @@ describe("POST /api/zero/teams/bot", () => {
         body: {
           tenantId: "tenant-1",
           teamsUserId: "29:user-1",
+          teamsAadObjectId: "aad-user-1",
           teamsUserDisplayName: "Ada Lovelace",
           teamsUserPrincipalName: "ada@example.com",
         },
@@ -1039,6 +1059,7 @@ describe("POST /api/zero/teams/bot", () => {
         body: {
           tenantId: fixture.teamsTenantId,
           teamsUserId: fixture.teamsUserId,
+          teamsAadObjectId: fixture.teamsAadObjectId,
         },
       }),
       [200],
@@ -1061,6 +1082,7 @@ describe("POST /api/zero/teams/bot", () => {
       isConnected: false,
       isAdmin: true,
       installUrl: teamsInstallUrl(),
+      connectUrl: teamsOauthConnectUrl(fixture),
     });
   });
 });

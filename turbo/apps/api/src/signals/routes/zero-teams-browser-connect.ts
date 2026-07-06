@@ -33,9 +33,14 @@ function teamsSettingsParams(
   query: {
     readonly tenantId?: string;
     readonly teamsUserId?: string;
+    readonly teamsAadObjectId?: string;
+    readonly teamsUserDisplayName?: string;
+    readonly teamsUserPrincipalName?: string;
     readonly displayName?: string;
     readonly upn?: string;
+    readonly serviceUrl?: string;
     readonly conversationId?: string;
+    readonly activityId?: string;
     readonly channelId?: string;
     readonly threadId?: string;
     readonly orgId?: string;
@@ -54,14 +59,29 @@ function teamsSettingsParams(
   if (query.teamsUserId) {
     params.set("teamsUserId", query.teamsUserId);
   }
+  if (query.teamsAadObjectId) {
+    params.set("teamsAadObjectId", query.teamsAadObjectId);
+  }
   if (query.displayName) {
     params.set("displayName", query.displayName);
+  }
+  if (query.teamsUserDisplayName) {
+    params.set("teamsUserDisplayName", query.teamsUserDisplayName);
   }
   if (query.upn) {
     params.set("upn", query.upn);
   }
+  if (query.teamsUserPrincipalName) {
+    params.set("teamsUserPrincipalName", query.teamsUserPrincipalName);
+  }
+  if (query.serviceUrl) {
+    params.set("serviceUrl", query.serviceUrl);
+  }
   if (query.conversationId) {
     params.set("conversationId", query.conversationId);
+  }
+  if (query.activityId) {
+    params.set("activityId", query.activityId);
   }
   if (query.channelId) {
     params.set("channelId", query.channelId);
@@ -111,6 +131,42 @@ const adminRequiredMessage = "Ask your org admin to connect first.";
 const orgMismatchMessage =
   "Your active organization doesn't match this Teams installation. Please switch to the correct organization in the platform sidebar before connecting.";
 
+type TeamsBrowserConnectQuery = Parameters<typeof teamsSettingsParams>[0];
+type TeamsOrgInstallation = typeof teamsOrgInstallations.$inferSelect;
+
+function resolveBrowserConnectOrgId(args: {
+  readonly query: TeamsBrowserConnectQuery;
+  readonly activeOrgId?: string | null;
+  readonly orgRole?: string | null;
+  readonly userId: string;
+  readonly installation: TeamsOrgInstallation;
+}):
+  | { readonly kind: "ok"; readonly orgId: string }
+  | {
+      readonly kind: "error";
+      readonly message: string;
+    } {
+  const effectiveOrgId = args.query.orgId ?? args.activeOrgId;
+  if (!args.installation.orgId) {
+    if (!effectiveOrgId || args.orgRole !== "admin") {
+      return { kind: "error", message: adminRequiredMessage };
+    }
+    return { kind: "ok", orgId: effectiveOrgId };
+  }
+
+  if (!effectiveOrgId || effectiveOrgId !== args.installation.orgId) {
+    L.debug("Org check failed", {
+      activeOrgId: args.activeOrgId,
+      explicitOrgId: args.query.orgId,
+      installationOrgId: args.installation.orgId,
+      userId: args.userId,
+    });
+    return { kind: "error", message: orgMismatchMessage };
+  }
+
+  return { kind: "ok", orgId: args.installation.orgId };
+}
+
 const browserConnect$ = command(async ({ get, set }, signal: AbortSignal) => {
   const request = get(request$);
   const auth = await set(requiredAuthContext$, {}, signal);
@@ -123,8 +179,9 @@ const browserConnect$ = command(async ({ get, set }, signal: AbortSignal) => {
   const query = get(queryOf(zeroTeamsBrowserConnectContract.connect));
   const tenantId = query.tenantId;
   const teamsUserId = query.teamsUserId;
+  const teamsAadObjectId = query.teamsAadObjectId;
 
-  if (!tenantId || !teamsUserId) {
+  if (!tenantId || (!teamsUserId && !teamsAadObjectId)) {
     return connectError(invalidConnectLinkMessage, query);
   }
 
@@ -140,25 +197,17 @@ const browserConnect$ = command(async ({ get, set }, signal: AbortSignal) => {
     return connectError(installationNotFoundMessage, query);
   }
 
-  const effectiveOrgId = query.orgId ?? auth.orgId;
-  if (!installation.orgId) {
-    if (!effectiveOrgId || auth.orgRole !== "admin") {
-      return connectError(adminRequiredMessage, query);
-    }
-  } else if (!effectiveOrgId || effectiveOrgId !== installation.orgId) {
-    L.debug("Org check failed", {
-      activeOrgId: auth.orgId,
-      explicitOrgId: query.orgId,
-      installationOrgId: installation.orgId,
-      userId: auth.userId,
-    });
-    return connectError(orgMismatchMessage, query);
+  const orgResolution = resolveBrowserConnectOrgId({
+    query,
+    activeOrgId: auth.orgId,
+    orgRole: auth.orgRole,
+    userId: auth.userId,
+    installation,
+  });
+  if (orgResolution.kind === "error") {
+    return connectError(orgResolution.message, query);
   }
-
-  const orgId = installation.orgId ?? effectiveOrgId;
-  if (!orgId) {
-    return connectError(adminRequiredMessage, query);
-  }
+  const orgId = orgResolution.orgId;
 
   const result = await set(
     connectTeamsInstallation$,
@@ -168,11 +217,12 @@ const browserConnect$ = command(async ({ get, set }, signal: AbortSignal) => {
       orgRole: auth.orgRole === "admin" ? "admin" : "member",
       tenantId,
       teamsUserId,
-      teamsUserDisplayName: query.displayName,
-      teamsUserPrincipalName: query.upn,
+      teamsAadObjectId,
+      teamsUserDisplayName: query.teamsUserDisplayName ?? query.displayName,
+      teamsUserPrincipalName: query.teamsUserPrincipalName ?? query.upn,
       teamId: installation.teamsTeamId ?? undefined,
       teamName: installation.teamsTeamName ?? undefined,
-      serviceUrl: installation.serviceUrl ?? undefined,
+      serviceUrl: query.serviceUrl ?? installation.serviceUrl ?? undefined,
     },
     signal,
   );

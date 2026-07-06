@@ -13,6 +13,7 @@ import { and, eq, or } from "drizzle-orm";
 import { convert } from "html-to-text";
 
 import { logger } from "../../lib/log";
+import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
 import {
   fetchTeamsChannelMessage,
@@ -115,8 +116,36 @@ async function installationForTenant(
 async function connectionForTeamsUser(
   db: Db,
   tenantId: string,
-  teamsUserId: string,
+  teamsUserId: string | null,
+  teamsAadObjectId: string | null,
 ): Promise<TeamsConnection | undefined> {
+  if (teamsAadObjectId) {
+    const [connection] = await db
+      .select()
+      .from(teamsOrgConnections)
+      .where(
+        and(
+          eq(teamsOrgConnections.teamsTenantId, tenantId),
+          eq(teamsOrgConnections.teamsAadObjectId, teamsAadObjectId),
+        ),
+      )
+      .limit(1);
+
+    if (connection) {
+      if (teamsUserId && connection.teamsUserId !== teamsUserId) {
+        await db
+          .update(teamsOrgConnections)
+          .set({ teamsUserId, updatedAt: nowDate() })
+          .where(eq(teamsOrgConnections.id, connection.id));
+      }
+      return connection;
+    }
+  }
+
+  if (!teamsUserId) {
+    return undefined;
+  }
+
   const [connection] = await db
     .select()
     .from(teamsOrgConnections)
@@ -867,6 +896,7 @@ export const dispatchTeamsMessageToAgent$ = command(
       db,
       activity.tenantId,
       activity.sender.id,
+      activity.sender.aadObjectId,
     );
     signal.throwIfAborted();
 

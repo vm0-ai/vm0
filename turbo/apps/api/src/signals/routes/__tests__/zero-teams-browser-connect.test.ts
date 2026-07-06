@@ -24,8 +24,13 @@ const APP_ORIGIN = "https://app.vm0.test";
 function connectUrl(params: {
   readonly tenantId?: string;
   readonly teamsUserId?: string;
+  readonly teamsAadObjectId?: string;
+  readonly teamsUserDisplayName?: string;
+  readonly teamsUserPrincipalName?: string;
   readonly displayName?: string;
   readonly upn?: string;
+  readonly serviceUrl?: string;
+  readonly activityId?: string;
   readonly orgId?: string;
 }): string {
   const url = new URL(CONNECT_PATH);
@@ -35,11 +40,29 @@ function connectUrl(params: {
   if (params.teamsUserId) {
     url.searchParams.set("teamsUserId", params.teamsUserId);
   }
+  if (params.teamsAadObjectId) {
+    url.searchParams.set("teamsAadObjectId", params.teamsAadObjectId);
+  }
+  if (params.teamsUserDisplayName) {
+    url.searchParams.set("teamsUserDisplayName", params.teamsUserDisplayName);
+  }
+  if (params.teamsUserPrincipalName) {
+    url.searchParams.set(
+      "teamsUserPrincipalName",
+      params.teamsUserPrincipalName,
+    );
+  }
   if (params.displayName) {
     url.searchParams.set("displayName", params.displayName);
   }
   if (params.upn) {
     url.searchParams.set("upn", params.upn);
+  }
+  if (params.serviceUrl) {
+    url.searchParams.set("serviceUrl", params.serviceUrl);
+  }
+  if (params.activityId) {
+    url.searchParams.set("activityId", params.activityId);
   }
   if (params.orgId) {
     url.searchParams.set("orgId", params.orgId);
@@ -66,6 +89,7 @@ function connectBody(
   return {
     tenantId: fixture.teamsTenantId,
     teamsUserId,
+    teamsAadObjectId: fixture.teamsAadObjectId,
     teamsUserDisplayName: "Ada Lovelace",
     teamsUserPrincipalName: "ada@example.com",
     teamId: fixture.teamsTeamId,
@@ -157,8 +181,11 @@ describe("GET /api/zero/teams/connect", () => {
       connectUrl({
         tenantId: fixture.teamsTenantId,
         teamsUserId: fixture.teamsUserId,
-        displayName: "Ada Lovelace",
-        upn: "ada@example.com",
+        teamsAadObjectId: fixture.teamsAadObjectId,
+        teamsUserDisplayName: "Ada Lovelace",
+        teamsUserPrincipalName: "ada@example.com",
+        serviceUrl: fixture.serviceUrl,
+        activityId: "activity-1",
       }),
     );
 
@@ -172,8 +199,17 @@ describe("GET /api/zero/teams/connect", () => {
     expect(redirectUrl.searchParams.get("teamsUserId")).toBe(
       fixture.teamsUserId,
     );
-    expect(redirectUrl.searchParams.get("displayName")).toBe("Ada Lovelace");
-    expect(redirectUrl.searchParams.get("upn")).toBe("ada@example.com");
+    expect(redirectUrl.searchParams.get("teamsAadObjectId")).toBe(
+      fixture.teamsAadObjectId,
+    );
+    expect(redirectUrl.searchParams.get("teamsUserDisplayName")).toBe(
+      "Ada Lovelace",
+    );
+    expect(redirectUrl.searchParams.get("teamsUserPrincipalName")).toBe(
+      "ada@example.com",
+    );
+    expect(redirectUrl.searchParams.get("serviceUrl")).toBe(fixture.serviceUrl);
+    expect(redirectUrl.searchParams.get("activityId")).toBe("activity-1");
     expect(redirectUrl.searchParams.get("teamName")).toBe(
       fixture.teamsTeamName,
     );
@@ -195,6 +231,26 @@ describe("GET /api/zero/teams/connect", () => {
     const location = response.headers.get("location");
     expect(location).toContain(`${APP_ORIGIN}/settings/teams?error=`);
     expect(decodeURIComponent(location ?? "")).toContain("admin");
+  });
+
+  it("connects from a Teams link that only includes the AAD user id", async () => {
+    const fixture = await seedTeamsInstallation(track);
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    const response = await requestConnect(
+      connectUrl({
+        tenantId: fixture.teamsTenantId,
+        teamsAadObjectId: fixture.teamsAadObjectId,
+        teamsUserDisplayName: "Ada Lovelace",
+        teamsUserPrincipalName: "ada@example.com",
+      }),
+    );
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toContain(
+      `${APP_ORIGIN}/settings/teams?status=connected`,
+    );
+    await expectTeamsConnected(fixture);
   });
 
   it("keeps reconnecting the same Teams user idempotent", async () => {

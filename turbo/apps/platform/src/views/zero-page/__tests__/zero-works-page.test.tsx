@@ -45,6 +45,7 @@ function mockTeamsAPI(overrides: Partial<TeamsConnectStatus> = {}): void {
     isAdmin: true,
     installUrl:
       "https://teams.microsoft.com/l/app/00000000-0000-0000-0000-000000000001",
+    connectUrl: "/api/zero/teams/oauth/connect?orgId=org_1&vm0UserId=user_1",
   };
   context.mocks.api(zeroTeamsConnectContract.getStatus, ({ respond }) => {
     return respond(200, { ...defaults, ...overrides });
@@ -133,14 +134,17 @@ describe("works page", () => {
     expect(installButton).toHaveTextContent("Install in Teams");
   });
 
-  it("keeps Microsoft Teams install controls available after installation", async () => {
+  it("shows Microsoft Teams connect controls after installation", async () => {
     mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
     mockTeamsAPI({ isConnected: false, isInstalled: true, isAdmin: true });
 
     setupWorksPage({ teamsEnabled: true });
 
-    const installButton = await screen.findByTestId("teams-install-button");
-    expect(installButton).toHaveTextContent("Install in Teams");
+    const connectButton = await screen.findByTestId("teams-connect-button");
+    expect(connectButton).toHaveTextContent("Connect");
+    expect(
+      screen.queryByTestId("teams-install-button"),
+    ).not.toBeInTheDocument();
   });
 
   it("shows Microsoft Teams admin uninstall confirmation", async () => {

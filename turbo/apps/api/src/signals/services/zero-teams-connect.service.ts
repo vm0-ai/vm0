@@ -79,32 +79,50 @@ function setOptionalParam(
 function buildTeamsBrowserConnectUrl(args: {
   readonly tenantId: string;
   readonly tenantName?: string | null;
-  readonly teamsUserId: string;
+  readonly teamsUserId?: string | null;
+  readonly teamsAadObjectId?: string | null;
   readonly teamsUserDisplayName?: string | null;
   readonly teamsUserPrincipalName?: string | null;
   readonly teamId?: string | null;
   readonly teamName?: string | null;
   readonly serviceUrl?: string | null;
   readonly conversationId?: string | null;
+  readonly activityId?: string | null;
   readonly channelId?: string | null;
   readonly threadId?: string | null;
   readonly orgId?: string | null;
 }): string {
   const params = new URLSearchParams({
     tenantId: args.tenantId,
-    teamsUserId: args.teamsUserId,
   });
+  setOptionalParam(params, "teamsUserId", args.teamsUserId);
+  setOptionalParam(params, "teamsAadObjectId", args.teamsAadObjectId);
   setOptionalParam(params, "tenantName", args.tenantName);
-  setOptionalParam(params, "displayName", args.teamsUserDisplayName);
-  setOptionalParam(params, "upn", args.teamsUserPrincipalName);
+  setOptionalParam(params, "teamsUserDisplayName", args.teamsUserDisplayName);
+  setOptionalParam(
+    params,
+    "teamsUserPrincipalName",
+    args.teamsUserPrincipalName,
+  );
   setOptionalParam(params, "teamId", args.teamId);
   setOptionalParam(params, "teamName", args.teamName);
   setOptionalParam(params, "serviceUrl", args.serviceUrl);
   setOptionalParam(params, "conversationId", args.conversationId);
+  setOptionalParam(params, "activityId", args.activityId);
   setOptionalParam(params, "channelId", args.channelId);
   setOptionalParam(params, "threadId", args.threadId);
   setOptionalParam(params, "orgId", args.orgId);
   return `${env("APP_URL")}/settings/teams?${params.toString()}`;
+}
+
+function buildTeamsOauthConnectUrl(args: {
+  readonly orgId: string;
+  readonly userId: string;
+}): string {
+  const url = new URL(`${env("VM0_WEB_URL")}/api/zero/teams/oauth/connect`);
+  url.searchParams.set("orgId", args.orgId);
+  url.searchParams.set("vm0UserId", args.userId);
+  return url.toString();
 }
 
 function buildTeamsInstallUrl(tenantId?: string | null): string | null {
@@ -128,7 +146,8 @@ export function buildTeamsConnectUrlForActivity(args: {
 }): string | null {
   if (
     args.activity.kind !== "message" ||
-    args.activity.sender.id.length === 0
+    (args.activity.sender.id.length === 0 &&
+      !nonEmpty(args.activity.sender.aadObjectId))
   ) {
     return null;
   }
@@ -137,12 +156,14 @@ export function buildTeamsConnectUrlForActivity(args: {
     tenantId: args.activity.tenantId,
     tenantName: args.activity.tenantName,
     teamsUserId: args.activity.sender.id,
+    teamsAadObjectId: args.activity.sender.aadObjectId,
     teamsUserDisplayName: args.activity.sender.name,
     teamsUserPrincipalName: args.activity.sender.userPrincipalName,
     teamId: args.activity.teamId,
     teamName: args.activity.teamName,
     serviceUrl: args.activity.serviceUrl,
     conversationId: args.activity.conversationId,
+    activityId: args.activity.activityId,
     channelId: args.activity.channelId,
     threadId: args.activity.threadId,
     orgId: args.installation?.orgId,
@@ -152,50 +173,122 @@ export function buildTeamsConnectUrlForActivity(args: {
 async function upsertTeamsConnection(
   writeDb: Db,
   args: {
-    readonly teamsUserId: string;
+    readonly teamsUserId?: string;
+    readonly teamsAadObjectId?: string;
     readonly teamsTenantId: string;
     readonly vm0UserId: string;
     readonly teamsUserDisplayName?: string;
     readonly teamsUserPrincipalName?: string;
   },
 ): Promise<string> {
+  if (!args.teamsUserId && !args.teamsAadObjectId) {
+    throw new Error("Teams connection requires a Teams user identity");
+  }
+
+  if (args.teamsAadObjectId) {
+    const [existingByAad] = await writeDb
+      .select({ id: teamsOrgConnections.id })
+      .from(teamsOrgConnections)
+      .where(
+        and(
+          eq(teamsOrgConnections.teamsAadObjectId, args.teamsAadObjectId),
+          eq(teamsOrgConnections.teamsTenantId, args.teamsTenantId),
+        ),
+      )
+      .limit(1);
+
+    if (existingByAad) {
+      if (args.teamsUserId) {
+        await writeDb
+          .update(teamsOrgConnections)
+          .set({
+            teamsUserId: args.teamsUserId,
+            teamsUserDisplayName: args.teamsUserDisplayName,
+            teamsUserPrincipalName: args.teamsUserPrincipalName,
+            updatedAt: nowDate(),
+          })
+          .where(eq(teamsOrgConnections.id, existingByAad.id));
+      }
+      return existingByAad.id;
+    }
+  }
+
+  if (args.teamsUserId) {
+    const [existingByTeamsUser] = await writeDb
+      .select({ id: teamsOrgConnections.id })
+      .from(teamsOrgConnections)
+      .where(
+        and(
+          eq(teamsOrgConnections.teamsUserId, args.teamsUserId),
+          eq(teamsOrgConnections.teamsTenantId, args.teamsTenantId),
+        ),
+      )
+      .limit(1);
+
+    if (existingByTeamsUser) {
+      await writeDb
+        .update(teamsOrgConnections)
+        .set({
+          teamsAadObjectId: args.teamsAadObjectId,
+          teamsUserDisplayName: args.teamsUserDisplayName,
+          teamsUserPrincipalName: args.teamsUserPrincipalName,
+          updatedAt: nowDate(),
+        })
+        .where(eq(teamsOrgConnections.id, existingByTeamsUser.id));
+      return existingByTeamsUser.id;
+    }
+  }
+
   const [connection] = await writeDb
     .insert(teamsOrgConnections)
     .values({
       teamsUserId: args.teamsUserId,
+      teamsAadObjectId: args.teamsAadObjectId,
       teamsTenantId: args.teamsTenantId,
       vm0UserId: args.vm0UserId,
       teamsUserDisplayName: args.teamsUserDisplayName,
       teamsUserPrincipalName: args.teamsUserPrincipalName,
     })
-    .onConflictDoNothing({
-      target: [
-        teamsOrgConnections.teamsUserId,
-        teamsOrgConnections.teamsTenantId,
-      ],
-    })
+    .onConflictDoNothing()
     .returning({ id: teamsOrgConnections.id });
 
   if (connection) {
     return connection.id;
   }
 
-  const [existing] = await writeDb
-    .select({ id: teamsOrgConnections.id })
-    .from(teamsOrgConnections)
-    .where(
-      and(
-        eq(teamsOrgConnections.teamsUserId, args.teamsUserId),
-        eq(teamsOrgConnections.teamsTenantId, args.teamsTenantId),
-      ),
-    )
-    .limit(1);
-
-  if (!existing) {
-    throw new Error("Teams connection upsert did not return a row");
+  if (args.teamsAadObjectId) {
+    const [existingByAad] = await writeDb
+      .select({ id: teamsOrgConnections.id })
+      .from(teamsOrgConnections)
+      .where(
+        and(
+          eq(teamsOrgConnections.teamsAadObjectId, args.teamsAadObjectId),
+          eq(teamsOrgConnections.teamsTenantId, args.teamsTenantId),
+        ),
+      )
+      .limit(1);
+    if (existingByAad) {
+      return existingByAad.id;
+    }
   }
 
-  return existing.id;
+  if (args.teamsUserId) {
+    const [existingByTeamsUser] = await writeDb
+      .select({ id: teamsOrgConnections.id })
+      .from(teamsOrgConnections)
+      .where(
+        and(
+          eq(teamsOrgConnections.teamsUserId, args.teamsUserId),
+          eq(teamsOrgConnections.teamsTenantId, args.teamsTenantId),
+        ),
+      )
+      .limit(1);
+    if (existingByTeamsUser) {
+      return existingByTeamsUser.id;
+    }
+  }
+
+  throw new Error("Teams connection upsert did not return a row");
 }
 
 async function resolveDefaultComposeId(
@@ -270,6 +363,7 @@ export function zeroTeamsConnectStatus(args: {
     readonly isConnected: boolean;
     readonly isAdmin: boolean;
     readonly installUrl?: string | null;
+    readonly connectUrl?: string | null;
     readonly tenantId?: string | null;
     readonly tenantName?: string | null;
     readonly teamId?: string | null;
@@ -291,6 +385,12 @@ export function zeroTeamsConnectStatus(args: {
         isConnected: false,
         isAdmin: args.isAdmin,
         installUrl: buildTeamsInstallUrl(),
+        connectUrl: args.isAdmin
+          ? buildTeamsOauthConnectUrl({
+              orgId: args.orgId,
+              userId: args.userId,
+            })
+          : null,
       };
     }
 
@@ -321,7 +421,13 @@ export function zeroTeamsConnectStatus(args: {
       isInstalled: true,
       isConnected: Boolean(connection),
       isAdmin: args.isAdmin,
-      installUrl: buildTeamsInstallUrl(installation.teamsTenantId),
+      installUrl: null,
+      connectUrl: connection
+        ? null
+        : buildTeamsOauthConnectUrl({
+            orgId: args.orgId,
+            userId: args.userId,
+          }),
       tenantId: installation.teamsTenantId,
       tenantName: installation.teamsTenantName,
       teamId: installation.teamsTeamId,
@@ -364,21 +470,24 @@ async function updateTeamsInstallationMetadata(
     .where(eq(teamsOrgInstallations.teamsTenantId, tenantId));
 }
 
+type ConnectTeamsInstallationArgs = {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly orgRole: "admin" | "member";
+  readonly tenantId: string;
+  readonly teamsUserId?: string;
+  readonly teamsAadObjectId?: string;
+  readonly teamsUserDisplayName?: string;
+  readonly teamsUserPrincipalName?: string;
+  readonly teamId?: string;
+  readonly teamName?: string;
+  readonly serviceUrl?: string;
+};
+
 export const connectTeamsInstallation$ = command(
   async (
     { get, set },
-    args: {
-      readonly userId: string;
-      readonly orgId: string;
-      readonly orgRole: "admin" | "member";
-      readonly tenantId: string;
-      readonly teamsUserId: string;
-      readonly teamsUserDisplayName?: string;
-      readonly teamsUserPrincipalName?: string;
-      readonly teamId?: string;
-      readonly teamName?: string;
-      readonly serviceUrl?: string;
-    },
+    args: ConnectTeamsInstallationArgs,
     signal: AbortSignal,
   ): Promise<TeamsConnectResult> => {
     const writeDb = set(writeDb$);
@@ -440,6 +549,7 @@ export const connectTeamsInstallation$ = command(
 
       const connectionId = await upsertTeamsConnection(writeDb, {
         teamsUserId: args.teamsUserId,
+        teamsAadObjectId: args.teamsAadObjectId,
         teamsTenantId: args.tenantId,
         vm0UserId: args.userId,
         teamsUserDisplayName: args.teamsUserDisplayName,
@@ -478,6 +588,7 @@ export const connectTeamsInstallation$ = command(
 
     const connectionId = await upsertTeamsConnection(writeDb, {
       teamsUserId: args.teamsUserId,
+      teamsAadObjectId: args.teamsAadObjectId,
       teamsTenantId: args.tenantId,
       vm0UserId: args.userId,
       teamsUserDisplayName: args.teamsUserDisplayName,
