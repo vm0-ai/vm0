@@ -936,14 +936,14 @@ impl NetnsPoolInner {
 }
 
 impl NetnsPool {
-    /// Create a new pool with a small pre-warmed buffer.
+    /// Create a new pool with a pre-warmed namespace target.
     ///
-    /// Pre-warms `BUFFER_SIZE` namespaces for the active queue at startup.
-    /// Without a proxy port, this is the plain queue; with a proxy port, this
-    /// is the proxy queue. After each [`acquire`](Self::acquire), the pool
-    /// replenishes the same active queue to maintain the buffer level.
+    /// Pre-warms toward `BUFFER_SIZE` namespaces for the active queue at
+    /// startup. Without a proxy port, this is the plain queue; with a proxy
+    /// port, this is the proxy queue. After each [`acquire`](Self::acquire),
+    /// the pool replenishes the same active queue toward that target.
     /// Namespaces returned via [`release`](Self::release) are recycled back
-    /// into that queue.
+    /// into that queue, so `BUFFER_SIZE` is not a strict idle cap.
     ///
     /// Automatically acquires a unique pool index (0–63) via flock. Enables
     /// host IP forwarding and reconciles orphaned resources from any idle
