@@ -730,7 +730,6 @@ export {
   chatMessagesContract,
   chatThreadMessagesContract,
   chatThreadArtifactsContract,
-  chatThreadGithubPrsContract,
   chatSearchContract,
   chatThreadListItemSchema,
   chatThreadSnapshotProjectionSchema,
@@ -749,8 +748,6 @@ export {
   chatThreadArtifactFileSchema,
   chatThreadArtifactRunSchema,
   htmlArtifactEditSnapshotSchema,
-  chatThreadGithubPrCheckRunSchema,
-  chatThreadGithubPrSchema,
   type ModelSelectionRequest,
   type GenerationTemplateRequest,
   type PresentationGenerationTemplateRequest,
@@ -766,7 +763,6 @@ export {
   type ChatMessagesContract,
   type ChatThreadMessagesContract,
   type ChatThreadArtifactsContract,
-  type ChatThreadGithubPrsContract,
   type ChatSearchContract,
   type ChatSearchResponse,
   type ChatSearchResult,
@@ -784,8 +780,6 @@ export {
   type ChatThreadArtifactFile,
   type ChatThreadArtifactRun,
   type HtmlArtifactEditSnapshot,
-  type ChatThreadGithubPrCheckRun,
-  type ChatThreadGithubPr,
 } from "./chat-threads";
 export {
   chatThreadV1GetContract,

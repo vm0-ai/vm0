@@ -7,7 +7,6 @@ import {
   chatThreadByIdContract,
   chatThreadComputerUseHostContract,
   chatThreadDraftContract,
-  chatThreadGithubPrsContract,
   chatThreadMarkAgentReadContract,
   chatThreadMarkReadContract,
   chatThreadModelSelectionContract,
@@ -341,10 +340,6 @@ export function createChatFilesBddApi(context: TestContext) {
 
   function chatSearchClient() {
     return chatFilesApp(context)(chatSearchContract);
-  }
-
-  function threadGithubPrsClient() {
-    return chatFilesApp(context)(chatThreadGithubPrsContract);
   }
 
   function threadV1Client() {
@@ -1089,20 +1084,6 @@ export function createChatFilesBddApi(context: TestContext) {
         chatSearchClient().search({
           headers: bearerAuth(authorization),
           query: { keyword },
-        }),
-        statuses,
-      );
-    },
-
-    async requestThreadGithubPrs(
-      actor: ApiTestUser | null,
-      threadId: string,
-      statuses: readonly (200 | 401 | 403 | 404)[],
-    ) {
-      return await accept(
-        threadGithubPrsClient().list({
-          headers: authenticate(context, actor),
-          params: { threadId },
         }),
         statuses,
       );

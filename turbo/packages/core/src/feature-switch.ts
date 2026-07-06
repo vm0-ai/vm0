@@ -258,12 +258,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable the Zapier connector. When disabled, Zapier is hidden from the connectors list and cannot be connected.",
     enabled: false,
   },
-  [FeatureSwitchKey.ChatGithubPrTracking]: {
-    maintainer: "linghan@vm0.ai",
-    description:
-      "Show GitHub PR tracking in chat thread headers when the current agent is connected to and authorized for GitHub. Individuals opt in via feature-switch overrides.",
-    enabled: false,
-  },
   [FeatureSwitchKey.ChatThreadEmoji]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -359,12 +353,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show Codex and Claude Code personal subscription usage in the Zero sidebar footer.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.ChatThreadLatestUserMessageScrollAnchor]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "After chat sends, keep auto-scroll moving only until the latest rendered user message reaches the top of the thread viewport instead of always pinning to the absolute bottom.",
-    enabled: false,
   },
   [FeatureSwitchKey.TeamsIntegration]: {
     maintainer: "linghan@vm0.ai",

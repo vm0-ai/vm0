@@ -124,7 +124,6 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.CodexFrameworkForMinimax]).toBe(
       true,
     );
-    expect(staffOrgStates[FeatureSwitchKey.ChatGithubPrTracking]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadEmoji]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.RelationshipMemory]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(true);
@@ -148,7 +147,6 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.CodexFrameworkForMinimax]).toBe(
       false,
     );
-    expect(otherOrgStates[FeatureSwitchKey.ChatGithubPrTracking]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatThreadEmoji]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.RelationshipMemory]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(
@@ -172,16 +170,6 @@ describe("getAllFeatureStates", () => {
     expect(states[FeatureSwitchKey.AhrefsConnector]).toBe(true);
     // Non-overridden disabled feature stays false
     expect(states[FeatureSwitchKey.DropboxConnector]).toBe(false);
-  });
-
-  it("should let individuals opt in to chat PR tracking", () => {
-    const states = getAllFeatureStates({
-      orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
-      overrides: {
-        [FeatureSwitchKey.ChatGithubPrTracking]: true,
-      },
-    });
-    expect(states[FeatureSwitchKey.ChatGithubPrTracking]).toBe(true);
   });
 
   it("should enable chat thread emoji for staff orgs", () => {
