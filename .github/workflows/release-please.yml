@@ -1526,6 +1526,11 @@ jobs:
             }')"
 
           curl --fail --show-error --silent \
+            --retry 5 \
+            --retry-delay 2 \
+            --retry-max-time 60 \
+            --retry-all-errors \
+            --max-time 30 \
             --request POST \
             --url "${ATOM_API_URL%/}/api/deployments/web-client-versions" \
             --header "Authorization: Bearer ${ATOM_DEPLOY_TOKEN}" \
