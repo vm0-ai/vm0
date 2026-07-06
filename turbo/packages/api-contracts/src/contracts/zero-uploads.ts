@@ -14,6 +14,10 @@ const prepareRequestSchema = z.object({
   size: z.number().int().nonnegative(),
 });
 
+const importImageRequestSchema = z.object({
+  url: z.string().url(),
+});
+
 const prepareResponseSchema = z.object({
   id: z.string(),
   filename: z.string(),
@@ -87,6 +91,22 @@ export const zeroUploadsContract = c.router({
     },
     summary: "Complete a direct-to-R2 upload",
   },
+  importImage: {
+    method: "POST",
+    path: "/api/zero/uploads/import-image",
+    headers: authHeadersSchema,
+    body: importImageRequestSchema,
+    responses: {
+      200: completeResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      402: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      502: apiErrorSchema,
+    },
+    summary: "Import a remote image into user artifact storage",
+  },
   htmlDomEditSnapshot: {
     method: "POST",
     path: "/api/zero/uploads/html-dom-edit-snapshot",
@@ -109,3 +129,4 @@ export type ZeroUploadsContract = typeof zeroUploadsContract;
 // Inferred types
 export type UploadPrepareResponse = z.infer<typeof prepareResponseSchema>;
 export type UploadCompleteResponse = z.infer<typeof completeResponseSchema>;
+export type UploadImportImageResponse = z.infer<typeof completeResponseSchema>;

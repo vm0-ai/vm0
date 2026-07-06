@@ -65,6 +65,18 @@ export interface ApiTestMocks {
     readonly getSignedUrl: AsyncMock;
     readonly clientConfig: SyncMock;
   };
+  readonly dns: {
+    /**
+     * Per-test overrides for `dns.lookup(host, { all: true })`. Hosts not
+     * present here fall through to the real resolver, so DB/other connections
+     * keep working. Used to exercise the import SSRF guard against hosts that
+     * resolve to private addresses.
+     */
+    readonly lookupOverrides: Map<
+      string,
+      readonly { readonly address: string; readonly family: number }[]
+    >;
+  };
   readonly resend: {
     readonly send: AsyncMock;
     readonly get: AsyncMock;
@@ -344,6 +356,9 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
       getSignedUrl: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       clientConfig: vi.fn<(...args: unknown[]) => void>(),
     },
+    dns: {
+      lookupOverrides: new Map(),
+    },
     resend: {
       send: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       get: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
@@ -455,6 +470,24 @@ vi.mock("@aws-sdk/s3-request-presigner", () => {
   return {
     getSignedUrl: (...args: unknown[]): Promise<unknown> => {
       return apiTestMocks.s3.getSignedUrl(...args);
+    },
+  };
+});
+
+vi.mock("node:dns/promises", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:dns/promises")>();
+  return {
+    ...actual,
+    lookup: (hostname: string, options?: unknown): Promise<unknown> => {
+      const override = apiTestMocks.dns.lookupOverrides.get(hostname);
+      if (!override) {
+        return actual.lookup(hostname, options as never);
+      }
+      const wantsAll =
+        typeof options === "object" &&
+        options !== null &&
+        (options as { all?: boolean }).all === true;
+      return Promise.resolve(wantsAll ? override : override[0]);
     },
   };
 });
@@ -789,6 +822,7 @@ export function resetApiTestMocks(): void {
     "https://r2.example.com/upload?sig=test",
   );
   apiTestMocks.s3.clientConfig.mockReset();
+  apiTestMocks.dns.lookupOverrides.clear();
   apiTestMocks.resend.send.mockReset();
   apiTestMocks.resend.get.mockReset();
   apiTestMocks.resend.receivingGet.mockReset();

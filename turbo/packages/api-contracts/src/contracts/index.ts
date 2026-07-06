@@ -1770,6 +1770,7 @@ export {
   zeroUploadsContract,
   type ZeroUploadsContract,
   type UploadPrepareResponse,
+  type UploadImportImageResponse,
 } from "./zero-uploads";
 export {
   zeroGoalsContract,

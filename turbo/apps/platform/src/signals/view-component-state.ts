@@ -10,7 +10,7 @@ export type TextPreviewLoadState = {
   text: string;
 };
 
-export const IMAGE_LIGHTBOX_MIN_ZOOM = 0.5;
+export const IMAGE_LIGHTBOX_MIN_ZOOM = 0.1;
 export const IMAGE_LIGHTBOX_MAX_ZOOM = 3;
 
 const internalImageLoadStatusByKey$ = state<Record<string, ImageLoadStatus>>(
