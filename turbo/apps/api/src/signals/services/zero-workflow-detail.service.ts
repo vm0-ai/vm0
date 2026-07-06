@@ -5,10 +5,12 @@ import type {
   ZeroWorkflowDetailResponse,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 
-import { db$ } from "../external/db";
+import { db$, type Db } from "../external/db";
+import { clerk$ } from "../external/clerk";
 import {
   loadWorkflowShadowWinner,
   loadVisibleWorkflowById,
+  loadWorkflowOwnerProfile,
   workflowSummary,
   type WorkflowMember,
 } from "./zero-workflow-data.service";
@@ -42,10 +44,17 @@ export function zeroWorkflowDetail(args: {
       workflow,
     });
 
+    const ownerProfile = await loadWorkflowOwnerProfile(
+      db as Db,
+      get(clerk$),
+      workflow.ownerUserId,
+    );
+
     const summary = workflowSummary({
       workflow,
       agent,
       member: args.member,
+      ownerProfile,
       shadowedBy,
     });
 

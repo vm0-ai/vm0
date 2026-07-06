@@ -388,6 +388,49 @@ async function refreshOwnerProfiles(
   return profiles;
 }
 
+/**
+ * Resolve a single workflow owner's display name and avatar, mirroring the list
+ * path: prefer a fresh `userCache` row, refresh stale/missing entries from
+ * Clerk, and fall back to a stale cache row when Clerk yields nothing. Returns
+ * `null` only when no identity is known, letting callers fall back to the raw
+ * owner user id.
+ */
+export async function loadWorkflowOwnerProfile(
+  db: Db,
+  client: ReturnType<typeof clerk$.read>,
+  ownerUserId: string,
+): Promise<WorkflowOwnerProfile | null> {
+  const [cachedRow] = await db
+    .select({
+      name: userCache.name,
+      email: userCache.email,
+      imageUrl: userCache.imageUrl,
+      cachedAt: userCache.cachedAt,
+    })
+    .from(userCache)
+    .where(eq(userCache.userId, ownerUserId))
+    .limit(1);
+
+  const cached = ownerProfileFromCache(cachedRow, now());
+  if (cached) {
+    return cached;
+  }
+
+  const refreshed = await refreshOwnerProfiles(db, client, [ownerUserId]);
+  const profile = refreshed.get(ownerUserId);
+  if (profile) {
+    return profile;
+  }
+
+  if (cachedRow?.name || cachedRow?.email || cachedRow?.imageUrl) {
+    return {
+      displayName: cachedRow.name ?? cachedRow.email ?? null,
+      imageUrl: cachedRow.imageUrl ?? null,
+    };
+  }
+  return null;
+}
+
 export function zeroWorkflowList(args: {
   readonly orgId: string;
   readonly member: WorkflowMember;
