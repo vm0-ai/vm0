@@ -75,8 +75,9 @@ disable_codex_beta() {
 # Poll /api/zero/chat-threads/:id/messages until the current run has a
 # terminal runLifecycleEvent (the paged message API no longer exposes agent run
 # status; terminal runs append a null-content lifecycle marker row instead).
-# LAST_MSG_CONTENT comes from the latest non-blank assistant content row for the
-# same run.
+# Other assistant marker rows, such as recommended followups, may be inserted
+# after the terminal marker and must not hide it. LAST_MSG_CONTENT comes from
+# the latest non-blank assistant content row for the same run.
 # On success, exports:
 #   LAST_RUN_ID      — runId of the assistant message
 #   LAST_MSG_CONTENT — content text
