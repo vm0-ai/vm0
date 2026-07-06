@@ -1315,6 +1315,7 @@ jobs:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260622
     outputs:
       deployment_url: ${{ steps.deploy.outputs.url }}
+      git_sha: ${{ steps.build-commit.outputs.sha }}
     permissions:
       contents: read
     environment: production
@@ -1488,6 +1489,54 @@ jobs:
           vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
           vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_APP }}
           deployment-url: ${{ needs.build-app-production.outputs.deployment_url }}
+
+      - name: Record Atom web client version
+        env:
+          ATOM_API_URL: ${{ vars.ATOM_API_URL || 'https://atom-api.vm6.ai' }}
+          ATOM_DEPLOY_TOKEN: ${{ secrets.ATOM_DEPLOY_TOKEN }}
+          DEPLOYMENT_URL: ${{ needs.build-app-production.outputs.deployment_url }}
+          GIT_SHA: ${{ needs.build-app-production.outputs.git_sha }}
+          VERSION: ${{ needs.release-please.outputs.app_version }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "$ATOM_DEPLOY_TOKEN" ]; then
+            echo "::error::ATOM_DEPLOY_TOKEN is required to record web client versions in Atom"
+            exit 1
+          fi
+          if [ -z "$VERSION" ]; then
+            echo "::error::App version is missing"
+            exit 1
+          fi
+          if [ -z "$GIT_SHA" ]; then
+            echo "::error::Git SHA is missing"
+            exit 1
+          fi
+
+          payload="$(jq -n \
+            --arg version "$VERSION" \
+            --arg gitSha "$GIT_SHA" \
+            --arg releaseTag "platform-v$VERSION" \
+            --arg deploymentUrl "$DEPLOYMENT_URL" \
+            '{
+              version: $version,
+              gitSha: $gitSha,
+              releaseTag: $releaseTag,
+              deploymentUrl: $deploymentUrl
+            }')"
+
+          curl --fail --show-error --silent \
+            --retry 5 \
+            --retry-delay 2 \
+            --retry-max-time 60 \
+            --retry-all-errors \
+            --max-time 30 \
+            --request POST \
+            --url "${ATOM_API_URL%/}/api/deployments/web-client-versions" \
+            --header "Authorization: Bearer ${ATOM_DEPLOY_TOKEN}" \
+            --header "Content-Type: application/json" \
+            --data "$payload" \
+            >/dev/null
 
       - name: Resolve Vercel dashboard URL
         id: vercel-dashboard
