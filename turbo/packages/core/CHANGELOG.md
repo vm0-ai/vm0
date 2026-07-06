@@ -1,5 +1,33 @@
 # Changelog
 
+## [8.406.0](https://github.com/vm0-ai/vm0/compare/core-v8.405.0...core-v8.406.0) (2026-07-06)
+
+
+### Features
+
+* add feature-switched composer model picker popover ([#20370](https://github.com/vm0-ai/vm0/issues/20370)) ([c281d91](https://github.com/vm0-ai/vm0/commit/c281d919d6576d9f3b0e01679cf595518a047e33))
+* add notion child page workflow trigger ([#20391](https://github.com/vm0-ai/vm0/issues/20391)) ([e16798b](https://github.com/vm0-ai/vm0/commit/e16798bdef02cd212425fe275c5873a36b6a8ec1))
+* add website template catalog foundation ([#20363](https://github.com/vm0-ai/vm0/issues/20363)) ([b5852c4](https://github.com/vm0-ai/vm0/commit/b5852c457b3cc4226555b3e98571166bd33516db))
+* show lab feature maintainers and sorting ([#20386](https://github.com/vm0-ai/vm0/issues/20386)) ([224f14f](https://github.com/vm0-ai/vm0/commit/224f14fb28b977033d3af52f46eefaf908d6d12d))
+
+
+### Bug Fixes
+
+* route byteplus stt through proxy ([#20015](https://github.com/vm0-ai/vm0/issues/20015)) ([9090018](https://github.com/vm0-ai/vm0/commit/9090018f39b18678c1cfe1fa79fa8e84fc39c815))
+
+
+### Refactoring
+
+* remove presentation design-system selection ([#20371](https://github.com/vm0-ai/vm0/issues/20371)) ([bb56ceb](https://github.com/vm0-ai/vm0/commit/bb56ceb0c43fe57028535ab03cd4911f051aeff0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.158.0
+    * @vm0/connectors bumped to 1.141.0
+
 ## [8.405.0](https://github.com/vm0-ai/vm0/compare/core-v8.404.0...core-v8.405.0) (2026-07-06)
 
 

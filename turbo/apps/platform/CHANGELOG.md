@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.562.0](https://github.com/vm0-ai/vm0/compare/app-v0.561.2...app-v0.562.0) (2026-07-06)
+
+
+### Features
+
+* add notion child page workflow trigger ([#20391](https://github.com/vm0-ai/vm0/issues/20391)) ([e16798b](https://github.com/vm0-ai/vm0/commit/e16798bdef02cd212425fe275c5873a36b6a8ec1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.158.0
+    * @vm0/connectors bumped to 1.141.0
+    * @vm0/core bumped to 8.406.0
+
 ## [0.561.2](https://github.com/vm0-ai/vm0/compare/app-v0.561.1...app-v0.561.2) (2026-07-06)
 
 

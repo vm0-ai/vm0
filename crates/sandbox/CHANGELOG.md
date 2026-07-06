@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.15](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.14...sandbox-v0.19.15) (2026-07-06)
+
+
+### Refactoring
+
+* clarify sandbox process pid naming ([#20372](https://github.com/vm0-ai/vm0/issues/20372)) ([c32d846](https://github.com/vm0-ai/vm0/commit/c32d846f655bd32dea0fde2a561a34eb014128dd))
+
 ## [0.19.14](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.13...sandbox-v0.19.14) (2026-06-26)
 
 
