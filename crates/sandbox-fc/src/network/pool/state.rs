@@ -95,12 +95,19 @@ struct NetnsPoolInner {
 
 /// Pre-warmed pool of network namespaces for Firecracker VMs.
 ///
-/// Maintains a buffer of `BUFFER_SIZE` ready namespaces for the active queue
-/// selected by [`NetnsPoolConfig`]. Without a proxy port, the active queue is
-/// the plain queue; with a proxy port, it is the proxy queue. After each
+/// `BUFFER_SIZE` is the warm/refill target for the active queue selected by
+/// [`NetnsPoolConfig`]. Without a proxy port, the active queue is the plain
+/// queue; with a proxy port, it is the proxy queue. After each
 /// [`acquire`](Self::acquire), the pool spawns background tasks as needed to
-/// replenish the active queue. Namespaces returned via [`release`](Self::release) are
-/// recycled back into that queue.
+/// replenish the active queue.
+///
+/// The active queue is intentionally a bounded high-water cache, not a strict
+/// idle cap. Namespaces returned via [`release`](Self::release) are recycled
+/// back into that queue, and completed background creation can also add ready
+/// entries after a burst. The queue may therefore exceed `BUFFER_SIZE` until
+/// pool cleanup/shutdown or until the entries are acquired again.
+/// `MAX_NAMESPACES` remains the hard per-pool allocation bound; namespace
+/// indexes are allocated monotonically and are not returned to a reusable pool.
 pub struct NetnsPool {
     inner: NetnsPoolInner,
 }
@@ -929,14 +936,14 @@ impl NetnsPoolInner {
 }
 
 impl NetnsPool {
-    /// Create a new pool with a small pre-warmed buffer.
+    /// Create a new pool with a pre-warmed namespace target.
     ///
-    /// Pre-warms `BUFFER_SIZE` namespaces for the active queue at startup.
-    /// Without a proxy port, this is the plain queue; with a proxy port, this
-    /// is the proxy queue. After each [`acquire`](Self::acquire), the pool
-    /// replenishes the same active queue to maintain the buffer level.
+    /// Pre-warms toward `BUFFER_SIZE` namespaces for the active queue at
+    /// startup. Without a proxy port, this is the plain queue; with a proxy
+    /// port, this is the proxy queue. After each [`acquire`](Self::acquire),
+    /// the pool replenishes the same active queue toward that target.
     /// Namespaces returned via [`release`](Self::release) are recycled back
-    /// into that queue.
+    /// into that queue, so `BUFFER_SIZE` is not a strict idle cap.
     ///
     /// Automatically acquires a unique pool index (0–63) via flock. Enables
     /// host IP forwarding and reconciles orphaned resources from any idle
@@ -1433,6 +1440,41 @@ mod tests {
     }
 
     #[test]
+    fn runtime_replenish_keeps_high_water_until_below_buffer() {
+        for (kind, proxy_port) in [(NetnsKind::Plain, None), (NetnsKind::Proxy, Some(8080))] {
+            let mut pool = NetnsPoolState::inactive_for_test();
+            pool.proxy_port = proxy_port;
+            for index in 0..BUFFER_SIZE + 2 {
+                pool.target_queue_mut(kind)
+                    .push_back(test_info(&format!("ready-ns-{index}")));
+            }
+
+            pool.replenish_kind_with(kind, NetnsPoolState::reserve_pending_creation_for_test);
+
+            assert!(pool.pending_set(kind).is_empty());
+            assert_eq!(pool.next_ns_index, 0);
+
+            for _ in 0..2 {
+                let _ = pool.target_queue_mut(kind).pop_front().unwrap();
+            }
+            pool.replenish_kind_with(kind, NetnsPoolState::reserve_pending_creation_for_test);
+
+            assert_eq!(pool.target_queue(kind).len(), BUFFER_SIZE);
+            assert!(pool.pending_set(kind).is_empty());
+            assert_eq!(pool.next_ns_index, 0);
+
+            let _ = pool.target_queue_mut(kind).pop_front().unwrap();
+            pool.replenish_kind_with(kind, NetnsPoolState::reserve_pending_creation_for_test);
+
+            assert_eq!(pool.target_queue(kind).len(), BUFFER_SIZE - 1);
+            assert_eq!(pool.pending_set(kind).len(), 1);
+            assert_eq!(pool.next_ns_index, 1);
+            pool.pending_set_mut(kind).clear();
+            pool.target_queue_mut(kind).clear();
+        }
+    }
+
+    #[test]
     fn runtime_replenish_ignores_proxy_kind_when_proxy_disabled() {
         let mut pool = NetnsPoolState::inactive_for_test();
 
@@ -1582,6 +1624,49 @@ mod tests {
         let pool = pool.inner.state.lock().await;
         assert!(pool.plain_queue.is_empty());
         assert!(pool.proxy_queue.is_empty());
+    }
+
+    #[test]
+    fn netns_high_water_completion_retains_ready_entries_above_buffer() {
+        for (kind, proxy_port) in [(NetnsKind::Plain, None), (NetnsKind::Proxy, Some(8080))] {
+            let mut pool = NetnsPoolState::inactive_for_test();
+            pool.active = true;
+            pool.proxy_port = proxy_port;
+            for index in 0..BUFFER_SIZE {
+                pool.target_queue_mut(kind)
+                    .push_back(test_info(&format!("ready-ns-{index}")));
+            }
+            pool.reserve_pending_creation_for_test(kind).unwrap();
+            pool.reserve_pending_creation_for_test(kind).unwrap();
+            let pending_ids: Vec<PendingId> = pool.pending_set(kind).iter().copied().collect();
+            assert_eq!(pending_ids.len(), 2);
+
+            pool.completion_tx
+                .send(CreationCompletion {
+                    id: pending_ids[0],
+                    kind,
+                    result: Ok(test_info("completed-ns-0")),
+                })
+                .unwrap();
+            pool.completion_tx
+                .send(CreationCompletion {
+                    id: pending_ids[1],
+                    kind,
+                    result: Ok(test_info("completed-ns-1")),
+                })
+                .unwrap();
+
+            let delete = pool.drain_completed(false);
+            let queue = pool.target_queue(kind);
+
+            assert!(delete.is_empty());
+            assert!(pool.pending_set(kind).is_empty());
+            assert_eq!(queue.len(), BUFFER_SIZE + 2);
+            assert!(queue.iter().any(|ns| ns.name == "completed-ns-0"));
+            assert!(queue.iter().any(|ns| ns.name == "completed-ns-1"));
+            pool.active = false;
+            pool.target_queue_mut(kind).clear();
+        }
     }
 
     #[tokio::test]
@@ -2072,6 +2157,42 @@ mod tests {
         }
 
         pool.cleanup().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn netns_high_water_release_retains_ready_entries_above_buffer() {
+        for (kind, proxy_port) in [(NetnsKind::Plain, None), (NetnsKind::Proxy, Some(8080))] {
+            let mut state = NetnsPoolState::inactive_for_test();
+            state.active = true;
+            state.proxy_port = proxy_port;
+            let mut leases: Vec<Option<NetnsLease>> = (0..BUFFER_SIZE + 2)
+                .map(|index| {
+                    Some(
+                        state
+                            .checkout(test_info(&format!("released-ns-{index}")))
+                            .unwrap(),
+                    )
+                })
+                .collect();
+            let mut pool = NetnsPool::from_state_for_test(state);
+
+            for lease in &mut leases {
+                pool.release(lease).await.unwrap();
+            }
+
+            assert!(leases.iter().all(Option::is_none));
+            {
+                let state = pool.inner.state.lock().await;
+                let queue = state.target_queue(kind);
+                let last_released_name = format!("released-ns-{}", BUFFER_SIZE + 1);
+                assert!(state.in_flight.is_empty());
+                assert_eq!(queue.len(), BUFFER_SIZE + 2);
+                assert!(queue.iter().any(|ns| ns.name == "released-ns-0"));
+                assert!(queue.iter().any(|ns| ns.name == last_released_name));
+            }
+
+            pool.cleanup().await.unwrap();
+        }
     }
 
     #[tokio::test]
