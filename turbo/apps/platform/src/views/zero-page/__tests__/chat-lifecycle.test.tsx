@@ -1135,6 +1135,81 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("keeps existing thread history visible after returning with an optimistic follow-up", async () => {
+    const user = userEvent.setup({ delay: null });
+    const sendGate = context.mocks.deferred<void>();
+    const threadId = "b0000000-0000-4000-a000-000000000901";
+    const otherThreadId = "b0000000-0000-4000-a000-000000000902";
+    const lifecycle = mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Long thread",
+      sendGate: sendGate.promise,
+      chatMessages: [
+        {
+          id: "msg-existing-user",
+          role: "user",
+          runId: "run-existing",
+          content: "Existing context before follow-up",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+        {
+          id: "msg-existing-assistant",
+          role: "assistant",
+          runId: "run-existing",
+          content: "Existing assistant answer",
+          createdAt: "2026-03-10T00:00:01Z",
+        },
+      ],
+    });
+    lifecycle.setThreadList([
+      {
+        id: threadId,
+        title: "Long thread",
+        agent: { id: AGENT_ID, avatarUrl: null },
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-10T00:00:01Z",
+        running: false,
+      },
+      {
+        id: otherThreadId,
+        title: "Other thread",
+        agent: { id: AGENT_ID, avatarUrl: null },
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-10T00:00:00Z",
+        running: false,
+      },
+    ]);
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await expect(
+      screen.findByText("Existing context before follow-up"),
+    ).resolves.toBeInTheDocument();
+
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
+    await sendMessageInUI(user, textarea, "Pending follow-up");
+
+    await waitFor(() => {
+      expect(screen.getByText("Pending follow-up")).toBeInTheDocument();
+    });
+
+    await user.click(linkByText("Other thread"));
+    await waitFor(() => {
+      expect(document.title).toBe("Other thread | VM0");
+    });
+
+    await user.click(linkByText("Long thread"));
+    await waitFor(() => {
+      expect(document.title).toBe("Long thread | VM0");
+      expect(screen.getByText("Pending follow-up")).toBeInTheDocument();
+      expect(
+        screen.getByText("Existing context before follow-up"),
+      ).toBeInTheDocument();
+    });
+  });
+
   it("renders completed markdown and returns the composer to send mode", async () => {
     const user = userEvent.setup({ delay: null });
     const lifecycle = mockChatLifecycle(context);
