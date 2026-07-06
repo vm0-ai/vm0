@@ -14,6 +14,7 @@ import { signSandboxJwtForTests } from "../../auth/tokens";
 import { now } from "../../external/time";
 import { zeroVoiceIoSpeechRoutes } from "../zero-voice-io-speech";
 import { zeroVoiceIoSttRoutes } from "../zero-voice-io-stt";
+import { zeroVoiceIoQuotaRoutes } from "../zero-voice-io-quota";
 import {
   deleteGenerationFixture,
   deleteGenerationPricingRows,
@@ -74,7 +75,11 @@ function authHeaders() {
 function createVoiceIoTestApp() {
   return createAppWithRoutes({
     signal: context.signal,
-    routes: [...zeroVoiceIoSpeechRoutes, ...zeroVoiceIoSttRoutes],
+    routes: [
+      ...zeroVoiceIoQuotaRoutes,
+      ...zeroVoiceIoSpeechRoutes,
+      ...zeroVoiceIoSttRoutes,
+    ],
   });
 }
 
@@ -336,6 +341,14 @@ async function seedBehaviorCount(
   );
 }
 
+async function useOpenAiStt(
+  fixture: Pick<VoiceFixture, "orgId" | "userId">,
+): Promise<void> {
+  await updateFeatureSwitchesForUser(context, fixture, {
+    [FeatureSwitchKey.BytePlusVoiceInputStt]: false,
+  });
+}
+
 describe("POST /api/zero/voice-io/*", () => {
   const track = createFixtureTracker<VoiceFixture>(deleteVoiceFixture);
 
@@ -358,6 +371,25 @@ describe("POST /api/zero/voice-io/*", () => {
     expect(response.status).toBe(401);
     await expect(response.json()).resolves.toStrictEqual({
       error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
+  });
+
+  it("reports daily request exhaustion from /quota", async () => {
+    const fixture = await track(seedVoiceFixture({ tier: "pro" }));
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    await seedBehaviorCount(fixture, sttDailyRateKey(), PRO_DAILY_RATE_LIMIT);
+
+    const app = createVoiceIoTestApp();
+    const response = await app.request("/api/zero/voice-io/quota", {
+      method: "GET",
+      headers: authHeaders(),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toStrictEqual({
+      allowed: false,
+      count: PRO_DAILY_RATE_LIMIT,
+      limit: PRO_DAILY_RATE_LIMIT,
     });
   });
 
@@ -450,6 +482,7 @@ describe("POST /api/zero/voice-io/*", () => {
 
   it("accepts /stt MIME types with codec suffixes", async () => {
     const fixture = await track(seedVoiceFixture({}));
+    await useOpenAiStt(fixture);
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     let observedFileType: string | undefined;
@@ -486,6 +519,7 @@ describe("POST /api/zero/voice-io/*", () => {
 
   it("transcribes /stt multipart audio and records quota counters", async () => {
     const fixture = await track(seedVoiceFixture({}));
+    await useOpenAiStt(fixture);
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     let observedAuthorization: string | null = null;
@@ -540,11 +574,8 @@ describe("POST /api/zero/voice-io/*", () => {
     expect(counts.get(sttDailyDurationKey())).toBe(2);
   });
 
-  it("routes /stt through BytePlus when the feature switch is enabled", async () => {
+  it("routes /stt through BytePlus by default", async () => {
     const fixture = await track(seedVoiceFixture({}));
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.BytePlusVoiceInputStt]: true,
-    });
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const audioBytes = wavBytes(2);
@@ -628,9 +659,6 @@ describe("POST /api/zero/voice-io/*", () => {
 
   it("accepts BytePlus no-speech responses as empty transcripts", async () => {
     const fixture = await track(seedVoiceFixture({}));
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.BytePlusVoiceInputStt]: true,
-    });
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     server.use(
@@ -670,6 +698,7 @@ describe("POST /api/zero/voice-io/*", () => {
     // chunk, so the data chunk is not at byte 44. A fixed-offset reader would
     // mis-measure this clip; the RIFF chunk-walk must report its true length.
     const fixture = await track(seedVoiceFixture({}));
+    await useOpenAiStt(fixture);
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     server.use(
@@ -696,6 +725,7 @@ describe("POST /api/zero/voice-io/*", () => {
     // declared data size, not the whole remaining buffer (which would count the
     // 3s-worth trailing chunk as audio and over-meter to 63s).
     const fixture = await track(seedVoiceFixture({}));
+    await useOpenAiStt(fixture);
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     server.use(
@@ -723,6 +753,7 @@ describe("POST /api/zero/voice-io/*", () => {
     // measures the actual length instead, so a short-but-dense clip is no longer
     // falsely rejected on file size.
     const fixture = await track(seedVoiceFixture({}));
+    await useOpenAiStt(fixture);
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     server.use(
@@ -745,6 +776,7 @@ describe("POST /api/zero/voice-io/*", () => {
 
   it("uses whisper-1 and verbose_json when ?verbose=true, returns segments", async () => {
     const fixture = await track(seedVoiceFixture({}));
+    await useOpenAiStt(fixture);
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     let observedModel: FormDataEntryValue | null = null;
@@ -779,6 +811,7 @@ describe("POST /api/zero/voice-io/*", () => {
 
   it("authorizes a sandbox token carrying file:write on /stt", async () => {
     const fixture = await track(seedVoiceFixture({}));
+    await useOpenAiStt(fixture);
     const token = zeroToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
@@ -828,6 +861,7 @@ describe("POST /api/zero/voice-io/*", () => {
 
   it("does not increment the legacy /stt free-tier counter for pro orgs", async () => {
     const fixture = await track(seedVoiceFixture({ tier: "pro" }));
+    await useOpenAiStt(fixture);
     mocks.clerk.session(fixture.userId, fixture.orgId);
     server.use(
       http.post(OPENAI_AUDIO_TRANSCRIPTIONS_URL, () => {
@@ -852,6 +886,7 @@ describe("POST /api/zero/voice-io/*", () => {
 
   it("increments the /stt free-tier audio input counter up to quota", async () => {
     const fixture = await track(seedVoiceFixture({}));
+    await useOpenAiStt(fixture);
     mocks.clerk.session(fixture.userId, fixture.orgId);
     server.use(
       http.post(OPENAI_AUDIO_TRANSCRIPTIONS_URL, () => {
@@ -913,6 +948,7 @@ describe("POST /api/zero/voice-io/*", () => {
 
   it("does not increment /stt counters when OpenAI transcription fails", async () => {
     const fixture = await track(seedVoiceFixture({}));
+    await useOpenAiStt(fixture);
     mocks.clerk.session(fixture.userId, fixture.orgId);
     server.use(
       http.post(OPENAI_AUDIO_TRANSCRIPTIONS_URL, () => {

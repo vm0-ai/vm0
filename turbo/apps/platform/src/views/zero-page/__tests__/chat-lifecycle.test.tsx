@@ -22,6 +22,7 @@ import {
   zeroBillingCreditCheckoutContract,
   zeroBillingStatusContract,
 } from "@vm0/api-contracts/contracts/zero-billing";
+import { zeroVoiceIoQuotaContract } from "@vm0/api-contracts/contracts/zero-voice-io-quota";
 import { zeroComputerUseHostsContract } from "@vm0/api-contracts/contracts/zero-computer-use";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
@@ -6882,6 +6883,136 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     }
   });
 
+  it("transcribes a voice input segment after silence while recording", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "voice-input-segment-thread";
+    const draftPatches: unknown[] = [];
+    const uploadedAudio: string[] = [];
+    let transcriptionCalls = 0;
+    context.mocks.browser.voiceInput({ rms: [0.1, 0.1, 0, 0, 0] });
+    mockChatLifecycle(context, { threadId });
+    context.mocks.http.patch(
+      "*/api/zero/chat-threads/:id",
+      async ({ request }) => {
+        draftPatches.push(await request.json());
+        return new Response(null, { status: 200 });
+      },
+    );
+    context.mocks.http.post("*/api/zero/voice-io/stt", async ({ request }) => {
+      const form = await request.formData();
+      const file = form.get("file");
+      if (!(file instanceof File)) {
+        return new Response(null, { status: 400 });
+      }
+      uploadedAudio.push(await file.text());
+      transcriptionCalls += 1;
+      return new Response(JSON.stringify({ text: "First sentence" }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
+
+    await user.click(await screen.findByLabelText("Voice input"));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(textarea).toHaveValue("First sentence");
+    });
+    expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
+    expect(transcriptionCalls).toBe(1);
+    expect(uploadedAudio).toStrictEqual(["voice-1"]);
+    await waitFor(() => {
+      expect(draftPatches).toContainEqual({
+        draftContent: "First sentence",
+        draftAttachments: null,
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Voice input")).toBeInTheDocument();
+    });
+    expect(transcriptionCalls).toBe(1);
+  });
+
+  it("automatically stops voice input after extended silence", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "voice-input-auto-stop-thread";
+    let transcriptionCalls = 0;
+    context.mocks.browser.voiceInput({ rms: [0.1, 0.1, 0, 0, 0] });
+    mockChatLifecycle(context, { threadId });
+    context.mocks.api(zeroVoiceIoQuotaContract.get, ({ respond }) => {
+      return respond(200, { allowed: true, count: 0, limit: 10 });
+    });
+    context.mocks.http.post("*/api/zero/voice-io/stt", () => {
+      transcriptionCalls += 1;
+      return new Response(JSON.stringify({ text: "Auto stopped note" }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
+
+    await user.click(await screen.findByLabelText("Voice input"));
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
+    });
+
+    await waitFor(() => {
+      expect(textarea).toHaveValue("Auto stopped note");
+      expect(screen.getByLabelText("Voice input")).toBeInTheDocument();
+    });
+    expect(transcriptionCalls).toBe(1);
+  });
+
+  it("appends a delayed voice input segment to the current composer text", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "voice-input-append-current-thread";
+    const transcriptionReady = context.mocks.deferred<void>();
+    const transcriptionRequested = context.mocks.deferred<void>();
+    context.mocks.browser.voiceInput({ rms: [0.1, 0.1, 0, 0, 0] });
+    mockChatLifecycle(context, { threadId });
+    context.mocks.http.post("*/api/zero/voice-io/stt", async () => {
+      transcriptionRequested.resolve(undefined);
+      await transcriptionReady.promise;
+      return new Response(JSON.stringify({ text: "voice segment" }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
+
+    await user.click(await screen.findByLabelText("Voice input"));
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
+    });
+    await transcriptionRequested.promise;
+    await fill(textarea, "manual note");
+    transcriptionReady.resolve(undefined);
+
+    await waitFor(() => {
+      expect(textarea).toHaveValue("manual note voice segment");
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Voice input")).toBeInTheDocument();
+    });
+  });
+
   it("shows voice input starting state while the browser opens the microphone", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "voice-input-starting-thread";
@@ -6989,6 +7120,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
 
   it("opens billing recovery when voice input quota is depleted", async () => {
     const user = userEvent.setup({ delay: null });
+    const toastError = vi.spyOn(toast, "error");
     const threadId = "voice-input-quota-thread";
     context.mocks.browser.voiceInput({ rms: 0.1 });
     mockChatLifecycle(context, { threadId });
@@ -7004,27 +7136,123 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       );
     });
 
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
+    try {
+      detachedSetupPage({ context, path: `/chats/${threadId}` });
 
-    await waitFor(() => {
-      expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
+      });
+
+      await user.click(await screen.findByLabelText("Voice input"));
+      await waitFor(() => {
+        expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
+      });
+      await user.click(screen.getByLabelText("Stop recording"));
+
+      await waitFor(() => {
+        expect(toastError).toHaveBeenCalledWith(
+          "Voice input limit reached. Upgrade to Pro or Team for higher limits.",
+          { id: "voice-input-quota-limit" },
+        );
+        expect(screen.getByRole("dialog")).toBeInTheDocument();
+        expect(
+          screen.getByRole("heading", { name: "Compare plans" }),
+        ).toBeInTheDocument();
+        expect(
+          screen.getByText("Upgrade or downgrade anytime."),
+        ).toBeInTheDocument();
+      });
+    } finally {
+      toastError.mockRestore();
+    }
+  });
+
+  it("opens billing recovery before recording when voice input quota is already depleted", async () => {
+    const user = userEvent.setup({ delay: null });
+    const toastError = vi.spyOn(toast, "error");
+    const threadId = "voice-input-preflight-quota-thread";
+    let transcriptionCalls = 0;
+    context.mocks.browser.voiceInput({ rms: 0.1 });
+    mockChatLifecycle(context, { threadId });
+    context.mocks.api(zeroVoiceIoQuotaContract.get, ({ respond }) => {
+      return respond(200, { allowed: false, count: 10, limit: 10 });
+    });
+    context.mocks.http.post("*/api/zero/voice-io/stt", () => {
+      transcriptionCalls += 1;
+      return new Response(JSON.stringify({ text: "Should not upload" }), {
+        headers: { "Content-Type": "application/json" },
+      });
     });
 
-    await user.click(await screen.findByLabelText("Voice input"));
-    await waitFor(() => {
-      expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
-    });
-    await user.click(screen.getByLabelText("Stop recording"));
+    try {
+      detachedSetupPage({ context, path: `/chats/${threadId}` });
 
-    await waitFor(() => {
-      expect(screen.getByRole("dialog")).toBeInTheDocument();
-      expect(
-        screen.getByRole("heading", { name: "Compare plans" }),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByText("Upgrade or downgrade anytime."),
-      ).toBeInTheDocument();
+      const voiceInput = await screen.findByLabelText("Voice input");
+      expect(voiceInput).toBeEnabled();
+      await user.click(voiceInput);
+
+      await waitFor(() => {
+        expect(toastError).toHaveBeenCalledWith(
+          "Voice input limit reached. Upgrade to Pro or Team for higher limits.",
+          { id: "voice-input-quota-limit" },
+        );
+        expect(screen.getByRole("dialog")).toBeInTheDocument();
+        expect(
+          screen.getByRole("heading", { name: "Compare plans" }),
+        ).toBeInTheDocument();
+      });
+      expect(screen.queryByLabelText("Stop recording")).toBeNull();
+      expect(transcriptionCalls).toBe(0);
+    } finally {
+      toastError.mockRestore();
+    }
+  });
+
+  it("opens billing recovery when voice input daily request limit is reached", async () => {
+    const user = userEvent.setup({ delay: null });
+    const toastError = vi.spyOn(toast, "error");
+    const threadId = "voice-input-daily-rate-thread";
+    context.mocks.browser.voiceInput({ rms: 0.1 });
+    mockChatLifecycle(context, { threadId });
+    context.mocks.http.post("*/api/zero/voice-io/stt", () => {
+      return new Response(
+        JSON.stringify({
+          error: {
+            code: "DAILY_RATE_LIMIT_EXCEEDED",
+            message: "Daily request rate limit exceeded",
+          },
+          quota: { count: 10, limit: 10 },
+        }),
+        { status: 429, headers: { "Content-Type": "application/json" } },
+      );
     });
+
+    try {
+      detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
+      });
+
+      await user.click(await screen.findByLabelText("Voice input"));
+      await waitFor(() => {
+        expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
+      });
+      await user.click(screen.getByLabelText("Stop recording"));
+
+      await waitFor(() => {
+        expect(toastError).toHaveBeenCalledWith(
+          "Voice input limit reached. Upgrade to Pro or Team for higher limits.",
+          { id: "voice-input-quota-limit" },
+        );
+        expect(screen.getByRole("dialog")).toBeInTheDocument();
+        expect(
+          screen.getByRole("heading", { name: "Compare plans" }),
+        ).toBeInTheDocument();
+      });
+    } finally {
+      toastError.mockRestore();
+    }
   });
 
   it("shows billing recovery guidance when credits are depleted", async () => {

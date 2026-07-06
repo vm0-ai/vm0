@@ -50,6 +50,10 @@ function getAllowedOrigin(origin: string | undefined): string | null {
     return normalizedOrigin;
   }
 
+  if (deployEnv === "preview" && hostname.endsWith(".vm7.ai")) {
+    return normalizedOrigin;
+  }
+
   if (deployEnv === "development") {
     if (hostname === "localhost") {
       return normalizedOrigin;

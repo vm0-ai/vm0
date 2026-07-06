@@ -372,8 +372,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "yuma@vm0.ai",
     description:
       "Route voice input speech-to-text requests through BytePlus Seed ASR flash mode instead of OpenAI.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.ImageEditing]: {
     maintainer: "bingjie@vm0.ai",
