@@ -100,6 +100,17 @@ interface EncryptedValueInput {
   readonly encryptedValue: string;
 }
 
+interface ValueWriteResult {
+  readonly connector: CustomConnectorRow;
+  readonly markers: readonly ValueMarker[];
+}
+
+interface ValueMarkerRow {
+  readonly connectorId: string;
+  readonly kind: string;
+  readonly key: string;
+}
+
 type FeatureSwitchContextArg = Parameters<typeof decryptStoredSecretValue>[1];
 type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
@@ -266,6 +277,18 @@ function configuredValueMarkerSet(
   markers: readonly ValueMarker[],
 ): ReadonlySet<string> {
   return new Set(configuredValueMarkerKeys(markers));
+}
+
+function valueMarkersFromRows(
+  rows: readonly ValueMarkerRow[],
+): readonly ValueMarker[] {
+  return rows
+    .filter((row): row is ValueMarker => {
+      return row.kind === "secret" || row.kind === "variable";
+    })
+    .map((row) => {
+      return { connectorId: row.connectorId, kind: row.kind, key: row.key };
+    });
 }
 
 function configuredFieldKeys(args: {
@@ -912,13 +935,30 @@ async function loadConnectorValueMarkers(args: {
         eq(orgCustomConnectorValues.userId, args.userId),
       ),
     );
-  return valueRows
-    .filter((row): row is ValueMarker => {
-      return row.kind === "secret" || row.kind === "variable";
+  return valueMarkersFromRows(valueRows);
+}
+
+async function loadConnectorValueMarkersForConnector(args: {
+  readonly tx: DbTransaction;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly connectorId: string;
+}): Promise<readonly ValueMarker[]> {
+  const valueRows = await args.tx
+    .select({
+      connectorId: orgCustomConnectorValues.connectorId,
+      kind: orgCustomConnectorValues.kind,
+      key: orgCustomConnectorValues.key,
     })
-    .map((row) => {
-      return { connectorId: row.connectorId, kind: row.kind, key: row.key };
-    });
+    .from(orgCustomConnectorValues)
+    .where(
+      and(
+        eq(orgCustomConnectorValues.orgId, args.orgId),
+        eq(orgCustomConnectorValues.userId, args.userId),
+        eq(orgCustomConnectorValues.connectorId, args.connectorId),
+      ),
+    );
+  return valueMarkersFromRows(valueRows);
 }
 
 export const createCustomConnector$ = command(
@@ -1342,7 +1382,7 @@ export const setCustomConnectorValues$ = command(
 
     const writeDb = set(writeDb$);
     const replaced = await writeDb.transaction(
-      async (tx): Promise<CustomConnectorRow | BadRequestResponse | null> => {
+      async (tx): Promise<ValueWriteResult | BadRequestResponse | null> => {
         const lockedConnector = await loadLockedCustomConnectorForValueWrite(
           tx,
           args,
@@ -1365,7 +1405,13 @@ export const setCustomConnectorValues$ = command(
           connectorId: args.connectorId,
           values: encryptedValues,
         });
-        return lockedConnector;
+        const markers = await loadConnectorValueMarkersForConnector({
+          tx,
+          orgId: args.orgId,
+          userId: args.userId,
+          connectorId: args.connectorId,
+        });
+        return { connector: lockedConnector, markers };
       },
     );
     signal.throwIfAborted();
@@ -1376,14 +1422,10 @@ export const setCustomConnectorValues$ = command(
       return replaced;
     }
 
-    const db = get(db$);
-    const markers = await loadConnectorValueMarkers({
-      db,
-      orgId: args.orgId,
-      userId: args.userId,
+    return serialiseCustomConnector({
+      row: replaced.connector,
+      valueMarkers: replaced.markers,
     });
-    signal.throwIfAborted();
-    return serialiseCustomConnector({ row: replaced, valueMarkers: markers });
   },
 );
 
@@ -1435,7 +1477,7 @@ export const setCustomConnectorLegacySecretValue$ = command(
 
     const writeDb = set(writeDb$);
     const updated = await writeDb.transaction(
-      async (tx): Promise<CustomConnectorRow | BadRequestResponse | null> => {
+      async (tx): Promise<ValueWriteResult | BadRequestResponse | null> => {
         const lockedConnector = await loadLockedCustomConnectorForValueWrite(
           tx,
           args,
@@ -1454,7 +1496,13 @@ export const setCustomConnectorLegacySecretValue$ = command(
         }
         await upsertEncryptedConnectorValue(tx, { ...args, value });
         await deleteLegacyConnectorSecret(tx, args);
-        return lockedConnector;
+        const markers = await loadConnectorValueMarkersForConnector({
+          tx,
+          orgId: args.orgId,
+          userId: args.userId,
+          connectorId: args.connectorId,
+        });
+        return { connector: lockedConnector, markers };
       },
     );
     signal.throwIfAborted();
@@ -1465,14 +1513,10 @@ export const setCustomConnectorLegacySecretValue$ = command(
       return updated;
     }
 
-    const db = get(db$);
-    const markers = await loadConnectorValueMarkers({
-      db,
-      orgId: args.orgId,
-      userId: args.userId,
+    return serialiseCustomConnector({
+      row: updated.connector,
+      valueMarkers: updated.markers,
     });
-    signal.throwIfAborted();
-    return serialiseCustomConnector({ row: updated, valueMarkers: markers });
   },
 );
 
