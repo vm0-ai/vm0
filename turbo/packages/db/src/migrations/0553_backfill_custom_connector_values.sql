@@ -1,28 +1,6 @@
 -- Custom SQL migration file, put your code below! --
-INSERT INTO "org_custom_connector_values" (
-	"connector_id",
-	"user_id",
-	"org_id",
-	"kind",
-	"key",
-	"encrypted_value",
-	"created_at",
-	"updated_at"
-)
-SELECT
-	legacy."connector_id",
-	legacy."user_id",
-	legacy."org_id",
-	'secret',
-	'secret',
-	legacy."encrypted_value",
-	legacy."created_at",
-	legacy."updated_at"
-FROM "org_custom_connector_secrets" legacy
-INNER JOIN "org_custom_connectors" connectors
-	ON connectors."id" = legacy."connector_id"
-	AND connectors."org_id" = legacy."org_id"
-ON CONFLICT ("connector_id", "user_id", "kind", "key") DO NOTHING;
+-- Block legacy writes until the bridge trigger is installed and backfill has run.
+LOCK TABLE "org_custom_connector_secrets" IN SHARE ROW EXCLUSIVE MODE;
 --> statement-breakpoint
 
 -- Temporary deployment bridge: migrations can run before every old API instance
@@ -100,3 +78,29 @@ CREATE TRIGGER sync_org_custom_connector_secret_to_value_trigger
 AFTER INSERT OR UPDATE OR DELETE ON "org_custom_connector_secrets"
 FOR EACH ROW
 EXECUTE FUNCTION sync_org_custom_connector_secret_to_value();
+--> statement-breakpoint
+
+INSERT INTO "org_custom_connector_values" (
+	"connector_id",
+	"user_id",
+	"org_id",
+	"kind",
+	"key",
+	"encrypted_value",
+	"created_at",
+	"updated_at"
+)
+SELECT
+	legacy."connector_id",
+	legacy."user_id",
+	legacy."org_id",
+	'secret',
+	'secret',
+	legacy."encrypted_value",
+	legacy."created_at",
+	legacy."updated_at"
+FROM "org_custom_connector_secrets" legacy
+INNER JOIN "org_custom_connectors" connectors
+	ON connectors."id" = legacy."connector_id"
+	AND connectors."org_id" = legacy."org_id"
+ON CONFLICT ("connector_id", "user_id", "kind", "key") DO NOTHING;
