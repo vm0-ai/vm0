@@ -291,6 +291,35 @@ describe("runner resume session contract", () => {
     expect(resumeSessionSchema.parse(resumeSession)).toEqual(resumeSession);
   });
 
+  it("accepts zstd hash-backed stored and claim resume sessions", () => {
+    const storedResumeSession = {
+      sessionId: "sess-123",
+      historyRef: {
+        kind: "blob",
+        hash: historyHash,
+        encoding: "zstd",
+      },
+    };
+    const claimResumeSession = {
+      sessionId: "sess-123",
+      historyRef: {
+        kind: "blob",
+        hash: historyHash,
+        url: "https://r2.example.com/blobs/history.blob.zst?sig=secret",
+        encoding: "zstd",
+        rawSize: 1024,
+        encodedSize: 96,
+      },
+    };
+
+    expect(storedResumeSessionSchema.parse(storedResumeSession)).toEqual(
+      storedResumeSession,
+    );
+    expect(resumeSessionSchema.parse(claimResumeSession)).toEqual(
+      claimResumeSession,
+    );
+  });
+
   it("rejects malformed gzip claim resume sessions", () => {
     const resumeSession = {
       sessionId: "sess-123",
@@ -299,6 +328,20 @@ describe("runner resume session contract", () => {
         hash: historyHash,
         url: "https://r2.example.com/blobs/history.blob.gz?sig=secret",
         encoding: "gzip",
+      },
+    };
+
+    expect(resumeSessionSchema.safeParse(resumeSession).success).toBe(false);
+  });
+
+  it("rejects malformed zstd claim resume sessions", () => {
+    const resumeSession = {
+      sessionId: "sess-123",
+      historyRef: {
+        kind: "blob",
+        hash: historyHash,
+        url: "https://r2.example.com/blobs/history.blob.zst?sig=secret",
+        encoding: "zstd",
       },
     };
 

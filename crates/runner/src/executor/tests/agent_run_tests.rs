@@ -57,6 +57,10 @@ fn gzip_bytes(raw: &[u8]) -> Vec<u8> {
     encoder.finish().unwrap()
 }
 
+fn zstd_bytes(raw: &[u8]) -> Vec<u8> {
+    zstd::encode_all(raw, 0).unwrap()
+}
+
 async fn serve_history_once(body: &'static [u8]) -> String {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
@@ -829,6 +833,95 @@ async fn run_in_sandbox_records_gzip_session_history_download_encoding() {
         &ops,
         "session_history_download_hash_verification",
         "gzip",
+        "lt_64_kib",
+        "lt_64_kib",
+        "ge_1",
+    );
+}
+
+#[tokio::test]
+async fn run_in_sandbox_records_zstd_session_history_download_encoding() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let sandbox = sandbox_mock::MockSandbox::new("test");
+    let history = b"{\"type\":\"init\"}\n\xff\n";
+    let compressed = Box::leak(zstd_bytes(history).into_boxed_slice());
+    let mut ctx = minimal_context();
+    ctx.resume_session = Some(ResumeSession {
+        cli_agent_session_id: "sess-zstd-ref-123".into(),
+        history: ResumeSessionHistory::Ref {
+            history_ref: ResumeSessionHistoryRef {
+                kind: ResumeSessionHistoryRefKind::Blob,
+                hash: hex::encode(Sha256::digest(history)),
+                url: serve_history_once(compressed).await,
+                encoding: Some(ResumeSessionHistoryEncoding::Zstd),
+                raw_size: history.len() as u64,
+                encoded_size: compressed.len() as u64,
+            },
+        },
+    });
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let result = run_in_sandbox(
+        &sandbox,
+        &ctx,
+        &config,
+        RunStart {
+            restore_guest_state: false,
+            reuse_result: SandboxReuseResult::PoolMiss,
+            prev_storage: None,
+        },
+        &mut telemetry,
+        RunControls::new(tokio_util::sync::CancellationToken::new(), None),
+    )
+    .await
+    .unwrap();
+
+    assert!(result.failure.is_none());
+    let writes = sandbox.write_file_calls();
+    assert_eq!(writes.len(), 1);
+    assert_eq!(
+        writes[0].path,
+        "/home/user/.claude/projects/-home-user-workspace/sess-zstd-ref-123.jsonl"
+    );
+    assert_eq!(writes[0].content, history);
+    let ops = telemetry.pending_ops_with_session_history_metadata_snapshot();
+    assert_successful_action_with_session_history_metadata(
+        &ops,
+        "session_history_download",
+        "zstd",
+        "lt_64_kib",
+        "lt_64_kib",
+        "ge_1",
+    );
+    assert_successful_action_with_session_history_metadata(
+        &ops,
+        "session_history_download_request_status",
+        "zstd",
+        "lt_64_kib",
+        "lt_64_kib",
+        "ge_1",
+    );
+    assert_successful_action_with_session_history_metadata(
+        &ops,
+        "session_history_download_body_read",
+        "zstd",
+        "lt_64_kib",
+        "lt_64_kib",
+        "ge_1",
+    );
+    assert_successful_action_with_session_history_metadata(
+        &ops,
+        "session_history_download_validation",
+        "zstd",
+        "lt_64_kib",
+        "lt_64_kib",
+        "ge_1",
+    );
+    assert_successful_action_with_session_history_metadata(
+        &ops,
+        "session_history_download_hash_verification",
+        "zstd",
         "lt_64_kib",
         "lt_64_kib",
         "ge_1",

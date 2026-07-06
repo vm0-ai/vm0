@@ -190,8 +190,9 @@ import {
   loadZeroBackedComposeAgent,
 } from "./agent-connector-scope.service";
 import {
+  isCompressedSessionHistoryBlobEncoding,
   normalizeSessionHistoryBlobEncoding,
-  SESSION_HISTORY_ENCODING_GZIP,
+  type CompressedSessionHistoryBlobEncoding,
 } from "./session-history-blobs";
 
 const PENDING_RUN_TTL_MS = 15 * 60 * 1000;
@@ -4274,12 +4275,12 @@ function loadResumeSession(
         (): Promise<StoredExecutionContext["resumeSession"] | null> => {
           const cliAgentSessionId = conversation.cliAgentSessionId;
           const hash = conversation.cliAgentSessionHistoryHash;
-          let encoding: typeof SESSION_HISTORY_ENCODING_GZIP | undefined;
+          let encoding: CompressedSessionHistoryBlobEncoding | undefined;
           if (conversation.sessionHistoryBlobEncoding !== null) {
             const parsedEncoding = normalizeSessionHistoryBlobEncoding(
               conversation.sessionHistoryBlobEncoding,
             );
-            if (parsedEncoding === SESSION_HISTORY_ENCODING_GZIP) {
+            if (isCompressedSessionHistoryBlobEncoding(parsedEncoding)) {
               encoding = parsedEncoding;
             }
           }
