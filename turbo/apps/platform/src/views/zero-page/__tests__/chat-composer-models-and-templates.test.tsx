@@ -1659,7 +1659,8 @@ describe("chat composer models", () => {
       });
       expect(openTrigger).toHaveAttribute("aria-expanded", "true");
       expect(openTrigger).toHaveAttribute("data-state", "open");
-      expect(openTrigger).toHaveClass("data-[state=open]:ring-2");
+      expect(openTrigger).toHaveClass("data-[state=open]:bg-accent");
+      expect(openTrigger).not.toHaveClass("data-[state=open]:ring-2");
     });
     expect(screen.getByRole("listbox", { name: "Models" })).toBeInTheDocument();
     expect(
