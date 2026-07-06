@@ -1,5 +1,6 @@
 import {
   zeroConnectorManualGrantContract,
+  zeroConnectorOpenIdStartContract,
   zeroConnectorOauthStartContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
 import {
@@ -117,6 +118,32 @@ function mockConnectorOauthStart(): { readonly authWindow: Window } {
       });
     },
   );
+  context.mocks.browser.open(authWindow);
+  return { authWindow };
+}
+
+function mockConnectorOpenIdStart(args?: { readonly onStart?: () => void }): {
+  readonly authWindow: Window;
+} {
+  const authWindow = context.mocks.browser.authWindow();
+  authWindow.closed = false;
+  Object.defineProperty(authWindow, "location", {
+    value: { href: "" },
+    configurable: true,
+  });
+
+  context.mocks.api(
+    zeroConnectorOpenIdStartContract.start,
+    ({ params, respond }) => {
+      args?.onStart?.();
+      return respond(200, {
+        authorizationUrl: `https://openid.test/${params.type}/authorize`,
+      });
+    },
+  );
+  context.mocks.api(zeroConnectorOauthStartContract.start, ({ never }) => {
+    return never();
+  });
   context.mocks.browser.open(authWindow);
   return { authWindow };
 }
@@ -374,6 +401,84 @@ describe("directed connector authorize page", () => {
       expect(
         screen.queryByRole("dialog", { name: "Public GitHub" }),
       ).not.toBeInTheDocument();
+    });
+  });
+
+  it("connects a single OpenID auth connector directly before authorizing the agent", async () => {
+    context.mocks.data.connectors([]);
+    const { authWindow } = mockConnectorOpenIdStart({
+      onStart: () => {
+        context.mocks.data.connectors([
+          {
+            id: crypto.randomUUID(),
+            type: "steam",
+            authMethod: "openid",
+            externalId: null,
+            externalUsername: null,
+            externalEmail: null,
+            oauthScopes: null,
+            connectionStatus: "connected",
+            reconnectReason: null,
+            tokenExpiresAt: null,
+            createdAt: "2026-01-01T00:00:00Z",
+            updatedAt: "2026-01-01T00:00:01Z",
+          },
+        ]);
+      },
+    });
+    let updateCalls = 0;
+    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+      return respond(200, { enabledTypes: [] });
+    });
+    context.mocks.api(
+      zeroUserConnectorsContract.update,
+      ({ body, params, respond }) => {
+        updateCalls += 1;
+        expect(params.id).toBe(AGENT_ID);
+        expect(body).toStrictEqual({
+          enabledTypes: ["steam"],
+          operation: "add",
+        });
+        return respond(200, { enabledTypes: ["steam"] });
+      },
+    );
+    mockPublicConnectorStatus([
+      publicStatusItem({
+        connectorRef: "steam",
+        label: "Steam",
+        authMethods: [
+          {
+            id: "openid",
+            label: "Steam OpenID",
+            description: null,
+            grantKind: "openid-auth",
+            manualFields: [],
+            startOptions: [],
+          },
+        ],
+      }),
+    ]);
+
+    detachedSetupPage({
+      context,
+      path: `/connectors/steam/authorize?agentId=${AGENT_ID}`,
+    });
+
+    await screen.findByText("Zero needs Steam to proceed");
+    click(getButtonByText("Authorize Zero"));
+
+    await waitFor(() => {
+      expect(authWindow.location.href).toBe(
+        "https://openid.test/steam/authorize",
+      );
+    });
+    expect(
+      screen.queryByRole("dialog", { name: "Steam" }),
+    ).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(updateCalls).toBe(1);
+      expect(screen.getByText("Steam authorized")).toBeInTheDocument();
+      expect(screen.getByText("Authorized")).toBeInTheDocument();
     });
   });
 
