@@ -65,7 +65,7 @@
       "schedule": "0 0,12 * * *"
     },
     {
-      "path": "/api/cron/refresh-system-storage-presigned-urls",
+      "path": "/api/cron/refresh-storage-presigned-urls",
       "schedule": "* * * * *"
     },
     {

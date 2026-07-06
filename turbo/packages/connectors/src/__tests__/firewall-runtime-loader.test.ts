@@ -3,6 +3,13 @@ import * as path from "node:path";
 import * as ts from "typescript";
 import { describe, expect, it } from "vitest";
 
+import {
+  RUNNER_RUNTIME_FIREWALL_CATALOG_DIGEST,
+  RUNNER_RUNTIME_FIREWALL_CATALOG_VERSION,
+  hasRunnerRuntimeFirewall,
+  loadRunnerRuntimeFirewall,
+} from "../firewall-metadata/runner-runtime";
+
 function compareStrings(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
@@ -348,6 +355,89 @@ describe("firewall runtime surface", () => {
     expect(
       fs.existsSync(path.resolve(import.meta.dirname, "../firewalls")),
     ).toBe(false);
+  });
+
+  it("exposes runner runtime firewalls only through the firewall metadata subpath", () => {
+    const packageJson = JSON.parse(
+      fs.readFileSync(
+        path.resolve(import.meta.dirname, "../../package.json"),
+        "utf-8",
+      ),
+    ) as { exports: Record<string, unknown> };
+    const rootEntrypoint = fs.readFileSync(
+      path.resolve(import.meta.dirname, "../index.ts"),
+      "utf-8",
+    );
+    const runnerRuntimeEntrypoint = fs.readFileSync(
+      path.resolve(
+        import.meta.dirname,
+        "../firewall-metadata/runner-runtime.ts",
+      ),
+      "utf-8",
+    );
+    const runnerRuntimeLoader = fs.readFileSync(
+      path.resolve(
+        import.meta.dirname,
+        "../firewall-metadata/runner-runtime-loader.generated.ts",
+      ),
+      "utf-8",
+    );
+    const dynamicSpecifiers = dynamicImportSpecifiers(runnerRuntimeLoader);
+
+    expect(packageJson.exports["./firewall-metadata/runner-runtime"]).toEqual({
+      import: "./src/firewall-metadata/runner-runtime.ts",
+      types: "./src/firewall-metadata/runner-runtime.ts",
+    });
+    expect(rootEntrypoint).not.toContain("firewall-metadata/runner-runtime");
+    expect(staticValueModuleSpecifiers(runnerRuntimeEntrypoint)).toStrictEqual([
+      "./runner-runtime-loader.generated",
+    ]);
+    expect(dynamicSpecifiers).toContain(
+      "./runner-runtime-details/github.generated",
+    );
+    expect(dynamicSpecifiers).toContainEqual(
+      expect.stringMatching(
+        /^\.\/runner-runtime-details\/model-provider-openai-api-key-[a-f0-9]{12}\.generated$/,
+      ),
+    );
+    expect(new Set(dynamicSpecifiers).size).toBe(dynamicSpecifiers.length);
+  });
+
+  it("loads connector and model-provider runner runtime firewalls lazily", async () => {
+    expect(RUNNER_RUNTIME_FIREWALL_CATALOG_DIGEST).toMatch(
+      /^sha256:[a-f0-9]{64}$/,
+    );
+    expect(RUNNER_RUNTIME_FIREWALL_CATALOG_VERSION).toMatch(
+      /^sha256-[a-f0-9]{12}$/,
+    );
+    expect(hasRunnerRuntimeFirewall("github")).toBe(true);
+    expect(hasRunnerRuntimeFirewall("model-provider:openai-api-key")).toBe(
+      true,
+    );
+    expect(hasRunnerRuntimeFirewall("not-a-builtin-firewall")).toBe(false);
+
+    const github = await loadRunnerRuntimeFirewall("github");
+    const openai = await loadRunnerRuntimeFirewall(
+      "model-provider:openai-api-key",
+    );
+    const missing = await loadRunnerRuntimeFirewall("not-a-builtin-firewall");
+
+    expect(github?.name).toBe("github");
+    expect(openai).toStrictEqual({
+      name: "model-provider:openai-api-key",
+      apis: [
+        {
+          base: "https://api.openai.com/v1/responses",
+          auth: {
+            headers: {
+              Authorization: "Bearer ${{ secrets.OPENAI_API_KEY }}",
+            },
+          },
+          permissions: [],
+        },
+      ],
+    });
+    expect(missing).toBeNull();
   });
 
   it("does not statically import the eager registry or connector runtime modules", () => {

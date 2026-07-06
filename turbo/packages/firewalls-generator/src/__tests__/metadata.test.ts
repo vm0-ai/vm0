@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { MODEL_PROVIDER_FIREWALL_CONFIGS } from "@vm0/api-contracts/contracts/model-provider-firewalls";
 import {
   generatedFirewallExportName,
   generatedConnectorMetadataFileName,
@@ -781,6 +782,51 @@ describe("firewall metadata generator", () => {
         );
         assertRoutingMetadataSourceExcludesAuthData(detailSource, filename);
       }
+    },
+    FULL_FIREWALL_SOURCE_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "projects runner runtime firewalls from connector and model provider data",
+    async () => {
+      const sourceSet = await loadConnectorFirewallSourceSet({
+        connectorsDir: CONNECTORS_DIR,
+      });
+      const loaderSource = fs.readFileSync(
+        path.resolve(
+          import.meta.dirname,
+          "../../../connectors/src/firewall-metadata/runner-runtime-loader.generated.ts",
+        ),
+        "utf-8",
+      );
+      const dynamicSpecifiers = dynamicImportSpecifiers(loaderSource);
+
+      expect(dynamicSpecifiers.length).toBe(
+        sourceSet.sources.length +
+          Object.keys(MODEL_PROVIDER_FIREWALL_CONFIGS).length,
+      );
+      expect(dynamicSpecifiers).toContain(
+        "./runner-runtime-details/github.generated",
+      );
+      expect(dynamicSpecifiers).toContainEqual(
+        expect.stringMatching(
+          /^\.\/runner-runtime-details\/model-provider-openai-api-key-[a-f0-9]{12}\.generated$/,
+        ),
+      );
+      expect(loaderSource).toContain('["model-provider:openai-api-key"]');
+      expect(loaderSource).toContain("RUNNER_RUNTIME_FIREWALL_CATALOG_DIGEST");
+
+      const googleDriveRuntimeSource = fs.readFileSync(
+        path.resolve(
+          import.meta.dirname,
+          "../../../connectors/src/firewall-metadata/runner-runtime-details/google-drive.generated.ts",
+        ),
+        "utf-8",
+      );
+      expect(googleDriveRuntimeSource).toMatch(/"?name"?:\s*"google-drive"/);
+      expect(googleDriveRuntimeSource).not.toContain('"description"');
+      expect(googleDriveRuntimeSource).not.toContain("placeholders");
+      expect(googleDriveRuntimeSource).not.toContain("defaultPolicies");
     },
     FULL_FIREWALL_SOURCE_TEST_TIMEOUT_MS,
   );

@@ -1,5 +1,6 @@
 import { runnerRealtimeTokenContract } from "../contracts/realtime";
 import {
+  runnersBuiltinFirewallsResolveContract,
   runnersHeartbeatContract,
   runnersJobClaimContract,
   runnersPollContract,
@@ -58,6 +59,11 @@ export const runtimeApiRouteBindings = [
     id: "runners.realtime.token",
     owner: "runner",
     route: runnerRealtimeTokenContract.create,
+  },
+  {
+    id: "runners.builtinFirewalls.resolve",
+    owner: "runner",
+    route: runnersBuiltinFirewallsResolveContract.resolve,
   },
   {
     id: "webhooks.agent.events",

@@ -3,6 +3,7 @@ import {
   elapsedSinceApiStartMs,
   RESUME_SESSION_HISTORY_MAX_BYTES,
   runnersNetworkPolicyRefreshContract,
+  runnersBuiltinFirewallsResolveContract,
   runnersHeartbeatContract,
   runnersJobClaimContract,
   runnersPollContract,
@@ -11,6 +12,12 @@ import {
   type HeldSessionState,
   type StoredExecutionContext,
 } from "@vm0/api-contracts/contracts/runners";
+import {
+  RUNNER_RUNTIME_FIREWALL_CATALOG_DIGEST,
+  RUNNER_RUNTIME_FIREWALL_CATALOG_VERSION,
+  hasRunnerRuntimeFirewall,
+  loadRunnerRuntimeFirewalls,
+} from "@vm0/connectors/firewall-metadata/runner-runtime";
 import { runnerRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import { agentRuns } from "@vm0/db/schema/agent-run";
@@ -531,6 +538,9 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 const claimBody$ = bodyResultOf(runnersJobClaimContract.claim);
 const networkPolicyRefreshBody$ = bodyResultOf(
   runnersNetworkPolicyRefreshContract.refresh,
+);
+const builtinFirewallsResolveBody$ = bodyResultOf(
+  runnersBuiltinFirewallsResolveContract.resolve,
 );
 
 interface ClaimableJob {
@@ -1922,6 +1932,44 @@ const runnerRealtimeTokenInner$ = command(
   },
 );
 
+const builtinFirewallsResolveInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = await set(runnerAuth$, get(authorization$), signal);
+    signal.throwIfAborted();
+    if (!auth) {
+      return unauthorizedAuthenticationRequired;
+    }
+
+    const body = await get(builtinFirewallsResolveBody$);
+    signal.throwIfAborted();
+    if (!body.ok) {
+      return body.response;
+    }
+
+    const names = [...new Set(body.data.names)];
+    const missingNames = names.filter((name) => {
+      return !hasRunnerRuntimeFirewall(name);
+    });
+    if (missingNames.length > 0) {
+      return badRequestMessage(
+        `Unknown builtin firewall: ${missingNames.join(", ")}`,
+      );
+    }
+
+    const firewalls = await loadRunnerRuntimeFirewalls(names);
+    signal.throwIfAborted();
+
+    return {
+      status: 200 as const,
+      body: {
+        catalogDigest: RUNNER_RUNTIME_FIREWALL_CATALOG_DIGEST,
+        catalogVersion: RUNNER_RUNTIME_FIREWALL_CATALOG_VERSION,
+        firewalls,
+      },
+    };
+  },
+);
+
 export const runnersRoutes: readonly RouteEntry[] = [
   {
     route: runnersHeartbeatContract.heartbeat,
@@ -1938,6 +1986,10 @@ export const runnersRoutes: readonly RouteEntry[] = [
   {
     route: runnersNetworkPolicyRefreshContract.refresh,
     handler: networkPolicyRefreshInner$,
+  },
+  {
+    route: runnersBuiltinFirewallsResolveContract.resolve,
+    handler: builtinFirewallsResolveInner$,
   },
   {
     route: runnerRealtimeTokenContract.create,

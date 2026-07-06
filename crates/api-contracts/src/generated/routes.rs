@@ -8,6 +8,19 @@
 
 /// Generated route bindings under `runners`.
 pub mod runners {
+    /// Generated route bindings under `runners::builtin_firewalls`.
+    pub mod builtin_firewalls {
+        /// Generated route bindings under `runners::builtin_firewalls::resolve`.
+        pub mod resolve {
+            /// Resolve builtin firewall definitions for runners.
+            /// Route contract: `POST /api/runners/builtin-firewalls/resolve`.
+            pub const RESOLVE: crate::Route = crate::Route {
+                method: crate::Method::Post,
+                path: "/api/runners/builtin-firewalls/resolve",
+            };
+        }
+    }
+
     /// Generated route bindings under `runners::heartbeat`.
     pub mod heartbeat {
         /// Report runner heartbeat with capacity and state.

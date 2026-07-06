@@ -1,5 +1,5 @@
 import { SpanKind, SpanStatusCode, trace } from "@opentelemetry/api";
-import { schema, type DatabaseSchema } from "@vm0/db";
+import { schema } from "@vm0/db";
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import { Pool, type PoolClient, type QueryConfig } from "pg";
 
@@ -11,7 +11,14 @@ import { singleton } from "./singleton";
 import { deriveSqlSpanName } from "./sql-span-name";
 
 const log = logger("api:db");
-type AppDatabase = NodePgDatabase<DatabaseSchema>;
+
+interface SingletonValue<T> {
+  (): T;
+  readonly peek: () => T | undefined;
+  readonly reset: () => void;
+}
+
+type ApiDb = NodePgDatabase<typeof schema>;
 
 const pool = singleton((): Pool => {
   // `@opentelemetry/instrumentation-pg` would normally hook `pg.Pool` via
@@ -153,11 +160,7 @@ const pool = singleton((): Pool => {
   return pgPool;
 });
 
-export const db: {
-  (): AppDatabase;
-  readonly peek: () => AppDatabase | undefined;
-  readonly reset: () => void;
-} = singleton((): AppDatabase => {
+export const db: SingletonValue<ApiDb> = singleton((): ApiDb => {
   return drizzle(pool(), { schema });
 });
 
