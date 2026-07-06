@@ -23,6 +23,11 @@ export interface FeatureSwitch {
   readonly enabledOrgIdHashes?: readonly string[];
 }
 
+export interface FeatureSwitchMetadata {
+  readonly maintainer: string;
+  readonly description?: string;
+}
+
 export interface FeatureSwitchContext {
   readonly userId?: string;
   readonly email?: string;
@@ -460,6 +465,24 @@ export function getFeatureSwitchDescriptions(): Record<
   const result = {} as Record<FeatureSwitchKey, string | undefined>;
   for (const key of Object.values(FeatureSwitchKey)) {
     result[key] = FEATURE_SWITCHES[key].description;
+  }
+  return result;
+}
+
+/**
+ * Return display metadata for every feature switch.
+ */
+export function getFeatureSwitchMetadata(): Record<
+  FeatureSwitchKey,
+  FeatureSwitchMetadata
+> {
+  const result = {} as Record<FeatureSwitchKey, FeatureSwitchMetadata>;
+  for (const key of Object.values(FeatureSwitchKey)) {
+    const featureSwitch = FEATURE_SWITCHES[key];
+    result[key] = {
+      maintainer: featureSwitch.maintainer,
+      description: featureSwitch.description,
+    };
   }
   return result;
 }
