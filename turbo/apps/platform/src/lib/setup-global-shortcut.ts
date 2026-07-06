@@ -12,7 +12,6 @@ export type GlobalShortcutBindings = Record<string, GlobalShortcutBinding>;
 
 interface GlobalShortcutSetupOptions {
   readonly doc?: Document;
-  readonly allowWhenDialogOpen?: boolean;
   readonly shouldHandleEvent?: (e: KeyboardEvent) => boolean;
 }
 
@@ -38,7 +37,7 @@ export function setupGlobalShortcut(
     onDomEventFn((e: KeyboardEvent) => {
       if (
         e.defaultPrevented ||
-        (!options.allowWhenDialogOpen && hasOpenDialog(doc)) ||
+        hasOpenDialog(doc) ||
         options.shouldHandleEvent?.(e) === false
       ) {
         return;

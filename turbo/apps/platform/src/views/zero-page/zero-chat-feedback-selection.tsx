@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import { IconCheck, IconCopy, IconMessageCircle } from "@tabler/icons-react";
+import { IconCopy, IconMessageCircle } from "@tabler/icons-react";
 import { useGet, useSet } from "ccstate-react";
 import {
   getShortcutParts,
@@ -12,7 +12,6 @@ import { detach, Reason } from "../../signals/utils.ts";
 import {
   closeFeedbackSelectionToolbar$,
   copyFeedbackSelection$,
-  feedbackCopiedValue$,
   feedbackSelectionValue$,
   setFeedbackSelectionListenersRef$,
   setFeedbackSelectionToolbarRef$,
@@ -49,11 +48,9 @@ function ShortcutHint({ shortcut }: { readonly shortcut: string }) {
 }
 
 function FeedbackToolbar({
-  copied,
   onCopy,
   onProvideFeedback,
 }: {
-  copied: boolean;
   onCopy: () => void;
   onProvideFeedback: () => void;
 }) {
@@ -74,12 +71,8 @@ function FeedbackToolbar({
           aria-keyshortcuts="c"
           className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
         >
-          {copied ? (
-            <IconCheck size={14} stroke={2} />
-          ) : (
-            <IconCopy size={14} stroke={2} />
-          )}
-          {copied ? "Copied" : "Copy"}
+          <IconCopy size={14} stroke={2} />
+          Copy
           <ShortcutHint shortcut="c" />
         </button>
         <div className="h-4 w-px bg-border" />
@@ -104,7 +97,6 @@ function FeedbackToolbar({
 // in zero-chat-composer.tsx) — there is no separate feedback panel.
 export function ChatFeedbackSelection() {
   const selection = useGet(feedbackSelectionValue$);
-  const copied = useGet(feedbackCopiedValue$);
   const rootSignal = useGet(rootSignal$);
   const setFeedbackSelectionListenersRef = useSet(
     setFeedbackSelectionListenersRef$,
@@ -133,7 +125,6 @@ export function ChatFeedbackSelection() {
           </PopoverAnchor>
           <span ref={setFeedbackSelectionToolbarRef} hidden />
           <FeedbackToolbar
-            copied={copied}
             onCopy={() => {
               return detach(copy(rootSignal), Reason.DomCallback);
             }}

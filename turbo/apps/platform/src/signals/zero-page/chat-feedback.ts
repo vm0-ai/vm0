@@ -1,8 +1,9 @@
 import { state, computed, command } from "ccstate";
-import { setupGlobalShortcut } from "../../lib/setup-global-shortcut.ts";
+import { isEditableTarget, matchShortcut } from "@vm0/ui";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import { writeToClipboard } from "./clipboard.ts";
 import { ensureDraft$ } from "../chat-page/create-chat-thread.ts";
-import { onRef, resetSignal } from "../utils.ts";
+import { onDomEventFn, onRef, resetSignal } from "../utils.ts";
 
 // Assistant message bubbles carry this class in the chat thread. Text selected
 // inside one of them is what we offer feedback on.
@@ -46,8 +47,6 @@ const feedbackThreadId$ = state<string | null>(null);
 // passage highlighted while its draft lives.
 const feedbackRanges$ = state<ReadonlyMap<number, Range>>(new Map());
 const feedbackNextId$ = state<number>(1);
-const feedbackCopied$ = state<boolean>(false);
-const feedbackCopiedTimerId$ = state<number | null>(null);
 const resetFeedbackSelectionToolbarSignal$ = resetSignal();
 
 export const feedbackSelectionValue$ = computed((get) => {
@@ -62,10 +61,6 @@ export const feedbackItemsValue$ = computed((get) => {
 // its own thread id so a draft only ever shows in the thread it came from.
 export const feedbackThreadIdValue$ = computed((get) => {
   return get(feedbackThreadId$);
-});
-
-export const feedbackCopiedValue$ = computed((get) => {
-  return get(feedbackCopied$);
 });
 
 // What "Send" will dispatch: every fragment that carries a non-empty note.
@@ -165,15 +160,10 @@ function formatFeedbackPrompt(items: readonly FeedbackItem[]): string {
   return `${intro}\n\n${blocks.join("\n\n---\n\n")}`;
 }
 
-export const closeFeedbackSelectionToolbar$ = command(({ get, set }) => {
+export const closeFeedbackSelectionToolbar$ = command(({ set }) => {
   set(resetFeedbackSelectionToolbarSignal$);
-  const timerId = get(feedbackCopiedTimerId$);
-  if (timerId !== null) {
-    window.clearTimeout(timerId);
-    set(feedbackCopiedTimerId$, null);
-  }
+  window.getSelection()?.removeAllRanges();
   set(feedbackSelection$, null);
-  set(feedbackCopied$, false);
 });
 
 // Watch the document selection and drive the floating toolbar. The toolbar
@@ -311,48 +301,49 @@ export const copyFeedbackSelection$ = command(
     if (!selection) {
       return;
     }
-    const ok = await writeToClipboard(selection.text);
     signal.throwIfAborted();
-    if (!ok) {
-      return;
+    const text = selection.text;
+    const ok = await writeToClipboard(text);
+    signal.throwIfAborted();
+    if (ok) {
+      set(closeFeedbackSelectionToolbar$);
+      toast.success("Copied");
     }
-    const existingTimerId = get(feedbackCopiedTimerId$);
-    if (existingTimerId !== null) {
-      window.clearTimeout(existingTimerId);
-    }
-    set(feedbackCopied$, true);
-    const timerId = window.setTimeout(() => {
-      set(feedbackCopied$, false);
-      set(feedbackCopiedTimerId$, null);
-    }, 1500);
-    set(feedbackCopiedTimerId$, timerId);
   },
 );
+
+function shouldIgnoreTextShortcut(event: KeyboardEvent): boolean {
+  return isEditableTarget(event.target);
+}
 
 export const setFeedbackSelectionToolbarRef$ = onRef(
   command(({ set }, el: HTMLElement, signal: AbortSignal) => {
     const toolbarSignal = set(resetFeedbackSelectionToolbarSignal$, signal);
-    setupGlobalShortcut(
-      {
-        c: {
-          run: async () => {
-            await set(copyFeedbackSelection$, toolbarSignal);
-          },
-        },
-        f: {
-          run: () => {
-            set(startFeedback$);
-          },
-        },
-      },
-      toolbarSignal,
-      {
-        allowWhenDialogOpen: true,
-        doc: el.ownerDocument,
-        shouldHandleEvent: () => {
-          return !toolbarSignal.aborted;
-        },
-      },
+    el.ownerDocument.addEventListener(
+      "keydown",
+      onDomEventFn(async (event: KeyboardEvent) => {
+        if (event.defaultPrevented || toolbarSignal.aborted) {
+          return;
+        }
+        if (matchShortcut("escape", event)) {
+          event.preventDefault();
+          set(closeFeedbackSelectionToolbar$);
+          return;
+        }
+        if (shouldIgnoreTextShortcut(event)) {
+          return;
+        }
+        if (matchShortcut("c", event)) {
+          event.preventDefault();
+          await set(copyFeedbackSelection$, signal);
+          return;
+        }
+        if (matchShortcut("f", event)) {
+          event.preventDefault();
+          set(startFeedback$);
+        }
+      }),
+      { signal: toolbarSignal },
     );
   }),
 );

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { toast } from "@vm0/ui/components/ui/sonner";
 
 import {
   captureFeedbackSelection$,
@@ -159,9 +160,28 @@ describe("inline feedback thread scoping", () => {
     cleanup?.();
   });
 
-  it("copies the selected passage with the toolbar copy shortcut", async () => {
+  it("closes the toolbar with Escape", () => {
+    const bubble = mountThreadBubble("thread-a", "Reply from thread A");
+    selectContents(bubble);
+    ctx.store.set(captureFeedbackSelection$);
+    expect(ctx.store.get(feedbackSelectionValue$)).not.toBeNull();
+
+    const toolbarScope = document.createElement("span");
+    const cleanup = ctx.store.set(
+      setFeedbackSelectionToolbarRef$,
+      toolbarScope,
+    );
+    const event = dispatchShortcut("Escape");
+
+    expect(event.defaultPrevented).toBeTruthy();
+    expect(ctx.store.get(feedbackSelectionValue$)).toBeNull();
+    cleanup?.();
+  });
+
+  it("copies the selected passage, closes the toolbar, and shows a toast", async () => {
     const originalClipboard = navigator.clipboard;
     const writeText = vi.fn().mockResolvedValue(undefined);
+    const successToast = vi.spyOn(toast, "success");
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
       value: { writeText },
@@ -181,8 +201,13 @@ describe("inline feedback thread scoping", () => {
       await vi.waitFor(() => {
         expect(writeText).toHaveBeenCalledWith("Reply from thread A");
       });
+      await vi.waitFor(() => {
+        expect(ctx.store.get(feedbackSelectionValue$)).toBeNull();
+      });
+      expect(successToast).toHaveBeenCalledWith("Copied");
     } finally {
       cleanup?.();
+      successToast.mockRestore();
       Object.defineProperty(navigator, "clipboard", {
         configurable: true,
         value: originalClipboard,
