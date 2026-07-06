@@ -101,178 +101,118 @@ function expectColorSystem(
 const BATCH_PRESENTATION_PICKER_ITEMS = [
   {
     slug: "crayon-learning-deck",
-    designSystemId: "design-system:crayon",
-    templateId: "template:html-ppt-crayon",
+    runbookId: "presentation-runbook:crayon",
     colorSystemId: "color-system:prism",
-    designSourcePath: "presentation-design-system/crayon",
-    templateSourcePath: "presentation-template/crayon",
   },
   {
     slug: "creative-agency-presentation",
-    designSystemId: "design-system:creative-agency",
-    templateId: "template:html-ppt-creative-agency",
+    runbookId: "presentation-runbook:creative-agency",
     colorSystemId: "color-system:coral-studio",
-    designSourcePath: "presentation-design-system/creative-agency",
-    templateSourcePath: "presentation-template/creative-agency",
   },
   {
     slug: "data-report-presentation",
-    designSystemId: "design-system:data-report",
-    templateId: "template:html-ppt-data-report",
+    runbookId: "presentation-runbook:data-report",
     colorSystemId: "color-system:prism",
-    designSourcePath: "presentation-design-system/data-report",
-    templateSourcePath: "presentation-template/data-report",
   },
   {
     slug: "editorial-magazine-deck",
-    designSystemId: "design-system:editorial-magazine",
-    templateId: "template:html-ppt-editorial-magazine",
+    runbookId: "presentation-runbook:editorial-magazine",
     colorSystemId: "color-system:warm-sand",
-    designSourcePath: "presentation-design-system/editorial-magazine",
-    templateSourcePath: "presentation-template/editorial-magazine",
   },
   {
     slug: "landing-consulting-deck",
-    designSystemId: "design-system:landing-consulting",
-    templateId: "template:html-ppt-landing-consulting",
+    runbookId: "presentation-runbook:landing-consulting",
     colorSystemId: "color-system:pop-art",
-    designSourcePath: "presentation-design-system/landing-consulting",
-    templateSourcePath: "presentation-template/landing-consulting",
   },
   {
     slug: "lumina-creative-studio",
-    designSystemId: "design-system:lumina",
-    templateId: "template:html-ppt-lumina",
+    runbookId: "presentation-runbook:lumina",
     colorSystemId: "color-system:prism",
-    designSourcePath: "presentation-design-system/lumina",
-    templateSourcePath: "presentation-template/lumina",
   },
   {
     slug: "mosaic-geometric-pitch",
-    designSystemId: "design-system:mosaic-geometric",
-    templateId: "template:html-ppt-mosaic-geometric",
+    runbookId: "presentation-runbook:mosaic-geometric",
     colorSystemId: "color-system:carnival",
-    designSourcePath: "presentation-design-system/mosaic-geometric",
-    templateSourcePath: "presentation-template/mosaic-geometric",
   },
   {
     slug: "playful-pop-deck",
-    designSystemId: "design-system:playful-pop",
-    templateId: "template:html-ppt-playful-pop",
+    runbookId: "presentation-runbook:playful-pop",
     colorSystemId: "color-system:pop-art",
-    designSourcePath: "presentation-design-system/playful-pop",
-    templateSourcePath: "presentation-template/playful-pop",
   },
 ] as const;
 
 const REFERENCE_PRESENTATION_PICKER_ITEMS = [
   {
     slug: "bloom-pitch",
-    designSystemId: "design-system:bloom-pitch",
-    templateId: "template:html-ppt-bloom-pitch",
+    runbookId: "presentation-runbook:bloom-pitch",
     colorSystemId: "color-system:carnival",
     defaultThemeId: "carnival",
-    designSourcePath: "presentation-design-system/bloom-pitch",
-    templateSourcePath: "presentation-template/bloom-pitch",
   },
   {
     slug: "blueprint-academy",
-    designSystemId: "design-system:blueprint-academy",
-    templateId: "template:html-ppt-blueprint-academy",
+    runbookId: "presentation-runbook:blueprint-academy",
     colorSystemId: "color-system:forest-editorial",
     defaultThemeId: "forest-editorial",
-    designSourcePath: "presentation-design-system/blueprint-academy",
-    templateSourcePath: "presentation-template/blueprint-academy",
   },
   {
     slug: "meridian",
-    designSystemId: "design-system:meridian",
-    templateId: "template:html-ppt-meridian",
+    runbookId: "presentation-runbook:meridian",
     colorSystemId: "color-system:slate-corporate",
     defaultThemeId: "slate-corporate",
-    designSourcePath: "presentation-design-system/meridian",
-    templateSourcePath: "presentation-template/meridian",
   },
   {
     slug: "neo-brutalism",
-    designSystemId: "design-system:neo-brutalism",
-    templateId: "template:html-ppt-neo-brutalism",
+    runbookId: "presentation-runbook:neo-brutalism",
     colorSystemId: "color-system:mono-ink",
     defaultThemeId: "mono-ink",
-    designSourcePath: "presentation-design-system/neo-brutalism",
-    templateSourcePath: "presentation-template/neo-brutalism",
   },
   {
     slug: "nocturne",
-    designSystemId: "design-system:nocturne",
-    templateId: "template:html-ppt-nocturne",
+    runbookId: "presentation-runbook:nocturne",
     colorSystemId: "color-system:midnight-mono",
     defaultThemeId: "midnight-mono",
-    designSourcePath: "presentation-design-system/nocturne",
-    templateSourcePath: "presentation-template/nocturne",
   },
   {
     slug: "pixel-glitch",
-    designSystemId: "design-system:pixel-glitch",
-    templateId: "template:html-ppt-pixel-glitch",
+    runbookId: "presentation-runbook:pixel-glitch",
     colorSystemId: "color-system:bauhaus-primary",
     defaultThemeId: "bauhaus-primary",
-    designSourcePath: "presentation-design-system/pixel-glitch",
-    templateSourcePath: "presentation-template/pixel-glitch",
   },
   {
     slug: "prospectus",
-    designSystemId: "design-system:prospectus",
-    templateId: "template:html-ppt-prospectus",
+    runbookId: "presentation-runbook:prospectus",
     colorSystemId: "color-system:slate-corporate",
     defaultThemeId: "slate-corporate",
-    designSourcePath: "presentation-design-system/prospectus",
-    templateSourcePath: "presentation-template/prospectus",
   },
   {
     slug: "schoolhouse",
-    designSystemId: "design-system:schoolhouse",
-    templateId: "template:html-ppt-schoolhouse",
+    runbookId: "presentation-runbook:schoolhouse",
     colorSystemId: "color-system:bauhaus-primary",
     defaultThemeId: "bauhaus-primary",
-    designSourcePath: "presentation-design-system/schoolhouse",
-    templateSourcePath: "presentation-template/schoolhouse",
   },
   {
     slug: "sticker-scrapbook",
-    designSystemId: "design-system:sticker-scrapbook",
-    templateId: "template:html-ppt-sticker-scrapbook",
+    runbookId: "presentation-runbook:sticker-scrapbook",
     colorSystemId: "color-system:prism",
     defaultThemeId: "prism",
-    designSourcePath: "presentation-design-system/sticker-scrapbook",
-    templateSourcePath: "presentation-template/sticker-scrapbook",
   },
   {
     slug: "strata",
-    designSystemId: "design-system:strata",
-    templateId: "template:html-ppt-strata",
+    runbookId: "presentation-runbook:strata",
     colorSystemId: "color-system:mono-ink",
     defaultThemeId: "mono-ink",
-    designSourcePath: "presentation-design-system/strata",
-    templateSourcePath: "presentation-template/strata",
   },
   {
     slug: "taped-consulting",
-    designSystemId: "design-system:taped-consulting",
-    templateId: "template:html-ppt-taped-consulting",
+    runbookId: "presentation-runbook:taped-consulting",
     colorSystemId: "color-system:slate-corporate",
     defaultThemeId: "slate-corporate",
-    designSourcePath: "presentation-design-system/taped-consulting",
-    templateSourcePath: "presentation-template/taped-consulting",
   },
   {
     slug: "vantage",
-    designSystemId: "design-system:vantage",
-    templateId: "template:html-ppt-vantage",
+    runbookId: "presentation-runbook:vantage",
     colorSystemId: "color-system:slate-corporate",
     defaultThemeId: "slate-corporate",
-    designSourcePath: "presentation-design-system/vantage",
-    templateSourcePath: "presentation-template/vantage",
   },
 ] as const;
 
@@ -395,8 +335,8 @@ describe("presentation template items", () => {
       // Picker selections resolve to self-contained runbook packages; legacy
       // registry entries have been retired.
       expect(
-        findPresentationRunbookPackage(item.templateId),
-        item.templateId,
+        findPresentationRunbookPackage(item.runbookId),
+        item.runbookId,
       ).toBeDefined();
       expect(findColorSystem(item.colorSystemId ?? "")).toBeDefined();
     }
@@ -472,9 +412,7 @@ describe("presentation template items", () => {
     if (!item) {
       throw new Error("missing playful-launch-presentation picker item");
     }
-
-    expect(item.designSystemId).toBe("design-system:playful-editorial");
-    expect(item.templateId).toBe("template:html-ppt-playful-launch");
+    expect(item.runbookId).toBe("presentation-runbook:playful-launch");
     expectColorSystem(item.colorSystemId, "color-system:carnival");
     expect(item.slideCount).toBe(15);
     expect(item.previewImages.length).toBe(15);
@@ -484,8 +422,8 @@ describe("presentation template items", () => {
     );
     expectCdnPreviewImages(item);
     expect(
-      findPresentationRunbookPackage(item.templateId),
-      item.templateId,
+      findPresentationRunbookPackage(item.runbookId),
+      item.runbookId,
     ).toBeDefined();
   });
 
@@ -504,9 +442,7 @@ describe("presentation template items", () => {
     if (!item) {
       throw new Error("missing business-data-presentation picker item");
     }
-
-    expect(item.designSystemId).toBe("design-system:business-data");
-    expect(item.templateId).toBe("template:html-ppt-business-data");
+    expect(item.runbookId).toBe("presentation-runbook:business-data");
     expectColorSystem(item.colorSystemId, "color-system:berry-pop");
     expect(item.slideCount).toBe(15);
     expect(item.previewImages.length).toBe(15);
@@ -515,8 +451,8 @@ describe("presentation template items", () => {
     );
     expectCdnPreviewImages(item);
     expect(
-      findPresentationRunbookPackage(item.templateId),
-      item.templateId,
+      findPresentationRunbookPackage(item.runbookId),
+      item.runbookId,
     ).toBeDefined();
   });
 
@@ -530,9 +466,7 @@ describe("presentation template items", () => {
       if (!item) {
         throw new Error(`missing ${expected.slug} picker item`);
       }
-
-      expect(item.designSystemId).toBe(expected.designSystemId);
-      expect(item.templateId).toBe(expected.templateId);
+      expect(item.runbookId).toBe(expected.runbookId);
       expectColorSystem(item.colorSystemId, expected.colorSystemId);
       expect(item.slideCount).toBe(15);
       expect(item.previewImages.length).toBe(15);
@@ -543,8 +477,8 @@ describe("presentation template items", () => {
       expectCdnPreviewImages(item);
       expectCdnPreviewHtmls(item);
       expect(
-        findPresentationRunbookPackage(item.templateId),
-        item.templateId,
+        findPresentationRunbookPackage(item.runbookId),
+        item.runbookId,
       ).toBeDefined();
     }
   });
@@ -559,9 +493,7 @@ describe("presentation template items", () => {
       if (!item) {
         throw new Error(`missing ${expected.slug} picker item`);
       }
-
-      expect(item.designSystemId).toBe(expected.designSystemId);
-      expect(item.templateId).toBe(expected.templateId);
+      expect(item.runbookId).toBe(expected.runbookId);
       expectColorSystem(item.colorSystemId, expected.colorSystemId);
       expect(item.slideCount).toBe(15);
       expect(item.previewImages.length).toBe(1);
@@ -575,8 +507,8 @@ describe("presentation template items", () => {
         item.cardPreviewImagesByTheme?.[expected.defaultThemeId],
       );
       expect(
-        findPresentationRunbookPackage(item.templateId),
-        item.templateId,
+        findPresentationRunbookPackage(item.runbookId),
+        item.runbookId,
       ).toBeDefined();
     }
   });
@@ -590,8 +522,7 @@ describe("presentation template items", () => {
     if (!botaneItem) {
       throw new Error("Botane picker item is missing");
     }
-    expect(botaneItem.designSystemId).toBe("design-system:botane-organic");
-    expect(botaneItem.templateId).toBe("template:html-ppt-botane-organic");
+    expect(botaneItem.runbookId).toBe("presentation-runbook:botane-organic");
     expectColorSystem(botaneItem.colorSystemId, "color-system:mauve-dusk");
     expect(botaneItem.previewImages.length).toBe(15);
     expect(botaneItem.previewImage).toBe(botaneItem.previewImages[0]);
@@ -600,8 +531,8 @@ describe("presentation template items", () => {
     );
     expectCdnPreviewImages(botaneItem);
     expect(
-      findPresentationRunbookPackage(botaneItem.templateId),
-      botaneItem.templateId,
+      findPresentationRunbookPackage(botaneItem.runbookId),
+      botaneItem.runbookId,
     ).toBeDefined();
   });
 });

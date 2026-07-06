@@ -6815,11 +6815,12 @@ function UserMessageActions({
   );
 }
 
-function formatTemplateIdLabel(templateId: string): string {
-  const label = templateId
+function formatSelectionIdLabel(selectionId: string): string {
+  const label = selectionId
     .replace(/^template:/, "")
     .replace(/^video-template:/, "")
     .replace(/^workflow-template:/, "")
+    .replace(/^presentation-runbook:/, "")
     .replace(/^html-ppt-/, "")
     .replace(/-/g, " ");
   return label.charAt(0).toUpperCase() + label.slice(1);
@@ -6833,12 +6834,12 @@ function generationTemplateLabel(
   }
   if (value.type === "video") {
     const item = findVideoTemplateItem(value.selection.stylePresetId);
-    return item?.title ?? formatTemplateIdLabel(value.selection.stylePresetId);
+    return item?.title ?? formatSelectionIdLabel(value.selection.stylePresetId);
   }
   if (value.type === "workflow") {
     const item = findWorkflowTemplateItem(value.selection.workflowTemplateId);
     return (
-      item?.title ?? formatTemplateIdLabel(value.selection.workflowTemplateId)
+      item?.title ?? formatSelectionIdLabel(value.selection.workflowTemplateId)
     );
   }
   if (value.type === "illustration") {
@@ -6848,23 +6849,17 @@ function generationTemplateLabel(
       );
     });
     return (
-      item?.title ?? formatTemplateIdLabel(value.selection.illustrationStyleId)
+      item?.title ?? formatSelectionIdLabel(value.selection.illustrationStyleId)
     );
   }
   const item =
     PRESENTATION_TEMPLATE_ITEMS.find((candidate) => {
-      return (
-        candidate.designSystemId === value.selection.designSystemId &&
-        candidate.templateId === value.selection.templateId
-      );
+      return candidate.runbookId === value.selection.runbookId;
     }) ??
     PRESENTATION_TEMPLATE_PICKER_ITEMS.find((candidate) => {
-      return (
-        candidate.designSystemId === value.selection.designSystemId &&
-        candidate.templateId === value.selection.templateId
-      );
+      return candidate.runbookId === value.selection.runbookId;
     });
-  return item?.title ?? formatTemplateIdLabel(value.selection.templateId);
+  return item?.title ?? formatSelectionIdLabel(value.selection.runbookId);
 }
 
 function generationTemplateTypeLabel(

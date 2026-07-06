@@ -910,8 +910,7 @@ function isSelectedPresentationTemplate(
 ): boolean {
   return (
     value?.type === "presentation" &&
-    value.selection.designSystemId === item.designSystemId &&
-    value.selection.templateId === item.templateId
+    value.selection.runbookId === item.runbookId
   );
 }
 
@@ -924,9 +923,8 @@ function toPresentationGenerationTemplate(
   return {
     type: "presentation",
     selection: {
+      runbookId: item.runbookId,
       colorSystemId,
-      designSystemId: item.designSystemId,
-      templateId: item.templateId,
       previewUrl: item.embedUrl,
     },
   };
@@ -990,10 +988,9 @@ function selectedIllustrationTemplateItem(
   });
 }
 
-function formatPresentationTemplateKind(templateId: string): string {
-  const label = templateId
-    .replace(/^template:/, "")
-    .replace(/^html-ppt-/, "")
+function formatPresentationRunbookKind(runbookId: string): string {
+  const label = runbookId
+    .replace(/^presentation-runbook:/, "")
     .replace(/-/g, " ");
   return label.charAt(0).toUpperCase() + label.slice(1);
 }
@@ -1008,9 +1005,8 @@ function presentationTemplateMatchesSearch(
   }
   const searchable = [
     item.title,
-    item.designSystemId,
-    item.templateId,
-    formatPresentationTemplateKind(item.templateId),
+    item.runbookId,
+    formatPresentationRunbookKind(item.runbookId),
   ].join(" ");
   return searchable.toLowerCase().includes(normalizedQuery);
 }

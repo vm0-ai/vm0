@@ -11,9 +11,8 @@ import { findWorkflowTemplateItem } from "@vm0/core/workflow-template-items";
 interface PresentationGenerationTemplateInput {
   readonly type: "presentation";
   readonly selection: {
+    readonly runbookId: string;
     readonly colorSystemId?: string;
-    readonly designSystemId: string;
-    readonly templateId: string;
     readonly previewUrl?: string;
   };
 }
@@ -126,7 +125,7 @@ function buildPresentationGenerationTemplatePrompt(
   // self-contained runbook package. The legacy multi-resource registry flow has
   // been retired, so ids without a runbook package are rejected.
   const runbookPackage = findPresentationRunbookPackage(
-    generationTemplate.selection.templateId,
+    generationTemplate.selection.runbookId,
   );
   if (!runbookPackage) {
     return { status: "invalid", message: "Unknown generation template" };

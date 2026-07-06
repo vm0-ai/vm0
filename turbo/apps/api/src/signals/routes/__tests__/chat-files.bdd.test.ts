@@ -481,8 +481,7 @@ describe("CHAT-02 chat messages and visible validation", () => {
         generationTemplate: {
           type: "presentation",
           selection: {
-            designSystemId: "missing-design-system",
-            templateId: "missing-template",
+            runbookId: "presentation-runbook:missing",
           },
         },
       },

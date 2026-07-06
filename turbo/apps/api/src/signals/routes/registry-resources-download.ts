@@ -83,52 +83,52 @@ const PRIVATE_REGISTRY_RESOURCE_ARCHIVE_VERSION_IDS = {
     "f23a7edd4705fcf7b8086da55553a601194bcd857be15de7072128ff916a03ad",
   "color-system:warm-sand":
     "e9ea329a25491e347cb3c1156735201a4ff7f8a299dd8990b024d31854b49050",
-  // Presentation runbook packages (self-contained per-template archives).
-  "template:html-ppt-playful-launch-runbook":
+  // Presentation runbook packages (self-contained archives).
+  "presentation-runbook:playful-launch":
     "1c46e7d953de0ea47924b9e9936433d7ede1d21ac595f62cbcdee160bded6c26",
-  "template:html-ppt-bloom-pitch-runbook":
+  "presentation-runbook:bloom-pitch":
     "58cf8db8aa23176e9290719ae567f639dcb1c5bd7058a580a4d01f4ce1d3fdf5",
-  "template:html-ppt-blueprint-academy-runbook":
+  "presentation-runbook:blueprint-academy":
     "69536f28d581fced0512e5f61195b32aa4e80a260f14e953abb9710c17d7aef3",
-  "template:html-ppt-botane-organic-runbook":
+  "presentation-runbook:botane-organic":
     "9c5886408f471e4939e8d17e75ab085647ca4fb6d4f0b8f878ea52fd3138f1f8",
-  "template:html-ppt-business-data-runbook":
+  "presentation-runbook:business-data":
     "708cfa85ffc746c400e8200d248fd3674c1b41d955a19c5d29c76b55e12c2ae9",
-  "template:html-ppt-crayon-runbook":
+  "presentation-runbook:crayon":
     "dfaf1f0bce54497e476e51923495d6a8d7be46c895c1b62f784910d876e2ddba",
-  "template:html-ppt-creative-agency-runbook":
+  "presentation-runbook:creative-agency":
     "543d15a486b8b4dd588ae3f5a75b363b62e4f9cef12254f6b21c3eeb6075739f",
-  "template:html-ppt-data-report-runbook":
+  "presentation-runbook:data-report":
     "9153793baa7a1fbd114faafdde113292b2fea124471a905b7347eb53400de413",
-  "template:html-ppt-editorial-magazine-runbook":
+  "presentation-runbook:editorial-magazine":
     "c76af4a6b696bae7afb35b5909188553d766b1f2a49212c55ff22e7e0f99a4a6",
-  "template:html-ppt-landing-consulting-runbook":
+  "presentation-runbook:landing-consulting":
     "1fe914f9ba1438deb3ebab86c17721474eada19243e08d4769954fde5d16e830",
-  "template:html-ppt-lumina-runbook":
+  "presentation-runbook:lumina":
     "b3f4732414f67862b0aa17415b2af0d5bdd92fd4779b386964efa59402409fa0",
-  "template:html-ppt-meridian-runbook":
+  "presentation-runbook:meridian":
     "d67ea5a3225c96289327bc64ec76e37e4e66bbbc977d212d8e046d42387ca81d",
-  "template:html-ppt-mosaic-geometric-runbook":
+  "presentation-runbook:mosaic-geometric":
     "5f3a99097a5e7fdf3f206e537f5af156aa73c2f9af0ff8a2d6d70336c074d550",
-  "template:html-ppt-neo-brutalism-runbook":
+  "presentation-runbook:neo-brutalism":
     "364c85728bd3965c78a8126da2c756930bfcec0999145774efff4b3b67a4dc62",
-  "template:html-ppt-nocturne-runbook":
+  "presentation-runbook:nocturne":
     "f713d74d5845a39bbdac672ff47baa3558d3e5e248465dd644ba951322445aab",
-  "template:html-ppt-pixel-glitch-runbook":
+  "presentation-runbook:pixel-glitch":
     "c966b28b3024528e99c814c0fef998d1331294472a3ee2c3dccc7f68ba76b33d",
-  "template:html-ppt-playful-pop-runbook":
+  "presentation-runbook:playful-pop":
     "a9e31045b0eebe35b32d3d22f2d866d45394d79b99e805e2cae03fcb04282cc0",
-  "template:html-ppt-prospectus-runbook":
+  "presentation-runbook:prospectus":
     "69e3c21d3ff27ebdd5ee6079e2809e9f7e7a0a1d6ba673349d957a961798f36b",
-  "template:html-ppt-schoolhouse-runbook":
+  "presentation-runbook:schoolhouse":
     "a34ed3483769cc2825656849385b86f23c50e5500d8ab20e7a705019949e49a5",
-  "template:html-ppt-sticker-scrapbook-runbook":
+  "presentation-runbook:sticker-scrapbook":
     "3b8eae68d6ff1dbb90396b0e929e9adc88dcb8c1850a6e7dbf13b650beb279bc",
-  "template:html-ppt-strata-runbook":
+  "presentation-runbook:strata":
     "480717095fda024858014262a77e95344cf2f2f319603eb3f295662bc3ec43cc",
-  "template:html-ppt-taped-consulting-runbook":
+  "presentation-runbook:taped-consulting":
     "423c53c83c3f7a4b3ca9c6f9ce314b8bec4555cf2497a0fcc9fbd20c36a13acb",
-  "template:html-ppt-vantage-runbook":
+  "presentation-runbook:vantage":
     "366c1c2028815fcb13b4c8798550ded9e0853cf55fd2df9124ab4327ff012362",
 } as const satisfies Record<string, string>;
 

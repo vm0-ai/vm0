@@ -8,14 +8,13 @@ import {
 import { buildGenerationTemplatePrompt } from "../generation-template-prompt";
 
 describe("buildGenerationTemplatePrompt", () => {
-  it("returns invalid for a legacy presentation selection without a runbook package", () => {
+  it("returns invalid for a presentation selection without a runbook package", () => {
     // Presentations are runbook-only. Retired demo-catalog selections no longer
     // resolve to generation prompts.
     const result = buildGenerationTemplatePrompt({
       type: "presentation",
       selection: {
-        designSystemId: "design-system:spacex",
-        templateId: "template:html-ppt-pitch-deck",
+        runbookId: "presentation-runbook:missing",
         previewUrl: "https://example.com/retired.html",
       },
     });
@@ -29,9 +28,8 @@ describe("buildGenerationTemplatePrompt", () => {
     const result = buildGenerationTemplatePrompt({
       type: "presentation",
       selection: {
+        runbookId: item.runbookId,
         colorSystemId: item.colorSystemId,
-        designSystemId: item.designSystemId,
-        templateId: item.templateId,
       },
     });
 
@@ -48,7 +46,7 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.prompt).not.toContain("Selected presentation template");
     // Pull exactly one resource: the selected runbook package.
     expect(result.prompt).toContain(
-      "zero resource pull template:html-ppt-playful-launch-runbook --dir ./generated/resources",
+      "zero resource pull presentation-runbook:playful-launch --dir ./generated/resources",
     );
     expect(result.prompt).toContain(
       "./generated/resources/playful-launch/AGENT_RUNBOOK.md",
@@ -70,8 +68,7 @@ describe("buildGenerationTemplatePrompt", () => {
     const result = buildGenerationTemplatePrompt({
       type: "presentation",
       selection: {
-        designSystemId: item.designSystemId,
-        templateId: item.templateId,
+        runbookId: item.runbookId,
       },
     });
 

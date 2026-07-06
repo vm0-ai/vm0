@@ -397,8 +397,7 @@ describe("chat inline feedback", () => {
           type: "presentation",
           selection: {
             colorSystemId: "color-system:gold-luxe",
-            designSystemId: template.designSystemId,
-            templateId: template.templateId,
+            runbookId: template.runbookId,
             previewUrl: template.embedUrl,
           },
         },

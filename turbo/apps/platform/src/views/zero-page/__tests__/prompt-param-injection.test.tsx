@@ -103,9 +103,8 @@ describe("prompt query parameter injection", () => {
     let runPrompt: string | undefined;
     let selection:
       | {
+          runbookId: string;
           colorSystemId?: string;
-          designSystemId: string;
-          templateId: string;
           previewUrl?: string;
         }
       | undefined;
@@ -129,8 +128,7 @@ describe("prompt query parameter injection", () => {
       expect(runPrompt).toBe("Make a launch deck");
       expect(selection).toMatchObject({
         colorSystemId: presentationTemplate?.colorSystemId,
-        designSystemId: presentationTemplate?.designSystemId,
-        templateId: presentationTemplate?.templateId,
+        runbookId: presentationTemplate?.runbookId,
         previewUrl: presentationTemplate?.embedUrl,
       });
     });

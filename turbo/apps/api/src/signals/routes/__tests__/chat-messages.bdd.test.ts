@@ -1499,8 +1499,7 @@ describe("CHAT-02: org queue markers", () => {
     const generationTemplate: GenerationTemplateRequest = {
       type: "presentation",
       selection: {
-        designSystemId: template.designSystemId,
-        templateId: template.templateId,
+        runbookId: template.runbookId,
       },
     };
     const templateMessageId = randomUUID();
@@ -2758,8 +2757,7 @@ describe("CHAT-02: generation templates and attachments", () => {
         type: "presentation",
         selection: {
           colorSystemId: template.colorSystemId,
-          designSystemId: template.designSystemId,
-          templateId: template.templateId,
+          runbookId: template.runbookId,
         },
       },
     });
@@ -2774,7 +2772,6 @@ describe("CHAT-02: generation templates and attachments", () => {
     expect(presentationPrompt).toContain(
       "It does not force you to generate: the user's prompt decides the task",
     );
-    expect(presentationPrompt).toContain(`(${template.templateId})`);
     expect(presentationPrompt).toContain(
       "Selected presentation runbook: Playful Launch Presentation (playful-launch)",
     );
@@ -2783,7 +2780,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     // Runbook flow: pull the selected self-contained runbook package; the
     // retired multi-resource generation command is not surfaced.
     expect(presentationPrompt).toContain(
-      `zero resource pull ${template.templateId}-runbook --dir ./generated/resources`,
+      `zero resource pull ${template.runbookId} --dir ./generated/resources`,
     );
     if (template.colorSystemId) {
       const colorToken = template.colorSystemId
@@ -2976,7 +2973,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     expect(workflowPrompt).toContain("Gmail label-applied automation");
     expect(workflowPrompt).not.toContain("# Artifact Template Context");
     // The illustration run was cancelled, so only its message text is replayed
-    // via "# Incomplete Rounds Context"; the template id is not.
+    // via "# Incomplete Rounds Context"; the style id is not.
     expect(workflowPrompt).toContain("# Incomplete Rounds Context");
     expect(workflowPrompt).not.toContain(style.illustrationStyleId);
     await cancelChatRun(actor, workflow.runId);
@@ -3021,33 +3018,30 @@ describe("CHAT-02: generation templates and attachments", () => {
         generationTemplate: {
           type: "presentation",
           selection: {
-            designSystemId: template.designSystemId,
-            templateId: "template:missing",
+            runbookId: "presentation-runbook:missing",
           },
         },
         message: "Unknown generation template",
       },
       {
-        // A runbook template with an unknown color system is still rejected by
-        // the runbook flow (the design system is not validated / not used).
+        // A runbook with an unknown color system is still rejected by the
+        // runbook flow.
         generationTemplate: {
           type: "presentation",
           selection: {
             colorSystemId: "color-system:missing",
-            designSystemId: template.designSystemId,
-            templateId: template.templateId,
+            runbookId: template.runbookId,
           },
         },
         message: "Unknown generation template color system",
       },
       {
-        // A template id without a runbook package is unknown; presentations are
+        // A runbook id without a package is unknown; presentations are
         // runbook-only, so there is no separate "wrong target type" path.
         generationTemplate: {
           type: "presentation",
           selection: {
-            designSystemId: template.designSystemId,
-            templateId: "template:web-prototype-taste-editorial",
+            runbookId: "presentation-runbook:missing",
           },
         },
         message: "Unknown generation template",

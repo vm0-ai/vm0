@@ -32,6 +32,7 @@ function candidateIds(id: string): readonly string[] {
     return [id];
   }
   return [
+    `presentation-runbook:${id}`,
     `template:${id}`,
     `design-system:${id}`,
     `color-system:${id}`,
@@ -96,7 +97,7 @@ export const zeroResourceCommand = new Command()
       .description("Download and extract a private registry resource archive")
       .argument(
         "<id>",
-        "Registry resource id, such as template:html-ppt-playful-launch-runbook",
+        "Registry resource id, such as presentation-runbook:playful-launch",
       )
       .option(
         "--dir <path>",
