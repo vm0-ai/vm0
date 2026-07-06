@@ -1,6 +1,5 @@
 use std::fs::{File, OpenOptions};
-use std::io::{BufReader, Read};
-use std::os::unix::fs::FileExt;
+use std::io::{BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 
 use bitvec::prelude::*;
@@ -12,6 +11,9 @@ const _: () = assert!(
     std::mem::size_of::<usize>() == 8,
     "nbd-cow requires a 64-bit target"
 );
+const BITMAP_WRITE_CHUNK_BYTES: usize = 64 * 1024;
+const _: () = assert!(BITMAP_WRITE_CHUNK_BYTES.is_multiple_of(8));
+const BITMAP_WORDS_PER_WRITE_CHUNK: usize = BITMAP_WRITE_CHUNK_BYTES / 8;
 
 /// Save the dirty bitmap to a file.
 ///
@@ -20,11 +22,6 @@ const _: () = assert!(
 pub(super) fn save_bitmap(dirty: &BitVec, path: &Path) -> Result<()> {
     let num_blocks = dirty.len() as u64;
     let raw = dirty.as_raw_slice();
-    let mut data = Vec::with_capacity(8 + raw.len() * 8);
-    data.extend_from_slice(&num_blocks.to_le_bytes());
-    for word in raw {
-        data.extend_from_slice(&(*word as u64).to_le_bytes());
-    }
     // Crash-safe bitmap swap: write tmp → fsync(tmp) → rename → fsync(dir).
     // Two fsyncs, each covering a different guarantee:
     //   - fsync(tmp): makes the bitmap bytes durable on the inode.
@@ -58,8 +55,9 @@ pub(super) fn save_bitmap(dirty: &BitVec, path: &Path) -> Result<()> {
         .write(true)
         .create_new(true)
         .open(&tmp_path)
-        .and_then(|f| {
-            f.write_all_at(&data, 0)?;
+        .and_then(|mut f| {
+            f.write_all(&num_blocks.to_le_bytes())?;
+            write_bitmap_words(&mut f, raw)?;
             f.sync_all()
         })
     {
@@ -71,6 +69,25 @@ pub(super) fn save_bitmap(dirty: &BitVec, path: &Path) -> Result<()> {
         return Err(e.into());
     }
     dir_fd.sync_all()?;
+    Ok(())
+}
+
+fn write_bitmap_words<W: Write>(writer: &mut W, raw: &[usize]) -> std::io::Result<()> {
+    if raw.is_empty() {
+        return Ok(());
+    }
+
+    let words_per_chunk = raw.len().min(BITMAP_WORDS_PER_WRITE_CHUNK);
+    let mut chunk = Vec::with_capacity(words_per_chunk * 8);
+
+    for words in raw.chunks(words_per_chunk) {
+        chunk.clear();
+        for word in words {
+            chunk.extend_from_slice(&(*word as u64).to_le_bytes());
+        }
+        writer.write_all(&chunk)?;
+    }
+
     Ok(())
 }
 
