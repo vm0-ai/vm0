@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.558.7](https://github.com/vm0-ai/vm0/compare/app-v0.558.6...app-v0.558.7) (2026-07-06)
+
+
+### Refactoring
+
+* extract custom eslint rules package ([#20188](https://github.com/vm0-ai/vm0/issues/20188)) ([e2ca0d3](https://github.com/vm0-ai/vm0/commit/e2ca0d3dd59a3f80e77a79a626615c532841201b))
+* remove legacy automations pages, routes, and sidebar entry ([#20289](https://github.com/vm0-ai/vm0/issues/20289)) ([e4e5b8d](https://github.com/vm0-ai/vm0/commit/e4e5b8dd96aef235fe18be773c5935e1054a4c29))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.155.4
+    * @vm0/core bumped to 8.401.5
+
 ## [0.558.6](https://github.com/vm0-ai/vm0/compare/app-v0.558.5...app-v0.558.6) (2026-07-06)
 
 

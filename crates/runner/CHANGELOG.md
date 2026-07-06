@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.133.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.133.4...runner-rs-v0.133.5) (2026-07-06)
+
+
+### Bug Fixes
+
+* snapshot runner service activation config ([#20284](https://github.com/vm0-ai/vm0/issues/20284)) ([2eb26b5](https://github.com/vm0-ai/vm0/commit/2eb26b585fdfbe2e1e6aa71d1a1bba5994016afe))
+
+
+### Performance Improvements
+
+* **runner:** reduce local queue discovery churn ([#20285](https://github.com/vm0-ai/vm0/issues/20285)) ([6aecc89](https://github.com/vm0-ai/vm0/commit/6aecc8979aa6c20bf57e82a2a3c24c3f7bceb7fa))
+
 ## [0.133.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.133.3...runner-rs-v0.133.4) (2026-07-05)
 
 ## [0.133.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.133.2...runner-rs-v0.133.3) (2026-07-05)
