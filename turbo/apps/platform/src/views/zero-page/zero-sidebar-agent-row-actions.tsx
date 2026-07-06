@@ -1,9 +1,4 @@
-import {
-  useRef,
-  type CSSProperties,
-  type MouseEvent,
-  type ReactNode,
-} from "react";
+import type { CSSProperties, MouseEvent, ReactNode } from "react";
 import { IconDots } from "@tabler/icons-react";
 import {
   Tooltip,
@@ -79,10 +74,10 @@ function showMenuActionForTrigger(trigger: Element) {
 }
 
 function menuTriggerIsOpen(trigger: Element): boolean {
-  return (
-    trigger.getAttribute("data-state") === "open" ||
-    trigger.getAttribute("aria-expanded") === "true"
-  );
+  if (!(trigger instanceof HTMLElement)) {
+    return false;
+  }
+  return trigger.dataset.state === "open" || trigger.ariaExpanded === "true";
 }
 
 function syncMenuActionClosedAfterTriggerClick(trigger: Element) {
@@ -121,7 +116,7 @@ export function AgentRowSideActions({
 }) {
   const menuActions = actions ?? (action ? [action] : []);
   const hasMenuActions = menuActions.length > 0;
-  const rootRef = useRef<HTMLDivElement>(null);
+  let rootElement: HTMLDivElement | null = null;
 
   if (!hasUnread && !hasMenuActions) {
     return null;
@@ -132,7 +127,7 @@ export function AgentRowSideActions({
   });
 
   function updateMenuActionVisibility(open: boolean) {
-    const root = rootRef.current;
+    const root = rootElement;
     if (!root) {
       return;
     }
@@ -158,7 +153,9 @@ export function AgentRowSideActions({
 
   return (
     <div
-      ref={rootRef}
+      ref={(element) => {
+        rootElement = element;
+      }}
       data-agent-row-actions-root
       data-agent-row-menu-open="false"
       onPointerEnter={(e) => {
