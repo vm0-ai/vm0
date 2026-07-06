@@ -170,6 +170,37 @@ async fn concurrent_jobs() {
 }
 
 #[tokio::test]
+async fn large_ineligible_queue_discovers_and_claims_eligible_job() {
+    let dir = tempfile::tempdir().unwrap();
+    let cancel = CancellationToken::new();
+    let provider = default_provider(dir.path(), cancel, empty_cancel_tokens());
+    std::fs::create_dir_all(local_queue::claims_dir(dir.path())).unwrap();
+
+    for index in 1..=40 {
+        let run_id: RunId = format!("00000000-0000-0000-0000-{index:012x}")
+            .parse()
+            .unwrap();
+        write_job(dir.path(), run_id, &format!("job {index}"));
+        if index < 40 {
+            if index % 2 == 0 {
+                assert!(provider.write_result(run_id, 0, None));
+            } else {
+                std::fs::write(local_queue::claim_path(dir.path(), run_id), b"").unwrap();
+            }
+        }
+    }
+    let expected_run_id: RunId = "00000000-0000-0000-0000-000000000028".parse().unwrap();
+
+    let candidate = provider.discover().await.unwrap();
+    assert_eq!(candidate.run_id(), expected_run_id);
+
+    let claimed = provider.claim(candidate).await.unwrap();
+    let ctx = claimed.context();
+    assert_eq!(ctx.run_id, expected_run_id);
+    assert_eq!(ctx.prompt, "job 40");
+}
+
+#[tokio::test]
 async fn group_claim_only_one_winner() {
     let dir = tempfile::tempdir().unwrap();
     let cancel = CancellationToken::new();
