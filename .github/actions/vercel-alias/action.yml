@@ -100,38 +100,88 @@ runs:
           });
         }
 
-        async function resolveAliasDeploymentRef(aliasRef, teamId, token) {
-          const requestUrl = new URL("https://api.vercel.com/v4/aliases");
-          requestUrl.searchParams.set("domain", aliasRef);
+        function deploymentRefFromAlias(alias) {
+          return (
+            alias?.deploymentId ?? alias?.deployment?.id ?? alias?.deployment?.url
+          );
+        }
+
+        function parentDomain(aliasRef) {
+          const parts = aliasRef.split(".");
+          return parts.length > 2 ? parts.slice(-2).join(".") : aliasRef;
+        }
+
+        async function getAlias(aliasRef, teamId, token) {
+          const requestUrl = new URL(
+            `https://api.vercel.com/v4/aliases/${encodeURIComponent(aliasRef)}`,
+          );
           requestUrl.searchParams.set("teamId", teamId);
 
-          const result = await fetchText(requestUrl, {
+          return fetchText(requestUrl, {
             headers: {
               Authorization: `Bearer ${token}`,
               "Content-Type": "application/json",
             },
           });
+        }
 
-          if (result.status < 200 || result.status >= 300) {
+        async function listAliases(domain, teamId, token) {
+          const requestUrl = new URL("https://api.vercel.com/v4/aliases");
+          requestUrl.searchParams.set("domain", domain);
+          requestUrl.searchParams.set("teamId", teamId);
+
+          return fetchText(requestUrl, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+          });
+        }
+
+        async function resolveAliasDeploymentRef(aliasRef, teamId, token) {
+          const aliasResult = await getAlias(aliasRef, teamId, token);
+          if (aliasResult.status >= 200 && aliasResult.status < 300) {
+            const deploymentRef = deploymentRefFromAlias(
+              parsePayload(aliasResult.text),
+            );
+            if (deploymentRef) {
+              return deploymentRef;
+            }
+          } else if (aliasResult.status !== 404) {
             throw new Error(
-              `Could not resolve source alias ${aliasRef}: ${responseMessage(result.text)}`,
+              `Could not resolve source alias ${aliasRef}: ${responseMessage(aliasResult.text)}`,
             );
           }
 
-          const payload = parsePayload(result.text);
-          const aliases = Array.isArray(payload?.aliases) ? payload.aliases : [];
-          const alias =
-            aliases.find((entry) => entry.alias === aliasRef) ?? aliases[0];
-          const deploymentRef =
-            alias?.deploymentId ?? alias?.deployment?.id ?? alias?.deployment?.url;
+          const domains = Array.from(new Set([aliasRef, parentDomain(aliasRef)]));
+          let matchedAlias;
 
-          if (!deploymentRef) {
+          for (const domain of domains) {
+            const result = await listAliases(domain, teamId, token);
+            if (result.status < 200 || result.status >= 300) {
+              throw new Error(
+                `Could not resolve source alias ${aliasRef}: ${responseMessage(result.text)}`,
+              );
+            }
+
+            const payload = parsePayload(result.text);
+            const aliases = Array.isArray(payload?.aliases)
+              ? payload.aliases
+              : [];
+            matchedAlias = aliases.find((entry) => entry.alias === aliasRef);
+            const deploymentRef = deploymentRefFromAlias(matchedAlias);
+            if (deploymentRef) {
+              return deploymentRef;
+            }
+          }
+
+          if (matchedAlias) {
             throw new Error(
               `Could not resolve source alias ${aliasRef} to a deployment`,
             );
           }
 
-          return deploymentRef;
+          throw new Error(`Could not find source alias ${aliasRef}`);
         }
 
         async function main() {
