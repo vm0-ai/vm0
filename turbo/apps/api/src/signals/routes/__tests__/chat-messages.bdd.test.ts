@@ -2731,6 +2731,7 @@ describe("CHAT-02: prior rounds and thread titles", () => {
         return message.revokesMessageId === recommender.id;
       }),
     ).toBeTruthy();
+    await cancelChatRun(actor, normalFollowupRunId);
 
     const second = await sendChatRun(actor, {
       agentId,

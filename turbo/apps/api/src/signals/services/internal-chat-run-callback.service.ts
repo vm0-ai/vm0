@@ -35,6 +35,7 @@ import { waitUntil } from "../context/wait-until";
 import { getDatasetName, queryAxiomDirect } from "../external/axiom";
 import { writeDb$, type Db } from "../external/db";
 import {
+  publishChatThreadMessageCreatedSafely,
   publishChatThreadRunFinished,
   publishThreadListChanged,
   publishUserSignal,
@@ -926,10 +927,7 @@ async function insertRecommendedFollowupsMessage(args: {
     return false;
   }
 
-  await publishUserSignal(
-    [args.userId],
-    `chatThreadMessageCreated:${args.threadId}`,
-  );
+  await publishChatThreadMessageCreatedSafely(args.userId, args.threadId);
   return true;
 }
 
