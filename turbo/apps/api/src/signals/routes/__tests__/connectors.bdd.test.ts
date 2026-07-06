@@ -1305,8 +1305,8 @@ describe("CONN-02: external-code authorization", () => {
   });
 });
 
-describe("CONN-03: custom connectors and connector-owned secrets", () => {
-  it("creates, patches, secrets, enables for an agent, rejects cross-org ids, and deletes through APIs", async () => {
+describe("CONN-03: custom connectors and connector-owned values", () => {
+  it("creates, patches, values, enables for an agent, rejects cross-org ids, and deletes through APIs", async () => {
     const bdd = createBddApi(context);
     bdd.acceptAgentStorageWrites();
 
@@ -1349,21 +1349,19 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       prefixes: [`https://${slug}.example.test/v1/`],
       headerName: "Authorization",
       headerTemplate: "Bearer {{secret}}",
-      hasSecret: false,
+      connected: false,
     });
 
-    await connectorsApi.setCustomConnectorSecret(
-      admin,
-      created.id,
-      secretValue,
-    );
-    const afterSecret = await connectorsApi.listCustomConnectors(admin);
+    await connectorsApi.setCustomConnectorValues(admin, created.id, [
+      { key: "secret", kind: "secret", value: secretValue },
+    ]);
+    const afterValues = await connectorsApi.listCustomConnectors(admin);
     expect(
-      afterSecret.find((connector) => {
+      afterValues.find((connector) => {
         return connector.id === created.id;
-      })?.hasSecret,
+      })?.connected,
     ).toBeTruthy();
-    expectNoVisibleSecret(afterSecret, secretValue);
+    expectNoVisibleSecret(afterValues, secretValue);
 
     await connectorsApi.patchCustomConnector(admin, created.id, {
       displayName: "BDD Custom Connector Renamed",
@@ -1376,7 +1374,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       }),
     ).toMatchObject({
       displayName: "BDD Custom Connector Renamed",
-      hasSecret: true,
+      connected: true,
     });
 
     const agent = await bdd.createAgent(admin, {
@@ -1412,12 +1410,12 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       connectorsApi.readAgentCustomConnectors(admin, agent.agentId),
     ).resolves.toStrictEqual([]);
 
-    await connectorsApi.deleteCustomConnectorSecret(admin, created.id);
-    const afterSecretDelete = await connectorsApi.listCustomConnectors(admin);
+    await connectorsApi.deleteCustomConnectorValues(admin, created.id);
+    const afterValuesDelete = await connectorsApi.listCustomConnectors(admin);
     expect(
-      afterSecretDelete.find((connector) => {
+      afterValuesDelete.find((connector) => {
         return connector.id === created.id;
-      })?.hasSecret,
+      })?.connected,
     ).toBeFalsy();
 
     await connectorsApi.deleteCustomConnector(admin, created.id);
@@ -1664,6 +1662,35 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     await connectorsApi.deleteCustomConnector(admin, saved.connector.id);
   });
 
+  it("sets the normalized secret value through the legacy secret endpoint", async () => {
+    const bdd = createBddApi(context);
+    const admin = bdd.user({ orgRole: "org:admin" });
+    const connector = await connectorsApi.createCustomConnector(
+      admin,
+      customConnectorBody(uniqueSlug("legacy-secret-set")),
+    );
+
+    await connectorsApi.setCustomConnectorSecret(
+      admin,
+      connector.id,
+      "legacy-facade-secret",
+    );
+
+    const listed = await connectorsApi.listCustomConnectors(admin);
+    expect(
+      listed.find((candidate) => {
+        return candidate.id === connector.id;
+      }),
+    ).toMatchObject({
+      connected: true,
+      configuredFieldKeys: ["secret"],
+      missingRequiredFields: [],
+    });
+    expectNoVisibleSecret(listed, "legacy-facade-secret");
+
+    await connectorsApi.deleteCustomConnector(admin, connector.id);
+  });
+
   it("rejects unauthenticated and org-less callers across all custom connector routes", async () => {
     const bdd = createBddApi(context);
     const noOrgActor = bdd.user({ orgId: null });
@@ -1702,14 +1729,33 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       expectApiError(remove.body);
       expect(remove.body.error.code).toBe("UNAUTHORIZED");
 
-      const secretSet = await connectorsApi.requestSetCustomConnectorSecret(
+      const valuesSet = await connectorsApi.requestSetCustomConnectorValues(
         actor,
         connectorId,
-        "unauthorized-secret-value",
+        [{ key: "secret", kind: "secret", value: "unauthorized-value" }],
         [401],
       );
-      expectApiError(secretSet.body);
-      expect(secretSet.body.error.code).toBe("UNAUTHORIZED");
+      expectApiError(valuesSet.body);
+      expect(valuesSet.body.error.code).toBe("UNAUTHORIZED");
+
+      const valuesDelete =
+        await connectorsApi.requestDeleteCustomConnectorValues(
+          actor,
+          connectorId,
+          [401],
+        );
+      expectApiError(valuesDelete.body);
+      expect(valuesDelete.body.error.code).toBe("UNAUTHORIZED");
+
+      const legacySecretSet =
+        await connectorsApi.requestSetCustomConnectorSecret(
+          actor,
+          connectorId,
+          "unauthorized-secret-value",
+          [401],
+        );
+      expectApiError(legacySecretSet.body);
+      expect(legacySecretSet.body.error.code).toBe("UNAUTHORIZED");
 
       const secretDelete =
         await connectorsApi.requestDeleteCustomConnectorSecret(
@@ -1742,6 +1788,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       new RegExp(`^api-bdd${rand}-example-test-[a-z0-9]{6}$`),
     );
     expect(autoSlug.prefixes).toStrictEqual([`https://api.${host}/v1/`]);
+    expect(autoSlug.connected).toBeFalsy();
     expect(autoSlug.hasSecret).toBeFalsy();
 
     const wildcard = await connectorsApi.createCustomConnector(admin, {
@@ -1917,11 +1964,9 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       })?.displayName,
     ).toBe("OtherOrg");
 
-    await connectorsApi.setCustomConnectorSecret(
-      otherAdmin,
-      foreign.id,
-      "foreign-secret-value",
-    );
+    await connectorsApi.setCustomConnectorValues(otherAdmin, foreign.id, [
+      { key: "secret", kind: "secret", value: "foreign-secret-value" },
+    ]);
     await connectorsApi.deleteCustomConnector(admin, mine.id);
     await connectorsApi.deleteCustomConnector(otherAdmin, foreign.id);
     const afterDelete = await connectorsApi.listCustomConnectors(otherAdmin);
@@ -1932,7 +1977,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     ).toBeUndefined();
   });
 
-  it("keeps custom connector secrets scoped per user and per organization", async () => {
+  it("keeps custom connector values scoped per user and per organization", async () => {
     const bdd = createBddApi(context);
     const admin = bdd.user();
     const member = bdd.user({ orgId: admin.orgId, orgRole: "org:member" });
@@ -1947,74 +1992,66 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       customConnectorBody(uniqueSlug("bdd-other-secret")),
     );
 
-    async function readHasSecret(
+    async function readConnected(
       actor: ApiTestUser,
       connectorId: string,
     ): Promise<boolean | undefined> {
       const connectors = await connectorsApi.listCustomConnectors(actor);
       return connectors.find((connector) => {
         return connector.id === connectorId;
-      })?.hasSecret;
+      })?.connected;
     }
 
-    const missing = await connectorsApi.requestSetCustomConnectorSecret(
+    const missing = await connectorsApi.requestSetCustomConnectorValues(
       admin,
       randomUUID(),
-      "unused-secret-value",
+      [{ key: "secret", kind: "secret", value: "unused-secret-value" }],
       [404],
     );
     expectApiError(missing.body);
     expect(missing.body.error.message).toBe("Custom connector not found");
 
-    await connectorsApi.setCustomConnectorSecret(
-      member,
-      shared.id,
-      "member-secret-value",
-    );
-    await expect(readHasSecret(member, shared.id)).resolves.toBeTruthy();
-    await expect(readHasSecret(admin, shared.id)).resolves.toBeFalsy();
+    await connectorsApi.setCustomConnectorValues(member, shared.id, [
+      { key: "secret", kind: "secret", value: "member-secret-value" },
+    ]);
+    await expect(readConnected(member, shared.id)).resolves.toBeTruthy();
+    await expect(readConnected(admin, shared.id)).resolves.toBeFalsy();
 
-    await connectorsApi.setCustomConnectorSecret(
-      admin,
-      shared.id,
-      "admin-secret-value",
-    );
-    await connectorsApi.setCustomConnectorSecret(
-      admin,
-      shared.id,
-      "admin-secret-value-rotated",
-    );
+    await connectorsApi.setCustomConnectorValues(admin, shared.id, [
+      { key: "secret", kind: "secret", value: "admin-secret-value" },
+    ]);
+    await connectorsApi.setCustomConnectorValues(admin, shared.id, [
+      { key: "secret", kind: "secret", value: "admin-secret-value-rotated" },
+    ]);
     const adminList = await connectorsApi.listCustomConnectors(admin);
     expect(
       adminList.find((connector) => {
         return connector.id === shared.id;
-      })?.hasSecret,
+      })?.connected,
     ).toBeTruthy();
     expectNoVisibleSecret(adminList, "admin-secret-value");
     expectNoVisibleSecret(adminList, "member-secret-value");
 
-    await connectorsApi.setCustomConnectorSecret(
-      adminInOtherOrg,
-      otherOrg.id,
-      "other-org-secret-value",
-    );
+    await connectorsApi.setCustomConnectorValues(adminInOtherOrg, otherOrg.id, [
+      { key: "secret", kind: "secret", value: "other-org-secret-value" },
+    ]);
     await expect(
-      readHasSecret(adminInOtherOrg, otherOrg.id),
+      readConnected(adminInOtherOrg, otherOrg.id),
     ).resolves.toBeTruthy();
 
-    await connectorsApi.deleteCustomConnectorSecret(admin, shared.id);
-    await connectorsApi.deleteCustomConnectorSecret(admin, shared.id);
-    await expect(readHasSecret(admin, shared.id)).resolves.toBeFalsy();
-    await expect(readHasSecret(member, shared.id)).resolves.toBeTruthy();
+    await connectorsApi.deleteCustomConnectorValues(admin, shared.id);
+    await connectorsApi.deleteCustomConnectorValues(admin, shared.id);
+    await expect(readConnected(admin, shared.id)).resolves.toBeFalsy();
+    await expect(readConnected(member, shared.id)).resolves.toBeTruthy();
     await expect(
-      readHasSecret(adminInOtherOrg, otherOrg.id),
+      readConnected(adminInOtherOrg, otherOrg.id),
     ).resolves.toBeTruthy();
 
     await connectorsApi.deleteCustomConnector(admin, shared.id);
     await connectorsApi.deleteCustomConnector(adminInOtherOrg, otherOrg.id);
-    await expect(readHasSecret(admin, shared.id)).resolves.toBeUndefined();
+    await expect(readConnected(admin, shared.id)).resolves.toBeUndefined();
     await expect(
-      readHasSecret(adminInOtherOrg, otherOrg.id),
+      readConnected(adminInOtherOrg, otherOrg.id),
     ).resolves.toBeUndefined();
   });
 });

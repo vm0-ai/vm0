@@ -54,6 +54,7 @@ export const customConnectorResponseSchema = z.object({
   configuredFieldKeys: z.array(z.string()),
   createdAt: z.string(),
   updatedAt: z.string(),
+  /** @deprecated Use connected. Kept for old frontend bundles during rollout. */
   hasSecret: z.boolean(),
 });
 export type CustomConnectorResponse = z.infer<
@@ -165,7 +166,7 @@ export type SaveCustomConnectorProposalResponse = z.infer<
 
 /**
  * Zero custom connectors contract for /api/zero/custom-connectors
- * GET: list all org custom connectors (with per-user hasSecret flag)
+ * GET: list all org custom connectors with per-user value connection state
  * POST: create a new custom connector (admin only)
  */
 export const zeroCustomConnectorsContract = c.router({
@@ -199,7 +200,7 @@ export type ZeroCustomConnectorsContract = typeof zeroCustomConnectorsContract;
 
 /**
  * Zero custom connector by id contract for /api/zero/custom-connectors/[id]
- * DELETE: delete a custom connector (admin only — cascades secrets)
+ * DELETE: delete a custom connector (admin only - cascades stored values)
  * PATCH: rename a custom connector (admin only — displayName only in v1)
  */
 export const zeroCustomConnectorByIdContract = c.router({
@@ -268,9 +269,9 @@ export type ZeroCustomConnectorByIdContract =
   typeof zeroCustomConnectorByIdContract;
 
 /**
- * Zero custom connector secret contract for /api/zero/custom-connectors/[id]/secret
- * PUT: set the calling user's secret for this connector
- * DELETE: clear the calling user's secret
+ * Legacy custom connector secret facade for /api/zero/custom-connectors/[id]/secret.
+ * PUT: set the calling user's secret:secret value for this connector
+ * DELETE: clear the calling user's secret:secret value
  */
 export const zeroCustomConnectorSecretContract = c.router({
   set: {
@@ -286,7 +287,7 @@ export const zeroCustomConnectorSecretContract = c.router({
       404: apiErrorSchema,
       500: apiErrorSchema,
     },
-    summary: "Set the calling user's secret for a custom connector",
+    summary: "Set the calling user's legacy secret for a custom connector",
   },
   delete: {
     method: "DELETE",
@@ -299,7 +300,7 @@ export const zeroCustomConnectorSecretContract = c.router({
       404: apiErrorSchema,
       500: apiErrorSchema,
     },
-    summary: "Clear the calling user's secret for a custom connector",
+    summary: "Clear the calling user's legacy secret for a custom connector",
   },
 });
 export type ZeroCustomConnectorSecretContract =

@@ -78,11 +78,9 @@ async function createUnconfiguredCustomConnector(
 
 async function createCustomConnector(actor: ApiTestUser, slug: string) {
   const connector = await createUnconfiguredCustomConnector(actor, slug);
-  await connectors.setCustomConnectorSecret(
-    actor,
-    connector.id,
-    `${slug}-secret`,
-  );
+  await connectors.setCustomConnectorValues(actor, connector.id, [
+    { key: "secret", kind: "secret", value: `${slug}-secret` },
+  ]);
   return connector;
 }
 
@@ -142,11 +140,9 @@ async function createCustomConnectorWithOptionalPrefixVariable(
     ],
     queryInjections: [],
   });
-  await connectors.setCustomConnectorSecret(
-    actor,
-    connector.id,
-    `${slug}-secret`,
-  );
+  await connectors.setCustomConnectorValues(actor, connector.id, [
+    { key: "secret", kind: "secret", value: `${slug}-secret` },
+  ]);
   return connector;
 }
 
@@ -540,7 +536,7 @@ describe("PUT /api/zero/agents/:id/custom-connectors", () => {
     ).resolves.toStrictEqual([]);
   });
 
-  it("allows removing an enabled custom connector after its secret is deleted", async () => {
+  it("allows removing an enabled custom connector after its values are deleted", async () => {
     const actor = bdd.user();
     const agent = await createAgent(actor, { displayName: "Test Agent" });
     const connector = await createCustomConnector(actor, "remove-unconfigured");
@@ -548,7 +544,7 @@ describe("PUT /api/zero/agents/:id/custom-connectors", () => {
     await connectors.updateAgentCustomConnectors(actor, agent.agentId, [
       connector.id,
     ]);
-    await connectors.deleteCustomConnectorSecret(actor, connector.id);
+    await connectors.deleteCustomConnectorValues(actor, connector.id);
 
     const updated = await connectors.updateAgentCustomConnectors(
       actor,

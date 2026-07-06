@@ -2,9 +2,11 @@ import { command, computed, state } from "ccstate";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import {
   zeroCustomConnectorByIdContract,
-  zeroCustomConnectorSecretContract,
+  zeroCustomConnectorValuesContract,
   zeroCustomConnectorsContract,
+  type CustomConnectorFieldKind,
   type CustomConnectorResponse,
+  type CustomConnectorValueInput,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import { accept } from "../../../lib/accept.ts";
 import { zeroClient$ } from "../../api-client.ts";
@@ -27,7 +29,7 @@ export const setConnectorsPageTab$ = command(
 );
 
 /**
- * List of org custom connectors (with per-caller `hasSecret` flag).
+ * List of org custom connectors with per-caller connection state.
  * Cache-busted by `reloadCustomConnectors$`.
  */
 export const customConnectors$ = computed(
@@ -110,31 +112,49 @@ export const renameCustomConnector$ = command(
   },
 );
 
-export const setCustomConnectorSecret$ = command(
+function sanitizeCustomConnectorValue(
+  value: CustomConnectorValueInput,
+): CustomConnectorValueInput {
+  return {
+    ...value,
+    value:
+      value.kind === "secret"
+        ? sanitizeTokenInput(value.value)
+        : value.value.trim(),
+  };
+}
+
+export const setCustomConnectorValues$ = command(
   async (
     { get, set },
-    args: { id: string; value: string },
+    args: { id: string; values: readonly CustomConnectorValueInput[] },
     _signal: AbortSignal,
-  ): Promise<void> => {
+  ): Promise<CustomConnectorResponse> => {
     const createClient = get(zeroClient$);
-    const client = createClient(zeroCustomConnectorSecretContract);
-    await accept(
+    const client = createClient(zeroCustomConnectorValuesContract);
+    const values = args.values
+      .map(sanitizeCustomConnectorValue)
+      .filter((value) => {
+        return value.value.length > 0;
+      });
+    const result = await accept(
       client.set({
         params: { id: args.id },
-        body: { value: sanitizeTokenInput(args.value) },
+        body: { values },
         fetchOptions: { signal: _signal },
       }),
-      [204],
+      [200],
     );
     set(bumpReload$);
     toast.success("Connected");
+    return result.body;
   },
 );
 
-export const clearCustomConnectorSecret$ = command(
+export const clearCustomConnectorValues$ = command(
   async ({ get, set }, id: string, _signal: AbortSignal): Promise<void> => {
     const createClient = get(zeroClient$);
-    const client = createClient(zeroCustomConnectorSecretContract);
+    const client = createClient(zeroCustomConnectorValuesContract);
     await accept(
       client.delete({
         params: { id },
@@ -235,15 +255,35 @@ export const setCustomConnectorRenameInput$ = command(
 // Connect form state
 // ---------------------------------------------------------------------------
 
-const internalConnectInput$ = state("");
+export type CustomConnectorConnectInput = Readonly<Record<string, string>>;
+
+export function customConnectorFieldMarker(args: {
+  readonly kind: CustomConnectorFieldKind;
+  readonly key: string;
+}): string {
+  return `${args.kind}:${args.key}`;
+}
+
+const internalConnectInput$ = state<CustomConnectorConnectInput>({});
 export const customConnectorConnectInput$ = computed((get) => {
   return get(internalConnectInput$);
 });
-export const setCustomConnectorConnectInput$ = command(
-  ({ set }, value: string) => {
-    set(internalConnectInput$, value);
+export const setCustomConnectorConnectField$ = command(
+  (
+    { get, set },
+    args: {
+      readonly kind: CustomConnectorFieldKind;
+      readonly key: string;
+      readonly value: string;
+    },
+  ) => {
+    const previous = get(internalConnectInput$);
+    set(internalConnectInput$, {
+      ...previous,
+      [customConnectorFieldMarker(args)]: args.value,
+    });
   },
 );
 export const resetCustomConnectorConnectInput$ = command(({ set }) => {
-  set(internalConnectInput$, "");
+  set(internalConnectInput$, {});
 });

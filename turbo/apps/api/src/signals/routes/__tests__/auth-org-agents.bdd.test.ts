@@ -852,20 +852,18 @@ describe("AGENT-01 and AGENT-02", () => {
     expect(connector).toMatchObject({
       slug: connectorSlug,
       displayName: "BDD Custom Connector",
-      hasSecret: false,
+      connected: false,
     });
 
-    await api.setCustomConnectorSecret(
-      admin,
-      connector.id,
-      "custom-connector-secret",
-    );
+    await api.setCustomConnectorValues(admin, connector.id, [
+      { key: "secret", kind: "secret", value: "custom-connector-secret" },
+    ]);
     const connectorList = await api.listCustomConnectors(admin);
     const listedConnector = connectorList.connectors.find((candidate) => {
       return candidate.id === connector.id;
     });
     expect(listedConnector).toBeDefined();
-    expect(listedConnector?.hasSecret).toBeTruthy();
+    expect(listedConnector?.connected).toBeTruthy();
     expect(JSON.stringify(connectorList)).not.toContain(
       "custom-connector-secret",
     );
@@ -906,12 +904,12 @@ describe("AGENT-01 and AGENT-02", () => {
       displayName: "BDD Custom Connector Renamed",
     });
     expect(renamed.displayName).toBe("BDD Custom Connector Renamed");
-    await api.deleteCustomConnectorSecret(admin, connector.id);
-    const afterSecretDelete = await api.listCustomConnectors(admin);
+    await api.deleteCustomConnectorValues(admin, connector.id);
+    const afterValuesDelete = await api.listCustomConnectors(admin);
     expect(
-      afterSecretDelete.connectors.find((candidate) => {
+      afterValuesDelete.connectors.find((candidate) => {
         return candidate.id === connector.id;
-      })?.hasSecret,
+      })?.connected,
     ).toBeFalsy();
     await api.deleteCustomConnector(admin, connector.id);
     const afterDelete = await api.listCustomConnectors(admin);

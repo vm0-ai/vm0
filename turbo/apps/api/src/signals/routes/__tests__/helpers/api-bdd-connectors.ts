@@ -22,9 +22,11 @@ import {
   zeroCustomConnectorByIdContract,
   zeroCustomConnectorProposalContract,
   zeroCustomConnectorSecretContract,
+  zeroCustomConnectorValuesContract,
   zeroCustomConnectorsContract,
   type CreateCustomConnectorBody,
   type CustomConnectorResponse,
+  type CustomConnectorValueInput,
   type PatchCustomConnectorBody,
   type SaveCustomConnectorProposalBody,
   type SaveCustomConnectorProposalResponse,
@@ -1739,6 +1741,39 @@ export function createConnectorBddApi(context: TestContext) {
       );
     },
 
+    async requestSetCustomConnectorValues(
+      actor: ApiTestUser | null,
+      connectorId: string,
+      values: readonly CustomConnectorValueInput[],
+      statuses: readonly (200 | 400 | 401 | 404 | 500)[],
+    ) {
+      const client = setupApp({ context })(zeroCustomConnectorValuesContract);
+      return await accept(
+        client.set({
+          params: { id: connectorId },
+          headers: authenticate(actor),
+          body: { values: [...values] },
+        }),
+        statuses,
+      );
+    },
+
+    async setCustomConnectorValues(
+      actor: ApiTestUser,
+      connectorId: string,
+      values: readonly CustomConnectorValueInput[],
+      statuses: readonly (200 | 400 | 401 | 404 | 500)[] = [200],
+    ): Promise<CustomConnectorResponse> {
+      const response = await api.requestSetCustomConnectorValues(
+        actor,
+        connectorId,
+        values,
+        statuses,
+      );
+      expectStatus(response, 200);
+      return response.body;
+    },
+
     async requestDeleteCustomConnectorSecret(
       actor: ApiTestUser | null,
       connectorId: string,
@@ -1760,6 +1795,33 @@ export function createConnectorBddApi(context: TestContext) {
       statuses: readonly (204 | 401 | 404 | 500)[] = [204],
     ): Promise<void> {
       await api.requestDeleteCustomConnectorSecret(
+        actor,
+        connectorId,
+        statuses,
+      );
+    },
+
+    async requestDeleteCustomConnectorValues(
+      actor: ApiTestUser | null,
+      connectorId: string,
+      statuses: readonly (204 | 401 | 404 | 500)[],
+    ) {
+      const client = setupApp({ context })(zeroCustomConnectorValuesContract);
+      return await accept(
+        client.delete({
+          params: { id: connectorId },
+          headers: authenticate(actor),
+        }),
+        statuses,
+      );
+    },
+
+    async deleteCustomConnectorValues(
+      actor: ApiTestUser,
+      connectorId: string,
+      statuses: readonly (204 | 401 | 404 | 500)[] = [204],
+    ): Promise<void> {
+      await api.requestDeleteCustomConnectorValues(
         actor,
         connectorId,
         statuses,

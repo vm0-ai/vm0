@@ -27,7 +27,6 @@ const setSecretInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       userId: auth.userId,
       connectorId: params.id,
       values: [{ key: "secret", kind: "secret", value: bodyResult.data.value }],
-      syncLegacySecret: true,
     },
     signal,
   );

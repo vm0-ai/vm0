@@ -13,31 +13,54 @@ import {
 import { Input } from "@vm0/ui/components/ui/input";
 import {
   closeCustomConnectorDialog$,
+  customConnectorFieldMarker,
   customConnectorConnectInput$,
   resetCustomConnectorConnectInput$,
-  setCustomConnectorConnectInput$,
-  setCustomConnectorSecret$,
+  setCustomConnectorConnectField$,
+  setCustomConnectorValues$,
 } from "../../../../signals/zero-page/settings/custom-connectors.ts";
 import { hasTokenInputValue } from "../../../../signals/zero-page/settings/token-input.ts";
 import { CustomConnectorIcon } from "./custom-connector-icon.tsx";
+import type {
+  CustomConnectorField,
+  CustomConnectorResponse,
+} from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import type { FormEvent } from "react";
 
+function hasCustomConnectorFieldValue(
+  field: CustomConnectorField,
+  value: string | undefined,
+): boolean {
+  if (field.kind === "secret") {
+    return hasTokenInputValue(value);
+  }
+  return value !== undefined && value.trim().length > 0;
+}
+
 export function CustomConnectorConnectDialog({
-  id,
-  displayName,
+  connector,
 }: {
-  id: string;
-  displayName: string;
+  connector: CustomConnectorResponse;
 }) {
-  const value = useGet(customConnectorConnectInput$);
-  const setValue = useSet(setCustomConnectorConnectInput$);
+  const values = useGet(customConnectorConnectInput$);
+  const setFieldValue = useSet(setCustomConnectorConnectField$);
   const resetValue = useSet(resetCustomConnectorConnectInput$);
   const closeDialog = useSet(closeCustomConnectorDialog$);
-  const [loadable, submit] = useLoadableSet(setCustomConnectorSecret$);
+  const [loadable, submit] = useLoadableSet(setCustomConnectorValues$);
   const signal = useGet(pageSignal$);
 
   const submitting = loadable.state === "loading";
-  const canSubmit = !submitting && hasTokenInputValue(value);
+  const canSubmit =
+    !submitting &&
+    connector.fields.every((field) => {
+      return (
+        !field.required ||
+        hasCustomConnectorFieldValue(
+          field,
+          values[customConnectorFieldMarker(field)],
+        )
+      );
+    });
 
   const close = () => {
     resetValue();
@@ -51,7 +74,19 @@ export function CustomConnectorConnectDialog({
     }
     detach(
       (async () => {
-        await submit({ id, value }, signal);
+        await submit(
+          {
+            id: connector.id,
+            values: connector.fields.map((field) => {
+              return {
+                kind: field.kind,
+                key: field.key,
+                value: values[customConnectorFieldMarker(field)] ?? "",
+              };
+            }),
+          },
+          signal,
+        );
         close();
       })(),
       Reason.DomCallback,
@@ -68,33 +103,52 @@ export function CustomConnectorConnectDialog({
       <DialogContent className="max-w-md" aria-describedby={undefined}>
         <DialogHeader>
           <div className="flex items-center gap-3">
-            <CustomConnectorIcon id={id} displayName={displayName} size={20} />
-            <DialogTitle>Connect {displayName}</DialogTitle>
+            <CustomConnectorIcon
+              id={connector.id}
+              displayName={connector.displayName}
+              size={20}
+            />
+            <DialogTitle>Connect {connector.displayName}</DialogTitle>
           </div>
         </DialogHeader>
         <p className="text-sm text-muted-foreground">
-          Your secret is encrypted at rest and injected into outbound requests
-          by the firewall. It&apos;s never exposed to the agent as an
-          environment variable.
+          Connector values are encrypted at rest and injected into outbound
+          requests by the firewall. They&apos;re never exposed to the agent as
+          environment variables.
         </p>
         <form className="flex flex-col gap-4" onSubmit={onSubmit}>
-          <div className="flex flex-col gap-2">
-            <label
-              htmlFor="cc-connect-secret"
-              className="text-sm font-medium text-foreground"
-            >
-              Secret
-            </label>
-            <Input
-              id="cc-connect-secret"
-              type="password"
-              value={value}
-              onChange={(e) => {
-                return setValue(e.target.value);
-              }}
-              autoFocus
-            />
-          </div>
+          {connector.fields.map((field, index) => {
+            const marker = customConnectorFieldMarker(field);
+            const inputId = `cc-connect-${field.kind}-${field.key}`;
+            return (
+              <div key={marker} className="flex flex-col gap-2">
+                <label
+                  htmlFor={inputId}
+                  className="text-sm font-medium text-foreground"
+                >
+                  {field.label}
+                </label>
+                <Input
+                  id={inputId}
+                  type={field.kind === "secret" ? "password" : "text"}
+                  value={values[marker] ?? ""}
+                  onChange={(e) => {
+                    return setFieldValue({
+                      kind: field.kind,
+                      key: field.key,
+                      value: e.target.value,
+                    });
+                  }}
+                  autoFocus={index === 0}
+                />
+                {field.description && (
+                  <p className="text-xs text-muted-foreground">
+                    {field.description}
+                  </p>
+                )}
+              </div>
+            );
+          })}
           <DialogFooter>
             <Button
               type="button"

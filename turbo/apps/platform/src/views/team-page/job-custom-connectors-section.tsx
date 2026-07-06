@@ -47,7 +47,7 @@ function CustomConnectorPermissionRow({
         </div>
         <div className="truncate text-xs text-muted-foreground font-mono">
           {connector.prefixes[0]}
-          {!connector.hasSecret && " — no secret set"}
+          {!connector.connected && " - not connected"}
         </div>
       </div>
       <LoadingSwitch
@@ -57,7 +57,7 @@ function CustomConnectorPermissionRow({
         onCheckedChange={onToggle}
         ariaLabel={`Authorize ${connector.displayName} for this agent`}
       />
-      {!connector.hasSecret && <span className="sr-only">No secret set</span>}
+      {!connector.connected && <span className="sr-only">Not connected</span>}
     </div>
   );
 }
@@ -93,8 +93,8 @@ export function JobCustomConnectorsSection() {
   return (
     <div className="zero-card">
       <div className="px-5 pt-4 pb-3 text-sm text-muted-foreground border-b border-border/50">
-        Custom connectors registered by your org. Only connectors you have
-        supplied a secret for can be toggled on.
+        Custom connectors registered by your org. Only connected custom
+        connectors can be toggled on.
       </div>
       {connectors.map((c, i) => {
         const enabled = addedSet.has(c.id);
@@ -104,7 +104,7 @@ export function JobCustomConnectorsSection() {
             connector={c}
             enabled={enabled}
             loading={saving}
-            disabled={!c.hasSecret && !enabled}
+            disabled={!c.connected && !enabled}
             isLast={i === connectors.length - 1}
             onToggle={(checked) => {
               return handleToggle(c.id, checked);

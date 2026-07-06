@@ -548,7 +548,7 @@ describe("team page navigation", () => {
     });
   });
 
-  it("does not allow enabling custom connectors without a secret", async () => {
+  it("does not allow enabling custom connectors that are not connected", async () => {
     let updateCalls = 0;
     mockTeamAPIs({
       customConnector: {
@@ -570,7 +570,7 @@ describe("team page navigation", () => {
         screen.getByRole("heading", { name: "Research Agent" }),
       ).toBeInTheDocument();
       expect(screen.getByText("Acme Search")).toBeInTheDocument();
-      expect(screen.getByText(/no secret set/)).toBeInTheDocument();
+      expect(screen.getByText(/not connected/)).toBeInTheDocument();
     });
 
     const toggle = screen.getByLabelText(

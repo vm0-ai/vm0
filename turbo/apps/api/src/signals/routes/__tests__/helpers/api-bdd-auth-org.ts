@@ -53,9 +53,11 @@ import {
 import {
   zeroCustomConnectorByIdContract,
   zeroCustomConnectorSecretContract,
+  zeroCustomConnectorValuesContract,
   zeroCustomConnectorsContract,
   type CreateCustomConnectorBody,
   type CustomConnectorResponse,
+  type CustomConnectorValueInput,
   type PatchCustomConnectorBody,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import {
@@ -1797,12 +1799,47 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       );
     },
 
+    async setCustomConnectorValues(
+      actor: ApiTestUser,
+      connectorId: string,
+      values: readonly CustomConnectorValueInput[],
+    ): Promise<CustomConnectorResponse> {
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroCustomConnectorValuesContract,
+      );
+      const response = await accept(
+        client.set({
+          headers: authenticate(actor),
+          params: { id: connectorId },
+          body: { values: [...values] },
+        }),
+        [200],
+      );
+      return response.body;
+    },
+
     async deleteCustomConnectorSecret(
       actor: ApiTestUser,
       connectorId: string,
     ): Promise<void> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
         zeroCustomConnectorSecretContract,
+      );
+      await accept(
+        client.delete({
+          headers: authenticate(actor),
+          params: { id: connectorId },
+        }),
+        [204],
+      );
+    },
+
+    async deleteCustomConnectorValues(
+      actor: ApiTestUser,
+      connectorId: string,
+    ): Promise<void> {
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroCustomConnectorValuesContract,
       );
       await accept(
         client.delete({

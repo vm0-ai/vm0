@@ -1,6 +1,5 @@
 import { computed, type Computed } from "ccstate";
 import type { CustomConnectorResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
-import { orgCustomConnectorSecrets } from "@vm0/db/schema/org-custom-connector-secret";
 import { orgCustomConnectorValues } from "@vm0/db/schema/org-custom-connector-value";
 import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
 import { and, eq } from "drizzle-orm";
@@ -11,17 +10,13 @@ import {
   serialiseCustomConnector,
 } from "./zero-custom-connector.service";
 
-function valueMarkerKey(args: { readonly kind: string; readonly key: string }) {
-  return `${args.kind}:${args.key}`;
-}
-
 export function zeroCustomConnectorList(args: {
   readonly orgId: string;
   readonly userId: string;
 }): Computed<Promise<readonly CustomConnectorResponse[]>> {
   return computed(async (get): Promise<readonly CustomConnectorResponse[]> => {
     const db = get(db$);
-    const [connectors, valueRows, legacySecretRows] = await Promise.all([
+    const [connectors, valueRows] = await Promise.all([
       db
         .select()
         .from(orgCustomConnectors)
@@ -40,15 +35,6 @@ export function zeroCustomConnectorList(args: {
             eq(orgCustomConnectorValues.userId, args.userId),
           ),
         ),
-      db
-        .select({ connectorId: orgCustomConnectorSecrets.connectorId })
-        .from(orgCustomConnectorSecrets)
-        .where(
-          and(
-            eq(orgCustomConnectorSecrets.orgId, args.orgId),
-            eq(orgCustomConnectorSecrets.userId, args.userId),
-          ),
-        ),
     ]);
 
     const markers = valueRows
@@ -63,23 +49,6 @@ export function zeroCustomConnectorList(args: {
           key: row.key,
         };
       });
-    const seen = new Set(
-      markers.map((marker) => {
-        return `${marker.connectorId}:${valueMarkerKey(marker)}`;
-      }),
-    );
-    for (const row of legacySecretRows) {
-      const marker = {
-        connectorId: row.connectorId,
-        kind: "secret" as const,
-        key: "secret",
-      };
-      const key = `${marker.connectorId}:${valueMarkerKey(marker)}`;
-      if (!seen.has(key)) {
-        markers.push(marker);
-        seen.add(key);
-      }
-    }
 
     return connectors.map((connector) => {
       return serialiseCustomConnector({

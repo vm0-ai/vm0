@@ -3905,11 +3905,9 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       headerName: "Authorization",
       headerTemplate: "Bearer {{secret}}",
     });
-    await connectors.setCustomConnectorSecret(
-      actor,
-      custom.id,
-      "custom-secret-value",
-    );
+    await connectors.setCustomConnectorValues(actor, custom.id, [
+      { key: "secret", kind: "secret", value: "custom-secret-value" },
+    ]);
     await connectors.updateAgentCustomConnectors(actor, agentId, [custom.id]);
 
     const run = await api.createRun(actor, {
@@ -4125,11 +4123,9 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       headerName: "Authorization",
       headerTemplate: "Bearer {{secret}}",
     });
-    await connectors.setCustomConnectorSecret(
-      actor,
-      allowed.id,
-      "direct-custom-secret-value",
-    );
+    await connectors.setCustomConnectorValues(actor, allowed.id, [
+      { key: "secret", kind: "secret", value: "direct-custom-secret-value" },
+    ]);
 
     const blockedSlug = `bdd-direct-blocked-${randomUUID().slice(0, 8)}`;
     const blocked = await connectors.createCustomConnector(actor, {
@@ -4139,11 +4135,9 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       headerName: "Authorization",
       headerTemplate: "Bearer {{secret}}",
     });
-    await connectors.setCustomConnectorSecret(
-      actor,
-      blocked.id,
-      "blocked-custom-secret-value",
-    );
+    await connectors.setCustomConnectorValues(actor, blocked.id, [
+      { key: "secret", kind: "secret", value: "blocked-custom-secret-value" },
+    ]);
 
     await connectors.updateAgentCustomConnectors(actor, agentId, [allowed.id]);
 
@@ -4433,7 +4427,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       agentId,
     });
     expect(saved.authorizedAgentId).toBe(agentId);
-    await connectors.deleteCustomConnectorSecret(actor, saved.connector.id);
+    await connectors.deleteCustomConnectorValues(actor, saved.connector.id);
 
     const run = await api.createRun(actor, {
       agentId,
@@ -4478,7 +4472,9 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       headerName: "Authorization",
       headerTemplate: "Bearer {{secret}}",
     });
-    await connectors.setCustomConnectorSecret(actor, custom.id, "custom-bdd");
+    await connectors.setCustomConnectorValues(actor, custom.id, [
+      { key: "secret", kind: "secret", value: "custom-bdd" },
+    ]);
     await connectors.updateAgentCustomConnectors(actor, agentId, [custom.id]);
 
     const run = await api.createRun(actor, {

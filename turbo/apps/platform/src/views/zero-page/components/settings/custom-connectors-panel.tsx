@@ -9,7 +9,7 @@ import {
 } from "@vm0/ui";
 import type { CustomConnectorResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import {
-  clearCustomConnectorSecret$,
+  clearCustomConnectorValues$,
   customConnectorDialog$,
   customConnectors$,
   openCustomConnectorConnectDialog$,
@@ -43,7 +43,7 @@ function CustomConnectorRow({
   onRename: () => void;
   onDelete: () => void;
 }) {
-  const hasActions = connector.hasSecret || isAdmin;
+  const hasActions = connector.connected || isAdmin;
 
   return (
     <div className="zero-card flex flex-col">
@@ -59,7 +59,7 @@ function CustomConnectorRow({
       </div>
       <div className="flex h-11 items-center justify-between border-t border-border/50 pl-5 pr-2">
         <div className="flex items-center gap-2 min-w-0">
-          {connector.hasSecret ? (
+          {connector.connected ? (
             <span className="flex items-center gap-2 text-xs text-muted-foreground truncate">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
               Connected
@@ -92,7 +92,7 @@ function CustomConnectorRow({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-44">
-              {!connector.hasSecret && (
+              {!connector.connected && (
                 <DropdownMenuItem
                   onSelect={() => {
                     runAfterDropdownMenuClose(onConnect);
@@ -101,7 +101,7 @@ function CustomConnectorRow({
                   Connect
                 </DropdownMenuItem>
               )}
-              {connector.hasSecret && (
+              {connector.connected && (
                 <DropdownMenuItem onClick={onDisconnect}>
                   Disconnect
                 </DropdownMenuItem>
@@ -141,11 +141,11 @@ export function CustomConnectorsPanel() {
   const openConnect = useSet(openCustomConnectorConnectDialog$);
   const openDelete = useSet(openCustomConnectorDeleteDialog$);
   const setRenameInput = useSet(setCustomConnectorRenameInput$);
-  const clearSecret = useSet(clearCustomConnectorSecret$);
+  const clearValues = useSet(clearCustomConnectorValues$);
   const signal = useGet(pageSignal$);
 
   const handleDisconnect = (connector: CustomConnectorResponse) => {
-    detach(clearSecret(connector.id, signal), Reason.DomCallback);
+    detach(clearValues(connector.id, signal), Reason.DomCallback);
   };
 
   const handleRename = (connector: CustomConnectorResponse) => {
@@ -204,10 +204,7 @@ export function CustomConnectorsPanel() {
         />
       )}
       {dialog.kind === "connect" && (
-        <CustomConnectorConnectDialog
-          id={dialog.connector.id}
-          displayName={dialog.connector.displayName}
-        />
+        <CustomConnectorConnectDialog connector={dialog.connector} />
       )}
       {dialog.kind === "delete" && (
         <CustomConnectorDeleteConfirm

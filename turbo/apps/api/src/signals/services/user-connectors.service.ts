@@ -7,7 +7,6 @@ import {
   type OrgCustomConnectorHeaderInjection,
   type OrgCustomConnectorQueryInjection,
 } from "@vm0/db/schema/org-custom-connector";
-import { orgCustomConnectorSecrets } from "@vm0/db/schema/org-custom-connector-secret";
 import { orgCustomConnectorValues } from "@vm0/db/schema/org-custom-connector-value";
 import { userCustomConnectors } from "@vm0/db/schema/user-custom-connector";
 import { userConnectors } from "@vm0/db/schema/user-connector";
@@ -245,16 +244,6 @@ async function loadCustomConnectorGrantValueMarkers(
         inArray(orgCustomConnectorValues.connectorId, [...args.connectorIds]),
       ),
     );
-  const legacyRows = await db
-    .select({ connectorId: orgCustomConnectorSecrets.connectorId })
-    .from(orgCustomConnectorSecrets)
-    .where(
-      and(
-        eq(orgCustomConnectorSecrets.orgId, args.orgId),
-        eq(orgCustomConnectorSecrets.userId, args.userId),
-        inArray(orgCustomConnectorSecrets.connectorId, [...args.connectorIds]),
-      ),
-    );
 
   const markers = new Set<string>();
   for (const row of valueRows) {
@@ -265,14 +254,6 @@ async function loadCustomConnectorGrantValueMarkers(
       `${row.connectorId}:${customConnectorValueMarkerKey({
         kind: row.kind,
         key: row.key,
-      })}`,
-    );
-  }
-  for (const row of legacyRows) {
-    markers.add(
-      `${row.connectorId}:${customConnectorValueMarkerKey({
-        kind: "secret",
-        key: LEGACY_SECRET_KEY,
       })}`,
     );
   }

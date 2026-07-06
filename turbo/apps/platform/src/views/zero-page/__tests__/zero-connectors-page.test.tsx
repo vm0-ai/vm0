@@ -1,7 +1,8 @@
 import {
   zeroCustomConnectorByIdContract,
-  zeroCustomConnectorSecretContract,
+  zeroCustomConnectorValuesContract,
   zeroCustomConnectorsContract,
+  type CustomConnectorValueInput,
   type CustomConnectorResponse,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import {
@@ -235,6 +236,42 @@ function customConnector(
   };
 }
 
+function updateCustomConnectorValueState(
+  connector: CustomConnectorResponse,
+  values: readonly CustomConnectorValueInput[],
+): CustomConnectorResponse {
+  const configuredMarkers = new Set(
+    values.map((value) => {
+      return `${value.kind}:${value.key}`;
+    }),
+  );
+  const missingRequiredFields = connector.fields
+    .filter((field) => {
+      return (
+        field.required && !configuredMarkers.has(`${field.kind}:${field.key}`)
+      );
+    })
+    .map((field) => {
+      return field.key;
+    });
+  const configuredFieldKeys = connector.fields
+    .filter((field) => {
+      return configuredMarkers.has(`${field.kind}:${field.key}`);
+    })
+    .map((field) => {
+      return field.key;
+    })
+    .sort();
+  const connected = missingRequiredFields.length === 0;
+  return {
+    ...connector,
+    connected,
+    hasSecret: connected,
+    configuredFieldKeys,
+    missingRequiredFields,
+  };
+}
+
 function publicStatusItem(args: {
   readonly connectorRef: ConnectorType;
   readonly label: string;
@@ -281,7 +318,10 @@ function mockPublicConnectorStatus(
   });
 }
 
-function mockCustomConnectorStory(): void {
+function mockCustomConnectorStory(options?: {
+  readonly initialConnectors?: readonly CustomConnectorResponse[];
+  readonly onSetValues?: (values: readonly CustomConnectorValueInput[]) => void;
+}): void {
   context.mocks.data.org({
     id: "org_1",
     slug: "test-org",
@@ -289,7 +329,9 @@ function mockCustomConnectorStory(): void {
     role: "admin",
   });
 
-  let connectors: CustomConnectorResponse[] = [];
+  let connectors: CustomConnectorResponse[] = [
+    ...(options?.initialConnectors ?? []),
+  ];
 
   context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
     return respond(200, { connectors });
@@ -308,22 +350,28 @@ function mockCustomConnectorStory(): void {
     },
   );
   context.mocks.api(
-    zeroCustomConnectorSecretContract.set,
-    ({ params, respond }) => {
-      connectors = connectors.map((connector) => {
-        return connector.id === params.id
-          ? { ...connector, hasSecret: true }
-          : connector;
+    zeroCustomConnectorValuesContract.set,
+    ({ params, body, respond }) => {
+      options?.onSetValues?.(body.values);
+      let updated = connectors.find((connector) => {
+        return connector.id === params.id;
       });
-      return respond(204);
+      connectors = connectors.map((connector) => {
+        if (connector.id !== params.id) {
+          return connector;
+        }
+        updated = updateCustomConnectorValueState(connector, body.values);
+        return updated;
+      });
+      return respond(200, updated ?? customConnector({}));
     },
   );
   context.mocks.api(
-    zeroCustomConnectorSecretContract.delete,
+    zeroCustomConnectorValuesContract.delete,
     ({ params, respond }) => {
       connectors = connectors.map((connector) => {
         return connector.id === params.id
-          ? { ...connector, hasSecret: false }
+          ? updateCustomConnectorValueState(connector, [])
           : connector;
       });
       return respond(204);
@@ -2441,5 +2489,71 @@ describe("connectors page", () => {
         ),
       ).toBeInTheDocument();
     });
+  });
+
+  it("connects a custom connector with declared secret and variable fields", async () => {
+    const submittedValues: CustomConnectorValueInput[][] = [];
+    mockCustomConnectorStory({
+      initialConnectors: [
+        customConnector({
+          id: "44444444-4444-4444-8444-444444444444",
+          slug: "acme-fields",
+          displayName: "Acme Fields",
+          prefixes: ["https://api.acme-fields.test/v1/"],
+          prefixTemplates: [
+            "https://{{variables.subdomain}}.acme-fields.test/v1/",
+          ],
+          fields: [
+            {
+              key: "api_key",
+              label: "API key",
+              kind: "secret",
+              required: true,
+              description: "Personal API key",
+            },
+            {
+              key: "subdomain",
+              label: "Subdomain",
+              kind: "variable",
+              required: true,
+            },
+          ],
+          headerInjections: [
+            {
+              name: "Authorization",
+              valueTemplate: "Bearer {{secrets.api_key}}",
+            },
+          ],
+          queryInjections: [],
+          connected: false,
+          missingRequiredFields: ["api_key", "subdomain"],
+          configuredFieldKeys: [],
+          hasSecret: false,
+        }),
+      ],
+      onSetValues(values) {
+        submittedValues.push([...values]);
+      },
+    });
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    click(await screen.findByText("Custom"));
+    click(await screen.findByText("Connect"));
+
+    const connectDialog = await screen.findByRole("dialog");
+    await fill(within(connectDialog).getByLabelText("API key"), "acme-key");
+    await fill(within(connectDialog).getByLabelText("Subdomain"), "tenant-a");
+    click(buttonByText("Save", connectDialog));
+
+    await waitFor(() => {
+      expect(screen.getByText("Connected")).toBeInTheDocument();
+    });
+    expect(submittedValues).toStrictEqual([
+      [
+        { key: "api_key", kind: "secret", value: "acme-key" },
+        { key: "subdomain", kind: "variable", value: "tenant-a" },
+      ],
+    ]);
   });
 });

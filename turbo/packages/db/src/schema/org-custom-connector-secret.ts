@@ -8,11 +8,10 @@ import {
 } from "drizzle-orm/pg-core";
 
 /**
- * Per-user secret for an org custom connector.
+ * Legacy per-user secret for an org custom connector.
  *
- * Encrypted with the API stored-secret encryption envelope. The row is keyed by
- * `(connectorId, userId)`: each user supplies their own secret; a missing row
- * means the user hasn't configured the connector yet.
+ * New runtime paths use `org_custom_connector_values`. This table remains until
+ * the legacy storage cleanup migration drops it.
  */
 export const orgCustomConnectorSecrets = pgTable(
   "org_custom_connector_secrets",

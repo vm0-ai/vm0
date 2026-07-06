@@ -18,7 +18,6 @@ import {
   validateBaseUrl,
 } from "@vm0/connectors/firewall-types";
 import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
-import { orgCustomConnectorSecrets } from "@vm0/db/schema/org-custom-connector-secret";
 import { orgCustomConnectorValues } from "@vm0/db/schema/org-custom-connector-value";
 
 import { db$, writeDb$, type ReadonlyDb } from "../external/db";
@@ -789,55 +788,26 @@ async function loadConnectorValueMarkers(args: {
   readonly orgId: string;
   readonly userId: string;
 }): Promise<readonly ValueMarker[]> {
-  const [valueRows, legacyRows] = await Promise.all([
-    args.db
-      .select({
-        connectorId: orgCustomConnectorValues.connectorId,
-        kind: orgCustomConnectorValues.kind,
-        key: orgCustomConnectorValues.key,
-      })
-      .from(orgCustomConnectorValues)
-      .where(
-        and(
-          eq(orgCustomConnectorValues.orgId, args.orgId),
-          eq(orgCustomConnectorValues.userId, args.userId),
-        ),
+  const valueRows = await args.db
+    .select({
+      connectorId: orgCustomConnectorValues.connectorId,
+      kind: orgCustomConnectorValues.kind,
+      key: orgCustomConnectorValues.key,
+    })
+    .from(orgCustomConnectorValues)
+    .where(
+      and(
+        eq(orgCustomConnectorValues.orgId, args.orgId),
+        eq(orgCustomConnectorValues.userId, args.userId),
       ),
-    args.db
-      .select({ connectorId: orgCustomConnectorSecrets.connectorId })
-      .from(orgCustomConnectorSecrets)
-      .where(
-        and(
-          eq(orgCustomConnectorSecrets.orgId, args.orgId),
-          eq(orgCustomConnectorSecrets.userId, args.userId),
-        ),
-      ),
-  ]);
-  const markers: ValueMarker[] = valueRows
+    );
+  return valueRows
     .filter((row): row is ValueMarker => {
       return row.kind === "secret" || row.kind === "variable";
     })
     .map((row) => {
       return { connectorId: row.connectorId, kind: row.kind, key: row.key };
     });
-  const existing = new Set(
-    markers.map((marker) => {
-      return `${marker.connectorId}:${customConnectorValueMarkerKey(marker)}`;
-    }),
-  );
-  for (const row of legacyRows) {
-    const marker = {
-      connectorId: row.connectorId,
-      kind: "secret" as const,
-      key: LEGACY_SECRET_KEY,
-    };
-    const key = `${marker.connectorId}:${customConnectorValueMarkerKey(marker)}`;
-    if (!existing.has(key)) {
-      markers.push(marker);
-      existing.add(key);
-    }
-  }
-  return markers;
 }
 
 export const createCustomConnector$ = command(
@@ -961,9 +931,6 @@ export const deleteCustomConnector$ = command(
       await tx
         .delete(orgCustomConnectorValues)
         .where(eq(orgCustomConnectorValues.connectorId, args.id));
-      await tx
-        .delete(orgCustomConnectorSecrets)
-        .where(eq(orgCustomConnectorSecrets.connectorId, args.id));
       await tx
         .delete(orgCustomConnectors)
         .where(
@@ -1091,7 +1058,6 @@ export const setCustomConnectorValues$ = command(
       readonly userId: string;
       readonly connectorId: string;
       readonly values: readonly CustomConnectorValueInput[];
-      readonly syncLegacySecret?: boolean;
     },
     signal: AbortSignal,
   ): Promise<
@@ -1145,31 +1111,6 @@ export const setCustomConnectorValues$ = command(
           },
         });
       signal.throwIfAborted();
-
-      if (
-        args.syncLegacySecret &&
-        value.kind === "secret" &&
-        value.key === LEGACY_SECRET_KEY
-      ) {
-        await writeDb
-          .insert(orgCustomConnectorSecrets)
-          .values({
-            connectorId: args.connectorId,
-            userId: args.userId,
-            orgId: args.orgId,
-            encryptedValue,
-          })
-          .onConflictDoUpdate({
-            target: [
-              orgCustomConnectorSecrets.connectorId,
-              orgCustomConnectorSecrets.userId,
-            ],
-            set: {
-              encryptedValue,
-              updatedAt: nowDate(),
-            },
-          });
-      }
     }
     signal.throwIfAborted();
 
@@ -1191,7 +1132,6 @@ export const deleteCustomConnectorValues$ = command(
       readonly orgId: string;
       readonly userId: string;
       readonly connectorId: string;
-      readonly syncLegacySecret?: boolean;
     },
     signal: AbortSignal,
   ): Promise<NotFoundResponse | undefined> => {
@@ -1216,29 +1156,19 @@ export const deleteCustomConnectorValues$ = command(
         ),
       );
     signal.throwIfAborted();
-    if (args.syncLegacySecret) {
-      await writeDb
-        .delete(orgCustomConnectorSecrets)
-        .where(
-          and(
-            eq(orgCustomConnectorSecrets.connectorId, args.connectorId),
-            eq(orgCustomConnectorSecrets.userId, args.userId),
-            eq(orgCustomConnectorSecrets.orgId, args.orgId),
-          ),
-        );
-    }
-    signal.throwIfAborted();
     return undefined;
   },
 );
 
-export const deleteLegacyCustomConnectorSecret$ = command(
+export const deleteCustomConnectorValue$ = command(
   async (
     { get, set },
     args: {
       readonly orgId: string;
       readonly userId: string;
       readonly connectorId: string;
+      readonly kind: CustomConnectorFieldKind;
+      readonly key: string;
     },
     signal: AbortSignal,
   ): Promise<NotFoundResponse | undefined> => {
@@ -1260,18 +1190,8 @@ export const deleteLegacyCustomConnectorSecret$ = command(
           eq(orgCustomConnectorValues.connectorId, args.connectorId),
           eq(orgCustomConnectorValues.userId, args.userId),
           eq(orgCustomConnectorValues.orgId, args.orgId),
-          eq(orgCustomConnectorValues.kind, "secret"),
-          eq(orgCustomConnectorValues.key, LEGACY_SECRET_KEY),
-        ),
-      );
-    signal.throwIfAborted();
-    await writeDb
-      .delete(orgCustomConnectorSecrets)
-      .where(
-        and(
-          eq(orgCustomConnectorSecrets.connectorId, args.connectorId),
-          eq(orgCustomConnectorSecrets.userId, args.userId),
-          eq(orgCustomConnectorSecrets.orgId, args.orgId),
+          eq(orgCustomConnectorValues.kind, args.kind),
+          eq(orgCustomConnectorValues.key, args.key),
         ),
       );
     signal.throwIfAborted();
@@ -1285,37 +1205,22 @@ async function loadStoredValuesForConnector(args: {
   readonly userId: string;
   readonly connectorId: string;
 }): Promise<readonly StoredValueRow[]> {
-  const [valueRows, legacyRows] = await Promise.all([
-    args.db
-      .select({
-        connectorId: orgCustomConnectorValues.connectorId,
-        kind: orgCustomConnectorValues.kind,
-        key: orgCustomConnectorValues.key,
-        encryptedValue: orgCustomConnectorValues.encryptedValue,
-      })
-      .from(orgCustomConnectorValues)
-      .where(
-        and(
-          eq(orgCustomConnectorValues.orgId, args.orgId),
-          eq(orgCustomConnectorValues.userId, args.userId),
-          eq(orgCustomConnectorValues.connectorId, args.connectorId),
-        ),
+  const valueRows = await args.db
+    .select({
+      connectorId: orgCustomConnectorValues.connectorId,
+      kind: orgCustomConnectorValues.kind,
+      key: orgCustomConnectorValues.key,
+      encryptedValue: orgCustomConnectorValues.encryptedValue,
+    })
+    .from(orgCustomConnectorValues)
+    .where(
+      and(
+        eq(orgCustomConnectorValues.orgId, args.orgId),
+        eq(orgCustomConnectorValues.userId, args.userId),
+        eq(orgCustomConnectorValues.connectorId, args.connectorId),
       ),
-    args.db
-      .select({
-        connectorId: orgCustomConnectorSecrets.connectorId,
-        encryptedValue: orgCustomConnectorSecrets.encryptedValue,
-      })
-      .from(orgCustomConnectorSecrets)
-      .where(
-        and(
-          eq(orgCustomConnectorSecrets.orgId, args.orgId),
-          eq(orgCustomConnectorSecrets.userId, args.userId),
-          eq(orgCustomConnectorSecrets.connectorId, args.connectorId),
-        ),
-      ),
-  ]);
-  const rows: StoredValueRow[] = valueRows
+    );
+  return valueRows
     .filter((row): row is StoredValueRow => {
       return row.kind === "secret" || row.kind === "variable";
     })
@@ -1327,20 +1232,6 @@ async function loadStoredValuesForConnector(args: {
         encryptedValue: row.encryptedValue,
       };
     });
-  const hasLegacySecret = rows.some((row) => {
-    return row.kind === "secret" && row.key === LEGACY_SECRET_KEY;
-  });
-  for (const row of legacyRows) {
-    if (!hasLegacySecret) {
-      rows.push({
-        connectorId: row.connectorId,
-        kind: "secret",
-        key: LEGACY_SECRET_KEY,
-        encryptedValue: row.encryptedValue,
-      });
-    }
-  }
-  return rows;
 }
 
 export async function decryptCustomConnectorValues(args: {
@@ -1710,7 +1601,6 @@ export const saveCustomConnectorProposal$ = command(
         userId: args.userId,
         connectorId: connector.id,
         values: args.values,
-        syncLegacySecret: true,
       },
       signal,
     );

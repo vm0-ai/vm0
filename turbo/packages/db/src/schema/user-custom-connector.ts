@@ -12,7 +12,7 @@ import { orgCustomConnectors } from "./org-custom-connector";
 /**
  * Per-agent authorization for org custom connectors.
  * Sparse model: presence of a row = user has explicitly authorized this agent
- * to use this custom connector. A user's secret on `org_custom_connector_secrets`
+ * to use this custom connector. A user's required connector values
  * alone is not enough; the mitm firewall is only synthesized when an agent is
  * listed here.
  *
