@@ -13,7 +13,7 @@ import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { mockEnv, mockOptionalEnv } from "../../../lib/env";
+import { mockEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
@@ -175,7 +175,7 @@ function expectSteamApiKey(request: Request): URL {
 }
 
 function mockSteamPlayerApis(args: { readonly privateOwnedGames?: boolean }) {
-  mockOptionalEnv("STEAM_WEB_API_KEY", "steam-web-api-key");
+  mockEnv("STEAM_WEB_API_KEY", "steam-web-api-key");
   server.use(
     http.get(
       "https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/",

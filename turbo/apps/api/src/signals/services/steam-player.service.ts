@@ -5,7 +5,7 @@ import { variables } from "@vm0/db/schema/variable";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
-import { optionalEnv } from "../../lib/env";
+import { env } from "../../lib/env";
 import { db$ } from "../external/db";
 import { safeJsonParse, settle } from "../utils";
 
@@ -87,7 +87,7 @@ const steamBadgesResponseSchema = z.object({
 });
 
 function steamApiKey(): string {
-  const key = optionalEnv("STEAM_WEB_API_KEY")?.trim();
+  const key = env("STEAM_WEB_API_KEY")?.trim();
   if (!key) {
     throw new Error("STEAM_WEB_API_KEY is not configured");
   }
