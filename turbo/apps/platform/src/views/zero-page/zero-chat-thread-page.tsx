@@ -166,6 +166,8 @@ import {
   permissionGrantExpiryText,
   setPermissionGrantExpiresIn$,
 } from "../../signals/permission-allow/permission-grant-expiration.ts";
+import { isActiveUserPermissionGrant } from "../../signals/user-permission-grants.ts";
+import { useUserPermissionGrantExpiryTick } from "../user-permission-grant-expiry-tick.ts";
 import {
   artifactFullscreen$,
   artifactInboxQuery$,
@@ -5099,6 +5101,31 @@ function permissionActionUserGrant(
   });
 }
 
+function permissionActionGrantExpiresAt({
+  savedGrant,
+  savedGrantActive,
+  existingGrant,
+  existingGrantActive,
+  status,
+}: {
+  savedGrant: PermissionActionUserGrant | null;
+  savedGrantActive: boolean;
+  existingGrant: PermissionActionUserGrant | undefined;
+  existingGrantActive: boolean;
+  status: PermissionActionCardStatus;
+}): string | null {
+  if (savedGrantActive) {
+    return savedGrant?.expiresAt ?? null;
+  }
+  if (existingGrantActive) {
+    return existingGrant?.expiresAt ?? null;
+  }
+  if (status.kind !== "ready") {
+    return null;
+  }
+  return savedGrant?.expiresAt ?? existingGrant?.expiresAt ?? null;
+}
+
 function createPermissionActionCardStatus(params: {
   hasAgent: boolean;
   hasPermission: boolean;
@@ -5143,6 +5170,7 @@ function createPermissionActionCardViewState(params: {
   permissionMetadataLoadable: LoadableLike<PublicConnectorCatalogPermissionDetail | null>;
   userGrantsLoadable: LoadableLike<readonly PermissionActionUserGrant[]>;
   grantLoadableState: string;
+  savedGrantActive: boolean;
 }) {
   const permissionMetadata =
     params.permissionMetadataLoadable.state === "hasData"
@@ -5179,7 +5207,8 @@ function createPermissionActionCardViewState(params: {
     userGrantPolicy,
     action: params.block.action,
   });
-  const saveDone = params.grantLoadableState === "hasData";
+  const saveDone =
+    params.grantLoadableState === "hasData" && params.savedGrantActive;
   const status = createPermissionActionCardStatus({
     hasAgent: params.hasAgent,
     hasPermission: Boolean(focusedPermission),
@@ -5345,7 +5374,19 @@ function PermissionActionCardForTarget({
     }),
   );
   const [grantLoadable, applyGrant] = useLoadableSet(applyUserPermissionGrant$);
+  const savedGrant =
+    grantLoadable.state === "hasData" ? grantLoadable.data : null;
+  const savedGrantActive = savedGrant
+    ? isActiveUserPermissionGrant(savedGrant)
+    : false;
+  const rawUserGrants = loadableData(userGrantsLoadable) ?? [];
+  useUserPermissionGrantExpiryTick(
+    savedGrant ? [...rawUserGrants, savedGrant] : rawUserGrants,
+  );
   const existingGrant = permissionActionUserGrant(userGrantsLoadable, block);
+  const existingGrantActive = existingGrant
+    ? isActiveUserPermissionGrant(existingGrant)
+    : false;
   const actionState = createPermissionActionCardViewState({
     block,
     hasAgent: hasTarget,
@@ -5353,15 +5394,19 @@ function PermissionActionCardForTarget({
     permissionMetadataLoadable,
     userGrantsLoadable,
     grantLoadableState: grantLoadable.state,
+    savedGrantActive,
   });
   const permissionMetadata =
     permissionMetadataLoadable.state === "hasData"
       ? permissionMetadataLoadable.data
       : null;
-  const grantExpiresAt =
-    grantLoadable.state === "hasData"
-      ? grantLoadable.data.expiresAt
-      : (existingGrant?.expiresAt ?? null);
+  const grantExpiresAt = permissionActionGrantExpiresAt({
+    savedGrant,
+    savedGrantActive,
+    existingGrant,
+    existingGrantActive,
+    status: actionState.status,
+  });
 
   return (
     <PermissionActionCardContent
