@@ -829,6 +829,30 @@ mod tests {
     }
 
     #[test]
+    fn task_kind_classification_uses_normalized_component_paths() {
+        assert_eq!(
+            classify_download_task_kind("/home/user/.codex/skills/./workflow", None),
+            DownloadTaskKind::FrameworkSkillChild
+        );
+        assert_eq!(
+            classify_download_task_kind("/home/user/.claude/skills/./tool", None),
+            DownloadTaskKind::FrameworkSkillChild
+        );
+        assert_eq!(
+            classify_download_task_kind("/home/user/.codex/skills/../workflow", None),
+            DownloadTaskKind::Other
+        );
+        assert_eq!(
+            classify_download_task_kind("/home/user/.claude/skills", None),
+            DownloadTaskKind::Other
+        );
+        assert_eq!(
+            classify_download_task_kind("/home/user/.claude/skills-old/tool", None),
+            DownloadTaskKind::Other
+        );
+    }
+
+    #[test]
     fn conflict_classifier_buckets_exact_instruction_skill_and_other_parent_child() {
         assert_eq!(
             classify_download_conflict(
