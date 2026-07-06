@@ -587,11 +587,8 @@ export function ArtifactDownloadMenu({
     filename,
     url,
   );
-  const closeNow = () => {
-    closeMenu();
-  };
   const startDownload = (download: Promise<void>, description: string) => {
-    closeNow();
+    closeMenu();
     startArtifactDownload(menuKey);
     detach(
       withCleanup(download, () => {
@@ -678,13 +675,13 @@ export function ArtifactDownloadMenu({
         )}
         {showGoogleSlidesUpload && syncTarget && (
           <GoogleSlidesMenuItem
-            closeMenu={closeNow}
+            closeMenu={closeMenu}
             filename={downloadFilename}
             threadId={syncTarget.threadId}
             url={url}
           />
         )}
-        <GoogleDriveMenuItem closeMenu={closeNow} syncTarget={syncTarget} />
+        <GoogleDriveMenuItem closeMenu={closeMenu} syncTarget={syncTarget} />
       </PopoverContent>
     </Popover>
   );
