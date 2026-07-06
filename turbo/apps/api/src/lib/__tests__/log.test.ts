@@ -458,6 +458,61 @@ describe("serializeError via logging", () => {
     }).not.toThrow();
   });
 
+  it("bounds serialized error string fields", () => {
+    const log = logger("long-error-string-test");
+    const err = new Error("x".repeat(10_000));
+    Object.defineProperty(err, "stack", {
+      value: "s".repeat(10_000),
+    });
+
+    log.error("msg", err);
+
+    const fields = axiomLogging.error.mock.calls[0]?.[1] as
+      | Record<string, unknown>
+      | undefined;
+    const serializedError = fields?.error as Record<string, unknown>;
+    expect(serializedError.message).toBe(`${"x".repeat(4093)}...`);
+    expect(serializedError.stack).toBe(`${"s".repeat(4093)}...`);
+  });
+
+  it("preserves special enumerable keys as data fields", () => {
+    const log = logger("special-key-error-test");
+    const err = new Error("special") as Error & Record<string, unknown>;
+    const payload: Record<string, unknown> = {};
+    Object.defineProperty(err, "__proto__", {
+      enumerable: true,
+      value: "error-proto-field",
+    });
+    Object.defineProperty(payload, "__proto__", {
+      enumerable: true,
+      value: { nested: true },
+    });
+    err.payload = payload;
+
+    log.error(err);
+
+    const fields = axiomLogging.error.mock.calls[0]?.[1] as
+      | Record<string, unknown>
+      | undefined;
+    const serializedError = fields?.error as Record<string, unknown>;
+    const serializedPayload = serializedError.payload as Record<
+      string,
+      unknown
+    >;
+    expect(Object.getPrototypeOf(serializedError)).toBe(Object.prototype);
+    expect(Object.getPrototypeOf(serializedPayload)).toBe(Object.prototype);
+    expect(
+      Object.prototype.hasOwnProperty.call(serializedError, "__proto__"),
+    ).toBeTruthy();
+    expect(
+      Object.prototype.hasOwnProperty.call(serializedPayload, "__proto__"),
+    ).toBeTruthy();
+    expect(Reflect.get(serializedError, "__proto__")).toBe("error-proto-field");
+    expect(Reflect.get(serializedPayload, "__proto__")).toStrictEqual({
+      nested: true,
+    });
+  });
+
   it("surfaces custom enumerable properties on Error", () => {
     const log = logger("custom-err");
     const err = new Error("custom") as Error & Record<string, unknown>;

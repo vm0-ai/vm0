@@ -127,6 +127,36 @@ describe("createApp", () => {
     }).not.toThrow();
   });
 
+  it("bounds non-Error thrown value summaries", async () => {
+    const thrownValue = "x".repeat(10_000);
+    const expectedSummary = `Non-Error thrown: ${"x".repeat(219)}...`;
+    const handler$ = computed((): never => {
+      throw thrownValue;
+    });
+    const client = setupApp({
+      context,
+      routes: [...ROUTES, { route: errorTestContract.boom, handler: handler$ }],
+    })(errorTestContract);
+
+    const response = await accept(client.boom(), [500]);
+
+    expect(response.body).toStrictEqual({ error: "Internal server error" });
+    const capturedError =
+      context.mocks.sentry.captureException.mock.calls.at(-1)?.[0];
+    expect(capturedError).toMatchObject({
+      message: `Non-Error thrown: ${"x".repeat(4075)}...`,
+    });
+
+    const [message, fields] =
+      context.mocks.axiomLogging.error.mock.calls.at(-1) ?? [];
+    expect(message).toBe(`Unhandled request error: ${expectedSummary}`);
+    const logFields = fields as Record<PropertyKey, unknown>;
+    expect(logFields).toMatchObject({
+      type: "unhandled_request_error",
+      errorSummary: expectedSummary,
+    });
+  });
+
   it("logs sanitized root-cause fields for unhandled errors", async () => {
     const cause = new Error(
       "column chat_threads.last_read_message_id does not exist for user test@example.com at https://example.test/callback?token=secret Bearer abcdef1234567890 123456789012 01890f9d-7b0d-7ccf-8f02-7d8a0c1b2c3d org_abc123456789 user_def987654321 API key: sk-live-secret client secret=client-secret refresh_token=refresh-secret Authorization: Basic basic-secret",

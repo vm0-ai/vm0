@@ -268,7 +268,7 @@ export function createAppWithRoutes({
   app.onError(handleError);
 
   app.use("*", (_context, next) => {
-    return normalizeThrown(next());
+    return normalizeThrown(next);
   });
 
   // OpenTelemetry: each request gets a SERVER span named after its matched

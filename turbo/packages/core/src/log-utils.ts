@@ -1,5 +1,6 @@
 const SERIALIZED_VALUE_MAX_DEPTH = 32;
 const SERIALIZED_OBJECT_MAX_ENTRIES = 64;
+const SERIALIZED_STRING_MAX_LENGTH = 4096;
 const CIRCULAR_MARKER = "[Circular]";
 const TRUNCATED_MARKER = "[Truncated]";
 const UNREADABLE_MARKER = "[Unreadable]";
@@ -7,6 +8,26 @@ const UNREADABLE_MARKER = "[Unreadable]";
 interface BoundedEntries {
   readonly entries: readonly [string, unknown][];
   readonly truncated: boolean;
+}
+
+function hasOwnSerializedField(
+  value: Record<string, unknown>,
+  key: string,
+): boolean {
+  return Object.prototype.hasOwnProperty.call(value, key);
+}
+
+function setSerializedField(
+  value: Record<string, unknown>,
+  key: string,
+  child: unknown,
+): void {
+  Object.defineProperty(value, key, {
+    value: child,
+    enumerable: true,
+    configurable: true,
+    writable: true,
+  });
 }
 
 /**
@@ -43,23 +64,33 @@ function serializeErrorWithSeen(
   });
   const serialized: Record<string, unknown> = {
     name: typeof name === "string" ? name : "Error",
-    message: typeof message === "string" ? message : UNREADABLE_MARKER,
+    message:
+      typeof message === "string"
+        ? serializeStringValue(message)
+        : UNREADABLE_MARKER,
   };
   seen.add(err);
   const stack = safeReadValue(() => {
     return err.stack;
   });
   if (stack !== undefined) {
-    serialized.stack =
+    setSerializedField(
+      serialized,
+      "stack",
       typeof stack === "string"
-        ? stack
-        : serializeErrorValue(stack, seen, depth + 1);
+        ? serializeStringValue(stack)
+        : serializeErrorValue(stack, seen, depth + 1),
+    );
   }
   const cause = safeReadValue(() => {
     return err.cause;
   });
   if (cause !== undefined) {
-    serialized.cause = serializeErrorValue(cause, seen, depth + 1);
+    setSerializedField(
+      serialized,
+      "cause",
+      serializeErrorValue(cause, seen, depth + 1),
+    );
   }
   const result = safeOwnEnumerableEntries(err);
   if (!result) {
@@ -67,12 +98,16 @@ function serializeErrorWithSeen(
     return serialized;
   }
   for (const [key, value] of result.entries) {
-    if (!(key in serialized)) {
-      serialized[key] = serializeErrorValue(value, seen, depth + 1);
+    if (!hasOwnSerializedField(serialized, key)) {
+      setSerializedField(
+        serialized,
+        key,
+        serializeErrorValue(value, seen, depth + 1),
+      );
     }
   }
   if (result.truncated) {
-    serialized.__truncated = true;
+    setSerializedField(serialized, "__truncated", true);
   }
   return serialized;
 }
@@ -124,16 +159,28 @@ function safeString(value: unknown): string {
   return typeof result === "string" ? result : UNREADABLE_MARKER;
 }
 
+function serializeStringValue(value: string): string {
+  if (value.length <= SERIALIZED_STRING_MAX_LENGTH) {
+    return value;
+  }
+  return `${value.slice(0, SERIALIZED_STRING_MAX_LENGTH - 3)}...`;
+}
+
 function serializeFunctionValue(value: { readonly name: string }): string {
   const name = safeReadValue(() => {
     return value.name;
   });
-  return typeof name === "string" && name ? `[Function ${name}]` : "[Function]";
+  return typeof name === "string" && name
+    ? serializeStringValue(`[Function ${name}]`)
+    : "[Function]";
 }
 
 function serializeNonObjectValue(value: unknown): unknown {
+  if (typeof value === "string") {
+    return serializeStringValue(value);
+  }
   if (typeof value === "bigint" || typeof value === "symbol") {
-    return safeString(value);
+    return serializeStringValue(safeString(value));
   }
   if (typeof value === "function") {
     return serializeFunctionValue(value);
@@ -150,7 +197,7 @@ function serializeDateValue(value: Date): unknown {
     return value.getTime();
   });
   if (typeof time !== "number" || Number.isNaN(time)) {
-    return safeString(value);
+    return serializeStringValue(safeString(value));
   }
   const iso = safeReadValue(() => {
     return value.toISOString();
@@ -188,10 +235,14 @@ function serializePlainObjectValue(
   }
   const serialized: Record<string, unknown> = {};
   for (const [key, child] of result.entries) {
-    serialized[key] = serializeErrorValue(child, seen, depth + 1);
+    setSerializedField(
+      serialized,
+      key,
+      serializeErrorValue(child, seen, depth + 1),
+    );
   }
   if (result.truncated) {
-    serialized.__truncated = true;
+    setSerializedField(serialized, "__truncated", true);
   }
   return serialized;
 }
@@ -217,7 +268,7 @@ function serializeErrorValue(
     return serializeDateValue(value);
   }
   if (value instanceof RegExp) {
-    return safeString(value);
+    return serializeStringValue(safeString(value));
   }
 
   seen.add(value);
