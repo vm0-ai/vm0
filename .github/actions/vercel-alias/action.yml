@@ -37,14 +37,6 @@ outputs:
 runs:
   using: "composite"
   steps:
-    - name: Install Vercel CLI
-      shell: bash
-      run: |
-        if ! command -v vercel >/dev/null 2>&1; then
-          npm install -g vercel@53.2.0
-        fi
-        vercel --version
-
     - name: Create Vercel alias
       id: alias
       shell: bash
@@ -58,13 +50,75 @@ runs:
       run: |
         # Build alias URL: {job-ref}-{app}.{preview-domain}
         ALIAS_URL="${JOB_REF}-${APP_NAME}.${PREVIEW_DOMAIN}"
+        DEPLOYMENT_REF="${DEPLOYMENT_URL#https://}"
+        DEPLOYMENT_REF="${DEPLOYMENT_REF#http://}"
+        DEPLOYMENT_REF="${DEPLOYMENT_REF%%/}"
 
         echo "Creating alias: ${ALIAS_URL} -> ${DEPLOYMENT_URL}"
 
-        # Set the alias using Vercel CLI
-        vercel alias set "${DEPLOYMENT_URL}" "${ALIAS_URL}" \
-          --token="${VERCEL_TOKEN}" \
-          --scope="${VERCEL_ORG_ID}"
+        RESPONSE_FILE="$(mktemp)"
+        HTTP_STATUS="$(node - "$DEPLOYMENT_REF" "$ALIAS_URL" "$VERCEL_ORG_ID" "$VERCEL_TOKEN" "$RESPONSE_FILE" <<'NODE'
+        const fs = require("node:fs");
+
+        async function main() {
+          const [deploymentRef, alias, teamId, token, responseFile] =
+            process.argv.slice(2);
+          const requestUrl = new URL(
+            `https://api.vercel.com/v2/deployments/${encodeURIComponent(deploymentRef)}/aliases`,
+          );
+          requestUrl.searchParams.set("teamId", teamId);
+
+          const response = await fetch(requestUrl, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ alias }),
+          });
+
+          fs.writeFileSync(responseFile, await response.text());
+          process.stdout.write(String(response.status));
+        }
+
+        main().catch((error) => {
+          console.error(error);
+          process.exit(1);
+        });
+        NODE
+        )"
+
+        if [ "$HTTP_STATUS" -eq 409 ]; then
+          RESPONSE_MESSAGE="$(node - "$RESPONSE_FILE" <<'NODE'
+          const fs = require("node:fs");
+
+          const raw = fs.readFileSync(process.argv[2], "utf8");
+          const payload = JSON.parse(raw);
+          process.stdout.write(payload.error?.message ?? payload.message ?? raw);
+          NODE
+          )"
+          if [[ "$RESPONSE_MESSAGE" == *"already assigned"* ]]; then
+            echo "Alias already exists: ${ALIAS_URL}"
+            HTTP_STATUS=200
+          fi
+        fi
+
+        if [ "$HTTP_STATUS" -lt 200 ] || [ "$HTTP_STATUS" -ge 300 ]; then
+          RESPONSE_MESSAGE="$(node - "$RESPONSE_FILE" <<'NODE'
+          const fs = require("node:fs");
+
+          const raw = fs.readFileSync(process.argv[2], "utf8");
+          try {
+            const payload = JSON.parse(raw);
+            process.stdout.write(payload.error?.message ?? payload.message ?? raw);
+          } catch {
+            process.stdout.write(raw);
+          }
+          NODE
+          )"
+          echo "::error::Failed to create Vercel alias (${HTTP_STATUS}): ${RESPONSE_MESSAGE}"
+          exit 1
+        fi
 
         # Output the full URL
         FULL_URL="https://${ALIAS_URL}"
