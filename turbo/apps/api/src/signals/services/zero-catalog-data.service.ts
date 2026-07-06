@@ -49,11 +49,19 @@ export function zeroCustomConnectorList(args: {
           key: row.key,
         };
       });
+    type ValueMarker = (typeof markers)[number];
+    const markersByConnectorId = new Map<string, ValueMarker[]>();
+    for (const marker of markers) {
+      const connectorMarkers =
+        markersByConnectorId.get(marker.connectorId) ?? [];
+      connectorMarkers.push(marker);
+      markersByConnectorId.set(marker.connectorId, connectorMarkers);
+    }
 
     return connectors.map((connector) => {
       return serialiseCustomConnector({
         row: normaliseCustomConnectorRow(connector),
-        valueMarkers: markers,
+        valueMarkers: markersByConnectorId.get(connector.id) ?? [],
       });
     });
   });
