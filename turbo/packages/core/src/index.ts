@@ -36,6 +36,7 @@ export {
   type VideoTemplateItem,
 } from "./video-template-items";
 export {
+  WORKFLOW_TEMPLATE_CATEGORIES,
   WORKFLOW_TEMPLATE_ITEMS,
   findWorkflowTemplateItem,
   type WorkflowTemplateItem,

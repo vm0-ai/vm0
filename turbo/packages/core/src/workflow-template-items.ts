@@ -2,8 +2,26 @@ export interface WorkflowTemplateItem {
   readonly id: `workflow-template:${string}`;
   readonly title: string;
   readonly description: string;
+  // Persona group used to organize the template picker. One of
+  // WORKFLOW_TEMPLATE_CATEGORIES.
+  readonly category: string;
   readonly promptGuidance: string;
 }
+
+// Ordered persona groups for the template picker. "General" holds the generic
+// starter template; the rest mirror the onboarding personas.
+export const WORKFLOW_TEMPLATE_CATEGORIES: readonly string[] = [
+  "General",
+  "Engineering",
+  "Product",
+  "Data",
+  "Marketing",
+  "Sales",
+  "Support",
+  "CEO",
+  "Operations",
+  "Everyone",
+];
 
 // Structured source for the curated built-in workflow templates. Each spec is
 // compiled into a WorkflowTemplateItem whose promptGuidance instructs the agent
@@ -13,6 +31,7 @@ export interface WorkflowTemplateItem {
 // because the two repos serve different surfaces and must not import across.
 interface WorkflowTemplateSpec {
   readonly slug: string;
+  readonly category: string;
   readonly title: string;
   readonly description: string;
   // The what: each line is one step of the workflow's behavior.
@@ -44,6 +63,7 @@ function buildWorkflowTemplateItem(
     id,
     title: spec.title,
     description: spec.description,
+    category: spec.category,
     promptGuidance: [
       "# Workflow Template Context",
       "",
@@ -71,6 +91,7 @@ const AUTO_INBOX_LABEL: WorkflowTemplateItem = {
   title: "Auto-inbox label",
   description:
     "Create a workflow that runs when a Gmail label is applied and handles the labeled inbox item.",
+  category: "General",
   promptGuidance: [
     "# Workflow Template Context",
     "",
@@ -91,6 +112,7 @@ const AUTO_INBOX_LABEL: WorkflowTemplateItem = {
 const WORKFLOW_TEMPLATE_SPECS: readonly WorkflowTemplateSpec[] = [
   {
     slug: "auto-merge-github-prs",
+    category: "Engineering",
     title: "Auto-merge GitHub PRs",
     description:
       "Zero reviews pull requests labeled ready-to-merge, waits for CI to pass, merges them, and reports the result to Slack.",
@@ -106,6 +128,7 @@ const WORKFLOW_TEMPLATE_SPECS: readonly WorkflowTemplateSpec[] = [
   },
   {
     slug: "file-sentry-crashes-github",
+    category: "Engineering",
     title: "File Sentry crashes as GitHub issues",
     description:
       "Zero checks Sentry hourly, ranks new errors by user impact, files GitHub issues for the worst ones, and pings the owner.",
@@ -121,6 +144,7 @@ const WORKFLOW_TEMPLATE_SPECS: readonly WorkflowTemplateSpec[] = [
   },
   {
     slug: "watch-sentry-after-release",
+    category: "Engineering",
     title: "Watch Sentry after a release",
     description:
       "After each release Zero compares the new version's crash-free rate against baseline and flags a regression with a rollback suggestion.",
@@ -136,6 +160,7 @@ const WORKFLOW_TEMPLATE_SPECS: readonly WorkflowTemplateSpec[] = [
   },
   {
     slug: "post-github-updates-slack",
+    category: "Engineering",
     title: "Post GitHub updates to Slack",
     description:
       "Every weekday morning Zero compiles your merged and in-progress work from GitHub and Linear into a progress update for Slack.",
@@ -151,6 +176,7 @@ const WORKFLOW_TEMPLATE_SPECS: readonly WorkflowTemplateSpec[] = [
   },
   {
     slug: "draft-github-release-notes-notion",
+    category: "Engineering",
     title: "Draft GitHub release notes in Notion",
     description:
       "When a PR is labeled shipped, Zero turns the merged PRs since the last release into clean release notes in Notion.",
@@ -166,6 +192,7 @@ const WORKFLOW_TEMPLATE_SPECS: readonly WorkflowTemplateSpec[] = [
   },
   {
     slug: "report-ai-model-costs-slack",
+    category: "Engineering",
     title: "Report AI model costs to Slack",
     description:
       "Every day Zero reports LLM token spend and p95 latency per model and route from Langfuse to Slack.",
@@ -181,6 +208,7 @@ const WORKFLOW_TEMPLATE_SPECS: readonly WorkflowTemplateSpec[] = [
   },
   {
     slug: "github-idea-to-notion-spec",
+    category: "Product",
     title: "Turn a GitHub idea into a Notion spec",
     description:
       "When a GitHub issue is labeled needs-spec, Zero expands it into a structured PRD in Notion.",
@@ -196,6 +224,7 @@ const WORKFLOW_TEMPLATE_SPECS: readonly WorkflowTemplateSpec[] = [
   },
   {
     slug: "summarize-user-feedback-notion",
+    category: "Product",
     title: "Summarize user feedback in Notion",
     description:
       "Every week Zero gathers feedback from Productlane, Typeform, Intercom, and GitHub, clusters it into themes, and ranks it in Notion.",
@@ -211,6 +240,7 @@ const WORKFLOW_TEMPLATE_SPECS: readonly WorkflowTemplateSpec[] = [
   },
   {
     slug: "post-release-notes-slack",
+    category: "Product",
     title: "Post release notes to Slack",
     description:
       "When a PR is labeled release, Zero drafts a user-facing changelog and posts it to Slack and Notion.",
@@ -226,6 +256,7 @@ const WORKFLOW_TEMPLATE_SPECS: readonly WorkflowTemplateSpec[] = [
   },
   {
     slug: "sync-linear-roadmap-notion",
+    category: "Product",
     title: "Sync the Linear roadmap to Notion",
     description:
       "Every day Zero syncs Linear ticket status into a Now / Next / Later roadmap board in Notion.",
@@ -241,6 +272,7 @@ const WORKFLOW_TEMPLATE_SPECS: readonly WorkflowTemplateSpec[] = [
   },
   {
     slug: "track-feature-usage-posthog",
+    category: "Product",
     title: "Track feature usage with PostHog",
     description:
       "Every week Zero checks PostHog for features rising or falling in usage and posts the shifts to Slack.",
@@ -256,6 +288,7 @@ const WORKFLOW_TEMPLATE_SPECS: readonly WorkflowTemplateSpec[] = [
   },
   {
     slug: "flag-figma-designs-no-task",
+    category: "Product",
     title: "Flag Figma designs without a task",
     description:
       "Every day Zero checks Figma for design frames that have no linked build task and flags them in Slack.",
@@ -271,6 +304,7 @@ const WORKFLOW_TEMPLATE_SPECS: readonly WorkflowTemplateSpec[] = [
   },
   {
     slug: "post-daily-metrics-slack",
+    category: "Data",
     title: "Post daily metrics to Slack",
     description:
       "Every morning Zero pulls visitors, signups, and activation from Plausible, PostHog, and Clerk and posts the KPIs to Slack.",
@@ -285,6 +319,7 @@ const WORKFLOW_TEMPLATE_SPECS: readonly WorkflowTemplateSpec[] = [
   },
   {
     slug: "run-daily-query-sheets",
+    category: "Data",
     title: "Run a daily query into Google Sheets",
     description:
       "Every day Zero runs your saved query and writes the formatted results into a Google Sheet.",
@@ -299,6 +334,7 @@ const WORKFLOW_TEMPLATE_SPECS: readonly WorkflowTemplateSpec[] = [
   },
   {
     slug: "check-posthog-signup-funnel",
+    category: "Data",
     title: "Check the PostHog signup funnel",
     description:
       "Every week Zero runs the signup funnel in PostHog and posts the biggest drop-off to Slack.",
@@ -313,6 +349,7 @@ const WORKFLOW_TEMPLATE_SPECS: readonly WorkflowTemplateSpec[] = [
   },
   {
     slug: "alert-metric-moves-slack",
+    category: "Data",
     title: "Alert when a metric moves",
     description:
       "Every hour Zero watches a key metric and alerts Slack when it deviates from its normal range.",
@@ -328,6 +365,7 @@ const WORKFLOW_TEMPLATE_SPECS: readonly WorkflowTemplateSpec[] = [
   },
   {
     slug: "track-signup-sources-sheets",
+    category: "Data",
     title: "Track signup sources in Google Sheets",
     description:
       "Every day Zero attributes new signups to their channel and campaign and appends them to a tracking Google Sheet.",
@@ -343,6 +381,7 @@ const WORKFLOW_TEMPLATE_SPECS: readonly WorkflowTemplateSpec[] = [
   },
   {
     slug: "build-weekly-deck-gamma",
+    category: "Data",
     title: "Build the weekly deck in Gamma",
     description:
       "Every week Zero assembles a metrics deck in Gamma from Sheets and analytics and posts it to Slack.",
@@ -357,6 +396,7 @@ const WORKFLOW_TEMPLATE_SPECS: readonly WorkflowTemplateSpec[] = [
   },
   {
     slug: "track-keyword-ranks-ahrefs",
+    category: "Marketing",
     title: "Track keyword ranks with Ahrefs",
     description:
       "Every week Zero tracks target keyword rankings in Ahrefs and reports the movers in Notion.",
@@ -371,6 +411,7 @@ const WORKFLOW_TEMPLATE_SPECS: readonly WorkflowTemplateSpec[] = [
   },
   {
     slug: "publish-scheduled-posts-buffer",
+    category: "Marketing",
     title: "Publish scheduled posts to Buffer",
     description:
       "Every day Zero publishes the content scheduled for today from the Notion calendar to Strapi and queues the social posts in Buffer.",
@@ -386,6 +427,7 @@ const WORKFLOW_TEMPLATE_SPECS: readonly WorkflowTemplateSpec[] = [
   },
   {
     slug: "blog-posts-to-x",
+    category: "Marketing",
     title: "Turn blog posts into X posts",
     description:
       "Every day Zero turns newly published blog posts into social variants and queues them to X through Buffer.",
@@ -401,6 +443,7 @@ const WORKFLOW_TEMPLATE_SPECS: readonly WorkflowTemplateSpec[] = [
   },
   {
     slug: "draft-newsletter-mailchimp",
+    category: "Marketing",
     title: "Draft the newsletter in Mailchimp",
     description:
       "Every month Zero assembles a newsletter from shipped features and stages a draft in Mailchimp.",
@@ -415,6 +458,7 @@ const WORKFLOW_TEMPLATE_SPECS: readonly WorkflowTemplateSpec[] = [
   },
   {
     slug: "compare-google-ads-last-month",
+    category: "Marketing",
     title: "Compare Google Ads vs last month",
     description:
       "Every day Zero compares Google Ads and Meta Ads spend, CPA, and ROAS against the prior period and flags anomalies in Slack.",
@@ -429,6 +473,7 @@ const WORKFLOW_TEMPLATE_SPECS: readonly WorkflowTemplateSpec[] = [
   },
   {
     slug: "watch-brand-mentions",
+    category: "Marketing",
     title: "Watch HN and X for brand mentions",
     description:
       "Every hour Zero searches the web, Hacker News, and X for mentions of your product and posts them to Slack.",
@@ -444,6 +489,7 @@ const WORKFLOW_TEMPLATE_SPECS: readonly WorkflowTemplateSpec[] = [
   },
   {
     slug: "catch-leads-gmail",
+    category: "Sales",
     title: "Catch leads from Gmail",
     description:
       "Zero scans new Gmail messages for buying signals, logs qualified leads to a Google Sheet, enriches them with Apollo, and suggests the next step in Slack.",
@@ -459,6 +505,7 @@ const WORKFLOW_TEMPLATE_SPECS: readonly WorkflowTemplateSpec[] = [
   },
   {
     slug: "new-gmail-contacts-hubspot",
+    category: "Sales",
     title: "Add new Gmail contacts to HubSpot",
     description:
       "When an email arrives from someone not in the CRM, Zero adds and enriches them in HubSpot.",
@@ -474,6 +521,7 @@ const WORKFLOW_TEMPLATE_SPECS: readonly WorkflowTemplateSpec[] = [
   },
   {
     slug: "research-new-signups-apollo",
+    category: "Sales",
     title: "Research new signups with Apollo",
     description:
       "Every hour Zero checks Clerk for new signups, researches their background and company with Apollo, and posts a snapshot to Slack.",
@@ -489,6 +537,7 @@ const WORKFLOW_TEMPLATE_SPECS: readonly WorkflowTemplateSpec[] = [
   },
   {
     slug: "gmail-followups-auto",
+    category: "Sales",
     title: "Send Gmail follow-ups automatically",
     description:
       "Every day Zero advances outreach sequences and drafts the next follow-up for anyone who hasn't replied.",
@@ -504,6 +553,7 @@ const WORKFLOW_TEMPLATE_SPECS: readonly WorkflowTemplateSpec[] = [
   },
   {
     slug: "prep-google-calendar-meetings",
+    category: "Sales",
     title: "Prep for Google Calendar meetings",
     description:
       "When a meeting with an external attendee is added, Zero researches them with Apollo and Gong and sends a prep brief to Slack.",
@@ -519,6 +569,7 @@ const WORKFLOW_TEMPLATE_SPECS: readonly WorkflowTemplateSpec[] = [
   },
   {
     slug: "log-gong-calls-hubspot",
+    category: "Sales",
     title: "Log Gong calls to HubSpot",
     description:
       "After a sales call, Zero pulls the Gong transcript and logs the notes and next steps to the HubSpot deal.",
@@ -534,6 +585,7 @@ const WORKFLOW_TEMPLATE_SPECS: readonly WorkflowTemplateSpec[] = [
   },
   {
     slug: "sort-route-zendesk-tickets",
+    category: "Support",
     title: "Sort and route Zendesk tickets",
     description:
       "When a support ticket arrives, Zero sets its severity, routes it to the right team, and drafts a first reply.",
@@ -549,6 +601,7 @@ const WORKFLOW_TEMPLATE_SPECS: readonly WorkflowTemplateSpec[] = [
   },
   {
     slug: "draft-replies-notion-faq",
+    category: "Support",
     title: "Draft replies from your Notion FAQ",
     description:
       "When a support question arrives, Zero checks the FAQ in Notion and drafts an on-brand reply for review.",
@@ -564,6 +617,7 @@ const WORKFLOW_TEMPLATE_SPECS: readonly WorkflowTemplateSpec[] = [
   },
   {
     slug: "send-bugs-github-slack",
+    category: "Support",
     title: "Send bugs to GitHub and Slack",
     description:
       "When an issue is labeled bug, Zero packages the reproduction steps and impact and sends it to the engineering channel.",
@@ -579,6 +633,7 @@ const WORKFLOW_TEMPLATE_SPECS: readonly WorkflowTemplateSpec[] = [
   },
   {
     slug: "fixes-to-notion-help-docs",
+    category: "Support",
     title: "Turn fixes into Notion help docs",
     description:
       "When a ticket is marked resolved, Zero turns the fix into a reusable help article in Notion.",
@@ -590,6 +645,7 @@ const WORKFLOW_TEMPLATE_SPECS: readonly WorkflowTemplateSpec[] = [
   },
   {
     slug: "spot-churn-risk-stripe-zendesk",
+    category: "Support",
     title: "Spot churn risk in Stripe and Zendesk",
     description:
       "Every day Zero flags accounts with billing issues or a spike in tickets and drafts a recovery email.",
@@ -605,6 +661,7 @@ const WORKFLOW_TEMPLATE_SPECS: readonly WorkflowTemplateSpec[] = [
   },
   {
     slug: "summarize-zendesk-tickets-daily",
+    category: "Support",
     title: "Summarize Zendesk tickets daily",
     description:
       "Every morning Zero summarizes the last 24 hours of Zendesk tickets by severity and age and posts it to Slack.",
@@ -619,6 +676,7 @@ const WORKFLOW_TEMPLATE_SPECS: readonly WorkflowTemplateSpec[] = [
   },
   {
     slug: "daily-company-brief-slack",
+    category: "CEO",
     title: "Post a daily company brief to Slack",
     description:
       "Every morning Zero compiles product health, growth, revenue, and engineering into a company brief and posts it to Slack.",
@@ -633,6 +691,7 @@ const WORKFLOW_TEMPLATE_SPECS: readonly WorkflowTemplateSpec[] = [
   },
   {
     slug: "daily-industry-news-slack",
+    category: "CEO",
     title: "Post daily industry news to Slack",
     description:
       "Every day Zero gathers AI and competitor news from the last 24 hours and posts a brief to Slack.",
@@ -647,6 +706,7 @@ const WORKFLOW_TEMPLATE_SPECS: readonly WorkflowTemplateSpec[] = [
   },
   {
     slug: "business-review-gamma",
+    category: "CEO",
     title: "Build the business review in Gamma",
     description:
       "Every week Zero builds a business review deck in Gamma covering MRR, burn, runway, and growth.",
@@ -661,6 +721,7 @@ const WORKFLOW_TEMPLATE_SPECS: readonly WorkflowTemplateSpec[] = [
   },
   {
     slug: "highlight-key-emails-gmail",
+    category: "CEO",
     title: "Highlight key emails in Gmail",
     description:
       "Every morning Zero surfaces the few emails that actually need your attention and posts them to Slack.",
@@ -676,6 +737,7 @@ const WORKFLOW_TEMPLATE_SPECS: readonly WorkflowTemplateSpec[] = [
   },
   {
     slug: "investor-update-google-docs",
+    category: "CEO",
     title: "Draft the investor update in Google Docs",
     description:
       "Every month Zero assembles KPIs and highlights into an editable investor update in Google Docs.",
@@ -690,6 +752,7 @@ const WORKFLOW_TEMPLATE_SPECS: readonly WorkflowTemplateSpec[] = [
   },
   {
     slug: "gmail-reconnect-reminders",
+    category: "CEO",
     title: "Get Gmail reconnect reminders",
     description:
       "Every week Zero surfaces important contacts you haven't talked to lately and suggests an opener.",
@@ -704,6 +767,7 @@ const WORKFLOW_TEMPLATE_SPECS: readonly WorkflowTemplateSpec[] = [
   },
   {
     slug: "sync-asana-projects-notion",
+    category: "Operations",
     title: "Sync Asana projects to Notion",
     description:
       "Every day Zero rolls up task status from Asana into a single status board in Notion and posts a digest.",
@@ -715,6 +779,7 @@ const WORKFLOW_TEMPLATE_SPECS: readonly WorkflowTemplateSpec[] = [
   },
   {
     slug: "meeting-notes-asana-tasks",
+    category: "Operations",
     title: "Turn meeting notes into Asana tasks",
     description:
       "After a meeting, Zero extracts the action items from the transcript and creates assigned tasks in Asana.",
@@ -730,6 +795,7 @@ const WORKFLOW_TEMPLATE_SPECS: readonly WorkflowTemplateSpec[] = [
   },
   {
     slug: "file-gmail-invoices-drive",
+    category: "Operations",
     title: "File Gmail invoices to Google Drive",
     description:
       "When an invoice is labeled in Gmail, Zero saves the file to the right Google Drive folder and logs the expense in a sheet.",
@@ -745,6 +811,7 @@ const WORKFLOW_TEMPLATE_SPECS: readonly WorkflowTemplateSpec[] = [
   },
   {
     slug: "onboard-new-hires-asana",
+    category: "Operations",
     title: "Onboard new hires in Asana",
     description:
       "When a new hire is added, Zero fires the onboarding checklist in Asana and provisions their docs in Google Drive.",
@@ -760,6 +827,7 @@ const WORKFLOW_TEMPLATE_SPECS: readonly WorkflowTemplateSpec[] = [
   },
   {
     slug: "chase-overdue-asana-tasks",
+    category: "Operations",
     title: "Chase overdue Asana tasks",
     description:
       "Every day Zero finds overdue tasks in Asana and nudges their owners in Slack.",
@@ -770,6 +838,7 @@ const WORKFLOW_TEMPLATE_SPECS: readonly WorkflowTemplateSpec[] = [
   },
   {
     slug: "catch-calendar-conflicts",
+    category: "Operations",
     title: "Catch Google Calendar conflicts",
     description:
       "When a calendar event is created, Zero detects double-bookings and conflicts and alerts you in Slack.",
@@ -785,6 +854,7 @@ const WORKFLOW_TEMPLATE_SPECS: readonly WorkflowTemplateSpec[] = [
   },
   {
     slug: "sort-gmail-draft-replies",
+    category: "Everyone",
     title: "Sort Gmail and draft replies",
     description:
       "Zero sorts new Gmail messages by urgency and drafts replies for you to approve.",
@@ -796,6 +866,7 @@ const WORKFLOW_TEMPLATE_SPECS: readonly WorkflowTemplateSpec[] = [
   },
   {
     slug: "morning-brief-slack",
+    category: "Everyone",
     title: "Get a morning brief in Slack",
     description:
       "Every morning Zero sends a brief with your schedule and the emails that need you, and posts it to Slack.",
@@ -806,6 +877,7 @@ const WORKFLOW_TEMPLATE_SPECS: readonly WorkflowTemplateSpec[] = [
   },
   {
     slug: "research-calendar-meetings",
+    category: "Everyone",
     title: "Research your calendar meetings",
     description:
       "When a meeting is added to your calendar, Zero researches the attendees and company and sends you a dossier before the call.",
@@ -821,6 +893,7 @@ const WORKFLOW_TEMPLATE_SPECS: readonly WorkflowTemplateSpec[] = [
   },
   {
     slug: "summarize-gmail-newsletters",
+    category: "Everyone",
     title: "Summarize Gmail newsletters",
     description:
       "Every week Zero summarizes the newsletters labeled in Gmail into one digest and posts it to Slack.",
@@ -836,6 +909,7 @@ const WORKFLOW_TEMPLATE_SPECS: readonly WorkflowTemplateSpec[] = [
   },
   {
     slug: "meeting-recaps-slack",
+    category: "Everyone",
     title: "Get meeting recaps in Slack",
     description:
       "After a meeting, Zero sends you a recap with the decisions and action items.",
@@ -847,6 +921,7 @@ const WORKFLOW_TEMPLATE_SPECS: readonly WorkflowTemplateSpec[] = [
   },
   {
     slug: "flagged-gmail-todoist-tasks",
+    category: "Everyone",
     title: "Turn flagged Gmail into Todoist tasks",
     description:
       "When you flag an email in Gmail, Zero researches the topic and files a ready-to-do task in Todoist.",

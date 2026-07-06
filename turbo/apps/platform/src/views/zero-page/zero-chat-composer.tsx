@@ -116,6 +116,7 @@ import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
   VIDEO_TEMPLATE_ITEMS,
+  WORKFLOW_TEMPLATE_CATEGORIES,
   WORKFLOW_TEMPLATE_ITEMS,
   findVideoTemplateItem,
   findWorkflowTemplateItem,
@@ -1356,6 +1357,9 @@ function WorkflowTemplateCard({
   );
 }
 
+// Groups the (already search-filtered) templates by persona and renders one
+// labeled section per non-empty category, in WORKFLOW_TEMPLATE_CATEGORIES order.
+// Empty categories are dropped so a search narrows to just the matching groups.
 function WorkflowTemplateGrid({
   items,
   value,
@@ -1366,15 +1370,32 @@ function WorkflowTemplateGrid({
   onSelect: (item: WorkflowTemplateItem) => void;
 }) {
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {items.map((item) => {
+    <div className="flex flex-col gap-6">
+      {WORKFLOW_TEMPLATE_CATEGORIES.map((category) => {
+        const categoryItems = items.filter((item) => {
+          return item.category === category;
+        });
+        if (categoryItems.length === 0) {
+          return null;
+        }
         return (
-          <WorkflowTemplateCard
-            key={item.id}
-            item={item}
-            selected={isSelectedWorkflowTemplate(item, value)}
-            onSelect={onSelect}
-          />
+          <section key={category} className="flex flex-col gap-3">
+            <p className="px-1 text-xs font-medium text-muted-foreground">
+              {category}
+            </p>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {categoryItems.map((item) => {
+                return (
+                  <WorkflowTemplateCard
+                    key={item.id}
+                    item={item}
+                    selected={isSelectedWorkflowTemplate(item, value)}
+                    onSelect={onSelect}
+                  />
+                );
+              })}
+            </div>
+          </section>
         );
       })}
     </div>
