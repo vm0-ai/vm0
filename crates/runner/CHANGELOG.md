@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.134.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.133.8...runner-rs-v0.134.0) (2026-07-06)
+
+
+### Features
+
+* support zstd session history blobs ([#20341](https://github.com/vm0-ai/vm0/issues/20341)) ([c4188fa](https://github.com/vm0-ai/vm0/commit/c4188fa5b28587f197998421ac5032c228913c25))
+
 ## [0.133.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.133.7...runner-rs-v0.133.8) (2026-07-06)
 
 ## [0.133.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.133.6...runner-rs-v0.133.7) (2026-07-06)
