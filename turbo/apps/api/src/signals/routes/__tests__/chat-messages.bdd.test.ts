@@ -540,6 +540,19 @@ function eventBackedContents(
   });
 }
 
+function recommendedFollowupMessages(
+  messages: readonly PagedChatMessage[],
+  runId: string,
+): AssistantMessage[] {
+  return assistantMessages(messages).filter((message) => {
+    return (
+      message.runId === runId &&
+      message.runLifecycleEvent === undefined &&
+      (message.recommendedFollowups?.length ?? 0) > 0
+    );
+  });
+}
+
 function assistantEvent(
   sequenceNumber: number,
   text: string,
@@ -2609,7 +2622,7 @@ describe("CHAT-02: initial thinking indicator", () => {
 });
 
 describe("CHAT-02: prior rounds and thread titles", () => {
-  it("carries prior completed rounds, generates the thread title, and rejects lifecycle follow-up revokes", async () => {
+  it("carries prior completed rounds, generates the thread title, and accepts immutable follow-up revokes", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     mockOptionalEnv("OPENROUTER_API_KEY", "title-key");
@@ -2666,45 +2679,23 @@ describe("CHAT-02: prior rounds and thread titles", () => {
       actor,
       first.threadId,
       (items) => {
-        return assistantMessages(items).some((message) => {
-          return (message.recommendedFollowups?.length ?? 0) > 0;
-        });
-      },
-    );
-    const recommender = assistantMessages(afterFirst.messages).find(
-      (message) => {
-        return (message.recommendedFollowups?.length ?? 0) > 0;
-      },
-    );
-    if (!recommender) {
-      throw new Error("Expected a recommended follow-ups message");
-    }
-    expect(recommender.runLifecycleEvent).toBe("completed");
-
-    const lifecycleFollowup = await chat.requestSendMessage(
-      actor,
-      {
-        agentId,
-        threadId: first.threadId,
-        prompt: "use the lifecycle follow-up",
-        revokesMessageId: recommender.id,
-      },
-      [400],
-    );
-    expectApiError(lifecycleFollowup.body);
-    expect(lifecycleFollowup.body.error.message).toBe(
-      "Recommended follow-up is no longer available",
-    );
-
-    const normalRecommender = assistantMessages(afterFirst.messages).find(
-      (message) => {
-        return (
-          message.runLifecycleEvent === undefined &&
-          (message.recommendedFollowups?.length ?? 0) > 0
+        return recommendedFollowupMessages(items, first.runId).some(
+          (message) => {
+            return (message.recommendedFollowups?.length ?? 0) > 0;
+          },
         );
       },
     );
-    expect(normalRecommender).toBeUndefined();
+    const recommender = recommendedFollowupMessages(
+      afterFirst.messages,
+      first.runId,
+    ).find((message) => {
+      return (message.recommendedFollowups?.length ?? 0) > 0;
+    });
+    if (!recommender) {
+      throw new Error("Expected a recommended follow-ups message");
+    }
+    expect(recommender.runLifecycleEvent).toBeUndefined();
 
     const second = await sendChatRun(actor, {
       agentId,
@@ -2738,6 +2729,42 @@ describe("CHAT-02: prior rounds and thread titles", () => {
     ).resolves.toBe("Manual Migration Title");
     expect(titleRequests).toBe(1);
     await cancelChatRun(actor, third.runId);
+
+    const normalFollowup = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        threadId: first.threadId,
+        prompt: "use the recommended follow-up",
+        revokesMessageId: recommender.id,
+      },
+      [201],
+    );
+    if (normalFollowup.status !== 201) {
+      throw new Error("Expected recommended follow-up send to succeed");
+    }
+    const normalFollowupRunId = normalFollowup.body.runId;
+    if (normalFollowupRunId === null) {
+      throw new Error("Expected recommended follow-up send to create a run");
+    }
+    const afterFollowup = await waitForThreadMessages(
+      actor,
+      first.threadId,
+      (messages) => {
+        return userMessages(messages).some((message) => {
+          return (
+            message.revokesMessageId === recommender.id &&
+            message.runId === normalFollowupRunId
+          );
+        });
+      },
+    );
+    expect(
+      userMessages(afterFollowup.messages).some((message) => {
+        return message.revokesMessageId === recommender.id;
+      }),
+    ).toBeTruthy();
+    await cancelChatRun(actor, normalFollowupRunId);
   }, 90_000);
 });
 
