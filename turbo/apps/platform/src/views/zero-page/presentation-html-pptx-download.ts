@@ -374,21 +374,26 @@ function createExportSlideScript(): string {
   };
 
   const revealSlideNodes = (nodes) => {
+    const revealElement = (element, forceDisplay) => {
+      if (forceDisplay || window.getComputedStyle(element).display === "none") {
+        element.style.setProperty("display", "block", "important");
+      }
+      element.style.setProperty("visibility", "visible", "important");
+      element.style.setProperty("opacity", "1", "important");
+      element.style.setProperty("clip", "auto", "important");
+      element.style.setProperty("clip-path", "none", "important");
+      element.removeAttribute("hidden");
+      element.setAttribute("aria-hidden", "false");
+    };
+
     for (const node of nodes) {
       if (!(node instanceof HTMLElement)) {
         continue;
       }
-      node.style.setProperty("display", "block", "important");
-      node.style.setProperty("visibility", "visible", "important");
-      node.style.setProperty("opacity", "1", "important");
-      node.style.setProperty("clip", "auto", "important");
-      node.style.setProperty("clip-path", "none", "important");
+      revealElement(node, true);
       node.style.setProperty("pointer-events", "none", "important");
-      node.removeAttribute("hidden");
-      node.setAttribute("aria-hidden", "false");
       for (const ancestor of ancestorsUntilBody(node)) {
-        ancestor.style.setProperty("visibility", "visible", "important");
-        ancestor.style.setProperty("opacity", "1", "important");
+        revealElement(ancestor, false);
       }
     }
   };

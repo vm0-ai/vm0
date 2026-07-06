@@ -229,22 +229,13 @@ type UploadPresentationSlidesFn = (
   signal: AbortSignal,
 ) => Promise<{ readonly webViewLink: string | null }>;
 
-function uploadPresentationToGoogleSlidesAndOpen(params: {
+function uploadPresentationToGoogleSlides(params: {
   filename: string;
   pageSignal: AbortSignal;
   threadId: string;
   upload: UploadPresentationSlidesFn;
   url: string;
 }): void {
-  const slidesWindow = window.open(
-    "about:blank",
-    "_blank",
-    "width=1024,height=768",
-  );
-  if (!slidesWindow) {
-    toast.error("Failed to open Google Slides");
-    return;
-  }
   const toastId = toast.loading("Uploading to Google Slides...");
   detach(
     tapError(
@@ -254,7 +245,7 @@ function uploadPresentationToGoogleSlidesAndOpen(params: {
           signal: params.pageSignal,
           url: params.url,
         });
-        const result = await params.upload(
+        await params.upload(
           {
             threadId: params.threadId,
             filename: built.filename,
@@ -262,17 +253,9 @@ function uploadPresentationToGoogleSlidesAndOpen(params: {
           },
           params.pageSignal,
         );
-        if (result.webViewLink) {
-          slidesWindow.location.href = result.webViewLink;
-        } else {
-          slidesWindow.close();
-        }
         toast.success("Uploaded to Google Slides", { id: toastId });
       })(),
       () => {
-        // `accept` already surfaced any API-error toast; just clear the loader
-        // and dispose of the blank window we opened for the redirect.
-        slidesWindow.close();
         toast.dismiss(toastId);
       },
     ),
@@ -493,7 +476,7 @@ function GoogleSlidesMenuItem({
     <ArtifactDownloadMenuItem
       onClick={() => {
         closeMenu();
-        uploadPresentationToGoogleSlidesAndOpen({
+        uploadPresentationToGoogleSlides({
           filename,
           pageSignal,
           threadId,
