@@ -58,12 +58,9 @@ describe("zero generate presentation command", () => {
     expect(stdout).not.toContain("Selected template");
     expect(stdout).not.toContain("template:html-ppt-graphify-dark-graph");
     expect(stdout).not.toContain("template:saas-landing");
-    expect(stdout).toContain(
-      "Write the artifact under `./generated/mockups/api-migration-plan/`.",
-    );
-    expect(stdout).toContain(
-      "zero host ./generated/mockups/api-migration-plan --site api-migration-plan --artifact-kind presentation-html",
-    );
+    expect(stdout).not.toContain("## Output Contract");
+    expect(stdout).not.toContain("```bash");
+    expect(stdout).not.toContain("zero host ./generated/mockups");
     expect(stdout).toContain("Slide count: 10");
     expect(stdout).toContain("Use a fixed 1920x1080 slide canvas");
     expect(stdout).toContain("Produce exactly the requested slide count");

@@ -44,38 +44,6 @@ function listPresentationTemplates(): readonly PresentationRunbookPackage[] {
   return listPresentationRunbookPackages();
 }
 
-function slugifyPresentationSite(value: string): string {
-  const slug = value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/gu, "-")
-    .replace(/^-+|-+$/gu, "")
-    .replace(/-{2,}/gu, "-")
-    .slice(0, 48)
-    .replace(/-+$/u, "");
-  return slug.length >= 3 ? slug : "html-artifact";
-}
-
-function presentationOutputPlan(options: {
-  readonly prompt: string;
-  readonly title?: string;
-  readonly siteSlug?: string;
-}): {
-  readonly outputDir: string;
-  readonly hostCommand: string;
-  readonly primaryArtifactPath: string;
-} {
-  const site =
-    options.siteSlug ??
-    slugifyPresentationSite(options.title ?? options.prompt);
-  const outputDir = `./generated/mockups/${site}`;
-
-  return {
-    outputDir,
-    hostCommand: `zero host ${outputDir} --site ${site} --artifact-kind presentation-html`,
-    primaryArtifactPath: `${outputDir}/index.html`,
-  };
-}
-
 function unknownTemplateError(id: string, usageCommand: string): Error {
   const templates = listPresentationTemplates();
   const message = [
@@ -111,12 +79,6 @@ function buildDirectPresentationInstructionPacket(options: {
   readonly title?: string;
   readonly siteSlug?: string;
 }): string {
-  const output = presentationOutputPlan({
-    prompt: options.prompt,
-    title: options.title,
-    siteSlug: options.siteSlug,
-  });
-
   return [
     "# Zero generate presentation",
     "",
@@ -125,11 +87,6 @@ function buildDirectPresentationInstructionPacket(options: {
     "",
     "## User Prompt",
     options.prompt,
-    "",
-    "## Output Contract",
-    `- Write the artifact under \`${output.outputDir}/\`.`,
-    `- The entry file must be \`${output.primaryArtifactPath}\`.`,
-    "- Keep every local asset inside the same output directory.",
     "",
     "## Requested Parameters",
     `- Slide count: ${options.slides}`,
@@ -151,15 +108,6 @@ function buildDirectPresentationInstructionPacket(options: {
     "- Check that keyboard/click interactions work when present.",
     "- Check that text does not overflow or overlap at desktop and mobile viewport sizes.",
     "- Check that shapes, charts, images, or decorative graphics do not cover readable text at desktop and mobile viewport sizes.",
-    "- Run the final hosting command only after the artifact looks correct.",
-    "",
-    "## Publish",
-    "The hosted URL is the preview and user-accessible view for this static HTML artifact.",
-    "When everything is OK, publish it with:",
-    "",
-    "```bash",
-    output.hostCommand,
-    "```",
   ].join("\n");
 }
 
