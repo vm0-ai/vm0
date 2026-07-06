@@ -113,6 +113,187 @@ async function runMigrations(dbUrl: string): Promise<void> {
   });
 }
 
+async function validateCustomConnectorLegacySecretBridge(
+  dbUrl: string,
+): Promise<void> {
+  const client = new Client({ connectionString: dbUrl });
+  await client.connect();
+  try {
+    const connectorId = "00000000-0000-0000-0000-000000005550";
+    const orgId = "org_custom_connector_migration_bridge";
+    const primaryUserId = "user_custom_connector_migration_bridge_primary";
+    const deleteUserId = "user_custom_connector_migration_bridge_delete";
+
+    await client.query(
+      `
+      INSERT INTO org_custom_connectors (
+        id,
+        org_id,
+        slug,
+        display_name,
+        prefixes,
+        header_name,
+        header_template,
+        prefix_templates,
+        fields,
+        header_injections,
+        query_injections,
+        created_by
+      )
+      VALUES (
+        $1,
+        $2,
+        'migration-bridge',
+        'Migration Bridge',
+        '["https://migration-bridge.example.test/"]'::jsonb,
+        'Authorization',
+        'Bearer {{secret}}',
+        '["https://migration-bridge.example.test/"]'::jsonb,
+        '[{"key":"secret","label":"Secret","kind":"secret","required":true}]'::jsonb,
+        '[{"name":"Authorization","valueTemplate":"Bearer {{secrets.secret}}"}]'::jsonb,
+        '[]'::jsonb,
+        $3
+      )
+      `,
+      [connectorId, orgId, primaryUserId],
+    );
+
+    await client.query(
+      `
+      INSERT INTO org_custom_connector_secrets (
+        connector_id,
+        user_id,
+        org_id,
+        encrypted_value,
+        created_at,
+        updated_at
+      )
+      VALUES ($1, $2, $3, 'legacy-insert', '2026-01-01', '2026-01-01')
+      `,
+      [connectorId, primaryUserId, orgId],
+    );
+
+    let value = await client.query<{ encrypted_value: string }>(
+      `
+      SELECT encrypted_value
+      FROM org_custom_connector_values
+      WHERE connector_id = $1
+        AND user_id = $2
+        AND kind = 'secret'
+        AND key = 'secret'
+      `,
+      [connectorId, primaryUserId],
+    );
+    if (value.rows[0]?.encrypted_value !== "legacy-insert") {
+      throw new Error("Legacy custom connector insert did not sync to values");
+    }
+
+    await client.query(
+      `
+      UPDATE org_custom_connector_secrets
+      SET encrypted_value = 'legacy-update',
+          updated_at = '2026-01-02'
+      WHERE connector_id = $1
+        AND user_id = $2
+      `,
+      [connectorId, primaryUserId],
+    );
+
+    value = await client.query<{ encrypted_value: string }>(
+      `
+      SELECT encrypted_value
+      FROM org_custom_connector_values
+      WHERE connector_id = $1
+        AND user_id = $2
+        AND kind = 'secret'
+        AND key = 'secret'
+      `,
+      [connectorId, primaryUserId],
+    );
+    if (value.rows[0]?.encrypted_value !== "legacy-update") {
+      throw new Error("Legacy custom connector update did not sync to values");
+    }
+
+    await client.query(
+      `
+      UPDATE org_custom_connector_values
+      SET encrypted_value = 'direct-new-api-write',
+          updated_at = '2026-01-03'
+      WHERE connector_id = $1
+        AND user_id = $2
+        AND kind = 'secret'
+        AND key = 'secret'
+      `,
+      [connectorId, primaryUserId],
+    );
+    await client.query(
+      `
+      DELETE FROM org_custom_connector_secrets
+      WHERE connector_id = $1
+        AND user_id = $2
+      `,
+      [connectorId, primaryUserId],
+    );
+
+    value = await client.query<{ encrypted_value: string }>(
+      `
+      SELECT encrypted_value
+      FROM org_custom_connector_values
+      WHERE connector_id = $1
+        AND user_id = $2
+        AND kind = 'secret'
+        AND key = 'secret'
+      `,
+      [connectorId, primaryUserId],
+    );
+    if (value.rows[0]?.encrypted_value !== "direct-new-api-write") {
+      throw new Error("Legacy custom connector delete removed a new value");
+    }
+
+    await client.query(
+      `
+      INSERT INTO org_custom_connector_secrets (
+        connector_id,
+        user_id,
+        org_id,
+        encrypted_value,
+        created_at,
+        updated_at
+      )
+      VALUES ($1, $2, $3, 'legacy-delete', '2026-01-04', '2026-01-04')
+      `,
+      [connectorId, deleteUserId, orgId],
+    );
+    await client.query(
+      `
+      DELETE FROM org_custom_connector_secrets
+      WHERE connector_id = $1
+        AND user_id = $2
+      `,
+      [connectorId, deleteUserId],
+    );
+
+    const deleted = await client.query<{ count: string }>(
+      `
+      SELECT COUNT(*)::text AS count
+      FROM org_custom_connector_values
+      WHERE connector_id = $1
+        AND user_id = $2
+        AND kind = 'secret'
+        AND key = 'secret'
+      `,
+      [connectorId, deleteUserId],
+    );
+    if (deleted.rows[0]?.count !== "0") {
+      throw new Error(
+        "Legacy custom connector delete did not remove the value",
+      );
+    }
+  } finally {
+    await client.end();
+  }
+}
+
 async function runNormalizedComparison(
   dbUrl1: string,
   dbUrl2: string,
@@ -599,6 +780,9 @@ async function validateLatestSnapshotAccuracy(): Promise<void> {
         `Latest snapshot ${latestIdx} accuracy validation failed`,
       );
     }
+
+    await validateCustomConnectorLegacySecretBridge(dbUrl);
+    console.log("   ✅ Custom connector legacy secret bridge works");
   } finally {
     await dropDatabase(TEST_DB);
   }
