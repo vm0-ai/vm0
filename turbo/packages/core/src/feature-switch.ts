@@ -366,7 +366,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ming@vm0.ai",
     description:
       "New Agents page with Public/Private tabs, a public-slot indicator, a Created by footer on every card, a name-first create dialog with a visibility select, and a private empty state.",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.SidebarManageIconCollapse]: {
     maintainer: "ming@vm0.ai",
