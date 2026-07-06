@@ -560,6 +560,26 @@ function hasRawWhitespaceOrControlCharacter(value: string): boolean {
   return false;
 }
 
+function builtinHostOwnerForCustomConnectorBase(base: string): {
+  readonly host: string;
+  readonly label: string;
+} | null {
+  const host = safeUrlParse(base)?.host ?? "";
+  const owner = getBuiltinConnectorHostOwner(host);
+  return owner ? { host, label: owner.label } : null;
+}
+
+function customConnectorBuiltinHostOwnerError(
+  base: string,
+): BadRequestResponse | null {
+  const owner = builtinHostOwnerForCustomConnectorBase(base);
+  return owner
+    ? badRequestMessage(
+        `Host "${owner.host}" is already managed by the ${owner.label} connector`,
+      )
+    : null;
+}
+
 function validateTemplateReferences(args: {
   readonly template: string;
   readonly fields: readonly CustomConnectorField[];
@@ -674,12 +694,9 @@ function validateAndNormalizePrefixTemplate(args: {
   }
 
   if (!normalised.includes("{{")) {
-    const host = safeUrlParse(normalised)?.host ?? "";
-    const builtinOwner = getBuiltinConnectorHostOwner(host);
-    if (builtinOwner) {
-      return badRequestMessage(
-        `Host "${host}" is already managed by the ${builtinOwner.label} connector`,
-      );
+    const ownerError = customConnectorBuiltinHostOwnerError(normalised);
+    if (ownerError) {
+      return ownerError;
     }
   }
 
@@ -1294,6 +1311,26 @@ function validateValueInputsForDefinition(args: {
     seen.add(marker);
     values.push({ key, kind: value.kind, value: normalizedValue });
   }
+
+  const valuesByMarker = Object.fromEntries(
+    values.map((value) => {
+      return [customConnectorValueMarkerKey(value), value.value];
+    }),
+  );
+  for (const template of args.prefixTemplates) {
+    const rendered = renderPrefixTemplate({
+      template,
+      values: valuesByMarker,
+    });
+    if (!rendered) {
+      continue;
+    }
+    const base = expandHostWildcardsInBaseUrl(rendered);
+    const ownerError = customConnectorBuiltinHostOwnerError(base);
+    if (ownerError) {
+      return ownerError;
+    }
+  }
   return values;
 }
 
@@ -1855,7 +1892,10 @@ export function renderCustomConnectorRuntimePrefix(args: {
   const validation = safeSync(() => {
     validateBaseUrl(base, "custom connector");
   });
-  return "error" in validation ? null : base;
+  if ("error" in validation) {
+    return null;
+  }
+  return builtinHostOwnerForCustomConnectorBase(base) ? null : base;
 }
 
 type CustomConnectorRuntimeDataTimingStep =

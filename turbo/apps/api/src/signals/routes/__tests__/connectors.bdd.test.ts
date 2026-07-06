@@ -1630,6 +1630,64 @@ describe("CONN-03: custom connectors and connector-owned values", () => {
     await connectorsApi.deleteCustomConnector(admin, connector.id);
   });
 
+  it("rejects custom connector values that resolve a host variable to a built-in connector host", async () => {
+    const bdd = createBddApi(context);
+    const admin = bdd.user({ orgRole: "org:admin" });
+
+    const connector = await connectorsApi.createCustomConnector(admin, {
+      displayName: "BDD Builtin Host Variable API",
+      prefixTemplates: ["https://{{variables.host}}/v1/"],
+      fields: [
+        {
+          key: "api_key",
+          label: "API key",
+          kind: "secret",
+          required: true,
+        },
+        {
+          key: "host",
+          label: "Host",
+          kind: "variable",
+          required: true,
+        },
+      ],
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{secrets.api_key}}",
+        },
+      ],
+      queryInjections: [],
+    });
+
+    const rejected = await connectorsApi.requestSetCustomConnectorValues(
+      admin,
+      connector.id,
+      [
+        { key: "api_key", kind: "secret", value: "builtin-host-secret" },
+        { key: "host", kind: "variable", value: "api.github.com" },
+      ],
+      [400],
+    );
+
+    expectApiError(rejected.body);
+    expect(rejected.body.error.message).toContain("api.github.com");
+    expect(rejected.body.error.message).toContain("GitHub");
+
+    const listed = await connectorsApi.listCustomConnectors(admin);
+    expect(
+      listed.find((candidate) => {
+        return candidate.id === connector.id;
+      }),
+    ).toMatchObject({
+      connected: false,
+      configuredFieldKeys: [],
+      missingRequiredFields: ["api_key", "host"],
+    });
+
+    await connectorsApi.deleteCustomConnector(admin, connector.id);
+  });
+
   it("removes stored values when a custom connector field is removed", async () => {
     const bdd = createBddApi(context);
     const admin = bdd.user({ orgRole: "org:admin" });
