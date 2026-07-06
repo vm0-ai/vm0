@@ -356,6 +356,8 @@ pub enum ResumeSessionHistoryEncoding {
     Identity,
     #[serde(rename = "gzip")]
     Gzip,
+    #[serde(rename = "zstd")]
+    Zstd,
 }
 
 impl ResumeSession {
@@ -913,6 +915,40 @@ mod tests {
         );
         assert_eq!(history_ref.raw_size, 42);
         assert_eq!(history_ref.encoded_size, 24);
+    }
+
+    #[test]
+    fn cli_agent_session_id_returns_id_from_zstd_resume_session_history_ref() {
+        let json = json!({
+            "runId": "550e8400-e29b-41d4-a716-446655440000",
+            "prompt": "hello",
+            "sandboxToken": "tok",
+            "cliAgentType": "claude_code",
+            "resumeSession": {
+                "sessionId": "sess-ref-123",
+                "historyRef": {
+                    "kind": "blob",
+                    "hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "url": "https://r2.example.com/blobs/a.blob.zst?sig=secret",
+                    "encoding": "zstd",
+                    "rawSize": 42,
+                    "encodedSize": 18
+                }
+            },
+            "billableFirewalls": []
+        });
+        let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
+        let session = ctx.resume_session.as_ref().unwrap();
+        let history_ref = session.history_ref().unwrap();
+        assert_eq!(ctx.cli_agent_session_id(), Some("sess-ref-123"));
+        assert!(session.session_history().is_none());
+        assert_eq!(history_ref.kind, ResumeSessionHistoryRefKind::Blob);
+        assert_eq!(
+            history_ref.encoding,
+            Some(ResumeSessionHistoryEncoding::Zstd)
+        );
+        assert_eq!(history_ref.raw_size, 42);
+        assert_eq!(history_ref.encoded_size, 18);
     }
 
     #[test]

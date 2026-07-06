@@ -325,6 +325,14 @@ export const prepareCheckpointHistoryUpload$ = command(
       }
     }
     if (
+      encoding !== SESSION_HISTORY_ENCODING_IDENTITY &&
+      requestedEncoding !== encoding
+    ) {
+      return badRequestMessage(
+        "Compressed session history upload encoding must match the existing blob",
+      );
+    }
+    if (
       requestedEncoding === encoding &&
       blob.encodedSize !== input.body.encodedSize
     ) {

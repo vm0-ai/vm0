@@ -375,7 +375,7 @@ async fn download_resume_session_history(
             bytes
         }
         ResumeSessionHistoryEncoding::Gzip => {
-            let raw_size = validate_gzip_ref(&history_ref, timings)?;
+            let raw_size = validate_compressed_ref("gzip", &history_ref, timings)?;
             let encoded_bytes = download_body(
                 &http,
                 &history_ref.url,
@@ -384,7 +384,20 @@ async fn download_resume_session_history(
             )
             .await?;
             let raw_bytes = gunzip_session_history(&encoded_bytes, raw_size)?;
-            validate_gzip_raw_size(raw_size, raw_bytes.len(), timings)?;
+            validate_decompressed_raw_size(raw_size, raw_bytes.len(), timings)?;
+            raw_bytes
+        }
+        ResumeSessionHistoryEncoding::Zstd => {
+            let raw_size = validate_compressed_ref("zstd", &history_ref, timings)?;
+            let encoded_bytes = download_body(
+                &http,
+                &history_ref.url,
+                Some(history_ref.encoded_size),
+                timings,
+            )
+            .await?;
+            let raw_bytes = unzstd_session_history(&encoded_bytes, raw_size)?;
+            validate_decompressed_raw_size(raw_size, raw_bytes.len(), timings)?;
             raw_bytes
         }
     };
@@ -463,7 +476,8 @@ fn validate_identity_body_size(
     Ok(())
 }
 
-fn validate_gzip_ref(
+fn validate_compressed_ref(
+    encoding: &str,
     history_ref: &ResumeSessionHistoryRef,
     timings: &mut SessionHistoryDownloadTimings,
 ) -> RunnerResult<u64> {
@@ -471,9 +485,9 @@ fn validate_gzip_ref(
     let raw_size = history_ref.raw_size;
     if raw_size == 0 {
         timings.add_validation(validation_started.elapsed(), false);
-        return Err(RunnerError::Internal(
-            "gzip session history rawSize must be positive".into(),
-        ));
+        return Err(RunnerError::Internal(format!(
+            "{encoding} session history rawSize must be positive"
+        )));
     }
     if raw_size > RESUME_SESSION_HISTORY_MAX_BYTES {
         timings.add_validation(validation_started.elapsed(), false);
@@ -483,9 +497,9 @@ fn validate_gzip_ref(
     }
     if history_ref.encoded_size == 0 {
         timings.add_validation(validation_started.elapsed(), false);
-        return Err(RunnerError::Internal(
-            "gzip session history encodedSize must be positive".into(),
-        ));
+        return Err(RunnerError::Internal(format!(
+            "{encoding} session history encodedSize must be positive"
+        )));
     }
     if history_ref.encoded_size > RESUME_SESSION_HISTORY_MAX_BYTES {
         timings.add_validation(validation_started.elapsed(), false);
@@ -497,7 +511,7 @@ fn validate_gzip_ref(
     Ok(raw_size)
 }
 
-fn validate_gzip_raw_size(
+fn validate_decompressed_raw_size(
     expected_size: u64,
     byte_count: usize,
     timings: &mut SessionHistoryDownloadTimings,
@@ -515,12 +529,27 @@ fn validate_gzip_raw_size(
 
 fn gunzip_session_history(encoded_bytes: &[u8], max_raw_bytes: u64) -> RunnerResult<Vec<u8>> {
     let mut decoder = MultiGzDecoder::new(encoded_bytes);
+    read_compressed_session_history(&mut decoder, max_raw_bytes, "gzip")
+}
+
+fn unzstd_session_history(encoded_bytes: &[u8], max_raw_bytes: u64) -> RunnerResult<Vec<u8>> {
+    let mut decoder = zstd::stream::read::Decoder::new(encoded_bytes).map_err(|error| {
+        RunnerError::Internal(format!("decompress zstd session history: {error}"))
+    })?;
+    read_compressed_session_history(&mut decoder, max_raw_bytes, "zstd")
+}
+
+fn read_compressed_session_history(
+    decoder: &mut impl Read,
+    max_raw_bytes: u64,
+    encoding: &str,
+) -> RunnerResult<Vec<u8>> {
     let mut bytes = Vec::new();
     let mut buffer = [0u8; 8192];
     let mut decoded = 0u64;
     loop {
         let read = decoder.read(&mut buffer).map_err(|error| {
-            RunnerError::Internal(format!("decompress gzip session history: {error}"))
+            RunnerError::Internal(format!("decompress {encoding} session history: {error}"))
         })?;
         if read == 0 {
             break;
@@ -531,9 +560,9 @@ fn gunzip_session_history(encoded_bytes: &[u8], max_raw_bytes: u64) -> RunnerRes
                 "session history is too large after decompression: {decoded} bytes exceeds {max_raw_bytes} bytes"
             )));
         }
-        let chunk = buffer
-            .get(..read)
-            .ok_or_else(|| RunnerError::Internal("invalid gzip read chunk length".into()))?;
+        let chunk = buffer.get(..read).ok_or_else(|| {
+            RunnerError::Internal(format!("invalid {encoding} read chunk length"))
+        })?;
         bytes.extend_from_slice(chunk);
     }
     Ok(bytes)
@@ -704,6 +733,37 @@ mod tests {
         raw_size: u64,
         encoded_size: u64,
     ) -> ResumeSession {
+        compressed_ref_session(
+            url,
+            hash,
+            raw_size,
+            encoded_size,
+            ResumeSessionHistoryEncoding::Gzip,
+        )
+    }
+
+    fn zstd_ref_session(
+        url: String,
+        hash: String,
+        raw_size: u64,
+        encoded_size: u64,
+    ) -> ResumeSession {
+        compressed_ref_session(
+            url,
+            hash,
+            raw_size,
+            encoded_size,
+            ResumeSessionHistoryEncoding::Zstd,
+        )
+    }
+
+    fn compressed_ref_session(
+        url: String,
+        hash: String,
+        raw_size: u64,
+        encoded_size: u64,
+        encoding: ResumeSessionHistoryEncoding,
+    ) -> ResumeSession {
         ResumeSession {
             cli_agent_session_id: "sess-123".to_string(),
             history: ResumeSessionHistory::Ref {
@@ -711,7 +771,7 @@ mod tests {
                     kind: ResumeSessionHistoryRefKind::Blob,
                     hash,
                     url,
-                    encoding: Some(ResumeSessionHistoryEncoding::Gzip),
+                    encoding: Some(encoding),
                     raw_size,
                     encoded_size,
                 },
@@ -723,6 +783,10 @@ mod tests {
         let mut encoder = GzEncoder::new(Vec::new(), Compression::fast());
         encoder.write_all(raw).unwrap();
         encoder.finish().unwrap()
+    }
+
+    fn zstd_bytes(raw: &[u8]) -> Vec<u8> {
+        zstd::encode_all(raw, 0).unwrap()
     }
 
     fn start_materializer(session: &ResumeSession) -> SessionHistoryMaterializer {
@@ -870,6 +934,69 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn materializer_downloads_decompresses_and_verifies_zstd_hash() {
+        let body = b"{\"type\":\"init\"}\n{\"type\":\"user\",\"message\":\"hello\"}\n";
+        let compressed = zstd_bytes(body);
+        let encoded_size = compressed.len() as u64;
+        let hash = hex::encode(Sha256::digest(body));
+        let session = zstd_ref_session(
+            serve_once("200 OK", compressed, None).await,
+            hash,
+            body.len() as u64,
+            encoded_size,
+        );
+
+        let materializer = start_materializer(&session);
+        let result = materializer.finish(&CancellationToken::new()).await;
+
+        match result {
+            SessionHistoryMaterialization::Downloaded {
+                session, timings, ..
+            } => {
+                assert_eq!(session.cli_agent_session_id(), "sess-123");
+                assert_eq!(session.history_bytes(), body);
+                assert_phase_success(timings.request_status());
+                assert_phase_success(timings.body_read());
+                assert_phase_success(timings.validation());
+                assert_phase_success(timings.hash_verification());
+            }
+            _ => panic!("expected downloaded session"),
+        }
+    }
+
+    #[tokio::test]
+    async fn materializer_rejects_zstd_body_under_declared_encoded_size_without_content_length() {
+        let body = b"{\"type\":\"init\"}\n{\"type\":\"user\",\"message\":\"hello\"}\n";
+        let compressed = zstd_bytes(body);
+        let encoded_size = compressed.len() as u64;
+        let hash = hex::encode(Sha256::digest(body));
+        let session = zstd_ref_session(
+            serve_once("200 OK", compressed, None).await,
+            hash,
+            body.len() as u64,
+            encoded_size + 1,
+        );
+
+        let result = start_materializer(&session)
+            .finish(&CancellationToken::new())
+            .await;
+
+        match result {
+            SessionHistoryMaterialization::Failed { error, timings, .. } => {
+                assert!(
+                    error.to_string().contains("downloaded size mismatch"),
+                    "unexpected error: {error}"
+                );
+                assert_phase_success(timings.request_status());
+                assert_phase_failure(timings.body_read());
+                assert_phase_success(timings.validation());
+                assert_no_phase(timings.hash_verification());
+            }
+            _ => panic!("expected failed materialization"),
+        }
+    }
+
+    #[tokio::test]
     async fn materializer_rejects_gzip_body_under_declared_encoded_size_without_content_length() {
         let body = b"{\"type\":\"init\"}\n{\"type\":\"user\",\"message\":\"hello\"}\n";
         let compressed = gzip_bytes(body);
@@ -978,6 +1105,70 @@ mod tests {
                 );
                 assert_phase_success(timings.request_status());
                 assert_phase_success(timings.body_read());
+            }
+            _ => panic!("expected failed materialization"),
+        }
+    }
+
+    #[tokio::test]
+    async fn materializer_rejects_zstd_body_over_declared_raw_size() {
+        let body = b"{\"type\":\"init\"}\n{\"type\":\"user\",\"message\":\"hello\"}\n";
+        let compressed = zstd_bytes(body);
+        let encoded_size = compressed.len() as u64;
+        let hash = hex::encode(Sha256::digest(body));
+        let session = zstd_ref_session(
+            serve_once("200 OK", compressed, None).await,
+            hash,
+            1,
+            encoded_size,
+        );
+
+        let materializer = start_materializer(&session);
+        let result = materializer.finish(&CancellationToken::new()).await;
+
+        match result {
+            SessionHistoryMaterialization::Failed { error, timings, .. } => {
+                assert!(
+                    error
+                        .to_string()
+                        .contains("session history is too large after decompression"),
+                    "unexpected error: {error}"
+                );
+                assert_phase_success(timings.request_status());
+                assert_phase_success(timings.body_read());
+            }
+            _ => panic!("expected failed materialization"),
+        }
+    }
+
+    #[tokio::test]
+    async fn materializer_rejects_truncated_zstd_body() {
+        let body = b"{\"type\":\"init\"}\n{\"type\":\"user\",\"message\":\"hello\"}\n";
+        let mut compressed = zstd_bytes(body);
+        compressed.truncate(compressed.len().saturating_sub(1));
+        let hash = hex::encode(Sha256::digest(body));
+        let session = zstd_ref_session(
+            serve_once("200 OK", compressed.clone(), None).await,
+            hash,
+            body.len() as u64,
+            compressed.len() as u64,
+        );
+
+        let materializer = start_materializer(&session);
+        let result = materializer.finish(&CancellationToken::new()).await;
+
+        match result {
+            SessionHistoryMaterialization::Failed { error, timings, .. } => {
+                assert!(
+                    error
+                        .to_string()
+                        .contains("decompress zstd session history"),
+                    "unexpected error: {error}"
+                );
+                assert_phase_success(timings.request_status());
+                assert_phase_success(timings.body_read());
+                assert_phase_success(timings.validation());
+                assert_no_phase(timings.hash_verification());
             }
             _ => panic!("expected failed materialization"),
         }

@@ -77,6 +77,10 @@ pub mod runners {
     /// Rust and TypeScript components use this shared contract value when negotiating session history uploads and claim responses.
     pub const SESSION_HISTORY_ENCODING_IDENTITY: &str = "identity";
 
+    /// Wire and blob metadata value for zstd-compressed resume session history.
+    /// Rust and TypeScript components use this shared contract value when negotiating session history uploads and claim responses.
+    pub const SESSION_HISTORY_ENCODING_ZSTD: &str = "zstd";
+
     /// Minimum raw resume session history size before the guest attempts gzip upload negotiation.
     /// Smaller histories stay identity-encoded to avoid gzip work when it cannot materially reduce transport size.
     pub const SESSION_HISTORY_GZIP_MIN_BYTES: u64 = 65536;
