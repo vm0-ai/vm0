@@ -1510,6 +1510,26 @@ async function deleteStoredConnectorValues(
         eq(orgCustomConnectorValues.orgId, args.orgId),
       ),
     );
+  await deleteStoredConnectorLegacySecrets(tx, args);
+}
+
+async function deleteStoredConnectorLegacySecrets(
+  tx: DbTransaction,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly connectorId: string;
+  },
+): Promise<void> {
+  await tx
+    .delete(orgCustomConnectorSecrets)
+    .where(
+      and(
+        eq(orgCustomConnectorSecrets.connectorId, args.connectorId),
+        eq(orgCustomConnectorSecrets.userId, args.userId),
+        eq(orgCustomConnectorSecrets.orgId, args.orgId),
+      ),
+    );
 }
 
 async function upsertEncryptedConnectorValue(
@@ -1715,6 +1735,7 @@ export const setCustomConnectorLegacySecretValue$ = command(
         if (isBadRequest(lockedValues)) {
           return lockedValues;
         }
+        await deleteStoredConnectorLegacySecrets(tx, args);
         const lockedValue = lockedValues[0];
         if (lockedValue) {
           const encryptedValue = encryptedValues[0]?.encryptedValue;
@@ -1851,15 +1872,7 @@ export const deleteCustomConnectorValue$ = command(
           ),
         );
       if (args.kind === "secret" && args.key === LEGACY_SECRET_KEY) {
-        await tx
-          .delete(orgCustomConnectorSecrets)
-          .where(
-            and(
-              eq(orgCustomConnectorSecrets.connectorId, args.connectorId),
-              eq(orgCustomConnectorSecrets.userId, args.userId),
-              eq(orgCustomConnectorSecrets.orgId, args.orgId),
-            ),
-          );
+        await deleteStoredConnectorLegacySecrets(tx, args);
       }
       return true;
     });

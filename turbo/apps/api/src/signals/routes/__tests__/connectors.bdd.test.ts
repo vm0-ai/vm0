@@ -96,7 +96,7 @@ function expectConnectorId(connector: Pick<ConnectorResponse, "id">): string {
 
 // There is no production API for constructing arbitrary retired-table rows.
 // These helpers intentionally construct historical org_custom_connector_secrets
-// rows left by older deployments so the delete endpoints can verify cleanup.
+// rows left by older deployments so value endpoints can verify cleanup.
 async function insertLegacyCustomConnectorSecret(args: {
   readonly connectorId: string | null;
   readonly orgId: string | null;
@@ -1487,15 +1487,36 @@ describe("CONN-03: custom connectors and connector-owned values", () => {
       connectorsApi.readAgentCustomConnectors(admin, agent.agentId),
     ).resolves.toStrictEqual([]);
 
-    await connectorsApi.deleteCustomConnectorValues(admin, created.id);
+    const createdConnectorId = expectConnectorId(created);
+    await insertLegacyCustomConnectorSecret({
+      connectorId: createdConnectorId,
+      orgId: admin.orgId,
+      userId: admin.userId,
+      encryptedValue: "legacy-delete-values-secret",
+    });
+    await expect(
+      legacyCustomConnectorSecretCount({
+        connectorId: createdConnectorId,
+        orgId: admin.orgId,
+        userId: admin.userId,
+      }),
+    ).resolves.toBe(1);
+
+    await connectorsApi.deleteCustomConnectorValues(admin, createdConnectorId);
     const afterValuesDelete = await connectorsApi.listCustomConnectors(admin);
     expect(
       afterValuesDelete.find((connector) => {
         return connector.id === created.id;
       })?.connected,
     ).toBeFalsy();
+    await expect(
+      legacyCustomConnectorSecretCount({
+        connectorId: createdConnectorId,
+        orgId: admin.orgId,
+        userId: admin.userId,
+      }),
+    ).resolves.toBe(0);
 
-    const createdConnectorId = expectConnectorId(created);
     await insertLegacyCustomConnectorSecret({
       connectorId: createdConnectorId,
       orgId: admin.orgId,
@@ -2588,12 +2609,33 @@ describe("CONN-03: custom connectors and connector-owned values", () => {
       { key: "secret", kind: "secret", value: "legacy-initial-secret" },
       { key: "subdomain", kind: "variable", value: "acme" },
     ]);
+    const connectorId = expectConnectorId(connector);
+    await insertLegacyCustomConnectorSecret({
+      connectorId,
+      orgId: admin.orgId,
+      userId: admin.userId,
+      encryptedValue: "legacy-set-secret-stale-copy",
+    });
+    await expect(
+      legacyCustomConnectorSecretCount({
+        connectorId,
+        orgId: admin.orgId,
+        userId: admin.userId,
+      }),
+    ).resolves.toBe(1);
 
     await connectorsApi.setCustomConnectorSecret(
       admin,
-      connector.id,
+      connectorId,
       "legacy-facade-secret",
     );
+    await expect(
+      legacyCustomConnectorSecretCount({
+        connectorId,
+        orgId: admin.orgId,
+        userId: admin.userId,
+      }),
+    ).resolves.toBe(0);
 
     const listed = await connectorsApi.listCustomConnectors(admin);
     expect(
@@ -2608,7 +2650,7 @@ describe("CONN-03: custom connectors and connector-owned values", () => {
     expectNoVisibleSecret(listed, "legacy-initial-secret");
     expectNoVisibleSecret(listed, "legacy-facade-secret");
 
-    await connectorsApi.deleteCustomConnector(admin, connector.id);
+    await connectorsApi.deleteCustomConnector(admin, connectorId);
   });
 
   it("clears the normalized secret value when the legacy secret endpoint receives whitespace", async () => {
@@ -2649,8 +2691,29 @@ describe("CONN-03: custom connectors and connector-owned values", () => {
       { key: "secret", kind: "secret", value: "legacy-blank-initial-secret" },
       { key: "subdomain", kind: "variable", value: "acme" },
     ]);
+    const connectorId = expectConnectorId(connector);
+    await insertLegacyCustomConnectorSecret({
+      connectorId,
+      orgId: admin.orgId,
+      userId: admin.userId,
+      encryptedValue: "legacy-blank-secret-stale-copy",
+    });
+    await expect(
+      legacyCustomConnectorSecretCount({
+        connectorId,
+        orgId: admin.orgId,
+        userId: admin.userId,
+      }),
+    ).resolves.toBe(1);
 
-    await connectorsApi.setCustomConnectorSecret(admin, connector.id, " \n\t ");
+    await connectorsApi.setCustomConnectorSecret(admin, connectorId, " \n\t ");
+    await expect(
+      legacyCustomConnectorSecretCount({
+        connectorId,
+        orgId: admin.orgId,
+        userId: admin.userId,
+      }),
+    ).resolves.toBe(0);
 
     const listed = await connectorsApi.listCustomConnectors(admin);
     expect(
@@ -2663,7 +2726,7 @@ describe("CONN-03: custom connectors and connector-owned values", () => {
       missingRequiredFields: ["secret"],
     });
 
-    await connectorsApi.deleteCustomConnector(admin, connector.id);
+    await connectorsApi.deleteCustomConnector(admin, connectorId);
   });
 
   it("rejects unauthenticated and org-less callers across all custom connector routes", async () => {

@@ -494,6 +494,24 @@ async function validateCustomConnectorLegacySecretBridge(
       `,
       [connectorId, primaryUserId],
     );
+
+    const legacyAfterDirectWrite = await client.query<{
+      encrypted_value: string;
+    }>(
+      `
+      SELECT encrypted_value
+      FROM org_custom_connector_secrets
+      WHERE connector_id = $1
+        AND user_id = $2
+      `,
+      [connectorId, primaryUserId],
+    );
+    if (legacyAfterDirectWrite.rows[0]?.encrypted_value !== "legacy-update") {
+      throw new Error(
+        "New custom connector values synced back to legacy secrets",
+      );
+    }
+
     await client.query(
       `
       DELETE FROM org_custom_connector_secrets
