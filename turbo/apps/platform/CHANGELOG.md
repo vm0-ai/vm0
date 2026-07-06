@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.564.2](https://github.com/vm0-ai/vm0/compare/app-v0.564.1...app-v0.564.2) (2026-07-06)
+
+
+### Refactoring
+
+* drop legacy automation tables and read-only automation surfaces ([#20420](https://github.com/vm0-ai/vm0/issues/20420)) ([bfbf99b](https://github.com/vm0-ai/vm0/commit/bfbf99bbe639ec9c9ce67a37b5155e8478f96224))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.159.2
+    * @vm0/core bumped to 8.408.2
+
 ## [0.564.1](https://github.com/vm0-ai/vm0/compare/app-v0.564.0...app-v0.564.1) (2026-07-06)
 
 
