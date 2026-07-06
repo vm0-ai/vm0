@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.563.0](https://github.com/vm0-ai/vm0/compare/app-v0.562.0...app-v0.563.0) (2026-07-06)
+
+
+### Features
+
+* add agent detail workflows tab ([#20406](https://github.com/vm0-ai/vm0/issues/20406)) ([453b528](https://github.com/vm0-ai/vm0/commit/453b52825c29f95334106e7d4d7a07787fd48a07))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.158.1
+    * @vm0/connectors bumped to 1.142.0
+    * @vm0/core bumped to 8.407.0
+
 ## [0.562.0](https://github.com/vm0-ai/vm0/compare/app-v0.561.2...app-v0.562.0) (2026-07-06)
 
 
