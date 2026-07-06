@@ -1,6 +1,6 @@
 import { command, computed, type Computed } from "ccstate";
 import { randomUUID } from "node:crypto";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, not, or, type SQL } from "drizzle-orm";
 import type {
   CreateCustomConnectorBody,
   CustomConnectorField,
@@ -18,7 +18,6 @@ import {
   validateBaseUrl,
 } from "@vm0/connectors/firewall-types";
 import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
-import { orgCustomConnectorSecrets } from "@vm0/db/schema/org-custom-connector-secret";
 import { orgCustomConnectorValues } from "@vm0/db/schema/org-custom-connector-value";
 
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
@@ -1001,6 +1000,42 @@ async function loadConnectorValueMarkersForConnector(args: {
   return valueMarkersFromRows(valueRows);
 }
 
+function declaredConnectorValueCondition(
+  fields: readonly CustomConnectorField[],
+): SQL | undefined {
+  const conditions: SQL[] = [];
+  for (const field of fields) {
+    const condition = and(
+      eq(orgCustomConnectorValues.kind, field.kind),
+      eq(orgCustomConnectorValues.key, field.key),
+    );
+    if (condition) {
+      conditions.push(condition);
+    }
+  }
+  return conditions.length === 0 ? undefined : or(...conditions);
+}
+
+async function deleteUndeclaredConnectorValues(
+  tx: DbTransaction,
+  args: {
+    readonly orgId: string;
+    readonly connectorId: string;
+    readonly fields: readonly CustomConnectorField[];
+  },
+): Promise<void> {
+  const declaredCondition = declaredConnectorValueCondition(args.fields);
+  await tx
+    .delete(orgCustomConnectorValues)
+    .where(
+      and(
+        eq(orgCustomConnectorValues.connectorId, args.connectorId),
+        eq(orgCustomConnectorValues.orgId, args.orgId),
+        declaredCondition ? not(declaredCondition) : undefined,
+      ),
+    );
+}
+
 export const createCustomConnector$ = command(
   async (
     { set },
@@ -1070,26 +1105,37 @@ export const updateCustomConnectorDefinition$ = command(
     }
     const legacy = legacyColumns(v);
     const writeDb = set(writeDb$);
-    const [row] = await writeDb
-      .update(orgCustomConnectors)
-      .set({
-        displayName: v.displayName,
-        prefixes: [...legacy.prefixes],
-        headerName: legacy.headerName,
-        headerTemplate: legacy.headerTemplate,
-        prefixTemplates: [...v.prefixTemplates],
-        fields: [...v.fields],
-        headerInjections: [...v.headerInjections],
-        queryInjections: [...v.queryInjections],
-        updatedAt: nowDate(),
-      })
-      .where(
-        and(
-          eq(orgCustomConnectors.id, args.id),
-          eq(orgCustomConnectors.orgId, args.orgId),
-        ),
-      )
-      .returning();
+    const row = await writeDb.transaction(async (tx) => {
+      const [updated] = await tx
+        .update(orgCustomConnectors)
+        .set({
+          displayName: v.displayName,
+          prefixes: [...legacy.prefixes],
+          headerName: legacy.headerName,
+          headerTemplate: legacy.headerTemplate,
+          prefixTemplates: [...v.prefixTemplates],
+          fields: [...v.fields],
+          headerInjections: [...v.headerInjections],
+          queryInjections: [...v.queryInjections],
+          updatedAt: nowDate(),
+        })
+        .where(
+          and(
+            eq(orgCustomConnectors.id, args.id),
+            eq(orgCustomConnectors.orgId, args.orgId),
+          ),
+        )
+        .returning();
+      if (!updated) {
+        return null;
+      }
+      await deleteUndeclaredConnectorValues(tx, {
+        orgId: args.orgId,
+        connectorId: args.id,
+        fields: v.fields,
+      });
+      return updated;
+    });
     signal.throwIfAborted();
     if (!row) {
       return notFound("Custom connector not found");
@@ -1125,14 +1171,6 @@ export const deleteCustomConnector$ = command(
           and(
             eq(orgCustomConnectorValues.connectorId, args.id),
             eq(orgCustomConnectorValues.orgId, args.orgId),
-          ),
-        );
-      await tx
-        .delete(orgCustomConnectorSecrets)
-        .where(
-          and(
-            eq(orgCustomConnectorSecrets.connectorId, args.id),
-            eq(orgCustomConnectorSecrets.orgId, args.orgId),
           ),
         );
       await tx
@@ -1316,25 +1354,6 @@ async function deleteStoredConnectorValues(
     );
 }
 
-async function deleteLegacyConnectorSecret(
-  tx: DbTransaction,
-  args: {
-    readonly orgId: string;
-    readonly userId: string;
-    readonly connectorId: string;
-  },
-): Promise<void> {
-  await tx
-    .delete(orgCustomConnectorSecrets)
-    .where(
-      and(
-        eq(orgCustomConnectorSecrets.connectorId, args.connectorId),
-        eq(orgCustomConnectorSecrets.userId, args.userId),
-        eq(orgCustomConnectorSecrets.orgId, args.orgId),
-      ),
-    );
-}
-
 async function upsertEncryptedConnectorValue(
   tx: DbTransaction,
   args: {
@@ -1445,7 +1464,6 @@ export const setCustomConnectorValues$ = command(
           return lockedValues;
         }
         await deleteStoredConnectorValues(tx, args);
-        await deleteLegacyConnectorSecret(tx, args);
         await upsertEncryptedConnectorValues(tx, {
           orgId: args.orgId,
           userId: args.userId,
@@ -1559,7 +1577,6 @@ export const setCustomConnectorLegacySecretValue$ = command(
               ),
             );
         }
-        await deleteLegacyConnectorSecret(tx, args);
         const markers = await loadConnectorValueMarkersForConnector({
           tx,
           orgId: args.orgId,
@@ -1614,7 +1631,6 @@ export const deleteCustomConnectorValues$ = command(
         return false;
       }
       await deleteStoredConnectorValues(tx, args);
-      await deleteLegacyConnectorSecret(tx, args);
       return true;
     });
     signal.throwIfAborted();
@@ -1667,9 +1683,6 @@ export const deleteCustomConnectorValue$ = command(
             eq(orgCustomConnectorValues.key, args.key),
           ),
         );
-      if (args.kind === "secret" && args.key === LEGACY_SECRET_KEY) {
-        await deleteLegacyConnectorSecret(tx, args);
-      }
       return true;
     });
     signal.throwIfAborted();

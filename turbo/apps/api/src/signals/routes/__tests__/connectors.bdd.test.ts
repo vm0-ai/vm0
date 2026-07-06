@@ -1620,6 +1620,92 @@ describe("CONN-03: custom connectors and connector-owned values", () => {
     await connectorsApi.deleteCustomConnector(admin, connector.id);
   });
 
+  it("removes stored values when a custom connector field is removed", async () => {
+    const bdd = createBddApi(context);
+    const admin = bdd.user({ orgRole: "org:admin" });
+    const rand = randomUUID().replace(/-/g, "").slice(0, 8);
+    const prefixTemplate = `https://{{variables.subdomain}}.${rand}.test/v1/`;
+    const apiKeyField = {
+      key: "api_key",
+      label: "API key",
+      kind: "secret" as const,
+      required: true,
+    };
+    const subdomainField = {
+      key: "subdomain",
+      label: "Subdomain",
+      kind: "variable" as const,
+      required: true,
+    };
+
+    const connector = await connectorsApi.createCustomConnector(admin, {
+      displayName: "BDD Prune Removed Values API",
+      prefixTemplates: [prefixTemplate],
+      fields: [apiKeyField, subdomainField],
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{secrets.api_key}}",
+        },
+      ],
+      queryInjections: [],
+    });
+    await connectorsApi.setCustomConnectorValues(admin, connector.id, [
+      { key: "api_key", kind: "secret", value: "removed-field-secret" },
+      { key: "subdomain", kind: "variable", value: "acme" },
+    ]);
+
+    await connectorsApi.updateCustomConnector(admin, connector.id, {
+      displayName: "BDD Prune Removed Values API",
+      prefixTemplates: [prefixTemplate],
+      fields: [subdomainField],
+      headerInjections: [],
+      queryInjections: [
+        {
+          name: "tenant",
+          valueTemplate: "{{variables.subdomain}}",
+        },
+      ],
+    });
+
+    const afterRemove = await connectorsApi.listCustomConnectors(admin);
+    expect(
+      afterRemove.find((candidate) => {
+        return candidate.id === connector.id;
+      }),
+    ).toMatchObject({
+      connected: true,
+      configuredFieldKeys: ["subdomain"],
+      missingRequiredFields: [],
+    });
+
+    await connectorsApi.updateCustomConnector(admin, connector.id, {
+      displayName: "BDD Prune Removed Values API",
+      prefixTemplates: [prefixTemplate],
+      fields: [apiKeyField, subdomainField],
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{secrets.api_key}}",
+        },
+      ],
+      queryInjections: [],
+    });
+
+    const afterReadd = await connectorsApi.listCustomConnectors(admin);
+    expect(
+      afterReadd.find((candidate) => {
+        return candidate.id === connector.id;
+      }),
+    ).toMatchObject({
+      connected: false,
+      configuredFieldKeys: ["subdomain"],
+      missingRequiredFields: ["api_key"],
+    });
+
+    await connectorsApi.deleteCustomConnector(admin, connector.id);
+  });
+
   it("saves a connector proposal with values and authorizes the requested agent", async () => {
     const bdd = createBddApi(context);
     bdd.acceptAgentStorageWrites();

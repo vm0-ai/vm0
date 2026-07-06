@@ -30,6 +30,7 @@ import {
   type PatchCustomConnectorBody,
   type SaveCustomConnectorProposalBody,
   type SaveCustomConnectorProposalResponse,
+  type UpdateCustomConnectorBody,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import {
@@ -1653,6 +1654,38 @@ export function createConnectorBddApi(context: TestContext) {
       body: PatchCustomConnectorBody,
     ): Promise<CustomConnectorResponse> {
       const response = await api.requestPatchCustomConnector(
+        actor,
+        connectorId,
+        body,
+        [200],
+      );
+      expectStatus(response, 200);
+      return response.body;
+    },
+
+    async requestUpdateCustomConnector(
+      actor: ApiTestUser | null,
+      connectorId: string,
+      body: UpdateCustomConnectorBody,
+      statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
+    ) {
+      const client = setupApp({ context })(zeroCustomConnectorByIdContract);
+      return await accept(
+        client.update({
+          params: { id: connectorId },
+          headers: authenticate(actor),
+          body,
+        }),
+        statuses,
+      );
+    },
+
+    async updateCustomConnector(
+      actor: ApiTestUser,
+      connectorId: string,
+      body: UpdateCustomConnectorBody,
+    ): Promise<CustomConnectorResponse> {
+      const response = await api.requestUpdateCustomConnector(
         actor,
         connectorId,
         body,
