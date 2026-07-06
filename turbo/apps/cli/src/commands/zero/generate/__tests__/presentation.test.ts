@@ -68,19 +68,13 @@ describe("zero generate presentation command", () => {
     expect(stdout).toContain("Use a fixed 1920x1080 slide canvas");
     expect(stdout).toContain("Produce exactly the requested slide count");
     expect(stdout).toContain("make an internal slide plan");
-    expect(stdout).toContain("Adapt layout patterns");
     expect(stdout).toContain(
       "Use reference materials only for structure, spacing, and visual language",
     );
     expect(stdout).toContain(
       "Derive every presentation image/media choice from the user's requested topic",
     );
-    expect(stdout).toContain(
-      "Do not add decorative, duplicate, or empty filler slides",
-    );
-    expect(stdout).toContain("establish the deck's arc");
     expect(stdout).toContain("Vary slide forms across the deck");
-    expect(stdout).toContain("Each slide carries one idea");
     expect(stdout).toContain(
       "Check that shapes, charts, images, or decorative graphics do not cover readable text",
     );
@@ -155,7 +149,7 @@ describe("zero generate presentation command", () => {
 
     expect(helpOutput).not.toContain("Design Systems:");
     expect(helpOutput).not.toContain("design-system:apple");
-    expect(helpOutput).toContain("Templates (presentation runbook):");
+    expect(helpOutput).toContain("Templates (presentation):");
     expect(helpOutput).toContain("template:html-ppt-playful-launch");
     expect(helpOutput).not.toContain("Templates (presentation registry):");
     expect(helpOutput).not.toContain("(no presentation templates registered)");
@@ -177,7 +171,7 @@ describe("zero generate presentation command", () => {
     ]);
 
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
-    expect(stdout).toContain("# Presentation Generation (runbook)");
+    expect(stdout).toContain("# Presentation Generation (template)");
     expect(stdout).toContain(
       "Selected presentation template: Playful Launch Presentation (template:html-ppt-playful-launch)",
     );
@@ -191,6 +185,39 @@ describe("zero generate presentation command", () => {
     expect(stdout).toContain("User request: create a 15-slide launch deck");
     expect(stdout).not.toContain("Selected design system:");
     expect(stdout).not.toContain("design-system:");
+  });
+
+  it("rejects an unknown presentation template id with available templates", async () => {
+    const mockConsoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+
+    try {
+      await expect(async () => {
+        await generateCommand.parseAsync([
+          "node",
+          "cli",
+          "presentation",
+          "--prompt",
+          "launch plan",
+          "--template",
+          "not-a-real-template",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      const stderr = mockConsoleError.mock.calls.flat().join("\n");
+      expect(stderr).toContain(
+        "Unknown template for presentation: not-a-real-template",
+      );
+      expect(stderr).toContain("Available templates for presentation:");
+      expect(stderr).toContain("template:html-ppt-playful-launch");
+      expect(stderr).toContain(
+        'zero generate presentation --template template:html-ppt-playful-launch --prompt "..."',
+      );
+      expect(stderr).not.toContain("Available design systems");
+    } finally {
+      mockConsoleError.mockRestore();
+    }
   });
 
   it.each(["--design-system", "--runbook"])(

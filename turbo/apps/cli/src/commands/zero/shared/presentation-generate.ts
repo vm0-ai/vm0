@@ -9,6 +9,7 @@ import {
   resolvePresentationRunbookColorToken,
 } from "./resource-registry";
 import { canonicalizeRegistryId } from "./resource-listing";
+import { createHtmlArtifactOutputPlan } from "./html-artifact-authoring";
 
 type PresentationRunbookPackage = ReturnType<
   typeof listPresentationRunbookPackages
@@ -40,30 +41,35 @@ function parseSlideCount(value: string): number {
   return slideCount;
 }
 
-function slugifyPresentationSite(value: string): string {
-  const slug = value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/gu, "-")
-    .replace(/^-+|-+$/gu, "")
-    .replace(/-{2,}/gu, "-")
-    .slice(0, 48)
-    .replace(/-+$/u, "");
-  return slug.length >= 3 ? slug : "html-artifact";
+function listPresentationTemplates(): readonly PresentationRunbookPackage[] {
+  return listPresentationRunbookPackages();
 }
 
-function unknownTemplateError(id: string): Error {
-  return new Error(`Unknown template for presentation: ${id}`);
+function unknownTemplateError(id: string, usageCommand: string): Error {
+  const templates = listPresentationTemplates();
+  const message = [
+    `Unknown template for presentation: ${id}`,
+    "",
+    "Available templates for presentation:",
+    formatPresentationTemplateListing(templates),
+    "",
+    "Example:",
+    `  ${usageCommand} --template ${
+      templates[0]?.templateId ?? "<template-id>"
+    } --prompt "..."`,
+  ].join("\n");
+  return new Error(message);
 }
 
-function formatPresentationRunbookListing(
-  packages: readonly PresentationRunbookPackage[],
+function formatPresentationTemplateListing(
+  templates: readonly PresentationRunbookPackage[],
 ): string {
-  if (packages.length === 0) {
-    return "  (no presentation runbook templates registered)";
+  if (templates.length === 0) {
+    return "  (no presentation templates registered)";
   }
-  return packages
-    .map((pkg) => {
-      return `  ${pkg.templateId}\n    ${pkg.description}`;
+  return templates
+    .map((template) => {
+      return `  ${template.templateId}\n    ${template.description}`;
     })
     .join("\n\n");
 }
@@ -74,57 +80,39 @@ function buildDirectPresentationInstructionPacket(options: {
   readonly title?: string;
   readonly siteSlug?: string;
 }): string {
-  const site =
-    options.siteSlug ??
-    slugifyPresentationSite(options.title ?? options.prompt);
-  const outputDir = `./generated/mockups/${site}`;
-  const hostCommand = `zero host ${outputDir} --site ${site} --artifact-kind presentation-html`;
+  const output = createHtmlArtifactOutputPlan({
+    kind: "presentation",
+    prompt: options.prompt,
+    slugSource: options.title,
+    siteSlug: options.siteSlug,
+  });
 
   return [
     "# Zero generate presentation",
     "",
     "This is a direct HTML presentation authoring packet for the current agent.",
-    "Zero is not selecting registry resources for this presentation. Author the deck directly from the user's request and any supplied source material.",
+    "Author the deck directly from the user's request and any supplied source material.",
     "",
     "## User Prompt",
     options.prompt,
     "",
-    "## Artifact Output Model",
-    `- Primary artifact: \`presentation\` at \`${outputDir}/index.html\`.`,
-    "- Output mode: `primary-artifact-with-supporting-assets`.",
-    "- Supporting images, audio, video, or metadata may live inside the same output directory when the result needs them.",
-    "- Treat the output directory as a project bundle when multiple media types are generated, while keeping the HTML entry point primary.",
-    "",
     "## Output Contract",
-    `- Write the artifact under \`${outputDir}/\`.`,
-    `- The entry file must be \`${outputDir}/index.html\`.`,
+    `- Write the artifact under \`${output.outputDir}/\`.`,
+    `- The entry file must be \`${output.primaryArtifactPath}\`.`,
     "- Keep every local asset inside the same output directory.",
-    "- Do not reference files from another project path.",
-    "- Use descriptive filenames and canonical HTML: close non-void tags and double-quote attributes.",
-    "- Prefer a single self-contained HTML file unless the artifact genuinely needs separate assets.",
     "",
     "## Requested Parameters",
     `- Slide count: ${options.slides}`,
     `- Requested deck title: ${options.title ?? "not specified"}`,
     "",
     "## Authoring Rules",
-    "- Think like a presentation designer, not a web page designer.",
-    "- Use a fixed 1920x1080 slide canvas and scale it uniformly for smaller viewports.",
-    "- Use one section per slide and keep repeated elements in consistent positions.",
+    "- Use a fixed 1920x1080 slide canvas and one section per slide.",
     "- Make keyboard navigation work with ArrowLeft, ArrowRight, Home, and End.",
     "- Keep slide text readable from across a room; avoid memo-like walls of text.",
-    "- Produce exactly the requested slide count. Do not let reference examples or preview slide counts override the requested count.",
-    "- Before authoring, make an internal slide plan with exactly the requested count and map each slide to a narrative role plus a concrete layout device.",
-    "- Adapt layout patterns to the requested slide count: for shorter decks, merge or omit lower-priority content roles; for longer decks, split dense sections into multiple focused slides or reuse layout patterns with different substantive content. Do not add decorative, duplicate, or empty filler slides.",
+    "- Produce exactly the requested slide count; make an internal slide plan before authoring.",
     "- Use reference materials only for structure, spacing, and visual language. Do not inherit or continue any sample subject, sample story, sample copy, sample metrics, preview imagery, or media seed names.",
     "- Derive every presentation image/media choice from the user's requested topic, story, source material, or cited facts.",
-    "- Before laying out slides, establish the deck's arc: the opening problem or question, how it develops, and what conclusion lands; every slide should serve a clear narrative role in that arc.",
-    "- Vary slide forms across the deck — full-bleed statement, evidence with data, pull quote, section break, summary — and avoid defaulting every slide to title-plus-bullets.",
-    "- Each slide carries one idea; prefer a single strong statement over a list, and never exceed three bullets on any slide.",
-    "- Avoid generic AI design defaults: no stock SaaS gradients, no emoji-as-icons, no filler stats, no decorative chrome that does not help the artifact.",
-    "- Build the actual artifact first, not a marketing explanation of the artifact.",
-    "- Make controls and interactions real when they are visible.",
-    "- Keep text readable at desktop and mobile preview sizes.",
+    "- Vary slide forms across the deck and keep every slide tied to a clear narrative role.",
     "",
     "## Verification",
     "- Use `agent-browser` for browser verification when available. Start with `agent-browser skills get core` if you need command guidance.",
@@ -140,10 +128,8 @@ function buildDirectPresentationInstructionPacket(options: {
     "When everything is OK, publish it with:",
     "",
     "```bash",
-    hostCommand,
+    output.hostCommand,
     "```",
-    "",
-    "File upload is a separate delivery channel for when the user needs a local file copy, not another way to preview the same hosted artifact.",
   ].join("\n");
 }
 
@@ -161,11 +147,11 @@ export function createPresentationGenerateCommand(
     .option("--title <text>", "Requested deck title")
     .option(
       "--template <id>",
-      "Presentation runbook template id (see Templates below). Accepts either 'html-ppt-playful-launch' or 'template:html-ppt-playful-launch'.",
+      "Presentation template id (see Templates below). Accepts either 'html-ppt-playful-launch' or 'template:html-ppt-playful-launch'.",
     )
     .option("--slides <count>", "Slide count: 4-20", parseSlideCount, 8)
     .addHelpText("after", () => {
-      const runbookPackages = listPresentationRunbookPackages();
+      const templates = listPresentationTemplates();
       return `
 Examples:
 ${config.examples}
@@ -177,8 +163,8 @@ Notes:
   - Authenticates via ZERO_TOKEN
   - The agent authors the HTML presentation artifact and hosts it with zero host
 
-Templates (presentation runbook):
-${formatPresentationRunbookListing(runbookPackages)}`;
+Templates (presentation):
+${formatPresentationTemplateListing(templates)}`;
     })
     .action(
       withErrorHandler(async (options: PresentationOptions) => {
@@ -194,22 +180,22 @@ ${formatPresentationRunbookListing(runbookPackages)}`;
             "template",
             options.template,
           );
-          const runbookPackage = findPresentationRunbookPackage(canonical);
-          if (!runbookPackage) {
-            throw unknownTemplateError(options.template);
+          const template = findPresentationRunbookPackage(canonical);
+          if (!template) {
+            throw unknownTemplateError(options.template, config.usageCommand);
           }
           const color = resolvePresentationRunbookColorToken(
-            runbookPackage,
+            template,
             undefined,
           );
           const colorSystemToken =
-            "error" in color ? runbookPackage.defaultColorSystem : color.token;
+            "error" in color ? template.defaultColorSystem : color.token;
           console.log(
             [
-              "# Presentation Generation (runbook)",
+              "# Presentation Generation (template)",
               "",
               ...buildPresentationRunbookInstructionLines({
-                runbookPackage,
+                runbookPackage: template,
                 colorSystemToken,
               }),
               "",
