@@ -821,7 +821,9 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
 
     // 3. Download storage manifest entries (skipping entries unchanged since the previous turn).
     if let Some(manifest) = &context.storage_manifest {
-        let guest_manifest = GuestDownloadManifest::from(manifest);
+        let runtime_dir = guest_runtime_dir(context.run_id)?;
+        let guest_manifest =
+            GuestDownloadManifest::from_storage_manifest_for_run(manifest, runtime_dir.as_str());
         let mut effective: GuestDownloadManifest = match start.prev_storage {
             Some(prev) => {
                 let t = Instant::now();

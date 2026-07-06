@@ -56,6 +56,7 @@ pub fn run_manifest_bytes(manifest_json: &[u8]) -> bool {
 fn run_manifest(manifest: Manifest) -> bool {
     let RunPlan {
         cleanup_paths,
+        instruction_cleanups,
         preserved_paths,
         download_tasks,
         instruction_files,
@@ -66,6 +67,9 @@ fn run_manifest(manifest: Manifest) -> bool {
     // parent-child mount path overlaps.
     if !cleanup_paths.is_empty() {
         cleanup::cleanup_stale_paths(&cleanup_paths, &preserved_paths);
+    }
+    if !instruction_cleanups.is_empty() {
+        instructions::cleanup_instruction_files(&instruction_cleanups);
     }
 
     // Pre-create all target directories before downloads. This keeps directory

@@ -1,10 +1,11 @@
 use crate::download::{DownloadTask, NotFoundPolicy, classify_download_task_kind};
-use crate::instructions::InstructionNormalization;
+use crate::instructions::{InstructionCleanup, InstructionNormalization};
 use crate::manifest::{Manifest, ManifestEntry};
 use std::path::Path;
 
 pub(crate) struct RunPlan {
     pub(crate) cleanup_paths: Vec<String>,
+    pub(crate) instruction_cleanups: Vec<InstructionCleanup>,
     pub(crate) preserved_paths: Vec<String>,
     pub(crate) download_tasks: Vec<DownloadTask>,
     pub(crate) instruction_files: Vec<InstructionNormalization>,
@@ -74,11 +75,28 @@ impl RunPlan {
                     .instructions_target_filename
                     .as_ref()
                     .map(|target_filename| {
-                        InstructionNormalization::new(
-                            entry.mount_path.clone(),
-                            target_filename.clone(),
-                        )
+                        if is_valid_url(&entry.archive_url)
+                            && let Some(extract_path) = entry.extract_path.clone()
+                        {
+                            InstructionNormalization::staged(
+                                extract_path,
+                                entry.mount_path.clone(),
+                                target_filename.clone(),
+                            )
+                        } else {
+                            InstructionNormalization::in_place(
+                                entry.mount_path.clone(),
+                                target_filename.clone(),
+                            )
+                        }
                     })
+            })
+            .collect();
+        let instruction_cleanups = manifest
+            .instruction_cleanups
+            .iter()
+            .map(|entry| {
+                InstructionCleanup::new(entry.mount_path.clone(), entry.target_filename.clone())
             })
             .collect();
 
@@ -101,6 +119,7 @@ impl RunPlan {
 
         Self {
             cleanup_paths: manifest.cleanup_paths.clone(),
+            instruction_cleanups,
             preserved_paths,
             download_tasks,
             instruction_files,
@@ -122,15 +141,19 @@ fn append_download_tasks(
         if should_download_entry(entry, kind)
             && let Some(url) = entry.archive_url.clone()
         {
+            let download_mount_path = entry
+                .extract_path
+                .as_deref()
+                .unwrap_or(entry.mount_path.as_str());
             let task_kind = classify_download_task_kind(
-                &entry.mount_path,
+                download_mount_path,
                 entry.instructions_target_filename.as_deref(),
             );
             tasks.push(DownloadTask::new_with_kind(
                 format_entry_label(entry, kind, idx + 1, &url),
                 kind.op_name(),
                 url,
-                entry.mount_path.clone(),
+                download_mount_path.to_string(),
                 kind.not_found_policy(),
                 task_kind,
             ));
@@ -303,11 +326,72 @@ mod tests {
         let plan = RunPlan::from_manifest(&manifest);
 
         assert_eq!(plan.cleanup_paths, ["/home/user/.codex"]);
+        assert!(plan.instruction_cleanups.is_empty());
         assert_eq!(plan.preserved_paths, ["/home/user/.codex", "/workspace"]);
         assert_eq!(plan.instruction_files.len(), 1);
         assert_eq!(
             plan.instruction_files[0],
-            InstructionNormalization::new("/home/user/.codex".into(), "AGENTS.md".into())
+            InstructionNormalization::in_place("/home/user/.codex".into(), "AGENTS.md".into())
+        );
+    }
+
+    #[test]
+    fn run_plan_downloads_instruction_archive_to_extract_path() {
+        let json = r#"{
+            "storages": [{
+                "mountPath": "/home/user/.codex",
+                "extractPath": "/home/user/.vm0/guest-agent/runs/run-1/storage-instructions/0",
+                "archiveUrl": "https://s3/instructions.tar.gz",
+                "instructionsTargetFilename": "AGENTS.md"
+            }]
+        }"#;
+        let manifest: Manifest = serde_json::from_str(json).unwrap();
+
+        let plan = RunPlan::from_manifest(&manifest);
+
+        assert_eq!(
+            plan.instruction_files,
+            [InstructionNormalization::staged(
+                "/home/user/.vm0/guest-agent/runs/run-1/storage-instructions/0".into(),
+                "/home/user/.codex".into(),
+                "AGENTS.md".into()
+            )]
+        );
+        assert_eq!(plan.download_tasks.len(), 1);
+        assert_eq!(
+            plan.download_tasks[0],
+            DownloadTask::new_with_kind(
+                "storage 1 mountPath=/home/user/.codex vasStorageName=unknown vasVersionId=unknown urlScheme=https cached=false".into(),
+                "storage_download",
+                "https://s3/instructions.tar.gz".into(),
+                "/home/user/.vm0/guest-agent/runs/run-1/storage-instructions/0".into(),
+                NotFoundPolicy::Fail,
+                crate::download::DownloadTaskKind::FrameworkHomeInstructions,
+            )
+        );
+    }
+
+    #[test]
+    fn run_plan_collects_instruction_cleanups() {
+        let json = r#"{
+            "storages": [],
+            "instructionCleanups": [{
+                "mountPath": "/home/user/.codex",
+                "targetFilename": "AGENTS.md"
+            }, {
+                "mountPath": "/home/user/.claude"
+            }]
+        }"#;
+        let manifest: Manifest = serde_json::from_str(json).unwrap();
+
+        let plan = RunPlan::from_manifest(&manifest);
+
+        assert_eq!(
+            plan.instruction_cleanups,
+            [
+                InstructionCleanup::new("/home/user/.codex".into(), Some("AGENTS.md".into())),
+                InstructionCleanup::new("/home/user/.claude".into(), None),
+            ]
         );
     }
 
@@ -372,6 +456,7 @@ mod tests {
             storages: vec![],
             artifacts: vec![ManifestEntry {
                 mount_path: mount_path.clone(),
+                extract_path: None,
                 archive_url: Some("https://s3/artifact.tar.gz".into()),
                 instructions_target_filename: None,
                 cached: true,
@@ -380,6 +465,7 @@ mod tests {
                 missing_root_policy: None,
             }],
             cleanup_paths: vec![],
+            instruction_cleanups: Vec::new(),
         };
 
         let plan = RunPlan::from_manifest(&manifest);
@@ -397,6 +483,7 @@ mod tests {
         let manifest = Manifest {
             storages: vec![ManifestEntry {
                 mount_path: mount_path.clone(),
+                extract_path: None,
                 archive_url: Some("https://s3/storage.tar.gz".into()),
                 instructions_target_filename: None,
                 cached: true,
@@ -406,6 +493,7 @@ mod tests {
             }],
             artifacts: vec![],
             cleanup_paths: vec![],
+            instruction_cleanups: Vec::new(),
         };
 
         let plan = RunPlan::from_manifest(&manifest);
@@ -437,6 +525,7 @@ mod tests {
             storages: vec![],
             artifacts: vec![ManifestEntry {
                 mount_path: mount_path.clone(),
+                extract_path: None,
                 archive_url: Some("https://s3/artifact.tar.gz".into()),
                 instructions_target_filename: None,
                 cached: true,
@@ -445,6 +534,7 @@ mod tests {
                 missing_root_policy: None,
             }],
             cleanup_paths: vec![],
+            instruction_cleanups: Vec::new(),
         };
 
         let plan = RunPlan::from_manifest(&manifest);

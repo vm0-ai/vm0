@@ -14,7 +14,10 @@ use super::support::{minimal_context, sandbox_exec_error, sandbox_write_file_err
 use crate::helper_exec::{HELPER_EXEC_OUTPUT_EXCERPT_BYTES, format_command_output_excerpt};
 use crate::paths::guest;
 use crate::storage_fingerprints::{StorageFingerprint, StorageFingerprints};
-use crate::types::{GuestDownloadArtifactEntry, GuestDownloadManifest, GuestDownloadStorageEntry};
+use crate::types::{
+    GuestDownloadArtifactEntry, GuestDownloadInstructionCleanupEntry, GuestDownloadManifest,
+    GuestDownloadStorageEntry,
+};
 
 #[tokio::test]
 async fn download_storages_success() {
@@ -30,6 +33,7 @@ async fn download_storages_success() {
         )],
         artifacts: vec![],
         cleanup_paths: vec![],
+        instruction_cleanups: Vec::new(),
     };
     let manifest_json = serde_json::to_vec(&manifest).unwrap();
     download_storages(&sandbox, &ctx, &manifest).await.unwrap();
@@ -252,6 +256,7 @@ async fn download_storages_nonzero_exit_code() {
         storages: vec![],
         artifacts: vec![],
         cleanup_paths: vec![],
+        instruction_cleanups: Vec::new(),
     };
     let err = download_storages(&sandbox, &ctx, &manifest)
         .await
@@ -281,6 +286,7 @@ async fn download_storages_fails_on_non_exited_result() {
         storages: vec![],
         artifacts: vec![],
         cleanup_paths: vec![],
+        instruction_cleanups: Vec::new(),
     };
 
     let err = download_storages(&sandbox, &ctx, &manifest)
@@ -424,6 +430,7 @@ fn manifest_with_serialized_len(len: usize) -> GuestDownloadManifest {
         storages: vec![],
         artifacts: vec![],
         cleanup_paths: vec![String::new()],
+        instruction_cleanups: Vec::new(),
     };
     let empty_len = serde_json::to_vec(&manifest).unwrap().len();
     assert!(len >= empty_len);
@@ -457,6 +464,7 @@ fn guest_storage(
 ) -> GuestDownloadStorageEntry {
     GuestDownloadStorageEntry {
         mount_path: mount_path.into(),
+        extract_path: None,
         archive_url: url.map(str::to_string),
         instructions_target_filename: None,
         cached: false,
@@ -487,6 +495,7 @@ fn guest_download_has_work_detects_instruction_normalization_without_archives() 
         storages: vec![storage],
         artifacts: vec![],
         cleanup_paths: vec![],
+        instruction_cleanups: Vec::new(),
     };
 
     assert!(guest_download_has_work(&manifest));
@@ -500,6 +509,7 @@ fn guest_download_has_work_skips_fully_empty_cached_manifest() {
         storages: vec![storage],
         artifacts: vec![],
         cleanup_paths: vec![],
+        instruction_cleanups: Vec::new(),
     };
 
     assert!(!guest_download_has_work(&manifest));
@@ -516,6 +526,7 @@ fn guest_download_has_work_detects_archive_urls_and_cleanup_paths() {
         )],
         artifacts: vec![],
         cleanup_paths: vec![],
+        instruction_cleanups: Vec::new(),
     };
     assert!(guest_download_has_work(&storage_work));
 
@@ -523,6 +534,7 @@ fn guest_download_has_work_detects_archive_urls_and_cleanup_paths() {
         storages: vec![],
         artifacts: vec![guest_art("workspace", "v1", Some("https://s3/workspace"))],
         cleanup_paths: vec![],
+        instruction_cleanups: Vec::new(),
     };
     assert!(guest_download_has_work(&artifact_work));
 
@@ -530,8 +542,20 @@ fn guest_download_has_work_detects_archive_urls_and_cleanup_paths() {
         storages: vec![],
         artifacts: vec![],
         cleanup_paths: vec!["/old".into()],
+        instruction_cleanups: Vec::new(),
     };
     assert!(guest_download_has_work(&cleanup_work));
+
+    let instruction_cleanup_work = GuestDownloadManifest {
+        storages: vec![],
+        artifacts: vec![],
+        cleanup_paths: Vec::new(),
+        instruction_cleanups: vec![GuestDownloadInstructionCleanupEntry {
+            mount_path: "/home/user/.codex".into(),
+            target_filename: Some("AGENTS.md".into()),
+        }],
+    };
+    assert!(guest_download_has_work(&instruction_cleanup_work));
 }
 
 #[test]
@@ -540,6 +564,7 @@ fn filter_same_artifact_version_keeps_url_for_mount_repair() {
         storages: vec![],
         artifacts: vec![guest_art("my-art", "v1", Some("https://s3/v1"))],
         cleanup_paths: vec![],
+        instruction_cleanups: Vec::new(),
     };
     let prev = StorageFingerprints {
         storages: HashMap::new(),
@@ -560,6 +585,7 @@ fn filter_different_artifact_version_keeps_url() {
         storages: vec![],
         artifacts: vec![guest_art("my-art", "v2", Some("https://s3/v2"))],
         cleanup_paths: vec![],
+        instruction_cleanups: Vec::new(),
     };
     let prev = StorageFingerprints {
         storages: HashMap::new(),
@@ -578,6 +604,7 @@ fn filter_different_artifact_name_keeps_url() {
         storages: vec![],
         artifacts: vec![guest_art("other-art", "v1", Some("https://s3/v1"))],
         cleanup_paths: vec![],
+        instruction_cleanups: Vec::new(),
     };
     let prev = StorageFingerprints {
         storages: HashMap::new(),
@@ -593,6 +620,7 @@ fn filter_new_artifact_not_in_prev_keeps_url() {
         storages: vec![],
         artifacts: vec![guest_art("my-art", "v1", Some("https://s3/v1"))],
         cleanup_paths: vec![],
+        instruction_cleanups: Vec::new(),
     };
     let prev = StorageFingerprints::default();
     let result = apply_storage_fingerprint_reuse(&manifest, &prev);
@@ -610,6 +638,7 @@ fn filter_empty_prev_downloads_everything() {
         )],
         artifacts: vec![guest_art("my-art", "v1", Some("https://s3/v1"))],
         cleanup_paths: vec![],
+        instruction_cleanups: Vec::new(),
     };
     let prev = StorageFingerprints::default();
     let result = apply_storage_fingerprint_reuse(&manifest, &prev);
@@ -628,6 +657,7 @@ fn filter_all_unchanged_nulls_storage_urls_and_keeps_artifact_urls() {
         )],
         artifacts: vec![guest_art("my-art", "v1", Some("https://s3/v1"))],
         cleanup_paths: vec![],
+        instruction_cleanups: Vec::new(),
     };
     let mut storages = HashMap::new();
     storages.insert("/data".into(), fp("vol-1", "v1"));
@@ -669,6 +699,7 @@ fn filter_two_artifacts_at_different_mount_paths() {
         storages: vec![],
         artifacts: vec![art_a, art_b],
         cleanup_paths: vec![],
+        instruction_cleanups: Vec::new(),
     };
     // Previous fingerprints: art-a was v1 (changed), art-b was v1 (unchanged).
     let mut artifacts = HashMap::new();
@@ -699,6 +730,7 @@ fn filter_detects_removed_artifacts() {
         storages: vec![],
         artifacts: vec![guest_art("kept", "v1", Some("https://s3/kept"))],
         cleanup_paths: vec![],
+        instruction_cleanups: Vec::new(),
     };
     let mut artifacts = HashMap::new();
     artifacts.insert("/workspace".into(), fp("kept", "v1"));
@@ -731,6 +763,7 @@ fn filter_cleanup_paths_keep_broad_phase_order() {
             missing_root_policy: None,
         }],
         cleanup_paths: vec![],
+        instruction_cleanups: Vec::new(),
     };
     let prev = StorageFingerprints {
         storages: HashMap::from([
@@ -758,14 +791,16 @@ fn filter_cleanup_paths_keep_broad_phase_order() {
 
 #[test]
 fn filter_computes_cleanup_for_changed_storages() {
+    let mut instructions = guest_storage(
+        "/home/user/.claude",
+        "instructions",
+        "v2",
+        Some("https://s3/instructions"),
+    );
+    instructions.instructions_target_filename = Some("CLAUDE.md".into());
     let manifest = GuestDownloadManifest {
         storages: vec![
-            guest_storage(
-                "/home/user/.claude",
-                "instructions",
-                "v2",
-                Some("https://s3/instructions"),
-            ),
+            instructions,
             guest_storage(
                 "/home/user/.claude/skills/foo",
                 "skill-foo",
@@ -775,6 +810,7 @@ fn filter_computes_cleanup_for_changed_storages() {
         ],
         artifacts: vec![],
         cleanup_paths: vec![],
+        instruction_cleanups: Vec::new(),
     };
     let mut storages = HashMap::new();
     storages.insert("/home/user/.claude".into(), fp("instructions", "v1"));
@@ -792,8 +828,16 @@ fn filter_computes_cleanup_for_changed_storages() {
     assert!(!result.storages[0].cached);
     assert!(result.storages[1].archive_url.is_none());
     assert!(result.storages[1].cached);
-    // Only changed storage in cleanup_paths
-    assert_eq!(result.cleanup_paths, vec!["/home/user/.claude"]);
+    assert!(result.cleanup_paths.is_empty());
+    assert_eq!(result.instruction_cleanups.len(), 1);
+    assert_eq!(
+        result.instruction_cleanups[0].mount_path,
+        "/home/user/.claude"
+    );
+    assert_eq!(
+        result.instruction_cleanups[0].target_filename.as_deref(),
+        Some("CLAUDE.md")
+    );
 }
 
 #[test]
@@ -807,6 +851,7 @@ fn filter_detects_removed_storages() {
         )],
         artifacts: vec![],
         cleanup_paths: vec![],
+        instruction_cleanups: Vec::new(),
     };
     let mut storages = HashMap::new();
     storages.insert("/home/user/.claude".into(), fp("instructions", "v1"));
@@ -829,11 +874,48 @@ fn filter_detects_removed_storages() {
 }
 
 #[test]
+fn filter_removed_framework_home_storage_uses_instruction_cleanup() {
+    let manifest = GuestDownloadManifest {
+        storages: vec![guest_storage(
+            "/home/user/.claude/skills/foo",
+            "skill-foo",
+            "v1",
+            Some("https://s3/foo"),
+        )],
+        artifacts: vec![],
+        cleanup_paths: vec![],
+        instruction_cleanups: Vec::new(),
+    };
+    let prev = StorageFingerprints {
+        storages: HashMap::from([
+            ("/home/user/.claude".into(), fp("instructions", "v1")),
+            (
+                "/home/user/.claude/skills/foo".into(),
+                fp("skill-foo", "v1"),
+            ),
+        ]),
+        artifacts: HashMap::new(),
+    };
+
+    let result = apply_storage_fingerprint_reuse(&manifest, &prev);
+
+    assert!(result.cleanup_paths.is_empty());
+    assert_eq!(result.instruction_cleanups.len(), 1);
+    assert_eq!(
+        result.instruction_cleanups[0].mount_path,
+        "/home/user/.claude"
+    );
+    assert_eq!(result.instruction_cleanups[0].target_filename, None);
+    assert!(result.storages[0].cached);
+}
+
+#[test]
 fn filter_changed_artifact_adds_cleanup_path() {
     let manifest = GuestDownloadManifest {
         storages: vec![],
         artifacts: vec![guest_art("my-art", "v2", Some("https://s3/v2"))],
         cleanup_paths: vec![],
+        instruction_cleanups: Vec::new(),
     };
     let prev = StorageFingerprints {
         storages: HashMap::new(),
@@ -854,6 +936,7 @@ fn filter_changed_artifact_with_null_url_adds_cleanup_path() {
         storages: vec![],
         artifacts: vec![guest_art("my-art", "v2", None)],
         cleanup_paths: vec![],
+        instruction_cleanups: Vec::new(),
     };
     let prev = StorageFingerprints {
         storages: HashMap::new(),
@@ -876,6 +959,7 @@ fn filter_unchanged_artifact_policy_does_not_force_redownload() {
             Some(ArtifactEntryMissingRootPolicy::PreserveParentVersion),
         )],
         cleanup_paths: vec![],
+        instruction_cleanups: Vec::new(),
     };
     let prev = StorageFingerprints {
         storages: HashMap::new(),
@@ -898,6 +982,7 @@ fn filter_changed_storage_with_null_url_adds_cleanup_path() {
         storages: vec![guest_storage("/data", "vol-1", "v2", None)],
         artifacts: vec![],
         cleanup_paths: vec![],
+        instruction_cleanups: Vec::new(),
     };
     let mut storages = HashMap::new();
     storages.insert("/data".into(), fp("vol-1", "v1"));
@@ -922,6 +1007,7 @@ fn filter_unchanged_storage_sets_cached_true() {
         )],
         artifacts: vec![],
         cleanup_paths: vec![],
+        instruction_cleanups: Vec::new(),
     };
     let mut storages = HashMap::new();
     storages.insert("/data".into(), fp("vol-1", "v1"));
@@ -947,6 +1033,7 @@ fn filter_unchanged_storage_leaves_instruction_normalization_work() {
         storages: vec![storage],
         artifacts: vec![],
         cleanup_paths: vec![],
+        instruction_cleanups: Vec::new(),
     };
     let prev = StorageFingerprints {
         storages: HashMap::from([("/home/user/.codex".into(), fp("instructions", "v1"))]),
@@ -984,6 +1071,7 @@ fn filter_tainted_paths_force_download_even_when_versions_match() {
             missing_root_policy: None,
         }],
         cleanup_paths: vec![],
+        instruction_cleanups: Vec::new(),
     };
     let prev = StorageFingerprints {
         storages: HashMap::from([("/workspace/repo".into(), fp("repo", "v1"))]),
@@ -1021,6 +1109,7 @@ fn filter_tainted_removed_paths_are_cleaned() {
         storages: vec![],
         artifacts: vec![],
         cleanup_paths: vec![],
+        instruction_cleanups: Vec::new(),
     };
     let prev = StorageFingerprints {
         storages: HashMap::from([("/workspace/removed-storage".into(), fp("repo", "v1"))]),

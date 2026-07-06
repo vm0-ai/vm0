@@ -2502,6 +2502,7 @@ mod tests {
         GuestDownloadManifest {
             storages: vec![GuestDownloadStorageEntry {
                 mount_path: format!("/mnt/{name}"),
+                extract_path: None,
                 archive_url: Some(url),
                 cached: false,
                 instructions_target_filename: None,
@@ -2510,6 +2511,7 @@ mod tests {
             }],
             artifacts: Vec::new(),
             cleanup_paths: Vec::new(),
+            instruction_cleanups: Vec::new(),
         }
     }
 
@@ -2523,6 +2525,7 @@ mod tests {
             storages: vec![
                 GuestDownloadStorageEntry {
                     mount_path: "/mnt/duplicate-a".into(),
+                    extract_path: None,
                     archive_url: Some(first_url),
                     cached: false,
                     instructions_target_filename: None,
@@ -2531,6 +2534,7 @@ mod tests {
                 },
                 GuestDownloadStorageEntry {
                     mount_path: "/mnt/duplicate-b".into(),
+                    extract_path: None,
                     archive_url: Some(second_url),
                     cached: false,
                     instructions_target_filename: None,
@@ -2540,6 +2544,7 @@ mod tests {
             ],
             artifacts: Vec::new(),
             cleanup_paths: Vec::new(),
+            instruction_cleanups: Vec::new(),
         }
     }
 
@@ -2556,6 +2561,7 @@ mod tests {
                 missing_root_policy: None,
             }],
             cleanup_paths: Vec::new(),
+            instruction_cleanups: Vec::new(),
         }
     }
 
@@ -3387,6 +3393,7 @@ mod tests {
             storages: vec![
                 GuestDownloadStorageEntry {
                     mount_path: "/mnt/empty".into(),
+                    extract_path: None,
                     archive_url: Some(empty_url.clone()),
                     cached: false,
                     instructions_target_filename: None,
@@ -3395,6 +3402,7 @@ mod tests {
                 },
                 GuestDownloadStorageEntry {
                     mount_path: "/mnt/oversized".into(),
+                    extract_path: None,
                     archive_url: Some(oversized_url.clone()),
                     cached: false,
                     instructions_target_filename: None,
@@ -3404,6 +3412,7 @@ mod tests {
             ],
             artifacts: Vec::new(),
             cleanup_paths: Vec::new(),
+            instruction_cleanups: Vec::new(),
         };
 
         populate_cache_passthrough_without_background(
@@ -3550,6 +3559,7 @@ mod tests {
             storages: vec![
                 GuestDownloadStorageEntry {
                     mount_path: "/mnt/a".into(),
+                    extract_path: None,
                     archive_url: Some("https://r2.example.com/a.tar.gz".into()),
                     cached: false,
                     instructions_target_filename: None,
@@ -3558,6 +3568,7 @@ mod tests {
                 },
                 GuestDownloadStorageEntry {
                     mount_path: "/mnt/b".into(),
+                    extract_path: None,
                     archive_url: Some("https://r2.example.com/b.tar.gz".into()),
                     cached: false,
                     instructions_target_filename: None,
@@ -3567,6 +3578,7 @@ mod tests {
             ],
             artifacts: Vec::new(),
             cleanup_paths: Vec::new(),
+            instruction_cleanups: Vec::new(),
         };
 
         populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
@@ -4451,6 +4463,7 @@ mod tests {
         let mut manifest = GuestDownloadManifest {
             storages: vec![GuestDownloadStorageEntry {
                 mount_path: "/mnt/foo".into(),
+                extract_path: None,
                 archive_url: None,
                 cached: true,
                 instructions_target_filename: None,
@@ -4459,6 +4472,7 @@ mod tests {
             }],
             artifacts: Vec::new(),
             cleanup_paths: Vec::new(),
+            instruction_cleanups: Vec::new(),
         };
 
         populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
@@ -4483,6 +4497,7 @@ mod tests {
         let mut manifest = GuestDownloadManifest {
             storages: vec![GuestDownloadStorageEntry {
                 mount_path: "/mnt/legacy".into(),
+                extract_path: None,
                 archive_url: Some("https://r2.example.com/legacy.tar.gz".into()),
                 cached: false,
                 instructions_target_filename: None,
@@ -4491,6 +4506,7 @@ mod tests {
             }],
             artifacts: Vec::new(),
             cleanup_paths: Vec::new(),
+            instruction_cleanups: Vec::new(),
         };
 
         populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
@@ -4759,6 +4775,7 @@ mod tests {
                 missing_root_policy: None,
             }],
             cleanup_paths: Vec::new(),
+            instruction_cleanups: Vec::new(),
         };
 
         populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
@@ -5444,6 +5461,7 @@ mod tests {
                     storages: vec![
                         GuestDownloadStorageEntry {
                             mount_path: "/mnt/ready".into(),
+                            extract_path: None,
                             archive_url: Some(format!("http://{ready_addr}/ready.tar.gz")),
                             cached: false,
                             instructions_target_filename: None,
@@ -5452,6 +5470,7 @@ mod tests {
                         },
                         GuestDownloadStorageEntry {
                             mount_path: "/mnt/cold".into(),
+                            extract_path: None,
                             archive_url: Some(format!("http://{cold_addr}/cold.tar.gz")),
                             cached: false,
                             instructions_target_filename: None,
@@ -5461,6 +5480,7 @@ mod tests {
                     ],
                     artifacts: Vec::new(),
                     cleanup_paths: Vec::new(),
+                    instruction_cleanups: Vec::new(),
                 };
                 let mut telemetry = new_telemetry();
                 populate_cache_blocking(&mut manifest, sandbox.as_ref(), &home, &mut telemetry)
@@ -5678,6 +5698,7 @@ mod tests {
         let mut manifest = GuestDownloadManifest {
             storages: vec![GuestDownloadStorageEntry {
                 mount_path: "/mnt/storage".into(),
+                extract_path: None,
                 archive_url: Some("https://r2.example.com/storage.tar.gz".into()),
                 cached: false,
                 instructions_target_filename: None,
@@ -5694,6 +5715,7 @@ mod tests {
                 missing_root_policy: None,
             }],
             cleanup_paths: Vec::new(),
+            instruction_cleanups: Vec::new(),
         };
 
         populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
@@ -6118,6 +6140,7 @@ mod tests {
             storages: vec![
                 GuestDownloadStorageEntry {
                     mount_path: format!("/mnt/{name_a}"),
+                    extract_path: None,
                     archive_url: Some("https://r2.example.com/ignored.tar.gz".into()),
                     cached: false,
                     instructions_target_filename: None,
@@ -6126,6 +6149,7 @@ mod tests {
                 },
                 GuestDownloadStorageEntry {
                     mount_path: format!("/mnt/{name_b}"),
+                    extract_path: None,
                     archive_url: Some("https://r2.example.com/ignored.tar.gz".into()),
                     cached: false,
                     instructions_target_filename: None,
@@ -6135,6 +6159,7 @@ mod tests {
             ],
             artifacts: Vec::new(),
             cleanup_paths: Vec::new(),
+            instruction_cleanups: Vec::new(),
         };
 
         populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
@@ -6182,6 +6207,7 @@ mod tests {
                 missing_root_policy: None,
             }],
             cleanup_paths: Vec::new(),
+            instruction_cleanups: Vec::new(),
         };
 
         populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
