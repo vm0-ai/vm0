@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.227.2](https://github.com/vm0-ai/vm0/compare/api-v1.227.1...api-v1.227.2) (2026-07-06)
+
+
+### Bug Fixes
+
+* show owner name and avatar in workflow detail created-by tooltip ([#20279](https://github.com/vm0-ai/vm0/issues/20279)) ([e4e54ba](https://github.com/vm0-ai/vm0/commit/e4e54ba9b22e4f5d0a27df0ea66f0da8df9b1d0f))
+
 ## [1.227.1](https://github.com/vm0-ai/vm0/compare/api-v1.227.0...api-v1.227.1) (2026-07-06)
 
 

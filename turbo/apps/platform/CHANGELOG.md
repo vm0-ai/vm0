@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.558.6](https://github.com/vm0-ai/vm0/compare/app-v0.558.5...app-v0.558.6) (2026-07-06)
+
+
+### Bug Fixes
+
+* **platform:** render memory update date header in English ([#20014](https://github.com/vm0-ai/vm0/issues/20014)) ([61dde47](https://github.com/vm0-ai/vm0/commit/61dde47c81f7da343204c6f036cddf14e7a91c3b))
+
 ## [0.558.5](https://github.com/vm0-ai/vm0/compare/app-v0.558.4...app-v0.558.5) (2026-07-06)
 
 
