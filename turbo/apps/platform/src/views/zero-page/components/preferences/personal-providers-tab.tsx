@@ -28,6 +28,7 @@ import { ProviderIcon } from "../settings/provider-icons.tsx";
 import { PersonalClaudeCodeDeviceAuthDialog } from "../settings/claude-code-device-auth-dialog.tsx";
 import { PersonalCodexDeviceAuthDialog } from "../settings/codex-device-auth-dialog.tsx";
 import { SettingsSectionHeading } from "../settings/settings-section-heading.tsx";
+import { runAfterDropdownMenuClose } from "../../../components/dropdown-menu-modal-action.ts";
 import {
   CodexResetUsageDialog,
   formatCodexResetCredits,
@@ -192,6 +193,7 @@ function ClaudeOAuthCredentialRow({
               {
                 label: "Replace",
                 onSelect: onAction,
+                opensModal: true,
               },
               {
                 label: "Disconnect",
@@ -246,10 +248,12 @@ function CodexOAuthCredentialRow({
                 label: "Reset usage",
                 disabled: actionPending || resetCredits === 0,
                 onSelect: onOpenReset,
+                opensModal: true,
               },
               {
                 label: "Replace",
                 onSelect: onAction,
+                opensModal: true,
               },
               {
                 label: "Disconnect",
@@ -478,6 +482,7 @@ interface OAuthMenuItem {
   kind?: "item" | "status" | "separator";
   disabled?: boolean;
   onSelect?: () => void;
+  opensModal?: boolean;
 }
 
 function OAuthCredentialRow({
@@ -578,7 +583,16 @@ function OAuthCredentialRow({
                       <DropdownMenuItem
                         key={item.label}
                         disabled={item.disabled}
-                        onClick={item.onSelect}
+                        onSelect={() => {
+                          if (!item.onSelect) {
+                            return;
+                          }
+                          if (item.opensModal) {
+                            runAfterDropdownMenuClose(item.onSelect);
+                            return;
+                          }
+                          item.onSelect();
+                        }}
                       >
                         {item.label}
                       </DropdownMenuItem>

@@ -17,6 +17,7 @@ import {
   type AccountMenuSubscriptionUsageWindow,
   type AccountMenuSubscriptionUsageRowsCacheKey,
 } from "../../signals/zero-page/account-menu-subscriptions.ts";
+import { runAfterDropdownMenuClose } from "../components/dropdown-menu-modal-action.ts";
 import { formatCodexResetCredits } from "./components/preferences/codex-reset-usage-dialog.tsx";
 
 type SubscriptionUsage = AccountMenuSubscriptionUsage;
@@ -152,8 +153,10 @@ function AccountMenuSubscriptionProviderSection({
       {type === "codex-oauth-token" ? (
         <DropdownMenuItem
           disabled={!canResetCodex || resetPending}
-          onClick={() => {
-            onResetCodexUsage?.(resetCredits ?? null);
+          onSelect={() => {
+            runAfterDropdownMenuClose(() => {
+              onResetCodexUsage?.(resetCredits ?? null);
+            });
           }}
           className="mt-1 flex h-7 items-center justify-between gap-2 rounded-md px-2 py-1 text-xs"
         >
