@@ -1876,12 +1876,12 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       return { run, job: poll.body.job };
     }
 
-    function legacyHeartbeatBody(
+    function rawHeartbeatBody(
       extra: Record<string, unknown>,
     ): Record<string, unknown> {
       return {
         runnerId: affinityRunnerId,
-        runnerName: "legacy-bdd-runner",
+        runnerName: "bdd-runner",
         group: runnerGroup,
         totalVcpu: 8,
         totalMemoryMb: 16_384,
@@ -1903,57 +1903,23 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const missingProfileListHeartbeat = await api.requestRawHeartbeatRunner(
       true,
       [400],
-      legacyHeartbeatBody({}),
+      rawHeartbeatBody({}),
     );
     expectApiError(missingProfileListHeartbeat.body);
 
     const legacyAvailableHeartbeat = await api.requestRawHeartbeatRunner(
       true,
-      [200],
-      legacyHeartbeatBody({ availableProfiles: ["vm0/default"] }),
+      [400],
+      rawHeartbeatBody({ availableProfiles: ["vm0/default"] }),
     );
-    expect(legacyAvailableHeartbeat.body).toStrictEqual({ ok: true });
-    const legacyAvailableHolder = await pollFollowUp(
-      "continue after legacy available profiles heartbeat",
-    );
-    expect(legacyAvailableHolder.job?.cliAgentSessionId).toBe(
-      cliAgentSessionId,
-    );
-    expect(legacyAvailableHolder.job?.affinityProtectedUntil).toStrictEqual(
-      expect.any(String),
-    );
+    expectApiError(legacyAvailableHeartbeat.body);
 
     const legacyStaticHeartbeat = await api.requestRawHeartbeatRunner(
       true,
-      [200],
-      legacyHeartbeatBody({ profiles: ["vm0/default"] }),
+      [400],
+      rawHeartbeatBody({ profiles: ["vm0/default"] }),
     );
-    expect(legacyStaticHeartbeat.body).toStrictEqual({ ok: true });
-    const legacyStaticHolder = await pollFollowUp(
-      "continue after legacy static profiles heartbeat",
-    );
-    expect(legacyStaticHolder.job?.cliAgentSessionId).toBe(cliAgentSessionId);
-    expect(legacyStaticHolder.job?.affinityProtectedUntil).toStrictEqual(
-      expect.any(String),
-    );
-
-    const heartbeatWithIgnoredLegacy = await api.requestRawHeartbeatRunner(
-      true,
-      [200],
-      legacyHeartbeatBody({
-        admittableProfiles: ["vm0/default"],
-        availableProfiles: ["vm0/large"],
-        profiles: ["vm0/large"],
-      }),
-    );
-    expect(heartbeatWithIgnoredLegacy.body).toStrictEqual({ ok: true });
-    const ignoredLegacyHolder = await pollFollowUp(
-      "continue when heartbeat ignores legacy fields",
-    );
-    expect(ignoredLegacyHolder.job?.cliAgentSessionId).toBe(cliAgentSessionId);
-    expect(ignoredLegacyHolder.job?.affinityProtectedUntil).toStrictEqual(
-      expect.any(String),
-    );
+    expectApiError(legacyStaticHeartbeat.body);
 
     await heartbeatHolder({
       admittableProfiles: [],
