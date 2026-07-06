@@ -34,8 +34,6 @@ import type { RouteKey } from "../../signals/route-paths.ts";
 import { defaultAgentName$ } from "../../signals/agent.ts";
 import { currentChatAgentId$ } from "../../signals/agent-chat.ts";
 import {
-  isScrolled$,
-  setIsScrolled$,
   manageSectionCollapsed$,
   setManageSectionCollapsed$,
 } from "../../signals/zero-page/zero-sidebar-state.ts";
@@ -47,7 +45,6 @@ import { slackOrgScopeMismatch$ } from "../../signals/zero-page/zero-slack.ts";
 import { AccountDropdown } from "./zero-sidebar-account.tsx";
 import { ChatThreadsSection } from "./sidebar-threads.tsx";
 import { PinnedAgentListSection } from "./zero-sidebar-pinned.tsx";
-import { OverlayScrollArea } from "./zero-sidebar-scroll.tsx";
 import { SidebarUpgradeCard } from "./zero-sidebar-upgrade.tsx";
 
 export { AccountDropdown } from "./zero-sidebar-account.tsx";
@@ -126,18 +123,9 @@ const FOOTER_NAV = [
 // Leaf component: subscribes to currentChatAgentId$ so ZeroSidebar doesn't re-render on agent changes.
 // useLastResolved keeps the previously-resolved agent ID during re-loads, preventing unnecessary
 // remounts of ChatThreadsSection that would cause the chat list to flash.
-function ChatThreadsSectionWithKey({
-  threadListScroll = false,
-}: {
-  threadListScroll?: boolean;
-}) {
+function ChatThreadsSectionWithKey() {
   const currentChatAgentId = useLastResolved(currentChatAgentId$);
-  return (
-    <ChatThreadsSection
-      key={currentChatAgentId}
-      threadListScroll={threadListScroll}
-    />
-  );
+  return <ChatThreadsSection key={currentChatAgentId} />;
 }
 
 // Shared subscription hooks. Each sibling component pulls its own state from
@@ -556,38 +544,11 @@ function CollapsedManageNav({
 }
 
 function ExpandedSidebarSections() {
-  const features = useGet(featureSwitch$);
-  const threadListScroll =
-    features[FeatureSwitchKey.SidebarThreadListScroll] ?? false;
-  if (threadListScroll) {
-    return (
-      <div className="flex-1 min-h-0 -mx-2 px-2 mt-2 pt-2 flex flex-col overflow-hidden">
-        <PinnedAgentListSection />
-        <ChatThreadsSectionWithKey threadListScroll />
-      </div>
-    );
-  }
-
-  return <ExpandedScrollArea />;
-}
-
-function ExpandedScrollArea() {
-  const isScrolled = useGet(isScrolled$);
-  const setIsScrolledFn = useSet(setIsScrolled$);
   return (
-    <OverlayScrollArea
-      className="flex-1 min-h-0 -mx-2 px-2 mt-2 pt-2"
-      data-testid="sidebar-scroll-area"
-      onScroll={(e) => {
-        return setIsScrolledFn(e.currentTarget.scrollTop > 0);
-      }}
-      style={{
-        boxShadow: isScrolled ? "0 -1px 0 0 hsl(var(--border) / 0.4)" : "none",
-      }}
-    >
+    <div className="flex-1 min-h-0 -mx-2 px-2 mt-2 pt-2 flex flex-col overflow-hidden">
       <PinnedAgentListSection />
       <ChatThreadsSectionWithKey />
-    </OverlayScrollArea>
+    </div>
   );
 }
 

@@ -4333,7 +4333,6 @@ interface ChatComposerModelPickerConfig {
   value: ModelProviderSelection | null;
   onChange: (value: ModelProviderSelection | null) => void;
   disabled: boolean;
-  resolveDefaultSelection: boolean;
 }
 
 function resolveChatComposerModelPicker(params: {
@@ -4345,7 +4344,6 @@ function resolveChatComposerModelPicker(params: {
     value: params.modelSelection,
     onChange: params.setModelSelection,
     disabled: params.disabled,
-    resolveDefaultSelection: false,
   };
 }
 
@@ -4438,11 +4436,13 @@ function useChatComposerModel(
     detach(setModelSelection(selection, pageSignal), Reason.DomCallback);
   };
 
-  const modelPicker = resolveChatComposerModelPicker({
-    modelSelection,
-    setModelSelection: handleModelSelectionChange,
-    disabled: false,
-  });
+  const modelPicker = modelSelection
+    ? resolveChatComposerModelPicker({
+        modelSelection,
+        setModelSelection: handleModelSelectionChange,
+        disabled: false,
+      })
+    : undefined;
   const modelPickerLoading = modelSelectionResolved === undefined;
   const submitBlockerProps = modelSelection
     ? resolveChatComposerSubmitBlocker({

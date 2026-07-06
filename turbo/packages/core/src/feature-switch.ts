@@ -236,7 +236,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.CodexFastMode]: {
     maintainer: "lancy@vm0.ai",
     description:
-      "Enable Codex fast mode for ChatGPT subscription GPT-5.5 web chat runs.",
+      "Enable Codex fast mode for ChatGPT subscription GPT 5.5 web chat runs.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -340,12 +340,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show icon-only manage navigation buttons when the expanded sidebar manage section is collapsed.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.SidebarThreadListScroll]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Scroll only the chat thread list in the Zero sidebar so pinned agents stay visible.",
-    enabled: false,
   },
   [FeatureSwitchKey.SidebarSubscriptionUsage]: {
     maintainer: "ethan@vm0.ai",

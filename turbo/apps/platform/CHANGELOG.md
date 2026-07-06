@@ -1,5 +1,39 @@
 # Changelog
 
+## [0.561.1](https://github.com/vm0-ai/vm0/compare/app-v0.561.0...app-v0.561.1) (2026-07-06)
+
+
+### Bug Fixes
+
+* focus inline feedback composer from shortcut ([#20377](https://github.com/vm0-ai/vm0/issues/20377)) ([21dea9f](https://github.com/vm0-ai/vm0/commit/21dea9f73beefa2e52a8ce1a177dba25f47fb0a1))
+* keep chat composer model and voice actions visible ([#20356](https://github.com/vm0-ai/vm0/issues/20356)) ([36dec9f](https://github.com/vm0-ai/vm0/commit/36dec9f856cfdaf014fc1c8d572f6952f044dd17))
+
+## [0.561.0](https://github.com/vm0-ai/vm0/compare/app-v0.560.1...app-v0.561.0) (2026-07-06)
+
+
+### Features
+
+* enable sidebar thread list scroll by default ([#20366](https://github.com/vm0-ai/vm0/issues/20366)) ([fba19e7](https://github.com/vm0-ai/vm0/commit/fba19e71d0ded477d86137ae75a3a3bcd2382f50))
+
+
+### Bug Fixes
+
+* make chat messages immutable in thread views ([#20332](https://github.com/vm0-ai/vm0/issues/20332)) ([c231866](https://github.com/vm0-ai/vm0/commit/c231866b635ebbe621d73a83c6bff7bebd2a1532))
+
+
+### Refactoring
+
+* retire the workflow automation feature switch as always-on ([#20357](https://github.com/vm0-ai/vm0/issues/20357)) ([840b415](https://github.com/vm0-ai/vm0/commit/840b41551ab88a25aeeec08f01a18ccd6a5b36ff))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.157.0
+    * @vm0/connectors bumped to 1.140.0
+    * @vm0/core bumped to 8.405.0
+
 ## [0.560.1](https://github.com/vm0-ai/vm0/compare/app-v0.560.0...app-v0.560.1) (2026-07-06)
 
 

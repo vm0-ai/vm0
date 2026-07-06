@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.230.0](https://github.com/vm0-ai/vm0/compare/api-v1.229.0...api-v1.230.0) (2026-07-06)
+
+
+### Features
+
+* support zstd session history blobs ([#20341](https://github.com/vm0-ai/vm0/issues/20341)) ([c4188fa](https://github.com/vm0-ai/vm0/commit/c4188fa5b28587f197998421ac5032c228913c25))
+
+
+### Bug Fixes
+
+* make chat messages immutable in thread views ([#20332](https://github.com/vm0-ai/vm0/issues/20332)) ([c231866](https://github.com/vm0-ai/vm0/commit/c231866b635ebbe621d73a83c6bff7bebd2a1532))
+
+
+### Refactoring
+
+* retire the workflow automation feature switch as always-on ([#20357](https://github.com/vm0-ai/vm0/issues/20357)) ([840b415](https://github.com/vm0-ai/vm0/commit/840b41551ab88a25aeeec08f01a18ccd6a5b36ff))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.157.0
+    * @vm0/connectors bumped to 1.140.0
+    * @vm0/core bumped to 8.405.0
+    * @vm0/db bumped to 1.94.2
+
 ## [1.229.0](https://github.com/vm0-ai/vm0/compare/api-v1.228.0...api-v1.229.0) (2026-07-06)
 
 

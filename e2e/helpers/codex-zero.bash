@@ -72,11 +72,11 @@ disable_codex_beta() {
     return 0
 }
 
-# Poll /api/zero/chat-threads/:id/messages until the newest assistant row
-# carries a terminal runLifecycleEvent (the paged message API no longer
-# exposes agent run status; terminal runs append a null-content lifecycle
-# marker row instead). LAST_MSG_CONTENT comes from the latest non-blank
-# assistant content row for the same run.
+# Poll /api/zero/chat-threads/:id/messages until the current run has a
+# terminal runLifecycleEvent (the paged message API no longer exposes agent run
+# status; terminal runs append a null-content lifecycle marker row instead).
+# LAST_MSG_CONTENT comes from the latest non-blank assistant content row for the
+# same run.
 # On success, exports:
 #   LAST_RUN_ID      — runId of the assistant message
 #   LAST_MSG_CONTENT — content text
@@ -85,19 +85,34 @@ wait_for_chat_assistant_done() {
     local thread_id="$1"
     local timeout="${2:-180}"
     local start=$SECONDS
-    local body status_value run_id content
+    local body status_value run_id content terminal
+    local expected_run_id="${LAST_RUN_ID:-}"
     while (( SECONDS - start < timeout )); do
         body=$(_codex_zero_curl "/api/zero/chat-threads/$thread_id/messages?limit=50" 2>/dev/null || true)
         if [[ -n "$body" ]]; then
-            status_value=$(printf '%s' "$body" \
-                | jq -r '[.messages[] | select(.role == "assistant")] | last | .runLifecycleEvent // ""' 2>/dev/null)
+            terminal=$(printf '%s' "$body" \
+                | jq -r --arg expectedRunId "$expected_run_id" '
+                    [
+                        .messages[]
+                        | select(.role == "assistant")
+                        | select($expectedRunId == "" or ((.runId // "") == $expectedRunId))
+                        | select(
+                            (.runLifecycleEvent // "") as $event
+                            | ["completed", "failed", "timeout", "cancelled"]
+                            | index($event)
+                        )
+                    ]
+                    | last // {}
+                    | [(.runLifecycleEvent // ""), (.runId // "")]
+                    | @tsv
+                ' 2>/dev/null)
+            status_value="${terminal%%$'\t'*}"
             # Per-poll diagnostic: bats's BATS_TEST_TIMEOUT kills the test before
             # the trailing "timed out" lines below run, so emit progress here.
             echo "# poll t=$((SECONDS - start))s status=${status_value:-EMPTY}" >&2
             case "$status_value" in
                 completed|failed|timeout|cancelled)
-                    run_id=$(printf '%s' "$body" \
-                        | jq -r '[.messages[] | select(.role == "assistant")] | last | .runId // ""')
+                    run_id="${terminal#*$'\t'}"
                     content=$(printf '%s' "$body" \
                         | jq -r --arg runId "$run_id" '
                             [
