@@ -12,7 +12,7 @@ import { flushLogs, logger } from "./lib/log";
 import { waitUntil } from "./signals/context/wait-until";
 import { honoSignalHandler } from "./signals/context/route";
 import type { RouteEntry } from "./signals/route-entry";
-import { isAbortError, safeSync } from "./signals/utils";
+import { isAbortError, normalizeThrown, safeSync } from "./signals/utils";
 
 const L = logger("App");
 
@@ -266,6 +266,10 @@ export function createAppWithRoutes({
 }: CreateAppWithRoutesOptions): Hono {
   const app = new Hono();
   app.onError(handleError);
+
+  app.use("*", (_context, next) => {
+    return normalizeThrown(next());
+  });
 
   // OpenTelemetry: each request gets a SERVER span named after its matched
   // route template (e.g. `GET /api/v1/chat-threads/:threadId`). Child spans
