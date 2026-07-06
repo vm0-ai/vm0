@@ -51,6 +51,15 @@ BEGIN
 		RETURN OLD;
 	END IF;
 
+	PERFORM 1
+	FROM "org_custom_connectors"
+	WHERE "id" = NEW."connector_id"
+		AND "org_id" = NEW."org_id"
+	FOR KEY SHARE;
+	IF NOT FOUND THEN
+		RETURN NEW;
+	END IF;
+
 	INSERT INTO "org_custom_connector_values" (
 		"connector_id",
 		"user_id",
