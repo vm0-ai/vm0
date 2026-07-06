@@ -480,6 +480,19 @@ function lifecycleMarkers(
   });
 }
 
+function recommendedFollowupMessages(
+  messages: readonly PagedChatMessage[],
+  runId: string,
+): AssistantMessage[] {
+  return assistantMessages(messages).filter((message) => {
+    return (
+      message.runId === runId &&
+      message.runLifecycleEvent === undefined &&
+      (message.recommendedFollowups?.length ?? 0) > 0
+    );
+  });
+}
+
 function publishedChatThreadRunFinished(threadId: string): boolean {
   return context.mocks.ably.publish.mock.calls.some((call) => {
     const payload = call[1];
@@ -493,21 +506,13 @@ function publishedChatThreadRunFinished(threadId: string): boolean {
   });
 }
 
-async function waitForChatThreadMessageUpdatedPublish(
+async function waitForChatThreadMessageCreatedPublish(
   threadId: string,
-  messageId: string,
 ): Promise<void> {
   await expect
     .poll(() => {
       return context.mocks.ably.publish.mock.calls.some((call) => {
-        const payload = call[1];
-        return (
-          call[0] === `chatThreadMessageUpdated:${threadId}` &&
-          payload !== null &&
-          typeof payload === "object" &&
-          "messageId" in payload &&
-          payload.messageId === messageId
-        );
+        return call[0] === `chatThreadMessageCreated:${threadId}`;
       });
     })
     .toBe(true);
@@ -780,11 +785,9 @@ describe("CHAT-02: completed chat callback", () => {
       (messages) => {
         return (
           eventBackedContents(messages, first.runId).length === 1 &&
-          lifecycleMarkers(messages, first.runId, "completed").some(
-            (message) => {
-              return (message.recommendedFollowups?.length ?? 0) === 2;
-            },
-          )
+          recommendedFollowupMessages(messages, first.runId).some((message) => {
+            return (message.recommendedFollowups?.length ?? 0) === 2;
+          })
         );
       },
     );
@@ -807,7 +810,15 @@ describe("CHAT-02: completed chat callback", () => {
     }
     expect(marker.content).toBeNull();
     expect(marker).not.toHaveProperty("status");
-    expect(marker.recommendedFollowups).toStrictEqual([
+    expect(marker.recommendedFollowups).toBeUndefined();
+    const recommender = recommendedFollowupMessages(
+      after.messages,
+      first.runId,
+    )[0];
+    if (!recommender) {
+      throw new Error("Expected a recommended follow-up message");
+    }
+    expect(recommender.recommendedFollowups).toStrictEqual([
       { prompt: "Turn this into a checklist", kind: "talk" },
       {
         prompt: "Generate a landing page for this plan",
@@ -828,15 +839,6 @@ describe("CHAT-02: completed chat callback", () => {
         return publishedChatThreadRunFinished(first.threadId);
       })
       .toBe(true);
-
-    const recommender = assistantMessages(after.messages).find((message) => {
-      return (
-        message.runId === first.runId &&
-        message.runLifecycleEvent === undefined &&
-        (message.recommendedFollowups?.length ?? 0) > 0
-      );
-    });
-    expect(recommender).toBeUndefined();
 
     await waitForThreadTitle(actor, first.threadId, "Debugging Node Apps");
     expect(titlePrompts).toHaveLength(titlePromptCountBeforeComplete);
@@ -1116,12 +1118,9 @@ describe("CHAT-02: completed chat callback", () => {
       actor,
       first.threadId,
       (messages) => {
-        return lifecycleMarkers(messages, first.runId, "completed").some(
+        return recommendedFollowupMessages(messages, first.runId).some(
           (message) => {
-            return (
-              message.id === markerBeforeRelease.id &&
-              (message.recommendedFollowups?.length ?? 0) === 1
-            );
+            return (message.recommendedFollowups?.length ?? 0) === 1;
           },
         );
       },
@@ -1135,16 +1134,18 @@ describe("CHAT-02: completed chat callback", () => {
       "completed",
     )[0];
     expect(markerAfterRelease?.id).toBe(markerBeforeRelease.id);
-    expect(markerAfterRelease?.recommendedFollowups).toStrictEqual([
+    expect(markerAfterRelease?.recommendedFollowups).toBeUndefined();
+    const followupMessage = recommendedFollowupMessages(
+      afterFollowups.messages,
+      first.runId,
+    )[0];
+    expect(followupMessage?.recommendedFollowups).toStrictEqual([
       { prompt: "Review the queued result", kind: "talk" },
     ]);
-    await waitForChatThreadMessageUpdatedPublish(
-      first.threadId,
-      markerBeforeRelease.id,
-    );
+    await waitForChatThreadMessageCreatedPublish(first.threadId);
     expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
-      `chatThreadMessageCreated:${first.threadId}`,
-      null,
+      `chatThreadMessageUpdated:${first.threadId}`,
+      expect.anything(),
     );
     expect(titlePrompts).toHaveLength(1);
     expect(titlePrompts[0]).toContain("finish the current turn");

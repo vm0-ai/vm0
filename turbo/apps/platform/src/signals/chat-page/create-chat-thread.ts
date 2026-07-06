@@ -1120,7 +1120,7 @@ function createGroupedChatMessagesCache(
   return { groupedChatMessages$, refreshGroupedChatMessagesCache$ };
 }
 
-type ServerMessages$ = State<PagedChatMessage[]>;
+type PersistentMessages$ = State<PagedChatMessage[]>;
 type KnownServerMessageIds$ = State<ReadonlySet<string>>;
 
 function compareCursorString(left: string, right: string): number {
@@ -1193,9 +1193,9 @@ function addKnownServerMessageIds(
   return changed ? next : prev;
 }
 
-function createAppendServerMessages(
+function createWritePersistentMessages(
   threadId: string,
-  serverMessages$: ServerMessages$,
+  persistentMessages$: PersistentMessages$,
   reportedCompletedRunIds$: State<Set<string>>,
   knownServerMessageIds$: KnownServerMessageIds$,
 ) {
@@ -1224,20 +1224,8 @@ function createAppendServerMessages(
         return next;
       });
     }
-    set(serverMessages$, (prev) => {
-      const byId = new Map<string, PagedChatMessage>();
-      for (const m of prev) {
-        byId.set(m.id, m);
-      }
-      let changed = false;
-      for (const m of msgs) {
-        const existing = byId.get(m.id);
-        if (existing !== m) {
-          byId.set(m.id, m);
-          changed = true;
-        }
-      }
-      return changed ? Array.from(byId.values()) : prev;
+    set(persistentMessages$, (prev) => {
+      return mergeServerMessages([prev, msgs]);
     });
     set(reconcileOptimisticChatMessages$, { threadId, messages: msgs });
   });
@@ -1254,15 +1242,14 @@ interface ChatMessageProjectionEntry {
 }
 
 function projectRawMessages({
-  serverMessageSets,
+  persistentMessages,
   optimisticEntries,
 }: {
-  serverMessageSets: readonly (readonly PagedChatMessage[])[];
+  persistentMessages: readonly PagedChatMessage[];
   optimisticEntries: readonly OptimisticChatMessageEntry[];
 }): ChatMessageProjectionEntry[] {
-  const server = mergeServerMessages(serverMessageSets);
   const serverIds = new Set(
-    server.map((message) => {
+    persistentMessages.map((message) => {
       return message.id;
     }),
   );
@@ -1270,7 +1257,7 @@ function projectRawMessages({
     return !serverIds.has(entry.message.id);
   });
   return [
-    ...server.map((message) => {
+    ...persistentMessages.map((message) => {
       return { message, source: "server" as const };
     }),
     ...optimistic.map((entry) => {
@@ -1279,41 +1266,42 @@ function projectRawMessages({
   ];
 }
 
-function createRawMessagesComputed({
+function createPersistentMessagesComputed({
   initialPage$,
-  historyMessages$,
-  serverMessages$,
-  optimisticMessages$,
+  persistentMessages$,
 }: {
-  initialPage$: Computed<
-    Promise<{ messages: PagedChatMessage[]; hasHistoryBefore: boolean }>
-  >;
-  historyMessages$: State<PagedChatMessage[]>;
-  serverMessages$: State<PagedChatMessage[]>;
+  initialPage$: Computed<Promise<InitialPage>>;
+  persistentMessages$: PersistentMessages$;
+}): Computed<Promise<PagedChatMessage[]>> {
+  return computed(async (get): Promise<PagedChatMessage[]> => {
+    const initial = await get(initialPage$);
+    return mergeServerMessages([initial.messages, get(persistentMessages$)]);
+  });
+}
+
+function createRawMessagesComputed({
+  persistentMessages$,
+  pendingPersistentMessages$,
+  optimisticMessages$,
+  optimisticCreateUnsettled$,
+}: {
+  persistentMessages$: Computed<Promise<PagedChatMessage[]>>;
+  pendingPersistentMessages$: PersistentMessages$;
   optimisticMessages$: Computed<OptimisticChatMessageEntry[]>;
+  optimisticCreateUnsettled$: Computed<boolean>;
 }): Computed<Promise<ChatMessageProjectionEntry[]>> {
-  let resolvedInitialPage: InitialPage | null = null;
   return computed(async (get): Promise<ChatMessageProjectionEntry[]> => {
-    const history = get(historyMessages$);
-    const serverMessages = get(serverMessages$);
     const optimisticEntries = get(optimisticMessages$);
-    if (
-      resolvedInitialPage === null &&
-      (history.length > 0 ||
-        serverMessages.length > 0 ||
-        optimisticEntries.length > 0)
-    ) {
+    if (get(optimisticCreateUnsettled$)) {
       return projectRawMessages({
-        serverMessageSets: [history, serverMessages],
+        persistentMessages: get(pendingPersistentMessages$),
         optimisticEntries,
       });
     }
-
-    const initial = resolvedInitialPage ?? (await get(initialPage$));
-    resolvedInitialPage = initial;
+    const persistentMessages = await get(persistentMessages$);
     return projectRawMessages({
-      serverMessageSets: [history, initial.messages, serverMessages],
-      optimisticEntries: get(optimisticMessages$),
+      persistentMessages,
+      optimisticEntries,
     });
   });
 }
@@ -1480,19 +1468,15 @@ function createFetchNextPageCommand({
   threadId,
   initialPage$,
   nextCursorId$,
-  appendServerMessages$,
+  writePersistentMessages$,
   refreshGroupedChatMessagesCache$,
-  reportedCompletedRunIds$,
-  knownServerMessageIds$,
   dataSource,
 }: {
   threadId: string;
   initialPage$: Computed<Promise<InitialPage>>;
   nextCursorId$: State<string | undefined>;
-  appendServerMessages$: Command<void, [PagedChatMessage[]]>;
+  writePersistentMessages$: Command<void, [PagedChatMessage[]]>;
   refreshGroupedChatMessagesCache$: Command<Promise<void>, [AbortSignal]>;
-  reportedCompletedRunIds$: State<Set<string>>;
-  knownServerMessageIds$: KnownServerMessageIds$;
   dataSource: ChatThreadDataSource;
 }): Command<Promise<boolean>, [AbortSignal]> {
   return command(async ({ get, set }, signal: AbortSignal) => {
@@ -1501,25 +1485,8 @@ function createFetchNextPageCommand({
     if (!sinceId) {
       const initial = await get(initialPage$);
       signal.throwIfAborted();
-      set(knownServerMessageIds$, (prev) => {
-        return addKnownServerMessageIds(prev, initial.messages);
-      });
-      set(reconcileOptimisticChatMessages$, {
-        threadId,
-        messages: initial.messages,
-      });
+      set(writePersistentMessages$, initial.messages);
       messagesMayHaveChanged = true;
-      set(reportedCompletedRunIds$, (prev) => {
-        const ids = completedRunIdsFromMessages(initial.messages);
-        if (ids.length === 0) {
-          return prev;
-        }
-        const next = new Set(prev);
-        for (const runId of ids) {
-          next.add(runId);
-        }
-        return next;
-      });
       sinceId = initial.messages[initial.messages.length - 1]?.id;
       L.debug("fetchNextPage$ initialPage seeded sinceId", {
         threadId,
@@ -1553,7 +1520,7 @@ function createFetchNextPageCommand({
         page: i,
       });
       if (result.messages.length > 0) {
-        set(appendServerMessages$, result.messages);
+        set(writePersistentMessages$, result.messages);
         messagesMayHaveChanged = true;
         sinceId = result.messages[result.messages.length - 1].id;
         set(nextCursorId$, sinceId);
@@ -1590,12 +1557,12 @@ function messageUpdatedPayloadMessageId(payload: unknown): string | null {
 function createFetchUpdatedMessageCommand({
   threadId,
   dataSource,
-  appendServerMessages$,
+  writePersistentMessages$,
   refreshGroupedChatMessagesCache$,
 }: {
   threadId: string;
   dataSource: ChatThreadDataSource;
-  appendServerMessages$: Command<void, [PagedChatMessage[]]>;
+  writePersistentMessages$: Command<void, [PagedChatMessage[]]>;
   refreshGroupedChatMessagesCache$: Command<Promise<void>, [AbortSignal]>;
 }): Command<Promise<boolean>, [unknown, AbortSignal]> {
   return command(
@@ -1622,7 +1589,7 @@ function createFetchUpdatedMessageCommand({
         return false;
       }
 
-      set(appendServerMessages$, [message]);
+      set(writePersistentMessages$, [message]);
       await set(refreshGroupedChatMessagesCache$, signal);
       signal.throwIfAborted();
       return false;
@@ -1636,13 +1603,14 @@ function createPagedMessages(
   dataSource: ChatThreadDataSource,
 ) {
   const loadedHistoryHasMore$ = state<boolean | null>(null);
-  const historyMessages$ = state<PagedChatMessage[]>([]);
   const initialPage$ = createInitialPage(dataSource);
 
-  const serverMessages$ = state<PagedChatMessage[]>([]);
+  const persistentMessagesState$ = state<PagedChatMessage[]>([]);
   const reportedCompletedRunIds$ = state(new Set<string>());
   const knownServerMessageIds$ = state<ReadonlySet<string>>(new Set());
   const optimisticMessages$ = createOptimisticChatMessagesForThread(threadId);
+  const optimisticCreateUnsettled$ =
+    optimisticChatThreadCreateUnsettled(threadId);
 
   // Tracks the last known server-validated message ID so optimistic
   // (client-generated) IDs never leak into sinceId calls.
@@ -1650,11 +1618,15 @@ function createPagedMessages(
   // advanced after each successful fetch to the last returned message.
   const nextCursorId$ = state<string | undefined>(undefined);
 
-  const rawMessages$ = createRawMessagesComputed({
+  const persistentMessages$ = createPersistentMessagesComputed({
     initialPage$,
-    historyMessages$,
-    serverMessages$,
+    persistentMessages$: persistentMessagesState$,
+  });
+  const rawMessages$ = createRawMessagesComputed({
+    persistentMessages$,
+    pendingPersistentMessages$: persistentMessagesState$,
     optimisticMessages$,
+    optimisticCreateUnsettled$,
   });
   const messageRunIndicatorState$ =
     createMessageRunIndicatorState(rawMessages$);
@@ -1675,9 +1647,9 @@ function createPagedMessages(
   const { groupedChatMessages$, refreshGroupedChatMessagesCache$ } =
     createGroupedChatMessagesCache(rawMessages$);
 
-  const appendServerMessages$ = createAppendServerMessages(
+  const writePersistentMessages$ = createWritePersistentMessages(
     threadId,
-    serverMessages$,
+    persistentMessagesState$,
     reportedCompletedRunIds$,
     knownServerMessageIds$,
   );
@@ -1723,16 +1695,14 @@ function createPagedMessages(
     threadId,
     initialPage$,
     nextCursorId$,
-    appendServerMessages$,
+    writePersistentMessages$,
     refreshGroupedChatMessagesCache$,
-    reportedCompletedRunIds$,
-    knownServerMessageIds$,
     dataSource,
   });
   const fetchUpdatedMessage$ = createFetchUpdatedMessageCommand({
     threadId,
     dataSource,
-    appendServerMessages$,
+    writePersistentMessages$,
     refreshGroupedChatMessagesCache$,
   });
 
@@ -1744,7 +1714,7 @@ function createPagedMessages(
         signal,
       );
       signal.throwIfAborted();
-      set(appendServerMessages$, result.messages);
+      set(writePersistentMessages$, result.messages);
       await set(refreshGroupedChatMessagesCache$, signal);
       signal.throwIfAborted();
     },
@@ -1754,9 +1724,8 @@ function createPagedMessages(
     threadId,
     threadMeta$,
     earliestChatMessageId$,
-    historyMessages$,
+    writePersistentMessages$,
     loadedHistoryHasMore$,
-    knownServerMessageIds$,
     refreshGroupedChatMessagesCache$,
     dataSource,
   });
@@ -1840,18 +1809,16 @@ function createLoadHistoryCommand({
   threadId,
   threadMeta$,
   earliestChatMessageId$,
-  historyMessages$,
+  writePersistentMessages$,
   loadedHistoryHasMore$,
-  knownServerMessageIds$,
   refreshGroupedChatMessagesCache$,
   dataSource,
 }: {
   threadId: string;
   threadMeta$: Computed<Promise<ThreadMeta | null>>;
   earliestChatMessageId$: Computed<Promise<string | undefined>>;
-  historyMessages$: State<PagedChatMessage[]>;
+  writePersistentMessages$: Command<void, [PagedChatMessage[]]>;
   loadedHistoryHasMore$: State<boolean | null>;
-  knownServerMessageIds$: KnownServerMessageIds$;
   refreshGroupedChatMessagesCache$: Command<Promise<void>, [AbortSignal]>;
   dataSource: ChatThreadDataSource;
 }): Command<Promise<LoadHistoryResult>, [AbortSignal]> {
@@ -1877,20 +1844,7 @@ function createLoadHistoryCommand({
         signal,
       );
       signal.throwIfAborted();
-      set(reconcileOptimisticChatMessages$, {
-        threadId,
-        messages: result.messages,
-      });
-      set(knownServerMessageIds$, (prev) => {
-        return addKnownServerMessageIds(prev, result.messages);
-      });
-
-      set(historyMessages$, (prev) => {
-        if (result.messages.length === 0) {
-          return prev;
-        }
-        return [...result.messages, ...prev];
-      });
+      set(writePersistentMessages$, result.messages);
       set(loadedHistoryHasMore$, result.hasMore);
       if (result.messages.length > 0) {
         await set(refreshGroupedChatMessagesCache$, signal);

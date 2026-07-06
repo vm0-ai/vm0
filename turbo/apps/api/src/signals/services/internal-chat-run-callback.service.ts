@@ -35,7 +35,6 @@ import { waitUntil } from "../context/wait-until";
 import { getDatasetName, queryAxiomDirect } from "../external/axiom";
 import { writeDb$, type Db } from "../external/db";
 import {
-  publishChatThreadMessageUpdatedSafely,
   publishChatThreadRunFinished,
   publishThreadListChanged,
   publishUserSignal,
@@ -61,6 +60,7 @@ import {
   visibleChatMessageCondition,
 } from "./zero-chat-message-shared.service";
 import { appendQueuedRunAssistantMarker } from "./zero-chat-queue-marker.service";
+import { recommendedFollowupsMessageIdForRun } from "./assistant-message-id";
 import {
   loadNextUnclaimedQueuedUserMessage,
   type QueuedUserMessage,
@@ -857,7 +857,6 @@ async function insertRunLifecycleMarker(args: {
   readonly userId: string;
   readonly publishRunFinished: boolean;
   readonly event: "completed" | "cancelled";
-  readonly recommendedFollowups?: ChatMessageRecommendedFollowups;
 }): Promise<boolean> {
   const markerCreatedAt = nowDate();
   const runGroupId = await runGroupIdForRun(args.db, args.runId);
@@ -871,8 +870,6 @@ async function insertRunLifecycleMarker(args: {
         runId: args.runId,
         runGroupId,
         runLifecycleEvent: args.event,
-        recommendedFollowups:
-          args.event === "completed" ? args.recommendedFollowups : undefined,
         createdAt: markerCreatedAt,
       })
       .onConflictDoNothing({
@@ -903,34 +900,36 @@ async function insertRunLifecycleMarker(args: {
   return true;
 }
 
-async function updateCompletedLifecycleMarkerFollowups(args: {
+async function insertRecommendedFollowupsMessage(args: {
   readonly db: Db;
   readonly runId: string;
   readonly threadId: string;
   readonly userId: string;
   readonly recommendedFollowups: ChatMessageRecommendedFollowups;
 }): Promise<boolean> {
-  const updated = await args.db
-    .update(chatMessages)
-    .set({ recommendedFollowups: args.recommendedFollowups })
-    .where(
-      and(
-        eq(chatMessages.runId, args.runId),
-        eq(chatMessages.role, "assistant"),
-        eq(chatMessages.runLifecycleEvent, "completed"),
-      ),
-    )
+  const runGroupId = await runGroupIdForRun(args.db, args.runId);
+  const inserted = await args.db
+    .insert(chatMessages)
+    .values({
+      id: recommendedFollowupsMessageIdForRun(args.runId),
+      chatThreadId: args.threadId,
+      role: "assistant",
+      content: null,
+      runId: args.runId,
+      runGroupId,
+      recommendedFollowups: args.recommendedFollowups,
+    })
+    .onConflictDoNothing({ target: chatMessages.id })
     .returning({ id: chatMessages.id });
 
-  if (updated.length === 0) {
+  if (inserted.length === 0) {
     return false;
   }
 
-  await publishChatThreadMessageUpdatedSafely({
-    userId: args.userId,
-    threadId: args.threadId,
-    messageId: updated[0]!.id,
-  });
+  await publishUserSignal(
+    [args.userId],
+    `chatThreadMessageCreated:${args.threadId}`,
+  );
   return true;
 }
 
@@ -1118,7 +1117,7 @@ async function runCompletedChatCallbackSideEffects(args: {
     if (!recommendedFollowups) {
       return;
     }
-    await updateCompletedLifecycleMarkerFollowups({
+    await insertRecommendedFollowupsMessage({
       db: args.db,
       runId: args.runId,
       threadId: args.chatThread.chatThreadId,
