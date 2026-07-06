@@ -2,6 +2,7 @@ const SERIALIZED_VALUE_MAX_DEPTH = 32;
 const SERIALIZED_OBJECT_MAX_ENTRIES = 64;
 const CIRCULAR_MARKER = "[Circular]";
 const TRUNCATED_MARKER = "[Truncated]";
+const UNREADABLE_MARKER = "[Unreadable]";
 
 /**
  * Extract message string from log arguments.
@@ -24,18 +25,32 @@ function serializeErrorWithSeen(
   seen: WeakSet<object>,
   depth: number,
 ): Record<string, unknown> {
+  const name = safeReadValue(() => {
+    return err.name;
+  });
+  const message = safeReadValue(() => {
+    return err.message;
+  });
   const serialized: Record<string, unknown> = {
-    name: err.name,
-    message: err.message,
-    stack: err.stack,
+    name: typeof name === "string" ? name : "Error",
+    message: typeof message === "string" ? message : UNREADABLE_MARKER,
+    stack: safeReadValue(() => {
+      return err.stack;
+    }),
   };
   seen.add(err);
-  if (err.cause !== undefined) {
-    serialized.cause = serializeErrorValue(err.cause, seen, depth + 1);
+  const cause = safeReadValue(() => {
+    return err.cause;
+  });
+  if (cause !== undefined) {
+    serialized.cause = serializeErrorValue(cause, seen, depth + 1);
   }
-  for (const [key, value] of Object.entries(
-    err as unknown as Record<string, unknown>,
-  )) {
+  const entries = safeObjectEntries(err);
+  if (!entries) {
+    serialized.__unreadable = true;
+    return serialized;
+  }
+  for (const [key, value] of entries) {
     if (!(key in serialized)) {
       serialized[key] = serializeErrorValue(value, seen, depth + 1);
     }
@@ -45,6 +60,22 @@ function serializeErrorWithSeen(
 
 export function serializeError(err: Error): Record<string, unknown> {
   return serializeErrorWithSeen(err, new WeakSet<object>(), 0);
+}
+
+function safeReadValue(read: () => unknown): unknown {
+  try {
+    return read();
+  } catch {
+    return UNREADABLE_MARKER;
+  }
+}
+
+function safeObjectEntries(value: object): readonly [string, unknown][] | null {
+  try {
+    return Object.entries(value as unknown as Record<string, unknown>);
+  } catch {
+    return null;
+  }
 }
 
 function serializeErrorValue(
@@ -83,10 +114,17 @@ function serializeErrorValue(
 
   seen.add(value);
   if (Array.isArray(value)) {
-    const items = value.slice(0, SERIALIZED_OBJECT_MAX_ENTRIES).map((item) => {
-      return serializeErrorValue(item, seen, depth + 1);
-    });
-    if (value.length > SERIALIZED_OBJECT_MAX_ENTRIES) {
+    const entries = safeObjectEntries(value);
+    if (!entries) {
+      return UNREADABLE_MARKER;
+    }
+    const items = entries
+      .slice(0, SERIALIZED_OBJECT_MAX_ENTRIES)
+      .map((item) => {
+        const [, child] = item;
+        return serializeErrorValue(child, seen, depth + 1);
+      });
+    if (entries.length > SERIALIZED_OBJECT_MAX_ENTRIES) {
       items.push(TRUNCATED_MARKER);
     }
     return items;
@@ -94,7 +132,11 @@ function serializeErrorValue(
 
   const serialized: Record<string, unknown> = {};
   let entryCount = 0;
-  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+  const entries = safeObjectEntries(value);
+  if (!entries) {
+    return UNREADABLE_MARKER;
+  }
+  for (const [key, child] of entries) {
     if (entryCount >= SERIALIZED_OBJECT_MAX_ENTRIES) {
       serialized.__truncated = true;
       break;

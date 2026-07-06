@@ -12,7 +12,7 @@ import { flushLogs, logger } from "./lib/log";
 import { waitUntil } from "./signals/context/wait-until";
 import { honoSignalHandler } from "./signals/context/route";
 import type { RouteEntry } from "./signals/route-entry";
-import { isAbortError } from "./signals/utils";
+import { isAbortError, safeSync } from "./signals/utils";
 
 const L = logger("App");
 
@@ -30,6 +30,8 @@ interface UnhandledRequestErrorLogFields {
   readonly errorCode?: string;
   readonly error: Record<string, unknown>;
 }
+
+type ErrorWithCode = Error & { readonly code?: unknown };
 
 function shouldCaptureError(error: Error): boolean {
   return !(error instanceof HTTPException) || error.status >= 500;
@@ -50,6 +52,38 @@ function redirectToWeb(context: Context): Response {
   return context.redirect(target.toString());
 }
 
+function readErrorValue(read: () => unknown): unknown {
+  const result = safeSync(read);
+  return "ok" in result ? result.ok : undefined;
+}
+
+function errorCause(error: Error): Error | undefined {
+  const cause = readErrorValue(() => {
+    return error.cause;
+  });
+  return cause instanceof Error ? cause : undefined;
+}
+
+function errorMessage(error: Error): string | undefined {
+  const message = readErrorValue(() => {
+    return error.message;
+  });
+  return typeof message === "string" ? message : undefined;
+}
+
+function errorName(error: Error): string | undefined {
+  const name = readErrorValue(() => {
+    return error.name;
+  });
+  return typeof name === "string" ? name : undefined;
+}
+
+function errorCode(error: Error): unknown {
+  return readErrorValue(() => {
+    return (error as ErrorWithCode).code;
+  });
+}
+
 function errorChain(error: Error): readonly Error[] {
   const chain: Error[] = [];
   const seen = new Set<Error>();
@@ -61,7 +95,7 @@ function errorChain(error: Error): readonly Error[] {
   ) {
     chain.push(current);
     seen.add(current);
-    current = current.cause instanceof Error ? current.cause : undefined;
+    current = errorCause(current);
   }
   return chain;
 }
@@ -69,12 +103,13 @@ function errorChain(error: Error): readonly Error[] {
 function sourceErrorMessage(error: Error): string {
   const chain = errorChain(error);
   for (let index = chain.length - 1; index >= 0; index -= 1) {
-    const message = chain[index]?.message.trim();
+    const current = chain[index];
+    const message = current ? errorMessage(current)?.trim() : "";
     if (message) {
       return message;
     }
   }
-  return error.name || "unknown error";
+  return errorName(error) || "unknown error";
 }
 
 function truncateSummary(summary: string): string {
@@ -132,7 +167,7 @@ function sanitizeErrorSummary(error: Error): string {
 
 function structuredErrorCode(error: Error): string | undefined {
   for (const current of errorChain(error)) {
-    const code = "code" in current ? current.code : undefined;
+    const code = errorCode(current);
     if (typeof code === "number" && Number.isFinite(code)) {
       return String(code);
     }

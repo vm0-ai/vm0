@@ -284,6 +284,49 @@ describe("createApp", () => {
     }).not.toThrow();
   });
 
+  it("handles unreadable error properties while logging unhandled errors", async () => {
+    const error = new Error("unreadable failure") as Error &
+      Record<string, unknown>;
+    Object.defineProperty(error, "cause", {
+      get() {
+        throw new Error("cause getter failed");
+      },
+    });
+    Object.defineProperty(error, "code", {
+      get() {
+        throw new Error("code getter failed");
+      },
+    });
+    Object.defineProperty(error, "request", {
+      enumerable: true,
+      get() {
+        throw new Error("request getter failed");
+      },
+    });
+    const handler$ = computed((): never => {
+      throw error;
+    });
+    const client = setupApp({
+      context,
+      routes: [...ROUTES, { route: errorTestContract.boom, handler: handler$ }],
+    })(errorTestContract);
+
+    const response = await accept(client.boom(), [500]);
+
+    expect(response.body).toStrictEqual({ error: "Internal server error" });
+
+    const [message, fields] =
+      context.mocks.axiomLogging.error.mock.calls.at(-1) ?? [];
+    const logFields = fields as Record<PropertyKey, unknown>;
+    expect(message).toBe("Unhandled request error: unreadable failure");
+    expect(logFields.errorCode).toBeUndefined();
+    expect(logFields.error).toMatchObject({
+      message: "unreadable failure",
+      cause: "[Unreadable]",
+      __unreadable: true,
+    });
+  });
+
   it("summarizes response validation failures without schema details", async () => {
     const handler$ = computed(() => {
       return { status: 500, body: { error: 123 } };

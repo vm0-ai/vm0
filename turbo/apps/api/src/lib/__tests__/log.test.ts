@@ -326,6 +326,35 @@ describe("serializeError via logging", () => {
     }).not.toThrow();
   });
 
+  it("serializes unreadable error properties without throwing", () => {
+    const log = logger("unreadable-error-test");
+    const err = new Error("request failed") as Error & Record<string, unknown>;
+    Object.defineProperty(err, "cause", {
+      get() {
+        throw new Error("cause getter failed");
+      },
+    });
+    Object.defineProperty(err, "request", {
+      enumerable: true,
+      get() {
+        throw new Error("request getter failed");
+      },
+    });
+
+    expect(() => {
+      log.error(err);
+    }).not.toThrow();
+
+    const fields = axiomLogging.error.mock.calls[0]?.[1] as
+      | Record<string, unknown>
+      | undefined;
+    expect(fields?.error).toMatchObject({
+      message: "request failed",
+      cause: "[Unreadable]",
+      __unreadable: true,
+    });
+  });
+
   it("surfaces custom enumerable properties on Error", () => {
     const log = logger("custom-err");
     const err = new Error("custom") as Error & Record<string, unknown>;
