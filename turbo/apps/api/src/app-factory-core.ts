@@ -101,6 +101,10 @@ function sanitizeErrorSummary(error: Error): string {
       "[id]",
     )
     .replace(
+      /\b(?:user|org)_(?=[A-Za-z0-9_-]*\d)[A-Za-z0-9][A-Za-z0-9_-]{9,}\b/g,
+      "[id]",
+    )
+    .replace(
       /\bAuthorization\b\s*[:=]\s*["']?(?:Bearer|Basic|Digest|Token)\s+[^,\s"']+/gi,
       "Authorization=[redacted]",
     )
