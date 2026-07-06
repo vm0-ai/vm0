@@ -138,6 +138,14 @@ export const setTemplatePickerOpen$ = command(({ set }, open: boolean) => {
   set(internalTemplatePickerOpen$, open);
 });
 
+const internalUploadPopoverOpen$ = state(false);
+export const uploadPopoverOpen$ = computed((get) => {
+  return get(internalUploadPopoverOpen$);
+});
+export const setUploadPopoverOpen$ = command(({ set }, open: boolean) => {
+  set(internalUploadPopoverOpen$, open);
+});
+
 const internalTemplatePickerCategory$ = state("slides");
 export const templatePickerCategory$ = computed((get) => {
   return get(internalTemplatePickerCategory$);

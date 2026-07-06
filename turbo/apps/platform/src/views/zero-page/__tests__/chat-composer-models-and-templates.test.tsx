@@ -2190,16 +2190,15 @@ describe("chat composer templates", () => {
       path: `/chats/${THREAD_ID}`,
     });
 
-    const textarea = (await screen.findByPlaceholderText(
-      PLACEHOLDER,
-    )) as HTMLTextAreaElement;
-    const composer = composerElementFrom(textarea);
+    await screen.findByPlaceholderText(PLACEHOLDER);
+    const editor = await findComposerEditor();
+    const composer = composerElementFrom(editor);
 
-    await user.click(within(composer).getByLabelText("Upload"));
-    await waitFor(() => {
-      expect(screen.getByText("Upload from computer")).toBeInTheDocument();
-      expect(screen.getByText("Upload from link")).toBeInTheDocument();
-    });
+    await user.click(within(composer).getByTestId("composer-upload"));
+    await expect(
+      screen.findByText("Upload from computer"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByText("Upload from link")).toBeInTheDocument();
 
     await user.type(
       screen.getByTestId("composer-upload-link-input"),
@@ -2208,7 +2207,7 @@ describe("chat composer templates", () => {
     await user.click(screen.getByTestId("composer-upload-link-add"));
 
     await waitFor(() => {
-      expect(textarea.value).toBe("https://example.com/image.png");
+      expect(editor.textContent).toBe("https://example.com/image.png");
     });
   });
 

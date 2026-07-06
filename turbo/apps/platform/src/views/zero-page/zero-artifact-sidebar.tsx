@@ -1,9 +1,4 @@
-import {
-  useState,
-  type ChangeEvent,
-  type FormEvent,
-  type ReactNode,
-} from "react";
+import type { ChangeEvent, FormEvent, ReactNode } from "react";
 import {
   IconArrowLeft,
   IconArrowsDiagonal,
@@ -2410,11 +2405,19 @@ function ArtifactImageEditUploadLinkForm({
   disabled: boolean;
   onSelectLink: (url: string) => void;
 }) {
-  const [imageUrl, setImageUrl] = useState("");
-  const linkHasValue = imageUrl.trim().length > 0;
+  const setSubmitVisible = (form: HTMLFormElement | null, visible: boolean) => {
+    const submit = form?.querySelector<HTMLButtonElement>(
+      '[data-testid="image-edit-upload-link-add"]',
+    );
+    if (submit) {
+      submit.hidden = !visible;
+    }
+  };
   const handleLinkSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const value = imageUrl.trim();
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    const value = String(data.get("imageUrl") ?? "").trim();
     if (!value) {
       return;
     }
@@ -2423,7 +2426,14 @@ function ArtifactImageEditUploadLinkForm({
       return;
     }
     onSelectLink(new URL(value).toString());
-    setImageUrl("");
+    form.reset();
+    setSubmitVisible(form, false);
+  };
+  const handleLinkInput = (event: FormEvent<HTMLInputElement>) => {
+    setSubmitVisible(
+      event.currentTarget.form,
+      event.currentTarget.value.trim().length > 0,
+    );
   };
 
   return (
@@ -2441,27 +2451,23 @@ function ArtifactImageEditUploadLinkForm({
         name="imageUrl"
         placeholder="Paste link"
         type="url"
-        value={imageUrl}
         disabled={disabled}
         data-testid="image-edit-upload-link-input"
-        onChange={(event) => {
-          setImageUrl(event.currentTarget.value);
-        }}
+        onInput={handleLinkInput}
       />
-      {linkHasValue ? (
-        <Button
-          type="submit"
-          size="icon"
-          variant="ghost"
-          className="h-7 w-7 rounded-md p-0 text-muted-foreground hover:text-foreground"
-          disabled={disabled}
-          data-testid="image-edit-upload-link-add"
-          aria-label="Add image link"
-          title="Add image link"
-        >
-          <IconPlus size={16} stroke={1.8} />
-        </Button>
-      ) : null}
+      <Button
+        type="submit"
+        size="icon"
+        variant="ghost"
+        className="h-7 w-7 rounded-md p-0 text-muted-foreground hover:text-foreground"
+        disabled={disabled}
+        hidden
+        data-testid="image-edit-upload-link-add"
+        aria-label="Add image link"
+        title="Add image link"
+      >
+        <IconPlus size={16} stroke={1.8} />
+      </Button>
     </form>
   );
 }

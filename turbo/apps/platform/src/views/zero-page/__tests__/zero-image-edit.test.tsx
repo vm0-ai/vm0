@@ -493,16 +493,14 @@ describe("image editing", () => {
     await openImageEditMode(user);
     await user.click(screen.getByTestId("image-edit-upload-menu"));
 
-    expect(screen.queryByTestId("image-edit-upload-link-add")).toBeNull();
+    expect(screen.getByTestId("image-edit-upload-link-add")).not.toBeVisible();
 
     const linkInput = screen.getByTestId("image-edit-upload-link-input");
     await user.type(linkInput, LINK_IMAGE_URL);
-    expect(
-      screen.getByTestId("image-edit-upload-link-add"),
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("image-edit-upload-link-add")).toBeVisible();
 
     await fill(linkInput, " ");
-    expect(screen.queryByTestId("image-edit-upload-link-add")).toBeNull();
+    expect(screen.getByTestId("image-edit-upload-link-add")).not.toBeVisible();
   });
 
   it("exposes share targets and delete from the image edit toolbar", async () => {
