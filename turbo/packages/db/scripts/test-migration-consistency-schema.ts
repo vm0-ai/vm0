@@ -134,6 +134,29 @@ async function readLegacySecretValue(
   return value.rows[0]?.encrypted_value;
 }
 
+async function expectQueryErrorCode(
+  client: Client,
+  query: string,
+  values: unknown[],
+  code: string,
+  message: string,
+): Promise<void> {
+  try {
+    await client.query(query, values);
+  } catch (error) {
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      error.code === code
+    ) {
+      return;
+    }
+    throw error;
+  }
+  throw new Error(message);
+}
+
 async function seedCustomConnectorLegacyBackfillRows(
   dbUrl: string,
 ): Promise<void> {
@@ -573,6 +596,78 @@ async function validateCustomConnectorLegacySecretBridge(
     if (deleted.rows[0]?.count !== "0") {
       throw new Error(
         "Legacy custom connector delete did not remove the value",
+      );
+    }
+
+    await expectQueryErrorCode(
+      client,
+      `
+      INSERT INTO org_custom_connector_values (
+        connector_id,
+        user_id,
+        org_id,
+        kind,
+        key,
+        encrypted_value,
+        created_at,
+        updated_at
+      )
+      VALUES ($1, $2, $3, 'secret', 'secret', 'undeclared-direct-value', '2026-01-05', '2026-01-05')
+      `,
+      [undeclaredSecretConnectorId, primaryUserId, orgId],
+      "23514",
+      "Custom connector values accepted an undeclared field",
+    );
+
+    await client.query(
+      `
+      UPDATE org_custom_connectors
+      SET fields = '[
+        {"key":"secret","label":"Secret","kind":"secret","required":true},
+        {"key":"tenant","label":"Tenant","kind":"variable","required":true}
+      ]'::jsonb
+      WHERE id = $1
+      `,
+      [connectorId],
+    );
+    await client.query(
+      `
+      INSERT INTO org_custom_connector_values (
+        connector_id,
+        user_id,
+        org_id,
+        kind,
+        key,
+        encrypted_value,
+        created_at,
+        updated_at
+      )
+      VALUES ($1, $2, $3, 'variable', 'tenant', 'tenant-value', '2026-01-06', '2026-01-06')
+      `,
+      [connectorId, primaryUserId, orgId],
+    );
+    await client.query(
+      `
+      UPDATE org_custom_connectors
+      SET fields = '[{"key":"secret","label":"Secret","kind":"secret","required":true}]'::jsonb
+      WHERE id = $1
+      `,
+      [connectorId],
+    );
+    const pruned = await client.query<{ count: string }>(
+      `
+      SELECT COUNT(*)::text AS count
+      FROM org_custom_connector_values
+      WHERE connector_id = $1
+        AND user_id = $2
+        AND kind = 'variable'
+        AND key = 'tenant'
+      `,
+      [connectorId, primaryUserId],
+    );
+    if (pruned.rows[0]?.count !== "0") {
+      throw new Error(
+        "Custom connector definition update did not prune undeclared values",
       );
     }
   } finally {
