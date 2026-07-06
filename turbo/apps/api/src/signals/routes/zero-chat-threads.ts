@@ -1,9 +1,8 @@
-import { command, computed } from "ccstate";
+import { computed } from "ccstate";
 import {
   chatSearchContract,
   chatThreadByIdContract,
   chatThreadArtifactsContract,
-  chatThreadGithubPrsContract,
   chatThreadMessagesContract,
   chatThreadsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
@@ -31,7 +30,6 @@ import {
   zeroChatThreadUnreadAgentIds,
   zeroChatThreadUnreads,
 } from "../services/zero-chat-thread.service";
-import { zeroChatThreadGithubPrs$ } from "../services/chat-thread-github-prs.service";
 import {
   getChatThreadEventsSince,
   getChatThreadSnapshot,
@@ -63,13 +61,6 @@ function forbidden(message: string) {
   return {
     status: 403 as const,
     body: { error: { message, code: "FORBIDDEN" } },
-  };
-}
-
-function badGateway(message: string) {
-  return {
-    status: 502 as const,
-    body: { error: { message, code: "BAD_GATEWAY" } },
   };
 }
 
@@ -276,53 +267,6 @@ const listChatThreadArtifactsInner$ = computed(async (get) => {
   };
 });
 
-const listChatThreadGithubPrsInner$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const auth = get(organizationAuthContext$);
-    const overrides = await get(
-      userFeatureSwitchOverrides(auth.orgId, auth.userId),
-    );
-    signal.throwIfAborted();
-
-    if (
-      !isFeatureEnabled(FeatureSwitchKey.ChatGithubPrTracking, {
-        orgId: auth.orgId,
-        userId: auth.userId,
-        overrides,
-      })
-    ) {
-      return forbidden("GitHub PR tracking is not enabled");
-    }
-
-    const params = get(pathParamsOf(chatThreadGithubPrsContract.list));
-    if (!isValidChatThreadId(params.threadId)) {
-      return chatThreadNotFound();
-    }
-
-    const result = await set(
-      zeroChatThreadGithubPrs$,
-      {
-        orgId: auth.orgId,
-        userId: auth.userId,
-        threadId: params.threadId,
-      },
-      signal,
-    );
-
-    if (result.status === "not_found") {
-      return chatThreadNotFound();
-    }
-    if (result.status === "forbidden") {
-      return forbidden(result.message);
-    }
-    if (result.status === "bad_gateway") {
-      return badGateway(result.message);
-    }
-
-    return { status: 200 as const, body: { prs: [...result.prs] } };
-  },
-);
-
 const searchChatInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const query = get(queryOf(chatSearchContract.search));
@@ -391,13 +335,6 @@ export const zeroChatThreadRoutes: readonly RouteEntry[] = [
     handler: authRoute({}, listChatThreadArtifactsInner$),
   },
   ...zeroChatThreadsHtmlArtifactEditSnapshotRoutes,
-  {
-    route: chatThreadGithubPrsContract.list,
-    handler: authRoute(
-      { requireOrganization: true, missingOrganizationStatus: 401 },
-      listChatThreadGithubPrsInner$,
-    ),
-  },
   {
     route: chatThreadMessagesContract.list,
     handler: authRoute({}, listChatThreadMessagesInner$),

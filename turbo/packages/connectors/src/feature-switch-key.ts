@@ -45,7 +45,6 @@ export enum FeatureSwitchKey {
   CodexFastMode = "codexFastMode",
 
   ZapierConnector = "zapierConnector",
-  ChatGithubPrTracking = "chatGithubPrTracking",
   ChatThreadEmoji = "chatThreadEmoji",
   MemoryViewer = "memoryViewer",
   RelationshipMemory = "relationshipMemory",

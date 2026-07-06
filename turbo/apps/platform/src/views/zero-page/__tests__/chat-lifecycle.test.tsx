@@ -5,7 +5,6 @@ import { describe, expect, it, vi } from "vitest";
 import {
   chatThreadByIdContract,
   chatThreadArtifactsContract,
-  chatThreadGithubPrsContract,
   chatThreadMarkReadContract,
   chatThreadMessagesContract,
   chatThreadRenameContract,
@@ -23,7 +22,6 @@ import {
   zeroBillingStatusContract,
 } from "@vm0/api-contracts/contracts/zero-billing";
 import { zeroComputerUseHostsContract } from "@vm0/api-contracts/contracts/zero-computer-use";
-import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { logsByIdContract } from "@vm0/api-contracts/contracts/logs";
 import {
@@ -72,7 +70,6 @@ function detachedSetupPage(
 
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const AUTOMATION_THREAD_ID = "b0000000-0000-4000-a000-000000000701";
-const GITHUB_PR_THREAD_ID = "b0000000-0000-4000-a000-000000000702";
 const FOLLOWUP_THREAD_ID = "b0000000-0000-4000-a000-000000000704";
 const HISTORY_THREAD_ID = "b0000000-0000-4000-a000-000000000705";
 const EVENT_SOURCED_RENAME_THREAD_ID = "b0000000-0000-4000-a000-000000000706";
@@ -640,165 +637,6 @@ function mockServerQueuedThreadStories(): void {
     return respond(200, { lastReadAt: null, unreads: [] });
   });
 }
-
-function mockGithubPrTrackingThread(): void {
-  mockChatLifecycle(context, {
-    threadId: GITHUB_PR_THREAD_ID,
-    threadTitle: "PR review",
-    chatMessages: [
-      {
-        id: "msg-pr-request",
-        role: "user",
-        content: "Review the failing pull request",
-        createdAt: "2026-06-09T10:00:00Z",
-      },
-    ],
-  });
-  context.mocks.data.connectors([
-    {
-      id: "99999999-9999-4999-8999-999999999999",
-      type: "github",
-      authMethod: "oauth",
-      externalId: "github-octocat",
-      externalUsername: "octocat",
-      externalEmail: null,
-      oauthScopes: ["repo"],
-      connectionStatus: "connected",
-      reconnectReason: null,
-      tokenExpiresAt: null,
-      createdAt: "2026-01-01T00:00:00Z",
-      updatedAt: "2026-01-01T00:00:00Z",
-    },
-  ]);
-  context.mocks.data.githubIntegration(
-    context.mocks.data.defaultGithubIntegration(),
-  );
-  context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
-    return respond(200, { enabledTypes: ["github"] });
-  });
-  context.mocks.api(chatThreadGithubPrsContract.list, ({ respond }) => {
-    return respond(200, {
-      prs: [
-        {
-          repo: "vm0-ai/vm0",
-          number: 123,
-          title: "Fix flaky platform tests",
-          url: "https://github.com/vm0-ai/vm0/pull/123",
-          state: "open",
-          headSha: "abc123",
-          mergeStatus: "conflicts",
-          rollup: "failure",
-          checks: [
-            {
-              name: "unit tests",
-              status: "completed",
-              conclusion: "failure",
-              url: "https://github.com/vm0-ai/vm0/actions/runs/1",
-              startedAt: "2026-06-09T10:00:00Z",
-              completedAt: "2026-06-09T10:05:00Z",
-            },
-            {
-              name: "deploy preview",
-              status: "queued",
-              conclusion: null,
-              url: null,
-              startedAt: null,
-              completedAt: null,
-            },
-          ],
-        },
-        {
-          repo: "vm0-ai/vm0",
-          number: 124,
-          title: "Stabilize deploy preview checks",
-          url: "https://github.com/vm0-ai/vm0/pull/124",
-          state: "open",
-          headSha: "def456",
-          mergeStatus: "blocked",
-          rollup: "pending",
-          checks: [
-            {
-              name: "lint",
-              status: "completed",
-              conclusion: "success",
-              url: "https://github.com/vm0-ai/vm0/actions/runs/2",
-              startedAt: "2026-06-09T10:06:00Z",
-              completedAt: "2026-06-09T10:07:00Z",
-            },
-            {
-              name: "security review",
-              status: "in_progress",
-              conclusion: null,
-              url: null,
-              startedAt: "invalid-date",
-              completedAt: null,
-            },
-          ],
-        },
-        {
-          repo: "vm0-ai/vm0",
-          number: 125,
-          title: "Draft data cleanup",
-          url: "https://github.com/vm0-ai/vm0/pull/125",
-          state: "open",
-          headSha: "ghi789",
-          mergeStatus: "draft",
-          rollup: "none",
-          checks: [],
-        },
-        {
-          repo: "vm0-ai/vm0",
-          number: 126,
-          title: "Ready coverage update",
-          url: "https://github.com/vm0-ai/vm0/pull/126",
-          state: "open",
-          headSha: "jkl012",
-          mergeStatus: "ready",
-          rollup: "success",
-          checks: [
-            {
-              name: "coverage",
-              status: "completed",
-              conclusion: "success",
-              url: "https://github.com/vm0-ai/vm0/actions/runs/3",
-              startedAt: "2026-06-09T10:08:00Z",
-              completedAt: "2026-06-09T10:11:00Z",
-            },
-          ],
-        },
-        {
-          repo: "vm0-ai/vm0",
-          number: 127,
-          title: "External checks unavailable",
-          url: "https://github.com/vm0-ai/vm0/pull/127",
-          state: "open",
-          headSha: "mno345",
-          mergeStatus: null,
-          rollup: "unknown",
-          checks: [],
-        },
-      ],
-    });
-  });
-}
-
-async function openGithubPrTracking(): Promise<void> {
-  click(await screen.findByLabelText("Open GitHub PR tracking"));
-
-  await waitFor(() => {
-    expect(screen.getByLabelText("GitHub PR tracking")).toBeInTheDocument();
-  });
-}
-
-function setupGithubPrTrackingPage(): void {
-  mockGithubPrTrackingThread();
-  detachedSetupPage({
-    context,
-    path: `/chats/${GITHUB_PR_THREAD_ID}`,
-    featureSwitches: { [FeatureSwitchKey.ChatGithubPrTracking]: true },
-  });
-}
-
 function buttonByText(text: string, container?: ParentNode): HTMLElement {
   const button = queryAllByRoleFast("button", container).find((candidate) => {
     return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
@@ -5859,116 +5697,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       ).toBeInTheDocument();
     });
   });
-
-  it("opens GitHub PR tracking from the dock", async () => {
-    setupGithubPrTrackingPage();
-    await openGithubPrTracking();
-
-    await waitFor(() => {
-      expect(screen.getByText("vm0-ai/vm0 #123")).toBeInTheDocument();
-      expect(screen.getByText("Fix flaky platform tests")).toBeInTheDocument();
-      expect(screen.getByText("Conflicts")).toBeInTheDocument();
-      expect(screen.getByText("unit tests")).toBeInTheDocument();
-      expect(screen.getByText("deploy preview")).toBeInTheDocument();
-      expect(
-        screen.getByText("Stabilize deploy preview checks"),
-      ).toBeInTheDocument();
-      expect(screen.getAllByText("Pending").length).toBeGreaterThan(0);
-      expect(screen.getByText("security review")).toBeInTheDocument();
-      expect(screen.getByText("Draft data cleanup")).toBeInTheDocument();
-      expect(screen.getByText("Draft")).toBeInTheDocument();
-      expect(screen.getByText("Ready coverage update")).toBeInTheDocument();
-      expect(screen.getByText("Ready to merge")).toBeInTheDocument();
-      expect(
-        screen.getByText("External checks unavailable"),
-      ).toBeInTheDocument();
-      expect(screen.getByText("Unknown")).toBeInTheDocument();
-      expect(screen.getAllByText("No GitHub Actions checks.")).toHaveLength(2);
-    });
-
-    click(screen.getByLabelText("Close GitHub PR tracking"));
-
-    await waitFor(() => {
-      expect(
-        screen.queryByLabelText("GitHub PR tracking"),
-      ).not.toBeInTheDocument();
-    });
-  });
-
-  it("shows an empty GitHub PR tracking state", async () => {
-    mockGithubPrTrackingThread();
-    context.mocks.api(chatThreadGithubPrsContract.list, ({ respond }) => {
-      return respond(200, { prs: [] });
-    });
-    detachedSetupPage({
-      context,
-      path: `/chats/${GITHUB_PR_THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.ChatGithubPrTracking]: true },
-    });
-
-    await openGithubPrTracking();
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("No GitHub PRs found in this chat."),
-      ).toBeInTheDocument();
-    });
-  });
-
-  it("shows GitHub PR tracking load errors and toggles the dock from the header", async () => {
-    mockGithubPrTrackingThread();
-    context.mocks.api(chatThreadGithubPrsContract.list, ({ respond }) => {
-      return respond(502, {
-        error: {
-          message: "GitHub status unavailable",
-          code: "GITHUB_STATUS_UNAVAILABLE",
-        },
-      });
-    });
-    detachedSetupPage({
-      context,
-      path: `/chats/${GITHUB_PR_THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.ChatGithubPrTracking]: true },
-    });
-
-    await openGithubPrTracking();
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("Failed to load GitHub PR status."),
-      ).toBeInTheDocument();
-    });
-    expect(screen.getByLabelText("Open GitHub PR tracking")).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
-
-    click(screen.getByLabelText("Open GitHub PR tracking"));
-
-    await waitFor(() => {
-      expect(
-        screen.queryByLabelText("GitHub PR tracking"),
-      ).not.toBeInTheDocument();
-      expect(screen.getByLabelText("Open GitHub PR tracking")).toHaveAttribute(
-        "aria-pressed",
-        "false",
-      );
-    });
-  });
-
-  it("queues a GitHub PR conflict fix command from the tracking dock", async () => {
-    setupGithubPrTrackingPage();
-    await openGithubPrTracking();
-
-    click(await screen.findByText("Fix conflict"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("fix pr 123 conflict & push"),
-      ).toBeInTheDocument();
-    });
-  });
-
   it("sends a recommended follow-up from the latest assistant reply", async () => {
     const assistantReply = "I can turn this into a launch package.";
     const followupPrompt = "Create a presentation outline";

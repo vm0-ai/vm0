@@ -40,7 +40,6 @@ import {
   IconArrowDown,
   IconArrowUpRight,
   IconChevronRight,
-  IconGitBranch,
   IconLink,
   IconLoader2,
   IconMessageCircle,
@@ -88,7 +87,6 @@ import type {
   ChatThreadArtifactFile,
   ChatMessageUsagePayload,
   GenerationTemplateRequest,
-  ChatThreadGithubPr,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type {
   ChatThreadWorkflowTrigger,
@@ -199,12 +197,6 @@ import {
 } from "../../signals/zero-page/zero-artifact-sidebar.ts";
 import type { ChatClipboardAttachment } from "../../signals/zero-page/clipboard.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
-import {
-  agentGithubPrTrackingAvailable$,
-  githubPrTrackingOpenThreadId$,
-  chatThreadGithubPrs$,
-  setGithubPrTrackingOpenThreadId$,
-} from "../../signals/chat-page/github-pr-tracking.ts";
 import {
   headerAutomationMenu$,
   headerWorkflowTriggersForThread,
@@ -381,583 +373,6 @@ function ArtifactsButtonInner({ thread }: { thread: ChatThreadSignals }) {
     </TooltipProvider>
   );
 }
-
-function githubPrRollupLabel(rollup: ChatThreadGithubPr["rollup"]): string {
-  switch (rollup) {
-    case "success": {
-      return "Success";
-    }
-    case "failure": {
-      return "Failed";
-    }
-    case "pending": {
-      return "Pending";
-    }
-    case "none": {
-      return "No actions";
-    }
-    case "unknown": {
-      return "Unknown";
-    }
-  }
-}
-
-function githubPrRollupClassName(rollup: ChatThreadGithubPr["rollup"]): string {
-  switch (rollup) {
-    case "success": {
-      return "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400";
-    }
-    case "failure": {
-      return "bg-destructive/10 text-destructive";
-    }
-    case "pending": {
-      return "bg-amber-500/10 text-amber-700 dark:text-amber-400";
-    }
-    case "none": {
-      return "bg-muted text-muted-foreground";
-    }
-    case "unknown": {
-      return "bg-muted text-muted-foreground";
-    }
-  }
-}
-
-function githubPrMergeStatusLabel(
-  mergeStatus: NonNullable<ChatThreadGithubPr["mergeStatus"]>,
-): string {
-  switch (mergeStatus) {
-    case "ready": {
-      return "Ready to merge";
-    }
-    case "conflicts": {
-      return "Conflicts";
-    }
-    case "blocked": {
-      return "Blocked";
-    }
-    case "draft": {
-      return "Draft";
-    }
-  }
-}
-
-function githubPrMergeStatusClassName(
-  mergeStatus: NonNullable<ChatThreadGithubPr["mergeStatus"]>,
-): string {
-  switch (mergeStatus) {
-    case "ready": {
-      return "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400";
-    }
-    case "conflicts": {
-      return "bg-destructive/10 text-destructive";
-    }
-    case "blocked": {
-      return "bg-amber-500/10 text-amber-700 dark:text-amber-400";
-    }
-    case "draft": {
-      return "bg-muted text-muted-foreground";
-    }
-  }
-}
-
-function githubPrStatusLabel(pr: ChatThreadGithubPr): string {
-  if (pr.mergeStatus === "conflicts" || pr.mergeStatus === "draft") {
-    return githubPrMergeStatusLabel(pr.mergeStatus);
-  }
-  if (pr.rollup === "failure" || pr.rollup === "pending") {
-    return githubPrRollupLabel(pr.rollup);
-  }
-  if (pr.mergeStatus) {
-    return githubPrMergeStatusLabel(pr.mergeStatus);
-  }
-  return githubPrRollupLabel(pr.rollup);
-}
-
-function githubPrStatusClassName(pr: ChatThreadGithubPr): string {
-  if (pr.mergeStatus === "conflicts" || pr.mergeStatus === "draft") {
-    return githubPrMergeStatusClassName(pr.mergeStatus);
-  }
-  if (pr.rollup === "failure" || pr.rollup === "pending") {
-    return githubPrRollupClassName(pr.rollup);
-  }
-  if (pr.mergeStatus) {
-    return githubPrMergeStatusClassName(pr.mergeStatus);
-  }
-  return githubPrRollupClassName(pr.rollup);
-}
-
-function githubPrStatusSortPriority(pr: ChatThreadGithubPr): number {
-  if (pr.mergeStatus === "conflicts" || pr.rollup === "failure") {
-    return 0;
-  }
-  if (pr.rollup === "pending" || pr.mergeStatus === "blocked") {
-    return 1;
-  }
-  if (pr.mergeStatus === "draft") {
-    return 2;
-  }
-  if (pr.rollup === "success" || pr.mergeStatus === "ready") {
-    return 3;
-  }
-  return 4;
-}
-
-function sortGithubPrsByStatus(
-  prs: readonly ChatThreadGithubPr[],
-): readonly ChatThreadGithubPr[] {
-  return prs
-    .map((pr, index) => {
-      return { pr, index };
-    })
-    .sort((left, right) => {
-      const priorityDiff =
-        githubPrStatusSortPriority(left.pr) -
-        githubPrStatusSortPriority(right.pr);
-      if (priorityDiff !== 0) {
-        return priorityDiff;
-      }
-      return left.index - right.index;
-    })
-    .map((entry) => {
-      return entry.pr;
-    });
-}
-
-function githubCheckResult(
-  check: ChatThreadGithubPr["checks"][number],
-): "success" | "failed" | "pending" {
-  if (check.status !== "completed") {
-    return "pending";
-  }
-
-  if (check.conclusion === "success") {
-    return "success";
-  }
-
-  const failureConclusions = new Set([
-    "failure",
-    "timed_out",
-    "action_required",
-    "cancelled",
-    "startup_failure",
-    "stale",
-  ]);
-  if (check.conclusion && failureConclusions.has(check.conclusion)) {
-    return "failed";
-  }
-
-  return "success";
-}
-
-function githubCheckResultLabel(
-  result: ReturnType<typeof githubCheckResult>,
-): string {
-  switch (result) {
-    case "success": {
-      return "Success";
-    }
-    case "failed": {
-      return "Failed";
-    }
-    case "pending": {
-      return "Pending";
-    }
-  }
-}
-
-function githubCheckResultClassName(
-  result: ReturnType<typeof githubCheckResult>,
-): string {
-  switch (result) {
-    case "success": {
-      return "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400";
-    }
-    case "failed": {
-      return "bg-destructive/10 text-destructive";
-    }
-    case "pending": {
-      return "bg-amber-500/10 text-amber-700 dark:text-amber-400";
-    }
-  }
-}
-
-function githubCheckResultSortPriority(
-  result: ReturnType<typeof githubCheckResult>,
-): number {
-  switch (result) {
-    case "failed": {
-      return 0;
-    }
-    case "pending": {
-      return 1;
-    }
-    case "success": {
-      return 2;
-    }
-  }
-}
-
-function sortGithubChecksByStatus(
-  checks: readonly ChatThreadGithubPr["checks"][number][],
-): readonly ChatThreadGithubPr["checks"][number][] {
-  return checks
-    .map((check, index) => {
-      return { check, index };
-    })
-    .sort((left, right) => {
-      const priorityDiff =
-        githubCheckResultSortPriority(githubCheckResult(left.check)) -
-        githubCheckResultSortPriority(githubCheckResult(right.check));
-      if (priorityDiff !== 0) {
-        return priorityDiff;
-      }
-      return left.index - right.index;
-    })
-    .map((entry) => {
-      return entry.check;
-    });
-}
-
-function githubCheckStatusText(
-  check: ChatThreadGithubPr["checks"][number],
-): string {
-  if (check.status === "completed") {
-    return check.conclusion ?? "completed";
-  }
-  return check.status;
-}
-
-function githubCheckTimeText(value: string | null): string {
-  if (!value) {
-    return "-";
-  }
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(date);
-}
-
-function githubCheckRunKey(
-  check: ChatThreadGithubPr["checks"][number],
-): string {
-  return [
-    check.name,
-    check.status,
-    check.conclusion ?? "",
-    check.url ?? "",
-    check.startedAt ?? "",
-    check.completedAt ?? "",
-  ].join("|");
-}
-
-function GithubPrCheckRunRow({
-  check,
-}: {
-  check: ChatThreadGithubPr["checks"][number];
-}) {
-  const statusText = githubCheckStatusText(check);
-  const result = githubCheckResult(check);
-
-  return (
-    <details
-      className="group rounded-md bg-muted/40 text-xs"
-      title={check.name}
-    >
-      <summary className="flex w-full cursor-pointer list-none items-center gap-2 px-2 py-1.5 text-left [&::-webkit-details-marker]:hidden">
-        <IconChevronRight
-          size={13}
-          className="shrink-0 text-muted-foreground transition-transform group-open:rotate-90"
-        />
-        <span className="min-w-0 flex-1 truncate text-foreground">
-          {check.name}
-        </span>
-        <span
-          className={cn(
-            "shrink-0 whitespace-nowrap rounded-full px-2 py-0.5 font-medium",
-            githubCheckResultClassName(result),
-          )}
-        >
-          {githubCheckResultLabel(result)}
-        </span>
-      </summary>
-      <dl className="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-3 gap-y-1.5 border-t border-border/60 px-2 py-2 text-muted-foreground">
-        <dt className="whitespace-nowrap">Status</dt>
-        <dd className="min-w-0 truncate whitespace-nowrap text-right text-foreground">
-          {statusText}
-        </dd>
-        <dt className="whitespace-nowrap">Conclusion</dt>
-        <dd className="min-w-0 truncate whitespace-nowrap text-right text-foreground">
-          {check.conclusion ?? "-"}
-        </dd>
-        <dt className="whitespace-nowrap">Started</dt>
-        <dd className="min-w-0 truncate whitespace-nowrap text-right text-foreground">
-          {githubCheckTimeText(check.startedAt)}
-        </dd>
-        <dt className="whitespace-nowrap">Completed</dt>
-        <dd className="min-w-0 truncate whitespace-nowrap text-right text-foreground">
-          {githubCheckTimeText(check.completedAt)}
-        </dd>
-        {check.url && (
-          <>
-            <dt className="whitespace-nowrap">Link</dt>
-            <dd className="min-w-0 text-right">
-              <a
-                href={check.url}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center justify-end gap-1 text-primary hover:underline"
-              >
-                <IconLink size={12} />
-                Open action
-              </a>
-            </dd>
-          </>
-        )}
-      </dl>
-    </details>
-  );
-}
-
-function GithubPrActions({
-  pr,
-  disabled,
-  onPrompt,
-}: {
-  pr: ChatThreadGithubPr;
-  disabled: boolean;
-  onPrompt: (prompt: string) => void;
-}) {
-  const showFixConflict = pr.mergeStatus === "conflicts";
-
-  if (!showFixConflict) {
-    return null;
-  }
-
-  return (
-    <div className="mt-3 flex flex-wrap items-center gap-2">
-      {showFixConflict && (
-        <button
-          type="button"
-          disabled={disabled}
-          className="inline-flex h-7 items-center gap-1.5 rounded-md border border-destructive/20 bg-destructive/5 px-2 text-xs font-medium text-destructive hover:bg-destructive/10 disabled:pointer-events-none disabled:opacity-60"
-          onClick={() => {
-            onPrompt(`fix pr ${pr.number} conflict & push`);
-          }}
-        >
-          <IconGitBranch size={13} />
-          Fix conflict
-        </button>
-      )}
-    </div>
-  );
-}
-
-function GithubPrTrackingSkeleton() {
-  return (
-    <div
-      role="status"
-      aria-label="Loading GitHub PR status"
-      className="flex flex-col gap-3"
-    >
-      {[0, 1].map((cardIndex) => {
-        return (
-          <div
-            key={cardIndex}
-            className="rounded-md border border-border bg-background p-3"
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0 flex-1 space-y-2">
-                <Skeleton className="h-3 w-28 rounded" />
-                <Skeleton className="h-4 w-[72%] rounded" />
-              </div>
-              <Skeleton className="h-5 w-20 shrink-0 rounded-full" />
-            </div>
-            <div className="mt-3 flex gap-2">
-              <Skeleton className="h-7 w-24 rounded-md" />
-              <Skeleton className="h-7 w-20 rounded-md" />
-            </div>
-            <div className="mt-3 flex flex-col gap-2">
-              {[0, 1, 2].map((rowIndex) => {
-                return (
-                  <Skeleton key={rowIndex} className="h-8 w-full rounded-md" />
-                );
-              })}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function GithubPrTrackingContent({ thread }: { thread: ChatThreadSignals }) {
-  const githubPrs$ = chatThreadGithubPrs$(thread.threadId);
-  const loadable = useLoadable(githubPrs$);
-  const lastResolvedPrs = useLastResolved(githubPrs$);
-  const modelSelection = useLastResolved(thread.modelSelection$);
-  const [sendActionLoadable, sendAction] = useLoadableSet(thread.sendMessage$);
-  const rootSignal = useGet(rootSignal$);
-  const actionDisabled =
-    sendActionLoadable.state === "loading" || modelSelection === undefined;
-  const sendPrompt = (prompt: string) => {
-    if (modelSelection === undefined) {
-      return;
-    }
-    detach(
-      sendAction(prompt, modelSelection, undefined, rootSignal),
-      Reason.DomCallback,
-    );
-  };
-  const prs = loadable.state === "hasData" ? loadable.data : lastResolvedPrs;
-
-  if (loadable.state === "loading" && prs === undefined) {
-    return <GithubPrTrackingSkeleton />;
-  }
-
-  if (loadable.state === "hasError" && prs === undefined) {
-    return (
-      <div className="flex items-start gap-2 rounded-md border border-destructive/20 bg-destructive/5 p-3 text-sm text-destructive">
-        <IconAlertCircle size={16} className="mt-0.5 shrink-0" />
-        Failed to load GitHub PR status.
-      </div>
-    );
-  }
-
-  if (prs === undefined) {
-    return null;
-  }
-
-  if (prs.length === 0) {
-    return (
-      <div className="rounded-md border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
-        No GitHub PRs found in this chat.
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex flex-col gap-3">
-      {sortGithubPrsByStatus(prs).map((pr) => {
-        const sortedChecks = sortGithubChecksByStatus(pr.checks);
-        return (
-          <div
-            key={`${pr.repo}#${pr.number}`}
-            className="rounded-md border border-border bg-background p-3"
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className="text-xs text-muted-foreground">
-                  {pr.repo} #{pr.number}
-                </div>
-                <a
-                  href={pr.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="mt-1 line-clamp-2 text-sm font-medium text-foreground hover:underline"
-                >
-                  {pr.title}
-                </a>
-              </div>
-              <span
-                className={cn(
-                  "shrink-0 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium",
-                  githubPrStatusClassName(pr),
-                )}
-              >
-                {githubPrStatusLabel(pr)}
-              </span>
-            </div>
-            <GithubPrActions
-              pr={pr}
-              disabled={actionDisabled}
-              onPrompt={sendPrompt}
-            />
-            <div className="mt-3 flex flex-col gap-2">
-              {sortedChecks.length === 0 ? (
-                <div className="text-xs text-muted-foreground">
-                  No GitHub Actions checks.
-                </div>
-              ) : (
-                <div className="flex max-h-72 flex-col gap-2 overflow-y-auto pr-1 [scrollbar-gutter:stable]">
-                  {sortedChecks.map((check) => {
-                    return (
-                      <GithubPrCheckRunRow
-                        key={githubCheckRunKey(check)}
-                        check={check}
-                      />
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function GithubPrTrackingButton({
-  thread,
-  agentId,
-}: {
-  thread: ChatThreadSignals;
-  agentId: string;
-}) {
-  const availableLoadable = useLastLoadable(
-    agentGithubPrTrackingAvailable$(agentId),
-  );
-  const openThreadId = useGet(githubPrTrackingOpenThreadId$);
-  const setOpenThreadId = useSet(setGithubPrTrackingOpenThreadId$);
-  const pageSignal = useGet(pageSignal$);
-  const open = openThreadId === thread.threadId;
-
-  if (
-    availableLoadable.state !== "hasData" ||
-    availableLoadable.data !== true
-  ) {
-    return null;
-  }
-
-  return (
-    <TooltipProvider delayDuration={300}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            onClick={() => {
-              if (open) {
-                setOpenThreadId(null);
-                return;
-              }
-              setOpenThreadId(thread.threadId, pageSignal);
-            }}
-            className={cn(
-              "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors duration-150",
-              open
-                ? "bg-primary/10 text-primary"
-                : "text-muted-foreground/70 hover:bg-accent hover:text-foreground",
-            )}
-            aria-label="Open GitHub PR tracking"
-            aria-pressed={open}
-          >
-            <IconGitBranch size={18} />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">Track GitHub PRs</TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  );
-}
-
 // Loads automations and only renders once this thread has at least one linked
 // automation.
 export function AutomationMenuButton({
@@ -1019,61 +434,13 @@ export function AutomationMenuButton({
     </TooltipProvider>
   );
 }
-
-function GithubPrTrackingDock({ thread }: { thread: ChatThreadSignals }) {
-  const setOpenThreadId = useSet(setGithubPrTrackingOpenThreadId$);
-
-  return (
-    <aside
-      aria-label="GitHub PR tracking"
-      className="pointer-events-none absolute inset-y-0 right-0 z-20 flex px-3 pt-3"
-      style={{
-        width: `var(--github-pr-tracking-dock-width, ${GITHUB_PR_TRACKING_DOCK_WIDTH})`,
-        paddingBottom: "calc(max(0.5rem, var(--sab)) + 0.5rem)",
-      }}
-    >
-      <div className="pointer-events-auto flex min-h-0 w-full flex-col rounded-lg border border-border bg-background shadow-sm">
-        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-border px-4 py-3">
-          <div className="min-w-0">
-            <h2 className="text-sm font-semibold text-foreground">
-              GitHub PRs
-            </h2>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              Pull requests mentioned in this chat thread.
-            </p>
-          </div>
-          <button
-            type="button"
-            aria-label="Close GitHub PR tracking"
-            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
-            onClick={() => {
-              setOpenThreadId(null);
-            }}
-          >
-            <IconX size={16} />
-          </button>
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
-          <GithubPrTrackingContent thread={thread} />
-        </div>
-      </div>
-    </aside>
-  );
-}
-
 function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
   const threadMetaLoadable = useLastLoadable(thread.threadMeta$);
   const threadTitleEmoji = useLastResolved(thread.threadTitleEmoji$);
   const threadTitleText = useLastResolved(thread.threadTitleText$) ?? "";
   const features = useLastResolved(featureSwitch$);
-  const githubPrTrackingEnabled =
-    features?.[FeatureSwitchKey.ChatGithubPrTracking] ?? false;
   const chatThreadEmojiEnabled =
     features?.[FeatureSwitchKey.ChatThreadEmoji] ?? false;
-  const agentId =
-    threadMetaLoadable.state === "hasData"
-      ? (threadMetaLoadable.data?.agentId ?? null)
-      : null;
   const threadTitle =
     threadMetaLoadable.state === "hasData"
       ? (threadMetaLoadable.data?.title?.trim() ?? "")
@@ -1105,9 +472,6 @@ function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
       <div className="hidden sm:flex items-center gap-0.5">
         <AutomationMenuButton threadId={thread.threadId} />
         <ArtifactsButton thread={thread} />
-        {githubPrTrackingEnabled && agentId && (
-          <GithubPrTrackingButton thread={thread} agentId={agentId} />
-        )}
       </div>
     </header>
   );
@@ -3279,46 +2643,9 @@ function resolveSessionError(
   return null;
 }
 
-type GithubPrTrackingLayoutStyle = CSSProperties &
-  Record<
-    "--github-pr-tracking-dock-width" | "--github-pr-tracking-content-inset",
-    string
-  >;
-
 const CHAT_THREAD_CONTENT_MAIN_CLASS =
-  "items-center py-4 pl-4 pr-[calc(var(--github-pr-tracking-content-inset)_+_1rem)] sm:pl-6 sm:pr-[calc(var(--github-pr-tracking-content-inset)_+_1.5rem)] @container";
-const GITHUB_PR_TRACKING_DOCK_WIDTH =
-  "min(400px, max(280px, calc(100% - 760px)))";
+  "items-center py-4 pl-4 pr-4 sm:pl-6 sm:pr-6 @container";
 const CHAT_RENDER_LOAD_MORE_TOP_THRESHOLD_PX = 100;
-
-function githubPrTrackingLayoutStyle(
-  githubPrTrackingOpen: boolean,
-): GithubPrTrackingLayoutStyle {
-  return {
-    "--github-pr-tracking-dock-width": GITHUB_PR_TRACKING_DOCK_WIDTH,
-    "--github-pr-tracking-content-inset": githubPrTrackingOpen
-      ? "calc(var(--github-pr-tracking-dock-width) + 0.75rem)"
-      : "0px",
-  };
-}
-
-function useGithubPrTrackingOpen(thread: ChatThreadSignals): boolean {
-  const openGithubPrTrackingThreadId = useGet(githubPrTrackingOpenThreadId$);
-  const threadMetaLoadable = useLastLoadable(thread.threadMeta$);
-  const features = useLastResolved(featureSwitch$);
-  const githubPrTrackingEnabled =
-    features?.[FeatureSwitchKey.ChatGithubPrTracking] ?? false;
-  const agentId =
-    threadMetaLoadable.state === "hasData"
-      ? (threadMetaLoadable.data?.agentId ?? null)
-      : null;
-
-  return (
-    githubPrTrackingEnabled &&
-    openGithubPrTrackingThreadId === thread.threadId &&
-    agentId !== null
-  );
-}
 
 function ChatThreadMessagesMain({
   thread,
@@ -4178,7 +3505,6 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
   const loadMoreRenderedChatGroups = useSet(thread.loadMoreRenderedChatGroups$);
   const pageSignal = useGet(pageSignal$);
   const skeletonVisible = messagesLoading;
-  const githubPrTrackingOpen = useGithubPrTrackingOpen(thread);
 
   const handleScroll = (event: ReactUIEvent<HTMLDivElement>) => {
     if (
@@ -4193,10 +3519,7 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
     <>
       <ChatThreadHeader thread={thread} />
 
-      <div
-        className="relative min-h-0 flex-1"
-        style={githubPrTrackingLayoutStyle(githubPrTrackingOpen)}
-      >
+      <div className="relative min-h-0 flex-1">
         <div className="flex h-full min-w-0 flex-col">
           <div className="flex-1 min-h-0 relative isolate">
             <div
@@ -4229,8 +3552,6 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
 
           <ChatThreadComposer thread={thread} />
         </div>
-
-        {githubPrTrackingOpen && <GithubPrTrackingDock thread={thread} />}
       </div>
 
       <ChatFeedbackSelection />
@@ -4262,7 +3583,7 @@ function ScrollToBottomButton({
       onClick={() => {
         scrollToBottom();
       }}
-      className="absolute bottom-4 left-[calc((100%-var(--github-pr-tracking-content-inset,0px))/2)] z-20 flex h-9 w-9 -translate-x-1/2 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-md transition-colors hover:bg-accent hover:text-foreground"
+      className="absolute bottom-4 left-1/2 z-20 flex h-9 w-9 -translate-x-1/2 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-md transition-colors hover:bg-accent hover:text-foreground"
     >
       <IconArrowDown size={18} />
     </button>
@@ -4971,7 +4292,7 @@ function ChatThreadComposer({
       style={{ paddingBottom: "max(0.5rem, var(--sab))" }}
     >
       <div className="pointer-events-none absolute inset-x-0 -top-5 h-[21px] bg-gradient-to-t from-[hsl(var(--background))] to-transparent" />
-      <div className="overflow-y-auto [scrollbar-gutter:stable] pb-2 pl-4 pr-[calc(var(--github-pr-tracking-content-inset,0px)_+_1rem)] pt-3 sm:pl-6 sm:pr-[calc(var(--github-pr-tracking-content-inset,0px)_+_1.5rem)]">
+      <div className="overflow-y-auto [scrollbar-gutter:stable] pb-2 pl-4 pr-4 pt-3 sm:pl-6 sm:pr-6">
         <div className="mx-auto max-w-[900px]">
           <ZeroChatComposer
             className="w-full min-w-0"
