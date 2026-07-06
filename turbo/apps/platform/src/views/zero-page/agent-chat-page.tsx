@@ -481,7 +481,6 @@ function useAgentChatComposerModel(pageSignal: AbortSignal) {
   const modelPicker = {
     value: modelSelection,
     onChange: handleModelSelectionChange,
-    resolveDefaultSelection: false,
   };
   const submitBlockerProps = modelSelection
     ? resolveChatComposerSubmitBlocker({

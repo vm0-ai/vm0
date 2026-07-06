@@ -1561,9 +1561,8 @@ describe("chat composer models", () => {
 
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
-    await expect(
-      screen.findByRole("combobox", { name: "Default" }),
-    ).resolves.toBeInTheDocument();
+    await screen.findByPlaceholderText(PLACEHOLDER);
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
     expect(
       screen.queryByRole("combobox", { name: "Kimi K2.7 Code" }),
     ).not.toBeInTheDocument();
