@@ -18,14 +18,21 @@ async fn api_key_setup_writes_auth_without_invoking_codex() -> TestResult {
     let runtime_dir = tmp.path().join("runtime");
     let user_env_dir = runtime_dir.join("user-env");
     let user_env_path = user_env_dir.join("env.json");
+    let run_payload_dir = runtime_dir.join(guest_contracts::env::RUN_PAYLOAD_PRIVATE_DIR_NAME);
+    let run_payload_path = run_payload_dir.join(guest_contracts::env::RUN_PAYLOAD_FILENAME);
 
     std::fs::create_dir_all(&bin_dir)?;
     std::fs::create_dir_all(&user_env_dir)?;
+    std::fs::create_dir_all(&run_payload_dir)?;
     std::fs::write(
         &user_env_path,
         serde_json::to_vec(&serde_json::json!({
             "OPENAI_API_KEY": "sk-test-api-key-reconcile",
         }))?,
+    )?;
+    std::fs::write(
+        &run_payload_path,
+        serde_json::to_vec(&guest_contracts::env::RunPayload::default())?,
     )?;
     write_fake_codex(&fake_codex, &invoked_marker)?;
 
@@ -40,6 +47,7 @@ async fn api_key_setup_writes_auth_without_invoking_codex() -> TestResult {
         run_id: "codex-setup-api-key".to_string(),
         cli_agent_type: "codex".to_string(),
         user_env_file: user_env_path.to_string_lossy().into_owned(),
+        run_payload_file: run_payload_path.to_string_lossy().into_owned(),
         guest_runtime_dir: Some(runtime_dir),
         home: Some(tmp.path().to_string_lossy().into_owned()),
         ..Default::default()

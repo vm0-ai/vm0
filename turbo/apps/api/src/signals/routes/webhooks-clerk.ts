@@ -8,6 +8,7 @@ import { request$ } from "../context/hono";
 import { waitUntil } from "../context/wait-until";
 import type { RouteEntry } from "../route-entry";
 import { settle, tapError } from "../utils";
+import { ensureOrgLimitedFreeBootstrap$ } from "../services/org-limited-free-bootstrap.service";
 import {
   cleanupClerkBannedUser$,
   cleanupClerkDeletedOrgMembership$,
@@ -49,6 +50,7 @@ function organizationMembershipIdentity(data: unknown):
   | {
       readonly orgId: string;
       readonly userId: string;
+      readonly role?: string;
     }
   | undefined {
   const organization = propertyOf(data, "organization");
@@ -61,8 +63,46 @@ function organizationMembershipIdentity(data: unknown):
     stringPropertyOf(publicUserData, "userId") ??
     stringPropertyOf(publicUserData, "user_id") ??
     stringPropertyOf(data, "user_id");
+  const role = stringPropertyOf(data, "role");
+
+  return orgId && userId ? { orgId, userId, role } : undefined;
+}
+
+function organizationCreatedIdentity(data: unknown):
+  | {
+      readonly orgId: string;
+      readonly userId: string;
+    }
+  | undefined {
+  const orgId = eventDataId(data);
+  const userId =
+    stringPropertyOf(data, "createdBy") ??
+    stringPropertyOf(data, "created_by") ??
+    stringPropertyOf(data, "createdByUserId") ??
+    stringPropertyOf(data, "created_by_user_id");
 
   return orgId && userId ? { orgId, userId } : undefined;
+}
+
+function isAdminMembershipRole(role: string | undefined): boolean {
+  return role === "org:admin" || role === "admin";
+}
+
+function enqueueOrgBootstrap(args: {
+  readonly eventType: string;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly task: Promise<unknown>;
+}): void {
+  waitUntil(
+    tapError(args.task, (error) => {
+      L.error(`${args.eventType} bootstrap failed`, {
+        orgId: args.orgId,
+        userId: args.userId,
+        error,
+      });
+    }),
+  );
 }
 
 const postClerkWebhook$ = command(
@@ -80,6 +120,59 @@ const postClerkWebhook$ = command(
 
     const event = eventResult.value;
     L.debug("clerk webhook received", { type: event.type });
+
+    if ((event.type as string) === "organization.created") {
+      const identity = organizationCreatedIdentity(event.data);
+      if (!identity) {
+        L.error("organization.created event missing org/creator user ID", {
+          data: event.data,
+        });
+        return new Response("OK", { status: 200 });
+      }
+
+      enqueueOrgBootstrap({
+        eventType: "organization.created",
+        orgId: identity.orgId,
+        userId: identity.userId,
+        task: set(
+          ensureOrgLimitedFreeBootstrap$,
+          { orgId: identity.orgId, ownerUserId: identity.userId },
+          signal,
+        ),
+      });
+      return new Response("OK", { status: 200 });
+    }
+
+    if ((event.type as string) === "organizationMembership.created") {
+      const identity = organizationMembershipIdentity(event.data);
+      if (!identity) {
+        L.error("organizationMembership.created event missing org/user ID", {
+          data: event.data,
+        });
+        return new Response("OK", { status: 200 });
+      }
+
+      if (!isAdminMembershipRole(identity.role)) {
+        L.debug("ignoring non-admin organizationMembership.created event", {
+          orgId: identity.orgId,
+          userId: identity.userId,
+          role: identity.role,
+        });
+        return new Response("OK", { status: 200 });
+      }
+
+      enqueueOrgBootstrap({
+        eventType: "organizationMembership.created",
+        orgId: identity.orgId,
+        userId: identity.userId,
+        task: set(
+          ensureOrgLimitedFreeBootstrap$,
+          { orgId: identity.orgId, ownerUserId: identity.userId },
+          signal,
+        ),
+      });
+      return new Response("OK", { status: 200 });
+    }
 
     if (event.type === "organization.deleted") {
       const orgId = eventDataId(event.data);

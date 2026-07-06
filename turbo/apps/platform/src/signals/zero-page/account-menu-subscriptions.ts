@@ -17,6 +17,7 @@ export interface AccountMenuSubscriptionUsageRow {
   readonly type: ModelProviderType;
   readonly label: string;
   readonly usage: AccountMenuSubscriptionUsage;
+  readonly resetCredits?: number | null;
 }
 
 export type AccountMenuSubscriptionUsageRowsCacheKey = string | null;
@@ -97,7 +98,16 @@ function accountMenuSubscriptionUsageRows(
     if (!usage || accountMenuSubscriptionUsageWindows(usage).length === 0) {
       return [];
     }
-    return [{ ...definition, usage }];
+    return [
+      {
+        ...definition,
+        usage,
+        resetCredits:
+          provider.type === "codex-oauth-token"
+            ? (provider.subscriptionResetCredits ?? null)
+            : undefined,
+      },
+    ];
   });
 }
 

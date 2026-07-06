@@ -245,6 +245,12 @@ describe("Python builtin firewall catalog renderer", () => {
                 Authorization: "Bearer ${{ secrets.CONNECTOR_TOKEN }}",
               },
             },
+            permissions: [
+              {
+                name: "connector-read",
+                rules: ["GET /items/{id}"],
+              },
+            ],
           },
         ],
       }),
@@ -345,6 +351,1236 @@ describe("Python builtin firewall catalog renderer", () => {
     ]);
     expect(diagnostics.content).not.toContain("DYNAMIC_TOKEN");
     expect(diagnostics.content).not.toContain("JSON_PART");
+  });
+
+  it("keeps connector diagnostic permissions only for shared static bases", () => {
+    const files = renderEntries([
+      connectorEntry({
+        name: "shared-one",
+        apis: [
+          {
+            base: "https://Shared.Example.com.:443/api",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.SHARED_ONE_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "items:read",
+                rules: ["GET /items/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "shared-two",
+        apis: [
+          {
+            base: "https://shared.example.com/api/",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.SHARED_TWO_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "messages:read",
+                rules: ["GET /messages/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "unique",
+        apis: [
+          {
+            base: "https://unique.example.com",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.UNIQUE_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "unique:read",
+                rules: ["GET /unique/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "duplicate-only",
+        apis: [
+          {
+            base: "https://duplicate.example.com/api",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.DUPLICATE_ONE_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "duplicate-one:read",
+                rules: ["GET /one/{id}"],
+              },
+            ],
+          },
+          {
+            base: "https://duplicate.example.com/api/",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.DUPLICATE_TWO_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "duplicate-two:read",
+                rules: ["GET /two/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+    ]);
+    const diagnostics = findGeneratedFile(files, "diagnostics.py");
+
+    expect(
+      jsonAssignmentFromModule(diagnostics, "CONNECTOR_DIAGNOSTIC_FIREWALLS"),
+    ).toStrictEqual([
+      {
+        name: "duplicate-only",
+        apis: [
+          {
+            base: "https://duplicate.example.com/api",
+            envNames: ["DUPLICATE_ONE_TOKEN"],
+            authHeaderNames: ["Authorization"],
+            authQueryParamNames: [],
+          },
+          {
+            base: "https://duplicate.example.com/api/",
+            envNames: ["DUPLICATE_TWO_TOKEN"],
+            authHeaderNames: ["Authorization"],
+            authQueryParamNames: [],
+          },
+        ],
+      },
+      {
+        name: "shared-one",
+        apis: [
+          {
+            base: "https://Shared.Example.com.:443/api",
+            envNames: ["SHARED_ONE_TOKEN"],
+            authHeaderNames: ["Authorization"],
+            authQueryParamNames: [],
+            permissions: [
+              {
+                name: "items:read",
+                rules: ["GET /items/{id}"],
+              },
+            ],
+          },
+        ],
+      },
+      {
+        name: "shared-two",
+        apis: [
+          {
+            base: "https://shared.example.com/api/",
+            envNames: ["SHARED_TWO_TOKEN"],
+            authHeaderNames: ["Authorization"],
+            authQueryParamNames: [],
+            permissions: [
+              {
+                name: "messages:read",
+                rules: ["GET /messages/{id}"],
+              },
+            ],
+          },
+        ],
+      },
+      {
+        name: "unique",
+        apis: [
+          {
+            base: "https://unique.example.com",
+            envNames: ["UNIQUE_TOKEN"],
+            authHeaderNames: ["Authorization"],
+            authQueryParamNames: [],
+          },
+        ],
+      },
+    ]);
+  });
+
+  it("uses runtime path semantics for diagnostic shared static bases", () => {
+    const files = renderEntries([
+      connectorEntry({
+        name: "dot-segment",
+        apis: [
+          {
+            base: "https://path.example.com/a/../b",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.DOT_SEGMENT_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "dot-segment:read",
+                rules: ["GET /dot-segment/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "encoded-dot-segment",
+        apis: [
+          {
+            base: "https://encoded-path.example.com/a/%2e%2e/b",
+            auth: {
+              headers: {
+                Authorization:
+                  "Bearer ${{ secrets.ENCODED_DOT_SEGMENT_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "encoded-dot-segment:read",
+                rules: ["GET /encoded-dot-segment/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "encoded-target",
+        apis: [
+          {
+            base: "https://encoded-path.example.com/b",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.ENCODED_TARGET_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "encoded-target:read",
+                rules: ["GET /encoded-target/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "encoded-unicode-path",
+        apis: [
+          {
+            base: "https://unicode-path.example.com/%E8%B7%AF%E5%BE%84",
+            auth: {
+              headers: {
+                Authorization:
+                  "Bearer ${{ secrets.ENCODED_UNICODE_PATH_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "encoded-unicode-path:read",
+                rules: ["GET /encoded-unicode-path/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "normalized-target",
+        apis: [
+          {
+            base: "https://path.example.com/b",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.NORMALIZED_TARGET_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "normalized-target:read",
+                rules: ["GET /normalized-target/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "shared-path-one",
+        apis: [
+          {
+            base: "https://shared-path.example.com/api",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.SHARED_PATH_ONE_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "shared-path-one:read",
+                rules: ["GET /one/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "shared-path-two",
+        apis: [
+          {
+            base: "https://shared-path.example.com/api/",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.SHARED_PATH_TWO_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "shared-path-two:read",
+                rules: ["GET /two/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "unicode-path",
+        apis: [
+          {
+            base: "https://unicode-path.example.com/路径",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.UNICODE_PATH_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "unicode-path:read",
+                rules: ["GET /unicode-path/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "literal-open-brace-path",
+        apis: [
+          {
+            base: "https://brace-path.example.com/{literal",
+            auth: {
+              headers: {
+                Authorization:
+                  "Bearer ${{ secrets.LITERAL_OPEN_BRACE_PATH_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "literal-open-brace-path:read",
+                rules: ["GET /literal-open-brace-path/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "literal-close-brace-path",
+        apis: [
+          {
+            base: "https://brace-path.example.com/literal}",
+            auth: {
+              headers: {
+                Authorization:
+                  "Bearer ${{ secrets.LITERAL_CLOSE_BRACE_PATH_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "literal-close-brace-path:read",
+                rules: ["GET /literal-close-brace-path/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+    ]);
+    const diagnostics = findGeneratedFile(files, "diagnostics.py");
+
+    expect(
+      jsonAssignmentFromModule(diagnostics, "CONNECTOR_DIAGNOSTIC_FIREWALLS"),
+    ).toStrictEqual([
+      {
+        name: "dot-segment",
+        apis: [
+          {
+            base: "https://path.example.com/a/../b",
+            envNames: ["DOT_SEGMENT_TOKEN"],
+            authHeaderNames: ["Authorization"],
+            authQueryParamNames: [],
+          },
+        ],
+      },
+      {
+        name: "encoded-dot-segment",
+        apis: [
+          {
+            base: "https://encoded-path.example.com/a/%2e%2e/b",
+            envNames: ["ENCODED_DOT_SEGMENT_TOKEN"],
+            authHeaderNames: ["Authorization"],
+            authQueryParamNames: [],
+          },
+        ],
+      },
+      {
+        name: "encoded-target",
+        apis: [
+          {
+            base: "https://encoded-path.example.com/b",
+            envNames: ["ENCODED_TARGET_TOKEN"],
+            authHeaderNames: ["Authorization"],
+            authQueryParamNames: [],
+          },
+        ],
+      },
+      {
+        name: "encoded-unicode-path",
+        apis: [
+          {
+            base: "https://unicode-path.example.com/%E8%B7%AF%E5%BE%84",
+            envNames: ["ENCODED_UNICODE_PATH_TOKEN"],
+            authHeaderNames: ["Authorization"],
+            authQueryParamNames: [],
+          },
+        ],
+      },
+      {
+        name: "literal-close-brace-path",
+        apis: [
+          {
+            base: "https://brace-path.example.com/literal}",
+            envNames: ["LITERAL_CLOSE_BRACE_PATH_TOKEN"],
+            authHeaderNames: ["Authorization"],
+            authQueryParamNames: [],
+          },
+        ],
+      },
+      {
+        name: "literal-open-brace-path",
+        apis: [
+          {
+            base: "https://brace-path.example.com/{literal",
+            envNames: ["LITERAL_OPEN_BRACE_PATH_TOKEN"],
+            authHeaderNames: ["Authorization"],
+            authQueryParamNames: [],
+          },
+        ],
+      },
+      {
+        name: "normalized-target",
+        apis: [
+          {
+            base: "https://path.example.com/b",
+            envNames: ["NORMALIZED_TARGET_TOKEN"],
+            authHeaderNames: ["Authorization"],
+            authQueryParamNames: [],
+          },
+        ],
+      },
+      {
+        name: "shared-path-one",
+        apis: [
+          {
+            base: "https://shared-path.example.com/api",
+            envNames: ["SHARED_PATH_ONE_TOKEN"],
+            authHeaderNames: ["Authorization"],
+            authQueryParamNames: [],
+            permissions: [
+              {
+                name: "shared-path-one:read",
+                rules: ["GET /one/{id}"],
+              },
+            ],
+          },
+        ],
+      },
+      {
+        name: "shared-path-two",
+        apis: [
+          {
+            base: "https://shared-path.example.com/api/",
+            envNames: ["SHARED_PATH_TWO_TOKEN"],
+            authHeaderNames: ["Authorization"],
+            authQueryParamNames: [],
+            permissions: [
+              {
+                name: "shared-path-two:read",
+                rules: ["GET /two/{id}"],
+              },
+            ],
+          },
+        ],
+      },
+      {
+        name: "unicode-path",
+        apis: [
+          {
+            base: "https://unicode-path.example.com/路径",
+            envNames: ["UNICODE_PATH_TOKEN"],
+            authHeaderNames: ["Authorization"],
+            authQueryParamNames: [],
+          },
+        ],
+      },
+    ]);
+  });
+
+  it("omits connector diagnostic APIs whose static bases are invalid at runtime", () => {
+    const files = renderEntries([
+      connectorEntry({
+        name: "malformed-dot",
+        apis: [
+          {
+            base: "https://shared-dot.example.com../api",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.MALFORMED_DOT_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "malformed:read",
+                rules: ["GET /malformed/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "empty-port",
+        apis: [
+          {
+            base: "https://shared-dot.example.com:/api",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.EMPTY_PORT_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "empty-port:read",
+                rules: ["GET /empty-port/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "userinfo",
+        apis: [
+          {
+            base: "https://user@shared-dot.example.com/api",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.USERINFO_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "userinfo:read",
+                rules: ["GET /userinfo/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "query-base",
+        apis: [
+          {
+            base: "https://shared-dot.example.com/api?version=1",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.QUERY_BASE_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "query-base:read",
+                rules: ["GET /query-base/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "encoded-dot",
+        apis: [
+          {
+            base: "https://shared-dot.example%2ecom/api",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.ENCODED_DOT_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "encoded-dot:read",
+                rules: ["GET /encoded-dot/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "backslash-base",
+        apis: [
+          {
+            base: "https://shared-dot.example.com\\api",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.BACKSLASH_BASE_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "backslash-base:read",
+                rules: ["GET /backslash-base/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "raw-space-base",
+        apis: [
+          {
+            base: "https://shared-dot.example.com/ raw-space",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.RAW_SPACE_BASE_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "raw-space-base:read",
+                rules: ["GET /raw-space-base/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "raw-delete-base",
+        apis: [
+          {
+            base: "https://shared-dot.example.com/\u007fdelete",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.RAW_DELETE_BASE_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "raw-delete-base:read",
+                rules: ["GET /raw-delete-base/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "raw-surrogate-base",
+        apis: [
+          {
+            base: "https://shared-dot.example.com/\ud800surrogate",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.RAW_SURROGATE_BASE_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "raw-surrogate-base:read",
+                rules: ["GET /raw-surrogate-base/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "encoded-space-host",
+        apis: [
+          {
+            base: "https://shared-dot.example%C2%A0com/api",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.ENCODED_SPACE_HOST_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "encoded-space-host:read",
+                rules: ["GET /encoded-space-host/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "wildcard-host",
+        apis: [
+          {
+            base: "https://exa*mple.com/api",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.WILDCARD_HOST_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "wildcard-host:read",
+                rules: ["GET /wildcard-host/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "comma-host",
+        apis: [
+          {
+            base: "https://exa,mple.com/api",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.COMMA_HOST_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "comma-host:read",
+                rules: ["GET /comma-host/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "noncanonical-ipv4-host",
+        apis: [
+          {
+            base: "https://127.000.000.001/api",
+            auth: {
+              headers: {
+                Authorization:
+                  "Bearer ${{ secrets.NONCANONICAL_IPV4_HOST_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "noncanonical-ipv4-host:read",
+                rules: ["GET /noncanonical-ipv4-host/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "compat-ascii-host",
+        apis: [
+          {
+            base: "https://０.com/api",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.COMPAT_ASCII_HOST_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "compat-ascii-host:read",
+                rules: ["GET /compat-ascii-host/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "unsafe-uts46-host",
+        apis: [
+          {
+            base: "https://a\u03f2b.example.com/api",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.UNSAFE_UTS46_HOST_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "unsafe-uts46-host:read",
+                rules: ["GET /unsafe-uts46-host/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "leading-mark-host",
+        apis: [
+          {
+            base: "https://\u0c3ca.example.com/api",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.LEADING_MARK_HOST_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "leading-mark-host:read",
+                rules: ["GET /leading-mark-host/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "format-char-host",
+        apis: [
+          {
+            base: "https://a\u00ad\u0301.example.com/api",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.FORMAT_CHAR_HOST_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "format-char-host:read",
+                rules: ["GET /format-char-host/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "normalized-comma-host",
+        apis: [
+          {
+            base: "https://a\uff0c\u0301.example.com/api",
+            auth: {
+              headers: {
+                Authorization:
+                  "Bearer ${{ secrets.NORMALIZED_COMMA_HOST_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "normalized-comma-host:read",
+                rules: ["GET /normalized-comma-host/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "noncanonical-greek-host",
+        apis: [
+          {
+            base: "https://\u03aa\u0301.example.com/api",
+            auth: {
+              headers: {
+                Authorization:
+                  "Bearer ${{ secrets.NONCANONICAL_GREEK_HOST_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "noncanonical-greek-host:read",
+                rules: ["GET /noncanonical-greek-host/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "arabic-bidi-host",
+        apis: [
+          {
+            base: "https://a\u0870b.example.com/api",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.ARABIC_BIDI_HOST_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "arabic-bidi-host:read",
+                rules: ["GET /arabic-bidi-host/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "old-uyghur-bidi-host",
+        apis: [
+          {
+            base: "https://a\u{10f70}b.example.com/api",
+            auth: {
+              headers: {
+                Authorization:
+                  "Bearer ${{ secrets.OLD_UYGHUR_BIDI_HOST_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "old-uyghur-bidi-host:read",
+                rules: ["GET /old-uyghur-bidi-host/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "valid-dot",
+        apis: [
+          {
+            base: "https://shared-dot.example.com/api",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.VALID_DOT_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "valid:read",
+                rules: ["GET /valid/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+    ]);
+    const diagnostics = findGeneratedFile(files, "diagnostics.py");
+
+    expect(
+      jsonAssignmentFromModule(diagnostics, "CONNECTOR_DIAGNOSTIC_FIREWALLS"),
+    ).toStrictEqual([
+      {
+        name: "valid-dot",
+        apis: [
+          {
+            base: "https://shared-dot.example.com/api",
+            envNames: ["VALID_DOT_TOKEN"],
+            authHeaderNames: ["Authorization"],
+            authQueryParamNames: [],
+          },
+        ],
+      },
+    ]);
+  });
+
+  it("keeps runtime-safe percent-encoded host escapes in shared static base matching", () => {
+    const files = renderEntries([
+      connectorEntry({
+        name: "encoded-host",
+        apis: [
+          {
+            base: "https://shared%2ddot.example.com/api",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.ENCODED_HOST_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "encoded-host:read",
+                rules: ["GET /encoded-host/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "decoded-host",
+        apis: [
+          {
+            base: "https://shared-dot.example.com/api",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.DECODED_HOST_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "decoded-host:read",
+                rules: ["GET /decoded-host/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "decomposed-idna-host",
+        apis: [
+          {
+            base: "https://e\u0301.example.com/api",
+            auth: {
+              headers: {
+                Authorization:
+                  "Bearer ${{ secrets.DECOMPOSED_IDNA_HOST_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "decomposed-idna-host:read",
+                rules: ["GET /decomposed-idna-host/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "unicode-dot-host",
+        apis: [
+          {
+            base: "https://shared-dot。example.com/api",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.UNICODE_DOT_HOST_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "unicode-dot-host:read",
+                rules: ["GET /unicode-dot-host/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "unicode-idna-host",
+        apis: [
+          {
+            base: "https://faß.example.com/api",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.UNICODE_IDNA_HOST_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "unicode-idna-host:read",
+                rules: ["GET /unicode-idna-host/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "precomposed-idna-host",
+        apis: [
+          {
+            base: "https://é.example.com/api",
+            auth: {
+              headers: {
+                Authorization:
+                  "Bearer ${{ secrets.PRECOMPOSED_IDNA_HOST_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "precomposed-idna-host:read",
+                rules: ["GET /precomposed-idna-host/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "greek-prosgegrammeni-idna-host",
+        apis: [
+          {
+            base: "https://\u1fbc\u0301.example.com/api",
+            auth: {
+              headers: {
+                Authorization:
+                  "Bearer ${{ secrets.GREEK_PROSGEGRAMMENI_IDNA_HOST_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "greek-prosgegrammeni-idna-host:read",
+                rules: ["GET /greek-prosgegrammeni-idna-host/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+      connectorEntry({
+        name: "punycode-idna-host",
+        apis: [
+          {
+            base: "https://xn--fa-hia.example.com/api",
+            auth: {
+              headers: {
+                Authorization: "Bearer ${{ secrets.PUNYCODE_IDNA_HOST_TOKEN }}",
+              },
+            },
+            permissions: [
+              {
+                name: "punycode-idna-host:read",
+                rules: ["GET /punycode-idna-host/{id}"],
+              },
+            ],
+          },
+        ],
+      }),
+    ]);
+    const diagnostics = findGeneratedFile(files, "diagnostics.py");
+
+    expect(
+      jsonAssignmentFromModule(diagnostics, "CONNECTOR_DIAGNOSTIC_FIREWALLS"),
+    ).toStrictEqual([
+      {
+        name: "decoded-host",
+        apis: [
+          {
+            base: "https://shared-dot.example.com/api",
+            envNames: ["DECODED_HOST_TOKEN"],
+            authHeaderNames: ["Authorization"],
+            authQueryParamNames: [],
+            permissions: [
+              {
+                name: "decoded-host:read",
+                rules: ["GET /decoded-host/{id}"],
+              },
+            ],
+          },
+        ],
+      },
+      {
+        name: "decomposed-idna-host",
+        apis: [
+          {
+            base: "https://e\u0301.example.com/api",
+            envNames: ["DECOMPOSED_IDNA_HOST_TOKEN"],
+            authHeaderNames: ["Authorization"],
+            authQueryParamNames: [],
+            permissions: [
+              {
+                name: "decomposed-idna-host:read",
+                rules: ["GET /decomposed-idna-host/{id}"],
+              },
+            ],
+          },
+        ],
+      },
+      {
+        name: "encoded-host",
+        apis: [
+          {
+            base: "https://shared%2ddot.example.com/api",
+            envNames: ["ENCODED_HOST_TOKEN"],
+            authHeaderNames: ["Authorization"],
+            authQueryParamNames: [],
+            permissions: [
+              {
+                name: "encoded-host:read",
+                rules: ["GET /encoded-host/{id}"],
+              },
+            ],
+          },
+        ],
+      },
+      {
+        name: "greek-prosgegrammeni-idna-host",
+        apis: [
+          {
+            base: "https://\u1fbc\u0301.example.com/api",
+            envNames: ["GREEK_PROSGEGRAMMENI_IDNA_HOST_TOKEN"],
+            authHeaderNames: ["Authorization"],
+            authQueryParamNames: [],
+          },
+        ],
+      },
+      {
+        name: "precomposed-idna-host",
+        apis: [
+          {
+            base: "https://é.example.com/api",
+            envNames: ["PRECOMPOSED_IDNA_HOST_TOKEN"],
+            authHeaderNames: ["Authorization"],
+            authQueryParamNames: [],
+            permissions: [
+              {
+                name: "precomposed-idna-host:read",
+                rules: ["GET /precomposed-idna-host/{id}"],
+              },
+            ],
+          },
+        ],
+      },
+      {
+        name: "punycode-idna-host",
+        apis: [
+          {
+            base: "https://xn--fa-hia.example.com/api",
+            envNames: ["PUNYCODE_IDNA_HOST_TOKEN"],
+            authHeaderNames: ["Authorization"],
+            authQueryParamNames: [],
+            permissions: [
+              {
+                name: "punycode-idna-host:read",
+                rules: ["GET /punycode-idna-host/{id}"],
+              },
+            ],
+          },
+        ],
+      },
+      {
+        name: "unicode-dot-host",
+        apis: [
+          {
+            base: "https://shared-dot。example.com/api",
+            envNames: ["UNICODE_DOT_HOST_TOKEN"],
+            authHeaderNames: ["Authorization"],
+            authQueryParamNames: [],
+            permissions: [
+              {
+                name: "unicode-dot-host:read",
+                rules: ["GET /unicode-dot-host/{id}"],
+              },
+            ],
+          },
+        ],
+      },
+      {
+        name: "unicode-idna-host",
+        apis: [
+          {
+            base: "https://faß.example.com/api",
+            envNames: ["UNICODE_IDNA_HOST_TOKEN"],
+            authHeaderNames: ["Authorization"],
+            authQueryParamNames: [],
+            permissions: [
+              {
+                name: "unicode-idna-host:read",
+                rules: ["GET /unicode-idna-host/{id}"],
+              },
+            ],
+          },
+        ],
+      },
+    ]);
   });
 
   it("preserves runtime API host policies in catalog JSON", () => {

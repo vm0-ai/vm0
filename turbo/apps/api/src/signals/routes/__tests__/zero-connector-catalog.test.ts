@@ -1,7 +1,11 @@
 import { randomUUID } from "node:crypto";
 
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
-import { zeroConnectorCatalogContract } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import {
+  zeroConnectorCatalogContract,
+  type PublicConnectorCatalogListResponse,
+  type PublicConnectorCatalogStatusResponse,
+} from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { createStore } from "ccstate";
 import { afterEach } from "vitest";
@@ -60,6 +64,62 @@ async function deleteFeatureSwitches(
 
 function currentSecond(): number {
   return Math.floor(now() / 1000);
+}
+
+function assertCategoryMetadataMatchesVisibleConnectors(
+  body:
+    | PublicConnectorCatalogListResponse
+    | PublicConnectorCatalogStatusResponse,
+): void {
+  const metadata = body.categoryMetadata;
+  expect(metadata).toBeDefined();
+  if (!metadata) {
+    return;
+  }
+  const connectorCategories = new Set(
+    body.connectors.map((connector) => {
+      return connector.category;
+    }),
+  );
+  const metadataCategoryIds = metadata.categories.map((category) => {
+    return category.id;
+  });
+  expect(metadataCategoryIds).toHaveLength(new Set(metadataCategoryIds).size);
+  expect(new Set(metadataCategoryIds)).toStrictEqual(connectorCategories);
+  const referencedGroupIds = new Set(
+    metadata.categories.flatMap((category) => {
+      return category.groupId ? [category.groupId] : [];
+    }),
+  );
+  const metadataGroupIds = metadata.groups.map((group) => {
+    return group.id;
+  });
+  expect(metadataGroupIds).toHaveLength(new Set(metadataGroupIds).size);
+  expect(new Set(metadataGroupIds)).toStrictEqual(referencedGroupIds);
+  for (const groupId of metadataGroupIds) {
+    expect(connectorCategories.has(groupId)).toBeFalsy();
+  }
+
+  const aiCategoryIndex = metadata.categories.findIndex((category) => {
+    return category.id === "ai-general-models";
+  });
+  const engineeringCategoryIndex = metadata.categories.findIndex((category) => {
+    return category.id === "engineering-team-execution";
+  });
+  expect(aiCategoryIndex).toBeGreaterThanOrEqual(0);
+  expect(engineeringCategoryIndex).toBeGreaterThanOrEqual(0);
+  expect(aiCategoryIndex).toBeLessThan(engineeringCategoryIndex);
+  expect(metadata.categories[aiCategoryIndex]).toMatchObject({
+    id: "ai-general-models",
+    label: "General Models and Reasoning",
+    menuLabel: "General Models",
+    groupId: "ai",
+  });
+  expect(metadata.groups).toContainEqual({
+    id: "ai",
+    label: "AI",
+    menuLabel: "AI",
+  });
 }
 
 function stateFromAuthorizationUrl(authorizationUrl: string): string {
@@ -130,6 +190,7 @@ describe("GET /api/zero/connector-catalog", () => {
     );
 
     assertPublicConnectorCatalogHasNoPrivateFields(response.body);
+    assertCategoryMetadataMatchesVisibleConnectors(response.body);
     expect(response.body.connectors.length).toBeGreaterThan(0);
   });
 
@@ -297,6 +358,7 @@ describe("GET /api/zero/connector-catalog", () => {
     );
 
     assertPublicConnectorCatalogHasNoPrivateFields(response.body);
+    assertCategoryMetadataMatchesVisibleConnectors(response.body);
     const openai = response.body.connectors.find((connector) => {
       return connector.connectorRef === "openai";
     });
@@ -593,6 +655,32 @@ describe("GET /api/zero/connector-catalog", () => {
     expect(response.body.error.message).toBe(
       "Connector catalog item not found",
     );
+  });
+
+  it("rejects connector catalog refs outside the public connector-ref bounds", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    mocks.clerk.session(userId, orgId);
+
+    const client = setupApp({ context })(zeroConnectorCatalogContract);
+    const connectorRef = "x".repeat(65);
+    const detailResponse = await accept(
+      client.get({
+        params: { connectorRef },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [400],
+    );
+    const permissionResponse = await accept(
+      client.permissions({
+        params: { connectorRef },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [400],
+    );
+
+    expect(detailResponse.body.error.code).toBe("BAD_REQUEST");
+    expect(permissionResponse.body.error.code).toBe("BAD_REQUEST");
   });
 
   it("returns semantic public ids for device-auth start options", async () => {

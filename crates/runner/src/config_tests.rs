@@ -3,6 +3,9 @@ use super::*;
 /// 64 lowercase hex chars — matches `Sha256::digest(...).hex_encode()`.
 const TEST_ROOTFS_HASH: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 const TEST_SNAPSHOT_HASH: &str = "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210";
+const OTHER_ROOTFS_HASH: &str = "1111111111111111111111111111111111111111111111111111111111111111";
+const OTHER_SNAPSHOT_HASH: &str =
+    "2222222222222222222222222222222222222222222222222222222222222222";
 
 struct ConfigFixture {
     dir: tempfile::TempDir,
@@ -753,6 +756,147 @@ async fn validate_profile_image_artifacts_rejects_missing_cow_bitmap() {
         err.to_string().contains("cow.img.bitmap"),
         "expected missing cow bitmap error, got: {err}"
     );
+}
+
+#[tokio::test]
+async fn lock_and_validate_profile_image_artifacts_holds_resource_locks() {
+    let dir = tempfile::tempdir().unwrap();
+    let home =
+        test_home_with_artifacts(dir.path(), &[(TEST_ROOTFS_HASH, TEST_SNAPSHOT_HASH)]).await;
+    let profile = default_profile_config();
+
+    let guard = lock_and_validate_profile_image_artifacts("vm0/default", &profile, &home)
+        .await
+        .unwrap();
+
+    let rootfs_err = crate::lock::try_acquire(home.rootfs_lock(TEST_ROOTFS_HASH))
+        .await
+        .unwrap_err();
+    assert!(
+        rootfs_err.to_string().contains("lock is already held"),
+        "got: {rootfs_err}"
+    );
+
+    let snapshot_err = crate::lock::try_acquire(home.snapshot_lock(TEST_SNAPSHOT_HASH))
+        .await
+        .unwrap_err();
+    assert!(
+        snapshot_err.to_string().contains("lock is already held"),
+        "got: {snapshot_err}"
+    );
+
+    drop(guard);
+    let released_lock = crate::lock::try_acquire(home.rootfs_lock(TEST_ROOTFS_HASH))
+        .await
+        .unwrap();
+    drop(released_lock);
+    let released_lock = crate::lock::try_acquire(home.snapshot_lock(TEST_SNAPSHOT_HASH))
+        .await
+        .unwrap();
+    drop(released_lock);
+}
+
+#[tokio::test]
+async fn lock_and_validate_runner_image_artifacts_releases_locks_on_validation_error() {
+    let dir = tempfile::tempdir().unwrap();
+    let home =
+        test_home_with_artifacts(dir.path(), &[(TEST_ROOTFS_HASH, TEST_SNAPSHOT_HASH)]).await;
+    let snapshot = RootfsPaths::new(&home, TEST_ROOTFS_HASH).snapshot(TEST_SNAPSHOT_HASH);
+    tokio::fs::remove_file(snapshot.cow_bitmap()).await.unwrap();
+    let profiles = make_profiles();
+
+    let err = match lock_and_validate_runner_image_artifacts(&profiles, &home).await {
+        Ok(_) => panic!("expected missing cow bitmap error"),
+        Err(err) => err,
+    };
+    assert!(
+        err.to_string().contains("cow.img.bitmap"),
+        "expected missing cow bitmap error, got: {err}"
+    );
+
+    let rootfs_lock = crate::lock::try_acquire(home.rootfs_lock(TEST_ROOTFS_HASH))
+        .await
+        .unwrap();
+    drop(rootfs_lock);
+    let snapshot_lock = crate::lock::try_acquire(home.snapshot_lock(TEST_SNAPSHOT_HASH))
+        .await
+        .unwrap();
+    drop(snapshot_lock);
+}
+
+#[tokio::test]
+async fn lock_and_validate_runner_image_artifacts_rejects_empty_profiles() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = HomePaths::with_root(dir.path().join("vm0-runner"));
+    let profiles = BTreeMap::new();
+
+    let err = match lock_and_validate_runner_image_artifacts(&profiles, &home).await {
+        Ok(_) => panic!("expected empty profiles error"),
+        Err(err) => err,
+    };
+
+    assert!(
+        err.to_string().contains("profiles must not be empty"),
+        "got: {err}"
+    );
+}
+
+#[tokio::test]
+async fn lock_and_validate_runner_image_artifacts_holds_all_resource_locks() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = test_home_with_artifacts(
+        dir.path(),
+        &[
+            (TEST_ROOTFS_HASH, TEST_SNAPSHOT_HASH),
+            (OTHER_ROOTFS_HASH, OTHER_SNAPSHOT_HASH),
+        ],
+    )
+    .await;
+    let mut other_profile = default_profile_config();
+    other_profile.rootfs_hash = OTHER_ROOTFS_HASH.into();
+    other_profile.snapshot_hash = OTHER_SNAPSHOT_HASH.into();
+    let mut profiles = BTreeMap::new();
+    profiles.insert("vm0/default".to_string(), default_profile_config());
+    profiles.insert("vm0/other".to_string(), other_profile);
+
+    let guard = lock_and_validate_runner_image_artifacts(&profiles, &home)
+        .await
+        .unwrap();
+
+    for (rootfs_hash, snapshot_hash) in [
+        (TEST_ROOTFS_HASH, TEST_SNAPSHOT_HASH),
+        (OTHER_ROOTFS_HASH, OTHER_SNAPSHOT_HASH),
+    ] {
+        let rootfs_err = crate::lock::try_acquire(home.rootfs_lock(rootfs_hash))
+            .await
+            .unwrap_err();
+        assert!(
+            rootfs_err.to_string().contains("lock is already held"),
+            "got: {rootfs_err}"
+        );
+        let snapshot_err = crate::lock::try_acquire(home.snapshot_lock(snapshot_hash))
+            .await
+            .unwrap_err();
+        assert!(
+            snapshot_err.to_string().contains("lock is already held"),
+            "got: {snapshot_err}"
+        );
+    }
+
+    drop(guard);
+    for (rootfs_hash, snapshot_hash) in [
+        (TEST_ROOTFS_HASH, TEST_SNAPSHOT_HASH),
+        (OTHER_ROOTFS_HASH, OTHER_SNAPSHOT_HASH),
+    ] {
+        let released_lock = crate::lock::try_acquire(home.rootfs_lock(rootfs_hash))
+            .await
+            .unwrap();
+        drop(released_lock);
+        let released_lock = crate::lock::try_acquire(home.snapshot_lock(snapshot_hash))
+            .await
+            .unwrap();
+        drop(released_lock);
+    }
 }
 
 #[tokio::test]

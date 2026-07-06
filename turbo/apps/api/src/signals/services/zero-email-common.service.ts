@@ -1201,6 +1201,7 @@ export async function getUserEmail(
       userId,
       email,
       name: [user.firstName, user.lastName].filter(Boolean).join(" ") || null,
+      imageUrl: user.imageUrl ?? null,
       cachedAt: nowDate(),
     })
     .onConflictDoUpdate({
@@ -1208,6 +1209,7 @@ export async function getUserEmail(
       set: {
         email,
         name: [user.firstName, user.lastName].filter(Boolean).join(" ") || null,
+        imageUrl: user.imageUrl ?? null,
         cachedAt: nowDate(),
       },
     });
@@ -1248,6 +1250,7 @@ export async function getUserIdByEmail(
       userId: user.id,
       email: resolvedEmail,
       name: [user.firstName, user.lastName].filter(Boolean).join(" ") || null,
+      imageUrl: user.imageUrl ?? null,
       cachedAt: nowDate(),
     })
     .onConflictDoUpdate({
@@ -1255,6 +1258,7 @@ export async function getUserIdByEmail(
       set: {
         email: resolvedEmail,
         name: [user.firstName, user.lastName].filter(Boolean).join(" ") || null,
+        imageUrl: user.imageUrl ?? null,
         cachedAt: nowDate(),
       },
     });

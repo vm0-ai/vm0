@@ -159,11 +159,15 @@ export function clearMockedAuth() {
   mockedClerk.createOrganization.mockReset();
   mockedClerk.sessionGetToken.mockReset();
   mockedClerk.sessionGetToken.mockImplementation(defaultGetTokenImpl);
+  mockedClerk.load.mockReset();
+  mockedClerk.load.mockImplementation(defaultLoadImpl);
   mockedClerk.clientSignInCreate.mockReset();
   mockedClerk.clientSignInCreate.mockResolvedValue({
     status: "complete",
     createdSessionId: "test-created-session-id",
   });
+  mockedClerk.buildUrlWithAuth.mockReset();
+  mockedClerk.buildUrlWithAuth.mockImplementation(defaultBuildUrlWithAuthImpl);
 }
 
 const clerkListeners: (() => void)[] = [];
@@ -185,6 +189,12 @@ const clientSignInCreate = vi.fn(
     });
   },
 );
+const defaultBuildUrlWithAuthImpl = (to: string) => {
+  return to;
+};
+const defaultLoadImpl = () => {
+  return Promise.resolve();
+};
 
 export const mockedClerk = {
   get user() {
@@ -218,9 +228,7 @@ export const mockedClerk = {
   openUserProfile: vi.fn(() => {
     return Promise.resolve();
   }),
-  load: () => {
-    return Promise.resolve();
-  },
+  load: vi.fn(defaultLoadImpl),
   addListener: (cb: () => void) => {
     clerkListeners.push(cb);
     return () => {
@@ -231,6 +239,9 @@ export const mockedClerk = {
     };
   },
   redirectToSignIn: vi.fn(),
+  // Production-instance behavior: the URL passes through unchanged. Dev
+  // instances append the __clerk_db_jwt session handoff parameter.
+  buildUrlWithAuth: vi.fn(defaultBuildUrlWithAuthImpl),
   setActive: vi.fn(
     (params: {
       organization?: string;

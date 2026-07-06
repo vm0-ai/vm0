@@ -29,9 +29,10 @@ const COMMAND_CAPABILITY_MAP: Record<
   workflow: "agent:read",
   goal: ["goal:read", "goal:agent-result:write", "goal:user-control:write"],
   connector: "connector:read",
-  // "schedule" is deliberately absent: the rename stub stays out of
-  // token-scoped (agent) help but remains invokable and visible to humans.
-  automation: "automation:read",
+  relationship: "relationship:read",
+  // "schedule" and "automation" are deliberately absent: the removal stubs
+  // stay out of token-scoped (agent) help but remain invokable and visible to
+  // humans.
   doctor: null,
   credit: "billing:write",
   model: null,
@@ -93,6 +94,14 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
     },
   },
   {
+    name: "relationship",
+    description: "Query relationship memory",
+    load: async () => {
+      return (await import("./commands/zero/relationship"))
+        .zeroRelationshipCommand;
+    },
+  },
+  {
     name: "credit",
     description: "Create a Stripe checkout link to buy credits",
     load: async () => {
@@ -124,7 +133,7 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
   },
   {
     name: "automation",
-    description: "Create or manage scheduled automations",
+    description: "(removed: use `zero workflow`) Automations are workflows now",
     load: async () => {
       return (await import("./commands/zero/automation")).zeroAutomationCommand;
     },
@@ -385,7 +394,6 @@ export function buildZeroHelpText(
     "  Send AgentPhone?       zero phone message --help",
     "  Upload AgentPhone?     zero phone upload-file --help",
     "  Download AgentPhone?   zero phone download-file --help",
-    "  Automate a task?       zero automation create --help",
     "  List models?          zero model ls",
     "  Model routing?        zero model-provider ls",
     "  Update yourself?       zero agent --help",

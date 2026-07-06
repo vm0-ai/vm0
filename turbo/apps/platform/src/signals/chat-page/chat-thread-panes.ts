@@ -1,4 +1,4 @@
-import { command, computed, state, type Command, type Computed } from "ccstate";
+import { command, computed, state, type Command } from "ccstate";
 import { currentChatThreadId$ } from "../agent-chat.ts";
 import { logger } from "../log.ts";
 import {
@@ -13,12 +13,6 @@ import { createChatThreadSignals, ensureDraft$ } from "./create-chat-thread.ts";
 import type { ChatThreadSignals } from "./chat-thread-signals.ts";
 import { closeHeaderAutomationSidebar$ } from "./header-automation-sidebar.ts";
 import { createIdbCachedDataSource } from "./idb-cached-chat-thread-data-source.ts";
-import {
-  clearMatchingOptimisticChatThread$,
-  optimisticChatThread$,
-  sidebarOptimisticChatThread$,
-  type PendingChatThread,
-} from "./optimistic-chat-thread-state.ts";
 import { setupChatThreadInitScroll$ } from "./setup-chat-thread-signals.ts";
 import { syncPrimaryThread$ } from "./sync-primary-thread.ts";
 
@@ -64,7 +58,6 @@ export const unloadRightThread$ = command(({ get, set }) => {
 
 interface PaneSpec {
   setPaneThread$: Command<void, [ChatThreadSignals | null]>;
-  optimisticSource$: Computed<PendingChatThread | null>;
   resetSetupSignal$: ReturnType<typeof resetSignal>;
 }
 
@@ -75,15 +68,15 @@ const loadDraft$ = command(
     isNew: boolean,
     signal: AbortSignal,
   ) => {
-    const threadData = await get(thread.threadData$);
+    const threadDraft = await get(thread.threadDraft$);
     signal.throwIfAborted();
 
-    if (!threadData) {
-      throw new Error("Thread data missing");
+    if (!threadDraft) {
+      return;
     }
 
-    const hasDraftContent = threadData.draftContent !== null;
-    const draftAttachments = threadData.draftAttachments;
+    const hasDraftContent = threadDraft.draftContent !== null;
+    const draftAttachments = threadDraft.draftAttachments;
     const hasDraftAttachments =
       draftAttachments !== null && draftAttachments.length > 0;
     if (isNew && (hasDraftContent || hasDraftAttachments)) {
@@ -92,7 +85,7 @@ const loadDraft$ = command(
       );
       set(
         thread.draft.seed$,
-        threadData.draftContent ?? "",
+        threadDraft.draftContent ?? "",
         restoredAttachments,
       );
     }
@@ -100,28 +93,14 @@ const loadDraft$ = command(
 );
 const resolvePaneThread$ = command(
   async (
-    { get, set },
+    { set },
     args: {
-      spec: PaneSpec;
       thread: ChatThreadSignals;
       isNew: boolean;
-      matchingOptimistic: PendingChatThread | null;
     },
     signal: AbortSignal,
   ): Promise<void> => {
-    const { spec, thread, isNew, matchingOptimistic } = args;
-
-    if (matchingOptimistic) {
-      L.debug("resolvePaneThread$ swap start", { threadId: thread.threadId });
-      await get(thread.groupedChatMessages$);
-      signal.throwIfAborted();
-      set(thread.hideSkeleton$);
-      set(spec.setPaneThread$, thread);
-      set(clearMatchingOptimisticChatThread$, matchingOptimistic);
-      L.debug("resolvePaneThread$ swap done", {
-        threadId: thread.threadId,
-      });
-    }
+    const { thread, isNew } = args;
 
     L.debug("resolvePaneThread$ Promise.all start", {
       threadId: thread.threadId,
@@ -141,55 +120,25 @@ const resolvePaneThread$ = command(
 
 const setupPaneThread$ = command(
   async (
-    { get, set },
+    { set },
     spec: PaneSpec,
     threadId: string,
     parentSignal: AbortSignal,
   ): Promise<void> => {
     const signal = set(spec.resetSetupSignal$, parentSignal);
 
-    const optimisticThread = get(spec.optimisticSource$);
-    const matchingOptimistic =
-      optimisticThread?.threadId === threadId ? optimisticThread : null;
-    L.debug("setupPaneThread$ start", {
-      threadId,
-      hasOptimistic: Boolean(matchingOptimistic),
-    });
-
-    if (matchingOptimistic) {
-      set(spec.setPaneThread$, matchingOptimistic.pendingThread);
-    }
+    L.debug("setupPaneThread$ start", { threadId });
 
     const { draft, isNew } = set(ensureDraft$, threadId);
-    let onIdbMiss: () => void = () => {};
-    const dataSource = createIdbCachedDataSource(threadId, () => {
-      onIdbMiss();
-    });
+    const dataSource = createIdbCachedDataSource(threadId);
     const thread = createChatThreadSignals(threadId, draft, dataSource);
-    onIdbMiss = () => {
-      if (matchingOptimistic) {
-        return;
-      }
-      set(thread.showSkeleton$);
-    };
-    if (!matchingOptimistic) {
-      set(spec.setPaneThread$, thread);
-    }
-
-    if (matchingOptimistic) {
-      L.debug("setupPaneThread$ awaiting settleResult", { threadId });
-      await matchingOptimistic.settleResult;
-      L.debug("setupPaneThread$ settleResult resolved", { threadId });
-      signal.throwIfAborted();
-    }
+    set(spec.setPaneThread$, thread);
 
     await set(
       resolvePaneThread$,
       {
-        spec,
         thread,
         isNew,
-        matchingOptimistic,
       },
       signal,
     );
@@ -225,7 +174,6 @@ export const loadLeftThread$ = command(
         setupPaneThread$,
         {
           setPaneThread$: setLeftThread$,
-          optimisticSource$: optimisticChatThread$,
           resetSetupSignal$: resetLeftSetupSignal$,
         },
         threadId,
@@ -267,7 +215,6 @@ export const loadRightThread$ = command(
       setupPaneThread$,
       {
         setPaneThread$: setRightThread$,
-        optimisticSource$: sidebarOptimisticChatThread$,
         resetSetupSignal$: resetRightSetupSignal$,
       },
       threadId,

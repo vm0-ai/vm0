@@ -1,12 +1,14 @@
 import { Command, Option } from "commander";
 import {
-  findMatchingRoutingPermissions,
   matchFirewallBaseUrl,
+  matchFirewallRequestDecision,
+  type FirewallRoutingPermissionRoute,
 } from "@vm0/connectors/firewall-rule-matcher";
 import { getFirewallPermissionSummary } from "@vm0/connectors/firewall-metadata";
 import { loadFirewallRoutingMetadata } from "@vm0/connectors/firewall-metadata/routing";
 import {
   hasUnsafeFirewallPath,
+  type NetworkPolicies,
   UNKNOWN_PERMISSION_GRANT,
 } from "@vm0/connectors/firewall-types";
 import { withErrorHandler } from "../../../lib/command";
@@ -27,9 +29,26 @@ interface PermissionDenyOptions {
 
 interface PermissionDenyBaseMatch {
   readonly apiBase: string;
+  readonly decisionBase: string;
   readonly displayBase: string;
   readonly relativePath: string;
   readonly score: number;
+}
+
+interface PermissionDenyDecisionPermission {
+  readonly name: string;
+  readonly rules: readonly string[];
+}
+
+interface PermissionDenyDecisionApi {
+  readonly base: string;
+  readonly auth: Record<string, never>;
+  readonly permissions: readonly PermissionDenyDecisionPermission[];
+}
+
+interface PermissionDenyDecisionFirewall {
+  readonly name: string;
+  readonly apis: readonly PermissionDenyDecisionApi[];
 }
 
 const BASE_URL_VAR_PATTERN = /\$\{\{\s*vars\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
@@ -207,6 +226,10 @@ function stripUrlQueryAndFragment(url: string): string {
   return url.slice(0, end);
 }
 
+function stripTrailingSlash(value: string): string {
+  return value.endsWith("/") ? value.slice(0, -1) : value;
+}
+
 function rawPathFromDeniedUrl(url: string): string {
   const urlWithoutQuery = stripUrlQueryAndFragment(url);
   const schemeEnd = urlWithoutQuery.indexOf("://");
@@ -223,6 +246,7 @@ function matchApiBaseUrl(
   if (directMatch) {
     return {
       apiBase,
+      decisionBase: apiBase,
       displayBase: directMatch.displayBase,
       relativePath: directMatch.relativePath,
       score: directMatch.score,
@@ -235,6 +259,7 @@ function matchApiBaseUrl(
     if (resolvedMatch) {
       return {
         apiBase,
+        decisionBase: resolvedBase,
         displayBase: resolvedMatch.displayBase,
         relativePath: resolvedMatch.relativePath,
         score: resolvedMatch.score,
@@ -249,6 +274,7 @@ function matchApiBaseUrl(
   if (!patternMatch) return null;
   return {
     apiBase,
+    decisionBase: patternBase,
     displayBase: apiBase,
     relativePath: patternMatch.relativePath,
     score: patternMatch.score,
@@ -280,10 +306,105 @@ function findBestBaseMatch(
   const api = unresolvedWholeBaseApis[0]!;
   return {
     apiBase: api.base,
+    decisionBase: deniedUrl.origin,
     displayBase: api.base,
     relativePath: rawPathFromDeniedUrl(url),
     score: 0,
   };
+}
+
+function routesForMatchedBase(
+  apis: readonly {
+    readonly base: string;
+    readonly routes: readonly FirewallRoutingPermissionRoute[];
+  }[],
+  apiBase: string,
+): readonly FirewallRoutingPermissionRoute[] {
+  const normalizedApiBase = stripTrailingSlash(apiBase);
+  const routes: FirewallRoutingPermissionRoute[] = [];
+  for (const api of apis) {
+    if (stripTrailingSlash(api.base) === normalizedApiBase) {
+      routes.push(...api.routes);
+    }
+  }
+  return routes;
+}
+
+function routesToDecisionPermissions(
+  routes: readonly FirewallRoutingPermissionRoute[],
+): PermissionDenyDecisionPermission[] {
+  const rulesByPermission = new Map<string, string[]>();
+  for (const route of routes) {
+    const rules = rulesByPermission.get(route.permissionName);
+    if (rules) {
+      rules.push(route.rule);
+    } else {
+      rulesByPermission.set(route.permissionName, [route.rule]);
+    }
+  }
+
+  return [...rulesByPermission.entries()].map(([name, rules]) => {
+    return { name, rules };
+  });
+}
+
+function buildDecisionFirewall(
+  connectorRef: string,
+  base: string,
+  permissions: readonly PermissionDenyDecisionPermission[],
+): readonly PermissionDenyDecisionFirewall[] {
+  return [
+    {
+      name: connectorRef,
+      apis: [
+        {
+          base,
+          auth: {},
+          permissions,
+        },
+      ],
+    },
+  ];
+}
+
+function buildAllDeniedNetworkPolicies(
+  connectorRef: string,
+  permissions: readonly PermissionDenyDecisionPermission[],
+): NetworkPolicies {
+  return {
+    [connectorRef]: {
+      allow: [],
+      deny: permissions.map((permission) => {
+        return permission.name;
+      }),
+      ask: [],
+      unknownPolicy: "deny",
+    },
+  };
+}
+
+function findDeniedDecisionPermissions(
+  connectorRef: string,
+  method: string,
+  url: string,
+  match: PermissionDenyBaseMatch,
+  apis: readonly {
+    readonly base: string;
+    readonly routes: readonly FirewallRoutingPermissionRoute[];
+  }[],
+): string[] {
+  const routes = routesForMatchedBase(apis, match.apiBase);
+  const permissions = routesToDecisionPermissions(routes);
+  const decision = matchFirewallRequestDecision(
+    buildDecisionFirewall(connectorRef, match.decisionBase, permissions),
+    method,
+    url,
+    buildAllDeniedNetworkPolicies(connectorRef, permissions),
+  );
+  if (decision.kind !== "block" || decision.reason !== "permission_denied") {
+    return [];
+  }
+  return [...decision.permissions];
 }
 
 function printPermissionChangeGuidance(
@@ -390,11 +511,12 @@ Notes:
           );
         }
 
-        const permissions = findMatchingRoutingPermissions(
+        const permissions = findDeniedDecisionPermissions(
+          connectorRef,
           method,
-          match.relativePath,
+          opts.url,
+          match,
           metadata.apis,
-          { apiBase: match.apiBase, serviceName: connectorRef },
         );
 
         console.log(

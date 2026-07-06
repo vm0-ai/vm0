@@ -69,16 +69,24 @@ fn codex_resume_config(
     api_url: &str,
     api_token: &str,
 ) -> Result<guest_agent::env::GuestConfig, String> {
+    let runtime_dir = codex_resume_runtime_dir();
+    let run_payload_file = common::write_run_payload_file_for_test(
+        &runtime_dir,
+        &guest_contracts::env::RunPayload {
+            prompt: "test prompt".to_string(),
+            ..guest_contracts::env::RunPayload::default()
+        },
+    )?;
     guest_agent::env::GuestConfig::from_raw(guest_agent::env::GuestConfigRaw {
         run_id: CODEX_RESUME_RUN_ID.clone(),
         api_url: api_url.to_string(),
         api_token: api_token.to_string(),
         sandbox_id: "00000000-0000-4000-8000-000000000abc".to_string(),
         sandbox_reuse_result: "reused".to_string(),
-        prompt: "test prompt".to_string(),
         cli_agent_type: "codex".to_string(),
         home: Some(CODEX_RESUME_HOME.to_string_lossy().into_owned()),
-        guest_runtime_dir: Some(codex_resume_runtime_dir()),
+        run_payload_file: run_payload_file.to_string_lossy().into_owned(),
+        guest_runtime_dir: Some(runtime_dir),
         ..Default::default()
     })
 }

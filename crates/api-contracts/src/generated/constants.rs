@@ -61,6 +61,10 @@ pub mod model_provider_env {
 
 /// Runner contract constants shared by TypeScript and Rust.
 pub mod runners {
+    /// Maximum connector refs accepted by the runner network policy refresh endpoint.
+    /// Rust runners use this shared contract value to split refresh requests before calling the API.
+    pub const NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX: u64 = 256;
+
     /// Maximum resume session history blob size accepted by the API, runner, and guest verifier.
     /// Rust and TypeScript components use this shared contract value when validating resume history refs, downloads, and idle-reuse verification.
     pub const RESUME_SESSION_HISTORY_MAX_BYTES: u64 = 134217728;

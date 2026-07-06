@@ -1368,7 +1368,6 @@ jobs:
             VITE_GIT_COMMIT_SHA=${{ steps.build-commit.outputs.sha }}
             VITE_ONBOARDING_URL=${{ vars.ONBOARDING_URL || 'https://www.vm0.ai' }}
             PUBLIC_ARTIFACTS_BASE_URL=${{ vars.PUBLIC_ARTIFACTS_BASE_URL }}
-            VITE_STATIC_ASSETS_BASE_URL=${{ vars.STATIC_ASSETS_BASE_URL_PROD || vars.STATIC_ASSETS_BASE_URL || 'https://static.vm0.io' }}
             VITE_ZERO_HOST_DOMAIN=${{ vars.ZERO_HOST_DOMAIN }}
             VITE_VAPID_PUBLIC_KEY=${{ vars.VAPID_PUBLIC_KEY }}
             VITE_PLAUSIBLE_SCRIPT_URL=${{ vars.PLAUSIBLE_SCRIPT_URL_PROD }}

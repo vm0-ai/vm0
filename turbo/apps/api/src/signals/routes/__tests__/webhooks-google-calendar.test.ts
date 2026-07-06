@@ -45,6 +45,25 @@ function triggersClient() {
   return setupApp({ context })(zeroWorkflowTriggersContract);
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function sandboxOperationEventsForRun(
+  runId: string,
+): readonly Record<string, unknown>[] {
+  return context.mocks.axiom.sdkIngest.mock.calls.flatMap((call) => {
+    const dataset = call[0];
+    const events = call[1];
+    if (dataset !== "vm0-sandbox-op-log-dev" || !Array.isArray(events)) {
+      return [];
+    }
+    return events.filter((event): event is Record<string, unknown> => {
+      return isRecord(event) && event.run_id === runId;
+    });
+  });
+}
+
 async function enableGoogleCalendarWorkflowTriggers(
   fixture: WorkflowsFixture,
 ): Promise<void> {
@@ -284,7 +303,49 @@ describe("POST /api/webhooks/google-calendar", () => {
     await runsApi.heartbeatRunner(runnerGroup);
     const firstJob = await runsApi.pollRunner(runnerGroup);
     expect(firstJob.body.job?.runId).toStrictEqual(expect.any(String));
-    await runsApi.claimRunnerJob(firstJob.body.job!.runId);
+    const firstRunId = firstJob.body.job!.runId;
+    await runsApi.claimRunnerJob(firstRunId);
+    const timingEvents = sandboxOperationEventsForRun(firstRunId);
+    const actionTypes = new Set(
+      timingEvents.map((event) => {
+        return event.op_type;
+      }),
+    );
+    for (const actionType of [
+      "api_dispatch_pre_create_zero_workflow_trigger_entrypoint_gap",
+      "api_dispatch_pre_create_zero_workflow_event_load_source_state",
+      "api_dispatch_pre_create_zero_workflow_event_load_external_events",
+      "api_dispatch_pre_create_zero_workflow_event_load_triggers",
+      "api_dispatch_pre_create_zero_workflow_event_check_feature_gate",
+      "api_dispatch_pre_create_zero_workflow_event_match_triggers",
+      "api_dispatch_pre_create_zero_workflow_event_record_processed_event",
+      "api_dispatch_pre_create_zero_workflow_event_build_run_input",
+      "api_dispatch_pre_create_zero_workflow_event_handoff_run",
+    ]) {
+      expect(actionTypes).toContain(actionType);
+    }
+    expect(timingEvents).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          op_type: "api_dispatch_pre_create_zero_workflow_event_handoff_run",
+          workflow_event_source: "google_calendar",
+          trigger_source: "workflow-event",
+          zero_run_origin: "workflow_trigger",
+          span_kind: "nested",
+        }),
+      ]),
+    );
+    const serializedTiming = JSON.stringify(timingEvents);
+    expect(serializedTiming).not.toContain(CALENDAR_EMAIL);
+    expect(serializedTiming).not.toContain("event-created-1");
+    expect(serializedTiming).not.toContain("Planning");
+    expect(serializedTiming).not.toContain(
+      "https://calendar.google.com/event?eid=1",
+    );
+    expect(serializedTiming).not.toContain(watch.channelId);
+    expect(serializedTiming).not.toContain(watch.resourceId);
+    expect(serializedTiming).not.toContain(created.body.id);
+    expect(serializedTiming).not.toContain(WORKFLOW_NAME);
 
     const updatedWatchState = await store.set(
       getWorkflowGoogleCalendarWatchState$,

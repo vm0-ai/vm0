@@ -4,7 +4,7 @@ import { and, eq } from "drizzle-orm";
 
 import { writeDb$, type Db } from "../external/db";
 import { nowDate } from "../external/time";
-import { TimeTrigger } from "./automations/time-trigger";
+import { TimeTrigger } from "./time-trigger";
 import type {
   InternalRunCallbackDispatchResult,
   InternalRunCallbackEnvelope,

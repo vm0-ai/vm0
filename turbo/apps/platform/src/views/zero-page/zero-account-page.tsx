@@ -34,6 +34,7 @@ import {
   captureNetworkBodiesRemaining$,
   updateCaptureNetworkBodies$,
 } from "../../signals/zero-page/settings/preferences-page.ts";
+import { BuildInfoBlock } from "./components/settings/build-info-block.tsx";
 
 function AppearanceSettings() {
   const THEME_OPTIONS = [
@@ -318,6 +319,7 @@ export function ZeroPreferencesPage() {
                 showModelConfiguration && <PersonalProvidersTab />}
               {activeTab === "debug" && showDebug && (
                 <div className="flex flex-col gap-6">
+                  <BuildInfoBlock />
                   <CaptureNetworkBodiesSettings />
                 </div>
               )}

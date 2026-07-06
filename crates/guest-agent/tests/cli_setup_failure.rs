@@ -26,7 +26,13 @@ async fn agent_log_open_failure_happens_before_cli_spawn() -> Result<(), Box<dyn
             guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
             runtime_dir.as_os_str(),
         );
-        std::env::set_var("VM0_PROMPT", "@exit-after-result");
+        common::set_run_payload_file_env_for_test(
+            &runtime_dir,
+            &guest_contracts::env::RunPayload {
+                prompt: "@exit-after-result".to_string(),
+                ..guest_contracts::env::RunPayload::default()
+            },
+        )?;
         std::env::set_var("VM0_API_URL", "http://127.0.0.1:1");
         std::env::set_var("VM0_API_TOKEN", "");
         std::env::set_var("CLI_AGENT_TYPE", "claude-code");

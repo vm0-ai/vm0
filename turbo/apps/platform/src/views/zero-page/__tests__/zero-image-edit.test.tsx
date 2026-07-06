@@ -6,7 +6,6 @@ import { describe, expect, it } from "vitest";
 import {
   chatThreadByIdContract,
   chatThreadMessagesContract,
-  chatThreadsContract,
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroImageIoGenerateContract } from "@vm0/api-contracts/contracts/zero-image-io-generate";
@@ -82,14 +81,9 @@ function setupChatThread({
 
   context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
     return respond(200, {
-      id: THREAD_ID,
-      title: null,
-      agentId: AGENT_ID,
-      activeRunIds: [],
-      draftContent: null,
-      draftAttachments: null,
-      createdAt: "2026-03-10T00:00:00Z",
-      updatedAt: "2026-03-10T00:00:00Z",
+      lastReadAt: null,
+      computerUseHostId: null,
+      codexServiceTier: null,
     });
   });
   context.mocks.api(chatThreadMessagesContract.list, ({ query, respond }) => {
@@ -97,14 +91,6 @@ function setupChatThread({
       return respond(200, { messages: [] });
     }
     return respond(200, { messages, hasHistoryBefore: false });
-  });
-  context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-    return respond(200, {
-      pinned: [],
-      threads: [],
-      hasMore: false,
-      nextCursor: null,
-    });
   });
 
   detachedSetupPage({

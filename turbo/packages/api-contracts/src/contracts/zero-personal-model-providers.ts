@@ -10,6 +10,20 @@ import {
 
 const c = initContract();
 
+export const resetPersonalModelProviderSubscriptionUsageRequestSchema =
+  z.object({
+    idempotencyKey: z.uuid(),
+  });
+
+export const resetPersonalModelProviderSubscriptionUsageResponseSchema =
+  z.object({
+    outcome: z.enum(["reset", "nothingToReset", "noCredit", "alreadyRedeemed"]),
+  });
+
+export type ResetPersonalModelProviderSubscriptionUsageResponse = z.infer<
+  typeof resetPersonalModelProviderSubscriptionUsageResponseSchema
+>;
+
 /**
  * Zero personal (user-level) model providers main contract for /api/zero/me/model-providers
  *
@@ -74,6 +88,23 @@ export const zeroPersonalModelProvidersByTypeContract = c.router({
       500: apiErrorSchema,
     },
     summary: "Delete a personal model provider for the requesting user",
+  },
+  resetSubscriptionUsage: {
+    method: "POST",
+    path: "/api/zero/me/model-providers/:type/subscription-reset",
+    headers: authHeadersSchema,
+    pathParams: z.object({
+      type: modelProviderTypeSchema,
+    }),
+    body: resetPersonalModelProviderSubscriptionUsageRequestSchema,
+    responses: {
+      200: resetPersonalModelProviderSubscriptionUsageResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Reset a personal model provider subscription usage window",
   },
 });
 

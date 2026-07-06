@@ -21,6 +21,10 @@ import { nowDate } from "../external/time";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { workflowAutomationEnabledForOwner } from "./workflow-automation-feature-switch.service";
 import {
+  WorkflowEventSourceTiming,
+  type WorkflowEventRunTiming,
+} from "./workflow-event-source-timing.service";
+import {
   buildChatOnlyWorkflowTriggerCallbacks,
   runWorkflowTriggerNow$,
   type TriggerRow,
@@ -81,6 +85,7 @@ type GithubWorkflowRunStartArgs = {
   readonly payload: GithubLabelWorkflowEventPayload;
   readonly subjectKind: GithubWorkflowSubjectKind;
   readonly matchedLabelName: string;
+  readonly timing: WorkflowEventRunTiming;
 };
 
 interface GithubWorkflowDispatchCounts {
@@ -435,9 +440,15 @@ async function dispatchGithubTriggerEvent(args: {
   readonly payload: GithubLabelWorkflowEventPayload;
   readonly subjectKind: GithubWorkflowSubjectKind;
   readonly matchedLabelName: string;
+  readonly timing: WorkflowEventRunTiming;
   readonly startRun: () => Promise<"ok" | "error">;
 }): Promise<"dispatched" | "duplicate" | { readonly kind: "run_error" }> {
-  const processedId = await insertGithubProcessedEvent(args);
+  const processedId = await args.timing.measure(
+    "api_dispatch_pre_create_zero_workflow_event_record_processed_event",
+    async () => {
+      return await insertGithubProcessedEvent(args);
+    },
+  );
   if (!processedId) {
     return "duplicate";
   }
@@ -461,6 +472,19 @@ const startGithubWorkflowRun$ = command(
     },
     signal: AbortSignal,
   ): Promise<"ok" | "error"> => {
+    const runInput = await args.timing.measure(
+      "api_dispatch_pre_create_zero_workflow_event_build_run_input",
+      () => {
+        return {
+          appendSystemPrompt: buildGithubWorkflowEventSystemPrompt(args),
+          callbacks: buildChatOnlyWorkflowTriggerCallbacks(
+            args.trigger.chatThreadId,
+            args.trigger.agentId,
+          ),
+        };
+      },
+    );
+    signal.throwIfAborted();
     const result = await set(
       runWorkflowTriggerNow$,
       {
@@ -472,15 +496,13 @@ const startGithubWorkflowRun$ = command(
         },
         apiStartTime: args.apiStartTime,
         triggerSource: "workflow-event",
-        appendSystemPrompt: buildGithubWorkflowEventSystemPrompt(args),
-        callbacks: buildChatOnlyWorkflowTriggerCallbacks(
-          args.trigger.chatThreadId,
-          args.trigger.agentId,
-        ),
+        appendSystemPrompt: runInput.appendSystemPrompt,
+        callbacks: runInput.callbacks,
         activePreviousRunPolicy: "allow",
         recordLastRunId: false,
         recordLastRunAt: true,
         dispatchFailedCallbacks: dispatchFailedRunCallbacks,
+        timing: args.timing.collectorForRunStart(),
       },
       signal,
     );
@@ -559,29 +581,42 @@ const dispatchMatchedGithubTriggers$ = command(
       readonly payload: GithubLabelWorkflowEventPayload;
       readonly subjectKind: GithubWorkflowSubjectKind;
       readonly apiStartTime: number;
+      readonly sourceTiming: WorkflowEventSourceTiming;
     },
     signal: AbortSignal,
   ): Promise<GithubWorkflowDispatchCounts> => {
     let dispatched = 0;
     let duplicates = 0;
     for (const trigger of args.triggers) {
-      const gateEnabled = await get(
-        workflowAutomationEnabledForOwner(
-          trigger.trigger.orgId,
-          trigger.trigger.ownerUserId,
-        ),
+      const runTiming = args.sourceTiming.createRunTiming();
+      const gateEnabled = await runTiming.measure(
+        "api_dispatch_pre_create_zero_workflow_event_check_feature_gate",
+        async () => {
+          return await get(
+            workflowAutomationEnabledForOwner(
+              trigger.trigger.orgId,
+              trigger.trigger.ownerUserId,
+            ),
+          );
+        },
       );
       signal.throwIfAborted();
-      const matchedLabelName = await matchedLabelForTrigger({
-        gateEnabled,
-        db: args.db,
-        installation: args.installation,
-        trigger,
-        labelNames: args.labelNames,
-        subjectKind: args.subjectKind,
-        sender: args.payload.sender,
-        signal,
-      });
+      const matchedLabelName = await runTiming.measure(
+        "api_dispatch_pre_create_zero_workflow_event_match_triggers",
+        async () => {
+          return await matchedLabelForTrigger({
+            gateEnabled,
+            db: args.db,
+            installation: args.installation,
+            trigger,
+            labelNames: args.labelNames,
+            subjectKind: args.subjectKind,
+            sender: args.payload.sender,
+            signal,
+          });
+        },
+      );
+      signal.throwIfAborted();
       if (!matchedLabelName) {
         continue;
       }
@@ -592,6 +627,7 @@ const dispatchMatchedGithubTriggers$ = command(
         payload: args.payload,
         subjectKind: args.subjectKind,
         matchedLabelName,
+        timing: runTiming,
       };
       const result = await dispatchGithubTriggerEvent({
         db: args.db,
@@ -600,6 +636,7 @@ const dispatchMatchedGithubTriggers$ = command(
         payload: args.payload,
         subjectKind: args.subjectKind,
         matchedLabelName,
+        timing: runTiming,
         startRun: async () => {
           return (
             (await startGithubWorkflowRunOverride(runArgs)) ??
@@ -636,6 +673,7 @@ export const dispatchGithubLabelWorkflowTriggers$ = command(
       readonly payload: GithubLabelWorkflowEventPayload;
       readonly subjectKind: GithubWorkflowSubjectKind;
       readonly apiStartTime: number;
+      readonly backgroundScheduledAt?: number;
     },
     signal: AbortSignal,
   ): Promise<{
@@ -657,11 +695,27 @@ export const dispatchGithubLabelWorkflowTriggers$ = command(
       return { kind: "ok", dispatched: 0, duplicates: 0 };
     }
 
+    const sourceTiming = new WorkflowEventSourceTiming(
+      "github",
+      args.apiStartTime,
+    );
+    if (args.backgroundScheduledAt !== undefined) {
+      sourceTiming.recordElapsed(
+        "api_dispatch_pre_create_zero_workflow_event_background_start_gap",
+        args.backgroundScheduledAt,
+      );
+    }
+
     const db = set(writeDb$);
-    const installationRecord = await findActiveInstallation({
-      db,
-      ghInstallationId: String(installation.id),
-    });
+    const installationRecord = await sourceTiming.measure(
+      "api_dispatch_pre_create_zero_workflow_event_load_source_state",
+      async () => {
+        return await findActiveInstallation({
+          db,
+          ghInstallationId: String(installation.id),
+        });
+      },
+    );
     signal.throwIfAborted();
     if (!installationRecord) {
       log.debug("Ignoring GitHub workflow event for unbound installation", {
@@ -672,11 +726,17 @@ export const dispatchGithubLabelWorkflowTriggers$ = command(
       return { kind: "ok", dispatched: 0, duplicates: 0 };
     }
 
-    const triggers = await loadGithubLabelEventTriggers({
-      db,
-      orgId: installationRecord.orgId,
-      signal,
-    });
+    const triggers = await sourceTiming.measure(
+      "api_dispatch_pre_create_zero_workflow_event_load_triggers",
+      async () => {
+        return await loadGithubLabelEventTriggers({
+          db,
+          orgId: installationRecord.orgId,
+          signal,
+        });
+      },
+    );
+    signal.throwIfAborted();
     const counts = await set(
       dispatchMatchedGithubTriggers$,
       {
@@ -688,6 +748,7 @@ export const dispatchGithubLabelWorkflowTriggers$ = command(
         payload: args.payload,
         subjectKind: args.subjectKind,
         apiStartTime: args.apiStartTime,
+        sourceTiming,
       },
       signal,
     );

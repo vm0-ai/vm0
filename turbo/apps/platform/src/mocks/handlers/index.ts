@@ -105,8 +105,10 @@ import {
   resetMockUserPermissionGrants,
 } from "./api-user-permission-grants.ts";
 import { apiVoiceIoHandlers } from "./api-voice-io.ts";
+import { apiBuildInfoHandlers } from "./api-build-info.ts";
 
 export const handlers = [
+  ...apiBuildInfoHandlers,
   ...apiConnectorsHandlers,
   ...apiOrgHandlers,
   ...apiOrgMembersHandlers,

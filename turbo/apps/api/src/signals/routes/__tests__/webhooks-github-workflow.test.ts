@@ -43,6 +43,25 @@ function triggersClient() {
   return setupApp({ context })(zeroWorkflowTriggersContract);
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function sandboxOperationEventsForRun(
+  runId: string,
+): readonly Record<string, unknown>[] {
+  return context.mocks.axiom.sdkIngest.mock.calls.flatMap((call) => {
+    const dataset = call[0];
+    const events = call[1];
+    if (dataset !== "vm0-sandbox-op-log-dev" || !Array.isArray(events)) {
+      return [];
+    }
+    return events.filter((event): event is Record<string, unknown> => {
+      return isRecord(event) && event.run_id === runId;
+    });
+  });
+}
+
 async function enableGithubWorkflowTriggers(
   fixture: WorkflowsFixture,
 ): Promise<void> {
@@ -201,6 +220,26 @@ describe("POST /api/webhooks/github for workflow triggers", () => {
       }),
       [201],
     );
+    const createdSecond = await accept(
+      triggersClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: {
+          kind: "event",
+          eventType: "github-label-applied",
+          eventConfig: {
+            provider: "github",
+            event: "label_applied",
+            labelName: "TriAge",
+            filters: {
+              subject: "both",
+              actor: { type: "me" },
+            },
+          },
+        },
+      }),
+      [201],
+    );
 
     const labeled = await postGithubWebhook({
       event: "issues",
@@ -225,6 +264,7 @@ describe("POST /api/webhooks/github for workflow triggers", () => {
     });
     expect(opened).toStrictEqual({ status: 200, text: "OK" });
     await flushWaitUntilForTest();
+    await flushWaitUntilForTest();
 
     const runs = await store.set(
       getWorkflowTriggerRunState$,
@@ -237,6 +277,65 @@ describe("POST /api/webhooks/github for workflow triggers", () => {
         return run.triggerSource;
       }),
     ).toStrictEqual(["workflow-event", "workflow-event"]);
+    const secondRuns = await store.set(
+      getWorkflowTriggerRunState$,
+      { triggerId: createdSecond.body.id },
+      context.signal,
+    );
+    expect(secondRuns).toHaveLength(2);
+    expect(
+      secondRuns.map((run) => {
+        return run.triggerSource;
+      }),
+    ).toStrictEqual(["workflow-event", "workflow-event"]);
+
+    const allRunIds = [...runs, ...secondRuns].map((run) => {
+      return run.id;
+    });
+    expect(new Set(allRunIds).size).toBe(4);
+    for (const runId of allRunIds) {
+      const timingEvents = sandboxOperationEventsForRun(runId);
+      const actionTypes = new Set(
+        timingEvents.map((event) => {
+          return event.op_type;
+        }),
+      );
+      for (const actionType of [
+        "api_dispatch_pre_create_zero_workflow_trigger_entrypoint_gap",
+        "api_dispatch_pre_create_zero_workflow_event_background_start_gap",
+        "api_dispatch_pre_create_zero_workflow_event_load_source_state",
+        "api_dispatch_pre_create_zero_workflow_event_load_triggers",
+        "api_dispatch_pre_create_zero_workflow_event_check_feature_gate",
+        "api_dispatch_pre_create_zero_workflow_event_match_triggers",
+        "api_dispatch_pre_create_zero_workflow_event_record_processed_event",
+        "api_dispatch_pre_create_zero_workflow_event_build_run_input",
+        "api_dispatch_pre_create_zero_workflow_event_handoff_run",
+      ]) {
+        expect(actionTypes).toContain(actionType);
+      }
+      expect(timingEvents).toStrictEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            op_type: "api_dispatch_pre_create_zero_workflow_event_handoff_run",
+            workflow_event_source: "github",
+            trigger_source: "workflow-event",
+            zero_run_origin: "workflow_trigger",
+            span_kind: "nested",
+          }),
+        ]),
+      );
+      const serializedTiming = JSON.stringify(timingEvents);
+      expect(serializedTiming).not.toContain("delivery-1");
+      expect(serializedTiming).not.toContain("vm0-ai/vm0");
+      expect(serializedTiming).not.toContain("Needs triage");
+      expect(serializedTiming).not.toContain("lancy");
+      expect(serializedTiming).not.toContain("triage");
+      expect(serializedTiming).not.toContain(created.body.id);
+      expect(serializedTiming).not.toContain(createdSecond.body.id);
+      expect(serializedTiming).not.toContain(WORKFLOW_NAME);
+      expect(serializedTiming).not.toContain(fixture.orgId);
+      expect(serializedTiming).not.toContain(fixture.userId);
+    }
 
     const processed = await store.set(
       getWorkflowGithubProcessedEvents$,
@@ -255,5 +354,11 @@ describe("POST /api/webhooks/github for workflow triggers", () => {
         labelNameNormalized: "triage",
       },
     ]);
+    const secondProcessed = await store.set(
+      getWorkflowGithubProcessedEvents$,
+      { triggerId: createdSecond.body.id },
+      context.signal,
+    );
+    expect(secondProcessed).toStrictEqual(processed);
   });
 });

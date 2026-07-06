@@ -7,8 +7,8 @@ In the API app (`turbo/apps/api`), route behavior should be covered by
 `setupApp()` and the route's ts-rest contract, not by importing route handlers or
 service functions directly.
 
-Use this guide for endpoints implemented in `apps/api`, migrated from
-`apps/web`, or promoted to API-authoritative behavior.
+Use this guide for endpoints implemented in `apps/api` or promoted to
+API-authoritative behavior.
 
 ## File Location
 
@@ -131,19 +131,19 @@ raise the gap during review.
 For the full reasoning, see
 [Testing External Behavior](./testing-external-behavior.md).
 
-## Migration From apps/web
+## Frontend-Origin API Compatibility
 
-All endpoint behavior lives in `apps/api`. `apps/web` no longer hosts API route
-handlers, so the web app keeps only compatibility coverage for routing concerns,
-such as:
+All endpoint behavior lives in `apps/api`; frontend apps should not add API
+route handlers or thin proxy route handlers. When a `/api/*` path must remain
+reachable on a frontend origin, route that path back to `apps/api` through the
+owning frontend's Vercel rewrite configuration, such as
+`turbo/apps/platform/vercel.json`.
 
-- exact `API_BACKEND_REWRITES` entries
-- middleware bypass matchers
+Frontend-side tests should cover only routing concerns, such as:
+
+- exact Vercel rewrite entries
+- service-worker handling of API and navigation requests
 - security header behavior around proxied paths
-
-Do not add an `apps/web/app/api/**/route.ts` proxy (a custom `no-new-api-routes`
-lint rule forbids it). Route the web-compatible path back to `apps/api` through
-the API backend rewrite configuration.
 
 ## Commands
 

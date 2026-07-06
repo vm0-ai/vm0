@@ -346,14 +346,18 @@ export function isLimitedFree1RestrictedRunModel(
     return false;
   }
   const normalized = model.trim().toLowerCase();
+  const canonicalModel = normalizeVm0ModelId(normalized);
+  const vendor = VM0_MODEL_TO_PROVIDER[canonicalModel]?.vendor;
+
   return (
-    normalized === "gpt-5.5" ||
-    normalized === "openai/gpt-5.5" ||
-    normalized === "claude-fable-5" ||
-    normalized === "anthropic/claude-fable-5" ||
+    vendor === "anthropic" ||
+    vendor === "openai" ||
+    normalized.startsWith("anthropic/") ||
+    normalized.startsWith("openai/") ||
+    normalized.startsWith("claude-") ||
+    normalized.startsWith("gpt-") ||
     normalized === "fable" ||
-    normalized.startsWith("claude-opus-") ||
-    normalized.startsWith("anthropic/claude-opus-")
+    normalized === "anthropic/fable"
   );
 }
 
@@ -1348,6 +1352,7 @@ export const modelProviderResponseSchema = z.object({
   updatedAt: z.string(),
   // OAuth account metadata populated by provider-specific connect flows. Other
   // provider types omit these.
+  accountEmail: z.string().nullable().optional(),
   workspaceName: z.string().nullable().optional(),
   planType: z.string().nullable().optional(),
   // Subscription quota metadata. Providers omit these until an upstream source
@@ -1355,6 +1360,12 @@ export const modelProviderResponseSchema = z.object({
   subscriptionResetPeriod: z.string().nullable().optional(),
   subscriptionNextResetAt: z.string().nullable().optional(),
   subscriptionUsage: modelProviderSubscriptionUsageSchema.nullable().optional(),
+  subscriptionResetCredits: z
+    .number()
+    .int()
+    .nonnegative()
+    .nullable()
+    .optional(),
   // OAuth refresh state. `needsReconnect` flips to true when the firewall's
   // refresh attempt fails (#11921 writes this on the model_providers row).
   // `lastRefreshErrorCode` carries the typed code from `ChatgptRefreshError`

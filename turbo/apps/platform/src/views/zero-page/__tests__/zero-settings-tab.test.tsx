@@ -18,6 +18,7 @@ const context = testContext();
 
 const AGENT_ID = "a0000000-0000-4000-a000-000000000020";
 const AVATAR_SVG_PRELOAD_CACHE_KEY = "vm0AvatarSvgPreloadCache";
+const PAGE_LOAD_TIMEOUT_MS = 5000;
 
 function resetAvatarSvgPreloadCache(): void {
   Reflect.deleteProperty(globalThis, AVATAR_SVG_PRELOAD_CACHE_KEY);
@@ -139,6 +140,18 @@ function uniqueAvatarSvgPreloadSrcs(srcs: readonly string[]): string[] {
   return Array.from(new Set(avatarSvgPreloadSrcs(srcs)));
 }
 
+function findCreateCustomAvatarButton(): Promise<HTMLElement> {
+  return screen.findByLabelText("Create custom avatar", undefined, {
+    timeout: PAGE_LOAD_TIMEOUT_MS,
+  });
+}
+
+function findAgentNameInput(): Promise<HTMLElement> {
+  return screen.findByDisplayValue("Research Agent", undefined, {
+    timeout: PAGE_LOAD_TIMEOUT_MS,
+  });
+}
+
 function prepareAgentProfile(): void {
   let detail: ZeroAgentResponse = {
     agentId: AGENT_ID,
@@ -209,7 +222,7 @@ describe("zero settings tab", () => {
     try {
       detachedSetupPage({ context, path: `/agents/${AGENT_ID}?tab=profile` });
 
-      const trigger = await screen.findByLabelText("Create custom avatar");
+      const trigger = await findCreateCustomAvatarButton();
       expect(avatarSvgPreloadSrcs(imagePreloads.srcs)).toHaveLength(0);
 
       click(trigger);
@@ -273,7 +286,7 @@ describe("zero settings tab", () => {
     try {
       detachedSetupPage({ context, path: `/agents/${AGENT_ID}?tab=profile` });
 
-      click(await screen.findByLabelText("Create custom avatar"));
+      click(await findCreateCustomAvatarButton());
 
       await waitFor(() => {
         expect(
@@ -293,7 +306,7 @@ describe("zero settings tab", () => {
 
     detachedSetupPage({ context, path: `/agents/${AGENT_ID}?tab=profile` });
 
-    click(await screen.findByLabelText("Create custom avatar"));
+    click(await findCreateCustomAvatarButton());
 
     await waitFor(() => {
       expect(
@@ -346,7 +359,7 @@ describe("zero settings tab", () => {
 
     detachedSetupPage({ context, path: `/agents/${AGENT_ID}?tab=profile` });
 
-    const nameInput = await screen.findByDisplayValue("Research Agent");
+    const nameInput = await findAgentNameInput();
     await fill(nameInput, "Research Lead");
     await fill(
       screen.getByLabelText("Description"),

@@ -21,8 +21,7 @@ from firewall_matching import base_url as _firewall_base_url
 from firewall_matching import patterns as _firewall_patterns
 from firewall_matching.base_url import (
     _BaseUrlParts,
-    _compile_base,
-    _compiled_base_params_are_valid,
+    _compile_firewall_config_base,
     _CompiledBase,
     _match_compiled_base_authority,
     _match_compiled_base_url_parts,
@@ -43,6 +42,9 @@ from url_syntax import (
 )
 
 firewall_base_config_is_valid = _firewall_base_url.firewall_base_config_is_valid
+static_firewall_base_config_key = _firewall_base_url.static_firewall_base_config_key
+static_firewall_base_authority_key = _firewall_base_url.static_firewall_base_authority_key
+match_url_authority_key = _firewall_base_url.match_url_authority_key
 match_base_url = _firewall_base_url.match_base_url
 
 CompiledPathPattern: _TypeAlias = _firewall_patterns.CompiledPathPattern
@@ -751,18 +753,11 @@ def compile_firewall_core(fw_entry: object) -> CompiledFirewallCore | None:
         raw_base = api_entry.get("base", "")
         if not isinstance(raw_base, str):
             continue
-        base = _compile_base(raw_base)
-        if base is None:
+        compiled_config_base = _compile_firewall_config_base(raw_base)
+        if compiled_config_base is None:
             continue
-        base_malformed = (
-            base.has_query_or_fragment
-            or base.raw_syntax_malformed
-            or base.param_parse_malformed
-            or base.parts.host_malformed
-            or base.parts.has_userinfo
-            or base.parts.port_malformed
-            or not _compiled_base_params_are_valid(base)
-        )
+        base = compiled_config_base.base
+        base_malformed = compiled_config_base.malformed
         auth_malformed = not _auth_config_is_valid(api_entry)
 
         compiled_permissions: list[_CompiledPermission] = []

@@ -96,7 +96,7 @@ export const zeroResourceCommand = new Command()
       .description("Download and extract a private registry resource archive")
       .argument(
         "<id>",
-        "Registry resource id, such as template:html-ppt-playful-launch",
+        "Registry resource id, such as template:html-ppt-playful-launch-runbook",
       )
       .option(
         "--dir <path>",

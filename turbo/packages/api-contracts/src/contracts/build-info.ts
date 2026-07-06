@@ -8,8 +8,11 @@ export const buildCommitShaSchema = z
   .regex(/^[0-9a-f]{40}$/u)
   .nullable();
 
+export const buildVersionSchema = z.string().min(1).nullable().optional();
+
 export const buildInfoResponseSchema = z.object({
   commitSha: buildCommitShaSchema,
+  version: buildVersionSchema,
 });
 
 export const buildInfoContract = c.router({

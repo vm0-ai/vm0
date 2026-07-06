@@ -5,7 +5,7 @@ export const maskdb = {
     label: "maskdb",
     category: "data-automation-infrastructure",
     helpText:
-      "Connect maskdb to run read-only, structured queries against a masked Postgres database. Sensitive columns are returned masked and can never be used to filter or sort.",
+      "Connect maskdb to run read-only, structured queries against a masked Postgres database. Sensitive columns are returned masked and can never be used to filter, sort, group, or aggregate.",
     authMethods: {
       "api-token": {
         label: "Token",

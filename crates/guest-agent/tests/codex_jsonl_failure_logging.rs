@@ -99,8 +99,16 @@ unsafe fn setup_codex_env(
             .and_then(Path::file_name)
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_else(|| "codex-jsonl-failure-logging-test".to_string());
-        std::env::set_var("VM0_RUN_ID", run_id);
-        std::env::set_var("VM0_PROMPT", "drive the codex error fixture");
+        std::env::set_var("VM0_RUN_ID", &run_id);
+        let runtime_dir = guest_contracts::runtime_paths::run_dir_for_home(workdir, &run_id)
+            .map_err(|error| format!("resolve runtime dir: {error}"))?;
+        common::set_run_payload_file_env_for_test(
+            &runtime_dir,
+            &guest_contracts::env::RunPayload {
+                prompt: "drive the codex error fixture".to_string(),
+                ..guest_contracts::env::RunPayload::default()
+            },
+        )?;
         std::env::set_var("VM0_API_URL", "http://127.0.0.1:1");
         std::env::set_var("VM0_API_TOKEN", "");
         std::env::set_var("VM0_SANDBOX_ID", "00000000-0000-4000-8000-000000000abc");

@@ -3,6 +3,10 @@ import { workflowUserTriggerThreads } from "@vm0/db/schema/zero-workflow";
 import { and, eq } from "drizzle-orm";
 
 import type { Db, ReadonlyDb } from "../external/db";
+import {
+  chatThreadModelPinColumns,
+  resolveRequiredDefaultChatThreadModelPin,
+} from "./zero-chat-thread-model.service";
 import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
 
 export async function loadWorkflowUserTriggerThreadId(
@@ -37,12 +41,17 @@ async function createTriggerChatThread(
     readonly currentTime: Date;
   },
 ): Promise<string> {
+  const pin = await resolveRequiredDefaultChatThreadModelPin(db, {
+    orgId: args.orgId,
+    userId: args.userId,
+  });
   const [thread] = await db
     .insert(chatThreads)
     .values({
       userId: args.userId,
       agentComposeId: args.agentId,
       title: args.title,
+      ...chatThreadModelPinColumns(pin),
       lastMessageAt: args.currentTime,
       createdAt: args.currentTime,
       updatedAt: args.currentTime,
@@ -58,6 +67,7 @@ async function createTriggerChatThread(
     chatThreadId: thread.id,
     agentComposeId: args.agentId,
     title: args.title,
+    selectedModel: pin.selectedModel,
     createdAt: thread.createdAt,
   });
   return thread.id;

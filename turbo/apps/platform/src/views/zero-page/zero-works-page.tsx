@@ -44,9 +44,11 @@ import { ROUTES } from "../../signals/route-paths.ts";
 import { now } from "../../lib/time.ts";
 import { AgentPhoneCard } from "./agentphone-card.tsx";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
-import slackIconImg from "./components/settings/icons/slack.svg";
-import teamsIconImg from "./components/settings/icons/teams.svg";
-import telegramIconImg from "./components/settings/icons/telegram.svg";
+import { settingsIconAssetUrl } from "./components/settings/settings-icon-assets.ts";
+
+const slackIconImg = settingsIconAssetUrl("slack");
+const teamsIconImg = settingsIconAssetUrl("teams");
+const telegramIconImg = settingsIconAssetUrl("telegram");
 
 /** Append a cache-busting timestamp and forward ?prompt= so the OAuth flow can
  *  carry it through to the Slack DM greeting. */

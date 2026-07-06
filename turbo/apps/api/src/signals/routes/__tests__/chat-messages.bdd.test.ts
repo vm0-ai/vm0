@@ -3,7 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { HttpResponse, http } from "msw";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
-  PRESENTATION_TEMPLATE_ITEMS,
+  PRESENTATION_TEMPLATE_PICKER_ITEMS,
   VIDEO_TEMPLATE_ITEMS,
   WORKFLOW_TEMPLATE_ITEMS,
 } from "@vm0/core";
@@ -214,6 +214,44 @@ async function sendChatRun(
   return { runId: sent.body.runId, threadId: sent.body.threadId };
 }
 
+async function expectThreadCreatedModelEvent(
+  actor: ApiTestUser,
+  threadId: string,
+  selectedModel: string,
+): Promise<void> {
+  const threadEvents = await chat.requestThreadEvents(actor, {}, [200]);
+  expect(threadEvents.status).toBe(200);
+  if (threadEvents.status !== 200) {
+    throw new Error("Expected chat thread events to load");
+  }
+  expect(threadEvents.body.events).toContainEqual(
+    expect.objectContaining({
+      kind: "created",
+      chatThreadId: threadId,
+      selectedModel,
+    }),
+  );
+}
+
+async function expectNoThreadModelUpdateEvent(
+  actor: ApiTestUser,
+  threadId: string,
+  selectedModel: string,
+): Promise<void> {
+  const threadEvents = await chat.requestThreadEvents(actor, {}, [200]);
+  expect(threadEvents.status).toBe(200);
+  if (threadEvents.status !== 200) {
+    throw new Error("Expected chat thread events to load");
+  }
+  expect(threadEvents.body.events).not.toContainEqual(
+    expect.objectContaining({
+      kind: "model_selection_updated",
+      chatThreadId: threadId,
+      selectedModel,
+    }),
+  );
+}
+
 async function claimChatRun(
   runnerGroup: string,
   runId: string,
@@ -389,9 +427,39 @@ async function waitForThreadTitle(
 ): Promise<void> {
   await expect
     .poll(async () => {
-      return (await chat.readThread(actor, threadId)).title;
+      return await readThreadTitleFromEvents(actor, threadId);
     })
     .toBe(title);
+}
+
+async function readThreadTitleFromEvents(
+  actor: ApiTestUser,
+  threadId: string,
+): Promise<string | null> {
+  const events = await chat.requestThreadEvents(actor, {}, [200]);
+  if (events.status !== 200) {
+    throw new Error("Expected chat thread events to load");
+  }
+
+  let latestTitleEvent:
+    | { readonly title: string | null; readonly createdAt: string }
+    | undefined;
+  for (const event of events.body.events) {
+    if (
+      event.chatThreadId !== threadId ||
+      (event.kind !== "created" && event.kind !== "renamed")
+    ) {
+      continue;
+    }
+    if (
+      latestTitleEvent === undefined ||
+      Date.parse(event.createdAt) >= Date.parse(latestTitleEvent.createdAt)
+    ) {
+      latestTitleEvent = event;
+    }
+  }
+
+  return latestTitleEvent?.title ?? null;
 }
 
 /**
@@ -892,12 +960,13 @@ describe("CHAT-02: web chat send and client-id idempotency", () => {
       runId,
     });
 
-    const threads = await chat.listThreads(actor, { agentId });
-    expect(
-      [...threads.pinned, ...threads.threads].map((thread) => {
-        return thread.id;
-      }),
-    ).toContain(clientThreadId);
+    await expect(chat.readThread(actor, clientThreadId)).resolves.toStrictEqual(
+      {
+        lastReadAt: null,
+        computerUseHostId: null,
+        codexServiceTier: null,
+      },
+    );
 
     // Identical retry resolves through the associated client message.
     const retry = await chat.requestSendMessage(
@@ -1422,7 +1491,7 @@ describe("CHAT-02: org queue markers", () => {
 
     // The queued run still counts as the thread's active run, so a template
     // send queues as an unassociated message carrying its template.
-    const template = PRESENTATION_TEMPLATE_ITEMS[0];
+    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0];
     if (!template) {
       throw new Error("Expected a registered presentation template");
     }
@@ -1657,14 +1726,53 @@ describe("CHAT-02: explicit provider pins", () => {
     expect(environment.CLAUDE_CODE_DISABLE_ATTACHMENTS).toBe("1");
     expect(environment.ANTHROPIC_API_KEY).toBeUndefined();
 
-    // Explicit pins persist on the thread as model-only state.
+    // The new thread's initial model is recorded on the created event. The
+    // send route does not emit a model_selection_updated event.
     const thread = await chat.readThread(actor, run.threadId);
-    expect(thread.selectedModel).toBe("deepseek-v4-pro");
-    expect(thread.modelProviderId ?? null).toBeNull();
+    expect(thread).not.toHaveProperty("selectedModel");
+    expect(thread).not.toHaveProperty("modelProviderId");
+    const threadEvents = await chat.requestThreadEvents(actor, {}, [200]);
+    expect(threadEvents.status).toBe(200);
+    if (threadEvents.status !== 200) {
+      throw new Error("Expected chat thread events to load");
+    }
+    expect(threadEvents.body.events).toContainEqual(
+      expect.objectContaining({
+        kind: "created",
+        chatThreadId: run.threadId,
+        selectedModel: "deepseek-v4-pro",
+      }),
+    );
+    expect(threadEvents.body.events).not.toContainEqual(
+      expect.objectContaining({
+        kind: "model_selection_updated",
+        chatThreadId: run.threadId,
+        selectedModel: "deepseek-v4-pro",
+      }),
+    );
 
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(run.runId, sandboxHeaders);
     expect((await api.readRun(actor, run.runId)).status).toBe("completed");
+
+    const followUp = await sendChatRun(actor, {
+      agentId,
+      threadId: run.threadId,
+      prompt: "follow up without a send-time model override",
+    });
+    const { claim: followUpClaim } = await claimChatRun(
+      runnerGroup,
+      followUp.runId,
+    );
+    const followUpEnvironment = claimEnvironment(followUpClaim);
+    expect(followUpEnvironment.ANTHROPIC_AUTH_TOKEN).toBe(
+      modelProviderSecretPlaceholder("deepseek-api-key", "DEEPSEEK_API_KEY"),
+    );
+    expect(followUpEnvironment.ANTHROPIC_BASE_URL).toBe(
+      "https://api.deepseek.com/anthropic",
+    );
+    expect(followUpEnvironment.ANTHROPIC_MODEL).toBe("deepseek-v4-pro");
+    await cancelChatRun(actor, followUp.runId);
 
     // A vm0 provider pin in an entitled org passes the spendable-credits
     // admission. The outcome past admission is race-dependent on the shared
@@ -1765,6 +1873,9 @@ describe("CHAT-02: explicit provider pins", () => {
       },
       runOptions: { codexServiceTier: "fast" },
     });
+    expect((await chat.readThread(actor, fast.threadId)).codexServiceTier).toBe(
+      "fast",
+    );
     const { claim } = await claimChatRun(runnerGroup, fast.runId);
     const environment = claimEnvironment(claim);
     expect(claim.cliAgentType).toBe("codex");
@@ -1777,6 +1888,77 @@ describe("CHAT-02: explicit provider pins", () => {
       ),
     );
     await cancelChatRun(actor, fast.runId);
+    expect((await chat.readThread(actor, fast.threadId)).codexServiceTier).toBe(
+      "fast",
+    );
+
+    const invalidFastPatch = await chat.requestUpdateThreadModelSelection(
+      actor,
+      fast.threadId,
+      {
+        modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+        selectedModel: "gpt-5.4",
+      },
+      [400],
+      { codexServiceTier: "fast" },
+    );
+    expectApiError(invalidFastPatch.body);
+    expect(invalidFastPatch.body.error.message).toBe(
+      "Codex fast mode is only available for ChatGPT (Codex) GPT-5.5 runs",
+    );
+    expect((await chat.readThread(actor, fast.threadId)).codexServiceTier).toBe(
+      "fast",
+    );
+
+    await chat.updateThreadModelSelection(
+      actor,
+      fast.threadId,
+      {
+        modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+        selectedModel: "gpt-5.4",
+      },
+      { codexServiceTier: null },
+    );
+    const updatedFastThread = await chat.readThread(actor, fast.threadId);
+    expect(updatedFastThread).not.toHaveProperty("selectedModel");
+    expect(updatedFastThread.codexServiceTier).toBeNull();
+    const updatedFastThreadEvents = await chat.requestThreadEvents(
+      actor,
+      {},
+      [200],
+    );
+    expect(updatedFastThreadEvents.status).toBe(200);
+    if (updatedFastThreadEvents.status !== 200) {
+      throw new Error("Expected chat thread events to load");
+    }
+    expect(updatedFastThreadEvents.body.events).toContainEqual(
+      expect.objectContaining({
+        kind: "model_selection_updated",
+        chatThreadId: fast.threadId,
+        selectedModel: "gpt-5.4",
+      }),
+    );
+
+    const standard = await sendChatRun(actor, {
+      agentId,
+      threadId: fast.threadId,
+      prompt: "run codex standard",
+      modelSelection: {
+        modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+        selectedModel: "gpt-5.5",
+      },
+    });
+    expect(
+      (await chat.readThread(actor, standard.threadId)).codexServiceTier,
+    ).toBeNull();
+    const { claim: standardClaim } = await claimChatRun(
+      runnerGroup,
+      standard.runId,
+    );
+    const standardEnvironment = claimEnvironment(standardClaim);
+    expect(standardEnvironment.OPENAI_MODEL).toBe("gpt-5.5");
+    expect(standardEnvironment.VM0_CODEX_SERVICE_TIER).toBeUndefined();
+    await cancelChatRun(actor, standard.runId);
 
     const rejectedThreadId = randomUUID();
     const rejected = await chat.requestSendMessage(
@@ -1864,8 +2046,20 @@ describe("CHAT-02: explicit provider pins", () => {
     expect(resolved.body.resolvedSecrets).toStrictEqual(["OPENROUTER_API_KEY"]);
 
     const thread = await chat.readThread(actor, run.threadId);
-    expect(thread.selectedModel).toBe("claude-opus-4-7");
-    expect(thread.modelProviderId ?? null).toBeNull();
+    expect(thread).not.toHaveProperty("selectedModel");
+    expect(thread).not.toHaveProperty("modelProviderId");
+    const threadEvents = await chat.requestThreadEvents(actor, {}, [200]);
+    expect(threadEvents.status).toBe(200);
+    if (threadEvents.status !== 200) {
+      throw new Error("Expected chat thread events to load");
+    }
+    expect(threadEvents.body.events).toContainEqual(
+      expect.objectContaining({
+        kind: "created",
+        chatThreadId: run.threadId,
+        selectedModel: "claude-opus-4-7",
+      }),
+    );
 
     await api.requestCancelRun(actor, run.runId, [200]);
   }, 90_000);
@@ -2057,8 +2251,8 @@ describe("CHAT-02: explicit provider pins", () => {
   }, 60_000);
 });
 
-describe("CHAT-02: server-side model switches", () => {
-  it("switches models server-side and starts a fresh session with prior web context", async () => {
+describe("CHAT-02: run-level model overrides", () => {
+  it("uses send model overrides for the run without mutating the thread model", async () => {
     const { actor, agentId, runnerGroup, providerId } =
       await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -2080,7 +2274,14 @@ describe("CHAT-02: server-side model switches", () => {
     ]);
 
     const firstPrompt = "first turn on the default opus policy";
-    const first = await sendChatRun(actor, { agentId, prompt: firstPrompt });
+    const first = await sendChatRun(actor, {
+      agentId,
+      prompt: firstPrompt,
+      modelSelection: {
+        modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+        selectedModel: "claude-opus-4-6",
+      },
+    });
     const firstClaim = await claimChatRun(runnerGroup, first.runId);
     expect(claimEnvironment(firstClaim.claim).ANTHROPIC_MODEL).toBe(
       "claude-opus-4-6",
@@ -2094,14 +2295,16 @@ describe("CHAT-02: server-side model switches", () => {
         return message.content === "opus answer";
       });
     });
-    expect((await chat.readThread(actor, first.threadId)).selectedModel).toBe(
+    await expectThreadCreatedModelEvent(
+      actor,
+      first.threadId,
       "claude-opus-4-6",
     );
     expect(
       (await api.readRun(actor, first.runId)).result?.agentSessionId,
     ).toMatch(/[0-9a-f-]{36}/);
 
-    // Sentinel selection of another model starts a fresh session that carries
+    // A run-level override of another model starts a fresh session that carries
     // the prior web round as context instead of resuming the CLI session.
     const second = await sendChatRun(actor, {
       agentId,
@@ -2124,37 +2327,31 @@ describe("CHAT-02: server-side model switches", () => {
     expect(claimEnvironment(secondClaim.claim).ANTHROPIC_MODEL).toBe(
       "claude-sonnet-4-6",
     );
-    expect((await chat.readThread(actor, first.threadId)).selectedModel).toBe(
+    await expectNoThreadModelUpdateEvent(
+      actor,
+      first.threadId,
       "claude-sonnet-4-6",
     );
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(second.runId, secondClaim.sandboxHeaders);
 
-    // Same-model follow-ups resume the previous turn's CLI session.
+    // Follow-ups without a send model override go back to the thread's stored
+    // model. Because the latest run used a different run-level override, this
+    // starts a fresh session instead of resuming the previous CLI session.
     const third = await sendChatRun(actor, {
       agentId,
       threadId: first.threadId,
-      prompt: "continue on sonnet",
+      prompt: "continue on the thread model",
     });
     const thirdClaim = await claimChatRun(runnerGroup, third.runId);
-    expect(thirdClaim.claim.resumeSession?.sessionId).toBe(
-      `bdd-cli-${second.runId}`,
+    expect(thirdClaim.claim.resumeSession).toBeNull();
+    expect(claimEnvironment(thirdClaim.claim).ANTHROPIC_MODEL).toBe(
+      "claude-opus-4-6",
     );
     await cancelChatRun(actor, third.runId);
-
-    // The sentinel selection also became the user's model preference, so a
-    // fresh thread without a selection pins the preferred model.
-    const fourth = await sendChatRun(actor, {
-      agentId,
-      prompt: "fresh thread uses the sentinel preference",
-    });
-    expect((await chat.readThread(actor, fourth.threadId)).selectedModel).toBe(
-      "claude-sonnet-4-6",
-    );
-    await cancelChatRun(actor, fourth.runId);
   }, 90_000);
 
-  it("re-resolves the provider route from current policy on follow-up sends", async () => {
+  it("uses the stored provider pin on follow-up sends", async () => {
     const { actor, agentId, runnerGroup, providerId } =
       await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -2171,12 +2368,17 @@ describe("CHAT-02: server-side model switches", () => {
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(first.runId, firstClaim.sandboxHeaders);
     const pinned = await chat.readThread(actor, first.threadId);
-    expect(pinned.selectedModel).toBe("claude-sonnet-4-6");
-    expect(pinned.modelProviderId ?? null).toBeNull();
+    expect(pinned).not.toHaveProperty("selectedModel");
+    expect(pinned).not.toHaveProperty("modelProviderId");
+    await expectThreadCreatedModelEvent(
+      actor,
+      first.threadId,
+      "claude-sonnet-4-6",
+    );
 
     // Org providers are per-type singletons, so the public rotation surface
-    // is re-upserting the same provider with a new secret. The model-only
-    // thread pin re-resolves the policy route on every follow-up send.
+    // is re-upserting the same provider with a new secret. Follow-up sends use
+    // the stored provider pin and pick up the rotated provider configuration.
     const rotated = await upsertOrgModelProvider(actor, {
       type: "anthropic-api-key",
       secret: "rotated-anthropic-key",
@@ -2198,8 +2400,13 @@ describe("CHAT-02: server-side model switches", () => {
       `bdd-cli-${first.runId}`,
     );
     const after = await chat.readThread(actor, first.threadId);
-    expect(after.selectedModel).toBe("claude-sonnet-4-6");
-    expect(after.modelProviderId ?? null).toBeNull();
+    expect(after).not.toHaveProperty("selectedModel");
+    expect(after).not.toHaveProperty("modelProviderId");
+    await expectThreadCreatedModelEvent(
+      actor,
+      first.threadId,
+      "claude-sonnet-4-6",
+    );
     await cancelChatRun(actor, second.runId);
   }, 90_000);
 
@@ -2283,9 +2490,12 @@ describe("CHAT-02: server-side model switches", () => {
       await chat.requestReadThread(actor, removedThreadId, [404]);
     }
 
-    const threads = await chat.listThreads(actor, { agentId: agent.agentId });
-    expect(threads.pinned).toHaveLength(0);
-    expect(threads.threads).toHaveLength(0);
+    const events = await chat.requestThreadEvents(actor, {}, [200]);
+    expect(events.status).toBe(200);
+    if (events.status !== 200) {
+      throw new Error("Expected chat thread events to load");
+    }
+    expect(events.body.events).toStrictEqual([]);
   }, 60_000);
 });
 
@@ -2501,9 +2711,9 @@ describe("CHAT-02: prior rounds and thread titles", () => {
       threadId: first.threadId,
       prompt: "follow-up question",
     });
-    expect((await chat.readThread(actor, first.threadId)).title).toBe(
-      "Migration Plan",
-    );
+    await expect(
+      readThreadTitleFromEvents(actor, first.threadId),
+    ).resolves.toBe("Migration Plan");
     expect(titleRequests).toBe(1);
     const secondRun = await api.readRun(actor, second.runId);
     const appended = secondRun.appendSystemPrompt ?? "";
@@ -2523,9 +2733,9 @@ describe("CHAT-02: prior rounds and thread titles", () => {
       threadId: first.threadId,
       prompt: "manual title should stay",
     });
-    expect((await chat.readThread(actor, first.threadId)).title).toBe(
-      "Manual Migration Title",
-    );
+    await expect(
+      readThreadTitleFromEvents(actor, first.threadId),
+    ).resolves.toBe("Manual Migration Title");
     expect(titleRequests).toBe(1);
     await cancelChatRun(actor, third.runId);
   }, 90_000);
@@ -2535,7 +2745,7 @@ describe("CHAT-02: generation templates and attachments", () => {
   it("renders generation template guidance into the run system prompt", async () => {
     const { actor, agentId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
-    const template = PRESENTATION_TEMPLATE_ITEMS[0];
+    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0];
     if (!template) {
       throw new Error("Expected a registered presentation template");
     }
@@ -2559,22 +2769,27 @@ describe("CHAT-02: generation templates and attachments", () => {
     expect(presentationPrompt).toContain(
       "The user deliberately selected this artifact template",
     );
-    expect(presentationPrompt).toContain("- Artifact type: presentation");
-    expect(presentationPrompt).toContain(`(${template.designSystemId})`);
-    expect(presentationPrompt).toContain(`(${template.templateId})`);
-    if (template.colorSystemId) {
-      expect(presentationPrompt).toContain(`(${template.colorSystemId})`);
-      expect(presentationPrompt).toContain(
-        `Apply the selected color system (${template.colorSystemId})`,
-      );
-    }
     expect(presentationPrompt).toContain(
       "It does not force you to generate: the user's prompt decides the task",
     );
+    expect(presentationPrompt).toContain(`(${template.templateId})`);
+    // Runbook flow: pull the template's self-contained runbook package; the
+    // legacy multi-resource `zero generate presentation --design-system` flow
+    // is retired.
     expect(presentationPrompt).toContain(
-      `zero generate presentation --design-system ${template.designSystemId} --template ${template.templateId}`,
+      `zero resource pull ${template.templateId}-runbook --dir ./generated/resources`,
     );
+    if (template.colorSystemId) {
+      const colorToken = template.colorSystemId
+        .replace("color-system:", "")
+        .replaceAll("-", "_");
+      expect(presentationPrompt).toContain(`"colorSystem": "${colorToken}"`);
+    }
     expect(presentationPrompt).toContain("--artifact-kind presentation-html");
+    expect(presentationPrompt).not.toContain(
+      "zero generate presentation --design-system",
+    );
+    expect(presentationPrompt).not.toContain("- Artifact type: presentation");
     await cancelChatRun(actor, presentation.runId);
 
     const videoTemplate = VIDEO_TEMPLATE_ITEMS.find((item) => {
@@ -2787,7 +3002,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     const agent = await bdd.createAgent(actor, {
       displayName: "Invalid template agent",
     });
-    const template = PRESENTATION_TEMPLATE_ITEMS[0];
+    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0];
     if (!template) {
       throw new Error("Expected a registered presentation template");
     }
@@ -2807,16 +3022,8 @@ describe("CHAT-02: generation templates and attachments", () => {
         message: "Unknown generation template",
       },
       {
-        generationTemplate: {
-          type: "presentation",
-          selection: {
-            designSystemId: "design-system:missing",
-            templateId: template.templateId,
-          },
-        },
-        message: "Unknown generation template design system",
-      },
-      {
+        // A runbook template with an unknown color system is still rejected by
+        // the runbook flow (the design system is not validated / not used).
         generationTemplate: {
           type: "presentation",
           selection: {
@@ -2828,6 +3035,8 @@ describe("CHAT-02: generation templates and attachments", () => {
         message: "Unknown generation template color system",
       },
       {
+        // A template id without a runbook package is unknown; presentations are
+        // runbook-only, so there is no separate "wrong target type" path.
         generationTemplate: {
           type: "presentation",
           selection: {
@@ -2835,7 +3044,7 @@ describe("CHAT-02: generation templates and attachments", () => {
             templateId: "template:web-prototype-taste-editorial",
           },
         },
-        message: "Generation template does not support the requested type",
+        message: "Unknown generation template",
       },
       {
         generationTemplate: {
@@ -2866,9 +3075,12 @@ describe("CHAT-02: generation templates and attachments", () => {
       expect(rejected.body.error.message).toBe(arm.message);
     }
 
-    const threads = await chat.listThreads(actor, { agentId: agent.agentId });
-    expect(threads.pinned).toHaveLength(0);
-    expect(threads.threads).toHaveLength(0);
+    const events = await chat.requestThreadEvents(actor, {}, [200]);
+    expect(events.status).toBe(200);
+    if (events.status !== 200) {
+      throw new Error("Expected chat thread events to load");
+    }
+    expect(events.body.events).toStrictEqual([]);
   }, 60_000);
 
   it("persists attachments and injects them into the run prompt", async () => {

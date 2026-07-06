@@ -9,6 +9,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import type {
+  CodexServiceTier,
   PersistedAttachment,
   ThreadGenerationTemplates,
 } from "@vm0/api-contracts/contracts/chat-threads";
@@ -57,15 +58,8 @@ export const chatThreads = pgTable(
      * Slack-style watermark: the last timestamp up to which the user has read
      * messages in this thread. Forward-only — never rewound.
      * NULL means the thread has never been explicitly marked read.
-     * Primary read-state cursor; `lastReadMessageId` is retained only for
-     * legacy client compatibility during the migration window.
      */
     lastReadAt: timestamp("last_read_at"),
-    /**
-     * ID of the latest message the user has marked read in this thread.
-     * Deprecated: read state is derived from `lastReadAt`.
-     */
-    lastReadMessageId: uuid("last_read_message_id"),
     /**
      * Legacy provider pin columns. Model-first chat threads now persist only
      * selectedModel and re-resolve provider routing from org policy for each run.
@@ -77,6 +71,10 @@ export const chatThreads = pgTable(
     }),
     /** Per-thread selected model pin. Provider routing is resolved per run. */
     selectedModel: varchar("selected_model", { length: 255 }),
+    /** Per-thread Codex service tier pin. Null means standard service tier. */
+    codexServiceTier: varchar("codex_service_tier", {
+      length: 20,
+    }).$type<CodexServiceTier>(),
     /**
      * Legacy generation template column retained for schema compatibility.
      * Current prompt injection reads the generation template attached to the
@@ -106,10 +104,11 @@ export const chatThreads = pgTable(
     renamedAt: timestamp("renamed_at"),
     /**
      * Most recent message timestamp, denormalized from chat_messages.
-     * Maintained app-side for terminal runs with visible assistant text via
-     * GREATEST() — monotonic, never rewound. Billing rows and pure lifecycle
-     * markers do not advance it. Powers the sidebar recency and unread
-     * watermark comparisons with index-driven thread queries.
+     * Maintained app-side for direct user messages and terminal run-finished
+     * markers via GREATEST() — monotonic, never rewound. Triggered/goal user
+     * messages, billing rows, and other control rows do not advance it. Powers
+     * the sidebar recency and unread watermark comparisons with index-driven
+     * thread queries.
      */
     lastMessageAt: timestamp("last_message_at").defaultNow().notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -125,10 +124,6 @@ export const chatThreads = pgTable(
       index("idx_chat_threads_user_last_read").on(
         table.userId,
         table.lastReadAt,
-      ),
-      index("idx_chat_threads_user_last_read_message").on(
-        table.userId,
-        table.lastReadMessageId,
       ),
       index("idx_chat_threads_user_compose_pinned")
         .on(table.userId, table.agentComposeId)

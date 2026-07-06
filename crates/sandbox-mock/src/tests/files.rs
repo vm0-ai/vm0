@@ -412,6 +412,96 @@ async fn sandbox_write_private_file_queued_error_and_records_calls() {
 }
 
 #[tokio::test]
+async fn overrides_share_private_write_file_results_across_factory_sandboxes() {
+    let overrides = Arc::new(MockSandboxOverrides::new());
+    overrides.push_private_write_file_result(Err(SandboxError::Operation {
+        operation: SandboxOperation::WriteFile,
+        reason: SandboxOperationReason::Guest,
+        message: "first private write failed".into(),
+    }));
+    overrides.push_private_write_file_result(Err(SandboxError::Operation {
+        operation: SandboxOperation::WriteFile,
+        reason: SandboxOperationReason::Guest,
+        message: "second private write failed".into(),
+    }));
+    let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+
+    let first = factory.create(test_sandbox_config()).await.unwrap();
+    let second = factory.create(test_sandbox_config()).await.unwrap();
+
+    let first_error = first
+        .write_private_file("/tmp/private-one.env", b"one")
+        .await
+        .unwrap_err();
+    assert_operation_error(
+        first_error,
+        SandboxOperation::WriteFile,
+        SandboxOperationReason::Guest,
+        "first private write failed",
+    );
+
+    let second_error = second
+        .write_private_file("/tmp/private-two.env", b"two")
+        .await
+        .unwrap_err();
+    assert_operation_error(
+        second_error,
+        SandboxOperation::WriteFile,
+        SandboxOperationReason::Guest,
+        "second private write failed",
+    );
+
+    first
+        .write_private_file("/tmp/private-empty.env", b"empty")
+        .await
+        .unwrap();
+
+    let calls = overrides.private_write_file_calls();
+    assert_eq!(calls.len(), 3);
+    assert_eq!(calls[0].path, "/tmp/private-one.env");
+    assert_eq!(calls[1].path, "/tmp/private-two.env");
+    assert_eq!(calls[2].path, "/tmp/private-empty.env");
+}
+
+#[tokio::test]
+async fn sandbox_local_private_write_file_result_takes_precedence_over_shared_overrides() {
+    let overrides = Arc::new(MockSandboxOverrides::new());
+    overrides.push_private_write_file_result(Err(SandboxError::Operation {
+        operation: SandboxOperation::WriteFile,
+        reason: SandboxOperationReason::Guest,
+        message: "shared private write failed".into(),
+    }));
+    let sandbox = MockSandbox::with_overrides("sandbox", Arc::clone(&overrides));
+    sandbox.push_private_write_file_result(Err(SandboxError::Operation {
+        operation: SandboxOperation::WriteFile,
+        reason: SandboxOperationReason::Guest,
+        message: "local private write failed".into(),
+    }));
+
+    let local_error = sandbox
+        .write_private_file("/tmp/local-private.env", b"local")
+        .await
+        .unwrap_err();
+    assert_operation_error(
+        local_error,
+        SandboxOperation::WriteFile,
+        SandboxOperationReason::Guest,
+        "local private write failed",
+    );
+
+    let shared_error = sandbox
+        .write_private_file("/tmp/shared-private.env", b"shared")
+        .await
+        .unwrap_err();
+    assert_operation_error(
+        shared_error,
+        SandboxOperation::WriteFile,
+        SandboxOperationReason::Guest,
+        "shared private write failed",
+    );
+}
+
+#[tokio::test]
 async fn sandbox_write_file_lifecycle_gate_blocks_until_released() {
     let sandbox = Arc::new(MockSandbox::new("test-1"));
     let gate = MockLifecycleGate::new();
@@ -428,4 +518,54 @@ async fn sandbox_write_file_lifecycle_gate_blocks_until_released() {
 
     gate.release_one();
     task.await.unwrap().unwrap();
+}
+
+#[tokio::test]
+async fn sandbox_write_files_lifecycle_gate_blocks_batch_until_released() {
+    let sandbox = Arc::new(MockSandbox::new("test-1"));
+    let gate = MockLifecycleGate::new();
+    sandbox.set_write_file_lifecycle_gate(gate.clone());
+
+    let task = {
+        let sandbox = Arc::clone(&sandbox);
+        tokio::spawn(async move {
+            let files = [
+                WriteFileEntry {
+                    path: "/tmp/a.txt",
+                    content: b"a",
+                },
+                WriteFileEntry {
+                    path: "/tmp/b.txt",
+                    content: b"b",
+                },
+            ];
+            sandbox.write_files(&files).await
+        })
+    };
+
+    assert_eq!(gate.wait_entered(1, test_timeout()).await.unwrap(), 1);
+    assert_eq!(gate.entered_count(), 1);
+
+    let batch_calls = sandbox.write_files_calls();
+    assert_eq!(batch_calls.len(), 1);
+    assert_eq!(batch_calls[0].files.len(), 2);
+    assert_eq!(batch_calls[0].files[0].path, "/tmp/a.txt");
+    assert_eq!(batch_calls[0].files[1].path, "/tmp/b.txt");
+
+    let write_calls = sandbox.write_file_calls();
+    assert_eq!(write_calls.len(), 2);
+    assert_eq!(write_calls[0].path, "/tmp/a.txt");
+    assert_eq!(write_calls[1].path, "/tmp/b.txt");
+    assert!(
+        !task.is_finished(),
+        "write_files must wait for one batch gate release"
+    );
+
+    gate.release_one();
+    tokio::time::timeout(test_timeout(), task)
+        .await
+        .expect("write_files must finish after one batch gate release")
+        .unwrap()
+        .unwrap();
+    assert_eq!(gate.entered_count(), 1);
 }

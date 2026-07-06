@@ -20,9 +20,9 @@ This package provides a Caddy-based reverse proxy that enables HTTPS for local d
 Browser
   ↓
 Caddy Proxy (HTTPS: 8443, HTTP: 8080)
-  ↓              ↓              ↓              ↓
-Web App        App            API            SO staging
-(port 3000)    (port 3002)    (port 3001)    (staging-www.vm6.ai)
+  ↓              ↓              ↓
+Marketing      App            API
+(port 3042)    (port 3002)    (port 3001)
 ```
 
 ## Quick Start
@@ -61,6 +61,7 @@ On first start, Caddy will automatically obtain a Let's Encrypt certificate (~30
 
 Direct access (HTTP only):
 
+- Marketing: http://localhost:3042
 - App: http://localhost:3002
 - API: http://localhost:3001
 
@@ -79,7 +80,7 @@ The `Caddyfile` defines:
 
 | Domain          | Port | Backend                     |
 | --------------- | ---- | --------------------------- |
-| www.vm7.ai:8443 | 8443 | staging-www.vm6.ai          |
+| www.vm7.ai:8443 | 8443 | localhost:3042 (Marketing)  |
 | app.vm7.ai:8443 | 8443 | localhost:3002 (Vite app)   |
 | api.vm7.ai:8443 | 8443 | localhost:3001 (Hono API)   |
 | vm7.ai:8443     | 8443 | Redirect to www.vm7.ai:8443 |

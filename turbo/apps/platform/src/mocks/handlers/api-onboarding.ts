@@ -7,6 +7,7 @@ import { mockApi } from "../msw-contract.ts";
 
 const DEFAULT_ONBOARDING_STATUS: OnboardingStatusResponse = {
   needsOnboarding: false,
+  onboardingComplete: true,
   isAdmin: true,
   hasOrg: true,
   hasDefaultAgent: true,

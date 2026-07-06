@@ -210,6 +210,22 @@ fn merge_held_session_states(
     states
 }
 
+fn admittable_profiles_for_heartbeat(
+    profiles: &BTreeMap<String, ProfileConfig>,
+    budget: &ResourceBudget,
+    mode: RunnerMode,
+) -> Vec<String> {
+    if mode != RunnerMode::Running {
+        return Vec::new();
+    }
+
+    profiles
+        .iter()
+        .filter(|(_, profile)| budget.can_afford(profile.vcpu, profile.memory_mb))
+        .map(|(name, _)| name.clone())
+        .collect()
+}
+
 /// Collect current runner state for heartbeat reporting.
 pub(super) fn collect_heartbeat_state(
     runner_id: &str,
@@ -236,17 +252,18 @@ pub(super) fn collect_heartbeat_state(
     // Report only actively running jobs so the scheduler sees real capacity.
     let idle_count = idle_pool.len();
     let running_count = budget_running.saturating_sub(idle_count);
+    let admittable_profiles = admittable_profiles_for_heartbeat(profiles, budget, mode);
     HeartbeatState {
         runner_id: runner_id.to_string(),
         runner_name: name.to_string(),
         group: group.to_string(),
-        profiles: profiles.keys().cloned().collect(),
         total_vcpu: budget.effective_vcpu(),
         total_memory_mb: budget.effective_memory_mb(),
         max_concurrent: budget.max_concurrent(),
         allocated_vcpu,
         allocated_memory_mb,
         running_count,
+        admittable_profiles,
         held_session_states: idle_pool.held_session_states(),
         mode: match mode {
             RunnerMode::Running => "running".to_string(),
@@ -388,6 +405,91 @@ mod tests {
             RunnerMode::Running,
         );
         assert_eq!(state.running_count, 2);
+    }
+
+    #[test]
+    fn heartbeat_admittable_profiles_match_current_budget() {
+        let budget = Arc::new(ResourceBudget::new(4, 8192, 1.0, 2));
+        let _lease = ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap();
+        let mut profiles = test_profiles();
+        profiles.insert(
+            "vm0/large".to_string(),
+            config::ProfileConfig {
+                rootfs_hash: "hash".into(),
+                snapshot_hash: "snap".into(),
+                vcpu: 4,
+                memory_mb: 8192,
+                rootfs_disk_mb: 8192,
+                workspace_disk_mb: 10240,
+            },
+        );
+        let pool = IdlePool::new(IdlePoolConfig {
+            default_timeout: Duration::from_secs(300),
+            max_idle: 0,
+        });
+
+        let state = collect_heartbeat_state(
+            "r1",
+            "runner-1",
+            "vm0/test",
+            &profiles,
+            &budget,
+            &pool,
+            RunnerMode::Running,
+        );
+
+        assert_eq!(state.admittable_profiles, vec!["vm0/default"]);
+    }
+
+    #[test]
+    fn heartbeat_admittable_profiles_exclude_unaffordable_parked_profiles() {
+        let budget = Arc::new(ResourceBudget::new(2, 4096, 1.0, 1));
+        let mut pool = IdlePool::new(IdlePoolConfig {
+            default_timeout: Duration::from_secs(300),
+            max_idle: 0,
+        });
+        let candidate = ParkedIdleCandidateBuilder::new(
+            "sess-idle",
+            ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap(),
+        )
+        .with_last_completed_at("2026-06-01T00:00:00.000Z")
+        .build();
+        assert!(matches!(pool.park(candidate), ParkResult::Parked));
+        let profiles = test_profiles();
+
+        let state = collect_heartbeat_state(
+            "r1",
+            "runner-1",
+            "vm0/test",
+            &profiles,
+            &budget,
+            &pool,
+            RunnerMode::Running,
+        );
+
+        assert!(state.admittable_profiles.is_empty());
+    }
+
+    #[test]
+    fn heartbeat_admittable_profiles_empty_when_not_running() {
+        let budget = ResourceBudget::new(8, 32768, 1.0, 4);
+        let pool = IdlePool::new(IdlePoolConfig {
+            default_timeout: Duration::from_secs(300),
+            max_idle: 0,
+        });
+        let profiles = test_profiles();
+
+        let state = collect_heartbeat_state(
+            "r1",
+            "runner-1",
+            "vm0/test",
+            &profiles,
+            &budget,
+            &pool,
+            RunnerMode::Draining,
+        );
+
+        assert!(state.admittable_profiles.is_empty());
     }
 
     #[tokio::test(flavor = "current_thread")]

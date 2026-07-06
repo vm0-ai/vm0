@@ -10,7 +10,7 @@ if (process.platform !== "darwin") {
   throw new Error("Packaged desktop smoke tests are only supported on macOS.");
 }
 
-const { executablePath, mainBundlePath } = packagedAppPaths(
+const { executablePath, mainBundlePath, mcpBundlePath } = packagedAppPaths(
   process.env.VM0_DESKTOP_PLATFORM_URL,
 );
 
@@ -18,20 +18,72 @@ if (!fs.existsSync(executablePath)) {
   throw new Error(`Packaged app executable was not found at ${executablePath}`);
 }
 
-const UNBUNDLED_REQUIRE_PREFIXES = ["@vm0/", "@modelcontextprotocol/sdk/"];
+if (!fs.existsSync(mcpBundlePath)) {
+  throw new Error(
+    `Packaged filesystem MCP bundle was not found at ${mcpBundlePath}`,
+  );
+}
 
-const mainBundle = fs.readFileSync(mainBundlePath, "utf8");
-for (const prefix of UNBUNDLED_REQUIRE_PREFIXES) {
-  for (const unbundledRequire of [`require("${prefix}`, `require('${prefix}`]) {
-    if (mainBundle.includes(unbundledRequire)) {
-      throw new Error(
-        `Packaged main bundle contains an unbundled require (${unbundledRequire}...). ` +
-          "These packages must be bundled via tsup noExternal; see tsup.electron.config.js.",
-      );
+function assertNoUnbundledRequires(bundlePath, bundle, prefixes, guidance) {
+  for (const prefix of prefixes) {
+    for (const unbundledRequire of [
+      `require("${prefix}`,
+      `require('${prefix}`,
+    ]) {
+      if (bundle.includes(unbundledRequire)) {
+        throw new Error(
+          `Packaged bundle contains an unbundled require (${unbundledRequire}...) in ${bundlePath}. ${guidance}`,
+        );
+      }
     }
   }
 }
+
+function assertNoUnbundledEsmImports(bundlePath, bundle, prefixes, guidance) {
+  const lines = bundle.split(/\r?\n/);
+  for (const prefix of prefixes) {
+    for (const importSpecifier of [`"${prefix}`, `'${prefix}`]) {
+      const lineIndex = lines.findIndex((line) => {
+        const trimmed = line.trimStart();
+        return (
+          trimmed.startsWith("import ") && trimmed.includes(importSpecifier)
+        );
+      });
+      if (lineIndex !== -1) {
+        throw new Error(
+          `Packaged bundle contains an unbundled import (${importSpecifier}...) in ${bundlePath}:${lineIndex + 1}. ${guidance}`,
+        );
+      }
+    }
+  }
+}
+
+const mainBundle = fs.readFileSync(mainBundlePath, "utf8");
+assertNoUnbundledRequires(
+  mainBundlePath,
+  mainBundle,
+  ["@vm0/", "@modelcontextprotocol/sdk/"],
+  "These packages must be bundled via tsup noExternal; see tsup.electron.config.js.",
+);
 console.log(`Main bundle has no unbundled requires: ${mainBundlePath}`);
+
+const mcpBundle = fs.readFileSync(mcpBundlePath, "utf8");
+const unbundledMcpPrefixes = ["@modelcontextprotocol/sdk"];
+assertNoUnbundledRequires(
+  mcpBundlePath,
+  mcpBundle,
+  unbundledMcpPrefixes,
+  "These packages must be bundled via tsup noExternal; see tsup.mcp-filesystem.config.js.",
+);
+assertNoUnbundledEsmImports(
+  mcpBundlePath,
+  mcpBundle,
+  unbundledMcpPrefixes,
+  "These packages must be bundled via tsup noExternal; see tsup.mcp-filesystem.config.js.",
+);
+console.log(
+  `Filesystem MCP bundle has no unbundled SDK imports: ${mcpBundlePath}`,
+);
 
 const child = spawn(executablePath, [], {
   env: { ...process.env, VM0_DESKTOP_SMOKE_TEST: "1" },

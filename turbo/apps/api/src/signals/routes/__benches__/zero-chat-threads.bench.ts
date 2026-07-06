@@ -21,7 +21,6 @@ import { bench } from "vitest";
 import {
   chatThreadByIdContract,
   chatThreadMessagesContract,
-  chatThreadsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
 import { zeroConnectorsMainContract } from "@vm0/api-contracts/contracts/zero-connectors";
@@ -63,7 +62,6 @@ const mocks = createZeroRouteMocks(context);
 
 const TARGET_RUN_COUNT = 200;
 const TARGET_MESSAGES_PER_RUN = 3;
-const TARGET_LIST_THREAD_COUNT = 120;
 const BACKGROUND_THREAD_COUNT = 200;
 const BACKGROUND_RUNS_PER_THREAD = 50;
 const BULK_INSERT_CHUNK = 500;
@@ -72,7 +70,6 @@ const MOCK_R2_LIST_DELAY_MS = 10;
 const STATUSES = ["completed", "completed", "failed", "running"] as const;
 
 const chatThreadClient = setupApp({ context })(chatThreadByIdContract);
-const chatThreadsClient = setupApp({ context })(chatThreadsContract);
 const chatThreadMessagesClient = setupApp({ context })(
   chatThreadMessagesContract,
 );
@@ -393,57 +390,6 @@ async function seedTargetThreadRuns(
   });
 }
 
-async function seedTargetThreadListRows(
-  fixture: ZeroChatThreadFixture,
-): Promise<void> {
-  const db = store.set(writeDb$);
-  const now = nowDate().getTime();
-  const threadRows: {
-    id: string;
-    userId: string;
-    agentComposeId: string;
-    title: string;
-    lastMessageAt: Date;
-    createdAt: Date;
-    updatedAt: Date;
-    pinnedAt?: Date;
-  }[] = [];
-  const messageRows: {
-    chatThreadId: string;
-    role: string;
-    content: string;
-    createdAt: Date;
-  }[] = [];
-
-  for (let i = 0; i < TARGET_LIST_THREAD_COUNT; i++) {
-    const createdAt = new Date(now - i * 1000);
-    const id = randomUUID();
-    threadRows.push({
-      id,
-      userId: fixture.userId,
-      agentComposeId: fixture.composeId,
-      title: `bench-list-${String(i)}`,
-      lastMessageAt: createdAt,
-      createdAt,
-      updatedAt: createdAt,
-      ...(i < 5 ? { pinnedAt: createdAt } : {}),
-    });
-    messageRows.push({
-      chatThreadId: id,
-      role: "user",
-      content: `bench list message ${String(i)}`,
-      createdAt,
-    });
-  }
-
-  await chunkedInsert(threadRows, (chunk) => {
-    return db.insert(chatThreads).values(chunk);
-  });
-  await chunkedInsert(messageRows, (chunk) => {
-    return db.insert(chatMessages).values(chunk);
-  });
-}
-
 async function seedSideEffectFreeGetData(
   fixture: ZeroChatThreadFixture,
 ): Promise<void> {
@@ -534,7 +480,6 @@ async function seedSideEffectFreeGetData(
     },
     context.signal,
   );
-  await seedTargetThreadListRows(fixture);
 }
 
 async function logPlannerDiagnostic(
@@ -609,21 +554,6 @@ describe("bench side-effect-free GET API routes", () => {
       const fixture = await ensureSeeded();
       const response = await chatThreadClient.get({
         params: { id: fixture.threadId },
-        headers: authHeaders,
-      });
-      if (response.status !== 200) {
-        throw new Error(`unexpected status ${String(response.status)}`);
-      }
-    },
-    benchOptions,
-  );
-
-  bench(
-    "GET /api/zero/chat-threads",
-    async () => {
-      const fixture = await ensureSeeded();
-      const response = await chatThreadsClient.list({
-        query: { agentId: fixture.composeId },
         headers: authHeaders,
       });
       if (response.status !== 200) {

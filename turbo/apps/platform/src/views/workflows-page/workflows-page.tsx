@@ -48,7 +48,7 @@ import {
 import { userPreferences$ } from "../../signals/zero-page/settings/user-preferences.ts";
 import { AgentAvatarImg } from "../zero-page/zero-sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
-import emptyWorkflowImg from "../zero-page/assets/empty-workflow.webp";
+import { emptyWorkflowImg } from "../zero-page/platform-assets.ts";
 import {
   CreateWorkflowAutomationDialog,
   humanReadableTriggerRuleLabel,
@@ -116,7 +116,7 @@ function connectorPillClassName({
   readonly muted?: boolean;
 }) {
   return cn(
-    "inline-flex h-6 shrink-0 items-center gap-1.5 rounded-full border-[0.7px] border-border/80 bg-white px-2 text-[11px] font-medium leading-none shadow-sm",
+    "inline-flex h-6 shrink-0 items-center gap-1.5 rounded-full border-[0.7px] border-border/80 bg-white px-2 text-[11px] font-medium leading-none shadow-[0_0_2px_rgba(0,0,0,0.06)]",
     muted ? "text-muted-foreground" : "text-foreground/70",
     interactive &&
       "cursor-pointer transition-colors hover:border-border hover:bg-gray-50 hover:text-foreground",
@@ -181,10 +181,7 @@ function VisibilityIcon({
     <Icon
       size={15}
       stroke={1.7}
-      className={cn(
-        "shrink-0",
-        isPublic ? "text-blue-500" : "text-muted-foreground/70",
-      )}
+      className={cn("shrink-0", isPublic ? "text-blue-500" : "text-[#45A7A8]")}
       aria-label={isPublic ? "Public" : "Private"}
     />
   );
@@ -446,7 +443,7 @@ const NEXT_RUN_SECTIONS: readonly {
   { key: "today", label: "Runs today" },
   { key: "week", label: "This week" },
   { key: "later", label: "Later" },
-  { key: "event", label: "On event" },
+  { key: "event", label: "On automation" },
   { key: "manual", label: "Manual" },
 ];
 

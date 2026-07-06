@@ -1,0 +1,2 @@
+ALTER TYPE "public"."chat_thread_event_kind" ADD VALUE 'model_selection_updated' BEFORE 'sort_touched';--> statement-breakpoint
+ALTER TABLE "chat_thread_events" ADD COLUMN "selected_model" varchar(255);

@@ -121,6 +121,21 @@ interface WorkflowHighlightStorage {
   workflowNames: readonly string[];
 }
 
+function isWorkflowHighlightStorage(
+  value: unknown,
+): value is WorkflowHighlightStorage {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const workflowNames = Reflect.get(value, "workflowNames");
+  return (
+    Array.isArray(workflowNames) &&
+    workflowNames.every((name) => {
+      return typeof name === "string";
+    })
+  );
+}
+
 // Colors `/workflow` tokens via inline decorations. The workflow list is read from
 // mutable storage (kept current by the component) so the editor never has to be
 // rebuilt when the list loads or changes.
@@ -479,12 +494,13 @@ function syncEditorState(
   workflowNames: readonly string[],
   input: string,
 ): void {
-  const storage = (
-    editor.storage as unknown as Record<
-      string,
-      WorkflowHighlightStorage | undefined
-    >
-  ).workflowHighlight;
+  const workflowHighlightStorage = Reflect.get(
+    editor.storage,
+    "workflowHighlight",
+  );
+  const storage = isWorkflowHighlightStorage(workflowHighlightStorage)
+    ? workflowHighlightStorage
+    : undefined;
   if (storage) {
     storage.workflowNames = workflowNames;
   }

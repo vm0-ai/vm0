@@ -28,6 +28,7 @@ function stalePersonalCodexProvider(): ModelProviderResponse {
     planType: "pro",
     subscriptionResetPeriod: "Weekly",
     subscriptionNextResetAt: "2030-01-01T00:00:00.000Z",
+    accountEmail: "codex.user@example.com",
     needsReconnect: true,
     lastRefreshErrorCode: "refresh_token_expired",
     createdAt: "2026-03-01T00:00:00Z",
@@ -52,6 +53,7 @@ function connectedPersonalCodexProvider(): ModelProviderResponse {
         windowSeconds: 604_800,
       },
     },
+    subscriptionResetCredits: 2,
     needsReconnect: false,
     lastRefreshErrorCode: null,
   };
@@ -343,11 +345,66 @@ describe("personal model providers settings", () => {
     expect(
       within(codexRow).queryByText(/Personal ChatGPT/),
     ).not.toBeInTheDocument();
+    expect(
+      within(codexRow).queryByText(/codex\.user@example\.com/),
+    ).not.toBeInTheDocument();
     expect(within(codexRow).getByText("82% left")).toBeInTheDocument();
     expect(within(codexRow).getByText("55% left")).toBeInTheDocument();
     expect(
       within(codexRow).queryByText(/Account:|Plan:|Reset:|Connected .*resets/),
     ).not.toBeInTheDocument();
+  });
+
+  it("resets connected personal Codex usage from the row menu", async () => {
+    context.mocks.data.org({
+      id: "org_1",
+      slug: "test-org",
+      name: "Test Org",
+      role: "member",
+    });
+    context.mocks.data.personalModelProviders([
+      connectedPersonalCodexProvider(),
+    ]);
+
+    await openModelSettings();
+
+    const codexRow = await screen.findByTestId("oauth-card-codex-oauth-token");
+    expect(
+      within(codexRow).queryByText(/codex\.user@example\.com/),
+    ).not.toBeInTheDocument();
+
+    click(within(codexRow).getByLabelText("More options"));
+    await expect(
+      screen.findByText("2 resets left"),
+    ).resolves.toBeInTheDocument();
+    click(screen.getByText("Reset usage"));
+
+    const confirmDialog = await screen.findByRole("dialog", {
+      name: "Reset Codex usage?",
+    });
+    expect(
+      within(confirmDialog).getByText(/2 resets left/),
+    ).toBeInTheDocument();
+    const resetButton = queryAllByRoleFast("button", confirmDialog).find(
+      (button) => {
+        return button.textContent === "Reset usage";
+      },
+    );
+    if (!resetButton) {
+      throw new Error("Reset usage button not found");
+    }
+    click(resetButton);
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Reset Codex usage?" }),
+      ).not.toBeInTheDocument();
+    });
+
+    click(within(codexRow).getByLabelText("More options"));
+    await expect(
+      screen.findByText("1 reset left"),
+    ).resolves.toBeInTheDocument();
   });
 
   it("falls back to stored Claude Code reset metadata when usage is unavailable", async () => {

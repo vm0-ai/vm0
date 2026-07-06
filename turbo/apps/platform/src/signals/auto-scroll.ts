@@ -1,4 +1,4 @@
-import { command, computed, state, type State } from "ccstate";
+import { command, computed, state, type Computed, type State } from "ccstate";
 import { onRef } from "./utils.ts";
 import { logger } from "./log.ts";
 
@@ -9,6 +9,33 @@ const KEY_SCROLL_STEP_PX = 72;
 
 export type ScrollStepDirection = "up" | "down";
 export type PrependScrollCompensationToken = symbol;
+
+interface ScrollToBottomAnchorOptions {
+  readonly selector: string;
+  readonly enabled$: State<boolean> | Computed<boolean>;
+}
+
+interface CreateScrollSignalsOptions {
+  readonly scrollToBottomAnchor?: ScrollToBottomAnchorOptions;
+}
+
+interface ResolvedScrollToBottomAnchor {
+  readonly selector: string;
+  readonly enabled: boolean;
+}
+
+function resolveScrollToBottomAnchor(
+  anchor: ScrollToBottomAnchorOptions | undefined,
+  enabled: boolean,
+): ResolvedScrollToBottomAnchor | undefined {
+  if (anchor === undefined) {
+    return undefined;
+  }
+  return {
+    selector: anchor.selector,
+    enabled,
+  };
+}
 
 interface PendingPrependScrollRecord {
   readonly token: PrependScrollCompensationToken;
@@ -60,6 +87,45 @@ function clampScrollTop(el: HTMLElement, scrollTop: number): number {
   return Math.max(0, Math.min(scrollTop, maxScrollTop));
 }
 
+function maxScrollTop(el: HTMLElement): number {
+  return Math.max(0, el.scrollHeight - el.clientHeight);
+}
+
+function latestAnchorElement(
+  el: HTMLElement,
+  selector: string,
+): HTMLElement | null {
+  const anchors = el.querySelectorAll<HTMLElement>(selector);
+  return anchors.item(anchors.length - 1) ?? null;
+}
+
+function scrollTopForElementTop(el: HTMLElement, target: HTMLElement): number {
+  return (
+    el.scrollTop +
+    target.getBoundingClientRect().top -
+    el.getBoundingClientRect().top
+  );
+}
+
+function scrollToBottomTargetTop(
+  el: HTMLElement,
+  anchorSelector: string | undefined,
+): number {
+  if (!anchorSelector) {
+    return el.scrollHeight;
+  }
+  const anchor = latestAnchorElement(el, anchorSelector);
+  if (!anchor) {
+    return el.scrollHeight;
+  }
+  if (anchor.getBoundingClientRect().height > el.clientHeight) {
+    return el.scrollHeight;
+  }
+  const bottomTop = maxScrollTop(el);
+  const anchorTop = scrollTopForElementTop(el, anchor);
+  return clampScrollTop(el, Math.min(bottomTop, anchorTop));
+}
+
 function scrollInfo(el: HTMLElement) {
   const top = Math.round(el.scrollTop);
   const height = el.scrollHeight;
@@ -76,6 +142,7 @@ interface RestoreState {
   // pending compensation.
   pendingPrependScrollRecords: PendingPrependScrollRecord[];
   suppressNextResizeScrollToBottom: boolean;
+  scrollToBottomAnchorActive: boolean;
 }
 
 function attachUserInputListeners(
@@ -126,6 +193,8 @@ interface ScrollHandlerContext {
   clearCache: () => void;
   saveCache: (top: number) => void;
   setAwayFromBottom: (v: boolean) => void;
+  setScrollToBottomAnchorActive: (v: boolean) => void;
+  scrollToBottom: (options?: { activateAnchor?: boolean }) => void;
 }
 
 function buildScrollHandler(ctx: ScrollHandlerContext) {
@@ -138,6 +207,9 @@ function buildScrollHandler(ctx: ScrollHandlerContext) {
     ctx.setAwayFromBottom(distanceFromBottom > AT_BOTTOM_THRESHOLD);
     const userRecent =
       performance.now() - lastUserInputAt.v < USER_INPUT_WINDOW_MS;
+    if (userRecent && el.scrollTop !== lastKnownScrollTop.v) {
+      ctx.setScrollToBottomAnchorActive(false);
+    }
     if (restoreState.pendingRestorePosition !== null && userRecent) {
       restoreState.pendingRestorePosition = null;
     }
@@ -220,7 +292,7 @@ function buildResizeHandler(ctx: ScrollHandlerContext) {
       return;
     }
     if (!disabled) {
-      el.scrollTop = el.scrollHeight;
+      ctx.scrollToBottom();
     }
   };
 }
@@ -231,6 +303,7 @@ interface ScrollByCommandDeps {
   id: string | undefined;
   lastKnownScrollTop: { v: number };
   markUserInput: () => void;
+  restoreState: RestoreState;
 }
 
 function createScrollByCommand(deps: ScrollByCommandDeps) {
@@ -246,6 +319,7 @@ function createScrollByCommand(deps: ScrollByCommandDeps) {
     }
 
     deps.markUserInput();
+    deps.restoreState.scrollToBottomAnchorActive = false;
     scrollEl.scrollTop = nextScrollTop;
 
     const distanceFromBottom =
@@ -348,6 +422,7 @@ function createScrollToTopCommand(deps: ScrollToTopCommandDeps) {
     }
     set(deps.autoScrollDisabled$, true);
     deps.restoreState.suppressNextScrollToBottom = false;
+    deps.restoreState.scrollToBottomAnchorActive = false;
     if (deps.id !== undefined) {
       set(setCachedScrollTop$, deps.id, 0);
     }
@@ -358,6 +433,7 @@ function createScrollToTopCommand(deps: ScrollToTopCommandDeps) {
 interface ScrollToBottomCommandDeps {
   internalScrollContainer$: State<HTMLElement | null>;
   restoreState: RestoreState;
+  options: CreateScrollSignalsOptions;
 }
 
 function createScrollToBottomCommand(deps: ScrollToBottomCommandDeps) {
@@ -371,8 +447,139 @@ function createScrollToBottomCommand(deps: ScrollToBottomCommandDeps) {
       return;
     }
     deps.restoreState.suppressNextResizeScrollToBottom = false;
-    scrollEl.scrollTop = scrollEl.scrollHeight;
+    const anchor = deps.options.scrollToBottomAnchor;
+    setScrollToBottomPosition({
+      el: scrollEl,
+      restoreState: deps.restoreState,
+      anchor: resolveScrollToBottomAnchor(
+        anchor,
+        anchor !== undefined ? get(anchor.enabled$) : false,
+      ),
+      activateAnchor: true,
+    });
   });
+}
+
+function setScrollToBottomPosition({
+  el,
+  restoreState,
+  anchor,
+  activateAnchor = false,
+}: {
+  el: HTMLElement;
+  restoreState: RestoreState;
+  anchor: ResolvedScrollToBottomAnchor | undefined;
+  activateAnchor?: boolean;
+}): void {
+  const anchorEnabled = anchor?.enabled ?? false;
+  if (activateAnchor) {
+    restoreState.scrollToBottomAnchorActive = anchorEnabled;
+  }
+  if (!anchorEnabled) {
+    restoreState.scrollToBottomAnchorActive = false;
+  }
+  const anchorSelector =
+    anchorEnabled && restoreState.scrollToBottomAnchorActive
+      ? anchor?.selector
+      : undefined;
+  el.scrollTop = scrollToBottomTargetTop(el, anchorSelector);
+}
+
+interface SetScrollContainerCommandDeps {
+  id: string | undefined;
+  internalScrollContainer$: State<HTMLElement | null>;
+  autoScrollDisabled$: State<boolean>;
+  awayFromBottomState$: State<boolean>;
+  restoreState: RestoreState;
+  lastKnownScrollTop: { v: number };
+  lastUserInputAt: { v: number };
+  markUserInput: () => void;
+  options: CreateScrollSignalsOptions;
+}
+
+function createSetScrollContainerCommand(deps: SetScrollContainerCommandDeps) {
+  return onRef(
+    command(({ get, set }, el: HTMLElement, signal: AbortSignal) => {
+      set(deps.internalScrollContainer$, el);
+      L.debug("container bound");
+
+      const saved =
+        deps.id !== undefined
+          ? get(scrollPositionCache$).get(deps.id)
+          : undefined;
+      if (saved !== undefined) {
+        deps.restoreState.pendingRestorePosition = saved;
+        deps.restoreState.suppressNextScrollToBottom = true;
+        el.scrollTop = saved;
+        set(deps.autoScrollDisabled$, true);
+        // A cached position is always non-bottom — reflect it immediately.
+        set(deps.awayFromBottomState$, true);
+        L.debug(
+          "container bound → restoring",
+          `id=${deps.id}`,
+          `saved=${saved}`,
+        );
+      }
+
+      deps.lastKnownScrollTop.v = el.scrollTop;
+      deps.lastUserInputAt.v = 0;
+
+      const ctx: ScrollHandlerContext = {
+        el,
+        restoreState: deps.restoreState,
+        id: deps.id,
+        lastUserInputAt: deps.lastUserInputAt,
+        lastKnownScrollTop: deps.lastKnownScrollTop,
+        isDisabled: () => {
+          return get(deps.autoScrollDisabled$);
+        },
+        setDisabled: (v) => {
+          set(deps.autoScrollDisabled$, v);
+        },
+        clearCache: () => {
+          if (deps.id !== undefined) {
+            set(clearCachedScrollTop$, deps.id);
+          }
+        },
+        saveCache: (top) => {
+          if (deps.id !== undefined) {
+            set(setCachedScrollTop$, deps.id, top);
+          }
+        },
+        setAwayFromBottom: (v) => {
+          if (get(deps.awayFromBottomState$) !== v) {
+            set(deps.awayFromBottomState$, v);
+          }
+        },
+        setScrollToBottomAnchorActive: (v) => {
+          deps.restoreState.scrollToBottomAnchorActive = v;
+        },
+        scrollToBottom: (scrollOptions) => {
+          const anchor = deps.options.scrollToBottomAnchor;
+          setScrollToBottomPosition({
+            el,
+            restoreState: deps.restoreState,
+            anchor: resolveScrollToBottomAnchor(
+              anchor,
+              anchor !== undefined ? get(anchor.enabled$) : false,
+            ),
+            activateAnchor: scrollOptions?.activateAnchor,
+          });
+        },
+      };
+
+      const onScroll = buildScrollHandler(ctx);
+      const onResize = buildResizeHandler(ctx);
+
+      attachUserInputListeners(el, deps.markUserInput, onScroll, signal);
+      observeContainerResize(el, onResize, signal);
+
+      signal.addEventListener("abort", () => {
+        L.debug("container unbound (abort)");
+        set(deps.internalScrollContainer$, null);
+      });
+    }),
+  );
 }
 
 /**
@@ -386,6 +593,12 @@ function createScrollToBottomCommand(deps: ScrollToBottomCommandDeps) {
  *
  * `autoScroll$`     — scroll to bottom only when auto-scroll is enabled.
  * `scrollToBottom$`  — unconditional force scroll (ignores disabled state).
+ * Optional `scrollToBottomAnchor` changes "bottom" into "as far down as
+ * possible without moving the latest anchor above the viewport top", provided
+ * the anchor itself fits in the viewport. Once activated by `scrollToBottom$`,
+ * resize and auto-scroll keep advancing until that anchor reaches the top. Any
+ * user-driven scroll movement cancels the anchor mode so manual navigation
+ * keeps control.
  *
  * When `id` is provided, the user's last non-bottom scroll position is
  * persisted in a module-level cache. At container-bind time, if the cache
@@ -398,7 +611,10 @@ function createScrollToBottomCommand(deps: ScrollToBottomCommandDeps) {
  * a chance to invoke `scrollToBottom$`. The cache is cleared once the user
  * scrolls back to the bottom.
  */
-export function createScrollSignals(id?: string) {
+export function createScrollSignals(
+  id?: string,
+  options: CreateScrollSignalsOptions = {},
+) {
   const internalScrollContainer$ = state<HTMLElement | null>(null);
   const autoScrollDisabled$ = state(false);
   // Readable "scrolled away from the bottom" flag for UI (the scroll-to-bottom
@@ -412,6 +628,7 @@ export function createScrollSignals(id?: string) {
     suppressNextScrollToBottom: false,
     pendingPrependScrollRecords: [],
     suppressNextResizeScrollToBottom: false,
+    scrollToBottomAnchorActive: false,
   };
   const lastKnownScrollTop = { v: 0 };
   const lastUserInputAt = { v: 0 };
@@ -421,67 +638,17 @@ export function createScrollSignals(id?: string) {
     restoreState.suppressNextScrollToBottom = false;
   };
 
-  const setScrollContainer$ = onRef(
-    command(({ get, set }, el: HTMLElement, signal: AbortSignal) => {
-      set(internalScrollContainer$, el);
-      L.debug("container bound");
-
-      const saved =
-        id !== undefined ? get(scrollPositionCache$).get(id) : undefined;
-      if (saved !== undefined) {
-        restoreState.pendingRestorePosition = saved;
-        restoreState.suppressNextScrollToBottom = true;
-        el.scrollTop = saved;
-        set(autoScrollDisabled$, true);
-        // A cached position is always non-bottom — reflect it immediately.
-        set(awayFromBottomState$, true);
-        L.debug("container bound → restoring", `id=${id}`, `saved=${saved}`);
-      }
-
-      lastKnownScrollTop.v = el.scrollTop;
-      lastUserInputAt.v = 0;
-
-      const ctx: ScrollHandlerContext = {
-        el,
-        restoreState,
-        id,
-        lastUserInputAt,
-        lastKnownScrollTop,
-        isDisabled: () => {
-          return get(autoScrollDisabled$);
-        },
-        setDisabled: (v) => {
-          set(autoScrollDisabled$, v);
-        },
-        clearCache: () => {
-          if (id !== undefined) {
-            set(clearCachedScrollTop$, id);
-          }
-        },
-        saveCache: (top) => {
-          if (id !== undefined) {
-            set(setCachedScrollTop$, id, top);
-          }
-        },
-        setAwayFromBottom: (v) => {
-          if (get(awayFromBottomState$) !== v) {
-            set(awayFromBottomState$, v);
-          }
-        },
-      };
-
-      const onScroll = buildScrollHandler(ctx);
-      const onResize = buildResizeHandler(ctx);
-
-      attachUserInputListeners(el, markUserInput, onScroll, signal);
-      observeContainerResize(el, onResize, signal);
-
-      signal.addEventListener("abort", () => {
-        L.debug("container unbound (abort)");
-        set(internalScrollContainer$, null);
-      });
-    }),
-  );
+  const setScrollContainer$ = createSetScrollContainerCommand({
+    id,
+    internalScrollContainer$,
+    autoScrollDisabled$,
+    awayFromBottomState$,
+    restoreState,
+    lastKnownScrollTop,
+    lastUserInputAt,
+    markUserInput,
+    options,
+  });
 
   const autoScroll$ = command(({ get }) => {
     const disabled = get(autoScrollDisabled$);
@@ -495,12 +662,21 @@ export function createScrollSignals(id?: string) {
       return;
     }
     L.debug("autoScroll$ → scrolling to bottom", scrollInfo(scrollEl));
-    scrollEl.scrollTop = scrollEl.scrollHeight;
+    const anchor = options.scrollToBottomAnchor;
+    setScrollToBottomPosition({
+      el: scrollEl,
+      restoreState,
+      anchor: resolveScrollToBottomAnchor(
+        anchor,
+        anchor !== undefined ? get(anchor.enabled$) : false,
+      ),
+    });
   });
 
   const scrollToBottom$ = createScrollToBottomCommand({
     internalScrollContainer$,
     restoreState,
+    options,
   });
 
   const scrollBy$ = createScrollByCommand({
@@ -509,6 +685,7 @@ export function createScrollSignals(id?: string) {
     id,
     lastKnownScrollTop,
     markUserInput,
+    restoreState,
   });
 
   const prepareKeyboardScroll$ = createPrepareKeyboardScrollCommand({

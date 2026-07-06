@@ -4,6 +4,7 @@ interface VM0Global {
   loggers: DebugLoggers;
   inspectLogs: () => void;
   getBuildCommitSha: () => string | null;
+  getBuildVersion: () => string | null;
 }
 
 declare global {

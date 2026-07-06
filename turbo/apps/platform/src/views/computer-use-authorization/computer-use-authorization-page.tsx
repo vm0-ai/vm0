@@ -25,7 +25,7 @@ import {
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { detach, Reason } from "../../signals/utils.ts";
-import computerUseIllustration from "../zero-page/assets/computer-use-illustration.png";
+import { computerUseIllustrationImg } from "../zero-page/platform-assets.ts";
 import { Vm0LogoLink } from "../zero-page/zero-directed-shared.tsx";
 
 function formatTime(value: string): string {
@@ -104,7 +104,7 @@ function EmptyHosts() {
     <div className="flex flex-col items-center gap-4 rounded-lg border border-border bg-muted/30 px-4 py-6 text-center">
       <div className="flex h-24 w-24 items-center justify-center">
         <img
-          src={computerUseIllustration}
+          src={computerUseIllustrationImg}
           alt=""
           className="h-24 w-24 object-contain"
         />

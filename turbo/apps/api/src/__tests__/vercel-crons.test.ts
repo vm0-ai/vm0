@@ -9,7 +9,7 @@ import {
   cronCleanupSandboxesContract,
   cronComputerUseScreenshotCleanupContract,
   cronDrainEmailOutboxContract,
-  cronExecuteAutomationsContract,
+  cronDrainRelationshipMemoryContract,
   cronExecuteWorkflowTriggersContract,
   cronProcessUsageEventsContract,
   cronRenewGoogleCalendarWatchesContract,
@@ -44,10 +44,6 @@ function readVercelConfig(): VercelConfig {
 const expectedVercelCrons = [
   {
     path: cronCleanupSandboxesContract.cleanup.path,
-    schedule: "* * * * *",
-  },
-  {
-    path: cronExecuteAutomationsContract.execute.path,
     schedule: "* * * * *",
   },
   {
@@ -88,6 +84,10 @@ const expectedVercelCrons = [
   },
   {
     path: cronDrainEmailOutboxContract.drain.path,
+    schedule: "* * * * *",
+  },
+  {
+    path: cronDrainRelationshipMemoryContract.drain.path,
     schedule: "* * * * *",
   },
   {

@@ -17,6 +17,7 @@ import {
   markRouteSetupBegin$,
 } from "../../lib/posthog.ts";
 import { reloadUserModelPreference$ } from "../external/user-model-preference.ts";
+import { scrollToThread$ } from "./sidebar-chat-thread-scroll.ts";
 
 const internalSetupChatPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -36,6 +37,7 @@ const internalSetupChatPage$ = command(
 
     await Promise.all([
       set(loadLeftThread$, threadId, signal),
+      set(scrollToThread$, threadId, signal),
       shouldLoadRight
         ? set(loadRightThread$, sidebarThreadId, signal)
         : Promise.resolve(),

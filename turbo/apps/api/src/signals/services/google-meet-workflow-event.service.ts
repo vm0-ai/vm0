@@ -31,6 +31,10 @@ import {
 } from "./crypto.utils";
 import { workflowAutomationEnabledForOwner } from "./workflow-automation-feature-switch.service";
 import {
+  WorkflowEventSourceTiming,
+  type WorkflowEventRunTiming,
+} from "./workflow-event-source-timing.service";
+import {
   buildChatOnlyWorkflowTriggerCallbacks,
   runWorkflowTriggerNow$,
   type TriggerRow,
@@ -92,6 +96,29 @@ const pubSubPushSchema = z.object({
   subscription: z.string().optional(),
 });
 
+const cloudEventNamedResourceSchema = z
+  .object({
+    name: z.string().optional(),
+  })
+  .passthrough();
+
+const workspaceCloudEventDataSchema = z
+  .object({
+    subscription: cloudEventNamedResourceSchema
+      .extend({
+        expire_time: z.string().optional(),
+        state: z.string().optional(),
+      })
+      .optional(),
+    transcript: cloudEventNamedResourceSchema.optional(),
+    conferenceRecord: cloudEventNamedResourceSchema
+      .extend({
+        transcript: cloudEventNamedResourceSchema.optional(),
+      })
+      .optional(),
+  })
+  .passthrough();
+
 const workspaceCloudEventSchema = z
   .object({
     id: z.string(),
@@ -102,7 +129,7 @@ const workspaceCloudEventSchema = z
     specversion: z.string().optional(),
     spec_version: z.string().optional(),
     datacontenttype: z.string().optional(),
-    data: z.unknown().optional(),
+    data: workspaceCloudEventDataSchema.optional(),
   })
   .passthrough();
 
@@ -1415,7 +1442,9 @@ async function dispatchGoogleMeetTranscriptEventForState(args: {
   readonly startRun: (args: {
     readonly trigger: GoogleMeetEventTriggerRow;
     readonly event: GoogleMeetTranscriptEventContext;
+    readonly timing: WorkflowEventRunTiming;
   }) => Promise<"ok" | "error">;
+  readonly sourceTiming: WorkflowEventSourceTiming;
   readonly signal: AbortSignal;
 }): Promise<
   | {
@@ -1425,38 +1454,58 @@ async function dispatchGoogleMeetTranscriptEventForState(args: {
     }
   | { readonly kind: "run_error"; readonly message: string }
 > {
-  const featureEnabled = await args.isFeatureEnabledForOwner(
-    args.state.orgId,
-    args.state.userId,
+  const featureEnabled = await args.sourceTiming.measure(
+    "api_dispatch_pre_create_zero_workflow_event_check_feature_gate",
+    async () => {
+      return await args.isFeatureEnabledForOwner(
+        args.state.orgId,
+        args.state.userId,
+      );
+    },
   );
   args.signal.throwIfAborted();
   if (!featureEnabled) {
     return { kind: "ok", dispatched: 0, duplicates: 0 };
   }
 
-  const triggers = await loadGoogleMeetEventTriggers({
-    db: args.db,
-    state: args.state,
-    signal: args.signal,
-  });
+  const triggers = await args.sourceTiming.measure(
+    "api_dispatch_pre_create_zero_workflow_event_load_triggers",
+    async () => {
+      return await loadGoogleMeetEventTriggers({
+        db: args.db,
+        state: args.state,
+        signal: args.signal,
+      });
+    },
+  );
   let dispatched = 0;
   let duplicates = 0;
 
   for (const trigger of triggers) {
-    const processedId = await insertWorkspaceProcessedEvent({
-      db: args.db,
-      state: args.state,
-      trigger,
-      decoded: args.decoded,
-      event: args.event,
-      signal: args.signal,
-    });
+    const runTiming = args.sourceTiming.createRunTiming();
+    const processedId = await runTiming.measure(
+      "api_dispatch_pre_create_zero_workflow_event_record_processed_event",
+      async () => {
+        return await insertWorkspaceProcessedEvent({
+          db: args.db,
+          state: args.state,
+          trigger,
+          decoded: args.decoded,
+          event: args.event,
+          signal: args.signal,
+        });
+      },
+    );
     if (!processedId) {
       duplicates++;
       continue;
     }
 
-    const started = await args.startRun({ trigger, event: args.event });
+    const started = await args.startRun({
+      trigger,
+      event: args.event,
+      timing: runTiming,
+    });
     args.signal.throwIfAborted();
     if (started !== "ok") {
       await args.db
@@ -1516,11 +1565,21 @@ export const dispatchGoogleWorkspaceEventsPubSubPush$ = command(
       return event;
     }
 
-    const state = await loadWorkspaceSubscriptionStateByName({
-      db,
-      subscriptionName: event.context.subscriptionName,
-      signal,
-    });
+    const sourceTiming = new WorkflowEventSourceTiming(
+      "google_meet",
+      args.apiStartTime,
+    );
+    const state = await sourceTiming.measure(
+      "api_dispatch_pre_create_zero_workflow_event_load_source_state",
+      async () => {
+        return await loadWorkspaceSubscriptionStateByName({
+          db,
+          subscriptionName: event.context.subscriptionName,
+          signal,
+        });
+      },
+    );
+    signal.throwIfAborted();
     if (!state || state.provider !== "google-meet") {
       return { kind: "ok", watchStates: 0, dispatched: 0, duplicates: 0 };
     }
@@ -1533,7 +1592,24 @@ export const dispatchGoogleWorkspaceEventsPubSubPush$ = command(
       isFeatureEnabledForOwner: async (orgId, userId) => {
         return await get(workflowAutomationEnabledForOwner(orgId, userId));
       },
-      startRun: async ({ trigger, event }) => {
+      sourceTiming,
+      startRun: async ({ trigger, event, timing }) => {
+        const runInput = await timing.measure(
+          "api_dispatch_pre_create_zero_workflow_event_build_run_input",
+          () => {
+            return {
+              appendSystemPrompt: buildGoogleMeetWorkflowEventSystemPrompt({
+                triggerId: trigger.trigger.id,
+                event,
+              }),
+              triggerBrief: buildGoogleMeetWorkflowTriggerBrief(event),
+              callbacks: buildChatOnlyWorkflowTriggerCallbacks(
+                trigger.chatThreadId,
+                trigger.agentId,
+              ),
+            };
+          },
+        );
         const result = await set(
           runWorkflowTriggerNow$,
           {
@@ -1545,19 +1621,14 @@ export const dispatchGoogleWorkspaceEventsPubSubPush$ = command(
             },
             apiStartTime: args.apiStartTime,
             triggerSource: "workflow-event",
-            appendSystemPrompt: buildGoogleMeetWorkflowEventSystemPrompt({
-              triggerId: trigger.trigger.id,
-              event,
-            }),
-            triggerBrief: buildGoogleMeetWorkflowTriggerBrief(event),
-            callbacks: buildChatOnlyWorkflowTriggerCallbacks(
-              trigger.chatThreadId,
-              trigger.agentId,
-            ),
+            appendSystemPrompt: runInput.appendSystemPrompt,
+            triggerBrief: runInput.triggerBrief,
+            callbacks: runInput.callbacks,
             activePreviousRunPolicy: "allow",
             recordLastRunId: false,
             recordLastRunAt: true,
             dispatchFailedCallbacks: dispatchFailedRunCallbacks,
+            timing: timing.collectorForRunStart(),
           },
           signal,
         );

@@ -33,6 +33,8 @@ pub(crate) struct FileOverrideState {
     pub(crate) write_files_calls: Mutex<Vec<WriteFilesCall>>,
     /// Recorded write_private_file calls across all sandboxes built from this override set.
     pub(crate) private_write_file_calls: Mutex<Vec<WriteFileCall>>,
+    /// FIFO queue of write_private_file results consumed by factory-created sandboxes.
+    pub(crate) private_write_file_results: Mutex<VecDeque<Result<()>>>,
     /// FIFO queue of read_file results consumed by factory-created sandboxes.
     pub(crate) read_file_results: Mutex<VecDeque<Result<Option<Vec<u8>>>>>,
     /// Recorded copy_file calls across all sandboxes built from this override
@@ -307,6 +309,16 @@ impl MockSandboxOverrides {
             .private_write_file_calls
             .lock_ignoring_poison()
             .clone()
+    }
+
+    /// Queue a write_private_file result applied to the next private write made
+    /// through any sandbox built from these overrides after that sandbox's
+    /// local private-write queue is empty.
+    pub fn push_private_write_file_result(&self, result: Result<()>) {
+        self.file
+            .private_write_file_results
+            .lock_ignoring_poison()
+            .push_back(result);
     }
 
     /// Queue a read_file result applied to the next read made through any

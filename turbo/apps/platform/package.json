@@ -1,6 +1,6 @@
 {
   "name": "@vm0/app",
-  "version": "0.538.0",
+  "version": "0.558.5",
   "private": true,
   "type": "module",
   "scripts": {
@@ -8,15 +8,13 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "lint": "oxlint && oxlint --type-aware -c ../../.oxlintrc.typeaware.json && eslint . --max-warnings 0",
+    "lint:static-assets": "node scripts/check-static-assets.mjs",
+    "lint": "pnpm lint:static-assets && oxlint && oxlint --type-aware -c ../../.oxlintrc.typeaware.json && eslint . --max-warnings 0",
     "check-types": "tsc -p tsconfig.production.json --noEmit && tsc -p tsconfig.tests.json --noEmit"
   },
   "dependencies": {
     "@clerk/clerk-js": "^5.125.10",
     "@clerk/clerk-react": "^5.61.8",
-    "@dnd-kit/core": "^6.3.1",
-    "@dnd-kit/sortable": "^10.0.0",
-    "@dnd-kit/utilities": "^3.2.2",
     "@sentry/react": "^10.38.0",
     "@sentry/vite-plugin": "^4.9.0",
     "@tabler/icons-react": "^3.36.1",

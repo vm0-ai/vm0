@@ -1,10 +1,12 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
 import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
-import { zeroPersonalModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-personal-model-providers";
+import {
+  zeroPersonalModelProvidersByTypeContract,
+  zeroPersonalModelProvidersMainContract,
+} from "@vm0/api-contracts/contracts/zero-personal-model-providers";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 import {
@@ -15,7 +17,6 @@ import {
 import { mockedClerk } from "../../../__tests__/mock-auth.ts";
 import { clearMockNow, mockNow } from "../../../lib/time.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { splitChatThreadListResponse } from "./chat-test-helpers.ts";
 
 const context = testContext();
 
@@ -39,6 +40,7 @@ function connectedPersonalCodexProvider(
     selectedModel: null,
     workspaceName: "Personal ChatGPT",
     planType: "pro",
+    accountEmail: "codex.user@example.com",
     subscriptionResetPeriod: "Weekly",
     subscriptionNextResetAt: "2030-01-07T00:00:00.000Z",
     subscriptionUsage: {
@@ -55,6 +57,7 @@ function connectedPersonalCodexProvider(
         windowSeconds: 604_800,
       },
     },
+    subscriptionResetCredits: 2,
     needsReconnect: false,
     lastRefreshErrorCode: null,
     createdAt: "2026-03-01T00:00:00Z",
@@ -145,9 +148,6 @@ function mockAdminAccountSidebar(): void {
     name: "Test Org",
     role: "admin",
   });
-  context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-    return respond(200, splitChatThreadListResponse([]));
-  });
   context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
     return respond(200, {
       tier: "pro",
@@ -196,7 +196,6 @@ describe("zero sidebar account menu", () => {
         fullName: "Alex Rivera",
         email: "alex.rivera@example.test",
       },
-      featureSwitches: { [FeatureSwitchKey.DataExport]: true },
     });
 
     let menu = await openAccountMenu();
@@ -295,6 +294,10 @@ describe("zero sidebar account menu", () => {
     expect(within(panel).getByText("55%")).toBeInTheDocument();
     expect(within(panel).getByText("88%")).toBeInTheDocument();
     expect(within(panel).getByText("76%")).toBeInTheDocument();
+    expect(within(panel).getByText("2 resets left")).toBeInTheDocument();
+    expect(
+      within(panel).queryByText(/codex\.user@example\.com/),
+    ).not.toBeInTheDocument();
 
     const codexFiveHour = within(panel).getByRole("progressbar", {
       name: "Codex 5h remaining",
@@ -306,6 +309,65 @@ describe("zero sidebar account menu", () => {
     expect(
       credits.compareDocumentPosition(codex) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  it("resets Codex usage from the account menu", async () => {
+    mockAdminAccountSidebar();
+    context.mocks.data.personalModelProviders([
+      connectedPersonalCodexProvider(),
+    ]);
+    context.mocks.api(
+      zeroPersonalModelProvidersByTypeContract.resetSubscriptionUsage,
+      ({ respond }) => {
+        const provider = connectedPersonalCodexProvider({
+          subscriptionResetCredits: 1,
+        });
+        context.mocks.data.personalModelProviders([provider]);
+        return respond(200, { outcome: "reset" });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
+      featureSwitches: { [FeatureSwitchKey.SidebarSubscriptionUsage]: true },
+    });
+
+    let menu = await openAccountMenu();
+    let panel = await within(menu).findByTestId("account-menu-subscriptions");
+    expect(within(panel).getByText("2 resets left")).toBeInTheDocument();
+    click(within(panel).getByText("Reset"));
+
+    const confirmDialog = await screen.findByRole("dialog", {
+      name: "Reset Codex usage?",
+    });
+    expect(
+      within(confirmDialog).getByText(/2 resets left/),
+    ).toBeInTheDocument();
+    const resetButton = queryAllByRoleFast("button", confirmDialog).find(
+      (button) => {
+        return button.textContent === "Reset usage";
+      },
+    );
+    if (!resetButton) {
+      throw new Error("Reset usage button not found");
+    }
+    click(resetButton);
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Reset Codex usage?" }),
+      ).not.toBeInTheDocument();
+    });
+
+    menu = await openAccountMenu();
+    panel = await within(menu).findByTestId("account-menu-subscriptions");
+    expect(within(panel).getByText("1 reset left")).toBeInTheDocument();
   });
 
   it("refreshes account menu subscriptions when the menu opens", async () => {
@@ -461,9 +523,6 @@ describe("zero sidebar account menu", () => {
     context.mocks.data.userPreferences({
       captureNetworkBodiesRemaining: 0,
     });
-    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, splitChatThreadListResponse([]));
-    });
 
     detachedSetupPage({
       context,
@@ -555,9 +614,6 @@ describe("zero sidebar account menu", () => {
 
   it("shows account switching, add-account, and sign-out actions", async () => {
     prepareDefaultAgent();
-    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, splitChatThreadListResponse([]));
-    });
 
     detachedSetupPage({
       context,

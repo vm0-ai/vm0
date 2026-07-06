@@ -5,9 +5,12 @@ import { zeroWorkflows } from "@vm0/db/schema/zero-workflow";
 import { userCache } from "@vm0/db/schema/user-cache";
 import { and, asc, eq, or, sql, type SQL } from "drizzle-orm";
 
-import { db$, type ReadonlyDb } from "../external/db";
+import { db$, type Db, type ReadonlyDb } from "../external/db";
 import { clerk$ } from "../external/clerk";
 import { requireAgentPermission } from "../../lib/require-agent-permission";
+import { now, nowDate } from "../../lib/time";
+
+const USER_CACHE_TTL_MS = 15 * 60 * 1000;
 
 export interface WorkflowMember {
   readonly userId: string;
@@ -62,6 +65,54 @@ interface WorkflowShadow {
 interface WorkflowOwnerProfile {
   readonly displayName: string | null;
   readonly imageUrl: string | null;
+}
+
+interface ClerkUserProfile {
+  readonly id: string;
+  readonly imageUrl?: string | null;
+  readonly firstName?: string | null;
+  readonly lastName?: string | null;
+  readonly primaryEmailAddressId: string | null;
+  readonly emailAddresses: readonly {
+    readonly id: string;
+    readonly emailAddress: string;
+  }[];
+}
+
+interface CachedOwnerProfile {
+  readonly email: string | null;
+  readonly name: string | null;
+  readonly imageUrl: string | null;
+  readonly cachedAt: Date | null;
+}
+
+function primaryEmail(user: ClerkUserProfile): string | null {
+  const primary = user.emailAddresses.find((entry) => {
+    return entry.id === user.primaryEmailAddressId;
+  });
+  return primary?.emailAddress ?? user.emailAddresses[0]?.emailAddress ?? null;
+}
+
+function fullName(user: ClerkUserProfile): string | null {
+  return [user.firstName, user.lastName].filter(Boolean).join(" ") || null;
+}
+
+function ownerProfileFromCache(
+  row: CachedOwnerProfile | null | undefined,
+  currentTime: number,
+): WorkflowOwnerProfile | null {
+  if (
+    !row ||
+    !row.email ||
+    !row.cachedAt ||
+    currentTime - row.cachedAt.getTime() >= USER_CACHE_TTL_MS
+  ) {
+    return null;
+  }
+  return {
+    displayName: row.name ?? row.email,
+    imageUrl: row.imageUrl,
+  };
 }
 
 /**
@@ -297,25 +348,44 @@ export async function loadWorkflowShadowWinner(
   return winner;
 }
 
-/**
- * Batch-fetch owner avatar URLs from Clerk (the source of truth for user
- * images) keyed by user id. user_cache only stores name/email, so the image
- * has to come from Clerk directly.
- */
-async function fetchOwnerImageUrls(
+async function refreshOwnerProfiles(
+  db: Db,
   client: ReturnType<typeof clerk$.read>,
   userIds: readonly string[],
-): Promise<Map<string, string>> {
-  const map = new Map<string, string>();
+): Promise<Map<string, WorkflowOwnerProfile>> {
+  const profiles = new Map<string, WorkflowOwnerProfile>();
   const uniqueUserIds = [...new Set(userIds)];
   if (uniqueUserIds.length === 0) {
-    return map;
+    return profiles;
   }
   const users = await client.users.getUserList({ userId: uniqueUserIds });
+  const refreshedAt = nowDate();
   for (const user of users.data) {
-    map.set(user.id, user.imageUrl);
+    const email = primaryEmail(user);
+    if (!email) {
+      continue;
+    }
+    const name = fullName(user);
+    const imageUrl = user.imageUrl ?? null;
+    profiles.set(user.id, {
+      displayName: name ?? email,
+      imageUrl,
+    });
+    await db
+      .insert(userCache)
+      .values({
+        userId: user.id,
+        email,
+        name,
+        imageUrl,
+        cachedAt: refreshedAt,
+      })
+      .onConflictDoUpdate({
+        target: userCache.userId,
+        set: { email, name, imageUrl, cachedAt: refreshedAt },
+      });
   }
-  return map;
+  return profiles;
 }
 
 export function zeroWorkflowList(args: {
@@ -347,6 +417,8 @@ export function zeroWorkflowList(args: {
         ownerProfile: {
           name: userCache.name,
           email: userCache.email,
+          imageUrl: userCache.imageUrl,
+          cachedAt: userCache.cachedAt,
         },
       })
       .from(zeroWorkflows)
@@ -362,24 +434,43 @@ export function zeroWorkflowList(args: {
       .orderBy(asc(zeroWorkflows.name));
 
     const winners = shadowWinnerFromRows(rows, args.member);
-    const ownerImageUrlByUserId = await fetchOwnerImageUrls(
+    const currentTime = now();
+    const ownerProfileByUserId = new Map<string, WorkflowOwnerProfile>();
+    const ownerIdsToRefresh = new Set<string>();
+    for (const row of rows) {
+      const cached = ownerProfileFromCache(row.ownerProfile, currentTime);
+      if (cached) {
+        ownerProfileByUserId.set(row.workflow.ownerUserId, cached);
+      } else {
+        ownerIdsToRefresh.add(row.workflow.ownerUserId);
+      }
+    }
+
+    const refreshedProfiles = await refreshOwnerProfiles(
+      db as Db,
       get(clerk$),
-      rows.map((row) => {
-        return row.workflow.ownerUserId;
-      }),
+      [...ownerIdsToRefresh],
     );
+    for (const [userId, profile] of refreshedProfiles) {
+      ownerProfileByUserId.set(userId, profile);
+    }
 
     return rows.map((row) => {
       const key = `${row.workflow.agentId}:${row.workflow.name}`;
       const winner = winners.get(key);
+      const ownerProfile = ownerProfileByUserId.get(row.workflow.ownerUserId);
       return workflowSummary({
         workflow: row.workflow,
         agent: row.agent,
         member: args.member,
         ownerProfile: {
           displayName:
-            row.ownerProfile?.name ?? row.ownerProfile?.email ?? null,
-          imageUrl: ownerImageUrlByUserId.get(row.workflow.ownerUserId) ?? null,
+            ownerProfile?.displayName ??
+            row.ownerProfile?.name ??
+            row.ownerProfile?.email ??
+            null,
+          imageUrl:
+            ownerProfile?.imageUrl ?? row.ownerProfile?.imageUrl ?? null,
         },
         shadowedBy:
           winner && winner.id !== row.workflow.id ? winner : undefined,

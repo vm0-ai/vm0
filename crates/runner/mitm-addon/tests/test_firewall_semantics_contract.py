@@ -33,6 +33,7 @@ def _load_cases() -> tuple[
     list[dict[str, object]],
     list[dict[str, object]],
     list[dict[str, object]],
+    list[dict[str, object]],
 ]:
     raw_contract = json.loads(_CONTRACT_PATH.read_text())
     assert isinstance(raw_contract, dict)
@@ -44,6 +45,7 @@ def _load_cases() -> tuple[
         _contract_cases(raw_contract, "hostMatchCases"),
         _contract_cases(raw_contract, "pathPrefixMatchCases"),
         _contract_cases(raw_contract, "baseUrlMatchCases"),
+        _contract_cases(raw_contract, "finalDecisionCases"),
     )
 
 
@@ -99,7 +101,37 @@ def _assert_relative_path_match(
     _HOST_MATCH_CASES,
     _PATH_PREFIX_MATCH_CASES,
     _BASE_URL_MATCH_CASES,
+    _FINAL_DECISION_CASES,
 ) = _load_cases()
+
+
+def _normalize_final_decision(result: object | None) -> dict[str, object]:
+    if result is None:
+        return {"kind": "no_match"}
+    if isinstance(result, matching.FirewallAllow):
+        base = result.api_entry["base"]
+        assert isinstance(base, str)
+        normalized: dict[str, object] = {
+            "kind": "allow",
+            "firewallName": result.name,
+            "base": base,
+            "relativePath": result.rel_path,
+        }
+        if result.permission is not None:
+            normalized["permission"] = result.permission
+        if result.rule is not None:
+            normalized["rule"] = result.rule
+        return normalized
+    if isinstance(result, matching.FirewallBlock):
+        return {
+            "kind": "block",
+            "firewallName": result.name,
+            "base": result.base,
+            "relativePath": result.path,
+            "reason": result.reason,
+            "permissions": list(result.permissions),
+        }
+    raise TypeError(f"unexpected firewall decision result: {result!r}")
 
 
 @pytest.mark.parametrize("case", _SEGMENT_PARSE_CASES, ids=_case_name)
@@ -196,3 +228,26 @@ def test_base_url_matching_matches_shared_contract(case: dict[str, object]):
     result = matching.match_base_url(url, base)
     actual_relative_path = None if result is None else result[0]
     _assert_relative_path_match(actual_relative_path, expected)
+
+
+@pytest.mark.parametrize("case", _FINAL_DECISION_CASES, ids=_case_name)
+def test_final_decision_matches_shared_contract(case: dict[str, object]):
+    firewalls = case["firewalls"]
+    request = case["request"]
+    assert isinstance(request, dict)
+    method = request["method"]
+    assert isinstance(method, str)
+    url = request["url"]
+    assert isinstance(url, str)
+    expected = case["expected"]
+    assert isinstance(expected, dict)
+
+    compiled_firewalls = matching.compile_firewalls(firewalls)
+    result = matching.match_compiled_firewall_request(
+        url,
+        method,
+        compiled_firewalls,
+        case.get("networkPolicies"),
+    )
+
+    assert _normalize_final_decision(result) == expected

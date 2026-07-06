@@ -23,10 +23,8 @@ import {
   DropdownMenuItem,
 } from "@vm0/ui";
 import type { ConnectorType } from "@vm0/connectors/connectors";
-import {
-  groupFirewallMetadataPermissionsByCategory,
-  type FirewallPermissionDetailMetadata,
-} from "@vm0/connectors/firewall-metadata";
+import type { PublicConnectorCatalogPermissionDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import { groupFirewallMetadataPermissionsByCategory } from "@vm0/connectors/firewall-metadata/policy";
 import {
   UNKNOWN_PERMISSION_GRANT,
   type FirewallPolicies,
@@ -121,7 +119,7 @@ interface PermissionsDrawerProps {
 }
 
 interface PermissionDrawerApplyOptions {
-  readonly metadata: FirewallPermissionDetailMetadata;
+  readonly metadata: PublicConnectorCatalogPermissionDetail;
 }
 
 type PermissionsSurface = "sheet" | "dialog";
@@ -157,7 +155,7 @@ type LoadedPermissionsDrawerContentProps = Pick<
   | "onClose"
 > & {
   readonly surface: PermissionsSurface;
-  readonly metadata: FirewallPermissionDetailMetadata;
+  readonly metadata: PublicConnectorCatalogPermissionDetail;
   readonly initialState: InitialPermissionDrawerState;
 };
 
@@ -171,7 +169,7 @@ function buildInitialPermissionDrawerState({
   PermissionsDrawerProps,
   "agentId" | "connectorType" | "initialPolicies" | "initialGrants"
 > & {
-  readonly metadata: FirewallPermissionDetailMetadata;
+  readonly metadata: PublicConnectorCatalogPermissionDetail;
 }): InitialPermissionDrawerState {
   const explicitGrants = buildExplicitGrantMap(connectorType, initialGrants);
   const grantStateKey = explicitGrantStateKey(explicitGrants);
@@ -332,7 +330,7 @@ function PolicyPill({
 }
 
 function buildSortedGroups(
-  metadata: FirewallPermissionDetailMetadata,
+  metadata: PublicConnectorCatalogPermissionDetail,
 ): { category: string; permissions: ConnectorPermission[] }[] | null {
   return (
     groupFirewallMetadataPermissionsByCategory(
@@ -345,7 +343,7 @@ function buildSortedGroups(
 }
 
 function sortedPermissionsForMetadata(
-  metadata: FirewallPermissionDetailMetadata,
+  metadata: PublicConnectorCatalogPermissionDetail,
 ): ConnectorPermission[] {
   return sortPermissions(metadata.permissions);
 }
@@ -410,7 +408,7 @@ function canApplyPermissionPolicies({
   saving,
   hasChanges,
 }: {
-  metadata: FirewallPermissionDetailMetadata;
+  metadata: PublicConnectorCatalogPermissionDetail;
   saving: boolean;
   hasChanges: boolean;
 }): boolean {
@@ -1523,7 +1521,7 @@ function PermissionsContent({
 }) {
   const metadataLoadable = useLoadable(
     firewallPermissionMetadataByConnector({
-      connectorType: props.connectorType,
+      connectorRef: props.connectorType,
     }),
   );
   const loadedMetadata =

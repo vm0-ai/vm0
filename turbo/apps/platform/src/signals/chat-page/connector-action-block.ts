@@ -1,12 +1,17 @@
 import { command, computed, state, type Command, type Computed } from "ccstate";
 import {
-  CONNECTOR_TYPES,
+  connectorTypeSchema,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
+import { connectorRefSchema } from "@vm0/api-contracts/contracts/connector-ref";
 import { customConnectorProposalSchema } from "@vm0/api-contracts/contracts/zero-custom-connectors";
-import { connectors$ } from "../external/connectors.ts";
 import {
-  allConnectorTypes$,
+  connectorCatalogDisplayMetadataByRef$,
+  connectorCatalogStatusByRef$,
+  connectors$,
+  type ConnectorCatalogDisplayMetadata,
+} from "../external/connectors.ts";
+import {
   justConnectedTypes$,
   setSelectedConnectorType$,
 } from "../zero-page/settings/connectors.ts";
@@ -15,12 +20,14 @@ import { isAgentConnectorAuthorized } from "../zero-page/agent-connector-authori
 import { jsonParseBase64UrlOr } from "../utils.ts";
 
 export interface ConnectorActionDescriptor {
-  connectorType: ConnectorType;
+  connectorRef: string;
+  connectorType: ConnectorType | null;
   agentId: string;
   originalUrl: string;
 }
 
 export interface ConnectorActionSignals {
+  displayMetadata$: Computed<Promise<ConnectorCatalogDisplayMetadata | null>>;
   available$: Computed<Promise<boolean>>;
   connected$: Computed<Promise<boolean>>;
   authorized$: Computed<Promise<boolean>>;
@@ -46,6 +53,7 @@ export type CustomConnectorActionBlock = CustomConnectorActionDescriptor & {
 };
 
 type ActiveChatConnectorAction = ConnectorActionDescriptor & {
+  connectorType: ConnectorType;
   markComplete$: Command<void, []>;
 };
 
@@ -80,8 +88,9 @@ export const completeChatConnectorActionConnect$ = command(
   },
 );
 
-function isConnectorType(value: string): value is ConnectorType {
-  return value in CONNECTOR_TYPES;
+function parseConnectorType(value: string): ConnectorType | null {
+  const parsed = connectorTypeSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
 }
 
 const CONNECTOR_AUTHORIZE_BASE_URL = "https://app.vm0.ai";
@@ -100,14 +109,19 @@ export function parseConnectorAuthorizeUrl(
   const match = url.pathname.match(
     /^\/connectors\/([^/]+)\/(?:authorize|connect)$/,
   );
-  const connectorType = match?.[1]?.toLowerCase();
+  const connectorRef = match?.[1]?.toLowerCase();
   const agentId = url.searchParams.get("agentId");
-  if (!connectorType || !agentId || !isConnectorType(connectorType)) {
+  if (
+    !connectorRef ||
+    !agentId ||
+    !connectorRefSchema.safeParse(connectorRef).success
+  ) {
     return null;
   }
 
   return {
-    connectorType,
+    connectorRef,
+    connectorType: parseConnectorType(connectorRef),
     agentId,
     originalUrl: value,
   };
@@ -165,34 +179,43 @@ export function createConnectorActionBlock(
     set(authorizedOverride$, true);
   });
 
+  const displayMetadata$ = computed(async (get) => {
+    const metadataByRef = await get(connectorCatalogDisplayMetadataByRef$);
+    return metadataByRef.get(descriptor.connectorRef) ?? null;
+  });
+
   const available$ = computed(async (get): Promise<boolean> => {
-    const allConnectors = await get(allConnectorTypes$);
-    return allConnectors.some((connector) => {
-      return connector.type === descriptor.connectorType;
-    });
+    const displayMetadata = await get(displayMetadata$);
+    return displayMetadata !== null;
   });
 
   const connected$ = computed(async (get): Promise<boolean> => {
+    const connectorType = descriptor.connectorType;
+    if (connectorType === null) {
+      return false;
+    }
     if (
       get(connectedOverride$) ||
-      get(justConnectedTypes$).has(descriptor.connectorType)
+      get(justConnectedTypes$).has(connectorType)
     ) {
       return true;
     }
-    const allConnectors = await get(allConnectorTypes$);
-    return allConnectors.some((connector) => {
-      return connector.type === descriptor.connectorType && connector.connected;
-    });
+    const statusByRef = await get(connectorCatalogStatusByRef$);
+    return statusByRef.get(descriptor.connectorRef)?.connected ?? false;
   });
 
   const authorized$ = computed(async (get): Promise<boolean> => {
+    const connectorType = descriptor.connectorType;
+    if (connectorType === null) {
+      return false;
+    }
     if (get(authorizedOverride$)) {
       return true;
     }
     return await get(
       isAgentConnectorAuthorized({
         agentId: descriptor.agentId,
-        connectorType: descriptor.connectorType,
+        connectorType,
       }),
     );
   });
@@ -211,6 +234,10 @@ export function createConnectorActionBlock(
   });
 
   const activate$ = command(async ({ get, set }, signal: AbortSignal) => {
+    const connectorType = descriptor.connectorType;
+    if (connectorType === null) {
+      return;
+    }
     const available = await get(available$);
     signal.throwIfAborted();
     if (!available) {
@@ -222,7 +249,7 @@ export function createConnectorActionBlock(
     if (connected) {
       await set(
         authorizeDirectedConnector$,
-        descriptor.connectorType,
+        connectorType,
         descriptor.agentId,
         signal,
       );
@@ -233,14 +260,19 @@ export function createConnectorActionBlock(
 
     await get(connectors$);
     signal.throwIfAborted();
-    set(activeChatConnectorActionState$, { ...descriptor, markComplete$ });
-    set(setSelectedConnectorType$, descriptor.connectorType);
+    set(activeChatConnectorActionState$, {
+      ...descriptor,
+      connectorType,
+      markComplete$,
+    });
+    set(setSelectedConnectorType$, connectorType);
   });
 
   return {
     type: "connector-action",
     id,
     ...descriptor,
+    displayMetadata$,
     available$,
     connected$,
     authorized$,

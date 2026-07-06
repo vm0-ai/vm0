@@ -1153,6 +1153,7 @@ export const handleGithubIssuesEvent$ = command(
       readonly payload: GitHubIssuesEvent;
       readonly deliveryId: string;
       readonly apiStartTime: number;
+      readonly backgroundScheduledAt: number;
     },
     signal: AbortSignal,
   ): Promise<void> => {
@@ -1170,6 +1171,7 @@ export const handleGithubIssuesEvent$ = command(
         },
         subjectKind: "issue",
         apiStartTime: args.apiStartTime,
+        backgroundScheduledAt: args.backgroundScheduledAt,
       },
       signal,
     );
@@ -1183,6 +1185,7 @@ export const handleGithubPullRequestEvent$ = command(
       readonly payload: GitHubPullRequestEvent;
       readonly deliveryId: string;
       readonly apiStartTime: number;
+      readonly backgroundScheduledAt: number;
     },
     signal: AbortSignal,
   ): Promise<void> => {
@@ -1200,6 +1203,7 @@ export const handleGithubPullRequestEvent$ = command(
         },
         subjectKind: "pull_request",
         apiStartTime: args.apiStartTime,
+        backgroundScheduledAt: args.backgroundScheduledAt,
       },
       signal,
     );

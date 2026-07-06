@@ -308,10 +308,6 @@ describe("chat inline feedback", () => {
             previewUrl: template.embedUrl,
           },
         },
-        modelSelection: {
-          modelProviderId: "00000000-0000-4000-8000-000000000000",
-          selectedModel: "claude-sonnet-4-6",
-        },
       });
     });
     const sentBody = sentBodies[0];

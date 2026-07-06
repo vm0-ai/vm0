@@ -4,8 +4,13 @@ import { command } from "ccstate";
 import {
   chatMessagesContract,
   type AttachFile,
+  type CodexServiceTier,
   type GenerationTemplateRequest,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import {
+  modelProviderCredentialScopeSchema,
+  modelProviderTypeSchema,
+} from "@vm0/api-contracts/contracts/model-providers";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import {
   chatMessages,
@@ -36,7 +41,10 @@ import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import { waitUntil } from "../context/wait-until";
 import { writeDb$, type Db } from "../external/db";
-import { publishUserSignal } from "../external/realtime";
+import {
+  publishThreadListChanged,
+  publishUserSignal,
+} from "../external/realtime";
 import { now, nowDate } from "../external/time";
 import {
   badRequestMessage,
@@ -71,13 +79,14 @@ import { generateAndPersistInitialThinkingMessage } from "../services/zero-chat-
 import {
   MODEL_FIRST_SELECTION_PROVIDER_ID,
   type ModelFirstPin,
-  modelOnlyModelFirstPin,
   modelProviderPinAvailable,
-  resolveDefaultModelFirstPin,
   resolveModelFirstProviderAdmission,
   resolveModelSelectionPin,
 } from "../services/zero-model-selection.service";
-import { visibleChatMessageCondition } from "../services/zero-chat-message-shared.service";
+import {
+  touchChatThreadLastMessageAt,
+  visibleChatMessageCondition,
+} from "../services/zero-chat-message-shared.service";
 import { appendQueuedRunAssistantMarker } from "../services/zero-chat-queue-marker.service";
 import { appendChatThreadEvent } from "../services/zero-chat-thread-event.service";
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
@@ -96,13 +105,14 @@ interface NormalSendBody {
   readonly threadId?: string;
   readonly clientThreadId?: string;
   readonly chatThreadEventId?: string;
+  readonly chatThreadSortEventId?: string;
   readonly modelProvider?: string;
   readonly modelSelection?: {
     readonly modelProviderId: string;
     readonly selectedModel: string;
   } | null;
   readonly runOptions?: {
-    readonly codexServiceTier?: "fast";
+    readonly codexServiceTier?: CodexServiceTier;
   };
   readonly generationTemplate?: GenerationTemplateRequest;
   readonly hasTextContent?: boolean;
@@ -142,6 +152,7 @@ interface ResolvedThread {
   readonly sessionId: string | undefined;
   readonly incompleteContext: string;
   readonly computerUseHostId: string | null;
+  readonly codexServiceTier: CodexServiceTier | null;
   readonly isNewThread: boolean;
   readonly isClientThreadRetry: boolean;
 }
@@ -212,9 +223,19 @@ interface PreparedNormalSend {
   readonly codexFastModeEnabled: boolean;
 }
 
+function shouldTouchThreadSortFromNormalSend(
+  source: ZeroPreCreateSource | undefined,
+  isNewThread: boolean,
+): boolean {
+  return (
+    !isNewThread &&
+    source !== "chat_callback_auto_send" &&
+    source !== "workflow_slash_command"
+  );
+}
+
 interface NormalSendFeatureSwitches {
   readonly codexFastModeEnabled: boolean;
-  readonly initialThinkingEnabled: boolean;
 }
 
 interface ResolvedComputerUseHostGrant {
@@ -777,24 +798,12 @@ async function latestSessionForThread(
   return undefined;
 }
 
-async function selectedModelForSessionDecision(params: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
+function selectedModelForSessionDecision(params: {
   readonly modelSelection: IncomingModelSelection;
   readonly threadSelectedModel: string | null;
-}): Promise<string | null> {
-  if (params.modelSelection !== undefined) {
-    return (
-      params.modelSelection?.selectedModel ??
-      (
-        await resolveDefaultModelFirstPin(
-          params.db,
-          params.orgId,
-          params.userId,
-        )
-      ).selectedModel
-    );
+}): string | null {
+  if (params.modelSelection) {
+    return params.modelSelection.selectedModel;
   }
   return params.threadSelectedModel;
 }
@@ -1049,48 +1058,28 @@ async function getStoredThreadModelPin(
   threadId: string,
 ): Promise<ThreadModelPin | null> {
   const [thread] = await db
-    .select({ selectedModel: chatThreads.selectedModel })
+    .select({
+      modelProviderId: chatThreads.modelProviderId,
+      modelProviderType: chatThreads.modelProviderType,
+      modelProviderCredentialScope: chatThreads.modelProviderCredentialScope,
+      selectedModel: chatThreads.selectedModel,
+    })
     .from(chatThreads)
     .where(eq(chatThreads.id, threadId))
     .limit(1);
   if (!thread?.selectedModel) {
     return null;
   }
-  return modelOnlyModelFirstPin(thread.selectedModel);
-}
-
-async function getFirstRunModelPin(
-  db: Db,
-  threadId: string,
-): Promise<ThreadModelPin | null> {
-  const [run] = await db
-    .select({ selectedModel: zeroRuns.selectedModel })
-    .from(chatMessages)
-    .innerJoin(zeroRuns, eq(zeroRuns.id, chatMessages.runId))
-    .where(
-      and(
-        eq(chatMessages.chatThreadId, threadId),
-        eq(chatMessages.role, "user"),
-        isNotNull(chatMessages.runId),
-        isNotNull(zeroRuns.selectedModel),
-      ),
-    )
-    .orderBy(asc(chatMessages.createdAt), asc(chatMessages.id))
-    .limit(1);
-  if (!run?.selectedModel) {
-    return null;
-  }
-  return modelOnlyModelFirstPin(run.selectedModel);
-}
-
-async function existingModelFirstThreadPin(
-  db: Db,
-  threadId: string,
-): Promise<ThreadModelPin | null> {
-  return (
-    (await getStoredThreadModelPin(db, threadId)) ??
-    (await getFirstRunModelPin(db, threadId))
-  );
+  return {
+    modelProviderId: thread.modelProviderId,
+    modelProviderType: modelProviderTypeSchema
+      .nullable()
+      .parse(thread.modelProviderType),
+    modelProviderCredentialScope: modelProviderCredentialScopeSchema
+      .nullable()
+      .parse(thread.modelProviderCredentialScope),
+    selectedModel: thread.selectedModel,
+  };
 }
 
 function emptyModelFirstThreadPin(): ThreadModelPin {
@@ -1142,50 +1131,6 @@ async function resolveStoredModelFirstPin(params: {
   });
 }
 
-async function persistThreadPinIfUnset(
-  db: Db,
-  threadId: string,
-  pin: ThreadModelPin,
-): Promise<ThreadModelPin> {
-  if (!pin.selectedModel) {
-    return pin;
-  }
-  await db
-    .update(chatThreads)
-    .set({
-      ...modelOnlyModelFirstPin(pin.selectedModel),
-      updatedAt: nowDate(),
-    })
-    .where(and(eq(chatThreads.id, threadId), isNull(chatThreads.selectedModel)))
-    .returning({ selectedModel: chatThreads.selectedModel });
-  return pin;
-}
-
-async function persistThreadPinForExplicitSelection(
-  db: Db,
-  threadId: string,
-  pin: ThreadModelPin,
-): Promise<ThreadModelPin> {
-  if (!pin.selectedModel) {
-    await db
-      .update(chatThreads)
-      .set({
-        ...modelOnlyModelFirstPin(null),
-        updatedAt: nowDate(),
-      })
-      .where(eq(chatThreads.id, threadId));
-    return pin;
-  }
-  await db
-    .update(chatThreads)
-    .set({
-      ...modelOnlyModelFirstPin(pin.selectedModel),
-      updatedAt: nowDate(),
-    })
-    .where(eq(chatThreads.id, threadId));
-  return pin;
-}
-
 async function resolveRunModelPin(params: {
   readonly db: Db;
   readonly orgId: string;
@@ -1198,11 +1143,11 @@ async function resolveRunModelPin(params: {
   | ReturnType<typeof badRequestMessage>
   | ReturnType<typeof insufficientCredits>
 > {
-  const existing =
-    params.modelSelection === undefined
-      ? await existingModelFirstThreadPin(params.db, params.threadId)
-      : null;
-  if (existing) {
+  if (!params.modelSelection) {
+    const existing = await getStoredThreadModelPin(params.db, params.threadId);
+    if (!existing) {
+      return badRequestMessage("A model selection is required");
+    }
     const pin = await resolveStoredModelFirstPin({
       db: params.db,
       orgId: params.orgId,
@@ -1212,23 +1157,19 @@ async function resolveRunModelPin(params: {
     if ("status" in pin) {
       return pin;
     }
-    return persistThreadPinIfUnset(params.db, params.threadId, pin);
+    return pin;
   }
 
-  const pin = params.modelSelection
-    ? await resolveModelSelectionPin({
-        db: params.db,
-        orgId: params.orgId,
-        userId: params.userId,
-        modelSelection: params.modelSelection,
-      })
-    : await resolveDefaultModelFirstPin(params.db, params.orgId, params.userId);
+  const pin = await resolveModelSelectionPin({
+    db: params.db,
+    orgId: params.orgId,
+    userId: params.userId,
+    modelSelection: params.modelSelection,
+  });
   if ("status" in pin) {
     return pin;
   }
-  return params.modelSelection === undefined
-    ? persistThreadPinIfUnset(params.db, params.threadId, pin)
-    : persistThreadPinForExplicitSelection(params.db, params.threadId, pin);
+  return pin;
 }
 
 async function validateModelSelection(params: {
@@ -1274,25 +1215,22 @@ async function resolveCodexServiceTierValidationPin(params: {
       modelSelection: params.body.modelSelection,
     });
   }
-  if (params.body.modelSelection === undefined && params.body.threadId) {
-    const existing = await existingModelFirstThreadPin(
+  if (params.body.threadId) {
+    const existing = await getStoredThreadModelPin(
       params.db,
       params.body.threadId,
     );
-    if (existing) {
-      return await resolveStoredModelFirstPin({
-        db: params.db,
-        orgId: params.orgId,
-        userId: params.userId,
-        pin: existing,
-      });
+    if (!existing) {
+      return badRequestMessage("A model selection is required");
     }
+    return await resolveStoredModelFirstPin({
+      db: params.db,
+      orgId: params.orgId,
+      userId: params.userId,
+      pin: existing,
+    });
   }
-  return await resolveDefaultModelFirstPin(
-    params.db,
-    params.orgId,
-    params.userId,
-  );
+  return badRequestMessage("A model selection is required");
 }
 
 async function validateCodexServiceTierBeforeThread(params: {
@@ -1329,7 +1267,6 @@ async function resolveNormalSendFeatureSwitches(
   db: Db,
   orgId: string,
   userId: string,
-  zeroPreCreateSource: ZeroPreCreateSource | undefined,
 ): Promise<NormalSendFeatureSwitches> {
   const context = await loadUserFeatureSwitchContext(db, orgId, userId);
   return {
@@ -1337,11 +1274,6 @@ async function resolveNormalSendFeatureSwitches(
       FeatureSwitchKey.CodexFastMode,
       context,
     ),
-    initialThinkingEnabled:
-      isFeatureEnabled(
-        FeatureSwitchKey.ChatInitialThinkingIndicator,
-        context,
-      ) && zeroPreCreateSource === undefined,
   };
 }
 
@@ -1388,6 +1320,32 @@ async function maybePersistExplicitModelFirstSelection(params: {
     params.modelSelection.selectedModel,
   );
   return true;
+}
+
+async function maybePersistExplicitCodexServiceTier(params: {
+  readonly db: Db;
+  readonly threadId: string;
+  readonly userId: string;
+  readonly body: NormalSendBody;
+}): Promise<void> {
+  if (
+    params.body.modelSelection === undefined &&
+    params.body.runOptions === undefined
+  ) {
+    return;
+  }
+  await params.db
+    .update(chatThreads)
+    .set({
+      codexServiceTier: params.body.runOptions?.codexServiceTier ?? null,
+      updatedAt: nowDate(),
+    })
+    .where(
+      and(
+        eq(chatThreads.id, params.threadId),
+        eq(chatThreads.userId, params.userId),
+      ),
+    );
 }
 
 function hasComputerUseHostSelection(body: NormalSendBody): boolean {
@@ -1507,6 +1465,7 @@ async function createChatThread(
     readonly clientThreadId: string | undefined;
     readonly chatThreadEventId: string | undefined;
     readonly pin: ThreadModelPin;
+    readonly codexServiceTier: CodexServiceTier | null;
   },
 ): Promise<CreateChatThreadResult> {
   return await db.transaction(async (tx) => {
@@ -1518,10 +1477,11 @@ async function createChatThread(
           userId: args.userId,
           agentComposeId: args.agentId,
           title: null,
-          modelProviderId: null,
-          modelProviderType: null,
-          modelProviderCredentialScope: null,
+          modelProviderId: args.pin.modelProviderId,
+          modelProviderType: args.pin.modelProviderType,
+          modelProviderCredentialScope: args.pin.modelProviderCredentialScope,
           selectedModel: args.pin.selectedModel,
+          codexServiceTier: args.codexServiceTier,
         })
         .onConflictDoNothing({ target: chatThreads.id })
         .returning({ id: chatThreads.id, createdAt: chatThreads.createdAt });
@@ -1534,6 +1494,7 @@ async function createChatThread(
           agentComposeId: args.agentId,
           eventId: args.chatThreadEventId,
           title: null,
+          selectedModel: args.pin.selectedModel,
           createdAt: thread.createdAt,
         });
         return { id: thread.id, clientThreadAlreadyExisted: false };
@@ -1562,10 +1523,11 @@ async function createChatThread(
         userId: args.userId,
         agentComposeId: args.agentId,
         title: null,
-        modelProviderId: null,
-        modelProviderType: null,
-        modelProviderCredentialScope: null,
+        modelProviderId: args.pin.modelProviderId,
+        modelProviderType: args.pin.modelProviderType,
+        modelProviderCredentialScope: args.pin.modelProviderCredentialScope,
         selectedModel: args.pin.selectedModel,
+        codexServiceTier: args.codexServiceTier,
       })
       .returning({ id: chatThreads.id, createdAt: chatThreads.createdAt });
     if (!thread) {
@@ -1579,10 +1541,43 @@ async function createChatThread(
       agentComposeId: args.agentId,
       eventId: args.chatThreadEventId,
       title: null,
+      selectedModel: args.pin.selectedModel,
       createdAt: thread.createdAt,
     });
     return { id: thread.id, clientThreadAlreadyExisted: false };
   });
+}
+
+async function resolveInitialThreadModelPin(params: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly existingThreadId: string | undefined;
+  readonly modelSelection: IncomingModelSelection;
+}): Promise<
+  | ThreadModelPin
+  | ReturnType<typeof badRequestMessage>
+  | ReturnType<typeof insufficientCredits>
+> {
+  if (params.existingThreadId) {
+    return emptyModelFirstThreadPin();
+  }
+  if (!params.modelSelection) {
+    return badRequestMessage("A model selection is required");
+  }
+  const pin = await resolveModelSelectionPin({
+    db: params.db,
+    orgId: params.orgId,
+    userId: params.userId,
+    modelSelection: params.modelSelection,
+  });
+  if ("status" in pin) {
+    return pin;
+  }
+  if (!pin.selectedModel) {
+    return badRequestMessage("A model selection is required");
+  }
+  return pin;
 }
 
 async function resolveThread(params: {
@@ -1594,6 +1589,7 @@ async function resolveThread(params: {
   readonly clientThreadId: string | undefined;
   readonly chatThreadEventId: string | undefined;
   readonly initialPin: ThreadModelPin;
+  readonly codexServiceTier: CodexServiceTier | null;
   readonly modelSelection: IncomingModelSelection;
 }): Promise<ResolvedThread | ReturnType<typeof notFound>> {
   if (!params.existingThreadId) {
@@ -1604,6 +1600,7 @@ async function resolveThread(params: {
       clientThreadId: params.clientThreadId,
       chatThreadEventId: params.chatThreadEventId,
       pin: params.initialPin,
+      codexServiceTier: params.codexServiceTier,
     });
     if ("status" in thread) {
       return thread;
@@ -1613,6 +1610,7 @@ async function resolveThread(params: {
       sessionId: undefined,
       incompleteContext: "",
       computerUseHostId: null,
+      codexServiceTier: params.codexServiceTier,
       isNewThread: !thread.clientThreadAlreadyExisted,
       isClientThreadRetry: thread.clientThreadAlreadyExisted,
     };
@@ -1623,6 +1621,7 @@ async function resolveThread(params: {
       id: chatThreads.id,
       selectedModel: chatThreads.selectedModel,
       computerUseHostId: chatThreads.computerUseHostId,
+      codexServiceTier: chatThreads.codexServiceTier,
     })
     .from(chatThreads)
     .where(
@@ -1642,10 +1641,7 @@ async function resolveThread(params: {
   ]);
   const startNewSession = shouldStartNewSessionForSelectedModel({
     latestSession,
-    nextSelectedModel: await selectedModelForSessionDecision({
-      db: params.db,
-      orgId: params.orgId,
-      userId: params.userId,
+    nextSelectedModel: selectedModelForSessionDecision({
       modelSelection: params.modelSelection,
       threadSelectedModel: thread.selectedModel,
     }),
@@ -1659,6 +1655,7 @@ async function resolveThread(params: {
           groupIncompleteRoundsByRunId(incompleteRows),
         ),
     computerUseHostId: thread.computerUseHostId,
+    codexServiceTier: thread.codexServiceTier,
     isNewThread: false,
     isClientThreadRetry: false,
   };
@@ -1688,6 +1685,8 @@ function appendUnassociatedUserMessage(params: {
   readonly prompt: string;
   readonly attachFiles: readonly AttachFile[] | undefined;
   readonly clientMessageId: string | undefined;
+  readonly chatThreadSortEventId: string | undefined;
+  readonly touchThreadSort: boolean;
   readonly generationTemplate: IncomingGenerationTemplate;
 }): Promise<ClientMessageIdResolution> {
   return params.db.transaction(async (tx) => {
@@ -1719,6 +1718,14 @@ function appendUnassociatedUserMessage(params: {
       .onConflictDoNothing({ target: chatMessages.id })
       .returning({ createdAt: chatMessages.createdAt });
     if (inserted) {
+      if (params.touchThreadSort) {
+        await touchChatThreadLastMessageAt(
+          tx,
+          params.threadId,
+          inserted.createdAt,
+          params.chatThreadSortEventId,
+        );
+      }
       return { kind: "queued", createdAt: inserted.createdAt, inserted: true };
     }
     if (!explicitId) {
@@ -1770,6 +1777,8 @@ async function appendAssociatedUserMessage(params: {
   readonly runId: string;
   readonly attachFiles: readonly AttachFile[] | undefined;
   readonly clientMessageId: string | undefined;
+  readonly chatThreadSortEventId: string | undefined;
+  readonly touchThreadSort: boolean;
   readonly revokesMessageId: string | undefined;
   readonly generationTemplate: IncomingGenerationTemplate;
   readonly appendQueueMarker: boolean;
@@ -1783,8 +1792,8 @@ async function appendAssociatedUserMessage(params: {
   readonly automationId?: string;
   readonly automationTitle?: string;
   readonly automationSnapshot?: ChatMessageAutomationSnapshot;
-}): Promise<void> {
-  await params.db.transaction(async (tx) => {
+}): Promise<boolean> {
+  return await params.db.transaction(async (tx) => {
     if (params.clearDraft) {
       await clearThreadDraft(tx, params.threadId, params.userId);
     }
@@ -1811,6 +1820,14 @@ async function appendAssociatedUserMessage(params: {
       })
       .onConflictDoNothing({ target: chatMessages.id })
       .returning({ createdAt: chatMessages.createdAt });
+    if (inserted && params.touchThreadSort) {
+      await touchChatThreadLastMessageAt(
+        tx,
+        params.threadId,
+        inserted.createdAt,
+        params.chatThreadSortEventId,
+      );
+    }
     if (params.appendQueueMarker) {
       await appendQueuedRunAssistantMarker(tx, {
         chatThreadId: params.threadId,
@@ -1818,6 +1835,7 @@ async function appendAssociatedUserMessage(params: {
         createdAfter: inserted?.createdAt ?? nowDate(),
       });
     }
+    return inserted !== undefined;
   });
 }
 
@@ -2047,9 +2065,6 @@ async function publishChatMessageCreated(
   userId: string,
   threadId: string,
 ): Promise<void> {
-  // No threadListChanged: every caller is a user-initiated post into the
-  // user's own open thread, so the acting client already reloads locally
-  // and sidebar ordering only moves on run-terminal events.
   await publishUserSignal([userId], `chatThreadMessageCreated:${threadId}`);
 }
 
@@ -2208,7 +2223,6 @@ const prepareNormalSend$ = command(
       db,
       args.orgId,
       args.userId,
-      args.zeroPreCreateSource,
     );
     signal.throwIfAborted();
     const codexServiceTierError = await validateCodexServiceTierBeforeThread({
@@ -2231,6 +2245,18 @@ const prepareNormalSend$ = command(
       }
     }
 
+    const initialPin = await resolveInitialThreadModelPin({
+      db,
+      orgId: args.orgId,
+      userId: args.userId,
+      existingThreadId: args.body.threadId,
+      modelSelection: args.body.modelSelection,
+    });
+    signal.throwIfAborted();
+    if ("status" in initialPin) {
+      return initialPin;
+    }
+
     const thread = await resolveThread({
       db,
       orgId: args.orgId,
@@ -2239,7 +2265,8 @@ const prepareNormalSend$ = command(
       existingThreadId: args.body.threadId,
       clientThreadId: args.body.clientThreadId,
       chatThreadEventId: args.body.chatThreadEventId,
-      initialPin: emptyModelFirstThreadPin(),
+      initialPin,
+      codexServiceTier: args.body.runOptions?.codexServiceTier ?? null,
       modelSelection: args.body.modelSelection,
     });
     signal.throwIfAborted();
@@ -2265,6 +2292,13 @@ const prepareNormalSend$ = command(
         modelSelection: args.body.modelSelection,
       });
     signal.throwIfAborted();
+    await maybePersistExplicitCodexServiceTier({
+      db,
+      threadId: thread.threadId,
+      userId: args.userId,
+      body: args.body,
+    });
+    signal.throwIfAborted();
     const computerUseHostGrant = await resolveComputerUseHostGrant({
       db,
       orgId: args.orgId,
@@ -2285,7 +2319,7 @@ const prepareNormalSend$ = command(
       generationTemplatePrompt,
       computerUseHostGrant,
       persistedExplicitSelection,
-      initialThinkingEnabled: featureSwitches.initialThinkingEnabled,
+      initialThinkingEnabled: args.zeroPreCreateSource === undefined,
       codexFastModeEnabled: featureSwitches.codexFastModeEnabled,
     };
   },
@@ -2295,6 +2329,7 @@ async function queueUnassociatedNormalMessage(params: {
   readonly prepared: PreparedNormalSend;
   readonly body: NormalSendBody;
   readonly userId: string;
+  readonly touchThreadSort: boolean;
 }): Promise<
   | CreatedChatMessageResponse
   | ReturnType<typeof duplicateClientMessageIdResponse>
@@ -2306,6 +2341,8 @@ async function queueUnassociatedNormalMessage(params: {
     prompt: params.body.prompt,
     attachFiles: params.body.attachFiles,
     clientMessageId: params.body.clientMessageId,
+    chatThreadSortEventId: params.body.chatThreadSortEventId,
+    touchThreadSort: params.touchThreadSort,
     generationTemplate: params.body.generationTemplate,
   });
   if (message.kind === "queued" && message.inserted) {
@@ -2313,6 +2350,7 @@ async function queueUnassociatedNormalMessage(params: {
       params.userId,
       params.prepared.thread.threadId,
     );
+    await publishThreadListChanged(params.userId);
   }
   const response = clientMessageIdResolutionResponse(
     message,
@@ -2358,10 +2396,11 @@ function scheduleAssociatedUserMessage(params: {
   readonly runId: string;
   readonly appendQueueMarker: boolean;
   readonly appendInitialThinking: boolean;
+  readonly touchThreadSort: boolean;
 }): void {
   waitUntil(
     (async () => {
-      await appendAssociatedUserMessage({
+      const inserted = await appendAssociatedUserMessage({
         db: params.db,
         threadId: params.threadId,
         userId: params.userId,
@@ -2369,15 +2408,20 @@ function scheduleAssociatedUserMessage(params: {
         runId: params.runId,
         attachFiles: params.body.attachFiles,
         clientMessageId: params.body.clientMessageId,
+        chatThreadSortEventId: params.body.chatThreadSortEventId,
+        touchThreadSort: params.touchThreadSort,
         revokesMessageId: params.body.revokesMessageId,
         generationTemplate: params.body.generationTemplate,
         appendQueueMarker: params.appendQueueMarker,
         clearDraft: true,
       });
-      await publishUserSignal(
-        [params.userId],
-        `chatThreadMessageCreated:${params.threadId}`,
-      );
+      if (inserted) {
+        await publishUserSignal(
+          [params.userId],
+          `chatThreadMessageCreated:${params.threadId}`,
+        );
+        await publishThreadListChanged(params.userId);
+      }
       await publishUserSignal(
         [params.userId],
         `chatThreadRunCreated:${params.threadId}`,
@@ -2393,9 +2437,8 @@ function scheduleAssociatedUserMessage(params: {
           }),
         );
       }
-      // No threadListChanged here: the sending client reloads its own
-      // sidebar after the POST, sorting only moves on run-terminal events,
-      // and the terminal callback broadcasts to other clients.
+      // Direct user messages move sidebar recency; the terminal callback will
+      // publish again when the run-finished marker lands.
     })(),
   );
 }
@@ -2409,6 +2452,7 @@ function scheduleCreatedChatRunSideEffects(params: {
   readonly runId: string;
   readonly runStatus: string;
   readonly initialThinkingEnabled: boolean;
+  readonly touchThreadSort: boolean;
 }): void {
   scheduleChatTitleGeneration({
     db: params.db,
@@ -2429,6 +2473,7 @@ function scheduleCreatedChatRunSideEffects(params: {
       params.runStatus !== "queued" &&
       params.body.hasTextContent !== false &&
       params.body.prompt.trim().length > 0,
+    touchThreadSort: params.touchThreadSort,
   });
 }
 
@@ -2463,6 +2508,7 @@ async function appendInsufficientCreditsMessages(params: {
   readonly body: NormalSendBody;
   readonly userId: string;
   readonly orgId: string;
+  readonly touchThreadSort: boolean;
 }): Promise<CreatedChatMessageResponse> {
   const assistantContent = await buildInsufficientCreditsAssistantMessage({
     db: params.prepared.db,
@@ -2506,6 +2552,14 @@ async function appendInsufficientCreditsMessages(params: {
       .returning({ createdAt: chatMessages.createdAt });
 
     const createdAt = userMessage?.createdAt ?? userCreatedAt;
+    if (userMessage && params.touchThreadSort) {
+      await touchChatThreadLastMessageAt(
+        tx,
+        params.prepared.thread.threadId,
+        createdAt,
+        params.body.chatThreadSortEventId,
+      );
+    }
     await tx.insert(chatMessages).values({
       chatThreadId: params.prepared.thread.threadId,
       role: "assistant",
@@ -2515,13 +2569,16 @@ async function appendInsufficientCreditsMessages(params: {
       createdAt: assistantCreatedAt,
       runId: null,
     });
-    return { createdAt };
+    return { createdAt, inserted: userMessage !== undefined };
   });
 
   await publishChatMessageCreated(
     params.userId,
     params.prepared.thread.threadId,
   );
+  if (result.inserted) {
+    await publishThreadListChanged(params.userId);
+  }
 
   return {
     status: 201,
@@ -2743,6 +2800,10 @@ const createNormalChatRun$ = command(
         body: args.body,
         userId: args.userId,
         orgId: args.orgId,
+        touchThreadSort: shouldTouchThreadSortFromNormalSend(
+          args.zeroPreCreateSource,
+          prepared.thread.isNewThread,
+        ),
       });
     }
 
@@ -2797,6 +2858,10 @@ const createNormalChatRun$ = command(
       runId: runResult.body.runId,
       runStatus: runResult.body.status,
       initialThinkingEnabled: prepared.initialThinkingEnabled,
+      touchThreadSort: shouldTouchThreadSortFromNormalSend(
+        args.zeroPreCreateSource,
+        prepared.thread.isNewThread,
+      ),
     });
 
     if (prepared.persistedExplicitSelection && modelPin.selectedModel) {
@@ -2903,6 +2968,10 @@ export const sendNormalMessage$ = command(
         prepared,
         body: args.body,
         userId: args.userId,
+        touchThreadSort: shouldTouchThreadSortFromNormalSend(
+          args.zeroPreCreateSource,
+          prepared.thread.isNewThread,
+        ),
       });
       signal.throwIfAborted();
       return response;

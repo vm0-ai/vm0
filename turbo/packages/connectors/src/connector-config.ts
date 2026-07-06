@@ -419,6 +419,105 @@ export const CONNECTOR_DISPLAY_CATEGORY_ORDER: readonly ConnectorDisplayCategory
     "data-automation-infrastructure",
   ];
 
+export interface ConnectorDisplayCategorizedItem {
+  readonly category: string;
+}
+
+export interface ConnectorDisplayCategoryMetadataGroup {
+  id: string;
+  label: string;
+  menuLabel: string;
+}
+
+export interface ConnectorDisplayCategoryMetadataCategory {
+  id: string;
+  label: string;
+  menuLabel: string;
+  groupId: string | null;
+}
+
+export interface ConnectorDisplayCategoryMetadata {
+  categories: ConnectorDisplayCategoryMetadataCategory[];
+  groups: ConnectorDisplayCategoryMetadataGroup[];
+}
+
+function isConnectorDisplayCategory(
+  category: string,
+): category is ConnectorDisplayCategory {
+  return Object.prototype.hasOwnProperty.call(
+    CONNECTOR_DISPLAY_CATEGORY_META,
+    category,
+  );
+}
+
+function fallbackCategoryLabel(category: string): string {
+  const label = category
+    .split(/[-_\s]+/)
+    .filter((part) => {
+      return part.length > 0;
+    })
+    .map((part) => {
+      return part.charAt(0).toUpperCase() + part.slice(1);
+    })
+    .join(" ");
+  return label || "Other";
+}
+
+export function connectorDisplayCategoryMetadataForItems(
+  items: readonly ConnectorDisplayCategorizedItem[],
+): ConnectorDisplayCategoryMetadata {
+  const visibleCategories = new Set(
+    items.flatMap((item) => {
+      return item.category ? [item.category] : [];
+    }),
+  );
+  const orderedConnectorDisplayCategories =
+    CONNECTOR_DISPLAY_CATEGORY_ORDER.filter((category) => {
+      return visibleCategories.has(category);
+    });
+  const orderedCategoryIds = new Set<string>(orderedConnectorDisplayCategories);
+  const orderedCategories = [
+    ...orderedConnectorDisplayCategories,
+    ...[...visibleCategories].filter((category) => {
+      return !orderedCategoryIds.has(category);
+    }),
+  ];
+  const visibleGroups = new Set<ConnectorDisplayCategoryGroup>();
+  const categories = orderedCategories.map((category) => {
+    if (!isConnectorDisplayCategory(category)) {
+      const label = fallbackCategoryLabel(category);
+      return {
+        id: category,
+        label,
+        menuLabel: label,
+        groupId: null,
+      };
+    }
+    const metadata = CONNECTOR_DISPLAY_CATEGORY_META[category];
+    if (metadata.group) {
+      visibleGroups.add(metadata.group);
+    }
+    return {
+      id: category,
+      label: metadata.label,
+      menuLabel: metadata.menuLabel,
+      groupId: metadata.group ?? null,
+    };
+  });
+
+  return {
+    categories,
+    groups: [...visibleGroups].map((group) => {
+      const metadata = CONNECTOR_DISPLAY_CATEGORY_GROUPS[group];
+      return {
+        id: group,
+        label: metadata.label,
+        menuLabel: metadata.menuLabel,
+      };
+    }),
+  };
+}
+
 type ConnectorAuthMethods = Partial<
   Record<ConnectorAuthMethodId, ConnectorAuthMethodConfig>
 >;

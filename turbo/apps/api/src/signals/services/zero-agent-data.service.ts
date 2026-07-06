@@ -9,6 +9,7 @@ import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { and, desc, eq, isNull, or } from "drizzle-orm";
 
 import { db$ } from "../external/db";
+import { DEFAULT_AGENT_AVATAR_URL } from "./default-agent-profile";
 
 export function agentResponse(row: {
   readonly agentId: string;
@@ -52,7 +53,7 @@ export function defaultAgentResponse(args: {
     displayName: null,
     description: null,
     sound: null,
-    avatarUrl: null,
+    avatarUrl: DEFAULT_AGENT_AVATAR_URL,
     modelProviderId: null,
     selectedModel: null,
     preferPersonalProvider: false,

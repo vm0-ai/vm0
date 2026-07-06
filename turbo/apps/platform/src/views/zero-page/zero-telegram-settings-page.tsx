@@ -106,7 +106,9 @@ import {
   Reason,
 } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
-import telegramIconImg from "./components/settings/icons/telegram.svg";
+import { settingsIconAssetUrl } from "./components/settings/settings-icon-assets.ts";
+
+const telegramIconImg = settingsIconAssetUrl("telegram");
 
 interface DefaultAgentLabel {
   id: string | null;

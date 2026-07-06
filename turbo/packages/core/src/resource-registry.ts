@@ -98,10 +98,6 @@ export interface ResourceCandidateSlice {
   };
 }
 
-export const PRESENTATION_REQUIRED_RESOURCE_IDS = [
-  "tool:presentation-deck-tools",
-] as const;
-
 const RESOURCE_REGISTRY_REPO = "nexu-io/open-design";
 const RESOURCE_REGISTRY_COMMIT = "3fb620af423534643677c7c6fae76be088fa770a";
 const VM0_SKILLS_REPO = "vm0-ai/vm0-skills";
@@ -127,99 +123,6 @@ function privateR2ArchiveSource(
 }
 
 const PRESENTATION_RESOURCE_ARCHIVE_SHA256 = {
-  designSystemBusinessData:
-    "a606c4c022200d3e1be70d69afa0579fd6473441be97b8e13ccfadcfecfecdbd",
-  designSystemBotaneOrganic:
-    "b0ed1fa2b7daa5d543ae3b187edea17f95b0594d2a408d4cc197510caafc26ef",
-  playfulEditorial:
-    "c97ad47460cc43ca0a172c4ac7ccc471c4801d3e98b3f1f202b0f46eaee1eaaf",
-  aplocoto: "fda7b03fb9bd09b6a79dc8765f81bcc31b6ce23134a93bd409da2e1b8d5fe1bf",
-  botaneOrganic:
-    "4ae748cff5ffe87fd562a674a7741cdd71c98ca1cea3d7e328ac0b03a1be51ed",
-  businessData:
-    "47b08d200c334d669ca3595906218797d75f2a1b8ec12abee3372163f8f7d4e7",
-  presentationDeckTools:
-    "00897f9278c014d2d7fcb95f3d03ee954c3d9c281cdef280fb92597be6609b38",
-  designSystemCrayon:
-    "c2b891a40b672aa8f45bd72d7343309d097dd3aeb6653444fe10c5d4b62bbaca",
-  templateCrayon:
-    "9e8680cf98fa9343d502eeef4d9e172a34893a7393fc905d7347662e811a1044",
-  designSystemCreativeAgency:
-    "86f6fa6e022dd0125eb5cd9c57e6643126f471ee7705e910296ebc9f7eabf0da",
-  templateCreativeAgency:
-    "cf374630535b8f5168e2fd765f97cb48625dd60949b75b00bc4c0e0a3b01b85c",
-  designSystemDataReport:
-    "86f667797087d0abe40a85ebe277138eab88863b1e85a112bb2d9a8707c09393",
-  templateDataReport:
-    "f1b9262cfbdfa4fea39edcbb85a8a76d8d70d444804d7edb22a82836025dc07a",
-  designSystemEditorialMagazine:
-    "221830d9da5e8baf7f59c9929f40f0ec97fcb3353f3e92961c6b1ae397b93520",
-  templateEditorialMagazine:
-    "592179ea64534a174555f2ba40d0e7483b4d0a2e5b9b825b96852a8794453fba",
-  designSystemLandingConsulting:
-    "c1306603a1e4d547730d1b4d1827e48f5d1251d1a7df4446f8845e54eeb6ab83",
-  templateLandingConsulting:
-    "904ac18edf7a906a77327d2026639ff9ad3184a18ceebaf70da1ede9d460c49e",
-  designSystemLumina:
-    "45890f99d5c781c2be1d7266d6ec92bae8760f70c74201f20a04f32e4a0ed1de",
-  templateLumina:
-    "fb595015db04419b076a28d7ed73860e4444749bb6b715f8904afaa012a9d15a",
-  designSystemMosaicGeometric:
-    "54cc95abeb0162d1ef2e6eb2ef2eefd0aefdac59d9dc179d53c661b91e7462f2",
-  templateMosaicGeometric:
-    "ecafda2bd18813accfc594521f2a183e60aa8d1115f9c88e437a41677e4db379",
-  designSystemPlayfulPop:
-    "0199f0a05ab40c9f9ef5c5b2bddb3b62b86a9e9577d33b852758759fd17ff431",
-  templatePlayfulPop:
-    "57d6449ddbb55b7b04f33f80cb90b811cb141adf3a441c30d76a8a540895de52",
-  designSystemNocturne:
-    "bc82f6665394cc99039fe34523e5c6095a9bbf5a2a3a81dee128540a43812dec",
-  templateNocturne:
-    "5236da22dabe8e33777b68755915c11653d3d59f0ecda0c49959204abb5f02e4",
-  designSystemNeoBrutalism:
-    "a9bbb1cfc4a86259b9ad8f33d9eaa433eedd75b26ce0a6d4f65fa965d66a75c9",
-  templateNeoBrutalism:
-    "b5d04d01634097a802e193d1976e9b36c8ced2d5a09192286b2999b108c1638b",
-  designSystemBloomPitch:
-    "5b7b8f959cef7a3f5ea4eb86e95152845013425365683e4d7efe6c7c5ecc2b48",
-  templateBloomPitch:
-    "c5b21908c84f248163dfc3259912d8ffb086f8c36a12882cd634005219db8eec",
-  designSystemBlueprintAcademy:
-    "9a5fdb160ae3691513567279401e9a8766c892e0bb80caae6eef3c08a54c0416",
-  templateBlueprintAcademy:
-    "559103cd2b2fc4c874c86e722a8023da17a2ca2f754189301044c39f6d43382b",
-  designSystemMeridian:
-    "6a00cba7ddd2fcb74e8c89c0063d33bba5fe2e190c15b4634d4a56b2334f527e",
-  templateMeridian:
-    "9821fbbdf3c92bdc638f38d0bfb47201f080ad208d820048637b6b7610f1e4a3",
-  designSystemPixelGlitch:
-    "18ce63a66658c7002d3ebea135dc7274b2dac4033c0e98c6e508c7a249fe93a2",
-  templatePixelGlitch:
-    "caa395165c04703afb8fcda3c8303e6b6ba4513797ba4967a797680906144940",
-  designSystemProspectus:
-    "01e9e6b1f0ea17e3a65c2af7c76cff317b095005c4020ce20eba22e5d63430b6",
-  templateProspectus:
-    "050f66a9993f2829e9bc2eb9c31f31e1af2d3612face1c925d4d84834191e482",
-  designSystemSchoolhouse:
-    "a4a7be65e2adca9eb5572f92b3f49075e768da305b833d74b703da5f2dd3d271",
-  templateSchoolhouse:
-    "43851c36d04882b7e4ed5126f95af69ad38eab395c7ea5e5e9c31c7c02cd9bff",
-  designSystemStickerScrapbook:
-    "d50129981c3dc3b51b4c63b2ac36b9b5fe6783953bbea3546e372903c8596cad",
-  templateStickerScrapbook:
-    "e30a5d0565023ef13c25fec40376996142ce33bae447ac012d2819854d3f9979",
-  designSystemStrata:
-    "91a45f8c3b70d7c43505ca7fe51f55ab36a08312e28867383ef885a7a7e63c28",
-  templateStrata:
-    "c43028b751dd1d53b942255b616653a09f9937481daaba5163c7ff304ad3082c",
-  designSystemTapedConsulting:
-    "9fb58db77455a3bc7ccdd106b18c99a3d62bc53981f494577804b496a78a858e",
-  templateTapedConsulting:
-    "26b7deb0feb0b685caa19d84ede7ecb7ed530afd4525a801615de6ee0169ae1e",
-  designSystemVantage:
-    "8338e31f3aa18538d36ae363d3ac2aa0ec56669c33494fdf2a12286d9b0523a8",
-  templateVantage:
-    "6e4308867e6959813d2e941b6c620d817354db3329c09cdd6f08b40f09b31597",
   colorSystemBauhausPrimary:
     "f42a1d62462f24b1a411889f8011b07bd3f1bb1db82a339cc59cf5ab5be2f475",
   colorSystemBerryPop:
@@ -353,17 +256,6 @@ const VIDEO_TEMPLATE_REGISTRY: readonly VideoTemplateRegistryEntry[] = [
 ];
 
 const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
-  {
-    id: "tool:presentation-deck-tools",
-    kind: "tool",
-    name: "Presentation Deck Tools",
-    description:
-      "Shared HTML presentation deck shell, device primitives, render scripts, and QA gate required for vm0 presentation generation.",
-    source: privateR2ArchiveSource(
-      "presentation-runtime/html-ppt-deck-tools",
-      PRESENTATION_RESOURCE_ARCHIVE_SHA256.presentationDeckTools,
-    ),
-  },
   {
     id: "skill:article-magazine",
     kind: "skill",
@@ -1038,291 +930,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     source: { path: "design-templates/mobile-app" },
     targets: ["mobile-app-design"],
   },
-  {
-    id: "template:html-ppt-botane-organic",
-    kind: "template",
-    name: "Botane Organic Presentation",
-    description:
-      "15-slot organic wellness deck with colour-block panels, circular media, side titles, icon cycles, and donut stats.",
-    source: privateR2ArchiveSource(
-      "presentation-template/botane-organic",
-      PRESENTATION_RESOURCE_ARCHIVE_SHA256.botaneOrganic,
-    ),
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-graphify-dark-graph",
-    kind: "template",
-    name: "Graphify Dark Graph",
-    description:
-      "Dark knowledge-graph deck with midnight gradients, force-graph cover visuals, command-line highlights, and glass-morphism cards.",
-    source: { path: "design-templates/html-ppt-graphify-dark-graph" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-playful-launch",
-    kind: "template",
-    name: "Playful Launch Presentation",
-    description:
-      "15-slot HTML presentation structure for product and service launches with oversized headlines, color-field rhythm, recurring motifs, and required media slots.",
-    source: privateR2ArchiveSource(
-      "presentation-template/aplocoto",
-      PRESENTATION_RESOURCE_ARCHIVE_SHA256.aplocoto,
-    ),
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-business-data",
-    kind: "template",
-    name: "Business Data Presentation",
-    description:
-      "15-slot HTML presentation structure for metric-led business reports with big numbers, stat strips, bars, rings, photo squares, and dark/accent proof slides.",
-    source: privateR2ArchiveSource(
-      "presentation-template/business-data",
-      PRESENTATION_RESOURCE_ARCHIVE_SHA256.businessData,
-    ),
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-crayon",
-    kind: "template",
-    name: "Crayon Presentation",
-    description:
-      "Light 15-slot playful education deck with peripheral blobs, multi-colour marker titles, doodle sparks, colour-block cards, burst stats, quote cards, and rounded pricing cards.",
-    source: privateR2ArchiveSource(
-      "presentation-template/crayon",
-      PRESENTATION_RESOURCE_ARCHIVE_SHA256.templateCrayon,
-    ),
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-creative-agency",
-    kind: "template",
-    name: "Creative Agency Presentation",
-    description:
-      "Minimal modern 15-slot agency deck with generous whitespace, foliage sprigs, B&W photo blocks, sharp rectangles, team grids, icon services, process spine, and a big-stat impact band.",
-    source: privateR2ArchiveSource(
-      "presentation-template/creative-agency",
-      PRESENTATION_RESOURCE_ARCHIVE_SHA256.templateCreativeAgency,
-    ),
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-data-report",
-    kind: "template",
-    name: "Data Report Presentation",
-    description:
-      "Chart-led 15-page data report variant with saturated colour grounds, sharp outlines, frameless numbers, stacked/combo/area/line/doughnut/pie/bar/bubble charts, and data-first summary pages.",
-    source: privateR2ArchiveSource(
-      "presentation-template/data-report",
-      PRESENTATION_RESOURCE_ARCHIVE_SHA256.templateDataReport,
-    ),
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-editorial-magazine",
-    kind: "template",
-    name: "Editorial Magazine Presentation",
-    description:
-      "Restrained 15-slot magazine deck with masthead cover, dotted TOC, colour-block dividers, two-column editorial pages, roman/italic titles, running footer, stat boxes, quote rows, and editorial table.",
-    source: privateR2ArchiveSource(
-      "presentation-template/editorial-magazine",
-      PRESENTATION_RESOURCE_ARCHIVE_SHA256.templateEditorialMagazine,
-    ),
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-landing-consulting",
-    kind: "template",
-    name: "Landing Consulting Presentation",
-    description:
-      "Consulting deck dressed like a landing page, with persistent nav chrome, two-tone display titles, dashed circuit wires, marker emphasis, speech-bubble callouts, square photo blocks, frameless stats, and CTA rhythm.",
-    source: privateR2ArchiveSource(
-      "presentation-template/landing-consulting",
-      PRESENTATION_RESOURCE_ARCHIVE_SHA256.templateLandingConsulting,
-    ),
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-lumina",
-    kind: "template",
-    name: "Lumina Presentation",
-    description:
-      "Sticker-tag creative studio deck with brush-letter title accents, asterisk punctuation, frame-edge chrome, sharp colour cells, photo blocks, stat bands, and agency-style 15-slot rhythm.",
-    source: privateR2ArchiveSource(
-      "presentation-template/lumina",
-      PRESENTATION_RESOURCE_ARCHIVE_SHA256.templateLumina,
-    ),
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-mosaic-geometric",
-    kind: "template",
-    name: "Mosaic Geometric Presentation",
-    description:
-      "Bold modular geometric 15-slot pitch deck with Bauhaus mosaic tile clusters, dotted TOC, chapter dividers, framed icon services, process spine, gallery grid, segmented pie, burst stats, quote rows, and price cards.",
-    source: privateR2ArchiveSource(
-      "presentation-template/mosaic-geometric",
-      PRESENTATION_RESOURCE_ARCHIVE_SHA256.templateMosaicGeometric,
-    ),
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-playful-pop",
-    kind: "template",
-    name: "Playful Pop Presentation",
-    description:
-      "Loud 15-slot playful brand deck with neon-on-dark Pop Art colour, overlapping offset-shadow cards, organic blobs, corner dot grids, burst rosettes, pill chips, icon quads, process spine, photo gallery, quotes, and pricing.",
-    source: privateR2ArchiveSource(
-      "presentation-template/playful-pop",
-      PRESENTATION_RESOURCE_ARCHIVE_SHA256.templatePlayfulPop,
-    ),
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-nocturne",
-    kind: "template",
-    name: "Nocturne Presentation",
-    description:
-      "Dark 15-slot data-keynote deck with rounded chart devices, frameless hero numbers, bento metrics, and clear text/data alternation.",
-    source: privateR2ArchiveSource(
-      "presentation-template/nocturne",
-      PRESENTATION_RESOURCE_ARCHIVE_SHA256.templateNocturne,
-    ),
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-neo-brutalism",
-    kind: "template",
-    name: "Neo Brutalism Presentation",
-    description:
-      "Bold 15-slot brutalist business-plan deck with persistent nav chrome, CTA pairs, numbered circles, arch cards, and heavy framed content blocks.",
-    source: privateR2ArchiveSource(
-      "presentation-template/neo-brutalism",
-      PRESENTATION_RESOURCE_ARCHIVE_SHA256.templateNeoBrutalism,
-    ),
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-bloom-pitch",
-    kind: "template",
-    name: "Bloom Pitch Presentation",
-    description:
-      "15-slot playful investor-pitch presentation structure with oversized headlines, colour-field dividers, organic visuals, stat stacks, quote cards, and pricing cards.",
-    source: privateR2ArchiveSource(
-      "presentation-template/bloom-pitch",
-      PRESENTATION_RESOURCE_ARCHIVE_SHA256.templateBloomPitch,
-    ),
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-blueprint-academy",
-    kind: "template",
-    name: "Blueprint Academy Presentation",
-    description:
-      "15-slot academic education presentation structure with blueprint grids, wire diagrams, matted photos, goal cards, process spines, stats, testimonials, and contact slides.",
-    source: privateR2ArchiveSource(
-      "presentation-template/blueprint-academy",
-      PRESENTATION_RESOURCE_ARCHIVE_SHA256.templateBlueprintAcademy,
-    ),
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-meridian",
-    kind: "template",
-    name: "Meridian Presentation",
-    description:
-      "15-slot professional data-agency presentation structure with flat nav chrome, sharp blocks, index numbers, stat matrices, bar charts, service blocks, and executive close.",
-    source: privateR2ArchiveSource(
-      "presentation-template/meridian",
-      PRESENTATION_RESOURCE_ARCHIVE_SHA256.templateMeridian,
-    ),
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-pixel-glitch",
-    kind: "template",
-    name: "Pixel Glitch Presentation",
-    description:
-      "15-slot Y2K creative-studio presentation structure with pixel trails, glitch titles, sharp dividers, image blocks, ring charts, process spines, and bold proof pages.",
-    source: privateR2ArchiveSource(
-      "presentation-template/pixel-glitch",
-      PRESENTATION_RESOURCE_ARCHIVE_SHA256.templatePixelGlitch,
-    ),
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-prospectus",
-    kind: "template",
-    name: "Prospectus Presentation",
-    description:
-      "15-slot corporate landing-page business-plan structure with persistent nav, colour-field stages, diagonal arrows, CTA clusters, flat charts, gantt timelines, and pricing tiers.",
-    source: privateR2ArchiveSource(
-      "presentation-template/prospectus",
-      PRESENTATION_RESOURCE_ARCHIVE_SHA256.templateProspectus,
-    ),
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-schoolhouse",
-    kind: "template",
-    name: "Schoolhouse Presentation",
-    description:
-      "15-slot retro school-poster presentation structure with paper stages, stamp badges, index cards, ruled rows, stat bands, quote cards, and membership tiers.",
-    source: privateR2ArchiveSource(
-      "presentation-template/schoolhouse",
-      PRESENTATION_RESOURCE_ARCHIVE_SHA256.templateSchoolhouse,
-    ),
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-sticker-scrapbook",
-    kind: "template",
-    name: "Sticker Scrapbook Presentation",
-    description:
-      "15-slot vibrant scrapbook presentation structure with sticker seals, spiral pads, agenda cards, doodle dividers, photo grids, stat stickers, quote cards, and pricing cards.",
-    source: privateR2ArchiveSource(
-      "presentation-template/sticker-scrapbook",
-      PRESENTATION_RESOURCE_ARCHIVE_SHA256.templateStickerScrapbook,
-    ),
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-strata",
-    kind: "template",
-    name: "Strata Presentation",
-    description:
-      "15-slot Swiss-minimal agency presentation structure with giant caps, asterisk dividers, tile ramps, mono photo grids, frameless stats, quote cards, and pricing cards.",
-    source: privateR2ArchiveSource(
-      "presentation-template/strata",
-      PRESENTATION_RESOURCE_ARCHIVE_SHA256.templateStrata,
-    ),
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-taped-consulting",
-    kind: "template",
-    name: "Taped Consulting Presentation",
-    description:
-      "15-slot consulting presentation structure with taped photo clusters, inset frames, feature rows, process spines, big-number proof, quote cards, and pricing cards.",
-    source: privateR2ArchiveSource(
-      "presentation-template/taped-consulting",
-      PRESENTATION_RESOURCE_ARCHIVE_SHA256.templateTapedConsulting,
-    ),
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-vantage",
-    kind: "template",
-    name: "Vantage Presentation",
-    description:
-      "15-slot business-proposal presentation structure with two-tone headings, corner indexes, square-pair motifs, split panels, frameless numbers, donut charts, and milestone lines.",
-    source: privateR2ArchiveSource(
-      "presentation-template/vantage",
-      PRESENTATION_RESOURCE_ARCHIVE_SHA256.templateVantage,
-    ),
-    targets: ["presentation"],
-  },
+
   {
     id: "template:html-ppt-zhangzara-retro-zine",
     kind: "template",
@@ -1330,7 +938,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Retro editorial zine presentation template with expressive composition, tactile paper energy, and bold magazine-like rhythm.",
     source: { path: "design-templates/html-ppt-zhangzara-retro-zine" },
-    targets: ["presentation", "poster"],
+    targets: ["poster"],
   },
   {
     id: "template:weekly-update",
@@ -1339,7 +947,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Single-file horizontal-swipe weekly team update deck for shipped work, in-flight work, blockers, metrics, and asks.",
     source: { path: "design-templates/weekly-update" },
-    targets: ["report", "presentation"],
+    targets: ["report"],
   },
   {
     id: "template:web-prototype-taste-editorial",
@@ -1387,7 +995,6 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     targets: [
       "website",
       "dashboard-design",
-      "presentation",
       "report",
       "docs-design",
       "poster",
@@ -1466,15 +1073,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     source: { path: "design-templates/github-dashboard" },
     targets: ["dashboard-design"],
   },
-  {
-    id: "template:guizang-ppt",
-    kind: "template",
-    name: "Guizang PPT",
-    description:
-      "电子杂志 × 电子墨水风格的横向翻页网页 PPT — WebGL 流体背景、衬线标题、章节幕封、数据大字报、图片网格。适合分享 / 演讲 / 发布会 / 杂志风 PPT。",
-    source: { path: "design-templates/guizang-ppt" },
-    targets: ["presentation"],
-  },
+
   {
     id: "template:hr-onboarding",
     kind: "template",
@@ -1484,123 +1083,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     source: { path: "design-templates/hr-onboarding" },
     targets: ["docs-design"],
   },
-  {
-    id: "template:html-ppt",
-    kind: "template",
-    name: "HTML PPT",
-    description:
-      "HTML PPT Studio — static HTML presentations driven by templates. Many styles, layouts, animations, and keyboard navigation for talks, pitches, reports, and 小红书图文.",
-    source: { path: "design-templates/html-ppt" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-course-module",
-    kind: "template",
-    name: "HTML PPT Course Module",
-    description:
-      "Online-course / workshop module deck — warm paper background + Playfair serif, persistent left sidebar of learning objectives, MCQ self-check page. Use for teaching modules, training materials, workshop slides.",
-    source: { path: "design-templates/html-ppt-course-module" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-dir-key-nav-minimal",
-    kind: "template",
-    name: "HTML PPT Dir Key Nav Minimal",
-    description:
-      "极简方向键 keynote — 每页独立单色背景、160px display 标题、4px accent 线、箭头 → 前缀 Mono 列表、← → kbd 提示。适合 keynote、launch、公开演讲。",
-    source: { path: "design-templates/html-ppt-dir-key-nav-minimal" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-hermes-cyber-terminal",
-    kind: "template",
-    name: "HTML PPT Hermes Cyber Terminal",
-    description:
-      "暗终端 honest-review deck — 黑底 + 赛博网格 + CRT 暗角 + 扫描线、`$ prompt` 命令行标题、薄荷绿大字、JetBrains Mono、stroke-only 柱状图。适合 CLI/agent/dev tool 测评。",
-    source: { path: "design-templates/html-ppt-hermes-cyber-terminal" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-knowledge-arch-blueprint",
-    kind: "template",
-    name: "HTML PPT Knowledge Arch Blueprint",
-    description:
-      "奶油蓝图架构 deck — 奶油纸底色 + 单一锈红高亮、48px 蓝图网格、2px 黑边硬卡片、pipeline 步骤盒、右侧 insight callout、Playfair 衬线大字。零渐变零软阴影。",
-    source: { path: "design-templates/html-ppt-knowledge-arch-blueprint" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-obsidian-claude-gradient",
-    kind: "template",
-    name: "HTML PPT Obsidian Claude Gradient",
-    description:
-      "GitHub 暗紫渐变 deck — GitHub-dark + 紫蓝 radial 环境光 + 60px 网格、紫色 pill 标签、三色渐变标题、GitHub 风代码 palette。适合开发者工作流 / MCP / Agent 教程。",
-    source: { path: "design-templates/html-ppt-obsidian-claude-gradient" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-pitch-deck",
-    kind: "template",
-    name: "HTML PPT Pitch Deck",
-    description:
-      "Investor-ready 10-slide HTML pitch deck — white + blue→purple gradient hero, big numbers, traction bar chart, $4.5M-style ask page.",
-    source: { path: "design-templates/html-ppt-pitch-deck" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-presenter-mode-reveal",
-    kind: "template",
-    name: "HTML PPT Presenter Mode Reveal",
-    description:
-      "演讲者模式 deck — tokyo-night 默认主题，5 套主题 T 键切换，每页带 150-300 字逐字稿示例，按 S 打开 CURRENT/NEXT/SCRIPT/TIMER 四张磁吸卡片。适合提词器场景。",
-    source: { path: "design-templates/html-ppt-presenter-mode-reveal" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-product-launch",
-    kind: "template",
-    name: "HTML PPT Product Launch",
-    description:
-      "Launch keynote deck — dark hero + light content, warm orange→peach accent, feature cards, pricing tiers, CTA.",
-    source: { path: "design-templates/html-ppt-product-launch" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-taste-brutalist",
-    kind: "template",
-    name: "HTML PPT Taste Brutalist",
-    description:
-      "16:9 HTML deck in tactical-telemetry / CRT-terminal taste. Deactivated-CRT charcoal slides, white-phosphor monospace, hazard-red accent, scanline overlay, ASCII syntax, density over decoration. Distilled from Leonxlnx/taste-skill `brutal…",
-    source: { path: "design-templates/html-ppt-taste-brutalist" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-taste-editorial",
-    kind: "template",
-    name: "HTML PPT Taste Editorial",
-    description:
-      "16:9 HTML deck in editorial-minimalist taste. Warm cream slides, serif display + grotesque body, hairline rules, monospace meta, generous macro-whitespace, one accent. Distilled from Leonxlnx/taste-skill `minimalist-skill`.",
-    source: { path: "design-templates/html-ppt-taste-editorial" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-tech-sharing",
-    kind: "template",
-    name: "HTML PPT Tech Sharing",
-    description:
-      "Conference / internal tech-talk deck — GitHub-dark, JetBrains Mono, terminal code blocks, agenda + Q&A pages. Use for engineering presentations, internal sharing sessions, conference talks, and code-heavy walkthroughs.",
-    source: { path: "design-templates/html-ppt-tech-sharing" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-testing-safety-alert",
-    kind: "template",
-    name: "HTML PPT Testing Safety Alert",
-    description:
-      "红琥珀警示 deck — 顶/底 45° 红黑 hazard 条纹、红色否定标题、L1/L2/L3 三档卡片、policy-yaml 代码块、红绿 checklist、事故堆叠柱状图。适合安全 / 风险 / 复盘 / 红队。",
-    source: { path: "design-templates/html-ppt-testing-safety-alert" },
-    targets: ["presentation"],
-  },
+
   {
     id: "template:html-ppt-weekly-report",
     kind: "template",
@@ -1608,7 +1091,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Team weekly / status-update deck — corporate clarity, 8-cell KPI grid, shipped list, 8-week bar chart, next-week table. Use for 周报, business reviews, team status updates, and exec dashboards.",
     source: { path: "design-templates/html-ppt-weekly-report" },
-    targets: ["presentation", "report"],
+    targets: ["report"],
   },
   {
     id: "template:html-ppt-xhs-pastel-card",
@@ -1617,7 +1100,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "柔和马卡龙慢生活 deck — 奶油底 + 柔光 blob、Playfair 斜体 + sans 正文、28px 圆角马卡龙卡片、SVG donut 图、chip+page 顶栏。适合生活方式 / 个人成长 / 慢生活内容。",
     source: { path: "design-templates/html-ppt-xhs-pastel-card" },
-    targets: ["presentation", "poster"],
+    targets: ["poster"],
   },
   {
     id: "template:html-ppt-xhs-post",
@@ -1626,7 +1109,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "小红书 / Instagram 风 9 页 3:4 竖版图文（810×1080）— 暖色 pastel、虚线 sticker 卡片、底部页码点点。",
     source: { path: "design-templates/html-ppt-xhs-post" },
-    targets: ["presentation", "poster"],
+    targets: ["poster"],
   },
   {
     id: "template:html-ppt-xhs-white-editorial",
@@ -1635,17 +1118,9 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "白底杂志风 deck — 纯白 + 顶部 10 色彩虹 bar、80-110px display 标题、紫→蓝→绿→橙→粉渐变文字、马卡龙软卡片组、黑底白字 .focus pill。小红书图文 + 横版 PPT 双用。",
     source: { path: "design-templates/html-ppt-xhs-white-editorial" },
-    targets: ["presentation", "poster"],
+    targets: ["poster"],
   },
-  {
-    id: "template:html-ppt-zhangzara-8-bit-orbit",
-    kind: "template",
-    name: "HTML PPT Zhangzara 8 Bit Orbit",
-    description:
-      "8-Bit Orbit — pixel-art neon arcade aesthetic on a deep navy void. For cyberpunk, gaming, web3, indie dev tools, hackathon demos that should feel like a CRT screen at 2am.",
-    source: { path: "design-templates/html-ppt-zhangzara-8-bit-orbit" },
-    targets: ["presentation"],
-  },
+
   {
     id: "template:html-ppt-zhangzara-biennale-yellow",
     kind: "template",
@@ -1653,26 +1128,9 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Biennale Yellow — solar yellow on warm parchment with deep indigo serif and sun-glow gradients. For art-biennale posters, museum programmes, curatorial pitches, literary publications.",
     source: { path: "design-templates/html-ppt-zhangzara-biennale-yellow" },
-    targets: ["presentation", "poster"],
+    targets: ["poster"],
   },
-  {
-    id: "template:html-ppt-zhangzara-block-frame",
-    kind: "template",
-    name: "HTML PPT Zhangzara Block Frame",
-    description:
-      "BlockFrame — neobrutalist deck with pastel-neon color blocks and chunky black borders. Pop-graphic and design-led for indie SaaS launches, agency credentials, brand redesigns.",
-    source: { path: "design-templates/html-ppt-zhangzara-block-frame" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-zhangzara-blue-professional",
-    kind: "template",
-    name: "HTML PPT Zhangzara Blue Professional",
-    description:
-      "Blue Professional — cream paper background with electric cobalt blue accents; clean modern professional. For B2B SaaS pitches, consulting deliverables, advisory updates, investor reports.",
-    source: { path: "design-templates/html-ppt-zhangzara-blue-professional" },
-    targets: ["presentation"],
-  },
+
   {
     id: "template:html-ppt-zhangzara-bold-poster",
     kind: "template",
@@ -1680,242 +1138,9 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Bold Poster — editorial poster aesthetic with massive Shrikhand display and a single fire-engine red accent. For magazine-cover brand manifestos and editorial / cultural pitches.",
     source: { path: "design-templates/html-ppt-zhangzara-bold-poster" },
-    targets: ["presentation", "poster"],
+    targets: ["poster"],
   },
-  {
-    id: "template:html-ppt-zhangzara-broadside",
-    kind: "template",
-    name: "HTML PPT Zhangzara Broadside",
-    description:
-      "Broadside — dark editorial canvas with a single fire orange accent and bilingual Latin/Chinese type stack. For manifestos, magazine pitches, design talks, bilingual EN/CN decks.",
-    source: { path: "design-templates/html-ppt-zhangzara-broadside" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-zhangzara-capsule",
-    kind: "template",
-    name: "HTML PPT Zhangzara Capsule",
-    description:
-      "Capsule — modular pill-shaped cards on warm bone with a full pastel-pop palette. For lifestyle brands, creator portfolios, DTC launches, beauty / wellness, agency credentials.",
-    source: { path: "design-templates/html-ppt-zhangzara-capsule" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-zhangzara-cartesian",
-    kind: "template",
-    name: "HTML PPT Zhangzara Cartesian",
-    description:
-      "Cartesian — quiet warm-neutral palette with classical Playfair serifs; tasteful and unhurried. For investment theses, white papers, advisory work, longform research, gallery decks.",
-    source: { path: "design-templates/html-ppt-zhangzara-cartesian" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-zhangzara-cobalt-grid",
-    kind: "template",
-    name: "HTML PPT Zhangzara Cobalt Grid",
-    description:
-      "Cobalt Grid — electric cobalt italic serifs on a graph-paper canvas with stair-stepped pixel-glitch decorations. For design / research bulletins, art publications, curated trend reports.",
-    source: { path: "design-templates/html-ppt-zhangzara-cobalt-grid" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-zhangzara-coral",
-    kind: "template",
-    name: "HTML PPT Zhangzara Coral",
-    description:
-      "Coral — cream and coral on near-black, set in oversized Bebas Neue. Warm-graphic editorial for fashion, beauty, fitness, F&B, lifestyle brands, agency credentials.",
-    source: { path: "design-templates/html-ppt-zhangzara-coral" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-zhangzara-creative-mode",
-    kind: "template",
-    name: "HTML PPT Zhangzara Creative Mode",
-    description:
-      "Creative Mode — cream paper canvas with confident multi-color accents and Archivo Black display. For creative agency pitches, design studio decks, ad credentials, brand creative reviews.",
-    source: { path: "design-templates/html-ppt-zhangzara-creative-mode" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-zhangzara-daisy-days",
-    kind: "template",
-    name: "HTML PPT Zhangzara Daisy Days",
-    description:
-      "Daisy Days — cheerful pastel deck with hand-drawn daisies, stars, and rainbows. Friendly, soft, and warm for educational content, kids and family, wellness, community workshops.",
-    source: { path: "design-templates/html-ppt-zhangzara-daisy-days" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-zhangzara-editorial-tri-tone",
-    kind: "template",
-    name: "HTML PPT Zhangzara Editorial Tri Tone",
-    description:
-      "Editorial Tri-Tone — three-color editorial: dusty pink, mustard cream, deep burgundy; Bricolage + Instrument Serif. For fashion-magazine spreads, brand decks, lifestyle media.",
-    source: { path: "design-templates/html-ppt-zhangzara-editorial-tri-tone" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-zhangzara-grove",
-    kind: "template",
-    name: "HTML PPT Zhangzara Grove",
-    description:
-      "Grove — forest-green canvas with cream type, classical Playfair serifs, single rust accent. For sustainability and wellness brands, outdoor products, wineries, advisory deliverables.",
-    source: { path: "design-templates/html-ppt-zhangzara-grove" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-zhangzara-long-table",
-    kind: "template",
-    name: "HTML PPT Zhangzara Long Table",
-    description:
-      "Long Table — warm cream and rust-red supper-club aesthetic with bold uppercase grotesk headlines and italic Fraunces. For supper clubs, dinner series, lifestyle and wine brands.",
-    source: { path: "design-templates/html-ppt-zhangzara-long-table" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-zhangzara-mat",
-    kind: "template",
-    name: "HTML PPT Zhangzara Mat",
-    description:
-      "Mat — dark sage canvas with bone paper and burnt-orange accent; mid-century modern with wood undertones. For architecture/interior brands, ceramics, craft, furniture, advisory decks.",
-    source: { path: "design-templates/html-ppt-zhangzara-mat" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-zhangzara-monochrome",
-    kind: "template",
-    name: "HTML PPT Zhangzara Monochrome",
-    description:
-      "Monochrome — ivory ledger paper with all-black type; Lora serif headlines, Jost body, no color. For research synthesis, white papers, longform reports, bilingual EN/CN deliverables.",
-    source: { path: "design-templates/html-ppt-zhangzara-monochrome" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-zhangzara-neo-grid-bold",
-    kind: "template",
-    name: "HTML PPT Zhangzara Neo Grid Bold",
-    description:
-      "Neo-Grid Bold — editorial neo-brutalism with a single neon yellow accent on off-white paper. For design-led pitches, brand work, founder talks, conference keynotes.",
-    source: { path: "design-templates/html-ppt-zhangzara-neo-grid-bold" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-zhangzara-peoples-platform",
-    kind: "template",
-    name: "HTML PPT Zhangzara Peoples Platform",
-    description:
-      "People's Platform (Block & Bold) — activist poster energy: blue, orange, red on cream, with Alfa Slab + Caveat Brush. For cultural commentary, manifestos, civic decks, campaign pitches.",
-    source: { path: "design-templates/html-ppt-zhangzara-peoples-platform" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-zhangzara-pin-and-paper",
-    kind: "template",
-    name: "HTML PPT Zhangzara Pin And Paper",
-    description:
-      "Pin & Paper — yellow paper with safety-pin illustrations, ink-blue handwritten Caveat, paper-grain texture. For qualitative research, founder reflections, longform brand stories.",
-    source: { path: "design-templates/html-ppt-zhangzara-pin-and-paper" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-zhangzara-pink-script",
-    kind: "template",
-    name: "HTML PPT Zhangzara Pink Script",
-    description:
-      "Pink Script (After Hours) — black canvas, hot pink accent, pearl-cream paper, Instrument Serif. Late-night editorial luxury for fashion, creator brands, nightlife, and luxury reveals.",
-    source: { path: "design-templates/html-ppt-zhangzara-pink-script" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-zhangzara-playful",
-    kind: "template",
-    name: "HTML PPT Zhangzara Playful",
-    description:
-      "Playful — sun-warm peach background with Syne display: a friendly indie launch deck. For creator portfolios, indie product launches, lifestyle brands, small-business pitches.",
-    source: { path: "design-templates/html-ppt-zhangzara-playful" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-zhangzara-raw-grid",
-    kind: "template",
-    name: "HTML PPT Zhangzara Raw Grid",
-    description:
-      "Raw Grid — neo-brutalist deck with thick borders, offset shadows, and a pink/sage/ink palette. For founder pitches, accelerator demos, brand decks, indie launches, creator portfolios.",
-    source: { path: "design-templates/html-ppt-zhangzara-raw-grid" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-zhangzara-retro-windows",
-    kind: "template",
-    name: "HTML PPT Zhangzara Retro Windows",
-    description:
-      "Retro Windows — Windows 95 chrome: gray title bars, MS Sans Serif, pixel typography, full nostalgia. For retro gaming, Y2K-aesthetic brands, creator portfolios, tech-history talks.",
-    source: { path: "design-templates/html-ppt-zhangzara-retro-windows" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-zhangzara-sakura-chroma",
-    kind: "template",
-    name: "HTML PPT Zhangzara Sakura Chroma",
-    description:
-      "Sakura Chroma — vintage Japanese cassette-package aesthetic: cream paper, diagonal rainbow ribbons, condensed bold type, JIS-style spec checkboxes. For analog / kawaii-tech decks.",
-    source: { path: "design-templates/html-ppt-zhangzara-sakura-chroma" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-zhangzara-scatterbrain",
-    kind: "template",
-    name: "HTML PPT Zhangzara Scatterbrain",
-    description:
-      "Scatterbrain — Post-it inspired: pastel sticky notes, Caveat handwriting, Shrikhand + Zilla Slab. For brainstorms, workshops, creative-agency credentials, ideation pitches.",
-    source: { path: "design-templates/html-ppt-zhangzara-scatterbrain" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-zhangzara-signal",
-    kind: "template",
-    name: "HTML PPT Zhangzara Signal",
-    description:
-      "Signal — deep navy canvas with bone paper and a single muted-gold accent; institutional with quiet weight. For investor decks, board presentations, consulting deliverables, legal briefs.",
-    source: { path: "design-templates/html-ppt-zhangzara-signal" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-zhangzara-soft-editorial",
-    kind: "template",
-    name: "HTML PPT Zhangzara Soft Editorial",
-    description:
-      "Soft Editorial — Cormorant Garamond serif on warm paper with sage, blush, and lemon accents. For literary brand stories, gallery decks, advisory deliverables, lifestyle media.",
-    source: { path: "design-templates/html-ppt-zhangzara-soft-editorial" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-zhangzara-stencil-tablet",
-    kind: "template",
-    name: "HTML PPT Zhangzara Stencil Tablet",
-    description:
-      "Stencil & Tablet — bone paper with stencil-cut headlines and a six-color earth palette. Archaeology meets brand: museum decks, art/architecture brands, heritage and craft work.",
-    source: { path: "design-templates/html-ppt-zhangzara-stencil-tablet" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-zhangzara-studio",
-    kind: "template",
-    name: "HTML PPT Zhangzara Studio",
-    description:
-      "Studio — black canvas with electric-yellow type; high-voltage design studio aesthetic. For studio credentials, creative agency pitches, brand showcases, fashion / sneaker work.",
-    source: { path: "design-templates/html-ppt-zhangzara-studio" },
-    targets: ["presentation"],
-  },
-  {
-    id: "template:html-ppt-zhangzara-vellum",
-    kind: "template",
-    name: "HTML PPT Zhangzara Vellum",
-    description:
-      "Vellum — deep navy canvas with warm-yellow italic Cormorant serifs and a single dusty teal accent. Quiet, scholarly aesthetic for research synthesis, white papers, advisory work.",
-    source: { path: "design-templates/html-ppt-zhangzara-vellum" },
-    targets: ["presentation"],
-  },
+
   {
     id: "template:hyperframes",
     kind: "template",
@@ -1932,7 +1157,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Investment-banking pitch book — trading comps, precedent transactions, valuation football field, DCF sensitivity, strategic-options matrix. For Board / sell-side discussion materials.",
     source: { path: "design-templates/ib-pitch-book" },
-    targets: ["report", "presentation"],
+    targets: ["report"],
   },
   {
     id: "template:image-poster",
@@ -1952,15 +1177,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     source: { path: "design-templates/invoice" },
     targets: ["report"],
   },
-  {
-    id: "template:kami-deck",
-    kind: "template",
-    name: "Kami Deck",
-    description:
-      "Produce a print-grade slide deck in the kami (紙 / 纸) design system — warm parchment background (or ink-blue for cover / chapter slides), serif at one weight, ink-blue accent ≤ 5% per slide, no italic. Horizontal magazine swipe pagination…",
-    source: { path: "design-templates/kami-deck" },
-    targets: ["presentation"],
-  },
+
   {
     id: "template:kami-landing",
     kind: "template",
@@ -2051,15 +1268,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     source: { path: "design-templates/open-design-landing" },
     targets: ["website"],
   },
-  {
-    id: "template:open-design-landing-deck",
-    kind: "template",
-    name: "Editorial Landing Deck",
-    description:
-      "Single-file slide deck in the Atelier Zero visual language — warm-paper, italic-serif emphasis, coral terminating dots, surreal collage. Horizontal swipe + ESC overview grid.",
-    source: { path: "design-templates/open-design-landing-deck" },
-    targets: ["presentation"],
-  },
+
   {
     id: "template:orbit-general",
     kind: "template",
@@ -2123,15 +1332,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     source: { path: "design-templates/pricing-page" },
     targets: ["website"],
   },
-  {
-    id: "template:replit-deck",
-    kind: "template",
-    name: "Replit Deck",
-    description:
-      "Single-file horizontal-swipe HTML deck in the style of Replit Slides's landing-page template gallery. Eight distinct themes (helix, holm, vance, bevel, world-dark, world-mint, atlas, bluehouse) — each a complete visual system (palette +…",
-    source: { path: "design-templates/replit-deck" },
-    targets: ["presentation"],
-  },
+
   {
     id: "template:saas-landing",
     kind: "template",
@@ -2141,15 +1342,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     source: { path: "design-templates/saas-landing" },
     targets: ["website"],
   },
-  {
-    id: "template:simple-deck",
-    kind: "template",
-    name: "Simple Deck",
-    description:
-      "Single-file horizontal-swipe HTML deck. Built by copying the seed `assets/template.html` (which carries the proven 5-rule iframe nav script) and pasting slide layouts from `references/layouts.md`. Pitch decks, product overviews, study ma…",
-    source: { path: "design-templates/simple-deck" },
-    targets: ["presentation"],
-  },
+
   {
     id: "template:social-carousel",
     kind: "template",
@@ -2213,7 +1406,6 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     targets: [
       "website",
       "dashboard-design",
-      "presentation",
       "report",
       "docs-design",
       "poster",
@@ -2898,17 +2090,6 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     source: { path: "design-systems/material" },
   },
   {
-    id: "design-system:botane-organic",
-    kind: "design-system",
-    name: "Botane Organic",
-    description:
-      "Organic wellness deck look with default Mauve Dusk palette, Fraunces display type, Work Sans body, rounded cards, circle badges, soft dots, and calm editorial pacing.",
-    source: privateR2ArchiveSource(
-      "presentation-design-system/botane-organic",
-      PRESENTATION_RESOURCE_ARCHIVE_SHA256.designSystemBotaneOrganic,
-    ),
-  },
-  {
     id: "design-system:meta",
     kind: "design-system",
     name: "Meta",
@@ -3064,248 +2245,6 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Paper-textured, print-inspired design with minimal colors, clean serif/sans typography, and tactile surface qualities.",
     source: { path: "design-systems/paper" },
-  },
-  {
-    id: "design-system:playful-editorial",
-    kind: "design-system",
-    name: "Playful Launch",
-    description:
-      "Joyful launch-deck look with saturated color fields, scalloped burst badges, pill chips, Archivo headlines, and Manrope body.",
-    source: privateR2ArchiveSource(
-      "presentation-design-system/playful-editorial",
-      PRESENTATION_RESOURCE_ARCHIVE_SHA256.playfulEditorial,
-    ),
-  },
-  {
-    id: "design-system:business-data",
-    kind: "design-system",
-    name: "Business Data",
-    description:
-      "Business data deck look with default Berry Pop palette, Space Grotesk display, Lexend body, soft corners, plus marks, stat blocks, photo squares, bars, and rings.",
-    source: privateR2ArchiveSource(
-      "presentation-design-system/business-data",
-      PRESENTATION_RESOURCE_ARCHIVE_SHA256.designSystemBusinessData,
-    ),
-  },
-  {
-    id: "design-system:crayon",
-    kind: "design-system",
-    name: "Crayon",
-    description:
-      "Light, bouncy crayon look with Prism colours, Fredoka display, Quicksand body, round geometry, peripheral blobs, multi-colour titles, marker highlights, doodle sparks, and colour-block cards.",
-    source: privateR2ArchiveSource(
-      "presentation-design-system/crayon",
-      PRESENTATION_RESOURCE_ARCHIVE_SHA256.designSystemCrayon,
-    ),
-  },
-  {
-    id: "design-system:creative-agency",
-    kind: "design-system",
-    name: "Creative Agency",
-    description:
-      "Minimal modern agency look with Coral Studio palette, Space Grotesk display, Lexend body, sharp edges, monochrome photo blocks, foliage sprigs, and big-stat hero numbers.",
-    source: privateR2ArchiveSource(
-      "presentation-design-system/creative-agency",
-      PRESENTATION_RESOURCE_ARCHIVE_SHA256.designSystemCreativeAgency,
-    ),
-  },
-  {
-    id: "design-system:data-report",
-    kind: "design-system",
-    name: "Data Report",
-    description:
-      "Sharp vibrant data-report look with Prism colours, Sora display, Inter body, full-bleed colour grounds, frameless numbers, thin gridlines, chart outlines, and broad chart vocabulary.",
-    source: privateR2ArchiveSource(
-      "presentation-design-system/data-report",
-      PRESENTATION_RESOURCE_ARCHIVE_SHA256.designSystemDataReport,
-    ),
-  },
-  {
-    id: "design-system:editorial-magazine",
-    kind: "design-system",
-    name: "Editorial Magazine",
-    description:
-      "Warm paper-forward editorial look with Warm Sand palette, Fraunces display, Work Sans body, mixed radius, running footer, rotated masthead, slash-number marks, stat boxes, dot matrix, and magazine table motifs.",
-    source: privateR2ArchiveSource(
-      "presentation-design-system/editorial-magazine",
-      PRESENTATION_RESOURCE_ARCHIVE_SHA256.designSystemEditorialMagazine,
-    ),
-  },
-  {
-    id: "design-system:landing-consulting",
-    kind: "design-system",
-    name: "Landing Consulting",
-    description:
-      "Dark-vibrant landing-consulting look with Pop Art palette, Space Grotesk display, Lexend body, sharp panels, nav pills, dashed circuit wire, marker highlights, CTA pills, photo placeholders, percent badges, callouts, and frameless stats.",
-    source: privateR2ArchiveSource(
-      "presentation-design-system/landing-consulting",
-      PRESENTATION_RESOURCE_ARCHIVE_SHA256.designSystemLandingConsulting,
-    ),
-  },
-  {
-    id: "design-system:lumina",
-    kind: "design-system",
-    name: "Lumina",
-    description:
-      "Bold creative-studio look with Prism palette, Space Grotesk display, Lexend body, sharp geometry, sticker tags, brush-letter accents, asterisk punctuation, colour cells, and frame-edge chrome.",
-    source: privateR2ArchiveSource(
-      "presentation-design-system/lumina",
-      PRESENTATION_RESOURCE_ARCHIVE_SHA256.designSystemLumina,
-    ),
-  },
-  {
-    id: "design-system:mosaic-geometric",
-    kind: "design-system",
-    name: "Mosaic Geometric",
-    description:
-      "Graphic mosaic look with Carnival palette, Space Grotesk display, Lexend body, sharp geometry, mosaic tile clusters, semicircles, quarter circles, rings, segmented pies, burst stats, and framed icon tiles.",
-    source: privateR2ArchiveSource(
-      "presentation-design-system/mosaic-geometric",
-      PRESENTATION_RESOURCE_ARCHIVE_SHA256.designSystemMosaicGeometric,
-    ),
-  },
-  {
-    id: "design-system:playful-pop",
-    kind: "design-system",
-    name: "Playful Pop",
-    description:
-      "Base visual language for Playful Pop presentations with default Pop Art palette, Space Grotesk display, Lexend body, rounded geometry, offset-shadow cards, organic blobs, dot grids, solid dots, burst rosettes, pill chips, and white hairline outlines.",
-    source: privateR2ArchiveSource(
-      "presentation-design-system/playful-pop",
-      PRESENTATION_RESOURCE_ARCHIVE_SHA256.designSystemPlayfulPop,
-    ),
-  },
-  {
-    id: "design-system:nocturne",
-    kind: "design-system",
-    name: "Nocturne",
-    description:
-      "Dark-stage data keynote look with Midnight Mono palette, Space Grotesk display, Lexend body, soft rounded data geometry, tonal ramps, donut rings, bento grids, and frameless hero numbers.",
-    source: privateR2ArchiveSource(
-      "presentation-design-system/nocturne",
-      PRESENTATION_RESOURCE_ARCHIVE_SHA256.designSystemNocturne,
-    ),
-  },
-  {
-    id: "design-system:neo-brutalism",
-    kind: "design-system",
-    name: "Neo Brutalism",
-    description:
-      "High-contrast brutalist look with Mono Ink palette, Space Grotesk display, Lexend body, thick black outlines, sharp corners, hard offset shadows, nav chrome, circle badges, and arch cards.",
-    source: privateR2ArchiveSource(
-      "presentation-design-system/neo-brutalism",
-      PRESENTATION_RESOURCE_ARCHIVE_SHA256.designSystemNeoBrutalism,
-    ),
-  },
-  {
-    id: "design-system:bloom-pitch",
-    kind: "design-system",
-    name: "Bloom Pitch",
-    description:
-      "Playful visual language with carnival colour, Fredoka and Quicksand type, soft geometry, organic blobs, and asterisk bursts.",
-    source: privateR2ArchiveSource(
-      "presentation-design-system/bloom-pitch",
-      PRESENTATION_RESOURCE_ARCHIVE_SHA256.designSystemBloomPitch,
-    ),
-  },
-  {
-    id: "design-system:blueprint-academy",
-    kind: "design-system",
-    name: "Blueprint Academy",
-    description:
-      "Academic visual language with forest-editorial colour, Fraunces and Work Sans type, blueprint texture, wire diagrams, sparkle marks, and matted photo treatment.",
-    source: privateR2ArchiveSource(
-      "presentation-design-system/blueprint-academy",
-      PRESENTATION_RESOURCE_ARCHIVE_SHA256.designSystemBlueprintAcademy,
-    ),
-  },
-  {
-    id: "design-system:meridian",
-    kind: "design-system",
-    name: "Meridian",
-    description:
-      "Professional data-agency visual language with slate-corporate colour, Sora and Inter type, sharp geometry, hairline rules, square tickers, and two-tone data marks.",
-    source: privateR2ArchiveSource(
-      "presentation-design-system/meridian",
-      PRESENTATION_RESOURCE_ARCHIVE_SHA256.designSystemMeridian,
-    ),
-  },
-  {
-    id: "design-system:pixel-glitch",
-    kind: "design-system",
-    name: "Pixel Glitch",
-    description:
-      "Y2K digital visual language with Bauhaus-primary colour, Space Grotesk and Lexend type, sharp pixel geometry, glitch titles, cursor marks, and pixel trails.",
-    source: privateR2ArchiveSource(
-      "presentation-design-system/pixel-glitch",
-      PRESENTATION_RESOURCE_ARCHIVE_SHA256.designSystemPixelGlitch,
-    ),
-  },
-  {
-    id: "design-system:prospectus",
-    kind: "design-system",
-    name: "Prospectus",
-    description:
-      "Corporate landing-page visual language with slate-corporate colour, Archivo and Manrope type, oversized thin titles, diagonal arrows, underline-ring labels, and CTA styling.",
-    source: privateR2ArchiveSource(
-      "presentation-design-system/prospectus",
-      PRESENTATION_RESOURCE_ARCHIVE_SHA256.designSystemProspectus,
-    ),
-  },
-  {
-    id: "design-system:schoolhouse",
-    kind: "design-system",
-    name: "Schoolhouse",
-    description:
-      "Retro school-poster visual language with Bauhaus-primary colour, Archivo and Manrope type, kraft-paper texture, thick outlines, stamp marks, halftone, and hard shadows.",
-    source: privateR2ArchiveSource(
-      "presentation-design-system/schoolhouse",
-      PRESENTATION_RESOURCE_ARCHIVE_SHA256.designSystemSchoolhouse,
-    ),
-  },
-  {
-    id: "design-system:sticker-scrapbook",
-    kind: "design-system",
-    name: "Sticker Scrapbook",
-    description:
-      "Vibrant scrapbook visual language with prism colour, Poppins and Figtree type, pill geometry, sticker seals, spiral pads, doodles, sun rays, and sparkles.",
-    source: privateR2ArchiveSource(
-      "presentation-design-system/sticker-scrapbook",
-      PRESENTATION_RESOURCE_ARCHIVE_SHA256.designSystemStickerScrapbook,
-    ),
-  },
-  {
-    id: "design-system:strata",
-    kind: "design-system",
-    name: "Strata",
-    description:
-      "Swiss-minimal agency visual language with mono-ink colour, Archivo and Manrope type, giant caps, asterisk sparks, tile ramps, mono imagery, and red signal accents.",
-    source: privateR2ArchiveSource(
-      "presentation-design-system/strata",
-      PRESENTATION_RESOURCE_ARCHIVE_SHA256.designSystemStrata,
-    ),
-  },
-  {
-    id: "design-system:taped-consulting",
-    kind: "design-system",
-    name: "Taped Consulting",
-    description:
-      "Elegant consulting visual language with slate-corporate colour, Montserrat and Lora type, taped-photo treatment, two-tone titles, inset frames, lifted shadows, and text links.",
-    source: privateR2ArchiveSource(
-      "presentation-design-system/taped-consulting",
-      PRESENTATION_RESOURCE_ARCHIVE_SHA256.designSystemTapedConsulting,
-    ),
-  },
-  {
-    id: "design-system:vantage",
-    kind: "design-system",
-    name: "Vantage",
-    description:
-      "Business-proposal visual language with slate-corporate colour, Archivo and Manrope type, sharp geometry, two-tone headings, corner indexes, square-pair marks, and hashtag chrome.",
-    source: privateR2ArchiveSource(
-      "presentation-design-system/vantage",
-      PRESENTATION_RESOURCE_ARCHIVE_SHA256.designSystemVantage,
-    ),
   },
   {
     id: "color-system:bauhaus-primary",
@@ -4363,6 +3302,11 @@ export interface PresentationRunbookPackage {
   readonly slug: string;
   /** Default color-system token applied when the user selects no color system. */
   readonly defaultColorSystem: string;
+  /** Display name (relocated onto the package so runbook resolution no longer
+   * needs the legacy `template:html-ppt-*` registry entry). */
+  readonly name: string;
+  /** Template description (relocated from the legacy template entry). */
+  readonly description: string;
   readonly source: ResourceSourceRef;
 }
 
@@ -4424,121 +3368,192 @@ const PRESENTATION_RUNBOOK_PACKAGE_DEFS: readonly {
   readonly templateId: string;
   readonly slug: string;
   readonly defaultColorSystem: string;
+  readonly name: string;
+  readonly description: string;
 }[] = [
   {
     templateId: "template:html-ppt-playful-launch",
     slug: "playful-launch",
     defaultColorSystem: "carnival",
+    name: "Playful Launch Presentation",
+    description:
+      "15-slot HTML presentation structure for product and service launches with oversized headlines, color-field rhythm, recurring motifs, and required media slots.",
   },
   {
     templateId: "template:html-ppt-bloom-pitch",
     slug: "bloom",
     defaultColorSystem: "carnival",
+    name: "Bloom Pitch Presentation",
+    description:
+      "15-slot playful investor-pitch presentation structure with oversized headlines, colour-field dividers, organic visuals, stat stacks, quote cards, and pricing cards.",
   },
   {
     templateId: "template:html-ppt-blueprint-academy",
     slug: "blueprint-academy",
     defaultColorSystem: "forest_editorial",
+    name: "Blueprint Academy Presentation",
+    description:
+      "15-slot academic education presentation structure with blueprint grids, wire diagrams, matted photos, goal cards, process spines, stats, testimonials, and contact slides.",
   },
   {
     templateId: "template:html-ppt-botane-organic",
     slug: "botane-organic",
     defaultColorSystem: "mauve_dusk",
+    name: "Botane Organic Presentation",
+    description:
+      "15-slot organic wellness deck with colour-block panels, circular media, side titles, icon cycles, and donut stats.",
   },
   {
     templateId: "template:html-ppt-business-data",
     slug: "business-data",
     defaultColorSystem: "berry_pop",
+    name: "Business Data Presentation",
+    description:
+      "15-slot HTML presentation structure for metric-led business reports with big numbers, stat strips, bars, rings, photo squares, and dark/accent proof slides.",
   },
   {
     templateId: "template:html-ppt-crayon",
     slug: "crayon",
     defaultColorSystem: "prism",
+    name: "Crayon Presentation",
+    description:
+      "Light 15-slot playful education deck with peripheral blobs, multi-colour marker titles, doodle sparks, colour-block cards, burst stats, quote cards, and rounded pricing cards.",
   },
   {
     templateId: "template:html-ppt-creative-agency",
     slug: "creative-agency",
     defaultColorSystem: "coral_studio",
+    name: "Creative Agency Presentation",
+    description:
+      "Minimal modern 15-slot agency deck with generous whitespace, foliage sprigs, B&W photo blocks, sharp rectangles, team grids, icon services, process spine, and a big-stat impact band.",
   },
   {
     templateId: "template:html-ppt-data-report",
     slug: "data-report",
     defaultColorSystem: "prism",
+    name: "Data Report Presentation",
+    description:
+      "Chart-led 15-page data report variant with saturated colour grounds, sharp outlines, frameless numbers, stacked/combo/area/line/doughnut/pie/bar/bubble charts, and data-first summary pages.",
   },
   {
     templateId: "template:html-ppt-editorial-magazine",
     slug: "editorial-magazine",
     defaultColorSystem: "warm_sand",
+    name: "Editorial Magazine Presentation",
+    description:
+      "Restrained 15-slot magazine deck with masthead cover, dotted TOC, colour-block dividers, two-column editorial pages, roman/italic titles, running footer, stat boxes, quote rows, and editorial table.",
   },
   {
     templateId: "template:html-ppt-landing-consulting",
     slug: "landing-consulting",
     defaultColorSystem: "pop_art",
+    name: "Landing Consulting Presentation",
+    description:
+      "Consulting deck dressed like a landing page, with persistent nav chrome, two-tone display titles, dashed circuit wires, marker emphasis, speech-bubble callouts, square photo blocks, frameless stats, and CTA rhythm.",
   },
   {
     templateId: "template:html-ppt-lumina",
     slug: "lumina",
     defaultColorSystem: "prism",
+    name: "Lumina Presentation",
+    description:
+      "Sticker-tag creative studio deck with brush-letter title accents, asterisk punctuation, frame-edge chrome, sharp colour cells, photo blocks, stat bands, and agency-style 15-slot rhythm.",
   },
   {
     templateId: "template:html-ppt-meridian",
     slug: "meridian",
     defaultColorSystem: "slate_corporate",
+    name: "Meridian Presentation",
+    description:
+      "15-slot professional data-agency presentation structure with flat nav chrome, sharp blocks, index numbers, stat matrices, bar charts, service blocks, and executive close.",
   },
   {
     templateId: "template:html-ppt-mosaic-geometric",
     slug: "mosaic-geometric",
     defaultColorSystem: "carnival",
+    name: "Mosaic Geometric Presentation",
+    description:
+      "Bold modular geometric 15-slot pitch deck with Bauhaus mosaic tile clusters, dotted TOC, chapter dividers, framed icon services, process spine, gallery grid, segmented pie, burst stats, quote rows, and price cards.",
   },
   {
     templateId: "template:html-ppt-neo-brutalism",
     slug: "neo-brutalism",
     defaultColorSystem: "mono_ink",
+    name: "Neo Brutalism Presentation",
+    description:
+      "Bold 15-slot brutalist business-plan deck with persistent nav chrome, CTA pairs, numbered circles, arch cards, and heavy framed content blocks.",
   },
   {
     templateId: "template:html-ppt-nocturne",
     slug: "nocturne",
     defaultColorSystem: "midnight_mono",
+    name: "Nocturne Presentation",
+    description:
+      "Dark 15-slot data-keynote deck with rounded chart devices, frameless hero numbers, bento metrics, and clear text/data alternation.",
   },
   {
     templateId: "template:html-ppt-pixel-glitch",
     slug: "pixel-glitch",
     defaultColorSystem: "bauhaus_primary",
+    name: "Pixel Glitch Presentation",
+    description:
+      "15-slot Y2K creative-studio presentation structure with pixel trails, glitch titles, sharp dividers, image blocks, ring charts, process spines, and bold proof pages.",
   },
   {
     templateId: "template:html-ppt-playful-pop",
     slug: "playful-pop",
     defaultColorSystem: "pop_art",
+    name: "Playful Pop Presentation",
+    description:
+      "Loud 15-slot playful brand deck with neon-on-dark Pop Art colour, overlapping offset-shadow cards, organic blobs, corner dot grids, burst rosettes, pill chips, icon quads, process spine, photo gallery, quotes, and pricing.",
   },
   {
     templateId: "template:html-ppt-prospectus",
     slug: "prospectus",
     defaultColorSystem: "slate_corporate",
+    name: "Prospectus Presentation",
+    description:
+      "15-slot corporate landing-page business-plan structure with persistent nav, colour-field stages, diagonal arrows, CTA clusters, flat charts, gantt timelines, and pricing tiers.",
   },
   {
     templateId: "template:html-ppt-schoolhouse",
     slug: "schoolhouse",
     defaultColorSystem: "bauhaus_primary",
+    name: "Schoolhouse Presentation",
+    description:
+      "15-slot retro school-poster presentation structure with paper stages, stamp badges, index cards, ruled rows, stat bands, quote cards, and membership tiers.",
   },
   {
     templateId: "template:html-ppt-sticker-scrapbook",
     slug: "sticker-scrapbook",
     defaultColorSystem: "prism",
+    name: "Sticker Scrapbook Presentation",
+    description:
+      "15-slot vibrant scrapbook presentation structure with sticker seals, spiral pads, agenda cards, doodle dividers, photo grids, stat stickers, quote cards, and pricing cards.",
   },
   {
     templateId: "template:html-ppt-strata",
     slug: "strata",
     defaultColorSystem: "mono_ink",
+    name: "Strata Presentation",
+    description:
+      "15-slot Swiss-minimal agency presentation structure with giant caps, asterisk dividers, tile ramps, mono photo grids, frameless stats, quote cards, and pricing cards.",
   },
   {
     templateId: "template:html-ppt-taped-consulting",
     slug: "taped-consulting",
     defaultColorSystem: "slate_corporate",
+    name: "Taped Consulting Presentation",
+    description:
+      "15-slot consulting presentation structure with taped photo clusters, inset frames, feature rows, process spines, big-number proof, quote cards, and pricing cards.",
   },
   {
     templateId: "template:html-ppt-vantage",
     slug: "vantage",
     defaultColorSystem: "slate_corporate",
+    name: "Vantage Presentation",
+    description:
+      "15-slot business-proposal presentation structure with two-tone headings, corner indexes, square-pair motifs, split panels, frameless numbers, donut charts, and milestone lines.",
   },
 ];
 
@@ -4549,12 +3564,18 @@ const PRESENTATION_RUNBOOK_PACKAGES: readonly PresentationRunbookPackage[] =
       resourceId: `${def.templateId}-runbook`,
       slug: def.slug,
       defaultColorSystem: def.defaultColorSystem,
+      name: def.name,
+      description: def.description,
       source: privateR2ArchiveSource(
         def.slug,
         presentationRunbookArchiveSha256(def.slug),
       ),
     };
   });
+
+export function listPresentationRunbookPackages(): readonly PresentationRunbookPackage[] {
+  return PRESENTATION_RUNBOOK_PACKAGES;
+}
 
 /** Resolve the runbook package for a picker template id, if one exists. */
 export function findPresentationRunbookPackage(
@@ -4579,17 +3600,14 @@ export function findPresentationRunbookResource(
   if (!pkg) {
     return undefined;
   }
-  // Reuse the legacy template's display name and description — the runbook
-  // package renders the same template, so they describe it accurately and stay
-  // in sync without a second copy. Only id and source diverge.
-  const template = findTemplate(pkg.templateId);
+  // Name/description live on the package itself (relocated from the legacy
+  // `template:html-ppt-*` registry entry) so this no longer depends on that
+  // entry surviving. Only id and source diverge.
   return {
     id: pkg.resourceId,
     kind: "template",
-    name: template?.name ?? pkg.slug,
-    description:
-      template?.description ??
-      "Self-contained presentation runbook package pulled as a single private R2 archive.",
+    name: pkg.name,
+    description: pkg.description,
     source: pkg.source,
     targets: ["presentation"],
   };
@@ -4611,6 +3629,48 @@ export function presentationColorSystemToken(
   return colorSystemId
     .slice(COLOR_SYSTEM_ID_PREFIX.length)
     .replaceAll("-", "_");
+}
+
+/**
+ * Resolve the color-system token for a presentation runbook: an explicit color
+ * system id must resolve to a known token; with none, the package's default
+ * token is used. Returns `{ token }` or `{ error }`.
+ */
+export function resolvePresentationRunbookColorToken(
+  runbookPackage: PresentationRunbookPackage,
+  colorSystemId: string | undefined,
+): { readonly token: string } | { readonly error: "unknown-color-system" } {
+  if (!colorSystemId) {
+    return { token: runbookPackage.defaultColorSystem };
+  }
+  const token = presentationColorSystemToken(colorSystemId);
+  if (!token) {
+    return { error: "unknown-color-system" };
+  }
+  return { token };
+}
+
+/**
+ * Shared runbook authoring instructions for a selected presentation template.
+ * Used by both the chat generation-template prompt (API) and
+ * `zero generate presentation --template` (CLI) so the two never drift.
+ */
+export function buildPresentationRunbookInstructionLines(args: {
+  readonly runbookPackage: PresentationRunbookPackage;
+  readonly colorSystemToken: string;
+}): readonly string[] {
+  const { runbookPackage: pkg, colorSystemToken } = args;
+  return [
+    `Selected presentation template: ${pkg.name} (${pkg.templateId})`,
+    `Color system token: ${colorSystemToken}`,
+    "",
+    "To produce the presentation:",
+    `- Pull the package: zero resource pull ${pkg.resourceId} --dir ./generated/resources`,
+    `- Follow ./generated/resources/${pkg.slug}/AGENT_RUNBOOK.md, running its commands from ./generated/resources. Set "colorSystem": "${colorSystemToken}" in the deck JSON.`,
+    "- Use the slide count the user asks for; if unspecified, default to 8 pages.",
+    "- Host the finished deck: zero host <output-dir> --site <slug> --artifact-kind presentation-html",
+    "- Return only the generated HTML deck as the final deliverable.",
+  ];
 }
 
 function filterByKind(kind: ResourceKind): readonly RegistryEntry[] {

@@ -26,6 +26,10 @@ import {
 } from "./crypto.utils";
 import { workflowAutomationEnabledForOwner } from "./workflow-automation-feature-switch.service";
 import {
+  WorkflowEventSourceTiming,
+  type WorkflowEventRunTiming,
+} from "./workflow-event-source-timing.service";
+import {
   buildChatOnlyWorkflowTriggerCallbacks,
   runWorkflowTriggerNow$,
   type RunWorkflowTriggerResult,
@@ -91,14 +95,35 @@ export async function encryptWorkflowWebhookSecret(
   });
 }
 
+async function decryptWorkflowWebhookToken(
+  encryptedToken: string,
+  args: { readonly orgId: string; readonly userId: string },
+): Promise<string> {
+  return await decryptPersistentSecretValue(encryptedToken, {
+    orgId: args.orgId,
+    userId: args.userId,
+  });
+}
+
+async function decryptWorkflowWebhookSecret(
+  encryptedSecret: string,
+  args: { readonly orgId: string; readonly userId: string },
+): Promise<string> {
+  return await decryptPersistentSecretValue(encryptedSecret, {
+    orgId: args.orgId,
+    userId: args.userId,
+  });
+}
+
 export async function buildWorkflowWebhookSummaryFields(
   db: ReadonlyDb,
   args: {
     readonly trigger: TriggerRow;
+    readonly webhookToken?: string;
     readonly webhookSecret?: string;
   },
 ): Promise<{
-  readonly webhookUrl: string;
+  readonly webhookUrl?: string;
   readonly secretLastFour: string;
   readonly lastReceivedAt: string | null;
   readonly webhookSecret?: string;
@@ -114,17 +139,45 @@ export async function buildWorkflowWebhookSummaryFields(
     );
   }
 
-  const token = await decryptPersistentSecretValue(webhook.encryptedToken, {
-    orgId: args.trigger.orgId,
-    userId: args.trigger.ownerUserId,
-  });
   return {
-    webhookUrl: workflowWebhookUrlForToken(token),
+    ...(args.webhookToken
+      ? { webhookUrl: workflowWebhookUrlForToken(args.webhookToken) }
+      : {}),
     secretLastFour: webhook.secretLastFour,
     lastReceivedAt: webhook.lastReceivedAt
       ? webhook.lastReceivedAt.toISOString()
       : null,
     ...(args.webhookSecret ? { webhookSecret: args.webhookSecret } : {}),
+  };
+}
+
+export async function revealWorkflowWebhookSecretFields(
+  db: ReadonlyDb,
+  args: {
+    readonly trigger: TriggerRow;
+  },
+): Promise<{ readonly webhookUrl: string; readonly webhookSecret: string }> {
+  const [webhook] = await db
+    .select()
+    .from(zeroWorkflowWebhookTriggers)
+    .where(eq(zeroWorkflowWebhookTriggers.triggerId, args.trigger.id))
+    .limit(1);
+  if (!webhook) {
+    throw new Error(
+      `Workflow webhook trigger config missing: ${args.trigger.id}`,
+    );
+  }
+  const context = {
+    orgId: args.trigger.orgId,
+    userId: args.trigger.ownerUserId,
+  };
+  const [token, secret] = await Promise.all([
+    decryptWorkflowWebhookToken(webhook.encryptedToken, context),
+    decryptWorkflowWebhookSecret(webhook.encryptedSecret, context),
+  ]);
+  return {
+    webhookUrl: workflowWebhookUrlForToken(token),
+    webhookSecret: secret,
   };
 }
 
@@ -387,6 +440,18 @@ type DispatchWorkflowWebhookResult =
   | { readonly kind: "rate_limited" }
   | { readonly kind: "run_error"; readonly message: string };
 
+type PreparedWorkflowWebhookDispatch =
+  | {
+      readonly kind: "ok";
+      readonly row: WorkflowWebhookTriggerDispatchRow;
+      readonly signature: string;
+      readonly timestamp: string;
+      readonly currentTime: Date;
+    }
+  | { readonly kind: "not_found" }
+  | { readonly kind: "unauthorized" }
+  | { readonly kind: "rate_limited" };
+
 async function insertWebhookDelivery(
   db: Db,
   args: {
@@ -461,6 +526,99 @@ function webhookSignatureValid(args: {
   ).valid;
 }
 
+async function prepareWorkflowWebhookDispatch(args: {
+  readonly db: Db;
+  readonly token: string;
+  readonly rawBody: string;
+  readonly signature: string;
+  readonly timestamp: string;
+  readonly sourceTiming: WorkflowEventSourceTiming;
+  readonly isFeatureEnabledForOwner: (
+    orgId: string,
+    userId: string,
+  ) => Promise<boolean>;
+  readonly signal: AbortSignal;
+}): Promise<PreparedWorkflowWebhookDispatch> {
+  const row = await args.sourceTiming.measure(
+    "api_dispatch_pre_create_zero_workflow_event_load_source_state",
+    async () => {
+      return await loadWebhookTriggerForToken({
+        db: args.db,
+        token: args.token,
+        signal: args.signal,
+      });
+    },
+  );
+  args.signal.throwIfAborted();
+  if (!row) {
+    return { kind: "not_found" };
+  }
+
+  const enabled = await args.sourceTiming.measure(
+    "api_dispatch_pre_create_zero_workflow_event_check_feature_gate",
+    async () => {
+      return await args.isFeatureEnabledForOwner(
+        row.trigger.orgId,
+        row.trigger.ownerUserId,
+      );
+    },
+  );
+  args.signal.throwIfAborted();
+  if (!enabled) {
+    return { kind: "not_found" };
+  }
+
+  const secret = await args.sourceTiming.measure(
+    "api_dispatch_pre_create_zero_workflow_event_load_source_state",
+    async () => {
+      return await decryptPersistentSecretValue(row.webhook.encryptedSecret, {
+        orgId: row.trigger.orgId,
+        userId: row.trigger.ownerUserId,
+      });
+    },
+  );
+  args.signal.throwIfAborted();
+
+  const signatureValid = await args.sourceTiming.measure(
+    "api_dispatch_pre_create_zero_workflow_event_match_triggers",
+    () => {
+      return webhookSignatureValid({
+        rawBody: args.rawBody,
+        secret,
+        signature: args.signature,
+        timestamp: args.timestamp,
+      });
+    },
+  );
+  if (!signatureValid) {
+    return { kind: "unauthorized" };
+  }
+
+  const currentTime = nowDate();
+  const limited = await args.sourceTiming.measure(
+    "api_dispatch_pre_create_zero_workflow_event_match_triggers",
+    async () => {
+      return await rateLimitExceeded({
+        db: args.db,
+        triggerId: row.trigger.id,
+        currentTime,
+      });
+    },
+  );
+  if (limited) {
+    return { kind: "rate_limited" };
+  }
+  args.signal.throwIfAborted();
+
+  return {
+    kind: "ok",
+    row,
+    signature: args.signature,
+    timestamp: args.timestamp,
+    currentTime,
+  };
+}
+
 async function acceptWebhookDelivery(
   db: Db,
   args: {
@@ -496,6 +654,7 @@ const startWorkflowWebhookRun$ = command(
       readonly headers: Readonly<Record<string, string>>;
       readonly currentTime: Date;
       readonly apiStartTime: number;
+      readonly timing: WorkflowEventRunTiming;
     },
     signal: AbortSignal,
   ): Promise<RunWorkflowTriggerResult | "error"> => {
@@ -510,6 +669,27 @@ const startWorkflowWebhookRun$ = command(
       });
     }
 
+    const runInput = await args.timing.measure(
+      "api_dispatch_pre_create_zero_workflow_event_build_run_input",
+      () => {
+        return {
+          appendSystemPrompt: buildWorkflowWebhookEventSystemPrompt({
+            triggerId: args.row.trigger.id,
+            deliveryId: args.delivery.id,
+            deliveryKey: args.delivery.deliveryKey,
+            receivedAt: args.currentTime,
+            rawBody: args.rawBody,
+            bodySha256: args.delivery.bodySha256,
+            headers: args.headers,
+          }),
+          callbacks: buildChatOnlyWorkflowTriggerCallbacks(
+            args.row.chatThreadId,
+            args.row.agentId,
+          ),
+        };
+      },
+    );
+    signal.throwIfAborted();
     return await set(
       runWorkflowTriggerNow$,
       {
@@ -521,23 +701,13 @@ const startWorkflowWebhookRun$ = command(
         },
         apiStartTime: args.apiStartTime,
         triggerSource: "workflow-event",
-        appendSystemPrompt: buildWorkflowWebhookEventSystemPrompt({
-          triggerId: args.row.trigger.id,
-          deliveryId: args.delivery.id,
-          deliveryKey: args.delivery.deliveryKey,
-          receivedAt: args.currentTime,
-          rawBody: args.rawBody,
-          bodySha256: args.delivery.bodySha256,
-          headers: args.headers,
-        }),
-        callbacks: buildChatOnlyWorkflowTriggerCallbacks(
-          args.row.chatThreadId,
-          args.row.agentId,
-        ),
+        appendSystemPrompt: runInput.appendSystemPrompt,
+        callbacks: runInput.callbacks,
         activePreviousRunPolicy: "allow",
         recordLastRunId: false,
         recordLastRunAt: true,
         dispatchFailedCallbacks: dispatchFailedRunCallbacks,
+        timing: args.timing.collectorForRunStart(),
       },
       signal,
     );
@@ -566,69 +736,44 @@ export const dispatchWorkflowWebhook$ = command(
     if (!args.signature || !args.timestamp) {
       return { kind: "unauthorized" };
     }
+    const signature = args.signature;
+    const timestamp = args.timestamp;
 
+    const sourceTiming = new WorkflowEventSourceTiming(
+      "webhook",
+      args.apiStartTime,
+    );
     const db = set(writeDb$);
-    const row = await loadWebhookTriggerForToken({
+    const prepared = await prepareWorkflowWebhookDispatch({
       db,
       token: args.token,
+      rawBody: args.rawBody,
+      signature,
+      timestamp,
+      sourceTiming,
+      isFeatureEnabledForOwner: async (orgId, userId) => {
+        return await get(workflowAutomationEnabledForOwner(orgId, userId));
+      },
       signal,
     });
-    signal.throwIfAborted();
-    if (!row) {
-      return { kind: "not_found" };
+    if (prepared.kind !== "ok") {
+      return prepared;
     }
 
-    const enabled = await get(
-      workflowAutomationEnabledForOwner(
-        row.trigger.orgId,
-        row.trigger.ownerUserId,
-      ),
-    );
-    signal.throwIfAborted();
-    if (!enabled) {
-      return { kind: "not_found" };
-    }
-
-    const secret = await decryptPersistentSecretValue(
-      row.webhook.encryptedSecret,
-      {
-        orgId: row.trigger.orgId,
-        userId: row.trigger.ownerUserId,
+    const runTiming = sourceTiming.createRunTiming();
+    const delivery = await runTiming.measure(
+      "api_dispatch_pre_create_zero_workflow_event_record_processed_event",
+      async () => {
+        return await acceptWebhookDelivery(db, {
+          triggerId: prepared.row.trigger.id,
+          rawBody: args.rawBody,
+          signature: prepared.signature,
+          timestamp: prepared.timestamp,
+          headers: args.headers,
+          currentTime: prepared.currentTime,
+        });
       },
     );
-    signal.throwIfAborted();
-
-    if (
-      !webhookSignatureValid({
-        rawBody: args.rawBody,
-        secret,
-        signature: args.signature,
-        timestamp: args.timestamp,
-      })
-    ) {
-      return { kind: "unauthorized" };
-    }
-
-    const currentTime = nowDate();
-    if (
-      await rateLimitExceeded({
-        db,
-        triggerId: row.trigger.id,
-        currentTime,
-      })
-    ) {
-      return { kind: "rate_limited" };
-    }
-    signal.throwIfAborted();
-
-    const delivery = await acceptWebhookDelivery(db, {
-      triggerId: row.trigger.id,
-      rawBody: args.rawBody,
-      signature: args.signature,
-      timestamp: args.timestamp,
-      headers: args.headers,
-      currentTime,
-    });
     signal.throwIfAborted();
     if (!delivery) {
       return { kind: "ok", duplicate: true };
@@ -637,12 +782,13 @@ export const dispatchWorkflowWebhook$ = command(
     const startResult = await set(
       startWorkflowWebhookRun$,
       {
-        row,
+        row: prepared.row,
         delivery,
         rawBody: args.rawBody,
         headers: args.headers,
-        currentTime,
+        currentTime: prepared.currentTime,
         apiStartTime: args.apiStartTime,
+        timing: runTiming,
       },
       signal,
     );
@@ -661,9 +807,9 @@ export const dispatchWorkflowWebhook$ = command(
 
     await recordWebhookDeliveryDispatched(db, {
       deliveryId: delivery.id,
-      triggerId: row.trigger.id,
+      triggerId: prepared.row.trigger.id,
       runId: startResult.runId,
-      currentTime,
+      currentTime: prepared.currentTime,
     });
     signal.throwIfAborted();
 

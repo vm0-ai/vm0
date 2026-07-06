@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { authContract } from "@vm0/api-contracts/contracts/auth";
 import {
-  onboardingCompleteLimitedFreeContract,
+  onboardingCompleteContract,
   onboardingSetupContract,
   onboardingStatusContract,
   type OnboardingStatusResponse,
@@ -24,7 +24,7 @@ import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { authMeRoutes } from "../../auth-me";
 import { zeroAgentsRoutes } from "../../zero-agents";
 import { zeroDefaultAgentRoutes } from "../../zero-default-agent";
-import { zeroOnboardingCompleteLimitedFreeRoutes } from "../../zero-onboarding-complete-limited-free";
+import { zeroOnboardingCompleteRoutes } from "../../zero-onboarding-complete";
 import { zeroOnboardingSetupRoutes } from "../../zero-onboarding-setup";
 import { zeroOnboardingStatusRoutes } from "../../zero-onboarding-status";
 import { zeroOrgReadRoutes } from "../../zero-org-read";
@@ -69,11 +69,6 @@ export interface OnboardingSetupBody {
   readonly selectedConnectors?: ConnectorType[];
   readonly timezone?: string;
   readonly role?: string;
-}
-
-interface OnboardingCompleteLimitedFreeBody {
-  readonly credits?: number;
-  readonly expiresAt?: string | null;
 }
 
 function authHeaders(user: ApiTestUser | null): AuthHeaders {
@@ -123,11 +118,11 @@ export function createBddApi(context: TestContext) {
     })(onboardingSetupContract);
   }
 
-  function onboardingCompleteLimitedFreeClient() {
+  function onboardingCompleteClient() {
     return setupAppWithRoutes({
       context,
-      routes: zeroOnboardingCompleteLimitedFreeRoutes,
-    })(onboardingCompleteLimitedFreeContract);
+      routes: zeroOnboardingCompleteRoutes,
+    })(onboardingCompleteContract);
   }
 
   function orgClient() {
@@ -240,16 +235,13 @@ export function createBddApi(context: TestContext) {
       );
     },
 
-    async completeLimitedFreeOnboarding(
-      nextUser: ApiTestUser,
-      body: OnboardingCompleteLimitedFreeBody = {},
-    ) {
+    async completeOnboarding(nextUser: ApiTestUser) {
       return await accept(
-        onboardingCompleteLimitedFreeClient().complete({
+        onboardingCompleteClient().complete({
           headers: authenticate(nextUser),
-          body,
+          body: {},
         }),
-        [200, 403, 409],
+        [200, 403],
       );
     },
 

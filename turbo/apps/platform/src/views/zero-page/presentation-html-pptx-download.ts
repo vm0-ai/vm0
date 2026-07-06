@@ -402,7 +402,11 @@ function createExportSlideScript(): string {
     }
     return ancestors;
   };
+`;
+}
 
+function createExportBackgroundInheritanceScript(): string {
+  return `
   const isTransparentColor = (color) => {
     const normalized = color.trim().toLowerCase();
     return (
@@ -472,7 +476,224 @@ function createExportSlideScript(): string {
       }
     }
   };
+`;
+}
 
+function createExportStageNormalizationScript(): string {
+  return `
+  const stageForSlideNode = (node) => {
+    if (!(node instanceof HTMLElement)) {
+      return null;
+    }
+    if (node.classList.contains("stage")) {
+      return node;
+    }
+    const stage = Array.from(node.children).find((child) => {
+      return child instanceof HTMLElement && child.classList.contains("stage");
+    });
+    return stage instanceof HTMLElement ? stage : null;
+  };
+
+  const backgroundTargetsForSlideNodes = (nodes) => {
+    const targets = [];
+    const seen = new Set();
+    for (const node of nodes) {
+      if (!(node instanceof HTMLElement)) {
+        continue;
+      }
+      const target = stageForSlideNode(node) ?? node;
+      if (seen.has(target)) {
+        continue;
+      }
+      seen.add(target);
+      targets.push(target);
+    }
+    return targets;
+  };
+
+  const normalizeSlideStages = (nodes) => {
+    for (const node of nodes) {
+      if (!(node instanceof HTMLElement)) {
+        continue;
+      }
+      const stage = stageForSlideNode(node);
+      if (!stage) {
+        continue;
+      }
+      if (stage !== node) {
+        if (window.getComputedStyle(node).position === "static") {
+          node.style.setProperty("position", "relative", "important");
+        }
+        node.style.setProperty("overflow", "hidden", "important");
+        stage.style.setProperty("position", "absolute", "important");
+        stage.style.setProperty("inset", "0", "important");
+      }
+      stage.style.setProperty("width", "100%", "important");
+      stage.style.setProperty("height", "100%", "important");
+      stage.style.setProperty("max-width", "none", "important");
+      stage.style.setProperty("max-height", "none", "important");
+      stage.style.setProperty("margin", "0", "important");
+      stage.style.setProperty("border-radius", "0", "important");
+      stage.style.setProperty("box-sizing", "border-box", "important");
+      stage.style.setProperty("overflow", "hidden", "important");
+    }
+  };
+`;
+}
+
+function createExportComplexBackgroundDetectionScript(): string {
+  return `
+  const splitCssBackgroundLayers = (value) => {
+    const layers = [];
+    let current = "";
+    let depth = 0;
+    let quote = "";
+    for (const char of value) {
+      if (quote) {
+        current += char;
+        if (char === quote) {
+          quote = "";
+        }
+        continue;
+      }
+      if (char === '"' || char === "'") {
+        quote = char;
+        current += char;
+        continue;
+      }
+      if (char === "(") {
+        depth += 1;
+      } else if (char === ")" && depth > 0) {
+        depth -= 1;
+      } else if (char === "," && depth === 0) {
+        if (current.trim()) {
+          layers.push(current.trim());
+        }
+        current = "";
+        continue;
+      }
+      current += char;
+    }
+    if (current.trim()) {
+      layers.push(current.trim());
+    }
+    return layers;
+  };
+
+  const isComplexBackgroundImage = (value) => {
+    const normalized = value.trim().toLowerCase();
+    return (
+      normalized !== "" &&
+      normalized !== "none" &&
+      (splitCssBackgroundLayers(value).length > 1 ||
+        /\\b(?:repeating-)?(?:radial|conic)-gradient\\(/.test(normalized))
+    );
+  };
+`;
+}
+
+function createExportBackgroundRasterizerScript(): string {
+  return `
+  const imageFromDataUrl = (src) => {
+    return new Promise((resolve) => {
+      const image = new Image();
+      image.addEventListener("load", () => resolve(image), { once: true });
+      image.addEventListener("error", () => resolve(null), { once: true });
+      image.src = src;
+    });
+  };
+
+  const svgDataUrl = (svg) => {
+    return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+  };
+
+  const renderElementBackgroundAsImage = async (element) => {
+    const rect = element.getBoundingClientRect();
+    const width = Math.max(1, Math.round(rect.width));
+    const height = Math.max(1, Math.round(rect.height));
+    const style = window.getComputedStyle(element);
+    const background = document.createElement("div");
+    background.setAttribute("xmlns", "http://www.w3.org/1999/xhtml");
+    background.style.width = width + "px";
+    background.style.height = height + "px";
+    background.style.margin = "0";
+    background.style.backgroundColor = style.backgroundColor;
+    background.style.backgroundImage = style.backgroundImage;
+    background.style.backgroundSize = style.backgroundSize;
+    background.style.backgroundPosition = style.backgroundPosition;
+    background.style.backgroundRepeat = style.backgroundRepeat;
+    background.style.backgroundOrigin = style.backgroundOrigin;
+    background.style.backgroundClip = style.backgroundClip;
+    background.style.borderRadius = style.borderRadius;
+    const serializedBackground = new XMLSerializer().serializeToString(background);
+    const svg = [
+      '<svg xmlns="http://www.w3.org/2000/svg" width="',
+      String(width),
+      '" height="',
+      String(height),
+      '" viewBox="0 0 ',
+      String(width),
+      " ",
+      String(height),
+      '"><foreignObject width="100%" height="100%">',
+      serializedBackground,
+      "</foreignObject></svg>",
+    ].join("");
+    const image = await imageFromDataUrl(svgDataUrl(svg));
+    if (!image) {
+      return null;
+    }
+    const scale = Math.min(window.devicePixelRatio || 1, 2);
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(width * scale);
+    canvas.height = Math.round(height * scale);
+    const context = canvas.getContext("2d");
+    if (!context) {
+      return null;
+    }
+    context.scale(scale, scale);
+    context.drawImage(image, 0, 0, width, height);
+    try {
+      return canvas.toDataURL("image/png");
+    } catch {
+      return null;
+    }
+  };
+`;
+}
+
+function createExportComplexBackgroundMaterializationScript(): string {
+  return `
+  const materializeComplexSlideBackgrounds = async (nodes) => {
+    for (const target of backgroundTargetsForSlideNodes(nodes)) {
+      const style = window.getComputedStyle(target);
+      if (!isComplexBackgroundImage(style.backgroundImage)) {
+        continue;
+      }
+      const backgroundColor = style.backgroundColor;
+      const imageDataUrl = await renderElementBackgroundAsImage(target);
+      if (!isTransparentColor(backgroundColor)) {
+        target.style.setProperty("background-color", backgroundColor, "important");
+      }
+      if (imageDataUrl) {
+        target.style.setProperty(
+          "background-image",
+          'url("' + imageDataUrl + '")',
+          "important",
+        );
+        target.style.setProperty("background-size", "100% 100%", "important");
+        target.style.setProperty("background-position", "center center", "important");
+        target.style.setProperty("background-repeat", "no-repeat", "important");
+        continue;
+      }
+      target.style.setProperty("background-image", "none", "important");
+    }
+  };
+`;
+}
+
+function createExportImageWaitScript(): string {
+  return `
   const waitForImages = async (nodes) => {
     const images = nodes.flatMap((node) => {
       const nested = Array.from(node.querySelectorAll("img"));
@@ -579,6 +800,116 @@ function createExportReadinessScript(): string {
 `;
 }
 
+function createExportLineBreakScript(): string {
+  return `
+  const lineBreakSkipTags = new Set([
+    "SCRIPT", "STYLE", "NOSCRIPT", "TEXTAREA", "SVG",
+  ]);
+
+  const shouldPreserveLineBreaksForTextNode = (node) => {
+    const parent = node.parentElement;
+    if (!parent || lineBreakSkipTags.has(parent.tagName)) return false;
+    if (!node.nodeValue || node.nodeValue.trim().length === 0) return false;
+    const style = window.getComputedStyle(parent);
+    if (
+      style.display === "none" ||
+      style.visibility === "hidden" ||
+      style.fontSize === "0px" ||
+      style.whiteSpace === "nowrap" ||
+      style.whiteSpace === "pre"
+    ) {
+      return false;
+    }
+    return true;
+  };
+
+  const textNodesForLineBreakPreservation = (nodes) => {
+    const textNodes = [];
+    for (const node of nodes) {
+      const walker = document.createTreeWalker(
+        node,
+        NodeFilter.SHOW_TEXT,
+        {
+          acceptNode: (textNode) => {
+            return shouldPreserveLineBreaksForTextNode(textNode)
+              ? NodeFilter.FILTER_ACCEPT
+              : NodeFilter.FILTER_REJECT;
+          },
+        },
+      );
+      let current = walker.nextNode();
+      while (current) {
+        textNodes.push(current);
+        current = walker.nextNode();
+      }
+    }
+    return textNodes;
+  };
+
+  const textOffsetTop = (node, offset) => {
+    const range = document.createRange();
+    range.setStart(node, offset);
+    range.setEnd(node, Math.min(offset + 1, node.nodeValue.length));
+    const rect = Array.from(range.getClientRects()).find((candidate) => {
+      return candidate.width > 0 && candidate.height > 0;
+    });
+    range.detach();
+    return rect ? rect.top : null;
+  };
+
+  const tokenRanges = (text) => {
+    const ranges = [];
+    const matcher = /\\S+\\s*/g;
+    let match = matcher.exec(text);
+    while (match) {
+      ranges.push({
+        start: match.index,
+        visibleStart: match.index,
+      });
+      match = matcher.exec(text);
+    }
+    return ranges;
+  };
+
+  const visualLineBreakOffsets = (node) => {
+    let previousTop = null;
+    const offsets = [];
+    for (const token of tokenRanges(node.nodeValue)) {
+      const top = textOffsetTop(node, token.visibleStart);
+      if (top === null) continue;
+      if (previousTop !== null && Math.abs(top - previousTop) > 1) {
+        offsets.push(token.start);
+      }
+      previousTop = top;
+    }
+    return offsets.filter((offset, index) => {
+      return offset > 0 && offset < node.nodeValue.length && offsets.indexOf(offset) === index;
+    });
+  };
+
+  const applyVisualLineBreakOffsets = (node, offsets) => {
+    const parent = node.parentNode;
+    if (!parent || offsets.length === 0) return;
+    const text = node.nodeValue;
+    const fragment = document.createDocumentFragment();
+    let start = 0;
+    for (const offset of offsets) {
+      fragment.append(document.createTextNode(text.slice(start, offset)));
+      fragment.append(document.createElement("br"));
+      start = offset;
+    }
+    fragment.append(document.createTextNode(text.slice(start)));
+    parent.replaceChild(fragment, node);
+  };
+
+  const preserveBrowserTextLineBreaks = (nodes) => {
+    for (const textNode of textNodesForLineBreakPreservation(nodes)) {
+      applyVisualLineBreakOffsets(textNode, visualLineBreakOffsets(textNode));
+    }
+  };
+`;
+}
+
 function createExportRunnerScript(): string {
   return `
   void (async () => {
@@ -591,8 +922,11 @@ function createExportRunnerScript(): string {
       throw new Error("Presentation HTML has no exportable content");
     }
     revealSlideNodes(nodes);
+    normalizeSlideStages(nodes);
     copyInheritedSlideBackgrounds(nodes);
+    await materializeComplexSlideBackgrounds(nodes);
     await waitForExportReadiness(nodes);
+    preserveBrowserTextLineBreaks(nodes);
     const blob = await window.domToPptx.exportToPptx(nodes, options);
     post({ status: "success", blob });
   })().catch((error) => {
@@ -609,7 +943,14 @@ function createExportScript(options: DomToPptxOptions): string {
   return [
     createExportBootstrapScript(options),
     createExportSlideScript(),
+    createExportBackgroundInheritanceScript(),
+    createExportStageNormalizationScript(),
+    createExportComplexBackgroundDetectionScript(),
+    createExportBackgroundRasterizerScript(),
+    createExportComplexBackgroundMaterializationScript(),
+    createExportImageWaitScript(),
     createExportReadinessScript(),
+    createExportLineBreakScript(),
     createExportRunnerScript(),
   ].join("");
 }

@@ -7,6 +7,10 @@ import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import {
+  MOCK_BACKEND_COMMIT_SHA,
+  MOCK_BACKEND_VERSION,
+} from "../../../mocks/handlers/api-build-info.ts";
+import {
   click,
   detachedSetupPage,
   queryAllByRoleFast,
@@ -14,6 +18,8 @@ import {
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
+const TEST_FRONTEND_COMMIT_SHA = "0123456789abcdef0123456789abcdef01234567";
+const TEST_FRONTEND_VERSION = "0.540.0";
 
 function createMockPreferences(
   overrides?: Partial<UserPreferencesResponse>,
@@ -139,6 +145,14 @@ describe("preferences page", () => {
     });
 
     await waitFor(() => {
+      expect(screen.getByText("Build information")).toBeInTheDocument();
+      expect(screen.getByText("Frontend")).toBeInTheDocument();
+      expect(screen.getByText(TEST_FRONTEND_VERSION)).toBeInTheDocument();
+      expect(screen.getByText(TEST_FRONTEND_COMMIT_SHA)).toBeInTheDocument();
+      expect(screen.getByText("Backend")).toBeInTheDocument();
+      expect(screen.getByText(MOCK_BACKEND_VERSION)).toBeInTheDocument();
+      expect(screen.getByText(MOCK_BACKEND_COMMIT_SHA)).toBeInTheDocument();
+      expect(screen.getAllByText("Commit SHA")).toHaveLength(2);
       expect(screen.getByText("Capture network bodies")).toBeInTheDocument();
       expect(screen.getByText("Disabled")).toBeInTheDocument();
     });

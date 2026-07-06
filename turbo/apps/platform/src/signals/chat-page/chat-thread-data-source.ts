@@ -1,5 +1,8 @@
 import type { Command, Computed } from "ccstate";
 import type {
+  ChatRunOptionsRequest,
+  CodexServiceTier,
+  ChatThreadDraft,
   ModelSelectionRequest,
   GenerationTemplateRequest,
   PagedChatMessage,
@@ -33,7 +36,9 @@ export interface PatchDraftArgs {
 
 export interface PatchModelSelectionArgs {
   threadId: string;
-  modelSelection: ModelSelectionRequest | null;
+  modelSelection:
+    | (ModelSelectionRequest & { codexServiceTier?: CodexServiceTier })
+    | null;
 }
 
 export interface PatchComputerUseHostArgs {
@@ -47,8 +52,9 @@ export interface AppendQueuedMessageArgs {
   content: string | null;
   attachments: PersistedAttachment[] | null;
   clientMessageId: string;
+  chatThreadSortEventId: string;
   hasTextContent: boolean;
-  modelSelection: ModelSelectionRequest | null;
+  runOptions?: ChatRunOptionsRequest;
   generationTemplate: GenerationTemplateRequest | undefined;
   computerUseHostId?: string | null;
 }
@@ -88,7 +94,6 @@ export interface CancelRunsArgs {
 
 export interface MarkReadArgs {
   threadId: string;
-  latestMessageId: string;
 }
 
 export interface SubscribeRealtimeArgs {
@@ -97,7 +102,8 @@ export interface SubscribeRealtimeArgs {
 }
 
 export interface ChatThreadDataSource {
-  getThread$: Computed<Promise<ChatThread | null>>;
+  remoteThreadDetail$: Computed<Promise<ChatThread | null>>;
+  threadDraft$: Computed<Promise<ChatThreadDraft | null>>;
   reloadThread$: Command<void, []>;
   initialPage$: Computed<Promise<InitialPage>>;
   patchDraft$: Command<Promise<void>, [PatchDraftArgs, AbortSignal]>;

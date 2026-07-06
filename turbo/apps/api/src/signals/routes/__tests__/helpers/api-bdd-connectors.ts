@@ -58,6 +58,7 @@ import { createApp } from "../../../../app-factory";
 import { mockEnv, mockOptionalEnv } from "../../../../lib/env";
 import { now } from "../../../../lib/time";
 import { server } from "../../../../mocks/server";
+import { createDeferredPromise } from "../../../utils";
 import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
 
@@ -707,17 +708,21 @@ interface DeferredTestOAuthTokenEndpoint {
  */
 export function mockDeferredTestOAuthTokenEndpoint(): DeferredTestOAuthTokenEndpoint {
   let callCount = 0;
-  let releaseGate = (): void => {};
-  const gate = new Promise<void>((resolve) => {
-    releaseGate = resolve;
-  });
+  const gate = createDeferredPromise<void>(AbortSignal.any([]));
+  const releaseGate = (): void => {
+    if (!gate.settled()) {
+      gate.resolve(undefined);
+    }
+  };
   onTestFinished(() => {
     releaseGate();
   });
-  let markStarted = (): void => {};
-  const started = new Promise<void>((resolve) => {
-    markStarted = resolve;
-  });
+  const started = createDeferredPromise<void>(AbortSignal.any([]));
+  const markStarted = (): void => {
+    if (!started.settled()) {
+      started.resolve(undefined);
+    }
+  };
 
   server.use(
     http.post(TEST_OAUTH_TOKEN_URL, async ({ request }) => {
@@ -730,7 +735,7 @@ export function mockDeferredTestOAuthTokenEndpoint(): DeferredTestOAuthTokenEndp
         );
       }
       markStarted();
-      await gate;
+      await gate.promise;
       return HttpResponse.json({
         access_token: `test-device-access:${body.get("device_code") ?? ""}`,
         token_type: "Bearer",
@@ -741,7 +746,7 @@ export function mockDeferredTestOAuthTokenEndpoint(): DeferredTestOAuthTokenEndp
   );
 
   return {
-    started,
+    started: started.promise,
     release() {
       releaseGate();
     },
@@ -1046,24 +1051,28 @@ export function mockAwsExternalCodeProvider(
  */
 export function mockAwsDeferredTokenExchange(): AwsDeferredTokenExchange {
   const tokenRequests: AwsTokenRequest[] = [];
-  let releaseGate = (): void => {};
-  const gate = new Promise<void>((resolve) => {
-    releaseGate = resolve;
-  });
+  const gate = createDeferredPromise<void>(AbortSignal.any([]));
+  const releaseGate = (): void => {
+    if (!gate.settled()) {
+      gate.resolve(undefined);
+    }
+  };
   onTestFinished(() => {
     releaseGate();
   });
-  let markStarted = (): void => {};
-  const started = new Promise<void>((resolve) => {
-    markStarted = resolve;
-  });
+  const started = createDeferredPromise<void>(AbortSignal.any([]));
+  const markStarted = (): void => {
+    if (!started.settled()) {
+      started.resolve(undefined);
+    }
+  };
 
   server.use(
     http.post(AWS_SIGNIN_TOKEN_URL, async ({ request }) => {
       const body = awsTokenRequestSchema.parse(await request.json());
       tokenRequests.push(body);
       markStarted();
-      await gate;
+      await gate.promise;
       return HttpResponse.json({ tokenOutput: awsTokenEndpointResponseBody() });
     }),
     http.get(AWS_STS_URL, () => {
@@ -1072,7 +1081,7 @@ export function mockAwsDeferredTokenExchange(): AwsDeferredTokenExchange {
   );
 
   return {
-    tokenRequestStarted: started,
+    tokenRequestStarted: started.promise,
     tokenRequests,
     releaseTokenResponse() {
       releaseGate();

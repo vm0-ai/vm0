@@ -19,6 +19,7 @@ import {
   listThreadBoundWorkflowTriggers,
   listWorkspaceWorkflowTriggers,
   loadWorkflowTriggers,
+  revealWorkflowWebhookSecret,
   runOwnedWorkflowTriggerNow$,
   updateWorkflowTrigger$,
   type TriggerResult,
@@ -224,6 +225,23 @@ const getTriggerInner$ = computed(async (get) => {
   return { status: 200 as const, body: trigger };
 });
 
+const revealWebhookSecretInner$ = computed(async (get) => {
+  const auth = get(organizationAuthContext$);
+  const params = get(
+    pathParamsOf(zeroWorkflowTriggersContract.revealWebhookSecret),
+  );
+  const db = get(db$);
+  const secret = await revealWorkflowWebhookSecret(db, {
+    orgId: auth.orgId,
+    member: memberFromAuth(auth),
+    triggerId: params.id,
+  });
+  if (!secret) {
+    return notFound("Workflow webhook trigger not found");
+  }
+  return { status: 200 as const, body: secret };
+});
+
 const updateTriggerInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
@@ -390,5 +408,9 @@ export const zeroWorkflowTriggersRoutes: readonly RouteEntry[] = [
   {
     route: zeroWorkflowTriggersContract.run,
     handler: authRoute(workflowWriteAuth, runTriggerInner$),
+  },
+  {
+    route: zeroWorkflowTriggersContract.revealWebhookSecret,
+    handler: authRoute(workflowWriteAuth, revealWebhookSecretInner$),
   },
 ];

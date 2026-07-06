@@ -54,6 +54,45 @@ jobs:
           echo "skip=false" >> "$GITHUB_OUTPUT"
           echo "Not a release-please context"
 
+  pr-title:
+    needs: [detect-release]
+    name: Pull Request Title
+    if: needs.detect-release.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+
+      - name: Validate pull request title
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          GH_TOKEN: ${{ github.token }}
+          MQ_HEAD_REF: ${{ github.event.merge_group.head_ref || '' }}
+          PR_TITLE: ${{ github.event.pull_request.title || '' }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          case "$EVENT_NAME" in
+            pull_request)
+              title="$PR_TITLE"
+              ;;
+            merge_group)
+              pr_number="$(printf '%s\n' "$MQ_HEAD_REF" | grep -oE 'pr-[0-9]+' | head -1 | sed 's/pr-//' || true)"
+              if [ -z "$pr_number" ]; then
+                echo "::error::Could not resolve pull request number from merge queue ref: $MQ_HEAD_REF"
+                exit 1
+              fi
+              title="$(gh pr view "$pr_number" --repo "$REPO" --json title --jq .title)"
+              ;;
+            *)
+              echo "No pull request title to validate for $EVENT_NAME"
+              exit 0
+              ;;
+          esac
+
+          .github/scripts/check-pr-title.sh "$title"
+
   semgrep:
     needs: [detect-release]
     name: Semgrep SAST
@@ -109,11 +148,48 @@ jobs:
           else:
               print("\nNo regressions. All findings within baseline.")
 
+      - name: Filter Semgrep SARIF for Code Scanning upload
+        if: always()
+        shell: python3 {0}
+        run: |
+          import json
+
+          with open(".github/semgrep-baseline.json") as f:
+              baseline = json.load(f)
+
+          with open("semgrep-results.sarif") as f:
+              sarif = json.load(f)
+
+          total_results = 0
+          uploaded_results = 0
+          for run in sarif.get("runs", []):
+              filtered = []
+              seen = {}
+
+              for result in run.get("results", []):
+                  rule = result.get("ruleId")
+                  seen[rule] = seen.get(rule, 0) + 1
+                  total_results += 1
+
+                  if seen[rule] > baseline.get(rule, 0):
+                      filtered.append(result)
+
+              uploaded_results += len(filtered)
+              run["results"] = filtered
+
+          with open("semgrep-results-for-code-scanning.sarif", "w") as f:
+              json.dump(sarif, f)
+
+          print(
+              "Semgrep SARIF upload filtered: "
+              f"{uploaded_results}/{total_results} result(s) exceed baseline"
+          )
+
       - name: Upload Semgrep SARIF
         uses: github/codeql-action/upload-sarif@v4
         if: always() && github.event_name != 'merge_group'
         with:
-          sarif_file: semgrep-results.sarif
+          sarif_file: semgrep-results-for-code-scanning.sarif
           category: semgrep
 
   codeql:
@@ -240,6 +316,7 @@ jobs:
     timeout-minutes: 5
     needs:
       - detect-release
+      - pr-title
       - semgrep
       - codeql
       - pnpm-audit
@@ -270,6 +347,7 @@ jobs:
             fi
           }
 
+          check_result "pr-title" "${{ needs.pr-title.result }}"
           check_result "semgrep" "${{ needs.semgrep.result }}"
           check_result "codeql" "${{ needs.codeql.result }}"
           check_result "pnpm-audit" "${{ needs.pnpm-audit.result }}"

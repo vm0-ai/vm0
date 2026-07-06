@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { and, asc, eq, gt, or, sql } from "drizzle-orm";
+import { and, asc, eq, sql, type SQL } from "drizzle-orm";
 import type {
   ChatThreadEvent,
   ChatThreadSnapshotProjection,
@@ -16,19 +16,16 @@ interface SnapshotScope extends Record<string, unknown> {
   readonly orgId: string;
 }
 
-interface EventCursor {
-  readonly id: string;
-  readonly createdAt: Date;
-}
-
 interface SnapshotCompactionStats {
   readonly scopes: number;
   readonly eventsApplied: number;
   readonly removedDeletedAgentThreads: number;
+  readonly eventsPruned: number;
 }
 
 type SnapshotReadWriteDb = Pick<Db, "select" | "insert" | "execute">;
 type SnapshotRootDb = SnapshotReadWriteDb & Pick<Db, "transaction">;
+const CHAT_THREAD_EVENT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
 function toApiEvent(row: {
   readonly id: string;
@@ -36,6 +33,7 @@ function toApiEvent(row: {
   readonly chatThreadId: string;
   readonly agentComposeId: string;
   readonly title: string | null;
+  readonly selectedModel: string | null;
   readonly createdAt: Date;
 }): ChatThreadEvent {
   return {
@@ -44,6 +42,7 @@ function toApiEvent(row: {
     chatThreadId: row.chatThreadId,
     agentId: row.agentComposeId,
     title: row.title,
+    selectedModel: row.selectedModel,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -67,17 +66,28 @@ function compareThreadOrder(
 function applyChatThreadEvent(
   threads: Map<string, ChatThreadSnapshotProjection>,
   event: ChatThreadEvent,
+  pendingSelectedModelUpdates: Map<string, ChatThreadEvent>,
 ) {
   if (event.kind === "created") {
+    const pendingSelectedModelUpdate = pendingSelectedModelUpdates.get(
+      event.chatThreadId,
+    );
+    pendingSelectedModelUpdates.delete(event.chatThreadId);
+    const selectedModelUpdate =
+      pendingSelectedModelUpdate &&
+      pendingSelectedModelUpdate.createdAt.localeCompare(event.createdAt) >= 0
+        ? pendingSelectedModelUpdate
+        : null;
     threads.set(event.chatThreadId, {
       id: event.chatThreadId,
       agentId: event.agentId,
       title: event.title,
       sortAt: event.createdAt,
       createdAt: event.createdAt,
-      updatedAt: event.createdAt,
+      updatedAt: selectedModelUpdate?.createdAt ?? event.createdAt,
       pinnedAt: null,
       renamedAt: null,
+      selectedModel: selectedModelUpdate?.selectedModel ?? event.selectedModel,
     });
     return;
   }
@@ -89,6 +99,9 @@ function applyChatThreadEvent(
 
   const thread = threads.get(event.chatThreadId);
   if (!thread) {
+    if (event.kind === "model_selection_updated") {
+      pendingSelectedModelUpdates.set(event.chatThreadId, event);
+    }
     return;
   }
 
@@ -120,6 +133,15 @@ function applyChatThreadEvent(
     return;
   }
 
+  if (event.kind === "model_selection_updated") {
+    threads.set(event.chatThreadId, {
+      ...thread,
+      selectedModel: event.selectedModel,
+      updatedAt: event.createdAt,
+    });
+    return;
+  }
+
   threads.set(event.chatThreadId, {
     ...thread,
     sortAt: event.createdAt,
@@ -136,10 +158,14 @@ function compactSnapshot(
 } {
   const threads = new Map<string, ChatThreadSnapshotProjection>();
   for (const thread of snapshot) {
-    threads.set(thread.id, { ...thread });
+    threads.set(thread.id, {
+      ...thread,
+      selectedModel: thread.selectedModel ?? null,
+    });
   }
+  const pendingSelectedModelUpdates = new Map<string, ChatThreadEvent>();
   for (const event of events) {
-    applyChatThreadEvent(threads, event);
+    applyChatThreadEvent(threads, event, pendingSelectedModelUpdates);
   }
 
   let removedDeletedAgentThreads = 0;
@@ -205,9 +231,9 @@ async function loadEventCursor(
   db: SnapshotReadWriteDb,
   scope: SnapshotScope,
   eventId: string | null,
-): Promise<EventCursor | null> {
+): Promise<boolean> {
   if (!eventId) {
-    return null;
+    return false;
   }
 
   const [row] = await db
@@ -225,7 +251,7 @@ async function loadEventCursor(
     )
     .limit(1);
 
-  return row ?? null;
+  return row !== undefined;
 }
 
 async function loadEventsAfterMarker(
@@ -233,20 +259,21 @@ async function loadEventsAfterMarker(
   scope: SnapshotScope,
   eventId: string | null,
 ): Promise<readonly ChatThreadEvent[]> {
-  const cursor = await loadEventCursor(db, scope, eventId);
-  const filters = [
+  const hasCursor = await loadEventCursor(db, scope, eventId);
+  const filters: SQL[] = [
     eq(chatThreadEvents.userId, scope.userId),
     eq(chatThreadEvents.orgId, scope.orgId),
   ];
-  if (cursor) {
+  if (hasCursor && eventId !== null) {
     filters.push(
-      or(
-        gt(chatThreadEvents.createdAt, cursor.createdAt),
-        and(
-          eq(chatThreadEvents.createdAt, cursor.createdAt),
-          gt(chatThreadEvents.id, cursor.id),
-        ),
-      )!,
+      sql`(${chatThreadEvents.createdAt}, ${chatThreadEvents.id}) > (
+        SELECT marker.created_at, marker.id
+        FROM ${chatThreadEvents} AS marker
+        WHERE marker.user_id = ${scope.userId}
+          AND marker.org_id = ${scope.orgId}
+          AND marker.id = ${eventId}
+        LIMIT 1
+      )`,
     );
   }
 
@@ -257,6 +284,7 @@ async function loadEventsAfterMarker(
       chatThreadId: chatThreadEvents.chatThreadId,
       agentComposeId: chatThreadEvents.agentComposeId,
       title: chatThreadEvents.title,
+      selectedModel: chatThreadEvents.selectedModel,
       createdAt: chatThreadEvents.createdAt,
     })
     .from(chatThreadEvents)
@@ -352,10 +380,28 @@ async function compactChatThreadSnapshotsForAllScopes(
     removedDeletedAgentThreads += result.removedDeletedAgentThreads;
   }
 
+  signal?.throwIfAborted();
+  const cutoff = new Date(nowDate().getTime() - CHAT_THREAD_EVENT_RETENTION_MS);
+  const pruned = await db.execute<{ readonly count: number }>(sql`
+    WITH pruned AS (
+      DELETE FROM ${chatThreadEvents}
+      WHERE ${chatThreadEvents.createdAt} < ${cutoff}
+        AND NOT EXISTS (
+          SELECT 1
+          FROM ${chatThreadSnapshots}
+          WHERE ${chatThreadSnapshots.latestEventId} = ${chatThreadEvents.id}
+        )
+      RETURNING 1
+    )
+    SELECT COUNT(*)::int AS "count"
+    FROM pruned
+  `);
+
   return {
     scopes: scopes.length,
     eventsApplied,
     removedDeletedAgentThreads,
+    eventsPruned: pruned.rows[0]?.count ?? 0,
   };
 }
 

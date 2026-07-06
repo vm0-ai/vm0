@@ -28,6 +28,7 @@ import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { Markdown } from "../components/markdown.tsx";
+import { MemoryRelationships } from "./memory-relationships.tsx";
 
 const PREFERRED_FILE = "MEMORY.md";
 const LEADING_YAML_FRONTMATTER_PATTERN =
@@ -180,7 +181,7 @@ function deriveMemoryViewerState(
 }
 
 function isMemoryTab(value: string): value is MemoryTab {
-  return value === "updates" || value === "raw";
+  return value === "updates" || value === "relationships" || value === "raw";
 }
 
 function MemoryDevRefreshButton({
@@ -225,6 +226,13 @@ function MemoryDevRefreshButton({
 export function MemoryPage() {
   const activeTab = useGet(memoryTab$);
   const setTab = useSet(setMemoryTab$);
+  const features = useGet(featureSwitch$);
+  const relationshipMemoryEnabled =
+    features[FeatureSwitchKey.RelationshipMemory] ?? false;
+  const visibleTab =
+    activeTab === "relationships" && !relationshipMemoryEnabled
+      ? "updates"
+      : activeTab;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-auto [scrollbar-gutter:stable]">
@@ -246,22 +254,33 @@ export function MemoryPage() {
           <div className="flex min-w-0 w-full max-w-[900px] flex-col gap-6">
             <div className="flex items-center justify-between gap-3">
               <Tabs
-                value={activeTab}
+                value={visibleTab}
                 onValueChange={(value) => {
-                  if (isMemoryTab(value)) {
+                  if (
+                    isMemoryTab(value) &&
+                    (value !== "relationships" || relationshipMemoryEnabled)
+                  ) {
                     setTab(value);
                   }
                 }}
+                className="min-w-0 max-w-full"
               >
-                <TabsList>
+                <TabsList className="max-w-full justify-start overflow-x-auto">
                   <TabsTrigger value="updates">Updates</TabsTrigger>
+                  {relationshipMemoryEnabled ? (
+                    <TabsTrigger value="relationships">
+                      Relationships
+                    </TabsTrigger>
+                  ) : null}
                   <TabsTrigger value="raw">Memory files</TabsTrigger>
                 </TabsList>
               </Tabs>
               <MemoryDevRefreshButton />
             </div>
 
-            {activeTab === "updates" ? <MemoryUpdates /> : <MemoryRawFiles />}
+            {visibleTab === "updates" ? <MemoryUpdates /> : null}
+            {visibleTab === "relationships" ? <MemoryRelationships /> : null}
+            {visibleTab === "raw" ? <MemoryRawFiles /> : null}
           </div>
         </div>
       </main>

@@ -3,7 +3,6 @@ import { useGet } from "ccstate-react";
 import { page$, pageLayout$ } from "../signals/react-router.ts";
 import { appSkeletonVisible$ } from "../signals/app-skeleton.ts";
 import { AppSkeleton } from "./zero-page/app-skeleton.tsx";
-import { InspectLogFileInput } from "./inspect-log-file-input.tsx";
 import { SidebarLayout } from "./zero-page/sidebar-layout.tsx";
 import { MinimalSidebarLayout } from "./zero-page/zero-directed-shared.tsx";
 
@@ -23,7 +22,7 @@ function LayoutHost({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
-function AppSkeletonOverlay() {
+export function AppSkeletonOverlay() {
   const page = useGet(page$);
   const skeletonVisible = useGet(appSkeletonVisible$);
   return <AppSkeleton visible={!page || skeletonVisible} />;
@@ -35,8 +34,6 @@ export function Router() {
       <LayoutHost>
         <PageSlot />
       </LayoutHost>
-      <AppSkeletonOverlay />
-      <InspectLogFileInput />
     </>
   );
 }

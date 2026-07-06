@@ -1,6 +1,6 @@
 import { command, computed } from "ccstate";
 import { zeroOnboardingStatus$ } from "./zero-onboarding.ts";
-import { agents$, defaultAgentId$ } from "../agent.ts";
+import { defaultAgentId$, sortedAgents$ } from "../agent.ts";
 import { currentChatAgentId$ } from "../agent-chat.ts";
 import {
   updateUserPreference$,
@@ -34,17 +34,41 @@ export const pinnedAgentIds$ = computed(async (get) => {
 /** Pinned agent IDs resolved to full agent objects. */
 export const pinnedAgents$ = computed(async (get) => {
   const ids = await get(pinnedAgentIds$);
-  const list = await get(agents$);
-  return ids
-    .map((id) => {
-      return list.find((a) => {
-        return a.id === id;
-      });
-    })
-    .filter((a) => {
-      return a !== undefined;
-    });
+  const pinnedIds = new Set(ids);
+  const list = await get(sortedAgents$);
+  return list.filter((a) => {
+    return pinnedIds.has(a.id);
+  });
 });
+
+export const setAgentPinned$ = command(
+  async (
+    { get, set },
+    { agentId, pinned }: { readonly agentId: string; readonly pinned: boolean },
+    signal: AbortSignal,
+  ) => {
+    const defaultAgentId = await get(defaultAgentId$);
+    signal.throwIfAborted();
+    if (agentId === defaultAgentId) {
+      return;
+    }
+
+    const ids = await get(pinnedAgentIds$);
+    signal.throwIfAborted();
+    const next = new Set(
+      ids.filter((id) => {
+        return id !== defaultAgentId;
+      }),
+    );
+    if (pinned) {
+      next.add(agentId);
+    } else {
+      next.delete(agentId);
+    }
+
+    await set(updateUserPreference$, { pinnedAgentIds: [...next] }, signal);
+  },
+);
 
 /**
  * Whether the current chat agent is pinned. Returns null if no agent is selected.
@@ -57,15 +81,3 @@ export const currentChatAgentPinned$ = computed(async (get) => {
   const ids = await get(pinnedAgentIds$);
   return ids.includes(agentId);
 });
-
-export const updatePinnedAgentIds$ = command(
-  async ({ get, set }, ids: string[], signal: AbortSignal) => {
-    const defaultAgentId = await get(defaultAgentId$);
-    signal.throwIfAborted();
-    ids = ids.filter((id) => {
-      return id !== defaultAgentId;
-    });
-
-    await set(updateUserPreference$, { pinnedAgentIds: ids }, signal);
-  },
-);

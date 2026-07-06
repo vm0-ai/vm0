@@ -83,6 +83,7 @@ import * as chatMessageSchema from "./schema/chat-message";
 import * as chatThreadEventSchema from "./schema/chat-thread-event";
 import * as chatThreadSnapshotSchema from "./schema/chat-thread-snapshot";
 import * as chatOutputMaterializationSchema from "./schema/chat-output-materialization";
+import * as agentRunCustomConnectorAuthRefSchema from "./schema/agent-run-custom-connector-auth-ref";
 import * as orgCustomConnectorSchema from "./schema/org-custom-connector";
 import * as orgCustomConnectorSecretSchema from "./schema/org-custom-connector-secret";
 import * as orgCustomConnectorValueSchema from "./schema/org-custom-connector-value";
@@ -92,6 +93,8 @@ import * as builtInGenerationJobSchema from "./schema/built-in-generation-job";
 import * as bankingSchema from "./schema/banking";
 import * as memoryChangeSummarySchema from "./schema/memory-change-summary";
 import * as memoryChangeItemSchema from "./schema/memory-change-item";
+import * as memorySubstrateSchema from "./schema/memory-substrate";
+import * as relationshipMemorySchema from "./schema/relationship-memory";
 import * as automationSchema from "./schema/automation";
 import * as gmailEventSchema from "./schema/gmail-event";
 import * as googleCalendarEventSchema from "./schema/google-calendar-event";
@@ -183,6 +186,7 @@ export const schema = {
   ...chatThreadEventSchema,
   ...chatThreadSnapshotSchema,
   ...chatOutputMaterializationSchema,
+  ...agentRunCustomConnectorAuthRefSchema,
   ...orgCustomConnectorSchema,
   ...orgCustomConnectorSecretSchema,
   ...orgCustomConnectorValueSchema,
@@ -192,6 +196,8 @@ export const schema = {
   ...bankingSchema,
   ...memoryChangeSummarySchema,
   ...memoryChangeItemSchema,
+  ...memorySubstrateSchema,
+  ...relationshipMemorySchema,
   ...automationSchema,
   ...gmailEventSchema,
   ...googleCalendarEventSchema,

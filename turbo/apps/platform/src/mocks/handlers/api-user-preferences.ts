@@ -11,6 +11,10 @@ let mockPreferences: UserPreferencesResponse = {
   captureNetworkBodiesRemaining: 0,
 };
 
+function normalizePinnedAgentIds(ids: readonly string[]): string[] {
+  return [...new Set(ids)].sort();
+}
+
 export function resetMockUserPreferences(): void {
   mockPreferences = {
     timezone: null,
@@ -31,7 +35,12 @@ export const apiUserPreferencesHandlers = [
     return respond(200, mockPreferences);
   }),
   mockApi(zeroUserPreferencesContract.update, ({ body, respond }) => {
-    Object.assign(mockPreferences, body);
+    Object.assign(mockPreferences, {
+      ...body,
+      ...(body.pinnedAgentIds !== undefined && {
+        pinnedAgentIds: normalizePinnedAgentIds(body.pinnedAgentIds),
+      }),
+    });
     return respond(200, mockPreferences);
   }),
 ];

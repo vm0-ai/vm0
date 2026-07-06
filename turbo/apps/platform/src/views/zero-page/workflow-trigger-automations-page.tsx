@@ -294,12 +294,14 @@ export function TriggerListIcon({
     <span
       className={cn(
         "flex shrink-0 items-center justify-center",
-        compact ? "h-8 w-8 rounded-lg" : "h-11 w-11 rounded-xl",
+        compact
+          ? "h-8 w-8 rounded-lg"
+          : "h-14 w-14 rounded-2xl sm:h-16 sm:w-16",
         tone,
       )}
       aria-hidden="true"
     >
-      <Icon size={compact ? 16 : 20} stroke={1.6} />
+      <Icon size={compact ? 16 : 28} stroke={1.6} />
     </span>
   );
 }
@@ -446,17 +448,12 @@ function AgentSelectionStep({
   const query = useGet(workflowAutomationAgentQuery$);
   const setQuery = useSet(setWorkflowAutomationAgentQuery$);
   const pinnedIds = useLastResolved(pinnedAgentIds$) ?? [];
-  const pinned = pinnedIds
-    .map((id) => {
-      return agents.find((agent) => {
-        return agent.id === id;
-      });
-    })
-    .filter((agent): agent is TeamComposeItem => {
-      return agent !== undefined;
-    });
+  const pinnedIdSet = new Set(pinnedIds);
+  const pinned = agents.filter((agent) => {
+    return pinnedIdSet.has(agent.id);
+  });
   const unpinned = agents.filter((agent) => {
-    return !pinnedIds.includes(agent.id);
+    return !pinnedIdSet.has(agent.id);
   });
   const trimmedQuery = query.trim().toLowerCase();
   const filteredPinned = trimmedQuery

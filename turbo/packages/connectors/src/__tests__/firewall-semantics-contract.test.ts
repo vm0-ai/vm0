@@ -4,10 +4,12 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
 import {
+  type FirewallRequestDecision,
   matchFirewallBaseUrl,
   matchFirewallHost,
   matchFirewallPath,
   matchFirewallPathPrefix,
+  matchFirewallRequestDecision,
 } from "../firewall-rule-matcher";
 import { parseSegment, splitPathSegments } from "../segment-parser";
 
@@ -46,6 +48,34 @@ const relativePathMatchExpectedSchema = z.discriminatedUnion("kind", [
   }),
   z.object({
     kind: z.literal("no-match"),
+  }),
+]);
+
+const firewallDecisionExpectedSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("no_match"),
+  }),
+  z.object({
+    kind: z.literal("allow"),
+    firewallName: z.string(),
+    base: z.string(),
+    relativePath: z.string(),
+    permission: z.string().optional(),
+    rule: z.string().optional(),
+  }),
+  z.object({
+    kind: z.literal("block"),
+    firewallName: z.string(),
+    base: z.string(),
+    relativePath: z.string(),
+    reason: z.union([
+      z.literal("permission_denied"),
+      z.literal("unknown_endpoint"),
+      z.literal("malformed_firewall_config"),
+      z.literal("malformed_network_policy"),
+      z.literal("unsafe_path"),
+    ]),
+    permissions: z.array(z.string()),
   }),
 ]);
 
@@ -96,6 +126,18 @@ const contractSchema = z.object({
       expected: relativePathMatchExpectedSchema,
     }),
   ),
+  finalDecisionCases: z.array(
+    z.object({
+      name: z.string(),
+      firewalls: z.unknown(),
+      networkPolicies: z.unknown().optional(),
+      request: z.object({
+        method: z.string(),
+        url: z.string(),
+      }),
+      expected: firewallDecisionExpectedSchema,
+    }),
+  ),
 });
 
 type SegmentExpected = z.infer<typeof segmentExpectedSchema>;
@@ -103,6 +145,7 @@ type ParamsMatchExpected = z.infer<typeof paramsMatchExpectedSchema>;
 type RelativePathMatchExpected = z.infer<
   typeof relativePathMatchExpectedSchema
 >;
+type FirewallDecisionExpected = z.infer<typeof firewallDecisionExpectedSchema>;
 
 function loadContract(): z.infer<typeof contractSchema> {
   const rawContract: unknown = JSON.parse(
@@ -151,6 +194,13 @@ function assertRelativePathMatch(
   }
 
   expect(actual).toBe(expected.relativePath);
+}
+
+function assertFirewallDecision(
+  actual: FirewallRequestDecision,
+  expected: FirewallDecisionExpected,
+): void {
+  expect(actual).toEqual(expected);
 }
 
 const contract = loadContract();
@@ -211,6 +261,22 @@ describe("firewall semantics contract", () => {
         assertRelativePathMatch(
           matchFirewallBaseUrl(testCase.url, testCase.base)?.relativePath ??
             null,
+          testCase.expected,
+        );
+      });
+    }
+  });
+
+  describe("final request decisions", () => {
+    for (const testCase of contract.finalDecisionCases) {
+      it(testCase.name, () => {
+        assertFirewallDecision(
+          matchFirewallRequestDecision(
+            testCase.firewalls,
+            testCase.request.method,
+            testCase.request.url,
+            testCase.networkPolicies,
+          ),
           testCase.expected,
         );
       });

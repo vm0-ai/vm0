@@ -3,8 +3,9 @@ import type { Store } from "ccstate";
 import { StoreProvider } from "ccstate-react";
 import { Toaster } from "@vm0/ui/components/ui/sonner";
 import { ErrorBoundary } from "./error-boundary.tsx";
-import { Router } from "./router.tsx";
+import { AppSkeletonOverlay, Router } from "./router.tsx";
 import { VM0ClerkProvider } from "./clerk/clerk-provider.tsx";
+import { InspectLogFileInput } from "./inspect-log-file-input.tsx";
 import {
   subscribeChatThreadReadCursorUpdated$,
   subscribeThreadListChanged$,
@@ -34,11 +35,13 @@ export const setupRouter = (
   render(
     <StrictMode>
       <StoreProvider value={store}>
-        <VM0ClerkProvider>
-          <ErrorBoundary>
+        <ErrorBoundary>
+          <AppSkeletonOverlay />
+          <VM0ClerkProvider>
             <Router />
-          </ErrorBoundary>
-        </VM0ClerkProvider>
+          </VM0ClerkProvider>
+          <InspectLogFileInput />
+        </ErrorBoundary>
         <Toaster
           position="top-center"
           visibleToasts={1}

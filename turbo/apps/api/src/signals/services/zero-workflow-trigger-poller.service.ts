@@ -14,7 +14,7 @@ import { writeDb$, type Db } from "../external/db";
 import { now, nowDate } from "../external/time";
 import { settle } from "../utils";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
-import { calculateNextRun } from "./automations/time-trigger";
+import { calculateNextRun } from "./time-trigger";
 import {
   runWorkflowTriggerNow$,
   type DueWorkflowTrigger,

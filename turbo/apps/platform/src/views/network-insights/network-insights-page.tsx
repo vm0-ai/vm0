@@ -48,12 +48,17 @@ import {
 import { userPreferences$ } from "../../signals/zero-page/settings/user-preferences.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import { user$ } from "../../signals/auth.ts";
+import {
+  connectorCatalogDisplayMetadataByRef$,
+  type ConnectorCatalogDisplayMetadata,
+} from "../../signals/external/connectors.ts";
 import { formatCredits } from "../../lib/format-credits.ts";
 import { getCardPalette } from "../../lib/card-palette.ts";
-import {
-  CONNECTOR_TYPES,
-  type ConnectorType,
-} from "@vm0/connectors/connectors";
+
+type ConnectorDisplayMetadataByRef = ReadonlyMap<
+  string,
+  ConnectorCatalogDisplayMetadata
+>;
 
 // ---------------------------------------------------------------------------
 // Date range filter
@@ -726,29 +731,52 @@ function YourCreditUsageCard({
 // Card: Services accessed
 // ---------------------------------------------------------------------------
 
-function connectorLabel(type: string): string {
-  const config = CONNECTOR_TYPES[type as ConnectorType];
-  if (config) {
-    return config.label;
+function fallbackConnectorLabel(ref: string): string {
+  const words = ref
+    .split(/[-_\s]+/u)
+    .map((word) => {
+      return word.trim();
+    })
+    .filter((word) => {
+      return word.length > 0;
+    });
+  if (words.length === 0) {
+    return ref;
   }
-  return type.charAt(0).toUpperCase() + type.slice(1);
+  return words
+    .map((word) => {
+      return `${word.charAt(0).toUpperCase()}${word.slice(1)}`;
+    })
+    .join(" ");
 }
 
-function permissionLabel(p: { label: string; connectorType?: string }): string {
+function connectorLabel(
+  type: string,
+  metadataByRef: ConnectorDisplayMetadataByRef | null,
+): string {
+  return metadataByRef?.get(type)?.label ?? fallbackConnectorLabel(type);
+}
+
+function permissionLabel(
+  p: { label: string; connectorType?: string },
+  metadataByRef: ConnectorDisplayMetadataByRef | null,
+): string {
   if (!p.connectorType || p.label === p.connectorType) {
-    return connectorLabel(p.label);
+    return connectorLabel(p.label, metadataByRef);
   }
-  return `${connectorLabel(p.connectorType)}(${p.label})`;
+  return `${connectorLabel(p.connectorType, metadataByRef)}(${p.label})`;
 }
 
 function ServicesCard({
   day,
   colorIndex,
   hoveredAgent,
+  metadataByRef,
 }: {
   day: DayInsight;
   colorIndex: number;
   hoveredAgent: string | null;
+  metadataByRef: ConnectorDisplayMetadataByRef | null;
 }) {
   const maxCalls = Math.max(
     1,
@@ -790,7 +818,7 @@ function ServicesCard({
               className={`flex items-center gap-3 transition-opacity duration-150 ${isActive ? "opacity-100" : "opacity-30"}`}
             >
               <span className="text-sm font-medium w-20 truncate shrink-0">
-                {connectorLabel(s.domain)}
+                {connectorLabel(s.domain, metadataByRef)}
               </span>
               <div className="flex-1 h-1.5 rounded-full bg-current/10 overflow-hidden">
                 <div
@@ -819,10 +847,12 @@ function PermissionsAllowedCard({
   day,
   colorIndex,
   hoveredAgent,
+  metadataByRef,
 }: {
   day: DayInsight;
   colorIndex: number;
   hoveredAgent: string | null;
+  metadataByRef: ConnectorDisplayMetadataByRef | null;
 }) {
   const expandedDays = useGet(expandedAllowedDays$);
   const toggleExpanded = useSet(toggleExpandedAllowed$);
@@ -870,7 +900,7 @@ function PermissionsAllowedCard({
             >
               <div className="flex items-center justify-between gap-2">
                 <span className="text-sm font-medium">
-                  {connectorLabel(p.connectorType ?? p.label)}
+                  {connectorLabel(p.connectorType ?? p.label, metadataByRef)}
                 </span>
                 <span className="text-xs opacity-60 tabular-nums shrink-0">
                   {p.allowed} {p.allowed === 1 ? "call" : "calls"}
@@ -904,9 +934,11 @@ function PermissionsAllowedCard({
 function PermissionsBlockedCard({
   day,
   hoveredAgent,
+  metadataByRef,
 }: {
   day: DayInsight;
   hoveredAgent: string | null;
+  metadataByRef: ConnectorDisplayMetadataByRef | null;
 }) {
   const blocked = day.permissions.filter((p) => {
     return p.denied > 0;
@@ -947,7 +979,9 @@ function PermissionsBlockedCard({
               key={`${p.connectorType ?? ""}:${p.label}`}
               className={`flex items-center justify-between gap-2 transition-opacity duration-150 ${isActive ? "opacity-100" : "opacity-30"}`}
             >
-              <span className="text-sm font-medium">{permissionLabel(p)}</span>
+              <span className="text-sm font-medium">
+                {permissionLabel(p, metadataByRef)}
+              </span>
               <span className="text-xs tabular-nums shrink-0 opacity-70">
                 {fullyBlocked
                   ? `${p.denied} rejected`
@@ -1235,10 +1269,12 @@ function DaySection({
   day,
   isAdmin,
   userId,
+  metadataByRef,
 }: {
   day: DayInsight;
   isAdmin: boolean;
   userId: string | null;
+  metadataByRef: ConnectorDisplayMetadataByRef | null;
 }) {
   const hoveredAgent = useGet(insightsHoveredAgent$);
   const setHoveredAgent = useSet(setInsightsHoveredAgent$);
@@ -1273,15 +1309,25 @@ function DaySection({
           hoveredAgent={hoveredAgent}
           onHoverAgent={handleHoverAgent}
         />
-        <ServicesCard day={day} colorIndex={2} hoveredAgent={hoveredAgent} />
+        <ServicesCard
+          day={day}
+          colorIndex={2}
+          hoveredAgent={hoveredAgent}
+          metadataByRef={metadataByRef}
+        />
         <DayAutomationsCard dayDate={day.date} automations={day.automations} />
         <DayChatsCard dayDate={day.date} chats={day.chats} />
         <PermissionsAllowedCard
           day={day}
           colorIndex={5}
           hoveredAgent={hoveredAgent}
+          metadataByRef={metadataByRef}
         />
-        <PermissionsBlockedCard day={day} hoveredAgent={hoveredAgent} />
+        <PermissionsBlockedCard
+          day={day}
+          hoveredAgent={hoveredAgent}
+          metadataByRef={metadataByRef}
+        />
       </div>
     </section>
   );
@@ -1311,6 +1357,9 @@ function InsightsContent({ data }: { data: NetworkInsightsData }) {
   const prefsLoadable = useLastLoadable(userPreferences$);
   const adminLoadable = useLastLoadable(isOrgAdmin$);
   const userLoadable = useLastLoadable(user$);
+  const connectorMetadataLoadable = useLastLoadable(
+    connectorCatalogDisplayMetadataByRef$,
+  );
   const timezone =
     prefsLoadable.state === "hasData" && prefsLoadable.data?.timezone
       ? prefsLoadable.data.timezone
@@ -1321,6 +1370,10 @@ function InsightsContent({ data }: { data: NetworkInsightsData }) {
     adminLoadable.state === "hasData" ? adminLoadable.data : false;
   const userId =
     userLoadable.state === "hasData" ? (userLoadable.data?.id ?? null) : null;
+  const connectorMetadataByRef =
+    connectorMetadataLoadable.state === "hasData"
+      ? connectorMetadataLoadable.data
+      : null;
 
   return (
     <div className="h-full overflow-auto">
@@ -1377,6 +1430,7 @@ function InsightsContent({ data }: { data: NetworkInsightsData }) {
                 day={day}
                 isAdmin={isAdmin}
                 userId={userId}
+                metadataByRef={connectorMetadataByRef}
               />
             );
           })

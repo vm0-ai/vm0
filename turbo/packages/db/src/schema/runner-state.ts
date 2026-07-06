@@ -28,6 +28,10 @@ export const runnerState = pgTable(
     allocatedVcpu: integer("allocated_vcpu").notNull().default(0),
     allocatedMemoryMb: integer("allocated_memory_mb").notNull().default(0),
     runningCount: integer("running_count").notNull().default(0),
+    availableProfiles: jsonb("available_profiles")
+      .$type<string[]>()
+      .default([])
+      .notNull(),
     heldSessionStates: jsonb("held_session_states")
       .$type<RunnerHeldSessionState[]>()
       .default([])

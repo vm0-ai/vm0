@@ -172,14 +172,7 @@ describe("zero generate source-backed artifact commands", () => {
         expect.objectContaining({ id: "template:html-ppt-pitch-deck" }),
       ]),
     );
-    expect(presentationSelection.candidates.templates).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          id: "template:html-ppt-pitch-deck",
-          description: expect.stringContaining("Investor-ready"),
-        }),
-      ]),
-    );
+    expect(presentationSelection.candidates.templates).toHaveLength(0);
     expect(presentationSelection.candidates.designSystems).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

@@ -113,11 +113,12 @@ async function seedGoalApiFixture(args: {
     },
     context.signal,
   );
-  if (args.featureEnabled) {
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.WorkflowAutomation]: true,
-    });
-  }
+  // The switch is globally enabled since the automation -> workflow cutover
+  // (#19959); featureEnabled: false now needs an explicit user override to
+  // exercise the disabled path.
+  await updateFeatureSwitchesForUser(context, fixture, {
+    [FeatureSwitchKey.WorkflowAutomation]: args.featureEnabled,
+  });
   return await track(
     Promise.resolve({
       ...fixture,

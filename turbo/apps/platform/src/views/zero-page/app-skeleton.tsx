@@ -5,6 +5,24 @@ import {
   skeletonAvatarConfig$,
 } from "../../signals/app-skeleton.ts";
 
+const APP_SKELETON_VISIBLE_EVENT = "vm0:app-skeleton-visible";
+const APP_SKELETON_VISIBLE_EVENT_QUEUED_KEY =
+  "vm0AppSkeletonVisibleEventQueued";
+
+function queueSkeletonVisibleEvent(): void {
+  if (
+    document.documentElement.dataset[APP_SKELETON_VISIBLE_EVENT_QUEUED_KEY] ===
+    "true"
+  ) {
+    return;
+  }
+  document.documentElement.dataset[APP_SKELETON_VISIBLE_EVENT_QUEUED_KEY] =
+    "true";
+  queueMicrotask(() => {
+    window.dispatchEvent(new Event(APP_SKELETON_VISIBLE_EVENT));
+  });
+}
+
 /** Static CSS — does not depend on message content. */
 const skeletonCSS = `
 @keyframes sk-typing {
@@ -38,6 +56,10 @@ export function AppSkeleton({ visible = true }: { visible?: boolean }) {
   const { staticMsg, typewriterMsg, isFirst, cycle } =
     useGet(skeletonMessages$);
   const charCount = typewriterMsg.length;
+
+  if (visible) {
+    queueSkeletonVisibleEvent();
+  }
 
   return (
     <div

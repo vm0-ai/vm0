@@ -60,7 +60,7 @@ import {
 } from "../../signals/zero-page/zero-jobs-page.ts";
 import { serializeAvatarSvgConfig } from "../zero-page/avatar-svg-utils.ts";
 import { AvatarMaker } from "../zero-page/avatar-maker.tsx";
-import emptyPrivateAgents from "./assets/empty-private-agents.png";
+import { platformEmptyPrivateAgentsImg } from "../../lib/static-assets.ts";
 
 const MAX_PUBLIC_AGENTS = 7;
 
@@ -250,7 +250,7 @@ function PrivateEmptyState({ onCreate }: { onCreate: () => void }) {
   return (
     <div className="flex flex-col items-center gap-1.5 py-14 text-center">
       <img
-        src={emptyPrivateAgents}
+        src={platformEmptyPrivateAgentsImg}
         alt=""
         aria-hidden="true"
         className="mb-2 h-40 w-40 object-contain"

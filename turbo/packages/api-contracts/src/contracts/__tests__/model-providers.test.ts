@@ -126,6 +126,10 @@ describe("model-first canonical catalog", () => {
   it("identifies models blocked on limited-free-1", () => {
     expect(isLimitedFree1RestrictedRunModel("gpt-5.5")).toBe(true);
     expect(isLimitedFree1RestrictedRunModel("openai/gpt-5.5")).toBe(true);
+    expect(isLimitedFree1RestrictedRunModel("gpt-5.4")).toBe(true);
+    expect(isLimitedFree1RestrictedRunModel("openai/gpt-5.4")).toBe(true);
+    expect(isLimitedFree1RestrictedRunModel("gpt-5.4-mini")).toBe(true);
+    expect(isLimitedFree1RestrictedRunModel("openai/gpt-5.4-mini")).toBe(true);
     expect(isLimitedFree1RestrictedRunModel("claude-fable-5")).toBe(true);
     expect(isLimitedFree1RestrictedRunModel("anthropic/claude-fable-5")).toBe(
       true,
@@ -134,9 +138,20 @@ describe("model-first canonical catalog", () => {
     expect(isLimitedFree1RestrictedRunModel("anthropic/claude-opus-4.8")).toBe(
       true,
     );
-    expect(isLimitedFree1RestrictedRunModel("gpt-5.4")).toBe(false);
-    expect(isLimitedFree1RestrictedRunModel("claude-sonnet-5")).toBe(false);
-    expect(isLimitedFree1RestrictedRunModel("claude-sonnet-4-6")).toBe(false);
+    expect(isLimitedFree1RestrictedRunModel("claude-sonnet-5")).toBe(true);
+    expect(isLimitedFree1RestrictedRunModel("anthropic/claude-sonnet-5")).toBe(
+      true,
+    );
+    expect(isLimitedFree1RestrictedRunModel("claude-sonnet-4-6")).toBe(true);
+    expect(
+      isLimitedFree1RestrictedRunModel("anthropic/claude-sonnet-4.6"),
+    ).toBe(true);
+    expect(
+      isLimitedFree1RestrictedRunModel("anthropic/claude-sonnet-4.5"),
+    ).toBe(true);
+    expect(isLimitedFree1RestrictedRunModel("glm-5.2")).toBe(false);
+    expect(isLimitedFree1RestrictedRunModel("z-ai/glm-5.2")).toBe(false);
+    expect(isLimitedFree1RestrictedRunModel("MiniMax-M3")).toBe(false);
     expect(isLimitedFree1RestrictedRunModel(null)).toBe(false);
   });
 

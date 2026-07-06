@@ -11,6 +11,10 @@ import {
 } from "@tabler/icons-react";
 import type { UserExportStatusResponse } from "@vm0/api-contracts/contracts/user-export";
 import { Button } from "@vm0/ui";
+import {
+  platformVm0LogoDarkImg,
+  platformVm0LogoImg,
+} from "../../lib/static-assets.ts";
 import { now } from "../../lib/time.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
@@ -346,12 +350,12 @@ export function ExportPage() {
               Back to Zero
             </Link>
             <img
-              src="/assets/vm0-logo-dark.svg"
+              src={platformVm0LogoDarkImg}
               alt="VM0"
               className="h-4 w-auto dark:hidden"
             />
             <img
-              src="/assets/vm0-logo.svg"
+              src={platformVm0LogoImg}
               alt="VM0"
               className="hidden h-4 w-auto dark:block"
             />

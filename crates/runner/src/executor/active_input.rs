@@ -9,11 +9,53 @@ use crate::active_input::{ActiveInputPayload, ActiveInputSource};
 use crate::ids::RunId;
 use crate::local_queue::ActiveInputEntry;
 
-const ACTIVE_INPUT_POLL_INTERVAL: Duration = Duration::from_millis(50);
+const ACTIVE_INPUT_POLL_FAST_INTERVAL: Duration = Duration::from_millis(50);
+const ACTIVE_INPUT_POLL_IDLE_MAX_INTERVAL: Duration = Duration::from_millis(250);
 const ACTIVE_INPUT_CONTROL_TIMEOUT: Duration = Duration::from_secs(1);
 const ACTIVE_INPUT_FORWARDER_JOIN_TIMEOUT: Duration = Duration::from_secs(1);
 const ACTIVE_INPUT_SEEN_MESSAGE_ID_CAPACITY: usize = 1024;
 const FIRST_ACTIVE_INPUT_SEQUENCE: u64 = 1;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ForwardOutcome {
+    Idle,
+    Progress,
+    RetryPending,
+    SequenceGap,
+}
+
+struct PollCadence {
+    next_idle_interval: Duration,
+}
+
+impl Default for PollCadence {
+    fn default() -> Self {
+        Self {
+            next_idle_interval: ACTIVE_INPUT_POLL_FAST_INTERVAL,
+        }
+    }
+}
+
+impl PollCadence {
+    fn next_interval_after(&mut self, outcome: ForwardOutcome) -> Duration {
+        match outcome {
+            ForwardOutcome::Progress | ForwardOutcome::RetryPending => {
+                self.next_idle_interval = ACTIVE_INPUT_POLL_FAST_INTERVAL;
+                ACTIVE_INPUT_POLL_FAST_INTERVAL
+            }
+            ForwardOutcome::Idle | ForwardOutcome::SequenceGap => {
+                let interval = self.next_idle_interval;
+                self.next_idle_interval = std::cmp::min(
+                    self.next_idle_interval
+                        .checked_mul(2)
+                        .unwrap_or(ACTIVE_INPUT_POLL_IDLE_MAX_INTERVAL),
+                    ACTIVE_INPUT_POLL_IDLE_MAX_INTERVAL,
+                );
+                interval
+            }
+        }
+    }
+}
 
 struct ForwardState {
     seen_message_ids: HashSet<String>,
@@ -97,22 +139,24 @@ async fn run_forwarder(
     stop: CancellationToken,
 ) {
     let mut state = ForwardState::default();
+    let mut cadence = PollCadence::default();
     loop {
         let next_sequence = state.next_sequence;
-        tokio::select! {
+        let poll_interval = tokio::select! {
             biased;
             () = stop.cancelled() => return,
             () = job_cancel.cancelled() => return,
             entries = read_entries(run_id, source.clone(), next_sequence) => {
-                forward_entries(run_id, &control, entries, &mut state).await;
+                let outcome = forward_entries(run_id, &control, entries, &mut state).await;
+                cadence.next_interval_after(outcome)
             }
-        }
+        };
 
         tokio::select! {
             biased;
             () = stop.cancelled() => return,
             () = job_cancel.cancelled() => return,
-            () = tokio::time::sleep(ACTIVE_INPUT_POLL_INTERVAL) => {}
+            () = tokio::time::sleep(poll_interval) => {}
         }
     }
 }
@@ -138,16 +182,22 @@ async fn forward_entries(
     control: &GuestProcessControlHandle,
     entries: Vec<ActiveInputEntry>,
     state: &mut ForwardState,
-) {
+) -> ForwardOutcome {
+    let mut outcome = ForwardOutcome::Idle;
     for entry in entries {
         if entry.sequence < state.next_sequence {
             continue;
         }
         if entry.sequence > state.next_sequence {
-            break;
+            return if outcome == ForwardOutcome::Progress {
+                ForwardOutcome::Progress
+            } else {
+                ForwardOutcome::SequenceGap
+            };
         }
         if state.seen_message_ids.contains(&entry.message_id) {
             state.consume_sequence();
+            outcome = ForwardOutcome::Progress;
             continue;
         }
         let payload = ActiveInputPayload::new(&entry.text);
@@ -162,6 +212,7 @@ async fn forward_entries(
                     "failed to serialize active-input payload"
                 );
                 state.consume_sequence();
+                outcome = ForwardOutcome::Progress;
                 continue;
             }
         };
@@ -178,6 +229,7 @@ async fn forward_entries(
                 );
                 state.remember_message_id(entry.message_id);
                 state.consume_sequence();
+                outcome = ForwardOutcome::Progress;
             }
             Err(error) => {
                 let retry = should_retry_control_error(&error);
@@ -189,7 +241,7 @@ async fn forward_entries(
                         error = %error,
                         "active-input forward failed; will retry"
                     );
-                    break;
+                    return ForwardOutcome::RetryPending;
                 } else {
                     warn!(
                         run_id = %run_id,
@@ -200,10 +252,12 @@ async fn forward_entries(
                     );
                     state.remember_message_id(entry.message_id);
                     state.consume_sequence();
+                    outcome = ForwardOutcome::Progress;
                 }
             }
         }
     }
+    outcome
 }
 
 fn should_retry_control_error(error: &std::io::Error) -> bool {
@@ -261,28 +315,85 @@ mod tests {
         }
     }
 
+    #[test]
+    fn poll_cadence_backs_off_idle_outcomes_and_resets_on_activity() {
+        let mut cadence = PollCadence::default();
+
+        assert_eq!(
+            cadence.next_interval_after(ForwardOutcome::Idle),
+            ACTIVE_INPUT_POLL_FAST_INTERVAL
+        );
+        assert_eq!(
+            cadence.next_interval_after(ForwardOutcome::Idle),
+            Duration::from_millis(100)
+        );
+        assert_eq!(
+            cadence.next_interval_after(ForwardOutcome::SequenceGap),
+            Duration::from_millis(200)
+        );
+        assert_eq!(
+            cadence.next_interval_after(ForwardOutcome::Idle),
+            ACTIVE_INPUT_POLL_IDLE_MAX_INTERVAL
+        );
+        assert_eq!(
+            cadence.next_interval_after(ForwardOutcome::Idle),
+            ACTIVE_INPUT_POLL_IDLE_MAX_INTERVAL
+        );
+
+        assert_eq!(
+            cadence.next_interval_after(ForwardOutcome::Progress),
+            ACTIVE_INPUT_POLL_FAST_INTERVAL
+        );
+        assert_eq!(
+            cadence.next_interval_after(ForwardOutcome::Idle),
+            ACTIVE_INPUT_POLL_FAST_INTERVAL
+        );
+        assert_eq!(
+            cadence.next_interval_after(ForwardOutcome::RetryPending),
+            ACTIVE_INPUT_POLL_FAST_INTERVAL
+        );
+        assert_eq!(
+            cadence.next_interval_after(ForwardOutcome::Idle),
+            ACTIVE_INPUT_POLL_FAST_INTERVAL
+        );
+    }
+
+    #[tokio::test]
+    async fn forward_entries_reports_idle_for_empty_entries() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let control = recording_control(Arc::clone(&calls));
+        let mut state = ForwardState::default();
+
+        let outcome = forward_entries(RunId::nil(), &control, Vec::new(), &mut state).await;
+
+        assert_eq!(outcome, ForwardOutcome::Idle);
+        assert!(calls.lock().unwrap().is_empty());
+    }
+
     #[tokio::test]
     async fn forward_entries_waits_for_missing_earlier_sequence() {
         let calls = Arc::new(Mutex::new(Vec::new()));
         let control = recording_control(Arc::clone(&calls));
         let mut state = ForwardState::default();
 
-        forward_entries(
+        let gap_outcome = forward_entries(
             RunId::nil(),
             &control,
             vec![entry(2, "msg-2", "second")],
             &mut state,
         )
         .await;
+        assert_eq!(gap_outcome, ForwardOutcome::SequenceGap);
         assert!(calls.lock().unwrap().is_empty());
 
-        forward_entries(
+        let progress_outcome = forward_entries(
             RunId::nil(),
             &control,
             vec![entry(1, "msg-1", "first"), entry(2, "msg-2", "second")],
             &mut state,
         )
         .await;
+        assert_eq!(progress_outcome, ForwardOutcome::Progress);
         assert_eq!(
             calls.lock().unwrap().as_slice(),
             ["msg-1".to_string(), "msg-2".to_string()]
@@ -295,7 +406,7 @@ mod tests {
         let control = recording_control(Arc::clone(&calls));
         let mut state = ForwardState::default();
 
-        forward_entries(
+        let outcome = forward_entries(
             RunId::nil(),
             &control,
             vec![
@@ -307,6 +418,7 @@ mod tests {
         )
         .await;
 
+        assert_eq!(outcome, ForwardOutcome::Progress);
         assert_eq!(
             calls.lock().unwrap().as_slice(),
             ["msg-dup".to_string(), "msg-3".to_string()]
@@ -328,8 +440,9 @@ mod tests {
             })
             .collect();
 
-        forward_entries(RunId::nil(), &control, entries, &mut state).await;
+        let outcome = forward_entries(RunId::nil(), &control, entries, &mut state).await;
 
+        assert_eq!(outcome, ForwardOutcome::Progress);
         assert_eq!(
             calls.lock().unwrap().len(),
             ACTIVE_INPUT_SEEN_MESSAGE_ID_CAPACITY + 1
@@ -354,10 +467,13 @@ mod tests {
         let mut state = ForwardState::default();
 
         let entries = vec![entry(1, "msg-1", "first"), entry(2, "msg-2", "second")];
-        forward_entries(RunId::nil(), &control, entries.clone(), &mut state).await;
+        let retry_outcome =
+            forward_entries(RunId::nil(), &control, entries.clone(), &mut state).await;
+        assert_eq!(retry_outcome, ForwardOutcome::RetryPending);
         assert_eq!(calls.lock().unwrap().as_slice(), ["msg-1".to_string()]);
 
-        forward_entries(RunId::nil(), &control, entries, &mut state).await;
+        let progress_outcome = forward_entries(RunId::nil(), &control, entries, &mut state).await;
+        assert_eq!(progress_outcome, ForwardOutcome::Progress);
         assert_eq!(
             calls.lock().unwrap().as_slice(),
             [
@@ -376,10 +492,13 @@ mod tests {
         let mut state = ForwardState::default();
 
         let entries = vec![entry(1, "msg-1", "first"), entry(2, "msg-2", "second")];
-        forward_entries(RunId::nil(), &control, entries.clone(), &mut state).await;
+        let retry_outcome =
+            forward_entries(RunId::nil(), &control, entries.clone(), &mut state).await;
+        assert_eq!(retry_outcome, ForwardOutcome::RetryPending);
         assert_eq!(calls.lock().unwrap().as_slice(), ["msg-1".to_string()]);
 
-        forward_entries(RunId::nil(), &control, entries, &mut state).await;
+        let progress_outcome = forward_entries(RunId::nil(), &control, entries, &mut state).await;
+        assert_eq!(progress_outcome, ForwardOutcome::Progress);
         assert_eq!(
             calls.lock().unwrap().as_slice(),
             [
@@ -399,7 +518,7 @@ mod tests {
         let control = recording_control_with_errors(Arc::clone(&calls), errors);
         let mut state = ForwardState::default();
 
-        forward_entries(
+        let outcome = forward_entries(
             RunId::nil(),
             &control,
             vec![entry(1, "msg-1", "first"), entry(2, "msg-2", "second")],
@@ -407,6 +526,7 @@ mod tests {
         )
         .await;
 
+        assert_eq!(outcome, ForwardOutcome::Progress);
         assert_eq!(
             calls.lock().unwrap().as_slice(),
             ["msg-1".to_string(), "msg-2".to_string()]

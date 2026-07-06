@@ -9,9 +9,14 @@ import { and, eq, inArray } from "drizzle-orm";
 
 import { logger } from "../../lib/log";
 import { db$, type ReadonlyDb } from "../external/db";
+import { notFound } from "../../lib/error";
 import { settle } from "../utils";
 import { fetchClaudeCodeSubscriptionMetadata } from "./claude-code-usage.service";
-import { fetchCodexUsageMetadata } from "./codex-usage.service";
+import {
+  consumeCodexRateLimitResetCredit,
+  fetchCodexUsageMetadata,
+  type CodexRateLimitResetCreditOutcome,
+} from "./codex-usage.service";
 import { decryptStoredSecretValue } from "./crypto.utils";
 import { userFeatureSwitchContext } from "./feature-switches.service";
 import type {
@@ -24,15 +29,18 @@ const L = logger("model-provider-subscription-usage.service");
 const CODEX_USAGE_SECRET_NAMES = [
   "CHATGPT_ACCESS_TOKEN",
   "CHATGPT_ACCOUNT_ID",
+  "CHATGPT_ID_TOKEN",
 ] as const;
 const CLAUDE_CODE_OAUTH_TOKEN_SECRET_NAME = "CLAUDE_CODE_OAUTH_TOKEN";
 
 interface SubscriptionMetadata {
+  readonly accountEmail?: string | null;
   readonly workspaceName?: string | null;
   readonly planType?: string | null;
   readonly subscriptionResetPeriod?: string | null;
   readonly subscriptionNextResetAt?: Date | null;
   readonly subscriptionUsage?: SubscriptionUsageMetadata | null;
+  readonly subscriptionResetCredits?: number | null;
 }
 
 type SerializedSubscriptionUsage = NonNullable<
@@ -120,6 +128,7 @@ function withSubscriptionMetadata(
 
   return {
     ...provider,
+    accountEmail: metadata.accountEmail ?? provider.accountEmail,
     workspaceName: metadata.workspaceName ?? provider.workspaceName,
     planType: metadata.planType ?? provider.planType,
     subscriptionResetPeriod:
@@ -128,6 +137,8 @@ function withSubscriptionMetadata(
       metadata.subscriptionNextResetAt?.toISOString() ??
       provider.subscriptionNextResetAt,
     subscriptionUsage: serializeSubscriptionUsage(metadata.subscriptionUsage),
+    subscriptionResetCredits:
+      metadata.subscriptionResetCredits ?? provider.subscriptionResetCredits,
   };
 }
 
@@ -149,6 +160,7 @@ async function refreshCodexProvider(args: {
   });
   const accessToken = secretValues.get("CHATGPT_ACCESS_TOKEN");
   const accountId = secretValues.get("CHATGPT_ACCOUNT_ID");
+  const idToken = secretValues.get("CHATGPT_ID_TOKEN");
   if (!accessToken || !accountId) {
     return args.provider;
   }
@@ -156,6 +168,7 @@ async function refreshCodexProvider(args: {
   const metadata = await fetchCodexUsageMetadata({
     accessToken,
     accountId,
+    idToken,
     signal: args.signal,
   });
 
@@ -262,5 +275,51 @@ export const refreshPersonalModelProviderSubscriptionUsage$ = command(
     return {
       modelProviders: refreshed,
     };
+  },
+);
+
+type NotFoundResponse = ReturnType<typeof notFound>;
+
+export const consumePersonalCodexRateLimitResetCredit$ = command(
+  async (
+    { get },
+    args: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly idempotencyKey: string;
+    },
+    signal: AbortSignal,
+  ): Promise<
+    | {
+        readonly outcome: CodexRateLimitResetCreditOutcome;
+      }
+    | NotFoundResponse
+  > => {
+    const database = get(db$);
+    const featureSwitchContext = await get(
+      userFeatureSwitchContext(args.orgId, args.userId),
+    );
+    signal.throwIfAborted();
+
+    const secretValues = await modelProviderSecretValues({
+      db: database,
+      orgId: args.orgId,
+      userId: args.userId,
+      names: CODEX_USAGE_SECRET_NAMES,
+      featureSwitchContext,
+      signal,
+    });
+    const accessToken = secretValues.get("CHATGPT_ACCESS_TOKEN");
+    const accountId = secretValues.get("CHATGPT_ACCOUNT_ID");
+    if (!accessToken || !accountId) {
+      return notFound("Resource not found");
+    }
+
+    return await consumeCodexRateLimitResetCredit({
+      accessToken,
+      accountId,
+      idempotencyKey: args.idempotencyKey,
+      signal,
+    });
   },
 );

@@ -1,69 +1,39 @@
 import { command, computed } from "ccstate";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { clerk$ } from "../auth.ts";
-import { patchThreadMeta$ } from "../external/idb-thread-meta-store.ts";
 import {
   chatMessagesContract,
   chatThreadsContract,
   type AttachFile,
   type ChatThreadEvent,
   type GenerationTemplateRequest,
-  type ChatThreadListItem,
-  type ModelSelectionRequest,
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import type { OrgModelPoliciesResponse } from "@vm0/api-contracts/contracts/model-providers";
+import type { UserModelPreferenceResponse } from "@vm0/api-contracts/contracts/zero-user-model-preference";
 import { accept } from "../../lib/accept.ts";
 import { nowDate } from "../../lib/time.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
 import {
-  type ChatThread,
   chatThreads$,
-  currentChatAgentId$,
   currentChatThreadId$,
   reloadChatThreads$,
 } from "../agent-chat.ts";
 import { detachedNavigateTo$, searchParams$ } from "../route.ts";
-import {
-  currentLeftThread$,
-  currentRightThread$,
-  loadRightThread$,
-} from "./chat-thread-panes.ts";
+import { loadRightThread$ } from "./chat-thread-panes.ts";
 import {
   clearArtifactSidebarParams,
   clearChatAutomationSidebarParams,
 } from "../zero-page/right-sidebar-search-params.ts";
-import {
-  talkDraft$,
-  type ZeroChatAttachment,
-} from "../zero-page/chat-draft.ts";
+import { talkDraft$ } from "../zero-page/chat-draft.ts";
 import { clearAgentDraftById$ } from "../zero-page/agent-draft.ts";
-import { createChatThreadSignals, ensureDraft$ } from "./create-chat-thread.ts";
-import type { ChatThreadSignals } from "./chat-thread-signals.ts";
-import { createLocalChatThreadDataSource } from "./local-chat-thread-data-source.ts";
-import type { AppendQueuedMessageArgs } from "./chat-thread-data-source.ts";
-import { createPendingChatThread } from "./pending-chat-thread.ts";
 import {
-  ATTACH_ONLY_PLACEHOLDER,
-  isVisualAttachment,
   prepareUserMessageFromDraft$,
   shouldExcludeVisualAttachmentsForModel,
 } from "./resolve-draft-attachments.ts";
 import {
   appendOptimisticChatMessage$,
-  createQueuedOptimisticUserMessagesForThread,
   type OptimisticChatMessageEntry,
 } from "./optimistic-chat-messages.ts";
-import {
-  allPendingChatThreads$,
-  clearMatchingOptimisticChatThread$,
-  optimisticChatThread$,
-  optimisticChatThreadByPane$,
-  registerOptimisticChatThread$,
-  type OptimisticChatPane,
-  type PendingChatThread,
-} from "./optimistic-chat-thread-state.ts";
-import { sidebarChatThreadsExtraThreads$ } from "./sidebar-chat-threads-pagination.ts";
-import { onRejection, toVoid } from "../utils.ts";
 import { resolveModelFirstUserDefaultSelection } from "../zero-page/model-default-selection.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import { userModelPreference$ } from "../external/user-model-preference.ts";
@@ -76,36 +46,15 @@ import {
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import { registerOptimisticChatThreadEvent$ } from "./chat-thread-event-sourcing.ts";
 
-export type { OptimisticChatPane };
-export { optimisticChatThread$ };
+export type NewChatThreadPane = "main" | "sidebar";
 
 const SIDEBAR_PARAM = "sidebar";
 
-const L = logger("OptimisticChat");
+const L = logger("NewChatThread");
 
-/**
- * Persist the (threadId, agentId) pairing into the IDB cache the moment the
- * client mints a new threadId. Lets `agentId$` resolve from cache on the
- * very first render of the new thread page, before chat-threads/:id returns.
- */
-const writeThreadAgentToCache$ = command(
-  async (
-    { get },
-    threadId: string,
-    agentId: string,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    signal.throwIfAborted();
-    const clerk = await get(clerk$);
-    signal.throwIfAborted();
-    const userId = clerk.user?.id;
-    const orgId = clerk.organization?.id;
-    if (!userId || !orgId) {
-      return;
-    }
-    await patchThreadMeta$(userId, orgId, threadId, { agentId }, signal);
-  },
-);
+export const newChatThreadDisabled$ = computed(() => {
+  return false;
+});
 
 interface SendNewThreadMessageRequest {
   agentId: string;
@@ -125,10 +74,6 @@ interface PreparedNewThreadPayload {
   attachFiles: AttachFile[] | undefined;
   attachments: PagedChatMessage["attachFiles"];
   hasTextContent: boolean;
-}
-
-interface SendNewThreadMessagePending extends PendingChatThread {
-  sendResult: Promise<SendNewThreadMessageResult>;
 }
 
 function createNewThreadOptimisticMessageEntry({
@@ -160,7 +105,6 @@ function newThreadSendBody({
   agentId,
   threadId,
   clientMessageId,
-  chatThreadEventId,
   prepared,
   modelSelection,
   codexFastModeEnabled,
@@ -170,9 +114,8 @@ function newThreadSendBody({
   agentId: string;
   threadId: string;
   clientMessageId: string;
-  chatThreadEventId: string;
   prepared: PreparedNewThreadPayload;
-  modelSelection: ModelProviderSelection | null;
+  modelSelection: ModelProviderSelection;
   codexFastModeEnabled: boolean;
   generationTemplate: GenerationTemplateRequest | undefined;
   computerUseHostId?: string | null;
@@ -184,11 +127,9 @@ function newThreadSendBody({
   return {
     agentId,
     prompt: prepared.prompt,
-    clientThreadId: threadId,
-    chatThreadEventId,
+    threadId,
     hasTextContent: prepared.hasTextContent,
     clientMessageId,
-    modelSelection: modelSelectionRequestFromSelection(modelSelection),
     ...(runOptions ? { runOptions } : {}),
     generationTemplate,
     ...(computerUseHostId === undefined ? {} : { computerUseHostId }),
@@ -202,262 +143,127 @@ function codexFastModeSwitchEnabled(
   return switches[FeatureSwitchKey.CodexFastMode] ?? false;
 }
 
-function hasVisualDraftAttachments(
-  attachments: readonly ZeroChatAttachment[],
-): boolean {
-  return attachments.some(isVisualAttachment);
-}
-
-async function appendQueuedMessage(
-  createClient: ZeroClientFactory,
-  threadId: string,
-  append: AppendQueuedMessageArgs,
-  signal: AbortSignal,
-): Promise<void> {
-  if (
-    append.content === null &&
-    (!append.attachments || append.attachments.length === 0)
-  ) {
-    return;
+function resolveNewThreadModelSelection(
+  modelSelection: ModelProviderSelection | null,
+  args: {
+    readonly policies: OrgModelPoliciesResponse | null | undefined;
+    readonly userPreference: UserModelPreferenceResponse | null | undefined;
+  },
+): ModelProviderSelection | null {
+  if (modelSelection) {
+    return modelSelection;
   }
-
-  const client = createClient(chatMessagesContract);
-  await accept(
-    client.send({
-      body: {
-        agentId: append.agentId,
-        prompt: append.content ?? "",
-        threadId,
-        hasTextContent: append.hasTextContent,
-        clientMessageId: append.clientMessageId,
-        modelSelection: append.modelSelection,
-        generationTemplate: append.generationTemplate,
-        ...(append.computerUseHostId === undefined
-          ? {}
-          : { computerUseHostId: append.computerUseHostId }),
-        attachFiles: append.attachments ?? undefined,
-      },
-      fetchOptions: { signal },
-    }),
-    [201],
-  );
-  signal.throwIfAborted();
+  return resolveModelFirstUserDefaultSelection({
+    userPreference: args.userPreference,
+    policies: args.policies,
+  });
 }
 
-function hasTextContentForQueuedReplay(message: PagedChatMessage): boolean {
-  const content = message.content?.trim() ?? "";
-  return content.length > 0 && content !== ATTACH_ONLY_PLACEHOLDER;
-}
-
-function queuedReplayAppendArgs({
-  threadId,
-  agentId,
-  modelSelection,
-  computerUseHostId,
-  entry,
-}: {
-  threadId: string;
-  agentId: string;
-  modelSelection: ModelSelectionRequest | null;
-  computerUseHostId?: string | null;
-  entry: OptimisticChatMessageEntry;
-}): AppendQueuedMessageArgs {
-  return {
-    threadId,
-    agentId,
-    content: entry.message.content,
-    attachments: entry.message.attachFiles ?? null,
-    clientMessageId: entry.message.id,
-    hasTextContent: hasTextContentForQueuedReplay(entry.message),
-    modelSelection,
-    generationTemplate: entry.message.generationTemplate,
-    computerUseHostId,
-  };
-}
-
-async function replayQueuedOptimisticMessages({
-  createClient,
-  threadId,
-  agentId,
-  modelSelection,
-  computerUseHostId,
-  entries,
-  signal,
-}: {
-  createClient: ZeroClientFactory;
-  threadId: string;
-  agentId: string;
-  modelSelection: ModelSelectionRequest | null;
-  computerUseHostId?: string | null;
-  entries: OptimisticChatMessageEntry[];
-  signal: AbortSignal;
-}): Promise<void> {
-  for (const entry of entries) {
+const settleNewThreadSend$ = command(
+  async (
+    { set },
+    args: {
+      readonly clearDraftResult: Promise<void>;
+      readonly createResult: Promise<void>;
+      readonly createClient: ZeroClientFactory;
+      readonly body: ReturnType<typeof newThreadSendBody>;
+    },
+    signal: AbortSignal,
+  ): Promise<SendNewThreadMessageResult> => {
+    await Promise.all([args.clearDraftResult, args.createResult]);
     signal.throwIfAborted();
-    await appendQueuedMessage(
-      createClient,
-      threadId,
-      queuedReplayAppendArgs({
-        threadId,
-        agentId,
-        modelSelection,
-        computerUseHostId,
-        entry,
-      }),
-      signal,
-    );
-  }
-}
 
-const routeMainOptimisticChatThread$ = command(
-  ({ get, set }, pending: PendingChatThread) => {
-    const next = new URLSearchParams(get(searchParams$));
-    if (next.get(SIDEBAR_PARAM) === pending.threadId) {
-      next.delete(SIDEBAR_PARAM);
-    }
-    clearArtifactSidebarParams(next);
-    clearChatAutomationSidebarParams(next);
-    set(detachedNavigateTo$, "/chats/:threadId", {
-      pathParams: { threadId: pending.threadId },
-      searchParams: next,
+    const result = await accept(
+      args.createClient(chatMessagesContract).send({
+        body: args.body,
+        fetchOptions: { signal },
+      }),
+      [201],
+    );
+    signal.throwIfAborted();
+    L.debug("sendNewThreadMessage$ POST chat/messages 201", {
+      threadId: result.body.threadId,
+      runId: result.body.runId,
     });
+    set(reloadChatThreads$);
+    return { threadId: result.body.threadId, runId: result.body.runId };
   },
 );
 
-const routeSidebarOptimisticChatThread$ = command(
+const routeMainChatThread$ = command(({ get, set }, threadId: string) => {
+  const next = new URLSearchParams(get(searchParams$));
+  if (next.get(SIDEBAR_PARAM) === threadId) {
+    next.delete(SIDEBAR_PARAM);
+  }
+  clearArtifactSidebarParams(next);
+  clearChatAutomationSidebarParams(next);
+  set(detachedNavigateTo$, "/chats/:threadId", {
+    pathParams: { threadId },
+    searchParams: next,
+  });
+});
+
+const routeSidebarChatThread$ = command(
   async (
     { get, set },
-    pending: PendingChatThread,
+    threadId: string,
     signal: AbortSignal,
   ): Promise<void> => {
     if (!get(currentChatThreadId$)) {
       return;
     }
-    await set(loadRightThread$, pending.threadId, signal);
+    await set(loadRightThread$, threadId, signal);
   },
 );
 
-const showExistingOptimisticChatThread$ = command(
-  async (
-    { get, set },
-    pending: PendingChatThread,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    if (pending.pane === "main") {
-      if (get(currentChatThreadId$) !== pending.threadId) {
-        set(routeMainOptimisticChatThread$, pending);
-      }
-      return;
-    }
-
-    if (get(searchParams$).get(SIDEBAR_PARAM) !== pending.threadId) {
-      await set(routeSidebarOptimisticChatThread$, pending, signal);
-    }
-  },
-);
-
-const routeOptimisticChatThread$ = command(
-  async ({ get, set }, pending: PendingChatThread, signal: AbortSignal) => {
-    signal.throwIfAborted();
-
-    signal.addEventListener("abort", () => {
-      set(clearMatchingOptimisticChatThread$, pending);
-    });
-    set(registerOptimisticChatThread$, pending);
-
-    if (pending.pane === "main") {
-      set(routeMainOptimisticChatThread$, pending);
-    } else {
-      await set(routeSidebarOptimisticChatThread$, pending, signal);
-    }
-
-    await onRejection(pending.settleResult, () => {
-      set(clearMatchingOptimisticChatThread$, pending);
-    });
-    signal.throwIfAborted();
-
-    if (
-      pending.pane === "sidebar" ||
-      get(currentChatThreadId$) !== pending.threadId
-    ) {
-      set(clearMatchingOptimisticChatThread$, pending);
-    }
-  },
-);
-
-const mintOptimisticPendingThread$ = command(
+const routeChatThread$ = command(
   async (
     { set },
-    args: {
-      threadId: string;
-      agentId: string;
-      pendingRunId?: string;
-      computerUseHostId?: string | null;
+    {
+      pane,
+      threadId,
+    }: {
+      readonly pane: NewChatThreadPane;
+      readonly threadId: string;
     },
     signal: AbortSignal,
-  ): Promise<{
-    createdAt: string;
-    pendingThread: ChatThreadSignals;
-  }> => {
-    L.debug("optimistic thread minted", {
-      threadId: args.threadId,
-      agentId: args.agentId,
-    });
-    await set(writeThreadAgentToCache$, args.threadId, args.agentId, signal);
-    const createdAt = nowDate().toISOString();
-    const dataSource = createLocalChatThreadDataSource({
-      threadData: createPendingChatThread(
-        args.threadId,
-        args.agentId,
-        args.pendingRunId,
-        args.computerUseHostId ?? null,
-      ),
-      messages: [],
-    });
-    const { draft } = set(ensureDraft$, args.threadId);
-    const pendingThread = createChatThreadSignals(
-      args.threadId,
-      draft,
-      dataSource,
-    );
-    return { createdAt, pendingThread };
+  ) => {
+    signal.throwIfAborted();
+
+    if (pane === "main") {
+      set(routeMainChatThread$, threadId);
+    } else {
+      await set(routeSidebarChatThread$, threadId, signal);
+    }
   },
 );
 
-const mintOptimisticPendingThreadWithEvent$ = command(
-  async (
+const mintOptimisticThreadWithEvent$ = command(
+  (
     { set },
     args: {
       readonly threadId: string;
       readonly eventId: string;
       readonly agentId: string;
-      readonly pendingRunId?: string;
-      readonly computerUseHostId?: string | null;
+      readonly selectedModel: string | null;
     },
     signal: AbortSignal,
-  ): Promise<{
-    createdAt: string;
-    pendingThread: ChatThreadSignals;
-  }> => {
-    const result = await set(
-      mintOptimisticPendingThread$,
-      {
-        threadId: args.threadId,
-        agentId: args.agentId,
-        pendingRunId: args.pendingRunId,
-        computerUseHostId: args.computerUseHostId,
-      },
-      signal,
-    );
+  ): void => {
+    signal.throwIfAborted();
+    L.debug("optimistic thread minted", {
+      threadId: args.threadId,
+      agentId: args.agentId,
+    });
+    const createdAt = nowDate().toISOString();
     set(registerOptimisticChatThreadEvent$, {
       id: args.eventId,
       kind: "created",
       chatThreadId: args.threadId,
       agentId: args.agentId,
       title: null,
-      createdAt: result.createdAt,
+      selectedModel: args.selectedModel,
+      createdAt,
     } satisfies ChatThreadEvent);
-    return result;
   },
 );
 
@@ -468,6 +274,7 @@ async function createChatThread(args: {
   readonly title: string | undefined;
   readonly clientThreadId: string;
   readonly eventId: string;
+  readonly modelSelection: ModelProviderSelection;
 }): Promise<void> {
   const client = args.createClient(chatThreadsContract);
   await accept(
@@ -476,6 +283,9 @@ async function createChatThread(args: {
         agentId: args.agentId,
         clientThreadId: args.clientThreadId,
         eventId: args.eventId,
+        modelSelection: modelSelectionRequestFromSelection(
+          args.modelSelection,
+        )!,
         ...(args.title ? { title: args.title } : {}),
       },
       fetchOptions: { signal: args.signal },
@@ -484,24 +294,42 @@ async function createChatThread(args: {
   );
 }
 
-const createNewChatThread$ = command(
+const startNewChatThreadCreate$ = command(
   async (
     { get, set },
     agentId: string,
-    pane: OptimisticChatPane,
     signal: AbortSignal,
-  ): Promise<PendingChatThread> => {
+  ): Promise<{
+    readonly threadId: string;
+    readonly createResult: Promise<void>;
+  }> => {
     const threadId = crypto.randomUUID();
     const eventId = crypto.randomUUID();
-    const { createdAt, pendingThread } = await set(
-      mintOptimisticPendingThreadWithEvent$,
-      { threadId, eventId, agentId },
+    const policies = await get(orgModelPolicies$);
+    signal.throwIfAborted();
+    const userPreference = await get(userModelPreference$);
+    signal.throwIfAborted();
+    const modelSelection = resolveNewThreadModelSelection(null, {
+      policies,
+      userPreference,
+    });
+    if (!modelSelection) {
+      throw new Error("A model selection is required");
+    }
+    await set(
+      mintOptimisticThreadWithEvent$,
+      {
+        threadId,
+        eventId,
+        agentId,
+        selectedModel: modelSelection.selectedModel,
+      },
       signal,
     );
 
     const createClient = get(zeroClient$);
-    L.debug("createNewChatThread$ POST chat-threads start", { threadId });
-    const settleResult = (async (): Promise<void> => {
+    L.debug("startNewChatThreadCreate$ POST chat-threads start", { threadId });
+    const createResult = (async (): Promise<void> => {
       await createChatThread({
         createClient,
         agentId,
@@ -509,213 +337,63 @@ const createNewChatThread$ = command(
         title: undefined,
         clientThreadId: threadId,
         eventId,
+        modelSelection,
       });
-      L.debug("createNewChatThread$ POST chat-threads 201", { threadId });
+      L.debug("startNewChatThreadCreate$ POST chat-threads 201", { threadId });
       signal.throwIfAborted();
     })();
 
-    return {
-      pane,
-      threadId,
-      agentId,
-      createdAt,
-      running: false,
-      pendingThread,
-      settleResult,
-    };
+    return { threadId, createResult };
   },
 );
 
-export const createNewChatThreadOptimistically$ = command(
+export const createNewChatThread$ = command(
   async (
     { get, set },
     agentId: string,
-    pane: OptimisticChatPane,
+    pane: NewChatThreadPane,
     signal: AbortSignal,
   ) => {
     const targetPane =
       pane === "sidebar" && get(currentChatThreadId$) ? "sidebar" : "main";
-    const optimisticThread = get(optimisticChatThreadByPane$)(targetPane);
-    if (optimisticThread) {
-      await set(showExistingOptimisticChatThread$, optimisticThread, signal);
-      return;
-    }
+    const result = await set(startNewChatThreadCreate$, agentId, signal);
 
-    const result = await set(createNewChatThread$, agentId, targetPane, signal);
-
-    await set(routeOptimisticChatThread$, result, signal);
+    await set(
+      routeChatThread$,
+      { pane: targetPane, threadId: result.threadId },
+      signal,
+    );
+    await result.createResult;
   },
 );
 
-function threadToSidebarListItem(thread: ChatThread): ChatThreadListItem {
-  return {
-    id: thread.id,
-    title: thread.title,
-    agent: { id: thread.agentId, avatarUrl: null },
-    createdAt: thread.createdAt ?? thread.lastMessageAt,
-    updatedAt: thread.updatedAt ?? thread.lastMessageAt,
-    running: thread.activeRunIds.length > 0,
-    pinnedAt: thread.pinnedAt ?? null,
-  };
-}
-
-function mergeMissingSidebarThreads(
-  threads: readonly ChatThreadListItem[],
-  missingThreads: readonly ChatThreadListItem[],
-): ChatThreadListItem[] {
-  if (missingThreads.length === 0) {
-    return [...threads];
-  }
-
-  const existingIds = new Set(
-    threads.map((thread) => {
-      return thread.id;
-    }),
-  );
-  const seenMissingIds = new Set<string>();
-  const dedupedMissingThreads = missingThreads.filter((thread) => {
-    if (existingIds.has(thread.id) || seenMissingIds.has(thread.id)) {
-      return false;
-    }
-    seenMissingIds.add(thread.id);
-    return true;
-  });
-  if (dedupedMissingThreads.length === 0) {
-    return [...threads];
-  }
-
-  const missingPinned = dedupedMissingThreads.filter((thread) => {
-    return thread.pinnedAt !== null && thread.pinnedAt !== undefined;
-  });
-  const missingUnpinned = dedupedMissingThreads.filter((thread) => {
-    return thread.pinnedAt === null || thread.pinnedAt === undefined;
-  });
-  const firstUnpinnedIndex = threads.findIndex((thread) => {
-    return thread.pinnedAt === null || thread.pinnedAt === undefined;
-  });
-
-  if (firstUnpinnedIndex === -1) {
-    return [...missingPinned, ...threads, ...missingUnpinned];
-  }
-
-  return [
-    ...missingPinned,
-    ...threads.slice(0, firstUnpinnedIndex),
-    ...missingUnpinned,
-    ...threads.slice(firstUnpinnedIndex),
-  ];
-}
-
-/**
- * Unified sidebar list: server-ordered persisted threads merged with the
- * optimistic-only pending threads for the current agent, deduped by id.
- *
- * Returning a single signal — instead of letting the sidebar read persisted
- * and optimistic separately — guarantees that the optimistic→persisted
- * handoff happens in one ccstate compute. That removes the React render
- * window where two `useLastResolved` subscribers update one after the other
- * and briefly emit two `<ChatThreadItem>` siblings sharing the same `key`.
- *
- * The server orders each pinned/non-pinned segment by lastMessageAt desc and
- * id desc, but the list item contract does not expose lastMessageAt. Preserve
- * the server order for existing rows and insert optimistic rows at the front
- * of their pinned/non-pinned segment. The frontend must not sort this list.
- */
-export const sidebarChatThreads$ = computed(
-  async (get): Promise<ChatThreadListItem[]> => {
-    const persisted = await get(chatThreads$);
-    const extraPersisted = await get(sidebarChatThreadsExtraThreads$);
-    const pending = get(allPendingChatThreads$);
-    const currentAgentId = await get(currentChatAgentId$);
-    if (!currentAgentId) {
-      return [...persisted, ...extraPersisted];
-    }
-
-    const persistedIds = new Set(
-      [...persisted, ...extraPersisted].map((thread) => {
-        return thread.id;
-      }),
-    );
-    const optimisticItems: ChatThreadListItem[] = pending
-      .filter((thread) => {
-        return (
-          thread.agentId === currentAgentId &&
-          !persistedIds.has(thread.threadId)
-        );
-      })
-      .map((thread) => {
-        return {
-          id: thread.threadId,
-          title: null,
-          agent: { id: thread.agentId, avatarUrl: null },
-          createdAt: thread.createdAt,
-          updatedAt: thread.createdAt,
-          running: thread.running,
-        };
-      });
-
-    const mergedThreads = mergeMissingSidebarThreads(
-      [...persisted, ...extraPersisted],
-      optimisticItems,
-    );
-
-    const mergedThreadIds = new Set(
-      mergedThreads.map((thread) => {
-        return thread.id;
-      }),
-    );
-    const activePaneThreads = [
-      get(currentLeftThread$),
-      get(currentRightThread$),
-    ].filter((thread): thread is ChatThreadSignals => {
-      return thread !== null && !mergedThreadIds.has(thread.threadId);
-    });
-
-    if (activePaneThreads.length === 0) {
-      return mergedThreads;
-    }
-
-    const activeItems = (
-      await Promise.all(
-        activePaneThreads.map(async (thread) => {
-          const threadData = await get(thread.threadData$);
-          if (!threadData || threadData.agentId !== currentAgentId) {
-            return null;
-          }
-          return threadToSidebarListItem(threadData);
-        }),
-      )
-    ).filter((thread): thread is ChatThreadListItem => {
-      return thread !== null;
-    });
-
-    return mergeMissingSidebarThreads(mergedThreads, activeItems);
-  },
-);
+export const sidebarChatThreads$ = chatThreads$;
 
 const sendNewThreadMessage$ = command(
   async (
     { get, set },
     request: SendNewThreadMessageRequest,
     signal: AbortSignal,
-  ): Promise<SendNewThreadMessagePending | null> => {
+  ): Promise<{
+    readonly threadId: string;
+    readonly sendResult: Promise<SendNewThreadMessageResult>;
+  } | null> => {
     const { agentId, prompt, modelSelection, generationTemplate } = request;
     const { computerUseHostId } = request;
     const draft = get(talkDraft$);
-    const hasVisualAttachments = hasVisualDraftAttachments(
-      get(draft.attachments$),
+    const policies = await get(orgModelPolicies$);
+    signal.throwIfAborted();
+    const userPreference = await get(userModelPreference$);
+    signal.throwIfAborted();
+    const resolvedModelSelection = resolveNewThreadModelSelection(
+      modelSelection,
+      {
+        policies,
+        userPreference,
+      },
     );
-    let effectiveSelectedModel = modelSelection?.selectedModel;
-    if (!effectiveSelectedModel && hasVisualAttachments) {
-      const policies = await get(orgModelPolicies$);
-      signal.throwIfAborted();
-      const userPreference = await get(userModelPreference$);
-      signal.throwIfAborted();
-      effectiveSelectedModel =
-        resolveModelFirstUserDefaultSelection({
-          userPreference,
-          policies,
-        })?.selectedModel ?? undefined;
+    if (!resolvedModelSelection) {
+      throw new Error("A model selection is required");
     }
     const prepared = await set(
       prepareUserMessageFromDraft$,
@@ -723,7 +401,7 @@ const sendNewThreadMessage$ = command(
       prompt,
       {
         excludeVisualAttachments: shouldExcludeVisualAttachmentsForModel(
-          effectiveSelectedModel,
+          resolvedModelSelection.selectedModel,
         ),
       },
       signal,
@@ -743,85 +421,57 @@ const sendNewThreadMessage$ = command(
         generationTemplate,
       }),
     );
-    const { createdAt, pendingThread } = await set(
-      mintOptimisticPendingThreadWithEvent$,
+    await set(
+      mintOptimisticThreadWithEvent$,
       {
         threadId,
         eventId: chatThreadEventId,
         agentId,
-        pendingRunId: `pending-${threadId}`,
-        computerUseHostId,
+        selectedModel: resolvedModelSelection.selectedModel,
       },
       signal,
     );
     set(draft.clear$);
     const clearDraftResult = set(clearAgentDraftById$, agentId, signal);
     const createClient = get(zeroClient$);
-    const queuedOptimisticMessages$ =
-      createQueuedOptimisticUserMessagesForThread(threadId);
-    const sendResult = (async (): Promise<SendNewThreadMessageResult> => {
-      const [, result] = await Promise.all([
-        clearDraftResult,
-        accept(
-          createClient(chatMessagesContract).send({
-            body: newThreadSendBody({
-              agentId,
-              threadId,
-              clientMessageId,
-              chatThreadEventId,
-              prepared,
-              modelSelection,
-              codexFastModeEnabled: codexFastModeSwitchEnabled(
-                get(featureSwitch$),
-              ),
-              generationTemplate,
-              computerUseHostId,
-            }),
-            fetchOptions: { signal },
-          }),
-          [201],
-        ),
-      ]);
-      signal.throwIfAborted();
-      L.debug("sendNewThreadMessage$ POST chat/messages 201", {
-        threadId: result.body.threadId,
-        runId: result.body.runId,
-      });
-      const queuedMessages = await get(queuedOptimisticMessages$);
-      signal.throwIfAborted();
-      const replayModelSelection = await get(pendingThread.modelSelection$);
-      const replayComputerUseHostId = await get(
-        pendingThread.computerUseHostId$,
-      );
-      signal.throwIfAborted();
-      await replayQueuedOptimisticMessages({
+    L.debug("sendNewThreadMessage$ POST chat-threads start", { threadId });
+    const createResult = (async (): Promise<void> => {
+      await createChatThread({
         createClient,
-        threadId: result.body.threadId,
         agentId,
-        modelSelection:
-          modelSelectionRequestFromSelection(replayModelSelection),
-        computerUseHostId:
-          computerUseHostId === undefined ? undefined : replayComputerUseHostId,
-        entries: queuedMessages,
         signal,
+        title: undefined,
+        clientThreadId: threadId,
+        eventId: chatThreadEventId,
+        modelSelection: resolvedModelSelection,
       });
-      set(reloadChatThreads$);
-      return { threadId: result.body.threadId, runId: result.body.runId };
+      L.debug("sendNewThreadMessage$ POST chat-threads 201", { threadId });
+      signal.throwIfAborted();
     })();
-    return {
-      pane: "main",
-      threadId,
-      agentId,
-      createdAt,
-      running: true,
-      pendingThread,
-      sendResult,
-      settleResult: toVoid(sendResult),
-    };
+    const sendResult = set(
+      settleNewThreadSend$,
+      {
+        clearDraftResult,
+        createResult,
+        createClient,
+        body: newThreadSendBody({
+          agentId,
+          threadId,
+          clientMessageId,
+          prepared,
+          modelSelection: resolvedModelSelection,
+          codexFastModeEnabled: codexFastModeSwitchEnabled(get(featureSwitch$)),
+          generationTemplate,
+          computerUseHostId,
+        }),
+      },
+      signal,
+    );
+    return { threadId, sendResult };
   },
 );
 
-export const sendNewThreadOptimistically$ = command(
+export const sendNewThread$ = command(
   async (
     { set },
     request: SendNewThreadMessageRequest,
@@ -832,6 +482,11 @@ export const sendNewThreadOptimistically$ = command(
       return;
     }
 
-    await set(routeOptimisticChatThread$, result, signal);
+    await set(
+      routeChatThread$,
+      { pane: "main", threadId: result.threadId },
+      signal,
+    );
+    await result.sendResult;
   },
 );

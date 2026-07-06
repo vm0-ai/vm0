@@ -1,7 +1,10 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import type { PersistedAttachment } from "@vm0/api-contracts/contracts/chat-threads";
+import type {
+  ModelSelectionRequest,
+  PersistedAttachment,
+} from "@vm0/api-contracts/contracts/chat-threads";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
   click,
@@ -20,7 +23,7 @@ import {
 const context = testContext();
 
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
-const THREAD_ID = "thread-test-1";
+const THREAD_ID = "b0000000-0000-4000-a000-000000000901";
 const CHAT_PATH = `/chats/${THREAD_ID}`;
 const AGENT_CHAT_PATH = `/agents/${AGENT_ID}/chat`;
 
@@ -29,6 +32,7 @@ interface QueuedMessageCapture {
   hasTextContent?: boolean;
   attachments?: PersistedAttachment[];
   clientMessageId: string;
+  modelSelection?: ModelSelectionRequest | null;
 }
 
 async function startActiveRun(
@@ -87,10 +91,16 @@ describe("chat run queue", () => {
     });
   });
 
-  it("recalls a queued follow-up while an optimistic new thread settles", async () => {
+  it("does not queue follow-ups while an optimistic new thread create is unsettled", async () => {
     const user = userEvent.setup({ delay: null });
     const sendGate = context.mocks.deferred<void>();
-    mockChatLifecycle(context, { sendGate: sendGate.promise });
+    const queuedBodies: QueuedMessageCapture[] = [];
+    mockChatLifecycle(context, {
+      sendGate: sendGate.promise,
+      onQueuedMessageAppend: (body) => {
+        queuedBodies.push(body);
+      },
+    });
 
     detachedSetupPage({ context, path: AGENT_CHAT_PATH });
 
@@ -104,98 +114,17 @@ describe("chat run queue", () => {
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
     });
 
-    await sendQueuedMessage(user, "First queued follow-up");
-    await expectQueuedMessages(["First queued follow-up"]);
-
-    click(screen.getAllByLabelText("Remove queued message")[0]!);
+    await sendQueuedMessage(user, "Blocked follow-up");
 
     await waitFor(() => {
-      expect(screen.getByPlaceholderText(/Type your next message/)).toHaveValue(
-        "First queued follow-up",
-      );
+      expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();
+      expect(queuedBodies).toHaveLength(0);
     });
 
     sendGate.resolve();
 
     await waitFor(() => {
       expect(screen.getByText("First new-thread message")).toBeInTheDocument();
-    });
-  });
-
-  it("keeps optimistic new-thread follow-ups queued after the first send resolves", async () => {
-    const user = userEvent.setup({ delay: null });
-    const sendGate = context.mocks.deferred<void>();
-    const queuedBodies: QueuedMessageCapture[] = [];
-    mockChatLifecycle(context, {
-      sendGate: sendGate.promise,
-      onQueuedMessageAppend: (body) => {
-        queuedBodies.push(body);
-      },
-    });
-    context.mocks.upload.success({
-      id: "upload-optimistic-notes",
-      filename: "notes.txt",
-      contentType: "text/plain",
-      size: 12,
-      url: "https://cdn.vm7.io/artifacts/test/upload-optimistic-notes/notes.txt",
-    });
-
-    detachedSetupPage({ context, path: AGENT_CHAT_PATH });
-
-    const textarea = await waitFor(() => {
-      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
-    });
-    await sendMessageInUI(user, textarea, "Start the optimistic thread");
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("Start the optimistic thread"),
-      ).toBeInTheDocument();
-      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
-    });
-
-    await sendQueuedMessage(user, "Add the launch checklist");
-    const fileInput =
-      document.querySelector<HTMLInputElement>('input[type="file"]');
-    if (!fileInput) {
-      throw new Error("file input not found");
-    }
-    await user.upload(
-      fileInput,
-      new File(["launch notes"], "notes.txt", { type: "text/plain" }),
-    );
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Remove notes.txt")).toBeInTheDocument();
-    });
-
-    await user.click(screen.getByLabelText("Send"));
-
-    await expectQueuedMessages([
-      "Add the launch checklist",
-      "(see attached files)",
-    ]);
-
-    sendGate.resolve();
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("Start the optimistic thread"),
-      ).toBeInTheDocument();
-      expect(queuedBodies).toHaveLength(2);
-      expect(queuedBodies[1]).toMatchObject({
-        content: "(see attached files)",
-        hasTextContent: false,
-        attachments: [
-          {
-            id: "upload-optimistic-notes",
-            filename: "notes.txt",
-            contentType: "text/plain",
-            size: 12,
-            url: "https://cdn.vm7.io/artifacts/test/upload-optimistic-notes/notes.txt",
-          },
-        ],
-      });
     });
   });
 
@@ -236,9 +165,51 @@ describe("chat run queue", () => {
     ]);
   });
 
+  it("omits model selection when queueing a follow-up on an existing thread", async () => {
+    const user = userEvent.setup({ delay: null });
+    const queuedBodies: QueuedMessageCapture[] = [];
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      selectedModel: "claude-sonnet-4-6",
+      chatMessages: [
+        {
+          id: `${THREAD_ID}-active-user`,
+          role: "user",
+          content: "Start the active run",
+          runId: "run-active",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: `${THREAD_ID}-active-assistant`,
+          role: "assistant",
+          content: null,
+          runId: "run-active",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+      ],
+      activeRunIds: ["run-active"],
+      onQueuedMessageAppend: (body) => {
+        queuedBodies.push(body);
+      },
+    });
+
+    detachedSetupPage({ context, path: CHAT_PATH });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+    });
+
+    await sendQueuedMessage(user, "Queued follow-up");
+
+    await waitFor(() => {
+      expect(queuedBodies).toHaveLength(1);
+    });
+    expect(queuedBodies[0]?.modelSelection).toBeUndefined();
+  });
+
   it("queues an attachment-only follow-up during an active run", async () => {
     const user = userEvent.setup({ delay: null });
-    const threadId = "thread-attachment-only-active";
+    const threadId = "b0000000-0000-4000-a000-000000000902";
     let queuedBody: QueuedMessageCapture | null = null;
 
     mockChatLifecycle(context, {

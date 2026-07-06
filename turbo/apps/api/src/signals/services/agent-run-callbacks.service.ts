@@ -110,12 +110,7 @@ export const dispatchProgressCallbacks$ = command(
           );
           return;
         }
-        if (
-          internalKind === "agent" ||
-          internalKind === "github:issues" ||
-          internalKind === "trigger:cron" ||
-          internalKind === "trigger:loop"
-        ) {
+        if (internalKind === "agent" || internalKind === "github:issues") {
           return;
         }
         if (!callback.url) {
