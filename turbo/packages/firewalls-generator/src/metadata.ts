@@ -1,6 +1,8 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { createHash } from "node:crypto";
 
+import { MODEL_PROVIDER_FIREWALL_CONFIGS } from "@vm0/api-contracts/contracts/model-provider-firewalls";
 import type { ConnectorType } from "@vm0/connectors/connectors";
 import type {
   FirewallPermissionDefaultPolicyMetadata,
@@ -15,6 +17,7 @@ import type {
 import type { FirewallExecutionMetadata } from "@vm0/connectors/firewall-metadata/server";
 import type {
   FirewallConfig,
+  Firewall,
   FirewallBaseHostPolicy,
   FirewallPolicy,
   FirewallPolicyValue,
@@ -32,6 +35,7 @@ import {
 } from "./lazy-loader-renderer";
 
 const POLICY_VALUES = ["allow", "deny", "ask"] as const;
+const GENERATED_METADATA_FILE_STEM_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 const DEFAULT_FIREWALL_SECRET_PLACEHOLDER =
   "c0ffee5afe10ca1c0ffee5afe10ca1c0ffee5afe";
 const BASE_URL_VARS_PATTERN = /\$\{\{\s*vars\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/;
@@ -96,6 +100,31 @@ function generatedRoutingDetailModuleSpecifier(
   type: FirewallConnectorType,
 ): string {
   return `./routing-details/${generatedConnectorMetadataFileName(type).replace(/\.ts$/, "")}`;
+}
+
+function generatedRunnerRuntimeDetailModuleSpecifier(name: string): string {
+  return `./runner-runtime-details/${generatedRunnerRuntimeDetailFileName(name).replace(/\.ts$/, "")}`;
+}
+
+function runnerRuntimeDetailFileStem(name: string): string {
+  if (GENERATED_METADATA_FILE_STEM_PATTERN.test(name)) {
+    return name;
+  }
+
+  const sanitized = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-+/g, "-");
+  const base = sanitized.length > 0 ? sanitized : "firewall";
+  const hash = createHash("sha256").update(name).digest("hex").slice(0, 12);
+  const maxPrefixLength = 96 - hash.length - "-".length;
+  const prefix = base.slice(0, maxPrefixLength).replace(/-+$/g, "");
+  return `${prefix.length > 0 ? prefix : "firewall"}-${hash}`;
+}
+
+function generatedRunnerRuntimeDetailFileName(name: string): string {
+  return `${runnerRuntimeDetailFileStem(name)}.generated.ts`;
 }
 
 function replaceGeneratedPath(
@@ -210,6 +239,73 @@ function buildFixedHostOwners(
     }
   }
   return sortedRecord(owners.entries());
+}
+
+interface RunnerRuntimePermissionSource {
+  readonly name: string;
+  readonly rules: readonly string[];
+}
+
+interface RunnerRuntimeApiSource {
+  readonly base: string;
+  readonly hostPolicy?: FirewallBaseHostPolicy;
+  readonly auth: Firewall["apis"][number]["auth"];
+  readonly permissions?: readonly RunnerRuntimePermissionSource[];
+}
+
+interface RunnerRuntimeFirewallSource {
+  readonly name: string;
+  readonly apis: readonly RunnerRuntimeApiSource[];
+}
+
+interface RunnerRuntimeDetail {
+  readonly name: string;
+  readonly fileName: string;
+  readonly moduleSpecifier: string;
+  readonly firewall: Firewall;
+  readonly content: string;
+}
+
+function buildRunnerRuntimeFirewall(
+  firewall: RunnerRuntimeFirewallSource,
+): Firewall {
+  return {
+    name: firewall.name,
+    apis: firewall.apis.map((api) => {
+      return {
+        base: api.base,
+        ...(api.hostPolicy !== undefined ? { hostPolicy: api.hostPolicy } : {}),
+        auth: api.auth,
+        permissions: (api.permissions ?? []).map((permission) => {
+          return {
+            name: permission.name,
+            rules: [...permission.rules],
+          };
+        }),
+      };
+    }),
+  };
+}
+
+function assertUniqueRunnerRuntimeDetails(
+  details: readonly RunnerRuntimeDetail[],
+): void {
+  const names = new Set<string>();
+  const fileNames = new Map<string, string>();
+  for (const detail of details) {
+    if (names.has(detail.name)) {
+      throw new Error(`Duplicate runner runtime firewall name: ${detail.name}`);
+    }
+    names.add(detail.name);
+
+    const previousFileOwner = fileNames.get(detail.fileName);
+    if (previousFileOwner) {
+      throw new Error(
+        `Duplicate runner runtime firewall file name: ${detail.fileName} (${previousFileOwner}, ${detail.name})`,
+      );
+    }
+    fileNames.set(detail.fileName, detail.name);
+  }
 }
 
 function choosePermissionDefault(policy: FirewallPolicy): FirewallPolicyValue {
@@ -573,6 +669,13 @@ export const firewallRoutingMetadata = ${stableJson(metadata)} as const satisfie
 `;
 }
 
+function renderRunnerRuntimeDetailFile(firewall: Firewall): string {
+  return `${generatedHeader()}import type { Firewall } from "../../firewall-types";
+
+export const runnerRuntimeFirewall = ${stableJson(firewall)} as const satisfies Firewall;
+`;
+}
+
 function renderRoutingIndexFile(
   metadata: Record<string, FirewallRoutingIndexMetadata>,
 ): string {
@@ -669,6 +772,67 @@ export async function loadGeneratedFirewallRoutingMetadata(
 `;
 }
 
+function renderRunnerRuntimeLoaderFile(args: {
+  readonly catalogDigest: string;
+  readonly catalogVersion: string;
+  readonly entries: readonly {
+    readonly name: string;
+    readonly moduleSpecifier: string;
+  }[];
+}): string {
+  const loaderEntries = args.entries.map((entry): LazyLoaderEntry => {
+    return {
+      key: entry.name,
+      moduleSpecifier: entry.moduleSpecifier,
+      exportName: "runnerRuntimeFirewall",
+    };
+  });
+
+  return `${generatedHeader()}import type { Firewall } from "../firewall-types";
+
+export const RUNNER_RUNTIME_FIREWALL_CATALOG_DIGEST = ${JSON.stringify(args.catalogDigest)};
+export const RUNNER_RUNTIME_FIREWALL_CATALOG_VERSION = ${JSON.stringify(args.catalogVersion)};
+
+${renderLazyLoaderRecord({
+  constName: "RUNNER_RUNTIME_FIREWALL_LOADERS",
+  recordType: "Record<string, () => Promise<Firewall>>",
+  entries: loaderEntries,
+})}
+
+export function hasGeneratedRunnerRuntimeFirewall(
+  type: string,
+): boolean {
+  return Object.prototype.hasOwnProperty.call(
+    RUNNER_RUNTIME_FIREWALL_LOADERS,
+    type,
+  );
+}
+
+export async function loadGeneratedRunnerRuntimeFirewall(
+  type: string,
+): Promise<Firewall | null> {
+  const load = RUNNER_RUNTIME_FIREWALL_LOADERS[type];
+  if (!load) {
+    return null;
+  }
+  return await load();
+}
+`;
+}
+
+function catalogDigest(runtimeFirewalls: Readonly<Record<string, Firewall>>): {
+  readonly digest: string;
+  readonly version: string;
+} {
+  const hex = createHash("sha256")
+    .update(stableJson(runtimeFirewalls))
+    .digest("hex");
+  return {
+    digest: `sha256:${hex}`,
+    version: `sha256-${hex.slice(0, 12)}`,
+  };
+}
+
 export async function generateFirewallMetadata(): Promise<void> {
   console.error("\n=== firewall metadata ===");
 
@@ -699,8 +863,16 @@ export async function generateFirewallMetadata(): Promise<void> {
     outputDir,
     "server-execution.generated.ts",
   );
+  const runnerRuntimeLoaderFile = path.join(
+    outputDir,
+    "runner-runtime-loader.generated.ts",
+  );
   const permissionDetailsDir = path.join(outputDir, "permission-details");
   const routingDetailsDir = path.join(outputDir, "routing-details");
+  const runnerRuntimeDetailsDir = path.join(
+    outputDir,
+    "runner-runtime-details",
+  );
 
   const { sources, registryOrderedSources, billableTypes } =
     await loadConnectorFirewallSourceSet({
@@ -717,10 +889,12 @@ export async function generateFirewallMetadata(): Promise<void> {
     readonly type: FirewallConnectorType;
     readonly content: string;
   }[] = [];
+  const runnerRuntimeDetails: RunnerRuntimeDetail[] = [];
 
   for (const source of sources) {
     const detail = buildDetailMetadata(source);
     const executionDetail = buildExecutionMetadata(source, billableTypes);
+    const runnerRuntimeFirewall = buildRunnerRuntimeFirewall(source.firewall);
     summaries[source.type] = buildSummaryMetadata(detail);
     executionMetadata[source.type] = executionDetail;
     permissionDetails.push({
@@ -732,7 +906,43 @@ export async function generateFirewallMetadata(): Promise<void> {
       type: source.type,
       content: renderRoutingDetailFile(buildRoutingMetadata(source)),
     });
+    runnerRuntimeDetails.push({
+      name: runnerRuntimeFirewall.name,
+      fileName: generatedRunnerRuntimeDetailFileName(
+        runnerRuntimeFirewall.name,
+      ),
+      moduleSpecifier: generatedRunnerRuntimeDetailModuleSpecifier(
+        runnerRuntimeFirewall.name,
+      ),
+      firewall: runnerRuntimeFirewall,
+      content: renderRunnerRuntimeDetailFile(runnerRuntimeFirewall),
+    });
   }
+  for (const firewall of Object.values(MODEL_PROVIDER_FIREWALL_CONFIGS)) {
+    const runnerRuntimeFirewall = buildRunnerRuntimeFirewall(firewall);
+    runnerRuntimeDetails.push({
+      name: runnerRuntimeFirewall.name,
+      fileName: generatedRunnerRuntimeDetailFileName(
+        runnerRuntimeFirewall.name,
+      ),
+      moduleSpecifier: generatedRunnerRuntimeDetailModuleSpecifier(
+        runnerRuntimeFirewall.name,
+      ),
+      firewall: runnerRuntimeFirewall,
+      content: renderRunnerRuntimeDetailFile(runnerRuntimeFirewall),
+    });
+  }
+  assertUniqueRunnerRuntimeDetails(runnerRuntimeDetails);
+  const runnerRuntimeCatalog = Object.fromEntries(
+    runnerRuntimeDetails
+      .map((detail) => {
+        return [detail.name, detail.firewall] as const;
+      })
+      .sort(([a], [b]) => {
+        return compareStrings(a, b);
+      }),
+  );
+  const runnerRuntimeCatalogDigest = catalogDigest(runnerRuntimeCatalog);
 
   const nextOutputDir = fs.mkdtempSync(path.join(outputDir, ".metadata-"));
   const nextPermissionDetailsDir = path.join(
@@ -740,6 +950,10 @@ export async function generateFirewallMetadata(): Promise<void> {
     "permission-details",
   );
   const nextRoutingDetailsDir = path.join(nextOutputDir, "routing-details");
+  const nextRunnerRuntimeDetailsDir = path.join(
+    nextOutputDir,
+    "runner-runtime-details",
+  );
 
   for (const detail of permissionDetails) {
     writeGeneratedFile(
@@ -756,6 +970,12 @@ export async function generateFirewallMetadata(): Promise<void> {
         nextRoutingDetailsDir,
         generatedConnectorMetadataFileName(detail.type),
       ),
+      detail.content,
+    );
+  }
+  for (const detail of runnerRuntimeDetails) {
+    writeGeneratedFile(
+      path.join(nextRunnerRuntimeDetailsDir, detail.fileName),
       detail.content,
     );
   }
@@ -791,6 +1011,23 @@ export async function generateFirewallMetadata(): Promise<void> {
       }),
     ),
   );
+  writeGeneratedFile(
+    path.join(nextOutputDir, "runner-runtime-loader.generated.ts"),
+    renderRunnerRuntimeLoaderFile({
+      catalogDigest: runnerRuntimeCatalogDigest.digest,
+      catalogVersion: runnerRuntimeCatalogDigest.version,
+      entries: runnerRuntimeDetails
+        .map((detail) => {
+          return {
+            name: detail.name,
+            moduleSpecifier: detail.moduleSpecifier,
+          };
+        })
+        .sort((a, b) => {
+          return compareStrings(a.name, b.name);
+        }),
+    }),
+  );
   const replacements: GeneratedPathReplacement[] = [];
   try {
     replacements.push(
@@ -798,6 +1035,12 @@ export async function generateFirewallMetadata(): Promise<void> {
     );
     replacements.push(
       replaceGeneratedPath(routingDetailsDir, nextRoutingDetailsDir),
+    );
+    replacements.push(
+      replaceGeneratedPath(
+        runnerRuntimeDetailsDir,
+        nextRunnerRuntimeDetailsDir,
+      ),
     );
     replacements.push(
       replaceGeneratedPath(
@@ -833,6 +1076,12 @@ export async function generateFirewallMetadata(): Promise<void> {
       replaceGeneratedPath(
         serverExecutionFile,
         path.join(nextOutputDir, "server-execution.generated.ts"),
+      ),
+    );
+    replacements.push(
+      replaceGeneratedPath(
+        runnerRuntimeLoaderFile,
+        path.join(nextOutputDir, "runner-runtime-loader.generated.ts"),
       ),
     );
   } catch (error) {

@@ -240,6 +240,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ComposerModelPickerPopover]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Use the Popover-based chat composer model picker instead of Radix Select.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ZapierConnector]: {
     maintainer: "yuma@vm0.ai",
     description:
@@ -388,6 +395,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show the full persona-grouped built-in workflow template catalog in the chat composer template picker. Off shows only the General starter template.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.WebsiteTemplates]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Enable the built-in R2-backed website template picker and generation-template flow.",
+    enabled: false,
   },
 };
 

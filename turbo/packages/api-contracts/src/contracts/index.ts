@@ -836,6 +836,7 @@ export {
   runnersPollContract,
   runnersJobClaimContract,
   runnersNetworkPolicyRefreshContract,
+  runnersBuiltinFirewallsResolveContract,
   runnersHeartbeatContract,
   heartbeatBodySchema,
   runnerGroupSchema,
@@ -850,12 +851,14 @@ export {
   CANONICAL_GUEST_HOME_DIR,
   CANONICAL_WORKING_DIR,
   DEFAULT_PROFILE,
+  RUNNER_BUILTIN_FIREWALL_RESOLVE_NAMES_MAX,
   artifactEntrySchema,
   storageManifestSchema,
   resumeSessionSchema,
   type RunnersPollContract,
   type RunnersJobClaimContract,
   type RunnersNetworkPolicyRefreshContract,
+  type RunnersBuiltinFirewallsResolveContract,
   type RunnersHeartbeatContract,
   type Job,
   type ExecutionContext,
@@ -866,6 +869,8 @@ export {
   type ArtifactEntry,
   type StorageManifest,
   type ResumeSession,
+  type RunnerBuiltinFirewallsResolveBody,
+  type RunnerBuiltinFirewallsResolveResponse,
 } from "./runners";
 
 export {
@@ -1770,6 +1775,7 @@ export {
   zeroUploadsContract,
   type ZeroUploadsContract,
   type UploadPrepareResponse,
+  type UploadImportImageResponse,
 } from "./zero-uploads";
 export {
   zeroGoalsContract,

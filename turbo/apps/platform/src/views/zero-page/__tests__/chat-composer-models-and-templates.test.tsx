@@ -1515,9 +1515,8 @@ describe("chat composer models", () => {
 
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
-    await expect(
-      screen.findByRole("combobox", { name: "Default" }),
-    ).resolves.toBeInTheDocument();
+    await screen.findByPlaceholderText(PLACEHOLDER);
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
     expect(
       screen.queryByRole("combobox", { name: "Kimi K2.7 Code" }),
     ).not.toBeInTheDocument();
@@ -1636,6 +1635,43 @@ describe("chat composer models", () => {
       ).toBeInTheDocument();
       expect(screen.queryByLabelText("Use workspace default model")).toBeNull();
     });
+  });
+
+  it("uses the popover model picker behind the feature switch", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockOrgModelRoutes("kimi-k2.7-code");
+    mockAgent();
+
+    detachedSetupPage({
+      context,
+      featureSwitches: {
+        [FeatureSwitchKey.ComposerModelPickerPopover]: true,
+      },
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    const trigger = await findComposerModel("Kimi K2.7 Code");
+    fireEvent.click(trigger);
+
+    await waitFor(() => {
+      const openTrigger = screen.getByRole("combobox", {
+        name: "Kimi K2.7 Code",
+      });
+      expect(openTrigger).toHaveAttribute("aria-expanded", "true");
+      expect(openTrigger).toHaveAttribute("data-state", "open");
+      expect(openTrigger).toHaveClass("data-[state=open]:ring-2");
+    });
+    expect(screen.getByRole("listbox", { name: "Models" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: /Kimi K2\.7 Code/ }),
+    ).toHaveAttribute("aria-selected", "true");
+
+    await user.click(
+      screen.getByRole("option", { name: /Claude Sonnet 4\.6/ }),
+    );
+
+    await expectComposerModel("Claude Sonnet 4.6");
+    expect(screen.queryByRole("listbox", { name: "Models" })).toBeNull();
   });
 
   it("blocks routed model sends until the matching device login is opened", async () => {
@@ -2152,7 +2188,7 @@ describe("chat composer templates", () => {
     }
   });
 
-  it("places the template control immediately after attach", async () => {
+  it("places the template control immediately after upload", async () => {
     mockChatLifecycle(context, { threadId: THREAD_ID });
 
     detachedSetupPage({
@@ -2168,7 +2204,7 @@ describe("chat composer templates", () => {
       const controls = Array.from(
         composer.querySelectorAll(
           [
-            'button[aria-label="Attach"]',
+            'button[aria-label="Upload"]',
             'button[aria-label="Template"]',
             'button[aria-label="Connectors"]',
           ].join(","),
@@ -2177,7 +2213,37 @@ describe("chat composer templates", () => {
         return button.getAttribute("aria-label");
       });
 
-      expect(controls).toStrictEqual(["Attach", "Template", "Connectors"]);
+      expect(controls).toStrictEqual(["Upload", "Template", "Connectors"]);
+    });
+  });
+
+  it("adds upload links to the composer draft", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    await screen.findByPlaceholderText(PLACEHOLDER);
+    const editor = await findComposerEditor();
+    const composer = composerElementFrom(editor);
+
+    await user.click(within(composer).getByTestId("composer-upload"));
+    await expect(
+      screen.findByText("Upload from computer"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByText("Upload from link")).toBeInTheDocument();
+
+    await user.type(
+      screen.getByTestId("composer-upload-link-input"),
+      "https://example.com/image.png",
+    );
+    await user.click(screen.getByTestId("composer-upload-link-add"));
+
+    await waitFor(() => {
+      expect(editor.textContent).toBe("https://example.com/image.png");
     });
   });
 

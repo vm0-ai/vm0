@@ -379,6 +379,8 @@ interface DerivedPersistenceResult {
   readonly status: RunStatus;
   readonly sandboxId?: string;
   readonly runnerJobCreatedAt?: Date;
+  readonly runnerGroup?: string;
+  readonly profile?: string;
 }
 
 type RunnerJobPayload = ReturnType<typeof queuedRunnerJobPayload>;
@@ -442,6 +444,8 @@ type QueuedPersistenceResult =
       readonly status: "queued";
       readonly queueDepth: number;
       readonly telemetryTimestamp: string;
+      readonly runnerGroup: string;
+      readonly profile: string;
     }
   | {
       readonly status: Exclude<RunStatus, "queued">;
@@ -5539,7 +5543,13 @@ function enqueueRunForConcurrency(
             and(eq(agentRuns.id, args.run.id), eq(agentRuns.status, "queued")),
           );
 
-        return { status: "queued" as const, queueDepth, telemetryTimestamp };
+        return {
+          status: "queued" as const,
+          queueDepth,
+          telemetryTimestamp,
+          runnerGroup: payload.runnerGroup,
+          profile: payload.profile,
+        };
       },
     );
 
@@ -6743,6 +6753,7 @@ function completeQueuedRun(input: {
   readonly context: PreparedRunContext;
   readonly run: RunRecord;
   readonly signal: AbortSignal;
+  readonly timing: ApiDispatchTimingCollector;
 }): Computed<Promise<Extract<CreateRunRouteResult, { readonly status: 201 }>>> {
   return computed(
     async (
@@ -6786,6 +6797,23 @@ function completeQueuedRun(input: {
         );
         input.signal.throwIfAborted();
         return failedRunResponse(input.run, enqueueResult.error);
+      }
+      if (enqueueResult.value.status === "queued") {
+        if (!enqueueResult.value.runnerGroup || !enqueueResult.value.profile) {
+          throw new Error("Queued run persistence missing dispatch metadata");
+        }
+        input.timing.flush({
+          runId: input.run.id,
+          runnerGroup: enqueueResult.value.runnerGroup,
+          profile: enqueueResult.value.profile,
+          dispatchPath: "direct",
+          ...(input.args.timingDimensions
+            ? { dimensions: input.args.timingDimensions }
+            : {}),
+          ...(input.args.body.triggerSource
+            ? { triggerSource: input.args.body.triggerSource }
+            : {}),
+        });
       }
       return createdRunResponse(input.run, enqueueResult.value);
     },
@@ -6967,6 +6995,7 @@ function createLegacyBeforeDispatchRun(input: {
           context: input.context,
           run: transactionResult,
           signal: input.signal,
+          timing: input.timing,
         }),
       );
     }

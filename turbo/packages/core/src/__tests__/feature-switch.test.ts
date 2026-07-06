@@ -22,6 +22,7 @@ describe("isFeatureEnabled", () => {
     expect(
       isFeatureEnabled(FeatureSwitchKey.HtmlArtifactCommentEditing, {}),
     ).toBe(false);
+    expect(isFeatureEnabled(FeatureSwitchKey.WebsiteTemplates, {})).toBe(false);
   });
 
   it("should return false for disabled switch with non-matching userId", () => {
@@ -129,6 +130,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.HtmlArtifactCommentEditing]).toBe(
       true,
     );
+    expect(staffOrgStates[FeatureSwitchKey.WebsiteTemplates]).toBe(false);
 
     const otherOrgStates = getAllFeatureStates({
       orgId: "org_nonexistent",
@@ -154,6 +156,7 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.HtmlArtifactCommentEditing]).toBe(
       false,
     );
+    expect(otherOrgStates[FeatureSwitchKey.WebsiteTemplates]).toBe(false);
   });
 
   it("should apply overrides to enable disabled features", () => {

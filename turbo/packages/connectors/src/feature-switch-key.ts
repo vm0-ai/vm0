@@ -42,6 +42,7 @@ export enum FeatureSwitchKey {
   ApiKeys = "apiKeys",
   CodexFrameworkForMinimax = "codexFrameworkForMinimax",
   CodexFastMode = "codexFastMode",
+  ComposerModelPickerPopover = "composerModelPickerPopover",
 
   ZapierConnector = "zapierConnector",
   ChatGithubPrTracking = "chatGithubPrTracking",
@@ -65,4 +66,5 @@ export enum FeatureSwitchKey {
   ImageEditing = "imageEditing",
   PresentationGoogleSlidesUpload = "presentationGoogleSlidesUpload",
   WorkflowTemplateCatalog = "workflowTemplateCatalog",
+  WebsiteTemplates = "websiteTemplates",
 }

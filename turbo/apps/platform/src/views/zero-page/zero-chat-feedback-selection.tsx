@@ -62,6 +62,9 @@ function FeedbackToolbar({
       onOpenAutoFocus={(event) => {
         return event.preventDefault();
       }}
+      onCloseAutoFocus={(event) => {
+        return event.preventDefault();
+      }}
       className="w-auto rounded-xl border-[0.7px] border-[hsl(var(--gray-400))] bg-[hsl(var(--card)/0.85)] p-1 text-foreground shadow-lg"
     >
       <div className="flex items-center gap-0.5">

@@ -174,6 +174,9 @@ export function createBddApi(context: TestContext) {
 
   function acceptAgentStorageWrites(): void {
     context.mocks.s3.send.mockResolvedValue({});
+    context.mocks.s3.getSignedUrl.mockResolvedValue(
+      "https://r2.example.com/storage/archive.tar.gz?sig=bdd",
+    );
   }
 
   return {
