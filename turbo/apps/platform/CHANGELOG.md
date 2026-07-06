@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.561.2](https://github.com/vm0-ai/vm0/compare/app-v0.561.1...app-v0.561.2) (2026-07-06)
+
+
+### Bug Fixes
+
+* give add automation trigger picker a minimum height so it no longer looks squished ([#20331](https://github.com/vm0-ai/vm0/issues/20331)) ([0f68717](https://github.com/vm0-ai/vm0/commit/0f68717f18d54ebb5585d7f0372be544692bf371))
+* **platform:** stop reloading deleted agent so delete shows only success toast ([#20290](https://github.com/vm0-ai/vm0/issues/20290)) ([238e7ab](https://github.com/vm0-ai/vm0/commit/238e7abb695a38ad58d7a0009507afb39b4c0aa4)), closes [#20288](https://github.com/vm0-ai/vm0/issues/20288)
+
 ## [0.561.1](https://github.com/vm0-ai/vm0/compare/app-v0.561.0...app-v0.561.1) (2026-07-06)
 
 
