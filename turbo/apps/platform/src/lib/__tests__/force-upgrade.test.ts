@@ -17,8 +17,8 @@ function jsonResponse(body: unknown, ok = true) {
 
 describe("force upgrade", () => {
   it("builds the Atom force-upgrade URL with the current version", () => {
-    expect(buildForceUpgradeUrl("0.540.0", "https://atom-api.vm6.ai/")).toBe(
-      "https://atom-api.vm6.ai/api/client/force-upgrade?version=0.540.0",
+    expect(buildForceUpgradeUrl("0.540.0", "https://atom.example.test/")).toBe(
+      "https://atom.example.test/api/client/force-upgrade?version=0.540.0",
     );
   });
 
@@ -29,13 +29,13 @@ describe("force upgrade", () => {
 
     await expect(
       shouldForceUpgrade("0.540.0", {
-        apiBase: "https://atom-api.vm6.ai",
+        apiBase: "https://atom.example.test",
         fetcher,
       }),
     ).resolves.toBeTruthy();
 
     expect(fetcher).toHaveBeenCalledWith(
-      "https://atom-api.vm6.ai/api/client/force-upgrade?version=0.540.0",
+      "https://atom.example.test/api/client/force-upgrade?version=0.540.0",
       {
         cache: "no-store",
         credentials: "omit",
@@ -69,9 +69,28 @@ describe("force upgrade", () => {
     }
   });
 
+  it("skips the request when ATOM_URL is not configured", async () => {
+    const previousAtomUrl = import.meta.env.ATOM_URL as string | undefined;
+    vi.stubEnv("ATOM_URL", "");
+    const fetcher = vi.fn(() => {
+      return Promise.resolve(jsonResponse({ forceUpgrade: true }));
+    });
+
+    try {
+      await expect(
+        shouldForceUpgrade("0.540.0", { fetcher }),
+      ).resolves.toBeFalsy();
+
+      expect(fetcher).not.toHaveBeenCalled();
+    } finally {
+      vi.stubEnv("ATOM_URL", previousAtomUrl);
+    }
+  });
+
   it("returns false when Atom does not require a force upgrade", async () => {
     await expect(
       checkForceUpgrade({
+        apiBase: "https://atom.example.test",
         fetcher: vi.fn(() => {
           return Promise.resolve(jsonResponse({ forceUpgrade: false }));
         }),
@@ -83,6 +102,7 @@ describe("force upgrade", () => {
   it("returns true when Atom requires a force upgrade", async () => {
     await expect(
       checkForceUpgrade({
+        apiBase: "https://atom.example.test",
         fetcher: vi.fn(() => {
           return Promise.resolve(jsonResponse({ forceUpgrade: true }));
         }),
@@ -94,6 +114,7 @@ describe("force upgrade", () => {
   it("returns false when the response is not OK", async () => {
     await expect(
       checkForceUpgrade({
+        apiBase: "https://atom.example.test",
         fetcher: vi.fn(() => {
           return Promise.resolve(jsonResponse({ forceUpgrade: true }, false));
         }),
@@ -120,6 +141,7 @@ describe("force upgrade", () => {
   it("returns false when the force-upgrade request fails", async () => {
     await expect(
       checkForceUpgrade({
+        apiBase: "https://atom.example.test",
         fetcher: vi.fn(() => {
           return Promise.reject(new Error("network unavailable"));
         }),

@@ -1,9 +1,7 @@
 import { getBuildVersion } from "./build-info.ts";
 import { settle } from "../signals/utils.ts";
 
-const DEFAULT_FORCE_UPGRADE_API_BASE = "https://atom-api.vm6.ai";
-// eslint-disable-next-line ccstate/no-non-zero-api -- external Atom public endpoint, not a vm0 API contract route
-const FORCE_UPGRADE_PATH = "/api/client/force-upgrade";
+const FORCE_UPGRADE_PATH = "api/client/force-upgrade";
 
 type ForceUpgradeFetch = (
   input: string,
@@ -24,20 +22,23 @@ function trimTrailingSlash(value: string): string {
   return value.endsWith("/") ? value.slice(0, -1) : value;
 }
 
-function resolveForceUpgradeApiBase(): string {
+function normalizeForceUpgradeApiBase(
+  value: string | undefined,
+): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? trimTrailingSlash(trimmed) : null;
+}
+
+function resolveForceUpgradeApiBase(): string | null {
   const configured = import.meta.env.ATOM_URL as string | undefined;
-  const apiBase = configured?.trim() || DEFAULT_FORCE_UPGRADE_API_BASE;
-  return trimTrailingSlash(apiBase);
+  return normalizeForceUpgradeApiBase(configured);
 }
 
 function isForceUpgradeResponse(value: unknown): value is ForceUpgradeResponse {
   return typeof value === "object" && value !== null;
 }
 
-export function buildForceUpgradeUrl(
-  version: string,
-  apiBase = resolveForceUpgradeApiBase(),
-): string {
+export function buildForceUpgradeUrl(version: string, apiBase: string): string {
   const url = new URL(FORCE_UPGRADE_PATH, `${trimTrailingSlash(apiBase)}/`);
   url.searchParams.set("version", version);
   return url.toString();
@@ -48,14 +49,19 @@ export async function shouldForceUpgrade(
   options: Pick<ForceUpgradeCheckOptions, "apiBase" | "fetcher"> = {},
 ): Promise<boolean> {
   const fetcher = options.fetcher ?? window.fetch.bind(window);
-  const response = await fetcher(
-    buildForceUpgradeUrl(version, options.apiBase),
-    {
-      cache: "no-store",
-      credentials: "omit",
-      method: "GET",
-    },
-  );
+  const apiBase =
+    options.apiBase === undefined
+      ? resolveForceUpgradeApiBase()
+      : normalizeForceUpgradeApiBase(options.apiBase);
+  if (!apiBase) {
+    return false;
+  }
+
+  const response = await fetcher(buildForceUpgradeUrl(version, apiBase), {
+    cache: "no-store",
+    credentials: "omit",
+    method: "GET",
+  });
 
   if (!response.ok) {
     return false;
