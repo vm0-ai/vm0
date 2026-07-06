@@ -910,6 +910,25 @@ fn filter_removed_framework_home_storage_uses_instruction_cleanup() {
 }
 
 #[test]
+fn filter_removed_framework_home_artifact_uses_cleanup_path() {
+    let manifest = GuestDownloadManifest {
+        storages: vec![],
+        artifacts: vec![],
+        cleanup_paths: vec![],
+        instruction_cleanups: Vec::new(),
+    };
+    let prev = StorageFingerprints {
+        storages: HashMap::new(),
+        artifacts: HashMap::from([("/home/user/.codex".into(), fp("artifact", "v1"))]),
+    };
+
+    let result = apply_storage_fingerprint_reuse(&manifest, &prev);
+
+    assert_eq!(result.cleanup_paths, ["/home/user/.codex"]);
+    assert!(result.instruction_cleanups.is_empty());
+}
+
+#[test]
 fn filter_changed_artifact_adds_cleanup_path() {
     let manifest = GuestDownloadManifest {
         storages: vec![],

@@ -57,7 +57,7 @@ impl ManifestReuseFilter {
         self.cleanup_paths.push(artifact.mount_path.clone());
     }
 
-    fn record_removed_paths<'a>(
+    fn record_removed_storages<'a>(
         &mut self,
         previous: &HashMap<String, StorageFingerprint>,
         current_paths: impl IntoIterator<Item = &'a str>,
@@ -74,6 +74,19 @@ impl ManifestReuseFilter {
                 } else {
                     self.cleanup_paths.push(prev_path.clone());
                 }
+            }
+        }
+    }
+
+    fn record_removed_artifacts<'a>(
+        &mut self,
+        previous: &HashMap<String, StorageFingerprint>,
+        current_paths: impl IntoIterator<Item = &'a str>,
+    ) {
+        let current_paths: HashSet<&str> = current_paths.into_iter().collect();
+        for prev_path in previous.keys() {
+            if !current_paths.contains(prev_path.as_str()) {
+                self.cleanup_paths.push(prev_path.clone());
             }
         }
     }
@@ -110,7 +123,7 @@ pub(super) fn apply_storage_fingerprint_reuse(
         })
         .collect();
 
-    filter.record_removed_paths(
+    filter.record_removed_storages(
         &prev.storages,
         manifest.storages.iter().map(|s| s.mount_path.as_str()),
     );
@@ -135,7 +148,7 @@ pub(super) fn apply_storage_fingerprint_reuse(
         })
         .collect();
 
-    filter.record_removed_paths(
+    filter.record_removed_artifacts(
         &prev.artifacts,
         manifest.artifacts.iter().map(|a| a.mount_path.as_str()),
     );
