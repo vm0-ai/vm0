@@ -118,7 +118,7 @@ export interface ConnectorTypeWithStatus {
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
 
-type ConnectorConnectLaunchMode = "oauth-auth-code" | "modal";
+type ConnectorConnectLaunchMode = "browser-auth" | "modal";
 type BrowserAuthGrantKind = "auth-code" | "openid-auth";
 
 export type ConnectorStatusAuthMethodDetail = Omit<
@@ -246,7 +246,7 @@ export function getConnectorStatusConnectLaunchMode(
   if (!getOnlyAvailableStatusBrowserAuthMethod(connector)) {
     return "modal";
   }
-  return "oauth-auth-code";
+  return "browser-auth";
 }
 
 export function getAvailableStatusAuthCodeAuthMethod(
