@@ -348,6 +348,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show icon-only manage navigation buttons when the expanded sidebar manage section is collapsed.",
     enabled: false,
   },
+  [FeatureSwitchKey.SidebarThreadListScroll]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Scroll only the chat thread list in the Zero sidebar so pinned agents stay visible.",
+    enabled: false,
+  },
   [FeatureSwitchKey.SidebarSubscriptionUsage]: {
     maintainer: "ethan@vm0.ai",
     description:
