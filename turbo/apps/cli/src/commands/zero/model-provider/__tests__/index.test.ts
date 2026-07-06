@@ -41,7 +41,7 @@ const MODEL_POLICIES_RESPONSE = {
     {
       id: "00000000-0000-4000-8000-000000000003",
       model: "gpt-5.5",
-      modelLabel: "GPT-5.5",
+      modelLabel: "GPT 5.5",
       isDefault: false,
       defaultProviderType: "codex-oauth-token",
       credentialScope: "member",
@@ -95,7 +95,7 @@ describe("zero model-provider command", () => {
     expect(logCalls).toContain("provider: built-in");
     expect(logCalls).toContain("GPT-5.4");
     expect(logCalls).toContain("provider: api key");
-    expect(logCalls).toContain("GPT-5.5");
+    expect(logCalls).toContain("GPT 5.5");
     expect(logCalls).toContain("provider: subscription");
     expect(logCalls).toContain("No personal subscription connected");
   });

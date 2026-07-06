@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.224.2](https://github.com/vm0-ai/vm0/compare/cli-v9.224.1...cli-v9.224.2) (2026-07-06)
+
+
+### Refactoring
+
+* retire the workflow automation feature switch as always-on ([#20357](https://github.com/vm0-ai/vm0/issues/20357)) ([840b415](https://github.com/vm0-ai/vm0/commit/840b41551ab88a25aeeec08f01a18ccd6a5b36ff))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.157.0
+    * @vm0/connectors bumped to 1.140.0
+    * @vm0/core bumped to 8.405.0
+
 ## [9.224.1](https://github.com/vm0-ai/vm0/compare/cli-v9.224.0...cli-v9.224.1) (2026-07-06)
 
 

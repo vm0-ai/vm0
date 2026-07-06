@@ -397,16 +397,16 @@ describe("organization model providers settings", () => {
     click(buttonByText("Add model"));
     const dialog = screen.getByRole("dialog", { name: "Add model" });
     click(within(dialog).getByRole("combobox"));
-    click(await screen.findByRole("option", { name: "GPT-5.5" }));
+    click(await screen.findByRole("option", { name: "GPT 5.5" }));
     click(screen.getByRole("radio", { name: /Codex subscription/u }));
     click(buttonByText("Add model", dialog));
 
     const codexRow = await screen.findByTestId("org-model-policy-row-gpt-5.5");
-    expect(within(codexRow).getByText("GPT-5.5")).toBeInTheDocument();
+    expect(within(codexRow).getByText("GPT 5.5")).toBeInTheDocument();
     expect(within(codexRow).getByText("ChatGPT (Codex)")).toBeInTheDocument();
     expect(
       within(screen.getByTestId("default-model-row")).getByRole("combobox"),
-    ).toHaveTextContent("GPT-5.5");
+    ).toHaveTextContent("GPT 5.5");
   });
 
   it("opens compare plans when selecting a limited-free-1 default Pro model", async () => {
@@ -458,7 +458,7 @@ describe("organization model providers settings", () => {
     click(within(dialog).getByRole("combobox"));
 
     const gptOption = await screen.findByRole("option", {
-      name: /GPT-5\.5\s+Pro/u,
+      name: /GPT 5\.5\s+Pro/u,
     });
     expect(gptOption).toBeInTheDocument();
     click(gptOption);
