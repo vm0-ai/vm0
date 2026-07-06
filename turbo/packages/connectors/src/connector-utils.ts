@@ -793,6 +793,18 @@ export function getConnectorRuntimeBindingSecretName(
     : undefined;
 }
 
+export function getConnectorRuntimeBindingPlatformSecretName(
+  metadata: ConnectorAuthMethodRuntimeMetadata,
+  envName: string,
+): ConnectorPlatformSecretName | undefined {
+  const binding = metadata.runtimeBindings.find((entry) => {
+    return entry.envName === envName && entry.source.kind === "platform-secret";
+  });
+  return binding?.source.kind === "platform-secret"
+    ? binding.source.name
+    : undefined;
+}
+
 export function connectorRefreshMetadataHasRefreshableSecret(
   metadata: ConnectorAuthMethodAccessMetadata,
   secretName: string,
