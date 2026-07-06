@@ -443,6 +443,33 @@ fn bitmap_save_uses_documented_file_layout() {
 }
 
 #[test]
+fn bitmap_save_preserves_large_file_layout() {
+    const WORDS_PER_64K_PAYLOAD: usize = 64 * 1024 / 8;
+    const WORDS: usize = WORDS_PER_64K_PAYLOAD + 2;
+    const BLOCKS: usize = WORDS * 64;
+
+    let mut dirty: BitVec = bitvec![0; BLOCKS];
+    dirty.set(0, true);
+    dirty.set(WORDS_PER_64K_PAYLOAD * 64, true);
+    dirty.set(BLOCKS - 1, true);
+
+    let bitmap_file = NamedTempFile::new().unwrap();
+    bitmap::save_bitmap(&dirty, bitmap_file.path()).unwrap();
+
+    let data = std::fs::read(bitmap_file.path()).unwrap();
+    assert_eq!(data.len(), 8 + WORDS * 8);
+    assert_eq!(&data[..8], &(BLOCKS as u64).to_le_bytes());
+    assert_eq!(bitmap_word(&data, 0), 1);
+    assert_eq!(bitmap_word(&data, WORDS_PER_64K_PAYLOAD), 1);
+    assert_eq!(bitmap_word(&data, WORDS - 1), 1u64 << 63);
+}
+
+fn bitmap_word(data: &[u8], word_index: usize) -> u64 {
+    let start = 8 + word_index * 8;
+    u64::from_le_bytes(data[start..start + 8].try_into().unwrap())
+}
+
+#[test]
 fn bitmap_load_wrong_block_count_errors() {
     let base = create_base_image(&vec![0x00; 8192]);
     let cow_file = NamedTempFile::new().unwrap();
