@@ -105,6 +105,7 @@ mod tests {
             .join("runtime")
             .join("storage-instructions")
             .join("0");
+        let extract_parent = extract_path.parent().unwrap().to_path_buf();
         let missing_archive = dir.path().join("missing.tar.gz");
         let manifest = json!({
             "storages": [{
@@ -119,6 +120,7 @@ mod tests {
 
         assert!(!success);
         assert!(!extract_path.exists());
+        assert!(!extract_parent.exists());
     }
 
     #[test]
@@ -129,6 +131,7 @@ mod tests {
             .join("runtime")
             .join("storage-instructions")
             .join("0");
+        let first_extract_parent = first_extract_path.parent().unwrap().to_path_buf();
         let blocker = dir.path().join("blocker");
         let blocked_extract_path = blocker.join("storage-instructions").join("1");
         std::fs::write(&blocker, "not a directory").unwrap();
@@ -154,5 +157,6 @@ mod tests {
 
         assert!(!success);
         assert!(!first_extract_path.exists());
+        assert!(!first_extract_parent.exists());
     }
 }

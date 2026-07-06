@@ -4,6 +4,8 @@ use std::fs;
 use std::io;
 use std::path::Path;
 
+const STAGED_INSTRUCTIONS_DIR_NAME: &str = "storage-instructions";
+
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct InstructionNormalization {
     source_path: String,
@@ -90,6 +92,7 @@ pub(crate) fn normalize_instruction_files(entries: &[InstructionNormalization]) 
         let raw_target_filename = entry.target_filename.as_str();
         let Some(target_filename) = InstructionFilename::parse(raw_target_filename) else {
             log_warn!(LOG_TAG, "Skipping invalid instructions target filename");
+            cleanup_staged_instruction_source(entry);
             continue;
         };
 
@@ -328,12 +331,43 @@ fn cleanup_staged_instruction_source(entry: &InstructionNormalization) {
     let Some(path) = entry.cleanup_source_path.as_deref() else {
         return;
     };
+    let path = Path::new(path);
     match fs::remove_dir_all(path) {
-        Ok(_) => log_info!(LOG_TAG, "Removed staged instructions directory"),
-        Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+        Ok(_) => {
+            log_info!(LOG_TAG, "Removed staged instructions directory");
+            cleanup_empty_staged_instruction_parent(path);
+        }
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {
+            cleanup_empty_staged_instruction_parent(path);
+        }
         Err(e) => log_warn!(
             LOG_TAG,
             "Failed to remove staged instructions directory: {}",
+            e
+        ),
+    }
+}
+
+fn cleanup_empty_staged_instruction_parent(path: &Path) {
+    let Some(parent) = path.parent() else {
+        return;
+    };
+    if parent.file_name().and_then(|name| name.to_str()) != Some(STAGED_INSTRUCTIONS_DIR_NAME) {
+        return;
+    }
+    match fs::remove_dir(parent) {
+        Ok(_) => log_info!(
+            LOG_TAG,
+            "Removed empty staged instructions parent directory"
+        ),
+        Err(e)
+            if matches!(
+                e.kind(),
+                io::ErrorKind::NotFound | io::ErrorKind::DirectoryNotEmpty
+            ) => {}
+        Err(e) => log_warn!(
+            LOG_TAG,
+            "Failed to remove empty staged instructions parent directory: {}",
             e
         ),
     }
@@ -685,6 +719,25 @@ mod tests {
             staged.to_string_lossy().into(),
             final_home.to_string_lossy().into(),
             "AGENTS.md".into(),
+        )]);
+
+        assert!(!final_home.join("AGENTS.md").exists());
+        assert!(!staged.exists());
+    }
+
+    #[test]
+    fn normalize_instruction_files_removes_staged_source_for_invalid_target() {
+        disable_system_log();
+        let dir = tempfile::tempdir().unwrap();
+        let staged = dir.path().join("staged");
+        let final_home = dir.path().join(".codex");
+        fs::create_dir_all(&staged).unwrap();
+        fs::write(staged.join("AGENTS.md"), "new instructions").unwrap();
+
+        normalize_instruction_files(&[InstructionNormalization::staged(
+            staged.to_string_lossy().into(),
+            final_home.to_string_lossy().into(),
+            "../outside.md".into(),
         )]);
 
         assert!(!final_home.join("AGENTS.md").exists());
