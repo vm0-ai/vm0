@@ -2,6 +2,7 @@ import { useGet, useLastResolved, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import {
   getFeatureSwitchMetadata,
+  getUserOverridableFeatureSwitchKeys,
   type FeatureSwitchMetadata,
 } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
@@ -76,7 +77,7 @@ function sortedFeatureSwitchKeys(params: {
   readonly features: FeatureSwitchStates;
   readonly metadata: FeatureSwitchMetadataByKey;
 }): FeatureSwitchKey[] {
-  return Object.values(FeatureSwitchKey).sort((a, b) => {
+  return [...getUserOverridableFeatureSwitchKeys()].sort((a, b) => {
     return compareFeatureSwitches({ a, b, ...params });
   });
 }

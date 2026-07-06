@@ -1,5 +1,8 @@
 import { command, computed, type Computed } from "ccstate";
-import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
+import {
+  filterUserOverridableFeatureSwitchOverrides,
+  type FeatureSwitchContext,
+} from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { and, eq } from "drizzle-orm";
@@ -23,10 +26,12 @@ function splitFeatureSwitchesByScope(switches: Record<string, boolean>): {
   readonly userSwitches: Record<string, boolean>;
   readonly orgSwitches: Record<string, boolean>;
 } {
+  const userOverridableSwitches =
+    filterUserOverridableFeatureSwitchOverrides(switches);
   const userSwitches: Record<string, boolean> = {};
   const orgSwitches: Record<string, boolean> = {};
 
-  for (const [key, value] of Object.entries(switches)) {
+  for (const [key, value] of Object.entries(userOverridableSwitches)) {
     if (isOrgScopedFeatureSwitchKey(key)) {
       orgSwitches[key] = value;
     } else {
@@ -78,7 +83,7 @@ async function loadFeatureSwitchOverrideRow(
     )
     .limit(1);
 
-  return row?.switches ?? {};
+  return filterUserOverridableFeatureSwitchOverrides(row?.switches ?? {});
 }
 
 async function loadUserFeatureSwitchOverrides(
@@ -193,7 +198,10 @@ async function upsertFeatureSwitches(
 
   const existing =
     (existingRow?.switches as Record<string, boolean> | undefined) ?? {};
-  const merged: Record<string, boolean> = { ...existing, ...switches };
+  const merged: Record<string, boolean> = {
+    ...filterUserOverridableFeatureSwitchOverrides(existing),
+    ...filterUserOverridableFeatureSwitchOverrides(switches),
+  };
   const now = nowDate();
 
   await writeDb
