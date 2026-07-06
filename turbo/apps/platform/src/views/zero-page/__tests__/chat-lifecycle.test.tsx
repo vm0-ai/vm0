@@ -1288,29 +1288,25 @@ describe("chat lifecycle", () => {
       },
     });
 
-    try {
-      detachedSetupPage({ context, path: AGENT_CHAT_PATH });
+    detachedSetupPage({ context, path: AGENT_CHAT_PATH });
 
-      const textarea = await waitFor(() => {
-        return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
-      });
-      await sendMessageInUI(user, textarea, prompt);
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
+    await sendMessageInUI(user, textarea, prompt);
 
-      await waitFor(() => {
-        expect(clientThreadId).toBeDefined();
-      });
-      if (!clientThreadId) {
-        throw new Error("Expected client thread id to be captured");
-      }
-
-      await expect(
-        context.store.get(eventDrivenChatThread(clientThreadId)),
-      ).resolves.toMatchObject({
-        selectedModel: "claude-sonnet-4-6",
-      });
-    } finally {
-      sendGate.resolve();
+    await waitFor(() => {
+      expect(clientThreadId).toBeDefined();
+    });
+    if (!clientThreadId) {
+      throw new Error("Expected client thread id to be captured");
     }
+
+    await expect(
+      context.store.get(eventDrivenChatThread(clientThreadId)),
+    ).resolves.toMatchObject({
+      selectedModel: "claude-sonnet-4-6",
+    });
   });
 
   it("renders the optimistic new chat message without skeleton when the initial message list is blocked", async () => {
@@ -1323,21 +1319,17 @@ describe("chat lifecycle", () => {
       return respond(200, { messages: [], hasHistoryBefore: false });
     });
 
-    try {
-      detachedSetupPage({ context, path: AGENT_CHAT_PATH });
+    detachedSetupPage({ context, path: AGENT_CHAT_PATH });
 
-      const textarea = await waitFor(() => {
-        return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
-      });
-      await sendMessageInUI(user, textarea, prompt);
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
+    await sendMessageInUI(user, textarea, prompt);
 
-      await waitFor(() => {
-        expect(screen.getByText(prompt)).toBeInTheDocument();
-        expect(document.querySelector("[data-chat-skeleton]")).toBeNull();
-      });
-    } finally {
-      initialMessageList.resolve();
-    }
+    await waitFor(() => {
+      expect(screen.getByText(prompt)).toBeInTheDocument();
+      expect(document.querySelector("[data-chat-skeleton]")).toBeNull();
+    });
   });
 
   it("renders completed markdown and returns the composer to send mode", async () => {
