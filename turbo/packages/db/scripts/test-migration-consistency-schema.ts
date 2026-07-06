@@ -985,7 +985,7 @@ async function validateLatestSnapshotAccuracy(): Promise<void> {
 
   const latestIdx = latestEntry.idx;
   const customConnectorBridgeEntry = entries.find((entry) => {
-    return entry.tag === "0551_backfill_custom_connector_values";
+    return entry.tag === "0553_backfill_custom_connector_values";
   });
   if (!customConnectorBridgeEntry) {
     throw new Error("Missing custom connector bridge migration entry");
