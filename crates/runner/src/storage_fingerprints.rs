@@ -72,6 +72,15 @@ impl StorageFingerprint {
             StorageFingerprintKind::Tainted => false,
         }
     }
+
+    pub(crate) fn vas_storage_name(&self) -> Option<&str> {
+        match &self.kind {
+            StorageFingerprintKind::Known {
+                vas_storage_name, ..
+            } => Some(vas_storage_name.as_str()),
+            StorageFingerprintKind::Tainted => None,
+        }
+    }
 }
 
 impl Serialize for StorageFingerprint {

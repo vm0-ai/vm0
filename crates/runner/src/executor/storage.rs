@@ -18,6 +18,7 @@ use crate::types::{
 const STORAGE_MANIFEST_CLEANUP_TIMEOUT: Duration = Duration::from_secs(5);
 const CODEX_FRAMEWORK_HOME: &str = "/home/user/.codex";
 const CLAUDE_FRAMEWORK_HOME: &str = "/home/user/.claude";
+const AGENT_INSTRUCTIONS_STORAGE_NAME_PREFIX: &str = "agent-instructions@";
 
 #[derive(Default)]
 struct ManifestReuseFilter {
@@ -63,9 +64,9 @@ impl ManifestReuseFilter {
         current_paths: impl IntoIterator<Item = &'a str>,
     ) {
         let current_paths: HashSet<&str> = current_paths.into_iter().collect();
-        for prev_path in previous.keys() {
+        for (prev_path, previous_fingerprint) in previous {
             if !current_paths.contains(prev_path.as_str()) {
-                if is_framework_home_path(prev_path) {
+                if is_removed_framework_home_instruction(prev_path, previous_fingerprint) {
                     self.instruction_cleanups
                         .push(GuestDownloadInstructionCleanupEntry {
                             mount_path: prev_path.clone(),
@@ -198,6 +199,13 @@ pub(super) fn guest_download_has_work(manifest: &GuestDownloadManifest) -> bool 
 
 fn is_framework_home_path(path: &str) -> bool {
     matches!(path, CODEX_FRAMEWORK_HOME | CLAUDE_FRAMEWORK_HOME)
+}
+
+fn is_removed_framework_home_instruction(path: &str, fingerprint: &StorageFingerprint) -> bool {
+    is_framework_home_path(path)
+        && fingerprint
+            .vas_storage_name()
+            .is_some_and(|name| name.starts_with(AGENT_INSTRUCTIONS_STORAGE_NAME_PREFIX))
 }
 
 /// Download storage volumes into the guest.

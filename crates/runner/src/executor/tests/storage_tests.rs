@@ -888,7 +888,10 @@ fn filter_removed_framework_home_storage_uses_instruction_cleanup() {
     };
     let prev = StorageFingerprints {
         storages: HashMap::from([
-            ("/home/user/.claude".into(), fp("instructions", "v1")),
+            (
+                "/home/user/.claude".into(),
+                fp("agent-instructions@assistant", "v1"),
+            ),
             (
                 "/home/user/.claude/skills/foo".into(),
                 fp("skill-foo", "v1"),
@@ -907,6 +910,25 @@ fn filter_removed_framework_home_storage_uses_instruction_cleanup() {
     );
     assert_eq!(result.instruction_cleanups[0].target_filename, None);
     assert!(result.storages[0].cached);
+}
+
+#[test]
+fn filter_removed_framework_home_non_instruction_storage_uses_cleanup_path() {
+    let manifest = GuestDownloadManifest {
+        storages: vec![],
+        artifacts: vec![],
+        cleanup_paths: vec![],
+        instruction_cleanups: Vec::new(),
+    };
+    let prev = StorageFingerprints {
+        storages: HashMap::from([("/home/user/.codex".into(), fp("custom-config", "v1"))]),
+        artifacts: HashMap::new(),
+    };
+
+    let result = apply_storage_fingerprint_reuse(&manifest, &prev);
+
+    assert_eq!(result.cleanup_paths, ["/home/user/.codex"]);
+    assert!(result.instruction_cleanups.is_empty());
 }
 
 #[test]
