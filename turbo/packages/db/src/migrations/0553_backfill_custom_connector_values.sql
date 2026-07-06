@@ -25,11 +25,9 @@ INNER JOIN "org_custom_connectors" connectors
 ON CONFLICT ("connector_id", "user_id", "kind", "key") DO NOTHING;
 --> statement-breakpoint
 
--- Temporary rollout bridge: old API instances may still write the legacy table,
--- while new API instances use org_custom_connector_values as the runtime source
--- of truth. Sync legacy writes forward to values. Do not sync values backward:
--- current main already reads values, and bidirectional row triggers can deadlock
--- when old and new API instances write the same connector concurrently.
+-- Temporary deployment bridge: migrations can run before every old API instance
+-- stops serving traffic, so old API writes to the legacy table must still become
+-- visible to the new values-only runtime. Do not sync values backward.
 CREATE OR REPLACE FUNCTION sync_org_custom_connector_secret_to_value()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -44,7 +42,7 @@ BEGIN
 
 	IF TG_OP = 'DELETE' THEN
 		-- Only remove the value row if it is still the legacy-synced copy.
-		-- New API instances write values directly during rollout.
+		-- New API instances write values directly during deployment.
 		DELETE FROM "org_custom_connector_values"
 		WHERE "connector_id" = OLD."connector_id"
 			AND "org_id" = OLD."org_id"
