@@ -513,6 +513,30 @@ describe("serializeError via logging", () => {
     });
   });
 
+  it("bounds the total serialized error graph", () => {
+    const log = logger("wide-error-graph-test");
+    const err = new Error("wide") as Error & Record<string, unknown>;
+    const payload: Record<string, unknown> = {};
+    for (let childIndex = 0; childIndex < 64; childIndex += 1) {
+      const child: Record<string, unknown> = {};
+      for (let fieldIndex = 0; fieldIndex < 64; fieldIndex += 1) {
+        child[`field${fieldIndex}`] = `${childIndex}:${fieldIndex}`;
+      }
+      payload[`child${childIndex}`] = child;
+    }
+    err.payload = payload;
+
+    log.error(err);
+
+    const fields = axiomLogging.error.mock.calls[0]?.[1] as
+      | Record<string, unknown>
+      | undefined;
+    const serializedError = fields?.error as Record<string, unknown>;
+    const serialized = JSON.stringify(serializedError);
+    expect(serialized).toContain("[Truncated]");
+    expect(serialized.length).toBeLessThan(100_000);
+  });
+
   it("surfaces custom enumerable properties on Error", () => {
     const log = logger("custom-err");
     const err = new Error("custom") as Error & Record<string, unknown>;

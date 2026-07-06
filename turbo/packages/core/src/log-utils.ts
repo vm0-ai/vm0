@@ -1,9 +1,15 @@
 const SERIALIZED_VALUE_MAX_DEPTH = 32;
 const SERIALIZED_OBJECT_MAX_ENTRIES = 64;
+const SERIALIZED_VALUE_MAX_NODES = 1024;
 const SERIALIZED_STRING_MAX_LENGTH = 4096;
 const CIRCULAR_MARKER = "[Circular]";
 const TRUNCATED_MARKER = "[Truncated]";
 const UNREADABLE_MARKER = "[Unreadable]";
+
+interface SerializationState {
+  readonly seen: WeakSet<object>;
+  nodes: number;
+}
 
 interface BoundedEntries {
   readonly entries: readonly [string, unknown][];
@@ -53,7 +59,7 @@ export function formatMessage(args: unknown[]): string {
  */
 function serializeErrorWithSeen(
   err: Error,
-  seen: WeakSet<object>,
+  state: SerializationState,
   depth: number,
 ): Record<string, unknown> {
   const name = safeReadValue(() => {
@@ -69,7 +75,7 @@ function serializeErrorWithSeen(
         ? serializeStringValue(message)
         : UNREADABLE_MARKER,
   };
-  seen.add(err);
+  state.seen.add(err);
   const stack = safeReadValue(() => {
     return err.stack;
   });
@@ -79,7 +85,7 @@ function serializeErrorWithSeen(
       "stack",
       typeof stack === "string"
         ? serializeStringValue(stack)
-        : serializeErrorValue(stack, seen, depth + 1),
+        : serializeErrorValue(stack, state, depth + 1),
     );
   }
   const cause = safeReadValue(() => {
@@ -89,7 +95,7 @@ function serializeErrorWithSeen(
     setSerializedField(
       serialized,
       "cause",
-      serializeErrorValue(cause, seen, depth + 1),
+      serializeErrorValue(cause, state, depth + 1),
     );
   }
   const result = safeOwnEnumerableEntries(err);
@@ -102,7 +108,7 @@ function serializeErrorWithSeen(
       setSerializedField(
         serialized,
         key,
-        serializeErrorValue(value, seen, depth + 1),
+        serializeErrorValue(value, state, depth + 1),
       );
     }
   }
@@ -113,11 +119,12 @@ function serializeErrorWithSeen(
 }
 
 export function serializeError(err: unknown): Record<string, unknown> {
-  const seen = new WeakSet<object>();
+  const state: SerializationState = { seen: new WeakSet<object>(), nodes: 0 };
   if (err instanceof Error) {
-    return serializeErrorWithSeen(err, seen, 0);
+    reserveSerializedNode(state);
+    return serializeErrorWithSeen(err, state, 0);
   }
-  return { value: serializeErrorValue(err, seen, 0) };
+  return { value: serializeErrorValue(err, state, 0) };
 }
 
 function safeReadValue(read: () => unknown): unknown {
@@ -207,7 +214,7 @@ function serializeDateValue(value: Date): unknown {
 
 function serializeArrayValue(
   value: readonly unknown[],
-  seen: WeakSet<object>,
+  state: SerializationState,
   depth: number,
 ): unknown {
   const result = safeOwnEnumerableEntries(value);
@@ -216,7 +223,7 @@ function serializeArrayValue(
   }
   const items = result.entries.map((item) => {
     const [, child] = item;
-    return serializeErrorValue(child, seen, depth + 1);
+    return serializeErrorValue(child, state, depth + 1);
   });
   if (result.truncated) {
     items.push(TRUNCATED_MARKER);
@@ -226,7 +233,7 @@ function serializeArrayValue(
 
 function serializePlainObjectValue(
   value: object,
-  seen: WeakSet<object>,
+  state: SerializationState,
   depth: number,
 ): unknown {
   const result = safeOwnEnumerableEntries(value);
@@ -238,7 +245,7 @@ function serializePlainObjectValue(
     setSerializedField(
       serialized,
       key,
-      serializeErrorValue(child, seen, depth + 1),
+      serializeErrorValue(child, state, depth + 1),
     );
   }
   if (result.truncated) {
@@ -247,22 +254,33 @@ function serializePlainObjectValue(
   return serialized;
 }
 
+function reserveSerializedNode(state: SerializationState): boolean {
+  if (state.nodes >= SERIALIZED_VALUE_MAX_NODES) {
+    return false;
+  }
+  state.nodes += 1;
+  return true;
+}
+
 function serializeErrorValue(
   value: unknown,
-  seen: WeakSet<object>,
+  state: SerializationState,
   depth: number,
 ): unknown {
+  if (!reserveSerializedNode(state)) {
+    return TRUNCATED_MARKER;
+  }
   if (!isObjectValue(value)) {
     return serializeNonObjectValue(value);
   }
-  if (seen.has(value)) {
+  if (state.seen.has(value)) {
     return CIRCULAR_MARKER;
   }
   if (depth > SERIALIZED_VALUE_MAX_DEPTH) {
     return TRUNCATED_MARKER;
   }
   if (value instanceof Error) {
-    return serializeErrorWithSeen(value, seen, depth);
+    return serializeErrorWithSeen(value, state, depth);
   }
   if (value instanceof Date) {
     return serializeDateValue(value);
@@ -271,11 +289,11 @@ function serializeErrorValue(
     return serializeStringValue(safeString(value));
   }
 
-  seen.add(value);
+  state.seen.add(value);
   if (Array.isArray(value)) {
-    return serializeArrayValue(value, seen, depth);
+    return serializeArrayValue(value, state, depth);
   }
-  return serializePlainObjectValue(value, seen, depth);
+  return serializePlainObjectValue(value, state, depth);
 }
 
 /**
