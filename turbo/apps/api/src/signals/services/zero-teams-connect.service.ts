@@ -78,9 +78,13 @@ function setOptionalParam(
 
 function buildTeamsBrowserConnectUrl(args: {
   readonly tenantId: string;
+  readonly tenantName?: string | null;
   readonly teamsUserId: string;
   readonly teamsUserDisplayName?: string | null;
   readonly teamsUserPrincipalName?: string | null;
+  readonly teamId?: string | null;
+  readonly teamName?: string | null;
+  readonly serviceUrl?: string | null;
   readonly conversationId?: string | null;
   readonly channelId?: string | null;
   readonly threadId?: string | null;
@@ -90,13 +94,17 @@ function buildTeamsBrowserConnectUrl(args: {
     tenantId: args.tenantId,
     teamsUserId: args.teamsUserId,
   });
+  setOptionalParam(params, "tenantName", args.tenantName);
   setOptionalParam(params, "displayName", args.teamsUserDisplayName);
   setOptionalParam(params, "upn", args.teamsUserPrincipalName);
+  setOptionalParam(params, "teamId", args.teamId);
+  setOptionalParam(params, "teamName", args.teamName);
+  setOptionalParam(params, "serviceUrl", args.serviceUrl);
   setOptionalParam(params, "conversationId", args.conversationId);
   setOptionalParam(params, "channelId", args.channelId);
   setOptionalParam(params, "threadId", args.threadId);
   setOptionalParam(params, "orgId", args.orgId);
-  return `${env("APP_URL")}/api/zero/teams/connect?${params.toString()}`;
+  return `${env("APP_URL")}/settings/teams?${params.toString()}`;
 }
 
 function buildTeamsInstallUrl(tenantId?: string | null): string | null {
@@ -127,9 +135,13 @@ export function buildTeamsConnectUrlForActivity(args: {
 
   return buildTeamsBrowserConnectUrl({
     tenantId: args.activity.tenantId,
+    tenantName: args.activity.tenantName,
     teamsUserId: args.activity.sender.id,
     teamsUserDisplayName: args.activity.sender.name,
     teamsUserPrincipalName: args.activity.sender.userPrincipalName,
+    teamId: args.activity.teamId,
+    teamName: args.activity.teamName,
+    serviceUrl: args.activity.serviceUrl,
     conversationId: args.activity.conversationId,
     channelId: args.activity.channelId,
     threadId: args.activity.threadId,

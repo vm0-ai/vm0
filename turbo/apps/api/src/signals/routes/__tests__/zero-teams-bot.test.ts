@@ -526,14 +526,15 @@ describe("POST /api/zero/teams/bot", () => {
         idempotencyKey: "19:thread@thread.tacv2:message:activity-1",
       },
     });
-    expect(body.connectUrl).toContain(`${APP_ORIGIN}/api/zero/teams/connect`);
+    expect(body.connectUrl).toContain(`${APP_ORIGIN}/settings/teams`);
     expect(body.connectUrl).toContain("tenantId=tenant-1");
+    expect(body.connectUrl).toContain("tenantName=Tenant+One");
     expect(body.connectUrl).toContain("teamsUserId=29%3Auser-1");
+    expect(body.connectUrl).toContain("teamId=team-1");
+    expect(body.connectUrl).toContain("teamName=Team+One");
     expect(body.dispatch).toMatchObject({
       kind: "notice",
-      connectUrl: expect.stringContaining(
-        `${APP_ORIGIN}/api/zero/teams/connect`,
-      ),
+      connectUrl: expect.stringContaining(`${APP_ORIGIN}/settings/teams`),
       replyText: TEAMS_LOGIN_PROMPT_FALLBACK_TEXT,
     });
     expect(outboundRequests).toHaveLength(1);
@@ -561,9 +562,7 @@ describe("POST /api/zero/teams/bot", () => {
                 {
                   type: "Action.OpenUrl",
                   title: "Connect",
-                  url: expect.stringContaining(
-                    `${APP_ORIGIN}/api/zero/teams/connect`,
-                  ),
+                  url: expect.stringContaining(`${APP_ORIGIN}/settings/teams`),
                 },
               ],
             },
@@ -694,9 +693,7 @@ describe("POST /api/zero/teams/bot", () => {
                 {
                   type: "Action.OpenUrl",
                   title: "Connect",
-                  url: expect.stringContaining(
-                    `${APP_ORIGIN}/api/zero/teams/connect`,
-                  ),
+                  url: expect.stringContaining(`${APP_ORIGIN}/settings/teams`),
                 },
               ],
             },
