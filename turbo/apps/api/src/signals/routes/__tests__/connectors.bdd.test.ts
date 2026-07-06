@@ -2092,6 +2092,62 @@ describe("CONN-03: custom connectors and connector-owned values", () => {
     expectApiError(missingPlaceholder.body);
     expect(missingPlaceholder.body.error.message).toContain("{{secret}}");
 
+    const staticHeader = await connectorsApi.requestCreateCustomConnector(
+      admin,
+      {
+        displayName: "BDD Static Header Template",
+        prefixTemplates: [`https://static-header.${host}/`],
+        fields: [
+          {
+            key: "api_key",
+            label: "API key",
+            kind: "secret",
+            required: true,
+          },
+        ],
+        headerInjections: [
+          {
+            name: "Authorization",
+            valueTemplate: "Bearer static-token",
+          },
+        ],
+        queryInjections: [],
+      },
+      [400],
+    );
+    expectApiError(staticHeader.body);
+    expect(staticHeader.body.error.message).toBe(
+      "Header Authorization must reference a declared custom connector field",
+    );
+
+    const staticQuery = await connectorsApi.requestCreateCustomConnector(
+      admin,
+      {
+        displayName: "BDD Static Query Template",
+        prefixTemplates: [`https://static-query.${host}/`],
+        fields: [
+          {
+            key: "api_key",
+            label: "API key",
+            kind: "secret",
+            required: true,
+          },
+        ],
+        headerInjections: [],
+        queryInjections: [
+          {
+            name: "api_key",
+            valueTemplate: "static-token",
+          },
+        ],
+      },
+      [400],
+    );
+    expectApiError(staticQuery.body);
+    expect(staticQuery.body.error.message).toBe(
+      "Query api_key must reference a declared custom connector field",
+    );
+
     const builtinCollision = await connectorsApi.requestCreateCustomConnector(
       admin,
       {

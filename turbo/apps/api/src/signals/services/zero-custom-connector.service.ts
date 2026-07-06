@@ -328,6 +328,14 @@ function customConnectorTemplateConfigured(args: {
   readonly configured: ReadonlySet<string>;
   readonly template: string;
 }): boolean {
+  if (
+    !hasConfigurableTemplateReference({
+      template: args.template,
+      allowLegacySecret: true,
+    })
+  ) {
+    return false;
+  }
   const fieldByReference = new Map<string, CustomConnectorField>(
     args.fields.map((field) => {
       return [
@@ -580,6 +588,17 @@ function validateTemplateReferences(args: {
   return null;
 }
 
+function hasConfigurableTemplateReference(args: {
+  readonly template: string;
+  readonly allowLegacySecret: boolean;
+}): boolean {
+  return (
+    (args.allowLegacySecret &&
+      args.template.includes(LEGACY_SECRET_PLACEHOLDER)) ||
+    extractTemplateReferences(args.template).length > 0
+  );
+}
+
 function templateWithPlaceholders(template: string): string {
   return template.replaceAll(
     TEMPLATE_REFERENCE_REGEX,
@@ -735,6 +754,16 @@ function validateHeaderInjections(args: {
     if (templateError) {
       return templateError;
     }
+    if (
+      !hasConfigurableTemplateReference({
+        template: injection.valueTemplate,
+        allowLegacySecret: true,
+      })
+    ) {
+      return badRequestMessage(
+        `Header ${name} must reference a declared custom connector field`,
+      );
+    }
     headers.push({ name, valueTemplate: injection.valueTemplate });
   }
   return headers;
@@ -764,6 +793,16 @@ function validateQueryInjections(args: {
     });
     if (templateError) {
       return templateError;
+    }
+    if (
+      !hasConfigurableTemplateReference({
+        template: injection.valueTemplate,
+        allowLegacySecret: true,
+      })
+    ) {
+      return badRequestMessage(
+        `Query ${name} must reference a declared custom connector field`,
+      );
     }
     queries.push({ name, valueTemplate: injection.valueTemplate });
   }
@@ -1641,41 +1680,6 @@ export const deleteCustomConnectorValue$ = command(
   },
 );
 
-async function loadStoredValuesForConnector(args: {
-  readonly db: ReadonlyDb;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly connectorId: string;
-}): Promise<readonly StoredValueRow[]> {
-  const valueRows = await args.db
-    .select({
-      connectorId: orgCustomConnectorValues.connectorId,
-      kind: orgCustomConnectorValues.kind,
-      key: orgCustomConnectorValues.key,
-      encryptedValue: orgCustomConnectorValues.encryptedValue,
-    })
-    .from(orgCustomConnectorValues)
-    .where(
-      and(
-        eq(orgCustomConnectorValues.orgId, args.orgId),
-        eq(orgCustomConnectorValues.userId, args.userId),
-        eq(orgCustomConnectorValues.connectorId, args.connectorId),
-      ),
-    );
-  return valueRows
-    .filter((row): row is StoredValueRow => {
-      return row.kind === "secret" || row.kind === "variable";
-    })
-    .map((row) => {
-      return {
-        connectorId: row.connectorId,
-        kind: row.kind,
-        key: row.key,
-        encryptedValue: row.encryptedValue,
-      };
-    });
-}
-
 export async function decryptCustomConnectorValues(args: {
   readonly values: readonly StoredValueRow[];
   readonly featureSwitchContext: FeatureSwitchContextArg;
@@ -1710,6 +1714,14 @@ export function renderTemplateForRuntime(args: {
   readonly fields: readonly CustomConnectorField[];
   readonly configuredValueMarkers?: ReadonlySet<string>;
 }): string | null {
+  if (
+    !hasConfigurableTemplateReference({
+      template: args.template,
+      allowLegacySecret: true,
+    })
+  ) {
+    return null;
+  }
   const fieldByReference = new Map<string, CustomConnectorField>(
     args.fields.map((field) => {
       return [
@@ -1845,6 +1857,9 @@ export async function loadCustomConnectorRuntimeData(
     ) => {
       return await operation();
     });
+  if (args.connectorIds?.length === 0) {
+    return [];
+  }
   const connectors = await measure("connectorRows", async () => {
     return await db
       .select()
@@ -1862,19 +1877,49 @@ export async function loadCustomConnectorRuntimeData(
     return [];
   }
 
-  return await measure("connectorValueRows", async () => {
-    return await Promise.all(
-      connectors.map(async (row) => {
-        const connector = normaliseCustomConnectorRow(row);
-        const values = await loadStoredValuesForConnector({
-          db,
-          orgId: args.orgId,
-          userId: args.userId,
-          connectorId: connector.id,
-        });
-        return { connector, values };
-      }),
-    );
+  const normalisedConnectors = connectors.map((row) => {
+    return normaliseCustomConnectorRow(row);
+  });
+  const connectorIds = normalisedConnectors.map((connector) => {
+    return connector.id;
+  });
+  const valueRows = await measure("connectorValueRows", async () => {
+    return await db
+      .select({
+        connectorId: orgCustomConnectorValues.connectorId,
+        kind: orgCustomConnectorValues.kind,
+        key: orgCustomConnectorValues.key,
+        encryptedValue: orgCustomConnectorValues.encryptedValue,
+      })
+      .from(orgCustomConnectorValues)
+      .where(
+        and(
+          eq(orgCustomConnectorValues.orgId, args.orgId),
+          eq(orgCustomConnectorValues.userId, args.userId),
+          inArray(orgCustomConnectorValues.connectorId, connectorIds),
+        ),
+      );
+  });
+  const valuesByConnectorId = new Map<string, StoredValueRow[]>();
+  for (const row of valueRows) {
+    if (row.kind !== "secret" && row.kind !== "variable") {
+      continue;
+    }
+    const values = valuesByConnectorId.get(row.connectorId) ?? [];
+    values.push({
+      connectorId: row.connectorId,
+      kind: row.kind,
+      key: row.key,
+      encryptedValue: row.encryptedValue,
+    });
+    valuesByConnectorId.set(row.connectorId, values);
+  }
+
+  return normalisedConnectors.map((connector) => {
+    return {
+      connector,
+      values: valuesByConnectorId.get(connector.id) ?? [],
+    };
   });
 }
 
