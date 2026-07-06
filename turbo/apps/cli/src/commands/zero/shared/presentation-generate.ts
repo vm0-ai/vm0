@@ -73,51 +73,6 @@ function formatPresentationTemplateListing(
     .join("\n\n");
 }
 
-function buildDirectPresentationInstructionPacket(options: {
-  readonly prompt: string;
-  readonly slides: number;
-  readonly title?: string;
-  readonly siteSlug?: string;
-}): string {
-  return [
-    "# Zero generate presentation",
-    "",
-    "This is a direct HTML presentation authoring packet for the current agent.",
-    "Author the deck directly from the user's request and any supplied source material.",
-    "",
-    "## User Prompt",
-    options.prompt,
-    "",
-    "## Requested Parameters",
-    `- Slide count: ${options.slides}`,
-    `- Requested deck title: ${options.title ?? "not specified"}`,
-    "- Selected template: agent decides",
-    "",
-    "## Authoring Rules",
-    "- Think like a presentation designer, not a web page designer.",
-    "- Use a fixed 1920x1080 slide canvas and scale it uniformly for smaller viewports.",
-    "- Use one section per slide and keep repeated elements in consistent positions.",
-    "- Make keyboard navigation work with ArrowLeft, ArrowRight, Home, and End.",
-    "- Keep slide text readable from across a room; avoid memo-like walls of text.",
-    "- Produce exactly the requested slide count. Do not let a template's reference example or preview slide count override the requested count.",
-    "- Before authoring, make an internal slide plan with exactly the requested count and map each slide to a narrative role plus a selected template layout or device.",
-    "- Adapt the selected template to the requested slide count: for shorter decks, merge or omit lower-priority content roles; for longer decks, split dense sections into multiple focused slides or reuse layout patterns with different substantive content. Do not add decorative, duplicate, or empty filler slides.",
-    "- Use selected template references only for structure, layout devices, spacing, and visual language. Do not inherit or continue any reference deck's sample subject, sample story, sample copy, sample metrics, preview imagery, or media seed names.",
-    "- Derive every presentation image/media choice from the user's requested topic, story, source material, or cited facts.",
-    "- Before laying out slides, establish the deck's arc: the opening problem or question, how it develops, and what conclusion lands; every slide should serve a clear narrative role in that arc.",
-    "- Vary slide forms across the deck — full-bleed statement, evidence with data, pull quote, section break, summary — and avoid defaulting every slide to title-plus-bullets.",
-    "- Each slide carries one idea; prefer a single strong statement over a list, and never exceed three bullets on any slide.",
-    "",
-    "## Verification",
-    "- Use `agent-browser` for browser verification when available. Start with `agent-browser skills get core` if you need command guidance.",
-    "- Prefer `agent-browser` over Playwright, Puppeteer, or installing browser automation dependencies.",
-    "- Open the HTML locally and verify it is nonblank.",
-    "- Check that keyboard/click interactions work when present.",
-    "- Check that text does not overflow or overlap at desktop and mobile viewport sizes.",
-    "- Check that shapes, charts, images, or decorative graphics do not cover readable text at desktop and mobile viewport sizes.",
-  ].join("\n");
-}
-
 export function createPresentationGenerateCommand(
   config: PresentationGenerateCommandConfig,
 ): Command {
@@ -190,14 +145,45 @@ ${formatPresentationTemplateListing(templates)}`;
           return;
         }
 
-        const instructions = buildDirectPresentationInstructionPacket({
-          prompt,
-          slides: options.slides,
-          title: options.title,
-          siteSlug: options.siteSlug,
-        });
-
-        console.log(instructions);
+        console.log(
+          [
+            "# Zero generate presentation",
+            "",
+            "This is a direct HTML presentation authoring packet for the current agent.",
+            "Author the deck directly from the user's request and any supplied source material.",
+            "",
+            "## User Prompt",
+            prompt,
+            "",
+            "## Requested Parameters",
+            `- Slide count: ${options.slides}`,
+            `- Requested deck title: ${options.title ?? "not specified"}`,
+            "- Selected template: agent decides",
+            "",
+            "## Authoring Rules",
+            "- Think like a presentation designer, not a web page designer.",
+            "- Use a fixed 1920x1080 slide canvas and scale it uniformly for smaller viewports.",
+            "- Use one section per slide and keep repeated elements in consistent positions.",
+            "- Make keyboard navigation work with ArrowLeft, ArrowRight, Home, and End.",
+            "- Keep slide text readable from across a room; avoid memo-like walls of text.",
+            "- Produce exactly the requested slide count. Do not let a template's reference example or preview slide count override the requested count.",
+            "- Before authoring, make an internal slide plan with exactly the requested count and map each slide to a narrative role plus a selected template layout or device.",
+            "- Adapt the selected template to the requested slide count: for shorter decks, merge or omit lower-priority content roles; for longer decks, split dense sections into multiple focused slides or reuse layout patterns with different substantive content. Do not add decorative, duplicate, or empty filler slides.",
+            "- Use selected template references only for structure, layout devices, spacing, and visual language. Do not inherit or continue any reference deck's sample subject, sample story, sample copy, sample metrics, preview imagery, or media seed names.",
+            "- Derive every presentation image/media choice from the user's requested topic, story, source material, or cited facts.",
+            "- Before laying out slides, establish the deck's arc: the opening problem or question, how it develops, and what conclusion lands; every slide should serve a clear narrative role in that arc.",
+            "- Vary slide forms across the deck — full-bleed statement, evidence with data, pull quote, section break, summary — and avoid defaulting every slide to title-plus-bullets.",
+            "- Each slide carries one idea; prefer a single strong statement over a list, and never exceed three bullets on any slide.",
+            "",
+            "## Verification",
+            "- Use `agent-browser` for browser verification when available. Start with `agent-browser skills get core` if you need command guidance.",
+            "- Prefer `agent-browser` over Playwright, Puppeteer, or installing browser automation dependencies.",
+            "- Open the HTML locally and verify it is nonblank.",
+            "- Check that keyboard/click interactions work when present.",
+            "- Check that text does not overflow or overlap at desktop and mobile viewport sizes.",
+            "- Check that shapes, charts, images, or decorative graphics do not cover readable text at desktop and mobile viewport sizes.",
+          ].join("\n"),
+        );
       }),
     );
 }
