@@ -4,3 +4,4 @@ src/firewall-metadata/.metadata-*
 src/firewall-metadata/.*.previous-*
 src/firewall-metadata/permission-details/*
 src/firewall-metadata/routing-details/*
+src/firewall-metadata/runner-runtime-details/*

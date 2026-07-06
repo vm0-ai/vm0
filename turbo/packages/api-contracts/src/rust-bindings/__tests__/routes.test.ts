@@ -22,6 +22,12 @@ const expectedBindings = [
   },
   {
     method: "POST",
+    path: "/api/runners/builtin-firewalls/resolve",
+    rustModulePath: ["runners", "builtin_firewalls", "resolve"],
+    rustConstName: "RESOLVE",
+  },
+  {
+    method: "POST",
     path: "/api/runners/heartbeat",
     rustModulePath: ["runners", "heartbeat"],
     rustConstName: "HEARTBEAT",

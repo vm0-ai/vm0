@@ -2,6 +2,7 @@ import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import {
   executionFirewallsSchema,
+  firewallSchema,
   networkPolicySchema,
   networkPoliciesSchema,
 } from "@vm0/connectors/firewall-types";
@@ -28,6 +29,7 @@ export const SESSION_HISTORY_ENCODING_GZIP = "gzip";
 export const SESSION_HISTORY_ENCODING_ZSTD = "zstd";
 export const SESSION_HISTORY_GZIP_MIN_BYTES = 64 * 1024;
 export const NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX = 256;
+export const RUNNER_BUILTIN_FIREWALL_RESOLVE_NAMES_MAX = 512;
 export const sessionHistoryEncodingSchema = z.enum([
   SESSION_HISTORY_ENCODING_IDENTITY,
   SESSION_HISTORY_ENCODING_GZIP,
@@ -83,6 +85,22 @@ const networkPolicyRefreshesSchema = z.record(
   z.string(),
   networkPolicyRefreshSchema,
 );
+const runnerBuiltinFirewallNameSchema = z
+  .string()
+  .min(1)
+  .max(128)
+  .regex(/^(?:[a-z0-9][a-z0-9-]*|model-provider:[a-z0-9][a-z0-9-]*)$/);
+const runnerBuiltinFirewallsResolveBodySchema = z.object({
+  names: z
+    .array(runnerBuiltinFirewallNameSchema)
+    .min(1)
+    .max(RUNNER_BUILTIN_FIREWALL_RESOLVE_NAMES_MAX),
+});
+const runnerBuiltinFirewallsResolveResponseSchema = z.object({
+  catalogDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+  catalogVersion: z.string().min(1),
+  firewalls: z.record(runnerBuiltinFirewallNameSchema, firewallSchema),
+});
 
 /**
  * Default profile when none is specified.
@@ -480,6 +498,22 @@ export const runnersNetworkPolicyRefreshContract = c.router({
   },
 });
 
+export const runnersBuiltinFirewallsResolveContract = c.router({
+  resolve: {
+    method: "POST",
+    path: "/api/runners/builtin-firewalls/resolve",
+    headers: authHeadersSchema,
+    body: runnerBuiltinFirewallsResolveBodySchema,
+    responses: {
+      200: runnerBuiltinFirewallsResolveResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Resolve builtin firewall definitions for runners",
+  },
+});
+
 /**
  * Runner heartbeat body — periodic state report from each runner
  */
@@ -523,6 +557,8 @@ export type RunnersJobClaimContract = typeof runnersJobClaimContract;
 export type RunnersNetworkPolicyRefreshContract =
   typeof runnersNetworkPolicyRefreshContract;
 export type RunnersHeartbeatContract = typeof runnersHeartbeatContract;
+export type RunnersBuiltinFirewallsResolveContract =
+  typeof runnersBuiltinFirewallsResolveContract;
 export type Job = z.infer<typeof jobSchema>;
 export type HeldSessionState = z.infer<typeof heldSessionStateSchema>;
 export type ExecutionContext = z.infer<typeof executionContextSchema>;
@@ -530,6 +566,12 @@ export type StoredExecutionContext = z.infer<
   typeof storedExecutionContextSchema
 >;
 export type NetworkPolicyRefresh = z.infer<typeof networkPolicyRefreshSchema>;
+export type RunnerBuiltinFirewallsResolveBody = z.infer<
+  typeof runnerBuiltinFirewallsResolveBodySchema
+>;
+export type RunnerBuiltinFirewallsResolveResponse = z.infer<
+  typeof runnerBuiltinFirewallsResolveResponseSchema
+>;
 export type SecretConnectorMetadata = z.infer<
   typeof secretConnectorMetadataSchema
 >;
