@@ -57,19 +57,33 @@ function readErrorValue(read: () => unknown): unknown {
   return "ok" in result ? result.ok : undefined;
 }
 
+function summarySource(value: string): string | undefined {
+  const source = value.slice(0, ERROR_SUMMARY_SOURCE_MAX_LENGTH).trim();
+  return source || undefined;
+}
+
 function readNonErrorMessage(error: unknown): string {
   if (error !== null && typeof error === "object") {
     const message = readErrorValue(() => {
       return (error as { readonly message?: unknown }).message;
     });
-    if (typeof message === "string" && message.trim()) {
-      return message;
+    if (typeof message === "string") {
+      const source = summarySource(message);
+      if (source) {
+        return source;
+      }
     }
   }
   const value = readErrorValue(() => {
     return String(error);
   });
-  return typeof value === "string" && value.trim() ? value : "unknown error";
+  if (typeof value === "string") {
+    const source = summarySource(value);
+    if (source) {
+      return source;
+    }
+  }
+  return "unknown error";
 }
 
 function errorCause(error: Error): Error | undefined {
@@ -122,12 +136,16 @@ function sourceErrorMessage(error: unknown): string {
   const chain = errorChain(error);
   for (let index = chain.length - 1; index >= 0; index -= 1) {
     const current = chain[index];
-    const message = current ? errorMessage(current)?.trim() : "";
+    const message = current ? errorMessage(current) : undefined;
     if (message) {
-      return message;
+      const source = summarySource(message);
+      if (source) {
+        return source;
+      }
     }
   }
-  return errorName(error) || "unknown error";
+  const name = errorName(error);
+  return name ? (summarySource(name) ?? "unknown error") : "unknown error";
 }
 
 function truncateSummary(summary: string): string {
@@ -147,10 +165,7 @@ function replaceControlCharacters(value: string): string {
 }
 
 function sanitizeErrorSummary(error: unknown): string {
-  const source = sourceErrorMessage(error).slice(
-    0,
-    ERROR_SUMMARY_SOURCE_MAX_LENGTH,
-  );
+  const source = sourceErrorMessage(error);
   if (/^response validation failed:/i.test(source)) {
     return "response validation failed";
   }

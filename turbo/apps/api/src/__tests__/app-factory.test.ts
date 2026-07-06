@@ -431,6 +431,29 @@ describe("createApp", () => {
     });
   });
 
+  it("summarizes response validation failures with leading whitespace", async () => {
+    const error = new Error("  response validation failed: schema details");
+    const handler$ = computed((): never => {
+      throw error;
+    });
+    const client = setupApp({
+      context,
+      routes: [...ROUTES, { route: errorTestContract.boom, handler: handler$ }],
+    })(errorTestContract);
+
+    const response = await accept(client.boom(), [500]);
+
+    expect(response.body).toStrictEqual({ error: "Internal server error" });
+
+    const [message, fields] =
+      context.mocks.axiomLogging.error.mock.calls.at(-1) ?? [];
+    expect(message).toBe("Unhandled request error: response validation failed");
+    expect(fields).toMatchObject({
+      type: "unhandled_request_error",
+      errorSummary: "response validation failed",
+    });
+  });
+
   it("passes through expected HTTP client errors without capturing them", async () => {
     const error = new HTTPException(404, { message: "Missing" });
     const handler$ = computed((): never => {

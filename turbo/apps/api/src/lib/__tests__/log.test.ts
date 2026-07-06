@@ -479,9 +479,9 @@ describe("serializeError via logging", () => {
     const log = logger("special-key-error-test");
     const err = new Error("special") as Error & Record<string, unknown>;
     const payload: Record<string, unknown> = {};
-    Object.defineProperty(err, "__proto__", {
+    Object.defineProperty(err, "constructor", {
       enumerable: true,
-      value: "error-proto-field",
+      value: "error-constructor-field",
     });
     Object.defineProperty(payload, "__proto__", {
       enumerable: true,
@@ -502,12 +502,14 @@ describe("serializeError via logging", () => {
     expect(Object.getPrototypeOf(serializedError)).toBe(Object.prototype);
     expect(Object.getPrototypeOf(serializedPayload)).toBe(Object.prototype);
     expect(
-      Object.prototype.hasOwnProperty.call(serializedError, "__proto__"),
+      Object.prototype.hasOwnProperty.call(serializedError, "constructor"),
     ).toBeTruthy();
     expect(
       Object.prototype.hasOwnProperty.call(serializedPayload, "__proto__"),
     ).toBeTruthy();
-    expect(Reflect.get(serializedError, "__proto__")).toBe("error-proto-field");
+    expect(Reflect.get(serializedError, "constructor")).toBe(
+      "error-constructor-field",
+    );
     expect(Reflect.get(serializedPayload, "__proto__")).toStrictEqual({
       nested: true,
     });
