@@ -134,7 +134,10 @@ import {
   ModelProviderPicker,
   type ModelProviderSelection,
 } from "./components/model-provider-picker.tsx";
-import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
+import {
+  ConnectorIcon,
+  isConnectorIconType,
+} from "./components/settings/connector-icons.tsx";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import {
   allConnectorTypes$,
@@ -1318,26 +1321,36 @@ function WorkflowTemplateCard({
   selected: boolean;
   onSelect: (item: WorkflowTemplateItem) => void;
 }) {
+  // Show the workflow's connectors as icons (required first), capped so the row
+  // never crowds the Use button. Unknown connector types are dropped.
+  const connectorTypes = item.connectors
+    .filter(isConnectorIconType)
+    .slice(0, 4);
   return (
     <div
       className={cn(
-        "group flex min-h-44 flex-col rounded-lg border bg-card p-4 transition-colors hover:bg-muted/20",
+        "group flex flex-col rounded-lg border bg-card p-4 transition-colors hover:bg-muted/20",
         TEMPLATE_CARD_SHADOW,
         selected ? "border-primary ring-1 ring-primary" : "border-border",
       )}
     >
-      <div className="flex min-w-0 flex-1 gap-3">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
-          <IconRoute size={18} stroke={1.7} />
-        </span>
-        <div className="min-w-0">
-          <p className="text-sm font-semibold text-foreground">{item.title}</p>
-          <p className="mt-2 line-clamp-4 text-sm leading-5 text-muted-foreground">
-            {item.description}
-          </p>
+      <p className="text-sm font-semibold text-foreground">{item.title}</p>
+      <p className="mt-1.5 line-clamp-2 text-sm leading-relaxed text-muted-foreground">
+        {item.description}
+      </p>
+      <div className="mt-auto flex items-center justify-between gap-2 pt-3.5">
+        <div className="flex items-center gap-1.5">
+          {connectorTypes.map((type) => {
+            return (
+              <span
+                key={type}
+                className="flex h-7 w-7 items-center justify-center rounded-md border border-border/60 bg-background"
+              >
+                <ConnectorIcon type={type} size={14} />
+              </span>
+            );
+          })}
         </div>
-      </div>
-      <div className="mt-4 flex justify-end">
         <button
           type="button"
           aria-label={`Select workflow template ${item.title}`}
@@ -1346,7 +1359,7 @@ function WorkflowTemplateCard({
             onSelect(item);
           }}
           className={cn(
-            "h-8 rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            "h-8 shrink-0 rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             selected
               ? "border-primary/40 bg-primary/10 text-primary"
               : "border-border bg-background text-foreground hover:bg-muted",
