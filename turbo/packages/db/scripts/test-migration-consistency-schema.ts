@@ -113,6 +113,181 @@ async function runMigrations(dbUrl: string): Promise<void> {
   });
 }
 
+async function readLegacySecretValue(
+  client: Client,
+  args: {
+    connectorId: string;
+    userId: string;
+  },
+): Promise<string | undefined> {
+  const value = await client.query<{ encrypted_value: string }>(
+    `
+    SELECT encrypted_value
+    FROM org_custom_connector_values
+    WHERE connector_id = $1
+      AND user_id = $2
+      AND kind = 'secret'
+      AND key = 'secret'
+    `,
+    [args.connectorId, args.userId],
+  );
+  return value.rows[0]?.encrypted_value;
+}
+
+async function seedCustomConnectorLegacyBackfillRows(
+  dbUrl: string,
+): Promise<void> {
+  const client = new Client({ connectionString: dbUrl });
+  await client.connect();
+  try {
+    const declaredSecretConnectorId = "00000000-0000-0000-0000-000000005540";
+    const legacyEmptyFieldsConnectorId = "00000000-0000-0000-0000-000000005541";
+    const undeclaredSecretConnectorId = "00000000-0000-0000-0000-000000005542";
+    const orgId = "org_custom_connector_backfill_bridge";
+    const userId = "user_custom_connector_backfill_bridge";
+
+    await client.query(
+      `
+      INSERT INTO org_custom_connectors (
+        id,
+        org_id,
+        slug,
+        display_name,
+        prefixes,
+        header_name,
+        header_template,
+        prefix_templates,
+        fields,
+        header_injections,
+        query_injections,
+        created_by
+      )
+      VALUES
+        (
+          $1,
+          $4,
+          'backfill-declared-secret',
+          'Backfill Declared Secret',
+          '["https://backfill-declared-secret.example.test/"]'::jsonb,
+          'Authorization',
+          'Bearer {{secret}}',
+          '["https://backfill-declared-secret.example.test/"]'::jsonb,
+          '[{"key":"secret","label":"Secret","kind":"secret","required":true}]'::jsonb,
+          '[{"name":"Authorization","valueTemplate":"Bearer {{secrets.secret}}"}]'::jsonb,
+          '[]'::jsonb,
+          $5
+        ),
+        (
+          $2,
+          $4,
+          'backfill-empty-fields',
+          'Backfill Empty Fields',
+          '["https://backfill-empty-fields.example.test/"]'::jsonb,
+          'Authorization',
+          'Bearer {{secret}}',
+          '[]'::jsonb,
+          '[]'::jsonb,
+          '[]'::jsonb,
+          '[]'::jsonb,
+          $5
+        ),
+        (
+          $3,
+          $4,
+          'backfill-no-secret',
+          'Backfill No Secret',
+          '["https://backfill-no-secret.example.test/"]'::jsonb,
+          'X-Tenant',
+          '{{variables.tenant}}',
+          '["https://backfill-no-secret.example.test/"]'::jsonb,
+          '[{"key":"tenant","label":"Tenant","kind":"variable","required":true}]'::jsonb,
+          '[]'::jsonb,
+          '[{"name":"tenant","valueTemplate":"{{variables.tenant}}"}]'::jsonb,
+          $5
+        )
+      `,
+      [
+        declaredSecretConnectorId,
+        legacyEmptyFieldsConnectorId,
+        undeclaredSecretConnectorId,
+        orgId,
+        userId,
+      ],
+    );
+
+    await client.query(
+      `
+      INSERT INTO org_custom_connector_secrets (
+        connector_id,
+        user_id,
+        org_id,
+        encrypted_value,
+        created_at,
+        updated_at
+      )
+      VALUES
+        ($1, $4, $5, 'backfill-declared-secret', '2026-01-01', '2026-01-01'),
+        ($2, $4, $5, 'backfill-empty-fields', '2026-01-01', '2026-01-01'),
+        ($3, $4, $5, 'backfill-undeclared-secret', '2026-01-01', '2026-01-01')
+      `,
+      [
+        declaredSecretConnectorId,
+        legacyEmptyFieldsConnectorId,
+        undeclaredSecretConnectorId,
+        userId,
+        orgId,
+      ],
+    );
+  } finally {
+    await client.end();
+  }
+}
+
+async function validateCustomConnectorLegacyBackfillRows(
+  dbUrl: string,
+): Promise<void> {
+  const client = new Client({ connectionString: dbUrl });
+  await client.connect();
+  try {
+    const declaredSecretConnectorId = "00000000-0000-0000-0000-000000005540";
+    const legacyEmptyFieldsConnectorId = "00000000-0000-0000-0000-000000005541";
+    const undeclaredSecretConnectorId = "00000000-0000-0000-0000-000000005542";
+    const userId = "user_custom_connector_backfill_bridge";
+
+    const declaredSecretValue = await readLegacySecretValue(client, {
+      connectorId: declaredSecretConnectorId,
+      userId,
+    });
+    if (declaredSecretValue !== "backfill-declared-secret") {
+      throw new Error(
+        "Legacy custom connector backfill skipped a declared secret field",
+      );
+    }
+
+    const emptyFieldsValue = await readLegacySecretValue(client, {
+      connectorId: legacyEmptyFieldsConnectorId,
+      userId,
+    });
+    if (emptyFieldsValue !== "backfill-empty-fields") {
+      throw new Error(
+        "Legacy custom connector backfill skipped an empty-fields connector",
+      );
+    }
+
+    const undeclaredSecretValue = await readLegacySecretValue(client, {
+      connectorId: undeclaredSecretConnectorId,
+      userId,
+    });
+    if (undeclaredSecretValue !== undefined) {
+      throw new Error(
+        "Legacy custom connector backfill imported an undeclared secret field",
+      );
+    }
+  } finally {
+    await client.end();
+  }
+}
+
 async function validateCustomConnectorLegacySecretBridge(
   dbUrl: string,
 ): Promise<void> {
@@ -120,6 +295,7 @@ async function validateCustomConnectorLegacySecretBridge(
   await client.connect();
   try {
     const connectorId = "00000000-0000-0000-0000-000000005550";
+    const undeclaredSecretConnectorId = "00000000-0000-0000-0000-000000005551";
     const orgId = "org_custom_connector_migration_bridge";
     const primaryUserId = "user_custom_connector_migration_bridge_primary";
     const deleteUserId = "user_custom_connector_migration_bridge_delete";
@@ -160,6 +336,40 @@ async function validateCustomConnectorLegacySecretBridge(
 
     await client.query(
       `
+      INSERT INTO org_custom_connectors (
+        id,
+        org_id,
+        slug,
+        display_name,
+        prefixes,
+        header_name,
+        header_template,
+        prefix_templates,
+        fields,
+        header_injections,
+        query_injections,
+        created_by
+      )
+      VALUES (
+        $1,
+        $2,
+        'migration-bridge-no-secret',
+        'Migration Bridge No Secret',
+        '["https://migration-bridge-no-secret.example.test/"]'::jsonb,
+        'X-Tenant',
+        '{{variables.tenant}}',
+        '["https://migration-bridge-no-secret.example.test/"]'::jsonb,
+        '[{"key":"tenant","label":"Tenant","kind":"variable","required":true}]'::jsonb,
+        '[]'::jsonb,
+        '[{"name":"tenant","valueTemplate":"{{variables.tenant}}"}]'::jsonb,
+        $3
+      )
+      `,
+      [undeclaredSecretConnectorId, orgId, primaryUserId],
+    );
+
+    await client.query(
+      `
       INSERT INTO org_custom_connector_secrets (
         connector_id,
         user_id,
@@ -186,6 +396,38 @@ async function validateCustomConnectorLegacySecretBridge(
     );
     if (value.rows[0]?.encrypted_value !== "legacy-insert") {
       throw new Error("Legacy custom connector insert did not sync to values");
+    }
+
+    await client.query(
+      `
+      INSERT INTO org_custom_connector_secrets (
+        connector_id,
+        user_id,
+        org_id,
+        encrypted_value,
+        created_at,
+        updated_at
+      )
+      VALUES ($1, $2, $3, 'legacy-undeclared', '2026-01-01', '2026-01-01')
+      `,
+      [undeclaredSecretConnectorId, primaryUserId, orgId],
+    );
+
+    const undeclared = await client.query<{ count: string }>(
+      `
+      SELECT COUNT(*)::text AS count
+      FROM org_custom_connector_values
+      WHERE connector_id = $1
+        AND user_id = $2
+        AND kind = 'secret'
+        AND key = 'secret'
+      `,
+      [undeclaredSecretConnectorId, primaryUserId],
+    );
+    if (undeclared.rows[0]?.count !== "0") {
+      throw new Error(
+        "Legacy custom connector secret synced for an undeclared field",
+      );
     }
 
     await client.query(
@@ -716,6 +958,12 @@ async function validateLatestSnapshotAccuracy(): Promise<void> {
   }
 
   const latestIdx = latestEntry.idx;
+  const customConnectorBridgeEntry = entries.find((entry) => {
+    return entry.tag === "0550_backfill_custom_connector_values";
+  });
+  if (!customConnectorBridgeEntry) {
+    throw new Error("Missing custom connector bridge migration entry");
+  }
 
   console.log(`   Validating latest snapshot (migration ${latestIdx})\n`);
 
@@ -724,7 +972,13 @@ async function validateLatestSnapshotAccuracy(): Promise<void> {
   const dbUrl = createTestDbUrl(TEST_DB);
 
   try {
-    // Apply all migrations
+    await runMigrationsUpTo(dbUrl, customConnectorBridgeEntry.idx - 1);
+    await seedCustomConnectorLegacyBackfillRows(dbUrl);
+    await runMigrationsUpTo(dbUrl, customConnectorBridgeEntry.idx);
+    await validateCustomConnectorLegacyBackfillRows(dbUrl);
+    console.log("   ✅ Custom connector legacy secret backfill works");
+
+    // Apply remaining migrations
     await runMigrationsUpTo(dbUrl, latestIdx);
 
     // Extract schema from database

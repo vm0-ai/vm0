@@ -36,6 +36,10 @@ BEGIN
 	FROM "org_custom_connectors"
 	WHERE "id" = NEW."connector_id"
 		AND "org_id" = NEW."org_id"
+		AND (
+			"fields" = '[]'::jsonb
+			OR "fields" @> '[{"kind":"secret","key":"secret"}]'::jsonb
+		)
 	FOR KEY SHARE;
 	IF NOT FOUND THEN
 		RETURN NEW;
@@ -103,4 +107,8 @@ FROM "org_custom_connector_secrets" legacy
 INNER JOIN "org_custom_connectors" connectors
 	ON connectors."id" = legacy."connector_id"
 	AND connectors."org_id" = legacy."org_id"
+	AND (
+		connectors."fields" = '[]'::jsonb
+		OR connectors."fields" @> '[{"kind":"secret","key":"secret"}]'::jsonb
+	)
 ON CONFLICT ("connector_id", "user_id", "kind", "key") DO NOTHING;
