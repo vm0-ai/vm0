@@ -1597,6 +1597,19 @@ function createFetchUpdatedMessageCommand({
   );
 }
 
+function createActiveGoalComputed(
+  rawMessages$: Computed<Promise<ChatMessageProjectionEntry[]>>,
+): Computed<Promise<ActiveGoalState | null>> {
+  return computed(async (get): Promise<ActiveGoalState | null> => {
+    const raw = await get(rawMessages$);
+    return foldActiveGoal(
+      raw.map((entry) => {
+        return entry.message;
+      }),
+    );
+  });
+}
+
 function createPagedMessages(
   threadId: string,
   threadMeta$: Computed<Promise<ThreadMeta | null>>,
@@ -1635,14 +1648,7 @@ function createPagedMessages(
   // The thread's active goal, folded from the (goal-marker) message stream so
   // the composer reads it without polling /api/automations. Reads rawMessages$
   // because goal markers are control rows, not transcript rows.
-  const activeGoal$ = computed(async (get): Promise<ActiveGoalState | null> => {
-    const raw = await get(rawMessages$);
-    return foldActiveGoal(
-      raw.map((entry) => {
-        return entry.message;
-      }),
-    );
-  });
+  const activeGoal$ = createActiveGoalComputed(rawMessages$);
 
   const { groupedChatMessages$, refreshGroupedChatMessagesCache$ } =
     createGroupedChatMessagesCache(rawMessages$);

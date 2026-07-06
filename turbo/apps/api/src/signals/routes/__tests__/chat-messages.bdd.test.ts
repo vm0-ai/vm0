@@ -2730,7 +2730,7 @@ describe("CHAT-02: prior rounds and thread titles", () => {
       userMessages(afterFollowup.messages).some((message) => {
         return message.revokesMessageId === recommender.id;
       }),
-    ).toBe(true);
+    ).toBeTruthy();
 
     const second = await sendChatRun(actor, {
       agentId,

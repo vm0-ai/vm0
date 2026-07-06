@@ -1379,9 +1379,9 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({ context, path: `/chats/${threadId}` });
 
-    expect(
-      await screen.findByText("Existing context before follow-up"),
-    ).toBeInTheDocument();
+    await expect(
+      screen.findByText("Existing context before follow-up"),
+    ).resolves.toBeInTheDocument();
 
     const textarea = await waitFor(() => {
       return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
@@ -1392,12 +1392,12 @@ describe("chat lifecycle", () => {
       expect(screen.getByText("Pending follow-up")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("link", { name: /Other thread/ }));
+    await user.click(linkByText("Other thread"));
     await waitFor(() => {
       expect(document.title).toBe("Other thread | VM0");
     });
 
-    await user.click(screen.getByRole("link", { name: /Long thread/ }));
+    await user.click(linkByText("Long thread"));
     await waitFor(() => {
       expect(document.title).toBe("Long thread | VM0");
       expect(screen.getByText("Pending follow-up")).toBeInTheDocument();
