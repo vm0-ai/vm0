@@ -986,9 +986,6 @@ const BOTANE_ORGANIC_PREVIEW_IMAGES = [
   "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7da6a51c-4a78-4e50-9cbc-899879e72875/slide-15.png",
 ] as const satisfies readonly [string, ...string[]];
 
-export const PRESENTATION_TEMPLATE_ITEMS: readonly PresentationTemplateItem[] =
-  [];
-
 const PLAYFUL_LAUNCH_CDN_PREVIEW_IMAGES = [
   "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/774bdd46-ca62-40b5-b56b-95fd2ff2d302/playful-launch-presentation.png",
   "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/dbb11b25-20e0-433e-94d5-9a094667d5a7/aplocoto-slide-02.png",

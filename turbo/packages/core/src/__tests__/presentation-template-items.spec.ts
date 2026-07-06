@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   PRESENTATION_TEMPLATE_PICKER_CARD_PREVIEW_THEMES,
-  PRESENTATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
 } from "../presentation-template-items";
 import {
@@ -283,11 +282,6 @@ function expectPinnedPickerPreviewImages(
 }
 
 describe("presentation template items", () => {
-  const allPresentationItems = [
-    ...PRESENTATION_TEMPLATE_ITEMS,
-    ...PRESENTATION_TEMPLATE_PICKER_ITEMS,
-  ];
-
   it("defines direct card preview assets for picker thumbnails", () => {
     for (const item of PRESENTATION_TEMPLATE_PICKER_ITEMS) {
       expect(item.cardPreviewImage, item.slug).toMatch(
@@ -330,7 +324,6 @@ describe("presentation template items", () => {
   });
 
   it("keeps picker items on runbook packages after retiring the legacy catalog", () => {
-    expect(PRESENTATION_TEMPLATE_ITEMS).toHaveLength(0);
     for (const item of PRESENTATION_TEMPLATE_PICKER_ITEMS) {
       // Picker selections resolve to self-contained runbook packages; legacy
       // registry entries have been retired.
@@ -373,7 +366,7 @@ describe("presentation template items", () => {
   });
 
   it("defines explicit preview image arrays", () => {
-    for (const item of allPresentationItems) {
+    for (const item of PRESENTATION_TEMPLATE_PICKER_ITEMS) {
       expect(Array.isArray(item.previewImages)).toBe(true);
     }
   });
@@ -389,21 +382,11 @@ describe("presentation template items", () => {
     );
   });
 
-  it("removes the legacy demo-only catalog", () => {
-    expect(PRESENTATION_TEMPLATE_ITEMS).toEqual([]);
-  });
-
   it("does not expose Open Design presentation registry entries", () => {
     expect(listTemplates("presentation")).toHaveLength(0);
   });
 
-  it("keeps the picker catalog separate from the legacy catalog", () => {
-    expect(
-      PRESENTATION_TEMPLATE_ITEMS.some((candidate) => {
-        return candidate.slug === "playful-launch-presentation";
-      }),
-    ).toBe(false);
-
+  it("keeps the playful launch picker item aligned with CDN assets", () => {
     const item = PRESENTATION_TEMPLATE_PICKER_ITEMS.find((candidate) => {
       return candidate.slug === "playful-launch-presentation";
     });
@@ -428,12 +411,6 @@ describe("presentation template items", () => {
   });
 
   it("keeps the business data picker item aligned with CDN assets", () => {
-    expect(
-      PRESENTATION_TEMPLATE_ITEMS.some((candidate) => {
-        return candidate.slug === "business-data-presentation";
-      }),
-    ).toBe(false);
-
     const item = PRESENTATION_TEMPLATE_PICKER_ITEMS.find((candidate) => {
       return candidate.slug === "business-data-presentation";
     });

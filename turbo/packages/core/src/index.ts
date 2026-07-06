@@ -19,7 +19,6 @@ export {
 } from "./usage-source-bucket";
 export {
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
-  PRESENTATION_TEMPLATE_ITEMS,
   type PresentationTemplateItem,
 } from "./presentation-template-items";
 export {

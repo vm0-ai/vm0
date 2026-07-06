@@ -96,7 +96,6 @@ import type {
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
-  PRESENTATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
   findVideoTemplateItem,
   findWorkflowTemplateItem,
@@ -6851,13 +6850,9 @@ function generationTemplateLabel(
       item?.title ?? formatSelectionIdLabel(value.selection.illustrationStyleId)
     );
   }
-  const item =
-    PRESENTATION_TEMPLATE_ITEMS.find((candidate) => {
-      return candidate.templateId === value.selection.templateId;
-    }) ??
-    PRESENTATION_TEMPLATE_PICKER_ITEMS.find((candidate) => {
-      return candidate.templateId === value.selection.templateId;
-    });
+  const item = PRESENTATION_TEMPLATE_PICKER_ITEMS.find((candidate) => {
+    return candidate.templateId === value.selection.templateId;
+  });
   return item?.title ?? formatSelectionIdLabel(value.selection.templateId);
 }
 
