@@ -167,7 +167,7 @@ runs:
         else
           web_url="$INPUT_WEB_URL"
           app_url="$INPUT_APP_URL"
-          onboarding_url="$(first_non_empty "$(repo_var ONBOARDING_URL_STAGING)" "https://staging-www.vm6.ai")"
+          onboarding_url="$(first_non_empty "$(repo_var ONBOARDING_URL_STAGING)" "https://staging-www.vm0.ai")"
           api_url="$INPUT_API_URL"
           api_backend_url="$INPUT_API_BACKEND_URL"
           axiom_dataset_suffix="dev"
