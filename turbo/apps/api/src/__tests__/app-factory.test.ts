@@ -247,6 +247,43 @@ describe("createApp", () => {
     expect(JSON.stringify(logFields.error)).not.toContain("depth-80");
   });
 
+  it("handles cyclic enumerable error fields while logging unhandled errors", async () => {
+    const error = new Error("request failure") as Error &
+      Record<string, unknown>;
+    const request: Record<string, unknown> = {
+      url: "https://example.test/api",
+      retryAfter: 1n,
+    };
+    request.self = request;
+    error.request = request;
+    const handler$ = computed((): never => {
+      throw error;
+    });
+    const client = setupApp({
+      context,
+      routes: [...ROUTES, { route: errorTestContract.boom, handler: handler$ }],
+    })(errorTestContract);
+
+    const response = await accept(client.boom(), [500]);
+
+    expect(response.body).toStrictEqual({ error: "Internal server error" });
+
+    const [, fields] = context.mocks.axiomLogging.error.mock.calls.at(-1) ?? [];
+    const logFields = fields as Record<PropertyKey, unknown>;
+    const serializedError = logFields.error as Record<string, unknown>;
+    expect(serializedError).toMatchObject({
+      message: "request failure",
+      request: {
+        url: "https://example.test/api",
+        retryAfter: "1",
+        self: "[Circular]",
+      },
+    });
+    expect(() => {
+      JSON.stringify(serializedError);
+    }).not.toThrow();
+  });
+
   it("summarizes response validation failures without schema details", async () => {
     const handler$ = computed(() => {
       return { status: 500, body: { error: 123 } };

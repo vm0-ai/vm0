@@ -297,6 +297,35 @@ describe("serializeError via logging", () => {
     expect(serialized).not.toContain("depth-80");
   });
 
+  it("serializes cyclic enumerable error fields into JSON-safe values", () => {
+    const log = logger("cyclic-enumerable-test");
+    const err = new Error("request failed") as Error & Record<string, unknown>;
+    const request: Record<string, unknown> = {
+      url: "https://example.test/api",
+      retryAfter: 1n,
+    };
+    request.self = request;
+    err.request = request;
+
+    log.error(err);
+
+    const fields = axiomLogging.error.mock.calls[0]?.[1] as
+      | Record<string, unknown>
+      | undefined;
+    const serializedError = fields?.error as Record<string, unknown>;
+    expect(serializedError).toMatchObject({
+      message: "request failed",
+      request: {
+        url: "https://example.test/api",
+        retryAfter: "1",
+        self: "[Circular]",
+      },
+    });
+    expect(() => {
+      JSON.stringify(serializedError);
+    }).not.toThrow();
+  });
+
   it("surfaces custom enumerable properties on Error", () => {
     const log = logger("custom-err");
     const err = new Error("custom") as Error & Record<string, unknown>;
