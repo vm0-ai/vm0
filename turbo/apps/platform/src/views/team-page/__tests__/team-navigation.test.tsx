@@ -954,16 +954,6 @@ describe("team page navigation", () => {
       expect(buttonByText("Add automation")).toBeInTheDocument();
     });
 
-    click(
-      screen.getAllByLabelText(
-        "Open automation Summarize open research requests",
-      )[0],
-    );
-
-    await waitFor(() => {
-      expect(screen.getAllByText("Research digest")[0]).toBeInTheDocument();
-    });
-
     const breadcrumbLink = screen
       .getAllByText("Agents")
       .map((el) => {

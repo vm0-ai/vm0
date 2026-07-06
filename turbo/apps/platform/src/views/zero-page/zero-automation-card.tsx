@@ -201,8 +201,6 @@ interface ZeroAutomationCardProps {
   }) => Promise<void>;
   /** When provided, called to trigger an immediate run for an automation. */
   onRunNow?: (entry: AutomationEntry) => Promise<void>;
-  /** When provided, row clicks navigate to the automation detail. */
-  onOpenDetails?: (entry: AutomationEntry) => void;
   /** When true, the save button shows a loading state. */
   saving?: boolean;
   /** Default timezone for new automations. Falls back to browser timezone. */
@@ -217,7 +215,6 @@ export function ZeroAutomationCard({
   onDelete,
   onToggleEnabled,
   onRunNow,
-  onOpenDetails,
   saving,
 }: ZeroAutomationCardProps) {
   const signal = useGet(pageSignal$);
@@ -434,7 +431,6 @@ export function ZeroAutomationCard({
             onToggle={handleToggle}
             onDelete={handleDelete}
             onRunNow={handleRunNow}
-            onOpenDetails={onOpenDetails}
           />
         )}
 

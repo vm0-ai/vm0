@@ -846,17 +846,10 @@ function JobLegacyAutomationsTab({ displayName }: { displayName: string }) {
   const deleteAutomation = useSet(deleteAgentAutomation$);
   const toggleEnabled = useSet(toggleAgentAutomationEnabled$);
   const runAutomationNow = useSet(runAutomationNow$);
-  const nav = useSet(detachedNavigateTo$);
   const pageSignal = useGet(pageSignal$);
 
   const handleRunNow = async (entry: AutomationEntry) => {
     await runAutomationNow(entry.id, pageSignal);
-  };
-
-  const handleOpenDetails = (entry: AutomationEntry) => {
-    nav("/automations/:automationId", {
-      pathParams: { automationId: entry.id },
-    });
   };
 
   return (
@@ -875,7 +868,6 @@ function JobLegacyAutomationsTab({ displayName }: { displayName: string }) {
         return toggleEnabled(params, pageSignal);
       }}
       onRunNow={handleRunNow}
-      onOpenDetails={handleOpenDetails}
     />
   );
 }

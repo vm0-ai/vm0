@@ -4660,7 +4660,6 @@ describe("chat lifecycle", () => {
     expect(within(sidebar).getAllByText("Schedule")).toHaveLength(3);
     expect(within(sidebar).getAllByText("Next run")).toHaveLength(3);
     expect(within(sidebar).getAllByText("Run now")).toHaveLength(3);
-    expect(within(sidebar).getAllByText("Edit")).toHaveLength(3);
     expect(within(sidebar).getAllByText("No upcoming run")).toHaveLength(2);
     expect(within(sidebar).queryByText("Description")).not.toBeInTheDocument();
     expect(
@@ -4678,35 +4677,6 @@ describe("chat lifecycle", () => {
       expect(
         screen.queryByTestId("automation-sidebar"),
       ).not.toBeInTheDocument();
-    });
-  });
-
-  it("opens a linked automation detail from the chat header", async () => {
-    mockAutomationThread();
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${AUTOMATION_THREAD_ID}`,
-    });
-
-    await waitFor(() => {
-      expect(buttonByLabel("Automations")).toBeInTheDocument();
-    });
-
-    click(buttonByLabel("Automations"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Launch review")).toBeInTheDocument();
-    });
-
-    click(
-      within(screen.getByTestId("automation-sidebar")).getAllByText("Edit")[0]!,
-    );
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Launch review" }),
-      ).toBeInTheDocument();
     });
   });
 
@@ -5129,9 +5099,6 @@ describe("chat lifecycle", () => {
     await waitFor(() => {
       expect(screen.getByText("Automation message")).toBeInTheDocument();
       expect(screen.getByText("Launch review")).toBeInTheDocument();
-      expect(
-        screen.getByLabelText("Open automation Launch review"),
-      ).toHaveAttribute("href", `/automations/${automationId}`);
       expect(screen.queryByText("Review launch risks")).not.toBeInTheDocument();
     });
   });

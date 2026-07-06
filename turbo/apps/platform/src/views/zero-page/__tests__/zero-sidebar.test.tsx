@@ -2113,7 +2113,7 @@ describe("zero sidebar", () => {
     });
 
     expect(within(nav).getByText("Agents")).toBeInTheDocument();
-    expect(within(nav).getByText("Automations")).toBeInTheDocument();
+    expect(within(nav).queryByText("Automations")).not.toBeInTheDocument();
     expect(within(nav).queryByText("Workflows")).not.toBeInTheDocument();
   });
 });

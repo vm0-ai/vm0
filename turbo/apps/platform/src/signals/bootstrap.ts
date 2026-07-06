@@ -37,8 +37,6 @@ import { setupWorksPage$ } from "./works-page/works-page-setup.ts";
 import { setupPreferencesPage$ } from "./preferences-page/preferences-page-setup.ts";
 import { setupApiKeysPage$ } from "./api-keys-page/api-keys-page-setup.ts";
 import { setupBb0DevicePage$ } from "./device-bb0-page/device-bb0-page-setup.ts";
-import { setupAutomationsPage$ } from "./automation-page/automation-page-setup.ts";
-import { setupAutomationDetailPage$ } from "./automation-page/automation-detail-page-setup.ts";
 import { setupAgentChatPage$ } from "./zero-page/agent-chat-page-setup.ts";
 import { setupHomePage$ } from "./zero-page/home-page-setup.ts";
 import { setupChatPage$ } from "./chat-page/chat-page-setup.ts";
@@ -273,14 +271,6 @@ const ROUTE_CONFIG = [
   {
     path: ROUTES.deviceBb0,
     setup: setupAuthSidebarPageWrapper(setupBb0DevicePage$),
-  },
-  {
-    path: ROUTES.automationDetail,
-    setup: setupAuthSidebarPageWrapper(setupAutomationDetailPage$),
-  },
-  {
-    path: ROUTES.automations,
-    setup: setupAuthSidebarPageWrapper(setupAutomationsPage$),
   },
   {
     path: ROUTES.lab,

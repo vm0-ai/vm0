@@ -138,7 +138,7 @@ describe("/usage page", () => {
       queryAllByRoleFast("link").find((el) => {
         return /My Schedule/.test(el.textContent ?? "");
       }),
-    ).toBeInTheDocument();
+    ).toBeUndefined();
     expect(
       queryAllByRoleFast("link").find((el) => {
         return /Chat with Agent/.test(el.textContent ?? "");
