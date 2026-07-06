@@ -1,4 +1,5 @@
 import { initContract } from "@vm0/api-contracts/contracts/trpc-contract";
+import { EVENT } from "@axiomhq/logging";
 import { computed } from "ccstate";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
@@ -32,6 +33,14 @@ const errorTestContract = c.router({
   boom: {
     method: "GET",
     path: "/__test/boom",
+    responses: {
+      500: z.object({ error: z.string() }),
+    },
+  },
+  boomById: {
+    method: "GET",
+    path: "/__test/boom/:id",
+    pathParams: z.object({ id: z.string() }),
     responses: {
       500: z.object({ error: z.string() }),
     },
@@ -76,6 +85,113 @@ describe("createApp", () => {
 
     expect(response.body).toStrictEqual({ error: "Internal server error" });
     expect(context.mocks.sentry.captureException).toHaveBeenCalledWith(error);
+  });
+
+  it("logs sanitized root-cause fields for unhandled errors", async () => {
+    const cause = new Error(
+      "column chat_threads.last_read_message_id does not exist for user test@example.com at https://example.test/callback?token=secret Bearer abcdef1234567890 123456789012 550e8400-e29b-41d4-a716-446655440000",
+    );
+    const error = new Error("wrapped database failure", { cause }) as Error & {
+      code: string;
+    };
+    error.code = "42703";
+    const handler$ = computed((): never => {
+      throw error;
+    });
+    const client = setupApp({
+      context,
+      routes: [
+        ...ROUTES,
+        { route: errorTestContract.boomById, handler: handler$ },
+      ],
+    })(errorTestContract);
+
+    const response = await accept(
+      client.boomById({
+        params: { id: "550e8400-e29b-41d4-a716-446655440000" },
+      }),
+      [500],
+    );
+
+    expect(response.body).toStrictEqual({ error: "Internal server error" });
+    expect(context.mocks.sentry.captureException).toHaveBeenCalledWith(error);
+
+    const [message, fields] =
+      context.mocks.axiomLogging.error.mock.calls.at(-1) ?? [];
+    expect(message).toBe(
+      "Unhandled request error: column chat_threads.last_read_message_id does not exist for user [email] at [url] Bearer [redacted] [number] [id]",
+    );
+
+    const logFields = fields as Record<PropertyKey, unknown>;
+    expect(logFields).toMatchObject({
+      type: "unhandled_request_error",
+      errorSummary:
+        "column chat_threads.last_read_message_id does not exist for user [email] at [url] Bearer [redacted] [number] [id]",
+      route: "/__test/boom/:id",
+      method: "GET",
+      errorCode: "42703",
+      error: expect.objectContaining({
+        message: "wrapped database failure",
+        code: "42703",
+        cause: expect.objectContaining({
+          message: cause.message,
+        }),
+      }),
+    });
+    expect(logFields[EVENT]).toMatchObject({
+      source: "api",
+      type: "unhandled_request_error",
+      errorSummary:
+        "column chat_threads.last_read_message_id does not exist for user [email] at [url] Bearer [redacted] [number] [id]",
+      route: "/__test/boom/:id",
+      method: "GET",
+      errorCode: "42703",
+    });
+
+    const serialized = JSON.stringify({
+      message,
+      errorSummary: logFields.errorSummary,
+      route: logFields.route,
+    });
+    expect(serialized).not.toContain("test@example.com");
+    expect(serialized).not.toContain("secret");
+    expect(serialized).not.toContain("abcdef1234567890");
+    expect(serialized).not.toContain("123456789012");
+    expect(serialized).not.toContain("550e8400-e29b-41d4-a716-446655440000");
+  });
+
+  it("summarizes response validation failures without schema details", async () => {
+    const handler$ = computed(() => {
+      return { status: 500, body: { error: 123 } };
+    });
+    const client = setupApp({
+      context,
+      routes: [...ROUTES, { route: errorTestContract.boom, handler: handler$ }],
+    })(errorTestContract);
+
+    const response = await accept(client.boom(), [500]);
+
+    expect(response.body).toStrictEqual({ error: "Internal server error" });
+    expect(context.mocks.sentry.captureException).toHaveBeenCalledOnce();
+
+    const [message, fields] =
+      context.mocks.axiomLogging.error.mock.calls.at(-1) ?? [];
+    expect(message).toBe("Unhandled request error: response validation failed");
+
+    const logFields = fields as Record<PropertyKey, unknown>;
+    expect(logFields).toMatchObject({
+      type: "unhandled_request_error",
+      errorSummary: "response validation failed",
+      route: "/__test/boom",
+      method: "GET",
+    });
+    expect(logFields[EVENT]).toMatchObject({
+      source: "api",
+      type: "unhandled_request_error",
+      errorSummary: "response validation failed",
+      route: "/__test/boom",
+      method: "GET",
+    });
   });
 
   it("passes through expected HTTP client errors without capturing them", async () => {

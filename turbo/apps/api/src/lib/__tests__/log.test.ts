@@ -137,6 +137,58 @@ describe("Axiom log source field", () => {
       },
     });
   });
+
+  it("lifts unhandled request error fields into the Axiom event root", () => {
+    const log = logger("unhandled-request-test");
+    log.error("Unhandled request error: database column missing", {
+      type: "unhandled_request_error",
+      errorSummary: "database column missing",
+      route: "/api/test/:id",
+      method: "GET",
+      errorCode: "42703",
+      error: { message: "database column missing" },
+    });
+
+    expect(axiomLogging.error).toHaveBeenCalledWith(
+      "Unhandled request error: database column missing",
+      {
+        type: "unhandled_request_error",
+        errorSummary: "database column missing",
+        route: "/api/test/:id",
+        method: "GET",
+        errorCode: "42703",
+        error: { message: "database column missing" },
+        context: "unhandled-request-test",
+        [EVENT]: {
+          source: "api",
+          type: "unhandled_request_error",
+          errorSummary: "database column missing",
+          route: "/api/test/:id",
+          method: "GET",
+          errorCode: "42703",
+        },
+      },
+    );
+  });
+
+  it("does not lift unknown type fields into the Axiom event root", () => {
+    const log = logger("unknown-type-test");
+    log.error("custom event", {
+      type: "custom_event",
+      errorSummary: "summary",
+      route: "/api/test/:id",
+      method: "GET",
+    });
+
+    expect(axiomLogging.error).toHaveBeenCalledWith("custom event", {
+      type: "custom_event",
+      errorSummary: "summary",
+      route: "/api/test/:id",
+      method: "GET",
+      context: "unknown-type-test",
+      [EVENT]: { source: "api" },
+    });
+  });
 });
 
 // ── flushLogs ───────────────────────────────────────────────────────────────

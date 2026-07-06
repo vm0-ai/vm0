@@ -1,8 +1,10 @@
 import { httpInstrumentationMiddleware } from "@hono/otel";
 import * as Sentry from "@sentry/node";
+import { serializeError } from "@vm0/core/log-utils";
 // oxlint-disable-next-line no-restricted-imports -- app factory owns the Hono instance, confirmed by ethan@vm0.ai
 import { Hono, type Context } from "hono";
 import { HTTPException } from "hono/http-exception";
+import { matchedRoutes } from "hono/route";
 
 import { corsMiddleware } from "./lib/cors";
 import { env } from "./lib/env";
@@ -15,6 +17,17 @@ import { isAbortError } from "./signals/utils";
 const L = logger("App");
 
 const WEB_AUTH_PATHS = ["/sign-in", "/sign-up"] as const;
+const UNHANDLED_REQUEST_ERROR_TYPE = "unhandled_request_error" as const;
+const ERROR_SUMMARY_MAX_LENGTH = 240;
+
+interface UnhandledRequestErrorLogFields {
+  readonly type: typeof UNHANDLED_REQUEST_ERROR_TYPE;
+  readonly errorSummary: string;
+  readonly method: string;
+  readonly route?: string;
+  readonly errorCode?: string;
+  readonly error: Record<string, unknown>;
+}
 
 function shouldCaptureError(error: Error): boolean {
   return !(error instanceof HTTPException) || error.status >= 500;
@@ -35,6 +48,118 @@ function redirectToWeb(context: Context): Response {
   return context.redirect(target.toString());
 }
 
+function errorChain(error: Error): readonly Error[] {
+  const chain: Error[] = [];
+  const seen = new Set<Error>();
+  let current: Error | undefined = error;
+  while (current && !seen.has(current)) {
+    chain.push(current);
+    seen.add(current);
+    current = current.cause instanceof Error ? current.cause : undefined;
+  }
+  return chain;
+}
+
+function sourceErrorMessage(error: Error): string {
+  const chain = errorChain(error);
+  for (let index = chain.length - 1; index >= 0; index -= 1) {
+    const message = chain[index]?.message.trim();
+    if (message) {
+      return message;
+    }
+  }
+  return error.name || "unknown error";
+}
+
+function truncateSummary(summary: string): string {
+  if (summary.length <= ERROR_SUMMARY_MAX_LENGTH) {
+    return summary;
+  }
+  return `${summary.slice(0, ERROR_SUMMARY_MAX_LENGTH - 3)}...`;
+}
+
+function replaceControlCharacters(value: string): string {
+  let result = "";
+  for (const char of value) {
+    const code = char.charCodeAt(0);
+    result += code <= 31 || code === 127 ? " " : char;
+  }
+  return result;
+}
+
+function sanitizeErrorSummary(error: Error): string {
+  const source = sourceErrorMessage(error);
+  if (/^response validation failed:/i.test(source)) {
+    return "response validation failed";
+  }
+
+  const summary = replaceControlCharacters(source)
+    .replace(/\bhttps?:\/\/[^\s]+/gi, "[url]")
+    .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, "[email]")
+    .replace(
+      /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/gi,
+      "[id]",
+    )
+    .replace(/\bBearer\s+[A-Za-z0-9._~+/-]+=*/gi, "Bearer [redacted]")
+    .replace(
+      /\b(api[_-]?key|authorization|password|secret|token)\b\s*[:=]\s*["']?[^,\s"']+/gi,
+      "$1=[redacted]",
+    )
+    .replace(/\b[0-9a-f]{16,}\b/gi, "[hash]")
+    .replace(/\b\d{8,}\b/g, "[number]")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return truncateSummary(summary || "unknown error");
+}
+
+function structuredErrorCode(error: Error): string | undefined {
+  for (const current of errorChain(error)) {
+    const code = "code" in current ? current.code : undefined;
+    if (typeof code === "number" && Number.isFinite(code)) {
+      return String(code);
+    }
+    if (typeof code === "string") {
+      const normalized = code.trim();
+      if (/^[A-Za-z0-9_.:-]{1,80}$/.test(normalized)) {
+        return normalized;
+      }
+    }
+  }
+  return undefined;
+}
+
+function isTemplateRoute(path: string): boolean {
+  return path !== "*" && path !== "/*";
+}
+
+function requestRouteTemplate(context: Context): string | undefined {
+  const routes = matchedRoutes(context);
+  for (let index = routes.length - 1; index >= 0; index -= 1) {
+    const path = routes[index]?.path;
+    if (path && isTemplateRoute(path)) {
+      return path;
+    }
+  }
+  return undefined;
+}
+
+function unhandledRequestErrorLogFields(
+  error: Error,
+  context: Context,
+): UnhandledRequestErrorLogFields {
+  const route = requestRouteTemplate(context);
+  const errorCode = structuredErrorCode(error);
+  return {
+    type: UNHANDLED_REQUEST_ERROR_TYPE,
+    errorSummary: sanitizeErrorSummary(error),
+    method: context.req.method,
+    ...(route ? { route } : {}),
+    ...(errorCode ? { errorCode } : {}),
+    error: serializeError(error),
+  };
+}
+
 function handleError(error: Error, context: Context): Response {
   if (isAbortError(error)) {
     return context.json({ error: "Internal server error" }, 500);
@@ -46,7 +171,8 @@ function handleError(error: Error, context: Context): Response {
     return error.getResponse();
   }
 
-  L.error("Unhandled request error", error);
+  const fields = unhandledRequestErrorLogFields(error, context);
+  L.error(`Unhandled request error: ${fields.errorSummary}`, fields);
   return context.json({ error: "Internal server error" }, 500);
 }
 
