@@ -37,7 +37,8 @@ BEGIN
 	FROM "org_custom_connectors"
 	WHERE "id" = NEW."connector_id"
 		AND "org_id" = NEW."org_id"
-	FOR KEY SHARE;
+	-- Use FOR SHARE so ordinary definition updates cannot race this write.
+	FOR SHARE;
 	IF NOT FOUND THEN
 		RAISE EXCEPTION 'custom connector legacy secret references missing connector'
 			USING ERRCODE = '23503';
@@ -67,7 +68,8 @@ BEGIN
 	WHERE "id" = NEW."connector_id"
 		AND "org_id" = NEW."org_id"
 		AND org_custom_connector_value_is_declared("fields", NEW."kind", NEW."key")
-	FOR KEY SHARE;
+	-- Use FOR SHARE so ordinary definition updates cannot race this validation.
+	FOR SHARE;
 	IF NOT FOUND THEN
 		RAISE EXCEPTION 'custom connector value references undeclared field'
 			USING ERRCODE = '23514';
@@ -151,7 +153,8 @@ BEGIN
 	WHERE "id" = NEW."connector_id"
 		AND "org_id" = NEW."org_id"
 		AND org_custom_connector_value_is_declared("fields", 'secret', 'secret')
-	FOR KEY SHARE;
+	-- Use FOR SHARE so ordinary definition updates cannot race this sync.
+	FOR SHARE;
 	IF NOT FOUND THEN
 		RETURN NEW;
 	END IF;

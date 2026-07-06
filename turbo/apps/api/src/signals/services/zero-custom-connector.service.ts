@@ -1,6 +1,6 @@
 import { command, computed, type Computed } from "ccstate";
 import { randomUUID } from "node:crypto";
-import { and, eq, inArray, not, or, sql, type SQL } from "drizzle-orm";
+import { and, eq, inArray, not, or, type SQL } from "drizzle-orm";
 import type {
   CreateCustomConnectorBody,
   CustomConnectorField,
@@ -1181,7 +1181,6 @@ async function updateCustomConnectorDefinitionRow(
     readonly definition: ValidatedDefinition;
   },
 ): Promise<CustomConnectorRow | null> {
-  await lockCustomConnectorValueWrites(tx);
   const legacy = legacyColumns(args.definition);
   const [existing] = await tx
     .select()
@@ -1273,19 +1272,6 @@ export const updateCustomConnectorDefinition$ = command(
   },
 );
 
-async function lockCustomConnectorValueWrites(
-  tx: DbTransaction,
-): Promise<void> {
-  // Take this before the connector row lock: rollout bridge triggers can lock
-  // value/secret rows before they lock the connector.
-  await tx.execute(sql`
-    LOCK TABLE
-      "org_custom_connector_values",
-      "org_custom_connector_secrets"
-    IN SHARE ROW EXCLUSIVE MODE
-  `);
-}
-
 export const deleteCustomConnector$ = command(
   async (
     { set },
@@ -1294,7 +1280,6 @@ export const deleteCustomConnector$ = command(
   ): Promise<NotFoundResponse | undefined> => {
     const writeDb = set(writeDb$);
     const deleted = await writeDb.transaction(async (tx) => {
-      await lockCustomConnectorValueWrites(tx);
       const [existing] = await tx
         .select({ id: orgCustomConnectors.id })
         .from(orgCustomConnectors)
@@ -1494,7 +1479,6 @@ async function loadLockedCustomConnectorForValueWrite(
   tx: DbTransaction,
   args: { readonly orgId: string; readonly connectorId: string },
 ): Promise<CustomConnectorRow | null> {
-  await lockCustomConnectorValueWrites(tx);
   const [row] = await tx
     .select()
     .from(orgCustomConnectors)
@@ -2225,7 +2209,6 @@ async function insertProposalConnectorValues(
   args: SaveProposalConnectorValuesArgs,
   encryptedValues: readonly EncryptedValueInput[],
 ): Promise<ValueWriteResult> {
-  await lockCustomConnectorValueWrites(tx);
   const legacy = legacyColumns(args.definition);
   const slug =
     args.definition.slug ??
