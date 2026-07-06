@@ -384,15 +384,27 @@ fn normalize_reasoning(
     method: &str,
 ) -> Result<Value, CodexAppServerEventError> {
     let mut normalized = base_item(item, method, "reasoning")?;
-    let mut text_parts = optional_string_array_key(item, method, "summary", "item.summary")?;
-    text_parts.extend(optional_string_array_key(
-        item,
-        method,
-        "content",
-        "item.content",
-    )?);
-    if !text_parts.is_empty() {
-        normalized.insert("text".to_string(), Value::String(text_parts.join("\n")));
+    let text_metrics = reasoning_text_metrics(item, method)?;
+    if text_metrics.part_count > 0 {
+        let mut text = String::with_capacity(text_metrics.joined_byte_len());
+        let mut has_part = false;
+        append_reasoning_text_parts(
+            &mut text,
+            &mut has_part,
+            item,
+            method,
+            "summary",
+            "item.summary",
+        )?;
+        append_reasoning_text_parts(
+            &mut text,
+            &mut has_part,
+            item,
+            method,
+            "content",
+            "item.content",
+        )?;
+        normalized.insert("text".to_string(), Value::String(text));
     }
     Ok(Value::Object(normalized))
 }
@@ -807,31 +819,87 @@ fn parse_item_status(status: &str) -> Option<ItemStatus> {
     }
 }
 
-fn optional_string_array_key(
+#[derive(Default)]
+struct ReasoningTextMetrics {
+    part_count: usize,
+    byte_len: usize,
+}
+
+impl ReasoningTextMetrics {
+    fn add_part(&mut self, part: &str) {
+        self.part_count += 1;
+        self.byte_len += part.len();
+    }
+
+    fn joined_byte_len(&self) -> usize {
+        self.byte_len + self.part_count.saturating_sub(1)
+    }
+}
+
+fn reasoning_text_metrics(
+    object: &Map<String, Value>,
+    method: &str,
+) -> Result<ReasoningTextMetrics, CodexAppServerEventError> {
+    let mut metrics = ReasoningTextMetrics::default();
+    add_string_array_text_metrics(&mut metrics, object, method, "summary", "item.summary")?;
+    add_string_array_text_metrics(&mut metrics, object, method, "content", "item.content")?;
+    Ok(metrics)
+}
+
+fn add_string_array_text_metrics(
+    metrics: &mut ReasoningTextMetrics,
     object: &Map<String, Value>,
     method: &str,
     key: &str,
     field: &'static str,
-) -> Result<Vec<String>, CodexAppServerEventError> {
+) -> Result<(), CodexAppServerEventError> {
+    for value in optional_string_array_values(object, method, key, field)? {
+        let part = value
+            .as_str()
+            .ok_or_else(|| invalid_field_for_method(method, field))?;
+        metrics.add_part(part);
+    }
+    Ok(())
+}
+
+fn append_reasoning_text_parts(
+    text: &mut String,
+    has_part: &mut bool,
+    object: &Map<String, Value>,
+    method: &str,
+    key: &str,
+    field: &'static str,
+) -> Result<(), CodexAppServerEventError> {
+    for value in optional_string_array_values(object, method, key, field)? {
+        let part = value
+            .as_str()
+            .ok_or_else(|| invalid_field_for_method(method, field))?;
+        if *has_part {
+            text.push('\n');
+        } else {
+            *has_part = true;
+        }
+        text.push_str(part);
+    }
+    Ok(())
+}
+
+fn optional_string_array_values<'a>(
+    object: &'a Map<String, Value>,
+    method: &str,
+    key: &str,
+    field: &'static str,
+) -> Result<&'a [Value], CodexAppServerEventError> {
     let Some(values) = object.get(key) else {
-        return Ok(Vec::new());
+        return Ok(&[]);
     };
     if values.is_null() {
-        return Ok(Vec::new());
+        return Ok(&[]);
     }
-    let values = values
-        .as_array()
-        .ok_or_else(|| invalid_field_for_method(method, field))?;
-
     values
-        .iter()
-        .map(|value| {
-            value
-                .as_str()
-                .map(str::to_string)
-                .ok_or_else(|| invalid_field_for_method(method, field))
-        })
-        .collect()
+        .as_array()
+        .map(Vec::as_slice)
+        .ok_or_else(|| invalid_field_for_method(method, field))
 }
 
 fn copy_optional_field(
@@ -920,6 +988,15 @@ mod tests {
         notification_to_codex_event(&notification(method, params))
             .expect("notification should map")
             .expect("notification should produce an event")
+    }
+
+    fn completed_reasoning_params(item: Value) -> Value {
+        json!({
+            "threadId": "thread-1",
+            "turnId": "turn-1",
+            "completedAtMs": 42,
+            "item": item
+        })
     }
 
     fn completed_command_item() -> Value {
@@ -1196,21 +1273,128 @@ mod tests {
     fn reasoning_joins_summary_and_content() {
         let event = mapped_event(
             "item/completed",
-            json!({
-                "threadId": "thread-1",
-                "turnId": "turn-1",
-                "completedAtMs": 42,
-                "item": {
+            completed_reasoning_params(json!({
                     "type": "reasoning",
                     "id": "reason-1",
                     "summary": ["summary"],
                     "content": ["detail one", "detail two"]
-                }
-            }),
+            })),
         );
 
         assert_eq!(event["item"]["type"], "reasoning");
         assert_eq!(event["item"]["text"], "summary\ndetail one\ndetail two");
+    }
+
+    #[test]
+    fn reasoning_omits_text_without_parts() {
+        for item in [
+            json!({
+                "type": "reasoning",
+                "id": "reason-1"
+            }),
+            json!({
+                "type": "reasoning",
+                "id": "reason-1",
+                "summary": null,
+                "content": null
+            }),
+            json!({
+                "type": "reasoning",
+                "id": "reason-1",
+                "summary": [],
+                "content": []
+            }),
+        ] {
+            let event = mapped_event("item/completed", completed_reasoning_params(item));
+            let item = event["item"]
+                .as_object()
+                .expect("mapped item should be an object");
+            assert!(!item.contains_key("text"));
+        }
+    }
+
+    #[test]
+    fn reasoning_preserves_empty_string_text_part() {
+        let event = mapped_event(
+            "item/completed",
+            completed_reasoning_params(json!({
+                "type": "reasoning",
+                "id": "reason-1",
+                "summary": [""]
+            })),
+        );
+
+        let item = event["item"]
+            .as_object()
+            .expect("mapped item should be an object");
+        assert_eq!(item.get("text").and_then(Value::as_str), Some(""));
+    }
+
+    #[test]
+    fn reasoning_preserves_newline_placement_for_empty_parts() {
+        let event = mapped_event(
+            "item/completed",
+            completed_reasoning_params(json!({
+                "type": "reasoning",
+                "id": "reason-1",
+                "summary": ["", "summary"],
+                "content": [""]
+            })),
+        );
+
+        assert_eq!(event["item"]["text"], "\nsummary\n");
+    }
+
+    #[test]
+    fn invalid_reasoning_text_fields_return_invalid_field() {
+        for (item, field) in [
+            (
+                json!({
+                    "type": "reasoning",
+                    "id": "reason-1",
+                    "summary": "summary"
+                }),
+                "item.summary",
+            ),
+            (
+                json!({
+                    "type": "reasoning",
+                    "id": "reason-1",
+                    "content": "content"
+                }),
+                "item.content",
+            ),
+            (
+                json!({
+                    "type": "reasoning",
+                    "id": "reason-1",
+                    "summary": [1]
+                }),
+                "item.summary",
+            ),
+            (
+                json!({
+                    "type": "reasoning",
+                    "id": "reason-1",
+                    "content": [1]
+                }),
+                "item.content",
+            ),
+        ] {
+            let error = notification_to_codex_event(&notification(
+                "item/completed",
+                completed_reasoning_params(item),
+            ))
+            .expect_err("invalid reasoning text field should fail");
+
+            assert_eq!(
+                error,
+                CodexAppServerEventError::InvalidField {
+                    method: "item/completed".to_string(),
+                    field,
+                }
+            );
+        }
     }
 
     #[test]
