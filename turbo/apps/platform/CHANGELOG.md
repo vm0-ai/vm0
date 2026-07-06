@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.563.1](https://github.com/vm0-ai/vm0/compare/app-v0.563.0...app-v0.563.1) (2026-07-06)
+
+
+### Bug Fixes
+
+* serve artifact template catalogs from static assets ([#20407](https://github.com/vm0-ai/vm0/issues/20407)) ([7672c8b](https://github.com/vm0-ai/vm0/commit/7672c8b833b22cf8c607287907023a0b97138d59))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.407.1
+
 ## [0.563.0](https://github.com/vm0-ai/vm0/compare/app-v0.562.0...app-v0.563.0) (2026-07-06)
 
 
