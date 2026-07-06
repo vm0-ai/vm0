@@ -1047,6 +1047,10 @@ details[open] > summary > span:first-child {
   z-index: 0;
 }
 
+.zero-app[data-zero-artifact-fullscreen="true"] .zero-workspace-bg {
+  z-index: 60;
+}
+
 .zero-workspace-bg::before {
   content: "";
   position: absolute;

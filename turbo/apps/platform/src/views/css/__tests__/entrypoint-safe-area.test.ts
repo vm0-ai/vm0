@@ -79,4 +79,12 @@ describe("platform entrypoint safe area behavior", () => {
       /\.zero-viewport-shell\s*{[\s\S]*height:\s*var\(--zero-viewport-height\);[\s\S]*max-height:\s*var\(--zero-viewport-height\);[\s\S]*overflow:\s*hidden;/,
     );
   });
+
+  it("keeps artifact fullscreen above app chrome", () => {
+    const globalCss = readGlobalCss();
+
+    expect(globalCss).toMatch(
+      /\.zero-app\[data-zero-artifact-fullscreen="true"\]\s+\.zero-workspace-bg\s*{[\s\S]*z-index:\s*60;[\s\S]*}/,
+    );
+  });
 });

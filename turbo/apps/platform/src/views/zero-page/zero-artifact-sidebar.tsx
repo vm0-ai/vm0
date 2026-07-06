@@ -430,7 +430,11 @@ function HtmlEditSnapshotRestoreDialog({
         }
       }}
     >
-      <DialogContent data-testid="html-edit-snapshot-restore-dialog">
+      <DialogContent
+        className="!z-[10000]"
+        data-testid="html-edit-snapshot-restore-dialog"
+        overlayClassName="!z-[10000]"
+      >
         <DialogHeader>
           <DialogTitle>Resume HTML draft?</DialogTitle>
           <DialogDescription>
