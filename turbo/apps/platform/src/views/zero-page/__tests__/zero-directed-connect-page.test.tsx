@@ -3,6 +3,7 @@ import {
   zeroConnectorOpenIdStartContract,
   zeroConnectorOauthStartContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
+import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import {
   zeroConnectorCatalogContract,
   type PublicConnectorCatalogStatusItem,
@@ -125,7 +126,65 @@ function publicOAuthConnectorStatus(args: {
   };
 }
 
-function mockConnectorOauthStart(): { readonly authWindow: Window } {
+function connectedConnectorResponse(args: {
+  readonly type: ConnectorResponse["type"];
+  readonly authMethod: string;
+  readonly updatedAt: string;
+}): ConnectorResponse {
+  return {
+    id: "00000000-0000-4000-8000-000000000001",
+    type: args.type,
+    authMethod: args.authMethod,
+    externalId: "mock-connected-account",
+    externalUsername: "mock-connected-account",
+    externalEmail: null,
+    oauthScopes: [],
+    connectionStatus: "connected",
+    reconnectReason: null,
+    tokenExpiresAt: null,
+    createdAt: "2026-01-01T00:00:00Z",
+    updatedAt: args.updatedAt,
+  };
+}
+
+function steamOpenIdConnectorStatus(): PublicConnectorCatalogStatusItem {
+  return {
+    connectorRef: "steam",
+    label: "Public Steam",
+    description: "Public Steam description",
+    category: "data-automation-infrastructure",
+    generation: [],
+    tags: [],
+    authMethods: [
+      {
+        id: "openid",
+        label: "Public Steam sign-in",
+        description: "Public Steam sign-in description",
+        grantKind: "openid-auth",
+        manualFields: [],
+        startOptions: [],
+      },
+    ],
+    permissionSummary: {
+      hasPermissions: false,
+      permissionCount: 0,
+      hasCategories: false,
+      hasDefaultPolicyOverrides: false,
+    },
+    connection: null,
+    connected: false,
+    connectionStatus: "not-connected",
+    scopeMismatch: false,
+    authMethodSupportsRefresh: false,
+    tokenExpiresAt: null,
+    singleAuthCodeAuthMethodId: null,
+    connectNotice: null,
+  };
+}
+
+function mockConnectorOauthStart(args?: { readonly onStart?: () => void }): {
+  readonly authWindow: Window;
+} {
   const authWindow = context.mocks.browser.authWindow();
   authWindow.closed = true;
   Object.defineProperty(authWindow, "location", {
@@ -136,6 +195,7 @@ function mockConnectorOauthStart(): { readonly authWindow: Window } {
   context.mocks.api(
     zeroConnectorOauthStartContract.start,
     ({ params, respond }) => {
+      args?.onStart?.();
       return respond(200, {
         authorizationUrl: `https://oauth.test/${params.type}/authorize`,
       });
@@ -145,7 +205,9 @@ function mockConnectorOauthStart(): { readonly authWindow: Window } {
   return { authWindow };
 }
 
-function mockConnectorOpenIdStart(): { readonly authWindow: Window } {
+function mockConnectorOpenIdStart(args?: { readonly onStart?: () => void }): {
+  readonly authWindow: Window;
+} {
   const authWindow = context.mocks.browser.authWindow();
   authWindow.closed = true;
   Object.defineProperty(authWindow, "location", {
@@ -156,6 +218,7 @@ function mockConnectorOpenIdStart(): { readonly authWindow: Window } {
   context.mocks.api(
     zeroConnectorOpenIdStartContract.start,
     ({ params, respond }) => {
+      args?.onStart?.();
       return respond(200, {
         authorizationUrl: `https://openid.test/${params.type}/authorize`,
       });
@@ -232,38 +295,7 @@ describe("directed connector connect page", () => {
 
   it("starts an OpenID flow from a directed link", async () => {
     const { authWindow } = mockConnectorOpenIdStart();
-    mockPublicConnectorStatus({
-      connectorRef: "steam",
-      label: "Public Steam",
-      description: "Public Steam description",
-      category: "data-automation-infrastructure",
-      generation: [],
-      tags: [],
-      authMethods: [
-        {
-          id: "openid",
-          label: "Public Steam sign-in",
-          description: "Public Steam sign-in description",
-          grantKind: "openid-auth",
-          manualFields: [],
-          startOptions: [],
-        },
-      ],
-      permissionSummary: {
-        hasPermissions: false,
-        permissionCount: 0,
-        hasCategories: false,
-        hasDefaultPolicyOverrides: false,
-      },
-      connection: null,
-      connected: false,
-      connectionStatus: "not-connected",
-      scopeMismatch: false,
-      authMethodSupportsRefresh: false,
-      tokenExpiresAt: null,
-      singleAuthCodeAuthMethodId: null,
-      connectNotice: null,
-    });
+    mockPublicConnectorStatus(steamOpenIdConnectorStatus());
 
     detachedSetupPage({ context, path: "/connectors/steam/connect" });
 
@@ -278,6 +310,38 @@ describe("directed connector connect page", () => {
       expect(authWindow.location.href).toBe(
         "https://openid.test/steam/authorize",
       );
+    });
+  });
+
+  it("finishes an OpenID flow when the callback wins before Ably polling starts", async () => {
+    context.mocks.data.connectors([]);
+    const { authWindow } = mockConnectorOpenIdStart({
+      onStart: () => {
+        context.mocks.data.connectors([
+          connectedConnectorResponse({
+            type: "steam",
+            authMethod: "openid",
+            updatedAt: "2026-01-01T00:00:01Z",
+          }),
+        ]);
+      },
+    });
+    mockPublicConnectorStatus(steamOpenIdConnectorStatus());
+
+    detachedSetupPage({ context, path: "/connectors/steam/connect" });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Zero needs Public Steam to proceed"),
+      ).toBeInTheDocument();
+    });
+    click(getButtonByText("Connect"));
+
+    await waitFor(() => {
+      expect(authWindow.location.href).toBe(
+        "https://openid.test/steam/authorize",
+      );
+      expect(screen.getByText("Public Steam connected")).toBeInTheDocument();
     });
   });
 

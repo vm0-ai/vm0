@@ -2065,6 +2065,7 @@ const openConnectorOAuthAuthCodeWindow$ = command(
     { get },
     type: ConnectorType,
     authMethod: ConnectorAuthMethodId,
+    beforeStart: (signal: AbortSignal) => Promise<void>,
     signal: AbortSignal,
   ) => {
     const standalone = isStandaloneMode();
@@ -2090,6 +2091,9 @@ const openConnectorOAuthAuthCodeWindow$ = command(
             `${type}/${authMethod} does not support browser authorization`,
           );
         }
+
+        await beforeStart(signal);
+        signal.throwIfAborted();
 
         const startResult =
           grantKind === "openid-auth"
@@ -2160,28 +2164,27 @@ export const connectConnectorOAuthAuthCode$ = command(
 
     return await withCleanup(
       (async () => {
+        // Snapshot before starting the provider flow. The popup is already open
+        // by the time this runs, so we keep browser popup blockers satisfied
+        // while avoiding a race where a very fast callback completes before the
+        // first poll baseline is captured.
+        const onConnectorChanged$ = createConnectorOAuthAuthCodeChangedCommand(
+          type,
+          authMethod,
+        );
         const authWindow = await set(
           openConnectorOAuthAuthCodeWindow$,
           type,
           authMethod,
+          async (sig) => {
+            await set(onConnectorChanged$, sig);
+          },
           signal,
         );
         signal.throwIfAborted();
 
         // Wait for the auth-code OAuth flow to complete. The callback publishes
         // `connector:changed`, and the subscription rechecks the server state.
-        const onConnectorChanged$ = createConnectorOAuthAuthCodeChangedCommand(
-          type,
-          authMethod,
-        );
-
-        // Prime once so `initialUpdatedAt` snapshots the current server state.
-        // `setAblyLoop$` no longer primes its subscribers, and without this the
-        // first ably event would be taken as the baseline instead of signalling
-        // completion.
-        await set(onConnectorChanged$, signal);
-        signal.throwIfAborted();
-
         const loopSignal = set(resetOAuthAuthCodeConnectorLoopSignal$, signal);
         const popupSignal = set(
           resetOAuthAuthCodeConnectorPopupSignal$,
