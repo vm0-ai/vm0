@@ -15,7 +15,6 @@ import type {
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import type { ConnectorSearchItem } from "@vm0/api-contracts/contracts/zero-connectors";
-import { isGoogleOAuthConnector } from "@vm0/connectors/auth-providers/oauth/google-connectors";
 import {
   CONNECTOR_TYPE_KEYS,
   CONNECTOR_TYPES,
@@ -307,9 +306,7 @@ function connectorCatalogStatusItem(args: {
       args.type,
       args.authMethods,
     ),
-    connectNotice: isGoogleOAuthConnector(args.type)
-      ? "google-security-warning"
-      : null,
+    connectNotice: null,
   };
 }
 

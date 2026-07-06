@@ -8,6 +8,7 @@ import { onDomEventFn, onRef, resetSignal } from "../utils.ts";
 // Assistant message bubbles carry this class in the chat thread. Text selected
 // inside one of them is what we offer feedback on.
 const ASSISTANT_BUBBLE_SELECTOR = ".zero-chat-bubble-assistant";
+const ASSISTANT_GROUP_SELECTOR = '[data-role="assistant"]';
 
 // Each chat thread renders inside a container tagged with its thread id. We
 // read it off the selection so a feedback draft stays bound to its own thread.
@@ -70,10 +71,38 @@ export const feedbackSendCountValue$ = computed((get) => {
   }).length;
 });
 
-function resolveSelectionBubble(range: Range): Element | null {
-  const node = range.commonAncestorContainer;
+function closestAssistantBubble(node: Node | null): Element | null {
+  if (!node) {
+    return null;
+  }
   const element = node instanceof Element ? node : node.parentElement;
   return element?.closest(ASSISTANT_BUBBLE_SELECTOR) ?? null;
+}
+
+function resolveSelectionBubble(range: Range): Element | null {
+  const commonBubble = closestAssistantBubble(range.commonAncestorContainer);
+  if (commonBubble) {
+    return commonBubble;
+  }
+
+  // Multi-line selections can report an outer message group as the range's
+  // common ancestor even when both endpoints are inside assistant bubbles.
+  const startBubble = closestAssistantBubble(range.startContainer);
+  const endBubble = closestAssistantBubble(range.endContainer);
+  if (!startBubble || !endBubble) {
+    return null;
+  }
+  if (startBubble === endBubble) {
+    return startBubble;
+  }
+
+  const startGroup = startBubble.closest(ASSISTANT_GROUP_SELECTOR);
+  const endGroup = endBubble.closest(ASSISTANT_GROUP_SELECTOR);
+  if (startGroup !== null && startGroup === endGroup) {
+    return startBubble;
+  }
+
+  return null;
 }
 
 // The id of the thread that owns the selected passage, or null when it sits

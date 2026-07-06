@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.57](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.56...nbd-cow-v0.4.57) (2026-07-06)
+
+
+### Performance Improvements
+
+* **nbd-cow:** stream bitmap serialization ([#20317](https://github.com/vm0-ai/vm0/issues/20317)) ([3a02a98](https://github.com/vm0-ai/vm0/commit/3a02a9842cc34eb9323662e4588f7c539eaa1566))
+
 ## [0.4.56](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.55...nbd-cow-v0.4.56) (2026-07-05)
 
 

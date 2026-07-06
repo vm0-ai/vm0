@@ -54,10 +54,7 @@ import {
 import { authorizeConnector$ } from "../../signals/connectors-page/directed-authorize-type.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { IconCheck, IconLoader2 } from "@tabler/icons-react";
-import {
-  Vm0LogoLink,
-  GoogleSecurityWarningNotice,
-} from "./zero-directed-shared.tsx";
+import { Vm0LogoLink } from "./zero-directed-shared.tsx";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import type { FormEvent } from "react";
 import { ConnectorHelpText } from "./components/settings/connector-help-text.tsx";
@@ -378,22 +375,6 @@ function useDirectedConnectConnectorType(): ConnectorType | null {
   return parsed.success ? parsed.data : null;
 }
 
-function ConnectorConnectNotices({
-  connectNotice,
-  isConnected,
-}: {
-  readonly connectNotice: ConnectorTypeWithStatus["connectNotice"] | null;
-  readonly isConnected: boolean;
-}) {
-  if (isConnected) {
-    return null;
-  }
-  if (connectNotice === "google-security-warning") {
-    return <GoogleSecurityWarningNotice />;
-  }
-  return null;
-}
-
 function useDirectedConnectCatalogState(connectorType: ConnectorType | null): {
   readonly item: ConnectorTypeWithStatus | undefined;
   readonly isConnected: boolean;
@@ -461,7 +442,6 @@ function DirectedConnectCardContent({
   connectorType,
   connectorLabel,
   connectorDescription,
-  connectNotice,
   agentName,
   isLoading,
   isConnected,
@@ -472,7 +452,6 @@ function DirectedConnectCardContent({
   readonly connectorType: ConnectorType;
   readonly connectorLabel: string;
   readonly connectorDescription: string;
-  readonly connectNotice: ConnectorTypeWithStatus["connectNotice"] | null;
   readonly agentName: string;
   readonly isLoading: boolean;
   readonly isConnected: boolean;
@@ -504,10 +483,6 @@ function DirectedConnectCardContent({
                 <p className="w-60 text-sm text-muted-foreground">
                   {connectorDescription}
                 </p>
-                <ConnectorConnectNotices
-                  connectNotice={connectNotice}
-                  isConnected={isConnected}
-                />
               </>
             )}
           </div>
@@ -607,7 +582,6 @@ function DirectedConnectCard() {
         connectorType={connectorType}
         connectorLabel={connectorLabel}
         connectorDescription={connectorDescription}
-        connectNotice={item?.connectNotice ?? null}
         agentName={agentName}
         isLoading={isLoading}
         isConnected={isConnected}

@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.229.0](https://github.com/vm0-ai/vm0/compare/api-v1.228.0...api-v1.229.0) (2026-07-06)
+
+
+### Features
+
+* upload presentation artifacts to google slides ([#20039](https://github.com/vm0-ai/vm0/issues/20039)) ([af5a149](https://github.com/vm0-ai/vm0/commit/af5a149c6d9c67634a753ffb806da3dc69012d50))
+
+
+### Refactoring
+
+* drop legacy runner state profile columns ([#20327](https://github.com/vm0-ai/vm0/issues/20327)) ([6ef8133](https://github.com/vm0-ai/vm0/commit/6ef8133e7d5095c1697541946a3e47c9c1caed8d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.156.0
+    * @vm0/connectors bumped to 1.139.0
+    * @vm0/core bumped to 8.404.0
+    * @vm0/db bumped to 1.94.1
+
 ## [1.228.0](https://github.com/vm0-ai/vm0/compare/api-v1.227.4...api-v1.228.0) (2026-07-06)
 
 
