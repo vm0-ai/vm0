@@ -39,8 +39,6 @@ const TEAMS_APP_TENANT_ID = "11111111-1111-1111-1111-111111111111";
 const SERVICE_URL = "https://smba.trafficmanager.net/amer/";
 const APP_ORIGIN = "https://app.vm0.test";
 const KEY_ID = "teams-test-key";
-const BOT_FRAMEWORK_TOKEN_URL =
-  "https://login.microsoftonline.com/botframework.com/oauth2/v2.0/token";
 const BOT_FRAMEWORK_METADATA_URL =
   "https://login.botframework.com/v1/.well-known/openidconfiguration";
 const BOT_FRAMEWORK_KEYS_URL =
@@ -104,11 +102,18 @@ interface TeamsOutboundRequest {
   readonly body: unknown;
 }
 
-function teamsOutboundHandlers(serviceUrl: string): TeamsOutboundRequest[] {
+function teamsOutboundHandlers(
+  serviceUrl: string,
+  tenantId = "tenant-1",
+): TeamsOutboundRequest[] {
   const serviceBaseUrl = teamsServiceBaseUrl(serviceUrl);
   const requests: TeamsOutboundRequest[] = [];
   server.use(
-    http.post(BOT_FRAMEWORK_TOKEN_URL, () => {
+    http.post(graphTokenUrl(tenantId), async ({ request }) => {
+      const form = await request.formData();
+      expect(form.get("client_id")).toBe(BOT_APP_ID);
+      expect(form.get("client_secret")).toBe(BOT_APP_PASSWORD);
+      expect(form.get("scope")).toBe("https://api.botframework.com/.default");
       return HttpResponse.json({
         access_token: "teams-access-token",
         token_type: "Bearer",
@@ -436,7 +441,7 @@ describe("POST /api/zero/teams/bot", () => {
     mockEnv("VM0_API_URL", "https://api.vm0.test");
     mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
     context.mocks.axiom.query.mockResolvedValue([]);
-    teamsOutboundHandlers(SERVICE_URL);
+    teamsOutboundHandlers(SERVICE_URL, "tenant-1");
   });
 
   afterEach(async () => {
@@ -478,7 +483,7 @@ describe("POST /api/zero/teams/bot", () => {
 
   it("normalizes a valid Teams message activity", async () => {
     botFrameworkHandlers();
-    const outboundRequests = teamsOutboundHandlers(SERVICE_URL);
+    const outboundRequests = teamsOutboundHandlers(SERVICE_URL, "tenant-1");
 
     const response = await postTeamsActivity({
       activity: teamsMessageActivity(),
@@ -601,7 +606,7 @@ describe("POST /api/zero/teams/bot", () => {
 
   it("handles Teams personal messages without requiring a bot mention", async () => {
     botFrameworkHandlers();
-    const outboundRequests = teamsOutboundHandlers(SERVICE_URL);
+    const outboundRequests = teamsOutboundHandlers(SERVICE_URL, "tenant-1");
 
     const response = await postTeamsActivity({
       activity: teamsMessageActivity(botFixture(), {
@@ -702,6 +707,7 @@ describe("POST /api/zero/teams/bot", () => {
     await runsApi.grantProEntitlement(actor);
     await runsApi.ensureOrgModelProvider(actor);
     botFrameworkHandlers();
+    teamsOutboundHandlers(fixture.serviceUrl, fixture.teamsTenantId);
 
     const installResponse = await postTeamsActivity({
       activity: teamsMessageActivity(fixture),
@@ -710,7 +716,6 @@ describe("POST /api/zero/teams/bot", () => {
     expect(installResponse.status).toBe(200);
     await connectTeamsFixture(fixture);
 
-    teamsOutboundHandlers(fixture.serviceUrl);
     const channelMessages: TeamsGraphMessageFixture[] = [];
     const threadRoots: Record<string, TeamsGraphMessageFixture> = {
       "root-dispatch": {
@@ -899,7 +904,10 @@ describe("POST /api/zero/teams/bot", () => {
       Promise.resolve(teamsConnectFixture()),
     );
     botFrameworkHandlers();
-    const outboundRequests = teamsOutboundHandlers(fixture.serviceUrl);
+    const outboundRequests = teamsOutboundHandlers(
+      fixture.serviceUrl,
+      fixture.teamsTenantId,
+    );
 
     const installResponse = await postTeamsActivity({
       activity: teamsMessageActivity(fixture),

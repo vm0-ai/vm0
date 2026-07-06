@@ -3,8 +3,6 @@ import { z } from "zod";
 import { env, optionalEnv } from "../../lib/env";
 import { safeJsonParse, safeUrlParse, settle } from "../utils";
 
-const BOT_FRAMEWORK_TOKEN_URL =
-  "https://login.microsoftonline.com/botframework.com/oauth2/v2.0/token";
 const BOT_FRAMEWORK_SCOPE = "https://api.botframework.com/.default";
 const MICROSOFT_GRAPH_SCOPE = "https://graph.microsoft.com/.default";
 const MICROSOFT_GRAPH_BASE_URL = "https://graph.microsoft.com/v1.0";
@@ -103,16 +101,20 @@ function teamsBotCredentials(): TeamsBotCredentials | undefined {
   return { appId, appPassword };
 }
 
-function tokenUrl(): string {
+function tenantTokenUrl(tenantId: string): string {
+  return `https://login.microsoftonline.com/${encodeURIComponent(
+    tenantId,
+  )}/oauth2/v2.0/token`;
+}
+
+function botTokenUrl(tenantId: string): string {
   return (
-    optionalEnv("MICROSOFT_TEAMS_BOT_TOKEN_URL") ?? BOT_FRAMEWORK_TOKEN_URL
+    optionalEnv("MICROSOFT_TEAMS_BOT_TOKEN_URL") ?? tenantTokenUrl(tenantId)
   );
 }
 
 function graphTokenUrl(tenantId: string): string {
-  return `https://login.microsoftonline.com/${encodeURIComponent(
-    tenantId,
-  )}/oauth2/v2.0/token`;
+  return tenantTokenUrl(tenantId);
 }
 
 function networkErrorMessage(error: unknown): string {
@@ -181,15 +183,16 @@ async function fetchClientCredentialsAccessToken(args: {
   return { kind: "ok", accessToken: parsed.data.access_token };
 }
 
-function fetchTeamsBotAccessToken(
-  signal: AbortSignal,
-): Promise<
+function fetchTeamsBotAccessToken(args: {
+  readonly tenantId: string;
+  readonly signal: AbortSignal;
+}): Promise<
   { readonly kind: "ok"; readonly accessToken: string } | TeamsApiErrorResult
 > {
   return fetchClientCredentialsAccessToken({
-    tokenUrl: tokenUrl(),
+    tokenUrl: botTokenUrl(args.tenantId),
     scope: BOT_FRAMEWORK_SCOPE,
-    signal,
+    signal: args.signal,
   });
 }
 
@@ -298,10 +301,14 @@ async function postTeamsActivity(args: {
   readonly serviceUrl: string;
   readonly conversationId: string;
   readonly activityId?: string;
+  readonly tenantId: string;
   readonly activity: TeamsActivityBody;
   readonly signal: AbortSignal;
 }): Promise<SendTeamsActivityResult> {
-  const accessToken = await fetchTeamsBotAccessToken(args.signal);
+  const accessToken = await fetchTeamsBotAccessToken({
+    tenantId: args.tenantId,
+    signal: args.signal,
+  });
   if (accessToken.kind === "teams-error") {
     return accessToken;
   }
@@ -366,6 +373,7 @@ export function sendTeamsMessageReply(args: {
     serviceUrl: args.serviceUrl,
     conversationId: args.conversationId,
     activityId: args.activityId,
+    tenantId: args.tenantId,
     signal: args.signal,
     activity: {
       type: "message",
@@ -388,6 +396,7 @@ export function sendTeamsTypingActivity(args: {
   return postTeamsActivity({
     serviceUrl: args.serviceUrl,
     conversationId: args.conversationId,
+    tenantId: args.tenantId,
     signal: args.signal,
     activity: {
       type: "typing",
