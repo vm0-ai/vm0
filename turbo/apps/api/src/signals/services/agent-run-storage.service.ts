@@ -22,11 +22,16 @@ import type { Db } from "../external/db";
 import { now, nowDate } from "../external/time";
 import { settle } from "../utils";
 import {
+  resolveWorkflowSkillStoragePresignedUrls,
   resolveSystemStoragePresignedUrls,
   SYSTEM_STORAGE_PRESIGNED_URL_TTL_SECONDS,
   systemStoragePresignedUrlCacheKey,
+  WORKFLOW_SKILL_STORAGE_PRESIGNED_URL_TTL_SECONDS,
+  workflowSkillStoragePresignedUrlCacheKey,
   type SystemStoragePresignedUrlCacheStatus,
   type SystemStoragePresignedUrlRequest,
+  type WorkflowSkillStoragePresignedUrlCacheStatus,
+  type WorkflowSkillStoragePresignedUrlRequest,
 } from "./system-storage-presigned-url-cache.service";
 import {
   measureApiDispatchTiming,
@@ -319,6 +324,10 @@ export class StorageManifestBuildStats {
   private systemPresignCacheMissCount = 0;
   private systemPresignCacheStaleReuseCount = 0;
   private systemPresignCacheSyncRefreshCount = 0;
+  private workflowSkillPresignCacheHitCount = 0;
+  private workflowSkillPresignCacheMissCount = 0;
+  private workflowSkillPresignCacheStaleReuseCount = 0;
+  private workflowSkillPresignCacheSyncRefreshCount = 0;
   private nonSystemPresignCount = 0;
   private readonly resolvedSourceCounts = emptyStorageManifestSourceCounts();
   private readonly plannedPresignSourceCounts =
@@ -433,6 +442,29 @@ export class StorageManifestBuildStats {
     }
   }
 
+  recordWorkflowSkillPresignCacheResult(
+    status: WorkflowSkillStoragePresignedUrlCacheStatus,
+  ): void {
+    switch (status) {
+      case "hit": {
+        this.workflowSkillPresignCacheHitCount += 1;
+        return;
+      }
+      case "miss": {
+        this.workflowSkillPresignCacheMissCount += 1;
+        return;
+      }
+      case "stale_reuse": {
+        this.workflowSkillPresignCacheStaleReuseCount += 1;
+        return;
+      }
+      case "sync_refresh": {
+        this.workflowSkillPresignCacheSyncRefreshCount += 1;
+        return;
+      }
+    }
+  }
+
   recordNonSystemPresign(
     kind: StorageManifestEntryKind,
     source: StorageManifestSource,
@@ -518,6 +550,7 @@ export class StorageManifestBuildStats {
         nonSystemPresign: this.nonSystemPresignSourceCounts,
       }),
       ...this.systemPresignCacheDimensions(),
+      ...this.workflowSkillPresignCacheDimensions(),
       ...this.artifactEnsureDimensions(),
     };
   }
@@ -560,6 +593,7 @@ export class StorageManifestBuildStats {
         nonSystemPresign: this.nonSystemPresignSourceCounts,
       }),
       ...this.systemPresignCacheDimensions(),
+      ...this.workflowSkillPresignCacheDimensions(),
     };
   }
 
@@ -586,6 +620,7 @@ export class StorageManifestBuildStats {
             nonSystemPresign:
               this.nonSystemPresignSourceCountsByKind.additional,
           }),
+          ...this.workflowSkillPresignCacheDimensions(),
         };
       }
       case "artifact": {
@@ -670,6 +705,23 @@ export class StorageManifestBuildStats {
         storageManifestCountBucket(this.systemPresignCacheSyncRefreshCount),
       storage_manifest_non_system_presign_count_bucket:
         storageManifestCountBucket(this.nonSystemPresignCount),
+    };
+  }
+
+  private workflowSkillPresignCacheDimensions(): ApiDispatchTimingDimensions {
+    return {
+      storage_manifest_workflow_skill_presign_cache_hit_count_bucket:
+        storageManifestCountBucket(this.workflowSkillPresignCacheHitCount),
+      storage_manifest_workflow_skill_presign_cache_miss_count_bucket:
+        storageManifestCountBucket(this.workflowSkillPresignCacheMissCount),
+      storage_manifest_workflow_skill_presign_cache_stale_reuse_count_bucket:
+        storageManifestCountBucket(
+          this.workflowSkillPresignCacheStaleReuseCount,
+        ),
+      storage_manifest_workflow_skill_presign_cache_sync_refresh_count_bucket:
+        storageManifestCountBucket(
+          this.workflowSkillPresignCacheSyncRefreshCount,
+        ),
     };
   }
 }
@@ -1499,6 +1551,12 @@ function isSystemOwnedStoragePlan(plan: ResolvedManifestStoragePlan): boolean {
   return plan.resolved.resolvedOrgId === SYSTEM_ORG_ID;
 }
 
+function isWorkflowSkillStoragePlan(
+  plan: ResolvedManifestStoragePlan,
+): boolean {
+  return plan.source === "workflow_skill";
+}
+
 function systemStoragePresignedUrlRequest(args: {
   readonly bucket: string;
   readonly plan: ResolvedManifestStoragePlan;
@@ -1507,6 +1565,19 @@ function systemStoragePresignedUrlRequest(args: {
     bucket: args.bucket,
     objectKey: storageArchiveKey(args.plan.resolved),
     storageVersionId: args.plan.resolved.versionId,
+    publicEndpoint: true,
+  };
+}
+
+function workflowSkillStoragePresignedUrlRequest(args: {
+  readonly bucket: string;
+  readonly plan: ResolvedManifestStoragePlan;
+}): WorkflowSkillStoragePresignedUrlRequest {
+  return {
+    bucket: args.bucket,
+    objectKey: storageArchiveKey(args.plan.resolved),
+    storageVersionId: args.plan.resolved.versionId,
+    resolvedOrgId: args.plan.resolved.resolvedOrgId,
     publicEndpoint: true,
   };
 }
@@ -1576,11 +1647,54 @@ async function buildStorageEntriesFromPlans(
     get,
     requests: systemRequests,
   });
+  const workflowSkillPlans = args.plans.filter((plan) => {
+    return !isSystemOwnedStoragePlan(plan) && isWorkflowSkillStoragePlan(plan);
+  });
+  const workflowSkillRequests = workflowSkillPlans.map((plan) => {
+    return workflowSkillStoragePresignedUrlRequest({
+      bucket: args.bucket,
+      plan,
+    });
+  });
+  const workflowSkillUrlsByCacheKeyPromise =
+    resolveWorkflowSkillStoragePresignedUrls({
+      db: args.db,
+      get,
+      requests: workflowSkillRequests,
+    });
 
   return await Promise.all(
     args.plans.map(async (plan) => {
       const archiveKey = storageArchiveKey(plan.resolved);
       if (!isSystemOwnedStoragePlan(plan)) {
+        if (isWorkflowSkillStoragePlan(plan)) {
+          const workflowSkillUrlsByCacheKey =
+            await workflowSkillUrlsByCacheKeyPromise;
+          const request = workflowSkillStoragePresignedUrlRequest({
+            bucket: args.bucket,
+            plan,
+          });
+          const cacheKey = workflowSkillStoragePresignedUrlCacheKey(request);
+          const result = workflowSkillUrlsByCacheKey.get(cacheKey);
+          if (!result) {
+            throw new Error(
+              "Missing workflow skill storage presigned URL cache result",
+            );
+          }
+          args.stats?.recordWorkflowSkillPresignCacheResult(result.status);
+          if (result.status === "miss" || result.status === "sync_refresh") {
+            args.stats?.recordPresignCandidate(plan.entryKind, plan.source, {
+              bucket: args.bucket,
+              key: archiveKey,
+              expiresIn: WORKFLOW_SKILL_STORAGE_PRESIGNED_URL_TTL_SECONDS,
+              filename: undefined,
+              usePublicEndpoint: true,
+            });
+            args.stats?.recordNonSystemPresign(plan.entryKind, plan.source);
+          }
+          return buildStorageManifestEntry({ plan, archiveUrl: result.url });
+        }
+
         return buildStorageManifestEntry({
           plan,
           archiveUrl: await generateDirectStorageArchiveUrl(get, {

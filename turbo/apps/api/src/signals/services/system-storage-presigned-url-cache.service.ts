@@ -2,13 +2,16 @@ import { createHash } from "node:crypto";
 
 import { systemStoragePresignedUrlCache } from "@vm0/db/schema/system-storage-presigned-url-cache";
 import type { Computed } from "ccstate";
-import { and, asc, gte, inArray, lte, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 
 import type { Db } from "../external/db";
 import { generatePresignedGetUrl } from "../external/s3";
 import { nowDate } from "../external/time";
 
 type ComputedGetter = <T>(computedValue: Computed<T>) => T;
+type StoragePresignedUrlCacheScope =
+  | "system_storage"
+  | "workflow_skill_storage";
 
 export const SYSTEM_STORAGE_PRESIGNED_URL_TTL_SECONDS = 2 * 60 * 60;
 const SYSTEM_STORAGE_PRESIGNED_URL_HARD_SAFETY_WINDOW_SECONDS = 15 * 60;
@@ -20,11 +23,22 @@ const SYSTEM_STORAGE_PRESIGNED_URL_CACHE_POLICY = "system-storage-url-v1";
 export const SYSTEM_STORAGE_PRESIGNED_URL_REFRESH_LIMIT = 3;
 export const SYSTEM_STORAGE_PRESIGNED_URL_PRUNE_LIMIT = 100;
 
-export type SystemStoragePresignedUrlCacheStatus =
+export const WORKFLOW_SKILL_STORAGE_PRESIGNED_URL_TTL_SECONDS = 2 * 60 * 60;
+const WORKFLOW_SKILL_STORAGE_PRESIGNED_URL_CACHE_POLICY =
+  "workflow-skill-storage-url-v1";
+export const WORKFLOW_SKILL_STORAGE_PRESIGNED_URL_REFRESH_LIMIT = 3;
+export const WORKFLOW_SKILL_STORAGE_PRESIGNED_URL_PRUNE_LIMIT = 100;
+
+type StoragePresignedUrlCacheStatus =
   | "hit"
   | "stale_reuse"
   | "miss"
   | "sync_refresh";
+
+export type SystemStoragePresignedUrlCacheStatus =
+  StoragePresignedUrlCacheStatus;
+export type WorkflowSkillStoragePresignedUrlCacheStatus =
+  StoragePresignedUrlCacheStatus;
 
 export interface SystemStoragePresignedUrlRequest {
   readonly bucket: string;
@@ -33,17 +47,36 @@ export interface SystemStoragePresignedUrlRequest {
   readonly publicEndpoint: boolean;
 }
 
-interface SystemStoragePresignedUrlResult {
+export interface WorkflowSkillStoragePresignedUrlRequest {
+  readonly bucket: string;
+  readonly objectKey: string;
+  readonly storageVersionId: string;
+  readonly resolvedOrgId: string;
+  readonly publicEndpoint: boolean;
+}
+
+interface StoragePresignedUrlRequest {
+  readonly scope: StoragePresignedUrlCacheScope;
+  readonly bucket: string;
+  readonly objectKey: string;
+  readonly storageVersionId: string;
+  readonly resolvedOrgId: string | null;
+  readonly publicEndpoint: boolean;
+}
+
+interface StoragePresignedUrlResult {
   readonly cacheKey: string;
   readonly url: string;
-  readonly status: SystemStoragePresignedUrlCacheStatus;
+  readonly status: StoragePresignedUrlCacheStatus;
 }
 
 interface CacheRowValue {
   readonly cacheKey: string;
+  readonly scope: StoragePresignedUrlCacheScope;
   readonly bucket: string;
   readonly objectKey: string;
   readonly storageVersionId: string;
+  readonly resolvedOrgId: string | null;
   readonly publicEndpoint: boolean;
   readonly ttlSeconds: number;
   readonly presignedUrl: string;
@@ -68,6 +101,50 @@ export function systemStoragePresignedUrlCacheKey(
       ]),
     )
     .digest("hex");
+}
+
+export function workflowSkillStoragePresignedUrlCacheKey(
+  request: WorkflowSkillStoragePresignedUrlRequest,
+): string {
+  return createHash("sha256")
+    .update(
+      JSON.stringify([
+        WORKFLOW_SKILL_STORAGE_PRESIGNED_URL_CACHE_POLICY,
+        request.bucket,
+        request.objectKey,
+        request.storageVersionId,
+        request.resolvedOrgId,
+        request.publicEndpoint ? "public" : "private",
+        WORKFLOW_SKILL_STORAGE_PRESIGNED_URL_TTL_SECONDS,
+      ]),
+    )
+    .digest("hex");
+}
+
+function systemStorageRequest(
+  request: SystemStoragePresignedUrlRequest,
+): StoragePresignedUrlRequest {
+  return {
+    scope: "system_storage",
+    bucket: request.bucket,
+    objectKey: request.objectKey,
+    storageVersionId: request.storageVersionId,
+    resolvedOrgId: null,
+    publicEndpoint: request.publicEndpoint,
+  };
+}
+
+function workflowSkillStorageRequest(
+  request: WorkflowSkillStoragePresignedUrlRequest,
+): StoragePresignedUrlRequest {
+  return {
+    scope: "workflow_skill_storage",
+    bucket: request.bucket,
+    objectKey: request.objectKey,
+    storageVersionId: request.storageVersionId,
+    resolvedOrgId: request.resolvedOrgId,
+    publicEndpoint: request.publicEndpoint,
+  };
 }
 
 function expirationFromIssuedAt(issuedAt: Date, ttlSeconds: number): Date {
@@ -113,9 +190,18 @@ function timestampWithoutTimeZone(value: Date): string {
   return value.toISOString().replace("T", " ").replace("Z", "");
 }
 
+function storagePresignedUrlCacheScope(
+  value: string,
+): StoragePresignedUrlCacheScope {
+  if (value === "system_storage" || value === "workflow_skill_storage") {
+    return value;
+  }
+  throw new Error(`Unexpected storage presigned URL cache scope: ${value}`);
+}
+
 async function signCacheValue(args: {
   readonly get: ComputedGetter;
-  readonly request: SystemStoragePresignedUrlRequest;
+  readonly request: StoragePresignedUrlRequest;
   readonly cacheKey: string;
   readonly ttlSeconds: number;
   readonly issuedAt: Date;
@@ -133,9 +219,11 @@ async function signCacheValue(args: {
   const expiresAt = expirationFromIssuedAt(args.issuedAt, args.ttlSeconds);
   return {
     cacheKey: args.cacheKey,
+    scope: args.request.scope,
     bucket: args.request.bucket,
     objectKey: args.request.objectKey,
     storageVersionId: args.request.storageVersionId,
+    resolvedOrgId: args.request.resolvedOrgId,
     publicEndpoint: args.request.publicEndpoint,
     ttlSeconds: args.ttlSeconds,
     presignedUrl,
@@ -158,9 +246,11 @@ async function upsertCacheValues(
     return left.cacheKey.localeCompare(right.cacheKey);
   });
   const set = {
+    scope: sql`excluded.scope`,
     bucket: sql`excluded.bucket`,
     objectKey: sql`excluded.object_key`,
     storageVersionId: sql`excluded.storage_version_id`,
+    resolvedOrgId: sql`excluded.resolved_org_id`,
     publicEndpoint: sql`excluded.public_endpoint`,
     ttlSeconds: sql`excluded.ttl_seconds`,
     presignedUrl: sql`excluded.presigned_url`,
@@ -177,9 +267,11 @@ async function upsertCacheValues(
       orderedValues.map((value) => {
         return {
           cacheKey: value.cacheKey,
+          scope: value.scope,
           bucket: value.bucket,
           objectKey: value.objectKey,
           storageVersionId: value.storageVersionId,
+          resolvedOrgId: value.resolvedOrgId,
           publicEndpoint: value.publicEndpoint,
           ttlSeconds: value.ttlSeconds,
           presignedUrl: value.presignedUrl,
@@ -234,6 +326,7 @@ async function touchRecentlyUsedCacheRows(
 
 async function pruneInactiveExpiredCacheRows(
   db: Db,
+  scope: StoragePresignedUrlCacheScope,
   issuedAt: Date,
   limit: number,
   signal?: AbortSignal,
@@ -246,7 +339,8 @@ async function pruneInactiveExpiredCacheRows(
       SELECT ${systemStoragePresignedUrlCache.cacheKey} AS "cacheKey"
       FROM ${systemStoragePresignedUrlCache}
       WHERE
-        ${systemStoragePresignedUrlCache.expiresAt} <= ${issuedAtTimestamp}::timestamp
+        ${systemStoragePresignedUrlCache.scope} = ${scope}
+        AND ${systemStoragePresignedUrlCache.expiresAt} <= ${issuedAtTimestamp}::timestamp
         AND ${systemStoragePresignedUrlCache.lastRequestedAt} <= ${inactiveCutoffTimestamp}::timestamp
       ORDER BY
         ${systemStoragePresignedUrlCache.lastRequestedAt},
@@ -260,7 +354,8 @@ async function pruneInactiveExpiredCacheRows(
       INNER JOIN candidates
         ON ${systemStoragePresignedUrlCache.cacheKey} = candidates."cacheKey"
       WHERE
-        ${systemStoragePresignedUrlCache.expiresAt} <= ${issuedAtTimestamp}::timestamp
+        ${systemStoragePresignedUrlCache.scope} = ${scope}
+        AND ${systemStoragePresignedUrlCache.expiresAt} <= ${issuedAtTimestamp}::timestamp
         AND ${systemStoragePresignedUrlCache.lastRequestedAt} <= ${inactiveCutoffTimestamp}::timestamp
       ORDER BY ${systemStoragePresignedUrlCache.cacheKey}
       FOR UPDATE OF ${systemStoragePresignedUrlCache}
@@ -274,21 +369,22 @@ async function pruneInactiveExpiredCacheRows(
   return deletedRows.rows.length;
 }
 
-export async function resolveSystemStoragePresignedUrls(args: {
+async function resolveStoragePresignedUrls<TRequest>(args: {
   readonly db: Db;
   readonly get: ComputedGetter;
-  readonly requests: readonly SystemStoragePresignedUrlRequest[];
-}): Promise<ReadonlyMap<string, SystemStoragePresignedUrlResult>> {
+  readonly scope: StoragePresignedUrlCacheScope;
+  readonly requests: readonly TRequest[];
+  readonly ttlSeconds: number;
+  readonly cacheKey: (request: TRequest) => string;
+  readonly normalize: (request: TRequest) => StoragePresignedUrlRequest;
+}): Promise<ReadonlyMap<string, StoragePresignedUrlResult>> {
   if (args.requests.length === 0) {
     return new Map();
   }
 
-  const requestsByCacheKey = new Map<
-    string,
-    SystemStoragePresignedUrlRequest
-  >();
+  const requestsByCacheKey = new Map<string, StoragePresignedUrlRequest>();
   for (const request of args.requests) {
-    requestsByCacheKey.set(systemStoragePresignedUrlCacheKey(request), request);
+    requestsByCacheKey.set(args.cacheKey(request), args.normalize(request));
   }
 
   const cacheKeys = [...requestsByCacheKey.keys()];
@@ -301,7 +397,12 @@ export async function resolveSystemStoragePresignedUrls(args: {
       lastRequestedAt: systemStoragePresignedUrlCache.lastRequestedAt,
     })
     .from(systemStoragePresignedUrlCache)
-    .where(inArray(systemStoragePresignedUrlCache.cacheKey, cacheKeys));
+    .where(
+      and(
+        eq(systemStoragePresignedUrlCache.scope, args.scope),
+        inArray(systemStoragePresignedUrlCache.cacheKey, cacheKeys),
+      ),
+    );
 
   const rowByCacheKey = new Map(
     rows.map((row) => {
@@ -310,13 +411,13 @@ export async function resolveSystemStoragePresignedUrls(args: {
   );
   const issuedAt = nowDate();
   const safetyCutoff = hardSafetyCutoff(issuedAt);
-  const results = new Map<string, SystemStoragePresignedUrlResult>();
+  const results = new Map<string, StoragePresignedUrlResult>();
   const cacheKeysToTouch: string[] = [];
   const needsFresh: {
     readonly cacheKey: string;
-    readonly request: SystemStoragePresignedUrlRequest;
+    readonly request: StoragePresignedUrlRequest;
     readonly status: Extract<
-      SystemStoragePresignedUrlCacheStatus,
+      StoragePresignedUrlCacheStatus,
       "miss" | "sync_refresh"
     >;
   }[] = [];
@@ -348,7 +449,7 @@ export async function resolveSystemStoragePresignedUrls(args: {
         get: args.get,
         request: entry.request,
         cacheKey: entry.cacheKey,
-        ttlSeconds: SYSTEM_STORAGE_PRESIGNED_URL_TTL_SECONDS,
+        ttlSeconds: args.ttlSeconds,
         issuedAt,
         lastRequestedAt: issuedAt,
       });
@@ -375,27 +476,27 @@ export async function resolveSystemStoragePresignedUrls(args: {
   return results;
 }
 
-export async function refreshDueSystemStoragePresignedUrls(args: {
+async function refreshDueStoragePresignedUrls(args: {
   readonly db: Db;
   readonly get: ComputedGetter;
-  readonly limit?: number;
-  readonly pruneLimit?: number;
+  readonly scope: StoragePresignedUrlCacheScope;
+  readonly limit: number;
+  readonly pruneLimit: number;
   readonly signal?: AbortSignal;
 }): Promise<{
   readonly due: number;
   readonly refreshed: number;
   readonly pruned: number;
 }> {
-  const limit = args.limit ?? SYSTEM_STORAGE_PRESIGNED_URL_REFRESH_LIMIT;
-  const pruneLimit =
-    args.pruneLimit ?? SYSTEM_STORAGE_PRESIGNED_URL_PRUNE_LIMIT;
   const issuedAt = nowDate();
   const rows = await args.db
     .select({
       cacheKey: systemStoragePresignedUrlCache.cacheKey,
+      scope: systemStoragePresignedUrlCache.scope,
       bucket: systemStoragePresignedUrlCache.bucket,
       objectKey: systemStoragePresignedUrlCache.objectKey,
       storageVersionId: systemStoragePresignedUrlCache.storageVersionId,
+      resolvedOrgId: systemStoragePresignedUrlCache.resolvedOrgId,
       publicEndpoint: systemStoragePresignedUrlCache.publicEndpoint,
       ttlSeconds: systemStoragePresignedUrlCache.ttlSeconds,
       lastRequestedAt: systemStoragePresignedUrlCache.lastRequestedAt,
@@ -403,6 +504,7 @@ export async function refreshDueSystemStoragePresignedUrls(args: {
     .from(systemStoragePresignedUrlCache)
     .where(
       and(
+        eq(systemStoragePresignedUrlCache.scope, args.scope),
         lte(systemStoragePresignedUrlCache.refreshAfter, issuedAt),
         gte(
           systemStoragePresignedUrlCache.lastRequestedAt,
@@ -414,7 +516,7 @@ export async function refreshDueSystemStoragePresignedUrls(args: {
       asc(systemStoragePresignedUrlCache.refreshAfter),
       asc(systemStoragePresignedUrlCache.expiresAt),
     )
-    .limit(limit);
+    .limit(args.limit);
   args.signal?.throwIfAborted();
 
   const freshValues = await Promise.all(
@@ -425,9 +527,11 @@ export async function refreshDueSystemStoragePresignedUrls(args: {
         ttlSeconds: row.ttlSeconds,
         issuedAt,
         request: {
+          scope: storagePresignedUrlCacheScope(row.scope),
           bucket: row.bucket,
           objectKey: row.objectKey,
           storageVersionId: row.storageVersionId,
+          resolvedOrgId: row.resolvedOrgId,
           publicEndpoint: row.publicEndpoint,
         },
         lastRequestedAt: row.lastRequestedAt,
@@ -442,10 +546,82 @@ export async function refreshDueSystemStoragePresignedUrls(args: {
 
   const pruned = await pruneInactiveExpiredCacheRows(
     args.db,
+    args.scope,
     issuedAt,
-    pruneLimit,
+    args.pruneLimit,
     args.signal,
   );
 
   return { due: rows.length, refreshed: freshValues.length, pruned };
+}
+
+export async function resolveSystemStoragePresignedUrls(args: {
+  readonly db: Db;
+  readonly get: ComputedGetter;
+  readonly requests: readonly SystemStoragePresignedUrlRequest[];
+}): Promise<ReadonlyMap<string, StoragePresignedUrlResult>> {
+  return await resolveStoragePresignedUrls({
+    ...args,
+    scope: "system_storage",
+    ttlSeconds: SYSTEM_STORAGE_PRESIGNED_URL_TTL_SECONDS,
+    cacheKey: systemStoragePresignedUrlCacheKey,
+    normalize: systemStorageRequest,
+  });
+}
+
+export async function refreshDueSystemStoragePresignedUrls(args: {
+  readonly db: Db;
+  readonly get: ComputedGetter;
+  readonly limit?: number;
+  readonly pruneLimit?: number;
+  readonly signal?: AbortSignal;
+}): Promise<{
+  readonly due: number;
+  readonly refreshed: number;
+  readonly pruned: number;
+}> {
+  return await refreshDueStoragePresignedUrls({
+    db: args.db,
+    get: args.get,
+    scope: "system_storage",
+    limit: args.limit ?? SYSTEM_STORAGE_PRESIGNED_URL_REFRESH_LIMIT,
+    pruneLimit: args.pruneLimit ?? SYSTEM_STORAGE_PRESIGNED_URL_PRUNE_LIMIT,
+    signal: args.signal,
+  });
+}
+
+export async function resolveWorkflowSkillStoragePresignedUrls(args: {
+  readonly db: Db;
+  readonly get: ComputedGetter;
+  readonly requests: readonly WorkflowSkillStoragePresignedUrlRequest[];
+}): Promise<ReadonlyMap<string, StoragePresignedUrlResult>> {
+  return await resolveStoragePresignedUrls({
+    ...args,
+    scope: "workflow_skill_storage",
+    ttlSeconds: WORKFLOW_SKILL_STORAGE_PRESIGNED_URL_TTL_SECONDS,
+    cacheKey: workflowSkillStoragePresignedUrlCacheKey,
+    normalize: workflowSkillStorageRequest,
+  });
+}
+
+export async function refreshDueWorkflowSkillStoragePresignedUrls(args: {
+  readonly db: Db;
+  readonly get: ComputedGetter;
+  readonly limit?: number;
+  readonly pruneLimit?: number;
+  readonly signal?: AbortSignal;
+}): Promise<{
+  readonly due: number;
+  readonly refreshed: number;
+  readonly pruned: number;
+}> {
+  return await refreshDueStoragePresignedUrls({
+    db: args.db,
+    get: args.get,
+    scope: "workflow_skill_storage",
+    limit: args.limit ?? WORKFLOW_SKILL_STORAGE_PRESIGNED_URL_REFRESH_LIMIT,
+    pruneLimit:
+      args.pruneLimit ?? WORKFLOW_SKILL_STORAGE_PRESIGNED_URL_PRUNE_LIMIT,
+    signal: args.signal,
+  });
 }
