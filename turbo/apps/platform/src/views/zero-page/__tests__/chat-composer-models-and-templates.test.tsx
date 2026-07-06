@@ -1659,7 +1659,8 @@ describe("chat composer models", () => {
       });
       expect(openTrigger).toHaveAttribute("aria-expanded", "true");
       expect(openTrigger).toHaveAttribute("data-state", "open");
-      expect(openTrigger).toHaveClass("data-[state=open]:ring-2");
+      expect(openTrigger).toHaveClass("data-[state=open]:bg-accent");
+      expect(openTrigger).not.toHaveClass("data-[state=open]:ring-2");
     });
     expect(screen.getByRole("listbox", { name: "Models" })).toBeInTheDocument();
     expect(
@@ -2188,11 +2189,46 @@ describe("chat composer templates", () => {
     }
   });
 
-  it("places the template control immediately after upload", async () => {
+  it("places the template control immediately after the legacy attach button by default", async () => {
     mockChatLifecycle(context, { threadId: THREAD_ID });
 
     detachedSetupPage({
       context,
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    const composer = composerElementFrom(
+      await screen.findByPlaceholderText(PLACEHOLDER),
+    );
+
+    await waitFor(() => {
+      const controls = Array.from(
+        composer.querySelectorAll(
+          [
+            'button[aria-label="Attach"]',
+            'button[aria-label="Template"]',
+            'button[aria-label="Connectors"]',
+          ].join(","),
+        ),
+      ).map((button) => {
+        return button.getAttribute("aria-label");
+      });
+
+      expect(controls).toStrictEqual(["Attach", "Template", "Connectors"]);
+      expect(
+        composer.querySelector('button[aria-label="Upload"]'),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("places the template control immediately after upload when the popover switch is enabled", async () => {
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: {
+        [FeatureSwitchKey.ComposerUploadPopover]: true,
+      },
       path: `/chats/${THREAD_ID}`,
     });
 
@@ -2214,6 +2250,9 @@ describe("chat composer templates", () => {
       });
 
       expect(controls).toStrictEqual(["Upload", "Template", "Connectors"]);
+      expect(
+        composer.querySelector('button[aria-label="Attach"]'),
+      ).not.toBeInTheDocument();
     });
   });
 
@@ -2223,6 +2262,9 @@ describe("chat composer templates", () => {
 
     detachedSetupPage({
       context,
+      featureSwitches: {
+        [FeatureSwitchKey.ComposerUploadPopover]: true,
+      },
       path: `/chats/${THREAD_ID}`,
     });
 

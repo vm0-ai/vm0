@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.135.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.134.0...runner-rs-v0.135.0) (2026-07-06)
+
+
+### Features
+
+* allow maskdb connection replacement through firewall ([#20376](https://github.com/vm0-ai/vm0/issues/20376)) ([193489f](https://github.com/vm0-ai/vm0/commit/193489f270fb447c1c114ef0480fb97e13f5f992))
+
+
+### Bug Fixes
+
+* stabilize codex zero byok polling ([#20381](https://github.com/vm0-ai/vm0/issues/20381)) ([b5cf0b4](https://github.com/vm0-ai/vm0/commit/b5cf0b49a3823ab467bafbe73c475d614730db81))
+
+
+### Refactoring
+
+* clarify sandbox process pid naming ([#20372](https://github.com/vm0-ai/vm0/issues/20372)) ([c32d846](https://github.com/vm0-ai/vm0/commit/c32d846f655bd32dea0fde2a561a34eb014128dd))
+
+
+### Performance Improvements
+
+* stage agent instructions before guest download ([#20353](https://github.com/vm0-ai/vm0/issues/20353)) ([14f3236](https://github.com/vm0-ai/vm0/commit/14f32364245d047fb3b77058800513f902deaba2))
+
 ## [0.134.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.133.8...runner-rs-v0.134.0) (2026-07-06)
 
 

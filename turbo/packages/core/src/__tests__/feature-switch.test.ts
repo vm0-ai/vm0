@@ -3,8 +3,10 @@ import { FeatureSwitchKey } from "../feature-switch-key";
 import {
   isFeatureEnabled,
   getAllFeatureStates,
+  filterUserOverridableFeatureSwitchOverrides,
   getFeatureSwitchDescriptions,
   getFeatureSwitchMetadata,
+  getUserOverridableFeatureSwitchKeys,
 } from "../feature-switch";
 
 describe("isFeatureEnabled", () => {
@@ -28,6 +30,9 @@ describe("isFeatureEnabled", () => {
     ).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.WebsiteTemplates, {})).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.AgentDetailWorkflowsTab, {})).toBe(
+      false,
+    );
+    expect(isFeatureEnabled(FeatureSwitchKey.ComposerUploadPopover, {})).toBe(
       false,
     );
   });
@@ -138,6 +143,7 @@ describe("getAllFeatureStates", () => {
       true,
     );
     expect(staffOrgStates[FeatureSwitchKey.WebsiteTemplates]).toBe(false);
+    expect(staffOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
 
     const otherOrgStates = getAllFeatureStates({
       orgId: "org_nonexistent",
@@ -163,6 +169,7 @@ describe("getAllFeatureStates", () => {
       false,
     );
     expect(otherOrgStates[FeatureSwitchKey.WebsiteTemplates]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.BytePlusVoiceInputStt]).toBe(true);
   });
 
@@ -199,6 +206,21 @@ describe("getAllFeatureStates", () => {
     });
 
     expect("removedFeature" in states).toBe(false);
+  });
+});
+
+describe("user-overridable switches", () => {
+  it("excludes internal switches from user override helpers", () => {
+    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
+      FeatureSwitchKey.ComposerUploadPopover,
+    );
+
+    expect(
+      filterUserOverridableFeatureSwitchOverrides({
+        [FeatureSwitchKey.ComposerUploadPopover]: true,
+        [FeatureSwitchKey.Dummy]: false,
+      }),
+    ).toStrictEqual({ [FeatureSwitchKey.Dummy]: false });
   });
 });
 

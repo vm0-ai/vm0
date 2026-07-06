@@ -838,9 +838,12 @@ export {
 export { FeatureSwitchKey } from "./feature-switch-key";
 export {
   getAllFeatureStates,
+  filterUserOverridableFeatureSwitchOverrides,
   getFeatureSwitchDescriptions,
   getFeatureSwitchMetadata,
+  getUserOverridableFeatureSwitchKeys,
   isFeatureEnabled,
+  isUserOverridableFeatureSwitch,
   type FeatureSwitch,
   type FeatureSwitchContext,
   type FeatureSwitchMetadata,
