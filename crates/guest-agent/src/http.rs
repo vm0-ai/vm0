@@ -330,14 +330,20 @@ impl HttpClient {
                     match error_msg {
                         Some(msg) => {
                             log_warn!(LOG_TAG, "HTTP POST failed: HTTP {status} — {msg}",);
-                            AgentError::Http(format!("POST {url}: {msg}"))
+                            AgentError::HttpStatus {
+                                status: status.as_u16(),
+                                message: format!("POST {url}: {msg}"),
+                            }
                         }
                         None => {
                             log_warn!(
                                 LOG_TAG,
                                 "HTTP POST failed (attempt {attempt}/{max_retries}): HTTP {status}",
                             );
-                            AgentError::Http(format!("POST {url}: HTTP {status}"))
+                            AgentError::HttpStatus {
+                                status: status.as_u16(),
+                                message: format!("POST {url}: HTTP {status}"),
+                            }
                         }
                     }
                 }
