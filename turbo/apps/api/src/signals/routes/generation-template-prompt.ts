@@ -74,9 +74,8 @@ export function buildGenerationTemplatePrompt(
   return buildPresentationGenerationTemplatePrompt(generationTemplate);
 }
 
-// Shared framing for every artifact-template block, kept in one place so the
-// three builders cannot drift. It balances two jobs that pull in opposite
-// directions:
+// Shared framing for artifact-template blocks, kept in one place so the
+// builders cannot drift. It balances two jobs that pull in opposite directions:
 //   1. The user *deliberately* selected this template — a strong signal, so it is
 //      the default style for that artifact in this run, and the agent must not
 //      re-ask for an already-selected style (vm0-ai/vm0#17525).
@@ -91,17 +90,6 @@ function templateFraming(artifactNoun: string): readonly string[] {
     `- The user deliberately selected this artifact template for this run — treat it as the default style for any ${artifactNoun} you produce here.`,
     `- It does not force you to generate: the user's prompt decides the task, content, output format, and whether to produce an artifact at all. If a request isn't about producing ${artifactNoun}, just answer it normally.`,
     "- Other artifact templates, files, or attachments may also be present.",
-    "",
-  ];
-}
-
-function presentationRunbookFraming(): readonly string[] {
-  return [
-    "# Presentation Runbook Context",
-    "",
-    "- The user deliberately selected this presentation runbook for this run — use its runbook package as the default authoring guide for any presentation you produce here.",
-    "- It does not force you to generate: the user's prompt decides the task, content, output format, and whether to produce a presentation at all. If a request isn't about producing a presentation, just answer it normally.",
-    "- Other artifact selections, files, or attachments may also be present.",
     "",
   ];
 }
@@ -151,7 +139,12 @@ function buildPresentationRunbookPrompt(
   return {
     status: "resolved",
     prompt: [
-      ...presentationRunbookFraming(),
+      "# Presentation Runbook Context",
+      "",
+      "- The user deliberately selected this presentation runbook for this run — use its runbook package as the default authoring guide for any presentation you produce here.",
+      "- It does not force you to generate: the user's prompt decides the task, content, output format, and whether to produce a presentation at all. If a request isn't about producing a presentation, just answer it normally.",
+      "- Other artifact selections, files, or attachments may also be present.",
+      "",
       ...buildPresentationRunbookInstructionLines({
         runbookPackage,
         colorSystemToken: color.token,

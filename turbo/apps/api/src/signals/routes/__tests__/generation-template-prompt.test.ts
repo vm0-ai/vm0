@@ -14,7 +14,7 @@ describe("buildGenerationTemplatePrompt", () => {
     const result = buildGenerationTemplatePrompt({
       type: "presentation",
       selection: {
-        runbookId: "presentation-runbook:missing",
+        runbookId: "template:html-ppt-missing",
         previewUrl: "https://example.com/retired.html",
       },
     });
@@ -46,7 +46,7 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.prompt).not.toContain("Selected presentation template");
     // Pull exactly one resource: the selected runbook package.
     expect(result.prompt).toContain(
-      "zero resource pull presentation-runbook:playful-launch --dir ./generated/resources",
+      "zero resource pull template:html-ppt-playful-launch-runbook --dir ./generated/resources",
     );
     expect(result.prompt).toContain(
       "./generated/resources/playful-launch/AGENT_RUNBOOK.md",

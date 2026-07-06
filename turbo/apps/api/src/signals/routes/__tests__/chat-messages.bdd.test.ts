@@ -2780,7 +2780,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     // Runbook flow: pull the selected self-contained runbook package; the
     // retired multi-resource generation command is not surfaced.
     expect(presentationPrompt).toContain(
-      `zero resource pull ${template.runbookId} --dir ./generated/resources`,
+      `zero resource pull ${template.runbookId}-runbook --dir ./generated/resources`,
     );
     if (template.colorSystemId) {
       const colorToken = template.colorSystemId
@@ -3018,7 +3018,7 @@ describe("CHAT-02: generation templates and attachments", () => {
         generationTemplate: {
           type: "presentation",
           selection: {
-            runbookId: "presentation-runbook:missing",
+            runbookId: "template:html-ppt-missing",
           },
         },
         message: "Unknown generation template",
@@ -3041,7 +3041,7 @@ describe("CHAT-02: generation templates and attachments", () => {
         generationTemplate: {
           type: "presentation",
           selection: {
-            runbookId: "presentation-runbook:missing",
+            runbookId: "template:html-ppt-missing",
           },
         },
         message: "Unknown generation template",

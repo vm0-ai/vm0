@@ -7,7 +7,7 @@ describe("chat thread generation template contract", () => {
     const parsed = generationTemplateRequestSchema.safeParse({
       type: "presentation",
       selection: {
-        runbookId: "presentation-runbook:playful-launch",
+        runbookId: "template:html-ppt-playful-launch",
         colorSystemId: "color-system:carnival",
       },
     });

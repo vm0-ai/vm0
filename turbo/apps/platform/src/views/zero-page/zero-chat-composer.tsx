@@ -990,7 +990,8 @@ function selectedIllustrationTemplateItem(
 
 function formatPresentationRunbookKind(runbookId: string): string {
   const label = runbookId
-    .replace(/^presentation-runbook:/, "")
+    .replace(/^template:/, "")
+    .replace(/^html-ppt-/, "")
     .replace(/-/g, " ");
   return label.charAt(0).toUpperCase() + label.slice(1);
 }

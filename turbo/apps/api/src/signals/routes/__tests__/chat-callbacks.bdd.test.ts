@@ -953,7 +953,7 @@ describe("CHAT-02: completed chat callback", () => {
     expect(appended).not.toContain("Selected design system");
     // Runbook flow, not the retired multi-resource flow.
     expect(appended).toContain(
-      `zero resource pull ${template.runbookId} --dir ./generated/resources`,
+      `zero resource pull ${template.runbookId}-runbook --dir ./generated/resources`,
     );
     expect(appended).toContain("--artifact-kind presentation-html");
     expect(appended).not.toContain(

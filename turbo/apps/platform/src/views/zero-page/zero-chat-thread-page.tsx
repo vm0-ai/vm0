@@ -6820,7 +6820,6 @@ function formatSelectionIdLabel(selectionId: string): string {
     .replace(/^template:/, "")
     .replace(/^video-template:/, "")
     .replace(/^workflow-template:/, "")
-    .replace(/^presentation-runbook:/, "")
     .replace(/^html-ppt-/, "")
     .replace(/-/g, " ");
   return label.charAt(0).toUpperCase() + label.slice(1);

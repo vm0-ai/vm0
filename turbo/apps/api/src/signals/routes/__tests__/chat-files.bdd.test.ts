@@ -481,7 +481,7 @@ describe("CHAT-02 chat messages and visible validation", () => {
         generationTemplate: {
           type: "presentation",
           selection: {
-            runbookId: "presentation-runbook:missing",
+            runbookId: "template:html-ppt-missing",
           },
         },
       },
