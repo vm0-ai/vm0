@@ -140,6 +140,9 @@ describe("inline feedback thread scoping", () => {
       setFeedbackSelectionToolbarRef$,
       toolbarScope,
     );
+    const dialog = document.createElement("div");
+    dialog.setAttribute("role", "dialog");
+    document.body.appendChild(dialog);
     const event = dispatchShortcut("f");
 
     expect(event.defaultPrevented).toBeTruthy();
@@ -152,6 +155,7 @@ describe("inline feedback thread scoping", () => {
     dispatchShortcut("f");
 
     expect(ctx.store.get(feedbackItemsValue$)).toHaveLength(1);
+    dialog.remove();
     cleanup?.();
   });
 

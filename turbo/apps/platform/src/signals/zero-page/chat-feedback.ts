@@ -347,6 +347,7 @@ export const setFeedbackSelectionToolbarRef$ = onRef(
       },
       toolbarSignal,
       {
+        allowWhenDialogOpen: true,
         doc: el.ownerDocument,
         shouldHandleEvent: () => {
           return !toolbarSignal.aborted;
