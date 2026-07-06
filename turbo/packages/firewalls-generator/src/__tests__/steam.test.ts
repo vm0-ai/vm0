@@ -61,9 +61,6 @@ describe("Steam permission manifest", () => {
     expect(officialMethodRules.get("IStoreService/GetGamesFollowed")).toContain(
       "GET /IStoreService/GetGamesFollowed/v1/",
     );
-    expect(
-      officialMethodRules.get("IStoreService/GetRecommendedTagsForUser"),
-    ).toContain("GET /IStoreService/GetRecommendedTagsForUser/v1/");
     expect(officialMethodRules.get("ISteamUser/GetFriendList")).toContain(
       "GET /ISteamUser/GetFriendList/v1/",
     );
@@ -101,6 +98,9 @@ describe("Steam permission manifest", () => {
     expect(officialMethodRules.get("ISteamApps/GetAppList")).toContain(
       "GET /ISteamApps/GetAppList/v2/",
     );
+    expect(officialMethodRules.get("ISteamApps/GetSDRConfig")).toContain(
+      "GET /ISteamApps/GetSDRConfig/v1/",
+    );
     expect(officialMethodRules.get("IStoreService/GetAppList")).toContain(
       "GET /IStoreService/GetAppList/v1/",
     );
@@ -126,7 +126,6 @@ describe("Steam permission manifest", () => {
       "player-badges-read",
       "player-wishlist-read",
       "player-followed-games-read",
-      "player-store-preferences-read",
       "player-friends-read",
       "player-groups-read",
       "player-ban-status-read",
@@ -149,11 +148,6 @@ describe("Steam permission manifest", () => {
         (permission) => permission.name === "player-followed-games-read",
       )?.rules,
     ).toContain("GET /IStoreService/GetGamesFollowedCount/v1/");
-    expect(
-      permissions.find(
-        (permission) => permission.name === "player-store-preferences-read",
-      )?.rules,
-    ).toContain("GET /IStoreService/GetRecommendedTagsForUser/v1/");
     expect(
       permissions.find(
         (permission) => permission.name === "player-game-stats-read",
@@ -234,10 +228,6 @@ describe("Steam permission manifest", () => {
             "IStoreService/GetGamesFollowedCount",
             ["GET /IStoreService/GetGamesFollowedCount/v1/"],
           ],
-          [
-            "IStoreService/GetRecommendedTagsForUser",
-            ["GET /IStoreService/GetRecommendedTagsForUser/v1/"],
-          ],
           ["ISteamUser/GetFriendList", ["GET /ISteamUser/GetFriendList/v1/"]],
           [
             "ISteamUser/GetUserGroupList",
@@ -269,6 +259,7 @@ describe("Steam permission manifest", () => {
             ["GET /ISteamUserStats/GetNumberOfCurrentPlayers/v1/"],
           ],
           ["ISteamApps/GetAppList", ["GET /ISteamApps/GetAppList/v2/"]],
+          ["ISteamApps/GetSDRConfig", ["GET /ISteamApps/GetSDRConfig/v1/"]],
           [
             "ISteamApps/GetServersAtAddress",
             ["GET /ISteamApps/GetServersAtAddress/v1/"],

@@ -124,12 +124,6 @@ export const STEAM_PERMISSION_MANIFEST: readonly SteamPermissionManifestEntry[] 
       ],
     },
     {
-      name: "player-store-preferences-read",
-      description:
-        "Read Steam store preference signals for the connected player",
-      methods: ["IStoreService/GetRecommendedTagsForUser"],
-    },
-    {
       name: "player-friends-read",
       description: "Read the connected player friend list",
       methods: ["ISteamUser/GetFriendList"],
@@ -168,6 +162,7 @@ export const STEAM_PERMISSION_MANIFEST: readonly SteamPermissionManifestEntry[] 
       methods: [
         "ISteamApps/GetAppList",
         "IStoreService/GetAppList",
+        "ISteamApps/GetSDRConfig",
         "ISteamApps/GetServersAtAddress",
         "ISteamApps/UpToDateCheck",
       ],

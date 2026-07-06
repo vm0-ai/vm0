@@ -85,9 +85,6 @@ describe("steam firewall", () => {
     expectSteamMatches("GET", "/IStoreService/GetGamesFollowedCount/v1/", [
       "player-followed-games-read",
     ]);
-    expectSteamMatches("GET", "/IStoreService/GetRecommendedTagsForUser/v1/", [
-      "player-store-preferences-read",
-    ]);
     expectSteamMatches("GET", "/ISteamUser/GetFriendList/v1/", [
       "player-friends-read",
     ]);
@@ -122,6 +119,9 @@ describe("steam firewall", () => {
     expectSteamMatches("GET", "/ISteamApps/GetAppList/v2/", [
       "steam-apps-read",
     ]);
+    expectSteamMatches("GET", "/ISteamApps/GetSDRConfig/v1/", [
+      "steam-apps-read",
+    ]);
     expectSteamMatches("GET", "/IStoreService/GetAppList/v1/", [
       "steam-apps-read",
     ]);
@@ -139,7 +139,6 @@ describe("steam firewall", () => {
     expect(policy.policies["player-badges-read"]).toBe("allow");
     expect(policy.policies["player-wishlist-read"]).toBe("allow");
     expect(policy.policies["player-followed-games-read"]).toBe("allow");
-    expect(policy.policies["player-store-preferences-read"]).toBe("allow");
     expect(policy.policies["player-friends-read"]).toBe("allow");
     expect(policy.policies["player-groups-read"]).toBe("allow");
     expect(policy.policies["player-ban-status-read"]).toBe("allow");

@@ -96,15 +96,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "name": "player-store-preferences-read",
-          "rules": [
-            "GET /IStoreService/GetRecommendedTagsForUser/v0001",
-            "GET /IStoreService/GetRecommendedTagsForUser/v0001/",
-            "GET /IStoreService/GetRecommendedTagsForUser/v1",
-            "GET /IStoreService/GetRecommendedTagsForUser/v1/"
-          ]
-        },
-        {
           "name": "player-friends-read",
           "rules": [
             "GET /ISteamUser/GetFriendList/v0001",
@@ -176,6 +167,10 @@ JSON_PART = r"""{
             "GET /ISteamApps/GetAppList/v0002/",
             "GET /ISteamApps/GetAppList/v2",
             "GET /ISteamApps/GetAppList/v2/",
+            "GET /ISteamApps/GetSDRConfig/v0001",
+            "GET /ISteamApps/GetSDRConfig/v0001/",
+            "GET /ISteamApps/GetSDRConfig/v1",
+            "GET /ISteamApps/GetSDRConfig/v1/",
             "GET /ISteamApps/GetServersAtAddress/v0001",
             "GET /ISteamApps/GetServersAtAddress/v0001/",
             "GET /ISteamApps/GetServersAtAddress/v1",
