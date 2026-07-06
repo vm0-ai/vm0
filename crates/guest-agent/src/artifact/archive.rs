@@ -48,60 +48,71 @@ fn walk_entries(
             parent: artifact_directory_path(relative),
             source,
         })?;
-        let name = entry.file_name();
-        if is_excluded_artifact_entry(&name) {
-            continue;
-        }
+        walk_entry(current, relative, entry, out)?;
+    }
+    Ok(())
+}
 
-        let file_type = entry.file_type().map_err(|source| ArchiveError::FileType {
-            parent: artifact_directory_path(relative),
-            component: format!("{name:?}"),
-            source,
-        })?;
+#[cfg(target_os = "linux")]
+fn walk_entry(
+    current: &Dir,
+    relative: &str,
+    entry: fs::DirEntry,
+    out: &mut Vec<FileEntry>,
+) -> Result<(), ArchiveError> {
+    let name = entry.file_name();
+    if is_excluded_artifact_entry(&name) {
+        return Ok(());
+    }
 
-        if file_type.is_dir() {
-            let name_str = artifact_path_component(&name, relative)?;
-            let rel = relative_artifact_path(relative, name_str);
-            let dir = current
-                .open_child_dir(&name)
-                .map_err(|source| ArchiveError::Open {
-                    path: rel.clone(),
-                    source,
-                })?;
-            walk_dir(&dir, &rel, out)?;
-            continue;
-        }
+    let file_type = entry.file_type().map_err(|source| ArchiveError::FileType {
+        parent: artifact_directory_path(relative),
+        component: format!("{name:?}"),
+        source,
+    })?;
 
-        if !file_type.is_file() {
-            continue;
-        }
-
+    if file_type.is_dir() {
         let name_str = artifact_path_component(&name, relative)?;
         let rel = relative_artifact_path(relative, name_str);
-        let file = current
-            .open_child_file(&name)
+        let dir = current
+            .open_child_dir(&name)
             .map_err(|source| ArchiveError::Open {
                 path: rel.clone(),
                 source,
             })?;
-        let metadata = file.metadata().map_err(|source| ArchiveError::Metadata {
+        walk_dir(&dir, &rel, out)?;
+        return Ok(());
+    }
+
+    if !file_type.is_file() {
+        return Ok(());
+    }
+
+    let name_str = artifact_path_component(&name, relative)?;
+    let rel = relative_artifact_path(relative, name_str);
+    let file = current
+        .open_child_file(&name)
+        .map_err(|source| ArchiveError::Open {
             path: rel.clone(),
             source,
         })?;
-        if !metadata.is_file() {
-            return Err(ArchiveError::NonRegular { path: rel });
-        }
-        let (hash, size) =
-            compute_file_hash_from_reader(file).map_err(|source| ArchiveError::Hash {
-                path: rel.clone(),
-                source,
-            })?;
-        out.push(FileEntry {
-            path: rel,
-            hash,
-            size,
-        });
+    let metadata = file.metadata().map_err(|source| ArchiveError::Metadata {
+        path: rel.clone(),
+        source,
+    })?;
+    if !metadata.is_file() {
+        return Err(ArchiveError::NonRegular { path: rel });
     }
+    let (hash, size) =
+        compute_file_hash_from_reader(file).map_err(|source| ArchiveError::Hash {
+            path: rel.clone(),
+            source,
+        })?;
+    out.push(FileEntry {
+        path: rel,
+        hash,
+        size,
+    });
     Ok(())
 }
 
@@ -599,29 +610,6 @@ mod tests {
         guest_common::log::clear_system_log_file();
     }
 
-    struct PermissionGuard {
-        path: PathBuf,
-        mode: u32,
-    }
-
-    impl PermissionGuard {
-        fn set(path: &Path, mode: u32) -> io::Result<Self> {
-            let original = std::fs::metadata(path)?.permissions().mode();
-            std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode))?;
-            Ok(Self {
-                path: path.to_owned(),
-                mode: original,
-            })
-        }
-    }
-
-    impl Drop for PermissionGuard {
-        fn drop(&mut self) {
-            let _ =
-                std::fs::set_permissions(&self.path, std::fs::Permissions::from_mode(self.mode));
-        }
-    }
-
     struct FailingWriter;
 
     impl io::Write for FailingWriter {
@@ -685,30 +673,32 @@ mod tests {
     }
 
     #[test]
-    fn collect_file_metadata_fails_on_unreadable_nested_directory() {
+    fn walk_entry_fails_when_listed_directory_disappears() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
         let private = root.join("private");
         std::fs::create_dir(&private).unwrap();
         std::fs::write(private.join("secret.txt"), "secret").unwrap();
-        std::fs::write(root.join("visible.txt"), "visible").unwrap();
-        let _guard = PermissionGuard::set(&private, 0o000).unwrap();
+        let root_dir = Dir::open(root).unwrap();
+        let entry = std::fs::read_dir(root).unwrap().next().unwrap().unwrap();
+        std::fs::remove_dir_all(&private).unwrap();
 
-        let err = collect_file_metadata(root.to_str().unwrap()).unwrap_err();
+        let err = walk_entry(&root_dir, "", entry, &mut Vec::new()).unwrap_err();
 
         assert_error_contains(&err, &["private"]);
     }
 
     #[test]
-    fn collect_file_metadata_fails_on_unreadable_regular_file() {
+    fn walk_entry_fails_when_listed_regular_file_disappears() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
-        std::fs::write(root.join("visible.txt"), "visible").unwrap();
         let private_file = root.join("secret.txt");
         std::fs::write(&private_file, "secret").unwrap();
-        let _guard = PermissionGuard::set(&private_file, 0o000).unwrap();
+        let root_dir = Dir::open(root).unwrap();
+        let entry = std::fs::read_dir(root).unwrap().next().unwrap().unwrap();
+        std::fs::remove_file(&private_file).unwrap();
 
-        let err = collect_file_metadata(root.to_str().unwrap()).unwrap_err();
+        let err = walk_entry(&root_dir, "", entry, &mut Vec::new()).unwrap_err();
 
         assert_error_contains(&err, &["secret.txt"]);
     }
