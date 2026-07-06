@@ -1182,7 +1182,7 @@ describe("workflows routes", () => {
     await expectComposerText(CREATE_WORKFLOW_WITH_CHAT_PROMPT);
   });
 
-  it("redirects the legacy agent workflows tab", async () => {
+  it("keeps the gated agent workflows tab hidden by default", async () => {
     mockAgentPageApis();
     mockWorkflowApis([
       salesResearch(),
@@ -1198,7 +1198,7 @@ describe("workflows routes", () => {
 
     await waitFor(() => {
       expect(pathname()).toBe(`/agents/${AGENT_ID}`);
-      expect(search()).toBe("");
+      expect(search()).toBe("?tab=workflows");
     });
     expect(screen.queryByText("Sales Research")).not.toBeInTheDocument();
     expect(screen.queryByText("Launch Checklist")).not.toBeInTheDocument();

@@ -208,6 +208,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.AgentDetailWorkflowsTab]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Show the Workflows tab on agent detail pages, scoped to workflows visible for that agent.",
+    enabled: false,
+  },
   [FeatureSwitchKey.TestOauthConnector]: {
     maintainer: "liangyou@vm0.ai",
     description:

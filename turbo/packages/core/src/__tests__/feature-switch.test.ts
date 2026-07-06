@@ -27,6 +27,9 @@ describe("isFeatureEnabled", () => {
       isFeatureEnabled(FeatureSwitchKey.HtmlArtifactCommentEditing, {}),
     ).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.WebsiteTemplates, {})).toBe(false);
+    expect(isFeatureEnabled(FeatureSwitchKey.AgentDetailWorkflowsTab, {})).toBe(
+      false,
+    );
   });
 
   it("should return false for disabled switch with non-matching userId", () => {
