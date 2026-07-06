@@ -346,7 +346,10 @@ function customConnectorTemplateConfigured(args: {
 
   if (args.template.includes(LEGACY_SECRET_PLACEHOLDER)) {
     const legacyField = fieldByReference.get(`secrets.${LEGACY_SECRET_KEY}`);
-    if (!legacyField || !args.configured.has(valueMarkerKey(legacyField))) {
+    if (
+      !legacyField ||
+      !args.configured.has(customConnectorValueMarkerKey(legacyField))
+    ) {
       return false;
     }
   }
@@ -357,7 +360,7 @@ function customConnectorTemplateConfigured(args: {
       continue;
     }
     const field = fieldByReference.get(`${namespace}.${key}`);
-    if (!field || !args.configured.has(valueMarkerKey(field))) {
+    if (!field || !args.configured.has(customConnectorValueMarkerKey(field))) {
       return false;
     }
   }
@@ -389,7 +392,7 @@ function customConnectorPrefixTemplateConfigured(args: {
       return false;
     }
     const field = variableFieldByKey.get(key);
-    if (!field || !args.configured.has(valueMarkerKey(field))) {
+    if (!field || !args.configured.has(customConnectorValueMarkerKey(field))) {
       return false;
     }
   }
