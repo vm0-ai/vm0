@@ -97,8 +97,12 @@ function sanitizeErrorSummary(error: Error): string {
     .replace(/\bhttps?:\/\/[^\s]+/gi, "[url]")
     .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, "[email]")
     .replace(
-      /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/gi,
+      /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/gi,
       "[id]",
+    )
+    .replace(
+      /\bAuthorization\b\s*[:=]\s*["']?(?:Bearer|Basic|Digest|Token)\s+[^,\s"']+/gi,
+      "Authorization=[redacted]",
     )
     .replace(/\bBearer\s+[A-Za-z0-9._~+/-]+=*/gi, "Bearer [redacted]")
     .replace(
