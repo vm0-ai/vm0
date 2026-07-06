@@ -137,28 +137,35 @@ pub enum TerminateResponse {
 }
 
 /// Maximum frame size: 64 MiB (generous for large stdout/stderr).
-const MAX_FRAME_SIZE: u32 = 64 * 1024 * 1024;
+const MAX_FRAME_SIZE: usize = 64 * 1024 * 1024;
 
-/// Read a length-prefixed frame from the stream.
-pub(super) async fn read_frame(stream: &mut UnixStream) -> io::Result<Vec<u8>> {
-    let len = stream.read_u32().await?;
+fn validate_frame_len(len: usize) -> io::Result<()> {
     if len > MAX_FRAME_SIZE {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             format!("frame too large: {len} bytes"),
         ));
     }
-    let mut buf = vec![0u8; len as usize];
+
+    Ok(())
+}
+
+/// Read a length-prefixed frame from the stream.
+pub(super) async fn read_frame(stream: &mut UnixStream) -> io::Result<Vec<u8>> {
+    let len = stream.read_u32().await? as usize;
+    validate_frame_len(len)?;
+    let mut buf = vec![0u8; len];
     stream.read_exact(&mut buf).await?;
     Ok(buf)
 }
 
 /// Write a length-prefixed frame to the stream.
 pub(super) async fn write_frame(stream: &mut UnixStream, data: &[u8]) -> io::Result<()> {
+    validate_frame_len(data.len())?;
     let len = u32::try_from(data.len()).map_err(|_| {
         io::Error::new(
             io::ErrorKind::InvalidData,
-            format!("payload too large: {} bytes", data.len()),
+            format!("frame too large: {} bytes", data.len()),
         )
     })?;
     stream.write_u32(len).await?;
@@ -173,7 +180,7 @@ mod tests {
 
     use base64::Engine;
     use base64::engine::general_purpose::STANDARD as BASE64;
-    use tokio::io::AsyncWriteExt;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::{UnixListener, UnixStream};
 
     #[tokio::test]
@@ -204,12 +211,29 @@ mod tests {
     async fn read_frame_rejects_frames_larger_than_max_size() {
         let (mut reader, mut writer) = UnixStream::pair().unwrap();
 
-        writer.write_u32(MAX_FRAME_SIZE + 1).await.unwrap();
+        writer
+            .write_u32(u32::try_from(MAX_FRAME_SIZE + 1).unwrap())
+            .await
+            .unwrap();
         drop(writer);
 
         let err = read_frame(&mut reader).await.unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::InvalidData);
         assert!(err.to_string().contains("frame too large"));
+    }
+
+    #[tokio::test]
+    async fn write_frame_rejects_frames_larger_than_max_size_without_writing_prefix() {
+        let (mut reader, mut writer) = UnixStream::pair().unwrap();
+        let payload = vec![0u8; MAX_FRAME_SIZE + 1];
+
+        let err = write_frame(&mut writer, &payload).await.unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+        assert!(err.to_string().contains("frame too large"));
+
+        drop(writer);
+        let err = reader.read_u32().await.unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::UnexpectedEof);
     }
 
     #[tokio::test]
