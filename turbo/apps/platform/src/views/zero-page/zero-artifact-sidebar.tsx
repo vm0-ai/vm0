@@ -1,9 +1,12 @@
-import type { ReactNode } from "react";
+import type { ChangeEvent, FormEvent, ReactNode } from "react";
 import {
   IconArrowLeft,
   IconArrowsDiagonal,
   IconArrowsDiagonalMinimize2,
   IconBackground,
+  IconBrandInstagram,
+  IconBrandSlack,
+  IconBrandX,
   IconChevronLeft,
   IconChevronRight,
   IconDownload,
@@ -11,8 +14,14 @@ import {
   IconEye,
   IconExternalLink,
   IconLoader2,
+  IconLink,
+  IconPalette,
+  IconPaperclip,
   IconPencil,
+  IconPlus,
+  IconShare,
   IconSparkles,
+  IconTrash,
   IconUpload,
   IconZoomReset,
   IconX,
@@ -36,7 +45,12 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
+  Popover,
+  PopoverClose,
+  PopoverContent,
+  PopoverTrigger,
 } from "@vm0/ui";
 import {
   artifactHtmlEditMode$,
@@ -44,8 +58,8 @@ import {
   type ArtifactRef,
   applyHtmlDomEditPreview$,
   clearHtmlDomEditPending$,
-  closeArtifactHtmlEditMode$,
   closeArtifact$,
+  closeArtifactHtmlEditMode$,
   clearHtmlEditSnapshotRestorePendingResumeKey$,
   deleteHtmlEditSnapshotDraft$,
   dismissHtmlEditSnapshotRestoreDraft$,
@@ -78,9 +92,11 @@ import { artifactPreviewUrlsMatch } from "./zero-attachment-url.ts";
 import { lightboxDialogVisible$ } from "../../signals/zero-page/zero-attachment-chips.ts";
 import {
   artifactImageEditMode$,
-  imageEditProcessing$,
+  importEditableImageCanvasImageUrl$,
+  imageEditUploading$,
   runImageEdit$,
   type ImageEditOperation,
+  uploadEditableImageCanvasImage$,
 } from "../../signals/zero-page/zero-image-edit.ts";
 import { Markdown } from "../components/markdown.tsx";
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -99,8 +115,10 @@ import {
 import { EditableArtifactImageCanvas } from "./zero-editable-image-canvas.tsx";
 import {
   editableImageArtifactCanvasKey,
+  deleteEditableImageCanvasItem$,
   type EditableImageCanvasItem,
 } from "../../signals/zero-page/zero-editable-image-canvas.ts";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import type { ChatThreadSignals } from "../../signals/chat-page/chat-thread-signals.ts";
 import type { ChatThreadArtifactFile } from "@vm0/api-contracts/contracts/chat-threads";
 import {
@@ -110,6 +128,7 @@ import {
   ArtifactShareButton,
   type ArtifactDownloadSyncTarget,
 } from "./zero-artifact-actions.tsx";
+import { ILLUSTRATION_TEMPLATE_ITEMS } from "@vm0/core";
 import {
   artifactFallbackSubtitle,
   artifactTitleSubtitle,
@@ -1842,23 +1861,270 @@ function ArtifactImageBody({
   );
 }
 
+const IMAGE_STYLE_TRANSFER_TEMPLATES = [
+  {
+    id: "warm-film",
+    label: "Warm film",
+    description: "Soft grain and golden-hour color.",
+    prompt:
+      "Warm analog film look with soft grain, golden-hour color, gentle contrast and natural skin tones.",
+    thumbnailClassName:
+      "bg-[linear-gradient(180deg,#fbbf24_0_48%,#78350f_49%_70%,#fef3c7_71%)] before:absolute before:left-2 before:top-2 before:h-3 before:w-3 before:rounded-full before:bg-[#fff7cc] before:shadow-[18px_20px_0_4px_rgba(146,64,14,.65)] after:absolute after:inset-0 after:bg-[repeating-linear-gradient(90deg,rgba(255,255,255,.3)_0_1px,transparent_1px_7px)]",
+  },
+  {
+    id: "ink-wash",
+    label: "Ink wash",
+    description: "Monochrome brush texture.",
+    prompt:
+      "Elegant black ink wash illustration with subtle paper texture, expressive brush edges and preserved subject detail.",
+    thumbnailClassName:
+      "bg-[linear-gradient(180deg,#f8fafc,#e5e7eb)] before:absolute before:inset-x-1 before:bottom-2 before:h-7 before:bg-[linear-gradient(135deg,transparent_0_18%,#111827_19%_40%,transparent_41%),linear-gradient(45deg,transparent_0_24%,rgba(17,24,39,.72)_25%_58%,transparent_59%)] after:absolute after:inset-0 after:bg-[radial-gradient(circle_at_28%_58%,rgba(17,24,39,.4)_0_8%,transparent_9%),linear-gradient(116deg,transparent_0_53%,rgba(17,24,39,.72)_54%_60%,transparent_61%)]",
+  },
+  {
+    id: "clay",
+    label: "Clay",
+    description: "Matte 3D hand-crafted form.",
+    prompt:
+      "Matte clay 3D render style with soft studio lighting, rounded hand-crafted forms and tactile surface detail.",
+    thumbnailClassName:
+      "bg-[linear-gradient(180deg,#fed7aa,#fdba74)] before:absolute before:left-2 before:top-3 before:h-6 before:w-6 before:rounded-full before:bg-[radial-gradient(circle_at_32%_24%,#ffedd5,#fb923c_58%,#c2410c)] before:shadow-[13px_8px_0_-3px_rgba(234,88,12,.55),10px_-2px_0_-7px_#9a3412] after:absolute after:left-3 after:bottom-2 after:h-2 after:w-8 after:rounded-full after:bg-[#9a3412]/25 after:blur-sm",
+  },
+  {
+    id: "watercolor",
+    label: "Watercolor",
+    description: "Light pigment and paper bloom.",
+    prompt:
+      "Delicate watercolor painting with translucent pigment, clean paper texture, soft edges and airy highlights.",
+    thumbnailClassName:
+      "bg-[#f8fafc] before:absolute before:inset-1 before:bg-[radial-gradient(circle_at_42%_34%,rgba(56,189,248,.55)_0_18%,transparent_38%),radial-gradient(circle_at_61%_50%,rgba(244,114,182,.48)_0_16%,transparent_34%),radial-gradient(circle_at_35%_62%,rgba(134,239,172,.55)_0_17%,transparent_36%)] before:blur-[1px] after:absolute after:left-5 after:top-3 after:h-8 after:w-4 after:rounded-full after:border-l-2 after:border-b-2 after:border-[#65a30d]/60 after:rotate-[-28deg]",
+  },
+  {
+    id: "illustration-soft-vector",
+    label: "Soft Vector",
+    description: "Rounded shapes and gentle gradients.",
+    prompt:
+      "Soft Vector illustration template style with clean rounded vector shapes, gentle gradients, tidy negative space and polished editorial composition.",
+    previewImage: illustrationTemplatePreviewImage("soft-vector"),
+    thumbnailClassName:
+      "bg-[#eef2ff] before:absolute before:left-2 before:top-2 before:h-5 before:w-7 before:rounded-full before:bg-[#93c5fd] after:absolute after:bottom-2 after:right-2 after:h-7 after:w-5 after:rounded-full after:bg-[#f9a8d4]",
+  },
+  {
+    id: "illustration-grain-poster",
+    label: "Grain Poster",
+    description: "Graphic blocks with print texture.",
+    prompt:
+      "Grain Poster illustration template style with bold simplified forms, poster-like color blocks, tactile print grain and crisp graphic silhouettes.",
+    previewImage: illustrationTemplatePreviewImage("grain-poster"),
+    thumbnailClassName:
+      "bg-[#fef3c7] before:absolute before:inset-2 before:bg-[linear-gradient(135deg,#ef4444_0_42%,#111827_43%_58%,#22c55e_59%)] after:absolute after:inset-0 after:bg-[radial-gradient(circle,rgba(17,24,39,.22)_0_1px,transparent_1px)] after:bg-[length:5px_5px]",
+  },
+  {
+    id: "illustration-sunlit-gouache",
+    label: "Sunlit Gouache",
+    description: "Warm painted light and soft texture.",
+    prompt:
+      "Sunlit Gouache illustration template style with warm painted light, soft hand-rendered edges, gentle texture and calm storybook atmosphere.",
+    previewImage: illustrationTemplatePreviewImage("sunlit-gouache"),
+    thumbnailClassName:
+      "bg-[#fef9c3] before:absolute before:left-1.5 before:top-1.5 before:h-6 before:w-6 before:rounded-full before:bg-[#facc15]/80 after:absolute after:bottom-2 after:right-1.5 after:h-6 after:w-8 after:rounded-t-full after:bg-[#86efac]",
+  },
+  {
+    id: "illustration-notion",
+    label: "Notion Illustration",
+    description: "Minimal friendly monochrome linework.",
+    prompt:
+      "Notion Illustration template style with minimal friendly linework, soft monochrome shading, quiet whitespace and simple cozy everyday details.",
+    previewImage: illustrationTemplatePreviewImage("notion-illustration"),
+    thumbnailClassName:
+      "bg-[#f8fafc] before:absolute before:left-2 before:top-2 before:h-6 before:w-6 before:rounded-full before:border-2 before:border-[#111827] after:absolute after:bottom-2 after:right-2 after:h-5 after:w-7 after:rounded-sm after:border-2 after:border-[#111827]",
+  },
+  {
+    id: "editorial",
+    label: "Editorial",
+    description: "Crisp lighting and polished finish.",
+    prompt:
+      "Premium editorial campaign style with crisp lighting, restrained contrast, clean color grading and polished detail.",
+    thumbnailClassName:
+      "bg-[linear-gradient(180deg,#f8fafc,#e2e8f0)] before:absolute before:left-2 before:top-2 before:h-8 before:w-6 before:bg-[linear-gradient(180deg,#0f172a_0_50%,#f8fafc_51%_62%,#ef4444_63%)] before:shadow-[16px_0_0_-4px_#cbd5e1] after:absolute after:right-2 after:top-2 after:h-2 after:w-5 after:bg-[#0f172a]",
+  },
+  {
+    id: "neon-noir",
+    label: "Neon noir",
+    description: "Cinematic glow and rain-slick contrast.",
+    prompt:
+      "Cinematic neon noir style with saturated city lights, glossy reflections, moody shadows and high-contrast color grading.",
+    thumbnailClassName:
+      "bg-[linear-gradient(180deg,#020617_0_64%,#172554_65%)] before:absolute before:left-2 before:top-2 before:h-7 before:w-2 before:bg-[#22d3ee] before:shadow-[8px_5px_0_#a855f7,17px_0_0_#f43f5e,26px_9px_0_#38bdf8] after:absolute after:inset-x-1 after:bottom-2 after:h-2 after:bg-[linear-gradient(90deg,transparent,#22d3ee,#a855f7,#f43f5e,transparent)] after:blur-sm",
+  },
+  {
+    id: "studio-product",
+    label: "Studio product",
+    description: "Clean commercial lighting.",
+    prompt:
+      "High-end commercial product photography style with clean studio lighting, crisp material detail, controlled shadows and polished realism.",
+    thumbnailClassName:
+      "bg-[radial-gradient(circle_at_50%_16%,#ffffff_0_14%,#e2e8f0_42%,#cbd5e1)] before:absolute before:left-[18px] before:top-2 before:h-7 before:w-4 before:rounded-md before:bg-[linear-gradient(180deg,#f8fafc,#64748b)] before:shadow-[0_0_0_1px_rgba(15,23,42,.12)] after:absolute after:left-3 after:bottom-2 after:h-2 after:w-7 after:rounded-full after:bg-black/10 after:blur-sm",
+  },
+  {
+    id: "anime-cel",
+    label: "Anime cel",
+    description: "Clean linework and bold color.",
+    prompt:
+      "Modern anime cel-shaded style with clean expressive linework, flat vibrant color blocks, soft gradients and preserved character detail.",
+    thumbnailClassName:
+      "bg-[#dbeafe] before:absolute before:left-2 before:top-2 before:h-7 before:w-7 before:rounded-full before:border-2 before:border-[#111827] before:bg-[radial-gradient(circle_at_34%_44%,#111827_0_7%,transparent_8%),radial-gradient(circle_at_66%_44%,#111827_0_7%,transparent_8%),linear-gradient(180deg,#f9a8d4_0_38%,#fde68a_39%)] after:absolute after:left-2 after:top-1 after:h-4 after:w-7 after:rounded-t-full after:bg-[#2563eb]",
+  },
+  {
+    id: "risograph",
+    label: "Risograph",
+    description: "Ink grain and offset layers.",
+    prompt:
+      "Risograph print style with limited spot colors, visible ink grain, slight registration offsets and tactile poster texture.",
+    thumbnailClassName:
+      "bg-[#fef3c7] before:absolute before:left-2 before:top-2 before:h-8 before:w-7 before:bg-[radial-gradient(circle_at_50%_32%,#ef4444_0_22%,transparent_23%),linear-gradient(180deg,transparent_0_42%,#22c55e_43%)] before:opacity-80 after:absolute after:inset-0 after:bg-[radial-gradient(circle,#111827_0_1px,transparent_1px)] after:bg-[length:5px_5px] after:opacity-25",
+  },
+  {
+    id: "vintage-comic",
+    label: "Vintage comic",
+    description: "Halftone dots and bold inks.",
+    prompt:
+      "Vintage comic book style with bold ink outlines, halftone dot shading, saturated print colors and dramatic panel lighting.",
+    thumbnailClassName:
+      "bg-[#fde047] before:absolute before:inset-1 before:border-2 before:border-[#111827] before:bg-[radial-gradient(circle_at_50%_48%,#f8fafc_0_18%,#ef4444_19%_36%,transparent_37%),linear-gradient(135deg,#facc15,#ef4444)] after:absolute after:inset-0 after:bg-[radial-gradient(circle,#111827_0_1px,transparent_1px)] after:bg-[length:5px_5px] after:opacity-35",
+  },
+  {
+    id: "paper-cut",
+    label: "Paper cut",
+    description: "Layered edges and soft shadows.",
+    prompt:
+      "Layered paper cutout illustration style with crisp paper edges, subtle fibers, dimensional shadows and handcrafted composition.",
+    thumbnailClassName:
+      "bg-[#ecfeff] before:absolute before:inset-x-1 before:bottom-2 before:h-7 before:bg-[radial-gradient(circle_at_24%_28%,#ffffff_0_11%,transparent_12%),linear-gradient(135deg,transparent_0_32%,#14b8a6_33%_61%,transparent_62%),linear-gradient(45deg,transparent_0_38%,#f9a8d4_39%_72%,transparent_73%)] before:drop-shadow-sm after:absolute after:left-3 after:top-2 after:h-3 after:w-3 after:rounded-full after:bg-[#facc15]",
+  },
+] as const;
+const IMAGE_EDIT_UPLOAD_ACCEPT =
+  "image/avif,image/bmp,image/gif,image/jpeg,image/png,image/webp";
+
+type ImageStyleTransferTemplateId =
+  (typeof IMAGE_STYLE_TRANSFER_TEMPLATES)[number]["id"];
+type ImageStyleTransferTemplate =
+  (typeof IMAGE_STYLE_TRANSFER_TEMPLATES)[number];
+
+function illustrationTemplatePreviewImage(slug: string): string {
+  const item = ILLUSTRATION_TEMPLATE_ITEMS.find((template) => {
+    return template.slug === slug;
+  });
+  if (!item) {
+    throw new Error(`Missing illustration template: ${slug}`);
+  }
+  return item.cardPreviewImage ?? item.previewImage;
+}
+
+function ImageStyleTemplateVisual({
+  template,
+}: {
+  template: ImageStyleTransferTemplate;
+}) {
+  return (
+    <span
+      className={cn(
+        "relative h-12 w-12 shrink-0 overflow-hidden rounded-md border border-border/70",
+        template.thumbnailClassName,
+      )}
+      aria-hidden="true"
+    >
+      {"previewImage" in template ? (
+        <img
+          src={template.previewImage}
+          alt=""
+          className="absolute inset-0 h-full w-full object-cover"
+          data-testid={`image-edit-style-template-preview-${template.id}`}
+          onError={(event) => {
+            event.currentTarget.hidden = true;
+          }}
+        />
+      ) : null}
+    </span>
+  );
+}
+
+function ImageStyleTemplateOption({
+  defaultChecked,
+  template,
+}: {
+  defaultChecked: boolean;
+  template: ImageStyleTransferTemplate;
+}) {
+  return (
+    <label
+      className="group relative flex min-h-16 cursor-pointer items-center gap-2 rounded-lg border border-border/70 bg-background p-1.5 pr-2 text-left transition-colors hover:border-primary/40 hover:bg-muted/40 has-[:checked]:border-primary has-[:checked]:bg-primary/5 has-[:checked]:shadow-[0_0_0_3px_hsl(var(--primary)/0.1)]"
+      data-testid={`image-edit-style-template-${template.id}`}
+    >
+      <input
+        type="radio"
+        name="styleTemplate"
+        value={template.id}
+        defaultChecked={defaultChecked}
+        className="peer sr-only"
+      />
+      <ImageStyleTemplateVisual template={template} />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-xs font-semibold text-foreground">
+          {template.label}
+        </span>
+        <span className="block truncate text-[11px] leading-4 text-muted-foreground">
+          {template.description}
+        </span>
+      </span>
+      <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-primary opacity-0 transition-opacity group-has-[:checked]:opacity-100" />
+    </label>
+  );
+}
+
+function ImageStyleTemplateList() {
+  const defaultTemplateId = IMAGE_STYLE_TRANSFER_TEMPLATES[0].id;
+  return (
+    <div className="mt-2 grid max-h-72 gap-1.5 overflow-y-auto pr-1">
+      {IMAGE_STYLE_TRANSFER_TEMPLATES.map((template) => {
+        return (
+          <ImageStyleTemplateOption
+            key={template.id}
+            defaultChecked={template.id === defaultTemplateId}
+            template={template}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function imageStylePromptFromForm(form: HTMLFormElement): string {
+  const data = new FormData(form);
+  const customStyle = String(data.get("customStyle") ?? "").trim();
+  if (customStyle) {
+    return customStyle;
+  }
+  const templateId = String(
+    data.get("styleTemplate") ?? "warm-film",
+  ) as ImageStyleTransferTemplateId;
+  const template =
+    IMAGE_STYLE_TRANSFER_TEMPLATES.find((item) => {
+      return item.id === templateId;
+    }) ?? IMAGE_STYLE_TRANSFER_TEMPLATES[0];
+  return template.prompt;
+}
+
 function ArtifactImageEditToolbarButton({
-  activeOperation,
   icon,
   label,
   onClick,
-  operation,
   testId,
 }: {
-  activeOperation: ImageEditOperation | null;
   icon: ReactNode;
   label: string;
   onClick: () => void;
-  operation: ImageEditOperation;
   testId: string;
 }) {
-  const processing = activeOperation !== null;
-  const active = activeOperation === operation;
   return (
     <ArtifactActionTooltip label={label} side="top">
       <span className="inline-flex">
@@ -1867,61 +2133,198 @@ function ArtifactImageEditToolbarButton({
           variant="outline"
           size="sm"
           className="h-9 w-9 rounded-lg border-border/70 bg-gray-50 p-0 text-muted-foreground hover:bg-gray-100 hover:text-foreground"
-          disabled={processing}
           data-testid={testId}
           aria-label={label}
           title={label}
           onClick={onClick}
         >
-          {active ? <IconLoader2 size={17} className="animate-spin" /> : icon}
+          {icon}
         </Button>
       </span>
     </ArtifactActionTooltip>
   );
 }
 
-function ArtifactImageEditSelectionToolbar({
-  activeOperation,
+function ArtifactImageStyleTransferPopover({
   item,
+  onApply,
+}: {
+  item: EditableImageCanvasItem;
+  onApply: (stylePrompt: string, item: EditableImageCanvasItem) => void;
+}) {
+  const applyStyle = (form: HTMLFormElement) => {
+    onApply(imageStylePromptFromForm(form), item);
+  };
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    applyStyle(event.currentTarget);
+  };
+
+  return (
+    <Popover modal={false}>
+      <ArtifactActionTooltip label="Style Transfer" side="top">
+        <span className="inline-flex">
+          <PopoverTrigger asChild>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-9 w-9 rounded-lg border-border/70 bg-gray-50 p-0 text-muted-foreground hover:bg-gray-100 hover:text-foreground data-[state=open]:bg-gray-100 data-[state=open]:text-foreground"
+              data-testid="image-edit-style-transfer"
+              aria-label="Style Transfer"
+              title="Style Transfer"
+            >
+              <IconPalette size={18} stroke={1.8} />
+            </Button>
+          </PopoverTrigger>
+        </span>
+      </ArtifactActionTooltip>
+      <PopoverContent
+        side="top"
+        align="center"
+        sideOffset={10}
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+        }}
+        className="z-[10000] max-h-[min(620px,calc(100vh-120px))] w-[360px] max-w-[calc(100vw-32px)] overflow-y-auto rounded-lg border-border/70 p-3 shadow-lg"
+        data-testid="image-edit-style-popover"
+      >
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <p className="text-sm font-bold text-foreground">Style Transfer</p>
+          <ImageStyleTemplateList />
+          <p className="px-0.5 text-xs font-semibold text-muted-foreground">
+            Custom style
+          </p>
+          <textarea
+            className="min-h-16 w-full resize-none rounded-md border border-border/70 bg-background px-2.5 py-2 text-xs leading-5 text-foreground outline-none transition-colors placeholder:text-muted-foreground/50 focus:border-foreground/30"
+            name="customStyle"
+            placeholder="Describe a custom style..."
+            data-testid="image-edit-style-custom-input"
+          />
+          <PopoverClose asChild>
+            <Button
+              type="button"
+              className="h-8 w-full rounded-md text-sm font-medium"
+              data-testid="image-edit-apply-style"
+              onClick={(event) => {
+                if (event.currentTarget.form) {
+                  applyStyle(event.currentTarget.form);
+                }
+              }}
+            >
+              Apply style
+            </Button>
+          </PopoverClose>
+        </form>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function ArtifactImageEditShareMenu({ disabled }: { disabled: boolean }) {
+  return (
+    <DropdownMenu>
+      <ArtifactActionTooltip label="Share" side="top">
+        <span className="inline-flex">
+          <DropdownMenuTrigger asChild>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-9 w-9 rounded-lg border-border/70 bg-gray-50 p-0 text-muted-foreground hover:bg-gray-100 hover:text-foreground data-[state=open]:bg-gray-100 data-[state=open]:text-foreground"
+              aria-label="Share image"
+              disabled={disabled}
+              data-testid="image-edit-share"
+            >
+              <IconShare size={18} stroke={1.8} />
+            </Button>
+          </DropdownMenuTrigger>
+        </span>
+      </ArtifactActionTooltip>
+      <DropdownMenuContent align="center" className="w-44">
+        <DropdownMenuItem disabled data-testid="image-edit-share-x">
+          <IconBrandX size={14} stroke={1.6} />
+          Share to X
+        </DropdownMenuItem>
+        <DropdownMenuItem disabled data-testid="image-edit-share-instagram">
+          <IconBrandInstagram size={14} stroke={1.6} />
+          Share to Instagram
+        </DropdownMenuItem>
+        <DropdownMenuItem disabled data-testid="image-edit-share-slack">
+          <IconBrandSlack size={14} stroke={1.6} />
+          Share to Slack
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem disabled>Coming soon</DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function ArtifactImageEditSelectionToolbar({
+  item,
+  onDelete,
   onDownload,
   onOperation,
 }: {
-  activeOperation: ImageEditOperation | null;
   item: EditableImageCanvasItem;
+  onDelete: (item: EditableImageCanvasItem) => void;
   onDownload: (item: EditableImageCanvasItem) => void;
   onOperation: (
     operation: ImageEditOperation,
     item: EditableImageCanvasItem,
+    stylePrompt?: string,
   ) => void;
 }) {
   return (
     <div
       data-testid="image-edit-toolbar"
-      className="flex items-center gap-2 rounded-2xl border border-border/70 bg-gray-50/95 px-2 py-2 shadow-lg backdrop-blur"
+      className="flex w-max shrink-0 items-center gap-2 rounded-2xl border border-border/70 bg-gray-50/95 px-2 py-2 shadow-lg backdrop-blur"
       onPointerDown={(event) => {
         event.stopPropagation();
       }}
     >
       <ArtifactImageEditToolbarButton
-        activeOperation={activeOperation}
         icon={<IconBackground size={18} stroke={1.8} />}
         label="Remove background"
         onClick={() => {
           onOperation("removeBackground", item);
         }}
-        operation="removeBackground"
         testId="image-edit-remove-background"
       />
       <ArtifactImageEditToolbarButton
-        activeOperation={activeOperation}
         icon={<IconSparkles size={18} stroke={1.8} />}
         label="Enhance"
         onClick={() => {
           onOperation("enhance", item);
         }}
-        operation="enhance"
         testId="image-edit-enhance"
       />
+      <ArtifactImageStyleTransferPopover
+        item={item}
+        onApply={(stylePrompt, selectedItem) => {
+          onOperation("styleTransfer", selectedItem, stylePrompt);
+        }}
+      />
+      <ArtifactActionTooltip label="Delete" side="top">
+        <span className="inline-flex">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-9 w-9 rounded-lg border-border/70 bg-gray-50 p-0 text-muted-foreground hover:bg-gray-100 hover:text-foreground"
+            data-testid="image-edit-delete"
+            aria-label="Delete image"
+            title="Delete"
+            onClick={() => {
+              onDelete(item);
+            }}
+          >
+            <IconTrash size={18} stroke={1.8} />
+          </Button>
+        </span>
+      </ArtifactActionTooltip>
+      <ArtifactImageEditShareMenu disabled={false} />
       <ArtifactActionTooltip label="Download" side="top">
         <span className="inline-flex">
           <Button
@@ -1929,7 +2332,6 @@ function ArtifactImageEditSelectionToolbar({
             variant="outline"
             size="sm"
             className="h-9 w-9 rounded-lg border-border/70 bg-gray-50 p-0 text-muted-foreground hover:bg-gray-100 hover:text-foreground"
-            disabled={activeOperation !== null}
             data-testid="image-edit-download"
             aria-label="Download"
             title="Download"
@@ -1941,6 +2343,190 @@ function ArtifactImageEditSelectionToolbar({
           </Button>
         </span>
       </ArtifactActionTooltip>
+    </div>
+  );
+}
+
+function ArtifactImageEditUploadFileControl({
+  disabled,
+  onSelectFiles,
+  uploading,
+}: {
+  disabled: boolean;
+  onSelectFiles: (files: readonly File[]) => void;
+  uploading: boolean;
+}) {
+  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.currentTarget.files ?? []);
+    event.currentTarget.value = "";
+    if (files.length > 0) {
+      onSelectFiles(files);
+    }
+  };
+
+  return (
+    <>
+      <label
+        className={cn(
+          "flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors",
+          disabled
+            ? "cursor-not-allowed opacity-45"
+            : "cursor-pointer hover:bg-muted hover:text-foreground",
+        )}
+        htmlFor="image-edit-upload-input-control"
+        data-testid="image-edit-upload-local"
+        aria-label="Upload from computer"
+        title="Upload from computer"
+      >
+        {uploading ? (
+          <IconLoader2 size={16} className="animate-spin" />
+        ) : (
+          <IconPaperclip size={16} stroke={1.6} />
+        )}
+      </label>
+      <input
+        id="image-edit-upload-input-control"
+        type="file"
+        accept={IMAGE_EDIT_UPLOAD_ACCEPT}
+        multiple
+        disabled={disabled}
+        className="hidden"
+        data-testid="image-edit-upload-input"
+        onChange={handleFileChange}
+      />
+    </>
+  );
+}
+
+function ArtifactImageEditUploadLinkForm({
+  disabled,
+  onSelectLink,
+}: {
+  disabled: boolean;
+  onSelectLink: (url: string) => void;
+}) {
+  const setSubmitVisible = (form: HTMLFormElement | null, visible: boolean) => {
+    const submit = form?.querySelector<HTMLButtonElement>(
+      '[data-testid="image-edit-upload-link-add"]',
+    );
+    if (submit) {
+      submit.hidden = !visible;
+    }
+  };
+  const handleLinkSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    const value = String(data.get("imageUrl") ?? "").trim();
+    if (!value) {
+      return;
+    }
+    if (!URL.canParse(value)) {
+      toast.error("Enter a valid image link");
+      return;
+    }
+    onSelectLink(new URL(value).toString());
+    form.reset();
+    setSubmitVisible(form, false);
+  };
+  const handleLinkInput = (event: FormEvent<HTMLInputElement>) => {
+    setSubmitVisible(
+      event.currentTarget.form,
+      event.currentTarget.value.trim().length > 0,
+    );
+  };
+
+  return (
+    <form
+      className="flex h-8 min-w-0 flex-1 items-center gap-1 border-l border-border/70 pl-2"
+      onSubmit={handleLinkSubmit}
+    >
+      <IconLink
+        size={15}
+        stroke={1.7}
+        className="shrink-0 text-muted-foreground"
+      />
+      <input
+        className="h-full min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-45"
+        name="imageUrl"
+        placeholder="Paste link"
+        type="url"
+        disabled={disabled}
+        data-testid="image-edit-upload-link-input"
+        onInput={handleLinkInput}
+      />
+      <Button
+        type="submit"
+        size="icon"
+        variant="ghost"
+        className="h-7 w-7 rounded-md p-0 text-muted-foreground hover:text-foreground"
+        disabled={disabled}
+        hidden
+        data-testid="image-edit-upload-link-add"
+        aria-label="Add image link"
+        title="Add image link"
+      >
+        <IconPlus size={16} stroke={1.8} />
+      </Button>
+    </form>
+  );
+}
+
+function ArtifactImageEditUploadMenu({
+  disabled,
+  onSelectFiles,
+  onSelectLink,
+  uploading,
+}: {
+  disabled: boolean;
+  onSelectFiles: (files: readonly File[]) => void;
+  onSelectLink: (url: string) => void;
+  uploading: boolean;
+}) {
+  return (
+    <div className="absolute bottom-4 left-1/2 z-10 -translate-x-1/2">
+      <Popover modal={false}>
+        <PopoverTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="h-8 w-8 rounded-lg border-border/70 bg-background/90 p-0 shadow-sm backdrop-blur hover:bg-muted"
+            disabled={disabled}
+            data-testid="image-edit-upload-menu"
+            aria-label="Upload image"
+            title="Upload image"
+          >
+            {uploading ? (
+              <IconLoader2 size={16} className="animate-spin" />
+            ) : (
+              <IconUpload size={16} stroke={1.8} />
+            )}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent
+          side="top"
+          align="center"
+          sideOffset={8}
+          className="z-[10000] w-56 p-1 shadow-lg"
+          data-testid="image-edit-upload-popover"
+          onOpenAutoFocus={(event) => {
+            event.preventDefault();
+          }}
+        >
+          <div className="flex items-center gap-1">
+            <ArtifactImageEditUploadFileControl
+              disabled={disabled}
+              onSelectFiles={onSelectFiles}
+              uploading={uploading}
+            />
+            <ArtifactImageEditUploadLinkForm
+              disabled={disabled}
+              onSelectLink={onSelectLink}
+            />
+          </div>
+        </PopoverContent>
+      </Popover>
     </div>
   );
 }
@@ -1958,14 +2544,18 @@ function ArtifactImageEditBody({
 }) {
   const fullscreen = useGet(artifactFullscreen$);
   const modalOpen = useGet(lightboxDialogVisible$);
-  const activeOperation = useGet(imageEditProcessing$);
+  const imageUploading = useGet(imageEditUploading$);
   const runImageEdit = useSet(runImageEdit$);
+  const deleteCanvasItem = useSet(deleteEditableImageCanvasItem$);
+  const importCanvasImageUrl = useSet(importEditableImageCanvasImageUrl$);
+  const uploadCanvasImage = useSet(uploadEditableImageCanvasImage$);
   const canvasSrc = publicAttachmentUrl(url);
   const canvasKey = editableImageArtifactCanvasKey(url);
 
   const onOperation = (
     operation: ImageEditOperation,
     item: EditableImageCanvasItem,
+    stylePrompt?: string,
   ) => {
     detach(
       runImageEdit(
@@ -1974,6 +2564,7 @@ function ArtifactImageEditBody({
           canvasSrc,
           operation,
           sourceItemId: item.id,
+          stylePrompt,
           url: item.src,
         },
         pageSignal,
@@ -1987,6 +2578,27 @@ function ArtifactImageEditBody({
       downloadAttachmentUrl(item.src, pageSignal, filename),
       Reason.DomCallback,
       "downloadEditableImageCanvasItem",
+    );
+  };
+  const onDelete = (item: EditableImageCanvasItem) => {
+    deleteCanvasItem({
+      itemId: item.id,
+      key: canvasKey,
+      src: canvasSrc,
+    });
+  };
+  const onUploadFiles = (files: readonly File[]) => {
+    detach(
+      uploadCanvasImage({ canvasKey, canvasSrc }, files, pageSignal),
+      Reason.DomCallback,
+      "uploadEditableImageCanvasImage",
+    );
+  };
+  const onUploadLink = (src: string) => {
+    detach(
+      importCanvasImageUrl({ canvasKey, canvasSrc }, src, pageSignal),
+      Reason.DomCallback,
+      "importEditableImageCanvasImageUrl",
     );
   };
 
@@ -2009,8 +2621,8 @@ function ArtifactImageEditBody({
             renderSelectionToolbar={(item) => {
               return (
                 <ArtifactImageEditSelectionToolbar
-                  activeOperation={activeOperation}
                   item={item}
+                  onDelete={onDelete}
                   onDownload={onDownload}
                   onOperation={onOperation}
                 />
@@ -2018,7 +2630,17 @@ function ArtifactImageEditBody({
             }}
           >
             {(controls) => {
-              return <ArtifactImageZoomControls controls={controls} />;
+              return (
+                <>
+                  <ArtifactImageZoomControls controls={controls} />
+                  <ArtifactImageEditUploadMenu
+                    disabled={imageUploading}
+                    onSelectFiles={onUploadFiles}
+                    onSelectLink={onUploadLink}
+                    uploading={imageUploading}
+                  />
+                </>
+              );
             }}
           </EditableArtifactImageCanvas>
         </div>

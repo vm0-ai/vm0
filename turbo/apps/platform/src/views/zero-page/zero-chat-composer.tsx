@@ -4,6 +4,7 @@ import type {
   ChangeEvent,
   CSSProperties,
   DragEvent,
+  FormEvent,
   KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
 } from "react";
@@ -23,6 +24,7 @@ import {
   IconDownload,
   IconPresentation,
   IconLoader2,
+  IconLink,
   IconMicrophone,
   IconPaperclip,
   IconPalette,
@@ -36,6 +38,7 @@ import {
   IconSearch,
   IconTarget,
   IconTemplate,
+  IconUpload,
   IconVideo,
   IconX,
 } from "@tabler/icons-react";
@@ -175,6 +178,8 @@ import {
   setPopoverSortOrder$,
   modelPickerOpen$,
   setModelPickerOpen$,
+  uploadPopoverOpen$,
+  setUploadPopoverOpen$,
   templatePickerOpen$,
   setTemplatePickerOpen$,
   templatePickerCategory$,
@@ -6056,6 +6061,110 @@ function MicButton({
   );
 }
 
+function ComposerUploadMenu({
+  input,
+  onDraftChange,
+  onInputChange,
+  onSelectFile,
+}: {
+  readonly input: string;
+  readonly onDraftChange?: () => void;
+  readonly onInputChange: (value: string) => void;
+  readonly onSelectFile: () => void;
+}) {
+  const uploadOpen = useGet(uploadPopoverOpen$);
+  const setUploadOpen = useSet(setUploadPopoverOpen$);
+  const addLink = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    const trimmed = String(data.get("uploadLink") ?? "").trim();
+    if (!URL.canParse(trimmed)) {
+      toast.error("Enter a valid link");
+      return;
+    }
+    const normalized = new URL(trimmed).toString();
+    const base = input.trimEnd();
+    onInputChange(base ? `${base}\n${normalized}` : normalized);
+    onDraftChange?.();
+    form.reset();
+    setUploadOpen(false);
+  };
+
+  return (
+    <div className="relative inline-flex">
+      <button
+        type="button"
+        className={cn(
+          "rounded-lg p-2 transition-colors duration-200 hover:bg-accent hover:text-foreground sm:p-[9px]",
+          uploadOpen && "bg-accent text-foreground",
+        )}
+        aria-label="Upload"
+        aria-expanded={uploadOpen}
+        aria-haspopup="dialog"
+        title="Upload"
+        data-testid="composer-upload"
+        onClick={() => {
+          setUploadOpen(!uploadOpen);
+        }}
+      >
+        <IconUpload size={18} stroke={1.5} />
+      </button>
+      {uploadOpen && (
+        <div
+          role="dialog"
+          aria-label="Upload"
+          className="absolute bottom-full left-0 z-50 mb-2 w-72 rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-card p-2 text-foreground shadow-lg"
+        >
+          <button
+            type="button"
+            className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-accent"
+            data-testid="composer-upload-local"
+            onClick={() => {
+              setUploadOpen(false);
+              onSelectFile();
+            }}
+          >
+            <IconPaperclip size={16} stroke={1.6} />
+            <span className="min-w-0">
+              <span className="block text-sm font-medium text-foreground">
+                Upload from computer
+              </span>
+              <span className="block truncate text-xs text-muted-foreground">
+                Images, docs, audio, video and archives
+              </span>
+            </span>
+          </button>
+          <form
+            className="mt-2 rounded-lg border border-border/70 p-3"
+            onSubmit={addLink}
+          >
+            <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+              <IconLink size={15} stroke={1.7} />
+              Upload from link
+            </div>
+            <Input
+              className="mt-2 h-9 text-sm"
+              name="uploadLink"
+              placeholder="https://example.com/image.png"
+              type="url"
+              data-testid="composer-upload-link-input"
+            />
+            <Button
+              type="submit"
+              size="sm"
+              className="mt-2 h-8 w-full rounded-lg text-xs font-medium"
+              data-testid="composer-upload-link-add"
+            >
+              Add link
+            </Button>
+          </form>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Signal resolution — resolves draft/file-input with singleton fallback
 // ---------------------------------------------------------------------------
@@ -6874,23 +6983,12 @@ export function ZeroChatComposer({
               )}
               <div className="flex items-center justify-between gap-2 px-4 pb-3 pt-1">
                 <div className="flex items-center gap-1 text-muted-foreground sm:gap-1.5">
-                  <TooltipProvider delayDuration={300}>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <button
-                          type="button"
-                          className="rounded-lg p-2 transition-colors duration-200 hover:bg-accent hover:text-foreground sm:p-[9px]"
-                          aria-label="Attach"
-                          onClick={handleFileSelect}
-                        >
-                          <IconPaperclip size={18} stroke={1.5} />
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent side="top" className="text-xs">
-                        Attach
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
+                  <ComposerUploadMenu
+                    input={input}
+                    onDraftChange={onDraftChange}
+                    onInputChange={onInputChange}
+                    onSelectFile={handleFileSelect}
+                  />
                   <ComposerTemplatePickerSlot picker={templatePicker} />
                   <ComposerWorkflowPromptSlot
                     onCreateWorkflowPrompt={onCreateWorkflowPrompt}

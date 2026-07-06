@@ -2188,7 +2188,7 @@ describe("chat composer templates", () => {
     }
   });
 
-  it("places the template control immediately after attach", async () => {
+  it("places the template control immediately after upload", async () => {
     mockChatLifecycle(context, { threadId: THREAD_ID });
 
     detachedSetupPage({
@@ -2204,7 +2204,7 @@ describe("chat composer templates", () => {
       const controls = Array.from(
         composer.querySelectorAll(
           [
-            'button[aria-label="Attach"]',
+            'button[aria-label="Upload"]',
             'button[aria-label="Template"]',
             'button[aria-label="Connectors"]',
           ].join(","),
@@ -2213,7 +2213,37 @@ describe("chat composer templates", () => {
         return button.getAttribute("aria-label");
       });
 
-      expect(controls).toStrictEqual(["Attach", "Template", "Connectors"]);
+      expect(controls).toStrictEqual(["Upload", "Template", "Connectors"]);
+    });
+  });
+
+  it("adds upload links to the composer draft", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    await screen.findByPlaceholderText(PLACEHOLDER);
+    const editor = await findComposerEditor();
+    const composer = composerElementFrom(editor);
+
+    await user.click(within(composer).getByTestId("composer-upload"));
+    await expect(
+      screen.findByText("Upload from computer"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByText("Upload from link")).toBeInTheDocument();
+
+    await user.type(
+      screen.getByTestId("composer-upload-link-input"),
+      "https://example.com/image.png",
+    );
+    await user.click(screen.getByTestId("composer-upload-link-add"));
+
+    await waitFor(() => {
+      expect(editor.textContent).toBe("https://example.com/image.png");
     });
   });
 
