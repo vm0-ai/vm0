@@ -59,7 +59,7 @@ enum ServiceCommand {
 /// Common arguments shared by `service start` and `service install`.
 #[derive(Args)]
 struct ServiceRunArgs {
-    /// Path to runner config YAML
+    /// Path to runner config YAML to snapshot for service activation
     #[arg(long, short)]
     config: PathBuf,
     /// Service name suffix (e.g. v0.2.0 → unit vm0-runner-v0.2.0)
