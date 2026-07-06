@@ -39,6 +39,7 @@ const LEGACY_SECRET_KEY = "secret";
 const FIELD_KEY_REGEX = /^[a-z][a-z0-9_]{0,63}$/;
 const SLUG_REGEX = /^[a-z0-9][a-z0-9-]{1,62}[a-z0-9]$/;
 const HEADER_NAME_REGEX = /^[A-Za-z][A-Za-z0-9-]*$/;
+const QUERY_NAME_REGEX = /^[A-Za-z0-9._~-]{1,128}$/;
 const TEMPLATE_REFERENCE_REGEX =
   /\{\{\s*(secrets|variables)\.([a-z][a-z0-9_]*)\s*\}\}/g;
 const VARIABLE_REFERENCE_REGEX = /\{\{\s*variables\.[a-z][a-z0-9_]*\s*\}\}/;
@@ -811,8 +812,10 @@ function validateQueryInjections(args: {
   const queries: CustomConnectorQueryInjection[] = [];
   for (const injection of args.raw) {
     const name = injection.name.trim();
-    if (name.length === 0 || name.length > 128) {
-      return badRequestMessage("Query injection names must be 1-128 chars");
+    if (!QUERY_NAME_REGEX.test(name)) {
+      return badRequestMessage(
+        "Query injection names must be 1-128 chars and contain only letters, digits, dots, underscores, hyphens, or tildes",
+      );
     }
     if (seen.has(name)) {
       return badRequestMessage(`Duplicate query injection: ${name}`);

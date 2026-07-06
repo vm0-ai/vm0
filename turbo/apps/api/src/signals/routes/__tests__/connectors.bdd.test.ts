@@ -2347,6 +2347,39 @@ describe("CONN-03: custom connectors and connector-owned values", () => {
     );
   });
 
+  it("rejects unsafe custom connector query injection names", async () => {
+    const bdd = createBddApi(context);
+    const admin = bdd.user({ orgRole: "org:admin" });
+    const rand = randomUUID().replace(/-/g, "").slice(0, 8);
+
+    const rejected = await connectorsApi.requestCreateCustomConnector(
+      admin,
+      {
+        displayName: "BDD Unsafe Query API",
+        prefixTemplates: [`https://query-${rand}.example.test/`],
+        fields: [
+          {
+            key: "api_key",
+            label: "API key",
+            kind: "secret",
+            required: true,
+          },
+        ],
+        headerInjections: [],
+        queryInjections: [
+          {
+            name: "token&debug",
+            valueTemplate: "{{secrets.api_key}}",
+          },
+        ],
+      },
+      [400],
+    );
+
+    expectApiError(rejected.body);
+    expect(rejected.body.error.message).toContain("Query injection names");
+  });
+
   it("deletes only the legacy secret value through the legacy secret endpoint", async () => {
     const bdd = createBddApi(context);
     const admin = bdd.user({ orgRole: "org:admin" });
