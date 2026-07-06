@@ -79,6 +79,7 @@ fn run_manifest(manifest: Manifest) -> bool {
         let mount_path = task.mount_path();
         if let Err(e) = fs::create_dir_all(mount_path) {
             log_error!(LOG_TAG, "Failed to create directory {}: {e}", mount_path);
+            instructions::cleanup_staged_instruction_sources(&instruction_files);
             return false;
         }
     }
@@ -86,6 +87,72 @@ fn run_manifest(manifest: Manifest) -> bool {
     let success = download::download_all_parallel(download_tasks);
     if success {
         instructions::normalize_instruction_files(&instruction_files);
+    } else {
+        instructions::cleanup_staged_instruction_sources(&instruction_files);
     }
     success
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    #[test]
+    fn run_manifest_removes_staged_instruction_source_when_download_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let extract_path = dir
+            .path()
+            .join("runtime")
+            .join("storage-instructions")
+            .join("0");
+        let missing_archive = dir.path().join("missing.tar.gz");
+        let manifest = json!({
+            "storages": [{
+                "mountPath": dir.path().join(".codex"),
+                "extractPath": extract_path,
+                "archiveUrl": format!("file://{}", missing_archive.display()),
+                "instructionsTargetFilename": "AGENTS.md"
+            }]
+        });
+
+        let success = super::run_manifest_bytes(&serde_json::to_vec(&manifest).unwrap());
+
+        assert!(!success);
+        assert!(!extract_path.exists());
+    }
+
+    #[test]
+    fn run_manifest_removes_created_staged_instruction_sources_when_precreate_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let first_extract_path = dir
+            .path()
+            .join("runtime")
+            .join("storage-instructions")
+            .join("0");
+        let blocker = dir.path().join("blocker");
+        let blocked_extract_path = blocker.join("storage-instructions").join("1");
+        std::fs::write(&blocker, "not a directory").unwrap();
+        let archive = dir.path().join("archive.tar.gz");
+        let manifest = json!({
+            "storages": [
+                {
+                    "mountPath": dir.path().join(".codex"),
+                    "extractPath": first_extract_path,
+                    "archiveUrl": format!("file://{}", archive.display()),
+                    "instructionsTargetFilename": "AGENTS.md"
+                },
+                {
+                    "mountPath": dir.path().join(".claude"),
+                    "extractPath": blocked_extract_path,
+                    "archiveUrl": format!("file://{}", archive.display()),
+                    "instructionsTargetFilename": "CLAUDE.md"
+                }
+            ]
+        });
+
+        let success = super::run_manifest_bytes(&serde_json::to_vec(&manifest).unwrap());
+
+        assert!(!success);
+        assert!(!first_extract_path.exists());
+    }
 }

@@ -98,7 +98,8 @@ pub(crate) fn normalize_instruction_files(entries: &[InstructionNormalization]) 
                 Path::new(&entry.final_mount_path),
                 target_filename,
             );
-        } else if promote_staged_instruction_file(entry, target_filename) {
+        } else {
+            promote_staged_instruction_file(entry, target_filename);
             cleanup_staged_instruction_source(entry);
         }
     }
@@ -116,6 +117,12 @@ pub(crate) fn cleanup_instruction_files(entries: &[InstructionCleanup]) {
         for filename in filenames {
             remove_instruction_file_if_safe(&mount_path.join(filename.as_str()));
         }
+    }
+}
+
+pub(crate) fn cleanup_staged_instruction_sources(entries: &[InstructionNormalization]) {
+    for entry in entries {
+        cleanup_staged_instruction_source(entry);
     }
 }
 
@@ -665,6 +672,25 @@ mod tests {
         assert!(!staged.exists());
     }
 
+    #[test]
+    fn normalize_instruction_files_removes_staged_source_when_promote_has_no_instruction_file() {
+        disable_system_log();
+        let dir = tempfile::tempdir().unwrap();
+        let staged = dir.path().join("staged");
+        let final_home = dir.path().join(".codex");
+        fs::create_dir_all(&staged).unwrap();
+        fs::write(staged.join("extra.txt"), "ignored").unwrap();
+
+        normalize_instruction_files(&[InstructionNormalization::staged(
+            staged.to_string_lossy().into(),
+            final_home.to_string_lossy().into(),
+            "AGENTS.md".into(),
+        )]);
+
+        assert!(!final_home.join("AGENTS.md").exists());
+        assert!(!staged.exists());
+    }
+
     #[cfg(unix)]
     #[test]
     fn normalize_instruction_files_does_not_follow_final_target_symlink() {
@@ -694,7 +720,7 @@ mod tests {
                 .file_type()
                 .is_symlink()
         );
-        assert!(staged.exists());
+        assert!(!staged.exists());
     }
 
     #[cfg(unix)]
@@ -724,7 +750,7 @@ mod tests {
                 .file_type()
                 .is_symlink()
         );
-        assert!(staged.exists());
+        assert!(!staged.exists());
     }
 
     #[test]
