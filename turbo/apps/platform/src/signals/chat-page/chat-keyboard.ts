@@ -9,13 +9,10 @@ import {
 } from "./chat-thread-panes.ts";
 import type { ChatThreadSignals } from "./chat-thread-signals.ts";
 import {
-  clearChatThreadEmojiFromThreadMeta$,
   openRenameChatThreadDialogFromThreadMeta$,
-  setChatThreadEmojiFromThreadMeta$,
   type RenameChatThreadDialogRequest,
 } from "./chat-thread-rename.ts";
 import { chatThreadMetaMap$ } from "./chat-thread-event-sourcing.ts";
-import { CHAT_THREAD_EMOJI_OPTIONS } from "./chat-thread-title.ts";
 import type { ScrollStepDirection } from "../auto-scroll.ts";
 import { onRef } from "../utils.ts";
 import { openChatThreadEmojiMenu$ } from "../zero-page/zero-sidebar-state.ts";
@@ -188,14 +185,12 @@ function setupKeyboardScrollPrepareListener({
 }
 
 interface ChatPageShortcutActions {
-  clearEmoji: () => void | Promise<void>;
   openEmojiMenu: () => void | Promise<void>;
   renameThread: () => void | Promise<void>;
   navigateNext: () => void | Promise<void>;
   navigatePrev: () => void | Promise<void>;
   scrollBottom: () => void | Promise<void>;
   scrollTop: () => void | Promise<void>;
-  setEmoji: (emoji: string) => void | Promise<void>;
 }
 
 interface ChatPageShortcutSetup {
@@ -224,29 +219,6 @@ function setupChatPageGlobalShortcutListener({
   });
 }
 
-const setFocusedThreadEmoji$ = command(
-  async (
-    { get, set },
-    args: {
-      thread: ChatThreadSignals;
-      emoji: string;
-    },
-    signal: AbortSignal,
-  ) => {
-    if (!(get(featureSwitch$)[FeatureSwitchKey.ChatThreadEmoji] ?? false)) {
-      return;
-    }
-    await set(
-      setChatThreadEmojiFromThreadMeta$,
-      {
-        threadId: args.thread.threadId,
-        emoji: args.emoji,
-      },
-      signal,
-    );
-  },
-);
-
 const setupChatPageShortcutActions$ = command(
   (
     { get, set },
@@ -255,12 +227,6 @@ const setupChatPageShortcutActions$ = command(
   ) => {
     setupChatPageGlobalShortcutListener({
       actions: {
-        clearEmoji: async () => {
-          const thread = focusedThread();
-          if (thread) {
-            await set(clearFocusedThreadEmoji$, { thread }, signal);
-          }
-        },
         openEmojiMenu: async () => {
           const thread = focusedThread();
           if (thread) {
@@ -302,36 +268,11 @@ const setupChatPageShortcutActions$ = command(
             set(scrollCurrentThread$, thread, "top");
           }
         },
-        setEmoji: async (emoji) => {
-          const thread = focusedThread();
-          if (thread) {
-            await set(setFocusedThreadEmoji$, { thread, emoji }, signal);
-          }
-        },
       },
       doc,
       root,
       signal,
     });
-  },
-);
-
-const clearFocusedThreadEmoji$ = command(
-  async (
-    { get, set },
-    args: { thread: ChatThreadSignals },
-    signal: AbortSignal,
-  ) => {
-    if (!(get(featureSwitch$)[FeatureSwitchKey.ChatThreadEmoji] ?? false)) {
-      return;
-    }
-    await set(
-      clearChatThreadEmojiFromThreadMeta$,
-      {
-        threadId: args.thread.threadId,
-      },
-      signal,
-    );
   },
 );
 
@@ -372,43 +313,13 @@ const renameDialogRequestForThread$ = command(
   },
 );
 
-function createEmojiShortcutBindings({
-  clearEmoji,
-  setEmoji,
-}: {
-  clearEmoji: () => void | Promise<void>;
-  setEmoji: (emoji: string) => void | Promise<void>;
-}): GlobalShortcutBindings {
-  return {
-    ...(Object.fromEntries(
-      CHAT_THREAD_EMOJI_OPTIONS.map((option, index) => {
-        return [
-          `ctrl+shift+${index + 1}`,
-          {
-            allowInEditableTarget: true,
-            run: async () => {
-              await setEmoji(option.emoji);
-            },
-          },
-        ];
-      }),
-    ) as GlobalShortcutBindings),
-    "ctrl+shift+0": {
-      allowInEditableTarget: true,
-      run: clearEmoji,
-    },
-  };
-}
-
 function createChatPageShortcutBindings({
-  clearEmoji,
   openEmojiMenu,
   renameThread,
   navigateNext,
   navigatePrev,
   scrollBottom,
   scrollTop,
-  setEmoji,
 }: ChatPageShortcutActions): GlobalShortcutBindings {
   return {
     "shift+f2": {
@@ -435,7 +346,6 @@ function createChatPageShortcutBindings({
       allowInEditableTarget: true,
       run: scrollBottom,
     },
-    ...createEmojiShortcutBindings({ clearEmoji, setEmoji }),
   };
 }
 
