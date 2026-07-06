@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.46.7](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.46.6...guest-agent-v0.46.7) (2026-07-06)
+
+## [0.46.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.46.5...guest-agent-v0.46.6) (2026-07-06)
+
+
+### Refactoring
+
+* unify session history source resolution ([#20320](https://github.com/vm0-ai/vm0/issues/20320)) ([c680f9e](https://github.com/vm0-ai/vm0/commit/c680f9ef8ccad70de72869ee56b519ebd9af6688))
+
 ## [0.46.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.46.4...guest-agent-v0.46.5) (2026-07-05)
 
 

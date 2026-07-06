@@ -25,11 +25,13 @@ export const CANONICAL_CODEX_MEMORY_MOUNT_PATH = `${CANONICAL_GUEST_HOME_DIR}/.c
 export const RESUME_SESSION_HISTORY_MAX_BYTES = 128 * 1024 * 1024;
 export const SESSION_HISTORY_ENCODING_IDENTITY = "identity";
 export const SESSION_HISTORY_ENCODING_GZIP = "gzip";
+export const SESSION_HISTORY_ENCODING_ZSTD = "zstd";
 export const SESSION_HISTORY_GZIP_MIN_BYTES = 64 * 1024;
 export const NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX = 256;
 export const sessionHistoryEncodingSchema = z.enum([
   SESSION_HISTORY_ENCODING_IDENTITY,
   SESSION_HISTORY_ENCODING_GZIP,
+  SESSION_HISTORY_ENCODING_ZSTD,
 ]);
 
 export function elapsedSinceApiStartMs(
@@ -243,10 +245,20 @@ const resumeSessionGzipHistoryRefSchema = resumeSessionHistoryBlobRefSchema
   })
   .strict();
 
+const resumeSessionZstdHistoryRefSchema = resumeSessionHistoryBlobRefSchema
+  .extend({
+    url: z.string().url(),
+    encoding: z.literal("zstd"),
+    rawSize: resumeSessionHistoryRawSizeSchema,
+    encodedSize: resumeSessionHistoryEncodedSizeSchema,
+  })
+  .strict();
+
 const resumeSessionRefSchema = z.object({
   sessionId: z.string(),
   historyRef: z.union([
     resumeSessionGzipHistoryRefSchema,
+    resumeSessionZstdHistoryRefSchema,
     resumeSessionIdentityHistoryRefSchema,
   ]),
 });
@@ -471,38 +483,20 @@ export const runnersNetworkPolicyRefreshContract = c.router({
 /**
  * Runner heartbeat body — periodic state report from each runner
  */
-export const heartbeatBodySchema = z
-  .object({
-    runnerId: z.uuid(),
-    runnerName: z.string(),
-    group: runnerGroupSchema,
-    totalVcpu: z.number().int().nonnegative(),
-    totalMemoryMb: z.number().int().nonnegative(),
-    maxConcurrent: z.number().int().nonnegative(),
-    allocatedVcpu: z.number().int().nonnegative(),
-    allocatedMemoryMb: z.number().int().nonnegative(),
-    runningCount: z.number().int().nonnegative(),
-    admittableProfiles: runnerProfileListSchema.optional(),
-    // Temporary runner rollout compatibility. Remove legacy profile fields
-    // after the previous runner/backend versions have drained.
-    availableProfiles: runnerProfileListSchema.optional(),
-    profiles: runnerProfileListSchema.optional(),
-    heldSessionStates: z.array(heldSessionStateSchema).max(1024),
-    mode: z.enum(["running", "draining", "stopping"]),
-  })
-  .superRefine((body, ctx) => {
-    if (
-      body.admittableProfiles === undefined &&
-      body.availableProfiles === undefined &&
-      body.profiles === undefined
-    ) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["admittableProfiles"],
-        message: "admittableProfiles is required",
-      });
-    }
-  });
+export const heartbeatBodySchema = z.object({
+  runnerId: z.uuid(),
+  runnerName: z.string(),
+  group: runnerGroupSchema,
+  totalVcpu: z.number().int().nonnegative(),
+  totalMemoryMb: z.number().int().nonnegative(),
+  maxConcurrent: z.number().int().nonnegative(),
+  allocatedVcpu: z.number().int().nonnegative(),
+  allocatedMemoryMb: z.number().int().nonnegative(),
+  runningCount: z.number().int().nonnegative(),
+  admittableProfiles: runnerProfileListSchema,
+  heldSessionStates: z.array(heldSessionStateSchema).max(1024),
+  mode: z.enum(["running", "draining", "stopping"]),
+});
 
 /**
  * Runners heartbeat contract - POST /api/runners/heartbeat

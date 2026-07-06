@@ -45,8 +45,13 @@ import {
   resumeSessionHistoryBlobKey,
   type SessionHistoryBlobEncoding,
   SESSION_HISTORY_ENCODING_GZIP,
+  SESSION_HISTORY_ENCODING_IDENTITY,
+  SESSION_HISTORY_ENCODING_ZSTD,
 } from "./session-history-blobs";
-import { gunzipSessionHistoryBufferWithMaxBytes } from "./session-history-decompression";
+import {
+  gunzipSessionHistoryBufferWithMaxBytes,
+  unzstdSessionHistoryBufferWithMaxBytes,
+} from "./session-history-decompression";
 import { loadWorkflowVolumeFiles } from "./zero-workflow-volume.service";
 
 const RATE_LIMIT_MS = 24 * 60 * 60 * 1000;
@@ -696,15 +701,40 @@ async function loadSessionHistoryBlob(
       args.encodedSize ?? RESUME_SESSION_HISTORY_MAX_BYTES,
     ),
   );
-  const rawBuffer =
-    args.encoding === SESSION_HISTORY_ENCODING_GZIP
-      ? await gunzipSessionHistoryBufferWithMaxBytes(
-          args.key,
-          encodedBuffer,
-          args.rawSize ?? RESUME_SESSION_HISTORY_MAX_BYTES,
-        )
-      : encodedBuffer;
+  const rawBuffer = await decodeSessionHistoryBuffer({
+    encodedBuffer,
+    encoding: args.encoding,
+    key: args.key,
+    maxRawBytes: args.rawSize ?? RESUME_SESSION_HISTORY_MAX_BYTES,
+  });
   return verifySessionHistoryBuffer(args.hash, rawBuffer, args.rawSize);
+}
+
+async function decodeSessionHistoryBuffer(args: {
+  readonly encodedBuffer: Buffer;
+  readonly encoding: SessionHistoryBlobEncoding;
+  readonly key: string;
+  readonly maxRawBytes: number;
+}): Promise<Buffer> {
+  switch (args.encoding) {
+    case SESSION_HISTORY_ENCODING_GZIP: {
+      return await gunzipSessionHistoryBufferWithMaxBytes(
+        args.key,
+        args.encodedBuffer,
+        args.maxRawBytes,
+      );
+    }
+    case SESSION_HISTORY_ENCODING_ZSTD: {
+      return await unzstdSessionHistoryBufferWithMaxBytes(
+        args.key,
+        args.encodedBuffer,
+        args.maxRawBytes,
+      );
+    }
+    case SESSION_HISTORY_ENCODING_IDENTITY: {
+      return args.encodedBuffer;
+    }
+  }
 }
 
 function verifySessionHistoryBuffer(

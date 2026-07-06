@@ -89,10 +89,6 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
 } from "@vm0/ui";
 
 const CONNECTOR_CARD_AGENT_NAME_LIMIT = 2;
@@ -813,31 +809,7 @@ function AvailableConnectorCard({
           data-testid="connector-help-text"
           className="text-xs text-muted-foreground line-clamp-2"
         >
-          {connector.connectNotice === "google-security-warning" ? (
-            <>
-              <TooltipProvider delayDuration={200}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="font-medium text-muted-foreground cursor-default underline decoration-dotted underline-offset-2 decoration-muted-foreground/40">
-                      Early Access
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent
-                    side="bottom"
-                    className="max-w-xs text-xs leading-relaxed"
-                  >
-                    Our Google OAuth is under Google&apos;s verification review.
-                    This is a standard compliance step and does not affect
-                    vm0&apos;s functionality or security. You can safely proceed
-                    by clicking &quot;Continue&quot;.
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-              {connector.helpText && <span>: {connector.helpText}</span>}
-            </>
-          ) : (
-            (connector.helpText ?? "")
-          )}
+          {connector.helpText ?? ""}
         </div>
       </div>
     </div>
@@ -1002,9 +974,7 @@ export function ZeroConnectorsPage() {
     if (!ct) {
       return;
     }
-    const launchMode = getConnectorStatusConnectLaunchMode(ct, {
-      preferModalForConnectorNotice: true,
-    });
+    const launchMode = getConnectorStatusConnectLaunchMode(ct);
     if (launchMode === "modal") {
       setSelected(type);
     } else {

@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { gzipSync } from "node:zlib";
+import { gzipSync, zstdCompressSync } from "node:zlib";
 
 import { CANONICAL_CLAUDE_MEMORY_MOUNT_PATH } from "@vm0/api-contracts/contracts/runners";
 import { delay } from "signal-timers";
@@ -1046,6 +1046,109 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
     await api.requestCancelRun(actor, compressedResume.runId, [200]);
   });
 
+  it("returns zstd-compressed resume history refs", async () => {
+    const actor = await entitledActor();
+    const composeName = `bdd-zstd-resume-${randomUUID().slice(0, 8)}`;
+    const compose = await api.createCompose(actor, {
+      version: "1",
+      agents: {
+        [composeName]: {
+          framework: "claude-code",
+          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+        },
+      },
+    });
+    const history = `{"type":"init"}\n{"type":"human","text":"zstd-${randomUUID()}"}\n`;
+    const historyHash = createHash("sha256").update(history).digest("hex");
+    const compressedHistory = zstdCompressSync(Buffer.from(history, "utf8"));
+    const compressedKey = `blobs/${historyHash}.blob.zst`;
+    context.mocks.s3.send.mockImplementation((command: unknown) => {
+      const commandKey = s3CommandKey(command);
+      if (commandKey === compressedKey) {
+        return Promise.resolve({
+          ContentLength: compressedHistory.length,
+          Body: s3BytesBody(compressedHistory),
+        });
+      }
+      if (commandKey?.startsWith(`blobs/${historyHash}.blob`)) {
+        return Promise.reject(s3ObjectNotFoundError());
+      }
+      return Promise.resolve({});
+    });
+
+    const run = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "create zstd compressed checkpoint",
+    });
+    const claim = await api.claimRunnerJob(run.runId);
+    const headers = sandboxHeaders(claim.sandboxToken);
+    const prepared = await webhooks.requestAgentCheckpointPrepareHistory(
+      {
+        runId: run.runId,
+        hash: historyHash,
+        rawSize: Buffer.byteLength(history, "utf8"),
+        encodedSize: compressedHistory.length,
+        encoding: "zstd",
+      },
+      headers,
+      [200],
+    );
+    expect(prepared.body).toMatchObject({
+      existing: false,
+      encoding: "zstd",
+    });
+    const duplicatePrepared =
+      await webhooks.requestAgentCheckpointPrepareHistory(
+        {
+          runId: run.runId,
+          hash: historyHash,
+          rawSize: Buffer.byteLength(history, "utf8"),
+          encodedSize: compressedHistory.length + 1,
+          encoding: "zstd",
+        },
+        headers,
+        [200],
+      );
+    expect(duplicatePrepared.body).toStrictEqual({
+      existing: true,
+      encoding: "zstd",
+    });
+    const checkpointed = await webhooks.requestAgentCheckpoint(
+      {
+        runId: run.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `bdd-cli-${run.runId}`,
+        cliAgentSessionHistoryHash: historyHash,
+      },
+      headers,
+      [200],
+    );
+    mustOk(checkpointed, "zstd compressed resume checkpoint");
+    await webhooks.requestAgentComplete(
+      { runId: run.runId, exitCode: 0 },
+      headers,
+      [200],
+    );
+
+    const compressedResume = await api.createDirectRun(actor, {
+      checkpointId: checkpointed.body.checkpointId,
+      prompt: "resume with zstd compressed ref",
+    });
+    const compressedClaim = await api.claimRunnerJob(compressedResume.runId);
+    expect(compressedClaim.resumeSession).toMatchObject({
+      sessionId: `bdd-cli-${run.runId}`,
+      historyRef: {
+        kind: "blob",
+        hash: historyHash,
+        url: expect.any(String),
+        encoding: "zstd",
+        rawSize: Buffer.byteLength(history, "utf8"),
+        encodedSize: compressedHistory.length,
+      },
+    });
+    await api.requestCancelRun(actor, compressedResume.runId, [200]);
+  });
+
   it("rejects identity repair for a missing compressed session history blob", async () => {
     const actor = await entitledActor();
     const compose = await createClaudeCompose(actor, "bdd-gzip-repair");
@@ -1097,6 +1200,114 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
     expectApiError(mismatchedEncodedSize.body);
     expect(mismatchedEncodedSize.body.error.message).toBe(
       "Session history encoded size does not match the existing blob",
+    );
+
+    const compressedRetry = await webhooks.requestAgentCheckpointPrepareHistory(
+      {
+        runId: run.runId,
+        hash: historyHash,
+        rawSize: Buffer.byteLength(history, "utf8"),
+        encodedSize: gzipSync(Buffer.from(history, "utf8")).length,
+        encoding: "gzip",
+      },
+      headers,
+      [200],
+    );
+    expect(compressedRetry.body).toMatchObject({
+      existing: false,
+      encoding: "gzip",
+    });
+
+    const identityRepair = await webhooks.requestAgentCheckpointPrepareHistory(
+      {
+        runId: run.runId,
+        hash: historyHash,
+        rawSize: Buffer.byteLength(history, "utf8"),
+        encodedSize: Buffer.byteLength(history, "utf8"),
+        encoding: "identity",
+      },
+      headers,
+      [400],
+    );
+    expectApiError(identityRepair.body);
+    expect(identityRepair.body.error.message).toBe(
+      "Identity session history upload cannot repair a compressed blob",
+    );
+  });
+
+  it("rejects identity repair for a missing zstd session history blob", async () => {
+    const actor = await entitledActor();
+    const compose = await createClaudeCompose(actor, "bdd-zstd-repair");
+    const history = `{"type":"init"}\n{"type":"human","text":"repair-zstd-${randomUUID()}"}\n`;
+    const historyHash = createHash("sha256").update(history).digest("hex");
+    const compressedHistory = zstdCompressSync(Buffer.from(history, "utf8"));
+    const compressedKey = `blobs/${historyHash}.blob.zst`;
+    context.mocks.s3.send.mockImplementation((command: unknown) => {
+      const commandKey = s3CommandKey(command);
+      if (commandKey === compressedKey) {
+        return Promise.reject(s3ObjectNotFoundError());
+      }
+      if (commandKey?.startsWith(`blobs/${historyHash}.blob`)) {
+        return Promise.reject(s3ObjectNotFoundError());
+      }
+      return Promise.resolve({});
+    });
+
+    const run = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "create missing zstd blob metadata",
+    });
+    const claim = await api.claimRunnerJob(run.runId);
+    const headers = sandboxHeaders(claim.sandboxToken);
+    const compressedPrepare =
+      await webhooks.requestAgentCheckpointPrepareHistory(
+        {
+          runId: run.runId,
+          hash: historyHash,
+          rawSize: Buffer.byteLength(history, "utf8"),
+          encodedSize: compressedHistory.length,
+          encoding: "zstd",
+        },
+        headers,
+        [200],
+      );
+    expect(compressedPrepare.body).toMatchObject({
+      existing: false,
+      encoding: "zstd",
+    });
+
+    const mismatchedEncodedSize =
+      await webhooks.requestAgentCheckpointPrepareHistory(
+        {
+          runId: run.runId,
+          hash: historyHash,
+          rawSize: Buffer.byteLength(history, "utf8"),
+          encodedSize: compressedHistory.length + 1,
+          encoding: "zstd",
+        },
+        headers,
+        [400],
+      );
+    expectApiError(mismatchedEncodedSize.body);
+    expect(mismatchedEncodedSize.body.error.message).toBe(
+      "Session history encoded size does not match the existing blob",
+    );
+
+    const mismatchedEncodingRepair =
+      await webhooks.requestAgentCheckpointPrepareHistory(
+        {
+          runId: run.runId,
+          hash: historyHash,
+          rawSize: Buffer.byteLength(history, "utf8"),
+          encodedSize: gzipSync(Buffer.from(history, "utf8")).length,
+          encoding: "gzip",
+        },
+        headers,
+        [400],
+      );
+    expectApiError(mismatchedEncodingRepair.body);
+    expect(mismatchedEncodingRepair.body.error.message).toBe(
+      "Compressed session history upload encoding must match the existing blob",
     );
 
     const identityRepair = await webhooks.requestAgentCheckpointPrepareHistory(
