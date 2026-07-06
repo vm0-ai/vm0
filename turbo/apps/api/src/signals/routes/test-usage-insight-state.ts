@@ -11,7 +11,6 @@ import {
 } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
-import { automations } from "@vm0/db/schema/automation";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { connectors } from "@vm0/db/schema/connector";
 import { modelUsageObservation } from "@vm0/db/schema/model-usage-observation";
@@ -47,7 +46,6 @@ interface SeedRunArgs {
   readonly userId: string;
   readonly composeId: string;
   readonly triggerSource?: string;
-  readonly automationId?: string;
   readonly chatThreadId?: string;
   readonly status?: string;
   readonly prompt?: string;
@@ -75,20 +73,6 @@ interface ModelUsageEventArgs {
   readonly processedAt?: Date | null;
 }
 
-interface BonusUsageEvent {
-  readonly kind: string;
-  readonly provider: string;
-  readonly category: string;
-  readonly quantity: number;
-  readonly creditsCharged: number;
-  readonly status: string;
-}
-
-interface AutomationBatchEntry {
-  readonly credits: number;
-  readonly bonus?: BonusUsageEvent | null;
-}
-
 type UsageInsightAction<
   Action extends TestUsageInsightStateActionBody["action"],
 > = Extract<TestUsageInsightStateActionBody, { readonly action: Action }>;
@@ -98,14 +82,13 @@ type UsageInsightFixtureAction = UsageInsightAction<
 >;
 
 type UsageInsightRunAction = UsageInsightAction<
-  "seed-run" | "seed-automation" | "seed-chat-thread"
+  "seed-run" | "seed-chat-thread"
 >;
 
 type UsageInsightEventAction = UsageInsightAction<
   | "insert-model-usage-event-for-run"
   | "insert-usage-event"
   | "set-usage-event-created-at"
-  | "seed-automation-batch"
 >;
 
 const MODEL_TOKEN_CATEGORIES = [
@@ -216,11 +199,6 @@ async function deleteUsageInsightFixture(
     await db.delete(zeroRuns).where(inArray(zeroRuns.id, runIds));
     signal.throwIfAborted();
   }
-
-  await db
-    .delete(automations)
-    .where(and(eq(automations.orgId, orgId), eq(automations.userId, userId)));
-  signal.throwIfAborted();
 
   if (runIds.length > 0) {
     await db.delete(agentRuns).where(inArray(agentRuns.id, runIds));
@@ -380,51 +358,11 @@ async function seedRun(
   await db.insert(zeroRuns).values({
     id: run.id,
     triggerSource: args.triggerSource ?? "cli",
-    automationId: args.automationId ?? null,
     chatThreadId: args.chatThreadId ?? null,
     selectedModel: args.selectedModel ?? null,
   });
   signal.throwIfAborted();
   return { runId: run.id };
-}
-
-async function seedAutomation(
-  db: Db,
-  args: {
-    readonly orgId: string;
-    readonly userId: string;
-    readonly agentId: string;
-    readonly name?: string;
-    readonly description?: string;
-  },
-  signal: AbortSignal,
-): Promise<string> {
-  const [thread] = await db
-    .insert(chatThreads)
-    .values({ userId: args.userId, agentComposeId: args.agentId })
-    .returning({ id: chatThreads.id });
-  signal.throwIfAborted();
-  if (!thread) {
-    throw new Error("seedAutomation: chat thread insert returned no row");
-  }
-  const [row] = await db
-    .insert(automations)
-    .values({
-      agentId: args.agentId,
-      userId: args.userId,
-      orgId: args.orgId,
-      name: args.name ?? `sched-${randomUUID().slice(0, 8)}`,
-      description: args.description,
-      instruction: "test",
-      interpreterKind: "default",
-      chatThreadId: thread.id,
-    })
-    .returning({ id: automations.id });
-  signal.throwIfAborted();
-  if (!row) {
-    throw new Error("seedAutomation: insert returned no row");
-  }
-  return row.id;
 }
 
 async function seedChatThread(
@@ -593,119 +531,6 @@ async function setUsageEventCreatedAt(
   signal.throwIfAborted();
 }
 
-async function seedAutomationBatch(
-  db: Db,
-  args: {
-    readonly orgId: string;
-    readonly userId: string;
-    readonly composeId: string;
-    readonly entries: readonly AutomationBatchEntry[];
-  },
-): Promise<{ automationIds: string[] }> {
-  const results = await Promise.all(
-    args.entries.map(async (entry) => {
-      const [thread] = await db
-        .insert(chatThreads)
-        .values({ userId: args.userId, agentComposeId: args.composeId })
-        .returning({ id: chatThreads.id });
-      if (!thread) {
-        throw new Error(
-          "seedAutomationBatch: chat thread insert returned no row",
-        );
-      }
-      const [automationRow] = await db
-        .insert(automations)
-        .values({
-          agentId: args.composeId,
-          userId: args.userId,
-          orgId: args.orgId,
-          name: `sched-${randomUUID().slice(0, 8)}`,
-          instruction: "test",
-          interpreterKind: "default",
-          chatThreadId: thread.id,
-        })
-        .returning({ id: automations.id });
-      if (!automationRow) {
-        throw new Error(
-          "seedAutomationBatch: automation insert returned no row",
-        );
-      }
-      const versionId = randomUUID();
-      await db.insert(agentComposeVersions).values({
-        id: versionId,
-        composeId: args.composeId,
-        content: {
-          version: "1.0",
-          agents: { "test-agent": { framework: "claude-code" } },
-        },
-        createdBy: args.userId,
-      });
-      const [session] = await db
-        .insert(agentSessions)
-        .values({
-          userId: args.userId,
-          orgId: args.orgId,
-          agentComposeId: args.composeId,
-        })
-        .returning({ id: agentSessions.id });
-      if (!session) {
-        throw new Error("seedAutomationBatch: session insert returned no row");
-      }
-      const [run] = await db
-        .insert(agentRuns)
-        .values({
-          userId: args.userId,
-          orgId: args.orgId,
-          agentComposeVersionId: versionId,
-          prompt: "test prompt",
-          status: "completed",
-          sessionId: session.id,
-        })
-        .returning({ id: agentRuns.id });
-      if (!run) {
-        throw new Error("seedAutomationBatch: run insert returned no row");
-      }
-      await db.insert(zeroRuns).values({
-        id: run.id,
-        triggerSource: "automation",
-        automationId: automationRow.id,
-      });
-      await db.insert(usageEvent).values({
-        runId: run.id,
-        orgId: args.orgId,
-        userId: args.userId,
-        kind: "model",
-        provider: "claude-sonnet-4-6",
-        category: "tokens.input",
-        quantity: 100,
-        creditsCharged: entry.credits,
-        status: "processed",
-        idempotencyKey: randomUUID(),
-        createdAt: nowDate(),
-        processedAt: nowDate(),
-      });
-      if (entry.bonus) {
-        await db.insert(usageEvent).values({
-          runId: run.id,
-          orgId: args.orgId,
-          userId: args.userId,
-          kind: entry.bonus.kind,
-          provider: entry.bonus.provider,
-          category: entry.bonus.category,
-          quantity: entry.bonus.quantity,
-          creditsCharged: entry.bonus.creditsCharged,
-          status: entry.bonus.status,
-          idempotencyKey: randomUUID(),
-          createdAt: nowDate(),
-          processedAt: entry.bonus.status === "processed" ? nowDate() : null,
-        });
-      }
-      return automationRow.id;
-    }),
-  );
-  return { automationIds: results };
-}
-
 async function mutateUsageInsightFixtureState(
   db: Db,
   body: UsageInsightFixtureAction,
@@ -763,7 +588,6 @@ async function mutateUsageInsightRunState(
           userId: body.user_id,
           composeId: body.compose_id,
           triggerSource: body.trigger_source,
-          automationId: body.automation_id,
           chatThreadId: body.chat_thread_id,
           status: body.status,
           prompt: body.prompt,
@@ -790,23 +614,6 @@ async function mutateUsageInsightRunState(
         body: { ok: true as const, run_id: result.runId },
       };
     }
-    case "seed-automation": {
-      const automationId = await seedAutomation(
-        db,
-        {
-          orgId: body.org_id,
-          userId: body.user_id,
-          agentId: body.agent_id,
-          name: body.name,
-          description: body.description,
-        },
-        signal,
-      );
-      return {
-        status: 200 as const,
-        body: { ok: true as const, automation_id: automationId },
-      };
-    }
     case "seed-chat-thread": {
       const threadId = await seedChatThread(
         db,
@@ -823,26 +630,6 @@ async function mutateUsageInsightRunState(
       };
     }
   }
-}
-
-function automationBatchEntriesFromWire(
-  entries: UsageInsightAction<"seed-automation-batch">["entries"],
-): AutomationBatchEntry[] {
-  return entries.map((entry) => {
-    return {
-      credits: entry.credits,
-      bonus: entry.bonus
-        ? {
-            kind: entry.bonus.kind,
-            provider: entry.bonus.provider,
-            category: entry.bonus.category,
-            quantity: entry.bonus.quantity,
-            creditsCharged: entry.bonus.credits_charged,
-            status: entry.bonus.status,
-          }
-        : null,
-    };
-  });
 }
 
 async function mutateUsageInsightEventState(
@@ -905,19 +692,6 @@ async function mutateUsageInsightEventState(
       );
       return { status: 200 as const, body: { ok: true as const } };
     }
-    case "seed-automation-batch": {
-      const result = await seedAutomationBatch(db, {
-        orgId: body.org_id,
-        userId: body.user_id,
-        composeId: body.compose_id,
-        entries: automationBatchEntriesFromWire(body.entries),
-      });
-      signal.throwIfAborted();
-      return {
-        status: 200 as const,
-        body: { ok: true as const, automation_ids: result.automationIds },
-      };
-    }
   }
 }
 
@@ -933,14 +707,12 @@ async function mutateUsageInsightState(
       return await mutateUsageInsightFixtureState(db, body, signal);
     }
     case "seed-run":
-    case "seed-automation":
     case "seed-chat-thread": {
       return await mutateUsageInsightRunState(db, body, signal);
     }
     case "insert-model-usage-event-for-run":
     case "insert-usage-event":
-    case "set-usage-event-created-at":
-    case "seed-automation-batch": {
+    case "set-usage-event-created-at": {
       return await mutateUsageInsightEventState(db, body, signal);
     }
   }

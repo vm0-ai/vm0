@@ -262,10 +262,8 @@ const pagedChatMessageBaseSchema = z.object({
   attachFiles: z.array(resolvedAttachFileSchema).optional(),
   generationTemplate: generationTemplateRequestSchema.optional(),
   sequenceNumber: z.number().nullable().optional(),
-  // Present on user messages posted by a firing automation. `automationId`
-  // links to the automation detail page; `automationSnapshot` preserves the
-  // automation label and description at send time. `automationTitle` is
-  // legacy fallback data.
+  // Deprecated legacy schedule automation metadata. Migration 0545 clears
+  // existing values; new message writes no longer populate these fields.
   automationId: z.string().optional(),
   automationTitle: z.string().optional(),
   automationSnapshot: z
