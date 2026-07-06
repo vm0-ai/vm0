@@ -8,11 +8,9 @@ import {
   generateTestEmail,
 } from "../lib/clerk-api";
 import {
-  authHeadersForToken,
-  completeCheckout,
-  createProTrialCheckout,
-  setupOnboarding,
-  waitForBillingSessionRedirect,
+  deriveOnboardingUrl,
+  startVideoOnboardingCheckout,
+  waitForPaidOnboardingAppHandoff,
 } from "../lib/onboarding";
 import { fillStripeCheckout } from "../lib/stripe-checkout";
 import { deriveAppUrl } from "../playwright.config";
@@ -24,6 +22,7 @@ test("paid onboarding completes through the video workflow", async ({
 
   const apiUrl = process.env.VM0_API_URL!;
   const appUrl = deriveAppUrl(apiUrl);
+  const onboardingUrl = deriveOnboardingUrl(apiUrl);
   const email = generateTestEmail();
 
   try {
@@ -32,35 +31,17 @@ test("paid onboarding completes through the video workflow", async ({
 
     await clerkSetup();
     await setupClerkTestingToken({ page });
-    const session = await signInThroughHostedAuth(page, email, appUrl, {
+    await signInThroughHostedAuth(page, email, appUrl, {
       followRedirect: false,
       activeOrganizationId: orgId,
-    });
-    const headers = authHeadersForToken(session.token);
-    await setupOnboarding(page, apiUrl, headers, {
-      displayName: "E2E Video Agent",
-      workspaceName: "E2E Paid Onboarding Workspace",
-      selectedConnectors: [],
-      timezone: "UTC",
-      role: "video production",
+      mirrorStorageToUrls: [onboardingUrl],
     });
 
-    const checkoutUrl = await createProTrialCheckout(
-      page,
-      apiUrl,
-      appUrl,
-      headers,
-    );
-    await page.goto(checkoutUrl, { waitUntil: "domcontentloaded" });
-
-    const billingSessionIdPromise = waitForBillingSessionRedirect(page, appUrl);
+    await startVideoOnboardingCheckout(page, { apiUrl, appUrl, onboardingUrl });
     await fillStripeCheckout(page);
-    const billingSessionId = await billingSessionIdPromise;
-    await completeCheckout(page, apiUrl, headers, billingSessionId);
+    await waitForPaidOnboardingAppHandoff(page, appUrl);
 
-    expect(page.url()).not.toContain("checkout.stripe.com");
-    await page.goto(appUrl, { waitUntil: "domcontentloaded" });
-    expect(page.url()).not.toContain("checkout.stripe.com");
+    expect(new URL(page.url()).origin).toBe(new URL(appUrl).origin);
   } finally {
     await deleteUserByEmail(email);
   }

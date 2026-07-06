@@ -1,216 +1,113 @@
-import type { APIResponse, Page } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
+import { deriveServiceOrigin } from "../playwright.config";
 
 type AuthHeaders = Readonly<Record<"Authorization", string>>;
 
-interface OnboardingSetupData {
-  readonly displayName: string;
-  readonly workspaceName: string;
-  readonly selectedConnectors: readonly string[];
-  readonly timezone: string;
-  readonly role?: string;
+interface OnboardingFlowOptions {
+  readonly apiUrl: string;
+  readonly appUrl: string;
+  readonly onboardingUrl: string;
 }
 
 export function authHeadersForToken(token: string): AuthHeaders {
   return { Authorization: `Bearer ${token}` };
 }
 
-export async function setupOnboarding(
-  page: Page,
-  apiUrl: string,
-  headers: AuthHeaders,
-  data: OnboardingSetupData,
-): Promise<string> {
-  const response = await page.request.post(
-    `${apiUrl}/api/zero/onboarding/setup`,
-    {
-      headers,
-      data,
-    },
-  );
-  await expectStatus(response, [200, 409], "onboarding setup");
-
-  const body: unknown = await response.json();
-  if (!hasAgentId(body)) {
-    throw new Error(`Unexpected onboarding setup response: ${stringify(body)}`);
-  }
-  return body.agentId;
+export function deriveOnboardingUrl(apiUrl: string): string {
+  return process.env.VM0_ONBOARDING_URL ?? deriveServiceOrigin(apiUrl, "www");
 }
 
-export async function seedLimitedFreeBillingState(
+export async function completeExploreOnboarding(
   page: Page,
-  apiUrl: string,
-  orgId: string,
-): Promise<string> {
-  const response = await page.request.post(
-    `${apiUrl}/api/test/billing-status-state/action`,
-    {
-      data: {
-        action: "seed-org",
-        org_id: orgId,
-        credits: 1000,
-        tier: "limited-free-1",
-        onboarding_payment_pending: false,
-      },
-    },
-  );
-  await expectStatus(response, [200], "limited-free billing state seed");
-
-  const body: unknown = await response.json();
-  if (!hasTestStateFixture(body)) {
-    throw new Error(
-      `Unexpected limited-free billing state response: ${stringify(body)}`,
-    );
-  }
-  return body.fixture.org_id;
+  options: OnboardingFlowOptions,
+): Promise<void> {
+  await openOnboarding(page, options);
+  await chooseMakeOption(page, "I will explore on my own");
+  await clickOnboardingButton(page, /^Continue$/i);
+  await waitForChatPage(page, options.appUrl);
 }
 
-export async function createProTrialCheckout(
+export async function startVideoOnboardingCheckout(
   page: Page,
-  apiUrl: string,
-  appUrl: string,
-  headers: AuthHeaders,
-): Promise<string> {
-  const successUrl = new URL("/_/skeleton", appUrl);
-  successUrl.searchParams.set("billing", "pro");
-  successUrl.searchParams.set("billing_session_id", "{CHECKOUT_SESSION_ID}");
-  const stripeSuccessUrl = successUrl
-    .toString()
-    .replace(
-      "billing_session_id=%7BCHECKOUT_SESSION_ID%7D",
-      "billing_session_id={CHECKOUT_SESSION_ID}",
-    );
-
-  const cancelUrl = new URL("/_/skeleton", appUrl);
-  cancelUrl.searchParams.set("billing", "canceled");
-
-  const response = await page.request.post(
-    `${apiUrl}/api/zero/billing/checkout`,
-    {
-      headers,
-      data: {
-        tier: "pro",
-        trialDays: 7,
-        successUrl: stripeSuccessUrl,
-        cancelUrl: cancelUrl.toString(),
-      },
-    },
-  );
-  await expectStatus(response, [200], "pro trial checkout");
-
-  const body: unknown = await response.json();
-  if (!hasCheckoutUrl(body)) {
-    throw new Error(`Unexpected checkout response: ${stringify(body)}`);
-  }
-  return body.url;
+  options: OnboardingFlowOptions,
+): Promise<void> {
+  await openOnboarding(page, options);
+  await chooseMakeOption(page, "Video production");
+  await clickOnboardingButton(page, /^Continue$/i);
+  await expect(
+    page.getByRole("heading", {
+      name: /pick a video template to start from/i,
+    }),
+  ).toBeVisible({ timeout: 30_000 });
+  await clickOnboardingButton(page, /^Continue$/i);
+  await expect(
+    page.getByRole("heading", { name: /customize your video/i }),
+  ).toBeVisible({
+    timeout: 30_000,
+  });
+  await clickOnboardingButton(page, /^Upgrade Pro to run$/i);
+  await expect(page).toHaveURL(/checkout\.stripe\.com/, { timeout: 60_000 });
 }
 
-export async function completeCheckout(
-  page: Page,
-  apiUrl: string,
-  headers: AuthHeaders,
-  sessionId: string,
-): Promise<boolean> {
-  const response = await page.request.post(
-    `${apiUrl}/api/zero/billing/checkout/complete`,
-    {
-      headers,
-      data: { sessionId },
-    },
-  );
-  await expectStatus(response, [200], "checkout completion");
-
-  const body: unknown = await response.json();
-  if (!hasCheckoutCompletion(body)) {
-    throw new Error(
-      `Unexpected checkout completion response: ${stringify(body)}`,
-    );
-  }
-  return body.completed;
-}
-
-export async function waitForBillingSessionRedirect(
+export async function waitForPaidOnboardingAppHandoff(
   page: Page,
   appUrl: string,
-): Promise<string> {
+): Promise<void> {
   const appOrigin = new URL(appUrl).origin;
-  const request = await page.waitForRequest(
-    (candidate) => {
-      const url = new URL(candidate.url());
+  await page.waitForURL(
+    (url) => {
       return (
-        url.origin === appOrigin && url.searchParams.has("billing_session_id")
+        url.origin === appOrigin &&
+        (url.pathname === "/prompt" ||
+          /\/agents\/[^/]+\/chat/.test(url.pathname))
       );
     },
-    { timeout: 120_000 },
+    { timeout: 180_000, waitUntil: "domcontentloaded" },
   );
-  const sessionId = new URL(request.url()).searchParams.get(
-    "billing_session_id",
-  );
-  if (!sessionId) {
-    throw new Error(`Missing billing session id in ${request.url()}`);
-  }
-  return sessionId;
 }
 
-async function expectStatus(
-  response: APIResponse,
-  statuses: readonly number[],
-  action: string,
+async function openOnboarding(
+  page: Page,
+  options: OnboardingFlowOptions,
 ): Promise<void> {
-  if (statuses.includes(response.status())) {
-    return;
-  }
+  await page.goto(onboardingEntryUrl(options), {
+    waitUntil: "domcontentloaded",
+  });
+  await expect(
+    page.getByRole("heading", { name: "What do you want to make first" }),
+  ).toBeVisible({ timeout: 60_000 });
+}
 
-  throw new Error(
-    `${action} failed with ${response.status()}: ${await response.text()}`,
+async function chooseMakeOption(page: Page, name: string): Promise<void> {
+  await page.getByRole("radio", { name }).click();
+  await expect(page.getByRole("radio", { name })).toHaveAttribute(
+    "aria-checked",
+    "true",
   );
 }
 
-function hasAgentId(value: unknown): value is { readonly agentId: string } {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "agentId" in value &&
-    typeof value.agentId === "string"
+async function clickOnboardingButton(page: Page, name: RegExp): Promise<void> {
+  const button = page.getByRole("button", { name }).last();
+  await expect(button).toBeVisible({ timeout: 30_000 });
+  await expect(button).toBeEnabled({ timeout: 30_000 });
+  await button.click();
+}
+
+async function waitForChatPage(page: Page, appUrl: string): Promise<void> {
+  const appOrigin = new URL(appUrl).origin;
+  await page.waitForURL(
+    (url) => {
+      return (
+        url.origin === appOrigin && /\/agents\/[^/]+\/chat/.test(url.pathname)
+      );
+    },
+    { timeout: 120_000, waitUntil: "domcontentloaded" },
   );
 }
 
-function hasCheckoutUrl(value: unknown): value is { readonly url: string } {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "url" in value &&
-    typeof value.url === "string"
-  );
-}
-
-function hasCheckoutCompletion(
-  value: unknown,
-): value is { readonly completed: boolean } {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "completed" in value &&
-    typeof value.completed === "boolean"
-  );
-}
-
-function hasTestStateFixture(value: unknown): value is {
-  readonly ok: true;
-  readonly fixture: { readonly org_id: string };
-} {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "ok" in value &&
-    value.ok === true &&
-    "fixture" in value &&
-    typeof value.fixture === "object" &&
-    value.fixture !== null &&
-    "org_id" in value.fixture &&
-    typeof value.fixture.org_id === "string"
-  );
-}
-
-function stringify(value: unknown): string {
-  return JSON.stringify(value);
+function onboardingEntryUrl(options: OnboardingFlowOptions): string {
+  const url = new URL("/onboarding/491858", options.onboardingUrl);
+  url.searchParams.set("domain", new URL(options.apiUrl).host);
+  url.searchParams.set("vm0_theme", "light");
+  return url.toString();
 }
