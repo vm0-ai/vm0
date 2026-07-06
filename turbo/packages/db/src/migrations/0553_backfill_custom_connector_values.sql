@@ -1,12 +1,12 @@
 -- Custom SQL migration file, put your code below! --
--- Block value writes and legacy writes until the bridge trigger, backfill, and
--- stale value prune have run. Do not lock connector definitions here: API
--- definition updates touch org_custom_connectors before pruning values, while
--- connector deletes touch values before org_custom_connectors. Locking the
--- connector definition table would introduce a deployment-time deadlock window.
+-- Block value writes, legacy writes, and connector definition changes until the
+-- bridge trigger, backfill, and stale value prune have run. Keep this order:
+-- runtime writes touch values before legacy secrets and connector definitions.
 LOCK TABLE "org_custom_connector_values" IN SHARE ROW EXCLUSIVE MODE;
 --> statement-breakpoint
 LOCK TABLE "org_custom_connector_secrets" IN SHARE ROW EXCLUSIVE MODE;
+--> statement-breakpoint
+LOCK TABLE "org_custom_connectors" IN SHARE ROW EXCLUSIVE MODE;
 --> statement-breakpoint
 
 -- Temporary deployment bridge: migrations can run before every old API instance

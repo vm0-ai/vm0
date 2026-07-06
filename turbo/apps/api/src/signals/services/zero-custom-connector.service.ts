@@ -1197,6 +1197,25 @@ async function updateCustomConnectorDefinitionRow(
     return null;
   }
   const existingConnector = normaliseCustomConnectorRow(existing);
+  await deleteUndeclaredConnectorValues(tx, {
+    orgId: args.orgId,
+    connectorId: args.connectorId,
+    fields: args.definition.fields,
+  });
+  if (
+    !stringArraysEqual(
+      existingConnector.prefixTemplates,
+      args.definition.prefixTemplates,
+    )
+  ) {
+    // Prefix variables are validated against rendered bases when users save
+    // values. A changed prefix can retarget previously valid values.
+    await deleteStoredConnectorPrefixVariableValues(tx, {
+      orgId: args.orgId,
+      connectorId: args.connectorId,
+      prefixTemplates: args.definition.prefixTemplates,
+    });
+  }
   const [updated] = await tx
     .update(orgCustomConnectors)
     .set({
@@ -1217,25 +1236,6 @@ async function updateCustomConnectorDefinitionRow(
       ),
     )
     .returning();
-  await deleteUndeclaredConnectorValues(tx, {
-    orgId: args.orgId,
-    connectorId: args.connectorId,
-    fields: args.definition.fields,
-  });
-  if (
-    !stringArraysEqual(
-      existingConnector.prefixTemplates,
-      args.definition.prefixTemplates,
-    )
-  ) {
-    // Prefix variables are validated against rendered bases when users save
-    // values. A changed prefix can retarget previously valid values.
-    await deleteStoredConnectorPrefixVariableValues(tx, {
-      orgId: args.orgId,
-      connectorId: args.connectorId,
-      prefixTemplates: args.definition.prefixTemplates,
-    });
-  }
   if (!updated) {
     throw new Error("Expected locked custom connector update to return a row");
   }
