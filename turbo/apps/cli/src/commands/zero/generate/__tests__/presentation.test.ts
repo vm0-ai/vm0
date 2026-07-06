@@ -66,7 +66,10 @@ describe("zero generate presentation command", () => {
     expect(stdout).toContain("Produce exactly the requested slide count");
     expect(stdout).toContain("make an internal slide plan");
     expect(stdout).toContain(
-      "Use reference materials only for structure, spacing, and visual language",
+      "Adapt the selected template to the requested slide count",
+    );
+    expect(stdout).toContain(
+      "Use selected template references only for structure, layout devices, spacing, and visual language",
     );
     expect(stdout).toContain(
       "Derive every presentation image/media choice from the user's requested topic",
