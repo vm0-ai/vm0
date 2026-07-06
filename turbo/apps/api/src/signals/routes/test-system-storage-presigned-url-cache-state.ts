@@ -40,7 +40,10 @@ function escapedLikePrefix(value: string): string {
 }
 
 function objectKeyPrefixCondition(prefix: string) {
-  return sql`${systemStoragePresignedUrlCache.objectKey} like ${escapedLikePrefix(prefix)} escape '\\'`;
+  return and(
+    eq(systemStoragePresignedUrlCache.scope, "system_storage"),
+    sql`${systemStoragePresignedUrlCache.objectKey} like ${escapedLikePrefix(prefix)} escape '\\'`,
+  );
 }
 
 function storageIdentityCondition(body: {
@@ -235,9 +238,11 @@ async function seedCacheRowForAction(
         storageVersionId: body.storage_version_id,
         publicEndpoint: body.public_endpoint,
       }),
+      scope: "system_storage",
       bucket: body.bucket,
       objectKey: body.object_key,
       storageVersionId: body.storage_version_id,
+      resolvedOrgId: null,
       publicEndpoint: body.public_endpoint,
       ttlSeconds: body.ttl_seconds,
       presignedUrl: body.presigned_url,
@@ -249,9 +254,11 @@ async function seedCacheRowForAction(
     .onConflictDoUpdate({
       target: systemStoragePresignedUrlCache.cacheKey,
       set: {
+        scope: sql`excluded.scope`,
         bucket: sql`excluded.bucket`,
         objectKey: sql`excluded.object_key`,
         storageVersionId: sql`excluded.storage_version_id`,
+        resolvedOrgId: sql`excluded.resolved_org_id`,
         publicEndpoint: sql`excluded.public_endpoint`,
         ttlSeconds: sql`excluded.ttl_seconds`,
         presignedUrl: sql`excluded.presigned_url`,

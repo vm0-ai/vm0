@@ -163,11 +163,16 @@ const cronDrainRelationshipMemoryResponseSchema = z.object({
   }),
 });
 
-const cronRefreshSystemStoragePresignedUrlsResponseSchema = z.object({
-  success: z.literal(true),
+const storagePresignedUrlRefreshResultSchema = z.object({
   due: z.number(),
   refreshed: z.number(),
   pruned: z.number(),
+});
+
+const cronRefreshStoragePresignedUrlsResponseSchema = z.object({
+  success: z.literal(true),
+  system: storagePresignedUrlRefreshResultSchema,
+  workflowSkill: storagePresignedUrlRefreshResultSchema,
 });
 
 export const CRON_AGGREGATE_MODEL_STATS_MAX_HOURS = 24 * 32;
@@ -395,16 +400,16 @@ export const cronDrainRelationshipMemoryContract = c.router({
   },
 });
 
-export const cronRefreshSystemStoragePresignedUrlsContract = c.router({
+export const cronRefreshStoragePresignedUrlsContract = c.router({
   refresh: {
     method: "GET",
-    path: "/api/cron/refresh-system-storage-presigned-urls",
+    path: "/api/cron/refresh-storage-presigned-urls",
     headers: authHeadersSchema,
     responses: {
-      200: cronRefreshSystemStoragePresignedUrlsResponseSchema,
+      200: cronRefreshStoragePresignedUrlsResponseSchema,
       401: apiErrorSchema,
     },
-    summary: "Refresh cached system storage presigned URLs",
+    summary: "Refresh cached storage presigned URLs",
   },
 });
 
@@ -422,8 +427,8 @@ export type CronAggregateModelStatsContract =
 export type CronSummarizeMemoryContract = typeof cronSummarizeMemoryContract;
 export type CronDrainRelationshipMemoryContract =
   typeof cronDrainRelationshipMemoryContract;
-export type CronRefreshSystemStoragePresignedUrlsContract =
-  typeof cronRefreshSystemStoragePresignedUrlsContract;
+export type CronRefreshStoragePresignedUrlsContract =
+  typeof cronRefreshStoragePresignedUrlsContract;
 export type CronTelegramCleanupContract = typeof cronTelegramCleanupContract;
 export type CronComputerUseScreenshotCleanupContract =
   typeof cronComputerUseScreenshotCleanupContract;
@@ -456,5 +461,5 @@ export {
   cronAggregateModelStatsResponseSchema,
   cronSummarizeMemoryResponseSchema,
   cronDrainRelationshipMemoryResponseSchema,
-  cronRefreshSystemStoragePresignedUrlsResponseSchema,
+  cronRefreshStoragePresignedUrlsResponseSchema,
 };

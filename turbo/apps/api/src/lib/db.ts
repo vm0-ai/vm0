@@ -12,6 +12,14 @@ import { deriveSqlSpanName } from "./sql-span-name";
 
 const log = logger("api:db");
 
+interface SingletonValue<T> {
+  (): T;
+  readonly peek: () => T | undefined;
+  readonly reset: () => void;
+}
+
+type ApiDb = NodePgDatabase<typeof schema>;
+
 const pool = singleton((): Pool => {
   // `@opentelemetry/instrumentation-pg` would normally hook `pg.Pool` via
   // `require-in-the-middle`, but `vercel deploy --prebuilt --archive=tgz`
@@ -152,7 +160,7 @@ const pool = singleton((): Pool => {
   return pgPool;
 });
 
-export const db = singleton((): NodePgDatabase<typeof schema> => {
+export const db: SingletonValue<ApiDb> = singleton((): ApiDb => {
   return drizzle(pool(), { schema });
 });
 

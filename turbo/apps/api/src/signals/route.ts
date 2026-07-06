@@ -30,7 +30,7 @@ import { cronRenewGoogleCalendarWatchesRoutes } from "./routes/cron-renew-google
 import { cronRenewGoogleWorkspaceEventSubscriptionsRoutes } from "./routes/cron-renew-google-workspace-event-subscriptions";
 import { cronProcessUsageEventsRoutes } from "./routes/cron-process-usage-events";
 import { cronReconcileBillingEntitlementsRoutes } from "./routes/cron-reconcile-billing-entitlements";
-import { cronRefreshSystemStoragePresignedUrlsRoutes } from "./routes/cron-refresh-system-storage-presigned-urls";
+import { cronRefreshStoragePresignedUrlsRoutes } from "./routes/cron-refresh-storage-presigned-urls";
 import { cronComputerUseScreenshotCleanupRoutes } from "./routes/cron-computer-use-screenshot-cleanup";
 import { cronSummarizeMemoryRoutes } from "./routes/cron-summarize-memory";
 import { cronSyncSkillsRoutes } from "./routes/cron-sync-skills";
@@ -193,6 +193,7 @@ import { testSlackDispatchProbeRoutes } from "./routes/test-slack-dispatch-probe
 import { testSlackMockRoutes } from "./routes/test-slack-mock";
 import { testSlackStateRoutes } from "./routes/test-slack-state";
 import { testSystemStoragePresignedUrlCacheStateRoutes } from "./routes/test-system-storage-presigned-url-cache-state";
+import { testWorkflowSkillStoragePresignedUrlCacheStateRoutes } from "./routes/test-workflow-skill-storage-presigned-url-cache-state";
 import { testEmailStateRoutes } from "./routes/test-email-state";
 import { testBillingRedeemStateRoutes } from "./routes/test-billing-redeem-state";
 import { testBillingStatusStateRoutes } from "./routes/test-billing-status-state";
@@ -268,7 +269,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...cronRenewGoogleWorkspaceEventSubscriptionsRoutes,
   ...cronProcessUsageEventsRoutes,
   ...cronReconcileBillingEntitlementsRoutes,
-  ...cronRefreshSystemStoragePresignedUrlsRoutes,
+  ...cronRefreshStoragePresignedUrlsRoutes,
   ...cronComputerUseScreenshotCleanupRoutes,
   ...cronSummarizeMemoryRoutes,
   ...cronSyncSkillsRoutes,
@@ -409,6 +410,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...testSlackMockRoutes,
   ...testSlackStateRoutes,
   ...testSystemStoragePresignedUrlCacheStateRoutes,
+  ...testWorkflowSkillStoragePresignedUrlCacheStateRoutes,
   ...testEmailStateRoutes,
   ...testBillingRedeemStateRoutes,
   ...testBillingStatusStateRoutes,
