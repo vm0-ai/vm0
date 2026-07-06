@@ -1,0 +1,20 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oxc-project/oxlint/main/npm/oxlint/configuration_schema.json",
+  "extends": ["../../.oxlintrc.json"],
+  "overrides": [
+    {
+      "files": ["eslint.config.mjs", "vitest.config.ts", "src/ccstate/**/*.ts"],
+      "rules": {
+        "import/no-default-export": "off"
+      }
+    },
+    {
+      "files": ["src/**/*.*"],
+      "rules": {
+        "new-cap": "allow",
+        "max-lines-per-function": ["allow"],
+        "complexity": "allow"
+      }
+    }
+  ]
+}

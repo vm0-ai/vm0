@@ -281,6 +281,19 @@ function canonicalizeHeldSessionStates(
 
 const heartbeatBody$ = bodyResultOf(runnersHeartbeatContract.heartbeat);
 
+function normalizedHeartbeatAdmittableProfiles(body: {
+  readonly admittableProfiles?: string[];
+  readonly availableProfiles?: string[];
+  readonly profiles?: string[];
+}): string[] {
+  const profiles =
+    body.admittableProfiles ?? body.availableProfiles ?? body.profiles;
+  if (!profiles) {
+    throw new Error("Heartbeat profile list missing after validation");
+  }
+  return profiles;
+}
+
 const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = await set(runnerAuth$, get(authorization$), signal);
   signal.throwIfAborted();
@@ -300,8 +313,7 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   const heldSessionStates =
     canonicalizeHeldSessionStates(body.data.heldSessionStates) ?? [];
-  const admittableProfiles = body.data.admittableProfiles;
-  const staticProfiles: string[] = [];
+  const admittableProfiles = normalizedHeartbeatAdmittableProfiles(body.data);
   const currentDate = nowDate();
   const db = set(writeDb$);
   await db
@@ -310,14 +322,13 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       runnerId: body.data.runnerId,
       runnerName: body.data.runnerName,
       runnerGroup: body.data.group,
-      profiles: staticProfiles,
       totalVcpu: body.data.totalVcpu,
       totalMemoryMb: body.data.totalMemoryMb,
       maxConcurrent: body.data.maxConcurrent,
       allocatedVcpu: body.data.allocatedVcpu,
       allocatedMemoryMb: body.data.allocatedMemoryMb,
       runningCount: body.data.runningCount,
-      availableProfiles: admittableProfiles,
+      admittableProfiles,
       heldSessionStates,
       mode: body.data.mode,
       lastSeenAt: currentDate,
@@ -327,14 +338,13 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       set: {
         runnerName: body.data.runnerName,
         runnerGroup: body.data.group,
-        profiles: staticProfiles,
         totalVcpu: body.data.totalVcpu,
         totalMemoryMb: body.data.totalMemoryMb,
         maxConcurrent: body.data.maxConcurrent,
         allocatedVcpu: body.data.allocatedVcpu,
         allocatedMemoryMb: body.data.allocatedMemoryMb,
         runningCount: body.data.runningCount,
-        availableProfiles: admittableProfiles,
+        admittableProfiles,
         heldSessionStates,
         mode: body.data.mode,
         lastSeenAt: currentDate,
