@@ -811,8 +811,37 @@ describe("team page navigation", () => {
 
   it("deletes an agent from the profile tab", async () => {
     mockTeamAPIs();
-    context.mocks.api(zeroAgentsByIdContract.delete, ({ respond }) => {
+    let deleted = false;
+    context.mocks.api(zeroAgentsByIdContract.delete, ({ params, respond }) => {
+      if (params.id === researchAgentId) {
+        deleted = true;
+      }
       return respond(204);
+    });
+    // Once the agent is deleted, any refetch of it must 404 — exactly as
+    // production behaves. This guards against reloading the just-deleted agent
+    // and surfacing an "Agent not found" error toast over the success toast.
+    context.mocks.api(zeroAgentsByIdContract.get, ({ params, respond }) => {
+      if (params.id === researchAgentId && deleted) {
+        return respond(404, {
+          error: {
+            message: `Agent not found: ${researchAgentId}`,
+            code: "NOT_FOUND",
+          },
+        });
+      }
+      const agent = params.id === zeroAgentId ? "Zero" : "Research Agent";
+      return respond(200, {
+        agentId: params.id,
+        ownerId: "test-owner-id",
+        displayName: agent,
+        description: "Finds and summarizes information",
+        sound: null,
+        avatarUrl: null,
+        modelProviderId: null,
+        selectedModel: null,
+        preferPersonalProvider: false,
+      });
     });
 
     detachedSetupPage({
@@ -840,6 +869,7 @@ describe("team page navigation", () => {
         screen.getByRole("heading", { level: 1, name: /agents/i }),
       ).toBeInTheDocument();
     });
+    expect(screen.queryByText(/Agent not found/u)).not.toBeInTheDocument();
   });
 
   it("edits and creates automations from an agent page", async () => {
