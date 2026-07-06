@@ -41,6 +41,45 @@ pub(crate) struct LocalQueue {
     group_dir: Arc<PathBuf>,
 }
 
+const DISCOVERY_SNAPSHOT_CANDIDATE_THRESHOLD: usize = 32;
+
+#[derive(Clone)]
+struct DiscoveryCandidate {
+    run_id: RunId,
+    path: PathBuf,
+}
+
+impl PartialEq for DiscoveryCandidate {
+    fn eq(&self, other: &Self) -> bool {
+        self.path == other.path
+    }
+}
+
+impl Eq for DiscoveryCandidate {}
+
+impl PartialOrd for DiscoveryCandidate {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for DiscoveryCandidate {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.path.cmp(&other.path)
+    }
+}
+
+struct DiscoveryStateSnapshot {
+    occupied_claims: HashSet<RunId>,
+    completed_results: HashSet<RunId>,
+}
+
+enum DiscoveryResultState {
+    Terminal,
+    Retryable,
+    Unknown,
+}
+
 enum CancelTargetLookup {
     Resolved(CancelTargetState),
     NeedsJobFile,
@@ -115,7 +154,7 @@ impl LocalQueue {
                 }
             };
 
-            let mut job_paths = Vec::new();
+            let mut candidates = Vec::new();
             for entry in entries.filter_map(Result::ok) {
                 let Ok(file_type) = entry.file_type() else {
                     continue;
@@ -125,37 +164,205 @@ impl LocalQueue {
                 }
                 let path = entry.path();
                 if path.extension().and_then(|e| e.to_str()) == Some("job") {
-                    job_paths.push(Reverse(path));
+                    let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
+                        continue;
+                    };
+                    let Ok(run_id) = stem.parse::<RunId>() else {
+                        continue;
+                    };
+                    candidates.push(Reverse(DiscoveryCandidate { run_id, path }));
                 }
             }
 
-            let mut job_paths = BinaryHeap::from(job_paths);
-            while let Some(Reverse(path)) = job_paths.pop() {
-                let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
-                    continue;
-                };
-                let Ok(run_id) = stem.parse::<RunId>() else {
-                    continue;
-                };
-                match self.claim_path_occupied(run_id) {
-                    Ok(true) => continue,
-                    Ok(false) => {}
-                    Err(e) => {
-                        warn!(run_id = %run_id, error = %e, "local: cannot stat claim path");
-                        continue;
-                    }
-                }
-                if self.result_file_has_content(run_id) {
+            let snapshot = if candidates.len() >= DISCOVERY_SNAPSHOT_CANDIDATE_THRESHOLD {
+                self.discovery_state_snapshot(&candidates)
+            } else {
+                None
+            };
+            let mut candidates = BinaryHeap::from(candidates);
+            while let Some(Reverse(candidate)) = candidates.pop() {
+                if self.discovery_candidate_ineligible(&candidate, snapshot.as_ref()) {
                     continue;
                 }
                 return Some(LocalDiscoveredJob {
-                    run_id,
+                    run_id: candidate.run_id,
                     profile_name: profile.clone(),
-                    job_path: path,
+                    job_path: candidate.path,
                 });
             }
         }
         None
+    }
+
+    fn discovery_candidate_ineligible(
+        &self,
+        candidate: &DiscoveryCandidate,
+        snapshot: Option<&DiscoveryStateSnapshot>,
+    ) -> bool {
+        if let Some(snapshot) = snapshot {
+            if snapshot.occupied_claims.contains(&candidate.run_id) {
+                return true;
+            }
+            if snapshot.completed_results.contains(&candidate.run_id) {
+                self.remove_completed_discovery_job(candidate);
+                return true;
+            }
+            return false;
+        }
+
+        match self.claim_path_occupied(candidate.run_id) {
+            Ok(true) => return true,
+            Ok(false) => {}
+            Err(e) => {
+                warn!(run_id = %candidate.run_id, error = %e, "local: cannot stat claim path");
+                return true;
+            }
+        }
+        match self.result_file_state(candidate.run_id) {
+            DiscoveryResultState::Terminal => {
+                self.remove_completed_discovery_job(candidate);
+                true
+            }
+            DiscoveryResultState::Retryable | DiscoveryResultState::Unknown => false,
+        }
+    }
+
+    fn remove_completed_discovery_job(&self, candidate: &DiscoveryCandidate) {
+        match std::fs::remove_file(&candidate.path) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => {
+                warn!(
+                    run_id = %candidate.run_id,
+                    path = %candidate.path.display(),
+                    error = %e,
+                    "local: failed to remove completed discovery job"
+                );
+            }
+        }
+    }
+
+    fn discovery_state_snapshot(
+        &self,
+        candidates: &[Reverse<DiscoveryCandidate>],
+    ) -> Option<DiscoveryStateSnapshot> {
+        let candidate_run_ids: HashSet<RunId> = candidates
+            .iter()
+            .map(|Reverse(candidate)| candidate.run_id)
+            .collect();
+        let occupied_claims = match self.snapshot_occupied_claims(&candidate_run_ids) {
+            Ok(occupied) => occupied,
+            Err(e) => {
+                warn!(error = %e, "local: failed to snapshot discovery claims");
+                return None;
+            }
+        };
+        let completed_results = match self.snapshot_completed_results(&candidate_run_ids) {
+            Ok(completed) => completed,
+            Err(e) => {
+                warn!(error = %e, "local: failed to snapshot discovery results");
+                return None;
+            }
+        };
+        Some(DiscoveryStateSnapshot {
+            occupied_claims,
+            completed_results,
+        })
+    }
+
+    fn snapshot_occupied_claims(
+        &self,
+        candidate_run_ids: &HashSet<RunId>,
+    ) -> std::io::Result<HashSet<RunId>> {
+        let claims_dir = super::claims_dir(&self.group_dir);
+        let Some(entries) = read_optional_validated_dir(
+            &claims_dir,
+            || super::validate_claims_dir(&self.group_dir),
+            "local queue claims directory",
+        )?
+        else {
+            return Ok(HashSet::new());
+        };
+
+        let mut occupied = HashSet::new();
+        for entry in entries {
+            let entry = entry.map_err(|e| {
+                std::io::Error::new(
+                    e.kind(),
+                    format!(
+                        "read local queue claims directory entry {}: {e}",
+                        claims_dir.display()
+                    ),
+                )
+            })?;
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("claim") {
+                continue;
+            }
+            let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
+                continue;
+            };
+            let Ok(run_id) = stem.parse::<RunId>() else {
+                continue;
+            };
+            if candidate_run_ids.contains(&run_id) {
+                occupied.insert(run_id);
+            }
+        }
+        Ok(occupied)
+    }
+
+    fn snapshot_completed_results(
+        &self,
+        candidate_run_ids: &HashSet<RunId>,
+    ) -> std::io::Result<HashSet<RunId>> {
+        let results_dir = super::results_dir(&self.group_dir);
+        let Some(entries) = read_optional_validated_dir(
+            &results_dir,
+            || super::validate_results_dir(&self.group_dir),
+            "local queue results directory",
+        )?
+        else {
+            return Ok(HashSet::new());
+        };
+
+        let mut completed = HashSet::new();
+        for entry in entries {
+            let entry = entry.map_err(|e| {
+                std::io::Error::new(
+                    e.kind(),
+                    format!(
+                        "read local queue results directory entry {}: {e}",
+                        results_dir.display()
+                    ),
+                )
+            })?;
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("result") {
+                continue;
+            }
+            let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
+                continue;
+            };
+            let Ok(run_id) = stem.parse::<RunId>() else {
+                continue;
+            };
+            if !candidate_run_ids.contains(&run_id) {
+                continue;
+            }
+            match self.result_file_state(run_id) {
+                DiscoveryResultState::Terminal => {
+                    completed.insert(run_id);
+                }
+                DiscoveryResultState::Retryable => {}
+                DiscoveryResultState::Unknown => {
+                    return Err(std::io::Error::other(format!(
+                        "unknown local result file state for {run_id}"
+                    )));
+                }
+            }
+        }
+        Ok(completed)
     }
 
     pub(crate) fn claim_job_sync(
@@ -526,8 +733,26 @@ impl LocalQueue {
     }
 
     pub(crate) fn result_file_has_content(&self, run_id: RunId) -> bool {
+        matches!(
+            self.result_file_state(run_id),
+            DiscoveryResultState::Terminal
+        )
+    }
+
+    fn result_file_state(&self, run_id: RunId) -> DiscoveryResultState {
         let result_path = super::result_path(&self.group_dir, run_id);
-        super::private_file_has_content(&result_path, "local result file").unwrap_or(false)
+        match std::fs::symlink_metadata(&result_path) {
+            Ok(metadata) if metadata.file_type().is_file() => {
+                match super::private_file_has_content(&result_path, "local result file") {
+                    Ok(true) => DiscoveryResultState::Terminal,
+                    Ok(false) => DiscoveryResultState::Retryable,
+                    Err(_) => DiscoveryResultState::Unknown,
+                }
+            }
+            Ok(_) => DiscoveryResultState::Retryable,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => DiscoveryResultState::Retryable,
+            Err(_) => DiscoveryResultState::Unknown,
+        }
     }
 
     pub(crate) fn remove_job_files_if_present(&self, run_id: RunId) -> bool {
@@ -753,6 +978,34 @@ fn lookup_job_files_in_profile_dirs(
     }
 
     JobPresenceScan { found, complete }
+}
+
+fn read_optional_validated_dir<F>(
+    dir: &Path,
+    validate: F,
+    context: &str,
+) -> std::io::Result<Option<std::fs::ReadDir>>
+where
+    F: FnOnce() -> std::io::Result<PathBuf>,
+{
+    match std::fs::symlink_metadata(dir) {
+        Ok(_) => {
+            validate()?;
+            match std::fs::read_dir(dir) {
+                Ok(entries) => Ok(Some(entries)),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+                Err(e) => Err(std::io::Error::new(
+                    e.kind(),
+                    format!("read {context} {}: {e}", dir.display()),
+                )),
+            }
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(std::io::Error::new(
+            e.kind(),
+            format!("stat {context} {}: {e}", dir.display()),
+        )),
+    }
 }
 
 fn validate_optional_cancel_dir(group_dir: &Path, cancel_dir: &Path) -> std::io::Result<()> {
@@ -1238,6 +1491,142 @@ mod tests {
 
         assert_eq!(candidate.run_id, eligible);
         assert_eq!(candidate.job_path, eligible_path);
+    }
+
+    #[test]
+    fn discover_candidate_removes_completed_leftover_job() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let queue = LocalQueue::new(group_dir.to_path_buf());
+        let profile = crate::profile::DEFAULT_PROFILE;
+        let completed = run_id("00000000-0000-0000-0000-000000000001");
+        let eligible = run_id("00000000-0000-0000-0000-000000000002");
+        let completed_path = write_job_request(group_dir, completed, profile);
+        let eligible_path = write_job_request(group_dir, eligible, profile);
+        assert!(queue.write_result_sync(completed, 0, None));
+
+        let candidate = queue
+            .discover_candidate_sync(&[profile.to_owned()], 0)
+            .expect("eligible job should be discovered after completed leftover");
+
+        assert_eq!(candidate.run_id, eligible);
+        assert_eq!(candidate.job_path, eligible_path);
+        assert!(
+            !completed_path.exists(),
+            "completed leftover job should be removed during discovery"
+        );
+        assert!(
+            queue.result_file_has_content(completed),
+            "discovery must not remove the terminal result"
+        );
+    }
+
+    #[test]
+    fn discover_candidate_keeps_empty_result_retryable() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let queue = LocalQueue::new(group_dir.to_path_buf());
+        let profile = crate::profile::DEFAULT_PROFILE;
+        let run_id = run_id("00000000-0000-0000-0000-000000000001");
+        let job_path = write_job_request(group_dir, run_id, profile);
+        let result_path = super::super::result_path(group_dir, run_id);
+        std::fs::create_dir_all(result_path.parent().unwrap()).unwrap();
+        std::fs::write(&result_path, b"").unwrap();
+
+        let candidate = queue
+            .discover_candidate_sync(&[profile.to_owned()], 0)
+            .expect("empty result should leave the job retryable");
+
+        assert_eq!(candidate.run_id, run_id);
+        assert_eq!(candidate.job_path, job_path);
+        assert!(job_path.exists());
+    }
+
+    #[test]
+    fn discover_candidate_keeps_result_symlink_retryable() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let queue = LocalQueue::new(group_dir.to_path_buf());
+        let profile = crate::profile::DEFAULT_PROFILE;
+        let run_id = run_id("00000000-0000-0000-0000-000000000001");
+        let job_path = write_job_request(group_dir, run_id, profile);
+        let result_path = super::super::result_path(group_dir, run_id);
+        std::fs::create_dir_all(result_path.parent().unwrap()).unwrap();
+        let target = dir.path().join("target-result");
+        std::fs::write(&target, b"terminal").unwrap();
+        symlink(&target, &result_path).unwrap();
+
+        let candidate = queue
+            .discover_candidate_sync(&[profile.to_owned()], 0)
+            .expect("result symlink should leave the job retryable");
+
+        assert_eq!(candidate.run_id, run_id);
+        assert_eq!(candidate.job_path, job_path);
+        assert!(job_path.exists());
+    }
+
+    #[test]
+    fn discover_candidate_uses_snapshot_for_large_ineligible_queue() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let queue = LocalQueue::new(group_dir.to_path_buf());
+        let profile = crate::profile::DEFAULT_PROFILE;
+        let mut completed_paths = Vec::new();
+        let eligible = run_id(&format!(
+            "00000000-0000-0000-0000-{:012x}",
+            DISCOVERY_SNAPSHOT_CANDIDATE_THRESHOLD + 1
+        ));
+        let eligible_path = write_job_request(group_dir, eligible, profile);
+        std::fs::create_dir_all(super::super::claims_dir(group_dir)).unwrap();
+
+        for index in (1..=DISCOVERY_SNAPSHOT_CANDIDATE_THRESHOLD).rev() {
+            let run_id = run_id(&format!("00000000-0000-0000-0000-{index:012x}"));
+            let job_path = write_job_request(group_dir, run_id, profile);
+            if index % 2 == 0 {
+                assert!(queue.write_result_sync(run_id, 0, None));
+                completed_paths.push(job_path);
+            } else {
+                std::fs::write(super::super::claim_path(group_dir, run_id), b"").unwrap();
+            }
+        }
+
+        let candidate = queue
+            .discover_candidate_sync(&[profile.to_owned()], 0)
+            .expect("eligible job should be discovered after snapshot skips");
+
+        assert_eq!(candidate.run_id, eligible);
+        assert_eq!(candidate.job_path, eligible_path);
+        for path in completed_paths {
+            assert!(
+                !path.exists(),
+                "completed snapshot candidates should be cleaned up"
+            );
+        }
+    }
+
+    #[test]
+    fn discover_candidate_falls_back_when_snapshot_claim_dir_is_invalid() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let queue = LocalQueue::new(group_dir.to_path_buf());
+        let profile = crate::profile::DEFAULT_PROFILE;
+        let claimed = run_id("00000000-0000-0000-0000-000000000001");
+        let eligible = run_id("00000000-0000-0000-0000-000000000002");
+        let target_claims_dir = dir.path().join("target-claims");
+        std::fs::create_dir_all(&target_claims_dir).unwrap();
+        std::fs::write(target_claims_dir.join(format!("{claimed}.claim")), b"").unwrap();
+        symlink(&target_claims_dir, super::super::claims_dir(group_dir)).unwrap();
+
+        for index in 1..=DISCOVERY_SNAPSHOT_CANDIDATE_THRESHOLD + 1 {
+            let run_id = run_id(&format!("00000000-0000-0000-0000-{index:012x}"));
+            write_job_request(group_dir, run_id, profile);
+        }
+
+        let candidate = queue
+            .discover_candidate_sync(&[profile.to_owned()], 0)
+            .expect("fallback should still discover an eligible job");
+
+        assert_eq!(candidate.run_id, eligible);
     }
 
     #[test]
