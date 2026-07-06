@@ -186,7 +186,7 @@ const SUPPORTED_RUN_MODEL_LABELS: Record<SupportedRunModel, string> = {
   "glm-5.1": "GLM-5.1",
   "mimo-v2.5": "MiMo-V2.5",
   "hy3-preview": "Hy3 Preview",
-  "gpt-5.5": "GPT-5.5",
+  "gpt-5.5": "GPT 5.5",
   "gpt-5.4": "GPT-5.4",
   "gpt-5.4-mini": "GPT-5.4 Mini",
 };

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.51](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.50...vsock-host-v0.17.51) (2026-07-06)
+
+
+### Refactoring
+
+* migrate supervised cancel fixtures ([#20336](https://github.com/vm0-ai/vm0/issues/20336)) ([b3e4b64](https://github.com/vm0-ai/vm0/commit/b3e4b64d933ecc87d65b95595ae0150a27479a56))
+
 ## [0.17.50](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.49...vsock-host-v0.17.50) (2026-07-06)
 
 

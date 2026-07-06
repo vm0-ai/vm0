@@ -1128,7 +1128,7 @@ describe("chat composer models", () => {
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000911",
         model: "gpt-5.5",
-        modelLabel: "GPT-5.5",
+        modelLabel: "GPT 5.5",
         isDefault: true,
         defaultProviderType: "codex-oauth-token",
         credentialScope: "member",
@@ -1151,7 +1151,7 @@ describe("chat composer models", () => {
       path: `/agents/${AGENT_ID}/chat`,
     });
 
-    click(await findComposerModel("GPT-5.5"));
+    click(await findComposerModel("GPT 5.5"));
     const runSpeed = await screen.findByRole("group", { name: "Run speed" });
     click(buttonContainingText("Fast", runSpeed));
     await waitFor(() => {
@@ -1207,7 +1207,7 @@ describe("chat composer models", () => {
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000914",
         model: "gpt-5.5",
-        modelLabel: "GPT-5.5",
+        modelLabel: "GPT 5.5",
         isDefault: true,
         defaultProviderType: "codex-oauth-token",
         credentialScope: "member",
@@ -1231,7 +1231,7 @@ describe("chat composer models", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("combobox", { name: /GPT-5\.5/ }),
+        screen.getByRole("combobox", { name: /GPT 5\.5/ }),
       ).toBeInTheDocument();
     });
 
@@ -1282,7 +1282,7 @@ describe("chat composer models", () => {
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000916",
         model: "gpt-5.5",
-        modelLabel: "GPT-5.5",
+        modelLabel: "GPT 5.5",
         isDefault: true,
         defaultProviderType: "codex-oauth-token",
         credentialScope: "member",
@@ -1314,7 +1314,7 @@ describe("chat composer models", () => {
       path: `/chats/${THREAD_ID}`,
     });
 
-    await user.click(await screen.findByRole("combobox", { name: /GPT-5\.5/ }));
+    await user.click(await screen.findByRole("combobox", { name: /GPT 5\.5/ }));
     await user.click(await screen.findByRole("option", { name: /GPT-5\.4/ }));
     await waitFor(() => {
       expect(
@@ -1353,7 +1353,7 @@ describe("chat composer models", () => {
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000921",
         model: "gpt-5.5",
-        modelLabel: "GPT-5.5",
+        modelLabel: "GPT 5.5",
         isDefault: true,
         defaultProviderType: "codex-oauth-token",
         credentialScope: "member",
@@ -1369,7 +1369,7 @@ describe("chat composer models", () => {
       path: `/agents/${AGENT_ID}/chat`,
     });
 
-    click(await findComposerModel("GPT-5.5"));
+    click(await findComposerModel("GPT 5.5"));
     await waitFor(() => {
       expect(screen.getByRole("listbox")).toBeInTheDocument();
       expect(
@@ -1378,7 +1378,7 @@ describe("chat composer models", () => {
     });
   });
 
-  it("hides Codex fast mode for non GPT-5.5 subscription models", async () => {
+  it("hides Codex fast mode for non GPT 5.5 subscription models", async () => {
     const codexProvider = buildProvider({
       id: "00000000-0000-4000-a000-000000000932",
       type: "codex-oauth-token",
@@ -1577,7 +1577,7 @@ describe("chat composer models", () => {
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000702",
         model: "gpt-5.5",
-        modelLabel: "GPT-5.5",
+        modelLabel: "GPT 5.5",
         defaultProviderType: "vm0",
         credentialScope: "org",
       }),
@@ -1589,7 +1589,7 @@ describe("chat composer models", () => {
     await expectComposerModel("Kimi K2.7 Code");
     await user.click(screen.getByRole("combobox", { name: "Kimi K2.7 Code" }));
     await user.click(
-      await screen.findByRole("option", { name: /GPT-5\.5.*Pro/u }),
+      await screen.findByRole("option", { name: /GPT 5\.5.*Pro/u }),
     );
 
     await expect(
@@ -1654,7 +1654,7 @@ describe("chat composer models", () => {
     context.mocks.data.orgModelPolicies([
       buildModelPolicy({
         model: "gpt-5.5",
-        modelLabel: "GPT-5.5",
+        modelLabel: "GPT 5.5",
         isDefault: true,
         defaultProviderType: "codex-oauth-token",
         credentialScope: "member",
@@ -1688,7 +1688,7 @@ describe("chat composer models", () => {
     );
 
     detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
-    await expectComposerModel("GPT-5.5");
+    await expectComposerModel("GPT 5.5");
 
     await fill(await screen.findByPlaceholderText(PLACEHOLDER), "Hello");
     await user.keyboard("{Enter}");
@@ -1698,7 +1698,7 @@ describe("chat composer models", () => {
       "button",
     )!;
     expect(warning).toHaveAccessibleName(
-      /Model Configure: This workspace routes GPT-5\.5/,
+      /Model Configure: This workspace routes GPT 5\.5/,
     );
 
     await user.click(warning);
@@ -1729,7 +1729,7 @@ describe("chat composer models", () => {
     context.mocks.data.orgModelPolicies([
       buildModelPolicy({
         model: "gpt-5.5",
-        modelLabel: "GPT-5.5",
+        modelLabel: "GPT 5.5",
         isDefault: true,
         defaultProviderType: "codex-oauth-token",
         credentialScope: "member",
@@ -1765,7 +1765,7 @@ describe("chat composer models", () => {
     });
 
     detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
-    await expectComposerModel("GPT-5.5");
+    await expectComposerModel("GPT 5.5");
 
     await fill(await screen.findByPlaceholderText(PLACEHOLDER), "Hello");
     await user.keyboard("{Enter}");
@@ -1775,7 +1775,7 @@ describe("chat composer models", () => {
       "button",
     )!;
     expect(warning).toHaveAccessibleName(
-      /Model Configure: ChatGPT \(Codex\) needs to be reconnected before you can use GPT-5\.5/u,
+      /Model Configure: ChatGPT \(Codex\) needs to be reconnected before you can use GPT 5\.5/u,
     );
 
     await user.click(warning);
