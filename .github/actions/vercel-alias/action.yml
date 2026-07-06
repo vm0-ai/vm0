@@ -225,7 +225,7 @@ runs:
         }
         NODE
           )"
-          if [[ "$RESPONSE_MESSAGE" == *"already assigned"* ]]; then
+          if [[ "$RESPONSE_MESSAGE" == *"already assigned"* || "$RESPONSE_MESSAGE" == *"already associated with this deployment"* ]]; then
             echo "Alias already exists: ${ALIAS_URL}"
             HTTP_STATUS=200
           fi
