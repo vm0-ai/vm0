@@ -78,6 +78,7 @@ import {
   setManagedConnectorAccessType$,
 } from "../../signals/zero-page/settings/connector-access-management.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
+import { runAfterDropdownMenuClose } from "../components/dropdown-menu-modal-action.ts";
 import { noConnectorImg } from "./platform-assets.ts";
 import { AvatarFromUrl } from "./zero-sidebar-shared.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
@@ -718,12 +719,20 @@ function GlobalConnectorCard({
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-44">
                 {connectionStatus === "reconnect-required" ? (
-                  <DropdownMenuItem onClick={onConnect}>
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      runAfterDropdownMenuClose(onConnect);
+                    }}
+                  >
                     Reconnect
                   </DropdownMenuItem>
                 ) : null}
                 {connectionStatus === "scope-mismatch" && onReviewScopes ? (
-                  <DropdownMenuItem onClick={onReviewScopes}>
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      runAfterDropdownMenuClose(onReviewScopes);
+                    }}
+                  >
                     Review permissions
                   </DropdownMenuItem>
                 ) : null}

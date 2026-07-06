@@ -641,7 +641,7 @@ describe("zero sidebar", () => {
 
     openChatListMenu();
     click(screen.getByRole("switch", { name: "Unread" }));
-    fireEvent.keyDown(document.body, { key: "Escape" });
+    fireEvent.keyDown(document, { code: "Escape", key: "Escape" });
 
     await waitFor(() => {
       expect(unreadsRequests).toBeGreaterThan(0);
@@ -1755,7 +1755,7 @@ describe("zero sidebar", () => {
 
     click(within(researchSidebarRow).getByLabelText("Open agent menu"));
     expect(menuItemByText("Unpin")).toBeInTheDocument();
-    fireEvent.keyDown(document.body, { key: "Escape" });
+    fireEvent.keyDown(document, { code: "Escape", key: "Escape" });
 
     click(within(nav).getByLabelText("Open a conversation"));
     const dialog = await screen.findByRole("dialog", { name: "Talk to" });
@@ -1788,8 +1788,14 @@ describe("zero sidebar", () => {
     click(supportMenuTrigger);
     expect(supportDialogUnread).not.toBeVisible();
     expect(menuItemByText("Pin to sidebar")).toBeInTheDocument();
-    fireEvent.keyDown(document.body, { key: "Escape" });
-    expect(supportDialogUnread).toBeVisible();
+    click(supportMenuTrigger);
+    await waitFor(() => {
+      expect(screen.queryByText("Pin to sidebar")).not.toBeInTheDocument();
+    });
+    fireEvent.pointerLeave(supportActionRoot);
+    await waitFor(() => {
+      expect(within(supportDialogRow).getByLabelText("Unread")).toBeVisible();
+    });
 
     await waitFor(() => {
       expect(

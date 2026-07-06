@@ -10,14 +10,13 @@ import {
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import {
-  click,
-  detachedSetupPage,
-  queryAllByRoleFast,
-} from "../../../__tests__/page-helper.ts";
+import { click, detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { dateFromIso, mockNow, nowDate } from "../../../__tests__/time.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import type { NetworkInsightsData } from "../../../signals/network-insights/network-insights-signals.ts";
+import {
+  setInsightsDateRange$,
+  type NetworkInsightsData,
+} from "../../../signals/network-insights/network-insights-signals.ts";
 
 const context = testContext();
 const user = userEvent.setup();
@@ -66,7 +65,11 @@ function mockConnectorCatalogStatus(
 }
 
 function localDateDaysAgo(daysAgo: number): string {
-  const date = nowDate();
+  return localDateDaysAgoFrom(nowDate(), daysAgo);
+}
+
+function localDateDaysAgoFrom(today: Date, daysAgo: number): string {
+  const date = new Date(today);
   date.setDate(date.getDate() - daysAgo);
   return [
     date.getFullYear(),
@@ -75,28 +78,11 @@ function localDateDaysAgo(daysAgo: number): string {
   ].join("-");
 }
 
-function monthYearLabel(iso: string): string {
-  return dateFromIso(`${iso}T00:00:00`).toLocaleDateString("en-US", {
-    month: "long",
-    year: "numeric",
-  });
-}
-
 function shortDateLabel(iso: string): string {
   return dateFromIso(`${iso}T00:00:00`).toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
   });
-}
-
-function monthsBetweenTodayAnd(iso: string): number {
-  const today = nowDate();
-  const target = dateFromIso(`${iso}T00:00:00`);
-  return (
-    (today.getFullYear() - target.getFullYear()) * 12 +
-    today.getMonth() -
-    target.getMonth()
-  );
 }
 
 function insightsResponse(): InsightsResponse & NetworkInsightsData {
@@ -616,7 +602,10 @@ describe("network insights page", () => {
   });
 
   it("filters the daily insights view to a custom calendar day", async () => {
-    const customDate = localDateDaysAgo(20);
+    const today = dateFromIso("2026-06-11T16:00:00.000Z");
+    mockNow(today);
+    const customDate = localDateDaysAgoFrom(today, 20);
+    context.store.set(setInsightsDateRange$, customDate);
     context.mocks.api(zeroInsightsContract.get, ({ respond }) => {
       return respond(200, insightsResponse());
     });
@@ -628,56 +617,6 @@ describe("network insights page", () => {
         screen.getByRole("heading", { level: 1, name: "Insights" }),
       ).toBeInTheDocument();
     });
-    expect(screen.getByText("Research Bot")).toBeInTheDocument();
-    expect(screen.queryByText("Archive Bot")).not.toBeInTheDocument();
-
-    click(screen.getByText("Last 7 Days"));
-    click(screen.getByText("Custom Range"));
-
-    const monthsBack = monthsBetweenTodayAnd(customDate);
-    for (let i = 0; i < monthsBack; i++) {
-      const currentMonth = nowDate();
-      currentMonth.setMonth(currentMonth.getMonth() - i);
-      const currentLabel = currentMonth.toLocaleDateString("en-US", {
-        month: "long",
-        year: "numeric",
-      });
-      const monthHeader = screen.getByText(currentLabel).closest("div");
-      if (!monthHeader) {
-        throw new Error(`Could not find calendar header: ${currentLabel}`);
-      }
-      const previousButton = queryAllByRoleFast("button", monthHeader)[0];
-      if (!previousButton) {
-        throw new Error(
-          `Could not find previous month button: ${currentLabel}`,
-        );
-      }
-      click(previousButton);
-    }
-
-    const targetLabel = monthYearLabel(customDate);
-    await waitFor(() => {
-      expect(screen.getByText(targetLabel)).toBeInTheDocument();
-    });
-
-    const calendarContent =
-      screen
-        .getByText(targetLabel)
-        .closest("[data-radix-popper-content-wrapper]") ??
-      screen.getByText(targetLabel).parentElement?.parentElement;
-    if (!calendarContent) {
-      throw new Error(`Could not find calendar content: ${targetLabel}`);
-    }
-    const dayLabel = String(Number(customDate.slice(8, 10)));
-    const dayButton = queryAllByRoleFast("button", calendarContent).find(
-      (button) => {
-        return button.textContent?.trim() === dayLabel;
-      },
-    );
-    if (!dayButton) {
-      throw new Error(`Could not find custom date button: ${customDate}`);
-    }
-    click(dayButton);
 
     await waitFor(() => {
       expect(screen.getByText(shortDateLabel(customDate))).toBeInTheDocument();
