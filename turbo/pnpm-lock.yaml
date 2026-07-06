@@ -260,15 +260,12 @@ importers:
       '@types/web-push':
         specifier: ^3.6.4
         version: 3.6.4
-      '@typescript-eslint/rule-tester':
-        specifier: ^8.61.1
-        version: 8.61.1(eslint@9.39.4(jiti@2.6.1))(typescript@6.0.3)
-      '@typescript-eslint/utils':
-        specifier: ^8.61.1
-        version: 8.61.1(eslint@9.39.4(jiti@2.6.1))(typescript@6.0.3)
       '@vm0/eslint-config':
         specifier: workspace:*
         version: link:../../packages/eslint-config
+      '@vm0/eslint-rules':
+        specifier: workspace:*
+        version: link:../../packages/eslint-rules
       '@vm0/typescript-config':
         specifier: workspace:*
         version: link:../../packages/typescript-config
@@ -632,18 +629,15 @@ importers:
       '@types/react-dom':
         specifier: ^19
         version: 19.2.3(@types/react@19.2.14)
-      '@typescript-eslint/rule-tester':
-        specifier: ^8.61.1
-        version: 8.61.1(eslint@9.39.4(jiti@2.6.1))(typescript@6.0.3)
-      '@typescript-eslint/utils':
-        specifier: ^8.61.1
-        version: 8.61.1(eslint@9.39.4(jiti@2.6.1))(typescript@6.0.3)
       '@vitejs/plugin-react':
         specifier: ^6.0.1
         version: 6.0.1(vite@8.0.16(@types/node@24.3.0)(esbuild@0.28.1)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3))
       '@vm0/eslint-config':
         specifier: workspace:*
         version: link:../../packages/eslint-config
+      '@vm0/eslint-rules':
+        specifier: workspace:*
+        version: link:../../packages/eslint-rules
       eslint:
         specifier: ^9.34.0
         version: 9.39.4(jiti@2.6.1)
@@ -912,6 +906,40 @@ importers:
       typescript-eslint:
         specifier: ^8.61.1
         version: 8.61.1(eslint@9.39.4(jiti@2.6.1))(typescript@6.0.3)
+
+  packages/eslint-rules:
+    dependencies:
+      '@typescript-eslint/utils':
+        specifier: ^8.61.1
+        version: 8.61.1(eslint@9.39.4(jiti@2.6.1))(typescript@6.0.3)
+    devDependencies:
+      '@types/node':
+        specifier: 24.3.0
+        version: 24.3.0
+      '@typescript-eslint/rule-tester':
+        specifier: ^8.61.1
+        version: 8.61.1(eslint@9.39.4(jiti@2.6.1))(typescript@6.0.3)
+      '@vm0/eslint-config':
+        specifier: workspace:*
+        version: link:../eslint-config
+      '@vm0/typescript-config':
+        specifier: workspace:*
+        version: link:../typescript-config
+      eslint:
+        specifier: ^9.34.0
+        version: 9.39.4(jiti@2.6.1)
+      oxlint:
+        specifier: ^1.57.0
+        version: 1.57.0(oxlint-tsgolint@0.23.0)
+      oxlint-tsgolint:
+        specifier: 0.23.0
+        version: 0.23.0
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: ^4.1.9
+        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@24.3.0)(@vitest/coverage-v8@4.1.9)(@vitest/ui@4.1.9)(happy-dom@20.9.0)(msw@2.13.2(@types/node@24.3.0)(typescript@6.0.3))(vite@8.0.16(@types/node@24.3.0)(esbuild@0.28.1)(jiti@2.6.1)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.3))
 
   packages/firewalls-generator:
     dependencies:

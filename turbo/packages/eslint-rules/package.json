@@ -1,6 +1,6 @@
 {
-  "name": "@vm0/core",
-  "version": "8.401.5",
+  "name": "@vm0/eslint-rules",
+  "version": "0.0.0",
   "private": true,
   "type": "module",
   "exports": {
@@ -8,13 +8,13 @@
       "import": "./src/index.ts",
       "types": "./src/index.ts"
     },
-    "./*": {
-      "import": "./src/*.ts",
-      "types": "./src/*.ts"
+    "./api": {
+      "import": "./src/api/index.ts",
+      "types": "./src/api/index.ts"
     },
-    "./contracts": {
-      "import": "./src/contracts/index.ts",
-      "types": "./src/contracts/index.ts"
+    "./ccstate": {
+      "import": "./src/ccstate/index.ts",
+      "types": "./src/ccstate/index.ts"
     }
   },
   "scripts": {
@@ -23,7 +23,11 @@
     "lint": "oxlint && oxlint --type-aware -c ../../.oxlintrc.typeaware.json && eslint . --max-warnings 0",
     "check-types": "tsc --noEmit"
   },
+  "dependencies": {
+    "@typescript-eslint/utils": "^8.61.1"
+  },
   "devDependencies": {
+    "@typescript-eslint/rule-tester": "^8.61.1",
     "@types/node": "^24.3.0",
     "@vm0/eslint-config": "workspace:*",
     "@vm0/typescript-config": "workspace:*",
@@ -32,10 +36,5 @@
     "oxlint-tsgolint": "0.23.0",
     "typescript": "6.0.3",
     "vitest": "^4.1.9"
-  },
-  "dependencies": {
-    "@vm0/api-contracts": "workspace:*",
-    "@vm0/connectors": "workspace:*",
-    "yaml": "^2.8.1"
   }
 }
