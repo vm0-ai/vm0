@@ -325,7 +325,7 @@ function getOAuthAuthCodeProgressContent({
   isPolling: boolean;
   settling: boolean;
 }) {
-  // While auth-code OAuth is in progress, only show connecting state
+  // While browser authorization is in progress, only show connecting state.
   if (isPolling) {
     const standaloneHint = isStandaloneMode()
       ? " Switch back here after completing sign-in."

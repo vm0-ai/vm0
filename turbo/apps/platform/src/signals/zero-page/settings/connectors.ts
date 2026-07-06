@@ -2183,8 +2183,9 @@ export const connectConnectorOAuthAuthCode$ = command(
         );
         signal.throwIfAborted();
 
-        // Wait for the auth-code OAuth flow to complete. The callback publishes
-        // `connector:changed`, and the subscription rechecks the server state.
+        // Wait for the browser authorization flow to complete. The callback
+        // publishes `connector:changed`, and the subscription rechecks server
+        // state.
         const loopSignal = set(resetOAuthAuthCodeConnectorLoopSignal$, signal);
         const popupSignal = set(
           resetOAuthAuthCodeConnectorPopupSignal$,
@@ -2270,7 +2271,7 @@ export const connectConnectorOAuthAuthCode$ = command(
 );
 
 // ---------------------------------------------------------------------------
-// Connect via auth-code OAuth, then run onSuccess callback (settling phase)
+// Connect via browser authorization, then run onSuccess callback.
 // ---------------------------------------------------------------------------
 
 export const connectConnectorOAuthAuthCodeAndSettle$ = command(

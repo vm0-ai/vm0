@@ -34,7 +34,7 @@ export const connectorsTypeCallbackContract = c.router({
     responses: {
       307: c.noBody(),
     },
-    summary: "Complete connector OAuth authorization",
+    summary: "Complete connector browser authorization",
   },
 });
 
