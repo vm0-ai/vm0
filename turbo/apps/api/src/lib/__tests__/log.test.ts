@@ -276,6 +276,27 @@ describe("serializeError via logging", () => {
     );
   });
 
+  it("truncates deep error cause chains", () => {
+    const log = logger("deep-cause-test");
+    const err = new Error("depth-0");
+    let current = err;
+    for (let index = 1; index <= 80; index += 1) {
+      const next = new Error(`depth-${index}`);
+      Object.defineProperty(current, "cause", { value: next });
+      current = next;
+    }
+
+    log.error(err);
+
+    const fields = axiomLogging.error.mock.calls[0]?.[1] as
+      | Record<string, unknown>
+      | undefined;
+    const serialized = JSON.stringify(fields?.error);
+    expect(serialized).toContain("depth-32");
+    expect(serialized).toContain("[Truncated]");
+    expect(serialized).not.toContain("depth-80");
+  });
+
   it("surfaces custom enumerable properties on Error", () => {
     const log = logger("custom-err");
     const err = new Error("custom") as Error & Record<string, unknown>;

@@ -18,6 +18,7 @@ const L = logger("App");
 
 const WEB_AUTH_PATHS = ["/sign-in", "/sign-up"] as const;
 const UNHANDLED_REQUEST_ERROR_TYPE = "unhandled_request_error" as const;
+const ERROR_CHAIN_MAX_DEPTH = 32;
 const ERROR_SUMMARY_MAX_LENGTH = 240;
 const ERROR_SUMMARY_SOURCE_MAX_LENGTH = 4096;
 
@@ -53,7 +54,11 @@ function errorChain(error: Error): readonly Error[] {
   const chain: Error[] = [];
   const seen = new Set<Error>();
   let current: Error | undefined = error;
-  while (current && !seen.has(current)) {
+  while (
+    current &&
+    !seen.has(current) &&
+    chain.length < ERROR_CHAIN_MAX_DEPTH
+  ) {
     chain.push(current);
     seen.add(current);
     current = current.cause instanceof Error ? current.cause : undefined;

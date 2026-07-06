@@ -1,3 +1,5 @@
+const SERIALIZED_ERROR_MAX_DEPTH = 32;
+
 /**
  * Extract message string from log arguments.
  */
@@ -17,6 +19,7 @@ export function formatMessage(args: unknown[]): string {
 function serializeErrorWithSeen(
   err: Error,
   seen: WeakSet<Error>,
+  depth: number,
 ): Record<string, unknown> {
   const serialized: Record<string, unknown> = {
     name: err.name,
@@ -29,7 +32,9 @@ function serializeErrorWithSeen(
       err.cause instanceof Error
         ? seen.has(err.cause)
           ? "[Circular]"
-          : serializeErrorWithSeen(err.cause, seen)
+          : depth >= SERIALIZED_ERROR_MAX_DEPTH
+            ? "[Truncated]"
+            : serializeErrorWithSeen(err.cause, seen, depth + 1)
         : err.cause;
   }
   for (const [key, value] of Object.entries(err)) {
@@ -38,7 +43,9 @@ function serializeErrorWithSeen(
         value instanceof Error
           ? seen.has(value)
             ? "[Circular]"
-            : serializeErrorWithSeen(value, seen)
+            : depth >= SERIALIZED_ERROR_MAX_DEPTH
+              ? "[Truncated]"
+              : serializeErrorWithSeen(value, seen, depth + 1)
           : value;
     }
   }
@@ -46,7 +53,7 @@ function serializeErrorWithSeen(
 }
 
 export function serializeError(err: Error): Record<string, unknown> {
-  return serializeErrorWithSeen(err, new WeakSet<Error>());
+  return serializeErrorWithSeen(err, new WeakSet<Error>(), 0);
 }
 
 /**

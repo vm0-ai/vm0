@@ -218,6 +218,35 @@ describe("createApp", () => {
     });
   });
 
+  it("bounds deep error cause chains while logging unhandled errors", async () => {
+    const error = new Error("depth-0");
+    let current = error;
+    for (let index = 1; index <= 80; index += 1) {
+      const next = new Error(`depth-${index}`);
+      Object.defineProperty(current, "cause", { value: next });
+      current = next;
+    }
+    const handler$ = computed((): never => {
+      throw error;
+    });
+    const client = setupApp({
+      context,
+      routes: [...ROUTES, { route: errorTestContract.boom, handler: handler$ }],
+    })(errorTestContract);
+
+    const response = await accept(client.boom(), [500]);
+
+    expect(response.body).toStrictEqual({ error: "Internal server error" });
+
+    const [message, fields] =
+      context.mocks.axiomLogging.error.mock.calls.at(-1) ?? [];
+    const logFields = fields as Record<PropertyKey, unknown>;
+    expect(message).toBe("Unhandled request error: depth-31");
+    expect(logFields.errorSummary).toBe("depth-31");
+    expect(JSON.stringify(logFields.error)).toContain("[Truncated]");
+    expect(JSON.stringify(logFields.error)).not.toContain("depth-80");
+  });
+
   it("summarizes response validation failures without schema details", async () => {
     const handler$ = computed(() => {
       return { status: 500, body: { error: 123 } };
