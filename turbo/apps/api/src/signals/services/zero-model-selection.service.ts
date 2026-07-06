@@ -88,6 +88,9 @@ export async function resolveDefaultModelFirstPin(
   orgId: string,
   userId: string,
 ): Promise<ModelFirstPin> {
+  if (userId !== "__no_preference__") {
+    await ensureOrgModelPolicies(db, orgId, userId);
+  }
   const limitedFree1 = await orgHasLimitedFree1Restrictions(db, orgId);
   const [preference] = await db
     .select({ selectedModel: orgMembersMetadata.selectedModel })

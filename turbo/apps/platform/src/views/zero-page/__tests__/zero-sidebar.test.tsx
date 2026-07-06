@@ -24,11 +24,10 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { createMockAutomationView } from "../../../mocks/handlers/automations-store.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { reloadChatThreads$ } from "../../../signals/agent-chat.ts";
 import { pathname } from "../../../signals/location.ts";
 import {
-  chatThreadVirtualScrollTarget$,
-  setChatThreadVirtualScrollTarget$,
+  CHAT_THREAD_VIRTUAL_ROW_HEIGHT,
+  getChatThreadVirtualListScrollMargin,
 } from "../../../signals/zero-page/zero-sidebar-state.ts";
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
 
@@ -151,6 +150,7 @@ function mockChatThreadSnapshot(threads: () => readonly SidebarThread[]): void {
           updatedAt: thread.updatedAt,
           pinnedAt: thread.pinnedAt ?? null,
           renamedAt: thread.renamedAt ?? null,
+          selectedModel: null,
         };
       }),
       latestEventId: null,
@@ -273,9 +273,6 @@ function openChatListMenu(): void {
 function mockSidebarThreadStory(
   firstPageThreads: SidebarThread[],
   extraThreads: SidebarThread[] = [],
-  options: {
-    readonly detailTitles?: Readonly<Record<string, string | null>>;
-  } = {},
 ): {
   threads: SidebarThread[];
 } {
@@ -285,24 +282,11 @@ function mockSidebarThreadStory(
     return [...threads, ...extraThreads];
   });
 
-  context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
-    const thread = [...threads, ...extraThreads].find((candidate) => {
-      return candidate.id === params.id;
-    });
-    const detailTitle = Object.hasOwn(options.detailTitles ?? {}, params.id)
-      ? options.detailTitles?.[params.id]
-      : thread?.title;
+  context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
     return respond(200, {
-      id: params.id,
-      title: detailTitle ?? null,
-      agentId: thread?.agent.id ?? AGENT_ID,
-      activeRunIds: [],
-      draftContent: null,
-      draftAttachments: null,
-      createdAt: "2026-03-10T00:00:00Z",
-      updatedAt: "2026-03-10T00:00:00Z",
-      lastMessageAt: thread?.updatedAt ?? "2026-03-10T00:00:00Z",
-      pinnedAt: thread?.pinnedAt ?? null,
+      lastReadAt: null,
+      computerUseHostId: null,
+      codexServiceTier: null,
     });
   });
   context.mocks.api(chatThreadPinContract.pin, ({ params, respond }) => {
@@ -369,17 +353,11 @@ describe("zero sidebar", () => {
         createdAt: "2026-03-10T00:00:00Z",
       });
     });
-    context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
+    context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
-        id: params.id,
-        title:
-          params.id === EXISTING_THREAD_ID ? "Existing conversation" : null,
-        agentId: AGENT_ID,
-        activeRunIds: [],
-        draftContent: null,
-        draftAttachments: null,
-        createdAt: "2026-03-10T00:00:00Z",
-        updatedAt: "2026-03-10T00:00:00Z",
+        lastReadAt: null,
+        computerUseHostId: null,
+        codexServiceTier: null,
       });
     });
 
@@ -423,6 +401,7 @@ describe("zero sidebar", () => {
             updatedAt: "2026-03-10T00:00:00Z",
             pinnedAt: null,
             renamedAt: null,
+            selectedModel: null,
           },
         ],
         latestEventId: null,
@@ -500,19 +479,11 @@ describe("zero sidebar", () => {
         createdAt: "2026-03-12T12:00:00Z",
       });
     });
-    context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
-      const thread = serverOrderedThreads.find((candidate) => {
-        return candidate.id === params.id;
-      });
+    context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
-        id: params.id,
-        title: thread?.title ?? null,
-        agentId: AGENT_ID,
-        activeRunIds: [],
-        draftContent: null,
-        draftAttachments: null,
-        createdAt: thread?.createdAt ?? "2026-03-12T12:00:00Z",
-        updatedAt: thread?.updatedAt ?? "2026-03-12T12:00:00Z",
+        lastReadAt: null,
+        computerUseHostId: null,
+        codexServiceTier: null,
       });
     });
 
@@ -579,17 +550,11 @@ describe("zero sidebar", () => {
     context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
       return respond(200, { runs: [] });
     });
-    context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
+    context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
-        id: params.id,
-        title:
-          params.id === EXISTING_THREAD_ID ? "Existing conversation" : null,
-        agentId: AGENT_ID,
-        activeRunIds: [],
-        draftContent: null,
-        draftAttachments: null,
-        createdAt: "2026-03-10T00:00:00Z",
-        updatedAt: "2026-03-10T00:00:00Z",
+        lastReadAt: null,
+        computerUseHostId: null,
+        codexServiceTier: null,
       });
     });
 
@@ -640,21 +605,11 @@ describe("zero sidebar", () => {
     mockChatThreadSnapshot(() => {
       return allThreads;
     });
-    context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
-      const thread = allThreads.find((candidate) => {
-        return candidate.id === params.id;
-      });
+    context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
-        id: params.id,
-        title: thread?.title ?? null,
-        agentId: thread?.agent.id ?? AGENT_ID,
-        activeRunIds: [],
-        draftContent: null,
-        draftAttachments: null,
-        createdAt: "2026-03-10T00:00:00Z",
-        updatedAt: "2026-03-10T00:00:00Z",
-        lastMessageAt: thread?.updatedAt ?? "2026-03-10T00:00:00Z",
-        pinnedAt: thread?.pinnedAt ?? null,
+        lastReadAt: null,
+        computerUseHostId: null,
+        codexServiceTier: null,
       });
     });
     context.mocks.api(chatThreadsContract.unreads, ({ respond }) => {
@@ -741,23 +696,11 @@ describe("zero sidebar", () => {
     mockChatThreadSnapshot(() => {
       return [pinnedCurrentThread, pinnedThread, unpinnedThread];
     });
-    context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
-      const thread = [pinnedCurrentThread, pinnedThread, unpinnedThread].find(
-        (candidate) => {
-          return candidate.id === params.id;
-        },
-      );
+    context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
-        id: params.id,
-        title: thread?.title ?? null,
-        agentId: thread?.agent.id ?? AGENT_ID,
-        activeRunIds: [],
-        draftContent: null,
-        draftAttachments: null,
-        createdAt: "2026-03-10T00:00:00Z",
-        updatedAt: "2026-03-10T00:00:00Z",
-        lastMessageAt: thread?.updatedAt ?? "2026-03-10T00:00:00Z",
-        pinnedAt: thread?.pinnedAt ?? null,
+        lastReadAt: null,
+        computerUseHostId: null,
+        codexServiceTier: null,
       });
     });
     context.mocks.api(chatThreadsContract.unreads, ({ respond }) => {
@@ -806,6 +749,7 @@ describe("zero sidebar", () => {
                     id: "incident-message-1",
                     role: "assistant",
                     content: "Incident update",
+                    runLifecycleEvent: "completed",
                     createdAt: "2026-03-10T00:05:00Z",
                   },
                 ]
@@ -820,7 +764,7 @@ describe("zero sidebar", () => {
         markReadCalls += 1;
         await markReadDeferred.promise;
         return respond(200, {
-          lastReadMessageId: "incident-message-1",
+          lastReadAt: "2026-03-10T00:05:00Z",
           unreads: [],
         });
       },
@@ -917,11 +861,6 @@ describe("zero sidebar", () => {
         createThread(INCIDENT_THREAD_ID, "Incident notes"),
       ],
       [],
-      {
-        detailTitles: {
-          [EXISTING_THREAD_ID]: "Thread data release plan",
-        },
-      },
     );
 
     setupSidebarPage({
@@ -988,11 +927,6 @@ describe("zero sidebar", () => {
         createThread(INCIDENT_THREAD_ID, "Incident notes"),
       ],
       [],
-      {
-        detailTitles: {
-          [EXISTING_THREAD_ID]: "Thread data release plan",
-        },
-      },
     );
 
     setupSidebarPage({
@@ -1203,69 +1137,72 @@ describe("zero sidebar", () => {
     });
 
     await waitFor(() => {
+      const scrollArea = screen.getByTestId("sidebar-scroll-area");
       expect(
         screen.getByTestId("sidebar-chat-threads-virtual-list"),
       ).toBeInTheDocument();
       expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
+      expect(scrollArea.scrollTop).toBeGreaterThan(0);
     });
   });
 
-  it("retains a virtual scroll target while the rendered chat list is stale", async () => {
+  it("aligns the current virtualized chat row with the sidebar scroll area top on page setup", async () => {
     prepareDefaultAgent();
-    let threads = Array.from({ length: 24 }, (_, index) => {
+    const leadingThreads = Array.from({ length: 24 }, (_, index) => {
       return createThread(
-        `b4000000-0000-4000-a000-${String(index).padStart(12, "0")}`,
-        `Cached chat ${index + 1}`,
+        `b3100000-0000-4000-a000-${String(index).padStart(12, "0")}`,
+        `Leading precise chat ${index + 1}`,
       );
     });
-    const delayedThread = createThread(RESEARCH_THREAD_ID, "Delayed release");
-    mockChatThreadSnapshot(() => {
-      return threads;
-    });
-    context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
-      const thread = [...threads, delayedThread].find((candidate) => {
-        return candidate.id === params.id;
-      });
-      return respond(200, {
-        id: params.id,
-        title: thread?.title ?? null,
-        agentId: thread?.agent.id ?? AGENT_ID,
-        activeRunIds: [],
-        draftContent: null,
-        draftAttachments: null,
-        createdAt: "2026-03-10T00:00:00Z",
-        updatedAt: "2026-03-10T00:00:00Z",
-        lastMessageAt: thread?.updatedAt ?? "2026-03-10T00:00:00Z",
-        pinnedAt: thread?.pinnedAt ?? null,
-      });
-    });
+    mockSidebarThreadStory([
+      ...leadingThreads,
+      createThread(EXISTING_THREAD_ID, "Release plan"),
+      createThread(AUTOMATION_THREAD_ID, "Scheduled launch"),
+    ]);
 
     setupSidebarPage({
       context,
-      path: `/agents/${AGENT_ID}/chat`,
+      path: `/chats/${EXISTING_THREAD_ID}`,
     });
 
     await waitFor(() => {
-      expect(
-        screen.getByTestId("sidebar-chat-threads-virtual-list"),
-      ).toBeInTheDocument();
-      expect(within(sidebar()).getByText("Cached chat 1")).toBeInTheDocument();
+      expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
     });
 
-    context.store.set(setChatThreadVirtualScrollTarget$, RESEARCH_THREAD_ID);
-    await Promise.resolve();
-    expect(context.store.get(chatThreadVirtualScrollTarget$)).toBe(
-      RESEARCH_THREAD_ID,
+    const scrollArea = screen.getByTestId("sidebar-scroll-area");
+    const virtualList = screen.getByTestId("sidebar-chat-threads-virtual-list");
+    const currentRow = threadLinkByTitle("Release plan").closest(
+      '[data-testid="sidebar-chat-thread-virtual-row"]',
+    );
+    if (!(currentRow instanceof HTMLElement)) {
+      throw new Error("Release plan virtual row not found");
+    }
+    const currentIndex = Number(currentRow.dataset.index);
+    const scrollMargin = getChatThreadVirtualListScrollMargin(
+      scrollArea,
+      virtualList,
     );
 
-    threads = [...threads, delayedThread];
-    context.store.set(reloadChatThreads$);
+    expect(scrollArea.scrollTop).toBe(
+      scrollMargin + currentIndex * CHAT_THREAD_VIRTUAL_ROW_HEIGHT,
+    );
+  });
 
-    await waitFor(() => {
-      expect(
-        within(sidebar()).getByText("Delayed release"),
-      ).toBeInTheDocument();
+  it("computes the virtual chat list margin relative to the scroll viewport", () => {
+    const scrollViewport = document.createElement("div");
+    const virtualList = document.createElement("div");
+    Object.defineProperty(scrollViewport, "offsetTop", {
+      configurable: true,
+      value: 8,
     });
+    Object.defineProperty(virtualList, "offsetTop", {
+      configurable: true,
+      value: 88,
+    });
+
+    expect(
+      getChatThreadVirtualListScrollMargin(scrollViewport, virtualList),
+    ).toBe(80);
   });
 
   it("cancels and confirms deleting a regular chat from the sidebar", async () => {
@@ -2064,6 +2001,80 @@ describe("zero sidebar", () => {
     });
   });
 
+  it("keeps the old collapsed manage navigation when the icon switch is disabled", async () => {
+    prepareDefaultAgent();
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.SidebarManageIconCollapse]: false,
+        [FeatureSwitchKey.WorkflowAutomation]: true,
+      },
+    });
+
+    const nav = await waitFor(() => {
+      const current = sidebar();
+      expect(within(current).getByText("Agents")).toBeInTheDocument();
+      return current;
+    });
+
+    click(within(nav).getByText("Manage"));
+
+    await waitFor(() => {
+      expect(within(nav).getByText("Manage")).toBeInTheDocument();
+      expect(
+        within(nav).queryByLabelText("Expand manage section"),
+      ).not.toBeInTheDocument();
+      expect(within(nav).queryByText("Agents")).not.toBeInTheDocument();
+    });
+  });
+
+  it("shows icon-only manage navigation when collapsed behind the feature switch", async () => {
+    prepareDefaultAgent();
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.SidebarManageIconCollapse]: true,
+        [FeatureSwitchKey.WorkflowAutomation]: true,
+      },
+    });
+
+    const nav = await waitFor(() => {
+      const current = sidebar();
+      expect(within(current).getByText("Agents")).toBeInTheDocument();
+      expect(within(current).getByText("Workflows")).toBeInTheDocument();
+      expect(within(current).getByText("Connectors")).toBeInTheDocument();
+      return current;
+    });
+
+    click(within(nav).getByText("Manage"));
+
+    await waitFor(() => {
+      expect(within(nav).queryByText("Manage")).not.toBeInTheDocument();
+      expect(within(nav).queryByText("Agents")).not.toBeInTheDocument();
+      expect(within(nav).queryByText("Workflows")).not.toBeInTheDocument();
+      expect(within(nav).queryByText("Connectors")).not.toBeInTheDocument();
+      expect(within(nav).getByLabelText("Agents")).toBeInTheDocument();
+      expect(within(nav).getByLabelText("Workflows")).toBeInTheDocument();
+      expect(within(nav).getByLabelText("Connectors")).toBeInTheDocument();
+      expect(
+        within(nav).getByLabelText("Expand manage section"),
+      ).toBeInTheDocument();
+    });
+
+    click(within(nav).getByLabelText("Expand manage section"));
+
+    await waitFor(() => {
+      expect(within(nav).getByText("Manage")).toBeInTheDocument();
+      expect(within(nav).getByText("Agents")).toBeInTheDocument();
+      expect(within(nav).getByText("Workflows")).toBeInTheDocument();
+      expect(within(nav).getByText("Connectors")).toBeInTheDocument();
+    });
+  });
+
   it("shows workflows in the sidebar manage navigation when enabled", async () => {
     prepareDefaultAgent();
 
@@ -2102,7 +2113,7 @@ describe("zero sidebar", () => {
     });
 
     expect(within(nav).getByText("Agents")).toBeInTheDocument();
-    expect(within(nav).getByText("Automations")).toBeInTheDocument();
+    expect(within(nav).queryByText("Automations")).not.toBeInTheDocument();
     expect(within(nav).queryByText("Workflows")).not.toBeInTheDocument();
   });
 });

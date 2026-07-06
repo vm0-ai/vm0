@@ -1,5 +1,127 @@
 # Changelog
 
+## [9.223.21](https://github.com/vm0-ai/vm0/compare/cli-v9.223.20...cli-v9.223.21) (2026-07-06)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.155.4
+    * @vm0/core bumped to 8.401.5
+
+## [9.223.20](https://github.com/vm0-ai/vm0/compare/cli-v9.223.19...cli-v9.223.20) (2026-07-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.155.3
+    * @vm0/core bumped to 8.401.4
+
+## [9.223.19](https://github.com/vm0-ai/vm0/compare/cli-v9.223.18...cli-v9.223.19) (2026-07-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.155.2
+    * @vm0/core bumped to 8.401.3
+
+## [9.223.18](https://github.com/vm0-ai/vm0/compare/cli-v9.223.17...cli-v9.223.18) (2026-07-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.155.1
+    * @vm0/core bumped to 8.401.2
+
+## [9.223.17](https://github.com/vm0-ai/vm0/compare/cli-v9.223.16...cli-v9.223.17) (2026-07-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.155.0
+    * @vm0/core bumped to 8.401.1
+
+## [9.223.16](https://github.com/vm0-ai/vm0/compare/cli-v9.223.15...cli-v9.223.16) (2026-07-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.154.3
+    * @vm0/connectors bumped to 1.138.0
+    * @vm0/core bumped to 8.401.0
+
+## [9.223.15](https://github.com/vm0-ai/vm0/compare/cli-v9.223.14...cli-v9.223.15) (2026-07-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.154.2
+    * @vm0/connectors bumped to 1.137.0
+    * @vm0/core bumped to 8.400.0
+
+## [9.223.14](https://github.com/vm0-ai/vm0/compare/cli-v9.223.13...cli-v9.223.14) (2026-07-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.154.1
+    * @vm0/connectors bumped to 1.136.0
+    * @vm0/core bumped to 8.399.7
+
+## [9.223.13](https://github.com/vm0-ai/vm0/compare/cli-v9.223.12...cli-v9.223.13) (2026-07-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.154.0
+    * @vm0/core bumped to 8.399.6
+
+## [9.223.12](https://github.com/vm0-ai/vm0/compare/cli-v9.223.11...cli-v9.223.12) (2026-07-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.153.6
+    * @vm0/core bumped to 8.399.5
+
+## [9.223.11](https://github.com/vm0-ai/vm0/compare/cli-v9.223.10...cli-v9.223.11) (2026-07-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.399.4
+
+## [9.223.10](https://github.com/vm0-ai/vm0/compare/cli-v9.223.9...cli-v9.223.10) (2026-07-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.153.5
+    * @vm0/core bumped to 8.399.3
+
 ## [9.223.9](https://github.com/vm0-ai/vm0/compare/cli-v9.223.8...cli-v9.223.9) (2026-07-04)
 
 

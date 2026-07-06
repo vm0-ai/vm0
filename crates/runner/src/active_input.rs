@@ -1,5 +1,4 @@
 use std::io::{self, Write};
-use std::path::PathBuf;
 
 use crate::ids::RunId;
 use crate::local_queue::{ActiveInputEntry, LocalQueue};
@@ -59,20 +58,20 @@ pub(crate) fn active_input_payload_len(text: &str) -> Result<usize, serde_json::
     Ok(counter.len())
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone)]
 pub(crate) enum ActiveInputSource {
     LocalQueue(LocalQueueActiveInputSource),
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone)]
 pub(crate) struct LocalQueueActiveInputSource {
-    pub(crate) group_dir: PathBuf,
+    pub(crate) queue: LocalQueue,
     pub(crate) run_id: RunId,
 }
 
 impl ActiveInputSource {
-    pub(crate) fn local_queue(group_dir: PathBuf, run_id: RunId) -> Self {
-        Self::LocalQueue(LocalQueueActiveInputSource { group_dir, run_id })
+    pub(crate) fn local_queue(queue: LocalQueue, run_id: RunId) -> Self {
+        Self::LocalQueue(LocalQueueActiveInputSource { queue, run_id })
     }
 
     pub(crate) fn read_entries_from_sequence_sync(
@@ -80,7 +79,8 @@ impl ActiveInputSource {
         min_sequence: u64,
     ) -> Vec<ActiveInputEntry> {
         match self {
-            Self::LocalQueue(source) => LocalQueue::new(source.group_dir.clone())
+            Self::LocalQueue(source) => source
+                .queue
                 .read_active_input_entries_from_sequence_sync(source.run_id, min_sequence),
         }
     }

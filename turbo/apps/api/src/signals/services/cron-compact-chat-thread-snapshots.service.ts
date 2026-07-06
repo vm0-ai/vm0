@@ -33,6 +33,7 @@ function toApiEvent(row: {
   readonly chatThreadId: string;
   readonly agentComposeId: string;
   readonly title: string | null;
+  readonly selectedModel: string | null;
   readonly createdAt: Date;
 }): ChatThreadEvent {
   return {
@@ -41,6 +42,7 @@ function toApiEvent(row: {
     chatThreadId: row.chatThreadId,
     agentId: row.agentComposeId,
     title: row.title,
+    selectedModel: row.selectedModel,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -64,17 +66,28 @@ function compareThreadOrder(
 function applyChatThreadEvent(
   threads: Map<string, ChatThreadSnapshotProjection>,
   event: ChatThreadEvent,
+  pendingSelectedModelUpdates: Map<string, ChatThreadEvent>,
 ) {
   if (event.kind === "created") {
+    const pendingSelectedModelUpdate = pendingSelectedModelUpdates.get(
+      event.chatThreadId,
+    );
+    pendingSelectedModelUpdates.delete(event.chatThreadId);
+    const selectedModelUpdate =
+      pendingSelectedModelUpdate &&
+      pendingSelectedModelUpdate.createdAt.localeCompare(event.createdAt) >= 0
+        ? pendingSelectedModelUpdate
+        : null;
     threads.set(event.chatThreadId, {
       id: event.chatThreadId,
       agentId: event.agentId,
       title: event.title,
       sortAt: event.createdAt,
       createdAt: event.createdAt,
-      updatedAt: event.createdAt,
+      updatedAt: selectedModelUpdate?.createdAt ?? event.createdAt,
       pinnedAt: null,
       renamedAt: null,
+      selectedModel: selectedModelUpdate?.selectedModel ?? event.selectedModel,
     });
     return;
   }
@@ -86,6 +99,9 @@ function applyChatThreadEvent(
 
   const thread = threads.get(event.chatThreadId);
   if (!thread) {
+    if (event.kind === "model_selection_updated") {
+      pendingSelectedModelUpdates.set(event.chatThreadId, event);
+    }
     return;
   }
 
@@ -117,6 +133,15 @@ function applyChatThreadEvent(
     return;
   }
 
+  if (event.kind === "model_selection_updated") {
+    threads.set(event.chatThreadId, {
+      ...thread,
+      selectedModel: event.selectedModel,
+      updatedAt: event.createdAt,
+    });
+    return;
+  }
+
   threads.set(event.chatThreadId, {
     ...thread,
     sortAt: event.createdAt,
@@ -133,10 +158,14 @@ function compactSnapshot(
 } {
   const threads = new Map<string, ChatThreadSnapshotProjection>();
   for (const thread of snapshot) {
-    threads.set(thread.id, { ...thread });
+    threads.set(thread.id, {
+      ...thread,
+      selectedModel: thread.selectedModel ?? null,
+    });
   }
+  const pendingSelectedModelUpdates = new Map<string, ChatThreadEvent>();
   for (const event of events) {
-    applyChatThreadEvent(threads, event);
+    applyChatThreadEvent(threads, event, pendingSelectedModelUpdates);
   }
 
   let removedDeletedAgentThreads = 0;
@@ -255,6 +284,7 @@ async function loadEventsAfterMarker(
       chatThreadId: chatThreadEvents.chatThreadId,
       agentComposeId: chatThreadEvents.agentComposeId,
       title: chatThreadEvents.title,
+      selectedModel: chatThreadEvents.selectedModel,
       createdAt: chatThreadEvents.createdAt,
     })
     .from(chatThreadEvents)

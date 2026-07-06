@@ -10,6 +10,7 @@ import {
   setupApp,
   type TestContext,
 } from "../../../../__tests__/test-helpers";
+import { createDeferredPromise } from "../../../utils";
 import { modelStatsContract } from "../../model-stats";
 import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
@@ -192,13 +193,13 @@ export function createOpsLogsApi(context: TestContext) {
      * `s3.send` call.
      */
     deferS3PutOnce(): { readonly resolve: () => void } {
-      let resolvePut = (): void => {};
-      const pending = new Promise<unknown>((resolve) => {
-        resolvePut = () => {
-          resolve({});
-        };
-      });
-      context.mocks.s3.send.mockReturnValueOnce(pending);
+      const pending = createDeferredPromise<unknown>(context.signal);
+      const resolvePut = (): void => {
+        if (!pending.settled()) {
+          pending.resolve({});
+        }
+      };
+      context.mocks.s3.send.mockReturnValueOnce(pending.promise);
       return { resolve: resolvePut };
     },
   };

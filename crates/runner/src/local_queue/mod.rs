@@ -10,7 +10,7 @@ pub(crate) use fs::{
     ensure_profile_jobs_dir, ensure_results_dir, ensure_run_inputs_dir, marker_file_exists,
     marker_path_occupied, open_private_new_file, private_file_has_content, read_private_file,
     validate_cancels_dir, validate_claims_dir, validate_group_dir, validate_inputs_dir,
-    validate_run_inputs_dir, write_private_file, write_private_marker,
+    validate_results_dir, validate_run_inputs_dir, write_private_file, write_private_marker,
 };
 pub(crate) use paths::{
     active_input_path, cancel_path, cancels_dir, claim_path, claims_dir, inputs_dir, job_path,

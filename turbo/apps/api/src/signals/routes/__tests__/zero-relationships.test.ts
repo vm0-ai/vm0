@@ -9,12 +9,17 @@ import { HttpResponse, http } from "msw";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
-import { now } from "../../../lib/time";
+import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
+import {
+  deleteRelationshipRowsForFixture$,
+  seedRelationshipRows$,
+  type RelationshipFixture,
+} from "./helpers/zero-relationships";
 import type { ApiTestUser } from "./helpers/api-bdd";
 import {
   createConnectorBddApi,
@@ -33,11 +38,13 @@ const connectorsApi = createConnectorBddApi(context);
 const GMAIL_TOPIC_NAME = "projects/vm0-ai-488909/topics/gmail-events";
 const CRON_SECRET = "test-cron-secret";
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+const DEFAULT_GMAIL_INTERNAL_DATE = String(
+  Date.parse("2026-01-02T03:04:05.000Z"),
+);
 
-interface RelationshipFixture {
-  readonly orgId: string;
-  readonly userId: string;
-}
+afterEach(() => {
+  clearMockNow();
+});
 
 function authHeaders() {
   return { authorization: "Bearer clerk-session" };
@@ -98,6 +105,8 @@ function configureGmailBackfillMocks(
     readonly from?: string;
     readonly labelIds?: readonly string[];
     readonly messageId?: string;
+    readonly internalDate?: string | null;
+    readonly dateHeader?: string;
     readonly subject?: string;
     readonly threadId?: string;
     readonly to?: readonly string[];
@@ -138,9 +147,16 @@ function configureGmailBackfillMocks(
           id: messageId,
           threadId,
           labelIds: args.labelIds ?? ["INBOX"],
+          internalDate:
+            args.internalDate === null
+              ? undefined
+              : (args.internalDate ?? DEFAULT_GMAIL_INTERNAL_DATE),
           payload: {
             mimeType: args.mimeType ?? "text/plain",
             headers: [
+              ...(args.dateHeader
+                ? [{ name: "Date", value: args.dateHeader }]
+                : []),
               {
                 name: "From",
                 value: args.from ?? "Customer Example <customer@example.com>",
@@ -230,13 +246,11 @@ async function seedRelationshipFixture(
     { orgId, userId, role: "admin" },
     context.signal,
   );
-  if (!enabled) {
-    await updateFeatureSwitchesForUser(
-      context,
-      { orgId, userId },
-      { [FeatureSwitchKey.RelationshipMemory]: false },
-    );
-  }
+  await updateFeatureSwitchesForUser(
+    context,
+    { orgId, userId },
+    { [FeatureSwitchKey.RelationshipMemory]: enabled },
+  );
   mocks.clerk.session(userId, orgId);
   return { orgId, userId };
 }
@@ -244,6 +258,7 @@ async function seedRelationshipFixture(
 async function deleteRelationshipFixture(
   fixture: RelationshipFixture,
 ): Promise<void> {
+  await store.set(deleteRelationshipRowsForFixture$, fixture, context.signal);
   await deleteFeatureSwitchesForUser(context, fixture);
 }
 
@@ -260,7 +275,16 @@ describe("GET /api/zero/relationships/*", () => {
       }),
       [200],
     );
-    expect(search.body).toStrictEqual({ relationships: [] });
+    expect(search.body).toStrictEqual({
+      relationships: [],
+      pagination: {
+        page: 1,
+        pageSize: 100,
+        total: 0,
+        totalPages: 1,
+        hasMore: false,
+      },
+    });
 
     const resolved = await accept(
       relationshipsClient().resolve({
@@ -286,6 +310,74 @@ describe("GET /api/zero/relationships/*", () => {
     expect(response.body.error.message).toBe(
       "Relationship memory is not enabled for this organization.",
     );
+  });
+
+  it("paginates relationship search with total counts and server-side filters", async () => {
+    const fixture = await track(seedRelationshipFixture());
+    await store.set(
+      seedRelationshipRows$,
+      { fixture, count: 105 },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const firstPage = await accept(
+      relationshipsClient().search({
+        headers: authHeaders(),
+        query: { page: 1, limit: 100 },
+      }),
+      [200],
+    );
+    expect(firstPage.body.relationships).toHaveLength(100);
+    expect(firstPage.body.relationships[0]?.entity.displayName).toBe(
+      "Relationship 001",
+    );
+    expect(firstPage.body.pagination).toStrictEqual({
+      page: 1,
+      pageSize: 100,
+      total: 105,
+      totalPages: 2,
+      hasMore: true,
+    });
+
+    const secondPage = await accept(
+      relationshipsClient().search({
+        headers: authHeaders(),
+        query: { page: 2, limit: 100 },
+      }),
+      [200],
+    );
+    expect(secondPage.body.relationships).toHaveLength(5);
+    expect(secondPage.body.relationships[0]?.entity.displayName).toBe(
+      "Relationship 101",
+    );
+    expect(secondPage.body.pagination).toStrictEqual({
+      page: 2,
+      pageSize: 100,
+      total: 105,
+      totalPages: 2,
+      hasMore: false,
+    });
+
+    const people = await accept(
+      relationshipsClient().search({
+        headers: authHeaders(),
+        query: { page: 1, limit: 100, entityType: "person" },
+      }),
+      [200],
+    );
+    expect(people.body.relationships).toHaveLength(53);
+    expect(people.body.pagination.total).toBe(53);
+
+    const openLoops = await accept(
+      relationshipsClient().search({
+        headers: authHeaders(),
+        query: { page: 1, limit: 100, itemKind: "open_loop" },
+      }),
+      [200],
+    );
+    expect(openLoops.body.relationships).toHaveLength(11);
+    expect(openLoops.body.pagination.total).toBe(11);
   });
 
   it("does not enqueue duplicate Gmail backfill messages twice", async () => {
@@ -402,6 +494,95 @@ describe("GET /api/zero/relationships/*", () => {
     ).toBeTruthy();
   });
 
+  it("uses the Gmail message time for relationship interaction dates", async () => {
+    const messageOccurredAt = "2026-02-03T04:05:06.000Z";
+    const jobRunAt = new Date("2026-05-06T07:08:09.000Z");
+    mockNow(jobRunAt);
+    const fixture = await track(seedRelationshipFixture());
+    const gmailEmail = `relationship-${randomUUID()}@example.com`;
+    configureGmailEnv();
+    configureGmailWatchMock();
+    configureGmailBackfillMocks(gmailEmail, {
+      internalDate: String(Date.parse(messageOccurredAt)),
+      dateHeader: "Fri, 01 Jan 2040 00:00:00 +0000",
+    });
+    await connectGmail(fixture, gmailEmail);
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    await accept(
+      relationshipsClient().gmailEnable({
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+
+    const drained = await accept(
+      cronClient().drain({
+        headers: cronHeaders(),
+      }),
+      [200],
+    );
+    expect(drained.body.processed).toBe(1);
+
+    const search = await accept(
+      relationshipsClient().search({
+        headers: authHeaders(),
+        query: { q: "customer" },
+      }),
+      [200],
+    );
+    const customer = search.body.relationships.find((relationship) => {
+      return relationship.entity.primaryEmail === "customer@example.com";
+    });
+    expect(customer?.lastInteractionAt).toBe(messageOccurredAt);
+    expect(customer?.recentInteractions[0]?.occurredAt).toBe(messageOccurredAt);
+    expect(customer?.lastInteractionAt).not.toBe(jobRunAt.toISOString());
+  });
+
+  it("does not create relationship memory when Gmail internalDate is unavailable", async () => {
+    const fixture = await track(seedRelationshipFixture());
+    const gmailEmail = `relationship-${randomUUID()}@example.com`;
+    configureGmailEnv();
+    configureGmailWatchMock();
+    configureGmailBackfillMocks(gmailEmail, {
+      internalDate: null,
+      dateHeader: "Fri, 01 Jan 2040 00:00:00 +0000",
+    });
+    await connectGmail(fixture, gmailEmail);
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    await accept(
+      relationshipsClient().gmailEnable({
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+
+    const drained = await accept(
+      cronClient().drain({
+        headers: cronHeaders(),
+      }),
+      [200],
+    );
+    expect(drained.body.backfill).toStrictEqual({
+      processed: 1,
+      failed: 0,
+      scanned: 1,
+      enqueued: 0,
+    });
+    expect(drained.body.processed).toBe(0);
+    expect(drained.body.relationshipsUpdated).toBe(0);
+
+    const search = await accept(
+      relationshipsClient().search({
+        headers: authHeaders(),
+        query: { q: "customer" },
+      }),
+      [200],
+    );
+    expect(search.body.relationships).toStrictEqual([]);
+  });
+
   it("restarts Gmail backfill across archived and sent mail without re-enqueueing processed messages", async () => {
     const fixture = await track(seedRelationshipFixture());
     const gmailEmail = `relationship-${randomUUID()}@example.com`;
@@ -501,6 +682,91 @@ describe("GET /api/zero/relationships/*", () => {
         enqueuedCount: 0,
       },
     });
+  });
+
+  it("stops and deletes a Gmail backfill job before restarting it", async () => {
+    const fixture = await track(seedRelationshipFixture());
+    const gmailEmail = `relationship-${randomUUID()}@example.com`;
+    configureGmailEnv();
+    configureGmailWatchMock();
+    await connectGmail(fixture, gmailEmail);
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const enabled = await accept(
+      relationshipsClient().gmailEnable({
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+    expect(enabled.body).toMatchObject({
+      enabled: true,
+      watchEnabled: true,
+      backfill: { status: "pending" },
+    });
+
+    const stopped = await accept(
+      relationshipsClient().gmailStopBackfill({
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+    expect(stopped.body).toMatchObject({
+      enabled: true,
+      backfill: { status: "stopped" },
+    });
+
+    const drained = await accept(
+      cronClient().drain({
+        headers: cronHeaders(),
+      }),
+      [200],
+    );
+    expect(drained.body.backfill).toStrictEqual({
+      processed: 0,
+      failed: 0,
+      scanned: 0,
+      enqueued: 0,
+    });
+
+    const deleted = await accept(
+      relationshipsClient().gmailDeleteStoppedBackfill({
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+    expect(deleted.body).toMatchObject({
+      enabled: true,
+      backfill: { status: "idle", scannedCount: 0, enqueuedCount: 0 },
+    });
+
+    const restarted = await accept(
+      relationshipsClient().gmailBackfill({
+        headers: authHeaders(),
+        body: {
+          days: 180,
+          includeArchived: true,
+          includeSent: true,
+        },
+      }),
+      [200],
+    );
+    expect(restarted.body).toMatchObject({
+      enabled: true,
+      backfill: { status: "pending" },
+    });
+
+    await accept(
+      relationshipsClient().gmailStopBackfill({
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+    await accept(
+      relationshipsClient().gmailDeleteStoppedBackfill({
+        headers: authHeaders(),
+      }),
+      [200],
+    );
   });
 
   it("stores generated Gmail interaction summaries instead of raw body excerpts", async () => {

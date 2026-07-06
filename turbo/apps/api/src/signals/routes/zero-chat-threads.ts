@@ -42,6 +42,7 @@ import { zeroChatThreadsArtifactsSyncRoutes } from "./zero-chat-threads-artifact
 import { zeroChatThreadComputerUseHostRoutes } from "./zero-chat-threads-computer-use-host";
 import { zeroChatThreadCreateRoutes } from "./zero-chat-threads-create";
 import { zeroChatThreadDeleteRoutes } from "./zero-chat-threads-delete";
+import { zeroChatThreadDraftGetRoutes } from "./zero-chat-threads-draft-get";
 import { zeroChatThreadGetRoutes } from "./zero-chat-threads-get";
 import { zeroChatThreadsHtmlArtifactEditSnapshotRoutes } from "./zero-chat-threads-html-artifact-edit-snapshot";
 import { zeroChatThreadMarkAgentReadRoutes } from "./zero-chat-threads-mark-agent-read";
@@ -420,6 +421,7 @@ export const zeroChatThreadRoutes: readonly RouteEntry[] = [
   ...zeroChatThreadComputerUseHostRoutes,
   ...zeroChatThreadCreateRoutes,
   ...zeroChatThreadDeleteRoutes,
+  ...zeroChatThreadDraftGetRoutes,
   ...zeroChatThreadGetRoutes,
   ...zeroChatThreadMarkAgentReadRoutes,
   ...zeroChatThreadMarkReadRoutes,

@@ -2,6 +2,7 @@ import { command, computed, type Computed } from "ccstate";
 import {
   type ChatSearchMessage,
   type ChatSearchResult,
+  type ChatThreadDraft,
   type ChatThreadArtifactRun,
   type ChatThreadDetail,
   type CodexServiceTier,
@@ -11,6 +12,12 @@ import {
   persistedAttachmentSchema,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
+import {
+  modelProviderCredentialScopeSchema,
+  modelProviderTypeSchema,
+  type ModelProviderCredentialScope,
+  type ModelProviderType,
+} from "@vm0/api-contracts/contracts/model-providers";
 import {
   type HostedArtifactKind,
   hostedArtifactKindSchema,
@@ -28,6 +35,7 @@ import {
   type ChatMessageGoalSnapshot,
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { threadGoals } from "@vm0/db/schema/thread-goal";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { automations } from "@vm0/db/schema/automation";
@@ -134,14 +142,12 @@ type ChatThreadRow = {
   readonly draftContent: string | null;
   readonly draftAttachments: readonly PersistedAttachment[] | null;
   readonly modelProviderId: string | null;
-  readonly modelProviderType: string | null;
-  readonly modelProviderCredentialScope: string | null;
-  readonly selectedModel: string | null;
+  readonly modelProviderType: ModelProviderType | null;
+  readonly modelProviderCredentialScope: ModelProviderCredentialScope | null;
   readonly codexServiceTier: CodexServiceTier | null;
   readonly computerUseHostId: string | null;
   readonly orgId: string | null;
   readonly lastReadAt: Date | null;
-  readonly lastReadMessageId: string | null;
   readonly lastMessageAt: Date;
   readonly pinnedAt: Date | null;
   readonly renamedAt: Date | null;
@@ -149,11 +155,10 @@ type ChatThreadRow = {
   readonly updatedAt: Date;
 };
 
-type ChatThreadModelPin = {
-  readonly modelProviderId: string | null;
-  readonly modelProviderType: string | null;
-  readonly modelProviderCredentialScope: string | null;
-  readonly selectedModel: string | null;
+type ChatThreadDetailRow = {
+  readonly lastReadAt: Date | null;
+  readonly computerUseHostId: string | null;
+  readonly codexServiceTier: CodexServiceTier | null;
 };
 
 function effectiveChatMessageRunId() {
@@ -393,11 +398,12 @@ function ownedChatThread(
         draftContent: chatThreads.draftContent,
         draftAttachments: chatThreads.draftAttachments,
         computerUseHostId: chatThreads.computerUseHostId,
-        selectedModel: chatThreads.selectedModel,
+        modelProviderId: chatThreads.modelProviderId,
+        modelProviderType: chatThreads.modelProviderType,
+        modelProviderCredentialScope: chatThreads.modelProviderCredentialScope,
         codexServiceTier: chatThreads.codexServiceTier,
         orgId: zeroAgents.orgId,
         lastReadAt: chatThreads.lastReadAt,
-        lastReadMessageId: chatThreads.lastReadMessageId,
         lastMessageAt: chatThreads.lastMessageAt,
         pinnedAt: chatThreads.pinnedAt,
         renamedAt: chatThreads.renamedAt,
@@ -423,14 +429,16 @@ function ownedChatThread(
         .nullable()
         .parse(thread.draftAttachments ?? null),
       computerUseHostId: thread.computerUseHostId,
-      modelProviderId: null,
-      modelProviderType: null,
-      modelProviderCredentialScope: null,
-      selectedModel: thread.selectedModel ?? null,
+      modelProviderId: thread.modelProviderId,
+      modelProviderType: modelProviderTypeSchema
+        .nullable()
+        .parse(thread.modelProviderType),
+      modelProviderCredentialScope: modelProviderCredentialScopeSchema
+        .nullable()
+        .parse(thread.modelProviderCredentialScope),
       codexServiceTier: thread.codexServiceTier ?? null,
       orgId: thread.orgId ?? null,
-      lastReadAt: thread.lastReadAt ?? null,
-      lastReadMessageId: thread.lastReadMessageId ?? null,
+      lastReadAt: thread.lastReadAt,
       lastMessageAt: thread.lastMessageAt,
       pinnedAt: thread.pinnedAt ?? null,
       renamedAt: thread.renamedAt ?? null,
@@ -440,54 +448,22 @@ function ownedChatThread(
   });
 }
 
-function firstRunModelPinForThread(
-  threadId: string,
-): Computed<Promise<ChatThreadModelPin | null>> {
-  return computed(async (get): Promise<ChatThreadModelPin | null> => {
-    const [run] = await get(db$)
-      .select({ selectedModel: zeroRuns.selectedModel })
-      .from(chatMessages)
-      .innerJoin(zeroRuns, eq(zeroRuns.id, chatMessages.runId))
-      .where(
-        and(
-          eq(chatMessages.chatThreadId, threadId),
-          eq(chatMessages.role, "user"),
-          isNotNull(chatMessages.runId),
-          isNotNull(zeroRuns.selectedModel),
-        ),
-      )
-      .orderBy(asc(chatMessages.createdAt), asc(chatMessages.id))
-      .limit(1);
-
-    if (!run?.selectedModel) {
-      return null;
-    }
-    return {
-      modelProviderId: null,
-      modelProviderType: null,
-      modelProviderCredentialScope: null,
-      selectedModel: run.selectedModel,
-    };
-  });
-}
-
-function effectiveModelFirstThreadPin(params: {
-  readonly thread: ChatThreadRow;
+export function zeroChatThreadDraft(args: {
+  readonly threadId: string;
   readonly userId: string;
-}): Computed<Promise<ChatThreadModelPin | null>> {
-  return computed(async (get): Promise<ChatThreadModelPin | null> => {
-    if (params.thread.selectedModel !== null) {
-      return {
-        modelProviderId: null,
-        modelProviderType: null,
-        modelProviderCredentialScope: null,
-        selectedModel: params.thread.selectedModel,
-      };
-    }
-    if (!params.thread.orgId) {
+}): Computed<Promise<ChatThreadDraft | null>> {
+  return computed(async (get): Promise<ChatThreadDraft | null> => {
+    const thread = await get(ownedChatThread(args.threadId, args.userId));
+    if (!thread) {
       return null;
     }
-    return await get(firstRunModelPinForThread(params.thread.id));
+
+    return {
+      draftContent: thread.draftContent,
+      draftAttachments: thread.draftAttachments
+        ? [...thread.draftAttachments]
+        : null,
+    };
   });
 }
 
@@ -630,14 +606,7 @@ function toPagedMessage(
   });
 }
 
-// Single zero_runs JOIN agent_runs scan used to derive activeRunIds in JS,
-// paying the join cost once on the hot chat-thread detail path. Rows are
-// ordered newest-first.
 const ACTIVE_RUN_STATUSES = ["queued", "pending", "running"] as const;
-
-function isActiveRunStatus(status: string): boolean {
-  return (ACTIVE_RUN_STATUSES as readonly string[]).includes(status);
-}
 
 function activeRunStatusSqlList() {
   return sql.join(
@@ -658,37 +627,40 @@ function noActiveRunsForCurrentThreadCondition() {
   )`;
 }
 
-interface ThreadRunSummaryRow {
-  readonly id: string;
-  readonly status: string;
+function noActiveGoalsForCurrentThreadCondition() {
+  return sql<boolean>`NOT EXISTS (
+    SELECT 1
+    FROM ${threadGoals}
+    WHERE ${threadGoals.chatThreadId} = ${chatThreads.id}
+      AND ${threadGoals.status} = 'active'
+  )`;
 }
 
-function threadRunSummaries(
+function ownedChatThreadDetail(
   threadId: string,
-): Computed<Promise<readonly ThreadRunSummaryRow[]>> {
-  return computed(async (get): Promise<readonly ThreadRunSummaryRow[]> => {
-    return await get(db$)
+  userId: string,
+): Computed<Promise<ChatThreadDetailRow | null>> {
+  return computed(async (get): Promise<ChatThreadDetailRow | null> => {
+    const [thread] = await get(db$)
       .select({
-        id: zeroRuns.id,
-        status: agentRuns.status,
+        lastReadAt: chatThreads.lastReadAt,
+        computerUseHostId: chatThreads.computerUseHostId,
+        codexServiceTier: chatThreads.codexServiceTier,
       })
-      .from(zeroRuns)
-      .innerJoin(agentRuns, eq(zeroRuns.id, agentRuns.id))
-      .where(eq(zeroRuns.chatThreadId, threadId))
-      .orderBy(desc(agentRuns.createdAt), desc(agentRuns.id));
-  });
-}
+      .from(chatThreads)
+      .where(and(eq(chatThreads.id, threadId), eq(chatThreads.userId, userId)))
+      .limit(1);
 
-function pickActiveRunIds(
-  rows: readonly ThreadRunSummaryRow[],
-): readonly string[] {
-  const active: string[] = [];
-  for (const row of rows) {
-    if (isActiveRunStatus(row.status)) {
-      active.push(row.id);
+    if (!thread) {
+      return null;
     }
-  }
-  return active;
+
+    return {
+      lastReadAt: thread.lastReadAt,
+      computerUseHostId: thread.computerUseHostId,
+      codexServiceTier: thread.codexServiceTier ?? null,
+    };
+  });
 }
 
 export function zeroChatThreadDetail(args: {
@@ -696,42 +668,20 @@ export function zeroChatThreadDetail(args: {
   readonly userId: string;
 }): Computed<Promise<ChatThreadDetail | null>> {
   return computed(async (get): Promise<ChatThreadDetail | null> => {
-    const thread = await get(ownedChatThread(args.threadId, args.userId));
+    const thread = await get(ownedChatThreadDetail(args.threadId, args.userId));
     if (!thread) {
       return null;
     }
 
-    const [runSummaries, modelPin] = await Promise.all([
-      get(threadRunSummaries(args.threadId)),
-      get(effectiveModelFirstThreadPin({ thread, userId: args.userId })),
-    ]);
     return {
-      id: thread.id,
-      title: thread.title,
-      agentId: thread.agentComposeId,
-      lastReadMessageId: thread.lastReadMessageId,
       lastReadAt: thread.lastReadAt?.toISOString() ?? null,
-      lastMessageAt: thread.lastMessageAt.toISOString(),
-      activeRunIds: [...pickActiveRunIds(runSummaries)],
-      createdAt: thread.createdAt.toISOString(),
-      updatedAt: thread.updatedAt.toISOString(),
-      pinnedAt: thread.pinnedAt?.toISOString() ?? null,
-      draftContent: thread.draftContent,
-      draftAttachments: thread.draftAttachments
-        ? [...thread.draftAttachments]
-        : null,
       computerUseHostId: thread.computerUseHostId,
-      modelProviderId: null,
-      modelProviderType: null,
-      modelProviderCredentialScope: null,
-      selectedModel: modelPin?.selectedModel ?? thread.selectedModel,
       codexServiceTier: thread.codexServiceTier,
-      renamedAt: thread.renamedAt?.toISOString() ?? null,
     };
   });
 }
 
-function lastVisibleMessageSubquery(db: Pick<Db, "select">) {
+function lastRunFinishMessageSubquery(db: Pick<Db, "select">) {
   return db
     .select({
       id: chatMessages.id,
@@ -741,8 +691,7 @@ function lastVisibleMessageSubquery(db: Pick<Db, "select">) {
     .where(
       and(
         eq(chatMessages.chatThreadId, chatThreads.id),
-        visibleChatMessageCondition(),
-        excludeGoalMarkerCondition(),
+        isNotNull(chatMessages.runLifecycleEvent),
       ),
     )
     .orderBy(desc(chatMessages.createdAt), desc(chatMessages.id))
@@ -752,9 +701,8 @@ function lastVisibleMessageSubquery(db: Pick<Db, "select">) {
 
 /**
  * The user's unread threads under an agent, each with the creation time of
- * the latest visible message — the one that made the thread unread. A thread
- * is unread when it has at least one visible message and the read cursor
- * (`lastReadMessageId`) doesn't point at the latest one.
+ * the latest run-finish marker. A thread is unread only when it has at least
+ * one run-finish marker and that marker is newer than the read watermark.
  */
 export function zeroChatThreadUnreads(args: {
   readonly userId: string;
@@ -762,27 +710,29 @@ export function zeroChatThreadUnreads(args: {
 }): Computed<Promise<readonly { threadId: string; unreadAt: string }[]>> {
   return computed(async (get) => {
     const db = get(db$);
-    const lastMessage = lastVisibleMessageSubquery(db);
+    const lastRunFinish = lastRunFinishMessageSubquery(db);
     const rows = await db
       .select({
         threadId: chatThreads.id,
-        unreadAt: lastMessage.createdAt,
+        unreadAt: lastRunFinish.createdAt,
       })
       .from(chatThreads)
-      .leftJoinLateral(lastMessage, sql`true`)
+      .leftJoinLateral(lastRunFinish, sql`true`)
       .where(
         and(
           eq(chatThreads.userId, args.userId),
           eq(chatThreads.agentComposeId, args.agentComposeId),
-          isNotNull(lastMessage.id),
+          isNotNull(lastRunFinish.id),
           or(
-            isNull(chatThreads.lastReadMessageId),
-            sql`${chatThreads.lastReadMessageId} <> ${lastMessage.id}`,
+            isNull(chatThreads.lastReadAt),
+            sql`${lastRunFinish.createdAt} > ${chatThreads.lastReadAt}`,
           ),
+          noActiveRunsForCurrentThreadCondition(),
+          noActiveGoalsForCurrentThreadCondition(),
         ),
       );
     return rows.flatMap((row) => {
-      // Always present: the isNotNull(lastMessage.id) filter guarantees a
+      // Always present: the isNotNull(lastRunFinish.id) filter guarantees a
       // joined row, but the left-lateral type keeps the column nullable.
       if (row.unreadAt === null) {
         return [];
@@ -794,7 +744,7 @@ export function zeroChatThreadUnreads(args: {
 
 /**
  * Agents that currently have at least one unread thread for the user. Uses
- * the same read-cursor comparison as `zeroChatThreadUnreads`.
+ * the same timestamp watermark comparison as `zeroChatThreadUnreads`.
  */
 export function zeroChatThreadUnreadAgentIds(args: {
   readonly userId: string;
@@ -802,22 +752,23 @@ export function zeroChatThreadUnreadAgentIds(args: {
 }): Computed<Promise<readonly string[]>> {
   return computed(async (get) => {
     const db = get(db$);
-    const lastMessage = lastVisibleMessageSubquery(db);
+    const lastRunFinish = lastRunFinishMessageSubquery(db);
     const rows = await db
       .selectDistinct({ agentId: chatThreads.agentComposeId })
       .from(chatThreads)
       .innerJoin(zeroAgents, eq(zeroAgents.id, chatThreads.agentComposeId))
-      .leftJoinLateral(lastMessage, sql`true`)
+      .leftJoinLateral(lastRunFinish, sql`true`)
       .where(
         and(
           eq(chatThreads.userId, args.userId),
           eq(zeroAgents.orgId, args.orgId),
-          isNotNull(lastMessage.id),
+          isNotNull(lastRunFinish.id),
           or(
-            isNull(chatThreads.lastReadMessageId),
-            sql`${chatThreads.lastReadMessageId} <> ${lastMessage.id}`,
+            isNull(chatThreads.lastReadAt),
+            sql`${lastRunFinish.createdAt} > ${chatThreads.lastReadAt}`,
           ),
           noActiveRunsForCurrentThreadCondition(),
+          noActiveGoalsForCurrentThreadCondition(),
         ),
       );
     return rows.map((row) => {
@@ -1260,6 +1211,10 @@ export const createChatThread$ = command(
       readonly title: string | undefined;
       readonly clientThreadId: string | undefined;
       readonly eventId: string | undefined;
+      readonly modelProviderId: string | null;
+      readonly modelProviderType: string | null;
+      readonly modelProviderCredentialScope: ModelProviderCredentialScope | null;
+      readonly selectedModel: string | null;
     },
     signal: AbortSignal,
   ): Promise<{ id: string; createdAt: Date }> => {
@@ -1275,6 +1230,10 @@ export const createChatThread$ = command(
           agentComposeId: args.agentComposeId,
           title: args.title ?? null,
           lastReadAt: sql`NOW()`,
+          modelProviderId: args.modelProviderId,
+          modelProviderType: args.modelProviderType,
+          modelProviderCredentialScope: args.modelProviderCredentialScope,
+          selectedModel: args.selectedModel,
         })
         .returning({ id: chatThreads.id, createdAt: chatThreads.createdAt });
       if (!createdThread) {
@@ -1288,6 +1247,7 @@ export const createChatThread$ = command(
         agentComposeId: args.agentComposeId,
         eventId: args.eventId,
         title: args.title ?? null,
+        selectedModel: args.selectedModel,
         createdAt: createdThread.createdAt,
       });
       return createdThread;

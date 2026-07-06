@@ -81,14 +81,9 @@ function setupChatThread({
 
   context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
     return respond(200, {
-      id: THREAD_ID,
-      title: null,
-      agentId: AGENT_ID,
-      activeRunIds: [],
-      draftContent: null,
-      draftAttachments: null,
-      createdAt: "2026-03-10T00:00:00Z",
-      updatedAt: "2026-03-10T00:00:00Z",
+      lastReadAt: null,
+      computerUseHostId: null,
+      codexServiceTier: null,
     });
   });
   context.mocks.api(chatThreadMessagesContract.list, ({ query, respond }) => {

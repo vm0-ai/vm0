@@ -1,5 +1,254 @@
 # Changelog
 
+## [0.558.7](https://github.com/vm0-ai/vm0/compare/app-v0.558.6...app-v0.558.7) (2026-07-06)
+
+
+### Refactoring
+
+* extract custom eslint rules package ([#20188](https://github.com/vm0-ai/vm0/issues/20188)) ([e2ca0d3](https://github.com/vm0-ai/vm0/commit/e2ca0d3dd59a3f80e77a79a626615c532841201b))
+* remove legacy automations pages, routes, and sidebar entry ([#20289](https://github.com/vm0-ai/vm0/issues/20289)) ([e4e5b8d](https://github.com/vm0-ai/vm0/commit/e4e5b8dd96aef235fe18be773c5935e1054a4c29))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.155.4
+    * @vm0/core bumped to 8.401.5
+
+## [0.558.6](https://github.com/vm0-ai/vm0/compare/app-v0.558.5...app-v0.558.6) (2026-07-06)
+
+
+### Bug Fixes
+
+* **platform:** render memory update date header in English ([#20014](https://github.com/vm0-ai/vm0/issues/20014)) ([61dde47](https://github.com/vm0-ai/vm0/commit/61dde47c81f7da343204c6f036cddf14e7a91c3b))
+
+## [0.558.5](https://github.com/vm0-ai/vm0/compare/app-v0.558.4...app-v0.558.5) (2026-07-06)
+
+
+### Bug Fixes
+
+* reset chat indexeddb thread event caches ([#20277](https://github.com/vm0-ai/vm0/issues/20277)) ([9127871](https://github.com/vm0-ai/vm0/commit/91278710af3bc23517dcd91c370c932aefb40549))
+
+
+### Refactoring
+
+* move agent detail Chat button to header top-right ([#20050](https://github.com/vm0-ai/vm0/issues/20050)) ([4996937](https://github.com/vm0-ai/vm0/commit/49969376dfcea2a80abb70807c83afa1a495f82b))
+
+## [0.558.4](https://github.com/vm0-ai/vm0/compare/app-v0.558.3...app-v0.558.4) (2026-07-06)
+
+
+### Bug Fixes
+
+* simplify mobile unread chat shortcuts ([#20271](https://github.com/vm0-ai/vm0/issues/20271)) ([d28e08f](https://github.com/vm0-ai/vm0/commit/d28e08fd7bab811e9fd5d080990c10302fd22457))
+
+
+### Refactoring
+
+* reduce fallback slop in runtime guards ([#20275](https://github.com/vm0-ai/vm0/issues/20275)) ([73e668c](https://github.com/vm0-ai/vm0/commit/73e668ce7135504b171be98ca2832d09b433f34b))
+
+## [0.558.3](https://github.com/vm0-ai/vm0/compare/app-v0.558.2...app-v0.558.3) (2026-07-05)
+
+
+### Refactoring
+
+* narrow chat thread detail payload ([#20267](https://github.com/vm0-ai/vm0/issues/20267)) ([9717d60](https://github.com/vm0-ai/vm0/commit/9717d60b535745157f9bc2a743f42c20be58ec0b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.155.3
+    * @vm0/core bumped to 8.401.4
+
+## [0.558.2](https://github.com/vm0-ai/vm0/compare/app-v0.558.1...app-v0.558.2) (2026-07-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.155.2
+    * @vm0/core bumped to 8.401.3
+
+## [0.558.1](https://github.com/vm0-ai/vm0/compare/app-v0.558.0...app-v0.558.1) (2026-07-05)
+
+
+### Bug Fixes
+
+* persist chat thread model selection at creation ([#20229](https://github.com/vm0-ai/vm0/issues/20229)) ([ded7688](https://github.com/vm0-ai/vm0/commit/ded7688a0d9ef4b703d1037d15af43389ff3f65a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.155.1
+    * @vm0/core bumped to 8.401.2
+
+## [0.558.0](https://github.com/vm0-ai/vm0/compare/app-v0.557.1...app-v0.558.0) (2026-07-05)
+
+
+### Features
+
+* paginate relationship memory search ([#20262](https://github.com/vm0-ai/vm0/issues/20262)) ([f1d4130](https://github.com/vm0-ai/vm0/commit/f1d4130ff818bda248280d0bfc37a08060c1c64a))
+
+
+### Bug Fixes
+
+* use run-finish timestamps for chat thread unread state ([#20236](https://github.com/vm0-ai/vm0/issues/20236)) ([9e4cb65](https://github.com/vm0-ai/vm0/commit/9e4cb659f32a0449d3f506232f4b4ca8dabc6a29))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.155.0
+    * @vm0/core bumped to 8.401.1
+
+## [0.557.1](https://github.com/vm0-ai/vm0/compare/app-v0.557.0...app-v0.557.1) (2026-07-05)
+
+
+### Bug Fixes
+
+* restore generated chat video preview size ([#20257](https://github.com/vm0-ai/vm0/issues/20257)) ([5921d61](https://github.com/vm0-ai/vm0/commit/5921d6129b8a4d03f4d1a66edc37578f9f6e9d10))
+* tighten html draft discard flow ([#20254](https://github.com/vm0-ai/vm0/issues/20254)) ([d875845](https://github.com/vm0-ai/vm0/commit/d8758451aa4f767599655cd3b2ce6d4148d14671))
+
+## [0.557.0](https://github.com/vm0-ai/vm0/compare/app-v0.556.1...app-v0.557.0) (2026-07-05)
+
+
+### Features
+
+* gate icon-only collapsed manage nav ([#20241](https://github.com/vm0-ai/vm0/issues/20241)) ([36c7282](https://github.com/vm0-ai/vm0/commit/36c72824d5d61db302ffa7cb69a185c1f8889a14))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.154.3
+    * @vm0/connectors bumped to 1.138.0
+    * @vm0/core bumped to 8.401.0
+
+## [0.556.1](https://github.com/vm0-ai/vm0/compare/app-v0.556.0...app-v0.556.1) (2026-07-05)
+
+
+### Bug Fixes
+
+* align sidebar virtual thread scrolling ([#20235](https://github.com/vm0-ai/vm0/issues/20235)) ([6ee7f7f](https://github.com/vm0-ai/vm0/commit/6ee7f7f884e068cbf8da30095e56bea3c5147414))
+
+## [0.556.0](https://github.com/vm0-ai/vm0/compare/app-v0.555.2...app-v0.556.0) (2026-07-05)
+
+
+### Features
+
+* add mobile unread chat shortcuts to agent chat ([#20221](https://github.com/vm0-ai/vm0/issues/20221)) ([5c594ca](https://github.com/vm0-ai/vm0/commit/5c594cabb426ad6984eaac2152922f1363ba9e73))
+
+
+### Refactoring
+
+* decouple ideation connector refs from runtime enum ([#20230](https://github.com/vm0-ai/vm0/issues/20230)) ([a1b2781](https://github.com/vm0-ai/vm0/commit/a1b278116de89a41f9ca58857a0ee4b7222b0a76))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.154.2
+    * @vm0/connectors bumped to 1.137.0
+    * @vm0/core bumped to 8.400.0
+
+## [0.555.2](https://github.com/vm0-ai/vm0/compare/app-v0.555.1...app-v0.555.2) (2026-07-05)
+
+
+### Bug Fixes
+
+* **platform:** inline route setup imports ([#20218](https://github.com/vm0-ai/vm0/issues/20218)) ([1a871b5](https://github.com/vm0-ai/vm0/commit/1a871b596c09f88297bb2a18ca7094732ef2583f))
+
+## [0.555.1](https://github.com/vm0-ai/vm0/compare/app-v0.555.0...app-v0.555.1) (2026-07-05)
+
+
+### Refactoring
+
+* filter ideation connectors by catalog ([#20174](https://github.com/vm0-ai/vm0/issues/20174)) ([7bca8c5](https://github.com/vm0-ai/vm0/commit/7bca8c5e35cddd1c89875dedbba90ff026a1254e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.154.1
+    * @vm0/connectors bumped to 1.136.0
+    * @vm0/core bumped to 8.399.7
+
+## [0.555.0](https://github.com/vm0-ai/vm0/compare/app-v0.554.7...app-v0.555.0) (2026-07-05)
+
+
+### Features
+
+* add gmail backfill stop controls ([#20213](https://github.com/vm0-ai/vm0/issues/20213)) ([97ab218](https://github.com/vm0-ai/vm0/commit/97ab2184f5dd9daa1d00856add3531f2f6999bbb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.154.0
+    * @vm0/core bumped to 8.399.6
+
+## [0.554.7](https://github.com/vm0-ai/vm0/compare/app-v0.554.6...app-v0.554.7) (2026-07-05)
+
+
+### Refactoring
+
+* read chat thread selected model from event projection ([#20204](https://github.com/vm0-ai/vm0/issues/20204)) ([2a76f6d](https://github.com/vm0-ai/vm0/commit/2a76f6dfbe6ad7bbc32e2d5803d8c3207e976284))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.153.6
+    * @vm0/core bumped to 8.399.5
+
+## [0.554.6](https://github.com/vm0-ai/vm0/compare/app-v0.554.5...app-v0.554.6) (2026-07-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.399.4
+
+## [0.554.5](https://github.com/vm0-ai/vm0/compare/app-v0.554.4...app-v0.554.5) (2026-07-05)
+
+
+### Bug Fixes
+
+* avoid chat skeleton for optimistic new messages ([#20186](https://github.com/vm0-ai/vm0/issues/20186)) ([54a2004](https://github.com/vm0-ai/vm0/commit/54a2004e6d0f9637205c907776aea8321f2e3dfd))
+
+
+### Refactoring
+
+* simplify sidebar thread auto-scroll ([#20191](https://github.com/vm0-ai/vm0/issues/20191)) ([45c35a6](https://github.com/vm0-ai/vm0/commit/45c35a604ef7175267e77977e033b676f6cc29df))
+* split chat thread draft read API ([#20192](https://github.com/vm0-ai/vm0/issues/20192)) ([61c4e87](https://github.com/vm0-ai/vm0/commit/61c4e87c3015982d8a419f5f176cc6280549eef4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.153.5
+    * @vm0/core bumped to 8.399.3
+
+## [0.554.4](https://github.com/vm0-ai/vm0/compare/app-v0.554.3...app-v0.554.4) (2026-07-05)
+
+
+### Bug Fixes
+
+* hardcode platform static asset host ([#20185](https://github.com/vm0-ai/vm0/issues/20185)) ([31f62e4](https://github.com/vm0-ai/vm0/commit/31f62e42e6e58d1d4286209f36a7dca58b143451))
+
 ## [0.554.3](https://github.com/vm0-ai/vm0/compare/app-v0.554.2...app-v0.554.3) (2026-07-04)
 
 

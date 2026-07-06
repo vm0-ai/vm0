@@ -12,6 +12,7 @@ import { clearMockNow, mockNow } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { now } from "../../external/time";
+import { createDeferredPromise } from "../../utils";
 import { webhooksBuiltInGenerationRoutes } from "../webhooks-built-in-generations";
 import { zeroBuiltInGenerationRoutes } from "../zero-built-in-generation";
 import { zeroImageIoGenerateRoutes } from "../zero-image-io-generate";
@@ -1020,10 +1021,12 @@ describe("POST /api/zero/image-io/generate", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    let markFalStarted = (): void => {};
-    const falStarted = new Promise<void>((resolve) => {
-      markFalStarted = resolve;
-    });
+    const falStarted = createDeferredPromise<void>(context.signal);
+    const markFalStarted = (): void => {
+      if (!falStarted.settled()) {
+        falStarted.resolve(undefined);
+      }
+    };
     let observedRequestUrl: string | null = null;
 
     server.use(

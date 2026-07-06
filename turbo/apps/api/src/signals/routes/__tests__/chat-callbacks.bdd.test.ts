@@ -24,6 +24,7 @@ import { testContext } from "../../../__tests__/test-context";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { now } from "../../external/time";
+import { createDeferredPromise } from "../../utils";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { mockClerkMembership } from "./helpers/api-bdd-clerk";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
@@ -320,9 +321,39 @@ async function waitForThreadTitle(
 ): Promise<void> {
   await expect
     .poll(async () => {
-      return (await chat.readThread(actor, threadId)).title;
+      return await readThreadTitleFromEvents(actor, threadId);
     })
     .toBe(title);
+}
+
+async function readThreadTitleFromEvents(
+  actor: ApiTestUser,
+  threadId: string,
+): Promise<string | null> {
+  const events = await chat.requestThreadEvents(actor, {}, [200]);
+  if (events.status !== 200) {
+    throw new Error("Expected chat thread events to load");
+  }
+
+  let latestTitleEvent:
+    | { readonly title: string | null; readonly createdAt: string }
+    | undefined;
+  for (const event of events.body.events) {
+    if (
+      event.chatThreadId !== threadId ||
+      (event.kind !== "created" && event.kind !== "renamed")
+    ) {
+      continue;
+    }
+    if (
+      latestTitleEvent === undefined ||
+      Date.parse(event.createdAt) >= Date.parse(latestTitleEvent.createdAt)
+    ) {
+      latestTitleEvent = event;
+    }
+  }
+
+  return latestTitleEvent?.title ?? null;
 }
 
 async function waitForRunStatus(
@@ -643,16 +674,18 @@ function deferredGate(): {
   readonly wait: () => Promise<void>;
   readonly release: () => void;
 } {
-  let releaseGate = (): void => {};
-  const promise = new Promise<void>((resolve) => {
-    releaseGate = resolve;
-  });
+  const gate = createDeferredPromise<void>(context.signal);
+  const releaseGate = (): void => {
+    if (!gate.settled()) {
+      gate.resolve(undefined);
+    }
+  };
   onTestFinished(() => {
     releaseGate();
   });
   return {
     wait: () => {
-      return promise;
+      return gate.promise;
     },
     release: releaseGate,
   };
@@ -1899,7 +1932,7 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
       }),
     ).toStrictEqual(["Already streamed."]);
 
-    const beforeTitle = (await chat.readThread(actor, first.threadId)).title;
+    const beforeTitle = await readThreadTitleFromEvents(actor, first.threadId);
     expect(beforeTitle).toBeNull();
     mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");
     chatCallbacks.mockOpenRouterFailure();
@@ -1928,9 +1961,9 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
     expect(
       lifecycleMarkers(messages.messages, fourth.runId, "completed"),
     ).toHaveLength(1);
-    expect((await chat.readThread(actor, first.threadId)).title).toBe(
-      beforeTitle,
-    );
+    await expect(
+      readThreadTitleFromEvents(actor, first.threadId),
+    ).resolves.toBe(beforeTitle);
   }, 90_000);
 });
 
@@ -2471,8 +2504,22 @@ describe("CHAT-02: auto-send across a model switch", () => {
     );
 
     const thread = await chat.readThread(actor, first.threadId);
-    expect(thread.selectedModel).toBe("claude-sonnet-4-6");
-    expect(thread.title).toBe("Working with JSON");
+    expect(thread).not.toHaveProperty("selectedModel");
+    await expect(
+      readThreadTitleFromEvents(actor, first.threadId),
+    ).resolves.toBe("Working with JSON");
+    const threadEvents = await chat.requestThreadEvents(actor, {}, [200]);
+    expect(threadEvents.status).toBe(200);
+    if (threadEvents.status !== 200) {
+      throw new Error("Expected chat thread events to load");
+    }
+    expect(threadEvents.body.events).toContainEqual(
+      expect.objectContaining({
+        kind: "model_selection_updated",
+        chatThreadId: first.threadId,
+        selectedModel: "claude-sonnet-4-6",
+      }),
+    );
 
     expect(titlePrompts).toHaveLength(1);
     const initialTitlePrompt = titlePrompts[0];

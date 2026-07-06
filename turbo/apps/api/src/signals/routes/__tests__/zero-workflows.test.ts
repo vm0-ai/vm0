@@ -738,6 +738,9 @@ describe("zero workflows", () => {
       createdByUserId: creator.userId,
       updatedByUserId: creator.userId,
       instruction: "# audit workflow",
+      // The detail endpoint resolves the owner to a display name so the UI does
+      // not fall back to rendering the raw Clerk `ownerUserId`.
+      ownerUserDisplayName: "BDD User",
     });
     expect(typeof initial.body.createdAt).toBe("string");
     expect(typeof initial.body.updatedAt).toBe("string");

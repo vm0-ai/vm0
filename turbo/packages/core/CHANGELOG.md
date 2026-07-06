@@ -1,5 +1,129 @@
 # Changelog
 
+## [8.401.5](https://github.com/vm0-ai/vm0/compare/core-v8.401.4...core-v8.401.5) (2026-07-06)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.155.4
+
+## [8.401.4](https://github.com/vm0-ai/vm0/compare/core-v8.401.3...core-v8.401.4) (2026-07-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.155.3
+
+## [8.401.3](https://github.com/vm0-ai/vm0/compare/core-v8.401.2...core-v8.401.3) (2026-07-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.155.2
+
+## [8.401.2](https://github.com/vm0-ai/vm0/compare/core-v8.401.1...core-v8.401.2) (2026-07-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.155.1
+
+## [8.401.1](https://github.com/vm0-ai/vm0/compare/core-v8.401.0...core-v8.401.1) (2026-07-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.155.0
+
+## [8.401.0](https://github.com/vm0-ai/vm0/compare/core-v8.400.0...core-v8.401.0) (2026-07-05)
+
+
+### Features
+
+* gate icon-only collapsed manage nav ([#20241](https://github.com/vm0-ai/vm0/issues/20241)) ([36c7282](https://github.com/vm0-ai/vm0/commit/36c72824d5d61db302ffa7cb69a185c1f8889a14))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.154.3
+    * @vm0/connectors bumped to 1.138.0
+
+## [8.400.0](https://github.com/vm0-ai/vm0/compare/core-v8.399.7...core-v8.400.0) (2026-07-05)
+
+
+### Features
+
+* add mobile unread chat shortcuts to agent chat ([#20221](https://github.com/vm0-ai/vm0/issues/20221)) ([5c594ca](https://github.com/vm0-ai/vm0/commit/5c594cabb426ad6984eaac2152922f1363ba9e73))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.154.2
+    * @vm0/connectors bumped to 1.137.0
+
+## [8.399.7](https://github.com/vm0-ai/vm0/compare/core-v8.399.6...core-v8.399.7) (2026-07-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.154.1
+    * @vm0/connectors bumped to 1.136.0
+
+## [8.399.6](https://github.com/vm0-ai/vm0/compare/core-v8.399.5...core-v8.399.6) (2026-07-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.154.0
+
+## [8.399.5](https://github.com/vm0-ai/vm0/compare/core-v8.399.4...core-v8.399.5) (2026-07-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.153.6
+
+## [8.399.4](https://github.com/vm0-ai/vm0/compare/core-v8.399.3...core-v8.399.4) (2026-07-05)
+
+
+### Bug Fixes
+
+* narrow org-scoped feature switch rollouts ([#20196](https://github.com/vm0-ai/vm0/issues/20196)) ([639c9f1](https://github.com/vm0-ai/vm0/commit/639c9f1e34a8d31802c8936ccfa006b9dde0b65f))
+
+## [8.399.3](https://github.com/vm0-ai/vm0/compare/core-v8.399.2...core-v8.399.3) (2026-07-05)
+
+
+### Refactoring
+
+* split chat thread draft read API ([#20192](https://github.com/vm0-ai/vm0/issues/20192)) ([61c4e87](https://github.com/vm0-ai/vm0/commit/61c4e87c3015982d8a419f5f176cc6280549eef4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.153.5
+
 ## [8.399.2](https://github.com/vm0-ai/vm0/compare/core-v8.399.1...core-v8.399.2) (2026-07-04)
 
 

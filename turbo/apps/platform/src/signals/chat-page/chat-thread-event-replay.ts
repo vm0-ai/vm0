@@ -26,17 +26,28 @@ function compareThreadOrder(
 function applyEvent(
   threads: Map<string, EventDrivenChatThread>,
   event: ChatThreadEvent,
+  pendingSelectedModelUpdates: Map<string, ChatThreadEvent>,
 ) {
   if (event.kind === "created") {
+    const pendingSelectedModelUpdate = pendingSelectedModelUpdates.get(
+      event.chatThreadId,
+    );
+    pendingSelectedModelUpdates.delete(event.chatThreadId);
+    const selectedModelUpdate =
+      pendingSelectedModelUpdate &&
+      pendingSelectedModelUpdate.createdAt.localeCompare(event.createdAt) >= 0
+        ? pendingSelectedModelUpdate
+        : null;
     threads.set(event.chatThreadId, {
       id: event.chatThreadId,
       agentId: event.agentId,
       title: event.title,
       sortAt: event.createdAt,
       createdAt: event.createdAt,
-      updatedAt: event.createdAt,
+      updatedAt: selectedModelUpdate?.createdAt ?? event.createdAt,
       pinnedAt: null,
       renamedAt: null,
+      selectedModel: selectedModelUpdate?.selectedModel ?? event.selectedModel,
     });
     return;
   }
@@ -48,6 +59,9 @@ function applyEvent(
 
   const thread = threads.get(event.chatThreadId);
   if (!thread) {
+    if (event.kind === "model_selection_updated") {
+      pendingSelectedModelUpdates.set(event.chatThreadId, event);
+    }
     return;
   }
 
@@ -79,6 +93,15 @@ function applyEvent(
     return;
   }
 
+  if (event.kind === "model_selection_updated") {
+    threads.set(event.chatThreadId, {
+      ...thread,
+      selectedModel: event.selectedModel,
+      updatedAt: event.createdAt,
+    });
+    return;
+  }
+
   threads.set(event.chatThreadId, {
     ...thread,
     sortAt: event.createdAt,
@@ -91,10 +114,14 @@ export function replayChatThreadEvents(
 ): EventDrivenChatThread[] {
   const threads = new Map<string, EventDrivenChatThread>();
   for (const thread of snapshot) {
-    threads.set(thread.id, { ...thread });
+    threads.set(thread.id, {
+      ...thread,
+      selectedModel: thread.selectedModel ?? null,
+    });
   }
+  const pendingSelectedModelUpdates = new Map<string, ChatThreadEvent>();
   for (const event of events) {
-    applyEvent(threads, event);
+    applyEvent(threads, event, pendingSelectedModelUpdates);
   }
   return [...threads.values()].sort(compareThreadOrder);
 }

@@ -2,6 +2,7 @@ import { command } from "ccstate";
 import {
   elapsedSinceApiStartMs,
   RESUME_SESSION_HISTORY_MAX_BYTES,
+  runnersNetworkPolicyRefreshContract,
   runnersHeartbeatContract,
   runnersJobClaimContract,
   runnersPollContract,
@@ -13,6 +14,7 @@ import {
 import { runnerRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { agentComposeVersions } from "@vm0/db/schema/agent-compose";
 import { blobs } from "@vm0/db/schema/blob";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { runnerState } from "@vm0/db/schema/runner-state";
@@ -40,6 +42,12 @@ import { logger } from "../../lib/log";
 import { generateSandboxToken } from "../auth/tokens";
 import { decryptPersistentSecretsMap } from "../services/crypto.utils";
 import { dispatchCompleteSideEffects$ } from "../services/agent-webhook-complete.service";
+import {
+  networkPolicyRefreshesRecord,
+  mergeNetworkPolicyRefreshes,
+  networkPolicyRefreshConnectorRefs,
+  resolveActiveNetworkPolicyRefreshes,
+} from "../services/zero-user-permission-grants.service";
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import {
   resumeSessionHistoryBlobKey,
@@ -273,6 +281,19 @@ function canonicalizeHeldSessionStates(
 
 const heartbeatBody$ = bodyResultOf(runnersHeartbeatContract.heartbeat);
 
+function normalizedHeartbeatAdmittableProfiles(body: {
+  readonly admittableProfiles?: string[];
+  readonly availableProfiles?: string[];
+  readonly profiles?: string[];
+}): string[] {
+  const profiles =
+    body.admittableProfiles ?? body.availableProfiles ?? body.profiles;
+  if (!profiles) {
+    throw new Error("Heartbeat profile list missing after validation");
+  }
+  return profiles;
+}
+
 const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = await set(runnerAuth$, get(authorization$), signal);
   signal.throwIfAborted();
@@ -292,7 +313,7 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   const heldSessionStates =
     canonicalizeHeldSessionStates(body.data.heldSessionStates) ?? [];
-  const availableProfiles = body.data.availableProfiles ?? body.data.profiles;
+  const admittableProfiles = normalizedHeartbeatAdmittableProfiles(body.data);
   const currentDate = nowDate();
   const db = set(writeDb$);
   await db
@@ -301,14 +322,13 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       runnerId: body.data.runnerId,
       runnerName: body.data.runnerName,
       runnerGroup: body.data.group,
-      profiles: body.data.profiles,
       totalVcpu: body.data.totalVcpu,
       totalMemoryMb: body.data.totalMemoryMb,
       maxConcurrent: body.data.maxConcurrent,
       allocatedVcpu: body.data.allocatedVcpu,
       allocatedMemoryMb: body.data.allocatedMemoryMb,
       runningCount: body.data.runningCount,
-      availableProfiles,
+      admittableProfiles,
       heldSessionStates,
       mode: body.data.mode,
       lastSeenAt: currentDate,
@@ -318,14 +338,13 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       set: {
         runnerName: body.data.runnerName,
         runnerGroup: body.data.group,
-        profiles: body.data.profiles,
         totalVcpu: body.data.totalVcpu,
         totalMemoryMb: body.data.totalMemoryMb,
         maxConcurrent: body.data.maxConcurrent,
         allocatedVcpu: body.data.allocatedVcpu,
         allocatedMemoryMb: body.data.allocatedMemoryMb,
         runningCount: body.data.runningCount,
-        availableProfiles,
+        admittableProfiles,
         heldSessionStates,
         mode: body.data.mode,
         lastSeenAt: currentDate,
@@ -419,7 +438,8 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return body.response;
   }
 
-  const { group, profiles } = body.data;
+  const { group } = body.data;
+  const supportedProfiles = body.data.supportedProfiles;
   const whereConditions: SQL<unknown>[] = [
     eq(runnerJobQueue.runnerGroup, group),
     isNull(runnerJobQueue.claimedAt),
@@ -438,9 +458,7 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     whereConditions.push(eq(agentRuns.userId, auth.userId));
   }
 
-  if (profiles && profiles.length > 0) {
-    whereConditions.push(inArray(runnerJobQueue.profile, profiles));
-  }
+  whereConditions.push(inArray(runnerJobQueue.profile, supportedProfiles));
   const db = set(writeDb$);
   const pendingJobLookupStartedAtMs = now();
   const [pendingJob] = await db
@@ -524,6 +542,9 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 });
 
 const claimBody$ = bodyResultOf(runnersJobClaimContract.claim);
+const networkPolicyRefreshBody$ = bodyResultOf(
+  runnersNetworkPolicyRefreshContract.refresh,
+);
 
 interface ClaimableJob {
   readonly job: typeof runnerJobQueue.$inferSelect;
@@ -541,6 +562,13 @@ interface ClaimedRun {
   readonly resumedFromCheckpointId: string | null;
 }
 
+interface ActiveRunNetworkPolicyScope {
+  readonly runId: string;
+  readonly userId: string;
+  readonly orgId: string;
+  readonly agentId: string;
+}
+
 type ClaimLookupResult =
   | ClaimableJob
   | ReturnType<typeof conflict>
@@ -548,6 +576,41 @@ type ClaimLookupResult =
 
 function isClaimableJob(value: ClaimLookupResult): value is ClaimableJob {
   return "job" in value;
+}
+
+async function getActiveRunNetworkPolicyScope(
+  db: Db,
+  runId: string,
+  signal: AbortSignal,
+): Promise<ActiveRunNetworkPolicyScope | undefined> {
+  const [row] = await db
+    .select({
+      runId: agentRuns.id,
+      userId: agentRuns.userId,
+      orgId: agentRuns.orgId,
+      agentId: agentComposeVersions.composeId,
+    })
+    .from(agentRuns)
+    .innerJoin(
+      agentComposeVersions,
+      eq(agentComposeVersions.id, agentRuns.agentComposeVersionId),
+    )
+    .where(and(eq(agentRuns.id, runId), eq(agentRuns.status, "running")))
+    .limit(1);
+  signal.throwIfAborted();
+  return row;
+}
+
+function runnerRunAuthorizationError(
+  auth: RunnerAuthContext,
+  run: Pick<ActiveRunNetworkPolicyScope, "userId">,
+) {
+  if (auth.type === "official-runner") {
+    return null;
+  }
+  return run.userId === auth.userId
+    ? null
+    : forbidden("Run does not belong to user");
 }
 
 async function getClaimableJob(
@@ -853,6 +916,65 @@ async function secretValuesForRunner(
   return Object.values(secretsMap).filter((value) => {
     return envValues.has(value);
   });
+}
+
+async function agentIdForRun(
+  db: Pick<Db, "select">,
+  run: Pick<ClaimedRun, "agentComposeVersionId">,
+): Promise<string | undefined> {
+  if (!run.agentComposeVersionId) {
+    return undefined;
+  }
+
+  const [version] = await db
+    .select({ agentId: agentComposeVersions.composeId })
+    .from(agentComposeVersions)
+    .where(eq(agentComposeVersions.id, run.agentComposeVersionId))
+    .limit(1);
+  return version?.agentId ?? undefined;
+}
+
+async function refreshClaimNetworkPolicies(args: {
+  readonly db: Db;
+  readonly run: ClaimedRun;
+  readonly storedContext: StoredExecutionContext;
+}): Promise<
+  Pick<StoredExecutionContext, "networkPolicies" | "networkPolicyRefreshes">
+> {
+  const connectorRefs = networkPolicyRefreshConnectorRefs(
+    Object.keys(args.storedContext.networkPolicies ?? {}),
+  );
+  if (connectorRefs.length === 0) {
+    return {
+      networkPolicies: args.storedContext.networkPolicies,
+      networkPolicyRefreshes: undefined,
+    };
+  }
+
+  const agentId = await agentIdForRun(args.db, args.run);
+  if (!agentId) {
+    return {
+      networkPolicies: args.storedContext.networkPolicies,
+      networkPolicyRefreshes: undefined,
+    };
+  }
+
+  const refreshes = await resolveActiveNetworkPolicyRefreshes(
+    args.db,
+    {
+      orgId: args.run.orgId,
+      userId: args.run.userId,
+      agentId,
+    },
+    connectorRefs,
+  );
+  return {
+    networkPolicies: mergeNetworkPolicyRefreshes(
+      args.storedContext.networkPolicies,
+      refreshes,
+    ),
+    networkPolicyRefreshes: networkPolicyRefreshesRecord(refreshes),
+  };
 }
 
 type StoredResumeSessionWithHistoryRef = Extract<
@@ -1206,6 +1328,12 @@ async function buildClaimResponseBody(args: {
         args.run.id,
         args.run.orgId,
       );
+      const refreshedPolicies = await refreshClaimNetworkPolicies({
+        db: args.db,
+        run: args.run,
+        storedContext: args.storedContext,
+      });
+      args.signal.throwIfAborted();
       return {
         ...args.storedContext,
         runId: args.run.id,
@@ -1217,6 +1345,8 @@ async function buildClaimResponseBody(args: {
         resumeSession,
         sandboxToken,
         secretValues,
+        networkPolicies: refreshedPolicies.networkPolicies,
+        networkPolicyRefreshes: refreshedPolicies.networkPolicyRefreshes,
       };
     },
   );
@@ -1710,6 +1840,64 @@ const runnerRealtimeTokenBody$ = bodyResultOf(
   runnerRealtimeTokenContract.create,
 );
 
+const networkPolicyRefreshInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = await set(runnerAuth$, get(authorization$), signal);
+    signal.throwIfAborted();
+    if (!auth) {
+      return unauthorizedAuthenticationRequired;
+    }
+
+    const body = await get(networkPolicyRefreshBody$);
+    signal.throwIfAborted();
+    if (!body.ok) {
+      return body.response;
+    }
+
+    const runId = get(
+      pathParamsOf(runnersNetworkPolicyRefreshContract.refresh),
+    ).runId;
+    const db = set(writeDb$);
+    const run = await getActiveRunNetworkPolicyScope(db, runId, signal);
+    if (!run) {
+      return notFound("Run not found");
+    }
+
+    const authError = runnerRunAuthorizationError(auth, run);
+    if (authError) {
+      return authError;
+    }
+
+    const connectorRefs = [...new Set(body.data.connectorRefs)];
+    const refreshes = await resolveActiveNetworkPolicyRefreshes(
+      db,
+      {
+        orgId: run.orgId,
+        userId: run.userId,
+        agentId: run.agentId,
+      },
+      connectorRefs,
+    );
+    signal.throwIfAborted();
+    if (refreshes.length === 0) {
+      return notFound(`Connectors not found: ${connectorRefs.join(", ")}`);
+    }
+
+    return {
+      status: 200 as const,
+      body: {
+        refreshes: refreshes.map((refresh) => {
+          return {
+            connectorRef: refresh.connectorRef,
+            networkPolicy: refresh.networkPolicy,
+            nextRefreshAt: refresh.nextRefreshAt,
+          };
+        }),
+      },
+    };
+  },
+);
+
 const runnerRealtimeTokenInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = await set(runnerAuth$, get(authorization$), signal);
@@ -1752,6 +1940,10 @@ export const runnersRoutes: readonly RouteEntry[] = [
   {
     route: runnersJobClaimContract.claim,
     handler: claimInner$,
+  },
+  {
+    route: runnersNetworkPolicyRefreshContract.refresh,
+    handler: networkPolicyRefreshInner$,
   },
   {
     route: runnerRealtimeTokenContract.create,

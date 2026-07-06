@@ -27,5 +27,5 @@
     "noImplicitReturns": true,
     "verbatimModuleSyntax": true
   },
-  "include": ["src", "custom-eslint"]
+  "include": ["src"]
 }

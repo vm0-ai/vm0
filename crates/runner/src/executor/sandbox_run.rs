@@ -1,5 +1,6 @@
 //! Sandbox preparation, reuse, and post-run cleanup glue.
 
+use std::collections::HashSet;
 use std::panic::AssertUnwindSafe;
 use std::time::{Duration, Instant};
 
@@ -26,9 +27,10 @@ use super::{
 use crate::duration::duration_ms;
 use crate::ids::RunId;
 use crate::network_log_manager::NetworkLogSession;
+use crate::provider::NetworkPolicyRefreshRegistration;
 use crate::proxy;
 use crate::telemetry::JobTelemetry;
-use crate::types::ExecutionContext;
+use crate::types::{ExecutionContext, FirewallEntry};
 use crate::workspace_image_cache::{
     WorkspaceCacheCheckoutResult, WorkspaceImageLease, WorkspaceImageLeaseIdentity,
     WorkspaceImagePrepareRequest,
@@ -402,7 +404,9 @@ async fn create_started_sandbox(
             Some(SANDBOX_START_FAILED),
         );
         telemetry.record("vm_create", t.elapsed(), false, Some(&e.to_string()));
-        if let Err(unregister_error) = unregister_proxy_registry(config, &source_ip).await {
+        if let Err(unregister_error) =
+            unregister_proxy_registry(config, &source_ip, context.run_id).await
+        {
             warn!(
                 run_id = %context.run_id,
                 error = %unregister_error,
@@ -431,7 +435,9 @@ async fn create_started_sandbox(
             false,
             Some(&e.to_string()),
         );
-        if let Err(unregister_error) = unregister_proxy_registry(config, &source_ip).await {
+        if let Err(unregister_error) =
+            unregister_proxy_registry(config, &source_ip, context.run_id).await
+        {
             warn!(
                 run_id = %context.run_id,
                 error = %unregister_error,
@@ -539,7 +545,9 @@ pub(super) async fn execute_reused_sandbox(
             false,
             Some(&e.to_string()),
         );
-        if let Err(unregister_error) = unregister_proxy_registry(config, &source_ip).await {
+        if let Err(unregister_error) =
+            unregister_proxy_registry(config, &source_ip, context.run_id).await
+        {
             warn!(
                 run_id = %context.run_id,
                 error = %unregister_error,
@@ -740,10 +748,43 @@ pub(super) async fn register_proxy(
         .register_vm(source_ip, &registration)
         .await
         .map_err(|e| RunnerError::Internal(format!("register VM in proxy registry: {e}")))?;
-    Ok(config
+    let network_log_session = config
         .network_log_manager
         .register_source_ip(source_ip, network_log_path)
-        .await)
+        .await;
+    if let Some(refresh) = config.network_policy_refresh.as_ref() {
+        let connector_refs = active_connector_refs(context);
+        refresh
+            .register_run(NetworkPolicyRefreshRegistration {
+                run_id: context.run_id,
+                source_ip,
+                registry: config.registry.clone(),
+                connector_refs,
+                refreshes: context.network_policy_refreshes.as_ref(),
+            })
+            .await;
+    }
+    Ok(network_log_session)
+}
+
+fn active_connector_refs(context: &ExecutionContext) -> HashSet<String> {
+    let Some(network_policies) = context.network_policies.as_ref() else {
+        return HashSet::new();
+    };
+    context
+        .firewalls
+        .as_deref()
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|entry| {
+            let FirewallEntry::Builtin { name, .. } = entry else {
+                return None;
+            };
+            (!name.starts_with("model-provider:") && network_policies.contains_key(name.as_str()))
+                .then_some(name)
+        })
+        .map(|name| name.to_string())
+        .collect()
 }
 
 pub(super) fn log_proxy_register_success(
@@ -800,12 +841,17 @@ pub(super) fn log_proxy_register_failure(
 pub(super) async fn unregister_proxy_registry(
     config: &ExecutorConfig,
     source_ip: &str,
+    run_id: RunId,
 ) -> RunnerResult<()> {
-    config
+    let result = config
         .registry
         .unregister_vm(source_ip)
         .await
-        .map_err(|e| RunnerError::Internal(format!("unregister VM from proxy registry: {e}")))
+        .map_err(|e| RunnerError::Internal(format!("unregister VM from proxy registry: {e}")));
+    if let Some(refresh) = config.network_policy_refresh.as_ref() {
+        refresh.unregister_run(run_id).await;
+    }
+    result
 }
 
 /// Post-job cleanup: copy logs, unregister proxy registry.
@@ -829,5 +875,66 @@ pub(super) async fn post_job_cleanup(
         stdout_stream_diagnostics,
     )
     .await;
-    unregister_proxy_registry(config, source_ip).await
+    unregister_proxy_registry(config, source_ip, context.run_id).await
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use super::*;
+    use crate::types::{Firewall, FirewallApi, FirewallAuth, FirewallPermission, NetworkPolicy};
+
+    fn network_policy() -> NetworkPolicy {
+        NetworkPolicy {
+            allow: Vec::new(),
+            deny: Vec::new(),
+            ask: Vec::new(),
+            unknown_policy: "ask".to_string(),
+        }
+    }
+
+    #[test]
+    fn active_connector_refs_only_include_builtin_connectors_with_network_policy() {
+        let mut context = crate::test_fixtures::execution_context_for_test(RunId::nil());
+        context.firewalls = Some(vec![
+            FirewallEntry::Builtin {
+                name: "github".to_string(),
+                base_url_vars: None,
+            },
+            FirewallEntry::Inline {
+                firewall: Firewall {
+                    name: "custom-crm".to_string(),
+                    apis: vec![FirewallApi {
+                        id: "custom-crm-api".to_string(),
+                        base: "https://crm.example.com".to_string(),
+                        auth: FirewallAuth {
+                            headers: HashMap::new(),
+                            base: None,
+                            query: None,
+                        },
+                        permissions: Some(vec![FirewallPermission {
+                            name: "records.read".to_string(),
+                            description: None,
+                            rules: vec!["GET /records".to_string()],
+                        }]),
+                    }],
+                },
+            },
+            FirewallEntry::Builtin {
+                name: "model-provider:openai".to_string(),
+                base_url_vars: None,
+            },
+        ]);
+        context.network_policies = Some(HashMap::from([
+            ("github".to_string(), network_policy()),
+            ("custom-crm".to_string(), network_policy()),
+            ("model-provider:openai".to_string(), network_policy()),
+            ("not-active".to_string(), network_policy()),
+        ]));
+
+        let refs = active_connector_refs(&context);
+
+        assert_eq!(refs, HashSet::from(["github".to_string()]));
+    }
 }

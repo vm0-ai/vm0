@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.56](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.55...nbd-cow-v0.4.56) (2026-07-05)
+
+
+### Bug Fixes
+
+* **nbd-cow:** harden device lock files ([#20249](https://github.com/vm0-ai/vm0/issues/20249)) ([dc76129](https://github.com/vm0-ai/vm0/commit/dc76129c9ce603ec597af310038aa188dbd388ce))
+
 ## [0.4.55](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.54...nbd-cow-v0.4.55) (2026-07-01)
 
 

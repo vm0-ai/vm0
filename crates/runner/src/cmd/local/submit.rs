@@ -298,6 +298,7 @@ impl ActiveInputProducer {
         let stop_for_task = stop.clone();
         let task = tokio::spawn(async move {
             let started_at = tokio::time::Instant::now();
+            let queue_state = local_queue::LocalQueue::new(queue.group_dir.clone());
             for input in inputs {
                 let sleep_for = input.after.saturating_sub(started_at.elapsed());
                 tokio::select! {
@@ -312,7 +313,7 @@ impl ActiveInputProducer {
                             message_id: input.message_id,
                             text: input.text,
                         };
-                        let queue_state = local_queue::LocalQueue::new(queue.group_dir.clone());
+                        let queue_state = queue_state.clone();
                         let write_result = tokio::task::spawn_blocking(move || {
                             queue_state.write_active_input_sync(&entry)
                         })

@@ -12,6 +12,7 @@ import {
   type MemoryDevRefreshResponse,
 } from "@vm0/api-contracts/contracts/zero-memory-dev-refresh";
 import {
+  RELATIONSHIP_SEARCH_DEFAULT_LIMIT,
   type GmailRelationshipBackfillRequest,
   type GmailRelationshipStatusResponse,
   zeroRelationshipsContract,
@@ -40,6 +41,26 @@ function defaultGmailRelationshipBackfillRequest(): GmailRelationshipBackfillReq
   };
 }
 
+function relationshipSearchQueryFilter(filter: MemoryRelationshipFilter): {
+  readonly entityType?: "person" | "organization";
+  readonly itemKind?: "open_loop";
+} {
+  switch (filter) {
+    case "people": {
+      return { entityType: "person" };
+    }
+    case "organizations": {
+      return { entityType: "organization" };
+    }
+    case "open-loops": {
+      return { itemKind: "open_loop" };
+    }
+    case "all": {
+      return {};
+    }
+  }
+}
+
 const internalSelectedMemoryFilePath$ = state<string | null>(null);
 
 export const selectedMemoryFilePath$ = computed((get) => {
@@ -65,6 +86,10 @@ export const setMemoryTab$ = command(({ set }, tab: MemoryTab) => {
 const internalMemoryRelationshipSearch$ = state("");
 const internalMemoryRelationshipFilter$ =
   state<MemoryRelationshipFilter>("all");
+const internalMemoryRelationshipPage$ = state(1);
+const internalMemoryRelationshipLimit$ = state(
+  RELATIONSHIP_SEARCH_DEFAULT_LIMIT,
+);
 const internalSelectedMemoryRelationshipId$ = state<string | null>(null);
 const internalMemoryRelationshipsReload$ = state(0);
 const internalGmailRelationshipStatusReload$ = state(0);
@@ -81,6 +106,8 @@ export const memoryRelationshipSearch$ = computed((get) => {
 export const setMemoryRelationshipSearch$ = command(
   ({ set }, search: string) => {
     set(internalMemoryRelationshipSearch$, search);
+    set(internalMemoryRelationshipPage$, 1);
+    set(internalSelectedMemoryRelationshipId$, null);
   },
 );
 
@@ -91,6 +118,60 @@ export const memoryRelationshipFilter$ = computed((get) => {
 export const setMemoryRelationshipFilter$ = command(
   ({ set }, filter: MemoryRelationshipFilter) => {
     set(internalMemoryRelationshipFilter$, filter);
+    set(internalMemoryRelationshipPage$, 1);
+    set(internalSelectedMemoryRelationshipId$, null);
+  },
+);
+
+export const memoryRelationshipPage$ = computed((get) => {
+  return get(internalMemoryRelationshipPage$);
+});
+
+export const memoryRelationshipLimit$ = computed((get) => {
+  return get(internalMemoryRelationshipLimit$);
+});
+
+export const memoryRelationshipHasPrev$ = computed((get) => {
+  return get(internalMemoryRelationshipPage$) > 1;
+});
+
+export const goToNextMemoryRelationshipPage$ = command(
+  ({ set }, totalPages: number) => {
+    set(internalMemoryRelationshipPage$, (current) => {
+      return Math.min(totalPages, current + 1);
+    });
+    set(internalSelectedMemoryRelationshipId$, null);
+  },
+);
+
+export const goToPrevMemoryRelationshipPage$ = command(({ set }) => {
+  set(internalMemoryRelationshipPage$, (current) => {
+    return Math.max(1, current - 1);
+  });
+  set(internalSelectedMemoryRelationshipId$, null);
+});
+
+export const goForwardTwoMemoryRelationshipPages$ = command(
+  ({ set }, totalPages: number) => {
+    set(internalMemoryRelationshipPage$, (current) => {
+      return Math.min(totalPages, current + 2);
+    });
+    set(internalSelectedMemoryRelationshipId$, null);
+  },
+);
+
+export const goBackTwoMemoryRelationshipPages$ = command(({ set }) => {
+  set(internalMemoryRelationshipPage$, (current) => {
+    return Math.max(1, current - 2);
+  });
+  set(internalSelectedMemoryRelationshipId$, null);
+});
+
+export const setMemoryRelationshipRowsPerPage$ = command(
+  ({ set }, limit: number) => {
+    set(internalMemoryRelationshipLimit$, limit);
+    set(internalMemoryRelationshipPage$, 1);
+    set(internalSelectedMemoryRelationshipId$, null);
   },
 );
 
@@ -196,12 +277,17 @@ export const memoryRelationships$ = computed(
   async (get): Promise<RelationshipSearchResponse> => {
     get(internalMemoryRelationshipsReload$);
     const search = get(memoryRelationshipSearch$).trim();
+    const filter = get(memoryRelationshipFilter$);
+    const page = get(memoryRelationshipPage$);
+    const limit = get(memoryRelationshipLimit$);
     const client = get(zeroClient$)(zeroRelationshipsContract);
     const result = await accept(
       client.search({
         query: {
           q: search.length > 0 ? search : undefined,
-          limit: 20,
+          page,
+          limit,
+          ...relationshipSearchQueryFilter(filter),
         },
       }),
       [200],
@@ -232,6 +318,31 @@ export const startGmailRelationshipBackfill$ = command(
     );
     signal.throwIfAborted();
     toast.success("Gmail relationship backfill started");
+    set(reloadGmailRelationshipStatus$);
+    set(reloadMemoryRelationships$);
+  },
+);
+
+export const stopGmailRelationshipBackfill$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    const client = get(zeroClient$)(zeroRelationshipsContract);
+    await accept(client.gmailStopBackfill({ fetchOptions: { signal } }), [200]);
+    signal.throwIfAborted();
+    toast.success("Gmail relationship backfill stopped");
+    set(reloadGmailRelationshipStatus$);
+    set(reloadMemoryRelationships$);
+  },
+);
+
+export const deleteStoppedGmailRelationshipBackfill$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    const client = get(zeroClient$)(zeroRelationshipsContract);
+    await accept(
+      client.gmailDeleteStoppedBackfill({ fetchOptions: { signal } }),
+      [200],
+    );
+    signal.throwIfAborted();
+    toast.success("Stopped Gmail backfill job deleted");
     set(reloadGmailRelationshipStatus$);
     set(reloadMemoryRelationships$);
   },

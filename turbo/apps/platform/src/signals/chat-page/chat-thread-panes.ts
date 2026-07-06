@@ -68,15 +68,15 @@ const loadDraft$ = command(
     isNew: boolean,
     signal: AbortSignal,
   ) => {
-    const remoteThreadDetail = await get(thread.remoteThreadDetail$);
+    const threadDraft = await get(thread.threadDraft$);
     signal.throwIfAborted();
 
-    if (!remoteThreadDetail) {
+    if (!threadDraft) {
       return;
     }
 
-    const hasDraftContent = remoteThreadDetail.draftContent !== null;
-    const draftAttachments = remoteThreadDetail.draftAttachments;
+    const hasDraftContent = threadDraft.draftContent !== null;
+    const draftAttachments = threadDraft.draftAttachments;
     const hasDraftAttachments =
       draftAttachments !== null && draftAttachments.length > 0;
     if (isNew && (hasDraftContent || hasDraftAttachments)) {
@@ -85,7 +85,7 @@ const loadDraft$ = command(
       );
       set(
         thread.draft.seed$,
-        remoteThreadDetail.draftContent ?? "",
+        threadDraft.draftContent ?? "",
         restoredAttachments,
       );
     }
@@ -130,14 +130,8 @@ const setupPaneThread$ = command(
     L.debug("setupPaneThread$ start", { threadId });
 
     const { draft, isNew } = set(ensureDraft$, threadId);
-    let onIdbMiss: () => void = () => {};
-    const dataSource = createIdbCachedDataSource(threadId, () => {
-      onIdbMiss();
-    });
+    const dataSource = createIdbCachedDataSource(threadId);
     const thread = createChatThreadSignals(threadId, draft, dataSource);
-    onIdbMiss = () => {
-      set(thread.showSkeleton$);
-    };
     set(spec.setPaneThread$, thread);
 
     await set(

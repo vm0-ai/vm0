@@ -3,7 +3,6 @@ import { useLastResolved, useGet, useSet } from "ccstate-react";
 import {
   IconChartLine,
   IconLayoutGrid,
-  IconCalendar,
   IconRoute,
   IconUsers,
   IconEdit,
@@ -64,7 +63,6 @@ interface ManageNavItem {
   readonly label: string;
   readonly icon: NavIcon;
   readonly featureGate?: FeatureSwitchKey;
-  readonly hideWhenFeatureEnabled?: FeatureSwitchKey;
 }
 
 const MANAGE_NAV: readonly ManageNavItem[] = [
@@ -95,14 +93,6 @@ const MANAGE_NAV: readonly ManageNavItem[] = [
     pathname: "/connectors",
     label: "Connectors",
     icon: IconPlug as NavIcon,
-  },
-  {
-    id: "automations",
-    activeKeys: ["automations", "automationDetail"],
-    pathname: "/automations",
-    label: "Automations",
-    icon: IconCalendar as NavIcon,
-    hideWhenFeatureEnabled: FeatureSwitchKey.WorkflowAutomation,
   },
   {
     id: "activities",
@@ -149,12 +139,6 @@ function useResolvedNavItems() {
   const features = useLastResolved(featureSwitch$);
   const defaultDisplayName = useLastResolved(defaultAgentName$) ?? "Zero";
   const manageNav = MANAGE_NAV.filter((item) => {
-    if (
-      item.hideWhenFeatureEnabled &&
-      features?.[item.hideWhenFeatureEnabled]
-    ) {
-      return false;
-    }
     if (item.featureGate && !features?.[item.featureGate]) {
       return false;
     }
@@ -415,8 +399,23 @@ function ExpandedManageSection() {
   const activeId = useGet(activeRoute$);
   const onSelect = useNavSelect();
   const { manageNav } = useResolvedNavItems();
+  const features = useLastResolved(featureSwitch$);
   const manageCollapsed = useGet(manageSectionCollapsed$);
   const setManageCollapsed = useSet(setManageSectionCollapsed$);
+  const compactCollapsedManage =
+    features?.[FeatureSwitchKey.SidebarManageIconCollapse] ?? false;
+  if (manageCollapsed && compactCollapsedManage) {
+    return (
+      <CollapsedManageNav
+        activeId={activeId}
+        manageNav={manageNav}
+        onSelect={onSelect}
+        onExpand={() => {
+          return setManageCollapsed(false);
+        }}
+      />
+    );
+  }
   return (
     <div className="shrink-0">
       <div
@@ -469,6 +468,81 @@ function ExpandedManageSection() {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function CollapsedManageNav({
+  activeId,
+  manageNav,
+  onSelect,
+  onExpand,
+}: {
+  activeId: RouteKey | null;
+  manageNav: readonly ManageNavItem[];
+  onSelect: (id: SidebarNavId) => void;
+  onExpand: () => void;
+}) {
+  return (
+    <div className="shrink-0">
+      <div className="flex h-8 shrink-0 items-center justify-between pr-0">
+        <TooltipProvider delayDuration={150}>
+          <div className="flex min-w-0 items-center gap-1">
+            {manageNav.map(
+              ({ id, activeKeys, pathname: navPath, label, icon: Icon }) => {
+                const isActive =
+                  activeId !== null &&
+                  (activeKeys as readonly RouteKey[]).includes(activeId);
+                return (
+                  <Tooltip key={id}>
+                    <TooltipTrigger asChild>
+                      <Link
+                        pathname={
+                          navPath as Parameters<typeof Link>[0]["pathname"]
+                        }
+                        onClick={(e) => {
+                          if (e.metaKey || e.ctrlKey || e.shiftKey) {
+                            return;
+                          }
+                          e.preventDefault();
+                          onSelect(id);
+                        }}
+                        aria-label={label}
+                        aria-current={isActive ? "page" : undefined}
+                        className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 ${
+                          isActive
+                            ? "bg-gray-200 text-gray-900"
+                            : "text-sidebar-foreground hover:bg-sidebar-accent"
+                        }`}
+                      >
+                        <Icon size={16} className="shrink-0" />
+                      </Link>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">
+                      <p className="text-xs">{label}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                );
+              },
+            )}
+          </div>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className="relative z-10 flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-[hsl(var(--gray-200))] transition-colors"
+                onClick={onExpand}
+                aria-label="Expand manage section"
+              >
+                <IconChevronRight size={15} stroke={2.5} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="right">
+              <p className="text-xs">Expand manage section</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      </div>
     </div>
   );
 }

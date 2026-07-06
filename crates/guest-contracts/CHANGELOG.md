@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.4](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.3.3...guest-contracts-v0.3.4) (2026-07-05)
+
+
+### Refactoring
+
+* centralize run payload field validation ([#20225](https://github.com/vm0-ai/vm0/issues/20225)) ([8a293a7](https://github.com/vm0-ai/vm0/commit/8a293a762a48b4828780e8e99ca59e48ca915415))
+
 ## [0.3.3](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.3.2...guest-contracts-v0.3.3) (2026-07-03)
 
 

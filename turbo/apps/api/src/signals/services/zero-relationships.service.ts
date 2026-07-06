@@ -12,7 +12,17 @@ import {
   relationshipItemSources,
   relationshipStates,
 } from "@vm0/db/schema/relationship-memory";
-import { and, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
+import {
+  and,
+  desc,
+  eq,
+  ilike,
+  inArray,
+  isNull,
+  or,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 
 import { db$, type ReadonlyDb } from "../external/db";
 
@@ -42,7 +52,10 @@ interface RelationshipResolveParams extends RelationshipScope {
 
 interface RelationshipSearchParams extends RelationshipScope {
   readonly q?: string;
+  readonly page: number;
   readonly limit: number;
+  readonly entityType?: "person" | "organization";
+  readonly itemKind?: "key_fact" | "preference" | "open_loop";
 }
 
 function serializeDate(value: Date | null): string | null {
@@ -376,16 +389,19 @@ async function resolveRelationshipMemory(
   return { relationship: relationship ?? null };
 }
 
-async function loadSearchStateIds(
-  db: ReadonlyDb,
-  params: RelationshipSearchParams,
-): Promise<readonly string[]> {
+function relationshipSearchFilters(params: RelationshipSearchParams): SQL[] {
   const query = params.q?.trim() ?? "";
-  const filters = [
+  const filters: SQL[] = [
     eq(relationshipStates.orgId, params.orgId),
     eq(relationshipStates.userId, params.userId),
   ];
 
+  if (params.entityType) {
+    filters.push(eq(relationshipEntities.type, params.entityType));
+  }
+  if (params.itemKind) {
+    filters.push(eq(relationshipItems.kind, params.itemKind));
+  }
   if (!emptySearch(params.q)) {
     const pattern = `%${query}%`;
     const searchFilter = or(
@@ -401,10 +417,45 @@ async function loadSearchStateIds(
     }
   }
 
+  return filters;
+}
+
+async function countSearchRelationships(
+  db: ReadonlyDb,
+  params: RelationshipSearchParams,
+): Promise<number> {
+  const filters = relationshipSearchFilters(params);
+  const [row] = await db
+    .select({
+      total: sql<number>`count(distinct ${relationshipStates.id})::int`,
+    })
+    .from(relationshipStates)
+    .innerJoin(
+      relationshipEntities,
+      eq(relationshipEntities.id, relationshipStates.entityId),
+    )
+    .leftJoin(
+      relationshipItems,
+      and(
+        eq(relationshipItems.relationshipStateId, relationshipStates.id),
+        isNull(relationshipItems.archivedAt),
+      ),
+    )
+    .where(and(...filters));
+
+  return Number(row?.total ?? 0);
+}
+
+async function loadSearchStateIds(
+  db: ReadonlyDb,
+  params: RelationshipSearchParams,
+): Promise<readonly string[]> {
+  const filters = relationshipSearchFilters(params);
+  const offset = (params.page - 1) * params.limit;
+
   const rows = await db
     .select({
       stateId: relationshipStates.id,
-      rankTime: relationshipStates.lastInteractionAt,
     })
     .from(relationshipStates)
     .innerJoin(
@@ -419,32 +470,31 @@ async function loadSearchStateIds(
       ),
     )
     .where(and(...filters))
+    .groupBy(
+      relationshipStates.id,
+      relationshipStates.status,
+      relationshipStates.lastInteractionAt,
+    )
     .orderBy(
       sql`case when ${relationshipStates.status} = 'active' then 0 else 1 end`,
       desc(relationshipStates.lastInteractionAt),
     )
-    .limit(params.limit * 5);
+    .limit(params.limit)
+    .offset(offset);
 
-  const stateIds: string[] = [];
-  const seen = new Set<string>();
-  for (const row of rows) {
-    if (seen.has(row.stateId)) {
-      continue;
-    }
-    seen.add(row.stateId);
-    stateIds.push(row.stateId);
-    if (stateIds.length >= params.limit) {
-      break;
-    }
-  }
-  return stateIds;
+  return rows.map((row) => {
+    return row.stateId;
+  });
 }
 
 async function searchRelationshipMemory(
   db: ReadonlyDb,
   params: RelationshipSearchParams,
 ): Promise<RelationshipSearchResponse> {
-  const stateIds = await loadSearchStateIds(db, params);
+  const [total, stateIds] = await Promise.all([
+    countSearchRelationships(db, params),
+    loadSearchStateIds(db, params),
+  ]);
   const rows = await loadRelationshipRowsByStateIds(db, params, stateIds);
   const rowById = new Map(
     rows.map((row) => {
@@ -460,7 +510,17 @@ async function searchRelationshipMemory(
     })
     .sort(compareRelationshipRows(params.q));
   const relationships = await hydrateRelationshipRows(db, params, orderedRows);
-  return { relationships };
+  const totalPages = Math.max(1, Math.ceil(total / params.limit));
+  return {
+    relationships,
+    pagination: {
+      page: params.page,
+      pageSize: params.limit,
+      total,
+      totalPages,
+      hasMore: params.page < totalPages,
+    },
+  };
 }
 
 export function zeroRelationshipResolve(
