@@ -198,7 +198,6 @@ import {
 import type { ChatClipboardAttachment } from "../../signals/zero-page/clipboard.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import {
-  headerAutomationMenu$,
   headerWorkflowTriggersForThread,
   runHeaderWorkflowTriggerNow$,
   reloadHeaderAutomationMenu$,
