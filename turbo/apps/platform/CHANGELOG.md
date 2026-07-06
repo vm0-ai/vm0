@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.558.4](https://github.com/vm0-ai/vm0/compare/app-v0.558.3...app-v0.558.4) (2026-07-06)
+
+
+### Bug Fixes
+
+* simplify mobile unread chat shortcuts ([#20271](https://github.com/vm0-ai/vm0/issues/20271)) ([d28e08f](https://github.com/vm0-ai/vm0/commit/d28e08fd7bab811e9fd5d080990c10302fd22457))
+
+
+### Refactoring
+
+* reduce fallback slop in runtime guards ([#20275](https://github.com/vm0-ai/vm0/issues/20275)) ([73e668c](https://github.com/vm0-ai/vm0/commit/73e668ce7135504b171be98ca2832d09b433f34b))
+
 ## [0.558.3](https://github.com/vm0-ai/vm0/compare/app-v0.558.2...app-v0.558.3) (2026-07-05)
 
 
