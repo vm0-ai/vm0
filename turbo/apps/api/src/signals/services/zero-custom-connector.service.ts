@@ -643,10 +643,11 @@ function templateWithPlaceholders(template: string): string {
 }
 
 function prefixContainsPathVariable(raw: string): boolean {
-  if (!raw.startsWith("https://")) {
+  const schemeMatch = /^https:\/\//i.exec(raw);
+  if (!schemeMatch) {
     return false;
   }
-  const afterScheme = raw.slice("https://".length);
+  const afterScheme = raw.slice(schemeMatch[0].length);
   const firstPathSlash = afterScheme.indexOf("/");
   if (firstPathSlash === -1) {
     return false;

@@ -2304,6 +2304,49 @@ describe("CONN-03: custom connectors and connector-owned values", () => {
     ).resolves.toStrictEqual([]);
   });
 
+  it("rejects path variables in custom connector prefix templates case-insensitively", async () => {
+    const bdd = createBddApi(context);
+    const admin = bdd.user({ orgRole: "org:admin" });
+    const rand = randomUUID().replace(/-/g, "").slice(0, 8);
+
+    const rejected = await connectorsApi.requestCreateCustomConnector(
+      admin,
+      {
+        displayName: "BDD Path Variable API",
+        prefixTemplates: [
+          `HTTPS://api-${rand}.example.test/{{variables.path}}/`,
+        ],
+        fields: [
+          {
+            key: "api_key",
+            label: "API key",
+            kind: "secret",
+            required: true,
+          },
+          {
+            key: "path",
+            label: "Path",
+            kind: "variable",
+            required: true,
+          },
+        ],
+        headerInjections: [
+          {
+            name: "Authorization",
+            valueTemplate: "Bearer {{secrets.api_key}}",
+          },
+        ],
+        queryInjections: [],
+      },
+      [400],
+    );
+
+    expectApiError(rejected.body);
+    expect(rejected.body.error.message).toBe(
+      "Prefix template variables may only appear in the URL host",
+    );
+  });
+
   it("deletes only the legacy secret value through the legacy secret endpoint", async () => {
     const bdd = createBddApi(context);
     const admin = bdd.user({ orgRole: "org:admin" });
