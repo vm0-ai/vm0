@@ -16,13 +16,11 @@ import {
   captureNavigationTiming$,
   markRouteSetupBegin$,
 } from "../../lib/posthog.ts";
-import { reloadUserModelPreference$ } from "../external/user-model-preference.ts";
 import { scrollToThread$ } from "./sidebar-chat-thread-scroll.ts";
 
 const internalSetupChatPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     set(markRouteSetupBegin$);
-    set(reloadUserModelPreference$);
     const threadId = get(currentChatThreadId$);
     if (!threadId) {
       throw new Error("threadId is required to load chat page");

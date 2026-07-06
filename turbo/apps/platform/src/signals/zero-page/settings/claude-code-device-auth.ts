@@ -9,8 +9,8 @@ import { ApiError, accept } from "../../../lib/accept.ts";
 import { now } from "../../../lib/time.ts";
 import { zeroClient$ } from "../../api-client.ts";
 import { reloadOrgModelProviders$ } from "../../external/org-model-providers.ts";
-import { reloadPersonalModelProviders$ } from "../../external/personal-model-providers.ts";
 import { onRef, resetSignal, settle } from "../../utils.ts";
+import { reloadPersonalModelProvider$ } from "../model-first-personal-oauth.ts";
 
 type ClaudeCodeDeviceAuthDialogMode = "connect" | "reconnect";
 
@@ -437,7 +437,7 @@ export const {
   autoStartRef$: claudeCodeDeviceAuthAutoStartRefPersonal$,
 } = createClaudeCodeDeviceAuthSignals(
   "personal",
-  reloadPersonalModelProviders$,
+  reloadPersonalModelProvider$,
 );
 
 export type { ClaudeCodeDeviceAuthFlowState };
