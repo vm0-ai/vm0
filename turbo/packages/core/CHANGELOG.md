@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.402.0](https://github.com/vm0-ai/vm0/compare/core-v8.401.5...core-v8.402.0) (2026-07-06)
+
+
+### Features
+
+* enable html artifact comment editing for staff orgs ([#20294](https://github.com/vm0-ai/vm0/issues/20294)) ([48fd9b7](https://github.com/vm0-ai/vm0/commit/48fd9b7a44488ba7c8189c4211ab9d28dc82f3f1))
+
 ## [8.401.5](https://github.com/vm0-ai/vm0/compare/core-v8.401.4...core-v8.401.5) (2026-07-06)
 
 
