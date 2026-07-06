@@ -44,6 +44,7 @@ export enum FeatureSwitchKey {
   CodexFrameworkForMinimax = "codexFrameworkForMinimax",
   CodexFastMode = "codexFastMode",
   ComposerModelPickerPopover = "composerModelPickerPopover",
+  ComposerUploadPopover = "composerUploadPopover",
 
   ZapierConnector = "zapierConnector",
   ChatThreadEmoji = "chatThreadEmoji",

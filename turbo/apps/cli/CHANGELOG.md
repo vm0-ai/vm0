@@ -1,5 +1,26 @@
 # Changelog
 
+## [9.225.0](https://github.com/vm0-ai/vm0/compare/cli-v9.224.2...cli-v9.225.0) (2026-07-06)
+
+
+### Features
+
+* add notion child page workflow trigger ([#20391](https://github.com/vm0-ai/vm0/issues/20391)) ([e16798b](https://github.com/vm0-ai/vm0/commit/e16798bdef02cd212425fe275c5873a36b6a8ec1))
+
+
+### Refactoring
+
+* remove presentation design-system selection ([#20371](https://github.com/vm0-ai/vm0/issues/20371)) ([bb56ceb](https://github.com/vm0-ai/vm0/commit/bb56ceb0c43fe57028535ab03cd4911f051aeff0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.158.0
+    * @vm0/connectors bumped to 1.141.0
+    * @vm0/core bumped to 8.406.0
+
 ## [9.224.2](https://github.com/vm0-ai/vm0/compare/cli-v9.224.1...cli-v9.224.2) (2026-07-06)
 
 

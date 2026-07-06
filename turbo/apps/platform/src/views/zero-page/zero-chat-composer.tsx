@@ -6091,6 +6091,32 @@ function MicButton({
   );
 }
 
+function ComposerAttachButton({
+  onSelectFile,
+}: {
+  readonly onSelectFile: () => void;
+}) {
+  return (
+    <TooltipProvider delayDuration={300}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            className="rounded-lg p-2 transition-colors duration-200 hover:bg-accent hover:text-foreground sm:p-[9px]"
+            aria-label="Attach"
+            onClick={onSelectFile}
+          >
+            <IconPaperclip size={18} stroke={1.5} />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="text-xs">
+          Attach
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
 function ComposerUploadMenu({
   input,
   onDraftChange,
@@ -6513,7 +6539,7 @@ function ComposerModelPickerSlot({
           triggerClassName={cn(
             "h-9 w-9 max-w-none gap-0 border-transparent bg-transparent px-0 text-sm text-muted-foreground transition-colors sm:w-auto sm:max-w-[14rem] sm:gap-1 sm:px-2",
             "[&>span]:flex [&>span]:items-center [&>span]:justify-center sm:[&>span]:justify-start [&>svg]:hidden sm:[&>svg]:block",
-            "hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 data-[state=open]:bg-accent data-[state=open]:text-foreground data-[state=open]:ring-2 data-[state=open]:ring-ring data-[state=open]:ring-offset-2",
+            "hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 data-[state=open]:bg-accent data-[state=open]:text-foreground",
           )}
           compactTrigger
           mobileIconTrigger
@@ -6541,6 +6567,11 @@ function useCodexFastModeEnabled(): boolean {
 function usePopoverModelPickerEnabled(): boolean {
   const features = useLastResolved(featureSwitch$);
   return features?.[FeatureSwitchKey.ComposerModelPickerPopover] ?? false;
+}
+
+function useUploadPopoverEnabled(): boolean {
+  const features = useLastResolved(featureSwitch$);
+  return features?.[FeatureSwitchKey.ComposerUploadPopover] ?? false;
 }
 
 export function ZeroChatComposer({
@@ -6581,6 +6612,7 @@ export function ZeroChatComposer({
   const openGoalDialog = useSet(openChatThreadGoalDialog$);
   const codexFastModeEnabled = useCodexFastModeEnabled();
   const popoverModelPickerEnabled = usePopoverModelPickerEnabled();
+  const uploadPopoverEnabled = useUploadPopoverEnabled();
 
   const resolved = useResolvedComposerSignals(
     input,
@@ -7018,12 +7050,16 @@ export function ZeroChatComposer({
               )}
               <div className="flex items-center justify-between gap-2 px-4 pb-3 pt-1">
                 <div className="flex items-center gap-1 text-muted-foreground sm:gap-1.5">
-                  <ComposerUploadMenu
-                    input={input}
-                    onDraftChange={onDraftChange}
-                    onInputChange={onInputChange}
-                    onSelectFile={handleFileSelect}
-                  />
+                  {uploadPopoverEnabled ? (
+                    <ComposerUploadMenu
+                      input={input}
+                      onDraftChange={onDraftChange}
+                      onInputChange={onInputChange}
+                      onSelectFile={handleFileSelect}
+                    />
+                  ) : (
+                    <ComposerAttachButton onSelectFile={handleFileSelect} />
+                  )}
                   <ComposerTemplatePickerSlot picker={templatePicker} />
                   <ComposerWorkflowPromptSlot
                     onCreateWorkflowPrompt={onCreateWorkflowPrompt}
