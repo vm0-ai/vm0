@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.230.1](https://github.com/vm0-ai/vm0/compare/api-v1.230.0...api-v1.230.1) (2026-07-06)
+
+
+### Bug Fixes
+
+* allow vm7 preview cors origins ([#20378](https://github.com/vm0-ai/vm0/issues/20378)) ([1e16d99](https://github.com/vm0-ai/vm0/commit/1e16d99eac5af148f5d878dce3fbf6579835cae4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.95.0
+
 ## [1.230.0](https://github.com/vm0-ai/vm0/compare/api-v1.229.0...api-v1.230.0) (2026-07-06)
 
 
