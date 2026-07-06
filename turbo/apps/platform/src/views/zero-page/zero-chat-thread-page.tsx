@@ -297,7 +297,7 @@ import {
   ZERO_DESKTOP_DOWNLOAD_URL,
 } from "../../signals/zero-page/computer-use-hosts.ts";
 import type { ModelProviderSelection } from "./components/model-provider-picker.tsx";
-import { modelFirstPersonalOauthState$ } from "../../signals/zero-page/model-first-personal-oauth.ts";
+import { personalModelProvider$ } from "../../signals/zero-page/model-first-personal-oauth.ts";
 import {
   resolveChatComposerSubmitBlocker,
   usePersonalOauthConfigurationAction,
@@ -4603,7 +4603,7 @@ function useChatComposerModel(
         }
       : baseModelSelection;
   const setModelSelection = useSet(thread.setModelSelection$);
-  const modelFirstOauthState = useLastResolved(modelFirstPersonalOauthState$);
+  const personalModelProvider = useLastResolved(personalModelProvider$);
   const openPersonalOauthConfiguration = usePersonalOauthConfigurationAction();
 
   const handleModelSelectionChange = (
@@ -4618,11 +4618,13 @@ function useChatComposerModel(
     disabled: false,
   });
   const modelPickerLoading = modelSelectionResolved === undefined;
-  const submitBlockerProps = resolveChatComposerSubmitBlocker({
-    state: modelFirstOauthState,
-    modelSelection,
-    onAction: openPersonalOauthConfiguration,
-  });
+  const submitBlockerProps = modelSelection
+    ? resolveChatComposerSubmitBlocker({
+        personalModelProvider,
+        selectedModel: modelSelection.selectedModel,
+        onAction: openPersonalOauthConfiguration,
+      })
+    : undefined;
 
   return {
     modelPicker,

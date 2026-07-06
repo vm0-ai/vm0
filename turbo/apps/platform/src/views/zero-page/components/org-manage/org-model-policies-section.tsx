@@ -69,6 +69,7 @@ import {
   type ModelPolicyDialogMode,
   type ModelPolicyRouteKind,
 } from "../../../../signals/zero-page/settings/org-model-policy-dialog.ts";
+import { reloadPersonalModelProvider$ } from "../../../../signals/zero-page/model-first-personal-oauth.ts";
 import {
   billingStatusAsync$,
   startCheckout$,
@@ -1217,6 +1218,7 @@ export function OrgModelPoliciesSection() {
   const openEditModelDialog = useSet(openEditModelPolicyDialog$);
   const openOrgBillingPlans = useSet(openBillingPlans$);
   const openSettingsBillingPlans = useSet(openSettingsBillingPlans$);
+  const reloadPersonalModelProvider = useSet(reloadPersonalModelProvider$);
   const [updateLoadable, updatePolicies] = useLoadableSet(
     updateOrgModelPolicies$,
   );
@@ -1263,10 +1265,14 @@ export function OrgModelPoliciesSection() {
 
   const submit = (next: UpdateOrgModelPolicy[]) => {
     detach(
-      updatePolicies(
-        { policies: filterPolicyUpdatesForTier(next, limitedFree1) },
-        pageSignal,
-      ),
+      (async () => {
+        await updatePolicies(
+          { policies: filterPolicyUpdatesForTier(next, limitedFree1) },
+          pageSignal,
+        );
+        pageSignal.throwIfAborted();
+        reloadPersonalModelProvider();
+      })(),
       Reason.DomCallback,
     );
   };

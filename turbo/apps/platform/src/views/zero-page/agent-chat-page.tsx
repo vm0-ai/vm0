@@ -89,7 +89,7 @@ import {
   typewriterDisplayed$,
   typewriterRef$,
 } from "../../signals/view-component-state.ts";
-import { modelFirstPersonalOauthState$ } from "../../signals/zero-page/model-first-personal-oauth.ts";
+import { personalModelProvider$ } from "../../signals/zero-page/model-first-personal-oauth.ts";
 import { updateUserModelPreference$ } from "../../signals/external/user-model-preference.ts";
 import {
   resolveChatComposerSubmitBlocker,
@@ -462,7 +462,7 @@ function useAgentChatComposerModel(pageSignal: AbortSignal) {
       : null;
   const setModelSelection = useSet(setChatPageModelSelection$);
   const updateUserModelPreference = useSet(updateUserModelPreference$);
-  const modelFirstOauthState = useLastResolved(modelFirstPersonalOauthState$);
+  const personalModelProvider = useLastResolved(personalModelProvider$);
   const openPersonalOauthConfiguration = usePersonalOauthConfigurationAction();
 
   const handleModelSelectionChange = (
@@ -483,11 +483,13 @@ function useAgentChatComposerModel(pageSignal: AbortSignal) {
     onChange: handleModelSelectionChange,
     resolveDefaultSelection: false,
   };
-  const submitBlockerProps = resolveChatComposerSubmitBlocker({
-    state: modelFirstOauthState,
-    modelSelection,
-    onAction: openPersonalOauthConfiguration,
-  });
+  const submitBlockerProps = modelSelection
+    ? resolveChatComposerSubmitBlocker({
+        personalModelProvider,
+        selectedModel: modelSelection.selectedModel,
+        onAction: openPersonalOauthConfiguration,
+      })
+    : undefined;
   const modelPickerLoading = modelSelectionLoadable.state === "loading";
 
   return {
