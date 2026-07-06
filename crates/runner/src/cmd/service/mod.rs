@@ -239,6 +239,8 @@ fn touch_service_activation_image_artifacts(
 async fn start(args: ServiceRunArgs) -> RunnerResult<()> {
     let unit = RunnerServiceUnit::from_suffix(&args.name)?;
     let home = HomePaths::new()?;
+    let _service_lock = acquire_service_lock(&unit, &home).await?;
+
     validate_env_vars(&args.env)?;
 
     if is_unit_active(&unit).await? {
