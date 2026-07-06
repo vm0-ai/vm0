@@ -238,6 +238,18 @@ describe("POST /api/webhooks/notion", () => {
     });
     expect(secretState.secrets).toHaveLength(1);
 
+    const replacement = await postNotionWebhook({
+      rawBody: JSON.stringify({ verification_token: "attacker-token" }),
+    });
+    expect(replacement).toStrictEqual({
+      status: 401,
+      body: { error: "Unauthorized" },
+    });
+    const unchangedSecretState = await workflowTriggerStateAction({
+      action: "get-notion-webhook-secret",
+    });
+    expect(unchangedSecretState.secrets).toHaveLength(1);
+
     const createdRaw = JSON.stringify(
       notionPageEvent({
         id: "77777777-7777-4777-8777-777777777777",

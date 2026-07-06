@@ -704,6 +704,19 @@ async function storeVerificationToken(args: {
   args.signal.throwIfAborted();
 }
 
+async function activeVerificationTokenExists(args: {
+  readonly db: ReadonlyDb;
+  readonly signal: AbortSignal;
+}): Promise<boolean> {
+  const rows = await args.db
+    .select({ id: notionWebhookSecrets.id })
+    .from(notionWebhookSecrets)
+    .where(eq(notionWebhookSecrets.active, true))
+    .limit(1);
+  args.signal.throwIfAborted();
+  return rows.length > 0;
+}
+
 async function loadActiveVerificationTokens(args: {
   readonly db: ReadonlyDb;
   readonly signal: AbortSignal;
@@ -962,6 +975,9 @@ export const dispatchNotionWebhook$ = command(
     const verification = notionWebhookVerificationSchema.safeParse(rawJson);
     const db = set(writeDb$);
     if (verification.success) {
+      if (await activeVerificationTokenExists({ db, signal })) {
+        return { kind: "unauthorized" };
+      }
       await storeVerificationToken({
         db,
         token: verification.data.verification_token,
