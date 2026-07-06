@@ -720,9 +720,30 @@ fn download_and_extract(url: &str, target_path: &str) -> Result<(), DownloadErro
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Mutex;
+    use std::path::Path;
+    use std::sync::{Mutex, MutexGuard};
 
     static SANDBOX_OP_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    struct SandboxOpsLogGuard {
+        _lock: MutexGuard<'static, ()>,
+    }
+
+    impl SandboxOpsLogGuard {
+        fn set(path: impl AsRef<Path>) -> Self {
+            let lock = SANDBOX_OP_TEST_LOCK
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            guest_common::telemetry::set_sandbox_ops_log_file(path);
+            Self { _lock: lock }
+        }
+    }
+
+    impl Drop for SandboxOpsLogGuard {
+        fn drop(&mut self) {
+            guest_common::telemetry::clear_sandbox_ops_log_file();
+        }
+    }
 
     fn task_at(path: &str, kind: DownloadTaskKind) -> DownloadTask {
         DownloadTask::new_with_kind(
@@ -1014,10 +1035,9 @@ mod tests {
 
     #[test]
     fn download_all_parallel_records_conflict_shape_actions() {
-        let _guard = SANDBOX_OP_TEST_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         let ops_path = dir.path().join("sandbox-ops.jsonl");
-        guest_common::telemetry::set_sandbox_ops_log_file(&ops_path);
+        let _ops_guard = SandboxOpsLogGuard::set(&ops_path);
 
         fn runner(_task: DownloadTask) -> bool {
             true
@@ -1036,7 +1056,6 @@ mod tests {
             ],
             runner,
         );
-        guest_common::telemetry::clear_sandbox_ops_log_file();
 
         assert!(success);
         let ops = std::fs::read_to_string(&ops_path).unwrap();
