@@ -722,7 +722,7 @@ jobs:
         with:
           vercel-token: ${{ secrets.VERCEL_TOKEN }}
           vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
-          deployment-url: ${{ vars.ONBOARDING_URL_STAGING || 'https://staging-www.vm0.ai' }}
+          deployment-url: ${{ vars.ONBOARDING_URL_STAGING_ALIAS_SOURCE || vars.ONBOARDING_URL_STAGING || 'https://staging-www.vm6.ai' }}
           app-name: www
           job-ref: ${{ needs.prepare.outputs.job-ref }}
           preview-domain: ${{ vars.PREVIEW_DOMAIN }}
