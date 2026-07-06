@@ -1921,6 +1921,27 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     );
     expectApiError(legacyStaticHeartbeat.body);
 
+    const finalHeartbeatWithExtraLegacyFields =
+      await api.requestRawHeartbeatRunner(
+        true,
+        [200],
+        rawHeartbeatBody({
+          admittableProfiles: ["vm0/default"],
+          availableProfiles: ["vm0/large"],
+          profiles: ["vm0/large"],
+        }),
+      );
+    expect(finalHeartbeatWithExtraLegacyFields.body).toStrictEqual({
+      ok: true,
+    });
+    const finalHeartbeatHolder = await pollFollowUp(
+      "continue when final heartbeat includes extra legacy fields",
+    );
+    expect(finalHeartbeatHolder.job?.cliAgentSessionId).toBe(cliAgentSessionId);
+    expect(finalHeartbeatHolder.job?.affinityProtectedUntil).toStrictEqual(
+      expect.any(String),
+    );
+
     await heartbeatHolder({
       admittableProfiles: [],
     });
