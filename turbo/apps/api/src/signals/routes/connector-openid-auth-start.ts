@@ -33,11 +33,8 @@ function normalizeAuthUrlResult(result: string | AuthUrlResult): AuthUrlResult {
   return typeof result === "string" ? { url: result } : result;
 }
 
-export function openIdRealmForApiOrigin(origin: string): string {
+export function openIdRealmForOrigin(origin: string): string {
   const url = new URL(origin);
-  if (url.hostname.startsWith("api.")) {
-    url.hostname = url.hostname.slice("api.".length);
-  }
   url.pathname = "/";
   url.search = "";
   url.hash = "";
@@ -78,7 +75,7 @@ export function prepareResolvedConnectorOpenIdAuthStart<
     state,
     returnTo: returnTo.toString(),
     expectedReturnTo: returnTo.toString(),
-    realm: openIdRealmForApiOrigin(args.origin),
+    realm: openIdRealmForOrigin(args.origin),
   };
 }
 

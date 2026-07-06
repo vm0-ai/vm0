@@ -320,7 +320,7 @@ describe("Steam OpenID connector", () => {
       "https://steamcommunity.com/openid/login",
     );
     expect(authorizationUrl.searchParams.get("openid.realm")).toBe(
-      "https://vm0.ai/",
+      "https://api.vm0.ai/",
     );
     expect(authorizationUrl.searchParams.get("openid.return_to")).toMatch(
       /^https:\/\/api\.vm0\.ai\/api\/connectors\/steam\/callback\?state=[0-9a-f]{64}$/u,

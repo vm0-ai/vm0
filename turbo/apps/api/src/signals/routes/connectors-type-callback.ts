@@ -48,7 +48,7 @@ import {
   clearConnectorOAuthCookies,
   connectorOAuthRedirectResponse,
 } from "./connector-oauth-route-state";
-import { openIdRealmForApiOrigin } from "./connector-openid-auth-start";
+import { openIdRealmForOrigin } from "./connector-openid-auth-start";
 
 type CallbackIdentity = {
   readonly userId: string;
@@ -687,7 +687,7 @@ function storedOpenIdRealm(
       return parsed.realm;
     }
   }
-  return openIdRealmForApiOrigin(new URL(expectedReturnTo).origin);
+  return openIdRealmForOrigin(new URL(expectedReturnTo).origin);
 }
 
 function resolveOpenIdCallbackState(
