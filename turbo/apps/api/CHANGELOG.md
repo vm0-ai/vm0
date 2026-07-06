@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.231.3](https://github.com/vm0-ai/vm0/compare/api-v1.231.2...api-v1.231.3) (2026-07-06)
+
+
+### Performance Improvements
+
+* accept platform secret firewall auth metadata ([#20415](https://github.com/vm0-ai/vm0/issues/20415)) ([93be26d](https://github.com/vm0-ai/vm0/commit/93be26d46ee80cd43d61e2641fd7a8af15899ff3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.158.2
+    * @vm0/connectors bumped to 1.142.1
+    * @vm0/core bumped to 8.407.2
+    * @vm0/db bumped to 1.96.3
+
 ## [1.231.2](https://github.com/vm0-ai/vm0/compare/api-v1.231.1...api-v1.231.2) (2026-07-06)
 
 
