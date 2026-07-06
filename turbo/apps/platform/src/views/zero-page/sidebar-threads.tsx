@@ -977,11 +977,7 @@ function ChatThreadsSkeleton() {
   );
 }
 
-function ChatThreadsContent({
-  threadListScroll,
-}: {
-  threadListScroll: boolean;
-}) {
+function ChatThreadsContent() {
   // useLastLoadable keeps the previous resolved list rendered while
   // sidebarChatThreads$ recomputes on a pane/thread switch; useLoadable would
   // flash the skeleton on every switch.
@@ -1007,40 +1003,26 @@ function ChatThreadsContent({
     </div>
   );
 
-  if (threadListScroll) {
-    return (
-      <OverlayScrollArea
-        className="mt-1 min-h-0 flex-1"
-        data-testid="sidebar-scroll-area"
-        onScroll={(e) => {
-          return setIsScrolledFn(e.currentTarget.scrollTop > 0);
-        }}
-        style={{
-          boxShadow: isScrolled
-            ? "0 -1px 0 0 hsl(var(--border) / 0.4)"
-            : "none",
-        }}
-      >
-        {content}
-      </OverlayScrollArea>
-    );
-  }
-
-  return <div className="mt-1">{content}</div>;
-}
-export function ChatThreadsSection({
-  threadListScroll = false,
-}: {
-  threadListScroll?: boolean;
-}) {
   return (
-    <div
-      className={`mt-4 flex flex-col ${
-        threadListScroll ? "min-h-0 flex-1" : ""
-      }`}
+    <OverlayScrollArea
+      className="mt-1 min-h-0 flex-1"
+      data-testid="sidebar-scroll-area"
+      onScroll={(e) => {
+        return setIsScrolledFn(e.currentTarget.scrollTop > 0);
+      }}
+      style={{
+        boxShadow: isScrolled ? "0 -1px 0 0 hsl(var(--border) / 0.4)" : "none",
+      }}
     >
+      {content}
+    </OverlayScrollArea>
+  );
+}
+export function ChatThreadsSection() {
+  return (
+    <div className="mt-4 flex flex-col min-h-0 flex-1">
       <ChatThreadsTitle />
-      <ChatThreadsContent threadListScroll={threadListScroll} />
+      <ChatThreadsContent />
       <ChatThreadRenameDialog />
       <DeleteChatThreadDialog />
     </div>
