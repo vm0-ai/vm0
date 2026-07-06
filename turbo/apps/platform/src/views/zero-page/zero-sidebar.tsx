@@ -85,7 +85,6 @@ const MANAGE_NAV: readonly ManageNavItem[] = [
     pathname: "/workflows",
     label: "Workflows",
     icon: IconRoute as NavIcon,
-    featureGate: FeatureSwitchKey.WorkflowAutomation,
   },
   {
     id: "connectors",

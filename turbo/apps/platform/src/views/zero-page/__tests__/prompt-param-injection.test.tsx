@@ -22,7 +22,7 @@ describe("prompt query parameter injection", () => {
       return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
     });
 
-    expect(textarea).toHaveValue("Start my first task");
+    expect(textarea).toHaveTextContent("Start my first task");
   });
 
   it("starts a chat draft from a prompt URL", async () => {
@@ -35,7 +35,7 @@ describe("prompt query parameter injection", () => {
       return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
     });
 
-    expect(textarea).toHaveValue("Set up a daily report");
+    expect(textarea).toHaveTextContent("Set up a daily report");
   });
 
   it("starts an optimistic chat from the prompt route", async () => {

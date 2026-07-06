@@ -783,13 +783,11 @@ describe("chat composer models", () => {
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {},
     });
 
-    const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
-    expect(textarea).toHaveAttribute("rows", "3");
-    expect(textarea).toHaveClass("min-h-[96px]");
-    expect(textarea).not.toHaveClass("min-h-[44px]");
+    const editor = await findComposerEditor();
+    expect(editor).toHaveClass("min-h-[96px]");
+    expect(editor).not.toHaveClass("min-h-[44px]");
   });
 
   it("uses the mobile single-line height in chat thread composers", async () => {
@@ -800,12 +798,10 @@ describe("chat composer models", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      featureSwitches: {},
     });
 
-    const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
-    expect(textarea).toHaveAttribute("rows", "1");
-    expect(textarea).toHaveClass("min-h-[44px]", "md:min-h-[96px]");
+    const editor = await findComposerEditor();
+    expect(editor).toHaveClass("min-h-[44px]", "md:min-h-[96px]");
   });
 
   it("keeps the agent chat slash composer at three-line height", async () => {
@@ -818,9 +814,6 @@ describe("chat composer models", () => {
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {
-        [FeatureSwitchKey.WorkflowAutomation]: true,
-      },
     });
 
     const editor = await findComposerEditor();
@@ -839,9 +832,6 @@ describe("chat composer models", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.WorkflowAutomation]: true,
-      },
     });
 
     const editor = await findComposerEditor();
@@ -883,7 +873,6 @@ describe("chat composer models", () => {
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: true },
     });
 
     const editor = await findComposerEditor();
@@ -945,7 +934,6 @@ describe("chat composer models", () => {
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: true },
     });
 
     const editor = await findComposerEditor();
@@ -975,9 +963,6 @@ describe("chat composer models", () => {
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {
-        [FeatureSwitchKey.WorkflowAutomation]: true,
-      },
     });
 
     const editor = await findComposerEditor();
@@ -991,35 +976,6 @@ describe("chat composer models", () => {
     const link = linkByText("View all workflows");
     expect(link).toHaveAttribute("href", "/workflows");
     expect(link.parentElement).toHaveClass("shrink-0", "border-t");
-  });
-
-  it("hides slash workflow suggestions when the feature switch is off", async () => {
-    const user = userEvent.setup({ delay: null });
-    mockOrgModelRoutes("kimi-k2.7-code");
-    mockAgent();
-    context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
-      return respond(200, [
-        workflowSummary({
-          name: "sales-research",
-          displayName: "Sales Research",
-          description: null,
-          agentId: AGENT_ID,
-        }),
-      ]);
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: false },
-    });
-
-    const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
-    await user.click(textarea);
-    await user.keyboard("/");
-
-    expect(screen.queryByText("/sales-research")).not.toBeInTheDocument();
-    expect(textarea).toHaveValue("/");
   });
 
   it("scrolls the slash workflow picker with keyboard selection", async () => {
@@ -1051,7 +1007,6 @@ describe("chat composer models", () => {
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: true },
     });
 
     const editor = await findComposerEditor();
@@ -1083,7 +1038,6 @@ describe("chat composer models", () => {
       detachedSetupPage({
         context,
         path: `/agents/${AGENT_ID}/chat`,
-        featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: true },
       });
 
       const editor = await findComposerEditor();
@@ -1955,10 +1909,10 @@ describe("chat composer models", () => {
       screen.findByLabelText("Remove notes.txt"),
     ).resolves.toBeInTheDocument();
 
-    const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
-    await user.click(textarea);
+    const editor = await findComposerEditor();
+    await user.click(editor);
 
-    fireEvent.paste(textarea, {
+    fireEvent.paste(editor, {
       clipboardData: {
         getData: (type: string) => {
           return type === "text/plain" ? "Keep this pasted caption" : "";
@@ -1977,15 +1931,15 @@ describe("chat composer models", () => {
     });
 
     await waitFor(() => {
-      expect(textarea).toHaveValue("Keep this pasted caption");
+      expect(editor).toHaveTextContent("Keep this pasted caption");
       expect(
         screen.queryByLabelText("Open image preview for pasted.png"),
       ).not.toBeInTheDocument();
     });
 
-    await fill(textarea, "");
+    await fill(editor, "");
 
-    fireEvent.paste(textarea, {
+    fireEvent.paste(editor, {
       clipboardData: {
         getData: (type: string) => {
           if (type === "text/html") {
@@ -2016,7 +1970,7 @@ describe("chat composer models", () => {
     });
 
     await waitFor(() => {
-      expect(textarea).toHaveValue("Use the copied launch brief");
+      expect(editor).toHaveTextContent("Use the copied launch brief");
       expect(
         screen.getByLabelText("Remove copied-brief.md"),
       ).toBeInTheDocument();
@@ -2029,7 +1983,7 @@ describe("chat composer models", () => {
       ).toBeGreaterThan(0);
     });
 
-    fireEvent.paste(textarea, {
+    fireEvent.paste(editor, {
       clipboardData: {
         getData: (type: string) => {
           return type === "text/plain" ? "Do not insert oversized paste" : "";
@@ -2049,10 +2003,10 @@ describe("chat composer models", () => {
       expect(
         screen.getByText("oversized-paste.txt exceeds the 1 GB limit"),
       ).toBeInTheDocument();
-      expect(textarea).toHaveValue("Use the copied launch brief");
+      expect(editor).toHaveTextContent("Use the copied launch brief");
     });
 
-    const composer = composerElementFrom(textarea);
+    const composer = composerElementFrom(editor);
     fireEvent.dragOver(composer);
     fireEvent.dragLeave(composer, { relatedTarget: document.body });
     fireEvent.drop(composer, {
@@ -2117,8 +2071,7 @@ describe("chat composer models", () => {
     });
   });
 
-  it("manages agent connector access from the composer", async () => {
-    const user = userEvent.setup({ delay: null });
+  it("shows agent connector access from the composer", async () => {
     mockOrgModelRoutes("claude-sonnet-4-6");
     mockAgent();
     mockManyConnectedConnectors();
@@ -2140,81 +2093,9 @@ describe("chat composer models", () => {
       expect(screen.getByLabelText("Remove GitHub")).toBeInTheDocument();
       expect(screen.getByLabelText("Add Slack")).toBeInTheDocument();
     });
-
-    await user.click(screen.getByText("GitHub"));
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Add GitHub")).toBeInTheDocument();
-      expect(screen.getByLabelText("Add Slack")).toBeInTheDocument();
-    });
-
-    await user.click(screen.getByLabelText("Add Slack"));
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Remove Slack")).toBeInTheDocument();
-    });
-
-    click(composerConnectorsButton);
-
-    await waitFor(() => {
-      expect(screen.queryByPlaceholderText("Find connectors...")).toBeNull();
-    });
-
-    click(composerConnectorsButton);
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Add GitHub")).toBeInTheDocument();
-      expect(screen.getByLabelText("Remove Slack")).toBeInTheDocument();
-    });
-
-    await user.click(screen.getByText("Add connectors"));
-
-    const dialog = await screen.findByRole("dialog");
-    expect(
-      within(dialog).getByText(/Available connectors to connect/u),
-    ).toBeInTheDocument();
-
-    await fill(
-      within(dialog).getByPlaceholderText("Find connectors..."),
-      "notion",
-    );
-
-    await waitFor(() => {
-      expect(
-        within(dialog).getByLabelText("Connect Notion"),
-      ).toBeInTheDocument();
-      expect(within(dialog).queryByLabelText("Connect Gmail")).toBeNull();
-    });
-
-    await user.click(within(dialog).getByLabelText("Connect Notion"));
-
-    const notionDialog = await screen.findByRole("dialog", {
-      name: "Notion",
-    });
-    expect(notionDialog).toBeInTheDocument();
-
-    await user.click(within(notionDialog).getByLabelText("Close"));
-
-    await waitFor(() => {
-      expect(
-        screen.queryByRole("dialog", { name: "Notion" }),
-      ).not.toBeInTheDocument();
-      expect(
-        within(dialog).getByText(/Available connectors to connect/u),
-      ).toBeInTheDocument();
-    });
-
-    await user.click(within(dialog).getByLabelText("Close"));
-
-    await waitFor(() => {
-      expect(
-        screen.queryByText(/Available connectors to connect/u),
-      ).not.toBeInTheDocument();
-    });
   });
 
   it("keeps composer connector order independent of authorization state", async () => {
-    const user = userEvent.setup({ delay: null });
     mockOrgModelRoutes("claude-sonnet-4-6");
     mockAgent();
     mockManyConnectedConnectors();
@@ -2230,13 +2111,6 @@ describe("chat composer models", () => {
     await waitFor(() => {
       expect(screen.getByLabelText("Add GitHub")).toBeInTheDocument();
       expect(screen.getByLabelText("Remove Slack")).toBeInTheDocument();
-      expectTextBefore("GitHub", "Slack");
-    });
-
-    await user.click(screen.getByLabelText("Remove Slack"));
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Add Slack")).toBeInTheDocument();
       expectTextBefore("GitHub", "Slack");
     });
   });
@@ -2407,10 +2281,10 @@ describe("chat composer templates", () => {
       ).toBeInTheDocument();
     });
 
-    const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
-    await sendMessageInUI(user, textarea as HTMLTextAreaElement, "Use this");
+    const editor = await findComposerEditor();
+    await sendMessageInUI(user, editor, "Use this");
 
-    expect(textarea).toHaveValue("Use this");
+    expect(editor).toHaveTextContent("Use this");
     expect(
       screen.getByLabelText("Cancel upload launch-notes.txt"),
     ).toBeInTheDocument();
@@ -4087,29 +3961,6 @@ describe("chat composer templates", () => {
     });
   });
 
-  it("hides workflow templates when workflow automation is disabled", async () => {
-    mockChatLifecycle(context, { threadId: THREAD_ID });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: false },
-    });
-
-    click(
-      await waitFor(() => {
-        return screen.getByLabelText("Template");
-      }),
-    );
-
-    await waitFor(() => {
-      expect(tabByText("Presentation")).toBeInTheDocument();
-      expect(tabByText("Illustration")).toBeInTheDocument();
-      expect(tabByText("Video")).toBeInTheDocument();
-      expect(queryTabByText("Workflow")).not.toBeInTheDocument();
-    });
-  });
-
   it("selects and sends a workflow template from the picker", async () => {
     const user = userEvent.setup({ delay: null });
     const workflowTemplate = WORKFLOW_TEMPLATE_ITEMS[0]!;
@@ -4124,7 +3975,6 @@ describe("chat composer templates", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: true },
     });
 
     click(

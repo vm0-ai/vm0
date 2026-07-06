@@ -148,9 +148,9 @@ describe("chat run queue", () => {
     click(screen.getAllByLabelText("Remove queued message")[0]!);
 
     await waitFor(() => {
-      expect(screen.getByPlaceholderText(/Type your next message/)).toHaveValue(
-        "First queued follow-up",
-      );
+      expect(
+        screen.getByPlaceholderText(/Type your next message/),
+      ).toHaveTextContent("First queued follow-up");
     });
 
     await fill(

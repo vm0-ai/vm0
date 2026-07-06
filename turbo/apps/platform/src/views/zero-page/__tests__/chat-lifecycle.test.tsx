@@ -38,10 +38,9 @@ import {
   type ZeroWorkflowTriggerUpdateRequest,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import {
-  createMockAutomationView,
   createMockWorkflowTrigger,
   setMockWorkflowTriggers,
-} from "../../../mocks/handlers/automations-store.ts";
+} from "../../../mocks/handlers/workflow-triggers-store.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { eventDrivenChatThread } from "../../../signals/chat-page/chat-thread-event-sourcing.ts";
 import { CHAT_THREAD_VIRTUAL_ROW_HEIGHT } from "../../../signals/zero-page/zero-sidebar-state.ts";
@@ -442,42 +441,6 @@ function mockAutomationThread(): void {
       },
     ],
   });
-  context.mocks.data.automations([
-    createMockAutomationView({
-      id: "f0000001-0000-4000-a000-000000000701",
-      agentId: AGENT_ID,
-      chatThreadId: AUTOMATION_THREAD_ID,
-      name: "launch-review",
-      description: "Launch review",
-      prompt: "Review launch risks",
-      cronExpression: "30 15 * * 1-5",
-      triggerType: "cron",
-      nextRunAt: "2026-06-10T15:30:00.000Z",
-    }),
-    createMockAutomationView({
-      id: "f0000001-0000-4000-a000-000000000702",
-      agentId: AGENT_ID,
-      chatThreadId: AUTOMATION_THREAD_ID,
-      name: "paused-launch-audit",
-      description: "Paused launch audit",
-      prompt: "Audit launch readiness",
-      cronExpression: "0 12 * * 1",
-      triggerType: "cron",
-      enabled: false,
-      nextRunAt: null,
-    }),
-    createMockAutomationView({
-      id: "f0000001-0000-4000-a000-000000000703",
-      agentId: AGENT_ID,
-      chatThreadId: AUTOMATION_THREAD_ID,
-      name: "manual-launch-reminder",
-      description: "Manual launch reminder",
-      prompt: "Remind the team about launch blockers",
-      cronExpression: "0 18 * * 5",
-      triggerType: "cron",
-      nextRunAt: null,
-    }),
-  ]);
 }
 
 function mockWorkflowTriggerUpdate(
@@ -933,10 +896,12 @@ function chatScrollContainer(): HTMLElement {
   return element;
 }
 
-function chatComposerTextarea(): HTMLTextAreaElement {
-  const element = document.querySelector("[data-chat-composer] textarea");
-  if (!(element instanceof HTMLTextAreaElement)) {
-    throw new Error("Chat composer textarea not found");
+function chatComposerTextarea(): HTMLElement {
+  const element = document.querySelector(
+    '[data-chat-composer] [contenteditable="true"]',
+  );
+  if (!(element instanceof HTMLElement)) {
+    throw new Error("Chat composer input not found");
   }
   return element;
 }
@@ -4163,7 +4128,7 @@ describe("chat lifecycle", () => {
     const composer = chatComposerTextarea();
     await user.type(composer, "!");
 
-    expect(composer).toHaveValue("!");
+    expect(composer).toHaveTextContent("!");
     expect(renameRequest).not.toHaveBeenCalled();
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
@@ -4466,9 +4431,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.WorkflowAutomation]: true,
-      },
     });
 
     const assistantMessage = await screen.findByText(assistantReply);
@@ -4535,9 +4497,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.WorkflowAutomation]: true,
-      },
     });
 
     const editor = await findWorkflowComposerEditor();
@@ -4577,98 +4536,6 @@ describe("chat lifecycle", () => {
     await waitFor(() => {
       expect(editor).toHaveTextContent(CREATE_WORKFLOW_WITH_CHAT_PROMPT);
       expect(editor).not.toHaveTextContent(draft);
-    });
-  });
-
-  it("hides the workflow prompt action when workflow automation is disabled", async () => {
-    const threadId = "assistant-message-create-workflow-disabled";
-    const assistantReply = "This could be automated later.";
-    mockChatLifecycle(context, {
-      threadId,
-      threadTitle: "Assistant workflow disabled",
-      chatMessages: [
-        {
-          id: "msg-workflow-disabled-user",
-          role: "user",
-          content: "Can this repeat?",
-          runId: "run-workflow-disabled",
-          createdAt: "2026-06-09T10:00:00Z",
-        },
-        {
-          id: "msg-workflow-disabled-assistant",
-          role: "assistant",
-          content: assistantReply,
-          runId: "run-workflow-disabled",
-          createdAt: "2026-06-09T10:01:00Z",
-        },
-      ],
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${threadId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.WorkflowAutomation]: false,
-      },
-    });
-
-    await screen.findByText(assistantReply);
-    expect(screen.queryByLabelText("Create workflow")).not.toBeInTheDocument();
-  });
-
-  it("shows linked automations from the chat header sidebar", async () => {
-    mockAutomationThread();
-    context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
-      return respond(200, { runs: [] });
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${AUTOMATION_THREAD_ID}`,
-    });
-
-    await waitFor(() => {
-      expect(
-        screen.getAllByText("Scheduled launch review").length,
-      ).toBeGreaterThan(0);
-      expect(buttonByLabel("Automations")).toBeInTheDocument();
-    });
-
-    click(buttonByLabel("Automations"));
-
-    await waitFor(() => {
-      expect(screen.getByTestId("automation-sidebar")).toBeInTheDocument();
-    });
-
-    const sidebar = screen.getByTestId("automation-sidebar");
-    expect(within(sidebar).getByText("Launch review")).toBeInTheDocument();
-    expect(
-      within(sidebar).getByText("Paused launch audit"),
-    ).toBeInTheDocument();
-    expect(
-      within(sidebar).getByText("Manual launch reminder"),
-    ).toBeInTheDocument();
-    expect(within(sidebar).getAllByText("Status")).toHaveLength(3);
-    expect(within(sidebar).getAllByText("Schedule")).toHaveLength(3);
-    expect(within(sidebar).getAllByText("Next run")).toHaveLength(3);
-    expect(within(sidebar).getAllByText("Run now")).toHaveLength(3);
-    expect(within(sidebar).getAllByText("No upcoming run")).toHaveLength(2);
-    expect(within(sidebar).queryByText("Description")).not.toBeInTheDocument();
-    expect(
-      within(sidebar).queryByText(/linked to this chat/u),
-    ).not.toBeInTheDocument();
-    expect(
-      within(sidebar).queryByText(/active.*paused/u),
-    ).not.toBeInTheDocument();
-    expect(within(sidebar).queryByRole("searchbox")).not.toBeInTheDocument();
-
-    click(screen.getByLabelText("Open artifacts"));
-
-    await waitFor(() => {
-      expect(screen.getByTestId("artifact-inbox")).toBeInTheDocument();
-      expect(
-        screen.queryByTestId("automation-sidebar"),
-      ).not.toBeInTheDocument();
     });
   });
 
@@ -6410,6 +6277,9 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       path: `/chats/${threadId}`,
     });
 
+    await waitFor(() => {
+      return chatComposerTextarea();
+    });
     await user.click(await screen.findByLabelText("Connectors"));
 
     await waitFor(() => {
@@ -6450,6 +6320,9 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       path: `/chats/${threadId}`,
     });
 
+    await waitFor(() => {
+      return chatComposerTextarea();
+    });
     await user.click(await screen.findByLabelText("Connectors"));
     await user.click(await screen.findByText("Connect my computer"));
 
@@ -6486,6 +6359,9 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       path: `/chats/${threadId}`,
     });
 
+    await waitFor(() => {
+      return chatComposerTextarea();
+    });
     await user.click(await screen.findByLabelText("Connectors"));
     await user.click(await screen.findByText("Connect my computer"));
 
@@ -6512,6 +6388,9 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       featureSwitches: { [FeatureSwitchKey.DesktopX64Download]: true },
     });
 
+    await waitFor(() => {
+      return chatComposerTextarea();
+    });
     await user.click(await screen.findByLabelText("Connectors"));
     await user.click(await screen.findByText("Connect my computer"));
 
@@ -6569,6 +6448,9 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       path: `/chats/${threadId}`,
     });
 
+    await waitFor(() => {
+      return chatComposerTextarea();
+    });
     await user.click(await screen.findByLabelText("Connectors"));
     expect(
       screen.getByRole("switch", { name: "Connect Studio Mac" }),
@@ -6623,6 +6505,9 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       ).toBeTruthy();
     });
 
+    await waitFor(() => {
+      return chatComposerTextarea();
+    });
     await user.click(await screen.findByLabelText("Connectors"));
 
     await waitFor(() => {
@@ -6690,6 +6575,9 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       path: `/chats/${threadId}`,
     });
 
+    await waitFor(() => {
+      return chatComposerTextarea();
+    });
     await user.click(await screen.findByLabelText("Connectors"));
     const hostsGroup = await screen.findByRole("group", {
       name: "Computer Use hosts",
@@ -6768,6 +6656,9 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       path: `/chats/${threadId}`,
     });
 
+    await waitFor(() => {
+      return chatComposerTextarea();
+    });
     await user.click(await screen.findByLabelText("Connectors"));
 
     const selectedComputer = await screen.findByRole("switch", {
@@ -6822,6 +6713,9 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       path: `/chats/${threadId}`,
     });
 
+    await waitFor(() => {
+      return chatComposerTextarea();
+    });
     await user.click(await screen.findByLabelText("Connectors"));
 
     const hostName = await screen.findByText("Studio Mac");
@@ -6850,6 +6744,9 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       path: `/chats/${threadId}`,
     });
 
+    await waitFor(() => {
+      return chatComposerTextarea();
+    });
     await user.click(await screen.findByLabelText("Connectors"));
 
     await waitFor(() => {
@@ -6882,7 +6779,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       detachedSetupPage({ context, path: `/chats/${threadId}` });
 
       const textarea = await waitFor(() => {
-        return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+        return chatComposerTextarea();
       });
 
       await user.click(await screen.findByLabelText("Voice input"));
@@ -6894,7 +6791,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       await user.click(screen.getByLabelText("Stop recording"));
 
       await waitFor(() => {
-        expect(textarea).toHaveValue("Summarize the standup");
+        expect(textarea).toHaveTextContent("Summarize the standup");
       });
       await waitFor(() => {
         expect(draftPatches).toContainEqual({
@@ -6977,7 +6874,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
 
     await waitFor(() => {
       expect(transcriptionCalled).toBeTruthy();
-      expect(textarea).toHaveValue("first words");
+      expect(textarea).toHaveTextContent("first words");
     });
   });
 
@@ -7012,7 +6909,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       expect(screen.getByLabelText("Voice input")).toBeInTheDocument();
     });
     expect(transcriptionCalled).toBeFalsy();
-    expect(textarea).toHaveValue("");
+    expect(textarea.textContent ?? "").toBe("");
   });
 
   it("opens billing recovery when voice input quota is depleted", async () => {
