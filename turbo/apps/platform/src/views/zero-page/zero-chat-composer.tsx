@@ -136,7 +136,10 @@ import {
   ModelProviderPicker,
   type ModelProviderSelection,
 } from "./components/model-provider-picker.tsx";
-import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
+import {
+  ConnectorIcon,
+  isConnectorIconType,
+} from "./components/settings/connector-icons.tsx";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import {
   allConnectorTypes$,
@@ -1110,7 +1113,12 @@ function workflowTemplateMatchesSearch(
   if (!normalizedQuery) {
     return true;
   }
-  const searchable = [item.title, item.id, item.description].join(" ");
+  const searchable = [
+    item.title,
+    item.id,
+    item.description,
+    item.connectors.join(" "),
+  ].join(" ");
   return searchable.toLowerCase().includes(normalizedQuery);
 }
 
@@ -1308,6 +1316,54 @@ function VideoTemplateGrid({
   );
 }
 
+function WorkflowTemplateConnectorIcons({
+  connectors,
+  compact = false,
+  limit = compact ? 3 : 5,
+}: {
+  connectors: readonly ConnectorType[];
+  compact?: boolean;
+  limit?: number;
+}) {
+  const connectorIconTypes = connectors.filter(isConnectorIconType);
+  if (connectorIconTypes.length === 0) {
+    return null;
+  }
+
+  const visibleConnectorTypes = connectorIconTypes.slice(0, limit);
+  const remainingCount =
+    connectorIconTypes.length - visibleConnectorTypes.length;
+  return (
+    <span
+      className={cn("flex min-w-0 items-center", compact ? "gap-1" : "gap-1.5")}
+    >
+      {visibleConnectorTypes.map((type) => {
+        return (
+          <span
+            key={type}
+            className={cn(
+              "flex shrink-0 items-center justify-center border border-border/60 bg-background",
+              compact ? "h-5 w-5 rounded" : "h-7 w-7 rounded-md",
+            )}
+          >
+            <ConnectorIcon type={type} size={compact ? 12 : 14} />
+          </span>
+        );
+      })}
+      {remainingCount > 0 ? (
+        <span
+          className={cn(
+            "flex shrink-0 items-center justify-center rounded border border-border/60 bg-background text-[10px] font-medium text-muted-foreground",
+            compact ? "h-5 min-w-5 px-1" : "h-7 min-w-7 px-1.5",
+          )}
+        >
+          +{remainingCount}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
 function WorkflowTemplateCard({
   item,
   selected,
@@ -1317,6 +1373,7 @@ function WorkflowTemplateCard({
   selected: boolean;
   onSelect: (item: WorkflowTemplateItem) => void;
 }) {
+  const hasConnectorIcons = item.connectors.some(isConnectorIconType);
   return (
     <div
       className={cn(
@@ -1334,6 +1391,11 @@ function WorkflowTemplateCard({
           <p className="mt-2 line-clamp-4 text-sm leading-5 text-muted-foreground">
             {item.description}
           </p>
+          {hasConnectorIcons ? (
+            <div className="mt-3">
+              <WorkflowTemplateConnectorIcons connectors={item.connectors} />
+            </div>
+          ) : null}
         </div>
       </div>
       <div className="mt-4 flex justify-end">
@@ -5123,6 +5185,7 @@ function SelectedWorkflowTemplateChip({
   onOpen: () => void;
   onRemove: () => void;
 }) {
+  const hasConnectorIcons = item.connectors.some(isConnectorIconType);
   return (
     <div className="px-4 pt-3">
       <div className="flex">
@@ -5143,6 +5206,15 @@ function SelectedWorkflowTemplateChip({
             <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
               Workflow
             </span>
+            {hasConnectorIcons ? (
+              <>
+                <span className="h-3.5 w-px shrink-0 bg-border/70" />
+                <WorkflowTemplateConnectorIcons
+                  connectors={item.connectors}
+                  compact
+                />
+              </>
+            ) : null}
             <span className="h-3.5 w-px shrink-0 bg-border/70" />
             <span className="min-w-0 truncate text-xs font-medium">
               {item.title}
