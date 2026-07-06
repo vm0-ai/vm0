@@ -4,6 +4,7 @@ import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-s
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { describe, expect, it, vi } from "vitest";
 import JSZip from "jszip";
+import { HttpResponse } from "msw";
 
 import {
   chatThreadByIdContract,
@@ -325,6 +326,11 @@ function completePresentationPptxExport(
 function setupPresentationArtifactThread(
   presentationUrl: string,
   html = presentationHtml(),
+  options: {
+    readonly featureSwitches?: Parameters<
+      typeof detachedSetupPage
+    >[0]["featureSwitches"];
+  } = {},
 ): void {
   const filename =
     new URL(presentationUrl).pathname.split("/").pop() ?? "presentation.html";
@@ -349,6 +355,7 @@ function setupPresentationArtifactThread(
       }),
     ],
     content: `[Quarterly roadmap](${presentationUrl})`,
+    featureSwitches: options.featureSwitches,
     path: `${THREAD_PATH}?artifact=${encodeURIComponent(presentationUrl)}`,
   });
 }
@@ -1833,6 +1840,83 @@ describe("zero artifact sidebar", () => {
       expect(downloadButton).not.toBeDisabled();
       expect(downloadButton.querySelector(".animate-spin")).toBeNull();
     });
+  });
+
+  it("uploads a presentation artifact to Google Slides without opening a new tab", async () => {
+    const presentationUrl = "https://deck.sites.vm7.io/quarterly-roadmap.html";
+    const openMock = context.mocks.browser.open(
+      context.mocks.browser.authWindow(),
+    );
+    const successToast = vi.spyOn(toast, "success");
+    const upload = { file: null as File | null };
+    context.mocks.data.connectors([googleDriveConnector()]);
+    context.mocks.http.post(
+      "*/api/zero/chat-threads/:threadId/artifacts/google-slides",
+      async ({ request }) => {
+        const formData = await request.formData();
+        const file = formData.get("file");
+        if (!(file instanceof File)) {
+          throw new Error("Google Slides upload did not include a file");
+        }
+        upload.file = file;
+        return HttpResponse.json({
+          id: "slides-file-quarterly-roadmap",
+          name: "quarterly-roadmap",
+          webViewLink:
+            "https://docs.google.com/presentation/d/slides-file-quarterly-roadmap/edit",
+        });
+      },
+    );
+    setupPresentationArtifactThread(presentationUrl, presentationHtml(), {
+      featureSwitches: {
+        [FeatureSwitchKey.PresentationGoogleSlidesUpload]: true,
+      },
+    });
+
+    try {
+      await waitFor(() => {
+        expect(screen.getByTestId("artifact-sidebar")).toBeInTheDocument();
+        expect(screen.getByLabelText("Download artifact")).toBeInTheDocument();
+      });
+
+      click(screen.getByLabelText("Download artifact"));
+      await waitFor(() => {
+        expect(menuItemByText("Upload to Google Slides")).toBeInTheDocument();
+      });
+      click(menuItemByText("Upload to Google Slides"));
+
+      const exportFrame = await waitFor(() => {
+        const frame = document.querySelector(
+          'iframe[title="Presentation PPTX export"]',
+        );
+        expect(frame).toBeInstanceOf(HTMLIFrameElement);
+        return frame as HTMLIFrameElement;
+      });
+      expect(openMock.calls).toStrictEqual([]);
+
+      completePresentationPptxExport(exportFrame, await presentationPptxBlob());
+
+      await waitFor(() => {
+        expect(upload.file).not.toBeNull();
+        expect(successToast).toHaveBeenCalledWith("Uploaded to Google Slides", {
+          id: expect.anything(),
+        });
+        expect(
+          document.querySelector('iframe[title="Presentation PPTX export"]'),
+        ).not.toBeInTheDocument();
+      });
+      if (!upload.file) {
+        throw new Error("Google Slides upload did not send a file");
+      }
+      expect(upload.file.name).toBe("quarterly-roadmap.pptx");
+      expect(upload.file.type).toBe(
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      );
+      expect(upload.file.size).toBeGreaterThan(0);
+      expect(openMock.calls).toStrictEqual([]);
+    } finally {
+      successToast.mockRestore();
+    }
   });
 
   it("preserves deck-level slide backgrounds for editable PPTX export", async () => {

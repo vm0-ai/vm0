@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.561.1](https://github.com/vm0-ai/vm0/compare/app-v0.561.0...app-v0.561.1) (2026-07-06)
+
+
+### Bug Fixes
+
+* focus inline feedback composer from shortcut ([#20377](https://github.com/vm0-ai/vm0/issues/20377)) ([21dea9f](https://github.com/vm0-ai/vm0/commit/21dea9f73beefa2e52a8ce1a177dba25f47fb0a1))
+* keep chat composer model and voice actions visible ([#20356](https://github.com/vm0-ai/vm0/issues/20356)) ([36dec9f](https://github.com/vm0-ai/vm0/commit/36dec9f856cfdaf014fc1c8d572f6952f044dd17))
+
 ## [0.561.0](https://github.com/vm0-ai/vm0/compare/app-v0.560.1...app-v0.561.0) (2026-07-06)
 
 
