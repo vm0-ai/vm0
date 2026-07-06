@@ -787,6 +787,19 @@ function ModelFirstModelPickerPopoverContent({
   return (
     <PopoverContent
       align="end"
+      onOpenAutoFocus={(event) => {
+        event.preventDefault();
+      }}
+      onFocusOutside={(event) => {
+        event.preventDefault();
+      }}
+      onInteractOutside={(event) => {
+        const originalEvent = (event.detail as { originalEvent?: Event })
+          .originalEvent;
+        if (originalEvent instanceof FocusEvent) {
+          event.preventDefault();
+        }
+      }}
       className={cn(
         "max-h-[280px] overflow-hidden p-0",
         codexFastModeAvailable ? "min-w-[372px]" : "min-w-[260px]",

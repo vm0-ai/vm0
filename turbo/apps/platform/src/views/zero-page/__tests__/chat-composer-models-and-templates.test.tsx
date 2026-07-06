@@ -1652,12 +1652,15 @@ describe("chat composer models", () => {
     });
 
     const trigger = await findComposerModel("Kimi K2.7 Code");
-    await user.click(trigger);
+    fireEvent.click(trigger);
 
     await waitFor(() => {
-      expect(trigger).toHaveAttribute("aria-expanded", "true");
-      expect(trigger).toHaveAttribute("data-state", "open");
-      expect(trigger).toHaveClass("data-[state=open]:ring-2");
+      const openTrigger = screen.getByRole("combobox", {
+        name: "Kimi K2.7 Code",
+      });
+      expect(openTrigger).toHaveAttribute("aria-expanded", "true");
+      expect(openTrigger).toHaveAttribute("data-state", "open");
+      expect(openTrigger).toHaveClass("data-[state=open]:ring-2");
     });
     expect(screen.getByRole("listbox", { name: "Models" })).toBeInTheDocument();
     expect(
