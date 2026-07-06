@@ -6405,6 +6405,7 @@ function ComposerModelPickerSlot({
   modelPickerLoading,
   submitBlocker,
   codexFastModeEnabled,
+  popoverModelPickerEnabled,
   modelPickerOpen,
   onModelPickerChange,
   onModelPickerOpenChange,
@@ -6414,6 +6415,7 @@ function ComposerModelPickerSlot({
   modelPickerLoading: boolean;
   submitBlocker: ZeroChatComposerProps["submitBlocker"];
   codexFastModeEnabled: boolean;
+  popoverModelPickerEnabled: boolean;
   modelPickerOpen: boolean;
   onModelPickerChange: (value: ModelProviderSelection | null) => void;
   onModelPickerOpenChange: (open: boolean) => void;
@@ -6444,10 +6446,11 @@ function ComposerModelPickerSlot({
           triggerClassName={cn(
             "h-9 w-9 max-w-none gap-0 border-transparent bg-transparent px-0 text-sm text-muted-foreground transition-colors sm:w-auto sm:max-w-[14rem] sm:gap-1 sm:px-2",
             "[&>span]:flex [&>span]:items-center [&>span]:justify-center sm:[&>span]:justify-start [&>svg]:hidden sm:[&>svg]:block",
-            "hover:bg-accent hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground",
+            "hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 data-[state=open]:bg-accent data-[state=open]:text-foreground data-[state=open]:ring-2 data-[state=open]:ring-ring data-[state=open]:ring-offset-2",
           )}
           compactTrigger
           mobileIconTrigger
+          pickerMode={popoverModelPickerEnabled ? "popover" : "select"}
           codexFastModeEnabled={codexFastModeEnabled}
           open={modelPickerOpen}
           onOpenChange={onModelPickerOpenChange}
@@ -6471,6 +6474,11 @@ function useWorkflowAutomationEnabled(): boolean {
 function useCodexFastModeEnabled(): boolean {
   const features = useLastResolved(featureSwitch$);
   return features?.[FeatureSwitchKey.CodexFastMode] ?? false;
+}
+
+function usePopoverModelPickerEnabled(): boolean {
+  const features = useLastResolved(featureSwitch$);
+  return features?.[FeatureSwitchKey.ComposerModelPickerPopover] ?? false;
 }
 
 export function ZeroChatComposer({
@@ -6511,6 +6519,7 @@ export function ZeroChatComposer({
   const openGoalDialog = useSet(openChatThreadGoalDialog$);
   const workflowAutomationEnabled = useWorkflowAutomationEnabled();
   const codexFastModeEnabled = useCodexFastModeEnabled();
+  const popoverModelPickerEnabled = usePopoverModelPickerEnabled();
 
   const resolved = useResolvedComposerSignals(
     input,
@@ -6980,6 +6989,7 @@ export function ZeroChatComposer({
                     modelPickerLoading={modelPickerLoading}
                     submitBlocker={submitBlocker}
                     codexFastModeEnabled={codexFastModeEnabled}
+                    popoverModelPickerEnabled={popoverModelPickerEnabled}
                     modelPickerOpen={modelPickerOpen}
                     onModelPickerChange={handleModelPickerChange}
                     onModelPickerOpenChange={setModelPickerOpen}
