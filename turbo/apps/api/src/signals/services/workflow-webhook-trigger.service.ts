@@ -24,7 +24,6 @@ import {
   decryptPersistentSecretValue,
   encryptPersistentSecretValue,
 } from "./crypto.utils";
-import { workflowAutomationEnabledForOwner } from "./workflow-automation-feature-switch.service";
 import {
   WorkflowEventSourceTiming,
   type WorkflowEventRunTiming,
@@ -533,10 +532,6 @@ async function prepareWorkflowWebhookDispatch(args: {
   readonly signature: string;
   readonly timestamp: string;
   readonly sourceTiming: WorkflowEventSourceTiming;
-  readonly isFeatureEnabledForOwner: (
-    orgId: string,
-    userId: string,
-  ) => Promise<boolean>;
   readonly signal: AbortSignal;
 }): Promise<PreparedWorkflowWebhookDispatch> {
   const row = await args.sourceTiming.measure(
@@ -551,20 +546,6 @@ async function prepareWorkflowWebhookDispatch(args: {
   );
   args.signal.throwIfAborted();
   if (!row) {
-    return { kind: "not_found" };
-  }
-
-  const enabled = await args.sourceTiming.measure(
-    "api_dispatch_pre_create_zero_workflow_event_check_feature_gate",
-    async () => {
-      return await args.isFeatureEnabledForOwner(
-        row.trigger.orgId,
-        row.trigger.ownerUserId,
-      );
-    },
-  );
-  args.signal.throwIfAborted();
-  if (!enabled) {
     return { kind: "not_found" };
   }
 
@@ -716,7 +697,7 @@ const startWorkflowWebhookRun$ = command(
 
 export const dispatchWorkflowWebhook$ = command(
   async (
-    { get, set },
+    { set },
     args: {
       readonly token: string;
       readonly rawBody: string;
@@ -751,9 +732,6 @@ export const dispatchWorkflowWebhook$ = command(
       signature,
       timestamp,
       sourceTiming,
-      isFeatureEnabledForOwner: async (orgId, userId) => {
-        return await get(workflowAutomationEnabledForOwner(orgId, userId));
-      },
       signal,
     });
     if (prepared.kind !== "ok") {

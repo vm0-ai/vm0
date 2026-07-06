@@ -14,14 +14,13 @@ import {
 } from "@vm0/api-contracts/contracts/zero-agents";
 import { zeroTeamContract } from "@vm0/api-contracts/contracts/zero-team";
 import { zeroWorkflowsCollectionContract } from "@vm0/api-contracts/contracts/zero-workflows";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
   click,
   detachedSetupPage as baseDetachedSetupPage,
   fill,
 } from "../../../__tests__/page-helper.ts";
-import { mockChatLifecycle, PLACEHOLDER } from "./chat-test-helpers.ts";
+import { mockChatLifecycle } from "./chat-test-helpers.ts";
 
 const context = testContext();
 const THREAD_ONE_ID = "b0000000-0000-4000-a000-000000000801";
@@ -106,8 +105,14 @@ function mockThreadDetails(): void {
   });
 }
 
-function textarea(): HTMLTextAreaElement {
-  return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+function textarea(): HTMLElement {
+  const editor = document.querySelector(
+    '.zero-composer [contenteditable="true"]',
+  );
+  if (!(editor instanceof HTMLElement)) {
+    throw new Error("Composer editor not found");
+  }
+  return editor;
 }
 
 function mockAgentChatPage(agentId: string): void {
@@ -208,7 +213,9 @@ describe("chat drafts", () => {
     });
 
     await waitFor(() => {
-      expect(textarea()).toHaveValue(`Resume the ${agentId} launch notes`);
+      expect(textarea()).toHaveTextContent(
+        `Resume the ${agentId} launch notes`,
+      );
       expect(
         screen.getByLabelText("Remove agent-brief.md"),
       ).toBeInTheDocument();
@@ -275,18 +282,18 @@ describe("chat drafts", () => {
 
     await navigateToThread(THREAD_TWO_ID);
     await waitFor(() => {
-      expect(textarea()).toHaveValue("");
+      expect(textarea().textContent ?? "").toBe("");
     });
     await fill(textarea(), "draft for thread 2");
 
     await navigateToThread(THREAD_ONE_ID);
     await waitFor(() => {
-      expect(textarea()).toHaveValue("draft for thread 1");
+      expect(textarea()).toHaveTextContent("draft for thread 1");
     });
 
     await navigateToThread(THREAD_TWO_ID);
     await waitFor(() => {
-      expect(textarea()).toHaveValue("draft for thread 2");
+      expect(textarea()).toHaveTextContent("draft for thread 2");
     });
   });
 
@@ -321,7 +328,7 @@ describe("chat drafts", () => {
     detachedSetupPage({ context, path: "/chats/thread-server-draft" });
 
     await waitFor(() => {
-      expect(textarea()).toHaveValue("Review the saved launch brief");
+      expect(textarea()).toHaveTextContent("Review the saved launch brief");
       expect(screen.getByLabelText("Remove brief.md")).toBeInTheDocument();
     });
   });
@@ -367,7 +374,7 @@ describe("chat drafts", () => {
     detachedSetupPage({ context, path: `/chats/${threadId}` });
 
     await waitFor(() => {
-      expect(textarea()).toHaveValue("Review the saved launch brief");
+      expect(textarea()).toHaveTextContent("Review the saved launch brief");
       expect(screen.getByLabelText("Remove brief.md")).toBeInTheDocument();
     });
 
@@ -412,9 +419,7 @@ describe("chat drafts", () => {
         screen.getByText("Review the updated launch brief"),
       ).toBeInTheDocument();
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
-      expect(screen.getByPlaceholderText(/Type your next message/)).toHaveValue(
-        "",
-      );
+      expect(textarea().textContent ?? "").toBe("");
       expect(draftPatches).toContainEqual({
         draftContent: null,
         draftAttachments: null,
@@ -480,7 +485,7 @@ describe("chat drafts", () => {
 
     await navigateToThread(THREAD_TWO_ID);
     await waitFor(() => {
-      expect(textarea()).toHaveValue("");
+      expect(textarea().textContent ?? "").toBe("");
       expect(screen.queryByLabelText(/photo\.png/)).not.toBeInTheDocument();
     });
 
@@ -695,7 +700,7 @@ describe("chat drafts", () => {
     });
 
     await waitFor(() => {
-      expect(input).toHaveValue(pastedText);
+      expect(input).toHaveTextContent(pastedText);
       expect(screen.getByLabelText(`Remove ${filename}`)).toBeInTheDocument();
     });
   });
@@ -749,7 +754,7 @@ describe("chat drafts", () => {
     });
 
     await waitFor(() => {
-      expect(input).toHaveValue(pastedText);
+      expect(input).toHaveTextContent(pastedText);
       expect(screen.getByLabelText(`Remove ${filename}`)).toBeInTheDocument();
     });
   });
@@ -770,9 +775,6 @@ describe("chat drafts", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.WorkflowAutomation]: true,
-      },
     });
 
     const editor = await findComposerEditor();

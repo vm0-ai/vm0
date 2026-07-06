@@ -1,17 +1,14 @@
 import { command } from "ccstate";
 import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
-import { writeDb$, type ReadonlyDb } from "../external/db";
+import { writeDb$ } from "../external/db";
 import { badRequestMessage, conflict, notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
 import { settle } from "../utils";
 import { dispatchFailedRunCallbacks } from "../services/agent-run-callback.service";
-import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import { bootstrapGoalRun$ } from "../services/zero-goal-continuation.service";
 import {
   blockCurrentGoal,
@@ -79,13 +76,6 @@ interface SessionGoalAuth {
   readonly userId: string;
 }
 
-function forbidden(message: string) {
-  return {
-    status: 403 as const,
-    body: { error: { message, code: "FORBIDDEN" as const } },
-  };
-}
-
 function goalAuth(auth: AuthContext & { readonly orgId: string }): GoalAuth {
   if (auth.tokenType !== "zero") {
     throw new Error("Goal routes require zero token auth");
@@ -105,18 +95,6 @@ function sessionGoalAuth(
     throw new Error("Session goal routes require session auth");
   }
   return { orgId: auth.orgId, userId: auth.userId };
-}
-
-async function goalFeatureEnabled(
-  db: ReadonlyDb,
-  auth: Pick<GoalAuth, "orgId" | "userId">,
-): Promise<boolean> {
-  const context = await loadUserFeatureSwitchContext(
-    db,
-    auth.orgId,
-    auth.userId,
-  );
-  return isFeatureEnabled(FeatureSwitchKey.WorkflowAutomation, context);
 }
 
 function goalErrorResponse(
@@ -146,11 +124,6 @@ const createGoalInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   const db = set(writeDb$);
-  if (!(await goalFeatureEnabled(db, auth))) {
-    return forbidden("Goal workflows are not enabled");
-  }
-  signal.throwIfAborted();
-
   const result = await createGoalForCurrentThread(db, {
     ...auth,
     objective: bodyResult.data.objective,
@@ -200,11 +173,6 @@ const editGoalInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   const db = set(writeDb$);
-  if (!(await goalFeatureEnabled(db, auth))) {
-    return forbidden("Goal workflows are not enabled");
-  }
-  signal.throwIfAborted();
-
   const result = await editCurrentGoal(db, {
     ...auth,
     objective: bodyResult.data.objective,
@@ -219,11 +187,6 @@ const editGoalInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 const getGoalInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = goalAuth(get(organizationAuthContext$));
   const db = set(writeDb$);
-  if (!(await goalFeatureEnabled(db, auth))) {
-    return forbidden("Goal workflows are not enabled");
-  }
-  signal.throwIfAborted();
-
   const result = await getCurrentGoal(db, auth);
   signal.throwIfAborted();
   if (result.kind === "ok") {
@@ -237,11 +200,6 @@ const getChatThreadGoalInner$ = command(
     const auth = sessionGoalAuth(get(organizationAuthContext$));
     const params = get(pathParamsOf(zeroGoalsContract.getForChatThread));
     const db = set(writeDb$);
-    if (!(await goalFeatureEnabled(db, auth))) {
-      return forbidden("Goal workflows are not enabled");
-    }
-    signal.throwIfAborted();
-
     const result = await getGoalForChatThread(db, {
       orgId: auth.orgId,
       userId: auth.userId,
@@ -259,11 +217,6 @@ const completeGoalInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = goalAuth(get(organizationAuthContext$));
     const db = set(writeDb$);
-    if (!(await goalFeatureEnabled(db, auth))) {
-      return forbidden("Goal workflows are not enabled");
-    }
-    signal.throwIfAborted();
-
     const result = await completeCurrentGoal(db, auth);
     signal.throwIfAborted();
     if (result.kind === "ok") {
@@ -276,11 +229,6 @@ const completeGoalInner$ = command(
 const blockGoalInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = goalAuth(get(organizationAuthContext$));
   const db = set(writeDb$);
-  if (!(await goalFeatureEnabled(db, auth))) {
-    return forbidden("Goal workflows are not enabled");
-  }
-  signal.throwIfAborted();
-
   const result = await blockCurrentGoal(db, auth);
   signal.throwIfAborted();
   if (result.kind === "ok") {
@@ -292,11 +240,6 @@ const blockGoalInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 const pauseGoalInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = goalAuth(get(organizationAuthContext$));
   const db = set(writeDb$);
-  if (!(await goalFeatureEnabled(db, auth))) {
-    return forbidden("Goal workflows are not enabled");
-  }
-  signal.throwIfAborted();
-
   const result = await pauseCurrentGoal(db, auth);
   signal.throwIfAborted();
   if (result.kind === "ok") {
@@ -310,11 +253,6 @@ const pauseChatThreadGoalInner$ = command(
     const auth = sessionGoalAuth(get(organizationAuthContext$));
     const params = get(pathParamsOf(zeroGoalsContract.pauseForChatThread));
     const db = set(writeDb$);
-    if (!(await goalFeatureEnabled(db, auth))) {
-      return forbidden("Goal workflows are not enabled");
-    }
-    signal.throwIfAborted();
-
     const result = await pauseGoalForChatThread(db, {
       orgId: auth.orgId,
       userId: auth.userId,
@@ -331,11 +269,6 @@ const pauseChatThreadGoalInner$ = command(
 const resumeGoalInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = goalAuth(get(organizationAuthContext$));
   const db = set(writeDb$);
-  if (!(await goalFeatureEnabled(db, auth))) {
-    return forbidden("Goal workflows are not enabled");
-  }
-  signal.throwIfAborted();
-
   const result = await resumeCurrentGoal(db, auth);
   signal.throwIfAborted();
   if (result.kind === "ok") {
@@ -347,11 +280,6 @@ const resumeGoalInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 const clearGoalInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = goalAuth(get(organizationAuthContext$));
   const db = set(writeDb$);
-  if (!(await goalFeatureEnabled(db, auth))) {
-    return forbidden("Goal workflows are not enabled");
-  }
-  signal.throwIfAborted();
-
   const result = await clearCurrentGoal(db, auth);
   signal.throwIfAborted();
   if (result.kind === "ok") {

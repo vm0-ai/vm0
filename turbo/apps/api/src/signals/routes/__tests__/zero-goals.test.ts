@@ -1,7 +1,6 @@
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { createStore } from "ccstate";
 
 import { mockOptionalEnv } from "../../../lib/env";
@@ -21,10 +20,6 @@ import {
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
-import {
-  deleteFeatureSwitchesForUser,
-  updateFeatureSwitchesForUser,
-} from "./helpers/zero-feature-switches";
 
 const context = testContext();
 const store = createStore();
@@ -43,7 +38,6 @@ interface GoalApiFixture extends UsageInsightFixture {
 }
 
 const track = createFixtureTracker<GoalApiFixture>(async (fixture) => {
-  await deleteFeatureSwitchesForUser(context, fixture);
   await store.set(deleteUsageInsightFixture$, fixture, context.signal);
 });
 
@@ -78,9 +72,7 @@ function headers(
   return { authorization: `Bearer ${zeroToken(fixture, capabilities)}` };
 }
 
-async function seedGoalApiFixture(args: {
-  readonly featureEnabled: boolean;
-}): Promise<GoalApiFixture> {
+async function seedGoalApiFixture(): Promise<GoalApiFixture> {
   const fixture = await store.set(
     seedUsageInsightFixture$,
     undefined,
@@ -113,12 +105,6 @@ async function seedGoalApiFixture(args: {
     },
     context.signal,
   );
-  // The switch is globally enabled since the automation -> workflow cutover
-  // (#19959); featureEnabled: false now needs an explicit user override to
-  // exercise the disabled path.
-  await updateFeatureSwitchesForUser(context, fixture, {
-    [FeatureSwitchKey.WorkflowAutomation]: args.featureEnabled,
-  });
   return await track(
     Promise.resolve({
       ...fixture,
@@ -164,27 +150,8 @@ describe("zero goals", () => {
     mockOptionalEnv("OPENROUTER_API_KEY", undefined);
   });
 
-  it("rejects goal writes while the feature switch is disabled", async () => {
-    const fixture = await seedGoalApiFixture({ featureEnabled: false });
-
-    const response = await accept(
-      goalsClient().create({
-        headers: headers(fixture, ["goal:user-control:write"]),
-        body: { objective: "finish the release" },
-      }),
-      [403],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        message: "Goal workflows are not enabled",
-        code: "FORBIDDEN",
-      },
-    });
-  });
-
   it("exposes lifecycle transitions through the goal API", async () => {
-    const fixture = await seedGoalApiFixture({ featureEnabled: true });
+    const fixture = await seedGoalApiFixture();
 
     const created = await createGoal(fixture, "ship thread goals");
     expect(created.body).toStrictEqual({
@@ -234,7 +201,7 @@ describe("zero goals", () => {
   });
 
   it("edits a blocked goal back to active and replaces a completed goal", async () => {
-    const fixture = await seedGoalApiFixture({ featureEnabled: true });
+    const fixture = await seedGoalApiFixture();
     await createGoal(fixture, "ship goals");
 
     await accept(goalsClient().block({ headers: headers(fixture) }), [200]);
@@ -274,7 +241,7 @@ describe("zero goals", () => {
   });
 
   it("pauses a chat thread goal with session auth", async () => {
-    const fixture = await seedGoalApiFixture({ featureEnabled: true });
+    const fixture = await seedGoalApiFixture();
     await createGoal(fixture, "ship thread goals");
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
 
@@ -293,7 +260,7 @@ describe("zero goals", () => {
   });
 
   it("reads a chat thread goal with session auth", async () => {
-    const fixture = await seedGoalApiFixture({ featureEnabled: true });
+    const fixture = await seedGoalApiFixture();
     const objective =
       "# Ship goals\n\nKeep the release moving with **daily** checks.";
     await createGoal(fixture, objective);
@@ -315,7 +282,7 @@ describe("zero goals", () => {
   });
 
   it("clears the current goal and writes a cleared marker", async () => {
-    const fixture = await seedGoalApiFixture({ featureEnabled: true });
+    const fixture = await seedGoalApiFixture();
     await createGoal(fixture, "ship thread goals");
 
     const cleared = await accept(
@@ -334,7 +301,7 @@ describe("zero goals", () => {
   });
 
   it("enforces user-control and agent-result capability boundaries", async () => {
-    const fixture = await seedGoalApiFixture({ featureEnabled: true });
+    const fixture = await seedGoalApiFixture();
     await createGoal(fixture, "ship thread goals");
 
     const editDenied = await accept(
@@ -358,7 +325,7 @@ describe("zero goals", () => {
   });
 
   it("rejects stale autonomous goal result writes without user-control capability", async () => {
-    const fixture = await seedGoalApiFixture({ featureEnabled: true });
+    const fixture = await seedGoalApiFixture();
     await createGoal(fixture, "ship thread goals");
 
     const stale = await accept(
@@ -377,7 +344,7 @@ describe("zero goals", () => {
   });
 
   it("excludes goal-state markers from a thread's unread state", async () => {
-    const fixture = await seedGoalApiFixture({ featureEnabled: true });
+    const fixture = await seedGoalApiFixture();
     await createGoal(fixture, "ship thread goals");
 
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
