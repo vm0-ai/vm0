@@ -113,7 +113,28 @@ fn binary_writes_system_log_to_explicit_runtime_path() {
     assert_action_present(&actions, "guest_download_task_count_0");
     assert_action_present(&actions, "guest_download_remote_url_count_0");
     assert_action_present(&actions, "guest_download_file_url_count_0");
+    assert_action_present(&actions, "guest_download_skill_child_task_count_0");
+    assert_action_present(
+        &actions,
+        "guest_download_framework_home_instructions_task_absent",
+    );
+    assert_action_present(
+        &actions,
+        "guest_download_potential_parent_child_overlap_count_0",
+    );
     assert_action_present(&actions, "guest_download_mount_conflict_deferral_count_0");
+    assert_action_present(
+        &actions,
+        "guest_download_instructions_skill_conflict_deferral_count_0",
+    );
+    assert_action_present(
+        &actions,
+        "guest_download_exact_path_conflict_deferral_count_0",
+    );
+    assert_action_present(
+        &actions,
+        "guest_download_other_parent_child_conflict_deferral_count_0",
+    );
     let totals: Vec<serde_json::Value> = ops_content
         .lines()
         .map(|line| serde_json::from_str(line).unwrap())
@@ -147,7 +168,28 @@ fn binary_reads_manifest_from_stdin() {
     assert_action_present(&actions, "guest_download_task_count_0");
     assert_action_present(&actions, "guest_download_remote_url_count_0");
     assert_action_present(&actions, "guest_download_file_url_count_0");
+    assert_action_present(&actions, "guest_download_skill_child_task_count_0");
+    assert_action_present(
+        &actions,
+        "guest_download_framework_home_instructions_task_absent",
+    );
+    assert_action_present(
+        &actions,
+        "guest_download_potential_parent_child_overlap_count_0",
+    );
     assert_action_present(&actions, "guest_download_mount_conflict_deferral_count_0");
+    assert_action_present(
+        &actions,
+        "guest_download_instructions_skill_conflict_deferral_count_0",
+    );
+    assert_action_present(
+        &actions,
+        "guest_download_exact_path_conflict_deferral_count_0",
+    );
+    assert_action_present(
+        &actions,
+        "guest_download_other_parent_child_conflict_deferral_count_0",
+    );
     let totals: Vec<serde_json::Value> = ops_content
         .lines()
         .map(|line| serde_json::from_str(line).unwrap())
@@ -215,7 +257,28 @@ fn binary_records_download_scheduler_attribution() {
     assert_action_present(&actions, "guest_download_task_count_2");
     assert_action_present(&actions, "guest_download_remote_url_count_1");
     assert_action_present(&actions, "guest_download_file_url_count_1");
+    assert_action_present(&actions, "guest_download_skill_child_task_count_0");
+    assert_action_present(
+        &actions,
+        "guest_download_framework_home_instructions_task_absent",
+    );
+    assert_action_present(
+        &actions,
+        "guest_download_potential_parent_child_overlap_count_1",
+    );
     assert_action_present(&actions, "guest_download_mount_conflict_deferral_count_1");
+    assert_action_present(
+        &actions,
+        "guest_download_instructions_skill_conflict_deferral_count_0",
+    );
+    assert_action_present(
+        &actions,
+        "guest_download_exact_path_conflict_deferral_count_0",
+    );
+    assert_action_present(
+        &actions,
+        "guest_download_other_parent_child_conflict_deferral_count_1",
+    );
     assert_action_present(&actions, "storage_download");
     assert_action_present(&actions, "artifact_download");
     assert_action_present(&actions, "download_total");
@@ -274,6 +337,13 @@ fn binary_records_scheduler_attribution_for_failed_download() {
         .find(|entry| entry["action_type"] == "guest_download_mount_conflict_deferral_count_1")
         .unwrap_or_else(|| panic!("missing mount conflict count in {ops:?}"));
     assert_eq!(conflict["success"], true);
+    let other_parent_child_conflict = ops
+        .iter()
+        .find(|entry| {
+            entry["action_type"] == "guest_download_other_parent_child_conflict_deferral_count_1"
+        })
+        .unwrap_or_else(|| panic!("missing other parent/child conflict count in {ops:?}"));
+    assert_eq!(other_parent_child_conflict["success"], true);
     let total = ops
         .iter()
         .find(|entry| entry["action_type"] == "download_total")
