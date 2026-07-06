@@ -18,6 +18,7 @@ import {
   validateBaseUrl,
 } from "@vm0/connectors/firewall-types";
 import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
+import { orgCustomConnectorSecrets } from "@vm0/db/schema/org-custom-connector-secret";
 import { orgCustomConnectorValues } from "@vm0/db/schema/org-custom-connector-value";
 
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
@@ -1302,6 +1303,14 @@ export const deleteCustomConnector$ = command(
           ),
         );
       await tx
+        .delete(orgCustomConnectorSecrets)
+        .where(
+          and(
+            eq(orgCustomConnectorSecrets.connectorId, args.id),
+            eq(orgCustomConnectorSecrets.orgId, args.orgId),
+          ),
+        );
+      await tx
         .delete(orgCustomConnectors)
         .where(
           and(
@@ -1841,6 +1850,17 @@ export const deleteCustomConnectorValue$ = command(
             eq(orgCustomConnectorValues.key, args.key),
           ),
         );
+      if (args.kind === "secret" && args.key === LEGACY_SECRET_KEY) {
+        await tx
+          .delete(orgCustomConnectorSecrets)
+          .where(
+            and(
+              eq(orgCustomConnectorSecrets.connectorId, args.connectorId),
+              eq(orgCustomConnectorSecrets.userId, args.userId),
+              eq(orgCustomConnectorSecrets.orgId, args.orgId),
+            ),
+          );
+      }
       return true;
     });
     signal.throwIfAborted();
