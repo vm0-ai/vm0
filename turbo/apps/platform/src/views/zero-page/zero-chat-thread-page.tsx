@@ -2397,14 +2397,7 @@ function HeaderAutomationSidebarCard({
         </div>
       </dl>
 
-      <div className="mt-4 flex min-w-0 items-center justify-between gap-2">
-        <Link
-          pathname="/automations/:automationId"
-          options={{ pathParams: { automationId: automation.id } }}
-          className="text-xs font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-        >
-          Edit
-        </Link>
+      <div className="mt-4 flex min-w-0 items-center justify-end gap-2">
         <Button
           type="button"
           variant="outline"
@@ -7105,10 +7098,8 @@ function UserMessageGenerationTemplate({
 }
 
 function AutomationUserMessage({
-  automationId,
   automationLabel,
 }: {
-  automationId: string | undefined;
   automationLabel: string;
 }) {
   const cardClassName =
@@ -7126,18 +7117,7 @@ function AutomationUserMessage({
       <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
         <div className="flex w-full flex-col items-end">
-          {automationId ? (
-            <Link
-              pathname="/automations/:automationId"
-              options={{ pathParams: { automationId } }}
-              className={cn(cardClassName, "cursor-pointer hover:opacity-80")}
-              aria-label={`Open automation ${automationLabel}`}
-            >
-              {body}
-            </Link>
-          ) : (
-            <div className={cardClassName}>{body}</div>
-          )}
+          <div className={cardClassName}>{body}</div>
         </div>
       </div>
     </div>
@@ -7304,7 +7284,6 @@ function PagedUserMessage({
   if (isAutomationUserMessage(message)) {
     return (
       <AutomationUserMessage
-        automationId={message.automationId}
         automationLabel={automationMessageLabel(message)}
       />
     );
