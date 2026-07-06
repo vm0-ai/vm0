@@ -15,6 +15,7 @@ async function decompressSessionHistoryBufferWithMaxBytes(
   const decompressor = createDecompressor();
   for await (const chunk of Readable.from([buffer]).pipe(decompressor)) {
     if (!(chunk instanceof Uint8Array)) {
+      decompressor.destroy();
       throw new Error(`${codec} stream yielded a non-byte chunk`);
     }
     const data = Buffer.from(chunk);
