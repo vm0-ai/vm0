@@ -113,23 +113,9 @@ const uuidPattern =
 const QUEUED_RUN_MARKER_EVENT_ID = "queue:queued";
 const SILENT_HISTORY_BACKFILL_INTERVAL_MS = 100;
 const GROUPED_CHAT_MESSAGES_CACHE_LIMIT = 20;
-const LATEST_USER_MESSAGE_SCROLL_ANCHOR_SELECTOR = '[data-role="user"]';
-
-const chatThreadLatestUserMessageScrollAnchorEnabled$ = computed((get) => {
-  return (
-    get(featureSwitch$)[
-      FeatureSwitchKey.ChatThreadLatestUserMessageScrollAnchor
-    ] ?? false
-  );
-});
 
 function createChatThreadScrollSignals(threadId: string) {
-  return createScrollSignals(threadId, {
-    scrollToBottomAnchor: {
-      selector: LATEST_USER_MESSAGE_SCROLL_ANCHOR_SELECTOR,
-      enabled$: chatThreadLatestUserMessageScrollAnchorEnabled$,
-    },
-  });
+  return createScrollSignals(threadId);
 }
 
 function isRecallControlMessage(msg: PagedChatMessage): boolean {
