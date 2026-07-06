@@ -43,9 +43,6 @@ export const ZERO_CAPABILITIES = [
   "agent:delete",
   "agent-run:read",
   "agent-run:write",
-  "automation:read",
-  "automation:write",
-  "automation:delete",
   "goal:read",
   "goal:agent-result:write",
   "goal:user-control:write",
@@ -93,15 +90,6 @@ export const ZERO_CAPABILITY_META: Record<ZeroCapability, ZeroCapabilityMeta> =
     "agent:delete": { group: "Agent", label: "Delete agents" },
     "agent-run:read": { group: "Agent Runs", label: "View runs & telemetry" },
     "agent-run:write": { group: "Agent Runs", label: "Create & cancel runs" },
-    "automation:read": { group: "Automations", label: "View automations" },
-    "automation:write": {
-      group: "Automations",
-      label: "Create & manage automations",
-    },
-    "automation:delete": {
-      group: "Automations",
-      label: "Delete automations",
-    },
     "goal:read": { group: "Goals", label: "Read thread goals" },
     "goal:agent-result:write": {
       group: "Goals",

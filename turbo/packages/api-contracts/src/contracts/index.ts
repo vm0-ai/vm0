@@ -332,23 +332,9 @@ export {
   testAutomationsStateActionBodySchema,
   testAutomationsStateActionResponseSchema,
   testAutomationsStateContract,
-  testAutomationsStateDeleteResponseSchema,
-  testAutomationsStatePatchBodySchema,
-  testAutomationsStatePostBodySchema,
-  testAutomationsStatePostResponseSchema,
-  testAutomationsStateReadResponseSchema,
-  testAutomationsStateSeedSchema,
-  testAutomationsStateTriggerRowSchema,
   type TestAutomationsStateActionBody,
   type TestAutomationsStateActionResponse,
   type TestAutomationsStateContract,
-  type TestAutomationsStateDeleteResponse,
-  type TestAutomationsStatePatchBody,
-  type TestAutomationsStatePostBody,
-  type TestAutomationsStatePostResponse,
-  type TestAutomationsStateReadResponse,
-  type TestAutomationsStateSeed,
-  type TestAutomationsStateTriggerRow,
 } from "./test-automations-state";
 export {
   testBillingRedeemStateActionBodySchema,
@@ -1250,7 +1236,6 @@ export {
   type RunContextResponse,
   type RunRunnerResponse,
 } from "./zero-runs";
-export { automationViewSchema, type AutomationView } from "./automation-view";
 export {
   zeroModelProvidersMainContract,
   zeroModelProvidersByTypeContract,
@@ -1718,24 +1703,6 @@ export {
   type ZeroBuiltInGenerationAcceptedResponse,
   type ZeroBuiltInGenerationResponse,
 } from "./zero-built-in-generation";
-export {
-  automationsMainContract,
-  automationsByRefContract,
-  automationTriggersContract,
-  automationTriggerResponseSchema,
-  automationResponseSchema,
-  automationListResponseSchema,
-  automationMutationResponseSchema,
-  triggerMutationResponseSchema,
-  automationRunResponseSchema,
-  createTriggerRequestSchema,
-  type AutomationsMainContract,
-  type AutomationsByRefContract,
-  type AutomationTriggersContract,
-  type AutomationResponse,
-  type AutomationTriggerResponse,
-  type CreateTriggerRequest,
-} from "./automations";
 export {
   internalCallbackBodySchema,
   internalCallbackErrorSchema,
