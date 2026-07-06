@@ -1852,21 +1852,21 @@ type CustomConnectorRuntimeDataTimingMeasure = <T>(
   step: CustomConnectorRuntimeDataTimingStep,
   operation: () => Promise<T>,
 ) => Promise<T>;
+type CustomConnectorRuntimeDataDb = Pick<Db, "select">;
+type CustomConnectorRuntimeDataRow = {
+  readonly connector: CustomConnectorRow;
+  readonly values: readonly StoredValueRow[];
+};
 
-export async function loadCustomConnectorRuntimeData(
-  db: ReadonlyDb,
+async function loadCustomConnectorRuntimeDataSnapshot(
+  db: CustomConnectorRuntimeDataDb,
   args: {
     readonly orgId: string;
     readonly userId: string;
     readonly connectorIds: readonly string[] | undefined;
     readonly measure?: CustomConnectorRuntimeDataTimingMeasure;
   },
-): Promise<
-  readonly {
-    readonly connector: CustomConnectorRow;
-    readonly values: readonly StoredValueRow[];
-  }[]
-> {
+): Promise<readonly CustomConnectorRuntimeDataRow[]> {
   const measure =
     args.measure ??
     (async <T>(
@@ -1939,6 +1939,23 @@ export async function loadCustomConnectorRuntimeData(
       values: valuesByConnectorId.get(connector.id) ?? [],
     };
   });
+}
+
+export async function loadCustomConnectorRuntimeData(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly connectorIds: readonly string[] | undefined;
+    readonly measure?: CustomConnectorRuntimeDataTimingMeasure;
+  },
+): Promise<readonly CustomConnectorRuntimeDataRow[]> {
+  return await db.transaction(
+    async (tx) => {
+      return await loadCustomConnectorRuntimeDataSnapshot(tx, args);
+    },
+    { isolationLevel: "repeatable read" },
+  );
 }
 
 interface SaveCustomConnectorProposalArgs {
