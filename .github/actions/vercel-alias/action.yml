@@ -90,12 +90,12 @@ runs:
 
         if [ "$HTTP_STATUS" -eq 409 ]; then
           RESPONSE_MESSAGE="$(node - "$RESPONSE_FILE" <<'NODE'
-          const fs = require("node:fs");
+        const fs = require("node:fs");
 
-          const raw = fs.readFileSync(process.argv[2], "utf8");
-          const payload = JSON.parse(raw);
-          process.stdout.write(payload.error?.message ?? payload.message ?? raw);
-          NODE
+        const raw = fs.readFileSync(process.argv[2], "utf8");
+        const payload = JSON.parse(raw);
+        process.stdout.write(payload.error?.message ?? payload.message ?? raw);
+        NODE
           )"
           if [[ "$RESPONSE_MESSAGE" == *"already assigned"* ]]; then
             echo "Alias already exists: ${ALIAS_URL}"
@@ -105,16 +105,16 @@ runs:
 
         if [ "$HTTP_STATUS" -lt 200 ] || [ "$HTTP_STATUS" -ge 300 ]; then
           RESPONSE_MESSAGE="$(node - "$RESPONSE_FILE" <<'NODE'
-          const fs = require("node:fs");
+        const fs = require("node:fs");
 
-          const raw = fs.readFileSync(process.argv[2], "utf8");
-          try {
-            const payload = JSON.parse(raw);
-            process.stdout.write(payload.error?.message ?? payload.message ?? raw);
-          } catch {
-            process.stdout.write(raw);
-          }
-          NODE
+        const raw = fs.readFileSync(process.argv[2], "utf8");
+        try {
+          const payload = JSON.parse(raw);
+          process.stdout.write(payload.error?.message ?? payload.message ?? raw);
+        } catch {
+          process.stdout.write(raw);
+        }
+        NODE
           )"
           echo "::error::Failed to create Vercel alias (${HTTP_STATUS}): ${RESPONSE_MESSAGE}"
           exit 1
