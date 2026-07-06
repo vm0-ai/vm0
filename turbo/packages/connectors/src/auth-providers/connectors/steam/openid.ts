@@ -5,7 +5,7 @@ export const STEAM_OPENID_NS = "http://specs.openid.net/auth/2.0";
 const STEAM_OPENID_IDENTIFIER_SELECT =
   "http://specs.openid.net/auth/2.0/identifier_select";
 const STEAM_CLAIMED_ID_PATTERN =
-  /^https?:\/\/steamcommunity\.com\/openid\/id\/(?<steamId>\d{17})$/u;
+  /^https:\/\/steamcommunity\.com\/openid\/id\/(?<steamId>\d{17})$/u;
 
 const steamOpenIdVerificationResponseSchema = z.object({
   ns: z.string().optional(),

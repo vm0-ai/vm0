@@ -130,9 +130,6 @@ async function fetchSteamJson<T>(
     throw new SteamUpstreamError("Steam API request failed");
   }
   const response = responseResult.value;
-  if (response.status === 403 || response.status === 404) {
-    return null;
-  }
   if (!response.ok) {
     throw new SteamUpstreamError(
       `Steam API request failed with HTTP ${response.status}`,

@@ -486,4 +486,30 @@ describe("Steam OpenID connector", () => {
 
     expect(response.body.error.code).toBe("PROVIDER_UNAVAILABLE");
   });
+
+  it("returns provider unavailable when Steam rejects the API key", async () => {
+    const actor = testActor();
+    mockSteamRuntimeEnv();
+    await enableSteamConnector(actor);
+    await completeSteamOpenIdCallback(await startSteamOpenId(actor));
+    mockSteamPlayerApis({ privateOwnedGames: false });
+    server.use(
+      http.get(
+        "https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/",
+        () => {
+          return new HttpResponse("", { status: 403 });
+        },
+      ),
+    );
+
+    mockSession(actor);
+    const response = await accept(
+      setupApp({ context })(zeroSteamPlayerContract).getPlayer({
+        headers: authHeaders(),
+      }),
+      [503],
+    );
+
+    expect(response.body.error.code).toBe("PROVIDER_UNAVAILABLE");
+  });
 });

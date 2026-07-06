@@ -147,4 +147,20 @@ describe("Steam OpenID provider", () => {
       }),
     ).rejects.toThrow("invalid claimed ID");
   });
+
+  it("rejects non-HTTPS claimed IDs", async () => {
+    mockSteamVerification({ valid: true });
+
+    await expect(
+      verifySteamOpenIdCallback({
+        callbackParams: callbackParams({
+          "openid.claimed_id": `http://steamcommunity.com/openid/id/${STEAM_ID}`,
+          "openid.identity": `http://steamcommunity.com/openid/id/${STEAM_ID}`,
+        }),
+        expectedReturnTo: RETURN_TO,
+        expectedRealm: REALM,
+        signal: new AbortController().signal,
+      }),
+    ).rejects.toThrow("invalid claimed ID");
+  });
 });
