@@ -11,7 +11,7 @@ import {
   subscribeChatThreadReadCursorUpdated$,
   subscribeThreadListChanged$,
 } from "../signals/chat-thread-list-reload.ts";
-import { checkForceUpgradeDialog$ } from "../signals/force-upgrade.ts";
+import { pollForceUpgradeDialog$ } from "../signals/force-upgrade.ts";
 import { subscribeBackgroundChatThreadRunFinished$ } from "../signals/chat-page/background-chat-thread-cache.ts";
 import { subscribeEventDrivenChatThreads$ } from "../signals/chat-page/chat-thread-event-sourcing.ts";
 import { rootSignal$ } from "../signals/root-signal.ts";
@@ -26,7 +26,7 @@ export const setupRouter = (
   const signal = store.get(rootSignal$);
   detach(store.set(subscribeThreadListChanged$, signal), Reason.Daemon);
   detach(
-    store.set(checkForceUpgradeDialog$, signal),
+    store.set(pollForceUpgradeDialog$, signal),
     Reason.Daemon,
     "force-upgrade",
   );
