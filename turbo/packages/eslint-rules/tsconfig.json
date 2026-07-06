@@ -2,12 +2,12 @@
   "extends": "@vm0/typescript-config/base.json",
   "compilerOptions": {
     "allowImportingTsExtensions": true,
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "declaration": false,
+    "declarationMap": false,
+    "lib": ["ES2022"],
     "noEmit": true,
-    "incremental": true,
-    "tsBuildInfoFile": "./.tsbuildinfo",
-    "types": ["node", "vitest/globals"],
-    "outDir": "./dist"
+    "noUncheckedIndexedAccess": false,
+    "types": ["node", "vitest/globals"]
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]
