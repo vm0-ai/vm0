@@ -15,6 +15,7 @@ const UNIT_STAGING_MAX_ATTEMPTS: u64 = 32;
 // Older runner binaries created dot-UUID staging files without holding the
 // service lock, so only age them out after the rolling-upgrade window.
 const LEGACY_UNIT_STAGING_MIN_AGE: Duration = Duration::from_secs(10 * 60);
+pub(super) const RUNNER_SERVICE_NOFILE_LIMIT_DIRECTIVE: &str = "LimitNOFILE=524288:524288";
 #[cfg(unix)]
 const UNIT_FILE_MODE: u32 = 0o600;
 static UNIT_STAGING_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -93,6 +94,7 @@ Restart=on-failure
 RestartSec=5
 KillSignal=SIGTERM
 TimeoutStopSec=300
+{RUNNER_SERVICE_NOFILE_LIMIT_DIRECTIVE}
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier={unit_name}
@@ -510,6 +512,7 @@ mod tests {
         assert!(!content.contains("EnvironmentFile="));
         assert!(content.contains("Restart=on-failure"));
         assert!(content.contains("TimeoutStopSec=300"));
+        assert!(content.contains("LimitNOFILE=524288:524288"));
         assert!(content.contains("[Install]"));
         assert!(content.contains("WantedBy=multi-user.target"));
         assert!(!content.contains("Environment="));

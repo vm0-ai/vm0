@@ -23,9 +23,9 @@ use gate::{check_active_jobs_gate, read_runner_status, runner_base_dir};
 use signal::{ServiceSignalOutcome, signal_service_main};
 use systemctl::{journalctl_logs_status, run_systemctl};
 use unit_file::{
-    cleanup_unit_staging_files, generate_unit_file, remove_unit_file_if_exists,
-    resolve_config_path, validate_current_exe_path, validate_env_vars, validate_systemd_path,
-    write_unit_file,
+    RUNNER_SERVICE_NOFILE_LIMIT_DIRECTIVE, cleanup_unit_staging_files, generate_unit_file,
+    remove_unit_file_if_exists, resolve_config_path, validate_current_exe_path, validate_env_vars,
+    validate_systemd_path, write_unit_file,
 };
 
 const SERVICE_CONFIG_SNAPSHOT_DIR: &str = "service-config-snapshots";
@@ -171,6 +171,10 @@ fn service_activation_config_snapshot_path(
         .join(format!("{}-{digest}.yaml", unit.suffix()))
 }
 
+fn systemd_run_limit_nofile_property_arg() -> String {
+    format!("--property={RUNNER_SERVICE_NOFILE_LIMIT_DIRECTIVE}")
+}
+
 async fn prepare_service_activation_config(
     unit: &RunnerServiceUnit,
     config_path: &Path,
@@ -261,6 +265,7 @@ async fn start(args: ServiceRunArgs) -> RunnerResult<()> {
     let unit_arg = format!("--unit={}", unit.unit_name());
     let desc_arg = format!("--description=VM0 Runner ({})", unit.unit_name());
     let syslog_arg = format!("--property=SyslogIdentifier={}", unit.unit_name());
+    let nofile_arg = systemd_run_limit_nofile_property_arg();
     with_service_activation_image_artifacts(
         &unit,
         &config_path,
@@ -277,6 +282,7 @@ async fn start(args: ServiceRunArgs) -> RunnerResult<()> {
                 "--property=StandardError=journal",
                 "--property=KillSignal=SIGTERM",
                 "--property=TimeoutStopSec=300",
+                &*nofile_arg,
                 &*syslog_arg,
             ]);
             for entry in &args.env {
@@ -778,6 +784,14 @@ profiles:
 
     fn service_unit() -> RunnerServiceUnit {
         RunnerServiceUnit::from_suffix("test").unwrap()
+    }
+
+    #[test]
+    fn systemd_run_uses_explicit_soft_and_hard_nofile_limit() {
+        assert_eq!(
+            systemd_run_limit_nofile_property_arg(),
+            "--property=LimitNOFILE=524288:524288"
+        );
     }
 
     #[test]
