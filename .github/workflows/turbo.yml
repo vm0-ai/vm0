@@ -715,7 +715,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
       - uses: ./.github/actions/toolchain-init
       - name: Alias PR onboarding
         uses: ./.github/actions/vercel-alias

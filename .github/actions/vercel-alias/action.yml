@@ -37,6 +37,14 @@ outputs:
 runs:
   using: "composite"
   steps:
+    - name: Install Vercel CLI
+      shell: bash
+      run: |
+        if ! command -v vercel >/dev/null 2>&1; then
+          npm install -g vercel@53.2.0
+        fi
+        vercel --version
+
     - name: Create Vercel alias
       id: alias
       shell: bash
