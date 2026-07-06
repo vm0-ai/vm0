@@ -960,6 +960,7 @@ async function loadConnectorValueMarkers(args: {
   readonly db: ReadonlyDb;
   readonly orgId: string;
   readonly userId: string;
+  readonly connectorId?: string;
 }): Promise<readonly ValueMarker[]> {
   const valueRows = await args.db
     .select({
@@ -972,6 +973,9 @@ async function loadConnectorValueMarkers(args: {
       and(
         eq(orgCustomConnectorValues.orgId, args.orgId),
         eq(orgCustomConnectorValues.userId, args.userId),
+        args.connectorId
+          ? eq(orgCustomConnectorValues.connectorId, args.connectorId)
+          : undefined,
       ),
     );
   return valueMarkersFromRows(valueRows);
@@ -1235,6 +1239,7 @@ export function getCustomConnectorResponse(args: {
       db,
       orgId: args.orgId,
       userId: args.userId,
+      connectorId: args.connectorId,
     });
     return serialiseCustomConnector({ row: connector, valueMarkers: markers });
   });
