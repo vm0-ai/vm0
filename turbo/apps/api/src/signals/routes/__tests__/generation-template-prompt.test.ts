@@ -37,9 +37,7 @@ describe("buildGenerationTemplatePrompt", () => {
     if (result.status !== "resolved") {
       return;
     }
-    expect(result.prompt).toContain("# Presentation Runbook Context");
-    expect(result.prompt).not.toContain("# Artifact Template Context");
-    expect(result.prompt).not.toContain("artifact template");
+    expect(result.prompt).toContain("# Artifact Template Context");
     expect(result.prompt).toContain(
       "Selected presentation template: Playful Launch Presentation (template:html-ppt-playful-launch)",
     );

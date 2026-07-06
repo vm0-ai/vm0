@@ -944,8 +944,7 @@ describe("CHAT-02: completed chat callback", () => {
     expect(appended).toContain(
       "# Current Integration\nYou are currently running inside: Web",
     );
-    expect(appended).toContain("# Presentation Runbook Context");
-    expect(appended).not.toContain("# Artifact Template Context");
+    expect(appended).toContain("# Artifact Template Context");
     expect(appended).toContain(
       "Selected presentation template: Playful Launch Presentation (template:html-ppt-playful-launch)",
     );

@@ -2764,10 +2764,9 @@ describe("CHAT-02: generation templates and attachments", () => {
     const presentationRun = await api.readRun(actor, presentation.runId);
     expect(presentationRun.prompt).toBe("make a launch deck");
     const presentationPrompt = presentationRun.appendSystemPrompt ?? "";
-    expect(presentationPrompt).toContain("# Presentation Runbook Context");
-    expect(presentationPrompt).not.toContain("# Artifact Template Context");
+    expect(presentationPrompt).toContain("# Artifact Template Context");
     expect(presentationPrompt).toContain(
-      "The user deliberately selected this presentation runbook",
+      "The user deliberately selected this artifact template",
     );
     expect(presentationPrompt).toContain(
       "It does not force you to generate: the user's prompt decides the task",
