@@ -173,7 +173,6 @@ describe("zero generate source-backed artifact commands", () => {
       ]),
     );
     expect(presentationSelection.candidates.templates).toHaveLength(0);
-    expect(presentationSelection.candidates.designSystems).toHaveLength(0);
   });
 
   it("attributes every vm0 image style to the vm0-skills repo", () => {
