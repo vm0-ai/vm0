@@ -151,7 +151,7 @@ fn validate_frame_payload_len(len: usize) -> io::Result<u32> {
         return Err(frame_payload_len_error(len));
     }
 
-    u32::try_from(len).map_err(|_| frame_payload_len_error(len))
+    Ok(len as u32)
 }
 
 /// Read a length-prefixed frame from the stream.
