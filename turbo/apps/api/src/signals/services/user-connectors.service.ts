@@ -56,6 +56,8 @@ const LEGACY_SECRET_KEY = "secret";
 const LEGACY_SECRET_PLACEHOLDER = "{{secret}}";
 const CUSTOM_CONNECTOR_TEMPLATE_REFERENCE_REGEX =
   /\{\{\s*(secrets|variables)\.([a-z][a-z0-9_]*)\s*\}\}/g;
+const CUSTOM_CONNECTOR_TEMPLATE_REFERENCE_PRESENCE_REGEX =
+  /\{\{\s*(secrets|variables)\.([a-z][a-z0-9_]*)\s*\}\}/;
 
 function legacyCustomConnectorFields(): readonly OrgCustomConnectorField[] {
   return [
@@ -92,12 +94,24 @@ function customConnectorFieldConfigured(args: {
   );
 }
 
+function customConnectorAuthTemplateHasConfigurableReference(
+  template: string,
+): boolean {
+  return (
+    template.includes(LEGACY_SECRET_PLACEHOLDER) ||
+    CUSTOM_CONNECTOR_TEMPLATE_REFERENCE_PRESENCE_REGEX.test(template)
+  );
+}
+
 function customConnectorAuthTemplateConfigured(args: {
   readonly connectorId: string;
   readonly fields: readonly OrgCustomConnectorField[];
   readonly configuredMarkers: ReadonlySet<string>;
   readonly template: string;
 }): boolean {
+  if (!customConnectorAuthTemplateHasConfigurableReference(args.template)) {
+    return false;
+  }
   const fieldByReference = new Map<string, OrgCustomConnectorField>(
     args.fields.map((field) => {
       return [
