@@ -1306,8 +1306,19 @@ describe("connectors page", () => {
     expect(queryButtonByText("Manage", dialog)).not.toBeInTheDocument();
   });
 
-  it("shows Google Maps approval guidance before OAuth", async () => {
+  it("starts Google Maps OAuth without review guidance", async () => {
     mockConnectors([]);
+    const authWindow = createMockAuthWindow();
+    context.mocks.browser.open(authWindow);
+    context.mocks.api(
+      zeroConnectorOauthStartContract.start,
+      ({ params, respond }) => {
+        expect(params.type).toBe("google-maps");
+        return respond(200, {
+          authorizationUrl: "https://oauth.test/google-maps/authorize",
+        });
+      },
+    );
 
     detachedSetupPage({
       context,
@@ -1317,10 +1328,14 @@ describe("connectors page", () => {
     await fill(await screen.findByPlaceholderText("Find connectors"), "maps");
     click(await screen.findByLabelText("Connect Google Maps"));
 
-    const dialog = await screen.findByRole("dialog", { name: "Google Maps" });
+    await waitFor(() => {
+      expect(authWindow.location.href).toBe(
+        "https://oauth.test/google-maps/authorize",
+      );
+    });
     expect(
-      within(dialog).getByText(/Google will show a security warning/),
-    ).toBeInTheDocument();
+      screen.queryByRole("dialog", { name: "Google Maps" }),
+    ).not.toBeInTheDocument();
   });
 
   it("starts Meta Ads OAuth without review guidance", async () => {

@@ -1087,6 +1087,74 @@ describe("zero sidebar", () => {
     });
   });
 
+  it("keeps pinned agents and the chat title outside the switched thread list scroll area", async () => {
+    prepareAgentTeam();
+    context.mocks.data.userPreferences({
+      pinnedAgentIds: [RESEARCH_AGENT_ID],
+    });
+    const overflowThreads = Array.from({ length: 23 }, (_, index) => {
+      return createThread(
+        `b2500000-0000-4000-a000-${String(index).padStart(12, "0")}`,
+        `Switched overflow ${index + 1}`,
+      );
+    });
+    mockSidebarThreadStory(
+      [
+        createThread(EXISTING_THREAD_ID, "Release plan"),
+        createThread(AUTOMATION_THREAD_ID, "Scheduled launch"),
+      ],
+      [
+        ...overflowThreads,
+        createThread(ARCHIVED_THREAD_ID, "Archived context"),
+      ],
+    );
+
+    setupSidebarPage({
+      context,
+      path: `/chats/${EXISTING_THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.SidebarThreadListScroll]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(within(sidebar()).getByText("Research Agent")).toBeInTheDocument();
+      expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
+      expect(
+        screen.getByTestId("sidebar-chat-threads-virtual-list"),
+      ).toBeInTheDocument();
+    });
+
+    const scrollArea = screen.getByTestId("sidebar-scroll-area");
+    const pinnedHeader = screen.getByTestId("pinned-section-header");
+    const pinnedAgent = within(sidebar()).getByText("Research Agent");
+    const chatTitle = within(sidebar()).getByText("Chats with Zero");
+    expect(scrollArea).not.toContainElement(pinnedHeader);
+    expect(scrollArea).not.toContainElement(pinnedAgent);
+    expect(scrollArea).not.toContainElement(chatTitle);
+    expect(scrollArea).toContainElement(threadLinkByTitle("Release plan"));
+
+    Object.defineProperty(scrollArea, "clientHeight", {
+      configurable: true,
+      value: 200,
+    });
+    Object.defineProperty(scrollArea, "scrollHeight", {
+      configurable: true,
+      value: 1000,
+    });
+    Object.defineProperty(scrollArea, "scrollTop", {
+      configurable: true,
+      value: 780,
+    });
+    fireEvent.scroll(scrollArea);
+
+    await waitFor(() => {
+      expect(
+        within(sidebar()).getByText("Archived context"),
+      ).toBeInTheDocument();
+    });
+  });
+
   it("scrolls the current chat into the virtualized sidebar on page setup", async () => {
     prepareDefaultAgent();
     const leadingThreads = Array.from({ length: 24 }, (_, index) => {

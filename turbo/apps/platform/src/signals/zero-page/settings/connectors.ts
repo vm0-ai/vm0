@@ -213,14 +213,8 @@ export function hasConnectorStatusAuthCodeGrant(
 
 export function getConnectorStatusConnectLaunchMode(
   connector: ConnectorTypeWithStatus,
-  {
-    preferModalForConnectorNotice = false,
-  }: { readonly preferModalForConnectorNotice?: boolean } = {},
 ): ConnectorConnectLaunchMode {
   if (!getOnlyAvailableStatusAuthCodeAuthMethod(connector)) {
-    return "modal";
-  }
-  if (preferModalForConnectorNotice && connector.connectNotice) {
     return "modal";
   }
   return "oauth-auth-code";

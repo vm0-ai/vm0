@@ -462,8 +462,12 @@ async function backToArtifactInbox(): Promise<void> {
   });
 }
 
-function expectFullscreenSafeAreaClass(element: HTMLElement): void {
+function expectFullscreenSafeAreaClass(
+  element: HTMLElement,
+  layerClassName = "z-[100]",
+): void {
   const className = element.getAttribute("class") ?? "";
+  expect(className).toContain(layerClassName);
   expect(className).toContain("pt-[var(--sat)]");
   expect(className).toContain("pb-[var(--sab)]");
 }
@@ -1262,6 +1266,41 @@ describe("zero artifact sidebar", () => {
     await user.click(screen.getByLabelText("Exit fullscreen"));
     await waitFor(() => {
       expect(screen.getByLabelText("Enter fullscreen")).toBeInTheDocument();
+    });
+  });
+
+  it("marks app chrome while the artifact sidebar is fullscreen", async () => {
+    const user = userEvent.setup({ delay: null });
+    const imageUrl =
+      "https://cdn.vm7.io/artifacts/test/fullscreen-layer/photo.png";
+    setupChatThread({
+      content: `[photo](${imageUrl})`,
+      path: `${THREAD_PATH}?artifact=${encodeURIComponent(imageUrl)}`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-sidebar")).toBeInTheDocument();
+      expect(screen.getByLabelText("Enter fullscreen")).toBeInTheDocument();
+    });
+
+    const app = document.querySelector(".zero-app");
+    if (!(app instanceof HTMLElement)) {
+      throw new Error("Zero app shell not found");
+    }
+
+    expect(app).not.toHaveAttribute("data-zero-artifact-fullscreen");
+
+    await user.click(screen.getByLabelText("Enter fullscreen"));
+    await waitFor(() => {
+      expect(screen.getByLabelText("Exit fullscreen")).toBeInTheDocument();
+      expect(app).toHaveAttribute("data-zero-artifact-fullscreen", "true");
+    });
+    expectFullscreenSafeAreaClass(screen.getByTestId("artifact-sidebar"));
+
+    await user.click(screen.getByLabelText("Exit fullscreen"));
+    await waitFor(() => {
+      expect(screen.getByLabelText("Enter fullscreen")).toBeInTheDocument();
+      expect(app).not.toHaveAttribute("data-zero-artifact-fullscreen");
     });
   });
 

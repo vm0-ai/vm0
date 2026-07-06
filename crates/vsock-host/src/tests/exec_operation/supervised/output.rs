@@ -1,33 +1,28 @@
 use std::future::{Future, poll_fn};
 use std::io;
-use std::sync::Arc;
 use std::task::Poll;
 use std::time::Duration;
 
 use vsock_proto::{ExecOutputStream, ExecTermination};
 
 use super::super::super::support::{
-    normal_operation_readiness, operation_count, read_guest_message, send_discarded_exec_result,
-    send_exec_output, send_exec_started, setup_host_and_guest, wait_for_operation_count,
+    normal_operation_readiness, operation_count, send_discarded_exec_result, send_exec_output,
+    wait_for_operation_count,
 };
-use super::support::supervised_stream_request;
+use super::support::{
+    StartedSupervisedExec, start_supervised_exec_fixture, supervised_stream_request,
+};
 use crate::operation_tracker::NormalOperationReadiness;
 
 #[tokio::test]
 async fn supervised_exec_handle_drop_keeps_terminal_cleanup_without_cancel() {
-    let (host, mut guest) = setup_host_and_guest().await;
-    let host = Arc::new(host);
-    let task = {
-        let host = Arc::clone(&host);
-        tokio::spawn(async move {
-            host.start_supervised_exec(supervised_stream_request("drop-handle"))
-                .await
-        })
-    };
-
-    let start = read_guest_message(&mut guest).await;
-    send_exec_started(&mut guest, start.seq, 123).await;
-    let handle = task.await.unwrap().unwrap();
+    let StartedSupervisedExec {
+        host,
+        mut guest,
+        start,
+        handle,
+    } = start_supervised_exec_fixture(supervised_stream_request("drop-handle")).await;
+    let start_seq = start.seq();
     drop(handle);
 
     assert_eq!(operation_count(&host), 1);
@@ -39,7 +34,7 @@ async fn supervised_exec_handle_drop_keeps_terminal_cleanup_without_cancel() {
 
     send_discarded_exec_result(
         &mut guest,
-        start.seq,
+        start_seq,
         ExecTermination::Exited { exit_code: 0 },
     )
     .await;
@@ -52,19 +47,14 @@ async fn supervised_exec_handle_drop_keeps_terminal_cleanup_without_cancel() {
 
 #[tokio::test]
 async fn supervised_exec_taken_stream_receiver_survives_handle_drop() {
-    let (host, mut guest) = setup_host_and_guest().await;
-    let host = Arc::new(host);
-    let task = {
-        let host = Arc::clone(&host);
-        tokio::spawn(async move {
-            host.start_supervised_exec(supervised_stream_request("drop-handle-after-take-stream"))
-                .await
-        })
-    };
-
-    let start = read_guest_message(&mut guest).await;
-    send_exec_started(&mut guest, start.seq, 123).await;
-    let mut handle = task.await.unwrap().unwrap();
+    let StartedSupervisedExec {
+        host,
+        mut guest,
+        start,
+        mut handle,
+    } = start_supervised_exec_fixture(supervised_stream_request("drop-handle-after-take-stream"))
+        .await;
+    let start_seq = start.seq();
     let mut stream_rx = handle
         .take_stream_receiver()
         .expect("supervised stream receiver should be available");
@@ -72,7 +62,7 @@ async fn supervised_exec_taken_stream_receiver_survives_handle_drop() {
 
     send_exec_output(
         &mut guest,
-        start.seq,
+        start_seq,
         0,
         ExecOutputStream::Stdout,
         b"still-streams",
@@ -89,7 +79,7 @@ async fn supervised_exec_taken_stream_receiver_survives_handle_drop() {
 
     send_discarded_exec_result(
         &mut guest,
-        start.seq,
+        start_seq,
         ExecTermination::Exited { exit_code: 0 },
     )
     .await;
@@ -102,19 +92,14 @@ async fn supervised_exec_taken_stream_receiver_survives_handle_drop() {
 
 #[tokio::test]
 async fn supervised_exec_wait_releases_unclaimed_stream_sender() {
-    let (host, mut guest) = setup_host_and_guest().await;
-    let host = Arc::new(host);
-    let task = {
-        let host = Arc::clone(&host);
-        tokio::spawn(async move {
-            host.start_supervised_exec(supervised_stream_request("wait-with-unclaimed-stream"))
-                .await
-        })
-    };
-
-    let start = read_guest_message(&mut guest).await;
-    send_exec_started(&mut guest, start.seq, 123).await;
-    let handle = task.await.unwrap().unwrap();
+    let StartedSupervisedExec {
+        host,
+        mut guest,
+        start,
+        handle,
+    } = start_supervised_exec_fixture(supervised_stream_request("wait-with-unclaimed-stream"))
+        .await;
+    let start_seq = start.seq();
     let wait_fut = handle.wait(Duration::from_secs(5));
     tokio::pin!(wait_fut);
     poll_fn(|cx| match wait_fut.as_mut().poll(cx) {
@@ -125,7 +110,7 @@ async fn supervised_exec_wait_releases_unclaimed_stream_sender() {
 
     send_exec_output(
         &mut guest,
-        start.seq,
+        start_seq,
         0,
         ExecOutputStream::Stdout,
         b"first",
@@ -134,7 +119,7 @@ async fn supervised_exec_wait_releases_unclaimed_stream_sender() {
     .await;
     send_exec_output(
         &mut guest,
-        start.seq,
+        start_seq,
         1,
         ExecOutputStream::Stdout,
         b"second",
@@ -143,7 +128,7 @@ async fn supervised_exec_wait_releases_unclaimed_stream_sender() {
     .await;
     send_discarded_exec_result(
         &mut guest,
-        start.seq,
+        start_seq,
         ExecTermination::Exited { exit_code: 0 },
     )
     .await;
@@ -158,22 +143,16 @@ async fn supervised_exec_wait_releases_unclaimed_stream_sender() {
 
 #[tokio::test]
 async fn supervised_exec_output_sequence_validation_applies_after_started() {
-    let (host, mut guest) = setup_host_and_guest().await;
-    let host = Arc::new(host);
-    let task = {
-        let host = Arc::clone(&host);
-        tokio::spawn(async move {
-            host.start_supervised_exec(supervised_stream_request("bad-output-seq"))
-                .await
-        })
-    };
-
-    let start = read_guest_message(&mut guest).await;
-    send_exec_started(&mut guest, start.seq, 123).await;
-    let handle = task.await.unwrap().unwrap();
+    let StartedSupervisedExec {
+        host,
+        mut guest,
+        start,
+        handle,
+    } = start_supervised_exec_fixture(supervised_stream_request("bad-output-seq")).await;
+    let start_seq = start.seq();
     send_exec_output(
         &mut guest,
-        start.seq,
+        start_seq,
         1,
         ExecOutputStream::Stdout,
         b"out-of-order",
@@ -190,25 +169,19 @@ async fn supervised_exec_output_sequence_validation_applies_after_started() {
 
 #[tokio::test]
 async fn supervised_exec_stream_overflow_is_reported_in_terminal_result() {
-    let (host, mut guest) = setup_host_and_guest().await;
-    let host = Arc::new(host);
-    let task = {
-        let host = Arc::clone(&host);
-        tokio::spawn(async move {
-            host.start_supervised_exec(supervised_stream_request("stream-overflow"))
-                .await
-        })
-    };
-
-    let start = read_guest_message(&mut guest).await;
-    send_exec_started(&mut guest, start.seq, 123).await;
-    let mut handle = task.await.unwrap().unwrap();
+    let StartedSupervisedExec {
+        host: _host,
+        mut guest,
+        start,
+        mut handle,
+    } = start_supervised_exec_fixture(supervised_stream_request("stream-overflow")).await;
+    let start_seq = start.seq();
     let _stream_rx = handle
         .take_stream_receiver()
         .expect("supervised stream receiver should be available");
     send_exec_output(
         &mut guest,
-        start.seq,
+        start_seq,
         0,
         ExecOutputStream::Stdout,
         b"first",
@@ -217,7 +190,7 @@ async fn supervised_exec_stream_overflow_is_reported_in_terminal_result() {
     .await;
     send_exec_output(
         &mut guest,
-        start.seq,
+        start_seq,
         1,
         ExecOutputStream::Stdout,
         b"second",
@@ -226,7 +199,7 @@ async fn supervised_exec_stream_overflow_is_reported_in_terminal_result() {
     .await;
     send_discarded_exec_result(
         &mut guest,
-        start.seq,
+        start_seq,
         ExecTermination::Exited { exit_code: 0 },
     )
     .await;

@@ -3997,6 +3997,7 @@ describe("zero attachment chips", () => {
       expect(screen.getByTestId("html-dom-comment-frame")).toBeInTheDocument();
       expectHostedSiteEditingHeader({ fullscreen: true });
     });
+    expect(screen.getByTestId("artifact-sidebar")).toHaveClass("z-[9999]");
 
     click(screen.getByTestId("artifact-sidebar-exit-html-edit"));
 

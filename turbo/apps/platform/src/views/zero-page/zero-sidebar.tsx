@@ -126,9 +126,18 @@ const FOOTER_NAV = [
 // Leaf component: subscribes to currentChatAgentId$ so ZeroSidebar doesn't re-render on agent changes.
 // useLastResolved keeps the previously-resolved agent ID during re-loads, preventing unnecessary
 // remounts of ChatThreadsSection that would cause the chat list to flash.
-function ChatThreadsSectionWithKey() {
+function ChatThreadsSectionWithKey({
+  threadListScroll = false,
+}: {
+  threadListScroll?: boolean;
+}) {
   const currentChatAgentId = useLastResolved(currentChatAgentId$);
-  return <ChatThreadsSection key={currentChatAgentId} />;
+  return (
+    <ChatThreadsSection
+      key={currentChatAgentId}
+      threadListScroll={threadListScroll}
+    />
+  );
 }
 
 // Shared subscription hooks. Each sibling component pulls its own state from
@@ -389,7 +398,7 @@ function ExpandedMainNav() {
       className="flex-1 flex flex-col min-h-0 overflow-hidden p-2 pt-1"
     >
       <ExpandedManageSection />
-      <ExpandedScrollArea />
+      <ExpandedSidebarSections />
     </nav>
   );
 }
@@ -544,6 +553,22 @@ function CollapsedManageNav({
       </div>
     </div>
   );
+}
+
+function ExpandedSidebarSections() {
+  const features = useGet(featureSwitch$);
+  const threadListScroll =
+    features[FeatureSwitchKey.SidebarThreadListScroll] ?? false;
+  if (threadListScroll) {
+    return (
+      <div className="flex-1 min-h-0 -mx-2 px-2 mt-2 pt-2 flex flex-col overflow-hidden">
+        <PinnedAgentListSection />
+        <ChatThreadsSectionWithKey threadListScroll />
+      </div>
+    );
+  }
+
+  return <ExpandedScrollArea />;
 }
 
 function ExpandedScrollArea() {
