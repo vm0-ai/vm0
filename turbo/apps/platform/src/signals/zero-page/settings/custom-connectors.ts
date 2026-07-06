@@ -146,7 +146,9 @@ export const setCustomConnectorValues$ = command(
       [200],
     );
     set(bumpReload$);
-    toast.success("Connected");
+    toast.success(
+      result.body.connected ? "Connected" : "Connector values saved",
+    );
     return result.body;
   },
 );

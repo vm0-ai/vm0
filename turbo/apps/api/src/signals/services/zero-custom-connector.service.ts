@@ -1192,12 +1192,12 @@ async function encryptValueInputs(args: {
   return encryptedValues;
 }
 
-async function lockCustomConnectorForValueWrite(
+async function loadLockedCustomConnectorForValueWrite(
   tx: DbTransaction,
   args: { readonly orgId: string; readonly connectorId: string },
-): Promise<boolean> {
-  const [locked] = await tx
-    .select({ id: orgCustomConnectors.id })
+): Promise<CustomConnectorRow | null> {
+  const [row] = await tx
+    .select()
     .from(orgCustomConnectors)
     .where(
       and(
@@ -1207,7 +1207,7 @@ async function lockCustomConnectorForValueWrite(
     )
     .for("update")
     .limit(1);
-  return Boolean(locked);
+  return row ? normaliseCustomConnectorRow(row) : null;
 }
 
 async function deleteStoredConnectorValues(
@@ -1341,24 +1341,39 @@ export const setCustomConnectorValues$ = command(
     signal.throwIfAborted();
 
     const writeDb = set(writeDb$);
-    const replaced = await writeDb.transaction(async (tx) => {
-      const locked = await lockCustomConnectorForValueWrite(tx, args);
-      if (!locked) {
-        return false;
-      }
-      await deleteStoredConnectorValues(tx, args);
-      await deleteLegacyConnectorSecret(tx, args);
-      await upsertEncryptedConnectorValues(tx, {
-        orgId: args.orgId,
-        userId: args.userId,
-        connectorId: args.connectorId,
-        values: encryptedValues,
-      });
-      return true;
-    });
+    const replaced = await writeDb.transaction(
+      async (tx): Promise<CustomConnectorRow | BadRequestResponse | null> => {
+        const lockedConnector = await loadLockedCustomConnectorForValueWrite(
+          tx,
+          args,
+        );
+        if (!lockedConnector) {
+          return null;
+        }
+        const lockedValues = validateValueInputs({
+          connector: lockedConnector,
+          values: args.values,
+        });
+        if (isBadRequest(lockedValues)) {
+          return lockedValues;
+        }
+        await deleteStoredConnectorValues(tx, args);
+        await deleteLegacyConnectorSecret(tx, args);
+        await upsertEncryptedConnectorValues(tx, {
+          orgId: args.orgId,
+          userId: args.userId,
+          connectorId: args.connectorId,
+          values: encryptedValues,
+        });
+        return lockedConnector;
+      },
+    );
     signal.throwIfAborted();
     if (!replaced) {
       return notFound("Custom connector not found");
+    }
+    if (isBadRequest(replaced)) {
+      return replaced;
     }
 
     const db = get(db$);
@@ -1368,7 +1383,7 @@ export const setCustomConnectorValues$ = command(
       userId: args.userId,
     });
     signal.throwIfAborted();
-    return serialiseCustomConnector({ row: connector, valueMarkers: markers });
+    return serialiseCustomConnector({ row: replaced, valueMarkers: markers });
   },
 );
 
@@ -1419,18 +1434,35 @@ export const setCustomConnectorLegacySecretValue$ = command(
     };
 
     const writeDb = set(writeDb$);
-    const updated = await writeDb.transaction(async (tx) => {
-      const locked = await lockCustomConnectorForValueWrite(tx, args);
-      if (!locked) {
-        return false;
-      }
-      await upsertEncryptedConnectorValue(tx, { ...args, value });
-      await deleteLegacyConnectorSecret(tx, args);
-      return true;
-    });
+    const updated = await writeDb.transaction(
+      async (tx): Promise<CustomConnectorRow | BadRequestResponse | null> => {
+        const lockedConnector = await loadLockedCustomConnectorForValueWrite(
+          tx,
+          args,
+        );
+        if (!lockedConnector) {
+          return null;
+        }
+        const lockedValues = validateValueInputs({
+          connector: lockedConnector,
+          values: [
+            { key: LEGACY_SECRET_KEY, kind: "secret", value: args.value },
+          ],
+        });
+        if (isBadRequest(lockedValues)) {
+          return lockedValues;
+        }
+        await upsertEncryptedConnectorValue(tx, { ...args, value });
+        await deleteLegacyConnectorSecret(tx, args);
+        return lockedConnector;
+      },
+    );
     signal.throwIfAborted();
     if (!updated) {
       return notFound("Custom connector not found");
+    }
+    if (isBadRequest(updated)) {
+      return updated;
     }
 
     const db = get(db$);
@@ -1440,7 +1472,7 @@ export const setCustomConnectorLegacySecretValue$ = command(
       userId: args.userId,
     });
     signal.throwIfAborted();
-    return serialiseCustomConnector({ row: connector, valueMarkers: markers });
+    return serialiseCustomConnector({ row: updated, valueMarkers: markers });
   },
 );
 
@@ -1466,8 +1498,11 @@ export const deleteCustomConnectorValues$ = command(
     }
     const writeDb = set(writeDb$);
     const deleted = await writeDb.transaction(async (tx) => {
-      const locked = await lockCustomConnectorForValueWrite(tx, args);
-      if (!locked) {
+      const lockedConnector = await loadLockedCustomConnectorForValueWrite(
+        tx,
+        args,
+      );
+      if (!lockedConnector) {
         return false;
       }
       await deleteStoredConnectorValues(tx, args);
@@ -1506,8 +1541,11 @@ export const deleteCustomConnectorValue$ = command(
     }
     const writeDb = set(writeDb$);
     const deleted = await writeDb.transaction(async (tx) => {
-      const locked = await lockCustomConnectorForValueWrite(tx, args);
-      if (!locked) {
+      const lockedConnector = await loadLockedCustomConnectorForValueWrite(
+        tx,
+        args,
+      );
+      if (!lockedConnector) {
         return false;
       }
       await tx
