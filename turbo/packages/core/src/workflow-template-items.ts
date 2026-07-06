@@ -52,7 +52,9 @@ function buildWorkflowTemplateItem(
       "Do not execute an existing workflow. This template is only context for creating or updating a workflow.",
       "",
       "Template behavior:",
-      ...spec.behavior.map((line) => `- ${line}`),
+      ...spec.behavior.map((line) => {
+        return `- ${line}`;
+      }),
       "",
       connectorLine(spec),
       `Suggested trigger: ${spec.suggestedTrigger}`,
