@@ -28,10 +28,7 @@ import {
 } from "../../signals/connectors-page/directed-authorize-type.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { IconCheck, IconLoader2 } from "@tabler/icons-react";
-import {
-  Vm0LogoLink,
-  GoogleSecurityWarningNotice,
-} from "./zero-directed-shared.tsx";
+import { Vm0LogoLink } from "./zero-directed-shared.tsx";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 
 // ---------------------------------------------------------------------------
@@ -167,18 +164,6 @@ function canAuthorizeConnector(
   return isConnected || (item ? item.availableAuthMethods.length > 0 : false);
 }
 
-function shouldShowDirectedAuthorizeGoogleSecurityWarning(args: {
-  readonly isAuthorized: boolean;
-  readonly isConnected: boolean;
-  readonly item: ConnectorTypeWithStatus | undefined;
-}): boolean {
-  return (
-    !args.isAuthorized &&
-    !args.isConnected &&
-    args.item?.connectNotice === "google-security-warning"
-  );
-}
-
 function directedAuthorizeConnectModalOpen(
   key: DirectedAuthorizeConnectModalKey | null,
   args: {
@@ -203,7 +188,6 @@ function DirectedAuthorizeCardContent({
   isConnecting,
   isLoading,
   canAuthorize,
-  showGoogleSecurityWarningNotice,
   onAuthorize,
 }: {
   readonly connectorType: ConnectorType;
@@ -214,7 +198,6 @@ function DirectedAuthorizeCardContent({
   readonly isConnecting: boolean;
   readonly isLoading: boolean;
   readonly canAuthorize: boolean;
-  readonly showGoogleSecurityWarningNotice: boolean;
   readonly onAuthorize: () => void;
 }) {
   return (
@@ -241,9 +224,6 @@ function DirectedAuthorizeCardContent({
                 <p className="w-60 text-sm text-muted-foreground">
                   {connectorDescription}
                 </p>
-                {showGoogleSecurityWarningNotice && (
-                  <GoogleSecurityWarningNotice />
-                )}
               </>
             )}
           </div>
@@ -364,12 +344,6 @@ function DirectedAuthorizeCard() {
   const selectedAuthMethod = item
     ? getOnlyAvailableStatusAuthCodeAuthMethod(item)
     : null;
-  const showGoogleSecurityWarningNotice =
-    shouldShowDirectedAuthorizeGoogleSecurityWarning({
-      isAuthorized,
-      isConnected,
-      item,
-    });
   const connectorLabel = item?.label ?? connectorType;
   const connectorDescription = item?.helpText ?? "";
 
@@ -402,7 +376,6 @@ function DirectedAuthorizeCard() {
         isConnecting={isConnecting}
         isLoading={isLoading}
         canAuthorize={canAuthorize}
-        showGoogleSecurityWarningNotice={showGoogleSecurityWarningNotice}
         onAuthorize={handleAuthorize}
       />
       {connectModalOpen && (

@@ -392,6 +392,13 @@ describe("GET /api/zero/connector-catalog", () => {
         startOptions: [],
       },
     ]);
+    const googleMaps = response.body.connectors.find((connector) => {
+      return connector.connectorRef === "google-maps";
+    });
+    expect(googleMaps).toMatchObject({
+      connectorRef: "google-maps",
+      connectNotice: null,
+    });
     const neon = response.body.connectors.find((connector) => {
       return connector.connectorRef === "neon";
     });
