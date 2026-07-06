@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.49](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.48...vsock-host-v0.17.49) (2026-07-06)
+
+
+### Refactoring
+
+* migrate supervised lifecycle fixtures ([#20319](https://github.com/vm0-ai/vm0/issues/20319)) ([a932ccc](https://github.com/vm0-ai/vm0/commit/a932ccc70c066f9783d4e052e99e84b73f86a2e9))
+
 ## [0.17.48](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.47...vsock-host-v0.17.48) (2026-06-30)
 
 
