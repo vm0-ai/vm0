@@ -1,5 +1,64 @@
 # Changelog
 
+## [8.403.0](https://github.com/vm0-ai/vm0/compare/core-v8.402.0...core-v8.403.0) (2026-07-06)
+
+
+### Features
+
+* add byteplus voice input stt ([#19510](https://github.com/vm0-ai/vm0/issues/19510)) ([42665c5](https://github.com/vm0-ai/vm0/commit/42665c5054ab243593122ab999f98829f301f6b7))
+* add chat thread results to conversation picker ([#20133](https://github.com/vm0-ai/vm0/issues/20133)) ([0028157](https://github.com/vm0-ai/vm0/commit/0028157e98bbe24c560ec13a53913712e1dcb168))
+* add Codex fast mode for ChatGPT subscription runs ([#19811](https://github.com/vm0-ai/vm0/issues/19811)) ([42e8e48](https://github.com/vm0-ai/vm0/commit/42e8e4883e548d497eb0b86a936b6be308ad1bed))
+* add Desktop Computer Use filesystem plugins ([#19814](https://github.com/vm0-ai/vm0/issues/19814)) ([062a44c](https://github.com/vm0-ai/vm0/commit/062a44c181536df868bc6b081bae0dd7a2d9d9d6))
+* add image artifact keyboard navigation ([#19694](https://github.com/vm0-ai/vm0/issues/19694)) ([2d6e968](https://github.com/vm0-ai/vm0/commit/2d6e968d6940a997a4c34e722304d7b230663697)), closes [#19133](https://github.com/vm0-ai/vm0/issues/19133)
+* add in-canvas image editing ([#19873](https://github.com/vm0-ai/vm0/issues/19873)) ([758557b](https://github.com/vm0-ai/vm0/commit/758557ba1d7963d7eee86ae7362e31f081840f39))
+* add mobile unread chat shortcuts to agent chat ([#20221](https://github.com/vm0-ai/vm0/issues/20221)) ([5c594ca](https://github.com/vm0-ai/vm0/commit/5c594cabb426ad6984eaac2152922f1363ba9e73))
+* add onboarding completion marker ([#20055](https://github.com/vm0-ai/vm0/issues/20055)) ([6d5bf36](https://github.com/vm0-ai/vm0/commit/6d5bf3630093c7a9120ce91b2b746eedf299171d))
+* add Pexels as presentation image provider with Unsplash-preferred switch ([#19756](https://github.com/vm0-ai/vm0/issues/19756)) ([9222ea2](https://github.com/vm0-ai/vm0/commit/9222ea207ba7a4224eb6809d46ccac2b02ece38b))
+* add relationship memory foundation ([#20077](https://github.com/vm0-ai/vm0/issues/20077)) ([805a79e](https://github.com/vm0-ai/vm0/commit/805a79ed91fc55a6261bf6f7180fa4b3c663af7d))
+* add teams settings ui ([#19570](https://github.com/vm0-ai/vm0/issues/19570)) ([242e261](https://github.com/vm0-ai/vm0/commit/242e26146208b187de904e92116590bb767bc5e9))
+* add workflow templates to composer ([#19660](https://github.com/vm0-ai/vm0/issues/19660)) ([1f110fd](https://github.com/vm0-ai/vm0/commit/1f110fd9d3ae503e731e957767a76d0094ce88a9))
+* **chat:** add initial thinking indicator ([#19690](https://github.com/vm0-ai/vm0/issues/19690)) ([8536d01](https://github.com/vm0-ai/vm0/commit/8536d012ca9cc7581c7f912d9dce1b06efe21d9b))
+* enable chat thread event sourcing globally ([#20082](https://github.com/vm0-ai/vm0/issues/20082)) ([548a68e](https://github.com/vm0-ai/vm0/commit/548a68eca8f4b700d639d83470b16e026444b851))
+* enable chat thread unified search for staff orgs ([#20138](https://github.com/vm0-ai/vm0/issues/20138)) ([aed56ed](https://github.com/vm0-ai/vm0/commit/aed56ed34131ce352396e94b62243ba514ea7c6c))
+* enable data export for everyone ([#19871](https://github.com/vm0-ai/vm0/issues/19871)) ([dd6f8fe](https://github.com/vm0-ai/vm0/commit/dd6f8feebc11a3a07161affd2a9ed271487b194f))
+* enable html artifact comment editing for staff orgs ([#20294](https://github.com/vm0-ai/vm0/issues/20294)) ([48fd9b7](https://github.com/vm0-ai/vm0/commit/48fd9b7a44488ba7c8189c4211ab9d28dc82f3f1))
+* gate icon-only collapsed manage nav ([#20241](https://github.com/vm0-ai/vm0/issues/20241)) ([36c7282](https://github.com/vm0-ai/vm0/commit/36c72824d5d61db302ffa7cb69a185c1f8889a14))
+* gate MiniMax Codex framework routing ([#19616](https://github.com/vm0-ai/vm0/issues/19616)) ([ed9b1de](https://github.com/vm0-ai/vm0/commit/ed9b1dea4c8b95ed78074f6fa2f9197dded9cdbc))
+* migrate legacy automations to workflow schedule triggers globally ([#20033](https://github.com/vm0-ai/vm0/issues/20033)) ([eeb91c2](https://github.com/vm0-ai/vm0/commit/eeb91c258a50f67b05a341ebbbbb7e1b872d0030))
+* open connectorAccessManagement to all users ([#19686](https://github.com/vm0-ai/vm0/issues/19686)) ([3131bf0](https://github.com/vm0-ai/vm0/commit/3131bf00def4a0b94754b0b941fced4a43aa2814))
+* redesign agents page with public/private tabs ([#19617](https://github.com/vm0-ai/vm0/issues/19617)) ([4d0c182](https://github.com/vm0-ai/vm0/commit/4d0c18210697f59ff1ba9c13bd1b12e8f6c9b7e6))
+* refresh active connector permission policies ([#20035](https://github.com/vm0-ai/vm0/issues/20035)) ([8d7cec2](https://github.com/vm0-ai/vm0/commit/8d7cec2537cd512d12bd3e550abc43c07cb2026a))
+* render chat threads from event sourcing ([#19929](https://github.com/vm0-ai/vm0/issues/19929)) ([577d15e](https://github.com/vm0-ai/vm0/commit/577d15e5316e45102698c2e33eb0d71a02420228))
+* resolve presentation runbook templates in `zero generate presentation --template` ([#20061](https://github.com/vm0-ai/vm0/issues/20061)) ([e4565ed](https://github.com/vm0-ai/vm0/commit/e4565ed884e32e7ecfc99c95bed415b37845ce90))
+* roll out chat and memory switches to all orgs ([#20145](https://github.com/vm0-ai/vm0/issues/20145)) ([8cd0184](https://github.com/vm0-ai/vm0/commit/8cd0184b1227f36b76a3919f5a3574e96304d511))
+* show subscription usage in sidebar ([#19673](https://github.com/vm0-ai/vm0/issues/19673)) ([a186329](https://github.com/vm0-ai/vm0/commit/a1863296fc3b8545a9edf6ce4a12c0739d5dec88))
+* support darwin x64 desktop builds ([#19766](https://github.com/vm0-ai/vm0/issues/19766)) ([d58dd67](https://github.com/vm0-ai/vm0/commit/d58dd6729078d9bf6556ed5a75c4a66e08b87373))
+* virtualize sidebar chat threads behind switch ([#20140](https://github.com/vm0-ai/vm0/issues/20140)) ([e79dfe6](https://github.com/vm0-ai/vm0/commit/e79dfe6f860b463799329bf644d6c71e95935dcf))
+* **workflows:** gate webhook trigger creation with a separate switch ([#20041](https://github.com/vm0-ai/vm0/issues/20041)) ([9c0f0c2](https://github.com/vm0-ai/vm0/commit/9c0f0c21a0cf62d97d682d6f4de2831c17e1a832))
+
+
+### Bug Fixes
+
+* align memory page layout ([#19635](https://github.com/vm0-ai/vm0/issues/19635)) ([fe7498a](https://github.com/vm0-ai/vm0/commit/fe7498a91a760509ca5e7031f594915ddbb5c593))
+* apply sandbox io limiters from host capacity ([#19668](https://github.com/vm0-ai/vm0/issues/19668)) ([8baa893](https://github.com/vm0-ai/vm0/commit/8baa893dbbae076adbde5e31f467103a0c06179e))
+* **core:** update schoolhouse and sticker scrapbook runbook archives ([#19947](https://github.com/vm0-ai/vm0/issues/19947)) ([017be61](https://github.com/vm0-ai/vm0/commit/017be619eea4a82478ddab3f77eb6bad339a81bd))
+* narrow org-scoped feature switch rollouts ([#20196](https://github.com/vm0-ai/vm0/issues/20196)) ([639c9f1](https://github.com/vm0-ai/vm0/commit/639c9f1e34a8d31802c8936ccfa006b9dde0b65f))
+* **platform:** anchor chat scroll to latest user message ([#20045](https://github.com/vm0-ai/vm0/issues/20045)) ([22742bb](https://github.com/vm0-ai/vm0/commit/22742bb21f10f8383de3e5ba7cd7aea779dad92c))
+* restart full thinking typewriter lines ([#19771](https://github.com/vm0-ai/vm0/issues/19771)) ([063aac1](https://github.com/vm0-ai/vm0/commit/063aac15a9cf3c7ac5d48963583db987e980899d))
+
+
+### Refactoring
+
+* remove computer use delegated authorization switch ([#19971](https://github.com/vm0-ai/vm0/issues/19971)) ([682219b](https://github.com/vm0-ai/vm0/commit/682219bb52c9519cf96d6cfe39e50385718dad71))
+* remove ga chat and export feature switches ([#20108](https://github.com/vm0-ai/vm0/issues/20108)) ([722d7c7](https://github.com/vm0-ai/vm0/commit/722d7c7833a003ea58b12fc8a34132c1aa4eb152))
+* retire legacy html-ppt presentation registry entries (presentations runbook-only) ([#20064](https://github.com/vm0-ai/vm0/issues/20064)) ([b92a71c](https://github.com/vm0-ai/vm0/commit/b92a71c98a4c48b1fec6a610dd179a09f4d86c62))
+* retire open design presentation templates ([#20097](https://github.com/vm0-ai/vm0/issues/20097)) ([1151041](https://github.com/vm0-ai/vm0/commit/11510410ef166d838ccb5264e1cf5007904b6150))
+* retire presentation-deck-tools server-side (phase 2) ([#20012](https://github.com/vm0-ai/vm0/issues/20012)) ([9626a84](https://github.com/vm0-ai/vm0/commit/9626a842ba1ad35502dc97d507acbd58f969e7aa))
+* retire PresentationTemplateRunbook feature switch, make runbook flow the default ([#19965](https://github.com/vm0-ai/vm0/issues/19965)) ([47bc92d](https://github.com/vm0-ai/vm0/commit/47bc92da3ffbcabd103ef91dd87739be813c4989))
+* split chat thread draft read API ([#20192](https://github.com/vm0-ai/vm0/issues/20192)) ([61c4e87](https://github.com/vm0-ai/vm0/commit/61c4e87c3015982d8a419f5f176cc6280549eef4))
+* update feature switch rollout scopes ([#19728](https://github.com/vm0-ai/vm0/issues/19728)) ([868fa93](https://github.com/vm0-ai/vm0/commit/868fa931c4cacdb8e9f586f3621aa47c13e72aef))
+* use event-sourced thread metadata in chat pages ([#20151](https://github.com/vm0-ai/vm0/issues/20151)) ([1f74fe8](https://github.com/vm0-ai/vm0/commit/1f74fe84fa4f4f8fc1a639ba3d1eaafad372cbf6))
+
 ## [8.402.0](https://github.com/vm0-ai/vm0/compare/core-v8.401.5...core-v8.402.0) (2026-07-06)
 
 
