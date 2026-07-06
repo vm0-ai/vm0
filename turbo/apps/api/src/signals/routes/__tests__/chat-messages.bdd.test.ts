@@ -2697,6 +2697,39 @@ describe("CHAT-02: prior rounds and thread titles", () => {
     }
     expect(recommender.runLifecycleEvent).toBeUndefined();
 
+    const second = await sendChatRun(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "follow-up question",
+    });
+    await expect(
+      readThreadTitleFromEvents(actor, first.threadId),
+    ).resolves.toBe("Migration Plan");
+    expect(titleRequests).toBe(1);
+    const secondRun = await api.readRun(actor, second.runId);
+    const appended = secondRun.appendSystemPrompt ?? "";
+    expect(appended).toContain("# Web Chat Run Context");
+    expect(appended).toContain(`- RUN_ID: ${first.runId}`);
+    expect(appended).toContain(`- LOG_COMMAND: zero logs ${first.runId} --all`);
+    expect(appended).toContain(`User: ${firstPrompt}`);
+    expect(appended).toContain("Assistant: Assistant migration answer");
+    expect(appended).toContain("- RELATIVE_INDEX: 0");
+    expect(appended).not.toContain("follow-up question");
+
+    await cancelChatRun(actor, second.runId);
+
+    await chat.renameThread(actor, first.threadId, "Manual Migration Title");
+    const third = await sendChatRun(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "manual title should stay",
+    });
+    await expect(
+      readThreadTitleFromEvents(actor, first.threadId),
+    ).resolves.toBe("Manual Migration Title");
+    expect(titleRequests).toBe(1);
+    await cancelChatRun(actor, third.runId);
+
     const normalFollowup = await chat.requestSendMessage(
       actor,
       {
@@ -2732,39 +2765,6 @@ describe("CHAT-02: prior rounds and thread titles", () => {
       }),
     ).toBeTruthy();
     await cancelChatRun(actor, normalFollowupRunId);
-
-    const second = await sendChatRun(actor, {
-      agentId,
-      threadId: first.threadId,
-      prompt: "follow-up question",
-    });
-    await expect(
-      readThreadTitleFromEvents(actor, first.threadId),
-    ).resolves.toBe("Migration Plan");
-    expect(titleRequests).toBe(1);
-    const secondRun = await api.readRun(actor, second.runId);
-    const appended = secondRun.appendSystemPrompt ?? "";
-    expect(appended).toContain("# Web Chat Run Context");
-    expect(appended).toContain(`- RUN_ID: ${first.runId}`);
-    expect(appended).toContain(`- LOG_COMMAND: zero logs ${first.runId} --all`);
-    expect(appended).toContain(`User: ${firstPrompt}`);
-    expect(appended).toContain("Assistant: Assistant migration answer");
-    expect(appended).toContain("- RELATIVE_INDEX: 0");
-    expect(appended).not.toContain("follow-up question");
-
-    await cancelChatRun(actor, second.runId);
-
-    await chat.renameThread(actor, first.threadId, "Manual Migration Title");
-    const third = await sendChatRun(actor, {
-      agentId,
-      threadId: first.threadId,
-      prompt: "manual title should stay",
-    });
-    await expect(
-      readThreadTitleFromEvents(actor, first.threadId),
-    ).resolves.toBe("Manual Migration Title");
-    expect(titleRequests).toBe(1);
-    await cancelChatRun(actor, third.runId);
   }, 90_000);
 });
 
