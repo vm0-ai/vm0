@@ -139,7 +139,7 @@ describe("getAllFeatureStates", () => {
       staffOrgStates[FeatureSwitchKey.MobileUnreadChatThreadShortcuts],
     ).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.HtmlArtifactCommentEditing]).toBe(
-      false,
+      true,
     );
 
     const otherOrgStates = getAllFeatureStates({
