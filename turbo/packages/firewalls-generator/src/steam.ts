@@ -6,6 +6,10 @@
  * - https://api.steampowered.com/ISteamWebAPIUtil/GetSupportedAPIList/v1/?format=json
  * - https://partner.steamgames.com/doc/webapi/ISteamUser
  * - https://partner.steamgames.com/doc/webapi/IPlayerService
+ * - https://partner.steamgames.com/doc/webapi/ISteamUserStats
+ * - https://partner.steamgames.com/doc/webapi/ISteamApps
+ * - https://partner.steamgames.com/doc/webapi/ISteamNews
+ * - https://partner.steamgames.com/doc/webapi/IStoreService
  *
  * Steam player connector auth uses Steam OpenID to identify the user, then a
  * vm0-owned Steam Web API key for read-only player data requests.
@@ -28,6 +32,10 @@ export const STEAM_SUPPORTED_API_LIST_URL =
 export const STEAM_WEB_API_METHOD_DOC_URLS = [
   "https://partner.steamgames.com/doc/webapi/ISteamUser",
   "https://partner.steamgames.com/doc/webapi/IPlayerService",
+  "https://partner.steamgames.com/doc/webapi/ISteamUserStats",
+  "https://partner.steamgames.com/doc/webapi/ISteamApps",
+  "https://partner.steamgames.com/doc/webapi/ISteamNews",
+  "https://partner.steamgames.com/doc/webapi/IStoreService",
 ] as const;
 export const STEAM_WEB_API_DOC_URLS = [
   STEAM_WEB_API_OVERVIEW_URL,
@@ -72,8 +80,8 @@ export const STEAM_PERMISSION_MANIFEST: readonly SteamPermissionManifestEntry[] 
   [
     {
       name: "player-profile-read",
-      description: "Read the connected player profile summary",
-      methods: ["ISteamUser/GetPlayerSummaries"],
+      description: "Read Steam profile summaries and vanity URL mappings",
+      methods: ["ISteamUser/GetPlayerSummaries", "ISteamUser/ResolveVanityURL"],
     },
     {
       name: "player-library-read",
@@ -82,13 +90,21 @@ export const STEAM_PERMISSION_MANIFEST: readonly SteamPermissionManifestEntry[] 
     },
     {
       name: "player-activity-read",
-      description: "Read the connected player recently played games",
-      methods: ["IPlayerService/GetRecentlyPlayedGames"],
+      description: "Read connected player recent and per-game playtime",
+      methods: [
+        "IPlayerService/GetRecentlyPlayedGames",
+        "IPlayerService/GetSingleGamePlaytime",
+      ],
     },
     {
       name: "player-badges-read",
-      description: "Read the connected player Steam level and badges",
-      methods: ["IPlayerService/GetBadges", "IPlayerService/GetSteamLevel"],
+      description:
+        "Read the connected player Steam level, badges, and badge progress",
+      methods: [
+        "IPlayerService/GetBadges",
+        "IPlayerService/GetSteamLevel",
+        "IPlayerService/GetCommunityBadgeProgress",
+      ],
     },
     {
       name: "player-wishlist-read",
@@ -96,6 +112,7 @@ export const STEAM_PERMISSION_MANIFEST: readonly SteamPermissionManifestEntry[] 
       methods: [
         "IWishlistService/GetWishlist",
         "IWishlistService/GetWishlistItemCount",
+        "IWishlistService/GetWishlistSortedFiltered",
       ],
     },
     {
@@ -105,6 +122,60 @@ export const STEAM_PERMISSION_MANIFEST: readonly SteamPermissionManifestEntry[] 
         "IStoreService/GetGamesFollowed",
         "IStoreService/GetGamesFollowedCount",
       ],
+    },
+    {
+      name: "player-store-preferences-read",
+      description:
+        "Read Steam store preference signals for the connected player",
+      methods: ["IStoreService/GetRecommendedTagsForUser"],
+    },
+    {
+      name: "player-friends-read",
+      description: "Read the connected player friend list",
+      methods: ["ISteamUser/GetFriendList"],
+    },
+    {
+      name: "player-groups-read",
+      description: "Read the connected player group list",
+      methods: ["ISteamUser/GetUserGroupList"],
+    },
+    {
+      name: "player-ban-status-read",
+      description: "Read the connected player ban status",
+      methods: ["ISteamUser/GetPlayerBans"],
+    },
+    {
+      name: "player-game-achievements-read",
+      description: "Read player and global achievements for a specific game",
+      methods: [
+        "ISteamUserStats/GetPlayerAchievements",
+        "ISteamUserStats/GetGlobalAchievementPercentagesForApp",
+      ],
+    },
+    {
+      name: "player-game-stats-read",
+      description: "Read player, global, and schema stats for a specific game",
+      methods: [
+        "ISteamUserStats/GetUserStatsForGame",
+        "ISteamUserStats/GetSchemaForGame",
+        "ISteamUserStats/GetGlobalStatsForGame",
+        "ISteamUserStats/GetNumberOfCurrentPlayers",
+      ],
+    },
+    {
+      name: "steam-apps-read",
+      description: "Read public Steam app metadata and version status",
+      methods: [
+        "ISteamApps/GetAppList",
+        "IStoreService/GetAppList",
+        "ISteamApps/GetServersAtAddress",
+        "ISteamApps/UpToDateCheck",
+      ],
+    },
+    {
+      name: "steam-news-read",
+      description: "Read public Steam news for an app",
+      methods: ["ISteamNews/GetNewsForApp"],
     },
   ];
 

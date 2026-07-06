@@ -19,7 +19,11 @@ JSON_PART = r"""{
             "GET /ISteamUser/GetPlayerSummaries/v0002",
             "GET /ISteamUser/GetPlayerSummaries/v0002/",
             "GET /ISteamUser/GetPlayerSummaries/v2",
-            "GET /ISteamUser/GetPlayerSummaries/v2/"
+            "GET /ISteamUser/GetPlayerSummaries/v2/",
+            "GET /ISteamUser/ResolveVanityURL/v0001",
+            "GET /ISteamUser/ResolveVanityURL/v0001/",
+            "GET /ISteamUser/ResolveVanityURL/v1",
+            "GET /ISteamUser/ResolveVanityURL/v1/"
           ]
         },
         {
@@ -37,7 +41,11 @@ JSON_PART = r"""{
             "GET /IPlayerService/GetRecentlyPlayedGames/v0001",
             "GET /IPlayerService/GetRecentlyPlayedGames/v0001/",
             "GET /IPlayerService/GetRecentlyPlayedGames/v1",
-            "GET /IPlayerService/GetRecentlyPlayedGames/v1/"
+            "GET /IPlayerService/GetRecentlyPlayedGames/v1/",
+            "GET /IPlayerService/GetSingleGamePlaytime/v0001",
+            "GET /IPlayerService/GetSingleGamePlaytime/v0001/",
+            "GET /IPlayerService/GetSingleGamePlaytime/v1",
+            "GET /IPlayerService/GetSingleGamePlaytime/v1/"
           ]
         },
         {
@@ -47,6 +55,10 @@ JSON_PART = r"""{
             "GET /IPlayerService/GetBadges/v0001/",
             "GET /IPlayerService/GetBadges/v1",
             "GET /IPlayerService/GetBadges/v1/",
+            "GET /IPlayerService/GetCommunityBadgeProgress/v0001",
+            "GET /IPlayerService/GetCommunityBadgeProgress/v0001/",
+            "GET /IPlayerService/GetCommunityBadgeProgress/v1",
+            "GET /IPlayerService/GetCommunityBadgeProgress/v1/",
             "GET /IPlayerService/GetSteamLevel/v0001",
             "GET /IPlayerService/GetSteamLevel/v0001/",
             "GET /IPlayerService/GetSteamLevel/v1",
@@ -63,7 +75,11 @@ JSON_PART = r"""{
             "GET /IWishlistService/GetWishlistItemCount/v0001",
             "GET /IWishlistService/GetWishlistItemCount/v0001/",
             "GET /IWishlistService/GetWishlistItemCount/v1",
-            "GET /IWishlistService/GetWishlistItemCount/v1/"
+            "GET /IWishlistService/GetWishlistItemCount/v1/",
+            "GET /IWishlistService/GetWishlistSortedFiltered/v0001",
+            "GET /IWishlistService/GetWishlistSortedFiltered/v0001/",
+            "GET /IWishlistService/GetWishlistSortedFiltered/v1",
+            "GET /IWishlistService/GetWishlistSortedFiltered/v1/"
           ]
         },
         {
@@ -77,6 +93,114 @@ JSON_PART = r"""{
             "GET /IStoreService/GetGamesFollowedCount/v0001/",
             "GET /IStoreService/GetGamesFollowedCount/v1",
             "GET /IStoreService/GetGamesFollowedCount/v1/"
+          ]
+        },
+        {
+          "name": "player-store-preferences-read",
+          "rules": [
+            "GET /IStoreService/GetRecommendedTagsForUser/v0001",
+            "GET /IStoreService/GetRecommendedTagsForUser/v0001/",
+            "GET /IStoreService/GetRecommendedTagsForUser/v1",
+            "GET /IStoreService/GetRecommendedTagsForUser/v1/"
+          ]
+        },
+        {
+          "name": "player-friends-read",
+          "rules": [
+            "GET /ISteamUser/GetFriendList/v0001",
+            "GET /ISteamUser/GetFriendList/v0001/",
+            "GET /ISteamUser/GetFriendList/v1",
+            "GET /ISteamUser/GetFriendList/v1/"
+          ]
+        },
+        {
+          "name": "player-groups-read",
+          "rules": [
+            "GET /ISteamUser/GetUserGroupList/v0001",
+            "GET /ISteamUser/GetUserGroupList/v0001/",
+            "GET /ISteamUser/GetUserGroupList/v1",
+            "GET /ISteamUser/GetUserGroupList/v1/"
+          ]
+        },
+        {
+          "name": "player-ban-status-read",
+          "rules": [
+            "GET /ISteamUser/GetPlayerBans/v0001",
+            "GET /ISteamUser/GetPlayerBans/v0001/",
+            "GET /ISteamUser/GetPlayerBans/v1",
+            "GET /ISteamUser/GetPlayerBans/v1/"
+          ]
+        },
+        {
+          "name": "player-game-achievements-read",
+          "rules": [
+            "GET /ISteamUserStats/GetGlobalAchievementPercentagesForApp/v0001",
+            "GET /ISteamUserStats/GetGlobalAchievementPercentagesForApp/v0001/",
+            "GET /ISteamUserStats/GetGlobalAchievementPercentagesForApp/v0002",
+            "GET /ISteamUserStats/GetGlobalAchievementPercentagesForApp/v0002/",
+            "GET /ISteamUserStats/GetGlobalAchievementPercentagesForApp/v1",
+            "GET /ISteamUserStats/GetGlobalAchievementPercentagesForApp/v1/",
+            "GET /ISteamUserStats/GetGlobalAchievementPercentagesForApp/v2",
+            "GET /ISteamUserStats/GetGlobalAchievementPercentagesForApp/v2/",
+            "GET /ISteamUserStats/GetPlayerAchievements/v0001",
+            "GET /ISteamUserStats/GetPlayerAchievements/v0001/",
+            "GET /ISteamUserStats/GetPlayerAchievements/v1",
+            "GET /ISteamUserStats/GetPlayerAchievements/v1/"
+          ]
+        },
+        {
+          "name": "player-game-stats-read",
+          "rules": [
+            "GET /ISteamUserStats/GetGlobalStatsForGame/v0001",
+            "GET /ISteamUserStats/GetGlobalStatsForGame/v0001/",
+            "GET /ISteamUserStats/GetGlobalStatsForGame/v1",
+            "GET /ISteamUserStats/GetGlobalStatsForGame/v1/",
+            "GET /ISteamUserStats/GetNumberOfCurrentPlayers/v0001",
+            "GET /ISteamUserStats/GetNumberOfCurrentPlayers/v0001/",
+            "GET /ISteamUserStats/GetNumberOfCurrentPlayers/v1",
+            "GET /ISteamUserStats/GetNumberOfCurrentPlayers/v1/",
+            "GET /ISteamUserStats/GetSchemaForGame/v0002",
+            "GET /ISteamUserStats/GetSchemaForGame/v0002/",
+            "GET /ISteamUserStats/GetSchemaForGame/v2",
+            "GET /ISteamUserStats/GetSchemaForGame/v2/",
+            "GET /ISteamUserStats/GetUserStatsForGame/v0002",
+            "GET /ISteamUserStats/GetUserStatsForGame/v0002/",
+            "GET /ISteamUserStats/GetUserStatsForGame/v2",
+            "GET /ISteamUserStats/GetUserStatsForGame/v2/"
+          ]
+        },
+        {
+          "name": "steam-apps-read",
+          "rules": [
+            "GET /ISteamApps/GetAppList/v0002",
+            "GET /ISteamApps/GetAppList/v0002/",
+            "GET /ISteamApps/GetAppList/v2",
+            "GET /ISteamApps/GetAppList/v2/",
+            "GET /ISteamApps/GetServersAtAddress/v0001",
+            "GET /ISteamApps/GetServersAtAddress/v0001/",
+            "GET /ISteamApps/GetServersAtAddress/v1",
+            "GET /ISteamApps/GetServersAtAddress/v1/",
+            "GET /ISteamApps/UpToDateCheck/v0001",
+            "GET /ISteamApps/UpToDateCheck/v0001/",
+            "GET /ISteamApps/UpToDateCheck/v1",
+            "GET /ISteamApps/UpToDateCheck/v1/",
+            "GET /IStoreService/GetAppList/v0001",
+            "GET /IStoreService/GetAppList/v0001/",
+            "GET /IStoreService/GetAppList/v1",
+            "GET /IStoreService/GetAppList/v1/"
+          ]
+        },
+        {
+          "name": "steam-news-read",
+          "rules": [
+            "GET /ISteamNews/GetNewsForApp/v0001",
+            "GET /ISteamNews/GetNewsForApp/v0001/",
+            "GET /ISteamNews/GetNewsForApp/v0002",
+            "GET /ISteamNews/GetNewsForApp/v0002/",
+            "GET /ISteamNews/GetNewsForApp/v1",
+            "GET /ISteamNews/GetNewsForApp/v1/",
+            "GET /ISteamNews/GetNewsForApp/v2",
+            "GET /ISteamNews/GetNewsForApp/v2/"
           ]
         }
       ]

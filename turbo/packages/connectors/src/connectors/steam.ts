@@ -6,7 +6,7 @@ export const steam = {
     label: "Steam",
     category: "data-automation-infrastructure",
     helpText:
-      "Connect your Steam account to access player profile, game library, playtime, wishlist, and followed games data.",
+      "Connect your Steam account to access player profile, library, playtime, social, wishlist, and game stats data.",
     authMethods: {
       openid: {
         featureFlag: FeatureSwitchKey.SteamConnector,

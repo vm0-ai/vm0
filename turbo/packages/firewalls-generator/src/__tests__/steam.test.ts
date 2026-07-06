@@ -49,6 +49,9 @@ describe("Steam permission manifest", () => {
       "GET /ISteamUser/GetPlayerSummaries/v2",
       "GET /ISteamUser/GetPlayerSummaries/v2/",
     ]);
+    expect(officialMethodRules.get("ISteamUser/ResolveVanityURL")).toContain(
+      "GET /ISteamUser/ResolveVanityURL/v1/",
+    );
     expect(officialMethodRules.get("IPlayerService/GetOwnedGames")).toContain(
       "GET /IPlayerService/GetOwnedGames/v0001/",
     );
@@ -57,6 +60,52 @@ describe("Steam permission manifest", () => {
     );
     expect(officialMethodRules.get("IStoreService/GetGamesFollowed")).toContain(
       "GET /IStoreService/GetGamesFollowed/v1/",
+    );
+    expect(
+      officialMethodRules.get("IStoreService/GetRecommendedTagsForUser"),
+    ).toContain("GET /IStoreService/GetRecommendedTagsForUser/v1/");
+    expect(officialMethodRules.get("ISteamUser/GetFriendList")).toContain(
+      "GET /ISteamUser/GetFriendList/v1/",
+    );
+    expect(officialMethodRules.get("ISteamUser/GetUserGroupList")).toContain(
+      "GET /ISteamUser/GetUserGroupList/v1/",
+    );
+    expect(officialMethodRules.get("ISteamUser/GetPlayerBans")).toContain(
+      "GET /ISteamUser/GetPlayerBans/v1/",
+    );
+    expect(
+      officialMethodRules.get("ISteamUserStats/GetPlayerAchievements"),
+    ).toContain("GET /ISteamUserStats/GetPlayerAchievements/v1/");
+    expect(
+      officialMethodRules.get("ISteamUserStats/GetUserStatsForGame"),
+    ).toContain("GET /ISteamUserStats/GetUserStatsForGame/v2/");
+    expect(
+      officialMethodRules.get(
+        "ISteamUserStats/GetGlobalAchievementPercentagesForApp",
+      ),
+    ).toContain(
+      "GET /ISteamUserStats/GetGlobalAchievementPercentagesForApp/v2/",
+    );
+    expect(
+      officialMethodRules.get("ISteamUserStats/GetGlobalStatsForGame"),
+    ).toContain("GET /ISteamUserStats/GetGlobalStatsForGame/v1/");
+    expect(
+      officialMethodRules.get("ISteamUserStats/GetNumberOfCurrentPlayers"),
+    ).toContain("GET /ISteamUserStats/GetNumberOfCurrentPlayers/v1/");
+    expect(
+      officialMethodRules.get("IPlayerService/GetSingleGamePlaytime"),
+    ).toContain("GET /IPlayerService/GetSingleGamePlaytime/v1/");
+    expect(
+      officialMethodRules.get("IPlayerService/GetCommunityBadgeProgress"),
+    ).toContain("GET /IPlayerService/GetCommunityBadgeProgress/v1/");
+    expect(officialMethodRules.get("ISteamApps/GetAppList")).toContain(
+      "GET /ISteamApps/GetAppList/v2/",
+    );
+    expect(officialMethodRules.get("IStoreService/GetAppList")).toContain(
+      "GET /IStoreService/GetAppList/v1/",
+    );
+    expect(officialMethodRules.get("ISteamNews/GetNewsForApp")).toContain(
+      "GET /ISteamNews/GetNewsForApp/v2/",
     );
 
     expect(() => {
@@ -77,6 +126,14 @@ describe("Steam permission manifest", () => {
       "player-badges-read",
       "player-wishlist-read",
       "player-followed-games-read",
+      "player-store-preferences-read",
+      "player-friends-read",
+      "player-groups-read",
+      "player-ban-status-read",
+      "player-game-achievements-read",
+      "player-game-stats-read",
+      "steam-apps-read",
+      "steam-news-read",
     ]);
     expect(
       permissions.find((permission) => permission.name === "player-badges-read")
@@ -92,6 +149,24 @@ describe("Steam permission manifest", () => {
         (permission) => permission.name === "player-followed-games-read",
       )?.rules,
     ).toContain("GET /IStoreService/GetGamesFollowedCount/v1/");
+    expect(
+      permissions.find(
+        (permission) => permission.name === "player-store-preferences-read",
+      )?.rules,
+    ).toContain("GET /IStoreService/GetRecommendedTagsForUser/v1/");
+    expect(
+      permissions.find(
+        (permission) => permission.name === "player-game-stats-read",
+      )?.rules,
+    ).toContain("GET /ISteamUserStats/GetSchemaForGame/v2/");
+    expect(
+      permissions.find((permission) => permission.name === "steam-apps-read")
+        ?.rules,
+    ).toContain("GET /IStoreService/GetAppList/v1/");
+    expect(
+      permissions.find((permission) => permission.name === "steam-news-read")
+        ?.rules,
+    ).toContain("GET /ISteamNews/GetNewsForApp/v2/");
   });
 
   it("fails when a manifest method is absent from official docs", () => {
@@ -115,6 +190,10 @@ describe("Steam permission manifest", () => {
             ["POST /ISteamUser/GetPlayerSummaries/v2/"],
           ],
           [
+            "ISteamUser/ResolveVanityURL",
+            ["GET /ISteamUser/ResolveVanityURL/v1/"],
+          ],
+          [
             "IPlayerService/GetOwnedGames",
             ["GET /IPlayerService/GetOwnedGames/v1/"],
           ],
@@ -122,10 +201,18 @@ describe("Steam permission manifest", () => {
             "IPlayerService/GetRecentlyPlayedGames",
             ["GET /IPlayerService/GetRecentlyPlayedGames/v1/"],
           ],
+          [
+            "IPlayerService/GetSingleGamePlaytime",
+            ["GET /IPlayerService/GetSingleGamePlaytime/v1/"],
+          ],
           ["IPlayerService/GetBadges", ["GET /IPlayerService/GetBadges/v1/"]],
           [
             "IPlayerService/GetSteamLevel",
             ["GET /IPlayerService/GetSteamLevel/v1/"],
+          ],
+          [
+            "IPlayerService/GetCommunityBadgeProgress",
+            ["GET /IPlayerService/GetCommunityBadgeProgress/v1/"],
           ],
           [
             "IWishlistService/GetWishlist",
@@ -136,6 +223,10 @@ describe("Steam permission manifest", () => {
             ["GET /IWishlistService/GetWishlistItemCount/v1/"],
           ],
           [
+            "IWishlistService/GetWishlistSortedFiltered",
+            ["GET /IWishlistService/GetWishlistSortedFiltered/v1/"],
+          ],
+          [
             "IStoreService/GetGamesFollowed",
             ["GET /IStoreService/GetGamesFollowed/v1/"],
           ],
@@ -143,6 +234,48 @@ describe("Steam permission manifest", () => {
             "IStoreService/GetGamesFollowedCount",
             ["GET /IStoreService/GetGamesFollowedCount/v1/"],
           ],
+          [
+            "IStoreService/GetRecommendedTagsForUser",
+            ["GET /IStoreService/GetRecommendedTagsForUser/v1/"],
+          ],
+          ["ISteamUser/GetFriendList", ["GET /ISteamUser/GetFriendList/v1/"]],
+          [
+            "ISteamUser/GetUserGroupList",
+            ["GET /ISteamUser/GetUserGroupList/v1/"],
+          ],
+          ["ISteamUser/GetPlayerBans", ["GET /ISteamUser/GetPlayerBans/v1/"]],
+          [
+            "ISteamUserStats/GetPlayerAchievements",
+            ["GET /ISteamUserStats/GetPlayerAchievements/v1/"],
+          ],
+          [
+            "ISteamUserStats/GetGlobalAchievementPercentagesForApp",
+            ["GET /ISteamUserStats/GetGlobalAchievementPercentagesForApp/v2/"],
+          ],
+          [
+            "ISteamUserStats/GetUserStatsForGame",
+            ["GET /ISteamUserStats/GetUserStatsForGame/v2/"],
+          ],
+          [
+            "ISteamUserStats/GetSchemaForGame",
+            ["GET /ISteamUserStats/GetSchemaForGame/v2/"],
+          ],
+          [
+            "ISteamUserStats/GetGlobalStatsForGame",
+            ["GET /ISteamUserStats/GetGlobalStatsForGame/v1/"],
+          ],
+          [
+            "ISteamUserStats/GetNumberOfCurrentPlayers",
+            ["GET /ISteamUserStats/GetNumberOfCurrentPlayers/v1/"],
+          ],
+          ["ISteamApps/GetAppList", ["GET /ISteamApps/GetAppList/v2/"]],
+          [
+            "ISteamApps/GetServersAtAddress",
+            ["GET /ISteamApps/GetServersAtAddress/v1/"],
+          ],
+          ["ISteamApps/UpToDateCheck", ["GET /ISteamApps/UpToDateCheck/v1/"]],
+          ["IStoreService/GetAppList", ["GET /IStoreService/GetAppList/v1/"]],
+          ["ISteamNews/GetNewsForApp", ["GET /ISteamNews/GetNewsForApp/v2/"]],
         ]),
       );
     }).toThrow("read-only");
