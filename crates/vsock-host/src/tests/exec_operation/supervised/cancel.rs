@@ -18,6 +18,7 @@ use crate::operation_tracker::NormalOperationReadiness;
 #[tokio::test]
 async fn supervised_exec_cancel_on_drop_sends_exec_cancel() {
     let StartedSupervisedExec {
+        // Keep the host alive while the cancel-on-drop guard writes its cancel frame.
         host: _host,
         mut guest,
         start,
