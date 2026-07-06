@@ -462,8 +462,12 @@ async function backToArtifactInbox(): Promise<void> {
   });
 }
 
-function expectFullscreenSafeAreaClass(element: HTMLElement): void {
+function expectFullscreenSafeAreaClass(
+  element: HTMLElement,
+  layerClassName = "z-[100]",
+): void {
   const className = element.getAttribute("class") ?? "";
+  expect(className).toContain(layerClassName);
   expect(className).toContain("pt-[var(--sat)]");
   expect(className).toContain("pb-[var(--sab)]");
 }
