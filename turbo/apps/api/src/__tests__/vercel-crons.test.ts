@@ -116,9 +116,6 @@ const expectedVercelCrons = [
   },
 ] satisfies readonly VercelCron[];
 
-const legacyRefreshSystemStoragePresignedUrlsPath =
-  "/api/cron/refresh-system-storage-presigned-urls";
-
 describe("vercel cron config", () => {
   it("matches API-owned cron schedules", () => {
     const crons = readVercelConfig().crons ?? [];
@@ -156,24 +153,5 @@ describe("vercel cron config", () => {
     expect(
       routePaths.has("/api/internal/cron/aggregate-model-stats"),
     ).toBeFalsy();
-  });
-
-  it("keeps the previous storage presigned URL cron path as an unconfigured alias", () => {
-    const crons = readVercelConfig().crons ?? [];
-    const routePaths = new Set(
-      ROUTES.map(({ route }) => {
-        return route.path;
-      }),
-    );
-    const cronPaths = crons.map(({ path }) => {
-      return path;
-    });
-
-    expect(
-      routePaths.has(legacyRefreshSystemStoragePresignedUrlsPath),
-    ).toBeTruthy();
-    expect(cronPaths).not.toContain(
-      legacyRefreshSystemStoragePresignedUrlsPath,
-    );
   });
 });

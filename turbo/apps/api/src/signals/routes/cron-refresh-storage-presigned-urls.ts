@@ -25,11 +25,4 @@ export const cronRefreshStoragePresignedUrlsRoutes: readonly RouteEntry[] = [
     route: cronRefreshStoragePresignedUrlsContract.refresh,
     handler: refreshStoragePresignedUrlsRoute$,
   },
-  {
-    route: {
-      ...cronRefreshStoragePresignedUrlsContract.refresh,
-      path: "/api/cron/refresh-system-storage-presigned-urls",
-    },
-    handler: refreshStoragePresignedUrlsRoute$,
-  },
 ];
