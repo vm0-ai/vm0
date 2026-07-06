@@ -6091,6 +6091,32 @@ function MicButton({
   );
 }
 
+function ComposerAttachButton({
+  onSelectFile,
+}: {
+  readonly onSelectFile: () => void;
+}) {
+  return (
+    <TooltipProvider delayDuration={300}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            className="rounded-lg p-2 transition-colors duration-200 hover:bg-accent hover:text-foreground sm:p-[9px]"
+            aria-label="Attach"
+            onClick={onSelectFile}
+          >
+            <IconPaperclip size={18} stroke={1.5} />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="text-xs">
+          Attach
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
 function ComposerUploadMenu({
   input,
   onDraftChange,
@@ -6543,6 +6569,11 @@ function usePopoverModelPickerEnabled(): boolean {
   return features?.[FeatureSwitchKey.ComposerModelPickerPopover] ?? false;
 }
 
+function useUploadPopoverEnabled(): boolean {
+  const features = useLastResolved(featureSwitch$);
+  return features?.[FeatureSwitchKey.ComposerUploadPopover] ?? false;
+}
+
 export function ZeroChatComposer({
   input,
   onInputChange,
@@ -6581,6 +6612,7 @@ export function ZeroChatComposer({
   const openGoalDialog = useSet(openChatThreadGoalDialog$);
   const codexFastModeEnabled = useCodexFastModeEnabled();
   const popoverModelPickerEnabled = usePopoverModelPickerEnabled();
+  const uploadPopoverEnabled = useUploadPopoverEnabled();
 
   const resolved = useResolvedComposerSignals(
     input,
@@ -7018,12 +7050,16 @@ export function ZeroChatComposer({
               )}
               <div className="flex items-center justify-between gap-2 px-4 pb-3 pt-1">
                 <div className="flex items-center gap-1 text-muted-foreground sm:gap-1.5">
-                  <ComposerUploadMenu
-                    input={input}
-                    onDraftChange={onDraftChange}
-                    onInputChange={onInputChange}
-                    onSelectFile={handleFileSelect}
-                  />
+                  {uploadPopoverEnabled ? (
+                    <ComposerUploadMenu
+                      input={input}
+                      onDraftChange={onDraftChange}
+                      onInputChange={onInputChange}
+                      onSelectFile={handleFileSelect}
+                    />
+                  ) : (
+                    <ComposerAttachButton onSelectFile={handleFileSelect} />
+                  )}
                   <ComposerTemplatePickerSlot picker={templatePicker} />
                   <ComposerWorkflowPromptSlot
                     onCreateWorkflowPrompt={onCreateWorkflowPrompt}
