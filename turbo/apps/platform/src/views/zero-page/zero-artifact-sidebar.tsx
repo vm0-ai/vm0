@@ -31,6 +31,7 @@ import {
   useGet,
   useLastLoadable,
   useLastResolved,
+  useLoadable,
   useSet,
 } from "ccstate-react";
 import {
@@ -222,7 +223,10 @@ function ArtifactSidebarWithThreadContext({
   thread,
 }: ArtifactSidebarProps & { thread: ChatThreadSignals }) {
   const loadable = useLastLoadable(thread.artifacts$);
-  const agentId = useLastResolved(thread.agentId$);
+  const agentIdLoadable = useLoadable(thread.agentId$);
+  const lastAgentId = useLastResolved(thread.agentId$);
+  const agentId =
+    agentIdLoadable.state === "hasData" ? agentIdLoadable.data : lastAgentId;
   const messageGroups = useLastResolved(thread.groupedChatMessages$);
   const features = useLastResolved(featureSwitch$);
   const imageNavigationEnabled = Boolean(
