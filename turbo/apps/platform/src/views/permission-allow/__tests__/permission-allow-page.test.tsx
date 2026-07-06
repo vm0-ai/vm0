@@ -399,6 +399,56 @@ describe("permission allow page", () => {
     expect(screen.queryByText("Already allowed")).not.toBeInTheDocument();
   });
 
+  it("shows the confirmation flow when an existing allow grant has an invalid expiration", async () => {
+    mockNow();
+    const agentId = "c0000000-0000-4000-a000-000000000011";
+
+    context.mocks.api(zeroAgentsByIdContract.get, ({ respond }) => {
+      return respond(200, {
+        agentId,
+        ownerId: "test-user-123",
+        description: null,
+        displayName: "Invalid Grant Bot",
+        sound: null,
+        avatarUrl: null,
+        modelProviderId: null,
+        selectedModel: null,
+        preferPersonalProvider: false,
+      });
+    });
+    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+      return respond(200, [
+        {
+          agentId,
+          connectorRef: "slack",
+          permission: "admin.analytics:read",
+          action: "allow",
+          expiresAt: "",
+          createdAt: "2026-03-10T00:00:00Z",
+          updatedAt: "2026-03-10T00:01:00Z",
+        },
+      ]);
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${agentId}/permissions?ref=slack&permission=admin.analytics%3Aread&action=allow&expiresIn=24h`,
+      user: {
+        id: "test-user-123",
+        fullName: "Taylor Reviewer",
+        firstName: "Taylor",
+      },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Hey Taylor, you're updating your permissions/u),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Confirm")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Already allowed")).not.toBeInTheDocument();
+  });
+
   it("does not show expired grant text when the default policy already allows the permission", async () => {
     mockNow();
     const agentId = "c0000000-0000-4000-a000-000000000010";

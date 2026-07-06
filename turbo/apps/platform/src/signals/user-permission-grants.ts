@@ -47,7 +47,7 @@ export function isActiveUserPermissionGrant(
   grant: Pick<UserPermissionGrantResponse, "expiresAt">,
   checkedAtMs = now(),
 ): boolean {
-  if (!grant.expiresAt) {
+  if (grant.expiresAt === null) {
     return true;
   }
   const expiresAtMs = Date.parse(grant.expiresAt);
