@@ -1440,6 +1440,41 @@ mod tests {
     }
 
     #[test]
+    fn runtime_replenish_keeps_high_water_until_below_buffer() {
+        for (kind, proxy_port) in [(NetnsKind::Plain, None), (NetnsKind::Proxy, Some(8080))] {
+            let mut pool = NetnsPoolState::inactive_for_test();
+            pool.proxy_port = proxy_port;
+            for index in 0..BUFFER_SIZE + 2 {
+                pool.target_queue_mut(kind)
+                    .push_back(test_info(&format!("ready-ns-{index}")));
+            }
+
+            pool.replenish_kind_with(kind, NetnsPoolState::reserve_pending_creation_for_test);
+
+            assert!(pool.pending_set(kind).is_empty());
+            assert_eq!(pool.next_ns_index, 0);
+
+            for _ in 0..2 {
+                let _ = pool.target_queue_mut(kind).pop_front().unwrap();
+            }
+            pool.replenish_kind_with(kind, NetnsPoolState::reserve_pending_creation_for_test);
+
+            assert_eq!(pool.target_queue(kind).len(), BUFFER_SIZE);
+            assert!(pool.pending_set(kind).is_empty());
+            assert_eq!(pool.next_ns_index, 0);
+
+            let _ = pool.target_queue_mut(kind).pop_front().unwrap();
+            pool.replenish_kind_with(kind, NetnsPoolState::reserve_pending_creation_for_test);
+
+            assert_eq!(pool.target_queue(kind).len(), BUFFER_SIZE - 1);
+            assert_eq!(pool.pending_set(kind).len(), 1);
+            assert_eq!(pool.next_ns_index, 1);
+            pool.pending_set_mut(kind).clear();
+            pool.target_queue_mut(kind).clear();
+        }
+    }
+
+    #[test]
     fn runtime_replenish_ignores_proxy_kind_when_proxy_disabled() {
         let mut pool = NetnsPoolState::inactive_for_test();
 
