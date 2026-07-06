@@ -1489,11 +1489,12 @@ describe("CHAT-02: org queue markers", () => {
       runId: queuedRun.body.runId,
     });
 
-    // The queued run still counts as the thread's active run, so a template
-    // send queues as an unassociated message carrying its template.
+    // The queued run still counts as the thread's active run, so a presentation
+    // runbook selection queues as an unassociated message carrying that
+    // selection.
     const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0];
     if (!template) {
-      throw new Error("Expected a registered presentation template");
+      throw new Error("Expected a registered presentation runbook item");
     }
     const generationTemplate: GenerationTemplateRequest = {
       type: "presentation",
@@ -2747,7 +2748,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0];
     if (!template) {
-      throw new Error("Expected a registered presentation template");
+      throw new Error("Expected a registered presentation runbook item");
     }
 
     const presentation = await sendChatRun(actor, {
@@ -2765,17 +2766,22 @@ describe("CHAT-02: generation templates and attachments", () => {
     const presentationRun = await api.readRun(actor, presentation.runId);
     expect(presentationRun.prompt).toBe("make a launch deck");
     const presentationPrompt = presentationRun.appendSystemPrompt ?? "";
-    expect(presentationPrompt).toContain("# Artifact Template Context");
+    expect(presentationPrompt).toContain("# Presentation Runbook Context");
+    expect(presentationPrompt).not.toContain("# Artifact Template Context");
     expect(presentationPrompt).toContain(
-      "The user deliberately selected this artifact template",
+      "The user deliberately selected this presentation runbook",
     );
     expect(presentationPrompt).toContain(
       "It does not force you to generate: the user's prompt decides the task",
     );
     expect(presentationPrompt).toContain(`(${template.templateId})`);
-    // Runbook flow: pull the template's self-contained runbook package; the
-    // legacy multi-resource `zero generate presentation --design-system` flow
-    // is retired.
+    expect(presentationPrompt).toContain(
+      "Selected presentation runbook: Playful Launch Presentation (playful-launch)",
+    );
+    expect(presentationPrompt).not.toContain("Selected presentation template");
+    expect(presentationPrompt).not.toContain("Selected design system");
+    // Runbook flow: pull the selected self-contained runbook package; the
+    // retired multi-resource generation command is not surfaced.
     expect(presentationPrompt).toContain(
       `zero resource pull ${template.templateId}-runbook --dir ./generated/resources`,
     );
@@ -3004,7 +3010,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     });
     const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0];
     if (!template) {
-      throw new Error("Expected a registered presentation template");
+      throw new Error("Expected a registered presentation runbook item");
     }
 
     const arms: readonly {

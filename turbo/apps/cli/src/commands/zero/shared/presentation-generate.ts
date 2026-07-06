@@ -1,36 +1,13 @@
 import { Command, InvalidArgumentError } from "commander";
 import { withErrorHandler } from "../../../lib/command";
-import { createHtmlArtifactAuthoringPacket } from "./html-artifact-authoring";
-import {
-  buildPresentationRunbookInstructionLines,
-  findDesignSystem,
-  findPresentationRunbookPackage,
-  findTemplate,
-  listDesignSystems,
-  listPresentationRunbookPackages,
-  listTemplates,
-  resolvePresentationRunbookColorToken,
-} from "./resource-registry";
-import {
-  canonicalizeRegistryId,
-  formatRegistryListing,
-} from "./resource-listing";
 import { dispatchGenerate } from "../generate/lib/dispatch";
 import type { GenerationType } from "../generate/lib/lister";
-
-const PRESENTATION_TARGET = "presentation";
-
-type PresentationRunbookPackage = ReturnType<
-  typeof listPresentationRunbookPackages
->[number];
 
 interface PresentationOptions {
   prompt?: string;
   slides: number;
   title?: string;
   siteSlug?: string;
-  designSystem?: string;
-  template?: string;
 }
 
 interface PresentationGenerateCommandConfig {
@@ -51,56 +28,94 @@ function parseSlideCount(value: string): number {
   return slideCount;
 }
 
-function unknownDesignSystemError(id: string, usageCommand: string): Error {
-  const designSystems = listDesignSystems();
-  const message = [
-    `Unknown design system: ${id}`,
-    "",
-    "Available design systems:",
-    formatRegistryListing(designSystems, "design systems"),
-    "",
-    `Example:`,
-    `  ${usageCommand} --design-system ${
-      designSystems[0]?.id ?? "<design-system-id>"
-    } --prompt "..."`,
-  ].join("\n");
-  return new Error(message);
+function slugifyPresentationSite(value: string): string {
+  const slug = value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/gu, "-")
+    .replace(/^-+|-+$/gu, "")
+    .replace(/-{2,}/gu, "-")
+    .slice(0, 48)
+    .replace(/-+$/u, "");
+  return slug.length >= 3 ? slug : "html-artifact";
 }
 
-function unknownTemplateError(
-  id: string,
-  usageCommand: string,
-  target: string,
-): Error {
-  const runbookPackages = listPresentationRunbookPackages();
-  const templates = listTemplates(PRESENTATION_TARGET);
-  const exampleTemplate = runbookPackages[0]?.templateId ?? templates[0]?.id;
-  const message = [
-    `Unknown template for ${target}: ${id}`,
-    "",
-    `Available runbook templates for ${target}:`,
-    formatPresentationRunbookListing(runbookPackages),
-    "",
-    `Available registry templates for ${target}:`,
-    formatRegistryListing(templates, `${target} templates`),
-    "",
-    `Example:`,
-    `  ${usageCommand} --template ${exampleTemplate ?? "<template-id>"} --prompt "..."`,
-  ].join("\n");
-  return new Error(message);
-}
+function buildDirectPresentationInstructionPacket(options: {
+  readonly prompt: string;
+  readonly slides: number;
+  readonly title?: string;
+  readonly siteSlug?: string;
+}): string {
+  const site =
+    options.siteSlug ??
+    slugifyPresentationSite(options.title ?? options.prompt);
+  const outputDir = `./generated/mockups/${site}`;
+  const hostCommand = `zero host ${outputDir} --site ${site} --artifact-kind presentation-html`;
 
-function formatPresentationRunbookListing(
-  packages: readonly PresentationRunbookPackage[],
-): string {
-  if (packages.length === 0) {
-    return "  (no presentation runbook templates registered)";
-  }
-  return packages
-    .map((pkg) => {
-      return `  ${pkg.templateId}\n    ${pkg.description}`;
-    })
-    .join("\n\n");
+  return [
+    "# Zero generate presentation",
+    "",
+    "This is a direct HTML presentation authoring packet for the current agent.",
+    "Zero is not selecting registry resources for this presentation. Author the deck directly from the user's request and any supplied source material.",
+    "",
+    "## User Prompt",
+    options.prompt,
+    "",
+    "## Artifact Output Model",
+    `- Primary artifact: \`presentation\` at \`${outputDir}/index.html\`.`,
+    "- Output mode: `primary-artifact-with-supporting-assets`.",
+    "- Supporting images, audio, video, or metadata may live inside the same output directory when the result needs them.",
+    "- Treat the output directory as a project bundle when multiple media types are generated, while keeping the HTML entry point primary.",
+    "",
+    "## Output Contract",
+    `- Write the artifact under \`${outputDir}/\`.`,
+    `- The entry file must be \`${outputDir}/index.html\`.`,
+    "- Keep every local asset inside the same output directory.",
+    "- Do not reference files from another project path.",
+    "- Use descriptive filenames and canonical HTML: close non-void tags and double-quote attributes.",
+    "- Prefer a single self-contained HTML file unless the artifact genuinely needs separate assets.",
+    "",
+    "## Requested Parameters",
+    `- Slide count: ${options.slides}`,
+    `- Requested deck title: ${options.title ?? "not specified"}`,
+    "",
+    "## Authoring Rules",
+    "- Think like a presentation designer, not a web page designer.",
+    "- Use a fixed 1920x1080 slide canvas and scale it uniformly for smaller viewports.",
+    "- Use one section per slide and keep repeated elements in consistent positions.",
+    "- Make keyboard navigation work with ArrowLeft, ArrowRight, Home, and End.",
+    "- Keep slide text readable from across a room; avoid memo-like walls of text.",
+    "- Produce exactly the requested slide count. Do not let reference examples or preview slide counts override the requested count.",
+    "- Before authoring, make an internal slide plan with exactly the requested count and map each slide to a narrative role plus a concrete layout device.",
+    "- Adapt layout patterns to the requested slide count: for shorter decks, merge or omit lower-priority content roles; for longer decks, split dense sections into multiple focused slides or reuse layout patterns with different substantive content. Do not add decorative, duplicate, or empty filler slides.",
+    "- Use reference materials only for structure, spacing, and visual language. Do not inherit or continue any sample subject, sample story, sample copy, sample metrics, preview imagery, or media seed names.",
+    "- Derive every presentation image/media choice from the user's requested topic, story, source material, or cited facts.",
+    "- Before laying out slides, establish the deck's arc: the opening problem or question, how it develops, and what conclusion lands; every slide should serve a clear narrative role in that arc.",
+    "- Vary slide forms across the deck — full-bleed statement, evidence with data, pull quote, section break, summary — and avoid defaulting every slide to title-plus-bullets.",
+    "- Each slide carries one idea; prefer a single strong statement over a list, and never exceed three bullets on any slide.",
+    "- Avoid generic AI design defaults: no stock SaaS gradients, no emoji-as-icons, no filler stats, no decorative chrome that does not help the artifact.",
+    "- Build the actual artifact first, not a marketing explanation of the artifact.",
+    "- Make controls and interactions real when they are visible.",
+    "- Keep text readable at desktop and mobile preview sizes.",
+    "",
+    "## Verification",
+    "- Use `agent-browser` for browser verification when available. Start with `agent-browser skills get core` if you need command guidance.",
+    "- Prefer `agent-browser` over Playwright, Puppeteer, or installing browser automation dependencies.",
+    "- Open the HTML locally and verify it is nonblank.",
+    "- Check that keyboard/click interactions work when present.",
+    "- Check that text does not overflow or overlap at desktop and mobile viewport sizes.",
+    "- Check that shapes, charts, images, or decorative graphics do not cover readable text at desktop and mobile viewport sizes.",
+    "- Run the final hosting command only after the artifact looks correct.",
+    "",
+    "## Publish",
+    "The hosted URL is the preview and user-accessible view for this static HTML artifact.",
+    "When everything is OK, publish it with:",
+    "",
+    "```bash",
+    hostCommand,
+    "```",
+    "",
+    "File upload is a separate delivery channel for when the user needs a local file copy, not another way to preview the same hosted artifact.",
+  ].join("\n");
 }
 
 export function createPresentationGenerateCommand(
@@ -115,38 +130,18 @@ export function createPresentationGenerateCommand(
     )
     .option("--site-slug <slug>", "Hosted site slug override")
     .option("--title <text>", "Requested deck title")
-    .option(
-      "--design-system <id>",
-      "Design system id from the registry (see Design Systems below). Accepts either 'apple' or 'design-system:apple'.",
-    )
-    .option(
-      "--template <id>",
-      "Presentation runbook template id (see Templates below). Accepts either 'html-ppt-playful-launch' or 'template:html-ppt-playful-launch'.",
-    )
     .option("--slides <count>", "Slide count: 4-20", parseSlideCount, 8)
     .addHelpText("after", () => {
-      const designSystems = listDesignSystems();
-      const runbookPackages = listPresentationRunbookPackages();
-      const templates = listTemplates(PRESENTATION_TARGET);
       return `
 Examples:
 ${config.examples}
 
 Output:
-  Prints a source-selection packet for the current agent.
+  Prints direct authoring instructions for the current agent.
 
 Notes:
   - Authenticates via ZERO_TOKEN
-  - The agent authors the HTML presentation artifact and hosts it with zero host
-
-Design Systems:
-${formatRegistryListing(designSystems, "design systems")}
-
-Templates (presentation runbook):
-${formatPresentationRunbookListing(runbookPackages)}
-
-Templates (presentation registry):
-${formatRegistryListing(templates, "presentation templates")}`;
+  - The agent authors the HTML presentation artifact and hosts it with zero host`;
     })
     .action(
       withErrorHandler(async (options: PresentationOptions) => {
@@ -157,111 +152,14 @@ ${formatRegistryListing(templates, "presentation templates")}`;
         if (dispatch.outcome === "handled") return;
         const prompt = dispatch.prompt;
 
-        // Runbook-first: a picker template (`html-ppt-<slug>`) is served by its
-        // self-contained runbook package. Resolve it before the legacy
-        // design-system/template path and emit runbook instructions — the
-        // design system is not part of the runbook flow, so it is ignored here.
-        if (options.template !== undefined) {
-          const canonical = canonicalizeRegistryId(
-            "template",
-            options.template,
-          );
-          const runbookPackage = findPresentationRunbookPackage(canonical);
-          if (runbookPackage) {
-            const color = resolvePresentationRunbookColorToken(
-              runbookPackage,
-              undefined,
-            );
-            const colorSystemToken =
-              "error" in color
-                ? runbookPackage.defaultColorSystem
-                : color.token;
-            console.log(
-              [
-                "# Presentation Generation (runbook)",
-                "",
-                ...buildPresentationRunbookInstructionLines({
-                  runbookPackage,
-                  colorSystemToken,
-                }),
-                "",
-                `User request: ${prompt}`,
-              ].join("\n"),
-            );
-            return;
-          }
-        }
-
-        let resolvedDesignSystem;
-        if (options.designSystem !== undefined) {
-          const canonical = canonicalizeRegistryId(
-            "design-system",
-            options.designSystem,
-          );
-          const entry = findDesignSystem(canonical);
-          if (!entry) {
-            throw unknownDesignSystemError(
-              options.designSystem,
-              config.usageCommand,
-            );
-          }
-          resolvedDesignSystem = entry;
-        }
-
-        let resolvedTemplate;
-        if (options.template !== undefined) {
-          const canonical = canonicalizeRegistryId(
-            "template",
-            options.template,
-          );
-          const entry = findTemplate(canonical);
-          if (!entry || !entry.targets?.includes(PRESENTATION_TARGET)) {
-            throw unknownTemplateError(
-              options.template,
-              config.usageCommand,
-              PRESENTATION_TARGET,
-            );
-          }
-          resolvedTemplate = entry;
-        }
-
-        const packet = createHtmlArtifactAuthoringPacket({
-          kind: "presentation",
+        const instructions = buildDirectPresentationInstructionPacket({
           prompt,
-          slugSource: options.title,
+          slides: options.slides,
+          title: options.title,
           siteSlug: options.siteSlug,
-          details: [
-            `Slide count: ${options.slides}`,
-            `Requested deck title: ${options.title ?? "not specified"}`,
-            `Selected design system: ${
-              resolvedDesignSystem
-                ? `${resolvedDesignSystem.id} (${resolvedDesignSystem.name})`
-                : "agent decides"
-            }`,
-            `Selected template: ${
-              resolvedTemplate
-                ? `${resolvedTemplate.id} (${resolvedTemplate.name})`
-                : "agent decides"
-            }`,
-          ],
-          artifactRules: [
-            "Think like a presentation designer, not a web page designer.",
-            "Use a fixed 1920x1080 slide canvas and scale it uniformly for smaller viewports.",
-            "Use one section per slide and keep repeated elements in consistent positions.",
-            "Make keyboard navigation work with ArrowLeft, ArrowRight, Home, and End.",
-            "Keep slide text readable from across a room; avoid memo-like walls of text.",
-            "Produce exactly the requested slide count. Do not let a template's reference example or preview slide count override the requested count.",
-            "Before authoring, make an internal slide plan with exactly the requested count and map each slide to a narrative role plus a selected template layout or device.",
-            "Adapt the selected template to the requested slide count: for shorter decks, merge or omit lower-priority content roles; for longer decks, split dense sections into multiple focused slides or reuse layout patterns with different substantive content. Do not add decorative, duplicate, or empty filler slides.",
-            "Use selected template references only for structure, layout devices, spacing, and visual language. Do not inherit or continue any reference deck's sample subject, sample story, sample copy, sample metrics, preview imagery, or media seed names.",
-            "Derive every presentation image/media choice from the user's requested topic, story, source material, or cited facts.",
-            "Before laying out slides, establish the deck's arc: the opening problem or question, how it develops, and what conclusion lands; every slide should serve a clear narrative role in that arc.",
-            "Vary slide forms across the deck — full-bleed statement, evidence with data, pull quote, section break, summary — and avoid defaulting every slide to title-plus-bullets.",
-            "Each slide carries one idea; prefer a single strong statement over a list, and never exceed three bullets on any slide.",
-          ],
         });
 
-        console.log(packet.instructions);
+        console.log(instructions);
       }),
     );
 }

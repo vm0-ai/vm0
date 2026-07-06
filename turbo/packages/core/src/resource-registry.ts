@@ -3651,9 +3651,9 @@ export function resolvePresentationRunbookColorToken(
 }
 
 /**
- * Shared runbook authoring instructions for a selected presentation template.
+ * Shared runbook authoring instructions for a selected presentation runbook.
  * Used by both the chat generation-template prompt (API) and
- * `zero generate presentation --template` (CLI) so the two never drift.
+ * `zero generate presentation --runbook` (CLI) so the two never drift.
  */
 export function buildPresentationRunbookInstructionLines(args: {
   readonly runbookPackage: PresentationRunbookPackage;
@@ -3661,7 +3661,7 @@ export function buildPresentationRunbookInstructionLines(args: {
 }): readonly string[] {
   const { runbookPackage: pkg, colorSystemToken } = args;
   return [
-    `Selected presentation template: ${pkg.name} (${pkg.templateId})`,
+    `Selected presentation runbook: ${pkg.name} (${pkg.slug})`,
     `Color system token: ${colorSystemToken}`,
     "",
     "To produce the presentation:",
@@ -3823,7 +3823,8 @@ export function selectResourceCandidates(
     candidates: {
       skills: listSkills(),
       templates: listTemplates(target),
-      designSystems: filterByKind("design-system"),
+      designSystems:
+        target === "presentation" ? [] : filterByKind("design-system"),
       imageStyles: filterByKind("image-style"),
       audioStyles: filterByKind("audio-style"),
       videoTemplates: listVideoTemplates(),

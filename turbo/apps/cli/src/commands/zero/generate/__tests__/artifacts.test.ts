@@ -173,14 +173,7 @@ describe("zero generate source-backed artifact commands", () => {
       ]),
     );
     expect(presentationSelection.candidates.templates).toHaveLength(0);
-    expect(presentationSelection.candidates.designSystems).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          id: "design-system:shopify",
-          description: expect.stringContaining("E-commerce platform"),
-        }),
-      ]),
-    );
+    expect(presentationSelection.candidates.designSystems).toHaveLength(0);
   });
 
   it("attributes every vm0 image style to the vm0-skills repo", () => {

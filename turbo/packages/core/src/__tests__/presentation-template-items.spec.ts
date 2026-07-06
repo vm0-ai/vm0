@@ -6,9 +6,7 @@ import {
 } from "../presentation-template-items";
 import {
   findColorSystem,
-  findDesignSystem,
   findPresentationRunbookPackage,
-  findTemplate,
   listTemplates,
 } from "../resource-registry";
 
@@ -54,11 +52,6 @@ const BUSINESS_DATA_BORDERLESS_PREVIEW_IMAGES = [
   "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7817bac4-9ecd-4e00-a532-d6ba2816c322/slide-14.png",
   "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/37616a8a-7386-49f2-8e18-198a2a234d4a/slide-15.png",
 ] as const;
-
-function stripRegistryPrefix(id: string, prefix: string): string {
-  expect(id.startsWith(prefix)).toBe(true);
-  return id.slice(prefix.length);
-}
 
 function expectCdnPreviewImages(
   item: (typeof PRESENTATION_TEMPLATE_PICKER_ITEMS)[number],
@@ -396,18 +389,11 @@ describe("presentation template items", () => {
     }
   });
 
-  it("keeps legacy items out of the presentation registry and picker items on runbook packages", () => {
-    for (const item of PRESENTATION_TEMPLATE_ITEMS) {
-      const designSystem = findDesignSystem(item.designSystemId);
-      const template = findTemplate(item.templateId);
-
-      expect(designSystem, item.designSystemId).toBeDefined();
-      expect(template?.targets ?? []).not.toContain("presentation");
-    }
-
+  it("keeps picker items on runbook packages after retiring the legacy catalog", () => {
+    expect(PRESENTATION_TEMPLATE_ITEMS).toHaveLength(0);
     for (const item of PRESENTATION_TEMPLATE_PICKER_ITEMS) {
-      // Picker templates resolve to a self-contained runbook package; their
-      // legacy registry entries have been retired.
+      // Picker selections resolve to self-contained runbook packages; legacy
+      // registry entries have been retired.
       expect(
         findPresentationRunbookPackage(item.templateId),
         item.templateId,
@@ -416,24 +402,9 @@ describe("presentation template items", () => {
     }
   });
 
-  it("keeps prompt references aligned with structured ids", () => {
-    // Legacy demo prompts embed both design system and template; picker prompts
-    // keep only the template (their design systems are retired, and runbook
-    // resolution is driven by the template id).
-    for (const item of PRESENTATION_TEMPLATE_ITEMS) {
-      const promptDesignSystem = stripRegistryPrefix(
-        item.designSystemId,
-        "design-system:",
-      );
-      const promptTemplate = stripRegistryPrefix(item.templateId, "template:");
-
-      expect(item.prompt).toContain(`design system \`${promptDesignSystem}\``);
-      expect(item.prompt).toContain(`template \`${promptTemplate}\``);
-    }
-
+  it("keeps picker prompts free of retired registry selector language", () => {
     for (const item of PRESENTATION_TEMPLATE_PICKER_ITEMS) {
-      const promptTemplate = stripRegistryPrefix(item.templateId, "template:");
-      expect(item.prompt).toContain(`template \`${promptTemplate}\``);
+      expect(item.prompt).not.toContain("template `");
       expect(item.prompt).not.toContain("design system `");
     }
   });
@@ -478,31 +449,12 @@ describe("presentation template items", () => {
     );
   });
 
-  it("keeps the legacy catalog as demo-only data", () => {
-    const legacyItem = PRESENTATION_TEMPLATE_ITEMS.find((candidate) => {
-      return candidate.slug === "starship-v3-investor-update";
-    });
-
-    expect(legacyItem).toBeDefined();
-    expect(
-      PRESENTATION_TEMPLATE_PICKER_ITEMS.some((candidate) => {
-        return candidate.slug === legacyItem?.slug;
-      }),
-    ).toBe(false);
-    expect(legacyItem?.designSystemId).toBe("design-system:spacex");
-    expect(legacyItem?.templateId).toBe("template:html-ppt-pitch-deck");
-    expect(findDesignSystem(legacyItem?.designSystemId ?? "")).toBeDefined();
-    expect(findTemplate(legacyItem?.templateId ?? "")).toBeUndefined();
+  it("removes the legacy demo-only catalog", () => {
+    expect(PRESENTATION_TEMPLATE_ITEMS).toEqual([]);
   });
 
-  it("does not expose Open Design presentation template registry entries", () => {
+  it("does not expose Open Design presentation registry entries", () => {
     expect(listTemplates("presentation")).toHaveLength(0);
-
-    for (const item of PRESENTATION_TEMPLATE_ITEMS) {
-      expect(findTemplate(item.templateId)?.targets ?? []).not.toContain(
-        "presentation",
-      );
-    }
   });
 
   it("keeps the picker catalog separate from the legacy catalog", () => {

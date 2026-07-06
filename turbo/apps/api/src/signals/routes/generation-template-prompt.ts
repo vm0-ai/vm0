@@ -96,6 +96,17 @@ function templateFraming(artifactNoun: string): readonly string[] {
   ];
 }
 
+function presentationRunbookFraming(): readonly string[] {
+  return [
+    "# Presentation Runbook Context",
+    "",
+    "- The user deliberately selected this presentation runbook for this run — use its runbook package as the default authoring guide for any presentation you produce here.",
+    "- It does not force you to generate: the user's prompt decides the task, content, output format, and whether to produce a presentation at all. If a request isn't about producing a presentation, just answer it normally.",
+    "- Other artifact selections, files, or attachments may also be present.",
+    "",
+  ];
+}
+
 function buildWorkflowGenerationTemplatePrompt(
   generationTemplate: WorkflowGenerationTemplateInput,
 ): GenerationTemplatePromptResult {
@@ -111,11 +122,9 @@ function buildWorkflowGenerationTemplatePrompt(
 function buildPresentationGenerationTemplatePrompt(
   generationTemplate: PresentationGenerationTemplateInput,
 ): GenerationTemplatePromptResult {
-  // Presentation generation templates are served exclusively from their
-  // self-contained runbook package. The legacy multi-resource flow and its
-  // `template:html-ppt-*` / `design-system:*` registry entries have been
-  // retired, so a template id without a runbook package is not a valid
-  // selection.
+  // Presentation picker selections are valid only when they resolve to a
+  // self-contained runbook package. The legacy multi-resource registry flow has
+  // been retired, so ids without a runbook package are rejected.
   const runbookPackage = findPresentationRunbookPackage(
     generationTemplate.selection.templateId,
   );
@@ -143,7 +152,7 @@ function buildPresentationRunbookPrompt(
   return {
     status: "resolved",
     prompt: [
-      ...templateFraming("a presentation"),
+      ...presentationRunbookFraming(),
       ...buildPresentationRunbookInstructionLines({
         runbookPackage,
         colorSystemToken: color.token,
