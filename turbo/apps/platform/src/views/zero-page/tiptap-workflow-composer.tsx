@@ -15,8 +15,6 @@ import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { Plugin, PluginKey, type EditorState } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { Popover, PopoverAnchor, type KeyboardEventLike } from "@vm0/ui";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { currentChatAgentRecordId$ } from "../../signals/agent-chat.ts";
 import { composerWorkflows$ } from "../../signals/workflows-page/workflows-signals.ts";
 import {
@@ -47,9 +45,9 @@ const EDITOR_CONTENT_CLASS =
   "caret-foreground outline-none focus:outline-none [&_p]:m-0 " +
   "selection:bg-primary/20";
 
-// Resting height: a single line on mobile (below the md breakpoint) when the
-// switch is on, otherwise the three-line desktop height on every viewport. This
-// mirrors the textarea composer in zero-chat-composer.tsx.
+// Resting height: a single line on mobile (below the md breakpoint) for chat
+// thread composers, otherwise the three-line desktop height on every viewport.
+// This mirrors the legacy textarea metrics in zero-chat-composer.tsx.
 function editorContentClass(singleLineOnMobile: boolean): string {
   return singleLineOnMobile
     ? `${EDITOR_CONTENT_CLASS} min-h-[44px] md:min-h-[96px]`
@@ -119,6 +117,21 @@ function buildWorkflowDecorations(
 
 interface WorkflowHighlightStorage {
   workflowNames: readonly string[];
+}
+
+function isWorkflowHighlightStorage(
+  value: unknown,
+): value is WorkflowHighlightStorage {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const workflowNames = Reflect.get(value, "workflowNames");
+  return (
+    Array.isArray(workflowNames) &&
+    workflowNames.every((name) => {
+      return typeof name === "string";
+    })
+  );
 }
 
 // Colors `/workflow` tokens via inline decorations. The workflow list is read from
@@ -479,12 +492,13 @@ function syncEditorState(
   workflowNames: readonly string[],
   input: string,
 ): void {
-  const storage = (
-    editor.storage as unknown as Record<
-      string,
-      WorkflowHighlightStorage | undefined
-    >
-  ).workflowHighlight;
+  const workflowHighlightStorage = Reflect.get(
+    editor.storage,
+    "workflowHighlight",
+  );
+  const storage = isWorkflowHighlightStorage(workflowHighlightStorage)
+    ? workflowHighlightStorage
+    : undefined;
   if (storage) {
     storage.workflowNames = workflowNames;
   }
@@ -521,7 +535,6 @@ export function TiptapWorkflowComposer({
   const selectedWorkflowIndex = useGet(selectedSlashWorkflowIndex$);
   const setSelectedWorkflowIndex = useSet(setSelectedSlashWorkflowIndex$);
   const currentAgentId = useLastResolved(currentChatAgentRecordId$);
-  const features = useLastResolved(featureSwitch$);
   const composerWorkflowsLoadable = useLastLoadable(composerWorkflows$);
   const composerWorkflowsData =
     composerWorkflowsLoadable.state === "hasData"
@@ -542,13 +555,10 @@ export function TiptapWorkflowComposer({
       })
     : [];
   const isLoadingOrgWorkflows = composerWorkflowsLoadable.state === "loading";
-  const showWorkflowsPageLink =
-    features?.[FeatureSwitchKey.WorkflowAutomation] ?? false;
-  const showSlashWorkflowMenu =
-    slashRange !== null &&
-    (isLoadingOrgWorkflows ||
-      composerWorkflows.length > 0 ||
-      showWorkflowsPageLink);
+  const showSlashWorkflowMenu = slashRange !== null;
+  const placeholder = sending
+    ? "Type your next message…"
+    : "Ask me to automate workflows, manage tasks...";
 
   const editor = useEditor(
     buildEditorOptions({
@@ -628,19 +638,21 @@ export function TiptapWorkflowComposer({
             className="pointer-events-none absolute left-0 top-0 px-4 pt-4 text-[0.9375rem] leading-6 text-muted-foreground/40"
             aria-hidden="true"
           >
-            {sending
-              ? "Type your next message…"
-              : "Ask me to automate workflows, manage tasks..."}
+            {placeholder}
           </div>
         )}
-        <EditorContent editor={editor} />
+        <EditorContent
+          editor={editor}
+          aria-label="Message"
+          placeholder={placeholder}
+        />
       </div>
       {showSlashWorkflowMenu && (
         <SlashWorkflowMenu
           workflows={suggestions}
           loading={isLoadingOrgWorkflows}
           selectedIndex={selectedWorkflowIndex}
-          showWorkflowsPageLink={showWorkflowsPageLink}
+          showWorkflowsPageLink
           onSelect={(workflow) => {
             insertWorkflow(workflow);
           }}

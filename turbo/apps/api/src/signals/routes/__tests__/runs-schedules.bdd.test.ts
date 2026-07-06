@@ -421,7 +421,7 @@ describe("RUN-01..04 and CHAIN-RUN: run admission, runner, and visible reads", (
 
     const unauthenticatedPoll = await api.requestPollRunner(
       false,
-      { group: "vm0/test", profiles: ["vm0/default"] },
+      { group: "vm0/test", supportedProfiles: ["vm0/default"] },
       [401],
     );
     expectApiError(unauthenticatedPoll.body);
@@ -429,7 +429,7 @@ describe("RUN-01..04 and CHAIN-RUN: run admission, runner, and visible reads", (
 
     const invalidPollGroup = await api.requestPollRunner(
       true,
-      { group: "not-a-group", profiles: ["vm0/default"] },
+      { group: "not-a-group", supportedProfiles: ["vm0/default"] },
       [400],
     );
     expectApiError(invalidPollGroup.body);

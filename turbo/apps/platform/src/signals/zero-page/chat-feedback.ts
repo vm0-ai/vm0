@@ -1,10 +1,14 @@
 import { state, computed, command } from "ccstate";
+import { isEditableTarget, matchShortcut } from "@vm0/ui";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import { writeToClipboard } from "./clipboard.ts";
 import { ensureDraft$ } from "../chat-page/create-chat-thread.ts";
+import { onDomEventFn, onRef, resetSignal } from "../utils.ts";
 
 // Assistant message bubbles carry this class in the chat thread. Text selected
 // inside one of them is what we offer feedback on.
 const ASSISTANT_BUBBLE_SELECTOR = ".zero-chat-bubble-assistant";
+const ASSISTANT_GROUP_SELECTOR = '[data-role="assistant"]';
 
 // Each chat thread renders inside a container tagged with its thread id. We
 // read it off the selection so a feedback draft stays bound to its own thread.
@@ -44,8 +48,7 @@ const feedbackThreadId$ = state<string | null>(null);
 // passage highlighted while its draft lives.
 const feedbackRanges$ = state<ReadonlyMap<number, Range>>(new Map());
 const feedbackNextId$ = state<number>(1);
-const feedbackCopied$ = state<boolean>(false);
-const feedbackCopiedTimerId$ = state<number | null>(null);
+const resetFeedbackSelectionToolbarSignal$ = resetSignal();
 
 export const feedbackSelectionValue$ = computed((get) => {
   return get(feedbackSelection$);
@@ -61,10 +64,6 @@ export const feedbackThreadIdValue$ = computed((get) => {
   return get(feedbackThreadId$);
 });
 
-export const feedbackCopiedValue$ = computed((get) => {
-  return get(feedbackCopied$);
-});
-
 // What "Send" will dispatch: every fragment that carries a non-empty note.
 export const feedbackSendCountValue$ = computed((get) => {
   return get(feedbackItems$).filter((item) => {
@@ -72,10 +71,38 @@ export const feedbackSendCountValue$ = computed((get) => {
   }).length;
 });
 
-function resolveSelectionBubble(range: Range): Element | null {
-  const node = range.commonAncestorContainer;
+function closestAssistantBubble(node: Node | null): Element | null {
+  if (!node) {
+    return null;
+  }
   const element = node instanceof Element ? node : node.parentElement;
   return element?.closest(ASSISTANT_BUBBLE_SELECTOR) ?? null;
+}
+
+function resolveSelectionBubble(range: Range): Element | null {
+  const commonBubble = closestAssistantBubble(range.commonAncestorContainer);
+  if (commonBubble) {
+    return commonBubble;
+  }
+
+  // Multi-line selections can report an outer message group as the range's
+  // common ancestor even when both endpoints are inside assistant bubbles.
+  const startBubble = closestAssistantBubble(range.startContainer);
+  const endBubble = closestAssistantBubble(range.endContainer);
+  if (!startBubble || !endBubble) {
+    return null;
+  }
+  if (startBubble === endBubble) {
+    return startBubble;
+  }
+
+  const startGroup = startBubble.closest(ASSISTANT_GROUP_SELECTOR);
+  const endGroup = endBubble.closest(ASSISTANT_GROUP_SELECTOR);
+  if (startGroup !== null && startGroup === endGroup) {
+    return startBubble;
+  }
+
+  return null;
 }
 
 // The id of the thread that owns the selected passage, or null when it sits
@@ -162,6 +189,12 @@ function formatFeedbackPrompt(items: readonly FeedbackItem[]): string {
   return `${intro}\n\n${blocks.join("\n\n---\n\n")}`;
 }
 
+export const closeFeedbackSelectionToolbar$ = command(({ set }) => {
+  set(resetFeedbackSelectionToolbarSignal$);
+  window.getSelection()?.removeAllRanges();
+  set(feedbackSelection$, null);
+});
+
 // Watch the document selection and drive the floating toolbar. The toolbar
 // shows whether or not the tray is open — selecting another passage and
 // clicking "Provide feedback" again is how a further fragment is added.
@@ -169,7 +202,7 @@ export const captureFeedbackSelection$ = command(({ get, set }) => {
   const found = readAssistantSelection();
   if (!found) {
     if (get(feedbackSelection$) !== null) {
-      set(feedbackSelection$, null);
+      set(closeFeedbackSelectionToolbar$);
     }
     return;
   }
@@ -229,7 +262,7 @@ export const startFeedback$ = command(({ get, set }) => {
   }
   set(feedbackRanges$, ranges);
   applyFeedbackHighlight(ranges);
-  set(feedbackSelection$, null);
+  set(closeFeedbackSelectionToolbar$);
 });
 
 export const setFeedbackItemNote$ = command(
@@ -269,32 +302,18 @@ export const submitFeedback$ = command(({ get }): string | null => {
   return formatFeedbackPrompt(noted);
 });
 
-export const dismissFeedback$ = command(({ get, set }) => {
-  const timerId = get(feedbackCopiedTimerId$);
-  if (timerId !== null) {
-    window.clearTimeout(timerId);
-    set(feedbackCopiedTimerId$, null);
-  }
+export const dismissFeedback$ = command(({ set }) => {
+  set(closeFeedbackSelectionToolbar$);
   const emptyRanges = new Map<number, Range>();
   set(feedbackRanges$, emptyRanges);
   applyFeedbackHighlight(emptyRanges);
-  set(feedbackSelection$, null);
   set(feedbackItems$, []);
   set(feedbackThreadId$, null);
-  set(feedbackCopied$, false);
 });
 
 // Dismiss only the floating selection toolbar — the docked tray keeps its
 // comments, so clicking away from a fresh selection never wipes earlier notes.
-export const dismissFeedbackSelection$ = command(({ get, set }) => {
-  const timerId = get(feedbackCopiedTimerId$);
-  if (timerId !== null) {
-    window.clearTimeout(timerId);
-    set(feedbackCopiedTimerId$, null);
-  }
-  set(feedbackSelection$, null);
-  set(feedbackCopied$, false);
-});
+export const dismissFeedbackSelection$ = closeFeedbackSelectionToolbar$;
 
 // Scrolling detaches the toolbar from its passage, so hide it. The docked tray
 // is pinned above the composer, not to the selection, so it stays put.
@@ -302,7 +321,7 @@ export const dismissFeedbackOnScroll$ = command(({ get, set }) => {
   if (get(feedbackSelection$) === null) {
     return;
   }
-  set(feedbackSelection$, null);
+  set(closeFeedbackSelectionToolbar$);
 });
 
 export const copyFeedbackSelection$ = command(
@@ -311,20 +330,92 @@ export const copyFeedbackSelection$ = command(
     if (!selection) {
       return;
     }
-    const ok = await writeToClipboard(selection.text);
     signal.throwIfAborted();
-    if (!ok) {
-      return;
+    const text = selection.text;
+    const ok = await writeToClipboard(text);
+    signal.throwIfAborted();
+    if (ok) {
+      set(closeFeedbackSelectionToolbar$);
+      toast.success("Copied");
     }
-    const existingTimerId = get(feedbackCopiedTimerId$);
-    if (existingTimerId !== null) {
-      window.clearTimeout(existingTimerId);
-    }
-    set(feedbackCopied$, true);
-    const timerId = window.setTimeout(() => {
-      set(feedbackCopied$, false);
-      set(feedbackCopiedTimerId$, null);
-    }, 1500);
-    set(feedbackCopiedTimerId$, timerId);
   },
+);
+
+function shouldIgnoreTextShortcut(event: KeyboardEvent): boolean {
+  return isEditableTarget(event.target);
+}
+
+export const setFeedbackSelectionToolbarRef$ = onRef(
+  command(({ set }, el: HTMLElement, signal: AbortSignal) => {
+    const toolbarSignal = set(resetFeedbackSelectionToolbarSignal$, signal);
+    el.ownerDocument.addEventListener(
+      "keydown",
+      onDomEventFn(async (event: KeyboardEvent) => {
+        if (event.defaultPrevented || toolbarSignal.aborted) {
+          return;
+        }
+        if (matchShortcut("escape", event)) {
+          event.preventDefault();
+          set(closeFeedbackSelectionToolbar$);
+          return;
+        }
+        if (shouldIgnoreTextShortcut(event)) {
+          return;
+        }
+        if (matchShortcut("c", event)) {
+          event.preventDefault();
+          await set(copyFeedbackSelection$, signal);
+          return;
+        }
+        if (matchShortcut("f", event)) {
+          event.preventDefault();
+          set(startFeedback$);
+        }
+      }),
+      { signal: toolbarSignal },
+    );
+  }),
+);
+
+export const setFeedbackSelectionListenersRef$ = onRef(
+  command(({ set }, el: HTMLElement, signal: AbortSignal) => {
+    const doc = el.ownerDocument;
+    let captureTimerId: number | null = null;
+    const capture = () => {
+      set(captureFeedbackSelection$);
+    };
+    const captureDeferred = () => {
+      if (captureTimerId !== null) {
+        window.clearTimeout(captureTimerId);
+      }
+      captureTimerId = window.setTimeout(() => {
+        captureTimerId = null;
+        capture();
+      }, 0);
+    };
+
+    doc.addEventListener("mouseup", captureDeferred, { signal });
+    doc.addEventListener("keyup", capture, { signal });
+    doc.addEventListener(
+      "scroll",
+      () => {
+        set(dismissFeedbackOnScroll$);
+      },
+      {
+        capture: true,
+        passive: true,
+        signal,
+      },
+    );
+    signal.addEventListener(
+      "abort",
+      () => {
+        if (captureTimerId !== null) {
+          window.clearTimeout(captureTimerId);
+          captureTimerId = null;
+        }
+      },
+      { once: true },
+    );
+  }),
 );

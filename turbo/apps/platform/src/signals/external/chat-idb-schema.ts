@@ -2,7 +2,9 @@ import type { IDBPDatabase } from "idb";
 
 const CHAT_IDB_FULL_CACHE_RESET_VERSION = 4;
 const CHAT_IDB_MESSAGES_ORDER_RESET_VERSION = 6;
-const CHAT_IDB_SCHEMA_VERSION = 9;
+const CHAT_IDB_RUN_FINISH_UNREAD_RESET_VERSION = 10;
+const CHAT_IDB_THREAD_EVENT_CACHE_RESET_VERSION = 11;
+const CHAT_IDB_SCHEMA_VERSION = 11;
 const LEGACY_CHAT_THREAD_META_STORE = "chat_thread_agents";
 
 export const CHAT_IDB_VERSION = CHAT_IDB_SCHEMA_VERSION;
@@ -39,15 +41,26 @@ function createChatThreadEventSyncStore(db: IDBPDatabase): void {
   db.createObjectStore(CHAT_THREAD_EVENT_SYNC_STORE, { keyPath: "id" });
 }
 
+function deleteObjectStoreIfExists(db: IDBPDatabase, storeName: string): void {
+  if (db.objectStoreNames.contains(storeName)) {
+    db.deleteObjectStore(storeName);
+  }
+}
+
 export function upgradeChatIdb(db: IDBPDatabase, oldVersion: number): void {
   if (oldVersion < CHAT_IDB_FULL_CACHE_RESET_VERSION) {
-    if (db.objectStoreNames.contains(CHAT_MESSAGES_STORE)) {
-      db.deleteObjectStore(CHAT_MESSAGES_STORE);
-    }
+    deleteObjectStoreIfExists(db, CHAT_MESSAGES_STORE);
   } else if (oldVersion < CHAT_IDB_MESSAGES_ORDER_RESET_VERSION) {
-    if (db.objectStoreNames.contains(CHAT_MESSAGES_STORE)) {
-      db.deleteObjectStore(CHAT_MESSAGES_STORE);
-    }
+    deleteObjectStoreIfExists(db, CHAT_MESSAGES_STORE);
+  } else if (oldVersion < CHAT_IDB_RUN_FINISH_UNREAD_RESET_VERSION) {
+    deleteObjectStoreIfExists(db, CHAT_MESSAGES_STORE);
+  }
+
+  if (oldVersion < CHAT_IDB_THREAD_EVENT_CACHE_RESET_VERSION) {
+    deleteObjectStoreIfExists(db, CHAT_MESSAGES_STORE);
+    deleteObjectStoreIfExists(db, CHAT_THREAD_SNAPSHOT_STORE);
+    deleteObjectStoreIfExists(db, CHAT_THREAD_EVENTS_STORE);
+    deleteObjectStoreIfExists(db, CHAT_THREAD_EVENT_SYNC_STORE);
   }
 
   if (

@@ -4,7 +4,6 @@ import {
   hoveredAutomationId$,
   setHoveredAutomationId$,
 } from "../../../signals/usage-page/usage-insight-signals.ts";
-import { Link } from "../../router/link.tsx";
 import { getCardPalette } from "../../../lib/card-palette.ts";
 import {
   Tooltip,
@@ -86,9 +85,7 @@ export function UsageInsightAutomationsTable({
               row.automationDescription?.trim() || row.automationName;
             return (
               <li key={row.automationId}>
-                <Link
-                  pathname="/automations/:automationId"
-                  options={{ pathParams: { automationId: row.automationId } }}
+                <div
                   className={`grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)_3rem] items-center gap-3 -mx-1.5 px-1.5 py-1 rounded-md transition-all duration-150 ${
                     hoveredId === row.automationId ? "bg-foreground/5" : ""
                   } ${isActive ? "opacity-100" : "opacity-30"}`}
@@ -113,9 +110,6 @@ export function UsageInsightAutomationsTable({
                       <p className="text-xs whitespace-normal break-words">
                         {fullName}
                       </p>
-                      <p className="text-[11px] mt-1.5 pt-1.5 border-t border-white/15 opacity-80">
-                        Click to open →
-                      </p>
                     </TooltipContent>
                   </Tooltip>
                   <div className="h-1.5 rounded-full bg-foreground/10 overflow-hidden">
@@ -127,7 +121,7 @@ export function UsageInsightAutomationsTable({
                   <span className="text-xs tabular-nums opacity-70 text-right">
                     {formatValue(value)}
                   </span>
-                </Link>
+                </div>
               </li>
             );
           })}

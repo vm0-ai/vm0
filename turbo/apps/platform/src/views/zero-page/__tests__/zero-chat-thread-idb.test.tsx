@@ -228,16 +228,11 @@ function prepareDefaultAgent(): void {
 }
 
 function mockCurrentThreadDetail(): void {
-  context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
+  context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
     return respond(200, {
-      id: params.id,
-      title: THREAD_TITLE,
-      agentId: AGENT_ID,
-      activeRunIds: [],
       lastReadAt: "2026-03-10T00:00:00Z",
-      lastMessageAt: "2026-03-10T00:00:02Z",
-      createdAt: "2026-03-10T00:00:00Z",
-      updatedAt: "2026-03-10T00:00:02Z",
+      computerUseHostId: null,
+      codexServiceTier: null,
     });
   });
 }

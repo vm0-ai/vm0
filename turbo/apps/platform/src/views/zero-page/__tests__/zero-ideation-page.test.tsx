@@ -178,7 +178,7 @@ describe("zero ideation page", () => {
     const composer = (await screen.findByPlaceholderText(
       PLACEHOLDER,
     )) as HTMLTextAreaElement;
-    expect(composer).toHaveValue(
+    expect(composer).toHaveTextContent(
       "Set up a daily RevenueCat digest that tracks new subscriptions, renewals, and cancellations in Google Sheets and alerts on Slack for churn spikes",
     );
   });
@@ -419,14 +419,16 @@ describe("zero ideation page", () => {
       name: "Unread chats",
     });
     expect(unreadRegion).toHaveClass("md:hidden");
-    expect(within(unreadRegion).getByText("2")).toBeInTheDocument();
+    expect(within(unreadRegion).queryByText("Unread chats")).toBeNull();
+    expect(within(unreadRegion).queryByText("2")).toBeNull();
     expect(
       within(unreadRegion).getByText("Unread research brief"),
     ).toBeInTheDocument();
     expect(
       within(unreadRegion).getByText("Running incident follow-up"),
     ).toBeInTheDocument();
-    expect(within(unreadRegion).getByText("Running now")).toBeInTheDocument();
+    expect(within(unreadRegion).queryByText("Unread")).toBeNull();
+    expect(within(unreadRegion).queryByText("Running now")).toBeNull();
     expect(
       screen.queryByText("Other agent unread chat"),
     ).not.toBeInTheDocument();

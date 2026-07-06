@@ -248,9 +248,7 @@ async function enableGoalWorkflows(actor: ApiTestUser): Promise<void> {
       orgId: actor.orgId,
       orgRole: actor.orgRole,
     },
-    {
-      [FeatureSwitchKey.WorkflowAutomation]: true,
-    },
+    {},
   );
 }
 
@@ -321,9 +319,39 @@ async function waitForThreadTitle(
 ): Promise<void> {
   await expect
     .poll(async () => {
-      return (await chat.readThread(actor, threadId)).title;
+      return await readThreadTitleFromEvents(actor, threadId);
     })
     .toBe(title);
+}
+
+async function readThreadTitleFromEvents(
+  actor: ApiTestUser,
+  threadId: string,
+): Promise<string | null> {
+  const events = await chat.requestThreadEvents(actor, {}, [200]);
+  if (events.status !== 200) {
+    throw new Error("Expected chat thread events to load");
+  }
+
+  let latestTitleEvent:
+    | { readonly title: string | null; readonly createdAt: string }
+    | undefined;
+  for (const event of events.body.events) {
+    if (
+      event.chatThreadId !== threadId ||
+      (event.kind !== "created" && event.kind !== "renamed")
+    ) {
+      continue;
+    }
+    if (
+      latestTitleEvent === undefined ||
+      Date.parse(event.createdAt) >= Date.parse(latestTitleEvent.createdAt)
+    ) {
+      latestTitleEvent = event;
+    }
+  }
+
+  return latestTitleEvent?.title ?? null;
 }
 
 async function waitForRunStatus(
@@ -450,6 +478,19 @@ function lifecycleMarkers(
   });
 }
 
+function recommendedFollowupMessages(
+  messages: readonly PagedChatMessage[],
+  runId: string,
+): AssistantMessage[] {
+  return assistantMessages(messages).filter((message) => {
+    return (
+      message.runId === runId &&
+      message.runLifecycleEvent === undefined &&
+      (message.recommendedFollowups?.length ?? 0) > 0
+    );
+  });
+}
+
 function publishedChatThreadRunFinished(threadId: string): boolean {
   return context.mocks.ably.publish.mock.calls.some((call) => {
     const payload = call[1];
@@ -463,21 +504,13 @@ function publishedChatThreadRunFinished(threadId: string): boolean {
   });
 }
 
-async function waitForChatThreadMessageUpdatedPublish(
+async function waitForChatThreadMessageCreatedPublish(
   threadId: string,
-  messageId: string,
 ): Promise<void> {
   await expect
     .poll(() => {
       return context.mocks.ably.publish.mock.calls.some((call) => {
-        const payload = call[1];
-        return (
-          call[0] === `chatThreadMessageUpdated:${threadId}` &&
-          payload !== null &&
-          typeof payload === "object" &&
-          "messageId" in payload &&
-          payload.messageId === messageId
-        );
+        return call[0] === `chatThreadMessageCreated:${threadId}`;
       });
     })
     .toBe(true);
@@ -667,6 +700,7 @@ describe("CHAT-02: completed chat callback", () => {
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
     const titlePrompts: string[] = [];
+    const followupSystemPrompts: string[] = [];
     const followupPrompts: string[] = [];
     mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");
     chatCallbacks.mockOpenRouterCompletions((body) => {
@@ -676,6 +710,7 @@ describe("CHAT-02: completed chat callback", () => {
         return "Debugging Node Apps";
       }
       if (systemContent.includes("concise follow-up prompts")) {
+        followupSystemPrompts.push(systemContent);
         followupPrompts.push(body.messages[1]?.content ?? "");
         return JSON.stringify([
           { prompt: "Turn this into a checklist", kind: "talk" },
@@ -748,11 +783,9 @@ describe("CHAT-02: completed chat callback", () => {
       (messages) => {
         return (
           eventBackedContents(messages, first.runId).length === 1 &&
-          lifecycleMarkers(messages, first.runId, "completed").some(
-            (message) => {
-              return (message.recommendedFollowups?.length ?? 0) === 2;
-            },
-          )
+          recommendedFollowupMessages(messages, first.runId).some((message) => {
+            return (message.recommendedFollowups?.length ?? 0) === 2;
+          })
         );
       },
     );
@@ -775,7 +808,15 @@ describe("CHAT-02: completed chat callback", () => {
     }
     expect(marker.content).toBeNull();
     expect(marker).not.toHaveProperty("status");
-    expect(marker.recommendedFollowups).toStrictEqual([
+    expect(marker.recommendedFollowups).toBeUndefined();
+    const recommender = recommendedFollowupMessages(
+      after.messages,
+      first.runId,
+    )[0];
+    if (!recommender) {
+      throw new Error("Expected a recommended follow-up message");
+    }
+    expect(recommender.recommendedFollowups).toStrictEqual([
       { prompt: "Turn this into a checklist", kind: "talk" },
       {
         prompt: "Generate a landing page for this plan",
@@ -786,20 +827,16 @@ describe("CHAT-02: completed chat callback", () => {
     expect(followupPrompts).toHaveLength(1);
     expect(followupPrompts[0]).toContain("final answer");
     expect(followupPrompts[0]).not.toContain("queued next turn");
+    expect(followupSystemPrompts).toStrictEqual([
+      expect.stringContaining(
+        'The "prompt" values are shown as plain text, not rendered as Markdown',
+      ),
+    ]);
     await expect
       .poll(() => {
         return publishedChatThreadRunFinished(first.threadId);
       })
       .toBe(true);
-
-    const recommender = assistantMessages(after.messages).find((message) => {
-      return (
-        message.runId === first.runId &&
-        message.runLifecycleEvent === undefined &&
-        (message.recommendedFollowups?.length ?? 0) > 0
-      );
-    });
-    expect(recommender).toBeUndefined();
 
     await waitForThreadTitle(actor, first.threadId, "Debugging Node Apps");
     expect(titlePrompts).toHaveLength(titlePromptCountBeforeComplete);
@@ -1079,12 +1116,9 @@ describe("CHAT-02: completed chat callback", () => {
       actor,
       first.threadId,
       (messages) => {
-        return lifecycleMarkers(messages, first.runId, "completed").some(
+        return recommendedFollowupMessages(messages, first.runId).some(
           (message) => {
-            return (
-              message.id === markerBeforeRelease.id &&
-              (message.recommendedFollowups?.length ?? 0) === 1
-            );
+            return (message.recommendedFollowups?.length ?? 0) === 1;
           },
         );
       },
@@ -1098,16 +1132,18 @@ describe("CHAT-02: completed chat callback", () => {
       "completed",
     )[0];
     expect(markerAfterRelease?.id).toBe(markerBeforeRelease.id);
-    expect(markerAfterRelease?.recommendedFollowups).toStrictEqual([
+    expect(markerAfterRelease?.recommendedFollowups).toBeUndefined();
+    const followupMessage = recommendedFollowupMessages(
+      afterFollowups.messages,
+      first.runId,
+    )[0];
+    expect(followupMessage?.recommendedFollowups).toStrictEqual([
       { prompt: "Review the queued result", kind: "talk" },
     ]);
-    await waitForChatThreadMessageUpdatedPublish(
-      first.threadId,
-      markerBeforeRelease.id,
-    );
+    await waitForChatThreadMessageCreatedPublish(first.threadId);
     expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
-      `chatThreadMessageCreated:${first.threadId}`,
-      null,
+      `chatThreadMessageUpdated:${first.threadId}`,
+      expect.anything(),
     );
     expect(titlePrompts).toHaveLength(1);
     expect(titlePrompts[0]).toContain("finish the current turn");
@@ -1902,7 +1938,7 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
       }),
     ).toStrictEqual(["Already streamed."]);
 
-    const beforeTitle = (await chat.readThread(actor, first.threadId)).title;
+    const beforeTitle = await readThreadTitleFromEvents(actor, first.threadId);
     expect(beforeTitle).toBeNull();
     mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");
     chatCallbacks.mockOpenRouterFailure();
@@ -1931,9 +1967,9 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
     expect(
       lifecycleMarkers(messages.messages, fourth.runId, "completed"),
     ).toHaveLength(1);
-    expect((await chat.readThread(actor, first.threadId)).title).toBe(
-      beforeTitle,
-    );
+    await expect(
+      readThreadTitleFromEvents(actor, first.threadId),
+    ).resolves.toBe(beforeTitle);
   }, 90_000);
 });
 
@@ -2475,7 +2511,9 @@ describe("CHAT-02: auto-send across a model switch", () => {
 
     const thread = await chat.readThread(actor, first.threadId);
     expect(thread).not.toHaveProperty("selectedModel");
-    expect(thread.title).toBe("Working with JSON");
+    await expect(
+      readThreadTitleFromEvents(actor, first.threadId),
+    ).resolves.toBe("Working with JSON");
     const threadEvents = await chat.requestThreadEvents(actor, {}, [200]);
     expect(threadEvents.status).toBe(200);
     if (threadEvents.status !== 200) {

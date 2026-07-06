@@ -13,10 +13,6 @@ export {
   authorizeAgentConnector$,
   deauthorizeAgentConnector$,
   saveAgentConnectors$,
-  agentAutomationEntries$,
-  saveAgentAutomation$,
-  toggleAgentAutomationEnabled$,
-  deleteAgentAutomation$,
   deleteAgent$,
   setActiveAgent$,
 } from "./job-detail/index.ts";

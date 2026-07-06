@@ -3,7 +3,6 @@ import { useLastResolved, useGet, useSet } from "ccstate-react";
 import {
   IconChartLine,
   IconLayoutGrid,
-  IconCalendar,
   IconRoute,
   IconUsers,
   IconEdit,
@@ -35,8 +34,6 @@ import type { RouteKey } from "../../signals/route-paths.ts";
 import { defaultAgentName$ } from "../../signals/agent.ts";
 import { currentChatAgentId$ } from "../../signals/agent-chat.ts";
 import {
-  isScrolled$,
-  setIsScrolled$,
   manageSectionCollapsed$,
   setManageSectionCollapsed$,
 } from "../../signals/zero-page/zero-sidebar-state.ts";
@@ -48,7 +45,6 @@ import { slackOrgScopeMismatch$ } from "../../signals/zero-page/zero-slack.ts";
 import { AccountDropdown } from "./zero-sidebar-account.tsx";
 import { ChatThreadsSection } from "./sidebar-threads.tsx";
 import { PinnedAgentListSection } from "./zero-sidebar-pinned.tsx";
-import { OverlayScrollArea } from "./zero-sidebar-scroll.tsx";
 import { SidebarUpgradeCard } from "./zero-sidebar-upgrade.tsx";
 
 export { AccountDropdown } from "./zero-sidebar-account.tsx";
@@ -64,7 +60,6 @@ interface ManageNavItem {
   readonly label: string;
   readonly icon: NavIcon;
   readonly featureGate?: FeatureSwitchKey;
-  readonly hideWhenFeatureEnabled?: FeatureSwitchKey;
 }
 
 const MANAGE_NAV: readonly ManageNavItem[] = [
@@ -87,7 +82,6 @@ const MANAGE_NAV: readonly ManageNavItem[] = [
     pathname: "/workflows",
     label: "Workflows",
     icon: IconRoute as NavIcon,
-    featureGate: FeatureSwitchKey.WorkflowAutomation,
   },
   {
     id: "connectors",
@@ -95,14 +89,6 @@ const MANAGE_NAV: readonly ManageNavItem[] = [
     pathname: "/connectors",
     label: "Connectors",
     icon: IconPlug as NavIcon,
-  },
-  {
-    id: "automations",
-    activeKeys: ["automations", "automationDetail"],
-    pathname: "/automations",
-    label: "Automations",
-    icon: IconCalendar as NavIcon,
-    hideWhenFeatureEnabled: FeatureSwitchKey.WorkflowAutomation,
   },
   {
     id: "activities",
@@ -149,12 +135,6 @@ function useResolvedNavItems() {
   const features = useLastResolved(featureSwitch$);
   const defaultDisplayName = useLastResolved(defaultAgentName$) ?? "Zero";
   const manageNav = MANAGE_NAV.filter((item) => {
-    if (
-      item.hideWhenFeatureEnabled &&
-      features?.[item.hideWhenFeatureEnabled]
-    ) {
-      return false;
-    }
     if (item.featureGate && !features?.[item.featureGate]) {
       return false;
     }
@@ -406,7 +386,7 @@ function ExpandedMainNav() {
       className="flex-1 flex flex-col min-h-0 overflow-hidden p-2 pt-1"
     >
       <ExpandedManageSection />
-      <ExpandedScrollArea />
+      <ExpandedSidebarSections />
     </nav>
   );
 }
@@ -501,7 +481,7 @@ function CollapsedManageNav({
 }) {
   return (
     <div className="shrink-0">
-      <div className="flex h-8 shrink-0 items-center justify-between pl-2 pr-0">
+      <div className="flex h-8 shrink-0 items-center justify-between pr-0">
         <TooltipProvider delayDuration={150}>
           <div className="flex min-w-0 items-center gap-1">
             {manageNav.map(
@@ -563,23 +543,12 @@ function CollapsedManageNav({
   );
 }
 
-function ExpandedScrollArea() {
-  const isScrolled = useGet(isScrolled$);
-  const setIsScrolledFn = useSet(setIsScrolled$);
+function ExpandedSidebarSections() {
   return (
-    <OverlayScrollArea
-      className="flex-1 min-h-0 -mx-2 px-2 mt-2 pt-2"
-      data-testid="sidebar-scroll-area"
-      onScroll={(e) => {
-        return setIsScrolledFn(e.currentTarget.scrollTop > 0);
-      }}
-      style={{
-        boxShadow: isScrolled ? "0 -1px 0 0 hsl(var(--border) / 0.4)" : "none",
-      }}
-    >
+    <div className="flex-1 min-h-0 -mx-2 px-2 mt-2 pt-2 flex flex-col overflow-hidden">
       <PinnedAgentListSection />
       <ChatThreadsSectionWithKey />
-    </OverlayScrollArea>
+    </div>
   );
 }
 

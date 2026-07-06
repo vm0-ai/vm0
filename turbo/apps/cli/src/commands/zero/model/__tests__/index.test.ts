@@ -28,7 +28,7 @@ const MODEL_POLICIES_RESPONSE = {
     {
       id: "00000000-0000-4000-8000-000000000002",
       model: "gpt-5.5",
-      modelLabel: "GPT-5.5",
+      modelLabel: "GPT 5.5",
       isDefault: false,
       defaultProviderType: "openai-api-key",
       credentialScope: "org",
@@ -81,7 +81,7 @@ describe("zero model command", () => {
     expect(logCalls).toContain("Claude Sonnet 4.6");
     expect(logCalls).toContain("provider: built-in");
     expect(logCalls).toContain("price tier: $$");
-    expect(logCalls).toContain("GPT-5.5");
+    expect(logCalls).toContain("GPT 5.5");
     expect(logCalls).toContain("provider: api key");
     expect(logCalls).not.toContain("price tier: $$$");
     expect(logCalls).toContain("zero model-provider set --help");

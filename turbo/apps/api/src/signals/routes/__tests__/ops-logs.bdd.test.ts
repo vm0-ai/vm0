@@ -1,5 +1,5 @@
 import { createHash, createHmac, randomUUID } from "node:crypto";
-import { gzipSync } from "node:zlib";
+import { gzipSync, zstdCompressSync } from "node:zlib";
 
 import AdmZip from "adm-zip";
 import { createStore } from "ccstate";
@@ -1234,6 +1234,107 @@ describe("OPS-01: user data export", () => {
     expect(manifest.counts.sessionHistories).toBe(1);
   });
 
+  it("exports zstd-backed session history bytes as a jsonl conversation file", async () => {
+    const api = createOpsLogsApi(context);
+    const bdd = createBddApi(context);
+    const misc = createMiscRoutesApi(context);
+    const runs = createRunsAutomationsApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const actor = await createUserExportActor(bdd);
+    const exportStartAt = Date.UTC(2026, 4, 12, 6, 30);
+    const downloadUrl =
+      "https://r2.example.com/bdd-export-zstd-history.zip?sig=test";
+
+    runs.acceptStorageDownloads();
+    runs.acceptTelemetryIngest();
+    runs.configureRunnerGroup();
+    await runs.grantProEntitlement(actor);
+    await runs.ensureOrgModelProvider(actor);
+    const agent = await bdd.createAgent(actor, {
+      displayName: "BDD Export Zstd History Agent",
+      visibility: "private",
+    });
+    const run = await runs.createRun(actor, {
+      agentId: agent.agentId,
+      prompt: "checkpoint zstd compressed history",
+      modelProvider: "anthropic-api-key",
+    });
+    const claim = await runs.claimRunnerJob(run.runId);
+    const headers = { authorization: `Bearer ${claim.sandboxToken}` };
+    const history = Buffer.concat([
+      Buffer.from(
+        `{"type":"init"}\n{"type":"human","text":"zstd-exported-${randomUUID()}"}\n`,
+        "utf8",
+      ),
+      Buffer.from([0xc3, 0x28, 0x0a]),
+    ]);
+    const historyHash = createHash("sha256").update(history).digest("hex");
+    const compressedHistory = zstdCompressSync(history);
+    const compressedKey = `blobs/${historyHash}.blob.zst`;
+
+    const prepared = await webhooks.requestAgentCheckpointPrepareHistory(
+      {
+        runId: run.runId,
+        hash: historyHash,
+        rawSize: history.length,
+        encodedSize: compressedHistory.length,
+        encoding: "zstd",
+      },
+      headers,
+      [200],
+    );
+    expect(prepared.body).toMatchObject({
+      existing: false,
+      encoding: "zstd",
+    });
+    const checkpoint = await webhooks.requestAgentCheckpoint(
+      {
+        runId: run.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `bdd-export-zstd-session-${run.runId}`,
+        cliAgentSessionHistoryHash: historyHash,
+      },
+      headers,
+      [200],
+    );
+    if (checkpoint.status !== 200) {
+      throw new Error("Expected zstd history checkpoint to succeed");
+    }
+    expect(checkpoint.body.conversationId).not.toBe("");
+    await webhooks.requestAgentComplete(
+      { runId: run.runId, exitCode: 0 },
+      headers,
+      [200],
+    );
+
+    mockNow(exportStartAt);
+    context.mocks.s3.getSignedUrl.mockResolvedValue(downloadUrl);
+    misc.putS3Object(compressedKey, compressedHistory);
+
+    const started = await api.requestPostUserExport(actor, [202]);
+    const jobId = started.body.jobId;
+    const exportKey = `exports/${actor.userId}/${jobId}.zip`;
+
+    await waitForUserExportJobStatus(api, actor, jobId, "completed");
+    const zip = exportZip(exportKey);
+    const names = zipEntryNames(zip);
+    const historyEntry = singleZipEntry(names, (name) => {
+      return (
+        name.startsWith("conversations/") && name.endsWith("-history.jsonl")
+      );
+    });
+    expect(zipBytes(zip, historyEntry)).toStrictEqual(history);
+
+    const manifest = JSON.parse(zipText(zip, "export-manifest.json")) as {
+      readonly counts: {
+        readonly conversationThreads: number;
+        readonly sessionHistories: number;
+      };
+    };
+    expect(manifest.counts.conversationThreads).toBe(0);
+    expect(manifest.counts.sessionHistories).toBe(1);
+  });
+
   it("fails user export when gzip-backed session history does not match its hash", async () => {
     const api = createOpsLogsApi(context);
     const bdd = createBddApi(context);
@@ -1300,6 +1401,88 @@ describe("OPS-01: user data export", () => {
     mockNow(exportStartAt);
     context.mocks.s3.getSignedUrl.mockResolvedValue(
       "https://r2.example.com/bdd-export-corrupt-history.zip?sig=test",
+    );
+    misc.putS3Object(compressedKey, tamperedCompressedHistory);
+
+    const started = await api.requestPostUserExport(actor, [202]);
+    const failedStatus = await waitForUserExportJobStatus(
+      api,
+      actor,
+      started.body.jobId,
+      "failed",
+    );
+    if (!failedStatus.job) {
+      throw new Error("Expected failed export job");
+    }
+    expect(failedStatus.job.error).toContain("session history hash mismatch");
+  });
+
+  it("fails user export when zstd-backed session history does not match its hash", async () => {
+    const api = createOpsLogsApi(context);
+    const bdd = createBddApi(context);
+    const misc = createMiscRoutesApi(context);
+    const runs = createRunsAutomationsApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const actor = await createUserExportActor(bdd);
+    const exportStartAt = Date.UTC(2026, 4, 12, 7, 30);
+
+    runs.acceptStorageDownloads();
+    runs.acceptTelemetryIngest();
+    runs.configureRunnerGroup();
+    await runs.grantProEntitlement(actor);
+    await runs.ensureOrgModelProvider(actor);
+    const agent = await bdd.createAgent(actor, {
+      displayName: "BDD Export Corrupt Zstd History Agent",
+      visibility: "private",
+    });
+    const run = await runs.createRun(actor, {
+      agentId: agent.agentId,
+      prompt: "checkpoint corrupt zstd compressed history",
+      modelProvider: "anthropic-api-key",
+    });
+    const claim = await runs.claimRunnerJob(run.runId);
+    const headers = { authorization: `Bearer ${claim.sandboxToken}` };
+    const history = `{"type":"init"}\n{"type":"human","text":"zstd-exported-${randomUUID()}"}\n`;
+    const tamperedHistory = history.replace("zstd-exported-", "zstd-tampered-");
+    const historyHash = createHash("sha256").update(history).digest("hex");
+    const tamperedCompressedHistory = zstdCompressSync(
+      Buffer.from(tamperedHistory, "utf8"),
+    );
+    const compressedKey = `blobs/${historyHash}.blob.zst`;
+
+    await webhooks.requestAgentCheckpointPrepareHistory(
+      {
+        runId: run.runId,
+        hash: historyHash,
+        rawSize: Buffer.byteLength(history, "utf8"),
+        encodedSize: tamperedCompressedHistory.length,
+        encoding: "zstd",
+      },
+      headers,
+      [200],
+    );
+    const checkpoint = await webhooks.requestAgentCheckpoint(
+      {
+        runId: run.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `bdd-export-corrupt-zstd-session-${run.runId}`,
+        cliAgentSessionHistoryHash: historyHash,
+      },
+      headers,
+      [200],
+    );
+    if (checkpoint.status !== 200) {
+      throw new Error("Expected zstd history checkpoint to succeed");
+    }
+    await webhooks.requestAgentComplete(
+      { runId: run.runId, exitCode: 0 },
+      headers,
+      [200],
+    );
+
+    mockNow(exportStartAt);
+    context.mocks.s3.getSignedUrl.mockResolvedValue(
+      "https://r2.example.com/bdd-export-corrupt-zstd-history.zip?sig=test",
     );
     misc.putS3Object(compressedKey, tamperedCompressedHistory);
 

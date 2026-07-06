@@ -362,7 +362,15 @@ describe("zero attachment chips", () => {
 
     await setupComposer();
 
-    const composer = screen.getByPlaceholderText(PLACEHOLDER);
+    const composer = await waitFor(() => {
+      const editor = document.querySelector(
+        '.zero-composer [contenteditable="true"]',
+      );
+      if (!(editor instanceof HTMLElement)) {
+        throw new Error("Composer editor not found");
+      }
+      return editor;
+    });
     const file = new File(["pasted file body"], "pasted-notes.txt", {
       type: "text/plain",
     });
@@ -377,7 +385,7 @@ describe("zero attachment chips", () => {
     });
 
     await waitFor(() => {
-      expect(composer).toHaveValue("Pasted context");
+      expect(composer).toHaveTextContent("Pasted context");
       expect(
         screen.getByLabelText("Remove pasted-notes.txt"),
       ).toBeInTheDocument();
@@ -3989,6 +3997,7 @@ describe("zero attachment chips", () => {
       expect(screen.getByTestId("html-dom-comment-frame")).toBeInTheDocument();
       expectHostedSiteEditingHeader({ fullscreen: true });
     });
+    expect(screen.getByTestId("artifact-sidebar")).toHaveClass("z-[9999]");
 
     click(screen.getByTestId("artifact-sidebar-exit-html-edit"));
 

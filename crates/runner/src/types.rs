@@ -356,6 +356,8 @@ pub enum ResumeSessionHistoryEncoding {
     Identity,
     #[serde(rename = "gzip")]
     Gzip,
+    #[serde(rename = "zstd")]
+    Zstd,
 }
 
 impl ResumeSession {
@@ -414,7 +416,6 @@ pub struct HeartbeatState {
     pub runner_id: String,
     pub runner_name: String,
     pub group: String,
-    pub profiles: Vec<String>,
     pub total_vcpu: u32,
     pub total_memory_mb: u32,
     pub max_concurrent: usize,
@@ -422,7 +423,6 @@ pub struct HeartbeatState {
     pub allocated_memory_mb: u32,
     pub running_count: usize,
     pub admittable_profiles: Vec<String>,
-    pub available_profiles: Vec<String>,
     pub held_session_states: Vec<HeldSessionState>,
     pub mode: String,
 }
@@ -918,6 +918,40 @@ mod tests {
     }
 
     #[test]
+    fn cli_agent_session_id_returns_id_from_zstd_resume_session_history_ref() {
+        let json = json!({
+            "runId": "550e8400-e29b-41d4-a716-446655440000",
+            "prompt": "hello",
+            "sandboxToken": "tok",
+            "cliAgentType": "claude_code",
+            "resumeSession": {
+                "sessionId": "sess-ref-123",
+                "historyRef": {
+                    "kind": "blob",
+                    "hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "url": "https://r2.example.com/blobs/a.blob.zst?sig=secret",
+                    "encoding": "zstd",
+                    "rawSize": 42,
+                    "encodedSize": 18
+                }
+            },
+            "billableFirewalls": []
+        });
+        let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
+        let session = ctx.resume_session.as_ref().unwrap();
+        let history_ref = session.history_ref().unwrap();
+        assert_eq!(ctx.cli_agent_session_id(), Some("sess-ref-123"));
+        assert!(session.session_history().is_none());
+        assert_eq!(history_ref.kind, ResumeSessionHistoryRefKind::Blob);
+        assert_eq!(
+            history_ref.encoding,
+            Some(ResumeSessionHistoryEncoding::Zstd)
+        );
+        assert_eq!(history_ref.raw_size, 42);
+        assert_eq!(history_ref.encoded_size, 18);
+    }
+
+    #[test]
     fn storage_manifest_camel_case() {
         let json = json!({
             "storages": [{
@@ -1060,7 +1094,6 @@ mod tests {
             runner_id: "550e8400-e29b-41d4-a716-446655440000".into(),
             runner_name: "runner-1".into(),
             group: "vm0/production".into(),
-            profiles: vec!["vm0/default".into()],
             total_vcpu: 16,
             total_memory_mb: 32768,
             max_concurrent: 8,
@@ -1068,7 +1101,6 @@ mod tests {
             allocated_memory_mb: 6144,
             running_count: 2,
             admittable_profiles: vec!["vm0/default".into()],
-            available_profiles: vec!["vm0/default".into()],
             held_session_states: vec![HeldSessionState {
                 session_id: "session-abc".into(),
                 last_completed_at: "2026-05-28T00:00:00.000Z".into(),
@@ -1085,7 +1117,8 @@ mod tests {
         assert_eq!(json["allocatedMemoryMb"], 6144);
         assert_eq!(json["runningCount"], 2);
         assert_eq!(json["admittableProfiles"], json!(["vm0/default"]));
-        assert_eq!(json["availableProfiles"], json!(["vm0/default"]));
+        assert!(json.get("profiles").is_none());
+        assert!(json.get("availableProfiles").is_none());
         assert_eq!(
             json["heldSessionStates"],
             json!([{

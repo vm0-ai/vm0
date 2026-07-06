@@ -78,6 +78,12 @@ interface ModelProviderPickerProps {
   onOpenChange?: (open: boolean) => void;
   // When true, picker is read-only for the current caller state.
   disabled?: boolean;
+  /**
+   * When false, the trigger renders only the explicit value. Existing thread
+   * composers use this because thread model state comes from event projection,
+   * not user/workspace defaults.
+   */
+  resolveDefaultSelection?: boolean;
 }
 
 // Radix Select reserves the empty string for "no value" and throws if a
@@ -662,15 +668,18 @@ function ModelFirstModelPicker({
   open,
   onOpenChange,
   disabled,
+  userPreference,
+  resolveDefaultSelection,
 }: ModelProviderPickerProps & {
   placeholder: string;
   compactTrigger: boolean;
   mobileIconTrigger: boolean;
+  userPreference: { selectedModel: string | null } | null | undefined;
+  resolveDefaultSelection: boolean;
 }) {
   const policiesLoadable = useLoadable(orgModelPolicies$);
   const billingLoadable = useLoadable(billingStatusAsync$);
   const lastPolicies = useLastResolved(orgModelPolicies$);
-  const userPreference = useLastResolved(userModelPreference$);
   const openBillingPlans = useSet(openBillingPlans$);
   const openOrgManage = useSet(setOrgManageDialogOpen$);
   const pageSignal = useGet(pageSignal$);
@@ -682,11 +691,13 @@ function ModelFirstModelPicker({
   const policies = policyResponse?.policies ?? [];
   const selectablePolicies = selectablePoliciesForTier(policies, limitedFree1);
   const selectableValue = selectionAllowedValue(value, limitedFree1);
-  const resolved = resolveModelFirstDefault(
-    selectableValue,
-    userPreference,
-    selectablePolicies,
-  );
+  const resolved = resolveDefaultSelection
+    ? resolveModelFirstDefault(
+        selectableValue,
+        userPreference,
+        selectablePolicies,
+      )
+    : selectableValue;
   const selectedModel = resolved?.selectedModel ?? null;
   const codexFastModeAvailable =
     codexFastModeEnabled &&
@@ -709,8 +720,8 @@ function ModelFirstModelPicker({
         compactTrigger={compactTrigger}
         mobileIconTrigger={mobileIconTrigger}
         triggerClassName={triggerClassName}
-        userPreference={userPreference}
-        policies={selectablePolicies}
+        userPreference={resolveDefaultSelection ? userPreference : null}
+        policies={resolveDefaultSelection ? selectablePolicies : []}
       />
     );
   }
@@ -772,6 +783,23 @@ function ModelFirstModelPicker({
   );
 }
 
+function ModelFirstModelPickerWithDefaultSelection(
+  props: ModelProviderPickerProps & {
+    placeholder: string;
+    compactTrigger: boolean;
+    mobileIconTrigger: boolean;
+  },
+) {
+  const userPreference = useLastResolved(userModelPreference$);
+  return (
+    <ModelFirstModelPicker
+      {...props}
+      userPreference={userPreference}
+      resolveDefaultSelection
+    />
+  );
+}
+
 export function ModelProviderPicker({
   value,
   onChange,
@@ -783,19 +811,28 @@ export function ModelProviderPicker({
   open,
   onOpenChange,
   disabled = false,
+  resolveDefaultSelection = true,
 }: ModelProviderPickerProps) {
+  const props = {
+    value,
+    onChange,
+    placeholder,
+    triggerClassName,
+    compactTrigger,
+    mobileIconTrigger,
+    codexFastModeEnabled,
+    open,
+    onOpenChange,
+    disabled,
+  };
+  if (resolveDefaultSelection) {
+    return <ModelFirstModelPickerWithDefaultSelection {...props} />;
+  }
   return (
     <ModelFirstModelPicker
-      value={value}
-      onChange={onChange}
-      placeholder={placeholder}
-      triggerClassName={triggerClassName}
-      compactTrigger={compactTrigger}
-      mobileIconTrigger={mobileIconTrigger}
-      codexFastModeEnabled={codexFastModeEnabled}
-      open={open}
-      onOpenChange={onOpenChange}
-      disabled={disabled}
+      {...props}
+      userPreference={null}
+      resolveDefaultSelection={false}
     />
   );
 }

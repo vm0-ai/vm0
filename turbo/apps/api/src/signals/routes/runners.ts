@@ -50,10 +50,10 @@ import {
 } from "../services/zero-user-permission-grants.service";
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import {
+  type CompressedSessionHistoryBlobEncoding,
   resumeSessionHistoryBlobKey,
   resumeSessionHistoryRawBlobKey,
   SESSION_HISTORY_ENCODING_IDENTITY,
-  SESSION_HISTORY_ENCODING_GZIP,
   tryNormalizeSessionHistoryBlobEncoding,
 } from "../services/session-history-blobs";
 import {
@@ -300,16 +300,7 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   const heldSessionStates =
     canonicalizeHeldSessionStates(body.data.heldSessionStates) ?? [];
-  // Stage 1 wire compatibility: accept legacy heartbeat fields until #20162.
-  const admittableProfiles =
-    body.data.admittableProfiles ??
-    body.data.availableProfiles ??
-    body.data.profiles;
-  if (admittableProfiles === undefined) {
-    return badRequestMessage("admittableProfiles is required");
-  }
-  // Stage 1 compatibility: remove the legacy static profile write in #20163.
-  const staticProfiles = body.data.profiles ?? [];
+  const admittableProfiles = body.data.admittableProfiles;
   const currentDate = nowDate();
   const db = set(writeDb$);
   await db
@@ -318,14 +309,13 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       runnerId: body.data.runnerId,
       runnerName: body.data.runnerName,
       runnerGroup: body.data.group,
-      profiles: staticProfiles,
       totalVcpu: body.data.totalVcpu,
       totalMemoryMb: body.data.totalMemoryMb,
       maxConcurrent: body.data.maxConcurrent,
       allocatedVcpu: body.data.allocatedVcpu,
       allocatedMemoryMb: body.data.allocatedMemoryMb,
       runningCount: body.data.runningCount,
-      availableProfiles: admittableProfiles,
+      admittableProfiles,
       heldSessionStates,
       mode: body.data.mode,
       lastSeenAt: currentDate,
@@ -335,14 +325,13 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       set: {
         runnerName: body.data.runnerName,
         runnerGroup: body.data.group,
-        profiles: staticProfiles,
         totalVcpu: body.data.totalVcpu,
         totalMemoryMb: body.data.totalMemoryMb,
         maxConcurrent: body.data.maxConcurrent,
         allocatedVcpu: body.data.allocatedVcpu,
         allocatedMemoryMb: body.data.allocatedMemoryMb,
         runningCount: body.data.runningCount,
-        availableProfiles: admittableProfiles,
+        admittableProfiles,
         heldSessionStates,
         mode: body.data.mode,
         lastSeenAt: currentDate,
@@ -437,11 +426,7 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   const { group } = body.data;
-  // Stage 1 wire compatibility: accept legacy poll profiles until #20162.
-  const supportedProfiles = body.data.supportedProfiles ?? body.data.profiles;
-  if (supportedProfiles === undefined || supportedProfiles.length === 0) {
-    return badRequestMessage("supportedProfiles is required");
-  }
+  const supportedProfiles = body.data.supportedProfiles;
   const whereConditions: SQL<unknown>[] = [
     eq(runnerJobQueue.runnerGroup, group),
     isNull(runnerJobQueue.claimedAt),
@@ -984,8 +969,8 @@ type StoredResumeSessionWithHistoryRef = Extract<
   { historyRef: { kind: "blob"; hash: string } }
 >;
 
-interface GzipResumeSessionHistoryRepresentation {
-  readonly encoding: typeof SESSION_HISTORY_ENCODING_GZIP;
+interface CompressedResumeSessionHistoryRepresentation {
+  readonly encoding: CompressedSessionHistoryBlobEncoding;
   readonly rawSize: number;
   readonly encodedSize: number;
   readonly objectKey: string;
@@ -1042,14 +1027,15 @@ const generateResumeSessionHistoryObjectUrl$ = command(
   },
 );
 
-const loadGzipResumeSessionHistoryRepresentation$ = command(
+const loadCompressedResumeSessionHistoryRepresentation$ = command(
   async (
     _,
     args: {
       readonly db: Db;
+      readonly encoding: CompressedSessionHistoryBlobEncoding;
       readonly hash: string;
     },
-  ): Promise<GzipResumeSessionHistoryRepresentation | undefined> => {
+  ): Promise<CompressedResumeSessionHistoryRepresentation | undefined> => {
     const [blob] = await args.db
       .select({
         rawSize: blobs.rawSize,
@@ -1069,7 +1055,7 @@ const loadGzipResumeSessionHistoryRepresentation$ = command(
         new Error(`invalid session history blob encoding: ${blob.encoding}`),
       );
     }
-    if (encoding !== SESSION_HISTORY_ENCODING_GZIP) {
+    if (encoding !== args.encoding) {
       return undefined;
     }
     if (blob.rawSize <= 0 || blob.encodedSize <= 0) {
@@ -1077,7 +1063,7 @@ const loadGzipResumeSessionHistoryRepresentation$ = command(
     }
 
     return {
-      encoding: SESSION_HISTORY_ENCODING_GZIP,
+      encoding,
       rawSize: blob.rawSize,
       encodedSize: blob.encodedSize,
       objectKey: resumeSessionHistoryBlobKey(args.hash, encoding),
@@ -1085,9 +1071,9 @@ const loadGzipResumeSessionHistoryRepresentation$ = command(
   },
 );
 
-function validateGzipResumeSessionHistoryRepresentation(
+function validateCompressedResumeSessionHistoryRepresentation(
   hash: string,
-  representation: GzipResumeSessionHistoryRepresentation,
+  representation: CompressedResumeSessionHistoryRepresentation,
 ): void {
   if (
     representation.rawSize <= 0 ||
@@ -1097,7 +1083,9 @@ function validateGzipResumeSessionHistoryRepresentation(
   ) {
     throw invalidResumeSessionHistoryError(
       hash,
-      new Error(`invalid gzip rawSize: ${representation.rawSize}`),
+      new Error(
+        `invalid ${representation.encoding} rawSize: ${representation.rawSize}`,
+      ),
     );
   }
 }
@@ -1196,9 +1184,10 @@ async function resolveResumeSessionForClaim(args: {
   readonly loadIdentityRepresentation: (
     hash: string,
   ) => Promise<IdentityResumeSessionHistoryRepresentation | undefined>;
-  readonly loadGzipRepresentation: (
+  readonly loadCompressedRepresentation: (
     hash: string,
-  ) => Promise<GzipResumeSessionHistoryRepresentation | undefined>;
+    encoding: CompressedSessionHistoryBlobEncoding,
+  ) => Promise<CompressedResumeSessionHistoryRepresentation | undefined>;
   readonly generateResumeSessionHistoryUrl: (hash: string) => Promise<string>;
   readonly generateResumeSessionHistoryObjectUrl: (
     objectKey: string,
@@ -1210,29 +1199,24 @@ async function resolveResumeSessionForClaim(args: {
   }
 
   const { sessionId, historyRef } = resumeSession;
-  const gzipRepresentation =
-    historyRef.encoding === SESSION_HISTORY_ENCODING_GZIP
-      ? await args.loadGzipRepresentation(historyRef.hash)
-      : undefined;
-  if (
-    historyRef.encoding === SESSION_HISTORY_ENCODING_GZIP &&
-    gzipRepresentation === undefined
-  ) {
-    throw invalidResumeSessionHistoryError(
+  const encoding = historyRef.encoding ?? SESSION_HISTORY_ENCODING_IDENTITY;
+  if (encoding !== SESSION_HISTORY_ENCODING_IDENTITY) {
+    const compressedRepresentation = await args.loadCompressedRepresentation(
       historyRef.hash,
-      new Error("gzip session history metadata is missing"),
+      encoding,
     );
-  }
-  if (gzipRepresentation !== undefined) {
-    validateGzipResumeSessionHistoryRepresentation(
+    if (compressedRepresentation === undefined) {
+      throw invalidResumeSessionHistoryError(
+        historyRef.hash,
+        new Error(`${encoding} session history metadata is missing`),
+      );
+    }
+    validateCompressedResumeSessionHistoryRepresentation(
       historyRef.hash,
-      gzipRepresentation,
+      compressedRepresentation,
     );
-  }
-
-  if (gzipRepresentation !== undefined) {
     const url = await args.generateResumeSessionHistoryObjectUrl(
-      gzipRepresentation.objectKey,
+      compressedRepresentation.objectKey,
     );
     return {
       sessionId,
@@ -1240,9 +1224,9 @@ async function resolveResumeSessionForClaim(args: {
         kind: historyRef.kind,
         hash: historyRef.hash,
         url,
-        encoding: gzipRepresentation.encoding,
-        rawSize: gzipRepresentation.rawSize,
-        encodedSize: gzipRepresentation.encodedSize,
+        encoding: compressedRepresentation.encoding,
+        rawSize: compressedRepresentation.rawSize,
+        encodedSize: compressedRepresentation.encodedSize,
       },
     };
   }
@@ -1280,9 +1264,10 @@ async function buildClaimResponseBody(args: {
   readonly loadIdentityRepresentation: (
     hash: string,
   ) => Promise<IdentityResumeSessionHistoryRepresentation | undefined>;
-  readonly loadGzipRepresentation: (
+  readonly loadCompressedRepresentation: (
     hash: string,
-  ) => Promise<GzipResumeSessionHistoryRepresentation | undefined>;
+    encoding: CompressedSessionHistoryBlobEncoding,
+  ) => Promise<CompressedResumeSessionHistoryRepresentation | undefined>;
   readonly generateResumeSessionHistoryUrl: (hash: string) => Promise<string>;
   readonly generateResumeSessionHistoryObjectUrl: (
     objectKey: string,
@@ -1317,8 +1302,11 @@ async function buildClaimResponseBody(args: {
         loadIdentityRepresentation(hash: string) {
           return args.loadIdentityRepresentation(hash);
         },
-        loadGzipRepresentation(hash: string) {
-          return args.loadGzipRepresentation(hash);
+        loadCompressedRepresentation(
+          hash: string,
+          encoding: CompressedSessionHistoryBlobEncoding,
+        ) {
+          return args.loadCompressedRepresentation(hash, encoding);
         },
         generateResumeSessionHistoryUrl: args.generateResumeSessionHistoryUrl,
         generateResumeSessionHistoryObjectUrl:
@@ -1377,9 +1365,13 @@ const buildClaimResponseBodyForClaim$ = command(
           hash,
         });
       },
-      loadGzipRepresentation(hash: string) {
-        return set(loadGzipResumeSessionHistoryRepresentation$, {
+      loadCompressedRepresentation(
+        hash: string,
+        encoding: CompressedSessionHistoryBlobEncoding,
+      ) {
+        return set(loadCompressedResumeSessionHistoryRepresentation$, {
           db: args.db,
+          encoding,
           hash,
         });
       },

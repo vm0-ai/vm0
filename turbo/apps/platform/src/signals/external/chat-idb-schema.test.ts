@@ -62,6 +62,52 @@ function expectLegacyStoreNotCreated(
   ).not.toContain(LEGACY_CHAT_THREAD_META_STORE);
 }
 
+function expectChatMessagesStoreCreated(
+  createdStores: ReturnType<typeof fakeDb>["createdStores"],
+  createObjectStore: ReturnType<typeof fakeDb>["createObjectStore"],
+): void {
+  expect(createObjectStore).toHaveBeenCalledWith(CHAT_MESSAGES_STORE, {
+    keyPath: "id",
+  });
+  expect(
+    createdStores.get(CHAT_MESSAGES_STORE)?.createIndex,
+  ).toHaveBeenCalledWith("byThreadAndTime", ["threadId", "createdAt"]);
+  expect(
+    createdStores.get(CHAT_MESSAGES_STORE)?.createIndex,
+  ).toHaveBeenCalledWith(CHAT_MESSAGES_ORDER_INDEX, [
+    "threadId",
+    "createdAt",
+    "orderSequence",
+    "id",
+  ]);
+}
+
+function expectThreadEventStoresCreated(
+  createdStores: ReturnType<typeof fakeDb>["createdStores"],
+  createObjectStore: ReturnType<typeof fakeDb>["createObjectStore"],
+): void {
+  expect(createObjectStore).toHaveBeenCalledWith(CHAT_THREAD_SNAPSHOT_STORE, {
+    keyPath: "id",
+  });
+  expect(createObjectStore).toHaveBeenCalledWith(CHAT_THREAD_EVENTS_STORE, {
+    keyPath: "id",
+  });
+  expect(createObjectStore).toHaveBeenCalledWith(CHAT_THREAD_EVENT_SYNC_STORE, {
+    keyPath: "id",
+  });
+  expect(
+    createdStores.get(CHAT_THREAD_EVENTS_STORE)?.createIndex,
+  ).toHaveBeenCalledWith(CHAT_THREAD_EVENTS_ORDER_INDEX, ["createdAt", "id"]);
+}
+
+function expectThreadEventStoresDeleted(
+  deleteObjectStore: ReturnType<typeof fakeDb>["deleteObjectStore"],
+): void {
+  expect(deleteObjectStore).toHaveBeenCalledWith(CHAT_THREAD_SNAPSHOT_STORE);
+  expect(deleteObjectStore).toHaveBeenCalledWith(CHAT_THREAD_EVENTS_STORE);
+  expect(deleteObjectStore).toHaveBeenCalledWith(CHAT_THREAD_EVENT_SYNC_STORE);
+}
+
 describe("upgradeChatIdb", () => {
   it("clears legacy chat cache when upgrading from before v4", () => {
     const { db, createdStores, createObjectStore, deleteObjectStore } = fakeDb([
@@ -75,36 +121,9 @@ describe("upgradeChatIdb", () => {
     expect(deleteObjectStore).toHaveBeenCalledWith(
       LEGACY_CHAT_THREAD_META_STORE,
     );
-    expect(createObjectStore).toHaveBeenCalledWith(CHAT_MESSAGES_STORE, {
-      keyPath: "id",
-    });
     expectLegacyStoreNotCreated(createObjectStore);
-    expect(createObjectStore).toHaveBeenCalledWith(CHAT_THREAD_SNAPSHOT_STORE, {
-      keyPath: "id",
-    });
-    expect(createObjectStore).toHaveBeenCalledWith(CHAT_THREAD_EVENTS_STORE, {
-      keyPath: "id",
-    });
-    expect(createObjectStore).toHaveBeenCalledWith(
-      CHAT_THREAD_EVENT_SYNC_STORE,
-      {
-        keyPath: "id",
-      },
-    );
-    expect(
-      createdStores.get(CHAT_MESSAGES_STORE)?.createIndex,
-    ).toHaveBeenCalledWith("byThreadAndTime", ["threadId", "createdAt"]);
-    expect(
-      createdStores.get(CHAT_MESSAGES_STORE)?.createIndex,
-    ).toHaveBeenCalledWith(CHAT_MESSAGES_ORDER_INDEX, [
-      "threadId",
-      "createdAt",
-      "orderSequence",
-      "id",
-    ]);
-    expect(
-      createdStores.get(CHAT_THREAD_EVENTS_STORE)?.createIndex,
-    ).toHaveBeenCalledWith(CHAT_THREAD_EVENTS_ORDER_INDEX, ["createdAt", "id"]);
+    expectChatMessagesStoreCreated(createdStores, createObjectStore);
+    expectThreadEventStoresCreated(createdStores, createObjectStore);
   });
 
   it("drops legacy thread metadata when resetting v4 messages for the order index", () => {
@@ -121,32 +140,8 @@ describe("upgradeChatIdb", () => {
     );
     expect(createObjectStore).toHaveBeenCalledTimes(4);
     expectLegacyStoreNotCreated(createObjectStore);
-    expect(createObjectStore).toHaveBeenCalledWith(CHAT_MESSAGES_STORE, {
-      keyPath: "id",
-    });
-    expect(createObjectStore).toHaveBeenCalledWith(CHAT_THREAD_SNAPSHOT_STORE, {
-      keyPath: "id",
-    });
-    expect(createObjectStore).toHaveBeenCalledWith(CHAT_THREAD_EVENTS_STORE, {
-      keyPath: "id",
-    });
-    expect(createObjectStore).toHaveBeenCalledWith(
-      CHAT_THREAD_EVENT_SYNC_STORE,
-      {
-        keyPath: "id",
-      },
-    );
-    expect(
-      createdStores.get(CHAT_MESSAGES_STORE)?.createIndex,
-    ).toHaveBeenCalledWith(CHAT_MESSAGES_ORDER_INDEX, [
-      "threadId",
-      "createdAt",
-      "orderSequence",
-      "id",
-    ]);
-    expect(
-      createdStores.get(CHAT_THREAD_EVENTS_STORE)?.createIndex,
-    ).toHaveBeenCalledWith(CHAT_THREAD_EVENTS_ORDER_INDEX, ["createdAt", "id"]);
+    expectChatMessagesStoreCreated(createdStores, createObjectStore);
+    expectThreadEventStoresCreated(createdStores, createObjectStore);
   });
 
   it("drops legacy thread metadata when resetting v5 messages for terminal marker ordering", () => {
@@ -163,31 +158,43 @@ describe("upgradeChatIdb", () => {
     );
     expect(createObjectStore).toHaveBeenCalledTimes(4);
     expectLegacyStoreNotCreated(createObjectStore);
-    expect(createObjectStore).toHaveBeenCalledWith(CHAT_MESSAGES_STORE, {
-      keyPath: "id",
-    });
-    expect(createObjectStore).toHaveBeenCalledWith(CHAT_THREAD_SNAPSHOT_STORE, {
-      keyPath: "id",
-    });
-    expect(createObjectStore).toHaveBeenCalledWith(CHAT_THREAD_EVENTS_STORE, {
-      keyPath: "id",
-    });
-    expect(createObjectStore).toHaveBeenCalledWith(
+    expectChatMessagesStoreCreated(createdStores, createObjectStore);
+    expectThreadEventStoresCreated(createdStores, createObjectStore);
+  });
+
+  it("resets v9 chat caches so cached unread calculations include run-finish markers", () => {
+    const { db, createdStores, createObjectStore, deleteObjectStore } = fakeDb([
+      CHAT_MESSAGES_STORE,
+      CHAT_THREAD_SNAPSHOT_STORE,
+      CHAT_THREAD_EVENTS_STORE,
       CHAT_THREAD_EVENT_SYNC_STORE,
-      {
-        keyPath: "id",
-      },
-    );
-    expect(
-      createdStores.get(CHAT_MESSAGES_STORE)?.createIndex,
-    ).toHaveBeenCalledWith(CHAT_MESSAGES_ORDER_INDEX, [
-      "threadId",
-      "createdAt",
-      "orderSequence",
-      "id",
     ]);
-    expect(
-      createdStores.get(CHAT_THREAD_EVENTS_STORE)?.createIndex,
-    ).toHaveBeenCalledWith(CHAT_THREAD_EVENTS_ORDER_INDEX, ["createdAt", "id"]);
+
+    upgradeChatIdb(db, 9);
+
+    expect(deleteObjectStore).toHaveBeenCalledTimes(4);
+    expect(deleteObjectStore).toHaveBeenCalledWith(CHAT_MESSAGES_STORE);
+    expectThreadEventStoresDeleted(deleteObjectStore);
+    expect(createObjectStore).toHaveBeenCalledTimes(4);
+    expectChatMessagesStoreCreated(createdStores, createObjectStore);
+    expectThreadEventStoresCreated(createdStores, createObjectStore);
+  });
+
+  it("resets v10 chat, thread, and event caches", () => {
+    const { db, createdStores, createObjectStore, deleteObjectStore } = fakeDb([
+      CHAT_MESSAGES_STORE,
+      CHAT_THREAD_SNAPSHOT_STORE,
+      CHAT_THREAD_EVENTS_STORE,
+      CHAT_THREAD_EVENT_SYNC_STORE,
+    ]);
+
+    upgradeChatIdb(db, 10);
+
+    expect(deleteObjectStore).toHaveBeenCalledTimes(4);
+    expect(deleteObjectStore).toHaveBeenCalledWith(CHAT_MESSAGES_STORE);
+    expectThreadEventStoresDeleted(deleteObjectStore);
+    expect(createObjectStore).toHaveBeenCalledTimes(4);
+    expectChatMessagesStoreCreated(createdStores, createObjectStore);
+    expectThreadEventStoresCreated(createdStores, createObjectStore);
   });
 });

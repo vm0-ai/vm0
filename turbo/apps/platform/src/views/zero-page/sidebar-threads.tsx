@@ -70,6 +70,7 @@ import { eventDrivenActiveRunChatThreadIds$ } from "../../signals/chat-page/chat
 import { pathParams$, searchParams$ } from "../../signals/route.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { setSidebarExpanded$ } from "../../signals/zero-page/zero-nav.ts";
+import { runAfterDropdownMenuClose } from "../components/dropdown-menu-modal-action.ts";
 import { sidebarDraftThreadIds$ } from "../../signals/chat-page/sidebar-draft-threads.ts";
 import { sidebarUnreadThreadIds$ } from "../../signals/chat-page/sidebar-unread-threads.ts";
 import {
@@ -87,6 +88,8 @@ import {
   setRenameDialogInput$,
   sessionListCollapsed$,
   setSessionListCollapsed$,
+  isScrolled$,
+  setIsScrolled$,
   overlayScrollMetrics$,
   overlayScrollViewport$,
   chatThreadVirtualListElement$,
@@ -95,6 +98,7 @@ import {
   CHAT_THREAD_VIRTUAL_ROW_HEIGHT,
 } from "../../signals/zero-page/zero-sidebar-state.ts";
 import { Link } from "../router/link.tsx";
+import { OverlayScrollArea } from "./zero-sidebar-scroll.tsx";
 
 type IndicatorState = "running" | "unread" | "draft";
 type ChatThreadPaneIndicator = "main" | "sidebar";
@@ -359,13 +363,19 @@ function ChatThreadMenu({
               </>
             )}
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={openRenameDialog}>
+          <DropdownMenuItem
+            onSelect={() => {
+              runAfterDropdownMenuClose(openRenameDialog);
+            }}
+          >
             <IconPencil size={16} stroke={2} className="mr-2" />
             Rename chat
           </DropdownMenuItem>
           <DropdownMenuItem
             onSelect={() => {
-              setPendingDeleteThreadId(threadId);
+              runAfterDropdownMenuClose(() => {
+                setPendingDeleteThreadId(threadId);
+              });
             }}
             className="text-destructive focus:text-destructive"
           >
@@ -976,24 +986,41 @@ function ChatThreadsContent() {
     chatThreadsLoadable.state === "hasData" ? chatThreadsLoadable.data : [];
   const chatThreadsLoading = chatThreadsLoadable.state === "loading";
   const collapsed = useGet(sessionListCollapsed$);
+  const isScrolled = useGet(isScrolled$);
+  const setIsScrolledFn = useSet(setIsScrolled$);
+
+  if (collapsed) {
+    return null;
+  }
+
+  const content = (
+    <div className="flex flex-col gap-1">
+      {chatThreadsLoading ? (
+        <ChatThreadsSkeleton />
+      ) : (
+        <ChatThreads chatThreads={chatThreads} />
+      )}
+    </div>
+  );
 
   return (
-    !collapsed && (
-      <div className="mt-1">
-        <div className="flex flex-col gap-1">
-          {chatThreadsLoading ? (
-            <ChatThreadsSkeleton />
-          ) : (
-            <ChatThreads chatThreads={chatThreads} />
-          )}
-        </div>
-      </div>
-    )
+    <OverlayScrollArea
+      className="mt-1 min-h-0 flex-1"
+      data-testid="sidebar-scroll-area"
+      onScroll={(e) => {
+        return setIsScrolledFn(e.currentTarget.scrollTop > 0);
+      }}
+      style={{
+        boxShadow: isScrolled ? "0 -1px 0 0 hsl(var(--border) / 0.4)" : "none",
+      }}
+    >
+      {content}
+    </OverlayScrollArea>
   );
 }
 export function ChatThreadsSection() {
   return (
-    <div className="mt-4 flex flex-col">
+    <div className="mt-4 flex flex-col min-h-0 flex-1">
       <ChatThreadsTitle />
       <ChatThreadsContent />
       <ChatThreadRenameDialog />

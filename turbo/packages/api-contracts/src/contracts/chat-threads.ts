@@ -5,11 +5,7 @@ import { hostedArtifactKindSchema } from "./zero-host";
 import { runStatusSchema } from "./runs";
 import { zeroGoalEventSchema } from "./zero-goals";
 import { triggerSourceSchema } from "./logs";
-import {
-  isSupportedRunModel,
-  modelProviderCredentialScopeSchema,
-  modelProviderTypeSchema,
-} from "./model-providers";
+import { isSupportedRunModel } from "./model-providers";
 
 const c = initContract();
 const MODEL_FIRST_SELECTION_PROVIDER_ID =
@@ -111,7 +107,7 @@ const persistedAttachmentSchema = z.object({
 
 /**
  * Per-agent unread snapshot. `unreadAt` is the creation time of the latest
- * visible message — the one that made the thread unread.
+ * run-finish marker — the one that made the thread unread.
  */
 const chatThreadUnreadsSchema = z.object({
   unreads: z.array(
@@ -346,51 +342,13 @@ const pagedChatMessageSchema = z.discriminatedUnion("role", [
 ]);
 
 const chatThreadDetailSchema = z.object({
-  id: z.string(),
-  title: z.string().nullable(),
-  agentId: z.string(),
   /**
-   * ID of the latest message this user has marked read in this thread.
-   * Null when the thread has never been explicitly marked read. Optional for
-   * back-compat with fixtures/tests that predate the read marker field.
+   * Read-state watermark. A thread is unread when its latest run-finish marker
+   * is newer than this timestamp.
    */
-  lastReadMessageId: z.string().nullable().optional(),
-  /**
-   * Primary read-state watermark. `lastReadMessageId` remains for legacy
-   * clients only and should not be used for new read-state logic.
-   */
-  lastReadAt: z.string().nullable().optional(),
-  /**
-   * ISO timestamp of the latest assistant text result that should affect
-   * unread state and sidebar recency.
-   */
-  lastMessageAt: z.string().optional(),
-  activeRunIds: z.array(z.string()),
-  createdAt: z.string(),
-  updatedAt: z.string(),
-  /**
-   * ISO timestamp at which the user pinned this thread. Exposed on detail so
-   * the current thread can be placed in the correct sidebar segment even when
-   * it is omitted from the paged list response.
-   */
-  pinnedAt: z.string().nullable().optional(),
-  computerUseHostId: z.string().uuid().nullable().optional(),
-  /**
-   * Legacy provider route fields are retained for backwards-compatible
-   * responses; thread model state is exposed through event-driven projections.
-   */
-  modelProviderId: z.string().nullable().optional(),
-  modelProviderType: modelProviderTypeSchema.nullable().optional(),
-  modelProviderCredentialScope: modelProviderCredentialScopeSchema
-    .nullable()
-    .optional(),
-  codexServiceTier: codexServiceTierSchema.nullable().optional(),
-  /**
-   * ISO timestamp at which the user manually renamed this thread. Null/undefined
-   * means never renamed. When set, automated title generation is suppressed.
-   * Optional for back-compat with fixtures that predate the field.
-   */
-  renamedAt: z.string().nullable().optional(),
+  lastReadAt: z.string().nullable(),
+  computerUseHostId: z.string().uuid().nullable(),
+  codexServiceTier: codexServiceTierSchema.nullable(),
 });
 
 const chatThreadMetadataSchema = z.object({
@@ -487,6 +445,7 @@ export const chatThreadsContract = c.router({
       agentId: z.string().min(1),
       clientThreadId: z.string().uuid().optional(),
       eventId: chatThreadEventIdSchema.optional(),
+      modelSelection: modelSelectionRequestSchema,
       title: z.string().optional(),
     }),
     responses: {
@@ -496,6 +455,7 @@ export const chatThreadsContract = c.router({
         createdAt: z.string(),
       }),
       401: apiErrorSchema,
+      402: apiErrorSchema,
       404: apiErrorSchema,
     },
     summary: "Create a new chat thread",
@@ -572,7 +532,7 @@ export const chatThreadByIdContract = c.router({
       401: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Get chat thread detail with messages",
+    summary: "Get chat thread detail",
   },
   patch: {
     method: "PATCH",
@@ -633,7 +593,7 @@ export const chatThreadDraftContract = c.router({
 });
 
 /**
- * Mark a chat thread as read up to its current latest message.
+ * Mark a chat thread as read up to its current latest run-finish marker.
  * Separate contract so it can be served by its own route file.
  */
 export const chatThreadMarkReadContract = c.router({
@@ -645,11 +605,11 @@ export const chatThreadMarkReadContract = c.router({
     body: c.noBody(),
     responses: {
       200: z.object({
-        lastReadMessageId: z.string().nullable(),
+        lastReadAt: z.string().nullable(),
         /**
          * Fresh unread snapshot for the thread's agent (same shape as the
-         * unreads endpoint). Kept for response compatibility; clients should
-         * treat `chatThreadReadCursorUpdated` as read-state invalidation.
+         * unreads endpoint). Clients should treat
+         * `chatThreadReadCursorUpdated` as read-state invalidation.
          */
         unreads: chatThreadUnreadsSchema.shape.unreads,
       }),
@@ -657,7 +617,7 @@ export const chatThreadMarkReadContract = c.router({
       401: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Mark a chat thread as read up to the latest message",
+    summary: "Mark a chat thread as read up to the latest run-finish marker",
   },
 });
 
@@ -845,13 +805,17 @@ export const chatMessagesContract = c.router({
         threadId: z.string().optional(),
         clientThreadId: z.string().uuid().optional(),
         chatThreadEventId: chatThreadEventIdSchema.optional(),
-        modelSelectionEventId: chatThreadEventIdSchema.optional(),
+        // Client-generated UUID for the sort touch created by direct user sends.
+        // Lets event-sourced clients reconcile optimistic sidebar recency by id.
+        chatThreadSortEventId: chatThreadEventIdSchema.optional(),
         modelProvider: z.string().optional(),
         /**
-         * Per-run model override; persisted on the thread so subsequent runs
-         * inherit the same choice. `undefined` = leave current thread override
-         * untouched (backward-compat for older clients). `null` = clear the
-         * thread override and fall back to agent/org defaults.
+         * Per-run model override. This does not mutate the thread's selected
+         * model; thread model changes are persisted through
+         * `chatThreadModelSelectionContract.update`.
+         *
+         * When omitted, the run resolves from the thread's persisted
+         * `selected_model`.
          */
         modelSelection: modelSelectionRequestSchema.nullable().optional(),
         runOptions: chatRunOptionsRequestSchema.optional(),
@@ -883,7 +847,7 @@ export const chatMessagesContract = c.router({
         prompt: z.undefined().optional(),
         clientThreadId: z.undefined().optional(),
         chatThreadEventId: z.undefined().optional(),
-        modelSelectionEventId: z.undefined().optional(),
+        chatThreadSortEventId: z.undefined().optional(),
         modelProvider: z.undefined().optional(),
         modelSelection: z.undefined().optional(),
         runOptions: z.undefined().optional(),
@@ -903,7 +867,7 @@ export const chatMessagesContract = c.router({
         prompt: z.undefined().optional(),
         clientThreadId: z.undefined().optional(),
         chatThreadEventId: z.undefined().optional(),
-        modelSelectionEventId: z.undefined().optional(),
+        chatThreadSortEventId: z.undefined().optional(),
         modelProvider: z.undefined().optional(),
         modelSelection: z.undefined().optional(),
         runOptions: z.undefined().optional(),
@@ -1131,6 +1095,28 @@ export const chatThreadArtifactsContract = c.router({
       503: apiErrorSchema,
     },
     summary: "Sync a chat artifact file to the user's connected Google Drive",
+  },
+  uploadGoogleSlides: {
+    method: "POST",
+    path: "/api/zero/chat-threads/:threadId/artifacts/google-slides",
+    headers: authHeadersSchema,
+    pathParams: chatThreadThreadIdPathParamsSchema,
+    contentType: "multipart/form-data",
+    body: c.type<FormData>(),
+    responses: {
+      200: z.object({
+        id: z.string(),
+        name: z.string(),
+        webViewLink: z.string().nullable(),
+      }),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      503: apiErrorSchema,
+    },
+    summary:
+      "Upload a presentation artifact to the user's Google Drive as a native Google Slides deck",
   },
 });
 

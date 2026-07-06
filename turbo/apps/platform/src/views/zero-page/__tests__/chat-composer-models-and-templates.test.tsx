@@ -337,13 +337,9 @@ function mockThread(options?: {
 }): void {
   context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
     return respond(200, {
-      id: THREAD_ID,
-      title: "My thread",
-      agentId: AGENT_ID,
-      activeRunIds: options?.activeRunIds ?? [],
-      createdAt: "2026-03-10T00:00:00Z",
-      updatedAt: "2026-03-10T00:00:00Z",
-      modelProviderId: null,
+      lastReadAt: null,
+      computerUseHostId: null,
+      codexServiceTier: null,
     });
   });
   context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
@@ -787,13 +783,11 @@ describe("chat composer models", () => {
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {},
     });
 
-    const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
-    expect(textarea).toHaveAttribute("rows", "3");
-    expect(textarea).toHaveClass("min-h-[96px]");
-    expect(textarea).not.toHaveClass("min-h-[44px]");
+    const editor = await findComposerEditor();
+    expect(editor).toHaveClass("min-h-[96px]");
+    expect(editor).not.toHaveClass("min-h-[44px]");
   });
 
   it("uses the mobile single-line height in chat thread composers", async () => {
@@ -804,12 +798,10 @@ describe("chat composer models", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      featureSwitches: {},
     });
 
-    const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
-    expect(textarea).toHaveAttribute("rows", "1");
-    expect(textarea).toHaveClass("min-h-[44px]", "md:min-h-[96px]");
+    const editor = await findComposerEditor();
+    expect(editor).toHaveClass("min-h-[44px]", "md:min-h-[96px]");
   });
 
   it("keeps the agent chat slash composer at three-line height", async () => {
@@ -822,9 +814,6 @@ describe("chat composer models", () => {
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {
-        [FeatureSwitchKey.WorkflowAutomation]: true,
-      },
     });
 
     const editor = await findComposerEditor();
@@ -843,9 +832,6 @@ describe("chat composer models", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.WorkflowAutomation]: true,
-      },
     });
 
     const editor = await findComposerEditor();
@@ -887,7 +873,6 @@ describe("chat composer models", () => {
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: true },
     });
 
     const editor = await findComposerEditor();
@@ -949,7 +934,6 @@ describe("chat composer models", () => {
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: true },
     });
 
     const editor = await findComposerEditor();
@@ -979,9 +963,6 @@ describe("chat composer models", () => {
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {
-        [FeatureSwitchKey.WorkflowAutomation]: true,
-      },
     });
 
     const editor = await findComposerEditor();
@@ -995,35 +976,6 @@ describe("chat composer models", () => {
     const link = linkByText("View all workflows");
     expect(link).toHaveAttribute("href", "/workflows");
     expect(link.parentElement).toHaveClass("shrink-0", "border-t");
-  });
-
-  it("hides slash workflow suggestions when the feature switch is off", async () => {
-    const user = userEvent.setup({ delay: null });
-    mockOrgModelRoutes("kimi-k2.7-code");
-    mockAgent();
-    context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
-      return respond(200, [
-        workflowSummary({
-          name: "sales-research",
-          displayName: "Sales Research",
-          description: null,
-          agentId: AGENT_ID,
-        }),
-      ]);
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: false },
-    });
-
-    const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
-    await user.click(textarea);
-    await user.keyboard("/");
-
-    expect(screen.queryByText("/sales-research")).not.toBeInTheDocument();
-    expect(textarea).toHaveValue("/");
   });
 
   it("scrolls the slash workflow picker with keyboard selection", async () => {
@@ -1055,7 +1007,6 @@ describe("chat composer models", () => {
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: true },
     });
 
     const editor = await findComposerEditor();
@@ -1087,7 +1038,6 @@ describe("chat composer models", () => {
       detachedSetupPage({
         context,
         path: `/agents/${AGENT_ID}/chat`,
-        featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: true },
       });
 
       const editor = await findComposerEditor();
@@ -1165,12 +1115,20 @@ describe("chat composer models", () => {
           runOptions?: { codexServiceTier?: "fast" };
         }
       | undefined;
+    let createdBody:
+      | {
+          modelSelection: {
+            modelProviderId: string;
+            selectedModel: string;
+          };
+        }
+      | undefined;
 
     context.mocks.data.orgModelPolicies([
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000911",
         model: "gpt-5.5",
-        modelLabel: "GPT-5.5",
+        modelLabel: "GPT 5.5",
         isDefault: true,
         defaultProviderType: "codex-oauth-token",
         credentialScope: "member",
@@ -1179,6 +1137,9 @@ describe("chat composer models", () => {
     context.mocks.data.personalModelProviders([codexProvider]);
     mockAgent();
     mockChatLifecycle(context, {
+      onThreadCreate: (body) => {
+        createdBody = body;
+      },
       onRunCreate: (body) => {
         sentBody = body;
       },
@@ -1190,7 +1151,7 @@ describe("chat composer models", () => {
       path: `/agents/${AGENT_ID}/chat`,
     });
 
-    click(await findComposerModel("GPT-5.5"));
+    click(await findComposerModel("GPT 5.5"));
     const runSpeed = await screen.findByRole("group", { name: "Run speed" });
     click(buttonContainingText("Fast", runSpeed));
     await waitFor(() => {
@@ -1211,10 +1172,11 @@ describe("chat composer models", () => {
     );
 
     await waitFor(() => {
-      expect(sentBody?.modelSelection).toStrictEqual({
+      expect(createdBody?.modelSelection).toStrictEqual({
         modelProviderId: "00000000-0000-4000-8000-000000000000",
         selectedModel: "gpt-5.5",
       });
+      expect(sentBody?.modelSelection).toBeUndefined();
       expect(sentBody?.runOptions).toStrictEqual({
         codexServiceTier: "fast",
       });
@@ -1245,7 +1207,7 @@ describe("chat composer models", () => {
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000914",
         model: "gpt-5.5",
-        modelLabel: "GPT-5.5",
+        modelLabel: "GPT 5.5",
         isDefault: true,
         defaultProviderType: "codex-oauth-token",
         credentialScope: "member",
@@ -1269,7 +1231,7 @@ describe("chat composer models", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("combobox", { name: /GPT-5\.5/ }),
+        screen.getByRole("combobox", { name: /GPT 5\.5/ }),
       ).toBeInTheDocument();
     });
 
@@ -1280,10 +1242,7 @@ describe("chat composer models", () => {
     );
 
     await waitFor(() => {
-      expect(sentBody?.modelSelection).toStrictEqual({
-        modelProviderId: "00000000-0000-4000-8000-000000000000",
-        selectedModel: "gpt-5.5",
-      });
+      expect(sentBody?.modelSelection).toBeUndefined();
       expect(sentBody?.runOptions).toStrictEqual({
         codexServiceTier: "fast",
       });
@@ -1309,12 +1268,21 @@ describe("chat composer models", () => {
           runOptions?: { codexServiceTier?: "fast" };
         }
       | undefined;
+    let updatedModelSelection:
+      | {
+          modelSelection?: {
+            modelProviderId: string;
+            selectedModel: string;
+          } | null;
+          codexServiceTier?: "fast" | null;
+        }
+      | undefined;
 
     context.mocks.data.orgModelPolicies([
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000916",
         model: "gpt-5.5",
-        modelLabel: "GPT-5.5",
+        modelLabel: "GPT 5.5",
         isDefault: true,
         defaultProviderType: "codex-oauth-token",
         credentialScope: "member",
@@ -1332,6 +1300,9 @@ describe("chat composer models", () => {
       threadId: THREAD_ID,
       selectedModel: "gpt-5.5",
       codexServiceTier: "fast",
+      onModelSelectionUpdate: (body) => {
+        updatedModelSelection = body;
+      },
       onRunCreate: (body) => {
         sentBody = body;
       },
@@ -1343,7 +1314,7 @@ describe("chat composer models", () => {
       path: `/chats/${THREAD_ID}`,
     });
 
-    await user.click(await screen.findByRole("combobox", { name: /GPT-5\.5/ }));
+    await user.click(await screen.findByRole("combobox", { name: /GPT 5\.5/ }));
     await user.click(await screen.findByRole("option", { name: /GPT-5\.4/ }));
     await waitFor(() => {
       expect(
@@ -1358,10 +1329,12 @@ describe("chat composer models", () => {
     );
 
     await waitFor(() => {
-      expect(sentBody?.modelSelection).toStrictEqual({
+      expect(updatedModelSelection?.modelSelection).toStrictEqual({
         modelProviderId: "00000000-0000-4000-8000-000000000000",
         selectedModel: "gpt-5.4",
       });
+      expect(updatedModelSelection?.codexServiceTier).toBeNull();
+      expect(sentBody?.modelSelection).toBeUndefined();
       expect(sentBody?.runOptions).toBeUndefined();
     });
   });
@@ -1380,7 +1353,7 @@ describe("chat composer models", () => {
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000921",
         model: "gpt-5.5",
-        modelLabel: "GPT-5.5",
+        modelLabel: "GPT 5.5",
         isDefault: true,
         defaultProviderType: "codex-oauth-token",
         credentialScope: "member",
@@ -1396,7 +1369,7 @@ describe("chat composer models", () => {
       path: `/agents/${AGENT_ID}/chat`,
     });
 
-    click(await findComposerModel("GPT-5.5"));
+    click(await findComposerModel("GPT 5.5"));
     await waitFor(() => {
       expect(screen.getByRole("listbox")).toBeInTheDocument();
       expect(
@@ -1405,7 +1378,7 @@ describe("chat composer models", () => {
     });
   });
 
-  it("hides Codex fast mode for non GPT-5.5 subscription models", async () => {
+  it("hides Codex fast mode for non GPT 5.5 subscription models", async () => {
     const codexProvider = buildProvider({
       id: "00000000-0000-4000-a000-000000000932",
       type: "codex-oauth-token",
@@ -1531,23 +1504,40 @@ describe("chat composer models", () => {
     await expectComposerModel("Claude Sonnet 4.6");
   });
 
-  it("edits thread override before user default model selection resolves", async () => {
+  it("does not fall back to defaults when thread projection has no model", async () => {
+    mockOrgModelRoutes("kimi-k2.7-code");
+    context.mocks.data.userModelPreference({
+      selectedModel: "claude-opus-4-7",
+      updatedAt: "2026-03-10T00:00:00Z",
+    });
+    mockAgent();
+    mockThread({ selectedModel: null });
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    await expect(
+      screen.findByRole("combobox", { name: "Default" }),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.queryByRole("combobox", { name: "Kimi K2.7 Code" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("combobox", { name: "Claude Opus 4.7" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("edits thread override without loading user default model selection", async () => {
     const user = userEvent.setup({ delay: null });
-    const pendingPreference = context.mocks.deferred<void>();
     let preferenceRequestStarted = false;
 
     mockOrgModelRoutes("kimi-k2.7-code");
-    context.mocks.api(
-      zeroUserModelPreferenceContract.get,
-      async ({ respond, withSignal }) => {
-        preferenceRequestStarted = true;
-        await withSignal(pendingPreference.promise);
-        return respond(200, {
-          selectedModel: "claude-opus-4-7",
-          updatedAt: "2026-03-10T00:00:00Z",
-        });
-      },
-    );
+    context.mocks.api(zeroUserModelPreferenceContract.get, ({ respond }) => {
+      preferenceRequestStarted = true;
+      return respond(200, {
+        selectedModel: "claude-opus-4-7",
+        updatedAt: "2026-03-10T00:00:00Z",
+      });
+    });
     mockAgent();
     mockThread({
       selectedModel: "glm-5.1",
@@ -1563,19 +1553,13 @@ describe("chat composer models", () => {
 
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
-    try {
-      await waitFor(() => {
-        expect(preferenceRequestStarted).toBeTruthy();
-      });
-      await screen.findByText("Use GLM");
-      await user.click(await findComposerModel("GLM-5.1"));
-      await user.click(
-        await screen.findByRole("option", { name: /Claude Sonnet 4\.6/ }),
-      );
-      await expectComposerModel("Claude Sonnet 4.6");
-    } finally {
-      pendingPreference.resolve();
-    }
+    await screen.findByText("Use GLM");
+    await user.click(await findComposerModel("GLM-5.1"));
+    await user.click(
+      await screen.findByRole("option", { name: /Claude Sonnet 4\.6/ }),
+    );
+    await expectComposerModel("Claude Sonnet 4.6");
+    expect(preferenceRequestStarted).toBeFalsy();
   });
 
   it("opens compare plans from limited-free-1 Pro composer model items", async () => {
@@ -1593,7 +1577,7 @@ describe("chat composer models", () => {
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000702",
         model: "gpt-5.5",
-        modelLabel: "GPT-5.5",
+        modelLabel: "GPT 5.5",
         defaultProviderType: "vm0",
         credentialScope: "org",
       }),
@@ -1605,7 +1589,7 @@ describe("chat composer models", () => {
     await expectComposerModel("Kimi K2.7 Code");
     await user.click(screen.getByRole("combobox", { name: "Kimi K2.7 Code" }));
     await user.click(
-      await screen.findByRole("option", { name: /GPT-5\.5.*Pro/u }),
+      await screen.findByRole("option", { name: /GPT 5\.5.*Pro/u }),
     );
 
     await expect(
@@ -1634,7 +1618,10 @@ describe("chat composer models", () => {
         modelProviderId: MOONSHOT_PROVIDER_ID,
       }),
     ]);
-    mockChatLifecycle(context, { threadId: THREAD_ID });
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      selectedModel: "claude-sonnet-4-6",
+    });
 
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
@@ -1667,7 +1654,7 @@ describe("chat composer models", () => {
     context.mocks.data.orgModelPolicies([
       buildModelPolicy({
         model: "gpt-5.5",
-        modelLabel: "GPT-5.5",
+        modelLabel: "GPT 5.5",
         isDefault: true,
         defaultProviderType: "codex-oauth-token",
         credentialScope: "member",
@@ -1701,7 +1688,7 @@ describe("chat composer models", () => {
     );
 
     detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
-    await expectComposerModel("GPT-5.5");
+    await expectComposerModel("GPT 5.5");
 
     await fill(await screen.findByPlaceholderText(PLACEHOLDER), "Hello");
     await user.keyboard("{Enter}");
@@ -1711,7 +1698,7 @@ describe("chat composer models", () => {
       "button",
     )!;
     expect(warning).toHaveAccessibleName(
-      /Model Configure: This workspace routes GPT-5\.5/,
+      /Model Configure: This workspace routes GPT 5\.5/,
     );
 
     await user.click(warning);
@@ -1742,7 +1729,7 @@ describe("chat composer models", () => {
     context.mocks.data.orgModelPolicies([
       buildModelPolicy({
         model: "gpt-5.5",
-        modelLabel: "GPT-5.5",
+        modelLabel: "GPT 5.5",
         isDefault: true,
         defaultProviderType: "codex-oauth-token",
         credentialScope: "member",
@@ -1778,7 +1765,7 @@ describe("chat composer models", () => {
     });
 
     detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
-    await expectComposerModel("GPT-5.5");
+    await expectComposerModel("GPT 5.5");
 
     await fill(await screen.findByPlaceholderText(PLACEHOLDER), "Hello");
     await user.keyboard("{Enter}");
@@ -1788,7 +1775,7 @@ describe("chat composer models", () => {
       "button",
     )!;
     expect(warning).toHaveAccessibleName(
-      /Model Configure: ChatGPT \(Codex\) needs to be reconnected before you can use GPT-5\.5/u,
+      /Model Configure: ChatGPT \(Codex\) needs to be reconnected before you can use GPT 5\.5/u,
     );
 
     await user.click(warning);
@@ -1922,10 +1909,10 @@ describe("chat composer models", () => {
       screen.findByLabelText("Remove notes.txt"),
     ).resolves.toBeInTheDocument();
 
-    const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
-    await user.click(textarea);
+    const editor = await findComposerEditor();
+    await user.click(editor);
 
-    fireEvent.paste(textarea, {
+    fireEvent.paste(editor, {
       clipboardData: {
         getData: (type: string) => {
           return type === "text/plain" ? "Keep this pasted caption" : "";
@@ -1944,15 +1931,15 @@ describe("chat composer models", () => {
     });
 
     await waitFor(() => {
-      expect(textarea).toHaveValue("Keep this pasted caption");
+      expect(editor).toHaveTextContent("Keep this pasted caption");
       expect(
         screen.queryByLabelText("Open image preview for pasted.png"),
       ).not.toBeInTheDocument();
     });
 
-    await fill(textarea, "");
+    await fill(editor, "");
 
-    fireEvent.paste(textarea, {
+    fireEvent.paste(editor, {
       clipboardData: {
         getData: (type: string) => {
           if (type === "text/html") {
@@ -1983,7 +1970,7 @@ describe("chat composer models", () => {
     });
 
     await waitFor(() => {
-      expect(textarea).toHaveValue("Use the copied launch brief");
+      expect(editor).toHaveTextContent("Use the copied launch brief");
       expect(
         screen.getByLabelText("Remove copied-brief.md"),
       ).toBeInTheDocument();
@@ -1996,7 +1983,7 @@ describe("chat composer models", () => {
       ).toBeGreaterThan(0);
     });
 
-    fireEvent.paste(textarea, {
+    fireEvent.paste(editor, {
       clipboardData: {
         getData: (type: string) => {
           return type === "text/plain" ? "Do not insert oversized paste" : "";
@@ -2016,10 +2003,10 @@ describe("chat composer models", () => {
       expect(
         screen.getByText("oversized-paste.txt exceeds the 1 GB limit"),
       ).toBeInTheDocument();
-      expect(textarea).toHaveValue("Use the copied launch brief");
+      expect(editor).toHaveTextContent("Use the copied launch brief");
     });
 
-    const composer = composerElementFrom(textarea);
+    const composer = composerElementFrom(editor);
     fireEvent.dragOver(composer);
     fireEvent.dragLeave(composer, { relatedTarget: document.body });
     fireEvent.drop(composer, {
@@ -2084,8 +2071,7 @@ describe("chat composer models", () => {
     });
   });
 
-  it("manages agent connector access from the composer", async () => {
-    const user = userEvent.setup({ delay: null });
+  it("shows agent connector access from the composer", async () => {
     mockOrgModelRoutes("claude-sonnet-4-6");
     mockAgent();
     mockManyConnectedConnectors();
@@ -2107,81 +2093,9 @@ describe("chat composer models", () => {
       expect(screen.getByLabelText("Remove GitHub")).toBeInTheDocument();
       expect(screen.getByLabelText("Add Slack")).toBeInTheDocument();
     });
-
-    await user.click(screen.getByText("GitHub"));
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Add GitHub")).toBeInTheDocument();
-      expect(screen.getByLabelText("Add Slack")).toBeInTheDocument();
-    });
-
-    await user.click(screen.getByLabelText("Add Slack"));
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Remove Slack")).toBeInTheDocument();
-    });
-
-    click(composerConnectorsButton);
-
-    await waitFor(() => {
-      expect(screen.queryByPlaceholderText("Find connectors...")).toBeNull();
-    });
-
-    click(composerConnectorsButton);
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Add GitHub")).toBeInTheDocument();
-      expect(screen.getByLabelText("Remove Slack")).toBeInTheDocument();
-    });
-
-    await user.click(screen.getByText("Add connectors"));
-
-    const dialog = await screen.findByRole("dialog");
-    expect(
-      within(dialog).getByText(/Available connectors to connect/u),
-    ).toBeInTheDocument();
-
-    await fill(
-      within(dialog).getByPlaceholderText("Find connectors..."),
-      "notion",
-    );
-
-    await waitFor(() => {
-      expect(
-        within(dialog).getByLabelText("Connect Notion"),
-      ).toBeInTheDocument();
-      expect(within(dialog).queryByLabelText("Connect Gmail")).toBeNull();
-    });
-
-    await user.click(within(dialog).getByLabelText("Connect Notion"));
-
-    const notionDialog = await screen.findByRole("dialog", {
-      name: "Notion",
-    });
-    expect(notionDialog).toBeInTheDocument();
-
-    await user.click(within(notionDialog).getByLabelText("Close"));
-
-    await waitFor(() => {
-      expect(
-        screen.queryByRole("dialog", { name: "Notion" }),
-      ).not.toBeInTheDocument();
-      expect(
-        within(dialog).getByText(/Available connectors to connect/u),
-      ).toBeInTheDocument();
-    });
-
-    await user.click(within(dialog).getByLabelText("Close"));
-
-    await waitFor(() => {
-      expect(
-        screen.queryByText(/Available connectors to connect/u),
-      ).not.toBeInTheDocument();
-    });
   });
 
   it("keeps composer connector order independent of authorization state", async () => {
-    const user = userEvent.setup({ delay: null });
     mockOrgModelRoutes("claude-sonnet-4-6");
     mockAgent();
     mockManyConnectedConnectors();
@@ -2197,13 +2111,6 @@ describe("chat composer models", () => {
     await waitFor(() => {
       expect(screen.getByLabelText("Add GitHub")).toBeInTheDocument();
       expect(screen.getByLabelText("Remove Slack")).toBeInTheDocument();
-      expectTextBefore("GitHub", "Slack");
-    });
-
-    await user.click(screen.getByLabelText("Remove Slack"));
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Add Slack")).toBeInTheDocument();
       expectTextBefore("GitHub", "Slack");
     });
   });
@@ -2405,10 +2312,10 @@ describe("chat composer templates", () => {
       ).toBeInTheDocument();
     });
 
-    const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
-    await sendMessageInUI(user, textarea as HTMLTextAreaElement, "Use this");
+    const editor = await findComposerEditor();
+    await sendMessageInUI(user, editor, "Use this");
 
-    expect(textarea).toHaveValue("Use this");
+    expect(editor).toHaveTextContent("Use this");
     expect(
       screen.getByLabelText("Cancel upload launch-notes.txt"),
     ).toBeInTheDocument();
@@ -4085,29 +3992,6 @@ describe("chat composer templates", () => {
     });
   });
 
-  it("hides workflow templates when workflow automation is disabled", async () => {
-    mockChatLifecycle(context, { threadId: THREAD_ID });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: false },
-    });
-
-    click(
-      await waitFor(() => {
-        return screen.getByLabelText("Template");
-      }),
-    );
-
-    await waitFor(() => {
-      expect(tabByText("Presentation")).toBeInTheDocument();
-      expect(tabByText("Illustration")).toBeInTheDocument();
-      expect(tabByText("Video")).toBeInTheDocument();
-      expect(queryTabByText("Workflow")).not.toBeInTheDocument();
-    });
-  });
-
   it("selects and sends a workflow template from the picker", async () => {
     const user = userEvent.setup({ delay: null });
     const workflowTemplate = WORKFLOW_TEMPLATE_ITEMS[0]!;
@@ -4122,7 +4006,6 @@ describe("chat composer templates", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: true },
     });
 
     click(

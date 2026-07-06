@@ -96,12 +96,9 @@ function setupChatThread({
 
   context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
     return respond(200, {
-      id: THREAD_ID,
-      title: null,
-      agentId: AGENT_ID,
-      activeRunIds: [],
-      createdAt: "2026-03-10T00:00:00Z",
-      updatedAt: "2026-03-10T00:00:00Z",
+      lastReadAt: null,
+      computerUseHostId: null,
+      codexServiceTier: null,
     });
   });
   context.mocks.api(chatThreadMessagesContract.list, ({ query, respond }) => {
@@ -692,6 +689,7 @@ describe("image editing", () => {
     await waitFor(() => {
       expect(screen.getByLabelText("Exit fullscreen")).toBeInTheDocument();
     });
+    expect(screen.getByTestId("artifact-sidebar")).toHaveClass("z-[9999]");
     expect(screen.queryByLabelText("Share artifact")).toBeNull();
     expect(screen.queryByLabelText("Download artifact")).toBeNull();
 
@@ -711,6 +709,7 @@ describe("image editing", () => {
     await waitFor(() => {
       expect(screen.getByLabelText("Exit fullscreen")).toBeInTheDocument();
     });
+    expect(screen.getByTestId("artifact-sidebar")).toHaveClass("z-[9999]");
     expect(
       screen.getByTestId("artifact-sidebar-image-edit-canvas"),
     ).toBeInTheDocument();

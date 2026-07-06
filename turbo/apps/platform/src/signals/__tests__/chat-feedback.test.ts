@@ -1,12 +1,16 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { toast } from "@vm0/ui/components/ui/sonner";
 
 import {
   captureFeedbackSelection$,
+  closeFeedbackSelectionToolbar$,
   startFeedback$,
   removeFeedbackItem$,
   dismissFeedback$,
   feedbackItemsValue$,
+  feedbackSelectionValue$,
   feedbackThreadIdValue$,
+  setFeedbackSelectionToolbarRef$,
 } from "../zero-page/chat-feedback.ts";
 import { ensureDraft$ } from "../chat-page/create-chat-thread.ts";
 import { testContext } from "./test-helpers.ts";
@@ -30,6 +34,16 @@ function selectContents(element: HTMLElement): void {
   const selection = window.getSelection();
   selection?.removeAllRanges();
   selection?.addRange(range);
+}
+
+function dispatchShortcut(key: string): KeyboardEvent {
+  const event = new KeyboardEvent("keydown", {
+    bubbles: true,
+    cancelable: true,
+    key,
+  });
+  document.dispatchEvent(event);
+  return event;
 }
 
 describe("inline feedback thread scoping", () => {
@@ -114,6 +128,114 @@ describe("inline feedback thread scoping", () => {
 
     expect(ctx.store.get(feedbackThreadIdValue$)).toBeNull();
     expect(ctx.store.get(feedbackItemsValue$)).toHaveLength(0);
+  });
+
+  it("scopes feedback selection shortcuts to the toolbar reset signal", () => {
+    const bubble = mountThreadBubble("thread-a", "Reply from thread A");
+    selectContents(bubble);
+    ctx.store.set(captureFeedbackSelection$);
+    expect(ctx.store.get(feedbackSelectionValue$)).not.toBeNull();
+
+    const toolbarScope = document.createElement("span");
+    const cleanup = ctx.store.set(
+      setFeedbackSelectionToolbarRef$,
+      toolbarScope,
+    );
+    const dialog = document.createElement("div");
+    dialog.setAttribute("role", "dialog");
+    document.body.appendChild(dialog);
+    const event = dispatchShortcut("f");
+
+    expect(event.defaultPrevented).toBeTruthy();
+    expect(ctx.store.get(feedbackSelectionValue$)).toBeNull();
+    expect(ctx.store.get(feedbackItemsValue$)).toHaveLength(1);
+
+    const second = mountThreadBubble("thread-a", "Second passage");
+    selectContents(second);
+    ctx.store.set(captureFeedbackSelection$);
+    dispatchShortcut("f");
+
+    expect(ctx.store.get(feedbackItemsValue$)).toHaveLength(1);
+    dialog.remove();
+    cleanup?.();
+  });
+
+  it("closes the toolbar with Escape", () => {
+    const bubble = mountThreadBubble("thread-a", "Reply from thread A");
+    selectContents(bubble);
+    ctx.store.set(captureFeedbackSelection$);
+    expect(ctx.store.get(feedbackSelectionValue$)).not.toBeNull();
+
+    const toolbarScope = document.createElement("span");
+    const cleanup = ctx.store.set(
+      setFeedbackSelectionToolbarRef$,
+      toolbarScope,
+    );
+    const event = dispatchShortcut("Escape");
+
+    expect(event.defaultPrevented).toBeTruthy();
+    expect(ctx.store.get(feedbackSelectionValue$)).toBeNull();
+    cleanup?.();
+  });
+
+  it("copies the selected passage, closes the toolbar, and shows a toast", async () => {
+    const originalClipboard = navigator.clipboard;
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    const successToast = vi.spyOn(toast, "success");
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    let cleanup: (() => void) | undefined;
+
+    try {
+      const bubble = mountThreadBubble("thread-a", "Reply from thread A");
+      selectContents(bubble);
+      ctx.store.set(captureFeedbackSelection$);
+
+      const toolbarScope = document.createElement("span");
+      cleanup = ctx.store.set(setFeedbackSelectionToolbarRef$, toolbarScope);
+      const event = dispatchShortcut("c");
+
+      expect(event.defaultPrevented).toBeTruthy();
+      await vi.waitFor(() => {
+        expect(writeText).toHaveBeenCalledWith("Reply from thread A");
+      });
+      await vi.waitFor(() => {
+        expect(ctx.store.get(feedbackSelectionValue$)).toBeNull();
+      });
+      expect(successToast).toHaveBeenCalledWith("Copied");
+    } finally {
+      cleanup?.();
+      successToast.mockRestore();
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: originalClipboard,
+      });
+    }
+  });
+
+  it("aborts toolbar shortcuts when the toolbar is closed", () => {
+    const bubble = mountThreadBubble("thread-a", "Reply from thread A");
+    selectContents(bubble);
+    ctx.store.set(captureFeedbackSelection$);
+    expect(ctx.store.get(feedbackSelectionValue$)).not.toBeNull();
+
+    const toolbarScope = document.createElement("span");
+    const cleanup = ctx.store.set(
+      setFeedbackSelectionToolbarRef$,
+      toolbarScope,
+    );
+    ctx.store.set(closeFeedbackSelectionToolbar$);
+
+    const second = mountThreadBubble("thread-a", "Second passage");
+    selectContents(second);
+    ctx.store.set(captureFeedbackSelection$);
+    const event = dispatchShortcut("f");
+
+    expect(event.defaultPrevented).toBeFalsy();
+    expect(ctx.store.get(feedbackItemsValue$)).toHaveLength(0);
+    cleanup?.();
   });
 });
 

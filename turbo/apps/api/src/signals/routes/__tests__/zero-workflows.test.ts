@@ -649,7 +649,6 @@ describe("zero workflows", () => {
       [201],
     );
     await updateFeatureSwitchesForUser(context, featureSwitchActor, {
-      [FeatureSwitchKey.WorkflowAutomation]: true,
       [FeatureSwitchKey.WorkflowWebhookTriggers]: true,
     });
     const webhookTrigger = await accept(
@@ -668,7 +667,6 @@ describe("zero workflows", () => {
       eventType: "webhook-received",
     });
     await updateFeatureSwitchesForUser(context, featureSwitchActor, {
-      [FeatureSwitchKey.WorkflowAutomation]: true,
       [FeatureSwitchKey.WorkflowWebhookTriggers]: false,
     });
 
@@ -738,6 +736,9 @@ describe("zero workflows", () => {
       createdByUserId: creator.userId,
       updatedByUserId: creator.userId,
       instruction: "# audit workflow",
+      // The detail endpoint resolves the owner to a display name so the UI does
+      // not fall back to rendering the raw Clerk `ownerUserId`.
+      ownerUserDisplayName: "BDD User",
     });
     expect(typeof initial.body.createdAt).toBe("string");
     expect(typeof initial.body.updatedAt).toBe("string");

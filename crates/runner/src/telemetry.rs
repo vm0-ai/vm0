@@ -368,6 +368,7 @@ const fn session_history_encoding_value(encoding: ResumeSessionHistoryEncoding) 
     match encoding {
         ResumeSessionHistoryEncoding::Identity => "identity",
         ResumeSessionHistoryEncoding::Gzip => "gzip",
+        ResumeSessionHistoryEncoding::Zstd => "zstd",
     }
 }
 

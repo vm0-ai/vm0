@@ -1707,12 +1707,18 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const api = createRunsAutomationsApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
-    const missingSupport = await api.requestPollRunner(
+    const missingSupport = await api.requestRawPollRunner(
       true,
       { group: runnerGroup },
       [400],
     );
     expectApiError(missingSupport.body);
+    const legacySupport = await api.requestRawPollRunner(
+      true,
+      { group: runnerGroup, profiles: ["vm0/default"] },
+      [400],
+    );
+    expectApiError(legacySupport.body);
     const emptySupport = await api.requestPollRunner(
       true,
       { group: runnerGroup, supportedProfiles: [] },
@@ -1731,7 +1737,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       {
         group: runnerGroup,
         supportedProfiles: ["vm0/large"],
-        profiles: ["vm0/default"],
       },
       [200],
     );
@@ -1742,9 +1747,13 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     }
     expect(incompatiblePoll.body.job).toBeNull();
 
-    const compatiblePoll = await api.requestPollRunner(
+    const compatiblePoll = await api.requestRawPollRunner(
       true,
-      { group: runnerGroup, supportedProfiles: ["vm0/default"] },
+      {
+        group: runnerGroup,
+        supportedProfiles: ["vm0/default"],
+        profiles: ["vm0/large"],
+      },
       [200],
     );
     if (compatiblePoll.status !== 200) {
@@ -1807,6 +1816,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(first).toMatchObject({ status: "pending" });
     const firstClaim = await api.claimRunnerJob(first.runId);
     const cliAgentSessionId = `bdd-affinity-cli-${first.runId}`;
+    const affinityRunnerId = randomUUID();
     const history = `bdd affinity history ${first.runId}`;
     const historyHash = createHash("sha256").update(history).digest("hex");
     mockSessionHistoryBlob(historyHash, history);
@@ -1827,20 +1837,13 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     );
 
     async function heartbeatHolder(args: {
-      readonly profiles?: string[];
       readonly admittableProfiles?: string[];
-      readonly omitAdmittableProfiles?: boolean;
-      readonly availableProfiles?: string[];
-      readonly omitAvailableProfiles?: boolean;
       readonly mode?: "running" | "draining" | "stopping";
     }): Promise<void> {
       await api.requestHeartbeatRunner(true, [200], {
+        runnerId: affinityRunnerId,
         group: runnerGroup,
-        profiles: args.profiles,
         admittableProfiles: args.admittableProfiles,
-        omitAdmittableProfiles: args.omitAdmittableProfiles,
-        availableProfiles: args.availableProfiles,
-        omitAvailableProfiles: args.omitAvailableProfiles,
         heldSessionStates: [
           {
             sessionId: cliAgentSessionId,
@@ -1873,9 +1876,74 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       return { run, job: poll.body.job };
     }
 
+    function rawHeartbeatBody(
+      extra: Record<string, unknown>,
+    ): Record<string, unknown> {
+      return {
+        runnerId: affinityRunnerId,
+        runnerName: "bdd-runner",
+        group: runnerGroup,
+        totalVcpu: 8,
+        totalMemoryMb: 16_384,
+        maxConcurrent: 2,
+        allocatedVcpu: 0,
+        allocatedMemoryMb: 0,
+        runningCount: 0,
+        heldSessionStates: [
+          {
+            sessionId: cliAgentSessionId,
+            lastCompletedAt: nowDate().toISOString(),
+          },
+        ],
+        mode: "running",
+        ...extra,
+      };
+    }
+
+    const missingProfileListHeartbeat = await api.requestRawHeartbeatRunner(
+      true,
+      [400],
+      rawHeartbeatBody({}),
+    );
+    expectApiError(missingProfileListHeartbeat.body);
+
+    const legacyAvailableHeartbeat = await api.requestRawHeartbeatRunner(
+      true,
+      [400],
+      rawHeartbeatBody({ availableProfiles: ["vm0/default"] }),
+    );
+    expectApiError(legacyAvailableHeartbeat.body);
+
+    const legacyStaticHeartbeat = await api.requestRawHeartbeatRunner(
+      true,
+      [400],
+      rawHeartbeatBody({ profiles: ["vm0/default"] }),
+    );
+    expectApiError(legacyStaticHeartbeat.body);
+
+    const finalHeartbeatWithExtraLegacyFields =
+      await api.requestRawHeartbeatRunner(
+        true,
+        [200],
+        rawHeartbeatBody({
+          admittableProfiles: ["vm0/default"],
+          availableProfiles: ["vm0/large"],
+          profiles: ["vm0/large"],
+        }),
+      );
+    expect(finalHeartbeatWithExtraLegacyFields.body).toStrictEqual({
+      ok: true,
+    });
+    const finalHeartbeatHolder = await pollFollowUp(
+      "continue when final heartbeat includes extra legacy fields",
+    );
+    expect(finalHeartbeatHolder.job?.cliAgentSessionId).toBe(cliAgentSessionId);
+    expect(finalHeartbeatHolder.job?.affinityProtectedUntil).toStrictEqual(
+      expect.any(String),
+    );
+
     await heartbeatHolder({
       admittableProfiles: [],
-      availableProfiles: ["vm0/default"],
     });
     const unavailableHolder = await pollFollowUp(
       "continue when holder is full",
@@ -1902,9 +1970,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(staleHolder.job?.affinityProtectedUntil).toBeNull();
 
     await heartbeatHolder({
-      profiles: ["vm0/default", "vm0/large"],
       admittableProfiles: ["vm0/large"],
-      availableProfiles: ["vm0/default"],
     });
     const profileIncompatibleHolder = await pollFollowUp(
       "continue when holder cannot run requested profile",
@@ -1925,37 +1991,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(drainingHolder.job?.affinityProtectedUntil).toBeNull();
 
     await heartbeatHolder({
-      omitAdmittableProfiles: true,
-      omitAvailableProfiles: true,
-    });
-    const legacyHeartbeatFollowUp = await api.createRun(actor, {
-      agentId,
-      sessionId: first.sessionId,
-      prompt: "continue with legacy holder heartbeat",
-      modelProvider: "anthropic-api-key",
-    });
-    const legacyHeartbeatPoll = await api.requestPollRunner(
-      true,
-      { group: runnerGroup, profiles: ["vm0/default"] },
-      [200],
-    );
-    if (legacyHeartbeatPoll.status !== 200) {
-      throw new Error("Expected legacy heartbeat affinity poll to return 200");
-    }
-    expect(legacyHeartbeatPoll.body.job?.runId).toBe(
-      legacyHeartbeatFollowUp.runId,
-    );
-    expect(legacyHeartbeatPoll.body.job?.cliAgentSessionId).toBe(
-      cliAgentSessionId,
-    );
-    expect(legacyHeartbeatPoll.body.job?.affinityProtectedUntil).toStrictEqual(
-      expect.any(String),
-    );
-    await api.requestCancelRun(actor, legacyHeartbeatFollowUp.runId, [200]);
-
-    await heartbeatHolder({
       admittableProfiles: ["vm0/default"],
-      availableProfiles: [],
     });
     const protectedFollowUp = await api.createRun(actor, {
       agentId,
@@ -3910,13 +3946,10 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     );
     expect(claim.networkPolicies?.[internalName]?.unknownPolicy).toBe("allow");
 
-    if (!claim.encryptedSecrets) {
-      throw new Error("Expected the custom claim to carry encrypted secrets");
-    }
     const resolved = await fw.requestFirewallAuth(
       { authorization: `Bearer ${claim.sandboxToken}` },
       {
-        encryptedSecrets: claim.encryptedSecrets,
+        encryptedSecrets: fw.encryptedSecretsBody({}),
         authHeaders: {
           Authorization: `Bearer \${{ secrets.${secretKey} }}`,
         },
@@ -3981,11 +4014,19 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       agentId,
     });
 
+    await enableAutomationsFakeKms(context);
+    onTestFinished(async () => {
+      await resetAutomationsFakeKms(context);
+    });
+
     const run = await api.createRun(actor, {
       agentId,
       prompt: "use the custom connector auth ref",
       modelProvider: "anthropic-api-key",
     });
+    await expect(readAutomationsFakeKmsDecryptCallCount(context)).resolves.toBe(
+      0,
+    );
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
 
@@ -4192,11 +4233,19 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       agentId,
     });
 
+    await enableAutomationsFakeKms(context);
+    onTestFinished(async () => {
+      await resetAutomationsFakeKms(context);
+    });
+
     const run = await api.createRun(actor, {
       agentId,
       prompt: "use the proposed custom connector",
       modelProvider: "anthropic-api-key",
     });
+    await expect(readAutomationsFakeKmsDecryptCallCount(context)).resolves.toBe(
+      1,
+    );
     const timingEvents = apiDispatchTimingEventsForRun(run.runId);
     expectApiDispatchActions(
       timingEvents,
@@ -4225,13 +4274,10 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       `\${{ secrets.${variableKey} }}`,
     );
 
-    if (!claim.encryptedSecrets) {
-      throw new Error("Expected the custom claim to carry encrypted secrets");
-    }
     const resolved = await fw.requestFirewallAuth(
       { authorization: `Bearer ${claim.sandboxToken}` },
       {
-        encryptedSecrets: claim.encryptedSecrets,
+        encryptedSecrets: fw.encryptedSecretsBody({}),
         authHeaders: {
           Authorization: `Bearer \${{ secrets.${secretKey} }}`,
         },
@@ -4328,13 +4374,10 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(JSON.stringify(customApis)).not.toContain(secondarySecretKey);
     expect(JSON.stringify(customApis)).not.toContain(tenantVarKey);
 
-    if (!claim.encryptedSecrets) {
-      throw new Error("Expected the custom claim to carry encrypted secrets");
-    }
     const resolved = await fw.requestFirewallAuth(
       { authorization: `Bearer ${claim.sandboxToken}` },
       {
-        encryptedSecrets: claim.encryptedSecrets,
+        encryptedSecrets: fw.encryptedSecretsBody({}),
         authHeaders: {
           Authorization: `Bearer \${{ secrets.${secretKey} }}`,
         },
@@ -4946,13 +4989,11 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     expect(cancelled.status).toBe("cancelled");
   });
 
-  it("keeps workflow automation from denying invalid goal tool names", async () => {
+  it("keeps goal tools allowed when no feature flags are enabled", async () => {
     const api = createRunsAutomationsApi(context);
     const connectors = createConnectorBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
-    await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.WorkflowAutomation]: true,
-    });
+    await connectors.updateFeatureSwitches(actor, {});
 
     const run = await api.createRun(actor, {
       agentId,
@@ -4962,9 +5003,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
 
-    expect(claim.featureFlags).toMatchObject({
-      [FeatureSwitchKey.WorkflowAutomation]: true,
-    });
+    expect(claim.featureFlags).toMatchObject({});
     expect(claim.disallowedTools).toStrictEqual(
       EXPECTED_ZERO_RUN_DISALLOWED_TOOLS,
     );
@@ -5140,7 +5179,7 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
       bearer,
       {
         group: runnerGroup,
-        profiles: ["vm0/default"],
+        supportedProfiles: ["vm0/default"],
         telemetry: { pollReason: "deferred" },
       },
       [200],
@@ -5361,7 +5400,7 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     const outsiderBearer = `Bearer ${outsiderKey.token}`;
     const outsiderPoll = await api.requestPollRunnerAs(
       outsiderBearer,
-      { group: runnerGroup, profiles: ["vm0/default"] },
+      { group: runnerGroup, supportedProfiles: ["vm0/default"] },
       [200],
     );
     if (outsiderPoll.status !== 200) {
@@ -5410,7 +5449,10 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     const api = createRunsAutomationsApi(context);
     const bdd = createBddApi(context);
     const actor = bdd.user();
-    const pollBody = { group: "vm0/bdd-auth", profiles: ["vm0/default"] };
+    const pollBody = {
+      group: "vm0/bdd-auth",
+      supportedProfiles: ["vm0/default"],
+    };
 
     const rejectedAuthorizations = [
       "Basic vm0_official_credentials",

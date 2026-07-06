@@ -1,11 +1,12 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type {
   GenerationTemplateRequest,
   ModelSelectionRequest,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { PRESENTATION_TEMPLATE_PICKER_ITEMS } from "@vm0/core";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
   detachedSetupPage,
@@ -52,9 +53,54 @@ function selectTextForInlineFeedback(element: HTMLElement): void {
   document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
 }
 
+function selectTextAcrossElementsForInlineFeedback(
+  startElement: HTMLElement,
+  endElement: HTMLElement,
+): void {
+  const startNode = startElement.firstChild;
+  const endNode = endElement.firstChild;
+  if (!(startNode instanceof Text) || !(endNode instanceof Text)) {
+    throw new Error("Selection endpoints must be text nodes");
+  }
+  const range = document.createRange();
+  range.setStart(startNode, 0);
+  range.setEnd(endNode, endNode.textContent?.length ?? 0);
+  const assistantGroup = startElement.closest('[data-role="assistant"]');
+  if (!assistantGroup) {
+    throw new Error("Assistant group not found");
+  }
+  // Browser multi-line selections can report a message group rather than the
+  // assistant bubble as the range's common ancestor.
+  Object.defineProperty(range, "commonAncestorContainer", {
+    configurable: true,
+    value: assistantGroup,
+  });
+  Object.defineProperty(range, "getBoundingClientRect", {
+    configurable: true,
+    value: () => {
+      return new DOMRect(24, 32, 180, 44);
+    },
+  });
+
+  const selection = window.getSelection();
+  if (!selection) {
+    throw new Error("Selection API is not available");
+  }
+  selection.removeAllRanges();
+  selection.addRange(range);
+  document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+}
+
 function buttonByText(text: string): HTMLElement {
   const button = queryAllByRoleFast("button").find((candidate) => {
-    return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
+    const label = candidate.textContent?.replace(/\s+/g, " ").trim();
+    return (
+      label === text ||
+      label === `${text}C` ||
+      label === `${text} C` ||
+      label === `${text}F` ||
+      label === `${text} F`
+    );
   });
   if (!button) {
     throw new Error(`${text} button not found`);
@@ -67,6 +113,7 @@ describe("chat inline feedback", () => {
     const user = userEvent.setup({ delay: null });
     const assistantReply = "The rollout dates are unclear in this summary.";
     const sentPrompts: string[] = [];
+    const successToast = vi.spyOn(toast, "success");
     context.mocks.browser.clipboardWriteText();
 
     mockChatLifecycle(context, {
@@ -98,7 +145,6 @@ describe("chat inline feedback", () => {
     detachedSetupPage({
       context,
       path: `/chats/${FEEDBACK_THREAD_ID}`,
-      featureSwitches: {},
     });
 
     const assistantReplyElement = await screen.findByText(assistantReply);
@@ -111,10 +157,15 @@ describe("chat inline feedback", () => {
     await user.click(buttonByText("Copy"));
 
     await waitFor(() => {
-      expect(screen.getByText("Copied")).toBeInTheDocument();
+      expect(screen.queryByText("Provide feedback")).not.toBeInTheDocument();
     });
+    expect(successToast).toHaveBeenCalledWith("Copied");
+    successToast.mockRestore();
 
     selectTextForInlineFeedback(assistantReplyElement);
+    await waitFor(() => {
+      expect(screen.getByText("Provide feedback")).toBeInTheDocument();
+    });
     await user.click(buttonByText("Provide feedback"));
 
     const feedbackComment = await screen.findByPlaceholderText(
@@ -141,6 +192,50 @@ describe("chat inline feedback", () => {
     expect(
       screen.queryByPlaceholderText("What should change about this?"),
     ).not.toBeInTheDocument();
+  });
+
+  it("shows the inline feedback toolbar for a multi-line selection", async () => {
+    const firstReply = "The rollout dates are unclear in this summary.";
+    const secondReply = "The risk owners are missing from the plan.";
+    const assistantReply = `${firstReply}\n\n${secondReply}`;
+
+    mockChatLifecycle(context, {
+      threadId: FEEDBACK_THREAD_ID,
+      threadTitle: "Feedback review",
+      chatMessages: [
+        {
+          id: "msg-feedback-multiline-user",
+          role: "user",
+          content: "Review this launch summary",
+          runId: "run-feedback-multiline",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-feedback-multiline-assistant",
+          role: "assistant",
+          content: assistantReply,
+          runId: "run-feedback-multiline",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${FEEDBACK_THREAD_ID}`,
+      featureSwitches: {},
+    });
+
+    const firstReplyElement = await screen.findByText(firstReply);
+    const secondReplyElement = await screen.findByText(secondReply);
+    selectTextAcrossElementsForInlineFeedback(
+      firstReplyElement,
+      secondReplyElement,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Provide feedback")).toBeInTheDocument();
+    });
   });
 
   it("dismisses the inline feedback toolbar when a click clears the selection", async () => {
@@ -170,7 +265,6 @@ describe("chat inline feedback", () => {
     detachedSetupPage({
       context,
       path: `/chats/${FEEDBACK_THREAD_ID}`,
-      featureSwitches: {},
     });
 
     const assistantReplyElement = await screen.findByText(assistantReply);
@@ -308,10 +402,6 @@ describe("chat inline feedback", () => {
             previewUrl: template.embedUrl,
           },
         },
-        modelSelection: {
-          modelProviderId: "00000000-0000-4000-8000-000000000000",
-          selectedModel: "claude-sonnet-4-6",
-        },
       });
     });
     const sentBody = sentBodies[0];
@@ -351,7 +441,6 @@ describe("chat inline feedback", () => {
     detachedSetupPage({
       context,
       path: `/chats/${FEEDBACK_THREAD_ID}`,
-      featureSwitches: {},
     });
 
     const assistantReplyElement = await screen.findByText(assistantReply);
@@ -432,7 +521,6 @@ describe("chat inline feedback", () => {
     detachedSetupPage({
       context,
       path: `/chats/${FEEDBACK_THREAD_ID}`,
-      featureSwitches: {},
     });
 
     const assistantReplyElement = await screen.findByText(assistantReply);

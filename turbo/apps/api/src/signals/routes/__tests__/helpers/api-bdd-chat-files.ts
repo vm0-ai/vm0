@@ -95,6 +95,16 @@ import { createZeroRouteMocks } from "./zero-route-test";
 export { hostedTextFile } from "./api-bdd-host-files";
 export { storageTextFile } from "./api-bdd-storage-files";
 
+const MODEL_FIRST_SELECTION_PROVIDER_ID =
+  "00000000-0000-4000-8000-000000000000";
+
+function defaultCreateThreadModelSelection(): ModelSelectionRequest {
+  return {
+    modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+    selectedModel: "claude-sonnet-4-6",
+  };
+}
+
 type StorageType = "volume" | "artifact";
 
 interface AuthHeaders {
@@ -160,7 +170,6 @@ type BddSendMessageBody =
       readonly prompt: string;
       readonly threadId?: string;
       readonly clientThreadId?: string;
-      readonly modelSelectionEventId?: string;
       readonly modelProvider?: string;
       readonly modelSelection?: ModelSelectionRequest | null;
       readonly runOptions?: ChatRunOptionsRequest;
@@ -169,6 +178,7 @@ type BddSendMessageBody =
       readonly attachFiles?: readonly AttachFile[];
       readonly computerUseHostId?: string | null;
       readonly clientMessageId?: string;
+      readonly chatThreadSortEventId?: string;
       readonly revokesMessageId?: string;
     }
   | {
@@ -443,12 +453,17 @@ export function createChatFilesBddApi(context: TestContext) {
         readonly title?: string;
         readonly clientThreadId?: string;
         readonly eventId?: string;
+        readonly modelSelection?: ModelSelectionRequest;
       },
     ): Promise<{ readonly id: string; readonly title: string | null }> {
       const response = await accept(
         threadsClient().create({
           headers: authenticate(context, actor),
-          body,
+          body: {
+            ...body,
+            modelSelection:
+              body.modelSelection ?? defaultCreateThreadModelSelection(),
+          },
         }),
         [201],
       );
@@ -462,13 +477,18 @@ export function createChatFilesBddApi(context: TestContext) {
         readonly title?: string;
         readonly clientThreadId?: string;
         readonly eventId?: string;
+        readonly modelSelection?: ModelSelectionRequest;
       },
-      statuses: readonly (201 | 401 | 404)[],
+      statuses: readonly (201 | 401 | 402 | 404)[],
     ) {
       return await accept(
         threadsClient().create({
           headers: authenticate(context, actor),
-          body,
+          body: {
+            ...body,
+            modelSelection:
+              body.modelSelection ?? defaultCreateThreadModelSelection(),
+          },
         }),
         statuses,
       );
@@ -788,7 +808,7 @@ export function createChatFilesBddApi(context: TestContext) {
       actor: ApiTestUser,
       threadId: string,
     ): Promise<{
-      readonly lastReadMessageId: string | null;
+      readonly lastReadAt: string | null;
       readonly unreads: readonly { threadId: string; unreadAt: string }[];
     }> {
       const response = await accept(
@@ -1120,6 +1140,31 @@ export function createChatFilesBddApi(context: TestContext) {
       );
     },
 
+    async requestUploadThreadArtifactGoogleSlides(
+      actor: ApiTestUser | null,
+      threadId: string,
+      file: { readonly name: string; readonly bytes: Uint8Array },
+      statuses: readonly (200 | 400 | 401 | 403 | 404 | 503)[],
+    ) {
+      const buffer = new ArrayBuffer(file.bytes.byteLength);
+      new Uint8Array(buffer).set(file.bytes);
+      const formData = new FormData();
+      formData.append(
+        "file",
+        new File([buffer], file.name, {
+          type: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        }),
+      );
+      return await accept(
+        threadArtifactsClient().uploadGoogleSlides({
+          headers: authenticate(context, actor),
+          params: { threadId },
+          body: formData,
+        }),
+        statuses,
+      );
+    },
+
     async requestSendMessage(
       actor: ApiTestUser | null,
       body: BddSendMessageBody,
@@ -1133,48 +1178,54 @@ export function createChatFilesBddApi(context: TestContext) {
         : chatMessagesClient();
       const requestBody =
         "prompt" in body
-          ? {
-              agentId: body.agentId,
-              prompt: body.prompt,
-              ...(body.threadId === undefined
-                ? {}
-                : { threadId: body.threadId }),
-              ...(body.clientThreadId === undefined
-                ? {}
-                : { clientThreadId: body.clientThreadId }),
-              ...(body.modelSelectionEventId === undefined
-                ? {}
-                : { modelSelectionEventId: body.modelSelectionEventId }),
-              ...(body.modelProvider === undefined
-                ? {}
-                : { modelProvider: body.modelProvider }),
-              ...(body.modelSelection === undefined
-                ? {}
-                : { modelSelection: body.modelSelection }),
-              ...(body.runOptions === undefined
-                ? {}
-                : { runOptions: body.runOptions }),
-              ...(body.generationTemplate === undefined
-                ? {}
-                : { generationTemplate: body.generationTemplate }),
-              ...(body.hasTextContent === undefined
-                ? {}
-                : { hasTextContent: body.hasTextContent }),
-              ...(body.attachFiles === undefined
-                ? {}
-                : { attachFiles: [...body.attachFiles] }),
-              // Explicit null clears the thread's sticky computer-use host;
-              // omitting the field keeps it, so the two must stay distinct.
-              ...(body.computerUseHostId === undefined
-                ? {}
-                : { computerUseHostId: body.computerUseHostId }),
-              ...(body.clientMessageId === undefined
-                ? {}
-                : { clientMessageId: body.clientMessageId }),
-              ...(body.revokesMessageId === undefined
-                ? {}
-                : { revokesMessageId: body.revokesMessageId }),
-            }
+          ? (() => {
+              const modelSelection =
+                body.modelSelection !== undefined
+                  ? body.modelSelection
+                  : body.threadId === undefined
+                    ? defaultCreateThreadModelSelection()
+                    : undefined;
+              return {
+                agentId: body.agentId,
+                prompt: body.prompt,
+                ...(body.threadId === undefined
+                  ? {}
+                  : { threadId: body.threadId }),
+                ...(body.clientThreadId === undefined
+                  ? {}
+                  : { clientThreadId: body.clientThreadId }),
+                ...(body.modelProvider === undefined
+                  ? {}
+                  : { modelProvider: body.modelProvider }),
+                ...(modelSelection === undefined ? {} : { modelSelection }),
+                ...(body.runOptions === undefined
+                  ? {}
+                  : { runOptions: body.runOptions }),
+                ...(body.generationTemplate === undefined
+                  ? {}
+                  : { generationTemplate: body.generationTemplate }),
+                ...(body.hasTextContent === undefined
+                  ? {}
+                  : { hasTextContent: body.hasTextContent }),
+                ...(body.attachFiles === undefined
+                  ? {}
+                  : { attachFiles: [...body.attachFiles] }),
+                // Explicit null clears the thread's sticky computer-use host;
+                // omitting the field keeps it, so the two must stay distinct.
+                ...(body.computerUseHostId === undefined
+                  ? {}
+                  : { computerUseHostId: body.computerUseHostId }),
+                ...(body.clientMessageId === undefined
+                  ? {}
+                  : { clientMessageId: body.clientMessageId }),
+                ...(body.chatThreadSortEventId === undefined
+                  ? {}
+                  : { chatThreadSortEventId: body.chatThreadSortEventId }),
+                ...(body.revokesMessageId === undefined
+                  ? {}
+                  : { revokesMessageId: body.revokesMessageId }),
+              };
+            })()
           : "interruptsRunId" in body
             ? {
                 agentId: body.agentId,

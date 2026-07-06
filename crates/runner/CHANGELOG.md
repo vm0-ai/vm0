@@ -1,5 +1,47 @@
 # Changelog
 
+## [0.134.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.133.8...runner-rs-v0.134.0) (2026-07-06)
+
+
+### Features
+
+* support zstd session history blobs ([#20341](https://github.com/vm0-ai/vm0/issues/20341)) ([c4188fa](https://github.com/vm0-ai/vm0/commit/c4188fa5b28587f197998421ac5032c228913c25))
+
+## [0.133.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.133.7...runner-rs-v0.133.8) (2026-07-06)
+
+## [0.133.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.133.6...runner-rs-v0.133.7) (2026-07-06)
+
+## [0.133.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.133.5...runner-rs-v0.133.6) (2026-07-06)
+
+## [0.133.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.133.4...runner-rs-v0.133.5) (2026-07-06)
+
+
+### Bug Fixes
+
+* snapshot runner service activation config ([#20284](https://github.com/vm0-ai/vm0/issues/20284)) ([2eb26b5](https://github.com/vm0-ai/vm0/commit/2eb26b585fdfbe2e1e6aa71d1a1bba5994016afe))
+
+
+### Performance Improvements
+
+* **runner:** reduce local queue discovery churn ([#20285](https://github.com/vm0-ai/vm0/issues/20285)) ([6aecc89](https://github.com/vm0-ai/vm0/commit/6aecc8979aa6c20bf57e82a2a3c24c3f7bceb7fa))
+
+## [0.133.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.133.3...runner-rs-v0.133.4) (2026-07-05)
+
+## [0.133.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.133.2...runner-rs-v0.133.3) (2026-07-05)
+
+
+### Refactoring
+
+* remove runner profile compatibility fields ([#20255](https://github.com/vm0-ai/vm0/issues/20255)) ([7972fa3](https://github.com/vm0-ai/vm0/commit/7972fa3a2aa317e99ba40503b5d6dae35e0d6df8))
+
+## [0.133.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.133.1...runner-rs-v0.133.2) (2026-07-05)
+
+
+### Performance Improvements
+
+* **runner:** adapt active input idle polling ([#20250](https://github.com/vm0-ai/vm0/issues/20250)) ([bbe0608](https://github.com/vm0-ai/vm0/commit/bbe0608afc5f90d874b5d71eaba1cf431a576952))
+* **runner:** avoid sorting local queue discovery ([#20251](https://github.com/vm0-ai/vm0/issues/20251)) ([9eea0de](https://github.com/vm0-ai/vm0/commit/9eea0deca3e4ab64e2b827c76d3c9065959fb2a3))
+
 ## [0.133.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.133.0...runner-rs-v0.133.1) (2026-07-05)
 
 

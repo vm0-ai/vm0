@@ -29,7 +29,6 @@ import {
   zeroConnectorScopeDiffContract,
   zeroConnectorsMainContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
-import { isGoogleOAuthConnector } from "@vm0/connectors/auth-providers/oauth/google-connectors";
 import {
   getAvailableConnectorAuthMethodIds,
   getConnectorAuthMethod,
@@ -394,9 +393,7 @@ function mockConnectorCatalogStatusItem(
       type,
       authMethods,
     ),
-    connectNotice: isGoogleOAuthConnector(type)
-      ? "google-security-warning"
-      : null,
+    connectNotice: null,
   };
 }
 

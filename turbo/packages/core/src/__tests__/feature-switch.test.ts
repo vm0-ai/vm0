@@ -39,11 +39,6 @@ describe("isFeatureEnabled", () => {
       }),
     ).toBe(true);
     expect(
-      isFeatureEnabled(FeatureSwitchKey.WorkflowAutomation, {
-        orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
-      }),
-    ).toBe(true);
-    expect(
       isFeatureEnabled(FeatureSwitchKey.WorkflowWebhookTriggers, {
         orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
       }),
@@ -61,12 +56,6 @@ describe("isFeatureEnabled", () => {
         orgId: "org_nonexistent",
       }),
     ).toBe(false);
-    expect(
-      // Globally enabled since the automation -> workflow cutover (#19959).
-      isFeatureEnabled(FeatureSwitchKey.WorkflowAutomation, {
-        orgId: "org_nonexistent",
-      }),
-    ).toBe(true);
     expect(
       isFeatureEnabled(FeatureSwitchKey.WorkflowWebhookTriggers, {
         orgId: "org_nonexistent",
@@ -124,7 +113,6 @@ describe("getAllFeatureStates", () => {
       orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
     });
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.WorkflowAutomation]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.WorkflowWebhookTriggers]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ApiKeys]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.CodexFrameworkForMinimax]).toBe(
@@ -139,14 +127,13 @@ describe("getAllFeatureStates", () => {
       staffOrgStates[FeatureSwitchKey.MobileUnreadChatThreadShortcuts],
     ).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.HtmlArtifactCommentEditing]).toBe(
-      false,
+      true,
     );
 
     const otherOrgStates = getAllFeatureStates({
       orgId: "org_nonexistent",
     });
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.WorkflowAutomation]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.WorkflowWebhookTriggers]).toBe(
       false,
     );

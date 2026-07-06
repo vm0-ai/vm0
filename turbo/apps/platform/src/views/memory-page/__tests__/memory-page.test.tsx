@@ -264,9 +264,13 @@ function memoryActivityPage(
   };
 }
 
-function relationshipSearchPage(
-  query: string | undefined,
-): RelationshipSearchResponse {
+function relationshipSearchPage(query: {
+  readonly q?: string;
+  readonly page?: number;
+  readonly limit?: number;
+  readonly entityType?: "person" | "organization";
+  readonly itemKind?: "key_fact" | "preference" | "open_loop";
+}): RelationshipSearchResponse {
   const relationships: RelationshipSearchResponse["relationships"] = [
     {
       id: "00000000-0000-4000-8000-000000000101",
@@ -369,23 +373,89 @@ function relationshipSearchPage(
     },
   ];
 
-  const normalized = query?.toLowerCase().trim();
+  const normalized = query.q?.toLowerCase().trim();
+  const page = query.page ?? 1;
+  const pageSize = query.limit ?? 100;
+  const filtered = relationships.filter((relationship) => {
+    if (query.entityType && relationship.entity.type !== query.entityType) {
+      return false;
+    }
+
+    if (
+      query.itemKind &&
+      !relationship.items.some((item) => {
+        return item.kind === query.itemKind;
+      })
+    ) {
+      return false;
+    }
+
+    if (!normalized) {
+      return true;
+    }
+
+    return [
+      relationship.entity.displayName,
+      relationship.entity.primaryEmail,
+      relationship.entity.domain,
+      relationship.relationshipType,
+      relationship.summary,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase()
+      .includes(normalized);
+  });
+  const start = (page - 1) * pageSize;
+  const paged = filtered.slice(start, start + pageSize);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+
   return {
-    relationships: normalized
-      ? relationships.filter((relationship) => {
-          return [
-            relationship.entity.displayName,
-            relationship.entity.primaryEmail,
-            relationship.entity.domain,
-            relationship.relationshipType,
-            relationship.summary,
-          ]
-            .filter(Boolean)
-            .join(" ")
-            .toLowerCase()
-            .includes(normalized);
-        })
-      : relationships,
+    relationships: paged,
+    pagination: {
+      page,
+      pageSize,
+      total: filtered.length,
+      totalPages,
+      hasMore: page < totalPages,
+    },
+  };
+}
+
+function emptyRelationshipSearchPage(): RelationshipSearchResponse {
+  return {
+    relationships: [],
+    pagination: {
+      page: 1,
+      pageSize: 100,
+      total: 0,
+      totalPages: 1,
+      hasMore: false,
+    },
+  };
+}
+
+function relationshipRecord(
+  index: number,
+  displayName: string,
+): RelationshipSearchResponse["relationships"][number] {
+  const idSuffix = String(index).padStart(12, "0");
+  const entitySuffix = String(index + 500).padStart(12, "0");
+  return {
+    id: `00000000-0000-4000-8000-${idSuffix}`,
+    entity: {
+      id: `00000000-0000-4000-8000-${entitySuffix}`,
+      type: "person",
+      displayName,
+      primaryEmail: `contact-${index}@example.com`,
+      domain: "example.com",
+    },
+    relationshipType: "Customer contact",
+    status: "active",
+    summary: `${displayName} is part of the pagination fixture.`,
+    lastInteractionAt: "2026-07-02T12:00:00.000Z",
+    items: [],
+    recentInteractions: [],
   };
 }
 
@@ -518,7 +588,7 @@ describe("memory page", () => {
     context.mocks.api(
       zeroRelationshipsContract.search,
       ({ query, respond }) => {
-        return respond(200, relationshipSearchPage(query.q));
+        return respond(200, relationshipSearchPage(query));
       },
     );
     context.mocks.api(zeroRelationshipsContract.gmailStatus, ({ respond }) => {
@@ -562,6 +632,13 @@ describe("memory page", () => {
     ).toBeInTheDocument();
 
     click(getButtonContaining("All"));
+    await waitFor(() => {
+      expect(
+        screen.getByPlaceholderText(
+          "Search people, companies, emails, or open loops",
+        ),
+      ).toBeInTheDocument();
+    });
     await fill(
       screen.getByPlaceholderText(
         "Search people, companies, emails, or open loops",
@@ -579,6 +656,74 @@ describe("memory page", () => {
     ).toBeInTheDocument();
   });
 
+  it("moves through relationship pages from the relationships tab", async () => {
+    context.mocks.api(zeroMemoryActivityContract.get, ({ query, respond }) => {
+      expect(query.limit).toBe(7);
+      return respond(200, memoryActivityPage(query.cursor));
+    });
+    context.mocks.api(zeroMemoryContract.get, ({ respond }) => {
+      return respond(200, memoryDetailResponse());
+    });
+    const queries: { page: number; limit: number }[] = [];
+    context.mocks.api(
+      zeroRelationshipsContract.search,
+      ({ query, respond }) => {
+        queries.push({ page: query.page, limit: query.limit });
+        const page = query.page;
+        const relationship =
+          page === 1
+            ? relationshipRecord(1, "First page contact")
+            : relationshipRecord(101, "Second page contact");
+        return respond(200, {
+          relationships: [relationship],
+          pagination: {
+            page,
+            pageSize: query.limit,
+            total: 101,
+            totalPages: 2,
+            hasMore: page < 2,
+          },
+        });
+      },
+    );
+    context.mocks.api(zeroRelationshipsContract.gmailStatus, ({ respond }) => {
+      return respond(200, gmailRelationshipStatus());
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/memory",
+      featureSwitches: {
+        [FeatureSwitchKey.MemoryViewer]: true,
+        [FeatureSwitchKey.RelationshipMemory]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("launch preferences")).toBeInTheDocument();
+    });
+
+    click(getTabByText("Relationships"));
+
+    await waitFor(() => {
+      expect(screen.getAllByText("First page contact").length).toBeGreaterThan(
+        0,
+      );
+    });
+    expect(screen.getByText("Page 1 of 2")).toBeInTheDocument();
+    expect(queries.at(-1)).toStrictEqual({ page: 1, limit: 100 });
+
+    click(screen.getByLabelText("Next page"));
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Second page contact").length).toBeGreaterThan(
+        0,
+      );
+    });
+    expect(screen.getByText("Page 2 of 2")).toBeInTheDocument();
+    expect(queries.at(-1)).toStrictEqual({ page: 2, limit: 100 });
+  });
+
   it("enables Gmail relationships and shows backfill progress", async () => {
     context.mocks.api(zeroMemoryActivityContract.get, ({ query, respond }) => {
       expect(query.limit).toBe(7);
@@ -588,7 +733,7 @@ describe("memory page", () => {
       return respond(200, memoryDetailResponse());
     });
     context.mocks.api(zeroRelationshipsContract.search, ({ respond }) => {
-      return respond(200, { relationships: [] });
+      return respond(200, emptyRelationshipSearchPage());
     });
 
     let status = gmailRelationshipStatus({
@@ -677,7 +822,7 @@ describe("memory page", () => {
       return respond(200, memoryDetailResponse());
     });
     context.mocks.api(zeroRelationshipsContract.search, ({ respond }) => {
-      return respond(200, { relationships: [] });
+      return respond(200, emptyRelationshipSearchPage());
     });
 
     let status = gmailRelationshipStatus({
@@ -766,7 +911,7 @@ describe("memory page", () => {
       return respond(200, memoryDetailResponse());
     });
     context.mocks.api(zeroRelationshipsContract.search, ({ respond }) => {
-      return respond(200, { relationships: [] });
+      return respond(200, emptyRelationshipSearchPage());
     });
 
     let status = gmailRelationshipStatus({

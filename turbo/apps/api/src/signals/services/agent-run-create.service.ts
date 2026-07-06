@@ -71,10 +71,8 @@ import {
 } from "@vm0/core/frameworks";
 import {
   getAllFeatureStates,
-  isFeatureEnabled,
   type FeatureSwitchContext,
 } from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { resolveSkillRef, parseGitHubTreeUrl } from "@vm0/core/github-url";
 import {
   getCustomSkillStorageName,
@@ -141,7 +139,9 @@ import {
 } from "./crypto.utils";
 import {
   customConnectorInternalName,
+  customConnectorPrefixTemplateVariableKeys,
   customConnectorSecretKey,
+  customConnectorValueMarkerKey,
   decryptCustomConnectorValues,
   loadCustomConnectorRuntimeData,
   renderCustomConnectorRuntimePrefix,
@@ -188,8 +188,9 @@ import {
   loadZeroBackedComposeAgent,
 } from "./agent-connector-scope.service";
 import {
+  isCompressedSessionHistoryBlobEncoding,
   normalizeSessionHistoryBlobEncoding,
-  SESSION_HISTORY_ENCODING_GZIP,
+  type CompressedSessionHistoryBlobEncoding,
 } from "./session-history-blobs";
 
 const PENDING_RUN_TTL_MS = 15 * 60 * 1000;
@@ -293,10 +294,6 @@ interface PreparedAdditionalVolumes {
 
 interface ZeroRunMetadata {
   readonly triggerAgentId?: string;
-  // Run provenance: the automation + the trigger that fired this run (set by the
-  // webhook inbound path). Persisted as first-class zero_runs columns.
-  readonly automationId?: string;
-  readonly triggerId?: string;
   // Run provenance for workflow schedule triggers.
   readonly workflowTriggerId?: string;
   readonly triggerBrief?: string;
@@ -615,7 +612,7 @@ interface CreditCheckRow extends Record<string, unknown> {
 
 interface CustomConnectorRuntimeContext {
   readonly firewalls: readonly ExpandedFirewallConfig[];
-  readonly secrets: Record<string, string> | undefined;
+  readonly reservedSecretAliases: Record<string, true> | undefined;
   readonly authRefs: readonly CustomConnectorAuthRef[];
 }
 
@@ -733,13 +730,8 @@ function skillMountPath(
 function buildSystemSkillVolumes(
   connectorTypes: readonly ConnectorType[],
   framework: SupportedFramework,
-  goalSeedEnabled: boolean,
 ): readonly AdditionalVolume[] {
-  // The `goal` skill is mounted only when workflow automation is on, so it
-  // is appended here rather than living in the always-on SEED_SKILLS list.
-  const seedNames = goalSeedEnabled
-    ? [...SEED_SKILLS, GOAL_SKILL_NAME]
-    : SEED_SKILLS;
+  const seedNames = [...SEED_SKILLS, GOAL_SKILL_NAME];
   const allSkillNames = [...new Set([...seedNames, ...connectorTypes])];
   return allSkillNames.flatMap((skillName) => {
     const url = resolveSkillRef(skillName);
@@ -780,18 +772,13 @@ function buildInjectedSkillVolumes(
     readonly allowedConnectorTypes: readonly ConnectorType[] | undefined;
   },
   framework: SupportedFramework,
-  goalSeedEnabled: boolean,
 ): readonly PreparedAdditionalVolume[] | undefined {
   if (!args.injectSkillVolumes) {
     return undefined;
   }
   return [
     ...(prepareAdditionalVolumesWithSource(
-      buildSystemSkillVolumes(
-        args.allowedConnectorTypes ?? [],
-        framework,
-        goalSeedEnabled,
-      ),
+      buildSystemSkillVolumes(args.allowedConnectorTypes ?? [], framework),
       "system_skill",
     ) ?? []),
     ...(prepareAdditionalVolumesWithSource(
@@ -2100,7 +2087,10 @@ function mergeRecords<T>(
 
 function filterSecretConnectorMap(args: {
   readonly secretConnectorMap: Record<string, string> | undefined;
-  readonly overriddenSecrets: readonly (Record<string, string> | undefined)[];
+  readonly overriddenSecrets: readonly (
+    | Readonly<Record<string, unknown>>
+    | undefined
+  )[];
 }): Record<string, string> | undefined {
   if (!args.secretConnectorMap) {
     return undefined;
@@ -3245,31 +3235,27 @@ async function buildCustomConnectorRuntimeContext(args: {
   readonly timing?: ApiDispatchTimingCollector;
 }): Promise<CustomConnectorRuntimeContext> {
   const firewalls: ExpandedFirewallConfig[] = [];
-  const secrets: Record<string, string> = {};
+  const reservedSecretAliases: Record<string, true> = {};
   const authRefs: CustomConnectorAuthRef[] = [];
   const stats = new CustomConnectorRuntimeBuildStats(args.rows);
   for (const row of args.rows) {
     const missingRequiredStartedAt = now();
     const valueMarkers = new Set(
       row.values.map((value) => {
-        return `${value.kind}:${value.key}`;
+        return customConnectorValueMarkerKey(value);
       }),
     );
     const missingRequired = row.connector.fields.some((field) => {
-      return field.required && !valueMarkers.has(`${field.kind}:${field.key}`);
+      return (
+        field.required &&
+        !valueMarkers.has(customConnectorValueMarkerKey(field))
+      );
     });
     stats.recordPhaseDuration("assembleFirewalls", missingRequiredStartedAt);
     if (missingRequired) {
       stats.recordMissingRequiredConnector();
       continue;
     }
-    const decryptStartedAt = now();
-    const decryptedValues = await decryptCustomConnectorValues({
-      values: row.values,
-      featureSwitchContext: args.featureSwitchContext,
-    });
-    stats.recordPhaseDuration("decryptValues", decryptStartedAt);
-    stats.recordDecryptedValues(row.values.length);
     const apis: ExpandedFirewallConfig["apis"] = [];
     const authTemplateStartedAt = now();
     const headers = Object.fromEntries(
@@ -3299,6 +3285,22 @@ async function buildCustomConnectorRuntimeContext(args: {
       stats.recordNoAuthInjectionConnector();
       continue;
     }
+    const prefixVariableKeys = customConnectorPrefixTemplateVariableKeys(
+      row.connector.prefixTemplates,
+    );
+    const prefixValues = row.values.filter((value) => {
+      return value.kind === "variable" && prefixVariableKeys.has(value.key);
+    });
+    const decryptStartedAt = now();
+    const decryptedValues =
+      prefixValues.length === 0
+        ? {}
+        : await decryptCustomConnectorValues({
+            values: prefixValues,
+            featureSwitchContext: args.featureSwitchContext,
+          });
+    stats.recordPhaseDuration("decryptValues", decryptStartedAt);
+    stats.recordDecryptedValues(prefixValues.length);
     const prefixStartedAt = now();
     for (const prefixTemplate of row.connector.prefixTemplates) {
       const renderedPrefix = renderCustomConnectorRuntimePrefix({
@@ -3329,37 +3331,24 @@ async function buildCustomConnectorRuntimeContext(args: {
       description: row.connector.displayName,
       apis,
     });
-    authRefs.push(
-      ...customConnectorAuthRefsForApis({
-        connectorId: row.connector.id,
-        values: row.values,
-        apis,
-      }),
-    );
-    for (const value of row.values) {
-      const field = row.connector.fields.find((candidate) => {
-        return candidate.kind === value.kind && candidate.key === value.key;
-      });
-      if (!field) {
-        continue;
-      }
-      const decryptedValue = decryptedValues[`${value.kind}:${value.key}`];
-      if (decryptedValue === undefined) {
-        continue;
-      }
-      secrets[
-        customConnectorSecretKey({
-          connectorId: row.connector.id,
-          kind: value.kind,
-          key: value.key,
-        })
-      ] = decryptedValue;
+    const rowAuthRefs = customConnectorAuthRefsForApis({
+      connectorId: row.connector.id,
+      values: row.values,
+      apis,
+    });
+    for (const ref of rowAuthRefs) {
+      reservedSecretAliases[ref.secretName] = true;
     }
+    authRefs.push(...rowAuthRefs);
     stats.recordPhaseDuration("assembleFirewalls", assemblyStartedAt);
   }
 
   const finalAssemblyStartedAt = now();
-  const result = { firewalls, secrets: compactRecord(secrets), authRefs };
+  const result = {
+    firewalls,
+    reservedSecretAliases: compactRecord(reservedSecretAliases),
+    authRefs,
+  };
   stats.recordPhaseDuration("assembleFirewalls", finalAssemblyStartedAt);
   stats.flush(args.timing);
   return result;
@@ -3376,7 +3365,7 @@ async function loadCustomConnectorContext(
   timing?: ApiDispatchTimingCollector,
 ): Promise<CustomConnectorRuntimeContext> {
   if (args.allowedCustomConnectorIds?.length === 0) {
-    return { firewalls: [], secrets: undefined, authRefs: [] };
+    return { firewalls: [], reservedSecretAliases: undefined, authRefs: [] };
   }
 
   const rows = await loadCustomConnectorRuntimeData(db, {
@@ -3397,7 +3386,7 @@ async function loadCustomConnectorContext(
     },
   });
   if (rows.length === 0) {
-    return { firewalls: [], secrets: undefined, authRefs: [] };
+    return { firewalls: [], reservedSecretAliases: undefined, authRefs: [] };
   }
 
   return await measureApiDispatchTiming(
@@ -4270,12 +4259,12 @@ function loadResumeSession(
         (): Promise<StoredExecutionContext["resumeSession"] | null> => {
           const cliAgentSessionId = conversation.cliAgentSessionId;
           const hash = conversation.cliAgentSessionHistoryHash;
-          let encoding: typeof SESSION_HISTORY_ENCODING_GZIP | undefined;
+          let encoding: CompressedSessionHistoryBlobEncoding | undefined;
           if (conversation.sessionHistoryBlobEncoding !== null) {
             const parsedEncoding = normalizeSessionHistoryBlobEncoding(
               conversation.sessionHistoryBlobEncoding,
             );
-            if (parsedEncoding === SESSION_HISTORY_ENCODING_GZIP) {
+            if (isCompressedSessionHistoryBlobEncoding(parsedEncoding)) {
               encoding = parsedEncoding;
             }
           }
@@ -4544,8 +4533,6 @@ async function insertZeroRunRecord(
   await tx.insert(zeroRuns).values({
     id: args.runId,
     triggerSource: args.body.triggerSource ?? "cli",
-    automationId: metadata.automationId ?? null,
-    triggerId: metadata.triggerId ?? null,
     workflowTriggerId: metadata.workflowTriggerId ?? null,
     triggerBrief: metadata.triggerBrief ?? null,
     runGroupId: metadata.runGroupId ?? null,
@@ -4953,12 +4940,15 @@ function buildStoredExecutionSecrets(args: {
       args.modelProvider?.secrets,
       args.modelProvider?.secretConnectorMap,
       args.bodySecrets,
-      args.customConnectorContext.secrets,
+      args.customConnectorContext.reservedSecretAliases,
     ],
   });
   const filteredModelProviderMap = filterSecretConnectorMap({
     secretConnectorMap: args.modelProvider?.secretConnectorMap,
-    overriddenSecrets: [args.bodySecrets, args.customConnectorContext.secrets],
+    overriddenSecrets: [
+      args.bodySecrets,
+      args.customConnectorContext.reservedSecretAliases,
+    ],
   });
   const filteredModelProviderMetadataMap = filterSecretConnectorMetadataMap({
     secretConnectorMetadataMap: args.modelProvider?.secretConnectorMetadataMap,
@@ -4970,7 +4960,6 @@ function buildStoredExecutionSecrets(args: {
     args.connectorContext.secrets,
     args.modelProvider?.secrets,
     args.bodySecrets,
-    args.customConnectorContext.secrets,
   );
   // The merged map is the runtime `secrets.NAME` namespace consumed by firewall
   // auth and environment expansion. Stored connectors and model providers enter
@@ -6212,10 +6201,6 @@ function preparedRunAdditionalVolumes(args: {
         allowedConnectorTypes: args.connectorScope.allowedConnectorTypes,
       },
       args.framework,
-      isFeatureEnabled(
-        FeatureSwitchKey.WorkflowAutomation,
-        args.featureSwitchContext,
-      ),
     ),
     base: prepareAdditionalVolumesWithSource(
       bodyAdditionalVolumes ?? args.resolved.additionalVolumes,

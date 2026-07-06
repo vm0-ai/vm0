@@ -1,5 +1,127 @@
 # Changelog
 
+## [9.224.2](https://github.com/vm0-ai/vm0/compare/cli-v9.224.1...cli-v9.224.2) (2026-07-06)
+
+
+### Refactoring
+
+* retire the workflow automation feature switch as always-on ([#20357](https://github.com/vm0-ai/vm0/issues/20357)) ([840b415](https://github.com/vm0-ai/vm0/commit/840b41551ab88a25aeeec08f01a18ccd6a5b36ff))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.157.0
+    * @vm0/connectors bumped to 1.140.0
+    * @vm0/core bumped to 8.405.0
+
+## [9.224.1](https://github.com/vm0-ai/vm0/compare/cli-v9.224.0...cli-v9.224.1) (2026-07-06)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.156.0
+    * @vm0/connectors bumped to 1.139.0
+    * @vm0/core bumped to 8.404.0
+
+## [9.224.0](https://github.com/vm0-ai/vm0/compare/cli-v9.223.22...cli-v9.224.0) (2026-07-06)
+
+
+### Features
+
+* add Desktop Computer Use filesystem plugins ([#19814](https://github.com/vm0-ai/vm0/issues/19814)) ([062a44c](https://github.com/vm0-ai/vm0/commit/062a44c181536df868bc6b081bae0dd7a2d9d9d6))
+* add Google Meet transcript-generated workflow trigger ([#19789](https://github.com/vm0-ai/vm0/issues/19789)) ([91aef71](https://github.com/vm0-ai/vm0/commit/91aef711953cb2107c62ae7d2d3a7f9da38a071f))
+* add relationship memory foundation ([#20077](https://github.com/vm0-ai/vm0/issues/20077)) ([805a79e](https://github.com/vm0-ai/vm0/commit/805a79ed91fc55a6261bf6f7180fa4b3c663af7d))
+* resolve presentation runbook templates in `zero generate presentation --template` ([#20061](https://github.com/vm0-ai/vm0/issues/20061)) ([e4565ed](https://github.com/vm0-ai/vm0/commit/e4565ed884e32e7ecfc99c95bed415b37845ce90))
+* support scoped workflow name refs ([#19655](https://github.com/vm0-ai/vm0/issues/19655)) ([7018ee0](https://github.com/vm0-ai/vm0/commit/7018ee0446da472fb5b10370951513f189f52535))
+
+
+### Bug Fixes
+
+* cache workflow avatars and reveal webhook secrets on demand ([#20073](https://github.com/vm0-ai/vm0/issues/20073)) ([d39c8eb](https://github.com/vm0-ai/vm0/commit/d39c8eb9b3fe014795aaef38f2baab2dbd67704b))
+* remove workflow publish approval flow ([#19767](https://github.com/vm0-ai/vm0/issues/19767)) ([19d0fa7](https://github.com/vm0-ai/vm0/commit/19d0fa765fe2fb9a15d64e2a04616b41b8546a17))
+* require agent IDs for automation create ([#19634](https://github.com/vm0-ai/vm0/issues/19634)) ([09145f3](https://github.com/vm0-ai/vm0/commit/09145f3aa4d89d6ae8c714ebd47628ffd85c70d5))
+* secure computer-use output artifacts ([#19853](https://github.com/vm0-ai/vm0/issues/19853)) ([84e5c3c](https://github.com/vm0-ai/vm0/commit/84e5c3c666f7ceca28b3f221e3792b00fb09fd90))
+
+
+### Refactoring
+
+* **cli:** use public connector catalog ([#19909](https://github.com/vm0-ai/vm0/issues/19909)) ([bd55ce4](https://github.com/vm0-ai/vm0/commit/bd55ce4a0a9c9974039d23b31af50f5476202ca1))
+* reduce fallback slop in runtime guards ([#19720](https://github.com/vm0-ai/vm0/issues/19720)) ([5d61de7](https://github.com/vm0-ai/vm0/commit/5d61de75720518d76e917f06a7be0bf95f155973))
+* remove legacy automation poller, mutating routes, and the cli command ([#20103](https://github.com/vm0-ai/vm0/issues/20103)) ([2245f83](https://github.com/vm0-ai/vm0/commit/2245f83430aefa545077e5da1e8929d9c4968628))
+* retire legacy html-ppt presentation registry entries (presentations runbook-only) ([#20064](https://github.com/vm0-ai/vm0/issues/20064)) ([b92a71c](https://github.com/vm0-ai/vm0/commit/b92a71c98a4c48b1fec6a610dd179a09f4d86c62))
+* retire open design presentation templates ([#20097](https://github.com/vm0-ai/vm0/issues/20097)) ([1151041](https://github.com/vm0-ai/vm0/commit/11510410ef166d838ccb5264e1cf5007904b6150))
+* retire presentation-deck-tools server-side (phase 2) ([#20012](https://github.com/vm0-ai/vm0/issues/20012)) ([9626a84](https://github.com/vm0-ai/vm0/commit/9626a842ba1ad35502dc97d507acbd58f969e7aa))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.403.0
+
+## [9.223.22](https://github.com/vm0-ai/vm0/compare/cli-v9.223.21...cli-v9.223.22) (2026-07-06)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.402.0
+
+## [9.223.21](https://github.com/vm0-ai/vm0/compare/cli-v9.223.20...cli-v9.223.21) (2026-07-06)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.155.4
+    * @vm0/core bumped to 8.401.5
+
+## [9.223.20](https://github.com/vm0-ai/vm0/compare/cli-v9.223.19...cli-v9.223.20) (2026-07-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.155.3
+    * @vm0/core bumped to 8.401.4
+
+## [9.223.19](https://github.com/vm0-ai/vm0/compare/cli-v9.223.18...cli-v9.223.19) (2026-07-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.155.2
+    * @vm0/core bumped to 8.401.3
+
+## [9.223.18](https://github.com/vm0-ai/vm0/compare/cli-v9.223.17...cli-v9.223.18) (2026-07-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.155.1
+    * @vm0/core bumped to 8.401.2
+
+## [9.223.17](https://github.com/vm0-ai/vm0/compare/cli-v9.223.16...cli-v9.223.17) (2026-07-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.155.0
+    * @vm0/core bumped to 8.401.1
+
 ## [9.223.16](https://github.com/vm0-ai/vm0/compare/cli-v9.223.15...cli-v9.223.16) (2026-07-05)
 
 

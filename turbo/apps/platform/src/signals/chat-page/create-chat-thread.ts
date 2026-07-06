@@ -30,7 +30,6 @@ import {
 } from "../zero-page/chat-draft.ts";
 import {
   collectSuccessfulAttachmentInfos,
-  isVisualAttachment,
   prepareUserMessageFromDraft$,
   shouldExcludeVisualAttachmentsForModel,
 } from "./resolve-draft-attachments.ts";
@@ -51,24 +50,16 @@ import {
 } from "@vm0/api-contracts/contracts/chat-threads";
 
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
-import {
-  modelSelectionRequestFromSelection,
-  runOptionsFromModelProviderSelection,
-} from "./model-selection-request.ts";
+import { runOptionsFromModelProviderSelection } from "./model-selection-request.ts";
 import { accept } from "../../lib/accept.ts";
 import { nowDate } from "../../lib/time.ts";
 import { captureTaskCompletedSuccessfully } from "../../lib/posthog.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { agentById } from "../agent.ts";
 import { chatMessageOrderSequence } from "../chat-message-order.ts";
-import { orgModelPolicies$ } from "../external/org-model-policies.ts";
-import { userModelPreference$ } from "../external/user-model-preference.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
 import { pinnedAgentIds$ } from "../zero-page/zero-pinned-agents.ts";
-import {
-  MODEL_FIRST_SELECTION_PROVIDER_ID,
-  resolveModelFirstUserDefaultSelection,
-} from "../zero-page/model-default-selection.ts";
+import { MODEL_FIRST_SELECTION_PROVIDER_ID } from "../zero-page/model-default-selection.ts";
 import {
   writeChatMessageToClipboard,
   type ChatClipboardPayload,
@@ -91,6 +82,7 @@ import { getChatThreadTitleParts } from "./chat-thread-title.ts";
 import {
   optimisticChatThreadCreateUnsettled,
   threadMeta,
+  touchOptimisticChatThreadSort$,
   type ThreadMeta,
 } from "./chat-thread-event-sourcing.ts";
 import {
@@ -537,56 +529,27 @@ function createThreadTitleParts(
 function createModelSelection(
   threadId: string,
   threadMeta$: Computed<Promise<ThreadMeta | null>>,
-  remoteThreadDetail$: Computed<Promise<ChatThread | null>>,
   dataSource: ChatThreadDataSource,
 ) {
-  const optimisticCreateUnsettled$ =
-    optimisticChatThreadCreateUnsettled(threadId);
-  // Discriminated union so we can tell "user hasn't picked anything yet" from
-  // "user explicitly picked inherit (null)". Without the flag, clearing the
-  // selection would be indistinguishable from the initial unset state and we'd
-  // fall back to server data forever.
-  const internalUserOverride$ = state<
-    { kind: "unset" } | { kind: "set"; value: ModelProviderSelection | null }
-  >({ kind: "unset" });
-
   const modelSelection$ = computed(
     async (get): Promise<ModelProviderSelection | null> => {
-      const user = get(internalUserOverride$);
-      if (user.kind === "set") {
-        return user.value;
-      }
       const threadMeta = await get(threadMeta$);
       if (threadMeta?.selectedModel) {
-        const thread = await get(remoteThreadDetail$);
         return {
           modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
           selectedModel: threadMeta.selectedModel,
-          ...(thread?.codexServiceTier
-            ? { codexServiceTier: thread.codexServiceTier }
-            : {}),
         };
       }
-      // Unstarted model-first threads inherit the current user preference;
-      // started threads carry selectedModel through the event projection.
       return null;
     },
   );
 
   const setModelSelection$ = command(
     async (
-      { get, set },
+      { set },
       value: ModelProviderSelection | null,
       signal: AbortSignal,
     ) => {
-      set(internalUserOverride$, { kind: "set", value });
-      if (get(optimisticCreateUnsettled$)) {
-        L.debug("setModelSelection$ optimistic thread create unsettled, skip", {
-          threadId,
-        });
-        return;
-      }
-
       await set(
         dataSource.patchModelSelection$,
         { threadId, modelSelection: value },
@@ -739,17 +702,6 @@ function createAgentInfoSignals(
     return agent?.displayName ?? null;
   });
 
-  const defaultModelSelection$ = computed(
-    async (get): Promise<ModelProviderSelection | null> => {
-      const policies = await get(orgModelPolicies$);
-      const userPreference = await get(userModelPreference$);
-      return resolveModelFirstUserDefaultSelection({
-        userPreference,
-        policies,
-      });
-    },
-  );
-
   const agentPinned$ = computed(async (get): Promise<boolean | null> => {
     const agentId = await get(agentId$);
     if (!agentId) {
@@ -759,7 +711,7 @@ function createAgentInfoSignals(
     return ids.includes(agentId);
   });
 
-  return { agentId$, agentDisplayName$, defaultModelSelection$, agentPinned$ };
+  return { agentId$, agentDisplayName$, agentPinned$ };
 }
 
 // ---------------------------------------------------------------------------
@@ -1168,7 +1120,7 @@ function createGroupedChatMessagesCache(
   return { groupedChatMessages$, refreshGroupedChatMessagesCache$ };
 }
 
-type ServerMessages$ = State<PagedChatMessage[]>;
+type PersistentMessages$ = State<PagedChatMessage[]>;
 type KnownServerMessageIds$ = State<ReadonlySet<string>>;
 
 function compareCursorString(left: string, right: string): number {
@@ -1241,9 +1193,9 @@ function addKnownServerMessageIds(
   return changed ? next : prev;
 }
 
-function createAppendServerMessages(
+function createWritePersistentMessages(
   threadId: string,
-  serverMessages$: ServerMessages$,
+  persistentMessages$: PersistentMessages$,
   reportedCompletedRunIds$: State<Set<string>>,
   knownServerMessageIds$: KnownServerMessageIds$,
 ) {
@@ -1272,20 +1224,8 @@ function createAppendServerMessages(
         return next;
       });
     }
-    set(serverMessages$, (prev) => {
-      const byId = new Map<string, PagedChatMessage>();
-      for (const m of prev) {
-        byId.set(m.id, m);
-      }
-      let changed = false;
-      for (const m of msgs) {
-        const existing = byId.get(m.id);
-        if (existing !== m) {
-          byId.set(m.id, m);
-          changed = true;
-        }
-      }
-      return changed ? Array.from(byId.values()) : prev;
+    set(persistentMessages$, (prev) => {
+      return mergeServerMessages([prev, msgs]);
     });
     set(reconcileOptimisticChatMessages$, { threadId, messages: msgs });
   });
@@ -1302,15 +1242,14 @@ interface ChatMessageProjectionEntry {
 }
 
 function projectRawMessages({
-  serverMessageSets,
+  persistentMessages,
   optimisticEntries,
 }: {
-  serverMessageSets: readonly (readonly PagedChatMessage[])[];
+  persistentMessages: readonly PagedChatMessage[];
   optimisticEntries: readonly OptimisticChatMessageEntry[];
 }): ChatMessageProjectionEntry[] {
-  const server = mergeServerMessages(serverMessageSets);
   const serverIds = new Set(
-    server.map((message) => {
+    persistentMessages.map((message) => {
       return message.id;
     }),
   );
@@ -1318,7 +1257,7 @@ function projectRawMessages({
     return !serverIds.has(entry.message.id);
   });
   return [
-    ...server.map((message) => {
+    ...persistentMessages.map((message) => {
       return { message, source: "server" as const };
     }),
     ...optimistic.map((entry) => {
@@ -1327,41 +1266,42 @@ function projectRawMessages({
   ];
 }
 
-function createRawMessagesComputed({
+function createPersistentMessagesComputed({
   initialPage$,
-  historyMessages$,
-  serverMessages$,
-  optimisticMessages$,
+  persistentMessages$,
 }: {
-  initialPage$: Computed<
-    Promise<{ messages: PagedChatMessage[]; hasHistoryBefore: boolean }>
-  >;
-  historyMessages$: State<PagedChatMessage[]>;
-  serverMessages$: State<PagedChatMessage[]>;
+  initialPage$: Computed<Promise<InitialPage>>;
+  persistentMessages$: PersistentMessages$;
+}): Computed<Promise<PagedChatMessage[]>> {
+  return computed(async (get): Promise<PagedChatMessage[]> => {
+    const initial = await get(initialPage$);
+    return mergeServerMessages([initial.messages, get(persistentMessages$)]);
+  });
+}
+
+function createRawMessagesComputed({
+  persistentMessages$,
+  pendingPersistentMessages$,
+  optimisticMessages$,
+  optimisticCreateUnsettled$,
+}: {
+  persistentMessages$: Computed<Promise<PagedChatMessage[]>>;
+  pendingPersistentMessages$: PersistentMessages$;
   optimisticMessages$: Computed<OptimisticChatMessageEntry[]>;
+  optimisticCreateUnsettled$: Computed<boolean>;
 }): Computed<Promise<ChatMessageProjectionEntry[]>> {
-  let resolvedInitialPage: InitialPage | null = null;
   return computed(async (get): Promise<ChatMessageProjectionEntry[]> => {
-    const history = get(historyMessages$);
-    const serverMessages = get(serverMessages$);
     const optimisticEntries = get(optimisticMessages$);
-    if (
-      resolvedInitialPage === null &&
-      (history.length > 0 ||
-        serverMessages.length > 0 ||
-        optimisticEntries.length > 0)
-    ) {
+    if (get(optimisticCreateUnsettled$)) {
       return projectRawMessages({
-        serverMessageSets: [history, serverMessages],
+        persistentMessages: get(pendingPersistentMessages$),
         optimisticEntries,
       });
     }
-
-    const initial = resolvedInitialPage ?? (await get(initialPage$));
-    resolvedInitialPage = initial;
+    const persistentMessages = await get(persistentMessages$);
     return projectRawMessages({
-      serverMessageSets: [history, initial.messages, serverMessages],
-      optimisticEntries: get(optimisticMessages$),
+      persistentMessages,
+      optimisticEntries,
     });
   });
 }
@@ -1471,6 +1411,25 @@ function latestServerMessageId(
   return undefined;
 }
 
+function latestRunFinishCreatedAtFromRaw(
+  raw: readonly ChatMessageProjectionEntry[],
+): string | undefined {
+  for (let index = raw.length - 1; index >= 0; index--) {
+    const entry = raw[index]!;
+    if (!isServerProjectionEntry(entry)) {
+      continue;
+    }
+    const { message } = entry;
+    if (
+      message.role === "assistant" &&
+      message.runLifecycleEvent !== undefined
+    ) {
+      return message.createdAt;
+    }
+  }
+  return undefined;
+}
+
 function latestAssistantTextCreatedAtFromRaw(
   raw: readonly ChatMessageProjectionEntry[],
 ): string | undefined {
@@ -1509,19 +1468,15 @@ function createFetchNextPageCommand({
   threadId,
   initialPage$,
   nextCursorId$,
-  appendServerMessages$,
+  writePersistentMessages$,
   refreshGroupedChatMessagesCache$,
-  reportedCompletedRunIds$,
-  knownServerMessageIds$,
   dataSource,
 }: {
   threadId: string;
   initialPage$: Computed<Promise<InitialPage>>;
   nextCursorId$: State<string | undefined>;
-  appendServerMessages$: Command<void, [PagedChatMessage[]]>;
+  writePersistentMessages$: Command<void, [PagedChatMessage[]]>;
   refreshGroupedChatMessagesCache$: Command<Promise<void>, [AbortSignal]>;
-  reportedCompletedRunIds$: State<Set<string>>;
-  knownServerMessageIds$: KnownServerMessageIds$;
   dataSource: ChatThreadDataSource;
 }): Command<Promise<boolean>, [AbortSignal]> {
   return command(async ({ get, set }, signal: AbortSignal) => {
@@ -1530,25 +1485,8 @@ function createFetchNextPageCommand({
     if (!sinceId) {
       const initial = await get(initialPage$);
       signal.throwIfAborted();
-      set(knownServerMessageIds$, (prev) => {
-        return addKnownServerMessageIds(prev, initial.messages);
-      });
-      set(reconcileOptimisticChatMessages$, {
-        threadId,
-        messages: initial.messages,
-      });
+      set(writePersistentMessages$, initial.messages);
       messagesMayHaveChanged = true;
-      set(reportedCompletedRunIds$, (prev) => {
-        const ids = completedRunIdsFromMessages(initial.messages);
-        if (ids.length === 0) {
-          return prev;
-        }
-        const next = new Set(prev);
-        for (const runId of ids) {
-          next.add(runId);
-        }
-        return next;
-      });
       sinceId = initial.messages[initial.messages.length - 1]?.id;
       L.debug("fetchNextPage$ initialPage seeded sinceId", {
         threadId,
@@ -1582,7 +1520,7 @@ function createFetchNextPageCommand({
         page: i,
       });
       if (result.messages.length > 0) {
-        set(appendServerMessages$, result.messages);
+        set(writePersistentMessages$, result.messages);
         messagesMayHaveChanged = true;
         sinceId = result.messages[result.messages.length - 1].id;
         set(nextCursorId$, sinceId);
@@ -1619,12 +1557,12 @@ function messageUpdatedPayloadMessageId(payload: unknown): string | null {
 function createFetchUpdatedMessageCommand({
   threadId,
   dataSource,
-  appendServerMessages$,
+  writePersistentMessages$,
   refreshGroupedChatMessagesCache$,
 }: {
   threadId: string;
   dataSource: ChatThreadDataSource;
-  appendServerMessages$: Command<void, [PagedChatMessage[]]>;
+  writePersistentMessages$: Command<void, [PagedChatMessage[]]>;
   refreshGroupedChatMessagesCache$: Command<Promise<void>, [AbortSignal]>;
 }): Command<Promise<boolean>, [unknown, AbortSignal]> {
   return command(
@@ -1651,12 +1589,25 @@ function createFetchUpdatedMessageCommand({
         return false;
       }
 
-      set(appendServerMessages$, [message]);
+      set(writePersistentMessages$, [message]);
       await set(refreshGroupedChatMessagesCache$, signal);
       signal.throwIfAborted();
       return false;
     },
   );
+}
+
+function createActiveGoalComputed(
+  rawMessages$: Computed<Promise<ChatMessageProjectionEntry[]>>,
+): Computed<Promise<ActiveGoalState | null>> {
+  return computed(async (get): Promise<ActiveGoalState | null> => {
+    const raw = await get(rawMessages$);
+    return foldActiveGoal(
+      raw.map((entry) => {
+        return entry.message;
+      }),
+    );
+  });
 }
 
 function createPagedMessages(
@@ -1665,13 +1616,14 @@ function createPagedMessages(
   dataSource: ChatThreadDataSource,
 ) {
   const loadedHistoryHasMore$ = state<boolean | null>(null);
-  const historyMessages$ = state<PagedChatMessage[]>([]);
   const initialPage$ = createInitialPage(dataSource);
 
-  const serverMessages$ = state<PagedChatMessage[]>([]);
+  const persistentMessagesState$ = state<PagedChatMessage[]>([]);
   const reportedCompletedRunIds$ = state(new Set<string>());
   const knownServerMessageIds$ = state<ReadonlySet<string>>(new Set());
   const optimisticMessages$ = createOptimisticChatMessagesForThread(threadId);
+  const optimisticCreateUnsettled$ =
+    optimisticChatThreadCreateUnsettled(threadId);
 
   // Tracks the last known server-validated message ID so optimistic
   // (client-generated) IDs never leak into sinceId calls.
@@ -1679,34 +1631,31 @@ function createPagedMessages(
   // advanced after each successful fetch to the last returned message.
   const nextCursorId$ = state<string | undefined>(undefined);
 
-  const rawMessages$ = createRawMessagesComputed({
+  const persistentMessages$ = createPersistentMessagesComputed({
     initialPage$,
-    historyMessages$,
-    serverMessages$,
+    persistentMessages$: persistentMessagesState$,
+  });
+  const rawMessages$ = createRawMessagesComputed({
+    persistentMessages$,
+    pendingPersistentMessages$: persistentMessagesState$,
     optimisticMessages$,
+    optimisticCreateUnsettled$,
   });
   const messageRunIndicatorState$ =
     createMessageRunIndicatorState(rawMessages$);
   const latestRunStatus$ = messageRunIndicatorState$;
 
   // The thread's active goal, folded from the (goal-marker) message stream so
-  // the composer reads it without polling /api/automations. Reads rawMessages$
+  // the composer reads it without polling a separate resource. Reads rawMessages$
   // because goal markers are control rows, not transcript rows.
-  const activeGoal$ = computed(async (get): Promise<ActiveGoalState | null> => {
-    const raw = await get(rawMessages$);
-    return foldActiveGoal(
-      raw.map((entry) => {
-        return entry.message;
-      }),
-    );
-  });
+  const activeGoal$ = createActiveGoalComputed(rawMessages$);
 
   const { groupedChatMessages$, refreshGroupedChatMessagesCache$ } =
     createGroupedChatMessagesCache(rawMessages$);
 
-  const appendServerMessages$ = createAppendServerMessages(
+  const writePersistentMessages$ = createWritePersistentMessages(
     threadId,
-    serverMessages$,
+    persistentMessagesState$,
     reportedCompletedRunIds$,
     knownServerMessageIds$,
   );
@@ -1722,6 +1671,13 @@ function createPagedMessages(
     async (get): Promise<string | undefined> => {
       const raw = await get(rawMessages$);
       return latestServerMessageId(raw);
+    },
+  );
+
+  const latestRunFinishCreatedAt$ = computed(
+    async (get): Promise<string | undefined> => {
+      const raw = await get(rawMessages$);
+      return latestRunFinishCreatedAtFromRaw(raw);
     },
   );
 
@@ -1745,16 +1701,14 @@ function createPagedMessages(
     threadId,
     initialPage$,
     nextCursorId$,
-    appendServerMessages$,
+    writePersistentMessages$,
     refreshGroupedChatMessagesCache$,
-    reportedCompletedRunIds$,
-    knownServerMessageIds$,
     dataSource,
   });
   const fetchUpdatedMessage$ = createFetchUpdatedMessageCommand({
     threadId,
     dataSource,
-    appendServerMessages$,
+    writePersistentMessages$,
     refreshGroupedChatMessagesCache$,
   });
 
@@ -1766,7 +1720,7 @@ function createPagedMessages(
         signal,
       );
       signal.throwIfAborted();
-      set(appendServerMessages$, result.messages);
+      set(writePersistentMessages$, result.messages);
       await set(refreshGroupedChatMessagesCache$, signal);
       signal.throwIfAborted();
     },
@@ -1776,9 +1730,8 @@ function createPagedMessages(
     threadId,
     threadMeta$,
     earliestChatMessageId$,
-    historyMessages$,
+    writePersistentMessages$,
     loadedHistoryHasMore$,
-    knownServerMessageIds$,
     refreshGroupedChatMessagesCache$,
     dataSource,
   });
@@ -1787,6 +1740,7 @@ function createPagedMessages(
     initialPage$,
     earliestChatMessageId$,
     latestChatMessageId$,
+    latestRunFinishCreatedAt$,
     latestAssistantTextCreatedAt$,
     groupedChatMessages$,
     refreshGroupedChatMessagesCache$,
@@ -1861,18 +1815,16 @@ function createLoadHistoryCommand({
   threadId,
   threadMeta$,
   earliestChatMessageId$,
-  historyMessages$,
+  writePersistentMessages$,
   loadedHistoryHasMore$,
-  knownServerMessageIds$,
   refreshGroupedChatMessagesCache$,
   dataSource,
 }: {
   threadId: string;
   threadMeta$: Computed<Promise<ThreadMeta | null>>;
   earliestChatMessageId$: Computed<Promise<string | undefined>>;
-  historyMessages$: State<PagedChatMessage[]>;
+  writePersistentMessages$: Command<void, [PagedChatMessage[]]>;
   loadedHistoryHasMore$: State<boolean | null>;
-  knownServerMessageIds$: KnownServerMessageIds$;
   refreshGroupedChatMessagesCache$: Command<Promise<void>, [AbortSignal]>;
   dataSource: ChatThreadDataSource;
 }): Command<Promise<LoadHistoryResult>, [AbortSignal]> {
@@ -1898,20 +1850,7 @@ function createLoadHistoryCommand({
         signal,
       );
       signal.throwIfAborted();
-      set(reconcileOptimisticChatMessages$, {
-        threadId,
-        messages: result.messages,
-      });
-      set(knownServerMessageIds$, (prev) => {
-        return addKnownServerMessageIds(prev, result.messages);
-      });
-
-      set(historyMessages$, (prev) => {
-        if (result.messages.length === 0) {
-          return prev;
-        }
-        return [...result.messages, ...prev];
-      });
+      set(writePersistentMessages$, result.messages);
       set(loadedHistoryHasMore$, result.hasMore);
       if (result.messages.length > 0) {
         await set(refreshGroupedChatMessagesCache$, signal);
@@ -2136,6 +2075,7 @@ interface RunTrackingDeps {
   reloadThread$: Command<void, []>;
   remoteThreadDetail$: Computed<Promise<ChatThread | null>>;
   latestChatMessageId$: Computed<Promise<string | undefined>>;
+  latestRunFinishCreatedAt$: Computed<Promise<string | undefined>>;
   latestRunStatus$: Computed<Promise<string | null>>;
   initialPage$: Computed<Promise<InitialPage>>;
   fetchNextPage$: Command<Promise<boolean>, [AbortSignal]>;
@@ -2149,8 +2089,8 @@ interface RunTrackingDeps {
 interface MarkThreadReadDeps {
   threadId: string;
   remoteThreadDetail$: Computed<Promise<ChatThread | null>>;
-  latestChatMessageId$: Computed<Promise<string | undefined>>;
-  locallyMarkedReadMessageId$: State<string | undefined>;
+  latestRunFinishCreatedAt$: Computed<Promise<string | undefined>>;
+  locallyMarkedReadAt$: State<string | undefined>;
   dataSource: ChatThreadDataSource;
 }
 
@@ -2275,42 +2215,43 @@ function createChatRenderWindow({
 function createMarkThreadReadIfNeeded({
   threadId,
   remoteThreadDetail$,
-  latestChatMessageId$,
-  locallyMarkedReadMessageId$,
+  latestRunFinishCreatedAt$,
+  locallyMarkedReadAt$,
   dataSource,
 }: MarkThreadReadDeps) {
   const optimisticCreateUnsettled$ =
     optimisticChatThreadCreateUnsettled(threadId);
   return command(async ({ get, set }, sig: AbortSignal) => {
-    const latestMessageId = await get(latestChatMessageId$);
+    const latestRunFinishCreatedAt = await get(latestRunFinishCreatedAt$);
     sig.throwIfAborted();
-    if (!latestMessageId) {
+    if (!latestRunFinishCreatedAt) {
       return;
     }
     if (get(optimisticCreateUnsettled$)) {
       L.debug("markRead$ optimistic thread create unsettled, skip", {
         threadId,
-        latestMessageId,
+        latestRunFinishCreatedAt,
       });
       return;
     }
 
     const thread = await get(remoteThreadDetail$);
     sig.throwIfAborted();
-    const lastReadMessageId =
-      get(locallyMarkedReadMessageId$) ?? thread?.lastReadMessageId ?? null;
-    if (lastReadMessageId === latestMessageId) {
+    if (thread === null) {
+      return;
+    }
+    const lastReadAt = get(locallyMarkedReadAt$) ?? thread.lastReadAt;
+    if (
+      lastReadAt !== null &&
+      compareCreatedAt(lastReadAt, latestRunFinishCreatedAt) >= 0
+    ) {
       return;
     }
 
-    const newLastReadId = await set(
-      dataSource.markRead$,
-      { threadId, latestMessageId },
-      sig,
-    );
+    const newLastReadAt = await set(dataSource.markRead$, { threadId }, sig);
     sig.throwIfAborted();
-    if (newLastReadId !== null) {
-      set(locallyMarkedReadMessageId$, newLastReadId);
+    if (newLastReadAt !== null) {
+      set(locallyMarkedReadAt$, newLastReadAt);
     }
     // No sidebar reload needed: markRead$ records an optimistic read mark
     // and applies the response's unread snapshot, so the unread dot clears
@@ -2323,6 +2264,7 @@ function createRunTracking({
   reloadThread$,
   remoteThreadDetail$,
   latestChatMessageId$,
+  latestRunFinishCreatedAt$,
   latestRunStatus$,
   initialPage$,
   fetchNextPage$,
@@ -2332,7 +2274,7 @@ function createRunTracking({
   autoScroll$,
   dataSource,
 }: RunTrackingDeps) {
-  const locallyMarkedReadMessageId$ = state<string | undefined>(undefined);
+  const locallyMarkedReadAt$ = state<string | undefined>(undefined);
   const resetChatSubscriptionSignal$ = resetSignalScope();
 
   const allFinished$ = computed(async (get) => {
@@ -2342,8 +2284,8 @@ function createRunTracking({
   const markThreadReadIfNeeded$ = createMarkThreadReadIfNeeded({
     threadId,
     remoteThreadDetail$,
-    latestChatMessageId$,
-    locallyMarkedReadMessageId$,
+    latestRunFinishCreatedAt$,
+    locallyMarkedReadAt$,
     dataSource,
   });
 
@@ -2491,12 +2433,14 @@ function prepareTextOnlyUserMessage(
 function createSendOptimisticMessageEntry({
   threadId,
   clientMessageId,
+  createdAt,
   result,
   generationTemplate,
   options,
 }: {
   threadId: string;
   clientMessageId: string;
+  createdAt: string;
   result: PreparedSendMessageResult;
   generationTemplate: GenerationTemplateRequest | undefined;
   options: SendMessageOptions | undefined;
@@ -2511,7 +2455,7 @@ function createSendOptimisticMessageEntry({
       attachFiles: result.attachments,
       generationTemplate,
       ...sendMessageRevocationPatch(options),
-      createdAt: nowDate().toISOString(),
+      createdAt,
     },
   };
 }
@@ -2528,6 +2472,7 @@ function sendMessageRequestBody(params: {
   readonly agentId: string;
   readonly threadId: string;
   readonly clientMessageId: string;
+  readonly chatThreadSortEventId: string;
   readonly result: PreparedSendMessageResult;
   readonly modelSelection: ModelProviderSelection | null;
   readonly codexFastModeEnabled: boolean;
@@ -2544,7 +2489,7 @@ function sendMessageRequestBody(params: {
     threadId: params.threadId,
     hasTextContent: params.result.hasTextContent,
     clientMessageId: params.clientMessageId,
-    modelSelection: modelSelectionRequestFromSelection(params.modelSelection),
+    chatThreadSortEventId: params.chatThreadSortEventId,
     ...(runOptions ? { runOptions } : {}),
     generationTemplate: params.generationTemplate,
     ...(params.options && "computerUseHostId" in params.options
@@ -2555,13 +2500,39 @@ function sendMessageRequestBody(params: {
   };
 }
 
-function hasVisualDraftAttachments(
-  attachments: readonly { contentType: string; filename: string }[],
-): boolean {
-  return attachments.some((attachment) => {
-    return isVisualAttachment(attachment);
-  });
-}
+const appendOptimisticSendMessage$ = command(
+  (
+    { set },
+    args: {
+      readonly threadId: string;
+      readonly agentId: string;
+      readonly clientMessageId: string;
+      readonly chatThreadSortEventId: string;
+      readonly createdAt: string;
+      readonly result: PreparedSendMessageResult;
+      readonly generationTemplate: GenerationTemplateRequest | undefined;
+      readonly options: SendMessageOptions | undefined;
+    },
+  ) => {
+    set(touchOptimisticChatThreadSort$, {
+      id: args.chatThreadSortEventId,
+      threadId: args.threadId,
+      agentId: args.agentId,
+      createdAt: args.createdAt,
+    });
+    set(
+      appendOptimisticChatMessage$,
+      createSendOptimisticMessageEntry({
+        threadId: args.threadId,
+        clientMessageId: args.clientMessageId,
+        createdAt: args.createdAt,
+        result: args.result,
+        generationTemplate: args.generationTemplate,
+        options: args.options,
+      }),
+    );
+  },
+);
 
 interface SendMessageDeps {
   threadId: string;
@@ -2573,6 +2544,50 @@ interface SendMessageDeps {
   fetchNextPage$: Command<Promise<boolean>, [AbortSignal]>;
   refreshGroupedChatMessagesCache$: Command<Promise<void>, [AbortSignal]>;
 }
+
+const postSendMessage$ = command(
+  async (
+    { get, set },
+    args: {
+      readonly agentId: string;
+      readonly threadId: string;
+      readonly clientMessageId: string;
+      readonly chatThreadSortEventId: string;
+      readonly result: PreparedSendMessageResult;
+      readonly modelSelection: ModelProviderSelection | null;
+      readonly generationTemplate: GenerationTemplateRequest | undefined;
+      readonly options: SendMessageOptions | undefined;
+      readonly flushDraftClear$: Command<Promise<void>, [AbortSignal]>;
+    },
+    signal: AbortSignal,
+  ): Promise<string | null> => {
+    const codexFastModeEnabled =
+      get(featureSwitch$)[FeatureSwitchKey.CodexFastMode] ?? false;
+    const client = get(zeroClient$)(chatMessagesContract);
+    const [, sendResult] = await Promise.all([
+      set(args.flushDraftClear$, signal),
+      accept(
+        client.send({
+          body: sendMessageRequestBody({
+            agentId: args.agentId,
+            clientMessageId: args.clientMessageId,
+            chatThreadSortEventId: args.chatThreadSortEventId,
+            threadId: args.threadId,
+            result: args.result,
+            modelSelection: args.modelSelection,
+            codexFastModeEnabled,
+            generationTemplate: args.generationTemplate,
+            options: args.options,
+          }),
+          fetchOptions: { signal },
+        }),
+        [201],
+      ),
+    ]);
+    signal.throwIfAborted();
+    return sendResult.body.runId;
+  },
+);
 
 function createSendMessage(deps: SendMessageDeps) {
   const {
@@ -2607,21 +2622,6 @@ function createSendMessage(deps: SendMessageDeps) {
         return;
       }
       const generationTemplate = get(draft.generationTemplate$);
-      const hasVisualAttachments = hasVisualDraftAttachments(
-        get(draft.attachments$),
-      );
-      let effectiveSelectedModel = modelSelection?.selectedModel;
-      if (!effectiveSelectedModel && hasVisualAttachments) {
-        const policies = await get(orgModelPolicies$);
-        signal.throwIfAborted();
-        const userPreference = await get(userModelPreference$);
-        signal.throwIfAborted();
-        effectiveSelectedModel =
-          resolveModelFirstUserDefaultSelection({
-            userPreference,
-            policies,
-          })?.selectedModel ?? undefined;
-      }
       const result =
         options?.includeDraftAttachments === false
           ? prepareTextOnlyUserMessage(prompt)
@@ -2632,7 +2632,7 @@ function createSendMessage(deps: SendMessageDeps) {
               {
                 excludeVisualAttachments:
                   shouldExcludeVisualAttachmentsForModel(
-                    effectiveSelectedModel,
+                    modelSelection?.selectedModel,
                   ),
               },
               signal,
@@ -2645,16 +2645,18 @@ function createSendMessage(deps: SendMessageDeps) {
       set(cancelDraftSync$);
       set(draft.clear$);
       const clientMessageId = crypto.randomUUID();
-      set(
-        appendOptimisticChatMessage$,
-        createSendOptimisticMessageEntry({
-          threadId,
-          clientMessageId,
-          result,
-          generationTemplate,
-          options,
-        }),
-      );
+      const chatThreadSortEventId = crypto.randomUUID();
+      const createdAt = nowDate().toISOString();
+      set(appendOptimisticSendMessage$, {
+        threadId,
+        agentId,
+        clientMessageId,
+        chatThreadSortEventId,
+        createdAt,
+        result,
+        generationTemplate,
+        options,
+      });
       await set(refreshGroupedChatMessagesCache$, signal);
       signal.throwIfAborted();
       animationFrame(
@@ -2663,43 +2665,31 @@ function createSendMessage(deps: SendMessageDeps) {
         },
         { signal },
       );
-
-      const codexFastModeEnabled =
-        get(featureSwitch$)[FeatureSwitchKey.CodexFastMode] ?? false;
-      const client = get(zeroClient$)(chatMessagesContract);
-      const [, sendResult] = await Promise.all([
-        set(flushDraftClear$, signal),
-        accept(
-          client.send({
-            body: sendMessageRequestBody({
-              agentId,
-              clientMessageId,
-              threadId,
-              result,
-              modelSelection,
-              codexFastModeEnabled,
-              generationTemplate,
-              options,
-            }),
-            fetchOptions: { signal },
-          }),
-          [201],
-        ),
-      ]);
-      signal.throwIfAborted();
-
+      const runId = await set(
+        postSendMessage$,
+        {
+          agentId,
+          threadId,
+          clientMessageId,
+          chatThreadSortEventId,
+          result,
+          modelSelection,
+          generationTemplate,
+          options,
+          flushDraftClear$,
+        },
+        signal,
+      );
       L.debug("sendMessage$ POST accepted", {
         threadId,
-        runId: sendResult.body.runId,
+        runId,
       });
-
-      if (sendResult.body.runId === null) {
+      if (runId === null) {
         set(reloadBillingStatus$);
         await set(fetchNextPage$, signal);
         signal.throwIfAborted();
         set(scrollToBottom$);
       }
-
       set(reloadChatThreads$);
     },
   );
@@ -2777,7 +2767,14 @@ function createQueueMessage(deps: QueueMessageDeps) {
       set(draft.clear$);
 
       const clientMessageId = crypto.randomUUID();
+      const chatThreadSortEventId = crypto.randomUUID();
       const nowIso = nowDate().toISOString();
+      set(touchOptimisticChatThreadSort$, {
+        id: chatThreadSortEventId,
+        threadId,
+        agentId: meta.agentId,
+        createdAt: nowIso,
+      });
       set(appendOptimisticChatMessage$, {
         threadId,
         optimisticUserMessageAssociation: "queue",
@@ -2815,8 +2812,8 @@ function createQueueMessage(deps: QueueMessageDeps) {
             content: result.prompt,
             attachments: result.attachments ?? null,
             clientMessageId,
+            chatThreadSortEventId,
             hasTextContent: result.hasTextContent,
-            modelSelection: modelSelectionRequestFromSelection(modelSelection),
             ...(runOptions ? { runOptions } : {}),
             generationTemplate,
             ...(computerUseHostId === undefined ? {} : { computerUseHostId }),
@@ -3541,7 +3538,6 @@ export function createChatThreadSignals(
   const { modelSelection$, setModelSelection$ } = createModelSelection(
     threadId,
     threadMeta$,
-    remoteThreadDetail$,
     dataSource,
   );
   const computerUseHostSelection = createComputerUseHostSelection(
@@ -3576,6 +3572,7 @@ export function createChatThreadSignals(
     reloadThread$,
     remoteThreadDetail$,
     latestChatMessageId$: messages.latestChatMessageId$,
+    latestRunFinishCreatedAt$: messages.latestRunFinishCreatedAt$,
     latestRunStatus$: messages.latestRunStatus$,
     initialPage$: messages.initialPage$,
     fetchNextPage$: messages.fetchNextPage$,
@@ -3634,6 +3631,7 @@ export function createChatThreadSignals(
     queueDraftSync$,
     earliestChatMessageId$: messages.earliestChatMessageId$,
     latestChatMessageId$: messages.latestChatMessageId$,
+    latestRunFinishCreatedAt$: messages.latestRunFinishCreatedAt$,
     latestAssistantTextCreatedAt$: messages.latestAssistantTextCreatedAt$,
     groupedChatMessages$: messages.groupedChatMessages$,
     renderedGroupedChatMessages$: messages.renderedGroupedChatMessages$,

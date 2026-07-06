@@ -29,7 +29,6 @@ import {
   decryptStoredSecretValue,
   encryptStoredSecretValue,
 } from "./crypto.utils";
-import { workflowAutomationEnabledForOwner } from "./workflow-automation-feature-switch.service";
 import {
   WorkflowEventSourceTiming,
   type WorkflowEventRunTiming,
@@ -1435,10 +1434,6 @@ async function dispatchGoogleMeetTranscriptEventForState(args: {
   readonly state: GoogleWorkspaceSubscriptionStateRow;
   readonly decoded: DecodedWorkspacePubSubPush;
   readonly event: GoogleMeetTranscriptEventContext;
-  readonly isFeatureEnabledForOwner: (
-    orgId: string,
-    userId: string,
-  ) => Promise<boolean>;
   readonly startRun: (args: {
     readonly trigger: GoogleMeetEventTriggerRow;
     readonly event: GoogleMeetTranscriptEventContext;
@@ -1454,20 +1449,6 @@ async function dispatchGoogleMeetTranscriptEventForState(args: {
     }
   | { readonly kind: "run_error"; readonly message: string }
 > {
-  const featureEnabled = await args.sourceTiming.measure(
-    "api_dispatch_pre_create_zero_workflow_event_check_feature_gate",
-    async () => {
-      return await args.isFeatureEnabledForOwner(
-        args.state.orgId,
-        args.state.userId,
-      );
-    },
-  );
-  args.signal.throwIfAborted();
-  if (!featureEnabled) {
-    return { kind: "ok", dispatched: 0, duplicates: 0 };
-  }
-
   const triggers = await args.sourceTiming.measure(
     "api_dispatch_pre_create_zero_workflow_event_load_triggers",
     async () => {
@@ -1525,7 +1506,7 @@ async function dispatchGoogleMeetTranscriptEventForState(args: {
 
 export const dispatchGoogleWorkspaceEventsPubSubPush$ = command(
   async (
-    { get, set },
+    { set },
     args: {
       readonly authorization: string | null;
       readonly rawBody: string;
@@ -1589,9 +1570,6 @@ export const dispatchGoogleWorkspaceEventsPubSubPush$ = command(
       state,
       decoded,
       event: event.context,
-      isFeatureEnabledForOwner: async (orgId, userId) => {
-        return await get(workflowAutomationEnabledForOwner(orgId, userId));
-      },
       sourceTiming,
       startRun: async ({ trigger, event, timing }) => {
         const runInput = await timing.measure(

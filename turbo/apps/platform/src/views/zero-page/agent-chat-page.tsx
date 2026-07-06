@@ -24,7 +24,6 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-  cn,
 } from "@vm0/ui";
 import {
   currentChatAgentId$,
@@ -54,7 +53,6 @@ import {
 } from "../../signals/chat-page/workflow-prompt-action.ts";
 import { AttachmentLightbox } from "./zero-attachment-chips.tsx";
 import {
-  chatPageDefaultModelSelection$,
   chatPageInput$,
   chatPageModelSelection$,
   setChatPageInput$,
@@ -91,7 +89,7 @@ import {
   typewriterDisplayed$,
   typewriterRef$,
 } from "../../signals/view-component-state.ts";
-import { modelFirstPersonalOauthState$ } from "../../signals/zero-page/model-first-personal-oauth.ts";
+import { personalModelProvider$ } from "../../signals/zero-page/model-first-personal-oauth.ts";
 import { updateUserModelPreference$ } from "../../signals/external/user-model-preference.ts";
 import {
   resolveChatComposerSubmitBlocker,
@@ -388,20 +386,6 @@ function MobileUnreadThreadShortcuts() {
       className="md:hidden flex flex-col gap-2"
       aria-label="Unread chats"
     >
-      <div className="flex items-center justify-between gap-3 px-1">
-        <div className="flex min-w-0 items-center gap-1.5">
-          <span
-            className="h-2 w-2 shrink-0 rounded-full bg-sky-600"
-            aria-hidden
-          />
-          <h3 className="truncate text-sm font-semibold text-foreground">
-            Unread chats
-          </h3>
-        </div>
-        <span className="shrink-0 text-xs font-medium text-muted-foreground">
-          {unreadThreads.length}
-        </span>
-      </div>
       <div className="zero-card divide-y divide-border/60 overflow-hidden">
         {unreadThreads.map((thread) => {
           return (
@@ -411,18 +395,9 @@ function MobileUnreadThreadShortcuts() {
               options={{ pathParams: { threadId: thread.id } }}
               className="flex min-h-12 items-center gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-muted/40"
             >
-              <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-sky-600" />
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm font-semibold leading-5 text-foreground">
                   {thread.title ?? "New chat"}
-                </span>
-                <span
-                  className={cn(
-                    "block truncate text-xs leading-4 text-muted-foreground",
-                    thread.running ? "text-primary" : "",
-                  )}
-                >
-                  {thread.running ? "Running now" : "Unread"}
                 </span>
               </span>
               {thread.running ? (
@@ -481,20 +456,13 @@ function SuggestedPromptsGrid({
 
 function useAgentChatComposerModel(pageSignal: AbortSignal) {
   const modelSelectionLoadable = useLastLoadable(chatPageModelSelection$);
-  const defaultModelSelectionLoadable = useLastLoadable(
-    chatPageDefaultModelSelection$,
-  );
   const modelSelection =
     modelSelectionLoadable.state === "hasData"
       ? modelSelectionLoadable.data
       : null;
   const setModelSelection = useSet(setChatPageModelSelection$);
   const updateUserModelPreference = useSet(updateUserModelPreference$);
-  const defaultModelSelection =
-    defaultModelSelectionLoadable.state === "hasData"
-      ? defaultModelSelectionLoadable.data
-      : null;
-  const modelFirstOauthState = useLastResolved(modelFirstPersonalOauthState$);
+  const personalModelProvider = useLastResolved(personalModelProvider$);
   const openPersonalOauthConfiguration = usePersonalOauthConfigurationAction();
 
   const handleModelSelectionChange = (
@@ -513,16 +481,16 @@ function useAgentChatComposerModel(pageSignal: AbortSignal) {
   const modelPicker = {
     value: modelSelection,
     onChange: handleModelSelectionChange,
-    defaultSelection: defaultModelSelection,
+    resolveDefaultSelection: false,
   };
-  const submitBlockerProps = resolveChatComposerSubmitBlocker({
-    state: modelFirstOauthState,
-    modelSelection,
-    onAction: openPersonalOauthConfiguration,
-  });
-  const modelPickerLoading =
-    modelSelectionLoadable.state === "loading" ||
-    defaultModelSelectionLoadable.state === "loading";
+  const submitBlockerProps = modelSelection
+    ? resolveChatComposerSubmitBlocker({
+        personalModelProvider,
+        selectedModel: modelSelection.selectedModel,
+        onAction: openPersonalOauthConfiguration,
+      })
+    : undefined;
+  const modelPickerLoading = modelSelectionLoadable.state === "loading";
 
   return {
     modelSelection,
@@ -635,11 +603,8 @@ function useAgentChatComposerWorkflowPrompt({
   onConfirmReplaceDraft: () => void;
   onReplaceDialogOpenChange: (open: boolean) => void;
 } {
-  const features = useGet(featureSwitch$);
   const replaceDraftTarget = useGet(replaceWorkflowPromptDraftTarget$);
   const setReplaceDraftTarget = useSet(setReplaceWorkflowPromptDraftTarget$);
-  const workflowAutomationEnabled =
-    features[FeatureSwitchKey.WorkflowAutomation] ?? false;
   const workflowPromptDraftTarget = "composer:new-thread";
   const replaceDraftDialogOpen =
     replaceDraftTarget === workflowPromptDraftTarget;
@@ -667,9 +632,7 @@ function useAgentChatComposerWorkflowPrompt({
   };
 
   return {
-    onCreateWorkflowPrompt: workflowAutomationEnabled
-      ? handleCreateWorkflowPrompt
-      : undefined,
+    onCreateWorkflowPrompt: handleCreateWorkflowPrompt,
     replaceDraftDialogOpen,
     onConfirmReplaceDraft: handleConfirmReplaceDraft,
     onReplaceDialogOpenChange: handleReplaceDialogOpenChange,

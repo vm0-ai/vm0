@@ -651,7 +651,6 @@ describe("chat message action cards", () => {
 
     detachedSetupPage({
       context,
-      featureSwitches: {},
       path: `/chats/${THREAD_ID}-custom-connector`,
     });
 

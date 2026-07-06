@@ -8,6 +8,8 @@ import {
   type GenerationTemplateRequest,
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import type { OrgModelPoliciesResponse } from "@vm0/api-contracts/contracts/model-providers";
+import type { UserModelPreferenceResponse } from "@vm0/api-contracts/contracts/zero-user-model-preference";
 import { accept } from "../../lib/accept.ts";
 import { nowDate } from "../../lib/time.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
@@ -103,8 +105,6 @@ function newThreadSendBody({
   agentId,
   threadId,
   clientMessageId,
-  chatThreadEventId,
-  modelSelectionEventId,
   prepared,
   modelSelection,
   codexFastModeEnabled,
@@ -114,10 +114,8 @@ function newThreadSendBody({
   agentId: string;
   threadId: string;
   clientMessageId: string;
-  chatThreadEventId: string;
-  modelSelectionEventId: string | undefined;
   prepared: PreparedNewThreadPayload;
-  modelSelection: ModelProviderSelection | null;
+  modelSelection: ModelProviderSelection;
   codexFastModeEnabled: boolean;
   generationTemplate: GenerationTemplateRequest | undefined;
   computerUseHostId?: string | null;
@@ -129,12 +127,9 @@ function newThreadSendBody({
   return {
     agentId,
     prompt: prepared.prompt,
-    clientThreadId: threadId,
-    chatThreadEventId,
-    ...(modelSelectionEventId ? { modelSelectionEventId } : {}),
+    threadId,
     hasTextContent: prepared.hasTextContent,
     clientMessageId,
-    modelSelection: modelSelectionRequestFromSelection(modelSelection),
     ...(runOptions ? { runOptions } : {}),
     generationTemplate,
     ...(computerUseHostId === undefined ? {} : { computerUseHostId }),
@@ -148,26 +143,43 @@ function codexFastModeSwitchEnabled(
   return switches[FeatureSwitchKey.CodexFastMode] ?? false;
 }
 
+function resolveNewThreadModelSelection(
+  modelSelection: ModelProviderSelection | null,
+  args: {
+    readonly policies: OrgModelPoliciesResponse | null | undefined;
+    readonly userPreference: UserModelPreferenceResponse | null | undefined;
+  },
+): ModelProviderSelection | null {
+  if (modelSelection) {
+    return modelSelection;
+  }
+  return resolveModelFirstUserDefaultSelection({
+    userPreference: args.userPreference,
+    policies: args.policies,
+  });
+}
+
 const settleNewThreadSend$ = command(
   async (
     { set },
     args: {
       readonly clearDraftResult: Promise<void>;
+      readonly createResult: Promise<void>;
       readonly createClient: ZeroClientFactory;
       readonly body: ReturnType<typeof newThreadSendBody>;
     },
     signal: AbortSignal,
   ): Promise<SendNewThreadMessageResult> => {
-    const [, result] = await Promise.all([
-      args.clearDraftResult,
-      accept(
-        args.createClient(chatMessagesContract).send({
-          body: args.body,
-          fetchOptions: { signal },
-        }),
-        [201],
-      ),
-    ]);
+    await Promise.all([args.clearDraftResult, args.createResult]);
+    signal.throwIfAborted();
+
+    const result = await accept(
+      args.createClient(chatMessagesContract).send({
+        body: args.body,
+        fetchOptions: { signal },
+      }),
+      [201],
+    );
     signal.throwIfAborted();
     L.debug("sendNewThreadMessage$ POST chat/messages 201", {
       threadId: result.body.threadId,
@@ -234,7 +246,6 @@ const mintOptimisticThreadWithEvent$ = command(
       readonly eventId: string;
       readonly agentId: string;
       readonly selectedModel: string | null;
-      readonly modelSelectionEventId: string | undefined;
     },
     signal: AbortSignal,
   ): void => {
@@ -250,20 +261,9 @@ const mintOptimisticThreadWithEvent$ = command(
       chatThreadId: args.threadId,
       agentId: args.agentId,
       title: null,
-      selectedModel: null,
+      selectedModel: args.selectedModel,
       createdAt,
     } satisfies ChatThreadEvent);
-    if (args.selectedModel && args.modelSelectionEventId) {
-      set(registerOptimisticChatThreadEvent$, {
-        id: args.modelSelectionEventId,
-        kind: "model_selection_updated",
-        chatThreadId: args.threadId,
-        agentId: args.agentId,
-        title: null,
-        selectedModel: args.selectedModel,
-        createdAt,
-      } satisfies ChatThreadEvent);
-    }
   },
 );
 
@@ -274,6 +274,7 @@ async function createChatThread(args: {
   readonly title: string | undefined;
   readonly clientThreadId: string;
   readonly eventId: string;
+  readonly modelSelection: ModelProviderSelection;
 }): Promise<void> {
   const client = args.createClient(chatThreadsContract);
   await accept(
@@ -282,6 +283,9 @@ async function createChatThread(args: {
         agentId: args.agentId,
         clientThreadId: args.clientThreadId,
         eventId: args.eventId,
+        modelSelection: modelSelectionRequestFromSelection(
+          args.modelSelection,
+        )!,
         ...(args.title ? { title: args.title } : {}),
       },
       fetchOptions: { signal: args.signal },
@@ -301,14 +305,24 @@ const startNewChatThreadCreate$ = command(
   }> => {
     const threadId = crypto.randomUUID();
     const eventId = crypto.randomUUID();
+    const policies = await get(orgModelPolicies$);
+    signal.throwIfAborted();
+    const userPreference = await get(userModelPreference$);
+    signal.throwIfAborted();
+    const modelSelection = resolveNewThreadModelSelection(null, {
+      policies,
+      userPreference,
+    });
+    if (!modelSelection) {
+      throw new Error("A model selection is required");
+    }
     await set(
       mintOptimisticThreadWithEvent$,
       {
         threadId,
         eventId,
         agentId,
-        selectedModel: null,
-        modelSelectionEventId: undefined,
+        selectedModel: modelSelection.selectedModel,
       },
       signal,
     );
@@ -323,6 +337,7 @@ const startNewChatThreadCreate$ = command(
         title: undefined,
         clientThreadId: threadId,
         eventId,
+        modelSelection,
       });
       L.debug("startNewChatThreadCreate$ POST chat-threads 201", { threadId });
       signal.throwIfAborted();
@@ -366,17 +381,19 @@ const sendNewThreadMessage$ = command(
     const { agentId, prompt, modelSelection, generationTemplate } = request;
     const { computerUseHostId } = request;
     const draft = get(talkDraft$);
-    let effectiveSelectedModel = modelSelection?.selectedModel;
-    if (!effectiveSelectedModel) {
-      const policies = await get(orgModelPolicies$);
-      signal.throwIfAborted();
-      const userPreference = await get(userModelPreference$);
-      signal.throwIfAborted();
-      effectiveSelectedModel =
-        resolveModelFirstUserDefaultSelection({
-          userPreference,
-          policies,
-        })?.selectedModel ?? undefined;
+    const policies = await get(orgModelPolicies$);
+    signal.throwIfAborted();
+    const userPreference = await get(userModelPreference$);
+    signal.throwIfAborted();
+    const resolvedModelSelection = resolveNewThreadModelSelection(
+      modelSelection,
+      {
+        policies,
+        userPreference,
+      },
+    );
+    if (!resolvedModelSelection) {
+      throw new Error("A model selection is required");
     }
     const prepared = await set(
       prepareUserMessageFromDraft$,
@@ -384,7 +401,7 @@ const sendNewThreadMessage$ = command(
       prompt,
       {
         excludeVisualAttachments: shouldExcludeVisualAttachmentsForModel(
-          effectiveSelectedModel,
+          resolvedModelSelection.selectedModel,
         ),
       },
       signal,
@@ -395,9 +412,6 @@ const sendNewThreadMessage$ = command(
     const threadId = crypto.randomUUID();
     const clientMessageId = crypto.randomUUID();
     const chatThreadEventId = crypto.randomUUID();
-    const modelSelectionEventId = effectiveSelectedModel
-      ? crypto.randomUUID()
-      : undefined;
     set(
       appendOptimisticChatMessage$,
       createNewThreadOptimisticMessageEntry({
@@ -413,27 +427,39 @@ const sendNewThreadMessage$ = command(
         threadId,
         eventId: chatThreadEventId,
         agentId,
-        selectedModel: effectiveSelectedModel ?? null,
-        modelSelectionEventId,
+        selectedModel: resolvedModelSelection.selectedModel,
       },
       signal,
     );
     set(draft.clear$);
     const clearDraftResult = set(clearAgentDraftById$, agentId, signal);
     const createClient = get(zeroClient$);
+    L.debug("sendNewThreadMessage$ POST chat-threads start", { threadId });
+    const createResult = (async (): Promise<void> => {
+      await createChatThread({
+        createClient,
+        agentId,
+        signal,
+        title: undefined,
+        clientThreadId: threadId,
+        eventId: chatThreadEventId,
+        modelSelection: resolvedModelSelection,
+      });
+      L.debug("sendNewThreadMessage$ POST chat-threads 201", { threadId });
+      signal.throwIfAborted();
+    })();
     const sendResult = set(
       settleNewThreadSend$,
       {
         clearDraftResult,
+        createResult,
         createClient,
         body: newThreadSendBody({
           agentId,
           threadId,
           clientMessageId,
-          chatThreadEventId,
-          modelSelectionEventId,
           prepared,
-          modelSelection,
+          modelSelection: resolvedModelSelection,
           codexFastModeEnabled: codexFastModeSwitchEnabled(get(featureSwitch$)),
           generationTemplate,
           computerUseHostId,

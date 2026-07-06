@@ -34,6 +34,7 @@ import {
   mockGitHubConnectorOAuth,
   mockGoogleDriveConnectorOAuth,
   mockGoogleDriveFilesList,
+  mockGoogleDriveSlidesUpload,
 } from "./helpers/api-bdd-connectors";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
@@ -46,8 +47,10 @@ import {
 import {
   seedZeroChatThreadGoal$,
   seedZeroChatThreadRun$,
+  seedZeroChatThread$,
   updateZeroChatThreadRunStatus$,
 } from "./helpers/zero-chat-threads";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 /**
@@ -164,6 +167,7 @@ async function sendChatRun(
     readonly agentId: string;
     readonly prompt: string;
     readonly threadId?: string;
+    readonly chatThreadSortEventId?: string;
     readonly modelSelection?: {
       readonly modelProviderId: string;
       readonly selectedModel: string;
@@ -331,6 +335,29 @@ async function sendNoCreditMessage(
   return sent.body.threadId;
 }
 
+async function seedCompletedRunFinish(
+  actor: ApiTestUser,
+  args: {
+    readonly agentId: string;
+    readonly threadId: string;
+  },
+): Promise<void> {
+  if (!actor.orgId) {
+    throw new Error("Expected actor to belong to an org");
+  }
+  await store.set(
+    seedZeroChatThreadRun$,
+    {
+      userId: actor.userId,
+      orgId: actor.orgId,
+      agentId: args.agentId,
+      threadId: args.threadId,
+      status: "completed",
+    },
+    context.signal,
+  );
+}
+
 const malformedChatThreadIdRequests = [
   { method: "GET", path: "/api/zero/chat-threads/:id", paramName: "id" },
   { method: "PATCH", path: "/api/zero/chat-threads/:id", paramName: "id" },
@@ -447,16 +474,16 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     expectApiError(crossOrg.body);
     expect(crossOrg.body.error.message).toBe("Agent not found");
 
-    // Loose-auth path: an authenticated session without an organization gets
-    // 404 (not 401) because no compose can belong to the empty org.
+    // Thread creation now resolves the model route up front, so callers must
+    // have an active organization before body-level compose lookup runs.
     const orgless = bdd.user({ orgId: null });
     const noOrg = await chat.requestCreateThread(
       orgless,
       { agentId: foreignAgent.agentId, title: "no org" },
-      [404],
+      [401],
     );
     expectApiError(noOrg.body);
-    expect(noOrg.body.error.message).toBe("Agent not found");
+    expect(noOrg.body.error.code).toBe("UNAUTHORIZED");
 
     // The foreign agent's event stream is unaffected by the rejected creates.
     expect(
@@ -569,6 +596,57 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     });
   });
 
+  it("touches thread sort from existing direct user sends and run-finished markers", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor(
+      "Thread sort touch agent",
+    );
+    const directSendSortEventId = randomUUID();
+    const thread = await chat.createThread(actor, {
+      agentId,
+      title: "Existing sort touch thread",
+    });
+
+    const run = await sendChatRun(actor, {
+      agentId,
+      threadId: thread.id,
+      prompt: "move this thread when I send it",
+      chatThreadSortEventId: directSendSortEventId,
+    });
+    await waitForThreadMessages(actor, run.threadId, (messages) => {
+      return userMessages(messages).some((message) => {
+        return message.content === "move this thread when I send it";
+      });
+    });
+    await flushWaitUntilForTest();
+
+    let sortTouches = (await allThreadEvents(actor)).filter((event) => {
+      return (
+        event.chatThreadId === run.threadId && event.kind === "sort_touched"
+      );
+    });
+    expect(sortTouches).toHaveLength(1);
+    expect(sortTouches[0]?.id).toBe(directSendSortEventId);
+
+    const claim = await claimChatRun(runnerGroup, run.runId);
+    await completeChatRunOk(run.runId, claim.sandboxHeaders);
+    await waitForThreadMessages(actor, run.threadId, (messages) => {
+      return assistantMessages(messages).some((message) => {
+        return (
+          message.runId === run.runId &&
+          message.runLifecycleEvent === "completed"
+        );
+      });
+    });
+    await flushWaitUntilForTest();
+
+    sortTouches = (await allThreadEvents(actor)).filter((event) => {
+      return (
+        event.chatThreadId === run.threadId && event.kind === "sort_touched"
+      );
+    });
+    expect(sortTouches).toHaveLength(2);
+  }, 90_000);
+
   it("compacts chat thread snapshots from event markers and prunes deleted agent threads", async () => {
     mockEnv("CRON_SECRET", CHAT_THREAD_SNAPSHOT_CRON_SECRET);
     const actor = bdd.user();
@@ -674,6 +752,84 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     expect(retainedAnchorCursor.body.events).toStrictEqual([]);
   });
 
+  it("advances bounded snapshot compaction across missing scopes", async () => {
+    mockEnv("CRON_SECRET", CHAT_THREAD_SNAPSHOT_CRON_SECRET);
+    mockOptionalEnv("CHAT_THREAD_SNAPSHOT_COMPACTION_BATCH_SIZE", "1");
+    const firstActor = bdd.user({
+      userId: `user_00000000_snapshot_batch_${randomUUID()}`,
+      orgId: `org_00000000_snapshot_batch_${randomUUID()}`,
+    });
+    const secondActor = bdd.user({
+      userId: `user_00000001_snapshot_batch_${randomUUID()}`,
+      orgId: `org_00000001_snapshot_batch_${randomUUID()}`,
+    });
+    if (!firstActor.orgId || !secondActor.orgId) {
+      throw new Error("Expected snapshot batch actors to belong to orgs");
+    }
+
+    const firstThread = await store.set(
+      seedZeroChatThread$,
+      {
+        userId: firstActor.userId,
+        orgId: firstActor.orgId,
+        title: "First bounded snapshot thread",
+      },
+      context.signal,
+    );
+    const secondThread = await store.set(
+      seedZeroChatThread$,
+      {
+        userId: secondActor.userId,
+        orgId: secondActor.orgId,
+        title: "Second bounded snapshot thread",
+      },
+      context.signal,
+    );
+
+    await expect(chat.getThreadSnapshot(firstActor)).resolves.toStrictEqual({
+      chatThreads: [],
+      latestEventId: null,
+    });
+    await expect(chat.getThreadSnapshot(secondActor)).resolves.toStrictEqual({
+      chatThreads: [],
+      latestEventId: null,
+    });
+
+    await expect(compactChatThreadSnapshots()).resolves.toMatchObject({
+      scopes: 1,
+    });
+    await expect(chat.getThreadSnapshot(firstActor)).resolves.toMatchObject({
+      latestEventId: null,
+      chatThreads: [
+        expect.objectContaining({
+          id: firstThread.threadId,
+          agentId: firstThread.composeId,
+          title: "First bounded snapshot thread",
+          selectedModel: null,
+        }),
+      ],
+    });
+    await expect(chat.getThreadSnapshot(secondActor)).resolves.toStrictEqual({
+      chatThreads: [],
+      latestEventId: null,
+    });
+
+    await expect(compactChatThreadSnapshots()).resolves.toMatchObject({
+      scopes: 1,
+    });
+    await expect(chat.getThreadSnapshot(secondActor)).resolves.toMatchObject({
+      latestEventId: null,
+      chatThreads: [
+        expect.objectContaining({
+          id: secondThread.threadId,
+          agentId: secondThread.composeId,
+          title: "Second bounded snapshot thread",
+          selectedModel: null,
+        }),
+      ],
+    });
+  });
+
   it("keeps thread detail independent from thread model projection state", async () => {
     const { actor, agentId } = await entitledChatActor(
       "Thread detail model pin agent",
@@ -691,14 +847,16 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
 
     let detail = await chat.readThread(actor, run.threadId);
     expect(detail).not.toHaveProperty("selectedModel");
-    expect(detail.activeRunIds).toContain(run.runId);
+    await expect(chat.listActiveChatThreadIds(actor)).resolves.toContain(
+      run.threadId,
+    );
 
     await chat.updateThreadModelSelection(actor, run.threadId, null);
     detail = await chat.readThread(actor, run.threadId);
     expect(detail).not.toHaveProperty("selectedModel");
-    expect(detail.modelProviderId).toBeNull();
-    expect(detail.modelProviderType).toBeNull();
-    expect(detail.modelProviderCredentialScope).toBeNull();
+    expect(detail).not.toHaveProperty("modelProviderId");
+    expect(detail).not.toHaveProperty("modelProviderType");
+    expect(detail).not.toHaveProperty("modelProviderCredentialScope");
 
     const invalidSelection = await chat.requestUpdateThreadModelSelection(
       actor,
@@ -713,8 +871,9 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     expect(invalidSelection.body.error.code).toBe("BAD_REQUEST");
 
     await cancelChatRun(actor, run.runId);
-    detail = await chat.readThread(actor, run.threadId);
-    expect(detail.activeRunIds).toStrictEqual([]);
+    await expect(chat.listActiveChatThreadIds(actor)).resolves.not.toContain(
+      run.threadId,
+    );
   }, 90_000);
 
   it("rejects restricted model pins for limited-free-1 workspaces", async () => {
@@ -732,6 +891,10 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
 
     const thread = await chat.createThread(actor, {
       agentId,
+      modelSelection: {
+        modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+        selectedModel: "MiniMax-M3",
+      },
       title: "limited free model pin",
     });
     for (const selectedModel of [
@@ -780,9 +943,9 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     );
     expectApiError(byokSelection.body);
     expect(byokSelection.body.error.code).toBe("INSUFFICIENT_CREDITS");
-    await expect(chat.readThread(actor, thread.id)).resolves.toMatchObject({
-      modelProviderId: null,
-    });
+    await expect(chat.readThread(actor, thread.id)).resolves.not.toHaveProperty(
+      "modelProviderId",
+    );
 
     await chat.updateThreadModelSelection(actor, thread.id, {
       modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
@@ -913,8 +1076,10 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     );
     expectApiError(peerDelete.body);
     expect(peerDelete.body.error.code).toBe("NOT_FOUND");
-    await expect(chat.readThread(actor, main.threadId)).resolves.toMatchObject({
-      id: main.threadId,
+    await expect(chat.readThread(actor, main.threadId)).resolves.toStrictEqual({
+      lastReadAt: null,
+      computerUseHostId: null,
+      codexServiceTier: null,
     });
 
     const deleted = await chat.requestDeleteThread(actor, main.threadId, [204]);
@@ -1023,6 +1188,14 @@ describe("CHAT-01 chat thread read state", () => {
       },
       context.signal,
     );
+    await seedCompletedRunFinish(owner, {
+      agentId: agentA.agentId,
+      threadId: activeGoalThread,
+    });
+    await seedCompletedRunFinish(owner, {
+      agentId: agentB.agentId,
+      threadId: completeGoalThread,
+    });
     await expect(chat.listUnreadAgents(owner)).resolves.toStrictEqual([
       agentB.agentId,
     ]);
@@ -1033,9 +1206,17 @@ describe("CHAT-01 chat thread read state", () => {
       agentId: agentA.agentId,
       prompt: "unread aggregate A",
     });
+    await seedCompletedRunFinish(owner, {
+      agentId: agentA.agentId,
+      threadId: threadA,
+    });
     const threadB = await sendNoCreditMessage(owner, {
       agentId: agentB.agentId,
       prompt: "unread aggregate B",
+    });
+    await seedCompletedRunFinish(owner, {
+      agentId: agentB.agentId,
+      threadId: threadB,
     });
 
     const unreadAgents = await chat.listUnreadAgents(owner);
@@ -1235,6 +1416,14 @@ describe("CHAT-01 chat thread read state", () => {
       },
       context.signal,
     );
+    await seedCompletedRunFinish(owner, {
+      agentId: agent.agentId,
+      threadId: activeGoalThread,
+    });
+    await seedCompletedRunFinish(owner, {
+      agentId: agent.agentId,
+      threadId: completeGoalThread,
+    });
 
     expect(
       new Set(
@@ -1289,13 +1478,25 @@ describe("CHAT-01 chat thread read state", () => {
       agentId: agentA.agentId,
       prompt: "mark all read A one",
     });
+    await seedCompletedRunFinish(owner, {
+      agentId: agentA.agentId,
+      threadId: firstThreadA,
+    });
     const secondThreadA = await sendNoCreditMessage(owner, {
       agentId: agentA.agentId,
       prompt: "mark all read A two",
     });
+    await seedCompletedRunFinish(owner, {
+      agentId: agentA.agentId,
+      threadId: secondThreadA,
+    });
     const threadB = await sendNoCreditMessage(owner, {
       agentId: agentB.agentId,
       prompt: "mark all read B",
+    });
+    await seedCompletedRunFinish(owner, {
+      agentId: agentB.agentId,
+      threadId: threadB,
     });
 
     expect(
@@ -2257,6 +2458,77 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
 
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(run.runId, sandboxHeaders);
+  }, 120_000);
+
+  it("uploads a presentation to Google Slides behind a feature flag", async () => {
+    const { actor } = await entitledChatActor("Slides upload agent");
+    const orgId = actor.orgId;
+    if (!orgId) {
+      throw new Error("entitled actor is missing an organization");
+    }
+    const threadId = randomUUID();
+    const pptx = {
+      name: "deck.pptx",
+      bytes: new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0x01, 0x02, 0x03, 0x04]),
+    };
+
+    // Gated off by default: the feature switch hides the endpoint.
+    const gated = await chat.requestUploadThreadArtifactGoogleSlides(
+      actor,
+      threadId,
+      pptx,
+      [403],
+    );
+    expectApiError(gated.body);
+    expect(gated.body.error.code).toBe("FORBIDDEN");
+
+    await updateFeatureSwitchesForUser(
+      context,
+      { userId: actor.userId, orgId },
+      { [FeatureSwitchKey.PresentationGoogleSlidesUpload]: true },
+    );
+
+    // Enabled, but Google Drive is not connected yet.
+    const noDrive = await chat.requestUploadThreadArtifactGoogleSlides(
+      actor,
+      threadId,
+      pptx,
+      [400],
+    );
+    expectApiError(noDrive.body);
+    expect(noDrive.body.error.message).toBe(
+      "Connect Google Drive before uploading to Google Slides",
+    );
+
+    // Connect Google Drive through the public OAuth routes.
+    mockGoogleDriveConnectorOAuth();
+    const start = await connectorsApi.startOauth(
+      actor,
+      "google-drive",
+      "oauth",
+    );
+    await connectorsApi.completeOauthCallback("google-drive", {
+      code: "drive-ok",
+      state: stateFromAuthorizationUrl(start.authorizationUrl),
+    });
+
+    // Drive converts the uploaded PPTX into a native Google Slides deck.
+    const uploadRecorder = mockGoogleDriveSlidesUpload();
+    const uploaded = await chat.requestUploadThreadArtifactGoogleSlides(
+      actor,
+      threadId,
+      pptx,
+      [200],
+    );
+    expect(uploaded.body).toStrictEqual({
+      id: "slides-file-1",
+      name: "deck",
+      webViewLink: "https://docs.google.com/presentation/d/slides-file-1/edit",
+    });
+    expect(uploadRecorder.uploadBodies).toHaveLength(1);
+    expect(uploadRecorder.uploadBodies[0]).toContain(
+      "application/vnd.google-apps.presentation",
+    );
   }, 120_000);
 
   it("dedupes artifact urls and filters hosted-site runs", async () => {

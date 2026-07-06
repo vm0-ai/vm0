@@ -113,6 +113,7 @@ jobs:
       job-ref: ${{ steps.set-job-ref.outputs.job-ref }}
       app-preview-url: ${{ steps.preview-urls.outputs.app-url }}
       api-preview-url: ${{ steps.preview-urls.outputs.api-url }}
+      www-preview-url: ${{ steps.preview-urls.outputs.www-url }}
       api-changed: ${{ steps.detect.outputs.api-changed }}
       cli-changed: ${{ steps.detect.outputs.cli-changed }}
       platform-changed: ${{ steps.detect.outputs.platform-changed }}
@@ -277,12 +278,14 @@ jobs:
             {
               echo "app-url=https://${JOB_REF}-app.${PREVIEW_DOMAIN}"
               echo "api-url=https://${JOB_REF}-api.${PREVIEW_DOMAIN}"
+              echo "www-url=https://${JOB_REF}-www.${PREVIEW_DOMAIN}"
             } >> "$GITHUB_OUTPUT"
-            echo "Preview URLs set for app and api on ${PREVIEW_DOMAIN}"
+            echo "Preview URLs set for app, api, and www on ${PREVIEW_DOMAIN}"
           else
             {
               echo "app-url="
               echo "api-url="
+              echo "www-url="
             } >> "$GITHUB_OUTPUT"
             echo "Preview URL not set (PREVIEW_DOMAIN or job-ref is empty)"
           fi
@@ -693,6 +696,37 @@ jobs:
           files: turbo/junit.xml
           report_type: test_results
 
+  # Alias PR www onboarding to the standing staging onboarding deployment.
+  alias-onboarding-www:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    concurrency:
+      group: alias-onboarding-www-${{ needs.prepare.outputs.job-ref }}
+      cancel-in-progress: true
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260622
+    needs: [prepare]
+    if: >-
+      ${{
+        (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
+        startsWith(needs.prepare.outputs.job-ref, 'pr-') &&
+        needs.prepare.outputs.www-preview-url != ''
+      }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: ./.github/actions/toolchain-init
+      - name: Alias PR onboarding
+        uses: ./.github/actions/vercel-alias-from-alias
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
+          source-alias-url: ${{ vars.ONBOARDING_URL_STAGING_ALIAS_SOURCE || vars.ONBOARDING_URL_STAGING || 'https://staging-www.vm6.ai' }}
+          app-name: www
+          job-ref: ${{ needs.prepare.outputs.job-ref }}
+          preview-domain: ${{ vars.PREVIEW_DOMAIN }}
+
   # Deploy API application with preview database and E2E bootstrap data
   deploy-api:
     runs-on: ubuntu-latest-8-cores
@@ -748,7 +782,7 @@ jobs:
           app: api
           environment: preview
           job-ref: ${{ needs.prepare.outputs.job-ref }}
-          web-url: ${{ vars.ONBOARDING_URL_STAGING || 'https://staging-www.vm6.ai' }}
+          web-url: ${{ needs.prepare.outputs.www-preview-url || vars.ONBOARDING_URL_STAGING || 'https://staging-www.vm6.ai' }}
           app-url: ${{ needs.prepare.outputs.app-preview-url }}
           api-url: ${{ needs.prepare.outputs.api-preview-url }}
         env:
@@ -812,7 +846,7 @@ jobs:
             DATABASE_URL=$(neonctl connection-string "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --database-name neondb --role-name neondb_owner)
           fi
 
-          API_SEED_WEB_URL="${VM0_WEB_URL:-${{ vars.ONBOARDING_URL_STAGING || 'https://staging-www.vm6.ai' }}}"
+          API_SEED_WEB_URL="${VM0_WEB_URL:-${{ needs.prepare.outputs.www-preview-url || vars.ONBOARDING_URL_STAGING || 'https://staging-www.vm6.ai' }}}"
           if [ -z "$API_SEED_WEB_URL" ]; then
             API_SEED_WEB_URL="https://www.vm0.ai"
           fi
@@ -831,7 +865,7 @@ jobs:
           environment: preview
           database-url: ${{ steps.neon.outputs.database-url }}
           job-ref: ${{ needs.prepare.outputs.job-ref }}
-          web-url: ${{ vars.ONBOARDING_URL_STAGING || 'https://staging-www.vm6.ai' }}
+          web-url: ${{ needs.prepare.outputs.www-preview-url || vars.ONBOARDING_URL_STAGING || 'https://staging-www.vm6.ai' }}
           app-url: ${{ needs.prepare.outputs.app-preview-url }}
           api-url: ${{ needs.prepare.outputs.api-preview-url }}
         env:
@@ -840,8 +874,9 @@ jobs:
           DOPPLER_SECRETS_JSON: ${{ toJSON(steps.doppler-oauth.outputs) }}
 
       - name: Use Stripe CLI webhook secret for PR API preview
-        # Staging uses the standing Stripe Dashboard webhook endpoint at
-        # staging-www.vm6.ai; only PR previews should trust Stripe CLI webhooks.
+        # Staging uses the standing Stripe Dashboard webhook endpoint at the
+        # configured onboarding staging URL; only PR previews should trust
+        # Stripe CLI webhooks.
         if: |
           needs.prepare.outputs.job-ref != 'staging' && (
             needs.prepare.outputs.api-changed == 'true' ||
@@ -1060,7 +1095,7 @@ jobs:
             VITE_VERCEL_ENV=preview
             VITE_API_URL=${{ needs.prepare.outputs.api-preview-url }}
             VITE_GIT_COMMIT_SHA=${{ steps.build-commit.outputs.sha }}
-            VITE_ONBOARDING_URL=${{ vars.ONBOARDING_URL_STAGING || 'https://staging-www.vm6.ai' }}
+            VITE_ONBOARDING_URL=${{ needs.prepare.outputs.www-preview-url || vars.ONBOARDING_URL_STAGING || 'https://staging-www.vm6.ai' }}
             VITE_ONBOARDING_DOMAIN=${{ startsWith(needs.prepare.outputs.job-ref, 'pr-') && format('{0}-api.{1}', needs.prepare.outputs.job-ref, vars.PREVIEW_DOMAIN || 'vm6.ai') || '' }}
             PUBLIC_ARTIFACTS_BASE_URL=${{ vars.PUBLIC_ARTIFACTS_BASE_URL_DEV || vars.PUBLIC_ARTIFACTS_BASE_URL }}
             VITE_ZERO_HOST_DOMAIN=${{ vars.ZERO_HOST_DOMAIN }}
@@ -1223,7 +1258,12 @@ jobs:
     concurrency:
       group: cli-e2e-02-playwright-${{ needs.prepare.outputs.job-ref }}
       cancel-in-progress: true
-    needs: [prepare, deploy-api, deploy-app, deploy-stripe-listener]
+    needs:
+      - prepare
+      - alias-onboarding-www
+      - deploy-api
+      - deploy-app
+      - deploy-stripe-listener
     if: |
       always() &&
       (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
@@ -1235,6 +1275,7 @@ jobs:
         needs.prepare.outputs.e2e-changed == 'true'
       ) &&
       needs.deploy-api.result == 'success' &&
+      (github.event_name == 'push' || needs.alias-onboarding-www.result == 'success') &&
       needs.deploy-app.result == 'success' &&
       (github.event_name == 'push' || needs.deploy-stripe-listener.result == 'success')
     steps:
@@ -1294,6 +1335,7 @@ jobs:
         env:
           VM0_API_URL: ${{ needs.deploy-api.outputs.preview-url }}
           VM0_APP_URL: ${{ needs.deploy-app.outputs.preview-url }}
+          VM0_ONBOARDING_URL: ${{ needs.prepare.outputs.www-preview-url || vars.ONBOARDING_URL_STAGING || 'https://staging-www.vm6.ai' }}
           CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
@@ -1432,7 +1474,7 @@ jobs:
         with:
           node-version: 22
       - name: Download CLI artifact
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v8.0.1
         with:
           name: cli-dist
           path: /tmp/cli-deploy
@@ -1452,7 +1494,7 @@ jobs:
           vm0 --help
           zero --help
       - name: Download E2E test tokens
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v8.0.1
         with:
           name: e2e-tokens
           path: /tmp
@@ -1795,7 +1837,7 @@ jobs:
         with:
           node-version: 22
       - name: Download CLI artifact
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v8.0.1
         with:
           name: cli-dist
           path: /tmp/cli-deploy
@@ -1815,7 +1857,7 @@ jobs:
           vm0 --help
           zero --help
       - name: Download E2E test tokens
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v8.0.1
         with:
           name: e2e-tokens
           path: /tmp
@@ -1887,7 +1929,7 @@ jobs:
         with:
           node-version: 22
       - name: Download CLI artifact
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v8.0.1
         with:
           name: cli-dist
           path: /tmp/cli-deploy
@@ -1909,7 +1951,7 @@ jobs:
       - name: Install GNU parallel for bats
         run: sudo curl -fsSL --retry 5 --retry-delay 2 --retry-max-time 60 --retry-all-errors https://raw.githubusercontent.com/martinda/gnu-parallel/master/src/parallel -o /usr/local/bin/parallel && sudo chmod +x /usr/local/bin/parallel
       - name: Download E2E test tokens
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v8.0.1
         with:
           name: e2e-tokens
           path: /tmp
@@ -2112,6 +2154,7 @@ jobs:
       - test-app
       - test-api
       - test-other
+      - alias-onboarding-www
       - deploy-api
       - deploy-app
       - deploy-stripe-listener
@@ -2190,6 +2233,7 @@ jobs:
 
           # May-skip: 'success' or 'skipped' are both acceptable
           check_result "test-migrate" "${{ needs.test-migrate.result }}" "true"
+          check_result "alias-onboarding-www" "${{ needs.alias-onboarding-www.result }}" "true"
           check_result "deploy-api" "${{ needs.deploy-api.result }}" "true"
           check_result "deploy-app" "${{ needs.deploy-app.result }}" "true"
           check_result "deploy-stripe-listener" "${{ needs.deploy-stripe-listener.result }}" "true"

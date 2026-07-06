@@ -1,20 +1,13 @@
 import { command } from "ccstate";
-import { and, asc, eq, sql, type SQL } from "drizzle-orm";
-import type {
-  ChatThreadEvent,
-  ChatThreadSnapshotProjection,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import { agentComposes } from "@vm0/db/schema/agent-compose";
+import { sql, type SQL } from "drizzle-orm";
 import { chatThreadEvents } from "@vm0/db/schema/chat-thread-event";
 import { chatThreadSnapshots } from "@vm0/db/schema/chat-thread-snapshot";
+import { agentComposes } from "@vm0/db/schema/agent-compose";
+import { chatThreads } from "@vm0/db/schema/chat-thread";
 
+import { optionalEnv } from "../../lib/env";
 import { nowDate } from "../external/time";
 import { writeDb$, type Db } from "../external/db";
-
-interface SnapshotScope extends Record<string, unknown> {
-  readonly userId: string;
-  readonly orgId: string;
-}
 
 interface SnapshotCompactionStats {
   readonly scopes: number;
@@ -23,374 +16,261 @@ interface SnapshotCompactionStats {
   readonly eventsPruned: number;
 }
 
-type SnapshotReadWriteDb = Pick<Db, "select" | "insert" | "execute">;
-type SnapshotRootDb = SnapshotReadWriteDb & Pick<Db, "transaction">;
+type SnapshotRootDb = Pick<Db, "execute" | "transaction">;
 const CHAT_THREAD_EVENT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+const DEFAULT_CHAT_THREAD_SNAPSHOT_BATCH_SIZE = 500;
+const CHAT_THREAD_SNAPSHOT_STALE_MS = 24 * 60 * 60 * 1000;
 
-function toApiEvent(row: {
-  readonly id: string;
-  readonly kind: ChatThreadEvent["kind"];
-  readonly chatThreadId: string;
-  readonly agentComposeId: string;
-  readonly title: string | null;
-  readonly selectedModel: string | null;
-  readonly createdAt: Date;
-}): ChatThreadEvent {
-  return {
-    id: row.id,
-    kind: row.kind,
-    chatThreadId: row.chatThreadId,
-    agentId: row.agentComposeId,
-    title: row.title,
-    selectedModel: row.selectedModel,
-    createdAt: row.createdAt.toISOString(),
-  };
-}
-
-function compareThreadOrder(
-  left: ChatThreadSnapshotProjection,
-  right: ChatThreadSnapshotProjection,
-): number {
-  const leftPinned = left.pinnedAt !== null;
-  const rightPinned = right.pinnedAt !== null;
-  if (leftPinned !== rightPinned) {
-    return leftPinned ? -1 : 1;
+function chatThreadSnapshotBatchSize(): number {
+  const raw = optionalEnv("CHAT_THREAD_SNAPSHOT_COMPACTION_BATCH_SIZE");
+  if (raw === undefined) {
+    return DEFAULT_CHAT_THREAD_SNAPSHOT_BATCH_SIZE;
   }
-  const sortCompare = right.sortAt.localeCompare(left.sortAt);
-  if (sortCompare !== 0) {
-    return sortCompare;
-  }
-  return right.id.localeCompare(left.id);
-}
-
-function applyChatThreadEvent(
-  threads: Map<string, ChatThreadSnapshotProjection>,
-  event: ChatThreadEvent,
-  pendingSelectedModelUpdates: Map<string, ChatThreadEvent>,
-) {
-  if (event.kind === "created") {
-    const pendingSelectedModelUpdate = pendingSelectedModelUpdates.get(
-      event.chatThreadId,
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(
+      "CHAT_THREAD_SNAPSHOT_COMPACTION_BATCH_SIZE must be a positive integer",
     );
-    pendingSelectedModelUpdates.delete(event.chatThreadId);
-    const selectedModelUpdate =
-      pendingSelectedModelUpdate &&
-      pendingSelectedModelUpdate.createdAt.localeCompare(event.createdAt) >= 0
-        ? pendingSelectedModelUpdate
-        : null;
-    threads.set(event.chatThreadId, {
-      id: event.chatThreadId,
-      agentId: event.agentId,
-      title: event.title,
-      sortAt: event.createdAt,
-      createdAt: event.createdAt,
-      updatedAt: selectedModelUpdate?.createdAt ?? event.createdAt,
-      pinnedAt: null,
-      renamedAt: null,
-      selectedModel: selectedModelUpdate?.selectedModel ?? event.selectedModel,
-    });
-    return;
   }
-
-  if (event.kind === "deleted") {
-    threads.delete(event.chatThreadId);
-    return;
-  }
-
-  const thread = threads.get(event.chatThreadId);
-  if (!thread) {
-    if (event.kind === "model_selection_updated") {
-      pendingSelectedModelUpdates.set(event.chatThreadId, event);
-    }
-    return;
-  }
-
-  if (event.kind === "renamed") {
-    threads.set(event.chatThreadId, {
-      ...thread,
-      title: event.title,
-      renamedAt: event.createdAt,
-      updatedAt: event.createdAt,
-    });
-    return;
-  }
-
-  if (event.kind === "pinned") {
-    threads.set(event.chatThreadId, {
-      ...thread,
-      pinnedAt: event.createdAt,
-      updatedAt: event.createdAt,
-    });
-    return;
-  }
-
-  if (event.kind === "unpinned") {
-    threads.set(event.chatThreadId, {
-      ...thread,
-      pinnedAt: null,
-      updatedAt: event.createdAt,
-    });
-    return;
-  }
-
-  if (event.kind === "model_selection_updated") {
-    threads.set(event.chatThreadId, {
-      ...thread,
-      selectedModel: event.selectedModel,
-      updatedAt: event.createdAt,
-    });
-    return;
-  }
-
-  threads.set(event.chatThreadId, {
-    ...thread,
-    sortAt: event.createdAt,
-  });
+  return parsed;
 }
 
-function compactSnapshot(
-  snapshot: readonly ChatThreadSnapshotProjection[],
-  events: readonly ChatThreadEvent[],
-  liveAgentIds: ReadonlySet<string>,
-): {
-  readonly chatThreads: readonly ChatThreadSnapshotProjection[];
+interface SnapshotBatchRow extends Record<string, unknown> {
+  readonly scopes: number;
+  readonly eventsApplied: number;
   readonly removedDeletedAgentThreads: number;
-} {
-  const threads = new Map<string, ChatThreadSnapshotProjection>();
-  for (const thread of snapshot) {
-    threads.set(thread.id, {
-      ...thread,
-      selectedModel: thread.selectedModel ?? null,
-    });
-  }
-  const pendingSelectedModelUpdates = new Map<string, ChatThreadEvent>();
-  for (const event of events) {
-    applyChatThreadEvent(threads, event, pendingSelectedModelUpdates);
-  }
-
-  let removedDeletedAgentThreads = 0;
-  const chatThreads = [...threads.values()]
-    .filter((thread) => {
-      const keep = liveAgentIds.has(thread.agentId);
-      if (!keep) {
-        removedDeletedAgentThreads += 1;
-      }
-      return keep;
-    })
-    .sort(compareThreadOrder);
-
-  return { chatThreads, removedDeletedAgentThreads };
 }
 
-async function loadSnapshotScopes(
-  db: SnapshotReadWriteDb,
-): Promise<SnapshotScope[]> {
-  const rows = await db.execute<SnapshotScope>(sql`
-    SELECT user_id AS "userId", org_id AS "orgId"
-    FROM org_members_cache
-    UNION
-    SELECT user_id AS "userId", org_id AS "orgId"
-    FROM org_members_metadata
-    UNION
-    SELECT chat_threads.user_id AS "userId", agent_composes.org_id AS "orgId"
-    FROM chat_threads
-    INNER JOIN agent_composes
-      ON agent_composes.id = chat_threads.agent_compose_id
-  `);
-  return rows.rows;
-}
+function allScopesCte(staleCutoff: Date): SQL {
+  return sql`
+    all_scopes AS (
+      SELECT ${chatThreads.userId} AS user_id, ${agentComposes.orgId} AS org_id
+      FROM ${chatThreads}
+      INNER JOIN ${agentComposes}
+        ON ${agentComposes.id} = ${chatThreads.agentComposeId}
 
-async function loadSnapshot(
-  db: SnapshotReadWriteDb,
-  scope: SnapshotScope,
-): Promise<{
-  readonly chatThreads: readonly ChatThreadSnapshotProjection[];
-  readonly latestEventId: string | null;
-}> {
-  const [snapshot] = await db
-    .select({
-      chatThreads: chatThreadSnapshots.chatThreads,
-      latestEventId: chatThreadSnapshots.latestEventId,
-    })
-    .from(chatThreadSnapshots)
-    .where(
-      and(
-        eq(chatThreadSnapshots.userId, scope.userId),
-        eq(chatThreadSnapshots.orgId, scope.orgId),
-      ),
+      UNION
+
+      SELECT ${chatThreadEvents.userId} AS user_id, ${chatThreadEvents.orgId} AS org_id
+      FROM ${chatThreadEvents}
+
+      UNION
+
+      SELECT ${chatThreadSnapshots.userId} AS user_id, ${chatThreadSnapshots.orgId} AS org_id
+      FROM ${chatThreadSnapshots}
+      WHERE ${chatThreadSnapshots.updatedAt} < ${staleCutoff}
     )
-    .limit(1);
-
-  return {
-    chatThreads: snapshot?.chatThreads ?? [],
-    latestEventId: snapshot?.latestEventId ?? null,
-  };
+  `;
 }
 
-async function loadEventCursor(
-  db: SnapshotReadWriteDb,
-  scope: SnapshotScope,
-  eventId: string | null,
-): Promise<boolean> {
-  if (!eventId) {
-    return false;
-  }
-
-  const [row] = await db
-    .select({
-      id: chatThreadEvents.id,
-      createdAt: chatThreadEvents.createdAt,
-    })
-    .from(chatThreadEvents)
-    .where(
-      and(
-        eq(chatThreadEvents.userId, scope.userId),
-        eq(chatThreadEvents.orgId, scope.orgId),
-        eq(chatThreadEvents.id, eventId),
-      ),
-    )
-    .limit(1);
-
-  return row !== undefined;
-}
-
-async function loadEventsAfterMarker(
-  db: SnapshotReadWriteDb,
-  scope: SnapshotScope,
-  eventId: string | null,
-): Promise<readonly ChatThreadEvent[]> {
-  const hasCursor = await loadEventCursor(db, scope, eventId);
-  const filters: SQL[] = [
-    eq(chatThreadEvents.userId, scope.userId),
-    eq(chatThreadEvents.orgId, scope.orgId),
-  ];
-  if (hasCursor && eventId !== null) {
-    filters.push(
-      sql`(${chatThreadEvents.createdAt}, ${chatThreadEvents.id}) > (
-        SELECT marker.created_at, marker.id
-        FROM ${chatThreadEvents} AS marker
-        WHERE marker.user_id = ${scope.userId}
-          AND marker.org_id = ${scope.orgId}
-          AND marker.id = ${eventId}
+function candidateScopesCte(staleCutoff: Date, batchSize: number): SQL {
+  return sql`
+    candidate_scopes AS (
+      SELECT
+        scope.user_id,
+        scope.org_id
+      FROM all_scopes scope
+      LEFT JOIN ${chatThreadSnapshots} snapshot
+        ON snapshot.user_id = scope.user_id
+       AND snapshot.org_id = scope.org_id
+      LEFT JOIN LATERAL (
+        SELECT event.id, event.created_at
+        FROM ${chatThreadEvents} event
+        WHERE event.user_id = scope.user_id
+          AND event.org_id = scope.org_id
+        ORDER BY event.created_at DESC, event.id DESC
         LIMIT 1
-      )`,
-    );
-  }
-
-  const rows = await db
-    .select({
-      id: chatThreadEvents.id,
-      kind: chatThreadEvents.kind,
-      chatThreadId: chatThreadEvents.chatThreadId,
-      agentComposeId: chatThreadEvents.agentComposeId,
-      title: chatThreadEvents.title,
-      selectedModel: chatThreadEvents.selectedModel,
-      createdAt: chatThreadEvents.createdAt,
-    })
-    .from(chatThreadEvents)
-    .where(and(...filters))
-    .orderBy(asc(chatThreadEvents.createdAt), asc(chatThreadEvents.id));
-
-  return rows.map(toApiEvent);
+      ) latest_event ON true
+      WHERE snapshot.user_id IS NULL
+         OR snapshot.latest_event_id IS DISTINCT FROM latest_event.id
+         OR snapshot.updated_at < ${staleCutoff}
+      ORDER BY
+        snapshot.updated_at ASC NULLS FIRST,
+        latest_event.created_at ASC NULLS FIRST,
+        scope.user_id ASC,
+        scope.org_id ASC
+      LIMIT ${batchSize}
+    )
+  `;
 }
 
-async function loadLiveAgentIds(
-  db: SnapshotReadWriteDb,
-  orgId: string,
-): Promise<ReadonlySet<string>> {
-  const rows = await db
-    .select({ id: agentComposes.id })
-    .from(agentComposes)
-    .where(eq(agentComposes.orgId, orgId));
+function rebuiltCte(): SQL {
+  return sql`
+    rebuilt AS (
+      SELECT
+        scope.user_id,
+        scope.org_id,
+        latest_event.id AS latest_event_id,
+        COALESCE(thread_projection.chat_threads, '[]'::jsonb) AS chat_threads,
+        events_after_marker.count AS events_applied,
+        deleted_agent_threads.count AS removed_deleted_agent_threads
+      FROM candidate_scopes scope
+      LEFT JOIN ${chatThreadSnapshots} snapshot
+        ON snapshot.user_id = scope.user_id
+       AND snapshot.org_id = scope.org_id
+      LEFT JOIN LATERAL (
+        SELECT jsonb_agg(
+          jsonb_build_object(
+            'id', thread.id,
+            'agentId', thread.agent_compose_id,
+            'title', thread.title,
+            'sortAt', thread.last_message_at,
+            'createdAt', thread.created_at,
+            'updatedAt', thread.updated_at,
+            'pinnedAt', thread.pinned_at,
+            'renamedAt', thread.renamed_at,
+            'selectedModel', thread.selected_model
+          )
+          ORDER BY
+            (thread.pinned_at IS NULL) ASC,
+            thread.last_message_at DESC,
+            thread.id DESC
+        ) AS chat_threads
+        FROM ${chatThreads} thread
+        INNER JOIN ${agentComposes} agent
+          ON agent.id = thread.agent_compose_id
+        WHERE thread.user_id = scope.user_id
+          AND agent.org_id = scope.org_id
+      ) thread_projection ON true
+      LEFT JOIN LATERAL (
+        SELECT event.id, event.created_at
+        FROM ${chatThreadEvents} event
+        WHERE event.user_id = scope.user_id
+          AND event.org_id = scope.org_id
+        ORDER BY event.created_at DESC, event.id DESC
+        LIMIT 1
+      ) latest_event ON true
+      LEFT JOIN LATERAL (
+        SELECT marker.id, marker.created_at
+        FROM ${chatThreadEvents} marker
+        WHERE marker.user_id = scope.user_id
+          AND marker.org_id = scope.org_id
+          AND marker.id = snapshot.latest_event_id
+        LIMIT 1
+      ) marker ON true
+      LEFT JOIN LATERAL (
+        SELECT COUNT(*)::int AS count
+        FROM ${chatThreadEvents} event
+        WHERE event.user_id = scope.user_id
+          AND event.org_id = scope.org_id
+          AND (
+            marker.id IS NULL
+            OR (event.created_at, event.id) > (marker.created_at, marker.id)
+          )
+      ) events_after_marker ON true
+      LEFT JOIN LATERAL (
+        SELECT COUNT(*)::int AS count
+        FROM jsonb_array_elements(
+          COALESCE(snapshot.chat_threads, '[]'::jsonb)
+        ) AS old_thread(thread)
+        WHERE NOT EXISTS (
+          SELECT 1
+          FROM ${agentComposes} agent
+          WHERE agent.id = (old_thread.thread ->> 'agentId')::uuid
+            AND agent.org_id = scope.org_id
+          )
+        ) deleted_agent_threads ON true
+    )
+  `;
+}
 
-  return new Set(
-    rows.map((row) => {
-      return row.id;
+function upsertedCte(updatedAt: Date): SQL {
+  return sql`
+    upserted AS (
+      INSERT INTO ${chatThreadSnapshots} (
+        user_id,
+        org_id,
+        latest_event_id,
+        chat_threads,
+        created_at,
+        updated_at
+      )
+      SELECT
+        rebuilt.user_id,
+        rebuilt.org_id,
+        rebuilt.latest_event_id,
+        rebuilt.chat_threads,
+        ${updatedAt},
+        ${updatedAt}
+      FROM rebuilt
+      ON CONFLICT (user_id, org_id)
+      DO UPDATE SET
+        latest_event_id = EXCLUDED.latest_event_id,
+        chat_threads = EXCLUDED.chat_threads,
+        updated_at = EXCLUDED.updated_at
+      RETURNING user_id, org_id
+    )
+  `;
+}
+
+function compactChatThreadSnapshotBatchSql(args: {
+  readonly updatedAt: Date;
+  readonly staleCutoff: Date;
+  readonly batchSize: number;
+}): SQL {
+  return sql`
+    WITH ${allScopesCte(args.staleCutoff)},
+    ${candidateScopesCte(args.staleCutoff, args.batchSize)},
+    ${rebuiltCte()},
+    ${upsertedCte(args.updatedAt)}
+    SELECT
+      COUNT(*)::int AS "scopes",
+      COALESCE(SUM(rebuilt.events_applied), 0)::int AS "eventsApplied",
+      COALESCE(SUM(rebuilt.removed_deleted_agent_threads), 0)::int AS "removedDeletedAgentThreads"
+    FROM rebuilt
+    INNER JOIN upserted
+      ON upserted.user_id = rebuilt.user_id
+     AND upserted.org_id = rebuilt.org_id
+  `;
+}
+
+async function compactChatThreadSnapshotBatch(
+  db: SnapshotRootDb,
+): Promise<Omit<SnapshotCompactionStats, "eventsPruned">> {
+  const updatedAt = nowDate();
+  const staleCutoff = new Date(
+    updatedAt.getTime() - CHAT_THREAD_SNAPSHOT_STALE_MS,
+  );
+  const result = await db.execute<SnapshotBatchRow>(
+    compactChatThreadSnapshotBatchSql({
+      updatedAt,
+      staleCutoff,
+      batchSize: chatThreadSnapshotBatchSize(),
     }),
   );
-}
 
-async function writeSnapshot(
-  db: SnapshotReadWriteDb,
-  scope: SnapshotScope,
-  chatThreads: readonly ChatThreadSnapshotProjection[],
-  latestEventId: string | null,
-): Promise<void> {
-  const updatedAt = nowDate();
-  await db
-    .insert(chatThreadSnapshots)
-    .values({
-      userId: scope.userId,
-      orgId: scope.orgId,
-      latestEventId,
-      chatThreads: [...chatThreads],
-      updatedAt,
-    })
-    .onConflictDoUpdate({
-      target: [chatThreadSnapshots.userId, chatThreadSnapshots.orgId],
-      set: {
-        latestEventId,
-        chatThreads: [...chatThreads],
-        updatedAt,
-      },
-    });
+  return {
+    scopes: result.rows[0]?.scopes ?? 0,
+    eventsApplied: result.rows[0]?.eventsApplied ?? 0,
+    removedDeletedAgentThreads: result.rows[0]?.removedDeletedAgentThreads ?? 0,
+  };
 }
 
 async function compactChatThreadSnapshotsForAllScopes(
   db: SnapshotRootDb,
   signal?: AbortSignal,
 ): Promise<SnapshotCompactionStats> {
-  const scopes = await loadSnapshotScopes(db);
-  let eventsApplied = 0;
-  let removedDeletedAgentThreads = 0;
-
-  for (const scope of scopes) {
-    signal?.throwIfAborted();
-    const result = await db.transaction(
-      async (tx) => {
-        const snapshot = await loadSnapshot(tx, scope);
-        const events = await loadEventsAfterMarker(
-          tx,
-          scope,
-          snapshot.latestEventId,
-        );
-        const liveAgentIds = await loadLiveAgentIds(tx, scope.orgId);
-        signal?.throwIfAborted();
-
-        const compacted = compactSnapshot(
-          snapshot.chatThreads,
-          events,
-          liveAgentIds,
-        );
-        const latestEventId =
-          events.length > 0
-            ? events[events.length - 1]!.id
-            : snapshot.latestEventId;
-        await writeSnapshot(tx, scope, compacted.chatThreads, latestEventId);
-
-        return {
-          eventsApplied: events.length,
-          removedDeletedAgentThreads: compacted.removedDeletedAgentThreads,
-        };
-      },
-      { isolationLevel: "repeatable read" },
-    );
-
-    eventsApplied += result.eventsApplied;
-    removedDeletedAgentThreads += result.removedDeletedAgentThreads;
-  }
+  const compacted = await db.transaction(
+    async (tx) => {
+      return await compactChatThreadSnapshotBatch(tx);
+    },
+    { isolationLevel: "repeatable read" },
+  );
 
   signal?.throwIfAborted();
   const cutoff = new Date(nowDate().getTime() - CHAT_THREAD_EVENT_RETENTION_MS);
   const pruned = await db.execute<{ readonly count: number }>(sql`
     WITH pruned AS (
-      DELETE FROM ${chatThreadEvents}
-      WHERE ${chatThreadEvents.createdAt} < ${cutoff}
-        AND NOT EXISTS (
-          SELECT 1
-          FROM ${chatThreadSnapshots}
-          WHERE ${chatThreadSnapshots.latestEventId} = ${chatThreadEvents.id}
-        )
+      DELETE FROM ${chatThreadEvents} event
+      USING ${chatThreadSnapshots} snapshot
+      INNER JOIN ${chatThreadEvents} marker
+        ON marker.id = snapshot.latest_event_id
+       AND marker.user_id = snapshot.user_id
+       AND marker.org_id = snapshot.org_id
+      WHERE event.user_id = snapshot.user_id
+        AND event.org_id = snapshot.org_id
+        AND event.created_at < ${cutoff}
+        AND (event.created_at, event.id) < (marker.created_at, marker.id)
       RETURNING 1
     )
     SELECT COUNT(*)::int AS "count"
@@ -398,9 +278,9 @@ async function compactChatThreadSnapshotsForAllScopes(
   `);
 
   return {
-    scopes: scopes.length,
-    eventsApplied,
-    removedDeletedAgentThreads,
+    scopes: compacted.scopes,
+    eventsApplied: compacted.eventsApplied,
+    removedDeletedAgentThreads: compacted.removedDeletedAgentThreads,
     eventsPruned: pruned.rows[0]?.count ?? 0,
   };
 }

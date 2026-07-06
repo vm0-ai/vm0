@@ -15,6 +15,11 @@ import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
+import {
+  deleteRelationshipRowsForFixture$,
+  seedRelationshipRows$,
+  type RelationshipFixture,
+} from "./helpers/zero-relationships";
 import type { ApiTestUser } from "./helpers/api-bdd";
 import {
   createConnectorBddApi,
@@ -40,11 +45,6 @@ const DEFAULT_GMAIL_INTERNAL_DATE = String(
 afterEach(() => {
   clearMockNow();
 });
-
-interface RelationshipFixture {
-  readonly orgId: string;
-  readonly userId: string;
-}
 
 function authHeaders() {
   return { authorization: "Bearer clerk-session" };
@@ -258,6 +258,7 @@ async function seedRelationshipFixture(
 async function deleteRelationshipFixture(
   fixture: RelationshipFixture,
 ): Promise<void> {
+  await store.set(deleteRelationshipRowsForFixture$, fixture, context.signal);
   await deleteFeatureSwitchesForUser(context, fixture);
 }
 
@@ -274,7 +275,16 @@ describe("GET /api/zero/relationships/*", () => {
       }),
       [200],
     );
-    expect(search.body).toStrictEqual({ relationships: [] });
+    expect(search.body).toStrictEqual({
+      relationships: [],
+      pagination: {
+        page: 1,
+        pageSize: 100,
+        total: 0,
+        totalPages: 1,
+        hasMore: false,
+      },
+    });
 
     const resolved = await accept(
       relationshipsClient().resolve({
@@ -300,6 +310,74 @@ describe("GET /api/zero/relationships/*", () => {
     expect(response.body.error.message).toBe(
       "Relationship memory is not enabled for this organization.",
     );
+  });
+
+  it("paginates relationship search with total counts and server-side filters", async () => {
+    const fixture = await track(seedRelationshipFixture());
+    await store.set(
+      seedRelationshipRows$,
+      { fixture, count: 105 },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const firstPage = await accept(
+      relationshipsClient().search({
+        headers: authHeaders(),
+        query: { page: 1, limit: 100 },
+      }),
+      [200],
+    );
+    expect(firstPage.body.relationships).toHaveLength(100);
+    expect(firstPage.body.relationships[0]?.entity.displayName).toBe(
+      "Relationship 001",
+    );
+    expect(firstPage.body.pagination).toStrictEqual({
+      page: 1,
+      pageSize: 100,
+      total: 105,
+      totalPages: 2,
+      hasMore: true,
+    });
+
+    const secondPage = await accept(
+      relationshipsClient().search({
+        headers: authHeaders(),
+        query: { page: 2, limit: 100 },
+      }),
+      [200],
+    );
+    expect(secondPage.body.relationships).toHaveLength(5);
+    expect(secondPage.body.relationships[0]?.entity.displayName).toBe(
+      "Relationship 101",
+    );
+    expect(secondPage.body.pagination).toStrictEqual({
+      page: 2,
+      pageSize: 100,
+      total: 105,
+      totalPages: 2,
+      hasMore: false,
+    });
+
+    const people = await accept(
+      relationshipsClient().search({
+        headers: authHeaders(),
+        query: { page: 1, limit: 100, entityType: "person" },
+      }),
+      [200],
+    );
+    expect(people.body.relationships).toHaveLength(53);
+    expect(people.body.pagination.total).toBe(53);
+
+    const openLoops = await accept(
+      relationshipsClient().search({
+        headers: authHeaders(),
+        query: { page: 1, limit: 100, itemKind: "open_loop" },
+      }),
+      [200],
+    );
+    expect(openLoops.body.relationships).toHaveLength(11);
+    expect(openLoops.body.pagination.total).toBe(11);
   });
 
   it("does not enqueue duplicate Gmail backfill messages twice", async () => {

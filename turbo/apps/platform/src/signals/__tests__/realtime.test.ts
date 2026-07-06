@@ -99,7 +99,7 @@ function unexpectedDataSourceCall(name: string): never {
 
 function createFailingSubscribeDataSource(): ChatThreadDataSource {
   const thread: ChatThread = {
-    lastReadMessageId: null,
+    lastReadAt: null,
     codexServiceTier: null,
     computerUseHostId: null,
   };

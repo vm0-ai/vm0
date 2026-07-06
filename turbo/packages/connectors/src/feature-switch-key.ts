@@ -34,7 +34,6 @@ export enum FeatureSwitchKey {
   ZeroDebug = "zeroDebug",
   Banking = "banking",
   Lab = "lab",
-  WorkflowAutomation = "workflowAutomation",
   WorkflowWebhookTriggers = "workflowWebhookTriggers",
   TestOauthConnector = "testOauthConnector",
   FreshdeskConnector = "freshdeskConnector",
@@ -64,4 +63,5 @@ export enum FeatureSwitchKey {
   TeamsIntegration = "teamsIntegration",
   BytePlusVoiceInputStt = "bytePlusVoiceInputStt",
   ImageEditing = "imageEditing",
+  PresentationGoogleSlidesUpload = "presentationGoogleSlidesUpload",
 }

@@ -189,14 +189,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.WorkflowAutomation]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Enable workflow automation surfaces, slash workflow commands, non-webhook event triggers, automation-to-workflow routing, persistent goals, and workflow-driven ZERO_TOKEN capabilities.",
-    // Globally enabled since the automation -> workflow cutover (#19959):
-    // migration 0535 moved every legacy automation onto workflow triggers.
-    enabled: true,
-  },
   [FeatureSwitchKey.WorkflowWebhookTriggers]: {
     maintainer: "lancy@vm0.ai",
     description:
@@ -244,7 +236,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.CodexFastMode]: {
     maintainer: "lancy@vm0.ai",
     description:
-      "Enable Codex fast mode for ChatGPT subscription GPT-5.5 web chat runs.",
+      "Enable Codex fast mode for ChatGPT subscription GPT 5.5 web chat runs.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -286,6 +278,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Enable the HTML artifact comment-editing workflow for collecting DOM comments and preparing instrumented working-copy edits.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ComputerUseDesktopPlugins]: {
     maintainer: "lancy@vm0.ai",
@@ -346,6 +339,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Show icon-only manage navigation buttons when the expanded sidebar manage section is collapsed.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.SidebarSubscriptionUsage]: {
     maintainer: "ethan@vm0.ai",
@@ -378,6 +372,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "bingjie@vm0.ai",
     description:
       "Enable in-canvas image editing (remove background, enhance) from the image preview and artifact sidebar.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.PresentationGoogleSlidesUpload]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Enable uploading a presentation artifact to the user's Google Drive as a native, editable Google Slides deck.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

@@ -236,7 +236,7 @@ export function normaliseCustomConnectorRow(
   };
 }
 
-function valueMarkerKey(marker: {
+export function customConnectorValueMarkerKey(marker: {
   readonly kind: CustomConnectorFieldKind;
   readonly key: string;
 }): string {
@@ -249,7 +249,7 @@ function configuredValueMarkerKeys(
   return [
     ...new Set(
       markers.map((marker) => {
-        return valueMarkerKey(marker);
+        return customConnectorValueMarkerKey(marker);
       }),
     ),
   ].sort();
@@ -262,7 +262,7 @@ function configuredFieldKeys(args: {
   const configured = new Set(configuredValueMarkerKeys(args.markers));
   return args.fields
     .filter((field) => {
-      return configured.has(valueMarkerKey(field));
+      return configured.has(customConnectorValueMarkerKey(field));
     })
     .map((field) => {
       return field.key;
@@ -277,7 +277,9 @@ function computeMissingRequiredFields(args: {
   const configured = new Set(configuredValueMarkerKeys(args.markers));
   return args.fields
     .filter((field) => {
-      return field.required && !configured.has(valueMarkerKey(field));
+      return (
+        field.required && !configured.has(customConnectorValueMarkerKey(field))
+      );
     })
     .map((field) => {
       return field.key;
@@ -382,7 +384,7 @@ function extractTemplateReferences(template: string): readonly {
   });
 }
 
-function prefixTemplateVariableKeys(
+export function customConnectorPrefixTemplateVariableKeys(
   prefixTemplates: readonly string[],
 ): ReadonlySet<string> {
   const keys = new Set<string>();
@@ -541,7 +543,7 @@ function validateFields(
         "Field keys must start with a lowercase letter and contain only lowercase letters, digits, and underscores",
       );
     }
-    const marker = valueMarkerKey({ kind: field.kind, key });
+    const marker = customConnectorValueMarkerKey({ kind: field.kind, key });
     if (seen.has(marker) || seen.has(key)) {
       return badRequestMessage(`Duplicate field key: ${key}`);
     }
@@ -820,7 +822,7 @@ async function loadConnectorValueMarkers(args: {
     });
   const existing = new Set(
     markers.map((marker) => {
-      return `${marker.connectorId}:${valueMarkerKey(marker)}`;
+      return `${marker.connectorId}:${customConnectorValueMarkerKey(marker)}`;
     }),
   );
   for (const row of legacyRows) {
@@ -829,7 +831,7 @@ async function loadConnectorValueMarkers(args: {
       kind: "secret" as const,
       key: LEGACY_SECRET_KEY,
     };
-    const key = `${marker.connectorId}:${valueMarkerKey(marker)}`;
+    const key = `${marker.connectorId}:${customConnectorValueMarkerKey(marker)}`;
     if (!existing.has(key)) {
       markers.push(marker);
       existing.add(key);
@@ -1036,15 +1038,17 @@ function validateValueInputsForDefinition(args: {
 }): readonly CustomConnectorValueInput[] | BadRequestResponse {
   const allowed = new Set(
     args.fields.map((field) => {
-      return valueMarkerKey(field);
+      return customConnectorValueMarkerKey(field);
     }),
   );
-  const prefixVariables = prefixTemplateVariableKeys(args.prefixTemplates);
+  const prefixVariables = customConnectorPrefixTemplateVariableKeys(
+    args.prefixTemplates,
+  );
   const seen = new Set<string>();
   const values: CustomConnectorValueInput[] = [];
   for (const value of args.values) {
     const key = value.key.trim();
-    const marker = valueMarkerKey({ kind: value.kind, key });
+    const marker = customConnectorValueMarkerKey({ kind: value.kind, key });
     if (!allowed.has(marker)) {
       return badRequestMessage(
         `Value references undeclared custom connector field: ${marker}`,
@@ -1345,10 +1349,11 @@ export async function decryptCustomConnectorValues(args: {
 }): Promise<Record<string, string>> {
   const result: Record<string, string> = {};
   for (const value of args.values) {
-    result[valueMarkerKey(value)] = await decryptStoredSecretValue(
-      value.encryptedValue,
-      args.featureSwitchContext,
-    );
+    result[customConnectorValueMarkerKey(value)] =
+      await decryptStoredSecretValue(
+        value.encryptedValue,
+        args.featureSwitchContext,
+      );
   }
   return result;
 }
@@ -1388,7 +1393,9 @@ export function renderTemplateForRuntime(args: {
     const legacyField = fieldByReference.get(`secrets.${LEGACY_SECRET_KEY}`);
     if (
       !legacyField ||
-      !args.configuredValueMarkers.has(valueMarkerKey(legacyField))
+      !args.configuredValueMarkers.has(
+        customConnectorValueMarkerKey(legacyField),
+      )
     ) {
       return null;
     }
@@ -1405,7 +1412,7 @@ export function renderTemplateForRuntime(args: {
     }
     if (
       args.configuredValueMarkers &&
-      !args.configuredValueMarkers.has(valueMarkerKey(field))
+      !args.configuredValueMarkers.has(customConnectorValueMarkerKey(field))
     ) {
       return null;
     }
@@ -1448,7 +1455,8 @@ function renderPrefixTemplate(args: {
         missing = true;
         return TEMPLATE_PLACEHOLDER_VALUE;
       }
-      const value = args.values[valueMarkerKey({ kind: "variable", key })];
+      const value =
+        args.values[customConnectorValueMarkerKey({ kind: "variable", key })];
       if (!value || !isSafeHostTemplateVariableValue(value)) {
         missing = true;
         return TEMPLATE_PLACEHOLDER_VALUE;

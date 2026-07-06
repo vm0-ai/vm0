@@ -92,12 +92,9 @@ function mockQueuedThread(): void {
   });
   context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
     return respond(200, {
-      id: THREAD_ID,
-      title: null,
-      agentId: "c0000000-0000-4000-a000-000000000001",
-      activeRunIds: ["run-queued"],
-      createdAt: "2026-01-01T00:00:00Z",
-      updatedAt: "2026-01-01T00:00:00Z",
+      lastReadAt: null,
+      computerUseHostId: null,
+      codexServiceTier: null,
     });
   });
 }

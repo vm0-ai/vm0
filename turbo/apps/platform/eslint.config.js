@@ -1,7 +1,7 @@
 import { config as baseConfig, oxlint } from "@vm0/eslint-config/base";
+import ccstatePlugin from "@vm0/eslint-rules/ccstate";
 import pluginReactHooks from "eslint-plugin-react-hooks";
 import pluginReact from "eslint-plugin-react";
-import ccstatePlugin from "./custom-eslint/index.ts";
 
 /** @type {import("eslint").Linter.Config[]} */
 export default [
@@ -308,7 +308,6 @@ export default [
       "public/**",
       "vite.config.ts",
       "vitest.config.ts",
-      "custom-eslint/**",
       "src/mocks/**",
       "src/__tests__/**",
       "eslint.config.ablation.mjs",

@@ -9,11 +9,9 @@ import {
   currentChatThreadId$,
   currentChatAgentDisplayName$,
 } from "../agent-chat.ts";
-import { allOrgAutomationEntries$ } from "./zero-automations.ts";
 import { zeroActivityDetail$ } from "../../signals/activity-page/activity-signals.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { automationTitleExcerpt } from "./automation-title.ts";
 import { workflowDetail } from "../workflows-page/workflows-signals.ts";
 
 interface MobileBreadcrumb {
@@ -81,28 +79,6 @@ const activityDetailBreadcrumb$ = computed(
   },
 );
 
-const automationBreadcrumb$ = computed(
-  async (get): Promise<MobileBreadcrumb> => {
-    const section = "Automations";
-    const params = get(pathParams$) as Params;
-    const automationId = getStringParam(params, "automationId");
-    if (automationId) {
-      const entries = await get(allOrgAutomationEntries$);
-      const entry = entries.find((e) => {
-        return e.id === automationId;
-      });
-      if (entry) {
-        return {
-          section,
-          sectionPath: ROUTES.automations,
-          name: automationTitleExcerpt(entry),
-        };
-      }
-    }
-    return { section, sectionPath: ROUTES.automations };
-  },
-);
-
 const workflowsBreadcrumb$ = computed(
   async (get): Promise<MobileBreadcrumb> => {
     const section = "Workflows";
@@ -157,17 +133,13 @@ const chatBreadcrumb$ = computed(async (get): Promise<MobileBreadcrumb> => {
 /**
  * Provides breadcrumb data for the MobileTopBar.
  * For chat: resolves the active agent name and avatar.
- * For automation/activity/team detail pages: derives a sub-page name from signals.
+ * For activity/team detail pages: derives a sub-page name from signals.
  * For other sections: returns a static label so the top bar has context on mobile
  * (page-level breadcrumbs use `hidden md:flex` and are invisible on mobile).
  */
 export const mobileBreadcrumb$ = computed(
   async (get): Promise<MobileBreadcrumb | null> => {
     const route = get(activeRoute$);
-
-    if (route === "automations" || route === "automationDetail") {
-      return await get(automationBreadcrumb$);
-    }
 
     if (route === "workflows" || isWorkflowDetailRouteKey(route)) {
       return await get(workflowsBreadcrumb$);

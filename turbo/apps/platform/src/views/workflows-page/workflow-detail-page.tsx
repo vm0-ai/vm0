@@ -72,6 +72,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@vm0/ui";
+import { runAfterDropdownMenuClose } from "../components/dropdown-menu-modal-action.ts";
 
 import { agents$ } from "../../signals/agent.ts";
 import { user$ } from "../../signals/auth.ts";
@@ -554,20 +555,16 @@ function WorkflowTabNav({
 function TriggerCreateAction() {
   const setCreateDialog = useSet(setWorkflowTriggerCreateDialog$);
   const features = useGet(featureSwitch$);
-  const workflowAutomationEnabled =
-    features[FeatureSwitchKey.WorkflowAutomation] ?? false;
   const workflowWebhookTriggersEnabled =
     features[FeatureSwitchKey.WorkflowWebhookTriggers] ?? false;
 
   return (
     <TriggerCreateMenu
       onSelect={setCreateDialog}
-      githubLabelTriggersEnabled={workflowAutomationEnabled}
-      googleCalendarTriggersEnabled={workflowAutomationEnabled}
-      googleMeetTriggersEnabled={workflowAutomationEnabled}
-      webhookTriggersEnabled={
-        workflowAutomationEnabled && workflowWebhookTriggersEnabled
-      }
+      githubLabelTriggersEnabled
+      googleCalendarTriggersEnabled
+      googleMeetTriggersEnabled
+      webhookTriggersEnabled={workflowWebhookTriggersEnabled}
     />
   );
 }
@@ -4708,7 +4705,9 @@ function TriggerMoreActionsMenu({
           <DropdownMenuItem
             disabled={deleting}
             className="gap-2"
-            onClick={onRevealWebhookSecret}
+            onSelect={() => {
+              runAfterDropdownMenuClose(onRevealWebhookSecret);
+            }}
           >
             <IconEye size={14} stroke={1.5} />
             View webhook secret

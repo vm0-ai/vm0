@@ -228,14 +228,8 @@ export const apiAgentsHandlers = [
   // GET /api/zero/chat-threads/:id (thread detail)
   mockApi(chatThreadByIdContract.get, ({ respond }) => {
     return respond(200, {
-      id: "b0000000-0000-4000-a000-000000000001",
-      title: null,
-      agentId: "c0000000-0000-4000-a000-000000000001",
-      activeRunIds: [],
       lastReadAt: "2026-03-10T00:00:00Z",
-      lastMessageAt: "2026-03-10T00:00:00Z",
-      createdAt: "2026-03-10T00:00:00Z",
-      updatedAt: "2026-03-10T00:00:00Z",
+      computerUseHostId: null,
       codexServiceTier: null,
     });
   }),
@@ -280,6 +274,6 @@ export const apiAgentsHandlers = [
 
   // POST /api/zero/chat-threads/:id/mark-read
   mockApi(chatThreadMarkReadContract.markRead, ({ respond }) => {
-    return respond(200, { lastReadMessageId: null, unreads: [] });
+    return respond(200, { lastReadAt: null, unreads: [] });
   }),
 ];

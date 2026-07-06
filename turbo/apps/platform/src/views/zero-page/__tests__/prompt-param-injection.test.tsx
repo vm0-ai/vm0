@@ -22,7 +22,7 @@ describe("prompt query parameter injection", () => {
       return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
     });
 
-    expect(textarea).toHaveValue("Start my first task");
+    expect(textarea).toHaveTextContent("Start my first task");
   });
 
   it("starts a chat draft from a prompt URL", async () => {
@@ -35,16 +35,18 @@ describe("prompt query parameter injection", () => {
       return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
     });
 
-    expect(textarea).toHaveValue("Set up a daily report");
+    expect(textarea).toHaveTextContent("Set up a daily report");
   });
 
   it("starts an optimistic chat from the prompt route", async () => {
     let runPrompt: string | undefined;
-    let selectedModel: string | null | undefined;
+    let createdThreadModel: string | null | undefined;
     mockChatLifecycle(context, {
       onRunCreate: (body) => {
         runPrompt = body.prompt;
-        selectedModel = body.modelSelection?.selectedModel;
+      },
+      onThreadCreate: (body) => {
+        createdThreadModel = body.modelSelection.selectedModel;
       },
     });
 
@@ -56,7 +58,7 @@ describe("prompt query parameter injection", () => {
     await waitFor(() => {
       expect(screen.getByText("Build a launch recap")).toBeInTheDocument();
       expect(runPrompt).toBe("Build a launch recap");
-      expect(selectedModel).toBe("deepseek-v4-pro");
+      expect(createdThreadModel).toBe("deepseek-v4-pro");
     });
   });
 

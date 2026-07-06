@@ -113,12 +113,9 @@ function setupChatThread({
 
   context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
     return respond(200, {
-      id: THREAD_ID,
-      title: null,
-      agentId: AGENT_ID,
-      activeRunIds: [],
-      createdAt: "2026-03-10T00:00:00Z",
-      updatedAt: "2026-03-10T00:00:00Z",
+      lastReadAt: null,
+      computerUseHostId: null,
+      codexServiceTier: null,
     });
   });
   context.mocks.api(chatThreadMessagesContract.list, ({ query, respond }) => {
@@ -465,8 +462,12 @@ async function backToArtifactInbox(): Promise<void> {
   });
 }
 
-function expectFullscreenSafeAreaClass(element: HTMLElement): void {
+function expectFullscreenSafeAreaClass(
+  element: HTMLElement,
+  layerClassName = "z-[100]",
+): void {
   const className = element.getAttribute("class") ?? "";
+  expect(className).toContain(layerClassName);
   expect(className).toContain("pt-[var(--sat)]");
   expect(className).toContain("pb-[var(--sab)]");
 }
@@ -1268,6 +1269,41 @@ describe("zero artifact sidebar", () => {
     });
   });
 
+  it("marks app chrome while the artifact sidebar is fullscreen", async () => {
+    const user = userEvent.setup({ delay: null });
+    const imageUrl =
+      "https://cdn.vm7.io/artifacts/test/fullscreen-layer/photo.png";
+    setupChatThread({
+      content: `[photo](${imageUrl})`,
+      path: `${THREAD_PATH}?artifact=${encodeURIComponent(imageUrl)}`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-sidebar")).toBeInTheDocument();
+      expect(screen.getByLabelText("Enter fullscreen")).toBeInTheDocument();
+    });
+
+    const app = document.querySelector(".zero-app");
+    if (!(app instanceof HTMLElement)) {
+      throw new Error("Zero app shell not found");
+    }
+
+    expect(app).not.toHaveAttribute("data-zero-artifact-fullscreen");
+
+    await user.click(screen.getByLabelText("Enter fullscreen"));
+    await waitFor(() => {
+      expect(screen.getByLabelText("Exit fullscreen")).toBeInTheDocument();
+      expect(app).toHaveAttribute("data-zero-artifact-fullscreen", "true");
+    });
+    expectFullscreenSafeAreaClass(screen.getByTestId("artifact-sidebar"));
+
+    await user.click(screen.getByLabelText("Exit fullscreen"));
+    await waitFor(() => {
+      expect(screen.getByLabelText("Enter fullscreen")).toBeInTheDocument();
+      expect(app).not.toHaveAttribute("data-zero-artifact-fullscreen");
+    });
+  });
+
   it("navigates sidebar image artifacts within the current run", async () => {
     const user = userEvent.setup({ delay: null });
     const firstImageUrl =
@@ -1591,6 +1627,61 @@ describe("zero artifact sidebar", () => {
     });
   });
 
+  it("shows download progress while downloading an HTML artifact", async () => {
+    const user = userEvent.setup({ delay: null });
+    const siteUrl = "https://launch.sites.vm7.io/launch-plan.html";
+    const downloads = captureDownloads(context.signal);
+    const downloadReady = context.mocks.deferred<Response>();
+    context.mocks.data.connectors([]);
+    context.mocks.http.get(siteUrl, () => {
+      return downloadReady.promise;
+    });
+    setupChatThread({
+      artifactFiles: [
+        artifactFile(siteUrl, {
+          id: "artifact-launch-plan",
+          filename: "launch-plan.html",
+          contentType: "text/html",
+          artifactKind: "hosted-site",
+          size: 1024,
+        }),
+      ],
+      content: `[Launch plan](${siteUrl})`,
+      path: `${THREAD_PATH}?artifact=${encodeURIComponent(siteUrl)}`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-sidebar")).toBeInTheDocument();
+      expect(screen.getByLabelText("Download artifact")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByLabelText("Download artifact"));
+    await waitFor(() => {
+      expect(menuItemByText("Download")).toBeInTheDocument();
+    });
+    click(menuItemByText("Download"));
+
+    const downloadButton = screen.getByLabelText("Download artifact");
+    await waitFor(() => {
+      expect(downloadButton).toHaveAttribute("aria-busy", "true");
+      expect(downloadButton).toBeDisabled();
+      expect(downloadButton.querySelector(".animate-spin")).not.toBeNull();
+    });
+
+    downloadReady.resolve(
+      new Response("<!doctype html><html><body>Launch plan</body></html>", {
+        headers: { "Content-Type": "text/html" },
+      }),
+    );
+
+    await waitFor(() => {
+      expect(downloads).toContain("launch-plan.html");
+      expect(downloadButton).not.toHaveAttribute("aria-busy");
+      expect(downloadButton).not.toBeDisabled();
+      expect(downloadButton.querySelector(".animate-spin")).toBeNull();
+    });
+  });
+
   it("uploads an artifact to connected Google Drive from the sidebar", async () => {
     const user = userEvent.setup({ delay: null });
     const markdownUrl =
@@ -1716,6 +1807,13 @@ describe("zero artifact sidebar", () => {
       expect(menuItemByText("Download (.pptx)")).toBeInTheDocument();
     });
     click(menuItemByText("Download (.pptx)"));
+    const downloadButton = screen.getByLabelText("Download artifact");
+
+    await waitFor(() => {
+      expect(downloadButton).toHaveAttribute("aria-busy", "true");
+      expect(downloadButton).toBeDisabled();
+      expect(downloadButton.querySelector(".animate-spin")).not.toBeNull();
+    });
 
     const exportFrame = await waitFor(() => {
       const frame = document.querySelector(
@@ -1731,6 +1829,9 @@ describe("zero artifact sidebar", () => {
       expect(
         document.querySelector('iframe[title="Presentation PPTX export"]'),
       ).not.toBeInTheDocument();
+      expect(downloadButton).not.toHaveAttribute("aria-busy");
+      expect(downloadButton).not.toBeDisabled();
+      expect(downloadButton.querySelector(".animate-spin")).toBeNull();
     });
   });
 
