@@ -471,20 +471,45 @@ export const runnersNetworkPolicyRefreshContract = c.router({
 /**
  * Runner heartbeat body — periodic state report from each runner
  */
-export const heartbeatBodySchema = z.object({
-  runnerId: z.uuid(),
-  runnerName: z.string(),
-  group: runnerGroupSchema,
-  totalVcpu: z.number().int().nonnegative(),
-  totalMemoryMb: z.number().int().nonnegative(),
-  maxConcurrent: z.number().int().nonnegative(),
-  allocatedVcpu: z.number().int().nonnegative(),
-  allocatedMemoryMb: z.number().int().nonnegative(),
-  runningCount: z.number().int().nonnegative(),
-  admittableProfiles: runnerProfileListSchema,
-  heldSessionStates: z.array(heldSessionStateSchema).max(1024),
-  mode: z.enum(["running", "draining", "stopping"]),
-});
+export const heartbeatBodySchema = z
+  .object({
+    runnerId: z.uuid(),
+    runnerName: z.string(),
+    group: runnerGroupSchema,
+    totalVcpu: z.number().int().nonnegative(),
+    totalMemoryMb: z.number().int().nonnegative(),
+    maxConcurrent: z.number().int().nonnegative(),
+    allocatedVcpu: z.number().int().nonnegative(),
+    allocatedMemoryMb: z.number().int().nonnegative(),
+    runningCount: z.number().int().nonnegative(),
+    admittableProfiles: runnerProfileListSchema.optional(),
+    // Temporary runner rollout compatibility. Remove legacy profile fields
+    // after the previous runner/backend versions have drained.
+    availableProfiles: runnerProfileListSchema.optional(),
+    profiles: runnerProfileListSchema.optional(),
+    heldSessionStates: z.array(heldSessionStateSchema).max(1024),
+    mode: z.enum(["running", "draining", "stopping"]),
+  })
+  .superRefine((body, ctx) => {
+    if (
+      body.admittableProfiles === undefined &&
+      body.availableProfiles === undefined &&
+      body.profiles === undefined
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["admittableProfiles"],
+        message: "admittableProfiles is required",
+      });
+    }
+  })
+  .transform(({ availableProfiles, profiles, ...body }) => {
+    return {
+      ...body,
+      admittableProfiles:
+        body.admittableProfiles ?? availableProfiles ?? profiles ?? [],
+    };
+  });
 
 /**
  * Runners heartbeat contract - POST /api/runners/heartbeat
