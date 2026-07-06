@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.225.6](https://github.com/vm0-ai/vm0/compare/cli-v9.225.5...cli-v9.225.6) (2026-07-06)
+
+
+### Refactoring
+
+* drop legacy automation tables and read-only automation surfaces ([#20420](https://github.com/vm0-ai/vm0/issues/20420)) ([bfbf99b](https://github.com/vm0-ai/vm0/commit/bfbf99bbe639ec9c9ce67a37b5155e8478f96224))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.159.2
+    * @vm0/core bumped to 8.408.2
+
 ## [9.225.5](https://github.com/vm0-ai/vm0/compare/cli-v9.225.4...cli-v9.225.5) (2026-07-06)
 
 
