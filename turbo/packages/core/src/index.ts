@@ -36,6 +36,11 @@ export {
   type VideoTemplateItem,
 } from "./video-template-items";
 export {
+  WEBSITE_TEMPLATE_ITEMS,
+  findWebsiteTemplateItem,
+  type WebsiteTemplateItem,
+} from "./website-template-items";
+export {
   WORKFLOW_TEMPLATE_ITEMS,
   findWorkflowTemplateItem,
   type WorkflowTemplateItem,
