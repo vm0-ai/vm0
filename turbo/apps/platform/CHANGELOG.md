@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.563.2](https://github.com/vm0-ai/vm0/compare/app-v0.563.1...app-v0.563.2) (2026-07-06)
+
+
+### Bug Fixes
+
+* ignore expired user permission grants ([#20414](https://github.com/vm0-ai/vm0/issues/20414)) ([b900c3d](https://github.com/vm0-ai/vm0/commit/b900c3d02d217d9d6fb35a1a45f5f4061c19776b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.158.2
+    * @vm0/connectors bumped to 1.142.1
+    * @vm0/core bumped to 8.407.2
+
 ## [0.563.1](https://github.com/vm0-ai/vm0/compare/app-v0.563.0...app-v0.563.1) (2026-07-06)
 
 
