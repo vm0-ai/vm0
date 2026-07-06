@@ -1,3 +1,5 @@
+import { command, computed, state } from "ccstate";
+
 export interface ChatThreadEmojiItem {
   emoji: string;
   name: string;
@@ -8,34 +10,31 @@ export interface ChatThreadEmojiGroup {
   emojis: ChatThreadEmojiItem[];
 }
 
-let cachedGroups: ChatThreadEmojiGroup[] | null = null;
-let pendingGroups: Promise<ChatThreadEmojiGroup[]> | null = null;
-
 // The full emoji dataset (~1,900 entries) is only needed once the user opens
 // the picker, so it is loaded on demand and kept out of the main bundle.
-export async function loadChatThreadEmojiGroups(): Promise<
-  ChatThreadEmojiGroup[]
-> {
-  if (cachedGroups) {
-    return cachedGroups;
-  }
-  if (!pendingGroups) {
-    pendingGroups = import("unicode-emoji-json/data-by-group.json").then(
-      (module) => {
-        const groups = module.default.map((group) => ({
-          name: group.name,
-          emojis: group.emojis.map((entry) => ({
-            emoji: entry.emoji,
-            name: entry.name,
-          })),
-        }));
-        cachedGroups = groups;
-        return groups;
-      },
-    );
-  }
-  return pendingGroups;
-}
+export const chatThreadEmojiGroups$ = computed(
+  async (): Promise<ChatThreadEmojiGroup[]> => {
+    const module = await import("unicode-emoji-json/data-by-group.json");
+    return module.default.map((group) => {
+      return {
+        name: group.name,
+        emojis: group.emojis.map((entry) => {
+          return { emoji: entry.emoji, name: entry.name };
+        }),
+      };
+    });
+  },
+);
+
+const internalChatThreadEmojiQuery$ = state("");
+
+export const chatThreadEmojiQuery$ = computed((get) => {
+  return get(internalChatThreadEmojiQuery$);
+});
+
+export const setChatThreadEmojiQuery$ = command(({ set }, value: string) => {
+  set(internalChatThreadEmojiQuery$, value);
+});
 
 export function filterChatThreadEmojiGroups(
   groups: ChatThreadEmojiGroup[],

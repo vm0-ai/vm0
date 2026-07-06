@@ -4017,7 +4017,7 @@ describe("chat lifecycle", () => {
     fireEvent.keyDown(composer, { key: "F2", shiftKey: true });
 
     await screen.findByLabelText("Search emoji");
-    click(screen.getByRole("button", { name: "Done" }));
+    click(screen.getByLabelText("Done"));
 
     await waitFor(() => {
       expect(renameRequest).toHaveBeenCalledWith(
@@ -4149,7 +4149,7 @@ describe("chat lifecycle", () => {
     fireEvent.keyDown(threadRegion, { key: "F2", shiftKey: true });
 
     await screen.findByLabelText("Search emoji");
-    click(screen.getByRole("button", { name: "Done" }));
+    click(screen.getByLabelText("Done"));
 
     await waitFor(() => {
       expect(renameRequest).toHaveBeenCalledWith(
@@ -4188,7 +4188,7 @@ describe("chat lifecycle", () => {
     fireEvent.keyDown(threadRegion, { key: "F2", shiftKey: true });
 
     await screen.findByLabelText("Search emoji");
-    click(screen.getByRole("button", { name: "Remove" }));
+    click(buttonByText("Remove"));
 
     await waitFor(() => {
       expect(renameRequest).toHaveBeenCalledWith(
@@ -4225,7 +4225,7 @@ describe("chat lifecycle", () => {
     fireEvent.keyDown(threadRegion, { key: "F2", shiftKey: true });
 
     await screen.findByLabelText("Search emoji");
-    click(screen.getByRole("button", { name: "Remove" }));
+    click(buttonByText("Remove"));
 
     expect(renameRequest).not.toHaveBeenCalled();
   });

@@ -6,7 +6,6 @@ import type {
   ReactNode,
   UIEvent as ReactUIEvent,
 } from "react";
-import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   useGet,
@@ -263,11 +262,12 @@ import {
   CHAT_THREAD_EMOJI_OPTIONS,
 } from "../../signals/chat-page/chat-thread-title.ts";
 import {
+  chatThreadEmojiGroups$,
+  chatThreadEmojiQuery$,
   filterChatThreadEmojiGroups,
-  loadChatThreadEmojiGroups,
-  type ChatThreadEmojiGroup,
+  setChatThreadEmojiQuery$,
   type ChatThreadEmojiItem,
-} from "./chat-thread-emoji-data.ts";
+} from "../../signals/chat-page/chat-thread-emoji.ts";
 import type { ChatThread } from "../../signals/agent-chat.ts";
 import { ATTACH_ONLY_PLACEHOLDER } from "../../signals/chat-page/resolve-draft-attachments.ts";
 import {
@@ -1183,6 +1183,7 @@ function ChatThreadEmojiMenuButton({
 }) {
   const { open, openChatThreadEmojiMenu, closeMenu, selectEmoji, clearEmoji } =
     useChatThreadEmojiMenuActions({ threadId, title });
+  const setEmojiQuery = useSet(setChatThreadEmojiQuery$);
 
   return (
     <TooltipProvider delayDuration={200}>
@@ -1190,6 +1191,7 @@ function ChatThreadEmojiMenuButton({
         open={open}
         onOpenChange={(nextOpen) => {
           if (nextOpen) {
+            setEmojiQuery("");
             openChatThreadEmojiMenu({ threadId, title });
           } else {
             closeMenu();
@@ -1234,11 +1236,10 @@ function ChatThreadEmojiMenuButton({
   );
 }
 
-const FREQUENTLY_USED_EMOJI: ChatThreadEmojiItem[] = CHAT_THREAD_EMOJI_OPTIONS.map(
-  (option) => {
+const FREQUENTLY_USED_EMOJI: ChatThreadEmojiItem[] =
+  CHAT_THREAD_EMOJI_OPTIONS.map((option) => {
     return { emoji: option.emoji, name: option.label };
-  },
-);
+  });
 
 function ChatThreadEmojiPicker({
   hasEmoji,
@@ -1249,29 +1250,13 @@ function ChatThreadEmojiPicker({
   onSelect: (emoji: string) => void;
   onRemove: () => void;
 }) {
-  const [query, setQuery] = useState("");
-  const [groups, setGroups] = useState<ChatThreadEmojiGroup[] | null>(null);
-
-  useEffect(() => {
-    let active = true;
-    void loadChatThreadEmojiGroups().then((loaded) => {
-      if (active) {
-        setGroups(loaded);
-      }
-    });
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  const searchResults = useMemo(() => {
-    if (!query.trim() || !groups) {
-      return [];
-    }
-    return filterChatThreadEmojiGroups(groups, query);
-  }, [groups, query]);
+  const query = useGet(chatThreadEmojiQuery$);
+  const setQuery = useSet(setChatThreadEmojiQuery$);
+  const groups = useLastResolved(chatThreadEmojiGroups$) ?? null;
 
   const isSearching = query.trim().length > 0;
+  const searchResults =
+    isSearching && groups ? filterChatThreadEmojiGroups(groups, query) : [];
 
   return (
     <div className="flex flex-col">
