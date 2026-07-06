@@ -187,7 +187,7 @@ Examples:
 ${config.examples}
 
 Output:
-  Prints direct authoring instructions for the current agent.
+  Prints a source-selection packet for the current agent.
 
 Notes:
   - Authenticates via ZERO_TOKEN
