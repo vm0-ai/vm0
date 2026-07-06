@@ -2676,7 +2676,7 @@ function validateCodexServiceTier(params: {
     return undefined;
   }
   return badRequestMessage(
-    "Codex fast mode is only available for ChatGPT (Codex) GPT-5.5 runs",
+    "Codex fast mode is only available for ChatGPT (Codex) GPT 5.5 runs",
   );
 }
 

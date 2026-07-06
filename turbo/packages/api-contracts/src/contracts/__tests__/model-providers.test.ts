@@ -165,6 +165,7 @@ describe("model-first canonical catalog", () => {
     expect(getCanonicalModelDisplayName("claude-fable-5")).toBe(
       "Claude Fable 5",
     );
+    expect(getCanonicalModelDisplayName("gpt-5.5")).toBe("GPT 5.5");
     expect(getCanonicalModelDisplayName("glm-5.2")).toBe("GLM-5.2");
     expect(getCanonicalModelDisplayName("mimo-v2.5")).toBe("MiMo-V2.5");
     expect(getCanonicalModelDisplayName("hy3-preview")).toBe("Hy3 Preview");
