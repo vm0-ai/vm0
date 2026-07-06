@@ -1168,6 +1168,7 @@ export const deleteCustomConnector$ = command(
             eq(orgCustomConnectors.orgId, args.orgId),
           ),
         )
+        .for("update")
         .limit(1);
       if (!existing) {
         return false;
@@ -1949,6 +1950,11 @@ interface SaveCustomConnectorProposalArgs {
   readonly agentId?: string;
 }
 
+interface SaveProposalConnectorValuesArgs extends SaveCustomConnectorProposalArgs {
+  readonly definition: ValidatedDefinition;
+  readonly values: readonly CustomConnectorValueInput[];
+}
+
 type ForbiddenResponse = {
   readonly status: 403;
   readonly body: {
@@ -1992,47 +1998,161 @@ function proposalUpdateInput(
   };
 }
 
-const saveProposalDefinition$ = command(
+async function insertProposalConnectorValues(
+  tx: DbTransaction,
+  args: SaveProposalConnectorValuesArgs,
+  encryptedValues: readonly EncryptedValueInput[],
+): Promise<ValueWriteResult> {
+  const legacy = legacyColumns(args.definition);
+  const slug =
+    args.definition.slug ??
+    `${hostSlugFromPrefixTemplate(args.definition.prefixTemplates[0]!)}-${randomShortId()}`;
+  const [row] = await tx
+    .insert(orgCustomConnectors)
+    .values({
+      orgId: args.orgId,
+      slug,
+      displayName: args.definition.displayName,
+      prefixes: [...legacy.prefixes],
+      headerName: legacy.headerName,
+      headerTemplate: legacy.headerTemplate,
+      prefixTemplates: [...args.definition.prefixTemplates],
+      fields: [...args.definition.fields],
+      headerInjections: [...args.definition.headerInjections],
+      queryInjections: [...args.definition.queryInjections],
+      createdBy: args.userId,
+    })
+    .returning();
+  if (!row) {
+    throw new Error("Expected insert to return a row");
+  }
+  const connector = normaliseCustomConnectorRow(row);
+  await upsertEncryptedConnectorValues(tx, {
+    orgId: args.orgId,
+    userId: args.userId,
+    connectorId: connector.id,
+    values: encryptedValues,
+  });
+  const markers = await loadConnectorValueMarkersForConnector({
+    tx,
+    orgId: args.orgId,
+    userId: args.userId,
+    connectorId: connector.id,
+  });
+  return { connector, markers };
+}
+
+async function updateProposalConnectorValues(
+  tx: DbTransaction,
+  args: SaveProposalConnectorValuesArgs & { readonly connectorId: string },
+  encryptedValues: readonly EncryptedValueInput[],
+): Promise<ValueWriteResult | null> {
+  const legacy = legacyColumns(args.definition);
+  const [updated] = await tx
+    .update(orgCustomConnectors)
+    .set({
+      displayName: args.definition.displayName,
+      prefixes: [...legacy.prefixes],
+      headerName: legacy.headerName,
+      headerTemplate: legacy.headerTemplate,
+      prefixTemplates: [...args.definition.prefixTemplates],
+      fields: [...args.definition.fields],
+      headerInjections: [...args.definition.headerInjections],
+      queryInjections: [...args.definition.queryInjections],
+      updatedAt: nowDate(),
+    })
+    .where(
+      and(
+        eq(orgCustomConnectors.id, args.connectorId),
+        eq(orgCustomConnectors.orgId, args.orgId),
+      ),
+    )
+    .returning();
+  if (!updated) {
+    return null;
+  }
+  const connector = normaliseCustomConnectorRow(updated);
+  await deleteUndeclaredConnectorValues(tx, {
+    orgId: args.orgId,
+    connectorId: connector.id,
+    fields: args.definition.fields,
+  });
+  await deleteStoredConnectorValues(tx, {
+    orgId: args.orgId,
+    userId: args.userId,
+    connectorId: connector.id,
+  });
+  await upsertEncryptedConnectorValues(tx, {
+    orgId: args.orgId,
+    userId: args.userId,
+    connectorId: connector.id,
+    values: encryptedValues,
+  });
+  const markers = await loadConnectorValueMarkersForConnector({
+    tx,
+    orgId: args.orgId,
+    userId: args.userId,
+    connectorId: connector.id,
+  });
+  return { connector, markers };
+}
+
+const saveProposalConnectorValues$ = command(
   async (
-    { set },
-    args: SaveCustomConnectorProposalArgs,
+    { get, set },
+    args: SaveProposalConnectorValuesArgs,
     signal: AbortSignal,
   ): Promise<
-    | CustomConnectorRow
-    | BadRequestResponse
-    | NotFoundResponse
-    | ForbiddenResponse
+    ValueWriteResult | BadRequestResponse | NotFoundResponse | ForbiddenResponse
   > => {
-    const updateInput = proposalUpdateInput(args.proposal);
-    if (args.proposal.operation === "create") {
-      if (!args.isAdmin) {
-        return forbidden("Only org admins can create custom connectors");
-      }
-      return await set(
-        createCustomConnector$,
-        {
-          orgId: args.orgId,
-          userId: args.userId,
-          input: updateInput,
-        },
-        signal,
+    if (!args.isAdmin) {
+      return forbidden(
+        args.proposal.operation === "create"
+          ? "Only org admins can create custom connectors"
+          : "Only org admins can update custom connectors",
       );
     }
-    if (!args.proposal.connectorId) {
+    const connectorId =
+      args.proposal.operation === "update" ? args.proposal.connectorId : null;
+    if (args.proposal.operation === "update" && !connectorId) {
       return badRequestMessage("connectorId is required for updates");
     }
-    if (!args.isAdmin) {
-      return forbidden("Only org admins can update custom connectors");
-    }
-    return await set(
-      updateCustomConnectorDefinition$,
-      {
-        orgId: args.orgId,
-        id: args.proposal.connectorId,
-        input: updateInput,
-      },
-      signal,
+
+    const featureSwitchContext = await get(
+      userFeatureSwitchContext(args.orgId, args.userId),
     );
+    signal.throwIfAborted();
+    const encryptedValues = await encryptValueInputs({
+      values: args.values,
+      signal,
+      encryptValue: (value) => {
+        return encryptStoredSecretValue(value, featureSwitchContext);
+      },
+    });
+
+    if (args.proposal.operation === "create") {
+      const writeDb = set(writeDb$);
+      return await writeDb.transaction(async (tx) => {
+        return await insertProposalConnectorValues(tx, args, encryptedValues);
+      });
+    }
+    if (!connectorId) {
+      return badRequestMessage("connectorId is required for updates");
+    }
+
+    const writeDb = set(writeDb$);
+    const row = await writeDb.transaction(async (tx) => {
+      return await updateProposalConnectorValues(
+        tx,
+        {
+          ...args,
+          connectorId,
+        },
+        encryptedValues,
+      );
+    });
+    signal.throwIfAborted();
+    return row ?? notFound("Custom connector not found");
   },
 );
 
@@ -2092,24 +2212,14 @@ export const saveCustomConnectorProposal$ = command(
       return proposalValues;
     }
 
-    const connector = await set(saveProposalDefinition$, args, signal);
+    const connector = await set(
+      saveProposalConnectorValues$,
+      { ...args, definition: proposalDefinition, values: proposalValues },
+      signal,
+    );
     signal.throwIfAborted();
     if ("status" in connector) {
       return connector;
-    }
-
-    const valueResult = await set(
-      setCustomConnectorValues$,
-      {
-        orgId: args.orgId,
-        userId: args.userId,
-        connectorId: connector.id,
-        values: args.values,
-      },
-      signal,
-    );
-    if ("status" in valueResult) {
-      return valueResult;
     }
 
     const authorizedAgentId = await set(
@@ -2117,7 +2227,7 @@ export const saveCustomConnectorProposal$ = command(
       {
         orgId: args.orgId,
         userId: args.userId,
-        connectorId: connector.id,
+        connectorId: connector.connector.id,
         agentId: args.agentId,
       },
       signal,
@@ -2130,7 +2240,7 @@ export const saveCustomConnectorProposal$ = command(
       getCustomConnectorResponse({
         orgId: args.orgId,
         userId: args.userId,
-        connectorId: connector.id,
+        connectorId: connector.connector.id,
       }),
     );
     signal.throwIfAborted();

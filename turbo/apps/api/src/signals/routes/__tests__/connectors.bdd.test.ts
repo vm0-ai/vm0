@@ -1808,6 +1808,123 @@ describe("CONN-03: custom connectors and connector-owned values", () => {
     await bdd.deleteAgent(admin, agent.agentId);
   });
 
+  it("updates a connector proposal definition and values together", async () => {
+    const bdd = createBddApi(context);
+    bdd.acceptAgentStorageWrites();
+    const admin = bdd.user({ orgRole: "org:admin" });
+    const agent = await bdd.createAgent(admin, {
+      displayName: "BDD Proposal Update Agent",
+    });
+    const rand = randomUUID().replace(/-/g, "").slice(0, 8);
+
+    const saved = await connectorsApi.saveCustomConnectorProposal(admin, {
+      proposal: {
+        operation: "create",
+        displayName: "BDD Proposal Update API",
+        prefixTemplates: [`https://{{variables.subdomain}}.${rand}.test/v1/`],
+        fields: [
+          {
+            key: "api_key",
+            label: "API key",
+            kind: "secret",
+            required: true,
+          },
+          {
+            key: "subdomain",
+            label: "Subdomain",
+            kind: "variable",
+            required: true,
+          },
+        ],
+        headerInjections: [
+          {
+            name: "Authorization",
+            valueTemplate: "Bearer {{secrets.api_key}}",
+          },
+        ],
+        queryInjections: [],
+      },
+      values: [
+        { key: "api_key", kind: "secret", value: "proposal-old-secret" },
+        { key: "subdomain", kind: "variable", value: "old-tenant" },
+      ],
+      agentId: agent.agentId,
+    });
+
+    const updated = await connectorsApi.saveCustomConnectorProposal(admin, {
+      proposal: {
+        operation: "update",
+        connectorId: saved.connector.id,
+        displayName: "BDD Proposal Update API v2",
+        prefixTemplates: [`https://{{variables.tenant}}.${rand}.test/v2/`],
+        fields: [
+          {
+            key: "token",
+            label: "Token",
+            kind: "secret",
+            required: true,
+          },
+          {
+            key: "tenant",
+            label: "Tenant",
+            kind: "variable",
+            required: true,
+          },
+        ],
+        headerInjections: [
+          {
+            name: "Authorization",
+            valueTemplate: "Token {{secrets.token}}",
+          },
+        ],
+        queryInjections: [
+          {
+            name: "tenant",
+            valueTemplate: "{{variables.tenant}}",
+          },
+        ],
+      },
+      values: [
+        { key: "token", kind: "secret", value: "proposal-new-secret" },
+        { key: "tenant", kind: "variable", value: "new-tenant" },
+      ],
+      agentId: agent.agentId,
+    });
+
+    expect(updated.authorizedAgentId).toBe(agent.agentId);
+    expect(updated.connector).toMatchObject({
+      id: saved.connector.id,
+      displayName: "BDD Proposal Update API v2",
+      connected: true,
+      configuredFieldKeys: ["tenant", "token"],
+      missingRequiredFields: [],
+    });
+    expect(
+      updated.connector.fields.map((field) => {
+        return field.key;
+      }),
+    ).toStrictEqual(["token", "tenant"]);
+    await expect(
+      connectorsApi.readAgentCustomConnectors(admin, agent.agentId),
+    ).resolves.toStrictEqual([saved.connector.id]);
+
+    const listed = await connectorsApi.listCustomConnectors(admin);
+    expect(
+      listed.find((connector) => {
+        return connector.id === saved.connector.id;
+      }),
+    ).toMatchObject({
+      connected: true,
+      configuredFieldKeys: ["tenant", "token"],
+      missingRequiredFields: [],
+    });
+    expectNoVisibleSecret(listed, "proposal-old-secret");
+    expectNoVisibleSecret(listed, "proposal-new-secret");
+
+    await connectorsApi.deleteCustomConnector(admin, saved.connector.id);
+    await bdd.deleteAgent(admin, agent.agentId);
+  });
+
   it("saves a connector proposal without authorizing when required values are missing", async () => {
     const bdd = createBddApi(context);
     bdd.acceptAgentStorageWrites();
