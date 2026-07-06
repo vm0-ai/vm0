@@ -202,7 +202,7 @@ function AgentAccessList({
   }
 
   return (
-    <div className="h-full min-h-0 overflow-y-auto pr-1">
+    <div className="-mr-6 h-full min-h-0 overflow-y-auto pr-6">
       {rows.map((row) => {
         return (
           <AgentAccessRow
@@ -287,7 +287,7 @@ function ConnectorAccessDialog({
 
         <div
           className={cn(
-            "min-h-0 flex-1 overflow-hidden rounded-lg",
+            "min-h-0 flex-1",
             !rowsLoaded && "flex",
             rowsLoaded && "flex flex-col",
           )}
