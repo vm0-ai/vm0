@@ -2132,7 +2132,7 @@ async fn run_in_sandbox_forwards_local_active_inputs_in_order_and_dedupes() {
     ] {
         queue.write_active_input_sync(&entry).unwrap();
     }
-    let source = ActiveInputSource::local_queue(group_dir, ctx.run_id);
+    let source = ActiveInputSource::local_queue(LocalQueue::new(group_dir), ctx.run_id);
     let cancel = tokio_util::sync::CancellationToken::new();
     let mut telemetry = test_telemetry(&config, &ctx);
 
@@ -2189,7 +2189,7 @@ async fn run_in_sandbox_sets_codex_app_server_backend_for_active_input_source() 
     let mut ctx = minimal_context();
     ctx.cli_agent_type = "codex".into();
     let group_dir = dir.path().join("active-inputs");
-    let source = ActiveInputSource::local_queue(group_dir, ctx.run_id);
+    let source = ActiveInputSource::local_queue(LocalQueue::new(group_dir), ctx.run_id);
     let cancel = tokio_util::sync::CancellationToken::new();
     let mut telemetry = test_telemetry(&config, &ctx);
 
@@ -2255,7 +2255,7 @@ async fn run_in_sandbox_retries_active_input_after_control_error() {
             text: "second".to_string(),
         })
         .unwrap();
-    let source = ActiveInputSource::local_queue(group_dir, ctx.run_id);
+    let source = ActiveInputSource::local_queue(LocalQueue::new(group_dir), ctx.run_id);
     let cancel = tokio_util::sync::CancellationToken::new();
     let mut telemetry = test_telemetry(&config, &ctx);
 

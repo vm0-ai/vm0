@@ -2,15 +2,20 @@ import {
   useGet,
   useSet,
   useLoadable,
-  useLastLoadable,
   useLastResolved,
+  useLastLoadable,
 } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
 import { user$ } from "../../signals/auth.ts";
-import { IconArrowUpRight, IconPin, IconUserPlus } from "@tabler/icons-react";
-import type { ConnectorType } from "@vm0/connectors/connectors";
+import {
+  IconArrowUpRight,
+  IconChevronRight,
+  IconLoader2,
+  IconPin,
+  IconUserPlus,
+} from "@tabler/icons-react";
 import { isSupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
 import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/chat-threads";
 import {
@@ -48,7 +53,6 @@ import {
 } from "../../signals/chat-page/workflow-prompt-action.ts";
 import { AttachmentLightbox } from "./zero-attachment-chips.tsx";
 import {
-  chatPageDefaultModelSelection$,
   chatPageInput$,
   chatPageModelSelection$,
   setChatPageInput$,
@@ -56,6 +60,7 @@ import {
   resetChatPageModelSelection$,
   chatPageTaglineIndex$,
   suggestedPrompts$,
+  unfilteredSuggestedPrompts$,
 } from "../../signals/zero-page/zero-chat-page.ts";
 import {
   newThreadGenerationTemplate$,
@@ -71,7 +76,10 @@ import {
   ZERO_DESKTOP_DOWNLOAD_URL,
 } from "../../signals/zero-page/computer-use-hosts.ts";
 import { lightboxUrl$ as attachmentLightboxUrl$ } from "../../signals/zero-page/zero-attachment-chips.ts";
-import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
+import {
+  ConnectorIcon,
+  isConnectorIconType,
+} from "./components/settings/connector-icons.tsx";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
@@ -90,6 +98,7 @@ import {
 import { PersonalClaudeCodeDeviceAuthDialog } from "./components/settings/claude-code-device-auth-dialog.tsx";
 import { PersonalCodexDeviceAuthDialog } from "./components/settings/codex-device-auth-dialog.tsx";
 import { queueCurrentAgentDraftSync$ } from "../../signals/zero-page/agent-draft.ts";
+import { currentAgentUnreadChatThreads$ } from "../../signals/chat-page/sidebar-unread-threads.ts";
 
 function getTagline(
   agentName: string,
@@ -273,7 +282,7 @@ interface SuggestedPrompt {
   title: string;
   description: string;
   prompt: string;
-  connectors?: readonly ConnectorType[];
+  connectors?: readonly string[];
 }
 
 function SuggestedPromptButton({
@@ -283,6 +292,7 @@ function SuggestedPromptButton({
   item: SuggestedPrompt;
   onSelectPrompt: (prompt: string) => void;
 }) {
+  const connectorIconTypes = item.connectors?.filter(isConnectorIconType) ?? [];
   return (
     <button
       type="button"
@@ -300,9 +310,9 @@ function SuggestedPromptButton({
       <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
         {item.description}
       </p>
-      {item.connectors && item.connectors.length > 0 && (
+      {connectorIconTypes.length > 0 && (
         <div className="flex items-center gap-1.5 mt-auto pt-2.5">
-          {item.connectors.map((type) => {
+          {connectorIconTypes.map((type) => {
             return (
               <span
                 key={type}
@@ -356,12 +366,78 @@ function IdeasUseCasesButton() {
   );
 }
 
+function MobileUnreadThreadShortcuts() {
+  const features = useGet(featureSwitch$);
+  const enabled =
+    features[FeatureSwitchKey.MobileUnreadChatThreadShortcuts] ?? false;
+  const unreadThreadsLoadable = useLoadable(currentAgentUnreadChatThreads$);
+  const lastUnreadThreads = useLastResolved(currentAgentUnreadChatThreads$);
+  const unreadThreads =
+    unreadThreadsLoadable.state === "hasData"
+      ? unreadThreadsLoadable.data
+      : (lastUnreadThreads ?? []);
+
+  if (!enabled || unreadThreads.length === 0) {
+    return null;
+  }
+
+  return (
+    <section
+      className="md:hidden flex flex-col gap-2"
+      aria-label="Unread chats"
+    >
+      <div className="zero-card divide-y divide-border/60 overflow-hidden">
+        {unreadThreads.map((thread) => {
+          return (
+            <Link
+              key={thread.id}
+              pathname="/chats/:threadId"
+              options={{ pathParams: { threadId: thread.id } }}
+              className="flex min-h-12 items-center gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-muted/40"
+            >
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-semibold leading-5 text-foreground">
+                  {thread.title ?? "New chat"}
+                </span>
+              </span>
+              {thread.running ? (
+                <IconLoader2
+                  size={14}
+                  stroke={1.8}
+                  className="shrink-0 animate-spin text-primary"
+                  aria-hidden
+                />
+              ) : (
+                <IconChevronRight
+                  size={16}
+                  stroke={1.8}
+                  className="shrink-0 text-muted-foreground"
+                  aria-hidden
+                />
+              )}
+            </Link>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function SuggestedPromptsGrid({
   onSelectPrompt,
 }: {
   onSelectPrompt: (prompt: string) => void;
 }) {
-  const suggestedPrompts = useLastResolved(suggestedPrompts$) ?? [];
+  const unfilteredSuggestedPrompts =
+    useLastResolved(unfilteredSuggestedPrompts$) ?? [];
+  const suggestedPromptsLoadable = useLoadable(suggestedPrompts$);
+  const lastSuggestedPrompts = useLastResolved(suggestedPrompts$);
+  const suggestedPrompts =
+    suggestedPromptsLoadable.state === "hasData"
+      ? suggestedPromptsLoadable.data
+      : suggestedPromptsLoadable.state === "loading"
+        ? (lastSuggestedPrompts ?? unfilteredSuggestedPrompts)
+        : [];
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 w-full">
       {suggestedPrompts.map((item) => {
@@ -380,19 +456,12 @@ function SuggestedPromptsGrid({
 
 function useAgentChatComposerModel(pageSignal: AbortSignal) {
   const modelSelectionLoadable = useLastLoadable(chatPageModelSelection$);
-  const defaultModelSelectionLoadable = useLastLoadable(
-    chatPageDefaultModelSelection$,
-  );
   const modelSelection =
     modelSelectionLoadable.state === "hasData"
       ? modelSelectionLoadable.data
       : null;
   const setModelSelection = useSet(setChatPageModelSelection$);
   const updateUserModelPreference = useSet(updateUserModelPreference$);
-  const defaultModelSelection =
-    defaultModelSelectionLoadable.state === "hasData"
-      ? defaultModelSelectionLoadable.data
-      : null;
   const modelFirstOauthState = useLastResolved(modelFirstPersonalOauthState$);
   const openPersonalOauthConfiguration = usePersonalOauthConfigurationAction();
 
@@ -412,16 +481,14 @@ function useAgentChatComposerModel(pageSignal: AbortSignal) {
   const modelPicker = {
     value: modelSelection,
     onChange: handleModelSelectionChange,
-    defaultSelection: defaultModelSelection,
+    resolveDefaultSelection: false,
   };
   const submitBlockerProps = resolveChatComposerSubmitBlocker({
     state: modelFirstOauthState,
     modelSelection,
     onAction: openPersonalOauthConfiguration,
   });
-  const modelPickerLoading =
-    modelSelectionLoadable.state === "loading" ||
-    defaultModelSelectionLoadable.state === "loading";
+  const modelPickerLoading = modelSelectionLoadable.state === "loading";
 
   return {
     modelSelection,
@@ -693,6 +760,8 @@ export function AgentChatPage() {
             onOpenChange={workflowPrompt.onReplaceDialogOpenChange}
             onConfirm={workflowPrompt.onConfirmReplaceDraft}
           />
+
+          <MobileUnreadThreadShortcuts />
 
           <SuggestedPromptsGrid onSelectPrompt={handleInputChange} />
         </div>

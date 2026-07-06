@@ -261,17 +261,17 @@ describe("RUN-01..04 and CHAIN-RUN: run admission, runner, and visible reads", (
     }
     expect(heartbeat.body.ok).toBeTruthy();
 
-    const emptyWithoutProfiles = await api.requestPollRunner(
+    const emptyPoll = await api.requestPollRunner(
       true,
-      { group: runnerGroup },
+      { group: runnerGroup, supportedProfiles: ["vm0/default"] },
       [200],
     );
-    if (emptyWithoutProfiles.status !== 200) {
+    if (emptyPoll.status !== 200) {
       throw new Error(
-        `Expected empty poll to succeed, got ${emptyWithoutProfiles.status}`,
+        `Expected empty poll to succeed, got ${emptyPoll.status}`,
       );
     }
-    expect(emptyWithoutProfiles.body.job).toBeNull();
+    expect(emptyPoll.body.job).toBeNull();
   });
 
   it("keeps missing run detail and context hidden for another organization", async () => {
@@ -421,7 +421,7 @@ describe("RUN-01..04 and CHAIN-RUN: run admission, runner, and visible reads", (
 
     const unauthenticatedPoll = await api.requestPollRunner(
       false,
-      { group: "vm0/test", profiles: ["vm0/default"] },
+      { group: "vm0/test", supportedProfiles: ["vm0/default"] },
       [401],
     );
     expectApiError(unauthenticatedPoll.body);
@@ -429,7 +429,7 @@ describe("RUN-01..04 and CHAIN-RUN: run admission, runner, and visible reads", (
 
     const invalidPollGroup = await api.requestPollRunner(
       true,
-      { group: "not-a-group", profiles: ["vm0/default"] },
+      { group: "not-a-group", supportedProfiles: ["vm0/default"] },
       [400],
     );
     expectApiError(invalidPollGroup.body);

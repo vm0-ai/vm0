@@ -15,13 +15,6 @@ const DEV_ARTIFACT_FETCH_PROXY_HEADERS = [
   "content-type",
   "etag",
 ] as const;
-const STATIC_ASSETS_BASE_URL =
-  process.env.VITE_STATIC_ASSETS_BASE_URL ||
-  process.env.STATIC_ASSETS_BASE_URL ||
-  (process.env.VITE_VERCEL_ENV === "production" ||
-  process.env.VERCEL_ENV === "production"
-    ? "https://static.vm0.io"
-    : "https://static.vm7.io");
 const FIREWALL_PERMISSION_DETAIL_METADATA_CHUNK_NAME_PREFIX =
   "vm0-firewall-permission-detail-metadata-";
 const FIREWALL_PERMISSION_DETAIL_METADATA_CHUNK_PROTOCOL_VERSION = "v1";
@@ -31,7 +24,6 @@ const FIREWALL_PERMISSION_DETAIL_METADATA_CHUNK_NAME_RE =
   /^vm0-firewall-permission-detail-metadata-([a-z0-9][a-z0-9-]*)\.generated$/;
 
 process.env.VITE_APP_VERSION = platformPackage.version;
-process.env.VITE_STATIC_ASSETS_BASE_URL = STATIC_ASSETS_BASE_URL;
 
 function normalizedModuleId(id: string): string {
   const queryIndex = id.indexOf("?");

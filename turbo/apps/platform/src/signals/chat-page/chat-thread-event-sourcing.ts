@@ -39,6 +39,7 @@ export interface ThreadMeta {
   readonly agentId: string;
   readonly title: string | null;
   readonly pinnedAt: string | null;
+  readonly selectedModel: string | null;
 }
 
 const optimisticChatThreadEventsState$ = state<readonly ChatThreadEvent[]>([]);
@@ -352,6 +353,7 @@ export const chatThreadMetaMap$ = computed(async (get) => {
           agentId: thread.agentId,
           title: thread.title,
           pinnedAt: thread.pinnedAt,
+          selectedModel: thread.selectedModel,
         },
       ];
     }),
@@ -376,6 +378,28 @@ export const registerOptimisticChatThreadEvent$ = command(
       }
       return [...events, event];
     });
+  },
+);
+
+export const touchOptimisticChatThreadSort$ = command(
+  (
+    { set },
+    args: {
+      readonly id: string;
+      readonly threadId: string;
+      readonly agentId: string;
+      readonly createdAt: string;
+    },
+  ) => {
+    set(registerOptimisticChatThreadEvent$, {
+      id: args.id,
+      kind: "sort_touched",
+      chatThreadId: args.threadId,
+      agentId: args.agentId,
+      title: null,
+      selectedModel: null,
+      createdAt: args.createdAt,
+    } satisfies ChatThreadEvent);
   },
 );
 

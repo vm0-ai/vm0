@@ -9,6 +9,7 @@ import {
 import type { Db, ReadonlyDb } from "../external/db";
 import { nowDate } from "../external/time";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
+import { recordMemorySource } from "./memory-substrate.service";
 
 export type GmailRelationshipMessageDirection = "received" | "sent";
 
@@ -17,6 +18,7 @@ interface GmailRelationshipMessageBase {
   readonly historyId: string;
   readonly messageId: string;
   readonly threadId: string | null;
+  readonly occurredAt: string | null;
   readonly direction: GmailRelationshipMessageDirection | null;
   readonly from: string | null;
   readonly to: readonly string[];
@@ -28,7 +30,10 @@ export interface GmailRelationshipMessage extends GmailRelationshipMessageBase {
   readonly bodyText: string | null;
 }
 
-type PersistedGmailRelationshipMessage = GmailRelationshipMessageBase;
+type PersistedGmailRelationshipMessage = Pick<
+  GmailRelationshipMessageBase,
+  "historyId" | "messageId" | "threadId"
+>;
 
 interface ParsedEmailAddress {
   readonly displayName: string;
@@ -70,25 +75,8 @@ function parseEmailAddress(value: string | null): ParsedEmailAddress | null {
     return null;
   }
 
-  const rawName = value
-    .replace(emailValue, "")
-    .replace(/[<>"()]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  const localPart = email.split("@")[0] ?? email;
-  const displayName =
-    rawName.length > 0
-      ? rawName
-      : localPart
-          .split(/[._-]+/)
-          .filter(Boolean)
-          .map((part) => {
-            return `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`;
-          })
-          .join(" ");
-
   return {
-    displayName: displayName || email,
+    displayName: email,
     email,
     domain: normalizeDomain(domain),
   };
@@ -180,6 +168,14 @@ function gmailRefreshDedupeKey(args: {
   ].join(":");
 }
 
+function parsedOccurredAt(value: string | null): Date | null {
+  if (!value) {
+    return null;
+  }
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 export async function enqueueGmailRelationshipRefreshJob(
   db: Db,
   args: {
@@ -192,6 +188,8 @@ export async function enqueueGmailRelationshipRefreshJob(
   },
 ): Promise<boolean> {
   if (
+    !args.message.occurredAt ||
+    !parseEmailAddress(args.message.mailboxEmail) ||
     !(await relationshipMemoryFeatureEnabled(db, args.orgId, args.userId)) ||
     relationshipTargets(args.message).length === 0
   ) {
@@ -200,15 +198,9 @@ export async function enqueueGmailRelationshipRefreshJob(
 
   const currentTime = nowDate();
   const gmailMessage: PersistedGmailRelationshipMessage = {
-    mailboxEmail: args.message.mailboxEmail,
     historyId: args.message.historyId,
     messageId: args.message.messageId,
     threadId: args.message.threadId,
-    direction: args.message.direction,
-    from: args.message.from,
-    to: args.message.to,
-    cc: args.message.cc,
-    subject: null,
   };
   const payload: RelationshipSyncJobPayload = {
     connectorId: args.connectorId,
@@ -289,6 +281,28 @@ export async function enqueueGmailRelationshipRefreshJob(
         updatedAt: currentTime,
       },
     });
+
+  await recordMemorySource(db, {
+    orgId: args.orgId,
+    userId: args.userId,
+    provider: "gmail",
+    sourceType: "gmail_message",
+    externalId: args.message.messageId,
+    connectorId: args.connectorId,
+    occurredAt: parsedOccurredAt(args.message.occurredAt),
+    title: args.message.subject,
+    metadata: {
+      mailboxEmail: args.message.mailboxEmail,
+      historyId: args.message.historyId,
+      threadId: args.message.threadId,
+      messageId: args.message.messageId,
+      direction: args.message.direction ?? "unknown",
+      from: args.message.from,
+      to: args.message.to,
+      cc: args.message.cc,
+      reason: args.reason ?? "gmail_webhook",
+    },
+  });
 
   return true;
 }

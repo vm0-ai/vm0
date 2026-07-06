@@ -25,7 +25,6 @@ interface SeedChatThreadOptions {
   readonly pinnedAt?: Date | null;
   readonly renamedAt?: Date | null;
   readonly lastReadAt?: Date | null;
-  readonly lastReadMessageId?: string | null;
   readonly draftContent?: string | null;
   readonly draftAttachments?: readonly PersistedAttachment[] | null;
   readonly createdAt?: Date;
@@ -39,6 +38,7 @@ type ChatThreadRunStatus =
   | "pending"
   | "queued"
   | "running";
+type ChatThreadGoalStatus = "active" | "paused" | "blocked" | "complete";
 
 interface SeedChatThreadRunOptions {
   readonly userId: string;
@@ -46,6 +46,14 @@ interface SeedChatThreadRunOptions {
   readonly agentId: string;
   readonly threadId: string;
   readonly status: ChatThreadRunStatus;
+}
+
+interface SeedChatThreadGoalOptions {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly agentId: string;
+  readonly threadId: string;
+  readonly status: ChatThreadGoalStatus;
 }
 
 function dateToWire(value: Date | null | undefined): string | null | undefined {
@@ -134,7 +142,6 @@ export const seedZeroChatThread$ = command(
       pinned_at: dateToWire(options.pinnedAt),
       renamed_at: dateToWire(options.renamedAt),
       last_read_at: dateToWire(options.lastReadAt),
-      last_read_message_id: options.lastReadMessageId,
       draft_content: options.draftContent,
       draft_attachments: options.draftAttachments
         ? [...options.draftAttachments]
@@ -180,6 +187,27 @@ export const seedZeroChatThreadRun$ = command(
       throw new Error("seedZeroChatThreadRun$: response missing run id");
     }
     return response.run_id;
+  },
+);
+
+export const seedZeroChatThreadGoal$ = command(
+  async (
+    _,
+    options: SeedChatThreadGoalOptions,
+    signal: AbortSignal,
+  ): Promise<string> => {
+    const response = await postAction(signal, {
+      action: "seed-thread-goal",
+      user_id: options.userId,
+      org_id: options.orgId,
+      agent_id: options.agentId,
+      thread_id: options.threadId,
+      status: options.status,
+    });
+    if (!response.goal_id) {
+      throw new Error("seedZeroChatThreadGoal$: response missing goal id");
+    }
+    return response.goal_id;
   },
 );
 

@@ -14,6 +14,7 @@ use super::api_ably_supervisor::{
     AblySupervisor, AblySupervisorConfig, PollDue, PollOutcome, PollReason, PollWakeups,
 };
 use super::api_direct_candidates::{DirectCandidateInbox, DirectJobCandidate};
+use super::network_policy_refresh::NetworkPolicyRefreshHandle;
 use super::{
     ClaimedJob, CompletionAuth, CompletionAuthError, JobCandidate, JobDiscoverySource, JobProvider,
 };
@@ -23,7 +24,8 @@ use crate::http::HttpClient;
 use crate::ids::RunId;
 use crate::run_cancellation::SharedRunCancellationMap;
 use crate::types::{
-    CompleteRequest, ExecutionContext, HeartbeatState, Job, PollResponse, SandboxReuseResult,
+    CompleteRequest, ExecutionContext, HeartbeatState, Job, NetworkPolicyRefreshBatchResponse,
+    PollResponse, SandboxReuseResult,
 };
 use sandbox::SandboxId;
 
@@ -68,6 +70,7 @@ const POLL_FAST: Duration = Duration::from_secs(5);
 /// Retry delay after a job-notification wakeup reaches poll but poll fails.
 const POLL_WAKEUP_RETRY: Duration = POLL_FAST;
 const DIRECT_CANDIDATE_INBOX_CAPACITY: usize = 128;
+const NETWORK_POLICY_REFRESH_TIMEOUT: Duration = Duration::from_secs(3);
 
 enum DiscoveryWakeup {
     Direct(DirectJobCandidate),
@@ -91,13 +94,14 @@ pub struct ApiProvider {
     group: String,
     /// Profile names this runner supports (e.g., ["vm0/default"]).
     /// Sent in poll requests so the server only returns jobs this runner can handle.
-    profiles: Vec<String>,
+    supported_profiles: Vec<String>,
     /// Coalesced poll wakeup state updated by the Ably supervisor.
     poll_wakeups: Arc<PollWakeups>,
     /// Supported direct job candidates delivered by Ably notifications.
     direct_candidates: Arc<DirectCandidateInbox>,
     /// Background Ably control-plane task.
     ably_supervisor: AblySupervisor,
+    network_policy_refresh: NetworkPolicyRefreshHandle,
     /// Shutdown signal.
     cancel: CancellationToken,
 }
@@ -108,32 +112,39 @@ impl ApiProvider {
         http: HttpClient,
         token: String,
         group: String,
-        profiles: Vec<String>,
+        supported_profiles: Vec<String>,
         cancel: CancellationToken,
         cancel_tokens: SharedRunCancellationMap,
     ) -> Arc<Self> {
         let api = ApiClient::new(http, token);
+        let network_policy_refresh = NetworkPolicyRefreshHandle::new(api.clone());
         let poll_wakeups = Arc::new(PollWakeups::new(false));
         let direct_candidates = DirectCandidateInbox::new(DIRECT_CANDIDATE_INBOX_CAPACITY);
         let ably_supervisor = AblySupervisor::spawn(AblySupervisorConfig {
             api: api.clone(),
             group: group.clone(),
-            profiles: profiles.clone(),
+            profiles: supported_profiles.clone(),
             poll_wakeups: Arc::clone(&poll_wakeups),
             direct_candidates: Arc::clone(&direct_candidates),
             cancel_tokens,
+            network_policy_refresh: network_policy_refresh.clone(),
             provider_cancel: cancel.clone(),
         });
 
         Arc::new(Self {
             api,
             group,
-            profiles,
+            supported_profiles,
             poll_wakeups,
             direct_candidates,
             ably_supervisor,
+            network_policy_refresh,
             cancel,
         })
+    }
+
+    pub(crate) fn network_policy_refresh_handle(&self) -> NetworkPolicyRefreshHandle {
+        self.network_policy_refresh.clone()
     }
 
     async fn try_recv_direct_candidate(&self) -> Option<DirectJobCandidate> {
@@ -209,7 +220,7 @@ impl JobProvider for ApiProvider {
                     }
                     return None;
                 }
-                result = self.api.poll(&self.group, &self.profiles, reason) => result,
+                result = self.api.poll(&self.group, &self.supported_profiles, reason) => result,
             };
 
             match poll_result {
@@ -318,6 +329,7 @@ impl JobProvider for ApiProvider {
 
     async fn shutdown(&self) {
         self.ably_supervisor.shutdown().await;
+        self.network_policy_refresh.shutdown().await;
     }
 
     async fn complete(
@@ -379,7 +391,7 @@ pub(super) struct ApiClient {
 }
 
 impl ApiClient {
-    fn new(http: HttpClient, token: String) -> Self {
+    pub(super) fn new(http: HttpClient, token: String) -> Self {
         Self { http, token }
     }
 
@@ -387,10 +399,10 @@ impl ApiClient {
     async fn poll(
         &self,
         group: &str,
-        profiles: &[String],
+        supported_profiles: &[String],
         reason: PollReason,
     ) -> RunnerResult<PollApiResult> {
-        let body = poll_request_body(group, profiles, reason);
+        let body = poll_request_body(group, supported_profiles, reason);
         let poll_started_at = Instant::now();
         let resp = send_api(
             self.http
@@ -515,6 +527,38 @@ impl ApiClient {
         let resp = check_api_status(resp, "realtime token").await?;
         decode_api_json(resp, "realtime token").await
     }
+
+    pub(super) async fn refresh_network_policies(
+        &self,
+        run_id: RunId,
+        connector_refs: &[String],
+    ) -> RunnerResult<NetworkPolicyRefreshBatchResponse> {
+        let run_id = run_id.to_string();
+        let resp = send_api(
+            self.network_policy_refresh_request(&run_id, connector_refs),
+            "network policy refresh",
+        )
+        .await?;
+
+        let resp = check_api_status(resp, "network policy refresh").await?;
+        decode_api_json(resp, "network policy refresh").await
+    }
+
+    fn network_policy_refresh_request(
+        &self,
+        run_id: &str,
+        connector_refs: &[String],
+    ) -> RequestBuilder {
+        self.http
+            .request_resolved_route(
+                routes::runners::runs::by_run_id::network_policy_refresh::route(
+                    routes::runners::runs::by_run_id::network_policy_refresh::Params { run_id },
+                ),
+                &self.token,
+            )
+            .timeout(NETWORK_POLICY_REFRESH_TIMEOUT)
+            .json(&serde_json::json!({ "connectorRefs": connector_refs }))
+    }
 }
 
 fn claim_request_body(candidate: &JobCandidate) -> ClaimRequestBody {
@@ -544,10 +588,14 @@ fn claim_telemetry_duration_ms(duration: Duration) -> u64 {
     duration_ms(duration).min(CLAIM_TELEMETRY_DURATION_MS_MAX)
 }
 
-fn poll_request_body(group: &str, profiles: &[String], reason: PollReason) -> serde_json::Value {
+fn poll_request_body(
+    group: &str,
+    supported_profiles: &[String],
+    reason: PollReason,
+) -> serde_json::Value {
     serde_json::json!({
         "group": group,
-        "profiles": profiles,
+        "supportedProfiles": supported_profiles,
         "telemetry": {
             "pollReason": poll_reason_value(reason),
         },
@@ -849,6 +897,33 @@ mod tests {
         )
     }
 
+    #[test]
+    fn network_policy_refresh_request_uses_short_timeout() {
+        let server = MockServer::start();
+        let api = api_client_for_server(&server);
+
+        let request = api
+            .network_policy_refresh_request(
+                "00000000-0000-0000-0000-000000000001",
+                &["slack".to_string()],
+            )
+            .build()
+            .expect("network policy refresh request should build");
+
+        assert_eq!(request.timeout(), Some(&NETWORK_POLICY_REFRESH_TIMEOUT));
+        assert_eq!(
+            request.url().path(),
+            "/api/runners/runs/00000000-0000-0000-0000-000000000001/network-policy-refresh"
+        );
+        assert_eq!(
+            request
+                .body()
+                .and_then(reqwest::Body::as_bytes)
+                .expect("request should include JSON body"),
+            br#"{"connectorRefs":["slack"]}"#
+        );
+    }
+
     fn assert_api_error(err: RunnerError, expected: &str) {
         match err {
             RunnerError::Api(message) => assert_eq!(message, expected),
@@ -861,17 +936,19 @@ mod tests {
         cancel: CancellationToken,
         poll_wakeups: Arc<PollWakeups>,
     ) -> Arc<ApiProvider> {
+        let api = ApiClient::new(
+            HttpClient::new(HttpClientConfig {
+                api_url,
+                vercel_bypass: None,
+            })
+            .unwrap(),
+            "runner-token".to_string(),
+        );
         Arc::new(ApiProvider {
-            api: ApiClient::new(
-                HttpClient::new(HttpClientConfig {
-                    api_url,
-                    vercel_bypass: None,
-                })
-                .unwrap(),
-                "runner-token".to_string(),
-            ),
+            network_policy_refresh: NetworkPolicyRefreshHandle::new(api.clone()),
+            api,
             group: "default".to_string(),
-            profiles: Vec::new(),
+            supported_profiles: vec![crate::profile::DEFAULT_PROFILE.to_string()],
             poll_wakeups,
             direct_candidates: DirectCandidateInbox::new(DIRECT_CANDIDATE_INBOX_CAPACITY),
             ably_supervisor: AblySupervisor::disabled(),
@@ -985,7 +1062,11 @@ mod tests {
         let body = poll_request_body("vm0/test", &profiles, PollReason::Immediate);
 
         assert_eq!(body["group"], "vm0/test");
-        assert_eq!(body["profiles"][0], crate::profile::DEFAULT_PROFILE);
+        assert_eq!(
+            body["supportedProfiles"][0],
+            crate::profile::DEFAULT_PROFILE
+        );
+        assert!(body.get("profiles").is_none());
         assert_eq!(body["telemetry"]["pollReason"], "immediate");
         assert!(body.get("heldSessionStates").is_none());
     }
@@ -1278,7 +1359,7 @@ mod tests {
                     .path(routes::runners::poll::POLL.path)
                     .json_body(serde_json::json!({
                         "group": "default",
-                        "profiles": [],
+                        "supportedProfiles": [crate::profile::DEFAULT_PROFILE],
                         "telemetry": {
                             "pollReason": "immediate"
                         }

@@ -171,6 +171,74 @@ pub struct RunPayload {
     pub feature_flags: String,
 }
 
+/// Borrowed logical string field from [`RunPayload`].
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct RunPayloadField<'a> {
+    /// Logical field name used in diagnostics.
+    pub name: &'static str,
+    /// Field value carried in the run payload.
+    pub value: &'a str,
+}
+
+impl RunPayload {
+    /// Return all logical string fields carried by this run payload.
+    pub fn fields(&self) -> [RunPayloadField<'_>; 8] {
+        let Self {
+            prompt,
+            append_system_prompt,
+            secret_values,
+            disallowed_tools,
+            tools,
+            settings,
+            artifacts,
+            feature_flags,
+        } = self;
+
+        [
+            RunPayloadField {
+                name: PROMPT_ENV,
+                value: prompt,
+            },
+            RunPayloadField {
+                name: APPEND_SYSTEM_PROMPT_ENV,
+                value: append_system_prompt,
+            },
+            RunPayloadField {
+                name: SECRET_VALUES_ENV,
+                value: secret_values,
+            },
+            RunPayloadField {
+                name: DISALLOWED_TOOLS_ENV,
+                value: disallowed_tools,
+            },
+            RunPayloadField {
+                name: TOOLS_ENV,
+                value: tools,
+            },
+            RunPayloadField {
+                name: SETTINGS_ENV,
+                value: settings,
+            },
+            RunPayloadField {
+                name: ARTIFACTS_ENV,
+                value: artifacts,
+            },
+            RunPayloadField {
+                name: FEATURE_FLAGS_ENV,
+                value: feature_flags,
+            },
+        ]
+    }
+
+    /// Return the first logical field name whose value contains a NUL byte.
+    pub fn first_nul_field(&self) -> Option<&'static str> {
+        self.fields()
+            .into_iter()
+            .find(|field| field.value.contains('\0'))
+            .map(|field| field.name)
+    }
+}
+
 /// Guest-agent stuck-tool timeout override in seconds.
 ///
 /// This is a tuning key: local execution may pass it through user env via
@@ -349,6 +417,86 @@ mod tests {
         assert_eq!(json["secretValues"], "secret");
         assert_eq!(json["disallowedTools"], "WebFetch");
         assert_eq!(json["featureFlags"], r#"{"flag":true}"#);
+    }
+
+    #[test]
+    fn run_payload_fields_returns_logical_names_and_values() {
+        let payload = RunPayload {
+            prompt: "prompt".to_string(),
+            append_system_prompt: "system".to_string(),
+            secret_values: "secret".to_string(),
+            disallowed_tools: "WebFetch".to_string(),
+            tools: "Bash".to_string(),
+            settings: "{}".to_string(),
+            artifacts: "[]".to_string(),
+            feature_flags: r#"{"flag":true}"#.to_string(),
+        };
+
+        let fields = payload.fields();
+
+        assert_eq!(
+            fields,
+            [
+                RunPayloadField {
+                    name: PROMPT_ENV,
+                    value: "prompt"
+                },
+                RunPayloadField {
+                    name: APPEND_SYSTEM_PROMPT_ENV,
+                    value: "system"
+                },
+                RunPayloadField {
+                    name: SECRET_VALUES_ENV,
+                    value: "secret"
+                },
+                RunPayloadField {
+                    name: DISALLOWED_TOOLS_ENV,
+                    value: "WebFetch"
+                },
+                RunPayloadField {
+                    name: TOOLS_ENV,
+                    value: "Bash"
+                },
+                RunPayloadField {
+                    name: SETTINGS_ENV,
+                    value: "{}"
+                },
+                RunPayloadField {
+                    name: ARTIFACTS_ENV,
+                    value: "[]"
+                },
+                RunPayloadField {
+                    name: FEATURE_FLAGS_ENV,
+                    value: r#"{"flag":true}"#
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn run_payload_first_nul_field_reports_logical_name() {
+        let payload = RunPayload {
+            settings: "bad\0settings".to_string(),
+            ..RunPayload::default()
+        };
+
+        assert_eq!(payload.first_nul_field(), Some(SETTINGS_ENV));
+    }
+
+    #[test]
+    fn run_payload_first_nul_field_accepts_clean_payload() {
+        let payload = RunPayload {
+            prompt: "prompt".to_string(),
+            append_system_prompt: "system".to_string(),
+            secret_values: "secret".to_string(),
+            disallowed_tools: "WebFetch".to_string(),
+            tools: "Bash".to_string(),
+            settings: "{}".to_string(),
+            artifacts: "[]".to_string(),
+            feature_flags: r#"{"flag":true}"#.to_string(),
+        };
+
+        assert_eq!(payload.first_nul_field(), None);
     }
 
     #[test]

@@ -1,14 +1,7 @@
-const DEFAULT_STATIC_ASSETS_BASE_URL = "https://static.vm0.io";
-
-function staticAssetsBaseUrl() {
-  return (
-    (import.meta.env?.VITE_STATIC_ASSETS_BASE_URL as string | undefined) ??
-    DEFAULT_STATIC_ASSETS_BASE_URL
-  ).replace(/\/+$/u, "");
-}
+const STATIC_ASSETS_BASE_URL = "https://static.vm0.io";
 
 export function platformStaticAssetUrl(path: string) {
-  return `${staticAssetsBaseUrl()}/platform/${path.replace(/^\/+/u, "")}`;
+  return `${STATIC_ASSETS_BASE_URL}/platform/${path.replace(/^\/+/u, "")}`;
 }
 
 export const platformCheckmarkPrimaryImg = platformStaticAssetUrl(

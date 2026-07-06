@@ -151,6 +151,7 @@ const gmailMessageSchema = z.object({
   id: z.string(),
   threadId: z.string().optional(),
   labelIds: z.array(z.string()).optional(),
+  internalDate: z.string().optional(),
   payload: gmailMessagePartSchema.optional(),
 });
 
@@ -235,6 +236,7 @@ interface GmailMessageContext {
   readonly messageId: string;
   readonly threadId: string | null;
   readonly labelIds: readonly string[];
+  readonly occurredAt: string | null;
   readonly from: string | null;
   readonly to: readonly string[];
   readonly cc: readonly string[];
@@ -816,6 +818,22 @@ function firstHeaderValue(
   return headerValues(headers, name)[0] ?? null;
 }
 
+function gmailMessageOccurredAt(
+  internalDate: string | undefined,
+): string | null {
+  if (internalDate) {
+    const millis = Number(internalDate);
+    if (Number.isFinite(millis)) {
+      const date = new Date(millis);
+      if (!Number.isNaN(date.getTime())) {
+        return date.toISOString();
+      }
+    }
+  }
+
+  return null;
+}
+
 function decodeGmailBodyData(data: string): string {
   return Buffer.from(
     data.replaceAll("-", "+").replaceAll("_", "/"),
@@ -889,11 +907,9 @@ async function fetchGmailMessageContext(args: {
   );
   return {
     messageId: result.value.id,
-    threadId: result.value.threadId ?? args.event.threadId,
-    labelIds:
-      result.value.labelIds && result.value.labelIds.length > 0
-        ? result.value.labelIds
-        : args.event.labelIds,
+    threadId: result.value.threadId ?? null,
+    labelIds: result.value.labelIds ?? [],
+    occurredAt: gmailMessageOccurredAt(result.value.internalDate),
     from: firstHeaderValue(headers, "From"),
     to: headerValues(headers, "To"),
     cc: headerValues(headers, "Cc"),
@@ -1539,33 +1555,41 @@ async function dispatchGmailNewMessageHistoryEvent(args: {
     return { kind: "ok", dispatched: 0, duplicates: 0 };
   }
 
-  const relationshipJob = await settle(
-    enqueueGmailRelationshipRefreshJob(args.db, {
-      orgId: args.state.orgId,
-      userId: args.state.userId,
-      connectorId: args.state.connectorId,
-      message: {
-        mailboxEmail: args.decoded.emailAddress,
-        historyId: args.event.historyId,
+  if (message.occurredAt) {
+    const relationshipJob = await settle(
+      enqueueGmailRelationshipRefreshJob(args.db, {
+        orgId: args.state.orgId,
+        userId: args.state.userId,
+        connectorId: args.state.connectorId,
+        message: {
+          mailboxEmail: args.decoded.emailAddress,
+          historyId: args.event.historyId,
+          messageId: message.messageId,
+          threadId: message.threadId,
+          occurredAt: message.occurredAt,
+          direction: "received",
+          from: message.from,
+          to: message.to,
+          cc: message.cc,
+          subject: message.subject,
+          bodyText: message.bodyText,
+        },
+      }),
+    );
+    if (!relationshipJob.ok) {
+      log.warn("Failed to enqueue Gmail relationship memory refresh", {
+        watchStateId: args.state.id,
         messageId: message.messageId,
-        threadId: message.threadId,
-        direction: "received",
-        from: message.from,
-        to: message.to,
-        cc: message.cc,
-        subject: message.subject,
-        bodyText: message.bodyText,
-      },
-    }),
-  );
-  if (!relationshipJob.ok) {
-    log.warn("Failed to enqueue Gmail relationship memory refresh", {
+        error:
+          relationshipJob.error instanceof Error
+            ? relationshipJob.error.message
+            : String(relationshipJob.error),
+      });
+    }
+  } else {
+    log.warn("Skipped Gmail relationship memory refresh without message time", {
       watchStateId: args.state.id,
       messageId: message.messageId,
-      error:
-        relationshipJob.error instanceof Error
-          ? relationshipJob.error.message
-          : String(relationshipJob.error),
     });
   }
 

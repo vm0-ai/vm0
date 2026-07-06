@@ -135,6 +135,9 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.RelationshipMemory]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.AgentUnreadIndicators]).toBe(true);
+    expect(
+      staffOrgStates[FeatureSwitchKey.MobileUnreadChatThreadShortcuts],
+    ).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.HtmlArtifactCommentEditing]).toBe(
       false,
     );
@@ -153,9 +156,14 @@ describe("getAllFeatureStates", () => {
     );
     expect(otherOrgStates[FeatureSwitchKey.ChatGithubPrTracking]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatThreadEmoji]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.RelationshipMemory]).toBe(true);
-    expect(otherOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(true);
-    expect(otherOrgStates[FeatureSwitchKey.AgentUnreadIndicators]).toBe(true);
+    expect(otherOrgStates[FeatureSwitchKey.RelationshipMemory]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(
+      false,
+    );
+    expect(otherOrgStates[FeatureSwitchKey.AgentUnreadIndicators]).toBe(false);
+    expect(
+      otherOrgStates[FeatureSwitchKey.MobileUnreadChatThreadShortcuts],
+    ).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.HtmlArtifactCommentEditing]).toBe(
       false,
     );

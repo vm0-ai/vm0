@@ -5,6 +5,7 @@ import {
   IconClock,
   IconLoader2,
   IconMail,
+  IconPlayerStop,
   IconRefresh,
   IconSearch,
   IconTrash,
@@ -14,6 +15,7 @@ import type {
   GmailRelationshipBackfillRequest,
   GmailRelationshipStatusResponse,
   RelationshipRecord,
+  RelationshipSearchResponse,
 } from "@vm0/api-contracts/contracts/zero-relationships";
 import { Button, cn, Input } from "@vm0/ui";
 import { Checkbox } from "@vm0/ui/components/ui/checkbox";
@@ -34,10 +36,18 @@ import {
 } from "@vm0/ui/components/ui/select";
 
 import {
+  deleteStoppedGmailRelationshipBackfill$,
   gmailRelationshipBackfillDialogOpen$,
   gmailRelationshipBackfillRequest$,
   gmailRelationshipStatus$,
+  goBackTwoMemoryRelationshipPages$,
+  goForwardTwoMemoryRelationshipPages$,
+  goToNextMemoryRelationshipPage$,
+  goToPrevMemoryRelationshipPage$,
+  memoryRelationshipHasPrev$,
   memoryRelationshipFilter$,
+  memoryRelationshipLimit$,
+  memoryRelationshipPage$,
   memoryRelationshipSearch$,
   memoryRelationships$,
   reloadGmailRelationshipStatus$,
@@ -45,13 +55,16 @@ import {
   setGmailRelationshipBackfillDialogOpen$,
   setMemoryRelationshipFilter$,
   setMemoryRelationshipSearch$,
+  setMemoryRelationshipRowsPerPage$,
   setSelectedMemoryRelationshipId$,
   startGmailRelationshipBackfill$,
+  stopGmailRelationshipBackfill$,
   updateGmailRelationshipBackfillRequest$,
   type MemoryRelationshipFilter,
 } from "../../signals/memory-page/memory-signals.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
+import { Pagination } from "../components/pagination.tsx";
 
 type RelationshipItemKind = RelationshipRecord["items"][number]["kind"];
 
@@ -82,28 +95,6 @@ function formatShortDate(value: string | null): string {
   }).format(new Date(value));
 }
 
-function matchesFilter(
-  relationship: RelationshipRecord,
-  filter: MemoryRelationshipFilter,
-): boolean {
-  switch (filter) {
-    case "people": {
-      return relationship.entity.type === "person";
-    }
-    case "organizations": {
-      return relationship.entity.type === "organization";
-    }
-    case "open-loops": {
-      return relationship.items.some((item) => {
-        return item.kind === "open_loop";
-      });
-    }
-    case "all": {
-      return true;
-    }
-  }
-}
-
 function relationshipSubtitle(relationship: RelationshipRecord): string {
   const primary =
     relationship.entity.primaryEmail ?? relationship.entity.domain ?? null;
@@ -123,6 +114,25 @@ function relationshipItems(
 
 function relationshipItemCount(relationship: RelationshipRecord): number {
   return relationship.items.length;
+}
+
+function relationshipCountLabel(
+  pagination: RelationshipSearchResponse["pagination"],
+  visibleCount: number,
+): string {
+  if (pagination.total === 0) {
+    return "0";
+  }
+  if (visibleCount === 0) {
+    return `0 of ${pagination.total}`;
+  }
+
+  const start = (pagination.page - 1) * pagination.pageSize + 1;
+  const end = Math.min(start + visibleCount - 1, pagination.total);
+  if (start === 1 && end === pagination.total) {
+    return String(pagination.total);
+  }
+  return `${start}-${end} of ${pagination.total}`;
 }
 
 function RelationshipAvatar({
@@ -391,6 +401,9 @@ function backfillProgressText(
   if (backfill.status === "failed") {
     return "Backfill failed";
   }
+  if (backfill.status === "stopped") {
+    return `Backfill stopped - ${backfill.scannedCount} scanned`;
+  }
   if (backfill.status === "done") {
     return `Backfill complete - ${backfill.scannedCount} scanned`;
   }
@@ -448,6 +461,14 @@ function canStartGmailBackfill(
     status.backfill.status === "idle" ||
     status.backfill.status === "failed" ||
     status.backfill.status === "done"
+  );
+}
+
+function canStopGmailBackfill(status: GmailRelationshipStatusResponse) {
+  return (
+    status.enabled &&
+    (status.backfill.status === "pending" ||
+      status.backfill.status === "running")
   );
 }
 
@@ -575,16 +596,24 @@ function GmailRelationshipBackfillDialog({
 
 function GmailRelationshipStatusActions({
   actionLabel,
+  deletingStopped,
+  onDeleteStoppedBackfill,
   onOpenBackfillDialog,
   onRefreshStatus,
+  onStopBackfill,
   starting,
   status,
+  stopping,
 }: {
   readonly actionLabel: string;
+  readonly deletingStopped: boolean;
+  readonly onDeleteStoppedBackfill: () => void;
   readonly onOpenBackfillDialog: () => void;
   readonly onRefreshStatus: () => void;
+  readonly onStopBackfill: () => void;
   readonly starting: boolean;
   readonly status: GmailRelationshipStatusResponse;
+  readonly stopping: boolean;
 }) {
   if (!status.connectorConnected) {
     return (
@@ -612,6 +641,40 @@ function GmailRelationshipStatusActions({
           <span>{actionLabel}</span>
         </Button>
       ) : null}
+      {canStopGmailBackfill(status) ? (
+        <Button
+          type="button"
+          variant="destructive"
+          size="sm"
+          className="h-8 gap-1.5 px-2.5 text-xs"
+          disabled={stopping}
+          onClick={onStopBackfill}
+        >
+          {stopping ? (
+            <IconLoader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <IconPlayerStop className="h-3.5 w-3.5" />
+          )}
+          <span>{stopping ? "Stopping" : "Stop job"}</span>
+        </Button>
+      ) : null}
+      {status.backfill.status === "stopped" ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-8 gap-1.5 border-destructive/40 px-2.5 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
+          disabled={deletingStopped}
+          onClick={onDeleteStoppedBackfill}
+        >
+          {deletingStopped ? (
+            <IconLoader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <IconTrash className="h-3.5 w-3.5" />
+          )}
+          <span>{deletingStopped ? "Deleting" : "Delete stopped job"}</span>
+        </Button>
+      ) : null}
       {status.enabled ? (
         <Button
           type="button"
@@ -633,11 +696,19 @@ function GmailRelationshipStatusPanel() {
   const [backfillLoadable, startBackfill] = useLoadableSet(
     startGmailRelationshipBackfill$,
   );
+  const [stopBackfillLoadable, stopBackfill] = useLoadableSet(
+    stopGmailRelationshipBackfill$,
+  );
+  const [deleteStoppedBackfillLoadable, deleteStoppedBackfill] = useLoadableSet(
+    deleteStoppedGmailRelationshipBackfill$,
+  );
   const reloadStatus = useSet(reloadGmailRelationshipStatus$);
   const pageSignal = useGet(pageSignal$);
   const backfillDialogOpen = useGet(gmailRelationshipBackfillDialogOpen$);
   const setBackfillDialogOpen = useSet(setGmailRelationshipBackfillDialogOpen$);
   const starting = backfillLoadable.state === "loading";
+  const stopping = stopBackfillLoadable.state === "loading";
+  const deletingStopped = deleteStoppedBackfillLoadable.state === "loading";
 
   if (statusLoadable.state === "loading") {
     return (
@@ -702,16 +773,24 @@ function GmailRelationshipStatusPanel() {
           ) : null}
         </div>
       </div>
-      <div className="flex shrink-0 items-center gap-2">
+      <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
         <GmailRelationshipStatusActions
           actionLabel={backfillActionLabel}
+          deletingStopped={deletingStopped}
           starting={starting}
           status={status}
+          stopping={stopping}
+          onDeleteStoppedBackfill={() => {
+            detach(deleteStoppedBackfill(pageSignal), Reason.DomCallback);
+          }}
           onOpenBackfillDialog={() => {
             setBackfillDialogOpen(true);
           }}
           onRefreshStatus={() => {
             reloadStatus();
+          }}
+          onStopBackfill={() => {
+            detach(stopBackfill(pageSignal), Reason.DomCallback);
           }}
         />
         <GmailRelationshipBackfillDialog
@@ -788,10 +867,12 @@ function RelationshipsToolbar({
 
 function RelationshipList({
   relationships,
+  pagination,
   selectedRelationship,
   setSelectedId,
 }: {
   readonly relationships: readonly RelationshipRecord[];
+  readonly pagination: RelationshipSearchResponse["pagination"];
   readonly selectedRelationship: RelationshipRecord | null;
   readonly setSelectedId: (value: string) => void;
 }) {
@@ -802,7 +883,7 @@ function RelationshipList({
           Relationships
         </span>
         <span className="text-xs text-muted-foreground">
-          {relationships.length}
+          {relationshipCountLabel(pagination, relationships.length)}
         </span>
       </div>
       <div className="max-h-[360px] overflow-auto p-2 lg:max-h-none">
@@ -872,9 +953,17 @@ export function MemoryRelationships() {
   const search = useGet(memoryRelationshipSearch$);
   const filter = useGet(memoryRelationshipFilter$);
   const selectedId = useGet(selectedMemoryRelationshipId$);
+  const currentPage = useGet(memoryRelationshipPage$);
+  const rowsPerPage = useGet(memoryRelationshipLimit$);
+  const hasPrev = useGet(memoryRelationshipHasPrev$);
   const setSearch = useSet(setMemoryRelationshipSearch$);
   const setFilter = useSet(setMemoryRelationshipFilter$);
   const setSelectedId = useSet(setSelectedMemoryRelationshipId$);
+  const goToNext = useSet(goToNextMemoryRelationshipPage$);
+  const goToPrev = useSet(goToPrevMemoryRelationshipPage$);
+  const goForwardTwo = useSet(goForwardTwoMemoryRelationshipPages$);
+  const goBackTwo = useSet(goBackTwoMemoryRelationshipPages$);
+  const setRowsPerPage = useSet(setMemoryRelationshipRowsPerPage$);
   const relationshipsLoadable = useLoadable(memoryRelationships$);
 
   if (relationshipsLoadable.state === "loading") {
@@ -884,11 +973,8 @@ export function MemoryRelationships() {
     return <MemoryRelationshipsError />;
   }
 
-  const relationships = relationshipsLoadable.data.relationships.filter(
-    (relationship) => {
-      return matchesFilter(relationship, filter);
-    },
-  );
+  const relationships = relationshipsLoadable.data.relationships;
+  const pagination = relationshipsLoadable.data.pagination;
   const selectedRelationship =
     relationships.find((relationship) => {
       return relationship.id === selectedId;
@@ -910,12 +996,42 @@ export function MemoryRelationships() {
       <div className="grid min-h-[420px] min-w-0 lg:grid-cols-[320px_minmax(0,1fr)]">
         <RelationshipList
           relationships={relationships}
+          pagination={pagination}
           selectedRelationship={selectedRelationship}
           setSelectedId={setSelectedId}
         />
 
         <RelationshipDetail relationship={selectedRelationship} />
       </div>
+
+      {pagination.total > 0 ? (
+        <div className="border-t border-border/70 px-3 py-3">
+          <Pagination
+            currentPage={currentPage}
+            totalPages={pagination.totalPages}
+            rowsPerPage={rowsPerPage}
+            hasNext={pagination.hasMore}
+            hasPrev={hasPrev}
+            labelClassName="font-normal text-muted-foreground"
+            buttonClassName="bg-transparent border-border/70"
+            onNextPage={() => {
+              return goToNext(pagination.totalPages);
+            }}
+            onPrevPage={() => {
+              return goToPrev();
+            }}
+            onForwardTwoPages={() => {
+              return goForwardTwo(pagination.totalPages);
+            }}
+            onBackTwoPages={() => {
+              return goBackTwo();
+            }}
+            onRowsPerPageChange={(limit) => {
+              return setRowsPerPage(limit);
+            }}
+          />
+        </div>
+      ) : null}
     </section>
   );
 }

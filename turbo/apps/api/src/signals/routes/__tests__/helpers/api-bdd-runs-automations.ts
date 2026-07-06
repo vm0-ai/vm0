@@ -14,6 +14,7 @@ import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-bil
 import {
   zeroUserPermissionGrantsContract,
   type ApplyUserPermissionGrant,
+  type ApplyUserPermissionGrantsRequest,
   type UserPermissionGrantResponse,
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { runnerRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
@@ -29,6 +30,7 @@ import {
   cronTelegramCleanupContract,
 } from "@vm0/api-contracts/contracts/cron";
 import {
+  runnersNetworkPolicyRefreshContract,
   runnersHeartbeatContract,
   runnersJobClaimContract,
   runnersPollContract,
@@ -211,9 +213,7 @@ function runnerHeartbeatBody(
   args: {
     readonly runnerId?: string;
     readonly group?: string;
-    readonly profiles?: RunnerHeartbeatBody["profiles"];
-    readonly availableProfiles?: RunnerHeartbeatBody["availableProfiles"];
-    readonly omitAvailableProfiles?: boolean;
+    readonly admittableProfiles?: RunnerHeartbeatBody["admittableProfiles"];
     readonly maxConcurrent?: RunnerHeartbeatBody["maxConcurrent"];
     readonly allocatedVcpu?: RunnerHeartbeatBody["allocatedVcpu"];
     readonly allocatedMemoryMb?: RunnerHeartbeatBody["allocatedMemoryMb"];
@@ -222,28 +222,48 @@ function runnerHeartbeatBody(
     readonly mode?: RunnerHeartbeatBody["mode"];
   } = {},
 ): RunnerHeartbeatBody {
-  const profiles = args.profiles ?? ["vm0/default"];
-  const body: RunnerHeartbeatBody = {
+  return {
     runnerId: args.runnerId ?? randomUUID(),
     runnerName: "bdd-runner",
     group: args.group ?? "vm0/test",
-    profiles,
     totalVcpu: 8,
     totalMemoryMb: 16_384,
     maxConcurrent: args.maxConcurrent ?? 2,
     allocatedVcpu: args.allocatedVcpu ?? 0,
     allocatedMemoryMb: args.allocatedMemoryMb ?? 0,
     runningCount: args.runningCount ?? 0,
+    admittableProfiles: args.admittableProfiles ?? ["vm0/default"],
     heldSessionStates: args.heldSessionStates ?? [],
     mode: args.mode ?? "running",
   };
-  if (!args.omitAvailableProfiles) {
-    body.availableProfiles = args.availableProfiles ?? profiles;
-  }
-  return body;
 }
 
 export function createRunsAutomationsApi(context: TestContext) {
+  const applyUserPermissionGrantRequestBody = (
+    body: {
+      readonly agentId: string;
+      readonly connectorRef: string;
+    } & ApplyUserPermissionGrant,
+  ): ApplyUserPermissionGrantsRequest => {
+    const grant: ApplyUserPermissionGrant =
+      body.action === "allow"
+        ? {
+            permission: body.permission,
+            action: "allow",
+            ...(body.expiresIn ? { expiresIn: body.expiresIn } : {}),
+          }
+        : {
+            permission: body.permission,
+            action: "deny",
+          };
+    return {
+      agentId: body.agentId,
+      connectorRef: body.connectorRef,
+      mode: "patch",
+      grants: [grant],
+    };
+  };
+
   return {
     configureRunnerGroup(): string {
       const group = `vm0/bdd-${randomUUID().slice(0, 8)}`;
@@ -380,6 +400,44 @@ export function createRunsAutomationsApi(context: TestContext) {
         [200],
       );
       return response.body;
+    },
+
+    async refreshRunnerNetworkPolicy(runId: string, connectorRef: string) {
+      const response = await accept(
+        runsAutomationApp(context)(runnersNetworkPolicyRefreshContract).refresh(
+          {
+            headers: runnerHeaders(true),
+            params: { runId },
+            body: { connectorRefs: [connectorRef] },
+          },
+        ),
+        [200],
+      );
+      const [refresh] = response.body.refreshes;
+      if (!refresh) {
+        throw new Error(
+          `Expected refreshed network policy for ${connectorRef}`,
+        );
+      }
+      return refresh;
+    },
+
+    async requestRefreshRunnerNetworkPolicyAs(
+      authorization: string | undefined,
+      runId: string,
+      connectorRef: string,
+      statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
+    ) {
+      return await accept(
+        runsAutomationApp(context)(runnersNetworkPolicyRefreshContract).refresh(
+          {
+            headers: authorization === undefined ? {} : { authorization },
+            params: { runId },
+            body: { connectorRefs: [connectorRef] },
+          },
+        ),
+        statuses,
+      );
     },
 
     async createApiKey(actor: ApiTestUser): Promise<{
@@ -525,23 +583,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       const response = await accept(
         runsAutomationApp(context)(zeroUserPermissionGrantsContract).apply({
           headers: authenticate(context, actor),
-          body: {
-            agentId: body.agentId,
-            connectorRef: body.connectorRef,
-            mode: "patch",
-            grants: [
-              body.action === "allow"
-                ? {
-                    permission: body.permission,
-                    action: "allow",
-                    ...(body.expiresIn ? { expiresIn: body.expiresIn } : {}),
-                  }
-                : {
-                    permission: body.permission,
-                    action: "deny",
-                  },
-            ],
-          },
+          body: applyUserPermissionGrantRequestBody(body),
         }),
         [200],
       );
@@ -550,6 +592,23 @@ export function createRunsAutomationsApi(context: TestContext) {
         throw new Error("User permission grant apply did not return a grant");
       }
       return grant;
+    },
+
+    async requestUserPermissionGrant(
+      actor: ApiTestUser,
+      body: {
+        readonly agentId: string;
+        readonly connectorRef: string;
+      } & ApplyUserPermissionGrant,
+      statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
+    ) {
+      return await accept(
+        runsAutomationApp(context)(zeroUserPermissionGrantsContract).apply({
+          headers: authenticate(context, actor),
+          body: applyUserPermissionGrantRequestBody(body),
+        }),
+        statuses,
+      );
     },
 
     async listUserPermissionGrants(
@@ -852,10 +911,9 @@ export function createRunsAutomationsApi(context: TestContext) {
       validAuth: boolean,
       statuses: readonly (200 | 400 | 401 | 500)[],
       args: {
+        readonly runnerId?: string;
         readonly group?: string;
-        readonly profiles?: RunnerHeartbeatBody["profiles"];
-        readonly availableProfiles?: RunnerHeartbeatBody["availableProfiles"];
-        readonly omitAvailableProfiles?: boolean;
+        readonly admittableProfiles?: RunnerHeartbeatBody["admittableProfiles"];
         readonly maxConcurrent?: RunnerHeartbeatBody["maxConcurrent"];
         readonly allocatedVcpu?: RunnerHeartbeatBody["allocatedVcpu"];
         readonly allocatedMemoryMb?: RunnerHeartbeatBody["allocatedMemoryMb"];
@@ -873,13 +931,27 @@ export function createRunsAutomationsApi(context: TestContext) {
       );
     },
 
+    async requestRawHeartbeatRunner(
+      validAuth: boolean,
+      statuses: readonly (200 | 400 | 401 | 500)[],
+      body: unknown,
+    ) {
+      return await accept(
+        runsAutomationApp(context)(runnersHeartbeatContract).heartbeat({
+          headers: runnerHeaders(validAuth),
+          body: body as RunnerHeartbeatBody,
+        }),
+        statuses,
+      );
+    },
+
     async pollRunner(group?: string) {
       return await accept(
         runsAutomationApp(context)(runnersPollContract).poll({
           headers: runnerHeaders(true),
           body: {
             group: group ?? "vm0/test",
-            profiles: ["vm0/default"],
+            supportedProfiles: ["vm0/default"],
           },
         }),
         [200],
@@ -895,6 +967,20 @@ export function createRunsAutomationsApi(context: TestContext) {
         runsAutomationApp(context)(runnersPollContract).poll({
           headers: runnerHeaders(validAuth),
           body,
+        }),
+        statuses,
+      );
+    },
+
+    async requestRawPollRunner(
+      validAuth: boolean,
+      body: unknown,
+      statuses: readonly (200 | 400 | 401 | 500)[],
+    ) {
+      return await accept(
+        runsAutomationApp(context)(runnersPollContract).poll({
+          headers: runnerHeaders(validAuth),
+          body: body as RunnerPollBody,
         }),
         statuses,
       );

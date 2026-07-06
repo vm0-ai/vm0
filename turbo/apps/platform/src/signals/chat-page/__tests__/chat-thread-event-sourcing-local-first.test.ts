@@ -22,8 +22,10 @@ import { sidebarChatThreadIds$ } from "../sidebar-chat-thread-ids.ts";
 import { setChatThreadOnlyUnread$ } from "../chat-thread-only-unread.ts";
 import { openRenameChatThreadDialogFromThreadMeta$ } from "../chat-thread-rename.ts";
 import {
+  eventDrivenChatThread,
   registerOptimisticChatThreadEvent$,
   threadMeta,
+  touchOptimisticChatThreadSort$,
 } from "../chat-thread-event-sourcing.ts";
 import { createIdbCachedDataSource } from "../idb-cached-chat-thread-data-source.ts";
 
@@ -120,6 +122,7 @@ const OTHER_THREAD_ID = "b0000000-0000-4000-a000-000000000002";
 const OPTIMISTIC_THREAD_ID = "b0000000-0000-4000-a000-000000000003";
 const EVENT_ID = "d0000000-0000-4000-a000-000000000001";
 const OPTIMISTIC_EVENT_ID = "d0000000-0000-4000-a000-000000000002";
+const OPTIMISTIC_MODEL_EVENT_ID = "d0000000-0000-4000-a000-000000000003";
 
 function expectCallback(callback: (() => void) | null): () => void {
   expect(callback).not.toBeNull();
@@ -177,6 +180,7 @@ describe("chat thread event sourcing local-first list", () => {
             updatedAt: "2026-07-03T02:00:00.000Z",
             pinnedAt: null,
             renamedAt: null,
+            selectedModel: null,
           },
         ],
       },
@@ -187,6 +191,7 @@ describe("chat thread event sourcing local-first list", () => {
           chatThreadId: THREAD_ID,
           agentId: AGENT_ID,
           title: "Cached renamed title",
+          selectedModel: null,
           createdAt: "2026-07-03T03:00:00.000Z",
         },
       ],
@@ -264,6 +269,7 @@ describe("chat thread event sourcing local-first list", () => {
             updatedAt: "2026-07-03T03:00:00.000Z",
             pinnedAt: null,
             renamedAt: null,
+            selectedModel: null,
           },
           {
             id: OTHER_THREAD_ID,
@@ -274,6 +280,7 @@ describe("chat thread event sourcing local-first list", () => {
             updatedAt: "2026-07-03T02:00:00.000Z",
             pinnedAt: null,
             renamedAt: null,
+            selectedModel: null,
           },
         ],
       },
@@ -337,6 +344,7 @@ describe("chat thread event sourcing local-first list", () => {
         updatedAt: timestamp,
         pinnedAt: null,
         renamedAt: null,
+        selectedModel: null,
       } satisfies ChatThreadSnapshotProjection;
     });
 
@@ -378,7 +386,138 @@ describe("chat thread event sourcing local-first list", () => {
     );
   });
 
-  it("uses optimistic create events for event-sourced sidebar ids", async () => {
+  it("applies optimistic selected model updates over cached thread projections", async () => {
+    context.store.set(setChatAgentId$, AGENT_ID);
+
+    idbThreadEventStoreMock.setData({
+      snapshot: {
+        latestEventId: EVENT_ID,
+        chatThreads: [
+          {
+            id: THREAD_ID,
+            agentId: AGENT_ID,
+            title: "Cached model thread",
+            sortAt: "2026-07-03T02:00:00.000Z",
+            createdAt: "2026-07-03T01:00:00.000Z",
+            updatedAt: "2026-07-03T02:00:00.000Z",
+            pinnedAt: null,
+            renamedAt: null,
+            selectedModel: null,
+          },
+        ],
+      },
+      events: [],
+    });
+    context.mocks.api(chatThreadsContract.events, ({ respond }) => {
+      return respond(200, { events: [], hasMore: false });
+    });
+    context.mocks.api(chatThreadsContract.activeIds, ({ respond }) => {
+      return respond(200, { threadIds: [] });
+    });
+    await setupPage({
+      context,
+      path: "/error",
+      withoutRender: true,
+      user: { id: "user_1", fullName: "Test User" },
+      session: { token: "token" },
+      org: {
+        activeOrg: { id: "org_1", name: "Test Org" },
+        memberships: [{ id: "org_1" }],
+      },
+    });
+
+    context.store.set(registerOptimisticChatThreadEvent$, {
+      id: OPTIMISTIC_EVENT_ID,
+      kind: "model_selection_updated",
+      chatThreadId: THREAD_ID,
+      agentId: AGENT_ID,
+      title: null,
+      selectedModel: "claude-sonnet-4-6",
+      createdAt: "2026-07-03T05:00:00.000Z",
+    });
+
+    await expect(
+      context.store.get(eventDrivenChatThread(THREAD_ID)),
+    ).resolves.toMatchObject({
+      selectedModel: "claude-sonnet-4-6",
+      sortAt: "2026-07-03T02:00:00.000Z",
+      updatedAt: "2026-07-03T05:00:00.000Z",
+    });
+  });
+
+  it("moves cached threads to the top from optimistic sort touches", async () => {
+    context.store.set(setChatAgentId$, AGENT_ID);
+
+    idbThreadEventStoreMock.setData({
+      snapshot: {
+        latestEventId: EVENT_ID,
+        chatThreads: [
+          {
+            id: THREAD_ID,
+            agentId: AGENT_ID,
+            title: "Older cached thread",
+            sortAt: "2026-07-03T02:00:00.000Z",
+            createdAt: "2026-07-03T01:00:00.000Z",
+            updatedAt: "2026-07-03T02:00:00.000Z",
+            pinnedAt: null,
+            renamedAt: null,
+            selectedModel: null,
+          },
+          {
+            id: OTHER_THREAD_ID,
+            agentId: AGENT_ID,
+            title: "Newer cached thread",
+            sortAt: "2026-07-03T04:00:00.000Z",
+            createdAt: "2026-07-03T01:00:00.000Z",
+            updatedAt: "2026-07-03T04:00:00.000Z",
+            pinnedAt: null,
+            renamedAt: null,
+            selectedModel: null,
+          },
+        ],
+      },
+      events: [],
+    });
+    context.mocks.api(chatThreadsContract.events, ({ respond }) => {
+      return respond(200, { events: [], hasMore: false });
+    });
+    context.mocks.api(chatThreadsContract.activeIds, ({ respond }) => {
+      return respond(200, { threadIds: [] });
+    });
+    await setupPage({
+      context,
+      path: "/error",
+      withoutRender: true,
+      user: { id: "user_1", fullName: "Test User" },
+      session: { token: "token" },
+      org: {
+        activeOrg: { id: "org_1", name: "Test Org" },
+        memberships: [{ id: "org_1" }],
+      },
+    });
+
+    await expect(
+      context.store.get(sidebarChatThreadIds$),
+    ).resolves.toStrictEqual([OTHER_THREAD_ID, THREAD_ID]);
+
+    context.store.set(touchOptimisticChatThreadSort$, {
+      id: OPTIMISTIC_EVENT_ID,
+      threadId: THREAD_ID,
+      agentId: AGENT_ID,
+      createdAt: "2026-07-03T05:00:00.000Z",
+    });
+
+    await expect(
+      context.store.get(sidebarChatThreadIds$),
+    ).resolves.toStrictEqual([THREAD_ID, OTHER_THREAD_ID]);
+    await expect(
+      context.store.get(eventDrivenChatThread(THREAD_ID)),
+    ).resolves.toMatchObject({
+      sortAt: "2026-07-03T05:00:00.000Z",
+    });
+  });
+
+  it("uses optimistic create and model update events for event-sourced sidebar ids", async () => {
     context.store.set(setChatAgentId$, AGENT_ID);
 
     idbThreadEventStoreMock.setData({
@@ -413,7 +552,17 @@ describe("chat thread event sourcing local-first list", () => {
       chatThreadId: OPTIMISTIC_THREAD_ID,
       agentId: AGENT_ID,
       title: null,
+      selectedModel: null,
       createdAt: "2026-07-03T05:00:00.000Z",
+    });
+    context.store.set(registerOptimisticChatThreadEvent$, {
+      id: OPTIMISTIC_MODEL_EVENT_ID,
+      kind: "model_selection_updated",
+      chatThreadId: OPTIMISTIC_THREAD_ID,
+      agentId: AGENT_ID,
+      title: null,
+      selectedModel: "claude-sonnet-4-6",
+      createdAt: "2026-07-03T05:00:01.000Z",
     });
 
     await expect(
@@ -425,7 +574,7 @@ describe("chat thread event sourcing local-first list", () => {
         title: null,
         agent: { id: AGENT_ID, avatarUrl: null },
         createdAt: "2026-07-03T05:00:00.000Z",
-        updatedAt: "2026-07-03T05:00:00.000Z",
+        updatedAt: "2026-07-03T05:00:01.000Z",
         running: false,
         pinnedAt: null,
         renamedAt: null,
@@ -438,6 +587,7 @@ describe("chat thread event sourcing local-first list", () => {
       agentId: AGENT_ID,
       title: null,
       pinnedAt: null,
+      selectedModel: "claude-sonnet-4-6",
     });
 
     context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
@@ -470,6 +620,7 @@ describe("chat thread event sourcing local-first list", () => {
       chatThreadId: OPTIMISTIC_THREAD_ID,
       agentId: AGENT_ID,
       title: null,
+      selectedModel: null,
       createdAt: "2026-07-03T05:00:00.000Z",
     } satisfies ChatThreadEvent;
 
@@ -533,6 +684,7 @@ describe("chat thread event sourcing local-first list", () => {
             updatedAt: "2026-07-03T02:00:00.000Z",
             pinnedAt: null,
             renamedAt: null,
+            selectedModel: null,
           },
         ],
       },
@@ -543,6 +695,7 @@ describe("chat thread event sourcing local-first list", () => {
           chatThreadId: THREAD_ID,
           agentId: AGENT_ID,
           title: "Cached renamed title",
+          selectedModel: null,
           createdAt: "2026-07-03T03:00:00.000Z",
         },
       ],

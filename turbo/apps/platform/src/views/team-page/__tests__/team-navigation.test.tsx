@@ -701,6 +701,7 @@ describe("team page navigation", () => {
             updatedAt: thread.updatedAt,
             pinnedAt: thread.pinnedAt,
             renamedAt: null,
+            selectedModel: null,
           };
         }),
         latestEventId: null,
@@ -712,26 +713,11 @@ describe("team page navigation", () => {
     context.mocks.api(chatThreadsContract.activeIds, ({ respond }) => {
       return respond(200, { threadIds: [] });
     });
-    context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
+    context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
-        id: params.id,
-        title:
-          params.id === firstThreadId
-            ? "First shortcut thread"
-            : "Second shortcut thread",
-        agentId: researchAgentId,
-        activeRunIds: [],
-        createdAt: "2026-06-01T00:00:00Z",
-        updatedAt: "2026-06-01T00:02:00Z",
-        lastReadMessageId: null,
         lastReadAt: null,
-        lastMessageAt: "2026-06-01T00:02:00Z",
-        pinnedAt: null,
-        draftContent: null,
-        draftAttachments: null,
         computerUseHostId: null,
-        modelProviderId: null,
-        selectedModel: null,
+        codexServiceTier: null,
       });
     });
     context.mocks.api(

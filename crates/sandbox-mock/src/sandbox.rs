@@ -144,8 +144,13 @@ impl MockSandbox {
         self.copy_file_calls.lock_ignoring_poison().clone()
     }
 
-    /// Queue a write_file result. Results are consumed in FIFO order.
-    /// When the queue is empty, write_file returns `Ok(())`.
+    /// Queue a write-operation result.
+    ///
+    /// Results are consumed in FIFO order by both
+    /// [`write_file`](Sandbox::write_file) and [`write_files`](Sandbox::write_files).
+    /// When the queue is empty, both operations return `Ok(())`.
+    /// Each `write_files` invocation consumes one queued result for the whole
+    /// batch, not one result per file.
     pub fn push_write_file_result(&self, result: Result<()>) {
         self.write_file_results
             .lock_ignoring_poison()
@@ -165,6 +170,9 @@ impl MockSandbox {
     ///
     /// Batch entries are also expanded into [`Self::write_file_calls`] so tests
     /// that only need path/content assertions can use one observation surface.
+    /// That expansion is only for call recording: queued write results are
+    /// consumed, and the write lifecycle gate is entered, per write operation
+    /// rather than per expanded file entry.
     pub fn write_files_calls(&self) -> Vec<WriteFilesCall> {
         self.write_files_calls.lock_ignoring_poison().clone()
     }
@@ -186,15 +194,17 @@ impl MockSandbox {
         self.private_write_file_calls.lock_ignoring_poison().clone()
     }
 
-    /// Block every write_file call with a durable lifecycle gate.
+    /// Block every write operation with a durable lifecycle gate.
     ///
     /// Calls are recorded before they enter the gate, so tests can assert that a
-    /// write was attempted while keeping the mock response pending.
+    /// write was attempted while keeping the mock response pending. Both
+    /// [`write_file`](Sandbox::write_file) and [`write_files`](Sandbox::write_files)
+    /// enter this gate; `write_files` enters it once for the whole batch.
     pub fn set_write_file_lifecycle_gate(&self, gate: MockLifecycleGate) {
         *self.write_file_gate.lock_ignoring_poison() = Some(gate);
     }
 
-    /// Remove the durable write_file gate for future write calls.
+    /// Remove the durable write-operation gate for future write operations.
     ///
     /// Already-entered writes keep waiting on their cloned gate until the test
     /// releases it.

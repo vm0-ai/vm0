@@ -1,0 +1,406 @@
+{
+  "baseUrlValidationCases": [
+    {
+      "category": "valid",
+      "name": "static https base",
+      "base": "https://api.example.com",
+      "expectedValid": true
+    },
+    {
+      "category": "valid",
+      "name": "uppercase scheme and host base",
+      "base": "HTTPS://API.EXAMPLE.COM",
+      "expectedValid": true
+    },
+    {
+      "category": "valid",
+      "name": "static http base",
+      "base": "http://api.example.com",
+      "expectedValid": true
+    },
+    {
+      "category": "valid",
+      "name": "static base with path",
+      "base": "https://api.example.com/v1",
+      "expectedValid": true
+    },
+    {
+      "category": "valid",
+      "name": "static base with default https port",
+      "base": "https://api.example.com:443",
+      "expectedValid": true
+    },
+    {
+      "category": "valid",
+      "name": "static base with non-default port",
+      "base": "https://api.example.com:8443",
+      "expectedValid": true
+    },
+    {
+      "category": "valid",
+      "name": "static base with trailing host dot",
+      "base": "https://api.example.com.",
+      "expectedValid": true
+    },
+    {
+      "category": "valid",
+      "name": "static ipv6 base",
+      "base": "https://[2001:db8::1]",
+      "expectedValid": true
+    },
+    {
+      "category": "valid",
+      "name": "static canonical ipv4 base",
+      "base": "https://127.0.0.1",
+      "expectedValid": true
+    },
+    {
+      "category": "valid",
+      "name": "percent-encoded unicode host is valid",
+      "base": "https://%E2%98%83.example.com",
+      "expectedValid": true
+    },
+    {
+      "category": "valid",
+      "name": "parameterized host base",
+      "base": "https://{sub}.example.com",
+      "expectedValid": true
+    },
+    {
+      "category": "valid",
+      "name": "mixed parameterized host segment",
+      "base": "https://api-{sub}.example.com",
+      "expectedValid": true
+    },
+    {
+      "category": "valid",
+      "name": "leftmost star-greedy host parameter",
+      "base": "https://{sub*}.example.com",
+      "expectedValid": true
+    },
+    {
+      "category": "valid",
+      "name": "leftmost plus-greedy host parameter",
+      "base": "https://{sub+}.example.com",
+      "expectedValid": true
+    },
+    {
+      "category": "valid",
+      "name": "parameterized path base",
+      "base": "https://api.example.com/v1/{org}",
+      "expectedValid": true
+    },
+    {
+      "category": "valid",
+      "name": "parameterized path base with trailing literal segment",
+      "base": "https://api.example.com/v1/{org}/projects",
+      "expectedValid": true
+    },
+    {
+      "category": "valid",
+      "name": "parameterized host with trailing dot",
+      "base": "https://{sub}.example.com.",
+      "expectedValid": true
+    },
+    {
+      "category": "valid",
+      "name": "parameterized path with explicit empty segment",
+      "base": "https://api.example.com/v1//{org}",
+      "expectedValid": true
+    },
+    {
+      "category": "query-fragment",
+      "name": "query string is invalid",
+      "base": "https://api.example.com?token=1",
+      "expectedValid": false
+    },
+    {
+      "category": "query-fragment",
+      "name": "fragment is invalid",
+      "base": "https://api.example.com#section",
+      "expectedValid": false
+    },
+    {
+      "category": "query-fragment",
+      "name": "parameterized query string is invalid",
+      "base": "https://{sub}.example.com?token=1",
+      "expectedValid": false
+    },
+    {
+      "category": "query-fragment",
+      "name": "parameterized fragment is invalid",
+      "base": "https://{sub}.example.com#section",
+      "expectedValid": false
+    },
+    {
+      "category": "authority",
+      "name": "userinfo is invalid",
+      "base": "https://user:pass@api.example.com",
+      "expectedValid": false
+    },
+    {
+      "category": "authority",
+      "name": "parameterized userinfo is invalid",
+      "base": "https://user:pass@{sub}.example.com",
+      "expectedValid": false
+    },
+    {
+      "category": "authority",
+      "name": "empty authority is invalid",
+      "base": "https:///v1",
+      "expectedValid": false
+    },
+    {
+      "category": "authority",
+      "name": "parameterized empty authority is invalid",
+      "base": "https:///{org}",
+      "expectedValid": false
+    },
+    {
+      "category": "authority",
+      "name": "bracketed non-ipv6 authority is invalid",
+      "base": "https://[v1.invalid]",
+      "expectedValid": false
+    },
+    {
+      "category": "authority",
+      "name": "bracketed ipv4 authority is invalid",
+      "base": "https://[127.0.0.1]",
+      "expectedValid": false
+    },
+    {
+      "category": "authority",
+      "name": "empty port is invalid",
+      "base": "https://api.example.com:",
+      "expectedValid": false
+    },
+    {
+      "category": "authority",
+      "name": "non-numeric port is invalid",
+      "base": "https://api.example.com:bad",
+      "expectedValid": false
+    },
+    {
+      "category": "authority",
+      "name": "out-of-range port is invalid",
+      "base": "https://api.example.com:99999",
+      "expectedValid": false
+    },
+    {
+      "category": "authority",
+      "name": "empty host label is invalid",
+      "base": "https://api..example.com",
+      "expectedValid": false
+    },
+    {
+      "category": "scheme",
+      "name": "unsupported scheme is invalid",
+      "base": "ftp://api.example.com",
+      "expectedValid": false
+    },
+    {
+      "category": "scheme",
+      "name": "missing scheme is invalid",
+      "base": "not-a-url",
+      "expectedValid": false
+    },
+    {
+      "category": "scheme",
+      "name": "missing scheme delimiter is invalid",
+      "base": "https:/api.example.com",
+      "expectedValid": false
+    },
+    {
+      "category": "scheme",
+      "name": "parameterized scheme is invalid",
+      "base": "{scheme}://api.example.com",
+      "expectedValid": false
+    },
+    {
+      "category": "raw-syntax",
+      "name": "backslash is invalid",
+      "base": "https://api.example.com\\v1",
+      "expectedValid": false
+    },
+    {
+      "category": "raw-syntax",
+      "name": "raw path whitespace is invalid",
+      "base": "https://api.example.com/pa th",
+      "expectedValid": false
+    },
+    {
+      "category": "raw-syntax",
+      "name": "raw control character is invalid",
+      "base": "https://api.example.com/pa\u0000th",
+      "expectedValid": false
+    },
+    {
+      "category": "authority",
+      "name": "raw wildcard host is invalid",
+      "base": "https://*.example.com",
+      "expectedValid": false
+    },
+    {
+      "category": "authority",
+      "name": "percent-encoded authority syntax is invalid",
+      "base": "https://api%2eexample.com",
+      "expectedValid": false
+    },
+    {
+      "category": "authority",
+      "name": "percent-encoded authority delimiter is invalid",
+      "base": "https://api%2Cexample.com",
+      "expectedValid": false
+    },
+    {
+      "category": "authority",
+      "name": "invalid authority percent encoding is invalid",
+      "base": "https://api%ZZexample.com",
+      "expectedValid": false
+    },
+    {
+      "category": "authority",
+      "name": "percent-encoded userinfo delimiter is invalid",
+      "base": "https://api%40example.com",
+      "expectedValid": false
+    },
+    {
+      "category": "authority",
+      "name": "percent-encoded slash in authority is invalid",
+      "base": "https://api%2Fexample.com",
+      "expectedValid": false
+    },
+    {
+      "category": "authority",
+      "name": "percent-encoded backslash in authority is invalid",
+      "base": "https://api%5Cexample.com",
+      "expectedValid": false
+    },
+    {
+      "category": "authority",
+      "name": "percent-encoded control character in authority is invalid",
+      "base": "https://api%00example.com",
+      "expectedValid": false
+    },
+    {
+      "category": "authority",
+      "name": "non-canonical ipv4 with leading zeros is invalid",
+      "base": "https://127.000.000.001",
+      "expectedValid": false
+    },
+    {
+      "category": "authority",
+      "name": "single-number ipv4 literal is invalid",
+      "base": "https://2130706433",
+      "expectedValid": false
+    },
+    {
+      "category": "authority",
+      "name": "unicode decimal ipv4-like host is invalid",
+      "base": "https://\u0668.\u0668.\u0668.\u0668",
+      "expectedValid": false
+    },
+    {
+      "category": "authority",
+      "name": "unicode dot ipv4-like host is invalid",
+      "base": "https://127\u30020\u30020\u30021",
+      "expectedValid": false
+    },
+    {
+      "category": "authority",
+      "name": "unsafe idna compatibility mapping is invalid",
+      "base": "https://\u212a.example",
+      "expectedValid": false
+    },
+    {
+      "category": "authority",
+      "name": "percent-encoded unsafe idna compatibility mapping is invalid",
+      "base": "https://%E2%84%AA.example",
+      "expectedValid": false
+    },
+    {
+      "category": "authority",
+      "name": "parameterized percent-encoded unsafe idna suffix is invalid",
+      "base": "https://{sub}.%EF%BC%A1.example",
+      "expectedValid": false
+    },
+    {
+      "category": "parameters",
+      "name": "duplicate host parameter name is invalid",
+      "base": "https://{sub}.{sub}.example.com",
+      "expectedValid": false
+    },
+    {
+      "category": "parameters",
+      "name": "host without static segment is invalid",
+      "base": "https://{a}.{b}",
+      "expectedValid": false
+    },
+    {
+      "category": "parameters",
+      "name": "parameterized out-of-range port is invalid",
+      "base": "https://{sub}.example.com:99999",
+      "expectedValid": false
+    },
+    {
+      "category": "parameters",
+      "name": "parameterized empty host label is invalid",
+      "base": "https://{sub}..example.com",
+      "expectedValid": false
+    },
+    {
+      "category": "parameters",
+      "name": "parameterized ipv6 base is invalid",
+      "base": "https://[2001:db8::1]/v1/{org}",
+      "expectedValid": false
+    },
+    {
+      "category": "parameters",
+      "name": "empty host parameter name is invalid",
+      "base": "https://{}.example.com",
+      "expectedValid": false
+    },
+    {
+      "category": "parameters",
+      "name": "empty path parameter name is invalid",
+      "base": "https://api.example.com/v1/{}",
+      "expectedValid": false
+    },
+    {
+      "category": "parameters",
+      "name": "non-leftmost greedy host parameter is invalid",
+      "base": "https://api.{sub+}.example.com",
+      "expectedValid": false
+    },
+    {
+      "category": "parameters",
+      "name": "non-leftmost star-greedy host parameter is invalid",
+      "base": "https://api.{sub*}.example.com",
+      "expectedValid": false
+    },
+    {
+      "category": "parameters",
+      "name": "greedy path parameter is invalid",
+      "base": "https://api.example.com/{path+}",
+      "expectedValid": false
+    },
+    {
+      "category": "parameters",
+      "name": "star-greedy path parameter is invalid",
+      "base": "https://api.example.com/{path*}",
+      "expectedValid": false
+    },
+    {
+      "category": "parameters",
+      "name": "duplicate host and path parameter name is invalid",
+      "base": "https://{org}.example.com/{org}",
+      "expectedValid": false
+    },
+    {
+      "category": "parameters",
+      "name": "duplicate path parameter name is invalid",
+      "base": "https://api.example.com/{org}/{org}",
+      "expectedValid": false
+    }
+  ]
+}

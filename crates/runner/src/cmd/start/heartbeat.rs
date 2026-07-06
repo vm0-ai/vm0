@@ -210,7 +210,7 @@ fn merge_held_session_states(
     states
 }
 
-fn available_profiles_for_heartbeat(
+fn admittable_profiles_for_heartbeat(
     profiles: &BTreeMap<String, ProfileConfig>,
     budget: &ResourceBudget,
     mode: RunnerMode,
@@ -252,18 +252,18 @@ pub(super) fn collect_heartbeat_state(
     // Report only actively running jobs so the scheduler sees real capacity.
     let idle_count = idle_pool.len();
     let running_count = budget_running.saturating_sub(idle_count);
+    let admittable_profiles = admittable_profiles_for_heartbeat(profiles, budget, mode);
     HeartbeatState {
         runner_id: runner_id.to_string(),
         runner_name: name.to_string(),
         group: group.to_string(),
-        profiles: profiles.keys().cloned().collect(),
         total_vcpu: budget.effective_vcpu(),
         total_memory_mb: budget.effective_memory_mb(),
         max_concurrent: budget.max_concurrent(),
         allocated_vcpu,
         allocated_memory_mb,
         running_count,
-        available_profiles: available_profiles_for_heartbeat(profiles, budget, mode),
+        admittable_profiles,
         held_session_states: idle_pool.held_session_states(),
         mode: match mode {
             RunnerMode::Running => "running".to_string(),
@@ -408,7 +408,7 @@ mod tests {
     }
 
     #[test]
-    fn heartbeat_available_profiles_match_current_budget() {
+    fn heartbeat_admittable_profiles_match_current_budget() {
         let budget = Arc::new(ResourceBudget::new(4, 8192, 1.0, 2));
         let _lease = ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap();
         let mut profiles = test_profiles();
@@ -438,11 +438,11 @@ mod tests {
             RunnerMode::Running,
         );
 
-        assert_eq!(state.available_profiles, vec!["vm0/default"]);
+        assert_eq!(state.admittable_profiles, vec!["vm0/default"]);
     }
 
     #[test]
-    fn heartbeat_available_profiles_exclude_unaffordable_parked_profiles() {
+    fn heartbeat_admittable_profiles_exclude_unaffordable_parked_profiles() {
         let budget = Arc::new(ResourceBudget::new(2, 4096, 1.0, 1));
         let mut pool = IdlePool::new(IdlePoolConfig {
             default_timeout: Duration::from_secs(300),
@@ -467,11 +467,11 @@ mod tests {
             RunnerMode::Running,
         );
 
-        assert!(state.available_profiles.is_empty());
+        assert!(state.admittable_profiles.is_empty());
     }
 
     #[test]
-    fn heartbeat_available_profiles_empty_when_not_running() {
+    fn heartbeat_admittable_profiles_empty_when_not_running() {
         let budget = ResourceBudget::new(8, 32768, 1.0, 4);
         let pool = IdlePool::new(IdlePoolConfig {
             default_timeout: Duration::from_secs(300),
@@ -489,7 +489,7 @@ mod tests {
             RunnerMode::Draining,
         );
 
-        assert!(state.available_profiles.is_empty());
+        assert!(state.admittable_profiles.is_empty());
     }
 
     #[tokio::test(flavor = "current_thread")]

@@ -24,6 +24,7 @@ import {
 import {
   chatThreadByIdContract,
   chatThreadMessagesContract,
+  chatThreadsContract,
   type GenerationTemplateRequest,
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
@@ -336,16 +337,38 @@ function mockThread(options?: {
 }): void {
   context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
     return respond(200, {
-      id: THREAD_ID,
-      title: "My thread",
-      agentId: AGENT_ID,
-      activeRunIds: options?.activeRunIds ?? [],
-      createdAt: "2026-03-10T00:00:00Z",
-      updatedAt: "2026-03-10T00:00:00Z",
-      draftContent: null,
-      draftAttachments: null,
-      modelProviderId: null,
-      selectedModel: options?.selectedModel ?? null,
+      lastReadAt: null,
+      computerUseHostId: null,
+      codexServiceTier: null,
+    });
+  });
+  context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
+    return respond(200, {
+      chatThreads: [
+        {
+          id: THREAD_ID,
+          agentId: AGENT_ID,
+          title: "My thread",
+          sortAt: "2026-03-10T00:00:00Z",
+          createdAt: "2026-03-10T00:00:00Z",
+          updatedAt: "2026-03-10T00:00:00Z",
+          pinnedAt: null,
+          renamedAt: null,
+          selectedModel: options?.selectedModel ?? null,
+        },
+      ],
+      latestEventId: null,
+    });
+  });
+  context.mocks.api(chatThreadsContract.events, ({ respond }) => {
+    return respond(200, { events: [], hasMore: false });
+  });
+  context.mocks.api(chatThreadsContract.activeIds, ({ respond }) => {
+    return respond(200, {
+      threadIds:
+        options?.activeRunIds && options.activeRunIds.length > 0
+          ? [THREAD_ID]
+          : [],
     });
   });
   context.mocks.api(chatThreadMessagesContract.list, ({ respond }) => {
@@ -1138,6 +1161,14 @@ describe("chat composer models", () => {
           runOptions?: { codexServiceTier?: "fast" };
         }
       | undefined;
+    let createdBody:
+      | {
+          modelSelection: {
+            modelProviderId: string;
+            selectedModel: string;
+          };
+        }
+      | undefined;
 
     context.mocks.data.orgModelPolicies([
       buildModelPolicy({
@@ -1152,6 +1183,9 @@ describe("chat composer models", () => {
     context.mocks.data.personalModelProviders([codexProvider]);
     mockAgent();
     mockChatLifecycle(context, {
+      onThreadCreate: (body) => {
+        createdBody = body;
+      },
       onRunCreate: (body) => {
         sentBody = body;
       },
@@ -1184,10 +1218,11 @@ describe("chat composer models", () => {
     );
 
     await waitFor(() => {
-      expect(sentBody?.modelSelection).toStrictEqual({
+      expect(createdBody?.modelSelection).toStrictEqual({
         modelProviderId: "00000000-0000-4000-8000-000000000000",
         selectedModel: "gpt-5.5",
       });
+      expect(sentBody?.modelSelection).toBeUndefined();
       expect(sentBody?.runOptions).toStrictEqual({
         codexServiceTier: "fast",
       });
@@ -1253,10 +1288,7 @@ describe("chat composer models", () => {
     );
 
     await waitFor(() => {
-      expect(sentBody?.modelSelection).toStrictEqual({
-        modelProviderId: "00000000-0000-4000-8000-000000000000",
-        selectedModel: "gpt-5.5",
-      });
+      expect(sentBody?.modelSelection).toBeUndefined();
       expect(sentBody?.runOptions).toStrictEqual({
         codexServiceTier: "fast",
       });
@@ -1282,6 +1314,15 @@ describe("chat composer models", () => {
           runOptions?: { codexServiceTier?: "fast" };
         }
       | undefined;
+    let updatedModelSelection:
+      | {
+          modelSelection?: {
+            modelProviderId: string;
+            selectedModel: string;
+          } | null;
+          codexServiceTier?: "fast" | null;
+        }
+      | undefined;
 
     context.mocks.data.orgModelPolicies([
       buildModelPolicy({
@@ -1305,6 +1346,9 @@ describe("chat composer models", () => {
       threadId: THREAD_ID,
       selectedModel: "gpt-5.5",
       codexServiceTier: "fast",
+      onModelSelectionUpdate: (body) => {
+        updatedModelSelection = body;
+      },
       onRunCreate: (body) => {
         sentBody = body;
       },
@@ -1331,10 +1375,12 @@ describe("chat composer models", () => {
     );
 
     await waitFor(() => {
-      expect(sentBody?.modelSelection).toStrictEqual({
+      expect(updatedModelSelection?.modelSelection).toStrictEqual({
         modelProviderId: "00000000-0000-4000-8000-000000000000",
         selectedModel: "gpt-5.4",
       });
+      expect(updatedModelSelection?.codexServiceTier).toBeNull();
+      expect(sentBody?.modelSelection).toBeUndefined();
       expect(sentBody?.runOptions).toBeUndefined();
     });
   });
@@ -1504,6 +1550,28 @@ describe("chat composer models", () => {
     await expectComposerModel("Claude Sonnet 4.6");
   });
 
+  it("does not fall back to defaults when thread projection has no model", async () => {
+    mockOrgModelRoutes("kimi-k2.7-code");
+    context.mocks.data.userModelPreference({
+      selectedModel: "claude-opus-4-7",
+      updatedAt: "2026-03-10T00:00:00Z",
+    });
+    mockAgent();
+    mockThread({ selectedModel: null });
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    await expect(
+      screen.findByRole("combobox", { name: "Default" }),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.queryByRole("combobox", { name: "Kimi K2.7 Code" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("combobox", { name: "Claude Opus 4.7" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("edits thread override before user default model selection resolves", async () => {
     const user = userEvent.setup({ delay: null });
     const pendingPreference = context.mocks.deferred<void>();
@@ -1607,7 +1675,10 @@ describe("chat composer models", () => {
         modelProviderId: MOONSHOT_PROVIDER_ID,
       }),
     ]);
-    mockChatLifecycle(context, { threadId: THREAD_ID });
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      selectedModel: "claude-sonnet-4-6",
+    });
 
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 

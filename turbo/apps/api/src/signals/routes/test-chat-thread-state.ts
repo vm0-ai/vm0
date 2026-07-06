@@ -14,9 +14,10 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { threadGoals } from "@vm0/db/schema/thread-goal";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { eq, inArray } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 
 import { nowDate } from "../../lib/time";
 import { bodyResultOf } from "../context/request";
@@ -85,7 +86,6 @@ async function seedChatThreadFixture(
     readonly pinnedAt?: Date | null;
     readonly renamedAt?: Date | null;
     readonly lastReadAt?: Date | null;
-    readonly lastReadMessageId?: string | null;
     readonly draftContent?: string | null;
     readonly draftAttachments?: readonly PersistedAttachment[] | null;
     readonly createdAt?: Date;
@@ -125,9 +125,6 @@ async function seedChatThreadFixture(
     pinnedAt: args.pinnedAt ?? null,
     renamedAt: args.renamedAt ?? null,
     ...(args.lastReadAt !== undefined ? { lastReadAt: args.lastReadAt } : {}),
-    ...(args.lastReadMessageId !== undefined
-      ? { lastReadMessageId: args.lastReadMessageId }
-      : {}),
     ...(args.draftContent !== undefined
       ? { draftContent: args.draftContent }
       : {}),
@@ -193,6 +190,43 @@ function completedAtForRunStatus(status: string): Date | null {
     : nowDate();
 }
 
+function runLifecycleEventForStatus(
+  status: string,
+): "completed" | "failed" | "cancelled" | null {
+  if (status === "completed" || status === "failed" || status === "cancelled") {
+    return status;
+  }
+  return null;
+}
+
+async function insertRunFinishMarker(
+  db: Db,
+  args: {
+    readonly runId: string;
+    readonly threadId: string;
+    readonly status: string;
+  },
+): Promise<void> {
+  const runLifecycleEvent = runLifecycleEventForStatus(args.status);
+  if (runLifecycleEvent === null) {
+    return;
+  }
+
+  await db
+    .insert(chatMessages)
+    .values({
+      chatThreadId: args.threadId,
+      role: "assistant",
+      content: null,
+      runId: args.runId,
+      runLifecycleEvent,
+    })
+    .onConflictDoNothing({
+      target: chatMessages.runId,
+      where: sql`${chatMessages.runLifecycleEvent} IS NOT NULL`,
+    });
+}
+
 async function seedThreadRun(
   db: Db,
   args: {
@@ -240,6 +274,13 @@ async function seedThreadRun(
   });
   signal.throwIfAborted();
 
+  await insertRunFinishMarker(db, {
+    runId: run.id,
+    threadId: args.threadId,
+    status: args.status,
+  });
+  signal.throwIfAborted();
+
   return run.id;
 }
 
@@ -265,6 +306,33 @@ async function seedThreadRunForAction(
   };
 }
 
+async function seedThreadGoalForAction(
+  db: Db,
+  body: ChatThreadStateAction<"seed-thread-goal">,
+  signal: AbortSignal,
+) {
+  const [goal] = await db
+    .insert(threadGoals)
+    .values({
+      orgId: body.org_id,
+      ownerUserId: body.user_id,
+      agentId: body.agent_id,
+      chatThreadId: body.thread_id,
+      status: body.status,
+      objective: "bdd unread goal",
+      objectiveBrief: "bdd unread goal",
+    })
+    .returning({ id: threadGoals.id });
+  signal.throwIfAborted();
+  if (!goal) {
+    throw new Error("seedThreadGoalForAction: goal insert returned no row");
+  }
+  return {
+    status: 200 as const,
+    body: { ok: true as const, goal_id: goal.id },
+  };
+}
+
 async function updateThreadRunStatusForAction(
   db: Db,
   body: ChatThreadStateAction<"update-thread-run-status">,
@@ -278,6 +346,22 @@ async function updateThreadRunStatusForAction(
     })
     .where(eq(agentRuns.id, body.run_id));
   signal.throwIfAborted();
+
+  const [run] = await db
+    .select({ threadId: zeroRuns.chatThreadId })
+    .from(zeroRuns)
+    .where(eq(zeroRuns.id, body.run_id))
+    .limit(1);
+  signal.throwIfAborted();
+  if (run?.threadId) {
+    await insertRunFinishMarker(db, {
+      runId: body.run_id,
+      threadId: run.threadId,
+      status: body.status,
+    });
+    signal.throwIfAborted();
+  }
+
   return { status: 200 as const, body: { ok: true as const } };
 }
 
@@ -318,7 +402,6 @@ const mutateTestChatThreadState$ = command(
               body.last_read_at === undefined
                 ? undefined
                 : parseOptionalDate(body.last_read_at),
-            lastReadMessageId: body.last_read_message_id,
             draftContent: body.draft_content,
             draftAttachments: body.draft_attachments,
             createdAt: parseMaybeDate(body.created_at),
@@ -341,6 +424,9 @@ const mutateTestChatThreadState$ = command(
       }
       case "seed-thread-run": {
         return await seedThreadRunForAction(db, body, signal);
+      }
+      case "seed-thread-goal": {
+        return await seedThreadGoalForAction(db, body, signal);
       }
       case "update-thread-run-status": {
         return await updateThreadRunStatusForAction(db, body, signal);

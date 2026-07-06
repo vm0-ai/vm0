@@ -43,6 +43,8 @@ import {
   setMockWorkflowTriggers,
 } from "../../../mocks/handlers/automations-store.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { eventDrivenChatThread } from "../../../signals/chat-page/chat-thread-event-sourcing.ts";
+import { CHAT_THREAD_VIRTUAL_ROW_HEIGHT } from "../../../signals/zero-page/zero-sidebar-state.ts";
 import {
   click,
   detachedSetupPage as baseDetachedSetupPage,
@@ -313,13 +315,28 @@ function makeMessage(id: string, text: string): PagedChatMessage {
 }
 
 function mockKeyboardNavigationThreads({
+  leadingThreadCount = 0,
   currentTitle = "Current keyboard thread",
   currentDetailTitle = currentTitle,
 }: {
+  leadingThreadCount?: number;
   currentTitle?: string;
   currentDetailTitle?: string | null;
 } = {}): void {
+  const leadingFixtures = Array.from(
+    { length: leadingThreadCount },
+    (_, index) => {
+      const itemNumber = index + 1;
+      return {
+        id: `b0000000-0000-4000-a000-${String(720 + index).padStart(12, "0")}`,
+        title: `Leading keyboard thread ${itemNumber}`,
+        detailTitle: `Leading keyboard thread ${itemNumber}`,
+        message: `Leading thread launch note ${itemNumber}`,
+      };
+    },
+  );
   const threadFixtures = [
+    ...leadingFixtures,
     {
       id: KEYBOARD_PREV_THREAD_ID,
       title: "Previous keyboard thread",
@@ -376,14 +393,9 @@ function mockKeyboardNavigationThreads({
       });
     }
     return respond(200, {
-      id: thread.id,
-      title: thread.detailTitle,
-      agentId: AGENT_ID,
-      activeRunIds: [],
-      createdAt: "2026-06-01T00:00:00Z",
-      updatedAt: "2026-06-01T00:00:00Z",
-      draftContent: null,
-      draftAttachments: null,
+      lastReadAt: null,
+      computerUseHostId: null,
+      codexServiceTier: null,
     });
   });
   context.mocks.api(
@@ -607,16 +619,9 @@ function mockServerQueuedThreadStories(): void {
       });
     }
     return respond(200, {
-      id: thread.id,
-      title: thread.title,
-      agentId: AGENT_ID,
-      activeRunIds: thread.activeRunIds,
       lastReadAt: "2026-06-09T10:00:00Z",
-      lastMessageAt: "2026-06-09T10:00:00Z",
-      createdAt: "2026-06-09T10:00:00Z",
-      updatedAt: "2026-06-09T10:00:00Z",
-      draftContent: null,
-      draftAttachments: null,
+      computerUseHostId: null,
+      codexServiceTier: null,
     });
   });
   context.mocks.api(
@@ -632,7 +637,7 @@ function mockServerQueuedThreadStories(): void {
     },
   );
   context.mocks.api(chatThreadMarkReadContract.markRead, ({ respond }) => {
-    return respond(200, { lastReadMessageId: null, unreads: [] });
+    return respond(200, { lastReadAt: null, unreads: [] });
   });
 }
 
@@ -1266,6 +1271,75 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("projects the first-run model from the optimistic created event", async () => {
+    const user = userEvent.setup({ delay: null });
+    const prompt = "Start with my preferred model";
+    const sendGate = context.mocks.deferred<void>();
+    let clientThreadId: string | undefined;
+    context.mocks.data.userModelPreference({
+      selectedModel: "claude-sonnet-4-6",
+      updatedAt: "2026-03-10T00:00:00Z",
+    });
+    mockChatLifecycle(context, {
+      sendGate: sendGate.promise,
+      onThreadCreate: (body) => {
+        clientThreadId = body.clientThreadId;
+        expect(body.modelSelection.selectedModel).toBe("claude-sonnet-4-6");
+      },
+    });
+
+    try {
+      detachedSetupPage({ context, path: AGENT_CHAT_PATH });
+
+      const textarea = await waitFor(() => {
+        return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+      });
+      await sendMessageInUI(user, textarea, prompt);
+
+      await waitFor(() => {
+        expect(clientThreadId).toBeDefined();
+      });
+      if (!clientThreadId) {
+        throw new Error("Expected client thread id to be captured");
+      }
+
+      await expect(
+        context.store.get(eventDrivenChatThread(clientThreadId)),
+      ).resolves.toMatchObject({
+        selectedModel: "claude-sonnet-4-6",
+      });
+    } finally {
+      sendGate.resolve();
+    }
+  });
+
+  it("renders the optimistic new chat message without skeleton when the initial message list is blocked", async () => {
+    const user = userEvent.setup({ delay: null });
+    const prompt = "Show this while the initial list is blocked";
+    const initialMessageList = context.mocks.deferred<void>();
+    mockChatLifecycle(context);
+    context.mocks.api(chatThreadMessagesContract.list, async ({ respond }) => {
+      await initialMessageList.promise;
+      return respond(200, { messages: [], hasHistoryBefore: false });
+    });
+
+    try {
+      detachedSetupPage({ context, path: AGENT_CHAT_PATH });
+
+      const textarea = await waitFor(() => {
+        return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+      });
+      await sendMessageInUI(user, textarea, prompt);
+
+      await waitFor(() => {
+        expect(screen.getByText(prompt)).toBeInTheDocument();
+        expect(document.querySelector("[data-chat-skeleton]")).toBeNull();
+      });
+    } finally {
+      initialMessageList.resolve();
+    }
+  });
+
   it("renders completed markdown and returns the composer to send mode", async () => {
     const user = userEvent.setup({ delay: null });
     const lifecycle = mockChatLifecycle(context);
@@ -1287,6 +1361,7 @@ describe("chat lifecycle", () => {
       expect(screen.getByText("result")).toBeInTheDocument();
       expect(screen.getByLabelText("Send")).toBeInTheDocument();
       expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
+      expect(document.querySelector("[data-chat-skeleton]")).toBeNull();
     });
   });
 
@@ -3100,14 +3175,9 @@ describe("chat lifecycle", () => {
     mockSubagentThread(context, threadId);
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
-        id: threadId,
-        title: null,
-        agentId: AGENT_ID,
-        activeRunIds: [],
-        draftContent: null,
-        draftAttachments: null,
-        createdAt: "2026-05-01T00:00:00Z",
-        updatedAt: "2026-05-01T00:00:00Z",
+        lastReadAt: null,
+        computerUseHostId: null,
+        codexServiceTier: null,
       });
     });
     context.mocks.api(chatThreadMessagesContract.list, ({ query, respond }) => {
@@ -3125,7 +3195,7 @@ describe("chat lifecycle", () => {
     });
     context.mocks.api(chatThreadMarkReadContract.markRead, ({ respond }) => {
       return respond(200, {
-        lastReadMessageId: null,
+        lastReadAt: null,
         unreads: [],
       });
     });
@@ -3295,7 +3365,7 @@ describe("chat lifecycle", () => {
     context.mocks.api(chatThreadMarkReadContract.markRead, ({ respond }) => {
       markReadCalls += 1;
       return respond(200, {
-        lastReadMessageId: "render-window-message-23",
+        lastReadAt: "2026-06-09T10:23:00Z",
         unreads: [],
       });
     });
@@ -3522,7 +3592,7 @@ describe("chat lifecycle", () => {
 
   it("moves between chat threads with page shortcuts from the composer", async () => {
     mockResizeObserver();
-    mockKeyboardNavigationThreads();
+    mockKeyboardNavigationThreads({ leadingThreadCount: 20 });
 
     detachedSetupPage({
       context,
@@ -3533,28 +3603,50 @@ describe("chat lifecycle", () => {
       expect(
         screen.getByText("Current thread launch note"),
       ).toBeInTheDocument();
-      expect(screen.getByText("Previous keyboard thread")).toBeInTheDocument();
-      expect(screen.getByText("Next keyboard thread")).toBeInTheDocument();
+      expect(
+        screen.getByTestId("sidebar-chat-threads-virtual-list"),
+      ).toBeInTheDocument();
     });
+
+    const sidebarScrollArea = screen.getByTestId("sidebar-scroll-area");
+    Object.defineProperties(sidebarScrollArea, {
+      clientHeight: {
+        configurable: true,
+        value: CHAT_THREAD_VIRTUAL_ROW_HEIGHT * 2,
+      },
+      scrollHeight: {
+        configurable: true,
+        value: CHAT_THREAD_VIRTUAL_ROW_HEIGHT * 24,
+      },
+      scrollTop: {
+        configurable: true,
+        value: CHAT_THREAD_VIRTUAL_ROW_HEIGHT * 20,
+        writable: true,
+      },
+    });
+    fireEvent.scroll(sidebarScrollArea);
 
     let composer = chatComposerTextarea();
     composer.focus();
     fireEvent.keyDown(composer, {
-      key: "ArrowUp",
+      key: "ArrowDown",
       ctrlKey: true,
       shiftKey: true,
     });
 
     await waitFor(() => {
-      expect(
-        screen.getByText("Previous thread launch note"),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Next thread launch note")).toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("sidebar-scroll-area").scrollTop).toBe(
+        CHAT_THREAD_VIRTUAL_ROW_HEIGHT * 21,
+      );
     });
 
     composer = chatComposerTextarea();
     composer.focus();
     fireEvent.keyDown(composer, {
-      key: "ArrowDown",
+      key: "ArrowUp",
       ctrlKey: true,
       shiftKey: true,
     });
@@ -3729,6 +3821,7 @@ describe("chat lifecycle", () => {
             updatedAt: "2026-06-01T00:00:00.000Z",
             pinnedAt: null,
             renamedAt: null,
+            selectedModel: null,
           },
         ],
         latestEventId: null,
@@ -7399,17 +7492,11 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
         });
       },
     );
-    context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
-      const running = params.id === RUNNING_THREAD_ID;
+    context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
-        id: params.id,
-        title: null,
-        agentId: AGENT_ID,
-        activeRunIds: running ? ["run-active"] : [],
-        draftContent: null,
-        draftAttachments: null,
-        createdAt: "2026-03-10T00:00:00Z",
-        updatedAt: "2026-03-10T00:00:00Z",
+        lastReadAt: null,
+        computerUseHostId: null,
+        codexServiceTier: null,
       });
     });
     context.mocks.api(logsByIdContract.getById, ({ respond }) => {

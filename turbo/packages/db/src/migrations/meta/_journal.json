@@ -3788,6 +3788,48 @@
       "when": 1783139086628,
       "tag": "0540_puzzling_captain_cross",
       "breakpoints": true
+    },
+    {
+      "idx": 541,
+      "version": "7",
+      "when": 1783214485897,
+      "tag": "0541_chat_thread_selected_model_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 542,
+      "version": "7",
+      "when": 1783220848532,
+      "tag": "0542_reset_relationship_memory_data",
+      "breakpoints": true
+    },
+    {
+      "idx": 543,
+      "version": "7",
+      "when": 1783241421723,
+      "tag": "0543_chilly_imperial_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 544,
+      "version": "7",
+      "when": 1783245126730,
+      "tag": "0544_illegal_sway",
+      "breakpoints": true
+    },
+    {
+      "idx": 545,
+      "version": "7",
+      "when": 1783245126731,
+      "tag": "0545_backfill_chat_thread_selected_model",
+      "breakpoints": true
+    },
+    {
+      "idx": 546,
+      "version": "7",
+      "when": 1783269386042,
+      "tag": "0546_low_shadow_king",
+      "breakpoints": true
     }
   ]
 }
