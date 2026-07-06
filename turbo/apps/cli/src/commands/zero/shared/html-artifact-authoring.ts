@@ -14,7 +14,23 @@ interface HtmlArtifactAuthoringOptions {
   readonly siteSlug?: string;
   readonly details: readonly string[];
   readonly artifactRules: readonly string[];
+  readonly includeDesignSystems?: boolean;
 }
+
+type HtmlArtifactCandidateSelection =
+  | ResourceCandidateSlice["candidates"]
+  | Omit<ResourceCandidateSlice["candidates"], "designSystems">;
+
+type HtmlArtifactSelectionOutputSchema = {
+  readonly skills: "string[]";
+  readonly template: "string";
+  readonly designSystem?: "string | null";
+  readonly imageStyle: "string | null";
+  readonly audioStyle: "string | null";
+  readonly videoTemplate: "string | null";
+  readonly bundleTemplate: "string | null";
+  readonly rationale: "string";
+};
 
 interface HtmlArtifactAuthoringPacket {
   readonly type: "generation-source-selection";
@@ -36,17 +52,8 @@ interface HtmlArtifactAuthoringPacket {
     readonly outputDir: string;
   };
   readonly selection: {
-    readonly candidates: ResourceCandidateSlice["candidates"];
-    readonly outputSchema: {
-      readonly skills: "string[]";
-      readonly template: "string";
-      readonly designSystem: "string | null";
-      readonly imageStyle: "string | null";
-      readonly audioStyle: "string | null";
-      readonly videoTemplate: "string | null";
-      readonly bundleTemplate: "string | null";
-      readonly rationale: "string";
-    };
+    readonly candidates: HtmlArtifactCandidateSelection;
+    readonly outputSchema: HtmlArtifactSelectionOutputSchema;
   };
   readonly authoring: {
     readonly details: readonly string[];
@@ -109,18 +116,40 @@ export function createHtmlArtifactAuthoringPacket(
   const hostCommand = `zero host ${outputDir} --site ${site}${artifactKindFlag}${
     options.kind === "website" ? " --spa" : ""
   }`;
+  const includeDesignSystems = options.includeDesignSystems ?? true;
   const title = titleForKind(options.kind);
   const candidateSlice = selectResourceCandidates(options.kind);
-  const selectionSchema = {
-    skills: "string[]",
-    template: "string",
-    designSystem: "string | null",
-    imageStyle: "string | null",
-    audioStyle: "string | null",
-    videoTemplate: "string | null",
-    bundleTemplate: "string | null",
-    rationale: "string",
-  } as const;
+  const selectionSchema: HtmlArtifactSelectionOutputSchema =
+    includeDesignSystems
+      ? {
+          skills: "string[]",
+          template: "string",
+          designSystem: "string | null",
+          imageStyle: "string | null",
+          audioStyle: "string | null",
+          videoTemplate: "string | null",
+          bundleTemplate: "string | null",
+          rationale: "string",
+        }
+      : {
+          skills: "string[]",
+          template: "string",
+          imageStyle: "string | null",
+          audioStyle: "string | null",
+          videoTemplate: "string | null",
+          bundleTemplate: "string | null",
+          rationale: "string",
+        };
+  const candidates = includeDesignSystems
+    ? candidateSlice.candidates
+    : {
+        skills: candidateSlice.candidates.skills,
+        templates: candidateSlice.candidates.templates,
+        imageStyles: candidateSlice.candidates.imageStyles,
+        audioStyles: candidateSlice.candidates.audioStyles,
+        videoTemplates: candidateSlice.candidates.videoTemplates,
+        bundleTemplates: candidateSlice.candidates.bundleTemplates,
+      };
   const artifact = {
     outputMode: "primary-artifact-with-supporting-assets",
     primaryArtifact: {
@@ -163,7 +192,9 @@ export function createHtmlArtifactAuthoringPacket(
     "",
     "## Stage 1: Resource Selection",
     "- Choose generation resources from the bundled federated registry slice below.",
-    "- Select one template, one or more skills, zero or one design system, and optional media/style resources when relevant.",
+    includeDesignSystems
+      ? "- Select one template, one or more skills, zero or one design system, and optional media/style resources when relevant."
+      : "- Select one template, one or more skills, and optional media/style resources when relevant.",
     "- Choose only IDs present in this packet; do not invent registry IDs.",
     "- Prefer compatible resources, but the user prompt is the highest-priority signal.",
     "- Treat the selection JSON as internal working state, then continue to authoring.",
@@ -179,7 +210,7 @@ export function createHtmlArtifactAuthoringPacket(
     ...candidateSlice.sources.map(formatCandidateSource),
     "",
     "```json",
-    JSON.stringify(candidateSlice.candidates, null, 2),
+    JSON.stringify(candidates, null, 2),
     "```",
     "",
     "## Stage 2: Resolve Selected Resources",
@@ -212,8 +243,14 @@ export function createHtmlArtifactAuthoringPacket(
     }),
     "",
     "## Authoring Rules",
-    "- Let the selected template define structure, the selected design system define visual language, and the selected skills define process.",
-    "- Read the local codebase, brand assets, and existing design systems when the prompt depends on this repository.",
+    includeDesignSystems
+      ? "- Let the selected template define structure, the selected design system define visual language, and the selected skills define process."
+      : "- Let the selected template define structure and the selected skills define process.",
+    ...(includeDesignSystems
+      ? [
+          "- Read the local codebase, brand assets, and existing design systems when the prompt depends on this repository.",
+        ]
+      : []),
     "- Avoid generic AI design defaults: no stock SaaS gradients, no emoji-as-icons, no filler stats, no decorative chrome that does not help the artifact.",
     "- Build the actual artifact first, not a marketing explanation of the artifact.",
     "- Make controls and interactions real when they are visible.",
@@ -249,7 +286,7 @@ export function createHtmlArtifactAuthoringPacket(
     registryVersion: candidateSlice.registryVersion,
     artifact,
     selection: {
-      candidates: candidateSlice.candidates,
+      candidates,
       outputSchema: selectionSchema,
     },
     authoring: {

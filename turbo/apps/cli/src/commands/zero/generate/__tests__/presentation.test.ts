@@ -30,7 +30,7 @@ describe("zero generate presentation command", () => {
     vi.unstubAllEnvs();
   });
 
-  it("should print direct authoring instructions for presentation", async () => {
+  it("should print a presentation source-selection packet without design systems", async () => {
     await generateCommand.parseAsync([
       "node",
       "cli",
@@ -45,22 +45,20 @@ describe("zero generate presentation command", () => {
 
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
     expect(stdout).toContain("# Zero generate presentation");
-    expect(stdout).toContain("direct HTML presentation authoring packet");
-    expect(stdout).not.toContain(
-      "federated generation source-selection packet",
-    );
-    expect(stdout).not.toContain("## Stage 1: Resource Selection");
-    expect(stdout).not.toContain("## Candidate Registry Slice");
+    expect(stdout).toContain("federated generation source-selection packet");
+    expect(stdout).toContain("## Stage 1: Resource Selection");
+    expect(stdout).toContain("## Candidate Registry Slice");
     expect(stdout).toContain("API migration plan");
-    expect(stdout).not.toContain("skill:article-magazine");
     expect(stdout).not.toContain("design-system:");
+    expect(stdout).not.toContain("designSystem");
+    expect(stdout).not.toContain("designSystems");
     expect(stdout).not.toContain("Selected design system");
     expect(stdout).toContain("Selected template: agent decides");
     expect(stdout).not.toContain("template:html-ppt-graphify-dark-graph");
     expect(stdout).not.toContain("template:saas-landing");
-    expect(stdout).not.toContain("## Output Contract");
-    expect(stdout).not.toContain("```bash");
-    expect(stdout).not.toContain("zero host ./generated/mockups");
+    expect(stdout).toContain("## Output Contract");
+    expect(stdout).toContain("```bash");
+    expect(stdout).toContain("zero host ./generated/mockups");
     expect(stdout).toContain("Slide count: 10");
     expect(stdout).toContain("Use a fixed 1920x1080 slide canvas");
     expect(stdout).toContain("Produce exactly the requested slide count");
