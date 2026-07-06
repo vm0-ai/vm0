@@ -1491,6 +1491,7 @@ jobs:
           deployment-url: ${{ needs.build-app-production.outputs.deployment_url }}
 
       - name: Record Atom web client version
+        shell: bash
         env:
           ATOM_API_URL: ${{ vars.ATOM_API_URL || 'https://atom-api.vm6.ai' }}
           ATOM_DEPLOY_TOKEN: ${{ secrets.ATOM_DEPLOY_TOKEN }}

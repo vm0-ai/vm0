@@ -22,7 +22,6 @@ import {
   fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
-import { createMockAutomationView } from "../../../mocks/handlers/automations-store.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { pathname } from "../../../signals/location.ts";
 import {
@@ -973,31 +972,9 @@ describe("zero sidebar", () => {
         createThread(ARCHIVED_THREAD_ID, "Archived context"),
       ],
     );
-    context.mocks.data.automations([
-      createMockAutomationView({
-        id: "f0000001-0000-4000-a000-000000000401",
-        name: "launch-cadence",
-        chatThreadId: AUTOMATION_THREAD_ID,
-        description: "Launch cadence",
-        prompt: "Post the launch cadence",
-      }),
-      createMockAutomationView({
-        id: "f0000001-0000-4000-a000-000000000402",
-        name: "release-risk-review",
-        chatThreadId: AUTOMATION_THREAD_ID,
-        description: "Release risk review",
-        prompt: "Review release risks",
-      }),
-    ]);
-
     setupSidebarPage({
       context,
       path: `/chats/${EXISTING_THREAD_ID}`,
-      // Legacy linked automations no longer affect chat deletion; schedule
-      // triggers own the automation lifecycle.
-      featureSwitches: {
-        [FeatureSwitchKey.WorkflowAutomation]: false,
-      },
     });
 
     await waitFor(() => {
@@ -1017,13 +994,6 @@ describe("zero sidebar", () => {
     expect(
       within(dialog).queryByText(/linked automations/u),
     ).not.toBeInTheDocument();
-    expect(
-      within(dialog).queryByText("Launch cadence"),
-    ).not.toBeInTheDocument();
-    expect(
-      within(dialog).queryByText("Release risk review"),
-    ).not.toBeInTheDocument();
-
     click(buttonByText("Cancel", dialog));
 
     await waitFor(() => {
@@ -1117,7 +1087,7 @@ describe("zero sidebar", () => {
     });
   });
 
-  it("keeps pinned agents and the chat title outside the switched thread list scroll area", async () => {
+  it("keeps pinned agents and the chat title outside the thread list scroll area", async () => {
     prepareAgentTeam();
     context.mocks.data.userPreferences({
       pinnedAgentIds: [RESEARCH_AGENT_ID],
@@ -1142,9 +1112,6 @@ describe("zero sidebar", () => {
     setupSidebarPage({
       context,
       path: `/chats/${EXISTING_THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.SidebarThreadListScroll]: true,
-      },
     });
 
     await waitFor(() => {
@@ -1553,9 +1520,6 @@ describe("zero sidebar", () => {
     setupSidebarPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      // Pin the legacy composer (workflowAutomation overridden off) so the
-      // plain-textarea placeholder targeted below stays rendered.
-      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: false },
     });
 
     const composer = await screen.findByPlaceholderText(PLACEHOLDER);
@@ -1580,7 +1544,6 @@ describe("zero sidebar", () => {
     setupSidebarPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: false },
     });
 
     const composer = await screen.findByPlaceholderText(PLACEHOLDER);
@@ -2083,7 +2046,6 @@ describe("zero sidebar", () => {
       path: `/agents/${AGENT_ID}/chat`,
       featureSwitches: {
         [FeatureSwitchKey.SidebarManageIconCollapse]: false,
-        [FeatureSwitchKey.WorkflowAutomation]: true,
       },
     });
 
@@ -2112,7 +2074,6 @@ describe("zero sidebar", () => {
       path: `/agents/${AGENT_ID}/chat`,
       featureSwitches: {
         [FeatureSwitchKey.SidebarManageIconCollapse]: true,
-        [FeatureSwitchKey.WorkflowAutomation]: true,
       },
     });
 
@@ -2149,13 +2110,12 @@ describe("zero sidebar", () => {
     });
   });
 
-  it("shows workflows in the sidebar manage navigation when enabled", async () => {
+  it("shows workflows in the sidebar manage navigation", async () => {
     prepareDefaultAgent();
 
     setupSidebarPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: true },
     });
 
     const nav = await waitFor(() => {
@@ -2170,24 +2130,5 @@ describe("zero sidebar", () => {
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(within(nav).queryByText("Automations")).not.toBeInTheDocument();
-  });
-
-  it("hides workflows in the sidebar manage navigation when disabled", async () => {
-    prepareDefaultAgent();
-
-    setupSidebarPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-      // Globally enabled since #19959; disabling now requires a user override.
-      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: false },
-    });
-
-    const nav = await waitFor(() => {
-      return sidebar();
-    });
-
-    expect(within(nav).getByText("Agents")).toBeInTheDocument();
-    expect(within(nav).queryByText("Automations")).not.toBeInTheDocument();
-    expect(within(nav).queryByText("Workflows")).not.toBeInTheDocument();
   });
 });

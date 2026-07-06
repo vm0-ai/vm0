@@ -120,7 +120,6 @@ async function enableWebhookWorkflowTriggers(
   fixture: WorkflowsFixture,
 ): Promise<void> {
   await updateFeatureSwitchesForUser(context, fixture, {
-    [FeatureSwitchKey.WorkflowAutomation]: true,
     [FeatureSwitchKey.WorkflowWebhookTriggers]: true,
   });
 }
@@ -231,7 +230,6 @@ describe("POST /api/webhooks/workflow-triggers/:token", () => {
     for (const actionType of [
       "api_dispatch_pre_create_zero_workflow_trigger_entrypoint_gap",
       "api_dispatch_pre_create_zero_workflow_event_load_source_state",
-      "api_dispatch_pre_create_zero_workflow_event_check_feature_gate",
       "api_dispatch_pre_create_zero_workflow_event_match_triggers",
       "api_dispatch_pre_create_zero_workflow_event_record_processed_event",
       "api_dispatch_pre_create_zero_workflow_event_build_run_input",
@@ -343,7 +341,6 @@ describe("POST /api/webhooks/workflow-triggers/:token", () => {
     }
 
     await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.WorkflowAutomation]: true,
       [FeatureSwitchKey.WorkflowWebhookTriggers]: false,
     });
 

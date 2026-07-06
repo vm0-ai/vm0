@@ -178,7 +178,7 @@ describe("zero ideation page", () => {
     const composer = (await screen.findByPlaceholderText(
       PLACEHOLDER,
     )) as HTMLTextAreaElement;
-    expect(composer).toHaveValue(
+    expect(composer).toHaveTextContent(
       "Set up a daily RevenueCat digest that tracks new subscriptions, renewals, and cancellations in Google Sheets and alerts on Slack for churn spikes",
     );
   });

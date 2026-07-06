@@ -189,14 +189,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.WorkflowAutomation]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Enable workflow automation surfaces, slash workflow commands, non-webhook event triggers, automation-to-workflow routing, persistent goals, and workflow-driven ZERO_TOKEN capabilities.",
-    // Globally enabled since the automation -> workflow cutover (#19959):
-    // migration 0535 moved every legacy automation onto workflow triggers.
-    enabled: true,
-  },
   [FeatureSwitchKey.WorkflowWebhookTriggers]: {
     maintainer: "lancy@vm0.ai",
     description:
@@ -355,12 +347,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show icon-only manage navigation buttons when the expanded sidebar manage section is collapsed.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.SidebarThreadListScroll]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Scroll only the chat thread list in the Zero sidebar so pinned agents stay visible.",
-    enabled: false,
   },
   [FeatureSwitchKey.SidebarSubscriptionUsage]: {
     maintainer: "ethan@vm0.ai",

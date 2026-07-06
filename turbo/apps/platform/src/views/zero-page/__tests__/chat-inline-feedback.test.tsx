@@ -145,7 +145,6 @@ describe("chat inline feedback", () => {
     detachedSetupPage({
       context,
       path: `/chats/${FEEDBACK_THREAD_ID}`,
-      featureSwitches: {},
     });
 
     const assistantReplyElement = await screen.findByText(assistantReply);
@@ -266,7 +265,6 @@ describe("chat inline feedback", () => {
     detachedSetupPage({
       context,
       path: `/chats/${FEEDBACK_THREAD_ID}`,
-      featureSwitches: {},
     });
 
     const assistantReplyElement = await screen.findByText(assistantReply);
@@ -443,7 +441,6 @@ describe("chat inline feedback", () => {
     detachedSetupPage({
       context,
       path: `/chats/${FEEDBACK_THREAD_ID}`,
-      featureSwitches: {},
     });
 
     const assistantReplyElement = await screen.findByText(assistantReply);
@@ -524,7 +521,6 @@ describe("chat inline feedback", () => {
     detachedSetupPage({
       context,
       path: `/chats/${FEEDBACK_THREAD_ID}`,
-      featureSwitches: {},
     });
 
     const assistantReplyElement = await screen.findByText(assistantReply);
