@@ -396,6 +396,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.WebsiteTemplates]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Enable the built-in R2-backed website template picker and generation-template flow.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
 };
 
 interface ResolvedHashes {
