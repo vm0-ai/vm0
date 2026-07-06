@@ -30,12 +30,12 @@ function resolveModelConfigurationSubmitBlocker(
   const label = getMemberOauthProviderLabel(status.providerType);
   return {
     providerType: status.providerType,
-    codexDeviceAuthMode: status.status === "needs_reconnect"
-      ? "reconnect"
-      : "connect",
-    message: status.status === "needs_reconnect"
-      ? `${label} needs to be reconnected before you can use ${status.modelLabel}.`
-      : `This workspace routes ${status.modelLabel} through your personal ${label}. Configure it before sending.`,
+    codexDeviceAuthMode:
+      status.status === "needs_reconnect" ? "reconnect" : "connect",
+    message:
+      status.status === "needs_reconnect"
+        ? `${label} needs to be reconnected before you can use ${status.modelLabel}.`
+        : `This workspace routes ${status.modelLabel} through your personal ${label}. Configure it before sending.`,
     actionLabel: "Model Configure",
   };
 }

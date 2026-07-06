@@ -435,9 +435,6 @@ export const {
   close$: closeClaudeCodeDeviceAuthDialogPersonal$,
   run$: runClaudeCodeDeviceAuthPersonal$,
   autoStartRef$: claudeCodeDeviceAuthAutoStartRefPersonal$,
-} = createClaudeCodeDeviceAuthSignals(
-  "personal",
-  reloadPersonalModelProvider$,
-);
+} = createClaudeCodeDeviceAuthSignals("personal", reloadPersonalModelProvider$);
 
 export type { ClaudeCodeDeviceAuthFlowState };

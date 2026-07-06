@@ -1572,23 +1572,18 @@ describe("chat composer models", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("edits thread override before user default model selection resolves", async () => {
+  it("edits thread override without loading user default model selection", async () => {
     const user = userEvent.setup({ delay: null });
-    const pendingPreference = context.mocks.deferred<void>();
     let preferenceRequestStarted = false;
 
     mockOrgModelRoutes("kimi-k2.7-code");
-    context.mocks.api(
-      zeroUserModelPreferenceContract.get,
-      async ({ respond, withSignal }) => {
-        preferenceRequestStarted = true;
-        await withSignal(pendingPreference.promise);
-        return respond(200, {
-          selectedModel: "claude-opus-4-7",
-          updatedAt: "2026-03-10T00:00:00Z",
-        });
-      },
-    );
+    context.mocks.api(zeroUserModelPreferenceContract.get, ({ respond }) => {
+      preferenceRequestStarted = true;
+      return respond(200, {
+        selectedModel: "claude-opus-4-7",
+        updatedAt: "2026-03-10T00:00:00Z",
+      });
+    });
     mockAgent();
     mockThread({
       selectedModel: "glm-5.1",
@@ -1604,19 +1599,13 @@ describe("chat composer models", () => {
 
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
-    try {
-      await waitFor(() => {
-        expect(preferenceRequestStarted).toBeTruthy();
-      });
-      await screen.findByText("Use GLM");
-      await user.click(await findComposerModel("GLM-5.1"));
-      await user.click(
-        await screen.findByRole("option", { name: /Claude Sonnet 4\.6/ }),
-      );
-      await expectComposerModel("Claude Sonnet 4.6");
-    } finally {
-      pendingPreference.resolve();
-    }
+    await screen.findByText("Use GLM");
+    await user.click(await findComposerModel("GLM-5.1"));
+    await user.click(
+      await screen.findByRole("option", { name: /Claude Sonnet 4\.6/ }),
+    );
+    await expectComposerModel("Claude Sonnet 4.6");
+    expect(preferenceRequestStarted).toBeFalsy();
   });
 
   it("opens compare plans from limited-free-1 Pro composer model items", async () => {
