@@ -1446,6 +1446,14 @@ export const setCustomConnectorValues$ = command(
       userFeatureSwitchContext(args.orgId, args.userId),
     );
     signal.throwIfAborted();
+    const encryptedValues = await encryptValueInputs({
+      values,
+      signal,
+      encryptValue: (value) => {
+        return encryptStoredSecretValue(value, featureSwitchContext);
+      },
+    });
+
     const writeDb = set(writeDb$);
     const replaced = await writeDb.transaction(
       async (tx): Promise<ValueWriteResult | BadRequestResponse | null> => {
@@ -1463,13 +1471,6 @@ export const setCustomConnectorValues$ = command(
         if (isBadRequest(lockedValues)) {
           return lockedValues;
         }
-        const encryptedValues = await encryptValueInputs({
-          values: lockedValues,
-          signal,
-          encryptValue: (value) => {
-            return encryptStoredSecretValue(value, featureSwitchContext);
-          },
-        });
         await deleteStoredConnectorValues(tx, args);
         await upsertEncryptedConnectorValues(tx, {
           orgId: args.orgId,
@@ -1536,6 +1537,13 @@ export const setCustomConnectorLegacySecretValue$ = command(
       userFeatureSwitchContext(args.orgId, args.userId),
     );
     signal.throwIfAborted();
+    const encryptedValues = await encryptValueInputs({
+      values,
+      signal,
+      encryptValue: (value) => {
+        return encryptStoredSecretValue(value, featureSwitchContext);
+      },
+    });
 
     const writeDb = set(writeDb$);
     const updated = await writeDb.transaction(
@@ -1558,15 +1566,18 @@ export const setCustomConnectorLegacySecretValue$ = command(
         }
         const lockedValue = lockedValues[0];
         if (lockedValue) {
+          const encryptedValue = encryptedValues[0]?.encryptedValue;
+          if (!encryptedValue) {
+            throw new Error(
+              "Expected legacy custom connector value encryption",
+            );
+          }
           await upsertEncryptedConnectorValue(tx, {
             ...args,
             value: {
               kind: "secret",
               key: LEGACY_SECRET_KEY,
-              encryptedValue: await encryptStoredSecretValue(
-                lockedValue.value,
-                featureSwitchContext,
-              ),
+              encryptedValue,
             },
           });
         } else {
