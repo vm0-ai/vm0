@@ -176,6 +176,7 @@ export type ConnectorAccessKind = "static" | "refresh-token" | "none";
 
 export const CONNECTOR_PLATFORM_SECRET_NAMES = [
   "GOOGLE_ADS_DEVELOPER_TOKEN",
+  "STEAM_WEB_API_KEY",
 ] as const;
 export type ConnectorPlatformSecretName =
   (typeof CONNECTOR_PLATFORM_SECRET_NAMES)[number];

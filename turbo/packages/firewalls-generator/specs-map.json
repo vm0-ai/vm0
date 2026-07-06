@@ -439,6 +439,12 @@
     "methods/workflows.triggers.permissions.remove.json": "a071f3347396b5e8023ef9ca53f660ce63374326817b67bfb1ba98661befb259",
     "methods/workflows.triggers.permissions.set.json": "42f35cbba48f61e54f60ab6abeb75123ad67c9b2b657494373652860fb8d1800"
   },
+  "steam": {
+    "https://api.steampowered.com/ISteamWebAPIUtil/GetSupportedAPIList/v1/?format=json": "bd9526d07598517c8c4dc1f76b78137106610be49783637438f660a819acf555",
+    "https://partner.steamgames.com/doc/webapi_overview": "564deba96160e27cd06c224cf2767b6e6aae8e4ce96b25528fe095a0ce2fcee0",
+    "https://partner.steamgames.com/doc/webapi/IPlayerService": "96e9eb4ae0e6fcb65b3068c06ae665b591919b1e62281bccc88762b0e4f4884d",
+    "https://partner.steamgames.com/doc/webapi/ISteamUser": "af7bdd1828836d0444c90ae815fe3dd03cd978d3c68dcf3d70042cbe3cf1ebd5"
+  },
   "strava": {
     "https://developers.strava.com/swagger/swagger.json": "2d3a43ebfa6afdc89324897cb4b52f14aa9cc5e866fa21a1b117c9fb4627ac99"
   },

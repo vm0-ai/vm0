@@ -6,7 +6,7 @@ export const steam = {
     label: "Steam",
     category: "data-automation-infrastructure",
     helpText:
-      "Connect your Steam account to access player profile, game library, and playtime data.",
+      "Connect your Steam account to access player profile, game library, playtime, wishlist, and followed games data.",
     authMethods: {
       openid: {
         featureFlag: FeatureSwitchKey.SteamConnector,
@@ -25,8 +25,10 @@ export const steam = {
         },
         access: {
           kind: "static",
+          platformSecrets: ["STEAM_WEB_API_KEY"],
           envBindings: {
             STEAM_ID: "$vars.STEAM_ID",
+            STEAM_WEB_API_KEY: "$secrets.STEAM_WEB_API_KEY",
           },
         },
         revoke: { kind: "none" },

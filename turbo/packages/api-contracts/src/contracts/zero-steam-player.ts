@@ -48,6 +48,22 @@ export const steamPlayerBadgesSchema = z.object({
   badges: z.array(steamPlayerBadgeSchema),
 });
 
+export const steamPlayerWishlistItemSchema = z.object({
+  appId: z.number().int(),
+  priority: z.number().int().nullable(),
+  addedAt: z.string().nullable(),
+});
+
+export const steamPlayerWishlistSchema = z.object({
+  itemCount: z.number().int().nonnegative(),
+  items: z.array(steamPlayerWishlistItemSchema),
+});
+
+export const steamPlayerFollowedGamesSchema = z.object({
+  followedGameCount: z.number().int().nonnegative(),
+  appIds: z.array(z.number().int()),
+});
+
 export const zeroSteamPlayerResponseSchema = z.object({
   steamId: z.string(),
   profile: steamPlayerProfileSchema.nullable(),
@@ -55,6 +71,8 @@ export const zeroSteamPlayerResponseSchema = z.object({
   recentlyPlayedGames: steamPlayerRecentlyPlayedGamesSchema.nullable(),
   level: z.number().int().nullable(),
   badges: steamPlayerBadgesSchema.nullable(),
+  wishlist: steamPlayerWishlistSchema.nullable(),
+  followedGames: steamPlayerFollowedGamesSchema.nullable(),
 });
 
 export type ZeroSteamPlayerResponse = z.infer<
@@ -75,6 +93,7 @@ export const zeroSteamPlayerContract = c.router({
       502: apiErrorSchema,
       503: apiErrorSchema,
     },
-    summary: "Read connected Steam player profile, library, and playtime data",
+    summary:
+      "Read connected Steam player profile, library, playtime, wishlist, and followed games data",
   },
 });

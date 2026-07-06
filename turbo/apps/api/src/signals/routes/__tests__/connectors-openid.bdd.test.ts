@@ -270,6 +270,50 @@ function mockSteamPlayerApis(args: { readonly privateOwnedGames?: boolean }) {
         });
       },
     ),
+    http.get(
+      "https://api.steampowered.com/IWishlistService/GetWishlist/v1/",
+      ({ request }) => {
+        expectSteamApiKey(request);
+        return HttpResponse.json({
+          response: {
+            items: [
+              {
+                appid: 30,
+                priority: 0,
+                date_added: 1_725_300_000,
+              },
+              {
+                appid: 40,
+                priority: 1,
+              },
+            ],
+          },
+        });
+      },
+    ),
+    http.get(
+      "https://api.steampowered.com/IWishlistService/GetWishlistItemCount/v1/",
+      ({ request }) => {
+        expectSteamApiKey(request);
+        return HttpResponse.json({ response: { count: 2 } });
+      },
+    ),
+    http.get(
+      "https://api.steampowered.com/IStoreService/GetGamesFollowed/v1/",
+      ({ request }) => {
+        expectSteamApiKey(request);
+        return HttpResponse.json({ response: { appids: [50, 60] } });
+      },
+    ),
+    http.get(
+      "https://api.steampowered.com/IStoreService/GetGamesFollowedCount/v1/",
+      ({ request }) => {
+        expectSteamApiKey(request);
+        return HttpResponse.json({
+          response: { followed_game_count: 2 },
+        });
+      },
+    ),
   );
 }
 
@@ -435,6 +479,25 @@ describe("Steam OpenID connector", () => {
         playerXp: 1234,
         playerLevel: 42,
         badges: [expect.objectContaining({ badgeId: 1, level: 2 })],
+      },
+      wishlist: {
+        itemCount: 2,
+        items: [
+          {
+            appId: 30,
+            priority: 0,
+            addedAt: "2024-09-02T18:00:00.000Z",
+          },
+          {
+            appId: 40,
+            priority: 1,
+            addedAt: null,
+          },
+        ],
+      },
+      followedGames: {
+        followedGameCount: 2,
+        appIds: [50, 60],
       },
     });
   });

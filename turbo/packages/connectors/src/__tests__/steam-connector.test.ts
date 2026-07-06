@@ -33,7 +33,7 @@ describe("Steam connector config", () => {
     expect(getConnectorOwnedSecretNames("steam", "openid")).toStrictEqual([]);
   });
 
-  it("exposes only the non-secret SteamID to runtime metadata", () => {
+  it("exposes SteamID and the vm0-owned Web API key to runtime metadata", () => {
     expect(getConnectorAuthMethodRuntimeMetadata("steam", "openid")).toEqual({
       storage: {
         secrets: [],
@@ -48,6 +48,15 @@ describe("Steam connector config", () => {
             name: "STEAM_ID",
           },
           valueRef: "$vars.STEAM_ID",
+        },
+        {
+          envName: "STEAM_WEB_API_KEY",
+          optional: false,
+          source: {
+            kind: "platform-secret",
+            name: "STEAM_WEB_API_KEY",
+          },
+          valueRef: "$secrets.STEAM_WEB_API_KEY",
         },
       ],
     });

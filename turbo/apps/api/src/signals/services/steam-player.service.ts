@@ -86,6 +86,36 @@ const steamBadgesResponseSchema = z.object({
   }),
 });
 
+const steamWishlistItemSchema = z.object({
+  appid: z.number().int(),
+  priority: z.number().int().optional(),
+  date_added: z.number().int().nonnegative().optional(),
+});
+
+const steamWishlistResponseSchema = z.object({
+  response: z.object({
+    items: z.array(steamWishlistItemSchema).optional(),
+  }),
+});
+
+const steamWishlistItemCountResponseSchema = z.object({
+  response: z.object({
+    count: z.number().int().nonnegative().optional(),
+  }),
+});
+
+const steamFollowedGamesResponseSchema = z.object({
+  response: z.object({
+    appids: z.array(z.number().int()).optional(),
+  }),
+});
+
+const steamFollowedGamesCountResponseSchema = z.object({
+  response: z.object({
+    followed_game_count: z.number().int().nonnegative().optional(),
+  }),
+});
+
 function steamApiKey(): string {
   const key = env("STEAM_WEB_API_KEY")?.trim();
   if (!key) {
@@ -110,6 +140,16 @@ function steamGameToResponse(
     playtimeForeverMinutes: game.playtime_forever,
     playtimeTwoWeeksMinutes: game.playtime_2weeks ?? null,
     lastPlayedAt: steamTimestampToIso(game.rtime_last_played),
+  };
+}
+
+function steamWishlistItemToResponse(
+  item: z.infer<typeof steamWishlistItemSchema>,
+): NonNullable<ZeroSteamPlayerResponse["wishlist"]>["items"][number] {
+  return {
+    appId: item.appid,
+    priority: item.priority ?? null,
+    addedAt: steamTimestampToIso(item.date_added),
   };
 }
 
@@ -270,6 +310,68 @@ async function fetchSteamBadges(
   };
 }
 
+async function fetchSteamWishlist(
+  steamId: string,
+  signal: AbortSignal,
+): Promise<ZeroSteamPlayerResponse["wishlist"]> {
+  const [wishlist, itemCount] = await Promise.all([
+    fetchSteamJson(
+      "/IWishlistService/GetWishlist/v1/",
+      { steamid: steamId },
+      steamWishlistResponseSchema,
+      signal,
+    ),
+    fetchSteamJson(
+      "/IWishlistService/GetWishlistItemCount/v1/",
+      { steamid: steamId },
+      steamWishlistItemCountResponseSchema,
+      signal,
+    ),
+  ]);
+
+  const items = wishlist.response.items;
+  const count = itemCount.response.count;
+  if (items === undefined && count === undefined) {
+    return null;
+  }
+
+  return {
+    itemCount: count ?? items?.length ?? 0,
+    items: items?.map(steamWishlistItemToResponse) ?? [],
+  };
+}
+
+async function fetchSteamFollowedGames(
+  steamId: string,
+  signal: AbortSignal,
+): Promise<ZeroSteamPlayerResponse["followedGames"]> {
+  const [followedGames, followedGameCount] = await Promise.all([
+    fetchSteamJson(
+      "/IStoreService/GetGamesFollowed/v1/",
+      { steamid: steamId },
+      steamFollowedGamesResponseSchema,
+      signal,
+    ),
+    fetchSteamJson(
+      "/IStoreService/GetGamesFollowedCount/v1/",
+      { steamid: steamId },
+      steamFollowedGamesCountResponseSchema,
+      signal,
+    ),
+  ]);
+
+  const appIds = followedGames.response.appids;
+  const count = followedGameCount.response.followed_game_count;
+  if (appIds === undefined && count === undefined) {
+    return null;
+  }
+
+  return {
+    followedGameCount: count ?? appIds?.length ?? 0,
+    appIds: appIds ?? [],
+  };
+}
+
 export const steamPlayerData$ = command(
   async (
     { get },
@@ -306,14 +408,23 @@ export const steamPlayerData$ = command(
       return null;
     }
 
-    const [profile, ownedGames, recentlyPlayedGames, level, badges] =
-      await Promise.all([
-        fetchSteamProfile(steamId, signal),
-        fetchSteamOwnedGames(steamId, signal),
-        fetchSteamRecentlyPlayedGames(steamId, signal),
-        fetchSteamLevel(steamId, signal),
-        fetchSteamBadges(steamId, signal),
-      ]);
+    const [
+      profile,
+      ownedGames,
+      recentlyPlayedGames,
+      level,
+      badges,
+      wishlist,
+      followedGames,
+    ] = await Promise.all([
+      fetchSteamProfile(steamId, signal),
+      fetchSteamOwnedGames(steamId, signal),
+      fetchSteamRecentlyPlayedGames(steamId, signal),
+      fetchSteamLevel(steamId, signal),
+      fetchSteamBadges(steamId, signal),
+      fetchSteamWishlist(steamId, signal),
+      fetchSteamFollowedGames(steamId, signal),
+    ]);
     signal.throwIfAborted();
 
     return {
@@ -323,6 +434,8 @@ export const steamPlayerData$ = command(
       recentlyPlayedGames,
       level,
       badges,
+      wishlist,
+      followedGames,
     };
   },
 );

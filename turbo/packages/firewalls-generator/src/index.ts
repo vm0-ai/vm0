@@ -218,6 +218,7 @@ import { generate as generateSociavault } from "./sociavault";
 import { generate as generateSponge } from "./sponge";
 import { generate as generateSproutGigs } from "./sproutgigs";
 import { generate as generateSpotify } from "./spotify";
+import { generate as generateSteam } from "./steam";
 import { generate as generateStrava } from "./strava";
 import { generate as generateStreak } from "./streak";
 import { generate as generateStrapi } from "./strapi";
@@ -492,6 +493,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   sponge: generateSponge,
   sproutgigs: generateSproutGigs,
   spotify: generateSpotify,
+  steam: generateSteam,
   strava: generateStrava,
   strapi: generateStrapi,
   streak: generateStreak,

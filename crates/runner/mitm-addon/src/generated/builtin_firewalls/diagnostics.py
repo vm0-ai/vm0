@@ -4106,6 +4106,21 @@ CONNECTOR_DIAGNOSTIC_FIREWALLS = json.loads(r"""[
   {
     "apis": [
       {
+        "authHeaderNames": [],
+        "authQueryParamNames": [
+          "key"
+        ],
+        "base": "https://api.steampowered.com",
+        "envNames": [
+          "STEAM_WEB_API_KEY"
+        ]
+      }
+    ],
+    "name": "steam"
+  },
+  {
+    "apis": [
+      {
         "authHeaderNames": [
           "Authorization"
         ],

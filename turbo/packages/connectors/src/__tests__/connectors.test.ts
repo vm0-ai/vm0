@@ -4073,6 +4073,44 @@ describe("connector OAuth lifecycle grant helpers", () => {
         steamId: "$vars.STEAM_ID",
       },
     });
+    expect(
+      getConnectorAuthMethodAccessMetadata("steam", "openid"),
+    ).toStrictEqual({
+      kind: "static",
+      envBindings: {
+        STEAM_ID: "$vars.STEAM_ID",
+        STEAM_WEB_API_KEY: "$secrets.STEAM_WEB_API_KEY",
+      },
+      platformSecrets: ["STEAM_WEB_API_KEY"],
+    });
+    expect(
+      getConnectorAuthMethodRuntimeMetadata("steam", "openid"),
+    ).toStrictEqual({
+      storage: {
+        secrets: [],
+        variables: ["STEAM_ID"],
+      },
+      runtimeBindings: [
+        {
+          envName: "STEAM_ID",
+          valueRef: "$vars.STEAM_ID",
+          optional: false,
+          source: {
+            kind: "connector-variable",
+            name: "STEAM_ID",
+          },
+        },
+        {
+          envName: "STEAM_WEB_API_KEY",
+          valueRef: "$secrets.STEAM_WEB_API_KEY",
+          optional: false,
+          source: {
+            kind: "platform-secret",
+            name: "STEAM_WEB_API_KEY",
+          },
+        },
+      ],
+    });
   });
 
   it("declares Cloudflare OAuth as a refreshable API-origin auth-code grant", () => {
