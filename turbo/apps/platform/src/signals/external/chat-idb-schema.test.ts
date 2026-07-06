@@ -100,6 +100,14 @@ function expectThreadEventStoresCreated(
   ).toHaveBeenCalledWith(CHAT_THREAD_EVENTS_ORDER_INDEX, ["createdAt", "id"]);
 }
 
+function expectThreadEventStoresDeleted(
+  deleteObjectStore: ReturnType<typeof fakeDb>["deleteObjectStore"],
+): void {
+  expect(deleteObjectStore).toHaveBeenCalledWith(CHAT_THREAD_SNAPSHOT_STORE);
+  expect(deleteObjectStore).toHaveBeenCalledWith(CHAT_THREAD_EVENTS_STORE);
+  expect(deleteObjectStore).toHaveBeenCalledWith(CHAT_THREAD_EVENT_SYNC_STORE);
+}
+
 describe("upgradeChatIdb", () => {
   it("clears legacy chat cache when upgrading from before v4", () => {
     const { db, createdStores, createObjectStore, deleteObjectStore } = fakeDb([
@@ -154,7 +162,7 @@ describe("upgradeChatIdb", () => {
     expectThreadEventStoresCreated(createdStores, createObjectStore);
   });
 
-  it("resets v9 messages so cached unread calculations include run-finish markers", () => {
+  it("resets v9 chat caches so cached unread calculations include run-finish markers", () => {
     const { db, createdStores, createObjectStore, deleteObjectStore } = fakeDb([
       CHAT_MESSAGES_STORE,
       CHAT_THREAD_SNAPSHOT_STORE,
@@ -164,9 +172,29 @@ describe("upgradeChatIdb", () => {
 
     upgradeChatIdb(db, 9);
 
-    expect(deleteObjectStore).toHaveBeenCalledTimes(1);
+    expect(deleteObjectStore).toHaveBeenCalledTimes(4);
     expect(deleteObjectStore).toHaveBeenCalledWith(CHAT_MESSAGES_STORE);
-    expect(createObjectStore).toHaveBeenCalledTimes(1);
+    expectThreadEventStoresDeleted(deleteObjectStore);
+    expect(createObjectStore).toHaveBeenCalledTimes(4);
     expectChatMessagesStoreCreated(createdStores, createObjectStore);
+    expectThreadEventStoresCreated(createdStores, createObjectStore);
+  });
+
+  it("resets v10 chat, thread, and event caches", () => {
+    const { db, createdStores, createObjectStore, deleteObjectStore } = fakeDb([
+      CHAT_MESSAGES_STORE,
+      CHAT_THREAD_SNAPSHOT_STORE,
+      CHAT_THREAD_EVENTS_STORE,
+      CHAT_THREAD_EVENT_SYNC_STORE,
+    ]);
+
+    upgradeChatIdb(db, 10);
+
+    expect(deleteObjectStore).toHaveBeenCalledTimes(4);
+    expect(deleteObjectStore).toHaveBeenCalledWith(CHAT_MESSAGES_STORE);
+    expectThreadEventStoresDeleted(deleteObjectStore);
+    expect(createObjectStore).toHaveBeenCalledTimes(4);
+    expectChatMessagesStoreCreated(createdStores, createObjectStore);
+    expectThreadEventStoresCreated(createdStores, createObjectStore);
   });
 });
