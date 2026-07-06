@@ -2114,6 +2114,97 @@ describe("CONN-03: custom connectors and connector-owned values", () => {
     await bdd.deleteAgent(admin, agent.agentId);
   });
 
+  it("clears stored host variables for all users when a proposal update changes prefix templates", async () => {
+    const bdd = createBddApi(context);
+    const admin = bdd.user({ orgRole: "org:admin" });
+    const member = bdd.user({
+      orgId: admin.orgId,
+      orgRole: "org:member",
+    });
+    const rand = randomUUID().replace(/-/g, "").slice(0, 8);
+    const fields = [
+      {
+        key: "api_key",
+        label: "API key",
+        kind: "secret" as const,
+        required: true,
+      },
+      {
+        key: "host",
+        label: "Host",
+        kind: "variable" as const,
+        required: true,
+      },
+    ];
+    const headerInjections = [
+      {
+        name: "Authorization",
+        valueTemplate: "Bearer {{secrets.api_key}}",
+      },
+    ];
+    const queryInjections = [
+      {
+        name: "host",
+        valueTemplate: "{{variables.host}}",
+      },
+    ];
+
+    const saved = await connectorsApi.saveCustomConnectorProposal(admin, {
+      proposal: {
+        operation: "create",
+        displayName: "BDD Proposal Prefix Retarget API",
+        prefixTemplates: [`https://${rand}.example.test/v1/`],
+        fields,
+        headerInjections,
+        queryInjections,
+      },
+      values: [
+        { key: "api_key", kind: "secret", value: "proposal-admin-secret" },
+        { key: "host", kind: "variable", value: ".example.test" },
+      ],
+    });
+    await connectorsApi.setCustomConnectorValues(member, saved.connector.id, [
+      { key: "api_key", kind: "secret", value: "proposal-member-secret" },
+      { key: "host", kind: "variable", value: ".example.test" },
+    ]);
+
+    const updated = await connectorsApi.saveCustomConnectorProposal(admin, {
+      proposal: {
+        operation: "update",
+        connectorId: saved.connector.id,
+        displayName: "BDD Proposal Prefix Retarget API",
+        prefixTemplates: ["https://{{variables.host}}/v1/"],
+        fields,
+        headerInjections,
+        queryInjections,
+      },
+      values: [
+        { key: "api_key", kind: "secret", value: "proposal-admin-secret-v2" },
+        { key: "host", kind: "variable", value: "admin.example.test" },
+      ],
+    });
+
+    expect(updated.connector).toMatchObject({
+      connected: true,
+      configuredFieldKeys: ["api_key", "host"],
+      missingRequiredFields: [],
+    });
+
+    const memberList = await connectorsApi.listCustomConnectors(member);
+    expect(
+      memberList.find((connector) => {
+        return connector.id === saved.connector.id;
+      }),
+    ).toMatchObject({
+      connected: false,
+      configuredFieldKeys: ["api_key"],
+      missingRequiredFields: ["host"],
+    });
+    expectNoVisibleSecret(memberList, "proposal-member-secret");
+
+    await connectorsApi.deleteCustomConnector(admin, saved.connector.id);
+  });
+
   it("saves a connector proposal without authorizing when required values are missing", async () => {
     const bdd = createBddApi(context);
     bdd.acceptAgentStorageWrites();

@@ -1168,6 +1168,75 @@ export const createCustomConnector$ = command(
   },
 );
 
+async function updateCustomConnectorDefinitionRow(
+  tx: DbTransaction,
+  args: {
+    readonly orgId: string;
+    readonly connectorId: string;
+    readonly definition: ValidatedDefinition;
+  },
+): Promise<CustomConnectorRow | null> {
+  const legacy = legacyColumns(args.definition);
+  const [existing] = await tx
+    .select()
+    .from(orgCustomConnectors)
+    .where(
+      and(
+        eq(orgCustomConnectors.id, args.connectorId),
+        eq(orgCustomConnectors.orgId, args.orgId),
+      ),
+    )
+    .for("update")
+    .limit(1);
+  if (!existing) {
+    return null;
+  }
+  const existingConnector = normaliseCustomConnectorRow(existing);
+  const [updated] = await tx
+    .update(orgCustomConnectors)
+    .set({
+      displayName: args.definition.displayName,
+      prefixes: [...legacy.prefixes],
+      headerName: legacy.headerName,
+      headerTemplate: legacy.headerTemplate,
+      prefixTemplates: [...args.definition.prefixTemplates],
+      fields: [...args.definition.fields],
+      headerInjections: [...args.definition.headerInjections],
+      queryInjections: [...args.definition.queryInjections],
+      updatedAt: nowDate(),
+    })
+    .where(
+      and(
+        eq(orgCustomConnectors.id, args.connectorId),
+        eq(orgCustomConnectors.orgId, args.orgId),
+      ),
+    )
+    .returning();
+  await deleteUndeclaredConnectorValues(tx, {
+    orgId: args.orgId,
+    connectorId: args.connectorId,
+    fields: args.definition.fields,
+  });
+  if (
+    !stringArraysEqual(
+      existingConnector.prefixTemplates,
+      args.definition.prefixTemplates,
+    )
+  ) {
+    // Prefix variables are validated against rendered bases when users save
+    // values. A changed prefix can retarget previously valid values.
+    await deleteStoredConnectorPrefixVariableValues(tx, {
+      orgId: args.orgId,
+      connectorId: args.connectorId,
+      prefixTemplates: args.definition.prefixTemplates,
+    });
+  }
+  if (!updated) {
+    throw new Error("Expected locked custom connector update to return a row");
+  }
+  return normaliseCustomConnectorRow(updated);
+}
+
 export const updateCustomConnectorDefinition$ = command(
   async (
     { set },
@@ -1182,72 +1251,19 @@ export const updateCustomConnectorDefinition$ = command(
     if (isBadRequest(v)) {
       return v;
     }
-    const legacy = legacyColumns(v);
     const writeDb = set(writeDb$);
     const row = await writeDb.transaction(async (tx) => {
-      const [existing] = await tx
-        .select()
-        .from(orgCustomConnectors)
-        .where(
-          and(
-            eq(orgCustomConnectors.id, args.id),
-            eq(orgCustomConnectors.orgId, args.orgId),
-          ),
-        )
-        .for("update")
-        .limit(1);
-      if (!existing) {
-        return null;
-      }
-      const existingConnector = normaliseCustomConnectorRow(existing);
-      const [updated] = await tx
-        .update(orgCustomConnectors)
-        .set({
-          displayName: v.displayName,
-          prefixes: [...legacy.prefixes],
-          headerName: legacy.headerName,
-          headerTemplate: legacy.headerTemplate,
-          prefixTemplates: [...v.prefixTemplates],
-          fields: [...v.fields],
-          headerInjections: [...v.headerInjections],
-          queryInjections: [...v.queryInjections],
-          updatedAt: nowDate(),
-        })
-        .where(
-          and(
-            eq(orgCustomConnectors.id, args.id),
-            eq(orgCustomConnectors.orgId, args.orgId),
-          ),
-        )
-        .returning();
-      await deleteUndeclaredConnectorValues(tx, {
+      return await updateCustomConnectorDefinitionRow(tx, {
         orgId: args.orgId,
         connectorId: args.id,
-        fields: v.fields,
+        definition: v,
       });
-      if (
-        !stringArraysEqual(existingConnector.prefixTemplates, v.prefixTemplates)
-      ) {
-        // Prefix variables are validated against rendered bases when users save
-        // values. A changed prefix can retarget previously valid values.
-        await deleteStoredConnectorPrefixVariableValues(tx, {
-          orgId: args.orgId,
-          connectorId: args.id,
-          prefixTemplates: v.prefixTemplates,
-        });
-      }
-      if (!updated) {
-        throw new Error(
-          "Expected locked custom connector update to return a row",
-        );
-      }
-      return updated;
     });
     signal.throwIfAborted();
     if (!row) {
       return notFound("Custom connector not found");
     }
-    return normaliseCustomConnectorRow(row);
+    return row;
   },
 );
 
@@ -2200,36 +2216,14 @@ async function updateProposalConnectorValues(
   args: SaveProposalConnectorValuesArgs & { readonly connectorId: string },
   encryptedValues: readonly EncryptedValueInput[],
 ): Promise<ValueWriteResult | null> {
-  const legacy = legacyColumns(args.definition);
-  const [updated] = await tx
-    .update(orgCustomConnectors)
-    .set({
-      displayName: args.definition.displayName,
-      prefixes: [...legacy.prefixes],
-      headerName: legacy.headerName,
-      headerTemplate: legacy.headerTemplate,
-      prefixTemplates: [...args.definition.prefixTemplates],
-      fields: [...args.definition.fields],
-      headerInjections: [...args.definition.headerInjections],
-      queryInjections: [...args.definition.queryInjections],
-      updatedAt: nowDate(),
-    })
-    .where(
-      and(
-        eq(orgCustomConnectors.id, args.connectorId),
-        eq(orgCustomConnectors.orgId, args.orgId),
-      ),
-    )
-    .returning();
-  if (!updated) {
+  const connector = await updateCustomConnectorDefinitionRow(tx, {
+    orgId: args.orgId,
+    connectorId: args.connectorId,
+    definition: args.definition,
+  });
+  if (!connector) {
     return null;
   }
-  const connector = normaliseCustomConnectorRow(updated);
-  await deleteUndeclaredConnectorValues(tx, {
-    orgId: args.orgId,
-    connectorId: connector.id,
-    fields: args.definition.fields,
-  });
   await deleteStoredConnectorValues(tx, {
     orgId: args.orgId,
     userId: args.userId,
