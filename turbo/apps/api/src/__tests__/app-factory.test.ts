@@ -89,12 +89,14 @@ describe("createApp", () => {
 
   it("logs sanitized root-cause fields for unhandled errors", async () => {
     const cause = new Error(
-      "column chat_threads.last_read_message_id does not exist for user test@example.com at https://example.test/callback?token=secret Bearer abcdef1234567890 123456789012 550e8400-e29b-41d4-a716-446655440000 API key: sk-live-secret client_secret=client-secret refresh_token=refresh-secret",
+      "column chat_threads.last_read_message_id does not exist for user test@example.com at https://example.test/callback?token=secret Bearer abcdef1234567890 123456789012 550e8400-e29b-41d4-a716-446655440000 API key: sk-live-secret client secret=client-secret refresh_token=refresh-secret",
     );
-    const error = new Error("wrapped database failure", { cause }) as Error & {
-      code: string;
-    };
-    error.code = "42703";
+    const error = Object.assign(
+      new Error("wrapped database failure", { cause }),
+      {
+        code: "42703",
+      },
+    );
     const handler$ = computed((): never => {
       throw error;
     });
@@ -119,14 +121,14 @@ describe("createApp", () => {
     const [message, fields] =
       context.mocks.axiomLogging.error.mock.calls.at(-1) ?? [];
     expect(message).toBe(
-      "Unhandled request error: column chat_threads.last_read_message_id does not exist for user [email] at [url] Bearer [redacted] [number] [id] API key=[redacted] client_secret=[redacted] refresh_token=[redacted]",
+      "Unhandled request error: column chat_threads.last_read_message_id does not exist for user [email] at [url] Bearer [redacted] [number] [id] API key=[redacted] client secret=[redacted] refresh_token=[redacted]",
     );
 
     const logFields = fields as Record<PropertyKey, unknown>;
     expect(logFields).toMatchObject({
       type: "unhandled_request_error",
       errorSummary:
-        "column chat_threads.last_read_message_id does not exist for user [email] at [url] Bearer [redacted] [number] [id] API key=[redacted] client_secret=[redacted] refresh_token=[redacted]",
+        "column chat_threads.last_read_message_id does not exist for user [email] at [url] Bearer [redacted] [number] [id] API key=[redacted] client secret=[redacted] refresh_token=[redacted]",
       route: "/__test/boom/:id",
       method: "GET",
       errorCode: "42703",
@@ -142,7 +144,7 @@ describe("createApp", () => {
       source: "api",
       type: "unhandled_request_error",
       errorSummary:
-        "column chat_threads.last_read_message_id does not exist for user [email] at [url] Bearer [redacted] [number] [id] API key=[redacted] client_secret=[redacted] refresh_token=[redacted]",
+        "column chat_threads.last_read_message_id does not exist for user [email] at [url] Bearer [redacted] [number] [id] API key=[redacted] client secret=[redacted] refresh_token=[redacted]",
       route: "/__test/boom/:id",
       method: "GET",
       errorCode: "42703",
@@ -161,6 +163,26 @@ describe("createApp", () => {
     expect(serialized).not.toContain("sk-live-secret");
     expect(serialized).not.toContain("client-secret");
     expect(serialized).not.toContain("refresh-secret");
+  });
+
+  it("bounds long unhandled error summaries", async () => {
+    const error = new Error("x".repeat(300));
+    const expectedSummary = `${"x".repeat(237)}...`;
+    const handler$ = computed((): never => {
+      throw error;
+    });
+    const client = setupApp({
+      context,
+      routes: [...ROUTES, { route: errorTestContract.boom, handler: handler$ }],
+    })(errorTestContract);
+
+    await accept(client.boom(), [500]);
+
+    const [message, fields] =
+      context.mocks.axiomLogging.error.mock.calls.at(-1) ?? [];
+    const logFields = fields as Record<PropertyKey, unknown>;
+    expect(logFields.errorSummary).toBe(expectedSummary);
+    expect(message).toBe(`Unhandled request error: ${expectedSummary}`);
   });
 
   it("summarizes response validation failures without schema details", async () => {

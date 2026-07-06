@@ -102,7 +102,7 @@ function sanitizeErrorSummary(error: Error): string {
     )
     .replace(/\bBearer\s+[A-Za-z0-9._~+/-]+=*/gi, "Bearer [redacted]")
     .replace(
-      /\b(api[_\s-]?key|access[_\s-]?token|refresh[_\s-]?token|id[_\s-]?token|client[_-]?secret|authorization|password|secret|token)\b\s*[:=]\s*["']?[^,\s"']+/gi,
+      /\b(api[_\s-]?key|access[_\s-]?token|refresh[_\s-]?token|id[_\s-]?token|client[_\s-]?secret|authorization|password|secret|token)\b\s*[:=]\s*["']?[^,\s"']+/gi,
       "$1=[redacted]",
     )
     .replace(/\b[0-9a-f]{16,}\b/gi, "[hash]")
