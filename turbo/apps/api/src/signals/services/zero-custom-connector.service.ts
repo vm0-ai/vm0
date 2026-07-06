@@ -580,6 +580,20 @@ function customConnectorBuiltinHostOwnerError(
     : null;
 }
 
+function customConnectorRenderedPrefixError(
+  base: string,
+): BadRequestResponse | null {
+  const validation = safeSync(() => {
+    validateBaseUrl(base, "custom connector");
+  });
+  if ("error" in validation) {
+    return badRequestMessage(
+      "Custom connector values must resolve prefix templates to valid base URLs",
+    );
+  }
+  return customConnectorBuiltinHostOwnerError(base);
+}
+
 function validateTemplateReferences(args: {
   readonly template: string;
   readonly fields: readonly CustomConnectorField[];
@@ -1060,6 +1074,47 @@ async function deleteUndeclaredConnectorValues(
     );
 }
 
+function stringArraysEqual(
+  left: readonly string[],
+  right: readonly string[],
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((value, index) => {
+      return value === right[index];
+    })
+  );
+}
+
+async function deleteStoredConnectorPrefixVariableValues(
+  tx: DbTransaction,
+  args: {
+    readonly orgId: string;
+    readonly connectorId: string;
+    readonly prefixTemplates: readonly string[];
+  },
+): Promise<void> {
+  const variableKeys = [
+    ...customConnectorPrefixTemplateVariableKeys(args.prefixTemplates),
+  ];
+  if (variableKeys.length === 0) {
+    return;
+  }
+
+  for (const key of variableKeys) {
+    await tx
+      .delete(orgCustomConnectorValues)
+      .where(
+        and(
+          eq(orgCustomConnectorValues.connectorId, args.connectorId),
+          eq(orgCustomConnectorValues.orgId, args.orgId),
+          eq(orgCustomConnectorValues.kind, "variable"),
+          eq(orgCustomConnectorValues.key, key),
+        ),
+      );
+  }
+}
+
 export const createCustomConnector$ = command(
   async (
     { set },
@@ -1130,6 +1185,21 @@ export const updateCustomConnectorDefinition$ = command(
     const legacy = legacyColumns(v);
     const writeDb = set(writeDb$);
     const row = await writeDb.transaction(async (tx) => {
+      const [existing] = await tx
+        .select()
+        .from(orgCustomConnectors)
+        .where(
+          and(
+            eq(orgCustomConnectors.id, args.id),
+            eq(orgCustomConnectors.orgId, args.orgId),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      if (!existing) {
+        return null;
+      }
+      const existingConnector = normaliseCustomConnectorRow(existing);
       const [updated] = await tx
         .update(orgCustomConnectors)
         .set({
@@ -1150,14 +1220,27 @@ export const updateCustomConnectorDefinition$ = command(
           ),
         )
         .returning();
-      if (!updated) {
-        return null;
-      }
       await deleteUndeclaredConnectorValues(tx, {
         orgId: args.orgId,
         connectorId: args.id,
         fields: v.fields,
       });
+      if (
+        !stringArraysEqual(existingConnector.prefixTemplates, v.prefixTemplates)
+      ) {
+        // Prefix variables are validated against rendered bases when users save
+        // values. A changed prefix can retarget previously valid values.
+        await deleteStoredConnectorPrefixVariableValues(tx, {
+          orgId: args.orgId,
+          connectorId: args.id,
+          prefixTemplates: v.prefixTemplates,
+        });
+      }
+      if (!updated) {
+        throw new Error(
+          "Expected locked custom connector update to return a row",
+        );
+      }
       return updated;
     });
     signal.throwIfAborted();
@@ -1326,9 +1409,9 @@ function validateValueInputsForDefinition(args: {
       continue;
     }
     const base = expandHostWildcardsInBaseUrl(rendered);
-    const ownerError = customConnectorBuiltinHostOwnerError(base);
-    if (ownerError) {
-      return ownerError;
+    const prefixError = customConnectorRenderedPrefixError(base);
+    if (prefixError) {
+      return prefixError;
     }
   }
   return values;

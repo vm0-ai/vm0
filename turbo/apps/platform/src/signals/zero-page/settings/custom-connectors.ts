@@ -14,6 +14,17 @@ import { sanitizeTokenInput } from "./token-input.ts";
 
 const internalReload$ = state(0);
 
+function normaliseCustomConnectorResponse(
+  connector: CustomConnectorResponse,
+): CustomConnectorResponse {
+  return {
+    ...connector,
+    // Deployment compatibility: older API responses only had hasSecret.
+    // Delete this with the hasSecret compatibility field in #20281.
+    connected: connector.connected || connector.hasSecret,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Active tab on the Connectors settings page
 // ---------------------------------------------------------------------------
@@ -38,7 +49,7 @@ export const customConnectors$ = computed(
     const createClient = get(zeroClient$);
     const client = createClient(zeroCustomConnectorsContract);
     const result = await accept(client.list(), [200]);
-    return result.body.connectors;
+    return result.body.connectors.map(normaliseCustomConnectorResponse);
   },
 );
 

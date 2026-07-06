@@ -1688,6 +1688,65 @@ describe("CONN-03: custom connectors and connector-owned values", () => {
     await connectorsApi.deleteCustomConnector(admin, connector.id);
   });
 
+  it("rejects custom connector values that resolve prefix templates to invalid base URLs", async () => {
+    const bdd = createBddApi(context);
+    const admin = bdd.user({ orgRole: "org:admin" });
+
+    const connector = await connectorsApi.createCustomConnector(admin, {
+      displayName: "BDD Invalid Host Variable API",
+      prefixTemplates: ["https://{{variables.host}}/v1/"],
+      fields: [
+        {
+          key: "api_key",
+          label: "API key",
+          kind: "secret",
+          required: true,
+        },
+        {
+          key: "host",
+          label: "Host",
+          kind: "variable",
+          required: true,
+        },
+      ],
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{secrets.api_key}}",
+        },
+      ],
+      queryInjections: [],
+    });
+
+    const rejected = await connectorsApi.requestSetCustomConnectorValues(
+      admin,
+      connector.id,
+      [
+        { key: "api_key", kind: "secret", value: "invalid-host-secret" },
+        { key: "host", kind: "variable", value: ".example.test" },
+      ],
+      [400],
+    );
+
+    expectApiError(rejected.body);
+    expect(rejected.body.error.message).toBe(
+      "Custom connector values must resolve prefix templates to valid base URLs",
+    );
+
+    const listed = await connectorsApi.listCustomConnectors(admin);
+    expect(
+      listed.find((candidate) => {
+        return candidate.id === connector.id;
+      }),
+    ).toMatchObject({
+      connected: false,
+      configuredFieldKeys: [],
+      missingRequiredFields: ["api_key", "host"],
+    });
+
+    await connectorsApi.deleteCustomConnector(admin, connector.id);
+  });
+
   it("removes stored values when a custom connector field is removed", async () => {
     const bdd = createBddApi(context);
     const admin = bdd.user({ orgRole: "org:admin" });
@@ -1787,6 +1846,78 @@ describe("CONN-03: custom connectors and connector-owned values", () => {
       connected: false,
       configuredFieldKeys: ["subdomain"],
       missingRequiredFields: ["api_key"],
+    });
+
+    await connectorsApi.deleteCustomConnector(admin, connector.id);
+  });
+
+  it("clears stored host variables when a definition update changes prefix templates", async () => {
+    const bdd = createBddApi(context);
+    const admin = bdd.user({ orgRole: "org:admin" });
+    const rand = randomUUID().replace(/-/g, "").slice(0, 8);
+    const apiKeyField = {
+      key: "api_key",
+      label: "API key",
+      kind: "secret" as const,
+      required: true,
+    };
+    const hostField = {
+      key: "host",
+      label: "Host",
+      kind: "variable" as const,
+      required: true,
+    };
+    const headerInjections = [
+      {
+        name: "Authorization",
+        valueTemplate: "Bearer {{secrets.api_key}}",
+      },
+    ];
+    const queryInjections = [
+      {
+        name: "host",
+        valueTemplate: "{{variables.host}}",
+      },
+    ];
+
+    const connector = await connectorsApi.createCustomConnector(admin, {
+      displayName: "BDD Prefix Retarget API",
+      prefixTemplates: [`https://${rand}.example.test/v1/`],
+      fields: [apiKeyField, hostField],
+      headerInjections,
+      queryInjections,
+    });
+    await connectorsApi.setCustomConnectorValues(admin, connector.id, [
+      { key: "api_key", kind: "secret", value: "retarget-secret" },
+      { key: "host", kind: "variable", value: ".example.test" },
+    ]);
+
+    const updated = await connectorsApi.updateCustomConnector(
+      admin,
+      connector.id,
+      {
+        displayName: "BDD Prefix Retarget API",
+        prefixTemplates: ["https://{{variables.host}}/v1/"],
+        fields: [apiKeyField, hostField],
+        headerInjections,
+        queryInjections,
+      },
+    );
+    expect(updated).toMatchObject({
+      connected: false,
+      configuredFieldKeys: ["api_key"],
+      missingRequiredFields: ["host"],
+    });
+
+    const listed = await connectorsApi.listCustomConnectors(admin);
+    expect(
+      listed.find((candidate) => {
+        return candidate.id === connector.id;
+      }),
+    ).toMatchObject({
+      connected: false,
+      configuredFieldKeys: ["api_key"],
+      missingRequiredFields: ["host"],
     });
 
     await connectorsApi.deleteCustomConnector(admin, connector.id);
