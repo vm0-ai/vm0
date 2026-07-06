@@ -25,11 +25,11 @@ describe("website template items", () => {
     });
   });
 
-  it("uses a CDN-hosted iframe preview asset", () => {
+  it("uses a static-hosted iframe preview asset", () => {
     for (const item of WEBSITE_TEMPLATE_ITEMS) {
       expect(item.previewKind).toBe("iframe");
       expect(item.previewUrl).toMatch(
-        /^https:\/\/cdn\.vm0\.io\/artifacts\/.+\.html$/u,
+        /^https:\/\/static\.vm0\.io\/vm0\/artifact-templates\/website\/.+\.html$/u,
       );
       expect(item.previewUrl).not.toContain("drive.google.com");
       expect(item.previewUrl).not.toContain("docs.google.com");

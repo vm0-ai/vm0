@@ -37,13 +37,19 @@ describe("video template items", () => {
       expect(template?.source.repo).toBe("vm0-ai/vm0-skills");
       expect(template?.source.ref).toBe("main");
       expect(template?.source.path).toBe(item.sourcePath);
-      expect(item.previewImage).toMatch(/^https:\/\/cdn\.vm0\.io\/.*\.jpg$/u);
+      expect(item.previewImage).toMatch(
+        /^https:\/\/static\.vm0\.io\/vm0\/artifact-templates\/video\/.*\.jpg$/u,
+      );
       expect(item.cardPreviewImage).toMatch(
-        /^https:\/\/cdn\.vm0\.io\/artifacts\/.+\.jpg$/u,
+        /^https:\/\/static\.vm0\.io\/vm0\/artifact-templates\/video\/.+\.jpg$/u,
       );
       expect(item.cardPreviewImage).not.toContain("/cdn-cgi/image/");
-      expect(item.previewVideo).toMatch(/^https:\/\/cdn\.vm0\.io\/.*\.mp4$/u);
-      expect(item.previewWebm).toMatch(/^https:\/\/cdn\.vm0\.io\/.*\.webm$/u);
+      expect(item.previewVideo).toMatch(
+        /^https:\/\/static\.vm0\.io\/vm0\/artifact-templates\/video\/.*\.mp4$/u,
+      );
+      expect(item.previewWebm).toMatch(
+        /^https:\/\/static\.vm0\.io\/vm0\/artifact-templates\/video\/.*\.webm$/u,
+      );
       expect(template).not.toHaveProperty("previewImage");
       expect(template).not.toHaveProperty("previewVideo");
     }
