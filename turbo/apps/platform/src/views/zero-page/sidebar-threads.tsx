@@ -88,6 +88,8 @@ import {
   setRenameDialogInput$,
   sessionListCollapsed$,
   setSessionListCollapsed$,
+  isScrolled$,
+  setIsScrolled$,
   overlayScrollMetrics$,
   overlayScrollViewport$,
   chatThreadVirtualListElement$,
@@ -96,6 +98,7 @@ import {
   CHAT_THREAD_VIRTUAL_ROW_HEIGHT,
 } from "../../signals/zero-page/zero-sidebar-state.ts";
 import { Link } from "../router/link.tsx";
+import { OverlayScrollArea } from "./zero-sidebar-scroll.tsx";
 
 type IndicatorState = "running" | "unread" | "draft";
 type ChatThreadPaneIndicator = "main" | "sidebar";
@@ -974,7 +977,11 @@ function ChatThreadsSkeleton() {
   );
 }
 
-function ChatThreadsContent() {
+function ChatThreadsContent({
+  threadListScroll,
+}: {
+  threadListScroll: boolean;
+}) {
   // useLastLoadable keeps the previous resolved list rendered while
   // sidebarChatThreads$ recomputes on a pane/thread switch; useLoadable would
   // flash the skeleton on every switch.
@@ -983,26 +990,57 @@ function ChatThreadsContent() {
     chatThreadsLoadable.state === "hasData" ? chatThreadsLoadable.data : [];
   const chatThreadsLoading = chatThreadsLoadable.state === "loading";
   const collapsed = useGet(sessionListCollapsed$);
+  const isScrolled = useGet(isScrolled$);
+  const setIsScrolledFn = useSet(setIsScrolled$);
 
-  return (
-    !collapsed && (
-      <div className="mt-1">
-        <div className="flex flex-col gap-1">
-          {chatThreadsLoading ? (
-            <ChatThreadsSkeleton />
-          ) : (
-            <ChatThreads chatThreads={chatThreads} />
-          )}
-        </div>
-      </div>
-    )
+  if (collapsed) {
+    return null;
+  }
+
+  const content = (
+    <div className="flex flex-col gap-1">
+      {chatThreadsLoading ? (
+        <ChatThreadsSkeleton />
+      ) : (
+        <ChatThreads chatThreads={chatThreads} />
+      )}
+    </div>
   );
+
+  if (threadListScroll) {
+    return (
+      <OverlayScrollArea
+        className="mt-1 min-h-0 flex-1"
+        data-testid="sidebar-scroll-area"
+        onScroll={(e) => {
+          return setIsScrolledFn(e.currentTarget.scrollTop > 0);
+        }}
+        style={{
+          boxShadow: isScrolled
+            ? "0 -1px 0 0 hsl(var(--border) / 0.4)"
+            : "none",
+        }}
+      >
+        {content}
+      </OverlayScrollArea>
+    );
+  }
+
+  return <div className="mt-1">{content}</div>;
 }
-export function ChatThreadsSection() {
+export function ChatThreadsSection({
+  threadListScroll = false,
+}: {
+  threadListScroll?: boolean;
+}) {
   return (
-    <div className="mt-4 flex flex-col">
+    <div
+      className={`mt-4 flex flex-col ${
+        threadListScroll ? "min-h-0 flex-1" : ""
+      }`}
+    >
       <ChatThreadsTitle />
-      <ChatThreadsContent />
+      <ChatThreadsContent threadListScroll={threadListScroll} />
       <ChatThreadRenameDialog />
       <DeleteChatThreadDialog />
     </div>

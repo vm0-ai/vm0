@@ -9,6 +9,7 @@ import {
   RESUME_SESSION_HISTORY_MAX_BYTES,
   SESSION_HISTORY_ENCODING_GZIP,
   SESSION_HISTORY_ENCODING_IDENTITY,
+  SESSION_HISTORY_ENCODING_ZSTD,
   SESSION_HISTORY_GZIP_MIN_BYTES,
 } from "../contracts/runners";
 
@@ -185,6 +186,15 @@ export const rustConstantBindings = [
     value: rustString(SESSION_HISTORY_ENCODING_IDENTITY),
     rustDoc: [
       "Wire and blob metadata value for uncompressed resume session history.",
+      "Rust and TypeScript components use this shared contract value when negotiating session history uploads and claim responses.",
+    ],
+  },
+  {
+    rustModulePath: ["runners"],
+    rustConstName: "SESSION_HISTORY_ENCODING_ZSTD",
+    value: rustString(SESSION_HISTORY_ENCODING_ZSTD),
+    rustDoc: [
+      "Wire and blob metadata value for zstd-compressed resume session history.",
       "Rust and TypeScript components use this shared contract value when negotiating session history uploads and claim responses.",
     ],
   },

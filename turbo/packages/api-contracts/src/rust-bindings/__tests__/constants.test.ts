@@ -20,6 +20,7 @@ import {
   RESUME_SESSION_HISTORY_MAX_BYTES,
   SESSION_HISTORY_ENCODING_GZIP,
   SESSION_HISTORY_ENCODING_IDENTITY,
+  SESSION_HISTORY_ENCODING_ZSTD,
   SESSION_HISTORY_GZIP_MIN_BYTES,
 } from "../../contracts/runners";
 
@@ -50,6 +51,10 @@ const sessionHistoryEncodingGzipDoc = [
 ] as const;
 const sessionHistoryEncodingIdentityDoc = [
   "Wire and blob metadata value for uncompressed resume session history.",
+  "Rust and TypeScript components use this shared contract value when negotiating session history uploads and claim responses.",
+] as const;
+const sessionHistoryEncodingZstdDoc = [
+  "Wire and blob metadata value for zstd-compressed resume session history.",
   "Rust and TypeScript components use this shared contract value when negotiating session history uploads and claim responses.",
 ] as const;
 const sessionHistoryGzipMinBytesDoc = [
@@ -96,6 +101,12 @@ const expectedBindings = [
     rustConstName: "SESSION_HISTORY_ENCODING_IDENTITY",
     value: rustString(SESSION_HISTORY_ENCODING_IDENTITY),
     rustDoc: sessionHistoryEncodingIdentityDoc,
+  },
+  {
+    rustModulePath: ["runners"],
+    rustConstName: "SESSION_HISTORY_ENCODING_ZSTD",
+    value: rustString(SESSION_HISTORY_ENCODING_ZSTD),
+    rustDoc: sessionHistoryEncodingZstdDoc,
   },
   {
     rustModulePath: ["runners"],
@@ -283,6 +294,9 @@ describe("Rust constant bindings", () => {
     );
     expect(firstRender).toContain(
       `pub const SESSION_HISTORY_ENCODING_IDENTITY: &str = "${SESSION_HISTORY_ENCODING_IDENTITY}";`,
+    );
+    expect(firstRender).toContain(
+      `pub const SESSION_HISTORY_ENCODING_ZSTD: &str = "${SESSION_HISTORY_ENCODING_ZSTD}";`,
     );
     expect(firstRender).toContain(
       `pub const SESSION_HISTORY_GZIP_MIN_BYTES: u64 = ${SESSION_HISTORY_GZIP_MIN_BYTES};`,
