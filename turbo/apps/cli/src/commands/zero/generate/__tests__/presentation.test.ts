@@ -55,7 +55,7 @@ describe("zero generate presentation command", () => {
     expect(stdout).not.toContain("skill:article-magazine");
     expect(stdout).not.toContain("design-system:");
     expect(stdout).not.toContain("Selected design system");
-    expect(stdout).not.toContain("Selected template");
+    expect(stdout).toContain("Selected template: agent decides");
     expect(stdout).not.toContain("template:html-ppt-graphify-dark-graph");
     expect(stdout).not.toContain("template:saas-landing");
     expect(stdout).not.toContain("## Output Contract");
