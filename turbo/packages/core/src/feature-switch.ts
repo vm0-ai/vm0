@@ -341,12 +341,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.SidebarThreadListScroll]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Scroll only the chat thread list in the Zero sidebar so pinned agents stay visible.",
-    enabled: false,
-  },
   [FeatureSwitchKey.SidebarSubscriptionUsage]: {
     maintainer: "ethan@vm0.ai",
     description:
