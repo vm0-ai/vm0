@@ -59,7 +59,6 @@ export enum FeatureSwitchKey {
   ImageArtifactKeyboardNavigation = "imageArtifactKeyboardNavigation",
   AgentsPageRedesign = "agentsPageRedesign",
   SidebarManageIconCollapse = "sidebarManageIconCollapse",
-  SidebarThreadListScroll = "sidebarThreadListScroll",
   SidebarSubscriptionUsage = "sidebarSubscriptionUsage",
   ChatThreadLatestUserMessageScrollAnchor = "chatThreadLatestUserMessageScrollAnchor",
   TeamsIntegration = "teamsIntegration",

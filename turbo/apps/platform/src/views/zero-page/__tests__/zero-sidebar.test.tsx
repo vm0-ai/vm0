@@ -1117,7 +1117,7 @@ describe("zero sidebar", () => {
     });
   });
 
-  it("keeps pinned agents and the chat title outside the switched thread list scroll area", async () => {
+  it("keeps pinned agents and the chat title outside the thread list scroll area", async () => {
     prepareAgentTeam();
     context.mocks.data.userPreferences({
       pinnedAgentIds: [RESEARCH_AGENT_ID],
@@ -1142,9 +1142,6 @@ describe("zero sidebar", () => {
     setupSidebarPage({
       context,
       path: `/chats/${EXISTING_THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.SidebarThreadListScroll]: true,
-      },
     });
 
     await waitFor(() => {
