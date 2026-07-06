@@ -1229,6 +1229,57 @@ describe("team page navigation", () => {
     ]);
   });
 
+  it("ignores expired allow grants when opening connector permissions", async () => {
+    mockNow();
+    mockTeamAPIs();
+    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+      return respond(200, [
+        {
+          agentId: researchAgentId,
+          connectorRef: "slack",
+          permission: "channels:join",
+          action: "allow",
+          expiresAt: isoFromNowMs(-60 * 1000),
+          createdAt: "2026-03-01T00:00:00.000Z",
+          updatedAt: "2026-03-01T00:00:00.000Z",
+        },
+      ]);
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${researchAgentId}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Research Agent" }),
+      ).toBeInTheDocument();
+      expect(screen.getByText("@ops")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Manage Slack permissions"));
+
+    const miscGroupLabel = await connectorCategoryLabel("slack", "Misc");
+    const miscGroupElement = await screen.findByText(miscGroupLabel);
+    const permissionsDialog = dialogForElement(miscGroupElement);
+    click(miscGroupElement);
+
+    const channelsJoinRow = await permissionRowByName(
+      permissionsDialog,
+      "channels:join",
+    );
+    expect(buttonByText("Deny", channelsJoinRow)).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(buttonByText("Allow", channelsJoinRow)).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+    expect(buttonByText("Restore", permissionsDialog)).toBeDisabled();
+  });
+
   it("saves permission duration changes from an agent page", async () => {
     mockNow();
     mockTeamAPIs();
