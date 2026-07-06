@@ -1,9 +1,15 @@
 use std::io::Read;
 use std::os::unix::net::UnixStream;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use vsock_proto::{ExecControlNonce, ExecControlStatus};
 
-use super::super::ExecControlRegistry;
+use crate::writer::GuestWriter;
+
+use super::super::forward::OwnedExecControlRequest;
+use super::super::sink::{ControlSinkInner, ControlSinkState, ControlStreamState};
+use super::super::{ExecControlRegistry, request_deadline};
 
 pub(super) const NONCE: ExecControlNonce = *b"0123456789abcdef";
 
@@ -47,4 +53,59 @@ pub(super) fn read_exec_control_result(
         result.message_id.to_owned(),
         result.diagnostic.to_owned(),
     )
+}
+
+pub(super) fn guest_writer_pair() -> (GuestWriter, UnixStream) {
+    let (guest, host) = UnixStream::pair().unwrap();
+    host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+    (GuestWriter::new(guest), host)
+}
+
+pub(super) fn owned_control_request(
+    response_seq: u32,
+    target_seq: u32,
+    timeout_ms: u32,
+    message_id: &str,
+) -> OwnedExecControlRequest {
+    OwnedExecControlRequest {
+        response_seq,
+        target_seq,
+        deadline: request_deadline(timeout_ms),
+        control_nonce: NONCE,
+        message_id: message_id.to_owned(),
+        payload: b"payload".to_vec(),
+    }
+}
+
+pub(super) fn connected_sink() -> (Arc<ControlSinkState>, UnixStream) {
+    let sink = Arc::new(ControlSinkState::new());
+    let (stream, peer) = UnixStream::pair().unwrap();
+    sink.connect(stream);
+    (sink, peer)
+}
+
+pub(super) fn connected_stream_handle(sink: &ControlSinkState) -> Arc<ControlStreamState> {
+    match &*sink.inner.lock().unwrap_or_else(|e| e.into_inner()) {
+        ControlSinkInner::Connected(connected) => Arc::clone(&connected.stream),
+        _ => panic!("sink should be connected"),
+    }
+}
+
+pub(super) fn wait_for_sink_state(
+    sink: &ControlSinkState,
+    timeout: Duration,
+    description: &str,
+    matches_state: impl Fn(&ControlSinkInner) -> bool,
+) {
+    let mut guard = sink.inner.lock().unwrap_or_else(|e| e.into_inner());
+    let deadline = Instant::now() + timeout;
+    while !matches_state(&guard) {
+        let now = Instant::now();
+        assert!(now < deadline, "{description}");
+        let (next_guard, _) = sink
+            .ready
+            .wait_timeout(guard, deadline.duration_since(now))
+            .unwrap_or_else(|e| e.into_inner());
+        guard = next_guard;
+    }
 }

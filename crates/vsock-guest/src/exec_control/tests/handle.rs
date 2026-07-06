@@ -1,15 +1,14 @@
-use std::os::unix::net::UnixStream;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use vsock_proto::{ExecControlStatus, MSG_EXEC_CONTROL_RESULT};
-
-use crate::writer::GuestWriter;
 
 use super::super::sink::ControlSinkInner;
 use super::super::{
     EXEC_REQUEST_TIMEOUT_DIAGNOSTIC, ExecControlRegistry, handle_exec_control, is_timeout,
 };
-use super::support::{read_exec_control_result, unique_test_nonce};
+use super::support::{
+    guest_writer_pair, read_exec_control_result, unique_test_nonce, wait_for_sink_state,
+};
 
 #[test]
 fn handle_exec_control_forwards_to_connected_sink() {
@@ -35,9 +34,7 @@ fn handle_exec_control_forwards_to_connected_sink() {
         .unwrap();
     });
 
-    let (guest, mut host) = UnixStream::pair().unwrap();
-    host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
-    let writer = GuestWriter::new(guest);
+    let (writer, mut host) = guest_writer_pair();
     let payload =
         vsock_proto::encode_exec_control(8, forward_nonce, "msg-1", b"payload", 5000).unwrap();
 
@@ -58,9 +55,7 @@ fn handle_exec_control_waits_for_sink_connection() {
     let registry = ExecControlRegistry::default();
     let registration = registry.register(9, forward_nonce, true).unwrap();
     let endpoint = registration.bootstrap_endpoint.clone().unwrap();
-    let (guest, mut host) = UnixStream::pair().unwrap();
-    host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
-    let writer = GuestWriter::new(guest);
+    let (writer, mut host) = guest_writer_pair();
     let payload =
         vsock_proto::encode_exec_control(9, forward_nonce, "msg-1", b"payload", 5000).unwrap();
 
@@ -94,9 +89,7 @@ fn timeout_before_sink_connection_does_not_poison_later_delivery() {
     let registry = ExecControlRegistry::default();
     let registration = registry.register(16, forward_nonce, true).unwrap();
     let endpoint = registration.bootstrap_endpoint.clone().unwrap();
-    let (guest, mut host) = UnixStream::pair().unwrap();
-    host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
-    let writer = GuestWriter::new(guest);
+    let (writer, mut host) = guest_writer_pair();
     let payload =
         vsock_proto::encode_exec_control(16, forward_nonce, "msg-before-connect", b"payload", 0)
             .unwrap();
@@ -199,9 +192,7 @@ fn non_terminal_control_responses_do_not_close_sink() {
         .unwrap();
     });
 
-    let (guest, mut host) = UnixStream::pair().unwrap();
-    host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
-    let writer = GuestWriter::new(guest);
+    let (writer, mut host) = guest_writer_pair();
 
     let payload =
         vsock_proto::encode_exec_control(11, forward_nonce, "msg-rejected", b"payload", 5000)
@@ -250,9 +241,7 @@ fn pending_exec_control_returns_inactive_when_operation_releases() {
 
     let registry = ExecControlRegistry::default();
     let registration = registry.register(10, forward_nonce, true).unwrap();
-    let (guest, mut host) = UnixStream::pair().unwrap();
-    host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
-    let writer = GuestWriter::new(guest);
+    let (writer, mut host) = guest_writer_pair();
     let payload =
         vsock_proto::encode_exec_control(10, forward_nonce, "msg-release", b"payload", 5000)
             .unwrap();
@@ -273,9 +262,7 @@ fn pending_exec_control_returns_inactive_when_operation_drops() {
 
     let registry = ExecControlRegistry::default();
     let registration = registry.register(17, forward_nonce, true).unwrap();
-    let (guest, mut host) = UnixStream::pair().unwrap();
-    host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
-    let writer = GuestWriter::new(guest);
+    let (writer, mut host) = guest_writer_pair();
     let payload =
         vsock_proto::encode_exec_control(17, forward_nonce, "msg-drop", b"payload", 5000).unwrap();
 
@@ -301,25 +288,14 @@ fn failed_control_sink_handshake_returns_sink_error() {
     let stream = process_control_ipc::connect_abstract(&endpoint).unwrap();
     drop(stream);
 
-    let mut guard = sink.inner.lock().unwrap_or_else(|e| e.into_inner());
-    let deadline = Instant::now() + Duration::from_secs(1);
-    while !matches!(&*guard, ControlSinkInner::Failed(_)) {
-        let now = Instant::now();
-        assert!(
-            now < deadline,
-            "control sink should mark failed when peer disconnects before hello"
-        );
-        let (next_guard, _) = sink
-            .ready
-            .wait_timeout(guard, deadline.duration_since(now))
-            .unwrap_or_else(|e| e.into_inner());
-        guard = next_guard;
-    }
-    drop(guard);
+    wait_for_sink_state(
+        &sink,
+        Duration::from_secs(1),
+        "control sink should mark failed when peer disconnects before hello",
+        |inner| matches!(inner, ControlSinkInner::Failed(_)),
+    );
 
-    let (guest, mut host) = UnixStream::pair().unwrap();
-    host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
-    let writer = GuestWriter::new(guest);
+    let (writer, mut host) = guest_writer_pair();
     let payload = vsock_proto::encode_exec_control(
         13,
         forward_nonce,
@@ -348,21 +324,12 @@ fn operation_release_interrupts_control_sink_handshake() {
     let sink = registry.resolve(15, handshake_nonce).unwrap();
     let mut stream = process_control_ipc::connect_abstract(&endpoint).unwrap();
 
-    let mut guard = sink.inner.lock().unwrap_or_else(|e| e.into_inner());
-    let deadline = Instant::now() + Duration::from_secs(1);
-    while !matches!(&*guard, ControlSinkInner::Handshaking(_)) {
-        let now = Instant::now();
-        assert!(
-            now < deadline,
-            "control sink should enter handshaking after accept"
-        );
-        let (next_guard, _) = sink
-            .ready
-            .wait_timeout(guard, deadline.duration_since(now))
-            .unwrap_or_else(|e| e.into_inner());
-        guard = next_guard;
-    }
-    drop(guard);
+    wait_for_sink_state(
+        &sink,
+        Duration::from_secs(1),
+        "control sink should enter handshaking after accept",
+        |inner| matches!(inner, ControlSinkInner::Handshaking(_)),
+    );
 
     registration.guard.release();
 
@@ -389,21 +356,12 @@ fn operation_drop_interrupts_control_sink_handshake() {
     let sink = registry.resolve(18, handshake_nonce).unwrap();
     let mut stream = process_control_ipc::connect_abstract(&endpoint).unwrap();
 
-    let mut guard = sink.inner.lock().unwrap_or_else(|e| e.into_inner());
-    let deadline = Instant::now() + Duration::from_secs(1);
-    while !matches!(&*guard, ControlSinkInner::Handshaking(_)) {
-        let now = Instant::now();
-        assert!(
-            now < deadline,
-            "control sink should enter handshaking after accept"
-        );
-        let (next_guard, _) = sink
-            .ready
-            .wait_timeout(guard, deadline.duration_since(now))
-            .unwrap_or_else(|e| e.into_inner());
-        guard = next_guard;
-    }
-    drop(guard);
+    wait_for_sink_state(
+        &sink,
+        Duration::from_secs(1),
+        "control sink should enter handshaking after accept",
+        |inner| matches!(inner, ControlSinkInner::Handshaking(_)),
+    );
 
     drop(registration);
 

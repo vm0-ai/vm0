@@ -1,38 +1,27 @@
-use std::os::unix::net::UnixStream;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use vsock_proto::{ExecControlStatus, MSG_EXEC_CONTROL_RESULT};
 
-use crate::writer::GuestWriter;
-
-use super::super::forward::{OwnedExecControlRequest, forward_control_request, try_forward};
+use super::super::forward::{forward_control_request, try_forward};
 use super::super::sink::{ControlSinkInner, ControlSinkState};
-use super::super::{
-    EXEC_REQUEST_TIMEOUT_DIAGNOSTIC, MAX_PENDING_CONTROL_REQUESTS, request_deadline,
+use super::super::{EXEC_REQUEST_TIMEOUT_DIAGNOSTIC, MAX_PENDING_CONTROL_REQUESTS};
+use super::support::{
+    connected_sink, guest_writer_pair, owned_control_request, read_exec_control_result,
 };
-use super::support::{NONCE, read_exec_control_result};
 
 #[test]
 fn pending_exec_control_timeout_before_sink_connection_releases_slot() {
     let sink = Arc::new(ControlSinkState::new());
     let pending_slot = sink.reserve_pending_slot().unwrap();
-    let (guest, mut host) = UnixStream::pair().unwrap();
-    host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+    let (writer, mut host) = guest_writer_pair();
 
     forward_control_request(
         Arc::clone(&sink),
         pending_slot,
-        OwnedExecControlRequest {
-            response_seq: 29,
-            target_seq: 19,
-            deadline: request_deadline(0),
-            control_nonce: NONCE,
-            message_id: "msg-timeout".to_owned(),
-            payload: b"payload".to_vec(),
-        },
-        GuestWriter::new(guest),
+        owned_control_request(29, 19, 0, "msg-timeout"),
+        writer,
     );
 
     let (msg_type, seq, status, message_id, diagnostic) = read_exec_control_result(&mut host);
@@ -46,8 +35,7 @@ fn pending_exec_control_timeout_before_sink_connection_releases_slot() {
 #[test]
 fn exec_control_queue_full_rejects_without_leaking_pending_slots() {
     let sink = Arc::new(ControlSinkState::new());
-    let (guest, _host) = UnixStream::pair().unwrap();
-    let writer = GuestWriter::new(guest);
+    let (writer, _host) = guest_writer_pair();
     let mut pending_slots = Vec::new();
 
     for _ in 0..MAX_PENDING_CONTROL_REQUESTS {
@@ -60,14 +48,7 @@ fn exec_control_queue_full_rejects_without_leaking_pending_slots() {
 
     let immediate = try_forward(
         Arc::clone(&sink),
-        OwnedExecControlRequest {
-            response_seq: 199,
-            target_seq: 12,
-            deadline: request_deadline(5000),
-            control_nonce: NONCE,
-            message_id: "msg-overflow".to_owned(),
-            payload: b"payload".to_vec(),
-        },
+        owned_control_request(199, 12, 5000, "msg-overflow"),
         writer,
     )
     .expect("overflow request should be rejected synchronously");
@@ -94,9 +75,7 @@ fn pending_control_slot_holds_existing_slot_until_drop() {
 }
 #[test]
 fn pending_control_slot_releases_when_result_send_fails() {
-    let sink = Arc::new(ControlSinkState::new());
-    let (stream, peer) = UnixStream::pair().unwrap();
-    sink.connect(stream);
+    let (sink, peer) = connected_sink();
     let pending_slot = sink.reserve_pending_slot().unwrap();
 
     let client = std::thread::spawn(move || {
@@ -113,20 +92,13 @@ fn pending_control_slot_releases_when_result_send_fails() {
         .unwrap();
     });
 
-    let (guest, host) = UnixStream::pair().unwrap();
+    let (writer, host) = guest_writer_pair();
     drop(host);
     forward_control_request(
         Arc::clone(&sink),
         pending_slot,
-        OwnedExecControlRequest {
-            response_seq: 12,
-            target_seq: 8,
-            deadline: request_deadline(5000),
-            control_nonce: NONCE,
-            message_id: "msg-send-fails".to_owned(),
-            payload: b"payload".to_vec(),
-        },
-        GuestWriter::new(guest),
+        owned_control_request(12, 8, 5000, "msg-send-fails"),
+        writer,
     );
 
     client.join().unwrap();
@@ -134,9 +106,7 @@ fn pending_control_slot_releases_when_result_send_fails() {
 }
 #[test]
 fn mismatched_control_response_message_id_marks_sink_failed() {
-    let sink = Arc::new(ControlSinkState::new());
-    let (stream, peer) = UnixStream::pair().unwrap();
-    sink.connect(stream);
+    let (sink, peer) = connected_sink();
     let pending_slot = sink.reserve_pending_slot().unwrap();
 
     let client = std::thread::spawn(move || {
@@ -154,20 +124,12 @@ fn mismatched_control_response_message_id_marks_sink_failed() {
         .unwrap();
     });
 
-    let (guest, mut host) = UnixStream::pair().unwrap();
-    host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+    let (writer, mut host) = guest_writer_pair();
     forward_control_request(
         Arc::clone(&sink),
         pending_slot,
-        OwnedExecControlRequest {
-            response_seq: 12,
-            target_seq: 8,
-            deadline: request_deadline(5000),
-            control_nonce: NONCE,
-            message_id: "msg-original".to_owned(),
-            payload: b"payload".to_vec(),
-        },
-        GuestWriter::new(guest),
+        owned_control_request(12, 8, 5000, "msg-original"),
+        writer,
     );
 
     client.join().unwrap();
@@ -188,9 +150,7 @@ fn mismatched_control_response_message_id_marks_sink_failed() {
 }
 #[test]
 fn timed_out_control_sink_is_marked_failed() {
-    let sink = Arc::new(ControlSinkState::new());
-    let (stream, peer) = UnixStream::pair().unwrap();
-    sink.connect(stream);
+    let (sink, peer) = connected_sink();
     let pending_slot = sink.reserve_pending_slot().unwrap();
     let (request_read_tx, request_read_rx) = std::sync::mpsc::channel();
     let (release_peer_tx, release_peer_rx) = std::sync::mpsc::channel();
@@ -203,23 +163,15 @@ fn timed_out_control_sink_is_marked_failed() {
         let _ = release_peer_rx.recv_timeout(Duration::from_secs(3));
     });
 
-    let (guest, mut host) = UnixStream::pair().unwrap();
-    host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+    let (writer, mut host) = guest_writer_pair();
     let worker = std::thread::spawn({
         let sink = Arc::clone(&sink);
         move || {
             forward_control_request(
                 sink,
                 pending_slot,
-                OwnedExecControlRequest {
-                    response_seq: 12,
-                    target_seq: 8,
-                    deadline: request_deadline(250),
-                    control_nonce: NONCE,
-                    message_id: "msg-timeout".to_owned(),
-                    payload: b"payload".to_vec(),
-                },
-                GuestWriter::new(guest),
+                owned_control_request(12, 8, 250, "msg-timeout"),
+                writer,
             );
         }
     });

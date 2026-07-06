@@ -6,22 +6,18 @@ use std::time::Duration;
 
 use vsock_proto::{ExecControlStatus, MSG_EXEC_CONTROL_RESULT};
 
-use crate::writer::GuestWriter;
-
-use super::super::forward::{OwnedExecControlRequest, forward_control_request};
+use super::super::forward::forward_control_request;
 use super::super::sink::{ControlSinkInner, ControlSinkState, ControlStreamLockError};
 use super::super::{EXEC_REQUEST_TIMEOUT_DIAGNOSTIC, request_deadline};
-use super::support::{NONCE, read_exec_control_result};
+use super::support::{
+    connected_sink, connected_stream_handle, guest_writer_pair, owned_control_request,
+    read_exec_control_result,
+};
 
 #[test]
 fn close_does_not_wait_for_busy_control_stream_lock() {
-    let sink = Arc::new(ControlSinkState::new());
-    let (stream, _peer) = UnixStream::pair().unwrap();
-    sink.connect(stream);
-    let stream = match &*sink.inner.lock().unwrap_or_else(|e| e.into_inner()) {
-        ControlSinkInner::Connected(connected) => Arc::clone(&connected.stream),
-        _ => panic!("sink should be connected"),
-    };
+    let (sink, _peer) = connected_sink();
+    let stream = connected_stream_handle(&sink);
     let stream_guard = stream
         .lock_until(request_deadline(5000), &sink.active)
         .unwrap();
@@ -48,13 +44,8 @@ fn close_does_not_wait_for_busy_control_stream_lock() {
 }
 #[test]
 fn fail_does_not_wait_for_busy_control_stream_lock() {
-    let sink = Arc::new(ControlSinkState::new());
-    let (stream, _peer) = UnixStream::pair().unwrap();
-    sink.connect(stream);
-    let stream = match &*sink.inner.lock().unwrap_or_else(|e| e.into_inner()) {
-        ControlSinkInner::Connected(connected) => Arc::clone(&connected.stream),
-        _ => panic!("sink should be connected"),
-    };
+    let (sink, _peer) = connected_sink();
+    let stream = connected_stream_handle(&sink);
     let stream_guard = stream
         .lock_until(request_deadline(5000), &sink.active)
         .unwrap();
@@ -81,13 +72,8 @@ fn fail_does_not_wait_for_busy_control_stream_lock() {
 }
 #[test]
 fn failed_control_sink_rejects_existing_connected_stream_handle() {
-    let sink = Arc::new(ControlSinkState::new());
-    let (stream, _peer) = UnixStream::pair().unwrap();
-    sink.connect(stream);
-    let stream = match &*sink.inner.lock().unwrap_or_else(|e| e.into_inner()) {
-        ControlSinkInner::Connected(connected) => Arc::clone(&connected.stream),
-        _ => panic!("sink should be connected"),
-    };
+    let (sink, _peer) = connected_sink();
+    let stream = connected_stream_handle(&sink);
     let stream_guard = stream
         .lock_until(request_deadline(5000), &sink.active)
         .unwrap();
@@ -106,13 +92,8 @@ fn failed_control_sink_rejects_existing_connected_stream_handle() {
 }
 #[test]
 fn control_sink_failure_preserves_first_diagnostic() {
-    let sink = Arc::new(ControlSinkState::new());
-    let (stream, _peer) = UnixStream::pair().unwrap();
-    sink.connect(stream);
-    let stream = match &*sink.inner.lock().unwrap_or_else(|e| e.into_inner()) {
-        ControlSinkInner::Connected(connected) => Arc::clone(&connected.stream),
-        _ => panic!("sink should be connected"),
-    };
+    let (sink, _peer) = connected_sink();
+    let stream = connected_stream_handle(&sink);
 
     sink.fail("first failure".to_owned());
     sink.fail("second failure".to_owned());
@@ -137,19 +118,13 @@ fn control_sink_failure_preserves_first_diagnostic() {
 }
 #[test]
 fn queued_control_request_is_not_delivered_after_close() {
-    let sink = Arc::new(ControlSinkState::new());
-    let (stream, mut peer) = UnixStream::pair().unwrap();
+    let (sink, mut peer) = connected_sink();
     peer.set_nonblocking(true).unwrap();
-    sink.connect(stream);
-    let stream = match &*sink.inner.lock().unwrap_or_else(|e| e.into_inner()) {
-        ControlSinkInner::Connected(connected) => Arc::clone(&connected.stream),
-        _ => panic!("sink should be connected"),
-    };
+    let stream = connected_stream_handle(&sink);
     let stream_guard = stream
         .lock_until(request_deadline(5000), &sink.active)
         .unwrap();
-    let (guest, mut host) = UnixStream::pair().unwrap();
-    host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+    let (writer, mut host) = guest_writer_pair();
 
     let pending_slot = sink.reserve_pending_slot().unwrap();
     let worker = std::thread::spawn({
@@ -158,15 +133,8 @@ fn queued_control_request_is_not_delivered_after_close() {
             forward_control_request(
                 sink,
                 pending_slot,
-                OwnedExecControlRequest {
-                    response_seq: 17,
-                    target_seq: 9,
-                    deadline: request_deadline(5000),
-                    control_nonce: NONCE,
-                    message_id: "msg-after-close".to_owned(),
-                    payload: b"payload".to_vec(),
-                },
-                GuestWriter::new(guest),
+                owned_control_request(17, 9, 5000, "msg-after-close"),
+                writer,
             );
         }
     });
@@ -191,19 +159,13 @@ fn queued_control_request_is_not_delivered_after_close() {
 }
 #[test]
 fn queued_control_request_is_not_delivered_after_fail() {
-    let sink = Arc::new(ControlSinkState::new());
-    let (stream, mut peer) = UnixStream::pair().unwrap();
+    let (sink, mut peer) = connected_sink();
     peer.set_nonblocking(true).unwrap();
-    sink.connect(stream);
-    let stream = match &*sink.inner.lock().unwrap_or_else(|e| e.into_inner()) {
-        ControlSinkInner::Connected(connected) => Arc::clone(&connected.stream),
-        _ => panic!("sink should be connected"),
-    };
+    let stream = connected_stream_handle(&sink);
     let stream_guard = stream
         .lock_until(request_deadline(5000), &sink.active)
         .unwrap();
-    let (guest, mut host) = UnixStream::pair().unwrap();
-    host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+    let (writer, mut host) = guest_writer_pair();
 
     let pending_slot = sink.reserve_pending_slot().unwrap();
     let worker = std::thread::spawn({
@@ -212,15 +174,8 @@ fn queued_control_request_is_not_delivered_after_fail() {
             forward_control_request(
                 sink,
                 pending_slot,
-                OwnedExecControlRequest {
-                    response_seq: 23,
-                    target_seq: 9,
-                    deadline: request_deadline(5000),
-                    control_nonce: NONCE,
-                    message_id: "msg-after-fail".to_owned(),
-                    payload: b"payload".to_vec(),
-                },
-                GuestWriter::new(guest),
+                owned_control_request(23, 9, 5000, "msg-after-fail"),
+                writer,
             );
         }
     });
@@ -245,20 +200,14 @@ fn queued_control_request_is_not_delivered_after_fail() {
 }
 #[test]
 fn expired_connected_control_request_is_not_delivered() {
-    let sink = Arc::new(ControlSinkState::new());
-    let (stream, mut peer) = UnixStream::pair().unwrap();
+    let (sink, mut peer) = connected_sink();
     peer.set_nonblocking(true).unwrap();
-    sink.connect(stream);
-    let stream = match &*sink.inner.lock().unwrap_or_else(|e| e.into_inner()) {
-        ControlSinkInner::Connected(connected) => Arc::clone(&connected.stream),
-        _ => panic!("sink should be connected"),
-    };
+    let stream = connected_stream_handle(&sink);
     let stream_guard = stream
         .lock_until(request_deadline(5000), &sink.active)
         .unwrap();
     let pending_slot = sink.reserve_pending_slot().unwrap();
-    let (guest, mut host) = UnixStream::pair().unwrap();
-    host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+    let (writer, mut host) = guest_writer_pair();
 
     let worker = std::thread::spawn({
         let sink = Arc::clone(&sink);
@@ -266,15 +215,8 @@ fn expired_connected_control_request_is_not_delivered() {
             forward_control_request(
                 sink,
                 pending_slot,
-                OwnedExecControlRequest {
-                    response_seq: 19,
-                    target_seq: 9,
-                    deadline: request_deadline(0),
-                    control_nonce: NONCE,
-                    message_id: "msg-expired-behind-lock".to_owned(),
-                    payload: b"payload".to_vec(),
-                },
-                GuestWriter::new(guest),
+                owned_control_request(19, 9, 0, "msg-expired-behind-lock"),
+                writer,
             );
         }
     });
@@ -313,8 +255,7 @@ fn close_interrupts_inflight_control_request() {
     peer.set_read_timeout(Some(Duration::from_secs(1))).unwrap();
     sink.connect(stream);
     let pending_slot = sink.reserve_pending_slot().unwrap();
-    let (guest, mut host) = UnixStream::pair().unwrap();
-    host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+    let (writer, mut host) = guest_writer_pair();
     let (done_tx, done_rx) = std::sync::mpsc::channel();
 
     let worker = std::thread::spawn({
@@ -323,15 +264,8 @@ fn close_interrupts_inflight_control_request() {
             forward_control_request(
                 sink,
                 pending_slot,
-                OwnedExecControlRequest {
-                    response_seq: 18,
-                    target_seq: 9,
-                    deadline: request_deadline(5000),
-                    control_nonce: NONCE,
-                    message_id: "msg-inflight-close".to_owned(),
-                    payload: b"payload".to_vec(),
-                },
-                GuestWriter::new(guest),
+                owned_control_request(18, 9, 5000, "msg-inflight-close"),
+                writer,
             );
             done_tx.send(()).unwrap();
         }

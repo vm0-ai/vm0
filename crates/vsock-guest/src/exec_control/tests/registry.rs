@@ -1,11 +1,11 @@
 use std::io;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use vsock_proto::ExecControlStatus;
 
 use super::super::sink::ControlSinkInner;
 use super::super::{ExecControlRegistry, is_timeout};
-use super::support::{NONCE, resolve_error, unique_test_nonce};
+use super::support::{NONCE, resolve_error, unique_test_nonce, wait_for_sink_state};
 
 #[test]
 fn registered_operation_rejects_nonce_mismatch() {
@@ -66,18 +66,12 @@ fn dropped_operation_closes_connected_control_sink() {
     let mut stream = process_control_ipc::connect_abstract(&endpoint).unwrap();
     process_control_ipc::write_hello(&mut stream).unwrap();
 
-    let mut guard = sink.inner.lock().unwrap_or_else(|e| e.into_inner());
-    let deadline = Instant::now() + Duration::from_secs(1);
-    while !matches!(&*guard, ControlSinkInner::Connected(_)) {
-        let now = Instant::now();
-        assert!(now < deadline, "control sink should connect after hello");
-        let (next_guard, _) = sink
-            .ready
-            .wait_timeout(guard, deadline.duration_since(now))
-            .unwrap_or_else(|e| e.into_inner());
-        guard = next_guard;
-    }
-    drop(guard);
+    wait_for_sink_state(
+        &sink,
+        Duration::from_secs(1),
+        "control sink should connect after hello",
+        |inner| matches!(inner, ControlSinkInner::Connected(_)),
+    );
 
     drop(registration);
 
