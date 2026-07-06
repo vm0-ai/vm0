@@ -1,6 +1,10 @@
 -- Custom SQL migration file, put your code below! --
--- Block legacy writes until the bridge trigger is installed and backfill has run.
+-- Block legacy writes and connector definition changes until the bridge trigger,
+-- backfill, and stale value prune have run. Keep this order: old connector
+-- deletes touch legacy secrets before deleting connector definitions.
 LOCK TABLE "org_custom_connector_secrets" IN SHARE ROW EXCLUSIVE MODE;
+--> statement-breakpoint
+LOCK TABLE "org_custom_connectors" IN SHARE ROW EXCLUSIVE MODE;
 --> statement-breakpoint
 
 -- Temporary deployment bridge: migrations can run before every old API instance
