@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.92](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.91...sandbox-fc-v0.37.92) (2026-07-06)
+
+
+### Documentation
+
+* clarify netns pool idle retention policy ([#20282](https://github.com/vm0-ai/vm0/issues/20282)) ([b567c37](https://github.com/vm0-ai/vm0/commit/b567c3740d6a02551c1cc27f5c6b36c33e1a3ef8))
+
 ## [0.37.91](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.90...sandbox-fc-v0.37.91) (2026-07-05)
 
 ## [0.37.90](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.89...sandbox-fc-v0.37.90) (2026-07-05)

@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.227.3](https://github.com/vm0-ai/vm0/compare/api-v1.227.2...api-v1.227.3) (2026-07-06)
+
+
+### Refactoring
+
+* bridge runner_state admittable profiles ([#20272](https://github.com/vm0-ai/vm0/issues/20272)) ([743a786](https://github.com/vm0-ai/vm0/commit/743a78618b048c7db0b84513f18d3459be1b4057))
+* extract custom eslint rules package ([#20188](https://github.com/vm0-ai/vm0/issues/20188)) ([e2ca0d3](https://github.com/vm0-ai/vm0/commit/e2ca0d3dd59a3f80e77a79a626615c532841201b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.155.4
+    * @vm0/core bumped to 8.401.5
+    * @vm0/db bumped to 1.93.1
+
 ## [1.227.2](https://github.com/vm0-ai/vm0/compare/api-v1.227.1...api-v1.227.2) (2026-07-06)
 
 
