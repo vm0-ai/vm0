@@ -109,6 +109,7 @@ type WaitForGoogleDriveAndSyncArtifactsFn = (
 
 export type ArtifactDownloadSyncTarget = {
   readonly agentId: string | null | undefined;
+  readonly disconnected: boolean;
   readonly fileId: string;
   readonly filename: string;
   readonly onSyncSuccess: () => void;
@@ -205,6 +206,36 @@ function syncArtifactToGoogleDriveAndRefresh(params: {
     })(),
     Reason.DomCallback,
     "artifact google drive sync",
+  );
+}
+
+function authorizeGoogleDriveAndSyncArtifacts(params: {
+  agentId: string | null | undefined;
+  file: ArtifactGoogleDriveSyncFile;
+  pageSignal: AbortSignal;
+  threadId: string;
+  waitForGoogleDriveAndSyncArtifacts: WaitForGoogleDriveAndSyncArtifactsFn;
+  onSyncComplete: () => void;
+}): void {
+  if (!params.agentId) {
+    toast.error("Agent is still loading");
+    return;
+  }
+  const agentId = params.agentId;
+  detach(
+    (async () => {
+      await params.waitForGoogleDriveAndSyncArtifacts(
+        {
+          agentId,
+          threadId: params.threadId,
+          files: [params.file],
+        },
+        params.pageSignal,
+      );
+      params.onSyncComplete();
+    })(),
+    Reason.DomCallback,
+    "artifact google drive authorize sync",
   );
 }
 
@@ -374,6 +405,8 @@ function GoogleDriveMenuItem({
         connector.connectionStatus === "connected"
       );
     }) ?? false;
+  const googleDriveReady =
+    googleDriveConnected && syncTarget?.disconnected !== true;
   const createClient = useGet(zeroClient$);
   const pageSignal = useGet(pageSignal$);
   const waitForGoogleDriveAndSyncArtifacts = useSet(
@@ -405,7 +438,7 @@ function GoogleDriveMenuItem({
       fileId: syncTarget.fileId,
       filename: syncTarget.filename,
     };
-    if (googleDriveConnected) {
+    if (googleDriveReady) {
       syncArtifactToGoogleDriveAndRefresh({
         sync: syncArtifactFileToGoogleDrive({
           createClient,
@@ -416,6 +449,17 @@ function GoogleDriveMenuItem({
           signal: pageSignal,
         }),
         onSyncSuccess: syncTarget.onSyncSuccess,
+      });
+      return;
+    }
+    if (googleDriveConnected) {
+      authorizeGoogleDriveAndSyncArtifacts({
+        agentId: syncTarget.agentId,
+        file,
+        pageSignal,
+        threadId: syncTarget.threadId,
+        waitForGoogleDriveAndSyncArtifacts,
+        onSyncComplete: syncTarget.onSyncSuccess,
       });
       return;
     }
@@ -430,7 +474,7 @@ function GoogleDriveMenuItem({
     });
   };
 
-  if (googleDriveConnected) {
+  if (googleDriveReady) {
     return (
       <ArtifactDownloadMenuItem onClick={syncOrConnect}>
         <IconBrandGoogleDrive size={14} stroke={1.5} />

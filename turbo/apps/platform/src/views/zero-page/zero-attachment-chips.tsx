@@ -397,6 +397,7 @@ function artifactDialogSyncTarget(
   }
   return {
     agentId: artifact.agentId,
+    disconnected: false,
     fileId: artifact.fileId,
     filename: artifact.filename,
     onSyncSuccess:

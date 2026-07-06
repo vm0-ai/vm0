@@ -1758,6 +1758,40 @@ describe("zero artifact sidebar", () => {
     });
   });
 
+  it("shows connect action when Google Drive is connected but disabled for the agent", async () => {
+    const user = userEvent.setup({ delay: null });
+    const markdownUrl =
+      "https://cdn.vm7.io/artifacts/test/run-1/drive-agent-notes.md";
+    const artifactFiles = [
+      artifactFile(markdownUrl, {
+        id: "artifact-drive-agent-notes",
+        filename: "drive-agent-notes.md",
+        googleDriveSync: { status: "disconnected" },
+      }),
+    ];
+    context.mocks.data.connectors([googleDriveConnector()]);
+    context.mocks.http.get(markdownUrl, () => {
+      return new Response("# Agent notes\n\nThe artifact is ready.", {
+        headers: { "Content-Type": "text/plain" },
+      });
+    });
+    setupChatThread({
+      artifactFiles,
+      content: `[Agent notes](${markdownUrl})`,
+      path: `${THREAD_PATH}?artifact=${encodeURIComponent(markdownUrl)}`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-sidebar")).toBeInTheDocument();
+      expect(screen.getByText("The artifact is ready.")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByLabelText("Download artifact"));
+    await waitFor(() => {
+      expect(menuItemByText("Connect Google Drive")).toBeInTheDocument();
+    });
+  });
+
   it("does not finish a Google Drive upload after the page signal is aborted", async () => {
     const resetUploadSignal$ = resetSignal();
     const uploadSignal = context.store.set(resetUploadSignal$, context.signal);
