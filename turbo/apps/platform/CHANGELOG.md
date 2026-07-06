@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.560.1](https://github.com/vm0-ai/vm0/compare/app-v0.560.0...app-v0.560.1) (2026-07-06)
+
+
+### Bug Fixes
+
+* **platform:** match artifact edit fullscreen preview layer ([#20324](https://github.com/vm0-ai/vm0/issues/20324)) ([2ca3f92](https://github.com/vm0-ai/vm0/commit/2ca3f925b738aa6be08048d3aa45fd6efec7470e))
+* show feedback toolbar for multiline selections ([#20334](https://github.com/vm0-ai/vm0/issues/20334)) ([54c0439](https://github.com/vm0-ai/vm0/commit/54c043992cbf09a89ebd6df4cd392a8e151d0171))
+
 ## [0.560.0](https://github.com/vm0-ai/vm0/compare/app-v0.559.0...app-v0.560.0) (2026-07-06)
 
 
