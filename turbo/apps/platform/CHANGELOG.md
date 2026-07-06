@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.560.0](https://github.com/vm0-ai/vm0/compare/app-v0.559.0...app-v0.560.0) (2026-07-06)
+
+
+### Features
+
+* upload presentation artifacts to google slides ([#20039](https://github.com/vm0-ai/vm0/issues/20039)) ([af5a149](https://github.com/vm0-ai/vm0/commit/af5a149c6d9c67634a753ffb806da3dc69012d50))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.156.0
+    * @vm0/connectors bumped to 1.139.0
+    * @vm0/core bumped to 8.404.0
+
 ## [0.559.0](https://github.com/vm0-ai/vm0/compare/app-v0.558.8...app-v0.559.0) (2026-07-06)
 
 
