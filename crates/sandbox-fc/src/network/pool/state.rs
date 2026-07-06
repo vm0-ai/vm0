@@ -105,9 +105,9 @@ struct NetnsPoolInner {
 /// idle cap. Namespaces returned via [`release`](Self::release) are recycled
 /// back into that queue, and completed background creation can also add ready
 /// entries after a burst. The queue may therefore exceed `BUFFER_SIZE` until
-/// the runner shuts down or the entries are acquired again. `MAX_NAMESPACES`
-/// remains the hard per-pool allocation bound; namespace indexes are not
-/// returned to a reusable pool by release-side trimming.
+/// pool cleanup/shutdown or until the entries are acquired again.
+/// `MAX_NAMESPACES` remains the hard per-pool allocation bound; namespace
+/// indexes are allocated monotonically and are not returned to a reusable pool.
 pub struct NetnsPool {
     inner: NetnsPoolInner,
 }
@@ -1603,17 +1603,19 @@ mod tests {
             .unwrap();
         pool.reserve_pending_creation_for_test(NetnsKind::Plain)
             .unwrap();
+        let pending_ids: Vec<PendingId> = pool.pending_plain.iter().copied().collect();
+        assert_eq!(pending_ids.len(), 2);
 
         pool.completion_tx
             .send(CreationCompletion {
-                id: PendingId(0),
+                id: pending_ids[0],
                 kind: NetnsKind::Plain,
                 result: Ok(test_info("completed-ns-0")),
             })
             .unwrap();
         pool.completion_tx
             .send(CreationCompletion {
-                id: PendingId(1),
+                id: pending_ids[1],
                 kind: NetnsKind::Plain,
                 result: Ok(test_info("completed-ns-1")),
             })
