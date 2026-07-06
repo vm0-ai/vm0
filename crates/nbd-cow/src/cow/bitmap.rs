@@ -78,18 +78,14 @@ fn write_bitmap_words<W: Write>(writer: &mut W, raw: &[usize]) -> std::io::Resul
     }
 
     let words_per_chunk = raw.len().min(BITMAP_WORDS_PER_WRITE_CHUNK);
-    let mut chunk = vec![0u8; words_per_chunk * 8];
+    let mut chunk = Vec::with_capacity(words_per_chunk * 8);
 
     for words in raw.chunks(words_per_chunk) {
-        let byte_len = words.len() * 8;
-        for (word, dst) in words.iter().zip(chunk.chunks_exact_mut(8)) {
-            dst.copy_from_slice(&(*word as u64).to_le_bytes());
+        chunk.clear();
+        for word in words {
+            chunk.extend_from_slice(&(*word as u64).to_le_bytes());
         }
-
-        let bytes = chunk
-            .get(..byte_len)
-            .ok_or_else(|| std::io::Error::other("bitmap write chunk bounds invalid"))?;
-        writer.write_all(bytes)?;
+        writer.write_all(&chunk)?;
     }
 
     Ok(())
