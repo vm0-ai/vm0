@@ -59,6 +59,7 @@ enum InstructionFilename {
 
 enum InstructionPathState {
     Missing,
+    Directory,
     RegularFile,
     Symlink,
     OtherNonRegular,
@@ -109,6 +110,9 @@ pub(crate) fn cleanup_instruction_files(entries: &[InstructionCleanup]) {
             continue;
         };
         let mount_path = Path::new(&entry.mount_path);
+        if !existing_instruction_dir_is_safe(mount_path) {
+            continue;
+        }
         for filename in filenames {
             remove_instruction_file_if_safe(&mount_path.join(filename.as_str()));
         }
@@ -139,7 +143,9 @@ fn normalize_instruction_files_in_place(mount_path: &Path, target_filename: Inst
             return;
         }
         InstructionPathState::Missing => {}
-        InstructionPathState::Symlink | InstructionPathState::OtherNonRegular => {
+        InstructionPathState::Directory
+        | InstructionPathState::Symlink
+        | InstructionPathState::OtherNonRegular => {
             log_warn!(
                 LOG_TAG,
                 "Skipping instructions normalization because target is not a regular file"
@@ -176,12 +182,7 @@ fn promote_staged_instruction_file(
         return false;
     };
 
-    if let Err(e) = fs::create_dir_all(final_mount_path) {
-        log_warn!(
-            LOG_TAG,
-            "Failed to create final instructions directory: {}",
-            e
-        );
+    if !ensure_final_instruction_dir(final_mount_path) {
         return false;
     }
 
@@ -191,6 +192,56 @@ fn promote_staged_instruction_file(
         target_filename,
         "Promoted staged instructions file",
     )
+}
+
+fn ensure_final_instruction_dir(path: &Path) -> bool {
+    match lstat_instruction_path_state(path) {
+        InstructionPathState::Directory => true,
+        InstructionPathState::Missing => match fs::create_dir_all(path) {
+            Ok(()) => existing_instruction_dir_is_safe(path),
+            Err(e) => {
+                log_warn!(
+                    LOG_TAG,
+                    "Failed to create final instructions directory: {}",
+                    e
+                );
+                false
+            }
+        },
+        InstructionPathState::RegularFile
+        | InstructionPathState::Symlink
+        | InstructionPathState::OtherNonRegular => {
+            log_warn!(
+                LOG_TAG,
+                "Skipping instructions operation because framework home is not a directory"
+            );
+            false
+        }
+        InstructionPathState::MetadataError(e) => {
+            log_warn!(LOG_TAG, "Failed to inspect instructions directory: {}", e);
+            false
+        }
+    }
+}
+
+fn existing_instruction_dir_is_safe(path: &Path) -> bool {
+    match lstat_instruction_path_state(path) {
+        InstructionPathState::Directory => true,
+        InstructionPathState::Missing => false,
+        InstructionPathState::RegularFile
+        | InstructionPathState::Symlink
+        | InstructionPathState::OtherNonRegular => {
+            log_warn!(
+                LOG_TAG,
+                "Skipping instructions operation because framework home is not a directory"
+            );
+            false
+        }
+        InstructionPathState::MetadataError(e) => {
+            log_warn!(LOG_TAG, "Failed to inspect instructions directory: {}", e);
+            false
+        }
+    }
 }
 
 fn instruction_source(
@@ -233,7 +284,9 @@ fn copy_instruction_file(
     let target_path = final_mount_path.join(target_filename.as_str());
     match lstat_instruction_path_state(&target_path) {
         InstructionPathState::RegularFile | InstructionPathState::Missing => {}
-        InstructionPathState::Symlink | InstructionPathState::OtherNonRegular => {
+        InstructionPathState::Directory
+        | InstructionPathState::Symlink
+        | InstructionPathState::OtherNonRegular => {
             log_warn!(
                 LOG_TAG,
                 "Skipping instructions copy because target is not a regular file"
@@ -281,6 +334,7 @@ fn cleanup_staged_instruction_source(entry: &InstructionNormalization) {
 
 fn lstat_instruction_path_state(path: &Path) -> InstructionPathState {
     match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_dir() => InstructionPathState::Directory,
         Ok(metadata) if metadata.file_type().is_file() => InstructionPathState::RegularFile,
         Ok(metadata) if metadata.file_type().is_symlink() => InstructionPathState::Symlink,
         Ok(_) => InstructionPathState::OtherNonRegular,
@@ -298,6 +352,10 @@ fn remove_alternates_after_successful_copy(
         InstructionPathState::RegularFile => {
             remove_alternate_instruction_files(mount_path, target_filename);
         }
+        InstructionPathState::Directory => log_warn!(
+            LOG_TAG,
+            "Normalized instructions target is a directory after copy"
+        ),
         InstructionPathState::Missing => log_warn!(
             LOG_TAG,
             "Normalized instructions target is missing after copy"
@@ -341,6 +399,7 @@ fn remove_alternate_instruction_files(mount_path: &Path, target_filename: Instru
         let path = mount_path.join(candidate.as_str());
         match lstat_instruction_path_state(&path) {
             InstructionPathState::Missing => continue,
+            InstructionPathState::Directory => continue,
             InstructionPathState::RegularFile | InstructionPathState::Symlink => {}
             InstructionPathState::OtherNonRegular => continue,
             InstructionPathState::MetadataError(e) => {
@@ -367,6 +426,7 @@ fn remove_alternate_instruction_files(mount_path: &Path, target_filename: Instru
 fn remove_instruction_file_if_safe(path: &Path) {
     match lstat_instruction_path_state(path) {
         InstructionPathState::Missing => {}
+        InstructionPathState::Directory => {}
         InstructionPathState::RegularFile | InstructionPathState::Symlink => {
             match fs::remove_file(path) {
                 Ok(_) => log_info!(LOG_TAG, "Removed stale instructions file"),
@@ -637,6 +697,36 @@ mod tests {
         assert!(staged.exists());
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn normalize_instruction_files_does_not_follow_final_home_symlink() {
+        disable_system_log();
+        let dir = tempfile::tempdir().unwrap();
+        let staged = dir.path().join("staged");
+        let final_home = dir.path().join(".codex");
+        let outside_home = dir.path().join("outside-home");
+        fs::create_dir_all(&staged).unwrap();
+        fs::create_dir_all(&outside_home).unwrap();
+        fs::write(staged.join("AGENTS.md"), "new instructions").unwrap();
+        std::os::unix::fs::symlink(&outside_home, &final_home).unwrap();
+
+        normalize_instruction_files(&[InstructionNormalization::staged(
+            staged.to_string_lossy().into(),
+            final_home.to_string_lossy().into(),
+            "AGENTS.md".into(),
+        )]);
+
+        assert!(!outside_home.join("AGENTS.md").exists());
+        assert!(
+            final_home
+                .symlink_metadata()
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+        assert!(staged.exists());
+    }
+
     #[test]
     fn cleanup_instruction_files_removes_only_known_instruction_files() {
         disable_system_log();
@@ -687,6 +777,29 @@ mod tests {
 
         assert!(mount.join("AGENTS.md").symlink_metadata().is_err());
         assert_eq!(fs::read_to_string(&linked_target).unwrap(), "outside");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn cleanup_instruction_files_does_not_follow_home_symlink() {
+        disable_system_log();
+        let dir = tempfile::tempdir().unwrap();
+        let mount = dir.path().join(".codex");
+        let outside_home = dir.path().join("outside-home");
+        fs::create_dir_all(&outside_home).unwrap();
+        fs::write(outside_home.join("AGENTS.md"), "outside").unwrap();
+        std::os::unix::fs::symlink(&outside_home, &mount).unwrap();
+
+        cleanup_instruction_files(&[InstructionCleanup::new(
+            mount.to_string_lossy().into(),
+            None,
+        )]);
+
+        assert_eq!(
+            fs::read_to_string(outside_home.join("AGENTS.md")).unwrap(),
+            "outside"
+        );
+        assert!(mount.symlink_metadata().unwrap().file_type().is_symlink());
     }
 
     #[test]
