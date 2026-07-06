@@ -36,6 +36,7 @@ export enum FeatureSwitchKey {
   Lab = "lab",
   WorkflowWebhookTriggers = "workflowWebhookTriggers",
   NotionWorkflowTriggers = "notionWorkflowTriggers",
+  AgentDetailWorkflowsTab = "agentDetailWorkflowsTab",
   TestOauthConnector = "testOauthConnector",
   FreshdeskConnector = "freshdeskConnector",
   StabilityAiConnector = "stabilityAiConnector",
