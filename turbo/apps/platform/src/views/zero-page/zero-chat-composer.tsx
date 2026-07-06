@@ -183,6 +183,8 @@ import {
   setTemplatePickerCategory$,
   templatePickerSearch$,
   setTemplatePickerSearch$,
+  templatePickerWorkflowCategory$,
+  setTemplatePickerWorkflowCategory$,
   templatePickerPreviewSlug$,
   setTemplatePickerPreviewSlug$,
   restoreTemplatePickerPresentationScroll$,
@@ -4536,8 +4538,28 @@ function TemplatePickerDialog({
     : WORKFLOW_TEMPLATE_ITEMS.filter((item) => {
         return item.category === WORKFLOW_TEMPLATE_CATEGORIES[0];
       });
+  // Persona pills, ideation-gallery style: "all" plus each category present in
+  // the (feature-gated) catalog, in canonical order. Selecting a pill filters
+  // the grid to that persona.
+  const workflowCategoryFilter = useGet(templatePickerWorkflowCategory$);
+  const setWorkflowCategoryFilter = useSet(setTemplatePickerWorkflowCategory$);
+  const workflowCategoryPills = WORKFLOW_TEMPLATE_CATEGORIES.filter(
+    (categoryName) => {
+      return workflowCatalogItems.some((item) => {
+        return item.category === categoryName;
+      });
+    },
+  );
+  const activeWorkflowCategory = workflowCategoryPills.includes(
+    workflowCategoryFilter,
+  )
+    ? workflowCategoryFilter
+    : "all";
   const filteredWorkflowItems = workflowCatalogItems.filter((item) => {
-    return workflowTemplateMatchesSearch(item, search);
+    const matchesCategory =
+      activeWorkflowCategory === "all" ||
+      item.category === activeWorkflowCategory;
+    return matchesCategory && workflowTemplateMatchesSearch(item, search);
   });
 
   const selectedCategory = resolveTemplatePickerCategory({
@@ -4878,22 +4900,49 @@ function TemplatePickerDialog({
               </div>
             )}
             {selectedCategory === "workflow" && hasWorkflowTab && (
-              <div
-                data-workflow-template-grid-scroll=""
-                className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4"
-              >
-                {filteredWorkflowItems.length > 0 ? (
-                  <WorkflowTemplateGrid
-                    items={filteredWorkflowItems}
-                    value={value}
-                    onSelect={handleSelectWorkflow}
-                  />
-                ) : (
-                  <TemplateEmptyPanel
-                    title="No matches"
-                    description="Try a different search."
-                  />
+              <div className="flex min-h-0 flex-1 flex-col">
+                {workflowCategoryPills.length > 1 && (
+                  <div className="flex flex-wrap items-center gap-1.5 px-5 pt-4">
+                    {["all", ...workflowCategoryPills].map((pill) => {
+                      const isActive = activeWorkflowCategory === pill;
+                      return (
+                        <button
+                          key={pill}
+                          type="button"
+                          aria-pressed={isActive}
+                          className={cn(
+                            "h-7 shrink-0 rounded-md border border-border px-2.5 text-sm font-medium leading-none transition-colors cursor-pointer",
+                            isActive
+                              ? "bg-muted text-foreground"
+                              : "bg-background text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+                          )}
+                          onClick={() => {
+                            setWorkflowCategoryFilter(pill);
+                          }}
+                        >
+                          {pill === "all" ? "All" : pill}
+                        </button>
+                      );
+                    })}
+                  </div>
                 )}
+                <div
+                  data-workflow-template-grid-scroll=""
+                  className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4"
+                >
+                  {filteredWorkflowItems.length > 0 ? (
+                    <WorkflowTemplateGrid
+                      items={filteredWorkflowItems}
+                      value={value}
+                      onSelect={handleSelectWorkflow}
+                    />
+                  ) : (
+                    <TemplateEmptyPanel
+                      title="No matches"
+                      description="Try a different search."
+                    />
+                  )}
+                </div>
               </div>
             )}
           </>
