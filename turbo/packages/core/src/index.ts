@@ -840,9 +840,11 @@ export { FeatureSwitchKey } from "./feature-switch-key";
 export {
   getAllFeatureStates,
   getFeatureSwitchDescriptions,
+  getFeatureSwitchMetadata,
   isFeatureEnabled,
   type FeatureSwitch,
   type FeatureSwitchContext,
+  type FeatureSwitchMetadata,
 } from "./feature-switch";
 export { isStaffOrg } from "./staff-org";
 export {

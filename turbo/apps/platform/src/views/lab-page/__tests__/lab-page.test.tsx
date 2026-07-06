@@ -16,6 +16,22 @@ function featureSwitchControl(feature: FeatureSwitchKey): HTMLElement {
   return within(label).getByRole("switch");
 }
 
+function featureSwitchRow(feature: FeatureSwitchKey): HTMLElement {
+  const label = screen.getByText(feature).closest("label");
+  if (!(label instanceof HTMLElement)) {
+    throw new Error(`${feature} feature row not found`);
+  }
+  return label;
+}
+
+function expectBefore(first: HTMLElement, second: HTMLElement): void {
+  expect(
+    Boolean(
+      first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ),
+  ).toBeTruthy();
+}
+
 describe("lab page", () => {
   it("lets users toggle and reset feature switches", async () => {
     let switches: Partial<Record<FeatureSwitchKey, boolean>> = {
@@ -46,6 +62,9 @@ describe("lab page", () => {
       expect(screen.getByRole("heading", { name: "Lab" })).toBeInTheDocument();
       expect(screen.getByText("Other")).toBeInTheDocument();
       expect(screen.getAllByText("Connectors").length).toBeGreaterThan(0);
+      expect(
+        screen.getAllByText("Maintainer: liangyou@vm0.ai").length,
+      ).toBeGreaterThan(0);
     });
 
     const awsSwitch = featureSwitchControl(FeatureSwitchKey.AwsConnector);
@@ -65,6 +84,33 @@ describe("lab page", () => {
       expect(
         featureSwitchControl(FeatureSwitchKey.AwsConnector),
       ).toHaveAttribute("aria-checked", "false");
+    });
+  });
+
+  it("sorts feature switches by maintainer", async () => {
+    context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
+      return respond(200, { switches: {}, effectiveSwitches: {} });
+    });
+
+    detachedSetupPage({ context, path: "/_/lab" });
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Lab" })).toBeInTheDocument();
+    });
+
+    expectBefore(
+      featureSwitchRow(FeatureSwitchKey.AgentsPageRedesign),
+      featureSwitchRow(FeatureSwitchKey.ApiKeys),
+    );
+
+    click(screen.getByRole("combobox", { name: "Sort features" }));
+    click(await screen.findByRole("option", { name: "Maintainer" }));
+
+    await waitFor(() => {
+      expectBefore(
+        featureSwitchRow(FeatureSwitchKey.ApiKeys),
+        featureSwitchRow(FeatureSwitchKey.AgentsPageRedesign),
+      );
     });
   });
 });

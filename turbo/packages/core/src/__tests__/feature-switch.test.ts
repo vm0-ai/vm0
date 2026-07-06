@@ -4,6 +4,7 @@ import {
   isFeatureEnabled,
   getAllFeatureStates,
   getFeatureSwitchDescriptions,
+  getFeatureSwitchMetadata,
 } from "../feature-switch";
 
 describe("isFeatureEnabled", () => {
@@ -217,6 +218,16 @@ describe("getFeatureSwitchDescriptions", () => {
     const descriptions = getFeatureSwitchDescriptions();
     for (const key of Object.values(FeatureSwitchKey)) {
       expect(descriptions[key]).toEqual(expect.any(String));
+    }
+  });
+});
+
+describe("getFeatureSwitchMetadata", () => {
+  it("should return display metadata for every switch", () => {
+    const metadata = getFeatureSwitchMetadata();
+    for (const key of Object.values(FeatureSwitchKey)) {
+      expect(metadata[key]?.maintainer).toEqual(expect.any(String));
+      expect(metadata[key]?.description).toEqual(expect.any(String));
     }
   });
 });
