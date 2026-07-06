@@ -58,7 +58,6 @@ import {
   PopoverClose,
   PopoverContent,
   PopoverTrigger,
-  Skeleton,
   Tabs,
   TabsList,
   TabsTrigger,
@@ -292,11 +291,9 @@ interface ZeroChatComposerProps {
   /** Called after attachment upload/remove mutations so the caller can trigger side-effects (e.g. draft sync). */
   onDraftChange?: () => void;
   /**
-   * When true, render skeleton placeholders in place of the right-side
-   * action cluster (model picker, mic, send/stop). Used during thread switch
-   * while remote thread detail is still resolving — prevents briefly flashing stale
-   * picker state and a wrong send/stop button derived from prior
-   * `allFinished`.
+   * When true, keep the send control in its disabled empty-composer state.
+   * Model and voice controls resolve independently and should not be hidden by
+   * message list loading.
    */
   actionsLoading?: boolean;
   /**
@@ -310,7 +307,6 @@ interface ZeroChatComposerProps {
     onChange: (value: ModelProviderSelection | null) => void;
     // When true, picker is read-only for the current composer state.
     disabled?: boolean;
-    resolveDefaultSelection?: boolean;
   };
   templatePicker?: {
     value: GenerationTemplateRequest | undefined;
@@ -324,7 +320,7 @@ interface ZeroChatComposerProps {
     onChange: (hostId: string | null) => void;
     downloadUrl: string;
   };
-  /** When true, render a skeleton in the model picker slot. */
+  /** When true, hide the model picker until the selected model resolves. */
   modelPickerLoading?: boolean;
   submitBlocker?: {
     message: string;
@@ -777,7 +773,14 @@ function autoGrowFeedbackNoteRef(element: HTMLTextAreaElement | null): void {
 }
 
 function focusFeedbackNoteRef(element: HTMLTextAreaElement | null): void {
-  element?.focus();
+  if (!element) {
+    return;
+  }
+  window.requestAnimationFrame(() => {
+    if (element.isConnected) {
+      element.focus({ preventScroll: true });
+    }
+  });
   autoGrowFeedbackNote(element);
 }
 
@@ -6379,6 +6382,40 @@ function ComposerSendButton({
   );
 }
 
+function resolveSendButtonStateForActionsLoading({
+  actionsLoading,
+  showStopButton,
+  onCancel,
+  activeFeedback,
+  sendAction,
+}: {
+  actionsLoading: boolean;
+  showStopButton: boolean;
+  onCancel: (() => void) | undefined;
+  activeFeedback: ComposerFeedback | null;
+  sendAction: KeyboardSendAction;
+}): {
+  showStopButton: boolean;
+  onCancel: (() => void) | undefined;
+  activeFeedback: ComposerFeedback | null;
+  sendAction: KeyboardSendAction;
+} {
+  if (actionsLoading) {
+    return {
+      showStopButton: false,
+      onCancel: undefined,
+      activeFeedback: null,
+      sendAction: "none",
+    };
+  }
+  return {
+    showStopButton,
+    onCancel,
+    activeFeedback,
+    sendAction,
+  };
+}
+
 function ModelConfigurationWarning({
   blocker,
 }: {
@@ -6407,7 +6444,6 @@ function ModelConfigurationWarning({
 }
 
 function ComposerModelPickerSlot({
-  actionsLoading,
   modelPicker,
   modelPickerLoading,
   submitBlocker,
@@ -6416,7 +6452,6 @@ function ComposerModelPickerSlot({
   onModelPickerChange,
   onModelPickerOpenChange,
 }: {
-  actionsLoading: boolean;
   modelPicker: ComposerModelPicker | undefined;
   modelPickerLoading: boolean;
   submitBlocker: ZeroChatComposerProps["submitBlocker"];
@@ -6425,29 +6460,20 @@ function ComposerModelPickerSlot({
   onModelPickerChange: (value: ModelProviderSelection | null) => void;
   onModelPickerOpenChange: (open: boolean) => void;
 }) {
-  if (actionsLoading) {
-    return (
-      <Skeleton
-        className={cn(
-          "h-9 rounded-md",
-          modelPicker || modelPickerLoading ? "w-[184px]" : "w-20",
-        )}
-      />
-    );
-  }
-
   if (modelPickerLoading) {
-    return <Skeleton className="h-9 w-9 rounded-md sm:w-32" />;
+    return null;
   }
+  const shouldRenderModelPicker =
+    modelPicker !== undefined && modelPicker.value !== null;
 
   return (
     <>
       {submitBlocker && <ModelConfigurationWarning blocker={submitBlocker} />}
-      {modelPicker && (
+      {shouldRenderModelPicker && (
         <ModelProviderPicker
           value={modelPicker.value}
           onChange={onModelPickerChange}
-          placeholder="Default"
+          placeholder="Select model"
           triggerClassName={cn(
             "h-9 w-9 max-w-none gap-0 border-transparent bg-transparent px-0 text-sm text-muted-foreground transition-colors sm:w-auto sm:max-w-[14rem] sm:gap-1 sm:px-2",
             "[&>span]:flex [&>span]:items-center [&>span]:justify-center sm:[&>span]:justify-start [&>svg]:hidden sm:[&>svg]:block",
@@ -6459,7 +6485,7 @@ function ComposerModelPickerSlot({
           open={modelPickerOpen}
           onOpenChange={onModelPickerOpenChange}
           disabled={modelPicker.disabled}
-          resolveDefaultSelection={modelPicker.resolveDefaultSelection}
+          resolveDefaultSelection={false}
         />
       )}
     </>
@@ -6788,6 +6814,13 @@ export function ZeroChatComposer({
   // the composer is empty during an active run. With draft content present
   // the Send button stays visible so the click can queue the message.
   const showStopButton = Boolean(sending && onCancel) && !canSend;
+  const sendButtonState = resolveSendButtonStateForActionsLoading({
+    actionsLoading,
+    showStopButton,
+    onCancel,
+    activeFeedback,
+    sendAction,
+  });
 
   // Routes a button click to the queue path while the current thread is sending,
   // otherwise to the normal send path.
@@ -6964,7 +6997,6 @@ export function ZeroChatComposer({
                 </div>
                 <div className="flex items-center gap-1 sm:gap-2">
                   <ComposerModelPickerSlot
-                    actionsLoading={actionsLoading}
                     modelPicker={modelPicker}
                     modelPickerLoading={modelPickerLoading}
                     submitBlocker={submitBlocker}
@@ -6973,27 +7005,20 @@ export function ZeroChatComposer({
                     onModelPickerChange={handleModelPickerChange}
                     onModelPickerOpenChange={setModelPickerOpen}
                   />
-                  {actionsLoading ? null : (
-                    <>
-                      <div className="mx-0 h-5 w-px bg-border/60 sm:mx-0.5" />
-                      <MicButton
-                        onTranscribed={(text) => {
-                          const base = input;
-                          const separator =
-                            base.length > 0 && !base.endsWith(" ") ? " " : "";
-                          onInputChange(base + separator + text);
-                          onDraftChange?.();
-                        }}
-                      />
-                      <ComposerSendButton
-                        showStopButton={showStopButton}
-                        onCancel={onCancel}
-                        activeFeedback={activeFeedback}
-                        sendAction={sendAction}
-                        onSend={handleButtonSend}
-                      />
-                    </>
-                  )}
+                  <div className="mx-0 h-5 w-px bg-border/60 sm:mx-0.5" />
+                  <MicButton
+                    onTranscribed={(text) => {
+                      const base = input;
+                      const separator =
+                        base.length > 0 && !base.endsWith(" ") ? " " : "";
+                      onInputChange(base + separator + text);
+                      onDraftChange?.();
+                    }}
+                  />
+                  <ComposerSendButton
+                    {...sendButtonState}
+                    onSend={handleButtonSend}
+                  />
                 </div>
               </div>
             </div>
