@@ -1453,6 +1453,7 @@ export const setCustomConnectorValues$ = command(
         return encryptStoredSecretValue(value, featureSwitchContext);
       },
     });
+    signal.throwIfAborted();
 
     const writeDb = set(writeDb$);
     const replaced = await writeDb.transaction(
@@ -1544,6 +1545,7 @@ export const setCustomConnectorLegacySecretValue$ = command(
         return encryptStoredSecretValue(value, featureSwitchContext);
       },
     });
+    signal.throwIfAborted();
 
     const writeDb = set(writeDb$);
     const updated = await writeDb.transaction(
@@ -2157,6 +2159,7 @@ const saveProposalConnectorValues$ = command(
         return encryptStoredSecretValue(value, featureSwitchContext);
       },
     });
+    signal.throwIfAborted();
 
     if (args.proposal.operation === "create") {
       const writeDb = set(writeDb$);
