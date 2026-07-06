@@ -205,11 +205,14 @@ function mockConnectorOauthStart(args?: { readonly onStart?: () => void }): {
   return { authWindow };
 }
 
-function mockConnectorOpenIdStart(args?: { readonly onStart?: () => void }): {
+function mockConnectorOpenIdStart(args?: {
+  readonly onStart?: () => void;
+  readonly popupClosed?: boolean;
+}): {
   readonly authWindow: Window;
 } {
   const authWindow = context.mocks.browser.authWindow();
-  authWindow.closed = true;
+  authWindow.closed = args?.popupClosed ?? true;
   Object.defineProperty(authWindow, "location", {
     value: { href: "" },
     configurable: true,
@@ -316,6 +319,7 @@ describe("directed connector connect page", () => {
   it("finishes an OpenID flow when the callback wins before Ably polling starts", async () => {
     context.mocks.data.connectors([]);
     const { authWindow } = mockConnectorOpenIdStart({
+      popupClosed: false,
       onStart: () => {
         context.mocks.data.connectors([
           connectedConnectorResponse({

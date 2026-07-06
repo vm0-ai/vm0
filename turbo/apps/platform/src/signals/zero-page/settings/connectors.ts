@@ -2199,6 +2199,7 @@ export const connectConnectorOAuthAuthCode$ = command(
                 {
                   topic: "connector:changed",
                   loopCommand$: onConnectorChanged$,
+                  options: { runOnSubscribe: true },
                 },
                 loopSignal,
               );
