@@ -2,9 +2,8 @@ import { clerkSetup, setupClerkTestingToken } from "@clerk/testing/playwright";
 import { expect, test } from "@playwright/test";
 import { signInThroughHostedAuth } from "../lib/auth";
 import {
-  authHeadersForToken,
-  seedLimitedFreeBillingState,
-  setupOnboarding,
+  completeExploreOnboarding,
+  deriveOnboardingUrl,
 } from "../lib/onboarding";
 import { deriveAppUrl, STORAGE_STATE } from "../playwright.config";
 
@@ -15,24 +14,18 @@ test("sign in through onboarding handoff to chat page", async ({ page }) => {
   const orgId = process.env.E2E_CLERK_ORG_ID!;
   const apiUrl = process.env.VM0_API_URL!;
   const appUrl = deriveAppUrl(apiUrl);
+  const onboardingUrl = deriveOnboardingUrl(apiUrl);
 
   await clerkSetup();
   await setupClerkTestingToken({ page });
 
-  const session = await signInThroughHostedAuth(page, email, appUrl, {
+  await signInThroughHostedAuth(page, email, appUrl, {
     followRedirect: false,
     activeOrganizationId: orgId,
+    mirrorStorageToUrls: [onboardingUrl],
   });
-  const headers = authHeadersForToken(session.token);
-  await setupOnboarding(page, apiUrl, headers, {
-    displayName: "E2E Test Agent",
-    workspaceName: "E2E Test Workspace",
-    selectedConnectors: [],
-    timezone: "UTC",
-  });
-  await seedLimitedFreeBillingState(page, apiUrl, orgId);
 
-  await page.goto(appUrl, { waitUntil: "domcontentloaded" });
+  await completeExploreOnboarding(page, { apiUrl, appUrl, onboardingUrl });
 
   // Verify: landed on chat page
   await page.waitForURL("**/agents/*/chat", {
