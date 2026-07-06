@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.558.5](https://github.com/vm0-ai/vm0/compare/app-v0.558.4...app-v0.558.5) (2026-07-06)
+
+
+### Bug Fixes
+
+* reset chat indexeddb thread event caches ([#20277](https://github.com/vm0-ai/vm0/issues/20277)) ([9127871](https://github.com/vm0-ai/vm0/commit/91278710af3bc23517dcd91c370c932aefb40549))
+
+
+### Refactoring
+
+* move agent detail Chat button to header top-right ([#20050](https://github.com/vm0-ai/vm0/issues/20050)) ([4996937](https://github.com/vm0-ai/vm0/commit/49969376dfcea2a80abb70807c83afa1a495f82b))
+
 ## [0.558.4](https://github.com/vm0-ai/vm0/compare/app-v0.558.3...app-v0.558.4) (2026-07-06)
 
 
