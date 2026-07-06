@@ -89,7 +89,7 @@ describe("createApp", () => {
 
   it("logs sanitized root-cause fields for unhandled errors", async () => {
     const cause = new Error(
-      "column chat_threads.last_read_message_id does not exist for user test@example.com at https://example.test/callback?token=secret Bearer abcdef1234567890 123456789012 550e8400-e29b-41d4-a716-446655440000",
+      "column chat_threads.last_read_message_id does not exist for user test@example.com at https://example.test/callback?token=secret Bearer abcdef1234567890 123456789012 550e8400-e29b-41d4-a716-446655440000 API key: sk-live-secret client_secret=client-secret refresh_token=refresh-secret",
     );
     const error = new Error("wrapped database failure", { cause }) as Error & {
       code: string;
@@ -119,14 +119,14 @@ describe("createApp", () => {
     const [message, fields] =
       context.mocks.axiomLogging.error.mock.calls.at(-1) ?? [];
     expect(message).toBe(
-      "Unhandled request error: column chat_threads.last_read_message_id does not exist for user [email] at [url] Bearer [redacted] [number] [id]",
+      "Unhandled request error: column chat_threads.last_read_message_id does not exist for user [email] at [url] Bearer [redacted] [number] [id] API key=[redacted] client_secret=[redacted] refresh_token=[redacted]",
     );
 
     const logFields = fields as Record<PropertyKey, unknown>;
     expect(logFields).toMatchObject({
       type: "unhandled_request_error",
       errorSummary:
-        "column chat_threads.last_read_message_id does not exist for user [email] at [url] Bearer [redacted] [number] [id]",
+        "column chat_threads.last_read_message_id does not exist for user [email] at [url] Bearer [redacted] [number] [id] API key=[redacted] client_secret=[redacted] refresh_token=[redacted]",
       route: "/__test/boom/:id",
       method: "GET",
       errorCode: "42703",
@@ -142,7 +142,7 @@ describe("createApp", () => {
       source: "api",
       type: "unhandled_request_error",
       errorSummary:
-        "column chat_threads.last_read_message_id does not exist for user [email] at [url] Bearer [redacted] [number] [id]",
+        "column chat_threads.last_read_message_id does not exist for user [email] at [url] Bearer [redacted] [number] [id] API key=[redacted] client_secret=[redacted] refresh_token=[redacted]",
       route: "/__test/boom/:id",
       method: "GET",
       errorCode: "42703",
@@ -154,10 +154,13 @@ describe("createApp", () => {
       route: logFields.route,
     });
     expect(serialized).not.toContain("test@example.com");
-    expect(serialized).not.toContain("secret");
+    expect(serialized).not.toContain("token=secret");
     expect(serialized).not.toContain("abcdef1234567890");
     expect(serialized).not.toContain("123456789012");
     expect(serialized).not.toContain("550e8400-e29b-41d4-a716-446655440000");
+    expect(serialized).not.toContain("sk-live-secret");
+    expect(serialized).not.toContain("client-secret");
+    expect(serialized).not.toContain("refresh-secret");
   });
 
   it("summarizes response validation failures without schema details", async () => {
