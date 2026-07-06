@@ -2225,6 +2225,7 @@ async function insertProposalConnectorValues(
   args: SaveProposalConnectorValuesArgs,
   encryptedValues: readonly EncryptedValueInput[],
 ): Promise<ValueWriteResult> {
+  await lockCustomConnectorValueWrites(tx);
   const legacy = legacyColumns(args.definition);
   const slug =
     args.definition.slug ??
