@@ -148,8 +148,8 @@ impl Sandbox for CancelAfterWaitSandbox {
         self.inner.source_ip()
     }
 
-    fn process_pid(&self) -> Option<u32> {
-        self.inner.process_pid()
+    fn host_process_pid(&self) -> Option<u32> {
+        self.inner.host_process_pid()
     }
 
     async fn start(&mut self) -> sandbox::Result<()> {
@@ -260,8 +260,8 @@ impl Sandbox for QueuedCopyFileSandbox {
         self.inner.source_ip()
     }
 
-    fn process_pid(&self) -> Option<u32> {
-        self.inner.process_pid()
+    fn host_process_pid(&self) -> Option<u32> {
+        self.inner.host_process_pid()
     }
 
     async fn start(&mut self) -> sandbox::Result<()> {

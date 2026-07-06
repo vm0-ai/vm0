@@ -627,10 +627,10 @@ impl AgentExecutionResult {
     }
 }
 pub(super) fn cancelled_agent_process_exit(
-    pid: u32,
+    guest_pid: u32,
     stream_overflowed: bool,
 ) -> sandbox::ProcessExit {
-    let mut exit = sandbox::ProcessExit::new(pid, EXIT_SIGKILL, Vec::new(), Vec::new());
+    let mut exit = sandbox::ProcessExit::new(guest_pid, EXIT_SIGKILL, Vec::new(), Vec::new());
     exit.termination = ExecTermination::Cancelled;
     exit.stream_overflowed = stream_overflowed;
     exit
@@ -1240,7 +1240,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     // 6. Wait for exit (or cancellation). On cancel, ask the guest to cancel the
     // supervised process and briefly wait for its terminal status so the vsock
     // operation can be removed before sandbox cleanup closes the connection.
-    let process_pid = handle.pid;
+    let guest_process_pid = handle.guest_pid;
     let process_cancel = handle.take_cancel_handle();
     let wait_process = sandbox.wait_process(handle, job_terminal_wait_timeout());
     tokio::pin!(wait_process);
@@ -1253,7 +1253,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         () = cancel.cancelled() => {
             info!(run_id = %context.run_id, "cancel received, cancelling guest process");
             let cancelled_exit = || -> sandbox::Result<sandbox::ProcessExit> {
-                Ok(cancelled_agent_process_exit(process_pid, false))
+                Ok(cancelled_agent_process_exit(guest_process_pid, false))
             };
             match process_cancel {
                 Some(process_cancel) => match process_cancel.cancel(process_cancel_timeouts.write).await {
@@ -1267,12 +1267,12 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                             Ok(Ok(exit)) => {
                                 info!(
                                     run_id = %context.run_id,
-                                    pid = process_pid,
+                                    pid = guest_process_pid,
                                     "cancelled guest process reached terminal status"
                                 );
                                 (
                                     Ok(cancelled_agent_process_exit(
-                                        process_pid,
+                                        guest_process_pid,
                                         exit.stream_overflowed,
                                     )),
                                     true,
@@ -1282,7 +1282,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                             Ok(Err(error)) => {
                                 warn!(
                                     run_id = %context.run_id,
-                                    pid = process_pid,
+                                    pid = guest_process_pid,
                                     error = %error,
                                     "guest process wait failed after cancellation"
                                 );
@@ -1291,7 +1291,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                             Err(_) => {
                                 warn!(
                                     run_id = %context.run_id,
-                                    pid = process_pid,
+                                    pid = guest_process_pid,
                                     timeout_ms = process_cancel_timeouts.terminal_grace.as_millis(),
                                     "timed out waiting for cancelled guest process"
                                 );
@@ -1302,7 +1302,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                     Err(error) => {
                         warn!(
                             run_id = %context.run_id,
-                            pid = process_pid,
+                            pid = guest_process_pid,
                             error = %error,
                             "failed to send guest process cancellation"
                         );
@@ -1312,7 +1312,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                 None => {
                     warn!(
                         run_id = %context.run_id,
-                        pid = process_pid,
+                        pid = guest_process_pid,
                         "sandbox does not support guest process cancellation"
                     );
                     (cancelled_exit(), true, true)
@@ -1357,10 +1357,14 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         Err(e) => {
             // Sandbox crashed — check host dmesg for cgroup OOM kill of the
             // firecracker process before propagating a generic error.
-            if let Some(pid) = sandbox.process_pid()
-                && check_host_oom(pid).await
+            if let Some(host_process_pid) = sandbox.host_process_pid()
+                && check_host_oom(host_process_pid).await
             {
-                warn!(run_id = %context.run_id, pid, "host OOM kill detected for firecracker");
+                warn!(
+                    run_id = %context.run_id,
+                    pid = host_process_pid,
+                    "host OOM kill detected for firecracker"
+                );
                 let error = "Firecracker VM killed by host OOM killer \
                              (cgroup memory limit exceeded)"
                     .to_string();
