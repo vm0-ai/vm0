@@ -135,7 +135,9 @@ import type { HtmlDomEditDraft } from "./html-dom-edit-types.ts";
 // ---------------------------------------------------------------------------
 
 const ARTIFACT_FULLSCREEN_SHELL_CLASSNAME =
-  "fixed inset-0 z-[100] flex min-h-0 flex-col bg-background pt-[var(--sat)] pb-[var(--sab)]";
+  "fixed inset-0 flex min-h-0 flex-col bg-background pt-[var(--sat)] pb-[var(--sab)]";
+const ARTIFACT_FULLSCREEN_DEFAULT_LAYER_CLASSNAME = "z-[100]";
+const ARTIFACT_FULLSCREEN_EDIT_LAYER_CLASSNAME = "z-[9999]";
 
 export function ArtifactSidebar({
   artifactRef,
@@ -428,7 +430,11 @@ function HtmlEditSnapshotRestoreDialog({
         }
       }}
     >
-      <DialogContent data-testid="html-edit-snapshot-restore-dialog">
+      <DialogContent
+        className="!z-[10000]"
+        data-testid="html-edit-snapshot-restore-dialog"
+        overlayClassName="!z-[10000]"
+      >
         <DialogHeader>
           <DialogTitle>Resume HTML draft?</DialogTitle>
           <DialogDescription>
@@ -694,7 +700,10 @@ function ArtifactSidebarResolvedContent({
   );
 
   return (
-    <ArtifactSidebarSurface fullscreen={fullscreen}>
+    <ArtifactSidebarSurface
+      editing={htmlCommentMode || imageEditActive}
+      fullscreen={fullscreen}
+    >
       <ArtifactSidebarHeader
         title={display.filename}
         kind={display.kind}
@@ -984,16 +993,23 @@ function artifactSidebarFullscreenToggleAction({
 
 function ArtifactSidebarSurface({
   children,
+  editing,
   fullscreen,
 }: {
   children: ReactNode;
+  editing: boolean;
   fullscreen: boolean;
 }) {
   return (
     <div
       className={cn(
         fullscreen
-          ? ARTIFACT_FULLSCREEN_SHELL_CLASSNAME
+          ? cn(
+              ARTIFACT_FULLSCREEN_SHELL_CLASSNAME,
+              editing
+                ? ARTIFACT_FULLSCREEN_EDIT_LAYER_CLASSNAME
+                : ARTIFACT_FULLSCREEN_DEFAULT_LAYER_CLASSNAME,
+            )
           : "flex h-full w-full min-h-0 flex-col border-l border-border/60 bg-background xl:border-l-0",
         "animate-in fade-in duration-[180ms] ease",
       )}

@@ -267,6 +267,7 @@ describe("image editing", () => {
     await waitFor(() => {
       expect(screen.getByLabelText("Exit fullscreen")).toBeInTheDocument();
     });
+    expect(screen.getByTestId("artifact-sidebar")).toHaveClass("z-[9999]");
     expect(screen.queryByLabelText("Share artifact")).toBeNull();
     expect(screen.queryByLabelText("Download artifact")).toBeNull();
 
@@ -286,6 +287,7 @@ describe("image editing", () => {
     await waitFor(() => {
       expect(screen.getByLabelText("Exit fullscreen")).toBeInTheDocument();
     });
+    expect(screen.getByTestId("artifact-sidebar")).toHaveClass("z-[9999]");
     expect(
       screen.getByTestId("artifact-sidebar-image-edit-canvas"),
     ).toBeInTheDocument();

@@ -48,6 +48,7 @@ import {
   IosInstallModal,
 } from "../pwa-install/install-banner.tsx";
 import {
+  artifactFullscreen$,
   currentArtifactInboxThreadId$,
   openArtifactInbox$,
 } from "../../signals/zero-page/zero-artifact-sidebar.ts";
@@ -251,9 +252,13 @@ function SettingsDialogMount() {
 function SidebarLayoutInner({ children }: { children: ReactNode }) {
   const expanded = useGet(sidebarExpanded$);
   const setExpanded = useSet(setSidebarExpanded$);
+  const artifactFullscreen = useGet(artifactFullscreen$);
 
   return (
-    <div className="zero-app zero-viewport-shell flex w-full bg-background">
+    <div
+      className="zero-app zero-viewport-shell flex w-full bg-background"
+      data-zero-artifact-fullscreen={artifactFullscreen || undefined}
+    >
       <OrgManageDialogMount />
       <SettingsDialogMount />
       <ChatShortcutHelpDialog />
