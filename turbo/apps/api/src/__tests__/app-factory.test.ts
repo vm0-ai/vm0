@@ -233,7 +233,7 @@ describe("createApp", () => {
       expect(response.headers.get("access-control-allow-origin")).toBeNull();
     });
 
-    it("allows *.vm7.ai over http only in development", async () => {
+    it("allows vm7 origins in development", async () => {
       mockEnv("ENV", "development");
       const app = createApp({ signal: context.signal });
       const response = await app.request("/health", {
@@ -243,6 +243,19 @@ describe("createApp", () => {
 
       expect(response.headers.get("access-control-allow-origin")).toBe(
         "https://app.vm7.ai:8443",
+      );
+    });
+
+    it("allows vm7 preview origins on any https port", async () => {
+      mockEnv("ENV", "preview");
+      const app = createApp({ signal: context.signal });
+      const response = await app.request("/health", {
+        method: "GET",
+        headers: { origin: "https://www.vm7.ai:3042" },
+      });
+
+      expect(response.headers.get("access-control-allow-origin")).toBe(
+        "https://www.vm7.ai:3042",
       );
     });
   });
