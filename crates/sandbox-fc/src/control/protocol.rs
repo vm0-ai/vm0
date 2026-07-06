@@ -136,10 +136,10 @@ pub enum TerminateResponse {
     },
 }
 
-/// Maximum frame size: 64 MiB (generous for large stdout/stderr).
+/// Maximum frame payload size: 64 MiB, excluding the 4-byte length prefix.
 const MAX_FRAME_SIZE: usize = 64 * 1024 * 1024;
 
-fn validate_frame_len(len: usize) -> io::Result<()> {
+fn validate_frame_payload_len(len: usize) -> io::Result<()> {
     if len > MAX_FRAME_SIZE {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
@@ -153,7 +153,7 @@ fn validate_frame_len(len: usize) -> io::Result<()> {
 /// Read a length-prefixed frame from the stream.
 pub(super) async fn read_frame(stream: &mut UnixStream) -> io::Result<Vec<u8>> {
     let len = stream.read_u32().await? as usize;
-    validate_frame_len(len)?;
+    validate_frame_payload_len(len)?;
     let mut buf = vec![0u8; len];
     stream.read_exact(&mut buf).await?;
     Ok(buf)
@@ -161,7 +161,7 @@ pub(super) async fn read_frame(stream: &mut UnixStream) -> io::Result<Vec<u8>> {
 
 /// Write a length-prefixed frame to the stream.
 pub(super) async fn write_frame(stream: &mut UnixStream, data: &[u8]) -> io::Result<()> {
-    validate_frame_len(data.len())?;
+    validate_frame_payload_len(data.len())?;
     let len = u32::try_from(data.len()).map_err(|_| {
         io::Error::new(
             io::ErrorKind::InvalidData,
