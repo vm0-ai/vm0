@@ -212,7 +212,7 @@ function tokenExpiresAtFromExpiresIn(
     : new Date(currentTime.getTime() + expiresIn * 1000);
 }
 
-export function normalizeNotionUuid(value: string): string | null {
+function normalizeNotionUuid(value: string): string | null {
   const compact = value.replaceAll("-", "").toLowerCase();
   if (!/^[0-9a-f]{32}$/.test(compact)) {
     return null;
@@ -226,7 +226,7 @@ export function normalizeNotionUuid(value: string): string | null {
   ].join("-");
 }
 
-export function parseStandardNotionPageUrl(value: string): string | null {
+function parseStandardNotionPageUrl(value: string): string | null {
   const url = safeUrlParse(value.trim());
   if (!url) {
     return null;
@@ -470,7 +470,7 @@ async function refreshNotionAccessToken(args: {
   };
 }
 
-export async function resolveNotionAccess(args: {
+async function resolveNotionAccess(args: {
   readonly db: Db;
   readonly orgId: string;
   readonly userId: string;
@@ -596,7 +596,7 @@ async function notionFetchJson<T>(
   return { kind: "ok", value: parsed.data };
 }
 
-export async function retrieveNotionPage(args: {
+async function retrieveNotionPage(args: {
   readonly accessToken: string;
   readonly pageId: string;
   readonly signal: AbortSignal;

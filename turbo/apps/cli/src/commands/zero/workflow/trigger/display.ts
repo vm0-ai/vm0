@@ -191,6 +191,8 @@ function workflowTriggerKindLabel(trigger: ZeroWorkflowTriggerSummary): string {
       return "Google Calendar event cancelled";
     case "google-meet-transcript-generated":
       return "Google Meet transcript ready";
+    case "notion-child-page-created":
+      return "New Notion child page";
     case "webhook-received":
       return "Webhook";
   }

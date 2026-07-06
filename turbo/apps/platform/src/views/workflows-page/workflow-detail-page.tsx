@@ -2313,6 +2313,43 @@ type TriggerCreateCategory = {
   readonly options: readonly TriggerCreateOption[];
 };
 
+function buildIntegrationTriggerOptions({
+  githubLabelTriggersEnabled,
+  notionWorkflowTriggersEnabled,
+  webhookTriggersEnabled,
+}: {
+  readonly githubLabelTriggersEnabled: boolean;
+  readonly notionWorkflowTriggersEnabled: boolean;
+  readonly webhookTriggersEnabled: boolean;
+}): TriggerCreateOption[] {
+  const integrationOptions: TriggerCreateOption[] = [];
+  if (githubLabelTriggersEnabled) {
+    integrationOptions.push({
+      kind: "github-label",
+      title: "GitHub label applied",
+      description: "Run when an issue or pull request gets a label.",
+      icon: IconBrandGithub,
+    });
+  }
+  if (webhookTriggersEnabled) {
+    integrationOptions.push({
+      kind: "webhook",
+      title: "Webhook",
+      description: "Run this workflow from a signed POST.",
+      icon: IconLink,
+    });
+  }
+  if (notionWorkflowTriggersEnabled) {
+    integrationOptions.push({
+      kind: "notion-child-page",
+      title: "New Notion child page",
+      description: "Run when a direct child page is created.",
+      icon: IconFileText,
+    });
+  }
+  return integrationOptions;
+}
+
 // Each category owns a single hue that colours only the card icon chip on the
 // right; the category rail stays neutral and mirrors the app sidebar.
 const TRIGGER_CATEGORY_CHIP: Readonly<Record<TriggerCategoryKey, string>> =
@@ -2322,13 +2359,6 @@ const TRIGGER_CATEGORY_CHIP: Readonly<Record<TriggerCategoryKey, string>> =
     calendar: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
     integrations: "bg-amber-500/10 text-amber-600 dark:text-amber-500",
   });
-
-const NOTION_CHILD_PAGE_TRIGGER_OPTION: TriggerCreateOption = {
-  kind: "notion-child-page",
-  title: "New Notion child page",
-  description: "Run when a direct child page is created.",
-  icon: IconFileText,
-};
 
 function buildTriggerCreateCategories({
   githubLabelTriggersEnabled,
@@ -2375,26 +2405,11 @@ function buildTriggerCreateCategories({
     });
   }
 
-  const integrationOptions: TriggerCreateOption[] = [];
-  if (githubLabelTriggersEnabled) {
-    integrationOptions.push({
-      kind: "github-label",
-      title: "GitHub label applied",
-      description: "Run when an issue or pull request gets a label.",
-      icon: IconBrandGithub,
-    });
-  }
-  if (webhookTriggersEnabled) {
-    integrationOptions.push({
-      kind: "webhook",
-      title: "Webhook",
-      description: "Run this workflow from a signed POST.",
-      icon: IconLink,
-    });
-  }
-  if (notionWorkflowTriggersEnabled) {
-    integrationOptions.push(NOTION_CHILD_PAGE_TRIGGER_OPTION);
-  }
+  const integrationOptions = buildIntegrationTriggerOptions({
+    githubLabelTriggersEnabled,
+    notionWorkflowTriggersEnabled,
+    webhookTriggersEnabled,
+  });
 
   const categories: readonly TriggerCreateCategory[] = [
     {
