@@ -72,8 +72,8 @@ disable_codex_beta() {
     return 0
 }
 
-# Poll /api/zero/chat-threads/:id/messages until the current run has a
-# terminal runLifecycleEvent (the paged message API no longer exposes agent run
+# Poll /api/zero/chat-threads/:id/messages until the current run has a terminal
+# assistant lifecycle marker (the paged message API no longer exposes agent run
 # status; terminal runs append a null-content lifecycle marker row instead).
 # Other assistant marker rows, such as recommended followups, may be inserted
 # after the terminal marker and must not hide it. LAST_MSG_CONTENT comes from
@@ -87,7 +87,11 @@ wait_for_chat_assistant_done() {
     local timeout="${2:-180}"
     local start=$SECONDS
     local body status_value run_id content terminal
-    local expected_run_id="${LAST_RUN_ID:-}"
+    if [[ -z "${LAST_RUN_ID:-}" ]]; then
+        echo "# wait_for_chat_assistant_done: LAST_RUN_ID is required" >&2
+        return 1
+    fi
+    local expected_run_id="$LAST_RUN_ID"
     while (( SECONDS - start < timeout )); do
         body=$(_codex_zero_curl "/api/zero/chat-threads/$thread_id/messages?limit=50" 2>/dev/null || true)
         if [[ -n "$body" ]]; then
@@ -96,7 +100,7 @@ wait_for_chat_assistant_done() {
                     [
                         .messages[]
                         | select(.role == "assistant")
-                        | select($expectedRunId == "" or ((.runId // "") == $expectedRunId))
+                        | select((.runId // "") == $expectedRunId)
                         | select(
                             (.runLifecycleEvent // "") as $event
                             | ["completed", "failed", "timeout", "cancelled"]
