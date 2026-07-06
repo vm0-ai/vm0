@@ -64,4 +64,5 @@ export enum FeatureSwitchKey {
   TeamsIntegration = "teamsIntegration",
   BytePlusVoiceInputStt = "bytePlusVoiceInputStt",
   ImageEditing = "imageEditing",
+  PresentationGoogleSlidesUpload = "presentationGoogleSlidesUpload",
 }
