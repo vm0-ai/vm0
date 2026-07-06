@@ -3,8 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   elapsedSinceApiStartMs,
   executionContextSchema,
+  RUNNER_BUILTIN_FIREWALL_RESOLVE_NAMES_MAX,
   RESUME_SESSION_HISTORY_MAX_BYTES,
   resumeSessionSchema,
+  runnersBuiltinFirewallsResolveContract,
   runnersJobClaimContract,
   storageManifestSchema,
   storedExecutionContextSchema,
@@ -356,6 +358,40 @@ describe("runner claim capability contract", () => {
     });
 
     expect(result.success).toBe(true);
+  });
+});
+
+describe("runner builtin firewall resolve contract", () => {
+  it("accepts connector and model-provider names", () => {
+    const result =
+      runnersBuiltinFirewallsResolveContract.resolve.body.safeParse({
+        names: ["github", "model-provider:openai-api-key"],
+      });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects malformed and oversized requests", () => {
+    expect(
+      runnersBuiltinFirewallsResolveContract.resolve.body.safeParse({
+        names: ["ModelProvider:openai-api-key"],
+      }).success,
+    ).toBe(false);
+    expect(
+      runnersBuiltinFirewallsResolveContract.resolve.body.safeParse({
+        names: ["model-provider:"],
+      }).success,
+    ).toBe(false);
+    expect(
+      runnersBuiltinFirewallsResolveContract.resolve.body.safeParse({
+        names: Array.from(
+          { length: RUNNER_BUILTIN_FIREWALL_RESOLVE_NAMES_MAX + 1 },
+          (_, index) => {
+            return `github-${index}`;
+          },
+        ),
+      }).success,
+    ).toBe(false);
   });
 });
 
