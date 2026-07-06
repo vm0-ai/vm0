@@ -5303,13 +5303,13 @@ async function persistRunCustomConnectorAuthRefs(
     readonly refs: readonly CustomConnectorAuthRef[];
   },
 ): Promise<void> {
-  if (args.refs.length === 0) {
-    return;
-  }
-
   await tx
     .delete(agentRunCustomConnectorAuthRefs)
     .where(eq(agentRunCustomConnectorAuthRefs.runId, args.runId));
+
+  if (args.refs.length === 0) {
+    return;
+  }
 
   const expiresAt = new Date(now() + CUSTOM_CONNECTOR_AUTH_REF_TTL_MS);
   await tx.insert(agentRunCustomConnectorAuthRefs).values(
