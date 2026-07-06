@@ -324,6 +324,7 @@ export type {
   ConnectorAccessConfig,
   ConnectorAccessKind,
   ConnectorAuthClientConfig,
+  ConnectorBrowserAuthCallbackOrigin,
   ConnectorAuthCodeCallbackOrigin,
   ConnectorAuthCodeGrantConfig,
   ConnectorAuthMethodConfig,

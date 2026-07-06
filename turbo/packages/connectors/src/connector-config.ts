@@ -99,7 +99,9 @@ export interface ConnectorManualGrantConfig {
   readonly fields: Record<string, ConnectorManualGrantFieldConfig>;
 }
 
-export type ConnectorAuthCodeCallbackOrigin = "web" | "api";
+export type ConnectorBrowserAuthCallbackOrigin = "web" | "api";
+export type ConnectorAuthCodeCallbackOrigin =
+  ConnectorBrowserAuthCallbackOrigin;
 
 export interface ConnectorAuthCodeGrantConfig {
   readonly kind: "auth-code";
@@ -110,6 +112,7 @@ export interface ConnectorAuthCodeGrantConfig {
 
 export interface ConnectorOpenIdAuthGrantConfig {
   readonly kind: "openid-auth";
+  readonly callbackOrigin?: ConnectorBrowserAuthCallbackOrigin;
   readonly outputs: ConnectorGrantOutputBindings;
 }
 

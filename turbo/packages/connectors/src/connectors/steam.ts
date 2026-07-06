@@ -18,6 +18,7 @@ export const steam = {
         },
         grant: {
           kind: "openid-auth",
+          callbackOrigin: "api",
           outputs: {
             steamId: "$vars.STEAM_ID",
           },

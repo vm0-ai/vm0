@@ -38,6 +38,8 @@ import {
   connectorAuthCodeCallbacksUseOnlyApiOrigin,
   getAvailableConnectorAuthMethodIds,
   getConnectorAuthMethodAuthCodeCallbackOrigin,
+  getConnectorAuthMethodOpenIdAuthCallbackOrigin,
+  getConnectorAuthMethodOpenIdAuthGrantConfig,
   getConnectorAuthMethodGrantScopes,
   getConnectorAuthMethodGrantMetadata,
   getConnectorAuthMethodRevokeMetadata,
@@ -4056,6 +4058,21 @@ describe("connector OAuth lifecycle grant helpers", () => {
       getConnectorAuthMethodAuthCodeCallbackOrigin("test-oauth", "api"),
     ).toBe("api");
     expect(connectorAuthCodeCallbacksUseOnlyApiOrigin("test-oauth")).toBe(true);
+  });
+
+  it("declares Steam OpenID as an API-origin callback grant", () => {
+    expect(
+      getConnectorAuthMethodOpenIdAuthCallbackOrigin("steam", "openid"),
+    ).toBe("api");
+    expect(
+      getConnectorAuthMethodOpenIdAuthGrantConfig("steam", "openid"),
+    ).toMatchObject({
+      kind: "openid-auth",
+      callbackOrigin: "api",
+      outputs: {
+        steamId: "$vars.STEAM_ID",
+      },
+    });
   });
 
   it("declares Cloudflare OAuth as a refreshable API-origin auth-code grant", () => {

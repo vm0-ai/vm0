@@ -19,6 +19,7 @@ import {
   type RefreshTokenAccessConnectorType,
   type ConnectorAccessConfig,
   type ConnectorAccessKind,
+  type ConnectorBrowserAuthCallbackOrigin,
   type ConnectorAuthCodeCallbackOrigin,
   type ConnectorAuthCodeGrantConfig,
   type ConnectorAuthClientConfig,
@@ -1022,6 +1023,27 @@ export function getConnectorAuthMethodOpenIdAuthGrantConfig(
 ): ConnectorOpenIdAuthGrantConfig | undefined {
   const grant = getConnectorAuthMethod(type, authMethod)?.grant;
   return grant?.kind === "openid-auth" ? grant : undefined;
+}
+
+export function getConnectorAuthMethodOpenIdAuthCallbackOrigin<
+  Type extends OpenIdAuthGrantConnectorType,
+>(
+  type: Type,
+  authMethod: ConnectorOpenIdAuthGrantAuthMethodId<Type>,
+): ConnectorBrowserAuthCallbackOrigin;
+export function getConnectorAuthMethodOpenIdAuthCallbackOrigin(
+  type: ConnectorType,
+  authMethod: string,
+): ConnectorBrowserAuthCallbackOrigin | undefined;
+export function getConnectorAuthMethodOpenIdAuthCallbackOrigin(
+  type: ConnectorType,
+  authMethod: string,
+): ConnectorBrowserAuthCallbackOrigin | undefined {
+  const grant = getConnectorAuthMethodOpenIdAuthGrantConfig(type, authMethod);
+  if (!grant) {
+    return undefined;
+  }
+  return grant.callbackOrigin ?? "api";
 }
 
 export function getConnectorAuthMethodAuthCodeCallbackOrigin<

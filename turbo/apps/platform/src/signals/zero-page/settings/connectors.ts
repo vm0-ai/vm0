@@ -2095,7 +2095,7 @@ const openConnectorOAuthAuthCodeWindow$ = command(
           grantKind === "openid-auth"
             ? await accept(
                 get(zeroClient$)(zeroConnectorOpenIdStartContract, {
-                  apiBase: OAUTH_WEB_API_BASE,
+                  apiBase: "api",
                 }).start({
                   params: { type },
                   body: { authMethod },

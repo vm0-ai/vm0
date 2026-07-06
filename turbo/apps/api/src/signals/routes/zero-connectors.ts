@@ -37,7 +37,10 @@ import {
 } from "../services/zero-connector-data.service";
 import { userConnectorAvailability } from "../services/connector-availability.service";
 import type { RouteEntry } from "../route-entry";
-import { getConnectorOAuthCallbackOrigin } from "./connector-oauth-origin";
+import {
+  getConnectorOAuthCallbackOrigin,
+  getConnectorOpenIdCallbackOrigin,
+} from "./connector-oauth-origin";
 import { CONNECTOR_OAUTH_COOKIE_MAX_AGE_SECONDS } from "./connector-oauth-route-state";
 import {
   buildResolvedConnectorAuthCodeAuthUrl,
@@ -49,7 +52,6 @@ import {
   prepareResolvedConnectorOpenIdAuthStart,
   resolveConnectorOpenIdAuthStartMethod,
 } from "./connector-openid-auth-start";
-import { getOAuthApiOrigin } from "./oauth-web-origin";
 
 type ResolvedAuthCodeStartMethod = ReturnType<
   typeof resolveConnectorAuthCodeStartMethod
@@ -467,7 +469,11 @@ const startConnectorOpenIdInner$ = command(
 
     const prepared = prepareResolvedConnectorOpenIdAuthStart({
       type: openIdStartType.type,
-      origin: getOAuthApiOrigin(request),
+      origin: getConnectorOpenIdCallbackOrigin({
+        request,
+        type: openIdStartType.type,
+        authMethod: openIdStartType.authMethod,
+      }),
     });
     const authResult = await buildResolvedConnectorOpenIdAuthUrl({
       type: openIdStartType.type,
