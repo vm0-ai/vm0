@@ -1,5 +1,27 @@
 # Changelog
 
+## [8.405.0](https://github.com/vm0-ai/vm0/compare/core-v8.404.0...core-v8.405.0) (2026-07-06)
+
+
+### Features
+
+* enable sidebar manage icon collapse for staff orgs ([#20349](https://github.com/vm0-ai/vm0/issues/20349)) ([8d898fd](https://github.com/vm0-ai/vm0/commit/8d898fda7b8d821e47c119a4491bb27ecc0230d3))
+* enable sidebar thread list scroll by default ([#20366](https://github.com/vm0-ai/vm0/issues/20366)) ([fba19e7](https://github.com/vm0-ai/vm0/commit/fba19e71d0ded477d86137ae75a3a3bcd2382f50))
+* gate sidebar thread list scrolling ([#20339](https://github.com/vm0-ai/vm0/issues/20339)) ([028082d](https://github.com/vm0-ai/vm0/commit/028082d9b7b60de327d94891c558ec5e1b721d56))
+
+
+### Refactoring
+
+* retire the workflow automation feature switch as always-on ([#20357](https://github.com/vm0-ai/vm0/issues/20357)) ([840b415](https://github.com/vm0-ai/vm0/commit/840b41551ab88a25aeeec08f01a18ccd6a5b36ff))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.157.0
+    * @vm0/connectors bumped to 1.140.0
+
 ## [8.404.0](https://github.com/vm0-ai/vm0/compare/core-v8.403.0...core-v8.404.0) (2026-07-06)
 
 
