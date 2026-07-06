@@ -46,6 +46,7 @@ import {
 import {
   seedZeroChatThreadGoal$,
   seedZeroChatThreadRun$,
+  seedZeroChatThread$,
   updateZeroChatThreadRunStatus$,
 } from "./helpers/zero-chat-threads";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
@@ -747,6 +748,84 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       );
     }
     expect(retainedAnchorCursor.body.events).toStrictEqual([]);
+  });
+
+  it("advances bounded snapshot compaction across missing scopes", async () => {
+    mockEnv("CRON_SECRET", CHAT_THREAD_SNAPSHOT_CRON_SECRET);
+    mockOptionalEnv("CHAT_THREAD_SNAPSHOT_COMPACTION_BATCH_SIZE", "1");
+    const firstActor = bdd.user({
+      userId: `user_00000000_snapshot_batch_${randomUUID()}`,
+      orgId: `org_00000000_snapshot_batch_${randomUUID()}`,
+    });
+    const secondActor = bdd.user({
+      userId: `user_00000001_snapshot_batch_${randomUUID()}`,
+      orgId: `org_00000001_snapshot_batch_${randomUUID()}`,
+    });
+    if (!firstActor.orgId || !secondActor.orgId) {
+      throw new Error("Expected snapshot batch actors to belong to orgs");
+    }
+
+    const firstThread = await store.set(
+      seedZeroChatThread$,
+      {
+        userId: firstActor.userId,
+        orgId: firstActor.orgId,
+        title: "First bounded snapshot thread",
+      },
+      context.signal,
+    );
+    const secondThread = await store.set(
+      seedZeroChatThread$,
+      {
+        userId: secondActor.userId,
+        orgId: secondActor.orgId,
+        title: "Second bounded snapshot thread",
+      },
+      context.signal,
+    );
+
+    await expect(chat.getThreadSnapshot(firstActor)).resolves.toStrictEqual({
+      chatThreads: [],
+      latestEventId: null,
+    });
+    await expect(chat.getThreadSnapshot(secondActor)).resolves.toStrictEqual({
+      chatThreads: [],
+      latestEventId: null,
+    });
+
+    await expect(compactChatThreadSnapshots()).resolves.toMatchObject({
+      scopes: 1,
+    });
+    await expect(chat.getThreadSnapshot(firstActor)).resolves.toMatchObject({
+      latestEventId: null,
+      chatThreads: [
+        expect.objectContaining({
+          id: firstThread.threadId,
+          agentId: firstThread.composeId,
+          title: "First bounded snapshot thread",
+          selectedModel: null,
+        }),
+      ],
+    });
+    await expect(chat.getThreadSnapshot(secondActor)).resolves.toStrictEqual({
+      chatThreads: [],
+      latestEventId: null,
+    });
+
+    await expect(compactChatThreadSnapshots()).resolves.toMatchObject({
+      scopes: 1,
+    });
+    await expect(chat.getThreadSnapshot(secondActor)).resolves.toMatchObject({
+      latestEventId: null,
+      chatThreads: [
+        expect.objectContaining({
+          id: secondThread.threadId,
+          agentId: secondThread.composeId,
+          title: "Second bounded snapshot thread",
+          selectedModel: null,
+        }),
+      ],
+    });
   });
 
   it("keeps thread detail independent from thread model projection state", async () => {
