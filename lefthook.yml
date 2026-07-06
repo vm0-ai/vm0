@@ -30,13 +30,13 @@ pre-commit:
               - merge
               - rebase
             fail_text: "Knip found unused code. Run 'cd turbo && pnpm knip' to see details."
-            timeout: 60
+            timeout: "60s"
           - name: check-types
             run: pnpm check-types
             root: turbo/
             glob: "turbo/**/*.{ts,tsx}"
             fail_text: "TypeScript errors found. Run 'cd turbo && pnpm check-types' to see details."
-            timeout: 120
+            timeout: "120s"
     - name: crates
       group:
         parallel: true
