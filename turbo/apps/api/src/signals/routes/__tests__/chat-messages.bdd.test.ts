@@ -1804,7 +1804,7 @@ describe("CHAT-02: explicit provider pins", () => {
     }
   }, 90_000);
 
-  it("passes Codex fast mode only for feature-enabled ChatGPT subscription GPT-5.5 sends", async () => {
+  it("passes Codex fast mode only for feature-enabled ChatGPT subscription GPT 5.5 sends", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     const orgId = actor.orgId;
@@ -1904,7 +1904,7 @@ describe("CHAT-02: explicit provider pins", () => {
     );
     expectApiError(invalidFastPatch.body);
     expect(invalidFastPatch.body.error.message).toBe(
-      "Codex fast mode is only available for ChatGPT (Codex) GPT-5.5 runs",
+      "Codex fast mode is only available for ChatGPT (Codex) GPT 5.5 runs",
     );
     expect((await chat.readThread(actor, fast.threadId)).codexServiceTier).toBe(
       "fast",
@@ -1977,7 +1977,7 @@ describe("CHAT-02: explicit provider pins", () => {
     );
     expectApiError(rejected.body);
     expect(rejected.body.error.message).toBe(
-      "Codex fast mode is only available for ChatGPT (Codex) GPT-5.5 runs",
+      "Codex fast mode is only available for ChatGPT (Codex) GPT 5.5 runs",
     );
     await chat.requestReadThread(actor, rejectedThreadId, [404]);
   }, 90_000);
