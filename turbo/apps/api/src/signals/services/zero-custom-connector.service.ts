@@ -45,6 +45,7 @@ const TEMPLATE_REFERENCE_REGEX =
 const VARIABLE_REFERENCE_REGEX = /\{\{\s*variables\.[a-z][a-z0-9_]*\s*\}\}/;
 const TEMPLATE_PLACEHOLDER_VALUE = "placeholder";
 const HOST_TEMPLATE_VALUE_UNSAFE_REGEX = /[/?#\\@:]/;
+const SECRET_VALUE_WHITESPACE_REGEX = /\s+/gu;
 
 type BadRequestResponse = ReturnType<typeof badRequestMessage>;
 type NotFoundResponse = ReturnType<typeof notFound>;
@@ -1185,20 +1186,27 @@ function validateValueInputsForDefinition(args: {
         `Value references undeclared custom connector field: ${marker}`,
       );
     }
+    const normalizedValue =
+      value.kind === "secret"
+        ? value.value.replace(SECRET_VALUE_WHITESPACE_REGEX, "")
+        : value.value.trim();
+    if (normalizedValue.length === 0) {
+      continue;
+    }
     if (seen.has(marker)) {
       return badRequestMessage(`Duplicate value for field: ${marker}`);
     }
     if (
       value.kind === "variable" &&
       prefixVariables.has(key) &&
-      !isSafeHostTemplateVariableValue(value.value)
+      !isSafeHostTemplateVariableValue(normalizedValue)
     ) {
       return badRequestMessage(
         `Value for variable ${key} contains characters that are not safe in custom connector host templates`,
       );
     }
     seen.add(marker);
-    values.push({ key, kind: value.kind, value: value.value });
+    values.push({ key, kind: value.kind, value: normalizedValue });
   }
   return values;
 }
@@ -1460,20 +1468,23 @@ export const setCustomConnectorLegacySecretValue$ = command(
     if (isBadRequest(values)) {
       return values;
     }
-    const featureSwitchContext = await get(
-      userFeatureSwitchContext(args.orgId, args.userId),
-    );
-    signal.throwIfAborted();
-    const encryptedValue = await encryptStoredSecretValue(
-      args.value,
-      featureSwitchContext,
-    );
-    signal.throwIfAborted();
-    const value: EncryptedValueInput = {
-      kind: "secret",
-      key: LEGACY_SECRET_KEY,
-      encryptedValue,
-    };
+    const normalizedValue = values[0];
+    let value: EncryptedValueInput | null = null;
+    if (normalizedValue) {
+      const featureSwitchContext = await get(
+        userFeatureSwitchContext(args.orgId, args.userId),
+      );
+      signal.throwIfAborted();
+      value = {
+        kind: "secret",
+        key: LEGACY_SECRET_KEY,
+        encryptedValue: await encryptStoredSecretValue(
+          normalizedValue.value,
+          featureSwitchContext,
+        ),
+      };
+      signal.throwIfAborted();
+    }
 
     const writeDb = set(writeDb$);
     const updated = await writeDb.transaction(
@@ -1494,7 +1505,21 @@ export const setCustomConnectorLegacySecretValue$ = command(
         if (isBadRequest(lockedValues)) {
           return lockedValues;
         }
-        await upsertEncryptedConnectorValue(tx, { ...args, value });
+        if (value) {
+          await upsertEncryptedConnectorValue(tx, { ...args, value });
+        } else {
+          await tx
+            .delete(orgCustomConnectorValues)
+            .where(
+              and(
+                eq(orgCustomConnectorValues.connectorId, args.connectorId),
+                eq(orgCustomConnectorValues.userId, args.userId),
+                eq(orgCustomConnectorValues.orgId, args.orgId),
+                eq(orgCustomConnectorValues.kind, "secret"),
+                eq(orgCustomConnectorValues.key, LEGACY_SECRET_KEY),
+              ),
+            );
+        }
         await deleteLegacyConnectorSecret(tx, args);
         const markers = await loadConnectorValueMarkersForConnector({
           tx,

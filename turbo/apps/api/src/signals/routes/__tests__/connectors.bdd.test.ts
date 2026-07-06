@@ -1508,6 +1508,118 @@ describe("CONN-03: custom connectors and connector-owned values", () => {
     await connectorsApi.deleteCustomConnector(admin, connector.id);
   });
 
+  it("normalizes custom connector values before validation and storage", async () => {
+    const bdd = createBddApi(context);
+    const admin = bdd.user({ orgRole: "org:admin" });
+    const rand = randomUUID().replace(/-/g, "").slice(0, 8);
+
+    const connector = await connectorsApi.createCustomConnector(admin, {
+      displayName: "BDD Normalize Values API",
+      prefixTemplates: [`https://{{variables.subdomain}}.${rand}.test/v1/`],
+      fields: [
+        {
+          key: "api_key",
+          label: "API key",
+          kind: "secret",
+          required: true,
+        },
+        {
+          key: "subdomain",
+          label: "Subdomain",
+          kind: "variable",
+          required: true,
+        },
+      ],
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{secrets.api_key}}",
+        },
+      ],
+      queryInjections: [],
+    });
+
+    const normalized = await connectorsApi.setCustomConnectorValues(
+      admin,
+      connector.id,
+      [
+        { key: "api_key", kind: "secret", value: " api-\nkey\t " },
+        { key: "subdomain", kind: "variable", value: " acme " },
+      ],
+    );
+
+    expect(normalized).toMatchObject({
+      connected: true,
+      configuredFieldKeys: ["api_key", "subdomain"],
+      missingRequiredFields: [],
+    });
+
+    const listed = await connectorsApi.listCustomConnectors(admin);
+    expect(
+      listed.find((candidate) => {
+        return candidate.id === connector.id;
+      }),
+    ).toMatchObject({
+      connected: true,
+      configuredFieldKeys: ["api_key", "subdomain"],
+      missingRequiredFields: [],
+    });
+    expectNoVisibleSecret(listed, "api-key");
+
+    await connectorsApi.deleteCustomConnector(admin, connector.id);
+  });
+
+  it("does not treat custom connector values that normalize to empty as configured", async () => {
+    const bdd = createBddApi(context);
+    const admin = bdd.user({ orgRole: "org:admin" });
+    const rand = randomUUID().replace(/-/g, "").slice(0, 8);
+
+    const connector = await connectorsApi.createCustomConnector(admin, {
+      displayName: "BDD Empty Normalized Values API",
+      prefixTemplates: [`https://${rand}.example.test/v1/`],
+      fields: [
+        {
+          key: "api_key",
+          label: "API key",
+          kind: "secret",
+          required: true,
+        },
+      ],
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{secrets.api_key}}",
+        },
+      ],
+      queryInjections: [],
+    });
+
+    const saved = await connectorsApi.setCustomConnectorValues(
+      admin,
+      connector.id,
+      [{ key: "api_key", kind: "secret", value: " \n\t " }],
+    );
+
+    expect(saved).toMatchObject({
+      connected: false,
+      configuredFieldKeys: [],
+      missingRequiredFields: ["api_key"],
+    });
+
+    const listed = await connectorsApi.listCustomConnectors(admin);
+    expect(
+      listed.find((candidate) => {
+        return candidate.id === connector.id;
+      }),
+    ).toMatchObject({
+      connected: false,
+      configuredFieldKeys: [],
+      missingRequiredFields: ["api_key"],
+    });
+
+    await connectorsApi.deleteCustomConnector(admin, connector.id);
+  });
+
   it("saves a connector proposal with values and authorizes the requested agent", async () => {
     const bdd = createBddApi(context);
     bdd.acceptAgentStorageWrites();
@@ -1797,6 +1909,61 @@ describe("CONN-03: custom connectors and connector-owned values", () => {
     });
     expectNoVisibleSecret(listed, "legacy-initial-secret");
     expectNoVisibleSecret(listed, "legacy-facade-secret");
+
+    await connectorsApi.deleteCustomConnector(admin, connector.id);
+  });
+
+  it("clears the normalized secret value when the legacy secret endpoint receives whitespace", async () => {
+    const bdd = createBddApi(context);
+    const admin = bdd.user({ orgRole: "org:admin" });
+    const rand = randomUUID().replace(/-/g, "").slice(0, 8);
+    const connector = await connectorsApi.createCustomConnector(admin, {
+      displayName: "BDD Legacy Blank Secret Set API",
+      prefixTemplates: [`https://{{variables.subdomain}}.${rand}.test/v1/`],
+      fields: [
+        {
+          key: "secret",
+          label: "API key",
+          kind: "secret",
+          required: true,
+        },
+        {
+          key: "subdomain",
+          label: "Subdomain",
+          kind: "variable",
+          required: true,
+        },
+      ],
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{secrets.secret}}",
+        },
+      ],
+      queryInjections: [
+        {
+          name: "tenant",
+          valueTemplate: "{{variables.subdomain}}",
+        },
+      ],
+    });
+    await connectorsApi.setCustomConnectorValues(admin, connector.id, [
+      { key: "secret", kind: "secret", value: "legacy-blank-initial-secret" },
+      { key: "subdomain", kind: "variable", value: "acme" },
+    ]);
+
+    await connectorsApi.setCustomConnectorSecret(admin, connector.id, " \n\t ");
+
+    const listed = await connectorsApi.listCustomConnectors(admin);
+    expect(
+      listed.find((candidate) => {
+        return candidate.id === connector.id;
+      }),
+    ).toMatchObject({
+      connected: false,
+      configuredFieldKeys: ["subdomain"],
+      missingRequiredFields: ["secret"],
+    });
 
     await connectorsApi.deleteCustomConnector(admin, connector.id);
   });
