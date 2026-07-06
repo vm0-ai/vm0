@@ -186,7 +186,13 @@ function isTemplateRoute(path: string): boolean {
 }
 
 function requestRouteTemplate(context: Context): string | undefined {
-  const routes = matchedRoutes(context);
+  const result = safeSync(() => {
+    return matchedRoutes(context);
+  });
+  if (!("ok" in result)) {
+    return undefined;
+  }
+  const routes = result.ok;
   for (let index = routes.length - 1; index >= 0; index -= 1) {
     const path = routes[index]?.path;
     if (path && isTemplateRoute(path)) {

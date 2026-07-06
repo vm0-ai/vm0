@@ -4,6 +4,11 @@ const CIRCULAR_MARKER = "[Circular]";
 const TRUNCATED_MARKER = "[Truncated]";
 const UNREADABLE_MARKER = "[Unreadable]";
 
+interface BoundedEntries {
+  readonly entries: readonly [string, unknown][];
+  readonly truncated: boolean;
+}
+
 /**
  * Extract message string from log arguments.
  */
@@ -50,15 +55,18 @@ function serializeErrorWithSeen(
   if (cause !== undefined) {
     serialized.cause = serializeErrorValue(cause, seen, depth + 1);
   }
-  const entries = safeObjectEntries(err);
-  if (!entries) {
+  const result = safeOwnEnumerableEntries(err);
+  if (!result) {
     serialized.__unreadable = true;
     return serialized;
   }
-  for (const [key, value] of entries) {
+  for (const [key, value] of result.entries) {
     if (!(key in serialized)) {
       serialized[key] = serializeErrorValue(value, seen, depth + 1);
     }
+  }
+  if (result.truncated) {
+    serialized.__truncated = true;
   }
   return serialized;
 }
@@ -75,12 +83,28 @@ function safeReadValue(read: () => unknown): unknown {
   }
 }
 
-function safeObjectEntries(value: object): readonly [string, unknown][] | null {
+function safeOwnEnumerableEntries(value: object): BoundedEntries | null {
+  const entries: [string, unknown][] = [];
   try {
-    return Object.entries(value as unknown as Record<string, unknown>);
+    for (const key in value) {
+      if (!Object.prototype.hasOwnProperty.call(value, key)) {
+        continue;
+      }
+      if (!Object.prototype.propertyIsEnumerable.call(value, key)) {
+        continue;
+      }
+      if (entries.length >= SERIALIZED_OBJECT_MAX_ENTRIES) {
+        return { entries, truncated: true };
+      }
+      const child = safeReadValue(() => {
+        return (value as Record<string, unknown>)[key];
+      });
+      entries.push([key, child]);
+    }
   } catch {
     return null;
   }
+  return { entries, truncated: false };
 }
 
 function safeString(value: unknown): string {
@@ -129,15 +153,15 @@ function serializeArrayValue(
   seen: WeakSet<object>,
   depth: number,
 ): unknown {
-  const entries = safeObjectEntries(value);
-  if (!entries) {
+  const result = safeOwnEnumerableEntries(value);
+  if (!result) {
     return UNREADABLE_MARKER;
   }
-  const items = entries.slice(0, SERIALIZED_OBJECT_MAX_ENTRIES).map((item) => {
+  const items = result.entries.map((item) => {
     const [, child] = item;
     return serializeErrorValue(child, seen, depth + 1);
   });
-  if (entries.length > SERIALIZED_OBJECT_MAX_ENTRIES) {
+  if (result.truncated) {
     items.push(TRUNCATED_MARKER);
   }
   return items;
@@ -148,19 +172,16 @@ function serializePlainObjectValue(
   seen: WeakSet<object>,
   depth: number,
 ): unknown {
-  const entries = safeObjectEntries(value);
-  if (!entries) {
+  const result = safeOwnEnumerableEntries(value);
+  if (!result) {
     return UNREADABLE_MARKER;
   }
   const serialized: Record<string, unknown> = {};
-  let entryCount = 0;
-  for (const [key, child] of entries) {
-    if (entryCount >= SERIALIZED_OBJECT_MAX_ENTRIES) {
-      serialized.__truncated = true;
-      break;
-    }
+  for (const [key, child] of result.entries) {
     serialized[key] = serializeErrorValue(child, seen, depth + 1);
-    entryCount += 1;
+  }
+  if (result.truncated) {
+    serialized.__truncated = true;
   }
   return serialized;
 }

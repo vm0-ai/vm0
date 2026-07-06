@@ -393,8 +393,46 @@ describe("serializeError via logging", () => {
     expect(fields?.error).toMatchObject({
       message: "request failed",
       cause: "[Unreadable]",
-      __unreadable: true,
+      request: "[Unreadable]",
     });
+  });
+
+  it("bounds enumerable object fields before reading later properties", () => {
+    const log = logger("large-enumerable-test");
+    const err = new Error("request failed") as Error & Record<string, unknown>;
+    const request: Record<string, unknown> = {};
+    for (let index = 0; index < 80; index += 1) {
+      Object.defineProperty(request, `field${index}`, {
+        enumerable: true,
+        get() {
+          if (index >= 64) {
+            throw new Error("late getter should not be read");
+          }
+          return index;
+        },
+      });
+    }
+    err.request = request;
+
+    expect(() => {
+      log.error(err);
+    }).not.toThrow();
+
+    const fields = axiomLogging.error.mock.calls[0]?.[1] as
+      | Record<string, unknown>
+      | undefined;
+    const serializedError = fields?.error as Record<string, unknown>;
+    const serializedRequest = serializedError.request as Record<
+      string,
+      unknown
+    >;
+    expect(serializedRequest.field0).toBe(0);
+    expect(serializedRequest.field63).toBe(63);
+    expect(serializedRequest.field64).toBeUndefined();
+    expect(serializedRequest.__truncated).toBeTruthy();
+    expect(() => {
+      JSON.stringify(serializedError);
+    }).not.toThrow();
   });
 
   it("surfaces custom enumerable properties on Error", () => {

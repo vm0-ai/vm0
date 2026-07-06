@@ -323,7 +323,7 @@ describe("createApp", () => {
     expect(logFields.error).toMatchObject({
       message: "unreadable failure",
       cause: "[Unreadable]",
-      __unreadable: true,
+      request: "[Unreadable]",
     });
   });
 
