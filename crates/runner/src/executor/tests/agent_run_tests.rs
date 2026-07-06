@@ -61,7 +61,8 @@ fn zstd_bytes(raw: &[u8]) -> Vec<u8> {
     zstd::encode_all(raw, 0).unwrap()
 }
 
-async fn serve_history_once(body: &'static [u8]) -> String {
+async fn serve_history_once(body: &[u8]) -> String {
+    let body = body.to_vec();
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
     tokio::spawn(async move {
@@ -73,7 +74,7 @@ async fn serve_history_once(body: &'static [u8]) -> String {
             body.len()
         );
         stream.write_all(response.as_bytes()).await.unwrap();
-        stream.write_all(body).await.unwrap();
+        stream.write_all(&body).await.unwrap();
     });
     format!("http://{address}/history.blob?token=secret")
 }
@@ -756,7 +757,7 @@ async fn run_in_sandbox_records_gzip_session_history_download_encoding() {
     let config = test_executor_config(dir.path()).await;
     let sandbox = sandbox_mock::MockSandbox::new("test");
     let history = b"{\"type\":\"init\"}\n\xff\n";
-    let compressed = Box::leak(gzip_bytes(history).into_boxed_slice());
+    let compressed = gzip_bytes(history);
     let mut ctx = minimal_context();
     ctx.resume_session = Some(ResumeSession {
         cli_agent_session_id: "sess-gzip-ref-123".into(),
@@ -764,7 +765,7 @@ async fn run_in_sandbox_records_gzip_session_history_download_encoding() {
             history_ref: ResumeSessionHistoryRef {
                 kind: ResumeSessionHistoryRefKind::Blob,
                 hash: hex::encode(Sha256::digest(history)),
-                url: serve_history_once(compressed).await,
+                url: serve_history_once(&compressed).await,
                 encoding: Some(ResumeSessionHistoryEncoding::Gzip),
                 raw_size: history.len() as u64,
                 encoded_size: compressed.len() as u64,
@@ -845,7 +846,7 @@ async fn run_in_sandbox_records_zstd_session_history_download_encoding() {
     let config = test_executor_config(dir.path()).await;
     let sandbox = sandbox_mock::MockSandbox::new("test");
     let history = b"{\"type\":\"init\"}\n\xff\n";
-    let compressed = Box::leak(zstd_bytes(history).into_boxed_slice());
+    let compressed = zstd_bytes(history);
     let mut ctx = minimal_context();
     ctx.resume_session = Some(ResumeSession {
         cli_agent_session_id: "sess-zstd-ref-123".into(),
@@ -853,7 +854,7 @@ async fn run_in_sandbox_records_zstd_session_history_download_encoding() {
             history_ref: ResumeSessionHistoryRef {
                 kind: ResumeSessionHistoryRefKind::Blob,
                 hash: hex::encode(Sha256::digest(history)),
-                url: serve_history_once(compressed).await,
+                url: serve_history_once(&compressed).await,
                 encoding: Some(ResumeSessionHistoryEncoding::Zstd),
                 raw_size: history.len() as u64,
                 encoded_size: compressed.len() as u64,
