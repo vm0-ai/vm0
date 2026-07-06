@@ -48,6 +48,38 @@
         state: stopped
       become: true
 
+    - name: Persist runner sysctl limits
+      copy:
+        dest: /etc/sysctl.d/99-vm0-runner.conf
+        content: |
+          # Managed by ansible/playbooks/provision-runner.yml - do not edit.
+          fs.inotify.max_user_instances = 8192
+          fs.inotify.max_user_watches = 1048576
+        mode: '0644'
+      become: true
+
+    - name: Apply runner sysctl limits
+      shell: |
+        set -euo pipefail
+        changed=0
+        apply_sysctl() {
+          name="$1"
+          value="$2"
+          current="$(sysctl -n "$name")"
+          if [ "$current" != "$value" ]; then
+            sysctl -w "$name=$value"
+            changed=1
+          fi
+        }
+        apply_sysctl fs.inotify.max_user_instances 8192
+        apply_sysctl fs.inotify.max_user_watches 1048576
+        echo "changed=$changed"
+      args:
+        executable: /bin/bash
+      become: true
+      register: runner_sysctl_apply
+      changed_when: "'changed=1' in runner_sysctl_apply.stdout"
+
     # unattended-upgrades + needrestart (default on Ubuntu 22.04+) would
     # `systemctl restart` our runner when a depended-on library (libc,
     # libssl, systemd, ...) is patched. That sends SIGTERM, which the
