@@ -104,6 +104,14 @@ const googleWorkspaceEventsWebhookResponseSchema = z.object({
   duplicates: z.number(),
 });
 
+const notionWebhookResponseSchema = z.object({
+  success: z.literal(true),
+  kind: z.enum(["verification", "event"]),
+  pending: z.number(),
+  refreshed: z.number(),
+  duplicates: z.number(),
+});
+
 const workflowTriggerWebhookResponseSchema = z.object({
   success: z.literal(true),
   duplicate: z.boolean(),
@@ -165,6 +173,24 @@ export const webhookGoogleWorkspaceEventsContract = c.router({
       503: thirdPartyWebhookErrorSchema,
     },
     summary: "Handle Google Workspace Events Pub/Sub push notifications",
+  },
+});
+
+/**
+ * Notion webhook contract for /api/webhooks/notion.
+ */
+export const webhookNotionContract = c.router({
+  post: {
+    method: "POST",
+    path: "/api/webhooks/notion",
+    body: c.type<string>(),
+    responses: {
+      200: notionWebhookResponseSchema,
+      400: thirdPartyWebhookErrorSchema,
+      401: thirdPartyWebhookErrorSchema,
+      503: thirdPartyWebhookErrorSchema,
+    },
+    summary: "Handle Notion webhook events",
   },
 });
 

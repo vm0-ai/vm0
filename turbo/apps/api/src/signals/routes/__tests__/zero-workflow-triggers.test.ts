@@ -60,6 +60,9 @@ const WORKFLOW_NAME = "trigger-workflow";
 const GMAIL_TOPIC_NAME = "projects/vm0-ai-488909/topics/gmail-events";
 const GMAIL_EMAIL = "workflow-user@example.com";
 const GOOGLE_CALENDAR_EMAIL = "calendar-user@example.com";
+const NOTION_PARENT_PAGE_ID = "11111111-1111-4111-8111-111111111111";
+const NOTION_PARENT_PAGE_URL =
+  "https://www.notion.so/Roadmap-11111111111141118111111111111111";
 
 interface WorkflowsFixture {
   readonly orgId: string;
@@ -118,6 +121,14 @@ async function enableWebhookWorkflowTriggers(
   });
 }
 
+async function enableNotionWorkflowTriggers(
+  fixture: WorkflowsFixture,
+): Promise<void> {
+  await updateFeatureSwitchesForUser(context, fixture, {
+    [FeatureSwitchKey.NotionWorkflowTriggers]: true,
+  });
+}
+
 async function seedGithubInstallation(args: {
   readonly fixture: WorkflowsFixture;
   readonly composeId: string;
@@ -169,6 +180,18 @@ async function seedGoogleCalendarConnector(
     connector_type: "google-calendar",
     external_email: GOOGLE_CALENDAR_EMAIL,
     access_token: "calendar-access-token",
+  });
+  expect(typeof result.connector_id).toBe("string");
+  return result.connector_id as string;
+}
+
+async function seedNotionConnector(fixture: WorkflowsFixture): Promise<string> {
+  const result = await workflowTriggerStateAction({
+    action: "seed-connector",
+    org_id: fixture.orgId,
+    user_id: fixture.userId,
+    connector_type: "notion",
+    access_token: "notion-access-token",
   });
   expect(typeof result.connector_id).toBe("string");
   return result.connector_id as string;
@@ -258,6 +281,45 @@ function configureGmailLabelsMock(
     http.get("https://gmail.googleapis.com/gmail/v1/users/me/labels", () => {
       return HttpResponse.json({ labels });
     }),
+  );
+}
+
+function configureNotionPageMock(args?: {
+  readonly pageId?: string;
+  readonly title?: string;
+  readonly url?: string;
+  readonly parent?: Record<string, unknown>;
+}): void {
+  const pageId = args?.pageId ?? NOTION_PARENT_PAGE_ID;
+  const title = args?.title ?? "Roadmap";
+  server.use(
+    http.get(
+      "https://api.notion.com/v1/pages/:pageId",
+      ({ request, params }) => {
+        expect(params.pageId).toBe(pageId);
+        expect(request.headers.get("authorization")).toBe(
+          "Bearer notion-access-token",
+        );
+        expect(request.headers.get("notion-version")).toBe("2022-06-28");
+        return HttpResponse.json({
+          object: "page",
+          id: pageId,
+          created_time: "2026-07-01T00:00:00.000Z",
+          last_edited_time: "2026-07-01T00:00:00.000Z",
+          archived: false,
+          in_trash: false,
+          url: args?.url ?? NOTION_PARENT_PAGE_URL,
+          parent: args?.parent ?? { type: "workspace" },
+          properties: {
+            title: {
+              id: "title",
+              type: "title",
+              title: [{ type: "text", plain_text: title }],
+            },
+          },
+        });
+      },
+    ),
   );
 }
 
@@ -731,7 +793,7 @@ describe("zero workflow triggers", () => {
   });
 
   it("requires a connected Gmail account for Gmail event triggers", async () => {
-    const { fixture, workflowId } = await setupFixture();
+    const { workflowId } = await setupFixture();
     mockOptionalEnv("GMAIL_PUBSUB_TOPIC_NAME", GMAIL_TOPIC_NAME);
     const rejected = await accept(
       triggersClient().create({
@@ -752,7 +814,7 @@ describe("zero workflow triggers", () => {
   });
 
   it("requires a connected Google Calendar account for Google Calendar event triggers", async () => {
-    const { fixture, workflowId } = await setupFixture();
+    const { workflowId } = await setupFixture();
     const rejected = await accept(
       triggersClient().create({
         headers: authHeaders(),
@@ -768,6 +830,128 @@ describe("zero workflow triggers", () => {
     expect(rejected.body.error.message).toBe(
       "Connect Google Calendar before adding a Google Calendar event trigger",
     );
+  });
+
+  it("rejects Notion child page triggers when Notion trigger creation is disabled", async () => {
+    const { workflowId } = await setupFixture();
+    const rejected = await accept(
+      triggersClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: {
+          kind: "event",
+          eventType: "notion-child-page-created",
+          eventConfig: {
+            provider: "notion",
+            event: "child_page_created",
+            parentPageUrl: NOTION_PARENT_PAGE_URL,
+          },
+        },
+      }),
+      [400],
+    );
+
+    expect(rejected.body.error.message).toBe(
+      "Notion workflow triggers are not enabled",
+    );
+  });
+
+  it("requires a connected Notion account for Notion child page triggers", async () => {
+    const { fixture, workflowId } = await setupFixture();
+    await enableNotionWorkflowTriggers(fixture);
+
+    const rejected = await accept(
+      triggersClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: {
+          kind: "event",
+          eventType: "notion-child-page-created",
+          eventConfig: {
+            provider: "notion",
+            event: "child_page_created",
+            parentPageUrl: NOTION_PARENT_PAGE_URL,
+          },
+        },
+      }),
+      [400],
+    );
+
+    expect(rejected.body.error.message).toBe(
+      "Connect Notion before adding a Notion event trigger",
+    );
+  });
+
+  it("requires a standard notion.so page URL for Notion child page triggers", async () => {
+    const { fixture, workflowId } = await setupFixture();
+    await enableNotionWorkflowTriggers(fixture);
+    await seedNotionConnector(fixture);
+
+    const rejected = await accept(
+      triggersClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: {
+          kind: "event",
+          eventType: "notion-child-page-created",
+          eventConfig: {
+            provider: "notion",
+            event: "child_page_created",
+            parentPageUrl: "https://example.com/notion-page",
+          },
+        },
+      }),
+      [400],
+    );
+
+    expect(rejected.body.error.message).toBe(
+      "Enter a standard notion.so page URL",
+    );
+  });
+
+  it("creates Notion child page triggers by validating and storing the parent page", async () => {
+    const { fixture, workflowId } = await setupFixture();
+    const connectorId = await seedNotionConnector(fixture);
+    await enableNotionWorkflowTriggers(fixture);
+    configureNotionPageMock();
+
+    const created = await accept(
+      triggersClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: {
+          kind: "event",
+          eventType: "notion-child-page-created",
+          eventConfig: {
+            provider: "notion",
+            event: "child_page_created",
+            parentPageUrl: NOTION_PARENT_PAGE_URL,
+          },
+        },
+      }),
+      [201],
+    );
+
+    expect(created.body).toMatchObject({
+      kind: "event",
+      eventType: "notion-child-page-created",
+      eventConfig: {
+        provider: "notion",
+        event: "child_page_created",
+        connectorId,
+        parentPage: {
+          id: NOTION_PARENT_PAGE_ID,
+          url: NOTION_PARENT_PAGE_URL,
+          title: "Roadmap",
+          rawUrl: NOTION_PARENT_PAGE_URL,
+        },
+      },
+      schedule: null,
+      scheduleSummary: null,
+      enabled: true,
+      nextRunAt: null,
+    });
+    expect(created.body.chatThreadId).toBeTruthy();
   });
 
   it("rejects removed Gmail event trigger match fields", async () => {
