@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.51](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.50...guest-download-v0.20.51) (2026-07-06)
+
+
+### Performance Improvements
+
+* attribute guest-download overlap conflicts ([#20305](https://github.com/vm0-ai/vm0/issues/20305)) ([feeae9f](https://github.com/vm0-ai/vm0/commit/feeae9fb391bbdc1d01663cd3f61935f5a1202ae))
+
 ## [0.20.50](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.49...guest-download-v0.20.50) (2026-07-05)
 
 ## [0.20.49](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.48...guest-download-v0.20.49) (2026-07-05)

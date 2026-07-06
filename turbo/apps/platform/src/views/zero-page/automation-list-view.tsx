@@ -15,6 +15,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@vm0/ui";
+import { runAfterDropdownMenuClose } from "../components/dropdown-menu-modal-action.ts";
 import { LoadingSwitch } from "../components/loading-switch.tsx";
 import type { AutomationEntry } from "./automation-utils";
 import { emptyAutomationImg } from "./platform-assets.ts";
@@ -181,8 +182,10 @@ function RowActions<T extends AutomationEntry>({
         )}
         <DropdownMenuItem
           className="gap-2"
-          onClick={() => {
-            return onEdit(entry);
+          onSelect={() => {
+            runAfterDropdownMenuClose(() => {
+              onEdit(entry);
+            });
           }}
         >
           <IconPencil size={14} stroke={1.5} />
@@ -191,8 +194,10 @@ function RowActions<T extends AutomationEntry>({
         {onDelete && entry.name !== undefined && (
           <DropdownMenuItem
             className="gap-2 text-destructive focus:text-destructive"
-            onClick={() => {
-              return onDelete(entry);
+            onSelect={() => {
+              runAfterDropdownMenuClose(() => {
+                onDelete(entry);
+              });
             }}
           >
             <IconTrash size={14} stroke={1.5} />

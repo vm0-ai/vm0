@@ -70,6 +70,7 @@ import { eventDrivenActiveRunChatThreadIds$ } from "../../signals/chat-page/chat
 import { pathParams$, searchParams$ } from "../../signals/route.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { setSidebarExpanded$ } from "../../signals/zero-page/zero-nav.ts";
+import { runAfterDropdownMenuClose } from "../components/dropdown-menu-modal-action.ts";
 import { sidebarDraftThreadIds$ } from "../../signals/chat-page/sidebar-draft-threads.ts";
 import { sidebarUnreadThreadIds$ } from "../../signals/chat-page/sidebar-unread-threads.ts";
 import {
@@ -359,13 +360,19 @@ function ChatThreadMenu({
               </>
             )}
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={openRenameDialog}>
+          <DropdownMenuItem
+            onSelect={() => {
+              runAfterDropdownMenuClose(openRenameDialog);
+            }}
+          >
             <IconPencil size={16} stroke={2} className="mr-2" />
             Rename chat
           </DropdownMenuItem>
           <DropdownMenuItem
             onSelect={() => {
-              setPendingDeleteThreadId(threadId);
+              runAfterDropdownMenuClose(() => {
+                setPendingDeleteThreadId(threadId);
+              });
             }}
             className="text-destructive focus:text-destructive"
           >
