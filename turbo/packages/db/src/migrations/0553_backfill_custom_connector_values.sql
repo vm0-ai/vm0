@@ -82,7 +82,7 @@ DROP TRIGGER IF EXISTS validate_org_custom_connector_value_trigger
 	ON "org_custom_connector_values";
 --> statement-breakpoint
 CREATE TRIGGER validate_org_custom_connector_value_trigger
-BEFORE INSERT OR UPDATE OF "connector_id", "org_id", "kind", "key" ON "org_custom_connector_values"
+BEFORE INSERT OR UPDATE ON "org_custom_connector_values"
 FOR EACH ROW
 EXECUTE FUNCTION validate_org_custom_connector_value();
 --> statement-breakpoint
