@@ -170,7 +170,7 @@ describe("createApp", () => {
   });
 
   it("bounds long unhandled error summaries", async () => {
-    const error = new Error("x".repeat(300));
+    const error = new Error("x".repeat(10_000));
     const expectedSummary = `${"x".repeat(237)}...`;
     const handler$ = computed((): never => {
       throw error;

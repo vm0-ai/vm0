@@ -19,6 +19,7 @@ const L = logger("App");
 const WEB_AUTH_PATHS = ["/sign-in", "/sign-up"] as const;
 const UNHANDLED_REQUEST_ERROR_TYPE = "unhandled_request_error" as const;
 const ERROR_SUMMARY_MAX_LENGTH = 240;
+const ERROR_SUMMARY_SOURCE_MAX_LENGTH = 4096;
 
 interface UnhandledRequestErrorLogFields {
   readonly type: typeof UNHANDLED_REQUEST_ERROR_TYPE;
@@ -88,7 +89,10 @@ function replaceControlCharacters(value: string): string {
 }
 
 function sanitizeErrorSummary(error: Error): string {
-  const source = sourceErrorMessage(error);
+  const source = sourceErrorMessage(error).slice(
+    0,
+    ERROR_SUMMARY_SOURCE_MAX_LENGTH,
+  );
   if (/^response validation failed:/i.test(source)) {
     return "response validation failed";
   }
