@@ -1,9 +1,4 @@
-import {
-  createHash,
-  createSign,
-  generateKeyPairSync,
-  type KeyObject,
-} from "node:crypto";
+import { createSign, generateKeyPairSync, type KeyObject } from "node:crypto";
 
 import { zeroTeamsConnectContract } from "@vm0/api-contracts/contracts/zero-teams-connect";
 import { HttpResponse, http } from "msw";
@@ -14,11 +9,9 @@ import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { flushWaitUntilForTest } from "../../context/wait-until";
 import { zeroTeamsBotRoutes } from "../zero-teams-bot";
 import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
-import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import {
   removeTeamsForTest,
   setupTeamsConnectTestEnv,
@@ -34,7 +27,6 @@ const context = testContext();
 const mocks = createZeroRouteMocks(context);
 const authOrgApi = createAuthOrgAgentsBddApi(context);
 const runsApi = createRunsAutomationsApi(context);
-const webhooksApi = createWebhookCallbackApi(context);
 const trackTeamsFixture = createFixtureTracker<TeamsConnectFixture>(
   async (fixture) => {
     await removeTeamsForTest(context.signal, fixture);
@@ -129,6 +121,110 @@ function teamsOutboundHandlers(serviceUrl: string): void {
       },
     ),
   );
+}
+
+interface TeamsGraphMessageFixture {
+  readonly id: string;
+  readonly text: string;
+  readonly createdDateTime: string;
+  readonly senderId?: string;
+  readonly senderName?: string;
+}
+
+function graphTokenUrl(tenantId: string): string {
+  return `https://login.microsoftonline.com/${encodeURIComponent(
+    tenantId,
+  )}/oauth2/v2.0/token`;
+}
+
+function teamsGraphMessage(
+  message: TeamsGraphMessageFixture,
+): Record<string, unknown> {
+  return {
+    id: message.id,
+    createdDateTime: message.createdDateTime,
+    messageType: "message",
+    from: {
+      user: {
+        id: message.senderId ?? "29:user-1",
+        displayName: message.senderName ?? "Ada Lovelace",
+      },
+    },
+    body: {
+      contentType: "html",
+      content: `<p>${message.text}</p>`,
+    },
+  };
+}
+
+function teamsGraphHistoryHandlers(args: {
+  readonly tenantId: string;
+  readonly channelMessages: readonly TeamsGraphMessageFixture[];
+  readonly threadRoots: Readonly<Record<string, TeamsGraphMessageFixture>>;
+  readonly threadReplies: Readonly<
+    Record<string, readonly TeamsGraphMessageFixture[]>
+  >;
+}): string[] {
+  const requests: string[] = [];
+  server.use(
+    http.post(graphTokenUrl(args.tenantId), async ({ request }) => {
+      const form = await request.formData();
+      expect(form.get("client_id")).toBe(BOT_APP_ID);
+      expect(form.get("client_secret")).toBe(BOT_APP_PASSWORD);
+      expect(form.get("scope")).toBe("https://graph.microsoft.com/.default");
+      requests.push("graph-token");
+      return HttpResponse.json({
+        access_token: "teams-graph-token",
+        token_type: "Bearer",
+        expires_in: 3600,
+      });
+    }),
+    http.get(
+      "https://graph.microsoft.com/v1.0/teams/:teamId/channels/:channelId/messages",
+      ({ request }) => {
+        expect(request.headers.get("authorization")).toBe(
+          "Bearer teams-graph-token",
+        );
+        requests.push("channel-messages");
+        return HttpResponse.json({
+          value: args.channelMessages.map(teamsGraphMessage),
+        });
+      },
+    ),
+    http.get(
+      "https://graph.microsoft.com/v1.0/teams/:teamId/channels/:channelId/messages/:messageId/replies",
+      ({ params, request }) => {
+        expect(request.headers.get("authorization")).toBe(
+          "Bearer teams-graph-token",
+        );
+        const messageId =
+          typeof params.messageId === "string" ? params.messageId : "";
+        requests.push(`thread-replies:${messageId}`);
+        return HttpResponse.json({
+          value: (args.threadReplies[messageId] ?? []).map(teamsGraphMessage),
+        });
+      },
+    ),
+    http.get(
+      "https://graph.microsoft.com/v1.0/teams/:teamId/channels/:channelId/messages/:messageId",
+      ({ params, request }) => {
+        expect(request.headers.get("authorization")).toBe(
+          "Bearer teams-graph-token",
+        );
+        const messageId =
+          typeof params.messageId === "string" ? params.messageId : "";
+        requests.push(`thread-root:${messageId}`);
+        const root = args.threadRoots[messageId];
+        return root
+          ? HttpResponse.json(teamsGraphMessage(root))
+          : HttpResponse.json(
+              { error: { code: "NotFound", message: "Message not found" } },
+              { status: 404 },
+            );
+      },
+    ),
+  );
+  return requests;
 }
 
 function encodeJwtPart(value: unknown): string {
@@ -305,31 +401,6 @@ function dispatchRunId(dispatch: unknown): string {
     throw new Error("Expected Teams dispatch run id");
   }
   return runId;
-}
-
-async function completeTeamsRun(args: {
-  readonly runId: string;
-  readonly sandboxToken: string;
-}): Promise<void> {
-  const sandboxHeaders = { authorization: `Bearer ${args.sandboxToken}` };
-  await webhooksApi.requestAgentCheckpoint(
-    {
-      runId: args.runId,
-      cliAgentType: "claude-code",
-      cliAgentSessionId: `bdd-teams-bot-cli-${args.runId}`,
-      cliAgentSessionHistoryHash: createHash("sha256")
-        .update(`bdd teams bot history ${args.runId}`)
-        .digest("hex"),
-    },
-    sandboxHeaders,
-    [200],
-  );
-  await webhooksApi.requestAgentComplete(
-    { runId: args.runId, exitCode: 0 },
-    sandboxHeaders,
-    [200],
-  );
-  await flushWaitUntilForTest();
 }
 
 describe("POST /api/zero/teams/bot", () => {
@@ -589,23 +660,58 @@ describe("POST /api/zero/teams/bot", () => {
     await connectTeamsFixture(fixture);
 
     teamsOutboundHandlers(fixture.serviceUrl);
-    const firstResponse = await postTeamsActivity({
-      activity: teamsMessageActivity(fixture, {
-        id: "activity-context-1",
-        replyToId: "root-dispatch",
-        text: "<at>Zero</at> remember the deployment target",
-      }),
-      token: teamsToken(),
+    const channelMessages: TeamsGraphMessageFixture[] = [];
+    const threadRoots: Record<string, TeamsGraphMessageFixture> = {
+      "root-dispatch": {
+        id: "root-dispatch",
+        text: "remember the deployment target",
+        createdDateTime: "2026-06-30T09:10:00.000Z",
+        senderId: fixture.teamsUserId,
+      },
+    };
+    const threadReplies: Record<string, TeamsGraphMessageFixture[]> = {
+      "root-dispatch": [
+        {
+          id: "activity-context-1",
+          text: "confirm the target is staging",
+          createdDateTime: "2026-06-30T09:11:00.000Z",
+          senderId: fixture.teamsUserId,
+        },
+        {
+          id: "activity-dispatch-1",
+          text: "ship the Teams dispatch",
+          createdDateTime: "2026-06-30T09:12:00.000Z",
+          senderId: fixture.teamsUserId,
+        },
+      ],
+    };
+    const graphRequests = teamsGraphHistoryHandlers({
+      tenantId: fixture.teamsTenantId,
+      channelMessages,
+      threadRoots,
+      threadReplies,
     });
-    expect(firstResponse.status).toBe(200);
-    const firstBody = await firstResponse.json();
-    const firstRunId = dispatchRunId(firstBody.dispatch);
-    await runsApi.heartbeatRunner(runnerGroup);
-    const firstClaim = await runsApi.claimRunnerJob(firstRunId);
-    await completeTeamsRun({
-      runId: firstRunId,
-      sandboxToken: firstClaim.sandboxToken,
-    });
+
+    channelMessages.push(
+      {
+        id: "activity-channel-context-1",
+        text: "start another topic",
+        createdDateTime: "2026-06-30T09:12:00.000Z",
+        senderId: fixture.teamsUserId,
+      },
+      {
+        id: "channel-prior-1",
+        text: "api channel planning",
+        createdDateTime: "2026-06-30T09:09:00.000Z",
+        senderId: fixture.teamsUserId,
+      },
+      {
+        id: "channel-future-1",
+        text: "future channel topic",
+        createdDateTime: "2026-06-30T09:13:00.000Z",
+        senderId: fixture.teamsUserId,
+      },
+    );
 
     const channelContextResponse = await postTeamsActivity({
       activity: teamsMessageActivity(fixture, {
@@ -628,10 +734,28 @@ describe("POST /api/zero/teams/bot", () => {
       "# Recent Channel Messages",
     );
     expect(channelContextClaim.prompt).toBe("start another topic");
-    expect(recentChannelContext).toContain("remember the deployment target");
+    expect(graphRequests).toContain("channel-messages");
+    expect(recentChannelContext).toContain("api channel planning");
     expect(recentChannelContext).not.toContain("start another topic");
     expect(channelContextAppendSystemPrompt).not.toContain(
       "# Microsoft Teams Thread Context",
+    );
+
+    channelMessages.splice(
+      0,
+      channelMessages.length,
+      {
+        id: "root-dispatch",
+        text: "remember the deployment target",
+        createdDateTime: "2026-06-30T09:10:00.000Z",
+        senderId: fixture.teamsUserId,
+      },
+      {
+        id: "channel-prior-1",
+        text: "api channel planning",
+        createdDateTime: "2026-06-30T09:09:00.000Z",
+        senderId: fixture.teamsUserId,
+      },
     );
 
     const response = await postTeamsActivity({
@@ -652,9 +776,7 @@ describe("POST /api/zero/teams/bot", () => {
 
     const runId = dispatchRunId(body.dispatch);
     await runsApi.heartbeatRunner(runnerGroup);
-    const claim = await runsApi.claimRunnerJob(runId, {
-      capabilities: ["resumeSessionHistoryRef"],
-    });
+    const claim = await runsApi.claimRunnerJob(runId);
     const appendSystemPrompt = claim.appendSystemPrompt ?? "";
     const currentUserPrompt = promptSection(
       appendSystemPrompt,
@@ -664,6 +786,11 @@ describe("POST /api/zero/teams/bot", () => {
     const currentIntegrationPrompt = promptSection(
       appendSystemPrompt,
       "# Current Integration",
+      "# Recent Channel Messages",
+    );
+    const replyRecentChannelContext = promptSection(
+      appendSystemPrompt,
+      "# Recent Channel Messages",
       "# Microsoft Teams Thread Context",
     );
     const teamsThreadContext = promptSection(
@@ -690,6 +817,11 @@ describe("POST /api/zero/teams/bot", () => {
     expect(currentIntegrationPrompt).not.toContain(
       "Teams user principal name:",
     );
+    expect(replyRecentChannelContext).toContain("api channel planning");
+    expect(replyRecentChannelContext).not.toContain(
+      "remember the deployment target",
+    );
+    expect(replyRecentChannelContext).not.toContain("future channel topic");
     expect(currentUserPrompt).toContain(
       `Teams user ID: ${fixture.teamsUserId}`,
     );
@@ -702,10 +834,13 @@ describe("POST /api/zero/teams/bot", () => {
     );
     expect(teamsThreadContext).toContain("- RELATIVE_INDEX: -1");
     expect(teamsThreadContext).toContain(
-      `- SENDER: {id: ${fixture.teamsUserId}, name: Ada Lovelace, email: ada@example.com}`,
+      `- SENDER: {id: ${fixture.teamsUserId}, name: Ada Lovelace}`,
     );
     expect(teamsThreadContext).toContain("remember the deployment target");
+    expect(teamsThreadContext).toContain("confirm the target is staging");
     expect(teamsThreadContext).not.toContain("ship the Teams dispatch");
+    expect(graphRequests).toContain("thread-root:root-dispatch");
+    expect(graphRequests).toContain("thread-replies:root-dispatch");
   });
 
   it("asks connected Teams users to configure a default agent", async () => {

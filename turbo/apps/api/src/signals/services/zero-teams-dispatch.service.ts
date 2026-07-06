@@ -1,7 +1,6 @@
 import { randomBytes } from "node:crypto";
 
 import { command } from "ccstate";
-import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { teamsOrgConnections } from "@vm0/db/schema/teams-org-connection";
@@ -9,12 +8,18 @@ import { teamsOrgInstallations } from "@vm0/db/schema/teams-org-installation";
 import { teamsOrgThreadSessions } from "@vm0/db/schema/teams-org-thread-session";
 import { teamsUserAgentPreferences } from "@vm0/db/schema/teams-user-agent-preference";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
 import type { TeamsInboundActivity } from "@vm0/api-contracts/contracts/zero-teams-bot";
-import { and, desc, eq, isNull, ne, or } from "drizzle-orm";
+import { and, eq, or } from "drizzle-orm";
+import { convert } from "html-to-text";
 
 import { logger } from "../../lib/log";
 import { writeDb$, type Db } from "../external/db";
+import {
+  fetchTeamsChannelMessage,
+  fetchTeamsChannelMessageReplies,
+  fetchTeamsChannelMessages,
+  type TeamsGraphMessage,
+} from "../external/teams-bot-client";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { formatIntegrationRunError$ } from "./integration-run-errors.service";
 import {
@@ -36,7 +41,9 @@ type BoundTeamsInstallation = TeamsInstallation & { readonly orgId: string };
 type TeamsConnection = typeof teamsOrgConnections.$inferSelect;
 type TeamsMessageActivity = Extract<TeamsInboundActivity, { kind: "message" }>;
 
-interface TeamsThreadContextMessage {
+interface TeamsContextMessage {
+  readonly id: string | null;
+  readonly createdDateTime: string | null;
   readonly text: string;
   readonly senderId: string;
   readonly senderName: string | null;
@@ -298,7 +305,7 @@ async function resolveCompatibleTeamsThreadSession(args: {
   return threadSession.agentSessionId;
 }
 
-function formatTeamsSenderBlock(message: TeamsThreadContextMessage): string {
+function formatTeamsSenderBlock(message: TeamsContextMessage): string {
   const parts = [`id: ${message.senderId}`];
   if (message.senderName) {
     parts.push(`name: ${message.senderName}`);
@@ -310,7 +317,7 @@ function formatTeamsSenderBlock(message: TeamsThreadContextMessage): string {
 }
 
 function formatTeamsContextMessage(
-  message: TeamsThreadContextMessage,
+  message: TeamsContextMessage,
   relativeIndex: number,
 ): string {
   return [
@@ -332,20 +339,20 @@ const TEAMS_CONTEXT_PREAMBLE = [
 ].join("\n");
 
 function formatTeamsThreadContext(
-  messages: readonly TeamsThreadContextMessage[],
+  messages: readonly TeamsContextMessage[],
 ): string {
   return formatTeamsContext("# Microsoft Teams Thread Context", messages);
 }
 
 function formatRecentTeamsChannelContext(
-  messages: readonly TeamsThreadContextMessage[],
+  messages: readonly TeamsContextMessage[],
 ): string {
   return formatTeamsContext("# Recent Channel Messages", messages);
 }
 
 function formatTeamsContext(
   header: string,
-  messages: readonly TeamsThreadContextMessage[],
+  messages: readonly TeamsContextMessage[],
 ): string {
   if (messages.length === 0) {
     return "";
@@ -360,81 +367,229 @@ function formatTeamsContext(
   )}\n\n---`;
 }
 
-async function fetchTeamsThreadContext(args: {
-  readonly db: Db;
-  readonly sessionId: string | undefined;
-  readonly connection: TeamsConnection;
-}): Promise<string> {
-  if (!args.sessionId) {
-    return "";
+function teamsGraphMessageText(message: TeamsGraphMessage): string {
+  const content = message.body?.content?.trim() ?? "";
+  if (message.body?.contentType === "html") {
+    return convert(content, { wordwrap: false }).trim();
+  }
+  return content;
+}
+
+function teamsGraphMessageSender(
+  message: TeamsGraphMessage,
+): Pick<
+  TeamsContextMessage,
+  "senderId" | "senderName" | "senderPrincipalName"
+> {
+  const sender =
+    message.from?.user ?? message.from?.application ?? message.from?.device;
+  return {
+    senderId: sender?.id ?? "unknown",
+    senderName: sender?.displayName ?? null,
+    senderPrincipalName: null,
+  };
+}
+
+function teamsGraphContextMessage(
+  message: TeamsGraphMessage,
+): TeamsContextMessage | null {
+  if (message.messageType && message.messageType !== "message") {
+    return null;
   }
 
-  const rows = await args.db
-    .select({
-      prompt: agentRuns.prompt,
-    })
-    .from(agentRuns)
-    .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
-    .where(
-      and(
-        eq(agentRuns.sessionId, args.sessionId),
-        eq(zeroRuns.triggerSource, "teams"),
-      ),
-    )
-    .orderBy(desc(agentRuns.createdAt), desc(agentRuns.id))
-    .limit(10);
-  return formatTeamsThreadContext(
-    [...rows].reverse().map((row) => {
-      return {
-        text: row.prompt,
-        senderId: args.connection.teamsUserId,
-        senderName: args.connection.teamsUserDisplayName,
-        senderPrincipalName: args.connection.teamsUserPrincipalName,
-      };
+  const text = teamsGraphMessageText(message);
+  if (!text) {
+    return null;
+  }
+
+  return {
+    id: message.id ?? null,
+    createdDateTime: message.createdDateTime ?? null,
+    text,
+    ...teamsGraphMessageSender(message),
+  };
+}
+
+function sortTeamsContextMessages(
+  messages: readonly TeamsContextMessage[],
+): TeamsContextMessage[] {
+  return [...messages].sort((left, right) => {
+    const leftTime = left.createdDateTime ?? "";
+    const rightTime = right.createdDateTime ?? "";
+    const byTime = leftTime.localeCompare(rightTime);
+    if (byTime !== 0) {
+      return byTime;
+    }
+    return (left.id ?? "").localeCompare(right.id ?? "");
+  });
+}
+
+function teamsContextMessages(
+  messages: readonly TeamsGraphMessage[],
+  excludedIds: ReadonlySet<string>,
+): TeamsContextMessage[] {
+  return sortTeamsContextMessages(
+    messages.flatMap((message) => {
+      if (message.id && excludedIds.has(message.id)) {
+        return [];
+      }
+      const contextMessage = teamsGraphContextMessage(message);
+      return contextMessage ? [contextMessage] : [];
     }),
   );
 }
 
-async function fetchRecentTeamsChannelContext(args: {
-  readonly db: Db;
+function isTeamsThreadReply(activity: TeamsMessageActivity): boolean {
+  return Boolean(
+    activity.activityId && activity.threadId !== activity.activityId,
+  );
+}
+
+function currentTeamsActivityIds(
+  activity: TeamsMessageActivity,
+): ReadonlySet<string> {
+  const ids = new Set<string>();
+  if (activity.activityId) {
+    ids.add(activity.activityId);
+  }
+  return ids;
+}
+
+function recentChannelContextExcludedIds(
+  activity: TeamsMessageActivity,
+): ReadonlySet<string> {
+  const ids = new Set<string>();
+  if (activity.activityId) {
+    ids.add(activity.activityId);
+  }
+  if (activity.threadId) {
+    ids.add(activity.threadId);
+  }
+  return ids;
+}
+
+async function fetchTeamsThreadRootMessage(args: {
   readonly activity: TeamsMessageActivity;
-  readonly connection: TeamsConnection;
+  readonly signal: AbortSignal;
+}): Promise<TeamsGraphMessage | null> {
+  const { activity } = args;
+  if (
+    !isTeamsThreadReply(activity) ||
+    !activity.teamId ||
+    !activity.channelId
+  ) {
+    return null;
+  }
+
+  const rootResult = await fetchTeamsChannelMessage({
+    tenantId: activity.tenantId,
+    teamId: activity.teamId,
+    channelId: activity.channelId,
+    messageId: activity.threadId,
+    signal: args.signal,
+  });
+  if (rootResult.kind === "teams-error") {
+    L.warn("Teams thread root context fetch failed", {
+      tenantId: activity.tenantId,
+      teamId: activity.teamId,
+      channelId: activity.channelId,
+      threadId: activity.threadId,
+      status: rootResult.status,
+      error: rootResult.error,
+    });
+    return null;
+  }
+
+  return rootResult.message;
+}
+
+async function fetchTeamsThreadContext(args: {
+  readonly activity: TeamsMessageActivity;
+  readonly rootMessage: TeamsGraphMessage | null;
+  readonly signal: AbortSignal;
 }): Promise<string> {
-  const rows = await args.db
-    .select({
-      prompt: agentRuns.prompt,
-    })
-    .from(teamsOrgThreadSessions)
-    .innerJoin(
-      agentRuns,
-      eq(agentRuns.sessionId, teamsOrgThreadSessions.agentSessionId),
-    )
-    .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
-    .where(
-      and(
-        eq(teamsOrgThreadSessions.connectionId, args.connection.id),
-        eq(
-          teamsOrgThreadSessions.teamsConversationId,
-          args.activity.conversationId,
-        ),
-        args.activity.channelId
-          ? eq(teamsOrgThreadSessions.teamsChannelId, args.activity.channelId)
-          : isNull(teamsOrgThreadSessions.teamsChannelId),
-        ne(teamsOrgThreadSessions.teamsThreadId, args.activity.threadId),
-        eq(zeroRuns.triggerSource, "teams"),
-      ),
-    )
-    .orderBy(desc(agentRuns.createdAt), desc(agentRuns.id))
-    .limit(10);
+  const { activity } = args;
+  if (!args.rootMessage || !activity.teamId || !activity.channelId) {
+    return "";
+  }
+
+  const repliesResult = await fetchTeamsChannelMessageReplies({
+    tenantId: activity.tenantId,
+    teamId: activity.teamId,
+    channelId: activity.channelId,
+    messageId: activity.threadId,
+    limit: 100,
+    signal: args.signal,
+  });
+  if (repliesResult.kind === "teams-error") {
+    L.warn("Teams thread replies context fetch failed", {
+      tenantId: activity.tenantId,
+      teamId: activity.teamId,
+      channelId: activity.channelId,
+      threadId: activity.threadId,
+      status: repliesResult.status,
+      error: repliesResult.error,
+    });
+    return "";
+  }
+
+  return formatTeamsThreadContext(
+    teamsContextMessages(
+      [args.rootMessage, ...repliesResult.messages],
+      currentTeamsActivityIds(activity),
+    ),
+  );
+}
+
+function teamsMessagesBeforeReference(
+  messages: readonly TeamsGraphMessage[],
+  reference: TeamsGraphMessage | null,
+): readonly TeamsGraphMessage[] {
+  const referenceTime = reference?.createdDateTime;
+  if (!referenceTime) {
+    return messages;
+  }
+
+  return messages.filter((message) => {
+    return !message.createdDateTime || message.createdDateTime < referenceTime;
+  });
+}
+
+async function fetchRecentTeamsChannelContext(args: {
+  readonly activity: TeamsMessageActivity;
+  readonly beforeMessage: TeamsGraphMessage | null;
+  readonly signal: AbortSignal;
+}): Promise<string> {
+  const { activity } = args;
+  const teamId = activity.teamId;
+  const channelId = activity.channelId;
+  if (!teamId || !channelId) {
+    return "";
+  }
+
+  const result = await fetchTeamsChannelMessages({
+    tenantId: activity.tenantId,
+    teamId,
+    channelId,
+    limit: 10,
+    signal: args.signal,
+  });
+  if (result.kind === "teams-error") {
+    L.warn("Teams channel context fetch failed", {
+      tenantId: activity.tenantId,
+      teamId: activity.teamId,
+      channelId: activity.channelId,
+      status: result.status,
+      error: result.error,
+    });
+    return "";
+  }
+
   return formatRecentTeamsChannelContext(
-    [...rows].reverse().map((row) => {
-      return {
-        text: row.prompt,
-        senderId: args.connection.teamsUserId,
-        senderName: args.connection.teamsUserDisplayName,
-        senderPrincipalName: args.connection.teamsUserPrincipalName,
-      };
-    }),
+    teamsContextMessages(
+      teamsMessagesBeforeReference(result.messages, args.beforeMessage),
+      recentChannelContextExcludedIds(activity),
+    ),
   );
 }
 
@@ -447,22 +602,24 @@ function shouldDispatchTeamsMessage(activity: TeamsMessageActivity): boolean {
 }
 
 async function fetchTeamsPromptContext(args: {
-  readonly db: Db;
   readonly activity: TeamsMessageActivity;
-  readonly sessionId: string | undefined;
-  readonly connection: TeamsConnection;
+  readonly signal: AbortSignal;
 }): Promise<string> {
+  const threadRootMessage = await fetchTeamsThreadRootMessage({
+    activity: args.activity,
+    signal: args.signal,
+  });
   const recentChannelContext = isTeamsDirectMessage(args.activity)
     ? ""
     : await fetchRecentTeamsChannelContext({
-        db: args.db,
         activity: args.activity,
-        connection: args.connection,
+        beforeMessage: threadRootMessage,
+        signal: args.signal,
       });
   const threadContext = await fetchTeamsThreadContext({
-    db: args.db,
-    sessionId: args.sessionId,
-    connection: args.connection,
+    activity: args.activity,
+    rootMessage: threadRootMessage,
+    signal: args.signal,
   });
   return [recentChannelContext, threadContext]
     .filter((context) => {
@@ -751,10 +908,8 @@ export const dispatchTeamsMessageToAgent$ = command(
     signal.throwIfAborted();
 
     const threadContext = await fetchTeamsPromptContext({
-      db,
       activity,
-      sessionId: existingSessionId,
-      connection,
+      signal,
     });
     signal.throwIfAborted();
 
