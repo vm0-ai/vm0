@@ -1,7 +1,5 @@
 //! Shared harness for guest-mock-claude integration tests.
 
-#![allow(dead_code)] // consumed across multiple integration test binaries
-
 #[cfg(target_os = "linux")]
 use std::fs;
 use std::io::{BufRead, BufReader, Read};
