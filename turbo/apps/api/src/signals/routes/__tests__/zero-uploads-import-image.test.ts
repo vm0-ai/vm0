@@ -46,6 +46,7 @@ function client() {
 
 describe("POST /api/zero/uploads/import-image", () => {
   beforeEach(() => {
+    context.mocks.nodeRequest.pinnedAddresses.length = 0;
     // Resolve the fake MSW host to a public address so the SSRF guard's DNS
     // lookup does not hit the real resolver (which would fail on .test).
     context.mocks.dns.lookupOverrides.set("images.example.test", [
@@ -201,6 +202,44 @@ describe("POST /api/zero/uploads/import-image", () => {
     expect(response.body.error.message).toContain("host is not allowed");
     expect(fetches).toBe(0);
     expect(context.mocks.s3.send).not.toHaveBeenCalled();
+  });
+
+  it("pins the vetted DNS address for the image fetch", async () => {
+    const userId = `user_${randomUUID().slice(0, 8)}`;
+    let lookupCount = 0;
+
+    mocks.clerk.session(userId, null);
+    context.mocks.dns.lookupOverrides.set("rebind-host.example.test", () => {
+      lookupCount += 1;
+      return lookupCount === 1
+        ? [{ address: "93.184.216.34", family: 4 }]
+        : [{ address: "169.254.169.254", family: 4 }];
+    });
+    server.use(
+      http.get("https://rebind-host.example.test/photo.png", () => {
+        return new HttpResponse(new Uint8Array(IMAGE_BYTES), {
+          headers: { "content-type": "image/png" },
+        });
+      }),
+    );
+
+    const response = await accept(
+      client().importImage({
+        headers: authHeaders(),
+        body: { url: "https://rebind-host.example.test/photo.png" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toMatchObject({
+      filename: "photo.png",
+      contentType: "image/png",
+      size: IMAGE_BYTES.byteLength,
+    });
+    expect(lookupCount).toBe(1);
+    expect(context.mocks.nodeRequest.pinnedAddresses).toStrictEqual([
+      "93.184.216.34",
+    ]);
   });
 
   it("rejects private IP literal hosts", async () => {

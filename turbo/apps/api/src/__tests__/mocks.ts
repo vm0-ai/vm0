@@ -12,6 +12,28 @@ type SignalTimerDelayMock = Mock<
 >;
 type SyncMock = Mock<(...args: unknown[]) => void>;
 type UnknownMock = Mock<(...args: unknown[]) => unknown>;
+type LookupCallback = (
+  error: Error | null,
+  address: string,
+  family: number,
+) => void;
+
+interface RequestOptionsLike {
+  readonly headers?: HeadersInit;
+  readonly lookup?: (
+    hostname: string,
+    options: unknown,
+    callback: LookupCallback,
+  ) => void;
+}
+
+type PinnedRequestCallback = (
+  response: NodeJS.ReadableStream & {
+    readonly headers: Record<string, string>;
+    readonly statusCode: number;
+    readonly statusMessage: string;
+  },
+) => void;
 
 export interface ApiTestMocks {
   readonly axiom: {
@@ -74,8 +96,14 @@ export interface ApiTestMocks {
      */
     readonly lookupOverrides: Map<
       string,
-      readonly { readonly address: string; readonly family: number }[]
+      | readonly { readonly address: string; readonly family: number }[]
+      | ((
+          hostname: string,
+        ) => readonly { readonly address: string; readonly family: number }[])
     >;
+  };
+  readonly nodeRequest: {
+    readonly pinnedAddresses: string[];
   };
   readonly resend: {
     readonly send: AsyncMock;
@@ -359,6 +387,9 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
     dns: {
       lookupOverrides: new Map(),
     },
+    nodeRequest: {
+      pinnedAddresses: [],
+    },
     resend: {
       send: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       get: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
@@ -483,13 +514,93 @@ vi.mock("node:dns/promises", async (importOriginal) => {
       if (!override) {
         return actual.lookup(hostname, options as never);
       }
+      const resolved =
+        typeof override === "function" ? override(hostname) : override;
       const wantsAll =
         typeof options === "object" &&
         options !== null &&
         (options as { all?: boolean }).all === true;
-      return Promise.resolve(wantsAll ? override : override[0]);
+      return Promise.resolve(wantsAll ? resolved : resolved[0]);
     },
   };
+});
+
+function isPinnedRequest(
+  args: readonly unknown[],
+): args is readonly [URL, RequestOptionsLike, PinnedRequestCallback] {
+  const [url, options, callback] = args;
+  return (
+    url instanceof URL &&
+    typeof options === "object" &&
+    options !== null &&
+    typeof (options as RequestOptionsLike).lookup === "function" &&
+    typeof callback === "function"
+  );
+}
+
+async function mockPinnedRequestModule<TModule extends object>(
+  importOriginal: () => Promise<TModule>,
+) {
+  const actual = await importOriginal();
+  const actualRequest = (actual as { request: (...args: unknown[]) => unknown })
+    .request;
+  const { EventEmitter } = await import("node:events");
+  const { Readable } = await import("node:stream");
+  const request = (...args: unknown[]) => {
+    if (!isPinnedRequest(args)) {
+      return actualRequest(...args);
+    }
+    const [url, options, callback] = args;
+    const req = new EventEmitter() as InstanceType<typeof EventEmitter> & {
+      end: () => void;
+    };
+    req.end = () => {
+      queueMicrotask(() => {
+        void (async () => {
+          options.lookup?.(url.hostname, {}, (error, address) => {
+            if (error) {
+              throw error;
+            }
+            apiTestMocks.nodeRequest.pinnedAddresses.push(address);
+          });
+          const fetched = await fetch(url, {
+            headers: options.headers,
+            redirect: "manual",
+          });
+          const headers: Record<string, string> = {};
+          for (const [key, value] of fetched.headers) {
+            headers[key] = value;
+          }
+          const body = fetched.body
+            ? Readable.from([new Uint8Array(await fetched.arrayBuffer())])
+            : Readable.from([]);
+          callback(
+            Object.assign(body, {
+              headers,
+              statusCode: fetched.status,
+              statusMessage: fetched.statusText,
+            }),
+          );
+        })().catch((error: unknown) => {
+          req.emit("error", error);
+        });
+      });
+    };
+    return req;
+  };
+  return { ...actual, request };
+}
+
+vi.mock("node:https", async (importOriginal) => {
+  return await mockPinnedRequestModule(
+    importOriginal as () => Promise<typeof import("node:https")>,
+  );
+});
+
+vi.mock("node:http", async (importOriginal) => {
+  return await mockPinnedRequestModule(
+    importOriginal as () => Promise<typeof import("node:http")>,
+  );
 });
 
 vi.mock("@clerk/backend", () => {
@@ -823,6 +934,7 @@ export function resetApiTestMocks(): void {
   );
   apiTestMocks.s3.clientConfig.mockReset();
   apiTestMocks.dns.lookupOverrides.clear();
+  apiTestMocks.nodeRequest.pinnedAddresses.length = 0;
   apiTestMocks.resend.send.mockReset();
   apiTestMocks.resend.get.mockReset();
   apiTestMocks.resend.receivingGet.mockReset();

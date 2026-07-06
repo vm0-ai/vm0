@@ -1,6 +1,11 @@
 import { lookup } from "node:dns/promises";
 import { BlockList } from "node:net";
 
+export interface ResolvedFetchAddress {
+  readonly address: string;
+  readonly family: 4 | 6;
+}
+
 // Loopback, private, link-local and CGNAT ranges we must never fetch from.
 const BLOCKED_IP_RANGES: Readonly<BlockList> = (() => {
   const ranges = new BlockList();
@@ -22,18 +27,21 @@ const BLOCKED_IP_RANGES: Readonly<BlockList> = (() => {
   return ranges;
 })();
 
-/**
- * SSRF guard for server-side fetches of user-supplied URLs. Resolves the host
- * and returns true if any resolved address is loopback/private/link-local — so
- * a public hostname cannot be pointed at an internal IP (e.g. cloud metadata at
- * 169.254.169.254). IP literals and localhost resolve to themselves and go
- * through the same check. Throws if the host cannot be resolved.
- */
-export async function hostResolvesToBlockedAddress(
+function fetchAddressIsBlocked({ address, family }: ResolvedFetchAddress) {
+  return BLOCKED_IP_RANGES.check(address, family === 6 ? "ipv6" : "ipv4");
+}
+
+export async function resolveFetchHostAddresses(
   hostname: string,
-): Promise<boolean> {
+): Promise<ResolvedFetchAddress[]> {
   const addresses = await lookup(hostname, { all: true });
-  return addresses.some(({ address, family }) => {
-    return BLOCKED_IP_RANGES.check(address, family === 6 ? "ipv6" : "ipv4");
+  return addresses.map(({ address, family }) => {
+    return { address, family: family === 6 ? 6 : 4 };
   });
+}
+
+export function fetchHostHasBlockedAddress(
+  addresses: readonly ResolvedFetchAddress[],
+): boolean {
+  return addresses.some(fetchAddressIsBlocked);
 }

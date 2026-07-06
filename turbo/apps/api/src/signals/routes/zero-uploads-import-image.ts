@@ -1,9 +1,16 @@
 import { Buffer } from "node:buffer";
+import { type IncomingHttpHeaders, request as httpRequest } from "node:http";
+import { request as httpsRequest } from "node:https";
+import { Readable } from "node:stream";
 
 import { command } from "ccstate";
 import { zeroUploadsContract } from "@vm0/api-contracts/contracts/zero-uploads";
 
-import { hostResolvesToBlockedAddress } from "../../lib/blocked-fetch-host";
+import {
+  fetchHostHasBlockedAddress,
+  resolveFetchHostAddresses,
+  type ResolvedFetchAddress,
+} from "../../lib/blocked-fetch-host";
 import { env } from "../../lib/env";
 import { badRequestMessage } from "../../lib/error";
 import {
@@ -19,7 +26,7 @@ import { putS3Object } from "../external/s3";
 import { recordWebUploadedFile$ } from "../services/run-uploaded-files.service";
 import { rejectSuspendedOrg$ } from "../services/zero-org-suspension.service";
 import type { RouteEntry } from "../route-entry";
-import { settle } from "../utils";
+import { createDeferredPromise, settle } from "../utils";
 
 const MAX_IMAGE_IMPORT_SIZE_BYTES = 25 * 1024 * 1024;
 const MAX_IMAGE_IMPORT_SIZE_LABEL = "25 MB";
@@ -37,6 +44,11 @@ type ImportImageError =
   | ReturnType<typeof badRequestMessage>
   | ReturnType<typeof badGateway>;
 
+interface ParsedImportImageUrl {
+  readonly url: URL;
+  readonly address: ResolvedFetchAddress;
+}
+
 function badGateway(message: string, code: string) {
   return {
     status: 502 as const,
@@ -44,31 +56,47 @@ function badGateway(message: string, code: string) {
   };
 }
 
-async function importHostError(
+async function importHostAddresses(
   hostname: string,
-): Promise<ImportImageError | null> {
-  const resolved = await settle(hostResolvesToBlockedAddress(hostname));
+): Promise<readonly ResolvedFetchAddress[] | ImportImageError> {
+  const resolved = await settle(resolveFetchHostAddresses(hostname));
   if (!resolved.ok) {
     return badGateway(
       "Couldn't resolve image URL host",
       "IMAGE_IMPORT_FETCH_FAILED",
     );
   }
-  return resolved.value
-    ? badRequestMessage("Image URL host is not allowed")
-    : null;
+  if (fetchHostHasBlockedAddress(resolved.value)) {
+    return badRequestMessage("Image URL host is not allowed");
+  }
+  if (resolved.value.length === 0) {
+    return badGateway(
+      "Couldn't resolve image URL host",
+      "IMAGE_IMPORT_FETCH_FAILED",
+    );
+  }
+  return resolved.value;
 }
 
-async function parsedImportUrl(value: string): Promise<URL | ImportImageError> {
+async function parsedImportUrl(
+  value: string,
+): Promise<ParsedImportImageUrl | ImportImageError> {
   const parsed = new URL(value);
   if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
     return badRequestMessage("Image URL must use http or https");
   }
-  const hostError = await importHostError(parsed.hostname);
-  if (hostError) {
-    return hostError;
+  const addresses = await importHostAddresses(parsed.hostname);
+  if ("status" in addresses) {
+    return addresses;
   }
-  return parsed;
+  const address = addresses[0];
+  if (!address) {
+    return badGateway(
+      "Couldn't resolve image URL host",
+      "IMAGE_IMPORT_FETCH_FAILED",
+    );
+  }
+  return { url: parsed, address };
 }
 
 function importImageContentType(response: Response, url: URL): string | null {
@@ -95,25 +123,72 @@ function importImageFilename(url: URL, contentType: string): string {
     : `${filename}.${contentType.slice("image/".length)}`;
 }
 
+function responseHeadersFromIncoming(headers: IncomingHttpHeaders): Headers {
+  const result = new Headers();
+  for (const [key, value] of Object.entries(headers)) {
+    if (Array.isArray(value)) {
+      for (const entry of value) {
+        result.append(key, entry);
+      }
+    } else if (value !== undefined) {
+      result.set(key, value);
+    }
+  }
+  return result;
+}
+
 async function fetchImportImage(
   url: URL,
+  address: ResolvedFetchAddress,
   signal: AbortSignal,
 ): Promise<
   { readonly response: Response; readonly url: URL } | ImportImageError
 > {
-  const settled = await settle(
-    fetch(url, {
+  const request = url.protocol === "https:" ? httpsRequest : httpRequest;
+  const fetched = createDeferredPromise<
+    { readonly response: Response; readonly url: URL } | ImportImageError
+  >(signal);
+  const settleOnce = (
+    result:
+      | { readonly response: Response; readonly url: URL }
+      | ImportImageError,
+  ) => {
+    if (!fetched.settled()) {
+      fetched.resolve(result);
+    }
+  };
+  const req = request(
+    url,
+    {
       headers: { accept: "image/*" },
-      redirect: "manual",
+      lookup: (_hostname, _options, callback) => {
+        callback(null, address.address, address.family);
+      },
+      method: "GET",
       signal,
-    }),
-    signal,
+    },
+    (incoming) => {
+      const status = incoming.statusCode ?? 502;
+      settleOnce({
+        response: new Response(
+          Readable.toWeb(incoming) as ReadableStream<Uint8Array>,
+          {
+            headers: responseHeadersFromIncoming(incoming.headers),
+            status: status >= 200 && status <= 599 ? status : 502,
+            statusText: incoming.statusMessage,
+          },
+        ),
+        url,
+      });
+    },
   );
-  if (!settled.ok) {
-    return badGateway("Couldn't fetch image URL", "IMAGE_IMPORT_FETCH_FAILED");
-  }
-  signal.throwIfAborted();
-  return { response: settled.value, url };
+  req.on("error", () => {
+    settleOnce(
+      badGateway("Couldn't fetch image URL", "IMAGE_IMPORT_FETCH_FAILED"),
+    );
+  });
+  req.end();
+  return await fetched.promise;
 }
 
 async function readImportImageBytes(
@@ -162,7 +237,11 @@ const importImageInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return sourceUrl;
   }
 
-  const fetched = await fetchImportImage(sourceUrl, signal);
+  const fetched = await fetchImportImage(
+    sourceUrl.url,
+    sourceUrl.address,
+    signal,
+  );
   if ("status" in fetched) {
     return fetched;
   }
