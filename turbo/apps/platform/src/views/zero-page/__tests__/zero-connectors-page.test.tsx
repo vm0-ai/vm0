@@ -1504,7 +1504,6 @@ describe("connectors page", () => {
     detachedSetupPage({
       context,
       path: "/connectors",
-      featureSwitches: {},
     });
 
     const searchInput = await screen.findByPlaceholderText("Find connectors");
@@ -1532,7 +1531,6 @@ describe("connectors page", () => {
     detachedSetupPage({
       context,
       path: "/connectors",
-      featureSwitches: {},
     });
 
     const searchInput = await screen.findByPlaceholderText("Find connectors");
