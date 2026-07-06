@@ -1,6 +1,8 @@
 import { state, computed, command } from "ccstate";
+import { setupGlobalShortcut } from "../../lib/setup-global-shortcut.ts";
 import { writeToClipboard } from "./clipboard.ts";
 import { ensureDraft$ } from "../chat-page/create-chat-thread.ts";
+import { onRef, resetSignal } from "../utils.ts";
 
 // Assistant message bubbles carry this class in the chat thread. Text selected
 // inside one of them is what we offer feedback on.
@@ -46,6 +48,7 @@ const feedbackRanges$ = state<ReadonlyMap<number, Range>>(new Map());
 const feedbackNextId$ = state<number>(1);
 const feedbackCopied$ = state<boolean>(false);
 const feedbackCopiedTimerId$ = state<number | null>(null);
+const resetFeedbackSelectionToolbarSignal$ = resetSignal();
 
 export const feedbackSelectionValue$ = computed((get) => {
   return get(feedbackSelection$);
@@ -162,6 +165,17 @@ function formatFeedbackPrompt(items: readonly FeedbackItem[]): string {
   return `${intro}\n\n${blocks.join("\n\n---\n\n")}`;
 }
 
+export const closeFeedbackSelectionToolbar$ = command(({ get, set }) => {
+  set(resetFeedbackSelectionToolbarSignal$);
+  const timerId = get(feedbackCopiedTimerId$);
+  if (timerId !== null) {
+    window.clearTimeout(timerId);
+    set(feedbackCopiedTimerId$, null);
+  }
+  set(feedbackSelection$, null);
+  set(feedbackCopied$, false);
+});
+
 // Watch the document selection and drive the floating toolbar. The toolbar
 // shows whether or not the tray is open — selecting another passage and
 // clicking "Provide feedback" again is how a further fragment is added.
@@ -169,7 +183,7 @@ export const captureFeedbackSelection$ = command(({ get, set }) => {
   const found = readAssistantSelection();
   if (!found) {
     if (get(feedbackSelection$) !== null) {
-      set(feedbackSelection$, null);
+      set(closeFeedbackSelectionToolbar$);
     }
     return;
   }
@@ -229,7 +243,7 @@ export const startFeedback$ = command(({ get, set }) => {
   }
   set(feedbackRanges$, ranges);
   applyFeedbackHighlight(ranges);
-  set(feedbackSelection$, null);
+  set(closeFeedbackSelectionToolbar$);
 });
 
 export const setFeedbackItemNote$ = command(
@@ -269,32 +283,18 @@ export const submitFeedback$ = command(({ get }): string | null => {
   return formatFeedbackPrompt(noted);
 });
 
-export const dismissFeedback$ = command(({ get, set }) => {
-  const timerId = get(feedbackCopiedTimerId$);
-  if (timerId !== null) {
-    window.clearTimeout(timerId);
-    set(feedbackCopiedTimerId$, null);
-  }
+export const dismissFeedback$ = command(({ set }) => {
+  set(closeFeedbackSelectionToolbar$);
   const emptyRanges = new Map<number, Range>();
   set(feedbackRanges$, emptyRanges);
   applyFeedbackHighlight(emptyRanges);
-  set(feedbackSelection$, null);
   set(feedbackItems$, []);
   set(feedbackThreadId$, null);
-  set(feedbackCopied$, false);
 });
 
 // Dismiss only the floating selection toolbar — the docked tray keeps its
 // comments, so clicking away from a fresh selection never wipes earlier notes.
-export const dismissFeedbackSelection$ = command(({ get, set }) => {
-  const timerId = get(feedbackCopiedTimerId$);
-  if (timerId !== null) {
-    window.clearTimeout(timerId);
-    set(feedbackCopiedTimerId$, null);
-  }
-  set(feedbackSelection$, null);
-  set(feedbackCopied$, false);
-});
+export const dismissFeedbackSelection$ = closeFeedbackSelectionToolbar$;
 
 // Scrolling detaches the toolbar from its passage, so hide it. The docked tray
 // is pinned above the composer, not to the selection, so it stays put.
@@ -302,7 +302,7 @@ export const dismissFeedbackOnScroll$ = command(({ get, set }) => {
   if (get(feedbackSelection$) === null) {
     return;
   }
-  set(feedbackSelection$, null);
+  set(closeFeedbackSelectionToolbar$);
 });
 
 export const copyFeedbackSelection$ = command(
@@ -327,4 +327,74 @@ export const copyFeedbackSelection$ = command(
     }, 1500);
     set(feedbackCopiedTimerId$, timerId);
   },
+);
+
+export const setFeedbackSelectionToolbarRef$ = onRef(
+  command(({ set }, el: HTMLElement, signal: AbortSignal) => {
+    const toolbarSignal = set(resetFeedbackSelectionToolbarSignal$, signal);
+    setupGlobalShortcut(
+      {
+        c: {
+          run: async () => {
+            await set(copyFeedbackSelection$, toolbarSignal);
+          },
+        },
+        f: {
+          run: () => {
+            set(startFeedback$);
+          },
+        },
+      },
+      toolbarSignal,
+      {
+        doc: el.ownerDocument,
+        shouldHandleEvent: () => {
+          return !toolbarSignal.aborted;
+        },
+      },
+    );
+  }),
+);
+
+export const setFeedbackSelectionListenersRef$ = onRef(
+  command(({ set }, el: HTMLElement, signal: AbortSignal) => {
+    const doc = el.ownerDocument;
+    let captureTimerId: number | null = null;
+    const capture = () => {
+      set(captureFeedbackSelection$);
+    };
+    const captureDeferred = () => {
+      if (captureTimerId !== null) {
+        window.clearTimeout(captureTimerId);
+      }
+      captureTimerId = window.setTimeout(() => {
+        captureTimerId = null;
+        capture();
+      }, 0);
+    };
+
+    doc.addEventListener("mouseup", captureDeferred, { signal });
+    doc.addEventListener("keyup", capture, { signal });
+    doc.addEventListener(
+      "scroll",
+      () => {
+        set(dismissFeedbackOnScroll$);
+      },
+      {
+        capture: true,
+        passive: true,
+        signal,
+      },
+    );
+    signal.addEventListener(
+      "abort",
+      () => {
+        if (captureTimerId !== null) {
+          window.clearTimeout(captureTimerId);
+          captureTimerId = null;
+        }
+      },
+      { once: true },
+    );
+  }),
 );
