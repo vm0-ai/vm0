@@ -2,12 +2,24 @@ import { Command, InvalidArgumentError } from "commander";
 import { withErrorHandler } from "../../../lib/command";
 import { dispatchGenerate } from "../generate/lib/dispatch";
 import type { GenerationType } from "../generate/lib/lister";
+import {
+  buildPresentationRunbookInstructionLines,
+  findPresentationRunbookPackage,
+  listPresentationRunbookPackages,
+  resolvePresentationRunbookColorToken,
+} from "./resource-registry";
+import { canonicalizeRegistryId } from "./resource-listing";
+
+type PresentationRunbookPackage = ReturnType<
+  typeof listPresentationRunbookPackages
+>[number];
 
 interface PresentationOptions {
   prompt?: string;
   slides: number;
   title?: string;
   siteSlug?: string;
+  template?: string;
 }
 
 interface PresentationGenerateCommandConfig {
@@ -37,6 +49,23 @@ function slugifyPresentationSite(value: string): string {
     .slice(0, 48)
     .replace(/-+$/u, "");
   return slug.length >= 3 ? slug : "html-artifact";
+}
+
+function unknownTemplateError(id: string): Error {
+  return new Error(`Unknown template for presentation: ${id}`);
+}
+
+function formatPresentationRunbookListing(
+  packages: readonly PresentationRunbookPackage[],
+): string {
+  if (packages.length === 0) {
+    return "  (no presentation runbook templates registered)";
+  }
+  return packages
+    .map((pkg) => {
+      return `  ${pkg.templateId}\n    ${pkg.description}`;
+    })
+    .join("\n\n");
 }
 
 function buildDirectPresentationInstructionPacket(options: {
@@ -130,8 +159,13 @@ export function createPresentationGenerateCommand(
     )
     .option("--site-slug <slug>", "Hosted site slug override")
     .option("--title <text>", "Requested deck title")
+    .option(
+      "--template <id>",
+      "Presentation runbook template id (see Templates below). Accepts either 'html-ppt-playful-launch' or 'template:html-ppt-playful-launch'.",
+    )
     .option("--slides <count>", "Slide count: 4-20", parseSlideCount, 8)
     .addHelpText("after", () => {
+      const runbookPackages = listPresentationRunbookPackages();
       return `
 Examples:
 ${config.examples}
@@ -141,7 +175,10 @@ Output:
 
 Notes:
   - Authenticates via ZERO_TOKEN
-  - The agent authors the HTML presentation artifact and hosts it with zero host`;
+  - The agent authors the HTML presentation artifact and hosts it with zero host
+
+Templates (presentation runbook):
+${formatPresentationRunbookListing(runbookPackages)}`;
     })
     .action(
       withErrorHandler(async (options: PresentationOptions) => {
@@ -151,6 +188,36 @@ Notes:
         });
         if (dispatch.outcome === "handled") return;
         const prompt = dispatch.prompt;
+
+        if (options.template !== undefined) {
+          const canonical = canonicalizeRegistryId(
+            "template",
+            options.template,
+          );
+          const runbookPackage = findPresentationRunbookPackage(canonical);
+          if (!runbookPackage) {
+            throw unknownTemplateError(options.template);
+          }
+          const color = resolvePresentationRunbookColorToken(
+            runbookPackage,
+            undefined,
+          );
+          const colorSystemToken =
+            "error" in color ? runbookPackage.defaultColorSystem : color.token;
+          console.log(
+            [
+              "# Presentation Generation (runbook)",
+              "",
+              ...buildPresentationRunbookInstructionLines({
+                runbookPackage,
+                colorSystemToken,
+              }),
+              "",
+              `User request: ${prompt}`,
+            ].join("\n"),
+          );
+          return;
+        }
 
         const instructions = buildDirectPresentationInstructionPacket({
           prompt,

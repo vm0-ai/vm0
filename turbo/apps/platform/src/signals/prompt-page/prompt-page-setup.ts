@@ -42,8 +42,8 @@ function generationTemplateFromSearchParam(
       (item) => {
         return (
           item.slug === presentationTemplateId ||
-          item.runbookId === id ||
-          item.runbookId === presentationTemplateId
+          item.templateId === id ||
+          item.templateId === presentationTemplateId
         );
       },
     );
@@ -71,7 +71,7 @@ function generationTemplateFromSearchParam(
     return {
       type: "presentation",
       selection: {
-        runbookId: presentationTemplate.runbookId,
+        templateId: presentationTemplate.templateId,
         colorSystemId:
           presentationTemplate.colorSystemId ?? "color-system:warm-sand",
         previewUrl: presentationTemplate.embedUrl,

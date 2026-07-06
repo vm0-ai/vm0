@@ -14,7 +14,7 @@ describe("buildGenerationTemplatePrompt", () => {
     const result = buildGenerationTemplatePrompt({
       type: "presentation",
       selection: {
-        runbookId: "template:html-ppt-missing",
+        templateId: "template:html-ppt-missing",
         previewUrl: "https://example.com/retired.html",
       },
     });
@@ -28,7 +28,7 @@ describe("buildGenerationTemplatePrompt", () => {
     const result = buildGenerationTemplatePrompt({
       type: "presentation",
       selection: {
-        runbookId: item.runbookId,
+        templateId: item.templateId,
         colorSystemId: item.colorSystemId,
       },
     });
@@ -41,9 +41,8 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.prompt).not.toContain("# Artifact Template Context");
     expect(result.prompt).not.toContain("artifact template");
     expect(result.prompt).toContain(
-      "Selected presentation runbook: Playful Launch Presentation (playful-launch)",
+      "Selected presentation template: Playful Launch Presentation (template:html-ppt-playful-launch)",
     );
-    expect(result.prompt).not.toContain("Selected presentation template");
     // Pull exactly one resource: the selected runbook package.
     expect(result.prompt).toContain(
       "zero resource pull template:html-ppt-playful-launch-runbook --dir ./generated/resources",
@@ -68,7 +67,7 @@ describe("buildGenerationTemplatePrompt", () => {
     const result = buildGenerationTemplatePrompt({
       type: "presentation",
       selection: {
-        runbookId: item.runbookId,
+        templateId: item.templateId,
       },
     });
 

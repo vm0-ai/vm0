@@ -3284,26 +3284,28 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
 ];
 
 // ── Presentation runbook packages ────────────────────────────────────────────
-// Self-contained presentation runbook packages (agent runbook + renderer)
-// uploaded to private R2 as one archive each. When a user selects a presentation
-// runbook, the agent pulls exactly that archive, then selects a color system at
-// runtime — no separate design system, template, or color archive to resolve.
-// These are intentionally NOT part of RESOURCE_REGISTRY so they never leak into
-// the legacy multi-resource candidate slice (selectResourceCandidates) or
+// Self-contained per-template presentation packages (agent runbook + renderer)
+// uploaded to private R2 as one archive each. When a selected template ships one
+// of these, the agent pulls exactly that archive by template, then selects a
+// color system at runtime — no separate design system or color archive to
+// resolve. Templates without a package fall back to the legacy multi-resource
+// flow. These are intentionally NOT part of RESOURCE_REGISTRY so they never leak
+// into the legacy multi-resource candidate slice (selectResourceCandidates) or
 // listTemplates.
 
 export interface PresentationRunbookPackage {
-  /** Picker id for the selected self-contained runbook package. */
-  readonly runbookId: string;
-  /** Existing pull id for the runbook archive. */
+  /** Picker template id (the legacy `template:html-ppt-*` id the user selects). */
+  readonly templateId: string;
+  /** Pull id for the runbook archive; distinct from `templateId`. */
   readonly resourceId: string;
   /** Top-level directory inside the archive; also the runbook command prefix. */
   readonly slug: string;
   /** Default color-system token applied when the user selects no color system. */
   readonly defaultColorSystem: string;
-  /** Display name, kept on the package so no legacy registry entry is needed. */
+  /** Display name (relocated onto the package so runbook resolution no longer
+   * needs the legacy `template:html-ppt-*` registry entry). */
   readonly name: string;
-  /** Runbook description, kept on the package so no legacy registry entry is needed. */
+  /** Template description (relocated from the legacy template entry). */
   readonly description: string;
   readonly source: ResourceSourceRef;
 }
@@ -3360,17 +3362,17 @@ function presentationRunbookArchiveSha256(slug: string): string {
   return sha256;
 }
 
-// Each entry maps a picker runbook id to its package slug (the presentation-final
-// directory name) and the renderer's default color token.
+// Each entry maps a picker template id to its runbook package slug (the
+// presentation-final directory name) and the renderer's default color token.
 const PRESENTATION_RUNBOOK_PACKAGE_DEFS: readonly {
-  readonly runbookId: string;
+  readonly templateId: string;
   readonly slug: string;
   readonly defaultColorSystem: string;
   readonly name: string;
   readonly description: string;
 }[] = [
   {
-    runbookId: "template:html-ppt-playful-launch",
+    templateId: "template:html-ppt-playful-launch",
     slug: "playful-launch",
     defaultColorSystem: "carnival",
     name: "Playful Launch Presentation",
@@ -3378,7 +3380,7 @@ const PRESENTATION_RUNBOOK_PACKAGE_DEFS: readonly {
       "15-slot HTML presentation structure for product and service launches with oversized headlines, color-field rhythm, recurring motifs, and required media slots.",
   },
   {
-    runbookId: "template:html-ppt-bloom-pitch",
+    templateId: "template:html-ppt-bloom-pitch",
     slug: "bloom",
     defaultColorSystem: "carnival",
     name: "Bloom Pitch Presentation",
@@ -3386,7 +3388,7 @@ const PRESENTATION_RUNBOOK_PACKAGE_DEFS: readonly {
       "15-slot playful investor-pitch presentation structure with oversized headlines, colour-field dividers, organic visuals, stat stacks, quote cards, and pricing cards.",
   },
   {
-    runbookId: "template:html-ppt-blueprint-academy",
+    templateId: "template:html-ppt-blueprint-academy",
     slug: "blueprint-academy",
     defaultColorSystem: "forest_editorial",
     name: "Blueprint Academy Presentation",
@@ -3394,7 +3396,7 @@ const PRESENTATION_RUNBOOK_PACKAGE_DEFS: readonly {
       "15-slot academic education presentation structure with blueprint grids, wire diagrams, matted photos, goal cards, process spines, stats, testimonials, and contact slides.",
   },
   {
-    runbookId: "template:html-ppt-botane-organic",
+    templateId: "template:html-ppt-botane-organic",
     slug: "botane-organic",
     defaultColorSystem: "mauve_dusk",
     name: "Botane Organic Presentation",
@@ -3402,7 +3404,7 @@ const PRESENTATION_RUNBOOK_PACKAGE_DEFS: readonly {
       "15-slot organic wellness deck with colour-block panels, circular media, side titles, icon cycles, and donut stats.",
   },
   {
-    runbookId: "template:html-ppt-business-data",
+    templateId: "template:html-ppt-business-data",
     slug: "business-data",
     defaultColorSystem: "berry_pop",
     name: "Business Data Presentation",
@@ -3410,7 +3412,7 @@ const PRESENTATION_RUNBOOK_PACKAGE_DEFS: readonly {
       "15-slot HTML presentation structure for metric-led business reports with big numbers, stat strips, bars, rings, photo squares, and dark/accent proof slides.",
   },
   {
-    runbookId: "template:html-ppt-crayon",
+    templateId: "template:html-ppt-crayon",
     slug: "crayon",
     defaultColorSystem: "prism",
     name: "Crayon Presentation",
@@ -3418,7 +3420,7 @@ const PRESENTATION_RUNBOOK_PACKAGE_DEFS: readonly {
       "Light 15-slot playful education deck with peripheral blobs, multi-colour marker titles, doodle sparks, colour-block cards, burst stats, quote cards, and rounded pricing cards.",
   },
   {
-    runbookId: "template:html-ppt-creative-agency",
+    templateId: "template:html-ppt-creative-agency",
     slug: "creative-agency",
     defaultColorSystem: "coral_studio",
     name: "Creative Agency Presentation",
@@ -3426,7 +3428,7 @@ const PRESENTATION_RUNBOOK_PACKAGE_DEFS: readonly {
       "Minimal modern 15-slot agency deck with generous whitespace, foliage sprigs, B&W photo blocks, sharp rectangles, team grids, icon services, process spine, and a big-stat impact band.",
   },
   {
-    runbookId: "template:html-ppt-data-report",
+    templateId: "template:html-ppt-data-report",
     slug: "data-report",
     defaultColorSystem: "prism",
     name: "Data Report Presentation",
@@ -3434,7 +3436,7 @@ const PRESENTATION_RUNBOOK_PACKAGE_DEFS: readonly {
       "Chart-led 15-page data report variant with saturated colour grounds, sharp outlines, frameless numbers, stacked/combo/area/line/doughnut/pie/bar/bubble charts, and data-first summary pages.",
   },
   {
-    runbookId: "template:html-ppt-editorial-magazine",
+    templateId: "template:html-ppt-editorial-magazine",
     slug: "editorial-magazine",
     defaultColorSystem: "warm_sand",
     name: "Editorial Magazine Presentation",
@@ -3442,7 +3444,7 @@ const PRESENTATION_RUNBOOK_PACKAGE_DEFS: readonly {
       "Restrained 15-slot magazine deck with masthead cover, dotted TOC, colour-block dividers, two-column editorial pages, roman/italic titles, running footer, stat boxes, quote rows, and editorial table.",
   },
   {
-    runbookId: "template:html-ppt-landing-consulting",
+    templateId: "template:html-ppt-landing-consulting",
     slug: "landing-consulting",
     defaultColorSystem: "pop_art",
     name: "Landing Consulting Presentation",
@@ -3450,7 +3452,7 @@ const PRESENTATION_RUNBOOK_PACKAGE_DEFS: readonly {
       "Consulting deck dressed like a landing page, with persistent nav chrome, two-tone display titles, dashed circuit wires, marker emphasis, speech-bubble callouts, square photo blocks, frameless stats, and CTA rhythm.",
   },
   {
-    runbookId: "template:html-ppt-lumina",
+    templateId: "template:html-ppt-lumina",
     slug: "lumina",
     defaultColorSystem: "prism",
     name: "Lumina Presentation",
@@ -3458,7 +3460,7 @@ const PRESENTATION_RUNBOOK_PACKAGE_DEFS: readonly {
       "Sticker-tag creative studio deck with brush-letter title accents, asterisk punctuation, frame-edge chrome, sharp colour cells, photo blocks, stat bands, and agency-style 15-slot rhythm.",
   },
   {
-    runbookId: "template:html-ppt-meridian",
+    templateId: "template:html-ppt-meridian",
     slug: "meridian",
     defaultColorSystem: "slate_corporate",
     name: "Meridian Presentation",
@@ -3466,7 +3468,7 @@ const PRESENTATION_RUNBOOK_PACKAGE_DEFS: readonly {
       "15-slot professional data-agency presentation structure with flat nav chrome, sharp blocks, index numbers, stat matrices, bar charts, service blocks, and executive close.",
   },
   {
-    runbookId: "template:html-ppt-mosaic-geometric",
+    templateId: "template:html-ppt-mosaic-geometric",
     slug: "mosaic-geometric",
     defaultColorSystem: "carnival",
     name: "Mosaic Geometric Presentation",
@@ -3474,7 +3476,7 @@ const PRESENTATION_RUNBOOK_PACKAGE_DEFS: readonly {
       "Bold modular geometric 15-slot pitch deck with Bauhaus mosaic tile clusters, dotted TOC, chapter dividers, framed icon services, process spine, gallery grid, segmented pie, burst stats, quote rows, and price cards.",
   },
   {
-    runbookId: "template:html-ppt-neo-brutalism",
+    templateId: "template:html-ppt-neo-brutalism",
     slug: "neo-brutalism",
     defaultColorSystem: "mono_ink",
     name: "Neo Brutalism Presentation",
@@ -3482,7 +3484,7 @@ const PRESENTATION_RUNBOOK_PACKAGE_DEFS: readonly {
       "Bold 15-slot brutalist business-plan deck with persistent nav chrome, CTA pairs, numbered circles, arch cards, and heavy framed content blocks.",
   },
   {
-    runbookId: "template:html-ppt-nocturne",
+    templateId: "template:html-ppt-nocturne",
     slug: "nocturne",
     defaultColorSystem: "midnight_mono",
     name: "Nocturne Presentation",
@@ -3490,7 +3492,7 @@ const PRESENTATION_RUNBOOK_PACKAGE_DEFS: readonly {
       "Dark 15-slot data-keynote deck with rounded chart devices, frameless hero numbers, bento metrics, and clear text/data alternation.",
   },
   {
-    runbookId: "template:html-ppt-pixel-glitch",
+    templateId: "template:html-ppt-pixel-glitch",
     slug: "pixel-glitch",
     defaultColorSystem: "bauhaus_primary",
     name: "Pixel Glitch Presentation",
@@ -3498,7 +3500,7 @@ const PRESENTATION_RUNBOOK_PACKAGE_DEFS: readonly {
       "15-slot Y2K creative-studio presentation structure with pixel trails, glitch titles, sharp dividers, image blocks, ring charts, process spines, and bold proof pages.",
   },
   {
-    runbookId: "template:html-ppt-playful-pop",
+    templateId: "template:html-ppt-playful-pop",
     slug: "playful-pop",
     defaultColorSystem: "pop_art",
     name: "Playful Pop Presentation",
@@ -3506,7 +3508,7 @@ const PRESENTATION_RUNBOOK_PACKAGE_DEFS: readonly {
       "Loud 15-slot playful brand deck with neon-on-dark Pop Art colour, overlapping offset-shadow cards, organic blobs, corner dot grids, burst rosettes, pill chips, icon quads, process spine, photo gallery, quotes, and pricing.",
   },
   {
-    runbookId: "template:html-ppt-prospectus",
+    templateId: "template:html-ppt-prospectus",
     slug: "prospectus",
     defaultColorSystem: "slate_corporate",
     name: "Prospectus Presentation",
@@ -3514,7 +3516,7 @@ const PRESENTATION_RUNBOOK_PACKAGE_DEFS: readonly {
       "15-slot corporate landing-page business-plan structure with persistent nav, colour-field stages, diagonal arrows, CTA clusters, flat charts, gantt timelines, and pricing tiers.",
   },
   {
-    runbookId: "template:html-ppt-schoolhouse",
+    templateId: "template:html-ppt-schoolhouse",
     slug: "schoolhouse",
     defaultColorSystem: "bauhaus_primary",
     name: "Schoolhouse Presentation",
@@ -3522,7 +3524,7 @@ const PRESENTATION_RUNBOOK_PACKAGE_DEFS: readonly {
       "15-slot retro school-poster presentation structure with paper stages, stamp badges, index cards, ruled rows, stat bands, quote cards, and membership tiers.",
   },
   {
-    runbookId: "template:html-ppt-sticker-scrapbook",
+    templateId: "template:html-ppt-sticker-scrapbook",
     slug: "sticker-scrapbook",
     defaultColorSystem: "prism",
     name: "Sticker Scrapbook Presentation",
@@ -3530,7 +3532,7 @@ const PRESENTATION_RUNBOOK_PACKAGE_DEFS: readonly {
       "15-slot vibrant scrapbook presentation structure with sticker seals, spiral pads, agenda cards, doodle dividers, photo grids, stat stickers, quote cards, and pricing cards.",
   },
   {
-    runbookId: "template:html-ppt-strata",
+    templateId: "template:html-ppt-strata",
     slug: "strata",
     defaultColorSystem: "mono_ink",
     name: "Strata Presentation",
@@ -3538,7 +3540,7 @@ const PRESENTATION_RUNBOOK_PACKAGE_DEFS: readonly {
       "15-slot Swiss-minimal agency presentation structure with giant caps, asterisk dividers, tile ramps, mono photo grids, frameless stats, quote cards, and pricing cards.",
   },
   {
-    runbookId: "template:html-ppt-taped-consulting",
+    templateId: "template:html-ppt-taped-consulting",
     slug: "taped-consulting",
     defaultColorSystem: "slate_corporate",
     name: "Taped Consulting Presentation",
@@ -3546,7 +3548,7 @@ const PRESENTATION_RUNBOOK_PACKAGE_DEFS: readonly {
       "15-slot consulting presentation structure with taped photo clusters, inset frames, feature rows, process spines, big-number proof, quote cards, and pricing cards.",
   },
   {
-    runbookId: "template:html-ppt-vantage",
+    templateId: "template:html-ppt-vantage",
     slug: "vantage",
     defaultColorSystem: "slate_corporate",
     name: "Vantage Presentation",
@@ -3558,8 +3560,8 @@ const PRESENTATION_RUNBOOK_PACKAGE_DEFS: readonly {
 const PRESENTATION_RUNBOOK_PACKAGES: readonly PresentationRunbookPackage[] =
   PRESENTATION_RUNBOOK_PACKAGE_DEFS.map((def) => {
     return {
-      runbookId: def.runbookId,
-      resourceId: `${def.runbookId}-runbook`,
+      templateId: def.templateId,
+      resourceId: `${def.templateId}-runbook`,
       slug: def.slug,
       defaultColorSystem: def.defaultColorSystem,
       name: def.name,
@@ -3575,12 +3577,12 @@ export function listPresentationRunbookPackages(): readonly PresentationRunbookP
   return PRESENTATION_RUNBOOK_PACKAGES;
 }
 
-/** Resolve the runbook package for a picker runbook id, if one exists. */
+/** Resolve the runbook package for a picker template id, if one exists. */
 export function findPresentationRunbookPackage(
-  runbookId: string,
+  templateId: string,
 ): PresentationRunbookPackage | undefined {
   return PRESENTATION_RUNBOOK_PACKAGES.find((pkg) => {
-    return pkg.runbookId === runbookId;
+    return pkg.templateId === templateId;
   });
 }
 
@@ -3598,8 +3600,9 @@ export function findPresentationRunbookResource(
   if (!pkg) {
     return undefined;
   }
-  // Name/description live on the package itself so this no longer depends on a
-  // legacy registry entry surviving.
+  // Name/description live on the package itself (relocated from the legacy
+  // `template:html-ppt-*` registry entry) so this no longer depends on that
+  // entry surviving. Only id and source diverge.
   return {
     id: pkg.resourceId,
     kind: "template",
@@ -3648,8 +3651,9 @@ export function resolvePresentationRunbookColorToken(
 }
 
 /**
- * Shared runbook authoring instructions for a selected presentation runbook.
- * Used by the chat generation-template prompt (API).
+ * Shared runbook authoring instructions for a selected presentation template.
+ * Used by both the chat generation-template prompt (API) and
+ * `zero generate presentation --template` (CLI) so the two never drift.
  */
 export function buildPresentationRunbookInstructionLines(args: {
   readonly runbookPackage: PresentationRunbookPackage;
@@ -3657,7 +3661,7 @@ export function buildPresentationRunbookInstructionLines(args: {
 }): readonly string[] {
   const { runbookPackage: pkg, colorSystemToken } = args;
   return [
-    `Selected presentation runbook: ${pkg.name} (${pkg.slug})`,
+    `Selected presentation template: ${pkg.name} (${pkg.templateId})`,
     `Color system token: ${colorSystemToken}`,
     "",
     "To produce the presentation:",
@@ -3819,8 +3823,7 @@ export function selectResourceCandidates(
     candidates: {
       skills: listSkills(),
       templates: listTemplates(target),
-      designSystems:
-        target === "presentation" ? [] : filterByKind("design-system"),
+      designSystems: filterByKind("design-system"),
       imageStyles: filterByKind("image-style"),
       audioStyles: filterByKind("audio-style"),
       videoTemplates: listVideoTemplates(),

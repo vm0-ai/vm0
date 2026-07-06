@@ -6853,12 +6853,12 @@ function generationTemplateLabel(
   }
   const item =
     PRESENTATION_TEMPLATE_ITEMS.find((candidate) => {
-      return candidate.runbookId === value.selection.runbookId;
+      return candidate.templateId === value.selection.templateId;
     }) ??
     PRESENTATION_TEMPLATE_PICKER_ITEMS.find((candidate) => {
-      return candidate.runbookId === value.selection.runbookId;
+      return candidate.templateId === value.selection.templateId;
     });
-  return item?.title ?? formatSelectionIdLabel(value.selection.runbookId);
+  return item?.title ?? formatSelectionIdLabel(value.selection.templateId);
 }
 
 function generationTemplateTypeLabel(

@@ -733,7 +733,7 @@ describe("CHAT-02: completed chat callback", () => {
     const generationTemplate: GenerationTemplateRequest = {
       type: "presentation",
       selection: {
-        runbookId: template.runbookId,
+        templateId: template.templateId,
       },
     };
     await queueChatMessage(actor, {
@@ -947,13 +947,12 @@ describe("CHAT-02: completed chat callback", () => {
     expect(appended).toContain("# Presentation Runbook Context");
     expect(appended).not.toContain("# Artifact Template Context");
     expect(appended).toContain(
-      "Selected presentation runbook: Playful Launch Presentation (playful-launch)",
+      "Selected presentation template: Playful Launch Presentation (template:html-ppt-playful-launch)",
     );
-    expect(appended).not.toContain("Selected presentation template");
     expect(appended).not.toContain("Selected design system");
     // Runbook flow, not the retired multi-resource flow.
     expect(appended).toContain(
-      `zero resource pull ${template.runbookId}-runbook --dir ./generated/resources`,
+      `zero resource pull ${template.templateId}-runbook --dir ./generated/resources`,
     );
     expect(appended).toContain("--artifact-kind presentation-html");
     expect(appended).not.toContain(

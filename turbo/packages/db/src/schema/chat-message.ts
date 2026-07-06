@@ -18,7 +18,7 @@ export type ChatMessageAttachFiles = string[];
 export interface ChatMessagePresentationGenerationTemplate {
   readonly type: "presentation";
   readonly selection: {
-    readonly runbookId: string;
+    readonly templateId: string;
     readonly colorSystemId?: string;
     readonly previewUrl?: string;
   };

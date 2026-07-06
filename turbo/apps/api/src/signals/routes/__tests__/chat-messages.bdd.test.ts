@@ -1499,7 +1499,7 @@ describe("CHAT-02: org queue markers", () => {
     const generationTemplate: GenerationTemplateRequest = {
       type: "presentation",
       selection: {
-        runbookId: template.runbookId,
+        templateId: template.templateId,
       },
     };
     const templateMessageId = randomUUID();
@@ -2757,7 +2757,7 @@ describe("CHAT-02: generation templates and attachments", () => {
         type: "presentation",
         selection: {
           colorSystemId: template.colorSystemId,
-          runbookId: template.runbookId,
+          templateId: template.templateId,
         },
       },
     });
@@ -2773,14 +2773,13 @@ describe("CHAT-02: generation templates and attachments", () => {
       "It does not force you to generate: the user's prompt decides the task",
     );
     expect(presentationPrompt).toContain(
-      "Selected presentation runbook: Playful Launch Presentation (playful-launch)",
+      "Selected presentation template: Playful Launch Presentation (template:html-ppt-playful-launch)",
     );
-    expect(presentationPrompt).not.toContain("Selected presentation template");
     expect(presentationPrompt).not.toContain("Selected design system");
     // Runbook flow: pull the selected self-contained runbook package; the
     // retired multi-resource generation command is not surfaced.
     expect(presentationPrompt).toContain(
-      `zero resource pull ${template.runbookId}-runbook --dir ./generated/resources`,
+      `zero resource pull ${template.templateId}-runbook --dir ./generated/resources`,
     );
     if (template.colorSystemId) {
       const colorToken = template.colorSystemId
@@ -3018,7 +3017,7 @@ describe("CHAT-02: generation templates and attachments", () => {
         generationTemplate: {
           type: "presentation",
           selection: {
-            runbookId: "template:html-ppt-missing",
+            templateId: "template:html-ppt-missing",
           },
         },
         message: "Unknown generation template",
@@ -3030,7 +3029,7 @@ describe("CHAT-02: generation templates and attachments", () => {
           type: "presentation",
           selection: {
             colorSystemId: "color-system:missing",
-            runbookId: template.runbookId,
+            templateId: template.templateId,
           },
         },
         message: "Unknown generation template color system",
@@ -3041,7 +3040,7 @@ describe("CHAT-02: generation templates and attachments", () => {
         generationTemplate: {
           type: "presentation",
           selection: {
-            runbookId: "template:html-ppt-missing",
+            templateId: "template:html-ppt-missing",
           },
         },
         message: "Unknown generation template",

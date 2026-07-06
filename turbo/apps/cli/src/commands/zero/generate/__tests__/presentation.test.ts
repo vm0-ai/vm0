@@ -132,7 +132,7 @@ describe("zero generate presentation command", () => {
     expect(helpOutput).toContain("--title <text>");
     expect(helpOutput).not.toContain("--runbook <id>");
     expect(helpOutput).not.toContain("--design-system <id>");
-    expect(helpOutput).not.toContain("--template <id>");
+    expect(helpOutput).toContain("--template <id>");
     expect(helpOutput).toContain("--slides <count>");
     expect(helpOutput).not.toContain("--json");
     expect(helpOutput).not.toContain("--provider");
@@ -143,7 +143,7 @@ describe("zero generate presentation command", () => {
     expect(helpOutput).not.toContain("--theme");
   });
 
-  it("should not list presentation selection catalogs in help", () => {
+  it("should list presentation templates but not design systems in help", () => {
     let helpOutput = "";
     presentationCommand.configureOutput({
       writeOut: (str: string) => {
@@ -155,17 +155,45 @@ describe("zero generate presentation command", () => {
 
     expect(helpOutput).not.toContain("Design Systems:");
     expect(helpOutput).not.toContain("design-system:apple");
-    expect(helpOutput).not.toContain("Presentation Runbooks:");
-    expect(helpOutput).not.toContain("html-ppt-playful-launch");
-    expect(helpOutput).not.toContain("Templates (presentation runbook):");
-    expect(helpOutput).not.toContain("template:html-ppt-playful-launch");
+    expect(helpOutput).toContain("Templates (presentation runbook):");
+    expect(helpOutput).toContain("template:html-ppt-playful-launch");
     expect(helpOutput).not.toContain("Templates (presentation registry):");
     expect(helpOutput).not.toContain("(no presentation templates registered)");
     expect(helpOutput).not.toContain("template:html-ppt-pitch-deck");
     expect(helpOutput).not.toContain("template:saas-landing");
   });
 
-  it.each(["--design-system", "--template", "--runbook"])(
+  it("resolves --template to runbook instructions", async () => {
+    await generateCommand.parseAsync([
+      "node",
+      "cli",
+      "presentation",
+      "--prompt",
+      "create a 15-slide launch deck",
+      "--template",
+      "html-ppt-playful-launch",
+      "--title",
+      "Launch",
+    ]);
+
+    const stdout = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(stdout).toContain("# Presentation Generation (runbook)");
+    expect(stdout).toContain(
+      "Selected presentation template: Playful Launch Presentation (template:html-ppt-playful-launch)",
+    );
+    expect(stdout).toContain(
+      "zero resource pull template:html-ppt-playful-launch-runbook --dir ./generated/resources",
+    );
+    expect(stdout).toContain(
+      "./generated/resources/playful-launch/AGENT_RUNBOOK.md",
+    );
+    expect(stdout).toContain('"colorSystem": "carnival"');
+    expect(stdout).toContain("User request: create a 15-slide launch deck");
+    expect(stdout).not.toContain("Selected design system:");
+    expect(stdout).not.toContain("design-system:");
+  });
+
+  it.each(["--design-system", "--runbook"])(
     "should reject removed presentation selector flag %s",
     async (flag) => {
       const mockStderrWrite = vi

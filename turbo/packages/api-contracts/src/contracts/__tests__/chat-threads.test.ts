@@ -3,11 +3,11 @@ import { describe, expect, it } from "vitest";
 import { generationTemplateRequestSchema } from "../chat-threads";
 
 describe("chat thread generation template contract", () => {
-  it("accepts presentation runbook selections", () => {
+  it("accepts presentation template selections", () => {
     const parsed = generationTemplateRequestSchema.safeParse({
       type: "presentation",
       selection: {
-        runbookId: "template:html-ppt-playful-launch",
+        templateId: "template:html-ppt-playful-launch",
         colorSystemId: "color-system:carnival",
       },
     });
@@ -15,7 +15,7 @@ describe("chat thread generation template contract", () => {
     expect(parsed.success).toBe(true);
   });
 
-  it("rejects legacy presentation design-system/template selections", () => {
+  it("rejects presentation selections with design-system ids", () => {
     const parsed = generationTemplateRequestSchema.safeParse({
       type: "presentation",
       selection: {
