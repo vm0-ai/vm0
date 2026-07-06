@@ -11,22 +11,26 @@ use crate::helper_exec::{format_helper_exec_failure, helper_exec_succeeded};
 use crate::paths::guest;
 use crate::storage_fingerprints::{StorageFingerprint, StorageFingerprints};
 use crate::types::{
-    ExecutionContext, GuestDownloadArtifactEntry, GuestDownloadManifest, GuestDownloadStorageEntry,
+    ExecutionContext, GuestDownloadArtifactEntry, GuestDownloadInstructionCleanupEntry,
+    GuestDownloadManifest, GuestDownloadStorageEntry,
 };
 
 const STORAGE_MANIFEST_CLEANUP_TIMEOUT: Duration = Duration::from_secs(5);
+const CODEX_FRAMEWORK_HOME: &str = "/home/user/.codex";
+const CLAUDE_FRAMEWORK_HOME: &str = "/home/user/.claude";
+const AGENT_INSTRUCTIONS_STORAGE_NAME_PREFIX: &str = "agent-instructions@";
 
 #[derive(Default)]
 struct ManifestReuseFilter {
     skipped: usize,
     cleanup_paths: Vec<String>,
+    instruction_cleanups: Vec<GuestDownloadInstructionCleanupEntry>,
 }
 
 impl ManifestReuseFilter {
     fn record_entry(
         &mut self,
         previous: Option<&StorageFingerprint>,
-        mount_path: &str,
         vas_storage_name: &str,
         vas_version_id: &str,
     ) -> bool {
@@ -34,13 +38,48 @@ impl ManifestReuseFilter {
             .is_some_and(|fingerprint| fingerprint.matches(vas_storage_name, vas_version_id));
         if unchanged {
             self.skipped += 1;
-        } else {
-            self.cleanup_paths.push(mount_path.to_string());
         }
         unchanged
     }
 
-    fn record_removed_paths<'a>(
+    fn record_changed_storage(&mut self, storage: &GuestDownloadStorageEntry) {
+        if storage.instructions_target_filename.is_some() {
+            self.instruction_cleanups
+                .push(GuestDownloadInstructionCleanupEntry {
+                    mount_path: storage.mount_path.clone(),
+                    target_filename: storage.instructions_target_filename.clone(),
+                });
+        } else {
+            self.cleanup_paths.push(storage.mount_path.clone());
+        }
+    }
+
+    fn record_changed_artifact(&mut self, artifact: &GuestDownloadArtifactEntry) {
+        self.cleanup_paths.push(artifact.mount_path.clone());
+    }
+
+    fn record_removed_storages<'a>(
+        &mut self,
+        previous: &HashMap<String, StorageFingerprint>,
+        current_paths: impl IntoIterator<Item = &'a str>,
+    ) {
+        let current_paths: HashSet<&str> = current_paths.into_iter().collect();
+        for (prev_path, previous_fingerprint) in previous {
+            if !current_paths.contains(prev_path.as_str()) {
+                if is_removed_framework_home_instruction(prev_path, previous_fingerprint) {
+                    self.instruction_cleanups
+                        .push(GuestDownloadInstructionCleanupEntry {
+                            mount_path: prev_path.clone(),
+                            target_filename: None,
+                        });
+                } else {
+                    self.cleanup_paths.push(prev_path.clone());
+                }
+            }
+        }
+    }
+
+    fn record_removed_artifacts<'a>(
         &mut self,
         previous: &HashMap<String, StorageFingerprint>,
         current_paths: impl IntoIterator<Item = &'a str>,
@@ -66,10 +105,12 @@ pub(super) fn apply_storage_fingerprint_reuse(
         .map(|s| {
             let unchanged = filter.record_entry(
                 prev.storages.get(&s.mount_path),
-                &s.mount_path,
                 &s.vas_storage_name,
                 &s.vas_version_id,
             );
+            if !unchanged {
+                filter.record_changed_storage(s);
+            }
             GuestDownloadStorageEntry {
                 archive_url: if unchanged {
                     None
@@ -83,7 +124,7 @@ pub(super) fn apply_storage_fingerprint_reuse(
         })
         .collect();
 
-    filter.record_removed_paths(
+    filter.record_removed_storages(
         &prev.storages,
         manifest.storages.iter().map(|s| s.mount_path.as_str()),
     );
@@ -94,10 +135,12 @@ pub(super) fn apply_storage_fingerprint_reuse(
         .map(|a| {
             let unchanged = filter.record_entry(
                 prev.artifacts.get(&a.mount_path),
-                &a.mount_path,
                 &a.vas_storage_name,
                 &a.vas_version_id,
             );
+            if !unchanged {
+                filter.record_changed_artifact(a);
+            }
             GuestDownloadArtifactEntry {
                 archive_url: a.archive_url.clone(),
                 cached: unchanged,
@@ -106,7 +149,7 @@ pub(super) fn apply_storage_fingerprint_reuse(
         })
         .collect();
 
-    filter.record_removed_paths(
+    filter.record_removed_artifacts(
         &prev.artifacts,
         manifest.artifacts.iter().map(|a| a.mount_path.as_str()),
     );
@@ -114,6 +157,7 @@ pub(super) fn apply_storage_fingerprint_reuse(
     let ManifestReuseFilter {
         skipped,
         cleanup_paths,
+        instruction_cleanups,
     } = filter;
 
     if skipped > 0 {
@@ -127,11 +171,18 @@ pub(super) fn apply_storage_fingerprint_reuse(
             "computed cleanup paths for stale file removal"
         );
     }
+    if !instruction_cleanups.is_empty() {
+        info!(
+            count = instruction_cleanups.len(),
+            "computed instruction cleanup entries for stale file removal"
+        );
+    }
 
     GuestDownloadManifest {
         storages,
         artifacts,
         cleanup_paths,
+        instruction_cleanups,
     }
 }
 
@@ -139,10 +190,23 @@ pub(super) fn guest_download_has_work(manifest: &GuestDownloadManifest) -> bool 
     manifest.storages.iter().any(|s| s.archive_url.is_some())
         || manifest.artifacts.iter().any(|a| a.archive_url.is_some())
         || !manifest.cleanup_paths.is_empty()
+        || !manifest.instruction_cleanups.is_empty()
         || manifest
             .storages
             .iter()
             .any(|s| s.instructions_target_filename.is_some())
+}
+
+fn is_framework_home_path(path: &str) -> bool {
+    matches!(path, CODEX_FRAMEWORK_HOME | CLAUDE_FRAMEWORK_HOME)
+}
+
+fn is_removed_framework_home_instruction(path: &str, fingerprint: &StorageFingerprint) -> bool {
+    is_framework_home_path(path)
+        && (fingerprint.is_tainted()
+            || fingerprint
+                .vas_storage_name()
+                .is_some_and(|name| name.starts_with(AGENT_INSTRUCTIONS_STORAGE_NAME_PREFIX)))
 }
 
 /// Download storage volumes into the guest.

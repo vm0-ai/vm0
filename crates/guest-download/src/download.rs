@@ -893,6 +893,21 @@ mod tests {
     }
 
     #[test]
+    fn conflict_classifier_does_not_overlap_staged_instructions_with_skill_children() {
+        assert_eq!(
+            classify_download_conflict(
+                &normalize_mount_path("/home/user/.codex/skills/workflow"),
+                DownloadTaskKind::FrameworkSkillChild,
+                &normalize_mount_path(
+                    "/home/user/.vm0/guest-agent/runs/run-id/storage-instructions/0",
+                ),
+                DownloadTaskKind::FrameworkHomeInstructions,
+            ),
+            None
+        );
+    }
+
+    #[test]
     fn potential_parent_child_overlap_count_excludes_exact_paths_and_siblings() {
         let tasks = [
             task_at("/workspace", DownloadTaskKind::Other),
