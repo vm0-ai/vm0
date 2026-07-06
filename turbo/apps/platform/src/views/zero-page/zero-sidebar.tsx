@@ -485,7 +485,7 @@ function CollapsedManageNav({
 }) {
   return (
     <div className="shrink-0">
-      <div className="flex h-8 shrink-0 items-center justify-between pl-2 pr-0">
+      <div className="flex h-8 shrink-0 items-center justify-between pr-0">
         <TooltipProvider delayDuration={150}>
           <div className="flex min-w-0 items-center gap-1">
             {manageNav.map(
