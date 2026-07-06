@@ -5,6 +5,8 @@ export const internalCallbackHeadersSchema = z.object({
   "x-vm0-timestamp": z.string().optional(),
 });
 
+const internalCallbackPayloadSchema = z.record(z.string(), z.unknown());
+
 export const internalCallbackBodySchema = z
   .object({
     callbackId: z.string().optional(),
@@ -12,7 +14,7 @@ export const internalCallbackBodySchema = z
     status: z.enum(["completed", "failed", "progress"]),
     result: z.record(z.string(), z.unknown()).optional(),
     error: z.string().optional(),
-    payload: z.unknown().optional(),
+    payload: internalCallbackPayloadSchema.optional(),
   })
   .passthrough();
 
