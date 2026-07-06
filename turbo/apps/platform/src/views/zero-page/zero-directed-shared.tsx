@@ -1,7 +1,5 @@
 import type { ReactNode } from "react";
 import { useGet, useSet } from "ccstate-react";
-import { AvatarSvgPreview } from "./avatar-svg-preview.tsx";
-import { getAvatarPresets } from "./zero-avatars.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { handleZeroAccountAction$ } from "../../signals/zero-page/zero-nav.ts";
@@ -85,32 +83,5 @@ export function Vm0LogoLink() {
         />
       </svg>
     </Link>
-  );
-}
-
-export function GoogleSecurityWarningNotice() {
-  return (
-    <div className="w-full mt-2 flex flex-col gap-3 rounded-lg bg-muted/50 px-4 py-4 text-left">
-      <AvatarSvgPreview
-        config={getAvatarPresets()[0]}
-        size={36}
-        className="h-9 w-9 rounded-full"
-        alt="Zero"
-      />
-      <div className="text-xs leading-relaxed text-muted-foreground space-y-1.5">
-        <p>
-          Google will show a security warning because we&rsquo;re still
-          completing their app verification. This is a standard review process
-          for new integrations and does not affect your security.
-        </p>
-        <p>
-          To continue, select{" "}
-          <strong className="text-foreground">Advanced</strong> then{" "}
-          <strong className="text-foreground">Go to vm0.ai (unsafe)</strong>. We
-          only request the minimum permissions needed, and your connection
-          tokens are encrypted at rest.
-        </p>
-      </div>
-    </div>
   );
 }
