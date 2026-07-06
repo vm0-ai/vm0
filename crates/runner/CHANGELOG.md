@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.136.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.135.0...runner-rs-v0.136.0) (2026-07-06)
+
+
+### Features
+
+* add steam player connector ([#20359](https://github.com/vm0-ai/vm0/issues/20359)) ([830096d](https://github.com/vm0-ai/vm0/commit/830096d68b93cd490769ed98c0c91090bcde6f31))
+
 ## [0.135.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.134.0...runner-rs-v0.135.0) (2026-07-06)
 
 

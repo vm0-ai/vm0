@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.564.0](https://github.com/vm0-ai/vm0/compare/app-v0.563.2...app-v0.564.0) (2026-07-06)
+
+
+### Features
+
+* add steam player connector ([#20359](https://github.com/vm0-ai/vm0/issues/20359)) ([830096d](https://github.com/vm0-ai/vm0/commit/830096d68b93cd490769ed98c0c91090bcde6f31))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.159.0
+    * @vm0/connectors bumped to 1.143.0
+    * @vm0/core bumped to 8.408.0
+
 ## [0.563.2](https://github.com/vm0-ai/vm0/compare/app-v0.563.1...app-v0.563.2) (2026-07-06)
 
 
