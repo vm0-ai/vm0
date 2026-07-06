@@ -98,8 +98,15 @@ function teamsServiceBaseUrl(serviceUrl: string): string {
   return serviceUrl.replace(/\/+$/u, "");
 }
 
-function teamsOutboundHandlers(serviceUrl: string): void {
+interface TeamsOutboundRequest {
+  readonly conversationId: string;
+  readonly activityId: string | null;
+  readonly body: unknown;
+}
+
+function teamsOutboundHandlers(serviceUrl: string): TeamsOutboundRequest[] {
   const serviceBaseUrl = teamsServiceBaseUrl(serviceUrl);
+  const requests: TeamsOutboundRequest[] = [];
   server.use(
     http.post(BOT_FRAMEWORK_TOKEN_URL, () => {
       return HttpResponse.json({
@@ -110,17 +117,35 @@ function teamsOutboundHandlers(serviceUrl: string): void {
     }),
     http.post(
       `${serviceBaseUrl}/v3/conversations/:conversationId/activities`,
-      () => {
+      async ({ params, request }) => {
+        requests.push({
+          conversationId:
+            typeof params.conversationId === "string"
+              ? params.conversationId
+              : "",
+          activityId: null,
+          body: await request.json(),
+        });
         return HttpResponse.json({ id: "teams-activity-1" });
       },
     ),
     http.post(
       `${serviceBaseUrl}/v3/conversations/:conversationId/activities/:activityId`,
-      () => {
+      async ({ params, request }) => {
+        requests.push({
+          conversationId:
+            typeof params.conversationId === "string"
+              ? params.conversationId
+              : "",
+          activityId:
+            typeof params.activityId === "string" ? params.activityId : "",
+          body: await request.json(),
+        });
         return HttpResponse.json({ id: "teams-activity-1" });
       },
     ),
   );
+  return requests;
 }
 
 interface TeamsGraphMessageFixture {
@@ -411,6 +436,7 @@ describe("POST /api/zero/teams/bot", () => {
     mockEnv("VM0_API_URL", "https://api.vm0.test");
     mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
     context.mocks.axiom.query.mockResolvedValue([]);
+    teamsOutboundHandlers(SERVICE_URL);
   });
 
   afterEach(async () => {
@@ -452,6 +478,7 @@ describe("POST /api/zero/teams/bot", () => {
 
   it("normalizes a valid Teams message activity", async () => {
     botFrameworkHandlers();
+    const outboundRequests = teamsOutboundHandlers(SERVICE_URL);
 
     const response = await postTeamsActivity({
       activity: teamsMessageActivity(),
@@ -499,7 +526,20 @@ describe("POST /api/zero/teams/bot", () => {
       connectUrl: expect.stringContaining(
         `${APP_ORIGIN}/api/zero/teams/connect`,
       ),
-      replyText: expect.stringContaining("Please connect"),
+      replyText: expect.stringContaining("Please connect your account first"),
+    });
+    expect(outboundRequests).toHaveLength(1);
+    expect(outboundRequests[0]).toMatchObject({
+      conversationId: "19:thread@thread.tacv2",
+      activityId: "activity-1",
+      body: {
+        type: "message",
+        text: expect.stringContaining("Please connect your account first"),
+        replyToId: "activity-1",
+        channelData: {
+          tenant: { id: "tenant-1" },
+        },
+      },
     });
 
     mocks.clerk.session(
@@ -561,6 +601,7 @@ describe("POST /api/zero/teams/bot", () => {
 
   it("handles Teams personal messages without requiring a bot mention", async () => {
     botFrameworkHandlers();
+    const outboundRequests = teamsOutboundHandlers(SERVICE_URL);
 
     const response = await postTeamsActivity({
       activity: teamsMessageActivity(botFixture(), {
@@ -591,7 +632,17 @@ describe("POST /api/zero/teams/bot", () => {
       },
       dispatch: {
         kind: "notice",
-        replyText: expect.stringContaining("Please connect"),
+        replyText: expect.stringContaining("Please connect your account first"),
+      },
+    });
+    expect(outboundRequests).toHaveLength(1);
+    expect(outboundRequests[0]).toMatchObject({
+      conversationId: "a:personal-conversation",
+      activityId: "activity-personal-dm",
+      body: {
+        type: "message",
+        text: expect.stringContaining("Please connect your account first"),
+        replyToId: "activity-personal-dm",
       },
     });
   });
@@ -848,6 +899,7 @@ describe("POST /api/zero/teams/bot", () => {
       Promise.resolve(teamsConnectFixture()),
     );
     botFrameworkHandlers();
+    const outboundRequests = teamsOutboundHandlers(fixture.serviceUrl);
 
     const installResponse = await postTeamsActivity({
       activity: teamsMessageActivity(fixture),
@@ -869,6 +921,14 @@ describe("POST /api/zero/teams/bot", () => {
       dispatch: {
         kind: "notice",
         replyText: expect.stringContaining("No agent is configured"),
+      },
+    });
+    expect(outboundRequests.at(-1)).toMatchObject({
+      activityId: "activity-no-default",
+      body: {
+        type: "message",
+        text: expect.stringContaining("No agent is configured"),
+        replyToId: "activity-no-default",
       },
     });
   });

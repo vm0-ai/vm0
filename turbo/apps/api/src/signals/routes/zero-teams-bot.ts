@@ -7,7 +7,9 @@ import {
   readTeamsActivityServiceUrl,
 } from "../../lib/teams-bot-activity";
 import { verifyTeamsBotAuthorization } from "../../lib/teams-bot-auth";
+import { logger } from "../../lib/log";
 import { authorization$, request$ } from "../context/hono";
+import { sendTeamsMessageReply } from "../external/teams-bot-client";
 import { now } from "../external/time";
 import type { RouteEntry } from "../route-entry";
 import {
@@ -17,6 +19,8 @@ import {
 } from "../services/zero-teams-connect.service";
 import { dispatchTeamsMessageToAgent$ } from "../services/zero-teams-dispatch.service";
 import { safeJsonParse } from "../utils";
+
+const L = logger("TeamsBot");
 
 function errorResponse(
   status: 400 | 401 | 403 | 503,
@@ -108,6 +112,31 @@ const handleZeroTeamsBot$ = command(
       signal,
     );
     signal.throwIfAborted();
+
+    if (
+      normalized.activity.kind === "message" &&
+      (dispatch.kind === "notice" || dispatch.kind === "failed")
+    ) {
+      const reply = await sendTeamsMessageReply({
+        serviceUrl: normalized.activity.serviceUrl,
+        conversationId: normalized.activity.conversationId,
+        activityId: normalized.activity.activityId ?? undefined,
+        tenantId: normalized.activity.tenantId,
+        text: dispatch.replyText,
+        signal,
+      });
+      signal.throwIfAborted();
+
+      if (reply.kind === "teams-error") {
+        L.warn("Teams dispatch reply failed", {
+          tenantId: normalized.activity.tenantId,
+          conversationId: normalized.activity.conversationId,
+          activityId: normalized.activity.activityId,
+          status: reply.status,
+          error: reply.error,
+        });
+      }
+    }
 
     return {
       status: 200 as const,

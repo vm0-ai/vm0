@@ -788,8 +788,8 @@ function connectNotice(
   return {
     kind: "notice",
     replyText: connectUrl
-      ? `Please connect your Microsoft Teams account to Zero first: ${connectUrl}`
-      : "Please connect your Microsoft Teams account to Zero first.",
+      ? `Please connect your account first\n\n${connectUrl}`
+      : "Please connect your account first",
     ...(connectUrl ? { connectUrl } : {}),
   };
 }
@@ -816,7 +816,7 @@ function composeResolutionNotice(
       return {
         kind: "notice",
         replyText:
-          "The configured agent is not available to your Microsoft Teams account.",
+          "The configured agent is not available to your Teams account.",
       };
     }
   }
