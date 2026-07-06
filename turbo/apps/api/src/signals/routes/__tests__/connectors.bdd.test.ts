@@ -1487,7 +1487,7 @@ describe("CONN-03: custom connectors and connector-owned values", () => {
       [{ key: "api_key", kind: "secret", value: "replace-secret-rotated" }],
     );
     expect(replaced).toMatchObject({
-      connected: true,
+      connected: false,
       configuredFieldKeys: ["api_key"],
       missingRequiredFields: [],
     });
@@ -1498,7 +1498,7 @@ describe("CONN-03: custom connectors and connector-owned values", () => {
         return candidate.id === connector.id;
       }),
     ).toMatchObject({
-      connected: true,
+      connected: false,
       configuredFieldKeys: ["api_key"],
       missingRequiredFields: [],
     });

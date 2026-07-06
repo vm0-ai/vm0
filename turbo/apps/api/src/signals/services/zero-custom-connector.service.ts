@@ -262,11 +262,17 @@ function configuredValueMarkerKeys(
   ].sort();
 }
 
+function configuredValueMarkerSet(
+  markers: readonly ValueMarker[],
+): ReadonlySet<string> {
+  return new Set(configuredValueMarkerKeys(markers));
+}
+
 function configuredFieldKeys(args: {
   readonly fields: readonly CustomConnectorField[];
   readonly markers: readonly ValueMarker[];
 }): readonly string[] {
-  const configured = new Set(configuredValueMarkerKeys(args.markers));
+  const configured = configuredValueMarkerSet(args.markers);
   return args.fields
     .filter((field) => {
       return configured.has(customConnectorValueMarkerKey(field));
@@ -281,7 +287,7 @@ function computeMissingRequiredFields(args: {
   readonly fields: readonly CustomConnectorField[];
   readonly markers: readonly ValueMarker[];
 }): readonly string[] {
-  const configured = new Set(configuredValueMarkerKeys(args.markers));
+  const configured = configuredValueMarkerSet(args.markers);
   return args.fields
     .filter((field) => {
       return (
@@ -293,22 +299,119 @@ function computeMissingRequiredFields(args: {
     });
 }
 
+function customConnectorTemplateConfigured(args: {
+  readonly fields: readonly CustomConnectorField[];
+  readonly configured: ReadonlySet<string>;
+  readonly template: string;
+}): boolean {
+  const fieldByReference = new Map<string, CustomConnectorField>(
+    args.fields.map((field) => {
+      return [
+        `${field.kind === "secret" ? "secrets" : "variables"}.${field.key}`,
+        field,
+      ] as const;
+    }),
+  );
+
+  if (args.template.includes(LEGACY_SECRET_PLACEHOLDER)) {
+    const legacyField = fieldByReference.get(`secrets.${LEGACY_SECRET_KEY}`);
+    if (!legacyField || !args.configured.has(valueMarkerKey(legacyField))) {
+      return false;
+    }
+  }
+  for (const match of args.template.matchAll(TEMPLATE_REFERENCE_REGEX)) {
+    const namespace = match[1];
+    const key = match[2];
+    if (!namespace || !key) {
+      continue;
+    }
+    const field = fieldByReference.get(`${namespace}.${key}`);
+    if (!field || !args.configured.has(valueMarkerKey(field))) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function customConnectorPrefixTemplateConfigured(args: {
+  readonly fields: readonly CustomConnectorField[];
+  readonly configured: ReadonlySet<string>;
+  readonly template: string;
+}): boolean {
+  const variableFieldByKey = new Map(
+    args.fields
+      .filter((field) => {
+        return field.kind === "variable";
+      })
+      .map((field) => {
+        return [field.key, field] as const;
+      }),
+  );
+
+  for (const match of args.template.matchAll(TEMPLATE_REFERENCE_REGEX)) {
+    const namespace = match[1];
+    const key = match[2];
+    if (!namespace || !key) {
+      continue;
+    }
+    if (namespace !== "variables") {
+      return false;
+    }
+    const field = variableFieldByKey.get(key);
+    if (!field || !args.configured.has(valueMarkerKey(field))) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function customConnectorRuntimeConfigured(args: {
+  readonly row: CustomConnectorRow;
+  readonly markers: readonly ValueMarker[];
+}): boolean {
+  const configured = configuredValueMarkerSet(args.markers);
+  const hasConfiguredAuth = [
+    ...args.row.headerInjections.map((injection) => {
+      return injection.valueTemplate;
+    }),
+    ...args.row.queryInjections.map((injection) => {
+      return injection.valueTemplate;
+    }),
+  ].some((template) => {
+    return customConnectorTemplateConfigured({
+      fields: args.row.fields,
+      configured,
+      template,
+    });
+  });
+  const hasConfiguredPrefix = args.row.prefixTemplates.some((template) => {
+    return customConnectorPrefixTemplateConfigured({
+      fields: args.row.fields,
+      configured,
+      template,
+    });
+  });
+  return hasConfiguredAuth && hasConfiguredPrefix;
+}
+
 export function serialiseCustomConnector(args: {
   readonly row: CustomConnectorRow;
   readonly valueMarkers: readonly ValueMarker[];
 }): CustomConnectorResponse {
+  const markers = args.valueMarkers.filter((marker) => {
+    return marker.connectorId === args.row.id;
+  });
   const missingRequiredFields = computeMissingRequiredFields({
     fields: args.row.fields,
-    markers: args.valueMarkers.filter((marker) => {
-      return marker.connectorId === args.row.id;
-    }),
+    markers,
   });
   const configured = configuredFieldKeys({
     fields: args.row.fields,
-    markers: args.valueMarkers.filter((marker) => {
-      return marker.connectorId === args.row.id;
-    }),
+    markers,
   });
+  const connected =
+    missingRequiredFields.length === 0 &&
+    customConnectorRuntimeConfigured({ row: args.row, markers });
   return {
     id: args.row.id,
     slug: args.row.slug,
@@ -322,12 +425,12 @@ export function serialiseCustomConnector(args: {
     fields: [...args.row.fields],
     headerInjections: [...args.row.headerInjections],
     queryInjections: [...args.row.queryInjections],
-    connected: missingRequiredFields.length === 0,
+    connected,
     missingRequiredFields: [...missingRequiredFields],
     configuredFieldKeys: [...configured],
     createdAt: args.row.createdAt.toISOString(),
     updatedAt: args.row.updatedAt.toISOString(),
-    hasSecret: missingRequiredFields.length === 0,
+    hasSecret: connected,
   };
 }
 
