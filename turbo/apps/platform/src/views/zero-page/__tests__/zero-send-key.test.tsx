@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
-import { mockChatLifecycle, PLACEHOLDER } from "./chat-test-helpers.ts";
+import { mockChatLifecycle } from "./chat-test-helpers.ts";
 
 const context = testContext();
 
@@ -13,7 +13,13 @@ async function openComposer(sendMode: "enter" | "cmd-enter") {
   detachedSetupPage({ context, path: "/" });
 
   return await waitFor(() => {
-    return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    const editor = document.querySelector(
+      '.zero-composer [contenteditable="true"]',
+    );
+    if (!(editor instanceof HTMLElement)) {
+      throw new Error("Composer editor not found");
+    }
+    return editor;
   });
 }
 
@@ -39,7 +45,7 @@ describe("zero send key", () => {
     await user.keyboard("{Shift>}{Enter}{/Shift}");
 
     expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
-    expect(textarea.value).toContain("Keep this draft");
+    expect(textarea.textContent ?? "").toContain("Keep this draft");
   });
 
   it("sends with Cmd+Enter mode while plain Enter keeps the draft", async () => {
@@ -50,7 +56,7 @@ describe("zero send key", () => {
     await user.keyboard("{Enter}");
 
     expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
-    expect(textarea.value).toContain("Keep until command enter");
+    expect(textarea.textContent ?? "").toContain("Keep until command enter");
 
     await user.keyboard("{Control>}{Enter}{/Control}");
 
@@ -67,7 +73,7 @@ describe("zero send key", () => {
     fireEvent.keyDown(textarea, { key: "Enter", keyCode: 229 });
 
     expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
-    expect(textarea.value).toContain("Composing text");
+    expect(textarea.textContent ?? "").toContain("Composing text");
   });
 
   it("avoids accidental sends on touch devices", async () => {
@@ -81,6 +87,6 @@ describe("zero send key", () => {
     await user.keyboard("{Control>}{Enter}{/Control}");
 
     expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
-    expect(touchTextarea.value).toContain("Touch device draft");
+    expect(touchTextarea.textContent ?? "").toContain("Touch device draft");
   });
 });

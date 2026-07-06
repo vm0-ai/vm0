@@ -126,15 +126,7 @@ export async function setupPage(options: {
   const defaultOrgId = "org_default";
   const activeOrgId = options.org ? options.org.activeOrg?.id : defaultOrgId;
   options.context.store.set(clearFeatureSwitchCacheForTest$);
-  // workflowAutomation went globally on with the automation -> workflow
-  // cutover (#19959); the DEFAULT feature-switches msw handler pins it off
-  // for the pre-flip platform suite (see api-feature-switches.ts). The
-  // synchronous featureSwitch$ cache must match that pin before bootstrap,
-  // merged with any explicit per-test overrides. setMockFeatureSwitches is
-  // registered only for explicit overrides so this helper never shadows a
-  // test's own GET handler.
   const featureSwitchOverrides = {
-    [FeatureSwitchKey.WorkflowAutomation]: false,
     ...options.featureSwitches,
   };
   if (options.featureSwitches) {
@@ -245,7 +237,11 @@ function createPushStateMock(signal: AbortSignal) {
  */
 export async function fill(element: Element, value: string): Promise<void> {
   const fastUser = userEvent.setup({ delay: null });
-  await fastUser.click(element);
+  const editableElement =
+    element.getAttribute("contenteditable") === "true"
+      ? element
+      : (element.querySelector('[contenteditable="true"]') ?? element);
+  await fastUser.click(editableElement);
   await fastUser.keyboard("{Control>}a{/Control}");
   await fastUser.paste(value);
 }

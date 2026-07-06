@@ -30,7 +30,6 @@ import { setMockOrgModelProviders } from "../../mocks/handlers/api-org-model-pro
 import { setMockPersonalModelProviders } from "../../mocks/handlers/api-personal-model-providers.ts";
 import { setMockUserModelPreference } from "../../mocks/handlers/api-user-model-preference.ts";
 import { setMockUserPreferences } from "../../mocks/handlers/api-user-preferences.ts";
-import { setMockAutomations } from "../../mocks/handlers/automations-store.ts";
 import {
   createMockApi,
   createMockHttp,
@@ -209,9 +208,6 @@ export function createTestMocks(getSignal: () => AbortSignal) {
       },
       redeemResponse: (...args: Parameters<typeof setMockRedeemResponse>) => {
         setMockRedeemResponse(...args);
-      },
-      automations: (...args: Parameters<typeof setMockAutomations>) => {
-        setMockAutomations(...args);
       },
       githubIntegration: (
         ...args: Parameters<typeof setMockGithubIntegration>
