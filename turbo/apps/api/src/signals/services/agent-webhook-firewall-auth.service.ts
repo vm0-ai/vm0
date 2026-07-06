@@ -13,6 +13,7 @@ import {
   getConnectorAuthClientConfigForMethod,
   getConnectorAuthMethodAccessMetadata,
   getConnectorAuthMethodRuntimeMetadata,
+  getConnectorRuntimeBindingPlatformSecretName,
   getConnectorRuntimeBindingSecretName,
   resolveConnectorResolvedAuthMethodClientByAccessKind,
   connectorAuthMethodRefHasAccessKind,
@@ -88,9 +89,10 @@ import {
   type ConnectorCredentialStatus,
 } from "./connector-credential-status.service";
 
-type AccessSecretSource = "connector" | "model-provider";
+type AccessSecretSource = SecretConnectorMetadata["sourceType"];
+type StorageSecretSource = Exclude<AccessSecretSource, "platform-secret">;
 type FirewallAuthFailureReason = "upstream_provider" | "reconnect_required";
-type SecretType = AccessSecretSource;
+type SecretType = StorageSecretSource;
 const NORMAL_BILLABLE_FIREWALL_LEASE_SECONDS = 30;
 const LOW_BILLABLE_FIREWALL_LEASE_SECONDS = 5;
 const LOW_BILLABLE_FIREWALL_CREDIT_THRESHOLD = 1000;
@@ -316,7 +318,7 @@ interface SecretTokenLookupArgs {
   readonly connectorType: string;
   readonly orgId: string;
   readonly userId: string;
-  readonly sourceType: AccessSecretSource;
+  readonly sourceType: StorageSecretSource;
   readonly sourceUserId?: string;
   readonly metadataKey?: string;
   readonly connectorAccessByType: ReadonlyMap<string, ConnectorAccessState>;
@@ -605,7 +607,7 @@ const TEMPLATE_RE = /\$\{\{\s*(secrets|vars)\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
 
 function getRefreshProviderKeySourceType(
   providerKey: string,
-): AccessSecretSource {
+): StorageSecretSource {
   return modelProviderTypeForProviderKey(providerKey)
     ? "model-provider"
     : "connector";
@@ -619,7 +621,7 @@ function modelProviderTypeForProviderKey(
 }
 
 function resolveSecretUserId(
-  sourceType: AccessSecretSource,
+  sourceType: StorageSecretSource,
   userId: string,
   sourceUserId?: string,
 ): string {
@@ -992,6 +994,9 @@ function refreshableRuntimeSecretNameForSource(args: {
     return secretName && secretMetadata?.refreshableSecrets.includes(secretName)
       ? secretName
       : undefined;
+  }
+  if (args.metadata.sourceType === "platform-secret") {
+    return undefined;
   }
 
   const connectorAccess = args.connectorAccessByType.get(args.connectorType);
@@ -2448,6 +2453,13 @@ function isConnectorRuntimeSecretKey(
   return connectorRuntimeSecretName(key, connectorAccess) !== undefined;
 }
 
+function isConnectorRuntimePlatformSecretKey(
+  key: string,
+  connectorAccess: ConnectorAccessState,
+): boolean {
+  return connectorRuntimePlatformSecretName(key, connectorAccess) !== undefined;
+}
+
 function isRefreshableConnectorRuntimeSecretKey(
   key: string,
   connectorAccess: ConnectorAccessState,
@@ -2477,6 +2489,24 @@ function connectorRuntimeSecretName(
     }
     case "static": {
       return getConnectorRuntimeBindingSecretName(
+        connectorAccess.runtimeMetadata,
+        key,
+      );
+    }
+    case "none": {
+      return undefined;
+    }
+  }
+}
+
+function connectorRuntimePlatformSecretName(
+  key: string,
+  connectorAccess: ConnectorAccessState,
+): string | undefined {
+  switch (connectorAccess.accessMetadata.kind) {
+    case "refresh-token":
+    case "static": {
+      return getConnectorRuntimeBindingPlatformSecretName(
         connectorAccess.runtimeMetadata,
         key,
       );
@@ -2773,6 +2803,46 @@ async function syncModelProviderRuntimeSecrets(args: {
   );
 }
 
+function syncPlatformRuntimeSecrets(args: {
+  readonly secrets: Record<string, string>;
+  readonly secretConnectorMap: Record<string, string> | undefined;
+  readonly secretConnectorMetadataMap:
+    | Record<string, SecretConnectorMetadata>
+    | undefined;
+  readonly referencedKeys: Set<string>;
+  readonly connectorAccessByType: ReadonlyMap<string, ConnectorAccessState>;
+}): void {
+  if (!args.secretConnectorMap) {
+    return;
+  }
+
+  for (const key of args.referencedKeys) {
+    const connectorType = getOwnConnectorOwner(args.secretConnectorMap, key);
+    if (!connectorType) {
+      continue;
+    }
+    const metadata = resolveRefreshMetadata(
+      connectorType,
+      args.secretConnectorMetadataMap?.[key],
+    );
+    if (metadata.sourceType !== "platform-secret") {
+      continue;
+    }
+    const connectorAccess = args.connectorAccessByType.get(connectorType);
+    const platformSecretName =
+      connectorAccess &&
+      connectorRuntimePlatformSecretName(key, connectorAccess);
+    const value = platformSecretName
+      ? optionalEnv(platformSecretName)
+      : undefined;
+    if (value === undefined || value.trim().length === 0) {
+      delete args.secrets[key];
+    } else {
+      args.secrets[key] = value;
+    }
+  }
+}
+
 async function syncCustomConnectorRuntimeSecrets(args: {
   readonly db: Db;
   readonly runId: string;
@@ -2851,6 +2921,13 @@ async function syncFirewallRuntimeSecrets(args: {
     referencedKeys: args.referencedKeys,
     featureSwitchContext: args.featureSwitchContext,
   });
+  syncPlatformRuntimeSecrets({
+    secrets: args.secrets,
+    secretConnectorMap: args.body.secretConnectorMap,
+    secretConnectorMetadataMap: args.body.secretConnectorMetadataMap,
+    referencedKeys: args.referencedKeys,
+    connectorAccessByType: args.connectorAccessByType,
+  });
   await syncCustomConnectorRuntimeSecrets({
     db: args.db,
     runId: args.auth.runId,
@@ -2883,6 +2960,9 @@ function canResolveMissingAccessSecret(args: {
       }) !== undefined
     );
   }
+  if (refreshMetadata.sourceType === "platform-secret") {
+    return false;
+  }
 
   const connectorAccess = args.connectorAccessByType.get(connectorType);
   if (connectorAccess?.accessMetadata.kind !== "refresh-token") {
@@ -2911,7 +2991,7 @@ function referencedConnectorTypes(args: {
       connectorType,
       args.secretConnectorMetadataMap?.[key],
     ).sourceType;
-    if (sourceType === "connector") {
+    if (sourceType === "connector" || sourceType === "platform-secret") {
       connectorTypes.add(connectorType);
     }
   }
@@ -2959,6 +3039,13 @@ function hasUnavailableAccessSource(args: {
         }) === undefined
       );
     }
+    if (metadata.sourceType === "platform-secret") {
+      const connectorAccess = args.connectorAccessByType.get(connectorType);
+      return (
+        !connectorAccess ||
+        !isConnectorRuntimePlatformSecretKey(key, connectorAccess)
+      );
+    }
 
     const connectorAccess = args.connectorAccessByType.get(connectorType);
     return (
@@ -3004,14 +3091,19 @@ function connectorAccessSourcesWithReconnectRequiredStatus(args: {
       connectorType,
       args.secretConnectorMetadataMap?.[key],
     );
-    if (metadata.sourceType !== "connector") {
+    if (
+      metadata.sourceType !== "connector" &&
+      metadata.sourceType !== "platform-secret"
+    ) {
       continue;
     }
     const connectorAccess = args.connectorAccessByType.get(connectorType);
-    if (
-      !connectorAccess ||
-      !isConnectorRuntimeSecretKey(key, connectorAccess)
-    ) {
+    const isAvailableKey =
+      metadata.sourceType === "platform-secret"
+        ? connectorAccess &&
+          isConnectorRuntimePlatformSecretKey(key, connectorAccess)
+        : connectorAccess && isConnectorRuntimeSecretKey(key, connectorAccess);
+    if (!connectorAccess || !isAvailableKey) {
       continue;
     }
     if (
@@ -3289,6 +3381,9 @@ async function refreshSelectedTokens(
         connectorType,
         context.metadataByConnector.get(connectorType),
       );
+      if (metadata.sourceType === "platform-secret") {
+        throw new Error("Platform secrets are not refreshable");
+      }
       const refreshResult = await refreshAccessTokenForSource({
         db: context.db,
         connectorType,
@@ -3362,6 +3457,9 @@ async function syncSkippedTokens(
         connectorType,
         context.metadataByConnector.get(connectorType),
       );
+      if (metadata.sourceType === "platform-secret") {
+        throw new Error("Platform secrets are not refreshable");
+      }
       return {
         connectorType,
         tokens: await getCurrentAccessSecrets({

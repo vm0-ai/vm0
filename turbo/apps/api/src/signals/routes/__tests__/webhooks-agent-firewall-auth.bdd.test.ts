@@ -6,6 +6,7 @@ import { describe, expect, it, onTestFinished } from "vitest";
 
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
+import { mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-context";
 import { server } from "../../../mocks/server";
@@ -1416,7 +1417,147 @@ describe("FW-8: static access tokens and unavailable sources", () => {
   });
 });
 
-describe("FW-9: codex model-provider access", () => {
+describe("FW-9: platform connector secrets", () => {
+  it("resolves platform secrets from current API env", async () => {
+    const fw = createFirewallApi(context);
+    const { actor, headers } = await firewallRun();
+    mockOptionalEnv("GOOGLE_ADS_DEVELOPER_TOKEN", "developer-token-current");
+    await fw.seedTestConnector(actor, {
+      connectorName: "google-ads",
+      authMethod: "oauth",
+      accessToken: "google-ads-access",
+      refreshToken: "google-ads-refresh",
+      expiresIn: 3600,
+    });
+
+    const resolved = await fw.requestFirewallAuth(
+      headers,
+      {
+        encryptedSecrets: fw.encryptedSecretsBody({}),
+        authHeaders: {
+          "developer-token": secretTemplate("GOOGLE_ADS_DEVELOPER_TOKEN"),
+        },
+        secretConnectorMap: {
+          GOOGLE_ADS_DEVELOPER_TOKEN: "google-ads",
+        },
+        secretConnectorMetadataMap: {
+          GOOGLE_ADS_DEVELOPER_TOKEN: {
+            sourceType: "platform-secret" as const,
+          },
+        },
+      },
+      [200],
+    );
+    if (resolved.status !== 200) {
+      throw new Error("Expected platform secret auth to resolve");
+    }
+    expect(resolved.body.headers["developer-token"]).toBe(
+      "developer-token-current",
+    );
+    expect(resolved.body.resolvedSecrets).toStrictEqual([
+      "GOOGLE_ADS_DEVELOPER_TOKEN",
+    ]);
+    expect(resolved.body.refreshedConnectors).toStrictEqual([]);
+  });
+
+  it("reports missing platform env as connector-not-configured", async () => {
+    const fw = createFirewallApi(context);
+    const { actor, headers } = await firewallRun();
+    mockOptionalEnv("GOOGLE_ADS_DEVELOPER_TOKEN", " ");
+    await fw.seedTestConnector(actor, {
+      connectorName: "google-ads",
+      authMethod: "oauth",
+      accessToken: "google-ads-access",
+      refreshToken: "google-ads-refresh",
+      expiresIn: 3600,
+    });
+
+    const missing = await fw.requestFirewallAuth(
+      headers,
+      {
+        encryptedSecrets: fw.encryptedSecretsBody({}),
+        authHeaders: {
+          "developer-token": secretTemplate("GOOGLE_ADS_DEVELOPER_TOKEN"),
+        },
+        secretConnectorMap: {
+          GOOGLE_ADS_DEVELOPER_TOKEN: "google-ads",
+        },
+        secretConnectorMetadataMap: {
+          GOOGLE_ADS_DEVELOPER_TOKEN: {
+            sourceType: "platform-secret" as const,
+          },
+        },
+      },
+      [424],
+    );
+    if (missing.status !== 424) {
+      throw new Error("Expected missing platform env to fail with 424");
+    }
+    expect(missing.body.error.code).toBe("CONNECTOR_NOT_CONFIGURED");
+  });
+
+  it("keeps old encrypted platform secret payloads working", async () => {
+    const fw = createFirewallApi(context);
+    const { headers } = await firewallRun();
+
+    const resolved = await fw.requestFirewallAuth(
+      headers,
+      {
+        encryptedSecrets: fw.encryptedSecretsBody({
+          GOOGLE_ADS_DEVELOPER_TOKEN: "legacy-developer-token",
+        }),
+        authHeaders: {
+          "developer-token": secretTemplate("GOOGLE_ADS_DEVELOPER_TOKEN"),
+        },
+      },
+      [200],
+    );
+    if (resolved.status !== 200) {
+      throw new Error("Expected legacy platform payload to resolve");
+    }
+    expect(resolved.body.headers["developer-token"]).toBe(
+      "legacy-developer-token",
+    );
+  });
+
+  it("rejects platform metadata for non-platform aliases", async () => {
+    const fw = createFirewallApi(context);
+    const { actor, headers } = await firewallRun();
+    mockOptionalEnv("GOOGLE_ADS_DEVELOPER_TOKEN", "developer-token-current");
+    await fw.seedTestConnector(actor, {
+      connectorName: "google-ads",
+      authMethod: "oauth",
+      accessToken: "google-ads-access",
+      refreshToken: "google-ads-refresh",
+      expiresIn: 3600,
+    });
+
+    const invalid = await fw.requestFirewallAuth(
+      headers,
+      {
+        encryptedSecrets: fw.encryptedSecretsBody({}),
+        authHeaders: {
+          Authorization: `Bearer ${secretTemplate("GOOGLE_ADS_TOKEN")}`,
+        },
+        secretConnectorMap: {
+          GOOGLE_ADS_TOKEN: "google-ads",
+        },
+        secretConnectorMetadataMap: {
+          GOOGLE_ADS_TOKEN: {
+            sourceType: "platform-secret" as const,
+          },
+        },
+      },
+      [424],
+    );
+    if (invalid.status !== 424) {
+      throw new Error("Expected invalid platform alias to fail with 424");
+    }
+    expect(invalid.body.error.code).toBe("CONNECTOR_NOT_CONFIGURED");
+  });
+});
+
+describe("FW-10: codex model-provider access", () => {
   it("resolves static model-provider auth from an empty runtime namespace", async () => {
     const fw = createFirewallApi(context);
     const { headers } = await firewallRun();
@@ -1839,7 +1980,7 @@ describe("FW-9: codex model-provider access", () => {
   });
 });
 
-describe("FW-10: aws sigv4 template resolution", () => {
+describe("FW-11: aws sigv4 template resolution", () => {
   it("resolves aws sigv4 credentials from secret and var templates", async () => {
     const fw = createFirewallApi(context);
     const { headers } = await firewallRun();

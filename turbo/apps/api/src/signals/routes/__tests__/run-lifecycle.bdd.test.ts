@@ -38,7 +38,7 @@ import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
 import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
-import { createFirewallApi } from "./helpers/api-bdd-firewall";
+import { createFirewallApi, secretTemplate } from "./helpers/api-bdd-firewall";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { storageTextFile } from "./helpers/api-bdd-storage-files";
@@ -3800,12 +3800,63 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     expect(claim.environment).not.toHaveProperty("GOOGLE_ADS_DEVELOPER_TOKEN");
     expect(claim.secretConnectorMap).toMatchObject({
       GOOGLE_ADS_TOKEN: "google-ads",
+      GOOGLE_ADS_DEVELOPER_TOKEN: "google-ads",
     });
+    expect(
+      claim.secretConnectorMetadataMap?.GOOGLE_ADS_DEVELOPER_TOKEN,
+    ).toStrictEqual({ sourceType: "platform-secret" });
     expect(
       claim.firewalls?.map((firewall) => {
         return firewallEntryName(firewall);
       }),
     ).toContain("google-ads");
+
+    if (!claim.encryptedSecrets) {
+      throw new Error("Expected claimed run to include encrypted secrets");
+    }
+    const eagerPlatformSecret = await fw.requestFirewallAuth(
+      fw.sandboxHeaders(actor, run.runId),
+      {
+        encryptedSecrets: claim.encryptedSecrets,
+        authHeaders: {
+          "developer-token": secretTemplate("GOOGLE_ADS_DEVELOPER_TOKEN"),
+        },
+      },
+      [424],
+    );
+    if (eagerPlatformSecret.status !== 424) {
+      throw new Error(
+        "Expected platform secret to be absent from encrypted payload",
+      );
+    }
+    expect(eagerPlatformSecret.body.error.code).toBe(
+      "CONNECTOR_NOT_CONFIGURED",
+    );
+
+    mockOptionalEnv("GOOGLE_ADS_DEVELOPER_TOKEN", "developer-token-rotated");
+    const resolved = await fw.requestFirewallAuth(
+      fw.sandboxHeaders(actor, run.runId),
+      {
+        encryptedSecrets: claim.encryptedSecrets,
+        authHeaders: {
+          Authorization: `Bearer ${secretTemplate("GOOGLE_ADS_TOKEN")}`,
+          "developer-token": secretTemplate("GOOGLE_ADS_DEVELOPER_TOKEN"),
+        },
+        secretConnectorMap: claim.secretConnectorMap ?? undefined,
+        secretConnectorMetadataMap:
+          claim.secretConnectorMetadataMap ?? undefined,
+      },
+      [200],
+    );
+    if (resolved.status !== 200) {
+      throw new Error("Expected Google Ads firewall auth to resolve");
+    }
+    expect(resolved.body.headers.Authorization).toBe(
+      "Bearer google-ads-bdd-access",
+    );
+    expect(resolved.body.headers["developer-token"]).toBe(
+      "developer-token-rotated",
+    );
 
     await api.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await api.readRun(actor, run.runId);

@@ -278,7 +278,9 @@ export const resumeSessionSchema = z.union([
 export const runnerClaimCapabilitySchema = z.string().min(1);
 
 export const secretConnectorMetadataSchema = z.object({
-  sourceType: z.enum(["connector", "model-provider"]),
+  // Runtime source type used by firewall auth. This is not the same as the DB
+  // secret storage type; platform secrets are resolved from API env instead.
+  sourceType: z.enum(["connector", "model-provider", "platform-secret"]),
   sourceUserId: z.string().optional(),
   metadataKey: z.string().optional(),
 });

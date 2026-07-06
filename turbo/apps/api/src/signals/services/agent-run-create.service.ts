@@ -583,6 +583,9 @@ interface ConnectorRuntimeContext {
   readonly secrets: Record<string, string> | undefined;
   readonly vars: Record<string, string> | undefined;
   readonly secretConnectorMap: Record<string, string> | undefined;
+  readonly secretConnectorMetadataMap:
+    | Record<string, SecretConnectorMetadata>
+    | undefined;
   readonly connectorTypes: readonly ConnectorType[];
   readonly storedEnvironment: Record<string, string> | undefined;
 }
@@ -2186,6 +2189,7 @@ interface ResolvedStoredConnectorState {
   readonly secrets: Record<string, string>;
   readonly vars: Record<string, string>;
   readonly secretConnectorMap: Record<string, string>;
+  readonly secretConnectorMetadataMap: Record<string, SecretConnectorMetadata>;
   readonly environment: Record<string, string>;
 }
 
@@ -2194,6 +2198,7 @@ function emptyConnectorRuntimeContext(): ConnectorRuntimeContext {
     secrets: undefined,
     vars: undefined,
     secretConnectorMap: undefined,
+    secretConnectorMetadataMap: undefined,
     connectorTypes: [],
     storedEnvironment: undefined,
   };
@@ -2579,6 +2584,8 @@ function resolveStoredConnectorState(
   const secrets: Record<string, string> = {};
   const vars: Record<string, string> = {};
   const secretConnectorMap: Record<string, string> = {};
+  const secretConnectorMetadataMap: Record<string, SecretConnectorMetadata> =
+    {};
   const environment: Record<string, string> = {};
 
   for (const { connectorType, runtimeBindings } of bindingSets) {
@@ -2609,10 +2616,10 @@ function resolveStoredConnectorState(
           break;
         }
         case "platform-secret": {
-          const secretValue = optionalEnv(source.name);
-          if (secretValue) {
-            secrets[envName] = secretValue;
-          }
+          secretConnectorMap[envName] = connectorType;
+          secretConnectorMetadataMap[envName] = {
+            sourceType: "platform-secret",
+          };
           break;
         }
       }
@@ -2632,6 +2639,7 @@ function resolveStoredConnectorState(
     secrets,
     vars,
     secretConnectorMap,
+    secretConnectorMetadataMap,
     environment,
   };
 }
@@ -2651,6 +2659,7 @@ function storedConnectorContextFromSnapshot(
       ),
     ),
     secretConnectorMap: undefined,
+    secretConnectorMetadataMap: undefined,
     connectorTypes: snapshot.allowedConnectorRows.map((row) => {
       return row.connectorType;
     }),
@@ -2730,6 +2739,9 @@ async function materializeStoredConnectorContext(
         secrets: compactRecord(resolved.secrets),
         vars: compactRecord(resolved.vars),
         secretConnectorMap: compactRecord(resolved.secretConnectorMap),
+        secretConnectorMetadataMap: compactRecord(
+          resolved.secretConnectorMetadataMap,
+        ),
         connectorTypes: snapshot.allowedConnectorRows.map((row) => {
           return row.connectorType;
         }),
@@ -4954,8 +4966,18 @@ function buildStoredExecutionSecrets(args: {
     secretConnectorMetadataMap: args.modelProvider?.secretConnectorMetadataMap,
     secretConnectorMap: filteredModelProviderMap,
   });
+  const filteredConnectorMetadataMap = filterSecretConnectorMetadataMap({
+    secretConnectorMetadataMap:
+      args.connectorContext.secretConnectorMetadataMap,
+    secretConnectorMap: filteredConnectorMap,
+  });
   const secretConnectorMap =
     mergeRecords(filteredConnectorMap, filteredModelProviderMap) ?? null;
+  const secretConnectorMetadataMap =
+    mergeRecords(
+      filteredConnectorMetadataMap,
+      filteredModelProviderMetadataMap,
+    ) ?? null;
   const secrets = mergeRecords(
     args.connectorContext.secrets,
     args.modelProvider?.secrets,
@@ -4968,7 +4990,7 @@ function buildStoredExecutionSecrets(args: {
   return {
     secrets: secrets ?? (secretConnectorMap ? {} : undefined),
     secretConnectorMap,
-    secretConnectorMetadataMap: filteredModelProviderMetadataMap ?? null,
+    secretConnectorMetadataMap,
   };
 }
 
