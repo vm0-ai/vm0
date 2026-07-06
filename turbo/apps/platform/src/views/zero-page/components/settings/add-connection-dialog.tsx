@@ -50,7 +50,7 @@ import {
   connectorCurrentConnectionStatus,
   connectorExpiryCountdownText,
   getConnectorStatusAuthMethod,
-  hasConnectorStatusAuthCodeGrant,
+  hasConnectorStatusBrowserAuthGrant,
   manualGrantInputValuesForMethod,
   type ConnectorStatusAuthMethodDetail,
   type ConnectorExternalCodeState,
@@ -917,6 +917,9 @@ function getConnectMethodContentComponent(
     case "auth-code": {
       return OAuthAuthCodeConnectMethodContent;
     }
+    case "openid-auth": {
+      return OAuthAuthCodeConnectMethodContent;
+    }
     case "device-auth": {
       return OAuthDeviceAuthConnectMethodContent;
     }
@@ -1134,7 +1137,7 @@ function ConnectModalContent({
     await completeExternalCodeAndSettleCommand(args, signal);
   };
 
-  const progressContent = hasConnectorStatusAuthCodeGrant(item)
+  const progressContent = hasConnectorStatusBrowserAuthGrant(item)
     ? getOAuthAuthCodeProgressContent({
         isPolling,
         settling,

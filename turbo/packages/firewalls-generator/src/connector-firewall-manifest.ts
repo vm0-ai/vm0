@@ -303,6 +303,7 @@ const NON_FIREWALL_CONNECTOR_TYPES = [
   "silmaril",
   "smol-machines",
   "stablebrowse",
+  "steam",
   "testerarmy",
   "test-oauth-device",
   "totalis",

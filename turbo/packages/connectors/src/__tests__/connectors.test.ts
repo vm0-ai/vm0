@@ -71,6 +71,7 @@ import {
   hasConnectorAuthCodeGrant,
   hasConnectorDeviceAuthGrant,
   hasConnectorExternalCodeGrant,
+  hasConnectorOpenIdAuthGrant,
   isStaticConfidentialConnectorAuthClient,
   isStaticConnectorAuthClient,
   type ConnectorAuthClient,
@@ -116,6 +117,7 @@ function getApiTokenManualGrantFields(
 function hasConnectorAuthorizationGrant(type: ConnectorType): boolean {
   return (
     hasConnectorAuthCodeGrant(type) ||
+    hasConnectorOpenIdAuthGrant(type) ||
     hasConnectorExternalCodeGrant(type) ||
     hasConnectorDeviceAuthGrant(type)
   );
@@ -479,7 +481,7 @@ describe("connector auth method config", () => {
       (typeof multiAuthMethodFixture)["multi-auth-method-fixture"];
 
     expectTypeOf<ConnectorAuthMethodId>().toEqualTypeOf<
-      "oauth" | "api-token" | "cli" | "api"
+      "oauth" | "openid" | "api-token" | "cli" | "api"
     >();
     expectTypeOf<"app-credential">().not.toMatchTypeOf<ConnectorAuthMethodId>();
     expectTypeOf<"app-credential">().not.toMatchTypeOf<
@@ -814,6 +816,15 @@ describe("connector selected auth method capability checks", () => {
           return connectorAuthMethodHasGrantKind(type, authMethod, "auth-code");
         }),
       );
+      expect(hasConnectorOpenIdAuthGrant(type)).toBe(
+        authMethodIds.some((authMethod) => {
+          return connectorAuthMethodHasGrantKind(
+            type,
+            authMethod,
+            "openid-auth",
+          );
+        }),
+      );
       expect(hasConnectorExternalCodeGrant(type)).toBe(
         authMethodIds.some((authMethod) => {
           return connectorAuthMethodHasGrantKind(
@@ -837,6 +848,12 @@ describe("connector selected auth method capability checks", () => {
           connectorAuthMethodHasGrantKind(type, authMethod, "auth-code"),
         ).toBe(
           getConnectorAuthMethod(type, authMethod)?.grant.kind === "auth-code",
+        );
+        expect(
+          connectorAuthMethodHasGrantKind(type, authMethod, "openid-auth"),
+        ).toBe(
+          getConnectorAuthMethod(type, authMethod)?.grant.kind ===
+            "openid-auth",
         );
         expect(
           connectorAuthMethodHasGrantKind(type, authMethod, "device-auth"),

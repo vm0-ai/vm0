@@ -1,6 +1,7 @@
 import { command, computed } from "ccstate";
 import {
   zeroConnectorManualGrantContract,
+  zeroConnectorOpenIdStartContract,
   zeroConnectorOauthStartContract,
   zeroConnectorScopeDiffContract,
   zeroConnectorsByTypeContract,
@@ -14,6 +15,7 @@ import type {
 import {
   getConnectorAuthMethod,
   getConnectorAuthMethodIdsForGrantKind,
+  hasConnectorOpenIdAuthGrant,
 } from "@vm0/connectors/connector-utils";
 import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
 
@@ -42,9 +44,18 @@ import {
   prepareResolvedConnectorAuthCodeStart,
   resolveConnectorAuthCodeStartMethod,
 } from "./connector-auth-code-start";
+import {
+  buildResolvedConnectorOpenIdAuthUrl,
+  prepareResolvedConnectorOpenIdAuthStart,
+  resolveConnectorOpenIdAuthStartMethod,
+} from "./connector-openid-auth-start";
+import { getOAuthApiOrigin } from "./oauth-web-origin";
 
 type ResolvedAuthCodeStartMethod = ReturnType<
   typeof resolveConnectorAuthCodeStartMethod
+>;
+type ResolvedOpenIdAuthStartMethod = ReturnType<
+  typeof resolveConnectorOpenIdAuthStartMethod
 >;
 
 const connectorReadAuth = {
@@ -74,6 +85,10 @@ function connectorTypeHasAuthCodeGrant(type: ConnectorType): boolean {
   return getConnectorAuthMethodIdsForGrantKind(type, "auth-code").length > 0;
 }
 
+function connectorTypeHasOpenIdAuthGrant(type: ConnectorType): boolean {
+  return hasConnectorOpenIdAuthGrant(type);
+}
+
 function connectorAuthCodeStartErrorMessage(
   type: ConnectorType,
   authMethod: string,
@@ -101,11 +116,49 @@ function connectorAuthCodeStartErrorMessage(
   }
 }
 
+function connectorOpenIdAuthStartErrorMessage(
+  type: ConnectorType,
+  authMethod: string,
+  reason:
+    | "missing_openid_auth_grant"
+    | "missing_auth_method"
+    | "wrong_grant_kind",
+): string {
+  switch (reason) {
+    case "missing_openid_auth_grant": {
+      return `${type} connector does not use an OpenID auth grant`;
+    }
+    case "missing_auth_method": {
+      if (!connectorTypeHasOpenIdAuthGrant(type)) {
+        return `${type} connector does not use an OpenID auth grant`;
+      }
+      return `${type} connector does not have ${authMethod} auth method`;
+    }
+    case "wrong_grant_kind": {
+      if (!connectorTypeHasOpenIdAuthGrant(type)) {
+        return `${type} connector does not use an OpenID auth grant`;
+      }
+      return `${type} ${authMethod} auth method does not use an OpenID auth grant`;
+    }
+  }
+}
+
 function resolveRequestedAuthCodeStartMethod(
   type: ConnectorType,
   authMethod: ConnectorAuthMethodId,
 ): ResolvedAuthCodeStartMethod {
   const result = resolveConnectorAuthCodeStartMethod(type, authMethod);
+  if (result.ok || result.reason === "missing_auth_method") {
+    return result;
+  }
+  return { ok: false, reason: "wrong_grant_kind" };
+}
+
+function resolveRequestedOpenIdAuthStartMethod(
+  type: ConnectorType,
+  authMethod: ConnectorAuthMethodId,
+): ResolvedOpenIdAuthStartMethod {
+  const result = resolveConnectorOpenIdAuthStartMethod(type, authMethod);
   if (result.ok || result.reason === "missing_auth_method") {
     return result;
   }
@@ -365,6 +418,98 @@ const startConnectorOauthInner$ = command(
   },
 );
 
+const startConnectorOpenIdInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const params = get(pathParamsOf(zeroConnectorOpenIdStartContract.start));
+    const bodyResult = await get(
+      bodyResultOf(zeroConnectorOpenIdStartContract.start),
+    );
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+    const request = get(request$).raw;
+    const auth = get(authContext$);
+    const type = params.type;
+
+    const openIdStartType = resolveRequestedOpenIdAuthStartMethod(
+      type,
+      bodyResult.data.authMethod,
+    );
+    if (!openIdStartType.ok) {
+      return badRequestMessage(
+        connectorOpenIdAuthStartErrorMessage(
+          type,
+          bodyResult.data.authMethod,
+          openIdStartType.reason,
+        ),
+      );
+    }
+
+    if (!auth.orgId) {
+      return badRequestMessage(
+        "Explicit org context required — ensure active org in session",
+      );
+    }
+
+    const availability = await get(
+      userConnectorAvailability(auth.orgId, auth.userId),
+    );
+    signal.throwIfAborted();
+    if (
+      !availability.isAuthMethodAvailable(
+        openIdStartType.type,
+        openIdStartType.authMethod,
+      )
+    ) {
+      return connectorUnavailable(type);
+    }
+
+    const prepared = prepareResolvedConnectorOpenIdAuthStart({
+      type: openIdStartType.type,
+      origin: getOAuthApiOrigin(request),
+    });
+    const authResult = await buildResolvedConnectorOpenIdAuthUrl({
+      type: openIdStartType.type,
+      authMethod: openIdStartType.authMethod,
+      returnTo: prepared.returnTo,
+      realm: prepared.realm,
+      state: prepared.state,
+    });
+    signal.throwIfAborted();
+
+    await set(
+      deleteZeroConnectorLocalState$,
+      { orgId: auth.orgId, userId: auth.userId, type },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    const writeDb = set(writeDb$);
+    await writeDb.insert(connectorOauthStates).values({
+      state: prepared.state,
+      type: openIdStartType.type,
+      authMethod: openIdStartType.authMethod,
+      userId: auth.userId,
+      orgId: auth.orgId,
+      redirectUri: prepared.expectedReturnTo,
+      codeVerifier: authResult.codeVerifier,
+      oauthContext: JSON.stringify({ realm: prepared.realm }),
+      expiresAt: new Date(
+        nowDate().getTime() + CONNECTOR_OAUTH_COOKIE_MAX_AGE_SECONDS * 1000,
+      ),
+    });
+    signal.throwIfAborted();
+
+    return {
+      status: 200 as const,
+      body: {
+        authorizationUrl: authResult.url,
+      },
+    };
+  },
+);
+
 export const zeroConnectorsRoutes: readonly RouteEntry[] = [
   {
     route: zeroConnectorManualGrantContract.connect,
@@ -385,6 +530,10 @@ export const zeroConnectorsRoutes: readonly RouteEntry[] = [
   {
     route: zeroConnectorOauthStartContract.start,
     handler: authRoute(connectorWriteAuth, startConnectorOauthInner$),
+  },
+  {
+    route: zeroConnectorOpenIdStartContract.start,
+    handler: authRoute(connectorWriteAuth, startConnectorOpenIdInner$),
   },
   {
     route: zeroConnectorsByTypeContract.get,

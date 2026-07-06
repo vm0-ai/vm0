@@ -39,6 +39,7 @@ import { googleAds } from "./connectors/google-ads";
 import { googleMaps } from "./connectors/google-maps";
 import { gumroad } from "./connectors/gumroad";
 import { spotify } from "./connectors/spotify";
+import { steam } from "./connectors/steam";
 import { agentmail } from "./connectors/agentmail";
 import { archer } from "./connectors/archer";
 import { ardent } from "./connectors/ardent";
@@ -352,6 +353,7 @@ export type {
   ConnectorManualGrantFieldConfig,
   ConnectorNoAccessConfig,
   ConnectorOutputValueRef,
+  ConnectorOpenIdAuthGrantConfig,
   ConnectorPlatformSecretName,
   ConnectorRefreshTokenAccessConfig,
   ConnectorRefreshTokenInputBindings,
@@ -578,7 +580,11 @@ type ValidatedConnectorGrantConfig<Grant, Storage> = Grant extends {
       };
     }
   : Grant extends {
-        readonly kind: "auth-code" | "external-code" | "device-auth";
+        readonly kind:
+          | "auth-code"
+          | "openid-auth"
+          | "external-code"
+          | "device-auth";
         readonly outputs: infer Outputs;
       }
     ? Grant & {
@@ -700,6 +706,7 @@ const CONNECTOR_TYPES_DEF = defineConnectors({
   ...googleMaps,
   ...gumroad,
   ...spotify,
+  ...steam,
   ...agentmail,
   ...archer,
   ...ardent,
@@ -1008,7 +1015,11 @@ type ConnectorGrantOutputsFor<
   Method extends ConnectorAuthMethodIds<Type>,
 > = ConnectorAuthMethodsOf<Type>[Method] extends {
   readonly grant: {
-    readonly kind: "auth-code" | "external-code" | "device-auth";
+    readonly kind:
+      | "auth-code"
+      | "openid-auth"
+      | "external-code"
+      | "device-auth";
     readonly outputs: infer Outputs;
   };
 }
@@ -1165,9 +1176,11 @@ export type ConnectorTypesByRevokeKind<Kind extends ConnectorRevokeKind> = {
 }[ConnectorType];
 
 export type AuthGrantConnectorType = ConnectorTypesByGrantKind<
-  "auth-code" | "external-code" | "device-auth"
+  "auth-code" | "openid-auth" | "external-code" | "device-auth"
 >;
 export type AuthCodeGrantConnectorType = ConnectorTypesByGrantKind<"auth-code">;
+export type OpenIdAuthGrantConnectorType =
+  ConnectorTypesByGrantKind<"openid-auth">;
 export type ExternalCodeGrantConnectorType =
   ConnectorTypesByGrantKind<"external-code">;
 export type DeviceAuthGrantConnectorType =
@@ -1175,6 +1188,9 @@ export type DeviceAuthGrantConnectorType =
 export type ConnectorAuthCodeGrantAuthMethodId<
   Type extends AuthCodeGrantConnectorType = AuthCodeGrantConnectorType,
 > = ConnectorAuthMethodIdsByGrantKind<Type, "auth-code">;
+export type ConnectorOpenIdAuthGrantAuthMethodId<
+  Type extends OpenIdAuthGrantConnectorType = OpenIdAuthGrantConnectorType,
+> = ConnectorAuthMethodIdsByGrantKind<Type, "openid-auth">;
 export type ConnectorExternalCodeGrantAuthMethodId<
   Type extends ExternalCodeGrantConnectorType = ExternalCodeGrantConnectorType,
 > = ConnectorAuthMethodIdsByGrantKind<Type, "external-code">;

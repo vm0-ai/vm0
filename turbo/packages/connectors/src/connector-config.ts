@@ -89,6 +89,7 @@ export type PublicConnectorAuthClientConfig =
 export type ConnectorGrantKind =
   | "manual"
   | "auth-code"
+  | "openid-auth"
   | "external-code"
   | "device-auth"
   | "managed";
@@ -104,6 +105,11 @@ export interface ConnectorAuthCodeGrantConfig {
   readonly kind: "auth-code";
   readonly scopes: string[];
   readonly callbackOrigin?: ConnectorAuthCodeCallbackOrigin;
+  readonly outputs: ConnectorGrantOutputBindings;
+}
+
+export interface ConnectorOpenIdAuthGrantConfig {
+  readonly kind: "openid-auth";
   readonly outputs: ConnectorGrantOutputBindings;
 }
 
@@ -158,6 +164,7 @@ export interface ConnectorManagedGrantConfig {
 export type ConnectorGrantConfig =
   | ConnectorManualGrantConfig
   | ConnectorAuthCodeGrantConfig
+  | ConnectorOpenIdAuthGrantConfig
   | ConnectorExternalCodeGrantConfig
   | ConnectorDeviceAuthGrantConfig
   | ConnectorManagedGrantConfig;
@@ -278,6 +285,12 @@ export type ConnectorAuthMethodConfig =
       readonly revoke: ConnectorRevokeConfig;
     })
   | (ConnectorAuthMethodConfigBase & {
+      readonly client?: ConnectorAuthClientConfig;
+      readonly grant: ConnectorOpenIdAuthGrantConfig;
+      readonly access: ConnectorAccessConfig;
+      readonly revoke: ConnectorRevokeConfig;
+    })
+  | (ConnectorAuthMethodConfigBase & {
       readonly client: ConnectorAuthClientConfig;
       readonly grant: ConnectorExternalCodeGrantConfig;
       readonly access: ConnectorAccessConfig;
@@ -304,6 +317,7 @@ export type ConnectorAuthMethodConfig =
  */
 export const CONNECTOR_AUTH_METHOD_IDS = [
   "oauth",
+  "openid",
   "api-token",
   "cli",
   "api",
