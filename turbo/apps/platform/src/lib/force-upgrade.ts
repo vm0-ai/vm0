@@ -25,7 +25,7 @@ function trimTrailingSlash(value: string): string {
 }
 
 function resolveForceUpgradeApiBase(): string {
-  const configured = import.meta.env.VITE_ATOM_API_URL as string | undefined;
+  const configured = import.meta.env.ATOM_URL as string | undefined;
   const apiBase = configured?.trim() || DEFAULT_FORCE_UPGRADE_API_BASE;
   return trimTrailingSlash(apiBase);
 }
@@ -48,11 +48,14 @@ export async function shouldForceUpgrade(
   options: Pick<ForceUpgradeCheckOptions, "apiBase" | "fetcher"> = {},
 ): Promise<boolean> {
   const fetcher = options.fetcher ?? window.fetch.bind(window);
-  const response = await fetcher(buildForceUpgradeUrl(version, options.apiBase), {
-    cache: "no-store",
-    credentials: "omit",
-    method: "GET",
-  });
+  const response = await fetcher(
+    buildForceUpgradeUrl(version, options.apiBase),
+    {
+      cache: "no-store",
+      credentials: "omit",
+      method: "GET",
+    },
+  );
 
   if (!response.ok) {
     return false;

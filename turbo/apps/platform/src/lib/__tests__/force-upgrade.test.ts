@@ -17,9 +17,9 @@ function jsonResponse(body: unknown, ok = true) {
 
 describe("force upgrade", () => {
   it("builds the Atom force-upgrade URL with the current version", () => {
-    expect(
-      buildForceUpgradeUrl("0.540.0", "https://atom-api.vm6.ai/"),
-    ).toBe("https://atom-api.vm6.ai/api/client/force-upgrade?version=0.540.0");
+    expect(buildForceUpgradeUrl("0.540.0", "https://atom-api.vm6.ai/")).toBe(
+      "https://atom-api.vm6.ai/api/client/force-upgrade?version=0.540.0",
+    );
   });
 
   it("returns true only when Atom explicitly requires a force upgrade", async () => {
@@ -42,6 +42,31 @@ describe("force upgrade", () => {
         method: "GET",
       },
     );
+  });
+
+  it("uses ATOM_URL when no API base override is provided", async () => {
+    const previousAtomUrl = import.meta.env.ATOM_URL as string | undefined;
+    vi.stubEnv("ATOM_URL", "https://atom.example.test/");
+    const fetcher = vi.fn(() => {
+      return Promise.resolve(jsonResponse({ forceUpgrade: true }));
+    });
+
+    try {
+      await expect(
+        shouldForceUpgrade("0.540.0", { fetcher }),
+      ).resolves.toBeTruthy();
+
+      expect(fetcher).toHaveBeenCalledWith(
+        "https://atom.example.test/api/client/force-upgrade?version=0.540.0",
+        {
+          cache: "no-store",
+          credentials: "omit",
+          method: "GET",
+        },
+      );
+    } finally {
+      vi.stubEnv("ATOM_URL", previousAtomUrl);
+    }
   });
 
   it("returns false when Atom does not require a force upgrade", async () => {
