@@ -5,8 +5,8 @@ from dataclasses import dataclass
 import generated.builtin_firewalls as builtin_firewalls
 import matching
 
-READ_LIKE_PERMISSION_NAMES = {"read", "readonly"}
-READ_LIKE_PERMISSION_SUFFIXES = (":read", ".read")
+READ_LIKE_PERMISSION_ACTIONS = {"read", "readonly"}
+READ_LIKE_PERMISSION_ACTION_DELIMITERS = (":", ".", "|", "_")
 READ_LIKE_MUTATION_METHODS = {"DELETE", "PATCH", "PUT"}
 VALID_RULE_METHODS = {
     "GET",
@@ -33,7 +33,19 @@ class ParsedRule:
 
 
 def _is_read_like_permission(name: str) -> bool:
-    return name in READ_LIKE_PERMISSION_NAMES or name.endswith(READ_LIKE_PERMISSION_SUFFIXES)
+    return _permission_action(name) in READ_LIKE_PERMISSION_ACTIONS
+
+
+def _permission_action(name: str) -> str | None:
+    if name in READ_LIKE_PERMISSION_ACTIONS:
+        return name
+
+    delimiter_index = max(
+        name.rfind(delimiter) for delimiter in READ_LIKE_PERMISSION_ACTION_DELIMITERS
+    )
+    if delimiter_index == -1:
+        return None
+    return name[delimiter_index + 1 :]
 
 
 def _split_path_segments(path: str) -> list[str]:
@@ -381,6 +393,25 @@ def test_cloudflare_builtin_auth_boundaries_have_no_route_overlaps():
         )
         == []
     )
+
+
+def test_read_like_permission_classifier_uses_final_action_segment():
+    cases = {
+        "read": True,
+        "readonly": True,
+        "documents.read": True,
+        "files:read": True,
+        "annotations|read": True,
+        "customer_read": True,
+        "org:activity_log_read": True,
+        "datasets|update": False,
+        "threads.delete": False,
+        "thread": False,
+        "already": False,
+    }
+
+    for permission_name, expected in cases.items():
+        assert _is_read_like_permission(permission_name) is expected
 
 
 def test_read_like_builtin_permissions_do_not_own_mutation_methods():
