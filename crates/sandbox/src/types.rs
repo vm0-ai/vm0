@@ -466,7 +466,11 @@ impl GuestProcessControlHandle {
 /// enabled, callers may use [`take_stdout_receiver`](Self::take_stdout_receiver)
 /// before waiting; if they do, they must drain it while the process runs.
 pub struct GuestProcessHandle {
-    pub pid: u32,
+    /// Guest process id reported by the provider.
+    ///
+    /// This is distinct from the host-side sandbox backing process id returned
+    /// by [`Sandbox::host_process_pid`](crate::Sandbox::host_process_pid).
+    pub guest_pid: u32,
     /// Receives stdout chunks in real-time when the guest streams them.
     /// `None` when the backend does not support streaming.
     stdout_rx: Option<ProcessOutputReceiver>,
@@ -479,13 +483,13 @@ pub struct GuestProcessHandle {
 impl GuestProcessHandle {
     /// Construct a guest process handle from backend-owned process state.
     pub fn new(
-        pid: u32,
+        guest_pid: u32,
         stdout_rx: Option<ProcessOutputReceiver>,
         control: Option<GuestProcessControlHandle>,
         wait: GuestProcessWaiter,
     ) -> Self {
         Self {
-            pid,
+            guest_pid,
             stdout_rx,
             control,
             cancel: None,
@@ -662,7 +666,7 @@ impl ProcessOutputMode {
 /// Terminal status and output metadata for a started guest process.
 pub struct ProcessExit {
     /// Guest process id reported by the provider.
-    pub pid: u32,
+    pub guest_pid: u32,
     /// Structured terminal state reported by the provider.
     pub termination: ExecTermination,
     /// Guest-reported wall-clock duration in milliseconds, when the provider has
@@ -698,9 +702,9 @@ impl ProcessExit {
     /// [`ExecTermination::Exited`], `guest_duration_ms` to `None`,
     /// `stdout_truncated` and `stderr_truncated` to `false`, `diagnostic` to an
     /// empty string, and `stream_overflowed` to `false`.
-    pub fn new(pid: u32, exit_code: i32, stdout: Vec<u8>, stderr: Vec<u8>) -> Self {
+    pub fn new(guest_pid: u32, exit_code: i32, stdout: Vec<u8>, stderr: Vec<u8>) -> Self {
         Self {
-            pid,
+            guest_pid,
             termination: ExecTermination::Exited { exit_code },
             guest_duration_ms: None,
             stdout,
@@ -1014,7 +1018,7 @@ mod tests {
     fn process_exit_new_defaults_supervised_metadata() {
         let exit = ProcessExit::new(42, 7, b"out".to_vec(), b"err".to_vec());
 
-        assert_eq!(exit.pid, 42);
+        assert_eq!(exit.guest_pid, 42);
         assert_eq!(exit.termination, ExecTermination::Exited { exit_code: 7 });
         assert_eq!(exit.guest_duration_ms, None);
         assert_eq!(exit.stdout, b"out");
