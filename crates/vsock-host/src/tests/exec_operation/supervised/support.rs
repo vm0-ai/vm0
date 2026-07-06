@@ -80,6 +80,22 @@ pub(super) struct PendingSupervisedExec {
 }
 
 impl PendingSupervisedExec {
+    pub(super) fn assert_waiting_for_started(&self) {
+        assert!(
+            !self.task.is_finished(),
+            "supervised start must wait for exec_started"
+        );
+    }
+
+    pub(super) async fn wait_start_result(self) -> PendingSupervisedExecResult {
+        let result = self.task.await.unwrap();
+        PendingSupervisedExecResult {
+            host: self.host,
+            guest: self.guest,
+            start_result: result,
+        }
+    }
+
     pub(super) async fn started(self) -> StartedSupervisedExec {
         self.started_with_pid(123).await
     }
@@ -94,6 +110,12 @@ impl PendingSupervisedExec {
             handle,
         }
     }
+}
+
+pub(super) struct PendingSupervisedExecResult {
+    pub(super) host: Arc<VsockHost>,
+    pub(super) guest: UnixStream,
+    pub(super) start_result: io::Result<SupervisedExecHandle>,
 }
 
 pub(super) struct StartedSupervisedExec {
