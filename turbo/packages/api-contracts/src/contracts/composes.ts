@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { firewallsSchema } from "@vm0/connectors/firewall-types";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
 import { CANONICAL_WORKING_DIR } from "./runners";
@@ -230,6 +231,17 @@ const artifactsArraySchema = z.array(artifactConfigSchema).refine((items) => {
   return new Set(names).size === names.length;
 }, "Artifact names must be unique");
 
+const agentFirewallsMapSchema = z.record(
+  z.string(),
+  z.object({
+    permissions: z.union([z.literal("all"), z.array(z.string()).min(1)]),
+  }),
+);
+const legacyAgentFirewallsSchema = z.union([
+  agentFirewallsMapSchema,
+  firewallsSchema,
+]);
+
 /**
  * Agent definition schema
  */
@@ -289,14 +301,7 @@ const agentDefinitionSchema = z.object({
    * Map format: { slack: { permissions: [...] | "all" } }
    * Resolved to full ExpandedFirewallConfig[] at runtime.
    */
-  firewalls: z
-    .record(
-      z.string(),
-      z.object({
-        permissions: z.union([z.literal("all"), z.array(z.string()).min(1)]),
-      }),
-    )
-    .optional(),
+  firewalls: agentFirewallsMapSchema.optional(),
 });
 
 /**
@@ -312,8 +317,8 @@ const agentComposeContentSchema = z.object({
 /**
  * Agent compose content schema for API requests.
  * firewalls is no longer stored in compose content — all firewalls
- * are injected at runtime. The field is accepted as unknown for backward
- * compatibility with older stored compose versions (ignored at runtime).
+ * are injected at runtime. The field accepts documented legacy map or expanded
+ * array shapes for backward compatibility (ignored at runtime).
  */
 const agentComposeApiContentSchema = z.object({
   version: z.string().min(1, "Version is required"),
@@ -322,7 +327,7 @@ const agentComposeApiContentSchema = z.object({
     agentDefinitionSchema.extend({
       // Legacy: older compose versions may have this field (map or expanded array).
       // Accepted for backward compat but ignored at runtime.
-      firewalls: z.unknown().optional(),
+      firewalls: legacyAgentFirewallsSchema.optional(),
     }),
   ),
   volumes: z.record(z.string(), volumeConfigSchema).optional(),
