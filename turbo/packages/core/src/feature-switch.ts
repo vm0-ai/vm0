@@ -382,6 +382,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.WorkflowTemplateCatalog]: {
+    maintainer: "ming@vm0.ai",
+    description:
+      "Show the full persona-grouped built-in workflow template catalog in the chat composer template picker. Off shows only the General starter template.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
 };
 
 interface ResolvedHashes {

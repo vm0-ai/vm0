@@ -1357,9 +1357,11 @@ function WorkflowTemplateCard({
   );
 }
 
-// Groups the (already search-filtered) templates by persona and renders one
-// labeled section per non-empty category, in WORKFLOW_TEMPLATE_CATEGORIES order.
-// Empty categories are dropped so a search narrows to just the matching groups.
+// Groups the (already search-filtered) templates by persona, in
+// WORKFLOW_TEMPLATE_CATEGORIES order, dropping empty categories so a search
+// narrows to just the matching groups. Section headers only appear when more
+// than one group is present; with a single group (e.g. the catalog switch is
+// off, or a search matches one persona) the grid renders flat, without a header.
 function WorkflowTemplateGrid({
   items,
   value,
@@ -1369,22 +1371,29 @@ function WorkflowTemplateGrid({
   value: GenerationTemplateRequest | undefined;
   onSelect: (item: WorkflowTemplateItem) => void;
 }) {
+  const groups = WORKFLOW_TEMPLATE_CATEGORIES.map((category) => {
+    return {
+      category,
+      items: items.filter((item) => {
+        return item.category === category;
+      }),
+    };
+  }).filter((group) => {
+    return group.items.length > 0;
+  });
+  const showHeaders = groups.length > 1;
   return (
     <div className="flex flex-col gap-6">
-      {WORKFLOW_TEMPLATE_CATEGORIES.map((category) => {
-        const categoryItems = items.filter((item) => {
-          return item.category === category;
-        });
-        if (categoryItems.length === 0) {
-          return null;
-        }
+      {groups.map((group) => {
         return (
-          <section key={category} className="flex flex-col gap-3">
-            <p className="px-1 text-xs font-medium text-muted-foreground">
-              {category}
-            </p>
+          <section key={group.category} className="flex flex-col gap-3">
+            {showHeaders && (
+              <p className="px-1 text-xs font-medium text-muted-foreground">
+                {group.category}
+              </p>
+            )}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {categoryItems.map((item) => {
+              {group.items.map((item) => {
                 return (
                   <WorkflowTemplateCard
                     key={item.id}
@@ -4516,7 +4525,18 @@ function TemplatePickerDialog({
   const filteredVideoItems = VIDEO_TEMPLATE_ITEMS.filter((item) => {
     return videoTemplateMatchesSearch(item, search);
   });
-  const filteredWorkflowItems = WORKFLOW_TEMPLATE_ITEMS.filter((item) => {
+  // The persona catalog rolls out behind a feature switch. Until it is on for
+  // the org, only the always-on General starter template shows — the behavior
+  // before the catalog expansion.
+  const features = useLastResolved(featureSwitch$);
+  const showWorkflowTemplateCatalog =
+    features?.[FeatureSwitchKey.WorkflowTemplateCatalog] ?? false;
+  const workflowCatalogItems = showWorkflowTemplateCatalog
+    ? WORKFLOW_TEMPLATE_ITEMS
+    : WORKFLOW_TEMPLATE_ITEMS.filter((item) => {
+        return item.category === WORKFLOW_TEMPLATE_CATEGORIES[0];
+      });
+  const filteredWorkflowItems = workflowCatalogItems.filter((item) => {
     return workflowTemplateMatchesSearch(item, search);
   });
 
