@@ -251,6 +251,7 @@ FIREWALL_MODULES = {
     "sproutgigs": ("sproutgigs_0",),
     "square": ("square_0",),
     "stability-ai": ("stability_ai_0",),
+    "steam": ("steam_0",),
     "strapi": ("strapi_0",),
     "strava": ("strava_0",),
     "streak": ("streak_0",),

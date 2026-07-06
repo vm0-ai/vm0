@@ -6,6 +6,7 @@ import type {
   ConnectorDeviceAuthGrantAuthMethodId,
   ConnectorExternalCodeGrantAuthMethodId,
   ConnectorExternalCodeGrantConfig,
+  ConnectorOpenIdAuthGrantConfig,
   ConnectorAuthMethodIdsByRevokeKind,
   ConnectorDeviceAuthStartOptions,
   ConnectorRevokeInputValues,
@@ -44,6 +45,19 @@ interface OAuthExchangeFlowArgs {
   readonly state?: string;
   readonly codeVerifier?: string;
   readonly oauthContext?: string;
+}
+
+interface OpenIdAuthorizeFlowArgs {
+  readonly returnTo: string;
+  readonly realm: string;
+  readonly state: string;
+}
+
+interface OpenIdVerifyFlowArgs {
+  readonly callbackParams: Readonly<Record<string, string>>;
+  readonly expectedReturnTo: string;
+  readonly expectedRealm: string;
+  readonly signal: AbortSignal;
 }
 
 interface OAuthDeviceAuthStartFlowArgs {
@@ -173,6 +187,14 @@ export type ConnectorAuthCodeExchangeArgs<
   ConnectorAuthMethodClientArgs<T, Method> & {
     readonly authCodeGrant: ConnectorAuthCodeGrantConfig;
   };
+
+export type ConnectorOpenIdAuthorizeArgs = OpenIdAuthorizeFlowArgs & {
+  readonly openIdAuthGrant: ConnectorOpenIdAuthGrantConfig;
+};
+
+export type ConnectorOpenIdVerifyArgs = OpenIdVerifyFlowArgs & {
+  readonly openIdAuthGrant: ConnectorOpenIdAuthGrantConfig;
+};
 
 export type ConnectorExternalCodeAuthorizationStartArgs<
   T extends ExternalCodeGrantConnectorType,

@@ -50,7 +50,7 @@ import {
   permissionDialog$,
   isStandaloneMode,
   getAvailableStatusAuthCodeAuthMethod,
-  getOnlyAvailableStatusAuthCodeAuthMethod,
+  getOnlyAvailableStatusBrowserAuthMethod,
   getConnectorStatusConnectLaunchMode,
   connectorCurrentConnectionStatus,
   connectorExpiryCountdownText,
@@ -978,7 +978,7 @@ export function ZeroConnectorsPage() {
     if (launchMode === "modal") {
       setSelected(type);
     } else {
-      const authMethod = getOnlyAvailableStatusAuthCodeAuthMethod(ct);
+      const authMethod = getOnlyAvailableStatusBrowserAuthMethod(ct);
       if (!authMethod) {
         setSelected(type);
         return;

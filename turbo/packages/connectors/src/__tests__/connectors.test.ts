@@ -38,6 +38,8 @@ import {
   connectorAuthCodeCallbacksUseOnlyApiOrigin,
   getAvailableConnectorAuthMethodIds,
   getConnectorAuthMethodAuthCodeCallbackOrigin,
+  getConnectorAuthMethodOpenIdAuthCallbackOrigin,
+  getConnectorAuthMethodOpenIdAuthGrantConfig,
   getConnectorAuthMethodGrantScopes,
   getConnectorAuthMethodGrantMetadata,
   getConnectorAuthMethodRevokeMetadata,
@@ -72,6 +74,7 @@ import {
   hasConnectorAuthCodeGrant,
   hasConnectorDeviceAuthGrant,
   hasConnectorExternalCodeGrant,
+  hasConnectorOpenIdAuthGrant,
   isStaticConfidentialConnectorAuthClient,
   isStaticConnectorAuthClient,
   type ConnectorAuthClient,
@@ -117,6 +120,7 @@ function getApiTokenManualGrantFields(
 function hasConnectorAuthorizationGrant(type: ConnectorType): boolean {
   return (
     hasConnectorAuthCodeGrant(type) ||
+    hasConnectorOpenIdAuthGrant(type) ||
     hasConnectorExternalCodeGrant(type) ||
     hasConnectorDeviceAuthGrant(type)
   );
@@ -480,7 +484,7 @@ describe("connector auth method config", () => {
       (typeof multiAuthMethodFixture)["multi-auth-method-fixture"];
 
     expectTypeOf<ConnectorAuthMethodId>().toEqualTypeOf<
-      "oauth" | "api-token" | "cli" | "api"
+      "oauth" | "openid" | "api-token" | "cli" | "api"
     >();
     expectTypeOf<"app-credential">().not.toMatchTypeOf<ConnectorAuthMethodId>();
     expectTypeOf<"app-credential">().not.toMatchTypeOf<
@@ -815,6 +819,15 @@ describe("connector selected auth method capability checks", () => {
           return connectorAuthMethodHasGrantKind(type, authMethod, "auth-code");
         }),
       );
+      expect(hasConnectorOpenIdAuthGrant(type)).toBe(
+        authMethodIds.some((authMethod) => {
+          return connectorAuthMethodHasGrantKind(
+            type,
+            authMethod,
+            "openid-auth",
+          );
+        }),
+      );
       expect(hasConnectorExternalCodeGrant(type)).toBe(
         authMethodIds.some((authMethod) => {
           return connectorAuthMethodHasGrantKind(
@@ -838,6 +851,12 @@ describe("connector selected auth method capability checks", () => {
           connectorAuthMethodHasGrantKind(type, authMethod, "auth-code"),
         ).toBe(
           getConnectorAuthMethod(type, authMethod)?.grant.kind === "auth-code",
+        );
+        expect(
+          connectorAuthMethodHasGrantKind(type, authMethod, "openid-auth"),
+        ).toBe(
+          getConnectorAuthMethod(type, authMethod)?.grant.kind ===
+            "openid-auth",
         );
         expect(
           connectorAuthMethodHasGrantKind(type, authMethod, "device-auth"),
@@ -4057,6 +4076,59 @@ describe("connector OAuth lifecycle grant helpers", () => {
       getConnectorAuthMethodAuthCodeCallbackOrigin("test-oauth", "api"),
     ).toBe("api");
     expect(connectorAuthCodeCallbacksUseOnlyApiOrigin("test-oauth")).toBe(true);
+  });
+
+  it("declares Steam OpenID as an API-origin callback grant", () => {
+    expect(
+      getConnectorAuthMethodOpenIdAuthCallbackOrigin("steam", "openid"),
+    ).toBe("api");
+    expect(
+      getConnectorAuthMethodOpenIdAuthGrantConfig("steam", "openid"),
+    ).toMatchObject({
+      kind: "openid-auth",
+      callbackOrigin: "api",
+      outputs: {
+        steamId: "$vars.STEAM_ID",
+      },
+    });
+    expect(
+      getConnectorAuthMethodAccessMetadata("steam", "openid"),
+    ).toStrictEqual({
+      kind: "static",
+      envBindings: {
+        STEAM_ID: "$vars.STEAM_ID",
+        STEAM_WEB_API_KEY: "$secrets.STEAM_WEB_API_KEY",
+      },
+      platformSecrets: ["STEAM_WEB_API_KEY"],
+    });
+    expect(
+      getConnectorAuthMethodRuntimeMetadata("steam", "openid"),
+    ).toStrictEqual({
+      storage: {
+        secrets: [],
+        variables: ["STEAM_ID"],
+      },
+      runtimeBindings: [
+        {
+          envName: "STEAM_ID",
+          valueRef: "$vars.STEAM_ID",
+          optional: false,
+          source: {
+            kind: "connector-variable",
+            name: "STEAM_ID",
+          },
+        },
+        {
+          envName: "STEAM_WEB_API_KEY",
+          valueRef: "$secrets.STEAM_WEB_API_KEY",
+          optional: false,
+          source: {
+            kind: "platform-secret",
+            name: "STEAM_WEB_API_KEY",
+          },
+        },
+      ],
+    });
   });
 
   it("declares Cloudflare OAuth as a refreshable API-origin auth-code grant", () => {

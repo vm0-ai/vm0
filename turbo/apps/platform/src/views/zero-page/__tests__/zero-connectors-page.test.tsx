@@ -5,6 +5,7 @@ import {
   type CustomConnectorResponse,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import {
+  zeroConnectorOpenIdStartContract,
   zeroConnectorOauthStartContract,
   zeroConnectorManualGrantContract,
   zeroConnectorOauthDeviceAuthSessionContract,
@@ -1369,6 +1370,55 @@ describe("connectors page", () => {
     ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("dialog", { name: "Meta Ads" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("starts single OpenID auth connector directly without opening the connect dialog", async () => {
+    mockConnectors([]);
+    mockPublicConnectorStatus([
+      publicStatusItem({
+        connectorRef: "steam",
+        label: "Steam",
+        description: "Steam player data",
+        authMethods: [
+          {
+            id: "openid",
+            label: "Steam OpenID",
+            description: null,
+            grantKind: "openid-auth",
+            manualFields: [],
+            startOptions: [],
+          },
+        ],
+      }),
+    ]);
+    const authWindow = createMockAuthWindow();
+    context.mocks.browser.open(authWindow);
+    context.mocks.api(
+      zeroConnectorOpenIdStartContract.start,
+      ({ params, respond }) => {
+        expect(params.type).toBe("steam");
+        return respond(200, {
+          authorizationUrl: "https://openid.test/steam/authorize",
+        });
+      },
+    );
+    context.mocks.api(zeroConnectorOauthStartContract.start, ({ never }) => {
+      return never();
+    });
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    await fill(await screen.findByPlaceholderText("Find connectors"), "steam");
+    click(await screen.findByLabelText("Connect Steam"));
+
+    await waitFor(() => {
+      expect(authWindow.location.href).toBe(
+        "https://openid.test/steam/authorize",
+      );
+    });
+    expect(
+      screen.queryByRole("dialog", { name: "Steam" }),
     ).not.toBeInTheDocument();
   });
 
