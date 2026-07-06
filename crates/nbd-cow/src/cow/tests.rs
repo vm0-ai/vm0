@@ -435,8 +435,8 @@ fn bitmap_save_uses_documented_file_layout() {
     cow.save_bitmap(bitmap_file.path()).unwrap();
 
     let data = std::fs::read(bitmap_file.path()).unwrap();
-    assert_eq!(&data[..8], &(BLOCKS as u64).to_le_bytes());
     assert_eq!(data.len(), 8 + 3 * 8);
+    assert_eq!(&data[..8], &(BLOCKS as u64).to_le_bytes());
     assert_eq!(&data[8..16], &1u64.to_le_bytes());
     assert_eq!(&data[16..24], &1u64.to_le_bytes());
     assert_eq!(&data[24..32], &(1u64 << 2).to_le_bytes());

@@ -77,9 +77,10 @@ fn write_bitmap_words<W: Write>(writer: &mut W, raw: &[usize]) -> std::io::Resul
         return Ok(());
     }
 
-    let mut chunk = vec![0u8; BITMAP_WRITE_CHUNK_BYTES];
+    let words_per_chunk = raw.len().min(BITMAP_WORDS_PER_WRITE_CHUNK);
+    let mut chunk = vec![0u8; words_per_chunk * 8];
 
-    for words in raw.chunks(BITMAP_WORDS_PER_WRITE_CHUNK) {
+    for words in raw.chunks(words_per_chunk) {
         let byte_len = words.len() * 8;
         for (word, dst) in words.iter().zip(chunk.chunks_exact_mut(8)) {
             dst.copy_from_slice(&(*word as u64).to_le_bytes());
