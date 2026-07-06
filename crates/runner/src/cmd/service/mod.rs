@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use crate::error::{RunnerError, RunnerResult};
 use crate::paths::{HomePaths, touch_mtime};
 use clap::{Args, Subcommand};
+use sha2::{Digest, Sha256};
 use tracing::{info, warn};
 
 mod diagnostic;
@@ -26,6 +27,8 @@ use unit_file::{
     resolve_config_path, validate_current_exe_path, validate_env_vars, validate_systemd_path,
     write_unit_file,
 };
+
+const SERVICE_CONFIG_SNAPSHOT_DIR: &str = "service-config-snapshots";
 
 #[derive(Args)]
 pub struct ServiceArgs {
@@ -152,21 +155,70 @@ async fn acquire_service_lock(
     crate::lock::acquire(home.service_lock(unit.unit_name())).await
 }
 
-async fn with_service_activation_image_artifacts<T, Fut>(
+struct ServiceActivationConfig {
+    snapshot_path: PathBuf,
+    image_artifact_guards: crate::config::LockedRunnerImageArtifacts,
+}
+
+fn service_activation_config_snapshot_path(
+    unit: &RunnerServiceUnit,
+    base_dir: &Path,
+    snapshot_content: &[u8],
+) -> PathBuf {
+    let digest = hex::encode(Sha256::digest(snapshot_content));
+    base_dir
+        .join(SERVICE_CONFIG_SNAPSHOT_DIR)
+        .join(format!("{}-{digest}.yaml", unit.suffix()))
+}
+
+async fn prepare_service_activation_config(
+    unit: &RunnerServiceUnit,
     config_path: &Path,
     home: &HomePaths,
-    activation: impl FnOnce() -> Fut,
-) -> RunnerResult<T>
-where
-    Fut: Future<Output = RunnerResult<T>>,
-{
+) -> RunnerResult<ServiceActivationConfig> {
     let runner_config = crate::config::load(config_path).await?;
+    let snapshot_content = serde_yaml_ng::to_string(&runner_config)
+        .map_err(|e| RunnerError::Config(format!("serialize activation config snapshot: {e}")))?;
+    let snapshot_path = service_activation_config_snapshot_path(
+        unit,
+        &runner_config.base_dir,
+        snapshot_content.as_bytes(),
+    );
+    validate_systemd_path("activation config path", &snapshot_path)?;
+
     let image_artifact_guards =
         crate::config::lock_and_validate_runner_image_artifacts(&runner_config.profiles, home)
             .await?;
 
-    let output = activation().await?;
-    touch_service_activation_image_artifacts(&image_artifact_guards);
+    crate::private_fs::ensure_private_dir(&runner_config.base_dir).await?;
+    let snapshot_dir = snapshot_path.parent().ok_or_else(|| {
+        RunnerError::Internal(format!(
+            "activation config snapshot path has no parent: {}",
+            snapshot_path.display()
+        ))
+    })?;
+    crate::private_fs::ensure_private_dir(snapshot_dir).await?;
+    crate::private_fs::write_private_file(&snapshot_path, snapshot_content.as_bytes()).await?;
+
+    Ok(ServiceActivationConfig {
+        snapshot_path,
+        image_artifact_guards,
+    })
+}
+
+async fn with_service_activation_image_artifacts<T, Fut>(
+    unit: &RunnerServiceUnit,
+    config_path: &Path,
+    home: &HomePaths,
+    activation: impl FnOnce(PathBuf) -> Fut,
+) -> RunnerResult<T>
+where
+    Fut: Future<Output = RunnerResult<T>>,
+{
+    let activation_config = prepare_service_activation_config(unit, config_path, home).await?;
+
+    let output = activation(activation_config.snapshot_path).await?;
+    touch_service_activation_image_artifacts(&activation_config.image_artifact_guards);
     Ok(output)
 }
 
@@ -207,42 +259,47 @@ async fn start(args: ServiceRunArgs) -> RunnerResult<()> {
     let unit_arg = format!("--unit={}", unit.unit_name());
     let desc_arg = format!("--description=VM0 Runner ({})", unit.unit_name());
     let syslog_arg = format!("--property=SyslogIdentifier={}", unit.unit_name());
-    let mut cmd = tokio::process::Command::new("systemd-run");
-    cmd.args([
-        &*unit_arg,
-        &*desc_arg,
-        "--property=Type=exec",
-        "--property=Restart=on-failure",
-        "--property=RestartSec=5",
-        "--property=StandardOutput=journal",
-        "--property=StandardError=journal",
-        "--property=KillSignal=SIGTERM",
-        "--property=TimeoutStopSec=300",
-        &*syslog_arg,
-    ]);
-    for entry in &args.env {
-        cmd.arg(format!("--setenv={entry}"));
-    }
-    cmd.arg(&exe_path)
-        .args(["start", "--config"])
-        .arg(&config_path);
-    if args.local {
-        cmd.arg("--local");
-    }
+    with_service_activation_image_artifacts(
+        &unit,
+        &config_path,
+        &home,
+        |snapshot_path| async move {
+            let mut cmd = tokio::process::Command::new("systemd-run");
+            cmd.args([
+                &*unit_arg,
+                &*desc_arg,
+                "--property=Type=exec",
+                "--property=Restart=on-failure",
+                "--property=RestartSec=5",
+                "--property=StandardOutput=journal",
+                "--property=StandardError=journal",
+                "--property=KillSignal=SIGTERM",
+                "--property=TimeoutStopSec=300",
+                &*syslog_arg,
+            ]);
+            for entry in &args.env {
+                cmd.arg(format!("--setenv={entry}"));
+            }
+            cmd.arg(&exe_path)
+                .args(["start", "--config"])
+                .arg(&snapshot_path);
+            if args.local {
+                cmd.arg("--local");
+            }
 
-    with_service_activation_image_artifacts(&config_path, &home, || async move {
-        let status = cmd
-            .status()
-            .await
-            .map_err(|e| RunnerError::Internal(format!("spawn systemd-run: {e}")))?;
+            let status = cmd
+                .status()
+                .await
+                .map_err(|e| RunnerError::Internal(format!("spawn systemd-run: {e}")))?;
 
-        if !status.success() {
-            return Err(RunnerError::Internal(format!(
-                "systemd-run failed: {status}"
-            )));
-        }
-        Ok(())
-    })
+            if !status.success() {
+                return Err(RunnerError::Internal(format!(
+                    "systemd-run failed: {status}"
+                )));
+            }
+            Ok(())
+        },
+    )
     .await?;
 
     info!(unit = %unit.unit_name(), "transient service started");
@@ -295,17 +352,29 @@ async fn install(args: ServiceRunArgs) -> RunnerResult<()> {
     validate_systemd_path("current executable path", &exe_path)?;
     validate_systemd_path("config path", &config_path)?;
 
-    let unit_content = generate_unit_file(&unit, &exe_path, &config_path, &args.env, args.local);
-    let upath = unit.unit_file_path();
+    let unit_for_activation = unit.clone();
+    let upath = unit.unit_file_path().to_path_buf();
 
-    with_service_activation_image_artifacts(&config_path, &home, || async {
-        cleanup_unit_staging_files(upath)?;
-        write_unit_file(upath, &unit_content)?;
+    with_service_activation_image_artifacts(
+        &unit,
+        &config_path,
+        &home,
+        |snapshot_path| async move {
+            let unit_content = generate_unit_file(
+                &unit_for_activation,
+                &exe_path,
+                &snapshot_path,
+                &args.env,
+                args.local,
+            );
+            cleanup_unit_staging_files(&upath)?;
+            write_unit_file(&upath, &unit_content)?;
 
-        run_systemctl(&["daemon-reload"]).await?;
-        run_systemctl(&["enable", "--now", unit.service_name()]).await?;
-        Ok(())
-    })
+            run_systemctl(&["daemon-reload"]).await?;
+            run_systemctl(&["enable", "--now", unit_for_activation.service_name()]).await?;
+            Ok(())
+        },
+    )
     .await?;
 
     info!(unit = %unit.unit_name(), "service installed and started");
@@ -521,11 +590,21 @@ mod tests {
         _dir: tempfile::TempDir,
         home: HomePaths,
         config_path: PathBuf,
+        base_dir: PathBuf,
+        ca_dir: PathBuf,
+        firecracker: PathBuf,
+        kernel: PathBuf,
     }
 
     impl ServiceActivationFixture {
         async fn with_complete_artifacts() -> Self {
             let fixture = Self::without_artifacts().await;
+            write_complete_artifacts(&fixture.home).await;
+            fixture
+        }
+
+        async fn with_complete_artifacts_and_relative_config() -> Self {
+            let fixture = Self::without_artifacts_with_relative_config().await;
             write_complete_artifacts(&fixture.home).await;
             fixture
         }
@@ -538,10 +617,75 @@ mod tests {
             tokio::fs::write(&kernel, b"").await.unwrap();
 
             let config_path = dir.path().join("runner.yaml");
-            tokio::fs::write(
+            let base_dir = dir.path().to_path_buf();
+            let ca_dir = dir.path().to_path_buf();
+            write_config(&config_path, &base_dir, &ca_dir, &firecracker, &kernel)
+                .await
+                .unwrap();
+
+            Self {
+                home: HomePaths::with_root(dir.path().join("vm0-runner")),
+                base_dir,
+                ca_dir,
+                firecracker,
+                kernel,
+                _dir: dir,
+                config_path,
+            }
+        }
+
+        async fn without_artifacts_with_relative_config() -> Self {
+            let dir = tempfile::tempdir().unwrap();
+            let config_dir = dir.path().join("config");
+            let base_dir = config_dir.join("runner-state");
+            let ca_dir = config_dir.join("ca");
+            let firecracker = config_dir.join("bin/firecracker");
+            let kernel = config_dir.join("bin/vmlinux");
+            tokio::fs::create_dir_all(firecracker.parent().unwrap())
+                .await
+                .unwrap();
+            tokio::fs::write(&firecracker, b"").await.unwrap();
+            tokio::fs::write(&kernel, b"").await.unwrap();
+            tokio::fs::create_dir_all(&ca_dir).await.unwrap();
+
+            let config_path = config_dir.join("runner.yaml");
+            write_config(
                 &config_path,
-                format!(
-                    r#"
+                Path::new("runner-state"),
+                Path::new("ca"),
+                Path::new("bin/firecracker"),
+                Path::new("bin/vmlinux"),
+            )
+            .await
+            .unwrap();
+
+            Self {
+                home: HomePaths::with_root(dir.path().join("vm0-runner")),
+                base_dir,
+                ca_dir,
+                firecracker,
+                kernel,
+                _dir: dir,
+                config_path,
+            }
+        }
+
+        fn rootfs(&self) -> RootfsPaths {
+            RootfsPaths::new(&self.home, TEST_ROOTFS_HASH)
+        }
+    }
+
+    async fn write_config(
+        config_path: &Path,
+        base_dir: &Path,
+        ca_dir: &Path,
+        firecracker: &Path,
+        kernel: &Path,
+    ) -> std::io::Result<()> {
+        tokio::fs::write(
+            config_path,
+            format!(
+                r#"
 name: test
 group: test/group
 base_dir: {base_dir}
@@ -558,25 +702,13 @@ profiles:
     rootfs_disk_mb: 8192
     workspace_disk_mb: 16384
 "#,
-                    base_dir = dir.path().display(),
-                    ca_dir = dir.path().display(),
-                    firecracker = firecracker.display(),
-                    kernel = kernel.display(),
-                ),
-            )
-            .await
-            .unwrap();
-
-            Self {
-                home: HomePaths::with_root(dir.path().join("vm0-runner")),
-                _dir: dir,
-                config_path,
-            }
-        }
-
-        fn rootfs(&self) -> RootfsPaths {
-            RootfsPaths::new(&self.home, TEST_ROOTFS_HASH)
-        }
+                base_dir = base_dir.display(),
+                ca_dir = ca_dir.display(),
+                firecracker = firecracker.display(),
+                kernel = kernel.display(),
+            ),
+        )
+        .await
     }
 
     async fn write_complete_artifacts(home: &HomePaths) {
@@ -642,6 +774,107 @@ profiles:
         std::fs::metadata(path).unwrap().modified().unwrap()
     }
 
+    fn service_unit() -> RunnerServiceUnit {
+        RunnerServiceUnit::from_suffix("test").unwrap()
+    }
+
+    #[test]
+    fn activation_config_snapshot_path_is_content_addressed() {
+        let unit = service_unit();
+        let base_dir = Path::new("/var/lib/vm0-runner/runners/test");
+
+        let first = service_activation_config_snapshot_path(&unit, base_dir, b"name: test\n");
+        let second = service_activation_config_snapshot_path(&unit, base_dir, b"name: test\n");
+        let different =
+            service_activation_config_snapshot_path(&unit, base_dir, b"name: different\n");
+
+        assert_eq!(first, second);
+        assert_ne!(first, different);
+        assert_eq!(
+            first.parent().unwrap(),
+            base_dir.join(SERVICE_CONFIG_SNAPSHOT_DIR)
+        );
+        assert!(
+            first
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .starts_with("test-")
+        );
+        assert!(
+            first
+                .extension()
+                .is_some_and(|extension| extension == "yaml")
+        );
+    }
+
+    #[tokio::test]
+    async fn activation_config_snapshot_serializes_resolved_paths_and_is_private() {
+        let fixture = ServiceActivationFixture::with_complete_artifacts_and_relative_config().await;
+        let activation_config =
+            prepare_service_activation_config(&service_unit(), &fixture.config_path, &fixture.home)
+                .await
+                .unwrap();
+
+        assert_ne!(activation_config.snapshot_path, fixture.config_path);
+        assert!(
+            activation_config
+                .snapshot_path
+                .starts_with(fixture.base_dir.join(SERVICE_CONFIG_SNAPSHOT_DIR))
+        );
+
+        let snapshot = crate::config::load_for_start(&activation_config.snapshot_path, None)
+            .await
+            .unwrap();
+        assert_eq!(snapshot.base_dir, fixture.base_dir);
+        assert_eq!(snapshot.ca_dir, fixture.ca_dir);
+        assert_eq!(snapshot.firecracker.binary, fixture.firecracker);
+        assert_eq!(snapshot.firecracker.kernel, fixture.kernel);
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+
+            let mode = std::fs::metadata(&activation_config.snapshot_path)
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777;
+            assert_eq!(mode, 0o600);
+        }
+    }
+
+    #[tokio::test]
+    async fn activation_guard_hands_stable_snapshot_path_to_activation() {
+        let fixture = ServiceActivationFixture::with_complete_artifacts().await;
+        let config_path = fixture.config_path.clone();
+        let base_dir = fixture.base_dir.clone();
+
+        let snapshot_path = with_service_activation_image_artifacts(
+            &service_unit(),
+            &fixture.config_path,
+            &fixture.home,
+            |snapshot_path| async move {
+                assert_ne!(snapshot_path, config_path);
+                assert!(snapshot_path.starts_with(base_dir.join(SERVICE_CONFIG_SNAPSHOT_DIR)));
+
+                tokio::fs::write(&config_path, "name: mutated\n")
+                    .await
+                    .unwrap();
+
+                let snapshot_content = tokio::fs::read_to_string(&snapshot_path).await.unwrap();
+                assert!(snapshot_content.contains(TEST_ROOTFS_HASH));
+                assert!(snapshot_content.contains(TEST_SNAPSHOT_HASH));
+                assert!(!snapshot_content.contains("mutated"));
+                Ok(snapshot_path)
+            },
+        )
+        .await
+        .unwrap();
+
+        assert!(snapshot_path.exists());
+    }
+
     #[tokio::test]
     async fn activation_guard_rejects_incomplete_artifacts_before_activation() {
         let fixture = ServiceActivationFixture::without_artifacts().await;
@@ -649,9 +882,10 @@ profiles:
         let activation_polled_in_task = activation_polled.clone();
 
         let err = with_service_activation_image_artifacts(
+            &service_unit(),
             &fixture.config_path,
             &fixture.home,
-            || async {
+            |_| async {
                 activation_polled_in_task.store(true, Ordering::SeqCst);
                 Ok(())
             },
@@ -670,10 +904,15 @@ profiles:
     async fn activation_guard_holds_locks_during_activation_and_releases_after_success() {
         let fixture = ServiceActivationFixture::with_complete_artifacts().await;
 
-        with_service_activation_image_artifacts(&fixture.config_path, &fixture.home, || async {
-            assert_artifact_locks_held(&fixture.home).await;
-            Ok(())
-        })
+        with_service_activation_image_artifacts(
+            &service_unit(),
+            &fixture.config_path,
+            &fixture.home,
+            |_| async {
+                assert_artifact_locks_held(&fixture.home).await;
+                Ok(())
+            },
+        )
         .await
         .unwrap();
 
@@ -689,11 +928,16 @@ profiles:
         set_dir_mtime(rootfs.dir(), old_time);
         set_dir_mtime(snapshot.dir(), old_time);
 
-        with_service_activation_image_artifacts(&fixture.config_path, &fixture.home, || async {
-            assert_eq!(dir_mtime(rootfs.dir()), old_time);
-            assert_eq!(dir_mtime(snapshot.dir()), old_time);
-            Ok(())
-        })
+        with_service_activation_image_artifacts(
+            &service_unit(),
+            &fixture.config_path,
+            &fixture.home,
+            |_| async {
+                assert_eq!(dir_mtime(rootfs.dir()), old_time);
+                assert_eq!(dir_mtime(snapshot.dir()), old_time);
+                Ok(())
+            },
+        )
         .await
         .unwrap();
 
@@ -711,9 +955,10 @@ profiles:
         set_dir_mtime(snapshot.dir(), old_time);
 
         let err = with_service_activation_image_artifacts(
+            &service_unit(),
             &fixture.config_path,
             &fixture.home,
-            || async {
+            |_| async {
                 assert_artifact_locks_held(&fixture.home).await;
                 Err::<(), RunnerError>(RunnerError::Internal("activation failed".to_string()))
             },
