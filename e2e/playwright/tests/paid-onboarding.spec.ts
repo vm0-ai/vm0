@@ -41,7 +41,7 @@ test("paid onboarding completes through the video workflow", async ({
     await fillStripeCheckout(page);
     await waitForPaidOnboardingAppHandoff(page, appUrl);
 
-    expect(page.url()).not.toContain("checkout.stripe.com");
+    expect(new URL(page.url()).origin).toBe(new URL(appUrl).origin);
   } finally {
     await deleteUserByEmail(email);
   }
