@@ -6913,8 +6913,8 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
 
     detachedSetupPage({ context, path: `/chats/${threadId}` });
 
-    const textarea = await waitFor(() => {
-      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    const composer = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER);
     });
 
     await user.click(await screen.findByLabelText("Voice input"));
@@ -6923,7 +6923,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
     });
     await waitFor(() => {
-      expect(textarea).toHaveValue("First sentence");
+      expect(composer).toHaveTextContent("First sentence");
     });
     expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
     expect(transcriptionCalls).toBe(1);
@@ -6959,8 +6959,8 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
 
     detachedSetupPage({ context, path: `/chats/${threadId}` });
 
-    const textarea = await waitFor(() => {
-      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    const composer = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER);
     });
 
     await user.click(await screen.findByLabelText("Voice input"));
@@ -6969,7 +6969,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     });
 
     await waitFor(() => {
-      expect(textarea).toHaveValue("Auto stopped note");
+      expect(composer).toHaveTextContent("Auto stopped note");
       expect(screen.getByLabelText("Voice input")).toBeInTheDocument();
     });
     expect(transcriptionCalls).toBe(1);
@@ -6992,8 +6992,8 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
 
     detachedSetupPage({ context, path: `/chats/${threadId}` });
 
-    const textarea = await waitFor(() => {
-      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    const composer = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER);
     });
 
     await user.click(await screen.findByLabelText("Voice input"));
@@ -7001,11 +7001,11 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
     });
     await transcriptionRequested.promise;
-    await fill(textarea, "manual note");
+    await fill(composer, "manual note");
     transcriptionReady.resolve(undefined);
 
     await waitFor(() => {
-      expect(textarea).toHaveValue("manual note voice segment");
+      expect(composer).toHaveTextContent("manual note voice segment");
     });
 
     await waitFor(() => {
