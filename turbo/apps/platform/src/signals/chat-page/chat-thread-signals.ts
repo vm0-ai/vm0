@@ -1,5 +1,8 @@
 import type { Command, Computed } from "ccstate";
-import type { ChatThreadArtifactRun } from "@vm0/api-contracts/contracts/chat-threads";
+import type {
+  ChatThreadArtifactRun,
+  ChatThreadDraft,
+} from "@vm0/api-contracts/contracts/chat-threads";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import type { ScrollStepDirection } from "../auto-scroll.ts";
 import type { ChatThread } from "../agent-chat.ts";
@@ -29,14 +32,15 @@ export interface SendMessageOptions {
 export interface ChatThreadSignals {
   threadId: string;
   // -- Data signals ----------------------------------------------------------
-  threadData$: Computed<Promise<ChatThread | null>>;
+  remoteThreadDetail$: Computed<Promise<ChatThread | null>>;
+  threadDraft$: Computed<Promise<ChatThreadDraft | null>>;
   threadMeta$: Computed<Promise<ThreadMeta | null>>;
   reloadThread$: Command<void, []>;
   threadTitleEmoji$: Computed<Promise<string | null>>;
   threadTitleText$: Computed<Promise<string>>;
-  // -- Composer model override ---------------------------------------------
-  // Seeded from threadData$ on first resolve; user edits via setModelSelection$
-  // take over and are preserved across subsequent threadData$ reloads.
+  // -- Composer model selection --------------------------------------------
+  // Derived from the thread event projection; user edits register optimistic
+  // model_selection_updated events and then persist through the thread API.
   modelSelection$: Computed<Promise<ModelProviderSelection | null>>;
   setModelSelection$: Command<
     Promise<void>,
@@ -72,23 +76,15 @@ export interface ChatThreadSignals {
   // True when the message list is scrolled away from the bottom - drives the
   // feature-gated scroll-to-bottom button. Read-only outside scroll signals.
   awayFromBottom$: Computed<boolean>;
-  // -- Initial-load skeleton ------------------------------------------------
-  // Starts hidden - `setupChatThreadInitScroll$` flips it on only when the
-  // IDB cache misses, so cache hits skip the skeleton entirely. Flipped off
-  // once messages resolve and the viewport is scrolled into place.
-  skeletonVisible$: Computed<boolean>;
-  showSkeleton$: Command<void, []>;
-  hideSkeleton$: Command<void, []>;
   draft: DraftSignals;
   composerFileInput$: Computed<HTMLElement | null>;
   setComposerFileInput$: Command<
     (() => void) | undefined,
     [HTMLElement | null]
   >;
-  // -- Agent info (derived from threadData$.agentId) ------------------------
+  // -- Agent info (derived from threadMeta$.agentId) ------------------------
   agentId$: Computed<Promise<string | null>>;
   agentDisplayName$: Computed<Promise<string | null>>;
-  defaultModelSelection$: Computed<Promise<ModelProviderSelection | null>>;
   agentPinned$: Computed<Promise<boolean | null>>;
   // -- Per-thread UI state --------------------------------------------------
   timelineExpandedIds$: Computed<Set<string>>;
@@ -106,6 +102,7 @@ export interface ChatThreadSignals {
   // -- Paged messages (sole rendering path) --------------------------------
   earliestChatMessageId$: Computed<Promise<string | undefined>>;
   latestChatMessageId$: Computed<Promise<string | undefined>>;
+  latestRunFinishCreatedAt$: Computed<Promise<string | undefined>>;
   latestAssistantTextCreatedAt$: Computed<Promise<string | undefined>>;
   groupedChatMessages$: Computed<Promise<GroupedChatMessageGroup[]>>;
   renderedGroupedChatMessages$: Computed<Promise<GroupedChatMessageGroup[]>>;

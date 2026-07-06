@@ -1,4 +1,4 @@
-import { and, asc, eq, gt, or } from "drizzle-orm";
+import { and, asc, eq, sql, type SQL } from "drizzle-orm";
 import type {
   ChatThreadEvent,
   ChatThreadSnapshotProjection,
@@ -25,6 +25,7 @@ export async function appendChatThreadEvent(
     readonly agentComposeId: string;
     readonly eventId?: string;
     readonly title?: string | null;
+    readonly selectedModel?: string | null;
     readonly createdAt?: Date;
   },
 ): Promise<void> {
@@ -52,6 +53,7 @@ export async function appendChatThreadEvent(
       kind: args.kind,
       agentComposeId: args.agentComposeId,
       title: args.title ?? null,
+      selectedModel: args.selectedModel ?? null,
       ...(args.createdAt !== undefined ? { createdAt: args.createdAt } : {}),
     })
     .onConflictDoNothing({ target: chatThreadEvents.id });
@@ -82,7 +84,13 @@ export async function getChatThreadSnapshot(
     .limit(1);
 
   return {
-    chatThreads: snapshot?.chatThreads ?? [],
+    chatThreads:
+      snapshot?.chatThreads.map((thread) => {
+        return {
+          ...thread,
+          selectedModel: thread.selectedModel ?? null,
+        };
+      }) ?? [],
     latestEventId: snapshot?.latestEventId ?? null,
   };
 }
@@ -93,6 +101,7 @@ function toApiChatThreadEvent(row: {
   readonly chatThreadId: string;
   readonly agentComposeId: string;
   readonly title: string | null;
+  readonly selectedModel: string | null;
   readonly createdAt: Date;
 }): ChatThreadEvent {
   return {
@@ -101,6 +110,7 @@ function toApiChatThreadEvent(row: {
     chatThreadId: row.chatThreadId,
     agentId: row.agentComposeId,
     title: row.title,
+    selectedModel: row.selectedModel,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -120,18 +130,12 @@ export async function getChatThreadEventsSince(
     }
   | { readonly kind: "expired" }
 > {
-  let cursor:
-    | {
-        readonly id: string;
-        readonly createdAt: Date;
-      }
-    | undefined;
+  let hasCursor = false;
 
   if (args.sinceEventId !== undefined) {
     const [row] = await db
       .select({
         id: chatThreadEvents.id,
-        createdAt: chatThreadEvents.createdAt,
       })
       .from(chatThreadEvents)
       .where(
@@ -145,22 +149,23 @@ export async function getChatThreadEventsSince(
     if (!row) {
       return { kind: "expired" };
     }
-    cursor = row;
+    hasCursor = true;
   }
 
-  const filters = [
+  const filters: SQL[] = [
     eq(chatThreadEvents.userId, args.userId),
     eq(chatThreadEvents.orgId, args.orgId),
   ];
-  if (cursor) {
+  if (hasCursor && args.sinceEventId !== undefined) {
     filters.push(
-      or(
-        gt(chatThreadEvents.createdAt, cursor.createdAt),
-        and(
-          eq(chatThreadEvents.createdAt, cursor.createdAt),
-          gt(chatThreadEvents.id, cursor.id),
-        ),
-      )!,
+      sql`(${chatThreadEvents.createdAt}, ${chatThreadEvents.id}) > (
+        SELECT marker.created_at, marker.id
+        FROM ${chatThreadEvents} AS marker
+        WHERE marker.user_id = ${args.userId}
+          AND marker.org_id = ${args.orgId}
+          AND marker.id = ${args.sinceEventId}
+        LIMIT 1
+      )`,
     );
   }
 
@@ -171,6 +176,7 @@ export async function getChatThreadEventsSince(
       chatThreadId: chatThreadEvents.chatThreadId,
       agentComposeId: chatThreadEvents.agentComposeId,
       title: chatThreadEvents.title,
+      selectedModel: chatThreadEvents.selectedModel,
       createdAt: chatThreadEvents.createdAt,
     })
     .from(chatThreadEvents)

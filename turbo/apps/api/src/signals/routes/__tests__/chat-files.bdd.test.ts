@@ -37,7 +37,7 @@ const MODEL_FIRST_SELECTION_PROVIDER_ID =
   "00000000-0000-4000-8000-000000000000";
 
 describe("CHAT-01 chat thread lifecycle", () => {
-  it("creates, mutates, lists, searches, and deletes a thread through visible APIs", async () => {
+  it("creates, mutates, searches, and deletes a thread through visible APIs", async () => {
     const actor = bdd.user();
     const compose = await api.createComposeForChatThread(actor);
     const created = await api.createThread(actor, {
@@ -48,14 +48,17 @@ describe("CHAT-01 chat thread lifecycle", () => {
     expect(created.title).toBe("Launch notes");
 
     let detail = await api.readThread(actor, created.id);
-    expect(detail).toMatchObject({
-      id: created.id,
-      title: "Launch notes",
-      agentId: compose.composeId,
-      activeRunIds: [],
-      draftContent: null,
-      draftAttachments: null,
+    expect(detail).toStrictEqual({
+      lastReadAt: expect.any(String),
+      computerUseHostId: null,
+      codexServiceTier: null,
     });
+    await expect(api.readThreadDraft(actor, created.id)).resolves.toStrictEqual(
+      {
+        draftContent: null,
+        draftAttachments: null,
+      },
+    );
 
     await api.patchThread(actor, created.id, {
       draftContent: "follow up on the launch",
@@ -68,27 +71,27 @@ describe("CHAT-01 chat thread lifecycle", () => {
         ),
       ],
     });
-    detail = await api.readThread(actor, created.id);
-    expect(detail.draftContent).toBe("follow up on the launch");
-    expect(detail.draftAttachments).toHaveLength(1);
+    const draft = await api.readThreadDraft(actor, created.id);
+    expect(draft.draftContent).toBe("follow up on the launch");
+    expect(draft.draftAttachments).toHaveLength(1);
+    await expect(api.listThreadDrafts(actor)).resolves.toContain(created.id);
 
     await api.renameThread(actor, created.id, "Renamed launch notes");
     detail = await api.readThread(actor, created.id);
-    expect(detail.title).toBe("Renamed launch notes");
-    expect(detail.renamedAt).toStrictEqual(expect.any(String));
+    expect(detail.lastReadAt).toStrictEqual(expect.any(String));
 
     await api.pinThread(actor, created.id);
     await api.unpinThread(actor, created.id);
 
     const markedRead = await api.markThreadRead(actor, created.id);
     expect(markedRead).toStrictEqual({
-      lastReadMessageId: null,
+      lastReadAt: expect.any(String),
       unreads: [],
     });
 
     await api.updateThreadModelSelection(actor, created.id, null);
     detail = await api.readThread(actor, created.id);
-    expect(detail.selectedModel).toBeNull();
+    expect(detail).not.toHaveProperty("selectedModel");
 
     const messages = await api.listThreadMessages(actor, created.id);
     expect(messages.messages).toStrictEqual([]);
@@ -117,13 +120,25 @@ describe("CHAT-01 chat thread lifecycle", () => {
       title: "Private planning",
     });
 
-    await expect(api.readThread(owner, thread.id)).resolves.toMatchObject({
-      id: thread.id,
-    });
+    await expect(api.readThread(owner, thread.id)).resolves.toHaveProperty(
+      "lastReadAt",
+    );
 
     const peerRead = await api.requestReadThread(peer, thread.id, [404]);
     expectApiError(peerRead.body);
     expect(peerRead.body.error.code).toBe("NOT_FOUND");
+    const peerDraftRead = await api.requestReadThreadDraft(
+      peer,
+      thread.id,
+      [404],
+    );
+    expectApiError(peerDraftRead.body);
+    expect(peerDraftRead.body.error.code).toBe("NOT_FOUND");
+    await api.patchThread(owner, thread.id, {
+      draftContent: "private draft",
+      draftAttachments: null,
+    });
+    await expect(api.listThreadDrafts(peer)).resolves.not.toContain(thread.id);
 
     const outsiderRead = await api.requestReadThread(
       outsider,
@@ -133,12 +148,14 @@ describe("CHAT-01 chat thread lifecycle", () => {
     expectApiError(outsiderRead.body);
     expect(outsiderRead.body.error.code).toBe("NOT_FOUND");
 
-    const peerList = await api.listThreads(peer, {
-      agentId: compose.composeId,
-    });
+    const peerEvents = await api.requestThreadEvents(peer, {}, [200]);
+    expect(peerEvents.status).toBe(200);
+    if (peerEvents.status !== 200) {
+      throw new Error("Expected chat thread events to load");
+    }
     expect(
-      [...peerList.pinned, ...peerList.threads].some((item) => {
-        return item.id === thread.id;
+      peerEvents.body.events.some((event) => {
+        return event.chatThreadId === thread.id;
       }),
     ).toBeFalsy();
   });
@@ -164,25 +181,25 @@ describe("CHAT-01 chat thread lifecycle", () => {
     const readEmpty = await api.markThreadRead(owner, thread.id);
 
     expect(readEmpty).toStrictEqual({
-      lastReadMessageId: null,
+      lastReadAt: expect.any(String),
       unreads: [],
     });
 
-    const pinnedList = await api.listThreads(owner, {
-      agentId: agent.agentId,
-    });
-    expect(pinnedList.pinned).toHaveLength(1);
-    expect(pinnedList.pinned[0]).toMatchObject({
-      id: thread.id,
-      title: "Pinned launch plan",
-      pinnedAt: expect.any(String),
-      renamedAt: expect.any(String),
-    });
-    expect(pinnedList.threads).toStrictEqual([]);
-
     let detail = await api.readThread(owner, thread.id);
-    expect(detail.selectedModel).toBe("gpt-5.4-mini");
-    expect(detail.lastReadMessageId ?? null).toBeNull();
+    expect(detail.lastReadAt).toStrictEqual(expect.any(String));
+    const ownerEvents = await api.requestThreadEvents(owner, {}, [200]);
+    expect(ownerEvents.status).toBe(200);
+    if (ownerEvents.status !== 200) {
+      throw new Error("Expected owner chat thread events to load");
+    }
+    expect(ownerEvents.body.events).toContainEqual(
+      expect.objectContaining({
+        kind: "model_selection_updated",
+        chatThreadId: thread.id,
+        selectedModel: "gpt-5.4-mini",
+      }),
+    );
+    expect(detail.lastReadAt).toStrictEqual(expect.any(String));
 
     const peerRename = await api.requestRenameThread(
       peer,
@@ -219,25 +236,27 @@ describe("CHAT-01 chat thread lifecycle", () => {
     expect(peerMarkRead.body.error.code).toBe("NOT_FOUND");
 
     detail = await api.readThread(owner, thread.id);
-    expect(detail.title).toBe("Pinned launch plan");
-    expect(detail.selectedModel).toBe("gpt-5.4-mini");
+    expect(detail.lastReadAt).toStrictEqual(expect.any(String));
+    expect(detail).not.toHaveProperty("selectedModel");
 
     await api.unpinThread(owner, thread.id);
     await api.updateThreadModelSelection(owner, thread.id, null);
 
-    const unpinnedList = await api.listThreads(owner, {
-      agentId: agent.agentId,
-    });
-    expect(unpinnedList.pinned).toStrictEqual([]);
-    expect(unpinnedList.threads).toHaveLength(1);
-    expect(unpinnedList.threads[0]).toMatchObject({
-      id: thread.id,
-      title: "Pinned launch plan",
-      pinnedAt: null,
-    });
-
     detail = await api.readThread(owner, thread.id);
-    expect(detail.selectedModel).toBeNull();
+    expect(detail.lastReadAt).toStrictEqual(expect.any(String));
+    const clearedEvents = await api.requestThreadEvents(owner, {}, [200]);
+    expect(clearedEvents.status).toBe(200);
+    if (clearedEvents.status !== 200) {
+      throw new Error("Expected cleared chat thread events to load");
+    }
+    expect(clearedEvents.body.events).toContainEqual(
+      expect.objectContaining({
+        kind: "model_selection_updated",
+        chatThreadId: thread.id,
+        selectedModel: null,
+      }),
+    );
+    expect(detail).not.toHaveProperty("selectedModel");
   });
 });
 
@@ -280,8 +299,10 @@ describe("CHAT-02 chat messages and visible validation", () => {
     const threadId = sent.body.threadId;
     const detail = await api.readThread(actor, threadId);
     expect(detail).toMatchObject({
-      id: threadId,
-      agentId: agent.agentId,
+      computerUseHostId: null,
+      codexServiceTier: null,
+    });
+    await expect(api.readThreadDraft(actor, threadId)).resolves.toStrictEqual({
       draftContent: null,
       draftAttachments: null,
     });
@@ -552,7 +573,19 @@ describe("CHAT-02 chat messages and visible validation", () => {
       actor,
       modelSelected.body.threadId,
     );
-    expect(modelSelectedThread.selectedModel).toBe("gpt-5.4-mini");
+    expect(modelSelectedThread).not.toHaveProperty("selectedModel");
+    const modelSelectedEvents = await api.requestThreadEvents(actor, {}, [200]);
+    expect(modelSelectedEvents.status).toBe(200);
+    if (modelSelectedEvents.status !== 200) {
+      throw new Error("Expected model-selected thread events to load");
+    }
+    expect(modelSelectedEvents.body.events).toContainEqual(
+      expect.objectContaining({
+        kind: "created",
+        chatThreadId: modelSelected.body.threadId,
+        selectedModel: "gpt-5.4-mini",
+      }),
+    );
   });
 
   it("lists visible messages and rejects invalid send requests without hidden fixtures", async () => {

@@ -5,11 +5,13 @@ import type {
   PublicConnectorCatalogConnectionStatus,
   PublicConnectorCatalogDetail,
   PublicConnectorCatalogItem,
+  PublicConnectorCatalogListResponse,
   PublicConnectorCatalogManualField,
   PublicConnectorCatalogPermissionDetail,
   PublicConnectorCatalogPermissionSummary,
   PublicConnectorCatalogStartOption,
   PublicConnectorCatalogStatusItem,
+  PublicConnectorCatalogStatusResponse,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import type { ConnectorSearchItem } from "@vm0/api-contracts/contracts/zero-connectors";
@@ -17,6 +19,7 @@ import { isGoogleOAuthConnector } from "@vm0/connectors/auth-providers/oauth/goo
 import {
   CONNECTOR_TYPE_KEYS,
   CONNECTOR_TYPES,
+  connectorDisplayCategoryMetadataForItems,
   type ConnectorAuthMethodConfig,
   type ConnectorAuthMethodId,
   type ConnectorType,
@@ -356,7 +359,7 @@ export function searchConnectorCatalog(
 
 export function listPublicConnectorCatalog(
   args: ConnectorCatalogReadArgs,
-): Promise<PublicConnectorCatalogItem[]> {
+): Promise<PublicConnectorCatalogListResponse> {
   const connectors = CONNECTOR_TYPE_KEYS.flatMap((type) => {
     const authMethods = availableAuthMethodsForCatalog(type, args);
     if (authMethods.length === 0) {
@@ -365,14 +368,17 @@ export function listPublicConnectorCatalog(
     return [connectorCatalogItem(type, authMethods)];
   });
 
-  return Promise.resolve(connectors);
+  return Promise.resolve({
+    connectors,
+    categoryMetadata: connectorDisplayCategoryMetadataForItems(connectors),
+  });
 }
 
 export function listPublicConnectorCatalogStatus(
   args: ConnectorCatalogReadArgs & {
     readonly connectors: readonly ConnectorResponse[];
   },
-): Promise<PublicConnectorCatalogStatusItem[]> {
+): Promise<PublicConnectorCatalogStatusResponse> {
   const connectorsByType = new Map(
     args.connectors.map((connector) => {
       return [connector.type, connector];
@@ -392,7 +398,10 @@ export function listPublicConnectorCatalogStatus(
     ];
   });
 
-  return Promise.resolve(connectors);
+  return Promise.resolve({
+    connectors,
+    categoryMetadata: connectorDisplayCategoryMetadataForItems(connectors),
+  });
 }
 
 export function getPublicConnectorCatalogDetail(

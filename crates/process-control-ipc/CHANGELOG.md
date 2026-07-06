@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.2](https://github.com/vm0-ai/vm0/compare/process-control-ipc-v0.3.1...process-control-ipc-v0.3.2) (2026-07-04)
+
+
+### Performance Improvements
+
+* reduce process-control endpoint allocations ([#20164](https://github.com/vm0-ai/vm0/issues/20164)) ([52ed366](https://github.com/vm0-ai/vm0/commit/52ed366f856a2e2c5e535aa12ef49196652b8dbe))
+
 ## [0.3.1](https://github.com/vm0-ai/vm0/compare/process-control-ipc-v0.3.0...process-control-ipc-v0.3.1) (2026-06-23)
 
 

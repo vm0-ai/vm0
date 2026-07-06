@@ -56,6 +56,7 @@ import {
   type ModelProviderRefreshProviderKey,
 } from "@vm0/connectors/auth-providers/model-provider-auth";
 import { isChatgptRefreshError } from "@vm0/connectors/auth-providers/model-providers/codex-oauth/oauth";
+import { agentRunCustomConnectorAuthRefs } from "@vm0/db/schema/agent-run-custom-connector-auth-ref";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { connectors } from "@vm0/db/schema/connector";
 import { modelProviders } from "@vm0/db/schema/model-provider";
@@ -2772,6 +2773,93 @@ async function syncModelProviderRuntimeSecrets(args: {
   );
 }
 
+async function syncCustomConnectorRuntimeSecrets(args: {
+  readonly db: Db;
+  readonly runId: string;
+  readonly secrets: Record<string, string>;
+  readonly referencedKeys: Set<string>;
+  readonly featureSwitchContext: FeatureSwitchContext;
+}): Promise<void> {
+  const missingKeys = [...args.referencedKeys].filter((key) => {
+    return !Object.hasOwn(args.secrets, key);
+  });
+  if (missingKeys.length === 0) {
+    return;
+  }
+
+  const rows = await args.db
+    .select({
+      secretName: agentRunCustomConnectorAuthRefs.secretName,
+      encryptedValue: agentRunCustomConnectorAuthRefs.encryptedValue,
+    })
+    .from(agentRunCustomConnectorAuthRefs)
+    .where(
+      and(
+        eq(agentRunCustomConnectorAuthRefs.runId, args.runId),
+        inArray(agentRunCustomConnectorAuthRefs.secretName, missingKeys),
+        sql`${agentRunCustomConnectorAuthRefs.expiresAt} > now()`,
+      ),
+    );
+
+  for (const row of rows) {
+    if (Object.hasOwn(args.secrets, row.secretName)) {
+      continue;
+    }
+    const decrypted = await settle(
+      decryptStoredSecretValue(row.encryptedValue, args.featureSwitchContext),
+    );
+    if (decrypted.ok) {
+      args.secrets[row.secretName] = decrypted.value;
+    } else {
+      L.warn("Failed to decrypt custom connector auth ref", {
+        runId: args.runId,
+        secretName: row.secretName,
+        error: decrypted.error,
+      });
+    }
+  }
+}
+
+async function syncFirewallRuntimeSecrets(args: {
+  readonly db: Db;
+  readonly auth: SandboxAuth;
+  readonly body: FirewallAuthBody;
+  readonly orgId: string;
+  readonly secrets: Record<string, string>;
+  readonly referencedKeys: Set<string>;
+  readonly connectorAccessByType: ReadonlyMap<string, ConnectorAccessState>;
+  readonly featureSwitchContext: FeatureSwitchContext;
+}): Promise<void> {
+  await syncStoredConnectorRuntimeSecrets({
+    db: args.db,
+    orgId: args.orgId,
+    userId: args.auth.userId,
+    secrets: args.secrets,
+    secretConnectorMap: args.body.secretConnectorMap,
+    secretConnectorMetadataMap: args.body.secretConnectorMetadataMap,
+    referencedKeys: args.referencedKeys,
+    connectorAccessByType: args.connectorAccessByType,
+    featureSwitchContext: args.featureSwitchContext,
+  });
+  await syncModelProviderRuntimeSecrets({
+    db: args.db,
+    orgId: args.orgId,
+    userId: args.auth.userId,
+    secrets: args.secrets,
+    secretConnectorMap: args.body.secretConnectorMap,
+    secretConnectorMetadataMap: args.body.secretConnectorMetadataMap,
+    referencedKeys: args.referencedKeys,
+    featureSwitchContext: args.featureSwitchContext,
+  });
+  await syncCustomConnectorRuntimeSecrets({
+    db: args.db,
+    runId: args.auth.runId,
+    secrets: args.secrets,
+    referencedKeys: args.referencedKeys,
+    featureSwitchContext: args.featureSwitchContext,
+  });
+}
+
 function canResolveMissingAccessSecret(args: {
   readonly key: string;
   readonly secretConnectorMap: Record<string, string> | undefined;
@@ -3040,25 +3128,14 @@ async function prepareFirewallAuthResolutionContext(args: {
       response: connectorReconnectRequired(reconnectRequiredConnectorTypes),
     };
   }
-  await syncStoredConnectorRuntimeSecrets({
+  await syncFirewallRuntimeSecrets({
     db: args.db,
+    auth: args.auth,
+    body: args.body,
     orgId: args.orgId,
-    userId: args.auth.userId,
     secrets: args.secrets,
-    secretConnectorMap: args.body.secretConnectorMap,
-    secretConnectorMetadataMap: args.body.secretConnectorMetadataMap,
     referencedKeys: referenced.secrets,
     connectorAccessByType,
-    featureSwitchContext: args.featureSwitchContext,
-  });
-  await syncModelProviderRuntimeSecrets({
-    db: args.db,
-    orgId: args.orgId,
-    userId: args.auth.userId,
-    secrets: args.secrets,
-    secretConnectorMap: args.body.secretConnectorMap,
-    secretConnectorMetadataMap: args.body.secretConnectorMetadataMap,
-    referencedKeys: referenced.secrets,
     featureSwitchContext: args.featureSwitchContext,
   });
 
@@ -3117,7 +3194,13 @@ async function findRefreshRunOrgId(
   const [run] = await db
     .select({ orgId: agentRuns.orgId })
     .from(agentRuns)
-    .where(and(eq(agentRuns.id, auth.runId), eq(agentRuns.userId, auth.userId)))
+    .where(
+      and(
+        eq(agentRuns.id, auth.runId),
+        eq(agentRuns.userId, auth.userId),
+        eq(agentRuns.orgId, auth.orgId),
+      ),
+    )
     .limit(1);
   return run?.orgId ?? null;
 }

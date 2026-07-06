@@ -1,14 +1,14 @@
 /**
- * Tests for the `zero schedule` rename stub (#17307).
+ * Tests for the `zero schedule` removal stub (#17307, #20100).
  *
  * The schedule command tree was removed; any invocation prints a notice
- * pointing at `zero automation` and exits non-zero.
+ * pointing at `zero workflow` and exits non-zero.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { zeroScheduleCommand } from "../schedule";
 
-describe("zero schedule (rename stub)", () => {
+describe("zero schedule (removal stub)", () => {
   let errorSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
@@ -23,7 +23,7 @@ describe("zero schedule (rename stub)", () => {
     process.exitCode = undefined;
   });
 
-  it("prints the rename notice and fails for any subcommand", async () => {
+  it("prints the removal notice and fails for any subcommand", async () => {
     await zeroScheduleCommand.parseAsync(
       ["schedule", "setup", "my-agent", "--frequency", "daily"],
       { from: "user" },
@@ -31,10 +31,9 @@ describe("zero schedule (rename stub)", () => {
 
     expect(errorSpy).toHaveBeenCalledOnce();
     const notice = errorSpy.mock.calls[0]?.[0] as string;
-    expect(notice).toContain("renamed");
-    expect(notice).toContain("zero automation");
-    expect(notice).toContain("--agent <agent-id>");
-    expect(notice).not.toContain("--agent <agent>");
+    expect(notice).toContain("removed");
+    expect(notice).toContain("zero workflow");
+    expect(notice).toContain("zero workflow trigger add");
     expect(process.exitCode).toBe(1);
   });
 });

@@ -1,7 +1,7 @@
 import { command } from "ccstate";
 import type { BuildInfoRouteResponse } from "@vm0/api-contracts/contracts";
 
-import { normalizeBuildCommitSha } from "../../lib/build-info";
+import { getBuildVersion, normalizeBuildCommitSha } from "../../lib/build-info";
 import { env } from "../../lib/env";
 import { setResHeader$ } from "../context/hono";
 
@@ -13,6 +13,7 @@ export const apiBuildInfo$ = command(
       status: 200,
       body: {
         commitSha: normalizeBuildCommitSha(env("GIT_COMMIT_SHA")),
+        version: getBuildVersion(),
       },
     };
   },

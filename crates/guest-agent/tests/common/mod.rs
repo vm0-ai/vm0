@@ -483,6 +483,7 @@ pub unsafe fn clear_guest_agent_bootstrap_env_for_test() {
         guest_contracts::env::SETTINGS_ENV,
         guest_contracts::env::CLI_AGENT_TYPE_ENV,
         guest_contracts::env::USER_ENV_FILE_ENV,
+        guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
         guest_contracts::env::ARTIFACTS_ENV,
         guest_contracts::env::FEATURE_FLAGS_ENV,
         guest_contracts::env::STUCK_TOOL_TIMEOUT_SECS_ENV,
@@ -503,6 +504,34 @@ pub unsafe fn clear_guest_agent_bootstrap_env_for_test() {
             std::env::remove_var(key);
         }
     }
+}
+
+pub fn write_run_payload_file_for_test(
+    runtime_dir: &Path,
+    payload: &guest_contracts::env::RunPayload,
+) -> Result<std::path::PathBuf, String> {
+    let dir = runtime_dir.join(guest_contracts::env::RUN_PAYLOAD_PRIVATE_DIR_NAME);
+    std::fs::create_dir_all(&dir).map_err(|error| format!("create run payload dir: {error}"))?;
+    let path = dir.join(guest_contracts::env::RUN_PAYLOAD_FILENAME);
+    let bytes =
+        serde_json::to_vec(payload).map_err(|error| format!("serialize run payload: {error}"))?;
+    std::fs::write(&path, bytes).map_err(|error| format!("write run payload: {error}"))?;
+    Ok(path)
+}
+
+/// Write the runner-owned run payload file and expose it through process env.
+///
+/// # Safety
+/// Call before any other test thread reads process environment.
+pub unsafe fn set_run_payload_file_env_for_test(
+    runtime_dir: &Path,
+    payload: &guest_contracts::env::RunPayload,
+) -> Result<(), String> {
+    let path = write_run_payload_file_for_test(runtime_dir, payload)?;
+    unsafe {
+        std::env::set_var(guest_contracts::env::RUN_PAYLOAD_FILE_ENV, path);
+    }
+    Ok(())
 }
 
 /// Configure one test binary for the experimental Codex app-server backend.
@@ -530,12 +559,20 @@ pub unsafe fn setup_codex_app_server_env(
             std::env::remove_var("MOCK_CODEX_APP_SERVER_SCENARIO");
         }
         std::env::set_var("VM0_RUN_ID", config.run_id);
-        std::env::set_var("VM0_PROMPT", config.prompt);
         std::env::set_var("VM0_API_URL", "http://127.0.0.1:1");
         std::env::set_var("VM0_API_TOKEN", "");
         std::env::set_var("VM0_SANDBOX_ID", "00000000-0000-4000-8000-000000000abc");
         std::env::set_var("VM0_SANDBOX_REUSE_RESULT", "reused");
         std::env::set_var("HOME", home);
+        let runtime_dir = guest_contracts::runtime_paths::run_dir_for_home(home, config.run_id)
+            .map_err(|error| format!("resolve runtime dir: {error}"))?;
+        set_run_payload_file_env_for_test(
+            &runtime_dir,
+            &guest_contracts::env::RunPayload {
+                prompt: config.prompt.to_string(),
+                ..guest_contracts::env::RunPayload::default()
+            },
+        )?;
         if let Some(resume_session_id) = config.resume_session_id {
             std::env::set_var("VM0_RESUME_SESSION_ID", resume_session_id);
         } else {
@@ -637,8 +674,16 @@ pub unsafe fn setup_env(
             .and_then(Path::file_name)
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_else(|| "post-result-reap-test".to_string());
-        std::env::set_var("VM0_RUN_ID", run_id);
-        std::env::set_var("VM0_PROMPT", prompt);
+        std::env::set_var("VM0_RUN_ID", &run_id);
+        let runtime_dir = guest_contracts::runtime_paths::run_dir_for_home(workdir, &run_id)
+            .map_err(|error| format!("resolve runtime dir: {error}"))?;
+        set_run_payload_file_env_for_test(
+            &runtime_dir,
+            &guest_contracts::env::RunPayload {
+                prompt: prompt.to_string(),
+                ..guest_contracts::env::RunPayload::default()
+            },
+        )?;
         // Empty API token → has_api() false → no network calls.
         std::env::set_var("VM0_API_URL", "http://127.0.0.1:1");
         std::env::set_var("VM0_API_TOKEN", "");

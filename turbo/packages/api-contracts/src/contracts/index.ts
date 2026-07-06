@@ -556,8 +556,6 @@ export {
   cronCleanupSandboxesContract,
   cronDrainEmailOutboxContract,
   cronDrainEmailOutboxResponseSchema,
-  cronExecuteAutomationsContract,
-  cronExecuteAutomationsResponseSchema,
   cronExecuteWorkflowTriggersContract,
   cronRenewGmailWatchesContract,
   cronRenewGmailWatchesResponseSchema,
@@ -581,7 +579,6 @@ export {
   type CronCompactChatThreadSnapshotsContract,
   type CronCleanupSandboxesContract,
   type CronDrainEmailOutboxContract,
-  type CronExecuteAutomationsContract,
   type CronProcessUsageEventsContract,
   type CronReconcileBillingEntitlementsContract,
   type CronRenewGmailWatchesContract,
@@ -724,6 +721,7 @@ export {
 export {
   chatThreadsContract,
   chatThreadByIdContract,
+  chatThreadDraftContract,
   chatThreadMarkReadContract,
   chatThreadMarkAgentReadContract,
   chatThreadMetadataContract,
@@ -739,6 +737,7 @@ export {
   chatThreadEventSchema,
   chatThreadDetailSchema,
   chatThreadMetadataSchema,
+  chatThreadDraftSchema,
   modelSelectionRequestSchema,
   generationTemplateRequestSchema,
   presentationGenerationTemplateRequestSchema,
@@ -758,6 +757,7 @@ export {
   type SummaryEntry,
   type ChatThreadsContract,
   type ChatThreadByIdContract,
+  type ChatThreadDraftContract,
   type ChatThreadMarkReadContract,
   type ChatThreadMarkAgentReadContract,
   type ChatThreadMetadataContract,
@@ -776,6 +776,7 @@ export {
   type ChatThreadEvent,
   type ChatThreadDetail,
   type ChatThreadMetadata,
+  type ChatThreadDraft,
   type PagedChatMessage,
   type PersistedAttachment,
   type AttachFile,
@@ -834,6 +835,7 @@ export {
 export {
   runnersPollContract,
   runnersJobClaimContract,
+  runnersNetworkPolicyRefreshContract,
   runnersHeartbeatContract,
   heartbeatBodySchema,
   runnerGroupSchema,
@@ -853,10 +855,12 @@ export {
   resumeSessionSchema,
   type RunnersPollContract,
   type RunnersJobClaimContract,
+  type RunnersNetworkPolicyRefreshContract,
   type RunnersHeartbeatContract,
   type Job,
   type ExecutionContext,
   type StoredExecutionContext,
+  type NetworkPolicyRefresh,
   type SecretConnectorMetadata,
   type StorageEntry,
   type ArtifactEntry,
@@ -949,6 +953,7 @@ export {
   firewallPolicyValueSchema,
   firewallPoliciesSchema,
   firewallPolicySchema,
+  networkPolicySchema,
   type FirewallConfig,
   type ExpandedFirewallConfig,
   type FirewallApi,
@@ -961,6 +966,7 @@ export {
   type FirewallPolicyValue,
   type FirewallPolicy,
   type FirewallPolicies,
+  type NetworkPolicy,
   type FirewallTemplateReferenceNamespace,
   type FirewallTemplateReferences,
   type BasicAuthTemplateArg,
@@ -1034,11 +1040,11 @@ export {
 export {
   onboardingStatusContract,
   onboardingSetupContract,
-  onboardingCompleteLimitedFreeContract,
+  onboardingCompleteContract,
   onboardingStatusResponseSchema,
   type OnboardingStatusContract,
   type OnboardingSetupContract,
-  type OnboardingCompleteLimitedFreeContract,
+  type OnboardingCompleteContract,
   type OnboardingStatusResponse,
 } from "./onboarding";
 export { skillFrontmatterSchema } from "./skills";
@@ -1181,6 +1187,7 @@ export {
   type PublicConnectorCatalogStatusResponse,
   type ZeroConnectorCatalogContract,
 } from "./zero-connector-catalog";
+export { CONNECTOR_REF_MAX_LENGTH, connectorRefSchema } from "./connector-ref";
 export {
   codexDeviceAuthScopeSchema,
   zeroCodexDeviceAuthContract,
@@ -1266,6 +1273,16 @@ export {
   type ZeroFeatureSwitchesContract,
 } from "./zero-feature-switches";
 export { zeroMemoryContract, type ZeroMemoryContract } from "./zero-memory";
+export {
+  zeroRelationshipsContract,
+  relationshipRecordSchema,
+  relationshipResolveResponseSchema,
+  relationshipSearchResponseSchema,
+  type RelationshipRecord,
+  type RelationshipResolveResponse,
+  type RelationshipSearchResponse,
+  type ZeroRelationshipsContract,
+} from "./zero-relationships";
 export {
   zeroMemoryDevRefreshContract,
   type MemoryDevRefreshResponse,

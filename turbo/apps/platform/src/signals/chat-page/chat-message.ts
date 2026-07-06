@@ -76,6 +76,7 @@ export const deleteChatThread$ = command(
         chatThreadId: threadId,
         agentId: existingThread.agent.id,
         title: null,
+        selectedModel: null,
         createdAt: nowDate().toISOString(),
       } satisfies ChatThreadEvent);
     }
@@ -131,6 +132,7 @@ export const pinChatThread$ = command(
         chatThreadId: threadId,
         agentId: existingThread.agent.id,
         title: null,
+        selectedModel: null,
         createdAt: nowDate().toISOString(),
       } satisfies ChatThreadEvent);
     }
@@ -163,6 +165,7 @@ export const unpinChatThread$ = command(
         chatThreadId: threadId,
         agentId: existingThread.agent.id,
         title: null,
+        selectedModel: null,
         createdAt: nowDate().toISOString(),
       } satisfies ChatThreadEvent);
     }
@@ -187,26 +190,37 @@ export const unpinChatThread$ = command(
 export const renameChatThread$ = command(
   async (
     { get, set },
-    { threadId, title }: { threadId: string; title: string },
+    {
+      threadId,
+      title,
+      agentId,
+    }: { threadId: string; title: string; agentId?: string | null },
     signal: AbortSignal,
   ) => {
-    const threads = await get(chatThreads$);
-    signal.throwIfAborted();
     const eventId = crypto.randomUUID();
-    const existingThread = threads.find((thread) => {
-      return thread.id === threadId;
-    });
-    if (existingThread) {
+    let optimisticAgentId = agentId?.trim() || null;
+    if (!optimisticAgentId) {
+      const threads = await get(chatThreads$);
+      signal.throwIfAborted();
+      optimisticAgentId =
+        threads.find((thread) => {
+          return thread.id === threadId;
+        })?.agent.id ?? null;
+    }
+    if (optimisticAgentId) {
       set(registerOptimisticChatThreadEvent$, {
         id: eventId,
         kind: "renamed",
         chatThreadId: threadId,
-        agentId: existingThread.agent.id,
+        agentId: optimisticAgentId,
         title,
+        selectedModel: null,
         createdAt: nowDate().toISOString(),
       } satisfies ChatThreadEvent);
     }
+
     const client = get(zeroClient$)(chatThreadRenameContract);
+    signal.throwIfAborted();
     await accept(
       client.rename({
         params: { id: threadId },

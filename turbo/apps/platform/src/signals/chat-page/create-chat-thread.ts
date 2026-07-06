@@ -30,7 +30,6 @@ import {
 } from "../zero-page/chat-draft.ts";
 import {
   collectSuccessfulAttachmentInfos,
-  isVisualAttachment,
   prepareUserMessageFromDraft$,
   shouldExcludeVisualAttachmentsForModel,
 } from "./resolve-draft-attachments.ts";
@@ -51,24 +50,16 @@ import {
 } from "@vm0/api-contracts/contracts/chat-threads";
 
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
-import {
-  modelSelectionRequestFromSelection,
-  runOptionsFromModelProviderSelection,
-} from "./model-selection-request.ts";
+import { runOptionsFromModelProviderSelection } from "./model-selection-request.ts";
 import { accept } from "../../lib/accept.ts";
 import { nowDate } from "../../lib/time.ts";
 import { captureTaskCompletedSuccessfully } from "../../lib/posthog.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { agentById } from "../agent.ts";
 import { chatMessageOrderSequence } from "../chat-message-order.ts";
-import { orgModelPolicies$ } from "../external/org-model-policies.ts";
-import { userModelPreference$ } from "../external/user-model-preference.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
 import { pinnedAgentIds$ } from "../zero-page/zero-pinned-agents.ts";
-import {
-  MODEL_FIRST_SELECTION_PROVIDER_ID,
-  resolveModelFirstUserDefaultSelection,
-} from "../zero-page/model-default-selection.ts";
+import { MODEL_FIRST_SELECTION_PROVIDER_ID } from "../zero-page/model-default-selection.ts";
 import {
   writeChatMessageToClipboard,
   type ChatClipboardPayload,
@@ -89,18 +80,15 @@ import {
 } from "./parse-body-blocks.ts";
 import { getChatThreadTitleParts } from "./chat-thread-title.ts";
 import {
-  eventDrivenChatThreadMeta,
+  optimisticChatThreadCreateUnsettled,
+  threadMeta,
+  touchOptimisticChatThreadSort$,
   type ThreadMeta,
 } from "./chat-thread-event-sourcing.ts";
 import {
   previousRunGroupVisualWindowStartIndex,
   runGroupVisualWindowStartIndex,
 } from "./run-group-folding.ts";
-import { clerk$ } from "../auth.ts";
-import {
-  patchThreadMeta$,
-  readThreadMeta$,
-} from "../external/idb-thread-meta-store.ts";
 import { reloadBillingStatus$ } from "../zero-page/billing.ts";
 import { subscribeComputerUseHostsChanged$ } from "../zero-page/computer-use-hosts.ts";
 import type {
@@ -125,6 +113,24 @@ const uuidPattern =
 const QUEUED_RUN_MARKER_EVENT_ID = "queue:queued";
 const SILENT_HISTORY_BACKFILL_INTERVAL_MS = 100;
 const GROUPED_CHAT_MESSAGES_CACHE_LIMIT = 20;
+const LATEST_USER_MESSAGE_SCROLL_ANCHOR_SELECTOR = '[data-role="user"]';
+
+const chatThreadLatestUserMessageScrollAnchorEnabled$ = computed((get) => {
+  return (
+    get(featureSwitch$)[
+      FeatureSwitchKey.ChatThreadLatestUserMessageScrollAnchor
+    ] ?? false
+  );
+});
+
+function createChatThreadScrollSignals(threadId: string) {
+  return createScrollSignals(threadId, {
+    scrollToBottomAnchor: {
+      selector: LATEST_USER_MESSAGE_SCROLL_ANCHOR_SELECTOR,
+      enabled$: chatThreadLatestUserMessageScrollAnchorEnabled$,
+    },
+  });
+}
 
 function isRecallControlMessage(msg: PagedChatMessage): boolean {
   return (
@@ -482,43 +488,22 @@ function cancellableRunIdsFromRawMessages(
 }
 
 // ---------------------------------------------------------------------------
-// Sub-factory: thread data fetching
+// Sub-factory: remote thread detail fetching
 // ---------------------------------------------------------------------------
 
-// The data source owns both `getThread$` (the resolved thread) and
-// `reloadThread$` (the invalidation lever). Local mode never reloads;
-// remote mode bumps an internal counter on its `getThread$` computed.
-function createThreadData(dataSource: ChatThreadDataSource) {
+// The data source owns remote thread detail/draft reads plus `reloadThread$`
+// as the detail invalidation lever. Local mode never reloads; remote mode bumps
+// an internal counter on its `remoteThreadDetail$` computed.
+function createRemoteThreadDetail(dataSource: ChatThreadDataSource) {
   return {
-    threadData$: dataSource.getThread$,
+    remoteThreadDetail$: dataSource.remoteThreadDetail$,
+    threadDraft$: dataSource.threadDraft$,
     reloadThread$: dataSource.reloadThread$,
   };
 }
 
-function threadMetaFromThreadData(threadData: ChatThread): ThreadMeta {
-  return {
-    threadId: threadData.id,
-    agentId: threadData.agentId,
-    title: threadData.title,
-  };
-}
-
-function createThreadMeta(
-  threadId: string,
-  threadData$: Computed<Promise<ChatThread | null>>,
-) {
-  const eventDrivenThreadMeta$ = eventDrivenChatThreadMeta(threadId);
-  return computed(async (get): Promise<ThreadMeta | null> => {
-    if (
-      get(featureSwitch$)[FeatureSwitchKey.ChatThreadEventSourcing] ??
-      false
-    ) {
-      return await get(eventDrivenThreadMeta$);
-    }
-
-    const threadData = await get(threadData$);
-    return threadData ? threadMetaFromThreadData(threadData) : null;
-  });
+function createThreadMeta(threadId: string) {
+  return threadMeta(threadId);
 }
 
 function createThreadTitleParts(
@@ -543,35 +528,18 @@ function createThreadTitleParts(
 
 function createModelSelection(
   threadId: string,
-  threadData$: Computed<Promise<ChatThread | null>>,
+  threadMeta$: Computed<Promise<ThreadMeta | null>>,
   dataSource: ChatThreadDataSource,
 ) {
-  // Discriminated union so we can tell "user hasn't picked anything yet" from
-  // "user explicitly picked inherit (null)". Without the flag, clearing the
-  // selection would be indistinguishable from the initial unset state and we'd
-  // fall back to server data forever.
-  const internalUserOverride$ = state<
-    { kind: "unset" } | { kind: "set"; value: ModelProviderSelection | null }
-  >({ kind: "unset" });
-
   const modelSelection$ = computed(
     async (get): Promise<ModelProviderSelection | null> => {
-      const user = get(internalUserOverride$);
-      if (user.kind === "set") {
-        return user.value;
-      }
-      const thread = await get(threadData$);
-      if (thread?.selectedModel) {
+      const threadMeta = await get(threadMeta$);
+      if (threadMeta?.selectedModel) {
         return {
           modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-          selectedModel: thread.selectedModel,
-          ...(thread.codexServiceTier
-            ? { codexServiceTier: thread.codexServiceTier }
-            : {}),
+          selectedModel: threadMeta.selectedModel,
         };
       }
-      // Unstarted model-first threads inherit the current user preference;
-      // started threads carry selectedModel on the thread row.
       return null;
     },
   );
@@ -582,8 +550,6 @@ function createModelSelection(
       value: ModelProviderSelection | null,
       signal: AbortSignal,
     ) => {
-      set(internalUserOverride$, { kind: "set", value });
-
       await set(
         dataSource.patchModelSelection$,
         { threadId, modelSelection: value },
@@ -607,9 +573,11 @@ function createModelSelection(
 
 function createComputerUseHostSelection(
   threadId: string,
-  threadData$: Computed<Promise<ChatThread | null>>,
+  remoteThreadDetail$: Computed<Promise<ChatThread | null>>,
   dataSource: ChatThreadDataSource,
 ) {
+  const optimisticCreateUnsettled$ =
+    optimisticChatThreadCreateUnsettled(threadId);
   const internalUserOverride$ = state<
     { kind: "unset" } | { kind: "set"; value: string | null; dirty: boolean }
   >({ kind: "unset" });
@@ -619,7 +587,7 @@ function createComputerUseHostSelection(
     if (user.kind === "set") {
       return user.value;
     }
-    const thread = await get(threadData$);
+    const thread = await get(remoteThreadDetail$);
     return thread?.computerUseHostId ?? null;
   });
 
@@ -629,12 +597,23 @@ function createComputerUseHostSelection(
   });
 
   const setComputerUseHostId$ = command(
-    async ({ set }, computerUseHostId: string | null, signal: AbortSignal) => {
+    async (
+      { get, set },
+      computerUseHostId: string | null,
+      signal: AbortSignal,
+    ) => {
       set(internalUserOverride$, {
         kind: "set",
         value: computerUseHostId,
         dirty: true,
       });
+      if (get(optimisticCreateUnsettled$)) {
+        L.debug(
+          "setComputerUseHostId$ optimistic thread create unsettled, skip",
+          { threadId },
+        );
+        return;
+      }
 
       await onRejection(
         set(
@@ -703,31 +682,15 @@ function createComposerFileInput() {
 // ---------------------------------------------------------------------------
 
 function createAgentInfoSignals(
-  threadId: string,
-  threadData$: Computed<Promise<ChatThread | null>>,
+  threadMeta$: Computed<Promise<ThreadMeta | null>>,
 ) {
   // agentId$ is read by avatar and pinned UI on first paint.
-  // Resolving it via threadData$ blocks the avatar render on the
+  // Resolving it via threadMeta$ avoids blocking the avatar render on the
   // chat-threads/:id round-trip, even though the agentId rarely changes
-  // for a given thread. Consult the IDB cache first; on miss, fall back
-  // to threadData$ and backfill so the next visit hits the cache.
+  // for a given thread.
   const agentId$ = computed(async (get): Promise<string | null> => {
-    const clerk = await get(clerk$);
-    const userId = clerk?.user?.id ?? null;
-    const orgId = clerk?.organization?.id ?? null;
-
-    if (userId !== null && orgId !== null) {
-      const meta = await readThreadMeta$(userId, orgId, threadId);
-      if (meta?.agentId) {
-        return meta.agentId;
-      }
-    }
-    const thread = await get(threadData$);
-    const agentId = thread?.agentId ?? null;
-    if (agentId && userId !== null && orgId !== null) {
-      await patchThreadMeta$(userId, orgId, threadId, { agentId });
-    }
-    return agentId;
+    const meta = await get(threadMeta$);
+    return meta?.agentId ?? null;
   });
 
   const agentDisplayName$ = computed(async (get): Promise<string | null> => {
@@ -739,17 +702,6 @@ function createAgentInfoSignals(
     return agent?.displayName ?? null;
   });
 
-  const defaultModelSelection$ = computed(
-    async (get): Promise<ModelProviderSelection | null> => {
-      const policies = await get(orgModelPolicies$);
-      const userPreference = await get(userModelPreference$);
-      return resolveModelFirstUserDefaultSelection({
-        userPreference,
-        policies,
-      });
-    },
-  );
-
   const agentPinned$ = computed(async (get): Promise<boolean | null> => {
     const agentId = await get(agentId$);
     if (!agentId) {
@@ -759,7 +711,7 @@ function createAgentInfoSignals(
     return ids.includes(agentId);
   });
 
-  return { agentId$, agentDisplayName$, defaultModelSelection$, agentPinned$ };
+  return { agentId$, agentDisplayName$, agentPinned$ };
 }
 
 // ---------------------------------------------------------------------------
@@ -838,6 +790,8 @@ function createDraftSync(
   draft: DraftSignals,
   dataSource: ChatThreadDataSource,
 ) {
+  const optimisticCreateUnsettled$ =
+    optimisticChatThreadCreateUnsettled(threadId);
   // A reset signal is used to abort any in-flight debounced sync when a new
   // change comes in or when the draft is cleared on send.
   const draftSyncReset$ = resetSignal();
@@ -846,6 +800,12 @@ function createDraftSync(
     async ({ get, set }, signal: AbortSignal) => {
       await delay(DRAFT_SYNC_DEBOUNCE_MS, { signal });
       signal.throwIfAborted();
+      if (get(optimisticCreateUnsettled$)) {
+        L.debug("draft sync skipped for unsettled optimistic thread create", {
+          threadId,
+        });
+        return;
+      }
 
       const input = get(draft.input$);
       const content = input.trim() || null;
@@ -891,14 +851,23 @@ function createDraftSync(
     set(draftSyncReset$);
   });
 
-  const flushDraftClear$ = command(async ({ set }, signal: AbortSignal) => {
-    set(draftSyncReset$);
-    await set(
-      dataSource.patchDraft$,
-      { threadId, content: null, attachments: null },
-      signal,
-    );
-  });
+  const flushDraftClear$ = command(
+    async ({ get, set }, signal: AbortSignal) => {
+      set(draftSyncReset$);
+      if (get(optimisticCreateUnsettled$)) {
+        L.debug(
+          "draft clear sync skipped for unsettled optimistic thread create",
+          { threadId },
+        );
+        return;
+      }
+      await set(
+        dataSource.patchDraft$,
+        { threadId, content: null, attachments: null },
+        signal,
+      );
+    },
+  );
 
   return { queueDraftSync$, cancelDraftSync$, flushDraftClear$ };
 }
@@ -1284,6 +1253,32 @@ interface ChatMessageProjectionEntry {
   optimisticUserMessageAssociation?: OptimisticChatMessageEntry["optimisticUserMessageAssociation"];
 }
 
+function projectRawMessages({
+  serverMessageSets,
+  optimisticEntries,
+}: {
+  serverMessageSets: readonly (readonly PagedChatMessage[])[];
+  optimisticEntries: readonly OptimisticChatMessageEntry[];
+}): ChatMessageProjectionEntry[] {
+  const server = mergeServerMessages(serverMessageSets);
+  const serverIds = new Set(
+    server.map((message) => {
+      return message.id;
+    }),
+  );
+  const optimistic = optimisticEntries.filter((entry) => {
+    return !serverIds.has(entry.message.id);
+  });
+  return [
+    ...server.map((message) => {
+      return { message, source: "server" as const };
+    }),
+    ...optimistic.map((entry) => {
+      return { ...entry, source: "optimistic" as const };
+    }),
+  ];
+}
+
 function createRawMessagesComputed({
   initialPage$,
   historyMessages$,
@@ -1297,31 +1292,29 @@ function createRawMessagesComputed({
   serverMessages$: State<PagedChatMessage[]>;
   optimisticMessages$: Computed<OptimisticChatMessageEntry[]>;
 }): Computed<Promise<ChatMessageProjectionEntry[]>> {
+  let resolvedInitialPage: InitialPage | null = null;
   return computed(async (get): Promise<ChatMessageProjectionEntry[]> => {
-    const initial = await get(initialPage$);
     const history = get(historyMessages$);
-    const server = mergeServerMessages([
-      history,
-      initial.messages,
-      get(serverMessages$),
-    ]);
-    const serverIds = new Set(
-      server.map((message) => {
-        return message.id;
-      }),
-    );
-    const optimistic = get(optimisticMessages$).filter((entry) => {
-      return !serverIds.has(entry.message.id);
+    const serverMessages = get(serverMessages$);
+    const optimisticEntries = get(optimisticMessages$);
+    if (
+      resolvedInitialPage === null &&
+      (history.length > 0 ||
+        serverMessages.length > 0 ||
+        optimisticEntries.length > 0)
+    ) {
+      return projectRawMessages({
+        serverMessageSets: [history, serverMessages],
+        optimisticEntries,
+      });
+    }
+
+    const initial = resolvedInitialPage ?? (await get(initialPage$));
+    resolvedInitialPage = initial;
+    return projectRawMessages({
+      serverMessageSets: [history, initial.messages, serverMessages],
+      optimisticEntries: get(optimisticMessages$),
     });
-    const raw: ChatMessageProjectionEntry[] = [
-      ...server.map((message) => {
-        return { message, source: "server" as const };
-      }),
-      ...optimistic.map((entry) => {
-        return { ...entry, source: "optimistic" as const };
-      }),
-    ];
-    return raw;
   });
 }
 
@@ -1425,6 +1418,25 @@ function latestServerMessageId(
     const entry = raw[index]!;
     if (isServerProjectionEntry(entry)) {
       return entry.message.id;
+    }
+  }
+  return undefined;
+}
+
+function latestRunFinishCreatedAtFromRaw(
+  raw: readonly ChatMessageProjectionEntry[],
+): string | undefined {
+  for (let index = raw.length - 1; index >= 0; index--) {
+    const entry = raw[index]!;
+    if (!isServerProjectionEntry(entry)) {
+      continue;
+    }
+    const { message } = entry;
+    if (
+      message.role === "assistant" &&
+      message.runLifecycleEvent !== undefined
+    ) {
+      return message.createdAt;
     }
   }
   return undefined;
@@ -1620,7 +1632,7 @@ function createFetchUpdatedMessageCommand({
 
 function createPagedMessages(
   threadId: string,
-  threadData$: Computed<Promise<ChatThread | null>>,
+  threadMeta$: Computed<Promise<ThreadMeta | null>>,
   dataSource: ChatThreadDataSource,
 ) {
   const loadedHistoryHasMore$ = state<boolean | null>(null);
@@ -1684,6 +1696,13 @@ function createPagedMessages(
     },
   );
 
+  const latestRunFinishCreatedAt$ = computed(
+    async (get): Promise<string | undefined> => {
+      const raw = await get(rawMessages$);
+      return latestRunFinishCreatedAtFromRaw(raw);
+    },
+  );
+
   const latestAssistantTextCreatedAt$ = computed(
     async (get): Promise<string | undefined> => {
       const raw = await get(rawMessages$);
@@ -1733,7 +1752,7 @@ function createPagedMessages(
 
   const loadHistory$ = createLoadHistoryCommand({
     threadId,
-    threadData$,
+    threadMeta$,
     earliestChatMessageId$,
     historyMessages$,
     loadedHistoryHasMore$,
@@ -1746,6 +1765,7 @@ function createPagedMessages(
     initialPage$,
     earliestChatMessageId$,
     latestChatMessageId$,
+    latestRunFinishCreatedAt$,
     latestAssistantTextCreatedAt$,
     groupedChatMessages$,
     refreshGroupedChatMessagesCache$,
@@ -1763,14 +1783,14 @@ function createPagedMessages(
 
 function createChatThreadMessagePipeline({
   threadId,
-  threadData$,
+  threadMeta$,
   dataSource,
   recordScrollHeightForPrepend$,
   clearScrollHeightForPrepend$,
   awayFromBottom$,
 }: {
   threadId: string;
-  threadData$: Computed<Promise<ChatThread | null>>;
+  threadMeta$: Computed<Promise<ThreadMeta | null>>;
   dataSource: ChatThreadDataSource;
   recordScrollHeightForPrepend$: Command<
     PrependScrollCompensationToken | null,
@@ -1782,7 +1802,7 @@ function createChatThreadMessagePipeline({
   >;
   awayFromBottom$: Computed<boolean>;
 }) {
-  const pagedMessages = createPagedMessages(threadId, threadData$, dataSource);
+  const pagedMessages = createPagedMessages(threadId, threadMeta$, dataSource);
   const renderedMessages = createChatRenderWindow({
     threadId,
     groupedChatMessages$: pagedMessages.groupedChatMessages$,
@@ -1818,7 +1838,7 @@ function createChatThreadMessagePipeline({
 
 function createLoadHistoryCommand({
   threadId,
-  threadData$,
+  threadMeta$,
   earliestChatMessageId$,
   historyMessages$,
   loadedHistoryHasMore$,
@@ -1827,7 +1847,7 @@ function createLoadHistoryCommand({
   dataSource,
 }: {
   threadId: string;
-  threadData$: Computed<Promise<ChatThread | null>>;
+  threadMeta$: Computed<Promise<ThreadMeta | null>>;
   earliestChatMessageId$: Computed<Promise<string | undefined>>;
   historyMessages$: State<PagedChatMessage[]>;
   loadedHistoryHasMore$: State<boolean | null>;
@@ -1837,9 +1857,9 @@ function createLoadHistoryCommand({
 }): Command<Promise<LoadHistoryResult>, [AbortSignal]> {
   return command(
     async ({ get, set }, signal: AbortSignal): Promise<LoadHistoryResult> => {
-      const thread = await get(threadData$);
+      const meta = await get(threadMeta$);
       signal.throwIfAborted();
-      if (!thread) {
+      if (!meta) {
         set(loadedHistoryHasMore$, false);
         return { hasMore: false };
       }
@@ -1946,20 +1966,6 @@ export const ensureDraft$ = command(
     return { draft, isNew: true };
   },
 );
-
-function createSkeletonSignals() {
-  const internalSkeletonVisible$ = state(false);
-  const skeletonVisible$ = computed((get) => {
-    return get(internalSkeletonVisible$);
-  });
-  const showSkeleton$ = command(({ set }) => {
-    set(internalSkeletonVisible$, true);
-  });
-  const hideSkeleton$ = command(({ set }) => {
-    set(internalSkeletonVisible$, false);
-  });
-  return { skeletonVisible$, showSkeleton$, hideSkeleton$ };
-}
 
 function createContainerRef() {
   const internalContainerEl$ = state<HTMLElement | null>(null);
@@ -2107,8 +2113,9 @@ function createSilentBackfillHistoryCommand({
 interface RunTrackingDeps {
   threadId: string;
   reloadThread$: Command<void, []>;
-  threadData$: Computed<Promise<ChatThread | null>>;
+  remoteThreadDetail$: Computed<Promise<ChatThread | null>>;
   latestChatMessageId$: Computed<Promise<string | undefined>>;
+  latestRunFinishCreatedAt$: Computed<Promise<string | undefined>>;
   latestRunStatus$: Computed<Promise<string | null>>;
   initialPage$: Computed<Promise<InitialPage>>;
   fetchNextPage$: Command<Promise<boolean>, [AbortSignal]>;
@@ -2121,9 +2128,9 @@ interface RunTrackingDeps {
 
 interface MarkThreadReadDeps {
   threadId: string;
-  threadData$: Computed<Promise<ChatThread | null>>;
-  latestChatMessageId$: Computed<Promise<string | undefined>>;
-  locallyMarkedReadMessageId$: State<string | undefined>;
+  remoteThreadDetail$: Computed<Promise<ChatThread | null>>;
+  latestRunFinishCreatedAt$: Computed<Promise<string | undefined>>;
+  locallyMarkedReadAt$: State<string | undefined>;
   dataSource: ChatThreadDataSource;
 }
 
@@ -2247,34 +2254,44 @@ function createChatRenderWindow({
 
 function createMarkThreadReadIfNeeded({
   threadId,
-  threadData$,
-  latestChatMessageId$,
-  locallyMarkedReadMessageId$,
+  remoteThreadDetail$,
+  latestRunFinishCreatedAt$,
+  locallyMarkedReadAt$,
   dataSource,
 }: MarkThreadReadDeps) {
+  const optimisticCreateUnsettled$ =
+    optimisticChatThreadCreateUnsettled(threadId);
   return command(async ({ get, set }, sig: AbortSignal) => {
-    const latestMessageId = await get(latestChatMessageId$);
+    const latestRunFinishCreatedAt = await get(latestRunFinishCreatedAt$);
     sig.throwIfAborted();
-    if (!latestMessageId) {
+    if (!latestRunFinishCreatedAt) {
+      return;
+    }
+    if (get(optimisticCreateUnsettled$)) {
+      L.debug("markRead$ optimistic thread create unsettled, skip", {
+        threadId,
+        latestRunFinishCreatedAt,
+      });
       return;
     }
 
-    const thread = await get(threadData$);
+    const thread = await get(remoteThreadDetail$);
     sig.throwIfAborted();
-    const lastReadMessageId =
-      get(locallyMarkedReadMessageId$) ?? thread?.lastReadMessageId ?? null;
-    if (lastReadMessageId === latestMessageId) {
+    if (thread === null) {
+      return;
+    }
+    const lastReadAt = get(locallyMarkedReadAt$) ?? thread.lastReadAt;
+    if (
+      lastReadAt !== null &&
+      compareCreatedAt(lastReadAt, latestRunFinishCreatedAt) >= 0
+    ) {
       return;
     }
 
-    const newLastReadId = await set(
-      dataSource.markRead$,
-      { threadId, latestMessageId },
-      sig,
-    );
+    const newLastReadAt = await set(dataSource.markRead$, { threadId }, sig);
     sig.throwIfAborted();
-    if (newLastReadId !== null) {
-      set(locallyMarkedReadMessageId$, newLastReadId);
+    if (newLastReadAt !== null) {
+      set(locallyMarkedReadAt$, newLastReadAt);
     }
     // No sidebar reload needed: markRead$ records an optimistic read mark
     // and applies the response's unread snapshot, so the unread dot clears
@@ -2285,8 +2302,9 @@ function createMarkThreadReadIfNeeded({
 function createRunTracking({
   threadId,
   reloadThread$,
-  threadData$,
+  remoteThreadDetail$,
   latestChatMessageId$,
+  latestRunFinishCreatedAt$,
   latestRunStatus$,
   initialPage$,
   fetchNextPage$,
@@ -2296,7 +2314,7 @@ function createRunTracking({
   autoScroll$,
   dataSource,
 }: RunTrackingDeps) {
-  const locallyMarkedReadMessageId$ = state<string | undefined>(undefined);
+  const locallyMarkedReadAt$ = state<string | undefined>(undefined);
   const resetChatSubscriptionSignal$ = resetSignalScope();
 
   const allFinished$ = computed(async (get) => {
@@ -2305,9 +2323,9 @@ function createRunTracking({
 
   const markThreadReadIfNeeded$ = createMarkThreadReadIfNeeded({
     threadId,
-    threadData$,
-    latestChatMessageId$,
-    locallyMarkedReadMessageId$,
+    remoteThreadDetail$,
+    latestRunFinishCreatedAt$,
+    locallyMarkedReadAt$,
     dataSource,
   });
 
@@ -2328,7 +2346,7 @@ function createRunTracking({
   const onSubscribed$ = command(async ({ get, set }, sig: AbortSignal) => {
     L.debug("subscribeChatThread$ catchup start", { threadId });
     set(reloadThread$);
-    await get(threadData$);
+    await get(remoteThreadDetail$);
     sig.throwIfAborted();
     if (await set(shouldRunSubscribeReadyCatchup$, sig)) {
       await set(fetchNextPage$, sig);
@@ -2376,7 +2394,7 @@ function createRunTracking({
       set(reloadThread$);
       await set(refreshLatestMessages$, sig);
       sig.throwIfAborted();
-      await get(threadData$);
+      await get(remoteThreadDetail$);
       animationFrame(
         () => {
           set(autoScroll$);
@@ -2455,12 +2473,14 @@ function prepareTextOnlyUserMessage(
 function createSendOptimisticMessageEntry({
   threadId,
   clientMessageId,
+  createdAt,
   result,
   generationTemplate,
   options,
 }: {
   threadId: string;
   clientMessageId: string;
+  createdAt: string;
   result: PreparedSendMessageResult;
   generationTemplate: GenerationTemplateRequest | undefined;
   options: SendMessageOptions | undefined;
@@ -2475,7 +2495,7 @@ function createSendOptimisticMessageEntry({
       attachFiles: result.attachments,
       generationTemplate,
       ...sendMessageRevocationPatch(options),
-      createdAt: nowDate().toISOString(),
+      createdAt,
     },
   };
 }
@@ -2492,6 +2512,7 @@ function sendMessageRequestBody(params: {
   readonly agentId: string;
   readonly threadId: string;
   readonly clientMessageId: string;
+  readonly chatThreadSortEventId: string;
   readonly result: PreparedSendMessageResult;
   readonly modelSelection: ModelProviderSelection | null;
   readonly codexFastModeEnabled: boolean;
@@ -2508,7 +2529,7 @@ function sendMessageRequestBody(params: {
     threadId: params.threadId,
     hasTextContent: params.result.hasTextContent,
     clientMessageId: params.clientMessageId,
-    modelSelection: modelSelectionRequestFromSelection(params.modelSelection),
+    chatThreadSortEventId: params.chatThreadSortEventId,
     ...(runOptions ? { runOptions } : {}),
     generationTemplate: params.generationTemplate,
     ...(params.options && "computerUseHostId" in params.options
@@ -2519,17 +2540,43 @@ function sendMessageRequestBody(params: {
   };
 }
 
-function hasVisualDraftAttachments(
-  attachments: readonly { contentType: string; filename: string }[],
-): boolean {
-  return attachments.some((attachment) => {
-    return isVisualAttachment(attachment);
-  });
-}
+const appendOptimisticSendMessage$ = command(
+  (
+    { set },
+    args: {
+      readonly threadId: string;
+      readonly agentId: string;
+      readonly clientMessageId: string;
+      readonly chatThreadSortEventId: string;
+      readonly createdAt: string;
+      readonly result: PreparedSendMessageResult;
+      readonly generationTemplate: GenerationTemplateRequest | undefined;
+      readonly options: SendMessageOptions | undefined;
+    },
+  ) => {
+    set(touchOptimisticChatThreadSort$, {
+      id: args.chatThreadSortEventId,
+      threadId: args.threadId,
+      agentId: args.agentId,
+      createdAt: args.createdAt,
+    });
+    set(
+      appendOptimisticChatMessage$,
+      createSendOptimisticMessageEntry({
+        threadId: args.threadId,
+        clientMessageId: args.clientMessageId,
+        createdAt: args.createdAt,
+        result: args.result,
+        generationTemplate: args.generationTemplate,
+        options: args.options,
+      }),
+    );
+  },
+);
 
 interface SendMessageDeps {
   threadId: string;
-  threadData$: Computed<Promise<ChatThread | null>>;
+  threadMeta$: Computed<Promise<ThreadMeta | null>>;
   draft: DraftSignals;
   cancelDraftSync$: Command<void, []>;
   flushDraftClear$: Command<Promise<void>, [AbortSignal]>;
@@ -2538,10 +2585,54 @@ interface SendMessageDeps {
   refreshGroupedChatMessagesCache$: Command<Promise<void>, [AbortSignal]>;
 }
 
+const postSendMessage$ = command(
+  async (
+    { get, set },
+    args: {
+      readonly agentId: string;
+      readonly threadId: string;
+      readonly clientMessageId: string;
+      readonly chatThreadSortEventId: string;
+      readonly result: PreparedSendMessageResult;
+      readonly modelSelection: ModelProviderSelection | null;
+      readonly generationTemplate: GenerationTemplateRequest | undefined;
+      readonly options: SendMessageOptions | undefined;
+      readonly flushDraftClear$: Command<Promise<void>, [AbortSignal]>;
+    },
+    signal: AbortSignal,
+  ): Promise<string | null> => {
+    const codexFastModeEnabled =
+      get(featureSwitch$)[FeatureSwitchKey.CodexFastMode] ?? false;
+    const client = get(zeroClient$)(chatMessagesContract);
+    const [, sendResult] = await Promise.all([
+      set(args.flushDraftClear$, signal),
+      accept(
+        client.send({
+          body: sendMessageRequestBody({
+            agentId: args.agentId,
+            clientMessageId: args.clientMessageId,
+            chatThreadSortEventId: args.chatThreadSortEventId,
+            threadId: args.threadId,
+            result: args.result,
+            modelSelection: args.modelSelection,
+            codexFastModeEnabled,
+            generationTemplate: args.generationTemplate,
+            options: args.options,
+          }),
+          fetchOptions: { signal },
+        }),
+        [201],
+      ),
+    ]);
+    signal.throwIfAborted();
+    return sendResult.body.runId;
+  },
+);
+
 function createSendMessage(deps: SendMessageDeps) {
   const {
     threadId,
-    threadData$,
+    threadMeta$,
     draft,
     cancelDraftSync$,
     flushDraftClear$,
@@ -2549,6 +2640,8 @@ function createSendMessage(deps: SendMessageDeps) {
     fetchNextPage$,
     refreshGroupedChatMessagesCache$,
   } = deps;
+  const optimisticCreateUnsettled$ =
+    optimisticChatThreadCreateUnsettled(threadId);
   return command(
     async (
       { get, set },
@@ -2558,29 +2651,17 @@ function createSendMessage(deps: SendMessageDeps) {
       signal: AbortSignal,
     ) => {
       L.debug("sendMessage$ start", { threadId, promptLen: prompt.length });
-      const thread = await get(threadData$);
+      if (get(optimisticCreateUnsettled$)) {
+        return;
+      }
+      const meta = await get(threadMeta$);
       signal.throwIfAborted();
-      const agentId = thread?.agentId;
+      const agentId = meta?.agentId;
       if (!agentId) {
         L.debug("sendMessage$ no agentId, abort", { threadId });
         return;
       }
       const generationTemplate = get(draft.generationTemplate$);
-      const hasVisualAttachments = hasVisualDraftAttachments(
-        get(draft.attachments$),
-      );
-      let effectiveSelectedModel = modelSelection?.selectedModel;
-      if (!effectiveSelectedModel && hasVisualAttachments) {
-        const policies = await get(orgModelPolicies$);
-        signal.throwIfAborted();
-        const userPreference = await get(userModelPreference$);
-        signal.throwIfAborted();
-        effectiveSelectedModel =
-          resolveModelFirstUserDefaultSelection({
-            userPreference,
-            policies,
-          })?.selectedModel ?? undefined;
-      }
       const result =
         options?.includeDraftAttachments === false
           ? prepareTextOnlyUserMessage(prompt)
@@ -2591,7 +2672,7 @@ function createSendMessage(deps: SendMessageDeps) {
               {
                 excludeVisualAttachments:
                   shouldExcludeVisualAttachmentsForModel(
-                    effectiveSelectedModel,
+                    modelSelection?.selectedModel,
                   ),
               },
               signal,
@@ -2604,16 +2685,18 @@ function createSendMessage(deps: SendMessageDeps) {
       set(cancelDraftSync$);
       set(draft.clear$);
       const clientMessageId = crypto.randomUUID();
-      set(
-        appendOptimisticChatMessage$,
-        createSendOptimisticMessageEntry({
-          threadId,
-          clientMessageId,
-          result,
-          generationTemplate,
-          options,
-        }),
-      );
+      const chatThreadSortEventId = crypto.randomUUID();
+      const createdAt = nowDate().toISOString();
+      set(appendOptimisticSendMessage$, {
+        threadId,
+        agentId,
+        clientMessageId,
+        chatThreadSortEventId,
+        createdAt,
+        result,
+        generationTemplate,
+        options,
+      });
       await set(refreshGroupedChatMessagesCache$, signal);
       signal.throwIfAborted();
       animationFrame(
@@ -2622,55 +2705,39 @@ function createSendMessage(deps: SendMessageDeps) {
         },
         { signal },
       );
-
-      const codexFastModeEnabled =
-        get(featureSwitch$)[FeatureSwitchKey.CodexFastMode] ?? false;
-      const client = get(zeroClient$)(chatMessagesContract);
-      const [, sendResult] = await Promise.all([
-        set(flushDraftClear$, signal),
-        accept(
-          client.send({
-            body: sendMessageRequestBody({
-              agentId,
-              clientMessageId,
-              threadId,
-              result,
-              modelSelection,
-              codexFastModeEnabled,
-              generationTemplate,
-              options,
-            }),
-            fetchOptions: { signal },
-          }),
-          [201],
-        ),
-      ]);
-      signal.throwIfAborted();
-
+      const runId = await set(
+        postSendMessage$,
+        {
+          agentId,
+          threadId,
+          clientMessageId,
+          chatThreadSortEventId,
+          result,
+          modelSelection,
+          generationTemplate,
+          options,
+          flushDraftClear$,
+        },
+        signal,
+      );
       L.debug("sendMessage$ POST accepted", {
         threadId,
-        runId: sendResult.body.runId,
+        runId,
       });
-
-      if (sendResult.body.runId === null) {
+      if (runId === null) {
         set(reloadBillingStatus$);
         await set(fetchNextPage$, signal);
         signal.throwIfAborted();
         set(scrollToBottom$);
       }
-
       set(reloadChatThreads$);
-      L.debug("sendMessage$ done", {
-        threadId,
-        runId: sendResult.body.runId,
-      });
     },
   );
 }
 
 interface QueueMessageDeps {
   threadId: string;
-  threadData$: Computed<Promise<ChatThread | null>>;
+  threadMeta$: Computed<Promise<ThreadMeta | null>>;
   modelSelection$: Computed<Promise<ModelProviderSelection | null>>;
   draft: DraftSignals;
   cancelDraftSync$: Command<void, []>;
@@ -2683,7 +2750,7 @@ interface QueueMessageDeps {
 function createQueueMessage(deps: QueueMessageDeps) {
   const {
     threadId,
-    threadData$,
+    threadMeta$,
     modelSelection$,
     draft,
     cancelDraftSync$,
@@ -2692,6 +2759,8 @@ function createQueueMessage(deps: QueueMessageDeps) {
     refreshGroupedChatMessagesCache$,
     dataSource,
   } = deps;
+  const optimisticCreateUnsettled$ =
+    optimisticChatThreadCreateUnsettled(threadId);
 
   return command(
     async (
@@ -2701,10 +2770,16 @@ function createQueueMessage(deps: QueueMessageDeps) {
       signal: AbortSignal,
     ) => {
       L.debug("queueMessage$ start", { threadId, promptLen: prompt.length });
-      const thread = await get(threadData$);
+      if (get(optimisticCreateUnsettled$)) {
+        L.debug("queueMessage$ optimistic thread create unsettled, abort", {
+          threadId,
+        });
+        return;
+      }
+      const meta = await get(threadMeta$);
       signal.throwIfAborted();
-      if (!thread) {
-        L.debug("queueMessage$ no thread data, abort", { threadId });
+      if (!meta) {
+        L.debug("queueMessage$ no thread metadata, abort", { threadId });
         return;
       }
       const generationTemplate = get(draft.generationTemplate$);
@@ -2732,7 +2807,14 @@ function createQueueMessage(deps: QueueMessageDeps) {
       set(draft.clear$);
 
       const clientMessageId = crypto.randomUUID();
+      const chatThreadSortEventId = crypto.randomUUID();
       const nowIso = nowDate().toISOString();
+      set(touchOptimisticChatThreadSort$, {
+        id: chatThreadSortEventId,
+        threadId,
+        agentId: meta.agentId,
+        createdAt: nowIso,
+      });
       set(appendOptimisticChatMessage$, {
         threadId,
         optimisticUserMessageAssociation: "queue",
@@ -2766,12 +2848,12 @@ function createQueueMessage(deps: QueueMessageDeps) {
           dataSource.appendQueuedMessage$,
           {
             threadId,
-            agentId: thread.agentId,
+            agentId: meta.agentId,
             content: result.prompt,
             attachments: result.attachments ?? null,
             clientMessageId,
+            chatThreadSortEventId,
             hasTextContent: result.hasTextContent,
-            modelSelection: modelSelectionRequestFromSelection(modelSelection),
             ...(runOptions ? { runOptions } : {}),
             generationTemplate,
             ...(computerUseHostId === undefined ? {} : { computerUseHostId }),
@@ -2789,7 +2871,7 @@ function createQueueMessage(deps: QueueMessageDeps) {
 
 interface RecallMessageDeps {
   threadId: string;
-  threadData$: Computed<Promise<ChatThread | null>>;
+  threadMeta$: Computed<Promise<ThreadMeta | null>>;
   draft: DraftSignals;
   refreshGroupedChatMessagesCache$: Command<Promise<void>, [AbortSignal]>;
   dataSource: ChatThreadDataSource;
@@ -2798,7 +2880,7 @@ interface RecallMessageDeps {
 function createRecallMessage(deps: RecallMessageDeps) {
   const {
     threadId,
-    threadData$,
+    threadMeta$,
     draft,
     refreshGroupedChatMessagesCache$,
     dataSource,
@@ -2814,9 +2896,9 @@ function createRecallMessage(deps: RecallMessageDeps) {
         return;
       }
 
-      const thread = await get(threadData$);
+      const meta = await get(threadMeta$);
       signal.throwIfAborted();
-      if (!thread) {
+      if (!meta) {
         return;
       }
 
@@ -2843,7 +2925,7 @@ function createRecallMessage(deps: RecallMessageDeps) {
         dataSource.recallMessage$,
         {
           threadId,
-          agentId: thread.agentId,
+          agentId: meta.agentId,
           revokesMessageId: message.id,
           clientMessageId,
         },
@@ -2879,23 +2961,31 @@ function createThreadMessageActions(deps: ThreadMessageActionsDeps) {
 
 function createCancelRunWithQueuedRecall({
   threadId,
-  threadData$,
+  threadMeta$,
   rawMessages$,
   groupedChatMessages$,
   refreshGroupedChatMessagesCache$,
   dataSource,
 }: {
   threadId: string;
-  threadData$: Computed<Promise<ChatThread | null>>;
+  threadMeta$: Computed<Promise<ThreadMeta | null>>;
   rawMessages$: Computed<Promise<ChatMessageProjectionEntry[]>>;
   groupedChatMessages$: Computed<Promise<GroupedChatMessageGroup[]>>;
   refreshGroupedChatMessagesCache$: Command<Promise<void>, [AbortSignal]>;
   dataSource: ChatThreadDataSource;
 }) {
+  const optimisticCreateUnsettled$ =
+    optimisticChatThreadCreateUnsettled(threadId);
   return command(async ({ get, set }, signal: AbortSignal): Promise<void> => {
-    const thread = await get(threadData$);
+    if (get(optimisticCreateUnsettled$)) {
+      L.debug("cancelRun$ optimistic thread create unsettled, skip", {
+        threadId,
+      });
+      return;
+    }
+    const meta = await get(threadMeta$);
     signal.throwIfAborted();
-    if (!thread) {
+    if (!meta) {
       return;
     }
 
@@ -2946,7 +3036,7 @@ function createCancelRunWithQueuedRecall({
       });
       return {
         threadId,
-        agentId: thread.agentId,
+        agentId: meta.agentId,
         revokesMessageId: message.id,
         clientMessageId,
       };
@@ -2962,7 +3052,7 @@ function createCancelRunWithQueuedRecall({
         dataSource.cancelRuns$,
         {
           threadId,
-          agentId: thread.agentId,
+          agentId: meta.agentId,
           interrupts: interruptRequests,
         },
         signal,
@@ -3480,18 +3570,19 @@ export function createChatThreadSignals(
   draft: DraftSignals,
   dataSource: ChatThreadDataSource = createRemoteChatThreadDataSource(threadId),
 ): ChatThreadSignals {
-  const { threadData$, reloadThread$ } = createThreadData(dataSource);
-  const threadMeta$ = createThreadMeta(threadId, threadData$);
+  const { remoteThreadDetail$, threadDraft$, reloadThread$ } =
+    createRemoteThreadDetail(dataSource);
+  const threadMeta$ = createThreadMeta(threadId);
   const { threadTitleEmoji$, threadTitleText$ } =
     createThreadTitleParts(threadMeta$);
   const { modelSelection$, setModelSelection$ } = createModelSelection(
     threadId,
-    threadData$,
+    threadMeta$,
     dataSource,
   );
   const computerUseHostSelection = createComputerUseHostSelection(
     threadId,
-    threadData$,
+    remoteThreadDetail$,
     dataSource,
   );
   const {
@@ -3499,18 +3590,15 @@ export function createChatThreadSignals(
     clearScrollHeightForPrepend$,
     awayFromBottom$,
     ...scrollSignals
-  } = createScrollSignals(threadId);
-  const { skeletonVisible$, showSkeleton$, hideSkeleton$ } =
-    createSkeletonSignals();
+  } = createChatThreadScrollSignals(threadId);
   const { containerEl$, setContainerRef$ } = createContainerRef();
   const { composerFileInput$, setComposerFileInput$ } =
     createComposerFileInput();
-  const { agentId$, agentDisplayName$, defaultModelSelection$, agentPinned$ } =
-    createAgentInfoSignals(threadId, threadData$);
+  const agentInfo = createAgentInfoSignals(threadMeta$);
   const threadUi = createThreadUIState();
   const messages = createChatThreadMessagePipeline({
     threadId,
-    threadData$,
+    threadMeta$,
     dataSource,
     recordScrollHeightForPrepend$,
     clearScrollHeightForPrepend$,
@@ -3522,8 +3610,9 @@ export function createChatThreadSignals(
   const runTracking = createRunTracking({
     threadId,
     reloadThread$,
-    threadData$,
+    remoteThreadDetail$,
     latestChatMessageId$: messages.latestChatMessageId$,
+    latestRunFinishCreatedAt$: messages.latestRunFinishCreatedAt$,
     latestRunStatus$: messages.latestRunStatus$,
     initialPage$: messages.initialPage$,
     fetchNextPage$: messages.fetchNextPage$,
@@ -3536,7 +3625,7 @@ export function createChatThreadSignals(
 
   const messageActions = createThreadMessageActions({
     threadId,
-    threadData$,
+    threadMeta$,
     modelSelection$,
     rawMessages$: messages.rawMessages$,
     groupedChatMessages$: messages.groupedChatMessages$,
@@ -3559,7 +3648,8 @@ export function createChatThreadSignals(
 
   return {
     threadId,
-    threadData$,
+    remoteThreadDetail$,
+    threadDraft$,
     threadMeta$,
     reloadThread$,
     threadTitleEmoji$,
@@ -3572,21 +3662,16 @@ export function createChatThreadSignals(
     containerEl$,
     setContainerRef$,
     awayFromBottom$,
-    skeletonVisible$,
-    showSkeleton$,
-    hideSkeleton$,
     draft,
     composerFileInput$,
     setComposerFileInput$,
-    agentId$,
-    agentDisplayName$,
-    defaultModelSelection$,
-    agentPinned$,
+    ...agentInfo,
     ...threadUi,
     ...inputRef,
     queueDraftSync$,
     earliestChatMessageId$: messages.earliestChatMessageId$,
     latestChatMessageId$: messages.latestChatMessageId$,
+    latestRunFinishCreatedAt$: messages.latestRunFinishCreatedAt$,
     latestAssistantTextCreatedAt$: messages.latestAssistantTextCreatedAt$,
     groupedChatMessages$: messages.groupedChatMessages$,
     renderedGroupedChatMessages$: messages.renderedGroupedChatMessages$,

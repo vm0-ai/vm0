@@ -21,7 +21,7 @@ import {
   setSearch,
 } from "../signals/location";
 import { vi } from "vitest";
-import type { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { getAllFeatureStates } from "@vm0/core/feature-switch";
 import { setMockFeatureSwitches } from "../mocks/handlers/api-feature-switches.helpers";
 import { FEATURE_SWITCH_CACHE_KEY } from "../signals/external/feature-switch";
@@ -126,16 +126,27 @@ export async function setupPage(options: {
   const defaultOrgId = "org_default";
   const activeOrgId = options.org ? options.org.activeOrg?.id : defaultOrgId;
   options.context.store.set(clearFeatureSwitchCacheForTest$);
+  // workflowAutomation went globally on with the automation -> workflow
+  // cutover (#19959); the DEFAULT feature-switches msw handler pins it off
+  // for the pre-flip platform suite (see api-feature-switches.ts). The
+  // synchronous featureSwitch$ cache must match that pin before bootstrap,
+  // merged with any explicit per-test overrides. setMockFeatureSwitches is
+  // registered only for explicit overrides so this helper never shadows a
+  // test's own GET handler.
+  const featureSwitchOverrides = {
+    [FeatureSwitchKey.WorkflowAutomation]: false,
+    ...options.featureSwitches,
+  };
   if (options.featureSwitches) {
-    setMockFeatureSwitches(options.featureSwitches);
-    options.context.store.set(
-      setFeatureSwitchCacheForTest$,
-      getAllFeatureStates({
-        orgId: activeOrgId,
-        overrides: options.featureSwitches,
-      }),
-    );
+    setMockFeatureSwitches(featureSwitchOverrides);
   }
+  options.context.store.set(
+    setFeatureSwitchCacheForTest$,
+    getAllFeatureStates({
+      orgId: activeOrgId,
+      overrides: featureSwitchOverrides,
+    }),
+  );
 
   mockUser(
     options.user !== undefined

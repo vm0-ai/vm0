@@ -31,6 +31,7 @@ vi.hoisted(() => {
   vi.stubEnv("VITE_API_URL", "http://localhost:3000");
   vi.stubEnv("VITE_ZERO_HOST_DOMAIN", "sites.vm7.io");
   vi.stubEnv("VITE_GIT_COMMIT_SHA", "0123456789abcdef0123456789abcdef01234567");
+  vi.stubEnv("VITE_APP_VERSION", "0.540.0");
 });
 
 globalThis.indexedDB = indexedDB;

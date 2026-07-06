@@ -100,6 +100,8 @@ pub struct ExecutionContext {
     #[serde(default)]
     pub network_policies: Option<std::collections::HashMap<String, NetworkPolicy>>,
     #[serde(default)]
+    pub network_policy_refreshes: Option<std::collections::HashMap<String, NetworkPolicyRefresh>>,
+    #[serde(default)]
     pub disallowed_tools: Option<Vec<String>>,
     #[serde(default)]
     pub tools: Option<Vec<String>>,
@@ -205,6 +207,27 @@ pub struct NetworkPolicy {
     /// Policy for requests not matching any known permission rule.
     /// Values: "allow", "deny", "ask"
     pub unknown_policy: String,
+}
+
+/// Per-connector runtime network policy refresh boundary supplied by the API.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NetworkPolicyRefresh {
+    pub next_refresh_at: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NetworkPolicyRefreshResponse {
+    pub connector_ref: String,
+    pub network_policy: NetworkPolicy,
+    pub next_refresh_at: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NetworkPolicyRefreshBatchResponse {
+    pub refreshes: Vec<NetworkPolicyRefreshResponse>,
 }
 
 /// Runner-derived manifest written to `guest-download`.
@@ -391,13 +414,13 @@ pub struct HeartbeatState {
     pub runner_id: String,
     pub runner_name: String,
     pub group: String,
-    pub profiles: Vec<String>,
     pub total_vcpu: u32,
     pub total_memory_mb: u32,
     pub max_concurrent: usize,
     pub allocated_vcpu: u32,
     pub allocated_memory_mb: u32,
     pub running_count: usize,
+    pub admittable_profiles: Vec<String>,
     pub held_session_states: Vec<HeldSessionState>,
     pub mode: String,
 }
@@ -1035,13 +1058,13 @@ mod tests {
             runner_id: "550e8400-e29b-41d4-a716-446655440000".into(),
             runner_name: "runner-1".into(),
             group: "vm0/production".into(),
-            profiles: vec!["vm0/default".into()],
             total_vcpu: 16,
             total_memory_mb: 32768,
             max_concurrent: 8,
             allocated_vcpu: 6,
             allocated_memory_mb: 6144,
             running_count: 2,
+            admittable_profiles: vec!["vm0/default".into()],
             held_session_states: vec![HeldSessionState {
                 session_id: "session-abc".into(),
                 last_completed_at: "2026-05-28T00:00:00.000Z".into(),
@@ -1057,6 +1080,9 @@ mod tests {
         assert_eq!(json["allocatedVcpu"], 6);
         assert_eq!(json["allocatedMemoryMb"], 6144);
         assert_eq!(json["runningCount"], 2);
+        assert_eq!(json["admittableProfiles"], json!(["vm0/default"]));
+        assert!(json.get("profiles").is_none());
+        assert!(json.get("availableProfiles").is_none());
         assert_eq!(
             json["heldSessionStates"],
             json!([{

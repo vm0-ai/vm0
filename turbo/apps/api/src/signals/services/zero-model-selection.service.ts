@@ -56,6 +56,13 @@ function modelAllowedForOrgTier(args: {
   );
 }
 
+function modelProviderAllowedForOrgTier(args: {
+  readonly limitedFree1: boolean;
+  readonly modelProviderType: string | null | undefined;
+}): boolean {
+  return !args.limitedFree1 || args.modelProviderType === "vm0";
+}
+
 function parseModelProviderCredentialScope(
   value: string | null,
 ): ModelProviderCredentialScope | null {
@@ -81,6 +88,9 @@ export async function resolveDefaultModelFirstPin(
   orgId: string,
   userId: string,
 ): Promise<ModelFirstPin> {
+  if (userId !== "__no_preference__") {
+    await ensureOrgModelPolicies(db, orgId, userId);
+  }
   const limitedFree1 = await orgHasLimitedFree1Restrictions(db, orgId);
   const [preference] = await db
     .select({ selectedModel: orgMembersMetadata.selectedModel })
@@ -129,7 +139,11 @@ export async function resolveDefaultModelFirstPin(
   if (
     !policy ||
     !isSupportedRunModel(policy.model) ||
-    !modelAllowedForOrgTier({ limitedFree1, selectedModel: policy.model })
+    !modelAllowedForOrgTier({ limitedFree1, selectedModel: policy.model }) ||
+    !modelProviderAllowedForOrgTier({
+      limitedFree1,
+      modelProviderType: policy.defaultProviderType,
+    })
   ) {
     const fallbackPolicies = await db
       .select({
@@ -152,6 +166,10 @@ export async function resolveDefaultModelFirstPin(
         modelAllowedForOrgTier({
           limitedFree1,
           selectedModel: candidate.model,
+        }) &&
+        modelProviderAllowedForOrgTier({
+          limitedFree1,
+          modelProviderType: candidate.defaultProviderType,
         })
       );
     });
@@ -161,6 +179,10 @@ export async function resolveDefaultModelFirstPin(
       modelAllowedForOrgTier({
         limitedFree1,
         selectedModel: fallbackPolicy.model,
+      }) &&
+      modelProviderAllowedForOrgTier({
+        limitedFree1,
+        modelProviderType: fallbackPolicy.defaultProviderType,
       })
     ) {
       return {
@@ -253,6 +275,14 @@ export async function resolveModelSelectionPin(params: {
       return badRequestMessage("Unknown model provider for this workspace");
     }
     if (
+      !modelProviderAllowedForOrgTier({
+        limitedFree1,
+        modelProviderType: provider.type,
+      })
+    ) {
+      return insufficientCredits();
+    }
+    if (
       provider.type === "vm0" &&
       !isSupportedRunModel(modelSelection.selectedModel)
     ) {
@@ -293,6 +323,14 @@ export async function resolveModelSelectionPin(params: {
       modelProviderCredentialScope: null,
       selectedModel: modelSelection.selectedModel,
     };
+  }
+  if (
+    !modelProviderAllowedForOrgTier({
+      limitedFree1,
+      modelProviderType: policy.defaultProviderType,
+    })
+  ) {
+    return insufficientCredits();
   }
   return {
     modelProviderId: policy.modelProviderId ?? null,

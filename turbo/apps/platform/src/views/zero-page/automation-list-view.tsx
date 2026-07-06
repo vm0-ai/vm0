@@ -16,7 +16,6 @@ import {
   DropdownMenuItem,
 } from "@vm0/ui";
 import { LoadingSwitch } from "../components/loading-switch.tsx";
-import { Link } from "../router/link.tsx";
 import type { AutomationEntry } from "./automation-utils";
 import { emptyAutomationImg } from "./platform-assets.ts";
 
@@ -34,7 +33,6 @@ function AutomationListRow<T extends AutomationEntry>({
   onToggle,
   onDelete,
   onRunNow,
-  onOpenDetails,
 }: {
   entry: T;
   toggling: boolean;
@@ -45,59 +43,40 @@ function AutomationListRow<T extends AutomationEntry>({
   onToggle?: (entry: T, enabled: boolean) => void;
   onDelete?: (entry: T) => void;
   onRunNow?: (entry: T) => void;
-  onOpenDetails?: (entry: T) => void;
 }) {
   const dimmed = entry.enabled === false;
-  const clickable = !!onOpenDetails;
+  const instructionLabel = entry.description || entry.prompt;
+  const runsAtLabel = entry.timezone
+    ? `${entry.time} · ${entry.timezone.replace(/_/g, " ")}`
+    : entry.time;
 
   return (
     <tr
       className={cn(
         "border-b border-border/50 last:border-0 transition-colors",
-        clickable && "hover:bg-muted/25 cursor-pointer",
         dimmed && "opacity-75",
       )}
-      onClick={
-        clickable
-          ? () => {
-              return onOpenDetails(entry);
-            }
-          : undefined
-      }
     >
       {showAgent && (
         <td className="py-2.5 pr-2 align-middle w-[5rem]">
-          <span className="block min-w-0 truncate text-sm font-medium text-foreground">
+          <span
+            className="block min-w-0 truncate text-sm font-medium text-foreground"
+            title={agentLabel}
+          >
             {agentLabel}
           </span>
         </td>
       )}
       <td className="py-2.5 pr-4 align-middle min-w-0 max-w-[1px]">
-        {clickable ? (
-          <Link
-            pathname="/automations/:automationId"
-            options={{ pathParams: { automationId: entry.id } }}
-            aria-label={`Open automation ${entry.prompt}`}
-            onClick={(e) => {
-              e.stopPropagation();
-            }}
-            className={cn(
-              "text-sm text-foreground leading-snug block truncate whitespace-nowrap focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring rounded-sm",
-              dimmed && "text-muted-foreground",
-            )}
-          >
-            {entry.description || entry.prompt}
-          </Link>
-        ) : (
-          <span
-            className={cn(
-              "text-sm text-foreground leading-snug block truncate whitespace-nowrap",
-              dimmed && "text-muted-foreground",
-            )}
-          >
-            {entry.description || entry.prompt}
-          </span>
-        )}
+        <span
+          className={cn(
+            "text-sm text-foreground leading-snug block truncate whitespace-nowrap",
+            dimmed && "text-muted-foreground",
+          )}
+          title={instructionLabel}
+        >
+          {instructionLabel}
+        </span>
       </td>
       <td
         className={cn(
@@ -105,7 +84,10 @@ function AutomationListRow<T extends AutomationEntry>({
           dimmed && "text-muted-foreground/80",
         )}
       >
-        <span className="block min-w-0 truncate whitespace-nowrap leading-snug tabular-nums">
+        <span
+          className="block min-w-0 truncate whitespace-nowrap leading-snug tabular-nums"
+          title={runsAtLabel}
+        >
           {entry.time}
           {entry.timezone && (
             <span className="text-muted-foreground/70">
@@ -236,7 +218,6 @@ function AutomationListCard<T extends AutomationEntry>({
   onToggle,
   onDelete,
   onRunNow,
-  onOpenDetails,
 }: {
   entry: T;
   toggling: boolean;
@@ -247,31 +228,17 @@ function AutomationListCard<T extends AutomationEntry>({
   onToggle?: (entry: T, enabled: boolean) => void;
   onDelete?: (entry: T) => void;
   onRunNow?: (entry: T) => void;
-  onOpenDetails?: (entry: T) => void;
 }) {
   const dimmed = entry.enabled === false;
-  const clickable = !!onOpenDetails;
 
   return (
     <div
       className={cn(
         "relative flex items-center gap-2 px-5 py-3 border-b border-border/50 last:border-0 transition-colors",
-        clickable && "hover:bg-muted/25",
         dimmed && "opacity-75",
       )}
     >
-      {clickable && (
-        <Link
-          pathname="/automations/:automationId"
-          options={{ pathParams: { automationId: entry.id } }}
-          aria-label={`Open automation ${entry.prompt}`}
-          className="absolute inset-0 z-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring rounded-sm"
-        >
-          <span className="sr-only">Open automation {entry.prompt}</span>
-        </Link>
-      )}
-      {/* Left: text content — pointer-events disabled so clicks pass through to the Link overlay */}
-      <div className="min-w-0 flex-1 flex flex-col gap-0.5 pointer-events-none">
+      <div className="min-w-0 flex-1 flex flex-col gap-0.5">
         {showAgent && (
           <span className="block text-sm font-medium text-foreground truncate">
             {agentLabel}
@@ -301,8 +268,7 @@ function AutomationListCard<T extends AutomationEntry>({
         </span>
       </div>
 
-      {/* Right: toggle + more button — relative + z-10 so they sit above the link overlay */}
-      <div className="relative z-10 flex items-center gap-4 shrink-0">
+      <div className="relative flex items-center gap-4 shrink-0">
         {onToggle && (
           <LoadingSwitch
             checked={entry.enabled !== false}
@@ -339,7 +305,6 @@ export function AutomationListView<T extends AutomationEntry>({
   onDelete,
   onNew,
   onRunNow,
-  onOpenDetails,
 }: {
   entries: T[];
   togglingIds: Set<string>;
@@ -350,7 +315,6 @@ export function AutomationListView<T extends AutomationEntry>({
   onDelete?: (entry: T) => void;
   onNew?: () => void;
   onRunNow?: (entry: T) => void;
-  onOpenDetails?: (entry: T) => void;
 }) {
   if (entries.length === 0) {
     return (
@@ -404,7 +368,6 @@ export function AutomationListView<T extends AutomationEntry>({
               onToggle={onToggle}
               onDelete={onDelete}
               onRunNow={onRunNow}
-              onOpenDetails={onOpenDetails}
             />
           );
         })}
@@ -462,7 +425,6 @@ export function AutomationListView<T extends AutomationEntry>({
                   onToggle={onToggle}
                   onDelete={onDelete}
                   onRunNow={onRunNow}
-                  onOpenDetails={onOpenDetails}
                 />
               );
             })}

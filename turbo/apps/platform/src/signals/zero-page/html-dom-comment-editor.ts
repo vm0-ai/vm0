@@ -86,8 +86,10 @@ interface HtmlDomImageEdits {
 
 export interface HtmlDomCommentEditorModel {
   readonly activeColorPanelProperty: HtmlDomStyleProperty | null;
+  readonly activeFrameKey: number;
   readonly canApplyStyleEdits: boolean;
   readonly canAddComment: boolean;
+  readonly canDiscard: boolean;
   readonly canEditSelectedStyle: boolean;
   readonly canSend: boolean;
   readonly colorPopoverOffset: HtmlDomColorPopoverOffset;
@@ -103,6 +105,7 @@ export interface HtmlDomCommentEditorModel {
   readonly imageLinkValue: string;
   readonly imagePendingAction: HtmlDomImagePendingAction | null;
   readonly loadState: EditorLoadState;
+  readonly pendingFrameKey: number | null;
   readonly popoverTextAreaKey: string;
   readonly prepared: boolean;
   readonly selectedImage: HtmlDomSelectedImage | null;
@@ -203,6 +206,8 @@ const SUPPORTED_IMAGE_UPLOAD_CONTENT_TYPES = [
   "image/webp",
 ] as const;
 const internalLoadState$ = state<EditorLoadState>({ status: "loading" });
+const internalActiveFrameKey$ = state(0);
+const internalPendingFrameKey$ = state<number | null>(null);
 const internalStageElement$ = state<HTMLDivElement | null>(null);
 const internalIframeElement$ = state<HTMLIFrameElement | null>(null);
 const internalSelectedNodeIds$ = state<readonly string[]>([]);
@@ -1259,32 +1264,6 @@ function rgbChannelsToHex(red: number, green: number, blue: number): string {
     .toUpperCase()}`;
 }
 
-function restoreFrameDocumentHtml(params: {
-  readonly doc: Document;
-  readonly html: string;
-}): void {
-  const Parser = params.doc.defaultView?.DOMParser ?? DOMParser;
-  const parser = new Parser();
-  const nextDocument = parser.parseFromString(params.html, "text/html");
-  for (const attr of Array.from(params.doc.documentElement.attributes)) {
-    params.doc.documentElement.removeAttribute(attr.name);
-  }
-  for (const attr of Array.from(nextDocument.documentElement.attributes)) {
-    params.doc.documentElement.setAttribute(attr.name, attr.value);
-  }
-  params.doc.head.replaceChildren(
-    ...Array.from(nextDocument.head.childNodes, (node) => {
-      return params.doc.importNode(node, true);
-    }),
-  );
-  params.doc.body.replaceChildren(
-    ...Array.from(nextDocument.body.childNodes, (node) => {
-      return params.doc.importNode(node, true);
-    }),
-  );
-  installFrameStyles(params.doc);
-}
-
 function commentForSelectedNodes(params: {
   readonly comments: readonly HtmlDomEditComment[];
   readonly selectedNodeIds: readonly string[];
@@ -1295,6 +1274,32 @@ function commentForSelectedNodes(params: {
         return params.selectedNodeIds.includes(nodeId);
       });
     }) ?? null
+  );
+}
+
+function canDiscardHtmlDomEditorDraft(params: {
+  readonly comments: readonly HtmlDomEditComment[];
+  readonly commentText: string;
+  readonly editingCommentId: string | null;
+  readonly hasPendingImageEdits: boolean;
+  readonly hasPendingStyleEdits: boolean;
+  readonly imageBusy: boolean;
+  readonly loadState: EditorLoadState;
+  readonly submitting: boolean;
+}): boolean {
+  if (
+    params.loadState.status !== "ready" ||
+    params.submitting ||
+    params.imageBusy
+  ) {
+    return false;
+  }
+  return (
+    params.comments.length > 0 ||
+    params.hasPendingStyleEdits ||
+    params.hasPendingImageEdits ||
+    params.commentText.trim() !== "" ||
+    params.editingCommentId !== null
   );
 }
 
@@ -2173,6 +2178,8 @@ const resetHtmlDomCommentEditor$ = command(({ set }) => {
   set(cleanupCurrentFrameBinding$);
   set(resetHtmlDomImageEditSignal$);
   set(internalLoadState$, { status: "loading" });
+  set(internalActiveFrameKey$, 0);
+  set(internalPendingFrameKey$, null);
   set(internalStageElement$, null);
   set(internalIframeElement$, null);
   set(internalSelectedNodeIds$, []);
@@ -2224,13 +2231,15 @@ export const setHtmlDomCommentStageRef$ = onRef(
 );
 
 export const setHtmlDomCommentIframeRef$ = onRef(
-  command(({ set }, iframe: HTMLIFrameElement, signal: AbortSignal) => {
+  command(({ get, set }, iframe: HTMLIFrameElement, signal: AbortSignal) => {
     set(internalIframeElement$, iframe);
     signal.addEventListener(
       "abort",
       () => {
-        set(cleanupCurrentFrameBinding$);
-        set(internalIframeElement$, null);
+        if (get(internalIframeElement$) === iframe) {
+          set(cleanupCurrentFrameBinding$);
+          set(internalIframeElement$, null);
+        }
       },
       { once: true },
     );
@@ -2621,6 +2630,7 @@ function updateFrameSelectedNodeIds(params: {
 export const bindHtmlDomCommentFrame$ = command(
   ({ get, set }, iframe: HTMLIFrameElement) => {
     set(cleanupCurrentFrameBinding$);
+    set(internalIframeElement$, iframe);
 
     const doc = iframe.contentDocument;
     const stage = get(internalStageElement$);
@@ -2740,6 +2750,20 @@ export const bindHtmlDomCommentFrame$ = command(
       },
     });
     syncMarkers();
+  },
+);
+
+export const activatePendingHtmlDomCommentFrame$ = command(
+  (
+    { get, set },
+    params: { readonly frameKey: number; readonly iframe: HTMLIFrameElement },
+  ) => {
+    if (get(internalPendingFrameKey$) !== params.frameKey) {
+      return;
+    }
+    set(bindHtmlDomCommentFrame$, params.iframe);
+    set(internalActiveFrameKey$, params.frameKey);
+    set(internalPendingFrameKey$, null);
   },
 );
 
@@ -3163,15 +3187,44 @@ export const discardHtmlDomComments$ = command(({ get, set }) => {
   set(internalImageLinkOpen$, false);
   set(internalImageLinkValue$, "");
   set(internalImagePendingAction$, null);
-  if (readyLoadState.status === "ready" && doc) {
-    restoreFrameDocumentHtml({
-      doc,
-      html: readyLoadState.html,
-    });
+  if (readyLoadState.status === "ready") {
+    set(
+      internalPendingFrameKey$,
+      Math.max(
+        get(internalActiveFrameKey$),
+        get(internalPendingFrameKey$) ?? 0,
+      ) + 1,
+    );
   } else {
     syncFrameCommentMarkers(doc, []);
   }
   set(resetHtmlDomCommentDraft$);
+});
+
+export const clearHtmlDomCommentEditorDraft$ = command(({ get, set }) => {
+  const doc = currentFrameDocument(get(internalIframeElement$));
+  set(resetHtmlDomImageEditSignal$);
+  set(internalComments$, []);
+  set(internalCommentsOpen$, false);
+  set(internalCommentText$, "");
+  set(internalSelectedNodeIds$, []);
+  set(internalCommentPopoverAnchor$, null);
+  set(internalEditingCommentId$, null);
+  set(internalPreparedPayload$, null);
+  set(internalActiveColorPanelProperty$, null);
+  set(internalColorPopoverOffset$, { left: 0, top: 0 });
+  set(internalStyleEditsByNodeId$, {});
+  set(internalOriginalStylesByNodeId$, {});
+  set(internalImageEditsByNodeId$, {});
+  set(internalImageBusy$, false);
+  set(internalImageLinkOpen$, false);
+  set(internalImageLinkValue$, "");
+  set(internalImagePendingAction$, null);
+  syncFrameEditState(doc, {
+    hoveredNodeId: get(internalHoveredNodeId$),
+    selectedNodeIds: [],
+  });
+  syncFrameCommentMarkers(doc, []);
 });
 
 export const sendHtmlDomEditRequest$ = command(
@@ -3226,6 +3279,7 @@ export const sendHtmlDomEditRequest$ = command(
           html: draftHtml,
         });
         signal.throwIfAborted();
+        set(clearHtmlDomCommentEditorDraft$);
         toast.success("Edit draft applied");
         return;
       }
@@ -3336,6 +3390,8 @@ export const htmlDomCommentEditorModel$ = computed(
     const styleEditsByNodeId = get(internalStyleEditsByNodeId$);
     const imageEditsByNodeId = get(internalImageEditsByNodeId$);
     const imageBusy = get(internalImageBusy$);
+    const hasPendingStyleEdits = hasStyleEdits(styleEditsByNodeId);
+    const hasPendingImageEdits = hasImageEdits(imageEditsByNodeId);
     const doc = currentFrameDocument(get(internalIframeElement$));
     const editableStyleProperties = editableStylePropertiesForSelectedNodes({
       doc,
@@ -3348,11 +3404,11 @@ export const htmlDomCommentEditorModel$ = computed(
 
     return {
       activeColorPanelProperty: get(internalActiveColorPanelProperty$),
+      activeFrameKey: get(internalActiveFrameKey$),
       canApplyStyleEdits:
         loadState.status === "ready" &&
         comments.length === 0 &&
-        (hasStyleEdits(styleEditsByNodeId) ||
-          hasImageEdits(imageEditsByNodeId)) &&
+        (hasPendingStyleEdits || hasPendingImageEdits) &&
         !submitting &&
         !imageBusy,
       canAddComment: editingCommentId
@@ -3361,6 +3417,16 @@ export const htmlDomCommentEditorModel$ = computed(
           commentText.trim() !== "" &&
           !hasCommentForSelectedNodes({ comments, selectedNodeIds }) &&
           !imageBusy,
+      canDiscard: canDiscardHtmlDomEditorDraft({
+        comments,
+        commentText,
+        editingCommentId,
+        hasPendingImageEdits,
+        hasPendingStyleEdits,
+        imageBusy,
+        loadState,
+        submitting,
+      }),
       canEditSelectedStyle: editableStyleProperties.length > 0,
       canSend:
         loadState.status === "ready" &&
@@ -3380,6 +3446,7 @@ export const htmlDomCommentEditorModel$ = computed(
       imageLinkValue: get(internalImageLinkValue$),
       imagePendingAction: get(internalImagePendingAction$),
       loadState,
+      pendingFrameKey: get(internalPendingFrameKey$),
       popoverTextAreaKey: [
         selectedNodeIds.join(":"),
         editingCommentId ?? "new",

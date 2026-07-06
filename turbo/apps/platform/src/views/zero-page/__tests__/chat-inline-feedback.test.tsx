@@ -1,11 +1,12 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type {
   GenerationTemplateRequest,
   ModelSelectionRequest,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { PRESENTATION_TEMPLATE_PICKER_ITEMS } from "@vm0/core";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
   detachedSetupPage,
@@ -54,7 +55,14 @@ function selectTextForInlineFeedback(element: HTMLElement): void {
 
 function buttonByText(text: string): HTMLElement {
   const button = queryAllByRoleFast("button").find((candidate) => {
-    return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
+    const label = candidate.textContent?.replace(/\s+/g, " ").trim();
+    return (
+      label === text ||
+      label === `${text}C` ||
+      label === `${text} C` ||
+      label === `${text}F` ||
+      label === `${text} F`
+    );
   });
   if (!button) {
     throw new Error(`${text} button not found`);
@@ -67,6 +75,7 @@ describe("chat inline feedback", () => {
     const user = userEvent.setup({ delay: null });
     const assistantReply = "The rollout dates are unclear in this summary.";
     const sentPrompts: string[] = [];
+    const successToast = vi.spyOn(toast, "success");
     context.mocks.browser.clipboardWriteText();
 
     mockChatLifecycle(context, {
@@ -111,10 +120,15 @@ describe("chat inline feedback", () => {
     await user.click(buttonByText("Copy"));
 
     await waitFor(() => {
-      expect(screen.getByText("Copied")).toBeInTheDocument();
+      expect(screen.queryByText("Provide feedback")).not.toBeInTheDocument();
     });
+    expect(successToast).toHaveBeenCalledWith("Copied");
+    successToast.mockRestore();
 
     selectTextForInlineFeedback(assistantReplyElement);
+    await waitFor(() => {
+      expect(screen.getByText("Provide feedback")).toBeInTheDocument();
+    });
     await user.click(buttonByText("Provide feedback"));
 
     const feedbackComment = await screen.findByPlaceholderText(
@@ -307,10 +321,6 @@ describe("chat inline feedback", () => {
             templateId: template.templateId,
             previewUrl: template.embedUrl,
           },
-        },
-        modelSelection: {
-          modelProviderId: "00000000-0000-4000-8000-000000000000",
-          selectedModel: "claude-sonnet-4-6",
         },
       });
     });

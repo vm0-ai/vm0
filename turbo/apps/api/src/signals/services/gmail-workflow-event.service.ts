@@ -48,6 +48,7 @@ import {
 } from "./zero-workflow-trigger-run.service";
 import { workflowTriggerCanFire } from "./zero-workflow-trigger-access.service";
 import { ensureWorkflowUserTriggerThread } from "./zero-workflow-user-trigger-thread.service";
+import { enqueueGmailRelationshipRefreshJob } from "./relationship-memory-gmail-queue.service";
 
 const log = logger("api:gmail-workflow-event");
 
@@ -150,6 +151,7 @@ const gmailMessageSchema = z.object({
   id: z.string(),
   threadId: z.string().optional(),
   labelIds: z.array(z.string()).optional(),
+  internalDate: z.string().optional(),
   payload: gmailMessagePartSchema.optional(),
 });
 
@@ -234,6 +236,7 @@ interface GmailMessageContext {
   readonly messageId: string;
   readonly threadId: string | null;
   readonly labelIds: readonly string[];
+  readonly occurredAt: string | null;
   readonly from: string | null;
   readonly to: readonly string[];
   readonly cc: readonly string[];
@@ -448,7 +451,7 @@ async function refreshGmailAccessToken(args: {
   };
 }
 
-async function resolveGmailAccess(args: {
+export async function resolveGmailAccess(args: {
   readonly db: Db;
   readonly orgId: string;
   readonly userId: string;
@@ -815,6 +818,22 @@ function firstHeaderValue(
   return headerValues(headers, name)[0] ?? null;
 }
 
+function gmailMessageOccurredAt(
+  internalDate: string | undefined,
+): string | null {
+  if (internalDate) {
+    const millis = Number(internalDate);
+    if (Number.isFinite(millis)) {
+      const date = new Date(millis);
+      if (!Number.isNaN(date.getTime())) {
+        return date.toISOString();
+      }
+    }
+  }
+
+  return null;
+}
+
 function decodeGmailBodyData(data: string): string {
   return Buffer.from(
     data.replaceAll("-", "+").replaceAll("_", "/"),
@@ -846,7 +865,7 @@ function collectBodyText(part: GmailMessagePart | undefined): string {
     .join("\n");
 }
 
-function messageIsInbound(message: GmailMessageContext): boolean {
+export function messageIsInbound(message: GmailMessageContext): boolean {
   const labels = new Set(message.labelIds);
   if (!labels.has("INBOX")) {
     return false;
@@ -888,17 +907,35 @@ async function fetchGmailMessageContext(args: {
   );
   return {
     messageId: result.value.id,
-    threadId: result.value.threadId ?? args.event.threadId,
-    labelIds:
-      result.value.labelIds && result.value.labelIds.length > 0
-        ? result.value.labelIds
-        : args.event.labelIds,
+    threadId: result.value.threadId ?? null,
+    labelIds: result.value.labelIds ?? [],
+    occurredAt: gmailMessageOccurredAt(result.value.internalDate),
     from: firstHeaderValue(headers, "From"),
     to: headerValues(headers, "To"),
     cc: headerValues(headers, "Cc"),
     subject: firstHeaderValue(headers, "Subject"),
     bodyText: bodyText.length > 0 ? bodyText : null,
   };
+}
+
+export async function fetchGmailMessageContextById(args: {
+  readonly accessToken: string;
+  readonly messageId: string;
+  readonly threadId: string | null;
+  readonly labelIds: readonly string[];
+  readonly historyId?: string;
+  readonly signal: AbortSignal;
+}): Promise<GmailMessageContext | null> {
+  return await fetchGmailMessageContext({
+    accessToken: args.accessToken,
+    event: {
+      historyId: args.historyId ?? args.messageId,
+      messageId: args.messageId,
+      threadId: args.threadId,
+      labelIds: args.labelIds,
+    },
+    signal: args.signal,
+  });
 }
 
 function includesIgnoreCase(haystack: string, needle: string): boolean {
@@ -1516,6 +1553,44 @@ async function dispatchGmailNewMessageHistoryEvent(args: {
   );
   if (!message || !messageIsInbound(message)) {
     return { kind: "ok", dispatched: 0, duplicates: 0 };
+  }
+
+  if (message.occurredAt) {
+    const relationshipJob = await settle(
+      enqueueGmailRelationshipRefreshJob(args.db, {
+        orgId: args.state.orgId,
+        userId: args.state.userId,
+        connectorId: args.state.connectorId,
+        message: {
+          mailboxEmail: args.decoded.emailAddress,
+          historyId: args.event.historyId,
+          messageId: message.messageId,
+          threadId: message.threadId,
+          occurredAt: message.occurredAt,
+          direction: "received",
+          from: message.from,
+          to: message.to,
+          cc: message.cc,
+          subject: message.subject,
+          bodyText: message.bodyText,
+        },
+      }),
+    );
+    if (!relationshipJob.ok) {
+      log.warn("Failed to enqueue Gmail relationship memory refresh", {
+        watchStateId: args.state.id,
+        messageId: message.messageId,
+        error:
+          relationshipJob.error instanceof Error
+            ? relationshipJob.error.message
+            : String(relationshipJob.error),
+      });
+    }
+  } else {
+    log.warn("Skipped Gmail relationship memory refresh without message time", {
+      watchStateId: args.state.id,
+      messageId: message.messageId,
+    });
   }
 
   let dispatched = 0;

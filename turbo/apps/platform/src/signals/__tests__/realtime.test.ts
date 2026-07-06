@@ -97,31 +97,22 @@ function unexpectedDataSourceCall(name: string): never {
   throw new Error(`Unexpected data source call: ${name}`);
 }
 
-function createFailingSubscribeDataSource(
-  threadId: string,
-): ChatThreadDataSource {
+function createFailingSubscribeDataSource(): ChatThreadDataSource {
   const thread: ChatThread = {
-    id: threadId,
-    title: null,
-    agentId: "agent-1",
-    activeRunIds: [],
-    createdAt: "2026-07-01T00:00:00Z",
-    updatedAt: "2026-07-01T00:00:00Z",
-    lastReadMessageId: null,
     lastReadAt: null,
-    lastMessageAt: "2026-07-01T00:00:00Z",
-    isLegacySession: false,
-    draftContent: null,
-    draftAttachments: null,
-    modelProviderId: null,
-    selectedModel: null,
     codexServiceTier: null,
     computerUseHostId: null,
   };
 
   return {
-    getThread$: computed(() => {
+    remoteThreadDetail$: computed(() => {
       return Promise.resolve(thread);
+    }),
+    threadDraft$: computed(() => {
+      return Promise.resolve({
+        draftContent: null,
+        draftAttachments: null,
+      });
     }),
     reloadThread$: command(() => {}),
     initialPage$: computed(() => {
@@ -638,7 +629,7 @@ describe("realtime signals", () => {
     const signals = createChatThreadSignals(
       threadId,
       createDraftSignals(),
-      createFailingSubscribeDataSource(threadId),
+      createFailingSubscribeDataSource(),
     );
 
     await context.store.set(setupRealtime$, context.signal);

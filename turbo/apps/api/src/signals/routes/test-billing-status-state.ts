@@ -211,10 +211,30 @@ async function seedOrgForAction(
   body: BillingStatusAction<"seed-org">,
   signal: AbortSignal,
 ) {
-  const orgId = `org_${randomUUID()}`;
-  const userId = `user_${randomUUID()}`;
+  const orgId = body.org_id ?? `org_${randomUUID()}`;
+  const userId = body.user_id ?? `user_${randomUUID()}`;
+  const values = orgMetadataSeedValues(orgId, body);
 
-  await db.insert(orgMetadata).values(orgMetadataSeedValues(orgId, body));
+  await db
+    .insert(orgMetadata)
+    .values(values)
+    .onConflictDoUpdate({
+      target: orgMetadata.orgId,
+      set: {
+        credits: values.credits,
+        onboardingPaymentPending: values.onboardingPaymentPending,
+        tier: values.tier,
+        stripeCustomerId: values.stripeCustomerId,
+        stripeSubscriptionId: values.stripeSubscriptionId,
+        subscriptionStatus: values.subscriptionStatus,
+        currentPeriodEnd: values.currentPeriodEnd,
+        cancelAtPeriodEnd: values.cancelAtPeriodEnd,
+        pendingSubscriptionScheduleId: values.pendingSubscriptionScheduleId,
+        pendingSubscriptionTargetTier: values.pendingSubscriptionTargetTier,
+        pendingSubscriptionChangeAt: values.pendingSubscriptionChangeAt,
+        updatedAt: nowDate(),
+      },
+    });
   signal.throwIfAborted();
 
   await grantExtraCredits(db, orgId, body.extra_granted_credits, signal);

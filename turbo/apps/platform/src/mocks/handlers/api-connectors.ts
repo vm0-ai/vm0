@@ -4,6 +4,7 @@ import {
   type ConnectorAuthMethodId,
   type ConnectorType,
   CONNECTOR_TYPES,
+  connectorDisplayCategoryMetadataForItems,
 } from "@vm0/connectors/connectors";
 import type {
   ConnectorExternalCodeSessionStartResponse,
@@ -16,6 +17,7 @@ import {
   type PublicConnectorCatalogAuthMethodDetail,
   type PublicConnectorCatalogConnection,
   type PublicConnectorCatalogConnectionStatus,
+  type PublicConnectorCatalogPermissionDetail,
   type PublicConnectorCatalogPermissionSummary,
   type PublicConnectorCatalogStatusItem,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
@@ -37,11 +39,15 @@ import {
   hasRequiredConnectorAuthMethodScopes,
   type ConnectorFeatureStates,
 } from "@vm0/connectors/connector-utils";
-import { getFirewallPermissionSummary } from "@vm0/connectors/firewall-metadata";
+import {
+  getFirewallPermissionSummary,
+  loadFirewallPermissionMetadata,
+} from "@vm0/connectors/firewall-metadata";
 import { getAllFeatureStates } from "@vm0/core/feature-switch";
 import { mockApi } from "../msw-contract.ts";
 
 const FEATURE_SWITCH_CACHE_KEY = "vm0:feature-switch-cache:v1";
+const MOCK_CONNECTOR_TYPE_SET = new Set<string>(CONNECTOR_TYPE_KEYS);
 
 let mockConnectors: ConnectorResponse[] = [];
 type MockOauthDeviceAuthSessionStartResponse = Omit<
@@ -182,6 +188,10 @@ function mockFeatureStates(): ConnectorFeatureStates {
     : getAllFeatureStates({});
 }
 
+function isMockConnectorType(type: string): type is ConnectorType {
+  return MOCK_CONNECTOR_TYPE_SET.has(type);
+}
+
 function mockPermissionSummary(
   type: ConnectorType,
 ): PublicConnectorCatalogPermissionSummary {
@@ -191,6 +201,63 @@ function mockPermissionSummary(
     permissionCount: summary?.permissionCount ?? 0,
     hasCategories: summary?.hasCategories ?? false,
     hasDefaultPolicyOverrides: summary?.hasDefaultPolicyOverrides ?? false,
+  };
+}
+
+async function mockPermissionDetail(
+  connectorRef: string,
+): Promise<PublicConnectorCatalogPermissionDetail | null> {
+  if (!isMockConnectorType(connectorRef)) {
+    return null;
+  }
+
+  const authMethods = getAvailableConnectorAuthMethodIds(
+    connectorRef,
+    mockFeatureStates(),
+    { apiAuthMethodPolicy: "include" },
+  );
+  if (authMethods.length === 0) {
+    return null;
+  }
+
+  const metadata = await loadFirewallPermissionMetadata(connectorRef);
+  if (!metadata) {
+    return null;
+  }
+
+  return {
+    connectorRef,
+    label: metadata.label,
+    permissionCount: metadata.permissionCount,
+    permissions: metadata.permissions.map((permission) => {
+      return {
+        name: permission.name,
+        ...(permission.description
+          ? { description: permission.description }
+          : {}),
+      };
+    }),
+    categories: metadata.categories
+      ? {
+          categories: { ...metadata.categories.categories },
+          displayOrder: [...metadata.categories.displayOrder],
+        }
+      : null,
+    defaultPolicy: {
+      permissionDefault: metadata.defaultPolicy.permissionDefault,
+      ...(metadata.defaultPolicy.permissionOverrides
+        ? {
+            permissionOverrides: Object.fromEntries(
+              Object.entries(metadata.defaultPolicy.permissionOverrides).map(
+                ([policy, permissions]) => {
+                  return [policy, [...permissions]];
+                },
+              ),
+            ),
+          }
+        : {}),
+      unknownPolicy: metadata.defaultPolicy.unknownPolicy,
+    },
   };
 }
 
@@ -369,8 +436,25 @@ export const apiConnectorsHandlers = [
   }),
 
   mockApi(zeroConnectorCatalogContract.status, ({ respond }) => {
-    return respond(200, { connectors: mockConnectorCatalogStatus() });
+    const connectors = mockConnectorCatalogStatus();
+    return respond(200, {
+      connectors,
+      categoryMetadata: connectorDisplayCategoryMetadataForItems(connectors),
+    });
   }),
+
+  mockApi(
+    zeroConnectorCatalogContract.permissions,
+    async ({ params, respond }) => {
+      const permissions = await mockPermissionDetail(params.connectorRef);
+      if (!permissions) {
+        return respond(404, {
+          error: { message: "Connector not found", code: "NOT_FOUND" },
+        });
+      }
+      return respond(200, { permissions });
+    },
+  ),
 
   mockApi(zeroConnectorsByTypeContract.delete, ({ params, respond }) => {
     const type = params.type as string;

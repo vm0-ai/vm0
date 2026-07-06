@@ -395,7 +395,7 @@ export const zeroWorkflowWebhookReceivedTriggerSummarySchema =
     eventConfig: webhookReceivedEventConfigSchema,
     schedule: z.null(),
     scheduleSummary: z.null(),
-    webhookUrl: z.url(),
+    webhookUrl: z.url().optional(),
     secretLastFour: z.string().length(4),
     lastReceivedAt: z.string().datetime().nullable(),
     webhookSecret: z.string().min(1).optional(),
@@ -914,6 +914,14 @@ export const zeroWorkflowVisibilityContract = c.router({
 const triggerIdParams = z.object({ id: z.string().uuid() });
 const chatThreadIdParams = z.object({ threadId: z.string().min(1) });
 
+export const zeroWorkflowWebhookSecretResponseSchema = z.object({
+  webhookUrl: z.url(),
+  webhookSecret: z.string().min(1),
+});
+export type ZeroWorkflowWebhookSecretResponse = z.infer<
+  typeof zeroWorkflowWebhookSecretResponseSchema
+>;
+
 export const zeroWorkflowTriggersContract = c.router({
   listWorkspace: {
     method: "GET",
@@ -1055,6 +1063,20 @@ export const zeroWorkflowTriggersContract = c.router({
       409: apiErrorSchema,
     },
     summary: "Run a workflow trigger immediately in its bound chat thread",
+  },
+  revealWebhookSecret: {
+    method: "POST",
+    path: "/api/zero/workflow-triggers/:id/webhook-secret",
+    headers: authHeadersSchema,
+    pathParams: triggerIdParams,
+    body: c.noBody(),
+    responses: {
+      200: zeroWorkflowWebhookSecretResponseSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Reveal the webhook URL and signing secret for a workflow trigger",
   },
 });
 

@@ -165,8 +165,19 @@ def _has_unicode_control_chars(value: str) -> bool:
     return any(category(char).startswith(_UNICODE_CONTROL_CATEGORY_PREFIX) for char in value)
 
 
-def _normalize_hostname_dots(host: str) -> str:
-    normalized = host.translate(_IDNA_DOT_TRANSLATION)
+def translate_idna_dot_separators(host: str) -> str:
+    """Translate IDNA dot separators to ASCII dots without validating the host."""
+    return host.translate(_IDNA_DOT_TRANSLATION)
+
+
+def normalize_hostname_separators(host: str) -> str:
+    """Normalize hostname separators without normalizing individual IDNA labels.
+
+    This helper only translates IDNA dot separators and removes one optional
+    trailing dot. It is not a hostname validator; callers that need host identity
+    checks must still use ``normalize_idna_hostname()``.
+    """
+    normalized = translate_idna_dot_separators(host)
     if normalized.endswith("."):
         normalized = normalized[:-1]
         if not normalized or normalized.endswith("."):
@@ -429,7 +440,7 @@ def normalize_idna_hostname(host: str) -> str:
     that would obscure host identity, including folds to plain ASCII labels such
     as fullwidth Latin text.
     """
-    normalized = _normalize_hostname_dots(host)
+    normalized = normalize_hostname_separators(host)
     if not normalized:
         raise ValueError("empty hostname")
     if _is_ipv4_literal_like(normalized):

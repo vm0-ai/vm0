@@ -40,8 +40,7 @@ import {
   defaultAgentName$,
 } from "../../signals/agent.ts";
 import {
-  pinnedAgentIds$,
-  updatePinnedAgentIds$,
+  setAgentPinned$,
   pinnedAgents$,
 } from "../../signals/zero-page/zero-pinned-agents.ts";
 import {
@@ -67,8 +66,7 @@ function PinnedAgentSideDecorator({
   isPrimarySelected: boolean;
   hasUnread: boolean;
 }) {
-  const pinnedIds = useLastResolved(pinnedAgentIds$) ?? [];
-  const [pinLoadable, savePinnedIds] = useLoadableSet(updatePinnedAgentIds$);
+  const [pinLoadable, saveAgentPinned] = useLoadableSet(setAgentPinned$);
   const [markReadLoadable, markAgentThreadsRead] = useLoadableSet(
     markAgentThreadsRead$,
   );
@@ -77,10 +75,10 @@ function PinnedAgentSideDecorator({
   const pageSignal = useGet(pageSignal$);
 
   function unpinAgent() {
-    const next = pinnedIds.filter((id): id is string => {
-      return id !== null && id !== agentId;
-    });
-    detach(savePinnedIds(next, pageSignal), Reason.DomCallback);
+    detach(
+      saveAgentPinned({ agentId, pinned: false }, pageSignal),
+      Reason.DomCallback,
+    );
   }
 
   function markAllRead() {
@@ -146,6 +144,12 @@ function AgentListDialogContainer() {
     });
     setExpanded(false);
   };
+  const openChatThread = (threadId: string) => {
+    navigate("/chats/:threadId", {
+      pathParams: { threadId },
+    });
+    setExpanded(false);
+  };
   return (
     <AgentListDialog
       open={open}
@@ -153,6 +157,7 @@ function AgentListDialogContainer() {
       displayName={displayName}
       subagents={subagents}
       onSelectChatAgent={openAgentChat}
+      onSelectChatThread={openChatThread}
     />
   );
 }

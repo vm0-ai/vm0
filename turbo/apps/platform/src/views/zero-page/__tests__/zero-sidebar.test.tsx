@@ -11,10 +11,10 @@ import {
   chatThreadRenameContract,
   chatThreadUnpinContract,
   chatThreadsContract,
+  type ChatThreadListItem,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
-import { automationsMainContract } from "@vm0/api-contracts/contracts/automations";
 
 import {
   click,
@@ -24,10 +24,12 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { createMockAutomationView } from "../../../mocks/handlers/automations-store.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { pathname } from "../../../signals/location.ts";
 import {
-  PLACEHOLDER,
-  splitChatThreadListResponse,
-} from "./chat-test-helpers.ts";
+  CHAT_THREAD_VIRTUAL_ROW_HEIGHT,
+  getChatThreadVirtualListScrollMargin,
+} from "../../../signals/zero-page/zero-sidebar-state.ts";
+import { PLACEHOLDER } from "./chat-test-helpers.ts";
 
 const context = testContext();
 
@@ -40,7 +42,7 @@ const AUTOMATION_THREAD_ID = "b0000000-0000-4000-a000-000000000003";
 const ARCHIVED_THREAD_ID = "b0000000-0000-4000-a000-000000000004";
 const RESEARCH_THREAD_ID = "b0000000-0000-4000-a000-000000000005";
 
-type SidebarThread = Parameters<typeof splitChatThreadListResponse>[0][number];
+type SidebarThread = ChatThreadListItem;
 
 function prepareDefaultAgent(): void {
   context.mocks.data.team([
@@ -131,6 +133,41 @@ function createThread(
   };
 }
 
+function mockChatThreadSnapshot(threads: () => readonly SidebarThread[]): void {
+  context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
+    const snapshotThreads = threads();
+    return respond(200, {
+      chatThreads: snapshotThreads.map((thread, index) => {
+        return {
+          id: thread.id,
+          agentId: thread.agent.id,
+          title: thread.title,
+          sortAt: new Date(
+            Date.parse("2026-03-10T00:00:00Z") +
+              (snapshotThreads.length - index) * 1000,
+          ).toISOString(),
+          createdAt: thread.createdAt,
+          updatedAt: thread.updatedAt,
+          pinnedAt: thread.pinnedAt ?? null,
+          renamedAt: thread.renamedAt ?? null,
+          selectedModel: null,
+        };
+      }),
+      latestEventId: null,
+    });
+  });
+  context.mocks.api(chatThreadsContract.events, ({ respond }) => {
+    return respond(200, { events: [], hasMore: false });
+  });
+  context.mocks.api(chatThreadsContract.activeIds, ({ respond }) => {
+    return respond(200, {
+      threadIds: threads().flatMap((thread) => {
+        return thread.running ? [thread.id] : [];
+      }),
+    });
+  });
+}
+
 function menuItemByText(text: string): HTMLElement {
   const item = queryMenuItemByText(text);
   if (!item) {
@@ -162,6 +199,12 @@ function buttonByText(
 
 function sidebar(): HTMLElement {
   return screen.getByRole("navigation", { name: "Sidebar" });
+}
+
+function setupSidebarPage(
+  options: Parameters<typeof detachedSetupPage>[0],
+): void {
+  detachedSetupPage(options);
 }
 
 function threadRowByTitle(title: string): HTMLElement {
@@ -230,47 +273,20 @@ function openChatListMenu(): void {
 function mockSidebarThreadStory(
   firstPageThreads: SidebarThread[],
   extraThreads: SidebarThread[] = [],
-  options: {
-    readonly detailTitles?: Readonly<Record<string, string | null>>;
-  } = {},
 ): {
   threads: SidebarThread[];
 } {
   let threads = [...firstPageThreads];
 
-  context.mocks.api(chatThreadsContract.list, ({ query, respond }) => {
-    if (query.cursor === "next-page") {
-      return respond(200, {
-        pinned: [],
-        threads: extraThreads,
-        hasMore: false,
-        nextCursor: null,
-      });
-    }
-    return respond(200, {
-      ...splitChatThreadListResponse(threads),
-      hasMore: extraThreads.length > 0,
-      nextCursor: extraThreads.length > 0 ? "next-page" : null,
-    });
+  mockChatThreadSnapshot(() => {
+    return [...threads, ...extraThreads];
   });
-  context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
-    const thread = [...threads, ...extraThreads].find((candidate) => {
-      return candidate.id === params.id;
-    });
-    const detailTitle = Object.hasOwn(options.detailTitles ?? {}, params.id)
-      ? options.detailTitles?.[params.id]
-      : thread?.title;
+
+  context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
     return respond(200, {
-      id: params.id,
-      title: detailTitle ?? null,
-      agentId: thread?.agent.id ?? AGENT_ID,
-      activeRunIds: [],
-      draftContent: null,
-      draftAttachments: null,
-      createdAt: "2026-03-10T00:00:00Z",
-      updatedAt: "2026-03-10T00:00:00Z",
-      lastMessageAt: thread?.updatedAt ?? "2026-03-10T00:00:00Z",
-      pinnedAt: thread?.pinnedAt ?? null,
+      lastReadAt: null,
+      computerUseHostId: null,
+      codexServiceTier: null,
     });
   });
   context.mocks.api(chatThreadPinContract.pin, ({ params, respond }) => {
@@ -316,21 +332,18 @@ describe("zero sidebar", () => {
   it("keeps known threads visible while creating a new chat", async () => {
     prepareDefaultAgent();
     const createDeferred = context.mocks.deferred<void>();
-
-    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-      return respond(
-        200,
-        splitChatThreadListResponse([
-          {
-            id: EXISTING_THREAD_ID,
-            title: "Existing conversation",
-            agent: { id: AGENT_ID, avatarUrl: null },
-            createdAt: "2026-03-10T00:00:00Z",
-            updatedAt: "2026-03-10T00:00:00Z",
-            running: false,
-          },
-        ]),
-      );
+    const threads = [
+      {
+        id: EXISTING_THREAD_ID,
+        title: "Existing conversation",
+        agent: { id: AGENT_ID, avatarUrl: null },
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-10T00:00:00Z",
+        running: false,
+      },
+    ];
+    mockChatThreadSnapshot(() => {
+      return threads;
     });
     context.mocks.api(chatThreadsContract.create, async ({ body, respond }) => {
       await createDeferred.promise;
@@ -340,21 +353,15 @@ describe("zero sidebar", () => {
         createdAt: "2026-03-10T00:00:00Z",
       });
     });
-    context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
+    context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
-        id: params.id,
-        title:
-          params.id === EXISTING_THREAD_ID ? "Existing conversation" : null,
-        agentId: AGENT_ID,
-        activeRunIds: [],
-        draftContent: null,
-        draftAttachments: null,
-        createdAt: "2026-03-10T00:00:00Z",
-        updatedAt: "2026-03-10T00:00:00Z",
+        lastReadAt: null,
+        computerUseHostId: null,
+        codexServiceTier: null,
       });
     });
 
-    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
     const newChatButton = await waitFor(() => {
       expect(screen.getByText("Existing conversation")).toBeInTheDocument();
@@ -376,6 +383,57 @@ describe("zero sidebar", () => {
     });
 
     createDeferred.resolve();
+  });
+
+  it("renders event-sourced sidebar threads while active run ids are pending", async () => {
+    prepareDefaultAgent();
+    let activeIdsRequests = 0;
+
+    context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
+      return respond(200, {
+        chatThreads: [
+          {
+            id: EXISTING_THREAD_ID,
+            agentId: AGENT_ID,
+            title: "Event-sourced conversation",
+            sortAt: "2026-03-10T00:00:00Z",
+            createdAt: "2026-03-10T00:00:00Z",
+            updatedAt: "2026-03-10T00:00:00Z",
+            pinnedAt: null,
+            renamedAt: null,
+            selectedModel: null,
+          },
+        ],
+        latestEventId: null,
+      });
+    });
+    context.mocks.api(chatThreadsContract.events, ({ respond }) => {
+      return respond(200, { events: [], hasMore: false });
+    });
+    context.mocks.api(chatThreadsContract.activeIds, ({ never }) => {
+      activeIdsRequests += 1;
+      return never();
+    });
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    await waitFor(() => {
+      expect(
+        within(sidebar()).getByText("Event-sourced conversation"),
+      ).toBeInTheDocument();
+      expect(
+        sidebar().querySelectorAll('[data-testid="sidebar-skeleton"]'),
+      ).toHaveLength(0);
+      expect(activeIdsRequests).toBe(1);
+    });
+    expect(
+      within(threadRowByTitle("Event-sourced conversation")).queryByLabelText(
+        "Running",
+      ),
+    ).not.toBeInTheDocument();
   });
 
   it("preserves server thread order while creating an optimistic new chat", async () => {
@@ -410,9 +468,8 @@ describe("zero sidebar", () => {
         pinnedAt: null,
       },
     ];
-
-    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, splitChatThreadListResponse(serverOrderedThreads));
+    mockChatThreadSnapshot(() => {
+      return serverOrderedThreads;
     });
     context.mocks.api(chatThreadsContract.create, async ({ body, respond }) => {
       await createDeferred.promise;
@@ -422,23 +479,15 @@ describe("zero sidebar", () => {
         createdAt: "2026-03-12T12:00:00Z",
       });
     });
-    context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
-      const thread = serverOrderedThreads.find((candidate) => {
-        return candidate.id === params.id;
-      });
+    context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
-        id: params.id,
-        title: thread?.title ?? null,
-        agentId: AGENT_ID,
-        activeRunIds: [],
-        draftContent: null,
-        draftAttachments: null,
-        createdAt: thread?.createdAt ?? "2026-03-12T12:00:00Z",
-        updatedAt: thread?.updatedAt ?? "2026-03-12T12:00:00Z",
+        lastReadAt: null,
+        computerUseHostId: null,
+        codexServiceTier: null,
       });
     });
 
-    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
     const newChatButton = await waitFor(() => {
       expect(
@@ -478,21 +527,18 @@ describe("zero sidebar", () => {
     const artifactUrl = encodeURIComponent(
       "https://cdn.vm7.io/artifacts/test/archive.zip",
     );
-
-    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-      return respond(
-        200,
-        splitChatThreadListResponse([
-          {
-            id: EXISTING_THREAD_ID,
-            title: "Existing conversation",
-            agent: { id: AGENT_ID, avatarUrl: null },
-            createdAt: "2026-03-10T00:00:00Z",
-            updatedAt: "2026-03-10T00:00:00Z",
-            running: false,
-          },
-        ]),
-      );
+    const threads = [
+      {
+        id: EXISTING_THREAD_ID,
+        title: "Existing conversation",
+        agent: { id: AGENT_ID, avatarUrl: null },
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-10T00:00:00Z",
+        running: false,
+      },
+    ];
+    mockChatThreadSnapshot(() => {
+      return threads;
     });
     context.mocks.api(chatThreadsContract.create, ({ body, respond }) => {
       return respond(201, {
@@ -504,21 +550,15 @@ describe("zero sidebar", () => {
     context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
       return respond(200, { runs: [] });
     });
-    context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
+    context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
-        id: params.id,
-        title:
-          params.id === EXISTING_THREAD_ID ? "Existing conversation" : null,
-        agentId: AGENT_ID,
-        activeRunIds: [],
-        draftContent: null,
-        draftAttachments: null,
-        createdAt: "2026-03-10T00:00:00Z",
-        updatedAt: "2026-03-10T00:00:00Z",
+        lastReadAt: null,
+        computerUseHostId: null,
+        codexServiceTier: null,
       });
     });
 
-    detachedSetupPage({
+    setupSidebarPage({
       context,
       path: `/chats/${EXISTING_THREAD_ID}?artifact=${artifactUrl}`,
     });
@@ -542,7 +582,7 @@ describe("zero sidebar", () => {
     });
   });
 
-  it("requests unread chat threads and keeps the current chat at the front of the unpinned section", async () => {
+  it("requests unread chat threads and filters the event-sourced list", async () => {
     prepareDefaultAgent();
     const pinnedUnreadThread = createThread(
       AUTOMATION_THREAD_ID,
@@ -554,49 +594,26 @@ describe("zero sidebar", () => {
     const currentThread = createThread(EXISTING_THREAD_ID, "Release plan");
     const unreadThread = createThread(INCIDENT_THREAD_ID, "Incident notes");
     const archivedThread = createThread(ARCHIVED_THREAD_ID, "Archived context");
-    const listQueries: unknown[] = [];
+    const allThreads = [
+      pinnedUnreadThread,
+      currentThread,
+      unreadThread,
+      archivedThread,
+    ];
+    let unreadsRequests = 0;
 
-    context.mocks.api(chatThreadsContract.list, ({ query, respond }) => {
-      listQueries.push(query);
-      if (query.filter === "unread") {
-        return respond(
-          200,
-          splitChatThreadListResponse([pinnedUnreadThread, unreadThread]),
-        );
-      }
-      return respond(
-        200,
-        splitChatThreadListResponse([
-          pinnedUnreadThread,
-          currentThread,
-          unreadThread,
-          archivedThread,
-        ]),
-      );
+    mockChatThreadSnapshot(() => {
+      return allThreads;
     });
-    context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
-      const thread = [
-        pinnedUnreadThread,
-        currentThread,
-        unreadThread,
-        archivedThread,
-      ].find((candidate) => {
-        return candidate.id === params.id;
-      });
+    context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
-        id: params.id,
-        title: thread?.title ?? null,
-        agentId: thread?.agent.id ?? AGENT_ID,
-        activeRunIds: [],
-        draftContent: null,
-        draftAttachments: null,
-        createdAt: "2026-03-10T00:00:00Z",
-        updatedAt: "2026-03-10T00:00:00Z",
-        lastMessageAt: thread?.updatedAt ?? "2026-03-10T00:00:00Z",
-        pinnedAt: thread?.pinnedAt ?? null,
+        lastReadAt: null,
+        computerUseHostId: null,
+        codexServiceTier: null,
       });
     });
     context.mocks.api(chatThreadsContract.unreads, ({ respond }) => {
+      unreadsRequests += 1;
       return respond(200, {
         unreads: [
           {
@@ -608,7 +625,7 @@ describe("zero sidebar", () => {
       });
     });
 
-    detachedSetupPage({
+    setupSidebarPage({
       context,
       path: `/chats/${EXISTING_THREAD_ID}`,
       featureSwitches: { [FeatureSwitchKey.AgentUnreadIndicators]: true },
@@ -627,16 +644,13 @@ describe("zero sidebar", () => {
     fireEvent.keyDown(document.body, { key: "Escape" });
 
     await waitFor(() => {
-      expect(listQueries).toContainEqual(
-        expect.objectContaining({ filter: "unread" }),
-      );
+      expect(unreadsRequests).toBeGreaterThan(0);
       expect(
-        visibleThreadTitles([
-          "Pinned incident",
-          "Release plan",
-          "Incident notes",
-        ]),
-      ).toStrictEqual(["Pinned incident", "Release plan", "Incident notes"]);
+        visibleThreadTitles(["Pinned incident", "Incident notes"]),
+      ).toStrictEqual(["Pinned incident", "Incident notes"]);
+      expect(
+        within(sidebar()).queryByText("Release plan"),
+      ).not.toBeInTheDocument();
       expect(
         within(sidebar()).queryByText("Archived context"),
       ).not.toBeInTheDocument();
@@ -650,7 +664,11 @@ describe("zero sidebar", () => {
       return respond(200, { unreads: [] });
     });
 
-    detachedSetupPage({ context, path: `/chats/${EXISTING_THREAD_ID}` });
+    setupSidebarPage({
+      context,
+      path: `/chats/${EXISTING_THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.AgentUnreadIndicators]: false },
+    });
 
     await waitFor(() => {
       expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
@@ -661,7 +679,7 @@ describe("zero sidebar", () => {
     expect(screen.queryByRole("switch", { name: "Unread" })).toBeNull();
   });
 
-  it("keeps a missing pinned current chat at the front of the pinned section", async () => {
+  it("keeps an event-sourced pinned current chat at the front of the pinned section", async () => {
     prepareDefaultAgent();
     const pinnedCurrentThread = createThread(
       EXISTING_THREAD_ID,
@@ -675,36 +693,21 @@ describe("zero sidebar", () => {
     });
     const unpinnedThread = createThread(INCIDENT_THREAD_ID, "Incident notes");
 
-    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-      return respond(
-        200,
-        splitChatThreadListResponse([pinnedThread, unpinnedThread]),
-      );
+    mockChatThreadSnapshot(() => {
+      return [pinnedCurrentThread, pinnedThread, unpinnedThread];
     });
-    context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
-      const thread = [pinnedCurrentThread, pinnedThread, unpinnedThread].find(
-        (candidate) => {
-          return candidate.id === params.id;
-        },
-      );
+    context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
-        id: params.id,
-        title: thread?.title ?? null,
-        agentId: thread?.agent.id ?? AGENT_ID,
-        activeRunIds: [],
-        draftContent: null,
-        draftAttachments: null,
-        createdAt: "2026-03-10T00:00:00Z",
-        updatedAt: "2026-03-10T00:00:00Z",
-        lastMessageAt: thread?.updatedAt ?? "2026-03-10T00:00:00Z",
-        pinnedAt: thread?.pinnedAt ?? null,
+        lastReadAt: null,
+        computerUseHostId: null,
+        codexServiceTier: null,
       });
     });
     context.mocks.api(chatThreadsContract.unreads, ({ respond }) => {
       return respond(200, { unreads: [] });
     });
 
-    detachedSetupPage({ context, path: `/chats/${EXISTING_THREAD_ID}` });
+    setupSidebarPage({ context, path: `/chats/${EXISTING_THREAD_ID}` });
 
     await waitFor(() => {
       expect(
@@ -746,6 +749,7 @@ describe("zero sidebar", () => {
                     id: "incident-message-1",
                     role: "assistant",
                     content: "Incident update",
+                    runLifecycleEvent: "completed",
                     createdAt: "2026-03-10T00:05:00Z",
                   },
                 ]
@@ -760,13 +764,13 @@ describe("zero sidebar", () => {
         markReadCalls += 1;
         await markReadDeferred.promise;
         return respond(200, {
-          lastReadMessageId: "incident-message-1",
+          lastReadAt: "2026-03-10T00:05:00Z",
           unreads: [],
         });
       },
     );
 
-    detachedSetupPage({ context, path: `/chats/${INCIDENT_THREAD_ID}` });
+    setupSidebarPage({ context, path: `/chats/${INCIDENT_THREAD_ID}` });
 
     await waitFor(() => {
       expect(markReadCalls).toBe(1);
@@ -803,19 +807,14 @@ describe("zero sidebar", () => {
       });
     });
 
-    detachedSetupPage({
+    setupSidebarPage({
       context,
-      path: `/chats/${EXISTING_THREAD_ID}?sidebar=detached-thread`,
+      path: `/chats/${EXISTING_THREAD_ID}`,
     });
 
     await waitFor(() => {
       expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
       expect(within(sidebar()).getByText("Incident notes")).toBeInTheDocument();
-      expect(
-        within(threadRowByTitle("Release plan")).getByTestId(
-          "chat-thread-list-pane-icon-main",
-        ),
-      ).toBeInTheDocument();
       expect(
         within(threadRowByTitle("Incident notes")).getByLabelText("Unread"),
       ).toBeInTheDocument();
@@ -862,14 +861,9 @@ describe("zero sidebar", () => {
         createThread(INCIDENT_THREAD_ID, "Incident notes"),
       ],
       [],
-      {
-        detailTitles: {
-          [EXISTING_THREAD_ID]: "Thread data release plan",
-        },
-      },
     );
 
-    detachedSetupPage({
+    setupSidebarPage({
       context,
       path: `/chats/${EXISTING_THREAD_ID}`,
     });
@@ -884,7 +878,7 @@ describe("zero sidebar", () => {
 
     const dialog = await screen.findByRole("dialog", { name: "Rename chat" });
     const titleInput = within(dialog).getByPlaceholderText("Chat title");
-    expect(titleInput).toHaveValue("Thread data release plan");
+    expect(titleInput).toHaveValue("Release plan");
 
     await fill(titleInput, "Launch plan");
     const renameForm = titleInput.closest("form");
@@ -899,14 +893,14 @@ describe("zero sidebar", () => {
     });
   });
 
-  it("does not prefill sidebar rename from the list title", async () => {
+  it("prefills sidebar rename from event-driven thread metadata", async () => {
     prepareDefaultAgent();
     mockSidebarThreadStory([
       createThread(EXISTING_THREAD_ID, "Release plan"),
       createThread(INCIDENT_THREAD_ID, "Incident notes"),
     ]);
 
-    detachedSetupPage({
+    setupSidebarPage({
       context,
       path: `/chats/${EXISTING_THREAD_ID}`,
     });
@@ -920,7 +914,9 @@ describe("zero sidebar", () => {
     click(menuItemByText("Rename chat"));
 
     const dialog = await screen.findByRole("dialog", { name: "Rename chat" });
-    expect(within(dialog).getByPlaceholderText("Chat title")).toHaveValue("");
+    expect(within(dialog).getByPlaceholderText("Chat title")).toHaveValue(
+      "Incident notes",
+    );
   });
 
   it("renames a chat thread by double-clicking from the sidebar", async () => {
@@ -931,14 +927,9 @@ describe("zero sidebar", () => {
         createThread(INCIDENT_THREAD_ID, "Incident notes"),
       ],
       [],
-      {
-        detailTitles: {
-          [EXISTING_THREAD_ID]: "Thread data release plan",
-        },
-      },
     );
 
-    detachedSetupPage({
+    setupSidebarPage({
       context,
       path: `/chats/${EXISTING_THREAD_ID}`,
     });
@@ -951,7 +942,7 @@ describe("zero sidebar", () => {
 
     const dialog = await screen.findByRole("dialog", { name: "Rename chat" });
     const titleInput = within(dialog).getByPlaceholderText("Chat title");
-    expect(titleInput).toHaveValue("Thread data release plan");
+    expect(titleInput).toHaveValue("Release plan");
 
     await fill(titleInput, "Launch plan");
     click(buttonByText("Rename", dialog));
@@ -964,14 +955,23 @@ describe("zero sidebar", () => {
     });
   });
 
-  it("loads more sidebar chats and confirms deleting a chat with automations", async () => {
+  it("loads more sidebar chats and deletes a chat without checking legacy automations", async () => {
     prepareDefaultAgent();
+    const overflowThreads = Array.from({ length: 23 }, (_, index) => {
+      return createThread(
+        `b1000000-0000-4000-a000-${String(index).padStart(12, "0")}`,
+        `Overflow ${index + 1}`,
+      );
+    });
     mockSidebarThreadStory(
       [
         createThread(EXISTING_THREAD_ID, "Release plan"),
         createThread(AUTOMATION_THREAD_ID, "Scheduled launch"),
       ],
-      [createThread(ARCHIVED_THREAD_ID, "Archived context")],
+      [
+        ...overflowThreads,
+        createThread(ARCHIVED_THREAD_ID, "Archived context"),
+      ],
     );
     context.mocks.data.automations([
       createMockAutomationView({
@@ -990,41 +990,46 @@ describe("zero sidebar", () => {
       }),
     ]);
 
-    detachedSetupPage({ context, path: `/chats/${EXISTING_THREAD_ID}` });
+    setupSidebarPage({
+      context,
+      path: `/chats/${EXISTING_THREAD_ID}`,
+      // Legacy linked automations no longer affect chat deletion; schedule
+      // triggers own the automation lifecycle.
+      featureSwitches: {
+        [FeatureSwitchKey.WorkflowAutomation]: false,
+      },
+    });
 
     await waitFor(() => {
       expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
       expect(
         within(sidebar()).getByText("Scheduled launch"),
       ).toBeInTheDocument();
-    });
-
-    click(screen.getByTestId("sidebar-chat-threads-load-more"));
-
-    await waitFor(() => {
-      expect(
-        within(sidebar()).getByText("Archived context"),
-      ).toBeInTheDocument();
+      expect(screen.queryByTestId("sidebar-chat-threads-load-more")).toBeNull();
     });
 
     openThreadMenu("Scheduled launch");
     click(menuItemByText("Delete chat"));
 
     const dialog = await screen.findByRole("dialog", {
-      name: "Delete chat and automations?",
+      name: "Delete chat?",
     });
     expect(
-      within(dialog).getByText(/2 linked automations/u),
-    ).toBeInTheDocument();
-    expect(within(dialog).getByText("Launch cadence")).toBeInTheDocument();
-    expect(within(dialog).getByText("Release risk review")).toBeInTheDocument();
+      within(dialog).queryByText(/linked automations/u),
+    ).not.toBeInTheDocument();
+    expect(
+      within(dialog).queryByText("Launch cadence"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(dialog).queryByText("Release risk review"),
+    ).not.toBeInTheDocument();
 
     click(buttonByText("Cancel", dialog));
 
     await waitFor(() => {
       expect(
         screen.queryByRole("dialog", {
-          name: "Delete chat and automations?",
+          name: "Delete chat?",
         }),
       ).not.toBeInTheDocument();
       expect(
@@ -1036,9 +1041,9 @@ describe("zero sidebar", () => {
     click(menuItemByText("Delete chat"));
 
     const confirmDialog = await screen.findByRole("dialog", {
-      name: "Delete chat and automations?",
+      name: "Delete chat?",
     });
-    click(buttonByText("Delete chat and automations", confirmDialog));
+    click(buttonByText("Delete", confirmDialog));
 
     await waitFor(() => {
       expect(
@@ -1048,50 +1053,156 @@ describe("zero sidebar", () => {
     });
   });
 
-  it("skips the automations check when deleting a chat with workflow automation enabled", async () => {
+  it("virtualizes sidebar chats", async () => {
     prepareDefaultAgent();
+    const overflowThreads = Array.from({ length: 23 }, (_, index) => {
+      return createThread(
+        `b2000000-0000-4000-a000-${String(index).padStart(12, "0")}`,
+        `Virtual overflow ${index + 1}`,
+      );
+    });
+    mockSidebarThreadStory(
+      [
+        createThread(EXISTING_THREAD_ID, "Release plan"),
+        createThread(AUTOMATION_THREAD_ID, "Scheduled launch"),
+      ],
+      [
+        ...overflowThreads,
+        createThread(ARCHIVED_THREAD_ID, "Archived context"),
+      ],
+    );
+
+    setupSidebarPage({
+      context,
+      path: `/chats/${EXISTING_THREAD_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("sidebar-chat-threads-load-more")).toBeNull();
+      expect(
+        screen.getByTestId("sidebar-chat-threads-virtual-list"),
+      ).toBeInTheDocument();
+    });
+
+    const scrollArea = screen.getByTestId("sidebar-scroll-area");
+    Object.defineProperty(scrollArea, "clientHeight", {
+      configurable: true,
+      value: 200,
+    });
+    Object.defineProperty(scrollArea, "scrollHeight", {
+      configurable: true,
+      value: 1000,
+    });
+    Object.defineProperty(scrollArea, "scrollTop", {
+      configurable: true,
+      value: 0,
+    });
+    fireEvent.scroll(scrollArea);
+
+    await waitFor(() => {
+      expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
+    });
+    expect(within(sidebar()).queryByText("Archived context")).toBeNull();
+
+    Object.defineProperty(scrollArea, "scrollTop", {
+      configurable: true,
+      value: 780,
+    });
+    fireEvent.scroll(scrollArea);
+
+    await waitFor(() => {
+      expect(
+        within(sidebar()).getByText("Archived context"),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("scrolls the current chat into the virtualized sidebar on page setup", async () => {
+    prepareDefaultAgent();
+    const leadingThreads = Array.from({ length: 24 }, (_, index) => {
+      return createThread(
+        `b3000000-0000-4000-a000-${String(index).padStart(12, "0")}`,
+        `Leading chat ${index + 1}`,
+      );
+    });
     mockSidebarThreadStory([
+      ...leadingThreads,
       createThread(EXISTING_THREAD_ID, "Release plan"),
       createThread(AUTOMATION_THREAD_ID, "Scheduled launch"),
     ]);
 
-    // Never resolves: if the delete flow still queried automations, the
-    // dialog would be stuck showing the "checking" state forever.
-    const automationsRequested = context.mocks.deferred<void>();
-    context.mocks.api(automationsMainContract.list, async ({ respond }) => {
-      await automationsRequested.promise;
-      return respond(200, { automations: [] });
-    });
-
-    detachedSetupPage({
+    setupSidebarPage({
       context,
       path: `/chats/${EXISTING_THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: true },
     });
 
     await waitFor(() => {
+      const scrollArea = screen.getByTestId("sidebar-scroll-area");
       expect(
-        within(sidebar()).getByText("Scheduled launch"),
+        screen.getByTestId("sidebar-chat-threads-virtual-list"),
       ).toBeInTheDocument();
+      expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
+      expect(scrollArea.scrollTop).toBeGreaterThan(0);
     });
+  });
 
-    openThreadMenu("Scheduled launch");
-    click(menuItemByText("Delete chat"));
-
-    const dialog = await screen.findByRole("dialog", {
-      name: "Delete chat?",
+  it("aligns the current virtualized chat row with the sidebar scroll area top on page setup", async () => {
+    prepareDefaultAgent();
+    const leadingThreads = Array.from({ length: 24 }, (_, index) => {
+      return createThread(
+        `b3100000-0000-4000-a000-${String(index).padStart(12, "0")}`,
+        `Leading precise chat ${index + 1}`,
+      );
     });
-    expect(
-      screen.queryByTestId("delete-chat-thread-checking"),
-    ).not.toBeInTheDocument();
+    mockSidebarThreadStory([
+      ...leadingThreads,
+      createThread(EXISTING_THREAD_ID, "Release plan"),
+      createThread(AUTOMATION_THREAD_ID, "Scheduled launch"),
+    ]);
 
-    click(buttonByText("Delete", dialog));
+    setupSidebarPage({
+      context,
+      path: `/chats/${EXISTING_THREAD_ID}`,
+    });
 
     await waitFor(() => {
-      expect(
-        within(sidebar()).queryByText("Scheduled launch"),
-      ).not.toBeInTheDocument();
+      expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
     });
+
+    const scrollArea = screen.getByTestId("sidebar-scroll-area");
+    const virtualList = screen.getByTestId("sidebar-chat-threads-virtual-list");
+    const currentRow = threadLinkByTitle("Release plan").closest(
+      '[data-testid="sidebar-chat-thread-virtual-row"]',
+    );
+    if (!(currentRow instanceof HTMLElement)) {
+      throw new Error("Release plan virtual row not found");
+    }
+    const currentIndex = Number(currentRow.dataset.index);
+    const scrollMargin = getChatThreadVirtualListScrollMargin(
+      scrollArea,
+      virtualList,
+    );
+
+    expect(scrollArea.scrollTop).toBe(
+      scrollMargin + currentIndex * CHAT_THREAD_VIRTUAL_ROW_HEIGHT,
+    );
+  });
+
+  it("computes the virtual chat list margin relative to the scroll viewport", () => {
+    const scrollViewport = document.createElement("div");
+    const virtualList = document.createElement("div");
+    Object.defineProperty(scrollViewport, "offsetTop", {
+      configurable: true,
+      value: 8,
+    });
+    Object.defineProperty(virtualList, "offsetTop", {
+      configurable: true,
+      value: 88,
+    });
+
+    expect(
+      getChatThreadVirtualListScrollMargin(scrollViewport, virtualList),
+    ).toBe(80);
   });
 
   it("cancels and confirms deleting a regular chat from the sidebar", async () => {
@@ -1101,7 +1212,7 @@ describe("zero sidebar", () => {
       createThread(INCIDENT_THREAD_ID, "Incident notes"),
     ]);
 
-    detachedSetupPage({ context, path: `/chats/${EXISTING_THREAD_ID}` });
+    setupSidebarPage({ context, path: `/chats/${EXISTING_THREAD_ID}` });
 
     await waitFor(() => {
       expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
@@ -1146,17 +1257,16 @@ describe("zero sidebar", () => {
   it("pins an agent from the conversation picker and opens that agent chat", async () => {
     prepareAgentTeam();
     let createRequests = 0;
+    const researchThread = createThread(
+      RESEARCH_THREAD_ID,
+      "Research kickoff",
+      {
+        agent: { id: RESEARCH_AGENT_ID, avatarUrl: null },
+      },
+    );
 
-    context.mocks.api(chatThreadsContract.list, ({ query, respond }) => {
-      const threads =
-        query.agentId === RESEARCH_AGENT_ID
-          ? [
-              createThread(RESEARCH_THREAD_ID, "Research kickoff", {
-                agent: { id: RESEARCH_AGENT_ID, avatarUrl: null },
-              }),
-            ]
-          : [];
-      return respond(200, splitChatThreadListResponse(threads));
+    mockChatThreadSnapshot(() => {
+      return [researchThread];
     });
     context.mocks.api(chatThreadsContract.create, ({ body, respond }) => {
       createRequests += 1;
@@ -1167,7 +1277,11 @@ describe("zero sidebar", () => {
       });
     });
 
-    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: { [FeatureSwitchKey.ChatThreadUnifiedSearch]: false },
+    });
 
     const sidebar = await waitFor(() => {
       return screen.getByRole("navigation", { name: "Sidebar" });
@@ -1256,11 +1370,8 @@ describe("zero sidebar", () => {
 
   it("opens the agent picker from the global shortcut", async () => {
     prepareAgentTeam();
-    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, splitChatThreadListResponse([]));
-    });
 
-    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
     await waitFor(() => {
       expect(sidebar()).toBeInTheDocument();
@@ -1277,13 +1388,107 @@ describe("zero sidebar", () => {
     expect(within(dialog).getByText("Support Agent")).toBeInTheDocument();
   });
 
-  it("opens the agent picker from the global shortcut while composer is focused", async () => {
+  it("shows chat thread title results in the picker behind the unified search switch", async () => {
     prepareAgentTeam();
-    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, splitChatThreadListResponse([]));
+    const defaultThread = createThread(EXISTING_THREAD_ID, "Incident notes");
+    const researchThread = createThread(
+      RESEARCH_THREAD_ID,
+      "Research kickoff",
+      {
+        agent: { id: RESEARCH_AGENT_ID, avatarUrl: null },
+      },
+    );
+    const supportThread = createThread(
+      INCIDENT_THREAD_ID,
+      "Support escalation",
+      {
+        agent: { id: SUPPORT_AGENT_ID, avatarUrl: null },
+        running: true,
+      },
+    );
+    mockSidebarThreadStory([defaultThread, researchThread, supportThread]);
+    context.mocks.api(chatThreadsContract.unreads, ({ respond }) => {
+      return respond(200, {
+        unreads: [
+          {
+            threadId: EXISTING_THREAD_ID,
+            unreadAt: "2026-03-10T00:05:00Z",
+          },
+        ],
+      });
     });
 
-    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.AgentUnreadIndicators]: true,
+        [FeatureSwitchKey.ChatThreadUnifiedSearch]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(sidebar()).toBeInTheDocument();
+    });
+
+    fireEvent.keyDown(document.body, {
+      key: "a",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    const dialog = await screen.findByRole("dialog", { name: "Talk to" });
+    const search = within(dialog).getByPlaceholderText(
+      "Search agents and chats...",
+    );
+
+    await waitFor(() => {
+      expect(within(dialog).getByText("Incident notes")).toBeInTheDocument();
+      expect(
+        within(dialog).getByText("Support escalation"),
+      ).toBeInTheDocument();
+      expect(
+        within(agentRowByName(dialog, "Incident notes")).getByLabelText(
+          "Unread",
+        ),
+      ).toBeInTheDocument();
+      expect(
+        within(agentRowByName(dialog, "Support escalation")).getByLabelText(
+          "Running",
+        ),
+      ).toBeInTheDocument();
+    });
+
+    await fill(search, "research");
+
+    await waitFor(() => {
+      expect(within(dialog).getByText("Research kickoff")).toBeInTheDocument();
+      expect(
+        within(dialog).queryByText("Support escalation"),
+      ).not.toBeInTheDocument();
+    });
+
+    await fill(search, "support");
+    click(within(dialog).getByText("Support escalation"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Talk to" }),
+      ).not.toBeInTheDocument();
+      expect(document.title).toBe("Support escalation | VM0");
+    });
+  });
+
+  it("opens the agent picker from the global shortcut while composer is focused", async () => {
+    prepareAgentTeam();
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      // Pin the legacy composer (workflowAutomation overridden off) so the
+      // plain-textarea placeholder targeted below stays rendered.
+      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: false },
+    });
 
     const composer = await screen.findByPlaceholderText(PLACEHOLDER);
     composer.focus();
@@ -1298,13 +1503,156 @@ describe("zero sidebar", () => {
     expect(within(dialog).getByText("Support Agent")).toBeInTheDocument();
   });
 
-  it("ignores global shortcuts while a dialog is open", async () => {
+  it("moves to the next pinned agent chat from the composer", async () => {
     prepareAgentTeam();
-    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, splitChatThreadListResponse([]));
+    context.mocks.data.userPreferences({
+      pinnedAgentIds: [RESEARCH_AGENT_ID, SUPPORT_AGENT_ID],
     });
 
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: false },
+    });
+
+    const composer = await screen.findByPlaceholderText(PLACEHOLDER);
+    composer.focus();
+    fireEvent.keyDown(composer, {
+      key: "}",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    await waitFor(() => {
+      expect(pathname()).toBe(`/agents/${RESEARCH_AGENT_ID}/chat`);
+    });
+  });
+
+  it("moves to the first chat thread for the next pinned agent from a chat thread", async () => {
+    prepareAgentTeam();
+    context.mocks.data.userPreferences({
+      pinnedAgentIds: [RESEARCH_AGENT_ID, SUPPORT_AGENT_ID],
+    });
+    const researchThread = createThread(
+      RESEARCH_THREAD_ID,
+      "Research kickoff",
+      {
+        agent: { id: RESEARCH_AGENT_ID, avatarUrl: null },
+      },
+    );
+    const supportThread = createThread(
+      INCIDENT_THREAD_ID,
+      "Support escalation",
+      {
+        agent: { id: SUPPORT_AGENT_ID, avatarUrl: null },
+      },
+    );
+    const olderSupportThread = createThread(
+      AUTOMATION_THREAD_ID,
+      "Support archive",
+      {
+        agent: { id: SUPPORT_AGENT_ID, avatarUrl: null },
+      },
+    );
+    mockSidebarThreadStory([researchThread, supportThread, olderSupportThread]);
+
+    setupSidebarPage({ context, path: `/chats/${RESEARCH_THREAD_ID}` });
+
+    await waitFor(() => {
+      expect(
+        within(sidebar()).getByText("Research kickoff"),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.keyDown(document.body, {
+      key: "}",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    await waitFor(() => {
+      expect(pathname()).toBe(`/chats/${INCIDENT_THREAD_ID}`);
+    });
+  });
+
+  it("falls back to the pinned agent chat when the next pinned agent has no thread", async () => {
+    prepareAgentTeam();
+    context.mocks.data.userPreferences({
+      pinnedAgentIds: [RESEARCH_AGENT_ID, SUPPORT_AGENT_ID],
+    });
+    const researchThread = createThread(
+      RESEARCH_THREAD_ID,
+      "Research kickoff",
+      {
+        agent: { id: RESEARCH_AGENT_ID, avatarUrl: null },
+      },
+    );
+    mockSidebarThreadStory([researchThread]);
+
+    setupSidebarPage({ context, path: `/chats/${RESEARCH_THREAD_ID}` });
+
+    await waitFor(() => {
+      expect(
+        within(sidebar()).getByText("Research kickoff"),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.keyDown(document.body, {
+      key: "}",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    await waitFor(() => {
+      expect(pathname()).toBe(`/agents/${SUPPORT_AGENT_ID}/chat`);
+    });
+  });
+
+  it("toggles the sidebar with mod+b while the chat composer is focused", async () => {
+    prepareDefaultAgent();
+    mockSidebarThreadStory([createThread(EXISTING_THREAD_ID, "Release plan")]);
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${EXISTING_THREAD_ID}`,
+    });
+
+    const composer = await screen.findByPlaceholderText(PLACEHOLDER);
+    await waitFor(() => {
+      expect(screen.getByLabelText("Collapse sidebar")).toBeInTheDocument();
+      expect(screen.queryByLabelText("Expand sidebar")).not.toBeInTheDocument();
+    });
+
+    composer.focus();
+    expect(composer).toHaveFocus();
+    fireEvent.keyDown(composer, { key: "b", ctrlKey: true });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Expand sidebar")).toBeInTheDocument();
+    });
+  });
+
+  it("opens shortcut help from the agent chat page when composer is not focused", async () => {
+    prepareAgentTeam();
+
     detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+
+    await waitFor(() => {
+      expect(sidebar()).toBeInTheDocument();
+    });
+
+    fireEvent.keyDown(document.body, { key: "?", shiftKey: true });
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Keyboard Shortcuts",
+    });
+    expect(within(dialog).getByText("Show shortcuts")).toBeInTheDocument();
+  });
+
+  it("ignores global shortcuts while a dialog is open", async () => {
+    prepareAgentTeam();
+
+    setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
     await waitFor(() => {
       expect(sidebar()).toBeInTheDocument();
@@ -1326,11 +1674,12 @@ describe("zero sidebar", () => {
 
   it("selects an agent from the picker with arrow keys and enter", async () => {
     prepareAgentTeam();
-    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, splitChatThreadListResponse([]));
-    });
 
-    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: { [FeatureSwitchKey.ChatThreadUnifiedSearch]: false },
+    });
 
     await waitFor(() => {
       expect(sidebar()).toBeInTheDocument();
@@ -1372,9 +1721,6 @@ describe("zero sidebar", () => {
     context.mocks.data.userPreferences({
       pinnedAgentIds: [RESEARCH_AGENT_ID],
     });
-    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, splitChatThreadListResponse([]));
-    });
 
     let unreadAgentIds = [RESEARCH_AGENT_ID, SUPPORT_AGENT_ID];
     let unreadAgentRequests = 0;
@@ -1383,7 +1729,7 @@ describe("zero sidebar", () => {
       return respond(200, { agentIds: unreadAgentIds });
     });
 
-    detachedSetupPage({
+    setupSidebarPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
       featureSwitches: { [FeatureSwitchKey.AgentUnreadIndicators]: true },
@@ -1415,6 +1761,9 @@ describe("zero sidebar", () => {
     const dialog = await screen.findByRole("dialog", { name: "Talk to" });
     const researchDialogRow = agentRowByName(dialog, "Research Agent");
     const supportDialogRow = agentRowByName(dialog, "Support Agent");
+    expect(
+      within(researchDialogRow).queryByLabelText("Reorder Research Agent"),
+    ).not.toBeInTheDocument();
     const researchDialogUnread =
       within(researchDialogRow).getByLabelText("Unread");
     const supportDialogUnread =
@@ -1472,9 +1821,6 @@ describe("zero sidebar", () => {
     context.mocks.data.userPreferences({
       pinnedAgentIds: [RESEARCH_AGENT_ID],
     });
-    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, splitChatThreadListResponse([]));
-    });
 
     let unreadAgentIds = [RESEARCH_AGENT_ID, SUPPORT_AGENT_ID];
     const markedAgentIds: string[] = [];
@@ -1492,7 +1838,7 @@ describe("zero sidebar", () => {
       },
     );
 
-    detachedSetupPage({
+    setupSidebarPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
       featureSwitches: { [FeatureSwitchKey.AgentUnreadIndicators]: true },
@@ -1524,9 +1870,6 @@ describe("zero sidebar", () => {
 
   it("marks all default agent chats read from the default agent menu", async () => {
     prepareAgentTeam();
-    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, splitChatThreadListResponse([]));
-    });
 
     let unreadAgentIds = [AGENT_ID, SUPPORT_AGENT_ID];
     const markedAgentIds: string[] = [];
@@ -1544,7 +1887,7 @@ describe("zero sidebar", () => {
       },
     );
 
-    detachedSetupPage({
+    setupSidebarPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
       featureSwitches: { [FeatureSwitchKey.AgentUnreadIndicators]: true },
@@ -1581,11 +1924,8 @@ describe("zero sidebar", () => {
 
   it("collapses and reopens the sidebar", async () => {
     prepareDefaultAgent();
-    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, splitChatThreadListResponse([]));
-    });
 
-    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
     click(
       await waitFor(() => {
@@ -1604,11 +1944,8 @@ describe("zero sidebar", () => {
 
   it("collapses and reopens the manage navigation section", async () => {
     prepareDefaultAgent();
-    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, splitChatThreadListResponse([]));
-    });
 
-    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
     const nav = await waitFor(() => {
       const current = sidebar();
@@ -1664,13 +2001,84 @@ describe("zero sidebar", () => {
     });
   });
 
-  it("shows workflows in the sidebar manage navigation when enabled", async () => {
+  it("keeps the old collapsed manage navigation when the icon switch is disabled", async () => {
     prepareDefaultAgent();
-    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, splitChatThreadListResponse([]));
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.SidebarManageIconCollapse]: false,
+        [FeatureSwitchKey.WorkflowAutomation]: true,
+      },
     });
 
-    detachedSetupPage({
+    const nav = await waitFor(() => {
+      const current = sidebar();
+      expect(within(current).getByText("Agents")).toBeInTheDocument();
+      return current;
+    });
+
+    click(within(nav).getByText("Manage"));
+
+    await waitFor(() => {
+      expect(within(nav).getByText("Manage")).toBeInTheDocument();
+      expect(
+        within(nav).queryByLabelText("Expand manage section"),
+      ).not.toBeInTheDocument();
+      expect(within(nav).queryByText("Agents")).not.toBeInTheDocument();
+    });
+  });
+
+  it("shows icon-only manage navigation when collapsed behind the feature switch", async () => {
+    prepareDefaultAgent();
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.SidebarManageIconCollapse]: true,
+        [FeatureSwitchKey.WorkflowAutomation]: true,
+      },
+    });
+
+    const nav = await waitFor(() => {
+      const current = sidebar();
+      expect(within(current).getByText("Agents")).toBeInTheDocument();
+      expect(within(current).getByText("Workflows")).toBeInTheDocument();
+      expect(within(current).getByText("Connectors")).toBeInTheDocument();
+      return current;
+    });
+
+    click(within(nav).getByText("Manage"));
+
+    await waitFor(() => {
+      expect(within(nav).queryByText("Manage")).not.toBeInTheDocument();
+      expect(within(nav).queryByText("Agents")).not.toBeInTheDocument();
+      expect(within(nav).queryByText("Workflows")).not.toBeInTheDocument();
+      expect(within(nav).queryByText("Connectors")).not.toBeInTheDocument();
+      expect(within(nav).getByLabelText("Agents")).toBeInTheDocument();
+      expect(within(nav).getByLabelText("Workflows")).toBeInTheDocument();
+      expect(within(nav).getByLabelText("Connectors")).toBeInTheDocument();
+      expect(
+        within(nav).getByLabelText("Expand manage section"),
+      ).toBeInTheDocument();
+    });
+
+    click(within(nav).getByLabelText("Expand manage section"));
+
+    await waitFor(() => {
+      expect(within(nav).getByText("Manage")).toBeInTheDocument();
+      expect(within(nav).getByText("Agents")).toBeInTheDocument();
+      expect(within(nav).getByText("Workflows")).toBeInTheDocument();
+      expect(within(nav).getByText("Connectors")).toBeInTheDocument();
+    });
+  });
+
+  it("shows workflows in the sidebar manage navigation when enabled", async () => {
+    prepareDefaultAgent();
+
+    setupSidebarPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
       featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: true },
@@ -1692,13 +2100,12 @@ describe("zero sidebar", () => {
 
   it("hides workflows in the sidebar manage navigation when disabled", async () => {
     prepareDefaultAgent();
-    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, splitChatThreadListResponse([]));
-    });
 
-    detachedSetupPage({
+    setupSidebarPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
+      // Globally enabled since #19959; disabling now requires a user override.
+      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: false },
     });
 
     const nav = await waitFor(() => {
@@ -1706,7 +2113,7 @@ describe("zero sidebar", () => {
     });
 
     expect(within(nav).getByText("Agents")).toBeInTheDocument();
-    expect(within(nav).getByText("Automations")).toBeInTheDocument();
+    expect(within(nav).queryByText("Automations")).not.toBeInTheDocument();
     expect(within(nav).queryByText("Workflows")).not.toBeInTheDocument();
   });
 });

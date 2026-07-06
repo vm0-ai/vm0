@@ -10,9 +10,9 @@ import { ApiError, accept } from "../../../lib/accept.ts";
 import { now } from "../../../lib/time.ts";
 import { zeroClient$ } from "../../api-client.ts";
 import { reloadOrgModelProviders$ } from "../../external/org-model-providers.ts";
-import { reloadPersonalModelProviders$ } from "../../external/personal-model-providers.ts";
 import { onRef, resetSignal, settle, setLoop } from "../../utils.ts";
 import { writeToClipboard } from "../clipboard.ts";
+import { reloadPersonalModelProvider$ } from "../model-first-personal-oauth.ts";
 
 type CodexDeviceAuthDialogMode = "connect" | "reconnect";
 
@@ -466,6 +466,6 @@ export const {
   close$: closeCodexDeviceAuthDialogPersonal$,
   run$: runCodexDeviceAuthPersonal$,
   autoStartRef$: codexDeviceAuthAutoStartRefPersonal$,
-} = createCodexDeviceAuthSignals("personal", reloadPersonalModelProviders$);
+} = createCodexDeviceAuthSignals("personal", reloadPersonalModelProvider$);
 
 export type { CodexDeviceAuthFlowState };

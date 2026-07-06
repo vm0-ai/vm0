@@ -107,9 +107,9 @@ import type {
   UserPermissionGrantExpiresIn,
   UserPermissionGrantResponse,
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
+import type { PublicConnectorCatalogPermissionDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { emptyArtifactImg, emptyChatImg } from "./platform-assets.ts";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { CONNECTOR_TYPES } from "@vm0/connectors/connectors";
 import type { FirewallPolicyValue } from "@vm0/connectors/firewall-types";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { Markdown } from "../components/markdown.tsx";
@@ -156,7 +156,10 @@ import type { PermissionActionBlock } from "../../signals/chat-page/permission-a
 import type { ComputerUseAuthorizationBlock } from "../../signals/chat-page/computer-use-authorization-block.ts";
 import { AttachmentPreview } from "./zero-attachment-preview.tsx";
 import { FilePreviewIcon } from "./zero-file-preview-icon.tsx";
-import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
+import {
+  ConnectorIcon,
+  isConnectorIconType,
+} from "./components/settings/connector-icons.tsx";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import { PermissionGrantDurationSelect } from "../components/permission-grant-duration-select.tsx";
 import { lightboxUrl$ as attachmentLightboxUrl$ } from "../../signals/zero-page/zero-attachment-chips.ts";
@@ -197,10 +200,6 @@ import {
 import type { ChatClipboardAttachment } from "../../signals/zero-page/clipboard.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import {
-  chatShortcutHelpOpen$,
-  setChatShortcutHelpOpen$,
-} from "../../signals/chat-page/chat-shortcut-help.ts";
-import {
   agentGithubPrTrackingAvailable$,
   githubPrTrackingOpenThreadId$,
   chatThreadGithubPrs$,
@@ -231,7 +230,6 @@ import {
   toggleOrgAutomationEnabled$,
 } from "../../signals/zero-page/zero-automations.ts";
 import { openQueueDrawer$ } from "../../signals/queue-page/queue-drawer-state.ts";
-import { ShortcutHelpDialog } from "../components/shortcut-help-dialog.tsx";
 import {
   closeChatThreadEmojiMenu$,
   emojiMenuThreadId$,
@@ -269,7 +267,7 @@ import {
   type PagedChatMessage,
 } from "../../signals/chat-page/chat-message.ts";
 import type { ChatThreadSignals } from "../../signals/chat-page/chat-thread-signals.ts";
-import { reloadChatThreadDataForId$ } from "../../signals/chat-page/chat-thread-rename.ts";
+import type { ThreadMeta } from "../../signals/chat-page/chat-thread-event-sourcing.ts";
 import {
   applyChatThreadEmoji,
   removeChatThreadEmoji,
@@ -299,7 +297,7 @@ import {
   ZERO_DESKTOP_DOWNLOAD_URL,
 } from "../../signals/zero-page/computer-use-hosts.ts";
 import type { ModelProviderSelection } from "./components/model-provider-picker.tsx";
-import { modelFirstPersonalOauthState$ } from "../../signals/zero-page/model-first-personal-oauth.ts";
+import { personalModelProvider$ } from "../../signals/zero-page/model-first-personal-oauth.ts";
 import {
   resolveChatComposerSubmitBlocker,
   usePersonalOauthConfigurationAction,
@@ -318,7 +316,6 @@ import {
   resolveUserPermissionGrantPolicy,
   userPermissionGrantsByAgent,
 } from "../../signals/permission-allow/permission-allow-signals.ts";
-import type { FirewallPermissionDetailMetadata } from "@vm0/connectors/firewall-metadata";
 import { firewallPermissionMetadataByConnector } from "../../signals/firewall-permission-metadata.ts";
 import {
   billingStatusAsync$,
@@ -346,42 +343,6 @@ import { PersonalCodexDeviceAuthDialog } from "./components/settings/codex-devic
 type RecommendedFollowup = NonNullable<
   Extract<PagedChatMessage, { role: "assistant" }>["recommendedFollowups"]
 >[number];
-
-const CHAT_SHORTCUT_SECTIONS = [
-  {
-    title: "Global",
-    shortcuts: [
-      { key: "shift+/", label: "Show shortcuts" },
-      { key: "mod+b", label: "Toggle sidebar" },
-      { key: "mod+shift+o", label: "New chat" },
-      { key: "mod+shift+a", label: "Open agent list" },
-      { key: "f2", label: "Rename chat" },
-      { key: "shift+f2", label: "Change icon" },
-      { key: "ctrl+shift+1", label: "Set icon (Ctrl+Shift+1-9)" },
-      { key: "ctrl+shift+0", label: "Clear icon" },
-    ],
-  },
-  {
-    title: "Messages",
-    shortcuts: [
-      { key: "mod+arrowup", label: "Scroll to top" },
-      { key: "mod+arrowdown", label: "Scroll to bottom" },
-      { key: "mod+shift+arrowup", label: "Previous thread" },
-      { key: "mod+shift+arrowdown", label: "Next thread" },
-    ],
-  },
-  {
-    title: "Composer",
-    shortcuts: [
-      { key: "enter", label: "Send message" },
-      { key: "escape", label: "Blur composer" },
-    ],
-  },
-] as const;
-
-function isChatThreadEmojiShortcutKey(key: string): boolean {
-  return key === "shift+f2" || key === "ctrl+shift+1" || key === "ctrl+shift+0";
-}
 
 function ArtifactsButton({ thread }: { thread: ChatThreadSignals }) {
   return <ArtifactsButtonInner thread={thread} />;
@@ -1164,7 +1125,6 @@ function useChatThreadEmojiMenuActions({
   const openChatThreadEmojiMenu = useSet(openChatThreadEmojiMenu$);
   const closeChatThreadEmojiMenu = useSet(closeChatThreadEmojiMenu$);
   const renameChatThread = useSet(renameChatThread$);
-  const reloadChatThreadDataForId = useSet(reloadChatThreadDataForId$);
   const focusChatThreadContainer = useSet(focusChatThreadContainer$);
   const pageSignal = useGet(pageSignal$);
   const open = emojiMenuThreadId === threadId;
@@ -1193,7 +1153,6 @@ function useChatThreadEmojiMenuActions({
           },
           pageSignal,
         );
-        reloadChatThreadDataForId(activeThreadId);
         closeMenu();
       })(),
       Reason.DomCallback,
@@ -1216,7 +1175,6 @@ function useChatThreadEmojiMenuActions({
           { threadId: activeThreadId, title: nextTitle },
           pageSignal,
         );
-        reloadChatThreadDataForId(activeThreadId);
         closeMenu();
       })(),
       Reason.DomCallback,
@@ -1648,17 +1606,25 @@ type ChatImagePreviewLinkProps = {
   url: string;
 };
 
-const CHAT_INLINE_MEDIA_PREVIEW_CLASS = cn(
-  "aspect-[10/9] w-[50px] max-w-full cursor-pointer rounded-lg",
+const CHAT_INLINE_MEDIA_PREVIEW_CHROME_CLASS = cn(
   "border border-foreground/10 shadow-sm transition-all duration-200",
   "hover:scale-[1.015] hover:border-foreground/20 hover:shadow-lg hover:shadow-black/10 dark:hover:shadow-black/30",
 );
+const CHAT_INLINE_MEDIA_THUMBNAIL_PREVIEW_CLASS = cn(
+  "aspect-[10/9] w-[50px] max-w-full cursor-pointer rounded-lg",
+  CHAT_INLINE_MEDIA_PREVIEW_CHROME_CLASS,
+);
 const CHAT_INLINE_IMAGE_PREVIEW_CLASS = cn(
-  CHAT_INLINE_MEDIA_PREVIEW_CLASS,
+  CHAT_INLINE_MEDIA_THUMBNAIL_PREVIEW_CLASS,
   "bg-muted/30",
 );
-const CHAT_INLINE_VIDEO_PREVIEW_CLASS = cn(
-  CHAT_INLINE_MEDIA_PREVIEW_CLASS,
+const CHAT_INLINE_VIDEO_ATTACHMENT_PREVIEW_CLASS = cn(
+  CHAT_INLINE_MEDIA_THUMBNAIL_PREVIEW_CLASS,
+  "bg-black",
+);
+const CHAT_INLINE_VIDEO_BODY_PREVIEW_CLASS = cn(
+  "aspect-[16/10] w-[min(100%,400px)] max-w-full cursor-pointer rounded-lg",
+  CHAT_INLINE_MEDIA_PREVIEW_CHROME_CLASS,
   "bg-black",
 );
 
@@ -2431,14 +2397,7 @@ function HeaderAutomationSidebarCard({
         </div>
       </dl>
 
-      <div className="mt-4 flex min-w-0 items-center justify-between gap-2">
-        <Link
-          pathname="/automations/:automationId"
-          options={{ pathParams: { automationId: automation.id } }}
-          className="text-xs font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-        >
-          Edit
-        </Link>
+      <div className="mt-4 flex min-w-0 items-center justify-end gap-2">
         <Button
           type="button"
           variant="outline"
@@ -3195,11 +3154,6 @@ function ChatThreadArea({
 }
 
 export function ZeroChatThreadPage() {
-  const shortcutHelpOpen = useGet(chatShortcutHelpOpen$);
-  const setShortcutHelpOpen = useSet(setChatShortcutHelpOpen$);
-  const features = useLastResolved(featureSwitch$);
-  const chatThreadEmojiEnabled =
-    features?.[FeatureSwitchKey.ChatThreadEmoji] ?? false;
   const leftThread = useGet(currentLeftThread$);
   const rightThread = useGet(currentRightThread$);
   const lightboxUrl = useGet(attachmentLightboxUrl$);
@@ -3235,19 +3189,6 @@ export function ZeroChatThreadPage() {
       />
     </div>
   ) : null;
-  const shortcutSections = chatThreadEmojiEnabled
-    ? CHAT_SHORTCUT_SECTIONS
-    : CHAT_SHORTCUT_SECTIONS.map((section) => {
-        if (section.title !== "Global") {
-          return section;
-        }
-        return {
-          ...section,
-          shortcuts: section.shortcuts.filter((shortcut) => {
-            return !isChatThreadEmojiShortcutKey(shortcut.key);
-          }),
-        };
-      });
 
   return (
     <>
@@ -3305,12 +3246,6 @@ export function ZeroChatThreadPage() {
         typeof document !== "undefined" &&
         presentationEditor &&
         createPortal(presentationEditor, document.body)}
-      <ShortcutHelpDialog
-        open={shortcutHelpOpen}
-        onOpenChange={setShortcutHelpOpen}
-        description="Available shortcuts on this page"
-        sections={shortcutSections}
-      />
       <ChatConnectorActionConnectModal />
     </>
   );
@@ -3322,12 +3257,12 @@ type LoadableValue<T> =
   | { state: "hasError"; error: unknown };
 
 function resolveSessionError(
-  threadDataLoadable: LoadableValue<ChatThread | null>,
+  threadMetaLoadable: LoadableValue<ThreadMeta | null>,
   groupsLoadable: LoadableValue<GroupedChatMessageGroup[]>,
 ): string | null {
-  if (threadDataLoadable.state === "hasError") {
-    return threadDataLoadable.error instanceof Error
-      ? threadDataLoadable.error.message
+  if (threadMetaLoadable.state === "hasError") {
+    return threadMetaLoadable.error instanceof Error
+      ? threadMetaLoadable.error.message
       : "Failed to load chat";
   }
   if (groupsLoadable.state === "hasError") {
@@ -3336,8 +3271,8 @@ function resolveSessionError(
       : "Failed to load messages";
   }
   if (
-    threadDataLoadable.state === "hasData" &&
-    threadDataLoadable.data === null
+    threadMetaLoadable.state === "hasData" &&
+    threadMetaLoadable.data === null
   ) {
     return "Chat not found";
   }
@@ -3586,7 +3521,7 @@ function resolveRunGroupFoldPlacements({
       };
       const embeddedGroupId = control.expanded
         ? undefined
-        : assistantGroupIdForCollapsedRunGroupFold(groups, index);
+        : inlineGroupIdForCollapsedRunGroupFold(groups, index);
       const target = embeddedGroupId
         ? embeddedRunGroupFolds
         : externalRunGroupFolds;
@@ -3601,6 +3536,23 @@ function resolveRunGroupFoldPlacements({
   }
 
   return { embeddedRunGroupFolds, externalRunGroupFolds };
+}
+
+function inlineGroupIdForCollapsedRunGroupFold(
+  groups: readonly GroupedChatMessageGroup[],
+  index: number,
+): string | undefined {
+  const group = groups[index];
+  if (!group || group.role !== "user") {
+    return undefined;
+  }
+  if (firstRunIdForMessages(group.messages) === undefined) {
+    return undefined;
+  }
+  return (
+    assistantGroupIdForCollapsedRunGroupFold(groups, index) ??
+    group.beginMessageId
+  );
 }
 
 function assistantGroupIdForCollapsedRunGroupFold(
@@ -4213,8 +4165,8 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
   const renderedGroupsLoadable = useLastLoadable(
     thread.renderedGroupedChatMessages$,
   );
-  const threadDataLoadable = useLastLoadable(thread.threadData$);
-  const sessionError = resolveSessionError(threadDataLoadable, groupsLoadable);
+  const threadMetaLoadable = useLastLoadable(thread.threadMeta$);
+  const sessionError = resolveSessionError(threadMetaLoadable, groupsLoadable);
   const messagesLoading = groupsLoadable.state === "loading";
   const groups = groupsLoadable.state === "hasData" ? groupsLoadable.data : [];
   const renderedGroups =
@@ -4225,7 +4177,7 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
   const setScrollContainer = useSet(thread.setScrollContainer$);
   const loadMoreRenderedChatGroups = useSet(thread.loadMoreRenderedChatGroups$);
   const pageSignal = useGet(pageSignal$);
-  const skeletonVisible = useGet(thread.skeletonVisible$);
+  const skeletonVisible = messagesLoading;
   const githubPrTrackingOpen = useGithubPrTrackingOpen(thread);
 
   const handleScroll = (event: ReactUIEvent<HTMLDivElement>) => {
@@ -4555,20 +4507,19 @@ interface ChatComposerModelPickerConfig {
   value: ModelProviderSelection | null;
   onChange: (value: ModelProviderSelection | null) => void;
   disabled: boolean;
-  defaultSelection: ModelProviderSelection | null;
+  resolveDefaultSelection: boolean;
 }
 
 function resolveChatComposerModelPicker(params: {
   modelSelection: ModelProviderSelection | null;
   setModelSelection: (value: ModelProviderSelection | null) => void;
   disabled: boolean;
-  defaultSelection: ModelProviderSelection | null;
 }): ChatComposerModelPickerConfig {
   return {
     value: params.modelSelection,
     onChange: params.setModelSelection,
     disabled: params.disabled,
-    defaultSelection: params.defaultSelection,
+    resolveDefaultSelection: false,
   };
 }
 
@@ -4638,23 +4589,21 @@ function useChatComposerModel(
   thread: ChatThreadSignals,
   pageSignal: AbortSignal,
 ) {
-  // Per-thread composer state lives in ccstate signals on the factory so the
-  // initial value seeds from threadData once it resolves (a React useState
-  // initializer would snapshot `undefined` on first render). `modelSelection$`
-  // internally flips to a user-override once `setModelSelection$` is called,
-  // so unsaved edits survive subsequent threadData$ reloads. Read with
-  // useLastResolved so the picker keeps the previous value during the
-  // threadData$ refetches triggered by chatThreadRunUpdated Ably events —
-  // otherwise the picker briefly flips to a skeleton on every run change.
-  const threadDataResolved = useLastResolved(thread.threadData$);
+  // Per-thread composer selection comes from the event projection. Read with
+  // useLastResolved so the picker keeps the previous value while realtime
+  // callbacks refetch the thread detail for non-selection fields.
   const modelSelectionResolved = useLastResolved(thread.modelSelection$);
-  const defaultModelSelectionResolved = useLastResolved(
-    thread.defaultModelSelection$,
-  );
-  const modelSelection = modelSelectionResolved ?? null;
-  const defaultModelSelection = defaultModelSelectionResolved ?? null;
+  const threadDetail = useLastResolved(thread.remoteThreadDetail$);
+  const baseModelSelection = modelSelectionResolved ?? null;
+  const modelSelection =
+    baseModelSelection && threadDetail?.codexServiceTier
+      ? {
+          ...baseModelSelection,
+          codexServiceTier: threadDetail.codexServiceTier,
+        }
+      : baseModelSelection;
   const setModelSelection = useSet(thread.setModelSelection$);
-  const modelFirstOauthState = useLastResolved(modelFirstPersonalOauthState$);
+  const personalModelProvider = useLastResolved(personalModelProvider$);
   const openPersonalOauthConfiguration = usePersonalOauthConfigurationAction();
 
   const handleModelSelectionChange = (
@@ -4667,20 +4616,15 @@ function useChatComposerModel(
     modelSelection,
     setModelSelection: handleModelSelectionChange,
     disabled: false,
-    defaultSelection: defaultModelSelection,
   });
-  // Explicit thread selections can render before default model selection
-  // resolves; only inherited selections need that fallback before showing.
-  const modelPickerLoading =
-    threadDataResolved === undefined ||
-    modelSelectionResolved === undefined ||
-    (modelSelectionResolved === null &&
-      defaultModelSelectionResolved === undefined);
-  const submitBlockerProps = resolveChatComposerSubmitBlocker({
-    state: modelFirstOauthState,
-    modelSelection,
-    onAction: openPersonalOauthConfiguration,
-  });
+  const modelPickerLoading = modelSelectionResolved === undefined;
+  const submitBlockerProps = modelSelection
+    ? resolveChatComposerSubmitBlocker({
+        personalModelProvider,
+        selectedModel: modelSelection.selectedModel,
+        onAction: openPersonalOauthConfiguration,
+      })
+    : undefined;
 
   return {
     modelPicker,
@@ -4997,7 +4941,7 @@ function ChatThreadComposer({
       clearComputerUseHostOverride,
     });
   const sending = !allFinished || sendLoading;
-  const skeletonVisible = useGet(thread.skeletonVisible$);
+  const skeletonVisible = groupsLoadable.state === "loading";
   const { composerSending, queueWhileSending } =
     resolveChatThreadComposerActivity({
       groups,
@@ -5449,9 +5393,6 @@ function ThinkingIndicator({
     "--zb-c3": c3,
   } as CSSProperties;
 
-  const features = useLastResolved(featureSwitch$);
-  const initialThinkingEnabled =
-    features?.[FeatureSwitchKey.ChatInitialThinkingIndicator] ?? false;
   const messageRunIndicatorStateLoadable = useLastLoadable(
     thread.messageRunIndicatorState$,
   );
@@ -5464,7 +5405,7 @@ function ThinkingIndicator({
     groups,
     messageRunIndicatorState,
     messageRunIndicatorResolved,
-    initialThinkingEnabled,
+    initialThinkingEnabled: true,
   });
   const rotatingLabel = useGet(thread.rotatingPhrase$);
   const donePhrase = useGet(thread.donePhrase$);
@@ -5623,7 +5564,7 @@ function BodyContentBlocks({
             <ChatVideoPreviewButton
               key={block.id}
               ariaLabel={`Preview ${block.preview.filename}`}
-              buttonClassName={CHAT_INLINE_VIDEO_PREVIEW_CLASS}
+              buttonClassName={CHAT_INLINE_VIDEO_BODY_PREVIEW_CLASS}
               filename={block.preview.filename}
               onPreview={() => {
                 openVideoLightbox({
@@ -5658,13 +5599,16 @@ function ConnectorActionCard({ block }: { block: ConnectorActionBlock }) {
   const pageSignal = useGet(pageSignal$);
   const available = useLastResolved(block.available$) ?? false;
   const complete = useLastResolved(block.complete$) ?? false;
+  const displayMetadata = useLastResolved(block.displayMetadata$);
   const [activateLoadable, activate] = useLoadableSet(block.activate$);
   const activating = activateLoadable.state === "loading";
-  const config = CONNECTOR_TYPES[block.connectorType];
+  const connectorType = block.connectorType;
 
-  if (!available) {
+  if (!available || !displayMetadata) {
     return null;
   }
+
+  const canActivate = connectorType !== null;
 
   return (
     <div
@@ -5673,27 +5617,31 @@ function ConnectorActionCard({ block }: { block: ConnectorActionBlock }) {
     >
       <div className="flex min-w-0 items-center gap-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/40">
-          <ConnectorIcon type={block.connectorType} size={22} />
+          {connectorType ? (
+            <ConnectorIcon type={connectorType} size={22} />
+          ) : (
+            <IconPackage size={22} />
+          )}
         </div>
         <div className="min-w-0">
           <div className="truncate text-[0.9375rem] font-medium text-foreground">
-            {config.label}
+            {displayMetadata.label}
           </div>
           <div className="mt-0.5 line-clamp-2 text-sm leading-5 text-muted-foreground">
-            {config.helpText}
+            {displayMetadata.helpText}
           </div>
         </div>
       </div>
       <button
         type="button"
-        disabled={complete || activating}
+        disabled={complete || activating || !canActivate}
         onClick={() => {
           detach(activate(pageSignal), Reason.DomCallback);
         }}
         className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
       >
         {activating && <IconLoader2 size={15} className="animate-spin" />}
-        {complete ? "Connected" : "Connect"}
+        {!canActivate ? "Unavailable" : complete ? "Connected" : "Connect"}
       </button>
     </div>
   );
@@ -5973,7 +5921,7 @@ function isPermissionActionAlreadyApplied(params: {
 
 function findPermissionActionPermission(
   block: PermissionActionBlock,
-  metadata: FirewallPermissionDetailMetadata | undefined,
+  metadata: PublicConnectorCatalogPermissionDetail | undefined,
 ) {
   return metadata
     ? (findPermissionInMetadata(metadata, block.permission) ?? undefined)
@@ -5983,7 +5931,7 @@ function findPermissionActionPermission(
 function permissionActionUserGrantPolicy(
   loadable: LoadableLike<readonly PermissionActionUserGrant[]>,
   block: PermissionActionBlock,
-  metadata: FirewallPermissionDetailMetadata | undefined,
+  metadata: PublicConnectorCatalogPermissionDetail | undefined,
 ): FirewallPolicyValue | undefined {
   const grants = loadableData(loadable);
   if (!grants || !metadata) {
@@ -6050,7 +5998,7 @@ function createPermissionActionCardViewState(params: {
   block: PermissionActionBlock;
   hasAgent: boolean;
   agentLoadableState: string;
-  permissionMetadataLoadable: LoadableLike<FirewallPermissionDetailMetadata | null>;
+  permissionMetadataLoadable: LoadableLike<PublicConnectorCatalogPermissionDetail | null>;
   userGrantsLoadable: LoadableLike<readonly PermissionActionUserGrant[]>;
   grantLoadableState: string;
 }) {
@@ -6176,6 +6124,11 @@ function PermissionActionCardContent({
   expiresAt: string | null;
   onClick: () => void;
 }) {
+  const connectorIcon = isConnectorIconType(block.connectorRef) ? (
+    <ConnectorIcon type={block.connectorRef} size={22} />
+  ) : (
+    <IconPackage size={22} />
+  );
   const expiryText = expirationAvailable
     ? permissionGrantExpiryText(expiresAt)
     : null;
@@ -6191,7 +6144,7 @@ function PermissionActionCardContent({
     >
       <div className="flex min-w-0 items-center gap-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/40">
-          <ConnectorIcon type={block.connectorRef} size={22} />
+          {connectorIcon}
         </div>
         <div className="min-w-0">
           <div className="truncate text-[0.9375rem] font-medium text-foreground">
@@ -6236,7 +6189,6 @@ function PermissionActionCardForTarget({
   userGrantsLoadable: LoadableLike<readonly PermissionActionUserGrant[]>;
 }) {
   const pageSignal = useGet(pageSignal$);
-  const config = CONNECTOR_TYPES[block.connectorRef];
   const expirationAvailable = block.action === "allow";
   const durationScope = `${block.id}\u0000${block.expiresIn ?? ""}`;
   const expiresInByScope = useGet(permissionGrantExpiresInByScope$);
@@ -6247,7 +6199,7 @@ function PermissionActionCardForTarget({
     DEFAULT_USER_PERMISSION_GRANT_EXPIRES_IN;
   const permissionMetadataLoadable = useLoadable(
     firewallPermissionMetadataByConnector({
-      connectorType: block.connectorRef,
+      connectorRef: block.connectorRef,
     }),
   );
   const [grantLoadable, applyGrant] = useLoadableSet(applyUserPermissionGrant$);
@@ -6260,6 +6212,10 @@ function PermissionActionCardForTarget({
     userGrantsLoadable,
     grantLoadableState: grantLoadable.state,
   });
+  const permissionMetadata =
+    permissionMetadataLoadable.state === "hasData"
+      ? permissionMetadataLoadable.data
+      : null;
   const grantExpiresAt =
     grantLoadable.state === "hasData"
       ? grantLoadable.data.expiresAt
@@ -6268,7 +6224,7 @@ function PermissionActionCardForTarget({
   return (
     <PermissionActionCardContent
       block={block}
-      connectorLabel={config.label}
+      connectorLabel={permissionMetadata?.label ?? block.connectorRef}
       actionLabel={actionState.actionLabel}
       permissionName={actionState.focusedPermission?.name ?? block.permission}
       status={actionState.status}
@@ -6741,7 +6697,13 @@ function PagedGroupRow({
   };
 }) {
   if (group.role === "user") {
-    return <PagedUserGroup group={group} thread={thread} />;
+    return (
+      <PagedUserGroup
+        group={group}
+        thread={thread}
+        runGroupFolds={runGroupFolds}
+      />
+    );
   }
   return (
     <PagedAssistantGroup
@@ -6756,14 +6718,19 @@ function PagedGroupRow({
 function PagedUserGroup({
   group,
   thread,
+  runGroupFolds,
 }: {
   group: GroupedChatMessageGroup;
   thread: ChatThreadSignals;
+  runGroupFolds?: readonly RunGroupFoldControl[];
 }) {
   return (
     <>
       {group.messages.map((msg) => {
         return <PagedUserMessage key={msg.id} message={msg} thread={thread} />;
+      })}
+      {runGroupFolds?.map((fold) => {
+        return <RunGroupFoldRow key={fold.fold.key} control={fold} />;
       })}
     </>
   );
@@ -6946,7 +6913,7 @@ function UserMessageAttachments({
             <ChatVideoPreviewButton
               key={a.url}
               ariaLabel={`Preview ${a.filename}`}
-              buttonClassName={CHAT_INLINE_VIDEO_PREVIEW_CLASS}
+              buttonClassName={CHAT_INLINE_VIDEO_ATTACHMENT_PREVIEW_CLASS}
               filename={a.filename}
               onPreview={() => {
                 openVideoLightbox({
@@ -7133,10 +7100,8 @@ function UserMessageGenerationTemplate({
 }
 
 function AutomationUserMessage({
-  automationId,
   automationLabel,
 }: {
-  automationId: string | undefined;
   automationLabel: string;
 }) {
   const cardClassName =
@@ -7154,18 +7119,7 @@ function AutomationUserMessage({
       <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
         <div className="flex w-full flex-col items-end">
-          {automationId ? (
-            <Link
-              pathname="/automations/:automationId"
-              options={{ pathParams: { automationId } }}
-              className={cn(cardClassName, "cursor-pointer hover:opacity-80")}
-              aria-label={`Open automation ${automationLabel}`}
-            >
-              {body}
-            </Link>
-          ) : (
-            <div className={cardClassName}>{body}</div>
-          )}
+          <div className={cardClassName}>{body}</div>
         </div>
       </div>
     </div>
@@ -7332,7 +7286,6 @@ function PagedUserMessage({
   if (isAutomationUserMessage(message)) {
     return (
       <AutomationUserMessage
-        automationId={message.automationId}
         automationLabel={automationMessageLabel(message)}
       />
     );

@@ -26,6 +26,31 @@ fn process_env_config_loads_user_env_once() {
         );
     }
 
+    let missing_payload_error = match guest_agent::env::GuestConfig::from_process_env() {
+        Ok(_) => panic!("missing run payload file should fail fast"),
+        Err(error) => error,
+    };
+    assert!(
+        missing_payload_error.contains(guest_contracts::env::RUN_PAYLOAD_FILE_ENV),
+        "error should identify {}, got: {missing_payload_error}",
+        guest_contracts::env::RUN_PAYLOAD_FILE_ENV
+    );
+    assert!(
+        user_env_path.exists(),
+        "missing run payload should fail before consuming user env"
+    );
+
+    unsafe {
+        common::set_run_payload_file_env_for_test(
+            &runtime_dir,
+            &guest_contracts::env::RunPayload {
+                prompt: "process env prompt".to_string(),
+                ..guest_contracts::env::RunPayload::default()
+            },
+        )
+        .unwrap();
+    }
+
     let config = guest_agent::env::GuestConfig::from_process_env().unwrap();
 
     assert_eq!(config.user_env["OPENAI_MODEL"], "gpt-process-env");

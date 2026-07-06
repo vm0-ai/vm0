@@ -1,5 +1,6 @@
 import { useGet, useLoadable } from "ccstate-react";
 import {
+  DropdownMenuItem,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -16,6 +17,7 @@ import {
   type AccountMenuSubscriptionUsageWindow,
   type AccountMenuSubscriptionUsageRowsCacheKey,
 } from "../../signals/zero-page/account-menu-subscriptions.ts";
+import { formatCodexResetCredits } from "./components/preferences/codex-reset-usage-dialog.tsx";
 
 type SubscriptionUsage = AccountMenuSubscriptionUsage;
 type SubscriptionUsageWindow = AccountMenuSubscriptionUsageWindow;
@@ -41,9 +43,13 @@ export function useSubscriptionUsageRows({
 export function AccountMenuSubscriptionsPanel({
   loading,
   rows,
+  onResetCodexUsage,
+  resetPending = false,
 }: {
   readonly loading: boolean;
   readonly rows: readonly AccountMenuSubscriptionUsageRow[];
+  readonly onResetCodexUsage?: (resetCredits: number | null) => void;
+  readonly resetPending?: boolean;
 }) {
   return (
     <div data-testid="account-menu-subscriptions" className="px-3 py-2.5">
@@ -57,8 +63,12 @@ export function AccountMenuSubscriptionsPanel({
                 <AccountMenuSubscriptionProviderSection
                   key={row.type}
                   divided={index > 0}
+                  type={row.type}
                   label={row.label}
                   usage={row.usage}
+                  resetCredits={row.resetCredits}
+                  resetPending={resetPending}
+                  onResetCodexUsage={onResetCodexUsage}
                 />
               );
             })}
@@ -98,14 +108,28 @@ function AccountMenuSubscriptionsSkeleton() {
 
 function AccountMenuSubscriptionProviderSection({
   divided,
+  type,
   label,
   usage,
+  resetCredits,
+  resetPending,
+  onResetCodexUsage,
 }: {
   readonly divided: boolean;
+  readonly type: AccountMenuSubscriptionUsageRow["type"];
   readonly label: string;
   readonly usage: SubscriptionUsage;
+  readonly resetCredits?: number | null;
+  readonly resetPending: boolean;
+  readonly onResetCodexUsage?: (resetCredits: number | null) => void;
 }) {
   const windows = accountMenuSubscriptionUsageWindows(usage);
+  const canResetCodex =
+    type === "codex-oauth-token" &&
+    onResetCodexUsage !== undefined &&
+    resetCredits !== null &&
+    resetCredits !== undefined &&
+    resetCredits > 0;
 
   return (
     <section className="flex flex-col gap-1.5" aria-label={`${label} usage`}>
@@ -125,6 +149,20 @@ function AccountMenuSubscriptionProviderSection({
           );
         })}
       </div>
+      {type === "codex-oauth-token" ? (
+        <DropdownMenuItem
+          disabled={!canResetCodex || resetPending}
+          onClick={() => {
+            onResetCodexUsage?.(resetCredits ?? null);
+          }}
+          className="mt-1 flex h-7 items-center justify-between gap-2 rounded-md px-2 py-1 text-xs"
+        >
+          <span className="min-w-0 flex-1 truncate text-muted-foreground">
+            {formatCodexResetCredits(resetCredits)}
+          </span>
+          <span className="shrink-0 font-medium text-foreground">Reset</span>
+        </DropdownMenuItem>
+      ) : null}
     </section>
   );
 }

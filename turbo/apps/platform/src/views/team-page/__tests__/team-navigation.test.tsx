@@ -3,6 +3,11 @@ import type { ConnectorType } from "@vm0/connectors/connectors";
 import { loadFirewallPermissionMetadata } from "@vm0/connectors/firewall-metadata";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import {
+  zeroConnectorCatalogContract,
+  type PublicConnectorCatalogPermissionSummary,
+  type PublicConnectorCatalogStatusItem,
+} from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import {
   chatThreadByIdContract,
   chatThreadMessagesContract,
   chatThreadsContract,
@@ -29,7 +34,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   click,
-  detachedSetupPage,
+  detachedSetupPage as baseDetachedSetupPage,
   fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
@@ -43,6 +48,13 @@ import { ROUTES } from "../../../signals/route-paths.ts";
 const context = testContext();
 const zeroAgentId = "c0000000-0000-4000-a000-000000000001";
 const researchAgentId = "a0000000-0000-4000-a000-000000000401";
+const PAGE_LOAD_TIMEOUT_MS = 5000;
+
+function detachedSetupPage(
+  options: Parameters<typeof baseDetachedSetupPage>[0],
+): void {
+  baseDetachedSetupPage(options);
+}
 
 function applyUserConnectorUpdate(
   current: readonly string[],
@@ -111,6 +123,43 @@ function createConnector(
     tokenExpiresAt: null,
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
+  };
+}
+
+function axiomCatalogStatusItem(
+  permissionSummary: PublicConnectorCatalogPermissionSummary,
+): PublicConnectorCatalogStatusItem {
+  return {
+    connectorRef: "axiom",
+    label: "Axiom",
+    description: "Observability and log analytics",
+    category: "data-automation-infrastructure",
+    generation: [],
+    tags: [],
+    authMethods: [
+      {
+        id: "api-token",
+        label: "API Token",
+        description: null,
+        grantKind: "manual",
+        manualFields: [],
+        startOptions: [],
+      },
+    ],
+    permissionSummary,
+    connection: {
+      authMethod: "api-token",
+      externalUsername: "workspace",
+      externalEmail: null,
+      reconnectReason: null,
+    },
+    connected: true,
+    connectionStatus: "connected",
+    scopeMismatch: false,
+    authMethodSupportsRefresh: false,
+    tokenExpiresAt: null,
+    singleAuthCodeAuthMethodId: null,
+    connectNotice: null,
   };
 }
 
@@ -347,13 +396,17 @@ function mockTeamAPIs({
       return respond(200, { enabledIds: enabledCustomConnectorIds });
     },
   );
-  context.mocks.api(chatThreadsContract.list, ({ respond }) => {
+  context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
     return respond(200, {
-      pinned: [],
-      threads: [],
-      hasMore: false,
-      nextCursor: null,
+      chatThreads: [],
+      latestEventId: null,
     });
+  });
+  context.mocks.api(chatThreadsContract.events, ({ respond }) => {
+    return respond(200, { events: [], hasMore: false });
+  });
+  context.mocks.api(chatThreadsContract.activeIds, ({ respond }) => {
+    return respond(200, { threadIds: [] });
   });
   context.mocks.api(zeroAgentsByIdContract.get, ({ params, respond }) => {
     const agent = params.id === zeroAgentId ? "Zero" : "Research Agent";
@@ -388,10 +441,13 @@ describe("team page navigation", () => {
     click(agentLink!);
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Research Agent" }),
-      ).toBeInTheDocument();
+      expect(pathname()).toBe(`/agents/${researchAgentId}`);
     });
+    await screen.findByRole(
+      "heading",
+      { name: "Research Agent" },
+      { timeout: PAGE_LOAD_TIMEOUT_MS },
+    );
     await waitFor(() => {
       expect(screen.getByText("@octocat")).toBeInTheDocument();
       expect(screen.getByText("@workspace")).toBeInTheDocument();
@@ -610,56 +666,58 @@ describe("team page navigation", () => {
 
   it("opens the first chat thread from an agent chat page shortcut", async () => {
     mockTeamAPIs();
-    const firstThreadId = "agent-chat-shortcut-first-thread";
-    const secondThreadId = "agent-chat-shortcut-second-thread";
+    const firstThreadId = "b0000000-0000-4000-a000-000000000601";
+    const secondThreadId = "b0000000-0000-4000-a000-000000000602";
     const firstMessageId = "b0000000-0000-4000-a000-000000000501";
-    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, {
-        pinned: [],
-        threads: [
-          {
-            id: firstThreadId,
-            title: "First shortcut thread",
-            agent: { id: researchAgentId, avatarUrl: null },
-            createdAt: "2026-06-01T00:00:00Z",
-            updatedAt: "2026-06-01T00:02:00Z",
-            running: false,
-            pinnedAt: null,
-          },
-          {
-            id: secondThreadId,
-            title: "Second shortcut thread",
-            agent: { id: researchAgentId, avatarUrl: null },
-            createdAt: "2026-06-01T00:00:00Z",
-            updatedAt: "2026-06-01T00:01:00Z",
-            running: false,
-            pinnedAt: null,
-          },
-        ],
-        hasMore: false,
-        nextCursor: null,
-      });
-    });
-    context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
-      return respond(200, {
-        id: params.id,
-        title:
-          params.id === firstThreadId
-            ? "First shortcut thread"
-            : "Second shortcut thread",
-        agentId: researchAgentId,
-        activeRunIds: [],
+    const shortcutThreads = [
+      {
+        id: firstThreadId,
+        title: "First shortcut thread",
+        agent: { id: researchAgentId, avatarUrl: null },
         createdAt: "2026-06-01T00:00:00Z",
         updatedAt: "2026-06-01T00:02:00Z",
-        lastReadMessageId: null,
-        lastReadAt: null,
-        lastMessageAt: "2026-06-01T00:02:00Z",
+        running: false,
         pinnedAt: null,
-        draftContent: null,
-        draftAttachments: null,
+      },
+      {
+        id: secondThreadId,
+        title: "Second shortcut thread",
+        agent: { id: researchAgentId, avatarUrl: null },
+        createdAt: "2026-06-01T00:00:00Z",
+        updatedAt: "2026-06-01T00:01:00Z",
+        running: false,
+        pinnedAt: null,
+      },
+    ];
+    context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
+      return respond(200, {
+        chatThreads: shortcutThreads.map((thread) => {
+          return {
+            id: thread.id,
+            agentId: thread.agent.id,
+            title: thread.title,
+            sortAt: thread.updatedAt,
+            createdAt: thread.createdAt,
+            updatedAt: thread.updatedAt,
+            pinnedAt: thread.pinnedAt,
+            renamedAt: null,
+            selectedModel: null,
+          };
+        }),
+        latestEventId: null,
+      });
+    });
+    context.mocks.api(chatThreadsContract.events, ({ respond }) => {
+      return respond(200, { events: [], hasMore: false });
+    });
+    context.mocks.api(chatThreadsContract.activeIds, ({ respond }) => {
+      return respond(200, { threadIds: [] });
+    });
+    context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
+      return respond(200, {
+        lastReadAt: null,
         computerUseHostId: null,
-        modelProviderId: null,
-        selectedModel: null,
+        codexServiceTier: null,
       });
     });
     context.mocks.api(
@@ -896,16 +954,6 @@ describe("team page navigation", () => {
       expect(buttonByText("Add automation")).toBeInTheDocument();
     });
 
-    click(
-      screen.getAllByLabelText(
-        "Open automation Summarize open research requests",
-      )[0],
-    );
-
-    await waitFor(() => {
-      expect(screen.getAllByText("Research digest")[0]).toBeInTheDocument();
-    });
-
     const breadcrumbLink = screen
       .getAllByText("Agents")
       .map((el) => {
@@ -955,6 +1003,34 @@ describe("team page navigation", () => {
       within(reopenedPermissionRow).queryByText("24h"),
     ).not.toBeInTheDocument();
     expect(buttonByText("Apply", reopenedPermissionsDialog)).toBeDisabled();
+  });
+
+  it("hides connector permission management when catalog status has no permissions", async () => {
+    mockTeamAPIs();
+    context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
+      return respond(200, {
+        connectors: [
+          axiomCatalogStatusItem({
+            hasPermissions: false,
+            permissionCount: 0,
+            hasCategories: false,
+            hasDefaultPolicyOverrides: false,
+          }),
+        ],
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${researchAgentId}`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("@workspace")).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByLabelText("Manage Axiom permissions"),
+    ).not.toBeInTheDocument();
   });
 
   it("applies and restores connector permission policies from an agent page", async () => {

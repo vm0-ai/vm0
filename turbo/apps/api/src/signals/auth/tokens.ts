@@ -28,6 +28,7 @@ const CONDITIONAL_CAPABILITIES = [
   ["goal:read", FeatureSwitchKey.WorkflowAutomation],
   ["goal:agent-result:write", FeatureSwitchKey.WorkflowAutomation],
   ["goal:user-control:write", FeatureSwitchKey.WorkflowAutomation],
+  ["relationship:read", FeatureSwitchKey.RelationshipMemory],
 ] as const satisfies readonly (readonly [ZeroCapability, FeatureSwitchKey])[];
 
 const AGENT_EXCLUDED_CAPABILITIES = [

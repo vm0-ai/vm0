@@ -10,8 +10,10 @@
 //!    resolves any relative paths against the config file's parent directory.
 //! 2. `validate` checks group name, profile names, image hashes, static host
 //!    paths, resource ceilings, and the concurrency factor.
-//! 3. Callers that consume image artifacts hold the relevant rootfs/snapshot
-//!    locks and call [`validate_profile_image_artifacts`].
+//! 3. Callers that consume image artifacts call
+//!    [`lock_and_validate_runner_image_artifacts`] (or the single-profile
+//!    [`lock_and_validate_profile_image_artifacts`]) to hold the relevant
+//!    rootfs/snapshot locks while validating artifact completeness.
 //! 4. Callers derive runtime objects (e.g. [`sandbox::FactoryConfig`]) from
 //!    the loaded config.
 //!
@@ -38,14 +40,16 @@
 //! contract operators write. Add fields behind `#[serde(default)]` with a
 //! sensible default; rename fields only with a migration plan.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
+use std::fs::File;
 use std::path::{Path, PathBuf};
 
+use nix::fcntl::Flock;
 use serde::{Deserialize, Serialize};
 
 use crate::error::{RunnerError, RunnerResult};
 use crate::idle_pool::DEFAULT_IDLE_TIMEOUT_SECS;
-use crate::paths::{HomePaths, RootfsPaths};
+use crate::paths::{HomePaths, RootfsPaths, SnapshotPaths};
 use crate::profile;
 
 /// 0 means auto-detect from host CPU and memory at startup.
@@ -345,17 +349,35 @@ async fn check_snapshot_complete_marker(path: &Path, label: &str) -> RunnerResul
     Ok(())
 }
 
-pub(crate) async fn validate_profile_image_artifacts(
+// This intentionally does not acquire resource locks. Runtime callers that
+// consume image files must use `lock_and_validate_*_image_artifacts` instead.
+async fn validate_profile_image_artifacts(
     name: &str,
     profile: &ProfileConfig,
     home: &HomePaths,
 ) -> RunnerResult<()> {
-    // Validate rootfs files exist on disk.
+    let rootfs_paths = validate_profile_rootfs_artifacts(name, profile, home).await?;
+    validate_profile_snapshot_artifacts(name, profile, &rootfs_paths).await?;
+    Ok(())
+}
+
+async fn validate_profile_rootfs_artifacts(
+    name: &str,
+    profile: &ProfileConfig,
+    home: &HomePaths,
+) -> RunnerResult<RootfsPaths> {
     let rootfs_paths = RootfsPaths::new(home, &profile.rootfs_hash);
     for path in rootfs_paths.expected_files() {
         check_path_exists(&path, &format!("profile {name} rootfs")).await?;
     }
-    // Validate snapshot files exist on disk.
+    Ok(rootfs_paths)
+}
+
+async fn validate_profile_snapshot_artifacts(
+    name: &str,
+    profile: &ProfileConfig,
+    rootfs_paths: &RootfsPaths,
+) -> RunnerResult<SnapshotPaths> {
     let snapshot_paths = rootfs_paths.snapshot(&profile.snapshot_hash);
     for path in snapshot_paths.expected_files() {
         check_path_exists(&path, &format!("profile {name} snapshot")).await?;
@@ -365,7 +387,133 @@ pub(crate) async fn validate_profile_image_artifacts(
         &format!("profile {name} snapshot complete marker"),
     )
     .await?;
-    Ok(())
+    Ok(snapshot_paths)
+}
+
+pub(crate) struct LockedProfileImageArtifacts {
+    _rootfs_locks: Vec<Flock<File>>,
+    _snapshot_locks: Vec<Flock<File>>,
+    snapshot_paths: SnapshotPaths,
+}
+
+impl LockedProfileImageArtifacts {
+    pub(crate) fn snapshot_paths(&self) -> &SnapshotPaths {
+        &self.snapshot_paths
+    }
+}
+
+pub(crate) struct LockedProfileImageArtifactPaths {
+    rootfs_paths: RootfsPaths,
+    snapshot_paths: SnapshotPaths,
+}
+
+impl LockedProfileImageArtifactPaths {
+    pub(crate) fn rootfs_paths(&self) -> &RootfsPaths {
+        &self.rootfs_paths
+    }
+
+    pub(crate) fn snapshot_paths(&self) -> &SnapshotPaths {
+        &self.snapshot_paths
+    }
+}
+
+pub(crate) struct LockedRunnerImageArtifacts {
+    _rootfs_locks: Vec<Flock<File>>,
+    _snapshot_locks: Vec<Flock<File>>,
+    profile_paths: BTreeMap<String, LockedProfileImageArtifactPaths>,
+}
+
+impl LockedRunnerImageArtifacts {
+    pub(crate) fn profile_paths(
+        &self,
+    ) -> impl Iterator<Item = (&str, &LockedProfileImageArtifactPaths)> {
+        self.profile_paths
+            .iter()
+            .map(|(name, paths)| (name.as_str(), paths))
+    }
+}
+
+pub(crate) async fn lock_and_validate_profile_image_artifacts(
+    name: &str,
+    profile: &ProfileConfig,
+    home: &HomePaths,
+) -> RunnerResult<LockedProfileImageArtifacts> {
+    let mut profiles = BTreeMap::new();
+    profiles.insert(name.to_string(), profile.clone());
+    let mut locked = lock_and_validate_runner_image_artifacts(&profiles, home).await?;
+    let paths = locked.profile_paths.remove(name).ok_or_else(|| {
+        RunnerError::Internal(format!(
+            "missing locked image artifact paths for profile {name}"
+        ))
+    })?;
+
+    Ok(LockedProfileImageArtifacts {
+        _rootfs_locks: locked._rootfs_locks,
+        _snapshot_locks: locked._snapshot_locks,
+        snapshot_paths: paths.snapshot_paths,
+    })
+}
+
+pub(crate) async fn lock_and_validate_runner_image_artifacts(
+    profiles: &BTreeMap<String, ProfileConfig>,
+    home: &HomePaths,
+) -> RunnerResult<LockedRunnerImageArtifacts> {
+    if profiles.is_empty() {
+        return Err(RunnerError::Config("profiles must not be empty".into()));
+    }
+
+    // Acquire all rootfs locks before any snapshot lock. A runner can use
+    // multiple profiles, while builders and GC operate on one rootfs plus its
+    // snapshots. Keeping a global rootfs-then-snapshot order prevents a runner
+    // from holding one snapshot while waiting on another rootfs.
+    let rootfs_hashes: BTreeSet<&str> = profiles
+        .values()
+        .map(|profile| profile.rootfs_hash.as_str())
+        .collect();
+    let snapshot_hashes: BTreeSet<&str> = profiles
+        .values()
+        .map(|profile| profile.snapshot_hash.as_str())
+        .collect();
+
+    let mut rootfs_locks = Vec::with_capacity(rootfs_hashes.len());
+    for hash in rootfs_hashes {
+        rootfs_locks.push(crate::lock::acquire_shared(home.rootfs_lock(hash)).await?);
+    }
+
+    let mut rootfs_paths = BTreeMap::new();
+    for (name, profile) in profiles {
+        rootfs_paths.insert(
+            name.clone(),
+            validate_profile_rootfs_artifacts(name, profile, home).await?,
+        );
+    }
+
+    let mut snapshot_locks = Vec::with_capacity(snapshot_hashes.len());
+    for hash in snapshot_hashes {
+        snapshot_locks.push(crate::lock::acquire_shared(home.snapshot_lock(hash)).await?);
+    }
+
+    let mut profile_paths = BTreeMap::new();
+    for (name, profile) in profiles {
+        let rootfs_paths = rootfs_paths.remove(name).ok_or_else(|| {
+            RunnerError::Internal(format!("missing locked rootfs paths for profile {name}"))
+        })?;
+        let snapshot_paths =
+            validate_profile_snapshot_artifacts(name, profile, &rootfs_paths).await?;
+        profile_paths.insert(
+            name.clone(),
+            LockedProfileImageArtifactPaths {
+                rootfs_paths,
+                snapshot_paths,
+            },
+        );
+    }
+
+    Ok(LockedRunnerImageArtifacts {
+        _rootfs_locks: rootfs_locks,
+        _snapshot_locks: snapshot_locks,
+        profile_paths,
+    })
 }
 
 async fn validate(

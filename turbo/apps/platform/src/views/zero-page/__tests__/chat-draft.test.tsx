@@ -5,6 +5,7 @@ import { HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
 import {
   chatThreadByIdContract,
+  chatThreadDraftContract,
   chatThreadsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
@@ -17,66 +18,90 @@ import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
   click,
-  detachedSetupPage,
+  detachedSetupPage as baseDetachedSetupPage,
   fill,
 } from "../../../__tests__/page-helper.ts";
 import { mockChatLifecycle, PLACEHOLDER } from "./chat-test-helpers.ts";
 
 const context = testContext();
+const THREAD_ONE_ID = "b0000000-0000-4000-a000-000000000801";
+const THREAD_TWO_ID = "b0000000-0000-4000-a000-000000000802";
+const THREAD_UPLOADS_ID = "b0000000-0000-4000-a000-000000000803";
+
+function detachedSetupPage(
+  options: Parameters<typeof baseDetachedSetupPage>[0],
+): void {
+  baseDetachedSetupPage(options);
+}
 
 function mockThreadDetails(): void {
-  context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-    return respond(200, {
-      pinned: [],
-      threads: [
-        {
-          id: "thread-1",
-          title: "Thread 1",
-          agent: {
-            id: "c0000000-0000-4000-a000-000000000001",
-            avatarUrl: null,
-          },
-          createdAt: "2026-03-10T00:00:00Z",
-          updatedAt: "2026-03-10T00:00:00Z",
-          running: false,
-        },
-        {
-          id: "thread-2",
-          title: "Thread 2",
-          agent: {
-            id: "c0000000-0000-4000-a000-000000000001",
-            avatarUrl: null,
-          },
-          createdAt: "2026-03-10T00:01:00Z",
-          updatedAt: "2026-03-10T00:01:00Z",
-          running: false,
-        },
-        {
-          id: "thread-uploads",
-          title: "Uploads",
-          agent: {
-            id: "c0000000-0000-4000-a000-000000000001",
-            avatarUrl: null,
-          },
-          createdAt: "2026-03-10T00:02:00Z",
-          updatedAt: "2026-03-10T00:02:00Z",
-          running: false,
-        },
-      ],
-      hasMore: false,
-      nextCursor: null,
-    });
-  });
-  context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
-    return respond(200, {
-      id: params.id,
-      title: null,
-      agentId: "c0000000-0000-4000-a000-000000000001",
-      activeRunIds: [],
-      draftContent: null,
-      draftAttachments: null,
+  const threads = [
+    {
+      id: THREAD_ONE_ID,
+      title: "Thread 1",
+      agent: {
+        id: "c0000000-0000-4000-a000-000000000001",
+        avatarUrl: null,
+      },
       createdAt: "2026-03-10T00:00:00Z",
       updatedAt: "2026-03-10T00:00:00Z",
+      running: false,
+    },
+    {
+      id: THREAD_TWO_ID,
+      title: "Thread 2",
+      agent: {
+        id: "c0000000-0000-4000-a000-000000000001",
+        avatarUrl: null,
+      },
+      createdAt: "2026-03-10T00:01:00Z",
+      updatedAt: "2026-03-10T00:01:00Z",
+      running: false,
+    },
+    {
+      id: THREAD_UPLOADS_ID,
+      title: "Uploads",
+      agent: {
+        id: "c0000000-0000-4000-a000-000000000001",
+        avatarUrl: null,
+      },
+      createdAt: "2026-03-10T00:02:00Z",
+      updatedAt: "2026-03-10T00:02:00Z",
+      running: false,
+    },
+  ];
+  context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
+    return respond(200, {
+      chatThreads: threads.map((thread) => {
+        return {
+          id: thread.id,
+          agentId: thread.agent.id,
+          title: thread.title,
+          sortAt: thread.updatedAt,
+          createdAt: thread.createdAt,
+          updatedAt: thread.updatedAt,
+          pinnedAt: null,
+          renamedAt: null,
+          selectedModel: null,
+        };
+      }),
+      latestEventId: null,
+    });
+  });
+  context.mocks.api(chatThreadsContract.events, ({ respond }) => {
+    return respond(200, { events: [], hasMore: false });
+  });
+  context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
+    return respond(200, {
+      lastReadAt: null,
+      computerUseHostId: null,
+      codexServiceTier: null,
+    });
+  });
+  context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
+    return respond(200, {
+      draftContent: null,
+      draftAttachments: null,
     });
   });
 }
@@ -241,25 +266,25 @@ describe("chat drafts", () => {
     });
     mockThreadDetails();
 
-    detachedSetupPage({ context, path: "/chats/thread-1" });
+    detachedSetupPage({ context, path: `/chats/${THREAD_ONE_ID}` });
 
     await waitFor(() => {
       expect(textarea()).toBeInTheDocument();
     });
     await fill(textarea(), "draft for thread 1");
 
-    await navigateToThread("thread-2");
+    await navigateToThread(THREAD_TWO_ID);
     await waitFor(() => {
       expect(textarea()).toHaveValue("");
     });
     await fill(textarea(), "draft for thread 2");
 
-    await navigateToThread("thread-1");
+    await navigateToThread(THREAD_ONE_ID);
     await waitFor(() => {
       expect(textarea()).toHaveValue("draft for thread 1");
     });
 
-    await navigateToThread("thread-2");
+    await navigateToThread(THREAD_TWO_ID);
     await waitFor(() => {
       expect(textarea()).toHaveValue("draft for thread 2");
     });
@@ -271,12 +296,15 @@ describe("chat drafts", () => {
       updatedAt: "2026-03-10T00:00:00Z",
     });
     mockThreadDetails();
-    context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
+    context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
-        id: params.id,
-        title: "Saved draft",
-        agentId: "c0000000-0000-4000-a000-000000000001",
-        activeRunIds: [],
+        lastReadAt: null,
+        computerUseHostId: null,
+        codexServiceTier: null,
+      });
+    });
+    context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
+      return respond(200, {
         draftContent: "Review the saved launch brief",
         draftAttachments: [
           {
@@ -287,8 +315,6 @@ describe("chat drafts", () => {
             url: "https://cdn.vm7.io/artifacts/test/drafts/brief.md",
           },
         ],
-        createdAt: "2026-03-10T00:00:00Z",
-        updatedAt: "2026-03-10T00:00:00Z",
       });
     });
 
@@ -302,15 +328,18 @@ describe("chat drafts", () => {
 
   it("persists edited draft attachments and clears the server draft after sending", async () => {
     const user = userEvent.setup({ delay: null });
-    const threadId = "thread-draft-sync";
+    const threadId = "b1000000-0000-4000-a000-000000000102";
     const draftPatches: Record<string, unknown>[] = [];
     mockChatLifecycle(context, { threadId });
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
-        id: threadId,
-        title: "Draft sync",
-        agentId: "c0000000-0000-4000-a000-000000000001",
-        activeRunIds: [],
+        lastReadAt: null,
+        computerUseHostId: null,
+        codexServiceTier: null,
+      });
+    });
+    context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
+      return respond(200, {
         draftContent: "Review the saved launch brief",
         draftAttachments: [
           {
@@ -321,8 +350,6 @@ describe("chat drafts", () => {
             url: "https://cdn.vm7.io/artifacts/test/drafts/brief.md",
           },
         ],
-        createdAt: "2026-03-10T00:00:00Z",
-        updatedAt: "2026-03-10T00:00:00Z",
       });
     });
     context.mocks.api(chatThreadByIdContract.patch, ({ body, respond }) => {
@@ -431,7 +458,7 @@ describe("chat drafts", () => {
       },
     );
 
-    detachedSetupPage({ context, path: "/chats/thread-1" });
+    detachedSetupPage({ context, path: `/chats/${THREAD_ONE_ID}` });
 
     await waitFor(() => {
       expect(textarea()).toBeInTheDocument();
@@ -451,7 +478,7 @@ describe("chat drafts", () => {
       ).toBeInTheDocument();
     });
 
-    await navigateToThread("thread-2");
+    await navigateToThread(THREAD_TWO_ID);
     await waitFor(() => {
       expect(textarea()).toHaveValue("");
       expect(screen.queryByLabelText(/photo\.png/)).not.toBeInTheDocument();
@@ -459,7 +486,7 @@ describe("chat drafts", () => {
 
     uploadRequest!.resolve(new HttpResponse(null, { status: 200 }));
 
-    await navigateToThread("thread-1");
+    await navigateToThread(THREAD_ONE_ID);
     await waitFor(() => {
       expect(screen.getByLabelText("Remove photo.png")).toBeInTheDocument();
     });
@@ -504,7 +531,7 @@ describe("chat drafts", () => {
       return new HttpResponse(null, { status: 500 });
     });
 
-    detachedSetupPage({ context, path: "/chats/thread-uploads" });
+    detachedSetupPage({ context, path: `/chats/${THREAD_UPLOADS_ID}` });
 
     await waitFor(() => {
       expect(textarea()).toBeInTheDocument();
@@ -556,7 +583,7 @@ describe("chat drafts", () => {
       },
     );
 
-    detachedSetupPage({ context, path: "/chats/thread-uploads" });
+    detachedSetupPage({ context, path: `/chats/${THREAD_UPLOADS_ID}` });
 
     await waitFor(() => {
       expect(textarea()).toBeInTheDocument();
@@ -583,7 +610,7 @@ describe("chat drafts", () => {
   });
 
   it("uploads dropped files and reports oversized drops", async () => {
-    const threadId = "thread-uploads";
+    const threadId = THREAD_UPLOADS_ID;
     const oversizedFile = new File(["video"], "launch-recording.mov", {
       type: "video/quicktime",
     });

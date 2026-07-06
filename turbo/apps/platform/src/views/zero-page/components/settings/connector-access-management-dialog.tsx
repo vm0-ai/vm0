@@ -19,11 +19,8 @@ import {
   cn,
 } from "@vm0/ui";
 import type { ConnectorType } from "@vm0/connectors/connectors";
-import {
-  hasFirewallMetadataPermissions,
-  permissionGrantsToFirewallPolicies,
-  type FirewallPermissionDetailMetadata,
-} from "@vm0/connectors/firewall-metadata";
+import type { PublicConnectorCatalogPermissionDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import { permissionGrantsToFirewallPolicies } from "@vm0/connectors/firewall-metadata/policy";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { firewallPermissionMetadataByConnector } from "../../../../signals/firewall-permission-metadata.ts";
@@ -114,7 +111,6 @@ function ConnectorAccessSearch({
 
 function AgentAccessRow({
   row,
-  connectorType,
   connectorLabel,
   metadata,
   saving,
@@ -122,9 +118,8 @@ function AgentAccessRow({
   onManage,
 }: {
   readonly row: ConnectorAgentAccessRow;
-  readonly connectorType: ConnectorType;
   readonly connectorLabel: string;
-  readonly metadata: FirewallPermissionDetailMetadata | null;
+  readonly metadata: PublicConnectorCatalogPermissionDetail | null;
   readonly saving: boolean;
   readonly onToggle: (
     row: ConnectorAgentAccessRow,
@@ -133,10 +128,7 @@ function AgentAccessRow({
   readonly onManage: (row: ConnectorAgentAccessRow) => void;
 }) {
   const name = agentName(row.agent);
-  const canManage =
-    row.authorized &&
-    metadata !== null &&
-    hasFirewallMetadataPermissions(connectorType);
+  const canManage = row.authorized && (metadata?.permissionCount ?? 0) > 0;
 
   return (
     <div className="flex items-center gap-2 px-1 py-4">
@@ -181,7 +173,6 @@ function AgentAccessRow({
 
 function AgentAccessList({
   rows,
-  connectorType,
   connectorLabel,
   metadata,
   savingAgentId,
@@ -190,9 +181,8 @@ function AgentAccessList({
   onManage,
 }: {
   readonly rows: readonly ConnectorAgentAccessRow[];
-  readonly connectorType: ConnectorType;
   readonly connectorLabel: string;
-  readonly metadata: FirewallPermissionDetailMetadata | null;
+  readonly metadata: PublicConnectorCatalogPermissionDetail | null;
   readonly savingAgentId: string | null;
   readonly search: string;
   readonly onToggle: (
@@ -218,7 +208,6 @@ function AgentAccessList({
           <AgentAccessRow
             key={row.agent.id}
             row={row}
-            connectorType={connectorType}
             connectorLabel={connectorLabel}
             metadata={metadata}
             saving={savingAgentId === row.agent.id}
@@ -258,7 +247,7 @@ function ConnectorAccessDialog({
   readonly connectorLabel: string;
   readonly rows: readonly ConnectorAgentAccessRow[];
   readonly rowsLoaded: boolean;
-  readonly metadata: FirewallPermissionDetailMetadata | null;
+  readonly metadata: PublicConnectorCatalogPermissionDetail | null;
   readonly savingAgentId: string | null;
   readonly search: string;
   readonly onSearchChange: (value: string) => void;
@@ -306,7 +295,6 @@ function ConnectorAccessDialog({
           {rowsLoaded ? (
             <AgentAccessList
               rows={rows}
-              connectorType={connectorType}
               connectorLabel={connectorLabel}
               metadata={metadata}
               savingAgentId={savingAgentId}
@@ -333,7 +321,7 @@ function AgentPermissionDialog({
   onClose,
 }: {
   readonly row: ConnectorAgentAccessRow | undefined;
-  readonly metadata: FirewallPermissionDetailMetadata | null;
+  readonly metadata: PublicConnectorCatalogPermissionDetail | null;
   readonly connectorType: ConnectorType;
   readonly connectorLabel: string;
   readonly pageSignal: AbortSignal;
@@ -358,7 +346,7 @@ function AgentPermissionDialog({
       onApply={async (intent, { metadata: appliedMetadata }) => {
         await savePermissionDraftPolicies({
           scope: { agentId: row.agent.id },
-          connectorType,
+          connectorRef: connectorType,
           metadata: appliedMetadata,
           initialPolicies,
           initialGrants: row.grants,
@@ -382,7 +370,7 @@ export function ConnectorAccessManagementDialog({
     connectorAgentAccessRows({ connectorType }),
   );
   const metadataLoadable = useLastLoadable(
-    firewallPermissionMetadataByConnector({ connectorType }),
+    firewallPermissionMetadataByConnector({ connectorRef: connectorType }),
   );
   const pageSignal = useGet(pageSignal$);
   const search = useGet(connectorAccessManagementSearch$);

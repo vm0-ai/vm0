@@ -5,8 +5,11 @@ import type {
   SubscriptionUsageMetadata,
   SubscriptionUsageWindowMetadata,
 } from "./model-provider-subscription-usage.types";
+import { extractCodexAccountEmailFromIdToken } from "./codex-auth-json-parser";
 
 const CHATGPT_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
+const CHATGPT_RESET_CREDITS_CONSUME_URL =
+  "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume";
 const CODEX_ORIGINATOR = "codex_cli_rs";
 const CODEX_USER_AGENT = "codex_cli_rs/0.0.0";
 const WEEK_SECONDS = 7 * 24 * 60 * 60;
@@ -28,6 +31,12 @@ const rateLimitDetailsSchema = z
   .object({
     primary_window: rateLimitWindowSchema.nullable().optional(),
     secondary_window: rateLimitWindowSchema.nullable().optional(),
+  })
+  .passthrough();
+
+const rateLimitResetCreditsSchema = z
+  .object({
+    available_count: z.number().int().nonnegative().nullable().optional(),
   })
   .passthrough();
 
@@ -53,8 +62,21 @@ const codexUsageResponseSchema = z
     organization: namedMetadataSchema.nullable().optional(),
     organization_name: z.string().nullable().optional(),
     rate_limit: rateLimitDetailsSchema.nullable().optional(),
+    rate_limit_reset_credits: rateLimitResetCreditsSchema.nullable().optional(),
     workspace: namedMetadataSchema.nullable().optional(),
     workspace_name: z.string().nullable().optional(),
+  })
+  .passthrough();
+
+const codexRateLimitResetCreditConsumeResponseSchema = z
+  .object({
+    code: z.enum([
+      "reset",
+      "nothing_to_reset",
+      "no_credit",
+      "already_redeemed",
+    ]),
+    windows_reset: z.number().nullable().optional(),
   })
   .passthrough();
 
@@ -63,12 +85,20 @@ type CodexNamedMetadata = z.infer<typeof namedMetadataSchema>;
 type CodexUsageResponse = z.infer<typeof codexUsageResponseSchema>;
 
 interface CodexUsageMetadata {
+  readonly accountEmail: string | null;
   readonly planType: string | null;
   readonly workspaceName: string | null;
   readonly subscriptionResetPeriod: string | null;
   readonly subscriptionNextResetAt: Date | null;
   readonly subscriptionUsage: SubscriptionUsageMetadata | null;
+  readonly subscriptionResetCredits: number | null;
 }
+
+export type CodexRateLimitResetCreditOutcome =
+  | "reset"
+  | "nothingToReset"
+  | "noCredit"
+  | "alreadyRedeemed";
 
 interface UsageResetWindow {
   readonly period: string | null;
@@ -271,6 +301,7 @@ function subscriptionUsageFromRateLimit(
 export async function fetchCodexUsageMetadata(args: {
   readonly accessToken: string;
   readonly accountId: string;
+  readonly idToken?: string | null;
   readonly signal: AbortSignal;
 }): Promise<CodexUsageMetadata | null> {
   const response = await fetch(CHATGPT_USAGE_URL, {
@@ -297,10 +328,73 @@ export async function fetchCodexUsageMetadata(args: {
 
   const resetWindow = chooseSubscriptionResetWindow(parsed.data.rate_limit);
   return {
+    accountEmail: extractCodexAccountEmailFromIdToken(args.idToken),
     planType: nonEmptyString(parsed.data.plan_type),
     workspaceName: workspaceNameFromUsage(parsed.data),
     subscriptionResetPeriod: resetWindow?.period ?? null,
     subscriptionNextResetAt: resetWindow?.nextResetAt ?? null,
     subscriptionUsage: subscriptionUsageFromRateLimit(parsed.data.rate_limit),
+    subscriptionResetCredits:
+      parsed.data.rate_limit_reset_credits?.available_count ?? null,
+  };
+}
+
+function codexResetCreditOutcome(
+  code: z.infer<typeof codexRateLimitResetCreditConsumeResponseSchema>["code"],
+): CodexRateLimitResetCreditOutcome {
+  switch (code) {
+    case "reset": {
+      return "reset";
+    }
+    case "nothing_to_reset": {
+      return "nothingToReset";
+    }
+    case "no_credit": {
+      return "noCredit";
+    }
+    case "already_redeemed": {
+      return "alreadyRedeemed";
+    }
+  }
+}
+
+export async function consumeCodexRateLimitResetCredit(args: {
+  readonly accessToken: string;
+  readonly accountId: string;
+  readonly idempotencyKey: string;
+  readonly signal: AbortSignal;
+}): Promise<{
+  readonly outcome: CodexRateLimitResetCreditOutcome;
+}> {
+  const response = await fetch(CHATGPT_RESET_CREDITS_CONSUME_URL, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${args.accessToken}`,
+      "chatgpt-account-id": args.accountId,
+      "content-type": "application/json",
+      originator: CODEX_ORIGINATOR,
+      "user-agent": CODEX_USER_AGENT,
+    },
+    body: JSON.stringify({
+      redeem_request_id: args.idempotencyKey,
+    }),
+    signal: args.signal,
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      `Codex reset credit consume request failed with status ${response.status}`,
+    );
+  }
+
+  const parsed = codexRateLimitResetCreditConsumeResponseSchema.safeParse(
+    await response.json(),
+  );
+  if (!parsed.success) {
+    throw new Error("Codex reset credit consume response shape unrecognized");
+  }
+
+  return {
+    outcome: codexResetCreditOutcome(parsed.data.code),
   };
 }

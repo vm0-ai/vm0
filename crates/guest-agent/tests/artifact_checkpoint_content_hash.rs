@@ -5,7 +5,7 @@ use guest_agent::run_context::GuestRuntime;
 use httpmock::prelude::*;
 use serde_json::json;
 use sha2::{Digest, Sha256};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 const RUN_ID: &str = "artifact-checkpoint-content-hash";
@@ -58,6 +58,17 @@ impl Drop for SandboxOpsOverrideGuard {
     }
 }
 
+fn write_run_payload(
+    runtime_dir: &Path,
+    payload: &guest_contracts::env::RunPayload,
+) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let dir = runtime_dir.join(guest_contracts::env::RUN_PAYLOAD_PRIVATE_DIR_NAME);
+    std::fs::create_dir_all(&dir)?;
+    let path = dir.join(guest_contracts::env::RUN_PAYLOAD_FILENAME);
+    std::fs::write(&path, serde_json::to_vec(payload)?)?;
+    Ok(path)
+}
+
 fn test_runtime(
     temp_dir: &Path,
     mount_path: &Path,
@@ -66,22 +77,29 @@ fn test_runtime(
 ) -> Result<GuestRuntime, Box<dyn std::error::Error>> {
     let runtime_dir = temp_dir.join("runtime");
     let paths = GuestPaths::from_runtime_dir(&runtime_dir);
+    let run_payload_file = write_run_payload(
+        &runtime_dir,
+        &guest_contracts::env::RunPayload {
+            artifacts: json!([
+                {
+                    "name": "workspace",
+                    "mountPath": mount_path.to_string_lossy(),
+                    "storageId": STORAGE_ID,
+                    "versionId": version_id,
+                }
+            ])
+            .to_string(),
+            ..guest_contracts::env::RunPayload::default()
+        },
+    )?;
     let config = GuestConfig::from_raw(GuestConfigRaw {
         run_id: RUN_ID.to_string(),
         api_url: api_url.to_string(),
         api_token: "test-token".to_string(),
         cli_agent_type: "claude-code".to_string(),
         home: Some(temp_dir.join("home").to_string_lossy().into_owned()),
+        run_payload_file: run_payload_file.to_string_lossy().into_owned(),
         guest_runtime_dir: Some(runtime_dir),
-        artifacts: json!([
-            {
-                "name": "workspace",
-                "mountPath": mount_path.to_string_lossy(),
-                "storageId": STORAGE_ID,
-                "versionId": version_id,
-            }
-        ])
-        .to_string(),
         ..GuestConfigRaw::default()
     })?;
     let http = HttpClient::with_api_config(api_url, "test-token", "", Duration::ZERO)?;

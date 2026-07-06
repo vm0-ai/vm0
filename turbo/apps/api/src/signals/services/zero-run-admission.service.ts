@@ -17,6 +17,12 @@ interface OrgCreditAvailability {
   readonly spendableCredits: number;
 }
 
+function allowsLimitedFree1ModelProvider(
+  modelProviderType: string | null | undefined,
+): boolean {
+  return modelProviderType === "vm0";
+}
+
 export async function resolveOrgCreditAvailability(params: {
   readonly db: CreditDb;
   readonly orgId: string;
@@ -66,7 +72,8 @@ export async function checkOrgCreditsForRunAdmission(params: {
   }
   if (
     availability.tier === "limited-free-1" &&
-    isLimitedFree1RestrictedRunModel(params.selectedModel)
+    (!allowsLimitedFree1ModelProvider(params.modelProviderType) ||
+      isLimitedFree1RestrictedRunModel(params.selectedModel))
   ) {
     return insufficientCredits();
   }
@@ -84,9 +91,13 @@ export async function checkOrgCreditsForRunAdmission(params: {
 export async function checkLimitedFreeRunModelAdmission(params: {
   readonly db: Db;
   readonly orgId: string;
+  readonly modelProviderType: string | null | undefined;
   readonly selectedModel: string | null | undefined;
 }): Promise<ReturnType<typeof insufficientCredits> | undefined> {
-  if (!isLimitedFree1RestrictedRunModel(params.selectedModel)) {
+  if (
+    allowsLimitedFree1ModelProvider(params.modelProviderType) &&
+    !isLimitedFree1RestrictedRunModel(params.selectedModel)
+  ) {
     return undefined;
   }
   const availability = await resolveOrgCreditAvailability(params);

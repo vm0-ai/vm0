@@ -2,10 +2,11 @@ import { command, computed, state } from "ccstate";
 import { talkDraft$ } from "./chat-draft.ts";
 import { getRandomPrompts } from "../../views/zero-page/zero-ideation-data.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
+import { connectorCatalogStatusByRef$ } from "../external/connectors.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import { userModelPreference$ } from "../external/user-model-preference.ts";
-import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import { resolveModelFirstUserDefaultSelection } from "./model-default-selection.ts";
+import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 
 // ---------------------------------------------------------------------------
 // Landing page local UI state for ZeroChatPage
@@ -28,37 +29,39 @@ export const chatPageTaglineIndex$ = computed((get) => {
 });
 
 // ---------------------------------------------------------------------------
-// Suggested prompts — filtered by active feature switches
+// Suggested prompts — filtered by active feature switches and connector catalog
 // ---------------------------------------------------------------------------
+
+export const unfilteredSuggestedPrompts$ = computed((get) => {
+  const features = get(featureSwitch$);
+  return getRandomPrompts(2, { features });
+});
 
 export const suggestedPrompts$ = computed(async (get) => {
   const features = await get(featureSwitch$);
-  return getRandomPrompts(2, features);
+  const connectorStatusByRef = await get(connectorCatalogStatusByRef$);
+  return getRandomPrompts(2, {
+    features,
+    visibleConnectorRefs: new Set(connectorStatusByRef.keys()),
+  });
 });
 
 // ---------------------------------------------------------------------------
-// Landing-page composer model override
+// Landing-page composer model selection
 // ---------------------------------------------------------------------------
 
-// Discriminated union so "user hasn't picked anything" (→ seed from org
-// default) stays distinguishable from "user explicitly picked inherit" (→
-// null). Mirrors the thread-page model selection factory.
+// Discriminated union so "user hasn't picked anything" can resolve to the
+// current model-first default while "user explicitly picked inherit" stays null.
 const internalChatPageUserOverride$ = state<
   { kind: "unset" } | { kind: "set"; value: ModelProviderSelection | null }
 >({ kind: "unset" });
 
 export const chatPageModelSelection$ = computed(
-  (get): ModelProviderSelection | null => {
+  async (get): Promise<ModelProviderSelection | null> => {
     const user = get(internalChatPageUserOverride$);
     if (user.kind === "set") {
       return user.value;
     }
-    return null;
-  },
-);
-
-export const chatPageDefaultModelSelection$ = computed(
-  async (get): Promise<ModelProviderSelection | null> => {
     const policies = await get(orgModelPolicies$);
     const userPreference = await get(userModelPreference$);
     return resolveModelFirstUserDefaultSelection({

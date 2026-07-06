@@ -16,6 +16,7 @@ export interface ChatThreadSnapshotProjection {
   readonly updatedAt: string;
   readonly pinnedAt: string | null;
   readonly renamedAt: string | null;
+  readonly selectedModel: string | null;
 }
 
 export const chatThreadSnapshots = pgTable(

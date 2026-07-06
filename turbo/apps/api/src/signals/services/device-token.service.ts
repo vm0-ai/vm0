@@ -12,6 +12,10 @@ import { generateCliToken } from "../auth/tokens";
 import { writeDb$, type Db } from "../external/db";
 import { now, nowDate } from "../external/time";
 import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
+import {
+  chatThreadModelPinColumns,
+  resolveRequiredDefaultChatThreadModelPin,
+} from "./zero-chat-thread-model.service";
 
 const DEVICE_CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const BB0_DEVICE_PURPOSE = "bb0";
@@ -155,11 +159,16 @@ export const confirmBb0Device$ = command(
         createdAt,
       });
 
+      const pin = await resolveRequiredDefaultChatThreadModelPin(tx as Db, {
+        orgId: args.orgId,
+        userId: args.userId,
+      });
       await tx.insert(chatThreads).values({
         id: threadId,
         userId: args.userId,
         agentComposeId,
         title: "bb0",
+        ...chatThreadModelPinColumns(pin),
         createdAt,
         updatedAt: createdAt,
       });
@@ -170,6 +179,7 @@ export const confirmBb0Device$ = command(
         chatThreadId: threadId,
         agentComposeId,
         title: "bb0",
+        selectedModel: pin.selectedModel,
         createdAt,
       });
 

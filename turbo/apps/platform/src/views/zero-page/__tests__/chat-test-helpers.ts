@@ -11,6 +11,7 @@ import {
   chatThreadsContract,
   chatThreadByIdContract,
   chatThreadComputerUseHostContract,
+  chatThreadDraftContract,
   chatThreadModelSelectionContract,
   chatThreadMessagesContract,
   chatMessagesContract,
@@ -43,7 +44,7 @@ const DEFAULT_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const MOCK_RUN_ID = "d0000000-0000-4000-a000-000000000001";
 const SUB_AGENT_ID = "a1111111-0000-4000-a000-000000000001";
 
-export function mockSubagentThread(context: TestContext, threadId: string) {
+export function mockSubagentThread(context: TestContext, _threadId: string) {
   context.mocks.data.team([
     {
       id: DEFAULT_AGENT_ID,
@@ -91,22 +92,15 @@ export function mockSubagentThread(context: TestContext, threadId: string) {
   });
   context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
     return respond(200, {
-      id: threadId,
-      title: null,
-      agentId: SUB_AGENT_ID,
-      activeRunIds: [],
-      createdAt: "2026-03-10T00:00:00Z",
-      updatedAt: "2026-03-10T00:00:00Z",
-      draftContent: null,
-      draftAttachments: null,
+      lastReadAt: null,
+      computerUseHostId: null,
+      codexServiceTier: null,
     });
   });
-  context.mocks.api(chatThreadsContract.list, ({ respond }) => {
+  context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
     return respond(200, {
-      pinned: [],
-      threads: [],
-      hasMore: false,
-      nextCursor: null,
+      draftContent: null,
+      draftAttachments: null,
     });
   });
   context.mocks.api(zeroAgentsByIdContract.get, ({ params, respond }) => {
@@ -204,39 +198,27 @@ interface ThreadListItem {
   updatedAt: string;
   running: boolean;
   pinnedAt?: string | null;
+  renamedAt?: string | null;
+  selectedModel?: string | null;
 }
 
-type PagedThreadItem = ThreadListItem & {
-  pinnedAt?: string | null;
-  renamedAt?: string | null;
-};
+const UUID_PATTERN =
+  /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/;
 
-/**
- * Splits a flat ThreadListItem array into the new paged response shape that
- * the chatThreadsContract.list endpoint returns. Pinned items go to `pinned`,
- * the rest to `threads`; pagination metadata defaults to "no more pages"
- * since fixtures rarely care about cursor mechanics.
- */
-export function splitChatThreadListResponse(
-  threads: readonly PagedThreadItem[],
-): {
-  pinned: PagedThreadItem[];
-  threads: PagedThreadItem[];
-  hasMore: boolean;
-  nextCursor: string | null;
-} {
-  const pinned = threads.filter((t) => {
-    return t.pinnedAt !== null && t.pinnedAt !== undefined;
+export function threadListSnapshot(threads: readonly ThreadListItem[]) {
+  return threads.map((thread) => {
+    return {
+      id: thread.id,
+      agentId: thread.agent.id,
+      title: thread.title,
+      sortAt: thread.updatedAt,
+      createdAt: thread.createdAt,
+      updatedAt: thread.updatedAt,
+      pinnedAt: thread.pinnedAt ?? null,
+      renamedAt: thread.renamedAt ?? null,
+      selectedModel: thread.selectedModel ?? null,
+    };
   });
-  const nonPinned = threads.filter((t) => {
-    return t.pinnedAt === null || t.pinnedAt === undefined;
-  });
-  return {
-    pinned,
-    threads: nonPinned,
-    hasMore: false,
-    nextCursor: null,
-  };
 }
 
 interface MockLifecycleControl {
@@ -400,6 +382,7 @@ export function mockChatLifecycle(
       attachments?: PersistedAttachment[];
       clientMessageId: string;
       generationTemplate?: GenerationTemplateRequest;
+      modelSelection?: ModelSelectionRequest | null;
       runOptions?: ChatRunOptionsRequest;
     }) => void;
     onRecallMessageAppend?: (body: {
@@ -437,6 +420,7 @@ export function mockChatLifecycle(
     onRunCreate?: (body: {
       prompt?: string;
       clientMessageId?: string;
+      clientThreadId?: string;
       attachFiles?: {
         id: string;
         filename: string;
@@ -450,10 +434,22 @@ export function mockChatLifecycle(
       computerUseHostId?: string | null;
       revokesMessageId?: string;
     }) => void;
+    onSendRequest?: (body: {
+      clientThreadId?: string;
+      modelSelection?: ModelSelectionRequest | null;
+    }) => void;
+    onThreadCreate?: (body: {
+      clientThreadId?: string;
+      modelSelection: ModelSelectionRequest;
+    }) => void;
+    onModelSelectionUpdate?: (body: {
+      modelSelection?: ModelSelectionRequest | null;
+      codexServiceTier?: CodexServiceTier | null;
+    }) => void;
     onMessageGet?: (messageId: string) => void;
   },
 ): MockLifecycleControl {
-  let threadId = options?.threadId ?? "thread-test-1";
+  let threadId = options?.threadId ?? "b0000000-0000-4000-a000-000000000900";
   const historyMessages = options?.historyMessages ?? [];
   const chatMessages = options?.chatMessages ?? [];
 
@@ -462,7 +458,7 @@ export function mockChatLifecycle(
   let events: AgentEvent[] = [];
   let queuePosition = 0;
   let resultContent = "";
-  let threadList: ThreadListItem[] = [];
+  let threadListOverride: ThreadListItem[] | null = null;
   let runPrompt: string | null = null;
   let runUserMessageId = "msg-user-sent";
   let runAssociated = false;
@@ -548,6 +544,30 @@ export function mockChatLifecycle(
     );
   };
 
+  const effectiveThreadList = () => {
+    if (threadListOverride !== null) {
+      return threadListOverride;
+    }
+    if (!UUID_PATTERN.test(threadId)) {
+      return [];
+    }
+    return [
+      {
+        id: threadId,
+        title: threadTitle,
+        agent: {
+          id: "c0000000-0000-4000-a000-000000000001",
+          avatarUrl: null,
+        },
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-10T00:00:00Z",
+        running: hasActiveRun(),
+        pinnedAt: null,
+        selectedModel,
+      },
+    ];
+  };
+
   const buildPagedMessages = () => {
     const assistantId = `msg-assistant-run-v${assistantVersion}`;
     const historicalMessages = historyMessages.map((message, i) => {
@@ -629,6 +649,7 @@ export function mockChatLifecycle(
     clientMessageId?: string;
     hasTextContent?: boolean;
     generationTemplate?: GenerationTemplateRequest;
+    modelSelection?: ModelSelectionRequest | null;
     runOptions?: ChatRunOptionsRequest;
   }) => {
     const clientMessageId = body.clientMessageId ?? crypto.randomUUID();
@@ -644,6 +665,7 @@ export function mockChatLifecycle(
       attachments: attachFiles,
       clientMessageId,
       generationTemplate: body.generationTemplate,
+      modelSelection: body.modelSelection,
       runOptions: body.runOptions,
     });
     if (options?.appendGate) {
@@ -775,23 +797,16 @@ export function mockChatLifecycle(
     if (options?.threadGate) {
       await options.threadGate;
     }
-    const lifecycleActiveRunIds =
-      runAssociated && !terminal.has(runStatus) ? [MOCK_RUN_ID] : [];
-    const activeRunIds = [...optionActiveRunIds, ...lifecycleActiveRunIds];
     return respond(200, {
-      id: threadId,
-      title: threadTitle,
-      agentId: "c0000000-0000-4000-a000-000000000001",
-      activeRunIds,
       lastReadAt: "2026-03-10T00:00:00Z",
-      lastMessageAt: "2026-03-10T00:00:00Z",
-      createdAt: "2026-03-10T00:00:00Z",
-      updatedAt: "2026-03-10T00:00:00Z",
+      computerUseHostId,
+      codexServiceTier,
+    });
+  });
+  context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
+    return respond(200, {
       draftContent: null,
       draftAttachments: null,
-      selectedModel,
-      codexServiceTier,
-      computerUseHostId,
     });
   });
   context.mocks.api(
@@ -799,6 +814,10 @@ export function mockChatLifecycle(
     ({ body, respond }) => {
       selectedModel = body.modelSelection?.selectedModel ?? null;
       codexServiceTier = body.codexServiceTier ?? null;
+      options?.onModelSelectionUpdate?.({
+        modelSelection: body.modelSelection,
+        codexServiceTier: body.codexServiceTier,
+      });
       return respond(204);
     },
   );
@@ -812,11 +831,40 @@ export function mockChatLifecycle(
       return respond(204);
     },
   );
-  context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-    return respond(200, splitChatThreadListResponse(threadList));
+  context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
+    return respond(200, {
+      chatThreads: threadListSnapshot(effectiveThreadList()),
+      latestEventId: null,
+    });
+  });
+  context.mocks.api(chatThreadsContract.events, ({ respond }) => {
+    return respond(200, { events: [], hasMore: false });
+  });
+  context.mocks.api(chatThreadsContract.activeIds, ({ respond }) => {
+    const activeThreadIds = new Set(
+      effectiveThreadList().flatMap((thread) => {
+        return thread.running ? [thread.id] : [];
+      }),
+    );
+    if (
+      optionActiveRunIds.length > 0 ||
+      (runAssociated && !terminal.has(runStatus))
+    ) {
+      activeThreadIds.add(threadId);
+    }
+    return respond(200, {
+      threadIds: [...activeThreadIds].filter((id) => {
+        return UUID_PATTERN.test(id);
+      }),
+    });
   });
   context.mocks.api(chatThreadsContract.create, ({ body, respond }) => {
     threadId = body.clientThreadId ?? threadId;
+    selectedModel = body.modelSelection.selectedModel;
+    options?.onThreadCreate?.({
+      clientThreadId: body.clientThreadId,
+      modelSelection: body.modelSelection,
+    });
     return respond(201, {
       id: threadId,
       title: null,
@@ -833,6 +881,10 @@ export function mockChatLifecycle(
       return respond(201, appendInterruptControlMessage(body));
     }
 
+    options?.onSendRequest?.({
+      clientThreadId: body.clientThreadId,
+      modelSelection: body.modelSelection,
+    });
     threadId = body.clientThreadId ?? threadId;
     const responseBody = hasActiveRun()
       ? await appendQueuedUserMessage(body)
@@ -907,7 +959,7 @@ export function mockChatLifecycle(
       events = e;
     },
     setThreadList: (list) => {
-      threadList = list;
+      threadListOverride = list;
     },
     completeRun: (content?: string) => {
       runStatus = "completed";

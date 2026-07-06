@@ -95,14 +95,35 @@ export async function encryptWorkflowWebhookSecret(
   });
 }
 
+async function decryptWorkflowWebhookToken(
+  encryptedToken: string,
+  args: { readonly orgId: string; readonly userId: string },
+): Promise<string> {
+  return await decryptPersistentSecretValue(encryptedToken, {
+    orgId: args.orgId,
+    userId: args.userId,
+  });
+}
+
+async function decryptWorkflowWebhookSecret(
+  encryptedSecret: string,
+  args: { readonly orgId: string; readonly userId: string },
+): Promise<string> {
+  return await decryptPersistentSecretValue(encryptedSecret, {
+    orgId: args.orgId,
+    userId: args.userId,
+  });
+}
+
 export async function buildWorkflowWebhookSummaryFields(
   db: ReadonlyDb,
   args: {
     readonly trigger: TriggerRow;
+    readonly webhookToken?: string;
     readonly webhookSecret?: string;
   },
 ): Promise<{
-  readonly webhookUrl: string;
+  readonly webhookUrl?: string;
   readonly secretLastFour: string;
   readonly lastReceivedAt: string | null;
   readonly webhookSecret?: string;
@@ -118,17 +139,45 @@ export async function buildWorkflowWebhookSummaryFields(
     );
   }
 
-  const token = await decryptPersistentSecretValue(webhook.encryptedToken, {
-    orgId: args.trigger.orgId,
-    userId: args.trigger.ownerUserId,
-  });
   return {
-    webhookUrl: workflowWebhookUrlForToken(token),
+    ...(args.webhookToken
+      ? { webhookUrl: workflowWebhookUrlForToken(args.webhookToken) }
+      : {}),
     secretLastFour: webhook.secretLastFour,
     lastReceivedAt: webhook.lastReceivedAt
       ? webhook.lastReceivedAt.toISOString()
       : null,
     ...(args.webhookSecret ? { webhookSecret: args.webhookSecret } : {}),
+  };
+}
+
+export async function revealWorkflowWebhookSecretFields(
+  db: ReadonlyDb,
+  args: {
+    readonly trigger: TriggerRow;
+  },
+): Promise<{ readonly webhookUrl: string; readonly webhookSecret: string }> {
+  const [webhook] = await db
+    .select()
+    .from(zeroWorkflowWebhookTriggers)
+    .where(eq(zeroWorkflowWebhookTriggers.triggerId, args.trigger.id))
+    .limit(1);
+  if (!webhook) {
+    throw new Error(
+      `Workflow webhook trigger config missing: ${args.trigger.id}`,
+    );
+  }
+  const context = {
+    orgId: args.trigger.orgId,
+    userId: args.trigger.ownerUserId,
+  };
+  const [token, secret] = await Promise.all([
+    decryptWorkflowWebhookToken(webhook.encryptedToken, context),
+    decryptWorkflowWebhookSecret(webhook.encryptedSecret, context),
+  ]);
+  return {
+    webhookUrl: workflowWebhookUrlForToken(token),
+    webhookSecret: secret,
   };
 }
 

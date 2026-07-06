@@ -105,6 +105,11 @@ const SHIFTED_DIGIT_KEYS: Record<string, string> = {
   "9": "(",
 };
 
+const SHIFTED_SYMBOL_KEYS: Record<string, string> = {
+  "[": "{",
+  "]": "}",
+};
+
 function eventDigit(e: KeyboardEventLike): string | null {
   const codeMatch = e.code?.match(/^(?:Digit|Numpad)([0-9])$/);
   if (codeMatch) {
@@ -126,7 +131,15 @@ function matchesShortcutKey(parsed: ParsedShortcut, e: KeyboardEventLike) {
   if (parsed.shift && /^[0-9]$/.test(parsed.key)) {
     return eventDigit(e) === parsed.key;
   }
-  return e.key.toLowerCase() === parsed.key;
+  const eventKey = e.key.toLowerCase();
+  if (
+    parsed.shift &&
+    SHIFTED_SYMBOL_KEYS[parsed.key] !== undefined &&
+    eventKey === SHIFTED_SYMBOL_KEYS[parsed.key]
+  ) {
+    return true;
+  }
+  return eventKey === parsed.key;
 }
 
 // ---------------------------------------------------------------------------

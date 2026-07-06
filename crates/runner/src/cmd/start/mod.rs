@@ -56,7 +56,7 @@ use crate::network_log_drain::NetworkLogDrainCoordinator;
 use crate::network_log_manager::NetworkLogManager;
 use crate::paths::{HomePaths, LogPaths, RunnerPaths, touch_mtime};
 use crate::prefetch;
-use crate::provider::{ApiProvider, JobProvider, LocalProvider};
+use crate::provider::{ApiProvider, JobProvider, LocalProvider, NetworkPolicyRefreshHandle};
 use crate::proxy;
 use crate::resource_budget::ResourceBudget;
 use crate::retry::{RetryState, recv_retry, sleep_until_retry};
@@ -344,21 +344,11 @@ async fn run_start_with_home(
     info!(runner_id = %runner_id, runner_name = %runner_config.name, "runner identity");
 
     // Shared locks on rootfs + snapshot per profile — allows `runner gc` to detect in-use resources.
-    let mut _resource_locks = Vec::new();
-    for (profile_name, profile) in &runner_config.profiles {
-        let rootfs_lock = lock::acquire_shared(home.rootfs_lock(&profile.rootfs_hash)).await?;
-        let rootfs_paths = crate::paths::RootfsPaths::new(&home, &profile.rootfs_hash);
-        _resource_locks.push(rootfs_lock);
-        let snapshot_lock =
-            lock::acquire_shared(home.snapshot_lock(&profile.snapshot_hash)).await?;
-        let snapshot_paths = rootfs_paths.snapshot(&profile.snapshot_hash);
-        _resource_locks.push(snapshot_lock);
-
-        // Validate image artifacts only after both shared locks are held.
-        // Reading them before lock acquisition can race with builders or GC.
-        config::validate_profile_image_artifacts(profile_name, profile, &home).await?;
-        touch_mtime(rootfs_paths.dir());
-        touch_mtime(snapshot_paths.dir());
+    let resource_locks =
+        config::lock_and_validate_runner_image_artifacts(&runner_config.profiles, &home).await?;
+    for (_, profile_paths) in resource_locks.profile_paths() {
+        touch_mtime(profile_paths.rootfs_paths().dir());
+        touch_mtime(profile_paths.snapshot_paths().dir());
     }
 
     let log_paths = LogPaths::new(home.logs_dir());
@@ -396,12 +386,11 @@ async fn run_start_with_home(
     };
 
     // Start background prefetch of snapshot memory for all profiles.
-    let mut memory_prefetch =
-        prefetch::MemoryPrefetchTasks::spawn(runner_config.profiles.values().map(|profile| {
-            crate::paths::RootfsPaths::new(&home, &profile.rootfs_hash)
-                .snapshot(&profile.snapshot_hash)
-                .memory_bin()
-        }));
+    let mut memory_prefetch = prefetch::MemoryPrefetchTasks::spawn(
+        resource_locks
+            .profile_paths()
+            .map(|(_, profile_paths)| profile_paths.snapshot_paths().memory_bin()),
+    );
 
     // Compute the smallest profile resources for budget pre-check.
     // When budget is exhausted for all profiles, we wait instead of polling.
@@ -590,30 +579,34 @@ async fn run_start_with_home(
     // Create provider — handles discovery + claim + complete
     let (usage_flush_tx, usage_flush_rx) = mpsc::channel(1);
 
-    let (provider, group_name): (Arc<dyn JobProvider>, String) =
-        if let Some(group_dir) = local_group_dir {
-            let profiles: Vec<String> = runner_config.profiles.keys().cloned().collect();
-            let provider = LocalProvider::new(
-                group_dir,
-                profiles,
-                cancel.clone(),
-                Arc::clone(&cancel_tokens),
-            );
-            (provider, group)
-        } else {
-            let group_name = group.clone();
-            let profiles: Vec<String> = runner_config.profiles.keys().cloned().collect();
-            let provider = ApiProvider::new(
-                http.clone(),
-                server.token,
-                group,
-                profiles,
-                cancel.clone(),
-                Arc::clone(&cancel_tokens),
-            )
-            .await;
-            (provider, group_name)
-        };
+    let (provider, group_name, network_policy_refresh): (
+        Arc<dyn JobProvider>,
+        String,
+        Option<NetworkPolicyRefreshHandle>,
+    ) = if let Some(group_dir) = local_group_dir {
+        let profiles: Vec<String> = runner_config.profiles.keys().cloned().collect();
+        let provider = LocalProvider::new(
+            group_dir,
+            profiles,
+            cancel.clone(),
+            Arc::clone(&cancel_tokens),
+        );
+        (provider, group, None)
+    } else {
+        let group_name = group.clone();
+        let profiles: Vec<String> = runner_config.profiles.keys().cloned().collect();
+        let provider = ApiProvider::new(
+            http.clone(),
+            server.token,
+            group,
+            profiles,
+            cancel.clone(),
+            Arc::clone(&cancel_tokens),
+        )
+        .await;
+        let network_policy_refresh = provider.network_policy_refresh_handle();
+        (provider, group_name, Some(network_policy_refresh))
+    };
 
     let exec_config = Arc::new(ExecutorConfig {
         api_url: server.url,
@@ -623,6 +616,7 @@ async fn run_start_with_home(
         network_log_manager,
         network_log_drain,
         mitm_jsonl_flush: Some(mitm.jsonl_flush_handle(usage_flush_tx.clone())),
+        network_policy_refresh,
         home: home.clone(),
         workspace_cache: Some(SessionWorkspaceCache::shared(
             paths.clone(),
@@ -712,6 +706,7 @@ async fn run_start_with_home(
     };
 
     let run_result = run(config).await;
+    drop(resource_locks);
     if let Err(e) = live_runner_instance_handle.remove_if_current().await {
         tracing::warn!(error = %e, "failed to remove live runner instance record");
     }

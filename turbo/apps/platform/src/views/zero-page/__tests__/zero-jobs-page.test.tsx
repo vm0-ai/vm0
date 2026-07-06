@@ -264,19 +264,6 @@ describe("zero jobs page", () => {
         updatedAt: "2024-01-03T00:00:00Z",
       },
     ]);
-    context.mocks.data.automations([
-      createMockAutomationView({
-        id: "f0000001-0000-4000-a000-000000000101",
-        description: "Morning brief",
-        prompt: "Send morning brief to the team channel",
-      }),
-      createMockAutomationView({
-        id: "f0000001-0000-4000-a000-000000000102",
-        description: "Office AC on",
-        prompt: "Turn on the air conditioning in my office",
-      }),
-    ]);
-
     detachedSetupPage({ context, path: "/agents" });
 
     await waitFor(() => {
@@ -293,13 +280,6 @@ describe("zero jobs page", () => {
     });
     expect(findSectionCreateButton("Public")).toBeInTheDocument();
     expect(findSectionCreateButton("Private")).toBeInTheDocument();
-
-    click(screen.getByText("Automations"));
-
-    await waitFor(() => {
-      expect(screen.getAllByText("Morning brief")[0]).toBeInTheDocument();
-      expect(screen.getAllByText("Office AC on")[0]).toBeInTheDocument();
-    });
   });
 
   it("creates public and private agents, customizes avatars, supports Enter submit, cancel, and card navigation", async () => {

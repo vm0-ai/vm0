@@ -132,6 +132,21 @@ describe("matchShortcut", () => {
       matchShortcut("shift+2", createEvent({ key: "@", shiftKey: true })),
     ).toBe(true);
   });
+
+  it("should match ctrl+shift+brackets when the browser reports braces", () => {
+    expect(
+      matchShortcut(
+        "ctrl+shift+[",
+        createEvent({ key: "{", ctrlKey: true, shiftKey: true }),
+      ),
+    ).toBe(true);
+    expect(
+      matchShortcut(
+        "ctrl+shift+]",
+        createEvent({ key: "}", ctrlKey: true, shiftKey: true }),
+      ),
+    ).toBe(true);
+  });
 });
 
 describe("processShortcut", () => {
@@ -257,6 +272,11 @@ describe("getShortcutParts", () => {
 
   it("renders ctrl as Ctrl in non-Mac environment", () => {
     expect(getShortcutParts("ctrl+c")).toEqual(["Ctrl", "c"]);
+  });
+
+  it("renders ctrl+shift+bracket shortcuts with literal brackets", () => {
+    expect(getShortcutParts("ctrl+shift+[")).toEqual(["Ctrl", "Shift", "["]);
+    expect(getShortcutParts("ctrl+shift+]")).toEqual(["Ctrl", "Shift", "]"]);
   });
 
   it("renders shift+/ as [Shift, /] — parseShortcut alias is match-only, not display", () => {

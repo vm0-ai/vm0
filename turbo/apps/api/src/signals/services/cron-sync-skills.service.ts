@@ -36,7 +36,7 @@ import {
   listS3ObjectsUnderPrefix,
   putS3Object,
 } from "../external/s3";
-import { settle } from "../utils";
+import { createDeferredPromise, safeSync, settle } from "../utils";
 import type { FileEntryWithHash } from "./storage-content-hash.service";
 
 interface SyncSkillsResult {
@@ -117,62 +117,79 @@ async function fetchHeadCommitSha(signal: AbortSignal): Promise<string> {
   return parseHeadRef(await response.text(), DEFAULT_SKILLS_BRANCH);
 }
 
-function extractSkillsFromTarball(gzipped: Buffer): Promise<ExtractedSkill[]> {
+function extractSkillsFromTarball(
+  gzipped: Buffer,
+  signal: AbortSignal,
+): Promise<ExtractedSkill[]> {
   const decompressed = gunzipSync(gzipped);
   const filesBySkill = new Map<string, ExtractedFile[]>();
+  const deferred = createDeferredPromise<ExtractedSkill[]>(signal);
 
-  return new Promise((resolve, reject) => {
-    const parser = new Parser({
-      onReadEntry: (entry) => {
-        if (entry.type !== "File") {
-          entry.resume();
-          return;
-        }
-
-        const parts = entry.path.split("/");
-        if (parts.length < 3) {
-          entry.resume();
-          return;
-        }
-
-        const skillName = parts[1]!;
-        const relativePath = parts.slice(2).join("/");
-        const chunks: Buffer[] = [];
-        entry.on("data", (chunk: Buffer) => {
-          chunks.push(chunk);
-        });
-        entry.on("end", () => {
-          const content = Buffer.concat(chunks);
-          const hash = createHash("sha256").update(content).digest("hex");
-          const files = filesBySkill.get(skillName) ?? [];
-          files.push({
-            path: relativePath,
-            content,
-            hash,
-            size: content.length,
-          });
-          filesBySkill.set(skillName, files);
-        });
-      },
-    });
-
-    parser.on("end", () => {
-      const extracted: ExtractedSkill[] = [];
-      for (const [skillName, files] of filesBySkill) {
-        if (
-          files.some((file) => {
-            return file.path === "SKILL.md";
-          })
-        ) {
-          extracted.push({ skillName, files });
-        }
+  const parser = new Parser({
+    onReadEntry: (entry) => {
+      if (entry.type !== "File") {
+        entry.resume();
+        return;
       }
-      resolve(extracted);
-    });
-    parser.on("error", reject);
+
+      const parts = entry.path.split("/");
+      if (parts.length < 3) {
+        entry.resume();
+        return;
+      }
+
+      const skillName = parts[1]!;
+      const relativePath = parts.slice(2).join("/");
+      const chunks: Buffer[] = [];
+      entry.on("data", (chunk: Buffer) => {
+        chunks.push(chunk);
+      });
+      entry.on("end", () => {
+        const content = Buffer.concat(chunks);
+        const hash = createHash("sha256").update(content).digest("hex");
+        const files = filesBySkill.get(skillName) ?? [];
+        files.push({
+          path: relativePath,
+          content,
+          hash,
+          size: content.length,
+        });
+        filesBySkill.set(skillName, files);
+      });
+    },
+  });
+
+  parser.on("end", () => {
+    if (deferred.settled()) {
+      return;
+    }
+
+    const extracted: ExtractedSkill[] = [];
+    for (const [skillName, files] of filesBySkill) {
+      if (
+        files.some((file) => {
+          return file.path === "SKILL.md";
+        })
+      ) {
+        extracted.push({ skillName, files });
+      }
+    }
+    deferred.resolve(extracted);
+  });
+  parser.on("error", (error) => {
+    if (!deferred.settled()) {
+      deferred.reject(error);
+    }
+  });
+  const parseResult = safeSync(() => {
     parser.write(decompressed);
     parser.end();
   });
+  if ("error" in parseResult && !deferred.settled()) {
+    deferred.reject(parseResult.error);
+  }
+
+  return deferred.promise;
 }
 
 async function downloadAndExtractSkills(
@@ -185,6 +202,7 @@ async function downloadAndExtractSkills(
 
   return await extractSkillsFromTarball(
     Buffer.from(await response.arrayBuffer()),
+    signal,
   );
 }
 

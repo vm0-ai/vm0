@@ -56,6 +56,10 @@ function toStringArray(value: unknown): string[] {
   });
 }
 
+function normalizePinnedAgentIds(ids: readonly string[]): string[] {
+  return [...new Set(ids)].sort();
+}
+
 function parseSendMode(value: unknown): SendMode {
   return value === "cmd-enter" ? "cmd-enter" : "enter";
 }
@@ -141,7 +145,9 @@ export function userPreferences({
 
     return {
       timezone: row.timezone,
-      pinnedAgentIds: toStringArray(row.pinnedAgentIds),
+      pinnedAgentIds: normalizePinnedAgentIds(
+        toStringArray(row.pinnedAgentIds),
+      ),
       sendMode: parseSendMode(row.sendMode),
       captureNetworkBodiesRemaining: row.captureNetworkBodiesRemaining ?? 0,
     };
@@ -215,7 +221,7 @@ export const updateUserPreferences$ = command(
           : existing.timezone,
       pinnedAgentIds:
         preferences.pinnedAgentIds !== undefined
-          ? [...preferences.pinnedAgentIds]
+          ? normalizePinnedAgentIds(preferences.pinnedAgentIds)
           : existing.pinnedAgentIds,
       sendMode:
         preferences.sendMode !== undefined
@@ -248,7 +254,7 @@ export const updateUserPreferences$ = command(
             timezone: preferences.timezone,
           }),
           ...(preferences.pinnedAgentIds !== undefined && {
-            pinnedAgentIds: [...preferences.pinnedAgentIds],
+            pinnedAgentIds: normalizePinnedAgentIds(preferences.pinnedAgentIds),
           }),
           ...(preferences.sendMode !== undefined && {
             sendMode: preferences.sendMode,

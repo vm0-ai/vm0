@@ -19,6 +19,7 @@ interface DefaultAgentValues {
 interface OnboardingSeedValues {
   readonly defaultAgent?: DefaultAgentValues;
   readonly onboardingPaymentPending?: boolean;
+  readonly onboardingComplete?: boolean;
   readonly tier?: string;
 }
 
@@ -106,6 +107,7 @@ function seedValuesToWire(
         }
       : undefined,
     onboarding_payment_pending: values.onboardingPaymentPending,
+    onboarding_complete: values.onboardingComplete,
     tier: values.tier,
   };
 }

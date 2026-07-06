@@ -104,7 +104,7 @@ import type {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { AttachmentChips } from "./zero-attachment-chips.tsx";
 import { TiptapWorkflowComposer } from "./tiptap-workflow-composer.tsx";
-import computerUseIllustration from "./assets/computer-use-illustration.png";
+import { computerUseIllustrationImg } from "./platform-assets.ts";
 import type { ComposerPasteEvent } from "./composer-input-types.ts";
 import {
   parsePresentationEditDraft,
@@ -299,7 +299,7 @@ interface ZeroChatComposerProps {
   /**
    * When true, render skeleton placeholders in place of the right-side
    * action cluster (model picker, mic, send/stop). Used during thread switch
-   * while thread data is still resolving — prevents briefly flashing stale
+   * while remote thread detail is still resolving — prevents briefly flashing stale
    * picker state and a wrong send/stop button derived from prior
    * `allFinished`.
    */
@@ -315,8 +315,7 @@ interface ZeroChatComposerProps {
     onChange: (value: ModelProviderSelection | null) => void;
     // When true, picker is read-only for the current composer state.
     disabled?: boolean;
-    /** Effective default model from user preference, then workspace default. */
-    defaultSelection?: ModelProviderSelection | null;
+    resolveDefaultSelection?: boolean;
   };
   templatePicker?: {
     value: GenerationTemplateRequest | undefined;
@@ -442,9 +441,6 @@ function resolveComposerModelForSelection(
   }
   if (selection) {
     return selection;
-  }
-  if (modelPicker.defaultSelection) {
-    return modelPicker.defaultSelection;
   }
   return null;
 }
@@ -5881,7 +5877,7 @@ function ComputerUseDownloadDialog({
       <DialogContent className="max-w-md gap-0 overflow-hidden p-0">
         <div className="flex h-44 items-center justify-center border-b border-border bg-gray-50">
           <img
-            src={computerUseIllustration}
+            src={computerUseIllustrationImg}
             alt=""
             className="h-40 w-40 object-contain"
           />
@@ -6456,6 +6452,7 @@ function ComposerModelPickerSlot({
           open={modelPickerOpen}
           onOpenChange={onModelPickerOpenChange}
           disabled={modelPicker.disabled}
+          resolveDefaultSelection={modelPicker.resolveDefaultSelection}
         />
       )}
     </>

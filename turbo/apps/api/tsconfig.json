@@ -9,6 +9,6 @@
     "types": ["node", "vitest/globals"],
     "outDir": "./dist"
   },
-  "include": ["src/**/*", "custom-eslint/**/*"],
+  "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]
 }

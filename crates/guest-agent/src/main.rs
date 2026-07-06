@@ -1284,8 +1284,10 @@ mod tests {
             run_id: "main-recovery-checkpoint".to_string(),
             api_url: server.base_url(),
             api_token: "test-token".to_string(),
-            prompt: prompt.unwrap_or_default().to_string(),
             home: Some("/home/vm0".to_string()),
+            run_payload_file: write_test_run_payload(prompt)
+                .to_string_lossy()
+                .into_owned(),
             guest_runtime_dir: Some(test_runtime_dir()),
             ..env::GuestConfigRaw::default()
         })
@@ -1302,6 +1304,31 @@ mod tests {
 
     fn test_runtime_dir() -> std::path::PathBuf {
         MAIN_TEST_RUNTIME_ROOT.join("main-recovery-checkpoint")
+    }
+
+    fn write_test_run_payload(prompt: Option<&str>) -> std::path::PathBuf {
+        let dir = test_runtime_dir().join(guest_contracts::env::RUN_PAYLOAD_PRIVATE_DIR_NAME);
+        let create_result = std::fs::create_dir_all(&dir);
+        assert!(
+            create_result.is_ok(),
+            "create test run payload dir: {create_result:?}"
+        );
+        let path = dir.join(guest_contracts::env::RUN_PAYLOAD_FILENAME);
+        let payload = guest_contracts::env::RunPayload {
+            prompt: prompt.unwrap_or_default().to_string(),
+            ..guest_contracts::env::RunPayload::default()
+        };
+        let bytes_result = serde_json::to_vec(&payload);
+        assert!(
+            bytes_result.is_ok(),
+            "serialize test run payload: {bytes_result:?}"
+        );
+        let write_result = std::fs::write(&path, bytes_result.unwrap_or_default());
+        assert!(
+            write_result.is_ok(),
+            "write test run payload: {write_result:?}"
+        );
+        path
     }
 
     fn test_guest_paths() -> paths::GuestPaths {
@@ -1389,9 +1416,10 @@ mod tests {
                 guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
                 test_runtime_dir(),
             );
-            if let Some(prompt) = prompt {
-                std::env::set_var("VM0_PROMPT", prompt);
-            }
+            std::env::set_var(
+                guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
+                write_test_run_payload(prompt),
+            );
         }
         TestEnvGuard
     }
@@ -1414,6 +1442,7 @@ mod tests {
             guest_contracts::env::SETTINGS_ENV,
             guest_contracts::env::CLI_AGENT_TYPE_ENV,
             guest_contracts::env::USER_ENV_FILE_ENV,
+            guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
             guest_contracts::env::ARTIFACTS_ENV,
             guest_contracts::env::FEATURE_FLAGS_ENV,
             guest_contracts::env::STUCK_TOOL_TIMEOUT_SECS_ENV,
@@ -3074,15 +3103,29 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let explicit_paths = paths::GuestPaths::from_runtime_dir(tmp.path().join("captured-run"));
         let stale_paths = paths::GuestPaths::from_runtime_dir(tmp.path().join("stale-run"));
+        let run_payload_dir = explicit_paths
+            .runtime_dir()
+            .join(guest_contracts::env::RUN_PAYLOAD_PRIVATE_DIR_NAME);
+        std::fs::create_dir_all(&run_payload_dir).unwrap();
+        let run_payload_file = run_payload_dir.join(guest_contracts::env::RUN_PAYLOAD_FILENAME);
+        std::fs::write(
+            &run_payload_file,
+            serde_json::to_vec(&guest_contracts::env::RunPayload {
+                prompt: "captured prompt".to_string(),
+                ..guest_contracts::env::RunPayload::default()
+            })
+            .unwrap(),
+        )
+        .unwrap();
         let config = env::GuestConfig::from_raw(env::GuestConfigRaw {
             run_id: "captured-run".to_string(),
-            prompt: "captured prompt".to_string(),
             home: Some(
                 tmp.path()
                     .join("captured-home")
                     .to_string_lossy()
                     .into_owned(),
             ),
+            run_payload_file: run_payload_file.to_string_lossy().into_owned(),
             guest_runtime_dir: Some(explicit_paths.runtime_dir().to_path_buf()),
             ..env::GuestConfigRaw::default()
         })

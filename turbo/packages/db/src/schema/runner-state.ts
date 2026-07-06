@@ -21,13 +21,21 @@ export const runnerState = pgTable(
     runnerId: uuid("runner_id").primaryKey(),
     runnerName: varchar("runner_name", { length: 255 }).notNull(),
     runnerGroup: varchar("runner_group", { length: 255 }).notNull(),
-    profiles: jsonb("profiles").$type<string[]>().notNull(),
+    profiles: jsonb("profiles").$type<string[]>().default([]).notNull(),
     totalVcpu: integer("total_vcpu").notNull().default(0),
     totalMemoryMb: integer("total_memory_mb").notNull().default(0),
     maxConcurrent: integer("max_concurrent").notNull().default(0),
     allocatedVcpu: integer("allocated_vcpu").notNull().default(0),
     allocatedMemoryMb: integer("allocated_memory_mb").notNull().default(0),
     runningCount: integer("running_count").notNull().default(0),
+    availableProfiles: jsonb("available_profiles")
+      .$type<string[]>()
+      .default([])
+      .notNull(),
+    admittableProfiles: jsonb("admittable_profiles")
+      .$type<string[]>()
+      .default([])
+      .notNull(),
     heldSessionStates: jsonb("held_session_states")
       .$type<RunnerHeldSessionState[]>()
       .default([])

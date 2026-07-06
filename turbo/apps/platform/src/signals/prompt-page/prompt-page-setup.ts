@@ -6,7 +6,7 @@ import {
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
   findVideoTemplateItem,
 } from "@vm0/core";
-import { sendNewThreadOptimistically$ } from "../chat-page/optimistic-chat-thread-page.ts";
+import { sendNewThread$ } from "../chat-page/optimistic-chat-thread-page.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import { userModelPreference$ } from "../external/user-model-preference.ts";
@@ -144,7 +144,7 @@ export const setupPromptPage$ = command(
 
     const rootSignal = get(rootSignal$);
     await set(
-      sendNewThreadOptimistically$,
+      sendNewThread$,
       {
         agentId,
         prompt,

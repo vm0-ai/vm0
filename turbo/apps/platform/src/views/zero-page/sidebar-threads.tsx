@@ -1,18 +1,16 @@
+import type { MouseEvent } from "react";
 import {
   useGet,
   useSet,
   useLastResolved,
   useLastLoadable,
-  useLoadable,
 } from "ccstate-react";
-import { useLoadableSet } from "ccstate-react/experimental";
 import {
   IconPlus,
   IconChevronRight,
   IconTrash,
   IconPencil,
   IconDots,
-  IconLoader2,
   IconPin,
   IconPinnedOff,
 } from "@tabler/icons-react";
@@ -46,16 +44,12 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
-  chatThreads$,
   deleteChatThread$,
   pinChatThread$,
   unpinChatThread$,
   renameChatThread$,
 } from "../../signals/chat-page/chat-message.ts";
-import {
-  openRenameChatThreadDialogFromThreadData$,
-  reloadChatThreadDataForId$,
-} from "../../signals/chat-page/chat-thread-rename.ts";
+import { openRenameChatThreadDialogForThreadId$ } from "../../signals/chat-page/chat-thread-rename.ts";
 import {
   SIDEBAR_PARAM,
   currentLeftThread$,
@@ -66,31 +60,16 @@ import {
 } from "../../signals/chat-page/chat-thread-panes.ts";
 import { focusChatThreadContainer$ } from "../../signals/chat-page/chat-keyboard.ts";
 import {
-  createNewChatThreadOptimistically$,
-  optimisticChatThread$,
-  type OptimisticChatPane,
+  createNewChatThread$,
+  newChatThreadDisabled$,
+  type NewChatThreadPane,
   sidebarChatThreads$,
 } from "../../signals/chat-page/optimistic-chat-thread-page.ts";
-import {
-  chatThreadsHasMore$,
-  chatThreadsNextCursor$,
-  currentChatAgentId$,
-} from "../../signals/agent-chat.ts";
-import {
-  loadMoreSidebarChatThreads$,
-  sidebarChatThreadsExtraHasMore$,
-  sidebarChatThreadsHasLoadedExtraPages$,
-  sidebarChatThreadsLatestCursor$,
-} from "../../signals/chat-page/sidebar-chat-threads-pagination.ts";
+import { currentChatAgentId$ } from "../../signals/agent-chat.ts";
+import { eventDrivenActiveRunChatThreadIds$ } from "../../signals/chat-page/chat-thread-event-sourcing.ts";
 import { pathParams$, searchParams$ } from "../../signals/route.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { setSidebarExpanded$ } from "../../signals/zero-page/zero-nav.ts";
-import {
-  headerAutomationMenu$,
-  automationsForThread,
-  reloadHeaderAutomationMenu$,
-  type HeaderAutomationEntry,
-} from "../../signals/chat-page/header-automation-menu.ts";
 import { sidebarDraftThreadIds$ } from "../../signals/chat-page/sidebar-draft-threads.ts";
 import { sidebarUnreadThreadIds$ } from "../../signals/chat-page/sidebar-unread-threads.ts";
 import {
@@ -99,18 +78,29 @@ import {
 } from "../../signals/chat-page/chat-thread-only-unread.ts";
 import {
   pendingDeleteThreadId$,
+  renameDialogAgentId$,
   setPendingDeleteThreadId$,
   renameDialogThreadId$,
   renameDialogInput$,
+  setRenameDialogAgentId$,
   setRenameDialogThreadId$,
   setRenameDialogInput$,
   sessionListCollapsed$,
   setSessionListCollapsed$,
+  overlayScrollMetrics$,
+  overlayScrollViewport$,
+  chatThreadVirtualListElement$,
+  setChatThreadVirtualListElement$,
+  getChatThreadVirtualListScrollMargin,
+  CHAT_THREAD_VIRTUAL_ROW_HEIGHT,
 } from "../../signals/zero-page/zero-sidebar-state.ts";
 import { Link } from "../router/link.tsx";
 
 type IndicatorState = "running" | "unread" | "draft";
 type ChatThreadPaneIndicator = "main" | "sidebar";
+const CHAT_THREAD_VIRTUAL_OVERSCAN = 8;
+const CHAT_THREAD_VIRTUAL_FALLBACK_VIEWPORT_HEIGHT =
+  CHAT_THREAD_VIRTUAL_ROW_HEIGHT * 12;
 
 function SessionStateIndicator({ state }: { state: IndicatorState }) {
   if (state === "running") {
@@ -180,8 +170,15 @@ function getIndicatorState({
   return hasDraft ? "draft" : null;
 }
 
+function isChatThreadRunning(
+  session: ChatThreadListItem,
+  activeRunThreadIds: ReadonlySet<string> | undefined,
+): boolean {
+  return session.running || (activeRunThreadIds?.has(session.id) ?? false);
+}
+
 function handleChatThreadClick(
-  e: React.MouseEvent<HTMLAnchorElement>,
+  e: MouseEvent<HTMLAnchorElement>,
   {
     closeSidebarOnSelect,
     currentLeftId,
@@ -250,6 +247,22 @@ function handleChatThreadClick(
   closeSidebarOnSelect();
 }
 
+function ChatThreadMenuTriggerContent({
+  usePinnedIndicatorTrigger,
+}: {
+  usePinnedIndicatorTrigger: boolean;
+}) {
+  if (!usePinnedIndicatorTrigger) {
+    return <IconDots size={16} stroke={2} />;
+  }
+  return (
+    <>
+      <IconPin size={16} stroke={2} className="md:hidden" />
+      <IconDots size={16} stroke={2} className="hidden md:block" />
+    </>
+  );
+}
+
 function ChatThreadMenu({
   threadId,
   isPinned,
@@ -264,15 +277,11 @@ function ChatThreadMenu({
   usePinnedIndicatorTrigger: boolean;
 }) {
   const setPendingDeleteThreadId = useSet(setPendingDeleteThreadId$);
-  const reloadAutomations = useSet(reloadHeaderAutomationMenu$);
   const pinChatThread = useSet(pinChatThread$);
   const unpinChatThread = useSet(unpinChatThread$);
   const openRenameChatThreadDialog = useSet(
-    openRenameChatThreadDialogFromThreadData$,
+    openRenameChatThreadDialogForThreadId$,
   );
-  const features = useGet(featureSwitch$);
-  const workflowAutomationEnabled =
-    features[FeatureSwitchKey.WorkflowAutomation] ?? false;
   const pageSignal = useGet(pageSignal$);
 
   function handleTogglePin() {
@@ -283,7 +292,7 @@ function ChatThreadMenu({
     }
   }
 
-  function handleMenuTriggerClick(e: React.MouseEvent) {
+  function handleMenuTriggerClick(e: MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
   }
@@ -325,18 +334,9 @@ function ChatThreadMenu({
                       : undefined
                   }
                 >
-                  {usePinnedIndicatorTrigger ? (
-                    <>
-                      <IconPin size={16} stroke={2} className="md:hidden" />
-                      <IconDots
-                        size={16}
-                        stroke={2}
-                        className="hidden md:block"
-                      />
-                    </>
-                  ) : (
-                    <IconDots size={16} stroke={2} />
-                  )}
+                  <ChatThreadMenuTriggerContent
+                    usePinnedIndicatorTrigger={usePinnedIndicatorTrigger}
+                  />
                 </span>
               </TooltipTrigger>
               <TooltipContent side="bottom">
@@ -365,13 +365,6 @@ function ChatThreadMenu({
           </DropdownMenuItem>
           <DropdownMenuItem
             onSelect={() => {
-              // Refetch automations so the delete confirmation reflects the
-              // thread's current linked automations. Skipped when workflow
-              // automation is on: triggers live on the workflow, not the
-              // thread, so deleting the thread never affects them.
-              if (!workflowAutomationEnabled) {
-                reloadAutomations();
-              }
               setPendingDeleteThreadId(threadId);
             }}
             className="text-destructive focus:text-destructive"
@@ -462,16 +455,14 @@ function useChatThreadItemState(session: ChatThreadListItem) {
   const pageSignal = useGet(pageSignal$);
   const draftThreadIds = useLastResolved(sidebarDraftThreadIds$);
   const unreadThreadIds = useLastResolved(sidebarUnreadThreadIds$);
+  const activeRunThreadIds = useLastResolved(
+    eventDrivenActiveRunChatThreadIds$,
+  );
 
   const isPinned = session.pinnedAt !== null && session.pinnedAt !== undefined;
   const onChatPage = urlMainThreadId !== null;
   const isCurrentPage = urlMainThreadId === session.id;
   const isHighlighted = isCurrentPage || urlSidebarThreadId === session.id;
-  const selectedPane = isCurrentPage
-    ? "main"
-    : urlSidebarThreadId === session.id
-      ? "side"
-      : "";
   const paneIndicator = getChatThreadPaneIndicator({
     isCurrentPage,
     sidebarThreadId: urlSidebarThreadId,
@@ -481,7 +472,7 @@ function useChatThreadItemState(session: ChatThreadListItem) {
     (unreadThreadIds?.has(session.id) ?? false) && !isHighlighted;
   const indicatorState = getIndicatorState({
     hasDraft: (draftThreadIds?.has(session.id) ?? false) && !isHighlighted,
-    isRunning: session.running,
+    isRunning: isChatThreadRunning(session, activeRunThreadIds),
     isUnread,
   });
 
@@ -497,7 +488,6 @@ function useChatThreadItemState(session: ChatThreadListItem) {
     onChatPage,
     pageSignal,
     paneIndicator,
-    selectedPane,
     setSidebarExpanded,
     unloadRightThread,
     indicatorState,
@@ -512,7 +502,7 @@ function ChatThreadItemLink({
   state: ReturnType<typeof useChatThreadItemState>;
 }) {
   const openRenameChatThreadDialog = useSet(
-    openRenameChatThreadDialogFromThreadData$,
+    openRenameChatThreadDialogForThreadId$,
   );
   const closeSidebarOnSelect = () => {
     state.setSidebarExpanded(false);
@@ -523,9 +513,6 @@ function ChatThreadItemLink({
       pathname="/chats/:threadId"
       options={{ pathParams: { threadId: session.id } }}
       aria-current={state.isCurrentPage ? "page" : undefined}
-      data-chat-thread-id={session.id}
-      data-chat-thread-title={session.title ?? ""}
-      data-selected={state.selectedPane}
       onClick={(e) => {
         handleChatThreadClick(e, {
           closeSidebarOnSelect,
@@ -582,17 +569,19 @@ function ChatThreadItem({ session }: { session: ChatThreadListItem }) {
 
 function ChatThreadRenameDialog() {
   const renameDialogThreadId = useGet(renameDialogThreadId$);
+  const renameDialogAgentId = useGet(renameDialogAgentId$);
   const renameDialogInput = useGet(renameDialogInput$);
   const setRenameDialogInput = useSet(setRenameDialogInput$);
+  const setRenameDialogAgentId = useSet(setRenameDialogAgentId$);
   const setRenameDialogThreadId = useSet(setRenameDialogThreadId$);
   const renameChatThread = useSet(renameChatThread$);
-  const reloadChatThreadDataForId = useSet(reloadChatThreadDataForId$);
   const focusChatThreadContainer = useSet(focusChatThreadContainer$);
   const pageSignal = useGet(pageSignal$);
 
   function closeRenameDialog() {
     const threadId = renameDialogThreadId;
     setRenameDialogThreadId(null);
+    setRenameDialogAgentId(null);
     setRenameDialogInput("");
     if (threadId) {
       queueMicrotask(() => {
@@ -606,11 +595,11 @@ function ChatThreadRenameDialog() {
       return;
     }
     const threadId = renameDialogThreadId;
+    const agentId = renameDialogAgentId;
     const title = renameDialogInput.trim();
     detach(
       (async () => {
-        await renameChatThread({ threadId, title }, pageSignal);
-        reloadChatThreadDataForId(threadId);
+        await renameChatThread({ threadId, title, agentId }, pageSignal);
       })(),
       Reason.DomCallback,
     );
@@ -680,133 +669,31 @@ function ChatThreadRenameDialog() {
   );
 }
 
-function LoadMoreThreadsButton({
-  loadingMore,
-  onLoadMore,
-}: {
-  loadingMore: boolean;
-  onLoadMore: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onLoadMore}
-      disabled={loadingMore}
-      className="flex h-8 items-center justify-center rounded-lg px-2 text-[13px] leading-5 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors disabled:pointer-events-none disabled:opacity-50"
-      data-testid="sidebar-chat-threads-load-more"
-    >
-      {loadingMore ? "Loading…" : "Load more"}
-    </button>
-  );
-}
-
 function DeleteChatThreadDialogContent({
-  checkingAutomations,
-  pendingDeleteAutomations,
   onCancel,
   onConfirm,
 }: {
-  checkingAutomations: boolean;
-  pendingDeleteAutomations: readonly HeaderAutomationEntry[];
   onCancel: () => void;
   onConfirm: () => void;
 }) {
-  const automationCount = pendingDeleteAutomations.length;
-  const hasAutomations = !checkingAutomations && automationCount > 0;
-
   return (
     <DialogContent>
       <DialogHeader>
-        <DialogTitle>
-          {hasAutomations ? "Delete chat and automations?" : "Delete chat?"}
-        </DialogTitle>
+        <DialogTitle>Delete chat?</DialogTitle>
         <DialogDescription>
-          {hasAutomations
-            ? `This will permanently delete this chat and its ${automationCount} linked ${
-                automationCount === 1 ? "automation" : "automations"
-              }. Any task currently running in this chat will be stopped immediately. This action cannot be undone.`
-            : "This will permanently delete this chat. Any task currently running in this chat will be stopped immediately. This action cannot be undone."}
+          This will permanently delete this chat. Any task currently running in
+          this chat will be stopped immediately. This action cannot be undone.
         </DialogDescription>
       </DialogHeader>
-      {checkingAutomations && (
-        <div
-          className="flex items-center gap-2 text-sm text-muted-foreground"
-          data-testid="delete-chat-thread-checking"
-        >
-          <IconLoader2 size={16} className="animate-spin" />
-          Checking thread content…
-        </div>
-      )}
-      {hasAutomations && (
-        <div className="flex flex-col gap-1.5">
-          <p className="text-sm font-medium">
-            These automations will be deleted
-          </p>
-          <ul className="flex list-disc flex-col gap-1 pl-5">
-            {pendingDeleteAutomations.map((automation) => {
-              return (
-                <li
-                  key={automation.id}
-                  className="break-words text-sm text-muted-foreground"
-                >
-                  {automation.description?.trim() || "No description"}
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      )}
       <DialogFooter>
         <Button variant="outline" onClick={onCancel}>
           Cancel
         </Button>
-        <Button
-          variant="destructive"
-          disabled={checkingAutomations}
-          onClick={onConfirm}
-        >
-          {hasAutomations ? "Delete chat and automations" : "Delete"}
+        <Button variant="destructive" onClick={onConfirm}>
+          Delete
         </Button>
       </DialogFooter>
     </DialogContent>
-  );
-}
-
-/**
- * Legacy automations are 1:1 with a chat thread and are deleted along with it,
- * so this checks for and warns about that side effect before confirming. Only
- * mounted when workflow automation is off: workflow triggers live on the
- * workflow, not the thread, so deleting a thread never touches them and no
- * check is needed.
- */
-function DeleteChatThreadAutomationsCheck({
-  threadId,
-  onCancel,
-  onConfirm,
-}: {
-  threadId: string;
-  onCancel: () => void;
-  onConfirm: () => void;
-}) {
-  // useLoadable (not useLastLoadable): the delete menu item bumps a refetch,
-  // and the dialog must reflect that in-flight check rather than render a
-  // stale automation list as if it were current.
-  const automationsLoadable = useLoadable(headerAutomationMenu$);
-  const checkingAutomations = automationsLoadable.state === "loading";
-  const allAutomations =
-    automationsLoadable.state === "hasData" ? automationsLoadable.data : [];
-  const pendingDeleteAutomations = automationsForThread(
-    allAutomations,
-    threadId,
-  );
-
-  return (
-    <DeleteChatThreadDialogContent
-      checkingAutomations={checkingAutomations}
-      pendingDeleteAutomations={pendingDeleteAutomations}
-      onCancel={onCancel}
-      onConfirm={onConfirm}
-    />
   );
 }
 
@@ -815,9 +702,6 @@ function DeleteChatThreadDialog() {
   const setPendingDeleteThreadId = useSet(setPendingDeleteThreadId$);
   const deleteChatThread = useSet(deleteChatThread$);
   const pageSignal = useGet(pageSignal$);
-  const features = useGet(featureSwitch$);
-  const workflowAutomationEnabled =
-    features[FeatureSwitchKey.WorkflowAutomation] ?? false;
 
   function confirmDelete() {
     if (!pendingDeleteThreadId) {
@@ -841,90 +725,131 @@ function DeleteChatThreadDialog() {
         }
       }}
     >
-      {!workflowAutomationEnabled && pendingDeleteThreadId ? (
-        <DeleteChatThreadAutomationsCheck
-          threadId={pendingDeleteThreadId}
-          onCancel={cancelDelete}
-          onConfirm={confirmDelete}
-        />
-      ) : (
-        <DeleteChatThreadDialogContent
-          checkingAutomations={false}
-          pendingDeleteAutomations={[]}
-          onCancel={cancelDelete}
-          onConfirm={confirmDelete}
-        />
-      )}
+      <DeleteChatThreadDialogContent
+        onCancel={cancelDelete}
+        onConfirm={confirmDelete}
+      />
     </Dialog>
   );
 }
 
-function ChatThreads() {
-  const pageSignal = useGet(pageSignal$);
-
-  const chatThreads = useLastResolved(sidebarChatThreads$) ?? [];
-  const unreadOnly = useGet(chatThreadOnlyUnread$);
-  const firstPageHasMore = useLastResolved(chatThreadsHasMore$) ?? false;
-  const firstPageNextCursor = useLastResolved(chatThreadsNextCursor$);
-  const hasLoadedExtraPages =
-    useLastResolved(sidebarChatThreadsHasLoadedExtraPages$) ?? false;
-  const extraHasMore =
-    useLastResolved(sidebarChatThreadsExtraHasMore$) ?? false;
-  const extraLatestCursor = useLastResolved(sidebarChatThreadsLatestCursor$);
-  const [loadMoreLoadable, loadMore] = useLoadableSet(
-    loadMoreSidebarChatThreads$,
+function getFixedVirtualRange({
+  itemCount,
+  scrollMargin,
+  scrollTop,
+  viewportHeight,
+}: {
+  itemCount: number;
+  scrollMargin: number;
+  scrollTop: number;
+  viewportHeight: number;
+}) {
+  const localScrollTop = Math.max(0, scrollTop - scrollMargin);
+  const firstVisibleIndex = Math.floor(
+    localScrollTop / CHAT_THREAD_VIRTUAL_ROW_HEIGHT,
   );
-  const loadingMore = loadMoreLoadable.state === "loading";
-  const hasMore = hasLoadedExtraPages ? extraHasMore : firstPageHasMore;
-  const cursorForLoadMore = hasLoadedExtraPages
-    ? extraLatestCursor
-    : firstPageNextCursor;
+  const visibleCount = Math.max(
+    1,
+    Math.ceil(viewportHeight / CHAT_THREAD_VIRTUAL_ROW_HEIGHT),
+  );
+  const startIndex = Math.max(
+    0,
+    firstVisibleIndex - CHAT_THREAD_VIRTUAL_OVERSCAN,
+  );
+  const endIndex = Math.min(
+    itemCount,
+    firstVisibleIndex + visibleCount + CHAT_THREAD_VIRTUAL_OVERSCAN,
+  );
 
-  function handleLoadMore() {
-    if (!cursorForLoadMore || loadingMore) {
-      return;
-    }
-    detach(loadMore(cursorForLoadMore, pageSignal), Reason.DomCallback);
-  }
+  return {
+    endIndex,
+    startIndex,
+    totalHeight: itemCount * CHAT_THREAD_VIRTUAL_ROW_HEIGHT,
+  };
+}
+
+function VirtualizedChatThreads({
+  chatThreads,
+}: {
+  chatThreads: readonly ChatThreadListItem[];
+}) {
+  const scrollViewport = useGet(overlayScrollViewport$);
+  const scrollMetrics = useGet(overlayScrollMetrics$);
+  const virtualListElement = useGet(chatThreadVirtualListElement$);
+  const setVirtualListElement = useSet(setChatThreadVirtualListElement$);
+  const scrollMargin = getChatThreadVirtualListScrollMargin(
+    scrollViewport,
+    virtualListElement,
+  );
+  const viewportHeight =
+    scrollMetrics.clientHeight ||
+    scrollViewport?.clientHeight ||
+    CHAT_THREAD_VIRTUAL_FALLBACK_VIEWPORT_HEIGHT;
+  const scrollTop = scrollMetrics.scrollTop ?? scrollViewport?.scrollTop ?? 0;
+  const { startIndex, endIndex, totalHeight } = getFixedVirtualRange({
+    itemCount: chatThreads.length,
+    scrollMargin,
+    scrollTop,
+    viewportHeight,
+  });
+  const visibleChatThreads = chatThreads.slice(startIndex, endIndex);
+
+  return (
+    <div
+      ref={setVirtualListElement}
+      className="relative w-full"
+      data-testid="sidebar-chat-threads-virtual-list"
+      style={{ height: totalHeight }}
+    >
+      {visibleChatThreads.map((session, visibleOffset) => {
+        const index = startIndex + visibleOffset;
+        return (
+          <div
+            key={session.id}
+            data-index={index}
+            data-testid="sidebar-chat-thread-virtual-row"
+            className="absolute left-0 top-0 w-full pb-1"
+            style={{
+              transform: `translateY(${
+                index * CHAT_THREAD_VIRTUAL_ROW_HEIGHT
+              }px)`,
+            }}
+          >
+            <ChatThreadItem session={session} />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ChatThreads({
+  chatThreads,
+}: {
+  chatThreads: readonly ChatThreadListItem[];
+}) {
+  const unreadOnly = useGet(chatThreadOnlyUnread$);
 
   if (chatThreads.length === 0) {
     return (
-      <>
-        <p className="px-2 py-2 text-xs text-muted-foreground/70 leading-relaxed">
-          {unreadOnly
-            ? "No unread chats"
-            : "Start a conversation and it'll show up here"}
-        </p>
-        <ChatThreadRenameDialog />
-        <DeleteChatThreadDialog />
-      </>
+      <p className="px-2 py-2 text-xs text-muted-foreground/70 leading-relaxed">
+        {unreadOnly
+          ? "No unread chats"
+          : "Start a conversation and it'll show up here"}
+      </p>
     );
   }
-  return (
-    <>
-      {chatThreads.map((session) => {
-        return <ChatThreadItem key={session.id} session={session} />;
-      })}
-      {hasMore && cursorForLoadMore && (
-        <LoadMoreThreadsButton
-          loadingMore={loadingMore}
-          onLoadMore={handleLoadMore}
-        />
-      )}
-      <ChatThreadRenameDialog />
-      <DeleteChatThreadDialog />
-    </>
-  );
+  return <VirtualizedChatThreads chatThreads={chatThreads} />;
 }
 
 function ChatThreadsTitle() {
   const currentChatAgentId = useLastResolved(currentChatAgentId$) ?? null;
-  const createNewChat = useSet(createNewChatThreadOptimistically$);
+  const createNewChat = useSet(createNewChatThread$);
   const setExpanded = useSet(setSidebarExpanded$);
   const rootSignal = useGet(rootSignal$);
   const { titleLabel } = useChatThreadsTitleLabels();
-  const newChatDisabled = useGet(optimisticChatThread$) !== null;
-  const onNewChat = (pane: OptimisticChatPane) => {
+  const newChatDisabled = useGet(newChatThreadDisabled$);
+  const onNewChat = (pane: NewChatThreadPane) => {
     if (!currentChatAgentId) {
       return;
     }
@@ -1043,14 +968,24 @@ function ChatThreadsSkeleton() {
 }
 
 function ChatThreadsContent() {
-  const chatThreadsLoading = useLastLoadable(chatThreads$).state === "loading";
+  // useLastLoadable keeps the previous resolved list rendered while
+  // sidebarChatThreads$ recomputes on a pane/thread switch; useLoadable would
+  // flash the skeleton on every switch.
+  const chatThreadsLoadable = useLastLoadable(sidebarChatThreads$);
+  const chatThreads =
+    chatThreadsLoadable.state === "hasData" ? chatThreadsLoadable.data : [];
+  const chatThreadsLoading = chatThreadsLoadable.state === "loading";
   const collapsed = useGet(sessionListCollapsed$);
 
   return (
     !collapsed && (
       <div className="mt-1">
         <div className="flex flex-col gap-1">
-          {chatThreadsLoading ? <ChatThreadsSkeleton /> : <ChatThreads />}
+          {chatThreadsLoading ? (
+            <ChatThreadsSkeleton />
+          ) : (
+            <ChatThreads chatThreads={chatThreads} />
+          )}
         </div>
       </div>
     )
@@ -1061,6 +996,8 @@ export function ChatThreadsSection() {
     <div className="mt-4 flex flex-col">
       <ChatThreadsTitle />
       <ChatThreadsContent />
+      <ChatThreadRenameDialog />
+      <DeleteChatThreadDialog />
     </div>
   );
 }

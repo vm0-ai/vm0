@@ -148,7 +148,7 @@ function BleConnectStep() {
     <div className="px-6 py-5">
       <div className="flex items-center gap-4">
         <StepIcon
-          src={platformStaticAssetUrl("onboarding-step1-connect-v3.png")}
+          src={platformStaticAssetUrl("onboarding-step1-connect-v3_96x96.png")}
         />
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-foreground">Connect BB0</p>
@@ -217,7 +217,7 @@ function WifiStep() {
     <div className="px-6 py-5">
       <div className="flex items-center gap-4">
         <StepIcon
-          src={platformStaticAssetUrl("onboarding-step2-wifi-v2.png")}
+          src={platformStaticAssetUrl("onboarding-step2-wifi-v2_96x96.png")}
         />
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-foreground">Share Wi-Fi</p>
@@ -306,7 +306,7 @@ function DeviceCodeStep() {
     <div className="px-6 pt-5 pb-8">
       <div className="flex items-center gap-4">
         <StepIcon
-          src={platformStaticAssetUrl("onboarding-step3-code-v2.png")}
+          src={platformStaticAssetUrl("onboarding-step3-code-v2_96x96.png")}
         />
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-foreground">

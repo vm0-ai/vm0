@@ -32,7 +32,13 @@ load '../../helpers/setup'
     assert_success
 }
 
-@test "zero automation list returns successfully" {
+@test "zero automation prints the removal stub and fails" {
     run $ZERO_CLI automation list
+    assert_failure
+    assert_output --partial "zero workflow"
+}
+
+@test "zero workflow list returns successfully" {
+    run $ZERO_CLI workflow list
     assert_success
 }

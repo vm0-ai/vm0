@@ -18,17 +18,19 @@ function snapshotThread(
     updatedAt: params.sortAt,
     pinnedAt: null,
     renamedAt: null,
+    selectedModel: null,
     ...params,
   };
 }
 
 function event(
-  params: Omit<ChatThreadEvent, "id" | "createdAt"> & {
+  params: Omit<ChatThreadEvent, "id" | "createdAt" | "selectedModel"> & {
     readonly id: string;
     readonly createdAt: string;
+    readonly selectedModel?: string | null;
   },
 ): ChatThreadEvent {
-  return params;
+  return { ...params, selectedModel: params.selectedModel ?? null };
 }
 
 describe("replayChatThreadEvents", () => {
@@ -88,6 +90,7 @@ describe("replayChatThreadEvents", () => {
         updatedAt: "2026-07-01T03:00:00.000Z",
         pinnedAt: null,
         renamedAt: null,
+        selectedModel: null,
       },
     ]);
   });
@@ -129,5 +132,108 @@ describe("replayChatThreadEvents", () => {
       }),
     ).toStrictEqual(["thread-b", "thread-a", "thread-c"]);
     expect(result[0]?.pinnedAt).toBe("2026-07-01T04:00:00.000Z");
+  });
+
+  it("replays selected model updates without touching sort order", () => {
+    const result = replayChatThreadEvents(
+      [
+        snapshotThread({
+          id: "thread-a",
+          agentId: "agent-1",
+          selectedModel: null,
+          sortAt: "2026-07-01T03:00:00.000Z",
+        }),
+        snapshotThread({
+          id: "thread-b",
+          agentId: "agent-1",
+          selectedModel: "gpt-5.4",
+          sortAt: "2026-07-01T04:00:00.000Z",
+        }),
+      ],
+      [
+        event({
+          id: "event-1",
+          kind: "model_selection_updated",
+          chatThreadId: "thread-a",
+          agentId: "agent-1",
+          title: null,
+          selectedModel: "claude-sonnet-4-6",
+          createdAt: "2026-07-01T05:00:00.000Z",
+        }),
+        event({
+          id: "event-2",
+          kind: "model_selection_updated",
+          chatThreadId: "thread-b",
+          agentId: "agent-1",
+          title: null,
+          selectedModel: null,
+          createdAt: "2026-07-01T06:00:00.000Z",
+        }),
+      ],
+    );
+
+    expect(
+      result.map((thread) => {
+        return {
+          id: thread.id,
+          selectedModel: thread.selectedModel,
+          sortAt: thread.sortAt,
+          updatedAt: thread.updatedAt,
+        };
+      }),
+    ).toStrictEqual([
+      {
+        id: "thread-b",
+        selectedModel: null,
+        sortAt: "2026-07-01T04:00:00.000Z",
+        updatedAt: "2026-07-01T06:00:00.000Z",
+      },
+      {
+        id: "thread-a",
+        selectedModel: "claude-sonnet-4-6",
+        sortAt: "2026-07-01T03:00:00.000Z",
+        updatedAt: "2026-07-01T05:00:00.000Z",
+      },
+    ]);
+  });
+
+  it("applies selected model updates that arrive before same-timestamp creation", () => {
+    const sameTimestamp = "2026-07-01T05:00:00.000Z";
+    const result = replayChatThreadEvents(
+      [],
+      [
+        event({
+          id: "event-1",
+          kind: "model_selection_updated",
+          chatThreadId: "thread-a",
+          agentId: "agent-1",
+          title: null,
+          selectedModel: "claude-sonnet-4-6",
+          createdAt: sameTimestamp,
+        }),
+        event({
+          id: "event-2",
+          kind: "created",
+          chatThreadId: "thread-a",
+          agentId: "agent-1",
+          title: "Created thread",
+          createdAt: sameTimestamp,
+        }),
+      ],
+    );
+
+    expect(result).toStrictEqual([
+      {
+        id: "thread-a",
+        agentId: "agent-1",
+        title: "Created thread",
+        sortAt: sameTimestamp,
+        createdAt: sameTimestamp,
+        updatedAt: sameTimestamp,
+        pinnedAt: null,
+        renamedAt: null,
+        selectedModel: "claude-sonnet-4-6",
+      },
+    ]);
   });
 });

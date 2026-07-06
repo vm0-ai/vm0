@@ -68,7 +68,7 @@ review "authentication changes"     # Review by description
    - Check test initialization follows production flow
    - Evaluate test quality and completeness
    - Check for fake timers, partial mocks, implementation detail testing
-   - Verify proper mock cleanup (vi.clearAllMocks)
+   - Verify mocks are reset through the package's standard centralized cleanup
 
    **Error Handling (Bad Smell #3)**
    - Identify unnecessary try/catch blocks
@@ -82,6 +82,14 @@ review "authentication changes"     # Review by description
    - Document new/modified public interfaces
    - Highlight breaking changes
    - Review API design decisions
+
+   **Deployment Compatibility**
+   - Read `docs/deployment-compatibility.md` when changes touch frontend/backend, runner/backend, queue payloads, or persisted state
+   - Verify old frontend requests still work with the new backend while open browser pages keep already-loaded code
+   - Verify old runner requests still work with the new backend while old runners drain active runs
+   - Verify new frontend or runner code can tolerate old backend responses during rollout when deployment order can overlap
+   - Flag one-shot protocol flips that require all deployable surfaces to update at exactly the same time
+   - Ensure temporary compatibility logic has an explicit cleanup condition or follow-up issue
 
    **Timer and Delay Analysis (Bad Smell #5)**
    - Identify artificial delays in production code
@@ -99,7 +107,8 @@ review "authentication changes"     # Review by description
    - Verify real database connections are used
 
    **Test Mock Cleanup (Bad Smell #8)**
-   - Verify vi.clearAllMocks() in beforeEach hooks
+   - Verify mock cleanup follows the package convention (`resetApiTestMocks`,
+     Vitest `clearMocks`, or dedicated test helpers)
    - Check for potential mock state leakage
 
    **TypeScript any Usage (Bad Smell #9)**
@@ -155,7 +164,7 @@ review "authentication changes"     # Review by description
 
    **Test Initialization Flow (Bad Smell #19)**
    - Flag tests that bypass production initialization flow
-   - Platform tests must use `setupPage()` or equivalent production initialization
+   - Platform page tests must use `detachedSetupPage()` or equivalent production initialization
    - Tests should not manually construct internal state that production code initializes differently
    - Test setup should mirror how the code actually runs in production
 

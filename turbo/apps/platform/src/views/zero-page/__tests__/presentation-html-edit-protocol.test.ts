@@ -121,6 +121,68 @@ describe("previewPresentationHtml", () => {
     expect(injectedCss).toContain("--fb:'Manrope'");
   });
 
+  it("ignores generated object-backed switcher defaults that cannot run", () => {
+    const previewHtml = previewPresentationHtml({
+      activeSlideId: "slide-1",
+      html: `
+        <!doctype html>
+        <html>
+          <head>
+            <style>
+              :root {
+                --bg:#FFFFFF;
+                --accent:#7257E6;
+                --s1:#FF6B4A;
+                --s2:#AEE63E;
+                --s3:#3FA9F5;
+              }
+            </style>
+          </head>
+          <body>
+            <div class="slide" data-slide-id="slide-1">
+              <div class="stage">
+                <h1 style="color:var(--accent)">Slide</h1>
+              </div>
+            </div>
+            <script>
+              var MONO={
+                "Bauhaus Primary":["#F7F3EA","#FFFDF8","#1C1A17","#665F55","#E6DDD0",["#D1493F","#235789","#F2B134","#1C1A17"]]
+              };
+              var VIB={
+                "Prism":["#FFFFFF","#F7F7FA","#1A1726","#5C5870","#ECECF2",["#7257E6","#FF6B4A","#AEE63E","#3FA9F5"]]
+              };
+              var FONTS={
+                "Poppins / Figtree":["Poppins","Figtree"]
+              };
+              var sp={value:''},sf={value:''};
+              var gV=document.createElement('optgroup');gV.label='Vibrant - multi-colour';
+              Object.keys(VIB).forEach(function(k){var o=document.createElement('option');o.value='V:'+k;o.textContent=k;gV.appendChild(o);});sp.appendChild(gV);
+              var gM=document.createElement('optgroup');gM.label='Single-accent';
+              Object.keys(MONO).forEach(function(k){var o=document.createElement('option');o.value='M:'+k;o.textContent=k;gM.appendChild(o);});sp.appendChild(gM);
+              Object.keys(FONTS).forEach(function(k){var o=document.createElement('option');o.value=o.textContent=k;sf.appendChild(o);});
+              sp.onchange=function(){};
+              sf.onchange=function(){};
+              sp.value='M:Bauhaus Primary';sf.value='Poppins / Figtree';sp.onchange();sf.onchange();
+            </script>
+          </body>
+        </html>
+      `,
+    });
+    const doc = new DOMParser().parseFromString(previewHtml, "text/html");
+    const injectedCss = Array.from(doc.querySelectorAll("style"))
+      .map((style) => {
+        return style.textContent ?? "";
+      })
+      .join("\n");
+
+    expect(doc.querySelector("script")).toBeNull();
+    expect(
+      doc.querySelector('[data-vm0-materialized-theme="true"]'),
+    ).toBeNull();
+    expect(injectedCss).toContain("--bg:#FFFFFF");
+    expect(injectedCss).toContain("--accent:#7257E6");
+  });
+
   it("normalizes nested slide stages to fill the preview frame", () => {
     const previewHtml = previewPresentationHtml({
       activeSlideId: "slide-1",

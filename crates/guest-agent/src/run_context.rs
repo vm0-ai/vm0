@@ -20,6 +20,7 @@ impl GuestContext {
     /// Build a run context from the current process environment.
     pub fn from_process_env() -> Result<Self, String> {
         let raw = GuestConfigRaw::from_process_env();
+        raw.require_run_payload_file()?;
         let paths = paths_from_raw(&raw)?;
         let config = GuestConfig::from_raw(raw)?;
         Ok(Self::new(config, paths))
@@ -38,6 +39,7 @@ impl GuestRuntime {
     /// Build the production runtime from one raw process environment snapshot.
     pub fn from_process_env() -> Result<Self, String> {
         let raw = GuestConfigRaw::from_process_env();
+        raw.require_run_payload_file()?;
         let paths = paths_from_raw(&raw)?;
         guest_common::log::set_system_log_file(paths.system_log_file());
         guest_common::telemetry::set_sandbox_ops_log_file(paths.sandbox_ops_file());

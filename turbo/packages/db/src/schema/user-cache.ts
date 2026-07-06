@@ -9,6 +9,7 @@ export const userCache = pgTable("user_cache", {
   userId: text("user_id").primaryKey(),
   email: text("email").notNull(),
   name: text("name"),
+  imageUrl: text("image_url"),
   orgListCachedAt: timestamp("org_list_cached_at"),
   cachedAt: timestamp("cached_at").defaultNow().notNull(),
 });

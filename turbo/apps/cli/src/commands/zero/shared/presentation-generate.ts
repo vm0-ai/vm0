@@ -2,10 +2,14 @@ import { Command, InvalidArgumentError } from "commander";
 import { withErrorHandler } from "../../../lib/command";
 import { createHtmlArtifactAuthoringPacket } from "./html-artifact-authoring";
 import {
+  buildPresentationRunbookInstructionLines,
   findDesignSystem,
+  findPresentationRunbookPackage,
   findTemplate,
   listDesignSystems,
+  listPresentationRunbookPackages,
   listTemplates,
+  resolvePresentationRunbookColorToken,
 } from "./resource-registry";
 import {
   canonicalizeRegistryId,
@@ -15,6 +19,10 @@ import { dispatchGenerate } from "../generate/lib/dispatch";
 import type { GenerationType } from "../generate/lib/lister";
 
 const PRESENTATION_TARGET = "presentation";
+
+type PresentationRunbookPackage = ReturnType<
+  typeof listPresentationRunbookPackages
+>[number];
 
 interface PresentationOptions {
   prompt?: string;
@@ -64,19 +72,35 @@ function unknownTemplateError(
   usageCommand: string,
   target: string,
 ): Error {
+  const runbookPackages = listPresentationRunbookPackages();
   const templates = listTemplates(PRESENTATION_TARGET);
+  const exampleTemplate = runbookPackages[0]?.templateId ?? templates[0]?.id;
   const message = [
     `Unknown template for ${target}: ${id}`,
     "",
-    `Available templates for ${target}:`,
+    `Available runbook templates for ${target}:`,
+    formatPresentationRunbookListing(runbookPackages),
+    "",
+    `Available registry templates for ${target}:`,
     formatRegistryListing(templates, `${target} templates`),
     "",
     `Example:`,
-    `  ${usageCommand} --template ${
-      templates[0]?.id ?? "<template-id>"
-    } --prompt "..."`,
+    `  ${usageCommand} --template ${exampleTemplate ?? "<template-id>"} --prompt "..."`,
   ].join("\n");
   return new Error(message);
+}
+
+function formatPresentationRunbookListing(
+  packages: readonly PresentationRunbookPackage[],
+): string {
+  if (packages.length === 0) {
+    return "  (no presentation runbook templates registered)";
+  }
+  return packages
+    .map((pkg) => {
+      return `  ${pkg.templateId}\n    ${pkg.description}`;
+    })
+    .join("\n\n");
 }
 
 export function createPresentationGenerateCommand(
@@ -97,11 +121,12 @@ export function createPresentationGenerateCommand(
     )
     .option(
       "--template <id>",
-      "Template id from the registry, scoped to presentation (see Templates below). Accepts either 'html-ppt-pitch-deck' or 'template:html-ppt-pitch-deck'.",
+      "Presentation runbook template id (see Templates below). Accepts either 'html-ppt-playful-launch' or 'template:html-ppt-playful-launch'.",
     )
     .option("--slides <count>", "Slide count: 4-20", parseSlideCount, 8)
     .addHelpText("after", () => {
       const designSystems = listDesignSystems();
+      const runbookPackages = listPresentationRunbookPackages();
       const templates = listTemplates(PRESENTATION_TARGET);
       return `
 Examples:
@@ -117,7 +142,10 @@ Notes:
 Design Systems:
 ${formatRegistryListing(designSystems, "design systems")}
 
-Templates (presentation):
+Templates (presentation runbook):
+${formatPresentationRunbookListing(runbookPackages)}
+
+Templates (presentation registry):
 ${formatRegistryListing(templates, "presentation templates")}`;
     })
     .action(
@@ -128,6 +156,41 @@ ${formatRegistryListing(templates, "presentation templates")}`;
         });
         if (dispatch.outcome === "handled") return;
         const prompt = dispatch.prompt;
+
+        // Runbook-first: a picker template (`html-ppt-<slug>`) is served by its
+        // self-contained runbook package. Resolve it before the legacy
+        // design-system/template path and emit runbook instructions — the
+        // design system is not part of the runbook flow, so it is ignored here.
+        if (options.template !== undefined) {
+          const canonical = canonicalizeRegistryId(
+            "template",
+            options.template,
+          );
+          const runbookPackage = findPresentationRunbookPackage(canonical);
+          if (runbookPackage) {
+            const color = resolvePresentationRunbookColorToken(
+              runbookPackage,
+              undefined,
+            );
+            const colorSystemToken =
+              "error" in color
+                ? runbookPackage.defaultColorSystem
+                : color.token;
+            console.log(
+              [
+                "# Presentation Generation (runbook)",
+                "",
+                ...buildPresentationRunbookInstructionLines({
+                  runbookPackage,
+                  colorSystemToken,
+                }),
+                "",
+                `User request: ${prompt}`,
+              ].join("\n"),
+            );
+            return;
+          }
+        }
 
         let resolvedDesignSystem;
         if (options.designSystem !== undefined) {

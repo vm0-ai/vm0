@@ -46,13 +46,13 @@ const listConnectorCatalogInner$ = command(
     const context = await set(connectorCatalogRequestContext$);
     signal.throwIfAborted();
 
-    const connectors = await listPublicConnectorCatalog({
+    const catalog = await listPublicConnectorCatalog({
       featureStates: context.featureStates,
       apiAuthMethodPolicy: "include",
     });
     signal.throwIfAborted();
 
-    return { status: 200 as const, body: { connectors } };
+    return { status: 200 as const, body: catalog };
   },
 );
 
@@ -71,14 +71,14 @@ const listConnectorCatalogStatusInner$ = command(
     );
     signal.throwIfAborted();
 
-    const connectors = await listPublicConnectorCatalogStatus({
+    const catalog = await listPublicConnectorCatalogStatus({
       featureStates: context.featureStates,
       apiAuthMethodPolicy: "include",
       connectors: connectorState.connectors,
     });
     signal.throwIfAborted();
 
-    return { status: 200 as const, body: { connectors } };
+    return { status: 200 as const, body: catalog };
   },
 );
 

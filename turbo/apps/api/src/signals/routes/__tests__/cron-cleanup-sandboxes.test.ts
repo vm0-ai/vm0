@@ -203,6 +203,19 @@ async function insertRunnerJobEntry(
   });
 }
 
+async function insertCustomConnectorAuthRef(
+  fixture: RunFixture,
+  secretName: string,
+  expiresAt: Date,
+): Promise<void> {
+  await postCronCleanupState({
+    action: "seed-custom-connector-auth-ref",
+    run_id: fixture.runId,
+    secret_name: secretName,
+    expires_at: expiresAt.toISOString(),
+  });
+}
+
 async function insertExportJob(args: {
   readonly status: string;
   readonly createdAt?: Date;
@@ -244,6 +257,21 @@ async function findRunnerJob(runId: string): Promise<{
     run_id: runId,
   });
   const row = recordField(response, "runner_job");
+  return row ? { runId: stringField(row, "runId") } : null;
+}
+
+async function findCustomConnectorAuthRef(
+  runId: string,
+  secretName: string,
+): Promise<{
+  readonly runId: string;
+} | null> {
+  const response = await postCronCleanupState({
+    action: "get-custom-connector-auth-ref",
+    run_id: runId,
+    secret_name: secretName,
+  });
+  const row = recordField(response, "custom_connector_auth_ref");
   return row ? { runId: stringField(row, "runId") } : null;
 }
 
@@ -460,6 +488,38 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
     await expect(findRunnerJob(unexpired.runId)).resolves.toStrictEqual({
       runId: unexpired.runId,
     });
+  });
+
+  it("deletes expired custom connector auth refs", async () => {
+    const expired = await trackRun(
+      insertRunFixture({ status: "completed", createdAt: minutesAgo(1) }),
+    );
+    const unexpired = await trackRun(
+      insertRunFixture({ status: "completed", createdAt: minutesAgo(1) }),
+    );
+    await insertCustomConnectorAuthRef(
+      expired,
+      "CUSTOM_EXPIRED_S_SECRET",
+      minutesAgo(1),
+    );
+    await insertCustomConnectorAuthRef(
+      unexpired,
+      "CUSTOM_ACTIVE_S_SECRET",
+      farFuture(),
+    );
+
+    const response = await accept(
+      apiClient().cleanup({ headers: cronHeaders() }),
+      [200],
+    );
+
+    expect(response.body.cleaned).toBe(0);
+    await expect(
+      findCustomConnectorAuthRef(expired.runId, "CUSTOM_EXPIRED_S_SECRET"),
+    ).resolves.toBeNull();
+    await expect(
+      findCustomConnectorAuthRef(unexpired.runId, "CUSTOM_ACTIVE_S_SECRET"),
+    ).resolves.toStrictEqual({ runId: unexpired.runId });
   });
 
   it("cleans up running runs after the heartbeat timeout", async () => {

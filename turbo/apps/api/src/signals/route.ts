@@ -22,8 +22,8 @@ import { cronAggregateInsightsRoutes } from "./routes/cron-aggregate-insights";
 import { cronAggregateUsageRoutes } from "./routes/cron-aggregate-usage";
 import { cronCompactChatThreadSnapshotsRoutes } from "./routes/cron-compact-chat-thread-snapshots";
 import { cronCleanupSandboxesRoutes } from "./routes/cron-cleanup-sandboxes";
+import { cronDrainRelationshipMemoryRoutes } from "./routes/cron-drain-relationship-memory";
 import { cronDrainEmailOutboxRoutes } from "./routes/cron-drain-email-outbox";
-import { cronExecuteAutomationsRoutes } from "./routes/cron-execute-automations";
 import { cronExecuteWorkflowTriggersRoutes } from "./routes/cron-execute-workflow-triggers";
 import { cronRenewGmailWatchesRoutes } from "./routes/cron-renew-gmail-watches";
 import { cronRenewGoogleCalendarWatchesRoutes } from "./routes/cron-renew-google-calendar-watches";
@@ -105,6 +105,7 @@ import { zeroHostRoutes } from "./routes/zero-host";
 import { zeroMemoryRoutes } from "./routes/zero-memory";
 import { zeroMemoryActivityRoutes } from "./routes/zero-memory-activity";
 import { zeroMemoryDevRefreshRoutes } from "./routes/zero-memory-dev-refresh";
+import { zeroRelationshipsRoutes } from "./routes/zero-relationships";
 import { zeroBuiltInGenerationRoutes } from "./routes/zero-built-in-generation";
 import { zeroInsightsRoutes } from "./routes/zero-insights";
 import { zeroImageIoGenerateRoutes } from "./routes/zero-image-io-generate";
@@ -112,7 +113,7 @@ import { zeroLogsRoutes } from "./routes/zero-logs";
 import { zeroMapsRoutes } from "./routes/zero-maps";
 import { zeroModelPoliciesRoutes } from "./routes/zero-model-policies";
 import { zeroModelProvidersRoutes } from "./routes/zero-model-providers";
-import { zeroOnboardingCompleteLimitedFreeRoutes } from "./routes/zero-onboarding-complete-limited-free";
+import { zeroOnboardingCompleteRoutes } from "./routes/zero-onboarding-complete";
 import { zeroOnboardingSetupRoutes } from "./routes/zero-onboarding-setup";
 import { zeroOnboardingStatusRoutes } from "./routes/zero-onboarding-status";
 import { zeroOrgInviteRoutes } from "./routes/zero-org-invite";
@@ -130,6 +131,7 @@ import { zeroRunsRoutes } from "./routes/zero-runs";
 import { zeroRunsCancelRoutes } from "./routes/zero-runs-cancel";
 import { zeroMeModelProvidersDeleteRoutes } from "./routes/zero-me-model-providers-delete";
 import { zeroMeModelProvidersListRoutes } from "./routes/zero-me-model-providers-list";
+import { zeroMeModelProvidersResetSubscriptionRoutes } from "./routes/zero-me-model-providers-reset-subscription";
 import { zeroMeModelProvidersUpsertRoutes } from "./routes/zero-me-model-providers-upsert";
 import { zeroSecretsRoutes } from "./routes/zero-secrets";
 import { zeroWorkflowsRoutes } from "./routes/zero-workflows";
@@ -199,6 +201,7 @@ import { testTelegramStateRoutes } from "./routes/test-telegram-state";
 import { testGenerationStateRoutes } from "./routes/test-generation-state";
 import { testOnboardingStatusStateRoutes } from "./routes/test-onboarding-status-state";
 import { testMemoryStateRoutes } from "./routes/test-memory-state";
+import { testRelationshipStateRoutes } from "./routes/test-relationship-state";
 import { testUsageInsightStateRoutes } from "./routes/test-usage-insight-state";
 import { testUsageStateRoutes } from "./routes/test-usage-state";
 import { testUserExportStateRoutes } from "./routes/test-user-export-state";
@@ -216,7 +219,7 @@ export const ROUTES: readonly RouteEntry[] = [
     handler: apiBuildInfo$,
   },
   ...authMeRoutes,
-  // The unified Automation resource: one automation, N schedule triggers.
+  // Legacy automations: read-only provenance rows after the workflow cutover.
   ...automationsRoutes,
   ...cliAuthRoutes,
   ...cliAuthTestRoutes,
@@ -256,8 +259,8 @@ export const ROUTES: readonly RouteEntry[] = [
   ...cronAggregateUsageRoutes,
   ...cronCompactChatThreadSnapshotsRoutes,
   ...cronCleanupSandboxesRoutes,
+  ...cronDrainRelationshipMemoryRoutes,
   ...cronDrainEmailOutboxRoutes,
-  ...cronExecuteAutomationsRoutes,
   ...cronExecuteWorkflowTriggersRoutes,
   ...cronRenewGmailWatchesRoutes,
   ...cronRenewGoogleCalendarWatchesRoutes,
@@ -311,6 +314,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroMemoryRoutes,
   ...zeroMemoryActivityRoutes,
   ...zeroMemoryDevRefreshRoutes,
+  ...zeroRelationshipsRoutes,
   ...zeroBuiltInGenerationRoutes,
   ...zeroInsightsRoutes,
   ...zeroImageIoGenerateRoutes,
@@ -321,6 +325,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroModelProvidersRoutes,
   ...zeroMeModelProvidersDeleteRoutes,
   ...zeroMeModelProvidersListRoutes,
+  ...zeroMeModelProvidersResetSubscriptionRoutes,
   ...zeroMeModelProvidersUpsertRoutes,
   ...zeroVoiceIoQuotaRoutes,
   ...zeroVoiceIoSpeechRoutes,
@@ -332,7 +337,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroRunDetailRoutes,
   ...zeroRunsRoutes,
   ...zeroRunsCancelRoutes,
-  ...zeroOnboardingCompleteLimitedFreeRoutes,
+  ...zeroOnboardingCompleteRoutes,
   ...zeroOnboardingSetupRoutes,
   ...zeroOnboardingStatusRoutes,
   ...zeroOrgInviteRoutes,
@@ -411,6 +416,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...testGenerationStateRoutes,
   ...testOnboardingStatusStateRoutes,
   ...testMemoryStateRoutes,
+  ...testRelationshipStateRoutes,
   ...testUsageInsightStateRoutes,
   ...testUsageStateRoutes,
   ...testUserExportStateRoutes,

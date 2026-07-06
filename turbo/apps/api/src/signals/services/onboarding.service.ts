@@ -5,13 +5,12 @@ import type { OnboardingStatusResponse } from "@vm0/api-contracts/contracts/onbo
 import type { ConnectorType } from "@vm0/connectors/connectors";
 import { SEED_INSTRUCTIONS } from "@vm0/core/zero-seed-instructions";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { orgCache } from "@vm0/db/schema/org-cache";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 
 import type { AuthContext } from "../../types/auth";
 import { logger } from "../../lib/log";
@@ -26,11 +25,9 @@ import {
 } from "./connector-availability.service";
 import { updateUserConnectors } from "./user-connectors.service";
 import { upsertOrgNoSecretModelProvider$ } from "./zero-model-provider.service";
+import { DEFAULT_AGENT_AVATAR_URL } from "./default-agent-profile";
 
 const L = logger("onboarding.service");
-const ONBOARDING_CREDIT_SOURCE = "onboarding";
-const ONBOARDING_CREDIT_IDEMPOTENCY_KEY = "limited-free-onboarding";
-const ONBOARDING_CREDITS_NEVER_EXPIRE_AT = "2999-12-31T00:00:00Z";
 
 interface DefaultAgentInfo {
   readonly composeId: string;
@@ -74,70 +71,13 @@ type OnboardingSetupForbiddenResponse = Extract<
   { readonly status: 403 }
 >;
 
-type CompleteLimitedFreeOnboardingResponse =
-  | {
-      readonly status: 200;
-      readonly body: {
-        readonly agentId: string;
-        readonly tier: "limited-free-1";
-        readonly needsOnboarding: false;
-      };
-    }
-  | {
-      readonly status: 409;
-      readonly body: {
-        readonly error: {
-          readonly message: string;
-          readonly code: "DEFAULT_AGENT_REQUIRED";
-        };
-      };
-    };
-
-interface CompleteLimitedFreeOnboardingArgs {
-  readonly orgId: string;
-  readonly credits: number;
-  readonly expiresAt: string | null;
-}
-
-async function grantOrgCredits(
-  tx: Parameters<Parameters<Db["transaction"]>[0]>[0],
-  orgId: string,
-  amount: number,
-): Promise<void> {
-  await tx.execute(
-    sql`INSERT INTO org_metadata (org_id, credits, created_at, updated_at)
-        VALUES (${orgId}, ${amount}, now(), now())
-        ON CONFLICT (org_id)
-        DO UPDATE SET credits = org_metadata.credits + ${amount}, updated_at = now()`,
-  );
-}
-
-async function grantOnboardingCredits(
-  tx: Parameters<Parameters<Db["transaction"]>[0]>[0],
-  orgId: string,
-  amount: number,
-  expiresAt: Date,
-): Promise<void> {
-  const rows = await tx
-    .insert(creditExpiresRecord)
-    .values({
-      orgId,
-      source: ONBOARDING_CREDIT_SOURCE,
-      stripeInvoiceId: ONBOARDING_CREDIT_IDEMPOTENCY_KEY,
-      amount,
-      remaining: amount,
-      expiresAt,
-    })
-    .onConflictDoNothing()
-    .returning({ id: creditExpiresRecord.id });
-
-  if (rows.length === 0) {
-    L.debug("Onboarding credits already granted", { orgId });
-    return;
-  }
-
-  await grantOrgCredits(tx, orgId, amount);
-}
+type CompleteOnboardingResponse = {
+  readonly status: 200;
+  readonly body: {
+    readonly onboardingComplete: true;
+    readonly needsOnboarding: false;
+  };
+};
 
 function unavailableSelectedConnectorsError(
   unavailableTypes: readonly ConnectorType[],
@@ -348,11 +288,13 @@ async function upsertDefaultAgentMetadata(
         orgId: args.orgId,
         defaultAgentId: args.agentId,
         onboardingPaymentPending: args.onboardingPaymentPending ?? false,
+        onboardingComplete: true,
       })
       .onConflictDoUpdate({
         target: orgMetadata.orgId,
         set: {
           defaultAgentId: args.agentId,
+          onboardingComplete: true,
           updatedAt: nowDate(),
         },
       });
@@ -365,6 +307,23 @@ async function upsertDefaultAgentMetadata(
       args.onboardingPaymentPending,
     );
   }
+}
+
+async function markOnboardingComplete(db: Db, orgId: string): Promise<void> {
+  await db
+    .insert(orgMetadata)
+    .values({
+      orgId,
+      onboardingComplete: true,
+      updatedAt: nowDate(),
+    })
+    .onConflictDoUpdate({
+      target: orgMetadata.orgId,
+      set: {
+        onboardingComplete: true,
+        updatedAt: nowDate(),
+      },
+    });
 }
 
 async function upsertSetupMemberMetadata(
@@ -487,6 +446,12 @@ async function completeExistingDefaultAgentSetup(
   });
   signal.throwIfAborted();
 
+  await upsertSetupMemberRole(db, {
+    orgId: args.orgId,
+    userId: args.userId,
+  });
+  signal.throwIfAborted();
+
   if (args.onboardingPaymentPending !== undefined) {
     await updateOnboardingPaymentPending(
       db,
@@ -495,6 +460,9 @@ async function completeExistingDefaultAgentSetup(
     );
     signal.throwIfAborted();
   }
+
+  await markOnboardingComplete(db, args.orgId);
+  signal.throwIfAborted();
 
   return { status: 200 as const, body: { agentId } };
 }
@@ -512,31 +480,16 @@ function defaultAgentId(orgId: string): Computed<Promise<string | null>> {
   });
 }
 
-function onboardingPaymentPending(orgId: string): Computed<Promise<boolean>> {
+function onboardingComplete(orgId: string): Computed<Promise<boolean>> {
   return computed(async (get): Promise<boolean> => {
     const db = get(db$);
     const [row] = await db
-      .select({
-        onboardingPaymentPending: orgMetadata.onboardingPaymentPending,
-      })
+      .select({ onboardingComplete: orgMetadata.onboardingComplete })
       .from(orgMetadata)
       .where(eq(orgMetadata.orgId, orgId))
       .limit(1);
 
-    return row?.onboardingPaymentPending ?? false;
-  });
-}
-
-function orgTier(orgId: string): Computed<Promise<string>> {
-  return computed(async (get): Promise<string> => {
-    const db = get(db$);
-    const [row] = await db
-      .select({ tier: orgMetadata.tier })
-      .from(orgMetadata)
-      .where(eq(orgMetadata.orgId, orgId))
-      .limit(1);
-
-    return row?.tier ?? "pro-suspend";
+    return row?.onboardingComplete ?? false;
   });
 }
 
@@ -551,6 +504,7 @@ function defaultAgentInfo(
         displayName: zeroAgents.displayName,
         description: zeroAgents.description,
         sound: zeroAgents.sound,
+        avatarUrl: zeroAgents.avatarUrl,
       })
       .from(agentComposes)
       .innerJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
@@ -573,6 +527,9 @@ function defaultAgentInfo(
     if (row.sound !== null) {
       metadata.sound = row.sound;
     }
+    if (row.avatarUrl !== null) {
+      metadata.avatarUrl = row.avatarUrl;
+    }
 
     return {
       composeId,
@@ -586,9 +543,12 @@ export function onboardingStatus(
 ): Computed<Promise<OnboardingStatusResponse>> {
   return computed(async (get): Promise<OnboardingStatusResponse> => {
     if (!auth.orgId) {
+      const isAdmin = false;
+      const complete = false;
       return {
-        needsOnboarding: true,
-        isAdmin: false,
+        needsOnboarding: isAdmin && !complete,
+        onboardingComplete: complete,
+        isAdmin,
         hasOrg: false,
         hasDefaultAgent: false,
         defaultAgentId: null,
@@ -598,19 +558,14 @@ export function onboardingStatus(
 
     const isAdmin = "orgRole" in auth && auth.orgRole === "admin";
     const agentId = await get(defaultAgentId(auth.orgId));
-    const paymentPending = await get(onboardingPaymentPending(auth.orgId));
-    const tier = await get(orgTier(auth.orgId));
+    const complete = await get(onboardingComplete(auth.orgId));
     const defaultAgent = agentId
       ? await get(defaultAgentInfo(auth.orgId, agentId))
       : null;
 
-    // New pro-suspend onboarding stays active until checkout clears the
-    // pending marker. Paid orgs do not re-enter onboarding just because a
-    // stale marker exists.
     return {
-      needsOnboarding:
-        isAdmin &&
-        (!defaultAgent || (tier === "pro-suspend" && paymentPending)),
+      needsOnboarding: isAdmin && !complete,
+      onboardingComplete: complete,
       isAdmin,
       hasOrg: true,
       hasDefaultAgent: defaultAgent !== null,
@@ -700,6 +655,8 @@ export const setupOnboarding$ = command(
       signal.throwIfAborted();
     }
 
+    const avatarUrl = args.avatarUrl ?? DEFAULT_AGENT_AVATAR_URL;
+
     await writeDb
       .insert(zeroAgents)
       .values({
@@ -710,14 +667,14 @@ export const setupOnboarding$ = command(
         displayName: args.displayName,
         description: null,
         sound: args.sound ?? null,
-        avatarUrl: args.avatarUrl ?? null,
+        avatarUrl,
       })
       .onConflictDoUpdate({
         target: [zeroAgents.orgId, zeroAgents.name],
         set: {
           displayName: args.displayName,
           sound: args.sound ?? null,
-          avatarUrl: args.avatarUrl ?? null,
+          avatarUrl,
           updatedAt: nowDate(),
         },
       });
@@ -760,63 +717,20 @@ export const setupOnboarding$ = command(
     return { status: 200 as const, body: { agentId: composeResult.composeId } };
   },
 );
-
-export const completeLimitedFreeOnboarding$ = command(
+export const completeOnboarding$ = command(
   async (
     { set },
-    args: CompleteLimitedFreeOnboardingArgs,
+    args: { readonly orgId: string },
     signal: AbortSignal,
-  ): Promise<CompleteLimitedFreeOnboardingResponse> => {
+  ): Promise<CompleteOnboardingResponse> => {
     const writeDb = set(writeDb$);
-    const agentId = await existingDefaultAgentId(writeDb, args.orgId);
-    signal.throwIfAborted();
-
-    if (!agentId) {
-      return {
-        status: 409,
-        body: {
-          error: {
-            message: "A default agent is required before completing onboarding",
-            code: "DEFAULT_AGENT_REQUIRED",
-          },
-        },
-      };
-    }
-
-    await writeDb.transaction(async (tx) => {
-      await tx
-        .insert(orgMetadata)
-        .values({
-          orgId: args.orgId,
-          defaultAgentId: agentId,
-          tier: "limited-free-1",
-          onboardingPaymentPending: false,
-          updatedAt: nowDate(),
-        })
-        .onConflictDoUpdate({
-          target: orgMetadata.orgId,
-          set: {
-            defaultAgentId: agentId,
-            tier: "limited-free-1",
-            onboardingPaymentPending: false,
-            updatedAt: nowDate(),
-          },
-        });
-
-      await grantOnboardingCredits(
-        tx,
-        args.orgId,
-        args.credits,
-        new Date(args.expiresAt ?? ONBOARDING_CREDITS_NEVER_EXPIRE_AT),
-      );
-    });
+    await markOnboardingComplete(writeDb, args.orgId);
     signal.throwIfAborted();
 
     return {
       status: 200,
       body: {
-        agentId,
-        tier: "limited-free-1",
+        onboardingComplete: true,
         needsOnboarding: false,
       },
     };

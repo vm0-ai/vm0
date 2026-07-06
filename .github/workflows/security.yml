@@ -148,11 +148,48 @@ jobs:
           else:
               print("\nNo regressions. All findings within baseline.")
 
+      - name: Filter Semgrep SARIF for Code Scanning upload
+        if: always()
+        shell: python3 {0}
+        run: |
+          import json
+
+          with open(".github/semgrep-baseline.json") as f:
+              baseline = json.load(f)
+
+          with open("semgrep-results.sarif") as f:
+              sarif = json.load(f)
+
+          total_results = 0
+          uploaded_results = 0
+          for run in sarif.get("runs", []):
+              filtered = []
+              seen = {}
+
+              for result in run.get("results", []):
+                  rule = result.get("ruleId")
+                  seen[rule] = seen.get(rule, 0) + 1
+                  total_results += 1
+
+                  if seen[rule] > baseline.get(rule, 0):
+                      filtered.append(result)
+
+              uploaded_results += len(filtered)
+              run["results"] = filtered
+
+          with open("semgrep-results-for-code-scanning.sarif", "w") as f:
+              json.dump(sarif, f)
+
+          print(
+              "Semgrep SARIF upload filtered: "
+              f"{uploaded_results}/{total_results} result(s) exceed baseline"
+          )
+
       - name: Upload Semgrep SARIF
         uses: github/codeql-action/upload-sarif@v4
         if: always() && github.event_name != 'merge_group'
         with:
-          sarif_file: semgrep-results.sarif
+          sarif_file: semgrep-results-for-code-scanning.sarif
           category: semgrep
 
   codeql:

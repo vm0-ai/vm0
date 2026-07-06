@@ -21,7 +21,7 @@ use tokio::task::JoinHandle;
 
 use crate::error::AgentError;
 
-use super::{child_env, diagnostics, process_group::ChildProcessGroup};
+use super::{child_env, diagnostics, exec_boundary, process_group::ChildProcessGroup};
 
 const METHOD_NOT_FOUND: i64 = -32601;
 const NOTIFICATION_QUEUE_CAPACITY: usize = 128;
@@ -203,13 +203,29 @@ impl CodexAppServerClient {
         let child_env_config = config.child_env.as_ref().ok_or_else(|| {
             CodexAppServerError::Protocol("app-server child env config is required".to_string())
         })?;
-        child_env::apply_to_tokio_command_with_values(
-            &mut cmd,
+        let mut child_env_values = child_env::values_with_inputs(
             &child_env_config.home_dir,
             &child_env_config.user_env,
             &child_env_config.api_url,
         );
-        cmd.args(["app-server", "--listen", "stdio://"])
+        child_env_values.extend(config.extra_env.iter().cloned());
+        child_env_values.push((
+            "CODEX_HOME".to_string(),
+            config.codex_home.to_string_lossy().into_owned(),
+        ));
+        child_env_values.retain(|(key, _)| key != "MOCK_CODEX_FIXTURE");
+        let child_env_values = child_env::normalize_values(child_env_values);
+        let args = ["app-server", "--listen", "stdio://"];
+        let binary = config.binary.to_string_lossy();
+        exec_boundary::validate_process_argv_env(
+            "codex app-server argv/env too large",
+            &binary,
+            args,
+            &child_env_values,
+        )
+        .map_err(CodexAppServerError::Protocol)?;
+        child_env::apply_values_to_tokio_command(&mut cmd, &child_env_values);
+        cmd.args(args)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -218,11 +234,7 @@ impl CodexAppServerClient {
         if let Some(current_dir) = config.current_dir {
             cmd.current_dir(current_dir);
         }
-        for (key, value) in config.extra_env {
-            cmd.env(key, value);
-        }
-        cmd.env("CODEX_HOME", &config.codex_home)
-            .env_remove("MOCK_CODEX_FIXTURE");
+        cmd.env_remove("MOCK_CODEX_FIXTURE");
 
         let mut child = cmd.spawn().map_err(CodexAppServerError::Spawn)?;
         let process_id = child.id();

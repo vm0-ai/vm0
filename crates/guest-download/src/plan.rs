@@ -1,4 +1,4 @@
-use crate::download::{DownloadTask, NotFoundPolicy};
+use crate::download::{DownloadTask, NotFoundPolicy, classify_download_task_kind};
 use crate::instructions::InstructionNormalization;
 use crate::manifest::{Manifest, ManifestEntry};
 use std::path::Path;
@@ -122,12 +122,17 @@ fn append_download_tasks(
         if should_download_entry(entry, kind)
             && let Some(url) = entry.archive_url.clone()
         {
-            tasks.push(DownloadTask::new(
+            let task_kind = classify_download_task_kind(
+                &entry.mount_path,
+                entry.instructions_target_filename.as_deref(),
+            );
+            tasks.push(DownloadTask::new_with_kind(
                 format_entry_label(entry, kind, idx + 1, &url),
                 kind.op_name(),
                 url,
                 entry.mount_path.clone(),
                 kind.not_found_policy(),
+                task_kind,
             ));
         }
     }
@@ -303,6 +308,57 @@ mod tests {
         assert_eq!(
             plan.instruction_files[0],
             InstructionNormalization::new("/home/user/.codex".into(), "AGENTS.md".into())
+        );
+    }
+
+    #[test]
+    fn run_plan_derives_download_task_kinds() {
+        let json = r#"{
+            "storages": [
+                {
+                    "mountPath": "/home/user/.codex",
+                    "archiveUrl": "https://s3/instructions.tar.gz",
+                    "instructionsTargetFilename": "AGENTS.md"
+                },
+                {
+                    "mountPath": "/home/user/.codex/skills/workflow",
+                    "archiveUrl": "https://s3/codex-skill.tar.gz"
+                },
+                {
+                    "mountPath": "/home/user/.claude/skills/workflow",
+                    "archiveUrl": "https://s3/claude-skill.tar.gz"
+                },
+                {
+                    "mountPath": "/workspace/storage",
+                    "archiveUrl": "https://s3/storage.tar.gz"
+                }
+            ],
+            "artifacts": [
+                {
+                    "mountPath": "/workspace",
+                    "archiveUrl": "https://s3/artifact.tar.gz"
+                },
+                {
+                    "mountPath": "/home/user/.codex/skills/cached",
+                    "archiveUrl": null,
+                    "cached": true
+                }
+            ]
+        }"#;
+        let manifest: Manifest = serde_json::from_str(json).unwrap();
+
+        let plan = RunPlan::from_manifest(&manifest);
+
+        let kinds: Vec<_> = plan.download_tasks.iter().map(DownloadTask::kind).collect();
+        assert_eq!(
+            kinds,
+            [
+                crate::download::DownloadTaskKind::FrameworkHomeInstructions,
+                crate::download::DownloadTaskKind::FrameworkSkillChild,
+                crate::download::DownloadTaskKind::FrameworkSkillChild,
+                crate::download::DownloadTaskKind::Other,
+                crate::download::DownloadTaskKind::Other,
+            ]
         );
     }
 

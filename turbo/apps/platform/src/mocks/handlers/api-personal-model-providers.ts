@@ -88,4 +88,36 @@ export const apiPersonalModelProvidersHandlers = [
       return respond(204);
     },
   ),
+
+  // POST /api/zero/me/model-providers/:type/subscription-reset - Reset Codex usage
+  mockApi(
+    zeroPersonalModelProvidersByTypeContract.resetSubscriptionUsage,
+    ({ params, respond }) => {
+      const existing = mockPersonalModelProviders.find((p) => {
+        return p.type === params.type;
+      });
+
+      if (!existing || params.type !== "codex-oauth-token") {
+        return respond(404, {
+          error: { message: "Model provider not found", code: "NOT_FOUND" },
+        });
+      }
+
+      const resetCredits = existing.subscriptionResetCredits ?? 0;
+      if (resetCredits <= 0) {
+        return respond(200, { outcome: "noCredit" });
+      }
+
+      mockPersonalModelProviders = mockPersonalModelProviders.map((p) => {
+        return p.type === params.type
+          ? {
+              ...p,
+              subscriptionResetCredits: resetCredits - 1,
+            }
+          : p;
+      });
+
+      return respond(200, { outcome: "reset" });
+    },
+  ),
 ];

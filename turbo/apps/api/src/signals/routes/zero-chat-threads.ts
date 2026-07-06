@@ -22,11 +22,11 @@ import {
 } from "../services/google-drive-artifact-sync.service";
 import {
   zeroChatSearch,
+  zeroChatThreadActiveRunThreadIds,
   zeroChatThreadArtifacts,
   zeroChatThreadDetail,
   zeroChatThreadMessageById,
   zeroChatThreadDraftIds,
-  zeroChatThreadList,
   zeroChatThreadMessagesPage,
   zeroChatThreadUnreadAgentIds,
   zeroChatThreadUnreads,
@@ -42,6 +42,7 @@ import { zeroChatThreadsArtifactsSyncRoutes } from "./zero-chat-threads-artifact
 import { zeroChatThreadComputerUseHostRoutes } from "./zero-chat-threads-computer-use-host";
 import { zeroChatThreadCreateRoutes } from "./zero-chat-threads-create";
 import { zeroChatThreadDeleteRoutes } from "./zero-chat-threads-delete";
+import { zeroChatThreadDraftGetRoutes } from "./zero-chat-threads-draft-get";
 import { zeroChatThreadGetRoutes } from "./zero-chat-threads-get";
 import { zeroChatThreadsHtmlArtifactEditSnapshotRoutes } from "./zero-chat-threads-html-artifact-edit-snapshot";
 import { zeroChatThreadMarkAgentReadRoutes } from "./zero-chat-threads-mark-agent-read";
@@ -142,6 +143,18 @@ const listChatThreadEventsInner$ = computed(async (get) => {
   };
 });
 
+const listChatThreadActiveIdsInner$ = computed(async (get) => {
+  const auth = get(organizationAuthContext$);
+  const threadIds = await get(
+    zeroChatThreadActiveRunThreadIds({
+      userId: auth.userId,
+      orgId: auth.orgId,
+    }),
+  );
+
+  return { status: 200 as const, body: { threadIds: [...threadIds] } };
+});
+
 const listChatThreadMessagesInner$ = computed(async (get) => {
   const auth = get(authContext$);
   const params = get(pathParamsOf(chatThreadMessagesContract.list));
@@ -187,41 +200,10 @@ const getChatThreadMessageInner$ = computed(async (get) => {
   return { status: 200 as const, body: message };
 });
 
-const listChatThreadsInner$ = computed(async (get) => {
-  const auth = get(organizationAuthContext$);
-  const query = get(queryOf(chatThreadsContract.list));
-
-  // No existence check on agentId: the list query already scopes by
-  // org + agentComposeId, so an unknown agent yields an empty list.
-  const page = await get(
-    zeroChatThreadList({
-      userId: auth.userId,
-      orgId: auth.orgId,
-      agentComposeId: query.agentId,
-      cursor: query.cursor,
-      filter: query.filter,
-    }),
-  );
-
-  return {
-    status: 200 as const,
-    body: {
-      pinned: [...page.pinned],
-      threads: [...page.threads],
-      hasMore: page.hasMore,
-      nextCursor: page.nextCursor,
-    },
-  };
-});
-
 const listChatThreadDraftsInner$ = computed(async (get) => {
   const auth = get(authContext$);
-  const query = get(queryOf(chatThreadsContract.drafts));
 
-  const threadIds = query.threadIds.split(",").filter(isValidChatThreadId);
-  const draftThreadIds = await get(
-    zeroChatThreadDraftIds({ userId: auth.userId, threadIds }),
-  );
+  const draftThreadIds = await get(zeroChatThreadDraftIds(auth.userId));
 
   return {
     status: 200 as const,
@@ -379,10 +361,10 @@ export const zeroChatThreadRoutes: readonly RouteEntry[] = [
     ),
   },
   {
-    route: chatThreadsContract.list,
+    route: chatThreadsContract.activeIds,
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
-      listChatThreadsInner$,
+      listChatThreadActiveIdsInner$,
     ),
   },
   {
@@ -439,6 +421,7 @@ export const zeroChatThreadRoutes: readonly RouteEntry[] = [
   ...zeroChatThreadComputerUseHostRoutes,
   ...zeroChatThreadCreateRoutes,
   ...zeroChatThreadDeleteRoutes,
+  ...zeroChatThreadDraftGetRoutes,
   ...zeroChatThreadGetRoutes,
   ...zeroChatThreadMarkAgentReadRoutes,
   ...zeroChatThreadMarkReadRoutes,

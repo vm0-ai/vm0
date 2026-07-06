@@ -13,6 +13,7 @@ import {
   type GithubLabelAppliedEventConfig,
   type ZeroWorkflowDetailResponse,
   type ZeroWorkflowSchedule,
+  type ZeroWorkflowWebhookSecretResponse,
   type ZeroWorkflowSummary,
   type ZeroWorkflowTriggerAutomationEntry,
   type ZeroWorkflowTriggerCreateRequest,
@@ -71,6 +72,11 @@ type WorkflowTriggerCreateDialog =
   | "google-meet-transcript-generated"
   | "webhook"
   | null;
+export type WorkflowTriggerCategoryKey =
+  | "schedule"
+  | "email"
+  | "calendar"
+  | "integrations";
 type WorkflowWebhookTriggerSummary = Extract<
   ZeroWorkflowTriggerSummary,
   { readonly kind: "event"; readonly eventType: "webhook-received" }
@@ -188,6 +194,10 @@ const internalWorkflowTriggerCreateDialog$ =
   state<WorkflowTriggerCreateDialog>(null);
 const internalCreatedWorkflowWebhookTrigger$ =
   state<WorkflowWebhookTriggerSummary | null>(null);
+const internalWorkflowTriggerPickerOpen$ = state(false);
+const internalWorkflowTriggerPickerCategory$ =
+  state<WorkflowTriggerCategoryKey>("schedule");
+const internalRevealWebhookSecretTriggerId$ = state<string | null>(null);
 const internalCreateGithubLabelActor$ = state<WorkflowGithubLabelActor>("me");
 const internalEditingGithubLabelActors$ = state<
   Record<string, WorkflowGithubLabelActor>
@@ -388,6 +398,16 @@ export const setCreatedWorkflowWebhookTrigger$ = command(
   },
 );
 
+export const revealWebhookSecretTriggerId$ = computed((get) => {
+  return get(internalRevealWebhookSecretTriggerId$);
+});
+
+export const setRevealWebhookSecretTriggerId$ = command(
+  ({ set }, triggerId: string | null) => {
+    set(internalRevealWebhookSecretTriggerId$, triggerId);
+  },
+);
+
 export const setWorkflowTriggerCreateDialog$ = command(
   ({ set }, dialog: WorkflowTriggerCreateDialog) => {
     set(internalWorkflowTriggerCreateDialog$, dialog);
@@ -400,6 +420,30 @@ export const setWorkflowTriggerCreateDialog$ = command(
     if (dialog === "github-label") {
       set(internalCreateGithubLabelActor$, "me");
     }
+  },
+);
+
+export const workflowTriggerPickerOpen$ = computed((get) => {
+  return get(internalWorkflowTriggerPickerOpen$);
+});
+
+export const setWorkflowTriggerPickerOpen$ = command(
+  ({ set }, open: boolean) => {
+    set(internalWorkflowTriggerPickerOpen$, open);
+    // Reset to the first category each time the picker opens.
+    if (open) {
+      set(internalWorkflowTriggerPickerCategory$, "schedule");
+    }
+  },
+);
+
+export const workflowTriggerPickerCategory$ = computed((get) => {
+  return get(internalWorkflowTriggerPickerCategory$);
+});
+
+export const setWorkflowTriggerPickerCategory$ = command(
+  ({ set }, category: WorkflowTriggerCategoryKey) => {
+    set(internalWorkflowTriggerPickerCategory$, category);
   },
 );
 
@@ -936,6 +980,26 @@ export const createWorkflowWebhookTrigger$ = command(
     ) {
       throw new Error("Expected webhook workflow trigger summary");
     }
+    return result.body;
+  },
+);
+
+export const revealWorkflowWebhookSecret$ = command(
+  async (
+    { get },
+    input: { readonly triggerId: string },
+    signal: AbortSignal,
+  ): Promise<ZeroWorkflowWebhookSecretResponse> => {
+    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
+    const result = await accept(
+      client.revealWebhookSecret({
+        params: { id: input.triggerId },
+        body: undefined,
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
     return result.body;
   },
 );

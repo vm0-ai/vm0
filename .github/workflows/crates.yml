@@ -198,10 +198,10 @@ jobs:
           rm -f "$changed_files"
           echo "python-firewalls-changed=$python_firewalls_changed" >> "$GITHUB_OUTPUT"
 
-          # The shared firewall semantics contract is stored under turbo but is
-          # read by mitm-addon tests. Keep this separate from python-firewalls
-          # because it is not an input to generated Python firewall artifacts.
-          if git diff --name-only "$BASE_REF" HEAD | grep -qx "turbo/packages/connectors/src/__tests__/firewall-semantics-contract.json"; then
+          # Shared firewall contracts are stored under turbo but are read by
+          # mitm-addon tests. Keep this separate from python-firewalls because
+          # they are not inputs to generated Python firewall artifacts.
+          if git diff --name-only "$BASE_REF" HEAD | grep -Eqx "turbo/packages/connectors/src/__tests__/(firewall-semantics-contract|firewall-base-url-validation-contract)\\.json"; then
             echo "mitm-addon-test-inputs-changed=true" >> "$GITHUB_OUTPUT"
           else
             echo "mitm-addon-test-inputs-changed=false" >> "$GITHUB_OUTPUT"

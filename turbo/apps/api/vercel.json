@@ -9,10 +9,6 @@
       "schedule": "* * * * *"
     },
     {
-      "path": "/api/cron/execute-automations",
-      "schedule": "* * * * *"
-    },
-    {
       "path": "/api/cron/execute-workflow-triggers",
       "schedule": "* * * * *"
     },
@@ -50,6 +46,10 @@
     },
     {
       "path": "/api/cron/drain-email-outbox",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/drain-relationship-memory",
       "schedule": "* * * * *"
     },
     {

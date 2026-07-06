@@ -4,7 +4,10 @@ import ipaddress
 from dataclasses import dataclass
 from typing import Literal
 
-from host_normalization import normalize_idna_hostname
+from host_normalization import (
+    normalize_idna_hostname,
+    translate_idna_dot_separators,
+)
 
 _IPV4_NON_PUBLIC_RANGES = (
     (0x00000000, 0x00FFFFFF),
@@ -22,13 +25,6 @@ _IPV4_NON_PUBLIC_RANGES = (
     (0xC6336400, 0xC63364FF),
     (0xCB007100, 0xCB0071FF),
     (0xE0000000, 0xFFFFFFFF),
-)
-_HOST_DOT_EQUIVALENT_TRANSLATION = str.maketrans(
-    {
-        "\u3002": ".",
-        "\uff0e": ".",
-        "\uff61": ".",
-    }
 )
 _IPV4_HEX_PREFIX = "0x"
 _IPV4_LITERAL_MAX_COMPONENTS = 4
@@ -193,7 +189,7 @@ def _looks_like_ipv4_number_component(value: str) -> bool:
 
 
 def _looks_like_legacy_ipv4_literal(hostname: str) -> bool:
-    normalized = hostname.translate(_HOST_DOT_EQUIVALENT_TRANSLATION)
+    normalized = translate_idna_dot_separators(hostname)
     if normalized.endswith("."):
         normalized = normalized[:-1]
     parts = normalized.split(".")

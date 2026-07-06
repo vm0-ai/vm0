@@ -11,9 +11,9 @@ use crate::error::RunnerResult;
 use crate::live_runner_instances::LiveRunnerInstance;
 use crate::paths::HomePaths;
 use crate::process;
+use crate::status_file::{self, StatusForDoctor};
 use chrono::{DateTime, Utc};
 use clap::Args;
-use serde::Deserialize;
 
 // ---------------------------------------------------------------------------
 // CLI args
@@ -731,79 +731,13 @@ async fn find_installed_services() -> Vec<InstalledService> {
             .strip_suffix(".service")
             .unwrap_or(name_str)
             .to_string();
-        let config_path = parse_unit_config_path(&entry.path()).await;
+        let config_path = super::service::read_unit_config_path(&entry.path()).await;
         services.push(InstalledService {
             unit_name,
             config_path,
         });
     }
     services
-}
-
-/// Parse the ExecStart line of a systemd unit file for `--config` path.
-async fn parse_unit_config_path(unit_path: &Path) -> Option<PathBuf> {
-    let content = tokio::fs::read_to_string(unit_path).await.ok()?;
-    for line in content.lines() {
-        let trimmed = line.trim();
-        if let Some(rest) = trimmed.strip_prefix("ExecStart=") {
-            return parse_exec_start_config(rest);
-        }
-    }
-    None
-}
-
-/// Extract the value following `--config` or `-c` from an `ExecStart` line body.
-///
-/// Handles both quoted (`--config "/path with spaces/f.yaml"`) and unquoted
-/// (`--config /simple/path.yaml`) forms. Only the argument *value* is
-/// extracted — the flag itself is found via substring search, which is safe
-/// because `--config` / `-c` never require quoting.
-fn parse_exec_start_config(line: &str) -> Option<PathBuf> {
-    extract_flag_value(line, "--config").or_else(|| extract_flag_value(line, "-c"))
-}
-
-/// Find `flag` in `line` as a standalone token, then return the next
-/// whitespace-delimited or quote-delimited value after it.
-///
-/// Supports both `--config /path` (space-separated) and `--config=/path`
-/// (equals-separated) forms.
-fn extract_flag_value(line: &str, flag: &str) -> Option<PathBuf> {
-    // Search for `flag` that appears as a standalone token: preceded by
-    // whitespace (or start-of-string) and followed by whitespace, `=`, or
-    // end-of-string.
-    let idx = line
-        .match_indices(flag)
-        .find(|&(i, _)| {
-            let before_ok = i == 0
-                || line
-                    .as_bytes()
-                    .get(i - 1)
-                    .is_some_and(|b| b.is_ascii_whitespace());
-            let after_ok = line
-                .as_bytes()
-                .get(i + flag.len())
-                .is_none_or(|b| b.is_ascii_whitespace() || b == &b'=');
-            before_ok && after_ok
-        })?
-        .0;
-    let after = line.get(idx + flag.len()..)?;
-    // Strip an optional `=` separator, then whitespace.
-    let after = after.strip_prefix('=').unwrap_or(after).trim_ascii_start();
-    if after.is_empty() {
-        return None;
-    }
-    let path_str = if after.starts_with('"') {
-        // Quoted value: take everything between the opening and closing `"`.
-        let end = after.get(1..)?.find('"')?;
-        after.get(1..1 + end)?
-    } else {
-        // Unquoted value: take until next ASCII whitespace or end-of-string.
-        let end = after
-            .find(|c: char| c.is_ascii_whitespace())
-            .unwrap_or(after.len());
-        after.get(..end)?
-    };
-    Some(PathBuf::from(path_str))
 }
 
 /// Find installed services that have no matching running runner.
@@ -833,26 +767,6 @@ fn find_stopped_services(
 // Status reading
 // ---------------------------------------------------------------------------
 
-#[derive(Deserialize)]
-struct StatusFile {
-    mode: String,
-    /// `#[serde(default)]` defends against transient schema skew during
-    /// rolling deploys: if a reader binary meets a status.json still
-    /// written by an older runner (or a newer one that renamed fields
-    /// again), we surface an empty active_runs rather than failing to
-    /// parse and losing the whole report.
-    #[serde(default)]
-    active_runs: Vec<ActiveRun>,
-    started_at: String,
-    #[serde(default)]
-    idle_vms: Vec<IdleVm>,
-    #[serde(default)]
-    proxy_port: Option<u16>,
-    #[serde(default)]
-    dns_port: Option<u16>,
-}
-
-#[derive(Deserialize)]
 struct ActiveRun {
     run_id: String,
     sandbox_id: String,
@@ -876,7 +790,6 @@ impl ActiveRun {
     }
 }
 
-#[derive(Deserialize)]
 struct IdleVm {
     session_id: String,
     sandbox_id: String,
@@ -888,20 +801,33 @@ fn is_inactive_mode(mode: &str) -> bool {
 }
 
 async fn read_status(base_dir: &Path) -> Option<StatusInfo> {
-    let path = base_dir.join("status.json");
-    let content = crate::private_fs::read_private_file_to_string_with_max(
-        &path,
-        crate::private_fs::PRIVATE_STATUS_FILE_READ_MAX_BYTES,
-    )
-    .await
-    .ok()
-    .flatten()?;
-    let file: StatusFile = serde_json::from_str(&content).ok()?;
+    let file = status_file::read_as::<StatusForDoctor>(base_dir)
+        .await
+        .ok()
+        .flatten()?;
+    let active_runs = file
+        .active_runs
+        .into_iter()
+        .map(|run| ActiveRun {
+            run_id: run.run_id,
+            sandbox_id: run.sandbox_id,
+            phase: run.phase,
+            phase_started_at: run.phase_started_at,
+        })
+        .collect();
+    let idle_vms = file
+        .idle_vms
+        .into_iter()
+        .map(|vm| IdleVm {
+            session_id: vm.session_id,
+            sandbox_id: vm.sandbox_id,
+        })
+        .collect();
     Some(StatusInfo {
         mode: file.mode,
         started_at: file.started_at,
-        active_runs: file.active_runs,
-        idle_vms: file.idle_vms,
+        active_runs,
+        idle_vms,
         proxy_port: file.proxy_port,
         dns_port: file.dns_port,
     })
@@ -1436,6 +1362,65 @@ mod tests {
         assert_eq!(parse_netns_list_line("vm0-ns-00-0A"), None);
         assert_eq!(parse_netns_list_line("vm0-ns-40-00"), None);
         assert_eq!(parse_netns_list_line("vm0-ns-ff-00"), None);
+    }
+
+    #[tokio::test]
+    async fn read_status_defaults_missing_collections_to_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("status.json"),
+            r#"{"mode":"running","started_at":"2026-01-01T00:00:00.000Z"}"#,
+        )
+        .unwrap();
+
+        let status = read_status(dir.path()).await.unwrap();
+
+        assert!(status.active_runs.is_empty());
+        assert!(status.idle_vms.is_empty());
+    }
+
+    #[tokio::test]
+    async fn read_status_missing_active_run_identifier_returns_none() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("status.json"),
+            r#"{
+                "mode":"running",
+                "started_at":"2026-01-01T00:00:00.000Z",
+                "active_runs":[{"run_id":"R1"}]
+            }"#,
+        )
+        .unwrap();
+
+        assert!(read_status(dir.path()).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn read_status_missing_idle_vm_identifier_returns_none() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("status.json"),
+            r#"{
+                "mode":"running",
+                "started_at":"2026-01-01T00:00:00.000Z",
+                "idle_vms":[{"session_id":"session-a"}]
+            }"#,
+        )
+        .unwrap();
+
+        assert!(read_status(dir.path()).await.is_none());
+    }
+
+    #[test]
+    fn active_run_unknown_phase_defaults_running() {
+        let active = ActiveRun {
+            run_id: "R1".into(),
+            sandbox_id: "S1".into(),
+            phase: Some("future-phase".into()),
+            phase_started_at: None,
+        };
+
+        assert_eq!(active.phase(), ActiveRunPhase::Running);
     }
 
     fn legacy_active_run(run_id: &str, sandbox_id: &str) -> ActiveRun {
@@ -2896,106 +2881,6 @@ mod tests {
         assert!(!is_test_tld("not-a-url"));
         assert!(!is_test_tld("https://example.com/.test"));
         assert!(!is_test_tld("https://example.com?q=.test"));
-    }
-
-    #[test]
-    fn parse_config_plain_path() {
-        let line = r#""/usr/bin/runner" start --config /data/runner.yaml"#;
-        assert_eq!(
-            parse_exec_start_config(line),
-            Some(PathBuf::from("/data/runner.yaml"))
-        );
-    }
-
-    #[test]
-    fn parse_config_quoted_path_with_spaces() {
-        let line = r#""/opt/my runner/vm0-runner" start --config "/opt/my config/runner.yaml""#;
-        assert_eq!(
-            parse_exec_start_config(line),
-            Some(PathBuf::from("/opt/my config/runner.yaml"))
-        );
-    }
-
-    #[test]
-    fn parse_config_quoted_path_without_spaces() {
-        let line = r#""/usr/bin/runner" start --config "/etc/runner.yaml" --local"#;
-        assert_eq!(
-            parse_exec_start_config(line),
-            Some(PathBuf::from("/etc/runner.yaml"))
-        );
-    }
-
-    #[test]
-    fn parse_config_short_flag() {
-        let line = r#""/usr/bin/runner" start -c "/data/runner.yaml""#;
-        assert_eq!(
-            parse_exec_start_config(line),
-            Some(PathBuf::from("/data/runner.yaml"))
-        );
-    }
-
-    #[test]
-    fn parse_config_missing_flag() {
-        let line = r#""/usr/bin/runner" start --local"#;
-        assert_eq!(parse_exec_start_config(line), None);
-    }
-
-    #[test]
-    fn parse_config_flag_at_end_without_value() {
-        let line = r#""/usr/bin/runner" start --config"#;
-        assert_eq!(parse_exec_start_config(line), None);
-    }
-
-    #[test]
-    fn parse_config_equals_form() {
-        let line = r#""/usr/bin/runner" start --config=/data/runner.yaml"#;
-        assert_eq!(
-            parse_exec_start_config(line),
-            Some(PathBuf::from("/data/runner.yaml"))
-        );
-    }
-
-    #[test]
-    fn parse_config_equals_form_quoted() {
-        let line = r#""/usr/bin/runner" start --config="/data/my config/runner.yaml""#;
-        assert_eq!(
-            parse_exec_start_config(line),
-            Some(PathBuf::from("/data/my config/runner.yaml"))
-        );
-    }
-
-    #[test]
-    fn parse_config_ignores_flag_substring_in_exe_path() {
-        // The exe path contains "-c" but it should not match as the -c flag.
-        let line = r#""/opt/nice-cli/runner" start -c "/data/runner.yaml""#;
-        assert_eq!(
-            parse_exec_start_config(line),
-            Some(PathBuf::from("/data/runner.yaml"))
-        );
-    }
-
-    #[test]
-    fn parse_config_unclosed_quote_returns_none() {
-        let line = r#""/usr/bin/runner" start --config "/data/no-close"#;
-        assert_eq!(parse_exec_start_config(line), None);
-    }
-
-    #[test]
-    fn parse_config_tab_separated() {
-        let line = "\"/usr/bin/runner\" start --config\t/data/runner.yaml";
-        assert_eq!(
-            parse_exec_start_config(line),
-            Some(PathBuf::from("/data/runner.yaml"))
-        );
-    }
-
-    #[test]
-    fn parse_config_short_flag_equals_form() {
-        let line = r#""/usr/bin/runner" start -c=/data/runner.yaml"#;
-        assert_eq!(
-            parse_exec_start_config(line),
-            Some(PathBuf::from("/data/runner.yaml"))
-        );
     }
 
     #[tokio::test]

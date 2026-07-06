@@ -1,5 +1,144 @@
 # Changelog
 
+## [0.133.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.133.4...runner-rs-v0.133.5) (2026-07-06)
+
+
+### Bug Fixes
+
+* snapshot runner service activation config ([#20284](https://github.com/vm0-ai/vm0/issues/20284)) ([2eb26b5](https://github.com/vm0-ai/vm0/commit/2eb26b585fdfbe2e1e6aa71d1a1bba5994016afe))
+
+
+### Performance Improvements
+
+* **runner:** reduce local queue discovery churn ([#20285](https://github.com/vm0-ai/vm0/issues/20285)) ([6aecc89](https://github.com/vm0-ai/vm0/commit/6aecc8979aa6c20bf57e82a2a3c24c3f7bceb7fa))
+
+## [0.133.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.133.3...runner-rs-v0.133.4) (2026-07-05)
+
+## [0.133.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.133.2...runner-rs-v0.133.3) (2026-07-05)
+
+
+### Refactoring
+
+* remove runner profile compatibility fields ([#20255](https://github.com/vm0-ai/vm0/issues/20255)) ([7972fa3](https://github.com/vm0-ai/vm0/commit/7972fa3a2aa317e99ba40503b5d6dae35e0d6df8))
+
+## [0.133.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.133.1...runner-rs-v0.133.2) (2026-07-05)
+
+
+### Performance Improvements
+
+* **runner:** adapt active input idle polling ([#20250](https://github.com/vm0-ai/vm0/issues/20250)) ([bbe0608](https://github.com/vm0-ai/vm0/commit/bbe0608afc5f90d874b5d71eaba1cf431a576952))
+* **runner:** avoid sorting local queue discovery ([#20251](https://github.com/vm0-ai/vm0/issues/20251)) ([9eea0de](https://github.com/vm0-ai/vm0/commit/9eea0deca3e4ab64e2b827c76d3c9065959fb2a3))
+
+## [0.133.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.133.0...runner-rs-v0.133.1) (2026-07-05)
+
+
+### Bug Fixes
+
+* **runner:** guard service activation image artifacts ([#20227](https://github.com/vm0-ai/vm0/issues/20227)) ([90b5196](https://github.com/vm0-ai/vm0/commit/90b519609f54f32970a1342c97d2520b3d03c93e))
+
+
+### Refactoring
+
+* centralize run payload field validation ([#20225](https://github.com/vm0-ai/vm0/issues/20225)) ([8a293a7](https://github.com/vm0-ai/vm0/commit/8a293a762a48b4828780e8e99ca59e48ca915415))
+* **runner:** centralize workspace cache gc traversal ([#20226](https://github.com/vm0-ai/vm0/issues/20226)) ([23d52a6](https://github.com/vm0-ai/vm0/commit/23d52a65d63e3c10463fc2d9cfbe63e7c9144a50))
+
+## [0.133.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.132.14...runner-rs-v0.133.0) (2026-07-05)
+
+
+### Features
+
+* refresh active connector permission policies ([#20035](https://github.com/vm0-ai/vm0/issues/20035)) ([8d7cec2](https://github.com/vm0-ai/vm0/commit/8d7cec2537cd512d12bd3e550abc43c07cb2026a))
+
+
+### Bug Fixes
+
+* **runner:** protect retained config image refs during gc ([#20172](https://github.com/vm0-ai/vm0/issues/20172)) ([07e35c2](https://github.com/vm0-ai/vm0/commit/07e35c23262ca656ad5390fca9535a95a514ecb1))
+
+
+### Performance Improvements
+
+* add storage miss attribution telemetry ([#20200](https://github.com/vm0-ai/vm0/issues/20200)) ([606892b](https://github.com/vm0-ai/vm0/commit/606892bc50a64df8e93208e5946a9aecd373c26a))
+
+## [0.132.14](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.132.13...runner-rs-v0.132.14) (2026-07-05)
+
+
+### Refactoring
+
+* clarify runner profile availability contract ([#20171](https://github.com/vm0-ai/vm0/issues/20171)) ([ef94c04](https://github.com/vm0-ai/vm0/commit/ef94c04b34a0eacb9a3ddc7ffd1cabc419c19113))
+
+## [0.132.13](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.132.12...runner-rs-v0.132.13) (2026-07-04)
+
+
+### Bug Fixes
+
+* **mitm-addon:** suppress ambiguous shared-base diagnostics ([#20169](https://github.com/vm0-ai/vm0/issues/20169)) ([ff9177d](https://github.com/vm0-ai/vm0/commit/ff9177d0abf6896ad49ba871f7287c8139a26e50))
+
+## [0.132.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.132.11...runner-rs-v0.132.12) (2026-07-04)
+
+
+### Performance Improvements
+
+* **runner:** avoid preflight guest payload materialization ([#20165](https://github.com/vm0-ai/vm0/issues/20165)) ([6094b05](https://github.com/vm0-ai/vm0/commit/6094b0566638303a687fdc7c178eef50841d3610))
+
+## [0.132.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.132.10...runner-rs-v0.132.11) (2026-07-04)
+
+
+### Performance Improvements
+
+* add guarded storage cache miss passthrough ([#20094](https://github.com/vm0-ai/vm0/issues/20094)) ([7d14271](https://github.com/vm0-ai/vm0/commit/7d14271aa51f9d47ead4e2ac4f289ca326cbea20))
+
+## [0.132.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.132.9...runner-rs-v0.132.10) (2026-07-03)
+
+
+### Bug Fixes
+
+* validate runner config image artifacts under locks ([#20095](https://github.com/vm0-ai/vm0/issues/20095)) ([3d2adce](https://github.com/vm0-ai/vm0/commit/3d2adce2dcf933ad4c4fd7deb1e4f45a857cf61f))
+
+## [0.132.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.132.8...runner-rs-v0.132.9) (2026-07-03)
+
+
+### Refactoring
+
+* share runner status file reader ([#20096](https://github.com/vm0-ai/vm0/issues/20096)) ([df6d7d6](https://github.com/vm0-ai/vm0/commit/df6d7d62c1dfbd3a6ff5fe11179f25f47b1006b2))
+
+## [0.132.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.132.7...runner-rs-v0.132.8) (2026-07-03)
+
+
+### Refactoring
+
+* centralize firewall base url malformed checks ([#20090](https://github.com/vm0-ai/vm0/issues/20090)) ([2aab7f4](https://github.com/vm0-ai/vm0/commit/2aab7f43daf38d0a86a2a8bcff99f12e18cb873a))
+* **runner:** centralize job candidate defaults ([#20092](https://github.com/vm0-ai/vm0/issues/20092)) ([bfa917c](https://github.com/vm0-ai/vm0/commit/bfa917c064ca5599ebd35ee78264b665a66a0e27))
+
+## [0.132.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.132.6...runner-rs-v0.132.7) (2026-07-03)
+
+
+### Bug Fixes
+
+* allow maskdb aggregate queries through firewall ([#20083](https://github.com/vm0-ai/vm0/issues/20083)) ([18ab86f](https://github.com/vm0-ai/vm0/commit/18ab86f8e78ada958f1a2f94cbc940dc51227212))
+
+## [0.132.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.132.5...runner-rs-v0.132.6) (2026-07-03)
+
+
+### Documentation
+
+* clarify auth base forwarder test helpers ([#20052](https://github.com/vm0-ai/vm0/issues/20052)) ([1d48da3](https://github.com/vm0-ai/vm0/commit/1d48da3d204818fd11d4f23ba60c0dd960cd5bc9))
+
+## [0.132.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.132.4...runner-rs-v0.132.5) (2026-07-03)
+
+
+### Bug Fixes
+
+* diagnose shared-base connector ownership before auth ([#19964](https://github.com/vm0-ai/vm0/issues/19964)) ([d87b6ea](https://github.com/vm0-ai/vm0/commit/d87b6ea41b76b65960f0c9949d1e03bd85d9a1bb))
+
+## [0.132.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.132.3...runner-rs-v0.132.4) (2026-07-03)
+
+
+### Bug Fixes
+
+* move runner bootstrap payloads out of env ([#19989](https://github.com/vm0-ai/vm0/issues/19989)) ([847d8d2](https://github.com/vm0-ai/vm0/commit/847d8d24372d84568133007db87c44a0ebd72b95))
+
+## [0.132.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.132.2...runner-rs-v0.132.3) (2026-07-03)
+
 ## [0.132.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.132.1...runner-rs-v0.132.2) (2026-07-03)
 
 

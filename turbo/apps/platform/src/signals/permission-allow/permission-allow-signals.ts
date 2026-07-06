@@ -7,6 +7,7 @@ import {
   type UserPermissionGrantResponse,
   zeroUserPermissionGrantsContract,
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
+import type { PublicConnectorCatalogPermissionDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import {
   UNKNOWN_PERMISSION_GRANT,
   type FirewallPolicyValue,
@@ -14,8 +15,7 @@ import {
 import {
   permissionGrantsToFirewallPolicies,
   resolveFirewallMetadataPolicies,
-  type FirewallPermissionDetailMetadata,
-} from "@vm0/connectors/firewall-metadata";
+} from "@vm0/connectors/firewall-metadata/policy";
 import { zeroClient$ } from "../api-client.ts";
 import { pathParams$, searchParams$ } from "../route.ts";
 import { accept } from "../../lib/accept.ts";
@@ -79,7 +79,7 @@ export interface Permission {
 }
 
 export function findPermissionInMetadata(
-  metadata: FirewallPermissionDetailMetadata,
+  metadata: PublicConnectorCatalogPermissionDetail,
   name: string,
 ): Permission | null {
   if (name === UNKNOWN_PERMISSION_GRANT) {
@@ -103,13 +103,13 @@ const internalUserPermissionGrantsReload$ = state(0);
 
 export function resolveUserPermissionGrantPolicy(
   grants: readonly UserPermissionGrantResponse[],
-  metadata: FirewallPermissionDetailMetadata,
+  metadata: PublicConnectorCatalogPermissionDetail,
   permission: string,
 ): FirewallPolicyValue | undefined {
   const policies = resolveFirewallMetadataPolicies(
     permissionGrantsToFirewallPolicies(grants),
     [metadata],
-  )?.[metadata.type];
+  )?.[metadata.connectorRef];
   return permission === UNKNOWN_PERMISSION_GRANT
     ? policies?.unknownPolicy
     : policies?.policies[permission];

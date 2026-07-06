@@ -2,6 +2,7 @@ import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import {
   executionFirewallsSchema,
+  networkPolicySchema,
   networkPoliciesSchema,
 } from "@vm0/connectors/firewall-types";
 import { apiErrorSchema } from "./errors";
@@ -25,6 +26,7 @@ export const RESUME_SESSION_HISTORY_MAX_BYTES = 128 * 1024 * 1024;
 export const SESSION_HISTORY_ENCODING_IDENTITY = "identity";
 export const SESSION_HISTORY_ENCODING_GZIP = "gzip";
 export const SESSION_HISTORY_GZIP_MIN_BYTES = 64 * 1024;
+export const NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX = 256;
 export const sessionHistoryEncodingSchema = z.enum([
   SESSION_HISTORY_ENCODING_IDENTITY,
   SESSION_HISTORY_ENCODING_GZIP,
@@ -68,6 +70,18 @@ const runnerPollTelemetrySchema = z.object({
   pollReason: runnerClaimPollReasonSchema.optional(),
 });
 
+const runnerProfileListSchema = z.array(z.string());
+const runnerSupportedProfileListSchema = runnerProfileListSchema.min(1);
+
+const networkPolicyRefreshSchema = z.object({
+  nextRefreshAt: z.string().datetime({ offset: true }),
+});
+
+const networkPolicyRefreshesSchema = z.record(
+  z.string(),
+  networkPolicyRefreshSchema,
+);
+
 /**
  * Default profile when none is specified.
  * Must stay in sync with Rust: crates/runner/src/profile.rs → DEFAULT_PROFILE
@@ -83,6 +97,12 @@ export const runnerGroupSchema = z
     /^[a-z0-9-]+\/[a-z0-9-]+$/,
     "Runner group must be in vm0/<name> format (e.g., vm0/production)",
   );
+
+const runnersPollBodySchema = z.object({
+  group: runnerGroupSchema,
+  supportedProfiles: runnerSupportedProfileListSchema,
+  telemetry: runnerPollTelemetrySchema.optional(),
+});
 
 /**
  * Job schema for polling response
@@ -122,11 +142,7 @@ export const runnersPollContract = c.router({
     method: "POST",
     path: "/api/runners/poll",
     headers: authHeadersSchema,
-    body: z.object({
-      group: runnerGroupSchema,
-      profiles: z.array(z.string()).optional(),
-      telemetry: runnerPollTelemetrySchema.optional(),
-    }),
+    body: runnersPollBodySchema,
     responses: {
       200: z.object({
         job: jobSchema.nullable(),
@@ -299,6 +315,9 @@ export const storedExecutionContextSchema = z.object({
   firewalls: executionFirewallsSchema.optional(),
   // Per-firewall network policies: which permissions are granted + unknownPolicy
   networkPolicies: networkPoliciesSchema.optional(),
+  // Per-connector runtime network policy refresh deadlines. Used by runners to refresh
+  // active sandbox policy when temporary allow grants expire.
+  networkPolicyRefreshes: networkPolicyRefreshesSchema.optional(),
   // Tools to disable in Claude CLI (passed as --disallowed-tools)
   disallowedTools: z.array(z.string()).optional(),
   // Tools to make available in Claude CLI (passed as --tools)
@@ -365,6 +384,9 @@ export const executionContextSchema = z.object({
   firewalls: executionFirewallsSchema.optional(),
   // Per-firewall network policies: which permissions are granted + unknownPolicy
   networkPolicies: networkPoliciesSchema.optional(),
+  // Per-connector runtime network policy refresh deadlines. Used by runners to refresh
+  // active sandbox policy when temporary allow grants expire.
+  networkPolicyRefreshes: networkPolicyRefreshesSchema.optional(),
   // Tools to disable in Claude CLI (passed as --disallowed-tools)
   disallowedTools: z.array(z.string()).optional(),
   // Tools to make available in Claude CLI (passed as --tools)
@@ -412,23 +434,75 @@ export const runnersJobClaimContract = c.router({
   },
 });
 
+export const runnersNetworkPolicyRefreshContract = c.router({
+  refresh: {
+    method: "POST",
+    path: "/api/runners/runs/:runId/network-policy-refresh",
+    headers: authHeadersSchema,
+    pathParams: z.object({
+      runId: z.uuid(),
+    }),
+    body: z.object({
+      connectorRefs: z
+        .array(z.string().min(1).max(64))
+        .min(1)
+        .max(NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX),
+    }),
+    responses: {
+      200: z.object({
+        refreshes: z.array(
+          z.object({
+            connectorRef: z.string(),
+            networkPolicy: networkPolicySchema,
+            nextRefreshAt: z.string().datetime({ offset: true }).nullable(),
+          }),
+        ),
+      }),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Refresh active run network policies",
+  },
+});
+
 /**
  * Runner heartbeat body — periodic state report from each runner
  */
-export const heartbeatBodySchema = z.object({
-  runnerId: z.uuid(),
-  runnerName: z.string(),
-  group: runnerGroupSchema,
-  profiles: z.array(z.string()),
-  totalVcpu: z.number().int().nonnegative(),
-  totalMemoryMb: z.number().int().nonnegative(),
-  maxConcurrent: z.number().int().nonnegative(),
-  allocatedVcpu: z.number().int().nonnegative(),
-  allocatedMemoryMb: z.number().int().nonnegative(),
-  runningCount: z.number().int().nonnegative(),
-  heldSessionStates: z.array(heldSessionStateSchema).max(1024),
-  mode: z.enum(["running", "draining", "stopping"]),
-});
+export const heartbeatBodySchema = z
+  .object({
+    runnerId: z.uuid(),
+    runnerName: z.string(),
+    group: runnerGroupSchema,
+    totalVcpu: z.number().int().nonnegative(),
+    totalMemoryMb: z.number().int().nonnegative(),
+    maxConcurrent: z.number().int().nonnegative(),
+    allocatedVcpu: z.number().int().nonnegative(),
+    allocatedMemoryMb: z.number().int().nonnegative(),
+    runningCount: z.number().int().nonnegative(),
+    admittableProfiles: runnerProfileListSchema.optional(),
+    // Temporary runner rollout compatibility. Remove legacy profile fields
+    // after the previous runner/backend versions have drained.
+    availableProfiles: runnerProfileListSchema.optional(),
+    profiles: runnerProfileListSchema.optional(),
+    heldSessionStates: z.array(heldSessionStateSchema).max(1024),
+    mode: z.enum(["running", "draining", "stopping"]),
+  })
+  .superRefine((body, ctx) => {
+    if (
+      body.admittableProfiles === undefined &&
+      body.availableProfiles === undefined &&
+      body.profiles === undefined
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["admittableProfiles"],
+        message: "admittableProfiles is required",
+      });
+    }
+  });
 
 /**
  * Runners heartbeat contract - POST /api/runners/heartbeat
@@ -452,6 +526,8 @@ export const runnersHeartbeatContract = c.router({
 
 export type RunnersPollContract = typeof runnersPollContract;
 export type RunnersJobClaimContract = typeof runnersJobClaimContract;
+export type RunnersNetworkPolicyRefreshContract =
+  typeof runnersNetworkPolicyRefreshContract;
 export type RunnersHeartbeatContract = typeof runnersHeartbeatContract;
 export type Job = z.infer<typeof jobSchema>;
 export type HeldSessionState = z.infer<typeof heldSessionStateSchema>;
@@ -459,6 +535,7 @@ export type ExecutionContext = z.infer<typeof executionContextSchema>;
 export type StoredExecutionContext = z.infer<
   typeof storedExecutionContextSchema
 >;
+export type NetworkPolicyRefresh = z.infer<typeof networkPolicyRefreshSchema>;
 export type SecretConnectorMetadata = z.infer<
   typeof secretConnectorMetadataSchema
 >;

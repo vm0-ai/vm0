@@ -1,0 +1,1 @@
+ALTER TABLE "user_cache" ADD COLUMN "image_url" text;

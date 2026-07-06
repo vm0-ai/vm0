@@ -384,12 +384,18 @@ async fn success_checkpoint_uses_explicit_runtime_after_process_env_changes() {
     let stale_runtime_dir = tmp.path().join("stale-runtime");
     let home_dir = tmp.path().join("home");
     let paths = guest_agent::paths::GuestPaths::from_runtime_dir(&runtime_dir);
+    let run_payload_file = crate::common::write_run_payload_file_for_test(
+        &runtime_dir,
+        &guest_contracts::env::RunPayload::default(),
+    )
+    .unwrap();
     let config = guest_agent::env::GuestConfig::from_raw(guest_agent::env::GuestConfigRaw {
         run_id: "captured-run".to_string(),
         api_url: server.base_url(),
         api_token: "test-token-abc123".to_string(),
         cli_agent_type: "claude-code".to_string(),
         home: Some(home_dir.to_string_lossy().into_owned()),
+        run_payload_file: run_payload_file.to_string_lossy().into_owned(),
         guest_runtime_dir: Some(runtime_dir.clone()),
         ..guest_agent::env::GuestConfigRaw::default()
     })

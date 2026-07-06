@@ -23,7 +23,7 @@ import { describe, expect, it, onTestFinished } from "vitest";
 import { v5 as uuidv5 } from "uuid";
 
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
-import { mockNow, now, nowDate } from "../../../lib/time";
+import { clearMockNow, mockNow, now, nowDate } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-context";
 import { server } from "../../../mocks/server";
 import {
@@ -31,6 +31,7 @@ import {
   expectApiError,
   type ApiTestUser,
 } from "./helpers/api-bdd";
+import { createDeferredPromise } from "../../utils";
 import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
@@ -73,6 +74,7 @@ const TEST_DATA_KEY = Buffer.from("0123456789abcdef0123456789abcdef", "utf8");
 const MODEL_FIRST_SELECTION_PROVIDER_ID =
   "00000000-0000-4000-8000-000000000000";
 const API_DISPATCH_QUEUE_PERSISTENCE_ACTION_TYPES = [
+  "api_dispatch_persist_custom_connector_auth_refs",
   "api_dispatch_insert_runner_job_queue",
 ] as const;
 const EXPECTED_ZERO_RUN_DISALLOWED_TOOLS = [
@@ -1040,6 +1042,20 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         storage_manifest_dropped_compose_count_bucket: "1",
         storage_manifest_planned_presign_count_bucket: "2_4",
         storage_manifest_duplicate_presign_candidate_count_bucket: "0",
+        storage_manifest_source_compose_volume_resolved_count_bucket: "1",
+        storage_manifest_source_compose_volume_planned_presign_count_bucket:
+          "0",
+        storage_manifest_source_compose_volume_non_system_presign_count_bucket:
+          "0",
+        storage_manifest_source_request_additional_volume_resolved_count_bucket:
+          "1",
+        storage_manifest_source_request_additional_volume_planned_presign_count_bucket:
+          "1",
+        storage_manifest_source_request_additional_volume_non_system_presign_count_bucket:
+          "1",
+        storage_manifest_source_artifact_resolved_count_bucket: "1",
+        storage_manifest_source_artifact_planned_presign_count_bucket: "1",
+        storage_manifest_source_artifact_non_system_presign_count_bucket: "1",
         storage_manifest_artifact_ensure_already_initialized_count_bucket: "0",
         storage_manifest_artifact_ensure_missing_storage_count_bucket: "1",
         storage_manifest_artifact_ensure_created_storage_count_bucket: "1",
@@ -1077,6 +1093,16 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         storage_manifest_resolved_artifact_count_bucket: "1",
         storage_manifest_planned_presign_count_bucket: "2_4",
         storage_manifest_duplicate_presign_candidate_count_bucket: "0",
+        storage_manifest_source_compose_volume_resolved_count_bucket: "1",
+        storage_manifest_source_request_additional_volume_resolved_count_bucket:
+          "1",
+        storage_manifest_source_artifact_resolved_count_bucket: "1",
+        storage_manifest_source_request_additional_volume_planned_presign_count_bucket:
+          "1",
+        storage_manifest_source_request_additional_volume_non_system_presign_count_bucket:
+          "1",
+        storage_manifest_source_artifact_planned_presign_count_bucket: "1",
+        storage_manifest_source_artifact_non_system_presign_count_bucket: "1",
       }),
     );
     expect(
@@ -1087,6 +1113,10 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     ).toStrictEqual(
       expect.objectContaining({
         storage_manifest_compose_planned_presign_count_bucket: "0",
+        storage_manifest_source_compose_volume_planned_presign_count_bucket:
+          "0",
+        storage_manifest_source_compose_volume_non_system_presign_count_bucket:
+          "0",
       }),
     );
     expect(
@@ -1097,6 +1127,11 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     ).toStrictEqual(
       expect.objectContaining({
         storage_manifest_additional_planned_presign_count_bucket: "1",
+        storage_manifest_source_request_additional_volume_planned_presign_count_bucket:
+          "1",
+        storage_manifest_source_request_additional_volume_non_system_presign_count_bucket:
+          "1",
+        storage_manifest_source_artifact_planned_presign_count_bucket: "0",
       }),
     );
     expect(
@@ -1107,6 +1142,10 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     ).toStrictEqual(
       expect.objectContaining({
         storage_manifest_artifact_planned_presign_count_bucket: "1",
+        storage_manifest_source_artifact_planned_presign_count_bucket: "1",
+        storage_manifest_source_artifact_non_system_presign_count_bucket: "1",
+        storage_manifest_source_request_additional_volume_planned_presign_count_bucket:
+          "0",
       }),
     );
     expect(
@@ -1237,14 +1276,18 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       compose.composeId,
     );
 
-    let releaseEmptyUploads = (): void => {};
-    const emptyUploadsGate = new Promise<void>((resolve) => {
-      releaseEmptyUploads = resolve;
-    });
-    let markEmptyUploadStarted = (): void => {};
-    const emptyUploadStarted = new Promise<void>((resolve) => {
-      markEmptyUploadStarted = resolve;
-    });
+    const emptyUploadsGate = createDeferredPromise<void>(context.signal);
+    const releaseEmptyUploads = (): void => {
+      if (!emptyUploadsGate.settled()) {
+        emptyUploadsGate.resolve(undefined);
+      }
+    };
+    const emptyUploadStarted = createDeferredPromise<void>(context.signal);
+    const markEmptyUploadStarted = (): void => {
+      if (!emptyUploadStarted.settled()) {
+        emptyUploadStarted.resolve(undefined);
+      }
+    };
 
     let blockedEmptyPutCount = 0;
     context.mocks.s3.send.mockImplementation((command: unknown) => {
@@ -1254,7 +1297,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       ) {
         blockedEmptyPutCount += 1;
         markEmptyUploadStarted();
-        return emptyUploadsGate.then(() => {
+        return emptyUploadsGate.promise.then(() => {
           return {};
         });
       }
@@ -1281,7 +1324,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     });
 
     const gateResult = await Promise.race([
-      emptyUploadStarted.then(() => {
+      emptyUploadStarted.promise.then(() => {
         return "empty-upload-started" as const;
       }),
       staleInitializerRun.then(() => {
@@ -1660,6 +1703,69 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expectApiError(uncancellable.body);
   });
 
+  it("filters runner polls by supported profiles without widening malformed polls", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    const missingSupport = await api.requestRawPollRunner(
+      true,
+      { group: runnerGroup },
+      [400],
+    );
+    expectApiError(missingSupport.body);
+    const legacySupport = await api.requestRawPollRunner(
+      true,
+      { group: runnerGroup, profiles: ["vm0/default"] },
+      [400],
+    );
+    expectApiError(legacySupport.body);
+    const emptySupport = await api.requestPollRunner(
+      true,
+      { group: runnerGroup, supportedProfiles: [] },
+      [400],
+    );
+    expectApiError(emptySupport.body);
+
+    const created = await api.createRun(actor, {
+      agentId,
+      prompt: "poll with explicit support list",
+      modelProvider: "anthropic-api-key",
+    });
+
+    const incompatiblePoll = await api.requestPollRunner(
+      true,
+      {
+        group: runnerGroup,
+        supportedProfiles: ["vm0/large"],
+      },
+      [200],
+    );
+    if (incompatiblePoll.status !== 200) {
+      throw new Error(
+        "Expected incompatible supportedProfiles poll to return 200",
+      );
+    }
+    expect(incompatiblePoll.body.job).toBeNull();
+
+    const compatiblePoll = await api.requestRawPollRunner(
+      true,
+      {
+        group: runnerGroup,
+        supportedProfiles: ["vm0/default"],
+        profiles: ["vm0/large"],
+      },
+      [200],
+    );
+    if (compatiblePoll.status !== 200) {
+      throw new Error(
+        "Expected compatible supportedProfiles poll to return 200",
+      );
+    }
+    expect(compatiblePoll.body.job?.runId).toBe(created.runId);
+
+    await api.requestCancelRun(actor, created.runId, [200]);
+  });
+
   it("resumes the previous session when a run is created with the same sessionId", async () => {
     const api = createRunsAutomationsApi(context);
     const { actor, agentId } = await entitledRunActor();
@@ -1710,6 +1816,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(first).toMatchObject({ status: "pending" });
     const firstClaim = await api.claimRunnerJob(first.runId);
     const cliAgentSessionId = `bdd-affinity-cli-${first.runId}`;
+    const affinityRunnerId = randomUUID();
     const history = `bdd affinity history ${first.runId}`;
     const historyHash = createHash("sha256").update(history).digest("hex");
     mockSessionHistoryBlob(historyHash, history);
@@ -1729,6 +1836,176 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       [200],
     );
 
+    async function heartbeatHolder(args: {
+      readonly admittableProfiles?: string[];
+      readonly mode?: "running" | "draining" | "stopping";
+    }): Promise<void> {
+      await api.requestHeartbeatRunner(true, [200], {
+        runnerId: affinityRunnerId,
+        group: runnerGroup,
+        admittableProfiles: args.admittableProfiles,
+        heldSessionStates: [
+          {
+            sessionId: cliAgentSessionId,
+            lastCompletedAt: nowDate().toISOString(),
+          },
+        ],
+        mode: args.mode,
+      });
+    }
+
+    async function pollFollowUp(prompt: string, cancelAfterPoll = true) {
+      const run = await api.createRun(actor, {
+        agentId,
+        sessionId: first.sessionId,
+        prompt,
+        modelProvider: "anthropic-api-key",
+      });
+      const poll = await api.requestPollRunner(
+        true,
+        { group: runnerGroup, supportedProfiles: ["vm0/default"] },
+        [200],
+      );
+      if (poll.status !== 200) {
+        throw new Error("Expected affinity poll to return 200");
+      }
+      expect(poll.body.job?.runId).toBe(run.runId);
+      if (cancelAfterPoll) {
+        await api.requestCancelRun(actor, run.runId, [200]);
+      }
+      return { run, job: poll.body.job };
+    }
+
+    function legacyHeartbeatBody(
+      extra: Record<string, unknown>,
+    ): Record<string, unknown> {
+      return {
+        runnerId: affinityRunnerId,
+        runnerName: "legacy-bdd-runner",
+        group: runnerGroup,
+        totalVcpu: 8,
+        totalMemoryMb: 16_384,
+        maxConcurrent: 2,
+        allocatedVcpu: 0,
+        allocatedMemoryMb: 0,
+        runningCount: 0,
+        heldSessionStates: [
+          {
+            sessionId: cliAgentSessionId,
+            lastCompletedAt: nowDate().toISOString(),
+          },
+        ],
+        mode: "running",
+        ...extra,
+      };
+    }
+
+    const missingProfileListHeartbeat = await api.requestRawHeartbeatRunner(
+      true,
+      [400],
+      legacyHeartbeatBody({}),
+    );
+    expectApiError(missingProfileListHeartbeat.body);
+
+    const legacyAvailableHeartbeat = await api.requestRawHeartbeatRunner(
+      true,
+      [200],
+      legacyHeartbeatBody({ availableProfiles: ["vm0/default"] }),
+    );
+    expect(legacyAvailableHeartbeat.body).toStrictEqual({ ok: true });
+    const legacyAvailableHolder = await pollFollowUp(
+      "continue after legacy available profiles heartbeat",
+    );
+    expect(legacyAvailableHolder.job?.cliAgentSessionId).toBe(
+      cliAgentSessionId,
+    );
+    expect(legacyAvailableHolder.job?.affinityProtectedUntil).toStrictEqual(
+      expect.any(String),
+    );
+
+    const legacyStaticHeartbeat = await api.requestRawHeartbeatRunner(
+      true,
+      [200],
+      legacyHeartbeatBody({ profiles: ["vm0/default"] }),
+    );
+    expect(legacyStaticHeartbeat.body).toStrictEqual({ ok: true });
+    const legacyStaticHolder = await pollFollowUp(
+      "continue after legacy static profiles heartbeat",
+    );
+    expect(legacyStaticHolder.job?.cliAgentSessionId).toBe(cliAgentSessionId);
+    expect(legacyStaticHolder.job?.affinityProtectedUntil).toStrictEqual(
+      expect.any(String),
+    );
+
+    const heartbeatWithIgnoredLegacy = await api.requestRawHeartbeatRunner(
+      true,
+      [200],
+      legacyHeartbeatBody({
+        admittableProfiles: ["vm0/default"],
+        availableProfiles: ["vm0/large"],
+        profiles: ["vm0/large"],
+      }),
+    );
+    expect(heartbeatWithIgnoredLegacy.body).toStrictEqual({ ok: true });
+    const ignoredLegacyHolder = await pollFollowUp(
+      "continue when heartbeat ignores legacy fields",
+    );
+    expect(ignoredLegacyHolder.job?.cliAgentSessionId).toBe(cliAgentSessionId);
+    expect(ignoredLegacyHolder.job?.affinityProtectedUntil).toStrictEqual(
+      expect.any(String),
+    );
+
+    await heartbeatHolder({
+      admittableProfiles: [],
+    });
+    const unavailableHolder = await pollFollowUp(
+      "continue when holder is full",
+      false,
+    );
+    expect(unavailableHolder.job?.cliAgentSessionId).toBe(cliAgentSessionId);
+    expect(unavailableHolder.job?.affinityProtectedUntil).toBeNull();
+    const unavailableClaim = await api.claimRunnerJob(
+      unavailableHolder.run.runId,
+    );
+    expect(unavailableClaim.prompt).toBe("continue when holder is full");
+    await api.requestCancelRun(actor, unavailableHolder.run.runId, [200]);
+
+    mockNow(now() - 60_000);
+    onTestFinished(() => {
+      clearMockNow();
+    });
+    await heartbeatHolder({ admittableProfiles: ["vm0/default"] });
+    clearMockNow();
+    const staleHolder = await pollFollowUp(
+      "continue after holder heartbeat is stale",
+    );
+    expect(staleHolder.job?.cliAgentSessionId).toBe(cliAgentSessionId);
+    expect(staleHolder.job?.affinityProtectedUntil).toBeNull();
+
+    await heartbeatHolder({
+      admittableProfiles: ["vm0/large"],
+    });
+    const profileIncompatibleHolder = await pollFollowUp(
+      "continue when holder cannot run requested profile",
+    );
+    expect(profileIncompatibleHolder.job?.cliAgentSessionId).toBe(
+      cliAgentSessionId,
+    );
+    expect(profileIncompatibleHolder.job?.affinityProtectedUntil).toBeNull();
+
+    await heartbeatHolder({
+      admittableProfiles: ["vm0/default"],
+      mode: "draining",
+    });
+    const drainingHolder = await pollFollowUp(
+      "continue while holder is draining",
+    );
+    expect(drainingHolder.job?.cliAgentSessionId).toBe(cliAgentSessionId);
+    expect(drainingHolder.job?.affinityProtectedUntil).toBeNull();
+
+    await heartbeatHolder({
+      admittableProfiles: ["vm0/default"],
+    });
     const protectedFollowUp = await api.createRun(actor, {
       agentId,
       sessionId: first.sessionId,
@@ -1738,7 +2015,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
 
     const protectedPoll = await api.requestPollRunner(
       true,
-      { group: runnerGroup, profiles: ["vm0/default"] },
+      { group: runnerGroup, supportedProfiles: ["vm0/default"] },
       [200],
     );
     if (protectedPoll.status !== 200) {
@@ -2691,6 +2968,40 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     if (sent.status !== 201 || sent.body.runId === null) {
       throw new Error("Expected the pinned chat send to create a run");
     }
+
+    const timingEvents = apiDispatchTimingEventsForRun(sent.body.runId);
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_prepare_storage_manifest_build_entries",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        storage_manifest_source_workflow_skill_resolved_count_bucket: "1",
+        storage_manifest_source_workflow_skill_planned_presign_count_bucket:
+          "1",
+        storage_manifest_source_workflow_skill_non_system_presign_count_bucket:
+          "1",
+      }),
+    );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_prepare_storage_manifest_generate_additional_urls",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        storage_manifest_source_workflow_skill_planned_presign_count_bucket:
+          "1",
+        storage_manifest_source_workflow_skill_non_system_presign_count_bucket:
+          "1",
+      }),
+    );
+    expectApiDispatchTimingEventsNotToLeak(timingEvents, [
+      workflowName,
+      agent.agentId,
+      thread.id,
+    ]);
 
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(sent.body.runId);
@@ -3648,13 +3959,10 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     );
     expect(claim.networkPolicies?.[internalName]?.unknownPolicy).toBe("allow");
 
-    if (!claim.encryptedSecrets) {
-      throw new Error("Expected the custom claim to carry encrypted secrets");
-    }
     const resolved = await fw.requestFirewallAuth(
       { authorization: `Bearer ${claim.sandboxToken}` },
       {
-        encryptedSecrets: claim.encryptedSecrets,
+        encryptedSecrets: fw.encryptedSecretsBody({}),
         authHeaders: {
           Authorization: `Bearer \${{ secrets.${secretKey} }}`,
         },
@@ -3667,6 +3975,150 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(resolved.body.headers).toStrictEqual({
       Authorization: "Bearer custom-secret-value",
     });
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
+  });
+
+  it("resolves custom connector auth from run-scoped refs when encrypted secrets omit aliases", async () => {
+    const api = createRunsAutomationsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const fw = createFirewallApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    const rand = randomUUID().slice(0, 8);
+    const saved = await connectors.saveCustomConnectorProposal(actor, {
+      proposal: {
+        operation: "create",
+        displayName: "BDD Auth Ref API",
+        prefixTemplates: [`https://auth-ref-${rand}.example.com/api/`],
+        fields: [
+          {
+            key: "api_key",
+            label: "API key",
+            kind: "secret",
+            required: true,
+          },
+          {
+            key: "tenant_id",
+            label: "Tenant ID",
+            kind: "variable",
+            required: true,
+          },
+        ],
+        headerInjections: [
+          {
+            name: "Authorization",
+            valueTemplate: "Bearer {{secrets.api_key}}",
+          },
+        ],
+        queryInjections: [
+          {
+            name: "tenant",
+            valueTemplate: "{{variables.tenant_id}}",
+          },
+        ],
+      },
+      values: [
+        { key: "api_key", kind: "secret", value: "auth-ref-secret" },
+        { key: "tenant_id", kind: "variable", value: "auth-ref-tenant" },
+      ],
+      agentId,
+    });
+
+    await enableAutomationsFakeKms(context);
+    onTestFinished(async () => {
+      await resetAutomationsFakeKms(context);
+    });
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "use the custom connector auth ref",
+      modelProvider: "anthropic-api-key",
+    });
+    await expect(readAutomationsFakeKmsDecryptCallCount(context)).resolves.toBe(
+      0,
+    );
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+
+    const idPart = saved.connector.id.replaceAll("-", "");
+    const internalName = `custom_connector_${idPart}`;
+    const secretKey = `CUSTOM_${idPart}_S_API_KEY`;
+    const tenantVarKey = `CUSTOM_${idPart}_V_TENANT_ID`;
+    const missingSecretKey = `CUSTOM_${idPart}_S_MISSING`;
+    const customApis = inlineFirewallApis(claim.firewalls, internalName);
+    expect(customApis[0]?.auth?.headers?.Authorization).toBe(
+      `Bearer \${{ secrets.${secretKey} }}`,
+    );
+    expect(customApis[0]?.auth?.query?.tenant).toBe(
+      `\${{ secrets.${tenantVarKey} }}`,
+    );
+
+    const resolvedFromRef = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      {
+        encryptedSecrets: fw.encryptedSecretsBody({}),
+        authHeaders: {
+          Authorization: `Bearer \${{ secrets.${secretKey} }}`,
+        },
+        authQuery: {
+          tenant: `\${{ secrets.${tenantVarKey} }}`,
+        },
+      },
+      [200],
+    );
+    if (resolvedFromRef.status !== 200) {
+      throw new Error("Expected the custom auth ref to resolve");
+    }
+    expect(resolvedFromRef.body.headers).toStrictEqual({
+      Authorization: "Bearer auth-ref-secret",
+    });
+    expect(resolvedFromRef.body.query).toStrictEqual({
+      tenant: "auth-ref-tenant",
+    });
+
+    const resolvedFromBody = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      {
+        encryptedSecrets: fw.encryptedSecretsBody({
+          [secretKey]: "explicit-secret",
+          [tenantVarKey]: "explicit-tenant",
+        }),
+        authHeaders: {
+          Authorization: `Bearer \${{ secrets.${secretKey} }}`,
+        },
+        authQuery: {
+          tenant: `\${{ secrets.${tenantVarKey} }}`,
+        },
+      },
+      [200],
+    );
+    if (resolvedFromBody.status !== 200) {
+      throw new Error("Expected the explicit encrypted secret to resolve");
+    }
+    expect(resolvedFromBody.body.headers).toStrictEqual({
+      Authorization: "Bearer explicit-secret",
+    });
+    expect(resolvedFromBody.body.query).toStrictEqual({
+      tenant: "explicit-tenant",
+    });
+
+    const missing = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      {
+        encryptedSecrets: fw.encryptedSecretsBody({}),
+        authHeaders: {
+          Authorization: `Bearer \${{ secrets.${missingSecretKey} }}`,
+        },
+      },
+      [424],
+    );
+    if (missing.status !== 424) {
+      throw new Error("Expected missing custom auth ref to fail closed");
+    }
+    expect(missing.body.error.code).toBe("CONNECTOR_NOT_CONFIGURED");
 
     await api.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await api.readRun(actor, run.runId);
@@ -3794,11 +4246,19 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       agentId,
     });
 
+    await enableAutomationsFakeKms(context);
+    onTestFinished(async () => {
+      await resetAutomationsFakeKms(context);
+    });
+
     const run = await api.createRun(actor, {
       agentId,
       prompt: "use the proposed custom connector",
       modelProvider: "anthropic-api-key",
     });
+    await expect(readAutomationsFakeKmsDecryptCallCount(context)).resolves.toBe(
+      1,
+    );
     const timingEvents = apiDispatchTimingEventsForRun(run.runId);
     expectApiDispatchActions(
       timingEvents,
@@ -3827,13 +4287,10 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       `\${{ secrets.${variableKey} }}`,
     );
 
-    if (!claim.encryptedSecrets) {
-      throw new Error("Expected the custom claim to carry encrypted secrets");
-    }
     const resolved = await fw.requestFirewallAuth(
       { authorization: `Bearer ${claim.sandboxToken}` },
       {
-        encryptedSecrets: claim.encryptedSecrets,
+        encryptedSecrets: fw.encryptedSecretsBody({}),
         authHeaders: {
           Authorization: `Bearer \${{ secrets.${secretKey} }}`,
         },
@@ -3930,13 +4387,10 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(JSON.stringify(customApis)).not.toContain(secondarySecretKey);
     expect(JSON.stringify(customApis)).not.toContain(tenantVarKey);
 
-    if (!claim.encryptedSecrets) {
-      throw new Error("Expected the custom claim to carry encrypted secrets");
-    }
     const resolved = await fw.requestFirewallAuth(
       { authorization: `Bearer ${claim.sandboxToken}` },
       {
-        encryptedSecrets: claim.encryptedSecrets,
+        encryptedSecrets: fw.encryptedSecretsBody({}),
         authHeaders: {
           Authorization: `Bearer \${{ secrets.${secretKey} }}`,
         },
@@ -4110,10 +4564,13 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     });
     await api.enableAgentConnectors(actor, agentId, ["slack"]);
 
-    async function claimSlackPolicy(prompt: string): Promise<{
-      readonly allow: readonly string[];
-      readonly deny: readonly string[];
-      readonly unknownPolicy?: string;
+    async function claimSlackContext(prompt: string): Promise<{
+      readonly claim: Awaited<ReturnType<typeof api.claimRunnerJob>>;
+      readonly policy: {
+        readonly allow: readonly string[];
+        readonly deny: readonly string[];
+        readonly unknownPolicy?: string;
+      };
     }> {
       const run = await api.createRun(actor, {
         agentId,
@@ -4126,7 +4583,15 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       if (!policy) {
         throw new Error("Expected a slack network policy on the claim");
       }
-      return policy;
+      return { claim, policy };
+    }
+
+    async function claimSlackPolicy(prompt: string): Promise<{
+      readonly allow: readonly string[];
+      readonly deny: readonly string[];
+      readonly unknownPolicy?: string;
+    }> {
+      return (await claimSlackContext(prompt)).policy;
     }
 
     await api.heartbeatRunner(runnerGroup);
@@ -4190,7 +4655,14 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       action: "allow",
     });
 
-    const granted = await claimSlackPolicy("granted permissions");
+    const grantedContext = await claimSlackContext("granted permissions");
+    const granted = grantedContext.policy;
+    expect(
+      grantedContext.claim.networkPolicyRefreshes?.slack?.nextRefreshAt,
+    ).toStrictEqual(expect.any(String));
+    expect(grantedContext.claim.networkPolicyRefreshes).not.toHaveProperty(
+      "model-provider:anthropic-api-key",
+    );
     expect(granted.allow).toContain("chat:write");
     expect(granted.allow).toContain("files:read");
     expect(granted.deny).not.toContain("chat:write");
@@ -4214,8 +4686,8 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(unknownDenied.allow).toContain("conversations:read");
     expect(unknownDenied.deny).toContain("chat:write");
 
-    // The grant snapshot is baked into the queued run: flipping the grant
-    // after creation does not change the already-created run's policy.
+    // Queued runs refresh network policy at claim time, so permission changes
+    // made after creation are visible before the sandbox starts.
     await api.applyUserPermissionGrant(actor, {
       agentId,
       connectorRef: "slack",
@@ -4234,10 +4706,72 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       action: "deny",
     });
     const snapshotClaim = await api.claimRunnerJob(snapshotRun.runId);
-    expect(snapshotClaim.networkPolicies?.slack?.allow).toContain("chat:write");
-    expect(snapshotClaim.networkPolicies?.slack?.deny).not.toContain(
+    expect(snapshotClaim.networkPolicies?.slack?.deny).toContain("chat:write");
+    expect(snapshotClaim.networkPolicies?.slack?.allow).not.toContain(
       "chat:write",
     );
+    const actorRunnerKey = await api.createApiKey(actor);
+    const memberRunnerKey = await api.createApiKey(member);
+    const sameUserRefresh = await api.requestRefreshRunnerNetworkPolicyAs(
+      `Bearer ${actorRunnerKey.token}`,
+      snapshotRun.runId,
+      "slack",
+      [200],
+    );
+    if (sameUserRefresh.status !== 200) {
+      throw new Error("Expected same-user network policy refresh to succeed");
+    }
+    expect(sameUserRefresh.body.refreshes[0]?.networkPolicy.deny).toContain(
+      "chat:write",
+    );
+    const otherUserRefresh = await api.requestRefreshRunnerNetworkPolicyAs(
+      `Bearer ${memberRunnerKey.token}`,
+      snapshotRun.runId,
+      "slack",
+      [403],
+    );
+    if (otherUserRefresh.status !== 403) {
+      throw new Error(
+        "Expected other-user network policy refresh to be forbidden",
+      );
+    }
+    expect(otherUserRefresh.body.error.message).toBe(
+      "Run does not belong to user",
+    );
+    context.mocks.ably.publish.mockClear();
+    await api.applyUserPermissionGrant(actor, {
+      agentId,
+      connectorRef: "slack",
+      permission: "files:write",
+      action: "allow",
+    });
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "network-policy-refresh",
+      { runId: snapshotRun.runId, connectorRef: "slack" },
+    );
+    const refreshedPolicy = await api.refreshRunnerNetworkPolicy(
+      snapshotRun.runId,
+      "slack",
+    );
+    expect(refreshedPolicy.networkPolicy.deny).toContain("chat:write");
+    expect(refreshedPolicy.networkPolicy.allow).not.toContain("chat:write");
+    expect(refreshedPolicy.networkPolicy.allow).toContain("files:write");
+    expect(refreshedPolicy.nextRefreshAt).toStrictEqual(expect.any(String));
+
+    context.mocks.ably.publish.mockRejectedValueOnce(
+      new Error("network policy refresh publish failed"),
+    );
+    const failedRefreshNotification = await api.requestUserPermissionGrant(
+      actor,
+      {
+        agentId,
+        connectorRef: "slack",
+        permission: "files:write",
+        action: "deny",
+      },
+      [500],
+    );
+    expect(failedRefreshNotification.status).toBe(500);
 
     await api.requestCancelRun(actor, snapshotRun.runId, [200]);
     const drained = await api.readRunQueue(actor);
@@ -4662,7 +5196,7 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
       bearer,
       {
         group: runnerGroup,
-        profiles: ["vm0/default"],
+        supportedProfiles: ["vm0/default"],
         telemetry: { pollReason: "deferred" },
       },
       [200],
@@ -4883,7 +5417,7 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     const outsiderBearer = `Bearer ${outsiderKey.token}`;
     const outsiderPoll = await api.requestPollRunnerAs(
       outsiderBearer,
-      { group: runnerGroup, profiles: ["vm0/default"] },
+      { group: runnerGroup, supportedProfiles: ["vm0/default"] },
       [200],
     );
     if (outsiderPoll.status !== 200) {
@@ -4932,7 +5466,10 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     const api = createRunsAutomationsApi(context);
     const bdd = createBddApi(context);
     const actor = bdd.user();
-    const pollBody = { group: "vm0/bdd-auth", profiles: ["vm0/default"] };
+    const pollBody = {
+      group: "vm0/bdd-auth",
+      supportedProfiles: ["vm0/default"],
+    };
 
     const rejectedAuthorizations = [
       "Basic vm0_official_credentials",
@@ -5521,7 +6058,11 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
     expect(matchingDuplicateRows[0]?.content).toBe("Hello from BDD events");
 
     // Assistant text on a run without a chat thread changes no thread state.
-    const threadsBefore = await chat.listThreads(actor, { agentId });
+    const eventsBefore = await chat.requestThreadEvents(actor, {}, [200]);
+    expect(eventsBefore.status).toBe(200);
+    if (eventsBefore.status !== 200) {
+      throw new Error("Expected chat thread events to load");
+    }
     const detachedRun = await api.createRun(actor, {
       agentId,
       prompt: "report events without a thread",
@@ -5545,8 +6086,12 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
       { authorization: `Bearer ${detachedClaim.sandboxToken}` },
       [200],
     );
-    const threadsAfter = await chat.listThreads(actor, { agentId });
-    expect(threadsAfter.threads).toHaveLength(threadsBefore.threads.length);
+    const eventsAfter = await chat.requestThreadEvents(actor, {}, [200]);
+    expect(eventsAfter.status).toBe(200);
+    if (eventsAfter.status !== 200) {
+      throw new Error("Expected chat thread events to load");
+    }
+    expect(eventsAfter.body.events).toStrictEqual(eventsBefore.body.events);
 
     await api.requestCancelRun(actor, detachedRun.runId, [200]);
     await api.requestCancelRun(actor, runId, [200]);

@@ -6,6 +6,7 @@ import { zeroClient$ } from "../../api-client.ts";
 
 interface BackendBuildInfo {
   readonly backendCommitSha: string | null;
+  readonly backendVersion: string | null;
 }
 
 export const backendBuildInfo$ = computed(
@@ -16,6 +17,7 @@ export const backendBuildInfo$ = computed(
 
     return {
       backendCommitSha: result.body.commitSha,
+      backendVersion: result.body.version ?? null,
     };
   },
 );

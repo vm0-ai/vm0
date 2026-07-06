@@ -8,6 +8,11 @@ import {
   zeroMemoryActivityContract,
   type MemoryActivityResponse,
 } from "@vm0/api-contracts/contracts/zero-memory-activity";
+import {
+  zeroRelationshipsContract,
+  type GmailRelationshipStatusResponse,
+  type RelationshipSearchResponse,
+} from "@vm0/api-contracts/contracts/zero-relationships";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { afterEach, describe, expect, it } from "vitest";
@@ -15,6 +20,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   click,
   detachedSetupPage,
+  fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { nowDate } from "../../../__tests__/time.ts";
@@ -54,6 +60,44 @@ function getButtonContaining(text: string): HTMLElement {
     throw new Error(`Could not find button containing: ${text}`);
   }
   return button;
+}
+
+function getBackfillDialogButtonContaining(text: string): HTMLElement {
+  const dialog = screen
+    .getByText("Backfill Gmail relationships")
+    .closest('[role="dialog"]');
+  if (!dialog) {
+    throw new Error("Could not find Gmail backfill dialog");
+  }
+  const button = queryAllByRoleFast("button", dialog).find((el) => {
+    return el.textContent?.includes(text);
+  });
+  if (!button) {
+    throw new Error(`Could not find dialog button containing: ${text}`);
+  }
+  return button;
+}
+
+function gmailRelationshipStatus(
+  overrides: Partial<GmailRelationshipStatusResponse> = {},
+): GmailRelationshipStatusResponse {
+  return {
+    provider: "gmail",
+    connectorConnected: true,
+    enabled: true,
+    watchEnabled: true,
+    backfill: {
+      status: "done",
+      estimatedTotal: 20,
+      scannedCount: 20,
+      enqueuedCount: 8,
+      pendingSyncJobs: 0,
+      lastError: null,
+      updatedAt: `${localDateDaysAgo(0)}T12:00:00Z`,
+      completedAt: `${localDateDaysAgo(0)}T12:00:00Z`,
+    },
+    ...overrides,
+  };
 }
 
 function memoryDetailResponse(): MemoryDetailResponse {
@@ -220,6 +264,201 @@ function memoryActivityPage(
   };
 }
 
+function relationshipSearchPage(query: {
+  readonly q?: string;
+  readonly page?: number;
+  readonly limit?: number;
+  readonly entityType?: "person" | "organization";
+  readonly itemKind?: "key_fact" | "preference" | "open_loop";
+}): RelationshipSearchResponse {
+  const relationships: RelationshipSearchResponse["relationships"] = [
+    {
+      id: "00000000-0000-4000-8000-000000000101",
+      entity: {
+        id: "00000000-0000-4000-8000-000000000102",
+        type: "person",
+        displayName: "Alice Lee",
+        primaryEmail: "alice@acme.com",
+        domain: "acme.com",
+      },
+      relationshipType: "Customer champion",
+      status: "active",
+      summary:
+        "Alice evaluates enterprise automation for Acme and is waiting on a security answer.",
+      lastInteractionAt: "2026-07-02T12:00:00.000Z",
+      items: [
+        {
+          id: "00000000-0000-4000-8000-000000000103",
+          kind: "open_loop",
+          text: "Send the security data-retention answer.",
+          confidence: 90,
+          lastSeenAt: "2026-07-02T12:00:00.000Z",
+          sources: [
+            {
+              id: "00000000-0000-4000-8000-000000000104",
+              provider: "gmail",
+              externalId: "gmail-message-1:open_loop:security",
+              threadId: "thread-1",
+              messageId: "gmail-message-1",
+              quote: "Can you send the retention answer?",
+              occurredAt: "2026-07-02T12:00:00.000Z",
+            },
+          ],
+        },
+      ],
+      recentInteractions: [
+        {
+          id: "00000000-0000-4000-8000-000000000105",
+          provider: "gmail",
+          externalId: "gmail-message-1",
+          threadId: "thread-1",
+          messageId: "gmail-message-1",
+          subject: "Security review",
+          snippet:
+            "Asked for security and retention details before the pilot expansion.",
+          occurredAt: "2026-07-02T12:00:00.000Z",
+        },
+      ],
+    },
+    {
+      id: "00000000-0000-4000-8000-000000000201",
+      entity: {
+        id: "00000000-0000-4000-8000-000000000202",
+        type: "organization",
+        displayName: "Acme",
+        primaryEmail: null,
+        domain: "acme.com",
+      },
+      relationshipType: "Enterprise prospect",
+      status: "active",
+      summary:
+        "Acme is evaluating Zero for internal automation across support and operations.",
+      lastInteractionAt: "2026-07-02T12:00:00.000Z",
+      items: [
+        {
+          id: "00000000-0000-4000-8000-000000000203",
+          kind: "key_fact",
+          text: "Support and operations are the first pilot teams.",
+          confidence: 82,
+          lastSeenAt: "2026-07-01T12:00:00.000Z",
+          sources: [],
+        },
+      ],
+      recentInteractions: [],
+    },
+    {
+      id: "00000000-0000-4000-8000-000000000301",
+      entity: {
+        id: "00000000-0000-4000-8000-000000000302",
+        type: "person",
+        displayName: "Mina Johnson",
+        primaryEmail: "mina@northstar.io",
+        domain: "northstar.io",
+      },
+      relationshipType: "Partner lead",
+      status: "active",
+      summary: "Mina coordinates partnership conversations for Northstar.",
+      lastInteractionAt: "2026-06-29T12:00:00.000Z",
+      items: [
+        {
+          id: "00000000-0000-4000-8000-000000000303",
+          kind: "open_loop",
+          text: "Share the partner pricing follow-up.",
+          confidence: 88,
+          lastSeenAt: "2026-06-29T12:00:00.000Z",
+          sources: [],
+        },
+      ],
+      recentInteractions: [],
+    },
+  ];
+
+  const normalized = query.q?.toLowerCase().trim();
+  const page = query.page ?? 1;
+  const pageSize = query.limit ?? 100;
+  const filtered = relationships.filter((relationship) => {
+    if (query.entityType && relationship.entity.type !== query.entityType) {
+      return false;
+    }
+
+    if (
+      query.itemKind &&
+      !relationship.items.some((item) => {
+        return item.kind === query.itemKind;
+      })
+    ) {
+      return false;
+    }
+
+    if (!normalized) {
+      return true;
+    }
+
+    return [
+      relationship.entity.displayName,
+      relationship.entity.primaryEmail,
+      relationship.entity.domain,
+      relationship.relationshipType,
+      relationship.summary,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase()
+      .includes(normalized);
+  });
+  const start = (page - 1) * pageSize;
+  const paged = filtered.slice(start, start + pageSize);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+
+  return {
+    relationships: paged,
+    pagination: {
+      page,
+      pageSize,
+      total: filtered.length,
+      totalPages,
+      hasMore: page < totalPages,
+    },
+  };
+}
+
+function emptyRelationshipSearchPage(): RelationshipSearchResponse {
+  return {
+    relationships: [],
+    pagination: {
+      page: 1,
+      pageSize: 100,
+      total: 0,
+      totalPages: 1,
+      hasMore: false,
+    },
+  };
+}
+
+function relationshipRecord(
+  index: number,
+  displayName: string,
+): RelationshipSearchResponse["relationships"][number] {
+  const idSuffix = String(index).padStart(12, "0");
+  const entitySuffix = String(index + 500).padStart(12, "0");
+  return {
+    id: `00000000-0000-4000-8000-${idSuffix}`,
+    entity: {
+      id: `00000000-0000-4000-8000-${entitySuffix}`,
+      type: "person",
+      displayName,
+      primaryEmail: `contact-${index}@example.com`,
+      domain: "example.com",
+    },
+    relationshipType: "Customer contact",
+    status: "active",
+    summary: `${displayName} is part of the pagination fixture.`,
+    lastInteractionAt: "2026-07-02T12:00:00.000Z",
+    items: [],
+    recentInteractions: [],
+  };
+}
+
 describe("memory page", () => {
   it("shows debug memory updates and browses raw files", async () => {
     context.mocks.api(zeroMemoryActivityContract.get, ({ query, respond }) => {
@@ -315,7 +554,10 @@ describe("memory page", () => {
     detachedSetupPage({
       context,
       path: "/memory",
-      featureSwitches: { [FeatureSwitchKey.MemoryViewer]: true },
+      featureSwitches: {
+        [FeatureSwitchKey.MemoryViewer]: true,
+        [FeatureSwitchKey.RelationshipMemory]: false,
+      },
     });
 
     await waitFor(() => {
@@ -328,6 +570,445 @@ describe("memory page", () => {
     expect(
       screen.queryByTitle("Force-refresh memory summaries"),
     ).not.toBeInTheDocument();
+    expect(
+      queryAllByRoleFast("tab").some((tab) => {
+        return tab.textContent?.trim() === "Relationships";
+      }),
+    ).toBeFalsy();
+  });
+
+  it("shows relationship memory when the relationship switch is enabled", async () => {
+    context.mocks.api(zeroMemoryActivityContract.get, ({ query, respond }) => {
+      expect(query.limit).toBe(7);
+      return respond(200, memoryActivityPage(query.cursor));
+    });
+    context.mocks.api(zeroMemoryContract.get, ({ respond }) => {
+      return respond(200, memoryDetailResponse());
+    });
+    context.mocks.api(
+      zeroRelationshipsContract.search,
+      ({ query, respond }) => {
+        return respond(200, relationshipSearchPage(query));
+      },
+    );
+    context.mocks.api(zeroRelationshipsContract.gmailStatus, ({ respond }) => {
+      return respond(200, gmailRelationshipStatus());
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/memory",
+      featureSwitches: {
+        [FeatureSwitchKey.MemoryViewer]: true,
+        [FeatureSwitchKey.RelationshipMemory]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("launch preferences")).toBeInTheDocument();
+    });
+
+    click(getTabByText("Relationships"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Customer champion - last touch Jul 2"),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.getByText("Send the security data-retention answer."),
+    ).toBeInTheDocument();
+    expect(screen.getByText("This org only")).toBeInTheDocument();
+
+    click(getButtonContaining("Organizations"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Enterprise prospect - last touch Jul 2"),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.getByText("Support and operations are the first pilot teams."),
+    ).toBeInTheDocument();
+
+    click(getButtonContaining("All"));
+    await waitFor(() => {
+      expect(
+        screen.getByPlaceholderText(
+          "Search people, companies, emails, or open loops",
+        ),
+      ).toBeInTheDocument();
+    });
+    await fill(
+      screen.getByPlaceholderText(
+        "Search people, companies, emails, or open loops",
+      ),
+      "northstar",
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Partner lead - last touch Jun 29"),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.getByText("Share the partner pricing follow-up."),
+    ).toBeInTheDocument();
+  });
+
+  it("moves through relationship pages from the relationships tab", async () => {
+    context.mocks.api(zeroMemoryActivityContract.get, ({ query, respond }) => {
+      expect(query.limit).toBe(7);
+      return respond(200, memoryActivityPage(query.cursor));
+    });
+    context.mocks.api(zeroMemoryContract.get, ({ respond }) => {
+      return respond(200, memoryDetailResponse());
+    });
+    const queries: { page: number; limit: number }[] = [];
+    context.mocks.api(
+      zeroRelationshipsContract.search,
+      ({ query, respond }) => {
+        queries.push({ page: query.page, limit: query.limit });
+        const page = query.page;
+        const relationship =
+          page === 1
+            ? relationshipRecord(1, "First page contact")
+            : relationshipRecord(101, "Second page contact");
+        return respond(200, {
+          relationships: [relationship],
+          pagination: {
+            page,
+            pageSize: query.limit,
+            total: 101,
+            totalPages: 2,
+            hasMore: page < 2,
+          },
+        });
+      },
+    );
+    context.mocks.api(zeroRelationshipsContract.gmailStatus, ({ respond }) => {
+      return respond(200, gmailRelationshipStatus());
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/memory",
+      featureSwitches: {
+        [FeatureSwitchKey.MemoryViewer]: true,
+        [FeatureSwitchKey.RelationshipMemory]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("launch preferences")).toBeInTheDocument();
+    });
+
+    click(getTabByText("Relationships"));
+
+    await waitFor(() => {
+      expect(screen.getAllByText("First page contact").length).toBeGreaterThan(
+        0,
+      );
+    });
+    expect(screen.getByText("Page 1 of 2")).toBeInTheDocument();
+    expect(queries.at(-1)).toStrictEqual({ page: 1, limit: 100 });
+
+    click(screen.getByLabelText("Next page"));
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Second page contact").length).toBeGreaterThan(
+        0,
+      );
+    });
+    expect(screen.getByText("Page 2 of 2")).toBeInTheDocument();
+    expect(queries.at(-1)).toStrictEqual({ page: 2, limit: 100 });
+  });
+
+  it("enables Gmail relationships and shows backfill progress", async () => {
+    context.mocks.api(zeroMemoryActivityContract.get, ({ query, respond }) => {
+      expect(query.limit).toBe(7);
+      return respond(200, memoryActivityPage(query.cursor));
+    });
+    context.mocks.api(zeroMemoryContract.get, ({ respond }) => {
+      return respond(200, memoryDetailResponse());
+    });
+    context.mocks.api(zeroRelationshipsContract.search, ({ respond }) => {
+      return respond(200, emptyRelationshipSearchPage());
+    });
+
+    let status = gmailRelationshipStatus({
+      enabled: false,
+      watchEnabled: false,
+      backfill: {
+        status: "idle",
+        estimatedTotal: null,
+        scannedCount: 0,
+        enqueuedCount: 0,
+        pendingSyncJobs: 0,
+        lastError: null,
+        updatedAt: null,
+        completedAt: null,
+      },
+    });
+    context.mocks.api(zeroRelationshipsContract.gmailStatus, ({ respond }) => {
+      return respond(200, status);
+    });
+    context.mocks.api(
+      zeroRelationshipsContract.gmailBackfill,
+      ({ body, respond }) => {
+        expect(body).toStrictEqual({
+          days: 180,
+          includeArchived: true,
+          includeSent: true,
+        });
+        status = gmailRelationshipStatus({
+          enabled: true,
+          watchEnabled: true,
+          backfill: {
+            status: "pending",
+            estimatedTotal: null,
+            scannedCount: 0,
+            enqueuedCount: 0,
+            pendingSyncJobs: 0,
+            lastError: null,
+            updatedAt: `${localDateDaysAgo(0)}T12:00:00Z`,
+            completedAt: null,
+          },
+        });
+        return respond(200, status);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/memory",
+      featureSwitches: {
+        [FeatureSwitchKey.MemoryViewer]: true,
+        [FeatureSwitchKey.RelationshipMemory]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("launch preferences")).toBeInTheDocument();
+    });
+
+    click(getTabByText("Relationships"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Enable Gmail")).toBeInTheDocument();
+    });
+
+    click(getButtonContaining("Enable Gmail"));
+    await waitFor(() => {
+      expect(
+        screen.getByText("Backfill Gmail relationships"),
+      ).toBeInTheDocument();
+    });
+    click(getBackfillDialogButtonContaining("Enable Gmail"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Watch active - Backfilling Gmail - 0 scanned"),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("starts Gmail backfill when relationships are already enabled but idle", async () => {
+    context.mocks.api(zeroMemoryActivityContract.get, ({ query, respond }) => {
+      expect(query.limit).toBe(7);
+      return respond(200, memoryActivityPage(query.cursor));
+    });
+    context.mocks.api(zeroMemoryContract.get, ({ respond }) => {
+      return respond(200, memoryDetailResponse());
+    });
+    context.mocks.api(zeroRelationshipsContract.search, ({ respond }) => {
+      return respond(200, emptyRelationshipSearchPage());
+    });
+
+    let status = gmailRelationshipStatus({
+      enabled: true,
+      watchEnabled: true,
+      backfill: {
+        status: "idle",
+        estimatedTotal: null,
+        scannedCount: 0,
+        enqueuedCount: 0,
+        pendingSyncJobs: 0,
+        lastError: null,
+        updatedAt: null,
+        completedAt: null,
+      },
+    });
+    context.mocks.api(zeroRelationshipsContract.gmailStatus, ({ respond }) => {
+      return respond(200, status);
+    });
+    context.mocks.api(
+      zeroRelationshipsContract.gmailBackfill,
+      ({ body, respond }) => {
+        expect(body).toStrictEqual({
+          days: 180,
+          includeArchived: true,
+          includeSent: true,
+        });
+        status = gmailRelationshipStatus({
+          enabled: true,
+          watchEnabled: true,
+          backfill: {
+            status: "pending",
+            estimatedTotal: null,
+            scannedCount: 0,
+            enqueuedCount: 0,
+            pendingSyncJobs: 0,
+            lastError: null,
+            updatedAt: `${localDateDaysAgo(0)}T12:00:00Z`,
+            completedAt: null,
+          },
+        });
+        return respond(200, status);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/memory",
+      featureSwitches: {
+        [FeatureSwitchKey.MemoryViewer]: true,
+        [FeatureSwitchKey.RelationshipMemory]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("launch preferences")).toBeInTheDocument();
+    });
+
+    click(getTabByText("Relationships"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Start backfill")).toBeInTheDocument();
+    });
+
+    click(getButtonContaining("Start backfill"));
+    await waitFor(() => {
+      expect(
+        screen.getByText("Backfill Gmail relationships"),
+      ).toBeInTheDocument();
+    });
+    click(getBackfillDialogButtonContaining("Start backfill"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Watch active - Backfilling Gmail - 0 scanned"),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("stops and deletes a stopped Gmail backfill job", async () => {
+    context.mocks.api(zeroMemoryActivityContract.get, ({ query, respond }) => {
+      expect(query.limit).toBe(7);
+      return respond(200, memoryActivityPage(query.cursor));
+    });
+    context.mocks.api(zeroMemoryContract.get, ({ respond }) => {
+      return respond(200, memoryDetailResponse());
+    });
+    context.mocks.api(zeroRelationshipsContract.search, ({ respond }) => {
+      return respond(200, emptyRelationshipSearchPage());
+    });
+
+    let status = gmailRelationshipStatus({
+      enabled: true,
+      watchEnabled: true,
+      backfill: {
+        status: "running",
+        estimatedTotal: 20,
+        scannedCount: 12,
+        enqueuedCount: 5,
+        pendingSyncJobs: 0,
+        lastError: null,
+        updatedAt: `${localDateDaysAgo(0)}T12:00:00Z`,
+        completedAt: null,
+      },
+    });
+    context.mocks.api(zeroRelationshipsContract.gmailStatus, ({ respond }) => {
+      return respond(200, status);
+    });
+    context.mocks.api(
+      zeroRelationshipsContract.gmailStopBackfill,
+      ({ respond }) => {
+        status = gmailRelationshipStatus({
+          enabled: true,
+          watchEnabled: true,
+          backfill: {
+            status: "stopped",
+            estimatedTotal: 20,
+            scannedCount: 12,
+            enqueuedCount: 5,
+            pendingSyncJobs: 0,
+            lastError: null,
+            updatedAt: `${localDateDaysAgo(0)}T12:05:00Z`,
+            completedAt: null,
+          },
+        });
+        return respond(200, status);
+      },
+    );
+    context.mocks.api(
+      zeroRelationshipsContract.gmailDeleteStoppedBackfill,
+      ({ respond }) => {
+        status = gmailRelationshipStatus({
+          enabled: true,
+          watchEnabled: true,
+          backfill: {
+            status: "idle",
+            estimatedTotal: null,
+            scannedCount: 0,
+            enqueuedCount: 0,
+            pendingSyncJobs: 0,
+            lastError: null,
+            updatedAt: null,
+            completedAt: null,
+          },
+        });
+        return respond(200, status);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/memory",
+      featureSwitches: {
+        [FeatureSwitchKey.MemoryViewer]: true,
+        [FeatureSwitchKey.RelationshipMemory]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("launch preferences")).toBeInTheDocument();
+    });
+
+    click(getTabByText("Relationships"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Stop job")).toBeInTheDocument();
+    });
+    expect(
+      screen.getByText("Watch active - Backfilling Gmail - 12 / ~20 scanned"),
+    ).toBeInTheDocument();
+
+    click(getButtonContaining("Stop job"));
+    await waitFor(() => {
+      expect(
+        screen.getByText("Watch active - Backfill stopped - 12 scanned"),
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByText("Delete stopped job")).toBeInTheDocument();
+
+    click(getButtonContaining("Delete stopped job"));
+    await waitFor(() => {
+      expect(screen.getByText("Start backfill")).toBeInTheDocument();
+    });
+    expect(
+      screen.getByText("Watch active - Backfill not started"),
+    ).toBeInTheDocument();
   });
 
   it("shows empty memory activity and raw memory states", async () => {

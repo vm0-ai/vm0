@@ -22,6 +22,7 @@ interface ClerkEmailProfile {
   readonly emailAddresses: readonly ClerkEmailAddress[];
   readonly firstName?: string | null;
   readonly lastName?: string | null;
+  readonly imageUrl?: string | null;
   readonly primaryEmailAddressId: string | null;
 }
 
@@ -81,10 +82,21 @@ const getAuthMeInner$ = command(
     const writeDb = set(writeDb$);
     await writeDb
       .insert(userCache)
-      .values({ userId: auth.userId, email, name, cachedAt: refreshedAt })
+      .values({
+        userId: auth.userId,
+        email,
+        name,
+        imageUrl: user.imageUrl ?? null,
+        cachedAt: refreshedAt,
+      })
       .onConflictDoUpdate({
         target: userCache.userId,
-        set: { email, name, cachedAt: refreshedAt },
+        set: {
+          email,
+          name,
+          imageUrl: user.imageUrl ?? null,
+          cachedAt: refreshedAt,
+        },
       });
     signal.throwIfAborted();
 

@@ -65,6 +65,8 @@ const chatgptAuthClaimsSchema = z
 const chatgptIdTokenClaimsSchema = z
   .object({
     exp: z.number().optional(),
+    email: z.string().nullable().optional(),
+    "https://api.openai.com/profile.email": z.string().nullable().optional(),
     "https://api.openai.com/auth": chatgptAuthClaimsSchema.optional(),
   })
   .passthrough();
@@ -102,6 +104,25 @@ function extractWorkspaceName(authClaims: ChatgptAuthClaims): string | null {
     nonEmptyString(authClaims.workspace_name) ??
     extractNamedClaim(authClaims.account) ??
     nonEmptyString(authClaims.chatgpt_account_name) ??
+    null
+  );
+}
+
+export function extractCodexAccountEmailFromIdToken(
+  idToken: string | null | undefined,
+): string | null {
+  if (!idToken) {
+    return null;
+  }
+  const decoded = safeSync(() => {
+    return chatgptIdTokenClaimsSchema.parse(decodeJwtPayload(idToken));
+  });
+  if ("error" in decoded) {
+    return null;
+  }
+  return (
+    nonEmptyString(decoded.ok.email) ??
+    nonEmptyString(decoded.ok["https://api.openai.com/profile.email"]) ??
     null
   );
 }

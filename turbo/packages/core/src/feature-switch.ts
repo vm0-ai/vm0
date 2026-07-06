@@ -170,11 +170,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Spotify connector integration",
     enabled: false,
   },
-  [FeatureSwitchKey.DataExport]: {
-    maintainer: "ethan@vm0.ai",
-    description: "Show the data export option in account menu",
-    enabled: true,
-  },
   [FeatureSwitchKey.ZeroDebug]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -197,7 +192,15 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.WorkflowAutomation]: {
     maintainer: "lancy@vm0.ai",
     description:
-      "Enable workflow automation surfaces, slash workflow commands, event triggers, automation-to-workflow routing, persistent goals, and workflow-driven ZERO_TOKEN capabilities.",
+      "Enable workflow automation surfaces, slash workflow commands, non-webhook event triggers, automation-to-workflow routing, persistent goals, and workflow-driven ZERO_TOKEN capabilities.",
+    // Globally enabled since the automation -> workflow cutover (#19959):
+    // migration 0535 moved every legacy automation onto workflow triggers.
+    enabled: true,
+  },
+  [FeatureSwitchKey.WorkflowWebhookTriggers]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Enable creation of inbound webhook workflow triggers. Existing webhook triggers remain visible and dispatch under the workflow automation gate.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -271,11 +274,19 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.RelationshipMemory]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Show the experimental relationship memory tab in the Memory page for org-user-scoped relationship context.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.HtmlArtifactCommentEditing]: {
     maintainer: "bingjie@vm0.ai",
     description:
       "Enable the HTML artifact comment-editing workflow for collecting DOM comments and preparing instrumented working-copy edits.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ComputerUseDesktopPlugins]: {
     maintainer: "lancy@vm0.ai",
@@ -302,6 +313,21 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Show chat unread indicators in sidebar pinned agent lists and the conversation picker.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.MobileUnreadChatThreadShortcuts]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Show unread chat thread shortcuts between the mobile agent chat composer and suggested prompt cards.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.ChatThreadUnifiedSearch]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Show chat thread title results from the local event-driven thread cache in the command-shift-a conversation picker.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ImageArtifactKeyboardNavigation]: {
     maintainer: "bingjie@vm0.ai",
@@ -316,6 +342,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "New Agents page with Public/Private tabs, a public-slot indicator, a Created by footer on every card, a name-first create dialog with a visibility select, and a private empty state.",
     enabled: false,
   },
+  [FeatureSwitchKey.SidebarManageIconCollapse]: {
+    maintainer: "ming@vm0.ai",
+    description:
+      "Show icon-only manage navigation buttons when the expanded sidebar manage section is collapsed.",
+    enabled: false,
+  },
   [FeatureSwitchKey.SidebarSubscriptionUsage]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -323,16 +355,10 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ChatInitialThinkingIndicator]: {
+  [FeatureSwitchKey.ChatThreadLatestUserMessageScrollAnchor]: {
     maintainer: "ethan@vm0.ai",
     description:
-      "Show fast generated status text in the web chat thinking indicator.",
-    enabled: true,
-  },
-  [FeatureSwitchKey.ChatThreadEventSourcing]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Render the chat sidebar from local chat thread snapshots plus lifecycle events instead of the paged thread list response.",
+      "After chat sends, keep auto-scroll moving only until the latest rendered user message reaches the top of the thread viewport instead of always pinning to the absolute bottom.",
     enabled: false,
   },
   [FeatureSwitchKey.TeamsIntegration]: {

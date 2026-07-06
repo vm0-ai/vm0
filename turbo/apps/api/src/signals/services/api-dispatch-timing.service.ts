@@ -105,6 +105,7 @@ export type ApiDispatchTimingActionType =
   | "api_dispatch_build_runner_job_payload"
   | "api_dispatch_persist_runner_job_queue"
   | "api_dispatch_lock_run_for_queue_persistence"
+  | "api_dispatch_persist_custom_connector_auth_refs"
   | "api_dispatch_insert_runner_job_queue"
   | "api_dispatch_update_run_runner_group"
   | "api_dispatch_admission_lock_wait"

@@ -24,7 +24,6 @@ interface ZeroAutomationTabProps {
     enabled: boolean;
   }) => Promise<void>;
   onRunNow?: (entry: AutomationEntry) => Promise<void>;
-  onOpenDetails?: (entry: AutomationEntry) => void;
 }
 
 const SKELETON_KEYS = ["s-0", "s-1", "s-2", "s-3", "s-4"] as const;
@@ -74,7 +73,6 @@ export function ZeroAutomationTab({
   onDelete,
   onToggleEnabled,
   onRunNow,
-  onOpenDetails,
 }: ZeroAutomationTabProps) {
   const prefsLoadable = useLoadable(userPreferences$);
   const userTimezone =
@@ -119,7 +117,6 @@ export function ZeroAutomationTab({
         onDelete={onDelete}
         onToggleEnabled={onToggleEnabled}
         onRunNow={onRunNow}
-        onOpenDetails={onOpenDetails}
         saving={saving}
         defaultTimezone={userTimezone ?? undefined}
       />

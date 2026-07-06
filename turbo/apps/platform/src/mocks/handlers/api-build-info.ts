@@ -4,9 +4,13 @@ import { mockApi } from "../msw-contract.ts";
 
 export const MOCK_BACKEND_COMMIT_SHA =
   "fedcba9876543210fedcba9876543210fedcba98";
+export const MOCK_BACKEND_VERSION = "1.212.2";
 
 export const apiBuildInfoHandlers = [
   mockApi(buildInfoContract.get, ({ respond }) => {
-    return respond(200, { commitSha: MOCK_BACKEND_COMMIT_SHA });
+    return respond(200, {
+      commitSha: MOCK_BACKEND_COMMIT_SHA,
+      version: MOCK_BACKEND_VERSION,
+    });
   }),
 ];

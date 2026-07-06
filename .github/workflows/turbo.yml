@@ -674,9 +674,9 @@ jobs:
       - name: Test Other Packages
         working-directory: turbo
         run: pnpm vitest run --project=@vm0/core --project=@vm0/ui --project=@vm0/firewalls-generator --project=@vm0/api-contracts --project=@vm0/db --coverage.enabled --coverage.reporter=json
-      - name: Test Connectors Firewall Semantics Contract
+      - name: Test Connectors Firewall Contracts
         working-directory: turbo
-        run: pnpm -F @vm0/connectors exec vitest run src/__tests__/firewall-semantics-contract.test.ts --reporter=default
+        run: pnpm -F @vm0/connectors exec vitest run src/__tests__/firewall-semantics-contract.test.ts src/__tests__/firewall-base-url-validation-contract.test.ts --reporter=default
       - name: Upload coverage to Codecov
         if: success() || failure()
         uses: codecov/codecov-action@v7
@@ -1022,6 +1022,7 @@ jobs:
       ${{
         (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
         needs.prepare.outputs.job-ref != '' && (
+          needs.prepare.outputs.api-changed == 'true' ||
           needs.prepare.outputs.cli-changed == 'true' ||
           needs.prepare.outputs.platform-changed == 'true' ||
           needs.prepare.outputs.e2e-changed == 'true' ||
@@ -1062,7 +1063,6 @@ jobs:
             VITE_ONBOARDING_URL=${{ vars.ONBOARDING_URL_STAGING || 'https://staging-www.vm6.ai' }}
             VITE_ONBOARDING_DOMAIN=${{ startsWith(needs.prepare.outputs.job-ref, 'pr-') && format('{0}-api.{1}', needs.prepare.outputs.job-ref, vars.PREVIEW_DOMAIN || 'vm6.ai') || '' }}
             PUBLIC_ARTIFACTS_BASE_URL=${{ vars.PUBLIC_ARTIFACTS_BASE_URL_DEV || vars.PUBLIC_ARTIFACTS_BASE_URL }}
-            VITE_STATIC_ASSETS_BASE_URL=${{ vars.STATIC_ASSETS_BASE_URL_DEV || vars.STATIC_ASSETS_BASE_URL || 'https://static.vm7.io' }}
             VITE_ZERO_HOST_DOMAIN=${{ vars.ZERO_HOST_DOMAIN }}
             VITE_VAPID_PUBLIC_KEY=${{ vars.VAPID_PUBLIC_KEY }}
             VITE_PLAUSIBLE_SCRIPT_URL=${{ vars.PLAUSIBLE_SCRIPT_URL }}
@@ -1103,6 +1103,7 @@ jobs:
       always() &&
       github.event_name != 'push' &&
       needs.prepare.outputs.job-ref != '' && (
+        needs.prepare.outputs.api-changed == 'true' ||
         needs.prepare.outputs.cli-changed == 'true' ||
         needs.prepare.outputs.platform-changed == 'true' ||
         needs.prepare.outputs.ci-changed == 'true' ||
@@ -1178,6 +1179,7 @@ jobs:
       always() &&
       (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
       needs.prepare.outputs.job-ref != '' && (
+        needs.prepare.outputs.api-changed == 'true' ||
         needs.prepare.outputs.platform-changed == 'true' ||
         needs.prepare.outputs.cli-changed == 'true' ||
         needs.prepare.outputs.ci-changed == 'true' ||
@@ -1226,6 +1228,7 @@ jobs:
       always() &&
       (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
       needs.prepare.outputs.job-ref != '' && (
+        needs.prepare.outputs.api-changed == 'true' ||
         needs.prepare.outputs.platform-changed == 'true' ||
         needs.prepare.outputs.cli-changed == 'true' ||
         needs.prepare.outputs.ci-changed == 'true' ||
@@ -1241,10 +1244,12 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 22
+      - name: Install pnpm
+        run: corepack enable pnpm
       - name: Install E2E dependencies
-        run: cd e2e && npm ci
+        run: cd e2e && pnpm install --frozen-lockfile
       - name: Install Playwright browsers
-        run: cd e2e && npx playwright install --with-deps chromium
+        run: cd e2e && pnpm exec playwright install --with-deps chromium
       - name: Start Stripe webhook forwarding
         # Staging receives webhooks from the Dashboard endpoint; PR previews use
         # the long-running listener from deploy-stripe-listener.
@@ -1412,6 +1417,7 @@ jobs:
     if: |
       (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
       needs.prepare.outputs.job-ref != '' && (
+        needs.prepare.outputs.api-changed == 'true' ||
         needs.prepare.outputs.cli-changed == 'true' ||
         needs.prepare.outputs.crates-changed == 'true' ||
         needs.prepare.outputs.ci-changed == 'true' ||
