@@ -603,11 +603,8 @@ function useAgentChatComposerWorkflowPrompt({
   onConfirmReplaceDraft: () => void;
   onReplaceDialogOpenChange: (open: boolean) => void;
 } {
-  const features = useGet(featureSwitch$);
   const replaceDraftTarget = useGet(replaceWorkflowPromptDraftTarget$);
   const setReplaceDraftTarget = useSet(setReplaceWorkflowPromptDraftTarget$);
-  const workflowAutomationEnabled =
-    features[FeatureSwitchKey.WorkflowAutomation] ?? false;
   const workflowPromptDraftTarget = "composer:new-thread";
   const replaceDraftDialogOpen =
     replaceDraftTarget === workflowPromptDraftTarget;
@@ -635,9 +632,7 @@ function useAgentChatComposerWorkflowPrompt({
   };
 
   return {
-    onCreateWorkflowPrompt: workflowAutomationEnabled
-      ? handleCreateWorkflowPrompt
-      : undefined,
+    onCreateWorkflowPrompt: handleCreateWorkflowPrompt,
     replaceDraftDialogOpen,
     onConfirmReplaceDraft: handleConfirmReplaceDraft,
     onReplaceDialogOpenChange: handleReplaceDialogOpenChange,
