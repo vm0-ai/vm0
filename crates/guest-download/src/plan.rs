@@ -46,6 +46,10 @@ impl ManifestEntryKind {
     fn skip_cached_existing_root(self) -> bool {
         matches!(self, Self::Artifact)
     }
+
+    fn uses_extract_path(self, entry: &ManifestEntry) -> bool {
+        matches!(self, Self::Storage) && entry.instructions_target_filename.is_some()
+    }
 }
 
 impl RunPlan {
@@ -141,10 +145,7 @@ fn append_download_tasks(
         if should_download_entry(entry, kind)
             && let Some(url) = entry.archive_url.clone()
         {
-            let download_mount_path = entry
-                .extract_path
-                .as_deref()
-                .unwrap_or(entry.mount_path.as_str());
+            let download_mount_path = download_mount_path(entry, kind);
             let task_kind = classify_download_task_kind(
                 download_mount_path,
                 entry.instructions_target_filename.as_deref(),
@@ -158,6 +159,17 @@ fn append_download_tasks(
                 task_kind,
             ));
         }
+    }
+}
+
+fn download_mount_path(entry: &ManifestEntry, kind: ManifestEntryKind) -> &str {
+    if kind.uses_extract_path(entry) {
+        entry
+            .extract_path
+            .as_deref()
+            .unwrap_or(entry.mount_path.as_str())
+    } else {
+        entry.mount_path.as_str()
     }
 }
 
@@ -367,6 +379,61 @@ mod tests {
                 "/home/user/.vm0/guest-agent/runs/run-1/storage-instructions/0".into(),
                 NotFoundPolicy::Fail,
                 crate::download::DownloadTaskKind::FrameworkHomeInstructions,
+            )
+        );
+    }
+
+    #[test]
+    fn run_plan_ignores_extract_path_for_non_instruction_storage() {
+        let json = r#"{
+            "storages": [{
+                "mountPath": "/data",
+                "extractPath": "/tmp/staged-data",
+                "archiveUrl": "https://s3/data.tar.gz"
+            }]
+        }"#;
+        let manifest: Manifest = serde_json::from_str(json).unwrap();
+
+        let plan = RunPlan::from_manifest(&manifest);
+
+        assert!(plan.instruction_files.is_empty());
+        assert_eq!(plan.download_tasks.len(), 1);
+        assert_eq!(
+            plan.download_tasks[0],
+            DownloadTask::new_with_kind(
+                "storage 1 mountPath=/data vasStorageName=unknown vasVersionId=unknown urlScheme=https cached=false".into(),
+                "storage_download",
+                "https://s3/data.tar.gz".into(),
+                "/data".into(),
+                NotFoundPolicy::Fail,
+                crate::download::DownloadTaskKind::Other,
+            )
+        );
+    }
+
+    #[test]
+    fn run_plan_ignores_extract_path_for_artifacts() {
+        let json = r#"{
+            "artifacts": [{
+                "mountPath": "/workspace",
+                "extractPath": "/tmp/staged-artifact",
+                "archiveUrl": "https://s3/workspace.tar.gz"
+            }]
+        }"#;
+        let manifest: Manifest = serde_json::from_str(json).unwrap();
+
+        let plan = RunPlan::from_manifest(&manifest);
+
+        assert_eq!(plan.download_tasks.len(), 1);
+        assert_eq!(
+            plan.download_tasks[0],
+            DownloadTask::new_with_kind(
+                "artifact 1 mountPath=/workspace vasStorageName=unknown vasVersionId=unknown urlScheme=https cached=false missingRootPolicy=fail".into(),
+                "artifact_download",
+                "https://s3/workspace.tar.gz".into(),
+                "/workspace".into(),
+                NotFoundPolicy::Ignore404,
+                crate::download::DownloadTaskKind::Other,
             )
         );
     }
