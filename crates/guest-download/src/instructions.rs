@@ -2,7 +2,7 @@ use crate::LOG_TAG;
 use guest_common::{log_info, log_warn};
 use std::fs;
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 const STAGED_INSTRUCTIONS_DIR_NAME: &str = "storage-instructions";
 
@@ -309,8 +309,8 @@ fn copy_instruction_file(
         }
     }
 
-    match fs::copy(source_path, &target_path) {
-        Ok(_) => {
+    match copy_instruction_file_atomically(source_path, &target_path) {
+        Ok(()) => {
             log_info!(LOG_TAG, "{}", success_message);
             remove_alternates_after_successful_copy(
                 final_mount_path,
@@ -321,10 +321,57 @@ fn copy_instruction_file(
         }
         Err(e) => {
             log_warn!(LOG_TAG, "Failed to copy instructions file: {}", e);
-            remove_failed_instruction_target(&target_path);
             false
         }
     }
+}
+
+fn copy_instruction_file_atomically(source_path: &Path, target_path: &Path) -> io::Result<()> {
+    let mut source = fs::File::open(source_path)?;
+    let source_permissions = source.metadata()?.permissions();
+    let (mut temp_file, temp_path) = create_instruction_temp_file(target_path)?;
+    let result = (|| {
+        io::copy(&mut source, &mut temp_file)?;
+        drop(temp_file);
+        fs::set_permissions(&temp_path, source_permissions)?;
+        fs::rename(&temp_path, target_path)
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(&temp_path);
+    }
+    result
+}
+
+fn create_instruction_temp_file(target_path: &Path) -> io::Result<(fs::File, PathBuf)> {
+    let Some(parent) = target_path.parent() else {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "instructions target has no parent directory",
+        ));
+    };
+    let target_name = target_path
+        .file_name()
+        .map(|name| name.to_string_lossy())
+        .unwrap_or_else(|| "instructions".into());
+    for attempt in 0..16 {
+        let temp_path = parent.join(format!(
+            ".{target_name}.vm0-copy-{}-{attempt}.tmp",
+            std::process::id()
+        ));
+        match fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temp_path)
+        {
+            Ok(file) => return Ok((file, temp_path)),
+            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}
+            Err(e) => return Err(e),
+        }
+    }
+    Err(io::Error::new(
+        io::ErrorKind::AlreadyExists,
+        "failed to create instructions temp file",
+    ))
 }
 
 fn cleanup_staged_instruction_source(entry: &InstructionNormalization) {
@@ -408,24 +455,6 @@ fn remove_alternates_after_successful_copy(
         InstructionPathState::MetadataError(e) => log_warn!(
             LOG_TAG,
             "Failed to inspect normalized instructions target: {}",
-            e
-        ),
-    }
-}
-
-fn remove_failed_instruction_target(target_path: &Path) {
-    if !matches!(
-        lstat_instruction_path_state(target_path),
-        InstructionPathState::RegularFile
-    ) {
-        return;
-    }
-
-    match fs::remove_file(target_path) {
-        Ok(_) => log_info!(LOG_TAG, "Removed failed instructions target"),
-        Err(e) => log_warn!(
-            LOG_TAG,
-            "Failed to remove failed instructions target: {}",
             e
         ),
     }
@@ -655,6 +684,7 @@ mod tests {
         fs::write(staged.join("AGENTS.md"), "new instructions").unwrap();
         fs::write(staged.join("extra.txt"), "extra").unwrap();
         fs::write(staged.join("nested").join("AGENTS.md"), "nested").unwrap();
+        fs::write(final_home.join("AGENTS.md"), "old instructions").unwrap();
         fs::write(final_home.join("CLAUDE.md"), "old alternate").unwrap();
         fs::write(
             final_home.join("skills").join("workflow").join("SKILL.md"),
@@ -681,6 +711,28 @@ mod tests {
             "skill"
         );
         assert!(!staged.exists());
+    }
+
+    #[test]
+    fn copy_instruction_file_failure_keeps_existing_target() {
+        disable_system_log();
+        let dir = tempfile::tempdir().unwrap();
+        let final_home = dir.path().join(".codex");
+        fs::create_dir_all(&final_home).unwrap();
+        fs::write(final_home.join("AGENTS.md"), "old instructions").unwrap();
+
+        assert!(!copy_instruction_file(
+            &dir.path().join("missing.md"),
+            &final_home,
+            InstructionFilename::Agents,
+            "Copied instructions file",
+        ));
+
+        assert_eq!(
+            fs::read_to_string(final_home.join("AGENTS.md")).unwrap(),
+            "old instructions"
+        );
+        assert_eq!(fs::read_dir(&final_home).unwrap().count(), 1);
     }
 
     #[test]
