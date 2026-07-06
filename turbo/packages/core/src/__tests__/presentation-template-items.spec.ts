@@ -1,14 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   PRESENTATION_TEMPLATE_PICKER_CARD_PREVIEW_THEMES,
-  PRESENTATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
 } from "../presentation-template-items";
 import {
   findColorSystem,
-  findDesignSystem,
   findPresentationRunbookPackage,
-  findTemplate,
   listTemplates,
 } from "../resource-registry";
 
@@ -54,11 +51,6 @@ const BUSINESS_DATA_BORDERLESS_PREVIEW_IMAGES = [
   "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/7817bac4-9ecd-4e00-a532-d6ba2816c322/slide-14.png",
   "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/37616a8a-7386-49f2-8e18-198a2a234d4a/slide-15.png",
 ] as const;
-
-function stripRegistryPrefix(id: string, prefix: string): string {
-  expect(id.startsWith(prefix)).toBe(true);
-  return id.slice(prefix.length);
-}
 
 function expectCdnPreviewImages(
   item: (typeof PRESENTATION_TEMPLATE_PICKER_ITEMS)[number],
@@ -108,178 +100,118 @@ function expectColorSystem(
 const BATCH_PRESENTATION_PICKER_ITEMS = [
   {
     slug: "crayon-learning-deck",
-    designSystemId: "design-system:crayon",
     templateId: "template:html-ppt-crayon",
     colorSystemId: "color-system:prism",
-    designSourcePath: "presentation-design-system/crayon",
-    templateSourcePath: "presentation-template/crayon",
   },
   {
     slug: "creative-agency-presentation",
-    designSystemId: "design-system:creative-agency",
     templateId: "template:html-ppt-creative-agency",
     colorSystemId: "color-system:coral-studio",
-    designSourcePath: "presentation-design-system/creative-agency",
-    templateSourcePath: "presentation-template/creative-agency",
   },
   {
     slug: "data-report-presentation",
-    designSystemId: "design-system:data-report",
     templateId: "template:html-ppt-data-report",
     colorSystemId: "color-system:prism",
-    designSourcePath: "presentation-design-system/data-report",
-    templateSourcePath: "presentation-template/data-report",
   },
   {
     slug: "editorial-magazine-deck",
-    designSystemId: "design-system:editorial-magazine",
     templateId: "template:html-ppt-editorial-magazine",
     colorSystemId: "color-system:warm-sand",
-    designSourcePath: "presentation-design-system/editorial-magazine",
-    templateSourcePath: "presentation-template/editorial-magazine",
   },
   {
     slug: "landing-consulting-deck",
-    designSystemId: "design-system:landing-consulting",
     templateId: "template:html-ppt-landing-consulting",
     colorSystemId: "color-system:pop-art",
-    designSourcePath: "presentation-design-system/landing-consulting",
-    templateSourcePath: "presentation-template/landing-consulting",
   },
   {
     slug: "lumina-creative-studio",
-    designSystemId: "design-system:lumina",
     templateId: "template:html-ppt-lumina",
     colorSystemId: "color-system:prism",
-    designSourcePath: "presentation-design-system/lumina",
-    templateSourcePath: "presentation-template/lumina",
   },
   {
     slug: "mosaic-geometric-pitch",
-    designSystemId: "design-system:mosaic-geometric",
     templateId: "template:html-ppt-mosaic-geometric",
     colorSystemId: "color-system:carnival",
-    designSourcePath: "presentation-design-system/mosaic-geometric",
-    templateSourcePath: "presentation-template/mosaic-geometric",
   },
   {
     slug: "playful-pop-deck",
-    designSystemId: "design-system:playful-pop",
     templateId: "template:html-ppt-playful-pop",
     colorSystemId: "color-system:pop-art",
-    designSourcePath: "presentation-design-system/playful-pop",
-    templateSourcePath: "presentation-template/playful-pop",
   },
 ] as const;
 
 const REFERENCE_PRESENTATION_PICKER_ITEMS = [
   {
     slug: "bloom-pitch",
-    designSystemId: "design-system:bloom-pitch",
     templateId: "template:html-ppt-bloom-pitch",
     colorSystemId: "color-system:carnival",
     defaultThemeId: "carnival",
-    designSourcePath: "presentation-design-system/bloom-pitch",
-    templateSourcePath: "presentation-template/bloom-pitch",
   },
   {
     slug: "blueprint-academy",
-    designSystemId: "design-system:blueprint-academy",
     templateId: "template:html-ppt-blueprint-academy",
     colorSystemId: "color-system:forest-editorial",
     defaultThemeId: "forest-editorial",
-    designSourcePath: "presentation-design-system/blueprint-academy",
-    templateSourcePath: "presentation-template/blueprint-academy",
   },
   {
     slug: "meridian",
-    designSystemId: "design-system:meridian",
     templateId: "template:html-ppt-meridian",
     colorSystemId: "color-system:slate-corporate",
     defaultThemeId: "slate-corporate",
-    designSourcePath: "presentation-design-system/meridian",
-    templateSourcePath: "presentation-template/meridian",
   },
   {
     slug: "neo-brutalism",
-    designSystemId: "design-system:neo-brutalism",
     templateId: "template:html-ppt-neo-brutalism",
     colorSystemId: "color-system:mono-ink",
     defaultThemeId: "mono-ink",
-    designSourcePath: "presentation-design-system/neo-brutalism",
-    templateSourcePath: "presentation-template/neo-brutalism",
   },
   {
     slug: "nocturne",
-    designSystemId: "design-system:nocturne",
     templateId: "template:html-ppt-nocturne",
     colorSystemId: "color-system:midnight-mono",
     defaultThemeId: "midnight-mono",
-    designSourcePath: "presentation-design-system/nocturne",
-    templateSourcePath: "presentation-template/nocturne",
   },
   {
     slug: "pixel-glitch",
-    designSystemId: "design-system:pixel-glitch",
     templateId: "template:html-ppt-pixel-glitch",
     colorSystemId: "color-system:bauhaus-primary",
     defaultThemeId: "bauhaus-primary",
-    designSourcePath: "presentation-design-system/pixel-glitch",
-    templateSourcePath: "presentation-template/pixel-glitch",
   },
   {
     slug: "prospectus",
-    designSystemId: "design-system:prospectus",
     templateId: "template:html-ppt-prospectus",
     colorSystemId: "color-system:slate-corporate",
     defaultThemeId: "slate-corporate",
-    designSourcePath: "presentation-design-system/prospectus",
-    templateSourcePath: "presentation-template/prospectus",
   },
   {
     slug: "schoolhouse",
-    designSystemId: "design-system:schoolhouse",
     templateId: "template:html-ppt-schoolhouse",
     colorSystemId: "color-system:bauhaus-primary",
     defaultThemeId: "bauhaus-primary",
-    designSourcePath: "presentation-design-system/schoolhouse",
-    templateSourcePath: "presentation-template/schoolhouse",
   },
   {
     slug: "sticker-scrapbook",
-    designSystemId: "design-system:sticker-scrapbook",
     templateId: "template:html-ppt-sticker-scrapbook",
     colorSystemId: "color-system:prism",
     defaultThemeId: "prism",
-    designSourcePath: "presentation-design-system/sticker-scrapbook",
-    templateSourcePath: "presentation-template/sticker-scrapbook",
   },
   {
     slug: "strata",
-    designSystemId: "design-system:strata",
     templateId: "template:html-ppt-strata",
     colorSystemId: "color-system:mono-ink",
     defaultThemeId: "mono-ink",
-    designSourcePath: "presentation-design-system/strata",
-    templateSourcePath: "presentation-template/strata",
   },
   {
     slug: "taped-consulting",
-    designSystemId: "design-system:taped-consulting",
     templateId: "template:html-ppt-taped-consulting",
     colorSystemId: "color-system:slate-corporate",
     defaultThemeId: "slate-corporate",
-    designSourcePath: "presentation-design-system/taped-consulting",
-    templateSourcePath: "presentation-template/taped-consulting",
   },
   {
     slug: "vantage",
-    designSystemId: "design-system:vantage",
     templateId: "template:html-ppt-vantage",
     colorSystemId: "color-system:slate-corporate",
     defaultThemeId: "slate-corporate",
-    designSourcePath: "presentation-design-system/vantage",
-    templateSourcePath: "presentation-template/vantage",
   },
 ] as const;
 
@@ -350,11 +282,6 @@ function expectPinnedPickerPreviewImages(
 }
 
 describe("presentation template items", () => {
-  const allPresentationItems = [
-    ...PRESENTATION_TEMPLATE_ITEMS,
-    ...PRESENTATION_TEMPLATE_PICKER_ITEMS,
-  ];
-
   it("defines direct card preview assets for picker thumbnails", () => {
     for (const item of PRESENTATION_TEMPLATE_PICKER_ITEMS) {
       expect(item.cardPreviewImage, item.slug).toMatch(
@@ -396,18 +323,10 @@ describe("presentation template items", () => {
     }
   });
 
-  it("keeps legacy items out of the presentation registry and picker items on runbook packages", () => {
-    for (const item of PRESENTATION_TEMPLATE_ITEMS) {
-      const designSystem = findDesignSystem(item.designSystemId);
-      const template = findTemplate(item.templateId);
-
-      expect(designSystem, item.designSystemId).toBeDefined();
-      expect(template?.targets ?? []).not.toContain("presentation");
-    }
-
+  it("keeps picker items on runbook packages after retiring the legacy catalog", () => {
     for (const item of PRESENTATION_TEMPLATE_PICKER_ITEMS) {
-      // Picker templates resolve to a self-contained runbook package; their
-      // legacy registry entries have been retired.
+      // Picker selections resolve to self-contained runbook packages; legacy
+      // registry entries have been retired.
       expect(
         findPresentationRunbookPackage(item.templateId),
         item.templateId,
@@ -416,24 +335,9 @@ describe("presentation template items", () => {
     }
   });
 
-  it("keeps prompt references aligned with structured ids", () => {
-    // Legacy demo prompts embed both design system and template; picker prompts
-    // keep only the template (their design systems are retired, and runbook
-    // resolution is driven by the template id).
-    for (const item of PRESENTATION_TEMPLATE_ITEMS) {
-      const promptDesignSystem = stripRegistryPrefix(
-        item.designSystemId,
-        "design-system:",
-      );
-      const promptTemplate = stripRegistryPrefix(item.templateId, "template:");
-
-      expect(item.prompt).toContain(`design system \`${promptDesignSystem}\``);
-      expect(item.prompt).toContain(`template \`${promptTemplate}\``);
-    }
-
+  it("keeps picker prompts free of retired registry selector language", () => {
     for (const item of PRESENTATION_TEMPLATE_PICKER_ITEMS) {
-      const promptTemplate = stripRegistryPrefix(item.templateId, "template:");
-      expect(item.prompt).toContain(`template \`${promptTemplate}\``);
+      expect(item.prompt).not.toContain("template `");
       expect(item.prompt).not.toContain("design system `");
     }
   });
@@ -462,7 +366,7 @@ describe("presentation template items", () => {
   });
 
   it("defines explicit preview image arrays", () => {
-    for (const item of allPresentationItems) {
+    for (const item of PRESENTATION_TEMPLATE_PICKER_ITEMS) {
       expect(Array.isArray(item.previewImages)).toBe(true);
     }
   });
@@ -478,40 +382,11 @@ describe("presentation template items", () => {
     );
   });
 
-  it("keeps the legacy catalog as demo-only data", () => {
-    const legacyItem = PRESENTATION_TEMPLATE_ITEMS.find((candidate) => {
-      return candidate.slug === "starship-v3-investor-update";
-    });
-
-    expect(legacyItem).toBeDefined();
-    expect(
-      PRESENTATION_TEMPLATE_PICKER_ITEMS.some((candidate) => {
-        return candidate.slug === legacyItem?.slug;
-      }),
-    ).toBe(false);
-    expect(legacyItem?.designSystemId).toBe("design-system:spacex");
-    expect(legacyItem?.templateId).toBe("template:html-ppt-pitch-deck");
-    expect(findDesignSystem(legacyItem?.designSystemId ?? "")).toBeDefined();
-    expect(findTemplate(legacyItem?.templateId ?? "")).toBeUndefined();
-  });
-
-  it("does not expose Open Design presentation template registry entries", () => {
+  it("does not expose Open Design presentation registry entries", () => {
     expect(listTemplates("presentation")).toHaveLength(0);
-
-    for (const item of PRESENTATION_TEMPLATE_ITEMS) {
-      expect(findTemplate(item.templateId)?.targets ?? []).not.toContain(
-        "presentation",
-      );
-    }
   });
 
-  it("keeps the picker catalog separate from the legacy catalog", () => {
-    expect(
-      PRESENTATION_TEMPLATE_ITEMS.some((candidate) => {
-        return candidate.slug === "playful-launch-presentation";
-      }),
-    ).toBe(false);
-
+  it("keeps the playful launch picker item aligned with CDN assets", () => {
     const item = PRESENTATION_TEMPLATE_PICKER_ITEMS.find((candidate) => {
       return candidate.slug === "playful-launch-presentation";
     });
@@ -520,8 +395,6 @@ describe("presentation template items", () => {
     if (!item) {
       throw new Error("missing playful-launch-presentation picker item");
     }
-
-    expect(item.designSystemId).toBe("design-system:playful-editorial");
     expect(item.templateId).toBe("template:html-ppt-playful-launch");
     expectColorSystem(item.colorSystemId, "color-system:carnival");
     expect(item.slideCount).toBe(15);
@@ -538,12 +411,6 @@ describe("presentation template items", () => {
   });
 
   it("keeps the business data picker item aligned with CDN assets", () => {
-    expect(
-      PRESENTATION_TEMPLATE_ITEMS.some((candidate) => {
-        return candidate.slug === "business-data-presentation";
-      }),
-    ).toBe(false);
-
     const item = PRESENTATION_TEMPLATE_PICKER_ITEMS.find((candidate) => {
       return candidate.slug === "business-data-presentation";
     });
@@ -552,8 +419,6 @@ describe("presentation template items", () => {
     if (!item) {
       throw new Error("missing business-data-presentation picker item");
     }
-
-    expect(item.designSystemId).toBe("design-system:business-data");
     expect(item.templateId).toBe("template:html-ppt-business-data");
     expectColorSystem(item.colorSystemId, "color-system:berry-pop");
     expect(item.slideCount).toBe(15);
@@ -578,8 +443,6 @@ describe("presentation template items", () => {
       if (!item) {
         throw new Error(`missing ${expected.slug} picker item`);
       }
-
-      expect(item.designSystemId).toBe(expected.designSystemId);
       expect(item.templateId).toBe(expected.templateId);
       expectColorSystem(item.colorSystemId, expected.colorSystemId);
       expect(item.slideCount).toBe(15);
@@ -607,8 +470,6 @@ describe("presentation template items", () => {
       if (!item) {
         throw new Error(`missing ${expected.slug} picker item`);
       }
-
-      expect(item.designSystemId).toBe(expected.designSystemId);
       expect(item.templateId).toBe(expected.templateId);
       expectColorSystem(item.colorSystemId, expected.colorSystemId);
       expect(item.slideCount).toBe(15);
@@ -638,7 +499,6 @@ describe("presentation template items", () => {
     if (!botaneItem) {
       throw new Error("Botane picker item is missing");
     }
-    expect(botaneItem.designSystemId).toBe("design-system:botane-organic");
     expect(botaneItem.templateId).toBe("template:html-ppt-botane-organic");
     expectColorSystem(botaneItem.colorSystemId, "color-system:mauve-dusk");
     expect(botaneItem.previewImages.length).toBe(15);

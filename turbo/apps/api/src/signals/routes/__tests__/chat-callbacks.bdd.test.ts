@@ -733,12 +733,11 @@ describe("CHAT-02: completed chat callback", () => {
 
     const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0];
     if (!template) {
-      throw new Error("Expected a registered presentation template");
+      throw new Error("Expected a registered presentation runbook item");
     }
     const generationTemplate: GenerationTemplateRequest = {
       type: "presentation",
       selection: {
-        designSystemId: template.designSystemId,
         templateId: template.templateId,
       },
     };
@@ -948,8 +947,11 @@ describe("CHAT-02: completed chat callback", () => {
       "# Current Integration\nYou are currently running inside: Web",
     );
     expect(appended).toContain("# Artifact Template Context");
-    expect(appended).toContain(`(${template.templateId})`);
-    // Runbook flow, not the retired legacy multi-resource flow.
+    expect(appended).toContain(
+      "Selected presentation template: Playful Launch Presentation (template:html-ppt-playful-launch)",
+    );
+    expect(appended).not.toContain("Selected design system");
+    // Runbook flow, not the retired multi-resource flow.
     expect(appended).toContain(
       `zero resource pull ${template.templateId}-runbook --dir ./generated/resources`,
     );

@@ -225,12 +225,13 @@ const summaryEntrySchema = z.union([
 
 const presentationGenerationTemplateRequestSchema = z.object({
   type: z.literal("presentation"),
-  selection: z.object({
-    colorSystemId: z.string().min(1).optional(),
-    designSystemId: z.string().min(1),
-    templateId: z.string().min(1),
-    previewUrl: z.string().url().optional(),
-  }),
+  selection: z
+    .object({
+      templateId: z.string().min(1),
+      colorSystemId: z.string().min(1).optional(),
+      previewUrl: z.string().url().optional(),
+    })
+    .strict(),
 });
 
 const videoGenerationTemplateRequestSchema = z.object({

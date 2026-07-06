@@ -918,7 +918,6 @@ function isSelectedPresentationTemplate(
 ): boolean {
   return (
     value?.type === "presentation" &&
-    value.selection.designSystemId === item.designSystemId &&
     value.selection.templateId === item.templateId
   );
 }
@@ -932,9 +931,8 @@ function toPresentationGenerationTemplate(
   return {
     type: "presentation",
     selection: {
-      colorSystemId,
-      designSystemId: item.designSystemId,
       templateId: item.templateId,
+      colorSystemId,
       previewUrl: item.embedUrl,
     },
   };
@@ -998,7 +996,7 @@ function selectedIllustrationTemplateItem(
   });
 }
 
-function formatPresentationTemplateKind(templateId: string): string {
+function formatPresentationRunbookKind(templateId: string): string {
   const label = templateId
     .replace(/^template:/, "")
     .replace(/^html-ppt-/, "")
@@ -1016,9 +1014,8 @@ function presentationTemplateMatchesSearch(
   }
   const searchable = [
     item.title,
-    item.designSystemId,
     item.templateId,
-    formatPresentationTemplateKind(item.templateId),
+    formatPresentationRunbookKind(item.templateId),
   ].join(" ");
   return searchable.toLowerCase().includes(normalizedQuery);
 }

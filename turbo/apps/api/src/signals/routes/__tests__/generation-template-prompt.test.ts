@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
-  PRESENTATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
   VIDEO_TEMPLATE_ITEMS,
   WORKFLOW_TEMPLATE_ITEMS,
@@ -9,33 +8,28 @@ import {
 import { buildGenerationTemplatePrompt } from "../generation-template-prompt";
 
 describe("buildGenerationTemplatePrompt", () => {
-  it("returns invalid for a presentation template without a runbook package", () => {
-    // Presentations are runbook-only. Legacy `template:html-ppt-*` /
-    // `design-system:*` entries are retired, so a demo-catalog template id no
-    // longer resolves to a generation prompt.
-    const item = PRESENTATION_TEMPLATE_ITEMS[0]!;
-
+  it("returns invalid for a presentation selection without a runbook package", () => {
+    // Presentations are runbook-only. Retired demo-catalog selections no longer
+    // resolve to generation prompts.
     const result = buildGenerationTemplatePrompt({
       type: "presentation",
       selection: {
-        designSystemId: item.designSystemId,
-        templateId: item.templateId,
-        previewUrl: item.embedUrl,
+        templateId: "template:html-ppt-missing",
+        previewUrl: "https://example.com/retired.html",
       },
     });
 
     expect(result.status).toBe("invalid");
   });
 
-  it("builds runbook presentation guidance for a template that ships a runbook package", () => {
+  it("builds runbook presentation guidance for a selected runbook package", () => {
     const item = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
 
     const result = buildGenerationTemplatePrompt({
       type: "presentation",
       selection: {
-        colorSystemId: item.colorSystemId,
-        designSystemId: item.designSystemId,
         templateId: item.templateId,
+        colorSystemId: item.colorSystemId,
       },
     });
 
@@ -44,7 +38,10 @@ describe("buildGenerationTemplatePrompt", () => {
       return;
     }
     expect(result.prompt).toContain("# Artifact Template Context");
-    // Pull exactly one resource: the template's runbook package.
+    expect(result.prompt).toContain(
+      "Selected presentation template: Playful Launch Presentation (template:html-ppt-playful-launch)",
+    );
+    // Pull exactly one resource: the selected runbook package.
     expect(result.prompt).toContain(
       "zero resource pull template:html-ppt-playful-launch-runbook --dir ./generated/resources",
     );
@@ -58,6 +55,7 @@ describe("buildGenerationTemplatePrompt", () => {
     );
     // The runbook flow has no design system and does not use `zero generate`.
     expect(result.prompt).not.toContain("Design system:");
+    expect(result.prompt).not.toContain("Selected design system");
     expect(result.prompt).not.toContain("zero generate presentation");
   });
 
@@ -67,7 +65,6 @@ describe("buildGenerationTemplatePrompt", () => {
     const result = buildGenerationTemplatePrompt({
       type: "presentation",
       selection: {
-        designSystemId: item.designSystemId,
         templateId: item.templateId,
       },
     });

@@ -5539,7 +5539,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           generationTemplate: {
             type: "presentation",
             selection: {
-              designSystemId: presentationTemplate.designSystemId,
               templateId: presentationTemplate.templateId,
             },
           },
@@ -5607,7 +5606,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           generationTemplate: {
             type: "presentation",
             selection: {
-              designSystemId: presentationTemplate.designSystemId,
               templateId: presentationTemplate.templateId,
             },
           },
