@@ -33,11 +33,11 @@ interface UnhandledRequestErrorLogFields {
 
 type ErrorWithCode = Error & { readonly code?: unknown };
 
-function shouldCaptureError(error: Error): boolean {
+function shouldCaptureError(error: unknown): boolean {
   return !(error instanceof HTTPException) || error.status >= 500;
 }
 
-function captureError(error: Error): void {
+function captureError(error: unknown): void {
   if (shouldCaptureError(error)) {
     Sentry.captureException(error);
   }
@@ -55,6 +55,21 @@ function redirectToWeb(context: Context): Response {
 function readErrorValue(read: () => unknown): unknown {
   const result = safeSync(read);
   return "ok" in result ? result.ok : undefined;
+}
+
+function readNonErrorMessage(error: unknown): string {
+  if (error !== null && typeof error === "object") {
+    const message = readErrorValue(() => {
+      return (error as { readonly message?: unknown }).message;
+    });
+    if (typeof message === "string" && message.trim()) {
+      return message;
+    }
+  }
+  const value = readErrorValue(() => {
+    return String(error);
+  });
+  return typeof value === "string" && value.trim() ? value : "unknown error";
 }
 
 function errorCause(error: Error): Error | undefined {
@@ -100,7 +115,10 @@ function errorChain(error: Error): readonly Error[] {
   return chain;
 }
 
-function sourceErrorMessage(error: Error): string {
+function sourceErrorMessage(error: unknown): string {
+  if (!(error instanceof Error)) {
+    return readNonErrorMessage(error);
+  }
   const chain = errorChain(error);
   for (let index = chain.length - 1; index >= 0; index -= 1) {
     const current = chain[index];
@@ -128,7 +146,7 @@ function replaceControlCharacters(value: string): string {
   return result;
 }
 
-function sanitizeErrorSummary(error: Error): string {
+function sanitizeErrorSummary(error: unknown): string {
   const source = sourceErrorMessage(error).slice(
     0,
     ERROR_SUMMARY_SOURCE_MAX_LENGTH,
@@ -165,7 +183,10 @@ function sanitizeErrorSummary(error: Error): string {
   return truncateSummary(summary || "unknown error");
 }
 
-function structuredErrorCode(error: Error): string | undefined {
+function structuredErrorCode(error: unknown): string | undefined {
+  if (!(error instanceof Error)) {
+    return undefined;
+  }
   for (const current of errorChain(error)) {
     const code = errorCode(current);
     if (typeof code === "number" && Number.isFinite(code)) {
@@ -203,7 +224,7 @@ function requestRouteTemplate(context: Context): string | undefined {
 }
 
 function unhandledRequestErrorLogFields(
-  error: Error,
+  error: unknown,
   context: Context,
 ): UnhandledRequestErrorLogFields {
   const route = requestRouteTemplate(context);
@@ -218,7 +239,7 @@ function unhandledRequestErrorLogFields(
   };
 }
 
-function handleError(error: Error, context: Context): Response {
+function handleError(error: unknown, context: Context): Response {
   if (isAbortError(error)) {
     return context.json({ error: "Internal server error" }, 500);
   }

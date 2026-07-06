@@ -73,6 +73,33 @@ export function safeSync<T>(
   }
 }
 
+function safeThrownValueString(value: unknown): string {
+  const result = safeSync(() => {
+    return String(value);
+  });
+  return "ok" in result ? result.ok : "unknown thrown value";
+}
+
+function normalizeThrownError(value: unknown): Error {
+  throwIfAbort(value);
+  if (value instanceof Error) {
+    return value;
+  }
+  return new Error(`Non-Error thrown: ${safeThrownValueString(value)}`, {
+    cause: value,
+  });
+}
+
+export async function normalizeThrown<T>(p: Promise<T>): Promise<T> {
+  // eslint-disable-next-line no-restricted-syntax -- centralized thrown value normalization
+  try {
+    return await p;
+  } catch (error) {
+    throwIfAbort(error);
+    throw normalizeThrownError(error);
+  }
+}
+
 export function isValidTimeZone(input: string): boolean {
   // eslint-disable-next-line no-restricted-syntax -- centralized guarded Intl timezone validation
   try {

@@ -9,6 +9,7 @@ import type { ContentfulStatusCode, StatusCode } from "hono/utils/http-status";
 import { initHono$ } from "./hono";
 import { requestValidation$ } from "./request";
 import { setRootSignal$ } from "./root";
+import { normalizeThrown } from "../utils";
 
 export type SignalRouteHandler<T> = Computed<T> | Command<T, [AbortSignal]>;
 
@@ -93,48 +94,54 @@ export function honoSignalHandler(
   contract: AppRoute,
   signal: AbortSignal,
 ): Handler {
-  return async (context) => {
-    const store = createStore();
-    store.set(setRootSignal$, signal);
-    store.set(initHono$, context, contract);
+  return (context) => {
+    return normalizeThrown(
+      (async () => {
+        const store = createStore();
+        store.set(setRootSignal$, signal);
+        store.set(initHono$, context, contract);
 
-    // Mirror the contract client order: path/query validation
-    // precedes auth and downstream services, so a malformed request returns
-    // 400 without touching either.
-    const validationError = store.get(requestValidation$);
-    if (validationError) {
-      return context.json(validationError.body, validationError.status);
-    }
+        // Mirror the contract client order: path/query validation
+        // precedes auth and downstream services, so a malformed request returns
+        // 400 without touching either.
+        const validationError = store.get(requestValidation$);
+        if (validationError) {
+          return context.json(validationError.body, validationError.status);
+        }
 
-    const data = await (isCommand(handler$)
-      ? store.set(handler$, signal)
-      : store.get(handler$));
+        const data = await (isCommand(handler$)
+          ? store.set(handler$, signal)
+          : store.get(handler$));
 
-    if (data instanceof Response) {
-      return data;
-    }
+        if (data instanceof Response) {
+          return data;
+        }
 
-    if (isResponseLike(data)) {
-      return toResponse(data);
-    }
+        if (isResponseLike(data)) {
+          return toResponse(data);
+        }
 
-    if (!isRouteResult(data)) {
-      throw new Error("Route handler must return a contract response object");
-    }
+        if (!isRouteResult(data)) {
+          throw new Error(
+            "Route handler must return a contract response object",
+          );
+        }
 
-    const response = validateResponse({
-      appRoute: contract,
-      response: data,
-    });
-    const status = response.status as StatusCode;
-    if (
-      isContentlessStatus(status) ||
-      !("body" in response) ||
-      response.body === undefined
-    ) {
-      return context.body(null, status);
-    }
+        const response = validateResponse({
+          appRoute: contract,
+          response: data,
+        });
+        const status = response.status as StatusCode;
+        if (
+          isContentlessStatus(status) ||
+          !("body" in response) ||
+          response.body === undefined
+        ) {
+          return context.body(null, status);
+        }
 
-    return context.json(response.body, status as ContentfulStatusCode);
+        return context.json(response.body, status as ContentfulStatusCode);
+      })(),
+    );
   };
 }

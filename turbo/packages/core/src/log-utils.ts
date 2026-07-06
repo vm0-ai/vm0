@@ -77,8 +77,12 @@ function serializeErrorWithSeen(
   return serialized;
 }
 
-export function serializeError(err: Error): Record<string, unknown> {
-  return serializeErrorWithSeen(err, new WeakSet<object>(), 0);
+export function serializeError(err: unknown): Record<string, unknown> {
+  const seen = new WeakSet<object>();
+  if (err instanceof Error) {
+    return serializeErrorWithSeen(err, seen, 0);
+  }
+  return { value: serializeErrorValue(err, seen, 0) };
 }
 
 function safeReadValue(read: () => unknown): unknown {
