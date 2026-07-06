@@ -7,12 +7,16 @@ import {
   googleCalendarEventUpdatedEventConfigSchema,
   googleMeetTranscriptGeneratedEventConfigSchema,
   githubLabelAppliedEventConfigSchema,
+  notionChildPageCreatedEventConfigSchema,
   webhookReceivedEventConfigSchema,
   type ChatThreadWorkflowTrigger,
   type GmailWorkflowEventConfig,
   type GoogleCalendarWorkflowEventConfig,
   type GoogleMeetWorkflowEventConfig,
   type GithubWorkflowEventConfig,
+  type NotionChildPageCreatedEventConfig,
+  type NotionChildPageCreatedEventCreateConfig,
+  type NotionWorkflowEventConfig,
   type WebhookReceivedEventConfig,
   type ZeroWorkflowEventType,
   type ZeroWorkflowSchedule,
@@ -49,7 +53,11 @@ import {
 import { ensureGoogleCalendarWatchForUser } from "./google-calendar-workflow-event.service";
 import { ensureGoogleMeetTranscriptGeneratedSubscriptionForUser } from "./google-meet-workflow-event.service";
 import { prepareGithubLabelEventConfigForPersist } from "./github-workflow-event.service";
-import { workflowWebhookTriggerCreationEnabledForOwner } from "./workflow-webhook-trigger-feature-switch.service";
+import { prepareNotionChildPageEventConfigForPersist } from "./notion-workflow-event.service";
+import {
+  notionWorkflowTriggerCreationEnabledForOwner,
+  workflowWebhookTriggerCreationEnabledForOwner,
+} from "./workflow-webhook-trigger-feature-switch.service";
 import {
   buildWorkflowWebhookSummaryFields,
   defaultWebhookReceivedEventConfig,
@@ -91,6 +99,10 @@ type GoogleMeetWorkflowEventType = Extract<
   ZeroWorkflowEventType,
   "google-meet-transcript-generated"
 >;
+type NotionWorkflowEventType = Extract<
+  ZeroWorkflowEventType,
+  "notion-child-page-created"
+>;
 
 /**
  * Outcome of a trigger mutation, mapped to an HTTP response by the route layer.
@@ -110,6 +122,16 @@ function workflowWebhookTriggersDisabledResult(): {
   return {
     kind: "bad-request",
     message: "Workflow webhook triggers are not enabled",
+  };
+}
+
+function notionWorkflowTriggersDisabledResult(): {
+  readonly kind: "bad-request";
+  readonly message: string;
+} {
+  return {
+    kind: "bad-request",
+    message: "Notion workflow triggers are not enabled",
   };
 }
 
@@ -295,6 +317,7 @@ function supportedWorkflowEventType(
     eventType === "google-calendar-event-updated" ||
     eventType === "google-calendar-event-cancelled" ||
     eventType === "google-meet-transcript-generated" ||
+    eventType === "notion-child-page-created" ||
     eventType === "webhook-received"
   );
 }
@@ -329,6 +352,12 @@ function supportedGoogleMeetEventType(
   return eventType === "google-meet-transcript-generated";
 }
 
+function supportedNotionEventType(
+  eventType: string | null,
+): eventType is NotionWorkflowEventType {
+  return eventType === "notion-child-page-created";
+}
+
 function rowSummaryBase(row: TriggerRow, chatThreadId: string | null) {
   return {
     id: row.id,
@@ -359,6 +388,20 @@ async function resolveTriggerChatThreadId(
     userId: row.ownerUserId,
     workflowId: row.workflowId,
   });
+}
+
+function notionChildPageRowSummary(
+  row: TriggerRow,
+  chatThreadId: string | null,
+): ZeroWorkflowTriggerSummary {
+  return {
+    ...rowSummaryBase(row, chatThreadId),
+    kind: "event",
+    eventType: "notion-child-page-created",
+    eventConfig: notionChildPageCreatedEventConfigSchema.parse(row.eventConfig),
+    schedule: null,
+    scheduleSummary: null,
+  };
 }
 
 async function rowToSummary(
@@ -456,6 +499,9 @@ async function rowToSummary(
       schedule: null,
       scheduleSummary: null,
     };
+  }
+  if (row.kind === "event" && row.eventType === "notion-child-page-created") {
+    return notionChildPageRowSummary(row, chatThreadId);
   }
   if (row.kind === "event" && row.eventType === "webhook-received") {
     return {
@@ -748,91 +794,16 @@ function chatThreadTriggerFromSummary(args: {
   if (summary.kind !== "event") {
     return [];
   }
-  if (summary.eventType === "gmail-new-message") {
-    return [
-      {
-        ...base,
-        kind: "event",
-        eventType: "gmail-new-message",
-        eventConfig: summary.eventConfig,
-        schedule: null,
-        scheduleSummary: null,
-      },
-    ];
-  }
-  if (summary.eventType === "gmail-label-applied") {
-    return [
-      {
-        ...base,
-        kind: "event",
-        eventType: "gmail-label-applied",
-        eventConfig: summary.eventConfig,
-        schedule: null,
-        scheduleSummary: null,
-      },
-    ];
-  }
-  if (summary.eventType === "github-label-applied") {
-    return [
-      {
-        ...base,
-        kind: "event",
-        eventType: "github-label-applied",
-        eventConfig: summary.eventConfig,
-        schedule: null,
-        scheduleSummary: null,
-      },
-    ];
-  }
-  if (summary.eventType === "google-calendar-event-created") {
-    return [
-      {
-        ...base,
-        kind: "event",
-        eventType: "google-calendar-event-created",
-        eventConfig: summary.eventConfig,
-        schedule: null,
-        scheduleSummary: null,
-      },
-    ];
-  }
-  if (summary.eventType === "google-calendar-event-updated") {
-    return [
-      {
-        ...base,
-        kind: "event",
-        eventType: "google-calendar-event-updated",
-        eventConfig: summary.eventConfig,
-        schedule: null,
-        scheduleSummary: null,
-      },
-    ];
-  }
-  if (summary.eventType === "google-calendar-event-cancelled") {
-    return [
-      {
-        ...base,
-        kind: "event",
-        eventType: "google-calendar-event-cancelled",
-        eventConfig: summary.eventConfig,
-        schedule: null,
-        scheduleSummary: null,
-      },
-    ];
-  }
-  if (summary.eventType === "google-meet-transcript-generated") {
-    return [
-      {
-        ...base,
-        kind: "event",
-        eventType: "google-meet-transcript-generated",
-        eventConfig: summary.eventConfig,
-        schedule: null,
-        scheduleSummary: null,
-      },
-    ];
-  }
-  return [];
+  return [
+    {
+      ...base,
+      kind: "event",
+      eventType: summary.eventType,
+      eventConfig: summary.eventConfig,
+      schedule: null,
+      scheduleSummary: null,
+    } as ChatThreadWorkflowTrigger,
+  ];
 }
 
 /**
@@ -995,6 +966,17 @@ interface CreateGoogleMeetEventTriggerInput {
   readonly enabled: boolean;
 }
 
+interface CreateNotionEventTriggerInput {
+  readonly orgId: string;
+  readonly member: WorkflowMember;
+  readonly workflowId: string;
+  readonly eventType: NotionWorkflowEventType;
+  readonly eventConfig:
+    | NotionChildPageCreatedEventCreateConfig
+    | NotionChildPageCreatedEventConfig;
+  readonly enabled: boolean;
+}
+
 interface CreateWebhookEventTriggerInput {
   readonly orgId: string;
   readonly member: WorkflowMember;
@@ -1010,6 +992,7 @@ type CreateTriggerInput =
   | CreateGithubEventTriggerInput
   | CreateGoogleCalendarEventTriggerInput
   | CreateGoogleMeetEventTriggerInput
+  | CreateNotionEventTriggerInput
   | CreateWebhookEventTriggerInput;
 type CreateEventTriggerInput = Exclude<
   CreateTriggerInput,
@@ -1040,6 +1023,12 @@ function triggerCreateInputIsGoogleMeet(
   return supportedGoogleMeetEventType(args.eventType);
 }
 
+function triggerCreateInputIsNotion(
+  args: CreateEventTriggerInput,
+): args is CreateNotionEventTriggerInput {
+  return supportedNotionEventType(args.eventType);
+}
+
 async function insertWorkflowEventTrigger(
   db: Db,
   args: {
@@ -1047,7 +1036,10 @@ async function insertWorkflowEventTrigger(
       | CreateGmailEventTriggerInput
       | CreateGithubEventTriggerInput
       | CreateGoogleCalendarEventTriggerInput
-      | CreateGoogleMeetEventTriggerInput;
+      | CreateGoogleMeetEventTriggerInput
+      | (CreateNotionEventTriggerInput & {
+          readonly eventConfig: NotionWorkflowEventConfig;
+        });
     readonly workflowId: string;
     readonly agentId: string;
     readonly workflowTitle: string;
@@ -1384,6 +1376,45 @@ async function createGoogleMeetEventTriggerForWorkflow(args: {
   return { kind: "ok", summary };
 }
 
+async function createNotionEventTriggerForWorkflow(args: {
+  readonly context: CreateEventTriggerWorkflowContext;
+  readonly input: CreateNotionEventTriggerInput;
+  readonly signal: AbortSignal;
+}): Promise<TriggerResult> {
+  const preparedConfig = await prepareNotionChildPageEventConfigForPersist(
+    args.context.db,
+    {
+      orgId: args.input.orgId,
+      userId: args.input.member.userId,
+      eventConfig:
+        "parentPageUrl" in args.input.eventConfig
+          ? args.input.eventConfig
+          : {
+              provider: "notion",
+              event: "child_page_created",
+              parentPageUrl:
+                args.input.eventConfig.parentPage.rawUrl ??
+                args.input.eventConfig.parentPage.url,
+            },
+      signal: args.signal,
+    },
+  );
+  args.signal.throwIfAborted();
+  if (preparedConfig.kind !== "ok") {
+    return preparedConfig;
+  }
+
+  const summary = await insertWorkflowEventTrigger(args.context.db, {
+    input: { ...args.input, eventConfig: preparedConfig.eventConfig },
+    workflowId: args.context.workflowId,
+    agentId: args.context.agentId,
+    workflowTitle: args.context.workflowTitle,
+    currentTime: nowDate(),
+  });
+  args.signal.throwIfAborted();
+  return { kind: "ok", summary };
+}
+
 const createEventTriggerForWorkflow$ = command(
   async (
     { get },
@@ -1434,6 +1465,25 @@ const createEventTriggerForWorkflow$ = command(
 
     if (triggerCreateInputIsGoogleMeet(input)) {
       return await createGoogleMeetEventTriggerForWorkflow({
+        context: args,
+        input,
+        signal,
+      });
+    }
+
+    if (triggerCreateInputIsNotion(input)) {
+      const featureEnabled = await get(
+        notionWorkflowTriggerCreationEnabledForOwner(
+          input.orgId,
+          input.member.userId,
+        ),
+      );
+      signal.throwIfAborted();
+      if (!featureEnabled) {
+        return notionWorkflowTriggersDisabledResult();
+      }
+
+      return await createNotionEventTriggerForWorkflow({
         context: args,
         input,
         signal,

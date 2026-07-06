@@ -127,6 +127,10 @@ type WorkflowGoogleMeetTranscriptGeneratedTriggerSummary = Extract<
   ZeroWorkflowTriggerSummary,
   { kind: "event"; eventType: "google-meet-transcript-generated" }
 >;
+type WorkflowNotionChildPageCreatedTriggerSummary = Extract<
+  ZeroWorkflowTriggerSummary,
+  { kind: "event"; eventType: "notion-child-page-created" }
+>;
 
 function workflowTriggers(): ZeroWorkflowTriggerSummary[] {
   return [weekdayWorkflowTrigger()];
@@ -293,6 +297,31 @@ function googleMeetTranscriptGeneratedWorkflowTrigger(): WorkflowGoogleMeetTrans
     ownerUserId: CURRENT_USER_ID,
     enabled: true,
     chatThreadId: "thread_google_meet_transcript_generated",
+    nextRunAt: null,
+    lastRunAt: null,
+  };
+}
+
+function notionChildPageWorkflowTrigger(): WorkflowNotionChildPageCreatedTriggerSummary {
+  return {
+    id: "workflow-trigger-notion-child-page",
+    kind: "event",
+    eventType: "notion-child-page-created",
+    eventConfig: {
+      provider: "notion",
+      event: "child_page_created",
+      connectorId: "00000000-0000-4000-a000-000000000410",
+      parentPage: {
+        id: "11111111-1111-4111-8111-111111111111",
+        url: "https://www.notion.so/Roadmap-11111111111141118111111111111111",
+        title: "Roadmap",
+      },
+    },
+    schedule: null,
+    scheduleSummary: null,
+    ownerUserId: CURRENT_USER_ID,
+    enabled: true,
+    chatThreadId: "thread_notion_child_page",
     nextRunAt: null,
     lastRunAt: null,
   };
@@ -774,6 +803,22 @@ function mockCreateWorkflowTrigger(
         return respond(201, {
           ...googleMeetTranscriptGeneratedWorkflowTrigger(),
           eventConfig: body.eventConfig,
+        });
+      }
+      if (body.eventType === "notion-child-page-created") {
+        return respond(201, {
+          ...notionChildPageWorkflowTrigger(),
+          eventConfig: {
+            provider: "notion",
+            event: "child_page_created",
+            connectorId: "00000000-0000-4000-a000-000000000410",
+            parentPage: {
+              id: "11111111-1111-4111-8111-111111111111",
+              url: body.eventConfig.parentPageUrl,
+              title: "Roadmap",
+              rawUrl: body.eventConfig.parentPageUrl,
+            },
+          },
         });
       }
       return respond(201, {

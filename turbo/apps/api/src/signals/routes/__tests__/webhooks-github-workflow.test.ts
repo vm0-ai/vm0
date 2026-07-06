@@ -1,7 +1,6 @@
 import { createHmac } from "node:crypto";
 
 import { zeroWorkflowTriggersContract } from "@vm0/api-contracts/contracts/zero-workflows";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { createStore } from "ccstate";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";

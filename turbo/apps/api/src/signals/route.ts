@@ -63,6 +63,7 @@ import { webhooksGithubRoutes } from "./routes/webhooks-github";
 import { webhooksGmailRoutes } from "./routes/webhooks-gmail";
 import { webhooksGoogleCalendarRoutes } from "./routes/webhooks-google-calendar";
 import { webhooksGoogleWorkspaceEventsRoutes } from "./routes/webhooks-google-workspace-events";
+import { webhooksNotionRoutes } from "./routes/webhooks-notion";
 import { webhooksWorkflowTriggersRoutes } from "./routes/webhooks-workflow-triggers";
 import { webhooksStripeRoutes } from "./routes/webhooks-stripe";
 import { zeroAgentDraftRoutes } from "./routes/zero-agent-drafts";
@@ -239,6 +240,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...webhooksGmailRoutes,
   ...webhooksGoogleCalendarRoutes,
   ...webhooksGoogleWorkspaceEventsRoutes,
+  ...webhooksNotionRoutes,
   ...webhooksWorkflowTriggersRoutes,
   ...webhooksStripeRoutes,
   ...webhooksAgentHealthUsageTelemetryRoutes,

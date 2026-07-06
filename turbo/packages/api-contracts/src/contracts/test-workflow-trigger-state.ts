@@ -28,6 +28,8 @@ export const testWorkflowTriggerStateActionBodySchema = z
       "get-workflow-state",
       "get-gmail-watch",
       "get-google-calendar-watch",
+      "get-notion-pending-events",
+      "get-notion-webhook-secret",
       "get-chat-thread",
       "get-github-processed-events",
     ]),

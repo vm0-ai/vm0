@@ -10,7 +10,6 @@ import type {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
 import { PRESENTATION_TEMPLATE_PICKER_ITEMS } from "@vm0/core";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import type {
   TestChatMessagesStateActionBody,
   TestChatMessagesStateActionResponse,

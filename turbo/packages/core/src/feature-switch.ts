@@ -201,6 +201,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.NotionWorkflowTriggers]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Enable Notion event workflow triggers, starting with child pages created under a configured parent page.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.TestOauthConnector]: {
     maintainer: "liangyou@vm0.ai",
     description:

@@ -11,6 +11,7 @@ import {
   type GoogleCalendarEventUpdatedEventConfig,
   type GoogleMeetTranscriptGeneratedEventConfig,
   type GithubLabelAppliedEventConfig,
+  type NotionChildPageCreatedEventCreateConfig,
   type ZeroWorkflowDetailResponse,
   type ZeroWorkflowSchedule,
   type ZeroWorkflowWebhookSecretResponse,
@@ -70,6 +71,7 @@ type WorkflowTriggerCreateDialog =
   | "google-calendar-updated"
   | "google-calendar-cancelled"
   | "google-meet-transcript-generated"
+  | "notion-child-page"
   | "webhook"
   | null;
 export type WorkflowTriggerCategoryKey =
@@ -940,6 +942,33 @@ export const createWorkflowGoogleMeetTranscriptGeneratedTrigger$ = command(
             event: "transcript_generated",
             scope: { type: "organizer_user" },
           },
+        },
+        fetchOptions: { signal },
+      }),
+      [201],
+    );
+    signal.throwIfAborted();
+    set(reloadWorkflows$);
+  },
+);
+
+export const createWorkflowNotionChildPageTrigger$ = command(
+  async (
+    { get, set },
+    input: {
+      readonly workflowId: string;
+      readonly eventConfig: NotionChildPageCreatedEventCreateConfig;
+    },
+    signal: AbortSignal,
+  ) => {
+    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
+    await accept(
+      client.create({
+        params: { workflowId: input.workflowId },
+        body: {
+          kind: "event",
+          eventType: "notion-child-page-created",
+          eventConfig: input.eventConfig,
         },
         fetchOptions: { signal },
       }),

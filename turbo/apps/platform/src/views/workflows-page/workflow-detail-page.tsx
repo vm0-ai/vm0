@@ -83,6 +83,7 @@ import {
   createWorkflowGoogleMeetTranscriptGeneratedTrigger$,
   createWorkflowGmailLabelAppliedTrigger$,
   createWorkflowGmailNewMessageTrigger$,
+  createWorkflowNotionChildPageTrigger$,
   createWorkflowWebhookTrigger$,
   createGithubLabelActor$,
   createScheduleCronFields$,
@@ -557,6 +558,8 @@ function TriggerCreateAction() {
   const features = useGet(featureSwitch$);
   const workflowWebhookTriggersEnabled =
     features[FeatureSwitchKey.WorkflowWebhookTriggers] ?? false;
+  const notionWorkflowTriggersEnabled =
+    features[FeatureSwitchKey.NotionWorkflowTriggers] ?? false;
 
   return (
     <TriggerCreateMenu
@@ -564,6 +567,7 @@ function TriggerCreateAction() {
       githubLabelTriggersEnabled
       googleCalendarTriggersEnabled
       googleMeetTriggersEnabled
+      notionWorkflowTriggersEnabled={notionWorkflowTriggersEnabled}
       webhookTriggersEnabled={workflowWebhookTriggersEnabled}
     />
   );
@@ -2227,6 +2231,9 @@ function workflowTriggerTitle(trigger: ZeroWorkflowTriggerSummary): string {
   if (trigger.eventType === "google-meet-transcript-generated") {
     return "Google Meet transcript ready";
   }
+  if (trigger.eventType === "notion-child-page-created") {
+    return "New Notion child page";
+  }
   return "Webhook";
 }
 
@@ -2261,6 +2268,10 @@ function workflowTriggerSummary(
   if (trigger.eventType === "google-meet-transcript-generated") {
     return "Meetings you organize";
   }
+  if (trigger.eventType === "notion-child-page-created") {
+    const title = trigger.eventConfig.parentPage.title;
+    return title ? `Parent page ${quote(title)}` : "Configured parent page";
+  }
   return null;
 }
 
@@ -2283,6 +2294,7 @@ type TriggerCreateDialogKind =
   | "google-calendar-updated"
   | "google-calendar-cancelled"
   | "google-meet-transcript-generated"
+  | "notion-child-page"
   | "webhook";
 
 type TriggerCategoryKey = "schedule" | "email" | "calendar" | "integrations";
@@ -2301,6 +2313,43 @@ type TriggerCreateCategory = {
   readonly options: readonly TriggerCreateOption[];
 };
 
+function buildIntegrationTriggerOptions({
+  githubLabelTriggersEnabled,
+  notionWorkflowTriggersEnabled,
+  webhookTriggersEnabled,
+}: {
+  readonly githubLabelTriggersEnabled: boolean;
+  readonly notionWorkflowTriggersEnabled: boolean;
+  readonly webhookTriggersEnabled: boolean;
+}): TriggerCreateOption[] {
+  const integrationOptions: TriggerCreateOption[] = [];
+  if (githubLabelTriggersEnabled) {
+    integrationOptions.push({
+      kind: "github-label",
+      title: "GitHub label applied",
+      description: "Run when an issue or pull request gets a label.",
+      icon: IconBrandGithub,
+    });
+  }
+  if (webhookTriggersEnabled) {
+    integrationOptions.push({
+      kind: "webhook",
+      title: "Webhook",
+      description: "Run this workflow from a signed POST.",
+      icon: IconLink,
+    });
+  }
+  if (notionWorkflowTriggersEnabled) {
+    integrationOptions.push({
+      kind: "notion-child-page",
+      title: "New Notion child page",
+      description: "Run when a direct child page is created.",
+      icon: IconFileText,
+    });
+  }
+  return integrationOptions;
+}
+
 // Each category owns a single hue that colours only the card icon chip on the
 // right; the category rail stays neutral and mirrors the app sidebar.
 const TRIGGER_CATEGORY_CHIP: Readonly<Record<TriggerCategoryKey, string>> =
@@ -2315,11 +2364,13 @@ function buildTriggerCreateCategories({
   githubLabelTriggersEnabled,
   googleCalendarTriggersEnabled,
   googleMeetTriggersEnabled,
+  notionWorkflowTriggersEnabled,
   webhookTriggersEnabled,
 }: {
   readonly githubLabelTriggersEnabled: boolean;
   readonly googleCalendarTriggersEnabled: boolean;
   readonly googleMeetTriggersEnabled: boolean;
+  readonly notionWorkflowTriggersEnabled: boolean;
   readonly webhookTriggersEnabled: boolean;
 }): readonly TriggerCreateCategory[] {
   const calendarOptions: TriggerCreateOption[] = [];
@@ -2354,23 +2405,11 @@ function buildTriggerCreateCategories({
     });
   }
 
-  const integrationOptions: TriggerCreateOption[] = [];
-  if (githubLabelTriggersEnabled) {
-    integrationOptions.push({
-      kind: "github-label",
-      title: "GitHub label applied",
-      description: "Run when an issue or pull request gets a label.",
-      icon: IconBrandGithub,
-    });
-  }
-  if (webhookTriggersEnabled) {
-    integrationOptions.push({
-      kind: "webhook",
-      title: "Webhook",
-      description: "Run this workflow from a signed POST.",
-      icon: IconLink,
-    });
-  }
+  const integrationOptions = buildIntegrationTriggerOptions({
+    githubLabelTriggersEnabled,
+    notionWorkflowTriggersEnabled,
+    webhookTriggersEnabled,
+  });
 
   const categories: readonly TriggerCreateCategory[] = [
     {
@@ -2505,12 +2544,14 @@ function TriggerCreateMenu({
   githubLabelTriggersEnabled,
   googleCalendarTriggersEnabled,
   googleMeetTriggersEnabled,
+  notionWorkflowTriggersEnabled,
   webhookTriggersEnabled,
 }: {
   readonly onSelect: (kind: TriggerCreateDialogKind) => void;
   readonly githubLabelTriggersEnabled: boolean;
   readonly googleCalendarTriggersEnabled: boolean;
   readonly googleMeetTriggersEnabled: boolean;
+  readonly notionWorkflowTriggersEnabled: boolean;
   readonly webhookTriggersEnabled: boolean;
 }) {
   const open = useGet(workflowTriggerPickerOpen$);
@@ -2521,6 +2562,7 @@ function TriggerCreateMenu({
     githubLabelTriggersEnabled,
     googleCalendarTriggersEnabled,
     googleMeetTriggersEnabled,
+    notionWorkflowTriggersEnabled,
     webhookTriggersEnabled,
   });
   const activeCategory =
@@ -2806,6 +2848,13 @@ function TriggersSection({
           setCreateDialog(open ? "google-meet-transcript-generated" : null);
         }}
       />
+      <CreateNotionChildPageTriggerDialog
+        workflowId={detail.id}
+        open={createDialog === "notion-child-page"}
+        onOpenChange={(open) => {
+          setCreateDialog(open ? "notion-child-page" : null);
+        }}
+      />
       <CreateWebhookTriggerDialog
         workflowId={detail.id}
         open={createDialog === "webhook"}
@@ -2814,6 +2863,97 @@ function TriggersSection({
         }}
       />
     </section>
+  );
+}
+
+function CreateNotionChildPageTriggerDialog({
+  workflowId,
+  open,
+  onOpenChange,
+}: {
+  readonly workflowId: string;
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const [createLoadable, createNotionTrigger] = useLoadableSet(
+    createWorkflowNotionChildPageTrigger$,
+  );
+  const creating = createLoadable.state === "loading";
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Add Notion automation</DialogTitle>
+          <DialogDescription>
+            Run this workflow when a direct child page is created under a Notion
+            page.
+          </DialogDescription>
+        </DialogHeader>
+        <form
+          aria-label="Add Notion child page automation"
+          className="flex flex-col gap-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const form = new FormData(event.currentTarget);
+            const parentPageUrl = formTextValue(form, "parentPageUrl");
+            if (!parentPageUrl) {
+              return;
+            }
+            detach(
+              (async () => {
+                await createNotionTrigger(
+                  {
+                    workflowId,
+                    eventConfig: {
+                      provider: "notion",
+                      event: "child_page_created",
+                      parentPageUrl,
+                    },
+                  },
+                  pageSignal,
+                );
+                onOpenChange(false);
+              })(),
+              Reason.DomCallback,
+            );
+          }}
+        >
+          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+            Parent page URL
+            <input
+              name="parentPageUrl"
+              aria-label="Parent page URL"
+              required
+              disabled={creating}
+              placeholder="https://www.notion.so/workspace/Page-title-..."
+              className={FIELD_CLASS}
+            />
+          </label>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={creating}
+              onClick={() => {
+                onOpenChange(false);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={creating}>
+              {creating ? (
+                <IconLoader2 size={14} className="animate-spin" />
+              ) : (
+                <IconFileText size={14} stroke={1.5} />
+              )}
+              Add Notion automation
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 

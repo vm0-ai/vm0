@@ -22,6 +22,11 @@ import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { connectors } from "@vm0/db/schema/connector";
 import { gmailWatchStates } from "@vm0/db/schema/gmail-event";
 import {
+  notionWebhookEvents,
+  notionWebhookSecrets,
+  notionWorkflowPendingEvents,
+} from "@vm0/db/schema/notion-event";
+import {
   googleCalendarEventSnapshots,
   googleCalendarProcessedEvents,
   googleCalendarWatchStates,
@@ -228,9 +233,11 @@ function readStringArray(
 
 function readConnectorType(
   body: Record<string, unknown>,
-): "gmail" | "google-calendar" | null {
+): "gmail" | "google-calendar" | "notion" | null {
   const value = body.connector_type;
-  return value === "gmail" || value === "google-calendar" ? value : null;
+  return value === "gmail" || value === "google-calendar" || value === "notion"
+    ? value
+    : null;
 }
 
 async function seedScenarioForAction(
@@ -699,9 +706,14 @@ async function seedConnectorForAction(
     return actionBadRequest("org_id, user_id, and connector_type are required");
   }
   const isGmail = connectorType === "gmail";
+  const isNotion = connectorType === "notion";
   const externalEmail =
     readOptionalString(body, "external_email") ??
-    (isGmail ? "workflow-user@example.com" : "calendar-user@example.com");
+    (isGmail
+      ? "workflow-user@example.com"
+      : isNotion
+        ? null
+        : "calendar-user@example.com");
   const [connector] = await db
     .insert(connectors)
     .values({
@@ -710,11 +722,15 @@ async function seedConnectorForAction(
       type: connectorType,
       authMethod: "oauth",
       externalEmail,
+      externalId: isNotion ? "notion-user-1" : undefined,
+      externalUsername: isNotion ? "Notion User" : undefined,
       tokenExpiresAt: new Date(now() + 60 * 60 * 1000),
       oauthScopes: JSON.stringify(
         isGmail
           ? ["https://www.googleapis.com/auth/gmail.modify"]
-          : ["https://www.googleapis.com/auth/calendar"],
+          : isNotion
+            ? []
+            : ["https://www.googleapis.com/auth/calendar"],
       ),
     })
     .returning({ id: connectors.id });
@@ -726,14 +742,34 @@ async function seedConnectorForAction(
   await db.insert(secrets).values({
     orgId,
     userId,
-    name: isGmail ? "GMAIL_ACCESS_TOKEN" : "GOOGLE_CALENDAR_ACCESS_TOKEN",
+    name: isGmail
+      ? "GMAIL_ACCESS_TOKEN"
+      : isNotion
+        ? "NOTION_ACCESS_TOKEN"
+        : "GOOGLE_CALENDAR_ACCESS_TOKEN",
     encryptedValue: await encryptStoredSecretValue(
       readOptionalString(body, "access_token") ??
-        (isGmail ? "gmail-access-token" : "calendar-access-token"),
+        (isGmail
+          ? "gmail-access-token"
+          : isNotion
+            ? "notion-access-token"
+            : "calendar-access-token"),
     ),
     type: "connector",
   });
   signal.throwIfAborted();
+  if (isNotion) {
+    await db.insert(secrets).values({
+      orgId,
+      userId,
+      name: "NOTION_REFRESH_TOKEN",
+      encryptedValue: await encryptStoredSecretValue(
+        readOptionalString(body, "refresh_token") ?? "notion-refresh-token",
+      ),
+      type: "connector",
+    });
+    signal.throwIfAborted();
+  }
   return actionOk({ connector_id: connector.id });
 }
 
@@ -1188,6 +1224,52 @@ async function getGoogleCalendarWatchForAction(
   return actionOk({ watches, snapshots, processed });
 }
 
+async function getNotionPendingEventsForAction(
+  db: Db,
+  body: Record<string, unknown>,
+  signal: AbortSignal,
+) {
+  const triggerId = readOptionalString(body, "trigger_id");
+  const events = await db
+    .select({
+      id: notionWorkflowPendingEvents.id,
+      triggerId: notionWorkflowPendingEvents.triggerId,
+      pageId: notionWorkflowPendingEvents.pageId,
+      parentPageId: notionWorkflowPendingEvents.parentPageId,
+      status: notionWorkflowPendingEvents.status,
+      runAfter: notionWorkflowPendingEvents.runAfter,
+      latestNotionEventId: notionWorkflowPendingEvents.latestNotionEventId,
+      attempts: notionWorkflowPendingEvents.attempts,
+      skipReason: notionWorkflowPendingEvents.skipReason,
+    })
+    .from(notionWorkflowPendingEvents)
+    .where(
+      triggerId
+        ? eq(notionWorkflowPendingEvents.triggerId, triggerId)
+        : undefined,
+    )
+    .orderBy(notionWorkflowPendingEvents.createdAt);
+  signal.throwIfAborted();
+  return actionOk({ events });
+}
+
+async function getNotionWebhookSecretForAction(
+  db: Db,
+  _body: Record<string, unknown>,
+  signal: AbortSignal,
+) {
+  const secrets = await db
+    .select({
+      id: notionWebhookSecrets.id,
+      active: notionWebhookSecrets.active,
+      createdAt: notionWebhookSecrets.createdAt,
+    })
+    .from(notionWebhookSecrets)
+    .orderBy(notionWebhookSecrets.createdAt);
+  signal.throwIfAborted();
+  return actionOk({ secrets });
+}
+
 async function getChatThreadForAction(
   db: Db,
   body: Record<string, unknown>,
@@ -1281,6 +1363,11 @@ async function deleteScenarioForAction(
     await db.delete(agentRuns).where(inArray(agentRuns.id, runIds));
     signal.throwIfAborted();
   }
+
+  await db.delete(notionWebhookEvents);
+  signal.throwIfAborted();
+  await db.delete(notionWebhookSecrets);
+  signal.throwIfAborted();
 
   const threadRows = await db
     .select({ id: workflowUserTriggerThreads.chatThreadId })
@@ -1379,6 +1466,8 @@ const workflowTriggerStateActionHandlers = {
   "get-workflow-state": getWorkflowStateForAction,
   "get-gmail-watch": getGmailWatchForAction,
   "get-google-calendar-watch": getGoogleCalendarWatchForAction,
+  "get-notion-pending-events": getNotionPendingEventsForAction,
+  "get-notion-webhook-secret": getNotionWebhookSecretForAction,
   "get-chat-thread": getChatThreadForAction,
   "get-github-processed-events": getGithubProcessedEventsForAction,
 } satisfies Record<

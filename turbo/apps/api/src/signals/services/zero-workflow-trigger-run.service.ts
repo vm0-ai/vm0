@@ -69,7 +69,7 @@ type ModelContext =
     }
   | { readonly ok: false; readonly failure: RunFailure };
 
-interface RunWorkflowTriggerNowArgs {
+export interface RunWorkflowTriggerNowArgs {
   readonly due: DueWorkflowTrigger;
   readonly apiStartTime: number;
   readonly sessionId?: string;

@@ -2,6 +2,7 @@ import { cronExecuteWorkflowTriggersContract } from "@vm0/api-contracts/contract
 import { command } from "ccstate";
 
 import type { RouteEntry } from "../route-entry";
+import { executeDueNotionWorkflowEvents$ } from "../services/notion-workflow-event.service";
 import { executeDueWorkflowTriggers$ } from "../services/zero-workflow-trigger-poller.service";
 import { cronUnauthorized, hasValidCronSecret$ } from "./cron-auth";
 
@@ -15,14 +16,15 @@ const executeWorkflowTriggersRoute$ = command(
     }
 
     const result = await set(executeDueWorkflowTriggers$, signal);
+    const notionResult = await set(executeDueNotionWorkflowEvents$, signal);
     signal.throwIfAborted();
 
     return {
       status: 200 as const,
       body: {
         success: true as const,
-        executed: result.executed,
-        skipped: result.skipped,
+        executed: result.executed + notionResult.executed,
+        skipped: result.skipped + notionResult.skipped,
       },
     };
   },

@@ -44,6 +44,9 @@ function workflowTriggerSummary(trigger: ChatThreadWorkflowTrigger): string {
     if (trigger.eventType === "github-label-applied") {
       return "GitHub label applied";
     }
+    if (trigger.eventType === "notion-child-page-created") {
+      return "New Notion child page";
+    }
     return "Event";
   }
   return trigger.scheduleSummary ?? "Schedule";
