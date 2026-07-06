@@ -1182,6 +1182,43 @@ describe("workflows routes", () => {
     await expectComposerText(CREATE_WORKFLOW_WITH_CHAT_PROMPT);
   });
 
+  it("filters the workspace workflows by agent", async () => {
+    mockAgentPageApis();
+    mockWorkflowApis([salesResearch(), opsPlaybook(), otherAgentWorkflow()]);
+
+    detachedSetupPage({
+      context,
+      path: "/workflows",
+    });
+
+    await waitFor(() => {
+      expect(linkByAriaLabel("Open Sales Research")).toBeInTheDocument();
+    });
+    // Every agent's workflows show under the default "All agents" scope.
+    expect(linkByAriaLabel("Open Ops Playbook")).toBeInTheDocument();
+    expect(linkByAriaLabel("Open Support Intake")).toBeInTheDocument();
+
+    // Scope the list to a single agent via the agent dropdown.
+    click(buttonByText("All agents"));
+    click(menuItemByText("Support Bot"));
+    await waitFor(() => {
+      expect(search()).toBe(`?agent=${OTHER_AGENT_ID}`);
+    });
+    expect(linkByAriaLabel("Open Support Intake")).toBeInTheDocument();
+    expect(screen.queryByText("Sales Research")).not.toBeInTheDocument();
+    expect(screen.queryByText("Ops Playbook")).not.toBeInTheDocument();
+
+    // The trigger reflects the active agent; clearing returns everything.
+    click(buttonByText("Support Bot"));
+    click(menuItemByText("All agents"));
+    await waitFor(() => {
+      expect(search()).toBe("");
+    });
+    expect(linkByAriaLabel("Open Sales Research")).toBeInTheDocument();
+    expect(linkByAriaLabel("Open Ops Playbook")).toBeInTheDocument();
+    expect(linkByAriaLabel("Open Support Intake")).toBeInTheDocument();
+  });
+
   it("redirects the legacy agent workflows tab", async () => {
     mockAgentPageApis();
     mockWorkflowApis([
