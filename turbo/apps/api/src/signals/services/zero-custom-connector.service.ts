@@ -21,7 +21,7 @@ import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
 import { orgCustomConnectorSecrets } from "@vm0/db/schema/org-custom-connector-secret";
 import { orgCustomConnectorValues } from "@vm0/db/schema/org-custom-connector-value";
 
-import { db$, writeDb$, type ReadonlyDb } from "../external/db";
+import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { badRequestMessage, notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
@@ -94,7 +94,14 @@ interface StoredValueRow extends ValueMarker {
   readonly encryptedValue: string;
 }
 
+interface EncryptedValueInput {
+  readonly kind: CustomConnectorFieldKind;
+  readonly key: string;
+  readonly encryptedValue: string;
+}
+
 type FeatureSwitchContextArg = Parameters<typeof decryptStoredSecretValue>[1];
+type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 function isBadRequest(value: unknown): value is BadRequestResponse {
   return (
@@ -931,7 +938,12 @@ export const deleteCustomConnector$ = command(
       }
       await tx
         .delete(orgCustomConnectorValues)
-        .where(eq(orgCustomConnectorValues.connectorId, args.id));
+        .where(
+          and(
+            eq(orgCustomConnectorValues.connectorId, args.id),
+            eq(orgCustomConnectorValues.orgId, args.orgId),
+          ),
+        );
       await tx
         .delete(orgCustomConnectorSecrets)
         .where(
@@ -1059,6 +1071,132 @@ function validateValueInputs(args: {
   });
 }
 
+async function encryptValueInputs(args: {
+  readonly values: readonly CustomConnectorValueInput[];
+  readonly encryptValue: (value: string) => Promise<string>;
+  readonly signal: AbortSignal;
+}): Promise<readonly EncryptedValueInput[]> {
+  const encryptedValues: EncryptedValueInput[] = [];
+  for (const value of args.values) {
+    const encryptedValue = await args.encryptValue(value.value);
+    args.signal.throwIfAborted();
+    encryptedValues.push({
+      kind: value.kind,
+      key: value.key,
+      encryptedValue,
+    });
+  }
+  return encryptedValues;
+}
+
+async function lockCustomConnectorForValueWrite(
+  tx: DbTransaction,
+  args: { readonly orgId: string; readonly connectorId: string },
+): Promise<boolean> {
+  const [locked] = await tx
+    .select({ id: orgCustomConnectors.id })
+    .from(orgCustomConnectors)
+    .where(
+      and(
+        eq(orgCustomConnectors.id, args.connectorId),
+        eq(orgCustomConnectors.orgId, args.orgId),
+      ),
+    )
+    .for("update")
+    .limit(1);
+  return Boolean(locked);
+}
+
+async function deleteStoredConnectorValues(
+  tx: DbTransaction,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly connectorId: string;
+  },
+): Promise<void> {
+  await tx
+    .delete(orgCustomConnectorValues)
+    .where(
+      and(
+        eq(orgCustomConnectorValues.connectorId, args.connectorId),
+        eq(orgCustomConnectorValues.userId, args.userId),
+        eq(orgCustomConnectorValues.orgId, args.orgId),
+      ),
+    );
+}
+
+async function deleteLegacyConnectorSecret(
+  tx: DbTransaction,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly connectorId: string;
+  },
+): Promise<void> {
+  await tx
+    .delete(orgCustomConnectorSecrets)
+    .where(
+      and(
+        eq(orgCustomConnectorSecrets.connectorId, args.connectorId),
+        eq(orgCustomConnectorSecrets.userId, args.userId),
+        eq(orgCustomConnectorSecrets.orgId, args.orgId),
+      ),
+    );
+}
+
+async function upsertEncryptedConnectorValue(
+  tx: DbTransaction,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly connectorId: string;
+    readonly value: EncryptedValueInput;
+  },
+): Promise<void> {
+  await tx
+    .insert(orgCustomConnectorValues)
+    .values({
+      connectorId: args.connectorId,
+      userId: args.userId,
+      orgId: args.orgId,
+      kind: args.value.kind,
+      key: args.value.key,
+      encryptedValue: args.value.encryptedValue,
+    })
+    .onConflictDoUpdate({
+      target: [
+        orgCustomConnectorValues.connectorId,
+        orgCustomConnectorValues.userId,
+        orgCustomConnectorValues.kind,
+        orgCustomConnectorValues.key,
+      ],
+      set: {
+        encryptedValue: args.value.encryptedValue,
+        updatedAt: nowDate(),
+      },
+    });
+}
+
+async function upsertEncryptedConnectorValues(
+  tx: DbTransaction,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly connectorId: string;
+    readonly values: readonly EncryptedValueInput[];
+  },
+): Promise<void> {
+  for (const value of args.values) {
+    await upsertEncryptedConnectorValue(tx, {
+      orgId: args.orgId,
+      userId: args.userId,
+      connectorId: args.connectorId,
+      value,
+    });
+  }
+}
+
 export const setCustomConnectorValues$ = command(
   async (
     { get, set },
@@ -1090,38 +1228,107 @@ export const setCustomConnectorValues$ = command(
       userFeatureSwitchContext(args.orgId, args.userId),
     );
     signal.throwIfAborted();
-    const writeDb = set(writeDb$);
-    for (const value of values) {
-      const encryptedValue = await encryptStoredSecretValue(
-        value.value,
-        featureSwitchContext,
-      );
-      signal.throwIfAborted();
-      await writeDb
-        .insert(orgCustomConnectorValues)
-        .values({
-          connectorId: args.connectorId,
-          userId: args.userId,
-          orgId: args.orgId,
-          kind: value.kind,
-          key: value.key,
-          encryptedValue,
-        })
-        .onConflictDoUpdate({
-          target: [
-            orgCustomConnectorValues.connectorId,
-            orgCustomConnectorValues.userId,
-            orgCustomConnectorValues.kind,
-            orgCustomConnectorValues.key,
-          ],
-          set: {
-            encryptedValue,
-            updatedAt: nowDate(),
-          },
-        });
-      signal.throwIfAborted();
-    }
+    const encryptedValues = await encryptValueInputs({
+      values,
+      signal,
+      encryptValue: (value) => {
+        return encryptStoredSecretValue(value, featureSwitchContext);
+      },
+    });
     signal.throwIfAborted();
+
+    const writeDb = set(writeDb$);
+    const replaced = await writeDb.transaction(async (tx) => {
+      const locked = await lockCustomConnectorForValueWrite(tx, args);
+      if (!locked) {
+        return false;
+      }
+      await deleteStoredConnectorValues(tx, args);
+      await deleteLegacyConnectorSecret(tx, args);
+      await upsertEncryptedConnectorValues(tx, {
+        orgId: args.orgId,
+        userId: args.userId,
+        connectorId: args.connectorId,
+        values: encryptedValues,
+      });
+      return true;
+    });
+    signal.throwIfAborted();
+    if (!replaced) {
+      return notFound("Custom connector not found");
+    }
+
+    const db = get(db$);
+    const markers = await loadConnectorValueMarkers({
+      db,
+      orgId: args.orgId,
+      userId: args.userId,
+    });
+    signal.throwIfAborted();
+    return serialiseCustomConnector({ row: connector, valueMarkers: markers });
+  },
+);
+
+export const setCustomConnectorLegacySecretValue$ = command(
+  async (
+    { get, set },
+    args: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly connectorId: string;
+      readonly value: string;
+    },
+    signal: AbortSignal,
+  ): Promise<
+    CustomConnectorResponse | BadRequestResponse | NotFoundResponse
+  > => {
+    const connector = await get(
+      getCustomConnectorById({
+        orgId: args.orgId,
+        connectorId: args.connectorId,
+      }),
+    );
+    signal.throwIfAborted();
+    if (!connector) {
+      return notFound("Custom connector not found");
+    }
+
+    const values = validateValueInputs({
+      connector,
+      values: [{ key: LEGACY_SECRET_KEY, kind: "secret", value: args.value }],
+    });
+    if (isBadRequest(values)) {
+      return values;
+    }
+    const featureSwitchContext = await get(
+      userFeatureSwitchContext(args.orgId, args.userId),
+    );
+    signal.throwIfAborted();
+    const encryptedValue = await encryptStoredSecretValue(
+      args.value,
+      featureSwitchContext,
+    );
+    signal.throwIfAborted();
+    const value: EncryptedValueInput = {
+      kind: "secret",
+      key: LEGACY_SECRET_KEY,
+      encryptedValue,
+    };
+
+    const writeDb = set(writeDb$);
+    const updated = await writeDb.transaction(async (tx) => {
+      const locked = await lockCustomConnectorForValueWrite(tx, args);
+      if (!locked) {
+        return false;
+      }
+      await upsertEncryptedConnectorValue(tx, { ...args, value });
+      await deleteLegacyConnectorSecret(tx, args);
+      return true;
+    });
+    signal.throwIfAborted();
+    if (!updated) {
+      return notFound("Custom connector not found");
+    }
 
     const db = get(db$);
     const markers = await loadConnectorValueMarkers({
@@ -1155,26 +1362,19 @@ export const deleteCustomConnectorValues$ = command(
       return notFound("Custom connector not found");
     }
     const writeDb = set(writeDb$);
-    await writeDb
-      .delete(orgCustomConnectorValues)
-      .where(
-        and(
-          eq(orgCustomConnectorValues.connectorId, args.connectorId),
-          eq(orgCustomConnectorValues.userId, args.userId),
-          eq(orgCustomConnectorValues.orgId, args.orgId),
-        ),
-      );
+    const deleted = await writeDb.transaction(async (tx) => {
+      const locked = await lockCustomConnectorForValueWrite(tx, args);
+      if (!locked) {
+        return false;
+      }
+      await deleteStoredConnectorValues(tx, args);
+      await deleteLegacyConnectorSecret(tx, args);
+      return true;
+    });
     signal.throwIfAborted();
-    await writeDb
-      .delete(orgCustomConnectorSecrets)
-      .where(
-        and(
-          eq(orgCustomConnectorSecrets.connectorId, args.connectorId),
-          eq(orgCustomConnectorSecrets.userId, args.userId),
-          eq(orgCustomConnectorSecrets.orgId, args.orgId),
-        ),
-      );
-    signal.throwIfAborted();
+    if (!deleted) {
+      return notFound("Custom connector not found");
+    }
     return undefined;
   },
 );
@@ -1202,29 +1402,30 @@ export const deleteCustomConnectorValue$ = command(
       return notFound("Custom connector not found");
     }
     const writeDb = set(writeDb$);
-    await writeDb
-      .delete(orgCustomConnectorValues)
-      .where(
-        and(
-          eq(orgCustomConnectorValues.connectorId, args.connectorId),
-          eq(orgCustomConnectorValues.userId, args.userId),
-          eq(orgCustomConnectorValues.orgId, args.orgId),
-          eq(orgCustomConnectorValues.kind, args.kind),
-          eq(orgCustomConnectorValues.key, args.key),
-        ),
-      );
-    signal.throwIfAborted();
-    if (args.kind === "secret" && args.key === LEGACY_SECRET_KEY) {
-      await writeDb
-        .delete(orgCustomConnectorSecrets)
+    const deleted = await writeDb.transaction(async (tx) => {
+      const locked = await lockCustomConnectorForValueWrite(tx, args);
+      if (!locked) {
+        return false;
+      }
+      await tx
+        .delete(orgCustomConnectorValues)
         .where(
           and(
-            eq(orgCustomConnectorSecrets.connectorId, args.connectorId),
-            eq(orgCustomConnectorSecrets.userId, args.userId),
-            eq(orgCustomConnectorSecrets.orgId, args.orgId),
+            eq(orgCustomConnectorValues.connectorId, args.connectorId),
+            eq(orgCustomConnectorValues.userId, args.userId),
+            eq(orgCustomConnectorValues.orgId, args.orgId),
+            eq(orgCustomConnectorValues.kind, args.kind),
+            eq(orgCustomConnectorValues.key, args.key),
           ),
         );
-      signal.throwIfAborted();
+      if (args.kind === "secret" && args.key === LEGACY_SECRET_KEY) {
+        await deleteLegacyConnectorSecret(tx, args);
+      }
+      return true;
+    });
+    signal.throwIfAborted();
+    if (!deleted) {
+      return notFound("Custom connector not found");
     }
     return undefined;
   },

@@ -320,7 +320,7 @@ export const zeroCustomConnectorValuesContract = c.router({
       404: apiErrorSchema,
       500: apiErrorSchema,
     },
-    summary: "Set the calling user's values for a custom connector",
+    summary: "Replace the calling user's values for a custom connector",
   },
   delete: {
     method: "DELETE",

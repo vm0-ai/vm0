@@ -4,7 +4,7 @@ import { zeroCustomConnectorSecretContract } from "@vm0/api-contracts/contracts/
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
-import { setCustomConnectorValues$ } from "../services/zero-custom-connector.service";
+import { setCustomConnectorLegacySecretValue$ } from "../services/zero-custom-connector.service";
 import type { RouteEntry } from "../route-entry";
 
 const setSecretInner$ = command(async ({ get, set }, signal: AbortSignal) => {
@@ -21,12 +21,12 @@ const setSecretInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   const result = await set(
-    setCustomConnectorValues$,
+    setCustomConnectorLegacySecretValue$,
     {
       orgId: auth.orgId,
       userId: auth.userId,
       connectorId: params.id,
-      values: [{ key: "secret", kind: "secret", value: bodyResult.data.value }],
+      value: bodyResult.data.value,
     },
     signal,
   );
