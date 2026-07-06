@@ -137,7 +137,7 @@ pub enum TerminateResponse {
 }
 
 /// Maximum frame payload size: 64 MiB, excluding the 4-byte length prefix.
-const MAX_FRAME_PAYLOAD_SIZE: usize = 64 * 1024 * 1024;
+const MAX_FRAME_PAYLOAD_SIZE: u32 = 64 * 1024 * 1024;
 
 fn frame_payload_len_error(len: usize) -> io::Error {
     io::Error::new(
@@ -147,7 +147,7 @@ fn frame_payload_len_error(len: usize) -> io::Error {
 }
 
 fn validate_frame_payload_len(len: usize) -> io::Result<u32> {
-    if len > MAX_FRAME_PAYLOAD_SIZE {
+    if len > MAX_FRAME_PAYLOAD_SIZE as usize {
         return Err(frame_payload_len_error(len));
     }
 
@@ -208,10 +208,7 @@ mod tests {
     async fn read_frame_rejects_frames_larger_than_max_size() {
         let (mut reader, mut writer) = UnixStream::pair().unwrap();
 
-        writer
-            .write_u32(u32::try_from(MAX_FRAME_PAYLOAD_SIZE + 1).unwrap())
-            .await
-            .unwrap();
+        writer.write_u32(MAX_FRAME_PAYLOAD_SIZE + 1).await.unwrap();
         drop(writer);
 
         let err = read_frame(&mut reader).await.unwrap_err();
@@ -222,7 +219,7 @@ mod tests {
     #[tokio::test]
     async fn write_frame_rejects_frames_larger_than_max_size_without_writing_prefix() {
         let (mut reader, mut writer) = UnixStream::pair().unwrap();
-        let payload = vec![0u8; MAX_FRAME_PAYLOAD_SIZE + 1];
+        let payload = vec![0u8; MAX_FRAME_PAYLOAD_SIZE as usize + 1];
 
         let err = write_frame(&mut writer, &payload).await.unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::InvalidData);
