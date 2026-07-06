@@ -805,6 +805,10 @@ mod tests {
     use super::*;
     use api_contracts::generated::types::runners::storage::ArtifactEntryMissingRootPolicy;
     use httpmock::prelude::*;
+    #[cfg(target_os = "linux")]
+    use std::os::unix::fs::PermissionsExt;
+    #[cfg(target_os = "linux")]
+    use std::path::{Path, PathBuf};
     use std::time::Duration;
 
     struct CheckpointFilesGuard {
@@ -829,6 +833,32 @@ mod tests {
     fn cleanup_checkpoint_files(guest_paths: &crate::paths::GuestPaths) {
         let _ = std::fs::remove_file(guest_paths.session_id_file());
         let _ = std::fs::remove_file(guest_paths.session_history_path_file());
+    }
+
+    #[cfg(target_os = "linux")]
+    struct PermissionGuard {
+        path: PathBuf,
+        mode: u32,
+    }
+
+    #[cfg(target_os = "linux")]
+    impl PermissionGuard {
+        fn set(path: &Path, mode: u32) -> std::io::Result<Self> {
+            let original = std::fs::metadata(path)?.permissions().mode();
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode))?;
+            Ok(Self {
+                path: path.to_owned(),
+                mode: original,
+            })
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    impl Drop for PermissionGuard {
+        fn drop(&mut self) {
+            let _ =
+                std::fs::set_permissions(&self.path, std::fs::Permissions::from_mode(self.mode));
+        }
     }
 
     #[test]
@@ -1066,6 +1096,50 @@ mod tests {
             err.to_string().contains("Failed to walk artifact files"),
             "got: {err}"
         );
+        prepare.assert_calls(0);
+        commit.assert_calls(0);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn artifact_snapshot_unreadable_child_fails_before_storage_api_calls() {
+        let server = MockServer::start();
+        let prepare = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/storages/prepare");
+            then.status(200).json_body(json!({"unreachable": true}));
+        });
+        let commit = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/storages/commit");
+            then.status(200).json_body(json!({"unreachable": true}));
+        });
+        let http = HttpClient::with_api_config(server.base_url(), "test-token", "", Duration::ZERO)
+            .unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let mount = dir.path().join("workspace");
+        std::fs::create_dir(&mount).unwrap();
+        std::fs::write(mount.join("visible.txt"), "visible").unwrap();
+        let private_file = mount.join("secret.txt");
+        std::fs::write(&private_file, "secret").unwrap();
+        let _guard = PermissionGuard::set(&private_file, 0o000).unwrap();
+        let entries = vec![env::ArtifactEnv {
+            name: "workspace".to_string(),
+            mount_path: mount.to_string_lossy().into_owned(),
+            storage_id: "storage-id".to_string(),
+            version_id: "parent-version".to_string(),
+            missing_root_policy: None,
+        }];
+
+        let err = snapshot_artifact_entries(&http, "test-run", &entries)
+            .await
+            .unwrap_err();
+
+        assert!(
+            err.to_string().contains("Failed to walk artifact files"),
+            "got: {err}"
+        );
+        assert!(err.to_string().contains("secret.txt"), "got: {err}");
         prepare.assert_calls(0);
         commit.assert_calls(0);
     }
