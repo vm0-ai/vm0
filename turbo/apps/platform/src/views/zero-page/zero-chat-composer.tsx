@@ -772,7 +772,14 @@ function autoGrowFeedbackNoteRef(element: HTMLTextAreaElement | null): void {
 }
 
 function focusFeedbackNoteRef(element: HTMLTextAreaElement | null): void {
-  element?.focus();
+  if (!element) {
+    return;
+  }
+  window.requestAnimationFrame(() => {
+    if (element.isConnected) {
+      element.focus({ preventScroll: true });
+    }
+  });
   autoGrowFeedbackNote(element);
 }
 
