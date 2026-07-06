@@ -4,7 +4,7 @@ import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents
 import { zeroClient$ } from "../../api-client.ts";
 import { accept } from "../../../lib/accept.ts";
 import { agentDetail$ } from "./detail.ts";
-import { reloadAgentById$, reloadAgents$ } from "../../agent.ts";
+import { reloadAgents$ } from "../../agent.ts";
 
 // ---------------------------------------------------------------------------
 // Delete agent
@@ -23,7 +23,10 @@ export const deleteAgent$ = command(
     signal.throwIfAborted();
 
     toast.success("Agent deleted");
+    // Refresh the agents list only. Do NOT reload the agent-by-id cache here:
+    // the just-deleted agent is still subscribed via currentAgent$ until the
+    // caller navigates away, so reloading it would refetch a deleted agent and
+    // surface an "Agent not found" error toast on top of the success toast.
     set(reloadAgents$);
-    set(reloadAgentById$);
   },
 );
