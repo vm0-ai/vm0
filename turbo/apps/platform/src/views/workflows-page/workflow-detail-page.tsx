@@ -2553,7 +2553,7 @@ function TriggerCreateMenu({
             Choose a trigger to start this workflow.
           </DialogDescription>
         </DialogHeader>
-        <div className="flex flex-col gap-5 sm:flex-row sm:gap-7">
+        <div className="flex flex-col gap-5 sm:min-h-[20rem] sm:flex-row sm:gap-7">
           <nav className="-ml-2 flex gap-1 overflow-x-auto pb-1 sm:w-44 sm:shrink-0 sm:flex-col sm:gap-1 sm:overflow-visible sm:border-r sm:border-border/60 sm:pb-0 sm:pr-4">
             {categories.map((category) => {
               return (
