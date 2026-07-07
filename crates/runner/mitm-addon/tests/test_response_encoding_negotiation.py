@@ -542,6 +542,8 @@ async def test_model_provider_websocket_upgrade_injects_auth_and_keeps_accept_en
 ) -> None:
     firewall_name = "model-provider:openai-api-key"
     host = "api.openai.com"
+    # Match the generated OpenAI model-provider firewall; upstream endpoint
+    # WebSocket validity is outside the request-hook auth injection boundary.
     path = "/v1/responses"
     reg_path = _write_registry(
         tmp_path,
@@ -584,6 +586,8 @@ async def test_model_provider_websocket_upgrade_injects_auth_and_keeps_accept_en
         await mitm_addon.request(flow)
 
     auth_fetch.assert_awaited_once()
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+    assert flow.metadata[metadata_keys.FIREWALL_BASE] == f"https://{host}{path}"
     assert flow.metadata[metadata_keys.FIREWALL_NAME] == firewall_name
     assert flow.metadata[metadata_keys.FIREWALL_PERMISSION] == ""
     assert flow.request.headers["Authorization"] == "Bearer x"
