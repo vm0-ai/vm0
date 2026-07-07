@@ -409,7 +409,7 @@ describe("GET /api/zero/connector-catalog", () => {
     ).toStrictEqual(["api-token"]);
   });
 
-  it("returns external-code display metadata for PlayStation when enabled", async () => {
+  it("returns PlayStation external-code catalog metadata when enabled", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     await enableConnectorFeatureSwitches(orgId, userId, {
