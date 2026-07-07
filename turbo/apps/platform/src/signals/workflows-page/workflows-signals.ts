@@ -186,6 +186,7 @@ const internalWorkflowDetailActiveTab$ =
 
 const internalSelectedFilePath$ = state<string | null>(null);
 const internalWorkflowActionDialog$ = state<WorkflowDetailActionDialog>(null);
+const internalWorkflowDemoteConfirmOpen$ = state<boolean>(false);
 const internalWorkflowCopyForm$ = state<WorkflowCopyFormState>(
   defaultWorkflowCopyForm(),
 );
@@ -216,6 +217,16 @@ const internalEditingScheduleCronFields$ = state<WorkflowCronFields>(
 export const workflowActionDialog$ = computed((get) => {
   return get(internalWorkflowActionDialog$);
 });
+
+export const workflowDemoteConfirmOpen$ = computed((get) => {
+  return get(internalWorkflowDemoteConfirmOpen$);
+});
+
+export const setWorkflowDemoteConfirmOpen$ = command(
+  ({ set }, open: boolean) => {
+    set(internalWorkflowDemoteConfirmOpen$, open);
+  },
+);
 
 export const workflowCopyForm$ = computed((get) => {
   return get(internalWorkflowCopyForm$);

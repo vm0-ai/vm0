@@ -127,6 +127,8 @@ import {
   updateWorkflowScheduleTrigger$,
   updateWorkflow$,
   workflowActionDialog$,
+  workflowDemoteConfirmOpen$,
+  setWorkflowDemoteConfirmOpen$,
   setWorkflowTriggerPickerCategory$,
   setWorkflowTriggerPickerOpen$,
   workflowCopyForm$,
@@ -973,6 +975,8 @@ function WorkflowPublicToggle({
   const [changeLoadable, changeVisibility] = useLoadableSet(
     changeWorkflowVisibility$,
   );
+  const demoteConfirmOpen = useGet(workflowDemoteConfirmOpen$);
+  const setDemoteConfirmOpen = useSet(setWorkflowDemoteConfirmOpen$);
   const busy = changeLoadable.state === "loading";
   const isPublic = detail.visibility === "public";
   const statusLabel = isPublic ? "Public" : "Private";
@@ -1011,9 +1015,14 @@ function WorkflowPublicToggle({
             busy || !toggleAction ? "cursor-not-allowed opacity-60" : "",
           )}
           onClick={() => {
-            if (toggleAction) {
-              submitVisibilityAction(toggleAction);
+            if (!toggleAction) {
+              return;
             }
+            if (toggleAction === "demote") {
+              setDemoteConfirmOpen(true);
+              return;
+            }
+            submitVisibilityAction(toggleAction);
           }}
         >
           <span
@@ -1030,6 +1039,49 @@ function WorkflowPublicToggle({
           permissions.
         </p>
       ) : null}
+      <Dialog open={demoteConfirmOpen} onOpenChange={setDemoteConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Make this workflow private?</DialogTitle>
+            <DialogDescription>
+              This is a dangerous operation. While this workflow is private,
+              automations other members built on it stop running.
+            </DialogDescription>
+          </DialogHeader>
+          <Alert variant="destructive">
+            <IconAlertTriangle size={16} stroke={1.5} />
+            <AlertTitle>Automations will stop</AlertTitle>
+            <AlertDescription>
+              {workflowTitle(detail)} will be hidden from other members and
+              their automations will stop.
+            </AlertDescription>
+          </Alert>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={busy}
+              onClick={() => {
+                setDemoteConfirmOpen(false);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={busy}
+              onClick={() => {
+                setDemoteConfirmOpen(false);
+                submitVisibilityAction("demote");
+              }}
+            >
+              {busy ? <IconLoader2 size={14} className="animate-spin" /> : null}
+              Make private
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
