@@ -1740,8 +1740,9 @@ export const setCustomConnectorLegacySecretValue$ = command(
         if (isBadRequest(lockedValues)) {
           return lockedValues;
         }
-        await deleteStoredConnectorLegacySecrets(tx, args);
         const lockedValue = lockedValues[0];
+        // Keep value-table writes before legacy-table writes. The migration
+        // takes table locks in the same order while old API instances drain.
         if (lockedValue) {
           const encryptedValue = encryptedValues[0]?.encryptedValue;
           if (!encryptedValue) {
@@ -1770,6 +1771,7 @@ export const setCustomConnectorLegacySecretValue$ = command(
               ),
             );
         }
+        await deleteStoredConnectorLegacySecrets(tx, args);
         const markers = await loadConnectorValueMarkersForConnector({
           tx,
           orgId: args.orgId,

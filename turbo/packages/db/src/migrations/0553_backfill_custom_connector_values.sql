@@ -1,4 +1,16 @@
 -- Custom SQL migration file, put your code below! --
+-- Earlier drafts of this migration installed runtime triggers. They were never
+-- intended as the final design; remove them if a development database applied
+-- those drafts before running the one-shot migration below.
+DROP FUNCTION IF EXISTS sync_org_custom_connector_secret_to_value() CASCADE;
+--> statement-breakpoint
+DROP FUNCTION IF EXISTS lock_org_custom_connector_for_legacy_secret() CASCADE;
+--> statement-breakpoint
+DROP FUNCTION IF EXISTS validate_org_custom_connector_value() CASCADE;
+--> statement-breakpoint
+DROP FUNCTION IF EXISTS prune_org_custom_connector_values_for_definition() CASCADE;
+--> statement-breakpoint
+
 -- Block value writes and legacy writes until the backfill and stale value prune
 -- have run. Do not add runtime triggers here: the API owns runtime validation,
 -- and old API instances must not gain new connector/value lock ordering during
