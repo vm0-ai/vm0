@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.233.1](https://github.com/vm0-ai/vm0/compare/api-v1.233.0...api-v1.233.1) (2026-07-07)
+
+
+### Performance Improvements
+
+* **api:** lazily emit connector platform secret metadata ([#20451](https://github.com/vm0-ai/vm0/issues/20451)) ([232b7f9](https://github.com/vm0-ai/vm0/commit/232b7f9c5c5ff4ec92cf4ebf5cbb6eb2ea4d8662))
+
 ## [1.233.0](https://github.com/vm0-ai/vm0/compare/api-v1.232.2...api-v1.233.0) (2026-07-07)
 
 
