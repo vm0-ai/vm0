@@ -1,6 +1,7 @@
 import {
   PLATFORM_CLIENT_REQUEST_ID_HEADER,
   PLATFORM_CLIENT_SESSION_ID_HEADER,
+  PLATFORM_CLIENT_TYPE_HEADER,
   PLATFORM_CLIENT_VERSION_HEADER,
 } from "@vm0/api-contracts/contracts/platform-client-headers";
 
@@ -20,6 +21,7 @@ const platformClientSessionId = crypto.randomUUID();
 function createPlatformClientHeaders(): Record<string, string> {
   return {
     [PLATFORM_CLIENT_VERSION_HEADER]: platformClientVersion,
+    [PLATFORM_CLIENT_TYPE_HEADER]: "App",
     [PLATFORM_CLIENT_SESSION_ID_HEADER]: platformClientSessionId,
     [PLATFORM_CLIENT_REQUEST_ID_HEADER]: crypto.randomUUID(),
   };

@@ -585,7 +585,7 @@ describe("createApp", () => {
           origin: "https://app.vm0.ai",
           "access-control-request-method": "GET",
           "access-control-request-headers":
-            "authorization,x-client-version,x-client-session-id,x-client-request-id",
+            "authorization,x-client-version,x-client-type,x-client-session-id,x-client-request-id",
         },
       });
 
@@ -600,6 +600,7 @@ describe("createApp", () => {
         response.headers.get("access-control-allow-headers") ?? "";
       expect(allowHeaders).toContain("Authorization");
       expect(allowHeaders).toContain("X-Client-Version");
+      expect(allowHeaders).toContain("X-Client-Type");
       expect(allowHeaders).toContain("X-Client-Session-Id");
       expect(allowHeaders).toContain("X-Client-Request-Id");
     });

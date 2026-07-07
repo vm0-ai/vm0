@@ -13,6 +13,7 @@ const UUID_REGEX =
 interface ObservedClientHeaders {
   readonly requestId: string | null;
   readonly sessionId: string | null;
+  readonly type: string | null;
   readonly version: string | null;
 }
 
@@ -20,12 +21,13 @@ function observedClientHeaders(request: Request): ObservedClientHeaders {
   return {
     requestId: request.headers.get("x-client-request-id"),
     sessionId: request.headers.get("x-client-session-id"),
+    type: request.headers.get("x-client-type"),
     version: request.headers.get("x-client-version"),
   };
 }
 
 describe("platform api client headers", () => {
-  it("adds version, session, and per-request ids to contract requests", async () => {
+  it("adds type, version, session, and per-request ids to contract requests", async () => {
     const observedHeaders: ObservedClientHeaders[] = [];
     const agentId = "c0000000-0000-4000-a000-000000000001";
     context.mocks.api(
@@ -44,6 +46,7 @@ describe("platform api client headers", () => {
         extraHeaders: {
           "X-Client-Request-Id": "caller-request-id",
           "X-Client-Session-Id": "caller-session-id",
+          "X-Client-Type": "caller-type",
           "X-Client-Version": "caller-version",
         },
       }),
@@ -55,6 +58,8 @@ describe("platform api client headers", () => {
     const [first, second] = observedHeaders;
     expect(first).toBeDefined();
     expect(second).toBeDefined();
+    expect(first.type).toBe("App");
+    expect(second.type).toBe("App");
     expect(first.version).toBe("0.540.0");
     expect(second.version).toBe("0.540.0");
     expect(first.sessionId).toMatch(UUID_REGEX);
