@@ -140,6 +140,7 @@ function shouldReplaceExistingDefaultForTier(
   return (
     existingDefault === undefined ||
     existingDefault.model === DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL ||
+    existingDefault.defaultProviderType !== "vm0" ||
     isLimitedFree1RestrictedRunModel(existingDefault.model)
   );
 }
