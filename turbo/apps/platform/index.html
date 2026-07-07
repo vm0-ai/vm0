@@ -236,7 +236,10 @@
     </script>
     <script>
       (function () {
-        if ("%VITE_VERCEL_ENV%" !== "production") return;
+        var hostname = window.location.hostname;
+        var isProductionHost =
+          hostname === "vm0.ai" || hostname.endsWith(".vm0.ai");
+        if (!isProductionHost) return;
 
         var initialized = false;
 

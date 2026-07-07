@@ -1,5 +1,6 @@
 import * as Sentry from "@sentry/react";
 import { ApiError } from "./accept";
+import { resolvePlatformEnvironment } from "./platform-host";
 
 // Initialize Sentry synchronously so that global error/unhandledrejection
 // handlers are installed before the app bootstraps. Errors during bootstrap
@@ -11,8 +12,7 @@ export function initSentry(): void {
     // Only enable when DSN is configured
     enabled: !!import.meta.env.VITE_SENTRY_DSN,
 
-    // Set environment (Vercel provides VITE_VERCEL_ENV in builds)
-    environment: import.meta.env.VITE_VERCEL_ENV,
+    environment: resolvePlatformEnvironment(),
 
     // Set app tag to identify this app in Sentry
     initialScope: {
