@@ -17,6 +17,7 @@ import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
   VIDEO_TEMPLATE_ITEMS,
+  WEBSITE_TEMPLATE_ITEMS,
   WORKFLOW_TEMPLATE_ITEMS,
   r2ImageTransformUrl,
   type PresentationTemplateItem,
@@ -2312,6 +2313,7 @@ describe("chat composer templates", () => {
     expect(tabByText("Presentation")).toBeInTheDocument();
     expect(tabByText("Illustration")).toBeInTheDocument();
     expect(tabByText("Video")).toBeInTheDocument();
+    expect(screen.queryByText("Website")).not.toBeInTheDocument();
     expect(document.activeElement).not.toBe(tabByText("Presentation"));
 
     const tabScroller = document.querySelector(
@@ -4144,6 +4146,90 @@ describe("chat composer templates", () => {
       expect(
         screen.queryByLabelText(
           `Remove workflow template ${workflowTemplate.title}`,
+        ),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("selects and sends a website template behind the feature switch", async () => {
+    const user = userEvent.setup({ delay: null });
+    const websiteTemplate = WEBSITE_TEMPLATE_ITEMS[0]!;
+    let submittedTemplate: GenerationTemplateRequest | undefined;
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      onRunCreate: (body) => {
+        submittedTemplate = body.generationTemplate;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.WebsiteTemplates]: true },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    click(
+      await waitFor(() => {
+        return screen.getByLabelText("Template");
+      }),
+    );
+    await waitFor(() => {
+      expect(tabByText("Website")).toBeInTheDocument();
+    });
+    click(tabByText("Website"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText(
+          `Select website template ${websiteTemplate.title}`,
+        ),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByTitle(`${websiteTemplate.title} website template preview`),
+      ).toHaveAttribute("src", websiteTemplate.previewUrl);
+      expect(screen.queryByText("Saas Landing")).not.toBeInTheDocument();
+    });
+
+    await fill(screen.getByLabelText("Search templates"), "no website match");
+    await waitFor(() => {
+      expect(screen.getByText("No matches")).toBeInTheDocument();
+    });
+
+    await fill(screen.getByLabelText("Search templates"), "warm");
+    click(
+      screen.getByLabelText(`Select website template ${websiteTemplate.title}`),
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(screen.getByLabelText("Template")).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+      expect(
+        screen.getByLabelText(
+          `Remove website template ${websiteTemplate.title}`,
+        ),
+      ).toBeInTheDocument();
+    });
+
+    const editor = await findComposerEditor();
+    await user.click(editor);
+    await user.keyboard("Create a warm website");
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => {
+      expect(submittedTemplate).toStrictEqual({
+        type: "website",
+        selection: { websiteTemplateId: websiteTemplate.id },
+      });
+      expect(screen.getByLabelText("Template")).toHaveAttribute(
+        "aria-pressed",
+        "false",
+      );
+      expect(
+        screen.queryByLabelText(
+          `Remove website template ${websiteTemplate.title}`,
         ),
       ).not.toBeInTheDocument();
     });
