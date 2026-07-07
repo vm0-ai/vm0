@@ -633,6 +633,8 @@ async fn handle_ably_message_with_network_policy_refresh(
     network_policy_refresh: Option<&NetworkPolicyRefreshHandle>,
     network_policy_refresh_cancel: Option<&CancellationToken>,
 ) {
+    let notification_received_at = StdInstant::now();
+
     if let Some(run_id) = parse_cancel_notification(msg) {
         let handle = cancel_tokens.lock().await.get(&run_id).cloned();
         if let Some(handle) = handle {
@@ -674,9 +676,10 @@ async fn handle_ably_message_with_network_policy_refresh(
                     profile = %profile,
                     "ably: job notification, queueing direct candidate"
                 );
-                JobNotificationAction::Direct(DirectJobCandidate::new_with_affinity(
+                JobNotificationAction::Direct(DirectJobCandidate::new_with_affinity_metadata(
                     notif.run_id,
                     profile.to_owned(),
+                    notification_received_at,
                     notif.cli_agent_session_id.map(str::to_owned),
                     notif.affinity_protected_until.map(str::to_owned),
                 ))

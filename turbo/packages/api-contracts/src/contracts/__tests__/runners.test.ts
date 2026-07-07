@@ -434,6 +434,23 @@ describe("runner claim capability contract", () => {
 
     expect(result.success).toBe(true);
   });
+
+  it("accepts optional direct candidate timing telemetry", () => {
+    const result = runnersJobClaimContract.claim.body.safeParse({
+      telemetry: {
+        discoverySource: "ably",
+        jobDiscoveredToClaimRequestMs: 123,
+        localAdmissionToClaimRequestMs: 4,
+        directCandidateNotificationToEnqueueMs: 1,
+        directCandidateInboxWaitMs: 2,
+        providerDiscoveryToMainLoopMs: 3,
+        mainLoopToLocalAdmissionMs: 4,
+        preLocalAdmissionOutcome: "local_holder",
+      },
+    });
+
+    expect(result.success).toBe(true);
+  });
 });
 
 describe("runner builtin firewall resolve contract", () => {

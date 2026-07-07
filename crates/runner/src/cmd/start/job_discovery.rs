@@ -30,7 +30,7 @@ use crate::http::HttpClient;
 use crate::idle_pool::{IdlePoolSnapshot, IdleUnparkResult, ReusableIdleSandbox};
 use crate::ids::RunId;
 use crate::paths::short_digest;
-use crate::provider::{ClaimedJob, JobCandidate};
+use crate::provider::{ClaimedJob, JobCandidate, PreLocalAdmissionOutcome};
 use crate::resource_budget::{BudgetLease, ResourceBudget};
 use crate::restored_session_identity::{
     RestoredSessionIdentity, RestoredSessionIdentityMismatchReason,
@@ -101,7 +101,8 @@ pub(super) async fn handle_discovered_job(
     job: DiscoveredJob,
     mut ctx: DiscoveredJobContext<'_>,
 ) -> bool {
-    let DiscoveredJob { candidate } = job;
+    let DiscoveredJob { mut candidate } = job;
+    candidate.mark_main_loop_handling_started();
     let run_id = candidate.run_id();
     let profile_name = candidate.profile_name().to_owned();
     // Look up profile config for resource requirements.
@@ -402,10 +403,15 @@ async fn prepare_affinity_protected_candidate(
     ctx: &DiscoveredJobContext<'_>,
 ) -> Option<JobCandidate> {
     if !candidate.is_affinity_protected() {
-        return Some(candidate);
+        return Some(
+            candidate.with_pre_local_admission_outcome(PreLocalAdmissionOutcome::NotProtected),
+        );
     }
     let Some(cli_agent_session_id) = candidate.cli_agent_session_id().map(str::to_owned) else {
-        return Some(candidate);
+        return Some(
+            candidate
+                .with_pre_local_admission_outcome(PreLocalAdmissionOutcome::MissingSessionMetadata),
+        );
     };
 
     let held_session_states = current_local_held_session_states(ctx).await;
@@ -413,7 +419,9 @@ async fn prepare_affinity_protected_candidate(
         .iter()
         .any(|state| state.session_id == cli_agent_session_id)
     {
-        return Some(candidate);
+        return Some(
+            candidate.with_pre_local_admission_outcome(PreLocalAdmissionOutcome::LocalHolder),
+        );
     }
 
     let delay = candidate

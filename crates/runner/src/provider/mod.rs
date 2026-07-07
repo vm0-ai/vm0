@@ -44,6 +44,23 @@ impl JobDiscoverySource {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum PreLocalAdmissionOutcome {
+    NotProtected,
+    LocalHolder,
+    MissingSessionMetadata,
+}
+
+impl PreLocalAdmissionOutcome {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::NotProtected => "not_protected",
+            Self::LocalHolder => "local_holder",
+            Self::MissingSessionMetadata => "missing_session_metadata",
+        }
+    }
+}
+
 /// Discovered work item ready for the non-cancellable claim phase.
 #[derive(Clone, Debug)]
 pub struct JobCandidate {
@@ -51,8 +68,15 @@ pub struct JobCandidate {
     profile_name: String,
     local_job_path: Option<PathBuf>,
     discovered_at: Instant,
+    provider_discovery_returned_at: Option<Instant>,
+    provider_discovery_to_main_loop_elapsed: Option<Duration>,
+    main_loop_handling_started_at: Option<Instant>,
+    main_loop_to_local_admission_elapsed: Option<Duration>,
     local_admission_started_at: Option<Instant>,
     discovery_source: Option<JobDiscoverySource>,
+    direct_candidate_notification_to_enqueue_elapsed: Option<Duration>,
+    direct_candidate_inbox_wait_elapsed: Option<Duration>,
+    pre_local_admission_outcome: Option<PreLocalAdmissionOutcome>,
     poll_reason: Option<String>,
     poll_due_to_job_discovered_elapsed: Option<Duration>,
     poll_http_request_elapsed: Option<Duration>,
@@ -75,8 +99,15 @@ impl JobCandidate {
             profile_name,
             local_job_path: None,
             discovered_at,
+            provider_discovery_returned_at: None,
+            provider_discovery_to_main_loop_elapsed: None,
+            main_loop_handling_started_at: None,
+            main_loop_to_local_admission_elapsed: None,
             local_admission_started_at: None,
             discovery_source: None,
+            direct_candidate_notification_to_enqueue_elapsed: None,
+            direct_candidate_inbox_wait_elapsed: None,
+            pre_local_admission_outcome: None,
             poll_reason: None,
             poll_due_to_job_discovered_elapsed: None,
             poll_http_request_elapsed: None,
@@ -104,8 +135,26 @@ impl JobCandidate {
         self.local_job_path.as_deref()
     }
 
+    pub(crate) fn mark_provider_discovery_returned(&mut self) {
+        self.provider_discovery_returned_at = Some(Instant::now());
+    }
+
+    pub(crate) fn mark_main_loop_handling_started(&mut self) {
+        let started_at = Instant::now();
+        if let Some(provider_returned_at) = self.provider_discovery_returned_at {
+            self.provider_discovery_to_main_loop_elapsed =
+                Some(started_at.saturating_duration_since(provider_returned_at));
+        }
+        self.main_loop_handling_started_at = Some(started_at);
+    }
+
     pub(crate) fn mark_local_admission_started(&mut self) {
-        self.local_admission_started_at = Some(Instant::now());
+        let started_at = Instant::now();
+        if let Some(main_loop_started_at) = self.main_loop_handling_started_at {
+            self.main_loop_to_local_admission_elapsed =
+                Some(started_at.saturating_duration_since(main_loop_started_at));
+        }
+        self.local_admission_started_at = Some(started_at);
     }
 
     pub(crate) fn job_discovered_elapsed(&self) -> Duration {
@@ -115,6 +164,26 @@ impl JobCandidate {
     pub(crate) fn local_admission_elapsed(&self) -> Option<Duration> {
         self.local_admission_started_at
             .map(|started| started.elapsed())
+    }
+
+    pub(crate) fn direct_candidate_notification_to_enqueue_elapsed(&self) -> Option<Duration> {
+        self.direct_candidate_notification_to_enqueue_elapsed
+    }
+
+    pub(crate) fn direct_candidate_inbox_wait_elapsed(&self) -> Option<Duration> {
+        self.direct_candidate_inbox_wait_elapsed
+    }
+
+    pub(crate) fn provider_discovery_to_main_loop_elapsed(&self) -> Option<Duration> {
+        self.provider_discovery_to_main_loop_elapsed
+    }
+
+    pub(crate) fn main_loop_to_local_admission_elapsed(&self) -> Option<Duration> {
+        self.main_loop_to_local_admission_elapsed
+    }
+
+    pub(crate) fn pre_local_admission_outcome(&self) -> Option<PreLocalAdmissionOutcome> {
+        self.pre_local_admission_outcome
     }
 
     pub(crate) fn discovery_source(&self) -> Option<JobDiscoverySource> {
@@ -166,6 +235,24 @@ impl JobCandidate {
 
     pub(crate) fn with_discovery_source(mut self, source: JobDiscoverySource) -> Self {
         self.discovery_source = Some(source);
+        self
+    }
+
+    pub(crate) fn with_direct_candidate_timing(
+        mut self,
+        notification_to_enqueue_elapsed: Option<Duration>,
+        inbox_wait_elapsed: Option<Duration>,
+    ) -> Self {
+        self.direct_candidate_notification_to_enqueue_elapsed = notification_to_enqueue_elapsed;
+        self.direct_candidate_inbox_wait_elapsed = inbox_wait_elapsed;
+        self
+    }
+
+    pub(crate) fn with_pre_local_admission_outcome(
+        mut self,
+        outcome: PreLocalAdmissionOutcome,
+    ) -> Self {
+        self.pre_local_admission_outcome = Some(outcome);
         self
     }
 

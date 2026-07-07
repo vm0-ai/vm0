@@ -434,11 +434,18 @@ async fn affinity_protected_candidate_with_local_session_claims() {
     );
 
     let claim_candidates = env.handle.claim_candidates();
+    let claimed_candidate = claim_candidates
+        .iter()
+        .find(|candidate| candidate.run_id() == run_id)
+        .expect("claim should record the protected candidate");
+    assert_eq!(
+        claimed_candidate.pre_local_admission_outcome(),
+        Some(crate::provider::PreLocalAdmissionOutcome::LocalHolder)
+    );
     assert!(
-        claim_candidates
-            .iter()
-            .any(|candidate| candidate.run_id() == run_id),
-        "claim should record the protected candidate"
+        claimed_candidate
+            .main_loop_to_local_admission_elapsed()
+            .is_some()
     );
     assert!(
         env.handle.deferred_poll_delays().is_empty(),

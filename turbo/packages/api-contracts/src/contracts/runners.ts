@@ -60,11 +60,25 @@ export const runnerClaimPollReasonSchema = z.enum([
 ]);
 
 const runnerClaimDiscoverySourceSchema = z.enum(["ably", "poll"]);
+const runnerPreLocalAdmissionOutcomeSchema = z.enum([
+  "not_protected",
+  "local_holder",
+  "missing_session_metadata",
+]);
 
 const runnerClaimTelemetrySchema = z.object({
   discoverySource: runnerClaimDiscoverySourceSchema.optional(),
   jobDiscoveredToClaimRequestMs: z.number().int().nonnegative().optional(),
   localAdmissionToClaimRequestMs: z.number().int().nonnegative().optional(),
+  directCandidateNotificationToEnqueueMs: z
+    .number()
+    .int()
+    .nonnegative()
+    .optional(),
+  directCandidateInboxWaitMs: z.number().int().nonnegative().optional(),
+  providerDiscoveryToMainLoopMs: z.number().int().nonnegative().optional(),
+  mainLoopToLocalAdmissionMs: z.number().int().nonnegative().optional(),
+  preLocalAdmissionOutcome: runnerPreLocalAdmissionOutcomeSchema.optional(),
   pollDueToJobDiscoveredMs: z.number().int().nonnegative().optional(),
   pollHttpRequestMs: z.number().int().nonnegative().optional(),
   pollReason: runnerClaimPollReasonSchema.optional(),
