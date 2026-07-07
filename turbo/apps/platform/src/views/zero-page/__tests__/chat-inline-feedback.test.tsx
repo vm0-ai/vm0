@@ -8,6 +8,7 @@ import type {
 import { PRESENTATION_TEMPLATE_PICKER_ITEMS } from "@vm0/core";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { createDeferredPromise } from "../../../signals/utils.ts";
 import {
   detachedSetupPage,
   fill,
@@ -34,7 +35,7 @@ interface RunCreateCapture {
   clientMessageId?: string;
 }
 
-function selectTextForInlineFeedback(element: HTMLElement): void {
+function selectTextRangeForInlineFeedback(element: HTMLElement): void {
   const range = document.createRange();
   range.selectNodeContents(element);
   Object.defineProperty(range, "getBoundingClientRect", {
@@ -50,7 +51,21 @@ function selectTextForInlineFeedback(element: HTMLElement): void {
   }
   selection.removeAllRanges();
   selection.addRange(range);
+}
+
+function selectTextForInlineFeedback(element: HTMLElement): void {
+  selectTextRangeForInlineFeedback(element);
   document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+}
+
+function waitForDeferredSelectionCapture(): Promise<void> {
+  const deferred = createDeferredPromise<void>(context.signal);
+  window.setTimeout(() => {
+    if (!deferred.settled()) {
+      deferred.resolve(undefined);
+    }
+  });
+  return deferred.promise;
 }
 
 function selectTextAcrossElementsForInlineFeedback(
@@ -202,6 +217,49 @@ describe("chat inline feedback", () => {
     expect(
       screen.queryByPlaceholderText("What should change about this?"),
     ).not.toBeInTheDocument();
+  });
+
+  it("shows the inline feedback toolbar when double-click selection settles after mouseup", async () => {
+    const assistantReply = "The rollout dates are unclear in this summary.";
+
+    mockChatLifecycle(context, {
+      threadId: FEEDBACK_THREAD_ID,
+      threadTitle: "Feedback review",
+      chatMessages: [
+        {
+          id: "msg-feedback-late-selection-user",
+          role: "user",
+          content: "Review this launch summary",
+          runId: "run-feedback-late-selection",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-feedback-late-selection-assistant",
+          role: "assistant",
+          content: assistantReply,
+          runId: "run-feedback-late-selection",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${FEEDBACK_THREAD_ID}`,
+    });
+
+    const assistantReplyElement = await screen.findByText(assistantReply);
+
+    document.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    await waitForDeferredSelectionCapture();
+
+    selectTextRangeForInlineFeedback(assistantReplyElement);
+    document.dispatchEvent(new Event("selectionchange"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Provide feedback")).toBeInTheDocument();
+    });
   });
 
   it("focuses the inline feedback composer when started from the keyboard shortcut", async () => {
