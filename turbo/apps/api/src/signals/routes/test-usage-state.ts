@@ -33,6 +33,7 @@ import { bodyResultOf, queryOf } from "../context/request";
 import { request$ } from "../context/hono";
 import { writeDb$, type Db } from "../external/db";
 import type { RouteEntry } from "../route-entry";
+import { activateUsageAllowanceWindowsForRun } from "../services/usage-allowance.service";
 import { maybeEmitRunUsageMessage$ } from "../services/zero-chat-usage-message.service";
 import {
   isTestEndpointAllowed,
@@ -58,6 +59,7 @@ interface SeedRunArgs {
   readonly createdAt?: Date;
   readonly startedAt?: Date | null;
   readonly completedAt?: Date | null;
+  readonly activateUsageAllowanceWindows?: boolean;
 }
 
 function parseOptionalDate(value: string | null | undefined): Date | null {
@@ -359,7 +361,7 @@ async function seedRun(
   db: Db,
   args: SeedRunArgs,
   signal: AbortSignal,
-): Promise<{ runId: string; composeId: string }> {
+): Promise<{ runId: string; composeId: string; createdAt: Date }> {
   const composeName = `usage-${randomUUID().slice(0, 8)}`;
   const [compose] = await db
     .insert(agentComposes)
@@ -428,7 +430,7 @@ async function seedRun(
       startedAt: args.startedAt,
       completedAt: args.completedAt,
     })
-    .returning({ id: agentRuns.id });
+    .returning({ id: agentRuns.id, createdAt: agentRuns.createdAt });
   signal.throwIfAborted();
   if (!run) {
     throw new Error("seedRun: run insert returned no row");
@@ -440,7 +442,7 @@ async function seedRun(
   });
   signal.throwIfAborted();
 
-  return { runId: run.id, composeId: compose.id };
+  return { runId: run.id, composeId: compose.id, createdAt: run.createdAt };
 }
 
 async function seedChatThreadRun(
@@ -627,9 +629,18 @@ async function seedRunForAction(
         body.completed_at === undefined
           ? undefined
           : parseOptionalDate(body.completed_at),
+      activateUsageAllowanceWindows: body.activate_usage_allowance_windows,
     },
     signal,
   );
+  if (run.createdAt && body.activate_usage_allowance_windows === true) {
+    await activateUsageAllowanceWindowsForRun(db, {
+      orgId: body.org_id,
+      runId: run.runId,
+      runCreatedAt: run.createdAt,
+    });
+    signal.throwIfAborted();
+  }
   return {
     status: 200 as const,
     body: {
@@ -711,7 +722,12 @@ async function readRunUsageCreditsForAction(
         ),
     })
     .from(usageEvent)
-    .where(and(eq(usageEvent.runId, body.run_id), eq(usageEvent.status, "processed")));
+    .where(
+      and(
+        eq(usageEvent.runId, body.run_id),
+        eq(usageEvent.status, "processed"),
+      ),
+    );
   signal.throwIfAborted();
   return {
     status: 200 as const,

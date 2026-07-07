@@ -76,6 +76,7 @@ interface SeedRunArgs {
   readonly createdAt?: Date;
   readonly startedAt?: Date | null;
   readonly completedAt?: Date | null;
+  readonly activateUsageAllowanceWindows?: boolean;
 }
 
 interface SeedChatThreadRunArgs {
@@ -395,6 +396,7 @@ export const seedRun$ = command(
       created_at: dateToWire(args.createdAt) ?? undefined,
       started_at: dateToWire(args.startedAt),
       completed_at: dateToWire(args.completedAt),
+      activate_usage_allowance_windows: args.activateUsageAllowanceWindows,
     });
     if (!response.run_id || !response.compose_id) {
       throw new Error("seedRun$: response missing run identifiers");

@@ -104,6 +104,7 @@ export const testUsageStateActionBodySchema = z.discriminatedUnion("action", [
     created_at: optionalDateStringSchema,
     started_at: nullableDateStringSchema.optional(),
     completed_at: nullableDateStringSchema.optional(),
+    activate_usage_allowance_windows: z.boolean().optional(),
   }),
   z.object({
     action: z.literal("seed-chat-thread-run"),

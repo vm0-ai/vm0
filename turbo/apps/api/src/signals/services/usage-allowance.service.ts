@@ -254,6 +254,32 @@ async function ensureWindowsForRun(
   return { shortWindow, weeklyWindow };
 }
 
+async function loadExistingWindowsForRun(
+  tx: UsageAllowanceStore,
+  args: {
+    readonly orgId: string;
+    readonly runId: string;
+  },
+): Promise<UsageAllowanceWindows | null> {
+  const runCreatedAt = await loadRunCreatedAt(tx, args);
+  if (!runCreatedAt) {
+    return null;
+  }
+
+  const shortWindow = await lockActiveWindowAt(tx, {
+    orgId: args.orgId,
+    kind: "short",
+    at: runCreatedAt,
+  });
+  const weeklyWindow = await lockActiveWindowAt(tx, {
+    orgId: args.orgId,
+    kind: "weekly",
+    at: runCreatedAt,
+  });
+
+  return shortWindow && weeklyWindow ? { shortWindow, weeklyWindow } : null;
+}
+
 async function readWindowAvailability(
   tx: UsageAllowanceStore,
   args: {
@@ -331,14 +357,7 @@ export async function resolveUsageAllowanceAvailabilityForRun(
 ): Promise<UsageAllowanceAvailability | null> {
   return await db.transaction(async (tx) => {
     await lockUsageAllowanceOrg(tx, args.orgId);
-    const runCreatedAt = await loadRunCreatedAt(tx, args);
-    if (!runCreatedAt) {
-      return null;
-    }
-    const windows = await ensureWindowsForRun(tx, {
-      ...args,
-      runCreatedAt,
-    });
+    const windows = await loadExistingWindowsForRun(tx, args);
     return windows ? availabilityFromWindows(windows) : null;
   });
 }
@@ -367,18 +386,9 @@ export async function applyUsageAllowanceToUsageEvent(
     return existing.unitsApplied;
   }
 
-  const runCreatedAt = await loadRunCreatedAt(tx, {
+  const windows = await loadExistingWindowsForRun(tx, {
     orgId: args.orgId,
     runId: args.runId,
-  });
-  if (!runCreatedAt) {
-    return 0;
-  }
-
-  const windows = await ensureWindowsForRun(tx, {
-    orgId: args.orgId,
-    runId: args.runId,
-    runCreatedAt,
   });
   if (!windows) {
     return 0;
