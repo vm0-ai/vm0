@@ -108,31 +108,117 @@ _BROWSER_USER_AGENT_MARKERS = (
 )
 _TEST_ENDPOINT_BYPASS_HEADER: Final = "x-vm0-test-endpoint-bypass"
 _BUILTIN_HOST_POLICY_DENIED_ERROR: Final = "builtin_host_policy_denied"
-_MODEL_PROVIDER_USAGE_REPORTED = "_model_provider_usage_reported"
-_MODEL_WEBSOCKET_MESSAGE_TRIM_SCHEDULED = "_model_websocket_message_trim_scheduled"
-_TCP_MESSAGE_DRAIN_SCHEDULED = "_tcp_message_drain_scheduled"
-_TCP_REQUEST_SIZE = "_tcp_request_size"
-_TCP_RESPONSE_SIZE = "_tcp_response_size"
-_USAGE_FLOW_TRACKED = "_usage_flow_tracked"
+
+# Hook-private lifecycle state constants. Keep flow.metadata marker strings in
+# this block out of flow_metadata_keys.py unless they become public cross-module
+# contracts.
+
+_CONNECTOR_INTENT_HEADER: Final = "X-VM0-Connector-Intent"
+
+# Connector intent metadata state.
+# Creator: _capture_and_strip_connector_intent_header().
+# Consumer: _connector_intent_from_flow() and request-header probe restore.
+# Release: restored on probe rollback, otherwise no explicit pop before flow
+# completion.
+# Follow-up owner: #20508 connector diagnostics extraction.
+_CONNECTOR_INTENT_VALUE = "_connector_intent_value"
+_CONNECTOR_INTENT_STATUS = "_connector_intent_status"
+
+# Request-header phase state.
+# Creator: requestheaders() and header-phase stream/auth helpers.
+# Consumer: request() and terminal cleanup.
+# Release: classification/auth markers are popped by request() or terminal cleanup.
+# _REQUEST_HEADERS_TERMINATED is a flow-local sentinel for request() early exit.
+# Follow-up owner: #20507 request classification extraction.
+_REQUEST_HEADERS_TERMINATED = "_request_headers_terminated"
+_REQUEST_CLASSIFICATION = "_request_classification"
+_FIREWALL_AUTH_APPLIED_IN_REQUESTHEADERS = "_firewall_auth_applied_in_requestheaders"
+
+# Request-header probe rollback key set.
+# Creator: static key set for requestheaders() snapshots.
+# Consumer: _restore_request_headers_probe_metadata().
+# Release: n/a; the helper restores or removes the listed metadata values.
+# Follow-up owner: #20507 request classification extraction.
+_REQUEST_HEADERS_PROBE_METADATA_KEYS = (
+    metadata_keys.VM_RUN_ID,
+    metadata_keys.VM_NETWORK_LOG_PATH,
+    metadata_keys.VM_PROXY_LOG_PATH,
+    metadata_keys.CAPTURE_BODY,
+    metadata_keys.VM_SANDBOX_AUTH_KEY,
+    metadata_keys.CLI_AGENT_TYPE,
+    metadata_keys.BROWSER_USER_AGENT,
+    metadata_keys.ORIGINAL_URL,
+    metadata_keys.TRUSTED_AUTHORITY_HOST,
+    metadata_keys.NETWORK_LOG_TARGET,
+    metadata_keys.HTTP_REQUEST_START_MONOTONIC,
+    _CONNECTOR_INTENT_VALUE,
+    _CONNECTOR_INTENT_STATUS,
+)
+
+# Connector diagnostic candidate state.
+# Creator: allow-path diagnostic probes and diagnostic metadata helpers.
+# Consumer: request(), response(), and error() diagnostic response helpers.
+# Release: no explicit pop before flow completion.
+# Follow-up owner: #20508 connector diagnostics extraction.
 _CONNECTOR_DIAGNOSTIC_ELIGIBLE = "_connector_diagnostic_eligible"
 _CONNECTOR_DIAGNOSTIC_ACTIVE_FIREWALL_NAMES = "_connector_diagnostic_active_firewall_names"
 _CONNECTOR_DIAGNOSTIC_LOOKUP_DONE = "_connector_diagnostic_lookup_done"
 _CONNECTOR_DIAGNOSTIC_CANDIDATE = "_connector_diagnostic_candidate"
 _CONNECTOR_DIAGNOSTIC_AUTH_HEADER_NAMES = "_connector_diagnostic_auth_header_names"
 _CONNECTOR_DIAGNOSTIC_AUTH_QUERY_PARAM_NAMES = "_connector_diagnostic_auth_query_param_names"
+
+# Connector diagnostic response-stream state.
+# Creator: _install_connector_diagnostic_response_stream().
+# Consumer: response replacement, stream callback, and terminal cleanup.
+# Release: _release_connector_diagnostic_response_stream_state().
+# Follow-up owner: #20508 connector diagnostics extraction.
 _CONNECTOR_DIAGNOSTIC_RESPONSE_REPLACED_IN_HEADERS = (
     "_connector_diagnostic_response_replaced_in_headers"
 )
 _CONNECTOR_DIAGNOSTIC_RESPONSE_BODY = "_connector_diagnostic_response_body"
 _CONNECTOR_DIAGNOSTIC_RESPONSE_STREAM_BODY_SENT = "_connector_diagnostic_response_stream_body_sent"
 _CONNECTOR_DIAGNOSTIC_RESPONSE_STREAM_CALLBACK = "_connector_diagnostic_response_stream_callback"
+
+# Connector diagnostic proxy-log state.
+# Creator: _log_connector_diagnostic_proxy_entry().
+# Consumer: _log_connector_diagnostic_proxy_entry() duplicate guard.
+# Release: _release_connector_diagnostic_response_stream_state().
+# Follow-up owner: #20508 connector diagnostics extraction.
 _CONNECTOR_DIAGNOSTIC_PROXY_ENTRY_LOGGED = "_connector_diagnostic_proxy_entry_logged"
-_CONNECTOR_INTENT_HEADER: Final = "X-VM0-Connector-Intent"
-_CONNECTOR_INTENT_VALUE = "_connector_intent_value"
-_CONNECTOR_INTENT_STATUS = "_connector_intent_status"
+
+# Connector diagnostic ownership state.
+# Creator: shared-base connector diagnostic resolution.
+# Consumer: connector diagnostic proxy-log emission.
+# Release: no explicit pop before flow completion.
+# Follow-up owner: #20508 connector diagnostics extraction.
 _CONNECTOR_DIAGNOSTIC_OWNERSHIP_REASON = "_connector_diagnostic_ownership_reason"
 _CONNECTOR_DIAGNOSTIC_OWNERSHIP_CANDIDATES = "_connector_diagnostic_ownership_candidates"
 _CONNECTOR_DIAGNOSTIC_OWNERSHIP_HINT_STATUS = "_connector_diagnostic_ownership_hint_status"
+
+# Usage tracking state.
+# Creator: _maybe_track_usage_flow() and _report_model_provider_usage_once().
+# Consumer: terminal hooks and duplicate-report guards.
+# Release: tracked marker is popped; reported marker has no explicit pop before
+# flow completion.
+# Follow-up owner: #20509 terminal flow lifecycle extraction.
+_USAGE_FLOW_TRACKED = "_usage_flow_tracked"
+_MODEL_PROVIDER_USAGE_REPORTED = "_model_provider_usage_reported"
+
+# Model WebSocket retention state.
+# Creator: _schedule_model_websocket_message_trim().
+# Consumer: scheduled trim and clear helpers.
+# Release: _trim_model_websocket_messages() and _clear_model_websocket_messages().
+# Follow-up owner: #20509 terminal flow lifecycle extraction.
+_MODEL_WEBSOCKET_MESSAGE_TRIM_SCHEDULED = "_model_websocket_message_trim_scheduled"
+
+# TCP message-drain state.
+# Creator: _schedule_tcp_message_drain() and _drain_tcp_messages().
+# Consumer: _tcp_log_sizes().
+# Release: scheduled marker is popped by _drain_tcp_messages(); counters are flow-local.
+# Follow-up owner: #20505 TCP logging extraction.
+_TCP_MESSAGE_DRAIN_SCHEDULED = "_tcp_message_drain_scheduled"
+_TCP_REQUEST_SIZE = "_tcp_request_size"
+_TCP_RESPONSE_SIZE = "_tcp_response_size"
 _EMPTY_RESPONSE_STREAM_CHUNKS: tuple[bytes, ...] = ()
 _GENERIC_AUTH_HEADER_NAMES = frozenset(
     (
@@ -176,6 +262,12 @@ _TLS_ADMISSION_INVALID_REGISTRY_VM: Final = "invalid_registry_vm"
 _TLS_ADMISSION_REGISTRY_UNAVAILABLE: Final = "registry_unavailable"
 _STALE_TLS_ADMISSION_ERROR: Final = "stale_tls_admission"
 _UPSTREAM_DESTINATION_UNBOUND_ERROR: Final = "upstream_destination_unbound"
+
+# Upstream binding diagnostics state.
+# Creator: _block_upstream_destination_unbound().
+# Consumer: _http_network_log_entry().
+# Release: no explicit pop before flow completion.
+# Follow-up owner: #20510 TLS upstream admission extraction.
 _UPSTREAM_BINDING_DIAGNOSTICS = "_upstream_binding_diagnostics"
 _TRUSTED_HOST_ADDRESS_CACHE_TTL_SECONDS: Final = 60.0
 _TRUSTED_HOST_ADDRESS_NEGATIVE_CACHE_TTL_SECONDS: Final = 5.0
@@ -203,24 +295,6 @@ _RequestClassificationKind = Literal[
 _AuthBaseBodyCheckKind = Literal["ok", "too_large", "length_required"]
 _trusted_host_address_cache: dict[tuple[str, int], tuple[float, frozenset[str]]] = {}
 _trusted_host_address_lookup_tasks: dict[tuple[str, int], asyncio.Task[frozenset[str]]] = {}
-_REQUEST_HEADERS_TERMINATED = "_request_headers_terminated"
-_REQUEST_CLASSIFICATION = "_request_classification"
-_FIREWALL_AUTH_APPLIED_IN_REQUESTHEADERS = "_firewall_auth_applied_in_requestheaders"
-_REQUEST_HEADERS_PROBE_METADATA_KEYS = (
-    metadata_keys.VM_RUN_ID,
-    metadata_keys.VM_NETWORK_LOG_PATH,
-    metadata_keys.VM_PROXY_LOG_PATH,
-    metadata_keys.CAPTURE_BODY,
-    metadata_keys.VM_SANDBOX_AUTH_KEY,
-    metadata_keys.CLI_AGENT_TYPE,
-    metadata_keys.BROWSER_USER_AGENT,
-    metadata_keys.ORIGINAL_URL,
-    metadata_keys.TRUSTED_AUTHORITY_HOST,
-    metadata_keys.NETWORK_LOG_TARGET,
-    metadata_keys.HTTP_REQUEST_START_MONOTONIC,
-    _CONNECTOR_INTENT_VALUE,
-    _CONNECTOR_INTENT_STATUS,
-)
 
 
 @dataclass(frozen=True)
