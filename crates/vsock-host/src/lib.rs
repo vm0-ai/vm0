@@ -214,6 +214,9 @@ enum ConnectionState {
 struct Shared {
     /// Serialises writes to the stream.
     writer: tokio::sync::Mutex<tokio::net::unix::OwnedWriteHalf>,
+    /// Serialises memory-heavy encoded frame construction without blocking
+    /// ordinary writer-lock users such as lifecycle and control frames.
+    frame_builder: tokio::sync::Mutex<()>,
     /// Raw fd of the underlying socket, used to poison a corrupted stream.
     fd: RawFd,
     /// Monotonically increasing sequence number (starts at 2, skips 0).
@@ -596,6 +599,7 @@ async fn write_request_frame_with_builder(
     before_write: impl FnOnce() -> io::Result<()>,
 ) -> io::Result<()> {
     let mut write_guard = RequestWriteGuard::new(Arc::clone(shared));
+    let frame_builder_guard = shared.frame_builder.lock().await;
     let mut frame = Vec::new();
     build_frame(seq, &mut frame)?;
     let mut writer = shared.writer.lock().await;
@@ -607,10 +611,12 @@ async fn write_request_frame_with_builder(
         shared.poison_connection();
         drop(writer);
         drop(frame);
+        drop(frame_builder_guard);
         return Err(error);
     }
     drop(writer);
     drop(frame);
+    drop(frame_builder_guard);
     write_guard.mark_returned();
     Ok(())
 }
@@ -944,6 +950,7 @@ impl VsockHost {
 
         let shared = Arc::new(Shared {
             writer: tokio::sync::Mutex::new(write_half),
+            frame_builder: tokio::sync::Mutex::new(()),
             fd,
             seq: AtomicU32::new(2),
             state: std::sync::Mutex::new(ConnectionState::Connected {
