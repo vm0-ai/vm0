@@ -2,7 +2,7 @@
 //!
 //! State files handled here are local runner coordination files such as the
 //! proxy registry, mitm-addon flush state, live runner instance records,
-//! workspace cache metadata, and diagnostic config reads. The helper
+//! workspace cache metadata reads, and diagnostic config reads. The helper
 //! centralizes size-bounded reads and the filesystem checks that make those
 //! reads safe when paths come from local process or runner state.
 //!
