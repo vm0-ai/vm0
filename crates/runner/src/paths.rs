@@ -136,6 +136,15 @@ impl RunnerPaths {
         self.base_dir.join("proxy-registry.json.lock")
     }
 
+    pub fn builtin_firewall_catalog_cache(&self) -> PathBuf {
+        self.base_dir.join("builtin-firewall-catalog-cache.json")
+    }
+
+    pub fn builtin_firewall_catalog_cache_lock(&self) -> PathBuf {
+        self.base_dir
+            .join("builtin-firewall-catalog-cache.json.lock")
+    }
+
     pub fn workspaces_dir(&self) -> PathBuf {
         self.base_dir.join("workspaces")
     }

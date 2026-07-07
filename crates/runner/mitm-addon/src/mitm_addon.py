@@ -376,6 +376,12 @@ def load(loader: Loader) -> None:
         help="Path to proxy registry file",
     )
     loader.add_option(
+        name="vm0_builtin_firewall_catalog_cache_path",
+        typespec=str,
+        default=str(Path(tempfile.gettempdir()) / "builtin-firewall-catalog-cache.json"),
+        help="Path to runner builtin firewall catalog cache file",
+    )
+    loader.add_option(
         name="vm0_usage_state_id",
         typespec=str,
         default="",
