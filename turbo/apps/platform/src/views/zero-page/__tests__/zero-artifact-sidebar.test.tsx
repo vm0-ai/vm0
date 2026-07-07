@@ -589,6 +589,48 @@ function mockIntersectionObserver(): { triggerAll: () => void } {
   };
 }
 
+function mockElementBox(
+  element: HTMLElement,
+  { height, width }: { height: number; width: number },
+) {
+  Object.defineProperties(element, {
+    clientHeight: {
+      configurable: true,
+      value: height,
+    },
+    clientWidth: {
+      configurable: true,
+      value: width,
+    },
+    offsetHeight: {
+      configurable: true,
+      value: height,
+    },
+    offsetWidth: {
+      configurable: true,
+      value: width,
+    },
+  });
+  Object.defineProperty(element, "getBoundingClientRect", {
+    configurable: true,
+    value: () => {
+      return {
+        bottom: height,
+        height,
+        left: 0,
+        right: width,
+        toJSON: () => {
+          return {};
+        },
+        top: 0,
+        width,
+        x: 0,
+        y: 0,
+      };
+    },
+  });
+}
+
 describe("zero artifact sidebar", () => {
   it("opens document previews from chat, moves them into split view, and closes the pane", async () => {
     const user = userEvent.setup({ delay: null });
@@ -1427,6 +1469,52 @@ describe("zero artifact sidebar", () => {
         "alt",
         "first.png",
       );
+    });
+  });
+
+  it("fits tall image artifacts inside the preview when opened", async () => {
+    const posterUrl =
+      "https://cdn.vm7.io/artifacts/test/sidebar-fit-tall-image/poster.png";
+    setupChatThread({
+      artifactFiles: [
+        artifactFile(posterUrl, {
+          id: "artifact-sidebar-tall-image",
+          filename: "poster.png",
+          contentType: "image/png",
+          size: 2048,
+        }),
+      ],
+      content: "Image artifact is ready.",
+      path: `${THREAD_PATH}?artifact=${encodeURIComponent(posterUrl)}`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-sidebar-body-image")).toHaveAttribute(
+        "alt",
+        "poster.png",
+      );
+    });
+
+    const zoomStage = screen.getByTestId("zoomable-image-canvas");
+    const image = screen.getByTestId("artifact-sidebar-body-image");
+    mockElementBox(zoomStage, { height: 600, width: 800 });
+    Object.defineProperties(image, {
+      naturalHeight: {
+        configurable: true,
+        value: 3200,
+      },
+      naturalWidth: {
+        configurable: true,
+        value: 1600,
+      },
+    });
+    fireEvent.load(image);
+
+    await waitFor(() => {
+      expect(image).toHaveStyle({ width: "300px" });
+      expect(
+        screen.getByTestId("artifact-sidebar-image-zoom-level"),
+      ).toHaveTextContent("100%");
     });
   });
 
