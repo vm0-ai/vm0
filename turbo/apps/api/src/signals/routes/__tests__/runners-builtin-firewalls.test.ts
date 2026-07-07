@@ -147,9 +147,7 @@ describe("runner builtin firewall resolver", () => {
     for (const response of responses) {
       const body: RunnerBuiltinFirewallsResolveResponse = response.body;
       expect(body.catalogDigest).toBe(RUNNER_RUNTIME_FIREWALL_CATALOG_DIGEST);
-      expect(body.catalogVersion).toBe(
-        RUNNER_RUNTIME_FIREWALL_CATALOG_VERSION,
-      );
+      expect(body.catalogVersion).toBe(RUNNER_RUNTIME_FIREWALL_CATALOG_VERSION);
       expect(Object.keys(body.firewalls).sort(compareStrings)).toStrictEqual([
         ...RUNNER_RUNTIME_FIREWALL_NAMES,
       ]);
