@@ -237,31 +237,36 @@ async function loadCustomConnectorGrantValueMarkers(
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly connectorIds: readonly string[];
+    readonly connectorVersions: ReadonlyMap<string, number>;
   },
 ): Promise<ReadonlySet<string>> {
-  if (args.connectorIds.length === 0) {
+  if (args.connectorVersions.size === 0) {
     return new Set();
   }
+  const connectorIds = [...args.connectorVersions.keys()];
 
   const valueRows = await db
     .select({
       connectorId: orgCustomConnectorValues.connectorId,
       kind: orgCustomConnectorValues.kind,
       key: orgCustomConnectorValues.key,
+      definitionVersion: orgCustomConnectorValues.definitionVersion,
     })
     .from(orgCustomConnectorValues)
     .where(
       and(
         eq(orgCustomConnectorValues.orgId, args.orgId),
         eq(orgCustomConnectorValues.userId, args.userId),
-        inArray(orgCustomConnectorValues.connectorId, [...args.connectorIds]),
+        inArray(orgCustomConnectorValues.connectorId, connectorIds),
       ),
     );
 
   const markers = new Set<string>();
   for (const row of valueRows) {
     if (row.kind !== "secret" && row.kind !== "variable") {
+      continue;
+    }
+    if (row.definitionVersion !== args.connectorVersions.get(row.connectorId)) {
       continue;
     }
     markers.add(
@@ -345,6 +350,7 @@ async function lockCustomConnectorsForReplace(
     readonly fields: readonly OrgCustomConnectorField[];
     readonly headerInjections: readonly OrgCustomConnectorHeaderInjection[];
     readonly queryInjections: readonly OrgCustomConnectorQueryInjection[];
+    readonly definitionVersion: number;
   }[] = [];
   for (const id of sortedIds) {
     const [locked] = await db
@@ -356,6 +362,7 @@ async function lockCustomConnectorsForReplace(
         fields: orgCustomConnectors.fields,
         headerInjections: orgCustomConnectors.headerInjections,
         queryInjections: orgCustomConnectors.queryInjections,
+        definitionVersion: orgCustomConnectors.definitionVersion,
       })
       .from(orgCustomConnectors)
       .where(
@@ -386,9 +393,11 @@ async function lockCustomConnectorsForReplace(
   const configuredMarkers = await loadCustomConnectorGrantValueMarkers(db, {
     orgId: args.orgId,
     userId: args.userId,
-    connectorIds: lockedRows.map((row) => {
-      return row.id;
-    }),
+    connectorVersions: new Map(
+      lockedRows.map((row) => {
+        return [row.id, row.definitionVersion] as const;
+      }),
+    ),
   });
   const unconfiguredIds = lockedRows.flatMap((row) => {
     const fields = customConnectorGrantFields(row.fields);

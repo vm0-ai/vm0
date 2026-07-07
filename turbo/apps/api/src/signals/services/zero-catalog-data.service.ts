@@ -27,6 +27,7 @@ export function zeroCustomConnectorList(args: {
           connectorId: orgCustomConnectorValues.connectorId,
           kind: orgCustomConnectorValues.kind,
           key: orgCustomConnectorValues.key,
+          definitionVersion: orgCustomConnectorValues.definitionVersion,
         })
         .from(orgCustomConnectorValues)
         .where(
@@ -47,6 +48,7 @@ export function zeroCustomConnectorList(args: {
           kind:
             row.kind === "secret" ? ("secret" as const) : ("variable" as const),
           key: row.key,
+          definitionVersion: row.definitionVersion,
         };
       });
     type ValueMarker = (typeof markers)[number];

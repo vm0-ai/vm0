@@ -1,6 +1,7 @@
 import {
   pgTable,
   uuid,
+  integer,
   text,
   varchar,
   timestamp,
@@ -33,6 +34,7 @@ export const orgCustomConnectorValues = pgTable(
     orgId: text("org_id").notNull(),
     kind: varchar("kind", { length: 16 }).notNull(),
     key: varchar("key", { length: 64 }).notNull(),
+    definitionVersion: integer("definition_version").default(0).notNull(),
     encryptedValue: text("encrypted_value").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),

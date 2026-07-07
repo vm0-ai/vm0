@@ -146,6 +146,43 @@ async function legacyCustomConnectorSecretCount(args: {
   return result.rows[0]?.count ?? 0;
 }
 
+async function insertOldCustomConnectorValue(args: {
+  readonly connectorId: string | null;
+  readonly orgId: string | null;
+  readonly userId: string | null;
+  readonly kind: "secret" | "variable";
+  readonly key: string;
+  readonly encryptedValue: string;
+}): Promise<void> {
+  const connectorId = expectRequiredString(args.connectorId, "connector id");
+  const orgId = expectRequiredString(args.orgId, "org id");
+  const userId = expectRequiredString(args.userId, "user id");
+  await db().execute(sql`
+    INSERT INTO org_custom_connector_values (
+      connector_id,
+      org_id,
+      user_id,
+      kind,
+      key,
+      encrypted_value
+    )
+    VALUES (
+      ${connectorId},
+      ${orgId},
+      ${userId},
+      ${args.kind},
+      ${args.key},
+      ${args.encryptedValue}
+    )
+    ON CONFLICT (connector_id, user_id, kind, key) DO UPDATE
+    SET
+      org_id = EXCLUDED.org_id,
+      encrypted_value = EXCLUDED.encrypted_value,
+      definition_version = EXCLUDED.definition_version,
+      updated_at = now()
+  `);
+}
+
 interface RedirectResponseLike {
   readonly headers: Headers;
 }
@@ -2042,6 +2079,87 @@ describe("CONN-03: custom connectors and connector-owned values", () => {
       },
     );
     expect(readdedField).toMatchObject({
+      connected: false,
+      configuredFieldKeys: ["subdomain"],
+      missingRequiredFields: ["api_key"],
+    });
+
+    await connectorsApi.deleteCustomConnector(admin, connector.id);
+  });
+
+  it("ignores stale value writes from an older definition version", async () => {
+    const bdd = createBddApi(context);
+    const admin = bdd.user({ orgRole: "org:admin" });
+    const rand = randomUUID().replace(/-/g, "").slice(0, 8);
+    const prefixTemplate = `https://{{variables.subdomain}}.${rand}.test/v1/`;
+    const apiKeyField = {
+      key: "api_key",
+      label: "API key",
+      kind: "secret" as const,
+      required: true,
+    };
+    const subdomainField = {
+      key: "subdomain",
+      label: "Subdomain",
+      kind: "variable" as const,
+      required: true,
+    };
+
+    const connector = await connectorsApi.createCustomConnector(admin, {
+      displayName: "BDD Delayed Old Value API",
+      prefixTemplates: [prefixTemplate],
+      fields: [apiKeyField, subdomainField],
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{secrets.api_key}}",
+        },
+      ],
+      queryInjections: [],
+    });
+    await connectorsApi.setCustomConnectorValues(admin, connector.id, [
+      { key: "api_key", kind: "secret", value: "old-api-key" },
+      { key: "subdomain", kind: "variable", value: "acme" },
+    ]);
+
+    await connectorsApi.updateCustomConnector(admin, connector.id, {
+      displayName: "BDD Delayed Old Value API",
+      prefixTemplates: [prefixTemplate],
+      fields: [subdomainField],
+      headerInjections: [],
+      queryInjections: [
+        { name: "tenant", valueTemplate: "{{variables.subdomain}}" },
+      ],
+    });
+
+    await connectorsApi.updateCustomConnector(admin, connector.id, {
+      displayName: "BDD Delayed Old Value API",
+      prefixTemplates: [prefixTemplate],
+      fields: [apiKeyField, subdomainField],
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{secrets.api_key}}",
+        },
+      ],
+      queryInjections: [],
+    });
+
+    await insertOldCustomConnectorValue({
+      connectorId: connector.id,
+      orgId: admin.orgId,
+      userId: admin.userId,
+      kind: "secret",
+      key: "api_key",
+      encryptedValue: "delayed-old-api-key",
+    });
+
+    const listed = await connectorsApi.listCustomConnectors(admin);
+    expect(
+      listed.find((candidate) => {
+        return candidate.id === connector.id;
+      }),
+    ).toMatchObject({
       connected: false,
       configuredFieldKeys: ["subdomain"],
       missingRequiredFields: ["api_key"],

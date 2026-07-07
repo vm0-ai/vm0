@@ -4,6 +4,7 @@ import {
   varchar,
   text,
   jsonb,
+  integer,
   timestamp,
   uniqueIndex,
   index,
@@ -62,6 +63,7 @@ export const orgCustomConnectors = pgTable(
       .notNull()
       .default(sql`'[]'::jsonb`)
       .$type<OrgCustomConnectorQueryInjection[]>(),
+    definitionVersion: integer("definition_version").default(0).notNull(),
     createdBy: text("created_by").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),

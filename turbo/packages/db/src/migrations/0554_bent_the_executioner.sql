@@ -1,0 +1,2 @@
+ALTER TABLE "org_custom_connector_values" ADD COLUMN "definition_version" integer DEFAULT 0 NOT NULL;--> statement-breakpoint
+ALTER TABLE "org_custom_connectors" ADD COLUMN "definition_version" integer DEFAULT 0 NOT NULL;

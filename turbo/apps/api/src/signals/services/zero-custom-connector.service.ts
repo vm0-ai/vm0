@@ -63,6 +63,7 @@ interface CustomConnectorRow {
   readonly fields: readonly CustomConnectorField[];
   readonly headerInjections: readonly CustomConnectorHeaderInjection[];
   readonly queryInjections: readonly CustomConnectorQueryInjection[];
+  readonly definitionVersion: number;
   readonly createdBy: string;
   readonly createdAt: Date;
   readonly updatedAt: Date;
@@ -90,6 +91,7 @@ interface ValueMarker {
   readonly connectorId: string;
   readonly kind: CustomConnectorFieldKind;
   readonly key: string;
+  readonly definitionVersion: number;
 }
 
 interface StoredValueRow extends ValueMarker {
@@ -111,6 +113,7 @@ interface ValueMarkerRow {
   readonly connectorId: string;
   readonly kind: string;
   readonly key: string;
+  readonly definitionVersion: number;
 }
 
 type FeatureSwitchContextArg = Parameters<typeof decryptStoredSecretValue>[1];
@@ -289,7 +292,12 @@ function valueMarkersFromRows(
       return row.kind === "secret" || row.kind === "variable";
     })
     .map((row) => {
-      return { connectorId: row.connectorId, kind: row.kind, key: row.key };
+      return {
+        connectorId: row.connectorId,
+        kind: row.kind,
+        key: row.key,
+        definitionVersion: row.definitionVersion,
+      };
     });
 }
 
@@ -435,7 +443,10 @@ export function serialiseCustomConnector(args: {
   readonly valueMarkers: readonly ValueMarker[];
 }): CustomConnectorResponse {
   const markers = args.valueMarkers.filter((marker) => {
-    return marker.connectorId === args.row.id;
+    return (
+      marker.connectorId === args.row.id &&
+      marker.definitionVersion === args.row.definitionVersion
+    );
   });
   const missingRequiredFields = computeMissingRequiredFields({
     fields: args.row.fields,
@@ -1006,6 +1017,7 @@ async function loadConnectorValueMarkers(args: {
       connectorId: orgCustomConnectorValues.connectorId,
       kind: orgCustomConnectorValues.kind,
       key: orgCustomConnectorValues.key,
+      definitionVersion: orgCustomConnectorValues.definitionVersion,
     })
     .from(orgCustomConnectorValues)
     .where(
@@ -1031,6 +1043,7 @@ async function loadConnectorValueMarkersForConnector(args: {
       connectorId: orgCustomConnectorValues.connectorId,
       kind: orgCustomConnectorValues.kind,
       key: orgCustomConnectorValues.key,
+      definitionVersion: orgCustomConnectorValues.definitionVersion,
     })
     .from(orgCustomConnectorValues)
     .where(
@@ -1091,6 +1104,29 @@ function stringArraysEqual(
   );
 }
 
+function fieldMarkerKeys(
+  fields: readonly CustomConnectorField[],
+): readonly string[] {
+  return fields
+    .map((field) => {
+      return customConnectorValueMarkerKey(field);
+    })
+    .sort();
+}
+
+function connectorValueScopeChanged(args: {
+  readonly existing: CustomConnectorRow;
+  readonly next: ValidatedDefinition;
+}): boolean {
+  return (
+    !stringArraysEqual(
+      fieldMarkerKeys(args.existing.fields),
+      fieldMarkerKeys(args.next.fields),
+    ) ||
+    !stringArraysEqual(args.existing.prefixTemplates, args.next.prefixTemplates)
+  );
+}
+
 async function deleteStoredConnectorPrefixVariableValues(
   tx: DbTransaction,
   args: {
@@ -1118,6 +1154,28 @@ async function deleteStoredConnectorPrefixVariableValues(
         ),
       );
   }
+}
+
+async function retagStoredConnectorValues(
+  tx: DbTransaction,
+  args: {
+    readonly orgId: string;
+    readonly connectorId: string;
+    readonly definitionVersion: number;
+  },
+): Promise<void> {
+  await tx
+    .update(orgCustomConnectorValues)
+    .set({
+      definitionVersion: args.definitionVersion,
+      updatedAt: nowDate(),
+    })
+    .where(
+      and(
+        eq(orgCustomConnectorValues.connectorId, args.connectorId),
+        eq(orgCustomConnectorValues.orgId, args.orgId),
+      ),
+    );
 }
 
 export const createCustomConnector$ = command(
@@ -1197,6 +1255,12 @@ async function updateCustomConnectorDefinitionRow(
     return null;
   }
   const existingConnector = normaliseCustomConnectorRow(existing);
+  const nextDefinitionVersion = connectorValueScopeChanged({
+    existing: existingConnector,
+    next: args.definition,
+  })
+    ? existingConnector.definitionVersion + 1
+    : existingConnector.definitionVersion;
   await deleteUndeclaredConnectorValues(tx, {
     orgId: args.orgId,
     connectorId: args.connectorId,
@@ -1221,6 +1285,13 @@ async function updateCustomConnectorDefinitionRow(
       prefixTemplates: args.definition.prefixTemplates,
     });
   }
+  if (nextDefinitionVersion !== existingConnector.definitionVersion) {
+    await retagStoredConnectorValues(tx, {
+      orgId: args.orgId,
+      connectorId: args.connectorId,
+      definitionVersion: nextDefinitionVersion,
+    });
+  }
   const [updated] = await tx
     .update(orgCustomConnectors)
     .set({
@@ -1232,6 +1303,7 @@ async function updateCustomConnectorDefinitionRow(
       fields: [...args.definition.fields],
       headerInjections: [...args.definition.headerInjections],
       queryInjections: [...args.definition.queryInjections],
+      definitionVersion: nextDefinitionVersion,
       updatedAt: nowDate(),
     })
     .where(
@@ -1543,6 +1615,7 @@ async function upsertEncryptedConnectorValue(
     readonly orgId: string;
     readonly userId: string;
     readonly connectorId: string;
+    readonly definitionVersion: number;
     readonly value: EncryptedValueInput;
   },
 ): Promise<void> {
@@ -1554,6 +1627,7 @@ async function upsertEncryptedConnectorValue(
       orgId: args.orgId,
       kind: args.value.kind,
       key: args.value.key,
+      definitionVersion: args.definitionVersion,
       encryptedValue: args.value.encryptedValue,
     })
     .onConflictDoUpdate({
@@ -1564,6 +1638,7 @@ async function upsertEncryptedConnectorValue(
         orgCustomConnectorValues.key,
       ],
       set: {
+        definitionVersion: args.definitionVersion,
         encryptedValue: args.value.encryptedValue,
         updatedAt: nowDate(),
       },
@@ -1576,6 +1651,7 @@ async function upsertEncryptedConnectorValues(
     readonly orgId: string;
     readonly userId: string;
     readonly connectorId: string;
+    readonly definitionVersion: number;
     readonly values: readonly EncryptedValueInput[];
   },
 ): Promise<void> {
@@ -1584,6 +1660,7 @@ async function upsertEncryptedConnectorValues(
       orgId: args.orgId,
       userId: args.userId,
       connectorId: args.connectorId,
+      definitionVersion: args.definitionVersion,
       value,
     });
   }
@@ -1651,6 +1728,7 @@ export const setCustomConnectorValues$ = command(
           orgId: args.orgId,
           userId: args.userId,
           connectorId: args.connectorId,
+          definitionVersion: lockedConnector.definitionVersion,
           values: encryptedValues,
         });
         const markers = await loadConnectorValueMarkersForConnector({
@@ -1752,6 +1830,7 @@ export const setCustomConnectorLegacySecretValue$ = command(
           }
           await upsertEncryptedConnectorValue(tx, {
             ...args,
+            definitionVersion: lockedConnector.definitionVersion,
             value: {
               kind: "secret",
               key: LEGACY_SECRET_KEY,
@@ -2097,12 +2176,18 @@ async function loadCustomConnectorRuntimeDataSnapshot(
   const connectorIds = normalisedConnectors.map((connector) => {
     return connector.id;
   });
+  const definitionVersionByConnectorId = new Map(
+    normalisedConnectors.map((connector) => {
+      return [connector.id, connector.definitionVersion] as const;
+    }),
+  );
   const valueRows = await measure("connectorValueRows", async () => {
     return await db
       .select({
         connectorId: orgCustomConnectorValues.connectorId,
         kind: orgCustomConnectorValues.kind,
         key: orgCustomConnectorValues.key,
+        definitionVersion: orgCustomConnectorValues.definitionVersion,
         encryptedValue: orgCustomConnectorValues.encryptedValue,
       })
       .from(orgCustomConnectorValues)
@@ -2119,11 +2204,18 @@ async function loadCustomConnectorRuntimeDataSnapshot(
     if (row.kind !== "secret" && row.kind !== "variable") {
       continue;
     }
+    if (
+      row.definitionVersion !==
+      definitionVersionByConnectorId.get(row.connectorId)
+    ) {
+      continue;
+    }
     const values = valuesByConnectorId.get(row.connectorId) ?? [];
     values.push({
       connectorId: row.connectorId,
       kind: row.kind,
       key: row.key,
+      definitionVersion: row.definitionVersion,
       encryptedValue: row.encryptedValue,
     });
     valuesByConnectorId.set(row.connectorId, values);
@@ -2244,6 +2336,7 @@ async function insertProposalConnectorValues(
     orgId: args.orgId,
     userId: args.userId,
     connectorId: connector.id,
+    definitionVersion: connector.definitionVersion,
     values: encryptedValues,
   });
   const markers = await loadConnectorValueMarkersForConnector({
@@ -2277,6 +2370,7 @@ async function updateProposalConnectorValues(
     orgId: args.orgId,
     userId: args.userId,
     connectorId: connector.id,
+    definitionVersion: connector.definitionVersion,
     values: encryptedValues,
   });
   const markers = await loadConnectorValueMarkersForConnector({
