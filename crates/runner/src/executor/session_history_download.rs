@@ -376,6 +376,19 @@ impl SessionHistoryProbeGuard {
     }
 }
 
+impl Drop for SessionHistoryProbeGuardInner {
+    fn drop(&mut self) {
+        let key = self
+            .key
+            .get_mut()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .take();
+        if let Some(key) = key {
+            self.probe.finish(key);
+        }
+    }
+}
+
 impl SessionHistoryMaterializer {
     pub(crate) fn start_cancellable(
         http: &HttpClient,
@@ -465,11 +478,11 @@ impl SessionHistoryMaterializer {
                 let started_at = *started_at;
                 let metadata = *metadata;
                 if cancel.is_cancelled() {
-                    finish_session_history_probe(probe_registration);
                     if let Some(task) = task.take() {
                         task.abort();
                         let _ = task.await;
                     }
+                    finish_session_history_probe(probe_registration);
                     return SessionHistoryDownloadTaskResult::cancelled(started_at, metadata)
                         .into_materialization();
                 }
@@ -545,14 +558,13 @@ impl SessionHistoryDownloadTaskResult {
 impl Drop for SessionHistoryMaterializer {
     fn drop(&mut self) {
         if let SessionHistoryMaterializerState::Downloading {
-            probe_registration,
-            task: Some(task),
-            ..
+            task: Some(task), ..
         } = &mut self.state
         {
-            finish_session_history_probe(probe_registration);
             // Dropping means no owner will call `finish`. Abort the task so an
             // abandoned prestarted download does not continue in the background.
+            // Probe cleanup is handled by explicit finish paths or by the
+            // guard's drop fallback when the task future is gone.
             task.abort();
         }
     }
