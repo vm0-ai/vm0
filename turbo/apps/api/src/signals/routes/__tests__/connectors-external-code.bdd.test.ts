@@ -1,9 +1,9 @@
 /**
- * CONN-02: AWS external-code authorization sessions through public APIs.
+ * CONN-02: external-code authorization sessions through public APIs.
  *
- * The AWS connector is feature-switched (awsConnector) and enabled per test
- * actor through POST /api/zero/feature-switches. Only the AWS Sign-In token
- * exchange and STS GetCallerIdentity endpoints are mocked (MSW).
+ * Feature-switched connectors are enabled per test actor through
+ * POST /api/zero/feature-switches. External provider endpoints are mocked with
+ * MSW at the HTTP boundary.
  *
  * Not rebuilt here:
  * - The legacy corrupted-provider-state trigger (direct ciphertext UPDATE) is
@@ -15,10 +15,12 @@
  */
 
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";
 import { mockNow, now } from "../../../lib/time";
+import { server } from "../../../mocks/server";
 import {
   createBddApi,
   expectApiError,
@@ -38,6 +40,9 @@ const authOrgApi = createAuthOrgAgentsBddApi(context);
 
 const AWS_REDIRECT_URI =
   "https://us-east-1.signin.aws.amazon.com/v1/sessions/confirmation";
+const PLAYSTATION_AUTHORIZE_URL =
+  "https://ca.account.sony.com/api/authz/v3/oauth/authorize";
+const PLAYSTATION_NPSSO_URL = "https://ca.account.sony.com/api/v1/ssocookie";
 
 async function awsActor(): Promise<ApiTestUser> {
   const bdd = createBddApi(context);
@@ -49,11 +54,21 @@ async function awsActor(): Promise<ApiTestUser> {
   return actor;
 }
 
+async function playstationActor(): Promise<ApiTestUser> {
+  const bdd = createBddApi(context);
+  const actor = bdd.user();
+  context.mocks.ably.publish.mockResolvedValue(undefined);
+  await connectorsApi.updateFeatureSwitches(actor, {
+    [FeatureSwitchKey.PlaystationConnector]: true,
+  });
+  return actor;
+}
+
 function expectNoVisibleSecret(value: unknown, secret: string): void {
   expect(JSON.stringify(value)).not.toContain(secret);
 }
 
-describe("CONN-02: AWS external-code session lifecycle", () => {
+describe("CONN-02: external-code session lifecycle", () => {
   it("starts, completes, replays, and protects an AWS external-code session through public APIs", async () => {
     const provider = mockAwsExternalCodeProvider();
     const actor = await awsActor();
@@ -280,6 +295,41 @@ describe("CONN-02: AWS external-code session lifecycle", () => {
 
     await connectorsApi.deleteConnectorByType(actor, "aws");
     await connectorsApi.deleteFeatureSwitches(actor);
+  });
+
+  it("returns PlayStation-specific copy when the NPSSO token is rejected", async () => {
+    const actor = await playstationActor();
+    let authorizeRequestCount = 0;
+    server.use(
+      http.get(PLAYSTATION_AUTHORIZE_URL, ({ request }) => {
+        authorizeRequestCount += 1;
+        expect(request.headers.get("cookie")).toBe("npsso=bad-npsso");
+        return new HttpResponse(null, { status: 401 });
+      }),
+    );
+
+    const session = await connectorsApi.startExternalCode(
+      actor,
+      "playstation",
+      "api",
+    );
+    expect(session.authorizationUrl).toBe(PLAYSTATION_NPSSO_URL);
+
+    const rejected = await connectorsApi.requestExternalCodeComplete(
+      actor,
+      "playstation",
+      {
+        sessionId: session.sessionId,
+        sessionToken: session.sessionToken,
+        code: " bad-npsso ",
+      },
+      [400],
+    );
+    expectApiError(rejected.body);
+    expect(rejected.body.error.message).toBe(
+      "NPSSO token was rejected. Check it and try again.",
+    );
+    expect(authorizeRequestCount).toBe(1);
   });
 
   it("rejects completion after the AWS connector switch is disabled", async () => {
