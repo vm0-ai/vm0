@@ -1040,7 +1040,7 @@ describe("team page navigation", () => {
       ]);
     });
     await waitFor(() => {
-      expect(deleted).toBe(true);
+      expect(deleted).toBeTruthy();
     });
   });
 

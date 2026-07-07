@@ -59,6 +59,10 @@ import {
   setSettingsVisibility$,
   agentDemoteConfirmOpen$,
   setAgentDemoteConfirmOpen$,
+  agentDeleteCopyChoices$,
+  setAgentDeleteCopyChoices$,
+  agentDeleteCopying$,
+  setAgentDeleteCopying$,
 } from "../../signals/zero-page/settings/settings-tab.ts";
 
 export interface AgentDeleteWorkflow {
@@ -195,8 +199,10 @@ export function ZeroSettingsTab({
 
   // Delete reconcile: each bound workflow maps to a Select value that is either
   // DELETE_WITH_AGENT (default) or a target agent id to copy it onto first.
-  const [copyChoices, setCopyChoices] = useState<Record<string, string>>({});
-  const [copying, setCopying] = useState(false);
+  const copyChoices = useGet(agentDeleteCopyChoices$);
+  const setCopyChoices = useSet(setAgentDeleteCopyChoices$);
+  const copying = useGet(agentDeleteCopying$);
+  const setCopying = useSet(setAgentDeleteCopying$);
   const canReconcile =
     deleteWorkflows.length > 0 &&
     deleteCopyTargets.length > 0 &&
@@ -206,20 +212,28 @@ export function ZeroSettingsTab({
     if (!onDelete) {
       return;
     }
-    const rescues = Object.entries(copyChoices).filter(([, target]) => {
-      return target !== DELETE_WITH_AGENT;
-    });
+    // Scope rescues to this agent's workflows so stale choices from a
+    // previously opened delete dialog never trigger an unrelated copy.
+    const currentWorkflowIds = new Set(
+      deleteWorkflows.map((workflow) => {
+        return workflow.id;
+      }),
+    );
+    const rescues = Object.entries(copyChoices).filter(
+      ([workflowId, target]) => {
+        return (
+          target !== DELETE_WITH_AGENT && currentWorkflowIds.has(workflowId)
+        );
+      },
+    );
     detach(
       (async () => {
         if (rescues.length > 0 && onCopyWorkflowBeforeDelete) {
           setCopying(true);
-          try {
-            for (const [workflowId, toAgentId] of rescues) {
-              await onCopyWorkflowBeforeDelete(workflowId, toAgentId);
-            }
-          } finally {
-            setCopying(false);
+          for (const [workflowId, toAgentId] of rescues) {
+            await onCopyWorkflowBeforeDelete(workflowId, toAgentId);
           }
+          setCopying(false);
         }
         await deleteAgentFn(onDelete, pageSignal);
       })(),
@@ -436,8 +450,9 @@ export function ZeroSettingsTab({
                             Keep any of these workflows?
                           </p>
                           <p className="text-xs text-muted-foreground">
-                            Copy a workflow to another agent to keep it. Anything
-                            left as &quot;Delete with agent&quot; is removed.
+                            Copy a workflow to another agent to keep it.
+                            Anything left as &quot;Delete with agent&quot; is
+                            removed.
                           </p>
                           <div className="flex flex-col gap-2">
                             {deleteWorkflows.map((workflow) => {
@@ -454,11 +469,13 @@ export function ZeroSettingsTab({
                                   </span>
                                   <Select
                                     value={
-                                      copyChoices[workflow.id] ?? DELETE_WITH_AGENT
+                                      copyChoices[workflow.id] ??
+                                      DELETE_WITH_AGENT
                                     }
                                     onValueChange={(value) => {
-                                      setCopyChoices((prev) => {
-                                        return { ...prev, [workflow.id]: value };
+                                      setCopyChoices({
+                                        ...copyChoices,
+                                        [workflow.id]: value,
                                       });
                                     }}
                                   >
