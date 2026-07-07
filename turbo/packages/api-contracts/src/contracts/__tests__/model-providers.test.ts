@@ -142,10 +142,10 @@ describe("model-first canonical catalog", () => {
     expect(isLimitedFree1RestrictedRunModel("anthropic/claude-sonnet-5")).toBe(
       true,
     );
-    expect(isLimitedFree1RestrictedRunModel("claude-sonnet-4-6")).toBe(true);
+    expect(isLimitedFree1RestrictedRunModel("claude-sonnet-4-6")).toBe(false);
     expect(
       isLimitedFree1RestrictedRunModel("anthropic/claude-sonnet-4.6"),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       isLimitedFree1RestrictedRunModel("anthropic/claude-sonnet-4.5"),
     ).toBe(true);

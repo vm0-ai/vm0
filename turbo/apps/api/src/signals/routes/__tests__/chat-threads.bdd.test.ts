@@ -899,7 +899,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       "gpt-5.5",
       "gpt-5.4",
       "gpt-5.4-mini",
-      "claude-sonnet-4-6",
+      "claude-fable-5",
       "claude-sonnet-5",
     ] as const) {
       const restrictedSelection = await chat.requestUpdateThreadModelSelection(

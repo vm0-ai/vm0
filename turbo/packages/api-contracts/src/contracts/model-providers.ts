@@ -335,6 +335,10 @@ export const VM0_MODEL_ALIAS_TO_MODEL = {
 const VM0_MODEL_ALIAS_LOOKUP: Readonly<Record<string, string>> =
   VM0_MODEL_ALIAS_TO_MODEL;
 
+const LIMITED_FREE_1_ALLOWED_RUN_MODELS: ReadonlySet<string> = new Set([
+  "claude-sonnet-4-6",
+]);
+
 export function normalizeVm0ModelId(model: string): string {
   return VM0_MODEL_ALIAS_LOOKUP[model] ?? model;
 }
@@ -347,6 +351,9 @@ export function isLimitedFree1RestrictedRunModel(
   }
   const normalized = model.trim().toLowerCase();
   const canonicalModel = normalizeVm0ModelId(normalized);
+  if (LIMITED_FREE_1_ALLOWED_RUN_MODELS.has(canonicalModel)) {
+    return false;
+  }
   const vendor = VM0_MODEL_TO_PROVIDER[canonicalModel]?.vendor;
 
   return (
