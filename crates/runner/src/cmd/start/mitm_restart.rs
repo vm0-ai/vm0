@@ -134,6 +134,7 @@ mod tests {
                 .path()
                 .join("builtin-firewall-catalog-cache.json"),
             api_url: None,
+            client_session_id: "runner-session-test".to_string(),
         })
         .await
         .unwrap();

@@ -1,9 +1,15 @@
 use crate::support::*;
+use api_contracts::generated::constants::platform_client::headers::{
+    PLATFORM_CLIENT_REQUEST_ID_HEADER, PLATFORM_CLIENT_SESSION_ID_HEADER,
+    PLATFORM_CLIENT_TYPE_HEADER, PLATFORM_CLIENT_VERSION_HEADER,
+};
 use guest_agent::error::AgentError;
 use guest_agent::masker::SecretMasker;
 use httpmock::prelude::*;
 use serde_json::json;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use uuid::Uuid;
 
 // =========================================================================
 // post_json core
@@ -259,12 +265,82 @@ async fn post_json_sends_vercel_bypass_header() {
 }
 
 #[tokio::test]
+async fn post_json_sends_platform_client_headers() {
+    let api = SharedApiMock::new().await;
+    let server = api.server();
+    let request_ids = Arc::new(Mutex::new(Vec::new()));
+    let request_ids_for_mock = Arc::clone(&request_ids);
+
+    let mock = server.mock(|when, then| {
+        when.method(POST).path("/test/client-headers");
+        then.respond_with(move |req| {
+            let request_id = req
+                .headers_vec()
+                .iter()
+                .find(|(key, _)| key.eq_ignore_ascii_case(PLATFORM_CLIENT_REQUEST_ID_HEADER))
+                .map(|(_, value)| value.as_str());
+            let Some(request_id) = request_id else {
+                return http_status(400);
+            };
+            if Uuid::parse_str(request_id).is_err() {
+                return http_status(400);
+            }
+            if !request_header_eq(
+                req,
+                PLATFORM_CLIENT_VERSION_HEADER,
+                env!("CARGO_PKG_VERSION"),
+            ) || !request_header_eq(req, PLATFORM_CLIENT_TYPE_HEADER, "GuestAgent")
+                || !request_header_eq(req, PLATFORM_CLIENT_SESSION_ID_HEADER, TEST_RUN_ID)
+            {
+                return http_status(400);
+            }
+
+            request_ids_for_mock
+                .lock()
+                .expect("request ids lock should not be poisoned")
+                .push(request_id.to_string());
+            http_status(200)
+        });
+    });
+
+    let url = api.url("/test/client-headers");
+    let first = http_client!().post_json(&url, &json!({}), 1).await;
+    let second = http_client!().post_json(&url, &json!({}), 1).await;
+
+    mock.assert_calls_async(2).await;
+    assert!(first.is_ok());
+    assert!(second.is_ok());
+    let request_ids = request_ids
+        .lock()
+        .expect("request ids lock should not be poisoned");
+    assert_eq!(request_ids.len(), 2);
+    assert_ne!(request_ids[0], request_ids[1]);
+}
+
+#[test]
+fn with_api_config_rejects_invalid_client_session_header() {
+    let result = guest_agent::http::HttpClient::with_api_config(
+        "http://127.0.0.1",
+        "test-token",
+        "",
+        "bad\nrun",
+        Duration::ZERO,
+    );
+
+    let Err(AgentError::Http(message)) = result else {
+        panic!("expected invalid client session id error");
+    };
+    assert!(message.contains("invalid client session id"));
+}
+
+#[tokio::test]
 async fn post_json_uses_explicit_api_config_without_env_api_url() {
     let server = MockServer::start();
     let http = guest_agent::http::HttpClient::with_api_config(
         server.base_url(),
         "explicit-token",
         "explicit-bypass",
+        "explicit-run",
         Duration::ZERO,
     )
     .expect("build explicit API client");
@@ -314,6 +390,7 @@ async fn send_event_uses_explicit_api_config_route_instead_of_env_route()
         explicit_server.base_url(),
         "explicit-token",
         "",
+        "explicit-run",
         Duration::ZERO,
     )?;
     let config = shared_guest_config()?;

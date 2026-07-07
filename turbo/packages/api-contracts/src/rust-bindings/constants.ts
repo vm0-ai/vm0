@@ -3,6 +3,12 @@ import {
   MODEL_PROVIDER_FIREWALL_CONFIGS,
 } from "../contracts/model-providers";
 import {
+  PLATFORM_CLIENT_REQUEST_ID_HEADER,
+  PLATFORM_CLIENT_SESSION_ID_HEADER,
+  PLATFORM_CLIENT_TYPE_HEADER,
+  PLATFORM_CLIENT_VERSION_HEADER,
+} from "../contracts/platform-client-headers";
+import {
   CANONICAL_GUEST_HOME_DIR,
   CANONICAL_WORKING_DIR,
   NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX,
@@ -65,6 +71,7 @@ const modelProviderEnvPlaceholderModule = [
   "model_provider_env",
   "placeholders",
 ] as const;
+const platformClientHeadersModule = ["platform_client", "headers"] as const;
 const runnerPathsModule = ["runners", "paths"] as const;
 
 export const rustConstantRootDoc = [
@@ -99,6 +106,18 @@ export const rustConstantModuleDocs = [
     rustDoc: [
       "Fake model-provider environment placeholder marker values.",
       "These values are not secrets and are not usable credentials.",
+    ],
+  },
+  {
+    rustModulePath: ["platform_client"],
+    rustDoc: [
+      "Platform client request header contract constants shared by TypeScript and Rust.",
+    ],
+  },
+  {
+    rustModulePath: platformClientHeadersModule,
+    rustDoc: [
+      "HTTP header names used to identify vm0 platform clients in API request logs.",
     ],
   },
   {
@@ -153,6 +172,34 @@ function rustU64(value: number): RustConstantValue {
 }
 
 export const rustConstantBindings = [
+  {
+    rustModulePath: platformClientHeadersModule,
+    rustConstName: "PLATFORM_CLIENT_VERSION_HEADER",
+    value: rustString(PLATFORM_CLIENT_VERSION_HEADER),
+    rustDoc: ["HTTP header carrying the sending vm0 client component version."],
+  },
+  {
+    rustModulePath: platformClientHeadersModule,
+    rustConstName: "PLATFORM_CLIENT_TYPE_HEADER",
+    value: rustString(PLATFORM_CLIENT_TYPE_HEADER),
+    rustDoc: ["HTTP header carrying the sending vm0 client component type."],
+  },
+  {
+    rustModulePath: platformClientHeadersModule,
+    rustConstName: "PLATFORM_CLIENT_SESSION_ID_HEADER",
+    value: rustString(PLATFORM_CLIENT_SESSION_ID_HEADER),
+    rustDoc: [
+      "HTTP header carrying the sending vm0 client session identifier.",
+    ],
+  },
+  {
+    rustModulePath: platformClientHeadersModule,
+    rustConstName: "PLATFORM_CLIENT_REQUEST_ID_HEADER",
+    value: rustString(PLATFORM_CLIENT_REQUEST_ID_HEADER),
+    rustDoc: [
+      "HTTP header carrying the per-request vm0 client request identifier.",
+    ],
+  },
   {
     rustModulePath: ["runners"],
     rustConstName: "NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX",

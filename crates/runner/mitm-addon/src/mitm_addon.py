@@ -55,6 +55,7 @@ import http_local_responses
 import http_network_log
 import matching
 import network_log_sanitization
+import platform_api
 import public_destination
 import registry
 import request_streaming
@@ -388,6 +389,18 @@ def load(loader: Loader) -> None:
         help="Runner-generated usage-pending state id",
     )
     loader.add_option(
+        name="vm0_client_session_id",
+        typespec=str,
+        default="",
+        help="Runner-generated client session id for platform API requests",
+    )
+    loader.add_option(
+        name="vm0_client_version",
+        typespec=str,
+        default="",
+        help="Runner package version for platform API request attribution",
+    )
+    loader.add_option(
         name="vm0_usage_flush_interval_seconds",
         typespec=float,
         default=usage.DEFAULT_FLUSH_INTERVAL_SECONDS,
@@ -396,6 +409,10 @@ def load(loader: Loader) -> None:
 
 
 def configure(updated: set[str]) -> None:
+    platform_api.configure_client_headers(
+        client_session_id=ctx.options.vm0_client_session_id,
+        client_version=ctx.options.vm0_client_version,
+    )
     if "vm0_usage_flush_interval_seconds" in updated:
         usage.configure_usage_buffer(
             flush_interval_seconds=ctx.options.vm0_usage_flush_interval_seconds

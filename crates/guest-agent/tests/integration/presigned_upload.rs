@@ -1,4 +1,8 @@
 use crate::support::*;
+use api_contracts::generated::constants::platform_client::headers::{
+    PLATFORM_CLIENT_REQUEST_ID_HEADER, PLATFORM_CLIENT_SESSION_ID_HEADER,
+    PLATFORM_CLIENT_TYPE_HEADER, PLATFORM_CLIENT_VERSION_HEADER,
+};
 use bytes::Bytes;
 use httpmock::prelude::*;
 use std::sync::{
@@ -65,6 +69,10 @@ async fn put_presigned_does_not_send_api_headers() {
         then.respond_with(|req| {
             if request_header_absent(req, "authorization")
                 && request_header_absent(req, "x-vercel-protection-bypass")
+                && request_header_absent(req, PLATFORM_CLIENT_VERSION_HEADER)
+                && request_header_absent(req, PLATFORM_CLIENT_TYPE_HEADER)
+                && request_header_absent(req, PLATFORM_CLIENT_SESSION_ID_HEADER)
+                && request_header_absent(req, PLATFORM_CLIENT_REQUEST_ID_HEADER)
             {
                 http_status(200)
             } else {

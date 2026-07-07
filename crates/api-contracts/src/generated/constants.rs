@@ -59,6 +59,24 @@ pub mod model_provider_env {
     }
 }
 
+/// Platform client request header contract constants shared by TypeScript and Rust.
+pub mod platform_client {
+    /// HTTP header names used to identify vm0 platform clients in API request logs.
+    pub mod headers {
+        /// HTTP header carrying the per-request vm0 client request identifier.
+        pub const PLATFORM_CLIENT_REQUEST_ID_HEADER: &str = "X-Client-Request-Id";
+
+        /// HTTP header carrying the sending vm0 client session identifier.
+        pub const PLATFORM_CLIENT_SESSION_ID_HEADER: &str = "X-Client-Session-Id";
+
+        /// HTTP header carrying the sending vm0 client component type.
+        pub const PLATFORM_CLIENT_TYPE_HEADER: &str = "X-Client-Type";
+
+        /// HTTP header carrying the sending vm0 client component version.
+        pub const PLATFORM_CLIENT_VERSION_HEADER: &str = "X-Client-Version";
+    }
+}
+
 /// Runner contract constants shared by TypeScript and Rust.
 pub mod runners {
     /// Maximum connector refs accepted by the runner network policy refresh endpoint.

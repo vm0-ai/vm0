@@ -1276,7 +1276,14 @@ mod tests {
     }
 
     fn test_http_client(server: &MockServer) -> HttpClient {
-        HttpClient::with_api_config(server.base_url(), "test-token", "", Duration::ZERO).unwrap()
+        HttpClient::with_api_config(
+            server.base_url(),
+            "test-token",
+            "",
+            "test-run-001",
+            Duration::ZERO,
+        )
+        .unwrap()
     }
 
     fn test_guest_config(server: &MockServer, prompt: Option<&str>) -> env::GuestConfig {

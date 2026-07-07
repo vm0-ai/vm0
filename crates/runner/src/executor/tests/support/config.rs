@@ -29,6 +29,7 @@ pub(in crate::executor::tests) async fn test_executor_config(dir: &Path) -> Exec
         http: crate::http::HttpClient::new(HttpClientConfig {
             api_url: "http://localhost:9999".into(),
             vercel_bypass: None,
+            client_session_id: "runner-session-test".to_string(),
         })
         .unwrap(),
         log_paths: LogPaths::new(log_dir),
