@@ -177,6 +177,16 @@ pub(crate) async fn run_ignored_child_test(
     env: &[(&str, &str)],
     timeout: Duration,
 ) {
+    assert!(
+        !child_test_name.is_empty(),
+        "ignored child test name must not be empty"
+    );
+    assert!(!env.is_empty(), "ignored child test must have an env guard");
+    assert!(
+        !timeout.is_zero(),
+        "ignored child test timeout must not be zero"
+    );
+
     let mut command =
         tokio::process::Command::new(std::env::current_exe().expect("resolve current test binary"));
     command
