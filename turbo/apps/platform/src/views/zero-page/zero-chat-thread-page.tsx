@@ -93,6 +93,7 @@ import type {
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
+  findWebsiteTemplateItem,
   findVideoTemplateItem,
   findWorkflowTemplateItem,
   r2ImageTransformUrl,
@@ -6335,6 +6336,12 @@ function generationTemplateLabel(
       item?.title ?? formatSelectionIdLabel(value.selection.illustrationStyleId)
     );
   }
+  if (value.type === "website") {
+    const item = findWebsiteTemplateItem(value.selection.websiteTemplateId);
+    return (
+      item?.title ?? formatSelectionIdLabel(value.selection.websiteTemplateId)
+    );
+  }
   const item = PRESENTATION_TEMPLATE_PICKER_ITEMS.find((candidate) => {
     return candidate.templateId === value.selection.templateId;
   });
@@ -6355,6 +6362,9 @@ function generationTemplateTypeLabel(
   }
   if (value.type === "workflow") {
     return "Workflow";
+  }
+  if (value.type === "website") {
+    return "Website";
   }
   return "Presentation";
 }
