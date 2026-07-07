@@ -792,7 +792,7 @@ function renderRunnerRuntimeLoaderFile(args: {
 
 export const RUNNER_RUNTIME_FIREWALL_CATALOG_DIGEST = ${JSON.stringify(args.catalogDigest)};
 export const RUNNER_RUNTIME_FIREWALL_CATALOG_VERSION = ${JSON.stringify(args.catalogVersion)};
-export const RUNNER_RUNTIME_FIREWALL_NAMES = ${stableJson(args.entries.map((entry) => entry.name))} as const;
+export const RUNNER_RUNTIME_FIREWALL_NAMES = Object.freeze(${stableJson(args.entries.map((entry) => entry.name))});
 
 ${renderLazyLoaderRecord({
   constName: "RUNNER_RUNTIME_FIREWALL_LOADERS",

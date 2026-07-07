@@ -816,6 +816,9 @@ describe("firewall metadata generator", () => {
       expect(loaderSource).toContain('["model-provider:openai-api-key"]');
       expect(loaderSource).toContain("RUNNER_RUNTIME_FIREWALL_CATALOG_DIGEST");
       expect(loaderSource).toContain("RUNNER_RUNTIME_FIREWALL_NAMES");
+      expect(loaderSource).toContain(
+        "export const RUNNER_RUNTIME_FIREWALL_NAMES = Object.freeze(",
+      );
 
       const googleDriveRuntimeSource = fs.readFileSync(
         path.resolve(

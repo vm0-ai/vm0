@@ -412,6 +412,7 @@ describe("firewall runtime surface", () => {
     expect(RUNNER_RUNTIME_FIREWALL_CATALOG_VERSION).toMatch(
       /^sha256-[a-f0-9]{12}$/,
     );
+    expect(Object.isFrozen(RUNNER_RUNTIME_FIREWALL_NAMES)).toBe(true);
     expect(RUNNER_RUNTIME_FIREWALL_NAMES).toContain("github");
     expect(RUNNER_RUNTIME_FIREWALL_NAMES).toContain(
       "model-provider:openai-api-key",
