@@ -89,7 +89,7 @@ describe("release-please API deployment graph", () => {
     const apiBuildJob = workflowJobBlock(workflow, "build-api-production");
 
     expect(apiBuildJob).toContain(
-      "if: $" + "{{ needs.release-please.outputs.releases_created == 'true' }}",
+      `if: \${{ needs.release-please.outputs.releases_created == 'true' }}`,
     );
     expect(apiBuildJob).not.toContain("api_deploy_required");
 
