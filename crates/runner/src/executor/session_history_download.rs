@@ -1087,6 +1087,72 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn codex_materializer_rejects_zstd_hash_mismatch() {
+        let body =
+            b"{\"type\":\"session_meta\",\"payload\":{\"timestamp\":\"2026-07-02T10:00:00Z\"}}\n";
+        let compressed = zstd_bytes(body);
+        let encoded_size = compressed.len() as u64;
+        let session = zstd_ref_session(
+            serve_once("200 OK", compressed, None).await,
+            "0".repeat(64),
+            body.len() as u64,
+            encoded_size,
+        );
+
+        let materializer =
+            start_materializer_with_framework(&session, EffectiveCliFramework::Codex);
+        let result = materializer.finish(&CancellationToken::new()).await;
+
+        match result {
+            SessionHistoryMaterialization::Failed { error, timings, .. } => {
+                assert!(
+                    error.to_string().contains("session history hash mismatch"),
+                    "unexpected error: {error}"
+                );
+                assert_phase_success(timings.request_status());
+                assert_phase_success(timings.body_read());
+                assert_phase_success(timings.validation());
+                assert_phase_failure(timings.hash_verification());
+            }
+            _ => panic!("expected failed materialization"),
+        }
+    }
+
+    #[tokio::test]
+    async fn codex_materializer_rejects_zstd_body_over_declared_raw_size() {
+        let body =
+            b"{\"type\":\"session_meta\",\"payload\":{\"timestamp\":\"2026-07-02T10:00:00Z\"}}\n";
+        let compressed = zstd_bytes(body);
+        let encoded_size = compressed.len() as u64;
+        let hash = hex::encode(Sha256::digest(body));
+        let session = zstd_ref_session(
+            serve_once("200 OK", compressed, None).await,
+            hash,
+            1,
+            encoded_size,
+        );
+
+        let materializer =
+            start_materializer_with_framework(&session, EffectiveCliFramework::Codex);
+        let result = materializer.finish(&CancellationToken::new()).await;
+
+        match result {
+            SessionHistoryMaterialization::Failed { error, timings, .. } => {
+                assert!(
+                    error
+                        .to_string()
+                        .contains("session history is too large after decompression"),
+                    "unexpected error: {error}"
+                );
+                assert_phase_success(timings.request_status());
+                assert_phase_success(timings.body_read());
+                assert_phase_failure(timings.hash_verification());
+            }
+            _ => panic!("expected failed materialization"),
+        }
+    }
+
+    #[tokio::test]
     async fn materializer_rejects_zstd_body_under_declared_encoded_size_without_content_length() {
         let body = b"{\"type\":\"init\"}\n{\"type\":\"user\",\"message\":\"hello\"}\n";
         let compressed = zstd_bytes(body);

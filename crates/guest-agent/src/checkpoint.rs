@@ -1647,6 +1647,103 @@ mod tests {
         checkpoint.assert_calls(1);
     }
 
+    #[tokio::test]
+    async fn checkpoint_falls_back_to_legacy_upload_when_prepare_rejects_reused_zstd() {
+        let server = MockServer::start();
+        let dir = tempfile::tempdir().unwrap();
+        let guest_paths = crate::paths::GuestPaths::from_runtime_dir(dir.path().join("runtime"));
+        let _files_guard = CheckpointFilesGuard::new(&guest_paths);
+        let thread_id = "019e9154-c304-70f0-adde-36efb1be1701";
+        let history =
+            b"{\"type\":\"session_meta\",\"payload\":{\"timestamp\":\"2026-07-02T10:00:00Z\"}}\n";
+        let compressed = zstd::encode_all(history.as_slice(), 0).unwrap();
+        let history_hash = hex::encode(Sha256::digest(history));
+        let home_dir = dir.path().join("home");
+        let codex_day_dir = home_dir
+            .join(".codex")
+            .join("sessions")
+            .join("2026")
+            .join("07")
+            .join("02");
+        std::fs::create_dir_all(&codex_day_dir).unwrap();
+        std::fs::write(
+            codex_day_dir.join("rollout-019e9154c30470f0adde36efb1be1701.jsonl.zst"),
+            &compressed,
+        )
+        .unwrap();
+        crate::paths::write_private(guest_paths.session_id_file(), thread_id).unwrap();
+
+        let zstd_prepare = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/checkpoints/prepare-history")
+                .json_body(json!({
+                    "runId": "checkpoint-codex-zstd-legacy-fallback",
+                    "hash": history_hash,
+                    "rawSize": history.len() as u64,
+                    "encodedSize": compressed.len() as u64,
+                    "encoding": SESSION_HISTORY_ENCODING_ZSTD,
+                }));
+            then.status(400).json_body(json!({
+                "error": "unsupported encoding",
+            }));
+        });
+        let upload_url = server.url("/test/session-history-legacy-upload");
+        let legacy_prepare = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/checkpoints/prepare-history")
+                .json_body(json!({
+                    "runId": "checkpoint-codex-zstd-legacy-fallback",
+                    "hash": history_hash,
+                    "rawSize": history.len() as u64,
+                    "encodedSize": history.len() as u64,
+                    "encoding": SESSION_HISTORY_ENCODING_IDENTITY,
+                }));
+            then.status(200).json_body(json!({
+                "presignedUrl": upload_url,
+                "encoding": SESSION_HISTORY_ENCODING_IDENTITY,
+            }));
+        });
+        let upload = server.mock(|when, then| {
+            when.method(PUT).path("/test/session-history-legacy-upload");
+            then.respond_with(move |req| session_history_upload_response(req, history));
+        });
+        let checkpoint = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/checkpoints")
+                .json_body(json!({
+                    "runId": "checkpoint-codex-zstd-legacy-fallback",
+                    "cliAgentType": "codex",
+                    "cliAgentSessionId": thread_id,
+                    "cliAgentSessionHistoryHash": history_hash,
+                }));
+            then.status(200)
+                .json_body(json!({"checkpointId": "checkpoint-codex-zstd-legacy"}));
+        });
+        let http = HttpClient::with_api_config(server.base_url(), "test-token", "", Duration::ZERO)
+            .unwrap();
+        let home_dir = home_dir.to_string_lossy().into_owned();
+        let inputs = CheckpointInputs {
+            run_id: "checkpoint-codex-zstd-legacy-fallback",
+            framework: env::Framework::Codex,
+            home_dir: &home_dir,
+            artifact_entries: &[],
+            session_id_file: guest_paths.session_id_file().into(),
+            session_history_path_file: guest_paths.session_history_path_file().into(),
+            final_session_history_identity_file: guest_paths
+                .final_session_history_identity_file()
+                .into(),
+        };
+
+        create_checkpoint_impl(&http, CheckpointMode::Success, &inputs)
+            .await
+            .unwrap();
+
+        zstd_prepare.assert_calls(1);
+        legacy_prepare.assert_calls(1);
+        upload.assert_calls(1);
+        checkpoint.assert_calls(1);
+    }
+
     #[test]
     fn recoverable_session_history_accepts_valid_jsonl() {
         let history = r#"{"type":"system"}"#.to_string() + "\n" + r#"{"type":"assistant"}"#;
