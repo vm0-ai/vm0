@@ -332,6 +332,7 @@ interface MemoryVersionSeed {
   readonly storageId: string;
   readonly versionId: string;
   readonly s3Key: string;
+  readonly fileCount?: number;
   readonly userId: string;
   readonly createdAt: Date;
 }
@@ -343,6 +344,7 @@ export const seedMemoryVersion$ = command(
       storage_id: args.storageId,
       version_id: args.versionId,
       s3_key: args.s3Key,
+      file_count: args.fileCount,
       user_id: args.userId,
       created_at: args.createdAt.toISOString(),
     });

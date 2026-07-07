@@ -175,6 +175,7 @@ async function seedVersionForAction(
     id: body.version_id,
     storageId: body.storage_id,
     s3Key: body.s3_key,
+    fileCount: body.file_count ?? 0,
     createdBy: body.user_id,
     createdAt: new Date(body.created_at),
   });

@@ -393,7 +393,7 @@ describe("POST /api/zero/integrations/slack/connect", () => {
     expect(artifactStorage?.versionS3Key).toBe(
       `${fixture.orgId}/artifact/artifact/${artifactStorage?.versionId}`,
     );
-    expect(context.mocks.s3.send).toHaveBeenCalledWith(
+    expect(context.mocks.s3.send).not.toHaveBeenCalledWith(
       expect.objectContaining({
         input: expect.objectContaining({
           Bucket: "test-user-storages",
@@ -402,7 +402,7 @@ describe("POST /api/zero/integrations/slack/connect", () => {
         }),
       }),
     );
-    expect(context.mocks.s3.send).toHaveBeenCalledWith(
+    expect(context.mocks.s3.send).not.toHaveBeenCalledWith(
       expect.objectContaining({
         input: expect.objectContaining({
           Bucket: "test-user-storages",
