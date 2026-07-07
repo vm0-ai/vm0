@@ -668,6 +668,7 @@ function ChatThreadEmojiPicker({
               label="Frequently used"
               items={FREQUENTLY_USED_EMOJI}
               onSelect={onSelect}
+              showShortcutDigits
             />
             {groups?.map((group) => {
               return (
@@ -690,17 +691,23 @@ function ChatThreadEmojiSection({
   label,
   items,
   onSelect,
+  showShortcutDigits = false,
 }: {
   label: string;
   items: ChatThreadEmojiItem[];
   onSelect: (emoji: string) => void;
+  showShortcutDigits?: boolean;
 }) {
   return (
     <div>
       <p className="px-1 pb-1 pt-2 text-xs font-medium text-muted-foreground">
         {label}
       </p>
-      <ChatThreadEmojiGrid items={items} onSelect={onSelect} />
+      <ChatThreadEmojiGrid
+        items={items}
+        onSelect={onSelect}
+        showShortcutDigits={showShortcutDigits}
+      />
     </div>
   );
 }
@@ -708,24 +715,38 @@ function ChatThreadEmojiSection({
 function ChatThreadEmojiGrid({
   items,
   onSelect,
+  showShortcutDigits = false,
 }: {
   items: ChatThreadEmojiItem[];
   onSelect: (emoji: string) => void;
+  showShortcutDigits?: boolean;
 }) {
   return (
     <div className="grid grid-cols-8 gap-0.5">
-      {items.map((item) => {
+      {items.map((item, index) => {
+        // Ctrl+Shift+1-9 set the first nine "frequently used" icons; surface a
+        // faint digit so the shortcut is discoverable without adding clutter.
+        const shortcutDigit =
+          showShortcutDigits && index < 9 ? index + 1 : null;
         return (
           <button
             key={`${item.name}-${item.emoji}`}
             type="button"
             aria-label={item.name}
-            className="flex aspect-square items-center justify-center rounded-md text-xl leading-none transition-colors hover:bg-accent"
+            className="relative flex aspect-square items-center justify-center rounded-md text-xl leading-none transition-colors hover:bg-accent"
             onClick={() => {
               onSelect(item.emoji);
             }}
           >
             <span aria-hidden="true">{item.emoji}</span>
+            {shortcutDigit !== null && (
+              <span
+                aria-hidden="true"
+                className="absolute bottom-0 right-0.5 text-[9px] leading-none text-muted-foreground/60"
+              >
+                {shortcutDigit}
+              </span>
+            )}
           </button>
         );
       })}
