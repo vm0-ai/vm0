@@ -49,6 +49,7 @@ fn new_telemetry() -> JobTelemetry {
     let http = HttpClient::new(HttpClientConfig {
         api_url: "http://localhost".to_string(),
         vercel_bypass: None,
+        client_session_id: "runner-session-test".to_string(),
     })
     .unwrap();
     JobTelemetry::new(http, RunId::nil(), "tok".to_string())

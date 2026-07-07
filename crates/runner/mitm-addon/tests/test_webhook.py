@@ -10,6 +10,7 @@ from unittest.mock import patch
 import pytest
 
 import flow_metadata_keys as metadata_keys
+import mitm_addon_version
 import platform_api
 import usage
 from tests.jsonl_log_helpers import (
@@ -69,6 +70,13 @@ def _assert_sensitive_webhook_url_parts_absent(entry: dict) -> None:
     assert "pass@api.vm0.ai" not in serialized
 
 
+def _assert_platform_client_headers(request, *, session_id: str = "runner-session-test") -> None:
+    assert request.header("x-client-version") == mitm_addon_version.MITM_ADDON_VERSION
+    assert request.header("x-client-type") == "MitmAddon"
+    assert request.header("x-client-session-id") == session_id
+    uuid.UUID(request.header("x-client-request-id"))
+
+
 class TestUsageWebhookDelivery:
     """Webhook delivery behavior observed through the HTTP boundary."""
 
@@ -82,13 +90,13 @@ class TestUsageWebhookDelivery:
         flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {"tokens.input": 100}
         return flow
 
-    def test_post_webhook_does_not_follow_redirects(self, usage_webhook_server):
+    def test_post_webhook_does_not_follow_redirects(self, mitm_ctx, usage_webhook_server):
         usage_webhook_server.queue_response(
             302,
             headers=(("Location", usage_webhook_server.url("/redirected")),),
         )
 
-        with pytest.raises(urllib.error.HTTPError) as exc:
+        with mitm_ctx(), pytest.raises(urllib.error.HTTPError) as exc:
             usage.webhook._post_webhook(
                 usage_webhook_server.url("/webhook"),
                 "tok",
@@ -132,6 +140,7 @@ class TestUsageWebhookDelivery:
         assert request.header("content-type") == "application/json"
         assert request.header("authorization") == "Bearer tok"
         assert request.header("user-agent") == "vm0-mitm-addon/1.0"
+        _assert_platform_client_headers(request)
         body = request.json_body()
         assert body["runId"] == "run-1"
         assert set(body) == {"runId", "events"}
@@ -163,11 +172,12 @@ class TestUsageWebhookDelivery:
                 payload_bytes=None if "enqueued" in entry["message"] else payload_bytes,
             )
 
-    def test_closes_http_error_response(self, usage_webhook_server):
+    def test_closes_http_error_response(self, mitm_ctx, usage_webhook_server):
         """HTTPError sockets must be closed to avoid leaking."""
         usage_webhook_server.queue_response(500)
 
         with (
+            mitm_ctx(),
             patch.object(urllib.error.HTTPError, "close", autospec=True) as close_mock,
             pytest.raises(urllib.error.HTTPError),
         ):
@@ -211,7 +221,7 @@ class TestUsageWebhookDelivery:
         mock_sleep.assert_called_once_with(0.5)
 
     def test_retry_with_payload_collision_logs_body_free_summary(
-        self, tmp_path, usage_webhook_server
+        self, mitm_ctx, tmp_path, usage_webhook_server
     ):
         proxy_log = tmp_path / "proxy.jsonl"
         usage_webhook_server.queue_response(500)
@@ -219,7 +229,7 @@ class TestUsageWebhookDelivery:
         payload = {"url": "payload-url", "type": "payload-type", "runId": "run-1", "events": []}
         payload_bytes = len(json.dumps(payload).encode())
 
-        with patch.object(usage.webhook.time, "sleep") as mock_sleep:
+        with mitm_ctx(), patch.object(usage.webhook.time, "sleep") as mock_sleep:
             usage.webhook._do_post_webhook_attempts(
                 usage_webhook_server.url("/x"),
                 "tok",
@@ -268,21 +278,22 @@ class TestUsageWebhookDelivery:
         assert all(entry["level"] != "error" for entry in entries)
 
     def test_give_up_with_payload_collision_logs_body_free_summary(
-        self, tmp_path, usage_webhook_server
+        self, mitm_ctx, tmp_path, usage_webhook_server
     ):
         proxy_log = tmp_path / "proxy.jsonl"
         usage_webhook_server.queue_response(500)
         payload = {"error": "payload-error", "attempt": 99, "runId": "run-1", "events": []}
         payload_bytes = len(json.dumps(payload).encode())
 
-        outcome = usage.webhook._do_post_webhook_attempts(
-            usage_webhook_server.url("/x"),
-            "tok",
-            payload,
-            str(proxy_log),
-            "usage",
-            max_retries=0,
-        )
+        with mitm_ctx():
+            outcome = usage.webhook._do_post_webhook_attempts(
+                usage_webhook_server.url("/x"),
+                "tok",
+                payload,
+                str(proxy_log),
+                "usage",
+                max_retries=0,
+            )
 
         assert outcome == "retryable_failure"
         [entry] = read_jsonl_entries_after_flush(proxy_log)
@@ -297,12 +308,12 @@ class TestUsageWebhookDelivery:
             payload_bytes=payload_bytes,
         )
 
-    def test_http_429_is_retryable(self, tmp_path, usage_webhook_server):
+    def test_http_429_is_retryable(self, mitm_ctx, tmp_path, usage_webhook_server):
         proxy_log = tmp_path / "proxy.jsonl"
         usage_webhook_server.queue_response(429)
         usage_webhook_server.queue_response(429)
 
-        with patch.object(usage.webhook.time, "sleep") as mock_sleep:
+        with mitm_ctx(), patch.object(usage.webhook.time, "sleep") as mock_sleep:
             outcome = usage.webhook._do_post_webhook_attempts(
                 usage_webhook_server.url("/x"),
                 "tok",
@@ -319,12 +330,13 @@ class TestUsageWebhookDelivery:
         assert [entry["level"] for entry in entries] == ["info", "info"]
         assert entries[-1]["delivery_outcome"] == "retryable_failure"
 
-    def test_url_error_is_retryable(self, tmp_path):
+    def test_url_error_is_retryable(self, mitm_ctx, tmp_path):
         proxy_log = tmp_path / "proxy.jsonl"
         payload = {"runId": "run-1", "events": []}
         payload_bytes = len(json.dumps(payload).encode())
 
         with (
+            mitm_ctx(),
             patch.object(
                 usage.webhook._opener,
                 "open",
@@ -356,16 +368,22 @@ class TestUsageWebhookDelivery:
                 payload_bytes=payload_bytes,
             )
 
-    def test_retry_failure_sanitizes_sensitive_webhook_url_in_message_and_error(self, tmp_path):
+    def test_retry_failure_sanitizes_sensitive_webhook_url_in_message_and_error(
+        self, mitm_ctx, tmp_path
+    ):
         proxy_log = tmp_path / "proxy.jsonl"
         payload = {"runId": "run-1", "events": []}
         payload_bytes = len(json.dumps(payload).encode())
+        url_without_fragment = SENSITIVE_WEBHOOK_URL.removesuffix("#frag")
 
-        with patch.object(
-            usage.webhook._opener,
-            "open",
-            side_effect=urllib.error.URLError(
-                f"failed {SENSITIVE_WEBHOOK_URL} and {SENSITIVE_WEBHOOK_URL.removesuffix('#frag')}"
+        with (
+            mitm_ctx(),
+            patch.object(
+                usage.webhook._opener,
+                "open",
+                side_effect=urllib.error.URLError(
+                    f"failed {SENSITIVE_WEBHOOK_URL} and {url_without_fragment}"
+                ),
             ),
         ):
             outcome = usage.webhook._do_post_webhook_attempts(
@@ -391,18 +409,19 @@ class TestUsageWebhookDelivery:
         )
         _assert_sensitive_webhook_url_parts_absent(entry)
 
-    def test_http_400_is_permanent(self, tmp_path, usage_webhook_server):
+    def test_http_400_is_permanent(self, mitm_ctx, tmp_path, usage_webhook_server):
         proxy_log = tmp_path / "proxy.jsonl"
         usage_webhook_server.queue_response(400)
 
-        outcome = usage.webhook._do_post_webhook_attempts(
-            usage_webhook_server.url("/x"),
-            "tok",
-            {"runId": "run-1", "events": []},
-            str(proxy_log),
-            "usage",
-            max_retries=1,
-        )
+        with mitm_ctx():
+            outcome = usage.webhook._do_post_webhook_attempts(
+                usage_webhook_server.url("/x"),
+                "tok",
+                {"runId": "run-1", "events": []},
+                str(proxy_log),
+                "usage",
+                max_retries=1,
+            )
 
         assert outcome == "permanent_failure"
         assert usage_webhook_server.request_count == 1
@@ -710,20 +729,21 @@ class TestUsageWebhookDelivery:
         assert "secret-payload" not in json.dumps(saturated_entry)
 
     def test_delivery_capacity_released_after_success(
-        self, tmp_path, sync_usage_executor, usage_webhook_server
+        self, mitm_ctx, tmp_path, sync_usage_executor, usage_webhook_server
     ):
         proxy_log = tmp_path / "proxy.jsonl"
         pending_path = tmp_path / "usage-pending"
         usage.set_pending_path(str(pending_path))
         usage_webhook_server.queue_response(204)
 
-        assert usage.webhook._enqueue_webhook(
-            usage_webhook_server.url("/usage"),
-            "tok",
-            {"runId": "run-1", "events": []},
-            str(proxy_log),
-            "usage_event",
-        )
+        with mitm_ctx():
+            assert usage.webhook._enqueue_webhook(
+                usage_webhook_server.url("/usage"),
+                "tok",
+                {"runId": "run-1", "events": []},
+                str(proxy_log),
+                "usage_event",
+            )
 
         assert usage_webhook_server.request_count == 1
         assert usage.webhook._pending_delivery_payload_count_for_tests() == 0
@@ -736,7 +756,7 @@ class TestUsageWebhookDelivery:
         )
 
     def test_delivery_capacity_released_when_outcome_callback_fails(
-        self, tmp_path, sync_usage_executor, usage_webhook_server
+        self, mitm_ctx, tmp_path, sync_usage_executor, usage_webhook_server
     ):
         proxy_log = tmp_path / "proxy.jsonl"
         pending_path = tmp_path / "usage-pending"
@@ -746,14 +766,15 @@ class TestUsageWebhookDelivery:
         def fail_callback(_outcome: usage.webhook.WebhookDeliveryOutcome) -> None:
             raise RuntimeError("callback failed")
 
-        assert usage.webhook._enqueue_webhook(
-            usage_webhook_server.url("/usage"),
-            "tok",
-            {"runId": "run-1", "events": []},
-            str(proxy_log),
-            "usage_event",
-            delivery_outcome_callback=fail_callback,
-        )
+        with mitm_ctx():
+            assert usage.webhook._enqueue_webhook(
+                usage_webhook_server.url("/usage"),
+                "tok",
+                {"runId": "run-1", "events": []},
+                str(proxy_log),
+                "usage_event",
+                delivery_outcome_callback=fail_callback,
+            )
 
         with pytest.raises(RuntimeError, match="callback failed"):
             sync_usage_executor.shutdown(wait=True)
@@ -769,7 +790,7 @@ class TestUsageWebhookDelivery:
         )
 
     def test_delivery_capacity_released_after_retry_exhaustion(
-        self, tmp_path, sync_usage_executor, usage_webhook_server
+        self, mitm_ctx, tmp_path, sync_usage_executor, usage_webhook_server
     ):
         proxy_log = tmp_path / "proxy.jsonl"
         pending_path = tmp_path / "usage-pending"
@@ -777,7 +798,7 @@ class TestUsageWebhookDelivery:
         usage_webhook_server.queue_response(500)
         usage_webhook_server.queue_response(500)
 
-        with patch.object(usage.webhook.time, "sleep"):
+        with mitm_ctx(), patch.object(usage.webhook.time, "sleep"):
             assert usage.webhook._enqueue_webhook(
                 usage_webhook_server.url("/usage"),
                 "tok",

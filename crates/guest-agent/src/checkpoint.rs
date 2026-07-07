@@ -1316,8 +1316,14 @@ mod tests {
                 .path("/api/webhooks/agent/storages/commit");
             then.status(200).json_body(json!({"unreachable": true}));
         });
-        let http = HttpClient::with_api_config(server.base_url(), "test-token", "", Duration::ZERO)
-            .unwrap();
+        let http = HttpClient::with_api_config(
+            server.base_url(),
+            "test-token",
+            "",
+            "test-run-001",
+            Duration::ZERO,
+        )
+        .unwrap();
         let dir = tempfile::tempdir().unwrap();
         let missing_mount = dir.path().join("missing");
         let entries = vec![env::ArtifactEnv {
@@ -1353,8 +1359,14 @@ mod tests {
                 .path("/api/webhooks/agent/storages/commit");
             then.status(200).json_body(json!({"unreachable": true}));
         });
-        let http = HttpClient::with_api_config(server.base_url(), "test-token", "", Duration::ZERO)
-            .unwrap();
+        let http = HttpClient::with_api_config(
+            server.base_url(),
+            "test-token",
+            "",
+            "test-run-001",
+            Duration::ZERO,
+        )
+        .unwrap();
         let dir = tempfile::tempdir().unwrap();
         let missing_mount = dir.path().join("missing");
         let entries = vec![env::ArtifactEnv {
@@ -1390,8 +1402,14 @@ mod tests {
                 .path("/api/webhooks/agent/storages/commit");
             then.status(200).json_body(json!({"unreachable": true}));
         });
-        let http = HttpClient::with_api_config(server.base_url(), "test-token", "", Duration::ZERO)
-            .unwrap();
+        let http = HttpClient::with_api_config(
+            server.base_url(),
+            "test-token",
+            "",
+            "test-run-001",
+            Duration::ZERO,
+        )
+        .unwrap();
         let dir = tempfile::tempdir().unwrap();
         let valid_mount = dir.path().join("valid");
         std::fs::create_dir(&valid_mount).unwrap();
@@ -1439,8 +1457,14 @@ mod tests {
                 .path("/api/webhooks/agent/storages/commit");
             then.status(200).json_body(json!({"unreachable": true}));
         });
-        let http = HttpClient::with_api_config(server.base_url(), "test-token", "", Duration::ZERO)
-            .unwrap();
+        let http = HttpClient::with_api_config(
+            server.base_url(),
+            "test-token",
+            "",
+            "test-run-001",
+            Duration::ZERO,
+        )
+        .unwrap();
         let dir = tempfile::tempdir().unwrap();
         let missing_mount = dir.path().join("memory");
         let entries = vec![env::ArtifactEnv {
@@ -1484,8 +1508,14 @@ mod tests {
                 .path("/api/webhooks/agent/storages/commit");
             then.status(200).json_body(json!({"unreachable": true}));
         });
-        let http = HttpClient::with_api_config(server.base_url(), "test-token", "", Duration::ZERO)
-            .unwrap();
+        let http = HttpClient::with_api_config(
+            server.base_url(),
+            "test-token",
+            "",
+            "test-run-001",
+            Duration::ZERO,
+        )
+        .unwrap();
         let dir = tempfile::tempdir().unwrap();
         let file_mount = dir.path().join("memory");
         std::fs::write(&file_mount, "not a directory").unwrap();
@@ -1549,8 +1579,14 @@ mod tests {
             then.status(200)
                 .json_body(json!({"checkpointId": "unreachable"}));
         });
-        let http = HttpClient::with_api_config(server.base_url(), "test-token", "", Duration::ZERO)
-            .unwrap();
+        let http = HttpClient::with_api_config(
+            server.base_url(),
+            "test-token",
+            "",
+            "test-run-001",
+            Duration::ZERO,
+        )
+        .unwrap();
         let missing_mount = dir.path().join("missing");
         let entries = vec![env::ArtifactEnv {
             name: "workspace".to_string(),
@@ -1644,8 +1680,14 @@ mod tests {
             then.status(200)
                 .json_body(json!({"checkpointId": "checkpoint-codex-zstd"}));
         });
-        let http = HttpClient::with_api_config(server.base_url(), "test-token", "", Duration::ZERO)
-            .unwrap();
+        let http = HttpClient::with_api_config(
+            server.base_url(),
+            "test-token",
+            "",
+            "test-run-001",
+            Duration::ZERO,
+        )
+        .unwrap();
         let home_dir = home_dir.to_string_lossy().into_owned();
         let inputs = CheckpointInputs {
             run_id: "checkpoint-codex-zstd-reuse",
@@ -1740,8 +1782,14 @@ mod tests {
             then.status(200)
                 .json_body(json!({"checkpointId": "checkpoint-codex-zstd-legacy"}));
         });
-        let http = HttpClient::with_api_config(server.base_url(), "test-token", "", Duration::ZERO)
-            .unwrap();
+        let http = HttpClient::with_api_config(
+            server.base_url(),
+            "test-token",
+            "",
+            "test-run-001",
+            Duration::ZERO,
+        )
+        .unwrap();
         let home_dir = home_dir.to_string_lossy().into_owned();
         let inputs = CheckpointInputs {
             run_id: "checkpoint-codex-zstd-legacy-fallback",

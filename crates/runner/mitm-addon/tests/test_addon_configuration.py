@@ -11,6 +11,7 @@ from unittest.mock import patch
 from mitmproxy.addonmanager import Loader
 
 import mitm_addon
+import mitm_addon_version
 import usage
 import usage.buffer as usage_buffer
 from tests.pending_helpers import assert_pending
@@ -105,12 +106,21 @@ class TestAddonConfiguration:
 
         option_names = [option.name for option in master.options.added]
         assert "vm0_usage_state_id" in option_names
+        assert "vm0_client_session_id" in option_names
         assert "vm0_usage_flush_interval_seconds" in option_names
         assert not pending_path.exists()
         signal_handler.assert_called_once_with(
             mitm_addon._RUNNER_USAGE_FLUSH_SIGNAL,
             mitm_addon._handle_runner_usage_flush_signal,
         )
+
+    def test_mitm_addon_version_matches_pyproject(self):
+        pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
+        version_line = next(
+            line for line in pyproject.read_text().splitlines() if line.startswith("version = ")
+        )
+        pyproject_version = version_line.split("=", 1)[1].strip().strip('"')
+        assert pyproject_version == mitm_addon_version.MITM_ADDON_VERSION
 
     def test_configure_writes_pending_state_with_usage_state_id(self, tmp_path):
         pending_path = tmp_path / "usage-pending"

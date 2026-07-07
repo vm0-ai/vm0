@@ -8,7 +8,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 
 use api_contracts::generated::routes;
-use reqwest::{RequestBuilder, Response, StatusCode};
+use reqwest::{Response, StatusCode};
 use serde::{Serialize, de::DeserializeOwned};
 
 use super::api_ably_supervisor::{
@@ -24,7 +24,7 @@ use super::{
 };
 use crate::duration::duration_ms;
 use crate::error::{RunnerError, RunnerResult};
-use crate::http::HttpClient;
+use crate::http::{ApiRequestBuilder, HttpClient};
 use crate::ids::RunId;
 use crate::run_cancellation::SharedRunCancellationMap;
 use crate::types::{
@@ -569,7 +569,7 @@ impl ApiClient {
         &self,
         run_id: &str,
         connector_refs: &[String],
-    ) -> RequestBuilder {
+    ) -> ApiRequestBuilder {
         self.http
             .request_resolved_route(
                 routes::runners::runs::by_run_id::network_policy_refresh::route(
@@ -659,10 +659,12 @@ fn poll_reason_value(reason: PollReason) -> &'static str {
     }
 }
 
-async fn send_api(req: RequestBuilder, label: &str) -> RunnerResult<Response> {
-    req.send()
-        .await
-        .map_err(|e| RunnerError::Api(format!("{label}: {e}")))
+async fn send_api(req: ApiRequestBuilder, label: &str) -> RunnerResult<Response> {
+    match req.send().await {
+        Ok(resp) => Ok(resp),
+        Err(RunnerError::Api(message)) => Err(RunnerError::Api(format!("{label}: {message}"))),
+        Err(error) => Err(error),
+    }
 }
 
 async fn check_api_status(resp: Response, label: &str) -> RunnerResult<Response> {
@@ -948,6 +950,7 @@ mod tests {
             HttpClient::new(HttpClientConfig {
                 api_url: server.base_url(),
                 vercel_bypass: None,
+                client_session_id: "runner-session-test".to_string(),
             })
             .unwrap(),
             "runner-token".to_string(),
@@ -1114,6 +1117,7 @@ mod tests {
             HttpClient::new(HttpClientConfig {
                 api_url,
                 vercel_bypass: None,
+                client_session_id: "runner-session-test".to_string(),
             })
             .unwrap(),
             "runner-token".to_string(),

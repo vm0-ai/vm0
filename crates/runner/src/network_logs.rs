@@ -326,6 +326,7 @@ mod tests {
         HttpClient::new(HttpClientConfig {
             api_url: server.base_url(),
             vercel_bypass: None,
+            client_session_id: "runner-session-test".to_string(),
         })
         .unwrap()
     }
@@ -840,6 +841,7 @@ mod tests {
         let http = HttpClient::new(HttpClientConfig {
             api_url,
             vercel_bypass: None,
+            client_session_id: "runner-session-test".to_string(),
         })
         .unwrap();
         upload_network_logs(&http, RunId::nil(), SANDBOX_TOKEN, &path).await;

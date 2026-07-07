@@ -5,6 +5,7 @@ import io
 import json
 import time
 import urllib.error
+import uuid
 from email.message import Message
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -16,6 +17,7 @@ import firewall_auth_cache as auth_cache
 import firewall_auth_client as auth_client
 import flow_metadata_keys as metadata_keys
 import matching
+import mitm_addon_version
 import platform_api
 from aws_sigv4 import AwsSigV4Credentials
 from tests.auth_endpoint_helpers import FakeAuthEndpoint
@@ -1672,8 +1674,11 @@ class TestHandleFirewallRequest:
 
 
 class TestMakeApiRequest:
-    def test_builds_platform_api_request_with_standard_headers(self):
-        with patch.object(platform_api, "VERCEL_BYPASS", ""):
+    def test_builds_platform_api_request_with_standard_headers(self, mitm_ctx):
+        with (
+            mitm_ctx(client_session_id="runner-session-direct"),
+            patch.object(platform_api, "VERCEL_BYPASS", ""),
+        ):
             req = platform_api.make_api_request(
                 "https://api.vm0.ai/api/webhooks/agent/firewall/auth",
                 b"{}",
@@ -1686,6 +1691,11 @@ class TestMakeApiRequest:
         assert headers["Content-type"] == "application/json"
         assert headers["Authorization"] == "Bearer tok-xyz"
         assert headers["User-agent"] == "vm0-mitm-addon/1.0"
+        normalized_headers = {name.lower(): value for name, value in headers.items()}
+        assert normalized_headers["x-client-version"] == mitm_addon_version.MITM_ADDON_VERSION
+        assert normalized_headers["x-client-type"] == "MitmAddon"
+        assert normalized_headers["x-client-session-id"] == "runner-session-direct"
+        uuid.UUID(normalized_headers["x-client-request-id"])
 
     @pytest.mark.parametrize(
         "url",
@@ -1731,6 +1741,10 @@ class TestFetchFirewallHeaders:
         assert request.headers["authorization"] == "Bearer tok-xyz"
         assert request.headers["content-type"] == "application/json"
         assert request.headers["user-agent"] == "vm0-mitm-addon/1.0"
+        assert request.headers["x-client-version"] == mitm_addon_version.MITM_ADDON_VERSION
+        assert request.headers["x-client-type"] == "MitmAddon"
+        assert request.headers["x-client-session-id"] == "runner-session-test"
+        uuid.UUID(request.headers["x-client-request-id"])
         assert "x-vercel-protection-bypass" not in request.headers
         assert request.json_body() == {
             "encryptedSecrets": "iv:tag:data",

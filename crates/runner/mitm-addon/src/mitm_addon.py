@@ -388,6 +388,12 @@ def load(loader: Loader) -> None:
         help="Runner-generated usage-pending state id",
     )
     loader.add_option(
+        name="vm0_client_session_id",
+        typespec=str,
+        default="",
+        help="Runner-generated client session id for platform API requests",
+    )
+    loader.add_option(
         name="vm0_usage_flush_interval_seconds",
         typespec=float,
         default=usage.DEFAULT_FLUSH_INTERVAL_SECONDS,

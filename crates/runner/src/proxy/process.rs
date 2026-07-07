@@ -49,6 +49,8 @@ pub struct ProxyConfig {
     pub builtin_firewall_catalog_cache_path: PathBuf,
     /// VM0 API URL passed to the addon (optional).
     pub api_url: Option<String>,
+    /// Runner-runtime client session id passed to the addon for vm0 API requests.
+    pub client_session_id: String,
 }
 
 /// Manages the mitmdump process lifecycle and proxy registry.
@@ -431,6 +433,7 @@ impl MitmProxy {
                     registry_lock_path: std::path::PathBuf::new(),
                     builtin_firewall_catalog_cache_path: std::path::PathBuf::new(),
                     api_url: None,
+                    client_session_id: "runner-session-test".to_string(),
                 },
                 child: None,
                 crash_tx,
@@ -520,6 +523,11 @@ pub(crate) async fn spawn_mitmdump(
         .arg(format!(
             "vm0_builtin_firewall_catalog_cache_path={}",
             config.builtin_firewall_catalog_cache_path.display()
+        ))
+        .arg("--set")
+        .arg(format!(
+            "vm0_client_session_id={}",
+            config.client_session_id
         ))
         .arg("--scripts")
         .arg(config.addon_dir.join("mitm_addon.py"))
@@ -967,6 +975,7 @@ PY
                 .path()
                 .join("builtin-firewall-catalog-cache.json"),
             api_url: None,
+            client_session_id: "runner-session-test".to_string(),
         };
 
         let result = MitmProxy::new(config).await;
@@ -997,6 +1006,7 @@ PY
                 .path()
                 .join("builtin-firewall-catalog-cache.json"),
             api_url: None,
+            client_session_id: "runner-session-test".to_string(),
         };
 
         let (_proxy, _crash_rx) = MitmProxy::new(config).await.unwrap();
@@ -1075,6 +1085,7 @@ PY
             registry_lock_path: dir.path().join("proxy-registry.json.lock"),
             builtin_firewall_catalog_cache_path: builtin_firewall_catalog_cache_path.clone(),
             api_url: None,
+            client_session_id: "runner-session-test".to_string(),
         };
         let (crash_tx, _crash_rx) = mpsc::channel(1);
         let stopping = Arc::new(AtomicBool::new(false));
@@ -1102,6 +1113,11 @@ PY
             "mitmdump args should include vm0_builtin_firewall_catalog_cache_path option; got:\n{args}",
         );
         assert!(
+            args.lines()
+                .any(|arg| arg == "vm0_client_session_id=runner-session-test"),
+            "mitmdump args should include vm0_client_session_id option; got:\n{args}",
+        );
+        assert!(
             args.lines().all(|arg| arg != "connection_strategy=lazy"),
             "mitmdump args must not use global lazy upstream connections because server-first TCP protocols must keep working; got:\n{args}",
         );
@@ -1123,6 +1139,7 @@ PY
                 .path()
                 .join("builtin-firewall-catalog-cache.json"),
             api_url: None,
+            client_session_id: "runner-session-test".to_string(),
         };
         let (crash_tx, _crash_rx) = mpsc::channel(1);
         let stopping = Arc::new(AtomicBool::new(false));

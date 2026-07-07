@@ -701,6 +701,7 @@ mod tests {
         HttpClient::new(HttpClientConfig {
             api_url: "http://localhost".into(),
             vercel_bypass: None,
+            client_session_id: "runner-session-test".to_string(),
         })
         .unwrap()
     }
