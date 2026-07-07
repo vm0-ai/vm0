@@ -366,7 +366,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ming@vm0.ai",
     description:
       "New Agents page with Public/Private tabs, a public-slot indicator, a Created by footer on every card, a name-first create dialog with a visibility select, and a private empty state.",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.SidebarManageIconCollapse]: {
     maintainer: "ming@vm0.ai",
@@ -406,6 +406,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "bingjie@vm0.ai",
     description:
       "Enable uploading a presentation artifact to the user's Google Drive as a native, editable Google Slides deck.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.WorkflowTemplateCatalog]: {
+    maintainer: "ming@vm0.ai",
+    description:
+      "Show the full persona-grouped built-in workflow template catalog in the chat composer template picker. Off shows only the General starter template.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

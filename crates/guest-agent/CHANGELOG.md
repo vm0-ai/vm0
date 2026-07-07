@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.47.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.47.0...guest-agent-v0.47.1) (2026-07-07)
+
+
+### Bug Fixes
+
+* prevent compressed session history identity fallback ([#20434](https://github.com/vm0-ai/vm0/issues/20434)) ([8eba6a0](https://github.com/vm0-ai/vm0/commit/8eba6a07a04b47653e89d6a12c307cd16521ca69))
+
 ## [0.47.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.46.8...guest-agent-v0.47.0) (2026-07-06)
 
 

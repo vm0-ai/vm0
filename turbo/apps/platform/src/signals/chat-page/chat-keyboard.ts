@@ -247,6 +247,25 @@ const setFocusedThreadEmoji$ = command(
   },
 );
 
+const clearFocusedThreadEmoji$ = command(
+  async (
+    { get, set },
+    args: { thread: ChatThreadSignals },
+    signal: AbortSignal,
+  ) => {
+    if (!(get(featureSwitch$)[FeatureSwitchKey.ChatThreadEmoji] ?? false)) {
+      return;
+    }
+    await set(
+      clearChatThreadEmojiFromThreadMeta$,
+      {
+        threadId: args.thread.threadId,
+      },
+      signal,
+    );
+  },
+);
+
 const setupChatPageShortcutActions$ = command(
   (
     { get, set },
@@ -313,25 +332,6 @@ const setupChatPageShortcutActions$ = command(
       root,
       signal,
     });
-  },
-);
-
-const clearFocusedThreadEmoji$ = command(
-  async (
-    { get, set },
-    args: { thread: ChatThreadSignals },
-    signal: AbortSignal,
-  ) => {
-    if (!(get(featureSwitch$)[FeatureSwitchKey.ChatThreadEmoji] ?? false)) {
-      return;
-    }
-    await set(
-      clearChatThreadEmojiFromThreadMeta$,
-      {
-        threadId: args.thread.threadId,
-      },
-      signal,
-    );
   },
 );
 

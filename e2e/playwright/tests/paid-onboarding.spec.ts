@@ -39,9 +39,15 @@ test("paid onboarding completes through the video workflow", async ({
 
     await startVideoOnboardingCheckout(page, { apiUrl, appUrl, onboardingUrl });
     await fillStripeCheckout(page);
-    await waitForPaidOnboardingAppHandoff(page, appUrl);
+    const handoffUrl = await waitForPaidOnboardingAppHandoff(page, {
+      appUrl,
+      auth: { email, activeOrganizationId: orgId },
+    });
 
-    expect(new URL(page.url()).origin).toBe(new URL(appUrl).origin);
+    expect(
+      handoffUrl.pathname === "/prompt" ||
+        /\/agents\/[^/]+\/chat/.test(handoffUrl.pathname),
+    ).toBe(true);
   } finally {
     await deleteUserByEmail(email);
   }

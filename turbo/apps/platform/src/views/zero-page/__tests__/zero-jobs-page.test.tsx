@@ -17,6 +17,7 @@ import {
   type TeamComposeItem,
   zeroTeamContract,
 } from "@vm0/api-contracts/contracts/zero-team";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 const context = testContext();
 
@@ -157,7 +158,11 @@ describe("zero jobs page", () => {
         updatedAt: "2024-01-03T00:00:00Z",
       },
     ]);
-    detachedSetupPage({ context, path: "/agents" });
+    detachedSetupPage({
+      context,
+      path: "/agents",
+      featureSwitches: { [FeatureSwitchKey.AgentsPageRedesign]: false },
+    });
 
     await waitFor(() => {
       expect(screen.getByText("Research Agent")).toBeInTheDocument();
@@ -231,7 +236,11 @@ describe("zero jobs page", () => {
       },
     );
 
-    detachedSetupPage({ context, path: "/agents" });
+    detachedSetupPage({
+      context,
+      path: "/agents",
+      featureSwitches: { [FeatureSwitchKey.AgentsPageRedesign]: false },
+    });
 
     let dialog = await openCreateDialog("Public");
     await fill(

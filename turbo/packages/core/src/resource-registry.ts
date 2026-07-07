@@ -1,3 +1,8 @@
+import {
+  WEBSITE_TEMPLATE_ITEMS,
+  type WebsiteTemplateItem,
+} from "./website-template-items";
+
 export type GenerationTarget =
   | "image"
   | "presentation"
@@ -3610,6 +3615,82 @@ export function findPresentationRunbookResource(
     description: pkg.description,
     source: pkg.source,
     targets: ["presentation"],
+  };
+}
+
+// ── Website template packages ────────────────────────────────────────────────
+// Self-contained website packages uploaded to private R2. Keep these pull-only
+// resources out of RESOURCE_REGISTRY so the feature-switched picker remains the
+// only user-facing catalog for built-in website templates.
+
+export interface WebsiteTemplatePackage {
+  /** Picker template id; this is also the pull id for website packages. */
+  readonly templateId: WebsiteTemplateItem["templateId"];
+  readonly resourceId: WebsiteTemplateItem["resourceId"];
+  readonly slug: WebsiteTemplateItem["slug"];
+  readonly name: WebsiteTemplateItem["title"];
+  readonly description: WebsiteTemplateItem["description"];
+  readonly source: ResourceSourceRef;
+}
+
+// Archive digests for uploaded private R2 website template packages. Keep these
+// in sync with the private R2 version ids served by the API download route.
+const WEBSITE_TEMPLATE_ARCHIVE_SHA256: Record<string, string> = {
+  "warm-cards":
+    "1fafd9e5541dfe53ffdfafcbb6e45d525328c9a0cc5bb4afb2a06b4685e153d2",
+};
+
+function websiteTemplateArchiveSha256(slug: string): string {
+  const sha256 = WEBSITE_TEMPLATE_ARCHIVE_SHA256[slug];
+  if (!sha256) {
+    throw new Error(`Missing website template archive sha256 for ${slug}`);
+  }
+  return sha256;
+}
+
+const WEBSITE_TEMPLATE_PACKAGES: readonly WebsiteTemplatePackage[] =
+  WEBSITE_TEMPLATE_ITEMS.map((item) => {
+    return {
+      templateId: item.templateId,
+      resourceId: item.resourceId,
+      slug: item.sourcePath,
+      name: item.title,
+      description: item.description,
+      source: privateR2ArchiveSource(
+        item.sourcePath,
+        websiteTemplateArchiveSha256(item.slug),
+      ),
+    };
+  });
+
+export function listWebsiteTemplatePackages(): readonly WebsiteTemplatePackage[] {
+  return WEBSITE_TEMPLATE_PACKAGES;
+}
+
+export function findWebsiteTemplatePackage(
+  templateId: string,
+): WebsiteTemplatePackage | undefined {
+  return WEBSITE_TEMPLATE_PACKAGES.find((pkg) => {
+    return pkg.templateId === templateId;
+  });
+}
+
+export function findWebsiteTemplateResource(
+  resourceId: string,
+): RegistryEntry | undefined {
+  const pkg = WEBSITE_TEMPLATE_PACKAGES.find((entry) => {
+    return entry.resourceId === resourceId;
+  });
+  if (!pkg) {
+    return undefined;
+  }
+  return {
+    id: pkg.resourceId,
+    kind: "template",
+    name: pkg.name,
+    description: pkg.description,
+    source: pkg.source,
+    targets: ["website"],
   };
 }
 

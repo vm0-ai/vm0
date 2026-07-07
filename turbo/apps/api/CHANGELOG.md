@@ -1,5 +1,30 @@
 # Changelog
 
+## [1.233.1](https://github.com/vm0-ai/vm0/compare/api-v1.233.0...api-v1.233.1) (2026-07-07)
+
+
+### Performance Improvements
+
+* **api:** lazily emit connector platform secret metadata ([#20451](https://github.com/vm0-ai/vm0/issues/20451)) ([232b7f9](https://github.com/vm0-ai/vm0/commit/232b7f9c5c5ff4ec92cf4ebf5cbb6eb2ea4d8662))
+
+## [1.233.0](https://github.com/vm0-ai/vm0/compare/api-v1.232.2...api-v1.233.0) (2026-07-07)
+
+
+### Features
+
+* prompt for force upgrade ([#20351](https://github.com/vm0-ai/vm0/issues/20351)) ([2579a2e](https://github.com/vm0-ai/vm0/commit/2579a2e0621b3bf62388b54d9421019bc9bdac3a))
+* wire warm cards website template resource ([#20432](https://github.com/vm0-ai/vm0/issues/20432)) ([523b392](https://github.com/vm0-ai/vm0/commit/523b392ed25a36663d77a522fb457f16d9803609))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.159.3
+    * @vm0/connectors bumped to 1.144.0
+    * @vm0/core bumped to 8.409.0
+    * @vm0/db bumped to 1.96.7
+
 ## [1.232.2](https://github.com/vm0-ai/vm0/compare/api-v1.232.1...api-v1.232.2) (2026-07-06)
 
 
