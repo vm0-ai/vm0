@@ -17,6 +17,10 @@ import {
   parseComputerUseAuthorizationUrl,
   type ComputerUseAuthorizationBlock,
 } from "./computer-use-authorization-block.ts";
+import {
+  resolvePublicArtifactsBaseUrl,
+  resolveZeroHostDomain,
+} from "../../lib/platform-host.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -285,7 +289,7 @@ function platformFileHosts(): Set<string> {
   addPlatformFileHostVariants(hosts, browserHost());
   addPlatformFileHostVariants(
     hosts,
-    artifactsCdnHost(import.meta.env.PUBLIC_ARTIFACTS_BASE_URL),
+    artifactsCdnHost(resolvePublicArtifactsBaseUrl()),
   );
   return hosts;
 }
@@ -332,33 +336,8 @@ function isPlatformFileUrl(url: string): boolean {
   );
 }
 
-function normalizeHostedSiteDomain(value: string | undefined): string | null {
-  const trimmed = value?.trim().toLowerCase();
-  if (!trimmed) {
-    return null;
-  }
-  if (trimmed.includes("://")) {
-    if (!URL.canParse(trimmed)) {
-      return null;
-    }
-    return new URL(trimmed).hostname;
-  }
-  return trimmed.replace(/^\.+|\.+$/g, "");
-}
-
-function hostedSiteDomain(): string | null {
-  const domain = import.meta.env.VITE_ZERO_HOST_DOMAIN;
-  return normalizeHostedSiteDomain(
-    typeof domain === "string" ? domain : undefined,
-  );
-}
-
 function hostedSitePublicSlug(hostname: string): string | null {
-  const domain = hostedSiteDomain();
-  if (!domain) {
-    return null;
-  }
-
+  const domain = resolveZeroHostDomain();
   const normalizedHostname = hostname.toLowerCase();
   const suffix = `.${domain}`;
   if (!normalizedHostname.endsWith(suffix)) {

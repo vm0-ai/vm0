@@ -1,27 +1,41 @@
-function getConfiguredApiUrl(): string {
-  const url = import.meta.env.VITE_API_URL as string | undefined;
-  if (!url) {
-    throw new Error("Missing VITE_API_URL environment variable");
-  }
-  return url;
-}
+export type PlatformHostTarget = "api" | "www" | "app" | "platform";
 
-const CONFIGURED_API_URL = getConfiguredApiUrl();
-
-type ApiHostTarget = "api" | "www";
+const PLATFORM_SERVICE_LABELS = ["platform", "app", "www", "api"] as const;
 
 function trimTrailingSlash(base: string): string {
   return base.endsWith("/") ? base.slice(0, -1) : base;
 }
 
-function rewriteApiHostname(hostname: string, target: ApiHostTarget): string {
-  return hostname.replace(/(^|-)(platform|app|www|api)\./, `$1${target}.`);
-}
+export function rewritePlatformHostname(
+  hostname: string,
+  target: PlatformHostTarget,
+): string {
+  const labels = hostname.split(".");
+  const serviceLabelIndex = labels.length - 3;
+  if (serviceLabelIndex < 0) {
+    return hostname;
+  }
 
-function configuredApiBase(target: ApiHostTarget): string {
-  const url = new URL(CONFIGURED_API_URL);
-  url.hostname = rewriteApiHostname(url.hostname, target);
-  return url.origin;
+  const serviceLabel = labels[serviceLabelIndex];
+  if (!serviceLabel) {
+    return hostname;
+  }
+
+  if ((PLATFORM_SERVICE_LABELS as readonly string[]).includes(serviceLabel)) {
+    labels[serviceLabelIndex] = target;
+    return labels.join(".");
+  }
+
+  for (const label of PLATFORM_SERVICE_LABELS) {
+    const suffix = `-${label}`;
+    if (serviceLabel.endsWith(suffix)) {
+      labels[serviceLabelIndex] =
+        `${serviceLabel.slice(0, -label.length)}${target}`;
+      return labels.join(".");
+    }
+  }
+
+  return hostname;
 }
 
 function browserOrigin(): string | null {
@@ -31,37 +45,40 @@ function browserOrigin(): string | null {
   return location.origin;
 }
 
-function browserOriginBase(target: ApiHostTarget): string | null {
+function platformOriginForTarget(
+  origin: string,
+  target: PlatformHostTarget,
+): string {
+  const url = new URL(origin);
+  url.hostname = rewritePlatformHostname(url.hostname, target);
+  return url.origin;
+}
+
+export function resolvePlatformOriginForTarget(
+  target: PlatformHostTarget,
+): string | null {
   const origin = browserOrigin();
   if (!origin) {
     return null;
   }
-  const url = new URL(origin);
-  url.hostname = rewriteApiHostname(url.hostname, target);
-  return url.origin;
+
+  return trimTrailingSlash(platformOriginForTarget(origin, target));
 }
 
-function isLocalhostBrowser(): boolean {
-  return (
-    typeof location !== "undefined" &&
-    (location.hostname === "localhost" || location.hostname === "127.0.0.1")
-  );
-}
-
-export function resolveApiBaseForTarget(target: ApiHostTarget): string {
-  if (CONFIGURED_API_URL === "http://localhost:3000") {
-    return browserOriginBase(target) ?? configuredApiBase(target);
+export function resolveApiBaseForTarget(target: PlatformHostTarget): string {
+  const origin = resolvePlatformOriginForTarget(target);
+  if (!origin) {
+    throw new Error(
+      "Cannot resolve platform API URL without a browser origin",
+    );
   }
-  return trimTrailingSlash(configuredApiBase(target));
+  return origin;
 }
 
 export function resolveApiBase(): string {
   return resolveApiBaseForTarget("api");
 }
 
-export function resolveApiBaseForNavigation(target: ApiHostTarget): string {
-  if (isLocalhostBrowser()) {
-    return configuredApiBase(target);
-  }
-  return browserOriginBase(target) ?? configuredApiBase(target);
+export function resolveApiBaseForNavigation(target: PlatformHostTarget): string {
+  return resolveApiBaseForTarget(target);
 }

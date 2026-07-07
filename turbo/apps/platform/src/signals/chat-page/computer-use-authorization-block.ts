@@ -1,4 +1,7 @@
-type PlatformHostTarget = "api" | "www" | "app" | "platform";
+import {
+  resolvePlatformOriginForTarget,
+  rewritePlatformHostname,
+} from "../api-base.ts";
 
 export interface ComputerUseAuthorizationDescriptor {
   requestToken: string;
@@ -17,13 +20,6 @@ function browserOrigin(): string | null {
     return null;
   }
   return location.origin;
-}
-
-function rewritePlatformHostname(
-  hostname: string,
-  target: PlatformHostTarget,
-): string {
-  return hostname.replace(/(^|-)(platform|app|www|api)\./, `$1${target}.`);
 }
 
 function addAllowedOriginVariants(
@@ -46,15 +42,13 @@ function addAllowedOriginVariants(
 
 function allowedOrigins(): Set<string> {
   const origins = new Set<string>();
-  const configuredApiUrl = import.meta.env.VITE_API_URL as string | undefined;
   addAllowedOriginVariants(origins, browserOrigin());
-  addAllowedOriginVariants(origins, configuredApiUrl ?? null);
+  addAllowedOriginVariants(origins, resolvePlatformOriginForTarget("api"));
   return origins;
 }
 
 function baseUrl(): string | null {
-  const configuredApiUrl = import.meta.env.VITE_API_URL as string | undefined;
-  return browserOrigin() ?? configuredApiUrl ?? null;
+  return browserOrigin() ?? resolvePlatformOriginForTarget("api");
 }
 
 function stripUrlParserIgnoredPrefix(value: string): string {
