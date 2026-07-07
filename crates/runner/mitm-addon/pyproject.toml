@@ -14,11 +14,13 @@ dev = [
     "pytest>=7.0",
     "pytest-asyncio>=0.23",
     "ruff>=0.8",
+    "wsproto>=1.2",
 ]
 test = [
     "pytest>=7.0",
     "pytest-asyncio>=0.23",
     "mitmproxy>=10.0",
+    "wsproto>=1.2",
 ]
 
 [tool.ruff]
