@@ -26,7 +26,11 @@ describe("PlayStation firewall", () => {
 
   it("registers PlayStation APIs with the runtime token binding", () => {
     expect(firewall.name).toBe("playstation");
-    expect(firewall.apis.map((api) => api.auth)).toStrictEqual(
+    expect(
+      firewall.apis.map((api) => {
+        return api.auth;
+      }),
+    ).toStrictEqual(
       firewall.apis.map(() => {
         return {
           headers: {

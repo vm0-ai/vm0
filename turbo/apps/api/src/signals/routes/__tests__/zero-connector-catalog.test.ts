@@ -438,7 +438,7 @@ describe("GET /api/zero/connector-catalog", () => {
         id: "api",
         label: "PlayStation sign-in",
         description:
-          "First make sure you are signed in to PlayStation at [https://www.playstation.com/](https://www.playstation.com/).\nThen open [https://ca.account.sony.com/api/v1/ssocookie](https://ca.account.sony.com/api/v1/ssocookie) and paste the npsso value from the JSON response.",
+          "First make sure you are signed in to PlayStation at [https://www.playstation.com/](https://www.playstation.com/).\nClick the button below, then copy the `npsso` value.",
         grantKind: "external-code",
         manualFields: [],
         startOptions: [],

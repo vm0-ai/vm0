@@ -13,7 +13,7 @@ export const playstation = {
         featureFlag: FeatureSwitchKey.PlaystationConnector,
         label: "PlayStation sign-in",
         helpText:
-          "First make sure you are signed in to PlayStation at [https://www.playstation.com/](https://www.playstation.com/).\nThen open [https://ca.account.sony.com/api/v1/ssocookie](https://ca.account.sony.com/api/v1/ssocookie) and paste the npsso value from the JSON response.",
+          "First make sure you are signed in to PlayStation at [https://www.playstation.com/](https://www.playstation.com/).\nClick the button below, then copy the `npsso` value.",
         client: {
           clientRegistration: "static",
           clientType: "public",
