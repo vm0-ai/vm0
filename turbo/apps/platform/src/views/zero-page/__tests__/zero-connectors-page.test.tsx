@@ -2449,14 +2449,16 @@ describe("connectors page", () => {
 
     await waitFor(() => {
       expect(
-        within(connectDialog).getByRole("link", {
-          name: "https://www.playstation.com/",
+        queryAllByRoleFast("link", connectDialog).find((link) => {
+          return link.textContent === "https://www.playstation.com/";
         }),
       ).toBeInTheDocument();
     });
     expect(
-      within(connectDialog).getByRole("link", {
-        name: "https://ca.account.sony.com/api/v1/ssocookie",
+      queryAllByRoleFast("link", connectDialog).find((link) => {
+        return (
+          link.textContent === "https://ca.account.sony.com/api/v1/ssocookie"
+        );
       }),
     ).toBeInTheDocument();
     expect(
