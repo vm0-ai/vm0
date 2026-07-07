@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.570.0](https://github.com/vm0-ai/vm0/compare/app-v0.569.1...app-v0.570.0) (2026-07-07)
+
+
+### Features
+
+* add feature-switched website template picker ([#20492](https://github.com/vm0-ai/vm0/issues/20492)) ([df39a54](https://github.com/vm0-ai/vm0/commit/df39a548d43360bb2e247347828c123e3ef02c3c))
+* add notion database item workflow trigger ([#20533](https://github.com/vm0-ai/vm0/issues/20533)) ([e4c078c](https://github.com/vm0-ai/vm0/commit/e4c078c3a5da6a9e1684941421ef73223c146393))
+* add playstation connector ([#20459](https://github.com/vm0-ai/vm0/issues/20459)) ([588ee8b](https://github.com/vm0-ai/vm0/commit/588ee8b242242277e752c91f64a1b9698b6d3afd))
+* extract slack memory from source ledger ([#20519](https://github.com/vm0-ai/vm0/issues/20519)) ([d60a77c](https://github.com/vm0-ai/vm0/commit/d60a77ce42aa1f0db17f2b4d8dfdf98c59e10d28))
+* show model usage reset countdown ([#20538](https://github.com/vm0-ai/vm0/issues/20538)) ([f5f008f](https://github.com/vm0-ai/vm0/commit/f5f008fe4ca74a3b1ab6899072665bb824f39d8a))
+* warn about member data loss before destructive agent and workflow actions ([#20477](https://github.com/vm0-ai/vm0/issues/20477)) ([4b68a99](https://github.com/vm0-ai/vm0/commit/4b68a9948b6b375faf581f318a6aa4d3cd985bf7))
+
+
+### Bug Fixes
+
+* keep settings close from locking page clicks ([#20516](https://github.com/vm0-ai/vm0/issues/20516)) ([b5655f5](https://github.com/vm0-ai/vm0/commit/b5655f583ec5df13aadd3d14c45e62aeef675528))
+* **platform:** show inline feedback toolbar after double-click selection ([#20537](https://github.com/vm0-ai/vm0/issues/20537)) ([c66a567](https://github.com/vm0-ai/vm0/commit/c66a56789d251d7b604793e1ce0ff48b3e7f97c0))
+* tighten continuous assistant message spacing ([#20536](https://github.com/vm0-ai/vm0/issues/20536)) ([61cc4c6](https://github.com/vm0-ai/vm0/commit/61cc4c694a530c697bf92882075445f3ac52721e))
+* unify chat composer control focus outlines ([#20520](https://github.com/vm0-ai/vm0/issues/20520)) ([04d4b1f](https://github.com/vm0-ai/vm0/commit/04d4b1f6160218e5ffcb7e801ef3d5cebe20fb97))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.162.0
+    * @vm0/connectors bumped to 1.147.0
+    * @vm0/core bumped to 8.412.0
+
 ## [0.569.1](https://github.com/vm0-ai/vm0/compare/app-v0.569.0...app-v0.569.1) (2026-07-07)
 
 
