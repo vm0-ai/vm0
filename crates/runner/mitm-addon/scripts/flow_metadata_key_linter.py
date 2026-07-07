@@ -15,6 +15,7 @@ _SRC_ROOT = _ADDON_ROOT / "src"
 _TESTS_ROOT = _ADDON_ROOT / "tests"
 _METADATA_KEYS_FILE = _SRC_ROOT / "flow_metadata_keys.py"
 _METADATA_PAIR_LENGTH = 2
+_STRING_FORMAT_CONVERSION = ord("s")
 
 
 def _load_metadata_keys() -> ModuleType:
@@ -74,8 +75,8 @@ def _static_string_value(node: ast.AST) -> str | None:
                 continue
             if (
                 isinstance(value, ast.FormattedValue)
-                and value.conversion == -1
-                and value.format_spec is None
+                and value.conversion in {-1, _STRING_FORMAT_CONVERSION}
+                and _is_plain_string_format_spec(value.format_spec)
             ):
                 formatted_value = _static_string_value(value.value)
                 if formatted_value is not None:
@@ -90,6 +91,13 @@ def _static_string_value(node: ast.AST) -> str | None:
         if left is not None and right is not None:
             return left + right
     return None
+
+
+def _is_plain_string_format_spec(node: ast.AST | None) -> bool:
+    if node is None:
+        return True
+    spec = _static_string_value(node)
+    return spec in {"", "s"}
 
 
 def _violation(path: Path, node: ast.AST, key_name: str) -> str:
