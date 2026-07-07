@@ -1,4 +1,9 @@
-import { createSign, generateKeyPairSync, type KeyObject } from "node:crypto";
+import {
+  createSign,
+  generateKeyPairSync,
+  randomUUID,
+  type KeyObject,
+} from "node:crypto";
 
 import { zeroTeamsConnectContract } from "@vm0/api-contracts/contracts/zero-teams-connect";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
@@ -6,18 +11,21 @@ import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
-import { verifyZeroToken } from "../../auth/tokens";
+import { signSandboxJwtForTests, verifyZeroToken } from "../../auth/tokens";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
+import { clearTeamsBotAuthCacheForTest } from "../../../lib/teams-bot-auth";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { ROUTES } from "../../route";
 import { zeroTeamsBotRoutes } from "../zero-teams-bot";
 import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createUserConfigBddApi } from "./helpers/api-bdd-user-config";
 import {
+  installTeamsForTest,
   removeTeamsForTest,
   setupTeamsConnectTestEnv,
   teamsConnectFixture,
@@ -373,6 +381,23 @@ function teamsToken(
   });
 }
 
+function zeroToken(args: {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly capabilities?: readonly string[];
+}): string {
+  const seconds = Math.floor(now() / 1000);
+  return signSandboxJwtForTests({
+    scope: "zero",
+    userId: args.userId,
+    orgId: args.orgId,
+    runId: `run_${randomUUID()}`,
+    capabilities: (args.capabilities ?? ["teams:write"]) as never,
+    iat: seconds,
+    exp: seconds + 60,
+  });
+}
+
 function teamsMessageActivity(
   fixture: TeamsConnectFixture = botFixture(),
   overrides: Readonly<Record<string, unknown>> = {},
@@ -627,6 +652,7 @@ describe("POST /api/zero/teams/bot", () => {
   beforeEach(() => {
     setupTeamsConnectTestEnv(APP_ORIGIN);
     mockEnv("MICROSOFT_TEAMS_BOT_APP_PASSWORD", BOT_APP_PASSWORD);
+    mockEnv("SECRETS_ENCRYPTION_KEY", "a".repeat(64));
     mockEnv("VM0_WEB_URL", "https://www.vm0.test");
     mockEnv("VM0_API_URL", "https://api.vm0.test");
     mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
@@ -901,6 +927,130 @@ describe("POST /api/zero/teams/bot", () => {
       },
     });
     expect(outboundRequests[0]?.body).not.toHaveProperty("text");
+  });
+
+  it("injects Teams file attachments into the run prompt and downloads them", async () => {
+    botFrameworkHandlers();
+    const fixture = await trackTeamsFixture(
+      Promise.resolve(teamsConnectFixture()),
+    );
+    const actor = authOrgApi.user({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      orgRole: "org:admin",
+    });
+    const runnerGroup = runsApi.configureRunnerGroup();
+    context.mocks.ably.publish.mockResolvedValue(undefined);
+    authOrgApi.acceptAgentStorageWrites();
+    runsApi.acceptStorageDownloads();
+    runsApi.acceptTelemetryIngest();
+    const agent = await authOrgApi.createAgent(actor, {
+      displayName: "Teams file agent",
+      visibility: "public",
+    });
+    await authOrgApi.setDefaultAgent(actor, agent.agentId);
+    await runsApi.grantProEntitlement(actor);
+    await runsApi.ensureOrgModelProvider(actor);
+    await installTeamsForTest(context.signal, fixture);
+    await connectTeamsFixture(fixture);
+    clearTeamsBotAuthCacheForTest();
+    botFrameworkHandlers();
+    teamsOutboundHandlers(fixture.serviceUrl, fixture.teamsTenantId);
+
+    const downloadUrl = "https://contoso.sharepoint.com/sites/docs/spec.png";
+    const response = await postTeamsActivity({
+      activity: teamsMessageActivity(fixture, {
+        id: "activity-file-dm",
+        conversation: {
+          id: "a:personal-conversation",
+          conversationType: "personal",
+        },
+        channelData: {
+          tenant: { id: fixture.teamsTenantId, name: fixture.teamsTenantName },
+          teamsAppId: "teams-app-test",
+        },
+        text: "please inspect this",
+        entities: [],
+        replyToId: null,
+        attachments: [
+          {
+            contentType: "application/vnd.microsoft.teams.file.download.info",
+            name: "spec.png",
+            content: {
+              downloadUrl,
+              uniqueId: "drive-item-1",
+              fileType: "png",
+            },
+          },
+        ],
+      }),
+      token: teamsToken(),
+    });
+
+    expect(response.status).toBe(200);
+    const body = await readTeamsBotResponseAndFlush(response);
+    expect(body).not.toHaveProperty("dispatch");
+    const list = await runsApi.listAgentRuns(actor, { limit: 20 });
+    const run = list.runs.find((item) => {
+      return (
+        item.prompt.includes("please inspect this") &&
+        item.prompt.includes("[Teams file] spec.png (image/png)")
+      );
+    });
+    expect(run).toBeDefined();
+    const runId = run?.id;
+    if (!runId) {
+      throw new Error("Expected Teams file run id");
+    }
+    await runsApi.heartbeatRunner(runnerGroup);
+    const claim = await runsApi.claimRunnerJob(runId);
+    expect(claim.prompt).toContain("please inspect this");
+    expect(claim.prompt).toContain("[Teams file] spec.png (image/png)");
+    expect(claim.appendSystemPrompt).toContain("zero teams download-file -h");
+
+    const fileIdMatch = claim.prompt.match(/ {3}\[ID\] ([^\n]+)/u);
+    const fileId = fileIdMatch?.[1];
+    expect(fileId).toBeTruthy();
+    expect(fileId).not.toContain(downloadUrl);
+
+    const fileBytes = Buffer.from("teams file bytes");
+    server.use(
+      http.get(downloadUrl, ({ request }) => {
+        expect(request.headers.get("authorization")).toBeNull();
+        return new HttpResponse(fileBytes, {
+          status: 200,
+          headers: {
+            "content-type": "image/png",
+            "content-length": String(fileBytes.length),
+          },
+        });
+      }),
+    );
+
+    const app = createAppWithRoutes({
+      signal: context.signal,
+      routes: ROUTES,
+    });
+    const downloadResponse = await app.request(
+      `/api/zero/integrations/teams/download-file?${new URLSearchParams({
+        file_id: fileId ?? "",
+      }).toString()}`,
+      {
+        headers: {
+          authorization: `Bearer ${zeroToken({
+            userId: fixture.userId,
+            orgId: fixture.orgId,
+          })}`,
+        },
+      },
+    );
+
+    expect(downloadResponse.status).toBe(200);
+    expect(downloadResponse.headers.get("content-type")).toBe("image/png");
+    expect(downloadResponse.headers.get("x-file-mimetype")).toBe("image/png");
+    expect(downloadResponse.headers.get("x-file-name")).toBe("spec.png");
+    const receivedBytes = Buffer.from(await downloadResponse.arrayBuffer());
+    expect(receivedBytes.equals(fileBytes)).toBeTruthy();
   });
 
   it("preserves non-bot Teams mentions in message text", async () => {
@@ -1593,6 +1743,10 @@ describe("POST /api/zero/teams/bot", () => {
       "You are currently running inside: Microsoft Teams",
     );
     expect(appendSystemPrompt).toContain("Microsoft Teams messaging and files");
+    expect(appendSystemPrompt).toContain("zero teams --help");
+    expect(appendSystemPrompt).toContain("zero teams message send -h");
+    expect(appendSystemPrompt).toContain("zero teams download-file -h");
+    expect(appendSystemPrompt).toContain("zero teams upload-file -h");
     expect(currentIntegrationPrompt).toContain(
       `Tenant ID: ${fixture.teamsTenantId}`,
     );

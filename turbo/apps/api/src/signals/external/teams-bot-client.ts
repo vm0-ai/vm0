@@ -87,6 +87,10 @@ type FetchTeamsGraphMessagesResult =
   | { readonly kind: "ok"; readonly messages: readonly TeamsGraphMessage[] }
   | TeamsApiErrorResult;
 
+type FetchTeamsFileResult =
+  | { readonly kind: "ok"; readonly response: Response }
+  | TeamsApiErrorResult;
+
 export type TeamsGraphMessage = z.infer<typeof teamsGraphMessageSchema>;
 
 interface TeamsBotCredentials {
@@ -142,10 +146,20 @@ export interface TeamsAdaptiveCard {
   readonly actions?: readonly TeamsAdaptiveCardAction[];
 }
 
-interface TeamsActivityAttachment {
+interface TeamsAdaptiveCardAttachment {
   readonly contentType: "application/vnd.microsoft.card.adaptive";
   readonly content: TeamsAdaptiveCard;
 }
+
+interface TeamsFileAttachment {
+  readonly contentType: string;
+  readonly contentUrl?: string;
+  readonly name?: string;
+}
+
+type TeamsActivityAttachment =
+  | TeamsAdaptiveCardAttachment
+  | TeamsFileAttachment;
 
 interface TeamsActivityBody {
   readonly type: "message" | "typing";
@@ -362,6 +376,17 @@ function teamsGraphChannelMessageUrl(args: {
   return url.toString();
 }
 
+function shouldAuthorizeTeamsFileDownload(url: string): boolean {
+  const parsed = safeUrlParse(url);
+  if (!parsed) {
+    return false;
+  }
+  return (
+    parsed.hostname.toLowerCase().endsWith(".trafficmanager.net") &&
+    parsed.pathname.includes("/v3/attachments/")
+  );
+}
+
 async function fetchTeamsGraphJson<T>(args: {
   readonly tenantId: string;
   readonly url: string;
@@ -405,6 +430,41 @@ async function fetchTeamsGraphJson<T>(args: {
     return teamsApiError(502, "Invalid Microsoft Graph response");
   }
   return { kind: "ok", data: parsed.data };
+}
+
+export async function fetchTeamsFile(args: {
+  readonly tenantId: string;
+  readonly url: string;
+  readonly signal: AbortSignal;
+}): Promise<FetchTeamsFileResult> {
+  const headers: Record<string, string> = {
+    accept: "application/octet-stream",
+  };
+
+  if (shouldAuthorizeTeamsFileDownload(args.url)) {
+    const accessToken = await fetchTeamsBotAccessToken({
+      tenantId: args.tenantId,
+      signal: args.signal,
+    });
+    if (accessToken.kind === "teams-error") {
+      return accessToken;
+    }
+    headers.authorization = `Bearer ${accessToken.accessToken}`;
+  }
+
+  const responseResult = await settle(
+    fetch(args.url, {
+      method: "GET",
+      headers,
+      signal: args.signal,
+    }),
+    args.signal,
+  );
+  if (!responseResult.ok) {
+    return teamsApiError(502, networkErrorMessage(responseResult.error));
+  }
+
+  return { kind: "ok", response: responseResult.value };
 }
 
 async function postTeamsActivity(args: {
@@ -611,6 +671,39 @@ export function sendTeamsMessageReply(args: {
   readonly card?: TeamsAdaptiveCard;
   readonly signal: AbortSignal;
 }): Promise<SendTeamsActivityResult> {
+  return sendTeamsMessage({
+    serviceUrl: args.serviceUrl,
+    conversationId: args.conversationId,
+    activityId: args.activityId,
+    tenantId: args.tenantId,
+    text: args.text,
+    card: args.card,
+    signal: args.signal,
+  });
+}
+
+export function sendTeamsMessage(args: {
+  readonly serviceUrl: string;
+  readonly conversationId: string;
+  readonly activityId?: string;
+  readonly tenantId: string;
+  readonly text: string;
+  readonly card?: TeamsAdaptiveCard;
+  readonly attachments?: readonly TeamsActivityAttachment[];
+  readonly signal: AbortSignal;
+}): Promise<SendTeamsActivityResult> {
+  const attachments: readonly TeamsActivityAttachment[] = [
+    ...(args.card
+      ? [
+          {
+            contentType: "application/vnd.microsoft.card.adaptive" as const,
+            content: args.card,
+          },
+        ]
+      : []),
+    ...(args.attachments ?? []),
+  ];
+
   return postTeamsActivity({
     serviceUrl: args.serviceUrl,
     conversationId: args.conversationId,
@@ -623,16 +716,7 @@ export function sendTeamsMessageReply(args: {
         ? { summary: args.text }
         : { text: args.text, textFormat: "markdown" }),
       replyToId: args.activityId,
-      ...(args.card
-        ? {
-            attachments: [
-              {
-                contentType: "application/vnd.microsoft.card.adaptive",
-                content: args.card,
-              },
-            ],
-          }
-        : {}),
+      ...(attachments.length > 0 ? { attachments } : {}),
       channelData: {
         tenant: { id: args.tenantId },
       },

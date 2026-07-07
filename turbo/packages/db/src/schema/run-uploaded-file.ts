@@ -17,6 +17,7 @@ export const RUN_UPLOADED_FILE_SOURCES = [
   "automation",
   "web",
   "slack",
+  "teams",
   "email",
   "telegram",
   "agentphone",

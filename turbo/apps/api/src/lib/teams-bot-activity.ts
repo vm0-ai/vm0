@@ -1,5 +1,6 @@
 import type {
   TeamsActor,
+  TeamsInboundAttachment,
   TeamsInboundActivity,
 } from "@vm0/api-contracts/contracts/zero-teams-bot";
 
@@ -83,6 +84,42 @@ function normalizeActor(value: unknown): TeamsActor {
 function normalizeActorArray(values: readonly unknown[]): TeamsActor[] {
   return values.map((value) => {
     return normalizeActor(value);
+  });
+}
+
+function normalizeAttachment(
+  value: unknown,
+): TeamsInboundAttachment | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const content = value.content;
+  const attachment = {
+    id: readString(value, "id"),
+    contentType: readString(value, "contentType"),
+    contentUrl: readString(value, "contentUrl"),
+    name: readString(value, "name"),
+    content: isRecord(content) ? content : null,
+  };
+  if (
+    attachment.id ||
+    attachment.contentType ||
+    attachment.contentUrl ||
+    attachment.name ||
+    attachment.content
+  ) {
+    return attachment;
+  }
+  return undefined;
+}
+
+function normalizeAttachments(
+  values: readonly unknown[],
+): TeamsInboundAttachment[] {
+  return values.flatMap((value) => {
+    const attachment = normalizeAttachment(value);
+    return attachment ? [attachment] : [];
   });
 }
 
@@ -252,6 +289,7 @@ function messageActivity(
     text: mentionNormalization.text,
     value,
     mentionsRecipient: mentionNormalization.mentionsRecipient,
+    attachments: normalizeAttachments(readArray(activity, "attachments")),
   };
 }
 

@@ -109,6 +109,52 @@ export type IntegrationsTelegramMessageContract =
   typeof integrationsTelegramMessageContract;
 
 /**
+ * Integration Microsoft Teams message contract
+ * POST /api/zero/integrations/teams/message
+ *
+ * Sends a Microsoft Teams message via the org's installed Teams bot.
+ * Requires `teams:write` capability (via ZERO_TOKEN).
+ */
+const sendTeamsMessageBodySchema = z.object({
+  conversationId: z.string().min(1, "Conversation ID is required"),
+  text: z.string().min(1, "Message text is required"),
+  activityId: z.string().min(1, "Activity ID is required").optional(),
+});
+
+export type SendTeamsMessageBody = z.infer<typeof sendTeamsMessageBodySchema>;
+
+const sendTeamsMessageResponseSchema = z.object({
+  ok: z.literal(true),
+  activityId: z.string().optional(),
+  conversationId: z.string(),
+});
+
+export type SendTeamsMessageResponse = z.infer<
+  typeof sendTeamsMessageResponseSchema
+>;
+
+export const integrationsTeamsMessageContract = c.router({
+  sendMessage: {
+    method: "POST",
+    path: "/api/zero/integrations/teams/message",
+    headers: authHeadersSchema,
+    body: sendTeamsMessageBodySchema,
+    responses: {
+      200: sendTeamsMessageResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      502: apiErrorSchema,
+    },
+    summary: "Send a Microsoft Teams message via org bot",
+  },
+});
+
+export type IntegrationsTeamsMessageContract =
+  typeof integrationsTeamsMessageContract;
+
+/**
  * Integration AgentPhone message contract
  * POST /api/zero/integrations/phone/message
  *
@@ -333,6 +379,52 @@ export const integrationsTelegramUploadInitContract = c.router({
 });
 
 /**
+ * Integration Microsoft Teams file upload — init contract
+ * POST /api/zero/integrations/teams/upload-file/init
+ *
+ * Requests a pre-signed upload URL for a temporary VM0-hosted file. The CLI
+ * uploads the file body directly to R2, then the complete route sends a Teams
+ * message with the file attachment and public file URL.
+ * Requires `teams:write` capability (via ZERO_TOKEN).
+ */
+const teamsUploadInitBodySchema = z.object({
+  filename: z.string().min(1, "Filename is required").max(255),
+  contentType: z.string().min(1, "Content type is required").max(200),
+  length: z.number().int().positive("File length must be a positive integer"),
+});
+
+export type TeamsUploadInitBody = z.infer<typeof teamsUploadInitBodySchema>;
+
+const teamsUploadInitResponseSchema = z.object({
+  uploadId: z.string().uuid(),
+  uploadUrl: z.string(),
+  fileUrl: z.string(),
+  filename: z.string(),
+  contentType: z.string(),
+  size: z.number().int().nonnegative(),
+});
+
+export type TeamsUploadInitResponse = z.infer<
+  typeof teamsUploadInitResponseSchema
+>;
+
+export const integrationsTeamsUploadInitContract = c.router({
+  init: {
+    method: "POST",
+    path: "/api/zero/integrations/teams/upload-file/init",
+    headers: authHeadersSchema,
+    body: teamsUploadInitBodySchema,
+    responses: {
+      200: teamsUploadInitResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+    },
+    summary: "Get a pre-signed upload URL for Microsoft Teams file delivery",
+  },
+});
+
+/**
  * Integration Telegram file upload — complete contract
  * POST /api/zero/integrations/telegram/upload-file/complete
  *
@@ -382,6 +474,58 @@ export const integrationsTelegramUploadCompleteContract = c.router({
       502: apiErrorSchema,
     },
     summary: "Finalize Telegram file upload and send it to a chat",
+  },
+});
+
+/**
+ * Integration Microsoft Teams file upload — complete contract
+ * POST /api/zero/integrations/teams/upload-file/complete
+ *
+ * Sends an uploaded file URL to a Microsoft Teams conversation using the org's
+ * installed Teams bot.
+ * Requires `teams:write` capability (via ZERO_TOKEN).
+ */
+const teamsUploadCompleteBodySchema = z.object({
+  uploadId: z.string().uuid("Upload ID must be a UUID"),
+  conversationId: z.string().min(1, "Conversation ID is required"),
+  activityId: z.string().min(1, "Activity ID is required").optional(),
+  contentType: z.string().min(1).max(200).optional(),
+  text: z.string().max(4000).optional(),
+});
+
+export type TeamsUploadCompleteBody = z.infer<
+  typeof teamsUploadCompleteBodySchema
+>;
+
+const teamsUploadCompleteResponseSchema = z.object({
+  activityId: z.string().optional(),
+  conversationId: z.string(),
+  filename: z.string(),
+  mimetype: z.string(),
+  size: z.number().int().nonnegative(),
+  url: z.string(),
+});
+
+export type TeamsUploadCompleteResponse = z.infer<
+  typeof teamsUploadCompleteResponseSchema
+>;
+
+export const integrationsTeamsUploadCompleteContract = c.router({
+  complete: {
+    method: "POST",
+    path: "/api/zero/integrations/teams/upload-file/complete",
+    headers: authHeadersSchema,
+    body: teamsUploadCompleteBodySchema,
+    responses: {
+      200: teamsUploadCompleteResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      502: apiErrorSchema,
+    },
+    summary:
+      "Finalize Microsoft Teams file upload and send it to a conversation",
   },
 });
 

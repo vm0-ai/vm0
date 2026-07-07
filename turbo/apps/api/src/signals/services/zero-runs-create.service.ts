@@ -269,7 +269,7 @@ function buildIntegrationToolsPrompt(
     case "web": {
       return [
         "- Web chat files: use `zero web download-file -h` when a web chat message includes a `[Web file]` block. `zero web upload-file -h` can share a local file back to the web chat user when file delivery is needed.",
-        "- Cross-integration messages from web chat: if the user explicitly asks you to send or post through another integration, use the integration CLI and ask for the destination when it is missing. Telegram: `zero telegram bot list` to choose the bot, then `zero telegram message send --help` for chats, replies, and forum topics. AgentPhone/SMS: `zero phone message --help`. GitHub, Microsoft Teams, and email do not currently have dedicated Zero message-send commands, so do not invent `zero github message`, `zero teams message`, or `zero email message` commands.",
+        "- Cross-integration messages from web chat: if the user explicitly asks you to send or post through another integration, use the integration CLI and ask for the destination when it is missing. Microsoft Teams: `zero teams message send --help` for conversations and thread replies. Telegram: `zero telegram bot list` to choose the bot, then `zero telegram message send --help` for chats, replies, and forum topics. AgentPhone/SMS: `zero phone message --help`. GitHub and email do not currently have dedicated Zero message-send commands, so do not invent `zero github message` or `zero email message` commands.",
         ...localFileContextLines,
       ];
     }
@@ -281,7 +281,7 @@ function buildIntegrationToolsPrompt(
     }
     case "teams": {
       return [
-        "- Microsoft Teams messaging and files: normal replies are automatically sent to the originating conversation, so extra messaging commands are only for explicit additional delivery targets. Do not use Slack or Telegram commands for Microsoft Teams delivery.",
+        "- Microsoft Teams messaging and files: use `zero teams --help`. Normal replies are automatically sent to the originating conversation, so Teams commands are for different conversations, thread replies, or explicit extra messages/files. Use `zero teams message send -h` for extra messages, `zero teams download-file -h` for `[Teams file]` blocks, and `zero teams upload-file -h` when file delivery is needed. Do not use Slack or Telegram commands for Microsoft Teams delivery.",
         ...localFileContextLines,
       ];
     }

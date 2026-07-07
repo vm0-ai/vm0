@@ -16,11 +16,15 @@ import { teamsOrgInstallations } from "@vm0/db/schema/teams-org-installation";
 import { teamsOrgThreadSessions } from "@vm0/db/schema/teams-org-thread-session";
 import { teamsUserAgentPreferences } from "@vm0/db/schema/teams-user-agent-preference";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import type { TeamsInboundActivity } from "@vm0/api-contracts/contracts/zero-teams-bot";
+import type {
+  TeamsInboundActivity,
+  TeamsInboundAttachment,
+} from "@vm0/api-contracts/contracts/zero-teams-bot";
 import { and, desc, eq, isNull, or } from "drizzle-orm";
 import { convert } from "html-to-text";
 
 import { env } from "../../lib/env";
+import { inferMimetype } from "../../lib/mimetype";
 import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
@@ -48,6 +52,7 @@ import {
   teamsOrgCallbackPayloadSchema,
   type TeamsOrgCallbackPayload,
 } from "./teams-org-callback-payload";
+import { encodeTeamsFileToken } from "./teams-file-token";
 import {
   updateUserModelPreference$,
   userModelPreference,
@@ -71,6 +76,8 @@ const TEAMS_AGENT_PICKER_INPUT_ID = "selectedComposeId";
 const TEAMS_MODEL_PICKER_INPUT_ID = "selectedModel";
 const TEAMS_AGENT_PICKER_ORG_DEFAULT_VALUE = "__org_default__";
 const TEAMS_THINKING_REACTION_TYPE = "1f4ad_thoughtballoon";
+const TEAMS_FILE_DOWNLOAD_INFO_CONTENT_TYPE =
+  "application/vnd.microsoft.teams.file.download.info";
 
 type TeamsBotCommand = "help" | "connect" | "disconnect" | "switch" | "model";
 type TeamsCardAction = "switch_agent" | "switch_model";
@@ -105,6 +112,12 @@ interface TeamsModelPickerOption {
   readonly model: SupportedRunModel;
   readonly label: string;
   readonly isDefault: boolean;
+}
+
+interface TeamsPromptFile {
+  readonly fileId: string;
+  readonly name: string;
+  readonly contentType: string;
 }
 
 type EffectiveComposeResolution =
@@ -384,6 +397,103 @@ function buildTeamsModelPickerCard(args: {
       },
     ],
   };
+}
+
+function stringRecordValue(
+  source: Readonly<Record<string, unknown>> | null,
+  key: string,
+): string | null {
+  const value = source?.[key];
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function teamsAttachmentDownloadUrl(
+  attachment: TeamsInboundAttachment,
+): string | null {
+  return (
+    stringRecordValue(attachment.content, "downloadUrl") ??
+    attachment.contentUrl
+  );
+}
+
+function teamsAttachmentName(attachment: TeamsInboundAttachment): string {
+  return (
+    attachment.name ??
+    stringRecordValue(attachment.content, "name") ??
+    stringRecordValue(attachment.content, "fileName") ??
+    "teams-file"
+  );
+}
+
+function teamsAttachmentContentType(
+  attachment: TeamsInboundAttachment,
+  filename: string,
+): string {
+  if (
+    attachment.contentType &&
+    attachment.contentType !== TEAMS_FILE_DOWNLOAD_INFO_CONTENT_TYPE
+  ) {
+    return attachment.contentType;
+  }
+
+  const fileType = stringRecordValue(attachment.content, "fileType");
+  if (fileType && !filename.endsWith(`.${fileType}`)) {
+    return inferMimetype(`${filename}.${fileType}`);
+  }
+  return inferMimetype(filename);
+}
+
+function teamsPromptFile(
+  activity: TeamsMessageActivity,
+  attachment: TeamsInboundAttachment,
+): TeamsPromptFile | null {
+  const url = teamsAttachmentDownloadUrl(attachment);
+  if (!url || !URL.canParse(url)) {
+    return null;
+  }
+
+  const name = teamsAttachmentName(attachment);
+  const contentType = teamsAttachmentContentType(attachment, name);
+  return {
+    fileId: encodeTeamsFileToken({
+      tenantId: activity.tenantId,
+      url,
+      name,
+      contentType,
+    }),
+    name,
+    contentType,
+  };
+}
+
+function teamsPromptFiles(activity: TeamsMessageActivity): TeamsPromptFile[] {
+  return activity.attachments.flatMap((attachment) => {
+    const file = teamsPromptFile(activity, attachment);
+    return file ? [file] : [];
+  });
+}
+
+function formatTeamsFileForContext(file: TeamsPromptFile): string {
+  return [
+    `[Teams file] ${file.name} (${file.contentType})`,
+    `   [ID] ${file.fileId}`,
+  ].join("\n");
+}
+
+function appendTeamsFilesToPrompt(
+  prompt: string,
+  files: readonly TeamsPromptFile[],
+): string {
+  if (files.length === 0) {
+    return prompt;
+  }
+
+  const fileContext = files.map(formatTeamsFileForContext).join("\n");
+  return [prompt, fileContext]
+    .filter((part) => {
+      return part.length > 0;
+    })
+    .join("\n\n");
 }
 
 async function installationForTenant(
@@ -1773,7 +1883,8 @@ export const dispatchTeamsMessageToAgent$ = command(
     }
 
     const prompt = activity.text.trim();
-    if (!prompt && !cardAction) {
+    const promptFiles = cardAction ? [] : teamsPromptFiles(activity);
+    if (!prompt && promptFiles.length === 0 && !cardAction) {
       return {
         kind: "notice",
         replyText: "Please include a message for Zero.",
@@ -1847,7 +1958,7 @@ export const dispatchTeamsMessageToAgent$ = command(
       runResolvedTeamsAgentForActivity$,
       {
         db,
-        prompt,
+        prompt: appendTeamsFilesToPrompt(prompt, promptFiles),
         activity,
         installation: boundInstallation,
         connection,
