@@ -28,7 +28,10 @@ export function MinimalSidebarLayout({ children }: { children: ReactNode }) {
       <aside className="zero-nav hidden md:flex h-full w-[255px] shrink-0 flex-col bg-sidebar">
         <div className="flex-1" />
         <div className="p-2">
-          <AccountDropdown onAccountAction={onAccountAction} />
+          <AccountDropdown
+            onAccountAction={onAccountAction}
+            settingsOwnerId="minimal-sidebar"
+          />
         </div>
       </aside>
       <div className="flex flex-1 flex-col min-w-0 min-h-0 zero-workspace-bg">

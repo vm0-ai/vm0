@@ -130,6 +130,19 @@ function buttonByText(text: string): HTMLElement {
   return button;
 }
 
+function buttonByLabel(
+  label: string,
+  container: ParentNode = document.body,
+): HTMLElement {
+  const button = queryAllByRoleFast("button", container).find((candidate) => {
+    return candidate.getAttribute("aria-label") === label;
+  });
+  if (!button) {
+    throw new Error(`${label} button not found`);
+  }
+  return button;
+}
+
 async function openAccountMenu(): Promise<HTMLElement> {
   const accountName = await screen.findByText("Alex Rivera");
   const accountButton = accountName.closest("button");
@@ -610,6 +623,20 @@ describe("zero sidebar account menu", () => {
     await waitFor(() => {
       expect(screen.getByText("Disabled")).toBeInTheDocument();
     });
+
+    const settingsDialog = screen.getByRole("dialog", { name: "Settings" });
+    click(buttonByLabel("Close", settingsDialog));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Settings" }),
+      ).not.toBeInTheDocument();
+      expect(document.querySelector(".zero-dialog-overlay")).toBeNull();
+    });
+    expect(document.body.style.pointerEvents).not.toBe("none");
+
+    const reopenedMenu = await openAccountMenu();
+    expect(within(reopenedMenu).getByText("Settings")).toBeInTheDocument();
   });
 
   it("shows account switching, add-account, and sign-out actions", async () => {
