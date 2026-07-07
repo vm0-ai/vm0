@@ -313,11 +313,13 @@ class _StubOptions:
         api_url: str,
         builtin_firewall_catalog_cache_path: str,
         client_session_id: str,
+        client_version: str,
     ) -> None:
         self.vm0_proxy_registry_path = registry_path
         self.vm0_api_url = api_url
         self.vm0_builtin_firewall_catalog_cache_path = builtin_firewall_catalog_cache_path
         self.vm0_client_session_id = client_session_id
+        self.vm0_client_version = client_version
         self.vm0_usage_flush_interval_seconds = usage.DEFAULT_FLUSH_INTERVAL_SECONDS
 
 
@@ -349,6 +351,7 @@ def mitm_ctx(tmp_path):
         api_url: str = "https://api.vm0.ai",
         builtin_firewall_catalog_cache_path: str | None = None,
         client_session_id: str = "runner-session-test",
+        client_version: str = "runner-version-test",
     ) -> Iterator[MagicMock]:
         if registry_path is None:
             registry_path = default_registry_path
@@ -359,6 +362,7 @@ def mitm_ctx(tmp_path):
             api_url=api_url,
             builtin_firewall_catalog_cache_path=builtin_firewall_catalog_cache_path,
             client_session_id=client_session_id,
+            client_version=client_version,
         )
         log = MagicMock()
         with (

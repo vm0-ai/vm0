@@ -25,6 +25,7 @@ const READY_TIMEOUT: Duration = Duration::from_secs(10);
 /// installed/replaced mitmdump binary is still observed as writable.
 const TEXT_BUSY_SPAWN_RETRY_DELAY: Duration = Duration::from_millis(20);
 const TEXT_BUSY_SPAWN_MAX_RETRIES: usize = 5;
+const RUNNER_CLIENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Timeout for graceful shutdown before SIGKILL.
 ///
@@ -529,6 +530,8 @@ pub(crate) async fn spawn_mitmdump(
             "vm0_client_session_id={}",
             config.client_session_id
         ))
+        .arg("--set")
+        .arg(format!("vm0_client_version={RUNNER_CLIENT_VERSION}"))
         .arg("--scripts")
         .arg(config.addon_dir.join("mitm_addon.py"))
         .arg("--set")
@@ -1116,6 +1119,11 @@ PY
             args.lines()
                 .any(|arg| arg == "vm0_client_session_id=runner-session-test"),
             "mitmdump args should include vm0_client_session_id option; got:\n{args}",
+        );
+        assert!(
+            args.lines()
+                .any(|arg| arg == format!("vm0_client_version={RUNNER_CLIENT_VERSION}")),
+            "mitmdump args should include vm0_client_version option; got:\n{args}",
         );
         assert!(
             args.lines().all(|arg| arg != "connection_strategy=lazy"),

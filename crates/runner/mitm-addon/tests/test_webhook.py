@@ -10,7 +10,6 @@ from unittest.mock import patch
 import pytest
 
 import flow_metadata_keys as metadata_keys
-import mitm_addon_version
 import platform_api
 import usage
 from tests.jsonl_log_helpers import (
@@ -71,7 +70,7 @@ def _assert_sensitive_webhook_url_parts_absent(entry: dict) -> None:
 
 
 def _assert_platform_client_headers(request, *, session_id: str = "runner-session-test") -> None:
-    assert request.header("x-client-version") == mitm_addon_version.MITM_ADDON_VERSION
+    assert request.header("x-client-version") == "runner-version-test"
     assert request.header("x-client-type") == "MitmAddon"
     assert request.header("x-client-session-id") == session_id
     uuid.UUID(request.header("x-client-request-id"))
