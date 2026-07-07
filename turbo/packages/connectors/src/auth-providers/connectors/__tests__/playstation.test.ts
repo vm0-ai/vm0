@@ -16,7 +16,7 @@ import {
   PLAYSTATION_NPSSO_URL,
   PLAYSTATION_PROFILE_USERS_URL,
   PLAYSTATION_REDIRECT_URI,
-} from "../playstation/oauth";
+} from "../playstation/api";
 
 const PLAYSTATION_TOKEN_URL = `${PLAYSTATION_AUTH_BASE_URL}/token`;
 const PLAYSTATION_AUTHORIZE_URL = `${PLAYSTATION_AUTH_BASE_URL}/authorize`;

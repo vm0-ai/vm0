@@ -772,8 +772,8 @@ function ExternalCodePendingContent({
       {method.description && <ConnectorHelpText text={method.description} />}
       {!method.description && (
         <p className="text-sm text-muted-foreground">
-          Open {connectorLabel} sign-in, then paste the code or token displayed
-          by {connectorLabel}.
+          Open {connectorLabel} sign-in, then paste the code displayed by{" "}
+          {connectorLabel}.
         </p>
       )}
       <div className="flex items-center gap-2">
@@ -792,7 +792,7 @@ function ExternalCodePendingContent({
         />
       </div>
       <label className="sr-only" htmlFor="connector-external-code-input">
-        Code or token
+        Code
       </label>
       <Input
         id="connector-external-code-input"
@@ -800,7 +800,7 @@ function ExternalCodePendingContent({
         onChange={(event) => {
           onCodeChange(event.target.value);
         }}
-        placeholder="Code or token"
+        placeholder="Code"
         autoComplete="one-time-code"
         data-testid="connector-external-code-input"
       />

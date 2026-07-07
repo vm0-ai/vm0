@@ -275,7 +275,7 @@ describe("CONN-02: external-code session lifecycle", () => {
     );
     expectApiError(rejected.body);
     expect(rejected.body.error.message).toBe(
-      "External-code authorization code or token was rejected. Check it and try again.",
+      "External-code authorization code was rejected. Check it and try again.",
     );
 
     const retried = await connectorsApi.completeExternalCode(actor, "aws", {
@@ -327,7 +327,7 @@ describe("CONN-02: external-code session lifecycle", () => {
     );
     expectApiError(rejected.body);
     expect(rejected.body.error.message).toBe(
-      "External-code authorization code or token was rejected. Check it and try again.",
+      "External-code authorization code was rejected. Check it and try again.",
     );
     expect(authorizeRequestCount).toBe(1);
   });

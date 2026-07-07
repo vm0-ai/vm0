@@ -9,7 +9,7 @@ import {
   fetchPlaystationIdentity,
   playstationUserInfo,
   refreshPlaystationAuthTokens,
-} from "./oauth";
+} from "./api";
 
 const PLAYSTATION_EXTERNAL_CODE_SESSION_EXPIRES_IN_SECONDS = 10 * 60;
 

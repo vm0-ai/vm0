@@ -1829,7 +1829,7 @@ const completeConnectorExternalCode$ = command(
     if (!code) {
       set(internalConnectorExternalCodeState$, {
         ...current,
-        errorMessage: `Enter the code or token from ${options.connectorLabel ?? type}.`,
+        errorMessage: `Enter the code from ${options.connectorLabel ?? type}.`,
       });
       return false;
     }

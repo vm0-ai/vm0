@@ -2465,7 +2465,7 @@ describe("connectors page", () => {
       buttonByText("Open PlayStation sign-in", connectDialog),
     ).toBeInTheDocument();
     expect(
-      within(connectDialog).getByPlaceholderText("Code or token"),
+      within(connectDialog).getByPlaceholderText("Code"),
     ).toBeInTheDocument();
   });
 

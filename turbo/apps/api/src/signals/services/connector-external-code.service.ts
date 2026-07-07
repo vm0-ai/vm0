@@ -594,7 +594,7 @@ function providerBadRequest(error: unknown) {
       (error.status >= 400 && error.status < 500 && error.status !== 429))
   ) {
     return badRequestMessage(
-      "External-code authorization code or token was rejected. Check it and try again.",
+      "External-code authorization code was rejected. Check it and try again.",
     );
   }
   return null;
