@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.53](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.52...guest-download-v0.20.53) (2026-07-07)
+
+
+### Performance Improvements
+
+* skip empty artifact uploads during run creation ([#20447](https://github.com/vm0-ai/vm0/issues/20447)) ([85f5231](https://github.com/vm0-ai/vm0/commit/85f5231cceb002fdcbf8faf826d8ca7df7332a39))
+
 ## [0.20.52](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.51...guest-download-v0.20.52) (2026-07-06)
 
 

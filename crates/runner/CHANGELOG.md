@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.136.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.136.4...runner-rs-v0.136.5) (2026-07-07)
+
+
+### Documentation
+
+* **mitm-addon:** document usage buffer flush signals ([#20500](https://github.com/vm0-ai/vm0/issues/20500)) ([1f1c0c3](https://github.com/vm0-ai/vm0/commit/1f1c0c317730654db43e49ed97ab2bbd2640d596))
+
+## [0.136.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.136.3...runner-rs-v0.136.4) (2026-07-07)
+
+## [0.136.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.136.2...runner-rs-v0.136.3) (2026-07-07)
+
+## [0.136.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.136.1...runner-rs-v0.136.2) (2026-07-07)
+
+
+### Refactoring
+
+* **runner:** split network log manager ownership ([#20454](https://github.com/vm0-ai/vm0/issues/20454)) ([c7a7c0b](https://github.com/vm0-ai/vm0/commit/c7a7c0bac780febd0e2631056d54b3a183b64f24))
+
+
+### Performance Improvements
+
+* reuse codex zstd session history ([#20450](https://github.com/vm0-ai/vm0/issues/20450)) ([e9b1a48](https://github.com/vm0-ai/vm0/commit/e9b1a48e0e36b8ae75bceab667fd8d6f70fd2ede))
+
 ## [0.136.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.136.0...runner-rs-v0.136.1) (2026-07-07)
 
 ## [0.136.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.135.0...runner-rs-v0.136.0) (2026-07-06)

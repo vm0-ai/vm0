@@ -9,6 +9,8 @@ import {
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
+import type { MemorySourceMetadata } from "@vm0/db/jsonb-contracts/memory-substrate";
+export type { MemorySourceMetadata } from "@vm0/db/jsonb-contracts/memory-substrate";
 
 export const MEMORY_PROVIDERS = ["gmail", "slack"] as const;
 export type MemoryProvider = (typeof MEMORY_PROVIDERS)[number];
@@ -54,25 +56,6 @@ export const MEMORY_EDGE_TYPES = [
   "contradicts",
 ] as const;
 export type MemoryEdgeType = (typeof MEMORY_EDGE_TYPES)[number];
-
-export interface MemorySourceMetadata {
-  readonly workspaceId?: string;
-  readonly channelId?: string;
-  readonly channelType?: string;
-  readonly threadId?: string | null;
-  readonly messageId?: string | null;
-  readonly messageTs?: string;
-  readonly senderId?: string;
-  readonly participantIds?: readonly string[];
-  readonly fileIds?: readonly string[];
-  readonly mailboxEmail?: string;
-  readonly historyId?: string;
-  readonly direction?: "sent" | "received" | "mixed" | "unknown";
-  readonly from?: string | null;
-  readonly to?: readonly string[];
-  readonly cc?: readonly string[];
-  readonly reason?: string;
-}
 
 export const memorySources = pgTable(
   "memory_sources",

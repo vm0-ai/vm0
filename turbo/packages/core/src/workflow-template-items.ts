@@ -174,36 +174,6 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
       "Connectors: sentry, github required; linear, slack optional.\nSuggested trigger: Add a schedule trigger (e.g. hourly). Sentry has no native event trigger yet, so poll on a cadence.\n\nBefore creating anything, confirm the trigger details, the destination (channel, doc, or sheet), and any labels, names, or thresholds referenced above, then connect any missing required connectors.",
   }),
   defineWorkflowTemplate({
-    id: "workflow-template:watch-sentry-after-release",
-    category: "Engineering",
-    title: "Watch Sentry after a release",
-    description:
-      "Compare the crash-free rate after each release and flag regressions.",
-    connectors: ["sentry", "github", "vercel", "slack"],
-    behavior: [
-      "Zero watches the new release",
-      "Compared against baseline",
-      "Regression flagged with a rollback tip",
-    ],
-    missingInfo:
-      "Connectors: sentry, github required; vercel, slack optional.\nSuggested trigger: Add a schedule trigger that runs shortly after each release. Sentry has no native event trigger, so poll and compare against the prior baseline.\n\nBefore creating anything, confirm the trigger details, the destination (channel, doc, or sheet), and any labels, names, or thresholds referenced above, then connect any missing required connectors.",
-  }),
-  defineWorkflowTemplate({
-    id: "workflow-template:post-github-updates-slack",
-    category: "Engineering",
-    title: "Post GitHub updates to Slack",
-    description:
-      "Summarize your merged and in-progress GitHub work into a Slack update.",
-    connectors: ["github", "linear", "sentry", "slack"],
-    behavior: [
-      "Zero collects your activity",
-      "Summarized into an update",
-      "Posted to Slack",
-    ],
-    missingInfo:
-      "Connectors: github required; linear, sentry, slack optional.\nSuggested trigger: Add a schedule trigger (e.g. every weekday at end of day).\n\nBefore creating anything, confirm the trigger details, the destination (channel, doc, or sheet), and any labels, names, or thresholds referenced above, then connect any missing required connectors.",
-  }),
-  defineWorkflowTemplate({
     id: "workflow-template:draft-github-release-notes-notion",
     category: "Engineering",
     title: "Draft GitHub release notes in Notion",
@@ -217,21 +187,6 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     ],
     missingInfo:
       "Connectors: github, notion required; slack optional.\nSuggested trigger: Add a github-label-applied event trigger on a release label, or a schedule trigger you run per release.\n\nBefore creating anything, confirm the trigger details, the destination (channel, doc, or sheet), and any labels, names, or thresholds referenced above, then connect any missing required connectors.",
-  }),
-  defineWorkflowTemplate({
-    id: "workflow-template:report-ai-model-costs-slack",
-    category: "Engineering",
-    title: "Report AI model costs to Slack",
-    description:
-      "Report LLM token spend and latency per model and route to Slack.",
-    connectors: ["langfuse", "slack"],
-    behavior: [
-      "Zero reads Langfuse",
-      "Broken down by model and route",
-      "Posted to Slack",
-    ],
-    missingInfo:
-      "Connectors: langfuse required; slack optional.\nSuggested trigger: Add a schedule trigger (e.g. daily). Langfuse has no native event trigger, so poll on a cadence.\n\nBefore creating anything, confirm the trigger details, the destination (channel, doc, or sheet), and any labels, names, or thresholds referenced above, then connect any missing required connectors.",
   }),
   defineWorkflowTemplate({
     id: "workflow-template:feedback-router",

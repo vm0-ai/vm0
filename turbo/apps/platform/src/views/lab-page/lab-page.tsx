@@ -6,16 +6,7 @@ import {
   type FeatureSwitchMetadata,
 } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import {
-  Switch,
-  Button,
-  cn,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@vm0/ui";
+import { Switch, Button, cn } from "@vm0/ui";
 import {
   featureSwitch$,
   setFeatureSwitch$,
@@ -26,11 +17,8 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   LAB_ALL_MAINTAINERS,
   labMaintainerFilter$,
-  labSort$,
   setLabMaintainerFilter$,
-  setLabSort$,
   type LabMaintainerFilter,
-  type LabSort,
 } from "../../signals/lab-page/lab-page-ui.ts";
 
 type FeatureSwitchStates = Record<FeatureSwitchKey, boolean> | undefined;
@@ -38,12 +26,6 @@ type FeatureSwitchMetadataByKey = Record<
   FeatureSwitchKey,
   FeatureSwitchMetadata
 >;
-
-const SORT_OPTIONS: readonly { value: LabSort; label: string }[] = [
-  { value: "name", label: "Name" },
-  { value: "maintainer", label: "Maintainer" },
-  { value: "enabled", label: "Enabled first" },
-];
 
 interface MaintainerFilterOption {
   readonly value: LabMaintainerFilter;
@@ -55,42 +37,8 @@ function compareByName(a: FeatureSwitchKey, b: FeatureSwitchKey): number {
   return a.localeCompare(b, undefined, { sensitivity: "base" });
 }
 
-function compareFeatureSwitches(params: {
-  readonly a: FeatureSwitchKey;
-  readonly b: FeatureSwitchKey;
-  readonly sort: LabSort;
-  readonly features: FeatureSwitchStates;
-  readonly metadata: FeatureSwitchMetadataByKey;
-}): number {
-  const { a, b, sort, features, metadata } = params;
-  if (sort === "enabled") {
-    const enabledComparison =
-      Number(features?.[b] ?? false) - Number(features?.[a] ?? false);
-    if (enabledComparison !== 0) {
-      return enabledComparison;
-    }
-  }
-  if (sort === "maintainer") {
-    const maintainerComparison = metadata[a].maintainer.localeCompare(
-      metadata[b].maintainer,
-      undefined,
-      { sensitivity: "base" },
-    );
-    if (maintainerComparison !== 0) {
-      return maintainerComparison;
-    }
-  }
-  return compareByName(a, b);
-}
-
-function sortedFeatureSwitchKeys(params: {
-  readonly sort: LabSort;
-  readonly features: FeatureSwitchStates;
-  readonly metadata: FeatureSwitchMetadataByKey;
-}): FeatureSwitchKey[] {
-  return [...getUserOverridableFeatureSwitchKeys()].sort((a, b) => {
-    return compareFeatureSwitches({ a, b, ...params });
-  });
+function sortedFeatureSwitchKeys(): FeatureSwitchKey[] {
+  return [...getUserOverridableFeatureSwitchKeys()].sort(compareByName);
 }
 
 function maintainerLabel(email: string): string {
@@ -196,13 +144,11 @@ function MaintainerFilterPills(props: {
 }
 
 function LabFilterBar(props: {
-  readonly sort: LabSort;
   readonly maintainerFilter: LabMaintainerFilter;
   readonly maintainerOptions: readonly MaintainerFilterOption[];
   readonly totalCount: number;
   readonly busy: boolean;
   readonly resetting: boolean;
-  readonly onSortChange: (sort: LabSort) => void;
   readonly onMaintainerFilterChange: (filter: LabMaintainerFilter) => void;
   readonly onReset: () => void;
 }) {
@@ -215,28 +161,6 @@ function LabFilterBar(props: {
         onChange={props.onMaintainerFilterChange}
       />
       <div className="ml-auto flex items-center gap-1.5">
-        <Select
-          value={props.sort}
-          onValueChange={(value) => {
-            props.onSortChange(value as LabSort);
-          }}
-        >
-          <SelectTrigger
-            aria-label="Sort features"
-            className="zero-btn-morandi h-9 w-[160px] gap-1.5 rounded-lg px-3.5 text-sm font-medium"
-          >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {SORT_OPTIONS.map((option) => {
-              return (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              );
-            })}
-          </SelectContent>
-        </Select>
         <Button
           variant="outline"
           size="sm"
@@ -314,16 +238,14 @@ export function LabPage() {
   const features = useLastResolved(featureSwitch$);
   const [toggleLoadable, setFeature] = useLoadableSet(setFeatureSwitch$);
   const [resetLoadable, reset] = useLoadableSet(resetFeatureSwitches$);
-  const sort = useGet(labSort$);
   const maintainerFilter = useGet(labMaintainerFilter$);
-  const setSort = useSet(setLabSort$);
   const setMaintainerFilter = useSet(setLabMaintainerFilter$);
   const resetting = resetLoadable.state === "loading";
   const toggling = toggleLoadable.state === "loading";
   const busy = resetting || toggling;
   const pageSignal = useGet(pageSignal$);
   const metadata = getFeatureSwitchMetadata();
-  const sorted = sortedFeatureSwitchKeys({ sort, features, metadata });
+  const sorted = sortedFeatureSwitchKeys();
   const allKeys = getUserOverridableFeatureSwitchKeys();
   const maintainerOptions = maintainerFilterOptions({
     keys: allKeys,
@@ -360,13 +282,11 @@ export function LabPage() {
       <div className="flex-1 overflow-y-auto px-4 sm:px-6 pb-10">
         <div className="mx-auto max-w-[900px] space-y-4">
           <LabFilterBar
-            sort={sort}
             maintainerFilter={maintainerFilter}
             maintainerOptions={maintainerOptions}
             totalCount={allKeys.length}
             busy={busy}
             resetting={resetting}
-            onSortChange={setSort}
             onMaintainerFilterChange={setMaintainerFilter}
             onReset={handleReset}
           />

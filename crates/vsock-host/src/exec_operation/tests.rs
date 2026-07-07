@@ -430,6 +430,7 @@ fn shared_with_logged_operation(
     let (_read_half, write_half) = write_stream.into_split();
     let shared = Arc::new(Shared {
         writer: tokio::sync::Mutex::new(write_half),
+        frame_builder: tokio::sync::Mutex::new(()),
         fd,
         seq: AtomicU32::new(2),
         state: std::sync::Mutex::new(ConnectionState::Connected {

@@ -2554,6 +2554,7 @@ mod tests {
             artifacts: vec![GuestDownloadArtifactEntry {
                 mount_path: format!("/mnt/artifact-{name}"),
                 archive_url: Some(url),
+                empty: false,
                 cached: false,
                 vas_storage_name: name.to_string(),
                 vas_storage_id: format!("{name}-id"),
@@ -4768,6 +4769,7 @@ mod tests {
             artifacts: vec![GuestDownloadArtifactEntry {
                 mount_path: "/mnt/artifact".into(),
                 archive_url: Some("https://r2.example.com/ignored.tar.gz".into()),
+                empty: false,
                 cached: false,
                 vas_storage_name: name.to_string(),
                 vas_storage_id: String::new(),
@@ -5708,6 +5710,7 @@ mod tests {
             artifacts: vec![GuestDownloadArtifactEntry {
                 mount_path: "/mnt/artifact".into(),
                 archive_url: Some("https://r2.example.com/artifact.tar.gz".into()),
+                empty: false,
                 cached: false,
                 vas_storage_name: name.to_string(),
                 vas_storage_id: "storage-id".into(),
@@ -6200,6 +6203,7 @@ mod tests {
             artifacts: vec![GuestDownloadArtifactEntry {
                 mount_path: "/mnt/nameless".into(),
                 archive_url: Some(original.clone()),
+                empty: false,
                 cached: false,
                 vas_storage_name: String::new(),
                 vas_storage_id: String::new(),

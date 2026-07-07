@@ -4,7 +4,6 @@ VITE_CLERK_PUBLISHABLE_KEY=op://Development/clerk/CLERK_PUBLISHABLE_KEY
 VITE_API_URL=http://localhost:3000
 PUBLIC_ARTIFACTS_BASE_URL=https://cdn.vm7.io
 VITE_ZERO_HOST_DOMAIN=sites.vm7.io
-ATOM_URL=https://atom-api.vm7.ai:8442
 
 # Web Push (VAPID public key for push subscription)
 VITE_VAPID_PUBLIC_KEY=op://Development/vapid/VAPID_PUBLIC_KEY

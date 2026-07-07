@@ -1,4 +1,3 @@
-import type { PersistedAttachment } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   jsonb,
   pgTable,
@@ -8,6 +7,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { zeroAgents } from "./zero-agent";
+import type { ZeroAgentDraftAttachments } from "@vm0/db/jsonb-contracts/zero-agent-draft";
 
 export const zeroAgentDrafts = pgTable(
   "zero_agent_drafts",
@@ -23,7 +23,8 @@ export const zeroAgentDrafts = pgTable(
         { onDelete: "cascade" },
       ),
     draftContent: text("draft_content"),
-    draftAttachments: jsonb("draft_attachments").$type<PersistedAttachment[]>(),
+    draftAttachments:
+      jsonb("draft_attachments").$type<ZeroAgentDraftAttachments>(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

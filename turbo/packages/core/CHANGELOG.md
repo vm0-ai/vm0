@@ -1,5 +1,35 @@
 # Changelog
 
+## [8.411.0](https://github.com/vm0-ai/vm0/compare/core-v8.410.0...core-v8.411.0) (2026-07-07)
+
+
+### Features
+
+* make steam connector generally available ([#20491](https://github.com/vm0-ai/vm0/issues/20491)) ([2ba3860](https://github.com/vm0-ai/vm0/commit/2ba386084b4134e5b0044dfb8969990b189478ab))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.160.1
+    * @vm0/connectors bumped to 1.146.0
+
+## [8.410.0](https://github.com/vm0-ai/vm0/compare/core-v8.409.0...core-v8.410.0) (2026-07-07)
+
+
+### Features
+
+* order everyone first and drop general in workflow template picker ([#20474](https://github.com/vm0-ai/vm0/issues/20474)) ([b22fc80](https://github.com/vm0-ai/vm0/commit/b22fc809c75020361651a423d57eccc44a419d6a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.160.0
+    * @vm0/connectors bumped to 1.145.0
+
 ## [8.409.0](https://github.com/vm0-ai/vm0/compare/core-v8.408.2...core-v8.409.0) (2026-07-07)
 
 

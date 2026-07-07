@@ -206,6 +206,7 @@ export const artifactEntrySchema = z.object({
   vasStorageId: z.string(),
   vasVersionId: z.string(),
   archiveUrl: z.string(),
+  empty: z.boolean().optional(),
   missingRootPolicy: artifactMissingRootPolicySchema.optional(),
 });
 

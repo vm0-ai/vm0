@@ -4216,7 +4216,9 @@ describe("chat composer templates", () => {
     });
 
     click(
-      screen.getByLabelText(`Preview website template ${websiteTemplate.title}`),
+      screen.getByLabelText(
+        `Preview website template ${websiteTemplate.title}`,
+      ),
     );
     await waitFor(() => {
       expect(tabByText("Website")).toHaveAttribute("aria-selected", "true");

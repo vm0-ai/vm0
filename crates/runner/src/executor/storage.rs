@@ -188,7 +188,10 @@ pub(super) fn apply_storage_fingerprint_reuse(
 
 pub(super) fn guest_download_has_work(manifest: &GuestDownloadManifest) -> bool {
     manifest.storages.iter().any(|s| s.archive_url.is_some())
-        || manifest.artifacts.iter().any(|a| a.archive_url.is_some())
+        || manifest
+            .artifacts
+            .iter()
+            .any(|a| a.archive_url.is_some() || a.empty)
         || !manifest.cleanup_paths.is_empty()
         || !manifest.instruction_cleanups.is_empty()
         || manifest

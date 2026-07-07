@@ -8,6 +8,7 @@ import {
   uniqueIndex,
   index,
 } from "drizzle-orm/pg-core";
+import type { AgentComposeVersionContent } from "@vm0/db/jsonb-contracts/agent-compose";
 /**
  * Agent Composes table
  * Metadata table for agent composes with HEAD pointer to current version
@@ -51,7 +52,7 @@ export const agentComposeVersions = pgTable(
         },
         { onDelete: "cascade" },
       ),
-    content: jsonb("content").notNull(), // Full compose definition
+    content: jsonb("content").$type<AgentComposeVersionContent>().notNull(),
     createdBy: text("created_by").notNull(), // User ID who created this version
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },

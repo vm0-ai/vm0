@@ -8,6 +8,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { agentRuns } from "./agent-run";
+import type { RunnerJobQueueExecutionContext } from "@vm0/db/jsonb-contracts/runner-job-queue";
 
 /**
  * Runner Job Queue table
@@ -41,7 +42,9 @@ export const runnerJobQueue = pgTable(
     claimedAt: timestamp("claimed_at"),
 
     // Execution context (secrets encrypted with persistent-secret envelope)
-    executionContext: jsonb("execution_context").notNull(),
+    executionContext: jsonb("execution_context")
+      .$type<RunnerJobQueueExecutionContext>()
+      .notNull(),
 
     // Lifecycle management
     createdAt: timestamp("created_at").defaultNow().notNull(),

@@ -115,7 +115,7 @@ dependencies = [
 
 [[package]]
 name = "api-contracts"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -914,18 +914,18 @@ dependencies = [
 
 [[package]]
 name = "crossbeam-channel"
-version = "0.5.15"
+version = "0.5.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "82b8f8f868b36967f9606790d1903570de9ceaf870a7bf9fbbd3016d636a2cb2"
+checksum = "d85363c37faeca707aef026efa9f3b34d077bce547e48f770770625c6013679e"
 dependencies = [
  "crossbeam-utils",
 ]
 
 [[package]]
 name = "crossbeam-utils"
-version = "0.8.21"
+version = "0.8.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d0a5c400df2834b80a4c3327b3aad3a4c4cd4de0629063962b03235697506a28"
+checksum = "61803da095bee82a81bb1a452ecc25d3b2f1416d1897eb86430c6159ef717c17"
 
 [[package]]
 name = "crunchy"
@@ -1251,7 +1251,7 @@ checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
 
 [[package]]
 name = "guest-agent"
-version = "0.47.1"
+version = "0.47.4"
 dependencies = [
  "aho-corasick",
  "api-contracts",
@@ -1310,7 +1310,7 @@ dependencies = [
 
 [[package]]
 name = "guest-download"
-version = "0.20.52"
+version = "0.20.53"
 dependencies = [
  "flate2",
  "guest-common",
@@ -1335,7 +1335,7 @@ dependencies = [
 
 [[package]]
 name = "guest-mock-claude"
-version = "0.21.11"
+version = "0.21.12"
 dependencies = [
  "api-contracts",
  "libc",
@@ -2562,7 +2562,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.136.1"
+version = "0.136.5"
 dependencies = [
  "ably-subscriber",
  "api-contracts",
@@ -2749,9 +2749,9 @@ dependencies = [
 
 [[package]]
 name = "rustversion"
-version = "1.0.22"
+version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b39cdef0fa800fc44525c84ccb54a029961a8215f9619753635a9c0d2538d46d"
+checksum = "cf54715a573b99ac80df0bc206da022bcd442c974952c7b9720069370852e21f"
 
 [[package]]
 name = "ryu"
@@ -2782,7 +2782,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-fc"
-version = "0.37.96"
+version = "0.37.97"
 dependencies = [
  "async-trait",
  "base64",
@@ -3717,7 +3717,7 @@ dependencies = [
 
 [[package]]
 name = "vsock-host"
-version = "0.17.51"
+version = "0.17.52"
 dependencies = [
  "nix",
  "shell-quote",
@@ -3735,7 +3735,7 @@ version = "0.18.21"
 
 [[package]]
 name = "vsock-test"
-version = "0.9.133"
+version = "0.9.134"
 dependencies = [
  "guest-write-file",
  "libc",
@@ -4168,18 +4168,18 @@ dependencies = [
 
 [[package]]
 name = "zerocopy"
-version = "0.8.52"
+version = "0.8.53"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ce1022995ff5ff5d841ad7d994facc23098cd40152f2c1d11cd607c6f530653f"
+checksum = "75726053136156d419e285b9b7eddaaea9e3fea6ce32eed44a89901f0bd98de1"
 dependencies = [
  "zerocopy-derive",
 ]
 
 [[package]]
 name = "zerocopy-derive"
-version = "0.8.52"
+version = "0.8.53"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1ae7f38b72ec2a254e2b87ef277cf2cd4fb97cbebf944faa6f33354da0867930"
+checksum = "4714fd92cf900833d49538023a9b3915155210801d1c1169eba513b2addefd71"
 dependencies = [
  "proc-macro2",
  "quote",

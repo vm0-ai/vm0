@@ -20,11 +20,12 @@
 //!   upload. The addon acknowledges in `jsonl-flush-state` after accepted
 //!   writes for that path are visible.
 //!
-//! Registry writes are atomic so the addon never consumes partial JSON. Flush
-//! acknowledgements must match the active usage state and request id; missing,
-//! stale, invalid, or mismatched addon state is treated as "not ready" until
-//! the bounded wait times out. Usage drain is a shutdown path for billing and
-//! usage reports, while JSONL flush is a per-upload network-log path.
+//! On supported Unix runner hosts, registry writes are target-path atomic so
+//! the addon never consumes partial JSON. Flush acknowledgements must match the
+//! active usage state and request id; missing, stale, invalid, or mismatched
+//! addon state is treated as "not ready" until the bounded wait times out.
+//! Usage drain is a shutdown path for billing and usage reports, while JSONL
+//! flush is a per-upload network-log path.
 //!
 //! `MitmProxy::new` prepares addon files, an empty registry, crash channel, and
 //! initial usage state. `start` spawns `mitmdump` and monitor tasks. Unexpected

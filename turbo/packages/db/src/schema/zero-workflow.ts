@@ -14,6 +14,8 @@ import {
 import { sql } from "drizzle-orm";
 import { zeroAgents } from "./zero-agent";
 import { chatThreads } from "./chat-thread";
+import type { ZeroWorkflowEventConfig } from "@vm0/db/jsonb-contracts/zero-workflow";
+export type { ZeroWorkflowEventConfig } from "@vm0/db/jsonb-contracts/zero-workflow";
 
 /**
  * Zero workflow visibility.
@@ -156,7 +158,6 @@ export type ZeroWorkflowEventType =
   | "google-meet-transcript-generated"
   | "notion-child-page-created"
   | "webhook-received";
-export type ZeroWorkflowEventConfig = Record<string, unknown>;
 
 /**
  * Workflow triggers.

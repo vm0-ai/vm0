@@ -1542,7 +1542,7 @@ function WorkflowTemplateCard({
       )}
     >
       <p className="text-sm font-semibold text-foreground">{item.title}</p>
-      <p className="mt-1.5 line-clamp-2 text-sm leading-relaxed text-muted-foreground">
+      <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
         {item.description}
       </p>
       <div className="mt-auto flex items-center gap-2 pt-3.5">

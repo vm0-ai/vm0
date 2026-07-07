@@ -34,10 +34,14 @@ const trackTeamsFixture = createFixtureTracker<TeamsConnectFixture>(
 );
 const TEAMS_BOT_PATH = "http://api.test/api/zero/teams/bot";
 const BOT_APP_ID = "00000000-0000-0000-0000-000000000001";
+const BOT_APP_PASSWORD = "teams-test-password";
 const TEAMS_APP_TENANT_ID = "11111111-1111-1111-1111-111111111111";
 const SERVICE_URL = "https://smba.trafficmanager.net/amer/";
 const APP_ORIGIN = "https://app.vm0.test";
 const KEY_ID = "teams-test-key";
+const TEAMS_LOGIN_PROMPT_FALLBACK_TEXT = "Please connect your account first";
+const TEAMS_LOGIN_PROMPT_CARD_TEXT =
+  "To use Zero in Teams, please connect your account first.";
 const BOT_FRAMEWORK_METADATA_URL =
   "https://login.botframework.com/v1/.well-known/openidconfiguration";
 const BOT_FRAMEWORK_KEYS_URL =
@@ -55,6 +59,7 @@ function botFixture(): TeamsConnectFixture {
     teamsTeamId: "team-1",
     teamsTeamName: "Team One",
     teamsUserId: "29:user-1",
+    teamsAadObjectId: "aad-user-1",
     serviceUrl: SERVICE_URL,
   });
 }
@@ -63,6 +68,13 @@ function teamsInstallUrl(): string {
   const url = new URL(`https://teams.microsoft.com/l/app/${BOT_APP_ID}`);
   url.searchParams.set("installAppPackage", "true");
   url.searchParams.set("appTenantId", TEAMS_APP_TENANT_ID);
+  return url.toString();
+}
+
+function teamsOauthConnectUrl(fixture: TeamsConnectFixture): string {
+  const url = new URL("https://www.vm0.test/api/zero/teams/oauth/connect");
+  url.searchParams.set("orgId", fixture.orgId);
+  url.searchParams.set("vm0UserId", fixture.userId);
   return url.toString();
 }
 
@@ -89,6 +101,171 @@ function botFrameworkHandlers(): void {
       });
     }),
   );
+}
+
+function teamsServiceBaseUrl(serviceUrl: string): string {
+  return serviceUrl.replace(/\/+$/u, "");
+}
+
+interface TeamsOutboundRequest {
+  readonly conversationId: string;
+  readonly activityId: string | null;
+  readonly body: unknown;
+}
+
+function teamsOutboundHandlers(
+  serviceUrl: string,
+  tenantId = "tenant-1",
+): TeamsOutboundRequest[] {
+  const serviceBaseUrl = teamsServiceBaseUrl(serviceUrl);
+  const requests: TeamsOutboundRequest[] = [];
+  server.use(
+    http.post(graphTokenUrl(tenantId), async ({ request }) => {
+      const form = await request.formData();
+      expect(form.get("client_id")).toBe(BOT_APP_ID);
+      expect(form.get("client_secret")).toBe(BOT_APP_PASSWORD);
+      expect(form.get("scope")).toBe("https://api.botframework.com/.default");
+      return HttpResponse.json({
+        access_token: "teams-access-token",
+        token_type: "Bearer",
+        expires_in: 3600,
+      });
+    }),
+    http.post(
+      `${serviceBaseUrl}/v3/conversations/:conversationId/activities`,
+      async ({ params, request }) => {
+        requests.push({
+          conversationId:
+            typeof params.conversationId === "string"
+              ? params.conversationId
+              : "",
+          activityId: null,
+          body: await request.json(),
+        });
+        return HttpResponse.json({ id: "teams-activity-1" });
+      },
+    ),
+    http.post(
+      `${serviceBaseUrl}/v3/conversations/:conversationId/activities/:activityId`,
+      async ({ params, request }) => {
+        requests.push({
+          conversationId:
+            typeof params.conversationId === "string"
+              ? params.conversationId
+              : "",
+          activityId:
+            typeof params.activityId === "string" ? params.activityId : "",
+          body: await request.json(),
+        });
+        return HttpResponse.json({ id: "teams-activity-1" });
+      },
+    ),
+  );
+  return requests;
+}
+
+interface TeamsGraphMessageFixture {
+  readonly id: string;
+  readonly text: string;
+  readonly createdDateTime: string;
+  readonly senderId?: string;
+  readonly senderName?: string;
+}
+
+function graphTokenUrl(tenantId: string): string {
+  return `https://login.microsoftonline.com/${encodeURIComponent(
+    tenantId,
+  )}/oauth2/v2.0/token`;
+}
+
+function teamsGraphMessage(
+  message: TeamsGraphMessageFixture,
+): Record<string, unknown> {
+  return {
+    id: message.id,
+    createdDateTime: message.createdDateTime,
+    messageType: "message",
+    from: {
+      user: {
+        id: message.senderId ?? "29:user-1",
+        displayName: message.senderName ?? "Ada Lovelace",
+      },
+    },
+    body: {
+      contentType: "html",
+      content: `<p>${message.text}</p>`,
+    },
+  };
+}
+
+function teamsGraphHistoryHandlers(args: {
+  readonly tenantId: string;
+  readonly channelMessages: readonly TeamsGraphMessageFixture[];
+  readonly threadRoots: Readonly<Record<string, TeamsGraphMessageFixture>>;
+  readonly threadReplies: Readonly<
+    Record<string, readonly TeamsGraphMessageFixture[]>
+  >;
+}): string[] {
+  const requests: string[] = [];
+  server.use(
+    http.post(graphTokenUrl(args.tenantId), async ({ request }) => {
+      const form = await request.formData();
+      expect(form.get("client_id")).toBe(BOT_APP_ID);
+      expect(form.get("client_secret")).toBe(BOT_APP_PASSWORD);
+      expect(form.get("scope")).toBe("https://graph.microsoft.com/.default");
+      requests.push("graph-token");
+      return HttpResponse.json({
+        access_token: "teams-graph-token",
+        token_type: "Bearer",
+        expires_in: 3600,
+      });
+    }),
+    http.get(
+      "https://graph.microsoft.com/v1.0/teams/:teamId/channels/:channelId/messages",
+      ({ request }) => {
+        expect(request.headers.get("authorization")).toBe(
+          "Bearer teams-graph-token",
+        );
+        requests.push("channel-messages");
+        return HttpResponse.json({
+          value: args.channelMessages.map(teamsGraphMessage),
+        });
+      },
+    ),
+    http.get(
+      "https://graph.microsoft.com/v1.0/teams/:teamId/channels/:channelId/messages/:messageId/replies",
+      ({ params, request }) => {
+        expect(request.headers.get("authorization")).toBe(
+          "Bearer teams-graph-token",
+        );
+        const messageId =
+          typeof params.messageId === "string" ? params.messageId : "";
+        requests.push(`thread-replies:${messageId}`);
+        return HttpResponse.json({
+          value: (args.threadReplies[messageId] ?? []).map(teamsGraphMessage),
+        });
+      },
+    ),
+    http.get(
+      "https://graph.microsoft.com/v1.0/teams/:teamId/channels/:channelId/messages/:messageId",
+      ({ params, request }) => {
+        expect(request.headers.get("authorization")).toBe(
+          "Bearer teams-graph-token",
+        );
+        const messageId =
+          typeof params.messageId === "string" ? params.messageId : "";
+        requests.push(`thread-root:${messageId}`);
+        const root = args.threadRoots[messageId];
+        return root
+          ? HttpResponse.json(teamsGraphMessage(root))
+          : HttpResponse.json(
+              { error: { code: "NotFound", message: "Message not found" } },
+              { status: 404 },
+            );
+      },
+    ),
+  );
+  return requests;
 }
 
 function encodeJwtPart(value: unknown): string {
@@ -154,7 +331,7 @@ function teamsMessageActivity(
     from: {
       id: fixture.teamsUserId,
       name: "Ada Lovelace",
-      aadObjectId: "aad-user-1",
+      aadObjectId: fixture.teamsAadObjectId,
       userPrincipalName: "ada@example.com",
     },
     recipient: { id: "28:bot-1", name: "Zero" },
@@ -216,6 +393,25 @@ async function postTeamsActivity(args: {
   });
 }
 
+function promptSection(
+  prompt: string,
+  heading: string,
+  nextHeading?: string,
+): string {
+  const startIndex = prompt.indexOf(heading);
+  if (startIndex === -1) {
+    throw new Error(`Missing prompt section ${heading}`);
+  }
+  if (!nextHeading) {
+    return prompt.slice(startIndex);
+  }
+
+  const endIndex = prompt.indexOf(nextHeading, startIndex + heading.length);
+  return endIndex === -1
+    ? prompt.slice(startIndex)
+    : prompt.slice(startIndex, endIndex);
+}
+
 async function connectTeamsFixture(
   fixture: TeamsConnectFixture,
 ): Promise<void> {
@@ -226,7 +422,7 @@ async function connectTeamsFixture(
       headers: { authorization: "Bearer clerk-session" },
       body: {
         tenantId: fixture.teamsTenantId,
-        teamsUserId: fixture.teamsUserId,
+        teamsAadObjectId: fixture.teamsAadObjectId,
         teamsUserDisplayName: "Ada Lovelace",
         teamsUserPrincipalName: "ada@example.com",
       },
@@ -251,9 +447,12 @@ function dispatchRunId(dispatch: unknown): string {
 describe("POST /api/zero/teams/bot", () => {
   beforeEach(() => {
     setupTeamsConnectTestEnv(APP_ORIGIN);
+    mockEnv("MICROSOFT_TEAMS_BOT_APP_PASSWORD", BOT_APP_PASSWORD);
     mockEnv("VM0_WEB_URL", "https://www.vm0.test");
     mockEnv("VM0_API_URL", "https://api.vm0.test");
     mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
+    context.mocks.axiom.query.mockResolvedValue([]);
+    teamsOutboundHandlers(SERVICE_URL, "tenant-1");
   });
 
   afterEach(async () => {
@@ -295,6 +494,7 @@ describe("POST /api/zero/teams/bot", () => {
 
   it("normalizes a valid Teams message activity", async () => {
     botFrameworkHandlers();
+    const outboundRequests = teamsOutboundHandlers(SERVICE_URL, "tenant-1");
 
     const response = await postTeamsActivity({
       activity: teamsMessageActivity(),
@@ -330,19 +530,69 @@ describe("POST /api/zero/teams/bot", () => {
         },
         rawText: "<at>Zero</at> deploy the preview",
         text: "deploy the preview",
+        mentionsRecipient: true,
         idempotencyKey: "19:thread@thread.tacv2:message:activity-1",
       },
     });
-    expect(body.connectUrl).toContain(`${APP_ORIGIN}/api/zero/teams/connect`);
-    expect(body.connectUrl).toContain("tenantId=tenant-1");
-    expect(body.connectUrl).toContain("teamsUserId=29%3Auser-1");
+    expect(body.connectUrl).toContain(`${APP_ORIGIN}/settings/teams`);
+    const connectUrl = new URL(String(body.connectUrl));
+    expect(connectUrl.searchParams.get("tenantId")).toBe("tenant-1");
+    expect(connectUrl.searchParams.get("tenantName")).toBe("Tenant One");
+    expect(connectUrl.searchParams.get("teamsUserId")).toBe("29:user-1");
+    expect(connectUrl.searchParams.get("teamsAadObjectId")).toBe("aad-user-1");
+    expect(connectUrl.searchParams.get("activityId")).toBe("activity-1");
+    expect(connectUrl.searchParams.get("teamsUserDisplayName")).toBe(
+      "Ada Lovelace",
+    );
+    expect(connectUrl.searchParams.get("teamsUserPrincipalName")).toBe(
+      "ada@example.com",
+    );
+    expect(connectUrl.searchParams.get("displayName")).toBeNull();
+    expect(connectUrl.searchParams.get("upn")).toBeNull();
+    expect(connectUrl.searchParams.get("teamId")).toBe("team-1");
+    expect(connectUrl.searchParams.get("teamName")).toBe("Team One");
     expect(body.dispatch).toMatchObject({
       kind: "notice",
-      connectUrl: expect.stringContaining(
-        `${APP_ORIGIN}/api/zero/teams/connect`,
-      ),
-      replyText: expect.stringContaining("Please connect"),
+      connectUrl: expect.stringContaining(`${APP_ORIGIN}/settings/teams`),
+      replyText: TEAMS_LOGIN_PROMPT_FALLBACK_TEXT,
     });
+    expect(outboundRequests).toHaveLength(1);
+    expect(outboundRequests[0]).toMatchObject({
+      conversationId: "19:thread@thread.tacv2",
+      activityId: "activity-1",
+      body: {
+        type: "message",
+        summary: TEAMS_LOGIN_PROMPT_FALLBACK_TEXT,
+        replyToId: "activity-1",
+        attachments: [
+          {
+            contentType: "application/vnd.microsoft.card.adaptive",
+            content: {
+              type: "AdaptiveCard",
+              version: "1.4",
+              body: [
+                {
+                  type: "TextBlock",
+                  text: TEAMS_LOGIN_PROMPT_CARD_TEXT,
+                  wrap: true,
+                },
+              ],
+              actions: [
+                {
+                  type: "Action.OpenUrl",
+                  title: "Connect",
+                  url: expect.stringContaining(`${APP_ORIGIN}/settings/teams`),
+                },
+              ],
+            },
+          },
+        ],
+        channelData: {
+          tenant: { id: "tenant-1" },
+        },
+      },
+    });
+    expect(outboundRequests[0]?.body).not.toHaveProperty("text");
 
     mocks.clerk.session(
       "user_teams_bot_test",
@@ -356,6 +606,7 @@ describe("POST /api/zero/teams/bot", () => {
         body: {
           tenantId: "tenant-1",
           teamsUserId: "29:user-1",
+          teamsAadObjectId: "aad-user-1",
           teamsUserDisplayName: "Ada Lovelace",
           teamsUserPrincipalName: "ada@example.com",
         },
@@ -378,6 +629,134 @@ describe("POST /api/zero/teams/bot", () => {
     });
   });
 
+  it("ignores Teams channel messages that do not mention the bot", async () => {
+    botFrameworkHandlers();
+
+    const response = await postTeamsActivity({
+      activity: teamsMessageActivity(botFixture(), {
+        id: "activity-unmentioned-channel",
+        text: "hello channel",
+        entities: [],
+      }),
+      token: teamsToken(),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      activity: {
+        kind: "message",
+        text: "hello channel",
+        mentionsRecipient: false,
+      },
+      dispatch: { kind: "ignored" },
+    });
+  });
+
+  it("handles Teams personal messages without requiring a bot mention", async () => {
+    botFrameworkHandlers();
+    const outboundRequests = teamsOutboundHandlers(SERVICE_URL, "tenant-1");
+
+    const response = await postTeamsActivity({
+      activity: teamsMessageActivity(botFixture(), {
+        id: "activity-personal-dm",
+        conversation: {
+          id: "a:personal-conversation",
+          conversationType: "personal",
+        },
+        channelData: {
+          tenant: { id: "tenant-1", name: "Tenant One" },
+          teamsAppId: "teams-app-test",
+        },
+        text: "hello from dm",
+        entities: [],
+        replyToId: null,
+      }),
+      token: teamsToken(),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      activity: {
+        kind: "message",
+        conversationType: "personal",
+        threadId: "activity-personal-dm",
+        text: "hello from dm",
+        mentionsRecipient: false,
+      },
+      dispatch: {
+        kind: "notice",
+        replyText: TEAMS_LOGIN_PROMPT_FALLBACK_TEXT,
+      },
+    });
+    expect(outboundRequests).toHaveLength(1);
+    expect(outboundRequests[0]).toMatchObject({
+      conversationId: "a:personal-conversation",
+      activityId: "activity-personal-dm",
+      body: {
+        type: "message",
+        summary: TEAMS_LOGIN_PROMPT_FALLBACK_TEXT,
+        replyToId: "activity-personal-dm",
+        attachments: [
+          {
+            contentType: "application/vnd.microsoft.card.adaptive",
+            content: {
+              type: "AdaptiveCard",
+              version: "1.4",
+              body: [
+                {
+                  type: "TextBlock",
+                  text: TEAMS_LOGIN_PROMPT_CARD_TEXT,
+                  wrap: true,
+                },
+              ],
+              actions: [
+                {
+                  type: "Action.OpenUrl",
+                  title: "Connect",
+                  url: expect.stringContaining(`${APP_ORIGIN}/settings/teams`),
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    expect(outboundRequests[0]?.body).not.toHaveProperty("text");
+  });
+
+  it("preserves non-bot Teams mentions in message text", async () => {
+    botFrameworkHandlers();
+
+    const response = await postTeamsActivity({
+      activity: teamsMessageActivity(botFixture(), {
+        id: "activity-user-mention",
+        text: "<at>Zero</at> ask <at>Grace Hopper</at> to review",
+        entities: [
+          {
+            type: "mention",
+            text: "<at>Zero</at>",
+            mentioned: { id: "28:bot-1", name: "Zero" },
+          },
+          {
+            type: "mention",
+            text: "<at>Grace Hopper</at>",
+            mentioned: { id: "29:user-2", name: "Grace Hopper" },
+          },
+        ],
+      }),
+      token: teamsToken(),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      activity: {
+        kind: "message",
+        text: "ask @Grace Hopper (29:user-2) to review",
+        mentionsRecipient: true,
+      },
+    });
+  });
+
   it("dispatches connected Teams messages to the org default agent", async () => {
     const fixture = await trackTeamsFixture(
       Promise.resolve(teamsConnectFixture()),
@@ -388,7 +767,10 @@ describe("POST /api/zero/teams/bot", () => {
       orgRole: "org:admin",
     });
     const runnerGroup = runsApi.configureRunnerGroup();
+    context.mocks.ably.publish.mockResolvedValue(undefined);
     authOrgApi.acceptAgentStorageWrites();
+    runsApi.acceptStorageDownloads();
+    runsApi.acceptTelemetryIngest();
     const agent = await authOrgApi.createAgent(actor, {
       displayName: "Teams default agent",
       visibility: "public",
@@ -397,6 +779,7 @@ describe("POST /api/zero/teams/bot", () => {
     await runsApi.grantProEntitlement(actor);
     await runsApi.ensureOrgModelProvider(actor);
     botFrameworkHandlers();
+    teamsOutboundHandlers(fixture.serviceUrl, fixture.teamsTenantId);
 
     const installResponse = await postTeamsActivity({
       activity: teamsMessageActivity(fixture),
@@ -404,6 +787,104 @@ describe("POST /api/zero/teams/bot", () => {
     });
     expect(installResponse.status).toBe(200);
     await connectTeamsFixture(fixture);
+
+    const channelMessages: TeamsGraphMessageFixture[] = [];
+    const threadRoots: Record<string, TeamsGraphMessageFixture> = {
+      "root-dispatch": {
+        id: "root-dispatch",
+        text: "remember the deployment target",
+        createdDateTime: "2026-06-30T09:10:00.000Z",
+        senderId: fixture.teamsUserId,
+      },
+    };
+    const threadReplies: Record<string, TeamsGraphMessageFixture[]> = {
+      "root-dispatch": [
+        {
+          id: "activity-context-1",
+          text: "confirm the target is staging",
+          createdDateTime: "2026-06-30T09:11:00.000Z",
+          senderId: fixture.teamsUserId,
+        },
+        {
+          id: "activity-dispatch-1",
+          text: "ship the Teams dispatch",
+          createdDateTime: "2026-06-30T09:12:00.000Z",
+          senderId: fixture.teamsUserId,
+        },
+      ],
+    };
+    const graphRequests = teamsGraphHistoryHandlers({
+      tenantId: fixture.teamsTenantId,
+      channelMessages,
+      threadRoots,
+      threadReplies,
+    });
+
+    channelMessages.push(
+      {
+        id: "activity-channel-context-1",
+        text: "start another topic",
+        createdDateTime: "2026-06-30T09:12:00.000Z",
+        senderId: fixture.teamsUserId,
+      },
+      {
+        id: "channel-prior-1",
+        text: "api channel planning",
+        createdDateTime: "2026-06-30T09:09:00.000Z",
+        senderId: fixture.teamsUserId,
+      },
+      {
+        id: "channel-future-1",
+        text: "future channel topic",
+        createdDateTime: "2026-06-30T09:13:00.000Z",
+        senderId: fixture.teamsUserId,
+      },
+    );
+
+    const channelContextResponse = await postTeamsActivity({
+      activity: teamsMessageActivity(fixture, {
+        id: "activity-channel-context-1",
+        replyToId: null,
+        text: "<at>Zero</at> start another topic",
+      }),
+      token: teamsToken(),
+    });
+    expect(channelContextResponse.status).toBe(200);
+    const channelContextBody = await channelContextResponse.json();
+    const channelContextRunId = dispatchRunId(channelContextBody.dispatch);
+    await runsApi.heartbeatRunner(runnerGroup);
+    const channelContextClaim =
+      await runsApi.claimRunnerJob(channelContextRunId);
+    const channelContextAppendSystemPrompt =
+      channelContextClaim.appendSystemPrompt ?? "";
+    const recentChannelContext = promptSection(
+      channelContextAppendSystemPrompt,
+      "# Recent Channel Messages",
+    );
+    expect(channelContextClaim.prompt).toBe("start another topic");
+    expect(graphRequests).toContain("channel-messages");
+    expect(recentChannelContext).toContain("api channel planning");
+    expect(recentChannelContext).not.toContain("start another topic");
+    expect(channelContextAppendSystemPrompt).not.toContain(
+      "# Microsoft Teams Thread Context",
+    );
+
+    channelMessages.splice(
+      0,
+      channelMessages.length,
+      {
+        id: "root-dispatch",
+        text: "remember the deployment target",
+        createdDateTime: "2026-06-30T09:10:00.000Z",
+        senderId: fixture.teamsUserId,
+      },
+      {
+        id: "channel-prior-1",
+        text: "api channel planning",
+        createdDateTime: "2026-06-30T09:09:00.000Z",
+        senderId: fixture.teamsUserId,
+      },
+    );
 
     const response = await postTeamsActivity({
       activity: teamsMessageActivity(fixture, {
@@ -425,27 +906,69 @@ describe("POST /api/zero/teams/bot", () => {
     await runsApi.heartbeatRunner(runnerGroup);
     const claim = await runsApi.claimRunnerJob(runId);
     const appendSystemPrompt = claim.appendSystemPrompt ?? "";
+    const currentUserPrompt = promptSection(
+      appendSystemPrompt,
+      "# Current User Info",
+      "# Current Integration",
+    );
+    const currentIntegrationPrompt = promptSection(
+      appendSystemPrompt,
+      "# Current Integration",
+      "# Recent Channel Messages",
+    );
+    const replyRecentChannelContext = promptSection(
+      appendSystemPrompt,
+      "# Recent Channel Messages",
+      "# Microsoft Teams Thread Context",
+    );
+    const teamsThreadContext = promptSection(
+      appendSystemPrompt,
+      "# Microsoft Teams Thread Context",
+    );
     expect(claim.prompt).toBe("ship the Teams dispatch");
-    expect(appendSystemPrompt).toContain(
+    expect(currentIntegrationPrompt).toContain(
       "You are currently running inside: Microsoft Teams",
     );
     expect(appendSystemPrompt).toContain("Microsoft Teams messaging and files");
-    expect(appendSystemPrompt).toContain(`Tenant ID: ${fixture.teamsTenantId}`);
-    expect(appendSystemPrompt).toContain(`Team ID: ${fixture.teamsTeamId}`);
-    expect(appendSystemPrompt).toContain(
+    expect(currentIntegrationPrompt).toContain(
+      `Tenant ID: ${fixture.teamsTenantId}`,
+    );
+    expect(currentIntegrationPrompt).toContain(
+      `Team ID: ${fixture.teamsTeamId}`,
+    );
+    expect(currentIntegrationPrompt).toContain(
       "Conversation ID: 19:thread@thread.tacv2",
     );
-    expect(appendSystemPrompt).toContain("Thread ID: root-dispatch");
-    expect(appendSystemPrompt).toContain(
+    expect(currentIntegrationPrompt).toContain("Thread ID: root-dispatch");
+    expect(currentIntegrationPrompt).not.toContain("Teams user ID:");
+    expect(currentIntegrationPrompt).not.toContain("Teams display name:");
+    expect(currentIntegrationPrompt).not.toContain(
+      "Teams user principal name:",
+    );
+    expect(replyRecentChannelContext).toContain("api channel planning");
+    expect(replyRecentChannelContext).not.toContain(
+      "remember the deployment target",
+    );
+    expect(replyRecentChannelContext).not.toContain("future channel topic");
+    expect(currentUserPrompt).toContain(
       `Teams user ID: ${fixture.teamsUserId}`,
     );
-    expect(appendSystemPrompt).toContain(
+    expect(currentUserPrompt).toContain(
       "Teams user principal name: ada@example.com",
     );
-    expect(appendSystemPrompt).toContain("# Current User Info");
-    expect(appendSystemPrompt).toContain(
-      "Teams user display name: Ada Lovelace",
+    expect(currentUserPrompt).toContain("Teams display name: Ada Lovelace");
+    expect(teamsThreadContext).toContain(
+      "The messages below are from a Microsoft Teams conversation",
     );
+    expect(teamsThreadContext).toContain("- RELATIVE_INDEX: -1");
+    expect(teamsThreadContext).toContain(
+      `- SENDER: {id: ${fixture.teamsUserId}, name: Ada Lovelace}`,
+    );
+    expect(teamsThreadContext).toContain("remember the deployment target");
+    expect(teamsThreadContext).toContain("confirm the target is staging");
+    expect(teamsThreadContext).not.toContain("ship the Teams dispatch");
+    expect(graphRequests).toContain("thread-root:root-dispatch");
+    expect(graphRequests).toContain("thread-replies:root-dispatch");
   });
 
   it("asks connected Teams users to configure a default agent", async () => {
@@ -453,6 +976,10 @@ describe("POST /api/zero/teams/bot", () => {
       Promise.resolve(teamsConnectFixture()),
     );
     botFrameworkHandlers();
+    const outboundRequests = teamsOutboundHandlers(
+      fixture.serviceUrl,
+      fixture.teamsTenantId,
+    );
 
     const installResponse = await postTeamsActivity({
       activity: teamsMessageActivity(fixture),
@@ -474,6 +1001,14 @@ describe("POST /api/zero/teams/bot", () => {
       dispatch: {
         kind: "notice",
         replyText: expect.stringContaining("No agent is configured"),
+      },
+    });
+    expect(outboundRequests.at(-1)).toMatchObject({
+      activityId: "activity-no-default",
+      body: {
+        type: "message",
+        text: expect.stringContaining("No agent is configured"),
+        replyToId: "activity-no-default",
       },
     });
   });
@@ -524,6 +1059,7 @@ describe("POST /api/zero/teams/bot", () => {
         body: {
           tenantId: fixture.teamsTenantId,
           teamsUserId: fixture.teamsUserId,
+          teamsAadObjectId: fixture.teamsAadObjectId,
         },
       }),
       [200],
@@ -546,6 +1082,7 @@ describe("POST /api/zero/teams/bot", () => {
       isConnected: false,
       isAdmin: true,
       installUrl: teamsInstallUrl(),
+      connectUrl: teamsOauthConnectUrl(fixture),
     });
   });
 });

@@ -1,5 +1,59 @@
 # Changelog
 
+## [1.235.1](https://github.com/vm0-ai/vm0/compare/api-v1.235.0...api-v1.235.1) (2026-07-07)
+
+
+### Bug Fixes
+
+* require agent google drive authorization for artifact sync ([#20382](https://github.com/vm0-ai/vm0/issues/20382)) ([84c9732](https://github.com/vm0-ai/vm0/commit/84c97329b9edc8aea951959446533c64893594f4))
+
+## [1.235.0](https://github.com/vm0-ai/vm0/compare/api-v1.234.0...api-v1.235.0) (2026-07-07)
+
+
+### Features
+
+* make steam connector generally available ([#20491](https://github.com/vm0-ai/vm0/issues/20491)) ([2ba3860](https://github.com/vm0-ai/vm0/commit/2ba386084b4134e5b0044dfb8969990b189478ab))
+
+
+### Bug Fixes
+
+* align teams system prompt organization ([#19736](https://github.com/vm0-ai/vm0/issues/19736)) ([f196882](https://github.com/vm0-ai/vm0/commit/f196882fbe1eac2e89c9115c3fbb2f81e5949783))
+* allow private workflows on visible agents ([#20502](https://github.com/vm0-ai/vm0/issues/20502)) ([ff4f6de](https://github.com/vm0-ai/vm0/commit/ff4f6de496a05710e2c3ea4d99692e0c22d11804))
+* warm background chat cache after follow-ups finish ([#20487](https://github.com/vm0-ai/vm0/issues/20487)) ([0173a36](https://github.com/vm0-ai/vm0/commit/0173a36238c741ca6b3748808d64df9eeb8d3a56))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.160.1
+    * @vm0/connectors bumped to 1.146.0
+    * @vm0/core bumped to 8.411.0
+    * @vm0/db bumped to 1.97.1
+
+## [1.234.0](https://github.com/vm0-ai/vm0/compare/api-v1.233.1...api-v1.234.0) (2026-07-07)
+
+
+### Features
+
+* add website generation template api prompt support ([#20456](https://github.com/vm0-ai/vm0/issues/20456)) ([dfccd74](https://github.com/vm0-ai/vm0/commit/dfccd7471f2e01176e6064705cba583cd6b07f30))
+* support full runner builtin firewall catalog resolve ([#20458](https://github.com/vm0-ai/vm0/issues/20458)) ([6bde030](https://github.com/vm0-ai/vm0/commit/6bde030ff15cfdb932c6935c5aefb0c7c269abfc))
+
+
+### Performance Improvements
+
+* skip empty artifact uploads during run creation ([#20447](https://github.com/vm0-ai/vm0/issues/20447)) ([85f5231](https://github.com/vm0-ai/vm0/commit/85f5231cceb002fdcbf8faf826d8ca7df7332a39))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.160.0
+    * @vm0/connectors bumped to 1.145.0
+    * @vm0/core bumped to 8.410.0
+    * @vm0/db bumped to 1.97.0
+
 ## [1.233.1](https://github.com/vm0-ai/vm0/compare/api-v1.233.0...api-v1.233.1) (2026-07-07)
 
 
