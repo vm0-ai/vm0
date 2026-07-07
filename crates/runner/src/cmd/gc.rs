@@ -7039,10 +7039,15 @@ server:
             unsafe {
                 let rc = nix::libc::setrlimit(nix::libc::RLIMIT_NOFILE, &self.original);
                 if rc != 0 {
-                    eprintln!(
+                    let message = format!(
                         "restore RLIMIT_NOFILE failed: {}",
                         std::io::Error::last_os_error()
                     );
+                    if std::thread::panicking() {
+                        eprintln!("{message}");
+                    } else {
+                        panic!("{message}");
+                    }
                 }
             }
         }
