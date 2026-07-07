@@ -761,9 +761,7 @@ function ChatThreadEmojiGrid({
           <button
             key={`${item.name}-${item.emoji}`}
             type="button"
-            aria-label={
-              shortcutLabel ? `${item.name} (${shortcutLabel})` : item.name
-            }
+            aria-label={item.name}
             title={shortcutLabel}
             className="relative flex aspect-square items-center justify-center rounded-md text-xl leading-none transition-colors hover:bg-accent"
             onClick={() => {
