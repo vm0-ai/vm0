@@ -10,9 +10,11 @@ import {
   chatThreadByIdContract,
   chatThreadArtifactsContract,
   chatThreadMessagesContract,
+  chatThreadsContract,
   type ChatThreadArtifactFile,
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { zeroHostContract } from "@vm0/api-contracts/contracts/zero-host";
 import { toast } from "@vm0/ui/components/ui/sonner";
 
@@ -117,6 +119,24 @@ function setupChatThread({
       lastReadAt: null,
       computerUseHostId: null,
       codexServiceTier: null,
+    });
+  });
+  context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
+    return respond(200, {
+      chatThreads: [
+        {
+          id: THREAD_ID,
+          agentId: AGENT_ID,
+          title: "Artifact thread",
+          sortAt: "2026-03-10T00:00:02Z",
+          createdAt: "2026-03-10T00:00:00Z",
+          updatedAt: "2026-03-10T00:00:02Z",
+          pinnedAt: null,
+          renamedAt: null,
+          selectedModel: null,
+        },
+      ],
+      latestEventId: "00000000-0000-4000-8000-000000000001",
     });
   });
   context.mocks.api(chatThreadMessagesContract.list, ({ query, respond }) => {
@@ -1708,7 +1728,10 @@ describe("zero artifact sidebar", () => {
       expect(screen.getByText("Download")).toBeInTheDocument();
       expect(screen.getByText("Connect Google Drive")).toBeInTheDocument();
     });
-    await user.hover(menuItemByText("Connect Google Drive"));
+    const googleDriveItem = menuItemByText("Connect Google Drive");
+    expect(googleDriveItem).not.toHaveClass("text-muted-foreground");
+
+    await user.hover(googleDriveItem);
     await waitFor(() => {
       expect(
         screen.getAllByText("Connect Google Drive to upload artifacts").length,
@@ -1843,6 +1866,92 @@ describe("zero artifact sidebar", () => {
     await user.click(screen.getByLabelText("Download artifact"));
     await waitFor(() => {
       expect(menuItemByText("Synced to Google Drive")).toBeInTheDocument();
+    });
+  });
+
+  it("shows connect action when Google Drive is connected but disabled for the agent", async () => {
+    const user = userEvent.setup({ delay: null });
+    const markdownUrl =
+      "https://cdn.vm7.io/artifacts/test/run-1/drive-agent-notes.md";
+    const artifactFiles = [
+      artifactFile(markdownUrl, {
+        id: "artifact-drive-agent-notes",
+        filename: "drive-agent-notes.md",
+        googleDriveSync: { status: "disconnected" },
+      }),
+    ];
+    context.mocks.data.connectors([googleDriveConnector()]);
+    context.mocks.http.get(markdownUrl, () => {
+      return new Response("# Agent notes\n\nThe artifact is ready.", {
+        headers: { "Content-Type": "text/plain" },
+      });
+    });
+    let enabledTypes: string[] = [];
+    let agentAuthorized = false;
+    let artifactSynced = false;
+    context.mocks.api(
+      zeroUserConnectorsContract.update,
+      ({ body, params, respond }) => {
+        expect(params.id).toBe(AGENT_ID);
+        expect(body).toStrictEqual({
+          enabledTypes: ["google-drive"],
+          operation: "add",
+        });
+        enabledTypes = [...body.enabledTypes];
+        agentAuthorized = true;
+        return respond(200, { enabledTypes });
+      },
+    );
+    context.mocks.api(
+      chatThreadArtifactsContract.syncGoogleDrive,
+      ({ body, respond }) => {
+        expect(enabledTypes).toStrictEqual(["google-drive"]);
+        expect(body).toStrictEqual({
+          runId: "run-artifact",
+          fileId: "artifact-drive-agent-notes",
+        });
+        artifactFiles[0] = {
+          ...artifactFiles[0]!,
+          googleDriveSync: {
+            status: "synced",
+            id: "drive-file-agent-notes",
+            name: "drive-agent-notes.md",
+            webViewLink: "https://drive.test/drive-agent-notes",
+          },
+        };
+        artifactSynced = true;
+        return respond(200, {
+          id: "drive-file-agent-notes",
+          name: "drive-agent-notes.md",
+          webViewLink: "https://drive.test/drive-agent-notes",
+        });
+      },
+    );
+    setupChatThread({
+      artifactFiles,
+      content: `[Agent notes](${markdownUrl})`,
+      path: `${THREAD_PATH}?artifact=${encodeURIComponent(markdownUrl)}`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-sidebar")).toBeInTheDocument();
+      expect(screen.getByText("The artifact is ready.")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByLabelText("Download artifact"));
+    await waitFor(() => {
+      expect(menuItemByText("Connect Google Drive")).toBeEnabled();
+    });
+    await user.click(menuItemByText("Connect Google Drive"));
+
+    await waitFor(() => {
+      expect(agentAuthorized).toBeTruthy();
+    });
+    await waitFor(() => {
+      expect(artifactSynced).toBeTruthy();
+    });
+    await waitFor(() => {
+      expect(screen.getByText("Synced to Google Drive")).toBeInTheDocument();
     });
   });
 
