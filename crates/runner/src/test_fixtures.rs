@@ -270,21 +270,30 @@ async fn kill_ignored_child(
     child: &mut tokio::process::Child,
 ) -> Result<std::process::ExitStatus, String> {
     let kill_error = child.start_kill().err();
-    let wait_result = tokio::time::timeout(CHILD_KILL_WAIT_TIMEOUT, child.wait()).await;
+    let timeout = tokio::time::sleep(CHILD_KILL_WAIT_TIMEOUT);
+    tokio::pin!(timeout);
 
-    match wait_result {
-        Ok(Ok(status)) => Ok(status),
-        Ok(Err(error)) => Err(kill_wait_error(
-            kill_error,
-            format!("wait after kill failed: {error}"),
-        )),
-        Err(_) => Err(kill_wait_error(
-            kill_error,
-            format!(
-                "wait after kill timed out after {}ms",
-                CHILD_KILL_WAIT_TIMEOUT.as_millis()
-            ),
-        )),
+    tokio::select! {
+        biased;
+
+        wait_result = child.wait() => {
+            match wait_result {
+                Ok(status) => Ok(status),
+                Err(error) => Err(kill_wait_error(
+                    kill_error,
+                    format!("wait after kill failed: {error}"),
+                )),
+            }
+        }
+        _ = &mut timeout => {
+            Err(kill_wait_error(
+                kill_error,
+                format!(
+                    "wait after kill timed out after {}ms",
+                    CHILD_KILL_WAIT_TIMEOUT.as_millis()
+                ),
+            ))
+        }
     }
 }
 
@@ -325,6 +334,8 @@ async fn collect_child_output(
 
     loop {
         tokio::select! {
+            biased;
+
             result = &mut stdout_task, if stdout.is_none() => {
                 stdout = Some(child_output("stdout", result));
             }
