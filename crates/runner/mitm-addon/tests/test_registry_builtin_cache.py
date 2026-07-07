@@ -1164,6 +1164,43 @@ class TestRegistryBuiltinCache:
         assert first_result.api_entry is first_vm_info["firewalls"][0]["apis"][0]
         assert second_result.api_entry is second_vm_info["firewalls"][0]["apis"][0]
 
+    def test_inline_only_registry_ignores_catalog_cache_changes(self, tmp_path, mitm_ctx):
+        registry_path = tmp_path / "registry.json"
+        cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
+        write_multi_vm_registry(
+            registry_path,
+            {"10.200.0.1": inline_vm("run-inline")},
+        )
+        _write_catalog_cache(
+            cache_path,
+            digest="sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            version="catalog-a",
+            firewalls={"unused": _cache_firewall("unused", "https://unused-a.example.com")},
+        )
+        os.utime(cache_path, ns=(1_700_000_000_000_000_000, 1_700_000_000_000_000_000))
+
+        with mitm_ctx(
+            registry_path=str(registry_path),
+            builtin_firewall_catalog_cache_path=str(cache_path),
+        ):
+            first_context = registry.get_vm_context("10.200.0.1", str(registry_path))
+            _write_catalog_cache(
+                cache_path,
+                digest="sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                version="catalog-b",
+                firewalls={"unused": _cache_firewall("unused", "https://unused-b.example.com")},
+            )
+            os.utime(cache_path, ns=(1_700_000_000_000_000_001, 1_700_000_000_000_000_001))
+            second_context = registry.get_vm_context("10.200.0.1", str(registry_path))
+
+        assert first_context is not None
+        assert second_context is not None
+        _first_vm_info, first_compiled, _first_policies = first_context
+        _second_vm_info, second_compiled, _second_policies = second_context
+        assert first_compiled is not None
+        assert second_compiled is not None
+        assert _first_firewall_core(first_compiled) is _first_firewall_core(second_compiled)
+
     def test_inline_firewall_api_ids_are_preserved(self, tmp_path):
         path = tmp_path / "registry.json"
         vm = inline_vm("run-inline")

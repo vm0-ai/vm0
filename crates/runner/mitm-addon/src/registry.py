@@ -213,6 +213,13 @@ def _builtin_firewall_catalog_cache_path() -> str | None:
     return cache_path
 
 
+def _registry_file_key_matches_snapshot_without_catalog_dependency(
+    key: _RegistryCacheKey,
+    snapshot_key: _RegistryCacheKey | None,
+) -> bool:
+    return snapshot_key is not None and snapshot_key[:-1] == key[:-1] and snapshot_key[-1] is None
+
+
 def _classify_registry_vms(
     raw_registry: dict,
     *,
@@ -404,6 +411,14 @@ def load_registry_state(registry_path: str) -> RegistryState:
             builtin_catalog_file_key,
         )
         if key == state.snapshot.loaded_key:
+            state.unavailable = None
+            state.stat_error_logged = False
+            state.read_error_key = None
+            return state.snapshot
+        if _registry_file_key_matches_snapshot_without_catalog_dependency(
+            key,
+            state.snapshot.loaded_key,
+        ):
             state.unavailable = None
             state.stat_error_logged = False
             state.read_error_key = None
