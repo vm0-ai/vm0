@@ -95,8 +95,8 @@ import * as memoryChangeSummarySchema from "./schema/memory-change-summary";
 import * as memoryChangeItemSchema from "./schema/memory-change-item";
 import * as memorySubstrateSchema from "./schema/memory-substrate";
 import * as relationshipMemorySchema from "./schema/relationship-memory";
-import * as automationSchema from "./schema/automation";
 import * as gmailEventSchema from "./schema/gmail-event";
+import * as notionEventSchema from "./schema/notion-event";
 import * as googleCalendarEventSchema from "./schema/google-calendar-event";
 import * as googleWorkspaceEventSchema from "./schema/google-workspace-event";
 
@@ -198,8 +198,10 @@ export const schema = {
   ...memoryChangeItemSchema,
   ...memorySubstrateSchema,
   ...relationshipMemorySchema,
-  ...automationSchema,
   ...gmailEventSchema,
+  ...notionEventSchema,
   ...googleCalendarEventSchema,
   ...googleWorkspaceEventSchema,
 };
+
+export type DatabaseSchema = typeof schema;

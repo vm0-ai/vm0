@@ -143,6 +143,30 @@ export const resizeEditableImageCanvasItem$ = command(
   },
 );
 
+export const deleteEditableImageCanvasItem$ = command(
+  (
+    { get, set },
+    args: {
+      itemId: string;
+      key: string;
+      src: string;
+    },
+  ) => {
+    const items = itemsForKey(get(internalItemsByKey$), args.key, args.src);
+    set(internalItemsByKey$, (current) => {
+      return {
+        ...current,
+        [args.key]: items.filter((item) => {
+          return item.id !== args.itemId;
+        }),
+      };
+    });
+    if (get(internalSelectedItemId$) === args.itemId) {
+      set(internalSelectedItemId$, null);
+    }
+  },
+);
+
 export const copyEditableImageCanvasSelection$ = command(
   ({ get, set }, key: string, src: string) => {
     const items = itemsForKey(get(internalItemsByKey$), key, src);
@@ -195,6 +219,47 @@ export const pasteEditableImageCanvasSelection$ = command(
     set(internalSelectedItemId$, duplicate.id);
     set(internalNextItemIndexByKey$, (current) => {
       return { ...current, [key]: itemIndex + 1 };
+    });
+  },
+);
+
+export const insertEditableImageCanvasItem$ = command(
+  (
+    { get, set },
+    args: {
+      canvasSrc: string;
+      key: string;
+      src: string;
+    },
+  ) => {
+    const items = itemsForKey(
+      get(internalItemsByKey$),
+      args.key,
+      args.canvasSrc,
+    );
+    const itemIndex = get(internalNextItemIndexByKey$)[args.key] ?? 1;
+    const base = createInitialEditableImageCanvasItem(args.src);
+    const offset = DUPLICATE_OFFSET * items.length;
+    const item = {
+      ...base,
+      id: `image-upload-${itemIndex}`,
+      x: base.x + offset,
+      y: base.y + offset,
+      zIndex:
+        Math.max(
+          0,
+          ...items.map((currentItem) => {
+            return currentItem.zIndex;
+          }),
+        ) + 1,
+    };
+
+    set(internalItemsByKey$, (current) => {
+      return { ...current, [args.key]: [...items, item] };
+    });
+    set(internalSelectedItemId$, item.id);
+    set(internalNextItemIndexByKey$, (current) => {
+      return { ...current, [args.key]: itemIndex + 1 };
     });
   },
 );

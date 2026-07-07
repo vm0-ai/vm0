@@ -750,7 +750,12 @@ impl Sandbox for MockSandbox {
             }
             // Return override exit code when configured.
             if let Some(code) = overrides.process.wait_process_code {
-                return Ok(ProcessExit::new(handle.pid, code, Vec::new(), Vec::new()));
+                return Ok(ProcessExit::new(
+                    handle.guest_pid,
+                    code,
+                    Vec::new(),
+                    Vec::new(),
+                ));
             }
             if let Some(exit) = overrides
                 .process
@@ -761,6 +766,11 @@ impl Sandbox for MockSandbox {
                 return Ok(exit);
             }
         }
-        Ok(ProcessExit::new(handle.pid, 0, Vec::new(), Vec::new()))
+        Ok(ProcessExit::new(
+            handle.guest_pid,
+            0,
+            Vec::new(),
+            Vec::new(),
+        ))
     }
 }

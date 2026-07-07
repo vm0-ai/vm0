@@ -11,9 +11,8 @@ import { findWorkflowTemplateItem } from "@vm0/core/workflow-template-items";
 interface PresentationGenerationTemplateInput {
   readonly type: "presentation";
   readonly selection: {
-    readonly colorSystemId?: string;
-    readonly designSystemId: string;
     readonly templateId: string;
+    readonly colorSystemId?: string;
     readonly previewUrl?: string;
   };
 }
@@ -111,11 +110,9 @@ function buildWorkflowGenerationTemplatePrompt(
 function buildPresentationGenerationTemplatePrompt(
   generationTemplate: PresentationGenerationTemplateInput,
 ): GenerationTemplatePromptResult {
-  // Presentation generation templates are served exclusively from their
-  // self-contained runbook package. The legacy multi-resource flow and its
-  // `template:html-ppt-*` / `design-system:*` registry entries have been
-  // retired, so a template id without a runbook package is not a valid
-  // selection.
+  // Presentation picker selections are valid only when they resolve to a
+  // self-contained runbook package. The legacy multi-resource registry flow has
+  // been retired, so ids without a runbook package are rejected.
   const runbookPackage = findPresentationRunbookPackage(
     generationTemplate.selection.templateId,
   );

@@ -188,6 +188,7 @@ async function confirmPermissionAction(
 
 describe("chat message action cards", () => {
   it("lets users authorize connectors and confirm permissions from assistant messages", async () => {
+    mockNow();
     const user = userEvent.setup({ delay: null });
     const connectorAuthorizeUrl = `https://app.vm0.ai/connectors/github/authorize?agentId=${AGENT_ID}`;
     const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=slack&permission=catalog.analytics%3Aread&action=allow&expiresIn=24h`;
@@ -537,6 +538,84 @@ describe("chat message action cards", () => {
     expect(applyRequests).toBe(0);
   });
 
+  it("lets users re-confirm expired allow permission action cards", async () => {
+    mockNow();
+    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=youtube&permission=videos.write&action=allow&expiresIn=24h`;
+    let applyRequests = 0;
+    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+      return respond(200, [
+        {
+          agentId: AGENT_ID,
+          connectorRef: "youtube",
+          permission: "videos.write",
+          action: "allow",
+          expiresAt: isoFromNowMs(-60 * 1000),
+          createdAt: "2026-06-09T11:00:00Z",
+          updatedAt: "2026-06-09T11:01:00Z",
+        },
+      ]);
+    });
+    context.mocks.api(zeroUserPermissionGrantsContract.apply, ({ respond }) => {
+      applyRequests += 1;
+      return respond(200, [
+        {
+          agentId: AGENT_ID,
+          connectorRef: "youtube",
+          permission: "videos.write",
+          action: "allow",
+          expiresAt: isoFromNowMs(24 * 60 * 60 * 1000),
+          createdAt: "2026-06-09T11:00:00Z",
+          updatedAt: "2026-06-09T12:00:00Z",
+        },
+      ]);
+    });
+    mockChatLifecycle(context, {
+      threadId: `${THREAD_ID}-expired-allowed-permission`,
+      threadTitle: "Expired permission allow",
+      chatMessages: [
+        {
+          id: "msg-user-expired-allowed-permission",
+          role: "user",
+          content: "Upload the video",
+          runId: "run-expired-allowed-permission",
+          createdAt: "2026-06-09T11:00:00Z",
+        },
+        {
+          id: "msg-assistant-expired-allowed-permission-card",
+          role: "assistant",
+          content: permissionAuthorizeUrl,
+          runId: "run-expired-allowed-permission",
+          createdAt: "2026-06-09T11:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}-expired-allowed-permission`,
+    });
+
+    const permissionCard = await screen.findByTestId("permission-action-card");
+    await waitFor(() => {
+      expect(within(permissionCard).getByText("Expired")).toBeInTheDocument();
+      expect(within(permissionCard).getByText("Confirm")).toBeInTheDocument();
+    });
+    expect(
+      within(permissionCard).queryByText("Already allowed"),
+    ).not.toBeInTheDocument();
+
+    await confirmPermissionAction(
+      userEvent.setup({ delay: null }),
+      permissionCard,
+    );
+    await waitFor(() => {
+      expect(
+        within(permissionCard).getByText("Permissions updated"),
+      ).toBeInTheDocument();
+    });
+    expect(applyRequests).toBe(1);
+  });
+
   it("shows already denied permission action cards as read-only after refresh", async () => {
     const permissionDenyUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=slack&permission=admin.analytics%3Aread&action=deny`;
     let applyRequests = 0;
@@ -716,6 +795,7 @@ describe("chat message action cards", () => {
   });
 
   it("automatically retries permission action loading before showing an error", async () => {
+    mockNow();
     const user = userEvent.setup({ delay: null });
     const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=gmail&permission=messages.write&action=allow&expiresIn=1h`;
     let listRequests = 0;
@@ -741,7 +821,7 @@ describe("chat message action cards", () => {
             connectorRef: body.connectorRef,
             permission: grant.permission,
             action: grant.action,
-            expiresAt: "2026-06-09T12:00:00.000Z",
+            expiresAt: isoFromNowMs(60 * 60 * 1000),
             createdAt: "2026-06-09T11:00:00Z",
             updatedAt: "2026-06-09T11:01:00Z",
           },
@@ -982,6 +1062,7 @@ describe("chat message action cards", () => {
   });
 
   it("keeps permission success visible while permission grants reload", async () => {
+    mockNow();
     const user = userEvent.setup({ delay: null });
     const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=gmail&permission=messages.write&action=allow&expiresIn=1h`;
     let listRequests = 0;
@@ -1019,7 +1100,7 @@ describe("chat message action cards", () => {
             connectorRef: body.connectorRef,
             permission: grant.permission,
             action: grant.action,
-            expiresAt: "2026-06-09T12:00:00.000Z",
+            expiresAt: isoFromNowMs(60 * 60 * 1000),
             createdAt: "2026-06-09T11:00:00Z",
             updatedAt: "2026-06-09T11:01:00Z",
           },
@@ -1076,6 +1157,7 @@ describe("chat message action cards", () => {
   });
 
   it("lets users change permission duration before confirming", async () => {
+    mockNow();
     const user = userEvent.setup({ delay: null });
     const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=slack&permission=admin.analytics%3Aread&action=allow&expiresIn=24h`;
     let capturedBody: unknown = null;
@@ -1096,7 +1178,7 @@ describe("chat message action cards", () => {
             connectorRef: body.connectorRef,
             permission: grant.permission,
             action: grant.action,
-            expiresAt: "2026-06-16T11:01:00.000Z",
+            expiresAt: isoFromNowMs(7 * 24 * 60 * 60 * 1000),
             createdAt: "2026-06-09T11:00:00Z",
             updatedAt: "2026-06-09T11:01:00Z",
           },
@@ -1162,6 +1244,7 @@ describe("chat message action cards", () => {
   });
 
   it("lets users confirm unknown endpoint permissions from assistant messages", async () => {
+    mockNow();
     const user = userEvent.setup({ delay: null });
     const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=cloudflare&permission=${UNKNOWN_PERMISSION_GRANT}&action=allow&expiresIn=1h`;
     let capturedBody: unknown = null;
@@ -1182,7 +1265,7 @@ describe("chat message action cards", () => {
             connectorRef: body.connectorRef,
             permission: grant.permission,
             action: grant.action,
-            expiresAt: "2026-06-09T12:00:00.000Z",
+            expiresAt: isoFromNowMs(60 * 60 * 1000),
             createdAt: "2026-06-09T11:00:00Z",
             updatedAt: "2026-06-09T11:01:00Z",
           },

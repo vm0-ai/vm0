@@ -332,23 +332,9 @@ export {
   testAutomationsStateActionBodySchema,
   testAutomationsStateActionResponseSchema,
   testAutomationsStateContract,
-  testAutomationsStateDeleteResponseSchema,
-  testAutomationsStatePatchBodySchema,
-  testAutomationsStatePostBodySchema,
-  testAutomationsStatePostResponseSchema,
-  testAutomationsStateReadResponseSchema,
-  testAutomationsStateSeedSchema,
-  testAutomationsStateTriggerRowSchema,
   type TestAutomationsStateActionBody,
   type TestAutomationsStateActionResponse,
   type TestAutomationsStateContract,
-  type TestAutomationsStateDeleteResponse,
-  type TestAutomationsStatePatchBody,
-  type TestAutomationsStatePostBody,
-  type TestAutomationsStatePostResponse,
-  type TestAutomationsStateReadResponse,
-  type TestAutomationsStateSeed,
-  type TestAutomationsStateTriggerRow,
 } from "./test-automations-state";
 export {
   testBillingRedeemStateActionBodySchema,
@@ -730,7 +716,6 @@ export {
   chatMessagesContract,
   chatThreadMessagesContract,
   chatThreadArtifactsContract,
-  chatThreadGithubPrsContract,
   chatSearchContract,
   chatThreadListItemSchema,
   chatThreadSnapshotProjectionSchema,
@@ -749,8 +734,6 @@ export {
   chatThreadArtifactFileSchema,
   chatThreadArtifactRunSchema,
   htmlArtifactEditSnapshotSchema,
-  chatThreadGithubPrCheckRunSchema,
-  chatThreadGithubPrSchema,
   type ModelSelectionRequest,
   type GenerationTemplateRequest,
   type PresentationGenerationTemplateRequest,
@@ -766,7 +749,6 @@ export {
   type ChatMessagesContract,
   type ChatThreadMessagesContract,
   type ChatThreadArtifactsContract,
-  type ChatThreadGithubPrsContract,
   type ChatSearchContract,
   type ChatSearchResponse,
   type ChatSearchResult,
@@ -784,8 +766,6 @@ export {
   type ChatThreadArtifactFile,
   type ChatThreadArtifactRun,
   type HtmlArtifactEditSnapshot,
-  type ChatThreadGithubPrCheckRun,
-  type ChatThreadGithubPr,
 } from "./chat-threads";
 export {
   chatThreadV1GetContract,
@@ -836,6 +816,7 @@ export {
   runnersPollContract,
   runnersJobClaimContract,
   runnersNetworkPolicyRefreshContract,
+  runnersBuiltinFirewallsResolveContract,
   runnersHeartbeatContract,
   heartbeatBodySchema,
   runnerGroupSchema,
@@ -850,12 +831,14 @@ export {
   CANONICAL_GUEST_HOME_DIR,
   CANONICAL_WORKING_DIR,
   DEFAULT_PROFILE,
+  RUNNER_BUILTIN_FIREWALL_RESOLVE_NAMES_MAX,
   artifactEntrySchema,
   storageManifestSchema,
   resumeSessionSchema,
   type RunnersPollContract,
   type RunnersJobClaimContract,
   type RunnersNetworkPolicyRefreshContract,
+  type RunnersBuiltinFirewallsResolveContract,
   type RunnersHeartbeatContract,
   type Job,
   type ExecutionContext,
@@ -866,6 +849,8 @@ export {
   type ArtifactEntry,
   type StorageManifest,
   type ResumeSession,
+  type RunnerBuiltinFirewallsResolveBody,
+  type RunnerBuiltinFirewallsResolveResponse,
 } from "./runners";
 
 export {
@@ -1251,7 +1236,6 @@ export {
   type RunContextResponse,
   type RunRunnerResponse,
 } from "./zero-runs";
-export { automationViewSchema, type AutomationView } from "./automation-view";
 export {
   zeroModelProvidersMainContract,
   zeroModelProvidersByTypeContract,
@@ -1720,24 +1704,6 @@ export {
   type ZeroBuiltInGenerationResponse,
 } from "./zero-built-in-generation";
 export {
-  automationsMainContract,
-  automationsByRefContract,
-  automationTriggersContract,
-  automationTriggerResponseSchema,
-  automationResponseSchema,
-  automationListResponseSchema,
-  automationMutationResponseSchema,
-  triggerMutationResponseSchema,
-  automationRunResponseSchema,
-  createTriggerRequestSchema,
-  type AutomationsMainContract,
-  type AutomationsByRefContract,
-  type AutomationTriggersContract,
-  type AutomationResponse,
-  type AutomationTriggerResponse,
-  type CreateTriggerRequest,
-} from "./automations";
-export {
   internalCallbackBodySchema,
   internalCallbackErrorSchema,
   internalCallbackHeadersSchema,
@@ -1770,6 +1736,7 @@ export {
   zeroUploadsContract,
   type ZeroUploadsContract,
   type UploadPrepareResponse,
+  type UploadImportImageResponse,
 } from "./zero-uploads";
 export {
   zeroGoalsContract,

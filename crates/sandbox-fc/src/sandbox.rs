@@ -1349,14 +1349,14 @@ fn exec_result_from_operation_result(
 }
 
 fn supervised_exec_result_to_process_exit(
-    pid: u32,
+    guest_pid: u32,
     result: vsock_host::ExecOperationResult,
 ) -> ProcessExit {
     let (stdout, stdout_truncated) = captured_output_bytes(result.stdout);
     let (stderr, stderr_truncated) = captured_output_bytes(result.stderr);
 
     ProcessExit {
-        pid,
+        guest_pid,
         termination: exec_termination_from_vsock_termination(result.termination),
         guest_duration_ms: Some(result.duration_ms),
         stdout,
@@ -1464,7 +1464,7 @@ impl Sandbox for FirecrackerSandbox {
         self.network.peer_ip()
     }
 
-    fn process_pid(&self) -> Option<u32> {
+    fn host_process_pid(&self) -> Option<u32> {
         self.process_group_pid
     }
 
@@ -1937,7 +1937,7 @@ impl Sandbox for FirecrackerSandbox {
                         return Err(Self::operation_error(operation, error, backend_crashed));
                     }
                 };
-                let pid = handle.pid();
+                let guest_pid = handle.pid();
                 let process_control = handle.control_handle().map(|control| {
                     let coordinator = self.park_coordinator.clone();
                     let state = Arc::clone(&self.state);
@@ -1977,11 +1977,11 @@ impl Sandbox for FirecrackerSandbox {
                 let wait = GuestProcessWaiter::new(move |timeout| {
                     Box::pin(async move {
                         let result = handle.wait(timeout).await?;
-                        Ok(supervised_exec_result_to_process_exit(pid, result))
+                        Ok(supervised_exec_result_to_process_exit(guest_pid, result))
                     })
                 });
                 let mut public_handle =
-                    GuestProcessHandle::new(pid, stdout_rx, process_control, wait);
+                    GuestProcessHandle::new(guest_pid, stdout_rx, process_control, wait);
                 if let Some(process_cancel) = process_cancel {
                     public_handle = public_handle.with_cancel_handle(process_cancel);
                 }
@@ -5123,7 +5123,7 @@ mod tests {
             },
         );
 
-        assert_eq!(exit.pid, 42);
+        assert_eq!(exit.guest_pid, 42);
         assert_eq!(exit.termination, ExecTermination::WaitFailed);
         assert_eq!(exit.stdout, b"out");
         assert_eq!(exit.stderr, b"err");

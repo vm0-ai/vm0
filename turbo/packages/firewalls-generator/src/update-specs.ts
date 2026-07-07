@@ -37,6 +37,7 @@ import {
   stripeApiDocUrlsFromDescription,
 } from "./stripe-sources";
 import { PERMISSIONS_DOC_URL as SENTRY_PERMISSIONS_DOC_URL } from "./sentry";
+import { STEAM_WEB_API_DOC_URLS } from "./steam";
 
 type SpecEntries = Map<string, string>; // key → content
 
@@ -351,6 +352,7 @@ const UPDATERS: Updater[] = [
     "https://raw.githubusercontent.com/getsentry/sentry-api-schema/refs/heads/main/openapi-derefed.json",
     SENTRY_PERMISSIONS_DOC_URL,
   ]),
+  staticUpdater("steam", [...STEAM_WEB_API_DOC_URLS]),
   staticUpdater("strava", [
     "https://developers.strava.com/swagger/swagger.json",
   ]),

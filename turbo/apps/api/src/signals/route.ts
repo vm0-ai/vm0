@@ -3,7 +3,6 @@ import { healthContract } from "@vm0/api-contracts/contracts/health";
 
 import { agentCheckpointsRoutes } from "./routes/agent-checkpoints-id";
 import { agentComposesByIdRoutes } from "./routes/agent-composes-id";
-import { automationsRoutes } from "./routes/automations";
 import { agentComposesReadRoutes } from "./routes/agent-composes-read";
 import { agentComposesRoutes } from "./routes/agent-composes";
 import { agentRunsCancelRoutes } from "./routes/agent-runs-cancel";
@@ -30,7 +29,7 @@ import { cronRenewGoogleCalendarWatchesRoutes } from "./routes/cron-renew-google
 import { cronRenewGoogleWorkspaceEventSubscriptionsRoutes } from "./routes/cron-renew-google-workspace-event-subscriptions";
 import { cronProcessUsageEventsRoutes } from "./routes/cron-process-usage-events";
 import { cronReconcileBillingEntitlementsRoutes } from "./routes/cron-reconcile-billing-entitlements";
-import { cronRefreshSystemStoragePresignedUrlsRoutes } from "./routes/cron-refresh-system-storage-presigned-urls";
+import { cronRefreshStoragePresignedUrlsRoutes } from "./routes/cron-refresh-storage-presigned-urls";
 import { cronComputerUseScreenshotCleanupRoutes } from "./routes/cron-computer-use-screenshot-cleanup";
 import { cronSummarizeMemoryRoutes } from "./routes/cron-summarize-memory";
 import { cronSyncSkillsRoutes } from "./routes/cron-sync-skills";
@@ -63,6 +62,7 @@ import { webhooksGithubRoutes } from "./routes/webhooks-github";
 import { webhooksGmailRoutes } from "./routes/webhooks-gmail";
 import { webhooksGoogleCalendarRoutes } from "./routes/webhooks-google-calendar";
 import { webhooksGoogleWorkspaceEventsRoutes } from "./routes/webhooks-google-workspace-events";
+import { webhooksNotionRoutes } from "./routes/webhooks-notion";
 import { webhooksWorkflowTriggersRoutes } from "./routes/webhooks-workflow-triggers";
 import { webhooksStripeRoutes } from "./routes/webhooks-stripe";
 import { zeroAgentDraftRoutes } from "./routes/zero-agent-drafts";
@@ -160,12 +160,14 @@ import { zeroSlackConnectRoutes } from "./routes/zero-slack-connect";
 import { zeroSlackEventsRoutes } from "./routes/zero-slack-events";
 import { zeroSlackInteractiveRoutes } from "./routes/zero-slack-interactive";
 import { zeroSlackOauthRoutes } from "./routes/zero-slack-oauth";
+import { zeroSteamPlayerRoutes } from "./routes/zero-steam-player";
 import { zeroTeamsBrowserConnectRoutes } from "./routes/zero-teams-browser-connect";
 import { zeroTeamsBotRoutes } from "./routes/zero-teams-bot";
 import { zeroTeamsConnectRoutes } from "./routes/zero-teams-connect";
 import { zeroTeamRoutes } from "./routes/zero-team";
 import { zeroUploadsCompleteRoutes } from "./routes/zero-uploads-complete";
 import { zeroUploadsHtmlDomEditSnapshotRoutes } from "./routes/zero-uploads-html-dom-edit-snapshot";
+import { zeroUploadsImportImageRoutes } from "./routes/zero-uploads-import-image";
 import { zeroUploadsPrepareRoutes } from "./routes/zero-uploads-prepare";
 import { zeroUsageInsightRoutes } from "./routes/zero-usage-insight";
 import { zeroUsageMembersRoutes } from "./routes/zero-usage-members";
@@ -192,6 +194,7 @@ import { testSlackDispatchProbeRoutes } from "./routes/test-slack-dispatch-probe
 import { testSlackMockRoutes } from "./routes/test-slack-mock";
 import { testSlackStateRoutes } from "./routes/test-slack-state";
 import { testSystemStoragePresignedUrlCacheStateRoutes } from "./routes/test-system-storage-presigned-url-cache-state";
+import { testWorkflowSkillStoragePresignedUrlCacheStateRoutes } from "./routes/test-workflow-skill-storage-presigned-url-cache-state";
 import { testEmailStateRoutes } from "./routes/test-email-state";
 import { testBillingRedeemStateRoutes } from "./routes/test-billing-redeem-state";
 import { testBillingStatusStateRoutes } from "./routes/test-billing-status-state";
@@ -219,8 +222,6 @@ export const ROUTES: readonly RouteEntry[] = [
     handler: apiBuildInfo$,
   },
   ...authMeRoutes,
-  // Legacy automations: read-only provenance rows after the workflow cutover.
-  ...automationsRoutes,
   ...cliAuthRoutes,
   ...cliAuthTestRoutes,
   ...desktopAuthRoutes,
@@ -237,6 +238,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...webhooksGmailRoutes,
   ...webhooksGoogleCalendarRoutes,
   ...webhooksGoogleWorkspaceEventsRoutes,
+  ...webhooksNotionRoutes,
   ...webhooksWorkflowTriggersRoutes,
   ...webhooksStripeRoutes,
   ...webhooksAgentHealthUsageTelemetryRoutes,
@@ -267,7 +269,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...cronRenewGoogleWorkspaceEventSubscriptionsRoutes,
   ...cronProcessUsageEventsRoutes,
   ...cronReconcileBillingEntitlementsRoutes,
-  ...cronRefreshSystemStoragePresignedUrlsRoutes,
+  ...cronRefreshStoragePresignedUrlsRoutes,
   ...cronComputerUseScreenshotCleanupRoutes,
   ...cronSummarizeMemoryRoutes,
   ...cronSyncSkillsRoutes,
@@ -376,6 +378,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroIntegrationsSlackUploadCompleteRoutes,
   ...zeroIntegrationsSlackUploadInitRoutes,
   ...zeroSlackChannelsRoutes,
+  ...zeroSteamPlayerRoutes,
   ...zeroIntegrationsTelegramRoutes,
   ...zeroIntegrationsTelegramMessageRoutes,
   ...zeroIntegrationsTelegramUploadCompleteRoutes,
@@ -383,6 +386,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroTeamRoutes,
   ...zeroUploadsCompleteRoutes,
   ...zeroUploadsHtmlDomEditSnapshotRoutes,
+  ...zeroUploadsImportImageRoutes,
   ...zeroUploadsPrepareRoutes,
   ...registryResourceDownloadRoutes,
   ...storagesCommitRoutes,
@@ -407,6 +411,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...testSlackMockRoutes,
   ...testSlackStateRoutes,
   ...testSystemStoragePresignedUrlCacheStateRoutes,
+  ...testWorkflowSkillStoragePresignedUrlCacheStateRoutes,
   ...testEmailStateRoutes,
   ...testBillingRedeemStateRoutes,
   ...testBillingStatusStateRoutes,

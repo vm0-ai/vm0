@@ -202,6 +202,8 @@ const THREAD_ID = "b0000000-0000-4000-a000-000000000001";
 const THREAD_EVENT_ID = "d0000000-0000-4000-a000-000000000001";
 const RUN_ID = "e0000000-0000-4000-a000-000000000001";
 const THREAD_TITLE = "GEO pricing research";
+const THREAD_MODEL_LABEL = "Claude Sonnet 4.6";
+const THREAD_SELECTED_MODEL = "claude-sonnet-4-6";
 const USER_MESSAGE = "Summarize the launch plan";
 const ASSISTANT_MESSAGE = "Here is the result";
 
@@ -297,7 +299,11 @@ function cachedChatMessages(): PagedChatMessage[] {
   ];
 }
 
-function seedCachedThreadEvents(): void {
+function seedCachedThreadEvents({
+  selectedModel = THREAD_SELECTED_MODEL,
+}: {
+  readonly selectedModel?: string | null;
+} = {}): void {
   idbThreadEventStoreMock.setData({
     snapshot: {
       latestEventId: THREAD_EVENT_ID,
@@ -311,7 +317,7 @@ function seedCachedThreadEvents(): void {
           updatedAt: "2026-03-10T00:00:00Z",
           pinnedAt: null,
           renamedAt: null,
-          selectedModel: null,
+          selectedModel,
         },
       ],
     },
@@ -322,7 +328,7 @@ function seedCachedThreadEvents(): void {
         chatThreadId: THREAD_ID,
         agentId: AGENT_ID,
         title: THREAD_TITLE,
-        selectedModel: null,
+        selectedModel,
         createdAt: "2026-03-10T00:00:02Z",
       },
     ],
@@ -410,8 +416,100 @@ describe("zero chat thread IndexedDB fallback", () => {
     }
   });
 
+  it("keeps model and voice actions visible while uncached messages are blocked", async () => {
+    prepareDefaultAgent();
+    context.mocks.browser.voiceInput({ rms: 0.1 });
+    mockCurrentThreadDetail();
+    seedCachedThreadEvents();
+
+    const initialMessageList = context.mocks.deferred<void>();
+    let messageListRequests = 0;
+    context.mocks.api(chatThreadMessagesContract.list, async ({ respond }) => {
+      messageListRequests += 1;
+      await initialMessageList.promise;
+      return respond(200, { messages: [], hasHistoryBefore: false });
+    });
+    context.mocks.api(chatThreadsContract.snapshot, ({ never }) => {
+      return never();
+    });
+    context.mocks.api(chatThreadsContract.events, ({ never }) => {
+      return never();
+    });
+    context.mocks.api(chatThreadsContract.activeIds, ({ never }) => {
+      return never();
+    });
+
+    try {
+      detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+      await waitFor(() => {
+        expect(messageListRequests).toBeGreaterThan(0);
+        expect(screen.getAllByText(THREAD_TITLE).length).toBeGreaterThan(0);
+      });
+
+      const composer = document.querySelector("[data-chat-composer]");
+      expect(composer).toBeInstanceOf(HTMLElement);
+      expect(
+        (composer as HTMLElement).querySelector(".animate-pulse"),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByRole("combobox", { name: THREAD_MODEL_LABEL }),
+      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Voice input")).toBeInTheDocument();
+      const sendButton = queryAllByRoleFast(
+        "button",
+        composer as HTMLElement,
+      ).find((button) => {
+        return button.getAttribute("aria-label") === "Send";
+      });
+      expect(sendButton).toBeInstanceOf(HTMLButtonElement);
+      expect(sendButton).toBeDisabled();
+    } finally {
+      initialMessageList.resolve();
+    }
+  });
+
+  it("hides the model picker when an uncached thread has no selected model", async () => {
+    prepareDefaultAgent();
+    context.mocks.browser.voiceInput({ rms: 0.1 });
+    mockCurrentThreadDetail();
+    seedCachedThreadEvents({ selectedModel: null });
+
+    const initialMessageList = context.mocks.deferred<void>();
+    let messageListRequests = 0;
+    context.mocks.api(chatThreadMessagesContract.list, async ({ respond }) => {
+      messageListRequests += 1;
+      await initialMessageList.promise;
+      return respond(200, { messages: [], hasHistoryBefore: false });
+    });
+    context.mocks.api(chatThreadsContract.snapshot, ({ never }) => {
+      return never();
+    });
+    context.mocks.api(chatThreadsContract.events, ({ never }) => {
+      return never();
+    });
+    context.mocks.api(chatThreadsContract.activeIds, ({ never }) => {
+      return never();
+    });
+
+    try {
+      detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+      await waitFor(() => {
+        expect(messageListRequests).toBeGreaterThan(0);
+        expect(screen.getAllByText(THREAD_TITLE).length).toBeGreaterThan(0);
+      });
+
+      expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+      expect(screen.getByLabelText("Voice input")).toBeInTheDocument();
+    } finally {
+      initialMessageList.resolve();
+    }
+  });
+
   it("renders cached sidebar and chat messages while chat thread data APIs are blocked", async () => {
     prepareDefaultAgent();
+    context.mocks.browser.voiceInput({ rms: 0.1 });
     idbMessageStoreMock.setMessages(cachedChatMessages());
     seedCachedThreadEvents();
 
@@ -453,6 +551,15 @@ describe("zero chat thread IndexedDB fallback", () => {
       expect(screen.getAllByText(THREAD_TITLE).length).toBeGreaterThan(1);
     });
     expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
+    const composer = document.querySelector("[data-chat-composer]");
+    expect(composer).toBeInstanceOf(HTMLElement);
+    expect(
+      (composer as HTMLElement).querySelector(".animate-pulse"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("combobox", { name: THREAD_MODEL_LABEL }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Voice input")).toBeInTheDocument();
 
     await expect(screen.findByText(USER_MESSAGE)).resolves.toBeInTheDocument();
     await expect(

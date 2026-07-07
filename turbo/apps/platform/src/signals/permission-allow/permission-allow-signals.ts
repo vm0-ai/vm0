@@ -12,15 +12,12 @@ import {
   UNKNOWN_PERMISSION_GRANT,
   type FirewallPolicyValue,
 } from "@vm0/connectors/firewall-types";
-import {
-  permissionGrantsToFirewallPolicies,
-  resolveFirewallMetadataPolicies,
-} from "@vm0/connectors/firewall-metadata/policy";
 import { zeroClient$ } from "../api-client.ts";
 import { pathParams$, searchParams$ } from "../route.ts";
 import { accept } from "../../lib/accept.ts";
 import { agentById, reloadAgentById$ } from "../agent.ts";
 import { retryTransientLoad } from "../utils.ts";
+import { resolveActiveUserPermissionGrantPolicy } from "../user-permission-grants.ts";
 import { parseUserPermissionGrantExpiresIn } from "./permission-grant-expiration.ts";
 
 // ---------------------------------------------------------------------------
@@ -106,13 +103,7 @@ export function resolveUserPermissionGrantPolicy(
   metadata: PublicConnectorCatalogPermissionDetail,
   permission: string,
 ): FirewallPolicyValue | undefined {
-  const policies = resolveFirewallMetadataPolicies(
-    permissionGrantsToFirewallPolicies(grants),
-    [metadata],
-  )?.[metadata.connectorRef];
-  return permission === UNKNOWN_PERMISSION_GRANT
-    ? policies?.unknownPolicy
-    : policies?.policies[permission];
+  return resolveActiveUserPermissionGrantPolicy(grants, metadata, permission);
 }
 
 interface UserPermissionGrantsByAgentParams {

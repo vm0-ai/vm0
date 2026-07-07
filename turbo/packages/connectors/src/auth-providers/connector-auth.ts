@@ -6,10 +6,12 @@ import {
   type AuthGrantConnectorType,
   type ConnectorDeviceAuthGrantAuthMethodId,
   type ConnectorExternalCodeGrantAuthMethodId,
+  type ConnectorOpenIdAuthGrantAuthMethodId,
   type ConnectorDeviceAuthStartOptions,
   type ConnectorAuthMethodIdsByGrantKind,
   type DeviceAuthGrantConnectorType,
   type ExternalCodeGrantConnectorType,
+  type OpenIdAuthGrantConnectorType,
   type ConnectorAuthMethodIdsByAccessKind,
   type ConnectorAuthMethodIdsByRevokeKind,
   type ConnectorRefreshInputValues,
@@ -22,6 +24,7 @@ import {
   connectorAuthMethodRefHasRevokeKind,
   getConnectorAuthMethodAccessMetadata,
   getConnectorAuthMethodAuthCodeGrantConfig,
+  getConnectorAuthMethodOpenIdAuthGrantConfig,
   getConnectorAuthMethodExternalCodeGrantConfig,
   getConnectorAuthMethodGrantScopes,
   isStaticConfidentialConnectorAuthClient,
@@ -38,6 +41,7 @@ import type {
   ConnectorAuthProviderRefreshResult,
   DeviceAuthConnectorAuthProvider,
   ExternalCodeConnectorAuthProvider,
+  OpenIdAuthConnectorAuthProvider,
   RefreshTokenAccessProvider,
   TokenRevokeProvider,
 } from "./types";
@@ -109,6 +113,7 @@ import { metaAdsProvider } from "./connectors/meta-ads/provider";
 import { posthogProvider } from "./connectors/posthog/provider";
 import { quickbooksProvider } from "./connectors/quickbooks/provider";
 import { spotifyProvider } from "./connectors/spotify/provider";
+import { steamProvider } from "./connectors/steam/provider";
 import { tiktokAdsProvider } from "./connectors/tiktok-ads/provider";
 import { xProvider } from "./connectors/x/provider";
 import { xeroProvider } from "./connectors/xero/provider";
@@ -154,6 +159,12 @@ type ConnectorDeviceAuthGrantProvider<
     ConnectorDeviceAuthGrantAuthMethodId<Type>,
 > = DeviceAuthConnectorAuthProvider<Type, Method>["grant"];
 
+type ConnectorOpenIdAuthGrantProvider<
+  Type extends OpenIdAuthGrantConnectorType,
+  Method extends ConnectorOpenIdAuthGrantAuthMethodId<Type> =
+    ConnectorOpenIdAuthGrantAuthMethodId<Type>,
+> = OpenIdAuthConnectorAuthProvider<Type, Method>["grant"];
+
 type ConnectorExternalCodeGrantProvider<
   Type extends ExternalCodeGrantConnectorType,
   Method extends ConnectorExternalCodeGrantAuthMethodId<Type> =
@@ -172,6 +183,13 @@ type ConnectorDeviceAuthProviderEntry<
   Method extends ConnectorDeviceAuthGrantAuthMethodId<Type>,
 > = {
   readonly grant: ConnectorDeviceAuthGrantProvider<Type, Method>;
+};
+
+type ConnectorOpenIdAuthProviderEntry<
+  Type extends OpenIdAuthGrantConnectorType,
+  Method extends ConnectorOpenIdAuthGrantAuthMethodId<Type>,
+> = {
+  readonly grant: ConnectorOpenIdAuthGrantProvider<Type, Method>;
 };
 
 type ConnectorExternalCodeProviderEntry<
@@ -214,6 +232,17 @@ type ConnectorDeviceAuthGrantProviderEntries<Type extends ConnectorType> = {
     Type & DeviceAuthGrantConnectorType,
     Method &
       ConnectorDeviceAuthGrantAuthMethodId<Type & DeviceAuthGrantConnectorType>
+  >;
+};
+
+type ConnectorOpenIdAuthGrantProviderEntries<Type extends ConnectorType> = {
+  readonly [Method in ConnectorAuthMethodIdsByGrantKind<
+    Type,
+    "openid-auth"
+  >]: ConnectorOpenIdAuthProviderEntry<
+    Type & OpenIdAuthGrantConnectorType,
+    Method &
+      ConnectorOpenIdAuthGrantAuthMethodId<Type & OpenIdAuthGrantConnectorType>
   >;
 };
 
@@ -262,6 +291,7 @@ type ConnectorProviderBackedAuthMethodEntries<
   Type extends ConnectorProviderBackedType,
 > = ConnectorAuthCodeGrantProviderEntries<Type> &
   ConnectorDeviceAuthGrantProviderEntries<Type> &
+  ConnectorOpenIdAuthGrantProviderEntries<Type> &
   ConnectorExternalCodeGrantProviderEntries<Type> &
   ConnectorRefreshTokenAccessProviderEntries<Type> &
   ConnectorTokenRevokeProviderEntries<Type>;
@@ -336,6 +366,15 @@ function deviceAuthProviderEntry<
   return { grant: provider.grant };
 }
 
+function openIdAuthProviderEntry<
+  Type extends OpenIdAuthGrantConnectorType,
+  Method extends ConnectorOpenIdAuthGrantAuthMethodId<Type>,
+>(
+  provider: OpenIdAuthConnectorAuthProvider<Type, Method>,
+): ConnectorOpenIdAuthProviderEntry<Type, Method> {
+  return { grant: provider.grant };
+}
+
 function deviceAuthRefreshProviderEntry<
   Type extends DeviceAuthGrantConnectorType & RefreshTokenAccessConnectorType,
   Method extends ConnectorDeviceAuthGrantAuthMethodId<Type> &
@@ -391,6 +430,13 @@ function connectorDeviceAuthGrantProviderFor<
   T extends DeviceAuthGrantConnectorType,
   Method extends ConnectorDeviceAuthGrantAuthMethodId<T>,
 >(type: T, authMethod: Method): ConnectorDeviceAuthGrantProvider<T, Method> {
+  return CONNECTOR_AUTH_METHOD_PROVIDER_REGISTRY[type][authMethod].grant;
+}
+
+function connectorOpenIdAuthGrantProviderFor<
+  T extends OpenIdAuthGrantConnectorType,
+  Method extends ConnectorOpenIdAuthGrantAuthMethodId<T>,
+>(type: T, authMethod: Method): ConnectorOpenIdAuthGrantProvider<T, Method> {
   return CONNECTOR_AUTH_METHOD_PROVIDER_REGISTRY[type][authMethod].grant;
 }
 
@@ -516,6 +562,7 @@ const CONNECTOR_AUTH_METHOD_PROVIDERS = {
   slack: { oauth: authCodeTokenRevokeProviderEntry(slackProvider) },
   slock: { oauth: deviceAuthRefreshProviderEntry(slockProvider) },
   spotify: { oauth: authCodeRefreshProviderEntry(spotifyProvider) },
+  steam: { openid: openIdAuthProviderEntry(steamProvider) },
   strava: { oauth: authCodeRefreshProviderEntry(stravaProvider) },
   stripe: {
     oauth: authCodeRefreshProviderEntry(stripeProvider),
@@ -560,6 +607,18 @@ type ConnectorAuthCodeAuthorizationUrlArgs =
     readonly state: string;
   };
 
+type ConnectorOpenIdAuthAuthorizationUrlArgs = {
+  readonly [Type in OpenIdAuthGrantConnectorType]: {
+    readonly [Method in ConnectorOpenIdAuthGrantAuthMethodId<Type>]: {
+      readonly type: Type;
+      readonly authMethod: Method;
+      readonly returnTo: string;
+      readonly realm: string;
+      readonly state: string;
+    };
+  }[ConnectorOpenIdAuthGrantAuthMethodId<Type>];
+}[OpenIdAuthGrantConnectorType];
+
 type ConnectorAuthCodeExchangeCallArgs =
   ConnectorAuthCodeResolvedMethodClient & {
     readonly code: string;
@@ -568,6 +627,19 @@ type ConnectorAuthCodeExchangeCallArgs =
     readonly codeVerifier: string | undefined;
     readonly oauthContext: string | undefined;
   };
+
+type ConnectorOpenIdAuthVerifyCallArgs = {
+  readonly [Type in OpenIdAuthGrantConnectorType]: {
+    readonly [Method in ConnectorOpenIdAuthGrantAuthMethodId<Type>]: {
+      readonly type: Type;
+      readonly authMethod: Method;
+      readonly callbackParams: Readonly<Record<string, string>>;
+      readonly expectedReturnTo: string;
+      readonly expectedRealm: string;
+      readonly signal: AbortSignal;
+    };
+  }[ConnectorOpenIdAuthGrantAuthMethodId<Type>];
+}[OpenIdAuthGrantConnectorType];
 
 type ConnectorDeviceAuthorizationStartCallArgs =
   ConnectorDeviceAuthResolvedMethodClient & {
@@ -667,6 +739,45 @@ export async function buildConnectorAuthCodeAuthorizationUrl<
   });
 }
 
+export function buildConnectorOpenIdAuthAuthorizationUrl<
+  T extends OpenIdAuthGrantConnectorType,
+  Method extends ConnectorOpenIdAuthGrantAuthMethodId<T>,
+>(args: {
+  readonly type: T;
+  readonly authMethod: Method;
+  readonly returnTo: string;
+  readonly realm: string;
+  readonly state: string;
+}): Promise<string | AuthUrlResult>;
+export function buildConnectorOpenIdAuthAuthorizationUrl(
+  args: ConnectorOpenIdAuthAuthorizationUrlArgs,
+): Promise<string | AuthUrlResult>;
+export async function buildConnectorOpenIdAuthAuthorizationUrl<
+  T extends OpenIdAuthGrantConnectorType,
+  Method extends ConnectorOpenIdAuthGrantAuthMethodId<T>,
+>(args: {
+  readonly type: T;
+  readonly authMethod: Method;
+  readonly returnTo: string;
+  readonly realm: string;
+  readonly state: string;
+}): Promise<string | AuthUrlResult> {
+  const provider = connectorOpenIdAuthGrantProviderFor(
+    args.type,
+    args.authMethod,
+  );
+  const openIdAuthGrant = getConnectorAuthMethodOpenIdAuthGrantConfig(
+    args.type,
+    args.authMethod,
+  );
+  return await provider.buildAuthUrl({
+    openIdAuthGrant,
+    returnTo: args.returnTo,
+    realm: args.realm,
+    state: args.state,
+  });
+}
+
 export function exchangeConnectorAuthCode<
   T extends AuthCodeGrantConnectorType,
   Method extends ConnectorAuthCodeGrantAuthMethodId<T>,
@@ -712,6 +823,48 @@ export async function exchangeConnectorAuthCode<
     state: args.state,
     codeVerifier: args.codeVerifier,
     oauthContext: args.oauthContext,
+  });
+}
+
+export function verifyConnectorOpenIdAuthCallback<
+  T extends OpenIdAuthGrantConnectorType,
+  Method extends ConnectorOpenIdAuthGrantAuthMethodId<T>,
+>(args: {
+  readonly type: T;
+  readonly authMethod: Method;
+  readonly callbackParams: Readonly<Record<string, string>>;
+  readonly expectedReturnTo: string;
+  readonly expectedRealm: string;
+  readonly signal: AbortSignal;
+}): Promise<ConnectorAuthProviderGrantResultForMethod<T, Method>>;
+export function verifyConnectorOpenIdAuthCallback(
+  args: ConnectorOpenIdAuthVerifyCallArgs,
+): Promise<ConnectorAuthProviderGrantResult>;
+export async function verifyConnectorOpenIdAuthCallback<
+  T extends OpenIdAuthGrantConnectorType,
+  Method extends ConnectorOpenIdAuthGrantAuthMethodId<T>,
+>(args: {
+  readonly type: T;
+  readonly authMethod: Method;
+  readonly callbackParams: Readonly<Record<string, string>>;
+  readonly expectedReturnTo: string;
+  readonly expectedRealm: string;
+  readonly signal: AbortSignal;
+}): Promise<ConnectorAuthProviderGrantResultForMethod<T, Method>> {
+  const provider = connectorOpenIdAuthGrantProviderFor(
+    args.type,
+    args.authMethod,
+  );
+  const openIdAuthGrant = getConnectorAuthMethodOpenIdAuthGrantConfig(
+    args.type,
+    args.authMethod,
+  );
+  return await provider.verifyCallback({
+    openIdAuthGrant,
+    callbackParams: args.callbackParams,
+    expectedReturnTo: args.expectedReturnTo,
+    expectedRealm: args.expectedRealm,
+    signal: args.signal,
   });
 }
 

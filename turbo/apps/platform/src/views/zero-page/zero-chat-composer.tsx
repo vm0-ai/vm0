@@ -4,6 +4,7 @@ import type {
   ChangeEvent,
   CSSProperties,
   DragEvent,
+  FormEvent,
   KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
 } from "react";
@@ -23,6 +24,7 @@ import {
   IconDownload,
   IconPresentation,
   IconLoader2,
+  IconLink,
   IconMicrophone,
   IconPaperclip,
   IconPalette,
@@ -36,6 +38,7 @@ import {
   IconSearch,
   IconTarget,
   IconTemplate,
+  IconUpload,
   IconVideo,
   IconX,
 } from "@tabler/icons-react";
@@ -55,7 +58,6 @@ import {
   PopoverClose,
   PopoverContent,
   PopoverTrigger,
-  Skeleton,
   Tabs,
   TabsList,
   TabsTrigger,
@@ -92,6 +94,7 @@ import {
   uploadZeroAttachment$ as singletonUpload$,
   restoreZeroAttachments$ as singletonRestore$,
   removeZeroAttachment$ as singletonRemove$,
+  appendZeroChatInput$ as singletonAppendInput$,
   canSendZeroChat$ as singletonCanSend$,
   zeroDragOver$ as singletonDragOver$,
   setZeroDragOver$ as singletonSetDragOver$,
@@ -116,6 +119,7 @@ import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
   VIDEO_TEMPLATE_ITEMS,
+  WORKFLOW_TEMPLATE_CATEGORIES,
   WORKFLOW_TEMPLATE_ITEMS,
   findVideoTemplateItem,
   findWorkflowTemplateItem,
@@ -133,7 +137,10 @@ import {
   ModelProviderPicker,
   type ModelProviderSelection,
 } from "./components/model-provider-picker.tsx";
-import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
+import {
+  ConnectorIcon,
+  isConnectorIconType,
+} from "./components/settings/connector-icons.tsx";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import {
   allConnectorTypes$,
@@ -176,12 +183,16 @@ import {
   setPopoverSortOrder$,
   modelPickerOpen$,
   setModelPickerOpen$,
+  uploadPopoverOpen$,
+  setUploadPopoverOpen$,
   templatePickerOpen$,
   setTemplatePickerOpen$,
   templatePickerCategory$,
   setTemplatePickerCategory$,
   templatePickerSearch$,
   setTemplatePickerSearch$,
+  templatePickerWorkflowCategory$,
+  setTemplatePickerWorkflowCategory$,
   templatePickerPreviewSlug$,
   setTemplatePickerPreviewSlug$,
   restoreTemplatePickerPresentationScroll$,
@@ -210,6 +221,7 @@ import {
 import {
   audioInputAvailable$,
   audioInputQuota$,
+  openAudioInputQuotaRecovery$,
   sttRecording$,
   sttStarting$,
   sttTranscribing$,
@@ -217,11 +229,6 @@ import {
   startRecording$,
   stopAndTranscribe$,
 } from "../../signals/voice-io/voice-io-stt.ts";
-import {
-  setActiveOrgManageTab$,
-  setBillingSubPage$,
-} from "../../signals/zero-page/settings/org-manage-tabs-state.ts";
-import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
 import { readChatMessageFromClipboard } from "../../signals/zero-page/clipboard.ts";
 import type { FeedbackItem } from "../../signals/zero-page/chat-feedback.ts";
 import { Markdown } from "../components/markdown.tsx";
@@ -287,11 +294,9 @@ interface ZeroChatComposerProps {
   /** Called after attachment upload/remove mutations so the caller can trigger side-effects (e.g. draft sync). */
   onDraftChange?: () => void;
   /**
-   * When true, render skeleton placeholders in place of the right-side
-   * action cluster (model picker, mic, send/stop). Used during thread switch
-   * while remote thread detail is still resolving — prevents briefly flashing stale
-   * picker state and a wrong send/stop button derived from prior
-   * `allFinished`.
+   * When true, keep the send control in its disabled empty-composer state.
+   * Model and voice controls resolve independently and should not be hidden by
+   * message list loading.
    */
   actionsLoading?: boolean;
   /**
@@ -305,7 +310,6 @@ interface ZeroChatComposerProps {
     onChange: (value: ModelProviderSelection | null) => void;
     // When true, picker is read-only for the current composer state.
     disabled?: boolean;
-    resolveDefaultSelection?: boolean;
   };
   templatePicker?: {
     value: GenerationTemplateRequest | undefined;
@@ -319,7 +323,7 @@ interface ZeroChatComposerProps {
     onChange: (hostId: string | null) => void;
     downloadUrl: string;
   };
-  /** When true, render a skeleton in the model picker slot. */
+  /** When true, hide the model picker until the selected model resolves. */
   modelPickerLoading?: boolean;
   submitBlocker?: {
     message: string;
@@ -772,7 +776,14 @@ function autoGrowFeedbackNoteRef(element: HTMLTextAreaElement | null): void {
 }
 
 function focusFeedbackNoteRef(element: HTMLTextAreaElement | null): void {
-  element?.focus();
+  if (!element) {
+    return;
+  }
+  window.requestAnimationFrame(() => {
+    if (element.isConnected) {
+      element.focus({ preventScroll: true });
+    }
+  });
   autoGrowFeedbackNote(element);
 }
 
@@ -910,7 +921,6 @@ function isSelectedPresentationTemplate(
 ): boolean {
   return (
     value?.type === "presentation" &&
-    value.selection.designSystemId === item.designSystemId &&
     value.selection.templateId === item.templateId
   );
 }
@@ -924,9 +934,8 @@ function toPresentationGenerationTemplate(
   return {
     type: "presentation",
     selection: {
-      colorSystemId,
-      designSystemId: item.designSystemId,
       templateId: item.templateId,
+      colorSystemId,
       previewUrl: item.embedUrl,
     },
   };
@@ -990,7 +999,7 @@ function selectedIllustrationTemplateItem(
   });
 }
 
-function formatPresentationTemplateKind(templateId: string): string {
+function formatPresentationRunbookKind(templateId: string): string {
   const label = templateId
     .replace(/^template:/, "")
     .replace(/^html-ppt-/, "")
@@ -1008,9 +1017,8 @@ function presentationTemplateMatchesSearch(
   }
   const searchable = [
     item.title,
-    item.designSystemId,
     item.templateId,
-    formatPresentationTemplateKind(item.templateId),
+    formatPresentationRunbookKind(item.templateId),
   ].join(" ");
   return searchable.toLowerCase().includes(normalizedQuery);
 }
@@ -1108,7 +1116,12 @@ function workflowTemplateMatchesSearch(
   if (!normalizedQuery) {
     return true;
   }
-  const searchable = [item.title, item.id, item.description].join(" ");
+  const searchable = [
+    item.title,
+    item.id,
+    item.description,
+    item.connectors.join(" "),
+  ].join(" ");
   return searchable.toLowerCase().includes(normalizedQuery);
 }
 
@@ -1306,6 +1319,56 @@ function VideoTemplateGrid({
   );
 }
 
+function WorkflowTemplateConnectorIcons({
+  connectors,
+  compact = false,
+  limit = compact ? 3 : 5,
+}: {
+  // Loosely typed: the curated catalog stores connectors as plain strings;
+  // isConnectorIconType narrows to the ones that actually have an icon.
+  connectors: readonly string[];
+  compact?: boolean;
+  limit?: number;
+}) {
+  const connectorIconTypes = connectors.filter(isConnectorIconType);
+  if (connectorIconTypes.length === 0) {
+    return null;
+  }
+
+  const visibleConnectorTypes = connectorIconTypes.slice(0, limit);
+  const remainingCount =
+    connectorIconTypes.length - visibleConnectorTypes.length;
+  return (
+    <span
+      className={cn("flex min-w-0 items-center", compact ? "gap-1" : "gap-1.5")}
+    >
+      {visibleConnectorTypes.map((type) => {
+        return (
+          <span
+            key={type}
+            className={cn(
+              "flex shrink-0 items-center justify-center border border-border/60 bg-background",
+              compact ? "h-5 w-5 rounded" : "h-7 w-7 rounded-md",
+            )}
+          >
+            <ConnectorIcon type={type} size={compact ? 12 : 14} />
+          </span>
+        );
+      })}
+      {remainingCount > 0 ? (
+        <span
+          className={cn(
+            "flex shrink-0 items-center justify-center rounded border border-border/60 bg-background text-[10px] font-medium text-muted-foreground",
+            compact ? "h-5 min-w-5 px-1" : "h-7 min-w-7 px-1.5",
+          )}
+        >
+          +{remainingCount}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
 function WorkflowTemplateCard({
   item,
   selected,
@@ -1318,23 +1381,20 @@ function WorkflowTemplateCard({
   return (
     <div
       className={cn(
-        "group flex min-h-44 flex-col rounded-lg border bg-card p-4 transition-colors hover:bg-muted/20",
+        "group flex flex-col rounded-lg border bg-card p-4 transition-colors hover:bg-muted/20",
         TEMPLATE_CARD_SHADOW,
         selected ? "border-primary ring-1 ring-primary" : "border-border",
       )}
     >
-      <div className="flex min-w-0 flex-1 gap-3">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
-          <IconRoute size={18} stroke={1.7} />
-        </span>
-        <div className="min-w-0">
-          <p className="text-sm font-semibold text-foreground">{item.title}</p>
-          <p className="mt-2 line-clamp-4 text-sm leading-5 text-muted-foreground">
-            {item.description}
-          </p>
-        </div>
-      </div>
-      <div className="mt-4 flex justify-end">
+      <p className="text-sm font-semibold text-foreground">{item.title}</p>
+      <p className="mt-1.5 line-clamp-2 text-sm leading-relaxed text-muted-foreground">
+        {item.description}
+      </p>
+      <div className="mt-auto flex items-center gap-2 pt-3.5">
+        <WorkflowTemplateConnectorIcons
+          connectors={item.connectors}
+          limit={4}
+        />
         <button
           type="button"
           aria-label={`Select workflow template ${item.title}`}
@@ -1343,7 +1403,7 @@ function WorkflowTemplateCard({
             onSelect(item);
           }}
           className={cn(
-            "h-8 rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            "ml-auto h-8 shrink-0 rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             selected
               ? "border-primary/40 bg-primary/10 text-primary"
               : "border-border bg-background text-foreground hover:bg-muted",
@@ -1356,6 +1416,83 @@ function WorkflowTemplateCard({
   );
 }
 
+// Resolves the workflow template tab's data in one place: the feature-gated
+// catalog, the persona pills present in it, the active pill (falling back to
+// "all"), and the items after both the pill and the search filter. Kept out of
+// TemplatePickerDialog so that component stays under its complexity budget.
+function resolveWorkflowCatalog({
+  showCatalog,
+  categoryFilter,
+  search,
+}: {
+  showCatalog: boolean;
+  categoryFilter: string;
+  search: string;
+}): {
+  pills: readonly string[];
+  active: string;
+  items: readonly WorkflowTemplateItem[];
+} {
+  const catalogItems = showCatalog
+    ? WORKFLOW_TEMPLATE_ITEMS
+    : WORKFLOW_TEMPLATE_ITEMS.filter((item) => {
+        return item.category === WORKFLOW_TEMPLATE_CATEGORIES[0];
+      });
+  const pills = WORKFLOW_TEMPLATE_CATEGORIES.filter((categoryName) => {
+    return catalogItems.some((item) => {
+      return item.category === categoryName;
+    });
+  });
+  const active = pills.includes(categoryFilter) ? categoryFilter : "all";
+  const items = catalogItems.filter((item) => {
+    const matchesCategory = active === "all" || item.category === active;
+    return matchesCategory && workflowTemplateMatchesSearch(item, search);
+  });
+  return { pills, active, items };
+}
+
+// Persona pill filter for the workflow template tab, styled like the in-app
+// Ideas & Use Cases gallery: an "All" pill plus one pill per persona.
+function WorkflowTemplatePillRow({
+  pills,
+  active,
+  onSelect,
+}: {
+  pills: readonly string[];
+  active: string;
+  onSelect: (category: string) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 px-5 pt-4">
+      {["all", ...pills].map((pill) => {
+        const isActive = active === pill;
+        return (
+          <button
+            key={pill}
+            type="button"
+            aria-pressed={isActive}
+            className={cn(
+              "h-7 shrink-0 rounded-md border border-border px-2.5 text-sm font-medium leading-none transition-colors cursor-pointer",
+              isActive
+                ? "bg-muted text-foreground"
+                : "bg-background text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+            )}
+            onClick={() => {
+              onSelect(pill);
+            }}
+          >
+            {pill === "all" ? "All" : pill}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// Renders the (already search + pill filtered) templates as a flat grid.
+// Categorization is handled by the persona pill row above, so there are no
+// per-persona section headers — items stay in catalog order (General first)
+// so related cards still cluster.
 function WorkflowTemplateGrid({
   items,
   value,
@@ -4495,8 +4632,18 @@ function TemplatePickerDialog({
   const filteredVideoItems = VIDEO_TEMPLATE_ITEMS.filter((item) => {
     return videoTemplateMatchesSearch(item, search);
   });
-  const filteredWorkflowItems = WORKFLOW_TEMPLATE_ITEMS.filter((item) => {
-    return workflowTemplateMatchesSearch(item, search);
+  // The persona catalog rolls out behind a feature switch, and a persona pill
+  // filters the grid, ideation-gallery style. resolveWorkflowCatalog() keeps
+  // that branching out of this component to stay under the complexity budget.
+  const features = useLastResolved(featureSwitch$);
+  const showWorkflowTemplateCatalog =
+    features?.[FeatureSwitchKey.WorkflowTemplateCatalog] ?? false;
+  const workflowCategoryFilter = useGet(templatePickerWorkflowCategory$);
+  const setWorkflowCategoryFilter = useSet(setTemplatePickerWorkflowCategory$);
+  const workflowCatalog = resolveWorkflowCatalog({
+    showCatalog: showWorkflowTemplateCatalog,
+    categoryFilter: workflowCategoryFilter,
+    search,
   });
 
   const selectedCategory = resolveTemplatePickerCategory({
@@ -4837,22 +4984,31 @@ function TemplatePickerDialog({
               </div>
             )}
             {selectedCategory === "workflow" && hasWorkflowTab && (
-              <div
-                data-workflow-template-grid-scroll=""
-                className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4"
-              >
-                {filteredWorkflowItems.length > 0 ? (
-                  <WorkflowTemplateGrid
-                    items={filteredWorkflowItems}
-                    value={value}
-                    onSelect={handleSelectWorkflow}
-                  />
-                ) : (
-                  <TemplateEmptyPanel
-                    title="No matches"
-                    description="Try a different search."
+              <div className="flex min-h-0 flex-1 flex-col">
+                {workflowCatalog.pills.length > 1 && (
+                  <WorkflowTemplatePillRow
+                    pills={workflowCatalog.pills}
+                    active={workflowCatalog.active}
+                    onSelect={setWorkflowCategoryFilter}
                   />
                 )}
+                <div
+                  data-workflow-template-grid-scroll=""
+                  className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4"
+                >
+                  {workflowCatalog.items.length > 0 ? (
+                    <WorkflowTemplateGrid
+                      items={workflowCatalog.items}
+                      value={value}
+                      onSelect={handleSelectWorkflow}
+                    />
+                  ) : (
+                    <TemplateEmptyPanel
+                      title="No matches"
+                      description="Try a different search."
+                    />
+                  )}
+                </div>
               </div>
             )}
           </>
@@ -5121,6 +5277,7 @@ function SelectedWorkflowTemplateChip({
   onOpen: () => void;
   onRemove: () => void;
 }) {
+  const hasConnectorIcons = item.connectors.some(isConnectorIconType);
   return (
     <div className="px-4 pt-3">
       <div className="flex">
@@ -5141,6 +5298,15 @@ function SelectedWorkflowTemplateChip({
             <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
               Workflow
             </span>
+            {hasConnectorIcons ? (
+              <>
+                <span className="h-3.5 w-px shrink-0 bg-border/70" />
+                <WorkflowTemplateConnectorIcons
+                  connectors={item.connectors}
+                  compact
+                />
+              </>
+            ) : null}
             <span className="h-3.5 w-px shrink-0 bg-border/70" />
             <span className="min-w-0 truncate text-xs font-medium">
               {item.title}
@@ -5947,13 +6113,54 @@ function ComputerUseDownloadDialog({
 // Voice input mic button
 // ---------------------------------------------------------------------------
 
+interface MicButtonStatus {
+  readonly recording: boolean;
+  readonly starting: boolean;
+  readonly transcribing: boolean;
+  readonly quotaLoading: boolean;
+}
+
+function micButtonAriaLabel(status: MicButtonStatus): string {
+  if (status.recording) {
+    return "Stop recording";
+  }
+  if (status.starting) {
+    return "Starting voice input";
+  }
+  if (status.transcribing) {
+    return "Transcribing";
+  }
+  if (status.quotaLoading) {
+    return "Checking voice input limit";
+  }
+  return "Voice input";
+}
+
+function micButtonTooltip(status: MicButtonStatus): string {
+  if (status.recording) {
+    return "Stop recording";
+  }
+  if (status.starting) {
+    return "Opening microphone...";
+  }
+  if (status.transcribing) {
+    return "Transcribing...";
+  }
+  if (status.quotaLoading) {
+    return "Checking voice input limit";
+  }
+  return "Voice input";
+}
+
 function MicButton({
   onTranscribed,
 }: {
   onTranscribed: (text: string) => void;
 }) {
   const available = useLastResolved(audioInputAvailable$) ?? false;
+  const quotaLoadable = useLoadable(audioInputQuota$);
   const quota = useLastResolved(audioInputQuota$) ?? null;
+  const quotaResolved = quota !== null;
   const recording = useGet(sttRecording$);
   const starting = useGet(sttStarting$);
   const transcribing = useGet(sttTranscribing$);
@@ -5961,10 +6168,15 @@ function MicButton({
   const voiceLevelFill = `${Math.round((voiceLevel / 3) * 100)}%`;
   const startRec = useSet(startRecording$);
   const stopAndTranscribe = useSet(stopAndTranscribe$);
-  const setTab = useSet(setActiveOrgManageTab$);
-  const setSubPage = useSet(setBillingSubPage$);
-  const openOrgManage = useSet(setOrgManageDialogOpen$);
+  const openQuotaRecovery = useSet(openAudioInputQuotaRecovery$);
   const signal = useGet(pageSignal$);
+  const disabled = starting || transcribing || (!recording && !quotaResolved);
+  const status = {
+    recording,
+    starting,
+    transcribing,
+    quotaLoading: quotaLoadable.state === "loading" && !quotaResolved,
+  };
 
   if (!available) {
     return null;
@@ -5984,15 +6196,19 @@ function MicButton({
         })(),
         Reason.DomCallback,
       );
-    } else {
-      if (quota && !quota.allowed) {
-        setTab("billing");
-        setSubPage(true);
-        detach(openOrgManage(true, signal), Reason.DomCallback);
-        return;
-      }
-      detach(startRec(signal), Reason.DomCallback);
+      return;
     }
+    if (!quota) {
+      return;
+    }
+    if (!quota.allowed) {
+      detach(openQuotaRecovery(signal), Reason.DomCallback);
+      return;
+    }
+    detach(
+      startRec(onTranscribed, quota.limit === null, signal),
+      Reason.DomCallback,
+    );
   };
 
   return (
@@ -6008,16 +6224,8 @@ function MicButton({
                 : "text-muted-foreground hover:bg-accent hover:text-foreground",
             )}
             onClick={handleClick}
-            disabled={starting || transcribing}
-            aria-label={
-              recording
-                ? "Stop recording"
-                : starting
-                  ? "Starting voice input"
-                  : transcribing
-                    ? "Transcribing"
-                    : "Voice input"
-            }
+            disabled={disabled}
+            aria-label={micButtonAriaLabel(status)}
           >
             {starting || transcribing ? (
               <span className="mic-starting-spinner" aria-hidden="true" />
@@ -6040,16 +6248,140 @@ function MicButton({
           </button>
         </TooltipTrigger>
         <TooltipContent side="top" className="text-xs">
-          {recording
-            ? "Stop recording"
-            : starting
-              ? "Opening microphone..."
-              : transcribing
-                ? "Transcribing..."
-                : "Voice input"}
+          {micButtonTooltip(status)}
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
+  );
+}
+
+function ComposerAttachButton({
+  onSelectFile,
+}: {
+  readonly onSelectFile: () => void;
+}) {
+  return (
+    <TooltipProvider delayDuration={300}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            className="rounded-lg p-2 transition-colors duration-200 hover:bg-accent hover:text-foreground sm:p-[9px]"
+            aria-label="Attach"
+            onClick={onSelectFile}
+          >
+            <IconPaperclip size={18} stroke={1.5} />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="text-xs">
+          Attach
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+function ComposerUploadMenu({
+  input,
+  onDraftChange,
+  onInputChange,
+  onSelectFile,
+}: {
+  readonly input: string;
+  readonly onDraftChange?: () => void;
+  readonly onInputChange: (value: string) => void;
+  readonly onSelectFile: () => void;
+}) {
+  const uploadOpen = useGet(uploadPopoverOpen$);
+  const setUploadOpen = useSet(setUploadPopoverOpen$);
+  const addLink = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    const trimmed = String(data.get("uploadLink") ?? "").trim();
+    if (!URL.canParse(trimmed)) {
+      toast.error("Enter a valid link");
+      return;
+    }
+    const normalized = new URL(trimmed).toString();
+    const base = input.trimEnd();
+    onInputChange(base ? `${base}\n${normalized}` : normalized);
+    onDraftChange?.();
+    form.reset();
+    setUploadOpen(false);
+  };
+
+  return (
+    <div className="relative inline-flex">
+      <button
+        type="button"
+        className={cn(
+          "rounded-lg p-2 transition-colors duration-200 hover:bg-accent hover:text-foreground sm:p-[9px]",
+          uploadOpen && "bg-accent text-foreground",
+        )}
+        aria-label="Upload"
+        aria-expanded={uploadOpen}
+        aria-haspopup="dialog"
+        title="Upload"
+        data-testid="composer-upload"
+        onClick={() => {
+          setUploadOpen(!uploadOpen);
+        }}
+      >
+        <IconUpload size={18} stroke={1.5} />
+      </button>
+      {uploadOpen && (
+        <div
+          role="dialog"
+          aria-label="Upload"
+          className="absolute bottom-full left-0 z-50 mb-2 w-72 rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-card p-2 text-foreground shadow-lg"
+        >
+          <button
+            type="button"
+            className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-accent"
+            data-testid="composer-upload-local"
+            onClick={() => {
+              setUploadOpen(false);
+              onSelectFile();
+            }}
+          >
+            <IconPaperclip size={16} stroke={1.6} />
+            <span className="min-w-0">
+              <span className="block text-sm font-medium text-foreground">
+                Upload from computer
+              </span>
+              <span className="block truncate text-xs text-muted-foreground">
+                Images, docs, audio, video and archives
+              </span>
+            </span>
+          </button>
+          <form
+            className="mt-2 rounded-lg border border-border/70 p-3"
+            onSubmit={addLink}
+          >
+            <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+              <IconLink size={15} stroke={1.7} />
+              Upload from link
+            </div>
+            <Input
+              className="mt-2 h-9 text-sm"
+              name="uploadLink"
+              placeholder="https://example.com/image.png"
+              type="url"
+              data-testid="composer-upload-link-input"
+            />
+            <Button
+              type="submit"
+              size="sm"
+              className="mt-2 h-8 w-full rounded-lg text-xs font-medium"
+              data-testid="composer-upload-link-add"
+            >
+              Add link
+            </Button>
+          </form>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -6094,6 +6426,9 @@ function useResolvedComposerSignals(
   const setDragOver = useSet(
     draft ? draft.setDragOver$ : singletonSetDragOver$,
   );
+  const appendInput = useSet(
+    draft ? draft.appendInput$ : singletonAppendInput$,
+  );
 
   return {
     canSend,
@@ -6106,6 +6441,7 @@ function useResolvedComposerSignals(
     setFileInputEl,
     dragOver,
     setDragOver,
+    appendInput,
   };
 }
 
@@ -6270,6 +6606,40 @@ function ComposerSendButton({
   );
 }
 
+function resolveSendButtonStateForActionsLoading({
+  actionsLoading,
+  showStopButton,
+  onCancel,
+  activeFeedback,
+  sendAction,
+}: {
+  actionsLoading: boolean;
+  showStopButton: boolean;
+  onCancel: (() => void) | undefined;
+  activeFeedback: ComposerFeedback | null;
+  sendAction: KeyboardSendAction;
+}): {
+  showStopButton: boolean;
+  onCancel: (() => void) | undefined;
+  activeFeedback: ComposerFeedback | null;
+  sendAction: KeyboardSendAction;
+} {
+  if (actionsLoading) {
+    return {
+      showStopButton: false,
+      onCancel: undefined,
+      activeFeedback: null,
+      sendAction: "none",
+    };
+  }
+  return {
+    showStopButton,
+    onCancel,
+    activeFeedback,
+    sendAction,
+  };
+}
+
 function ModelConfigurationWarning({
   blocker,
 }: {
@@ -6298,59 +6668,51 @@ function ModelConfigurationWarning({
 }
 
 function ComposerModelPickerSlot({
-  actionsLoading,
   modelPicker,
   modelPickerLoading,
   submitBlocker,
   codexFastModeEnabled,
+  popoverModelPickerEnabled,
   modelPickerOpen,
   onModelPickerChange,
   onModelPickerOpenChange,
 }: {
-  actionsLoading: boolean;
   modelPicker: ComposerModelPicker | undefined;
   modelPickerLoading: boolean;
   submitBlocker: ZeroChatComposerProps["submitBlocker"];
   codexFastModeEnabled: boolean;
+  popoverModelPickerEnabled: boolean;
   modelPickerOpen: boolean;
   onModelPickerChange: (value: ModelProviderSelection | null) => void;
   onModelPickerOpenChange: (open: boolean) => void;
 }) {
-  if (actionsLoading) {
-    return (
-      <Skeleton
-        className={cn(
-          "h-9 rounded-md",
-          modelPicker || modelPickerLoading ? "w-[184px]" : "w-20",
-        )}
-      />
-    );
-  }
-
   if (modelPickerLoading) {
-    return <Skeleton className="h-9 w-9 rounded-md sm:w-32" />;
+    return null;
   }
+  const shouldRenderModelPicker =
+    modelPicker !== undefined && modelPicker.value !== null;
 
   return (
     <>
       {submitBlocker && <ModelConfigurationWarning blocker={submitBlocker} />}
-      {modelPicker && (
+      {shouldRenderModelPicker && (
         <ModelProviderPicker
           value={modelPicker.value}
           onChange={onModelPickerChange}
-          placeholder="Default"
+          placeholder="Select model"
           triggerClassName={cn(
             "h-9 w-9 max-w-none gap-0 border-transparent bg-transparent px-0 text-sm text-muted-foreground transition-colors sm:w-auto sm:max-w-[14rem] sm:gap-1 sm:px-2",
             "[&>span]:flex [&>span]:items-center [&>span]:justify-center sm:[&>span]:justify-start [&>svg]:hidden sm:[&>svg]:block",
-            "hover:bg-accent hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground",
+            "hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 data-[state=open]:bg-accent data-[state=open]:text-foreground",
           )}
           compactTrigger
           mobileIconTrigger
+          pickerMode={popoverModelPickerEnabled ? "popover" : "select"}
           codexFastModeEnabled={codexFastModeEnabled}
           open={modelPickerOpen}
           onOpenChange={onModelPickerOpenChange}
           disabled={modelPicker.disabled}
-          resolveDefaultSelection={modelPicker.resolveDefaultSelection}
+          resolveDefaultSelection={false}
         />
       )}
     </>
@@ -6364,6 +6726,16 @@ function ComposerModelPickerSlot({
 function useCodexFastModeEnabled(): boolean {
   const features = useLastResolved(featureSwitch$);
   return features?.[FeatureSwitchKey.CodexFastMode] ?? false;
+}
+
+function usePopoverModelPickerEnabled(): boolean {
+  const features = useLastResolved(featureSwitch$);
+  return features?.[FeatureSwitchKey.ComposerModelPickerPopover] ?? false;
+}
+
+function useUploadPopoverEnabled(): boolean {
+  const features = useLastResolved(featureSwitch$);
+  return features?.[FeatureSwitchKey.ComposerUploadPopover] ?? false;
 }
 
 export function ZeroChatComposer({
@@ -6403,6 +6775,8 @@ export function ZeroChatComposer({
   const setModelPickerOpen = useSet(setModelPickerOpen$);
   const openGoalDialog = useSet(openChatThreadGoalDialog$);
   const codexFastModeEnabled = useCodexFastModeEnabled();
+  const popoverModelPickerEnabled = usePopoverModelPickerEnabled();
+  const uploadPopoverEnabled = useUploadPopoverEnabled();
 
   const resolved = useResolvedComposerSignals(
     input,
@@ -6421,6 +6795,7 @@ export function ZeroChatComposer({
     setFileInputEl,
     dragOver,
     setDragOver,
+    appendInput,
   } = resolved;
 
   const ensurePushSubscription = useSet(ensurePushSubscription$);
@@ -6679,6 +7054,13 @@ export function ZeroChatComposer({
   // the composer is empty during an active run. With draft content present
   // the Send button stays visible so the click can queue the message.
   const showStopButton = Boolean(sending && onCancel) && !canSend;
+  const sendButtonState = resolveSendButtonStateForActionsLoading({
+    actionsLoading,
+    showStopButton,
+    onCancel,
+    activeFeedback,
+    sendAction,
+  });
 
   // Routes a button click to the queue path while the current thread is sending,
   // otherwise to the normal send path.
@@ -6832,23 +7214,16 @@ export function ZeroChatComposer({
               )}
               <div className="flex items-center justify-between gap-2 px-4 pb-3 pt-1">
                 <div className="flex items-center gap-1 text-muted-foreground sm:gap-1.5">
-                  <TooltipProvider delayDuration={300}>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <button
-                          type="button"
-                          className="rounded-lg p-2 transition-colors duration-200 hover:bg-accent hover:text-foreground sm:p-[9px]"
-                          aria-label="Attach"
-                          onClick={handleFileSelect}
-                        >
-                          <IconPaperclip size={18} stroke={1.5} />
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent side="top" className="text-xs">
-                        Attach
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
+                  {uploadPopoverEnabled ? (
+                    <ComposerUploadMenu
+                      input={input}
+                      onDraftChange={onDraftChange}
+                      onInputChange={onInputChange}
+                      onSelectFile={handleFileSelect}
+                    />
+                  ) : (
+                    <ComposerAttachButton onSelectFile={handleFileSelect} />
+                  )}
                   <ComposerTemplatePickerSlot picker={templatePicker} />
                   <ComposerWorkflowPromptSlot
                     onCreateWorkflowPrompt={onCreateWorkflowPrompt}
@@ -6866,36 +7241,26 @@ export function ZeroChatComposer({
                 </div>
                 <div className="flex items-center gap-1 sm:gap-2">
                   <ComposerModelPickerSlot
-                    actionsLoading={actionsLoading}
                     modelPicker={modelPicker}
                     modelPickerLoading={modelPickerLoading}
                     submitBlocker={submitBlocker}
                     codexFastModeEnabled={codexFastModeEnabled}
+                    popoverModelPickerEnabled={popoverModelPickerEnabled}
                     modelPickerOpen={modelPickerOpen}
                     onModelPickerChange={handleModelPickerChange}
                     onModelPickerOpenChange={setModelPickerOpen}
                   />
-                  {actionsLoading ? null : (
-                    <>
-                      <div className="mx-0 h-5 w-px bg-border/60 sm:mx-0.5" />
-                      <MicButton
-                        onTranscribed={(text) => {
-                          const base = input;
-                          const separator =
-                            base.length > 0 && !base.endsWith(" ") ? " " : "";
-                          onInputChange(base + separator + text);
-                          onDraftChange?.();
-                        }}
-                      />
-                      <ComposerSendButton
-                        showStopButton={showStopButton}
-                        onCancel={onCancel}
-                        activeFeedback={activeFeedback}
-                        sendAction={sendAction}
-                        onSend={handleButtonSend}
-                      />
-                    </>
-                  )}
+                  <div className="mx-0 h-5 w-px bg-border/60 sm:mx-0.5" />
+                  <MicButton
+                    onTranscribed={(text) => {
+                      appendInput(text);
+                      onDraftChange?.();
+                    }}
+                  />
+                  <ComposerSendButton
+                    {...sendButtonState}
+                    onSend={handleButtonSend}
+                  />
                 </div>
               </div>
             </div>

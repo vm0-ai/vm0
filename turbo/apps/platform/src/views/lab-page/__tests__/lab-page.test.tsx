@@ -3,7 +3,11 @@ import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { click, detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import {
+  click,
+  detachedSetupPage,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
@@ -14,6 +18,32 @@ function featureSwitchControl(feature: FeatureSwitchKey): HTMLElement {
     throw new Error(`${feature} feature row not found`);
   }
   return within(label).getByRole("switch");
+}
+
+function featureSwitchRow(feature: FeatureSwitchKey): HTMLElement {
+  const label = screen.getByText(feature).closest("label");
+  if (!(label instanceof HTMLElement)) {
+    throw new Error(`${feature} feature row not found`);
+  }
+  return label;
+}
+
+function expectBefore(first: HTMLElement, second: HTMLElement): void {
+  expect(
+    Boolean(
+      first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ),
+  ).toBeTruthy();
+}
+
+function maintainerFilterButton(label: string): HTMLElement {
+  const button = queryAllByRoleFast("button").find((candidate) => {
+    return candidate.textContent?.trim().toLowerCase().startsWith(label);
+  });
+  if (!button) {
+    throw new Error(`${label} maintainer filter not found`);
+  }
+  return button;
 }
 
 describe("lab page", () => {
@@ -46,6 +76,12 @@ describe("lab page", () => {
       expect(screen.getByRole("heading", { name: "Lab" })).toBeInTheDocument();
       expect(screen.getByText("Other")).toBeInTheDocument();
       expect(screen.getAllByText("Connectors").length).toBeGreaterThan(0);
+      expect(
+        screen.queryByText(FeatureSwitchKey.ComposerUploadPopover),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getAllByText("Maintainer: liangyou@vm0.ai").length,
+      ).toBeGreaterThan(0);
     });
 
     const awsSwitch = featureSwitchControl(FeatureSwitchKey.AwsConnector);
@@ -65,6 +101,64 @@ describe("lab page", () => {
       expect(
         featureSwitchControl(FeatureSwitchKey.AwsConnector),
       ).toHaveAttribute("aria-checked", "false");
+    });
+  });
+
+  it("sorts feature switches by maintainer", async () => {
+    context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
+      return respond(200, { switches: {}, effectiveSwitches: {} });
+    });
+
+    detachedSetupPage({ context, path: "/_/lab" });
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Lab" })).toBeInTheDocument();
+    });
+
+    expectBefore(
+      featureSwitchRow(FeatureSwitchKey.AgentsPageRedesign),
+      featureSwitchRow(FeatureSwitchKey.ApiKeys),
+    );
+
+    click(screen.getByRole("combobox", { name: "Sort features" }));
+    click(await screen.findByRole("option", { name: "Maintainer" }));
+
+    await waitFor(() => {
+      expectBefore(
+        featureSwitchRow(FeatureSwitchKey.ApiKeys),
+        featureSwitchRow(FeatureSwitchKey.AgentsPageRedesign),
+      );
+    });
+  });
+
+  it("filters feature switches by maintainer", async () => {
+    context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
+      return respond(200, { switches: {}, effectiveSwitches: {} });
+    });
+
+    detachedSetupPage({ context, path: "/_/lab" });
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Lab" })).toBeInTheDocument();
+    });
+
+    click(maintainerFilterButton("lancy"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(FeatureSwitchKey.WorkflowWebhookTriggers),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByText(FeatureSwitchKey.AhrefsConnector),
+      ).not.toBeInTheDocument();
+    });
+
+    click(maintainerFilterButton("all"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(FeatureSwitchKey.AhrefsConnector),
+      ).toBeInTheDocument();
     });
   });
 });

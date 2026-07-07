@@ -19,6 +19,12 @@ import {
   zeroAgentInstructionsContract,
 } from "@vm0/api-contracts/contracts/zero-agents";
 import {
+  zeroWorkflowsCollectionContract,
+  zeroWorkflowTriggersContract,
+  type ZeroWorkflowSummary,
+} from "@vm0/api-contracts/contracts/zero-workflows";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import {
   type ApplyUserPermissionGrantsRequest,
   type UserPermissionGrantResponse,
   zeroUserPermissionGrantsContract,
@@ -37,7 +43,7 @@ import {
   fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
-import { pathname } from "../../../signals/location.ts";
+import { pathname, search } from "../../../signals/location.ts";
 import { isoFromNowMs, mockNow } from "../../../__tests__/time.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedNavigateTo$ } from "../../../signals/route.ts";
@@ -101,6 +107,39 @@ function createAgent(id: string, displayName: string): TeamComposeItem {
     visibility: "public",
     headVersionId: "version_2",
     updatedAt: "2024-01-02T00:00:00Z",
+  };
+}
+
+function createWorkflowSummary({
+  id,
+  agentId,
+  agentName,
+  agentDisplayName,
+  displayName,
+  visibility,
+}: {
+  readonly id: string;
+  readonly agentId: string;
+  readonly agentName: string;
+  readonly agentDisplayName: string;
+  readonly displayName: string;
+  readonly visibility: "public" | "private";
+}): ZeroWorkflowSummary {
+  return {
+    id,
+    agentId,
+    agentName,
+    agentDisplayName,
+    name: displayName.toLowerCase().replace(/\s+/gu, "-"),
+    displayName,
+    description: "Reusable steps for this agent",
+    visibility,
+    ownerUserId: "test-owner-id",
+    ownerUserDisplayName: "Test User",
+    ownerUserImageUrl: null,
+    createdAt: "2026-06-20T12:00:00.000Z",
+    canManage: true,
+    canPublish: true,
   };
 }
 
@@ -396,6 +435,53 @@ function mockTeamAPIs({
   context.mocks.api(zeroAgentInstructionsContract.get, ({ respond }) => {
     return respond(200, { content: null, filename: null });
   });
+}
+
+function mockAgentWorkflowApis(): void {
+  const workflows = [
+    createWorkflowSummary({
+      id: "d0000000-0000-4000-a000-000000000701",
+      agentId: researchAgentId,
+      agentName: "research-runner",
+      agentDisplayName: "Research Runner",
+      displayName: "Sales Research",
+      visibility: "public",
+    }),
+    createWorkflowSummary({
+      id: "d0000000-0000-4000-a000-000000000702",
+      agentId: researchAgentId,
+      agentName: "research-runner",
+      agentDisplayName: "Research Runner",
+      displayName: "Ops Playbook",
+      visibility: "private",
+    }),
+    createWorkflowSummary({
+      id: "d0000000-0000-4000-a000-000000000703",
+      agentId: zeroAgentId,
+      agentName: "zero",
+      agentDisplayName: "Zero",
+      displayName: "Support Intake",
+      visibility: "public",
+    }),
+  ];
+
+  context.mocks.api(
+    zeroWorkflowsCollectionContract.list,
+    ({ query, respond }) => {
+      const visible = query.agentId
+        ? workflows.filter((workflow) => {
+            return workflow.agentId === query.agentId;
+          })
+        : workflows;
+      return respond(200, visible);
+    },
+  );
+  context.mocks.api(
+    zeroWorkflowTriggersContract.listWorkspace,
+    ({ respond }) => {
+      return respond(200, []);
+    },
+  );
 }
 
 describe("team page navigation", () => {
@@ -782,8 +868,37 @@ describe("team page navigation", () => {
 
   it("deletes an agent from the profile tab", async () => {
     mockTeamAPIs();
-    context.mocks.api(zeroAgentsByIdContract.delete, ({ respond }) => {
+    let deleted = false;
+    context.mocks.api(zeroAgentsByIdContract.delete, ({ params, respond }) => {
+      if (params.id === researchAgentId) {
+        deleted = true;
+      }
       return respond(204);
+    });
+    // Once the agent is deleted, any refetch of it must 404 — exactly as
+    // production behaves. This guards against reloading the just-deleted agent
+    // and surfacing an "Agent not found" error toast over the success toast.
+    context.mocks.api(zeroAgentsByIdContract.get, ({ params, respond }) => {
+      if (params.id === researchAgentId && deleted) {
+        return respond(404, {
+          error: {
+            message: `Agent not found: ${researchAgentId}`,
+            code: "NOT_FOUND",
+          },
+        });
+      }
+      const agent = params.id === zeroAgentId ? "Zero" : "Research Agent";
+      return respond(200, {
+        agentId: params.id,
+        ownerId: "test-owner-id",
+        displayName: agent,
+        description: "Finds and summarizes information",
+        sound: null,
+        avatarUrl: null,
+        modelProviderId: null,
+        selectedModel: null,
+        preferPersonalProvider: false,
+      });
     });
 
     detachedSetupPage({
@@ -811,6 +926,7 @@ describe("team page navigation", () => {
         screen.getByRole("heading", { level: 1, name: /agents/i }),
       ).toBeInTheDocument();
     });
+    expect(screen.queryByText(/Agent not found/u)).not.toBeInTheDocument();
   });
 
   it("hides legacy agent automation and workflow tabs", async () => {
@@ -837,6 +953,42 @@ describe("team page navigation", () => {
     ).not.toBeInTheDocument();
     expect(
       screen.queryByText("Workflow automations attached to Research Agent."),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows agent workflows after authorization when the feature is enabled", async () => {
+    mockTeamAPIs();
+    mockAgentWorkflowApis();
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${researchAgentId}?tab=workflows`,
+      featureSwitches: {
+        [FeatureSwitchKey.AgentDetailWorkflowsTab]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Research Agent" }),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Sales Research")).toBeInTheDocument();
+    });
+
+    expect(pathname()).toBe(`/agents/${researchAgentId}`);
+    expect(search()).toBe("?tab=workflows");
+    const authorizationTab = queryTabByText("Authorization");
+    const workflowsTab = queryTabByText("Workflows");
+    expect(authorizationTab).toBeInTheDocument();
+    expect(workflowsTab).toBeInTheDocument();
+    expect(
+      authorizationTab!.compareDocumentPosition(workflowsTab!) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(screen.getByText("Ops Playbook")).toBeInTheDocument();
+    expect(screen.queryByText("Support Intake")).not.toBeInTheDocument();
+    expect(
+      screen.queryByAltText("Runs as Research Runner"),
     ).not.toBeInTheDocument();
   });
 
@@ -1075,6 +1227,57 @@ describe("team page navigation", () => {
         ],
       },
     ]);
+  });
+
+  it("ignores expired allow grants when opening connector permissions", async () => {
+    mockNow();
+    mockTeamAPIs();
+    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+      return respond(200, [
+        {
+          agentId: researchAgentId,
+          connectorRef: "slack",
+          permission: "channels:join",
+          action: "allow",
+          expiresAt: isoFromNowMs(-60 * 1000),
+          createdAt: "2026-03-01T00:00:00.000Z",
+          updatedAt: "2026-03-01T00:00:00.000Z",
+        },
+      ]);
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${researchAgentId}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Research Agent" }),
+      ).toBeInTheDocument();
+      expect(screen.getByText("@ops")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Manage Slack permissions"));
+
+    const miscGroupLabel = await connectorCategoryLabel("slack", "Misc");
+    const miscGroupElement = await screen.findByText(miscGroupLabel);
+    const permissionsDialog = dialogForElement(miscGroupElement);
+    click(miscGroupElement);
+
+    const channelsJoinRow = await permissionRowByName(
+      permissionsDialog,
+      "channels:join",
+    );
+    expect(buttonByText("Deny", channelsJoinRow)).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(buttonByText("Allow", channelsJoinRow)).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+    expect(buttonByText("Restore", permissionsDialog)).toBeDisabled();
   });
 
   it("saves permission duration changes from an agent page", async () => {

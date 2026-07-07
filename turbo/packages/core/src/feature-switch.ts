@@ -21,6 +21,13 @@ export interface FeatureSwitch {
   readonly enabledUserHashes?: readonly string[];
   readonly enabledEmailHashes?: readonly string[];
   readonly enabledOrgIdHashes?: readonly string[];
+  readonly userOverridable?: boolean;
+}
+
+export interface FeatureSwitchMetadata {
+  readonly maintainer: string;
+  readonly description?: string;
+  readonly userOverridable: boolean;
 }
 
 export interface FeatureSwitchContext {
@@ -170,6 +177,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Spotify connector integration",
     enabled: false,
   },
+  [FeatureSwitchKey.SteamConnector]: {
+    maintainer: "liangyou@vm0.ai",
+    description: "Enable the Steam player connector integration",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ZeroDebug]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -195,6 +208,19 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable creation of inbound webhook workflow triggers. Existing webhook triggers remain visible and dispatch under the workflow automation gate.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.NotionWorkflowTriggers]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Enable Notion event workflow triggers, starting with child pages created under a configured parent page.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.AgentDetailWorkflowsTab]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Show the Workflows tab on agent detail pages, scoped to workflows visible for that agent.",
+    enabled: false,
   },
   [FeatureSwitchKey.TestOauthConnector]: {
     maintainer: "liangyou@vm0.ai",
@@ -240,16 +266,24 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ComposerModelPickerPopover]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Use the Popover-based chat composer model picker instead of Radix Select.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.ComposerUploadPopover]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Use the Upload popover in the chat composer instead of the legacy paperclip attachment button.",
+    enabled: false,
+    userOverridable: false,
+  },
   [FeatureSwitchKey.ZapierConnector]: {
     maintainer: "yuma@vm0.ai",
     description:
       "Enable the Zapier connector. When disabled, Zapier is hidden from the connectors list and cannot be connected.",
-    enabled: false,
-  },
-  [FeatureSwitchKey.ChatGithubPrTracking]: {
-    maintainer: "linghan@vm0.ai",
-    description:
-      "Show GitHub PR tracking in chat thread headers when the current agent is connected to and authorized for GitHub. Individuals opt in via feature-switch overrides.",
     enabled: false,
   },
   [FeatureSwitchKey.ChatThreadEmoji]: {
@@ -332,7 +366,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ming@vm0.ai",
     description:
       "New Agents page with Public/Private tabs, a public-slot indicator, a Created by footer on every card, a name-first create dialog with a visibility select, and a private empty state.",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.SidebarManageIconCollapse]: {
     maintainer: "ming@vm0.ai",
@@ -348,12 +382,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ChatThreadLatestUserMessageScrollAnchor]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "After chat sends, keep auto-scroll moving only until the latest rendered user message reaches the top of the thread viewport instead of always pinning to the absolute bottom.",
-    enabled: false,
-  },
   [FeatureSwitchKey.TeamsIntegration]: {
     maintainer: "linghan@vm0.ai",
     description:
@@ -365,8 +393,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "yuma@vm0.ai",
     description:
       "Route voice input speech-to-text requests through BytePlus Seed ASR flash mode instead of OpenAI.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.ImageEditing]: {
     maintainer: "bingjie@vm0.ai",
@@ -381,6 +408,19 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable uploading a presentation artifact to the user's Google Drive as a native, editable Google Slides deck.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.WorkflowTemplateCatalog]: {
+    maintainer: "ming@vm0.ai",
+    description:
+      "Show the full persona-grouped built-in workflow template catalog in the chat composer template picker. Off shows only the General starter template.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.WebsiteTemplates]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Enable the built-in R2-backed website template picker and generation-template flow.",
+    enabled: false,
   },
 };
 
@@ -462,6 +502,50 @@ export function getFeatureSwitchDescriptions(): Record<
     result[key] = FEATURE_SWITCHES[key].description;
   }
   return result;
+}
+
+/**
+ * Return display metadata for every feature switch.
+ */
+export function getFeatureSwitchMetadata(): Record<
+  FeatureSwitchKey,
+  FeatureSwitchMetadata
+> {
+  const result = {} as Record<FeatureSwitchKey, FeatureSwitchMetadata>;
+  for (const key of Object.values(FeatureSwitchKey)) {
+    const featureSwitch = FEATURE_SWITCHES[key];
+    result[key] = {
+      maintainer: featureSwitch.maintainer,
+      description: featureSwitch.description,
+      userOverridable: featureSwitch.userOverridable !== false,
+    };
+  }
+  return result;
+}
+
+export function isUserOverridableFeatureSwitch(
+  key: string,
+): key is FeatureSwitchKey {
+  if (!(key in FEATURE_SWITCHES)) {
+    return false;
+  }
+  return FEATURE_SWITCHES[key as FeatureSwitchKey].userOverridable !== false;
+}
+
+export function getUserOverridableFeatureSwitchKeys(): readonly FeatureSwitchKey[] {
+  return Object.values(FeatureSwitchKey).filter(isUserOverridableFeatureSwitch);
+}
+
+export function filterUserOverridableFeatureSwitchOverrides(
+  switches: Record<string, boolean>,
+): Record<string, boolean> {
+  const filtered: Record<string, boolean> = {};
+  for (const [key, value] of Object.entries(switches)) {
+    if (isUserOverridableFeatureSwitch(key)) {
+      filtered[key] = value;
+    }
+  }
+  return filtered;
 }
 
 /**

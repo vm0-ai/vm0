@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { cronRefreshSystemStoragePresignedUrlsContract } from "@vm0/api-contracts/contracts/cron";
+import { cronRefreshStoragePresignedUrlsContract } from "@vm0/api-contracts/contracts/cron";
 import type {
   TestSystemStoragePresignedUrlCacheStateActionBody,
   TestSystemStoragePresignedUrlCacheStateActionResponse,
@@ -22,7 +22,7 @@ import { nowDate } from "../../../lib/time";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { testSystemStoragePresignedUrlCacheStateRoutes } from "../test-system-storage-presigned-url-cache-state";
-import { cronRefreshSystemStoragePresignedUrlsRoutes } from "../cron-refresh-system-storage-presigned-urls";
+import { cronRefreshStoragePresignedUrlsRoutes } from "../cron-refresh-storage-presigned-urls";
 
 const context = testContext();
 const CRON_SECRET = "test-cron-secret";
@@ -287,8 +287,8 @@ function firstSeedSkillStorage() {
 function cronClient() {
   return setupAppWithRoutes({
     context,
-    routes: cronRefreshSystemStoragePresignedUrlsRoutes,
-  })(cronRefreshSystemStoragePresignedUrlsContract);
+    routes: cronRefreshStoragePresignedUrlsRoutes,
+  })(cronRefreshStoragePresignedUrlsContract);
 }
 
 function cronHeaders(secret = CRON_SECRET) {
@@ -409,9 +409,16 @@ describe("system storage presigned URL cache", () => {
         );
         expect(refreshed.body).toStrictEqual({
           success: true,
-          due: 3,
-          refreshed: 3,
-          pruned: 0,
+          system: {
+            due: 3,
+            refreshed: 3,
+            pruned: 0,
+          },
+          workflowSkill: expect.objectContaining({
+            due: expect.any(Number),
+            refreshed: expect.any(Number),
+            pruned: expect.any(Number),
+          }),
         });
 
         const rows = await readCacheRowsByObjectKeyPrefix(prefix);
@@ -474,9 +481,16 @@ describe("system storage presigned URL cache", () => {
         );
         expect(refreshed.body).toStrictEqual({
           success: true,
-          due: 2,
-          refreshed: 2,
-          pruned: 0,
+          system: {
+            due: 2,
+            refreshed: 2,
+            pruned: 0,
+          },
+          workflowSkill: expect.objectContaining({
+            due: expect.any(Number),
+            refreshed: expect.any(Number),
+            pruned: expect.any(Number),
+          }),
         });
 
         const rows = await readCacheRowsByObjectKeyPrefix(prefix);
@@ -539,9 +553,16 @@ describe("system storage presigned URL cache", () => {
         );
         expect(refreshed.body).toStrictEqual({
           success: true,
-          due: 0,
-          refreshed: 0,
-          pruned: 2,
+          system: {
+            due: 0,
+            refreshed: 0,
+            pruned: 2,
+          },
+          workflowSkill: expect.objectContaining({
+            due: expect.any(Number),
+            refreshed: expect.any(Number),
+            pruned: expect.any(Number),
+          }),
         });
 
         const rows = await readCacheRowsByObjectKeyPrefix(prefix);

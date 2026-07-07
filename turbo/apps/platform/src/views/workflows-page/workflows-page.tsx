@@ -13,6 +13,7 @@ import {
   IconLock,
   IconPlus,
   IconRoute,
+  IconUser,
   IconWorld,
 } from "@tabler/icons-react";
 import {
@@ -37,10 +38,13 @@ import { ROUTES } from "../../signals/route-paths.ts";
 import {
   allVisibleWorkflows$,
   allWorkflowTriggerEntries$,
+  setWorkflowAgentFilter$,
   setWorkflowFilter$,
   setWorkflowSortMode$,
+  workflowAgentFilter$,
   workflowFilter$,
   workflowSortMode$,
+  WORKFLOW_ALL_AGENTS,
   type WorkflowFilter,
   type WorkflowSortMode,
   type WorkflowTriggerAutomationEntry,
@@ -58,12 +62,12 @@ import {
 } from "../zero-page/workflow-trigger-automations-page.tsx";
 import { agentLabel, workflowTitle } from "./workflow-shared.tsx";
 
-type WorkflowTriggerEntryMap = ReadonlyMap<
+export type WorkflowTriggerEntryMap = ReadonlyMap<
   string,
   readonly WorkflowTriggerAutomationEntry[]
 >;
 
-function workflowTriggerEntryMap(
+export function workflowTriggerEntryMap(
   entries: readonly WorkflowTriggerAutomationEntry[],
 ): WorkflowTriggerEntryMap {
   const grouped = new Map<string, WorkflowTriggerAutomationEntry[]>();
@@ -287,8 +291,10 @@ function ConnectorCell({
 
 export function WorkflowHoverContent({
   workflow,
+  showAgent = true,
 }: {
   readonly workflow: ZeroWorkflowSummary;
+  readonly showAgent?: boolean;
 }) {
   const title = workflowTitle(workflow);
   return (
@@ -305,11 +311,13 @@ export function WorkflowHoverContent({
           <MemberAvatar workflow={workflow} />
           <span className="truncate">{ownerLabel(workflow)}</span>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="w-16 shrink-0 text-muted-foreground">Runs as</span>
-          <AgentAvatar workflow={workflow} />
-          <span className="truncate">{agentLabel(workflow)}</span>
-        </div>
+        {showAgent ? (
+          <div className="flex items-center gap-2">
+            <span className="w-16 shrink-0 text-muted-foreground">Runs as</span>
+            <AgentAvatar workflow={workflow} />
+            <span className="truncate">{agentLabel(workflow)}</span>
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -335,10 +343,12 @@ function WorkflowRow({
   workflow,
   entries,
   displayTimezone,
+  showAgentColumn,
 }: {
   readonly workflow: ZeroWorkflowSummary;
   readonly entries: readonly WorkflowTriggerAutomationEntry[];
   readonly displayTimezone: string;
+  readonly showAgentColumn: boolean;
 }) {
   const title = workflowTitle(workflow);
   return (
@@ -369,13 +379,16 @@ function WorkflowRow({
                 "0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)",
             }}
           >
-            <WorkflowHoverContent workflow={workflow} />
+            <WorkflowHoverContent
+              workflow={workflow}
+              showAgent={showAgentColumn}
+            />
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
       <ConnectorCell entries={entries} displayTimezone={displayTimezone} />
       <VisibilityIcon workflow={workflow} />
-      <AgentAvatar workflow={workflow} />
+      {showAgentColumn ? <AgentAvatar workflow={workflow} /> : null}
     </article>
   );
 }
@@ -411,6 +424,42 @@ function applyWorkflowFilters(
         return true;
       }
     }
+  });
+}
+
+interface AgentFilterOption {
+  readonly agentId: string;
+  readonly label: string;
+}
+
+/** The distinct agents that own at least one workflow, sorted by label. */
+function agentFilterOptions(
+  workflows: readonly ZeroWorkflowSummary[],
+): readonly AgentFilterOption[] {
+  const labelsByAgentId = new Map<string, string>();
+  for (const workflow of workflows) {
+    if (!labelsByAgentId.has(workflow.agentId)) {
+      labelsByAgentId.set(workflow.agentId, agentLabel(workflow));
+    }
+  }
+  return [...labelsByAgentId]
+    .map(([agentId, label]) => {
+      return { agentId, label };
+    })
+    .sort((a, b) => {
+      return a.label.localeCompare(b.label);
+    });
+}
+
+function applyAgentFilter(
+  workflows: readonly ZeroWorkflowSummary[],
+  agentFilter: string,
+): readonly ZeroWorkflowSummary[] {
+  if (agentFilter === WORKFLOW_ALL_AGENTS) {
+    return workflows;
+  }
+  return workflows.filter((workflow) => {
+    return workflow.agentId === agentFilter;
   });
 }
 
@@ -507,11 +556,13 @@ function WorkflowRowList({
   entriesByWorkflowId,
   displayTimezone,
   framed = true,
+  showAgentColumn,
 }: {
   readonly workflows: readonly ZeroWorkflowSummary[];
   readonly entriesByWorkflowId: WorkflowTriggerEntryMap;
   readonly displayTimezone: string;
   readonly framed?: boolean;
+  readonly showAgentColumn: boolean;
 }) {
   const rows = (
     <>
@@ -523,6 +574,7 @@ function WorkflowRowList({
               workflow={workflow}
               entries={entriesByWorkflowId.get(workflow.id) ?? []}
               displayTimezone={displayTimezone}
+              showAgentColumn={showAgentColumn}
             />
           </div>
         );
@@ -539,10 +591,12 @@ function WorkflowNextRunGroups({
   workflows,
   entriesByWorkflowId,
   displayTimezone,
+  showAgentColumn,
 }: {
   readonly workflows: readonly ZeroWorkflowSummary[];
   readonly entriesByWorkflowId: WorkflowTriggerEntryMap;
   readonly displayTimezone: string;
+  readonly showAgentColumn: boolean;
 }) {
   const now = nowDate();
   const buckets = new Map<NextRunBucket, ZeroWorkflowSummary[]>();
@@ -573,6 +627,7 @@ function WorkflowNextRunGroups({
               entriesByWorkflowId={entriesByWorkflowId}
               displayTimezone={displayTimezone}
               framed={false}
+              showAgentColumn={showAgentColumn}
             />
           </section>
         );
@@ -588,6 +643,7 @@ export function WorkflowListPanel({
   sortMode = "next-run",
   triggerEntriesByWorkflowId,
   displayTimezone = new Intl.DateTimeFormat().resolvedOptions().timeZone,
+  showAgentColumn = true,
 }: {
   readonly workflows: readonly ZeroWorkflowSummary[] | null;
   readonly loading: boolean;
@@ -604,19 +660,21 @@ export function WorkflowListPanel({
   return (
     <section className="min-h-[520px]">
       {loading ? (
-        <WorkflowIndexSkeleton />
+        <WorkflowIndexSkeleton showAgentColumn={showAgentColumn} />
       ) : workflows && workflows.length > 0 ? (
         sortMode === "next-run" ? (
           <WorkflowNextRunGroups
             workflows={workflows}
             entriesByWorkflowId={entriesByWorkflowId}
             displayTimezone={displayTimezone}
+            showAgentColumn={showAgentColumn}
           />
         ) : (
           <WorkflowRowList
             workflows={workflows}
             entriesByWorkflowId={entriesByWorkflowId}
             displayTimezone={displayTimezone}
+            showAgentColumn={showAgentColumn}
           />
         )
       ) : (
@@ -731,6 +789,82 @@ function SortDropdown({
   );
 }
 
+function AgentFilterDropdown({
+  value,
+  options,
+  onChange,
+}: {
+  readonly value: string;
+  readonly options: readonly AgentFilterOption[];
+  readonly onChange: (value: string) => void;
+}) {
+  const selected = options.find((option) => {
+    return option.agentId === value;
+  });
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="zero-btn-morandi h-9 shrink-0 gap-1.5 rounded-lg border"
+        >
+          {selected ? (
+            <AgentAvatarImg
+              name={selected.agentId}
+              alt={selected.label}
+              className="h-4 w-4 shrink-0 rounded"
+              size={16}
+            />
+          ) : (
+            <IconUser
+              size={15}
+              stroke={1.8}
+              className="text-muted-foreground"
+            />
+          )}
+          <span className="max-w-[8rem] truncate">
+            {selected?.label ?? "All agents"}
+          </span>
+          <IconChevronDown size={14} stroke={1.8} />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="end"
+        className="max-h-[min(20rem,var(--radix-dropdown-menu-content-available-height))] overflow-y-auto"
+      >
+        <DropdownMenuItem
+          onSelect={() => {
+            onChange(WORKFLOW_ALL_AGENTS);
+          }}
+        >
+          <IconUser size={15} stroke={1.8} className="text-muted-foreground" />
+          All agents
+        </DropdownMenuItem>
+        {options.map((option) => {
+          return (
+            <DropdownMenuItem
+              key={option.agentId}
+              onSelect={() => {
+                onChange(option.agentId);
+              }}
+            >
+              <AgentAvatarImg
+                name={option.agentId}
+                alt={option.label}
+                className="h-4 w-4 shrink-0 rounded"
+                size={16}
+              />
+              <span className="min-w-0 truncate">{option.label}</span>
+            </DropdownMenuItem>
+          );
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 function sortWorkflows(
   workflows: readonly ZeroWorkflowSummary[],
   sortMode: WorkflowSortMode,
@@ -751,12 +885,17 @@ function sortWorkflows(
 function WorkflowFilterBar({
   filter,
   sortMode,
+  agentFilter,
+  agentOptions,
 }: {
   readonly filter: WorkflowFilter;
   readonly sortMode: WorkflowSortMode;
+  readonly agentFilter: string;
+  readonly agentOptions: readonly AgentFilterOption[];
 }) {
   const setFilter = useSet(setWorkflowFilter$);
   const setSortMode = useSet(setWorkflowSortMode$);
+  const setAgentFilter = useSet(setWorkflowAgentFilter$);
 
   return (
     <div className="flex flex-wrap items-center gap-1.5">
@@ -771,7 +910,14 @@ function WorkflowFilterBar({
           { value: "public", label: "Public" },
         ]}
       />
-      <div className="ml-auto">
+      <div className="ml-auto flex items-center gap-1.5">
+        {agentOptions.length > 1 ? (
+          <AgentFilterDropdown
+            value={agentFilter}
+            options={agentOptions}
+            onChange={setAgentFilter}
+          />
+        ) : null}
         <SortDropdown value={sortMode} onChange={setSortMode} />
       </div>
     </div>
@@ -781,6 +927,7 @@ function WorkflowFilterBar({
 export function WorkflowsPage() {
   const filter = useGet(workflowFilter$);
   const sortMode = useGet(workflowSortMode$);
+  const agentFilter = useGet(workflowAgentFilter$);
   const workflowsLoadable = useLastLoadable(allVisibleWorkflows$);
   const triggerEntriesLoadable = useLastLoadable(allWorkflowTriggerEntries$);
   const preferences = useLastResolved(userPreferences$);
@@ -798,9 +945,13 @@ export function WorkflowsPage() {
   const displayTimezone =
     preferences?.timezone ??
     new Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const agentOptions = workflows ? agentFilterOptions(workflows) : [];
   const filteredWorkflows = workflows
     ? sortWorkflows(
-        applyWorkflowFilters(workflows, triggerEntriesByWorkflowId, filter),
+        applyAgentFilter(
+          applyWorkflowFilters(workflows, triggerEntriesByWorkflowId, filter),
+          agentFilter,
+        ),
         sortMode,
       )
     : null;
@@ -835,12 +986,21 @@ export function WorkflowsPage() {
 
       <main className="flex-1 overflow-auto px-4 pb-8 pt-3 sm:px-6">
         <div className="mx-auto flex max-w-[900px] flex-col gap-4">
-          <WorkflowFilterBar filter={filter} sortMode={sortMode} />
+          <WorkflowFilterBar
+            filter={filter}
+            sortMode={sortMode}
+            agentFilter={agentFilter}
+            agentOptions={agentOptions}
+          />
           <WorkflowListPanel
             workflows={filteredWorkflows}
             loading={loading}
             sortMode={sortMode}
-            emptyDescription={emptyDescriptionForFilter(filter)}
+            emptyDescription={
+              agentFilter === WORKFLOW_ALL_AGENTS
+                ? emptyDescriptionForFilter(filter)
+                : "No workflows run as this agent yet."
+            }
             triggerEntriesByWorkflowId={triggerEntriesByWorkflowId}
             displayTimezone={displayTimezone}
           />
@@ -852,7 +1012,11 @@ export function WorkflowsPage() {
   );
 }
 
-function WorkflowIndexSkeleton() {
+function WorkflowIndexSkeleton({
+  showAgentColumn,
+}: {
+  readonly showAgentColumn: boolean;
+}) {
   return (
     <div className="zero-card overflow-hidden" data-testid="workflows-loading">
       {[0, 1, 2, 3].map((rowIndex) => {
@@ -864,6 +1028,9 @@ function WorkflowIndexSkeleton() {
               <div className="h-4 w-40 rounded bg-muted/50" />
               <div className="ml-auto h-8 w-32 rounded-full bg-muted/40" />
               <div className="h-5 w-5 rounded-full bg-muted/40" />
+              {showAgentColumn ? (
+                <div className="h-6 w-6 rounded-md bg-muted/40" />
+              ) : null}
             </div>
           </div>
         );

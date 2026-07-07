@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.96](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.95...sandbox-fc-v0.37.96) (2026-07-06)
+
+
+### Refactoring
+
+* clarify sandbox process pid naming ([#20372](https://github.com/vm0-ai/vm0/issues/20372)) ([c32d846](https://github.com/vm0-ai/vm0/commit/c32d846f655bd32dea0fde2a561a34eb014128dd))
+
 ## [0.37.95](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.94...sandbox-fc-v0.37.95) (2026-07-06)
 
 ## [0.37.94](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.93...sandbox-fc-v0.37.94) (2026-07-06)

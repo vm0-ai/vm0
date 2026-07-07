@@ -1,5 +1,168 @@
 # Changelog
 
+## [0.567.0](https://github.com/vm0-ai/vm0/compare/app-v0.566.0...app-v0.567.0) (2026-07-07)
+
+
+### Features
+
+* restore Ctrl+Shift+1-9 chat thread status emoji shortcuts ([#20446](https://github.com/vm0-ai/vm0/issues/20446)) ([97d9723](https://github.com/vm0-ai/vm0/commit/97d9723142925f68f57c3ce921886c40f4c842f5))
+
+
+### Bug Fixes
+
+* suppress stray focus ring on member and workspace dropdowns after selection ([#20448](https://github.com/vm0-ai/vm0/issues/20448)) ([d075da3](https://github.com/vm0-ai/vm0/commit/d075da34beab9fdcaa82d11c50881845a9a9d8a0))
+
+## [0.566.0](https://github.com/vm0-ai/vm0/compare/app-v0.565.0...app-v0.566.0) (2026-07-07)
+
+
+### Features
+
+* expand built-in workflow templates with persona-curated catalog ([#20383](https://github.com/vm0-ai/vm0/issues/20383)) ([5bc3fe1](https://github.com/vm0-ai/vm0/commit/5bc3fe196c3188085ca607b7afa20692b3c8013b))
+* prompt for force upgrade ([#20351](https://github.com/vm0-ai/vm0/issues/20351)) ([2579a2e](https://github.com/vm0-ai/vm0/commit/2579a2e0621b3bf62388b54d9421019bc9bdac3a))
+* regroup use case gallery by role instead of output type ([#20426](https://github.com/vm0-ai/vm0/issues/20426)) ([c764671](https://github.com/vm0-ai/vm0/commit/c7646718ebad2d465419fa028dff083984123c12))
+* replace chat thread icon menu with searchable emoji picker ([#20395](https://github.com/vm0-ai/vm0/issues/20395)) ([6e21cd2](https://github.com/vm0-ai/vm0/commit/6e21cd293ab73fd241f349aa35db7c90f14de8fb))
+
+
+### Bug Fixes
+
+* align connector access dialog scrollbar to modal edge ([#20390](https://github.com/vm0-ai/vm0/issues/20390)) ([e6827eb](https://github.com/vm0-ai/vm0/commit/e6827ebed7f2ea97e4acbd63a199b43805fa125f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.159.3
+    * @vm0/connectors bumped to 1.144.0
+    * @vm0/core bumped to 8.409.0
+
+## [0.565.0](https://github.com/vm0-ai/vm0/compare/app-v0.564.2...app-v0.565.0) (2026-07-07)
+
+
+### Features
+
+* add agent filter to workflows list ([#20405](https://github.com/vm0-ai/vm0/issues/20405)) ([ed84ad0](https://github.com/vm0-ai/vm0/commit/ed84ad04d38058fb7fce60c9bd824dfe3d8cf7bb))
+* show owning agent as read-only field on workflow settings ([#20425](https://github.com/vm0-ai/vm0/issues/20425)) ([aaa185e](https://github.com/vm0-ai/vm0/commit/aaa185e8339b1e53a2773f07d6923b458a2c075e))
+
+## [0.564.2](https://github.com/vm0-ai/vm0/compare/app-v0.564.1...app-v0.564.2) (2026-07-06)
+
+
+### Refactoring
+
+* drop legacy automation tables and read-only automation surfaces ([#20420](https://github.com/vm0-ai/vm0/issues/20420)) ([bfbf99b](https://github.com/vm0-ai/vm0/commit/bfbf99bbe639ec9c9ce67a37b5155e8478f96224))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.159.2
+    * @vm0/core bumped to 8.408.2
+
+## [0.564.1](https://github.com/vm0-ai/vm0/compare/app-v0.564.0...app-v0.564.1) (2026-07-06)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.159.1
+    * @vm0/core bumped to 8.408.1
+
+## [0.564.0](https://github.com/vm0-ai/vm0/compare/app-v0.563.2...app-v0.564.0) (2026-07-06)
+
+
+### Features
+
+* add steam player connector ([#20359](https://github.com/vm0-ai/vm0/issues/20359)) ([830096d](https://github.com/vm0-ai/vm0/commit/830096d68b93cd490769ed98c0c91090bcde6f31))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.159.0
+    * @vm0/connectors bumped to 1.143.0
+    * @vm0/core bumped to 8.408.0
+
+## [0.563.2](https://github.com/vm0-ai/vm0/compare/app-v0.563.1...app-v0.563.2) (2026-07-06)
+
+
+### Bug Fixes
+
+* ignore expired user permission grants ([#20414](https://github.com/vm0-ai/vm0/issues/20414)) ([b900c3d](https://github.com/vm0-ai/vm0/commit/b900c3d02d217d9d6fb35a1a45f5f4061c19776b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.158.2
+    * @vm0/connectors bumped to 1.142.1
+    * @vm0/core bumped to 8.407.2
+
+## [0.563.1](https://github.com/vm0-ai/vm0/compare/app-v0.563.0...app-v0.563.1) (2026-07-06)
+
+
+### Bug Fixes
+
+* serve artifact template catalogs from static assets ([#20407](https://github.com/vm0-ai/vm0/issues/20407)) ([7672c8b](https://github.com/vm0-ai/vm0/commit/7672c8b833b22cf8c607287907023a0b97138d59))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.407.1
+
+## [0.563.0](https://github.com/vm0-ai/vm0/compare/app-v0.562.0...app-v0.563.0) (2026-07-06)
+
+
+### Features
+
+* add agent detail workflows tab ([#20406](https://github.com/vm0-ai/vm0/issues/20406)) ([453b528](https://github.com/vm0-ai/vm0/commit/453b52825c29f95334106e7d4d7a07787fd48a07))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.158.1
+    * @vm0/connectors bumped to 1.142.0
+    * @vm0/core bumped to 8.407.0
+
+## [0.562.0](https://github.com/vm0-ai/vm0/compare/app-v0.561.2...app-v0.562.0) (2026-07-06)
+
+
+### Features
+
+* add notion child page workflow trigger ([#20391](https://github.com/vm0-ai/vm0/issues/20391)) ([e16798b](https://github.com/vm0-ai/vm0/commit/e16798bdef02cd212425fe275c5873a36b6a8ec1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.158.0
+    * @vm0/connectors bumped to 1.141.0
+    * @vm0/core bumped to 8.406.0
+
+## [0.561.2](https://github.com/vm0-ai/vm0/compare/app-v0.561.1...app-v0.561.2) (2026-07-06)
+
+
+### Bug Fixes
+
+* give add automation trigger picker a minimum height so it no longer looks squished ([#20331](https://github.com/vm0-ai/vm0/issues/20331)) ([0f68717](https://github.com/vm0-ai/vm0/commit/0f68717f18d54ebb5585d7f0372be544692bf371))
+* **platform:** stop reloading deleted agent so delete shows only success toast ([#20290](https://github.com/vm0-ai/vm0/issues/20290)) ([238e7ab](https://github.com/vm0-ai/vm0/commit/238e7abb695a38ad58d7a0009507afb39b4c0aa4)), closes [#20288](https://github.com/vm0-ai/vm0/issues/20288)
+
+## [0.561.1](https://github.com/vm0-ai/vm0/compare/app-v0.561.0...app-v0.561.1) (2026-07-06)
+
+
+### Bug Fixes
+
+* focus inline feedback composer from shortcut ([#20377](https://github.com/vm0-ai/vm0/issues/20377)) ([21dea9f](https://github.com/vm0-ai/vm0/commit/21dea9f73beefa2e52a8ce1a177dba25f47fb0a1))
+* keep chat composer model and voice actions visible ([#20356](https://github.com/vm0-ai/vm0/issues/20356)) ([36dec9f](https://github.com/vm0-ai/vm0/commit/36dec9f856cfdaf014fc1c8d572f6952f044dd17))
+
 ## [0.561.0](https://github.com/vm0-ai/vm0/compare/app-v0.560.1...app-v0.561.0) (2026-07-06)
 
 

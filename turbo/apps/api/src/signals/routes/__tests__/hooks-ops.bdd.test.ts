@@ -143,12 +143,19 @@ describe("OPS-01: feature switches and report-error routes", () => {
         body: {
           switches: {
             [FeatureSwitchKey.Dummy]: false,
+            [FeatureSwitchKey.ComposerUploadPopover]: true,
           },
         },
       }),
       [200],
     );
     expect(enabled.body.switches[FeatureSwitchKey.Dummy]).toBeFalsy();
+    expect(
+      enabled.body.switches[FeatureSwitchKey.ComposerUploadPopover],
+    ).toBeUndefined();
+    expect(
+      enabled.body.effectiveSwitches[FeatureSwitchKey.ComposerUploadPopover],
+    ).toBeFalsy();
 
     const merged = await accept(
       featureSwitchesClient().update({

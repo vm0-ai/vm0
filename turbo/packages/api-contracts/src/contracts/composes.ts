@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { firewallsSchema } from "@vm0/connectors/firewall-types";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
 import { CANONICAL_WORKING_DIR } from "./runners";
@@ -42,9 +43,6 @@ export const ZERO_CAPABILITIES = [
   "agent:delete",
   "agent-run:read",
   "agent-run:write",
-  "automation:read",
-  "automation:write",
-  "automation:delete",
   "goal:read",
   "goal:agent-result:write",
   "goal:user-control:write",
@@ -92,15 +90,6 @@ export const ZERO_CAPABILITY_META: Record<ZeroCapability, ZeroCapabilityMeta> =
     "agent:delete": { group: "Agent", label: "Delete agents" },
     "agent-run:read": { group: "Agent Runs", label: "View runs & telemetry" },
     "agent-run:write": { group: "Agent Runs", label: "Create & cancel runs" },
-    "automation:read": { group: "Automations", label: "View automations" },
-    "automation:write": {
-      group: "Automations",
-      label: "Create & manage automations",
-    },
-    "automation:delete": {
-      group: "Automations",
-      label: "Delete automations",
-    },
     "goal:read": { group: "Goals", label: "Read thread goals" },
     "goal:agent-result:write": {
       group: "Goals",
@@ -230,6 +219,17 @@ const artifactsArraySchema = z.array(artifactConfigSchema).refine((items) => {
   return new Set(names).size === names.length;
 }, "Artifact names must be unique");
 
+const agentFirewallsMapSchema = z.record(
+  z.string(),
+  z.object({
+    permissions: z.union([z.literal("all"), z.array(z.string()).min(1)]),
+  }),
+);
+const legacyAgentFirewallsSchema = z.union([
+  agentFirewallsMapSchema,
+  firewallsSchema,
+]);
+
 /**
  * Agent definition schema
  */
@@ -289,14 +289,7 @@ const agentDefinitionSchema = z.object({
    * Map format: { slack: { permissions: [...] | "all" } }
    * Resolved to full ExpandedFirewallConfig[] at runtime.
    */
-  firewalls: z
-    .record(
-      z.string(),
-      z.object({
-        permissions: z.union([z.literal("all"), z.array(z.string()).min(1)]),
-      }),
-    )
-    .optional(),
+  firewalls: agentFirewallsMapSchema.optional(),
 });
 
 /**
@@ -312,8 +305,8 @@ const agentComposeContentSchema = z.object({
 /**
  * Agent compose content schema for API requests.
  * firewalls is no longer stored in compose content — all firewalls
- * are injected at runtime. The field is accepted as unknown for backward
- * compatibility with older stored compose versions (ignored at runtime).
+ * are injected at runtime. The field accepts documented legacy map or expanded
+ * array shapes for backward compatibility (ignored at runtime).
  */
 const agentComposeApiContentSchema = z.object({
   version: z.string().min(1, "Version is required"),
@@ -322,7 +315,7 @@ const agentComposeApiContentSchema = z.object({
     agentDefinitionSchema.extend({
       // Legacy: older compose versions may have this field (map or expanded array).
       // Accepted for backward compat but ignored at runtime.
-      firewalls: z.unknown().optional(),
+      firewalls: legacyAgentFirewallsSchema.optional(),
     }),
   ),
   volumes: z.record(z.string(), volumeConfigSchema).optional(),

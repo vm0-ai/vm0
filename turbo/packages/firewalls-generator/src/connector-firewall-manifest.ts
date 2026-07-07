@@ -209,6 +209,7 @@ export const FIREWALL_CONNECTOR_TYPES = [
   "sponge",
   "sproutgigs",
   "spotify",
+  "steam",
   "strava",
   "strapi",
   "streak",

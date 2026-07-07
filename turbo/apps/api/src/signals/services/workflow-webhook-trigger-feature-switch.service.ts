@@ -18,3 +18,17 @@ export function workflowWebhookTriggerCreationEnabledForOwner(
     });
   });
 }
+
+export function notionWorkflowTriggerCreationEnabledForOwner(
+  orgId: string,
+  userId: string,
+) {
+  return computed(async (get) => {
+    const overrides = await get(userFeatureSwitchOverrides(orgId, userId));
+    return isFeatureEnabled(FeatureSwitchKey.NotionWorkflowTriggers, {
+      orgId,
+      userId,
+      overrides,
+    });
+  });
+}

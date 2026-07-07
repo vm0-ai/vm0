@@ -8,7 +8,7 @@ import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import {
   allConnectorTypes$,
   connectConnectorOAuthAuthCode$,
-  getOnlyAvailableStatusAuthCodeAuthMethod,
+  getOnlyAvailableStatusBrowserAuthMethod,
   justConnectedTypes$,
   pollingOAuthAuthCodeConnectorType$,
   type ConnectorTypeWithStatus,
@@ -342,7 +342,7 @@ function DirectedAuthorizeCard() {
   const isLoading = catalogLoading || permissionLoading;
   const canAuthorize = canAuthorizeConnector(item, isConnected);
   const selectedAuthMethod = item
-    ? getOnlyAvailableStatusAuthCodeAuthMethod(item)
+    ? getOnlyAvailableStatusBrowserAuthMethod(item)
     : null;
   const connectorLabel = item?.label ?? connectorType;
   const connectorDescription = item?.helpText ?? "";

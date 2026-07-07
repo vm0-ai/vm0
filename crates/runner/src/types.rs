@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 
 use sandbox::SandboxId;
 use serde::{Deserialize, Serialize};
@@ -244,12 +245,16 @@ pub struct GuestDownloadManifest {
     /// Used on VM reuse to remove stale files from changed/removed storages.
     #[serde(default)]
     pub cleanup_paths: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub instruction_cleanups: Vec<GuestDownloadInstructionCleanupEntry>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GuestDownloadStorageEntry {
     pub mount_path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extract_path: Option<String>,
     pub archive_url: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub instructions_target_filename: Option<String>,
@@ -259,6 +264,14 @@ pub struct GuestDownloadStorageEntry {
     pub cached: bool,
     pub vas_storage_name: String,
     pub vas_version_id: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GuestDownloadInstructionCleanupEntry {
+    pub mount_path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_filename: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -277,17 +290,38 @@ pub struct GuestDownloadArtifactEntry {
 
 impl From<&StorageManifest> for GuestDownloadManifest {
     fn from(manifest: &StorageManifest) -> Self {
+        Self::from_storage_manifest(manifest, None)
+    }
+}
+
+impl GuestDownloadManifest {
+    pub(crate) fn from_storage_manifest_for_run(
+        manifest: &StorageManifest,
+        runtime_dir: &str,
+    ) -> Self {
+        Self::from_storage_manifest(manifest, Some(runtime_dir))
+    }
+
+    fn from_storage_manifest(manifest: &StorageManifest, runtime_dir: Option<&str>) -> Self {
         Self {
             storages: manifest
                 .storages
                 .iter()
-                .map(|storage| GuestDownloadStorageEntry {
-                    mount_path: storage.mount_path.clone(),
-                    archive_url: Some(storage.archive_url.clone()),
-                    instructions_target_filename: storage.instructions_target_filename.clone(),
-                    cached: false,
-                    vas_storage_name: storage.vas_storage_name.clone(),
-                    vas_version_id: storage.vas_version_id.clone(),
+                .enumerate()
+                .map(|(index, storage)| {
+                    let extract_path = storage
+                        .instructions_target_filename
+                        .as_ref()
+                        .and_then(|_| runtime_dir.map(|dir| instruction_extract_path(dir, index)));
+                    GuestDownloadStorageEntry {
+                        mount_path: storage.mount_path.clone(),
+                        extract_path,
+                        archive_url: Some(storage.archive_url.clone()),
+                        instructions_target_filename: storage.instructions_target_filename.clone(),
+                        cached: false,
+                        vas_storage_name: storage.vas_storage_name.clone(),
+                        vas_version_id: storage.vas_version_id.clone(),
+                    }
                 })
                 .collect(),
             artifacts: manifest
@@ -304,8 +338,16 @@ impl From<&StorageManifest> for GuestDownloadManifest {
                 })
                 .collect(),
             cleanup_paths: Vec::new(),
+            instruction_cleanups: Vec::new(),
         }
     }
+}
+
+fn instruction_extract_path(runtime_dir: &str, index: usize) -> String {
+    let mut path = PathBuf::from(runtime_dir);
+    path.push("storage-instructions");
+    path.push(index.to_string());
+    path.to_string_lossy().into_owned()
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -1035,7 +1077,9 @@ mod tests {
         let guest_manifest = GuestDownloadManifest::from(&manifest);
 
         assert!(guest_manifest.cleanup_paths.is_empty());
+        assert!(guest_manifest.instruction_cleanups.is_empty());
         assert!(!guest_manifest.storages[0].cached);
+        assert!(guest_manifest.storages[0].extract_path.is_none());
         assert_eq!(
             guest_manifest.storages[0].archive_url.as_deref(),
             Some("https://example.com/workspace.tar.gz")
@@ -1055,6 +1099,47 @@ mod tests {
             guest_manifest.artifacts[0].missing_root_policy,
             Some(ArtifactEntryMissingRootPolicy::PreserveParentVersion)
         );
+    }
+
+    #[test]
+    fn storage_manifest_for_run_stages_instruction_storages_only() {
+        let manifest = StorageManifest {
+            storages: vec![
+                StorageEntry {
+                    name: "instructions".into(),
+                    mount_path: "/home/user/.codex".into(),
+                    archive_url: "https://example.com/instructions.tar.gz".into(),
+                    vas_storage_name: "instructions".into(),
+                    vas_version_id: "v1".into(),
+                    instructions_target_filename: Some("AGENTS.md".into()),
+                },
+                StorageEntry {
+                    name: "skill".into(),
+                    mount_path: "/home/user/.codex/skills/workflow".into(),
+                    archive_url: "https://example.com/skill.tar.gz".into(),
+                    vas_storage_name: "skill".into(),
+                    vas_version_id: "v1".into(),
+                    instructions_target_filename: None,
+                },
+            ],
+            artifacts: vec![],
+        };
+
+        let guest_manifest = GuestDownloadManifest::from_storage_manifest_for_run(
+            &manifest,
+            "/home/user/.vm0/guest-agent/runs/run-1",
+        );
+
+        assert_eq!(guest_manifest.storages[0].mount_path, "/home/user/.codex");
+        assert_eq!(
+            guest_manifest.storages[0].extract_path.as_deref(),
+            Some("/home/user/.vm0/guest-agent/runs/run-1/storage-instructions/0")
+        );
+        assert_eq!(
+            guest_manifest.storages[1].mount_path,
+            "/home/user/.codex/skills/workflow"
+        );
+        assert!(guest_manifest.storages[1].extract_path.is_none());
     }
 
     #[test]
@@ -1081,7 +1166,9 @@ mod tests {
         let value = serde_json::to_value(GuestDownloadManifest::from(&manifest)).unwrap();
 
         assert!(value["cleanupPaths"].is_array());
+        assert!(value.get("instructionCleanups").is_none());
         assert_eq!(value["storages"][0]["cached"], false);
+        assert!(value["storages"][0].get("extractPath").is_none());
         assert!(value["storages"][0].get("name").is_none());
         assert_eq!(value["artifacts"][0]["cached"], false);
         assert!(value["artifacts"][0].get("manifestUrl").is_none());

@@ -28,6 +28,7 @@ const pendingAblySubscriptions$ = state<readonly PendingAblySubscription[]>([]);
 
 interface RealtimeSubscribeOptions {
   readonly onSubscribed?: () => void;
+  readonly runOnSubscribe?: boolean;
 }
 
 interface RealtimeLoopArgs {
@@ -109,11 +110,10 @@ const runWithChannel$ = command(
     { channel, topic, loopCommand$, options }: RealtimeLoopArgs,
     signal: AbortSignal,
   ): Promise<void> => {
-    // No implicit prime on subscribe. Callers whose loop body sets up baseline
-    // state (for example connector `initialUpdatedAt`) must run the body
-    // themselves before calling this. Chat / queue / slack
-    // subscribers don't need a baseline because their data is fetched through
-    // separate computeds.
+    // No implicit prime on subscribe by default. Callers whose loop body sets
+    // up baseline state must run the body themselves before calling this, then
+    // opt in to runOnSubscribe if they also need to catch events that occurred
+    // between the baseline and subscription.
     signal.throwIfAborted();
     let deferred = createDeferredPromise(signal);
     let poked = false;
@@ -177,6 +177,9 @@ const runWithChannel$ = command(
       subscribed = await subscribeChannel(channel, topic, callback);
       signal.throwIfAborted();
       options?.onSubscribed?.();
+      if (options?.runOnSubscribe) {
+        pokeLoop();
+      }
       L.debug("subscribed to topic: " + topic);
 
       while (!signal.aborted) {

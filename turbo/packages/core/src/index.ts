@@ -19,7 +19,6 @@ export {
 } from "./usage-source-bucket";
 export {
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
-  PRESENTATION_TEMPLATE_ITEMS,
   type PresentationTemplateItem,
 } from "./presentation-template-items";
 export {
@@ -36,6 +35,12 @@ export {
   type VideoTemplateItem,
 } from "./video-template-items";
 export {
+  WEBSITE_TEMPLATE_ITEMS,
+  findWebsiteTemplateItem,
+  type WebsiteTemplateItem,
+} from "./website-template-items";
+export {
+  WORKFLOW_TEMPLATE_CATEGORIES,
   WORKFLOW_TEMPLATE_ITEMS,
   findWorkflowTemplateItem,
   type WorkflowTemplateItem,
@@ -357,7 +362,6 @@ export {
   zeroRunNetworkLogsContract,
   zeroRunRunnerContract,
   zeroLogsSearchContract,
-  automationViewSchema,
   zeroModelProvidersMainContract,
   zeroModelProvidersByTypeContract,
   zeroUserPreferencesContract,
@@ -674,7 +678,6 @@ export {
   type ZeroLogsSearchContract,
   type RunContextResponse,
   type RunRunnerResponse,
-  type AutomationView,
   type ZeroModelProvidersMainContract,
   type ZeroModelProvidersByTypeContract,
   type ZeroUserPreferencesContract,
@@ -834,10 +837,15 @@ export {
 export { FeatureSwitchKey } from "./feature-switch-key";
 export {
   getAllFeatureStates,
+  filterUserOverridableFeatureSwitchOverrides,
   getFeatureSwitchDescriptions,
+  getFeatureSwitchMetadata,
+  getUserOverridableFeatureSwitchKeys,
   isFeatureEnabled,
+  isUserOverridableFeatureSwitch,
   type FeatureSwitch,
   type FeatureSwitchContext,
+  type FeatureSwitchMetadata,
 } from "./feature-switch";
 export { isStaffOrg } from "./staff-org";
 export {

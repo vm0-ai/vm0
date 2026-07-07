@@ -140,6 +140,27 @@ const googleCalendarTrigger = {
   nextRunAt: null,
 };
 
+const notionTrigger = {
+  ...triggerBase,
+  kind: "event",
+  eventType: "notion-child-page-created",
+  eventConfig: {
+    provider: "notion",
+    event: "child_page_created",
+    connectorId: "55555555-5555-4555-8555-555555555555",
+    parentPage: {
+      id: "66666666-6666-4666-8666-666666666666",
+      title: "Product notes",
+      url: "https://www.notion.so/workspace/Product-notes-66666666666646668666666666666666",
+      rawUrl:
+        "https://www.notion.so/workspace/Product-notes-66666666666646668666666666666666?pvs=4",
+    },
+  },
+  schedule: null,
+  scheduleSummary: null,
+  nextRunAt: null,
+};
+
 const webhookTrigger = {
   ...triggerBase,
   kind: "event",
@@ -573,6 +594,36 @@ describe("zero workflow trigger commands", () => {
       expect(logCalls).toContain("team@example.com");
     });
 
+    it("should add a Notion child page trigger", async () => {
+      const captured = captureCreateTrigger(notionTrigger);
+
+      await triggerCommand.parseAsync([
+        "node",
+        "cli",
+        "add",
+        WORKFLOW_ID,
+        "notion-child-page-created",
+        "--parent-page-url",
+        " https://www.notion.so/workspace/Product-notes-66666666666646668666666666666666?pvs=4 ",
+      ]);
+
+      expect(captured.workflowId).toBe(WORKFLOW_ID);
+      expect(captured.body).toEqual({
+        kind: "event",
+        eventType: "notion-child-page-created",
+        eventConfig: {
+          provider: "notion",
+          event: "child_page_created",
+          parentPageUrl:
+            "https://www.notion.so/workspace/Product-notes-66666666666646668666666666666666?pvs=4",
+        },
+      });
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("New Notion child page");
+      expect(logCalls).toContain("Product notes");
+      expect(logCalls).toContain(notionTrigger.eventConfig.parentPage.url);
+    });
+
     it("should add a webhook trigger", async () => {
       const captured = captureCreateTrigger(webhookTrigger);
 
@@ -653,6 +704,25 @@ describe("zero workflow trigger commands", () => {
 
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining('Unknown trigger kind: "not-a-trigger"'),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should reject a Notion child page trigger without a parent page URL", async () => {
+      await expect(async () => {
+        await triggerCommand.parseAsync([
+          "node",
+          "cli",
+          "add",
+          WORKFLOW_ID,
+          "notion-child-page-created",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "notion-child-page-created triggers require --parent-page-url",
+        ),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
@@ -1000,6 +1070,7 @@ describe("zero workflow trigger commands", () => {
               loopTrigger,
               gmailTrigger,
               githubLabelTrigger,
+              notionTrigger,
             ]);
           },
         ),
@@ -1015,6 +1086,8 @@ describe("zero workflow trigger commands", () => {
       expect(logCalls).toContain('from contains "@acme.com"');
       expect(logCalls).toContain("GitHub label applied");
       expect(logCalls).toContain("triage");
+      expect(logCalls).toContain("New Notion child page");
+      expect(logCalls).toContain("Product notes");
     });
 
     it("should display an empty state with an add hint", async () => {

@@ -1,7 +1,6 @@
 import { command } from "ccstate";
 import { sql } from "drizzle-orm";
 import type {
-  UsageInsightAutomationRow,
   UsageInsightBucket,
   UsageInsightChatRow,
   UsageInsightResponse,
@@ -485,96 +484,6 @@ async function queryUsageInsightChannelTotals(
   return { emailCredits, emailTokens, slackCredits, slackTokens };
 }
 
-async function queryUsageInsightTopAutomations(
-  db: Db,
-  p: UsageInsightSqlParams,
-): Promise<{
-  automations: UsageInsightAutomationRow[];
-  automationOtherCount: number;
-  automationOtherCredits: number;
-}> {
-  const rows = await db.execute<{
-    automation_id: string | null;
-    automation_name: string | null;
-    automation_description: string | null;
-    credits: string;
-    tokens: string;
-    rn: string;
-  }>(
-    sql.raw(`
-      ${usageRowsWith(p)},
-      agg AS (
-        -- Automation runs carry automation provenance (the drop migration
-        -- backfilled automation_id onto pre-cutover schedule fires, so the
-        -- dimension spans the cutover).
-        SELECT
-          zr.automation_id,
-          COALESCE(a.name, 'Unnamed automation') AS automation_name,
-          a.description AS automation_description,
-          COALESCE(SUM(${USAGE_ROW_ALIAS}.credits_charged), 0)::bigint AS credits,
-          COALESCE(SUM(${USAGE_ROW_ALIAS}.tokens), 0)::bigint AS tokens,
-          ROW_NUMBER() OVER (ORDER BY SUM(${USAGE_ROW_ALIAS}.credits_charged) DESC NULLS LAST) AS rn
-        FROM usage_rows ${USAGE_ROW_ALIAS}
-        INNER JOIN zero_runs zr ON zr.id = ${USAGE_ROW_ALIAS}.run_id
-        LEFT JOIN automations a ON a.id = zr.automation_id
-        WHERE zr.trigger_source = 'automation'
-          AND zr.automation_id IS NOT NULL
-        GROUP BY zr.automation_id, a.name, a.description
-      )
-      SELECT * FROM agg WHERE rn <= 100
-      UNION ALL
-      SELECT
-        NULL AS automation_id,
-        'others' AS automation_name,
-        NULL AS automation_description,
-        COALESCE(SUM(credits), 0)::bigint AS credits,
-        COALESCE(SUM(tokens), 0)::bigint AS tokens,
-        101 AS rn
-      FROM agg WHERE rn > 100
-      ORDER BY rn
-    `),
-  );
-
-  const automations: UsageInsightAutomationRow[] = [];
-  let automationOtherCredits = 0;
-  let hasAutomationOverflow = false;
-  for (const row of rows.rows) {
-    if (Number(row.rn) > 100) {
-      automationOtherCredits = Number(row.credits);
-      hasAutomationOverflow = true;
-    } else if (row.automation_id) {
-      automations.push({
-        automationId: row.automation_id,
-        automationName: row.automation_name ?? "Unnamed automation",
-        automationDescription: row.automation_description,
-        credits: Number(row.credits),
-        tokens: Number(row.tokens),
-      });
-    }
-  }
-
-  let automationOtherCount = 0;
-  if (hasAutomationOverflow) {
-    const countRows = await db.execute<{ cnt: string }>(
-      sql.raw(`
-        ${usageRowsWith(p)},
-        agg AS (
-          SELECT zr.automation_id,
-            ROW_NUMBER() OVER (ORDER BY SUM(${USAGE_ROW_ALIAS}.credits_charged) DESC NULLS LAST) AS rn
-          FROM usage_rows ${USAGE_ROW_ALIAS}
-          INNER JOIN zero_runs zr ON zr.id = ${USAGE_ROW_ALIAS}.run_id
-          WHERE zr.trigger_source = 'automation' AND zr.automation_id IS NOT NULL
-          GROUP BY zr.automation_id
-        )
-        SELECT COUNT(*)::bigint AS cnt FROM agg WHERE rn > 100
-      `),
-    );
-    automationOtherCount = Number(countRows.rows[0]?.cnt ?? 0);
-  }
-
-  return { automations, automationOtherCount, automationOtherCredits };
-}
-
 async function queryUsageInsightTopChats(
   db: Db,
   p: UsageInsightSqlParams,
@@ -693,18 +602,18 @@ export const zeroUsageInsight$ = command(
     const { emailCredits, emailTokens, slackCredits, slackTokens } =
       await queryUsageInsightChannelTotals(db, params);
     signal.throwIfAborted();
-    const { automations, automationOtherCount, automationOtherCredits } =
-      await queryUsageInsightTopAutomations(db, params);
-    signal.throwIfAborted();
     const { chats, chatOtherCount, chatOtherCredits } =
       await queryUsageInsightTopChats(db, params);
     signal.throwIfAborted();
 
     return {
       buckets,
-      automations,
-      automationOtherCount,
-      automationOtherCredits,
+      // Legacy schedule-automation attribution; the automations tables were
+      // removed (#20101), so these are always empty for the retained contract
+      // shape.
+      automations: [],
+      automationOtherCount: 0,
+      automationOtherCredits: 0,
       chats,
       chatOtherCount,
       chatOtherCredits,

@@ -545,7 +545,13 @@ function PermissionAllowDurationDropdown({
           <IconChevronDown size={12} stroke={2.5} className="shrink-0" />
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-40">
+      <DropdownMenuContent
+        align="start"
+        className="w-40"
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+        }}
+      >
         {ALLOW_DURATION_MENU_OPTIONS.map((option) => {
           return (
             <DropdownMenuItem

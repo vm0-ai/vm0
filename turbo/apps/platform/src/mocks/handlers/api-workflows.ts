@@ -420,6 +420,39 @@ function workflowTriggerListHandlers() {
   ];
 }
 
+type WorkflowTriggerCreateBase = {
+  readonly id: string;
+  readonly ownerUserId: string;
+  readonly enabled: boolean;
+  readonly chatThreadId: string;
+  readonly nextRunAt: string | null;
+  readonly lastRunAt: string | null;
+};
+
+function createNotionChildPageTriggerSummary(
+  base: WorkflowTriggerCreateBase,
+  parentPageUrl: string,
+): ZeroWorkflowTriggerSummary {
+  return {
+    ...base,
+    kind: "event",
+    eventType: "notion-child-page-created",
+    eventConfig: {
+      provider: "notion",
+      event: "child_page_created",
+      connectorId: "b0000000-0000-4000-a000-000000000001",
+      parentPage: {
+        id: "11111111-1111-4111-8111-111111111111",
+        title: "Roadmap",
+        url: parentPageUrl,
+        rawUrl: parentPageUrl,
+      },
+    },
+    schedule: null,
+    scheduleSummary: null,
+  };
+}
+
 function workflowTriggerCreateHandlers() {
   return [
     mockApi(
@@ -520,6 +553,11 @@ function workflowTriggerCreateHandlers() {
             schedule: null,
             scheduleSummary: null,
           };
+        } else if (body.eventType === "notion-child-page-created") {
+          trigger = createNotionChildPageTriggerSummary(
+            base,
+            body.eventConfig.parentPageUrl,
+          );
         } else {
           trigger = {
             ...base,

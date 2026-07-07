@@ -439,6 +439,16 @@
     "methods/workflows.triggers.permissions.remove.json": "a071f3347396b5e8023ef9ca53f660ce63374326817b67bfb1ba98661befb259",
     "methods/workflows.triggers.permissions.set.json": "42f35cbba48f61e54f60ab6abeb75123ad67c9b2b657494373652860fb8d1800"
   },
+  "steam": {
+    "https://api.steampowered.com/ISteamWebAPIUtil/GetSupportedAPIList/v1/?format=json": "bd9526d07598517c8c4dc1f76b78137106610be49783637438f660a819acf555",
+    "https://partner.steamgames.com/doc/webapi_overview": "d327b9b80a50b116b7caa2f01f107960d4f3eb9cc9862add94a7389b32a78331",
+    "https://partner.steamgames.com/doc/webapi/IPlayerService": "a240b85708d74c348d4b3e2ee0ad13a6cc16f12eadd106898ae5ebfe373522e4",
+    "https://partner.steamgames.com/doc/webapi/ISteamApps": "a2030104fb1dd04020d0db938bad78512b6f4e66e76910debbe55e16a8ac4d17",
+    "https://partner.steamgames.com/doc/webapi/ISteamNews": "bf75bdb4063d8881f099a66de1785415a4928b67335d783f45e35ca19f6a792d",
+    "https://partner.steamgames.com/doc/webapi/ISteamUser": "ba55ccba6024ec4b82935f69c293eff3c0f1d594da8a737233556acd8b780341",
+    "https://partner.steamgames.com/doc/webapi/ISteamUserStats": "c5172fad2e48eaa89f1a68d411468ca19b932a4cc977fec1c448710df0ca9310",
+    "https://partner.steamgames.com/doc/webapi/IStoreService": "d22b13b545dcbfef8e2b3924acd2ba61e12f31283201e37651015f3b50a99ad7"
+  },
   "strava": {
     "https://developers.strava.com/swagger/swagger.json": "2d3a43ebfa6afdc89324897cb4b52f14aa9cc5e866fa21a1b117c9fb4627ac99"
   },

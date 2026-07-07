@@ -108,6 +108,16 @@ function buttonByText(text: string): HTMLElement {
   return button;
 }
 
+function dispatchDocumentShortcut(key: string): KeyboardEvent {
+  const event = new KeyboardEvent("keydown", {
+    bubbles: true,
+    cancelable: true,
+    key,
+  });
+  document.dispatchEvent(event);
+  return event;
+}
+
 describe("chat inline feedback", () => {
   it("turns selected assistant text into an inline feedback follow-up", async () => {
     const user = userEvent.setup({ delay: null });
@@ -192,6 +202,53 @@ describe("chat inline feedback", () => {
     expect(
       screen.queryByPlaceholderText("What should change about this?"),
     ).not.toBeInTheDocument();
+  });
+
+  it("focuses the inline feedback composer when started from the keyboard shortcut", async () => {
+    const assistantReply = "The launch summary needs more source context.";
+
+    mockChatLifecycle(context, {
+      threadId: FEEDBACK_THREAD_ID,
+      threadTitle: "Feedback review",
+      chatMessages: [
+        {
+          id: "msg-feedback-shortcut-user",
+          role: "user",
+          content: "Review this launch summary",
+          runId: "run-feedback-shortcut",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-feedback-shortcut-assistant",
+          role: "assistant",
+          content: assistantReply,
+          runId: "run-feedback-shortcut",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${FEEDBACK_THREAD_ID}`,
+    });
+
+    const assistantReplyElement = await screen.findByText(assistantReply);
+    selectTextForInlineFeedback(assistantReplyElement);
+
+    await waitFor(() => {
+      expect(screen.getByText("Provide feedback")).toBeInTheDocument();
+    });
+
+    const event = dispatchDocumentShortcut("f");
+    expect(event.defaultPrevented).toBeTruthy();
+
+    const feedbackComment = await screen.findByPlaceholderText(
+      "What should change about this?",
+    );
+    await waitFor(() => {
+      expect(feedbackComment).toHaveFocus();
+    });
   });
 
   it("shows the inline feedback toolbar for a multi-line selection", async () => {
@@ -397,7 +454,6 @@ describe("chat inline feedback", () => {
           type: "presentation",
           selection: {
             colorSystemId: "color-system:gold-luxe",
-            designSystemId: template.designSystemId,
             templateId: template.templateId,
             previewUrl: template.embedUrl,
           },

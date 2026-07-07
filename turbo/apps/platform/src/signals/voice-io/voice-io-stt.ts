@@ -11,9 +11,16 @@ import {
 } from "../zero-page/settings/org-manage-tabs-state.ts";
 import { setOrgManageDialogOpen$ } from "../zero-page/settings/org-manage-dialog.ts";
 import { logger } from "../log.ts";
-import { createDeferredPromise, resetSignal, settle } from "../utils.ts";
+import {
+  createDeferredPromise,
+  resetSignal,
+  settle,
+  tapError,
+  withCleanup,
+} from "../utils.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { accept } from "../../lib/accept.ts";
+import { IN_VITEST } from "../../env.ts";
 import { now as currentTimeMs } from "../../lib/time.ts";
 import { resolveAudioConfig } from "../../lib/voice-io/audio-config.ts";
 
@@ -33,8 +40,8 @@ const internalVoiceDetectedDuringRecording$ = state(false);
 const internalVoiceActivityAvailable$ = state(false);
 const internalVoiceActivityCoversRecording$ = state(false);
 const internalStream$ = state<MediaStream | null>(null);
-const internalChunks$ = state<Blob[]>([]);
 const internalRecorder$ = state<MediaRecorder | null>(null);
+const internalRecordingSession$ = state<VoiceRecordingSession | null>(null);
 const internalAudioActivityMonitor$ = state<AudioActivityMonitor | null>(null);
 const audioInputQuotaReload$ = state(0);
 
@@ -108,8 +115,12 @@ function stopAllTracks(stream: MediaStream | null) {
 }
 
 const VOICE_ACTIVITY_RMS_THRESHOLD = 0.025;
-const VOICE_ACTIVITY_HOLD_MS = 300;
+const VOICE_ACTIVITY_HOLD_MS = 500;
+const VOICE_ACTIVITY_AUTO_STOP_MS = IN_VITEST ? 50 : 10_000;
 const VOICE_ACTIVITY_START_GRACE_MS = 500;
+const AUDIO_INPUT_QUOTA_TOAST =
+  "Voice input limit reached. Upgrade to Pro or Team for higher limits.";
+const AUDIO_INPUT_QUOTA_TOAST_ID = "voice-input-quota-limit";
 
 interface VoiceActivity {
   readonly detected: boolean;
@@ -117,6 +128,14 @@ interface VoiceActivity {
 }
 
 type VoiceActivityCallback = (activity: VoiceActivity) => void;
+type VoiceSegmentTranscribedCallback = (text: string) => void;
+
+interface VoiceRecordingSession {
+  readonly cancel: () => void;
+  readonly handleActivity: (activity: VoiceActivity) => void;
+  readonly startSilenceTimeout: () => void;
+  readonly stopAndTranscribe: (signal: AbortSignal) => Promise<string>;
+}
 
 interface AudioActivityTracker {
   handle(samples: Float32Array<ArrayBufferLike>): void;
@@ -132,6 +151,53 @@ interface AudioActivityMonitor {
   readonly cancelFrame: (handle: number) => void;
   frameId: number | null;
   stopped: boolean;
+}
+
+type SttSegmentResult =
+  | {
+      readonly ok: true;
+      readonly text: string;
+    }
+  | {
+      readonly ok: false;
+      readonly quotaExceeded: boolean;
+    };
+
+type VoiceSegmentReason = "silence" | "stop";
+type CaptureVoiceSegment = (
+  reason: VoiceSegmentReason,
+  upload: boolean,
+) => Promise<RecordedVoiceSegment>;
+
+interface RecordedVoiceSegment {
+  readonly blob: Blob | null;
+  readonly mimeType: string;
+}
+
+interface VoiceSilenceTimer {
+  readonly clear: () => void;
+  readonly start: () => void;
+}
+
+interface VoiceSilenceTimerOptions {
+  readonly isStopped: () => boolean;
+  readonly markStopped: () => void;
+  readonly isVoiceActivityReliable: () => boolean;
+  readonly onLongSilence: () => void;
+}
+
+interface VoiceSegmentTranscriber {
+  readonly enqueueSegment: (
+    reason: VoiceSegmentReason,
+    upload: boolean,
+    deliver: boolean,
+  ) => Promise<string>;
+  readonly enqueueBackgroundSegment: (
+    reason: VoiceSegmentReason,
+    upload: boolean,
+    deliver: boolean,
+  ) => void;
+  readonly waitForPending: () => Promise<void>;
 }
 
 function audioActivityNow(): number {
@@ -322,6 +388,15 @@ function isAudioInputQuotaExceeded(failure: SttApiFailure): boolean {
   );
 }
 
+function isAudioInputQuotaFailure(failure: SttApiFailure): boolean {
+  return (
+    isAudioInputQuotaExceeded(failure) ||
+    (failure.status === 429 &&
+      (failure.code === "DAILY_RATE_LIMIT_EXCEEDED" ||
+        failure.code === "DAILY_DURATION_LIMIT_EXCEEDED"))
+  );
+}
+
 function logSttFailure(
   failure: SttApiFailure,
   context: Record<string, unknown>,
@@ -348,10 +423,20 @@ const resetState$ = command(({ set }) => {
   set(internalVoiceDetectedDuringRecording$, false);
   set(internalVoiceActivityAvailable$, false);
   set(internalVoiceActivityCoversRecording$, false);
-  set(internalChunks$, []);
   set(internalRecorder$, null);
+  set(internalRecordingSession$, null);
   set(internalAudioActivityMonitor$, null);
   set(internalStream$, null);
+});
+
+const prepareRecordingStart$ = command(({ set }) => {
+  set(internalStarting$, true);
+  set(internalSpeechDetected$, false);
+  set(internalVoiceLevel$, 0);
+  set(internalVoiceDetectedDuringRecording$, false);
+  set(internalVoiceActivityAvailable$, false);
+  set(internalVoiceActivityCoversRecording$, false);
+  set(internalRecordingSession$, null);
 });
 
 // ---------------------------------------------------------------------------
@@ -363,6 +448,18 @@ const refreshAudioInputQuota$ = command(({ set }) => {
     return x + 1;
   });
 });
+
+export const openAudioInputQuotaRecovery$ = command(
+  async ({ set }, signal: AbortSignal) => {
+    toast.error(AUDIO_INPUT_QUOTA_TOAST, {
+      id: AUDIO_INPUT_QUOTA_TOAST_ID,
+    });
+    set(refreshAudioInputQuota$);
+    set(setActiveOrgManageTab$, "billing");
+    set(setBillingSubPage$, true);
+    await set(setOrgManageDialogOpen$, true, signal);
+  },
+);
 
 interface SttApiFailure {
   readonly status: number;
@@ -438,8 +535,363 @@ async function openMedia(signal: AbortSignal) {
   }
 }
 
+async function captureRecorderData(
+  recorder: MediaRecorder,
+  signal: AbortSignal,
+  action: () => void,
+): Promise<Blob | null> {
+  if (recorder.state === "inactive") {
+    return null;
+  }
+
+  const deferred = createDeferredPromise<Blob | null>(signal);
+  const handleData = (event: Event) => {
+    const dataEvent = event as BlobEvent;
+    deferred.resolve(dataEvent.data.size > 0 ? dataEvent.data : null);
+  };
+
+  recorder.addEventListener("dataavailable", handleData, {
+    once: true,
+    signal,
+  });
+  action();
+  return await deferred.promise;
+}
+
+async function stopRecorderAndCaptureData(
+  recorder: MediaRecorder,
+  signal: AbortSignal,
+): Promise<Blob | null> {
+  if (recorder.state === "inactive") {
+    return null;
+  }
+
+  const stopDeferred = createDeferredPromise<void>(signal);
+  recorder.addEventListener(
+    "stop",
+    () => {
+      stopDeferred.resolve();
+    },
+    { once: true, signal },
+  );
+
+  const blob = await captureRecorderData(recorder, signal, () => {
+    recorder.stop();
+  });
+  await stopDeferred.promise;
+  return blob;
+}
+
+const transcribeAudioBlob$ = command(
+  async (
+    { get, set },
+    blob: Blob,
+    mimeType: string,
+    signal: AbortSignal,
+  ): Promise<SttSegmentResult> => {
+    const fetchFn = get(fetch$);
+    const formData = new FormData();
+    const extension = mimeType.includes("mp4") ? "mp4" : "webm";
+    formData.append("file", blob, `recording.${extension}`);
+
+    const responseResult = await settle(
+      fetchFn("/api/zero/voice-io/stt", {
+        method: "POST",
+        body: formData,
+        signal,
+      }),
+      signal,
+    );
+    if (!responseResult.ok) {
+      L.error("STT fetch failed", responseResult.error);
+      toast.error("Transcription failed");
+      return { ok: false, quotaExceeded: false };
+    }
+
+    const result = await readSttApiResponse(responseResult.value, signal);
+    if (!result.ok) {
+      if (isAudioInputQuotaFailure(result)) {
+        await set(openAudioInputQuotaRecovery$, signal);
+        return { ok: false, quotaExceeded: true };
+      }
+
+      logSttFailure(result, {
+        recordedMime: mimeType,
+        recordedSize: blob.size,
+      });
+      return { ok: false, quotaExceeded: false };
+    }
+
+    set(refreshAudioInputQuota$);
+    return { ok: true, text: result.text };
+  },
+);
+
+interface VoiceSegmentSessionOptions {
+  readonly initialRecorder: MediaRecorder;
+  readonly stream: MediaStream;
+  readonly signal: AbortSignal;
+  readonly autoSegment: boolean;
+  readonly onSegmentTranscribed: VoiceSegmentTranscribedCallback;
+  readonly transcribeBlob: (
+    blob: Blob,
+    mimeType: string,
+    signal: AbortSignal,
+  ) => Promise<SttSegmentResult>;
+  readonly isVoiceActivityReliable: () => boolean;
+  readonly onLongSilence: () => void;
+  readonly onQuotaExceeded: () => void;
+  readonly onRecorderChanged: (recorder: MediaRecorder) => void;
+}
+
+async function uploadCapturedBlob(
+  options: VoiceSegmentSessionOptions,
+  blob: Blob | null,
+  mimeType: string,
+  upload: boolean,
+): Promise<string> {
+  if (!blob || !upload) {
+    return "";
+  }
+
+  const result = await options.transcribeBlob(blob, mimeType, options.signal);
+  if (!result.ok) {
+    if (result.quotaExceeded) {
+      options.onQuotaExceeded();
+    }
+    return "";
+  }
+  return result.text;
+}
+
+function createVoiceSegmentCapture(
+  options: VoiceSegmentSessionOptions & {
+    readonly activeRecorder: () => MediaRecorder;
+    readonly startNextRecorder: () => void;
+  },
+): CaptureVoiceSegment {
+  let captureQueue: Promise<void> = Promise.resolve();
+
+  return async (reason, upload): Promise<RecordedVoiceSegment> => {
+    const previousCapture = captureQueue;
+    const nextCapture = Promise.withResolvers<void>();
+    captureQueue = nextCapture.promise;
+
+    await previousCapture;
+    let blob: Blob | null = null;
+    let mimeType = "";
+    await withCleanup(
+      (async () => {
+        const recorder = options.activeRecorder();
+        mimeType = recorder.mimeType;
+        if (reason === "stop") {
+          blob = await stopRecorderAndCaptureData(recorder, options.signal);
+        } else if (upload && recorder.state !== "inactive") {
+          blob = await stopRecorderAndCaptureData(recorder, options.signal);
+          options.signal.throwIfAborted();
+          options.startNextRecorder();
+        }
+        options.signal.throwIfAborted();
+      })(),
+      () => {
+        nextCapture.resolve();
+      },
+    );
+
+    return { blob, mimeType };
+  };
+}
+
+function createVoiceSegmentTranscriber(
+  options: VoiceSegmentSessionOptions,
+  captureSegment: CaptureVoiceSegment,
+  clearCurrentSegmentVoice: () => void,
+): VoiceSegmentTranscriber {
+  const pendingTranscriptions: Promise<string>[] = [];
+  const captureAndUploadSegment = async (
+    reason: VoiceSegmentReason,
+    upload: boolean,
+  ): Promise<string> => {
+    const segment = await captureSegment(reason, upload);
+    return await uploadCapturedBlob(
+      options,
+      segment.blob,
+      segment.mimeType,
+      upload,
+    );
+  };
+
+  const enqueueSegment = (
+    reason: VoiceSegmentReason,
+    upload: boolean,
+    deliver: boolean,
+  ): Promise<string> => {
+    clearCurrentSegmentVoice();
+    const transcription = (async () => {
+      const text =
+        (await tapError(captureAndUploadSegment(reason, upload), (error) => {
+          L.error("Voice segment transcription failed", error);
+          toast.error("Transcription failed");
+        })) ?? "";
+      if (deliver && text) {
+        options.onSegmentTranscribed(text);
+      }
+      return text;
+    })();
+    pendingTranscriptions.push(transcription);
+    return transcription;
+  };
+
+  const enqueueBackgroundSegment = (
+    reason: VoiceSegmentReason,
+    upload: boolean,
+    deliver: boolean,
+  ): void => {
+    clearCurrentSegmentVoice();
+    const transcription = (async () => {
+      const [result] = await Promise.allSettled([
+        captureAndUploadSegment(reason, upload),
+      ]);
+      if (result.status === "rejected") {
+        if (!options.signal.aborted) {
+          L.error("Voice segment transcription failed", result.reason);
+          toast.error("Transcription failed");
+        }
+        return "";
+      }
+      if (deliver && result.value) {
+        options.onSegmentTranscribed(result.value);
+      }
+      return result.value;
+    })();
+    pendingTranscriptions.push(transcription);
+  };
+
+  const waitForPending = async (): Promise<void> => {
+    await Promise.all(pendingTranscriptions);
+  };
+
+  return { enqueueSegment, enqueueBackgroundSegment, waitForPending };
+}
+
+function createVoiceSilenceTimer(
+  options: VoiceSilenceTimerOptions,
+): VoiceSilenceTimer {
+  let timerId: number | null = null;
+
+  const clear = (): void => {
+    if (timerId !== null) {
+      window.clearTimeout(timerId);
+      timerId = null;
+    }
+  };
+
+  const start = (): void => {
+    clear();
+    if (options.isStopped() || !options.isVoiceActivityReliable()) {
+      return;
+    }
+    timerId = window.setTimeout(() => {
+      timerId = null;
+      if (options.isStopped() || !options.isVoiceActivityReliable()) {
+        return;
+      }
+      options.markStopped();
+      options.onLongSilence();
+    }, VOICE_ACTIVITY_AUTO_STOP_MS);
+  };
+
+  return { clear, start };
+}
+
+function createVoiceSegmentSession(
+  options: VoiceSegmentSessionOptions,
+): VoiceRecordingSession {
+  let currentSegmentHasVoice = false;
+  let stopped = false;
+  let activeRecorder = options.initialRecorder;
+  const captureSegment = createVoiceSegmentCapture({
+    ...options,
+    activeRecorder: () => {
+      return activeRecorder;
+    },
+    startNextRecorder: () => {
+      const recorder = createMediaRecorder(options.stream);
+      recorder.start();
+      activeRecorder = recorder;
+      options.onRecorderChanged(recorder);
+    },
+  });
+  const transcriber = createVoiceSegmentTranscriber(
+    options,
+    captureSegment,
+    () => {
+      currentSegmentHasVoice = false;
+    },
+  );
+
+  const shouldUploadStopSegment = () => {
+    return currentSegmentHasVoice || !options.isVoiceActivityReliable();
+  };
+
+  const silenceTimer = createVoiceSilenceTimer({
+    isStopped: () => {
+      return stopped;
+    },
+    markStopped: () => {
+      stopped = true;
+    },
+    isVoiceActivityReliable: options.isVoiceActivityReliable,
+    onLongSilence: options.onLongSilence,
+  });
+
+  return {
+    cancel(): void {
+      stopped = true;
+      silenceTimer.clear();
+      if (activeRecorder.state !== "inactive") {
+        activeRecorder.stop();
+      }
+    },
+    handleActivity(activity: VoiceActivity): void {
+      if (activity.detected || activity.level > 0) {
+        silenceTimer.clear();
+      }
+      if (activity.level > 0) {
+        currentSegmentHasVoice = true;
+      }
+      if (!activity.detected && !stopped) {
+        if (options.autoSegment && currentSegmentHasVoice) {
+          transcriber.enqueueBackgroundSegment("silence", true, true);
+        }
+        silenceTimer.start();
+      }
+    },
+    startSilenceTimeout(): void {
+      silenceTimer.start();
+    },
+    async stopAndTranscribe(stopSignal: AbortSignal): Promise<string> {
+      stopped = true;
+      silenceTimer.clear();
+      const finalText = await transcriber.enqueueSegment(
+        "stop",
+        shouldUploadStopSegment(),
+        false,
+      );
+      stopSignal.throwIfAborted();
+      await transcriber.waitForPending();
+      return finalText;
+    },
+  };
+}
+
 export const startRecording$ = command(
-  async ({ get, set }, parentSignal: AbortSignal) => {
+  async (
+    { get, set },
+    onSegmentTranscribed: VoiceSegmentTranscribedCallback,
+    autoSegment: boolean,
+    parentSignal: AbortSignal,
+  ) => {
     if (
       get(internalStarting$) ||
       get(internalRecording$) ||
@@ -456,12 +908,7 @@ export const startRecording$ = command(
       },
       { once: true },
     );
-    set(internalStarting$, true);
-    set(internalSpeechDetected$, false);
-    set(internalVoiceLevel$, 0);
-    set(internalVoiceDetectedDuringRecording$, false);
-    set(internalVoiceActivityAvailable$, false);
-    set(internalVoiceActivityCoversRecording$, false);
+    set(prepareRecordingStart$);
 
     await waitForBrowserPaint(signal);
     signal.throwIfAborted();
@@ -479,23 +926,38 @@ export const startRecording$ = command(
       return;
     }
 
-    set(internalStarting$, false);
     const recorder = createMediaRecorder(stream);
     let audioActivityMonitor: AudioActivityMonitor | null = null;
-
-    set(internalChunks$, []);
-
-    recorder.ondataavailable = (event) => {
-      if (event.data.size > 0) {
-        const prev = get(internalChunks$);
-        set(internalChunks$, [...prev, event.data]);
-      }
-    };
+    let voiceActivityReliable = false;
+    let longSilenceStop: ReturnType<typeof createDeferredPromise<void>> | null =
+      null;
+    const recordingSession = createVoiceSegmentSession({
+      initialRecorder: recorder,
+      stream,
+      signal,
+      autoSegment,
+      onSegmentTranscribed,
+      transcribeBlob: async (blob, mimeType, uploadSignal) => {
+        return await set(transcribeAudioBlob$, blob, mimeType, uploadSignal);
+      },
+      isVoiceActivityReliable: () => {
+        return voiceActivityReliable;
+      },
+      onLongSilence: () => {
+        if (longSilenceStop && !longSilenceStop.settled()) {
+          longSilenceStop.resolve(undefined);
+        }
+      },
+      onQuotaExceeded: () => {
+        set(resetRecord$);
+      },
+      onRecorderChanged: (nextRecorder) => {
+        set(internalRecorder$, nextRecorder);
+      },
+    });
 
     signal.addEventListener("abort", () => {
-      if (recorder.state !== "inactive") {
-        recorder.stop();
-      }
+      recordingSession.cancel();
       if (audioActivityMonitor) {
         stopAudioActivityMonitor(audioActivityMonitor);
       }
@@ -503,11 +965,13 @@ export const startRecording$ = command(
       set(resetState$);
     });
 
+    set(internalStarting$, false);
     recorder.start();
     const recordingStartedAt = audioActivityNow();
     set(internalRecording$, true);
     set(internalStream$, stream);
     set(internalRecorder$, recorder);
+    set(internalRecordingSession$, recordingSession);
     const audioActivityMonitorResult = await settle(
       startAudioActivityMonitor(
         stream,
@@ -517,6 +981,7 @@ export const startRecording$ = command(
           if (activity.level > 0) {
             set(internalVoiceDetectedDuringRecording$, true);
           }
+          recordingSession.handleActivity(activity);
         },
         signal,
       ),
@@ -533,12 +998,25 @@ export const startRecording$ = command(
     }
     audioActivityMonitor = audioActivityMonitorResult.value;
     const monitorStartedAt = audioActivityNow();
+    voiceActivityReliable =
+      audioActivityMonitor !== null &&
+      monitorStartedAt - recordingStartedAt <= VOICE_ACTIVITY_START_GRACE_MS;
     set(internalAudioActivityMonitor$, audioActivityMonitor);
     set(internalVoiceActivityAvailable$, audioActivityMonitor !== null);
-    set(
-      internalVoiceActivityCoversRecording$,
-      monitorStartedAt - recordingStartedAt <= VOICE_ACTIVITY_START_GRACE_MS,
-    );
+    set(internalVoiceActivityCoversRecording$, voiceActivityReliable);
+    if (voiceActivityReliable) {
+      longSilenceStop = createDeferredPromise<void>(signal);
+      recordingSession.startSilenceTimeout();
+    } else {
+      return;
+    }
+
+    await longSilenceStop.promise;
+    signal.throwIfAborted();
+    const text = await set(stopAndTranscribe$, signal);
+    if (text) {
+      onSegmentTranscribed(text);
+    }
   },
 );
 
@@ -549,10 +1027,7 @@ export const stopAndTranscribe$ = command(
     }
 
     const recorder = get(internalRecorder$);
-    const cancelSilentRecording =
-      get(internalVoiceActivityAvailable$) &&
-      get(internalVoiceActivityCoversRecording$) &&
-      !get(internalVoiceDetectedDuringRecording$);
+    const session = get(internalRecordingSession$);
     const audioActivityMonitor = get(internalAudioActivityMonitor$);
     if (audioActivityMonitor) {
       stopAudioActivityMonitor(audioActivityMonitor);
@@ -563,77 +1038,18 @@ export const stopAndTranscribe$ = command(
       set(internalVoiceLevel$, 0);
     }
 
-    if (recorder && recorder.state !== "inactive") {
-      const stopDeferred = createDeferredPromise<void>(signal);
-      recorder.addEventListener(
-        "stop",
-        () => {
-          stopDeferred.resolve();
-        },
-        { once: true, signal },
-      );
-      recorder.stop();
-      await stopDeferred.promise;
+    if (!session) {
+      if (recorder && recorder.state !== "inactive") {
+        recorder.stop();
+      }
+      set(resetRecord$);
+      return "";
     }
 
     set(internalRecording$, false);
-    if (cancelSilentRecording) {
-      set(resetRecord$);
-      return "";
-    }
-
-    // Collect recorded audio
-    const chunks = get(internalChunks$);
-    if (chunks.length === 0) {
-      set(resetRecord$);
-      return "";
-    }
-
-    const mimeType = recorder?.mimeType ?? "audio/webm";
-    const blob = new Blob(chunks, { type: mimeType });
-
     set(internalTranscribing$, true);
-
-    // Send to STT endpoint
-    const fetchFn = get(fetch$);
-    const formData = new FormData();
-    const extension = mimeType.includes("mp4") ? "mp4" : "webm";
-    formData.append("file", blob, `recording.${extension}`);
-
-    // eslint-disable-next-line no-restricted-syntax -- raw fetch for FormData upload (not a typed contract)
-    try {
-      const response = await fetchFn("/api/zero/voice-io/stt", {
-        method: "POST",
-        body: formData,
-        signal,
-      });
-
-      const result = await readSttApiResponse(response, signal);
-      if (!result.ok) {
-        if (isAudioInputQuotaExceeded(result)) {
-          set(refreshAudioInputQuota$);
-          set(setActiveOrgManageTab$, "billing");
-          set(setBillingSubPage$, true);
-          await set(setOrgManageDialogOpen$, true, signal);
-          return "";
-        }
-
-        logSttFailure(result, {
-          recordedMime: mimeType,
-          recordedSize: blob.size,
-        });
-        return "";
-      }
-
-      // Refresh cached quota so the UI reflects the new count for free-tier users.
-      set(refreshAudioInputQuota$);
-      return result.text;
-    } catch (error) {
-      L.error("STT fetch failed", error);
-      toast.error("Transcription failed");
-      return "";
-    } finally {
+    return await withCleanup(session.stopAndTranscribe(signal), () => {
       set(resetRecord$);
-    }
+    });
   },
 );

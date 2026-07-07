@@ -20,11 +20,11 @@ import {
 } from "@vm0/ui";
 import type { ConnectorType } from "@vm0/connectors/connectors";
 import type { PublicConnectorCatalogPermissionDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import { permissionGrantsToFirewallPolicies } from "@vm0/connectors/firewall-metadata/policy";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { firewallPermissionMetadataByConnector } from "../../../../signals/firewall-permission-metadata.ts";
 import { applyUserPermissionGrants$ } from "../../../../signals/permission-allow/permission-allow-signals.ts";
+import { activeUserPermissionGrantSnapshot } from "../../../../signals/user-permission-grants.ts";
 import {
   connectorAgentAccessRows,
   connectorAccessManagementPermissionAgentId$,
@@ -46,6 +46,7 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 import { AvatarFromUrl } from "../../zero-sidebar-shared.tsx";
 import { ConnectorIcon } from "./connector-icons.tsx";
 import { PermissionsDialog } from "./permissions-dialog.tsx";
+import { useUserPermissionGrantExpiryTick } from "../../../user-permission-grant-expiry-tick.ts";
 
 interface ConnectorAccessManagementDialogProps {
   readonly connectorType: ConnectorType;
@@ -202,7 +203,7 @@ function AgentAccessList({
   }
 
   return (
-    <div className="h-full min-h-0 overflow-y-auto pr-1">
+    <div className="-mr-6 h-full min-h-0 overflow-y-auto pr-6">
       {rows.map((row) => {
         return (
           <AgentAccessRow
@@ -287,7 +288,7 @@ function ConnectorAccessDialog({
 
         <div
           className={cn(
-            "min-h-0 flex-1 overflow-hidden rounded-lg",
+            "min-h-0 flex-1",
             !rowsLoaded && "flex",
             rowsLoaded && "flex flex-col",
           )}
@@ -328,10 +329,13 @@ function AgentPermissionDialog({
   readonly applyGrantPolicies: ApplyUserPermissionGrants;
   readonly onClose: () => void;
 }) {
+  const grants = row?.grants ?? [];
+  useUserPermissionGrantExpiryTick(grants);
   if (!row || !metadata) {
     return null;
   }
-  const initialPolicies = permissionGrantsToFirewallPolicies(row.grants) ?? {};
+  const activeSnapshot = activeUserPermissionGrantSnapshot(grants);
+  const initialPolicies = activeSnapshot.policies ?? {};
 
   return (
     <PermissionsDialog
@@ -340,7 +344,7 @@ function AgentPermissionDialog({
       connectorLabel={connectorLabel}
       displayName={agentName(row.agent)}
       initialPolicies={initialPolicies}
-      initialGrants={row.grants}
+      initialGrants={activeSnapshot.grants}
       resetEnabled
       readOnly={false}
       onApply={async (intent, { metadata: appliedMetadata }) => {
@@ -349,7 +353,7 @@ function AgentPermissionDialog({
           connectorRef: connectorType,
           metadata: appliedMetadata,
           initialPolicies,
-          initialGrants: row.grants,
+          initialGrants: activeSnapshot.grants,
           intent,
           pageSignal,
           applyGrantPolicies,

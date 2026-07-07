@@ -22,11 +22,24 @@ type WorkflowWebhookTriggerSummary = Extract<
   ZeroWorkflowTriggerSummary,
   { readonly kind: "event"; readonly eventType: "webhook-received" }
 >;
+type WorkflowNotionChildPageTriggerSummary = Extract<
+  ZeroWorkflowTriggerSummary,
+  { readonly kind: "event"; readonly eventType: "notion-child-page-created" }
+>;
 
 function isWebhookTrigger(
   trigger: ZeroWorkflowTriggerSummary,
 ): trigger is WorkflowWebhookTriggerSummary {
   return trigger.kind === "event" && trigger.eventType === "webhook-received";
+}
+
+function isNotionChildPageTrigger(
+  trigger: ZeroWorkflowTriggerSummary,
+): trigger is WorkflowNotionChildPageTriggerSummary {
+  return (
+    trigger.kind === "event" &&
+    trigger.eventType === "notion-child-page-created"
+  );
 }
 
 function isGoogleCalendarTrigger(
@@ -106,6 +119,14 @@ function formatWebhookTriggerEntry(
   trigger: WorkflowWebhookTriggerSummary,
 ): string {
   return `Webhook: ${trigger.webhookUrl ?? "hidden"}`;
+}
+
+function formatNotionParentPage(
+  trigger: WorkflowNotionChildPageTriggerSummary,
+): string {
+  return (
+    trigger.eventConfig.parentPage.title ?? trigger.eventConfig.parentPage.url
+  );
 }
 
 function formatWorkflowTriggerEntry(
@@ -191,6 +212,8 @@ function workflowTriggerKindLabel(trigger: ZeroWorkflowTriggerSummary): string {
       return "Google Calendar event cancelled";
     case "google-meet-transcript-generated":
       return "Google Meet transcript ready";
+    case "notion-child-page-created":
+      return `New Notion child page: ${formatNotionParentPage(trigger)}`;
     case "webhook-received":
       return "Webhook";
   }
@@ -292,6 +315,14 @@ export function printWorkflowTriggerDetails(
   }
   if (isGoogleCalendarTrigger(trigger)) {
     console.log(`${"Calendar:".padEnd(14)}${trigger.eventConfig.calendarId}`);
+  }
+  if (isNotionChildPageTrigger(trigger)) {
+    console.log(
+      `${"Parent page:".padEnd(14)}${formatNotionParentPage(trigger)}`,
+    );
+    console.log(
+      `${"Parent URL:".padEnd(14)}${trigger.eventConfig.parentPage.url}`,
+    );
   }
   if (isWebhookTrigger(trigger)) {
     console.log(

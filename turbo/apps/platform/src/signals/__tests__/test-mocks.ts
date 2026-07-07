@@ -522,7 +522,7 @@ function mockAudioContext(signal: AbortSignal): void {
 interface VoiceInputMockOptions {
   readonly audioContextReady?: Promise<void>;
   readonly getUserMediaReady?: Promise<void>;
-  readonly rms?: number;
+  readonly rms?: number | readonly number[];
 }
 
 function mockVoiceInput(
@@ -550,11 +550,33 @@ function mockVoiceInput(
     disconnect(): void {}
   }
 
+  let sampleIndex = 0;
+  let recordingChunkIndex = 0;
+
+  function nextRms(): number {
+    const rms = options.rms;
+    if (typeof rms === "number") {
+      return rms;
+    }
+    if (rms) {
+      const index = Math.min(sampleIndex, rms.length - 1);
+      sampleIndex += 1;
+      return rms[index] ?? 0;
+    }
+    return 0;
+  }
+
+  function nextRecordingBlob(mimeType: string, standalone: boolean): Blob {
+    recordingChunkIndex += 1;
+    const prefix = standalone ? "voice" : "chunk";
+    return new Blob([`${prefix}-${recordingChunkIndex}`], { type: mimeType });
+  }
+
   class TestAnalyser {
     fftSize = 1024;
 
     getFloatTimeDomainData(samples: Float32Array<ArrayBuffer>): void {
-      samples.fill(options.rms ?? 0);
+      samples.fill(nextRms());
     }
 
     disconnect(): void {}
@@ -598,16 +620,28 @@ function mockVoiceInput(
       this.state = "recording";
     }
 
+    requestData(): void {
+      if (this.state !== "recording") {
+        return;
+      }
+      this.emitData(false);
+    }
+
+    private emitData(standalone: boolean): void {
+      const event = new Event("dataavailable") as RecorderDataEvent;
+      Object.defineProperty(event, "data", {
+        value: nextRecordingBlob(this.mimeType, standalone),
+      });
+      this.ondataavailable?.(event);
+      this.dispatchEvent(event);
+    }
+
     stop(): void {
       if (this.state === "inactive") {
         return;
       }
       this.state = "inactive";
-      const event = new Event("dataavailable") as RecorderDataEvent;
-      Object.defineProperty(event, "data", {
-        value: new Blob(["voice"], { type: this.mimeType }),
-      });
-      this.ondataavailable?.(event);
+      this.emitData(true);
       this.dispatchEvent(new Event("stop"));
     }
   }

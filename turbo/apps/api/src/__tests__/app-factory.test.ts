@@ -1,4 +1,5 @@
 import { initContract } from "@vm0/api-contracts/contracts/trpc-contract";
+import { EVENT } from "@axiomhq/logging";
 import { computed } from "ccstate";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
@@ -32,6 +33,14 @@ const errorTestContract = c.router({
   boom: {
     method: "GET",
     path: "/__test/boom",
+    responses: {
+      500: z.object({ error: z.string() }),
+    },
+  },
+  boomById: {
+    method: "GET",
+    path: "/__test/boom/:id",
+    pathParams: z.object({ id: z.string() }),
     responses: {
       500: z.object({ error: z.string() }),
     },
@@ -76,6 +85,373 @@ describe("createApp", () => {
 
     expect(response.body).toStrictEqual({ error: "Internal server error" });
     expect(context.mocks.sentry.captureException).toHaveBeenCalledWith(error);
+  });
+
+  it("handles non-Error thrown values while logging unhandled errors", async () => {
+    const thrownValue = 1n;
+    const handler$ = computed((): never => {
+      throw thrownValue;
+    });
+    const client = setupApp({
+      context,
+      routes: [...ROUTES, { route: errorTestContract.boom, handler: handler$ }],
+    })(errorTestContract);
+
+    const response = await accept(client.boom(), [500]);
+
+    expect(response.body).toStrictEqual({ error: "Internal server error" });
+    const capturedError =
+      context.mocks.sentry.captureException.mock.calls.at(-1)?.[0];
+    expect(capturedError).toBeInstanceOf(Error);
+    expect(capturedError).toMatchObject({
+      message: "Non-Error thrown: 1",
+      cause: thrownValue,
+    });
+
+    const [message, fields] =
+      context.mocks.axiomLogging.error.mock.calls.at(-1) ?? [];
+    expect(message).toBe("Unhandled request error: Non-Error thrown: 1");
+    const logFields = fields as Record<PropertyKey, unknown>;
+    expect(logFields).toMatchObject({
+      type: "unhandled_request_error",
+      errorSummary: "Non-Error thrown: 1",
+      route: "/__test/boom",
+      method: "GET",
+      error: {
+        message: "Non-Error thrown: 1",
+        cause: "1",
+      },
+    });
+    expect(() => {
+      JSON.stringify(logFields.error);
+    }).not.toThrow();
+  });
+
+  it("bounds non-Error thrown value summaries", async () => {
+    const thrownValue = "x".repeat(10_000);
+    const expectedSummary = `Non-Error thrown: ${"x".repeat(219)}...`;
+    const handler$ = computed((): never => {
+      throw thrownValue;
+    });
+    const client = setupApp({
+      context,
+      routes: [...ROUTES, { route: errorTestContract.boom, handler: handler$ }],
+    })(errorTestContract);
+
+    const response = await accept(client.boom(), [500]);
+
+    expect(response.body).toStrictEqual({ error: "Internal server error" });
+    const capturedError =
+      context.mocks.sentry.captureException.mock.calls.at(-1)?.[0];
+    expect(capturedError).toMatchObject({
+      message: `Non-Error thrown: ${"x".repeat(4075)}...`,
+    });
+
+    const [message, fields] =
+      context.mocks.axiomLogging.error.mock.calls.at(-1) ?? [];
+    expect(message).toBe(`Unhandled request error: ${expectedSummary}`);
+    const logFields = fields as Record<PropertyKey, unknown>;
+    expect(logFields).toMatchObject({
+      type: "unhandled_request_error",
+      errorSummary: expectedSummary,
+    });
+  });
+
+  it("logs sanitized root-cause fields for unhandled errors", async () => {
+    const cause = new Error(
+      "column chat_threads.last_read_message_id does not exist for user test@example.com at https://example.test/callback?token=secret Bearer abcdef1234567890 123456789012 01890f9d-7b0d-7ccf-8f02-7d8a0c1b2c3d org_abc123456789 user_def987654321 API key: sk-live-secret client secret=client-secret refresh_token=refresh-secret Authorization: Basic basic-secret",
+    );
+    const error = Object.assign(
+      new Error("wrapped database failure", { cause }),
+      {
+        code: "42703",
+      },
+    );
+    const handler$ = computed((): never => {
+      throw error;
+    });
+    const client = setupApp({
+      context,
+      routes: [
+        ...ROUTES,
+        { route: errorTestContract.boomById, handler: handler$ },
+      ],
+    })(errorTestContract);
+
+    const response = await accept(
+      client.boomById({
+        params: { id: "550e8400-e29b-41d4-a716-446655440000" },
+      }),
+      [500],
+    );
+
+    expect(response.body).toStrictEqual({ error: "Internal server error" });
+    expect(context.mocks.sentry.captureException).toHaveBeenCalledWith(error);
+
+    const [message, fields] =
+      context.mocks.axiomLogging.error.mock.calls.at(-1) ?? [];
+    expect(message).toBe(
+      "Unhandled request error: column chat_threads.last_read_message_id does not exist for user [email] at [url] Bearer [redacted] [number] [id] [id] [id] API key=[redacted] client secret=[redacted] refresh_token=[redacted] Authorization=[redacted]",
+    );
+
+    const logFields = fields as Record<PropertyKey, unknown>;
+    expect(logFields).toMatchObject({
+      type: "unhandled_request_error",
+      errorSummary:
+        "column chat_threads.last_read_message_id does not exist for user [email] at [url] Bearer [redacted] [number] [id] [id] [id] API key=[redacted] client secret=[redacted] refresh_token=[redacted] Authorization=[redacted]",
+      route: "/__test/boom/:id",
+      method: "GET",
+      errorCode: "42703",
+      error: expect.objectContaining({
+        message: "wrapped database failure",
+        code: "42703",
+        cause: expect.objectContaining({
+          message: cause.message,
+        }),
+      }),
+    });
+    expect(logFields[EVENT]).toMatchObject({
+      source: "api",
+      type: "unhandled_request_error",
+      errorSummary:
+        "column chat_threads.last_read_message_id does not exist for user [email] at [url] Bearer [redacted] [number] [id] [id] [id] API key=[redacted] client secret=[redacted] refresh_token=[redacted] Authorization=[redacted]",
+      route: "/__test/boom/:id",
+      method: "GET",
+      errorCode: "42703",
+    });
+
+    const serialized = JSON.stringify({
+      message,
+      errorSummary: logFields.errorSummary,
+      route: logFields.route,
+    });
+    expect(serialized).not.toContain("test@example.com");
+    expect(serialized).not.toContain("token=secret");
+    expect(serialized).not.toContain("abcdef1234567890");
+    expect(serialized).not.toContain("123456789012");
+    expect(serialized).not.toContain("01890f9d-7b0d-7ccf-8f02-7d8a0c1b2c3d");
+    expect(serialized).not.toContain("org_abc123456789");
+    expect(serialized).not.toContain("user_def987654321");
+    expect(serialized).not.toContain("550e8400-e29b-41d4-a716-446655440000");
+    expect(serialized).not.toContain("sk-live-secret");
+    expect(serialized).not.toContain("client-secret");
+    expect(serialized).not.toContain("refresh-secret");
+    expect(serialized).not.toContain("basic-secret");
+  });
+
+  it("bounds long unhandled error summaries", async () => {
+    const error = new Error("x".repeat(10_000));
+    const expectedSummary = `${"x".repeat(237)}...`;
+    const handler$ = computed((): never => {
+      throw error;
+    });
+    const client = setupApp({
+      context,
+      routes: [...ROUTES, { route: errorTestContract.boom, handler: handler$ }],
+    })(errorTestContract);
+
+    await accept(client.boom(), [500]);
+
+    const [message, fields] =
+      context.mocks.axiomLogging.error.mock.calls.at(-1) ?? [];
+    const logFields = fields as Record<PropertyKey, unknown>;
+    expect(logFields.errorSummary).toBe(expectedSummary);
+    expect(message).toBe(`Unhandled request error: ${expectedSummary}`);
+  });
+
+  it("handles cyclic error causes while logging unhandled errors", async () => {
+    const error = new Error("cyclic failure");
+    Object.defineProperty(error, "cause", { value: error });
+    const handler$ = computed((): never => {
+      throw error;
+    });
+    const client = setupApp({
+      context,
+      routes: [...ROUTES, { route: errorTestContract.boom, handler: handler$ }],
+    })(errorTestContract);
+
+    const response = await accept(client.boom(), [500]);
+
+    expect(response.body).toStrictEqual({ error: "Internal server error" });
+
+    const [message, fields] =
+      context.mocks.axiomLogging.error.mock.calls.at(-1) ?? [];
+    const logFields = fields as Record<PropertyKey, unknown>;
+    expect(message).toBe("Unhandled request error: cyclic failure");
+    expect(logFields).toMatchObject({
+      type: "unhandled_request_error",
+      errorSummary: "cyclic failure",
+      error: expect.objectContaining({
+        message: "cyclic failure",
+        cause: "[Circular]",
+      }),
+    });
+  });
+
+  it("bounds deep error cause chains while logging unhandled errors", async () => {
+    const error = new Error("depth-0");
+    let current = error;
+    for (let index = 1; index <= 80; index += 1) {
+      const next = new Error(`depth-${index}`);
+      Object.defineProperty(current, "cause", { value: next });
+      current = next;
+    }
+    const handler$ = computed((): never => {
+      throw error;
+    });
+    const client = setupApp({
+      context,
+      routes: [...ROUTES, { route: errorTestContract.boom, handler: handler$ }],
+    })(errorTestContract);
+
+    const response = await accept(client.boom(), [500]);
+
+    expect(response.body).toStrictEqual({ error: "Internal server error" });
+
+    const [message, fields] =
+      context.mocks.axiomLogging.error.mock.calls.at(-1) ?? [];
+    const logFields = fields as Record<PropertyKey, unknown>;
+    expect(message).toBe("Unhandled request error: depth-31");
+    expect(logFields.errorSummary).toBe("depth-31");
+    expect(JSON.stringify(logFields.error)).toContain("[Truncated]");
+    expect(JSON.stringify(logFields.error)).not.toContain("depth-80");
+  });
+
+  it("handles cyclic enumerable error fields while logging unhandled errors", async () => {
+    const error = new Error("request failure") as Error &
+      Record<string, unknown>;
+    const request: Record<string, unknown> = {
+      url: "https://example.test/api",
+      retryAfter: 1n,
+    };
+    request.self = request;
+    error.request = request;
+    const handler$ = computed((): never => {
+      throw error;
+    });
+    const client = setupApp({
+      context,
+      routes: [...ROUTES, { route: errorTestContract.boom, handler: handler$ }],
+    })(errorTestContract);
+
+    const response = await accept(client.boom(), [500]);
+
+    expect(response.body).toStrictEqual({ error: "Internal server error" });
+
+    const [, fields] = context.mocks.axiomLogging.error.mock.calls.at(-1) ?? [];
+    const logFields = fields as Record<PropertyKey, unknown>;
+    const serializedError = logFields.error as Record<string, unknown>;
+    expect(serializedError).toMatchObject({
+      message: "request failure",
+      request: {
+        url: "https://example.test/api",
+        retryAfter: "1",
+        self: "[Circular]",
+      },
+    });
+    expect(() => {
+      JSON.stringify(serializedError);
+    }).not.toThrow();
+  });
+
+  it("handles unreadable error properties while logging unhandled errors", async () => {
+    const error = new Error("unreadable failure") as Error &
+      Record<string, unknown>;
+    Object.defineProperty(error, "cause", {
+      get() {
+        throw new Error("cause getter failed");
+      },
+    });
+    Object.defineProperty(error, "code", {
+      get() {
+        throw new Error("code getter failed");
+      },
+    });
+    Object.defineProperty(error, "request", {
+      enumerable: true,
+      get() {
+        throw new Error("request getter failed");
+      },
+    });
+    const handler$ = computed((): never => {
+      throw error;
+    });
+    const client = setupApp({
+      context,
+      routes: [...ROUTES, { route: errorTestContract.boom, handler: handler$ }],
+    })(errorTestContract);
+
+    const response = await accept(client.boom(), [500]);
+
+    expect(response.body).toStrictEqual({ error: "Internal server error" });
+
+    const [message, fields] =
+      context.mocks.axiomLogging.error.mock.calls.at(-1) ?? [];
+    const logFields = fields as Record<PropertyKey, unknown>;
+    expect(message).toBe("Unhandled request error: unreadable failure");
+    expect(logFields.errorCode).toBeUndefined();
+    expect(logFields.error).toMatchObject({
+      message: "unreadable failure",
+      cause: "[Unreadable]",
+      request: "[Unreadable]",
+    });
+  });
+
+  it("summarizes response validation failures without schema details", async () => {
+    const handler$ = computed(() => {
+      return { status: 500, body: { error: 123 } };
+    });
+    const client = setupApp({
+      context,
+      routes: [...ROUTES, { route: errorTestContract.boom, handler: handler$ }],
+    })(errorTestContract);
+
+    const response = await accept(client.boom(), [500]);
+
+    expect(response.body).toStrictEqual({ error: "Internal server error" });
+    expect(context.mocks.sentry.captureException).toHaveBeenCalledOnce();
+
+    const [message, fields] =
+      context.mocks.axiomLogging.error.mock.calls.at(-1) ?? [];
+    expect(message).toBe("Unhandled request error: response validation failed");
+
+    const logFields = fields as Record<PropertyKey, unknown>;
+    expect(logFields).toMatchObject({
+      type: "unhandled_request_error",
+      errorSummary: "response validation failed",
+      route: "/__test/boom",
+      method: "GET",
+    });
+    expect(logFields[EVENT]).toMatchObject({
+      source: "api",
+      type: "unhandled_request_error",
+      errorSummary: "response validation failed",
+      route: "/__test/boom",
+      method: "GET",
+    });
+  });
+
+  it("summarizes response validation failures with leading whitespace", async () => {
+    const error = new Error("  response validation failed: schema details");
+    const handler$ = computed((): never => {
+      throw error;
+    });
+    const client = setupApp({
+      context,
+      routes: [...ROUTES, { route: errorTestContract.boom, handler: handler$ }],
+    })(errorTestContract);
+
+    const response = await accept(client.boom(), [500]);
+
+    expect(response.body).toStrictEqual({ error: "Internal server error" });
+
+    const [message, fields] =
+      context.mocks.axiomLogging.error.mock.calls.at(-1) ?? [];
+    expect(message).toBe("Unhandled request error: response validation failed");
+    expect(fields).toMatchObject({
+      type: "unhandled_request_error",
+      errorSummary: "response validation failed",
+    });
   });
 
   it("passes through expected HTTP client errors without capturing them", async () => {
@@ -233,7 +609,7 @@ describe("createApp", () => {
       expect(response.headers.get("access-control-allow-origin")).toBeNull();
     });
 
-    it("allows *.vm7.ai over http only in development", async () => {
+    it("allows vm7 origins in development", async () => {
       mockEnv("ENV", "development");
       const app = createApp({ signal: context.signal });
       const response = await app.request("/health", {
@@ -243,6 +619,19 @@ describe("createApp", () => {
 
       expect(response.headers.get("access-control-allow-origin")).toBe(
         "https://app.vm7.ai:8443",
+      );
+    });
+
+    it("allows vm7 preview origins on any https port", async () => {
+      mockEnv("ENV", "preview");
+      const app = createApp({ signal: context.signal });
+      const response = await app.request("/health", {
+        method: "GET",
+        headers: { origin: "https://www.vm7.ai:3042" },
+      });
+
+      expect(response.headers.get("access-control-allow-origin")).toBe(
+        "https://www.vm7.ai:3042",
       );
     });
   });

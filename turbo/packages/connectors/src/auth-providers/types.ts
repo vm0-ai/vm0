@@ -7,12 +7,14 @@ import type {
   ConnectorAuthMethodIdsByRevokeKind,
   ConnectorDeviceAuthGrantAuthMethodId,
   ConnectorExternalCodeGrantAuthMethodId,
+  ConnectorOpenIdAuthGrantAuthMethodId,
   AuthGrantConnectorType,
   ConnectorRefreshInputValues,
   ConnectorRefreshOutputValues,
   ConnectorType,
   DeviceAuthGrantConnectorType,
   ExternalCodeGrantConnectorType,
+  OpenIdAuthGrantConnectorType,
   RefreshTokenAccessConnectorType,
   TokenRevokeConnectorType,
 } from "../connectors";
@@ -28,6 +30,8 @@ import type {
   ConnectorExternalCodeAuthorizationCompleteArgs,
   ConnectorExternalCodeAuthorizationStartArgs,
   ConnectorAuthCodeExchangeArgs,
+  ConnectorOpenIdAuthorizeArgs,
+  ConnectorOpenIdVerifyArgs,
   ConnectorAuthProviderRevokeArgs,
   ExternalCodeAuthorizationStartResult,
   OAuthDeviceAuthPollResult,
@@ -51,6 +55,20 @@ export interface AuthCodeGrantProvider<
   ): string | AuthUrlResult | Promise<string | AuthUrlResult>;
   exchangeCode(
     args: ConnectorAuthCodeExchangeArgs<T, Method>,
+  ): Promise<ConnectorAuthProviderGrantResultForMethod<T, Method>>;
+}
+
+export interface OpenIdAuthGrantProvider<
+  T extends OpenIdAuthGrantConnectorType,
+  Method extends ConnectorOpenIdAuthGrantAuthMethodId<T> =
+    ConnectorOpenIdAuthGrantAuthMethodId<T>,
+> {
+  readonly kind: "openid-auth";
+  buildAuthUrl(
+    args: ConnectorOpenIdAuthorizeArgs,
+  ): string | AuthUrlResult | Promise<string | AuthUrlResult>;
+  verifyCallback(
+    args: ConnectorOpenIdVerifyArgs,
   ): Promise<ConnectorAuthProviderGrantResultForMethod<T, Method>>;
 }
 
@@ -192,6 +210,16 @@ export type AuthCodeConnectorAuthProvider<
     ConnectorAuthCodeGrantAuthMethodId<T>,
 > = AuthProvider<
   AuthCodeGrantProvider<T, Method>,
+  ConnectorAuthProviderAccess<T, Method>,
+  ConnectorAuthProviderRevoke<T, Method>
+>;
+
+export type OpenIdAuthConnectorAuthProvider<
+  T extends OpenIdAuthGrantConnectorType,
+  Method extends ConnectorOpenIdAuthGrantAuthMethodId<T> =
+    ConnectorOpenIdAuthGrantAuthMethodId<T>,
+> = AuthProvider<
+  OpenIdAuthGrantProvider<T, Method>,
   ConnectorAuthProviderAccess<T, Method>,
   ConnectorAuthProviderRevoke<T, Method>
 >;

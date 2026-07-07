@@ -8,6 +8,12 @@ pub enum AgentError {
     #[error("http: {0}")]
     Http(String),
 
+    /// HTTP helper boundary failure with a concrete non-retriable response
+    /// status. This is used when callers need to distinguish compatibility
+    /// rejections from auth/not-found failures.
+    #[error("http: {message}")]
+    HttpStatus { status: u16, message: String },
+
     /// Local OS I/O failure outside the HTTP helper, such as filesystem access,
     /// temporary directory creation, or child-process stdout/stderr pipes.
     #[error("io: {0}")]

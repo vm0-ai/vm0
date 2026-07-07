@@ -14,6 +14,7 @@ import {
   findTool,
   findTemplate,
   findVideoTemplate,
+  findWebsiteTemplateResource,
   type RegistryEntry,
   type VideoTemplateRegistryEntry,
 } from "@vm0/core/resource-registry";
@@ -52,7 +53,8 @@ export function findRegistryResourceForPull(
       findTool(candidate) ??
       findImageStyle(candidate) ??
       findVideoTemplate(candidate) ??
-      findPresentationRunbookResource(candidate);
+      findPresentationRunbookResource(candidate) ??
+      findWebsiteTemplateResource(candidate);
     if (entry) {
       return entry;
     }

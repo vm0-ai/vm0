@@ -742,8 +742,8 @@ describe("ORG-02: membership admin matrix", () => {
 describe("ORG-02: member cleanup detaches Slack connections", () => {
   // The member-leave/removal automation-suspension scenario was removed with
   // the automation -> workflow cutover (#19959): the frozen legacy API can no
-  // longer create automations. Owner-suspension coverage lives in
-  // automations.test.ts on seeded rows.
+  // longer create automations. Owner-suspension coverage now uses workflow
+  // trigger and seeded legacy-row fixtures.
 
   it("disconnects slack-linked members on leave, removal, and org deletion [ORG-SLACK-D]", async () => {
     const integrations = createBddIntegrationApi(context);

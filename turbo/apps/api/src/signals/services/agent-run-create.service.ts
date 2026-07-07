@@ -379,6 +379,8 @@ interface DerivedPersistenceResult {
   readonly status: RunStatus;
   readonly sandboxId?: string;
   readonly runnerJobCreatedAt?: Date;
+  readonly runnerGroup?: string;
+  readonly profile?: string;
 }
 
 type RunnerJobPayload = ReturnType<typeof queuedRunnerJobPayload>;
@@ -442,6 +444,8 @@ type QueuedPersistenceResult =
       readonly status: "queued";
       readonly queueDepth: number;
       readonly telemetryTimestamp: string;
+      readonly runnerGroup: string;
+      readonly profile: string;
     }
   | {
       readonly status: Exclude<RunStatus, "queued">;
@@ -583,6 +587,9 @@ interface ConnectorRuntimeContext {
   readonly secrets: Record<string, string> | undefined;
   readonly vars: Record<string, string> | undefined;
   readonly secretConnectorMap: Record<string, string> | undefined;
+  readonly secretConnectorMetadataMap:
+    | Record<string, SecretConnectorMetadata>
+    | undefined;
   readonly connectorTypes: readonly ConnectorType[];
   readonly storedEnvironment: Record<string, string> | undefined;
 }
@@ -2186,6 +2193,7 @@ interface ResolvedStoredConnectorState {
   readonly secrets: Record<string, string>;
   readonly vars: Record<string, string>;
   readonly secretConnectorMap: Record<string, string>;
+  readonly secretConnectorMetadataMap: Record<string, SecretConnectorMetadata>;
   readonly environment: Record<string, string>;
 }
 
@@ -2194,6 +2202,7 @@ function emptyConnectorRuntimeContext(): ConnectorRuntimeContext {
     secrets: undefined,
     vars: undefined,
     secretConnectorMap: undefined,
+    secretConnectorMetadataMap: undefined,
     connectorTypes: [],
     storedEnvironment: undefined,
   };
@@ -2579,6 +2588,8 @@ function resolveStoredConnectorState(
   const secrets: Record<string, string> = {};
   const vars: Record<string, string> = {};
   const secretConnectorMap: Record<string, string> = {};
+  const secretConnectorMetadataMap: Record<string, SecretConnectorMetadata> =
+    {};
   const environment: Record<string, string> = {};
 
   for (const { connectorType, runtimeBindings } of bindingSets) {
@@ -2609,10 +2620,6 @@ function resolveStoredConnectorState(
           break;
         }
         case "platform-secret": {
-          const secretValue = optionalEnv(source.name);
-          if (secretValue) {
-            secrets[envName] = secretValue;
-          }
           break;
         }
       }
@@ -2624,6 +2631,9 @@ function resolveStoredConnectorState(
     for (const { envName, source } of runtimeBindings) {
       if (source.kind === "connector-secret") {
         secretConnectorMap[envName] = connectorType;
+      } else if (source.kind === "platform-secret") {
+        secretConnectorMap[envName] = connectorType;
+        secretConnectorMetadataMap[envName] = { sourceType: "platform-secret" };
       }
     }
   }
@@ -2632,6 +2642,7 @@ function resolveStoredConnectorState(
     secrets,
     vars,
     secretConnectorMap,
+    secretConnectorMetadataMap,
     environment,
   };
 }
@@ -2651,6 +2662,7 @@ function storedConnectorContextFromSnapshot(
       ),
     ),
     secretConnectorMap: undefined,
+    secretConnectorMetadataMap: undefined,
     connectorTypes: snapshot.allowedConnectorRows.map((row) => {
       return row.connectorType;
     }),
@@ -2730,6 +2742,9 @@ async function materializeStoredConnectorContext(
         secrets: compactRecord(resolved.secrets),
         vars: compactRecord(resolved.vars),
         secretConnectorMap: compactRecord(resolved.secretConnectorMap),
+        secretConnectorMetadataMap: compactRecord(
+          resolved.secretConnectorMetadataMap,
+        ),
         connectorTypes: snapshot.allowedConnectorRows.map((row) => {
           return row.connectorType;
         }),
@@ -4950,12 +4965,22 @@ function buildStoredExecutionSecrets(args: {
       args.customConnectorContext.reservedSecretAliases,
     ],
   });
+  const filteredConnectorMetadataMap = filterSecretConnectorMetadataMap({
+    secretConnectorMetadataMap:
+      args.connectorContext.secretConnectorMetadataMap,
+    secretConnectorMap: filteredConnectorMap,
+  });
   const filteredModelProviderMetadataMap = filterSecretConnectorMetadataMap({
     secretConnectorMetadataMap: args.modelProvider?.secretConnectorMetadataMap,
     secretConnectorMap: filteredModelProviderMap,
   });
   const secretConnectorMap =
     mergeRecords(filteredConnectorMap, filteredModelProviderMap) ?? null;
+  const secretConnectorMetadataMap =
+    mergeRecords(
+      filteredConnectorMetadataMap,
+      filteredModelProviderMetadataMap,
+    ) ?? null;
   const secrets = mergeRecords(
     args.connectorContext.secrets,
     args.modelProvider?.secrets,
@@ -4968,7 +4993,7 @@ function buildStoredExecutionSecrets(args: {
   return {
     secrets: secrets ?? (secretConnectorMap ? {} : undefined),
     secretConnectorMap,
-    secretConnectorMetadataMap: filteredModelProviderMetadataMap ?? null,
+    secretConnectorMetadataMap,
   };
 }
 
@@ -5539,7 +5564,13 @@ function enqueueRunForConcurrency(
             and(eq(agentRuns.id, args.run.id), eq(agentRuns.status, "queued")),
           );
 
-        return { status: "queued" as const, queueDepth, telemetryTimestamp };
+        return {
+          status: "queued" as const,
+          queueDepth,
+          telemetryTimestamp,
+          runnerGroup: payload.runnerGroup,
+          profile: payload.profile,
+        };
       },
     );
 
@@ -6743,6 +6774,7 @@ function completeQueuedRun(input: {
   readonly context: PreparedRunContext;
   readonly run: RunRecord;
   readonly signal: AbortSignal;
+  readonly timing: ApiDispatchTimingCollector;
 }): Computed<Promise<Extract<CreateRunRouteResult, { readonly status: 201 }>>> {
   return computed(
     async (
@@ -6786,6 +6818,23 @@ function completeQueuedRun(input: {
         );
         input.signal.throwIfAborted();
         return failedRunResponse(input.run, enqueueResult.error);
+      }
+      if (enqueueResult.value.status === "queued") {
+        if (!enqueueResult.value.runnerGroup || !enqueueResult.value.profile) {
+          throw new Error("Queued run persistence missing dispatch metadata");
+        }
+        input.timing.flush({
+          runId: input.run.id,
+          runnerGroup: enqueueResult.value.runnerGroup,
+          profile: enqueueResult.value.profile,
+          dispatchPath: "direct",
+          ...(input.args.timingDimensions
+            ? { dimensions: input.args.timingDimensions }
+            : {}),
+          ...(input.args.body.triggerSource
+            ? { triggerSource: input.args.body.triggerSource }
+            : {}),
+        });
       }
       return createdRunResponse(input.run, enqueueResult.value);
     },
@@ -6967,6 +7016,7 @@ function createLegacyBeforeDispatchRun(input: {
           context: input.context,
           run: transactionResult,
           signal: input.signal,
+          timing: input.timing,
         }),
       );
     }

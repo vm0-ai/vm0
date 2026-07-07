@@ -1,5 +1,119 @@
 # Changelog
 
+## [8.409.0](https://github.com/vm0-ai/vm0/compare/core-v8.408.2...core-v8.409.0) (2026-07-07)
+
+
+### Features
+
+* expand built-in workflow templates with persona-curated catalog ([#20383](https://github.com/vm0-ai/vm0/issues/20383)) ([5bc3fe1](https://github.com/vm0-ai/vm0/commit/5bc3fe196c3188085ca607b7afa20692b3c8013b))
+* wire warm cards website template resource ([#20432](https://github.com/vm0-ai/vm0/issues/20432)) ([523b392](https://github.com/vm0-ai/vm0/commit/523b392ed25a36663d77a522fb457f16d9803609))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.159.3
+    * @vm0/connectors bumped to 1.144.0
+
+## [8.408.2](https://github.com/vm0-ai/vm0/compare/core-v8.408.1...core-v8.408.2) (2026-07-06)
+
+
+### Refactoring
+
+* drop legacy automation tables and read-only automation surfaces ([#20420](https://github.com/vm0-ai/vm0/issues/20420)) ([bfbf99b](https://github.com/vm0-ai/vm0/commit/bfbf99bbe639ec9c9ce67a37b5155e8478f96224))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.159.2
+
+## [8.408.1](https://github.com/vm0-ai/vm0/compare/core-v8.408.0...core-v8.408.1) (2026-07-06)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.159.1
+
+## [8.408.0](https://github.com/vm0-ai/vm0/compare/core-v8.407.2...core-v8.408.0) (2026-07-06)
+
+
+### Features
+
+* add steam player connector ([#20359](https://github.com/vm0-ai/vm0/issues/20359)) ([830096d](https://github.com/vm0-ai/vm0/commit/830096d68b93cd490769ed98c0c91090bcde6f31))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.159.0
+    * @vm0/connectors bumped to 1.143.0
+
+## [8.407.2](https://github.com/vm0-ai/vm0/compare/core-v8.407.1...core-v8.407.2) (2026-07-06)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.158.2
+    * @vm0/connectors bumped to 1.142.1
+
+## [8.407.1](https://github.com/vm0-ai/vm0/compare/core-v8.407.0...core-v8.407.1) (2026-07-06)
+
+
+### Bug Fixes
+
+* serve artifact template catalogs from static assets ([#20407](https://github.com/vm0-ai/vm0/issues/20407)) ([7672c8b](https://github.com/vm0-ai/vm0/commit/7672c8b833b22cf8c607287907023a0b97138d59))
+
+## [8.407.0](https://github.com/vm0-ai/vm0/compare/core-v8.406.0...core-v8.407.0) (2026-07-06)
+
+
+### Features
+
+* add agent detail workflows tab ([#20406](https://github.com/vm0-ai/vm0/issues/20406)) ([453b528](https://github.com/vm0-ai/vm0/commit/453b52825c29f95334106e7d4d7a07787fd48a07))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.158.1
+    * @vm0/connectors bumped to 1.142.0
+
+## [8.406.0](https://github.com/vm0-ai/vm0/compare/core-v8.405.0...core-v8.406.0) (2026-07-06)
+
+
+### Features
+
+* add feature-switched composer model picker popover ([#20370](https://github.com/vm0-ai/vm0/issues/20370)) ([c281d91](https://github.com/vm0-ai/vm0/commit/c281d919d6576d9f3b0e01679cf595518a047e33))
+* add notion child page workflow trigger ([#20391](https://github.com/vm0-ai/vm0/issues/20391)) ([e16798b](https://github.com/vm0-ai/vm0/commit/e16798bdef02cd212425fe275c5873a36b6a8ec1))
+* add website template catalog foundation ([#20363](https://github.com/vm0-ai/vm0/issues/20363)) ([b5852c4](https://github.com/vm0-ai/vm0/commit/b5852c457b3cc4226555b3e98571166bd33516db))
+* show lab feature maintainers and sorting ([#20386](https://github.com/vm0-ai/vm0/issues/20386)) ([224f14f](https://github.com/vm0-ai/vm0/commit/224f14fb28b977033d3af52f46eefaf908d6d12d))
+
+
+### Bug Fixes
+
+* route byteplus stt through proxy ([#20015](https://github.com/vm0-ai/vm0/issues/20015)) ([9090018](https://github.com/vm0-ai/vm0/commit/9090018f39b18678c1cfe1fa79fa8e84fc39c815))
+
+
+### Refactoring
+
+* remove presentation design-system selection ([#20371](https://github.com/vm0-ai/vm0/issues/20371)) ([bb56ceb](https://github.com/vm0-ai/vm0/commit/bb56ceb0c43fe57028535ab03cd4911f051aeff0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.158.0
+    * @vm0/connectors bumped to 1.141.0
+
 ## [8.405.0](https://github.com/vm0-ai/vm0/compare/core-v8.404.0...core-v8.405.0) (2026-07-06)
 
 

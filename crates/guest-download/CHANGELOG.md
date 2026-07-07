@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.52](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.51...guest-download-v0.20.52) (2026-07-06)
+
+
+### Performance Improvements
+
+* stage agent instructions before guest download ([#20353](https://github.com/vm0-ai/vm0/issues/20353)) ([14f3236](https://github.com/vm0-ai/vm0/commit/14f32364245d047fb3b77058800513f902deaba2))
+
 ## [0.20.51](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.50...guest-download-v0.20.51) (2026-07-06)
 
 

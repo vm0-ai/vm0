@@ -13,6 +13,8 @@ pub(crate) struct Manifest {
     /// Paths to clean before downloading (stale file cleanup on VM reuse).
     #[serde(default)]
     pub(crate) cleanup_paths: Vec<String>,
+    #[serde(default)]
+    pub(crate) instruction_cleanups: Vec<InstructionCleanupEntry>,
 }
 
 impl Manifest {
@@ -35,6 +37,8 @@ pub(crate) enum ManifestLoadError {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ManifestEntry {
     pub(crate) mount_path: String,
+    #[serde(default)]
+    pub(crate) extract_path: Option<String>,
     pub(crate) archive_url: Option<String>,
     #[serde(default)]
     pub(crate) instructions_target_filename: Option<String>,
@@ -46,6 +50,14 @@ pub(crate) struct ManifestEntry {
     pub(crate) vas_version_id: Option<String>,
     #[serde(default)]
     pub(crate) missing_root_policy: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct InstructionCleanupEntry {
+    pub(crate) mount_path: String,
+    #[serde(default)]
+    pub(crate) target_filename: Option<String>,
 }
 
 #[cfg(test)]
@@ -61,6 +73,7 @@ mod tests {
         let manifest: Manifest = serde_json::from_str(json).unwrap();
         assert_eq!(manifest.cleanup_paths.len(), 2);
         assert_eq!(manifest.cleanup_paths[0], "/home/user/.claude");
+        assert!(manifest.instruction_cleanups.is_empty());
     }
 
     #[test]
@@ -68,6 +81,7 @@ mod tests {
         let json = r#"{"storages": []}"#;
         let manifest: Manifest = serde_json::from_str(json).unwrap();
         assert!(manifest.cleanup_paths.is_empty());
+        assert!(manifest.instruction_cleanups.is_empty());
     }
 
     #[test]
@@ -122,6 +136,7 @@ mod tests {
         );
         assert_eq!(manifest.storages[0].vas_version_id.as_deref(), Some("v1"));
         assert_eq!(manifest.artifacts[0].mount_path, "/workspace");
+        assert_eq!(manifest.storages[0].extract_path, None);
         assert_eq!(
             manifest.artifacts[0].vas_storage_name.as_deref(),
             Some("artifact")
@@ -131,5 +146,40 @@ mod tests {
             manifest.artifacts[0].missing_root_policy.as_deref(),
             Some("preserveParentVersion")
         );
+    }
+
+    #[test]
+    fn manifest_deserializes_instruction_staging_fields() {
+        let json = r#"{
+            "storages": [{
+                "mountPath": "/home/user/.codex",
+                "extractPath": "/home/user/.vm0/guest-agent/runs/run/storage-instructions/0",
+                "archiveUrl": "https://s3/instructions.tar.gz",
+                "instructionsTargetFilename": "AGENTS.md"
+            }],
+            "instructionCleanups": [{
+                "mountPath": "/home/user/.codex",
+                "targetFilename": "AGENTS.md"
+            }, {
+                "mountPath": "/home/user/.claude"
+            }]
+        }"#;
+
+        let manifest: Manifest = serde_json::from_str(json).unwrap();
+
+        assert_eq!(
+            manifest.storages[0].extract_path.as_deref(),
+            Some("/home/user/.vm0/guest-agent/runs/run/storage-instructions/0")
+        );
+        assert_eq!(manifest.instruction_cleanups.len(), 2);
+        assert_eq!(
+            manifest.instruction_cleanups[0].mount_path,
+            "/home/user/.codex"
+        );
+        assert_eq!(
+            manifest.instruction_cleanups[0].target_filename.as_deref(),
+            Some("AGENTS.md")
+        );
+        assert_eq!(manifest.instruction_cleanups[1].target_filename, None);
     }
 }

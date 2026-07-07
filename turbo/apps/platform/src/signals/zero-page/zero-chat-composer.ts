@@ -138,6 +138,14 @@ export const setTemplatePickerOpen$ = command(({ set }, open: boolean) => {
   set(internalTemplatePickerOpen$, open);
 });
 
+const internalUploadPopoverOpen$ = state(false);
+export const uploadPopoverOpen$ = computed((get) => {
+  return get(internalUploadPopoverOpen$);
+});
+export const setUploadPopoverOpen$ = command(({ set }, open: boolean) => {
+  set(internalUploadPopoverOpen$, open);
+});
+
 const internalTemplatePickerCategory$ = state("slides");
 export const templatePickerCategory$ = computed((get) => {
   return get(internalTemplatePickerCategory$);
@@ -155,6 +163,18 @@ export const templatePickerSearch$ = computed((get) => {
 export const setTemplatePickerSearch$ = command(({ set }, value: string) => {
   set(internalTemplatePickerSearch$, value);
 });
+
+// Selected persona pill in the workflow template tab ("all" or a category from
+// WORKFLOW_TEMPLATE_CATEGORIES). Mirrors the ideation gallery's pill filter.
+const internalTemplatePickerWorkflowCategory$ = state("all");
+export const templatePickerWorkflowCategory$ = computed((get) => {
+  return get(internalTemplatePickerWorkflowCategory$);
+});
+export const setTemplatePickerWorkflowCategory$ = command(
+  ({ set }, category: string) => {
+    set(internalTemplatePickerWorkflowCategory$, category);
+  },
+);
 
 const internalTemplatePickerPreviewSlug$ = state<string | null>(null);
 export const templatePickerPreviewSlug$ = computed((get) => {

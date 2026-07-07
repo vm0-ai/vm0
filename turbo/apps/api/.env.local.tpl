@@ -12,7 +12,7 @@ APP_URL=https://app.vm7.ai:8443
 ONBOARDING_URL=https://www.vm7.ai:8443
 
 # Optional: Atom redeem service for onboarding codes
-ATOM_URL=https://tunnel-yuma-atom-api.vm7.ai
+ATOM_URL=https://atom-api.vm7.ai:8442
 VM0_MACHINE_SECRET_KEY=op://Development/clerk/VM0_MACHINE_SECRET_KEY
 
 # Required: API deploy stage tag
@@ -128,6 +128,9 @@ GOOGLE_ADS_LOGIN_CUSTOMER_ID=op://Development/google/GOOGLE_ADS_LOGIN_CUSTOMER_I
 
 # Optional: Google Maps API
 ZERO_MAPS_GOOGLE_MAPS_TOKEN=op://Development/google/ZERO_MAPS_GOOGLE_MAPS_TOKEN
+
+# Optional: Steam Web API
+STEAM_WEB_API_KEY=op://Development/steam/STEAM_WEB_API_KEY
 
 # Optional: Finicity Open Banking
 FINICITY_APP_KEY=op://Development/finicity/FINICITY_APP_KEY

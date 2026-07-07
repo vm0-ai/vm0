@@ -127,6 +127,10 @@ type WorkflowGoogleMeetTranscriptGeneratedTriggerSummary = Extract<
   ZeroWorkflowTriggerSummary,
   { kind: "event"; eventType: "google-meet-transcript-generated" }
 >;
+type WorkflowNotionChildPageCreatedTriggerSummary = Extract<
+  ZeroWorkflowTriggerSummary,
+  { kind: "event"; eventType: "notion-child-page-created" }
+>;
 
 function workflowTriggers(): ZeroWorkflowTriggerSummary[] {
   return [weekdayWorkflowTrigger()];
@@ -293,6 +297,31 @@ function googleMeetTranscriptGeneratedWorkflowTrigger(): WorkflowGoogleMeetTrans
     ownerUserId: CURRENT_USER_ID,
     enabled: true,
     chatThreadId: "thread_google_meet_transcript_generated",
+    nextRunAt: null,
+    lastRunAt: null,
+  };
+}
+
+function notionChildPageWorkflowTrigger(): WorkflowNotionChildPageCreatedTriggerSummary {
+  return {
+    id: "workflow-trigger-notion-child-page",
+    kind: "event",
+    eventType: "notion-child-page-created",
+    eventConfig: {
+      provider: "notion",
+      event: "child_page_created",
+      connectorId: "00000000-0000-4000-a000-000000000410",
+      parentPage: {
+        id: "11111111-1111-4111-8111-111111111111",
+        url: "https://www.notion.so/Roadmap-11111111111141118111111111111111",
+        title: "Roadmap",
+      },
+    },
+    schedule: null,
+    scheduleSummary: null,
+    ownerUserId: CURRENT_USER_ID,
+    enabled: true,
+    chatThreadId: "thread_notion_child_page",
     nextRunAt: null,
     lastRunAt: null,
   };
@@ -776,6 +805,22 @@ function mockCreateWorkflowTrigger(
           eventConfig: body.eventConfig,
         });
       }
+      if (body.eventType === "notion-child-page-created") {
+        return respond(201, {
+          ...notionChildPageWorkflowTrigger(),
+          eventConfig: {
+            provider: "notion",
+            event: "child_page_created",
+            connectorId: "00000000-0000-4000-a000-000000000410",
+            parentPage: {
+              id: "11111111-1111-4111-8111-111111111111",
+              url: body.eventConfig.parentPageUrl,
+              title: "Roadmap",
+              rawUrl: body.eventConfig.parentPageUrl,
+            },
+          },
+        });
+      }
       return respond(201, {
         ...gmailWorkflowTrigger(),
         eventConfig: body.eventConfig,
@@ -1137,7 +1182,44 @@ describe("workflows routes", () => {
     await expectComposerText(CREATE_WORKFLOW_WITH_CHAT_PROMPT);
   });
 
-  it("redirects the legacy agent workflows tab", async () => {
+  it("filters the workspace workflows by agent", async () => {
+    mockAgentPageApis();
+    mockWorkflowApis([salesResearch(), opsPlaybook(), otherAgentWorkflow()]);
+
+    detachedSetupPage({
+      context,
+      path: "/workflows",
+    });
+
+    await waitFor(() => {
+      expect(linkByAriaLabel("Open Sales Research")).toBeInTheDocument();
+    });
+    // Every agent's workflows show under the default "All agents" scope.
+    expect(linkByAriaLabel("Open Ops Playbook")).toBeInTheDocument();
+    expect(linkByAriaLabel("Open Support Intake")).toBeInTheDocument();
+
+    // Scope the list to a single agent via the agent dropdown.
+    click(buttonByText("All agents"));
+    click(menuItemByText("Support Bot"));
+    await waitFor(() => {
+      expect(search()).toBe(`?agent=${OTHER_AGENT_ID}`);
+    });
+    expect(linkByAriaLabel("Open Support Intake")).toBeInTheDocument();
+    expect(screen.queryByText("Sales Research")).not.toBeInTheDocument();
+    expect(screen.queryByText("Ops Playbook")).not.toBeInTheDocument();
+
+    // The trigger reflects the active agent; clearing returns everything.
+    click(buttonByText("Support Bot"));
+    click(menuItemByText("All agents"));
+    await waitFor(() => {
+      expect(search()).toBe("");
+    });
+    expect(linkByAriaLabel("Open Sales Research")).toBeInTheDocument();
+    expect(linkByAriaLabel("Open Ops Playbook")).toBeInTheDocument();
+    expect(linkByAriaLabel("Open Support Intake")).toBeInTheDocument();
+  });
+
+  it("keeps the gated agent workflows tab hidden by default", async () => {
     mockAgentPageApis();
     mockWorkflowApis([
       salesResearch(),
@@ -1153,7 +1235,7 @@ describe("workflows routes", () => {
 
     await waitFor(() => {
       expect(pathname()).toBe(`/agents/${AGENT_ID}`);
-      expect(search()).toBe("");
+      expect(search()).toBe("?tab=workflows");
     });
     expect(screen.queryByText("Sales Research")).not.toBeInTheDocument();
     expect(screen.queryByText("Launch Checklist")).not.toBeInTheDocument();
@@ -1207,6 +1289,10 @@ describe("workflow detail page", () => {
     await waitFor(() => {
       expect(screen.getAllByText("Visibility").length).toBeGreaterThan(0);
     });
+    expect(
+      screen.getByText("This workflow belongs to this agent."),
+    ).toBeInTheDocument();
+    expect(screen.getByTitle("Research Bot")).toHaveTextContent("Research Bot");
     expect(
       screen.queryByText("Gather CRM context before outreach."),
     ).not.toBeInTheDocument();

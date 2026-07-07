@@ -25,7 +25,6 @@ interface SeedRunArgs {
   readonly userId: string;
   readonly composeId: string;
   readonly triggerSource?: string;
-  readonly automationId?: string;
   readonly chatThreadId?: string;
   readonly status?: string;
   readonly prompt?: string;
@@ -38,14 +37,6 @@ interface SeedRunArgs {
   readonly error?: string | null;
   readonly lastEventSequence?: number | null;
   readonly selectedModel?: string | null;
-}
-
-interface SeedAutomationArgs {
-  readonly orgId: string;
-  readonly userId: string;
-  readonly agentId: string;
-  readonly name?: string;
-  readonly description?: string;
 }
 
 interface SeedChatThreadArgs {
@@ -80,24 +71,6 @@ interface InsertUsageEventArgs {
   readonly idempotencyKey?: string;
   readonly createdAt?: Date;
   readonly processedAt?: Date | null;
-}
-
-interface BonusUsageEvent {
-  readonly kind: string;
-  readonly provider: string;
-  readonly category: string;
-  readonly quantity: number;
-  readonly creditsCharged: number;
-  readonly status: string;
-}
-
-interface AutomationBatchArgs {
-  readonly orgId: string;
-  readonly userId: string;
-  readonly composeId: string;
-  readonly count: number;
-  readonly creditsForIndex: (index: number) => number;
-  readonly bonusUsageEventForIndex?: (index: number) => BonusUsageEvent | null;
 }
 
 function requestUsageInsightState(
@@ -241,7 +214,6 @@ export const seedRun$ = command(
       user_id: args.userId,
       compose_id: args.composeId,
       trigger_source: args.triggerSource,
-      automation_id: args.automationId,
       chat_thread_id: args.chatThreadId,
       status: args.status,
       prompt: args.prompt,
@@ -259,23 +231,6 @@ export const seedRun$ = command(
       throw new Error("seedRun$: response missing run_id");
     }
     return { runId: response.run_id };
-  },
-);
-
-export const seedAutomation$ = command(
-  async (_, args: SeedAutomationArgs, signal: AbortSignal): Promise<string> => {
-    const response = await postAction(signal, {
-      action: "seed-automation",
-      org_id: args.orgId,
-      user_id: args.userId,
-      agent_id: args.agentId,
-      name: args.name,
-      description: args.description,
-    });
-    if (!response.automation_id) {
-      throw new Error("seedAutomation$: response missing automation_id");
-    }
-    return response.automation_id;
   },
 );
 
@@ -361,41 +316,5 @@ export const setUsageEventCreatedAt$ = command(
       id: args.id,
       created_at: args.createdAt.toISOString(),
     });
-  },
-);
-
-export const seedAutomationBatch$ = command(
-  async (
-    _,
-    args: AutomationBatchArgs,
-    signal: AbortSignal,
-  ): Promise<{ automationIds: string[] }> => {
-    const entries = Array.from({ length: args.count }, (_, index) => {
-      const bonus = args.bonusUsageEventForIndex?.(index);
-      return {
-        credits: args.creditsForIndex(index),
-        bonus: bonus
-          ? {
-              kind: bonus.kind,
-              provider: bonus.provider,
-              category: bonus.category,
-              quantity: bonus.quantity,
-              credits_charged: bonus.creditsCharged,
-              status: bonus.status,
-            }
-          : null,
-      };
-    });
-    const response = await postAction(signal, {
-      action: "seed-automation-batch",
-      org_id: args.orgId,
-      user_id: args.userId,
-      compose_id: args.composeId,
-      entries,
-    });
-    if (!response.automation_ids) {
-      throw new Error("seedAutomationBatch$: response missing automation_ids");
-    }
-    return { automationIds: response.automation_ids };
   },
 );

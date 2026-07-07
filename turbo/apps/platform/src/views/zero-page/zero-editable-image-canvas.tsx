@@ -5,9 +5,10 @@ import type {
   SyntheticEvent,
 } from "react";
 import {
-  KeepScale,
+  type ReactZoomPanPinchContextState,
   TransformComponent,
   TransformWrapper,
+  useTransformComponent,
 } from "react-zoom-pan-pinch";
 import { useGet, useSet } from "ccstate-react";
 import { cn } from "@vm0/ui";
@@ -35,6 +36,8 @@ import type { ZoomableImageControls } from "./zero-zoomable-image-canvas.tsx";
 
 const IMAGE_ZOOM_STEP = 0.15;
 const MAX_INITIAL_IMAGE_EDGE = 900;
+const SELECTED_IMAGE_OUTLINE_WIDTH = 4;
+const SELECTED_IMAGE_HALO_WIDTH = 3;
 const TOOLBAR_OFFSET = 12;
 
 type EditableImageCanvasProps = {
@@ -159,6 +162,10 @@ function CanvasItemView({
   onPointerDown,
   selected,
 }: CanvasItemViewProps) {
+  const inverseScale = useTransformComponent(inverseScaleFromTransformState);
+  const selectedImageOutlineWidth = SELECTED_IMAGE_OUTLINE_WIDTH * inverseScale;
+  const selectedImageHaloWidth = SELECTED_IMAGE_HALO_WIDTH * inverseScale;
+
   return (
     <img
       src={item.src}
@@ -175,10 +182,14 @@ function CanvasItemView({
       }}
       className="image-edit-canvas-item absolute block max-w-none select-none touch-none cursor-move"
       style={{
-        boxShadow: selected ? "0 0 0 3px rgba(255,255,255,0.88)" : undefined,
+        boxShadow: selected
+          ? `0 0 0 ${selectedImageHaloWidth}px rgba(255,255,255,0.88)`
+          : undefined,
         height: "auto",
         left: item.x,
-        outline: selected ? "4px solid rgb(59,130,246)" : undefined,
+        outline: selected
+          ? `${selectedImageOutlineWidth}px solid rgb(59,130,246)`
+          : undefined,
         pointerEvents: "auto",
         top: item.y,
         userSelect: "none",
@@ -189,6 +200,12 @@ function CanvasItemView({
   );
 }
 
+function inverseScaleFromTransformState({
+  state,
+}: ReactZoomPanPinchContextState): number {
+  return 1 / state.scale;
+}
+
 function SelectionToolbarAnchor({
   renderSelectionToolbar,
   selectedItem,
@@ -196,8 +213,10 @@ function SelectionToolbarAnchor({
   renderSelectionToolbar: (item: EditableImageCanvasItem) => ReactNode;
   selectedItem: EditableImageCanvasItem;
 }) {
+  const inverseScale = useTransformComponent(inverseScaleFromTransformState);
+
   return (
-    <KeepScale
+    <div
       className="image-edit-floating-toolbar absolute"
       style={{
         left: selectedItem.x + selectedItem.width / 2,
@@ -206,9 +225,17 @@ function SelectionToolbarAnchor({
       }}
     >
       <div className="-translate-x-1/2 -translate-y-full">
-        {renderSelectionToolbar(selectedItem)}
+        <div
+          data-testid="image-edit-toolbar-scale"
+          style={{
+            transform: `scale(${inverseScale})`,
+            transformOrigin: "center bottom",
+          }}
+        >
+          {renderSelectionToolbar(selectedItem)}
+        </div>
       </div>
-    </KeepScale>
+    </div>
   );
 }
 
