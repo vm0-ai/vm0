@@ -101,7 +101,9 @@ export const rustTypeBindings = [
           ],
           vasStorageId: ["VAS storage identifier for the artifact."],
           vasVersionId: ["VAS version identifier for the artifact contents."],
-          archiveUrl: ["Presigned URL for downloading the artifact archive."],
+          archiveUrl: [
+            "Optional presigned URL for downloading the artifact archive. Explicit empty artifacts may omit it.",
+          ],
           empty: [
             "Whether this artifact version is explicitly empty and can be prepared without downloading an archive.",
           ],
