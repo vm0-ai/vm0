@@ -409,6 +409,55 @@ describe("GET /api/zero/connector-catalog", () => {
     ).toStrictEqual(["api-token"]);
   });
 
+  it("returns PlayStation external-code catalog metadata when enabled", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    await enableConnectorFeatureSwitches(orgId, userId, {
+      [FeatureSwitchKey.AwsConnector]: true,
+      [FeatureSwitchKey.PlaystationConnector]: true,
+    });
+
+    const client = setupApp({ context })(zeroConnectorCatalogContract);
+    const response = await accept(
+      client.status({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
+    );
+
+    assertPublicConnectorCatalogHasNoPrivateFields(response.body);
+    const playstation = response.body.connectors.find((connector) => {
+      return connector.connectorRef === "playstation";
+    });
+    expect(playstation).toMatchObject({
+      connectorRef: "playstation",
+      label: "PlayStation",
+      connected: false,
+      connectionStatus: "not-connected",
+    });
+    expect(playstation?.authMethods).toStrictEqual([
+      {
+        id: "api",
+        label: "PlayStation sign-in",
+        description:
+          "First make sure you are signed in to PlayStation at [https://www.playstation.com/](https://www.playstation.com/).\nClick the button below, then copy the `npsso` value.",
+        grantKind: "external-code",
+        manualFields: [],
+        startOptions: [],
+      },
+    ]);
+
+    const aws = response.body.connectors.find((connector) => {
+      return connector.connectorRef === "aws";
+    });
+    const awsCli = aws?.authMethods.find((authMethod) => {
+      return authMethod.id === "cli";
+    });
+    expect(awsCli).toMatchObject({
+      id: "cli",
+      label: "Sign in with AWS",
+      grantKind: "external-code",
+    });
+  });
+
   it("returns connected manual grant status from public API-created state", async () => {
     const actor = bdd.user();
     await connectorsApi.connectManualGrant(actor, "openai", "api-token", {

@@ -3886,6 +3886,13 @@
       "when": 1783376000779,
       "tag": "0554_vengeful_sabretooth",
       "breakpoints": true
+    },
+    {
+      "idx": 555,
+      "version": "7",
+      "when": 1783415065639,
+      "tag": "0555_notion_database_item_trigger",
+      "breakpoints": true
     }
   ]
 }

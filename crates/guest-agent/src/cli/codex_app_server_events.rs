@@ -82,7 +82,7 @@ impl PlanStepStatus {
 
 /// Error returned when a supported Codex app-server notification is malformed.
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
-pub enum CodexAppServerEventError {
+pub(super) enum CodexAppServerEventError {
     #[error("codex app-server notification {method} missing params")]
     MissingParams { method: String },
     #[error("codex app-server notification {method} missing field {field}")]
@@ -95,7 +95,7 @@ pub enum CodexAppServerEventError {
 ///
 /// Unsupported notifications and app-server delta/progress notifications return `Ok(None)`.
 /// Supported notifications with malformed required fields return an error.
-pub fn notification_to_codex_event(
+pub(super) fn notification_to_codex_event(
     notification: &ServerNotification,
 ) -> Result<Option<Value>, CodexAppServerEventError> {
     match notification.method.as_str() {

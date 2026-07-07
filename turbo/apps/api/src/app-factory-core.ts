@@ -1,5 +1,11 @@
 import { httpInstrumentationMiddleware } from "@hono/otel";
 import * as Sentry from "@sentry/node";
+import {
+  PLATFORM_CLIENT_REQUEST_ID_HEADER,
+  PLATFORM_CLIENT_SESSION_ID_HEADER,
+  PLATFORM_CLIENT_TYPE_HEADER,
+  PLATFORM_CLIENT_VERSION_HEADER,
+} from "@vm0/api-contracts/contracts/platform-client-headers";
 import { serializeError } from "@vm0/core/log-utils";
 // oxlint-disable-next-line no-restricted-imports -- app factory owns the Hono instance, confirmed by ethan@vm0.ai
 import { Hono, type Context } from "hono";
@@ -9,15 +15,27 @@ import { matchedRoutes } from "hono/route";
 import { corsMiddleware } from "./lib/cors";
 import { env } from "./lib/env";
 import { flushLogs, logger } from "./lib/log";
+import { now } from "./lib/time";
 import { waitUntil } from "./signals/context/wait-until";
 import { honoSignalHandler } from "./signals/context/route";
+import {
+  flushAxiom,
+  getDatasetName,
+  ingestToAxiom,
+} from "./signals/external/axiom";
 import type { RouteEntry } from "./signals/route-entry";
-import { isAbortError, normalizeThrown, safeSync } from "./signals/utils";
+import {
+  isAbortError,
+  normalizeThrown,
+  safeSync,
+  safeUrlParse,
+} from "./signals/utils";
 
 const L = logger("App");
 
 const WEB_AUTH_PATHS = ["/sign-in", "/sign-up"] as const;
 const UNHANDLED_REQUEST_ERROR_TYPE = "unhandled_request_error" as const;
+const REQUEST_LOG_DATASET = "request-log";
 const ERROR_CHAIN_MAX_DEPTH = 32;
 const ERROR_SUMMARY_MAX_LENGTH = 240;
 const ERROR_SUMMARY_SOURCE_MAX_LENGTH = 4096;
@@ -29,6 +47,26 @@ interface UnhandledRequestErrorLogFields {
   readonly route?: string;
   readonly errorCode?: string;
   readonly error: Record<string, unknown>;
+}
+
+interface PlatformClientHeaderLogFields {
+  readonly x_client_version?: string;
+  readonly x_client_type?: string;
+  readonly x_client_session_id?: string;
+  readonly x_client_request_id?: string;
+}
+
+interface AxiomRequestLogEvent
+  extends PlatformClientHeaderLogFields, Record<string, unknown> {
+  readonly _time: string;
+  readonly method: string;
+  readonly status: number;
+  readonly host: string;
+  readonly path_template: string;
+  readonly request_time_ms: number;
+  readonly body_bytes_sent?: number;
+  readonly remote_addr?: string;
+  readonly user_agent?: string;
 }
 
 type ErrorWithCode = Error & { readonly code?: unknown };
@@ -238,6 +276,112 @@ function requestRouteTemplate(context: Context): string | undefined {
   return undefined;
 }
 
+function presentHeaderValue(value: string | null): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed || undefined;
+}
+
+function requestHeader(context: Context, name: string): string | undefined {
+  return presentHeaderValue(context.req.raw.headers.get(name));
+}
+
+function platformClientHeaderLogFields(
+  context: Context,
+): PlatformClientHeaderLogFields {
+  const clientVersion = requestHeader(context, PLATFORM_CLIENT_VERSION_HEADER);
+  const clientType = requestHeader(context, PLATFORM_CLIENT_TYPE_HEADER);
+  const clientSessionId = requestHeader(
+    context,
+    PLATFORM_CLIENT_SESSION_ID_HEADER,
+  );
+  const clientRequestId = requestHeader(
+    context,
+    PLATFORM_CLIENT_REQUEST_ID_HEADER,
+  );
+
+  return {
+    ...(clientVersion ? { x_client_version: clientVersion } : {}),
+    ...(clientType ? { x_client_type: clientType } : {}),
+    ...(clientSessionId ? { x_client_session_id: clientSessionId } : {}),
+    ...(clientRequestId ? { x_client_request_id: clientRequestId } : {}),
+  };
+}
+
+function requestPathname(context: Context): string {
+  const url = safeUrlParse(context.req.url);
+  return url?.pathname ?? context.req.path;
+}
+
+function requestHost(context: Context): string {
+  const headerHost = requestHeader(context, "host");
+  if (headerHost) {
+    return headerHost;
+  }
+  return safeUrlParse(context.req.url)?.host ?? "";
+}
+
+function firstForwardedAddress(value: string | undefined): string | undefined {
+  return presentHeaderValue(value?.split(",")[0] ?? null);
+}
+
+function requestRemoteAddress(context: Context): string | undefined {
+  return (
+    firstForwardedAddress(requestHeader(context, "x-forwarded-for")) ??
+    requestHeader(context, "x-real-ip") ??
+    requestHeader(context, "cf-connecting-ip")
+  );
+}
+
+function responseBodyBytes(response: Response): number | undefined {
+  const raw = response.headers.get("content-length");
+  if (!raw) {
+    return undefined;
+  }
+  const value = Number(raw);
+  return Number.isFinite(value) && value >= 0 ? value : undefined;
+}
+
+function axiomRequestLogEvent(
+  context: Context,
+  startedAt: number,
+): AxiomRequestLogEvent {
+  const response = context.res;
+  const bodyBytes = responseBodyBytes(response);
+  const remoteAddress = requestRemoteAddress(context);
+  const userAgent = requestHeader(context, "user-agent");
+
+  return {
+    _time: new Date(startedAt).toISOString(),
+    method: context.req.method,
+    status: response.status,
+    host: requestHost(context),
+    path_template: requestRouteTemplate(context) ?? requestPathname(context),
+    request_time_ms: Math.max(0, now() - startedAt),
+    ...(bodyBytes !== undefined ? { body_bytes_sent: bodyBytes } : {}),
+    ...(remoteAddress ? { remote_addr: remoteAddress } : {}),
+    ...(userAgent ? { user_agent: userAgent } : {}),
+    ...platformClientHeaderLogFields(context),
+  };
+}
+
+function scheduleAxiomRequestLog(context: Context, startedAt: number): void {
+  const ingested = safeSync(() => {
+    return ingestToAxiom(getDatasetName(REQUEST_LOG_DATASET), [
+      axiomRequestLogEvent(context, startedAt),
+    ]);
+  });
+  if (!("ok" in ingested) || !ingested.ok) {
+    return;
+  }
+
+  const flushed = safeSync(() => {
+    return flushAxiom({ client: "telemetry" });
+  });
+  if ("ok" in flushed) {
+    waitUntil(Promise.resolve(flushed.ok));
+  }
+}
+
 function unhandledRequestErrorLogFields(
   error: unknown,
   context: Context,
@@ -250,6 +394,7 @@ function unhandledRequestErrorLogFields(
     method: context.req.method,
     ...(route ? { route } : {}),
     ...(errorCode ? { errorCode } : {}),
+    ...platformClientHeaderLogFields(context),
     error: serializeError(error),
   };
 }
@@ -292,6 +437,13 @@ export function createAppWithRoutes({
   // propagation; correlate them to a route by their `trace_id`, not by
   // copying `http.route` onto each child span.
   app.use("*", httpInstrumentationMiddleware({ serviceName: "vm0-api" }));
+
+  app.use("*", async (c, next) => {
+    const startedAt = now();
+    await next();
+    scheduleAxiomRequestLog(c, startedAt);
+  });
+
   // Browser cross-origin requests (e.g. https://app.vm0.ai -> api.vm0.ai). Must
   // run before the route handlers so OPTIONS preflight short-circuits without
   // matching a registered method, and so registered route responses receive

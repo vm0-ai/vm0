@@ -5,6 +5,7 @@ log entries, and extracting firewall metadata.
 """
 
 import json
+import time
 from collections.abc import Mapping
 from datetime import datetime, timezone
 
@@ -15,6 +16,16 @@ import jsonl_writer
 import network_log_sanitization
 
 _PROXY_LOG_RESERVED_FIELDS = {"timestamp", "level", "message"}
+
+# Network log size fields are consumed as JavaScript numbers downstream.
+NETWORK_LOG_MAX_SAFE_SIZE = 9_007_199_254_740_991
+NETWORK_LOG_MAX_SAFE_SIZE_DIGITS = len(str(NETWORK_LOG_MAX_SAFE_SIZE))
+
+
+def elapsed_ms(start_time: float | None) -> int:
+    if not start_time:
+        return 0
+    return max(0, int((time.monotonic() - start_time) * 1000))
 
 
 def _utc_log_timestamp() -> str:

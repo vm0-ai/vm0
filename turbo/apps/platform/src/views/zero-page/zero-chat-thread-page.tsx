@@ -6652,6 +6652,21 @@ function PagedAssistantGroup({
     })
     .filter(Boolean)
     .join("\n\n");
+  let renderedAssistantMessageCount = 0;
+  const renderAssistantMessageItem = (message: EnrichedChatMessage) => {
+    const isRenderable = isRenderableAssistantMessage(message);
+    const compactTop = isRenderable && renderedAssistantMessageCount > 0;
+    if (isRenderable) {
+      renderedAssistantMessageCount += 1;
+    }
+    return (
+      <PagedAssistantMessageItem
+        key={message.id}
+        message={message}
+        compactTop={compactTop}
+      />
+    );
+  };
 
   return (
     <div
@@ -6661,7 +6676,7 @@ function PagedAssistantGroup({
     >
       <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <AssistantBubbleAvatar thread={thread} />
-        <div className="relative flex flex-col gap-3">
+        <div className="relative flex flex-col gap-2">
           {runGroupFolds?.map((fold) => {
             return (
               <RunGroupFoldRow key={fold.fold.key} control={fold} embedded />
@@ -6679,16 +6694,14 @@ function PagedAssistantGroup({
                 return (
                   <div key={hiddenGroup.beginMessageId} className="contents">
                     {hiddenGroup.messages.map((msg) => {
-                      return (
-                        <PagedAssistantMessageItem key={msg.id} message={msg} />
-                      );
+                      return renderAssistantMessageItem(msg);
                     })}
                   </div>
                 );
               })
             : null}
           {group.messages.map((msg) => {
-            return <PagedAssistantMessageItem key={msg.id} message={msg} />;
+            return renderAssistantMessageItem(msg);
           })}
         </div>
       </div>
@@ -6699,8 +6712,10 @@ function PagedAssistantGroup({
 
 function PagedAssistantMessageItem({
   message,
+  compactTop = false,
 }: {
   message: EnrichedChatMessage;
+  compactTop?: boolean;
 }) {
   const openImageLightbox = useSet(openAttachmentImageLightbox$);
   const openLightbox = (url: string) => {
@@ -6709,7 +6724,12 @@ function PagedAssistantMessageItem({
 
   if (message.error) {
     return (
-      <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-[0.9375rem] leading-[1.7] min-w-0 [overflow-wrap:anywhere]">
+      <div
+        className={cn(
+          "zero-chat-bubble-assistant px-0 text-[0.9375rem] leading-[1.7] min-w-0 [overflow-wrap:anywhere]",
+          compactTop ? "@[900px]:pt-0" : "@[900px]:pt-2.5",
+        )}
+      >
         <AssistantErrorContent error={message.error} />
       </div>
     );
@@ -6718,7 +6738,12 @@ function PagedAssistantMessageItem({
   if (message.content) {
     const { blocks } = message;
     return (
-      <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-[0.9375rem] leading-[1.7] min-w-0 [overflow-wrap:anywhere]">
+      <div
+        className={cn(
+          "zero-chat-bubble-assistant px-0 text-[0.9375rem] leading-[1.7] min-w-0 [overflow-wrap:anywhere]",
+          compactTop ? "@[900px]:pt-0" : "@[900px]:pt-2.5",
+        )}
+      >
         {blocks.length > 0 ? (
           <BodyContentBlocks
             blocks={blocks}

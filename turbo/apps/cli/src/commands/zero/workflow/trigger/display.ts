@@ -26,6 +26,13 @@ type WorkflowNotionChildPageTriggerSummary = Extract<
   ZeroWorkflowTriggerSummary,
   { readonly kind: "event"; readonly eventType: "notion-child-page-created" }
 >;
+type WorkflowNotionDatabaseItemTriggerSummary = Extract<
+  ZeroWorkflowTriggerSummary,
+  {
+    readonly kind: "event";
+    readonly eventType: "notion-database-item-created";
+  }
+>;
 
 function isWebhookTrigger(
   trigger: ZeroWorkflowTriggerSummary,
@@ -39,6 +46,15 @@ function isNotionChildPageTrigger(
   return (
     trigger.kind === "event" &&
     trigger.eventType === "notion-child-page-created"
+  );
+}
+
+function isNotionDatabaseItemTrigger(
+  trigger: ZeroWorkflowTriggerSummary,
+): trigger is WorkflowNotionDatabaseItemTriggerSummary {
+  return (
+    trigger.kind === "event" &&
+    trigger.eventType === "notion-database-item-created"
   );
 }
 
@@ -129,6 +145,14 @@ function formatNotionParentPage(
   );
 }
 
+function formatNotionDatabase(
+  trigger: WorkflowNotionDatabaseItemTriggerSummary,
+): string {
+  return (
+    trigger.eventConfig.dataSource.title ?? trigger.eventConfig.dataSource.url
+  );
+}
+
 function formatWorkflowTriggerEntry(
   trigger: ZeroWorkflowTriggerSummary,
 ): string {
@@ -214,6 +238,8 @@ function workflowTriggerKindLabel(trigger: ZeroWorkflowTriggerSummary): string {
       return "Google Meet transcript ready";
     case "notion-child-page-created":
       return `New Notion child page: ${formatNotionParentPage(trigger)}`;
+    case "notion-database-item-created":
+      return `New Notion database item: ${formatNotionDatabase(trigger)}`;
     case "webhook-received":
       return "Webhook";
   }
@@ -322,6 +348,12 @@ export function printWorkflowTriggerDetails(
     );
     console.log(
       `${"Parent URL:".padEnd(14)}${trigger.eventConfig.parentPage.url}`,
+    );
+  }
+  if (isNotionDatabaseItemTrigger(trigger)) {
+    console.log(`${"Database:".padEnd(14)}${formatNotionDatabase(trigger)}`);
+    console.log(
+      `${"Database URL:".padEnd(14)}${trigger.eventConfig.dataSource.url}`,
     );
   }
   if (isWebhookTrigger(trigger)) {

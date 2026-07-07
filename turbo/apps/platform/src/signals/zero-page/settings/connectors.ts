@@ -1829,7 +1829,7 @@ const completeConnectorExternalCode$ = command(
     if (!code) {
       set(internalConnectorExternalCodeState$, {
         ...current,
-        errorMessage: `Enter the authorization code from ${options.connectorLabel ?? type}.`,
+        errorMessage: `Enter the code from ${options.connectorLabel ?? type}.`,
       });
       return false;
     }

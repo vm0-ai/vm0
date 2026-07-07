@@ -56,7 +56,10 @@ export type NotionWorkflowPendingEventStatus =
   | "running"
   | "processed"
   | "skipped";
-export type NotionWorkflowPendingEventFamily = "new_child_page";
+export type NotionWorkflowPendingEventFamily =
+  | "new_child_page"
+  | "new_database_item";
+export type NotionWorkflowPendingEventScopeType = "page" | "data_source";
 
 export const notionWorkflowPendingEvents = pgTable(
   "notion_workflow_pending_events",
@@ -71,7 +74,10 @@ export const notionWorkflowPendingEvents = pgTable(
         { onDelete: "cascade" },
       ),
     pageId: uuid("page_id").notNull(),
-    parentPageId: uuid("parent_page_id").notNull(),
+    scopeType: varchar("scope_type", { length: 32 })
+      .$type<NotionWorkflowPendingEventScopeType>()
+      .notNull(),
+    scopeId: uuid("scope_id").notNull(),
     eventFamily: varchar("event_family", { length: 64 })
       .$type<NotionWorkflowPendingEventFamily>()
       .notNull()
@@ -107,6 +113,10 @@ export const notionWorkflowPendingEvents = pgTable(
       index("idx_notion_pending_events_page_pending").on(
         table.pageId,
         table.status,
+      ),
+      index("idx_notion_pending_events_scope").on(
+        table.scopeType,
+        table.scopeId,
       ),
     ];
   },
