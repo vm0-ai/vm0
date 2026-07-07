@@ -152,7 +152,7 @@ describe("release-please API deployment graph", () => {
     expect(consistencyJob).toContain("instead of release head $head_commit");
     expect(consistencyJob).toContain("git diff --quiet");
     expect(consistencyJob).toContain(
-      "release-please did not create a ${tag_prefix} release",
+      `release-please did not create a \${tag_prefix} release`,
     );
     expect(consistencyJob).toContain("turbo/apps/platform");
     expect(consistencyJob).toContain("turbo/apps/api");
@@ -174,8 +174,7 @@ describe("release-please API deployment graph", () => {
     const workflow = readText(".github/workflows/release-please.yml");
     const apiBuildJob = workflowJobBlock(workflow, "build-api-production");
     const appBuildJob = workflowJobBlock(workflow, "build-app-production");
-    const releaseHeadRef =
-      "ref: ${{ github.event.workflow_run.head_sha || github.sha }}";
+    const releaseHeadRef = `ref: \${{ github.event.workflow_run.head_sha || github.sha }}`;
 
     expect(apiBuildJob).toContain(releaseHeadRef);
     expect(appBuildJob).toContain(releaseHeadRef);
