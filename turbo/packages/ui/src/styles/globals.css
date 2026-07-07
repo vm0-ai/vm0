@@ -369,7 +369,7 @@
 @layer components {
   /* Icon Button - used for close buttons, theme toggles, etc */
   .icon-button {
-    @apply flex items-center justify-center size-9 hover:bg-muted rounded-lg transition-colors;
+    @apply flex items-center justify-center size-9 hover:bg-muted rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background;
   }
 
   /* Custom scrollbar for dialog content - Slack-style */

@@ -6,6 +6,7 @@ import {
   unauthorizedRedirectSuppressionUntil$,
 } from "./auth-retry.ts";
 import { resolveApiBase, resolveApiBaseForNavigation } from "./api-base.ts";
+import { addPlatformClientHeaders } from "./platform-client-headers.ts";
 
 const OAUTH_WEB_NAVIGATION_TARGET = "www";
 
@@ -29,24 +30,21 @@ export const apiBase$ = computed(() => {
   return resolveApiBase();
 });
 
-function mergeHeadersWithAutoIds(
+function mergeHeadersWithClientHeaders(
   baseHeaders: Record<string, string>,
   userHeaders: HeadersInit | undefined,
-  autoHeaders: Record<string, string>,
-): Record<string, string> {
-  const result = { ...baseHeaders, ...autoHeaders };
+): Headers {
+  const headers = new Headers(baseHeaders);
 
   if (userHeaders) {
-    if (userHeaders instanceof Headers) {
-      for (const [key, value] of userHeaders.entries()) {
-        result[key] = value;
-      }
-    } else if (typeof userHeaders === "object" && !Array.isArray(userHeaders)) {
-      Object.assign(result, userHeaders);
+    const newHeaders = new Headers(userHeaders);
+    for (const [key, value] of newHeaders.entries()) {
+      headers.set(key, value);
     }
   }
 
-  return result;
+  addPlatformClientHeaders(headers);
+  return headers;
 }
 
 /**
@@ -117,28 +115,18 @@ export const fetch$ = computed((get) => {
       const authHeaders: Record<string, string> = token
         ? { Authorization: `Bearer ${token}` }
         : {};
-      const autoHeaders: Record<string, string> = {};
-
       if (requestInput instanceof Request) {
         finalInit = {
           credentials: "include",
-          headers: mergeHeadersWithAutoIds(
-            authHeaders,
-            options?.headers,
-            autoHeaders,
-          ),
           ...options,
+          headers: mergeHeadersWithClientHeaders(authHeaders, options?.headers),
         };
       } else {
         finalInit = {
           credentials: "include",
           method: "GET",
           ...options,
-          headers: mergeHeadersWithAutoIds(
-            authHeaders,
-            options?.headers,
-            autoHeaders,
-          ),
+          headers: mergeHeadersWithClientHeaders(authHeaders, options?.headers),
         };
       }
 

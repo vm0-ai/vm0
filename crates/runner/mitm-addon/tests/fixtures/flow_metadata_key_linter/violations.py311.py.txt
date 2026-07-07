@@ -1,0 +1,7 @@
+
+except_star_meta = flow.metadata
+try:
+    pass
+except* Exception as except_star_meta:
+    pass
+except_star_meta["firewall_error"] = "auth_failed"

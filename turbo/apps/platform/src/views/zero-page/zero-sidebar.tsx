@@ -176,8 +176,13 @@ function AccountDropdownContainer({
   collapsed?: boolean;
 }) {
   const onAccountAction = useSet(handleZeroAccountAction$);
+  const settingsOwnerId = collapsed ? "sidebar-collapsed" : "sidebar-expanded";
   return (
-    <AccountDropdown onAccountAction={onAccountAction} collapsed={collapsed} />
+    <AccountDropdown
+      onAccountAction={onAccountAction}
+      settingsOwnerId={settingsOwnerId}
+      collapsed={collapsed}
+    />
   );
 }
 

@@ -13,7 +13,7 @@ type ForceUpgradeResponse = {
   supported?: unknown;
 };
 
-export type ForceUpgradeCheckOptions = {
+type ForceUpgradeCheckOptions = {
   apiBase?: string;
   fetcher?: ForceUpgradeFetch;
   version?: string | null;

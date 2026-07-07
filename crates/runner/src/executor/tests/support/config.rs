@@ -36,6 +36,7 @@ pub(in crate::executor::tests) async fn test_executor_config(dir: &Path) -> Exec
         network_log_drain: NetworkLogDrainCoordinator::noop(),
         mitm_jsonl_flush: None,
         network_policy_refresh: None,
+        session_history_probe: super::super::super::SessionHistoryProbe::default(),
         home: HomePaths::with_root(dir.to_path_buf()),
         workspace_cache: None,
     }
