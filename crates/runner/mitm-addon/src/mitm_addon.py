@@ -2911,8 +2911,9 @@ def _expects_http_response_body_usage_inspection(
 def _is_websocket_upgrade_request(flow: http.HTTPFlow) -> bool:
     if flow.request.method.upper() != "GET":
         return False
-    upgrade = _single_header_value(flow.request.headers, "Upgrade")
-    if upgrade is None or upgrade.lower() != "websocket":
+    if flow.request.http_version != "HTTP/1.1":
+        return False
+    if not _header_values_contain_token(flow.request.headers, "Upgrade", "websocket"):
         return False
     websocket_key = _single_header_value(flow.request.headers, "Sec-WebSocket-Key")
     if websocket_key is None or not _is_valid_websocket_key(websocket_key):
@@ -2921,13 +2922,13 @@ def _is_websocket_upgrade_request(flow: http.HTTPFlow) -> bool:
     if websocket_version != "13":
         return False
 
-    connection_values = flow.request.headers.get_all("Connection")
-    if not connection_values:
-        return False
+    return _header_values_contain_token(flow.request.headers, "Connection", "upgrade")
 
+
+def _header_values_contain_token(headers: http.Headers, name: str, expected: str) -> bool:
     return any(
-        token.strip(_HTTP_OWS_CHARS).lower() == "upgrade"
-        for value in connection_values
+        token.strip(_HTTP_OWS_CHARS).lower() == expected
+        for value in headers.get_all(name)
         for token in value.split(",")
     )
 

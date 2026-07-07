@@ -533,12 +533,46 @@ async def test_header_phase_stream_safe_auth_normalizes_accept_encoding_before_a
     assert flow.request.headers[_ACCEPT_ENCODING] == "gzip"
 
 
+@pytest.mark.parametrize(
+    "extra_headers",
+    [
+        pytest.param(
+            (
+                ("Connection", "keep-alive, Upgrade"),
+                ("Upgrade", "websocket"),
+                ("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ=="),
+                ("Sec-WebSocket-Version", "13"),
+            ),
+            id="standard",
+        ),
+        pytest.param(
+            (
+                ("Connection", "keep-alive, Upgrade"),
+                ("Upgrade", "h2c, WebSocket"),
+                ("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ=="),
+                ("Sec-WebSocket-Version", "13"),
+            ),
+            id="upgrade-token-list",
+        ),
+        pytest.param(
+            (
+                ("Connection", "keep-alive, Upgrade"),
+                ("Upgrade", "h2c"),
+                ("Upgrade", "websocket"),
+                ("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ=="),
+                ("Sec-WebSocket-Version", "13"),
+            ),
+            id="repeated-upgrade-header",
+        ),
+    ],
+)
 async def test_model_provider_websocket_upgrade_injects_auth_and_keeps_accept_encoding(
     tmp_path: Path,
     real_flow: Callable[..., http.HTTPFlow],
     headers: Callable[..., http.Headers],
     mitm_ctx,
     fake_firewall_headers,
+    extra_headers: tuple[tuple[str, str], ...],
 ) -> None:
     firewall_name = "model-provider:openai-api-key"
     host = "api.openai.com"
@@ -571,12 +605,7 @@ async def test_model_provider_websocket_upgrade_injects_auth_and_keeps_accept_en
         path=path,
         method="GET",
         accept_encoding="gzip, zstd, br",
-        extra_headers=(
-            ("Connection", "keep-alive, Upgrade"),
-            ("Upgrade", "websocket"),
-            ("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ=="),
-            ("Sec-WebSocket-Version", "13"),
-        ),
+        extra_headers=extra_headers,
     )
 
     with (
@@ -658,16 +687,6 @@ async def test_response_bodyless_usage_inspected_methods_keep_accept_encoding(
                 ("Sec-WebSocket-Version", "13"),
             ),
             id="missing-connection-upgrade-token",
-        ),
-        pytest.param(
-            (
-                ("Connection", "keep-alive, Upgrade"),
-                ("Upgrade", "websocket"),
-                ("Upgrade", "websocket"),
-                ("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ=="),
-                ("Sec-WebSocket-Version", "13"),
-            ),
-            id="duplicate-upgrade-header",
         ),
         pytest.param(
             (
@@ -793,6 +812,41 @@ async def test_invalid_websocket_upgrade_method_normalizes_accept_encoding(
             ("Sec-WebSocket-Version", "13"),
         ),
     )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers(),
+    ):
+        await mitm_addon.request(flow)
+
+    assert flow.request.headers[_ACCEPT_ENCODING] == "gzip"
+
+
+@pytest.mark.parametrize("http_version", ["HTTP/1.0", "HTTP/2.0", "HTTP/3"])
+async def test_invalid_websocket_upgrade_http_version_normalizes_accept_encoding(
+    tmp_path: Path,
+    real_flow: Callable[..., http.HTTPFlow],
+    headers: Callable[..., http.Headers],
+    mitm_ctx,
+    fake_firewall_headers,
+    http_version: str,
+) -> None:
+    reg_path = _model_provider_registry(tmp_path, rule_method="GET")
+    flow = _request_flow(
+        real_flow,
+        headers,
+        host=_MODEL_PROVIDER_HOST,
+        path=_MODEL_PROVIDER_PATH,
+        method="GET",
+        accept_encoding="gzip, zstd, br",
+        extra_headers=(
+            ("Connection", "keep-alive, Upgrade"),
+            ("Upgrade", "websocket"),
+            ("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ=="),
+            ("Sec-WebSocket-Version", "13"),
+        ),
+    )
+    flow.request.http_version = http_version
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
