@@ -50,7 +50,7 @@ JSON_PART = r"""{
         {
           "name": "playstation-search-read",
           "rules": [
-            "GET /api/search/v1/universalSearch"
+            "POST /api/search/v1/universalSearch"
           ]
         }
       ]

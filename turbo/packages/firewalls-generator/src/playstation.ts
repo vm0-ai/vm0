@@ -62,7 +62,7 @@ const MOBILE_PERMISSIONS: PermissionGroup[] = [
   {
     name: "playstation-search-read",
     description: "Search PlayStation Network users and content",
-    rules: sanitizeAndSortRules(["GET /api/search/v1/universalSearch"]),
+    rules: sanitizeAndSortRules(["POST /api/search/v1/universalSearch"]),
   },
 ];
 
