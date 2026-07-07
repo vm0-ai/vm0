@@ -184,6 +184,26 @@ mod tests {
     }
 
     #[test]
+    fn run_manifest_prepares_explicit_empty_artifact_without_archive_url() {
+        let dir = tempfile::tempdir().unwrap();
+        let mount = dir.path().join("memory");
+        let manifest = json!({
+            "storages": [],
+            "artifacts": [{
+                "mountPath": mount,
+                "empty": true,
+                "vasStorageName": "memory",
+                "vasVersionId": "empty-v1"
+            }]
+        });
+
+        let success = super::run_manifest_bytes(&serde_json::to_vec(&manifest).unwrap());
+
+        assert!(success);
+        assert!(mount.is_dir());
+    }
+
+    #[test]
     fn run_manifest_removes_created_staged_instruction_sources_when_precreate_fails() {
         let dir = tempfile::tempdir().unwrap();
         let first_extract_path = dir
