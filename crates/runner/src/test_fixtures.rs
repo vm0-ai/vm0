@@ -304,8 +304,9 @@ fn kill_wait_error(kill_error: Option<std::io::Error>, wait_error: String) -> St
     }
 }
 
-pub(crate) fn ignored_child_test_env_guard_enabled(env_guard_key: &str) -> bool {
-    if std::env::var_os(env_guard_key).is_none() {
+pub(crate) fn ignored_child_test_env_guard_enabled(env_guard: (&str, &str)) -> bool {
+    let (env_guard_key, env_guard_value) = env_guard;
+    if std::env::var_os(env_guard_key).as_deref() != Some(OsStr::new(env_guard_value)) {
         return false;
     }
 
@@ -398,7 +399,7 @@ mod tests {
     #[test]
     #[ignore]
     fn run_ignored_child_test_timeout_child() {
-        if !ignored_child_test_env_guard_enabled(TIMEOUT_CHILD_ENV) {
+        if !ignored_child_test_env_guard_enabled((TIMEOUT_CHILD_ENV, "1")) {
             return;
         }
 

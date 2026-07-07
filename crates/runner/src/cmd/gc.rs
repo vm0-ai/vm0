@@ -6994,7 +6994,7 @@ server:
     #[tokio::test]
     #[ignore = "spawned by gc_storage_cache_many_candidates_does_not_exhaust_lock_fds"]
     async fn gc_storage_cache_many_candidates_low_fd_child() {
-        if !ignored_child_test_env_guard_enabled(LOW_FD_STORAGE_GC_CHILD_ENV) {
+        if !ignored_child_test_env_guard_enabled((LOW_FD_STORAGE_GC_CHILD_ENV, "1")) {
             return;
         }
 

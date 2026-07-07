@@ -623,7 +623,7 @@ mod tests {
     #[test]
     #[ignore]
     fn ensure_dir_handles_restrictive_umask_child() {
-        if !ignored_child_test_env_guard_enabled(RESTRICTIVE_UMASK_CHILD_ENV) {
+        if !ignored_child_test_env_guard_enabled((RESTRICTIVE_UMASK_CHILD_ENV, "1")) {
             return;
         }
 
