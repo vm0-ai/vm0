@@ -647,7 +647,7 @@ describe("zero sidebar account menu", () => {
     expect(document.body.style.pointerEvents).not.toBe("none");
 
     await user.click(screen.getByLabelText("Open chat list menu"));
-    expect(await screen.findByRole("menu")).toBeInTheDocument();
+    await expect(screen.findByRole("menu")).resolves.toBeInTheDocument();
   });
 
   it("shows account switching, add-account, and sign-out actions", async () => {
