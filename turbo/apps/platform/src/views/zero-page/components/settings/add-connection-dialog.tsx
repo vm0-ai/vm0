@@ -91,6 +91,7 @@ function connectedStatusText(item: ConnectorTypeWithStatus): string {
 type PostConnectOptions = {
   readonly showPermissionDialog?: boolean;
   readonly connectorLabel?: string;
+  readonly externalCodeMissingInputMessage?: string | null;
 };
 
 type SubmitManualGrantFn = (
@@ -767,13 +768,19 @@ function ExternalCodePendingContent({
   onComplete: ExternalCodeSubmitHandler;
 }) {
   const completing = current.status === "completing";
+  const externalCode = method.externalCode;
+  const instructions =
+    externalCode?.instructions ??
+    `Open ${connectorLabel} sign-in, then paste the authorization code displayed by ${connectorLabel}.`;
+  const openButtonLabel =
+    externalCode?.openButtonLabel ?? `Open ${connectorLabel} sign-in`;
+  const inputLabel = externalCode?.inputLabel ?? "Authorization code";
+  const inputPlaceholder =
+    externalCode?.inputPlaceholder ?? "Authorization code";
   return (
     <form className="flex flex-col gap-3" onSubmit={onComplete}>
       {method.description && <ConnectorHelpText text={method.description} />}
-      <p className="text-sm text-muted-foreground">
-        Open {connectorLabel} sign-in, then paste the authorization code
-        displayed by {connectorLabel}.
-      </p>
+      <p className="text-sm text-muted-foreground">{instructions}</p>
       <div className="flex items-center gap-2">
         <Button
           type="button"
@@ -781,7 +788,7 @@ function ExternalCodePendingContent({
           className="min-w-0 flex-1"
           onClick={onOpen}
         >
-          Open {connectorLabel} sign-in
+          {openButtonLabel}
         </Button>
         <CopyButton
           type="button"
@@ -789,12 +796,16 @@ function ExternalCodePendingContent({
           className="p-2 hover:bg-accent"
         />
       </div>
+      <label className="sr-only" htmlFor="connector-external-code-input">
+        {inputLabel}
+      </label>
       <Input
+        id="connector-external-code-input"
         value={current.code}
         onChange={(event) => {
           onCodeChange(event.target.value);
         }}
-        placeholder="Authorization code"
+        placeholder={inputPlaceholder}
         autoComplete="one-time-code"
         data-testid="connector-external-code-input"
       />
@@ -848,6 +859,8 @@ function ExternalCodeConnectMethodContent(props: ConnectMethodContentProps) {
         options: {
           showPermissionDialog: props.showPermissionDialogOnConnect,
           connectorLabel: props.item.label,
+          externalCodeMissingInputMessage:
+            props.method.externalCode?.missingInputMessage,
         },
       },
       props.signal,

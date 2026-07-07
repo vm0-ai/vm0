@@ -38,6 +38,7 @@ import { docusign } from "./connectors/docusign";
 import { googleAds } from "./connectors/google-ads";
 import { googleMaps } from "./connectors/google-maps";
 import { gumroad } from "./connectors/gumroad";
+import { playstation } from "./connectors/playstation";
 import { spotify } from "./connectors/spotify";
 import { steam } from "./connectors/steam";
 import { agentmail } from "./connectors/agentmail";
@@ -344,6 +345,7 @@ export type {
   ConnectorDisplayCategoryGroup,
   ConnectorEnvBindingValue,
   ConnectorEnvBindings,
+  ConnectorExternalCodeDisplayConfig,
   ConnectorExternalCodeGrantConfig,
   ConnectorGenerationType,
   ConnectorGrantConfig,
@@ -706,6 +708,7 @@ const CONNECTOR_TYPES_DEF = defineConnectors({
   ...googleCloud,
   ...googleMaps,
   ...gumroad,
+  ...playstation,
   ...spotify,
   ...steam,
   ...agentmail,

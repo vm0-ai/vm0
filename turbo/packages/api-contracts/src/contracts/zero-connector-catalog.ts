@@ -79,10 +79,21 @@ const publicConnectorCatalogStartOptionSchema = z.object({
   options: z.array(publicConnectorCatalogStartOptionChoiceSchema),
 });
 
+const publicConnectorCatalogExternalCodeSchema = z.object({
+  instructions: z.string().nullable(),
+  inputLabel: z.string().nullable(),
+  inputPlaceholder: z.string().nullable(),
+  openButtonLabel: z.string().nullable(),
+  missingInputMessage: z.string().nullable(),
+});
+
 const publicConnectorCatalogAuthMethodDetailSchema =
   publicConnectorCatalogAuthMethodSummarySchema.extend({
     manualFields: z.array(publicConnectorCatalogManualFieldSchema),
     startOptions: z.array(publicConnectorCatalogStartOptionSchema),
+    externalCode: publicConnectorCatalogExternalCodeSchema
+      .nullable()
+      .optional(),
   });
 
 const publicConnectorCatalogDetailSchema =

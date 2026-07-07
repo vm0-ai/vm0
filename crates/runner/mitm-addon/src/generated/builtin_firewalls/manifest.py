@@ -206,6 +206,7 @@ FIREWALL_MODULES = {
     "pipedrive": ("pipedrive_0",),
     "plain": ("plain_0",),
     "plausible": ("plausible_0",),
+    "playstation": ("playstation_0",),
     "podchaser": ("podchaser_0",),
     "porkbun": ("porkbun_0",),
     "posthog": ("posthog_0",),

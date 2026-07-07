@@ -355,6 +355,14 @@ function assertAuthMethodShape(args: {
       `Connector catalog auth method ${args.connectorRef}/${args.authMethod.id} has start options for ${args.authMethod.grantKind} grant`,
     );
   }
+  if (
+    args.authMethod.grantKind !== "external-code" &&
+    args.authMethod.externalCode
+  ) {
+    throw new Error(
+      `Connector catalog auth method ${args.connectorRef}/${args.authMethod.id} has external-code display for ${args.authMethod.grantKind} grant`,
+    );
+  }
   for (const startOption of args.authMethod.startOptions) {
     const optionValues = startOption.options.map((option) => {
       return option.value;

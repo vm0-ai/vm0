@@ -177,6 +177,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Spotify connector integration",
     enabled: false,
   },
+  [FeatureSwitchKey.PlaystationConnector]: {
+    maintainer: "liangyou@vm0.ai",
+    description: "Enable the PlayStation player connector integration",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ZeroDebug]: {
     maintainer: "ethan@vm0.ai",
     description:

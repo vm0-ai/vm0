@@ -409,6 +409,50 @@ describe("GET /api/zero/connector-catalog", () => {
     ).toStrictEqual(["api-token"]);
   });
 
+  it("returns external-code display metadata for PlayStation when enabled", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    await enableConnectorFeatureSwitches(orgId, userId, {
+      [FeatureSwitchKey.PlaystationConnector]: true,
+    });
+
+    const client = setupApp({ context })(zeroConnectorCatalogContract);
+    const response = await accept(
+      client.status({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
+    );
+
+    assertPublicConnectorCatalogHasNoPrivateFields(response.body);
+    const playstation = response.body.connectors.find((connector) => {
+      return connector.connectorRef === "playstation";
+    });
+    expect(playstation).toMatchObject({
+      connectorRef: "playstation",
+      label: "PlayStation",
+      connected: false,
+      connectionStatus: "not-connected",
+    });
+    expect(playstation?.authMethods).toStrictEqual([
+      {
+        id: "api",
+        label: "PlayStation sign-in",
+        description:
+          "Connect PlayStation Network by pasting a temporary NPSSO token from your signed-in Sony account.",
+        grantKind: "external-code",
+        manualFields: [],
+        startOptions: [],
+        externalCode: {
+          instructions:
+            "Open the PlayStation NPSSO page while signed in to Sony, then paste only the npsso value from the JSON response. vm0 uses it once to create refreshable PlayStation tokens and does not store NPSSO.",
+          inputLabel: "NPSSO token",
+          inputPlaceholder: "NPSSO token",
+          openButtonLabel: "Open PlayStation NPSSO page",
+          missingInputMessage: "Enter the PlayStation NPSSO token.",
+        },
+      },
+    ]);
+  });
+
   it("returns connected manual grant status from public API-created state", async () => {
     const actor = bdd.user();
     await connectorsApi.connectManualGrant(actor, "openai", "api-token", {

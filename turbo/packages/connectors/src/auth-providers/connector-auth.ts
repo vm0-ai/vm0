@@ -112,6 +112,7 @@ import { supabaseProvider } from "./connectors/supabase/provider";
 import { metaAdsProvider } from "./connectors/meta-ads/provider";
 import { posthogProvider } from "./connectors/posthog/provider";
 import { quickbooksProvider } from "./connectors/quickbooks/provider";
+import { playstationProvider } from "./connectors/playstation/provider";
 import { spotifyProvider } from "./connectors/spotify/provider";
 import { steamProvider } from "./connectors/steam/provider";
 import { tiktokAdsProvider } from "./connectors/tiktok-ads/provider";
@@ -556,6 +557,7 @@ const CONNECTOR_AUTH_METHOD_PROVIDERS = {
     oauth: authCodeRefreshProviderEntry(outlookMailProvider),
   },
   posthog: { oauth: authCodeRefreshProviderEntry(posthogProvider) },
+  playstation: { api: externalCodeRefreshProviderEntry(playstationProvider) },
   quickbooks: { oauth: authCodeRefreshProviderEntry(quickbooksProvider) },
   reddit: { oauth: authCodeRefreshProviderEntry(redditProvider) },
   sentry: { oauth: authCodeRefreshProviderEntry(sentryProvider) },

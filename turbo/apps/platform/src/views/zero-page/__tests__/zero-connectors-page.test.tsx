@@ -2410,6 +2410,66 @@ describe("connectors page", () => {
     });
   });
 
+  it("uses external-code display metadata for PlayStation", async () => {
+    mockConnectors([]);
+    mockPublicConnectorStatus([
+      publicStatusItem({
+        connectorRef: "playstation",
+        label: "PlayStation",
+        authMethods: [
+          {
+            id: "api",
+            label: "PlayStation sign-in",
+            description:
+              "Connect PlayStation Network by pasting a temporary NPSSO token from your signed-in Sony account.",
+            grantKind: "external-code",
+            manualFields: [],
+            startOptions: [],
+            externalCode: {
+              instructions:
+                "Open the PlayStation NPSSO page while signed in to Sony, then paste only the npsso value from the JSON response. vm0 uses it once to create refreshable PlayStation tokens and does not store NPSSO.",
+              inputLabel: "NPSSO token",
+              inputPlaceholder: "NPSSO token",
+              openButtonLabel: "Open PlayStation NPSSO page",
+              missingInputMessage: "Enter the PlayStation NPSSO token.",
+            },
+          },
+        ],
+      }),
+    ]);
+    context.mocks.browser.open(createMockAuthWindow());
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    await waitFor(() => {
+      expect(
+        screen.getByPlaceholderText("Find connectors"),
+      ).toBeInTheDocument();
+    });
+
+    await fill(screen.getByPlaceholderText("Find connectors"), "playstation");
+    click(await screen.findByLabelText("Connect PlayStation"));
+
+    const connectDialog = await screen.findByRole("dialog", {
+      name: "PlayStation",
+    });
+    click(buttonByText("Start PlayStation sign-in", connectDialog));
+
+    await waitFor(() => {
+      expect(
+        within(connectDialog).getByText(
+          "Open the PlayStation NPSSO page while signed in to Sony, then paste only the npsso value from the JSON response. vm0 uses it once to create refreshable PlayStation tokens and does not store NPSSO.",
+        ),
+      ).toBeInTheDocument();
+    });
+    expect(
+      buttonByText("Open PlayStation NPSSO page", connectDialog),
+    ).toBeInTheDocument();
+    expect(
+      within(connectDialog).getByPlaceholderText("NPSSO token"),
+    ).toBeInTheDocument();
+  });
+
   it("manages a custom connector from creation through deletion", async () => {
     mockCustomConnectorStory();
 

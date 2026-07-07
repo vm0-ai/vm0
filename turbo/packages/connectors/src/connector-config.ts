@@ -120,6 +120,15 @@ export interface ConnectorExternalCodeGrantConfig {
   readonly kind: "external-code";
   readonly scopes: string[];
   readonly outputs: ConnectorGrantOutputBindings;
+  readonly display?: ConnectorExternalCodeDisplayConfig;
+}
+
+export interface ConnectorExternalCodeDisplayConfig {
+  readonly instructions?: string;
+  readonly inputLabel?: string;
+  readonly inputPlaceholder?: string;
+  readonly openButtonLabel?: string;
+  readonly missingInputMessage?: string;
 }
 
 export interface ConnectorDeviceAuthStartSelectOptionChoiceConfig {

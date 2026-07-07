@@ -212,6 +212,7 @@ const CONNECTOR_ICON_COLORFUL = {
   podchaser: true,
   porkbun: true,
   posthog: true,
+  playstation: true,
   primitive: true,
   productlane: true,
   printful: true,
