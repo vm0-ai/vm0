@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.566.0](https://github.com/vm0-ai/vm0/compare/app-v0.565.0...app-v0.566.0) (2026-07-07)
+
+
+### Features
+
+* expand built-in workflow templates with persona-curated catalog ([#20383](https://github.com/vm0-ai/vm0/issues/20383)) ([5bc3fe1](https://github.com/vm0-ai/vm0/commit/5bc3fe196c3188085ca607b7afa20692b3c8013b))
+* prompt for force upgrade ([#20351](https://github.com/vm0-ai/vm0/issues/20351)) ([2579a2e](https://github.com/vm0-ai/vm0/commit/2579a2e0621b3bf62388b54d9421019bc9bdac3a))
+* regroup use case gallery by role instead of output type ([#20426](https://github.com/vm0-ai/vm0/issues/20426)) ([c764671](https://github.com/vm0-ai/vm0/commit/c7646718ebad2d465419fa028dff083984123c12))
+* replace chat thread icon menu with searchable emoji picker ([#20395](https://github.com/vm0-ai/vm0/issues/20395)) ([6e21cd2](https://github.com/vm0-ai/vm0/commit/6e21cd293ab73fd241f349aa35db7c90f14de8fb))
+
+
+### Bug Fixes
+
+* align connector access dialog scrollbar to modal edge ([#20390](https://github.com/vm0-ai/vm0/issues/20390)) ([e6827eb](https://github.com/vm0-ai/vm0/commit/e6827ebed7f2ea97e4acbd63a199b43805fa125f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.159.3
+    * @vm0/connectors bumped to 1.144.0
+    * @vm0/core bumped to 8.409.0
+
 ## [0.565.0](https://github.com/vm0-ai/vm0/compare/app-v0.564.2...app-v0.565.0) (2026-07-07)
 
 

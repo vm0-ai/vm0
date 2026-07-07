@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.226.0](https://github.com/vm0-ai/vm0/compare/cli-v9.225.6...cli-v9.226.0) (2026-07-07)
+
+
+### Features
+
+* wire warm cards website template resource ([#20432](https://github.com/vm0-ai/vm0/issues/20432)) ([523b392](https://github.com/vm0-ai/vm0/commit/523b392ed25a36663d77a522fb457f16d9803609))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.159.3
+    * @vm0/connectors bumped to 1.144.0
+    * @vm0/core bumped to 8.409.0
+
 ## [9.225.6](https://github.com/vm0-ai/vm0/compare/cli-v9.225.5...cli-v9.225.6) (2026-07-06)
 
 
