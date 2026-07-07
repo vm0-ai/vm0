@@ -157,13 +157,7 @@ class TestXConnectorResponsePipeline:
         entry = lost_visibility_entries[0]
         assert entry["level"] == "error"
         assert entry["body_truncated"] is False
-        if encoding_case == "zstd":
-            assert entry["parse_error"] in {
-                "incomplete compressed body",
-                "invalid compressed body",
-            }
-        else:
-            assert entry["parse_error"] == "incomplete compressed body"
+        assert entry["parse_error"] == "incomplete compressed body"
         assert "connector_response_finish" not in flow.metadata
 
     def test_full_response_pipeline_x_data_object_bills_single_resource(

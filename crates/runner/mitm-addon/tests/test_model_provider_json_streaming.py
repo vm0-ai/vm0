@@ -34,9 +34,9 @@ def _deterministic_low_ratio_text(size: int) -> str:
     remaining = size
     while remaining > 0:
         seed = hashlib.sha256(seed).hexdigest().encode()
-        chunk = seed.decode()
-        chunks.append(chunk[:remaining])
-        remaining -= len(chunk)
+        fragment = seed.decode()[:remaining]
+        chunks.append(fragment)
+        remaining -= len(fragment)
     return "".join(chunks)
 
 
@@ -224,11 +224,7 @@ class TestModelProviderJsonStreaming:
             if entry.get("message") == "Model provider JSON usage extraction failed"
         ]
         assert len(usage_warnings) == 1
-        assert usage_warnings[0]["error"] in {
-            "decoded body limit exceeded",
-            "incomplete compressed body",
-            "invalid compressed body",
-        }
+        assert usage_warnings[0]["error"] == "incomplete compressed body"
 
     @pytest.mark.parametrize("encoding_case", ["gzip", "deflate"])
     @pytest.mark.parametrize(
