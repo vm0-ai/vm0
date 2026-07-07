@@ -235,6 +235,8 @@ impl ApiHttpConfig {
                 "VM0_API_TOKEN is required for enabled API HTTP config".into(),
             ));
         }
+        reqwest::header::HeaderValue::from_str(&client_session_id)
+            .map_err(|e| AgentError::Http(format!("invalid client session id: {e}")))?;
         Ok(Self {
             urls: ApiUrls::new(&base_url),
             token,

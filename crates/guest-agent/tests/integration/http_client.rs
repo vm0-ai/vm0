@@ -317,6 +317,22 @@ async fn post_json_sends_platform_client_headers() {
     assert_ne!(request_ids[0], request_ids[1]);
 }
 
+#[test]
+fn with_api_config_rejects_invalid_client_session_header() {
+    let result = guest_agent::http::HttpClient::with_api_config(
+        "http://127.0.0.1",
+        "test-token",
+        "",
+        "bad\nrun",
+        Duration::ZERO,
+    );
+
+    let Err(AgentError::Http(message)) = result else {
+        panic!("expected invalid client session id error");
+    };
+    assert!(message.contains("invalid client session id"));
+}
+
 #[tokio::test]
 async fn post_json_uses_explicit_api_config_without_env_api_url() {
     let server = MockServer::start();
