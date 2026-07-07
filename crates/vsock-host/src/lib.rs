@@ -602,12 +602,15 @@ async fn write_request_frame_with_builder(
     before_write()?;
     write_guard.mark_started();
     let result = writer.write_all(&frame).await;
-    drop(frame);
     if let Err(error) = result {
         write_guard.mark_returned();
         shared.poison_connection();
+        drop(writer);
+        drop(frame);
         return Err(error);
     }
+    drop(writer);
+    drop(frame);
     write_guard.mark_returned();
     Ok(())
 }
