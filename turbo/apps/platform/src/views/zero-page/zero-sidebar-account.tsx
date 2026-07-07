@@ -736,11 +736,11 @@ export function AccountDropdown({
           sideOffset={8}
           className="w-[240px]"
           onCloseAutoFocus={(event) => {
-            event.preventDefault();
             const section = consumePendingSettingsSection(settingsOwnerId);
             if (section === null) {
               return;
             }
+            event.preventDefault();
             detach(openSettings(section, pageSignal), Reason.DomCallback);
           }}
         >
