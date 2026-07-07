@@ -1,7 +1,8 @@
 import { getBuildVersion } from "./build-info.ts";
+import { resolveApiBase } from "../signals/api-base.ts";
 import { settle } from "../signals/utils.ts";
 
-const FORCE_UPGRADE_PATH = "api/client/force-upgrade";
+const WEB_CLIENT_COMPATIBILITY_PATH = "api/client/compatibility";
 
 type ForceUpgradeFetch = (
   input: string,
@@ -9,7 +10,7 @@ type ForceUpgradeFetch = (
 ) => Promise<Pick<Response, "json" | "ok">>;
 
 type ForceUpgradeResponse = {
-  forceUpgrade?: unknown;
+  supported?: unknown;
 };
 
 export type ForceUpgradeCheckOptions = {
@@ -30,8 +31,7 @@ function normalizeForceUpgradeApiBase(
 }
 
 function resolveForceUpgradeApiBase(): string | null {
-  const configured = import.meta.env.ATOM_URL as string | undefined;
-  return normalizeForceUpgradeApiBase(configured);
+  return normalizeForceUpgradeApiBase(resolveApiBase());
 }
 
 function isForceUpgradeResponse(value: unknown): value is ForceUpgradeResponse {
@@ -39,7 +39,10 @@ function isForceUpgradeResponse(value: unknown): value is ForceUpgradeResponse {
 }
 
 export function buildForceUpgradeUrl(version: string, apiBase: string): string {
-  const url = new URL(FORCE_UPGRADE_PATH, `${trimTrailingSlash(apiBase)}/`);
+  const url = new URL(
+    WEB_CLIENT_COMPATIBILITY_PATH,
+    `${trimTrailingSlash(apiBase)}/`,
+  );
   url.searchParams.set("version", version);
   return url.toString();
 }
@@ -68,7 +71,7 @@ export async function shouldForceUpgrade(
   }
 
   const body: unknown = await response.json();
-  return isForceUpgradeResponse(body) && body.forceUpgrade === true;
+  return isForceUpgradeResponse(body) && body.supported === false;
 }
 
 export async function checkForceUpgrade(
