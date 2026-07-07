@@ -13,6 +13,11 @@ interface InvalidTeamsActivityResult {
   readonly error: string;
 }
 
+interface TeamsMentionNormalizationResult {
+  readonly text: string;
+  readonly mentionsRecipient: boolean;
+}
+
 type TeamsActivityNormalizationResult =
   | NormalizedTeamsActivityResult
   | InvalidTeamsActivityResult;
@@ -85,28 +90,81 @@ function normalizeWhitespace(text: string): string {
   return text.replace(/\s+/g, " ").trim();
 }
 
-function stripTeamsMentions(args: {
+function mentionLabel(mentionText: string): string {
+  return mentionText.replace(/^<at>/u, "").replace(/<\/at>$/u, "");
+}
+
+function isRecipientMention(args: {
+  readonly mentionedId: string | null;
+  readonly mentionedName: string | null;
+  readonly mentionText: string;
+  readonly recipientId: string | null;
+  readonly recipientName: string | null;
+}): boolean {
+  if (args.recipientId && args.mentionedId === args.recipientId) {
+    return true;
+  }
+  return (
+    args.recipientName !== null &&
+    args.mentionedName === args.recipientName &&
+    mentionLabel(args.mentionText) === args.recipientName
+  );
+}
+
+function formatTeamsMention(args: {
+  readonly mentionedId: string | null;
+  readonly mentionedName: string | null;
+  readonly mentionText: string;
+}): string {
+  const label = args.mentionedName ?? mentionLabel(args.mentionText);
+  return args.mentionedId ? `@${label} (${args.mentionedId})` : `@${label}`;
+}
+
+function normalizeTeamsMentions(args: {
   readonly rawText: string;
   readonly entities: readonly unknown[];
   readonly recipientId: string | null;
-}): string {
+  readonly recipientName: string | null;
+}): TeamsMentionNormalizationResult {
   let text = args.rawText;
+  let mentionsRecipient = false;
   for (const entity of args.entities) {
     if (!isRecord(entity) || readString(entity, "type") !== "mention") {
       continue;
     }
     const mentioned = readRecord(entity, "mentioned");
     const mentionedId = mentioned ? readString(mentioned, "id") : null;
-    if (args.recipientId && mentionedId && mentionedId !== args.recipientId) {
+    const mentionedName = mentioned ? readString(mentioned, "name") : null;
+    const mentionText = readString(entity, "text");
+    if (!mentionText) {
       continue;
     }
-    const mentionText = readString(entity, "text");
-    if (mentionText) {
+    if (
+      isRecipientMention({
+        mentionedId,
+        mentionedName,
+        mentionText,
+        recipientId: args.recipientId,
+        recipientName: args.recipientName,
+      })
+    ) {
+      mentionsRecipient = true;
       text = text.split(mentionText).join("");
+      continue;
     }
+    text = text
+      .split(mentionText)
+      .join(formatTeamsMention({ mentionedId, mentionedName, mentionText }));
   }
 
-  return normalizeWhitespace(text.replace(/<at>[^<]+<\/at>/g, ""));
+  return {
+    text: normalizeWhitespace(
+      text.replace(/<at>([^<]+)<\/at>/gu, (_match, label: string) => {
+        return `@${label}`;
+      }),
+    ),
+    mentionsRecipient,
+  };
 }
 
 function idempotencyKey(
@@ -176,10 +234,11 @@ function messageActivity(
   const recipientValue = activity.recipient;
   const recipient = recipientValue ? normalizeActor(recipientValue) : null;
   const rawText = readString(activity, "text") ?? "";
-  const text = stripTeamsMentions({
+  const mentionNormalization = normalizeTeamsMentions({
     rawText,
     entities: readArray(activity, "entities"),
     recipientId: recipient?.id ?? null,
+    recipientName: recipient?.name ?? null,
   });
 
   return {
@@ -189,7 +248,8 @@ function messageActivity(
     sender,
     recipient,
     rawText,
-    text,
+    text: mentionNormalization.text,
+    mentionsRecipient: mentionNormalization.mentionsRecipient,
   };
 }
 

@@ -1,6 +1,6 @@
 {
   "name": "@vm0/db",
-  "version": "1.97.0",
+  "version": "1.97.1",
   "private": true,
   "type": "module",
   "exports": {
@@ -12,6 +12,10 @@
       "import": "./src/schema/*.ts",
       "types": "./src/schema/*.ts"
     },
+    "./jsonb-contracts/*": {
+      "import": "./src/jsonb-contracts/*.ts",
+      "types": "./src/jsonb-contracts/*.ts"
+    },
     "./types": {
       "import": "./src/types.ts",
       "types": "./src/types.ts"
@@ -20,13 +24,14 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "oxlint && oxlint --type-aware -c ../../.oxlintrc.typeaware.json && eslint . --max-warnings 0",
+    "lint": "pnpm lint:jsonb-contracts && oxlint && oxlint --type-aware -c ../../.oxlintrc.typeaware.json && eslint . --max-warnings 0",
     "check-types": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx scripts/migrate.ts",
     "db:studio": "drizzle-kit studio",
     "db:reset": "tsx scripts/reset-db.ts",
-    "test:migration-consistency": "tsx scripts/test-migration-consistency-schema.ts"
+    "test:migration-consistency": "tsx scripts/test-migration-consistency-schema.ts",
+    "lint:jsonb-contracts": "tsx scripts/check-jsonb-contracts.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1079.0",

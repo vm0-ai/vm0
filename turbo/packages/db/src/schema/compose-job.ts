@@ -10,16 +10,11 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-
-/**
- * Result object stored when compose job completes successfully
- */
-export interface ComposeJobResult {
-  composeId: string;
-  composeName: string;
-  versionId: string;
-  warnings: string[];
-}
+import type {
+  ComposeJobContent,
+  ComposeJobResult,
+} from "@vm0/db/jsonb-contracts/compose-job";
+export type { ComposeJobResult } from "@vm0/db/jsonb-contracts/compose-job";
 
 /**
  * Compose job source — where the job was initiated from
@@ -39,7 +34,7 @@ export const composeJobs = pgTable(
     githubUrl: text("github_url"),
     overwrite: boolean("overwrite").default(false).notNull(),
     // Platform compose: the vm0.yaml content submitted from the UI
-    content: jsonb("content"),
+    content: jsonb("content").$type<ComposeJobContent>(),
     // Platform compose: the instructions file content (e.g. CLAUDE.md)
     instructions: text("instructions"),
     // Where this job was initiated from

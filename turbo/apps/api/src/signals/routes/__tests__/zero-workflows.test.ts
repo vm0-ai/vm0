@@ -228,7 +228,7 @@ describe("zero workflows", () => {
     expectZeroPreCreateSource(run.body.runId, "workflow_slash_command");
   });
 
-  it("requires agent write-permission to create workflows under an agent", async () => {
+  it("requires agent write-permission to create public workflows under an agent", async () => {
     const owner = user();
     const member = user({ orgId: owner.orgId, orgRole: "org:member" });
     const agent = await createAgent(owner, {
@@ -280,6 +280,79 @@ describe("zero workflows", () => {
         canPublish: false,
       }),
     );
+  });
+
+  it("allows members to create private workflows under visible public agents", async () => {
+    const agentOwner = user();
+    const member = user({
+      orgId: agentOwner.orgId,
+      orgRole: "org:member",
+    });
+    const otherMember = user({
+      orgId: agentOwner.orgId,
+      orgRole: "org:member",
+    });
+    const agent = await createAgent(agentOwner, {
+      displayName: "Shared Agent",
+      visibility: "public",
+    });
+    const workflowName = `member-private-workflow-${randomUUID().slice(0, 8)}`;
+
+    const created = await createWorkflow(member, {
+      agentId: agent.agentId,
+      name: workflowName,
+      displayName: "Member Private Workflow",
+      instruction: "# member private workflow",
+    });
+
+    expect(created.body).toMatchObject({
+      agentId: agent.agentId,
+      name: workflowName,
+      visibility: "private",
+      ownerUserId: member.userId,
+      canManage: true,
+      canPublish: false,
+    });
+
+    const updated = await updateWorkflow(member, created.body.id, {
+      displayName: "Updated Member Private Workflow",
+    });
+    expect(updated.body).toMatchObject({
+      id: created.body.id,
+      displayName: "Updated Member Private Workflow",
+      canManage: true,
+    });
+
+    await requestUpdateWorkflow(
+      agentOwner,
+      created.body.id,
+      { displayName: "Agent Owner Update" },
+      [404],
+    );
+
+    const memberList = await accept(
+      collectionClient().list({ headers: authHeaders(member) }),
+      [200],
+    );
+    expect(memberList.body).toContainEqual(
+      expect.objectContaining({
+        id: created.body.id,
+        name: workflowName,
+        canManage: true,
+      }),
+    );
+
+    const agentOwnerList = await accept(
+      collectionClient().list({ headers: authHeaders(agentOwner) }),
+      [200],
+    );
+    expect(names(agentOwnerList.body)).not.toContain(workflowName);
+
+    const otherMemberList = await accept(
+      collectionClient().list({ headers: authHeaders(otherMember) }),
+      [200],
+    );
+    expect(names(otherMemberList.body)).not.toContain(workflowName);
   });
 
   it("binds a newly created workflow only to a current matching agent chat thread", async () => {
@@ -404,7 +477,7 @@ describe("zero workflows", () => {
 
   it("rejects same-owner private workflow slugs while allowing other-owner private slugs", async () => {
     const actor = user();
-    const other = user({ orgId: actor.orgId });
+    const other = user({ orgId: actor.orgId, orgRole: "org:member" });
     const agent = await createAgent(actor, {
       displayName: "Private Slug Agent",
       visibility: "public",

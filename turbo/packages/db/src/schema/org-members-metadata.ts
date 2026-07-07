@@ -8,6 +8,7 @@ import {
   jsonb,
   varchar,
 } from "drizzle-orm/pg-core";
+import type { OrgMembersPinnedAgentIds } from "@vm0/db/jsonb-contracts/org-members-metadata";
 
 /**
  * org_members_metadata — source of truth for per-member preferences.
@@ -20,7 +21,9 @@ export const orgMembersMetadata = pgTable(
     userId: text("user_id").notNull(),
     timezone: text("timezone"),
     onboardingRole: text("onboarding_role"),
-    pinnedAgentIds: jsonb("pinned_agent_ids").$type<string[]>().default([]),
+    pinnedAgentIds: jsonb("pinned_agent_ids")
+      .$type<OrgMembersPinnedAgentIds>()
+      .default([]),
     sendMode: text("send_mode").notNull().default("enter"),
     selectedModel: varchar("selected_model", { length: 255 }),
     onboardingDone: boolean("onboarding_done").notNull().default(false),

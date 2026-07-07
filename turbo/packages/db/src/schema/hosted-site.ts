@@ -11,6 +11,11 @@ import {
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
+import type { HostedSiteManifest } from "@vm0/db/jsonb-contracts/hosted-site";
+export type {
+  HostedSiteManifest,
+  HostedSiteManifestFile,
+} from "@vm0/db/jsonb-contracts/hosted-site";
 
 export const HOSTED_DEPLOYMENT_STATUSES = [
   "uploading",
@@ -20,25 +25,6 @@ export const HOSTED_DEPLOYMENT_STATUSES = [
 ] as const;
 export type HostedDeploymentStatus =
   (typeof HOSTED_DEPLOYMENT_STATUSES)[number];
-
-export interface HostedSiteManifestFile {
-  readonly path: string;
-  readonly size: number;
-  readonly sha256: string;
-  readonly contentType: string;
-  readonly immutable?: boolean;
-}
-
-export interface HostedSiteManifest {
-  readonly version: 1;
-  readonly deploymentId: string;
-  readonly siteId: string;
-  readonly publicSlug: string;
-  readonly createdAt: string;
-  readonly artifactKind?: "hosted-site" | "presentation-html";
-  readonly spaFallback: boolean;
-  readonly files: Record<string, HostedSiteManifestFile>;
-}
 
 export const hostedSites = pgTable(
   "hosted_sites",

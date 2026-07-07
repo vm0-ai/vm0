@@ -8,13 +8,13 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import type {
-  CodexServiceTier,
-  PersistedAttachment,
-  ThreadGenerationTemplates,
-} from "@vm0/api-contracts/contracts/chat-threads";
+import type { CodexServiceTier } from "@vm0/api-contracts/contracts/chat-threads";
 import { agentComposes } from "./agent-compose";
 import { computerUseHosts } from "./computer-use-host";
+import type {
+  ChatThreadDraftAttachments,
+  ChatThreadGenerationTemplate,
+} from "@vm0/db/jsonb-contracts/chat-thread";
 
 /**
  * Chat Threads table
@@ -53,7 +53,8 @@ export const chatThreads = pgTable(
      * Draft attachment metadata for the thread's composer. Only completed uploads.
      * Null when no draft attachments are saved.
      */
-    draftAttachments: jsonb("draft_attachments").$type<PersistedAttachment[]>(),
+    draftAttachments:
+      jsonb("draft_attachments").$type<ChatThreadDraftAttachments>(),
     /**
      * Slack-style watermark: the last timestamp up to which the user has read
      * messages in this thread. Forward-only — never rewound.
@@ -82,7 +83,7 @@ export const chatThreads = pgTable(
      */
     generationTemplate: jsonb(
       "generation_template",
-    ).$type<ThreadGenerationTemplates>(),
+    ).$type<ChatThreadGenerationTemplate>(),
     computerUseHostId: uuid("computer_use_host_id").references(
       () => {
         return computerUseHosts.id;

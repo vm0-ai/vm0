@@ -2154,6 +2154,22 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
     );
     expect(connected.connectionStatus).toBe("connected");
 
+    // A connected Drive still needs to be enabled for the thread's agent.
+    artifacts = await chat.listThreadArtifacts(actor, run.threadId);
+    for (const file of artifacts.runs[0]?.files ?? []) {
+      expect(file.googleDriveSync).toStrictEqual({ status: "disconnected" });
+    }
+    const disabledForAgent = await chat.requestSyncThreadArtifact(
+      actor,
+      run.threadId,
+      { runId: run.runId, fileId: csvId },
+      [400],
+    );
+    expectApiError(disabledForAgent.body);
+    expect(disabledForAgent.body.error.message).toBe(
+      "Connect Google Drive before syncing artifacts",
+    );
+
     const unknownArtifact = await chat.requestSyncThreadArtifact(
       actor,
       run.threadId,
@@ -2171,6 +2187,8 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
     );
     expectApiError(invalidBody.body);
     expect(invalidBody.body.error.code).toBe("BAD_REQUEST");
+
+    await api.enableAgentConnectors(actor, agentId, ["google-drive"]);
 
     // Drive lists one mirrored file: csv synced, pdf not synced.
     const listRecorder = mockGoogleDriveFilesList(() => {
@@ -2399,6 +2417,7 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
       code: "drive-no-refresh",
       state: stateFromAuthorizationUrl(start.authorizationUrl),
     });
+    await api.enableAgentConnectors(actor, agentId, ["google-drive"]);
     mockGoogleDriveFilesList(() => {
       return { status: 401 };
     });

@@ -1,0 +1,500 @@
+import { command } from "ccstate";
+import { zeroTeamsOauthContract } from "@vm0/api-contracts/contracts/zero-teams-oauth";
+import { z } from "zod";
+
+import { env } from "../../lib/env";
+import { logger } from "../../lib/log";
+import { requiredAuthContext$ } from "../auth/auth-context";
+import { request$ } from "../context/hono";
+import { queryOf } from "../context/request";
+import {
+  buildTeamsInstallUrl,
+  connectTeamsInstallation$,
+  isTeamsInstallationActive,
+  prepareTeamsInstallation$,
+  publishTeamsChanged$,
+} from "../services/zero-teams-connect.service";
+import { safeJsonParse, settle } from "../utils";
+import type { RouteEntry } from "../route-entry";
+import {
+  getOAuthCanonicalRedirectUrl,
+  getOAuthWebOrigin,
+} from "./oauth-web-origin";
+
+const L = logger("TeamsOAuth");
+const MICROSOFT_AUTHORIZATION_URL =
+  "https://login.microsoftonline.com/common/oauth2/v2.0/authorize";
+const MICROSOFT_TOKEN_URL =
+  "https://login.microsoftonline.com/common/oauth2/v2.0/token";
+const MICROSOFT_ME_URL = "https://graph.microsoft.com/v1.0/me";
+const REDIRECT_STATUS = 307;
+const MAX_PROMPT_STATE_LENGTH = 500;
+const MICROSOFT_TEAMS_CONNECT_SCOPES = [
+  "openid",
+  "profile",
+  "email",
+  "User.Read",
+] as const;
+const teamsOauthAuthOptions = {
+  requireOrganization: true,
+  missingOrganizationStatus: 401,
+} as const;
+
+interface OAuthState {
+  readonly orgId: string | null;
+  readonly vm0UserId: string | null;
+  readonly prompt: string | null;
+}
+
+interface MicrosoftTeamsUserInfo {
+  readonly id: string;
+  readonly displayName: string | null;
+  readonly userPrincipalName: string | null;
+  readonly mail: string | null;
+}
+
+interface MicrosoftTeamsOAuthResult {
+  readonly tenantId: string;
+  readonly user: MicrosoftTeamsUserInfo;
+}
+
+interface TeamsOauthAuth {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly orgRole: "admin" | "member";
+}
+
+type TeamsOauthAuthResult =
+  | { readonly kind: "ok"; readonly auth: TeamsOauthAuth }
+  | {
+      readonly kind: "error";
+      readonly message: string;
+      readonly status: 400 | 401 | 403;
+    };
+
+function redirectResponse(url: string): Response {
+  return new Response(null, {
+    status: REDIRECT_STATUS,
+    headers: { location: url },
+  });
+}
+
+function noStoreRedirect(url: string): Response {
+  return new Response(null, {
+    status: REDIRECT_STATUS,
+    headers: { location: url, "Cache-Control": "no-store" },
+  });
+}
+
+function jsonErrorResponse(error: string, status: number): Response {
+  return new Response(JSON.stringify({ error }), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+function authJsonErrorResponse(
+  error: string,
+  status: 400 | 401 | 403,
+): Response {
+  return jsonErrorResponse(error, status);
+}
+
+function appUrl(path: string): string {
+  return `${env("APP_URL")}${path}`;
+}
+
+function settingsErrorRedirect(message: string): Response {
+  return redirectResponse(
+    appUrl(`/settings/teams?error=${encodeURIComponent(message)}`),
+  );
+}
+
+function settingsSuccessRedirect(args: {
+  readonly tenantName?: string | null;
+  readonly teamName?: string | null;
+}): Response {
+  const params = new URLSearchParams({ status: "connected" });
+  if (args.tenantName) {
+    params.set("tenantName", args.tenantName);
+  }
+  if (args.teamName) {
+    params.set("teamName", args.teamName);
+  }
+  return redirectResponse(appUrl(`/settings/teams?${params.toString()}`));
+}
+
+function teamsInstallRedirect(tenantId: string): Response {
+  const installUrl = buildTeamsInstallUrl(tenantId);
+  if (!installUrl) {
+    return settingsErrorRedirect(
+      "Microsoft Teams integration is not configured.",
+    );
+  }
+  return noStoreRedirect(installUrl);
+}
+
+function truncatePrompt(prompt: string): string {
+  return [...prompt].slice(0, MAX_PROMPT_STATE_LENGTH).join("");
+}
+
+function optionalString(value: unknown): string | null {
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function stateMatchesAuth(state: OAuthState, auth: TeamsOauthAuth): boolean {
+  return state.orgId === auth.orgId && state.vm0UserId === auth.userId;
+}
+
+const resolveTeamsOauthAuth$ = command(
+  async ({ set }, signal: AbortSignal): Promise<TeamsOauthAuthResult> => {
+    const authResult = await set(
+      requiredAuthContext$,
+      teamsOauthAuthOptions,
+      signal,
+    );
+    signal.throwIfAborted();
+
+    if ("status" in authResult) {
+      return {
+        kind: "error",
+        message: authResult.body.error.message,
+        status: authResult.status,
+      };
+    }
+    if (
+      authResult.tokenType !== "session" ||
+      !authResult.orgId ||
+      !authResult.orgRole
+    ) {
+      return {
+        kind: "error",
+        message:
+          "Microsoft Teams OAuth connect requires a signed-in browser session",
+        status: 403,
+      };
+    }
+    return {
+      kind: "ok",
+      auth: {
+        userId: authResult.userId,
+        orgId: authResult.orgId,
+        orgRole: authResult.orgRole,
+      },
+    };
+  },
+);
+
+function parseOAuthState(state: string | undefined): OAuthState {
+  if (!state) {
+    return { orgId: null, vm0UserId: null, prompt: null };
+  }
+
+  const parsed = safeJsonParse(state);
+  if (typeof parsed !== "object" || parsed === null) {
+    return { orgId: null, vm0UserId: null, prompt: null };
+  }
+
+  const record = parsed as Record<string, unknown>;
+  return {
+    orgId: optionalString(record.orgId),
+    vm0UserId: optionalString(record.vm0UserId),
+    prompt: optionalString(record.prompt),
+  };
+}
+
+function callbackRedirectUri(origin: string): string {
+  return `${origin}/api/zero/teams/oauth/callback`;
+}
+
+function microsoftCredentials(): {
+  readonly clientId: string;
+  readonly clientSecret: string;
+} | null {
+  const clientId = env("MICROSOFT_OAUTH_CLIENT_ID");
+  const clientSecret = env("MICROSOFT_OAUTH_CLIENT_SECRET");
+  if (!clientId || !clientSecret) {
+    return null;
+  }
+  return { clientId, clientSecret };
+}
+
+function jwtPayload(token: string): Record<string, unknown> | null {
+  const [, payload] = token.split(".");
+  if (!payload) {
+    return null;
+  }
+
+  const parsed = safeJsonParse(Buffer.from(payload, "base64url").toString());
+  return typeof parsed === "object" && parsed !== null
+    ? (parsed as Record<string, unknown>)
+    : null;
+}
+
+async function fetchMicrosoftMe(
+  accessToken: string,
+  signal: AbortSignal,
+): Promise<MicrosoftTeamsUserInfo> {
+  const response = await fetch(MICROSOFT_ME_URL, {
+    signal,
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!response.ok) {
+    throw new Error(`Microsoft user info fetch failed: ${response.status}`);
+  }
+
+  const data = z
+    .object({
+      id: z.string().min(1),
+      displayName: z.string().nullable().optional(),
+      userPrincipalName: z.string().nullable().optional(),
+      mail: z.string().nullable().optional(),
+    })
+    .parse(await response.json());
+
+  return {
+    id: data.id,
+    displayName: data.displayName ?? null,
+    userPrincipalName: data.userPrincipalName ?? null,
+    mail: data.mail ?? null,
+  };
+}
+
+async function exchangeMicrosoftTeamsOAuthCode(args: {
+  readonly clientId: string;
+  readonly clientSecret: string;
+  readonly code: string;
+  readonly redirectUri: string;
+  readonly signal: AbortSignal;
+}): Promise<MicrosoftTeamsOAuthResult> {
+  const response = await fetch(MICROSOFT_TOKEN_URL, {
+    signal: args.signal,
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: args.clientId,
+      client_secret: args.clientSecret,
+      code: args.code,
+      redirect_uri: args.redirectUri,
+      grant_type: "authorization_code",
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Microsoft OAuth exchange failed: ${response.status}`);
+  }
+
+  const data = z
+    .object({
+      access_token: z.string().optional(),
+      id_token: z.string().optional(),
+      error: z.string().optional(),
+      error_description: z.string().optional(),
+    })
+    .parse(await response.json());
+
+  if (data.error) {
+    throw new Error(data.error_description ?? data.error);
+  }
+  if (!data.access_token) {
+    throw new Error("No access token in Microsoft OAuth response");
+  }
+  if (!data.id_token) {
+    throw new Error("No ID token in Microsoft OAuth response");
+  }
+
+  const payload = jwtPayload(data.id_token);
+  const tenantId = optionalString(payload?.tid);
+  if (!tenantId) {
+    throw new Error("No tenant id in Microsoft OAuth response");
+  }
+
+  return {
+    tenantId,
+    user: await fetchMicrosoftMe(data.access_token, args.signal),
+  };
+}
+
+const connectOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const request = get(request$).raw;
+  const canonicalRedirectUrl = getOAuthCanonicalRedirectUrl(request);
+  if (canonicalRedirectUrl) {
+    return noStoreRedirect(canonicalRedirectUrl);
+  }
+
+  const origin = getOAuthWebOrigin(request);
+  const credentials = microsoftCredentials();
+  if (!credentials) {
+    return jsonErrorResponse(
+      "Microsoft Teams integration is not configured",
+      503,
+    );
+  }
+
+  const query = get(queryOf(zeroTeamsOauthContract.connect));
+  if (!query.orgId || !query.vm0UserId) {
+    return jsonErrorResponse("Missing orgId or vm0UserId", 400);
+  }
+
+  const authResult = await set(resolveTeamsOauthAuth$, signal);
+  if (authResult.kind === "error") {
+    return authJsonErrorResponse(authResult.message, authResult.status);
+  }
+  if (
+    query.orgId !== authResult.auth.orgId ||
+    query.vm0UserId !== authResult.auth.userId
+  ) {
+    return authJsonErrorResponse(
+      "Authenticated user does not match Teams connect request",
+      403,
+    );
+  }
+
+  const stateObj: {
+    orgId: string;
+    vm0UserId: string;
+    prompt?: string;
+  } = {
+    orgId: authResult.auth.orgId,
+    vm0UserId: authResult.auth.userId,
+  };
+  if (query.prompt) {
+    stateObj.prompt = truncatePrompt(query.prompt);
+  }
+
+  const authUrl = new URL(MICROSOFT_AUTHORIZATION_URL);
+  authUrl.searchParams.set("client_id", credentials.clientId);
+  authUrl.searchParams.set("redirect_uri", callbackRedirectUri(origin));
+  authUrl.searchParams.set("response_type", "code");
+  authUrl.searchParams.set("scope", MICROSOFT_TEAMS_CONNECT_SCOPES.join(" "));
+  authUrl.searchParams.set("state", JSON.stringify(stateObj));
+  authUrl.searchParams.set("prompt", "select_account");
+
+  return noStoreRedirect(authUrl.toString());
+});
+
+const callbackOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const request = get(request$).raw;
+  const canonicalRedirectUrl = getOAuthCanonicalRedirectUrl(request);
+  if (canonicalRedirectUrl) {
+    return redirectResponse(canonicalRedirectUrl);
+  }
+
+  const origin = getOAuthWebOrigin(request);
+  const credentials = microsoftCredentials();
+  if (!credentials) {
+    return jsonErrorResponse(
+      "Microsoft Teams integration is not configured",
+      503,
+    );
+  }
+
+  const query = get(queryOf(zeroTeamsOauthContract.callback));
+  if (query.error) {
+    return settingsErrorRedirect(query.error_description ?? query.error);
+  }
+  if (!query.code) {
+    return jsonErrorResponse("Missing authorization code", 400);
+  }
+
+  const state = parseOAuthState(query.state);
+  if (!state.orgId || !state.vm0UserId) {
+    return settingsErrorRedirect("Invalid connect state.");
+  }
+
+  const authResult = await set(resolveTeamsOauthAuth$, signal);
+  if (authResult.kind === "error") {
+    const message =
+      authResult.status === 401
+        ? "Please sign in to connect Microsoft Teams."
+        : "Invalid connect state.";
+    return settingsErrorRedirect(message);
+  }
+  const auth = authResult.auth;
+  if (!stateMatchesAuth(state, auth)) {
+    return settingsErrorRedirect("Invalid connect state.");
+  }
+
+  const exchange = await settle(
+    exchangeMicrosoftTeamsOAuthCode({
+      clientId: credentials.clientId,
+      clientSecret: credentials.clientSecret,
+      code: query.code,
+      redirectUri: callbackRedirectUri(origin),
+      signal,
+    }),
+  );
+  signal.throwIfAborted();
+
+  if (!exchange.ok) {
+    L.error("Microsoft Teams OAuth exchange failed", { error: exchange.error });
+    return settingsErrorRedirect(
+      "Failed to connect Microsoft Teams account. Please try again.",
+    );
+  }
+
+  const connectArgs = {
+    userId: auth.userId,
+    orgId: auth.orgId,
+    orgRole: auth.orgRole,
+    tenantId: exchange.value.tenantId,
+    teamsAadObjectId: exchange.value.user.id,
+    teamsUserDisplayName: exchange.value.user.displayName ?? undefined,
+    teamsUserPrincipalName:
+      exchange.value.user.userPrincipalName ??
+      exchange.value.user.mail ??
+      undefined,
+  };
+
+  const result = await set(connectTeamsInstallation$, connectArgs, signal);
+  signal.throwIfAborted();
+
+  if (result.kind === "not_found") {
+    const prepared = await set(prepareTeamsInstallation$, connectArgs, signal);
+    signal.throwIfAborted();
+
+    if (prepared.kind !== "ok") {
+      return settingsErrorRedirect(prepared.message);
+    }
+
+    await set(
+      publishTeamsChanged$,
+      { orgId: auth.orgId, userIds: [auth.userId] },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    return teamsInstallRedirect(exchange.value.tenantId);
+  }
+
+  if (result.kind === "forbidden") {
+    return settingsErrorRedirect(result.message);
+  }
+
+  await set(
+    publishTeamsChanged$,
+    { orgId: auth.orgId, userIds: [auth.userId] },
+    signal,
+  );
+  signal.throwIfAborted();
+
+  if (!isTeamsInstallationActive(result.installation)) {
+    return teamsInstallRedirect(result.installation.teamsTenantId);
+  }
+
+  return settingsSuccessRedirect({
+    tenantName: result.installation.teamsTenantName,
+    teamName: result.installation.teamsTeamName,
+  });
+});
+
+export const zeroTeamsOauthRoutes: readonly RouteEntry[] = [
+  {
+    route: zeroTeamsOauthContract.connect,
+    handler: connectOauth$,
+  },
+  {
+    route: zeroTeamsOauthContract.callback,
+    handler: callbackOauth$,
+  },
+];

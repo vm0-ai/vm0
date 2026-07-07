@@ -10,6 +10,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { agentRuns } from "./agent-run";
+import type { AgentRunCallbackPayload } from "@vm0/db/jsonb-contracts/agent-run-callback";
 
 /**
  * Agent Run Callbacks table
@@ -33,7 +34,7 @@ export const agentRunCallbacks = pgTable(
     // Secret encrypted with the persistent-secret KMS rollout envelope.
     encryptedSecret: text("encrypted_secret").notNull(),
     // Arbitrary JSON payload to include in callback (e.g., Slack context)
-    payload: jsonb("payload"),
+    payload: jsonb("payload").$type<AgentRunCallbackPayload>(),
     // pending | delivered | failed
     status: varchar("status", { length: 20 }).notNull().default("pending"),
     attempts: integer("attempts").notNull().default(0),
