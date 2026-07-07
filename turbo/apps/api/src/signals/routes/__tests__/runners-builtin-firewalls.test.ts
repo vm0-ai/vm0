@@ -9,6 +9,7 @@ import {
 } from "@vm0/connectors/firewall-metadata/runner-runtime";
 import { describe, expect, it } from "vitest";
 
+import { createAppWithRoutes } from "../../../app-factory-core";
 import { setupAppWithRoutes } from "../../../__tests__/test-app";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { runnersRoutes } from "../runners";
@@ -29,6 +30,10 @@ function client() {
   return setupAppWithRoutes({ context, routes: runnersRoutes })(
     runnersBuiltinFirewallsResolveContract,
   );
+}
+
+function rawApp() {
+  return createAppWithRoutes({ signal: context.signal, routes: runnersRoutes });
 }
 
 describe("runner builtin firewall resolver", () => {
@@ -56,6 +61,22 @@ describe("runner builtin firewall resolver", () => {
     expect(response.body.error.message).toBe(
       "Unknown builtin firewall: not-a-builtin-firewall",
     );
+  });
+
+  it("rejects misspelled full-catalog request fields", async () => {
+    const response = await rawApp().request(
+      "/api/runners/builtin-firewalls/resolve",
+      {
+        method: "POST",
+        headers: {
+          authorization: OFFICIAL_RUNNER_AUTHORIZATION,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ name: ["github"] }),
+      },
+    );
+
+    expect(response.status).toBe(400);
   });
 
   it("resolves connector and model-provider builtin firewalls", async () => {
