@@ -304,6 +304,8 @@ const SETTINGS_ICON_ASSET_PATHS = {
   plain: "views/zero-page/components/settings/icons/plain-a9121ba278e5.svg",
   plausible:
     "views/zero-page/components/settings/icons/plausible-ff49eddd163e.svg",
+  playstation:
+    "views/zero-page/components/settings/icons/playstation-93cfdbb255ce.svg",
   podchaser:
     "views/zero-page/components/settings/icons/podchaser-86cc6b891620.svg",
   porkbun: "views/zero-page/components/settings/icons/porkbun-6c11e42ddc44.svg",
