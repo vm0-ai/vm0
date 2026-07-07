@@ -28,11 +28,18 @@ impl CodexResumeLogFixture {
             .path()
             .file_name()
             .and_then(|name| name.to_str())
-            .map(ToOwned::to_owned)
-            .unwrap_or_else(|| "unknown".to_string());
+            .ok_or_else(|| {
+                std::io::Error::other(format!(
+                    "tempdir path has no utf-8 file name: {}",
+                    home.path().display()
+                ))
+            })?
+            .to_string();
         let run_id_suffix = home_name
             .strip_prefix("codex-resume-log-home-")
-            .unwrap_or(&home_name);
+            .ok_or_else(|| {
+                std::io::Error::other(format!("unexpected tempdir name: {home_name}"))
+            })?;
         let run_id = format!("codex-resume-log-{run_id_suffix}");
         let runtime_dir = home
             .path()

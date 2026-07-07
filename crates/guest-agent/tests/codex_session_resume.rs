@@ -39,11 +39,18 @@ impl CodexResumeFixture {
             .path()
             .file_name()
             .and_then(|name| name.to_str())
-            .map(ToOwned::to_owned)
-            .unwrap_or_else(|| "unknown".to_string());
+            .ok_or_else(|| {
+                std::io::Error::other(format!(
+                    "tempdir path has no utf-8 file name: {}",
+                    home.path().display()
+                ))
+            })?
+            .to_string();
         let run_id_suffix = home_name
             .strip_prefix("codex-resume-home-")
-            .unwrap_or(&home_name);
+            .ok_or_else(|| {
+                std::io::Error::other(format!("unexpected tempdir name: {home_name}"))
+            })?;
         let run_id = format!("codex-resume-{run_id_suffix}");
         let runtime_dir = home
             .path()
@@ -289,10 +296,9 @@ fn recovery_checkpoint_derives_missing_codex_history_marker() -> TestResult {
         paths: fixture.paths().clone(),
         http,
     };
-    let result = runtime
-        .block_on(guest_agent::checkpoint::create_recovery_checkpoint_for_runtime(&guest_runtime));
-
-    assert!(result.is_ok());
+    runtime.block_on(
+        guest_agent::checkpoint::create_recovery_checkpoint_for_runtime(&guest_runtime),
+    )?;
     prepare_mock.assert_calls(1);
     upload_mock.assert_calls(1);
     checkpoint_mock.assert_calls(1);
