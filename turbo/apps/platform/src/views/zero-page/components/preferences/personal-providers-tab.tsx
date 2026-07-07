@@ -600,9 +600,9 @@ function OAuthCredentialRow({
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-44">
-                  {menuItems.map((item) => (
-                    <OAuthMenuEntry key={item.label} item={item} />
-                  ))}
+                  {menuItems.map((item) => {
+                    return <OAuthMenuEntry key={item.label} item={item} />;
+                  })}
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
