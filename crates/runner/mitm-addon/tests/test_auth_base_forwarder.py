@@ -1239,6 +1239,52 @@ class TestForwardRequestAsyncWrapper:
         assert not second_entered.is_set()
         assert started == 1
 
+    async def test_shutdown_wakes_waiting_forward_when_running_forward_is_blocked(self):
+        started = 0
+        lock = threading.Lock()
+        first_entered = threading.Event()
+        second_entered = threading.Event()
+        release_first = threading.Event()
+
+        def create_connection(_address, _timeout, _source_address):
+            nonlocal started
+
+            with lock:
+                started += 1
+                current = started
+                if current == 1:
+                    first_entered.set()
+                elif current == 2:
+                    second_entered.set()
+            if current == 1 and not release_first.wait(timeout=5):
+                raise TimeoutError("test did not release first forward")
+            return FakeSocket(http_response())
+
+        with (
+            patch.object(forwarder, "MAX_CONCURRENT_AUTH_BASE_FORWARDS", 1),
+            fake_forwarder_upstream(create_connection=create_connection),
+        ):
+            first_task = asyncio.create_task(
+                forwarder.forward_request("https://example.com", "GET", [], None)
+            )
+            waiting_task = asyncio.create_task(
+                forwarder.forward_request("https://example.com", "GET", [], None)
+            )
+            try:
+                first_started = await asyncio.to_thread(first_entered.wait, 2)
+                assert first_started
+
+                forwarder.shutdown_forward_request_workers(wait=False)
+
+                with pytest.raises(RuntimeError, match="workers are shut down"):
+                    await asyncio.wait_for(waiting_task, timeout=2)
+            finally:
+                release_first.set()
+                await asyncio.gather(first_task, waiting_task, return_exceptions=True)
+
+        assert not second_entered.is_set()
+        assert started == 1
+
     async def test_shutdown_closes_active_forward_socket(self):
         setsockopt_entered = threading.Event()
         socket_closed = threading.Event()

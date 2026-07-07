@@ -156,6 +156,21 @@ def _cancel_pending_forward_request_futures() -> None:
         future.cancel()
 
 
+def _wake_forward_request_admission_waiters(
+    state: tuple[asyncio.AbstractEventLoop, int, asyncio.Semaphore] | None,
+) -> None:
+    if state is None:
+        return
+    loop, _max_workers, semaphore = state
+
+    def release_waiters() -> None:
+        for _ in range(MAX_ADMITTED_AUTH_BASE_FORWARDS):
+            semaphore.release()
+
+    with suppress(RuntimeError):
+        loop.call_soon_threadsafe(release_waiters)
+
+
 def _discard_pending_forward_request_future(
     future: Future[tuple[int, bytes, http.Headers]],
 ) -> None:
@@ -201,7 +216,9 @@ def shutdown_forward_request_workers(*, wait: bool) -> None:
 
     with _forward_request_lifecycle_lock:
         _forward_request_accepting = False
+        admission_state = _forward_request_admission_state
         _forward_request_admission_state = None
+    _wake_forward_request_admission_waiters(admission_state)
     _cancel_pending_forward_request_futures()
     _close_active_forward_request_closeables()
     if wait:
