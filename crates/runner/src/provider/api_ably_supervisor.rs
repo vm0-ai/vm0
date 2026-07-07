@@ -633,6 +633,8 @@ async fn handle_ably_message_with_network_policy_refresh(
     network_policy_refresh: Option<&NetworkPolicyRefreshHandle>,
     network_policy_refresh_cancel: Option<&CancellationToken>,
 ) {
+    let notification_received_at = StdInstant::now();
+
     if let Some(run_id) = parse_cancel_notification(msg) {
         let handle = cancel_tokens.lock().await.get(&run_id).cloned();
         if let Some(handle) = handle {
@@ -663,7 +665,6 @@ async fn handle_ably_message_with_network_policy_refresh(
     }
 
     let action = {
-        let notification_received_at = StdInstant::now();
         let Some(notif) = parse_job_notification(msg) else {
             return;
         };
