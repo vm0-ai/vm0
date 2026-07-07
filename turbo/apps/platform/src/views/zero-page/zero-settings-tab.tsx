@@ -19,7 +19,12 @@ import {
   Switch,
   cn,
 } from "@vm0/ui";
-import { IconTrash } from "@tabler/icons-react";
+import { IconAlertTriangle, IconTrash } from "@tabler/icons-react";
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+} from "@vm0/ui/components/ui/alert";
 import {
   type Tone,
   TONE_OPTIONS,
@@ -368,11 +373,15 @@ export function ZeroSettingsTab({
                           This action cannot be undone.
                         </DialogDescription>
                       </DialogHeader>
-                      <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                        {resolvedAgentName} and every member&apos;s workflows,
-                        automations, and chat history under it will be
-                        permanently deleted.
-                      </div>
+                      <Alert variant="destructive">
+                        <IconAlertTriangle size={16} stroke={1.5} />
+                        <AlertTitle>This can&apos;t be undone</AlertTitle>
+                        <AlertDescription>
+                          {resolvedAgentName} and every member&apos;s workflows,
+                          automations, and chat history under it will be
+                          permanently deleted.
+                        </AlertDescription>
+                      </Alert>
                       <DialogFooter>
                         <DialogClose asChild>
                           <Button variant="outline" size="sm">
@@ -415,10 +424,14 @@ export function ZeroSettingsTab({
               again.
             </DialogDescription>
           </DialogHeader>
-          <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-            Other members will no longer see {resolvedAgentName} or their chats
-            under it.
-          </div>
+          <Alert variant="destructive">
+            <IconAlertTriangle size={16} stroke={1.5} />
+            <AlertTitle>Members lose access</AlertTitle>
+            <AlertDescription>
+              Other members will no longer see {resolvedAgentName} or their
+              chats under it.
+            </AlertDescription>
+          </Alert>
           <DialogFooter>
             <Button
               variant="outline"
