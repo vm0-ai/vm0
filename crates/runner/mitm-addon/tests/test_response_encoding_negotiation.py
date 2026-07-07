@@ -539,12 +539,33 @@ async def test_model_provider_websocket_upgrade_injects_auth_and_keeps_accept_en
     mitm_ctx,
     fake_firewall_headers,
 ) -> None:
-    reg_path = _model_provider_registry(tmp_path, rule_method="GET")
+    firewall_name = "model-provider:openai-api-key"
+    host = "api.openai.com"
+    path = "/v1/responses"
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            firewall_name=firewall_name,
+            api_entry={
+                "base": f"https://{host}",
+                "auth": {"headers": {"Authorization": "Bearer token"}},
+                "permissions": [{"name": "responses", "rules": [f"GET {path}"]}],
+            },
+            network_policy={
+                "allow": ["responses"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "deny",
+            },
+            vm_fields={"modelUsageProvider": "gpt-5.5"},
+        ),
+    )
     flow = _request_flow(
         real_flow,
         headers,
-        host=_MODEL_PROVIDER_HOST,
-        path=_MODEL_PROVIDER_PATH,
+        host=host,
+        path=path,
         method="GET",
         accept_encoding="gzip, zstd, br",
         extra_headers=(("Connection", "keep-alive, Upgrade"), ("Upgrade", "websocket")),
