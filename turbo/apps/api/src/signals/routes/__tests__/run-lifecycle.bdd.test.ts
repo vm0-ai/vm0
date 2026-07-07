@@ -6465,7 +6465,7 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
     expect(mountPaths).toContain("/cache");
     const sandboxHeaders = { authorization: `Bearer ${claim.sandboxToken}` };
 
-    await webhooks.requestAgentTelemetry(
+    await webhooks.requestAgentTelemetryUnchecked(
       {
         runId: created.runId,
         networkLogs: [
@@ -6507,6 +6507,9 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
             session_history_raw_size_bucket: "64_256_kib",
             session_history_encoded_size_bucket: "lt_64_kib",
             session_history_compression_ratio_bucket: "lt_0_25",
+            session_history_ref_seen_recently: "true",
+            session_history_ref_download_inflight: "false",
+            session_history_ref_hash: "should-not-forward",
           },
         ],
       },
@@ -6545,10 +6548,21 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
           session_history_raw_size_bucket: "64_256_kib",
           session_history_encoded_size_bucket: "lt_64_kib",
           session_history_compression_ratio_bucket: "lt_0_25",
+          session_history_ref_seen_recently: "true",
+          session_history_ref_download_inflight: "false",
           source: "sandbox",
         }),
       ],
     );
+    const sandboxOperationIngestCall =
+      context.mocks.axiom.sdkIngest.mock.calls.find(([dataset]) => {
+        return dataset === "vm0-sandbox-op-log-dev";
+      });
+    expect(sandboxOperationIngestCall?.[1]).toStrictEqual([
+      expect.not.objectContaining({
+        session_history_ref_hash: "should-not-forward",
+      }),
+    ]);
 
     const observed = await webhooks.requestAgentModelUsageObservation(
       {

@@ -15,7 +15,9 @@
 //! downloaded bytes must satisfy the declared size, byte cap, and hash contract
 //! before they are restored into the sandbox.
 
+use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use api_contracts::generated::constants::runners::RESUME_SESSION_HISTORY_MAX_BYTES;
@@ -28,16 +30,60 @@ use super::cli_framework::EffectiveCliFramework;
 use super::session_restore::{MaterializedResumeSession, codex_session_meta_timestamp_line};
 use crate::error::{RunnerError, RunnerResult};
 use crate::http::HttpClient;
-use crate::telemetry::SessionHistoryTelemetryMetadata;
+use crate::telemetry::{SessionHistoryCacheProbeMetadata, SessionHistoryTelemetryMetadata};
 use crate::types::{
     ResumeSession, ResumeSessionHistoryEncoding, ResumeSessionHistoryRef,
     ResumeSessionHistoryRefKind,
 };
 
 const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(30);
+const SESSION_HISTORY_PROBE_TTL: Duration = Duration::from_secs(60 * 60);
+const SESSION_HISTORY_PROBE_CAPACITY: usize = 4096;
 
 pub(crate) struct SessionHistoryMaterializer {
     state: SessionHistoryMaterializerState,
+}
+
+#[derive(Clone)]
+pub(crate) struct SessionHistoryProbe {
+    inner: Arc<Mutex<SessionHistoryProbeState>>,
+    ttl: Duration,
+    capacity: usize,
+}
+
+#[derive(Default)]
+struct SessionHistoryProbeState {
+    entries: HashMap<SessionHistoryProbeKey, SessionHistoryProbeEntry>,
+}
+
+#[derive(Clone, Eq, Hash, PartialEq)]
+struct SessionHistoryProbeKey {
+    hash: String,
+    encoding: ResumeSessionHistoryEncoding,
+    raw_size: u64,
+    encoded_size: u64,
+}
+
+#[derive(Clone, Copy)]
+struct SessionHistoryProbeEntry {
+    last_seen: Instant,
+    in_flight: usize,
+}
+
+#[derive(Clone)]
+struct SessionHistoryProbeRegistration {
+    observation: SessionHistoryCacheProbeMetadata,
+    guard: Option<SessionHistoryProbeGuard>,
+}
+
+#[derive(Clone)]
+struct SessionHistoryProbeGuard {
+    inner: Arc<SessionHistoryProbeGuardInner>,
+}
+
+struct SessionHistoryProbeGuardInner {
+    probe: SessionHistoryProbe,
+    key: Mutex<Option<SessionHistoryProbeKey>>,
 }
 
 enum SessionHistoryMaterializerState {
@@ -46,6 +92,7 @@ enum SessionHistoryMaterializerState {
     Downloading {
         started_at: Instant,
         metadata: SessionHistoryTelemetryMetadata,
+        probe_registration: Option<SessionHistoryProbeRegistration>,
         task: Option<JoinHandle<SessionHistoryDownloadTaskResult>>,
     },
 }
@@ -77,6 +124,7 @@ pub(super) struct SessionHistoryDownloadTimings {
     request_status: Option<SessionHistoryDownloadPhaseTiming>,
     body_read: Option<SessionHistoryDownloadPhaseTiming>,
     validation: Option<SessionHistoryDownloadPhaseTiming>,
+    decompression: Option<SessionHistoryDownloadPhaseTiming>,
     hash_verification: Option<SessionHistoryDownloadPhaseTiming>,
 }
 
@@ -108,6 +156,10 @@ impl SessionHistoryDownloadTimings {
         self.validation
     }
 
+    pub(super) fn decompression(&self) -> Option<SessionHistoryDownloadPhaseTiming> {
+        self.decompression
+    }
+
     pub(super) fn hash_verification(&self) -> Option<SessionHistoryDownloadPhaseTiming> {
         self.hash_verification
     }
@@ -129,6 +181,10 @@ impl SessionHistoryDownloadTimings {
 
     fn record_hash_verification(&mut self, elapsed: Duration, success: bool) {
         self.hash_verification = Some(SessionHistoryDownloadPhaseTiming { elapsed, success });
+    }
+
+    fn record_decompression(&mut self, elapsed: Duration, success: bool) {
+        self.decompression = Some(SessionHistoryDownloadPhaseTiming { elapsed, success });
     }
 
     fn add_validation(&mut self, elapsed: Duration, success: bool) {
@@ -162,12 +218,184 @@ fn merge_phase_timing(
     }
 }
 
+impl Default for SessionHistoryProbe {
+    fn default() -> Self {
+        Self::new(SESSION_HISTORY_PROBE_TTL, SESSION_HISTORY_PROBE_CAPACITY)
+    }
+}
+
+impl SessionHistoryProbe {
+    fn new(ttl: Duration, capacity: usize) -> Self {
+        Self {
+            inner: Arc::new(Mutex::new(SessionHistoryProbeState::default())),
+            ttl,
+            capacity,
+        }
+    }
+
+    #[cfg(test)]
+    fn with_limits_for_test(ttl: Duration, capacity: usize) -> Self {
+        Self::new(ttl, capacity)
+    }
+
+    fn observe(&self, history_ref: &ResumeSessionHistoryRef) -> SessionHistoryProbeRegistration {
+        let now = Instant::now();
+        let key = SessionHistoryProbeKey::from_ref(history_ref);
+        let mut state = self
+            .inner
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        self.prune_expired(&mut state, now);
+
+        let previous = state.entries.get(&key).copied();
+        let seen_recently = previous
+            .map(|entry| now.saturating_duration_since(entry.last_seen) <= self.ttl)
+            .unwrap_or(false);
+        let download_inflight = previous.map(|entry| entry.in_flight > 0).unwrap_or(false);
+        let observation = SessionHistoryCacheProbeMetadata::new(seen_recently, download_inflight);
+
+        if self.capacity == 0 {
+            return SessionHistoryProbeRegistration {
+                observation,
+                guard: None,
+            };
+        }
+
+        state
+            .entries
+            .entry(key.clone())
+            .and_modify(|entry| {
+                entry.last_seen = now;
+                entry.in_flight = entry.in_flight.saturating_add(1);
+            })
+            .or_insert(SessionHistoryProbeEntry {
+                last_seen: now,
+                in_flight: 1,
+            });
+        self.enforce_capacity(&mut state, &key);
+
+        let guard = state
+            .entries
+            .contains_key(&key)
+            .then(|| SessionHistoryProbeGuard::new(self.clone(), key));
+        SessionHistoryProbeRegistration { observation, guard }
+    }
+
+    fn finish(&self, key: SessionHistoryProbeKey) {
+        let mut state = self
+            .inner
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if let Some(entry) = state.entries.get_mut(&key) {
+            entry.in_flight = entry.in_flight.saturating_sub(1);
+        }
+    }
+
+    fn prune_expired(&self, state: &mut SessionHistoryProbeState, now: Instant) {
+        let ttl = self.ttl;
+        state.entries.retain(|_, entry| {
+            entry.in_flight > 0 || now.saturating_duration_since(entry.last_seen) <= ttl
+        });
+    }
+
+    fn enforce_capacity(
+        &self,
+        state: &mut SessionHistoryProbeState,
+        current_key: &SessionHistoryProbeKey,
+    ) {
+        while state.entries.len() > self.capacity {
+            let candidate = state
+                .entries
+                .iter()
+                .filter(|(key, _)| *key != current_key)
+                .filter(|(_, entry)| entry.in_flight == 0)
+                .min_by_key(|(_, entry)| entry.last_seen)
+                .map(|(key, _)| key.clone())
+                .or_else(|| {
+                    state
+                        .entries
+                        .iter()
+                        .filter(|(key, _)| *key != current_key)
+                        .min_by_key(|(_, entry)| entry.last_seen)
+                        .map(|(key, _)| key.clone())
+                })
+                .or_else(|| state.entries.keys().next().cloned());
+            let Some(candidate) = candidate else {
+                break;
+            };
+            state.entries.remove(&candidate);
+        }
+    }
+}
+
+impl SessionHistoryProbeKey {
+    fn from_ref(history_ref: &ResumeSessionHistoryRef) -> Self {
+        Self {
+            hash: history_ref.hash.clone(),
+            encoding: history_ref
+                .encoding
+                .unwrap_or(ResumeSessionHistoryEncoding::Identity),
+            raw_size: history_ref.raw_size,
+            encoded_size: history_ref.encoded_size,
+        }
+    }
+}
+
+impl SessionHistoryProbeRegistration {
+    fn observation(&self) -> SessionHistoryCacheProbeMetadata {
+        self.observation
+    }
+
+    fn finish(&self) {
+        if let Some(guard) = &self.guard {
+            guard.finish();
+        }
+    }
+}
+
+impl SessionHistoryProbeGuard {
+    fn new(probe: SessionHistoryProbe, key: SessionHistoryProbeKey) -> Self {
+        Self {
+            inner: Arc::new(SessionHistoryProbeGuardInner {
+                probe,
+                key: Mutex::new(Some(key)),
+            }),
+        }
+    }
+
+    fn finish(&self) {
+        let key = self
+            .inner
+            .key
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .take();
+        if let Some(key) = key {
+            self.inner.probe.finish(key);
+        }
+    }
+}
+
+impl Drop for SessionHistoryProbeGuardInner {
+    fn drop(&mut self) {
+        let key = self
+            .key
+            .get_mut()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .take();
+        if let Some(key) = key {
+            self.probe.finish(key);
+        }
+    }
+}
+
 impl SessionHistoryMaterializer {
     pub(crate) fn start_cancellable(
         http: &HttpClient,
         session: Option<&ResumeSession>,
         framework: EffectiveCliFramework,
         cancel: CancellationToken,
+        probe: Option<&SessionHistoryProbe>,
     ) -> Self {
         let Some(session) = session else {
             return Self {
@@ -179,25 +407,35 @@ impl SessionHistoryMaterializer {
                 state: SessionHistoryMaterializerState::NoDownloadNeeded,
             };
         };
-        let metadata = SessionHistoryTelemetryMetadata::from_ref(history_ref);
+        let probe_registration = probe.map(|probe| probe.observe(history_ref));
+        let mut metadata = SessionHistoryTelemetryMetadata::from_ref(history_ref);
+        if let Some(registration) = &probe_registration {
+            metadata = metadata.with_cache_probe(registration.observation());
+        }
 
         let http = http.clone();
         let session = session.clone();
         let started_at = Instant::now();
+        let task_probe_registration = probe_registration.clone();
         // The spawned task observes cancellation even before `finish` runs, so
         // prestarted downloads do not need to wait for final materialization.
         Self {
             state: SessionHistoryMaterializerState::Downloading {
                 started_at,
                 metadata,
+                probe_registration,
                 task: Some(tokio::spawn(async move {
-                    tokio::select! {
+                    let result = tokio::select! {
                         biased;
                         _ = cancel.cancelled() => {
                             SessionHistoryDownloadTaskResult::cancelled(started_at, metadata)
                         }
                         result = download_resume_session_history_timed(http, session, framework, metadata) => result,
+                    };
+                    if let Some(registration) = &task_probe_registration {
+                        registration.finish();
                     }
+                    result
                 })),
             },
         }
@@ -234,6 +472,7 @@ impl SessionHistoryMaterializer {
             SessionHistoryMaterializerState::Downloading {
                 started_at,
                 metadata,
+                probe_registration,
                 task,
             } => {
                 let started_at = *started_at;
@@ -243,10 +482,12 @@ impl SessionHistoryMaterializer {
                         task.abort();
                         let _ = task.await;
                     }
+                    finish_session_history_probe(probe_registration);
                     return SessionHistoryDownloadTaskResult::cancelled(started_at, metadata)
                         .into_materialization();
                 }
                 let Some(mut task) = task.take() else {
+                    finish_session_history_probe(probe_registration);
                     return SessionHistoryMaterialization::Failed {
                         elapsed: Duration::ZERO,
                         timings: SessionHistoryDownloadTimings::for_metadata(metadata),
@@ -274,6 +515,7 @@ impl SessionHistoryMaterializer {
                         })
                     }
                 };
+                finish_session_history_probe(probe_registration);
                 // Re-check after joining because the task itself can observe
                 // cancellation while still producing a successful result.
                 if cancel.is_cancelled() {
@@ -321,8 +563,16 @@ impl Drop for SessionHistoryMaterializer {
         {
             // Dropping means no owner will call `finish`. Abort the task so an
             // abandoned prestarted download does not continue in the background.
+            // Probe cleanup is handled by explicit finish paths or by the
+            // guard's drop fallback when the task future is gone.
             task.abort();
         }
+    }
+}
+
+fn finish_session_history_probe(registration: &Option<SessionHistoryProbeRegistration>) {
+    if let Some(registration) = registration {
+        registration.finish();
     }
 }
 
@@ -387,7 +637,17 @@ async fn download_resume_session_history(
                 timings,
             )
             .await?;
-            let raw_bytes = gunzip_session_history(&encoded_bytes, raw_size)?;
+            let decompression_started = Instant::now();
+            let raw_bytes = match gunzip_session_history(&encoded_bytes, raw_size) {
+                Ok(raw_bytes) => {
+                    timings.record_decompression(decompression_started.elapsed(), true);
+                    raw_bytes
+                }
+                Err(error) => {
+                    timings.record_decompression(decompression_started.elapsed(), false);
+                    return Err(error);
+                }
+            };
             validate_decompressed_raw_size(raw_size, raw_bytes.len(), timings)?;
             raw_bytes
         }
@@ -413,7 +673,17 @@ async fn download_resume_session_history(
                     timestamp,
                 ));
             }
-            let raw_bytes = unzstd_session_history(&encoded_bytes, raw_size)?;
+            let decompression_started = Instant::now();
+            let raw_bytes = match unzstd_session_history(&encoded_bytes, raw_size) {
+                Ok(raw_bytes) => {
+                    timings.record_decompression(decompression_started.elapsed(), true);
+                    raw_bytes
+                }
+                Err(error) => {
+                    timings.record_decompression(decompression_started.elapsed(), false);
+                    return Err(error);
+                }
+            };
             validate_decompressed_raw_size(raw_size, raw_bytes.len(), timings)?;
             raw_bytes
         }
@@ -550,27 +820,39 @@ fn verify_codex_zstd_session_history(
     expected_hash: &str,
     timings: &mut SessionHistoryDownloadTimings,
 ) -> RunnerResult<Option<chrono::DateTime<chrono::Utc>>> {
-    let decoder = zstd::stream::read::Decoder::new(encoded_bytes).map_err(|error| {
-        RunnerError::Internal(format!("decompress zstd session history: {error}"))
-    })?;
+    let decompression_started = Instant::now();
+    let decoder = match zstd::stream::read::Decoder::new(encoded_bytes) {
+        Ok(decoder) => decoder,
+        Err(error) => {
+            timings.record_decompression(decompression_started.elapsed(), false);
+            return Err(RunnerError::Internal(format!(
+                "decompress zstd session history: {error}"
+            )));
+        }
+    };
     let mut reader = BufReader::new(decoder.take(expected_raw_size.saturating_add(1)));
     let mut hasher = Sha256::new();
     let mut decoded = 0u64;
     let mut timestamp = None;
     let mut line = Vec::new();
-    let hash_started = Instant::now();
 
     loop {
         line.clear();
-        let read = reader.read_until(b'\n', &mut line).map_err(|error| {
-            RunnerError::Internal(format!("decompress zstd session history: {error}"))
-        })?;
+        let read = match reader.read_until(b'\n', &mut line) {
+            Ok(read) => read,
+            Err(error) => {
+                timings.record_decompression(decompression_started.elapsed(), false);
+                return Err(RunnerError::Internal(format!(
+                    "decompress zstd session history: {error}"
+                )));
+            }
+        };
         if read == 0 {
             break;
         }
         decoded += read as u64;
         if decoded > expected_raw_size {
-            timings.record_hash_verification(hash_started.elapsed(), false);
+            timings.record_decompression(decompression_started.elapsed(), false);
             return Err(RunnerError::Internal(format!(
                 "session history is too large after decompression: {decoded} bytes exceeds {expected_raw_size} bytes"
             )));
@@ -582,8 +864,10 @@ fn verify_codex_zstd_session_history(
             timestamp = codex_session_meta_timestamp_line(line);
         }
     }
+    timings.record_decompression(decompression_started.elapsed(), true);
 
     validate_decompressed_raw_size(expected_raw_size, decoded as usize, timings)?;
+    let hash_started = Instant::now();
     let actual_hash = hex::encode(hasher.finalize());
     if actual_hash != expected_hash {
         timings.record_hash_verification(hash_started.elapsed(), false);
@@ -872,6 +1156,7 @@ mod tests {
             Some(session),
             framework,
             CancellationToken::new(),
+            None,
         )
     }
 
@@ -903,6 +1188,138 @@ mod tests {
         assert!(phase.is_none(), "phase should not be recorded: {phase:?}");
     }
 
+    #[test]
+    fn probe_reports_recent_and_inflight_refs() {
+        let probe = SessionHistoryProbe::with_limits_for_test(Duration::from_secs(60), 8);
+        let session = ref_session(
+            "http://127.0.0.1/history.blob".to_string(),
+            hex::encode(Sha256::digest(b"history")),
+            7,
+            7,
+        );
+        let history_ref = session.history_ref().unwrap();
+
+        let first = probe.observe(history_ref);
+        assert_eq!(
+            first.observation(),
+            SessionHistoryCacheProbeMetadata::new(false, false)
+        );
+
+        let second = probe.observe(history_ref);
+        assert_eq!(
+            second.observation(),
+            SessionHistoryCacheProbeMetadata::new(true, true)
+        );
+
+        first.finish();
+        second.finish();
+        let third = probe.observe(history_ref);
+        assert_eq!(
+            third.observation(),
+            SessionHistoryCacheProbeMetadata::new(true, false)
+        );
+        third.finish();
+    }
+
+    #[test]
+    fn probe_registration_drop_clears_inflight_ref() {
+        let probe = SessionHistoryProbe::with_limits_for_test(Duration::from_secs(60), 8);
+        let session = ref_session(
+            "http://127.0.0.1/drop.blob".to_string(),
+            hex::encode(Sha256::digest(b"drop")),
+            4,
+            4,
+        );
+        let history_ref = session.history_ref().unwrap();
+
+        let registration = probe.observe(history_ref);
+        let overlapping = probe.observe(history_ref);
+        assert_eq!(
+            overlapping.observation(),
+            SessionHistoryCacheProbeMetadata::new(true, true)
+        );
+        overlapping.finish();
+        drop(registration);
+        let repeated = probe.observe(history_ref);
+
+        assert_eq!(
+            repeated.observation(),
+            SessionHistoryCacheProbeMetadata::new(true, false)
+        );
+        repeated.finish();
+    }
+
+    #[test]
+    fn probe_eviction_removes_old_ref_identity() {
+        let probe = SessionHistoryProbe::with_limits_for_test(Duration::from_secs(60), 1);
+        let first_session = ref_session(
+            "http://127.0.0.1/first.blob".to_string(),
+            hex::encode(Sha256::digest(b"first")),
+            5,
+            5,
+        );
+        let second_session = ref_session(
+            "http://127.0.0.1/second.blob".to_string(),
+            hex::encode(Sha256::digest(b"second")),
+            6,
+            6,
+        );
+        let first_ref = first_session.history_ref().unwrap();
+        let second_ref = second_session.history_ref().unwrap();
+
+        let first = probe.observe(first_ref);
+        first.finish();
+        let second = probe.observe(second_ref);
+        second.finish();
+        let repeated_first = probe.observe(first_ref);
+
+        assert_eq!(
+            repeated_first.observation(),
+            SessionHistoryCacheProbeMetadata::new(false, false)
+        );
+        repeated_first.finish();
+    }
+
+    #[test]
+    fn probe_capacity_eviction_preserves_inflight_ref_when_possible() {
+        let probe = SessionHistoryProbe::with_limits_for_test(Duration::from_secs(60), 2);
+        let active_session = ref_session(
+            "http://127.0.0.1/active.blob".to_string(),
+            hex::encode(Sha256::digest(b"active")),
+            6,
+            6,
+        );
+        let idle_session = ref_session(
+            "http://127.0.0.1/idle.blob".to_string(),
+            hex::encode(Sha256::digest(b"idle")),
+            4,
+            4,
+        );
+        let new_session = ref_session(
+            "http://127.0.0.1/new.blob".to_string(),
+            hex::encode(Sha256::digest(b"new")),
+            3,
+            3,
+        );
+        let active_ref = active_session.history_ref().unwrap();
+        let idle_ref = idle_session.history_ref().unwrap();
+        let new_ref = new_session.history_ref().unwrap();
+
+        let active = probe.observe(active_ref);
+        let idle = probe.observe(idle_ref);
+        idle.finish();
+        let new = probe.observe(new_ref);
+        new.finish();
+
+        let repeated_active = probe.observe(active_ref);
+        assert_eq!(
+            repeated_active.observation(),
+            SessionHistoryCacheProbeMetadata::new(true, true)
+        );
+        repeated_active.finish();
+        active.finish();
+    }
+
     async fn serve_once(
         status: &'static str,
         body: impl Into<Vec<u8>> + Send + 'static,
@@ -930,6 +1347,7 @@ mod tests {
                 assert_phase_success(timings.request_status());
                 assert_phase_success(timings.body_read());
                 assert_phase_success(timings.validation());
+                assert_no_phase(timings.decompression());
                 assert_phase_success(timings.hash_verification());
             }
             _ => panic!("expected downloaded session"),
@@ -960,6 +1378,7 @@ mod tests {
                 assert_no_phase(timings.request_status());
                 assert_no_phase(timings.body_read());
                 assert_phase_failure(timings.validation());
+                assert_no_phase(timings.decompression());
                 assert_no_phase(timings.hash_verification());
             }
             _ => panic!("expected failed materialization"),
@@ -1085,6 +1504,7 @@ mod tests {
                 assert_phase_success(timings.request_status());
                 assert_phase_success(timings.body_read());
                 assert_phase_success(timings.validation());
+                assert_phase_success(timings.decompression());
                 assert_phase_success(timings.hash_verification());
             }
             _ => panic!("expected downloaded session"),
@@ -1113,6 +1533,7 @@ mod tests {
                 assert_phase_success(timings.request_status());
                 assert_phase_success(timings.body_read());
                 assert_phase_success(timings.validation());
+                assert_phase_success(timings.decompression());
                 assert_phase_success(timings.hash_verification());
             }
             _ => panic!("expected downloaded session"),
@@ -1151,6 +1572,7 @@ mod tests {
                 assert_phase_success(timings.request_status());
                 assert_phase_success(timings.body_read());
                 assert_phase_success(timings.validation());
+                assert_phase_success(timings.decompression());
                 assert_phase_success(timings.hash_verification());
             }
             _ => panic!("expected downloaded session"),
@@ -1185,6 +1607,7 @@ mod tests {
                 assert_phase_success(timings.request_status());
                 assert_phase_success(timings.body_read());
                 assert_phase_success(timings.validation());
+                assert_phase_success(timings.decompression());
                 assert_phase_failure(timings.hash_verification());
             }
             _ => panic!("expected failed materialization"),
@@ -1216,7 +1639,8 @@ mod tests {
                 );
                 assert_phase_success(timings.request_status());
                 assert_phase_success(timings.body_read());
-                assert_phase_failure(timings.hash_verification());
+                assert_phase_failure(timings.decompression());
+                assert_no_phase(timings.hash_verification());
             }
             _ => panic!("expected failed materialization"),
         }
@@ -1245,6 +1669,7 @@ mod tests {
                 assert_phase_success(timings.request_status());
                 assert_phase_failure(timings.body_read());
                 assert_phase_success(timings.validation());
+                assert_no_phase(timings.decompression());
                 assert_no_phase(timings.hash_verification());
             }
             _ => panic!("expected failed materialization"),
@@ -1274,6 +1699,7 @@ mod tests {
                 assert_phase_success(timings.request_status());
                 assert_phase_failure(timings.body_read());
                 assert_phase_success(timings.validation());
+                assert_no_phase(timings.decompression());
                 assert_no_phase(timings.hash_verification());
             }
             _ => panic!("expected failed materialization"),
@@ -1301,6 +1727,7 @@ mod tests {
                 assert_phase_success(timings.request_status());
                 assert_phase_failure(timings.body_read());
                 assert_phase_success(timings.validation());
+                assert_no_phase(timings.decompression());
                 assert_no_phase(timings.hash_verification());
             }
             _ => panic!("expected failed materialization"),
@@ -1353,6 +1780,7 @@ mod tests {
                 );
                 assert_phase_success(timings.request_status());
                 assert_phase_success(timings.body_read());
+                assert_phase_failure(timings.decompression());
             }
             _ => panic!("expected failed materialization"),
         }
@@ -1381,6 +1809,7 @@ mod tests {
                 );
                 assert_phase_success(timings.request_status());
                 assert_phase_success(timings.body_read());
+                assert_phase_failure(timings.decompression());
             }
             _ => panic!("expected failed materialization"),
         }
@@ -1415,6 +1844,7 @@ mod tests {
                 assert_phase_success(timings.request_status());
                 assert_phase_success(timings.body_read());
                 assert_phase_success(timings.validation());
+                assert_phase_failure(timings.decompression());
                 assert_no_phase(timings.hash_verification());
             }
             _ => panic!("expected failed materialization"),
@@ -1443,6 +1873,7 @@ mod tests {
                 assert_phase_success(timings.request_status());
                 assert_phase_success(timings.body_read());
                 assert_phase_success(timings.validation());
+                assert_no_phase(timings.decompression());
                 assert_phase_failure(timings.hash_verification());
             }
             _ => panic!("expected failed download"),
@@ -1467,6 +1898,7 @@ mod tests {
                 assert_phase_failure(timings.request_status());
                 assert_no_phase(timings.body_read());
                 assert_no_phase(timings.validation());
+                assert_no_phase(timings.decompression());
                 assert_no_phase(timings.hash_verification());
             }
             _ => panic!("expected failed download"),
@@ -1489,6 +1921,7 @@ mod tests {
                 assert_phase_success(timings.request_status());
                 assert_no_phase(timings.body_read());
                 assert_phase_failure(timings.validation());
+                assert_no_phase(timings.decompression());
                 assert_no_phase(timings.hash_verification());
             }
             _ => panic!("expected failed download"),
@@ -1515,6 +1948,7 @@ mod tests {
                 assert_phase_success(timings.request_status());
                 assert_phase_failure(timings.body_read());
                 assert_phase_success(timings.validation());
+                assert_no_phase(timings.decompression());
                 assert_no_phase(timings.hash_verification());
             }
             _ => panic!("expected failed download"),
@@ -1562,6 +1996,7 @@ mod tests {
                 assert_no_phase(timings.request_status());
                 assert_no_phase(timings.body_read());
                 assert_no_phase(timings.validation());
+                assert_no_phase(timings.decompression());
                 assert_no_phase(timings.hash_verification());
             }
             _ => panic!("expected cancelled download"),
@@ -1591,8 +2026,15 @@ mod tests {
             1,
             1,
         );
+        let probe = SessionHistoryProbe::with_limits_for_test(Duration::from_secs(60), 8);
 
-        let materializer = start_materializer(&session);
+        let materializer = SessionHistoryMaterializer::start_cancellable(
+            &http_client(),
+            Some(&session),
+            EffectiveCliFramework::ClaudeCode,
+            CancellationToken::new(),
+            Some(&probe),
+        );
         tokio::time::timeout(Duration::from_secs(5), request_received_rx)
             .await
             .unwrap()
@@ -1605,6 +2047,13 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(closed, 0);
+
+        let repeated = probe.observe(session.history_ref().unwrap());
+        assert_eq!(
+            repeated.observation(),
+            SessionHistoryCacheProbeMetadata::new(true, false)
+        );
+        repeated.finish();
     }
 
     #[tokio::test]
@@ -1629,12 +2078,14 @@ mod tests {
             1,
         );
         let cancel = CancellationToken::new();
+        let probe = SessionHistoryProbe::with_limits_for_test(Duration::from_secs(60), 8);
 
         let materializer = SessionHistoryMaterializer::start_cancellable(
             &http_client(),
             Some(&session),
             EffectiveCliFramework::ClaudeCode,
             cancel.clone(),
+            Some(&probe),
         );
         tokio::time::timeout(Duration::from_secs(5), request_received_rx)
             .await
@@ -1655,10 +2106,17 @@ mod tests {
                 assert_no_phase(timings.request_status());
                 assert_no_phase(timings.body_read());
                 assert_no_phase(timings.validation());
+                assert_no_phase(timings.decompression());
                 assert_no_phase(timings.hash_verification());
             }
             _ => panic!("expected cancelled download"),
         }
+        let repeated = probe.observe(session.history_ref().unwrap());
+        assert_eq!(
+            repeated.observation(),
+            SessionHistoryCacheProbeMetadata::new(true, false)
+        );
+        repeated.finish();
     }
 
     #[tokio::test]
@@ -1680,6 +2138,7 @@ mod tests {
             Some(&session),
             EffectiveCliFramework::ClaudeCode,
             cancel.clone(),
+            None,
         );
         let result = materializer.finish(&cancel).await;
         match result {
@@ -1688,6 +2147,7 @@ mod tests {
                 assert_no_phase(timings.request_status());
                 assert_no_phase(timings.body_read());
                 assert_no_phase(timings.validation());
+                assert_no_phase(timings.decompression());
                 assert_no_phase(timings.hash_verification());
                 assert_eq!(timings.encoding(), Some("gzip"));
             }
@@ -1718,6 +2178,7 @@ mod tests {
             state: SessionHistoryMaterializerState::Downloading {
                 started_at: Instant::now(),
                 metadata: identity_metadata(),
+                probe_registration: None,
                 task: Some(task),
             },
         };
@@ -1750,6 +2211,7 @@ mod tests {
             state: SessionHistoryMaterializerState::Downloading {
                 started_at: Instant::now(),
                 metadata: identity_metadata(),
+                probe_registration: None,
                 task: Some(task),
             },
         };

@@ -234,6 +234,12 @@ fn record_session_history_download_timings(
     );
     record_session_history_download_phase(
         telemetry,
+        "session_history_download_decompression",
+        timings.decompression(),
+        metadata,
+    );
+    record_session_history_download_phase(
+        telemetry,
         "session_history_download_hash_verification",
         timings.hash_verification(),
         metadata,
@@ -929,6 +935,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                         context.resume_session.as_ref(),
                         effective_cli_framework(&context.cli_agent_type),
                         cancel.clone(),
+                        Some(&config.session_history_probe),
                     ))
                 }
             }
@@ -938,6 +945,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             context.resume_session.as_ref(),
             effective_cli_framework(&context.cli_agent_type),
             cancel.clone(),
+            Some(&config.session_history_probe),
         )),
         SessionHistoryRestorePlan::Prestarted {
             materializer,
