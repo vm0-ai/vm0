@@ -2,6 +2,8 @@ import { screen, waitFor } from "@testing-library/react";
 import {
   zeroMemoryContract,
   type MemoryDetailResponse,
+  type MemorySourceListResponse,
+  type SlackMemoryStatusResponse,
 } from "@vm0/api-contracts/contracts/zero-memory";
 import { zeroMemoryDevRefreshContract } from "@vm0/api-contracts/contracts/zero-memory-dev-refresh";
 import {
@@ -62,12 +64,38 @@ function getButtonContaining(text: string): HTMLElement {
   return button;
 }
 
+function getButtonWithText(text: string): HTMLElement {
+  const button = queryAllByRoleFast("button").find((el) => {
+    return el.textContent?.trim() === text;
+  });
+  if (!button) {
+    throw new Error(`Could not find button with text: ${text}`);
+  }
+  return button;
+}
+
 function getBackfillDialogButtonContaining(text: string): HTMLElement {
   const dialog = screen
     .getByText("Backfill Gmail relationships")
     .closest('[role="dialog"]');
   if (!dialog) {
     throw new Error("Could not find Gmail backfill dialog");
+  }
+  const button = queryAllByRoleFast("button", dialog).find((el) => {
+    return el.textContent?.includes(text);
+  });
+  if (!button) {
+    throw new Error(`Could not find dialog button containing: ${text}`);
+  }
+  return button;
+}
+
+function getSlackBackfillDialogButtonContaining(text: string): HTMLElement {
+  const dialog = screen
+    .getByText("Backfill Slack memory")
+    .closest('[role="dialog"]');
+  if (!dialog) {
+    throw new Error("Could not find Slack backfill dialog");
   }
   const button = queryAllByRoleFast("button", dialog).find((el) => {
     return el.textContent?.includes(text);
@@ -97,6 +125,77 @@ function gmailRelationshipStatus(
       completedAt: `${localDateDaysAgo(0)}T12:00:00Z`,
     },
     ...overrides,
+  };
+}
+
+function slackMemoryStatus(
+  overrides: Partial<SlackMemoryStatusResponse> = {},
+): SlackMemoryStatusResponse {
+  return {
+    provider: "slack",
+    workspaceConnected: true,
+    userConnected: true,
+    workspaceName: "Memory Test Workspace",
+    backfill: {
+      status: "done",
+      estimatedTotal: null,
+      scannedCount: 18,
+      recordedCount: 6,
+      lastError: null,
+      updatedAt: `${localDateDaysAgo(0)}T12:00:00Z`,
+      completedAt: `${localDateDaysAgo(0)}T12:00:00Z`,
+    },
+    ...overrides,
+  };
+}
+
+function memorySourceListPage(
+  provider?: "gmail" | "slack",
+): MemorySourceListResponse {
+  const allSources: MemorySourceListResponse["sources"] = [
+    {
+      id: "00000000-0000-4000-8000-000000000301",
+      provider: "slack",
+      sourceType: "slack_message",
+      title: "Slack channel message",
+      occurredAt: `${localDateDaysAgo(0)}T10:00:00Z`,
+      createdAt: `${localDateDaysAgo(0)}T10:01:00Z`,
+      contentHash: "a".repeat(64),
+      metadata: {
+        workspaceId: "T-memory",
+        channelId: "C-memory",
+        channelType: "channel",
+        messageTs: "1780000000.000100",
+        senderId: "U-memory-user",
+      },
+    },
+    {
+      id: "00000000-0000-4000-8000-000000000302",
+      provider: "gmail",
+      sourceType: "gmail_message",
+      title: "Gmail message",
+      occurredAt: `${localDateDaysAgo(1)}T10:00:00Z`,
+      createdAt: `${localDateDaysAgo(1)}T10:01:00Z`,
+      contentHash: "b".repeat(64),
+      metadata: {
+        mailboxEmail: "memory@example.com",
+        direction: "received",
+      },
+    },
+  ];
+  const sources = allSources.filter((source) => {
+    return !provider || source.provider === provider;
+  });
+
+  return {
+    sources,
+    pagination: {
+      page: 1,
+      pageSize: 50,
+      total: sources.length,
+      totalPages: 1,
+      hasMore: false,
+    },
   };
 }
 
@@ -654,6 +753,90 @@ describe("memory page", () => {
     expect(
       screen.getByText("Share the partner pricing follow-up."),
     ).toBeInTheDocument();
+  });
+
+  it("shows Slack structured sources and starts Slack backfill", async () => {
+    context.mocks.api(zeroMemoryActivityContract.get, ({ query, respond }) => {
+      expect(query.limit).toBe(7);
+      return respond(200, memoryActivityPage(query.cursor));
+    });
+    context.mocks.api(zeroMemoryContract.get, ({ respond }) => {
+      return respond(200, memoryDetailResponse());
+    });
+    const sourceQueries: ("gmail" | "slack" | undefined)[] = [];
+    context.mocks.api(zeroMemoryContract.sources, ({ query, respond }) => {
+      sourceQueries.push(query.provider);
+      return respond(200, memorySourceListPage(query.provider));
+    });
+
+    let status = slackMemoryStatus();
+    context.mocks.api(zeroMemoryContract.slackStatus, ({ respond }) => {
+      return respond(200, status);
+    });
+    context.mocks.api(zeroMemoryContract.slackBackfill, ({ body, respond }) => {
+      expect(body).toStrictEqual({
+        days: 180,
+        includePublicChannels: true,
+        includePrivateChannels: true,
+        includeDirectMessages: true,
+      });
+      status = slackMemoryStatus({
+        backfill: {
+          status: "pending",
+          estimatedTotal: null,
+          scannedCount: 0,
+          recordedCount: 0,
+          lastError: null,
+          updatedAt: `${localDateDaysAgo(0)}T12:05:00Z`,
+          completedAt: null,
+        },
+      });
+      return respond(200, status);
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/memory",
+      featureSwitches: {
+        [FeatureSwitchKey.MemoryViewer]: true,
+        [FeatureSwitchKey.RelationshipMemory]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("launch preferences")).toBeInTheDocument();
+    });
+
+    click(getTabByText("Sources"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Slack channel message")).toBeInTheDocument();
+    });
+    expect(
+      screen.getByText("Backfill complete - 6 recorded"),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Channel C-memory/)).toBeInTheDocument();
+    expect(screen.getByText("Gmail message")).toBeInTheDocument();
+    expect(sourceQueries.at(-1)).toBeUndefined();
+
+    click(getButtonWithText("Slack"));
+
+    await waitFor(() => {
+      expect(sourceQueries.at(-1)).toBe("slack");
+    });
+    expect(screen.queryByText("Gmail message")).not.toBeInTheDocument();
+
+    click(getButtonContaining("Backfill Slack"));
+    await waitFor(() => {
+      expect(screen.getByText("Backfill Slack memory")).toBeInTheDocument();
+    });
+    click(getSlackBackfillDialogButtonContaining("Start backfill"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Backfilling Slack - 0 scanned, 0 recorded"),
+      ).toBeInTheDocument();
+    });
   });
 
   it("moves through relationship pages from the relationships tab", async () => {
