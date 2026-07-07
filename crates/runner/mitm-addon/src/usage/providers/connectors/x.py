@@ -14,6 +14,7 @@ from mitmproxy import http
 
 import billing_body
 import body_decoding
+import flow_metadata
 import flow_metadata_keys as metadata_keys
 import matching
 import request_streaming
@@ -941,12 +942,12 @@ def report_usage(flow: http.HTTPFlow, run_id: str, original_url: str) -> None:
     - ``firewall_permission`` is not mapped to an X billing bucket
       (e.g. the ``"app-only"`` scope for BearerToken-only endpoints)
     """
-    firewall_name = flow.metadata.get(metadata_keys.FIREWALL_NAME, "")
+    firewall_name = flow_metadata.firewall_name(flow.metadata)
     if not flow.response or not (
         _HTTP_STATUS_OK_MIN <= flow.response.status_code < _HTTP_STATUS_REDIRECT_MIN
     ):
         return
-    permission = flow.metadata.get(metadata_keys.FIREWALL_PERMISSION, "")
+    permission = flow_metadata.firewall_permission(flow.metadata)
     if not permission:
         return
     # mitmproxy's ``flow.request.path`` is the raw request-target — it
@@ -984,7 +985,7 @@ def report_usage(flow: http.HTTPFlow, run_id: str, original_url: str) -> None:
         )
         else _empty_request_query_fallback_hints()
     )
-    proxy_log_path = flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, "")
+    proxy_log_path = flow_metadata.proxy_log_path(flow.metadata)
 
     # Structured context common to every billing-side proxy log entry
     # for this flow — threaded into the helper so the log firing at the

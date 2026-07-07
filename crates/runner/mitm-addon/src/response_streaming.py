@@ -22,6 +22,7 @@ from typing import NamedTuple
 from mitmproxy import http
 
 import body_decoding
+import flow_metadata
 import flow_metadata_keys as metadata_keys
 import usage
 from body_limits import STREAM_BUFFER_LIMIT
@@ -48,10 +49,10 @@ def uses_openai_responses_usage_protocol(flow: http.HTTPFlow) -> bool:
     """Return whether a flow should use OpenAI Responses usage parsing.
 
     Read-only predicate used from parser setup and response fallback extraction.
-    Reads ``metadata_keys.CLI_AGENT_TYPE``; Codex flows use the OpenAI Responses
+    Codex flows use the OpenAI Responses
     usage protocol, while other model-provider flows use the Anthropic protocol.
     """
-    return flow.metadata.get(metadata_keys.CLI_AGENT_TYPE) == "codex"
+    return flow_metadata.cli_agent_type(flow.metadata) == "codex"
 
 
 def is_model_websocket_usage_enabled(flow: http.HTTPFlow) -> bool:
@@ -77,7 +78,7 @@ def _make_model_sse_parse_error_logger(
     *,
     usage_protocol: str,
 ) -> _SseUsageParseErrorLogger:
-    proxy_log_path = flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, "")
+    proxy_log_path = flow_metadata.proxy_log_path(flow.metadata)
 
     def log_parse_error(event: str, error: str) -> None:
         log_proxy_entry(
@@ -104,7 +105,7 @@ def _configure_response_usage_parser(flow: http.HTTPFlow) -> _ResponseChunkParse
     # via auth.handle_firewall_request.  Gates report_connector_usage (in response())
     # and the incremental response parsers used for connector billing payload
     # extraction. Model-provider usage reporting is gated separately.
-    is_billable_flow = flow.metadata.get(metadata_keys.FIREWALL_BILLABLE, False)
+    is_billable_flow = flow_metadata.is_firewall_billable(flow.metadata)
     is_observable_model_provider = usage.is_model_provider_usage_observable(flow)
     if (
         is_observable_model_provider
@@ -362,7 +363,7 @@ def feed_model_websocket_usage(flow: http.HTTPFlow, content: bytes | str) -> Non
             usage_target = {}
             usage_sources[message_id] = usage_target
         usage.merge_openai_responses_usage_result(usage_target, usage_result)
-        run_id = flow.metadata.get(metadata_keys.VM_RUN_ID, "")
+        run_id = flow_metadata.run_id(flow.metadata)
         usage.report_model_provider_usage_source(
             flow,
             run_id,

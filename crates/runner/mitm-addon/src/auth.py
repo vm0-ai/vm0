@@ -14,6 +14,7 @@ from enum import Enum
 
 from mitmproxy import http
 
+import flow_metadata
 import flow_metadata_keys as metadata_keys
 import matching
 from auth_base_forwarder import (
@@ -125,7 +126,7 @@ def _build_firewall_auth_context(
     auth_config = api_entry.get("auth", {})
     firewall_base = flow.metadata[metadata_keys.FIREWALL_BASE]
     api_id = flow.metadata[metadata_keys.FIREWALL_API_ID]
-    run_id = flow.metadata.get(metadata_keys.VM_RUN_ID, "")
+    run_id = flow_metadata.run_id(flow.metadata)
     auth_request = FirewallAuthRequest(
         sandbox_token=vm_info.get("sandboxToken", ""),
         encrypted_secrets=vm_info.get("encryptedSecrets") or "",
@@ -151,7 +152,7 @@ def _build_firewall_auth_context(
     return _FirewallAuthContext(
         allow=allow,
         firewall_base=firewall_base,
-        proxy_log_path=flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, ""),
+        proxy_log_path=flow_metadata.proxy_log_path(flow.metadata),
         auth_request=auth_request,
         auth_cache_key=auth_cache_key,
     )
@@ -234,8 +235,7 @@ def _mark_matched_firewall_failure(
     action: str,
     error_code: str,
 ) -> None:
-    flow.metadata[metadata_keys.FIREWALL_ACTION] = action
-    flow.metadata[metadata_keys.FIREWALL_ERROR] = error_code
+    flow_metadata.set_firewall_decision(flow.metadata, action, error=error_code)
 
 
 def _merge_auth_headers(
@@ -257,7 +257,7 @@ def _merge_auth_headers(
 
 
 def _record_firewall_auth_success_metadata(flow: http.HTTPFlow, token_meta: dict) -> None:
-    flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+    flow_metadata.set_firewall_decision(flow.metadata, "ALLOW")
     flow.metadata[metadata_keys.AUTH_RESOLVED_SECRETS] = token_meta.get("resolved_secrets", [])
     flow.metadata[metadata_keys.AUTH_REFRESHED_CONNECTORS] = token_meta.get(
         "refreshed_connectors", []

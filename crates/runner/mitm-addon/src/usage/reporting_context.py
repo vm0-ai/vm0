@@ -2,7 +2,7 @@
 
 from mitmproxy import http
 
-import flow_metadata_keys as metadata_keys
+import flow_metadata
 from platform_api import get_api_url
 
 USAGE_EVENT_WEBHOOK_PATH = "/api/webhooks/agent/usage-event"
@@ -43,12 +43,7 @@ class UsageReportingContext:
 
 def usage_reporting_context(flow: http.HTTPFlow) -> UsageReportingContext:
     return UsageReportingContext(
-        sandbox_token=_metadata_string(flow, metadata_keys.VM_SANDBOX_AUTH_KEY),
+        sandbox_token=flow_metadata.sandbox_auth_key(flow.metadata),
         api_url=get_api_url(),
-        proxy_log_path=_metadata_string(flow, metadata_keys.VM_PROXY_LOG_PATH),
+        proxy_log_path=flow_metadata.proxy_log_path(flow.metadata),
     )
-
-
-def _metadata_string(flow: http.HTTPFlow, key: str) -> str:
-    value = flow.metadata.get(key, "")
-    return value if isinstance(value, str) else ""
