@@ -47,6 +47,7 @@ export function isAdminOnlySettingsSection(section: SettingsSection): boolean {
 
 const internalSettingsDialogOpen$ = state(false);
 const internalExternalProfileModalOpen$ = state(false);
+const pendingAccountMenuSettingsSection$ = state<SettingsSection | null>(null);
 
 export const settingsDialogOpen$ = computed((get) => {
   return get(internalSettingsDialogOpen$);
@@ -59,6 +60,20 @@ export const externalProfileModalOpen$ = computed((get) => {
 export const setExternalProfileModalOpen$ = command(
   ({ set }, open: boolean) => {
     set(internalExternalProfileModalOpen$, open);
+  },
+);
+
+export const setPendingAccountMenuSettingsSection$ = command(
+  ({ set }, section: SettingsSection | null) => {
+    set(pendingAccountMenuSettingsSection$, section);
+  },
+);
+
+export const consumePendingAccountMenuSettingsSection$ = command(
+  ({ get, set }) => {
+    const section = get(pendingAccountMenuSettingsSection$);
+    set(pendingAccountMenuSettingsSection$, null);
+    return section;
   },
 );
 
