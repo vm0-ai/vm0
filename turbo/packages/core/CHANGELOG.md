@@ -1,5 +1,21 @@
 # Changelog
 
+## [8.409.0](https://github.com/vm0-ai/vm0/compare/core-v8.408.2...core-v8.409.0) (2026-07-07)
+
+
+### Features
+
+* expand built-in workflow templates with persona-curated catalog ([#20383](https://github.com/vm0-ai/vm0/issues/20383)) ([5bc3fe1](https://github.com/vm0-ai/vm0/commit/5bc3fe196c3188085ca607b7afa20692b3c8013b))
+* wire warm cards website template resource ([#20432](https://github.com/vm0-ai/vm0/issues/20432)) ([523b392](https://github.com/vm0-ai/vm0/commit/523b392ed25a36663d77a522fb457f16d9803609))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.159.3
+    * @vm0/connectors bumped to 1.144.0
+
 ## [8.408.2](https://github.com/vm0-ai/vm0/compare/core-v8.408.1...core-v8.408.2) (2026-07-06)
 
 
