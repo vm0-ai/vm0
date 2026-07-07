@@ -36,6 +36,7 @@ import type {
 } from "./internal-run-callback";
 import { formatRunErrorForRunOwner$ } from "./run-error-format.service";
 import { getRunOutputText } from "./run-output.service";
+import { saveRunSummary, saveRunSummary$ } from "./run-summary.service";
 import {
   teamsOrgCallbackPayloadSchema,
   type TeamsOrgCallbackPayload,
@@ -248,6 +249,15 @@ async function resolveFooterText(args: {
   if (respondedBy) {
     parts.push(respondedBy);
   }
+  if (args.payload.conversationType !== "personal") {
+    const replyTo =
+      args.payload.teamsUserDisplayName ??
+      args.payload.teamsUserPrincipalName ??
+      args.payload.teamsUserId;
+    if (replyTo) {
+      parts.push(`Reply to ${replyTo}`);
+    }
+  }
   if (modelLabel) {
     parts.push(modelLabel);
   }
@@ -454,6 +464,11 @@ async function handleCompletion(args: {
     readonly chatThreadId: string | null | undefined;
     readonly errorMessage: string;
   }) => Promise<string>;
+  readonly saveRunSummary: (
+    runId: string,
+    prompt: string,
+    resultText: string,
+  ) => Promise<void>;
   readonly signal: AbortSignal;
 }): Promise<TeamsOrgCallbackResult> {
   const installation = await loadInstallation({
@@ -552,6 +567,11 @@ async function handleCompletion(args: {
     signal: args.signal,
   });
 
+  if (run?.prompt) {
+    await args.saveRunSummary(args.runId, run.prompt, output ?? "");
+    args.signal.throwIfAborted();
+  }
+
   L.debug("Teams org callback processed successfully", { runId: args.runId });
   return successResponse();
 }
@@ -568,6 +588,11 @@ interface HandleTeamsOrgInternalCallbackInput {
     readonly chatThreadId: string | null | undefined;
     readonly errorMessage: string;
   }) => Promise<string>;
+  readonly saveRunSummary: (
+    runId: string,
+    prompt: string,
+    resultText: string,
+  ) => Promise<void>;
   readonly signal?: AbortSignal;
 }
 
@@ -602,6 +627,7 @@ async function handleTeamsOrgInternalCallback(
     payload,
     getFeatureOverrides: input.getFeatureOverrides,
     formatRunError: input.formatRunError,
+    saveRunSummary: input.saveRunSummary,
     signal,
   });
 }
@@ -620,6 +646,18 @@ export const handleTeamsOrgInternalCallback$ = command(
       },
       formatRunError: (params) => {
         return set(formatRunErrorForRunOwner$, params, signal);
+      },
+      saveRunSummary: (runId, prompt, resultText) => {
+        return set(
+          saveRunSummary$,
+          {
+            runId,
+            triggerSource: "teams",
+            prompt,
+            resultText,
+          },
+          signal,
+        );
       },
       signal,
     });
@@ -646,6 +684,18 @@ export async function handleTeamsOrgInternalCallbackWithoutCcstate(
           code: "INTERNAL_SERVER_ERROR",
           message: params.errorMessage,
         }),
+      );
+    },
+    saveRunSummary: async (runId, prompt, resultText) => {
+      await saveRunSummary(
+        db,
+        {
+          runId,
+          triggerSource: "teams",
+          prompt,
+          resultText,
+        },
+        signal,
       );
     },
     signal,

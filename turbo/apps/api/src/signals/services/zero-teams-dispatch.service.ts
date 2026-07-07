@@ -12,6 +12,7 @@ import type { TeamsInboundActivity } from "@vm0/api-contracts/contracts/zero-tea
 import { and, eq, or } from "drizzle-orm";
 import { convert } from "html-to-text";
 
+import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
@@ -32,11 +33,18 @@ import {
   teamsOrgCallbackPayloadSchema,
   type TeamsOrgCallbackPayload,
 } from "./teams-org-callback-payload";
-import { buildTeamsConnectUrlForActivity } from "./zero-teams-connect.service";
+import {
+  buildTeamsConnectUrlForActivity,
+  disconnectTeamsConnection$,
+  publishTeamsChanged$,
+} from "./zero-teams-connect.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
 
 const L = logger("TeamsDispatch");
-const TEAMS_LOGIN_PROMPT_FALLBACK_TEXT = "Please connect your account first";
+const TEAMS_LOGIN_PROMPT_FALLBACK_TEXT =
+  "Please connect your account to use Zero in this Teams workspace.";
+
+type TeamsBotCommand = "help" | "connect" | "disconnect" | "switch" | "model";
 
 type TeamsInstallation = typeof teamsOrgInstallations.$inferSelect;
 type BoundTeamsInstallation = TeamsInstallation & { readonly orgId: string };
@@ -67,6 +75,11 @@ type EffectiveComposeResolution =
   | {
       readonly status: "not_configured" | "not_found" | "not_accessible";
     };
+
+type ResolvedEffectiveCompose = Extract<
+  EffectiveComposeResolution,
+  { readonly status: "resolved" }
+>;
 
 type TeamsMessageDispatchResult =
   | { readonly kind: "ignored" }
@@ -99,6 +112,98 @@ function optionalLine(
 ): string[] {
   const normalized = nonEmpty(value);
   return normalized ? [`${label}: ${normalized}`] : [];
+}
+
+function worksUrl(): string {
+  return `${env("APP_URL")}/works`;
+}
+
+function isTeamsBotCommand(value: string): value is TeamsBotCommand {
+  return (
+    value === "help" ||
+    value === "connect" ||
+    value === "disconnect" ||
+    value === "switch" ||
+    value === "model"
+  );
+}
+
+function parseTeamsBotCommand(prompt: string): TeamsBotCommand | null {
+  const parts = prompt.trim().split(/\s+/u);
+  const first = parts[0]?.toLowerCase() ?? "";
+  const prefixed = first === "/zero" || first === "zero";
+  const command = prefixed ? (parts[1]?.toLowerCase() ?? "") : first;
+  if (!isTeamsBotCommand(command)) {
+    return null;
+  }
+  return prefixed || parts.length === 1 ? command : null;
+}
+
+function commandHelpNotice(args: {
+  readonly canSwitch: boolean;
+  readonly canModel: boolean;
+}): TeamsMessageDispatchResult {
+  const switchLine = args.canSwitch
+    ? "\n- `switch` - Choose which agent responds to your messages"
+    : "";
+  const modelLine = args.canModel ? "\n- `model` - Choose your model" : "";
+  return {
+    kind: "notice",
+    replyText: [
+      "**Zero Teams Bot Help**",
+      "",
+      "**Commands**",
+      `- \`connect\` - Connect to Zero${switchLine}${modelLine}`,
+      "- `disconnect` - Disconnect from Zero",
+      "",
+      "**Usage**",
+      "- `@Zero <message>` - Send a message to your agent",
+      "- Send a DM to Zero to chat without mentioning the bot",
+    ].join("\n"),
+  };
+}
+
+function connectedNotice(): TeamsMessageDispatchResult {
+  return {
+    kind: "notice",
+    replyText:
+      "You're already connected. Mention @Zero in any channel or send a DM to start chatting with your agent.",
+  };
+}
+
+function notInstalledNotice(): TeamsMessageDispatchResult {
+  return {
+    kind: "notice",
+    replyText:
+      "The Zero Teams app hasn't been set up for this workspace yet. An org admin can complete the setup from VM0.",
+  };
+}
+
+function disconnectedNotice(): TeamsMessageDispatchResult {
+  return {
+    kind: "notice",
+    replyText:
+      "You have been disconnected and your agent access has been revoked.",
+  };
+}
+
+function switchNotice(
+  agent: TeamsAgent | undefined,
+): TeamsMessageDispatchResult {
+  const current = agent
+    ? `\n\nCurrent agent: \`${agent.displayName ?? agent.name}\``
+    : "";
+  return {
+    kind: "notice",
+    replyText: `Choose which agent responds to your Teams messages from [Works](${worksUrl()}).${current}`,
+  };
+}
+
+function modelNotice(): TeamsMessageDispatchResult {
+  return {
+    kind: "notice",
+    replyText: `Choose the model for your Teams agent from [Works](${worksUrl()}).`,
+  };
 }
 
 async function installationForTenant(
@@ -850,6 +955,169 @@ function composeResolutionNotice(
   }
 }
 
+function unboundInstallationNotice(args: {
+  readonly command: TeamsBotCommand | null;
+  readonly activity: TeamsMessageActivity;
+  readonly installation: TeamsInstallation | null;
+}): TeamsMessageDispatchResult {
+  if (args.command === "help") {
+    return commandHelpNotice({ canSwitch: false, canModel: false });
+  }
+  if (args.command === "connect" && !args.installation) {
+    return notInstalledNotice();
+  }
+  return connectNotice(args.activity, args.installation);
+}
+
+function missingConnectionNotice(args: {
+  readonly command: TeamsBotCommand | null;
+  readonly activity: TeamsMessageActivity;
+  readonly installation: TeamsInstallation;
+}): TeamsMessageDispatchResult {
+  if (args.command === "help") {
+    return commandHelpNotice({ canSwitch: true, canModel: false });
+  }
+  return connectNotice(args.activity, args.installation);
+}
+
+const connectedCommandBeforeCompose$ = command(
+  async (
+    { set },
+    args: {
+      readonly command: TeamsBotCommand | null;
+      readonly installation: BoundTeamsInstallation;
+      readonly connection: TeamsConnection;
+    },
+    signal: AbortSignal,
+  ): Promise<TeamsMessageDispatchResult | null> => {
+    switch (args.command) {
+      case "help": {
+        return commandHelpNotice({ canSwitch: true, canModel: true });
+      }
+      case "connect": {
+        return connectedNotice();
+      }
+      case "disconnect": {
+        const result = await set(
+          disconnectTeamsConnection$,
+          {
+            orgId: args.installation.orgId,
+            userId: args.connection.vm0UserId,
+          },
+          signal,
+        );
+        signal.throwIfAborted();
+        if (result.kind === "not_found") {
+          return {
+            kind: "notice",
+            replyText: "You are not connected.",
+          };
+        }
+        await set(
+          publishTeamsChanged$,
+          { orgId: result.orgId, userIds: [result.userId] },
+          signal,
+        );
+        signal.throwIfAborted();
+        return disconnectedNotice();
+      }
+      case "switch":
+      case "model":
+      case null: {
+        return null;
+      }
+    }
+  },
+);
+
+function composeCommandNotice(args: {
+  readonly command: TeamsBotCommand | null;
+  readonly effectiveCompose: EffectiveComposeResolution;
+}): TeamsMessageDispatchResult | null {
+  if (args.command === "switch") {
+    return switchNotice(
+      args.effectiveCompose.status === "resolved"
+        ? args.effectiveCompose.agent
+        : undefined,
+    );
+  }
+  if (args.command === "model") {
+    return modelNotice();
+  }
+  return null;
+}
+
+const runResolvedTeamsAgentForActivity$ = command(
+  async (
+    { set },
+    args: {
+      readonly db: Db;
+      readonly prompt: string;
+      readonly activity: TeamsMessageActivity;
+      readonly installation: BoundTeamsInstallation;
+      readonly connection: TeamsConnection;
+      readonly effectiveCompose: ResolvedEffectiveCompose;
+      readonly apiStartTime: number;
+    },
+    signal: AbortSignal,
+  ): Promise<TeamsMessageDispatchResult> => {
+    const modelRoute = await set(
+      resolveIntegrationModelRouteForUser$,
+      {
+        orgId: args.installation.orgId,
+        userId: args.connection.vm0UserId,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    const existingSessionId = await resolveCompatibleTeamsThreadSession({
+      db: args.db,
+      connectionId: args.connection.id,
+      conversationId: args.activity.conversationId,
+      threadId: args.activity.threadId,
+      userId: args.connection.vm0UserId,
+      composeId: args.effectiveCompose.composeId,
+      modelRoute,
+    });
+    signal.throwIfAborted();
+
+    const threadContext = await fetchTeamsPromptContext({
+      activity: args.activity,
+      signal,
+    });
+    signal.throwIfAborted();
+
+    const result = await set(
+      runAgentForTeams$,
+      {
+        activity: { ...args.activity, text: args.prompt },
+        installation: args.installation,
+        connection: args.connection,
+        composeId: args.effectiveCompose.composeId,
+        sessionId: existingSessionId,
+        threadContext,
+        apiStartTime: args.apiStartTime,
+        modelRoute,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    if (result.kind === "failed") {
+      L.warn("Teams agent dispatch failed", {
+        tenantId: args.activity.tenantId,
+        conversationId: args.activity.conversationId,
+        threadId: args.activity.threadId,
+        userId: args.connection.vm0UserId,
+        runId: result.runId,
+      });
+    }
+
+    return result;
+  },
+);
+
 export const dispatchTeamsMessageToAgent$ = command(
   async (
     { set },
@@ -860,11 +1128,11 @@ export const dispatchTeamsMessageToAgent$ = command(
     },
     signal: AbortSignal,
   ): Promise<TeamsMessageDispatchResult> => {
-    if (args.activity.kind !== "message") {
+    const { activity } = args;
+    if (activity.kind !== "message") {
       return { kind: "ignored" };
     }
 
-    const activity = args.activity;
     if (!shouldDispatchTeamsMessage(activity)) {
       return { kind: "ignored" };
     }
@@ -876,6 +1144,7 @@ export const dispatchTeamsMessageToAgent$ = command(
         replyText: "Please include a message for Zero.",
       };
     }
+    const command = parseTeamsBotCommand(prompt);
 
     const db = set(writeDb$);
     const installation =
@@ -885,7 +1154,7 @@ export const dispatchTeamsMessageToAgent$ = command(
     signal.throwIfAborted();
 
     if (!installation?.orgId) {
-      return connectNotice(activity, installation);
+      return unboundInstallationNotice({ command, activity, installation });
     }
     const boundInstallation: BoundTeamsInstallation = {
       ...installation,
@@ -901,7 +1170,17 @@ export const dispatchTeamsMessageToAgent$ = command(
     signal.throwIfAborted();
 
     if (!connection) {
-      return connectNotice(activity, installation);
+      return missingConnectionNotice({ command, activity, installation });
+    }
+
+    const commandResult = await set(
+      connectedCommandBeforeCompose$,
+      { command, installation: boundInstallation, connection },
+      signal,
+    );
+    signal.throwIfAborted();
+    if (commandResult) {
+      return commandResult;
     }
 
     const effectiveCompose = await resolveEffectiveCompose({
@@ -911,63 +1190,30 @@ export const dispatchTeamsMessageToAgent$ = command(
     });
     signal.throwIfAborted();
 
+    const composeCommandResult = composeCommandNotice({
+      command,
+      effectiveCompose,
+    });
+    if (composeCommandResult) {
+      return composeCommandResult;
+    }
+
     if (effectiveCompose.status !== "resolved") {
       return composeResolutionNotice(effectiveCompose.status);
     }
 
-    const modelRoute = await set(
-      resolveIntegrationModelRouteForUser$,
+    return set(
+      runResolvedTeamsAgentForActivity$,
       {
-        orgId: boundInstallation.orgId,
-        userId: connection.vm0UserId,
-      },
-      signal,
-    );
-    signal.throwIfAborted();
-
-    const existingSessionId = await resolveCompatibleTeamsThreadSession({
-      db,
-      connectionId: connection.id,
-      conversationId: activity.conversationId,
-      threadId: activity.threadId,
-      userId: connection.vm0UserId,
-      composeId: effectiveCompose.composeId,
-      modelRoute,
-    });
-    signal.throwIfAborted();
-
-    const threadContext = await fetchTeamsPromptContext({
-      activity,
-      signal,
-    });
-    signal.throwIfAborted();
-
-    const result = await set(
-      runAgentForTeams$,
-      {
-        activity: { ...activity, text: prompt },
+        db,
+        prompt,
+        activity,
         installation: boundInstallation,
         connection,
-        composeId: effectiveCompose.composeId,
-        sessionId: existingSessionId,
-        threadContext,
+        effectiveCompose,
         apiStartTime: args.apiStartTime,
-        modelRoute,
       },
       signal,
     );
-    signal.throwIfAborted();
-
-    if (result.kind === "failed") {
-      L.warn("Teams agent dispatch failed", {
-        tenantId: activity.tenantId,
-        conversationId: activity.conversationId,
-        threadId: activity.threadId,
-        userId: connection.vm0UserId,
-        runId: result.runId,
-      });
-    }
-
-    return result;
   },
 );

@@ -21,6 +21,12 @@ const teamsActivityResponseSchema = z
   })
   .passthrough();
 
+const teamsConversationResponseSchema = z
+  .object({
+    id: z.string().min(1),
+  })
+  .passthrough();
+
 const teamsGraphIdentitySchema = z
   .object({
     id: z.string().nullable().optional(),
@@ -65,6 +71,10 @@ type TeamsApiErrorResult = {
 
 type SendTeamsActivityResult =
   | { readonly kind: "ok"; readonly activityId: string | undefined }
+  | TeamsApiErrorResult;
+
+type CreateTeamsConversationResult =
+  | { readonly kind: "ok"; readonly conversationId: string }
   | TeamsApiErrorResult;
 
 type FetchTeamsGraphMessageResult =
@@ -115,6 +125,20 @@ interface TeamsActivityBody {
   readonly attachments?: readonly TeamsActivityAttachment[];
   readonly channelData?: {
     readonly tenant?: { readonly id: string };
+  };
+}
+
+interface TeamsConversationIdentity {
+  readonly id: string;
+  readonly name?: string;
+}
+
+interface TeamsCreateConversationBody {
+  readonly bot: TeamsConversationIdentity;
+  readonly members: readonly TeamsConversationIdentity[];
+  readonly isGroup: false;
+  readonly channelData: {
+    readonly tenant: { readonly id: string };
   };
 }
 
@@ -256,6 +280,18 @@ function teamsConversationActivityUrl(args: {
     : base;
 }
 
+function teamsConversationsUrl(serviceUrl: string): string | undefined {
+  const parsed = safeUrlParse(serviceUrl);
+  if (
+    !parsed ||
+    (parsed.protocol !== "https:" && parsed.protocol !== "http:")
+  ) {
+    return undefined;
+  }
+
+  return `${parsed.href.replace(/\/+$/u, "")}/v3/conversations`;
+}
+
 function teamsGraphChannelMessageUrl(args: {
   readonly teamId: string;
   readonly channelId: string;
@@ -385,6 +421,83 @@ async function postTeamsActivity(args: {
     kind: "ok",
     activityId: parsed.success ? parsed.data.id : undefined,
   };
+}
+
+export async function createTeamsPersonalConversation(args: {
+  readonly serviceUrl: string;
+  readonly tenantId: string;
+  readonly botId: string;
+  readonly botName?: string | null;
+  readonly teamsUserId: string;
+  readonly teamsUserDisplayName?: string | null;
+  readonly signal: AbortSignal;
+}): Promise<CreateTeamsConversationResult> {
+  const accessToken = await fetchTeamsBotAccessToken({
+    tenantId: args.tenantId,
+    signal: args.signal,
+  });
+  if (accessToken.kind === "teams-error") {
+    return accessToken;
+  }
+
+  const url = teamsConversationsUrl(args.serviceUrl);
+  if (!url) {
+    return teamsApiError(400, "Invalid Microsoft Teams serviceUrl");
+  }
+
+  const body: TeamsCreateConversationBody = {
+    bot: {
+      id: args.botId,
+      ...(args.botName ? { name: args.botName } : {}),
+    },
+    members: [
+      {
+        id: args.teamsUserId,
+        ...(args.teamsUserDisplayName
+          ? { name: args.teamsUserDisplayName }
+          : {}),
+      },
+    ],
+    isGroup: false,
+    channelData: {
+      tenant: { id: args.tenantId },
+    },
+  };
+
+  const responseResult = await settle(
+    fetch(url, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${accessToken.accessToken}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(body),
+      signal: args.signal,
+    }),
+    args.signal,
+  );
+  if (!responseResult.ok) {
+    return teamsApiError(502, networkErrorMessage(responseResult.error));
+  }
+
+  const response = responseResult.value;
+  const responseText = await response.text();
+  args.signal.throwIfAborted();
+  if (!response.ok) {
+    return teamsApiError(
+      response.status,
+      responseText || `Microsoft Teams API returned HTTP ${response.status}`,
+    );
+  }
+
+  const parsed = teamsConversationResponseSchema.safeParse(
+    safeJsonParse(responseText),
+  );
+  if (!parsed.success) {
+    return teamsApiError(502, "Invalid Microsoft Teams conversation response");
+  }
+
+  return { kind: "ok", conversationId: parsed.data.id };
 }
 
 export function sendTeamsMessageReply(args: {

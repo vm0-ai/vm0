@@ -90,6 +90,7 @@ export const connectTeamsAccount$ = command(
     const teamName = params.get("teamName");
     const serviceUrl = params.get("serviceUrl");
     const conversationId = params.get("conversationId");
+    const conversationType = params.get("conversationType");
     const activityId = params.get("activityId");
     const channelId = params.get("channelId");
     const threadId = params.get("threadId");
@@ -107,6 +108,7 @@ export const connectTeamsAccount$ = command(
           ...(teamName ? { teamName } : {}),
           ...(serviceUrl ? { serviceUrl } : {}),
           ...(conversationId ? { conversationId } : {}),
+          ...(conversationType ? { conversationType } : {}),
           ...(activityId ? { activityId } : {}),
           ...(channelId ? { channelId } : {}),
           ...(threadId ? { threadId } : {}),

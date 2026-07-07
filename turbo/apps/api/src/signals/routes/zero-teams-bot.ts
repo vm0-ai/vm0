@@ -6,6 +6,7 @@ import {
   readTeamsActivityChannelId,
   readTeamsActivityServiceUrl,
 } from "../../lib/teams-bot-activity";
+import { env } from "../../lib/env";
 import { verifyTeamsBotAuthorization } from "../../lib/teams-bot-auth";
 import { logger } from "../../lib/log";
 import { authorization$, request$ } from "../context/hono";
@@ -25,7 +26,7 @@ import { safeJsonParse } from "../utils";
 
 const L = logger("TeamsBot");
 const TEAMS_LOGIN_PROMPT_CARD_TEXT =
-  "To use Zero in Teams, please connect your account first.";
+  "Please connect your account to use Zero in this Teams workspace.";
 
 function errorResponse(
   status: 400 | 401 | 403 | 503,
@@ -68,6 +69,42 @@ function buildTeamsLoginPromptCard(args: {
         type: "Action.OpenUrl",
         title: "Connect",
         url: args.connectUrl,
+      },
+    ],
+  };
+}
+
+function queueUrl(): string {
+  return `${env("APP_URL")}/?queue=1`;
+}
+
+function buildTeamsQueueText(url: string): string {
+  return `\u26a0 Run queued -- concurrency limit reached. Will start automatically when a slot is available. [View queue](${url})`;
+}
+
+function buildTeamsQueueCard(args: {
+  readonly url: string;
+}): TeamsAdaptiveCard {
+  return {
+    type: "AdaptiveCard",
+    version: "1.4",
+    body: [
+      {
+        type: "TextBlock",
+        text: "Run queued",
+        wrap: true,
+      },
+      {
+        type: "TextBlock",
+        text: "Concurrency limit reached. Will start automatically when a slot is available.",
+        wrap: true,
+      },
+    ],
+    actions: [
+      {
+        type: "Action.OpenUrl",
+        title: "View queue",
+        url: args.url,
       },
     ],
   };
@@ -141,23 +178,44 @@ const handleZeroTeamsBot$ = command(
     );
     signal.throwIfAborted();
 
-    if (
-      normalized.activity.kind === "message" &&
-      (dispatch.kind === "notice" || dispatch.kind === "failed")
-    ) {
+    if (normalized.activity.kind === "message") {
+      const queueNoticeUrl = dispatch.kind === "queued" ? queueUrl() : null;
+      const replyText =
+        dispatch.kind === "notice" || dispatch.kind === "failed"
+          ? dispatch.replyText
+          : queueNoticeUrl
+            ? buildTeamsQueueText(queueNoticeUrl)
+            : null;
+      const card =
+        dispatch.kind === "notice" && dispatch.connectUrl
+          ? buildTeamsLoginPromptCard({
+              connectUrl: dispatch.connectUrl,
+            })
+          : queueNoticeUrl
+            ? buildTeamsQueueCard({ url: queueNoticeUrl })
+            : undefined;
+      if (!replyText) {
+        return {
+          status: 200 as const,
+          body: {
+            ok: true as const,
+            activity: normalized.activity,
+            connectUrl: buildTeamsConnectUrlForActivity({
+              activity: normalized.activity,
+              installation,
+            }),
+            dispatch,
+          },
+        };
+      }
+
       const reply = await sendTeamsMessageReply({
         serviceUrl: normalized.activity.serviceUrl,
         conversationId: normalized.activity.conversationId,
         activityId: normalized.activity.activityId ?? undefined,
         tenantId: normalized.activity.tenantId,
-        text: dispatch.replyText,
-        ...(dispatch.kind === "notice" && dispatch.connectUrl
-          ? {
-              card: buildTeamsLoginPromptCard({
-                connectUrl: dispatch.connectUrl,
-              }),
-            }
-          : {}),
+        text: replyText,
+        ...(card ? { card } : {}),
         signal,
       });
       signal.throwIfAborted();

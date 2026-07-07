@@ -1,5 +1,11 @@
 import { command, computed, type Computed } from "ccstate";
-import { agentComposes } from "@vm0/db/schema/agent-compose";
+import { guaranteedConnectorProvidedBindingNames } from "@vm0/api-contracts/contracts/connector-schemas";
+import { extractAndGroupVariables } from "@vm0/core/variable-expander";
+import {
+  agentComposes,
+  agentComposeVersions,
+} from "@vm0/db/schema/agent-compose";
+import { orgCache } from "@vm0/db/schema/org-cache";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { teamsOrgConnections } from "@vm0/db/schema/teams-org-connection";
@@ -10,13 +16,23 @@ import type { TeamsInboundActivity } from "@vm0/api-contracts/contracts/zero-tea
 import { and, eq, isNull, sql } from "drizzle-orm";
 
 import { env } from "../../lib/env";
+import { logger } from "../../lib/log";
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
+import {
+  createTeamsPersonalConversation,
+  sendTeamsMessageReply,
+  type TeamsAdaptiveCard,
+} from "../external/teams-bot-client";
 import { nowDate } from "../external/time";
 import { settle } from "../utils";
 import { ensureUserArtifactStorage } from "./agent-run-storage.service";
+import { zeroConnectorList } from "./zero-connector-data.service";
+import { userSecrets, userVariables } from "./zero-user-data.service";
 
 type TeamsInstallation = typeof teamsOrgInstallations.$inferSelect;
+
+const L = logger("TeamsConnect");
 
 type TeamsConnectResult =
   | { readonly kind: "not_found"; readonly message: string }
@@ -95,6 +111,7 @@ function buildTeamsBrowserConnectUrl(args: {
   readonly teamName?: string | null;
   readonly serviceUrl?: string | null;
   readonly conversationId?: string | null;
+  readonly conversationType?: string | null;
   readonly activityId?: string | null;
   readonly channelId?: string | null;
   readonly threadId?: string | null;
@@ -116,6 +133,7 @@ function buildTeamsBrowserConnectUrl(args: {
   setOptionalParam(params, "teamName", args.teamName);
   setOptionalParam(params, "serviceUrl", args.serviceUrl);
   setOptionalParam(params, "conversationId", args.conversationId);
+  setOptionalParam(params, "conversationType", args.conversationType);
   setOptionalParam(params, "activityId", args.activityId);
   setOptionalParam(params, "channelId", args.channelId);
   setOptionalParam(params, "threadId", args.threadId);
@@ -179,6 +197,7 @@ export function buildTeamsConnectUrlForActivity(args: {
     teamName: args.activity.teamName,
     serviceUrl: args.activity.serviceUrl,
     conversationId: args.activity.conversationId,
+    conversationType: args.activity.conversationType,
     activityId: args.activity.activityId,
     channelId: args.activity.channelId,
     threadId: args.activity.threadId,
@@ -369,24 +388,239 @@ async function getTeamsAgentName(
   return agent?.displayName ?? agent?.name;
 }
 
+interface TeamsEnvironment {
+  readonly requiredSecrets: readonly string[];
+  readonly requiredVars: readonly string[];
+  readonly missingSecrets: readonly string[];
+  readonly missingVars: readonly string[];
+}
+
+type ConnectorProvidedBindings = Parameters<
+  typeof guaranteedConnectorProvidedBindingNames
+>[0]["bindings"];
+
+interface ConnectedTeamsStatusFields {
+  readonly defaultAgentName: string | null;
+  readonly agentOrgSlug: string | null;
+  readonly environment: TeamsEnvironment;
+}
+
+interface TeamsConnectStatus {
+  readonly isInstalled: boolean;
+  readonly isConnected: boolean;
+  readonly isAdmin: boolean;
+  readonly installUrl?: string | null;
+  readonly connectUrl?: string | null;
+  readonly tenantId?: string | null;
+  readonly tenantName?: string | null;
+  readonly teamId?: string | null;
+  readonly teamName?: string | null;
+  readonly defaultAgentName?: string | null;
+  readonly agentOrgSlug?: string | null;
+  readonly environment?: TeamsEnvironment;
+}
+
+function emptyTeamsEnvironment(): TeamsEnvironment {
+  return {
+    requiredSecrets: [],
+    requiredVars: [],
+    missingSecrets: [],
+    missingVars: [],
+  };
+}
+
+async function getTeamsAgentOrgSlug(
+  db: ReadonlyDb,
+  orgId: string,
+): Promise<string | null> {
+  const [orgCacheRow] = await db
+    .select({ slug: orgCache.slug })
+    .from(orgCache)
+    .where(eq(orgCache.orgId, orgId))
+    .limit(1);
+  return orgCacheRow?.slug ?? null;
+}
+
+async function resolveTeamsEnvironment(args: {
+  readonly db: ReadonlyDb;
+  readonly orgId: string;
+  readonly loadUserSecretNames: () => Promise<readonly string[]>;
+  readonly loadUserVarNames: () => Promise<readonly string[]>;
+  readonly loadConnectorBindings: () => Promise<ConnectorProvidedBindings>;
+}): Promise<TeamsEnvironment> {
+  const [meta] = await args.db
+    .select({ defaultAgentId: orgMetadata.defaultAgentId })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.orgId, args.orgId))
+    .limit(1);
+
+  if (!meta?.defaultAgentId) {
+    return emptyTeamsEnvironment();
+  }
+
+  const [compose] = await args.db
+    .select({ headVersionId: agentComposes.headVersionId })
+    .from(agentComposes)
+    .where(eq(agentComposes.id, meta.defaultAgentId))
+    .limit(1);
+
+  if (!compose?.headVersionId) {
+    return emptyTeamsEnvironment();
+  }
+
+  const [version] = await args.db
+    .select({ content: agentComposeVersions.content })
+    .from(agentComposeVersions)
+    .where(eq(agentComposeVersions.id, compose.headVersionId))
+    .limit(1);
+
+  if (!version) {
+    return emptyTeamsEnvironment();
+  }
+
+  const grouped = extractAndGroupVariables(version.content);
+  const requiredSecrets = grouped.secrets.map((secret) => {
+    return secret.name;
+  });
+  const requiredVars = grouped.vars.map((variable) => {
+    return variable.name;
+  });
+  const [userSecretNames, userVarNames, connectorBindings] = await Promise.all([
+    args.loadUserSecretNames(),
+    args.loadUserVarNames(),
+    args.loadConnectorBindings(),
+  ]);
+  const existingSecretNames = new Set([
+    ...userSecretNames,
+    ...guaranteedConnectorProvidedBindingNames({
+      bindings: connectorBindings,
+      namespace: "secrets",
+    }),
+  ]);
+  const existingVarNames = new Set([
+    ...userVarNames,
+    ...guaranteedConnectorProvidedBindingNames({
+      bindings: connectorBindings,
+      namespace: "vars",
+    }),
+  ]);
+
+  return {
+    requiredSecrets,
+    requiredVars,
+    missingSecrets: requiredSecrets.filter((name) => {
+      return !existingSecretNames.has(name);
+    }),
+    missingVars: requiredVars.filter((name) => {
+      return !existingVarNames.has(name);
+    }),
+  };
+}
+
+async function resolveConnectedStatusFields(args: {
+  readonly db: ReadonlyDb;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly loadUserSecretNames: () => Promise<readonly string[]>;
+  readonly loadUserVarNames: () => Promise<readonly string[]>;
+  readonly loadConnectorBindings: () => Promise<ConnectorProvidedBindings>;
+}): Promise<ConnectedTeamsStatusFields> {
+  const composeId = await resolveEffectiveComposeId(
+    args.db,
+    args.userId,
+    args.orgId,
+  );
+  const [agentOrgSlug, environment] = await Promise.all([
+    getTeamsAgentOrgSlug(args.db, args.orgId),
+    resolveTeamsEnvironment(args),
+  ]);
+  return {
+    defaultAgentName: composeId
+      ? ((await getTeamsAgentName(args.db, composeId)) ?? null)
+      : null,
+    agentOrgSlug,
+    environment,
+  };
+}
+
+async function teamsConnectionForStatus(args: {
+  readonly db: ReadonlyDb;
+  readonly userId: string;
+  readonly tenantId: string;
+}): Promise<typeof teamsOrgConnections.$inferSelect | undefined> {
+  const [connection] = await args.db
+    .select()
+    .from(teamsOrgConnections)
+    .where(
+      and(
+        eq(teamsOrgConnections.vm0UserId, args.userId),
+        eq(teamsOrgConnections.teamsTenantId, args.tenantId),
+      ),
+    )
+    .limit(1);
+  return connection;
+}
+
+function inactiveTeamsStatus(args: {
+  readonly installation: TeamsInstallation | undefined;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly isAdmin: boolean;
+}): TeamsConnectStatus {
+  return {
+    isInstalled: false,
+    isConnected: false,
+    isAdmin: args.isAdmin,
+    installUrl: buildTeamsInstallUrl(args.installation?.teamsTenantId),
+    connectUrl: args.isAdmin
+      ? buildTeamsOauthConnectUrl({
+          orgId: args.orgId,
+          userId: args.userId,
+        })
+      : null,
+  };
+}
+
+function activeTeamsStatus(args: {
+  readonly installation: TeamsInstallation;
+  readonly connection: typeof teamsOrgConnections.$inferSelect | undefined;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly isAdmin: boolean;
+  readonly connectedFields: ConnectedTeamsStatusFields | null;
+}): TeamsConnectStatus {
+  const status: TeamsConnectStatus = {
+    isInstalled: true,
+    isConnected: Boolean(args.connection),
+    isAdmin: args.isAdmin,
+    installUrl: null,
+    connectUrl: args.connection
+      ? null
+      : buildTeamsOauthConnectUrl({
+          orgId: args.orgId,
+          userId: args.userId,
+        }),
+    tenantId: args.installation.teamsTenantId,
+    tenantName: args.installation.teamsTenantName,
+    teamId: args.installation.teamsTeamId,
+    teamName: args.installation.teamsTeamName,
+    defaultAgentName: args.connectedFields?.defaultAgentName ?? null,
+  };
+  if (!args.connectedFields) {
+    return status;
+  }
+  return {
+    ...status,
+    agentOrgSlug: args.connectedFields.agentOrgSlug,
+    environment: args.connectedFields.environment,
+  };
+}
+
 export function zeroTeamsConnectStatus(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly isAdmin: boolean;
-}): Computed<
-  Promise<{
-    readonly isInstalled: boolean;
-    readonly isConnected: boolean;
-    readonly isAdmin: boolean;
-    readonly installUrl?: string | null;
-    readonly connectUrl?: string | null;
-    readonly tenantId?: string | null;
-    readonly tenantName?: string | null;
-    readonly teamId?: string | null;
-    readonly teamName?: string | null;
-    readonly defaultAgentName?: string | null;
-  }>
-> {
+}): Computed<Promise<TeamsConnectStatus>> {
   return computed(async (get) => {
     const db = get(db$);
     const [installation] = await db
@@ -396,60 +630,50 @@ export function zeroTeamsConnectStatus(args: {
       .limit(1);
 
     if (!installation || !isTeamsInstallationActive(installation)) {
-      return {
-        isInstalled: false,
-        isConnected: false,
-        isAdmin: args.isAdmin,
-        installUrl: buildTeamsInstallUrl(installation?.teamsTenantId),
-        connectUrl: args.isAdmin
-          ? buildTeamsOauthConnectUrl({
-              orgId: args.orgId,
-              userId: args.userId,
-            })
-          : null,
-      };
+      return inactiveTeamsStatus({ ...args, installation });
     }
 
-    const [connection] = await db
-      .select()
-      .from(teamsOrgConnections)
-      .where(
-        and(
-          eq(teamsOrgConnections.vm0UserId, args.userId),
-          eq(teamsOrgConnections.teamsTenantId, installation.teamsTenantId),
-        ),
-      )
-      .limit(1);
-
-    let defaultAgentName: string | null = null;
-    if (connection) {
-      const composeId = await resolveEffectiveComposeId(
-        db,
-        args.userId,
-        args.orgId,
-      );
-      defaultAgentName = composeId
-        ? ((await getTeamsAgentName(db, composeId)) ?? null)
-        : null;
-    }
-
-    return {
-      isInstalled: true,
-      isConnected: Boolean(connection),
-      isAdmin: args.isAdmin,
-      installUrl: null,
-      connectUrl: connection
-        ? null
-        : buildTeamsOauthConnectUrl({
-            orgId: args.orgId,
-            userId: args.userId,
-          }),
+    const connection = await teamsConnectionForStatus({
+      db,
+      userId: args.userId,
       tenantId: installation.teamsTenantId,
-      tenantName: installation.teamsTenantName,
-      teamId: installation.teamsTeamId,
-      teamName: installation.teamsTeamName,
-      defaultAgentName,
-    };
+    });
+    const connectedFields = connection
+      ? await resolveConnectedStatusFields({
+          db,
+          orgId: args.orgId,
+          userId: args.userId,
+          loadUserSecretNames: async () => {
+            const list = await get(
+              userSecrets({ orgId: args.orgId, userId: args.userId }),
+            );
+            return list.secrets.map((secret) => {
+              return secret.name;
+            });
+          },
+          loadUserVarNames: async () => {
+            const list = await get(
+              userVariables({ orgId: args.orgId, userId: args.userId }),
+            );
+            return list.variables.map((variable) => {
+              return variable.name;
+            });
+          },
+          loadConnectorBindings: async () => {
+            const connectors = await get(
+              zeroConnectorList({ orgId: args.orgId, userId: args.userId }),
+            );
+            return connectors.connectorProvidedBindings;
+          },
+        })
+      : null;
+
+    return activeTeamsStatus({
+      ...args,
+      installation,
+      connection,
+      connectedFields,
+    });
   });
 }
 
@@ -499,7 +723,241 @@ type ConnectTeamsInstallationArgs = {
   readonly teamId?: string;
   readonly teamName?: string;
   readonly serviceUrl?: string;
+  readonly conversationId?: string;
+  readonly conversationType?: string;
+  readonly activityId?: string;
+  readonly channelId?: string;
+  readonly threadId?: string;
 };
+
+type BindTeamsInstallationResult =
+  | { readonly kind: "bound"; readonly installation: TeamsInstallation }
+  | { readonly kind: "not_found"; readonly message: string }
+  | { readonly kind: "forbidden"; readonly message: string };
+
+function buildTeamsWelcomeCard(args: {
+  readonly agentName: string | undefined;
+}): TeamsAdaptiveCard {
+  return {
+    type: "AdaptiveCard",
+    version: "1.4",
+    body: [
+      {
+        type: "TextBlock",
+        text: "You're connected! Mention @Zero in a channel or send a DM to start chatting with your agent.",
+        wrap: true,
+      },
+      {
+        type: "TextBlock",
+        text: "Hi! I'm Zero. I can connect you to AI agents to help with your tasks.",
+        wrap: true,
+      },
+      {
+        type: "TextBlock",
+        text: args.agentName
+          ? `Workspace Agent\n- ${args.agentName}\n\nHow to Use\n- Just describe what you need help with`
+          : "No workspace agent configured yet.",
+        wrap: true,
+      },
+    ],
+  };
+}
+
+async function resolveTeamsWelcomeConversationId(args: {
+  readonly tenantId: string;
+  readonly serviceUrl: string;
+  readonly teamsUserId: string | undefined;
+  readonly teamsUserDisplayName: string | undefined;
+  readonly botId: string | null;
+  readonly botName: string | null;
+  readonly conversationId: string | undefined;
+  readonly conversationType: string | undefined;
+  readonly signal: AbortSignal;
+}): Promise<string | undefined> {
+  if (args.teamsUserId && args.botId) {
+    const conversation = await createTeamsPersonalConversation({
+      serviceUrl: args.serviceUrl,
+      tenantId: args.tenantId,
+      botId: args.botId,
+      botName: args.botName,
+      teamsUserId: args.teamsUserId,
+      teamsUserDisplayName: args.teamsUserDisplayName,
+      signal: args.signal,
+    });
+    args.signal.throwIfAborted();
+    if (conversation.kind === "ok") {
+      return conversation.conversationId;
+    }
+    L.warn("Failed to create Teams personal welcome conversation", {
+      tenantId: args.tenantId,
+      status: conversation.status,
+      error: conversation.error,
+    });
+  }
+
+  return args.conversationType === "personal" ? args.conversationId : undefined;
+}
+
+async function notifyTeamsConnect(args: {
+  readonly db: Db;
+  readonly connectionId: string;
+  readonly installation: TeamsInstallation;
+  readonly orgId: string;
+  readonly tenantId: string;
+  readonly serviceUrl: string | undefined;
+  readonly conversationId: string | undefined;
+  readonly conversationType: string | undefined;
+  readonly teamsUserId: string | undefined;
+  readonly teamsUserDisplayName: string | undefined;
+  readonly signal: AbortSignal;
+}): Promise<void> {
+  const [connection] = await args.db
+    .select({ dmWelcomeSent: teamsOrgConnections.dmWelcomeSent })
+    .from(teamsOrgConnections)
+    .where(eq(teamsOrgConnections.id, args.connectionId))
+    .limit(1);
+  args.signal.throwIfAborted();
+
+  if (!connection || connection.dmWelcomeSent || !args.serviceUrl) {
+    return;
+  }
+
+  const conversationId = await resolveTeamsWelcomeConversationId({
+    tenantId: args.tenantId,
+    serviceUrl: args.serviceUrl,
+    teamsUserId: args.teamsUserId,
+    teamsUserDisplayName: args.teamsUserDisplayName,
+    botId: args.installation.botId,
+    botName: args.installation.botName,
+    conversationId: args.conversationId,
+    conversationType: args.conversationType,
+    signal: args.signal,
+  });
+  args.signal.throwIfAborted();
+
+  if (!conversationId) {
+    return;
+  }
+
+  const defaultComposeId = await resolveDefaultComposeId(args.db, args.orgId);
+  args.signal.throwIfAborted();
+  const agentName = defaultComposeId
+    ? await getTeamsAgentName(args.db, defaultComposeId)
+    : undefined;
+  args.signal.throwIfAborted();
+
+  const sendResult = await sendTeamsMessageReply({
+    serviceUrl: args.serviceUrl,
+    conversationId,
+    tenantId: args.tenantId,
+    text: "You're connected!",
+    card: buildTeamsWelcomeCard({ agentName }),
+    signal: args.signal,
+  });
+  args.signal.throwIfAborted();
+
+  if (sendResult.kind === "teams-error") {
+    L.warn("Failed to send Teams connect welcome", {
+      tenantId: args.tenantId,
+      conversationId,
+      status: sendResult.status,
+      error: sendResult.error,
+    });
+    return;
+  }
+
+  await args.db
+    .update(teamsOrgConnections)
+    .set({ dmWelcomeSent: true, updatedAt: nowDate() })
+    .where(eq(teamsOrgConnections.id, args.connectionId));
+  args.signal.throwIfAborted();
+}
+
+async function bindUnclaimedTeamsInstallation(args: {
+  readonly db: Db;
+  readonly connectArgs: ConnectTeamsInstallationArgs;
+  readonly signal: AbortSignal;
+}): Promise<BindTeamsInstallationResult> {
+  const [updated] = await args.db
+    .update(teamsOrgInstallations)
+    .set({
+      orgId: args.connectArgs.orgId,
+      installedByUserId: args.connectArgs.userId,
+      updatedAt: nowDate(),
+    })
+    .where(
+      and(
+        eq(teamsOrgInstallations.teamsTenantId, args.connectArgs.tenantId),
+        isNull(teamsOrgInstallations.orgId),
+      ),
+    )
+    .returning();
+  args.signal.throwIfAborted();
+
+  if (updated) {
+    return { kind: "bound", installation: updated };
+  }
+
+  const [existing] = await args.db
+    .select()
+    .from(teamsOrgInstallations)
+    .where(eq(teamsOrgInstallations.teamsTenantId, args.connectArgs.tenantId))
+    .limit(1);
+  args.signal.throwIfAborted();
+  if (!existing) {
+    return { kind: "not_found", message: installationNotFoundMessage };
+  }
+  if (existing.orgId !== args.connectArgs.orgId) {
+    return { kind: "forbidden", message: orgMismatchMessage };
+  }
+  return { kind: "bound", installation: existing };
+}
+
+async function finalizeTeamsConnection(args: {
+  readonly db: Db;
+  readonly connectArgs: ConnectTeamsInstallationArgs;
+  readonly installation: TeamsInstallation;
+  readonly role: "admin" | "member";
+  readonly ensureArtifactStorage: () => Promise<unknown>;
+  readonly signal: AbortSignal;
+}): Promise<Extract<TeamsConnectResult, { readonly kind: "ok" }>> {
+  const { connectArgs } = args;
+  const connectionId = await upsertTeamsConnection(args.db, {
+    teamsUserId: connectArgs.teamsUserId,
+    teamsAadObjectId: connectArgs.teamsAadObjectId,
+    teamsTenantId: connectArgs.tenantId,
+    vm0UserId: connectArgs.userId,
+    teamsUserDisplayName: connectArgs.teamsUserDisplayName,
+    teamsUserPrincipalName: connectArgs.teamsUserPrincipalName,
+  });
+  args.signal.throwIfAborted();
+
+  await args.ensureArtifactStorage();
+  args.signal.throwIfAborted();
+
+  await notifyTeamsConnect({
+    db: args.db,
+    connectionId,
+    installation: args.installation,
+    orgId: connectArgs.orgId,
+    tenantId: connectArgs.tenantId,
+    serviceUrl:
+      connectArgs.serviceUrl ?? args.installation.serviceUrl ?? undefined,
+    conversationId: connectArgs.conversationId,
+    conversationType: connectArgs.conversationType,
+    teamsUserId: connectArgs.teamsUserId,
+    teamsUserDisplayName: connectArgs.teamsUserDisplayName,
+    signal: args.signal,
+  });
+  args.signal.throwIfAborted();
+
+  return {
+    kind: "ok",
+    connectionId,
+    role: args.role,
+    installation: args.installation,
+  };
+}
 
 export const prepareTeamsInstallation$ = command(
   async (
@@ -613,65 +1071,32 @@ export const connectTeamsInstallation$ = command(
       });
       signal.throwIfAborted();
 
-      const [updated] = await writeDb
-        .update(teamsOrgInstallations)
-        .set({
-          orgId: args.orgId,
-          installedByUserId: args.userId,
-          updatedAt: nowDate(),
-        })
-        .where(
-          and(
-            eq(teamsOrgInstallations.teamsTenantId, args.tenantId),
-            isNull(teamsOrgInstallations.orgId),
-          ),
-        )
-        .returning();
-      signal.throwIfAborted();
-
-      let boundInstallation = updated;
-      if (!boundInstallation) {
-        const [existing] = await writeDb
-          .select()
-          .from(teamsOrgInstallations)
-          .where(eq(teamsOrgInstallations.teamsTenantId, args.tenantId))
-          .limit(1);
-        signal.throwIfAborted();
-        if (!existing) {
-          return { kind: "not_found", message: installationNotFoundMessage };
-        }
-        if (existing.orgId !== args.orgId) {
-          return { kind: "forbidden", message: orgMismatchMessage };
-        }
-        boundInstallation = existing;
+      const bindResult = await bindUnclaimedTeamsInstallation({
+        db: writeDb,
+        connectArgs: args,
+        signal,
+      });
+      if (bindResult.kind !== "bound") {
+        return bindResult;
       }
 
-      const connectionId = await upsertTeamsConnection(writeDb, {
-        teamsUserId: args.teamsUserId,
-        teamsAadObjectId: args.teamsAadObjectId,
-        teamsTenantId: args.tenantId,
-        vm0UserId: args.userId,
-        teamsUserDisplayName: args.teamsUserDisplayName,
-        teamsUserPrincipalName: args.teamsUserPrincipalName,
-      });
-      signal.throwIfAborted();
-
-      await get(
-        ensureUserArtifactStorage({
-          db: writeDb,
-          orgId: args.orgId,
-          userId: args.userId,
-          name: "artifact",
-        }),
-      );
-      signal.throwIfAborted();
-
-      return {
-        kind: "ok",
-        connectionId,
+      return finalizeTeamsConnection({
+        db: writeDb,
+        connectArgs: args,
+        installation: bindResult.installation,
         role: "admin",
-        installation: boundInstallation,
-      };
+        ensureArtifactStorage: () => {
+          return get(
+            ensureUserArtifactStorage({
+              db: writeDb,
+              orgId: args.orgId,
+              userId: args.userId,
+              name: "artifact",
+            }),
+          );
+        },
+        signal,
+      });
     }
 
     if (installation.orgId !== args.orgId) {
@@ -686,32 +1111,23 @@ export const connectTeamsInstallation$ = command(
     });
     signal.throwIfAborted();
 
-    const connectionId = await upsertTeamsConnection(writeDb, {
-      teamsUserId: args.teamsUserId,
-      teamsAadObjectId: args.teamsAadObjectId,
-      teamsTenantId: args.tenantId,
-      vm0UserId: args.userId,
-      teamsUserDisplayName: args.teamsUserDisplayName,
-      teamsUserPrincipalName: args.teamsUserPrincipalName,
-    });
-    signal.throwIfAborted();
-
-    await get(
-      ensureUserArtifactStorage({
-        db: writeDb,
-        orgId: args.orgId,
-        userId: args.userId,
-        name: "artifact",
-      }),
-    );
-    signal.throwIfAborted();
-
-    return {
-      kind: "ok",
-      connectionId,
-      role: args.orgRole,
+    return finalizeTeamsConnection({
+      db: writeDb,
+      connectArgs: args,
       installation,
-    };
+      role: args.orgRole,
+      ensureArtifactStorage: () => {
+        return get(
+          ensureUserArtifactStorage({
+            db: writeDb,
+            orgId: args.orgId,
+            userId: args.userId,
+            name: "artifact",
+          }),
+        );
+      },
+      signal,
+    });
   },
 );
 

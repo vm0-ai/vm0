@@ -159,6 +159,22 @@ function teamsApiMocks(args: {
   return { tokenRequests, postedActivities };
 }
 
+function mockOpenRouterSummary(summary: string): unknown[] {
+  const requests: unknown[] = [];
+  server.use(
+    http.post(
+      "https://openrouter.ai/api/v1/chat/completions",
+      async ({ request }) => {
+        requests.push(await request.json());
+        return HttpResponse.json({
+          choices: [{ message: { content: summary } }],
+        });
+      },
+    ),
+  );
+  return requests;
+}
+
 function dispatchRunId(body: unknown): string {
   const response = recordFromUnknown(
     body,
@@ -350,6 +366,7 @@ async function claimFollowUpInThread(args: {
 beforeEach(() => {
   setupTeamsConnectTestEnv(APP_URL);
   mockEnv("MICROSOFT_TEAMS_BOT_APP_PASSWORD", BOT_APP_PASSWORD);
+  mockOptionalEnv("OPENROUTER_API_KEY", undefined);
   mockEnv("VM0_WEB_URL", "https://www.vm0.test");
   mockEnv("VM0_API_URL", "https://api.vm0.test");
   mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
@@ -364,6 +381,8 @@ describe("Teams org internal callbacks", () => {
   it("posts completed run replies and persists Teams thread sessions", async () => {
     const teams = await setupConnectedTeamsActor({ zeroDebug: true });
     const teamsApi = teamsApiMocks({ serviceUrl: teams.fixture.serviceUrl });
+    mockOptionalEnv("OPENROUTER_API_KEY", "teams-summary-key");
+    const summaryRequests = mockOpenRouterSummary("Teams completed summary");
     const runId = await dispatchTeamsRun({
       fixture: teams.fixture,
       activityId: "activity-completed-1",
@@ -400,6 +419,20 @@ describe("Teams org internal callbacks", () => {
     );
     expect(teamsApi.postedActivities[0]?.text).toContain(
       `[View run details](${APP_URL}/activities/${runId})`,
+    );
+    expect(teamsApi.postedActivities[0]?.text).toContain(
+      "Reply to Ada Lovelace",
+    );
+    expect(summaryRequests).toHaveLength(1);
+    const summaryRequest = recordFromUnknown(
+      summaryRequests[0],
+      "Expected OpenRouter summary request",
+    );
+    expect(JSON.stringify(summaryRequest.messages)).toContain(
+      "teams agent run",
+    );
+    expect(JSON.stringify(summaryRequest.messages)).toContain(
+      "finish the task",
     );
 
     const followUpClaim = await claimFollowUpInThread({

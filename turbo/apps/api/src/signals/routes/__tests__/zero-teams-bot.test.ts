@@ -39,9 +39,10 @@ const TEAMS_APP_TENANT_ID = "11111111-1111-1111-1111-111111111111";
 const SERVICE_URL = "https://smba.trafficmanager.net/amer/";
 const APP_ORIGIN = "https://app.vm0.test";
 const KEY_ID = "teams-test-key";
-const TEAMS_LOGIN_PROMPT_FALLBACK_TEXT = "Please connect your account first";
+const TEAMS_LOGIN_PROMPT_FALLBACK_TEXT =
+  "Please connect your account to use Zero in this Teams workspace.";
 const TEAMS_LOGIN_PROMPT_CARD_TEXT =
-  "To use Zero in Teams, please connect your account first.";
+  "Please connect your account to use Zero in this Teams workspace.";
 const BOT_FRAMEWORK_METADATA_URL =
   "https://login.botframework.com/v1/.well-known/openidconfiguration";
 const BOT_FRAMEWORK_KEYS_URL =
@@ -431,6 +432,72 @@ async function connectTeamsFixture(
   );
 }
 
+function teamsPersonalMessageActivity(args: {
+  readonly fixture: TeamsConnectFixture;
+  readonly id: string;
+  readonly text: string;
+}): Record<string, unknown> {
+  return teamsMessageActivity(args.fixture, {
+    id: args.id,
+    conversation: {
+      id: `a:personal-${args.fixture.teamsUserId}`,
+      conversationType: "personal",
+    },
+    channelData: {
+      tenant: {
+        id: args.fixture.teamsTenantId,
+        name: args.fixture.teamsTenantName,
+      },
+      teamsAppId: "teams-app-test",
+    },
+    text: args.text,
+    entities: [],
+    replyToId: null,
+  });
+}
+
+async function setupConnectedTeamsBotActor(): Promise<{
+  readonly fixture: TeamsConnectFixture;
+  readonly actor: ReturnType<typeof authOrgApi.user>;
+  readonly runnerGroup: string;
+  readonly outboundRequests: TeamsOutboundRequest[];
+}> {
+  const fixture = await trackTeamsFixture(
+    Promise.resolve(teamsConnectFixture()),
+  );
+  const actor = authOrgApi.user({
+    userId: fixture.userId,
+    orgId: fixture.orgId,
+    orgRole: "org:admin",
+  });
+  const runnerGroup = runsApi.configureRunnerGroup();
+  context.mocks.ably.publish.mockResolvedValue(undefined);
+  authOrgApi.acceptAgentStorageWrites();
+  runsApi.acceptStorageDownloads();
+  runsApi.acceptTelemetryIngest();
+  const agent = await authOrgApi.createAgent(actor, {
+    displayName: "Teams default agent",
+    visibility: "public",
+  });
+  await authOrgApi.setDefaultAgent(actor, agent.agentId);
+  await runsApi.grantProEntitlement(actor);
+  await runsApi.ensureOrgModelProvider(actor);
+  botFrameworkHandlers();
+  const outboundRequests = teamsOutboundHandlers(
+    fixture.serviceUrl,
+    fixture.teamsTenantId,
+  );
+
+  const installResponse = await postTeamsActivity({
+    activity: teamsMessageActivity(fixture),
+    token: teamsToken(),
+  });
+  expect(installResponse.status).toBe(200);
+  await connectTeamsFixture(fixture);
+
+  return { fixture, actor, runnerGroup, outboundRequests };
+}
+
 function dispatchRunId(dispatch: unknown): string {
   if (typeof dispatch !== "object" || dispatch === null) {
     throw new Error("Expected Teams dispatch object");
@@ -551,6 +618,7 @@ describe("POST /api/zero/teams/bot", () => {
     expect(connectUrl.searchParams.get("upn")).toBeNull();
     expect(connectUrl.searchParams.get("teamId")).toBe("team-1");
     expect(connectUrl.searchParams.get("teamName")).toBe("Team One");
+    expect(connectUrl.searchParams.get("conversationType")).toBe("channel");
     expect(body.dispatch).toMatchObject({
       kind: "notice",
       connectUrl: expect.stringContaining(`${APP_ORIGIN}/settings/teams`),
@@ -755,6 +823,172 @@ describe("POST /api/zero/teams/bot", () => {
         mentionsRecipient: true,
       },
     });
+  });
+
+  it("handles connected Teams bot commands", async () => {
+    const { fixture, outboundRequests } = await setupConnectedTeamsBotActor();
+    outboundRequests.splice(0, outboundRequests.length);
+
+    const helpResponse = await postTeamsActivity({
+      activity: teamsPersonalMessageActivity({
+        fixture,
+        id: "activity-command-help",
+        text: "help",
+      }),
+      token: teamsToken(),
+    });
+    expect(helpResponse.status).toBe(200);
+    await expect(helpResponse.json()).resolves.toMatchObject({
+      dispatch: {
+        kind: "notice",
+        replyText: expect.stringContaining("Zero Teams Bot Help"),
+      },
+    });
+
+    const switchResponse = await postTeamsActivity({
+      activity: teamsPersonalMessageActivity({
+        fixture,
+        id: "activity-command-switch",
+        text: "/zero switch",
+      }),
+      token: teamsToken(),
+    });
+    expect(switchResponse.status).toBe(200);
+    await expect(switchResponse.json()).resolves.toMatchObject({
+      dispatch: {
+        kind: "notice",
+        replyText: expect.stringContaining("/works"),
+      },
+    });
+
+    const modelResponse = await postTeamsActivity({
+      activity: teamsPersonalMessageActivity({
+        fixture,
+        id: "activity-command-model",
+        text: "zero model",
+      }),
+      token: teamsToken(),
+    });
+    expect(modelResponse.status).toBe(200);
+    await expect(modelResponse.json()).resolves.toMatchObject({
+      dispatch: {
+        kind: "notice",
+        replyText: expect.stringContaining("Choose the model"),
+      },
+    });
+
+    const disconnectResponse = await postTeamsActivity({
+      activity: teamsPersonalMessageActivity({
+        fixture,
+        id: "activity-command-disconnect",
+        text: "disconnect",
+      }),
+      token: teamsToken(),
+    });
+    expect(disconnectResponse.status).toBe(200);
+    await expect(disconnectResponse.json()).resolves.toMatchObject({
+      dispatch: {
+        kind: "notice",
+        replyText: expect.stringContaining("You have been disconnected"),
+      },
+    });
+
+    expect(outboundRequests).toHaveLength(4);
+    expect(
+      outboundRequests.map((request) => {
+        return request.activityId;
+      }),
+    ).toStrictEqual([
+      "activity-command-help",
+      "activity-command-switch",
+      "activity-command-model",
+      "activity-command-disconnect",
+    ]);
+    expect(outboundRequests[0]?.body).toMatchObject({
+      type: "message",
+      text: expect.stringContaining("Zero Teams Bot Help"),
+    });
+    expect(outboundRequests[3]?.body).toMatchObject({
+      type: "message",
+      text: expect.stringContaining("agent access has been revoked"),
+    });
+  });
+
+  it("replies when a connected Teams run is queued", async () => {
+    const { fixture, actor, outboundRequests } =
+      await setupConnectedTeamsBotActor();
+    outboundRequests.splice(0, outboundRequests.length);
+
+    const firstResponse = await postTeamsActivity({
+      activity: teamsPersonalMessageActivity({
+        fixture,
+        id: "activity-queue-active-1",
+        text: "active run one",
+      }),
+      token: teamsToken(),
+    });
+    expect(firstResponse.status).toBe(200);
+    const firstRunId = dispatchRunId((await firstResponse.json()).dispatch);
+
+    const secondResponse = await postTeamsActivity({
+      activity: teamsPersonalMessageActivity({
+        fixture,
+        id: "activity-queue-active-2",
+        text: "active run two",
+      }),
+      token: teamsToken(),
+    });
+    expect(secondResponse.status).toBe(200);
+    const secondRunId = dispatchRunId((await secondResponse.json()).dispatch);
+
+    const queuedResponse = await postTeamsActivity({
+      activity: teamsPersonalMessageActivity({
+        fixture,
+        id: "activity-queue-third",
+        text: "queued run three",
+      }),
+      token: teamsToken(),
+    });
+    expect(queuedResponse.status).toBe(200);
+    const queuedBody = await queuedResponse.json();
+    expect(queuedBody.dispatch).toMatchObject({
+      kind: "queued",
+      runId: expect.any(String),
+    });
+    const queuedRunId = dispatchRunId(queuedBody.dispatch);
+
+    expect(outboundRequests).toHaveLength(1);
+    expect(outboundRequests[0]).toMatchObject({
+      activityId: "activity-queue-third",
+      body: {
+        type: "message",
+        summary: expect.stringContaining("Run queued"),
+        attachments: [
+          {
+            contentType: "application/vnd.microsoft.card.adaptive",
+            content: {
+              type: "AdaptiveCard",
+              version: "1.4",
+              body: expect.arrayContaining([
+                expect.objectContaining({ text: "Run queued" }),
+              ]),
+              actions: [
+                {
+                  type: "Action.OpenUrl",
+                  title: "View queue",
+                  url: `${APP_ORIGIN}/?queue=1`,
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    expect(outboundRequests[0]?.body).not.toHaveProperty("text");
+
+    await runsApi.requestCancelRun(actor, queuedRunId, [200]);
+    await runsApi.requestCancelRun(actor, firstRunId, [200]);
+    await runsApi.requestCancelRun(actor, secondRunId, [200]);
   });
 
   it("dispatches connected Teams messages to the org default agent", async () => {
