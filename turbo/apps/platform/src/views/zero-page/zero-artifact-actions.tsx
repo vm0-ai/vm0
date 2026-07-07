@@ -509,10 +509,7 @@ function GoogleDriveMenuItem({
     <TooltipProvider delayDuration={200}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <ArtifactDownloadMenuItem
-            className="text-muted-foreground"
-            onClick={syncOrConnect}
-          >
+          <ArtifactDownloadMenuItem onClick={syncOrConnect}>
             <IconBrandGoogleDrive size={14} stroke={1.5} />
             Connect Google Drive
           </ArtifactDownloadMenuItem>
