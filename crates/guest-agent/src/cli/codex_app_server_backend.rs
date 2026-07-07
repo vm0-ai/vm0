@@ -362,6 +362,7 @@ fn codex_app_server_config(runtime: &CliRuntimeConfig<'_>) -> CodexAppServerConf
             runtime.user_env,
             runtime.api_url.as_ref(),
         )
+        .with_config_overrides(runtime.codex_startup_config_overrides())
         .with_current_dir(paths::CANONICAL_WORKING_DIR)
         .with_opt_out_notification_methods(IGNORED_NOTIFICATION_METHODS.iter().copied());
     if runtime.use_mock_codex

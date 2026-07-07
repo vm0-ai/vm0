@@ -7,6 +7,7 @@ import {
   networkPoliciesSchema,
 } from "@vm0/connectors/firewall-types";
 import { apiErrorSchema } from "./errors";
+import { modelProviderCodexRuntimeConfigSchema } from "./model-providers";
 
 const c = initContract();
 
@@ -379,6 +380,10 @@ export const storedExecutionContextSchema = z.object({
   // this model id for built-in billing rows and model usage observations;
   // billing eligibility is decided from API-owned run context.
   modelUsageProvider: z.string().optional(),
+  // API-owned Codex provider/runtime metadata forwarded through the runner.
+  codexRuntimeConfig: modelProviderCodexRuntimeConfigSchema
+    .nullable()
+    .optional(),
 });
 
 /**
@@ -448,6 +453,10 @@ export const executionContextSchema = z.object({
   // this model id for built-in billing rows and model usage observations;
   // billing eligibility is decided from API-owned run context.
   modelUsageProvider: z.string().optional(),
+  // API-owned Codex provider/runtime metadata forwarded through the runner.
+  codexRuntimeConfig: modelProviderCodexRuntimeConfigSchema
+    .nullable()
+    .optional(),
 });
 
 /**

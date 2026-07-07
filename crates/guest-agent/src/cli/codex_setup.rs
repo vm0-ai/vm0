@@ -1,8 +1,8 @@
-//! Codex auth setup boundary.
+//! Codex setup boundary.
 //!
-//! This module owns the guest-side setup wrapper that runs before
-//! `codex exec`. Auth-state file construction lives in `codex_auth`;
-//! command construction stays in `cli::command`.
+//! This module owns the guest-side setup wrapper that runs before Codex starts.
+//! Auth-state file construction lives in `codex_auth`; command construction
+//! stays in `cli::command`.
 
 use std::time::Instant;
 
@@ -14,9 +14,15 @@ use crate::env;
 use crate::error::AgentError;
 use crate::masker::SecretMasker;
 
+use super::codex_runtime_config;
+
 const LOG_TAG: &str = "sandbox:guest-agent";
 
-/// Reconcile Codex auth using the config captured during guest-agent bootstrap.
+/// Reconcile Codex runtime files using the config captured during bootstrap.
+///
+/// API-owned runtime provider metadata may write a model catalog before auth
+/// reconciliation so both `codex exec` and `codex app-server` observe the same
+/// startup config.
 ///
 /// Three mutually-exclusive states are supported:
 ///
@@ -34,6 +40,10 @@ pub async fn setup_codex_for_config(
     _masker: &SecretMasker,
     config: &env::GuestConfig,
 ) -> Result<(), AgentError> {
+    codex_runtime_config::write_model_catalog_from_raw(
+        &config.home_dir,
+        &config.codex_runtime_config,
+    )?;
     let codex_oauth_mode = config
         .user_env
         .get("CHATGPT_ACCOUNT_ID")

@@ -12,6 +12,7 @@ import type { RunContextResponse } from "@vm0/api-contracts/contracts/zero-runs"
 import {
   getDefaultModel,
   getModelProviderFirewall,
+  getModelProviderCodexRuntimeConfig,
   getModelProviderEnvBindings,
   getFrameworkForType,
   getProviderRuntimeModel,
@@ -25,6 +26,7 @@ import {
   MODEL_PROVIDER_TYPES,
   normalizeRunModelId,
   shouldInlineModelProviderFirewall,
+  type ModelProviderCodexRuntimeConfig,
   type ModelProviderEnvBindings,
   type ModelProviderCredentialScope,
   type ModelProviderFeatureStates,
@@ -478,6 +480,7 @@ interface ResolvedModelProviderEnvironment {
   readonly inlineFirewall?: boolean;
   readonly secretConnectorMap?: Record<string, string>;
   readonly secretConnectorMetadataMap?: Record<string, SecretConnectorMetadata>;
+  readonly codexRuntimeConfig?: ModelProviderCodexRuntimeConfig;
 }
 
 interface PermissionManifest {
@@ -1471,6 +1474,10 @@ function modelProviderEnvironment(args: {
       ? {}
       : { [args.config.secretName]: args.secretValue ?? "" },
     selectedModel: model,
+    codexRuntimeConfig: getModelProviderCodexRuntimeConfig(
+      args.type,
+      args.featureStates,
+    ),
     firewall,
     inlineFirewall: shouldInlineModelProviderFirewall(
       args.type,
@@ -4784,6 +4791,7 @@ async function buildStoredExecutionContext(args: {
       featureFlags: getAllFeatureStates(args.featureSwitchContext),
       billableFirewalls: [...args.billableFirewalls],
       modelUsageProvider: args.modelUsageProvider,
+      codexRuntimeConfig: args.modelProvider?.codexRuntimeConfig ?? null,
     },
     secretNames,
     secretValues,

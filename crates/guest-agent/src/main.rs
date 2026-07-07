@@ -295,16 +295,13 @@ async fn execute(
     }
     record_sandbox_op("working_dir_setup", wd_start.elapsed(), true, None);
 
-    // Codex auth reconciliation must complete before the CLI starts. On reused
-    // sandboxes, continuing after a setup failure can inherit stale auth state
+    // Codex setup must complete before the CLI starts. On reused sandboxes,
+    // continuing after a setup failure can inherit stale auth or runtime state
     // from an earlier run.
     if matches!(config.framework, env::Framework::Codex)
         && let Err(e) = cli::setup_codex_for_config(masker, config).await
     {
-        let msg = format!(
-            "Codex auth setup failed: {}",
-            masker.mask_string(&e.to_string())
-        );
+        let msg = format!("Codex setup failed: {}", masker.mask_string(&e.to_string()));
         log_error!(LOG_TAG, "{msg}");
         write_guest_error_file(runtime_paths.checkpoint_error_file(), &msg);
         write_guest_failure_diagnostic(

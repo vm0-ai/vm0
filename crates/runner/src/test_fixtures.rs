@@ -181,6 +181,7 @@ pub(crate) fn execution_context_for_test(run_id: RunId) -> ExecutionContext {
         feature_flags: None,
         billable_firewalls: vec![],
         model_usage_provider: None,
+        codex_runtime_config: None,
     }
 }
 

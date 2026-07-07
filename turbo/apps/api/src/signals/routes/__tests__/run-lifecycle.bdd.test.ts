@@ -43,6 +43,7 @@ import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { storageTextFile } from "./helpers/api-bdd-storage-files";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import {
   deleteVm0ManagedDefaultModelKey,
   enableAutomationsFakeKms,
@@ -2883,6 +2884,68 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await api.readRun(actor, run.runId);
     expect(cancelled.status).toBe("cancelled");
+  });
+
+  it("claims MiniMax Codex runs with structured runtime config", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    if (!actor.orgId) {
+      throw new Error("MiniMax Codex feature switch test requires an org");
+    }
+
+    await updateFeatureSwitchesForUser(
+      context,
+      { userId: actor.userId, orgId: actor.orgId, orgRole: "org:admin" },
+      {
+        [FeatureSwitchKey.CodexFrameworkForMinimax]: true,
+      },
+    );
+    await api.createOrgModelProvider(actor, {
+      type: "minimax-api-key",
+      secret: "sk-minimax-bdd",
+    });
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "minimax codex provider",
+      modelProvider: "minimax-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+    const minimaxApiKeyPlaceholder = getModelProviderFirewall(
+      "minimax-api-key",
+      {
+        [FeatureSwitchKey.CodexFrameworkForMinimax]: true,
+      },
+    )?.placeholders?.MINIMAX_API_KEY;
+    if (!minimaxApiKeyPlaceholder) {
+      throw new Error("Missing MiniMax Codex API key placeholder");
+    }
+
+    expect(claim.cliAgentType).toBe("codex");
+    expect(claim.environment).toMatchObject({
+      OPENAI_API_KEY: minimaxApiKeyPlaceholder,
+      OPENAI_MODEL: "MiniMax-M3",
+    });
+    expect(claim.environment).not.toHaveProperty("OPENAI_BASE_URL");
+    expect(claim.codexRuntimeConfig).toMatchObject({
+      providerId: "minimax",
+      name: "MiniMax",
+      baseUrl: "https://api.minimax.io/v1",
+      envKey: "OPENAI_API_KEY",
+      wireApi: "responses",
+      supportsWebsockets: false,
+    });
+    expect(claim.codexRuntimeConfig?.modelCatalog).toMatchObject({
+      models: [expect.objectContaining({ slug: "MiniMax-M3" })],
+    });
+    expect(
+      claim.firewalls?.map((firewall) => {
+        return firewallEntryName(firewall);
+      }),
+    ).toContain("model-provider:minimax-api-key");
+
+    await api.requestCancelRun(actor, run.runId, [200]);
   });
 
   it("uses the requested provider instead of the caller's personal default", async () => {

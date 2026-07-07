@@ -21,6 +21,7 @@ mod child_env;
 pub mod codex_app_server;
 mod codex_app_server_backend;
 mod codex_app_server_events;
+mod codex_runtime_config;
 mod codex_setup;
 mod command;
 mod diagnostics;
@@ -279,6 +280,7 @@ pub(super) struct CliRuntimeConfig<'a> {
     anthropic_model: Cow<'a, str>,
     openai_model: Cow<'a, str>,
     openai_base_url: Cow<'a, str>,
+    codex_runtime_config: Option<codex_runtime_config::CodexRuntimeConfig>,
     codex_oauth_mode: bool,
     codex_fast_mode: bool,
     stuck_tool_timeout_secs: u64,
@@ -291,8 +293,16 @@ pub(super) struct CliRuntimeConfig<'a> {
 }
 
 impl<'a> CliRuntimeConfig<'a> {
-    fn from_config(config: &'a env::GuestConfig, paths: &'a paths::GuestPaths) -> Self {
-        Self {
+    fn from_config(
+        config: &'a env::GuestConfig,
+        paths: &'a paths::GuestPaths,
+    ) -> Result<Self, AgentError> {
+        let codex_runtime_config = if matches!(config.framework, env::Framework::Codex) {
+            codex_runtime_config::parse_raw(&config.codex_runtime_config)?
+        } else {
+            None
+        };
+        Ok(Self {
             framework: config.framework,
             run_id: Cow::Borrowed(&config.run_id),
             prompt: Cow::Borrowed(&config.prompt),
@@ -312,6 +322,7 @@ impl<'a> CliRuntimeConfig<'a> {
             anthropic_model: Cow::Borrowed(user_env_value(&config.user_env, "ANTHROPIC_MODEL")),
             openai_model: Cow::Borrowed(user_env_value(&config.user_env, "OPENAI_MODEL")),
             openai_base_url: Cow::Borrowed(user_env_value(&config.user_env, "OPENAI_BASE_URL")),
+            codex_runtime_config,
             codex_oauth_mode: !user_env_value(&config.user_env, "CHATGPT_ACCOUNT_ID").is_empty(),
             codex_fast_mode: !user_env_value(&config.user_env, "CHATGPT_ACCOUNT_ID").is_empty()
                 && user_env_value(&config.user_env, "VM0_CODEX_SERVICE_TIER") == "fast",
@@ -326,11 +337,19 @@ impl<'a> CliRuntimeConfig<'a> {
             session_history_path_file: Cow::Borrowed(paths.session_history_path_file()),
             event_error_flag: Cow::Borrowed(paths.event_error_flag()),
             user_env: &config.user_env,
-        }
+        })
     }
 
     fn codex_home(&self) -> String {
         codex_home_for_home_dir(self.home_dir.as_ref())
+    }
+
+    fn codex_startup_config_overrides(&self) -> Vec<String> {
+        let codex_home = self.codex_home();
+        codex_runtime_config::startup_config_overrides(
+            self.codex_runtime_config.as_ref(),
+            Path::new(&codex_home),
+        )
     }
 }
 
@@ -481,7 +500,7 @@ pub async fn execute_cli_with_active_input_for_config(
     config: &env::GuestConfig,
     paths: &paths::GuestPaths,
 ) -> Result<CliExecutionResult, AgentError> {
-    let runtime = CliRuntimeConfig::from_config(config, paths);
+    let runtime = CliRuntimeConfig::from_config(config, paths)?;
     execute_cli_inner(masker, heartbeat_monitor, http, active_input, &runtime).await
 }
 
@@ -1369,6 +1388,7 @@ mod tests {
             anthropic_model: Cow::Borrowed(""),
             openai_model: Cow::Borrowed(""),
             openai_base_url: Cow::Borrowed(""),
+            codex_runtime_config: None,
             codex_oauth_mode: false,
             codex_fast_mode: false,
             stuck_tool_timeout_secs: constants::STUCK_TOOL_TIMEOUT_SECS,
