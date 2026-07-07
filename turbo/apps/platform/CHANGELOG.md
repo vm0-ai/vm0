@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.567.0](https://github.com/vm0-ai/vm0/compare/app-v0.566.0...app-v0.567.0) (2026-07-07)
+
+
+### Features
+
+* restore Ctrl+Shift+1-9 chat thread status emoji shortcuts ([#20446](https://github.com/vm0-ai/vm0/issues/20446)) ([97d9723](https://github.com/vm0-ai/vm0/commit/97d9723142925f68f57c3ce921886c40f4c842f5))
+
+
+### Bug Fixes
+
+* suppress stray focus ring on member and workspace dropdowns after selection ([#20448](https://github.com/vm0-ai/vm0/issues/20448)) ([d075da3](https://github.com/vm0-ai/vm0/commit/d075da34beab9fdcaa82d11c50881845a9a9d8a0))
+
 ## [0.566.0](https://github.com/vm0-ai/vm0/compare/app-v0.565.0...app-v0.566.0) (2026-07-07)
 
 
