@@ -765,12 +765,13 @@ mod tests {
     use std::io::{self, Write};
 
     use flate2::{Compression, write::GzEncoder};
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::io::AsyncReadExt;
     use tokio::net::TcpListener;
     use tokio::sync::oneshot;
 
     use super::*;
     use crate::http::{HttpClient, HttpClientConfig};
+    use crate::test_fixtures::OneShotSessionHistoryServer;
     use crate::types::{
         ResumeSessionHistory, ResumeSessionHistoryEncoding, ResumeSessionHistoryRef,
         ResumeSessionHistoryRefKind,
@@ -906,35 +907,16 @@ mod tests {
         status: &'static str,
         body: impl Into<Vec<u8>> + Send + 'static,
         content_length: Option<u64>,
-    ) -> String {
-        let body = body.into();
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let address = listener.local_addr().unwrap();
-        tokio::spawn(async move {
-            let (mut stream, _) = listener.accept().await.unwrap();
-            let mut request = [0u8; 1024];
-            let _ = stream.read(&mut request).await;
-            let content_length_header = content_length
-                .map(|content_length| format!("Content-Length: {content_length}\r\n"))
-                .unwrap_or_default();
-            let response =
-                format!("HTTP/1.1 {status}\r\n{content_length_header}Connection: close\r\n\r\n");
-            stream.write_all(response.as_bytes()).await.unwrap();
-            stream.write_all(&body).await.unwrap();
-        });
-        format!("http://{address}/history.blob?token=secret")
+    ) -> OneShotSessionHistoryServer {
+        OneShotSessionHistoryServer::respond_once(status, body, content_length).await
     }
 
     #[tokio::test]
     async fn materializer_downloads_and_verifies_hash() {
         let body = b"{\"type\":\"init\"}\n\xff\n";
         let hash = hex::encode(Sha256::digest(body));
-        let session = ref_session(
-            serve_once("200 OK", body, Some(body.len() as u64)).await,
-            hash,
-            body.len() as u64,
-            body.len() as u64,
-        );
+        let server = serve_once("200 OK", body, Some(body.len() as u64)).await;
+        let session = ref_session(server.url(), hash, body.len() as u64, body.len() as u64);
 
         let materializer = start_materializer(&session);
         let result = materializer.finish(&CancellationToken::new()).await;
@@ -952,6 +934,7 @@ mod tests {
             }
             _ => panic!("expected downloaded session"),
         }
+        server.assert_served().await;
     }
 
     #[tokio::test]
@@ -989,12 +972,8 @@ mod tests {
         let compressed = gzip_bytes(body);
         let encoded_size = compressed.len() as u64;
         let hash = hex::encode(Sha256::digest(body));
-        let session = gzip_ref_session(
-            serve_once("200 OK", compressed, None).await,
-            hash,
-            body.len() as u64,
-            encoded_size,
-        );
+        let server = serve_once("200 OK", compressed, None).await;
+        let session = gzip_ref_session(server.url(), hash, body.len() as u64, encoded_size);
 
         let materializer = start_materializer(&session);
         let result = materializer.finish(&CancellationToken::new()).await;
@@ -1012,6 +991,7 @@ mod tests {
             }
             _ => panic!("expected downloaded session"),
         }
+        server.assert_served().await;
     }
 
     #[tokio::test]
@@ -1020,12 +1000,8 @@ mod tests {
         let compressed = zstd_bytes(body);
         let encoded_size = compressed.len() as u64;
         let hash = hex::encode(Sha256::digest(body));
-        let session = zstd_ref_session(
-            serve_once("200 OK", compressed, None).await,
-            hash,
-            body.len() as u64,
-            encoded_size,
-        );
+        let server = serve_once("200 OK", compressed, None).await;
+        let session = zstd_ref_session(server.url(), hash, body.len() as u64, encoded_size);
 
         let materializer = start_materializer(&session);
         let result = materializer.finish(&CancellationToken::new()).await;
@@ -1043,6 +1019,7 @@ mod tests {
             }
             _ => panic!("expected downloaded session"),
         }
+        server.assert_served().await;
     }
 
     #[tokio::test]
@@ -1052,12 +1029,8 @@ mod tests {
         let compressed = zstd_bytes(body);
         let encoded_size = compressed.len() as u64;
         let hash = hex::encode(Sha256::digest(body));
-        let session = zstd_ref_session(
-            serve_once("200 OK", compressed.clone(), None).await,
-            hash,
-            body.len() as u64,
-            encoded_size,
-        );
+        let server = serve_once("200 OK", compressed.clone(), None).await;
+        let session = zstd_ref_session(server.url(), hash, body.len() as u64, encoded_size);
 
         let materializer =
             start_materializer_with_framework(&session, EffectiveCliFramework::Codex);
@@ -1084,6 +1057,7 @@ mod tests {
             }
             _ => panic!("expected downloaded session"),
         }
+        server.assert_served().await;
     }
 
     #[tokio::test]
@@ -1092,8 +1066,9 @@ mod tests {
             b"{\"type\":\"session_meta\",\"payload\":{\"timestamp\":\"2026-07-02T10:00:00Z\"}}\n";
         let compressed = zstd_bytes(body);
         let encoded_size = compressed.len() as u64;
+        let server = serve_once("200 OK", compressed, None).await;
         let session = zstd_ref_session(
-            serve_once("200 OK", compressed, None).await,
+            server.url(),
             "0".repeat(64),
             body.len() as u64,
             encoded_size,
@@ -1116,6 +1091,7 @@ mod tests {
             }
             _ => panic!("expected failed materialization"),
         }
+        server.assert_served().await;
     }
 
     #[tokio::test]
@@ -1125,12 +1101,8 @@ mod tests {
         let compressed = zstd_bytes(body);
         let encoded_size = compressed.len() as u64;
         let hash = hex::encode(Sha256::digest(body));
-        let session = zstd_ref_session(
-            serve_once("200 OK", compressed, None).await,
-            hash,
-            1,
-            encoded_size,
-        );
+        let server = serve_once("200 OK", compressed, None).await;
+        let session = zstd_ref_session(server.url(), hash, 1, encoded_size);
 
         let materializer =
             start_materializer_with_framework(&session, EffectiveCliFramework::Codex);
@@ -1150,6 +1122,7 @@ mod tests {
             }
             _ => panic!("expected failed materialization"),
         }
+        server.assert_served().await;
     }
 
     #[tokio::test]
@@ -1158,12 +1131,8 @@ mod tests {
         let compressed = zstd_bytes(body);
         let encoded_size = compressed.len() as u64;
         let hash = hex::encode(Sha256::digest(body));
-        let session = zstd_ref_session(
-            serve_once("200 OK", compressed, None).await,
-            hash,
-            body.len() as u64,
-            encoded_size + 1,
-        );
+        let server = serve_once("200 OK", compressed, None).await;
+        let session = zstd_ref_session(server.url(), hash, body.len() as u64, encoded_size + 1);
 
         let result = start_materializer(&session)
             .finish(&CancellationToken::new())
@@ -1182,6 +1151,7 @@ mod tests {
             }
             _ => panic!("expected failed materialization"),
         }
+        server.assert_served().await;
     }
 
     #[tokio::test]
@@ -1190,12 +1160,8 @@ mod tests {
         let compressed = gzip_bytes(body);
         let encoded_size = compressed.len() as u64;
         let hash = hex::encode(Sha256::digest(body));
-        let session = gzip_ref_session(
-            serve_once("200 OK", compressed, None).await,
-            hash,
-            body.len() as u64,
-            encoded_size + 1,
-        );
+        let server = serve_once("200 OK", compressed, None).await;
+        let session = gzip_ref_session(server.url(), hash, body.len() as u64, encoded_size + 1);
 
         let result = start_materializer(&session)
             .finish(&CancellationToken::new())
@@ -1214,13 +1180,15 @@ mod tests {
             }
             _ => panic!("expected failed materialization"),
         }
+        server.assert_served().await;
     }
 
     #[tokio::test]
     async fn materializer_rejects_body_over_declared_size_without_content_length() {
         let body = b"{\"type\":\"init\"}\n";
         let hash = hex::encode(Sha256::digest(body));
-        let session = ref_session(serve_once("200 OK", body, None).await, hash, 1, 1);
+        let server = serve_once("200 OK", body, None).await;
+        let session = ref_session(server.url(), hash, 1, 1);
 
         let result = start_materializer(&session)
             .finish(&CancellationToken::new())
@@ -1239,6 +1207,7 @@ mod tests {
             }
             _ => panic!("expected failed materialization"),
         }
+        server.assert_served().await;
     }
 
     #[tokio::test]
@@ -1249,12 +1218,8 @@ mod tests {
         let compressed = [gzip_bytes(first), gzip_bytes(second)].concat();
         let encoded_size = compressed.len() as u64;
         let hash = hex::encode(Sha256::digest(&body));
-        let session = gzip_ref_session(
-            serve_once("200 OK", compressed, None).await,
-            hash,
-            body.len() as u64,
-            encoded_size,
-        );
+        let server = serve_once("200 OK", compressed, None).await;
+        let session = gzip_ref_session(server.url(), hash, body.len() as u64, encoded_size);
 
         let materializer = start_materializer(&session);
         let result = materializer.finish(&CancellationToken::new()).await;
@@ -1265,6 +1230,7 @@ mod tests {
             }
             _ => panic!("expected downloaded session"),
         }
+        server.assert_served().await;
     }
 
     #[tokio::test]
@@ -1273,12 +1239,8 @@ mod tests {
         let compressed = gzip_bytes(body);
         let encoded_size = compressed.len() as u64;
         let hash = hex::encode(Sha256::digest(body));
-        let session = gzip_ref_session(
-            serve_once("200 OK", compressed, None).await,
-            hash,
-            1,
-            encoded_size,
-        );
+        let server = serve_once("200 OK", compressed, None).await;
+        let session = gzip_ref_session(server.url(), hash, 1, encoded_size);
 
         let materializer = start_materializer(&session);
         let result = materializer.finish(&CancellationToken::new()).await;
@@ -1296,6 +1258,7 @@ mod tests {
             }
             _ => panic!("expected failed materialization"),
         }
+        server.assert_served().await;
     }
 
     #[tokio::test]
@@ -1304,12 +1267,8 @@ mod tests {
         let compressed = zstd_bytes(body);
         let encoded_size = compressed.len() as u64;
         let hash = hex::encode(Sha256::digest(body));
-        let session = zstd_ref_session(
-            serve_once("200 OK", compressed, None).await,
-            hash,
-            1,
-            encoded_size,
-        );
+        let server = serve_once("200 OK", compressed, None).await;
+        let session = zstd_ref_session(server.url(), hash, 1, encoded_size);
 
         let materializer = start_materializer(&session);
         let result = materializer.finish(&CancellationToken::new()).await;
@@ -1327,6 +1286,7 @@ mod tests {
             }
             _ => panic!("expected failed materialization"),
         }
+        server.assert_served().await;
     }
 
     #[tokio::test]
@@ -1335,8 +1295,9 @@ mod tests {
         let mut compressed = zstd_bytes(body);
         compressed.truncate(compressed.len().saturating_sub(1));
         let hash = hex::encode(Sha256::digest(body));
+        let server = serve_once("200 OK", compressed.clone(), None).await;
         let session = zstd_ref_session(
-            serve_once("200 OK", compressed.clone(), None).await,
+            server.url(),
             hash,
             body.len() as u64,
             compressed.len() as u64,
@@ -1360,18 +1321,15 @@ mod tests {
             }
             _ => panic!("expected failed materialization"),
         }
+        server.assert_served().await;
     }
 
     #[tokio::test]
     async fn materializer_rejects_hash_mismatch_and_redacts_url_query() {
         let expected_hash = hex::encode(Sha256::digest(b"expected"));
         let actual_hash = hex::encode(Sha256::digest(b"actual"));
-        let session = ref_session(
-            serve_once("200 OK", b"actual", Some(6)).await,
-            expected_hash.clone(),
-            6,
-            6,
-        );
+        let server = serve_once("200 OK", b"actual", Some(6)).await;
+        let session = ref_session(server.url(), expected_hash.clone(), 6, 6);
 
         let result = start_materializer(&session)
             .finish(&CancellationToken::new())
@@ -1391,16 +1349,13 @@ mod tests {
             }
             _ => panic!("expected failed download"),
         }
+        server.assert_served().await;
     }
 
     #[tokio::test]
     async fn materializer_redacts_url_query_from_http_status_error() {
-        let session = ref_session(
-            serve_once("403 Forbidden", b"no", Some(2)).await,
-            hex::encode(Sha256::digest(b"no")),
-            2,
-            2,
-        );
+        let server = serve_once("403 Forbidden", b"", Some(0)).await;
+        let session = ref_session(server.url(), hex::encode(Sha256::digest(b"no")), 2, 2);
 
         let result = start_materializer(&session)
             .finish(&CancellationToken::new())
@@ -1418,16 +1373,13 @@ mod tests {
             }
             _ => panic!("expected failed download"),
         }
+        server.assert_served().await;
     }
 
     #[tokio::test]
     async fn materializer_rejects_oversized_content_length() {
-        let session = ref_session(
-            serve_once("200 OK", b"", Some(RESUME_SESSION_HISTORY_MAX_BYTES + 1)).await,
-            hex::encode(Sha256::digest(b"")),
-            1,
-            1,
-        );
+        let server = serve_once("200 OK", b"", Some(RESUME_SESSION_HISTORY_MAX_BYTES + 1)).await;
+        let session = ref_session(server.url(), hex::encode(Sha256::digest(b"")), 1, 1);
 
         let result = start_materializer(&session)
             .finish(&CancellationToken::new())
@@ -1443,12 +1395,14 @@ mod tests {
             }
             _ => panic!("expected failed download"),
         }
+        server.assert_served().await;
     }
 
     #[tokio::test]
     async fn materializer_records_body_read_failure_timing() {
+        let server = serve_once("200 OK", b"short", Some(999)).await;
         let session = ref_session(
-            serve_once("200 OK", b"short", Some(999)).await,
+            server.url(),
             hex::encode(Sha256::digest(b"short")),
             999,
             999,
@@ -1467,6 +1421,7 @@ mod tests {
             }
             _ => panic!("expected failed download"),
         }
+        server.assert_served().await;
     }
 
     #[test]
