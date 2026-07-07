@@ -72,7 +72,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@vm0/ui";
-import { runAfterDropdownMenuClose } from "../components/dropdown-menu-modal-action.ts";
+import { DropdownMenuModalItem } from "../components/dropdown-menu-modal-item.tsx";
 
 import { agents$ } from "../../signals/agent.ts";
 import { user$ } from "../../signals/auth.ts";
@@ -4910,16 +4910,14 @@ function TriggerMoreActionsMenu({
       </Tooltip>
       <DropdownMenuContent align="end" className="w-44">
         {onRevealWebhookSecret ? (
-          <DropdownMenuItem
+          <DropdownMenuModalItem
             disabled={deleting}
             className="gap-2"
-            onSelect={() => {
-              runAfterDropdownMenuClose(onRevealWebhookSecret);
-            }}
+            onModalSelect={onRevealWebhookSecret}
           >
             <IconEye size={14} stroke={1.5} />
             View webhook secret
-          </DropdownMenuItem>
+          </DropdownMenuModalItem>
         ) : null}
         <DropdownMenuItem
           disabled={deleting}
