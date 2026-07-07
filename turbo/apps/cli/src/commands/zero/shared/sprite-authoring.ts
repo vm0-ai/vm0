@@ -126,7 +126,7 @@ export function createSpriteAuthoringPacket(
     `- Output name: ${plan.name}`,
     "",
     "## Recommended Model",
-    `- Use \`${plan.model}\` for every raw sheet via built-in image generation (\`zero generate image --provider built-in --model ${plan.model} --skip-style --prompt "..."\`, or the in-context image tool).`,
+    `- Use \`${plan.model}\` for every raw sheet via built-in image generation (\`zero generate image --provider built-in --model ${plan.model} --raw-prompt "..."\`, or the in-context image tool).`,
     "- gpt-image-2 is recommended for sprite sheets: it accepts flexible WIDTHxHEIGHT sizes and high quality for crisp, evenly-spaced grids. It does not emit transparent backgrounds, which is expected here — the solid magenta background is chroma-keyed by the local processor.",
     "- Pick a sheet-friendly square or grid-aligned size (for example 1024x1024 for 2x2/3x3/4x4) so each cell stays evenly spaced.",
     "",

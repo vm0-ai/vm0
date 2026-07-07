@@ -402,7 +402,7 @@ export function buildZeroHelpText(
       ? []
       : ['  Rename this chat?     zero chat rename "New title"']),
     "  List generators?       zero generate --help",
-    '  Generate image?        zero generate image --prompt "..."',
+    '  Generate image?        zero generate image --raw-prompt "..."',
     '  Generate website?      zero generate website --prompt "..."',
     '  Generate voice?        zero generate voice --prompt "..."',
     ...(canWriteHost

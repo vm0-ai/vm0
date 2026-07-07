@@ -2905,8 +2905,9 @@ describe("CHAT-02: generation templates and attachments", () => {
       .appendSystemPrompt;
     expect(firstPrompt).toContain("# Artifact Template Context");
     expect(firstPrompt).toContain(
-      `zero generate image --provider built-in --style ${style.illustrationStyleId}`,
+      `zero generate image --provider built-in --style ${style.illustrationStyleId} --prompt "<user request>" --compile`,
     );
+    expect(firstPrompt).toContain("--compiled-prompt");
     expect(firstPrompt).toContain(style.illustrationStyleId);
 
     const firstClaim = await claimChatRun(runnerGroup, first.runId);
@@ -2972,7 +2973,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     // to this message, and prior/incomplete context no longer repeats template
     // selections.
     expect(thirdPrompt).not.toContain(
-      `zero generate image --provider built-in --style ${style.illustrationStyleId}`,
+      `zero generate image --provider built-in --style ${style.illustrationStyleId} --prompt "<user request>" --compile`,
     );
     expect(thirdPrompt).not.toContain(style.illustrationStyleId);
     await cancelChatRun(actor, third.runId);
