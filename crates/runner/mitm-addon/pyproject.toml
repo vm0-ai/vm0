@@ -94,12 +94,12 @@ banned-from = ["matching"]
 [tool.basedpyright]
 include = ["src", "scripts", "tests"]
 exclude = ["build", "**/__pycache__"]
-extraPaths = ["src"]
+extraPaths = ["src", "scripts"]
 pythonVersion = "3.10"
 pythonPlatform = "Linux"
 typeCheckingMode = "basic"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
+pythonpath = ["src", "scripts"]
 asyncio_mode = "auto"
