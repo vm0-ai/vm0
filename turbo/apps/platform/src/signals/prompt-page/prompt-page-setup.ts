@@ -31,24 +31,22 @@ import {
   resolveModelFirstUserDefaultSelection,
 } from "../zero-page/model-default-selection.ts";
 
-function generationTemplateFromSearchParam(
+function templateIdFromSearchParam(
   template: string | null,
-  options?: { readonly websiteTemplatesEnabled?: boolean },
-): GenerationTemplateRequest | undefined {
+): string | undefined {
   const id = template?.trim();
   if (!id) {
     return undefined;
   }
-  if (options?.websiteTemplatesEnabled) {
-    const websiteTemplate = findWebsiteTemplateItem(id);
-    if (websiteTemplate) {
-      return {
-        type: "website",
-        selection: {
-          websiteTemplateId: websiteTemplate.id,
-        },
-      };
-    }
+  return id;
+}
+
+function legacyGenerationTemplateFromSearchParam(
+  template: string | null,
+): GenerationTemplateRequest | undefined {
+  const id = templateIdFromSearchParam(template);
+  if (!id) {
+    return undefined;
   }
   const videoTemplate = findVideoTemplateItem(id);
   if (!videoTemplate) {
@@ -99,6 +97,108 @@ function generationTemplateFromSearchParam(
   };
 }
 
+function websiteGenerationTemplateFromId(
+  id: string,
+): GenerationTemplateRequest | undefined {
+  const websiteTemplate = findWebsiteTemplateItem(id);
+  if (!websiteTemplate) {
+    return undefined;
+  }
+  return {
+    type: "website",
+    selection: {
+      websiteTemplateId: websiteTemplate.id,
+    },
+  };
+}
+
+function videoGenerationTemplateFromId(
+  id: string,
+): GenerationTemplateRequest | undefined {
+  const videoTemplate = findVideoTemplateItem(id);
+  if (!videoTemplate) {
+    return undefined;
+  }
+  return {
+    type: "video",
+    selection: { stylePresetId: videoTemplate.id },
+  };
+}
+
+function presentationGenerationTemplateFromId(
+  id: string,
+): GenerationTemplateRequest | undefined {
+  const presentationTemplateId = id.replace(/^presentation-template:/, "");
+  const presentationTemplate = PRESENTATION_TEMPLATE_PICKER_ITEMS.find(
+    (item) => {
+      return (
+        item.slug === presentationTemplateId ||
+        item.templateId === id ||
+        item.templateId === presentationTemplateId
+      );
+    },
+  );
+  if (!presentationTemplate) {
+    return undefined;
+  }
+  return {
+    type: "presentation",
+    selection: {
+      templateId: presentationTemplate.templateId,
+      colorSystemId:
+        presentationTemplate.colorSystemId ?? "color-system:warm-sand",
+      previewUrl: presentationTemplate.embedUrl,
+    },
+  };
+}
+
+function illustrationGenerationTemplateFromId(
+  id: string,
+): GenerationTemplateRequest | undefined {
+  const illustrationTemplateId = id
+    .replace(/^illustration-template:/, "")
+    .replace(/^image-template:/, "");
+  const illustrationTemplate = ILLUSTRATION_TEMPLATE_ITEMS.find((item) => {
+    return (
+      item.slug === illustrationTemplateId ||
+      item.illustrationStyleId === id ||
+      item.illustrationStyleId === illustrationTemplateId
+    );
+  });
+  if (!illustrationTemplate) {
+    return undefined;
+  }
+  return {
+    type: "illustration",
+    selection: {
+      illustrationStyleId: illustrationTemplate.illustrationStyleId,
+    },
+  };
+}
+
+const generationTemplateParsers = [
+  websiteGenerationTemplateFromId,
+  videoGenerationTemplateFromId,
+  presentationGenerationTemplateFromId,
+  illustrationGenerationTemplateFromId,
+] as const;
+
+function generationTemplateFromSearchParam(
+  template: string | null,
+): GenerationTemplateRequest | undefined {
+  const id = templateIdFromSearchParam(template);
+  if (!id) {
+    return undefined;
+  }
+  for (const parse of generationTemplateParsers) {
+    const generationTemplate = parse(id);
+    if (generationTemplate) {
+      return generationTemplate;
+    }
+  }
+  return undefined;
+}
+
 /**
  * Lightweight prompt deep-link endpoint.
  *
@@ -114,13 +214,12 @@ export const setupPromptPage$ = command(
     const params = get(searchParams$);
     const prompt = params.get("prompt")?.trim();
     const requestedModel = params.get("model")?.trim();
-    const generationTemplate = generationTemplateFromSearchParam(
-      params.get("template"),
-      {
-        websiteTemplatesEnabled:
-          get(featureSwitch$)[FeatureSwitchKey.WebsiteTemplates],
-      },
-    );
+    const template = params.get("template");
+    const generationTemplate = get(featureSwitch$)[
+      FeatureSwitchKey.WebsiteTemplates
+    ]
+      ? generationTemplateFromSearchParam(template)
+      : legacyGenerationTemplateFromSearchParam(template);
     if (!prompt) {
       set(detachedNavigateTo$, "/", { replace: true });
       return;

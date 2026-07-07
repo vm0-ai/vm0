@@ -38,6 +38,7 @@ import { resolveModelFirstUserDefaultSelection } from "../zero-page/model-defaul
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import { userModelPreference$ } from "../external/user-model-preference.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
+import { generationTemplateForFeatureSwitches } from "./generation-template-feature-switch.ts";
 import { logger } from "../log.ts";
 import {
   modelSelectionRequestFromSelection,
@@ -378,7 +379,11 @@ const sendNewThreadMessage$ = command(
     readonly threadId: string;
     readonly sendResult: Promise<SendNewThreadMessageResult>;
   } | null> => {
-    const { agentId, prompt, modelSelection, generationTemplate } = request;
+    const { agentId, prompt, modelSelection } = request;
+    const generationTemplate = generationTemplateForFeatureSwitches(
+      request.generationTemplate,
+      get(featureSwitch$),
+    );
     const { computerUseHostId } = request;
     const draft = get(talkDraft$);
     const policies = await get(orgModelPolicies$);
