@@ -249,12 +249,32 @@ async fn drain_with_ops(
     unit: &RunnerServiceUnit,
     ops: &mut impl ServiceDrainOps,
 ) -> RunnerResult<()> {
-    if ops.is_active(unit).await? {
+    let mut should_signal = ops.is_active(unit).await?;
+    if !should_signal {
+        info!(unit = %unit.unit_name(), "no active service found; drain signal not needed");
+    }
+
+    if should_signal {
         ops.write_restart_override(unit)?;
         ops.daemon_reload().await?;
-        let restart_policy = ops.restart_policy(unit).await?;
-        ensure_drain_restart_policy_applied(unit, &restart_policy)?;
+        match ops.restart_policy(unit).await {
+            Ok(restart_policy) => {
+                ensure_drain_restart_policy_applied(unit, &restart_policy)?;
+            }
+            Err(e) => {
+                if ops.is_active(unit).await? {
+                    return Err(e);
+                }
+                info!(
+                    unit = %unit.unit_name(),
+                    "runner exited before restart policy verification; drain signal not needed"
+                );
+                should_signal = false;
+            }
+        }
+    }
 
+    if should_signal {
         // `is_unit_active` above can race against the runner exiting on its own:
         // by the time we read MainPID or call `kill`, the process may be gone.
         // Both outcomes ("live, signal delivered" and "already gone") must still
@@ -268,8 +288,6 @@ async fn drain_with_ops(
                 info!(unit = %unit.unit_name(), "runner already exited; drain signal not needed");
             }
         }
-    } else {
-        info!(unit = %unit.unit_name(), "no active service found; drain signal not needed");
     }
 
     // Disable so it won't restart on reboot. Disabling is boot enablement
@@ -675,6 +693,8 @@ async fn logs(args: ServiceLogsArgs) -> RunnerResult<()> {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::VecDeque;
+
     use super::*;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
@@ -881,9 +901,10 @@ profiles:
 
     struct FakeDrainOps {
         events: Vec<&'static str>,
-        active: bool,
+        active_results: VecDeque<bool>,
         write_error: bool,
         reload_error: bool,
+        restart_policy_error: bool,
         restart_policy: String,
         signal_outcome: ServiceSignalOutcome,
         disable_error: bool,
@@ -893,9 +914,10 @@ profiles:
         fn default() -> Self {
             Self {
                 events: Vec::new(),
-                active: true,
+                active_results: VecDeque::from([true]),
                 write_error: false,
                 reload_error: false,
+                restart_policy_error: false,
                 restart_policy: "no".to_string(),
                 signal_outcome: ServiceSignalOutcome::Sent { pid: 123 },
                 disable_error: false,
@@ -910,7 +932,10 @@ profiles:
     impl ServiceDrainOps for FakeDrainOps {
         fn is_active<'a>(&'a mut self, _unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, bool> {
             self.events.push("is_active");
-            Box::pin(std::future::ready(Ok(self.active)))
+            Box::pin(std::future::ready(Ok(self
+                .active_results
+                .pop_front()
+                .unwrap_or(false))))
         }
 
         fn write_restart_override(&mut self, _unit: &RunnerServiceUnit) -> RunnerResult<()> {
@@ -936,7 +961,11 @@ profiles:
             _unit: &'a RunnerServiceUnit,
         ) -> ServiceFuture<'a, String> {
             self.events.push("restart_policy");
-            Box::pin(std::future::ready(Ok(self.restart_policy.clone())))
+            Box::pin(std::future::ready(if self.restart_policy_error {
+                Err(fake_error("restart policy failed"))
+            } else {
+                Ok(self.restart_policy.clone())
+            }))
         }
 
         fn signal_drain<'a>(
@@ -981,7 +1010,7 @@ profiles:
     async fn drain_inactive_service_skips_restart_override_and_signal() {
         let unit = service_unit();
         let mut ops = FakeDrainOps {
-            active: false,
+            active_results: VecDeque::from([false]),
             ..FakeDrainOps::default()
         };
 
@@ -1039,6 +1068,54 @@ profiles:
                 "write_restart_override",
                 "daemon_reload",
                 "restart_policy",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn drain_restart_policy_error_for_still_active_service_aborts_before_signal() {
+        let unit = service_unit();
+        let mut ops = FakeDrainOps {
+            active_results: VecDeque::from([true, true]),
+            restart_policy_error: true,
+            ..FakeDrainOps::default()
+        };
+
+        let err = drain_with_ops(&unit, &mut ops).await.unwrap_err();
+
+        assert!(err.to_string().contains("restart policy failed"));
+        assert_eq!(
+            ops.events,
+            [
+                "is_active",
+                "write_restart_override",
+                "daemon_reload",
+                "restart_policy",
+                "is_active",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn drain_restart_policy_error_for_exited_service_still_disables_unit() {
+        let unit = service_unit();
+        let mut ops = FakeDrainOps {
+            active_results: VecDeque::from([true, false]),
+            restart_policy_error: true,
+            ..FakeDrainOps::default()
+        };
+
+        drain_with_ops(&unit, &mut ops).await.unwrap();
+
+        assert_eq!(
+            ops.events,
+            [
+                "is_active",
+                "write_restart_override",
+                "daemon_reload",
+                "restart_policy",
+                "is_active",
+                "disable",
             ]
         );
     }
