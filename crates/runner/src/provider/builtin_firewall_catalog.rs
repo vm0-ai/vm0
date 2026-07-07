@@ -1,6 +1,7 @@
 //! Runner-owned builtin firewall catalog cache refresh.
 
 use std::collections::BTreeMap;
+use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex as StdMutex};
 use std::time::Duration;
@@ -16,6 +17,8 @@ use crate::lock;
 use crate::types::Firewall;
 
 pub(super) const BUILTIN_FIREWALL_CATALOG_REFRESH_INTERVAL: Duration = Duration::from_secs(5 * 60);
+const BUILTIN_FIREWALL_CATALOG_INITIAL_RETRY_DELAYS: [Duration; 2] =
+    [Duration::from_secs(2), Duration::from_secs(5)];
 const BUILTIN_FIREWALL_CATALOG_CACHE_SCHEMA_VERSION: u32 = 1;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -98,13 +101,7 @@ impl BuiltinFirewallCatalogRefreshHandle {
         lock_path: PathBuf,
         provider_cancel: CancellationToken,
     ) -> Self {
-        if let Err(error) = refresh_once(&api, &cache_path, &lock_path).await {
-            error!(
-                error = %error,
-                cache_path = %cache_path.display(),
-                "initial builtin firewall catalog refresh failed"
-            );
-        }
+        run_initial_refresh(&api, &cache_path, &lock_path, &provider_cancel).await;
 
         let cancel = provider_cancel.child_token();
         let task = tokio::spawn(run_periodic_refresh(
@@ -147,6 +144,79 @@ impl Drop for BuiltinFirewallCatalogRefreshInner {
         self.cancel.cancel();
         if let Some(task) = self.take_task() {
             task.abort();
+        }
+    }
+}
+
+async fn run_initial_refresh(
+    api: &ApiClient,
+    cache_path: &Path,
+    lock_path: &Path,
+    cancel: &CancellationToken,
+) {
+    run_initial_refresh_with_delays(
+        || refresh_once(api, cache_path, lock_path),
+        cache_path,
+        cancel,
+        &BUILTIN_FIREWALL_CATALOG_INITIAL_RETRY_DELAYS,
+    )
+    .await;
+}
+
+async fn run_initial_refresh_with_delays<F, Fut>(
+    mut refresh: F,
+    cache_path: &Path,
+    cancel: &CancellationToken,
+    retry_delays: &[Duration],
+) where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = RunnerResult<()>>,
+{
+    let max_attempts = retry_delays.len() + 1;
+    for attempt_index in 0..max_attempts {
+        if cancel.is_cancelled() {
+            return;
+        }
+
+        let attempt = attempt_index + 1;
+        match refresh().await {
+            Ok(()) => {
+                if attempt > 1 {
+                    info!(
+                        attempt,
+                        attempts = max_attempts,
+                        cache_path = %cache_path.display(),
+                        "initial builtin firewall catalog refresh succeeded after retry"
+                    );
+                }
+                return;
+            }
+            Err(error) => {
+                let Some(retry_delay) = retry_delays.get(attempt_index) else {
+                    error!(
+                        error = %error,
+                        attempt,
+                        attempts = max_attempts,
+                        cache_path = %cache_path.display(),
+                        "initial builtin firewall catalog refresh failed after retries"
+                    );
+                    return;
+                };
+
+                warn!(
+                    error = %error,
+                    attempt,
+                    attempts = max_attempts,
+                    retry_after_ms = retry_delay.as_millis(),
+                    cache_path = %cache_path.display(),
+                    "initial builtin firewall catalog refresh failed; retrying"
+                );
+                tokio::select! {
+                    biased;
+                    () = cancel.cancelled() => return,
+                    () = tokio::time::sleep(*retry_delay) => {}
+                }
+            }
         }
     }
 }
@@ -264,6 +334,8 @@ fn validate_catalog_digest(value: &str) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
     use super::*;
     use crate::types::{FirewallApi, FirewallAuth, FirewallPermission};
 
@@ -298,6 +370,114 @@ mod tests {
                 },
             )]),
         }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn initial_refresh_retries_after_failure() {
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let cancel = CancellationToken::new();
+        let cache_path = PathBuf::from("builtin-firewall-catalog-cache.json");
+        let attempts_for_refresh = Arc::clone(&attempts);
+        let refresh = move || {
+            let attempts = Arc::clone(&attempts_for_refresh);
+            async move {
+                let attempt = attempts.fetch_add(1, Ordering::SeqCst) + 1;
+                if attempt < 3 {
+                    Err(RunnerError::Api(format!("attempt {attempt} failed")))
+                } else {
+                    Ok(())
+                }
+            }
+        };
+
+        let retry_delays = [Duration::from_secs(2), Duration::from_secs(5)];
+        let future = run_initial_refresh_with_delays(refresh, &cache_path, &cancel, &retry_delays);
+        tokio::pin!(future);
+
+        tokio::select! {
+            biased;
+            () = &mut future => panic!("initial refresh should wait before retrying"),
+            () = tokio::task::yield_now() => {}
+        }
+        assert_eq!(attempts.load(Ordering::SeqCst), 1);
+
+        tokio::time::advance(Duration::from_secs(2)).await;
+        tokio::select! {
+            biased;
+            () = &mut future => panic!("initial refresh should wait before the final retry"),
+            () = tokio::task::yield_now() => {}
+        }
+        assert_eq!(attempts.load(Ordering::SeqCst), 2);
+
+        tokio::time::advance(Duration::from_secs(5)).await;
+        future.await;
+        assert_eq!(attempts.load(Ordering::SeqCst), 3);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn initial_refresh_stops_after_retry_delays_are_exhausted() {
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let cancel = CancellationToken::new();
+        let cache_path = PathBuf::from("builtin-firewall-catalog-cache.json");
+        let attempts_for_refresh = Arc::clone(&attempts);
+        let refresh = move || {
+            let attempts = Arc::clone(&attempts_for_refresh);
+            async move {
+                let attempt = attempts.fetch_add(1, Ordering::SeqCst) + 1;
+                Err(RunnerError::Api(format!("attempt {attempt} failed")))
+            }
+        };
+
+        let retry_delays = [Duration::from_secs(2), Duration::from_secs(5)];
+        let future = run_initial_refresh_with_delays(refresh, &cache_path, &cancel, &retry_delays);
+        tokio::pin!(future);
+
+        tokio::select! {
+            biased;
+            () = &mut future => panic!("initial refresh should wait before retrying"),
+            () = tokio::task::yield_now() => {}
+        }
+        tokio::time::advance(Duration::from_secs(2)).await;
+        tokio::select! {
+            biased;
+            () = &mut future => panic!("initial refresh should wait before the final retry"),
+            () = tokio::task::yield_now() => {}
+        }
+        assert_eq!(attempts.load(Ordering::SeqCst), 2);
+        tokio::time::advance(Duration::from_secs(5)).await;
+        future.await;
+
+        assert_eq!(attempts.load(Ordering::SeqCst), 3);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn initial_refresh_stops_retrying_when_cancelled() {
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let cancel = CancellationToken::new();
+        let cache_path = PathBuf::from("builtin-firewall-catalog-cache.json");
+        let attempts_for_refresh = Arc::clone(&attempts);
+        let refresh = move || {
+            let attempts = Arc::clone(&attempts_for_refresh);
+            async move {
+                let attempt = attempts.fetch_add(1, Ordering::SeqCst) + 1;
+                Err(RunnerError::Api(format!("attempt {attempt} failed")))
+            }
+        };
+
+        let retry_delays = [Duration::from_secs(60)];
+        let future = run_initial_refresh_with_delays(refresh, &cache_path, &cancel, &retry_delays);
+        tokio::pin!(future);
+
+        tokio::select! {
+            biased;
+            () = &mut future => panic!("initial refresh should wait before retrying"),
+            () = tokio::task::yield_now() => {}
+        }
+        assert_eq!(attempts.load(Ordering::SeqCst), 1);
+
+        cancel.cancel();
+        future.await;
+        assert_eq!(attempts.load(Ordering::SeqCst), 1);
     }
 
     #[tokio::test]
