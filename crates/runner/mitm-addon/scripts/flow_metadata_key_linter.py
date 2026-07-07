@@ -9,9 +9,9 @@ from pathlib import Path
 from types import ModuleType
 from typing import TypeGuard
 
-ADDON_ROOT = Path(__file__).resolve().parents[1]
-_SRC_ROOT = ADDON_ROOT / "src"
-_TESTS_ROOT = ADDON_ROOT / "tests"
+_ADDON_ROOT = Path(__file__).resolve().parents[1]
+_SRC_ROOT = _ADDON_ROOT / "src"
+_TESTS_ROOT = _ADDON_ROOT / "tests"
 _METADATA_KEYS_FILE = _SRC_ROOT / "flow_metadata_keys.py"
 _METADATA_PAIR_LENGTH = 2
 
@@ -44,13 +44,10 @@ _METADATA_METHODS_WITH_DICT_ARGUMENTS = {"__ior__", "update"}
 _SEQUENCE_WRAPPER_CALLS = {"frozenset", "iter", "list", "reversed", "set", "sorted", "tuple"}
 
 
-def _python_files(addon_root: Path = ADDON_ROOT) -> list[Path]:
-    src_root = addon_root / "src"
-    tests_root = addon_root / "tests"
-    metadata_keys_file = src_root / "flow_metadata_keys.py"
+def _python_files() -> list[Path]:
     files: list[Path] = []
-    for root in (src_root, tests_root):
-        files.extend(path for path in root.rglob("*.py") if path != metadata_keys_file)
+    for root in (_SRC_ROOT, _TESTS_ROOT):
+        files.extend(path for path in root.rglob("*.py") if path != _METADATA_KEYS_FILE)
     return sorted(files)
 
 
@@ -84,7 +81,7 @@ def _static_string_value(node: ast.AST) -> str | None:
 
 
 def _violation(path: Path, node: ast.AST, key_name: str) -> str:
-    location = path.relative_to(ADDON_ROOT) if path.is_relative_to(ADDON_ROOT) else path
+    location = path.relative_to(_ADDON_ROOT) if path.is_relative_to(_ADDON_ROOT) else path
     line_number = getattr(node, "lineno", 0)
     return f"{location}:{line_number}: use metadata_keys.{key_name} for flow.metadata access"
 
@@ -1611,12 +1608,8 @@ def duplicate_registered_metadata_keys() -> dict[str, list[str]]:
     return {value: names for value, names in sorted(names_by_value.items()) if len(names) > 1}
 
 
-def repository_metadata_key_violations(addon_root: Path = ADDON_ROOT) -> list[str]:
-    return [
-        violation
-        for path in _python_files(addon_root)
-        for violation in metadata_key_violations(path)
-    ]
+def repository_metadata_key_violations() -> list[str]:
+    return [violation for path in _python_files() for violation in metadata_key_violations(path)]
 
 
 def main() -> int:

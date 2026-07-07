@@ -33,11 +33,9 @@ def test_registered_flow_metadata_keys_use_registry_constants():
 
 
 def test_check_flow_metadata_keys_cli_passes_current_repository():
-    command = [sys.executable, str(_CHECK_SCRIPT)]
-
     # Trusted workspace tooling with constant argv; no user-controlled shell input.
     result = subprocess.run(  # noqa: S603
-        command,
+        [str(_CHECK_SCRIPT)],
         cwd=_ADDON_ROOT,
         text=True,
         capture_output=True,
