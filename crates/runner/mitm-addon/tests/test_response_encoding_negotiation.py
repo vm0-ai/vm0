@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from mitmproxy import http
 
+import flow_metadata_keys as metadata_keys
 import mitm_addon
 import response_encoding_negotiation
 from tests.request_handler_helpers import _single_firewall_vm, _write_registry
@@ -568,7 +569,12 @@ async def test_model_provider_websocket_upgrade_injects_auth_and_keeps_accept_en
         path=path,
         method="GET",
         accept_encoding="gzip, zstd, br",
-        extra_headers=(("Connection", "keep-alive, Upgrade"), ("Upgrade", "websocket")),
+        extra_headers=(
+            ("Connection", "keep-alive, Upgrade"),
+            ("Upgrade", "websocket"),
+            ("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ=="),
+            ("Sec-WebSocket-Version", "13"),
+        ),
     )
 
     with (
@@ -578,6 +584,8 @@ async def test_model_provider_websocket_upgrade_injects_auth_and_keeps_accept_en
         await mitm_addon.request(flow)
 
     auth_fetch.assert_awaited_once()
+    assert flow.metadata[metadata_keys.FIREWALL_NAME] == firewall_name
+    assert flow.metadata[metadata_keys.FIREWALL_PERMISSION] == ""
     assert flow.request.headers["Authorization"] == "Bearer x"
     assert flow.request.headers[_ACCEPT_ENCODING] == "gzip, zstd, br"
 
