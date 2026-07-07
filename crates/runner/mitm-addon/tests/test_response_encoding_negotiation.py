@@ -663,6 +663,36 @@ async def test_response_bodyless_usage_inspected_methods_keep_accept_encoding(
             (
                 ("Connection", "keep-alive, Upgrade"),
                 ("Upgrade", "websocket"),
+                ("Upgrade", "websocket"),
+                ("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ=="),
+                ("Sec-WebSocket-Version", "13"),
+            ),
+            id="duplicate-upgrade-header",
+        ),
+        pytest.param(
+            (
+                ("Connection", "keep-alive, Upgrade"),
+                ("Upgrade", "websocket"),
+                ("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ=="),
+                ("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ=="),
+                ("Sec-WebSocket-Version", "13"),
+            ),
+            id="duplicate-websocket-key",
+        ),
+        pytest.param(
+            (
+                ("Connection", "keep-alive, Upgrade"),
+                ("Upgrade", "websocket"),
+                ("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ=="),
+                ("Sec-WebSocket-Version", "13"),
+                ("Sec-WebSocket-Version", "12"),
+            ),
+            id="duplicate-websocket-version",
+        ),
+        pytest.param(
+            (
+                ("Connection", "keep-alive, Upgrade"),
+                ("Upgrade", "websocket"),
                 ("Sec-WebSocket-Version", "13"),
             ),
             id="missing-websocket-key",
@@ -713,7 +743,7 @@ async def test_response_bodyless_usage_inspected_methods_keep_accept_encoding(
         ),
     ],
 )
-async def test_invalid_websocket_upgrade_whitespace_normalizes_accept_encoding(
+async def test_invalid_websocket_upgrade_normalizes_accept_encoding(
     tmp_path: Path,
     real_flow: Callable[..., http.HTTPFlow],
     headers: Callable[..., http.Headers],

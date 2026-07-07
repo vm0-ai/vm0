@@ -2911,17 +2911,14 @@ def _expects_http_response_body_usage_inspection(
 def _is_websocket_upgrade_request(flow: http.HTTPFlow) -> bool:
     if flow.request.method.upper() != "GET":
         return False
-    if flow.request.headers.get("Upgrade", "").strip(_HTTP_OWS_CHARS).lower() != "websocket":
+    upgrade = _single_header_value(flow.request.headers, "Upgrade")
+    if upgrade is None or upgrade.lower() != "websocket":
         return False
-    if not any(
-        _is_valid_websocket_key(value)
-        for value in flow.request.headers.get_all("Sec-WebSocket-Key")
-    ):
+    websocket_key = _single_header_value(flow.request.headers, "Sec-WebSocket-Key")
+    if websocket_key is None or not _is_valid_websocket_key(websocket_key):
         return False
-    if not any(
-        value.strip(_HTTP_OWS_CHARS) == "13"
-        for value in flow.request.headers.get_all("Sec-WebSocket-Version")
-    ):
+    websocket_version = _single_header_value(flow.request.headers, "Sec-WebSocket-Version")
+    if websocket_version != "13":
         return False
 
     connection_values = flow.request.headers.get_all("Connection")
@@ -2935,9 +2932,16 @@ def _is_websocket_upgrade_request(flow: http.HTTPFlow) -> bool:
     )
 
 
+def _single_header_value(headers: http.Headers, name: str) -> str | None:
+    values = headers.get_all(name)
+    if len(values) != 1:
+        return None
+    return values[0].strip(_HTTP_OWS_CHARS)
+
+
 def _is_valid_websocket_key(value: str) -> bool:
     try:
-        decoded = base64.b64decode(value.strip(_HTTP_OWS_CHARS), validate=True)
+        decoded = base64.b64decode(value, validate=True)
     except (binascii.Error, ValueError):
         return False
     return len(decoded) == _WEBSOCKET_KEY_BYTES
