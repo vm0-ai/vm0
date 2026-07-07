@@ -495,6 +495,51 @@ async fn lifecycle_request_writes_while_file_frame_builder_waits() {
 }
 
 #[tokio::test]
+async fn write_file_cancelled_while_waiting_for_frame_builder_does_not_poison_or_send_frame() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let frame_builder_guard = host.shared.frame_builder.lock().await;
+    let write_start_count = Arc::new(AtomicUsize::new(0));
+
+    let write_task = {
+        let host = Arc::clone(&host);
+        let write_start_count = Arc::clone(&write_start_count);
+        tokio::spawn(async move {
+            host.write_file_with_write_observer(
+                "/tmp/waiting-builder-cancelled.txt",
+                b"hello",
+                false,
+                FrameWriteObserver::new(move || {
+                    write_start_count.fetch_add(1, Ordering::SeqCst);
+                    Ok(())
+                }),
+            )
+            .await
+        })
+    };
+
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while normal_operation_readiness(&host) != NormalOperationReadiness::Busy {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+
+    write_task.abort();
+    let _ = write_task.await;
+    assert_eq!(write_start_count.load(Ordering::SeqCst), 0);
+    assert_eq!(pending_request_count(&host), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+
+    drop(frame_builder_guard);
+    assert_connection_accepts_exec_operation(&host, &mut guest).await;
+}
+
+#[tokio::test]
 async fn write_file_rejects_invalid_path_before_sending_frame() {
     let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
