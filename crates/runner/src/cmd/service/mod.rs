@@ -1,5 +1,6 @@
 use std::future::Future;
 use std::path::{Path, PathBuf};
+use std::pin::Pin;
 
 use crate::error::{RunnerError, RunnerResult};
 use crate::paths::{HomePaths, touch_mtime};
@@ -8,6 +9,7 @@ use sha2::{Digest, Sha256};
 use tracing::{info, warn};
 
 mod diagnostic;
+mod drain_override;
 mod gate;
 mod signal;
 mod systemctl;
@@ -19,9 +21,10 @@ pub(crate) use systemctl::{is_unit_active, is_unit_enabled};
 pub(crate) use target::RunnerServiceUnit;
 pub(crate) use unit_config::read_unit_config_path;
 
+use drain_override::{remove_drain_restart_override, write_drain_restart_override};
 use gate::{check_active_jobs_gate, read_runner_status, runner_base_dir};
 use signal::{ServiceSignalOutcome, signal_service_main};
-use systemctl::{journalctl_logs_status, run_systemctl};
+use systemctl::{get_service_restart_policy, journalctl_logs_status, run_systemctl};
 use unit_file::{
     RUNNER_SERVICE_NOFILE_LIMIT_DIRECTIVE, cleanup_unit_staging_files, generate_unit_file,
     remove_unit_file_if_exists, resolve_config_path, validate_current_exe_path, validate_env_vars,
@@ -175,6 +178,117 @@ fn systemd_run_limit_nofile_property_arg() -> String {
     format!("--property={RUNNER_SERVICE_NOFILE_LIMIT_DIRECTIVE}")
 }
 
+async fn reload_systemd_if_drain_restart_override_removed(
+    unit: &RunnerServiceUnit,
+) -> RunnerResult<()> {
+    if remove_drain_restart_override(unit)? {
+        run_systemctl(&["daemon-reload"]).await?;
+    }
+    Ok(())
+}
+
+fn ensure_drain_restart_policy_applied(
+    unit: &RunnerServiceUnit,
+    restart_policy: &str,
+) -> RunnerResult<()> {
+    if restart_policy == "no" {
+        return Ok(());
+    }
+    Err(RunnerError::Internal(format!(
+        "effective Restart={restart_policy:?} for {} after drain override; expected Restart=no",
+        unit.service_name()
+    )))
+}
+
+type ServiceFuture<'a, T> = Pin<Box<dyn Future<Output = RunnerResult<T>> + 'a>>;
+
+trait ServiceDrainOps {
+    fn is_active<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, bool>;
+    fn write_restart_override(&mut self, unit: &RunnerServiceUnit) -> RunnerResult<()>;
+    fn daemon_reload(&mut self) -> ServiceFuture<'_, ()>;
+    fn restart_policy<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, String>;
+    fn signal_drain<'a>(
+        &'a mut self,
+        unit: &'a RunnerServiceUnit,
+    ) -> ServiceFuture<'a, ServiceSignalOutcome>;
+    fn disable<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, ()>;
+}
+
+struct RealServiceDrainOps;
+
+impl ServiceDrainOps for RealServiceDrainOps {
+    fn is_active<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, bool> {
+        Box::pin(async move { is_unit_active(unit).await })
+    }
+
+    fn write_restart_override(&mut self, unit: &RunnerServiceUnit) -> RunnerResult<()> {
+        write_drain_restart_override(unit)
+    }
+
+    fn daemon_reload(&mut self) -> ServiceFuture<'_, ()> {
+        Box::pin(async { run_systemctl(&["daemon-reload"]).await })
+    }
+
+    fn restart_policy<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, String> {
+        Box::pin(async move { get_service_restart_policy(unit).await })
+    }
+
+    fn signal_drain<'a>(
+        &'a mut self,
+        unit: &'a RunnerServiceUnit,
+    ) -> ServiceFuture<'a, ServiceSignalOutcome> {
+        Box::pin(async move { signal_service_main(unit, nix::sys::signal::Signal::SIGUSR1).await })
+    }
+
+    fn disable<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, ()> {
+        Box::pin(async move { run_systemctl(&["disable", unit.service_name()]).await })
+    }
+}
+
+async fn drain_with_ops(
+    unit: &RunnerServiceUnit,
+    ops: &mut impl ServiceDrainOps,
+) -> RunnerResult<()> {
+    if ops.is_active(unit).await? {
+        ops.write_restart_override(unit)?;
+        ops.daemon_reload().await?;
+        let restart_policy = ops.restart_policy(unit).await?;
+        ensure_drain_restart_policy_applied(unit, &restart_policy)?;
+
+        // `is_unit_active` above can race against the runner exiting on its own:
+        // by the time we read MainPID or call `kill`, the process may be gone.
+        // Both outcomes ("live, signal delivered" and "already gone") must still
+        // run `systemctl disable` below so the unit does not auto-start at the
+        // next boot.
+        match ops.signal_drain(unit).await? {
+            ServiceSignalOutcome::Sent { pid } => {
+                info!(unit = %unit.unit_name(), pid, "sent SIGUSR1 (drain)");
+            }
+            ServiceSignalOutcome::AlreadyGone => {
+                info!(unit = %unit.unit_name(), "runner already exited; drain signal not needed");
+            }
+        }
+    } else {
+        info!(unit = %unit.unit_name(), "no active service found; drain signal not needed");
+    }
+
+    // Disable so it won't restart on reboot. Disabling is boot enablement
+    // cleanup only; active-unit restart prevention is handled by the runtime
+    // Restart=no override above.
+    if let Err(e) = ops.disable(unit).await {
+        warn!(unit = %unit.unit_name(), error = %e, "failed to disable unit");
+        eprintln!(
+            "WARNING: drain could not disable {}: {e}. \
+             Run it manually to prevent the unit from restarting on reboot.",
+            unit.service_name()
+        );
+    } else {
+        info!(unit = %unit.unit_name(), "disabled (won't restart on reboot)");
+    }
+
+    Ok(())
+}
+
 async fn prepare_service_activation_config(
     unit: &RunnerServiceUnit,
     config_path: &Path,
@@ -261,6 +375,7 @@ async fn start(args: ServiceRunArgs) -> RunnerResult<()> {
     )?;
     validate_systemd_path("current executable path", &exe_path)?;
     validate_systemd_path("config path", &config_path)?;
+    reload_systemd_if_drain_restart_override_removed(&unit).await?;
 
     let unit_arg = format!("--unit={}", unit.unit_name());
     let desc_arg = format!("--description=VM0 Runner ({})", unit.unit_name());
@@ -377,6 +492,7 @@ async fn install(args: ServiceRunArgs) -> RunnerResult<()> {
             );
             cleanup_unit_staging_files(&upath)?;
             write_unit_file(&upath, &unit_content)?;
+            remove_drain_restart_override(&unit_for_activation)?;
 
             run_systemctl(&["daemon-reload"]).await?;
             run_systemctl(&["enable", "--now", unit_for_activation.service_name()]).await?;
@@ -407,6 +523,9 @@ pub(crate) async fn uninstall_service_unit(unit: &RunnerServiceUnit) -> RunnerRe
     if let Err(e) = remove_unit_file_if_exists(upath) {
         warn!(unit = %unit.unit_name(), error = %e, "failed to remove unit file");
     }
+    if let Err(e) = remove_drain_restart_override(unit) {
+        warn!(unit = %unit.unit_name(), error = %e, "failed to remove drain restart override");
+    }
 
     if let Err(e) = run_systemctl(&["daemon-reload"]).await {
         warn!(unit = %unit.unit_name(), error = %e, "failed to reload systemd daemon");
@@ -430,40 +549,9 @@ async fn uninstall(args: ServiceUninstallArgs) -> RunnerResult<()> {
 /// `service drain` — send SIGUSR1, disable unit, return immediately.
 async fn drain(args: ServiceDrainArgs) -> RunnerResult<()> {
     let unit = RunnerServiceUnit::from_suffix(&args.name)?;
-    if is_unit_active(&unit).await? {
-        // `is_unit_active` above can race against the runner exiting on its own:
-        // by the time we read MainPID or call `kill`, the process may be gone.
-        // Both outcomes ("live, signal delivered" and "already gone") must still
-        // run `systemctl disable` below so the unit does not auto-start at the
-        // next boot.
-        match signal_service_main(&unit, nix::sys::signal::Signal::SIGUSR1).await? {
-            ServiceSignalOutcome::Sent { pid } => {
-                info!(unit = %unit.unit_name(), pid, "sent SIGUSR1 (drain)");
-            }
-            ServiceSignalOutcome::AlreadyGone => {
-                info!(unit = %unit.unit_name(), "runner already exited; drain signal not needed");
-            }
-        }
-    } else {
-        info!(unit = %unit.unit_name(), "no active service found; drain signal not needed");
-    }
-
-    // Disable so it won't restart on reboot. At this point the runner either
-    // saw SIGUSR1, already exited, or was inactive, so disabling is the
-    // remaining retirement step. Surface the hint on stderr in addition to
-    // the structured log so CLI users don't miss it.
-    if let Err(e) = run_systemctl(&["disable", unit.service_name()]).await {
-        warn!(unit = %unit.unit_name(), error = %e, "failed to disable unit");
-        eprintln!(
-            "WARNING: drain could not disable {}: {e}. \
-             Run it manually to prevent the unit from restarting on reboot.",
-            unit.service_name()
-        );
-    } else {
-        info!(unit = %unit.unit_name(), "disabled (won't restart on reboot)");
-    }
-
-    Ok(())
+    let home = HomePaths::new()?;
+    let _service_lock = acquire_service_lock(&unit, &home).await?;
+    drain_with_ops(&unit, &mut RealServiceDrainOps).await
 }
 
 /// `service resume` — send SIGUSR2, re-enable unit.
@@ -475,6 +563,9 @@ async fn drain(args: ServiceDrainArgs) -> RunnerResult<()> {
 /// transition).
 async fn resume(args: ServiceResumeArgs) -> RunnerResult<()> {
     let unit = RunnerServiceUnit::from_suffix(&args.name)?;
+    let home = HomePaths::new()?;
+    let _service_lock = acquire_service_lock(&unit, &home).await?;
+
     if !is_unit_active(&unit).await? {
         return Err(RunnerError::Internal(format!(
             "{} is not active — cannot resume an inactive runner",
@@ -505,6 +596,8 @@ async fn resume(args: ServiceResumeArgs) -> RunnerResult<()> {
             }
         }
     }
+
+    reload_systemd_if_drain_restart_override_removed(&unit).await?;
 
     // Same race as in `drain`: the runner can exit after the preflight
     // `is_unit_active` check but before we deliver SIGUSR2. Unlike drain,
@@ -784,6 +877,193 @@ profiles:
 
     fn service_unit() -> RunnerServiceUnit {
         RunnerServiceUnit::from_suffix("test").unwrap()
+    }
+
+    struct FakeDrainOps {
+        events: Vec<&'static str>,
+        active: bool,
+        write_error: bool,
+        reload_error: bool,
+        restart_policy: String,
+        signal_outcome: ServiceSignalOutcome,
+        disable_error: bool,
+    }
+
+    impl Default for FakeDrainOps {
+        fn default() -> Self {
+            Self {
+                events: Vec::new(),
+                active: true,
+                write_error: false,
+                reload_error: false,
+                restart_policy: "no".to_string(),
+                signal_outcome: ServiceSignalOutcome::Sent { pid: 123 },
+                disable_error: false,
+            }
+        }
+    }
+
+    fn fake_error(message: &str) -> RunnerError {
+        RunnerError::Internal(message.to_string())
+    }
+
+    impl ServiceDrainOps for FakeDrainOps {
+        fn is_active<'a>(&'a mut self, _unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, bool> {
+            self.events.push("is_active");
+            Box::pin(std::future::ready(Ok(self.active)))
+        }
+
+        fn write_restart_override(&mut self, _unit: &RunnerServiceUnit) -> RunnerResult<()> {
+            self.events.push("write_restart_override");
+            if self.write_error {
+                Err(fake_error("write failed"))
+            } else {
+                Ok(())
+            }
+        }
+
+        fn daemon_reload(&mut self) -> ServiceFuture<'_, ()> {
+            self.events.push("daemon_reload");
+            Box::pin(std::future::ready(if self.reload_error {
+                Err(fake_error("reload failed"))
+            } else {
+                Ok(())
+            }))
+        }
+
+        fn restart_policy<'a>(
+            &'a mut self,
+            _unit: &'a RunnerServiceUnit,
+        ) -> ServiceFuture<'a, String> {
+            self.events.push("restart_policy");
+            Box::pin(std::future::ready(Ok(self.restart_policy.clone())))
+        }
+
+        fn signal_drain<'a>(
+            &'a mut self,
+            _unit: &'a RunnerServiceUnit,
+        ) -> ServiceFuture<'a, ServiceSignalOutcome> {
+            self.events.push("signal_drain");
+            Box::pin(std::future::ready(Ok(self.signal_outcome)))
+        }
+
+        fn disable<'a>(&'a mut self, _unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, ()> {
+            self.events.push("disable");
+            Box::pin(std::future::ready(if self.disable_error {
+                Err(fake_error("disable failed"))
+            } else {
+                Ok(())
+            }))
+        }
+    }
+
+    #[tokio::test]
+    async fn drain_active_service_disables_restart_before_signal() {
+        let unit = service_unit();
+        let mut ops = FakeDrainOps::default();
+
+        drain_with_ops(&unit, &mut ops).await.unwrap();
+
+        assert_eq!(
+            ops.events,
+            [
+                "is_active",
+                "write_restart_override",
+                "daemon_reload",
+                "restart_policy",
+                "signal_drain",
+                "disable",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn drain_inactive_service_skips_restart_override_and_signal() {
+        let unit = service_unit();
+        let mut ops = FakeDrainOps {
+            active: false,
+            ..FakeDrainOps::default()
+        };
+
+        drain_with_ops(&unit, &mut ops).await.unwrap();
+
+        assert_eq!(ops.events, ["is_active", "disable"]);
+    }
+
+    #[tokio::test]
+    async fn drain_write_failure_aborts_before_signal() {
+        let unit = service_unit();
+        let mut ops = FakeDrainOps {
+            write_error: true,
+            ..FakeDrainOps::default()
+        };
+
+        let err = drain_with_ops(&unit, &mut ops).await.unwrap_err();
+
+        assert!(err.to_string().contains("write failed"));
+        assert_eq!(ops.events, ["is_active", "write_restart_override"]);
+    }
+
+    #[tokio::test]
+    async fn drain_daemon_reload_failure_aborts_before_signal() {
+        let unit = service_unit();
+        let mut ops = FakeDrainOps {
+            reload_error: true,
+            ..FakeDrainOps::default()
+        };
+
+        let err = drain_with_ops(&unit, &mut ops).await.unwrap_err();
+
+        assert!(err.to_string().contains("reload failed"));
+        assert_eq!(
+            ops.events,
+            ["is_active", "write_restart_override", "daemon_reload"]
+        );
+    }
+
+    #[tokio::test]
+    async fn drain_restart_policy_mismatch_aborts_before_signal() {
+        let unit = service_unit();
+        let mut ops = FakeDrainOps {
+            restart_policy: "on-failure".to_string(),
+            ..FakeDrainOps::default()
+        };
+
+        let err = drain_with_ops(&unit, &mut ops).await.unwrap_err();
+
+        assert!(err.to_string().contains("Restart=\"on-failure\""));
+        assert_eq!(
+            ops.events,
+            [
+                "is_active",
+                "write_restart_override",
+                "daemon_reload",
+                "restart_policy",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn drain_already_gone_still_disables_unit() {
+        let unit = service_unit();
+        let mut ops = FakeDrainOps {
+            signal_outcome: ServiceSignalOutcome::AlreadyGone,
+            ..FakeDrainOps::default()
+        };
+
+        drain_with_ops(&unit, &mut ops).await.unwrap();
+
+        assert_eq!(
+            ops.events,
+            [
+                "is_active",
+                "write_restart_override",
+                "daemon_reload",
+                "restart_policy",
+                "signal_drain",
+                "disable",
+            ]
+        );
     }
 
     #[test]
