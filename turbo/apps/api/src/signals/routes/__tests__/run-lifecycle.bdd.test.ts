@@ -5640,6 +5640,32 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     const claimedRun = await api.readRun(actor, first.runId);
     expect(claimedRun.status).toBe("running");
 
+    const second = await api.createRun(actor, {
+      agentId,
+      prompt: "user runner job two",
+      modelProvider: "anthropic-api-key",
+    });
+
+    const outsider = createBddApi(context).user();
+    const outsiderKey = await api.createApiKey(outsider);
+    const outsiderBearer = `Bearer ${outsiderKey.token}`;
+    const outsiderPoll = await api.requestPollRunnerAs(
+      outsiderBearer,
+      { group: runnerGroup, supportedProfiles: ["vm0/default"] },
+      [200],
+    );
+    if (outsiderPoll.status !== 200) {
+      throw new Error("Expected the outsider poll to succeed");
+    }
+    expect(outsiderPoll.body.job ?? null).toBeNull();
+    const crossClaim = await api.requestClaimRunnerJobAs(
+      outsiderBearer,
+      second.runId,
+      [403],
+    );
+    expectApiError(crossClaim.body);
+    expect(crossClaim.body.error.message).toBe("Job does not belong to user");
+
     const directPrompt = "user runner direct ably job";
     const direct = await api.createRun(actor, {
       agentId,
@@ -5678,32 +5704,6 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
         apiKey.token,
       ],
     });
-
-    const second = await api.createRun(actor, {
-      agentId,
-      prompt: "user runner job two",
-      modelProvider: "anthropic-api-key",
-    });
-
-    const outsider = createBddApi(context).user();
-    const outsiderKey = await api.createApiKey(outsider);
-    const outsiderBearer = `Bearer ${outsiderKey.token}`;
-    const outsiderPoll = await api.requestPollRunnerAs(
-      outsiderBearer,
-      { group: runnerGroup, supportedProfiles: ["vm0/default"] },
-      [200],
-    );
-    if (outsiderPoll.status !== 200) {
-      throw new Error("Expected the outsider poll to succeed");
-    }
-    expect(outsiderPoll.body.job ?? null).toBeNull();
-    const crossClaim = await api.requestClaimRunnerJobAs(
-      outsiderBearer,
-      second.runId,
-      [403],
-    );
-    expectApiError(crossClaim.body);
-    expect(crossClaim.body.error.message).toBe("Job does not belong to user");
 
     const tokenRequest = {
       keyName: "bdd-key",
