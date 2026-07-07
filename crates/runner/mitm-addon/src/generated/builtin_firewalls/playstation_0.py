@@ -8,7 +8,7 @@ JSON_PART = r"""{
     {
       "auth": {
         "headers": {
-          "Authorization": "Bearer ${{ secrets.PLAYSTATION_ACCESS_TOKEN }}"
+          "Authorization": "Bearer ${{ secrets.PLAYSTATION_TOKEN }}"
         }
       },
       "base": "https://m.np.playstation.com",
@@ -58,7 +58,7 @@ JSON_PART = r"""{
     {
       "auth": {
         "headers": {
-          "Authorization": "Bearer ${{ secrets.PLAYSTATION_ACCESS_TOKEN }}"
+          "Authorization": "Bearer ${{ secrets.PLAYSTATION_TOKEN }}"
         }
       },
       "base": "https://us-prof.np.community.playstation.net",
@@ -74,7 +74,7 @@ JSON_PART = r"""{
     {
       "auth": {
         "headers": {
-          "Authorization": "Bearer ${{ secrets.PLAYSTATION_ACCESS_TOKEN }}"
+          "Authorization": "Bearer ${{ secrets.PLAYSTATION_TOKEN }}"
         }
       },
       "base": "https://web.np.playstation.com",
@@ -90,7 +90,7 @@ JSON_PART = r"""{
     {
       "auth": {
         "headers": {
-          "Authorization": "Bearer ${{ secrets.PLAYSTATION_ACCESS_TOKEN }}"
+          "Authorization": "Bearer ${{ secrets.PLAYSTATION_TOKEN }}"
         }
       },
       "base": "https://dms.api.playstation.com",

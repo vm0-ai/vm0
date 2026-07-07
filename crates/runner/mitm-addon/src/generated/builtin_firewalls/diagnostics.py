@@ -3506,7 +3506,7 @@ CONNECTOR_DIAGNOSTIC_FIREWALLS = json.loads(r"""[
         "authQueryParamNames": [],
         "base": "https://m.np.playstation.com",
         "envNames": [
-          "PLAYSTATION_ACCESS_TOKEN"
+          "PLAYSTATION_TOKEN"
         ]
       },
       {
@@ -3516,7 +3516,7 @@ CONNECTOR_DIAGNOSTIC_FIREWALLS = json.loads(r"""[
         "authQueryParamNames": [],
         "base": "https://us-prof.np.community.playstation.net",
         "envNames": [
-          "PLAYSTATION_ACCESS_TOKEN"
+          "PLAYSTATION_TOKEN"
         ]
       },
       {
@@ -3526,7 +3526,7 @@ CONNECTOR_DIAGNOSTIC_FIREWALLS = json.loads(r"""[
         "authQueryParamNames": [],
         "base": "https://web.np.playstation.com",
         "envNames": [
-          "PLAYSTATION_ACCESS_TOKEN"
+          "PLAYSTATION_TOKEN"
         ]
       },
       {
@@ -3536,7 +3536,7 @@ CONNECTOR_DIAGNOSTIC_FIREWALLS = json.loads(r"""[
         "authQueryParamNames": [],
         "base": "https://dms.api.playstation.com",
         "envNames": [
-          "PLAYSTATION_ACCESS_TOKEN"
+          "PLAYSTATION_TOKEN"
         ]
       }
     ],

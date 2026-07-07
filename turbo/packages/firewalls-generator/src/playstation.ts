@@ -26,6 +26,7 @@ export const PLAYSTATION_NPM_LATEST_URL =
   "https://registry.npmjs.org/psn-api/latest";
 
 const PLACEHOLDER_VALUE = "psn_access_token_placeholder";
+const PLAYSTATION_RUNTIME_TOKEN_SECRET = "PLAYSTATION_TOKEN";
 
 const PLAYSTATION_API_BASE_ORDER = [
   "https://m.np.playstation.com",
@@ -592,7 +593,7 @@ function renderApi(args: {
     `      base: "${args.base}",`,
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.PLAYSTATION_ACCESS_TOKEN }}",',
+    `          Authorization: "Bearer \${{ secrets.${PLAYSTATION_RUNTIME_TOKEN_SECRET} }}",`,
     "        },",
     "      },",
     "      permissions: [",
@@ -621,7 +622,7 @@ function generateTypeScript(args: {
     '  name: "playstation",',
     '  description: "PlayStation Network API",',
     "  placeholders: {",
-    `    PLAYSTATION_ACCESS_TOKEN: "${PLACEHOLDER_VALUE}",`,
+    `    ${PLAYSTATION_RUNTIME_TOKEN_SECRET}: "${PLACEHOLDER_VALUE}",`,
     "  },",
     "  apis: [",
     ...sortedApiBases(args.permissionsByBase).flatMap((base) => {
