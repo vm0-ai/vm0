@@ -8,7 +8,7 @@ use std::time::Duration;
 use chrono::{SecondsFormat, Utc};
 use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 
 use super::api::ApiClient;
 use crate::error::{RunnerError, RunnerResult};
@@ -99,7 +99,7 @@ impl BuiltinFirewallCatalogRefreshHandle {
         provider_cancel: CancellationToken,
     ) -> Self {
         if let Err(error) = refresh_once(&api, &cache_path, &lock_path).await {
-            warn!(
+            error!(
                 error = %error,
                 cache_path = %cache_path.display(),
                 "initial builtin firewall catalog refresh failed"
