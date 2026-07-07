@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import importlib.util
 import sys
+import tokenize
 from pathlib import Path
 from types import ModuleType
 from typing import TypeGuard
@@ -1340,7 +1341,9 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
 
 
 def metadata_key_violations(path: Path) -> list[str]:
-    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    with tokenize.open(str(path)) as source_file:
+        source = source_file.read()
+    tree = ast.parse(source, filename=str(path))
     visitor = _MetadataKeyVisitor(path)
     visitor.visit(tree)
     return visitor.violations

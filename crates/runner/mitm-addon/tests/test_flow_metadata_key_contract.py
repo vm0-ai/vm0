@@ -96,6 +96,16 @@ def test_registered_flow_metadata_guard_flags_literals_after_dynamic_star_args(t
     assert any("metadata_keys.VM_NETWORK_LOG_PATH" in violation for violation in violations)
 
 
+def test_registered_flow_metadata_guard_respects_python_source_encoding(tmp_path):
+    source_path = tmp_path / "latin1.py"
+    source_path.write_bytes(b'# coding: latin-1\nflow.metadata["vm_run_id"] = "caf\xe9"\n')
+
+    violations = flow_metadata_key_linter.metadata_key_violations(source_path)
+
+    assert len(violations) == 1
+    assert "metadata_keys.VM_RUN_ID" in violations[0]
+
+
 def test_registered_flow_metadata_guard_ignores_external_schema_and_private_markers(tmp_path):
     source_path = tmp_path / "allowed.py"
     fixture_names = ["allowed.base.py.txt"]
