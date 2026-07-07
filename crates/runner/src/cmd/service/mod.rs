@@ -310,24 +310,31 @@ async fn restore_drain_restart_override_after_failed_resume(
     unit: &RunnerServiceUnit,
     ops: &mut impl ServiceResumeOps,
     context: &str,
-) {
+) -> RunnerResult<()> {
     if let Err(e) = ops.write_restart_override(unit) {
-        warn!(
-            unit = %unit.unit_name(),
-            context,
-            error = %e,
-            "failed to restore drain restart override after resume failure"
-        );
-        return;
+        return Err(RunnerError::Internal(format!(
+            "failed to restore drain restart override for {} after resume failure ({context}): {e}",
+            unit.unit_name()
+        )));
     }
     if let Err(e) = ops.daemon_reload().await {
-        warn!(
-            unit = %unit.unit_name(),
-            context,
-            error = %e,
-            "failed to reload systemd after restoring drain restart override"
-        );
+        return Err(RunnerError::Internal(format!(
+            "failed to reload systemd after restoring drain restart override for {} ({context}): {e}",
+            unit.unit_name()
+        )));
     }
+    Ok(())
+}
+
+fn resume_error_with_restore_failure(
+    unit: &RunnerServiceUnit,
+    resume_error: RunnerError,
+    restore_error: RunnerError,
+) -> RunnerError {
+    RunnerError::Internal(format!(
+        "resume failed for {}: {resume_error}; additionally failed to restore drain restart override: {restore_error}",
+        unit.unit_name()
+    ))
 }
 
 async fn signal_resume_after_restart_policy_restored(
@@ -341,27 +348,40 @@ async fn signal_resume_after_restart_policy_restored(
             Ok(())
         }
         Ok(ServiceSignalOutcome::AlreadyGone) => {
-            if removed_drain_restart_override {
-                restore_drain_restart_override_after_failed_resume(unit, ops, "signal_resume_gone")
-                    .await;
+            let resume_error = RunnerError::Internal(format!(
+                "{} is not active — cannot resume an inactive runner",
+                unit.unit_name()
+            ));
+            if removed_drain_restart_override
+                && let Err(restore_error) = restore_drain_restart_override_after_failed_resume(
+                    unit,
+                    ops,
+                    "signal_resume_gone",
+                )
+                .await
+            {
+                return Err(resume_error_with_restore_failure(
+                    unit,
+                    resume_error,
+                    restore_error,
+                ));
             }
             info!(
                 unit = %unit.unit_name(),
                 "runner exited between preflight and signal; refusing resume",
             );
-            Err(RunnerError::Internal(format!(
-                "{} is not active — cannot resume an inactive runner",
-                unit.unit_name()
-            )))
+            Err(resume_error)
         }
         Err(e) => {
-            if removed_drain_restart_override {
-                restore_drain_restart_override_after_failed_resume(
+            if removed_drain_restart_override
+                && let Err(restore_error) = restore_drain_restart_override_after_failed_resume(
                     unit,
                     ops,
                     "signal_resume_error",
                 )
-                .await;
+                .await
+            {
+                return Err(resume_error_with_restore_failure(unit, e, restore_error));
             }
             Err(e)
         }
@@ -1440,6 +1460,49 @@ profiles:
             .unwrap_err();
 
         assert!(err.to_string().contains("signal failed"));
+        assert_eq!(
+            ops.events,
+            ["signal_resume", "write_restart_override", "daemon_reload"]
+        );
+    }
+
+    #[tokio::test]
+    async fn resume_signal_failure_reports_restore_write_failure() {
+        let unit = service_unit();
+        let mut ops = FakeResumeOps {
+            write_error: true,
+            signal_error: true,
+            ..FakeResumeOps::default()
+        };
+
+        let err = signal_resume_after_restart_policy_restored(&unit, true, &mut ops)
+            .await
+            .unwrap_err();
+        let message = err.to_string();
+
+        assert!(message.contains("signal failed"));
+        assert!(message.contains("additionally failed to restore drain restart override"));
+        assert!(message.contains("write failed"));
+        assert_eq!(ops.events, ["signal_resume", "write_restart_override"]);
+    }
+
+    #[tokio::test]
+    async fn resume_signal_failure_reports_restore_reload_failure() {
+        let unit = service_unit();
+        let mut ops = FakeResumeOps {
+            reload_error: true,
+            signal_error: true,
+            ..FakeResumeOps::default()
+        };
+
+        let err = signal_resume_after_restart_policy_restored(&unit, true, &mut ops)
+            .await
+            .unwrap_err();
+        let message = err.to_string();
+
+        assert!(message.contains("signal failed"));
+        assert!(message.contains("additionally failed to restore drain restart override"));
+        assert!(message.contains("reload failed"));
         assert_eq!(
             ops.events,
             ["signal_resume", "write_restart_override", "daemon_reload"]
