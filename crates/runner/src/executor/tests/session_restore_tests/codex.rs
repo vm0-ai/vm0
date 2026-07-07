@@ -26,6 +26,34 @@ fn restore_session_writes_codex_session() {
 }
 
 #[test]
+fn restore_session_writes_codex_zstd_session() {
+    let sandbox = MockSandbox::new("test");
+    let ctx = codex_context();
+    let history = codex_session_meta_history(CODEX_SESSION_ID);
+    let compressed = zstd::encode_all(history.as_bytes(), 0).unwrap();
+    let timestamp = chrono::DateTime::parse_from_rfc3339("2026-06-04T07:18:08.000Z")
+        .unwrap()
+        .with_timezone(&chrono::Utc);
+    let session = materialized_codex_zstd_session(CODEX_SESSION_ID, &compressed, timestamp);
+
+    let diagnostics = run_restore_session(restore_session(&sandbox, &ctx, &session)).unwrap();
+
+    assert_codex_cleanup_call(&sandbox);
+
+    let writes = sandbox.write_file_calls();
+    assert_eq!(writes.len(), 1);
+    assert!(
+        writes[0]
+            .path
+            .ends_with(&format!("{CODEX_CANONICAL_ROLLOUT_SUFFIX}.zst")),
+        "codex zstd resume history must be restored as canonical rollout jsonl.zst, got {}",
+        writes[0].path
+    );
+    assert_eq!(writes[0].content, compressed);
+    assert_eq!(diagnostics.bytes_in, session.history_bytes().len());
+}
+
+#[test]
 fn restore_session_logs_codex_session_id() {
     let sandbox = MockSandbox::new("test");
     let ctx = codex_context();

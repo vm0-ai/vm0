@@ -34,6 +34,7 @@ use super::super::storage::guest_download_stdin_command;
 use super::super::{
     EXIT_SIGKILL, PROCESS_CANCEL_WRITE_TIMEOUT, RestoredSessionIdentity,
     SessionHistoryMaterializer, SessionHistoryRestoreFallback, SessionHistoryRestorePlan,
+    effective_cli_framework,
 };
 use super::support::{
     CancelAfterWaitSandbox, RUN_IN_SANDBOX_TEST_TIMEOUT, api_storage, create_overridden_sandbox,
@@ -960,6 +961,7 @@ async fn run_in_sandbox_uses_prestarted_session_history_materializer() {
     let materializer = SessionHistoryMaterializer::start_cancellable(
         &config.http,
         ctx.resume_session.as_ref(),
+        effective_cli_framework(&ctx.cli_agent_type),
         tokio_util::sync::CancellationToken::new(),
     );
     tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, request_received_rx)
@@ -1086,6 +1088,7 @@ async fn run_in_sandbox_records_completed_prestarted_materializer_failure() {
     let materializer = SessionHistoryMaterializer::start_cancellable(
         &config.http,
         ctx.resume_session.as_ref(),
+        effective_cli_framework(&ctx.cli_agent_type),
         tokio_util::sync::CancellationToken::new(),
     );
     tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, async {
@@ -1577,6 +1580,7 @@ async fn run_in_sandbox_records_fallback_and_restores_prestarted_history() {
     let materializer = SessionHistoryMaterializer::start_cancellable(
         &config.http,
         ctx.resume_session.as_ref(),
+        effective_cli_framework(&ctx.cli_agent_type),
         tokio_util::sync::CancellationToken::new(),
     );
     let mut telemetry = test_telemetry(&config, &ctx);
@@ -1662,6 +1666,7 @@ async fn run_in_sandbox_records_missing_idle_identity_reuse_fallback() {
     let materializer = SessionHistoryMaterializer::start_cancellable(
         &config.http,
         ctx.resume_session.as_ref(),
+        effective_cli_framework(&ctx.cli_agent_type),
         tokio_util::sync::CancellationToken::new(),
     );
     let mut telemetry = test_telemetry(&config, &ctx);
@@ -1751,6 +1756,7 @@ async fn run_in_sandbox_uses_final_identity_when_restored_history_changes_before
     let materializer = SessionHistoryMaterializer::start_cancellable(
         &config.http,
         ctx.resume_session.as_ref(),
+        effective_cli_framework(&ctx.cli_agent_type),
         tokio_util::sync::CancellationToken::new(),
     );
     let mut telemetry = test_telemetry(&config, &ctx);
