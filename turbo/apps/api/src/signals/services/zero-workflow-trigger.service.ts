@@ -430,13 +430,11 @@ function notionDatabaseItemRowSummary(
   };
 }
 
-async function rowToSummary(
-  db: ReadonlyDb,
+function eventRowToSummary(
   row: TriggerRow,
-  options: RowToSummaryOptions = {},
-): Promise<ZeroWorkflowTriggerSummary> {
-  const chatThreadId = await resolveTriggerChatThreadId(db, row, options);
-  if (row.kind === "event" && row.eventType === "gmail-new-message") {
+  chatThreadId: string | null,
+): ZeroWorkflowTriggerSummary | null {
+  if (row.eventType === "gmail-new-message") {
     return {
       ...rowSummaryBase(row, chatThreadId),
       kind: "event",
@@ -446,7 +444,7 @@ async function rowToSummary(
       scheduleSummary: null,
     };
   }
-  if (row.kind === "event" && row.eventType === "gmail-label-applied") {
+  if (row.eventType === "gmail-label-applied") {
     return {
       ...rowSummaryBase(row, chatThreadId),
       kind: "event",
@@ -456,7 +454,7 @@ async function rowToSummary(
       scheduleSummary: null,
     };
   }
-  if (row.kind === "event" && row.eventType === "github-label-applied") {
+  if (row.eventType === "github-label-applied") {
     return {
       ...rowSummaryBase(row, chatThreadId),
       kind: "event",
@@ -466,10 +464,7 @@ async function rowToSummary(
       scheduleSummary: null,
     };
   }
-  if (
-    row.kind === "event" &&
-    row.eventType === "google-calendar-event-created"
-  ) {
+  if (row.eventType === "google-calendar-event-created") {
     return {
       ...rowSummaryBase(row, chatThreadId),
       kind: "event",
@@ -481,10 +476,7 @@ async function rowToSummary(
       scheduleSummary: null,
     };
   }
-  if (
-    row.kind === "event" &&
-    row.eventType === "google-calendar-event-updated"
-  ) {
+  if (row.eventType === "google-calendar-event-updated") {
     return {
       ...rowSummaryBase(row, chatThreadId),
       kind: "event",
@@ -496,10 +488,7 @@ async function rowToSummary(
       scheduleSummary: null,
     };
   }
-  if (
-    row.kind === "event" &&
-    row.eventType === "google-calendar-event-cancelled"
-  ) {
+  if (row.eventType === "google-calendar-event-cancelled") {
     return {
       ...rowSummaryBase(row, chatThreadId),
       kind: "event",
@@ -511,10 +500,7 @@ async function rowToSummary(
       scheduleSummary: null,
     };
   }
-  if (
-    row.kind === "event" &&
-    row.eventType === "google-meet-transcript-generated"
-  ) {
+  if (row.eventType === "google-meet-transcript-generated") {
     return {
       ...rowSummaryBase(row, chatThreadId),
       kind: "event",
@@ -526,29 +512,41 @@ async function rowToSummary(
       scheduleSummary: null,
     };
   }
-  if (row.kind === "event" && row.eventType === "notion-child-page-created") {
+  if (row.eventType === "notion-child-page-created") {
     return notionChildPageRowSummary(row, chatThreadId);
   }
-  if (
-    row.kind === "event" &&
-    row.eventType === "notion-database-item-created"
-  ) {
+  if (row.eventType === "notion-database-item-created") {
     return notionDatabaseItemRowSummary(row, chatThreadId);
   }
-  if (row.kind === "event" && row.eventType === "webhook-received") {
-    return {
-      ...rowSummaryBase(row, chatThreadId),
-      kind: "event",
-      eventType: "webhook-received",
-      eventConfig: webhookReceivedEventConfigSchema.parse(row.eventConfig),
-      schedule: null,
-      scheduleSummary: null,
-      ...(await buildWorkflowWebhookSummaryFields(db, {
-        trigger: row,
-        webhookToken: options.webhookToken,
-        webhookSecret: options.webhookSecret,
-      })),
-    };
+  return null;
+}
+
+async function rowToSummary(
+  db: ReadonlyDb,
+  row: TriggerRow,
+  options: RowToSummaryOptions = {},
+): Promise<ZeroWorkflowTriggerSummary> {
+  const chatThreadId = await resolveTriggerChatThreadId(db, row, options);
+  if (row.kind === "event") {
+    if (row.eventType === "webhook-received") {
+      return {
+        ...rowSummaryBase(row, chatThreadId),
+        kind: "event",
+        eventType: "webhook-received",
+        eventConfig: webhookReceivedEventConfigSchema.parse(row.eventConfig),
+        schedule: null,
+        scheduleSummary: null,
+        ...(await buildWorkflowWebhookSummaryFields(db, {
+          trigger: row,
+          webhookToken: options.webhookToken,
+          webhookSecret: options.webhookSecret,
+        })),
+      };
+    }
+    const eventSummary = eventRowToSummary(row, chatThreadId);
+    if (eventSummary) {
+      return eventSummary;
+    }
   }
   const schedule = rowToSchedule(row);
   return {

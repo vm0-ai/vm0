@@ -244,6 +244,9 @@ type DueNotionTriggerRow = {
   readonly workflowName: string;
   readonly chatThreadId: string | null;
 };
+type NotionTriggerEventType =
+  | "notion-child-page-created"
+  | "notion-database-item-created";
 type NotionRunStarter = (
   args: RunWorkflowTriggerNowArgs,
   signal: AbortSignal,
@@ -1701,6 +1704,17 @@ async function startNotionWorkflowRun(args: {
   );
 }
 
+function notionTriggerIsActive(
+  row: DueNotionTriggerRow,
+  eventType: NotionTriggerEventType,
+): boolean {
+  return (
+    row.trigger.kind === "event" &&
+    row.trigger.eventType === eventType &&
+    row.trigger.enabled
+  );
+}
+
 async function processClaimedNotionChildPagePendingEvent(args: {
   readonly db: Db;
   readonly row: DueNotionTriggerRow;
@@ -1709,9 +1723,7 @@ async function processClaimedNotionChildPagePendingEvent(args: {
   readonly startRun: NotionRunStarter;
 }): Promise<"executed" | "skipped"> {
   if (
-    args.row.trigger.kind !== "event" ||
-    args.row.trigger.eventType !== "notion-child-page-created" ||
-    !args.row.trigger.enabled ||
+    !notionTriggerIsActive(args.row, "notion-child-page-created") ||
     !args.row.chatThreadId
   ) {
     await skipPendingEvent({
@@ -1739,7 +1751,6 @@ async function processClaimedNotionChildPagePendingEvent(args: {
     });
     return "skipped";
   }
-
   const accessResult = await resolveNotionAccess({
     db: args.db,
     orgId: args.row.trigger.orgId,
@@ -1845,9 +1856,7 @@ async function processClaimedNotionDatabaseItemPendingEvent(args: {
   readonly startRun: NotionRunStarter;
 }): Promise<"executed" | "skipped"> {
   if (
-    args.row.trigger.kind !== "event" ||
-    args.row.trigger.eventType !== "notion-database-item-created" ||
-    !args.row.trigger.enabled ||
+    !notionTriggerIsActive(args.row, "notion-database-item-created") ||
     !args.row.chatThreadId
   ) {
     await skipPendingEvent({
@@ -1875,6 +1884,7 @@ async function processClaimedNotionDatabaseItemPendingEvent(args: {
     });
     return "skipped";
   }
+  const dataSourceId = config.data.dataSource.id;
 
   const accessResult = await resolveNotionAccess({
     db: args.db,
@@ -1919,9 +1929,7 @@ async function processClaimedNotionDatabaseItemPendingEvent(args: {
     return "skipped";
   }
 
-  if (
-    notionPageParentDataSourceId(pageResult.value) !== config.data.dataSource.id
-  ) {
+  if (notionPageParentDataSourceId(pageResult.value) !== dataSourceId) {
     await skipPendingEvent({
       db: args.db,
       pendingId: args.pending.id,

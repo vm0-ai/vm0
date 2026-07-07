@@ -97,6 +97,78 @@ function createMockNotionDatabaseItemTrigger(
   } as ChatThreadWorkflowTrigger;
 }
 
+function createMockGmailLabelTrigger(
+  base: MockWorkflowTriggerBase,
+  overrides: MockWorkflowTriggerOverrides,
+  workflow: ChatThreadWorkflowTrigger["workflow"],
+): ChatThreadWorkflowTrigger {
+  return {
+    ...base,
+    kind: "event",
+    eventType: "gmail-label-applied",
+    eventConfig: {
+      provider: "gmail",
+      event: "label_applied",
+      labelName: "Support",
+    },
+    schedule: null,
+    scheduleSummary: null,
+    ...overrides,
+    workflow,
+  } as ChatThreadWorkflowTrigger;
+}
+
+function createMockGithubLabelTrigger(
+  base: MockWorkflowTriggerBase,
+  overrides: MockWorkflowTriggerOverrides,
+  workflow: ChatThreadWorkflowTrigger["workflow"],
+): ChatThreadWorkflowTrigger {
+  return {
+    ...base,
+    kind: "event",
+    eventType: "github-label-applied",
+    eventConfig: {
+      provider: "github",
+      event: "label_applied",
+      labelName: "triage",
+      filters: {
+        subject: "both",
+        actor: { type: "me" },
+      },
+    },
+    schedule: null,
+    scheduleSummary: null,
+    ...overrides,
+    workflow,
+  } as ChatThreadWorkflowTrigger;
+}
+
+function createMockGoogleCalendarTrigger(
+  base: MockWorkflowTriggerBase,
+  overrides: MockWorkflowTriggerOverrides,
+  workflow: ChatThreadWorkflowTrigger["workflow"],
+): ChatThreadWorkflowTrigger {
+  return {
+    ...base,
+    kind: "event",
+    eventType: overrides.eventType ?? "google-calendar-event-created",
+    eventConfig: {
+      provider: "google-calendar",
+      event:
+        overrides.eventType === "google-calendar-event-updated"
+          ? "event_updated"
+          : overrides.eventType === "google-calendar-event-cancelled"
+            ? "event_cancelled"
+            : "event_created",
+      calendarId: "primary",
+    },
+    schedule: null,
+    scheduleSummary: null,
+    ...overrides,
+    workflow,
+  } as ChatThreadWorkflowTrigger;
+}
+
 /** A workflow-trigger store row with sensible defaults. */
 export function createMockWorkflowTrigger(
   overrides?: MockWorkflowTriggerOverrides,
@@ -120,88 +192,13 @@ export function createMockWorkflowTrigger(
   };
   if (overrides?.kind === "event") {
     if (overrides.eventType === "gmail-label-applied") {
-      return {
-        ...base,
-        kind: "event",
-        eventType: "gmail-label-applied",
-        eventConfig: {
-          provider: "gmail",
-          event: "label_applied",
-          labelName: "Support",
-        },
-        schedule: null,
-        scheduleSummary: null,
-        ...overrides,
-        workflow,
-      } as ChatThreadWorkflowTrigger;
+      return createMockGmailLabelTrigger(base, overrides, workflow);
     }
     if (overrides.eventType === "github-label-applied") {
-      return {
-        ...base,
-        kind: "event",
-        eventType: "github-label-applied",
-        eventConfig: {
-          provider: "github",
-          event: "label_applied",
-          labelName: "triage",
-          filters: {
-            subject: "both",
-            actor: { type: "me" },
-          },
-        },
-        schedule: null,
-        scheduleSummary: null,
-        ...overrides,
-        workflow,
-      } as ChatThreadWorkflowTrigger;
+      return createMockGithubLabelTrigger(base, overrides, workflow);
     }
-    if (overrides.eventType === "google-calendar-event-created") {
-      return {
-        ...base,
-        kind: "event",
-        eventType: "google-calendar-event-created",
-        eventConfig: {
-          provider: "google-calendar",
-          event: "event_created",
-          calendarId: "primary",
-        },
-        schedule: null,
-        scheduleSummary: null,
-        ...overrides,
-        workflow,
-      } as ChatThreadWorkflowTrigger;
-    }
-    if (overrides.eventType === "google-calendar-event-updated") {
-      return {
-        ...base,
-        kind: "event",
-        eventType: "google-calendar-event-updated",
-        eventConfig: {
-          provider: "google-calendar",
-          event: "event_updated",
-          calendarId: "primary",
-        },
-        schedule: null,
-        scheduleSummary: null,
-        ...overrides,
-        workflow,
-      } as ChatThreadWorkflowTrigger;
-    }
-    if (overrides.eventType === "google-calendar-event-cancelled") {
-      return {
-        ...base,
-        kind: "event",
-        eventType: "google-calendar-event-cancelled",
-        eventConfig: {
-          provider: "google-calendar",
-          event: "event_cancelled",
-          calendarId: "primary",
-        },
-        schedule: null,
-        scheduleSummary: null,
-        ...overrides,
-        workflow,
-      } as ChatThreadWorkflowTrigger;
+    if (overrides.eventType?.startsWith("google-calendar-event-")) {
+      return createMockGoogleCalendarTrigger(base, overrides, workflow);
     }
     if (overrides.eventType === "notion-child-page-created") {
       return createMockNotionChildPageTrigger(base, overrides, workflow);
