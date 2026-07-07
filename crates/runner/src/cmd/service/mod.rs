@@ -205,6 +205,7 @@ type ServiceFuture<'a, T> = Pin<Box<dyn Future<Output = RunnerResult<T>> + 'a>>;
 trait ServiceDrainOps {
     fn is_active<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, bool>;
     fn write_restart_override(&mut self, unit: &RunnerServiceUnit) -> RunnerResult<()>;
+    fn remove_restart_override(&mut self, unit: &RunnerServiceUnit) -> RunnerResult<bool>;
     fn daemon_reload(&mut self) -> ServiceFuture<'_, ()>;
     fn restart_policy<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, String>;
     fn signal_drain<'a>(
@@ -223,6 +224,10 @@ impl ServiceDrainOps for RealServiceDrainOps {
 
     fn write_restart_override(&mut self, unit: &RunnerServiceUnit) -> RunnerResult<()> {
         write_drain_restart_override(unit)
+    }
+
+    fn remove_restart_override(&mut self, unit: &RunnerServiceUnit) -> RunnerResult<bool> {
+        remove_drain_restart_override(unit)
     }
 
     fn daemon_reload(&mut self) -> ServiceFuture<'_, ()> {
@@ -245,6 +250,34 @@ impl ServiceDrainOps for RealServiceDrainOps {
     }
 }
 
+async fn rollback_drain_restart_override(
+    unit: &RunnerServiceUnit,
+    ops: &mut impl ServiceDrainOps,
+    context: &str,
+) {
+    match ops.remove_restart_override(unit) {
+        Ok(true) => {
+            if let Err(e) = ops.daemon_reload().await {
+                warn!(
+                    unit = %unit.unit_name(),
+                    context,
+                    error = %e,
+                    "failed to reload systemd after removing drain restart override"
+                );
+            }
+        }
+        Ok(false) => {}
+        Err(e) => {
+            warn!(
+                unit = %unit.unit_name(),
+                context,
+                error = %e,
+                "failed to remove drain restart override after drain failure"
+            );
+        }
+    }
+}
+
 async fn drain_with_ops(
     unit: &RunnerServiceUnit,
     ops: &mut impl ServiceDrainOps,
@@ -256,13 +289,20 @@ async fn drain_with_ops(
 
     if should_signal {
         ops.write_restart_override(unit)?;
-        ops.daemon_reload().await?;
+        if let Err(e) = ops.daemon_reload().await {
+            rollback_drain_restart_override(unit, ops, "daemon_reload").await;
+            return Err(e);
+        }
         match ops.restart_policy(unit).await {
             Ok(restart_policy) => {
-                ensure_drain_restart_policy_applied(unit, &restart_policy)?;
+                if let Err(e) = ensure_drain_restart_policy_applied(unit, &restart_policy) {
+                    rollback_drain_restart_override(unit, ops, "restart_policy").await;
+                    return Err(e);
+                }
             }
             Err(e) => {
                 if ops.is_active(unit).await? {
+                    rollback_drain_restart_override(unit, ops, "restart_policy").await;
                     return Err(e);
                 }
                 info!(
@@ -280,11 +320,15 @@ async fn drain_with_ops(
         // Both outcomes ("live, signal delivered" and "already gone") must still
         // run `systemctl disable` below so the unit does not auto-start at the
         // next boot.
-        match ops.signal_drain(unit).await? {
-            ServiceSignalOutcome::Sent { pid } => {
+        match ops.signal_drain(unit).await {
+            Err(e) => {
+                rollback_drain_restart_override(unit, ops, "signal_drain").await;
+                return Err(e);
+            }
+            Ok(ServiceSignalOutcome::Sent { pid }) => {
                 info!(unit = %unit.unit_name(), pid, "sent SIGUSR1 (drain)");
             }
-            ServiceSignalOutcome::AlreadyGone => {
+            Ok(ServiceSignalOutcome::AlreadyGone) => {
                 info!(unit = %unit.unit_name(), "runner already exited; drain signal not needed");
             }
         }
@@ -913,9 +957,11 @@ profiles:
         events: Vec<&'static str>,
         active_results: VecDeque<bool>,
         write_error: bool,
+        remove_error: bool,
         reload_error: bool,
         restart_policy_error: bool,
         restart_policy: String,
+        signal_error: bool,
         signal_outcome: ServiceSignalOutcome,
         disable_error: bool,
     }
@@ -926,9 +972,11 @@ profiles:
                 events: Vec::new(),
                 active_results: VecDeque::from([true]),
                 write_error: false,
+                remove_error: false,
                 reload_error: false,
                 restart_policy_error: false,
                 restart_policy: "no".to_string(),
+                signal_error: false,
                 signal_outcome: ServiceSignalOutcome::Sent { pid: 123 },
                 disable_error: false,
             }
@@ -954,6 +1002,15 @@ profiles:
                 Err(fake_error("write failed"))
             } else {
                 Ok(())
+            }
+        }
+
+        fn remove_restart_override(&mut self, _unit: &RunnerServiceUnit) -> RunnerResult<bool> {
+            self.events.push("remove_restart_override");
+            if self.remove_error {
+                Err(fake_error("remove failed"))
+            } else {
+                Ok(true)
             }
         }
 
@@ -983,7 +1040,11 @@ profiles:
             _unit: &'a RunnerServiceUnit,
         ) -> ServiceFuture<'a, ServiceSignalOutcome> {
             self.events.push("signal_drain");
-            Box::pin(std::future::ready(Ok(self.signal_outcome)))
+            Box::pin(std::future::ready(if self.signal_error {
+                Err(fake_error("signal failed"))
+            } else {
+                Ok(self.signal_outcome)
+            }))
         }
 
         fn disable<'a>(&'a mut self, _unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, ()> {
@@ -1044,7 +1105,7 @@ profiles:
     }
 
     #[tokio::test]
-    async fn drain_daemon_reload_failure_aborts_before_signal() {
+    async fn drain_daemon_reload_failure_rolls_back_before_signal() {
         let unit = service_unit();
         let mut ops = FakeDrainOps {
             reload_error: true,
@@ -1056,7 +1117,13 @@ profiles:
         assert!(err.to_string().contains("reload failed"));
         assert_eq!(
             ops.events,
-            ["is_active", "write_restart_override", "daemon_reload"]
+            [
+                "is_active",
+                "write_restart_override",
+                "daemon_reload",
+                "remove_restart_override",
+                "daemon_reload",
+            ]
         );
     }
 
@@ -1078,6 +1145,8 @@ profiles:
                 "write_restart_override",
                 "daemon_reload",
                 "restart_policy",
+                "remove_restart_override",
+                "daemon_reload",
             ]
         );
     }
@@ -1102,6 +1171,8 @@ profiles:
                 "daemon_reload",
                 "restart_policy",
                 "is_active",
+                "remove_restart_override",
+                "daemon_reload",
             ]
         );
     }
@@ -1126,6 +1197,31 @@ profiles:
                 "restart_policy",
                 "is_active",
                 "disable",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn drain_signal_failure_rolls_back_restart_override() {
+        let unit = service_unit();
+        let mut ops = FakeDrainOps {
+            signal_error: true,
+            ..FakeDrainOps::default()
+        };
+
+        let err = drain_with_ops(&unit, &mut ops).await.unwrap_err();
+
+        assert!(err.to_string().contains("signal failed"));
+        assert_eq!(
+            ops.events,
+            [
+                "is_active",
+                "write_restart_override",
+                "daemon_reload",
+                "restart_policy",
+                "signal_drain",
+                "remove_restart_override",
+                "daemon_reload",
             ]
         );
     }
