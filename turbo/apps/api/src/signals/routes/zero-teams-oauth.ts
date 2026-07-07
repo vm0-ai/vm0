@@ -1,12 +1,12 @@
-import { command, computed } from "ccstate";
+import { command } from "ccstate";
 import { zeroTeamsOauthContract } from "@vm0/api-contracts/contracts/zero-teams-oauth";
 import { z } from "zod";
 
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
+import { requiredAuthContext$ } from "../auth/auth-context";
 import { request$ } from "../context/hono";
 import { queryOf } from "../context/request";
-import { getMemberRoleAndUpdateCache$ } from "../services/auth.service";
 import {
   buildTeamsInstallUrl,
   connectTeamsInstallation$,
@@ -35,6 +35,10 @@ const MICROSOFT_TEAMS_CONNECT_SCOPES = [
   "email",
   "User.Read",
 ] as const;
+const teamsOauthAuthOptions = {
+  requireOrganization: true,
+  missingOrganizationStatus: 401,
+} as const;
 
 interface OAuthState {
   readonly orgId: string | null;
@@ -53,6 +57,20 @@ interface MicrosoftTeamsOAuthResult {
   readonly tenantId: string;
   readonly user: MicrosoftTeamsUserInfo;
 }
+
+interface TeamsOauthAuth {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly orgRole: "admin" | "member";
+}
+
+type TeamsOauthAuthResult =
+  | { readonly kind: "ok"; readonly auth: TeamsOauthAuth }
+  | {
+      readonly kind: "error";
+      readonly message: string;
+      readonly status: 400 | 401 | 403;
+    };
 
 function redirectResponse(url: string): Response {
   return new Response(null, {
@@ -73,6 +91,13 @@ function jsonErrorResponse(error: string, status: number): Response {
     status,
     headers: { "Content-Type": "application/json" },
   });
+}
+
+function authJsonErrorResponse(
+  error: string,
+  status: 400 | 401 | 403,
+): Response {
+  return jsonErrorResponse(error, status);
 }
 
 function appUrl(path: string): string {
@@ -116,6 +141,49 @@ function truncatePrompt(prompt: string): string {
 function optionalString(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
 }
+
+function stateMatchesAuth(state: OAuthState, auth: TeamsOauthAuth): boolean {
+  return state.orgId === auth.orgId && state.vm0UserId === auth.userId;
+}
+
+const resolveTeamsOauthAuth$ = command(
+  async ({ set }, signal: AbortSignal): Promise<TeamsOauthAuthResult> => {
+    const authResult = await set(
+      requiredAuthContext$,
+      teamsOauthAuthOptions,
+      signal,
+    );
+    signal.throwIfAborted();
+
+    if ("status" in authResult) {
+      return {
+        kind: "error",
+        message: authResult.body.error.message,
+        status: authResult.status,
+      };
+    }
+    if (
+      authResult.tokenType !== "session" ||
+      !authResult.orgId ||
+      !authResult.orgRole
+    ) {
+      return {
+        kind: "error",
+        message:
+          "Microsoft Teams OAuth connect requires a signed-in browser session",
+        status: 403,
+      };
+    }
+    return {
+      kind: "ok",
+      auth: {
+        userId: authResult.userId,
+        orgId: authResult.orgId,
+        orgRole: authResult.orgRole,
+      },
+    };
+  },
+);
 
 function parseOAuthState(state: string | undefined): OAuthState {
   if (!state) {
@@ -247,7 +315,7 @@ async function exchangeMicrosoftTeamsOAuthCode(args: {
   };
 }
 
-const connectOauth$ = computed((get) => {
+const connectOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
   const request = get(request$).raw;
   const canonicalRedirectUrl = getOAuthCanonicalRedirectUrl(request);
   if (canonicalRedirectUrl) {
@@ -268,13 +336,27 @@ const connectOauth$ = computed((get) => {
     return jsonErrorResponse("Missing orgId or vm0UserId", 400);
   }
 
+  const authResult = await set(resolveTeamsOauthAuth$, signal);
+  if (authResult.kind === "error") {
+    return authJsonErrorResponse(authResult.message, authResult.status);
+  }
+  if (
+    query.orgId !== authResult.auth.orgId ||
+    query.vm0UserId !== authResult.auth.userId
+  ) {
+    return authJsonErrorResponse(
+      "Authenticated user does not match Teams connect request",
+      403,
+    );
+  }
+
   const stateObj: {
     orgId: string;
     vm0UserId: string;
     prompt?: string;
   } = {
-    orgId: query.orgId,
-    vm0UserId: query.vm0UserId,
+    orgId: authResult.auth.orgId,
+    vm0UserId: authResult.auth.userId,
   };
   if (query.prompt) {
     stateObj.prompt = truncatePrompt(query.prompt);
@@ -320,6 +402,19 @@ const callbackOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
     return settingsErrorRedirect("Invalid connect state.");
   }
 
+  const authResult = await set(resolveTeamsOauthAuth$, signal);
+  if (authResult.kind === "error") {
+    const message =
+      authResult.status === 401
+        ? "Please sign in to connect Microsoft Teams."
+        : "Invalid connect state.";
+    return settingsErrorRedirect(message);
+  }
+  const auth = authResult.auth;
+  if (!stateMatchesAuth(state, auth)) {
+    return settingsErrorRedirect("Invalid connect state.");
+  }
+
   const exchange = await settle(
     exchangeMicrosoftTeamsOAuthCode({
       clientId: credentials.clientId,
@@ -338,22 +433,10 @@ const callbackOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
     );
   }
 
-  const member = await set(
-    getMemberRoleAndUpdateCache$,
-    state.orgId,
-    state.vm0UserId,
-    signal,
-  );
-  signal.throwIfAborted();
-
-  if (!member) {
-    throw new Error("You are not a member of this organization");
-  }
-
   const connectArgs = {
-    userId: state.vm0UserId,
-    orgId: state.orgId,
-    orgRole: member.role,
+    userId: auth.userId,
+    orgId: auth.orgId,
+    orgRole: auth.orgRole,
     tenantId: exchange.value.tenantId,
     teamsAadObjectId: exchange.value.user.id,
     teamsUserDisplayName: exchange.value.user.displayName ?? undefined,
@@ -376,7 +459,7 @@ const callbackOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
 
     await set(
       publishTeamsChanged$,
-      { orgId: state.orgId, userIds: [state.vm0UserId] },
+      { orgId: auth.orgId, userIds: [auth.userId] },
       signal,
     );
     signal.throwIfAborted();
@@ -390,7 +473,7 @@ const callbackOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   await set(
     publishTeamsChanged$,
-    { orgId: state.orgId, userIds: [state.vm0UserId] },
+    { orgId: auth.orgId, userIds: [auth.userId] },
     signal,
   );
   signal.throwIfAborted();

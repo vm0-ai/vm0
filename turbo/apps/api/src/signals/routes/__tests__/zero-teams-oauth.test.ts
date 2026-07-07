@@ -32,6 +32,7 @@ const MICROSOFT_TOKEN_URL =
 const MICROSOFT_ME_URL = "https://graph.microsoft.com/v1.0/me";
 const TEAMS_APP_ID = "00000000-0000-0000-0000-000000000001";
 const TEAMS_APP_TENANT_ID = "11111111-1111-1111-1111-111111111111";
+const AUTH_HEADERS = { authorization: "Bearer clerk-session" } as const;
 
 async function appRequest(
   path: string,
@@ -151,8 +152,11 @@ describe("Teams OAuth API routes", () => {
   });
 
   it("redirects to Microsoft OAuth with connect state", async () => {
+    mocks.clerk.session("user_1", "org_1", "org:member");
+
     const response = await appRequest(
       "/api/zero/teams/oauth/connect?orgId=org_1&vm0UserId=user_1",
+      { headers: AUTH_HEADERS },
     );
 
     expect(response.status).toBe(307);
@@ -177,11 +181,13 @@ describe("Teams OAuth API routes", () => {
   });
 
   it("uses the web rewrite origin for callback URLs", async () => {
+    mocks.clerk.session("user_1", "org_1", "org:member");
+
     const response = await appRequest(
       "/api/zero/teams/oauth/connect?orgId=org_1&vm0UserId=user_1",
       {
         origin: API_ORIGIN,
-        headers: { "x-vm0-web-origin": WEB_ORIGIN },
+        headers: { ...AUTH_HEADERS, "x-vm0-web-origin": WEB_ORIGIN },
       },
     );
 
@@ -192,9 +198,24 @@ describe("Teams OAuth API routes", () => {
     );
   });
 
+  it("rejects connect requests for a different signed-in user", async () => {
+    mocks.clerk.session("user_other", "org_1", "org:member");
+
+    const response = await appRequest(
+      "/api/zero/teams/oauth/connect?orgId=org_1&vm0UserId=user_1",
+      { headers: AUTH_HEADERS },
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: "Authenticated user does not match Teams connect request",
+    });
+  });
+
   it("prepares a Teams install after OAuth and binds it when Teams sends installation metadata", async () => {
     const fixture = await uninstalledTeamsFixture(track);
     await seedMembership(fixture.orgId, fixture.userId, "admin");
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
     mockMicrosoftOAuth({
       tenantId: fixture.teamsTenantId,
       aadObjectId: fixture.teamsAadObjectId,
@@ -205,7 +226,7 @@ describe("Teams OAuth API routes", () => {
         code: "valid-code",
         state: { orgId: fixture.orgId, vm0UserId: fixture.userId },
       }),
-      { origin: WEB_ORIGIN },
+      { origin: WEB_ORIGIN, headers: AUTH_HEADERS },
     );
 
     expect(response.status).toBe(307);
@@ -246,6 +267,7 @@ describe("Teams OAuth API routes", () => {
   it("connects and binds an unbound Teams installation using Microsoft OAuth", async () => {
     const fixture = await seedTeamsInstallation(track);
     await seedMembership(fixture.orgId, fixture.userId, "admin");
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
     mockMicrosoftOAuth({
       tenantId: fixture.teamsTenantId,
       aadObjectId: fixture.teamsAadObjectId,
@@ -256,7 +278,7 @@ describe("Teams OAuth API routes", () => {
         code: "valid-code",
         state: { orgId: fixture.orgId, vm0UserId: fixture.userId },
       }),
-      { origin: WEB_ORIGIN },
+      { origin: WEB_ORIGIN, headers: AUTH_HEADERS },
     );
 
     expect(response.status).toBe(307);
@@ -307,7 +329,7 @@ describe("Teams OAuth API routes", () => {
         code: "valid-code",
         state: { orgId: fixture.orgId, vm0UserId: fixture.userId },
       }),
-      { origin: WEB_ORIGIN },
+      { origin: WEB_ORIGIN, headers: AUTH_HEADERS },
     );
 
     expect(response.status).toBe(307);
@@ -315,6 +337,27 @@ describe("Teams OAuth API routes", () => {
     expect(location).toContain(`${APP_ORIGIN}/settings/teams?error=`);
     expect(new URL(location!).searchParams.get("error")).toContain(
       "active organization doesn't match",
+    );
+  });
+
+  it("rejects callback state for a different signed-in user", async () => {
+    const fixture = await seedTeamsInstallation(track);
+    await seedMembership(fixture.orgId, fixture.userId, "admin");
+    mocks.clerk.session("user_other", fixture.orgId, "org:admin");
+
+    const response = await appRequest(
+      callbackPath({
+        code: "valid-code",
+        state: { orgId: fixture.orgId, vm0UserId: fixture.userId },
+      }),
+      { origin: WEB_ORIGIN, headers: AUTH_HEADERS },
+    );
+
+    expect(response.status).toBe(307);
+    const location = response.headers.get("location");
+    expect(location).toContain(`${APP_ORIGIN}/settings/teams?error=`);
+    expect(new URL(location!).searchParams.get("error")).toBe(
+      "Invalid connect state.",
     );
   });
 });
