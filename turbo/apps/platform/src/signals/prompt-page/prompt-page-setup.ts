@@ -4,10 +4,13 @@ import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/cha
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
+  findWebsiteTemplateItem,
   findVideoTemplateItem,
 } from "@vm0/core";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { sendNewThread$ } from "../chat-page/optimistic-chat-thread-page.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
+import { featureSwitch$ } from "../external/feature-switch.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import { userModelPreference$ } from "../external/user-model-preference.ts";
 import { defaultAgentId$ } from "../agent.ts";
@@ -30,10 +33,22 @@ import {
 
 function generationTemplateFromSearchParam(
   template: string | null,
+  options?: { readonly websiteTemplatesEnabled?: boolean },
 ): GenerationTemplateRequest | undefined {
   const id = template?.trim();
   if (!id) {
     return undefined;
+  }
+  if (options?.websiteTemplatesEnabled) {
+    const websiteTemplate = findWebsiteTemplateItem(id);
+    if (websiteTemplate) {
+      return {
+        type: "website",
+        selection: {
+          websiteTemplateId: websiteTemplate.id,
+        },
+      };
+    }
   }
   const videoTemplate = findVideoTemplateItem(id);
   if (!videoTemplate) {
@@ -101,6 +116,10 @@ export const setupPromptPage$ = command(
     const requestedModel = params.get("model")?.trim();
     const generationTemplate = generationTemplateFromSearchParam(
       params.get("template"),
+      {
+        websiteTemplatesEnabled:
+          get(featureSwitch$)[FeatureSwitchKey.WebsiteTemplates],
+      },
     );
     if (!prompt) {
       set(detachedNavigateTo$, "/", { replace: true });

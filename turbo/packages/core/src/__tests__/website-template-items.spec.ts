@@ -103,11 +103,35 @@ describe("website template items", () => {
     );
   });
 
-  it("keeps built-in R2 website packages out of the generic template list", () => {
+  it("keeps built-in R2 website packages out of the unscoped generic template list", () => {
     expect(
-      listTemplates("website").some((template) => {
+      listTemplates().some((template) => {
         return template.id === "template:warm-cards";
       }),
     ).toBe(false);
+  });
+
+  it("exposes built-in R2 website packages to website-targeted generation", () => {
+    const template = listTemplates("website").find((entry) => {
+      return entry.id === "template:warm-cards";
+    });
+
+    expect(template).toEqual(
+      expect.objectContaining({
+        id: "template:warm-cards",
+        kind: "template",
+        targets: ["website"],
+        source: expect.objectContaining({
+          path: "warm-cards",
+          archive: expect.objectContaining({ type: "tar.gz" }),
+        }),
+      }),
+    );
+    expect(findWebsiteTemplateResource("website-template:warm-cards")).toEqual(
+      template,
+    );
+    expect(findWebsiteTemplatePackage("website-template:warm-cards")).toEqual(
+      findWebsiteTemplatePackage("template:warm-cards"),
+    );
   });
 });

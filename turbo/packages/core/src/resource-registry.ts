@@ -1,5 +1,6 @@
 import {
   WEBSITE_TEMPLATE_ITEMS,
+  findWebsiteTemplateItem,
   type WebsiteTemplateItem,
 } from "./website-template-items";
 
@@ -3663,27 +3664,9 @@ const WEBSITE_TEMPLATE_PACKAGES: readonly WebsiteTemplatePackage[] =
     };
   });
 
-export function listWebsiteTemplatePackages(): readonly WebsiteTemplatePackage[] {
-  return WEBSITE_TEMPLATE_PACKAGES;
-}
-
-export function findWebsiteTemplatePackage(
-  templateId: string,
-): WebsiteTemplatePackage | undefined {
-  return WEBSITE_TEMPLATE_PACKAGES.find((pkg) => {
-    return pkg.templateId === templateId;
-  });
-}
-
-export function findWebsiteTemplateResource(
-  resourceId: string,
-): RegistryEntry | undefined {
-  const pkg = WEBSITE_TEMPLATE_PACKAGES.find((entry) => {
-    return entry.resourceId === resourceId;
-  });
-  if (!pkg) {
-    return undefined;
-  }
+function websiteTemplatePackageToRegistryEntry(
+  pkg: WebsiteTemplatePackage,
+): RegistryEntry {
   return {
     id: pkg.resourceId,
     kind: "template",
@@ -3692,6 +3675,34 @@ export function findWebsiteTemplateResource(
     source: pkg.source,
     targets: ["website"],
   };
+}
+
+export function listWebsiteTemplatePackages(): readonly WebsiteTemplatePackage[] {
+  return WEBSITE_TEMPLATE_PACKAGES;
+}
+
+export function findWebsiteTemplatePackage(
+  templateId: string,
+): WebsiteTemplatePackage | undefined {
+  const normalizedTemplateId =
+    findWebsiteTemplateItem(templateId)?.templateId ?? templateId;
+  return WEBSITE_TEMPLATE_PACKAGES.find((pkg) => {
+    return pkg.templateId === normalizedTemplateId;
+  });
+}
+
+export function findWebsiteTemplateResource(
+  resourceId: string,
+): RegistryEntry | undefined {
+  const normalizedResourceId =
+    findWebsiteTemplateItem(resourceId)?.resourceId ?? resourceId;
+  const pkg = WEBSITE_TEMPLATE_PACKAGES.find((entry) => {
+    return entry.resourceId === normalizedResourceId;
+  });
+  if (!pkg) {
+    return undefined;
+  }
+  return websiteTemplatePackageToRegistryEntry(pkg);
 }
 
 const COLOR_SYSTEM_ID_PREFIX = "color-system:";
@@ -3850,15 +3861,27 @@ export function listTemplates(
   if (target === undefined) {
     return all;
   }
-  return all.filter((entry) => {
+  const filtered = all.filter((entry) => {
     return entry.targets?.includes(target) ?? false;
   });
+  if (target !== "website") {
+    return filtered;
+  }
+  const websitePackageEntries = WEBSITE_TEMPLATE_PACKAGES.map(
+    websiteTemplatePackageToRegistryEntry,
+  ).filter((entry) => {
+    return !filtered.some((template) => {
+      return template.id === entry.id;
+    });
+  });
+  return [...filtered, ...websitePackageEntries];
 }
 
 export function findTemplate(id: string): RegistryEntry | undefined {
-  return filterByKind("template").find((entry) => {
+  const template = filterByKind("template").find((entry) => {
     return entry.id === id;
   });
+  return template ?? findWebsiteTemplateResource(id);
 }
 
 export function toGenerationTarget(value: string): GenerationTarget {

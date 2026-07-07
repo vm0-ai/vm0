@@ -104,6 +104,50 @@ describe("zero generate website command", () => {
     );
   });
 
+  it("should accept the built-in R2 website template package", async () => {
+    await generateCommand.parseAsync([
+      "node",
+      "cli",
+      "website",
+      "--prompt",
+      "Editorial landing page",
+      "--template",
+      "warm-cards",
+      "--site-slug",
+      "warm-cards-demo",
+    ]);
+
+    const stdout = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(stdout).toContain(
+      "Selected template: template:warm-cards (Warm Cards)",
+    );
+    expect(stdout).toContain(
+      "Selected template package: zero resource pull template:warm-cards --dir ./generated/resources",
+    );
+    expect(stdout).toContain('"id": "template:warm-cards"');
+    expect(stdout).toContain('"type": "tar.gz"');
+    expect(stdout).toContain(
+      '"sha256": "1fafd9e5541dfe53ffdfafcbb6e45d525328c9a0cc5bb4afb2a06b4685e153d2"',
+    );
+  });
+
+  it("should accept the built-in website picker id for --template", async () => {
+    await generateCommand.parseAsync([
+      "node",
+      "cli",
+      "website",
+      "--prompt",
+      "Editorial landing page",
+      "--template",
+      "website-template:warm-cards",
+    ]);
+
+    const stdout = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(stdout).toContain(
+      "Selected template: template:warm-cards (Warm Cards)",
+    );
+  });
+
   it("should reject a template that does not target website", async () => {
     await expect(async () => {
       await generateCommand.parseAsync([
