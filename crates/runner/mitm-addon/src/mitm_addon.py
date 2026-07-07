@@ -50,6 +50,7 @@ import auth_base_forwarder
 import body_capture
 import builtin_connector_diagnostics
 import builtin_host_policy
+import connection_endpoints
 import deferred_callbacks
 import flow_metadata
 import flow_metadata_keys as metadata_keys
@@ -58,8 +59,8 @@ import http_network_log
 import matching
 import network_log_sanitization
 import platform_api
-import public_destination
 import registry
+import request_classification
 import request_streaming
 import response_encoding_negotiation
 import response_streaming
@@ -102,19 +103,7 @@ _HTTP_STATUS_FORBIDDEN = 403
 _HTTP_STATUS_FAILED_DEPENDENCY = 424
 _HTTP_STATUS_BAD_GATEWAY = 502
 _HTTP_STATUS_ERROR_MIN = 400  # inclusive: start of 4xx/5xx error range
-_ADDRESS_PAIR_LENGTH = 2
 _HTTP_OWS_CHARS = " \t"
-_BROWSER_USER_AGENT_MARKERS = (
-    " chrome/",
-    " chromium/",
-    " crios/",
-    " edg/",
-    " firefox/",
-    " fxios/",
-    " headlesschrome/",
-    " opr/",
-    " safari/",
-)
 _TEST_ENDPOINT_BYPASS_HEADER: Final = "x-vm0-test-endpoint-bypass"
 
 # Hook-private lifecycle state constants. Keep flow.metadata marker strings in
@@ -135,31 +124,16 @@ _CONNECTOR_INTENT_STATUS = "_connector_intent_status"
 # Request-header phase state.
 # Creator: requestheaders() and header-phase stream/auth helpers.
 # Consumer: request() and terminal cleanup.
-# Release: classification/auth markers are popped by request() or terminal cleanup.
+# Release: auth marker is popped by terminal cleanup.
 # _REQUEST_HEADERS_TERMINATED is a flow-local sentinel for request() early exit.
-# Follow-up owner: #20507 request classification extraction.
 _REQUEST_HEADERS_TERMINATED = "_request_headers_terminated"
-_REQUEST_CLASSIFICATION = "_request_classification"
 _FIREWALL_AUTH_APPLIED_IN_REQUESTHEADERS = "_firewall_auth_applied_in_requestheaders"
 
-# Request-header probe rollback key set.
+# Request-header probe rollback keys for state still owned by this module.
 # Creator: static key set for requestheaders() snapshots.
 # Consumer: _restore_request_headers_probe_metadata().
 # Release: n/a; the helper restores or removes the listed metadata values.
-# Follow-up owner: #20507 request classification extraction.
 _REQUEST_HEADERS_PROBE_METADATA_KEYS = (
-    metadata_keys.VM_RUN_ID,
-    metadata_keys.VM_NETWORK_LOG_PATH,
-    metadata_keys.VM_PROXY_LOG_PATH,
-    metadata_keys.CAPTURE_BODY,
-    metadata_keys.VM_SANDBOX_AUTH_KEY,
-    metadata_keys.CLI_AGENT_TYPE,
-    metadata_keys.BROWSER_USER_AGENT,
-    metadata_keys.WEBSOCKET_UPGRADE_REQUEST,
-    metadata_keys.ORIGINAL_URL,
-    metadata_keys.TRUSTED_AUTHORITY_HOST,
-    metadata_keys.NETWORK_LOG_TARGET,
-    metadata_keys.HTTP_REQUEST_START_MONOTONIC,
     _CONNECTOR_INTENT_VALUE,
     _CONNECTOR_INTENT_STATUS,
 )
@@ -275,20 +249,6 @@ _TlsAdmissionKind = Literal[
     "invalid_registry_vm",
     "registry_unavailable",
 ]
-_RequestClassificationKind = Literal[
-    "no_client_ip",
-    "pass_through",
-    "registry_unavailable",
-    "stale_tls_admission",
-    "invalid_registry_vm",
-    "authority_denied",
-    "api_allow",
-    "browser_allow",
-    "firewall_block",
-    "firewall_allow",
-    "public_destination_denied",
-    "allow",
-]
 _AuthBaseBodyCheckKind = Literal["ok", "too_large", "length_required"]
 _trusted_host_address_cache: dict[tuple[str, int], tuple[float, frozenset[str]]] = {}
 _trusted_host_address_lookup_tasks: dict[tuple[str, int], asyncio.Task[frozenset[str]]] = {}
@@ -300,28 +260,6 @@ class _TlsAdmission:
     kind: _TlsAdmissionKind
     run_id: str | None = None
     sni: str | None = None
-
-
-@dataclass(frozen=True)
-class _PublicDestinationDenial:
-    name: str
-    base: str
-    trusted_authority_host: str
-    destination_host: str
-    reason: public_destination.DestinationDenialReason
-
-
-@dataclass(frozen=True)
-class _RequestClassification:
-    kind: _RequestClassificationKind
-    vm_info: dict | None = None
-    registry_unavailable: registry.RegistryUnavailable | None = None
-    invalid_vm: registry.InvalidVmEntry | None = None
-    authority_error: AuthorityValidationError | None = None
-    firewall_block: matching.FirewallBlock | None = None
-    firewall_allow: matching.FirewallAllow | None = None
-    public_destination_denial: _PublicDestinationDenial | None = None
-    stale_tls_reason: str = ""
 
 
 @dataclass(frozen=True)
@@ -617,24 +555,6 @@ def get_registry_path() -> str:
     return ctx.options.vm0_proxy_registry_path
 
 
-def _is_browser_user_agent(user_agent: str | None) -> bool:
-    if not user_agent:
-        return False
-
-    normalized = f" {user_agent.lower()}"
-    return "mozilla/" in normalized and any(
-        marker in normalized for marker in _BROWSER_USER_AGENT_MARKERS
-    )
-
-
-def _is_browser_passthrough_heuristic(flow: http.HTTPFlow) -> bool:
-    # Short-term business passthrough heuristic for browser-originated traffic.
-    # This is not trusted browser provenance: any sandbox client can set this
-    # header. The spoofable User-Agent heuristic is currently accepted as a
-    # known tradeoff until runner-owned browser provenance is prioritized again.
-    return _is_browser_user_agent(flow.request.headers.get("User-Agent"))
-
-
 def _capture_and_strip_connector_intent_header(flow: http.HTTPFlow) -> None:
     if _CONNECTOR_INTENT_STATUS not in flow.metadata:
         values = flow.request.headers.get_all(_CONNECTOR_INTENT_HEADER)
@@ -674,364 +594,41 @@ def _active_firewall_names(vm_info: dict) -> set[str]:
     return names
 
 
-def _store_registered_request_metadata(
-    flow: http.HTTPFlow,
-    *,
-    vm_info: dict,
-    run_id: str,
-) -> None:
-    flow.metadata[metadata_keys.VM_RUN_ID] = run_id
-    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = vm_info.get("networkLogPath", "")
-    flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = vm_info.get("proxyLogPath", "")
-    flow.metadata[metadata_keys.CAPTURE_BODY] = vm_info.get("captureNetworkBodies", False)
-    flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = vm_info.get("sandboxToken", "")
-    flow.metadata[metadata_keys.CLI_AGENT_TYPE] = vm_info.get("cliAgentType") or "claude-code"
-
-
-def _store_trusted_authority_metadata(
-    flow: http.HTTPFlow,
-    *,
-    original_url: str,
-    host: str,
-    port: int,
-) -> None:
-    flow.metadata[metadata_keys.ORIGINAL_URL] = original_url
-    flow.metadata[metadata_keys.TRUSTED_AUTHORITY_HOST] = host
-    http_network_log.set_target(
-        flow,
-        url=original_url,
-        host=host,
-        port=port,
+def _request_headers_probe_metadata_keys() -> tuple[str, ...]:
+    return (
+        *request_classification.REQUEST_HEADERS_PROBE_METADATA_KEYS,
+        *_REQUEST_HEADERS_PROBE_METADATA_KEYS,
     )
 
 
-def _public_destination_runtime_hosts(flow: http.HTTPFlow) -> tuple[object, ...]:
-    original_address = upstream_destination_binding.server_binding_original_address(
-        flow.server_conn
-    )
-
-    if flow.server_conn.connected:
-        hosts = _public_destination_original_and_request_hosts(flow, original_address)
-        hosts.extend(_public_destination_connected_runtime_hosts(flow))
-        return tuple(hosts)
-
-    if original_address is not None:
-        return tuple(_public_destination_original_and_request_hosts(flow, original_address))
-
-    server_address = _server_address(flow.server_conn)
-    if server_address is not None:
-        return (_public_destination_endpoint_host_for_request(flow, server_address),)
-
-    return (flow.request.host,)
-
-
-def _public_destination_endpoint_host_for_request(
-    flow: http.HTTPFlow,
-    endpoint: tuple[str, int],
-) -> str | None:
-    endpoint_host, endpoint_port = endpoint
-    if endpoint_port != flow.request.port:
-        return None
-    return endpoint_host
-
-
-def _public_destination_original_and_request_hosts(
-    flow: http.HTTPFlow,
-    original_address: tuple[str, int] | None,
-) -> list[object]:
-    hosts: list[object] = []
-    if original_address is not None:
-        endpoint_host = _public_destination_endpoint_host_for_request(flow, original_address)
-        if (
-            endpoint_host is None
-            or public_destination.public_ip_literal_is_public(endpoint_host) is not None
-            or not flow.server_conn.connected
-        ):
-            hosts.append(endpoint_host)
-    if public_destination.public_ip_literal_is_public(flow.request.host) is not None:
-        hosts.append(flow.request.host)
-    return hosts
-
-
-def _public_destination_connected_runtime_hosts(flow: http.HTTPFlow) -> tuple[object, ...]:
-    hosts: list[object] = []
-    for endpoint in (_server_peername(flow.server_conn), _server_address(flow.server_conn)):
-        if endpoint is None:
-            continue
-
-        endpoint_host, endpoint_port = endpoint
-        if public_destination.public_ip_literal_is_public(endpoint_host) is None:
-            continue
-
-        if endpoint_port != flow.request.port:
-            hosts.append(None)
-            continue
-
-        hosts.append(endpoint_host)
-
-    if hosts:
-        return tuple(hosts)
-
-    connected_endpoint = _connected_ip_destination_endpoint(
-        flow.server_conn,
-        port=flow.request.port,
-        extra_endpoints=(_connection_sockname(flow.client_conn),),
-    )
-    return (connected_endpoint[0] if connected_endpoint is not None else None,)
-
-
-def _public_destination_runtime_host_is_deferable(runtime_host: object) -> bool:
-    if not isinstance(runtime_host, str):
-        return False
-    if public_destination.public_ip_literal_is_public(runtime_host) is not None:
-        return False
-    try:
-        normalize_trusted_hostname(runtime_host)
-    except (UnicodeError, ValueError):
-        return False
-    return True
-
-
-def _public_destination_runtime_denial(
-    flow: http.HTTPFlow,
-    *,
-    defer_unresolved_hostnames: bool = False,
-) -> public_destination.RuntimeDestinationCheck | None:
-    for runtime_host in _public_destination_runtime_hosts(flow):
-        validation = public_destination.validate_runtime_destination_host(runtime_host)
-        if (
-            not validation.allowed
-            and defer_unresolved_hostnames
-            and _public_destination_runtime_host_is_deferable(runtime_host)
-        ):
-            continue
-        if not validation.allowed:
-            return validation
-    return None
-
-
-def _public_destination_denial(
-    flow: http.HTTPFlow,
-    allow: matching.FirewallAllow,
-    *,
-    trusted_authority_host: str,
-    defer_unresolved_hostnames: bool = False,
-) -> _PublicDestinationDenial | None:
-    host_policy = allow.api_entry.get("hostPolicy")
-    if not isinstance(host_policy, dict) or host_policy.get("kind") != "publicDestination":
-        return None
-
-    validation = _public_destination_runtime_denial(
-        flow,
-        defer_unresolved_hostnames=defer_unresolved_hostnames,
-    )
-    if validation is None:
-        return None
-
-    raw_base = allow.api_entry.get("base", "")
-    base = raw_base if isinstance(raw_base, str) else ""
-    if validation.reason is None:
-        raise RuntimeError("publicDestination denial is missing a reason")
-    return _PublicDestinationDenial(
-        name=allow.name,
-        base=base,
-        trusted_authority_host=trusted_authority_host,
-        destination_host=validation.destination_host,
-        reason=validation.reason,
-    )
-
-
-def _firewall_allow_uses_public_destination(allow: matching.FirewallAllow) -> bool:
-    host_policy = allow.api_entry.get("hostPolicy")
-    return isinstance(host_policy, dict) and host_policy.get("kind") == "publicDestination"
-
-
-def _current_public_destination_denial(
-    flow: http.HTTPFlow,
-    allow: matching.FirewallAllow,
-) -> _PublicDestinationDenial | None:
-    trusted_authority_host = flow_metadata.trusted_authority_host(flow.metadata)
-    if not trusted_authority_host:
-        try:
-            trusted_authority_host = get_trusted_authority(flow).host
-        except AuthorityValidationError:
-            trusted_authority_host = ""
-    return _public_destination_denial(
-        flow,
-        allow,
-        trusted_authority_host=trusted_authority_host,
-    )
-
-
-def _classify_request(
+def _classify_request_for_flow(
     flow: http.HTTPFlow,
     *,
     defer_unresolved_public_destination: bool = False,
-) -> _RequestClassification:
-    client_ip = flow.client_conn.peername[0] if flow.client_conn.peername else None
-    tls_admission = _tls_admission_for_client(flow.client_conn)
-
-    if not client_ip:
-        if tls_admission is not None:
-            return _RequestClassification(
-                kind="stale_tls_admission",
-                stale_tls_reason="client_ip_missing",
-            )
-        return _RequestClassification(kind="no_client_ip")
-
-    registry_state = registry.load_registry_state(get_registry_path())
-    if isinstance(registry_state, registry.RegistryUnavailable):
-        return _RequestClassification(
-            kind="registry_unavailable",
-            registry_unavailable=registry_state,
-        )
-
-    if tls_admission is not None and tls_admission.client_ip != client_ip:
-        return _RequestClassification(
-            kind="stale_tls_admission",
-            stale_tls_reason="client_ip_mismatch",
-        )
-
-    vm_info = registry_state.vms.get(client_ip)
-    if vm_info is None:
-        invalid_vm = registry_state.invalid_vms.get(client_ip)
-        if invalid_vm is not None:
-            return _RequestClassification(
-                kind="invalid_registry_vm",
-                invalid_vm=invalid_vm,
-            )
-        if tls_admission is not None:
-            return _RequestClassification(
-                kind="stale_tls_admission",
-                stale_tls_reason="registry_entry_missing",
-            )
-        return _RequestClassification(kind="pass_through")
-
-    run_id = vm_info.get("runId", "")
-    if (
-        tls_admission is not None
-        and tls_admission.run_id is not None
-        and tls_admission.run_id != run_id
-    ):
-        return _RequestClassification(
-            kind="stale_tls_admission",
-            vm_info=vm_info,
-            stale_tls_reason="run_id_mismatch",
-        )
-
-    _store_registered_request_metadata(flow, vm_info=vm_info, run_id=run_id)
-
-    if _is_browser_passthrough_heuristic(flow):
-        flow.metadata[metadata_keys.BROWSER_USER_AGENT] = True
-
-    try:
-        trusted_authority = get_trusted_authority(flow)
-    except AuthorityValidationError as e:
-        return _RequestClassification(
-            kind="authority_denied",
-            vm_info=vm_info,
-            authority_error=e,
-        )
-
-    original_url = trusted_authority.url
-    _store_trusted_authority_metadata(
+) -> request_classification.RequestClassification:
+    return request_classification.classify_request(
         flow,
-        original_url=original_url,
-        host=trusted_authority.host,
-        port=trusted_authority.port,
-    )
-
-    hostname = trusted_authority.host.lower()
-    api_url = get_api_url()
-    if api_url:
-        parsed_api = urllib.parse.urlparse(api_url)
-        api_hostname = parsed_api.hostname.lower() if parsed_api.hostname else ""
-        if (
-            api_hostname
-            and (hostname == api_hostname or hostname.endswith(f".{api_hostname}"))
-            and not flow.request.path.startswith("/api/test/")
-        ):
-            return _RequestClassification(kind="api_allow", vm_info=vm_info)
-
-    if flow.metadata.get(metadata_keys.BROWSER_USER_AGENT):
-        return _RequestClassification(kind="browser_allow", vm_info=vm_info)
-
-    compiled_firewalls = registry_state.compiled_firewalls.get(client_ip)
-    compiled_network_policies = registry_state.compiled_network_policies[client_ip]
-    if compiled_firewalls:
-        result = matching.match_compiled_firewall_request(
-            original_url,
-            flow.request.method,
-            compiled_firewalls,
-            compiled_network_policies,
-        )
-        if isinstance(result, matching.FirewallBlock):
-            return _RequestClassification(
-                kind="firewall_block",
-                vm_info=vm_info,
-                firewall_block=result,
-            )
-        if isinstance(result, matching.FirewallAllow):
-            public_destination_denial = _public_destination_denial(
-                flow,
-                result,
-                trusted_authority_host=trusted_authority.host,
-                defer_unresolved_hostnames=defer_unresolved_public_destination,
-            )
-            if public_destination_denial is not None:
-                return _RequestClassification(
-                    kind="public_destination_denied",
-                    vm_info=vm_info,
-                    public_destination_denial=public_destination_denial,
-                )
-            return _RequestClassification(
-                kind="firewall_allow",
-                vm_info=vm_info,
-                firewall_allow=result,
-            )
-
-    return _RequestClassification(kind="allow", vm_info=vm_info)
-
-
-def _request_classification(flow: http.HTTPFlow) -> _RequestClassification:
-    classification = flow.metadata.get(_REQUEST_CLASSIFICATION)
-    if isinstance(classification, _RequestClassification):
-        return classification
-    return _classify_request(flow)
-
-
-def _classification_needs_request_timing(classification: _RequestClassification) -> bool:
-    return classification.kind in (
-        "authority_denied",
-        "api_allow",
-        "browser_allow",
-        "firewall_block",
-        "firewall_allow",
-        "public_destination_denied",
-        "allow",
+        registry_path=get_registry_path(),
+        api_url=get_api_url(),
+        tls_admission=_tls_admission_for_client(flow.client_conn),
+        defer_unresolved_public_destination=defer_unresolved_public_destination,
     )
 
 
-def _should_stream_capture_request(classification: _RequestClassification) -> bool:
-    if classification.kind not in ("api_allow", "browser_allow", "allow"):
-        return False
-    vm_info = classification.vm_info
-    return isinstance(vm_info, dict) and bool(vm_info.get("captureNetworkBodies", False))
-
-
-def _should_try_firewall_stream_capture_request(classification: _RequestClassification) -> bool:
-    if classification.kind != "firewall_allow":
-        return False
-    allow = classification.firewall_allow
-    if allow is None or _firewall_allow_uses_public_destination(allow):
-        return False
-    vm_info = classification.vm_info
-    return isinstance(vm_info, dict) and bool(vm_info.get("captureNetworkBodies", False))
+def _request_classification_for_flow(
+    flow: http.HTTPFlow,
+) -> request_classification.RequestClassification:
+    return request_classification.classification_for_request(
+        flow,
+        registry_path=get_registry_path(),
+        api_url=get_api_url(),
+        tls_admission=_tls_admission_for_client(flow.client_conn),
+    )
 
 
 def _prebind_requestheaders_upstream_destination(
     flow: http.HTTPFlow,
-    classification: _RequestClassification,
+    classification: request_classification.RequestClassification,
 ) -> None:
     """Bind privileged upstreams while requestheaders can still retarget."""
     if classification.kind == "api_allow":
@@ -1048,7 +645,7 @@ def _prebind_requestheaders_upstream_destination(
 def _prebind_bounded_requestheaders_upstream_destination(flow: http.HTTPFlow) -> None:
     metadata_snapshot = {
         key: flow.metadata[key]
-        for key in _REQUEST_HEADERS_PROBE_METADATA_KEYS
+        for key in _request_headers_probe_metadata_keys()
         if key in flow.metadata
     }
     try:
@@ -1060,7 +657,7 @@ def _prebind_bounded_requestheaders_upstream_destination(flow: http.HTTPFlow) ->
         if _api_hostname_matches(trusted_authority.host) and not flow.request.path.startswith(
             "/api/test/"
         ):
-            classification = _classify_request(
+            classification = _classify_request_for_flow(
                 flow,
                 defer_unresolved_public_destination=True,
             )
@@ -1074,7 +671,7 @@ def _prebind_bounded_requestheaders_upstream_destination(flow: http.HTTPFlow) ->
             return
         _prebind_requestheaders_upstream_destination(
             flow,
-            _classify_request(
+            _classify_request_for_flow(
                 flow,
                 defer_unresolved_public_destination=True,
             ),
@@ -1156,7 +753,7 @@ def _bind_flow_upstream_destination(
     except (UnicodeError, ValueError):
         return False
 
-    original_address = _server_address(flow.server_conn)
+    original_address = connection_endpoints.server_address(flow.server_conn)
     has_server_binding = upstream_destination_binding.has_server_binding(flow.server_conn)
     if _requires_platform_connector_auth_bypass(
         kind=kind,
@@ -1178,7 +775,7 @@ def _bind_flow_upstream_destination(
                 flow.server_conn,
                 host=normalized_host,
                 port=flow.request.port,
-                extra_endpoints=(_connection_sockname(flow.client_conn),),
+                extra_endpoints=(connection_endpoints.connection_sockname(flow.client_conn),),
             )
             if connected_address is None:
                 return False
@@ -1199,7 +796,7 @@ def _bind_flow_upstream_destination(
             flow.server_conn,
             host=normalized_host,
             port=flow.request.port,
-            extra_endpoints=(_connection_sockname(flow.client_conn),),
+            extra_endpoints=(connection_endpoints.connection_sockname(flow.client_conn),),
         )
         if connected_address is None:
             return False
@@ -1317,11 +914,11 @@ def _request_body_fits_stream_buffer(flow: http.HTTPFlow) -> bool:
 def _restore_request_headers_probe_metadata(
     flow: http.HTTPFlow, snapshot: dict[str, object]
 ) -> None:
-    for key in _REQUEST_HEADERS_PROBE_METADATA_KEYS:
-        if key in snapshot:
-            flow.metadata[key] = snapshot[key]
-        else:
-            flow.metadata.pop(key, None)
+    request_classification.restore_request_headers_probe_metadata(
+        flow,
+        snapshot,
+        extra_keys=_REQUEST_HEADERS_PROBE_METADATA_KEYS,
+    )
 
 
 def _connector_diagnostic_candidate_from_flow(
@@ -1367,7 +964,7 @@ def _cached_connector_diagnostic_candidate_from_flow(
 
 def _maybe_record_allow_connector_diagnostic_context(
     flow: http.HTTPFlow,
-    classification: _RequestClassification,
+    classification: request_classification.RequestClassification,
 ) -> None:
     if classification.kind != "allow":
         return
@@ -1404,9 +1001,9 @@ def _resolve_connector_diagnostic_candidate(
         return None
     if not original_url:
         return None
-    if flow.metadata.get(metadata_keys.BROWSER_USER_AGENT) or _is_browser_passthrough_heuristic(
-        flow
-    ):
+    if flow.metadata.get(
+        metadata_keys.BROWSER_USER_AGENT
+    ) or request_classification.is_browser_passthrough_heuristic(flow):
         return None
 
     flow.metadata[_CONNECTOR_DIAGNOSTIC_LOOKUP_DONE] = True
@@ -1608,9 +1205,9 @@ def _maybe_make_connector_diagnostic_local_response(
     *,
     original_url: str,
 ) -> bool:
-    if flow.metadata.get(metadata_keys.BROWSER_USER_AGENT) or _is_browser_passthrough_heuristic(
-        flow
-    ):
+    if flow.metadata.get(
+        metadata_keys.BROWSER_USER_AGENT
+    ) or request_classification.is_browser_passthrough_heuristic(flow):
         return False
     candidate = _resolve_connector_diagnostic_candidate(flow, original_url=original_url)
     if candidate is None:
@@ -1640,13 +1237,13 @@ def _firewall_allow_is_unknown_endpoint(allow: matching.FirewallAllow) -> bool:
 
 def _maybe_make_firewall_allow_connector_diagnostic_local_response(
     flow: http.HTTPFlow,
-    classification: _RequestClassification,
+    classification: request_classification.RequestClassification,
 ) -> bool:
     if classification.kind != "firewall_allow":
         return False
-    if flow.metadata.get(metadata_keys.BROWSER_USER_AGENT) or _is_browser_passthrough_heuristic(
-        flow
-    ):
+    if flow.metadata.get(
+        metadata_keys.BROWSER_USER_AGENT
+    ) or request_classification.is_browser_passthrough_heuristic(flow):
         return False
 
     allow = classification.firewall_allow
@@ -1718,9 +1315,9 @@ def _maybe_replace_connector_diagnostic_response(
         _HTTP_STATUS_FORBIDDEN,
     ):
         return
-    if flow.metadata.get(metadata_keys.BROWSER_USER_AGENT) or _is_browser_passthrough_heuristic(
-        flow
-    ):
+    if flow.metadata.get(
+        metadata_keys.BROWSER_USER_AGENT
+    ) or request_classification.is_browser_passthrough_heuristic(flow):
         return
 
     candidate = _resolve_connector_diagnostic_candidate(flow, original_url=original_url)
@@ -1752,9 +1349,9 @@ def _maybe_make_connector_diagnostic_error_response(
         if flow.response is not None:
             flow.response.trailers = None
         return
-    if flow.metadata.get(metadata_keys.BROWSER_USER_AGENT) or _is_browser_passthrough_heuristic(
-        flow
-    ):
+    if flow.metadata.get(
+        metadata_keys.BROWSER_USER_AGENT
+    ) or request_classification.is_browser_passthrough_heuristic(flow):
         return
     candidate = _resolve_connector_diagnostic_candidate(flow, original_url=original_url)
     if candidate is None:
@@ -1782,9 +1379,9 @@ def _should_stream_connector_diagnostic_response(flow: http.HTTPFlow) -> bool:
         _HTTP_STATUS_FORBIDDEN,
     ):
         return False
-    if flow.metadata.get(metadata_keys.BROWSER_USER_AGENT) or _is_browser_passthrough_heuristic(
-        flow
-    ):
+    if flow.metadata.get(
+        metadata_keys.BROWSER_USER_AGENT
+    ) or request_classification.is_browser_passthrough_heuristic(flow):
         return False
 
     original_url = flow.metadata.get(metadata_keys.ORIGINAL_URL)
@@ -1951,10 +1548,16 @@ def _upstream_binding_diagnostics(
             "request_host": flow.request.host,
             "request_port": flow.request.port,
             "server_connected": bool(getattr(flow.server_conn, "connected", False)),
-            "server_address": _endpoint_text(_server_address(flow.server_conn)),
-            "server_peername": _endpoint_text(_server_peername(flow.server_conn)),
-            "server_sockname": _endpoint_text(_connection_sockname(flow.server_conn)),
-            "client_sockname": _endpoint_text(_connection_sockname(flow.client_conn)),
+            "server_address": _endpoint_text(connection_endpoints.server_address(flow.server_conn)),
+            "server_peername": _endpoint_text(
+                connection_endpoints.server_peername(flow.server_conn)
+            ),
+            "server_sockname": _endpoint_text(
+                connection_endpoints.connection_sockname(flow.server_conn)
+            ),
+            "client_sockname": _endpoint_text(
+                connection_endpoints.connection_sockname(flow.client_conn)
+            ),
         }
     )
     return diagnostics
@@ -1990,27 +1593,6 @@ def reset_tls_admission_state_for_tests() -> None:
     _tls_admissions.clear()
 
 
-def _server_address(server: object) -> tuple[str, int] | None:
-    return _connection_address_pair(getattr(server, "address", None))
-
-
-def _server_peername(server: object) -> tuple[str, int] | None:
-    return _connection_address_pair(getattr(server, "peername", None))
-
-
-def _connection_sockname(connection: object) -> tuple[str, int] | None:
-    return _connection_address_pair(getattr(connection, "sockname", None))
-
-
-def _connection_address_pair(address: object) -> tuple[str, int] | None:
-    if not isinstance(address, tuple) or len(address) < _ADDRESS_PAIR_LENGTH:
-        return None
-    host, port = address[:_ADDRESS_PAIR_LENGTH]
-    if not isinstance(host, str) or not isinstance(port, int):
-        return None
-    return host, port
-
-
 def _ip_address_text(host: str) -> str | None:
     try:
         address = ipaddress.ip_address(host)
@@ -2021,33 +1603,6 @@ def _ip_address_text(host: str) -> str | None:
 
 def _trusted_host_address_cache_time() -> float:
     return time.monotonic()
-
-
-def _is_authoritative_connected_endpoint(endpoint: tuple[str, int] | None) -> bool:
-    if endpoint is None:
-        return False
-    endpoint_host, _endpoint_port = endpoint
-    try:
-        endpoint_ip = ipaddress.ip_address(endpoint_host)
-    except ValueError:
-        return False
-    return not endpoint_ip.is_loopback and not endpoint_ip.is_unspecified
-
-
-def _connected_destination_candidate_endpoints(
-    server: object,
-    *,
-    extra_endpoints: tuple[tuple[str, int] | None, ...] = (),
-) -> tuple[tuple[str, int] | None, ...]:
-    peername = _server_peername(server)
-    if _is_authoritative_connected_endpoint(peername):
-        return (peername,)
-
-    server_address = _server_address(server)
-    if _is_authoritative_connected_endpoint(server_address):
-        return (server_address,)
-
-    return (peername, server_address, *extra_endpoints)
 
 
 def _cached_trusted_host_addresses(
@@ -2174,34 +1729,11 @@ def _connected_verified_tls_destination_endpoint(
     # mitmproxy verifies the upstream certificate against server.sni when
     # ssl_insecure is false. At this point the connected IP is authenticated as
     # the same host we plan to bind, so CDN/Anycast DNS drift does not matter.
-    return _connected_ip_destination_endpoint(
+    return connection_endpoints.connected_ip_destination_endpoint(
         server,
         port=port,
         extra_endpoints=extra_endpoints,
     )
-
-
-def _connected_ip_destination_endpoint(
-    server: object,
-    *,
-    port: int,
-    extra_endpoints: tuple[tuple[str, int] | None, ...] = (),
-) -> tuple[str, int] | None:
-    for peer in _connected_destination_candidate_endpoints(
-        server,
-        extra_endpoints=extra_endpoints,
-    ):
-        if peer is None:
-            continue
-
-        _peer_host, peer_port = peer
-        if peer_port != port:
-            continue
-
-        if _is_authoritative_connected_endpoint(peer):
-            return peer
-
-    return None
 
 
 def _request_has_platform_test_endpoint_bypass(flow: http.HTTPFlow) -> bool:
@@ -2316,7 +1848,10 @@ async def _bind_api_upstream_destination_from_original_address(
     api_hostname, api_port = api_destination
 
     original_address = None
-    for candidate_address in (_server_address(server), _connection_sockname(client)):
+    for candidate_address in (
+        connection_endpoints.server_address(server),
+        connection_endpoints.connection_sockname(client),
+    ):
         if await _address_resolves_to_trusted_host(
             candidate_address,
             host=api_hostname,
@@ -2388,7 +1923,7 @@ def _bind_privileged_upstream_destination(
     except (UnicodeError, ValueError):
         return
 
-    address = _server_address(server)
+    address = connection_endpoints.server_address(server)
     if address is None:
         return
     _original_host, port = address
@@ -2552,10 +2087,10 @@ def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
 
     metadata_snapshot = {
         key: flow.metadata[key]
-        for key in _REQUEST_HEADERS_PROBE_METADATA_KEYS
+        for key in _request_headers_probe_metadata_keys()
         if key in flow.metadata
     }
-    classification = _classify_request(
+    classification = _classify_request_for_flow(
         flow,
         defer_unresolved_public_destination=True,
     )
@@ -2607,7 +2142,7 @@ def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
                 firewall_base=firewall_base,
                 reason=body_check.reason,
             )
-        flow.metadata.pop(_REQUEST_CLASSIFICATION, None)
+        request_classification.pop_cached_classification(flow)
         flow.metadata[_REQUEST_HEADERS_TERMINATED] = True
         upstream_destination_binding.forget_server_binding(flow.server_conn)
         flow.kill()
@@ -2637,7 +2172,7 @@ def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
                 proxy_log_path=proxy_log_path,
                 firewall_base=firewall_base,
             )
-            flow.metadata.pop(_REQUEST_CLASSIFICATION, None)
+            request_classification.pop_cached_classification(flow)
             flow.metadata[_REQUEST_HEADERS_TERMINATED] = True
             upstream_destination_binding.forget_server_binding(flow.server_conn)
             flow.kill()
@@ -2647,10 +2182,10 @@ def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
         except BaseException:
             auth_base_forwarder.release_forward_request_admission(admission)
             raise
-        flow.metadata[_REQUEST_CLASSIFICATION] = classification
+        request_classification.cache_classification(flow, classification)
         return None
 
-    if _should_stream_capture_request(classification):
+    if request_classification.should_stream_capture_request(classification):
         if classification.kind == "api_allow" and not _ensure_bound_upstream_destination(
             flow,
             kind="api_allow",
@@ -2658,12 +2193,12 @@ def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
             _restore_request_headers_probe_metadata(flow, metadata_snapshot)
             return None
         _maybe_record_allow_connector_diagnostic_context(flow, classification)
-        flow.metadata[_REQUEST_CLASSIFICATION] = classification
+        request_classification.cache_classification(flow, classification)
         _start_request_timing(flow)
         request_streaming.configure_request_stream(flow)
         return None
 
-    if _should_try_firewall_stream_capture_request(classification):
+    if request_classification.should_try_firewall_stream_capture_request(classification):
         return _try_firewall_request_stream_capture_from_headers(
             flow,
             classification=classification,
@@ -2677,7 +2212,7 @@ def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
 async def _try_firewall_request_stream_capture_from_headers(
     flow: http.HTTPFlow,
     *,
-    classification: _RequestClassification,
+    classification: request_classification.RequestClassification,
     metadata_snapshot: dict[str, object],
 ) -> None:
     allow = classification.firewall_allow
@@ -2711,7 +2246,7 @@ async def _try_firewall_request_stream_capture_from_headers(
         is_billable_firewall(allow.name, vm_info),
         _is_model_provider_usage_observable(allow.name, vm_info),
     )
-    flow.metadata[_REQUEST_CLASSIFICATION] = classification
+    request_classification.cache_classification(flow, classification)
     flow.metadata[_FIREWALL_AUTH_APPLIED_IN_REQUESTHEADERS] = True
     request_streaming.configure_request_stream(flow)
 
@@ -2722,7 +2257,7 @@ def _set_firewall_block_response(flow: http.HTTPFlow, result: matching.FirewallB
 
 def _block_public_destination_denied(
     flow: http.HTTPFlow,
-    denial: _PublicDestinationDenial,
+    denial: request_classification.PublicDestinationDenial,
     *,
     send_response: bool = True,
 ) -> None:
@@ -2751,22 +2286,22 @@ async def request(flow: http.HTTPFlow) -> None:
     if flow.metadata.get(_REQUEST_HEADERS_TERMINATED):
         auth_base_forwarder.release_forward_request_admission_from_flow(flow)
         upstream_destination_binding.forget_server_binding(flow.server_conn)
-        flow.metadata.pop(_REQUEST_CLASSIFICATION, None)
+        request_classification.pop_cached_classification(flow)
         return
 
     if flow.response is not None or flow.error is not None:
         auth_base_forwarder.release_forward_request_admission_from_flow(flow)
         upstream_destination_binding.forget_server_binding(flow.server_conn)
-        flow.metadata.pop(_REQUEST_CLASSIFICATION, None)
+        request_classification.pop_cached_classification(flow)
         return
 
     try:
         if request_streaming.streamed_request_size(flow) is not None:
             flow.metadata[metadata_keys.REQUEST_STREAM_COMPLETE] = True
 
-        classification = _request_classification(flow)
+        classification = _request_classification_for_flow(flow)
 
-        if _classification_needs_request_timing(classification):
+        if request_classification.classification_needs_request_timing(classification):
             _start_request_timing(flow)
 
         if classification.kind == "no_client_ip":
@@ -2820,7 +2355,10 @@ async def request(flow: http.HTTPFlow) -> None:
             vm_info = classification.vm_info
             if allow is None or vm_info is None:
                 return
-            public_destination_denial = _current_public_destination_denial(flow, allow)
+            public_destination_denial = request_classification.current_public_destination_denial(
+                flow,
+                allow,
+            )
             if public_destination_denial is not None:
                 auth_base_forwarder.release_forward_request_admission_from_flow(flow)
                 _release_tracked_usage_flow(flow)
@@ -2886,7 +2424,7 @@ async def request(flow: http.HTTPFlow) -> None:
     finally:
         if flow.response is not None or flow.error is not None:
             upstream_destination_binding.forget_server_binding(flow.server_conn)
-        flow.metadata.pop(_REQUEST_CLASSIFICATION, None)
+        request_classification.pop_cached_classification(flow)
 
 
 def _is_model_provider_usage_observable(firewall_name: str, vm_info: dict) -> bool:
@@ -3135,7 +2673,7 @@ def _release_terminal_flow_state(
         if response_streaming.is_model_websocket_usage_enabled(flow):
             flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE_SOURCES] = {}
             response_streaming.release_model_websocket_usage_state(flow)
-    flow.metadata.pop(_REQUEST_CLASSIFICATION, None)
+    request_classification.pop_cached_classification(flow)
     flow.metadata.pop(_FIREWALL_AUTH_APPLIED_IN_REQUESTHEADERS, None)
     flow.metadata.pop(metadata_keys.WEBSOCKET_UPGRADE_REQUEST, None)
     request_streaming.release_request_stream_state(flow)
