@@ -835,6 +835,14 @@ class TestForwardRequestAsyncWrapper:
         with forwarder._forward_request_pending_futures_lock:
             assert future not in forwarder._forward_request_pending_futures
 
+    def test_shutdown_rejects_new_forward_admission(self):
+        forwarder.shutdown_forward_request_workers(wait=False)
+
+        with pytest.raises(RuntimeError, match="workers are shut down"):
+            forwarder.reserve_forward_request_admission(0)
+
+        assert forwarder.forward_request_admission_state_for_tests() == (0, 0)
+
     async def test_rejects_body_over_limit_before_forwarding(self):
         with (
             patch.object(forwarder, "MAX_AUTH_BASE_REQUEST_BODY_BYTES", 4),

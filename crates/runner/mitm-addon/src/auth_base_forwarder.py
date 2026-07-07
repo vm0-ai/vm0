@@ -587,21 +587,23 @@ def reserve_forward_request_admission(body_bytes: int) -> AuthBaseForwardingAdmi
 
     if body_bytes < 0:
         raise ValueError("auth.base forwarding body size cannot be negative")
-    if not _forward_request_accepting:
-        raise RuntimeError("auth.base forwarding workers are shut down")
 
-    with _forward_request_budget_lock:
-        if _forward_request_admitted_count + 1 > MAX_ADMITTED_AUTH_BASE_FORWARDS:
-            raise AuthBaseForwardingSaturatedError("auth.base forwarding admission is full")
-        if (
-            _forward_request_admitted_body_bytes + body_bytes
-            > MAX_ADMITTED_AUTH_BASE_REQUEST_BODY_BYTES
-        ):
-            raise AuthBaseForwardingSaturatedError("auth.base forwarding body budget is full")
+    with _forward_request_lifecycle_lock:
+        if not _forward_request_accepting:
+            raise RuntimeError("auth.base forwarding workers are shut down")
 
-        _forward_request_admitted_count += 1
-        _forward_request_admitted_body_bytes += body_bytes
-        return AuthBaseForwardingAdmission(body_bytes)
+        with _forward_request_budget_lock:
+            if _forward_request_admitted_count + 1 > MAX_ADMITTED_AUTH_BASE_FORWARDS:
+                raise AuthBaseForwardingSaturatedError("auth.base forwarding admission is full")
+            if (
+                _forward_request_admitted_body_bytes + body_bytes
+                > MAX_ADMITTED_AUTH_BASE_REQUEST_BODY_BYTES
+            ):
+                raise AuthBaseForwardingSaturatedError("auth.base forwarding body budget is full")
+
+            _forward_request_admitted_count += 1
+            _forward_request_admitted_body_bytes += body_bytes
+            return AuthBaseForwardingAdmission(body_bytes)
 
 
 def adjust_forward_request_admission(
