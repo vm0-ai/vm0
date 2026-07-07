@@ -10,6 +10,7 @@ from pathlib import Path
 from mitmproxy import ctx
 
 import matching
+from url_syntax import has_raw_whitespace, has_unsafe_url_codepoint
 
 MAX_BUILTIN_FIREWALL_CATALOG_BYTES = 16 * 1024 * 1024
 _READ_CHUNK_BYTES = 1024 * 1024
@@ -236,7 +237,28 @@ def _validate_api_entry(firewall_name: str, api: dict) -> None:
         raise BuiltinFirewallCatalogCacheError(
             f'catalog cache firewall "{firewall_name}" api base must be non-empty'
         )
-    if "${{" not in raw_base and not matching.firewall_base_config_is_valid(raw_base):
+    template_syntax_target = _base_url_template_syntax_target(firewall_name, raw_base)
+    raw_syntax_target = template_syntax_target or raw_base
+    if (
+        "\\" in raw_syntax_target
+        or has_raw_whitespace(raw_syntax_target)
+        or has_unsafe_url_codepoint(raw_syntax_target)
+        or "?" in raw_syntax_target
+        or "#" in raw_syntax_target
+    ):
+        raise BuiltinFirewallCatalogCacheError(
+            f'catalog cache firewall "{firewall_name}" api base has invalid syntax'
+        )
+    if (
+        template_syntax_target is not None
+        and ("{" in template_syntax_target or "}" in template_syntax_target)
+        and "://" in template_syntax_target
+        and not matching.firewall_base_config_is_valid(template_syntax_target)
+    ):
+        raise BuiltinFirewallCatalogCacheError(
+            f'catalog cache firewall "{firewall_name}" api base has invalid parameters'
+        )
+    if template_syntax_target is None and not matching.firewall_base_config_is_valid(raw_base):
         raise BuiltinFirewallCatalogCacheError(
             f'catalog cache firewall "{firewall_name}" api base is invalid'
         )
@@ -295,6 +317,55 @@ def _validate_api_entry(firewall_name: str, api: dict) -> None:
                 raise BuiltinFirewallCatalogCacheError(
                     f'catalog cache firewall "{firewall_name}" permission rule is invalid'
                 )
+
+
+def _base_url_template_syntax_target(firewall_name: str, raw_base: str) -> str | None:
+    search_start = 0
+    result: list[str] = []
+    found = False
+    while True:
+        start = raw_base.find("${{", search_start)
+        if start == -1:
+            if not found:
+                return None
+            result.append(raw_base[search_start:])
+            return "".join(result)
+        found = True
+        content_start = start + len("${{")
+        end = raw_base.find("}}", content_start)
+        if end == -1:
+            raise BuiltinFirewallCatalogCacheError(
+                f'catalog cache firewall "{firewall_name}" api base template is unterminated'
+            )
+        _validate_base_url_var_reference(firewall_name, raw_base[content_start:end])
+        result.append(raw_base[search_start:start])
+        result.append("template")
+        search_start = end + len("}}")
+
+
+def _validate_base_url_var_reference(firewall_name: str, content: str) -> None:
+    stripped = content.strip()
+    if not stripped.startswith("vars."):
+        raise BuiltinFirewallCatalogCacheError(
+            f'catalog cache firewall "{firewall_name}" api base template must use vars'
+        )
+    name = stripped[len("vars.") :]
+    if not name or not _is_ascii_identifier_start(name[0]):
+        raise BuiltinFirewallCatalogCacheError(
+            f'catalog cache firewall "{firewall_name}" api base template variable is invalid'
+        )
+    if not all(_is_ascii_identifier_continue(char) for char in name):
+        raise BuiltinFirewallCatalogCacheError(
+            f'catalog cache firewall "{firewall_name}" api base template variable is invalid'
+        )
+
+
+def _is_ascii_identifier_start(char: str) -> bool:
+    return ("A" <= char <= "Z") or ("a" <= char <= "z") or char == "_"
+
+
+def _is_ascii_identifier_continue(char: str) -> bool:
+    return _is_ascii_identifier_start(char) or ("0" <= char <= "9")
 
 
 def _warn(message: str) -> None:

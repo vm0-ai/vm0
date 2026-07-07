@@ -399,23 +399,30 @@ fn is_unsafe_url_codepoint(ch: char) -> bool {
 }
 
 fn validate_firewall_base_for_cache(base: &str) -> Result<(), String> {
-    if base.contains("${{") {
-        return Ok(());
-    }
-    if base.contains('\\') {
+    let template_syntax_target = base_url_template_syntax_target_for_cache(base)?;
+    let raw_syntax_target = template_syntax_target.as_deref().unwrap_or(base);
+    if raw_syntax_target.contains('\\') {
         return Err("base URL must not contain backslash".to_string());
     }
-    if base.chars().any(is_raw_whitespace) {
+    if raw_syntax_target.chars().any(is_raw_whitespace) {
         return Err("base URL must not contain whitespace".to_string());
     }
-    if base.chars().any(is_unsafe_url_codepoint) {
+    if raw_syntax_target.chars().any(is_unsafe_url_codepoint) {
         return Err("base URL must not contain control characters".to_string());
     }
-    if base.contains('?') {
+    if raw_syntax_target.contains('?') {
         return Err("base URL must not contain query string".to_string());
     }
-    if base.contains('#') {
+    if raw_syntax_target.contains('#') {
         return Err("base URL must not contain fragment".to_string());
+    }
+    if template_syntax_target.is_some() {
+        if (raw_syntax_target.contains('{') || raw_syntax_target.contains('}'))
+            && raw_syntax_target.contains("://")
+        {
+            validate_parameterized_firewall_base_for_cache(raw_syntax_target)?;
+        }
+        return Ok(());
     }
     if base.contains('{') || base.contains('}') {
         return validate_parameterized_firewall_base_for_cache(base);
@@ -436,6 +443,50 @@ fn validate_firewall_base_for_cache(base: &str) -> Result<(), String> {
     }
     if parsed.fragment().is_some() {
         return Err("base URL must not contain fragment".to_string());
+    }
+    Ok(())
+}
+
+fn base_url_template_syntax_target_for_cache(base: &str) -> Result<Option<String>, String> {
+    let mut search_start = 0;
+    let mut result = String::new();
+    let mut found = false;
+    while let Some(relative_start) = base[search_start..].find("${{") {
+        found = true;
+        let start = search_start + relative_start;
+        let content_start = start + "${{".len();
+        let Some(relative_end) = base[content_start..].find("}}") else {
+            return Err("base URL template reference is unterminated".to_string());
+        };
+        let end = content_start + relative_end;
+        validate_base_url_var_reference(&base[content_start..end])?;
+        result.push_str(&base[search_start..start]);
+        result.push_str("template");
+        search_start = end + "}}".len();
+    }
+    if !found {
+        return Ok(None);
+    }
+    result.push_str(&base[search_start..]);
+    Ok(Some(result))
+}
+
+fn validate_base_url_var_reference(content: &str) -> Result<(), String> {
+    let trimmed = content.trim();
+    let Some(name) = trimmed.strip_prefix("vars.") else {
+        return Err("base URL template reference must use vars".to_string());
+    };
+    let mut chars = name.chars();
+    let Some(first) = chars.next() else {
+        return Err("base URL template variable name must be non-empty".to_string());
+    };
+    if !(first == '_' || first.is_ascii_alphabetic()) {
+        return Err(
+            "base URL template variable name must start with a letter or underscore".to_string(),
+        );
+    }
+    if !chars.all(|ch| ch == '_' || ch.is_ascii_alphanumeric()) {
+        return Err("base URL template variable name must be alphanumeric".to_string());
     }
     Ok(())
 }
