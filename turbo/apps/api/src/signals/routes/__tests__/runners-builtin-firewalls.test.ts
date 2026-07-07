@@ -127,6 +127,11 @@ describe("runner builtin firewall resolver", () => {
 
     expect(body.catalogDigest).toBe(RUNNER_RUNTIME_FIREWALL_CATALOG_DIGEST);
     expect(body.catalogVersion).toBe(RUNNER_RUNTIME_FIREWALL_CATALOG_VERSION);
+    expect(
+      runnersBuiltinFirewallsResolveContract.resolve.responses[200].safeParse(
+        body,
+      ).success,
+    ).toBeTruthy();
     expect(Object.keys(body.firewalls).sort(compareStrings)).toStrictEqual([
       ...RUNNER_RUNTIME_FIREWALL_NAMES,
     ]);

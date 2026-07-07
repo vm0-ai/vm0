@@ -396,6 +396,21 @@ describe("runner builtin firewall resolve contract", () => {
     ).toBe(false);
     expect(
       runnersBuiltinFirewallsResolveContract.resolve.body.safeParse({
+        names: null,
+      }).success,
+    ).toBe(false);
+    expect(
+      runnersBuiltinFirewallsResolveContract.resolve.body.safeParse({
+        names: "github",
+      }).success,
+    ).toBe(false);
+    expect(
+      runnersBuiltinFirewallsResolveContract.resolve.body.safeParse({
+        names: [""],
+      }).success,
+    ).toBe(false);
+    expect(
+      runnersBuiltinFirewallsResolveContract.resolve.body.safeParse({
         names: Array.from(
           { length: RUNNER_BUILTIN_FIREWALL_RESOLVE_NAMES_MAX + 1 },
           (_, index) => {
