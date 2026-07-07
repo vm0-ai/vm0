@@ -1527,11 +1527,16 @@ jobs:
               "$RUNNER_DIR/status.json" 2>/dev/null)
             SANDBOX_ID=$(sudo jq -r '.active_runs[0].sandbox_id // empty' \
               "$RUNNER_DIR/status.json" 2>/dev/null)
-            [ -n "$RUN_ID" ] && [ -n "$SANDBOX_ID" ] && break
+            if [ -n "$RUN_ID" ] && [ -n "$SANDBOX_ID" ] \
+              && sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- test -p /tmp/vm0-drain-release-a 2>/dev/null; then
+              RELEASE_FIFO_READY=1
+              break
+            fi
             sleep 1
           done
           [ -z "$RUN_ID" ] && fail "sandbox not found after 60s"
           [ -z "$SANDBOX_ID" ] && fail "sandbox id not found after 60s"
+          [ -z "$RELEASE_FIFO_READY" ] && fail "release FIFO not ready after 60s"
           echo "Found run $RUN_ID (sandbox $SANDBOX_ID)"
 
           # Test 1: drain while the job is in-flight → mode=draining.
