@@ -246,28 +246,14 @@ describe("POST /api/presentation/images/resolve", () => {
     ]);
   });
 
-  it("returns unresolved items when Unsplash has no matching result even when Pexels is configured", async () => {
+  it("returns unresolved items when Unsplash has no matching result", async () => {
     const fixture = createFixture();
     routeMocks.clerk.session(fixture.userId, fixture.orgId);
     mockEnv("UNSPLASH_ACCESS_KEY", "test-unsplash-key");
-    mockEnv("PEXELS_API_KEY", "test-pexels-key");
     await enableUnsplashPreferred(fixture);
     server.use(
       http.get(UNSPLASH_SEARCH_URL, () => {
         return HttpResponse.json({ results: [] });
-      }),
-      http.get(PEXELS_SEARCH_URL, () => {
-        return HttpResponse.json({
-          photos: [
-            {
-              url: "https://www.pexels.com/photo/fallback-111/",
-              src: { large: "https://images.pexels.com/photo-fallback-large" },
-              photographer: "Fallback Photographer",
-              photographer_url: "https://www.pexels.com/@fallback",
-              alt: "A fallback image",
-            },
-          ],
-        });
       }),
     );
 
@@ -428,7 +414,7 @@ describe("POST /api/presentation/images/resolve", () => {
     ]);
   });
 
-  it("falls back to Pexels when the switch is on and Unsplash has a provider error", async () => {
+  it("falls back to Pexels when the switch is on and Unsplash has no result", async () => {
     const fixture = createFixture();
     routeMocks.clerk.session(fixture.userId, fixture.orgId);
     mockEnv("UNSPLASH_ACCESS_KEY", "test-unsplash-key");
@@ -439,10 +425,7 @@ describe("POST /api/presentation/images/resolve", () => {
     server.use(
       http.get(UNSPLASH_SEARCH_URL, () => {
         unsplashCalled = true;
-        return HttpResponse.json(
-          { error: "rate limit exceeded" },
-          { status: 429, statusText: "Too Many Requests" },
-        );
+        return HttpResponse.json({ results: [] });
       }),
       http.get(PEXELS_SEARCH_URL, () => {
         return HttpResponse.json({
@@ -472,7 +455,7 @@ describe("POST /api/presentation/images/resolve", () => {
       [200],
     );
 
-    // Switch on: Unsplash is tried first, then Pexels resolves provider errors.
+    // Switch on: Unsplash is tried first, then Pexels resolves the fallback.
     expect(unsplashCalled).toBeTruthy();
     expect(response.body.items).toStrictEqual([
       {
