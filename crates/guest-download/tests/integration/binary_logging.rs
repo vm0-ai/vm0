@@ -772,6 +772,79 @@ fn binary_does_not_log_http_archive_url_on_fatal_status() {
 }
 
 #[test]
+fn binary_records_artifact_404_as_fatal_status() {
+    let server = MockServer::start();
+
+    let mock = server.mock(|when, then| {
+        when.method(GET)
+            .path("/failing-artifact-object/archive.tar.gz");
+        then.status(404);
+    });
+
+    let dir = tempfile::tempdir().unwrap();
+    let mount = dir.path().join("artifact-mount");
+    let url = server.url(
+        "/failing-artifact-object/archive.tar.gz?X-Amz-Signature=artifact-secret-token&X-Amz-Credential=artifact-credential",
+    );
+    let manifest = write_manifest(&dir, &[], Some((mount.to_str().unwrap(), Some(&url)))).unwrap();
+    let run_id = unique_run_id("artifact-secret-url-fatal");
+    let logs = RuntimeLogPaths::new(&dir);
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_guest-download"))
+        .arg(&manifest)
+        .env("VM0_RUN_ID", &run_id)
+        .env(
+            guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+            &logs.runtime_dir,
+        )
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    mock.assert_calls(1);
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let system_log_content = std::fs::read_to_string(&logs.system_log).unwrap();
+    let ops_log_content = std::fs::read_to_string(&logs.ops_log).unwrap();
+    let forbidden = [
+        url.as_str(),
+        "failing-artifact-object",
+        "X-Amz-Signature",
+        "artifact-secret-token",
+        "X-Amz-Credential",
+        "artifact-credential",
+    ];
+    assert_does_not_contain_any("stderr", &stderr, &forbidden);
+    assert_does_not_contain_any("system log", &system_log_content, &forbidden);
+    assert_does_not_contain_any("sandbox ops log", &ops_log_content, &forbidden);
+    assert!(
+        stderr.contains("HTTP status 404"),
+        "unexpected stderr: {stderr}"
+    );
+
+    let ops: Vec<serde_json::Value> = ops_log_content
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert!(
+        ops.iter()
+            .any(|entry| entry["action_type"] == "artifact_download"
+                && entry["success"] == false
+                && entry["error"]
+                    .as_str()
+                    .is_some_and(|error| error.contains("HTTP status 404")
+                        && error.contains("mountPath=")
+                        && error.contains("urlScheme=http"))),
+        "missing failed artifact_download entry: {ops_log_content}"
+    );
+    assert!(
+        ops.iter()
+            .any(|entry| entry["action_type"] == "download_total" && entry["success"] == false),
+        "missing failed download_total entry: {ops_log_content}"
+    );
+}
+
+#[test]
 fn binary_does_not_log_file_archive_path_on_missing_local_file() {
     let dir = tempfile::tempdir().unwrap();
     let missing = dir.path().join("secret-staged-archive.tar.gz");

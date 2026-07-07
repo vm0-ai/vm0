@@ -38,16 +38,14 @@ pub(crate) fn open_archive(url: &str) -> Result<ArchiveSource, DownloadError> {
     }
 
     let response = HTTP_AGENT.get(url).call().map_err(|e| {
-        let (retriable, status_code, message) = match &e {
+        let (retriable, message) = match &e {
             // Retry on server errors (5xx) and rate limiting (429)
-            ureq::Error::StatusCode(code) => (
-                *code >= 500 || *code == 429,
-                Some(*code),
-                format!("HTTP status {code}"),
-            ),
-            _ => (true, None, "HTTP transport error".to_string()), // network/timeout errors are retriable
+            ureq::Error::StatusCode(code) => {
+                (*code >= 500 || *code == 429, format!("HTTP status {code}"))
+            }
+            _ => (true, "HTTP transport error".to_string()), // network/timeout errors are retriable
         };
-        DownloadError::transport(message, retriable, status_code)
+        DownloadError::transport(message, retriable)
     })?;
     Ok(ArchiveSource::http(response.into_body().into_reader()))
 }

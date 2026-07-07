@@ -16,19 +16,12 @@ const RETRY_DELAY: Duration = Duration::from_secs(1);
 const MAX_CONCURRENT: usize = 4;
 type TaskRunner = fn(DownloadTask) -> bool;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum NotFoundPolicy {
-    Fail,
-    Ignore404,
-}
-
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct DownloadTask {
     label: String,
     op_name: &'static str,
     url: String,
     mount_path: String,
-    not_found_policy: NotFoundPolicy,
     kind: DownloadTaskKind,
 }
 
@@ -39,16 +32,8 @@ impl DownloadTask {
         op_name: &'static str,
         url: String,
         mount_path: String,
-        not_found_policy: NotFoundPolicy,
     ) -> Self {
-        Self::new_with_kind(
-            label,
-            op_name,
-            url,
-            mount_path,
-            not_found_policy,
-            DownloadTaskKind::Other,
-        )
+        Self::new_with_kind(label, op_name, url, mount_path, DownloadTaskKind::Other)
     }
 
     pub(crate) fn new_with_kind(
@@ -56,7 +41,6 @@ impl DownloadTask {
         op_name: &'static str,
         url: String,
         mount_path: String,
-        not_found_policy: NotFoundPolicy,
         kind: DownloadTaskKind,
     ) -> Self {
         Self {
@@ -64,7 +48,6 @@ impl DownloadTask {
             op_name,
             url,
             mount_path,
-            not_found_policy,
             kind,
         }
     }
@@ -669,13 +652,6 @@ fn run_download_task(task: DownloadTask) -> bool {
             );
             true
         }
-        Err(e)
-            if e.status_code == Some(404) && task.not_found_policy == NotFoundPolicy::Ignore404 =>
-        {
-            record_sandbox_op(task.op_name, start.elapsed(), true, None);
-            log_info!(LOG_TAG, "{} not found, skipping (first run)", task.label);
-            true
-        }
         Err(e) => {
             let failure_detail = task.failure_detail(&e);
             record_sandbox_op(task.op_name, start.elapsed(), false, Some(&failure_detail));
@@ -751,7 +727,6 @@ mod tests {
             "storage_download",
             "file:///tmp/archive.tar.gz".to_owned(),
             path.to_owned(),
-            NotFoundPolicy::Fail,
             kind,
         )
     }
@@ -939,14 +914,12 @@ mod tests {
                         "storage_download",
                         "panic".to_owned(),
                         "/tmp/panic".to_owned(),
-                        NotFoundPolicy::Fail,
                     ),
                     DownloadTask::new(
                         "success".to_owned(),
                         "storage_download",
                         "success".to_owned(),
                         "/tmp/success".to_owned(),
-                        NotFoundPolicy::Fail,
                     ),
                 ],
                 runner,
@@ -964,14 +937,12 @@ mod tests {
                 "storage_download",
                 "file:///tmp/archive.tar.gz".to_owned(),
                 "/tmp/mount/child".to_owned(),
-                NotFoundPolicy::Fail,
             ),
             DownloadTask::new(
                 "independent".to_owned(),
                 "artifact_download",
                 "https://example.com/archive.tar.gz".to_owned(),
                 "/tmp/other".to_owned(),
-                NotFoundPolicy::Fail,
             ),
         ]);
         let active = vec![ActiveDownload {
@@ -1128,7 +1099,6 @@ mod tests {
             "storage_download",
             "file:///tmp/archive.tar.gz".into(),
             "/workspace".into(),
-            NotFoundPolicy::Fail,
         );
         let error = DownloadError::fatal("Failed to read archive entries: invalid gzip header");
 
