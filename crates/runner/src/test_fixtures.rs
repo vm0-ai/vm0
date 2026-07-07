@@ -15,11 +15,20 @@ use crate::types::ExecutionContext;
 const RAW_HTTP_FIXTURE_TIMEOUT: Duration = Duration::from_secs(5);
 const CHILD_OUTPUT_TIMEOUT: Duration = Duration::from_secs(5);
 const CHILD_KILL_WAIT_TIMEOUT: Duration = Duration::from_secs(5);
+const CHILD_OUTPUT_HEAD_BYTES: usize = 8 * 1024;
+const CHILD_OUTPUT_TAIL_BYTES: usize = 8 * 1024;
+const CHILD_OUTPUT_READ_CHUNK_BYTES: usize = 8 * 1024;
 const CHILD_ENV_GUARD_ACTIVE_PREFIX: &str = "vm0 ignored child env guard active: ";
 
 pub(crate) struct OneShotSessionHistoryServer {
     url: String,
     task: Option<JoinHandle<io::Result<()>>>,
+}
+
+struct ChildOutput {
+    head: Vec<u8>,
+    tail: Vec<u8>,
+    truncated_bytes: usize,
 }
 
 impl OneShotSessionHistoryServer {
@@ -314,18 +323,46 @@ pub(crate) fn ignored_child_test_env_guard_enabled(env_guard: (&str, &str)) -> b
     true
 }
 
-async fn read_child_output<R>(mut output: R) -> io::Result<Vec<u8>>
+async fn read_child_output<R>(mut output: R) -> io::Result<ChildOutput>
 where
     R: AsyncRead + Unpin,
 {
-    let mut buffer = Vec::new();
-    output.read_to_end(&mut buffer).await?;
-    Ok(buffer)
+    let mut head = Vec::new();
+    let mut tail = Vec::new();
+    let mut total_bytes = 0usize;
+    let mut chunk = [0u8; CHILD_OUTPUT_READ_CHUNK_BYTES];
+
+    loop {
+        let read = output.read(&mut chunk).await?;
+        if read == 0 {
+            break;
+        }
+
+        total_bytes = total_bytes.saturating_add(read);
+        let remaining = CHILD_OUTPUT_HEAD_BYTES.saturating_sub(head.len());
+        let keep = remaining.min(read);
+        if keep > 0 {
+            head.extend_from_slice(&chunk[..keep]);
+        }
+
+        if keep < read {
+            tail.extend_from_slice(&chunk[keep..read]);
+            if tail.len() > CHILD_OUTPUT_TAIL_BYTES {
+                tail.drain(..tail.len() - CHILD_OUTPUT_TAIL_BYTES);
+            }
+        }
+    }
+
+    Ok(ChildOutput {
+        truncated_bytes: total_bytes.saturating_sub(head.len() + tail.len()),
+        head,
+        tail,
+    })
 }
 
 async fn collect_child_output(
-    mut stdout_task: JoinHandle<io::Result<Vec<u8>>>,
-    mut stderr_task: JoinHandle<io::Result<Vec<u8>>>,
+    mut stdout_task: JoinHandle<io::Result<ChildOutput>>,
+    mut stderr_task: JoinHandle<io::Result<ChildOutput>>,
 ) -> (String, String) {
     let timeout = tokio::time::sleep(CHILD_OUTPUT_TIMEOUT);
     tokio::pin!(timeout);
@@ -361,15 +398,15 @@ async fn collect_child_output(
     let stdout = stdout.expect("stdout reader result must be set");
     let stderr = stderr.expect("stderr reader result must be set");
     (
-        String::from_utf8_lossy(&stdout).into_owned(),
-        String::from_utf8_lossy(&stderr).into_owned(),
+        format_child_output("stdout", stdout),
+        format_child_output("stderr", stderr),
     )
 }
 
 fn child_output(
     stream_name: &str,
-    result: Result<io::Result<Vec<u8>>, tokio::task::JoinError>,
-) -> Vec<u8> {
+    result: Result<io::Result<ChildOutput>, tokio::task::JoinError>,
+) -> ChildOutput {
     match result {
         Ok(Ok(output)) => output,
         Ok(Err(error)) => panic!("read ignored child test {stream_name}: {error}"),
@@ -377,11 +414,80 @@ fn child_output(
     }
 }
 
+fn format_child_output(stream_name: &str, output: ChildOutput) -> String {
+    let mut bytes = output.head;
+    if output.truncated_bytes > 0 {
+        bytes.extend_from_slice(
+            format!(
+                "\n[truncated {} bytes from ignored child test {stream_name}]\n",
+                output.truncated_bytes
+            )
+            .as_bytes(),
+        );
+    }
+    bytes.extend_from_slice(&output.tail);
+    String::from_utf8_lossy(&bytes).into_owned()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    const LARGE_SUCCESS_OUTPUT_CHILD_ENV: &str = "VM0_RUN_IGNORED_CHILD_LARGE_SUCCESS_OUTPUT_TEST";
+    const LARGE_OUTPUT_CHILD_ENV: &str = "VM0_RUN_IGNORED_CHILD_LARGE_OUTPUT_TEST";
     const TIMEOUT_CHILD_ENV: &str = "VM0_RUN_IGNORED_CHILD_TIMEOUT_TEST";
+
+    #[tokio::test]
+    async fn run_ignored_child_test_preserves_tail_after_large_output() {
+        run_ignored_child_test(
+            "test_fixtures::tests::run_ignored_child_test_large_success_output_child",
+            (LARGE_SUCCESS_OUTPUT_CHILD_ENV, "1"),
+            Duration::from_secs(5),
+        )
+        .await;
+    }
+
+    #[test]
+    #[ignore]
+    fn run_ignored_child_test_large_success_output_child() {
+        if !ignored_child_test_env_guard_enabled((LARGE_SUCCESS_OUTPUT_CHILD_ENV, "1")) {
+            return;
+        }
+
+        write_large_ignored_child_stdout();
+    }
+
+    #[tokio::test]
+    #[should_panic(expected = "[truncated ")]
+    async fn run_ignored_child_test_truncates_large_output() {
+        run_ignored_child_test(
+            "test_fixtures::tests::run_ignored_child_test_large_output_child",
+            (LARGE_OUTPUT_CHILD_ENV, "1"),
+            Duration::from_secs(5),
+        )
+        .await;
+    }
+
+    #[test]
+    #[ignore]
+    fn run_ignored_child_test_large_output_child() {
+        if !ignored_child_test_env_guard_enabled((LARGE_OUTPUT_CHILD_ENV, "1")) {
+            return;
+        }
+
+        write_large_ignored_child_stdout();
+        panic!("large output child failed intentionally");
+    }
+
+    fn write_large_ignored_child_stdout() {
+        let output =
+            vec![
+                b'x';
+                CHILD_OUTPUT_HEAD_BYTES + CHILD_OUTPUT_TAIL_BYTES + CHILD_OUTPUT_READ_CHUNK_BYTES
+            ];
+        std::io::Write::write_all(&mut std::io::stdout().lock(), &output)
+            .expect("write large ignored child stdout");
+    }
 
     #[tokio::test]
     #[should_panic(
