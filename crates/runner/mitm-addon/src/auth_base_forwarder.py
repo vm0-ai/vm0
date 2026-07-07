@@ -14,9 +14,9 @@ import socket
 import ssl
 import threading
 import urllib.parse
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import Future, InvalidStateError
 from contextlib import suppress
-from typing import NamedTuple
+from typing import NamedTuple, Protocol
 
 from mitmproxy import http
 
@@ -107,16 +107,65 @@ MAX_ADMITTED_AUTH_BASE_FORWARDS = 16
 MAX_ADMITTED_AUTH_BASE_REQUEST_BODY_BYTES = 128 * 1024 * 1024
 _PERCENT_DECODED_UPSTREAM_HOST_SYNTAX_CHARS = frozenset("{}*.\u3002\uff0e\uff61,")
 _UPSTREAM_HOST_FORBIDDEN_CHARS = frozenset("{}*")
-_forward_request_executor_state: tuple[int, ThreadPoolExecutor] | None = None
 _forward_request_admission_state: (
     tuple[asyncio.AbstractEventLoop, int, asyncio.Semaphore] | None
 ) = None
 _forward_request_accepting = True
+_forward_request_workers: set[threading.Thread] = set()
+_forward_request_workers_lock = threading.Lock()
+_forward_request_pending_futures: set[Future[tuple[int, bytes, http.Headers]]] = set()
+_forward_request_pending_futures_lock = threading.Lock()
 _forward_request_budget_lock = threading.Lock()
 _forward_request_admitted_count = 0
 _forward_request_admitted_body_bytes = 0
+_forward_request_active_closeables: set["_Closeable"] = set()
+_forward_request_active_closeables_lock = threading.Lock()
 _https_context: ssl.SSLContext | None = None
 _https_context_lock = threading.Lock()
+
+
+class _Closeable(Protocol):
+    def close(self) -> object: ...
+
+
+def _track_active_closeable(closeable: _Closeable) -> None:
+    with _forward_request_active_closeables_lock:
+        _forward_request_active_closeables.add(closeable)
+
+
+def _untrack_active_closeable(closeable: _Closeable) -> None:
+    with _forward_request_active_closeables_lock:
+        _forward_request_active_closeables.discard(closeable)
+
+
+def _close_active_forward_request_closeables() -> None:
+    with _forward_request_active_closeables_lock:
+        closeables = tuple(_forward_request_active_closeables)
+    for closeable in closeables:
+        with suppress(Exception):
+            closeable.close()
+
+
+def _cancel_pending_forward_request_futures() -> None:
+    with _forward_request_pending_futures_lock:
+        futures = tuple(_forward_request_pending_futures)
+    for future in futures:
+        future.cancel()
+
+
+def _join_forward_request_workers() -> None:
+    current_thread = threading.current_thread()
+    while True:
+        with _forward_request_workers_lock:
+            workers = tuple(
+                worker
+                for worker in _forward_request_workers
+                if worker is not current_thread and worker.is_alive()
+            )
+        if not workers:
+            return
+        for worker in workers:
+            worker.join()
 
 
 def reset_forward_request_state_for_tests() -> None:
@@ -137,16 +186,15 @@ def reset_forward_request_state_for_tests() -> None:
 
 def shutdown_forward_request_executor(*, wait: bool) -> None:
     """Shut down auth.base forwarding workers."""
-    global _forward_request_executor_state
     global _forward_request_admission_state
     global _forward_request_accepting
 
     _forward_request_accepting = False
     _forward_request_admission_state = None
-    state = _forward_request_executor_state
-    _forward_request_executor_state = None
-    if state is not None:
-        state[1].shutdown(wait=wait, cancel_futures=True)
+    _cancel_pending_forward_request_futures()
+    _close_active_forward_request_closeables()
+    if wait:
+        _join_forward_request_workers()
 
 
 class ForwardedResponseTooLargeError(Exception):
@@ -240,6 +288,16 @@ class _ValidatedTLSConnection(http_client.HTTPConnection):
         super().__init__(host, port=port, timeout=timeout)
         self._validated_addresses = validated_addresses
         self._context = _get_https_context()
+        self._tracked_closeables: list[_Closeable] = []
+
+    def _track_closeable(self, closeable: _Closeable) -> None:
+        self._tracked_closeables.append(closeable)
+        _track_active_closeable(closeable)
+
+    def _untrack_closeables(self) -> None:
+        for closeable in self._tracked_closeables:
+            _untrack_active_closeable(closeable)
+        self._tracked_closeables.clear()
 
     def connect(self) -> None:
         raw_sock = _connect_to_validated_addresses(self._validated_addresses)(
@@ -247,17 +305,29 @@ class _ValidatedTLSConnection(http_client.HTTPConnection):
             self.timeout,
             None,
         )
+        self._track_closeable(raw_sock)
         try:
             raw_sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         except OSError as exc:
             if exc.errno != errno.ENOPROTOOPT:
                 raw_sock.close()
+                self._untrack_closeables()
                 raise
         try:
-            self.sock = self._context.wrap_socket(raw_sock, server_hostname=self.host)
+            wrapped_sock = self._context.wrap_socket(raw_sock, server_hostname=self.host)
+            if wrapped_sock is not raw_sock:
+                self._track_closeable(wrapped_sock)
+            self.sock = wrapped_sock
         except Exception:
             raw_sock.close()
+            self._untrack_closeables()
             raise
+
+    def close(self) -> None:
+        try:
+            super().close()
+        finally:
+            self._untrack_closeables()
 
 
 def _make_validated_https_connection(
@@ -509,7 +579,7 @@ def reserve_forward_request_admission(body_bytes: int) -> AuthBaseForwardingAdmi
     if body_bytes < 0:
         raise ValueError("auth.base forwarding body size cannot be negative")
     if not _forward_request_accepting:
-        raise RuntimeError("auth.base forwarding executor is shut down")
+        raise RuntimeError("auth.base forwarding workers are shut down")
 
     with _forward_request_budget_lock:
         if _forward_request_admitted_count + 1 > MAX_ADMITTED_AUTH_BASE_FORWARDS:
@@ -660,31 +730,11 @@ def _forward_request_sync(
         conn.close()
 
 
-def _get_forward_request_executor() -> ThreadPoolExecutor:
-    global _forward_request_executor_state
-
-    if not _forward_request_accepting:
-        raise RuntimeError("auth.base forwarding executor is shut down")
-    max_workers = MAX_CONCURRENT_AUTH_BASE_FORWARDS
-    if _forward_request_executor_state is None or _forward_request_executor_state[0] != max_workers:
-        state = _forward_request_executor_state
-        _forward_request_executor_state = (
-            max_workers,
-            ThreadPoolExecutor(
-                max_workers=max_workers,
-                thread_name_prefix="auth-base-forward",
-            ),
-        )
-        if state is not None:
-            state[1].shutdown(wait=True, cancel_futures=True)
-    return _forward_request_executor_state[1]
-
-
 def _get_forward_request_admission_semaphore() -> asyncio.Semaphore:
     global _forward_request_admission_state
 
     if not _forward_request_accepting:
-        raise RuntimeError("auth.base forwarding executor is shut down")
+        raise RuntimeError("auth.base forwarding workers are shut down")
     loop = asyncio.get_running_loop()
     max_workers = MAX_CONCURRENT_AUTH_BASE_FORWARDS
     if (
@@ -729,6 +779,69 @@ def _forward_request_sync_in_context(
     return context.run(_forward_request_sync, url, method, headers, body)
 
 
+def _set_forward_request_future_exception(
+    future: Future[tuple[int, bytes, http.Headers]],
+    exc: BaseException,
+) -> None:
+    with suppress(InvalidStateError):
+        future.set_exception(exc)
+
+
+def _run_forward_request_worker(
+    future: Future[tuple[int, bytes, http.Headers]],
+    context: contextvars.Context,
+    url: str,
+    method: str,
+    headers: list[tuple[str, str]],
+    body: bytes | None,
+) -> None:
+    try:
+        with _forward_request_pending_futures_lock:
+            _forward_request_pending_futures.discard(future)
+        if not future.set_running_or_notify_cancel():
+            return
+        try:
+            result = _forward_request_sync_in_context(context, url, method, headers, body)
+        except BaseException as exc:
+            _set_forward_request_future_exception(future, exc)
+        else:
+            with suppress(InvalidStateError):
+                future.set_result(result)
+    finally:
+        with _forward_request_workers_lock:
+            _forward_request_workers.discard(threading.current_thread())
+
+
+def _start_forward_request_worker(
+    context: contextvars.Context,
+    url: str,
+    method: str,
+    headers: list[tuple[str, str]],
+    body: bytes | None,
+) -> Future[tuple[int, bytes, http.Headers]]:
+    future: Future[tuple[int, bytes, http.Headers]] = Future()
+    worker = threading.Thread(
+        target=_run_forward_request_worker,
+        args=(future, context, url, method, headers, body),
+        name="auth-base-forward",
+        daemon=True,
+    )
+    with _forward_request_pending_futures_lock:
+        _forward_request_pending_futures.add(future)
+    with _forward_request_workers_lock:
+        _forward_request_workers.add(worker)
+    try:
+        worker.start()
+    except BaseException:
+        with _forward_request_pending_futures_lock:
+            _forward_request_pending_futures.discard(future)
+        with _forward_request_workers_lock:
+            _forward_request_workers.discard(worker)
+        future.cancel()
+        raise
+    return future
+
+
 async def forward_request(
     url: str,
     method: str,
@@ -762,10 +875,9 @@ async def forward_request(
         await semaphore.acquire()
         if not _can_submit_forward_request(semaphore):
             semaphore.release()
-            raise RuntimeError("auth.base forwarding executor is shut down")
+            raise RuntimeError("auth.base forwarding workers are shut down")
         try:
-            future = _get_forward_request_executor().submit(
-                _forward_request_sync_in_context,
+            future = _start_forward_request_worker(
                 context,
                 url,
                 method,

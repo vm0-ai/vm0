@@ -3519,8 +3519,9 @@ def done():
     executor while a SIGUSR1 worker is still converting buffered usage into
     webhook reports. After that, ``shutdown(wait=True)`` drains submitted
     webhook futures during graceful stop. Auth.base forwarding does not need
-    to finish queued work during shutdown, so its executor cancels queued
-    futures without waiting for slow upstream responses.
+    to finish running work during shutdown, so its worker shutdown stops new
+    forwards and best-effort closes active upstream sockets without waiting for
+    slow upstream responses.
     """
     try:
         # Wait for any in-flight runner-triggered flush before closing the
