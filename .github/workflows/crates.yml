@@ -1513,12 +1513,11 @@ jobs:
           sudo "$BIN_DIR/runner" service start --name "$SVC" \
             --config "$RUNNER_DIR/runner.yaml" --local --env USE_MOCK_CLAUDE=true --env USE_MOCK_CODEX=true
 
-          # Submit a long-running job in background so we can drain mid-flight.
-          # Duration must exceed the drain+verify+resume+verify window below
-          # so the job survives the round trip — otherwise jobs.is_empty()
-          # would auto-Stop the runner before resume can take effect.
+          # Submit a host-released job in background so we can drain mid-flight.
+          # A fixed sleep would force CI to wait for the whole duration even
+          # after the drain/resume assertions finish.
           echo "--- Submitting long-running job ---"
-          sudo "$BIN_DIR/runner" local submit --group "$GROUP" --prompt 'sleep 45 && echo done' &
+          sudo "$BIN_DIR/runner" local submit --group "$GROUP" --prompt 'rm -f /tmp/vm0-drain-release-a && mkfifo /tmp/vm0-drain-release-a && cat /tmp/vm0-drain-release-a >/dev/null && echo done' &
           SUBMIT_A_PID=$!
 
           # Wait for sandbox to appear in status.json.
@@ -1526,11 +1525,14 @@ jobs:
           for i in $(seq 1 60); do
             RUN_ID=$(sudo jq -r '.active_runs[0].run_id // empty' \
               "$RUNNER_DIR/status.json" 2>/dev/null)
-            [ -n "$RUN_ID" ] && break
+            SANDBOX_ID=$(sudo jq -r '.active_runs[0].sandbox_id // empty' \
+              "$RUNNER_DIR/status.json" 2>/dev/null)
+            [ -n "$RUN_ID" ] && [ -n "$SANDBOX_ID" ] && break
             sleep 1
           done
           [ -z "$RUN_ID" ] && fail "sandbox not found after 60s"
-          echo "Found run $RUN_ID"
+          [ -z "$SANDBOX_ID" ] && fail "sandbox id not found after 60s"
+          echo "Found run $RUN_ID (sandbox $SANDBOX_ID)"
 
           # Test 1: drain while the job is in-flight → mode=draining.
           echo "--- Test: service drain (mid-flight) ---"
@@ -1619,6 +1621,8 @@ jobs:
           # Test 6: the long-running A that straddled drain+resume finishes
           # normally (exit 0) — drain must not cancel in-flight jobs.
           echo "--- Test: A completes normally through drain+resume ---"
+          sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- timeout 10 sh -c 'printf release > /tmp/vm0-drain-release-a' \
+            || fail "failed to release A after drain+resume"
           wait "$SUBMIT_A_PID"
           SUBMIT_A_EXIT=$?
           SUBMIT_A_PID=""
