@@ -43,7 +43,7 @@ export function ZeroIdeationPage() {
   const categories = getCategories({
     features,
     visibleConnectorRefs,
-  }).slice(0, 7);
+  }).slice(0, 8);
   const activeTab = useGet(ideationActiveTab$);
   const setActiveTab = useSet(setIdeationActiveTab$);
   const searchQuery = useGet(ideationSearchQuery$);

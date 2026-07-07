@@ -310,6 +310,12 @@ const categories: readonly Category[] = [
           "Set up a Brevo nurture sequence that sends onboarding emails when new contacts are added to a Notion database",
         connectors: ["brevo", "notion", "slack"],
       },
+    ],
+  },
+  {
+    id: "creative",
+    title: "Creative",
+    cases: [
       {
         title: "ElevenLabs audio content",
         description: "Voice narration from Notion articles saved to Drive",
@@ -445,8 +451,8 @@ const categories: readonly Category[] = [
     ],
   },
   {
-    id: "operations",
-    title: "Operations",
+    id: "ops",
+    title: "Ops",
     cases: [
       {
         title: "RevenueCat subscription digest",
@@ -529,8 +535,8 @@ const categories: readonly Category[] = [
     ],
   },
   {
-    id: "personal",
-    title: "Personal",
+    id: "everyone",
+    title: "Everyone",
     cases: [
       {
         title: "Personal weekly digest",
