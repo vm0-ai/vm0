@@ -107,9 +107,6 @@ MAX_ADMITTED_AUTH_BASE_FORWARDS = 16
 MAX_ADMITTED_AUTH_BASE_REQUEST_BODY_BYTES = 128 * 1024 * 1024
 _PERCENT_DECODED_UPSTREAM_HOST_SYNTAX_CHARS = frozenset("{}*.\u3002\uff0e\uff61,")
 _UPSTREAM_HOST_FORBIDDEN_CHARS = frozenset("{}*")
-_forward_request_admission_state: (
-    tuple[asyncio.AbstractEventLoop, int, asyncio.Semaphore] | None
-) = None
 _forward_request_accepting = True
 _forward_request_lifecycle_lock = threading.Lock()
 _forward_request_workers: set[threading.Thread] = set()
@@ -127,6 +124,16 @@ _https_context_lock = threading.Lock()
 
 class _Closeable(Protocol):
     def close(self) -> object: ...
+
+
+class _ForwardRequestAdmissionState(NamedTuple):
+    loop: asyncio.AbstractEventLoop
+    max_workers: int
+    admission_limit: int
+    semaphore: asyncio.Semaphore
+
+
+_forward_request_admission_state: _ForwardRequestAdmissionState | None = None
 
 
 def _track_active_closeable(closeable: _Closeable) -> None:
@@ -157,18 +164,17 @@ def _cancel_pending_forward_request_futures() -> None:
 
 
 def _wake_forward_request_admission_waiters(
-    state: tuple[asyncio.AbstractEventLoop, int, asyncio.Semaphore] | None,
+    state: _ForwardRequestAdmissionState | None,
 ) -> None:
     if state is None:
         return
-    loop, _max_workers, semaphore = state
 
     def release_waiters() -> None:
-        for _ in range(MAX_ADMITTED_AUTH_BASE_FORWARDS):
-            semaphore.release()
+        for _ in range(state.admission_limit):
+            state.semaphore.release()
 
     with suppress(RuntimeError):
-        loop.call_soon_threadsafe(release_waiters)
+        state.loop.call_soon_threadsafe(release_waiters)
 
 
 def _discard_pending_forward_request_future(
@@ -771,17 +777,26 @@ def _get_forward_request_admission_semaphore() -> asyncio.Semaphore:
             raise RuntimeError("auth.base forwarding workers are shut down")
         loop = asyncio.get_running_loop()
         max_workers = MAX_CONCURRENT_AUTH_BASE_FORWARDS
+        admission_limit = MAX_ADMITTED_AUTH_BASE_FORWARDS
         if (
             _forward_request_admission_state is None
-            or _forward_request_admission_state[0] is not loop
-            or _forward_request_admission_state[1] != max_workers
+            or _forward_request_admission_state.loop is not loop
+            or _forward_request_admission_state.max_workers != max_workers
         ):
-            _forward_request_admission_state = (
-                loop,
-                max_workers,
-                asyncio.Semaphore(max_workers),
+            _forward_request_admission_state = _ForwardRequestAdmissionState(
+                loop=loop,
+                max_workers=max_workers,
+                admission_limit=admission_limit,
+                semaphore=asyncio.Semaphore(max_workers),
             )
-        return _forward_request_admission_state[2]
+        elif admission_limit > _forward_request_admission_state.admission_limit:
+            _forward_request_admission_state = _ForwardRequestAdmissionState(
+                loop=_forward_request_admission_state.loop,
+                max_workers=_forward_request_admission_state.max_workers,
+                admission_limit=admission_limit,
+                semaphore=_forward_request_admission_state.semaphore,
+            )
+        return _forward_request_admission_state.semaphore
 
 
 def _can_submit_forward_request(semaphore: asyncio.Semaphore) -> bool:
@@ -789,7 +804,7 @@ def _can_submit_forward_request(semaphore: asyncio.Semaphore) -> bool:
         return (
             _forward_request_accepting
             and _forward_request_admission_state is not None
-            and _forward_request_admission_state[2] is semaphore
+            and _forward_request_admission_state.semaphore is semaphore
         )
 
 
