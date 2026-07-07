@@ -177,12 +177,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Spotify connector integration",
     enabled: false,
   },
-  [FeatureSwitchKey.SteamConnector]: {
-    maintainer: "liangyou@vm0.ai",
-    description: "Enable the Steam player connector integration",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.ZeroDebug]: {
     maintainer: "ethan@vm0.ai",
     description:
