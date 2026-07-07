@@ -53,16 +53,14 @@ export async function waitForPaidOnboardingAppHandoff(
   page: Page,
   appUrl: string,
 ): Promise<void> {
-  const appOrigin = new URL(appUrl).origin;
-  await page.waitForURL(
-    (url) => {
-      return (
-        url.origin === appOrigin &&
-        (url.pathname === "/prompt" ||
-          /\/agents\/[^/]+\/chat/.test(url.pathname))
-      );
-    },
-    { timeout: 180_000, waitUntil: "domcontentloaded" },
+  await waitForExpectedAppUrl(
+    page,
+    appUrl,
+    (url, appOrigin) =>
+      url.origin === appOrigin &&
+      (url.pathname === "/prompt" ||
+        /\/agents\/[^/]+\/chat/.test(url.pathname)),
+    180_000,
   );
 }
 
@@ -94,14 +92,12 @@ async function clickOnboardingButton(page: Page, name: RegExp): Promise<void> {
 }
 
 async function waitForChatPage(page: Page, appUrl: string): Promise<void> {
-  const appOrigin = new URL(appUrl).origin;
-  await page.waitForURL(
-    (url) => {
-      return (
-        url.origin === appOrigin && /\/agents\/[^/]+\/chat/.test(url.pathname)
-      );
-    },
-    { timeout: 120_000, waitUntil: "domcontentloaded" },
+  await waitForExpectedAppUrl(
+    page,
+    appUrl,
+    (url, appOrigin) =>
+      url.origin === appOrigin && /\/agents\/[^/]+\/chat/.test(url.pathname),
+    120_000,
   );
 }
 
@@ -110,4 +106,106 @@ function onboardingEntryUrl(options: OnboardingFlowOptions): string {
   url.searchParams.set("domain", new URL(options.apiUrl).host);
   url.searchParams.set("vm0_theme", "light");
   return url.toString();
+}
+
+type AppUrlMatcher = (url: URL, appOrigin: string) => boolean;
+
+async function waitForExpectedAppUrl(
+  page: Page,
+  appUrl: string,
+  matchesExpectedUrl: AppUrlMatcher,
+  timeoutMs: number,
+): Promise<void> {
+  const appOrigin = new URL(appUrl).origin;
+  const deadline = Date.now() + timeoutMs;
+
+  while (true) {
+    const currentUrl = new URL(page.url());
+    if (matchesExpectedUrl(currentUrl, appOrigin)) {
+      return;
+    }
+
+    const rewrittenUrl = rewritePreviewAppFallbackUrl(currentUrl, appOrigin);
+    if (rewrittenUrl) {
+      console.log("[e2e] rewriting onboarding preview handoff", {
+        from: currentUrl.toString(),
+        to: rewrittenUrl,
+      });
+      await page.goto(rewrittenUrl, { waitUntil: "domcontentloaded" });
+      continue;
+    }
+
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) {
+      throw new Error(
+        `Timed out waiting for onboarding app handoff to ${appOrigin}; current URL is ${page.url()}`,
+      );
+    }
+
+    await page.waitForURL(
+      (url) =>
+        matchesExpectedUrl(url, appOrigin) ||
+        rewritePreviewAppFallbackUrl(url, appOrigin) !== null,
+      { timeout: remainingMs, waitUntil: "domcontentloaded" },
+    );
+  }
+}
+
+function rewritePreviewAppFallbackUrl(
+  url: URL,
+  appOrigin: string,
+): string | null {
+  const rewrittenUrl = withExpectedPreviewAppOrigin(url, appOrigin);
+  if (!rewrittenUrl) {
+    return null;
+  }
+
+  rewriteNestedRedirectUrl(rewrittenUrl, appOrigin);
+  return rewrittenUrl.toString();
+}
+
+function withExpectedPreviewAppOrigin(url: URL, appOrigin: string): URL | null {
+  if (!isPreviewAppStagingFallback(url, appOrigin)) {
+    return null;
+  }
+
+  const appUrl = new URL(appOrigin);
+  const rewrittenUrl = new URL(url.toString());
+  rewrittenUrl.protocol = appUrl.protocol;
+  rewrittenUrl.host = appUrl.host;
+  return rewrittenUrl;
+}
+
+function isPreviewAppStagingFallback(url: URL, appOrigin: string): boolean {
+  const appUrl = new URL(appOrigin);
+  const previewDomainMatch = /^pr-\d+-app\.(.+)$/.exec(appUrl.hostname);
+  if (!previewDomainMatch) {
+    return false;
+  }
+
+  return (
+    url.protocol === appUrl.protocol &&
+    url.hostname === `staging-app.${previewDomainMatch[1]}`
+  );
+}
+
+function rewriteNestedRedirectUrl(url: URL, appOrigin: string): void {
+  const redirectUrl = url.searchParams.get("redirect_url");
+  if (!redirectUrl) {
+    return;
+  }
+
+  try {
+    const rewrittenRedirectUrl = withExpectedPreviewAppOrigin(
+      new URL(redirectUrl),
+      appOrigin,
+    );
+    if (rewrittenRedirectUrl) {
+      url.searchParams.set("redirect_url", rewrittenRedirectUrl.toString());
+    }
+  } catch (error) {
+    if (!(error instanceof TypeError)) {
+      throw error;
+    }
+  }
 }

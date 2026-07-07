@@ -119,6 +119,7 @@ import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
   VIDEO_TEMPLATE_ITEMS,
+  WORKFLOW_TEMPLATE_CATEGORIES,
   WORKFLOW_TEMPLATE_ITEMS,
   findVideoTemplateItem,
   findWorkflowTemplateItem,
@@ -190,6 +191,8 @@ import {
   setTemplatePickerCategory$,
   templatePickerSearch$,
   setTemplatePickerSearch$,
+  templatePickerWorkflowCategory$,
+  setTemplatePickerWorkflowCategory$,
   templatePickerPreviewSlug$,
   setTemplatePickerPreviewSlug$,
   restoreTemplatePickerPresentationScroll$,
@@ -1321,7 +1324,9 @@ function WorkflowTemplateConnectorIcons({
   compact = false,
   limit = compact ? 3 : 5,
 }: {
-  connectors: readonly ConnectorType[];
+  // Loosely typed: the curated catalog stores connectors as plain strings;
+  // isConnectorIconType narrows to the ones that actually have an icon.
+  connectors: readonly string[];
   compact?: boolean;
   limit?: number;
 }) {
@@ -1373,32 +1378,23 @@ function WorkflowTemplateCard({
   selected: boolean;
   onSelect: (item: WorkflowTemplateItem) => void;
 }) {
-  const hasConnectorIcons = item.connectors.some(isConnectorIconType);
   return (
     <div
       className={cn(
-        "group flex min-h-44 flex-col rounded-lg border bg-card p-4 transition-colors hover:bg-muted/20",
+        "group flex flex-col rounded-lg border bg-card p-4 transition-colors hover:bg-muted/20",
         TEMPLATE_CARD_SHADOW,
         selected ? "border-primary ring-1 ring-primary" : "border-border",
       )}
     >
-      <div className="flex min-w-0 flex-1 gap-3">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
-          <IconRoute size={18} stroke={1.7} />
-        </span>
-        <div className="min-w-0">
-          <p className="text-sm font-semibold text-foreground">{item.title}</p>
-          <p className="mt-2 line-clamp-4 text-sm leading-5 text-muted-foreground">
-            {item.description}
-          </p>
-          {hasConnectorIcons ? (
-            <div className="mt-3">
-              <WorkflowTemplateConnectorIcons connectors={item.connectors} />
-            </div>
-          ) : null}
-        </div>
-      </div>
-      <div className="mt-4 flex justify-end">
+      <p className="text-sm font-semibold text-foreground">{item.title}</p>
+      <p className="mt-1.5 line-clamp-2 text-sm leading-relaxed text-muted-foreground">
+        {item.description}
+      </p>
+      <div className="mt-auto flex items-center gap-2 pt-3.5">
+        <WorkflowTemplateConnectorIcons
+          connectors={item.connectors}
+          limit={4}
+        />
         <button
           type="button"
           aria-label={`Select workflow template ${item.title}`}
@@ -1407,7 +1403,7 @@ function WorkflowTemplateCard({
             onSelect(item);
           }}
           className={cn(
-            "h-8 rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            "ml-auto h-8 shrink-0 rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             selected
               ? "border-primary/40 bg-primary/10 text-primary"
               : "border-border bg-background text-foreground hover:bg-muted",
@@ -1420,6 +1416,83 @@ function WorkflowTemplateCard({
   );
 }
 
+// Resolves the workflow template tab's data in one place: the feature-gated
+// catalog, the persona pills present in it, the active pill (falling back to
+// "all"), and the items after both the pill and the search filter. Kept out of
+// TemplatePickerDialog so that component stays under its complexity budget.
+function resolveWorkflowCatalog({
+  showCatalog,
+  categoryFilter,
+  search,
+}: {
+  showCatalog: boolean;
+  categoryFilter: string;
+  search: string;
+}): {
+  pills: readonly string[];
+  active: string;
+  items: readonly WorkflowTemplateItem[];
+} {
+  const catalogItems = showCatalog
+    ? WORKFLOW_TEMPLATE_ITEMS
+    : WORKFLOW_TEMPLATE_ITEMS.filter((item) => {
+        return item.category === WORKFLOW_TEMPLATE_CATEGORIES[0];
+      });
+  const pills = WORKFLOW_TEMPLATE_CATEGORIES.filter((categoryName) => {
+    return catalogItems.some((item) => {
+      return item.category === categoryName;
+    });
+  });
+  const active = pills.includes(categoryFilter) ? categoryFilter : "all";
+  const items = catalogItems.filter((item) => {
+    const matchesCategory = active === "all" || item.category === active;
+    return matchesCategory && workflowTemplateMatchesSearch(item, search);
+  });
+  return { pills, active, items };
+}
+
+// Persona pill filter for the workflow template tab, styled like the in-app
+// Ideas & Use Cases gallery: an "All" pill plus one pill per persona.
+function WorkflowTemplatePillRow({
+  pills,
+  active,
+  onSelect,
+}: {
+  pills: readonly string[];
+  active: string;
+  onSelect: (category: string) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 px-5 pt-4">
+      {["all", ...pills].map((pill) => {
+        const isActive = active === pill;
+        return (
+          <button
+            key={pill}
+            type="button"
+            aria-pressed={isActive}
+            className={cn(
+              "h-7 shrink-0 rounded-md border border-border px-2.5 text-sm font-medium leading-none transition-colors cursor-pointer",
+              isActive
+                ? "bg-muted text-foreground"
+                : "bg-background text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+            )}
+            onClick={() => {
+              onSelect(pill);
+            }}
+          >
+            {pill === "all" ? "All" : pill}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// Renders the (already search + pill filtered) templates as a flat grid.
+// Categorization is handled by the persona pill row above, so there are no
+// per-persona section headers — items stay in catalog order (General first)
+// so related cards still cluster.
 function WorkflowTemplateGrid({
   items,
   value,
@@ -4559,8 +4632,18 @@ function TemplatePickerDialog({
   const filteredVideoItems = VIDEO_TEMPLATE_ITEMS.filter((item) => {
     return videoTemplateMatchesSearch(item, search);
   });
-  const filteredWorkflowItems = WORKFLOW_TEMPLATE_ITEMS.filter((item) => {
-    return workflowTemplateMatchesSearch(item, search);
+  // The persona catalog rolls out behind a feature switch, and a persona pill
+  // filters the grid, ideation-gallery style. resolveWorkflowCatalog() keeps
+  // that branching out of this component to stay under the complexity budget.
+  const features = useLastResolved(featureSwitch$);
+  const showWorkflowTemplateCatalog =
+    features?.[FeatureSwitchKey.WorkflowTemplateCatalog] ?? false;
+  const workflowCategoryFilter = useGet(templatePickerWorkflowCategory$);
+  const setWorkflowCategoryFilter = useSet(setTemplatePickerWorkflowCategory$);
+  const workflowCatalog = resolveWorkflowCatalog({
+    showCatalog: showWorkflowTemplateCatalog,
+    categoryFilter: workflowCategoryFilter,
+    search,
   });
 
   const selectedCategory = resolveTemplatePickerCategory({
@@ -4901,22 +4984,31 @@ function TemplatePickerDialog({
               </div>
             )}
             {selectedCategory === "workflow" && hasWorkflowTab && (
-              <div
-                data-workflow-template-grid-scroll=""
-                className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4"
-              >
-                {filteredWorkflowItems.length > 0 ? (
-                  <WorkflowTemplateGrid
-                    items={filteredWorkflowItems}
-                    value={value}
-                    onSelect={handleSelectWorkflow}
-                  />
-                ) : (
-                  <TemplateEmptyPanel
-                    title="No matches"
-                    description="Try a different search."
+              <div className="flex min-h-0 flex-1 flex-col">
+                {workflowCatalog.pills.length > 1 && (
+                  <WorkflowTemplatePillRow
+                    pills={workflowCatalog.pills}
+                    active={workflowCatalog.active}
+                    onSelect={setWorkflowCategoryFilter}
                   />
                 )}
+                <div
+                  data-workflow-template-grid-scroll=""
+                  className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4"
+                >
+                  {workflowCatalog.items.length > 0 ? (
+                    <WorkflowTemplateGrid
+                      items={workflowCatalog.items}
+                      value={value}
+                      onSelect={handleSelectWorkflow}
+                    />
+                  ) : (
+                    <TemplateEmptyPanel
+                      title="No matches"
+                      description="Try a different search."
+                    />
+                  )}
+                </div>
               </div>
             )}
           </>
