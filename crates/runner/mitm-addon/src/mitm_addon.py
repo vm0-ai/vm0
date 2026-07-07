@@ -50,6 +50,8 @@ import builtin_connector_diagnostics
 import builtin_host_policy
 import deferred_callbacks
 import flow_metadata_keys as metadata_keys
+import http_local_responses
+import http_network_log
 import matching
 import network_log_sanitization
 import public_destination
@@ -97,8 +99,6 @@ _HTTP_STATUS_FAILED_DEPENDENCY = 424
 _HTTP_STATUS_BAD_GATEWAY = 502
 _HTTP_STATUS_ERROR_MIN = 400  # inclusive: start of 4xx/5xx error range
 _ADDRESS_PAIR_LENGTH = 2
-_HTTP_DEFAULT_PORT = 80
-_HTTPS_DEFAULT_PORT = 443
 _HTTP_OWS_CHARS = " \t"
 _BROWSER_USER_AGENT_MARKERS = (
     " chrome/",
@@ -112,7 +112,6 @@ _BROWSER_USER_AGENT_MARKERS = (
     " safari/",
 )
 _TEST_ENDPOINT_BYPASS_HEADER: Final = "x-vm0-test-endpoint-bypass"
-_BUILTIN_HOST_POLICY_DENIED_ERROR: Final = "builtin_host_policy_denied"
 
 # Hook-private lifecycle state constants. Keep flow.metadata marker strings in
 # this block out of flow_metadata_keys.py unless they become public cross-module
@@ -254,8 +253,6 @@ _HTTP_RESPONSE_BODYLESS_METHODS = frozenset(("CONNECT", "HEAD"))
 _TLS_ADMISSION_VALID_REGISTRY_VM: Final = "valid_registry_vm"
 _TLS_ADMISSION_INVALID_REGISTRY_VM: Final = "invalid_registry_vm"
 _TLS_ADMISSION_REGISTRY_UNAVAILABLE: Final = "registry_unavailable"
-_STALE_TLS_ADMISSION_ERROR: Final = "stale_tls_admission"
-_UPSTREAM_DESTINATION_UNBOUND_ERROR: Final = "upstream_destination_unbound"
 
 # Upstream binding diagnostics state.
 # Creator: _block_upstream_destination_unbound().
@@ -592,32 +589,6 @@ def get_registry_path() -> str:
     return ctx.options.vm0_proxy_registry_path
 
 
-def _set_network_log_target(flow: http.HTTPFlow, *, url: str, host: str, port: int) -> None:
-    flow.metadata[metadata_keys.NETWORK_LOG_TARGET] = {
-        "url": url,
-        "host": host,
-        "port": port,
-    }
-
-
-def _fallback_network_log_host_port(flow: http.HTTPFlow, original_url: str) -> tuple[str, int]:
-    try:
-        parsed_url = urllib.parse.urlparse(original_url)
-        host = parsed_url.hostname or flow.request.pretty_host
-        port = parsed_url.port or (
-            _HTTPS_DEFAULT_PORT if parsed_url.scheme == "https" else _HTTP_DEFAULT_PORT
-        )
-    except ValueError:
-        host = flow.request.pretty_host
-        port = flow.request.port
-    return host, port
-
-
-def _set_network_log_target_from_url(flow: http.HTTPFlow, url: str) -> None:
-    host, port = _fallback_network_log_host_port(flow, url)
-    _set_network_log_target(flow, url=url, host=host, port=port)
-
-
 def _is_browser_user_agent(user_agent: str | None) -> bool:
     if not user_agent:
         return False
@@ -698,7 +669,7 @@ def _store_trusted_authority_metadata(
 ) -> None:
     flow.metadata[metadata_keys.ORIGINAL_URL] = original_url
     flow.metadata[metadata_keys.TRUSTED_AUTHORITY_HOST] = host
-    _set_network_log_target(
+    http_network_log.set_target(
         flow,
         url=original_url,
         host=host,
@@ -1836,15 +1807,6 @@ def _install_connector_diagnostic_response_stream(flow: http.HTTPFlow) -> bool:
     return True
 
 
-def _network_log_target(flow: http.HTTPFlow, original_url: str) -> tuple[str, str, int]:
-    target = flow.metadata.get(metadata_keys.NETWORK_LOG_TARGET)
-    if target is not None:
-        return target["url"], target["host"], target["port"]
-
-    host, port = _fallback_network_log_host_port(flow, original_url)
-    return original_url, host, port
-
-
 def _http_network_log_entry(
     flow: http.HTTPFlow,
     *,
@@ -1855,7 +1817,7 @@ def _http_network_log_entry(
     request_size: int,
     response_size: int,
 ) -> dict:
-    url, host, port = _network_log_target(flow, original_url)
+    url, host, port = http_network_log.target(flow, original_url)
     entry = {
         "type": "http",
         "action": action,
@@ -1882,95 +1844,25 @@ def _http_network_log_entry(
 
 
 def _block_authority_validation_error(flow: http.HTTPFlow, error: AuthorityValidationError) -> None:
-    proxy_log_path = flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, "")
-    flow.metadata[metadata_keys.ORIGINAL_URL] = error.fallback_url
-    _set_network_log_target_from_url(flow, error.fallback_url)
-    flow.metadata[metadata_keys.FIREWALL_ACTION] = "DENY"
-    flow.metadata[metadata_keys.FIREWALL_ERROR] = error.reason
-
-    log_proxy_entry(
-        proxy_log_path,
-        "warn",
-        error.message,
-        type="authority_validation",
-        reason=error.reason,
-        sni=error.sni,
-        request_host=error.request_host,
-        host_header=error.host_header,
-        request_port=error.request_port,
-    )
-
-    flow.response = http.Response.make(
-        403,
-        json.dumps(
-            {
-                "error": error.reason,
-                "message": error.message,
-                "sni": error.sni,
-                "request_host": error.request_host,
-                "host_header": error.host_header,
-                "request_port": error.request_port,
-            }
-        ).encode(),
-        {"Content-Type": "application/json"},
-    )
+    http_local_responses.block_authority_validation_error(flow, error)
 
 
 def _block_registry_unavailable(
     flow: http.HTTPFlow,
     unavailable: registry.RegistryUnavailable,
 ) -> None:
-    flow.metadata[metadata_keys.FIREWALL_ACTION] = "BLOCK"
-    flow.metadata[metadata_keys.FIREWALL_ERROR] = "registry_unavailable"
-    flow.response = http.Response.make(
-        503,
-        json.dumps(
-            {
-                "error": "registry_unavailable",
-                "message": "Proxy registry is unavailable",
-                "reason": unavailable.reason,
-            }
-        ).encode(),
-        {"Content-Type": "application/json"},
-    )
+    http_local_responses.block_registry_unavailable(flow, unavailable)
 
 
 def _block_invalid_registry_vm(
     flow: http.HTTPFlow,
     invalid_vm: registry.InvalidVmEntry,
 ) -> None:
-    flow.metadata[metadata_keys.FIREWALL_ACTION] = "BLOCK"
-    flow.metadata[metadata_keys.FIREWALL_ERROR] = "invalid_registry_vm"
-    flow.response = http.Response.make(
-        503,
-        json.dumps(
-            {
-                "error": "invalid_registry_vm",
-                "message": invalid_vm.message,
-                "reason": invalid_vm.reason,
-            }
-        ).encode(),
-        {"Content-Type": "application/json"},
-    )
+    http_local_responses.block_invalid_registry_vm(flow, invalid_vm)
 
 
 def _block_stale_tls_admission(flow: http.HTTPFlow, *, reason: str) -> None:
-    flow.metadata[metadata_keys.FIREWALL_ACTION] = "BLOCK"
-    flow.metadata[metadata_keys.FIREWALL_ERROR] = _STALE_TLS_ADMISSION_ERROR
-    flow.response = http.Response.make(
-        503,
-        json.dumps(
-            {
-                "error": _STALE_TLS_ADMISSION_ERROR,
-                "message": (
-                    "Request blocked: TLS admission is no longer backed by a valid "
-                    "proxy registry VM"
-                ),
-                "reason": reason,
-            }
-        ).encode(),
-        {"Content-Type": "application/json"},
-    )
+    http_local_responses.block_stale_tls_admission(flow, reason=reason)
 
 
 def _block_upstream_destination_unbound(
@@ -1978,40 +1870,14 @@ def _block_upstream_destination_unbound(
     *,
     reason: upstream_destination_binding.BindingKind,
 ) -> None:
-    trusted_host = flow.metadata.get(metadata_keys.TRUSTED_AUTHORITY_HOST)
-    proxy_log_path = flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, "")
     server_address = getattr(flow.server_conn, "address", None)
     diagnostics = _upstream_binding_diagnostics(flow, reason=reason)
-    log_proxy_entry(
-        proxy_log_path,
-        "warn",
-        "Request blocked: upstream destination is not bound to the trusted authority",
-        type="upstream_destination_binding",
+    flow.metadata[_UPSTREAM_BINDING_DIAGNOSTICS] = diagnostics
+    http_local_responses.block_upstream_destination_unbound(
+        flow,
         reason=reason,
-        trusted_host=trusted_host,
-        request_host=flow.request.host,
-        request_port=flow.request.port,
         server_address=server_address,
         diagnostics=diagnostics,
-    )
-    flow.metadata[_UPSTREAM_BINDING_DIAGNOSTICS] = diagnostics
-    flow.metadata[metadata_keys.FIREWALL_ACTION] = "BLOCK"
-    flow.metadata[metadata_keys.FIREWALL_ERROR] = _UPSTREAM_DESTINATION_UNBOUND_ERROR
-    body: dict[str, object] = {
-        "error": _UPSTREAM_DESTINATION_UNBOUND_ERROR,
-        "message": "Request blocked: upstream destination is not bound to trusted authority",
-        "reason": reason,
-        "trusted_host": trusted_host,
-        "request_host": flow.request.host,
-        "request_port": flow.request.port,
-    }
-    firewall_base = flow.metadata.get(metadata_keys.FIREWALL_BASE)
-    if isinstance(firewall_base, str):
-        body["base"] = firewall_base
-    flow.response = http.Response.make(
-        403,
-        json.dumps(body).encode(),
-        {"Content-Type": "application/json"},
     )
 
 
@@ -2021,40 +1887,15 @@ def _block_builtin_host_policy_denied(
     allow: matching.FirewallAllow,
     error: builtin_host_policy.BuiltinRuntimeHostPolicyError,
 ) -> None:
-    proxy_log_path = flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, "")
-    trusted_host = flow.metadata.get(metadata_keys.TRUSTED_AUTHORITY_HOST, "")
     upstream_endpoint = upstream_destination_binding.bound_destination_endpoint_for_flow(
         flow,
         allowed_kinds=frozenset(("connector_auth",)),
     )
-    log_proxy_entry(
-        proxy_log_path,
-        "warn",
-        "Request blocked: builtin firewall host policy rejected credential injection",
-        type="builtin_host_policy",
-        name=allow.name,
-        reason=error.reason,
-        trusted_host=trusted_host,
-        request_port=flow.request.port,
+    http_local_responses.block_builtin_host_policy_denied(
+        flow,
+        allow=allow,
+        error=error,
         upstream_endpoint=_endpoint_text(upstream_endpoint),
-    )
-    flow.metadata[metadata_keys.FIREWALL_ACTION] = "BLOCK"
-    flow.metadata[metadata_keys.FIREWALL_ERROR] = _BUILTIN_HOST_POLICY_DENIED_ERROR
-    body: dict[str, object] = {
-        "error": _BUILTIN_HOST_POLICY_DENIED_ERROR,
-        "message": "Request blocked: builtin firewall host policy rejected credential injection",
-        "reason": error.reason,
-        "name": allow.name,
-        "trusted_host": trusted_host,
-        "request_port": flow.request.port,
-    }
-    firewall_base = flow.metadata.get(metadata_keys.FIREWALL_BASE)
-    if isinstance(firewall_base, str):
-        body["base"] = firewall_base
-    flow.response = http.Response.make(
-        403,
-        json.dumps(body).encode(),
-        {"Content-Type": "application/json"},
     )
 
 
@@ -2850,50 +2691,7 @@ async def _try_firewall_request_stream_capture_from_headers(
 
 
 def _set_firewall_block_response(flow: http.HTTPFlow, result: matching.FirewallBlock) -> None:
-    proxy_log_path = flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, "")
-    if result.reason == "malformed_network_policy":
-        block_message = "malformed network policy"
-        response_message = "Request blocked: malformed network policy"
-    elif result.reason == "unsafe_path":
-        block_message = "unsafe path"
-        response_message = "Request blocked: unsafe path"
-    else:
-        block_message = "no matching permission"
-        response_message = "Request blocked: no matching permission rule"
-    log_proxy_entry(
-        proxy_log_path,
-        "warn",
-        f"Firewall {result.name}: {block_message} for {result.method} {result.path}",
-        type="firewall_block",
-        name=result.name,
-        reason=result.reason,
-    )
-    flow.metadata[metadata_keys.FIREWALL_ACTION] = "DENY"
-    flow.metadata[metadata_keys.FIREWALL_BASE] = result.base
-    flow.metadata[metadata_keys.FIREWALL_NAME] = result.name
-    original_url = flow.metadata[metadata_keys.ORIGINAL_URL]
-    diagnostic_parts = urllib.parse.urlsplit(original_url)
-    diagnostic_url = urllib.parse.urlunsplit(
-        (diagnostic_parts.scheme, diagnostic_parts.netloc, diagnostic_parts.path, "", "")
-    )
-    error_body = json.dumps(
-        {
-            "error": "permission_denied",
-            "message": response_message,
-            "method": result.method,
-            "path": result.path,
-            "url": diagnostic_url,
-            "name": result.name,
-            "permissions": list(result.permissions),
-            "reason": result.reason,
-            "base": result.base,
-        }
-    )
-    flow.response = http.Response.make(
-        403,
-        error_body.encode(),
-        {"Content-Type": "application/json"},
-    )
+    http_local_responses.set_firewall_block_response(flow, result)
 
 
 def _block_public_destination_denied(
@@ -2902,42 +2700,15 @@ def _block_public_destination_denied(
     *,
     send_response: bool = True,
 ) -> None:
-    proxy_log_path = flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, "")
-    flow.request.stream = False
-    flow.metadata[metadata_keys.FIREWALL_ACTION] = "DENY"
-    flow.metadata[metadata_keys.FIREWALL_ERROR] = "unsafe_public_destination"
-    flow.metadata[metadata_keys.FIREWALL_BASE] = denial.base
-    flow.metadata[metadata_keys.FIREWALL_NAME] = denial.name
-
-    log_proxy_entry(
-        proxy_log_path,
-        "warn",
-        "Request blocked: publicDestination resolved to a non-public destination",
-        type="public_destination",
+    http_local_responses.block_public_destination_denied(
+        flow,
         name=denial.name,
-        firewall_base=denial.base,
+        base=denial.base,
         destination_host=denial.destination_host,
         trusted_authority_host=denial.trusted_authority_host,
         reason=denial.reason,
+        send_response=send_response,
     )
-
-    error_body = json.dumps(
-        {
-            "error": "unsafe_public_destination",
-            "message": "Request blocked: publicDestination resolved to a non-public destination",
-            "name": denial.name,
-            "base": denial.base,
-            "destination_host": denial.destination_host,
-            "trusted_authority_host": denial.trusted_authority_host,
-            "reason": denial.reason,
-        }
-    )
-    if send_response:
-        flow.response = http.Response.make(
-            403,
-            error_body.encode(),
-            {"Content-Type": "application/json"},
-        )
 
 
 async def request(flow: http.HTTPFlow) -> None:
