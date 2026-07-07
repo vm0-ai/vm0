@@ -301,9 +301,17 @@ async fn drain_with_ops(
                 }
             }
             Err(e) => {
-                if ops.is_active(unit).await? {
-                    rollback_drain_restart_override(unit, ops, "restart_policy").await;
-                    return Err(e);
+                match ops.is_active(unit).await {
+                    Ok(true) => {
+                        rollback_drain_restart_override(unit, ops, "restart_policy").await;
+                        return Err(e);
+                    }
+                    Ok(false) => {}
+                    Err(active_err) => {
+                        rollback_drain_restart_override(unit, ops, "restart_policy_active_check")
+                            .await;
+                        return Err(active_err);
+                    }
                 }
                 info!(
                     unit = %unit.unit_name(),
@@ -955,7 +963,7 @@ profiles:
 
     struct FakeDrainOps {
         events: Vec<&'static str>,
-        active_results: VecDeque<bool>,
+        active_results: VecDeque<RunnerResult<bool>>,
         write_error: bool,
         remove_error: bool,
         reload_error: bool,
@@ -970,7 +978,7 @@ profiles:
         fn default() -> Self {
             Self {
                 events: Vec::new(),
-                active_results: VecDeque::from([true]),
+                active_results: VecDeque::from([Ok(true)]),
                 write_error: false,
                 remove_error: false,
                 reload_error: false,
@@ -990,10 +998,9 @@ profiles:
     impl ServiceDrainOps for FakeDrainOps {
         fn is_active<'a>(&'a mut self, _unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, bool> {
             self.events.push("is_active");
-            Box::pin(std::future::ready(Ok(self
-                .active_results
-                .pop_front()
-                .unwrap_or(false))))
+            Box::pin(std::future::ready(
+                self.active_results.pop_front().unwrap_or(Ok(false)),
+            ))
         }
 
         fn write_restart_override(&mut self, _unit: &RunnerServiceUnit) -> RunnerResult<()> {
@@ -1081,7 +1088,7 @@ profiles:
     async fn drain_inactive_service_skips_restart_override_and_signal() {
         let unit = service_unit();
         let mut ops = FakeDrainOps {
-            active_results: VecDeque::from([false]),
+            active_results: VecDeque::from([Ok(false)]),
             ..FakeDrainOps::default()
         };
 
@@ -1155,7 +1162,7 @@ profiles:
     async fn drain_restart_policy_error_for_still_active_service_aborts_before_signal() {
         let unit = service_unit();
         let mut ops = FakeDrainOps {
-            active_results: VecDeque::from([true, true]),
+            active_results: VecDeque::from([Ok(true), Ok(true)]),
             restart_policy_error: true,
             ..FakeDrainOps::default()
         };
@@ -1178,10 +1185,36 @@ profiles:
     }
 
     #[tokio::test]
+    async fn drain_restart_policy_error_with_failed_active_recheck_rolls_back() {
+        let unit = service_unit();
+        let mut ops = FakeDrainOps {
+            active_results: VecDeque::from([Ok(true), Err(fake_error("active recheck failed"))]),
+            restart_policy_error: true,
+            ..FakeDrainOps::default()
+        };
+
+        let err = drain_with_ops(&unit, &mut ops).await.unwrap_err();
+
+        assert!(err.to_string().contains("active recheck failed"));
+        assert_eq!(
+            ops.events,
+            [
+                "is_active",
+                "write_restart_override",
+                "daemon_reload",
+                "restart_policy",
+                "is_active",
+                "remove_restart_override",
+                "daemon_reload",
+            ]
+        );
+    }
+
+    #[tokio::test]
     async fn drain_restart_policy_error_for_exited_service_still_disables_unit() {
         let unit = service_unit();
         let mut ops = FakeDrainOps {
-            active_results: VecDeque::from([true, false]),
+            active_results: VecDeque::from([Ok(true), Ok(false)]),
             restart_policy_error: true,
             ..FakeDrainOps::default()
         };
