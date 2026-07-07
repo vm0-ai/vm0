@@ -2,6 +2,7 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import {
   zeroWorkflowsCollectionContract,
   zeroWorkflowsDetailContract,
+  zeroWorkflowVisibilityContract,
   zeroWorkflowTriggersContract,
   type ZeroWorkflowTriggerCreateRequest,
   type ZeroWorkflowTriggerUpdateRequest,
@@ -1420,6 +1421,55 @@ describe("workflow detail page", () => {
     expect(pageText.indexOf("Copy workflow")).toBeLessThan(
       pageText.indexOf("Delete workflow"),
     );
+  });
+
+  it("confirms before making a public workflow private", async () => {
+    const demotedIds: string[] = [];
+    mockWorkflowApis([salesResearch()]);
+    context.mocks.api(
+      zeroWorkflowVisibilityContract.demote,
+      ({ params, respond }) => {
+        demotedIds.push(params.workflowId);
+        return respond(
+          200,
+          summary({ ...salesResearch(), visibility: "private" }),
+        );
+      },
+    );
+
+    detachedSetupWorkflowDetailPage(workflowDetailPath("info"));
+
+    const toggle = await screen.findByRole("switch", {
+      name: "Make workflow public",
+    });
+    expect(toggle).toBeEnabled();
+    fireEvent.click(toggle);
+
+    // Demoting a public workflow now requires an explicit confirmation.
+    const dialog = await screen.findByRole("dialog");
+    expect(
+      within(dialog).getByText("Make this workflow private?"),
+    ).toBeInTheDocument();
+    expect(demotedIds).toStrictEqual([]);
+
+    // Cancelling leaves the workflow public and fires no request.
+    click(buttonByText("Cancel", dialog));
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Make this workflow private?"),
+      ).not.toBeInTheDocument();
+    });
+    expect(demotedIds).toStrictEqual([]);
+
+    // Reopening and confirming demotes the workflow.
+    fireEvent.click(
+      await screen.findByRole("switch", { name: "Make workflow public" }),
+    );
+    const confirmDialog = await screen.findByRole("dialog");
+    click(buttonByText("Make private", confirmDialog));
+    await waitFor(() => {
+      expect(demotedIds).toStrictEqual([SALES_WORKFLOW_ID]);
+    });
   });
 
   it("copies a workflow to another agent from the info tab", async () => {

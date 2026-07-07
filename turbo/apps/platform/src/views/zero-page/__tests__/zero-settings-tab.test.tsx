@@ -379,6 +379,14 @@ describe("zero settings tab", () => {
 
     click(screen.getByText("Save"));
 
+    // Demoting the agent from public to private now requires confirmation.
+    await waitFor(() => {
+      expect(
+        screen.getByText("Make Research Agent private?"),
+      ).toBeInTheDocument();
+    });
+    click(screen.getByText("Make private"));
+
     await waitFor(() => {
       expect(
         screen.queryByText("You have unsaved changes"),
@@ -413,7 +421,9 @@ describe("zero settings tab", () => {
     await waitFor(() => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
       expect(
-        screen.getByText(/instructions, automations, and all associated data/u),
+        screen.getByText(
+          /including automations and chats other people created/u,
+        ),
       ).toBeInTheDocument();
     });
 
@@ -422,7 +432,7 @@ describe("zero settings tab", () => {
     await waitFor(() => {
       expect(
         screen.queryByText(
-          /instructions, automations, and all associated data/u,
+          /including automations and chats other people created/u,
         ),
       ).not.toBeInTheDocument();
     });
