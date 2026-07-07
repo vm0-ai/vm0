@@ -7092,7 +7092,6 @@ function ComposerModelPickerSlot({
   modelPickerLoading,
   submitBlocker,
   codexFastModeEnabled,
-  popoverModelPickerEnabled,
   modelPickerOpen,
   onModelPickerChange,
   onModelPickerOpenChange,
@@ -7101,7 +7100,6 @@ function ComposerModelPickerSlot({
   modelPickerLoading: boolean;
   submitBlocker: ZeroChatComposerProps["submitBlocker"];
   codexFastModeEnabled: boolean;
-  popoverModelPickerEnabled: boolean;
   modelPickerOpen: boolean;
   onModelPickerChange: (value: ModelProviderSelection | null) => void;
   onModelPickerOpenChange: (open: boolean) => void;
@@ -7128,7 +7126,6 @@ function ComposerModelPickerSlot({
           )}
           compactTrigger
           mobileIconTrigger
-          pickerMode={popoverModelPickerEnabled ? "popover" : "select"}
           codexFastModeEnabled={codexFastModeEnabled}
           open={modelPickerOpen}
           onOpenChange={onModelPickerOpenChange}
@@ -7147,11 +7144,6 @@ function ComposerModelPickerSlot({
 function useCodexFastModeEnabled(): boolean {
   const features = useLastResolved(featureSwitch$);
   return features?.[FeatureSwitchKey.CodexFastMode] ?? false;
-}
-
-function usePopoverModelPickerEnabled(): boolean {
-  const features = useLastResolved(featureSwitch$);
-  return features?.[FeatureSwitchKey.ComposerModelPickerPopover] ?? false;
 }
 
 function useUploadPopoverEnabled(): boolean {
@@ -7196,7 +7188,6 @@ export function ZeroChatComposer({
   const setModelPickerOpen = useSet(setModelPickerOpen$);
   const openGoalDialog = useSet(openChatThreadGoalDialog$);
   const codexFastModeEnabled = useCodexFastModeEnabled();
-  const popoverModelPickerEnabled = usePopoverModelPickerEnabled();
   const uploadPopoverEnabled = useUploadPopoverEnabled();
 
   const resolved = useResolvedComposerSignals(
@@ -7666,7 +7657,6 @@ export function ZeroChatComposer({
                     modelPickerLoading={modelPickerLoading}
                     submitBlocker={submitBlocker}
                     codexFastModeEnabled={codexFastModeEnabled}
-                    popoverModelPickerEnabled={popoverModelPickerEnabled}
                     modelPickerOpen={modelPickerOpen}
                     onModelPickerChange={handleModelPickerChange}
                     onModelPickerOpenChange={setModelPickerOpen}
