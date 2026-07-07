@@ -23,7 +23,8 @@ use super::job_spawn::{JobProfile, SpawnContext, SpawnJobRequest, spawn_job};
 use crate::config::ProfileConfig;
 use crate::executor::{
     RunnerPreSpawnPhase, RunnerPreSpawnTiming, SessionHistoryMaterializer,
-    SessionHistoryRestoreFallback, SessionHistoryRestorePlan, validate_resume_session_id,
+    SessionHistoryRestoreFallback, SessionHistoryRestorePlan, effective_cli_framework,
+    validate_resume_session_id,
 };
 use crate::http::HttpClient;
 use crate::idle_pool::{IdlePoolSnapshot, IdleUnparkResult, ReusableIdleSandbox};
@@ -275,8 +276,12 @@ fn build_session_history_restore_plan(
     };
 
     let started_at = Instant::now();
-    let materializer =
-        SessionHistoryMaterializer::start_cancellable(http, Some(resume_session), cancel.token());
+    let materializer = SessionHistoryMaterializer::start_cancellable(
+        http,
+        Some(resume_session),
+        effective_cli_framework(&context.cli_agent_type),
+        cancel.token(),
+    );
     pre_spawn_timing.record_phase_elapsed(
         RunnerPreSpawnPhase::SessionHistoryMaterializerStart,
         started_at,

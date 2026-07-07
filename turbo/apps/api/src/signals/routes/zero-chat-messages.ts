@@ -235,6 +235,7 @@ function shouldTouchThreadSortFromNormalSend(
 
 interface NormalSendFeatureSwitches {
   readonly codexFastModeEnabled: boolean;
+  readonly websiteTemplatesEnabled: boolean;
 }
 
 interface ResolvedComputerUseHostGrant {
@@ -1273,7 +1274,48 @@ async function resolveNormalSendFeatureSwitches(
       FeatureSwitchKey.CodexFastMode,
       context,
     ),
+    websiteTemplatesEnabled: isFeatureEnabled(
+      FeatureSwitchKey.WebsiteTemplates,
+      context,
+    ),
   };
+}
+
+function validateGenerationTemplateFeatureSwitches(params: {
+  readonly body: NormalSendBody;
+  readonly featureSwitches: NormalSendFeatureSwitches;
+}): NormalSendFailure | undefined {
+  if (
+    params.body.generationTemplate?.type === "website" &&
+    !params.featureSwitches.websiteTemplatesEnabled
+  ) {
+    return badRequestMessage("Website templates are not enabled");
+  }
+  return undefined;
+}
+
+function validateGenerationTemplatePrompt(
+  body: NormalSendBody,
+): NormalSendFailure | undefined {
+  const generationTemplate = body.generationTemplate;
+  if (!generationTemplate) {
+    return undefined;
+  }
+  const validation = buildGenerationTemplatePrompt(generationTemplate);
+  if (validation.status === "invalid") {
+    return badRequestMessage(validation.message);
+  }
+  return undefined;
+}
+
+function validateGenerationTemplateForNormalSend(params: {
+  readonly body: NormalSendBody;
+  readonly featureSwitches: NormalSendFeatureSwitches;
+}): NormalSendFailure | undefined {
+  return (
+    validateGenerationTemplateFeatureSwitches(params) ??
+    validateGenerationTemplatePrompt(params.body)
+  );
 }
 
 async function updateUserModelPreference(
@@ -2223,13 +2265,12 @@ const prepareNormalSend$ = command(
     if (codexServiceTierError) {
       return codexServiceTierError;
     }
-    if (args.body.generationTemplate) {
-      const validation = buildGenerationTemplatePrompt(
-        args.body.generationTemplate,
-      );
-      if (validation.status === "invalid") {
-        return badRequestMessage(validation.message);
-      }
+    const generationTemplateError = validateGenerationTemplateForNormalSend({
+      body: args.body,
+      featureSwitches,
+    });
+    if (generationTemplateError) {
+      return generationTemplateError;
     }
 
     const initialPin = await resolveInitialThreadModelPin({

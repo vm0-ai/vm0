@@ -5,6 +5,7 @@ import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
   VIDEO_TEMPLATE_ITEMS,
+  WEBSITE_TEMPLATE_ITEMS,
   WORKFLOW_TEMPLATE_ITEMS,
 } from "@vm0/core";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
@@ -2844,6 +2845,43 @@ describe("CHAT-02: generation templates and attachments", () => {
       `zero generate video --provider built-in --template ${videoTemplate.id}`,
     );
     await cancelChatRun(actor, video.runId);
+
+    const websiteTemplate = WEBSITE_TEMPLATE_ITEMS[0];
+    if (!websiteTemplate) {
+      throw new Error("Expected a registered website template");
+    }
+    if (!actor.orgId) {
+      throw new Error("Expected entitled actor to belong to an org");
+    }
+    const actorWithOrg = { ...actor, orgId: actor.orgId };
+    await updateFeatureSwitchesForUser(context, actorWithOrg, {
+      [FeatureSwitchKey.WebsiteTemplates]: true,
+    });
+    const website = await sendChatRun(actor, {
+      agentId,
+      prompt: "make a campaign landing page",
+      generationTemplate: {
+        type: "website",
+        selection: { websiteTemplateId: websiteTemplate.id },
+      },
+    });
+    const websiteRun = await api.readRun(actor, website.runId);
+    const websitePrompt = websiteRun.appendSystemPrompt ?? "";
+    expect(websitePrompt).toContain("# Artifact Template Context");
+    expect(websitePrompt).toContain(
+      `Template: ${websiteTemplate.title} (${websiteTemplate.id})`,
+    );
+    expect(websitePrompt).toContain(
+      `zero resource pull ${websiteTemplate.resourceId} --dir ./generated/resources`,
+    );
+    expect(websitePrompt).toContain(
+      `./generated/resources/${websiteTemplate.sourcePath}/render.mjs`,
+    );
+    expect(websitePrompt).toContain(
+      `./generated/resources/${websiteTemplate.sourcePath}/resolve-images.mjs`,
+    );
+    expect(websitePrompt).toContain("zero host <output-dir> --site <slug>");
+    await cancelChatRun(actor, website.runId);
   }, 90_000);
 
   it("is one-shot: a follow-up without re-attaching the style gets no template context", async () => {
@@ -3024,11 +3062,46 @@ describe("CHAT-02: generation templates and attachments", () => {
     await cancelChatRun(actor, followUp.runId);
   }, 120_000);
 
+  it("rejects website template selections while the feature switch is off", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    const template = WEBSITE_TEMPLATE_ITEMS[0];
+    if (!template) {
+      throw new Error("Expected a registered website template");
+    }
+
+    const clientThreadId = randomUUID();
+    const rejected = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        prompt: "make a landing page",
+        clientThreadId,
+        generationTemplate: {
+          type: "website",
+          selection: { websiteTemplateId: template.id },
+        },
+      },
+      [400],
+    );
+    expectApiError(rejected.body);
+    expect(rejected.body.error.message).toBe(
+      "Website templates are not enabled",
+    );
+    await chat.requestReadThread(actor, clientThreadId, [404]);
+  }, 60_000);
+
   it("rejects unknown generation template selections", async () => {
     const actor = bdd.user();
     bdd.acceptAgentStorageWrites();
     const agent = await bdd.createAgent(actor, {
       displayName: "Invalid template agent",
+    });
+    if (!actor.orgId) {
+      throw new Error("Expected test actor to belong to an org");
+    }
+    const actorWithOrg = { ...actor, orgId: actor.orgId };
+    await updateFeatureSwitchesForUser(context, actorWithOrg, {
+      [FeatureSwitchKey.WebsiteTemplates]: true,
     });
     const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0];
     if (!template) {
@@ -3084,6 +3157,13 @@ describe("CHAT-02: generation templates and attachments", () => {
           selection: { workflowTemplateId: "workflow-template:missing" },
         },
         message: "Unknown workflow template",
+      },
+      {
+        generationTemplate: {
+          type: "website",
+          selection: { websiteTemplateId: "website-template:missing" },
+        },
+        message: "Unknown website template",
       },
     ];
     for (const arm of arms) {
