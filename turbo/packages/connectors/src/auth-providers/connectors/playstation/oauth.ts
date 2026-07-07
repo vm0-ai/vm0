@@ -14,8 +14,7 @@ export const PLAYSTATION_PROFILE_USERS_URL =
   "https://m.np.playstation.com/api/userProfile/v1/internal/users";
 export const PLAYSTATION_REDIRECT_URI =
   "com.scee.psxandroid.scecompcall://redirect";
-export const PLAYSTATION_CLIENT_BASIC_AUTH =
-  "Basic MDk1MTUxNTktNzIzNy00MzcwLTliNDAtMzgwNmU2N2MwODkxOnVjUGprYTV0bnRCMktxc1A=";
+const PLAYSTATION_CLIENT_SECRET = "ucPjka5tntB2KqsP";
 
 interface PlaystationAuthToken {
   readonly accessToken: string;
@@ -121,6 +120,12 @@ function hasInvalidNpssoCookieCharacter(value: string): boolean {
   return false;
 }
 
+function playstationClientBasicAuthHeader(clientId: string): string {
+  return `Basic ${Buffer.from(
+    `${clientId}:${PLAYSTATION_CLIENT_SECRET}`,
+  ).toString("base64")}`;
+}
+
 export function buildPlaystationNpssoUrl(): string {
   return PLAYSTATION_NPSSO_URL;
 }
@@ -215,13 +220,14 @@ async function tokenResponseJson(
 
 export async function exchangePlaystationAccessCodeForAuthTokens(args: {
   readonly accessCode: string;
+  readonly clientId: string;
   readonly signal: AbortSignal;
 }): Promise<PlaystationAuthToken> {
   const response = await fetch(`${PLAYSTATION_AUTH_BASE_URL}/token`, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
-      Authorization: PLAYSTATION_CLIENT_BASIC_AUTH,
+      Authorization: playstationClientBasicAuthHeader(args.clientId),
     },
     body: new URLSearchParams({
       code: args.accessCode,
@@ -241,13 +247,14 @@ export async function exchangePlaystationAccessCodeForAuthTokens(args: {
 
 export async function refreshPlaystationAuthTokens(args: {
   readonly refreshToken: string;
+  readonly clientId: string;
   readonly signal: AbortSignal;
 }): Promise<PlaystationAuthToken> {
   const response = await fetch(`${PLAYSTATION_AUTH_BASE_URL}/token`, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
-      Authorization: PLAYSTATION_CLIENT_BASIC_AUTH,
+      Authorization: playstationClientBasicAuthHeader(args.clientId),
     },
     body: new URLSearchParams({
       refresh_token: args.refreshToken,

@@ -13,7 +13,6 @@ import { isOAuthProviderHttpError } from "../../oauth/error";
 import { server } from "../../__tests__/test-server";
 import {
   PLAYSTATION_AUTH_BASE_URL,
-  PLAYSTATION_CLIENT_BASIC_AUTH,
   PLAYSTATION_NPSSO_URL,
   PLAYSTATION_PROFILE_USERS_URL,
   PLAYSTATION_REDIRECT_URI,
@@ -22,6 +21,10 @@ import {
 const PLAYSTATION_TOKEN_URL = `${PLAYSTATION_AUTH_BASE_URL}/token`;
 const PLAYSTATION_AUTHORIZE_URL = `${PLAYSTATION_AUTH_BASE_URL}/authorize`;
 const PLAYSTATION_CLIENT_ID = "09515159-7237-4370-9b40-3806e67c0891";
+const PLAYSTATION_CLIENT_SECRET = "ucPjka5tntB2KqsP";
+const PLAYSTATION_CLIENT_BASIC_AUTH = `Basic ${Buffer.from(
+  `${PLAYSTATION_CLIENT_ID}:${PLAYSTATION_CLIENT_SECRET}`,
+).toString("base64")}`;
 
 function playstationAuthClient() {
   const authClient = resolveConnectorAuthClientForMethod(

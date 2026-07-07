@@ -35,6 +35,7 @@ function createPlaystationExternalCodeGrantProvider(): ExternalCodeConnectorAuth
       });
       const token = await exchangePlaystationAccessCodeForAuthTokens({
         accessCode,
+        clientId: args.authClient.clientId,
         signal: args.signal,
       });
       const identity = await fetchPlaystationIdentity({
@@ -67,6 +68,7 @@ function createPlaystationRefreshTokenAccessProvider(): RefreshTokenAccessProvid
     refresh: async (args) => {
       const token = await refreshPlaystationAuthTokens({
         refreshToken: args.inputs.refreshToken,
+        clientId: args.authClient.clientId,
         signal: args.signal,
       });
       return {
