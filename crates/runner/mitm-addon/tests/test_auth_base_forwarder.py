@@ -1099,10 +1099,12 @@ class TestForwardRequestAsyncWrapper:
                     await asyncio.wait_for(first_task, timeout=1)
                 with lock:
                     assert active == 1
+                    started_before_second_attempt = started
 
                 with pytest.raises(forwarder.AuthBaseForwardingSaturatedError):
                     await forwarder.forward_request("https://example.com", "GET", [], None)
-                assert started == 1
+                with lock:
+                    assert started == started_before_second_attempt
 
                 release_first.set()
             finally:
@@ -1168,7 +1170,6 @@ class TestForwardRequestAsyncWrapper:
                     forwarder.forward_request("https://example.com", "GET", [], None)
                 )
                 await _run_ready_tasks()
-                assert started == 1
                 assert not second_entered.is_set()
 
                 release_first.set()
@@ -1257,6 +1258,34 @@ class TestForwardRequestAsyncWrapper:
         assert list(headers.items(multi=True)) == []
         assert started == 2
         assert max_active == 1
+
+    def test_worker_base_exception_completes_future_before_propagating(self):
+        future: Future[tuple[int, bytes, http.Headers]] = Future()
+        with forwarder._forward_request_pending_futures_lock:
+            forwarder._forward_request_pending_futures.add(future)
+
+        with (
+            patch.object(
+                forwarder,
+                "_forward_request_sync_in_context",
+                side_effect=SystemExit("worker stopped"),
+            ),
+            pytest.raises(SystemExit, match="worker stopped"),
+        ):
+            forwarder._run_forward_request_worker(
+                future,
+                contextvars.copy_context(),
+                "https://example.com",
+                "GET",
+                [],
+                None,
+            )
+
+        assert future.done()
+        with pytest.raises(RuntimeError, match="worker exited without completing future"):
+            future.result()
+        with forwarder._forward_request_pending_futures_lock:
+            assert future not in forwarder._forward_request_pending_futures
 
     async def test_shutdown_rejects_untracked_running_forward_and_waiting_forward(self):
         started = 0

@@ -12,6 +12,7 @@ import http.client as http_client
 import ipaddress
 import socket
 import ssl
+import sys
 import threading
 import urllib.parse
 from concurrent.futures import Future, InvalidStateError
@@ -105,6 +106,13 @@ MAX_AUTH_BASE_RESPONSE_BODY_BYTES = 32 * 1024 * 1024
 MAX_CONCURRENT_AUTH_BASE_FORWARDS = 4
 MAX_ADMITTED_AUTH_BASE_FORWARDS = 16
 MAX_ADMITTED_AUTH_BASE_REQUEST_BODY_BYTES = 128 * 1024 * 1024
+_FORWARD_REQUEST_CLEANUP_EXCEPTIONS: tuple[type[BaseException], ...] = (
+    Exception,
+    asyncio.CancelledError,
+    KeyboardInterrupt,
+    SystemExit,
+    GeneratorExit,
+)
 _PERCENT_DECODED_UPSTREAM_HOST_SYNTAX_CHARS = frozenset("{}*.\u3002\uff0e\uff61,")
 _UPSTREAM_HOST_FORBIDDEN_CHARS = frozenset("{}*")
 _forward_request_accepting = True
@@ -123,7 +131,8 @@ _https_context_lock = threading.Lock()
 
 
 class _Closeable(Protocol):
-    def close(self) -> object: ...
+    def close(self) -> object:
+        raise NotImplementedError
 
 
 class _ForwardRequestAdmissionState(NamedTuple):
@@ -867,12 +876,17 @@ def _run_forward_request_worker(
             _discard_pending_forward_request_future(future)
         try:
             result = _forward_request_sync_in_context(context, url, method, headers, body)
-        except BaseException as exc:
+        except Exception as exc:
             _set_forward_request_future_exception(future, exc)
         else:
             with suppress(InvalidStateError):
                 future.set_result(result)
     finally:
+        if sys.exc_info()[1] is not None and future.running():
+            _set_forward_request_future_exception(
+                future,
+                RuntimeError("auth.base forwarding worker exited without completing future"),
+            )
         with _forward_request_workers_lock:
             _forward_request_workers.discard(threading.current_thread())
 
@@ -900,7 +914,7 @@ def _start_forward_request_worker(
             _forward_request_workers.add(worker)
         try:
             worker.start()
-        except BaseException:
+        except _FORWARD_REQUEST_CLEANUP_EXCEPTIONS:
             with _forward_request_pending_futures_lock:
                 _forward_request_pending_futures.discard(future)
             with _forward_request_workers_lock:
@@ -922,7 +936,7 @@ async def forward_request(
     body_bytes = _request_body_size(body)
     try:
         _validate_request_body_size(body)
-    except BaseException:
+    except _FORWARD_REQUEST_CLEANUP_EXCEPTIONS:
         if admission is not None:
             release_forward_request_admission(admission)
         raise
@@ -931,7 +945,7 @@ async def forward_request(
     else:
         try:
             adjust_forward_request_admission(admission, body_bytes)
-        except BaseException:
+        except _FORWARD_REQUEST_CLEANUP_EXCEPTIONS:
             release_forward_request_admission(admission)
             raise
 
@@ -952,7 +966,7 @@ async def forward_request(
                 headers,
                 body,
             )
-        except BaseException:
+        except _FORWARD_REQUEST_CLEANUP_EXCEPTIONS:
             semaphore.release()
             raise
         future.add_done_callback(
