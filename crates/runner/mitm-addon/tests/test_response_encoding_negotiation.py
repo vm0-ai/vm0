@@ -634,16 +634,82 @@ async def test_response_bodyless_usage_inspected_methods_keep_accept_encoding(
     "extra_headers",
     [
         pytest.param(
-            (("Connection", "keep-alive, Upgrade"), ("Upgrade", "websocket\u2028")),
+            (
+                ("Connection", "keep-alive, Upgrade"),
+                ("Upgrade", "websocket\u2028"),
+                ("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ=="),
+                ("Sec-WebSocket-Version", "13"),
+            ),
             id="invalid-upgrade-value-whitespace",
         ),
         pytest.param(
-            (("Connection", "keep-alive, \u2028Upgrade"), ("Upgrade", "websocket")),
+            (
+                ("Connection", "keep-alive, \u2028Upgrade"),
+                ("Upgrade", "websocket"),
+                ("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ=="),
+                ("Sec-WebSocket-Version", "13"),
+            ),
             id="invalid-connection-token-whitespace",
         ),
         pytest.param(
-            (("Upgrade", "websocket"),),
+            (
+                ("Upgrade", "websocket"),
+                ("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ=="),
+                ("Sec-WebSocket-Version", "13"),
+            ),
             id="missing-connection-upgrade-token",
+        ),
+        pytest.param(
+            (
+                ("Connection", "keep-alive, Upgrade"),
+                ("Upgrade", "websocket"),
+                ("Sec-WebSocket-Version", "13"),
+            ),
+            id="missing-websocket-key",
+        ),
+        pytest.param(
+            (
+                ("Connection", "keep-alive, Upgrade"),
+                ("Upgrade", "websocket"),
+                ("Sec-WebSocket-Key", "   "),
+                ("Sec-WebSocket-Version", "13"),
+            ),
+            id="blank-websocket-key",
+        ),
+        pytest.param(
+            (
+                ("Connection", "keep-alive, Upgrade"),
+                ("Upgrade", "websocket"),
+                ("Sec-WebSocket-Key", "not base64"),
+                ("Sec-WebSocket-Version", "13"),
+            ),
+            id="invalid-websocket-key-base64",
+        ),
+        pytest.param(
+            (
+                ("Connection", "keep-alive, Upgrade"),
+                ("Upgrade", "websocket"),
+                ("Sec-WebSocket-Key", "c2hvcnQ="),
+                ("Sec-WebSocket-Version", "13"),
+            ),
+            id="invalid-websocket-key-length",
+        ),
+        pytest.param(
+            (
+                ("Connection", "keep-alive, Upgrade"),
+                ("Upgrade", "websocket"),
+                ("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ=="),
+            ),
+            id="missing-websocket-version",
+        ),
+        pytest.param(
+            (
+                ("Connection", "keep-alive, Upgrade"),
+                ("Upgrade", "websocket"),
+                ("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ=="),
+                ("Sec-WebSocket-Version", "12"),
+            ),
+            id="unsupported-websocket-version",
         ),
     ],
 )
@@ -655,13 +721,13 @@ async def test_invalid_websocket_upgrade_whitespace_normalizes_accept_encoding(
     fake_firewall_headers,
     extra_headers: tuple[tuple[str, str], ...],
 ) -> None:
-    reg_path = _model_provider_registry(tmp_path)
+    reg_path = _model_provider_registry(tmp_path, rule_method="GET")
     flow = _request_flow(
         real_flow,
         headers,
         host=_MODEL_PROVIDER_HOST,
         path=_MODEL_PROVIDER_PATH,
-        method="POST",
+        method="GET",
         accept_encoding="gzip, zstd, br",
         extra_headers=extra_headers,
     )

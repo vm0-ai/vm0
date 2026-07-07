@@ -12,6 +12,8 @@ This addon runs on the runner HOST (not inside VMs) and:
 """
 
 import asyncio
+import base64
+import binascii
 import functools
 import ipaddress
 import json
@@ -251,6 +253,7 @@ _AUTH_SCHEMES_REQUIRING_CREDENTIAL = frozenset(
 )
 _AUTH_BASE_BODYLESS_METHODS = frozenset(("GET", "HEAD"))
 _HTTP_RESPONSE_BODYLESS_METHODS = frozenset(("CONNECT", "HEAD"))
+_WEBSOCKET_KEY_BYTES = 16
 _TLS_ADMISSION_VALID_REGISTRY_VM: Final = "valid_registry_vm"
 _TLS_ADMISSION_INVALID_REGISTRY_VM: Final = "invalid_registry_vm"
 _TLS_ADMISSION_REGISTRY_UNAVAILABLE: Final = "registry_unavailable"
@@ -2910,6 +2913,16 @@ def _is_websocket_upgrade_request(flow: http.HTTPFlow) -> bool:
         return False
     if flow.request.headers.get("Upgrade", "").strip(_HTTP_OWS_CHARS).lower() != "websocket":
         return False
+    if not any(
+        _is_valid_websocket_key(value)
+        for value in flow.request.headers.get_all("Sec-WebSocket-Key")
+    ):
+        return False
+    if not any(
+        value.strip(_HTTP_OWS_CHARS) == "13"
+        for value in flow.request.headers.get_all("Sec-WebSocket-Version")
+    ):
+        return False
 
     connection_values = flow.request.headers.get_all("Connection")
     if not connection_values:
@@ -2920,6 +2933,14 @@ def _is_websocket_upgrade_request(flow: http.HTTPFlow) -> bool:
         for value in connection_values
         for token in value.split(",")
     )
+
+
+def _is_valid_websocket_key(value: str) -> bool:
+    try:
+        decoded = base64.b64decode(value.strip(_HTTP_OWS_CHARS), validate=True)
+    except (binascii.Error, ValueError):
+        return False
+    return len(decoded) == _WEBSOCKET_KEY_BYTES
 
 
 def _maybe_track_usage_flow(
