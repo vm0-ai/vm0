@@ -130,8 +130,11 @@ function buttonByText(text: string): HTMLElement {
   return button;
 }
 
-function buttonByLabel(label: string): HTMLElement {
-  const button = queryAllByRoleFast("button").find((candidate) => {
+function buttonByLabel(
+  label: string,
+  container: ParentNode = document.body,
+): HTMLElement {
+  const button = queryAllByRoleFast("button", container).find((candidate) => {
     return candidate.getAttribute("aria-label") === label;
   });
   if (!button) {
@@ -621,7 +624,8 @@ describe("zero sidebar account menu", () => {
       expect(screen.getByText("Disabled")).toBeInTheDocument();
     });
 
-    click(buttonByLabel("Close"));
+    const settingsDialog = screen.getByRole("dialog", { name: "Settings" });
+    click(buttonByLabel("Close", settingsDialog));
 
     await waitFor(() => {
       expect(
