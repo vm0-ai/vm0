@@ -221,6 +221,10 @@ export const workflowCopyForm$ = computed((get) => {
 
 const FILTER_PARAM = "filter";
 const SORT_MODE_PARAM = "sort";
+const AGENT_PARAM = "agent";
+
+/** The sentinel agent-filter value that clears the agent scope. */
+export const WORKFLOW_ALL_AGENTS = "all";
 
 function readSearchParam<T extends string>(
   params: URLSearchParams,
@@ -252,6 +256,15 @@ export const workflowSortMode$ = computed((get): WorkflowSortMode => {
   );
 });
 
+/**
+ * The agent the list is scoped to, keyed by agent uuid, or `WORKFLOW_ALL_AGENTS`
+ * when unscoped. The value is validated against the visible agents in the view,
+ * so an unknown id simply yields an empty list.
+ */
+export const workflowAgentFilter$ = computed((get): string => {
+  return get(searchParams$).get(AGENT_PARAM) ?? WORKFLOW_ALL_AGENTS;
+});
+
 function nextSearchParams(
   current: URLSearchParams,
   key: string,
@@ -281,6 +294,20 @@ export const setWorkflowSortMode$ = command(
     set(
       replaceSearchParams$,
       nextSearchParams(get(searchParams$), SORT_MODE_PARAM, value, "next-run"),
+    );
+  },
+);
+
+export const setWorkflowAgentFilter$ = command(
+  ({ get, set }, value: string) => {
+    set(
+      replaceSearchParams$,
+      nextSearchParams(
+        get(searchParams$),
+        AGENT_PARAM,
+        value,
+        WORKFLOW_ALL_AGENTS,
+      ),
     );
   },
 );
