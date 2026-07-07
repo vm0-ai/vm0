@@ -124,6 +124,14 @@ function sortRowsByCatalog(rows: OrgModelPolicyRow[]): OrgModelPolicyRow[] {
   });
 }
 
+function isLimitedFreeReplaceableStandardDefaultModel(model: string): boolean {
+  // MiniMax-M3 was the previous VM0-managed default; limited-free orgs seeded
+  // before this change still need to converge to the built-in Sonnet 4.6 route.
+  return (
+    model === DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL || model === "MiniMax-M3"
+  );
+}
+
 function getSeedDefaultModelForTier(limitedFree1: boolean): SupportedRunModel {
   return limitedFree1
     ? LIMITED_FREE1_DEFAULT_RUN_MODEL
@@ -137,11 +145,18 @@ function shouldReplaceExistingDefaultForTier(
   if (!limitedFree1) {
     return existingDefault === undefined;
   }
+  if (existingDefault === undefined) {
+    return true;
+  }
+  const shouldReplaceModel =
+    existingDefault.model !== LIMITED_FREE1_DEFAULT_RUN_MODEL &&
+    (isLimitedFreeReplaceableStandardDefaultModel(existingDefault.model) ||
+      isLimitedFree1RestrictedRunModel(existingDefault.model));
   return (
-    existingDefault === undefined ||
-    existingDefault.model === DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL ||
+    shouldReplaceModel ||
     existingDefault.defaultProviderType !== "vm0" ||
-    isLimitedFree1RestrictedRunModel(existingDefault.model)
+    existingDefault.credentialScope !== "org" ||
+    existingDefault.modelProviderId !== null
   );
 }
 
