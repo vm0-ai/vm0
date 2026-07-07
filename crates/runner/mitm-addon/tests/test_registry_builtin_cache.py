@@ -121,6 +121,33 @@ class TestRegistryBuiltinCache:
         assert api["hostPolicy"]["exactHosts"] == ["cache-only.example.com"]
         assert api["_builtinHostPolicyRuntime"] is True
 
+    def test_catalog_api_ids_are_reassigned_per_vm(self, tmp_path, mitm_ctx):
+        registry_path = tmp_path / "registry.json"
+        cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
+        firewall = _cache_firewall("cache-only", "https://cache-only.example.com")
+        firewall["apis"][0]["id"] = "catalog-owned-id"
+        write_multi_vm_registry(
+            registry_path,
+            {"10.200.0.1": builtin_vm("run-cache-only", "cache-only")},
+        )
+        _write_catalog_cache(
+            cache_path,
+            digest="sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            version="catalog-a",
+            firewalls={"cache-only": firewall},
+        )
+
+        with mitm_ctx(
+            registry_path=str(registry_path),
+            builtin_firewall_catalog_cache_path=str(cache_path),
+        ):
+            context = registry.get_vm_context("10.200.0.1", str(registry_path))
+
+        assert context is not None
+        vm_info, compiled_firewalls, _ = context
+        assert compiled_firewalls is not None
+        assert vm_info["firewalls"][0]["apis"][0]["id"] == "run-cache-only:0"
+
     def test_malformed_runner_catalog_cache_falls_back_to_bundled(
         self, tmp_path, monkeypatch, mitm_ctx
     ):

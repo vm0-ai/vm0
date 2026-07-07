@@ -198,6 +198,9 @@ pub struct FirewallApi {
 
 impl FirewallApi {
     fn validate_for_cache(&self) -> Result<(), String> {
+        if !self.id.is_empty() {
+            return Err("id must be empty because the runner assigns api ids".to_string());
+        }
         if self.base.is_empty() {
             return Err("base must be non-empty".to_string());
         }

@@ -159,9 +159,7 @@ def _assign_firewall_api_ids(firewalls: list[dict], run_id: str) -> None:
         for api in raw_apis:
             if not isinstance(api, dict):
                 continue
-            raw_id = api.get("id")
-            if not isinstance(raw_id, str) or raw_id == "":
-                api["id"] = f"{run_id}:{index}"
+            api["id"] = f"{run_id}:{index}"
             index += 1
 
 
