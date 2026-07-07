@@ -169,6 +169,12 @@ _CONNECTOR_DIAGNOSTIC_RESPONSE_REPLACED_IN_HEADERS = (
 _CONNECTOR_DIAGNOSTIC_RESPONSE_BODY = "_connector_diagnostic_response_body"
 _CONNECTOR_DIAGNOSTIC_RESPONSE_STREAM_BODY_SENT = "_connector_diagnostic_response_stream_body_sent"
 _CONNECTOR_DIAGNOSTIC_RESPONSE_STREAM_CALLBACK = "_connector_diagnostic_response_stream_callback"
+
+# Connector diagnostic proxy-log state.
+# Creator: _log_connector_diagnostic_proxy_entry().
+# Consumer: _log_connector_diagnostic_proxy_entry() duplicate guard.
+# Release: _release_connector_diagnostic_response_stream_state().
+# Follow-up owner: #20508 connector diagnostics extraction.
 _CONNECTOR_DIAGNOSTIC_PROXY_ENTRY_LOGGED = "_connector_diagnostic_proxy_entry_logged"
 
 # Connector diagnostic ownership state.
