@@ -1,5 +1,3 @@
-import { gzipSync } from "node:zlib";
-
 import type { StorageManifest } from "@vm0/api-contracts/contracts/runners";
 import { expandVariablesInString } from "@vm0/core/variable-expander";
 import {
@@ -17,7 +15,7 @@ import { computed, type Computed } from "ccstate";
 import { and, eq, inArray, isNull, like } from "drizzle-orm";
 
 import { env } from "../../lib/env";
-import { generatePresignedGetUrl, putS3Object } from "../external/s3";
+import { generatePresignedGetUrl } from "../external/s3";
 import type { Db } from "../external/db";
 import { now, nowDate } from "../external/time";
 import { settle } from "../utils";
@@ -131,6 +129,7 @@ interface StorageResolution {
   readonly storageId: string;
   readonly versionId: string;
   readonly s3Key: string;
+  readonly fileCount: number;
   readonly resolvedOrgId: string;
 }
 
@@ -150,7 +149,11 @@ interface ArtifactStorageRow {
 interface StorageIndexEntry {
   readonly storageId: string;
   readonly headVersionId: string | null;
-  readonly headVersion: { readonly id: string; readonly s3Key: string } | null;
+  readonly headVersion: {
+    readonly id: string;
+    readonly s3Key: string;
+    readonly fileCount: number;
+  } | null;
 }
 
 interface StorageManifestInputs {
@@ -230,7 +233,6 @@ interface StorageManifestPhaseTimingWindow {
  */
 type StorageIndex = ReadonlyMap<string, StorageIndexEntry>;
 
-const EMPTY_TAR_GZ = gzipSync(Buffer.alloc(1024, 0));
 const DOWNLOAD_URL_TTL_SECONDS = 60 * 60;
 const STORAGE_MANIFEST_COUNT_BUCKET_DIMENSIONS = [
   "0",
@@ -254,7 +256,6 @@ const STORAGE_MANIFEST_ARTIFACT_ENSURE_ACTION_TYPES = [
   "api_dispatch_prepare_storage_manifest_ensure_artifact_insert_storage",
   "api_dispatch_prepare_storage_manifest_ensure_artifact_refetch_storage",
   "api_dispatch_prepare_storage_manifest_ensure_artifact_skip_initialized",
-  "api_dispatch_prepare_storage_manifest_ensure_artifact_upload_empty_objects",
   "api_dispatch_prepare_storage_manifest_ensure_artifact_insert_initial_version",
 ] as const satisfies readonly ApiDispatchTimingActionType[];
 
@@ -1003,16 +1004,6 @@ function dedupArtifacts(
   return [...byName.values()];
 }
 
-function createEmptyStorageManifest(): string {
-  return JSON.stringify({
-    version: "1",
-    createdAt: nowDate().toISOString(),
-    totalSize: 0,
-    fileCount: 0,
-    files: [],
-  });
-}
-
 async function findStorage(
   db: Db,
   lookup: StorageLookup,
@@ -1060,6 +1051,7 @@ async function loadStorageIndex(
       headVersionId: storages.headVersionId,
       versionId: storageVersions.id,
       s3Key: storageVersions.s3Key,
+      fileCount: storageVersions.fileCount,
     })
     .from(storages)
     .leftJoin(storageVersions, eq(storages.headVersionId, storageVersions.id))
@@ -1071,8 +1063,8 @@ async function loadStorageIndex(
       storageId: row.storageId,
       headVersionId: row.headVersionId,
       headVersion:
-        row.versionId && row.s3Key
-          ? { id: row.versionId, s3Key: row.s3Key }
+        row.versionId && row.s3Key && row.fileCount !== null
+          ? { id: row.versionId, s3Key: row.s3Key, fileCount: row.fileCount }
           : null,
     });
   }
@@ -1155,37 +1147,6 @@ async function recordInitializedArtifactFastPath(
   );
 }
 
-async function uploadEmptyArtifactObjects(
-  get: ComputedGetter,
-  args: EnsureArtifactStorageArgs,
-  s3Key: string,
-): Promise<void> {
-  await measureStorageManifestArtifactEnsure(
-    args.timing,
-    "api_dispatch_prepare_storage_manifest_ensure_artifact_upload_empty_objects",
-    async () => {
-      await Promise.all([
-        get(
-          putS3Object(
-            args.bucket,
-            `${s3Key}/manifest.json`,
-            createEmptyStorageManifest(),
-            "application/json",
-          ),
-        ),
-        get(
-          putS3Object(
-            args.bucket,
-            `${s3Key}/archive.tar.gz`,
-            EMPTY_TAR_GZ,
-            "application/gzip",
-          ),
-        ),
-      ]);
-    },
-  );
-}
-
 async function insertInitialArtifactVersion(args: {
   readonly db: Db;
   readonly userId: string;
@@ -1233,14 +1194,12 @@ async function insertInitialArtifactVersion(args: {
 }
 
 async function initializeEmptyArtifactStorage(
-  get: ComputedGetter,
   args: EnsureArtifactStorageArgs,
   storage: ArtifactStorageRow,
 ): Promise<void> {
   args.stats?.recordArtifactEnsureMissingHeadVersion();
   const versionId = computeContentHashFromHashes(storage.id, []);
   const s3Key = `${storage.s3Prefix}/${versionId}`;
-  await uploadEmptyArtifactObjects(get, args, s3Key);
   const initializedHead = await insertInitialArtifactVersion({
     db: args.db,
     userId: args.userId,
@@ -1257,7 +1216,7 @@ async function initializeEmptyArtifactStorage(
 function ensureArtifactStorage(
   args: EnsureArtifactStorageArgs,
 ): Computed<Promise<void>> {
-  return computed(async (get): Promise<void> => {
+  return computed(async (): Promise<void> => {
     const lookup = {
       orgId: args.orgId,
       userId: args.userId,
@@ -1273,7 +1232,7 @@ function ensureArtifactStorage(
       return;
     }
 
-    await initializeEmptyArtifactStorage(get, args, storage);
+    await initializeEmptyArtifactStorage(args, storage);
   });
 }
 
@@ -1309,6 +1268,7 @@ function resolveLatestVersion(
     storageId: entry.storageId,
     versionId: entry.headVersion.id,
     s3Key: entry.headVersion.s3Key,
+    fileCount: entry.headVersion.fileCount,
     resolvedOrgId: lookup.orgId,
   };
 }
@@ -1327,7 +1287,11 @@ async function resolvePinnedVersion(
   }
 
   const [exactMatch] = await db
-    .select({ id: storageVersions.id, s3Key: storageVersions.s3Key })
+    .select({
+      id: storageVersions.id,
+      s3Key: storageVersions.s3Key,
+      fileCount: storageVersions.fileCount,
+    })
     .from(storageVersions)
     .where(
       and(
@@ -1341,6 +1305,7 @@ async function resolvePinnedVersion(
       storageId: storage.storageId,
       versionId: exactMatch.id,
       s3Key: exactMatch.s3Key,
+      fileCount: exactMatch.fileCount,
       resolvedOrgId: lookup.orgId,
     };
   }
@@ -1355,7 +1320,11 @@ async function resolvePinnedVersion(
   }
 
   const matches = await db
-    .select({ id: storageVersions.id, s3Key: storageVersions.s3Key })
+    .select({
+      id: storageVersions.id,
+      s3Key: storageVersions.s3Key,
+      fileCount: storageVersions.fileCount,
+    })
     .from(storageVersions)
     .where(
       and(
@@ -1381,6 +1350,7 @@ async function resolvePinnedVersion(
     storageId: storage.storageId,
     versionId: match.id,
     s3Key: match.s3Key,
+    fileCount: match.fileCount,
     resolvedOrgId: lookup.orgId,
   };
 }
@@ -1766,6 +1736,7 @@ async function buildArtifactEntryFromInput(
     vasStorageId: resolved.storageId,
     vasVersionId: resolved.versionId,
     archiveUrl,
+    ...(resolved.fileCount === 0 ? { empty: true } : {}),
     ...(artifact.missingRootPolicy
       ? { missingRootPolicy: artifact.missingRootPolicy }
       : {}),

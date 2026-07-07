@@ -45,6 +45,8 @@ pub(crate) struct ManifestEntry {
     #[serde(default)]
     pub(crate) cached: bool,
     #[serde(default)]
+    pub(crate) empty: bool,
+    #[serde(default)]
     pub(crate) vas_storage_name: Option<String>,
     #[serde(default)]
     pub(crate) vas_version_id: Option<String>,
@@ -108,6 +110,18 @@ mod tests {
         let manifest: Manifest = serde_json::from_str(json).unwrap();
         assert!(!manifest.storages[0].cached);
         assert!(!manifest.artifacts[0].cached);
+        assert!(!manifest.artifacts[0].empty);
+    }
+
+    #[test]
+    fn manifest_deserializes_empty_artifact_field() {
+        let json = r#"{
+            "storages": [{"mountPath": "/data", "empty": true}],
+            "artifacts": [{"mountPath": "/workspace", "empty": true}]
+        }"#;
+        let manifest: Manifest = serde_json::from_str(json).unwrap();
+        assert!(manifest.storages[0].empty);
+        assert!(manifest.artifacts[0].empty);
     }
 
     #[test]
