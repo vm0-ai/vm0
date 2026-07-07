@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.237.1](https://github.com/vm0-ai/vm0/compare/api-v1.237.0...api-v1.237.1) (2026-07-07)
+
+
+### Bug Fixes
+
+* keep mobile unread shortcuts personal ([#20558](https://github.com/vm0-ai/vm0/issues/20558)) ([de0abb4](https://github.com/vm0-ai/vm0/commit/de0abb489415605332ce985b2ee1b80185ab72a1))
+
+
+### CI
+
+* **release:** guard app releases from unreleased api diffs ([#20549](https://github.com/vm0-ai/vm0/issues/20549)) ([e1d6e28](https://github.com/vm0-ai/vm0/commit/e1d6e282f1b30e3a2fc67b57ca5173587cb43e38))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.412.1
+    * @vm0/db bumped to 1.98.1
+
 ## [1.237.0](https://github.com/vm0-ai/vm0/compare/api-v1.236.0...api-v1.237.0) (2026-07-07)
 
 
