@@ -79,8 +79,7 @@ describe("zero generate image command", () => {
       "node",
       "cli",
       "image",
-      "--skip-style",
-      "--prompt",
+      "--raw-prompt",
       "A watercolor fox",
       "--quality",
       "auto",
@@ -141,11 +140,10 @@ describe("zero generate image command", () => {
       "node",
       "cli",
       "image",
-      "--skip-style",
+      "--raw-prompt",
+      "A product hero shot",
       "--model",
       "flux-pro-1.1",
-      "--prompt",
-      "A product hero shot",
       "--format",
       "jpeg",
       "--seed",
@@ -195,11 +193,10 @@ describe("zero generate image command", () => {
       "node",
       "cli",
       "image",
-      "--skip-style",
+      "--compiled-prompt",
+      "Turn this mockup into a polished product shot",
       "--model",
       "flux-pro-1.1",
-      "--prompt",
-      "Turn this mockup into a polished product shot",
       "--image-url",
       "https://example.com/mockup.png",
       "--image-prompt-strength",
@@ -248,11 +245,10 @@ describe("zero generate image command", () => {
       "node",
       "cli",
       "image",
-      "--skip-style",
+      "--compiled-prompt",
+      "Combine these references into a campaign image",
       "--model",
       "nano-banana-2",
-      "--prompt",
-      "Combine these references into a campaign image",
       "--image-url",
       "https://example.com/reference-1.png",
       "--image-url",
@@ -285,7 +281,7 @@ describe("zero generate image command", () => {
     expect(stdout).toContain("Provider: fal");
   });
 
-  it("should print styled image resource selection instructions with --style", async () => {
+  it("should print styled image prompt compilation instructions with --style and --compile", async () => {
     await generateCommand.parseAsync([
       "node",
       "cli",
@@ -294,22 +290,24 @@ describe("zero generate image command", () => {
       "image-style:notion-illustration",
       "--prompt",
       "Notion illustration of a product manager mapping a launch plan",
+      "--compile",
     ]);
 
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
     expect(stdout).toContain(
-      "# Zero generate image --style image-style:notion-illustration",
+      "# Zero generate image prompt compile image-style:notion-illustration",
     );
-    expect(stdout).toContain("federated generation source-selection packet");
+    expect(stdout).toContain("image prompt-compilation packet");
     expect(stdout).toContain("## Selected Image Style");
     expect(stdout).toContain("image-style:notion-illustration");
-    expect(stdout).toContain("## Candidate Registry Slice");
+    expect(stdout).toContain("## Style Source");
     expect(stdout).toContain("vm0-ai/vm0-skills");
     expect(stdout).toContain("notion-illustration");
-    expect(stdout).toContain("## Stage 3: Generate Image");
+    expect(stdout).toContain("## Prompt Compiler Task");
+    expect(stdout).toContain("--compiled-prompt");
   });
 
-  it("should fail with style listing when neither --style nor --skip-style is provided", async () => {
+  it("should fail with mode guidance when no image prompt mode is selected", async () => {
     await expect(async () => {
       await generateCommand.parseAsync([
         "node",
@@ -321,9 +319,29 @@ describe("zero generate image command", () => {
     }).rejects.toThrow("process.exit called");
 
     const stderr = mockConsoleError.mock.calls.flat().join("\n");
-    expect(stderr).toContain("--style <id> or --skip-style is required");
+    expect(stderr).toContain("Choose one image prompt mode");
+    expect(stderr).toContain("--compiled-prompt");
+    expect(stderr).toContain("--raw-prompt");
     expect(stderr).toContain("image-style:notion-illustration");
     expect(stderr).toContain("image-style:vm0-illustration");
+  });
+
+  it("should reject compile mode without a prompt", async () => {
+    await expect(async () => {
+      await generateCommand.parseAsync([
+        "node",
+        "cli",
+        "image",
+        "--style",
+        "image-style:notion-illustration",
+        "--compile",
+      ]);
+    }).rejects.toThrow("process.exit called");
+
+    const stderr = mockConsoleError.mock.calls.flat().join("\n");
+    expect(stderr).toContain(
+      "--compile requires --prompt <text> or piped stdin",
+    );
   });
 
   it("should fail with style listing when --style id is unknown", async () => {
@@ -336,6 +354,7 @@ describe("zero generate image command", () => {
         "image-style:does-not-exist",
         "--prompt",
         "Anything",
+        "--compile",
       ]);
     }).rejects.toThrow("process.exit called");
 
@@ -344,7 +363,7 @@ describe("zero generate image command", () => {
     expect(stderr).toContain("image-style:notion-illustration");
   });
 
-  it("should reject combining --style with --skip-style", async () => {
+  it("should reject --style without --compile", async () => {
     await expect(async () => {
       await generateCommand.parseAsync([
         "node",
@@ -352,14 +371,13 @@ describe("zero generate image command", () => {
         "image",
         "--style",
         "image-style:notion-illustration",
-        "--skip-style",
         "--prompt",
         "Anything",
       ]);
     }).rejects.toThrow("process.exit called");
 
     const stderr = mockConsoleError.mock.calls.flat().join("\n");
-    expect(stderr).toContain("--style and --skip-style cannot be combined");
+    expect(stderr).toContain("--style can only be used with --compile");
   });
 
   it("should wait for an accepted async generation result", async () => {
@@ -406,8 +424,7 @@ describe("zero generate image command", () => {
       "node",
       "cli",
       "image",
-      "--skip-style",
-      "--prompt",
+      "--raw-prompt",
       "Async please",
     ]);
 
@@ -444,7 +461,10 @@ describe("zero generate image command", () => {
     expect(helpOutput).toContain("--image-prompt-strength");
     expect(helpOutput).toContain("Nano Banana 2 accepts up to 14");
     expect(helpOutput).toContain("--style <id>");
-    expect(helpOutput).toContain("--skip-style");
+    expect(helpOutput).toContain("--compile");
+    expect(helpOutput).toContain("--compiled-prompt");
+    expect(helpOutput).toContain("--raw-prompt");
+    expect(helpOutput).not.toContain("--skip-style");
     expect(helpOutput).not.toContain("--json");
     expect(helpOutput).not.toContain("--styled ");
     expect(helpOutput).toContain("provider");
@@ -479,8 +499,7 @@ describe("zero generate image command", () => {
         "node",
         "cli",
         "image",
-        "--skip-style",
-        "--prompt",
+        "--raw-prompt",
         "hello",
       ]);
     }).rejects.toThrow("process.exit called");

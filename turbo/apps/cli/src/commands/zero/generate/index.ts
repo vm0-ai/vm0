@@ -40,7 +40,7 @@ const documentCommand = createListerOnlyCommand({
 
 function buildGenerateHelpText(): string {
   const examples = [
-    '  Generate image:        zero generate image --prompt "A watercolor fox"',
+    '  Generate image:        zero generate image --raw-prompt "A watercolor fox"',
     '  Generate deck:         zero generate presentation --prompt "A product roadmap"',
     '  Generate report:       zero generate report --prompt "A Q2 usage report"',
     '  Generate docs:         zero generate docs-design --prompt "A setup guide"',
@@ -53,7 +53,7 @@ function buildGenerateHelpText(): string {
     "  Show image choices:    zero generate image",
     "  Show report choices:   zero generate report",
     "  Use a connector:       zero generate video --provider heygen",
-    "  Force built-in:        zero generate image --provider built-in --model gpt-image-1.5 --prompt ...",
+    "  Force built-in:        zero generate image --provider built-in --model gpt-image-1.5 --raw-prompt ...",
   ];
 
   return `\nExamples:\n${examples.join("\n")}\n\nNotes:\n  - Run "zero generate <type>" with no --prompt to list generation choices for that type.

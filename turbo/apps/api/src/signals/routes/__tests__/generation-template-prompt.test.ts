@@ -97,8 +97,9 @@ describe("buildGenerationTemplatePrompt", () => {
     // agent does not re-ask for an already-selected style (vm0-ai/vm0#17525).
     expect(result.prompt).toContain(item.illustrationStyleId);
     expect(result.prompt).toContain(
-      `zero generate image --provider built-in --style ${item.illustrationStyleId}`,
+      `zero generate image --provider built-in --style ${item.illustrationStyleId} --prompt "<user request>" --compile`,
     );
+    expect(result.prompt).toContain("--compiled-prompt");
   });
 
   it("builds video template preset guidance", () => {
