@@ -89,6 +89,7 @@ export type PublicConnectorAuthClientConfig =
 export type ConnectorGrantKind =
   | "manual"
   | "auth-code"
+  | "openid-auth"
   | "external-code"
   | "device-auth"
   | "managed";
@@ -98,12 +99,20 @@ export interface ConnectorManualGrantConfig {
   readonly fields: Record<string, ConnectorManualGrantFieldConfig>;
 }
 
-export type ConnectorAuthCodeCallbackOrigin = "web" | "api";
+export type ConnectorBrowserAuthCallbackOrigin = "web" | "api";
+export type ConnectorAuthCodeCallbackOrigin =
+  ConnectorBrowserAuthCallbackOrigin;
 
 export interface ConnectorAuthCodeGrantConfig {
   readonly kind: "auth-code";
   readonly scopes: string[];
   readonly callbackOrigin?: ConnectorAuthCodeCallbackOrigin;
+  readonly outputs: ConnectorGrantOutputBindings;
+}
+
+export interface ConnectorOpenIdAuthGrantConfig {
+  readonly kind: "openid-auth";
+  readonly callbackOrigin?: ConnectorBrowserAuthCallbackOrigin;
   readonly outputs: ConnectorGrantOutputBindings;
 }
 
@@ -158,6 +167,7 @@ export interface ConnectorManagedGrantConfig {
 export type ConnectorGrantConfig =
   | ConnectorManualGrantConfig
   | ConnectorAuthCodeGrantConfig
+  | ConnectorOpenIdAuthGrantConfig
   | ConnectorExternalCodeGrantConfig
   | ConnectorDeviceAuthGrantConfig
   | ConnectorManagedGrantConfig;
@@ -166,6 +176,7 @@ export type ConnectorAccessKind = "static" | "refresh-token" | "none";
 
 export const CONNECTOR_PLATFORM_SECRET_NAMES = [
   "GOOGLE_ADS_DEVELOPER_TOKEN",
+  "STEAM_WEB_API_KEY",
 ] as const;
 export type ConnectorPlatformSecretName =
   (typeof CONNECTOR_PLATFORM_SECRET_NAMES)[number];
@@ -278,6 +289,12 @@ export type ConnectorAuthMethodConfig =
       readonly revoke: ConnectorRevokeConfig;
     })
   | (ConnectorAuthMethodConfigBase & {
+      readonly client?: ConnectorAuthClientConfig;
+      readonly grant: ConnectorOpenIdAuthGrantConfig;
+      readonly access: ConnectorAccessConfig;
+      readonly revoke: ConnectorRevokeConfig;
+    })
+  | (ConnectorAuthMethodConfigBase & {
       readonly client: ConnectorAuthClientConfig;
       readonly grant: ConnectorExternalCodeGrantConfig;
       readonly access: ConnectorAccessConfig;
@@ -304,6 +321,7 @@ export type ConnectorAuthMethodConfig =
  */
 export const CONNECTOR_AUTH_METHOD_IDS = [
   "oauth",
+  "openid",
   "api-token",
   "cli",
   "api",

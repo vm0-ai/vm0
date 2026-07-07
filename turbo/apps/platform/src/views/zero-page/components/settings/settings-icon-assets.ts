@@ -380,6 +380,7 @@ const SETTINGS_ICON_ASSET_PATHS = {
     "views/zero-page/components/settings/icons/sociavault-44913bcfa5a4.svg",
   sponge: "views/zero-page/components/settings/icons/sponge-5d9c0211e5bc.svg",
   spotify: "views/zero-page/components/settings/icons/spotify-e27177df2642.svg",
+  steam: "views/zero-page/components/settings/icons/steam-4e2ba2137237.svg",
   sproutgigs:
     "views/zero-page/components/settings/icons/sproutgigs-c1192764dbee.svg",
   square: "views/zero-page/components/settings/icons/square-b95ac9f46e21.svg",

@@ -50,7 +50,6 @@ function makeLogDetail(overrides: Partial<LogDetail>): LogDetail {
     selectedModel: null,
     triggerSource: "web",
     triggerAgentName: null,
-    automationId: null,
     status: "running",
     prompt: "Hello",
     appendSystemPrompt: null,

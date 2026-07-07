@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.21.11](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.10...guest-mock-claude-v0.21.11) (2026-07-06)
+
+
+### Refactoring
+
+* **guest-mock-claude:** split jsonl integration tests ([#20375](https://github.com/vm0-ai/vm0/issues/20375)) ([91e3989](https://github.com/vm0-ai/vm0/commit/91e3989d94adc90bec8d5eb23407755a16edc349))
+
 ## [0.21.10](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.9...guest-mock-claude-v0.21.10) (2026-07-06)
 
 ## [0.21.9](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.8...guest-mock-claude-v0.21.9) (2026-07-05)

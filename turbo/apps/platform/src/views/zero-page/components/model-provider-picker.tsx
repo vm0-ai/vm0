@@ -751,7 +751,7 @@ function ModelFirstModelPickerPopoverTrigger({
         aria-expanded={open}
         aria-haspopup="listbox"
         className={cn(
-          "flex h-9 w-full items-center justify-start gap-2 rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input px-3 py-2 text-sm text-foreground outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 data-[state=open]:ring-2 data-[state=open]:ring-ring data-[state=open]:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 [&>span]:line-clamp-1 [&>span]:w-full [&>span]:text-left",
+          "flex h-9 w-full items-center justify-start gap-2 rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input px-3 py-2 text-sm text-foreground outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 [&>span]:line-clamp-1 [&>span]:w-full [&>span]:text-left",
           triggerClassName,
         )}
       >

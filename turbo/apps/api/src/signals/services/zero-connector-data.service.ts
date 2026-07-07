@@ -1388,6 +1388,7 @@ function connectorTokenOutputMetadataForAuthMethod(args: {
 
   switch (method.grant.kind) {
     case "auth-code":
+    case "openid-auth":
     case "external-code":
     case "device-auth": {
       const outputTargets = Object.fromEntries(

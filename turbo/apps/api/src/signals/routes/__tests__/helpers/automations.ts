@@ -1,8 +1,6 @@
 import type {
   TestAutomationsStateActionBody,
   TestAutomationsStateActionResponse,
-  TestAutomationsStatePostBody,
-  TestAutomationsStatePostResponse,
 } from "@vm0/api-contracts/contracts/test-automations-state";
 
 import { createAppWithRoutes } from "../../../../app-factory-core";
@@ -10,39 +8,6 @@ import type { TestContext } from "../../../../__tests__/test-context";
 import { testAutomationsStateRoutes } from "../../test-automations-state";
 
 const AUTOMATIONS_STATE_ROUTE = "/api/test/automations-state";
-
-interface AutomationSeed {
-  readonly name: string;
-  readonly prompt: string;
-  readonly description?: string | null;
-  readonly cronExpression?: string;
-  readonly atTime?: Date;
-  readonly intervalSeconds?: number;
-  readonly triggerType?: "cron" | "once" | "loop";
-  readonly enabled?: boolean;
-  readonly nextRunAt?: Date | null;
-  readonly lastRunId?: string | null;
-  readonly appendSystemPrompt?: string | null;
-  readonly timezone?: string;
-  readonly consecutiveFailures?: number;
-}
-
-interface AutomationsScenarioValues {
-  readonly automations: readonly AutomationSeed[];
-  readonly displayName?: string;
-  readonly agentName?: string;
-  readonly userName?: string | null;
-  readonly userEmail?: string | null;
-  readonly timezone?: string | null;
-  readonly framework?: "claude-code" | "codex";
-}
-
-export interface AutomationsFixture {
-  readonly orgId: string;
-  readonly userId: string;
-  readonly composeId: string;
-  readonly automationIds: readonly string[];
-}
 
 function requestAutomationsState(
   context: TestContext,
@@ -54,42 +19,6 @@ function requestAutomationsState(
     routes: testAutomationsStateRoutes,
   });
   return Promise.resolve(app.request(path, init));
-}
-
-function dateToWire(value: Date | null | undefined): string | null | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-  if (value === null) {
-    return null;
-  }
-  return value.toISOString();
-}
-
-function toPostBody(
-  values: AutomationsScenarioValues,
-): TestAutomationsStatePostBody {
-  return {
-    ...values,
-    automations: values.automations.map((seed) => {
-      return {
-        ...seed,
-        atTime: dateToWire(seed.atTime) ?? undefined,
-        nextRunAt: dateToWire(seed.nextRunAt),
-      };
-    }),
-  };
-}
-
-function fromPostResponse(
-  response: TestAutomationsStatePostResponse,
-): AutomationsFixture {
-  return {
-    orgId: response.org_id,
-    userId: response.user_id,
-    composeId: response.compose_id,
-    automationIds: response.automation_ids,
-  };
 }
 
 async function readJson<T>(response: Response): Promise<T> {
@@ -118,46 +47,6 @@ async function postAction(
   );
   await expectOk(response, `automations action ${body.action}`);
   return await readJson<TestAutomationsStateActionResponse>(response);
-}
-
-export async function seedAutomationsScenario(
-  context: TestContext,
-  values: AutomationsScenarioValues,
-): Promise<AutomationsFixture> {
-  const response = await requestAutomationsState(
-    context,
-    AUTOMATIONS_STATE_ROUTE,
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(toPostBody(values)),
-    },
-  );
-  await expectOk(response, "seedAutomationsScenario");
-  return fromPostResponse(
-    await readJson<TestAutomationsStatePostResponse>(response),
-  );
-}
-
-export async function deleteAutomationsScenario(
-  context: TestContext,
-  fixture: AutomationsFixture,
-): Promise<void> {
-  const query = new URLSearchParams({
-    org_id: fixture.orgId,
-    user_id: fixture.userId,
-    compose_id: fixture.composeId,
-  });
-  if (fixture.automationIds.length > 0) {
-    query.set("automation_ids", fixture.automationIds.join(","));
-  }
-
-  const response = await requestAutomationsState(
-    context,
-    `${AUTOMATIONS_STATE_ROUTE}?${query.toString()}`,
-    { method: "DELETE" },
-  );
-  await expectOk(response, "deleteAutomationsScenario");
 }
 
 export async function readAutomationComposeHeadVersion(

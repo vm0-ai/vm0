@@ -3,7 +3,6 @@ import { healthContract } from "@vm0/api-contracts/contracts/health";
 
 import { agentCheckpointsRoutes } from "./routes/agent-checkpoints-id";
 import { agentComposesByIdRoutes } from "./routes/agent-composes-id";
-import { automationsRoutes } from "./routes/automations";
 import { agentComposesReadRoutes } from "./routes/agent-composes-read";
 import { agentComposesRoutes } from "./routes/agent-composes";
 import { agentRunsCancelRoutes } from "./routes/agent-runs-cancel";
@@ -161,6 +160,7 @@ import { zeroSlackConnectRoutes } from "./routes/zero-slack-connect";
 import { zeroSlackEventsRoutes } from "./routes/zero-slack-events";
 import { zeroSlackInteractiveRoutes } from "./routes/zero-slack-interactive";
 import { zeroSlackOauthRoutes } from "./routes/zero-slack-oauth";
+import { zeroSteamPlayerRoutes } from "./routes/zero-steam-player";
 import { zeroTeamsBrowserConnectRoutes } from "./routes/zero-teams-browser-connect";
 import { zeroTeamsBotRoutes } from "./routes/zero-teams-bot";
 import { zeroTeamsConnectRoutes } from "./routes/zero-teams-connect";
@@ -222,8 +222,6 @@ export const ROUTES: readonly RouteEntry[] = [
     handler: apiBuildInfo$,
   },
   ...authMeRoutes,
-  // Legacy automations: read-only provenance rows after the workflow cutover.
-  ...automationsRoutes,
   ...cliAuthRoutes,
   ...cliAuthTestRoutes,
   ...desktopAuthRoutes,
@@ -380,6 +378,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroIntegrationsSlackUploadCompleteRoutes,
   ...zeroIntegrationsSlackUploadInitRoutes,
   ...zeroSlackChannelsRoutes,
+  ...zeroSteamPlayerRoutes,
   ...zeroIntegrationsTelegramRoutes,
   ...zeroIntegrationsTelegramMessageRoutes,
   ...zeroIntegrationsTelegramUploadCompleteRoutes,

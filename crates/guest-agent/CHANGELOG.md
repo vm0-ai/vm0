@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.47.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.46.8...guest-agent-v0.47.0) (2026-07-06)
+
+
+### Features
+
+* write zstd session history blobs ([#20392](https://github.com/vm0-ai/vm0/issues/20392)) ([3e5215d](https://github.com/vm0-ai/vm0/commit/3e5215d916ca250c866480be2cb5e60382867ac6))
+
+
+### Performance Improvements
+
+* **guest-agent:** avoid buffering reasoning text twice ([#20373](https://github.com/vm0-ai/vm0/issues/20373)) ([a234c82](https://github.com/vm0-ai/vm0/commit/a234c829366b4c5ba2eeb1229b5a98498bada848))
+
 ## [0.46.8](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.46.7...guest-agent-v0.46.8) (2026-07-06)
 
 ## [0.46.7](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.46.6...guest-agent-v0.46.7) (2026-07-06)

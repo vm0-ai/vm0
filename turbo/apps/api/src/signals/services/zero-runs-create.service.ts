@@ -126,8 +126,6 @@ type RunCallback = HttpRunCallback | InternalRunCallback;
 
 interface ZeroRunMetadata {
   readonly triggerAgentId?: string;
-  readonly automationId?: string;
-  readonly triggerId?: string;
   readonly workflowTriggerId?: string;
   readonly triggerBrief?: string;
   readonly runGroupId?: string;
@@ -299,7 +297,7 @@ function buildAgentToolsPrompt(triggerSource: TriggerSource): string {
     "You have access to the Zero CLI. Run commands with: `npx -p @vm0/cli zero <command>`",
     "- Discover available commands: `zero --help`.",
     "- Search agent run logs, web chat messages, or external services via connectors: `zero search --help`.",
-    "- Automate recurring tasks: `zero automation --help`. Do NOT use /loop, cron tools (CronCreate, CronList, CronDelete), or ScheduleWakeup — they are not available.",
+    "- Manage recurring workflow triggers: `zero workflow trigger --help`. Do NOT use /loop, cron tools (CronCreate, CronList, CronDelete), or ScheduleWakeup — they are not available.",
     "- Browser access: the runtime environment includes `agent-browser` for browser automation and inspection.",
     ...buildIntegrationToolsPrompt(triggerSource),
     "- Maps, geocoding, directions, and places: use `zero maps --help`.",

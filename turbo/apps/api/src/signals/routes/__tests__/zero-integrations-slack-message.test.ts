@@ -18,7 +18,6 @@ import {
   deleteUsageInsightFixture$,
   seedCompose$,
   seedRun$,
-  seedAutomation$,
   type UsageInsightFixture,
 } from "./helpers/zero-usage-insight";
 
@@ -368,74 +367,6 @@ describe("POST /api/zero/integrations/slack/message", () => {
     const footerCtx = blocks[blocks.length - 1]!;
     expect(footerCtx.type).toBe("context");
     expect(footerCtx.elements![0]!.text).toBe("Sent via My Assistant");
-  });
-
-  it("appends automation, creator, and model in footer when run is triggered by an automation", async () => {
-    const { orgId, userId, slackWorkspaceId } = await seedWithInstallation();
-    const { composeId, agentId } = await store.set(
-      seedCompose$,
-      { orgId, userId, displayName: "My Assistant" },
-      context.signal,
-    );
-    const automationId = await store.set(
-      seedAutomation$,
-      {
-        orgId,
-        userId,
-        agentId,
-        name: "daily-standup",
-        description: "Daily standup summary",
-      },
-      context.signal,
-    );
-    const { runId } = await store.set(
-      seedRun$,
-      {
-        orgId,
-        userId,
-        composeId,
-        automationId,
-        triggerSource: "automation",
-        selectedModel: "claude-sonnet-4-6",
-      },
-      context.signal,
-    );
-
-    const { slackUserId } = await store.set(
-      seedSlackOrgConnection$,
-      { slackWorkspaceId, vm0UserId: userId },
-      context.signal,
-    );
-
-    const token = zeroToken({ userId, orgId, runId });
-
-    const client = setupApp({ context })(integrationsSlackMessageContract);
-    const response = await accept(
-      client.sendMessage({
-        body: { channel: "C123456", text: "Standup results" },
-        headers: { authorization: `Bearer ${token}` },
-      }),
-      [200],
-    );
-    expect(response.body.ok).toBeTruthy();
-
-    const call = context.mocks.slack.chat.postMessage.mock.calls.at(-1)?.[0] as
-      | undefined
-      | {
-          blocks: {
-            type: string;
-            elements?: { text: string }[];
-          }[];
-        };
-    expect(call?.blocks).toBeDefined();
-    const blocks = call!.blocks;
-    expect(blocks).toHaveLength(3);
-
-    const footerCtx = blocks[blocks.length - 1]!;
-    expect(footerCtx.type).toBe("context");
-    expect(footerCtx.elements![0]!.text).toBe(
-      `Sent via My Assistant · Triggered by automation "Daily standup summary" · Created by <@${slackUserId}> · Claude Sonnet 4.6`,
-    );
   });
 
   it("appends user attribution footer when run is user-triggered (not scheduled)", async () => {

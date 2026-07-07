@@ -1,5 +1,108 @@
 # Changelog
 
+## [0.564.2](https://github.com/vm0-ai/vm0/compare/app-v0.564.1...app-v0.564.2) (2026-07-06)
+
+
+### Refactoring
+
+* drop legacy automation tables and read-only automation surfaces ([#20420](https://github.com/vm0-ai/vm0/issues/20420)) ([bfbf99b](https://github.com/vm0-ai/vm0/commit/bfbf99bbe639ec9c9ce67a37b5155e8478f96224))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.159.2
+    * @vm0/core bumped to 8.408.2
+
+## [0.564.1](https://github.com/vm0-ai/vm0/compare/app-v0.564.0...app-v0.564.1) (2026-07-06)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.159.1
+    * @vm0/core bumped to 8.408.1
+
+## [0.564.0](https://github.com/vm0-ai/vm0/compare/app-v0.563.2...app-v0.564.0) (2026-07-06)
+
+
+### Features
+
+* add steam player connector ([#20359](https://github.com/vm0-ai/vm0/issues/20359)) ([830096d](https://github.com/vm0-ai/vm0/commit/830096d68b93cd490769ed98c0c91090bcde6f31))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.159.0
+    * @vm0/connectors bumped to 1.143.0
+    * @vm0/core bumped to 8.408.0
+
+## [0.563.2](https://github.com/vm0-ai/vm0/compare/app-v0.563.1...app-v0.563.2) (2026-07-06)
+
+
+### Bug Fixes
+
+* ignore expired user permission grants ([#20414](https://github.com/vm0-ai/vm0/issues/20414)) ([b900c3d](https://github.com/vm0-ai/vm0/commit/b900c3d02d217d9d6fb35a1a45f5f4061c19776b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.158.2
+    * @vm0/connectors bumped to 1.142.1
+    * @vm0/core bumped to 8.407.2
+
+## [0.563.1](https://github.com/vm0-ai/vm0/compare/app-v0.563.0...app-v0.563.1) (2026-07-06)
+
+
+### Bug Fixes
+
+* serve artifact template catalogs from static assets ([#20407](https://github.com/vm0-ai/vm0/issues/20407)) ([7672c8b](https://github.com/vm0-ai/vm0/commit/7672c8b833b22cf8c607287907023a0b97138d59))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.407.1
+
+## [0.563.0](https://github.com/vm0-ai/vm0/compare/app-v0.562.0...app-v0.563.0) (2026-07-06)
+
+
+### Features
+
+* add agent detail workflows tab ([#20406](https://github.com/vm0-ai/vm0/issues/20406)) ([453b528](https://github.com/vm0-ai/vm0/commit/453b52825c29f95334106e7d4d7a07787fd48a07))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.158.1
+    * @vm0/connectors bumped to 1.142.0
+    * @vm0/core bumped to 8.407.0
+
+## [0.562.0](https://github.com/vm0-ai/vm0/compare/app-v0.561.2...app-v0.562.0) (2026-07-06)
+
+
+### Features
+
+* add notion child page workflow trigger ([#20391](https://github.com/vm0-ai/vm0/issues/20391)) ([e16798b](https://github.com/vm0-ai/vm0/commit/e16798bdef02cd212425fe275c5873a36b6a8ec1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.158.0
+    * @vm0/connectors bumped to 1.141.0
+    * @vm0/core bumped to 8.406.0
+
 ## [0.561.2](https://github.com/vm0-ai/vm0/compare/app-v0.561.1...app-v0.561.2) (2026-07-06)
 
 

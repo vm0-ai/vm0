@@ -21,11 +21,13 @@ export interface FeatureSwitch {
   readonly enabledUserHashes?: readonly string[];
   readonly enabledEmailHashes?: readonly string[];
   readonly enabledOrgIdHashes?: readonly string[];
+  readonly userOverridable?: boolean;
 }
 
 export interface FeatureSwitchMetadata {
   readonly maintainer: string;
   readonly description?: string;
+  readonly userOverridable: boolean;
 }
 
 export interface FeatureSwitchContext {
@@ -175,6 +177,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Spotify connector integration",
     enabled: false,
   },
+  [FeatureSwitchKey.SteamConnector]: {
+    maintainer: "liangyou@vm0.ai",
+    description: "Enable the Steam player connector integration",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ZeroDebug]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -207,6 +215,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable Notion event workflow triggers, starting with child pages created under a configured parent page.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.AgentDetailWorkflowsTab]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Show the Workflows tab on agent detail pages, scoped to workflows visible for that agent.",
+    enabled: false,
   },
   [FeatureSwitchKey.TestOauthConnector]: {
     maintainer: "liangyou@vm0.ai",
@@ -258,6 +272,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Use the Popover-based chat composer model picker instead of Radix Select.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.ComposerUploadPopover]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Use the Upload popover in the chat composer instead of the legacy paperclip attachment button.",
+    enabled: false,
+    userOverridable: false,
   },
   [FeatureSwitchKey.ZapierConnector]: {
     maintainer: "yuma@vm0.ai",
@@ -489,9 +510,35 @@ export function getFeatureSwitchMetadata(): Record<
     result[key] = {
       maintainer: featureSwitch.maintainer,
       description: featureSwitch.description,
+      userOverridable: featureSwitch.userOverridable !== false,
     };
   }
   return result;
+}
+
+export function isUserOverridableFeatureSwitch(
+  key: string,
+): key is FeatureSwitchKey {
+  if (!(key in FEATURE_SWITCHES)) {
+    return false;
+  }
+  return FEATURE_SWITCHES[key as FeatureSwitchKey].userOverridable !== false;
+}
+
+export function getUserOverridableFeatureSwitchKeys(): readonly FeatureSwitchKey[] {
+  return Object.values(FeatureSwitchKey).filter(isUserOverridableFeatureSwitch);
+}
+
+export function filterUserOverridableFeatureSwitchOverrides(
+  switches: Record<string, boolean>,
+): Record<string, boolean> {
+  const filtered: Record<string, boolean> = {};
+  for (const [key, value] of Object.entries(switches)) {
+    if (isUserOverridableFeatureSwitch(key)) {
+      filtered[key] = value;
+    }
+  }
+  return filtered;
 }
 
 /**

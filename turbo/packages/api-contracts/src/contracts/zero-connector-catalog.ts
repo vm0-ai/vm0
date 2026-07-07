@@ -14,6 +14,7 @@ const publicConnectorCatalogAuthMethodSummarySchema = z.object({
   grantKind: z.enum([
     "manual",
     "auth-code",
+    "openid-auth",
     "external-code",
     "device-auth",
     "managed",

@@ -1,4 +1,8 @@
-const R2_IMAGE_TRANSFORM_HOSTS = new Set(["cdn.vm0.io", "cdn.vm7.io"]);
+const R2_IMAGE_TRANSFORM_HOSTS = new Set([
+  "cdn.vm0.io",
+  "cdn.vm7.io",
+  "static.vm0.io",
+]);
 const R2_IMAGE_TRANSFORM_PREFIX = "/cdn-cgi/image/";
 
 // Output quality for Cloudflare Image Resizing. Tuned to stay crisp on

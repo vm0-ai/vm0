@@ -15,10 +15,12 @@ import {
   zeroConnectorScopeDiffContract,
   zeroConnectorExternalCodeSessionContract,
   zeroConnectorOauthDeviceAuthSessionContract,
+  zeroConnectorOpenIdStartContract,
   zeroConnectorOauthStartContract,
   zeroConnectorManualGrantContract,
   zeroConnectorsMainContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
+import { getConnectorAuthMethod } from "@vm0/connectors/connector-utils";
 import type {
   InitClientArgs,
   InitClientReturn,
@@ -116,7 +118,8 @@ export interface ConnectorTypeWithStatus {
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
 
-type ConnectorConnectLaunchMode = "oauth-auth-code" | "modal";
+type ConnectorConnectLaunchMode = "browser-auth" | "modal";
+type BrowserAuthGrantKind = "auth-code" | "openid-auth";
 
 export type ConnectorStatusAuthMethodDetail = Omit<
   PublicConnectorCatalogAuthMethodDetail,
@@ -139,6 +142,22 @@ export function manualGrantInputValuesForMethod(
 
 type ConnectorStatusGrantKind =
   PublicConnectorCatalogAuthMethodDetail["grantKind"];
+
+function isBrowserAuthGrantKind(
+  grantKind: ConnectorStatusGrantKind,
+): grantKind is BrowserAuthGrantKind {
+  return grantKind === "auth-code" || grantKind === "openid-auth";
+}
+
+function connectorBrowserAuthGrantKind(
+  type: ConnectorType,
+  authMethod: ConnectorAuthMethodId,
+): BrowserAuthGrantKind | null {
+  const method = getConnectorAuthMethod(type, authMethod);
+  return method && isBrowserAuthGrantKind(method.grant.kind)
+    ? method.grant.kind
+    : null;
+}
 
 function parseConnectorStatusAuthMethodDetail(
   connector: ConnectorTypeWithStatus,
@@ -194,6 +213,7 @@ export function hasConnectorStatusProviderDrivenConnectMethod(
     }
     return (
       parsed.grantKind === "auth-code" ||
+      parsed.grantKind === "openid-auth" ||
       parsed.grantKind === "device-auth" ||
       parsed.grantKind === "external-code" ||
       parsed.grantKind === "managed"
@@ -211,13 +231,22 @@ export function hasConnectorStatusAuthCodeGrant(
   );
 }
 
+export function hasConnectorStatusBrowserAuthGrant(
+  connector: ConnectorTypeWithStatus,
+): boolean {
+  return connector.authMethods.some((method) => {
+    const parsed = parseConnectorStatusAuthMethodDetail(connector, method);
+    return parsed ? isBrowserAuthGrantKind(parsed.grantKind) : false;
+  });
+}
+
 export function getConnectorStatusConnectLaunchMode(
   connector: ConnectorTypeWithStatus,
 ): ConnectorConnectLaunchMode {
-  if (!getOnlyAvailableStatusAuthCodeAuthMethod(connector)) {
+  if (!getOnlyAvailableStatusBrowserAuthMethod(connector)) {
     return "modal";
   }
-  return "oauth-auth-code";
+  return "browser-auth";
 }
 
 export function getAvailableStatusAuthCodeAuthMethod(
@@ -247,6 +276,35 @@ export function getOnlyAvailableStatusAuthCodeAuthMethod(
     return null;
   }
   return getAvailableStatusAuthCodeAuthMethod(connector, authMethod);
+}
+
+export function getAvailableStatusBrowserAuthMethod(
+  connector: ConnectorTypeWithStatus,
+  authMethod: string,
+): ConnectorAuthMethodId | null {
+  const parsed = connectorAuthMethodIdSchema.safeParse(authMethod);
+  if (!parsed.success) {
+    return null;
+  }
+  const method = getConnectorStatusAuthMethod(connector, parsed.data);
+  if (!method || !isBrowserAuthGrantKind(method.grantKind)) {
+    return null;
+  }
+  return parsed.data;
+}
+
+export function getOnlyAvailableStatusBrowserAuthMethod(
+  connector: ConnectorTypeWithStatus,
+): ConnectorAuthMethodId | null {
+  const [authMethod] = connector.availableAuthMethods;
+  if (connector.availableAuthMethods.length !== 1 || !authMethod) {
+    return null;
+  }
+  const method = getConnectorStatusAuthMethod(connector, authMethod);
+  if (method?.grantKind === "auth-code") {
+    return getOnlyAvailableStatusAuthCodeAuthMethod(connector);
+  }
+  return method?.grantKind === "openid-auth" ? authMethod : null;
 }
 
 function connectorTokenExpiresAtMs(
@@ -2007,6 +2065,7 @@ const openConnectorOAuthAuthCodeWindow$ = command(
     { get },
     type: ConnectorType,
     authMethod: ConnectorAuthMethodId,
+    beforeStart: (signal: AbortSignal) => Promise<void>,
     signal: AbortSignal,
   ) => {
     const standalone = isStandaloneMode();
@@ -2026,17 +2085,38 @@ const openConnectorOAuthAuthCodeWindow$ = command(
     let navigated = false;
     await withCleanup(
       (async () => {
-        const startClient = get(zeroClient$)(zeroConnectorOauthStartContract, {
-          apiBase: OAUTH_WEB_API_BASE,
-        });
-        const startResult = await accept(
-          startClient.start({
-            params: { type },
-            body: { authMethod },
-            fetchOptions: { signal },
-          }),
-          [200],
-        );
+        const grantKind = connectorBrowserAuthGrantKind(type, authMethod);
+        if (!grantKind) {
+          throw new Error(
+            `${type}/${authMethod} does not support browser authorization`,
+          );
+        }
+
+        await beforeStart(signal);
+        signal.throwIfAborted();
+
+        const startResult =
+          grantKind === "openid-auth"
+            ? await accept(
+                get(zeroClient$)(zeroConnectorOpenIdStartContract, {
+                  apiBase: "api",
+                }).start({
+                  params: { type },
+                  body: { authMethod },
+                  fetchOptions: { signal },
+                }),
+                [200],
+              )
+            : await accept(
+                get(zeroClient$)(zeroConnectorOauthStartContract, {
+                  apiBase: OAUTH_WEB_API_BASE,
+                }).start({
+                  params: { type },
+                  body: { authMethod },
+                  fetchOptions: { signal },
+                }),
+                [200],
+              );
         signal.throwIfAborted();
 
         if (authWindow) {
@@ -2084,28 +2164,28 @@ export const connectConnectorOAuthAuthCode$ = command(
 
     return await withCleanup(
       (async () => {
-        const authWindow = await set(
-          openConnectorOAuthAuthCodeWindow$,
-          type,
-          authMethod,
-          signal,
-        );
-        signal.throwIfAborted();
-
-        // Wait for the auth-code OAuth flow to complete. The callback publishes
-        // `connector:changed`, and the subscription rechecks the server state.
+        // Snapshot before starting the provider flow. The popup is already open
+        // by the time this runs, so we keep browser popup blockers satisfied
+        // while avoiding a race where a very fast callback completes before the
+        // first poll baseline is captured.
         const onConnectorChanged$ = createConnectorOAuthAuthCodeChangedCommand(
           type,
           authMethod,
         );
-
-        // Prime once so `initialUpdatedAt` snapshots the current server state.
-        // `setAblyLoop$` no longer primes its subscribers, and without this the
-        // first ably event would be taken as the baseline instead of signalling
-        // completion.
-        await set(onConnectorChanged$, signal);
+        const authWindow = await set(
+          openConnectorOAuthAuthCodeWindow$,
+          type,
+          authMethod,
+          async (sig) => {
+            await set(onConnectorChanged$, sig);
+          },
+          signal,
+        );
         signal.throwIfAborted();
 
+        // Wait for the browser authorization flow to complete. The callback
+        // publishes `connector:changed`, and the subscription rechecks server
+        // state.
         const loopSignal = set(resetOAuthAuthCodeConnectorLoopSignal$, signal);
         const popupSignal = set(
           resetOAuthAuthCodeConnectorPopupSignal$,
@@ -2120,6 +2200,7 @@ export const connectConnectorOAuthAuthCode$ = command(
                 {
                   topic: "connector:changed",
                   loopCommand$: onConnectorChanged$,
+                  options: { runOnSubscribe: true },
                 },
                 loopSignal,
               );
@@ -2190,7 +2271,7 @@ export const connectConnectorOAuthAuthCode$ = command(
 );
 
 // ---------------------------------------------------------------------------
-// Connect via auth-code OAuth, then run onSuccess callback (settling phase)
+// Connect via browser authorization, then run onSuccess callback.
 // ---------------------------------------------------------------------------
 
 export const connectConnectorOAuthAuthCodeAndSettle$ = command(

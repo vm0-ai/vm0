@@ -6,7 +6,6 @@
   },
   "include": [
     "src/signals/routes/agent*.ts",
-    "src/signals/routes/automations.ts",
     "src/signals/routes/chat*.ts",
     "src/signals/routes/cron*.ts",
     "src/signals/routes/runners.ts"

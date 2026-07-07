@@ -62,12 +62,12 @@ import {
 } from "../zero-page/workflow-trigger-automations-page.tsx";
 import { agentLabel, workflowTitle } from "./workflow-shared.tsx";
 
-type WorkflowTriggerEntryMap = ReadonlyMap<
+export type WorkflowTriggerEntryMap = ReadonlyMap<
   string,
   readonly WorkflowTriggerAutomationEntry[]
 >;
 
-function workflowTriggerEntryMap(
+export function workflowTriggerEntryMap(
   entries: readonly WorkflowTriggerAutomationEntry[],
 ): WorkflowTriggerEntryMap {
   const grouped = new Map<string, WorkflowTriggerAutomationEntry[]>();
@@ -291,8 +291,10 @@ function ConnectorCell({
 
 export function WorkflowHoverContent({
   workflow,
+  showAgent = true,
 }: {
   readonly workflow: ZeroWorkflowSummary;
+  readonly showAgent?: boolean;
 }) {
   const title = workflowTitle(workflow);
   return (
@@ -309,11 +311,13 @@ export function WorkflowHoverContent({
           <MemberAvatar workflow={workflow} />
           <span className="truncate">{ownerLabel(workflow)}</span>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="w-16 shrink-0 text-muted-foreground">Runs as</span>
-          <AgentAvatar workflow={workflow} />
-          <span className="truncate">{agentLabel(workflow)}</span>
-        </div>
+        {showAgent ? (
+          <div className="flex items-center gap-2">
+            <span className="w-16 shrink-0 text-muted-foreground">Runs as</span>
+            <AgentAvatar workflow={workflow} />
+            <span className="truncate">{agentLabel(workflow)}</span>
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -339,10 +343,12 @@ function WorkflowRow({
   workflow,
   entries,
   displayTimezone,
+  showAgentColumn,
 }: {
   readonly workflow: ZeroWorkflowSummary;
   readonly entries: readonly WorkflowTriggerAutomationEntry[];
   readonly displayTimezone: string;
+  readonly showAgentColumn: boolean;
 }) {
   const title = workflowTitle(workflow);
   return (
@@ -373,13 +379,16 @@ function WorkflowRow({
                 "0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)",
             }}
           >
-            <WorkflowHoverContent workflow={workflow} />
+            <WorkflowHoverContent
+              workflow={workflow}
+              showAgent={showAgentColumn}
+            />
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
       <ConnectorCell entries={entries} displayTimezone={displayTimezone} />
       <VisibilityIcon workflow={workflow} />
-      <AgentAvatar workflow={workflow} />
+      {showAgentColumn ? <AgentAvatar workflow={workflow} /> : null}
     </article>
   );
 }
@@ -547,11 +556,13 @@ function WorkflowRowList({
   entriesByWorkflowId,
   displayTimezone,
   framed = true,
+  showAgentColumn,
 }: {
   readonly workflows: readonly ZeroWorkflowSummary[];
   readonly entriesByWorkflowId: WorkflowTriggerEntryMap;
   readonly displayTimezone: string;
   readonly framed?: boolean;
+  readonly showAgentColumn: boolean;
 }) {
   const rows = (
     <>
@@ -563,6 +574,7 @@ function WorkflowRowList({
               workflow={workflow}
               entries={entriesByWorkflowId.get(workflow.id) ?? []}
               displayTimezone={displayTimezone}
+              showAgentColumn={showAgentColumn}
             />
           </div>
         );
@@ -579,10 +591,12 @@ function WorkflowNextRunGroups({
   workflows,
   entriesByWorkflowId,
   displayTimezone,
+  showAgentColumn,
 }: {
   readonly workflows: readonly ZeroWorkflowSummary[];
   readonly entriesByWorkflowId: WorkflowTriggerEntryMap;
   readonly displayTimezone: string;
+  readonly showAgentColumn: boolean;
 }) {
   const now = nowDate();
   const buckets = new Map<NextRunBucket, ZeroWorkflowSummary[]>();
@@ -613,6 +627,7 @@ function WorkflowNextRunGroups({
               entriesByWorkflowId={entriesByWorkflowId}
               displayTimezone={displayTimezone}
               framed={false}
+              showAgentColumn={showAgentColumn}
             />
           </section>
         );
@@ -628,6 +643,7 @@ export function WorkflowListPanel({
   sortMode = "next-run",
   triggerEntriesByWorkflowId,
   displayTimezone = new Intl.DateTimeFormat().resolvedOptions().timeZone,
+  showAgentColumn = true,
 }: {
   readonly workflows: readonly ZeroWorkflowSummary[] | null;
   readonly loading: boolean;
@@ -644,19 +660,21 @@ export function WorkflowListPanel({
   return (
     <section className="min-h-[520px]">
       {loading ? (
-        <WorkflowIndexSkeleton />
+        <WorkflowIndexSkeleton showAgentColumn={showAgentColumn} />
       ) : workflows && workflows.length > 0 ? (
         sortMode === "next-run" ? (
           <WorkflowNextRunGroups
             workflows={workflows}
             entriesByWorkflowId={entriesByWorkflowId}
             displayTimezone={displayTimezone}
+            showAgentColumn={showAgentColumn}
           />
         ) : (
           <WorkflowRowList
             workflows={workflows}
             entriesByWorkflowId={entriesByWorkflowId}
             displayTimezone={displayTimezone}
+            showAgentColumn={showAgentColumn}
           />
         )
       ) : (
@@ -994,7 +1012,11 @@ export function WorkflowsPage() {
   );
 }
 
-function WorkflowIndexSkeleton() {
+function WorkflowIndexSkeleton({
+  showAgentColumn,
+}: {
+  readonly showAgentColumn: boolean;
+}) {
   return (
     <div className="zero-card overflow-hidden" data-testid="workflows-loading">
       {[0, 1, 2, 3].map((rowIndex) => {
@@ -1006,6 +1028,9 @@ function WorkflowIndexSkeleton() {
               <div className="h-4 w-40 rounded bg-muted/50" />
               <div className="ml-auto h-8 w-32 rounded-full bg-muted/40" />
               <div className="h-5 w-5 rounded-full bg-muted/40" />
+              {showAgentColumn ? (
+                <div className="h-6 w-6 rounded-md bg-muted/40" />
+              ) : null}
             </div>
           </div>
         );

@@ -38,7 +38,6 @@ import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { threadGoals } from "@vm0/db/schema/thread-goal";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { automations } from "@vm0/db/schema/automation";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import {
   and,
@@ -1353,12 +1352,6 @@ export const deleteChatThread$ = command(
         agentComposeId: ownedThread.agentComposeId,
         eventId: args.eventId,
       });
-
-      // Stop related automations first so none of them can spawn a fresh run
-      // while we are cancelling the in-flight ones (their triggers cascade).
-      await tx
-        .delete(automations)
-        .where(eq(automations.chatThreadId, ownedThread.id));
 
       // Capture related active runs while the thread row blocks new FK attaches.
       // Terminal runs (completed/failed/cancelled) are left untouched; only

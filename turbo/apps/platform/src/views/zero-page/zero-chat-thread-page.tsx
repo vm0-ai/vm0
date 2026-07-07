@@ -166,6 +166,8 @@ import {
   permissionGrantExpiryText,
   setPermissionGrantExpiresIn$,
 } from "../../signals/permission-allow/permission-grant-expiration.ts";
+import { isActiveUserPermissionGrant } from "../../signals/user-permission-grants.ts";
+import { useUserPermissionGrantExpiryTick } from "../user-permission-grant-expiry-tick.ts";
 import {
   artifactFullscreen$,
   artifactInboxQuery$,
@@ -3130,10 +3132,6 @@ function runGroupFoldMessages(fold: RunGroupFold): EnrichedChatMessage[] {
 
 function runGroupFoldSourceLabel(fold: RunGroupFold): string {
   const messages = runGroupFoldMessages(fold);
-  const automationMessage = messages.find(isAutomationUserMessage);
-  if (automationMessage) {
-    return normalizedInlineLabel(automationMessageLabel(automationMessage));
-  }
   const workflowLabel = runGroupFoldWorkflowLabel(fold);
   if (workflowLabel) {
     return workflowLabel;
@@ -3183,7 +3181,6 @@ function isGoalUserMessage(
   return (
     message.role === "user" &&
     message.isGoalRun === true &&
-    !hasAutomationMessageMetadata(message) &&
     !hasWorkflowMessageMetadata(message) &&
     goalUserMessageBrief(message) !== null
   );
@@ -5099,6 +5096,31 @@ function permissionActionUserGrant(
   });
 }
 
+function permissionActionGrantExpiresAt({
+  savedGrant,
+  savedGrantActive,
+  existingGrant,
+  existingGrantActive,
+  status,
+}: {
+  savedGrant: PermissionActionUserGrant | null;
+  savedGrantActive: boolean;
+  existingGrant: PermissionActionUserGrant | undefined;
+  existingGrantActive: boolean;
+  status: PermissionActionCardStatus;
+}): string | null {
+  if (savedGrantActive) {
+    return savedGrant?.expiresAt ?? null;
+  }
+  if (existingGrantActive) {
+    return existingGrant?.expiresAt ?? null;
+  }
+  if (status.kind !== "ready") {
+    return null;
+  }
+  return savedGrant?.expiresAt ?? existingGrant?.expiresAt ?? null;
+}
+
 function createPermissionActionCardStatus(params: {
   hasAgent: boolean;
   hasPermission: boolean;
@@ -5143,6 +5165,7 @@ function createPermissionActionCardViewState(params: {
   permissionMetadataLoadable: LoadableLike<PublicConnectorCatalogPermissionDetail | null>;
   userGrantsLoadable: LoadableLike<readonly PermissionActionUserGrant[]>;
   grantLoadableState: string;
+  savedGrantActive: boolean;
 }) {
   const permissionMetadata =
     params.permissionMetadataLoadable.state === "hasData"
@@ -5179,7 +5202,8 @@ function createPermissionActionCardViewState(params: {
     userGrantPolicy,
     action: params.block.action,
   });
-  const saveDone = params.grantLoadableState === "hasData";
+  const saveDone =
+    params.grantLoadableState === "hasData" && params.savedGrantActive;
   const status = createPermissionActionCardStatus({
     hasAgent: params.hasAgent,
     hasPermission: Boolean(focusedPermission),
@@ -5345,7 +5369,19 @@ function PermissionActionCardForTarget({
     }),
   );
   const [grantLoadable, applyGrant] = useLoadableSet(applyUserPermissionGrant$);
+  const savedGrant =
+    grantLoadable.state === "hasData" ? grantLoadable.data : null;
+  const savedGrantActive = savedGrant
+    ? isActiveUserPermissionGrant(savedGrant)
+    : false;
+  const rawUserGrants = loadableData(userGrantsLoadable) ?? [];
+  useUserPermissionGrantExpiryTick(
+    savedGrant ? [...rawUserGrants, savedGrant] : rawUserGrants,
+  );
   const existingGrant = permissionActionUserGrant(userGrantsLoadable, block);
+  const existingGrantActive = existingGrant
+    ? isActiveUserPermissionGrant(existingGrant)
+    : false;
   const actionState = createPermissionActionCardViewState({
     block,
     hasAgent: hasTarget,
@@ -5353,15 +5389,19 @@ function PermissionActionCardForTarget({
     permissionMetadataLoadable,
     userGrantsLoadable,
     grantLoadableState: grantLoadable.state,
+    savedGrantActive,
   });
   const permissionMetadata =
     permissionMetadataLoadable.state === "hasData"
       ? permissionMetadataLoadable.data
       : null;
-  const grantExpiresAt =
-    grantLoadable.state === "hasData"
-      ? grantLoadable.data.expiresAt
-      : (existingGrant?.expiresAt ?? null);
+  const grantExpiresAt = permissionActionGrantExpiresAt({
+    savedGrant,
+    savedGrantActive,
+    existingGrant,
+    existingGrantActive,
+    status: actionState.status,
+  });
 
   return (
     <PermissionActionCardContent
@@ -5878,31 +5918,6 @@ function PagedUserGroup({
   );
 }
 
-function isAutomationUserMessage(
-  message: EnrichedChatMessage,
-): message is EnrichedChatMessage & { role: "user" } {
-  return message.role === "user" && hasAutomationMessageMetadata(message);
-}
-
-function hasAutomationMessageMetadata(message: EnrichedChatMessage): boolean {
-  return (
-    message.automationSnapshot !== undefined ||
-    message.automationTitle !== undefined ||
-    message.automationId !== undefined
-  );
-}
-
-function automationMessageLabel(
-  message: EnrichedChatMessage & { role: "user" },
-): string {
-  return (
-    message.automationSnapshot?.description?.trim() ||
-    message.automationSnapshot?.title?.trim() ||
-    message.automationTitle?.trim() ||
-    "Automation run"
-  );
-}
-
 function isWorkflowUserMessage(
   message: EnrichedChatMessage,
 ): message is EnrichedChatMessage & { role: "user" } {
@@ -6227,33 +6242,6 @@ function UserMessageGenerationTemplate({
   );
 }
 
-function AutomationUserMessage({
-  automationLabel,
-}: {
-  automationLabel: string;
-}) {
-  const cardClassName =
-    "zero-chat-bubble-user inline-flex items-center gap-2 rounded-xl px-3.5 py-2.5 max-w-[85%] text-sm text-muted-foreground transition-colors duration-150";
-  const body = (
-    <>
-      <IconClock size={15} className="shrink-0" />
-      <span className="min-w-0 truncate font-medium text-foreground">
-        {automationLabel}
-      </span>
-    </>
-  );
-  return (
-    <div data-role="user" className="group">
-      <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
-        <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
-        <div className="flex w-full flex-col items-end">
-          <div className={cardClassName}>{body}</div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function WorkflowUserMessage({
   message,
 }: {
@@ -6410,14 +6398,6 @@ function PagedUserMessage({
       Reason.DomCallback,
     );
   };
-
-  if (isAutomationUserMessage(message)) {
-    return (
-      <AutomationUserMessage
-        automationLabel={automationMessageLabel(message)}
-      />
-    );
-  }
 
   if (isWorkflowUserMessage(message)) {
     return <WorkflowUserMessage message={message} />;

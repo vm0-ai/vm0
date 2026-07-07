@@ -19,11 +19,13 @@ import {
   type RefreshTokenAccessConnectorType,
   type ConnectorAccessConfig,
   type ConnectorAccessKind,
+  type ConnectorBrowserAuthCallbackOrigin,
   type ConnectorAuthCodeCallbackOrigin,
   type ConnectorAuthCodeGrantConfig,
   type ConnectorAuthClientConfig,
   type ConnectorDeviceAuthGrantConfig,
   type ConnectorExternalCodeGrantConfig,
+  type ConnectorOpenIdAuthGrantConfig,
   type ConnectorDeviceAuthStartOptionConfig,
   type ConnectorDeviceAuthStartOptions,
   type ConnectorDeviceAuthStartOptionsConfig,
@@ -47,6 +49,8 @@ import {
   type AuthCodeGrantConnectorType,
   type DeviceAuthGrantConnectorType,
   type ExternalCodeGrantConnectorType,
+  type OpenIdAuthGrantConnectorType,
+  type ConnectorOpenIdAuthGrantAuthMethodId,
   type DynamicPublicConnectorAuthClientConfig,
   type StaticConfidentialConnectorAuthClientConfig,
   type StaticPublicConnectorAuthClientConfig,
@@ -55,9 +59,10 @@ import type { FeatureSwitchKey } from "./feature-switch-key";
 
 const CONNECTOR_AUTH_METHOD_PRIORITY = {
   oauth: 0,
-  cli: 1,
-  "api-token": 2,
-  api: 3,
+  openid: 1,
+  cli: 2,
+  "api-token": 3,
+  api: 4,
 } as const satisfies Record<ConnectorAuthMethodId, number>;
 const CONNECTOR_SECRET_REF_PREFIX = "$secrets.";
 const CONNECTOR_VARIABLE_REF_PREFIX = "$vars.";
@@ -496,7 +501,11 @@ export interface ConnectorGrantOutputMetadata {
 
 export type ConnectorAuthMethodGrantMetadata =
   | {
-      readonly kind: "auth-code" | "external-code" | "device-auth";
+      readonly kind:
+        | "auth-code"
+        | "openid-auth"
+        | "external-code"
+        | "device-auth";
       readonly outputs: Readonly<Record<string, ConnectorGrantOutputMetadata>>;
     }
   | {
@@ -715,6 +724,7 @@ export function getConnectorAuthMethodGrantMetadata(
 
   switch (method.grant.kind) {
     case "auth-code":
+    case "openid-auth":
     case "external-code":
     case "device-auth":
       return {
@@ -789,6 +799,18 @@ export function getConnectorRuntimeBindingSecretName(
     );
   });
   return binding?.source.kind === "connector-secret"
+    ? binding.source.name
+    : undefined;
+}
+
+export function getConnectorRuntimeBindingPlatformSecretName(
+  metadata: ConnectorAuthMethodRuntimeMetadata,
+  envName: string,
+): ConnectorPlatformSecretName | undefined {
+  const binding = metadata.runtimeBindings.find((entry) => {
+    return entry.envName === envName && entry.source.kind === "platform-secret";
+  });
+  return binding?.source.kind === "platform-secret"
     ? binding.source.name
     : undefined;
 }
@@ -995,6 +1017,45 @@ export function getConnectorAuthMethodAuthCodeGrantConfig(
 ): ConnectorAuthCodeGrantConfig | undefined {
   const grant = getConnectorAuthMethod(type, authMethod)?.grant;
   return grant?.kind === "auth-code" ? grant : undefined;
+}
+
+export function getConnectorAuthMethodOpenIdAuthGrantConfig<
+  Type extends OpenIdAuthGrantConnectorType,
+>(
+  type: Type,
+  authMethod: ConnectorOpenIdAuthGrantAuthMethodId<Type>,
+): ConnectorOpenIdAuthGrantConfig;
+export function getConnectorAuthMethodOpenIdAuthGrantConfig(
+  type: ConnectorType,
+  authMethod: string,
+): ConnectorOpenIdAuthGrantConfig | undefined;
+export function getConnectorAuthMethodOpenIdAuthGrantConfig(
+  type: ConnectorType,
+  authMethod: string,
+): ConnectorOpenIdAuthGrantConfig | undefined {
+  const grant = getConnectorAuthMethod(type, authMethod)?.grant;
+  return grant?.kind === "openid-auth" ? grant : undefined;
+}
+
+export function getConnectorAuthMethodOpenIdAuthCallbackOrigin<
+  Type extends OpenIdAuthGrantConnectorType,
+>(
+  type: Type,
+  authMethod: ConnectorOpenIdAuthGrantAuthMethodId<Type>,
+): ConnectorBrowserAuthCallbackOrigin;
+export function getConnectorAuthMethodOpenIdAuthCallbackOrigin(
+  type: ConnectorType,
+  authMethod: string,
+): ConnectorBrowserAuthCallbackOrigin | undefined;
+export function getConnectorAuthMethodOpenIdAuthCallbackOrigin(
+  type: ConnectorType,
+  authMethod: string,
+): ConnectorBrowserAuthCallbackOrigin | undefined {
+  const grant = getConnectorAuthMethodOpenIdAuthGrantConfig(type, authMethod);
+  if (!grant) {
+    return undefined;
+  }
+  return grant.callbackOrigin ?? "api";
 }
 
 export function getConnectorAuthMethodAuthCodeCallbackOrigin<
@@ -1205,6 +1266,7 @@ function connectorGrantScopes(
     case "external-code":
     case "device-auth":
       return grant.scopes;
+    case "openid-auth":
     case "manual":
     case "managed":
     case undefined:
@@ -1300,6 +1362,7 @@ export function getAvailableConnectorAuthMethodIds(
         }
         break;
       }
+      case "openid-auth":
       case "auth-code":
       case "external-code":
       case "device-auth":
@@ -1645,6 +1708,9 @@ function hasRuntimeAvailableAuthMethod(
         }
         break;
       }
+      case "openid-auth": {
+        return true;
+      }
       case "manual": {
         return true;
       }
@@ -1822,6 +1888,12 @@ export function hasConnectorAuthCodeGrant(
   type: ConnectorType,
 ): type is AuthCodeGrantConnectorType {
   return getConnectorAuthMethodIdsForGrantKind(type, "auth-code").length > 0;
+}
+
+export function hasConnectorOpenIdAuthGrant(
+  type: ConnectorType,
+): type is OpenIdAuthGrantConnectorType {
+  return getConnectorAuthMethodIdsForGrantKind(type, "openid-auth").length > 0;
 }
 
 export function hasConnectorExternalCodeGrant(

@@ -361,7 +361,6 @@ export {
   zeroRunNetworkLogsContract,
   zeroRunRunnerContract,
   zeroLogsSearchContract,
-  automationViewSchema,
   zeroModelProvidersMainContract,
   zeroModelProvidersByTypeContract,
   zeroUserPreferencesContract,
@@ -678,7 +677,6 @@ export {
   type ZeroLogsSearchContract,
   type RunContextResponse,
   type RunRunnerResponse,
-  type AutomationView,
   type ZeroModelProvidersMainContract,
   type ZeroModelProvidersByTypeContract,
   type ZeroUserPreferencesContract,
@@ -838,9 +836,12 @@ export {
 export { FeatureSwitchKey } from "./feature-switch-key";
 export {
   getAllFeatureStates,
+  filterUserOverridableFeatureSwitchOverrides,
   getFeatureSwitchDescriptions,
   getFeatureSwitchMetadata,
+  getUserOverridableFeatureSwitchKeys,
   isFeatureEnabled,
+  isUserOverridableFeatureSwitch,
   type FeatureSwitch,
   type FeatureSwitchContext,
   type FeatureSwitchMetadata,

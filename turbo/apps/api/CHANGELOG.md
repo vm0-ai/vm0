@@ -1,5 +1,105 @@
 # Changelog
 
+## [1.232.2](https://github.com/vm0-ai/vm0/compare/api-v1.232.1...api-v1.232.2) (2026-07-06)
+
+
+### Refactoring
+
+* drop legacy automation tables and read-only automation surfaces ([#20420](https://github.com/vm0-ai/vm0/issues/20420)) ([bfbf99b](https://github.com/vm0-ai/vm0/commit/bfbf99bbe639ec9c9ce67a37b5155e8478f96224))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.159.2
+    * @vm0/core bumped to 8.408.2
+    * @vm0/db bumped to 1.96.6
+
+## [1.232.1](https://github.com/vm0-ai/vm0/compare/api-v1.232.0...api-v1.232.1) (2026-07-06)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.159.1
+    * @vm0/core bumped to 8.408.1
+    * @vm0/db bumped to 1.96.5
+
+## [1.232.0](https://github.com/vm0-ai/vm0/compare/api-v1.231.3...api-v1.232.0) (2026-07-06)
+
+
+### Features
+
+* add steam player connector ([#20359](https://github.com/vm0-ai/vm0/issues/20359)) ([830096d](https://github.com/vm0-ai/vm0/commit/830096d68b93cd490769ed98c0c91090bcde6f31))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.159.0
+    * @vm0/connectors bumped to 1.143.0
+    * @vm0/core bumped to 8.408.0
+    * @vm0/db bumped to 1.96.4
+
+## [1.231.3](https://github.com/vm0-ai/vm0/compare/api-v1.231.2...api-v1.231.3) (2026-07-06)
+
+
+### Performance Improvements
+
+* accept platform secret firewall auth metadata ([#20415](https://github.com/vm0-ai/vm0/issues/20415)) ([93be26d](https://github.com/vm0-ai/vm0/commit/93be26d46ee80cd43d61e2641fd7a8af15899ff3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.158.2
+    * @vm0/connectors bumped to 1.142.1
+    * @vm0/core bumped to 8.407.2
+    * @vm0/db bumped to 1.96.3
+
+## [1.231.2](https://github.com/vm0-ai/vm0/compare/api-v1.231.1...api-v1.231.2) (2026-07-06)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.407.1
+    * @vm0/db bumped to 1.96.2
+
+## [1.231.1](https://github.com/vm0-ai/vm0/compare/api-v1.231.0...api-v1.231.1) (2026-07-06)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.158.1
+    * @vm0/connectors bumped to 1.142.0
+    * @vm0/core bumped to 8.407.0
+    * @vm0/db bumped to 1.96.1
+
+## [1.231.0](https://github.com/vm0-ai/vm0/compare/api-v1.230.1...api-v1.231.0) (2026-07-06)
+
+
+### Features
+
+* add notion child page workflow trigger ([#20391](https://github.com/vm0-ai/vm0/issues/20391)) ([e16798b](https://github.com/vm0-ai/vm0/commit/e16798bdef02cd212425fe275c5873a36b6a8ec1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.158.0
+    * @vm0/connectors bumped to 1.141.0
+    * @vm0/core bumped to 8.406.0
+    * @vm0/db bumped to 1.96.0
+
 ## [1.230.1](https://github.com/vm0-ai/vm0/compare/api-v1.230.0...api-v1.230.1) (2026-07-06)
 
 
