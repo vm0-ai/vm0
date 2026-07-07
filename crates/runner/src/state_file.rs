@@ -206,13 +206,14 @@ fn validate_open_state_file<Fd: std::os::fd::AsRawFd>(
     Ok(())
 }
 
-/// Write a state file without exposing partial contents through the target path.
+/// Write a state file, using target-path atomic replacement on Unix.
 ///
 /// On Unix, this writes to a hidden same-directory temporary file created with
 /// private `0600` permissions, flushes the file, renames it over the target,
-/// and removes the temporary file on errors as best-effort cleanup. The parent
-/// directory is not fsynced, so this does not provide a full crash-durability
-/// guarantee. Non-Unix builds use `tokio::fs::write` as a weaker fallback.
+/// and removes the temporary file on errors as best-effort cleanup. This avoids
+/// exposing partial contents through the target path. The parent directory is
+/// not fsynced, so this does not provide a full crash-durability guarantee.
+/// Non-Unix builds use `tokio::fs::write` as a weaker fallback.
 pub(crate) async fn write_private_atomic(path: &Path, content: &[u8]) -> RunnerResult<()> {
     #[cfg(unix)]
     {
