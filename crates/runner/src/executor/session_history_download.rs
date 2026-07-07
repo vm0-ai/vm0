@@ -994,9 +994,25 @@ mod tests {
 
         let valid_raw_size = 16;
         let valid_encoded_size = 32;
-        let encodings = [
-            (ResumeSessionHistoryEncoding::Gzip, "gzip"),
-            (ResumeSessionHistoryEncoding::Zstd, "zstd"),
+        let scenarios = [
+            (
+                ResumeSessionHistoryEncoding::Gzip,
+                EffectiveCliFramework::ClaudeCode,
+                "gzip",
+                "gzip ClaudeCode",
+            ),
+            (
+                ResumeSessionHistoryEncoding::Zstd,
+                EffectiveCliFramework::ClaudeCode,
+                "zstd",
+                "zstd ClaudeCode",
+            ),
+            (
+                ResumeSessionHistoryEncoding::Zstd,
+                EffectiveCliFramework::Codex,
+                "zstd",
+                "zstd Codex",
+            ),
         ];
         let metadata_cases = [
             InvalidMetadataCase {
@@ -1025,7 +1041,7 @@ mod tests {
             },
         ];
 
-        for (encoding, expected_encoding) in encodings {
+        for (encoding, framework, expected_encoding, scenario_name) in scenarios {
             for case in &metadata_cases {
                 let session = compressed_ref_session(
                     "http://127.0.0.1:9/history.blob?token=secret".to_string(),
@@ -1035,7 +1051,7 @@ mod tests {
                     encoding,
                 );
 
-                let result = start_materializer(&session)
+                let result = start_materializer_with_framework(&session, framework)
                     .finish(&CancellationToken::new())
                     .await;
 
@@ -1046,7 +1062,7 @@ mod tests {
                             assert!(
                                 message.contains(expected),
                                 "{} {}: expected error to contain {expected:?}, got {message:?}",
-                                expected_encoding,
+                                scenario_name,
                                 case.name
                             );
                         }
@@ -1057,7 +1073,7 @@ mod tests {
                         assert_no_phase(timings.hash_verification());
                     }
                     _ => panic!(
-                        "{expected_encoding} {}: expected failed materialization",
+                        "{scenario_name} {}: expected failed materialization",
                         case.name
                     ),
                 }
