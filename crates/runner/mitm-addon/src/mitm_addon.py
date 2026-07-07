@@ -409,11 +409,10 @@ def load(loader: Loader) -> None:
 
 
 def configure(updated: set[str]) -> None:
-    if "vm0_client_session_id" in updated or "vm0_client_version" in updated:
-        platform_api.configure_client_headers(
-            client_session_id=ctx.options.vm0_client_session_id,
-            client_version=ctx.options.vm0_client_version,
-        )
+    platform_api.configure_client_headers(
+        client_session_id=ctx.options.vm0_client_session_id,
+        client_version=ctx.options.vm0_client_version,
+    )
     if "vm0_usage_flush_interval_seconds" in updated:
         usage.configure_usage_buffer(
             flush_interval_seconds=ctx.options.vm0_usage_flush_interval_seconds
