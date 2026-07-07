@@ -1509,6 +1509,14 @@ export {
   type ZeroTeamsBrowserConnectQuery,
 } from "./zero-teams-browser-connect";
 export {
+  zeroTeamsOauthContract,
+  zeroTeamsOauthCallbackQuerySchema,
+  zeroTeamsOauthConnectQuerySchema,
+  type ZeroTeamsOauthCallbackQuery,
+  type ZeroTeamsOauthConnectQuery,
+  type ZeroTeamsOauthContract,
+} from "./zero-teams-oauth";
+export {
   zeroSlackInteractiveContract,
   type ZeroSlackInteractiveContract,
 } from "./zero-slack-interactive";

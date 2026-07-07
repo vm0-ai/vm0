@@ -1,5 +1,5 @@
 #!/bin/bash
-# Start the API dev server with the same public tunnel URL used by the web app.
+# Start the API dev server with a public tunnel URL for external callbacks.
 
 set -e
 
@@ -7,10 +7,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 API_APP_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 TUNNEL_URL_FILE="$REPO_ROOT/turbo/.dev-tunnel-url"
-MAX_WAIT_SECONDS="${API_TUNNEL_URL_WAIT_SECONDS:-90}"
+TUNNEL_SCRIPT="$REPO_ROOT/scripts/tunnel.sh"
 API_PORT=3001
 ENV_LOCAL_FILE="$API_APP_DIR/.env.local"
 STRIPE_PIDFILE="/tmp/stripe-listen-api.pid"
+TUNNEL_PIDFILE="/tmp/cloudflared-${API_PORT}.pid"
 
 kill_stale() {
   local pidfile="$1" pattern="$2"
@@ -70,32 +71,50 @@ start_stripe_webhook_forwarding() {
 
 cleanup() {
   kill_stale "$STRIPE_PIDFILE" ""
+  if [[ "${API_KEEP_TUNNEL_ON_EXIT:-}" != "1" ]]; then
+    kill_stale "$TUNNEL_PIDFILE" ""
+  fi
 }
 trap cleanup EXIT INT TERM
 
-wait_for_tunnel_url() {
-  local waited=0
-  local tunnel_url
+default_api_tunnel_hostname() {
+  local email domain username machine_hostname
 
-  while (( waited < MAX_WAIT_SECONDS )); do
-    tunnel_url="$(cat "$TUNNEL_URL_FILE" 2>/dev/null || true)"
-    if [[ "$tunnel_url" == https://* ]]; then
-      printf '%s\n' "$tunnel_url"
-      return 0
-    fi
+  email="$(git -C "$REPO_ROOT" config user.email 2>/dev/null || true)"
+  domain="${email##*@}"
+  if [[ "$domain" != "vm0.ai" ]]; then
+    return 0
+  fi
 
-    sleep 1
-    waited=$((waited + 1))
-  done
-
-  return 1
+  username="${email%%@*}"
+  machine_hostname="$(bash "$REPO_ROOT/scripts/cn.sh")"
+  printf "tunnel-%s-%s-www.vm7.ai\n" "$username" "$machine_hostname"
 }
 
-if ! TUNNEL_URL="$(wait_for_tunnel_url)"; then
-  echo "Error: timed out waiting for web tunnel URL at $TUNNEL_URL_FILE" >&2
-  echo "Start web dev together with api dev so the API can publish external callbacks." >&2
-  exit 1
-fi
+start_api_tunnel() {
+  local tunnel_hostname tunnel_url
+
+  if [[ ! -x "$TUNNEL_SCRIPT" ]]; then
+    echo "Error: tunnel script is not executable at $TUNNEL_SCRIPT" >&2
+    exit 1
+  fi
+
+  tunnel_hostname="${TUNNEL_HOSTNAME:-${API_TUNNEL_HOSTNAME:-}}"
+  if [[ -z "$tunnel_hostname" ]]; then
+    tunnel_hostname="$(default_api_tunnel_hostname)"
+  fi
+
+  if [[ -n "$tunnel_hostname" ]]; then
+    tunnel_url="$(TUNNEL_HOSTNAME="$tunnel_hostname" "$TUNNEL_SCRIPT" "$API_PORT")"
+  else
+    tunnel_url="$("$TUNNEL_SCRIPT" "$API_PORT")"
+  fi
+
+  printf "%s\n" "$tunnel_url" > "$TUNNEL_URL_FILE"
+  printf "%s\n" "$tunnel_url"
+}
+
+TUNNEL_URL="$(start_api_tunnel)"
 
 echo "[api:dev] VM0_API_URL=${TUNNEL_URL}"
 

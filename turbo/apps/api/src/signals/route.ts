@@ -164,6 +164,7 @@ import { zeroSteamPlayerRoutes } from "./routes/zero-steam-player";
 import { zeroTeamsBrowserConnectRoutes } from "./routes/zero-teams-browser-connect";
 import { zeroTeamsBotRoutes } from "./routes/zero-teams-bot";
 import { zeroTeamsConnectRoutes } from "./routes/zero-teams-connect";
+import { zeroTeamsOauthRoutes } from "./routes/zero-teams-oauth";
 import { zeroTeamRoutes } from "./routes/zero-team";
 import { zeroUploadsCompleteRoutes } from "./routes/zero-uploads-complete";
 import { zeroUploadsHtmlDomEditSnapshotRoutes } from "./routes/zero-uploads-html-dom-edit-snapshot";
@@ -365,6 +366,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroTeamsBrowserConnectRoutes,
   ...zeroTeamsBotRoutes,
   ...zeroTeamsConnectRoutes,
+  ...zeroTeamsOauthRoutes,
   ...zeroIntegrationsAgentPhoneRoutes,
   ...zeroIntegrationsPhoneDownloadFileRoutes,
   ...zeroIntegrationsPhoneMessageRoutes,

@@ -30,13 +30,25 @@ function teamsInstallUrl(tenantId?: string): string {
   return url.toString();
 }
 
+function teamsOauthConnectUrl(fixture: {
+  readonly orgId: string;
+  readonly userId: string;
+}): string {
+  const url = new URL("https://app.vm0.test/api/zero/teams/oauth/connect");
+  url.searchParams.set("orgId", fixture.orgId);
+  url.searchParams.set("vm0UserId", fixture.userId);
+  return url.toString();
+}
+
 function connectBody(
   fixture: TeamsConnectFixture,
   teamsUserId = fixture.teamsUserId,
+  teamsAadObjectId = fixture.teamsAadObjectId,
 ) {
   return {
     tenantId: fixture.teamsTenantId,
     teamsUserId,
+    teamsAadObjectId,
     teamsUserDisplayName: "Ada Lovelace",
     teamsUserPrincipalName: "ada@example.com",
     teamId: fixture.teamsTeamId,
@@ -95,6 +107,10 @@ describe("GET /api/zero/integrations/teams/connect", () => {
       isConnected: false,
       isAdmin: true,
       installUrl: teamsInstallUrl(),
+      connectUrl: teamsOauthConnectUrl({
+        orgId: "org_empty",
+        userId: "user_empty",
+      }),
     });
   });
 
@@ -128,7 +144,8 @@ describe("GET /api/zero/integrations/teams/connect", () => {
       isInstalled: true,
       isConnected: false,
       isAdmin: true,
-      installUrl: teamsInstallUrl(fixture.teamsTenantId),
+      installUrl: null,
+      connectUrl: teamsOauthConnectUrl(fixture),
       tenantId: fixture.teamsTenantId,
       tenantName: fixture.teamsTenantName,
       teamId: fixture.teamsTeamId,
@@ -163,7 +180,8 @@ describe("GET /api/zero/integrations/teams/connect", () => {
       isInstalled: true,
       isConnected: true,
       isAdmin: false,
-      installUrl: teamsInstallUrl(fixture.teamsTenantId),
+      installUrl: null,
+      connectUrl: null,
       tenantId: fixture.teamsTenantId,
       tenantName: fixture.teamsTenantName,
       teamId: fixture.teamsTeamId,
@@ -248,7 +266,7 @@ describe("POST /api/zero/integrations/teams/connect", () => {
     const response = await accept(
       client.connect({
         headers: { authorization: "Bearer clerk-session" },
-        body: connectBody(fixture, "29:member-user"),
+        body: connectBody(fixture, "29:member-user", "aad-member-user"),
       }),
       [200],
     );
@@ -388,6 +406,7 @@ describe("DELETE /api/zero/integrations/teams/connect", () => {
       isConnected: false,
       isAdmin: true,
       installUrl: teamsInstallUrl(),
+      connectUrl: teamsOauthConnectUrl(fixture),
     });
   });
 });

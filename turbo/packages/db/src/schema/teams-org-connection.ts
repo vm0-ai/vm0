@@ -8,6 +8,7 @@ import {
   uniqueIndex,
   index,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { teamsOrgInstallations } from "./teams-org-installation";
 
 /**
@@ -18,7 +19,8 @@ export const teamsOrgConnections = pgTable(
   "teams_org_connections",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    teamsUserId: varchar("teams_user_id", { length: 255 }).notNull(),
+    teamsUserId: varchar("teams_user_id", { length: 255 }),
+    teamsAadObjectId: varchar("teams_aad_object_id", { length: 255 }),
     teamsTenantId: varchar("teams_tenant_id", { length: 255 })
       .notNull()
       .references(() => {
@@ -35,10 +37,12 @@ export const teamsOrgConnections = pgTable(
   },
   (table) => {
     return [
-      uniqueIndex("idx_teams_org_connections_user_tenant").on(
-        table.teamsUserId,
-        table.teamsTenantId,
-      ),
+      uniqueIndex("idx_teams_org_connections_user_tenant")
+        .on(table.teamsUserId, table.teamsTenantId)
+        .where(sql`teams_user_id IS NOT NULL`),
+      uniqueIndex("idx_teams_org_connections_aad_tenant")
+        .on(table.teamsAadObjectId, table.teamsTenantId)
+        .where(sql`teams_aad_object_id IS NOT NULL`),
       index("idx_teams_org_connections_vm0_tenant").on(
         table.vm0UserId,
         table.teamsTenantId,

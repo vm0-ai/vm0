@@ -543,7 +543,7 @@ function ChatThreadItemLink({
           Reason.DomCallback,
         );
       }}
-      className={`flex h-8 items-center gap-2 rounded-lg py-2 pl-2 pr-8 text-left text-sm leading-5 transition-colors ${
+      className={`flex h-8 items-center gap-2 rounded-lg py-2 pl-2 pr-8 text-left text-sm leading-5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${
         state.isHighlighted
           ? "bg-gray-200 text-gray-900 font-medium"
           : state.isUnread

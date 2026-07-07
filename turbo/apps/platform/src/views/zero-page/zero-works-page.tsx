@@ -311,6 +311,7 @@ function TeamsCardActions({
   isInstalled,
   isAdmin,
   installUrl,
+  connectUrl,
   connectedDetail,
   onDisconnect,
   onUninstall,
@@ -320,40 +321,43 @@ function TeamsCardActions({
   isInstalled: boolean;
   isAdmin: boolean;
   installUrl: string | null | undefined;
+  connectUrl: string | null | undefined;
   connectedDetail?: string | null;
   onDisconnect: () => void;
   onUninstall: () => void;
   disconnecting: boolean;
 }) {
+  const installActionUrl = connectUrl ?? installUrl;
   return (
     <>
       {isConnected ? (
         <TeamsConnectedIndicator connectedDetail={connectedDetail} />
       ) : null}
-      {isAdmin && installUrl && (
+      {!isInstalled && isAdmin && installActionUrl && (
         <Button
           data-testid="teams-install-button"
           variant="outline"
           size="sm"
           className="h-8 shrink-0 gap-1.5 rounded-lg"
           onClick={() => {
-            window.open(installUrl, "_blank");
+            return openFreshOAuth(installActionUrl);
           }}
         >
           <IconDownload size={14} stroke={1.5} />
           Install in Teams
         </Button>
       )}
-      {!isAdmin && isInstalled && !isConnected && installUrl && (
+      {isInstalled && !isConnected && connectUrl && (
         <Button
+          data-testid="teams-connect-button"
           variant="outline"
           size="sm"
           className="h-8 shrink-0 gap-1.5 rounded-lg"
           onClick={() => {
-            window.open(installUrl, "_blank");
+            return openFreshOAuth(connectUrl);
           }}
         >
-          Open Teams
+          Connect
         </Button>
       )}
       {isInstalled && (isConnected || isAdmin) && (
@@ -415,12 +419,13 @@ function TeamsCard({ displayName }: { displayName: string }) {
   const isConnected = teamsData?.isConnected ?? false;
   const isInstalled = teamsData?.isInstalled ?? false;
   const isAdmin = teamsData?.isAdmin ?? false;
-  const connectedDetail = teamsData?.teamName ?? teamsData?.tenantName;
+  const connectedDetail =
+    teamsData?.teamName ?? teamsData?.tenantName ?? teamsData?.tenantId;
   const description =
     !isInstalled && !isAdmin
       ? "Ask your admin to install the Microsoft Teams integration"
       : isInstalled && !isConnected
-        ? "Open Teams and connect from a Zero message"
+        ? "Connect your Microsoft account to finish setup"
         : "Team communication and collaboration";
 
   return (
@@ -441,6 +446,7 @@ function TeamsCard({ displayName }: { displayName: string }) {
             isInstalled={isInstalled}
             isAdmin={isAdmin}
             installUrl={teamsData?.installUrl}
+            connectUrl={teamsData?.connectUrl}
             connectedDetail={connectedDetail}
             disconnecting={disconnecting}
             onDisconnect={() => {

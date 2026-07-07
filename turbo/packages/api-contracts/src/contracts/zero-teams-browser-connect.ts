@@ -6,10 +6,18 @@ const c = initContract();
 
 export const zeroTeamsBrowserConnectQuerySchema = z.object({
   tenantId: z.string().optional(),
+  tenantName: z.string().optional(),
   teamsUserId: z.string().optional(),
+  teamsAadObjectId: z.string().optional(),
+  teamsUserDisplayName: z.string().optional(),
+  teamsUserPrincipalName: z.string().optional(),
   displayName: z.string().optional(),
   upn: z.string().optional(),
+  teamId: z.string().optional(),
+  teamName: z.string().optional(),
+  serviceUrl: z.string().optional(),
   conversationId: z.string().optional(),
+  activityId: z.string().optional(),
   channelId: z.string().optional(),
   threadId: z.string().optional(),
   orgId: z.string().optional(),

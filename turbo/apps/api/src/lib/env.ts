@@ -114,6 +114,8 @@ const SCHEMA = {
   TELEGRAM_OFFICIAL_BOT_USERNAME: z.string().optional(),
   TELEGRAM_OFFICIAL_WEBHOOK_SECRET: z.string().optional(),
   SLACK_OAUTH_CLIENT_ID: z.string().optional(),
+  MICROSOFT_OAUTH_CLIENT_ID: z.string().min(1).optional(),
+  MICROSOFT_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
   MICROSOFT_TEAMS_BOT_APP_ID: z.string().min(1).optional(),
   MICROSOFT_TEAMS_BOT_APP_PASSWORD: z.string().min(1).optional(),
   MICROSOFT_TEAMS_APP_TENANT_ID: z.string().min(1).optional(),

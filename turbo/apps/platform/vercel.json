@@ -61,6 +61,10 @@
       "destination": "https://api.vm0.ai/api/zero/teams/connect"
     },
     {
+      "source": "/api/zero/teams/oauth/(.*)",
+      "destination": "https://api.vm0.ai/api/zero/teams/oauth/$1"
+    },
+    {
       "source": "/((?!assets/|.*\\..*).*)",
       "destination": "/index.html"
     }
