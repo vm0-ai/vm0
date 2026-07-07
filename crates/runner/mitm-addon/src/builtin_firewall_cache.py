@@ -18,6 +18,7 @@ _READ_CHUNK_BYTES = 1024 * 1024
 _CACHE_SCHEMA_VERSION = 1
 _SHA256_HEX_LENGTH = 64
 _RESERVED_PERMISSION_NAMES = frozenset(("all", "__unknown__"))
+_UNTRUSTED_WRITE_BITS = stat.S_IWGRP | stat.S_IWOTH
 CatalogFileKey = tuple[str, int, int, int, int]
 CatalogIdentity = tuple[str, str, str, CatalogFileKey]
 
@@ -79,7 +80,7 @@ def catalog_file_key(cache_path: str | None) -> CatalogFileKey | None:
         st = path.stat(follow_symlinks=False)
     except OSError:
         return None
-    if not stat.S_ISREG(st.st_mode):
+    if not _cache_file_stat_is_trusted(st):
         return None
     return (_path_key(path), st.st_dev, st.st_ino, st.st_mtime_ns, st.st_size)
 
@@ -135,7 +136,18 @@ def _open_cache_for_read(path: Path) -> tuple[int, os.stat_result]:
     if not stat.S_ISREG(st.st_mode):
         os.close(fd)
         raise OSError(f"builtin firewall catalog cache is not a regular file: {path}")
+    if not _cache_file_stat_is_trusted(st):
+        os.close(fd)
+        raise OSError(f"builtin firewall catalog cache is not trusted: {path}")
     return fd, st
+
+
+def _cache_file_stat_is_trusted(st: os.stat_result) -> bool:
+    return (
+        stat.S_ISREG(st.st_mode)
+        and st.st_uid == os.geteuid()
+        and (st.st_mode & _UNTRUSTED_WRITE_BITS) == 0
+    )
 
 
 def _read_cache_bytes(fd: int, path: Path, st_size: int) -> bytes:

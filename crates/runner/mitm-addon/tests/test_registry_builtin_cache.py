@@ -84,6 +84,8 @@ def _assert_cache_firewall_falls_back_to_bundled(
     monkeypatch,
     mitm_ctx,
     firewall: dict,
+    *,
+    cache_mode: int | None = None,
 ) -> None:
     registry_path = tmp_path / "registry.json"
     cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
@@ -109,6 +111,8 @@ def _assert_cache_firewall_falls_back_to_bundled(
         version="catalog-a",
         firewalls={"fallback": firewall},
     )
+    if cache_mode is not None:
+        cache_path.chmod(cache_mode)
     write_multi_vm_registry(
         registry_path,
         {"10.200.0.1": builtin_vm("run-fallback", "fallback")},
@@ -794,6 +798,19 @@ class TestRegistryBuiltinCache:
             monkeypatch,
             mitm_ctx,
             firewall,
+        )
+
+    def test_world_writable_runner_catalog_cache_falls_back_to_bundled(
+        self, tmp_path, monkeypatch, mitm_ctx
+    ):
+        firewall = _cache_firewall("fallback", "https://cache.example.com")
+
+        _assert_cache_firewall_falls_back_to_bundled(
+            tmp_path,
+            monkeypatch,
+            mitm_ctx,
+            firewall,
+            cache_mode=0o666,
         )
 
     def test_malformed_aws_sigv4_runner_catalog_cache_falls_back_to_bundled(
