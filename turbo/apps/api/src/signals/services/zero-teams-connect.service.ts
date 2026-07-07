@@ -574,7 +574,6 @@ export const prepareTeamsInstallation$ = command(
         orgId: args.orgId,
         userId: args.userId,
         name: "artifact",
-        bucket: env("R2_USER_STORAGES_BUCKET_NAME"),
       }),
     );
     signal.throwIfAborted();
