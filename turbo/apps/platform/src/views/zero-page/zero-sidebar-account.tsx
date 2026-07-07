@@ -574,10 +574,12 @@ function SignOutItem({
 
 export function AccountDropdown({
   onAccountAction,
+  settingsOwnerId,
   collapsed = false,
   hidePreferences = false,
 }: {
   onAccountAction?: (action: ZeroAccountAction) => void;
+  settingsOwnerId: string;
   collapsed?: boolean;
   hidePreferences?: boolean;
 }) {
@@ -673,7 +675,7 @@ export function AccountDropdown({
 
   const queueSettingsOpen = (section: SettingsSection) => {
     setSidebarExpanded(false);
-    setPendingSettingsSection(section);
+    setPendingSettingsSection(settingsOwnerId, section);
   };
 
   const handleOpenSettings = () => {
@@ -708,7 +710,7 @@ export function AccountDropdown({
 
   const handleMenuOpenChange = (open: boolean) => {
     if (open) {
-      setPendingSettingsSection(null);
+      setPendingSettingsSection(settingsOwnerId, null);
     }
     if (!open || hidePreferences || !subscriptionsEnabled) {
       return;
@@ -735,7 +737,7 @@ export function AccountDropdown({
           className="w-[240px]"
           onCloseAutoFocus={(event) => {
             event.preventDefault();
-            const section = consumePendingSettingsSection();
+            const section = consumePendingSettingsSection(settingsOwnerId);
             if (section === null) {
               return;
             }
