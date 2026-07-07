@@ -5640,9 +5640,10 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     const claimedRun = await api.readRun(actor, first.runId);
     expect(claimedRun.status).toBe("running");
 
+    const secondPrompt = "user runner job two";
     const second = await api.createRun(actor, {
       agentId,
-      prompt: "user runner job two",
+      prompt: secondPrompt,
       modelProvider: "anthropic-api-key",
     });
 
@@ -5666,15 +5667,9 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     expectApiError(crossClaim.body);
     expect(crossClaim.body.error.message).toBe("Job does not belong to user");
 
-    const directPrompt = "user runner direct ably job";
-    const direct = await api.createRun(actor, {
-      agentId,
-      prompt: directPrompt,
-      modelProvider: "anthropic-api-key",
-    });
     const directClaimed = await api.requestClaimRunnerJobAs(
       bearer,
-      direct.runId,
+      second.runId,
       [200],
       {
         telemetry: {
@@ -5692,14 +5687,14 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     if (directClaimed.status !== 200) {
       throw new Error("Expected the direct Ably runner claim to succeed");
     }
-    expect(directClaimed.body.prompt).toBe(directPrompt);
+    expect(directClaimed.body.prompt).toBe(secondPrompt);
 
     expectDirectAblyClaimTimingEvents({
-      events: sandboxOperationEventsForRun(direct.runId),
-      runId: direct.runId,
+      events: sandboxOperationEventsForRun(second.runId),
+      runId: second.runId,
       runnerGroup,
       forbiddenValues: [
-        directPrompt,
+        secondPrompt,
         directClaimed.body.sandboxToken,
         apiKey.token,
       ],
@@ -5730,7 +5725,6 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     );
 
     await api.requestCancelRun(actor, first.runId, [200]);
-    await api.requestCancelRun(actor, direct.runId, [200]);
     await api.requestCancelRun(actor, second.runId, [200]);
     const settled = await api.readRunQueue(actor);
     expect(settled.body.concurrency.active).toBe(0);
