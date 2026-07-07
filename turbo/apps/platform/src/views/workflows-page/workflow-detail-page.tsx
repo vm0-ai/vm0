@@ -4572,12 +4572,16 @@ function TriggerRow({
           value={lastRunLabel}
           emphasized={hasLastRun}
         />
-        <TriggerRunStat
-          icon={<IconClock size={14} stroke={1.5} />}
-          label="Next"
-          value={nextRunLabel}
-          emphasized={hasNextRun}
-        />
+        {trigger.kind === "schedule" ? (
+          <TriggerRunStat
+            icon={<IconClock size={14} stroke={1.5} />}
+            label="Next"
+            value={nextRunLabel}
+            emphasized={hasNextRun}
+          />
+        ) : (
+          <div aria-hidden="true" />
+        )}
         <TriggerStatusSwitch
           trigger={trigger}
           title={title}

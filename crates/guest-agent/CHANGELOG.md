@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.47.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.47.1...guest-agent-v0.47.2) (2026-07-07)
+
+
+### Performance Improvements
+
+* reuse codex zstd session history ([#20450](https://github.com/vm0-ai/vm0/issues/20450)) ([e9b1a48](https://github.com/vm0-ai/vm0/commit/e9b1a48e0e36b8ae75bceab667fd8d6f70fd2ede))
+
 ## [0.47.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.47.0...guest-agent-v0.47.1) (2026-07-07)
 
 

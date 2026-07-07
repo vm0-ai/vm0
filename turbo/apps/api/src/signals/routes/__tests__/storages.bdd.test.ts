@@ -365,6 +365,31 @@ describe("FILE-01 storage prepare, commit, list, and download", () => {
       size: volumeFile.size,
     });
 
+    const emptyVolumeName = `bdd-empty-volume-${randomUUID().slice(0, 8)}`;
+    const preparedEmptyVolume = await api.prepareStorage(actor, {
+      storageName: emptyVolumeName,
+      storageType: "volume",
+      files: [],
+    });
+    await api.commitStorage(actor, {
+      storageName: emptyVolumeName,
+      storageType: "volume",
+      versionId: preparedEmptyVolume.versionId,
+      files: [],
+    });
+    context.mocks.s3.send.mockClear();
+    api.mockStorageObjectMissingOnce();
+    const preparedMissingEmptyVolume = await api.prepareStorage(actor, {
+      storageName: emptyVolumeName,
+      storageType: "volume",
+      files: [],
+    });
+    expect(preparedMissingEmptyVolume).toMatchObject({
+      versionId: preparedEmptyVolume.versionId,
+      existing: false,
+    });
+    expect(preparedMissingEmptyVolume.uploads).toBeDefined();
+
     authOrg.mockClerkOrg(actor);
     const key = await authOrg.createApiKey(actor, {
       name: "BDD storages token",
