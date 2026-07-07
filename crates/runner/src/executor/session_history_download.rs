@@ -308,8 +308,17 @@ impl SessionHistoryProbe {
                 .entries
                 .iter()
                 .filter(|(key, _)| *key != current_key)
+                .filter(|(_, entry)| entry.in_flight == 0)
                 .min_by_key(|(_, entry)| entry.last_seen)
                 .map(|(key, _)| key.clone())
+                .or_else(|| {
+                    state
+                        .entries
+                        .iter()
+                        .filter(|(key, _)| *key != current_key)
+                        .min_by_key(|(_, entry)| entry.last_seen)
+                        .map(|(key, _)| key.clone())
+                })
                 .or_else(|| state.entries.keys().next().cloned());
             let Some(candidate) = candidate else {
                 break;
@@ -1229,6 +1238,46 @@ mod tests {
             SessionHistoryCacheProbeMetadata::new(false, false)
         );
         repeated_first.finish();
+    }
+
+    #[test]
+    fn probe_capacity_eviction_preserves_inflight_ref_when_possible() {
+        let probe = SessionHistoryProbe::with_limits_for_test(Duration::from_secs(60), 2);
+        let active_session = ref_session(
+            "http://127.0.0.1/active.blob".to_string(),
+            hex::encode(Sha256::digest(b"active")),
+            6,
+            6,
+        );
+        let idle_session = ref_session(
+            "http://127.0.0.1/idle.blob".to_string(),
+            hex::encode(Sha256::digest(b"idle")),
+            4,
+            4,
+        );
+        let new_session = ref_session(
+            "http://127.0.0.1/new.blob".to_string(),
+            hex::encode(Sha256::digest(b"new")),
+            3,
+            3,
+        );
+        let active_ref = active_session.history_ref().unwrap();
+        let idle_ref = idle_session.history_ref().unwrap();
+        let new_ref = new_session.history_ref().unwrap();
+
+        let active = probe.observe(active_ref);
+        let idle = probe.observe(idle_ref);
+        idle.finish();
+        let new = probe.observe(new_ref);
+        new.finish();
+
+        let repeated_active = probe.observe(active_ref);
+        assert_eq!(
+            repeated_active.observation(),
+            SessionHistoryCacheProbeMetadata::new(true, true)
+        );
+        repeated_active.finish();
+        active.finish();
     }
 
     async fn serve_once(
