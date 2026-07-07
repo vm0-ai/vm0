@@ -35,23 +35,7 @@ impl CodexResumeFixture {
         let home = tempfile::Builder::new()
             .prefix("codex-resume-home-")
             .tempdir()?;
-        let home_name = home
-            .path()
-            .file_name()
-            .and_then(|name| name.to_str())
-            .ok_or_else(|| {
-                std::io::Error::other(format!(
-                    "tempdir path has no utf-8 file name: {}",
-                    home.path().display()
-                ))
-            })?
-            .to_string();
-        let run_id_suffix = home_name
-            .strip_prefix("codex-resume-home-")
-            .ok_or_else(|| {
-                std::io::Error::other(format!("unexpected tempdir name: {home_name}"))
-            })?;
-        let run_id = format!("codex-resume-{run_id_suffix}");
+        let run_id = "codex-resume-test".to_string();
         let runtime_dir = home
             .path()
             .join(".vm0")
