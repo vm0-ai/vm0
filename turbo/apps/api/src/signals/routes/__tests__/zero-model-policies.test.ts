@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import {
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   DEFAULT_ORG_MODEL_POLICY_MODELS,
+  LIMITED_FREE1_DEFAULT_RUN_MODEL,
   type ModelProviderType,
   type OrgModelPoliciesResponse,
   type UpdateOrgModelPolicy,
@@ -232,8 +233,13 @@ describe("GET/PUT /api/zero/model-policies", () => {
       }),
     ).toStrictEqual(DEFAULT_ORG_MODEL_POLICY_MODELS);
     expect(response.body.workspaceDefaultModel).toBe(
-      DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+      LIMITED_FREE1_DEFAULT_RUN_MODEL,
     );
+    expect(
+      response.body.policies.find((policy) => {
+        return policy.isDefault;
+      })?.model,
+    ).toBe(LIMITED_FREE1_DEFAULT_RUN_MODEL);
   });
 
   it("allows members to read policy controls", async () => {
@@ -412,6 +418,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
       "claude-opus-4-8",
       "claude-opus-4-6",
       "claude-sonnet-5",
+      "claude-sonnet-4-6",
       "MiniMax-M3",
     ]);
   });
@@ -446,7 +453,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
       },
     });
     expect(afterRejected.body.workspaceDefaultModel).toBe(
-      DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+      LIMITED_FREE1_DEFAULT_RUN_MODEL,
     );
     expect(
       afterRejected.body.policies
@@ -456,7 +463,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
         .map((policy) => {
           return policy.model;
         }),
-    ).toStrictEqual([DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL]);
+    ).toStrictEqual([LIMITED_FREE1_DEFAULT_RUN_MODEL]);
   });
 
   it("rejects BYOK policy writes for limited-free-1 workspaces", async () => {

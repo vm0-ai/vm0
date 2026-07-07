@@ -634,6 +634,7 @@ export {
   VM0_MODEL_PRICE_TIER_LABEL,
   DEFAULT_ORG_MODEL_POLICY_MODELS,
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+  LIMITED_FREE1_DEFAULT_RUN_MODEL,
   getFrameworkForType,
   getSecretNameForType,
   getModelProviderEnvBindings,

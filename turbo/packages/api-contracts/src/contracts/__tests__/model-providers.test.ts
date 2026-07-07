@@ -29,6 +29,7 @@ import {
   modelProviderCredentialScopeSchema,
   supportedRunModelSchema,
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+  LIMITED_FREE1_DEFAULT_RUN_MODEL,
   SUPPORTED_RUN_MODELS,
   VM0_MODEL_PRICE_TIER,
   DEFAULT_ORG_MODEL_POLICY_MODELS,
@@ -142,10 +143,10 @@ describe("model-first canonical catalog", () => {
     expect(isLimitedFree1RestrictedRunModel("anthropic/claude-sonnet-5")).toBe(
       true,
     );
-    expect(isLimitedFree1RestrictedRunModel("claude-sonnet-4-6")).toBe(true);
+    expect(isLimitedFree1RestrictedRunModel("claude-sonnet-4-6")).toBe(false);
     expect(
       isLimitedFree1RestrictedRunModel("anthropic/claude-sonnet-4.6"),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       isLimitedFree1RestrictedRunModel("anthropic/claude-sonnet-4.5"),
     ).toBe(true);
@@ -377,9 +378,11 @@ describe("model-first canonical catalog", () => {
       "gpt-5.5",
       "claude-opus-4-8",
       "claude-sonnet-5",
+      "claude-sonnet-4-6",
       "MiniMax-M3",
     ]);
     expect(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL).toBe("MiniMax-M3");
+    expect(LIMITED_FREE1_DEFAULT_RUN_MODEL).toBe("claude-sonnet-4-6");
     expect(getDefaultModel("vm0")).toBe(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL);
     expect(getDefaultOrgModelPolicySeed()).toEqual(
       DEFAULT_ORG_MODEL_POLICY_MODELS.map((model) => {
@@ -392,6 +395,13 @@ describe("model-first canonical catalog", () => {
         };
       }),
     );
+    expect(
+      getDefaultOrgModelPolicySeed(LIMITED_FREE1_DEFAULT_RUN_MODEL).find(
+        (seed) => {
+          return seed.isDefault;
+        },
+      )?.model,
+    ).toBe(LIMITED_FREE1_DEFAULT_RUN_MODEL);
   });
 
   it("exposes VM0 price tiers for built-in reasoning models", () => {

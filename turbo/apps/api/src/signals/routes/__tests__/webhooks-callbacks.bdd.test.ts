@@ -1,5 +1,6 @@
 import { createHash, randomInt, randomUUID } from "node:crypto";
 
+import { LIMITED_FREE1_DEFAULT_RUN_MODEL } from "@vm0/api-contracts/contracts/model-providers";
 import { RESUME_SESSION_HISTORY_MAX_BYTES } from "@vm0/api-contracts/contracts/runners";
 import { MAX_FILE_SIZE_BYTES } from "@vm0/api-contracts/contracts/storages";
 import { HttpResponse, http } from "msw";
@@ -470,6 +471,12 @@ describe("WHCB-01: third-party webhook verification boundaries", () => {
       remaining: 3000,
     });
     expectExpiresAboutThirtyDaysFromNow(onboardingCreditGrant?.expiresAt);
+    const limitedFreeProviders = await runs.listOrgModelProviders(admin);
+    expect(
+      limitedFreeProviders.find((provider) => {
+        return provider.type === "vm0";
+      })?.selectedModel,
+    ).toBe(LIMITED_FREE1_DEFAULT_RUN_MODEL);
 
     api.verifyNextClerkWebhook({
       type: "organizationMembership.created",

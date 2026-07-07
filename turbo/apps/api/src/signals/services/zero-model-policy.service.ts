@@ -2,6 +2,7 @@ import { command } from "ccstate";
 import { and, eq, inArray, notInArray } from "drizzle-orm";
 import {
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+  LIMITED_FREE1_DEFAULT_RUN_MODEL,
   MODEL_PROVIDER_TYPES,
   SUPPORTED_RUN_MODELS,
   getCanonicalModelDisplayName,
@@ -123,34 +124,128 @@ function sortRowsByCatalog(rows: OrgModelPolicyRow[]): OrgModelPolicyRow[] {
   });
 }
 
+function getSeedDefaultModelForTier(limitedFree1: boolean): SupportedRunModel {
+  return limitedFree1
+    ? LIMITED_FREE1_DEFAULT_RUN_MODEL
+    : DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL;
+}
+
+function shouldReplaceExistingDefaultForTier(
+  existingDefault: OrgModelPolicyRow | undefined,
+  limitedFree1: boolean,
+): boolean {
+  if (!limitedFree1) {
+    return existingDefault === undefined;
+  }
+  return (
+    existingDefault === undefined ||
+    existingDefault.model === DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL ||
+    existingDefault.defaultProviderType !== "vm0" ||
+    isLimitedFree1RestrictedRunModel(existingDefault.model)
+  );
+}
+
+async function ensureModelPolicy(
+  db: Db,
+  orgId: string,
+  userId: string,
+  model: SupportedRunModel,
+): Promise<void> {
+  const now = nowDate();
+  await db
+    .insert(orgModelPolicies)
+    .values({
+      model,
+      isDefault: false,
+      defaultProviderType: "vm0",
+      credentialScope: "org",
+      modelProviderId: null,
+      orgId,
+      createdByUserId: userId,
+      updatedByUserId: userId,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .onConflictDoNothing({
+      target: [orgModelPolicies.orgId, orgModelPolicies.model],
+    });
+}
+
+async function setDefaultModelPolicy(
+  db: Db,
+  orgId: string,
+  userId: string,
+  model: SupportedRunModel,
+  options?: { readonly resetRouteToBuiltIn?: boolean },
+): Promise<void> {
+  await ensureModelPolicy(db, orgId, userId, model);
+  const now = nowDate();
+  await db
+    .update(orgModelPolicies)
+    .set({
+      isDefault: false,
+      updatedByUserId: userId,
+      updatedAt: now,
+    })
+    .where(
+      and(
+        eq(orgModelPolicies.orgId, orgId),
+        eq(orgModelPolicies.isDefault, true),
+      ),
+    );
+  await db
+    .update(orgModelPolicies)
+    .set({
+      isDefault: true,
+      ...(options?.resetRouteToBuiltIn === true
+        ? {
+            defaultProviderType: "vm0",
+            credentialScope: "org",
+            modelProviderId: null,
+          }
+        : {}),
+      updatedByUserId: userId,
+      updatedAt: now,
+    })
+    .where(
+      and(eq(orgModelPolicies.orgId, orgId), eq(orgModelPolicies.model, model)),
+    );
+}
+
 export async function ensureOrgModelPolicies(
   db: Db,
   orgId: string,
   userId: string,
 ): Promise<OrgModelPolicyRow[]> {
+  const limitedFree1 = await orgHasLimitedFree1Restrictions(db, orgId);
+  const seedDefaultModel = getSeedDefaultModelForTier(limitedFree1);
   const existing = await loadRows(db, orgId);
   if (existing.length > 0) {
-    if (
-      existing.some((policy) => {
-        return policy.isDefault;
-      })
-    ) {
+    const existingDefault = existing.find((policy) => {
+      return policy.isDefault;
+    });
+    if (!shouldReplaceExistingDefaultForTier(existingDefault, limitedFree1)) {
       return sortRowsByCatalog(existing);
+    }
+
+    if (limitedFree1) {
+      await setDefaultModelPolicy(db, orgId, userId, seedDefaultModel, {
+        resetRouteToBuiltIn: true,
+      });
+      return sortRowsByCatalog(await loadRows(db, orgId));
     }
 
     const fallbackDefault =
       existing.find((policy) => {
-        return policy.model === DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL;
+        return policy.model === seedDefaultModel;
       }) ?? sortRowsByCatalog(existing)[0];
     if (fallbackDefault) {
-      await db
-        .update(orgModelPolicies)
-        .set({
-          isDefault: true,
-          updatedByUserId: userId,
-          updatedAt: nowDate(),
-        })
-        .where(eq(orgModelPolicies.id, fallbackDefault.id));
+      await setDefaultModelPolicy(
+        db,
+        orgId,
+        userId,
+        parseSupportedModel(fallbackDefault.model) ?? seedDefaultModel,
+      );
       return sortRowsByCatalog(await loadRows(db, orgId));
     }
     return sortRowsByCatalog(existing);
@@ -161,7 +256,7 @@ export async function ensureOrgModelPolicies(
       return policy.model;
     }),
   );
-  const missing = getDefaultOrgModelPolicySeed()
+  const missing = getDefaultOrgModelPolicySeed(seedDefaultModel)
     .filter((seed) => {
       return !existingModels.has(seed.model);
     })
