@@ -1010,7 +1010,7 @@ describe("CHAT-02: completed chat callback", () => {
       throw new Error("Expected a completed lifecycle marker");
     }
     expect(marker.recommendedFollowups).toBeUndefined();
-    expect(publishedChatThreadFollowupsFinished(run.threadId)).toBe(true);
+    expect(publishedChatThreadFollowupsFinished(run.threadId)).toBeTruthy();
   });
 
   it("auto-sends the queued message before completed-run LLM side effects finish", async () => {
