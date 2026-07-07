@@ -443,7 +443,7 @@ describe("GET /api/zero/connector-catalog", () => {
         startOptions: [],
         externalCode: {
           instructions:
-            "Open the PlayStation NPSSO page while signed in to Sony, then paste only the npsso value from the JSON response. vm0 uses it once to create refreshable PlayStation tokens and does not store NPSSO.",
+            "Open the PlayStation NPSSO page while signed in to Sony, then paste only the npsso value from the JSON response. NPSSO is sensitive; vm0 uses it once to create refreshable PlayStation tokens and does not store it. This connector uses community-observed, undocumented PlayStation Network APIs rather than an official third-party OAuth consent flow.",
           inputLabel: "NPSSO token",
           inputPlaceholder: "NPSSO token",
           openButtonLabel: "Open PlayStation NPSSO page",
