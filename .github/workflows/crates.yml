@@ -1514,8 +1514,9 @@ jobs:
           # Unit must still be active — the in-flight job keeps it alive.
           sudo systemctl is-active --quiet "$UNIT" \
             || fail "unit should still be active during Draining"
-          [ "$(restart_policy)" = "no" ] \
-            || fail "expected Restart=no during drain, got '$(restart_policy)'"
+          RESTART_POLICY=$(restart_policy)
+          [ "$RESTART_POLICY" = "no" ] \
+            || fail "expected Restart=no during drain, got '$RESTART_POLICY'"
           [ -f "$DRAIN_DROP_IN" ] \
             || fail "expected drain drop-in at $DRAIN_DROP_IN"
           echo "PASS: Restart=no applied during drain"
@@ -1554,8 +1555,9 @@ jobs:
           [ "$(status_mode)" = "running" ] \
             || fail "expected mode=running after resume, got '$(status_mode)'"
           echo "PASS: mode=running after resume"
-          [ "$(restart_policy)" = "on-failure" ] \
-            || fail "expected Restart=on-failure after resume, got '$(restart_policy)'"
+          RESTART_POLICY=$(restart_policy)
+          [ "$RESTART_POLICY" = "on-failure" ] \
+            || fail "expected Restart=on-failure after resume, got '$RESTART_POLICY'"
           [ ! -e "$DRAIN_DROP_IN" ] \
             || fail "drain drop-in remained after resume at $DRAIN_DROP_IN"
           echo "PASS: Restart policy restored after resume"
