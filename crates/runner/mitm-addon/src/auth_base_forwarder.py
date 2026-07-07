@@ -170,6 +170,8 @@ def _wake_forward_request_admission_waiters(
         return
 
     def release_waiters() -> None:
+        # Wake every admitted waiter. Shutdown has already disabled submission, so
+        # these extra permits only let waiters observe the closed lifecycle state.
         for _ in range(state.admission_limit):
             state.semaphore.release()
 
@@ -790,6 +792,8 @@ def _get_forward_request_admission_semaphore() -> asyncio.Semaphore:
                 semaphore=asyncio.Semaphore(max_workers),
             )
         elif admission_limit > _forward_request_admission_state.admission_limit:
+            # Keep the same semaphore so a capacity change cannot reset the
+            # active concurrency limit while forwards are already running.
             _forward_request_admission_state = _ForwardRequestAdmissionState(
                 loop=_forward_request_admission_state.loop,
                 max_workers=_forward_request_admission_state.max_workers,
