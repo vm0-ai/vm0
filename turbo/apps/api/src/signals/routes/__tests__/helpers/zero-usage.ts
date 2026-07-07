@@ -396,7 +396,7 @@ export const seedExistingUsageInsights$ = command(
       readonly fixture: UsageFixture;
       readonly date: string;
       readonly updatedAt: Date;
-      readonly data?: unknown;
+      readonly data?: Record<string, unknown>;
     },
     signal: AbortSignal,
   ): Promise<void> => {
