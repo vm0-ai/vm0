@@ -4,7 +4,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use tokio::io::AsyncWriteExt;
-use vsock_proto::{MSG_EXEC_START, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK};
+use vsock_proto::{
+    MSG_ERROR, MSG_EXEC_START, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_WRITE_FILE_RESULT,
+};
 
 use super::super::support::{
     MockGuest, assert_connection_accepts_exec_operation, await_mock_guest, host_from_stream,
@@ -586,6 +588,80 @@ async fn write_file_connection_close_while_waiting_for_frame_builder_keeps_track
     let err = tokio::time::timeout(Duration::from_secs(5), write_task)
         .await
         .expect("write_file should return after the frame builder is released")
+        .unwrap()
+        .unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
+    assert_eq!(write_start_count.load(Ordering::SeqCst), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Closed
+    );
+}
+
+#[tokio::test]
+async fn write_file_connection_close_while_waiting_for_writer_keeps_tracker_closed() {
+    let (host, guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let writer_guard = host.shared.writer.lock().await;
+    let (frame_built_tx, frame_built_rx) = tokio::sync::oneshot::channel();
+    let write_start_count = Arc::new(AtomicUsize::new(0));
+
+    let write_task = {
+        let host = Arc::clone(&host);
+        let write_start_count = Arc::clone(&write_start_count);
+        tokio::spawn(async move {
+            crate::normal_request_on_shared_with_write_observer_frame_builder(
+                &host.shared,
+                &[MSG_ERROR, MSG_WRITE_FILE_RESULT],
+                Duration::from_secs(5),
+                FrameWriteObserver::new(move || {
+                    write_start_count.fetch_add(1, Ordering::SeqCst);
+                    Ok(())
+                }),
+                move |seq, frame| {
+                    vsock_proto::encode_write_file_frame_into(
+                        frame,
+                        seq,
+                        "/tmp/waiting-writer-closed.txt",
+                        b"hello",
+                        false,
+                        false,
+                    )
+                    .map_err(|error| {
+                        io::Error::new(io::ErrorKind::InvalidInput, error.to_string())
+                    })?;
+                    frame_built_tx.send(()).unwrap();
+                    Ok(())
+                },
+            )
+            .await
+        })
+    };
+
+    tokio::time::timeout(Duration::from_secs(5), frame_built_rx)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Busy
+    );
+
+    drop(guest);
+    host.wait_until_closed(Duration::from_secs(5))
+        .await
+        .unwrap();
+    assert_eq!(write_start_count.load(Ordering::SeqCst), 0);
+    assert_eq!(pending_request_count(&host), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Closed
+    );
+
+    drop(writer_guard);
+    let err = tokio::time::timeout(Duration::from_secs(5), write_task)
+        .await
+        .expect("write_file should return after the writer is released")
         .unwrap()
         .unwrap_err();
     assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
