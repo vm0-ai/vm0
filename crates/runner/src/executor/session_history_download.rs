@@ -1029,12 +1029,8 @@ mod tests {
         let compressed = zstd_bytes(body);
         let encoded_size = compressed.len() as u64;
         let hash = hex::encode(Sha256::digest(body));
-        let session = zstd_ref_session(
-            serve_once("200 OK", compressed.clone(), None).await,
-            hash,
-            body.len() as u64,
-            encoded_size,
-        );
+        let server = serve_once("200 OK", compressed.clone(), None).await;
+        let session = zstd_ref_session(server.url(), hash, body.len() as u64, encoded_size);
 
         let materializer =
             start_materializer_with_framework(&session, EffectiveCliFramework::Codex);
@@ -1061,6 +1057,7 @@ mod tests {
             }
             _ => panic!("expected downloaded session"),
         }
+        server.assert_served().await;
     }
 
     #[tokio::test]
@@ -1069,8 +1066,9 @@ mod tests {
             b"{\"type\":\"session_meta\",\"payload\":{\"timestamp\":\"2026-07-02T10:00:00Z\"}}\n";
         let compressed = zstd_bytes(body);
         let encoded_size = compressed.len() as u64;
+        let server = serve_once("200 OK", compressed, None).await;
         let session = zstd_ref_session(
-            serve_once("200 OK", compressed, None).await,
+            server.url(),
             "0".repeat(64),
             body.len() as u64,
             encoded_size,
@@ -1093,6 +1091,7 @@ mod tests {
             }
             _ => panic!("expected failed materialization"),
         }
+        server.assert_served().await;
     }
 
     #[tokio::test]
@@ -1102,12 +1101,8 @@ mod tests {
         let compressed = zstd_bytes(body);
         let encoded_size = compressed.len() as u64;
         let hash = hex::encode(Sha256::digest(body));
-        let session = zstd_ref_session(
-            serve_once("200 OK", compressed, None).await,
-            hash,
-            1,
-            encoded_size,
-        );
+        let server = serve_once("200 OK", compressed, None).await;
+        let session = zstd_ref_session(server.url(), hash, 1, encoded_size);
 
         let materializer =
             start_materializer_with_framework(&session, EffectiveCliFramework::Codex);
@@ -1127,6 +1122,7 @@ mod tests {
             }
             _ => panic!("expected failed materialization"),
         }
+        server.assert_served().await;
     }
 
     #[tokio::test]
