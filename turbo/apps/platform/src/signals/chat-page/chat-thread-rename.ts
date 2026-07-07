@@ -1,11 +1,6 @@
 import { command } from "ccstate";
 import { chatThreadMetaMap$ } from "./chat-thread-event-sourcing.ts";
 import { openRenameChatThreadDialog$ } from "../zero-page/zero-sidebar-state.ts";
-import { renameChatThread$ } from "./chat-message.ts";
-import {
-  applyChatThreadEmoji,
-  removeChatThreadEmoji,
-} from "./chat-thread-title.ts";
 
 export interface RenameChatThreadDialogRequest {
   readonly threadId: string;
@@ -34,52 +29,6 @@ export const openRenameChatThreadDialogForThreadId$ = command(
         title: meta?.title,
         agentId: meta?.agentId,
       },
-      signal,
-    );
-  },
-);
-
-export const setChatThreadEmojiFromThreadMeta$ = command(
-  async (
-    { get, set },
-    {
-      threadId,
-      emoji,
-      title,
-    }: { threadId: string; emoji: string; title?: string | null },
-    signal: AbortSignal,
-  ) => {
-    const meta = (await get(chatThreadMetaMap$)).get(threadId) ?? null;
-    signal.throwIfAborted();
-    const currentTitle = title !== undefined ? title : meta?.title;
-    await set(
-      renameChatThread$,
-      {
-        threadId,
-        title: applyChatThreadEmoji(currentTitle, emoji),
-        agentId: meta?.agentId,
-      },
-      signal,
-    );
-  },
-);
-
-export const clearChatThreadEmojiFromThreadMeta$ = command(
-  async (
-    { get, set },
-    { threadId, title }: { threadId: string; title?: string | null },
-    signal: AbortSignal,
-  ) => {
-    const meta = (await get(chatThreadMetaMap$)).get(threadId) ?? null;
-    signal.throwIfAborted();
-    const currentTitle = title !== undefined ? title : meta?.title;
-    const nextTitle = removeChatThreadEmoji(currentTitle);
-    if (!nextTitle) {
-      return;
-    }
-    await set(
-      renameChatThread$,
-      { threadId, title: nextTitle, agentId: meta?.agentId },
       signal,
     );
   },
