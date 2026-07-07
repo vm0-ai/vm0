@@ -7,6 +7,7 @@ from pathlib import Path
 
 import brotli
 import pytest
+import zstandard
 from mitmproxy.flow import Error
 
 import flow_metadata_keys as metadata_keys
@@ -22,6 +23,18 @@ from tests.x_flow_helpers import (
     make_x_pipeline_flow,
     make_x_stream_pipeline_flow,
 )
+
+
+def _compress_body(encoding: str, payload: bytes) -> bytes:
+    if encoding == "gzip":
+        return gzip.compress(payload)
+    if encoding == "deflate":
+        return zlib.compress(payload)
+    if encoding == "br":
+        return brotli.compress(payload)
+    if encoding == "zstd":
+        return zstandard.ZstdCompressor().compress(payload)
+    raise AssertionError(f"unsupported test encoding: {encoding}")
 
 
 class TestXConnectorResponsePipeline:
@@ -74,17 +87,17 @@ class TestXConnectorResponsePipeline:
         by_category = {event["category"]: event["quantity"] for event in events}
         assert by_category == {"posts.read": 1, "user.read": 1}
 
-    def test_full_response_pipeline_brotli_x_json_uses_bounded_fallback(
-        self, tmp_path, real_flow, mitm_ctx
+    @pytest.mark.parametrize("encoding_case", ["br", "zstd"])
+    def test_full_response_pipeline_unsafe_compressed_x_json_uses_bounded_fallback(
+        self, tmp_path, real_flow, mitm_ctx, encoding_case
     ):
-        """Brotli streaming decode is skipped, but X JSON fallback remains active."""
-        flow = make_x_pipeline_flow(real_flow, tmp_path, content_encoding="br")
+        """Unsafe streaming encodings are skipped, but X JSON fallback remains active."""
+        flow = make_x_pipeline_flow(real_flow, tmp_path, content_encoding=encoding_case)
+        payload = b'{"data":[{"id":"1"}],"includes":{"users":[{"id":"u1"}]}}'
 
         with mitm_ctx() as log:
             mitm_addon.responseheaders(flow)
-        response_stream(flow)(
-            brotli.compress(b'{"data":[{"id":"1"}],"includes":{"users":[{"id":"u1"}]}}')
-        )
+        response_stream(flow)(_compress_body(encoding_case, payload))
 
         payloads = self._call_and_get_billing(flow)
 
@@ -93,14 +106,15 @@ class TestXConnectorResponsePipeline:
         assert "connector_response_finish" not in flow.metadata
         assert metadata_keys.X_NDJSON_STATE not in flow.metadata
         assert log.debug.call_count == 1
-        assert "Streaming decompression skipped (br)" in log.debug.call_args[0][0]
+        assert f"Streaming decompression skipped ({encoding_case})" in log.debug.call_args[0][0]
 
-    def test_responseheaders_brotli_x_stream_does_not_leave_parser_state(
-        self, tmp_path, real_flow, mitm_ctx
+    @pytest.mark.parametrize("encoding_case", ["br", "zstd"])
+    def test_responseheaders_unsafe_compressed_x_stream_does_not_leave_parser_state(
+        self, tmp_path, real_flow, mitm_ctx, encoding_case
     ):
         flow = make_x_stream_pipeline_flow(real_flow, tmp_path)
         assert flow.response is not None
-        flow.response.headers["content-encoding"] = "br"
+        flow.response.headers["content-encoding"] = encoding_case
 
         with mitm_ctx() as log:
             mitm_addon.responseheaders(flow)
@@ -108,9 +122,9 @@ class TestXConnectorResponsePipeline:
         assert "connector_response_finish" not in flow.metadata
         assert metadata_keys.X_NDJSON_STATE not in flow.metadata
         assert log.debug.call_count == 1
-        assert "Streaming decompression skipped (br)" in log.debug.call_args[0][0]
+        assert f"Streaming decompression skipped ({encoding_case})" in log.debug.call_args[0][0]
 
-    @pytest.mark.parametrize("encoding_case", ["gzip", "deflate", "br"])
+    @pytest.mark.parametrize("encoding_case", ["gzip", "deflate", "br", "zstd"])
     def test_full_response_pipeline_truncated_compressed_x_json_does_not_bill(
         self, tmp_path, real_flow, mitm_ctx, sync_usage_executor, encoding_case
     ):
@@ -124,12 +138,7 @@ class TestXConnectorResponsePipeline:
             content_encoding=encoding_case,
         )
         payload = b'{"data":[{"id":"1"}],"meta":{"result_count":1}}'
-        if encoding_case == "gzip":
-            compressed = gzip.compress(payload)[:-1]
-        elif encoding_case == "deflate":
-            compressed = zlib.compress(payload)[:-1]
-        else:
-            compressed = brotli.compress(payload)[:-1]
+        compressed = _compress_body(encoding_case, payload)[:-1]
 
         mitm_addon.responseheaders(flow)
         response_stream(flow)(compressed)

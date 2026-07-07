@@ -1,6 +1,7 @@
 """Tests for model-provider JSON response streaming usage reporting."""
 
 import gzip
+import hashlib
 import json
 import zlib
 from pathlib import Path
@@ -12,7 +13,7 @@ from mitmproxy.test import tutils
 
 import flow_metadata_keys as metadata_keys
 import mitm_addon
-from body_limits import STREAM_BUFFER_LIMIT, STREAM_DECODE_CHUNK_LIMIT
+from body_limits import STREAM_BUFFER_LIMIT
 from tests.flow_helpers import header_map, response_stream
 from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
 from tests.model_provider_response_helpers import (
@@ -25,6 +26,18 @@ from tests.model_provider_response_helpers import (
     run_response,
     standard_success_payload,
 )
+
+
+def _deterministic_low_ratio_text(size: int) -> str:
+    chunks: list[str] = []
+    seed = b"vm0-zstd-json-streaming-test"
+    remaining = size
+    while remaining > 0:
+        seed = hashlib.sha256(seed).hexdigest().encode()
+        fragment = seed.decode()[:remaining]
+        chunks.append(fragment)
+        remaining -= len(fragment)
+    return "".join(chunks)
 
 
 class TestModelProviderJsonStreaming:
@@ -133,7 +146,7 @@ class TestModelProviderJsonStreaming:
         by_category = {event["category"]: event["quantity"] for event in events}
         assert by_category == expected_event_quantities(provider_case)
 
-    def test_full_pipeline_zstd_model_json_scans_past_decode_chunk_limit(
+    def test_full_pipeline_small_zstd_model_json_uses_bounded_fallback(
         self,
         tmp_path,
         real_flow,
@@ -144,28 +157,74 @@ class TestModelProviderJsonStreaming:
             ANTHROPIC_JSON_CASE,
             proxy_log_path=tmp_path / "proxy.jsonl",
         )
-        payload = (
-            b'{"id":"msg_zstd","model":"claude-sonnet-4-6","content":[{"text":"'
-            + b"A" * (STREAM_DECODE_CHUNK_LIMIT * 3)
-            + b'"}],"usage":{"input_tokens":10,"output_tokens":20}}'
-        )
+        payload = standard_success_payload(ANTHROPIC_JSON_CASE)
+        compressed = zstandard.ZstdCompressor().compress(payload)
         flow.response = tutils.tresp(
             status_code=200,
             headers=header_map({"content-type": "application/json", "content-encoding": "zstd"}),
         )
 
         mitm_addon.responseheaders(flow)
-        response_stream(flow)(zstandard.ZstdCompressor().compress(payload))
+        assert "model_json_usage_finish" not in flow.metadata
+        response_stream(flow)(compressed)
 
         webhook = run_response(flow, self._usage_webhook_api)
 
         extracted = flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE]
-        assert extracted["message_id"] == "msg_zstd"
-        assert extracted["tokens.input"] == 10
-        assert extracted["tokens.output"] == 20
+        expected_usage = expected_model_usage(ANTHROPIC_JSON_CASE)
+        assert extracted["message_id"] == expected_usage["message_id"]
+        assert extracted["model"] == expected_usage["model"]
+        assert extracted["tokens.input"] == expected_usage["tokens.input"]
+        assert extracted["tokens.output"] == expected_usage["tokens.output"]
         events = webhook.usage_events()
         by_category = {event["category"]: event["quantity"] for event in events}
-        assert by_category == {"tokens.input": 10, "tokens.output": 20}
+        assert by_category == expected_event_quantities(ANTHROPIC_JSON_CASE)
+
+    def test_full_pipeline_large_zstd_model_json_does_not_parse_truncated_fallback(
+        self,
+        tmp_path,
+        real_flow,
+    ):
+        proxy_log_path = tmp_path / "proxy.jsonl"
+        flow = model_provider_flow(
+            real_flow,
+            tmp_path,
+            ANTHROPIC_JSON_CASE,
+            proxy_log_path=proxy_log_path,
+        )
+        payload = json.dumps(
+            {
+                "id": "msg_zstd_large",
+                "model": "claude-sonnet-4-6",
+                "content": [{"text": _deterministic_low_ratio_text(STREAM_BUFFER_LIMIT * 8)}],
+                "usage": {"input_tokens": 10, "output_tokens": 20},
+            }
+        ).encode()
+        compressed = zstandard.ZstdCompressor().compress(payload)
+        assert len(compressed) > STREAM_BUFFER_LIMIT
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=header_map({"content-type": "application/json", "content-encoding": "zstd"}),
+        )
+
+        mitm_addon.responseheaders(flow)
+        assert "model_json_usage_finish" not in flow.metadata
+        response_stream(flow)(compressed)
+        assert len(flow.metadata[metadata_keys.STREAM_BUFFER]) == STREAM_BUFFER_LIMIT
+        assert flow.metadata[metadata_keys.STREAM_BUFFER_STATE]["truncated"] is True
+
+        webhook = run_response(flow, self._usage_webhook_api)
+
+        assert webhook.request_count == 0
+        assert metadata_keys.MODEL_PROVIDER_USAGE not in flow.metadata
+        entries = read_jsonl_entries_after_flush(proxy_log_path)
+        usage_warnings = [
+            entry
+            for entry in entries
+            if entry.get("message") == "Model provider JSON usage extraction failed"
+        ]
+        assert len(usage_warnings) == 1
+        assert usage_warnings[0]["error"] == "incomplete compressed body"
 
     @pytest.mark.parametrize("encoding_case", ["gzip", "deflate"])
     @pytest.mark.parametrize(
