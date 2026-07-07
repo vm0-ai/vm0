@@ -17,6 +17,7 @@
 //! flow are part of the runtime contract.
 
 mod child_env;
+#[doc(hidden)]
 pub mod codex_app_server;
 mod codex_app_server_backend;
 mod codex_app_server_events;
@@ -29,7 +30,6 @@ mod framework;
 mod process_group;
 mod termination;
 
-pub use codex_app_server_events::{CodexAppServerEventError, notification_to_codex_event};
 pub use codex_setup::setup_codex_for_config;
 pub use framework::{ClaudeResultStatus, ClaudeResultSummary};
 
