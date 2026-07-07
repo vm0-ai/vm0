@@ -13,6 +13,7 @@ use crate::ids::RunId;
 use crate::types::ExecutionContext;
 
 const RAW_HTTP_FIXTURE_TIMEOUT: Duration = Duration::from_secs(5);
+const CHILD_OUTPUT_TIMEOUT: Duration = Duration::from_secs(5);
 
 pub(crate) struct OneShotSessionHistoryServer {
     url: String,
@@ -260,19 +261,51 @@ where
 }
 
 async fn collect_child_output(
-    stdout_task: JoinHandle<io::Result<Vec<u8>>>,
-    stderr_task: JoinHandle<io::Result<Vec<u8>>>,
+    mut stdout_task: JoinHandle<io::Result<Vec<u8>>>,
+    mut stderr_task: JoinHandle<io::Result<Vec<u8>>>,
 ) -> (String, String) {
-    let stdout = join_child_output("stdout", stdout_task).await;
-    let stderr = join_child_output("stderr", stderr_task).await;
+    let timeout = tokio::time::sleep(CHILD_OUTPUT_TIMEOUT);
+    tokio::pin!(timeout);
+
+    let mut stdout = None;
+    let mut stderr = None;
+
+    loop {
+        tokio::select! {
+            result = &mut stdout_task, if stdout.is_none() => {
+                stdout = Some(child_output("stdout", result));
+            }
+            result = &mut stderr_task, if stderr.is_none() => {
+                stderr = Some(child_output("stderr", result));
+            }
+            _ = &mut timeout => {
+                stdout_task.abort();
+                stderr_task.abort();
+                panic!(
+                    "collect ignored child test output timed out after {}ms",
+                    CHILD_OUTPUT_TIMEOUT.as_millis()
+                );
+            }
+        }
+
+        if stdout.is_some() && stderr.is_some() {
+            break;
+        }
+    }
+
+    let stdout = stdout.expect("stdout reader result must be set");
+    let stderr = stderr.expect("stderr reader result must be set");
     (
         String::from_utf8_lossy(&stdout).into_owned(),
         String::from_utf8_lossy(&stderr).into_owned(),
     )
 }
 
-async fn join_child_output(stream_name: &str, task: JoinHandle<io::Result<Vec<u8>>>) -> Vec<u8> {
-    match task.await {
+fn child_output(
+    stream_name: &str,
+    result: Result<io::Result<Vec<u8>>, tokio::task::JoinError>,
+) -> Vec<u8> {
+    match result {
         Ok(Ok(output)) => output,
         Ok(Err(error)) => panic!("read ignored child test {stream_name}: {error}"),
         Err(error) => panic!("join ignored child test {stream_name} reader: {error}"),
