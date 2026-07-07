@@ -6,6 +6,7 @@ import stat
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Literal, TypeAlias
 
 from mitmproxy import ctx
 
@@ -18,13 +19,20 @@ VmContext = tuple[
     matching.CompiledFirewallSet | None,
     matching.CompiledNetworkPolicies,
 ]
+_NoBuiltinFirewallCatalogDependency: TypeAlias = Literal["no-builtin-firewall-catalog-dependency"]
+_NO_BUILTIN_FIREWALL_CATALOG_DEPENDENCY: _NoBuiltinFirewallCatalogDependency = (
+    "no-builtin-firewall-catalog-dependency"
+)
+_BuiltinFirewallCatalogDependencyKey: TypeAlias = (
+    registry_firewalls.BuiltinFirewallCatalogFileKey | _NoBuiltinFirewallCatalogDependency | None
+)
 _RegistryCacheKey = tuple[
     str,
     int,
     int,
     int,
     int,
-    registry_firewalls.BuiltinFirewallCatalogFileKey | None,
+    _BuiltinFirewallCatalogDependencyKey,
 ]
 MAX_REGISTRY_BYTES = 16 * 1024 * 1024
 _READ_CHUNK_BYTES = 1024 * 1024
@@ -217,7 +225,11 @@ def _registry_file_key_matches_snapshot_without_catalog_dependency(
     key: _RegistryCacheKey,
     snapshot_key: _RegistryCacheKey | None,
 ) -> bool:
-    return snapshot_key is not None and snapshot_key[:-1] == key[:-1] and snapshot_key[-1] is None
+    return (
+        snapshot_key is not None
+        and snapshot_key[:-1] == key[:-1]
+        and snapshot_key[-1] == _NO_BUILTIN_FIREWALL_CATALOG_DEPENDENCY
+    )
 
 
 def _classify_registry_vms(
@@ -460,7 +472,7 @@ def load_registry_state(registry_path: str) -> RegistryState:
     loaded_builtin_catalog_file_key = (
         registry_firewalls.catalog_dependency_file_key(builtin_catalog_cache_path)
         if uses_builtin_catalog_dependency
-        else None
+        else _NO_BUILTIN_FIREWALL_CATALOG_DEPENDENCY
     )
     loaded_key = (
         path_key,

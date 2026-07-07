@@ -262,6 +262,60 @@ class TestRegistryBuiltinCache:
         assert compiled_firewalls is not None
         assert vm_info["firewalls"][0]["apis"][0]["base"] == "https://bundled.example.com"
 
+    def test_builtin_registry_reload_when_catalog_cache_appears(
+        self, tmp_path, monkeypatch, mitm_ctx
+    ):
+        registry_path = tmp_path / "registry.json"
+        cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
+        write_multi_vm_registry(
+            registry_path,
+            {"10.200.0.1": builtin_vm("run-late-cache", "late-cache")},
+        )
+        monkeypatch.setattr(
+            registry_firewalls,
+            "BUILTIN_FIREWALLS",
+            {
+                "late-cache": {
+                    "name": "late-cache",
+                    "apis": [
+                        {
+                            "base": "https://bundled.example.com",
+                            "auth": {"headers": {}},
+                            "permissions": [{"name": "read", "rules": ["GET /items"]}],
+                        }
+                    ],
+                }
+            },
+        )
+
+        with mitm_ctx(
+            registry_path=str(registry_path),
+            builtin_firewall_catalog_cache_path=str(cache_path),
+        ):
+            first_context = registry.get_vm_context("10.200.0.1", str(registry_path))
+            _write_catalog_cache(
+                cache_path,
+                digest="sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                version="catalog-a",
+                firewalls={
+                    "late-cache": _cache_firewall(
+                        "late-cache",
+                        "https://cache.example.com",
+                    )
+                },
+            )
+            second_context = registry.get_vm_context("10.200.0.1", str(registry_path))
+
+        assert first_context is not None
+        assert second_context is not None
+        first_vm_info, first_compiled, _ = first_context
+        second_vm_info, second_compiled, _ = second_context
+        assert first_compiled is not None
+        assert second_compiled is not None
+        assert first_vm_info["firewalls"][0]["apis"][0]["base"] == "https://bundled.example.com"
+        assert second_vm_info["firewalls"][0]["apis"][0]["base"] == "https://cache.example.com"
+        assert _first_firewall_core(first_compiled) is not _first_firewall_core(second_compiled)
+
     def test_runner_catalog_cache_accepts_valid_template_base(self, tmp_path, mitm_ctx):
         registry_path = tmp_path / "registry.json"
         cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
