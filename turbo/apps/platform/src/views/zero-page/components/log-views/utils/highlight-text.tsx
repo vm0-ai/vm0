@@ -33,16 +33,9 @@ export function highlightText(
   const elements: ReactNode[] = [];
   let matchCount = 0;
   let cursor = 0;
+  let idx = lowered.indexOf(target, cursor);
 
-  for (;;) {
-    const idx = lowered.indexOf(target, cursor);
-    if (idx === -1) {
-      if (cursor < text.length) {
-        elements.push(text.slice(cursor));
-      }
-      break;
-    }
-
+  while (idx !== -1) {
     if (idx > cursor) {
       elements.push(text.slice(cursor, idx));
     }
@@ -68,6 +61,11 @@ export function highlightText(
 
     matchCount++;
     cursor = idx + target.length;
+    idx = lowered.indexOf(target, cursor);
+  }
+
+  if (cursor < text.length) {
+    elements.push(text.slice(cursor));
   }
 
   return {

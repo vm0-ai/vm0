@@ -1,5 +1,4 @@
 import { command, computed, state } from "ccstate";
-import { delay } from "signal-timers";
 import { zeroImageIoGenerateContract } from "@vm0/api-contracts/contracts/zero-image-io-generate";
 import {
   zeroBuiltInGenerationContract,
@@ -9,8 +8,9 @@ import { zeroUploadsContract } from "@vm0/api-contracts/contracts/zero-uploads";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { searchParams$, updateSearchParams$ } from "../route.ts";
 import { accept } from "../../lib/accept.ts";
+import { now } from "../../lib/time.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
-import { tapError, withCleanup } from "../utils.ts";
+import { setLoop, tapError, withCleanup } from "../utils.ts";
 import { publicAttachmentUrl } from "../../views/zero-page/zero-attachment-url.ts";
 import {
   ARTIFACT_FULLSCREEN_PARAM,
@@ -310,36 +310,45 @@ async function pollImageEditResultUrl({
   createClient,
   generationId,
   signal,
-  timeoutSignal,
 }: {
   createClient: ZeroClientFactory;
   generationId: string;
   signal: AbortSignal;
-  timeoutSignal: AbortSignal;
 }) {
   const generationClient = createClient(zeroBuiltInGenerationContract, {
     apiBase: "api",
   });
+  const expiresAt = now() + POLL_TIMEOUT_MS;
+  let resultUrl: string | null = null;
 
-  while (!timeoutSignal.aborted) {
-    const polled = await accept(
-      generationClient.get({
-        params: { generationId },
-        fetchOptions: { signal },
-      }),
-      [200],
-    );
-    signal.throwIfAborted();
+  await setLoop(
+    async (loopSignal) => {
+      if (now() >= expiresAt) {
+        return true;
+      }
 
-    const resultUrl = readPollResultUrl(polled.body);
-    if (resultUrl !== undefined) {
-      return resultUrl;
-    }
+      const polled = await accept(
+        generationClient.get({
+          params: { generationId },
+          fetchOptions: { signal: loopSignal },
+        }),
+        [200],
+      );
+      loopSignal.throwIfAborted();
 
-    await delay(POLL_INTERVAL_MS, { signal });
-  }
+      const polledResultUrl = readPollResultUrl(polled.body);
+      if (polledResultUrl !== undefined) {
+        resultUrl = polledResultUrl;
+        return true;
+      }
 
-  return null;
+      return now() >= expiresAt;
+    },
+    POLL_INTERVAL_MS,
+    signal,
+  );
+
+  return resultUrl;
 }
 
 async function waitForImageEditResultUrl({
@@ -351,13 +360,10 @@ async function waitForImageEditResultUrl({
   generationId: string;
   signal: AbortSignal;
 }) {
-  const timeoutSignal = AbortSignal.timeout(POLL_TIMEOUT_MS);
-
   return await pollImageEditResultUrl({
     createClient,
     generationId,
     signal,
-    timeoutSignal,
   });
 }
 

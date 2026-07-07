@@ -6,7 +6,7 @@ import { IN_VITEST } from "../env.ts";
 import { zeroClient$ } from "./api-client.ts";
 import { clerk$ } from "./auth.ts";
 import { createAblyAuthCallback } from "../lib/ably-auth.ts";
-import { createDeferredPromise, throwIfAbort } from "./utils.ts";
+import { createDeferredPromise, setLoop, throwIfAbort } from "./utils.ts";
 import { logger } from "./log.ts";
 
 const L = logger("Realtime");
@@ -182,31 +182,36 @@ const runWithChannel$ = command(
       }
       L.debug("subscribed to topic: " + topic);
 
-      while (!signal.aborted) {
-        await deferred.promise;
-        signal.throwIfAborted();
-        deferred = createDeferredPromise(signal);
-        poked = false;
+      await setLoop(
+        async (loopSignal) => {
+          await deferred.promise;
+          loopSignal.throwIfAborted();
+          deferred = createDeferredPromise(loopSignal);
+          poked = false;
 
-        // eslint-disable-next-line no-restricted-syntax -- polling loop requires try/catch for transient error retry with backoff
-        try {
-          const done = await set(loopCommand$, signal);
-          signal.throwIfAborted();
-          transientRetryCount = 0;
-          if (done) {
-            cleanup();
-            return;
+          // eslint-disable-next-line no-restricted-syntax -- polling loop requires try/catch for transient error retry with backoff
+          try {
+            const done = await set(loopCommand$, loopSignal);
+            loopSignal.throwIfAborted();
+            transientRetryCount = 0;
+            if (done) {
+              cleanup();
+              return true;
+            }
+          } catch (error) {
+            loopSignal.throwIfAborted();
+            throwIfAbort(error);
+            L.warn(`transient error in ably notification`, error);
+            await waitForTransientRetry(loopSignal, transientRetryCount);
+            loopSignal.throwIfAborted();
+            transientRetryCount++;
+            pokeLoop();
           }
-        } catch (error) {
-          signal.throwIfAborted();
-          throwIfAbort(error);
-          L.warn(`transient error in ably notification`, error);
-          await waitForTransientRetry(signal, transientRetryCount);
-          signal.throwIfAborted();
-          transientRetryCount++;
-          pokeLoop();
-        }
-      }
+          return false;
+        },
+        0,
+        signal,
+      );
     } catch (error) {
       signal.throwIfAborted();
       throwIfAbort(error);
@@ -297,37 +302,47 @@ const runWithChannelPayload$ = command(
       options?.onSubscribed?.();
       L.debug("subscribed to payload topic: " + topic);
 
-      while (!signal.aborted) {
-        await deferred.promise;
-        signal.throwIfAborted();
-        deferred = createDeferredPromise(signal);
-        poked = false;
+      await setLoop(
+        async (loopSignal) => {
+          await deferred.promise;
+          loopSignal.throwIfAborted();
+          deferred = createDeferredPromise(loopSignal);
+          poked = false;
 
-        while (pendingPayloads.length > 0) {
           const payload = pendingPayloads[0];
+          if (payload === undefined) {
+            return false;
+          }
+
           let done = false;
           // eslint-disable-next-line no-restricted-syntax -- payload notifications must retry transient handler failures without dropping the payload
           try {
-            done = await set(loopCommand$, payload, signal);
-            signal.throwIfAborted();
+            done = await set(loopCommand$, payload, loopSignal);
+            loopSignal.throwIfAborted();
           } catch (error) {
-            signal.throwIfAborted();
+            loopSignal.throwIfAborted();
             throwIfAbort(error);
             L.warn(`transient error in ably payload notification`, error);
-            await waitForTransientRetry(signal, transientRetryCount);
-            signal.throwIfAborted();
+            await waitForTransientRetry(loopSignal, transientRetryCount);
+            loopSignal.throwIfAborted();
             transientRetryCount++;
             pokeLoop();
-            break;
+            return false;
           }
           pendingPayloads.shift();
           transientRetryCount = 0;
           if (done) {
             cleanup();
-            return;
+            return true;
           }
-        }
-      }
+          if (pendingPayloads.length > 0) {
+            pokeLoop();
+          }
+          return false;
+        },
+        0,
+        signal,
+      );
     } catch (error) {
       signal.throwIfAborted();
       throwIfAbort(error);
