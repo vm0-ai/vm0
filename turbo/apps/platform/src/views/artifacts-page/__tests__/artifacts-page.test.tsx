@@ -56,7 +56,6 @@ function createArtifact(overrides: Partial<ArtifactItem> = {}): ArtifactItem {
     threadTitle: "Launch plan",
     filename: "launch-plan.html",
     contentType: "text/html",
-    size: 2048,
     url: "https://artifacts.example.com/launch-plan.html",
     createdAt: "2026-01-01T00:00:00Z",
     artifactKind: "hosted-site",

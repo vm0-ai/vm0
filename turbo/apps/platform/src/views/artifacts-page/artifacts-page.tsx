@@ -57,18 +57,6 @@ function formatArtifactKind(kind: string | undefined): string | null {
   return kind.replace(/[-_]/g, " ");
 }
 
-function formatBytes(size: number): string {
-  if (size < 1024) {
-    return `${size} B`;
-  }
-  const kib = size / 1024;
-  if (kib < 1024) {
-    return `${kib.toFixed(kib >= 10 ? 0 : 1)} KB`;
-  }
-  const mib = kib / 1024;
-  return `${mib.toFixed(mib >= 10 ? 0 : 1)} MB`;
-}
-
 function driveSyncLabel(
   sync: ChatThreadArtifactGoogleDriveSync | undefined,
 ): string | null {
@@ -222,9 +210,6 @@ function ArtifactCard({
             {kindLabel && (
               <ArtifactMetadataPill>{kindLabel}</ArtifactMetadataPill>
             )}
-            <ArtifactMetadataPill>
-              {formatBytes(item.size)}
-            </ArtifactMetadataPill>
             <ArtifactMetadataPill>
               {formatArtifactDate(item.createdAt)}
             </ArtifactMetadataPill>
