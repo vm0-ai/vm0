@@ -382,13 +382,12 @@ async fn write_file_rejects_protocol_path_too_long_before_waiting_for_writer() {
 async fn write_file_frame_builder_runs_before_waiting_for_writer_lock() {
     let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
-    let frame_built_count = Arc::new(AtomicUsize::new(0));
+    let (frame_built_tx, frame_built_rx) = tokio::sync::oneshot::channel();
     let before_write_count = Arc::new(AtomicUsize::new(0));
     let writer_guard = host.shared.writer.lock().await;
 
     let write_task = {
         let host = Arc::clone(&host);
-        let frame_built_count = Arc::clone(&frame_built_count);
         let before_write_count = Arc::clone(&before_write_count);
         tokio::spawn(async move {
             crate::write_request_frame_with_builder(
@@ -406,7 +405,7 @@ async fn write_file_frame_builder_runs_before_waiting_for_writer_lock() {
                     .map_err(|error| {
                         io::Error::new(io::ErrorKind::InvalidInput, error.to_string())
                     })?;
-                    frame_built_count.fetch_add(1, Ordering::SeqCst);
+                    frame_built_tx.send(()).unwrap();
                     Ok(())
                 },
                 move || {
@@ -418,13 +417,10 @@ async fn write_file_frame_builder_runs_before_waiting_for_writer_lock() {
         })
     };
 
-    tokio::time::timeout(Duration::from_secs(5), async {
-        while frame_built_count.load(Ordering::SeqCst) != 1 {
-            tokio::task::yield_now().await;
-        }
-    })
-    .await
-    .unwrap();
+    tokio::time::timeout(Duration::from_secs(5), frame_built_rx)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(before_write_count.load(Ordering::SeqCst), 0);
     match guest.try_read(&mut [0u8; 1]) {
         Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
