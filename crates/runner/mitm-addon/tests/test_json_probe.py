@@ -45,6 +45,23 @@ def test_probe_reports_incomplete_prefix_before_field_value_completes():
 
     assert result.status == "incomplete"
     assert result.value is None
+    assert result.field_seen
+
+
+def test_probe_reports_incomplete_after_target_member_boundary():
+    result = probe_top_level_string_field(b'{"type":')
+
+    assert result.status == "incomplete"
+    assert result.value is None
+    assert result.field_seen
+
+
+def test_probe_reports_invalid_after_target_member_boundary():
+    result = probe_top_level_string_field(b'{"type":?}')
+
+    assert result.status == "invalid"
+    assert result.value is None
+    assert result.field_seen
 
 
 def test_probe_reports_not_found_when_complete_object_has_no_field():

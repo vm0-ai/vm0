@@ -22,7 +22,23 @@ _UTF8_SURROGATE_MAX = 0xDFFF
 
 @dataclass(frozen=True)
 class TopLevelStringFieldProbeResult:
-    """Result of probing a JSON object for a top-level string field."""
+    """Result of probing a JSON object prefix for a top-level string member.
+
+    Status values form the caller-visible contract:
+
+    - ``found``: the first matching top-level member has a complete string value.
+    - ``not_found``: a complete top-level object ended before a matching member.
+    - ``incomplete``: the prefix may become valid if more bytes arrive.
+    - ``invalid``: the prefix already violates the JSON structure accepted here.
+    - ``non_string``: the matching member's value starts as a JSON non-string.
+    - ``bound_exceeded``: a configured key, string, or depth bound stopped probing.
+
+    ``field_seen`` is true only after the first matching top-level member's
+    key-colon boundary has been recognized, so the status describes that
+    member's value. A bare matching key token without a colon is not seen.
+    Matching is top-level only, nested members are skipped, the first duplicate
+    wins, and skipped values can still stop probing with ``bound_exceeded``.
+    """
 
     status: TopLevelStringFieldProbeStatus
     value: str | None = None
@@ -81,10 +97,9 @@ def probe_top_level_string_field(
         if body[i] != ord(":"):
             return TopLevelStringFieldProbeResult("invalid")
         i = _skip_json_whitespace(body, i + 1)
-        if i >= len(body):
-            return TopLevelStringFieldProbeResult("incomplete")
-
         if key == field_name:
+            if i >= len(body):
+                return TopLevelStringFieldProbeResult("incomplete", field_seen=True)
             if body[i] != ord('"'):
                 return TopLevelStringFieldProbeResult(
                     "non_string" if _is_json_value_start(body[i]) else "invalid",
@@ -94,6 +109,9 @@ def probe_top_level_string_field(
             if value_result.status != "ok":
                 return TopLevelStringFieldProbeResult(value_result.status, field_seen=True)
             return TopLevelStringFieldProbeResult("found", value_result.value, field_seen=True)
+
+        if i >= len(body):
+            return TopLevelStringFieldProbeResult("incomplete")
 
         skip_result = _skip_json_value(
             body,
