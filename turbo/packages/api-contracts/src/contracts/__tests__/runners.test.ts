@@ -380,6 +380,13 @@ describe("runner builtin firewall resolve contract", () => {
 
   it("rejects malformed and oversized requests", () => {
     expect(
+      runnersBuiltinFirewallsResolveContract.resolve.body.safeParse(null)
+        .success,
+    ).toBe(false);
+    expect(
+      runnersBuiltinFirewallsResolveContract.resolve.body.safeParse([]).success,
+    ).toBe(false);
+    expect(
       runnersBuiltinFirewallsResolveContract.resolve.body.safeParse({
         names: ["ModelProvider:openai-api-key"],
       }).success,

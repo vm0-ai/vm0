@@ -79,6 +79,26 @@ describe("runner builtin firewall resolver", () => {
     expect(response.status).toBe(400);
   });
 
+  it.each([
+    { body: "not-json", label: "invalid JSON" },
+    { body: "null", label: "null JSON" },
+    { body: "[]", label: "array JSON" },
+  ])("rejects $label full-catalog request bodies", async ({ body }) => {
+    const response = await rawApp().request(
+      "/api/runners/builtin-firewalls/resolve",
+      {
+        method: "POST",
+        headers: {
+          authorization: OFFICIAL_RUNNER_AUTHORIZATION,
+          "content-type": "application/json",
+        },
+        body,
+      },
+    );
+
+    expect(response.status).toBe(400);
+  });
+
   it("resolves connector and model-provider builtin firewalls", async () => {
     const response = await accept(
       client().resolve({
