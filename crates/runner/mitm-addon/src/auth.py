@@ -919,9 +919,7 @@ def _finalize_firewall_auth_success(
     """Record successful auth metadata and proxy log after auth application."""
     _record_firewall_auth_success_metadata(flow, token_meta)
 
-    trusted_host = (
-        flow.metadata.get(metadata_keys.TRUSTED_AUTHORITY_HOST) or flow.request.pretty_host
-    )
+    trusted_host = flow_metadata.trusted_authority_host(flow.metadata) or flow.request.pretty_host
     log_proxy_entry(
         context.proxy_log_path,
         "info",
