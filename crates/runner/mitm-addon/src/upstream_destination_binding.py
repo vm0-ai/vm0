@@ -19,7 +19,7 @@ from typing import Literal
 
 from mitmproxy import http
 
-import flow_metadata_keys as metadata_keys
+import flow_metadata
 from url_utils import normalize_trusted_hostname
 
 # Public API used by mitm_addon hooks and tests. Private helpers encode the
@@ -410,9 +410,9 @@ def diagnostic_snapshot_for_flow(
         for bound_server_id in client_server_ids
         if (binding := _bindings_by_server_id.get(bound_server_id)) is not None
     ]
-    trusted_host = flow.metadata.get(metadata_keys.TRUSTED_AUTHORITY_HOST)
+    trusted_host = flow_metadata.trusted_authority_host(flow.metadata)
     normalized_host = None
-    if isinstance(trusted_host, str):
+    if trusted_host:
         try:
             normalized_host = normalize_trusted_hostname(trusted_host)
         except (UnicodeError, ValueError):
@@ -465,8 +465,8 @@ def flow_matches_bound_destination(
     the same client may be used as fallback, but connected flows still require
     authoritative endpoint evidence matching the bound concrete endpoint.
     """
-    trusted_host = flow.metadata.get(metadata_keys.TRUSTED_AUTHORITY_HOST)
-    if not isinstance(trusted_host, str) or not trusted_host:
+    trusted_host = flow_metadata.trusted_authority_host(flow.metadata)
+    if not trusted_host:
         return False
     try:
         normalized_host = normalize_trusted_hostname(trusted_host)
@@ -511,8 +511,8 @@ def bound_destination_endpoint_for_flow(
     Host-policy checks use this endpoint as connection evidence. A connected
     fallback match returns the live authoritative endpoint, not a DNS result.
     """
-    trusted_host = flow.metadata.get(metadata_keys.TRUSTED_AUTHORITY_HOST)
-    if not isinstance(trusted_host, str) or not trusted_host:
+    trusted_host = flow_metadata.trusted_authority_host(flow.metadata)
+    if not trusted_host:
         return None
     try:
         normalized_host = normalize_trusted_hostname(trusted_host)

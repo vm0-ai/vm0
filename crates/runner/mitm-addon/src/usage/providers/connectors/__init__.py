@@ -21,7 +21,6 @@ from collections.abc import Callable
 from mitmproxy import http
 
 import flow_metadata
-import flow_metadata_keys as metadata_keys
 
 from ...underbilling import log_usage_underbilling
 from . import x
@@ -57,8 +56,8 @@ _unregistered_handler_warned: set[str] = set()
 
 
 def _require_original_url(flow: http.HTTPFlow) -> str:
-    original_url = flow.metadata.get(metadata_keys.ORIGINAL_URL)
-    if not isinstance(original_url, str) or not original_url:
+    original_url = flow_metadata.original_url(flow.metadata)
+    if not original_url:
         raise ValueError("registered billable connector flow is missing original_url")
     return original_url
 
@@ -80,9 +79,9 @@ def report_connector_usage(flow: http.HTTPFlow, run_id: str) -> None:
     """
     if not run_id:
         return
-    if not flow.metadata.get(metadata_keys.FIREWALL_BILLABLE, False):
+    if not flow_metadata.is_firewall_billable(flow.metadata):
         return
-    firewall_name = flow_metadata.get_firewall_name_metadata(flow.metadata)
+    firewall_name = flow_metadata.firewall_name(flow.metadata)
     if firewall_name.startswith("model-provider:"):
         return
     handler = _HANDLERS.get(firewall_name)
@@ -90,7 +89,7 @@ def report_connector_usage(flow: http.HTTPFlow, run_id: str) -> None:
         if firewall_name and firewall_name not in _unregistered_handler_warned:
             _unregistered_handler_warned.add(firewall_name)
             log_usage_underbilling(
-                flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, ""),
+                flow_metadata.proxy_log_path(flow.metadata),
                 f"Billable firewall {firewall_name!r} has no registered handler — "
                 "billing records for this firewall will be dropped.  Check that "
                 "BILLABLE_FIREWALL_CONNECTOR_TYPES and _HANDLERS here are in sync.",
@@ -115,9 +114,9 @@ def create_connector_response_parser(flow: http.HTTPFlow) -> ConnectorResponsePa
     connector-owned ``flow.metadata`` state for ``report_connector_usage``.
     Non-billable flows never need connector billing parser state.
     """
-    if not flow.metadata.get(metadata_keys.FIREWALL_BILLABLE, False):
+    if not flow_metadata.is_firewall_billable(flow.metadata):
         return None
-    firewall_name = flow_metadata.get_firewall_name_metadata(flow.metadata)
+    firewall_name = flow_metadata.firewall_name(flow.metadata)
     factory = _RESPONSE_PARSER_FACTORIES.get(firewall_name)
     if factory is None:
         return None
