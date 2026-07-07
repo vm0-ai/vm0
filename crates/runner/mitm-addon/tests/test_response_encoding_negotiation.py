@@ -533,6 +533,63 @@ async def test_header_phase_stream_safe_auth_normalizes_accept_encoding_before_a
     assert flow.request.headers[_ACCEPT_ENCODING] == "gzip"
 
 
+async def test_header_phase_websocket_auth_fallback_restores_upgrade_marker(
+    tmp_path: Path,
+    real_flow: Callable[..., http.HTTPFlow],
+    headers: Callable[..., http.Headers],
+    mitm_ctx,
+    fake_firewall_headers,
+) -> None:
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            firewall_name=_X_FIREWALL_NAME,
+            api_entry={
+                "base": f"https://{_X_HOST}",
+                "auth": {"headers": {"Authorization": "Bearer token"}},
+                "permissions": [{"name": "read", "rules": [f"GET {_X_PATH}"]}],
+            },
+            network_policy={
+                "allow": ["read"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "deny",
+            },
+            billable_firewalls=[_X_FIREWALL_NAME],
+            include_encrypted_secrets=False,
+            vm_fields={"captureNetworkBodies": True},
+        ),
+    )
+    flow = _request_flow(
+        real_flow,
+        headers,
+        host=_X_HOST,
+        path=_X_PATH,
+        method="GET",
+        accept_encoding="gzip, zstd, br",
+        extra_headers=(
+            ("Connection", "keep-alive, Upgrade"),
+            ("Upgrade", "websocket"),
+            ("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ=="),
+            ("Sec-WebSocket-Version", "13"),
+            ("Content-Length", str(mitm_addon.STREAM_BUFFER_LIMIT + 1)),
+        ),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        requestheaders_result = mitm_addon.requestheaders(flow)
+        await await_requestheaders_result(requestheaders_result)
+
+    auth_fetch.assert_not_called()
+    assert metadata_keys.WEBSOCKET_UPGRADE_REQUEST not in flow.metadata
+    assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
+    assert flow.request.headers[_ACCEPT_ENCODING] == "gzip, zstd, br"
+
+
 @pytest.mark.parametrize(
     "extra_headers",
     [
