@@ -355,15 +355,17 @@ fn artifact_download_success() {
 }
 
 #[test]
-fn artifact_404_non_fatal() {
+fn artifact_404_fatal() {
     let server = MockServer::start();
-    mock_status(&server, ARTIFACT_ARCHIVE_PATH, 404);
+    let mock = mock_status(&server, ARTIFACT_ARCHIVE_PATH, 404);
 
     let dir = tempfile::tempdir().unwrap();
     let mount = dir.path().join("artifact_mount");
     let url = server.url(ARTIFACT_ARCHIVE_PATH);
     let result = run_artifact_download(&dir, &mount, Some(&url)).unwrap();
-    assert!(result);
+
+    assert!(!result);
+    mock.assert_calls(1);
 }
 
 #[test]

@@ -1,4 +1,4 @@
-use crate::download::{DownloadTask, NotFoundPolicy, classify_download_task_kind};
+use crate::download::{DownloadTask, classify_download_task_kind};
 use crate::instructions::{InstructionCleanup, InstructionNormalization};
 use crate::manifest::{Manifest, ManifestEntry};
 use std::path::Path;
@@ -36,13 +36,6 @@ impl ManifestEntryKind {
         match self {
             Self::Storage => "storage_download",
             Self::Artifact => "artifact_download",
-        }
-    }
-
-    fn not_found_policy(self) -> NotFoundPolicy {
-        match self {
-            Self::Storage => NotFoundPolicy::Fail,
-            Self::Artifact => NotFoundPolicy::Ignore404,
         }
     }
 
@@ -121,7 +114,8 @@ impl RunPlan {
             ManifestEntryKind::Storage,
         );
 
-        // Artifacts: 404 is non-fatal (may not exist on first run).
+        // Artifacts with archives must download successfully; explicit empty
+        // artifacts are prepared separately below and do not create tasks.
         append_download_tasks(
             &mut download_tasks,
             &manifest.artifacts,
@@ -176,7 +170,6 @@ fn append_download_tasks(
                 kind.op_name(),
                 url,
                 download_mount_path.to_string(),
-                kind.not_found_policy(),
                 task_kind,
             ));
         }
@@ -318,7 +311,6 @@ mod tests {
                 "storage_download",
                 "https://s3/storage.tar.gz".into(),
                 "/data".into(),
-                NotFoundPolicy::Fail,
             )
         );
         assert_eq!(
@@ -328,7 +320,6 @@ mod tests {
                 "artifact_download",
                 "https://s3/a.tar.gz".into(),
                 "/workspace/a".into(),
-                NotFoundPolicy::Ignore404,
             )
         );
         assert_eq!(
@@ -338,7 +329,6 @@ mod tests {
                 "artifact_download",
                 "file:///tmp/vm0-storage-cache/b.tar.gz".into(),
                 "/workspace/b".into(),
-                NotFoundPolicy::Ignore404,
             )
         );
     }
@@ -394,7 +384,6 @@ mod tests {
                 "storage_download",
                 "https://s3/storage.tar.gz".into(),
                 "/data".into(),
-                NotFoundPolicy::Fail,
             )]
         );
     }
@@ -464,7 +453,6 @@ mod tests {
                 "storage_download",
                 "https://s3/instructions.tar.gz".into(),
                 "/home/user/.vm0/guest-agent/runs/run-1/storage-instructions/0".into(),
-                NotFoundPolicy::Fail,
                 crate::download::DownloadTaskKind::FrameworkHomeInstructions,
             )
         );
@@ -492,7 +480,6 @@ mod tests {
                 "storage_download",
                 "https://s3/data.tar.gz".into(),
                 "/data".into(),
-                NotFoundPolicy::Fail,
                 crate::download::DownloadTaskKind::Other,
             )
         );
@@ -519,7 +506,6 @@ mod tests {
                 "artifact_download",
                 "https://s3/workspace.tar.gz".into(),
                 "/workspace".into(),
-                NotFoundPolicy::Ignore404,
                 crate::download::DownloadTaskKind::Other,
             )
         );
@@ -664,7 +650,6 @@ mod tests {
                 "storage_download",
                 "https://s3/storage.tar.gz".into(),
                 mount_path,
-                NotFoundPolicy::Fail,
             )],
         );
     }
@@ -706,7 +691,6 @@ mod tests {
                 "artifact_download",
                 "https://s3/artifact.tar.gz".into(),
                 mount_path,
-                NotFoundPolicy::Ignore404,
             )],
         );
     }

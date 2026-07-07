@@ -1709,6 +1709,22 @@ async function buildArtifactEntryFromInput(
   },
 ): Promise<ManifestArtifact> {
   const { artifact, resolved } = args.input;
+  const entryBase = {
+    mountPath: artifact.mountPath,
+    vasStorageName: artifact.name,
+    vasStorageId: resolved.storageId,
+    vasVersionId: resolved.versionId,
+    ...(artifact.missingRootPolicy
+      ? { missingRootPolicy: artifact.missingRootPolicy }
+      : {}),
+  };
+  if (resolved.fileCount === 0) {
+    return {
+      ...entryBase,
+      empty: true,
+    };
+  }
+
   const archiveKey = `${resolved.s3Key}/archive.tar.gz`;
   args.stats?.recordPresignCandidate("artifact", args.input.source, {
     bucket: args.bucket,
@@ -1729,15 +1745,8 @@ async function buildArtifactEntryFromInput(
   );
 
   return {
-    mountPath: artifact.mountPath,
-    vasStorageName: artifact.name,
-    vasStorageId: resolved.storageId,
-    vasVersionId: resolved.versionId,
+    ...entryBase,
     archiveUrl,
-    ...(resolved.fileCount === 0 ? { empty: true } : {}),
-    ...(artifact.missingRootPolicy
-      ? { missingRootPolicy: artifact.missingRootPolicy }
-      : {}),
   };
 }
 

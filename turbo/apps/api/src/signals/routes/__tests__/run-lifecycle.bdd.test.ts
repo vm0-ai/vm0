@@ -1050,7 +1050,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         storage_manifest_final_storage_count_bucket: "1",
         storage_manifest_final_artifact_count_bucket: "1",
         storage_manifest_dropped_compose_count_bucket: "1",
-        storage_manifest_planned_presign_count_bucket: "2_4",
+        storage_manifest_planned_presign_count_bucket: "1",
         storage_manifest_duplicate_presign_candidate_count_bucket: "0",
         storage_manifest_source_compose_volume_resolved_count_bucket: "1",
         storage_manifest_source_compose_volume_planned_presign_count_bucket:
@@ -1064,8 +1064,8 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         storage_manifest_source_request_additional_volume_non_system_presign_count_bucket:
           "1",
         storage_manifest_source_artifact_resolved_count_bucket: "1",
-        storage_manifest_source_artifact_planned_presign_count_bucket: "1",
-        storage_manifest_source_artifact_non_system_presign_count_bucket: "1",
+        storage_manifest_source_artifact_planned_presign_count_bucket: "0",
+        storage_manifest_source_artifact_non_system_presign_count_bucket: "0",
         storage_manifest_artifact_ensure_already_initialized_count_bucket: "0",
         storage_manifest_artifact_ensure_missing_storage_count_bucket: "1",
         storage_manifest_artifact_ensure_created_storage_count_bucket: "1",
@@ -1101,7 +1101,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         storage_manifest_resolved_compose_count_bucket: "1",
         storage_manifest_resolved_additional_count_bucket: "1",
         storage_manifest_resolved_artifact_count_bucket: "1",
-        storage_manifest_planned_presign_count_bucket: "2_4",
+        storage_manifest_planned_presign_count_bucket: "1",
         storage_manifest_duplicate_presign_candidate_count_bucket: "0",
         storage_manifest_source_compose_volume_resolved_count_bucket: "1",
         storage_manifest_source_request_additional_volume_resolved_count_bucket:
@@ -1111,8 +1111,8 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
           "1",
         storage_manifest_source_request_additional_volume_non_system_presign_count_bucket:
           "1",
-        storage_manifest_source_artifact_planned_presign_count_bucket: "1",
-        storage_manifest_source_artifact_non_system_presign_count_bucket: "1",
+        storage_manifest_source_artifact_planned_presign_count_bucket: "0",
+        storage_manifest_source_artifact_non_system_presign_count_bucket: "0",
       }),
     );
     expect(
@@ -1151,9 +1151,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       ),
     ).toStrictEqual(
       expect.objectContaining({
-        storage_manifest_artifact_planned_presign_count_bucket: "1",
-        storage_manifest_source_artifact_planned_presign_count_bucket: "1",
-        storage_manifest_source_artifact_non_system_presign_count_bucket: "1",
+        storage_manifest_artifact_planned_presign_count_bucket: "0",
+        storage_manifest_source_artifact_planned_presign_count_bucket: "0",
+        storage_manifest_source_artifact_non_system_presign_count_bucket: "0",
         storage_manifest_source_request_additional_volume_planned_presign_count_bucket:
           "0",
       }),
@@ -1184,19 +1184,16 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       return artifact.vasStorageName === "memory";
     });
     expect(memoryArtifact).toMatchObject({
-      archiveUrl: expect.any(String),
       empty: true,
       vasStorageId: expect.any(String),
       vasVersionId: expect.any(String),
       missingRootPolicy: "preserveParentVersion",
     });
-    if (!memoryArtifact || typeof memoryArtifact.archiveUrl !== "string") {
-      throw new Error(
-        "Expected the claim manifest to include memory with an archive URL",
-      );
+    if (!memoryArtifact) {
+      throw new Error("Expected the claim manifest to include memory");
     }
+    expect(memoryArtifact.archiveUrl).toBeUndefined();
     expectApiDispatchTimingEventsNotToLeak(timingEvents, [
-      memoryArtifact.archiveUrl,
       memoryArtifact.vasStorageId,
       memoryArtifact.vasVersionId,
     ]);
@@ -1301,9 +1298,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     );
     expect(initialMemory).toMatchObject({
       empty: true,
-      archiveUrl: expect.any(String),
       vasVersionId: expect.any(String),
     });
+    expect(initialMemory?.archiveUrl).toBeUndefined();
     const initialMemoryVersionId = initialMemory?.vasVersionId;
     if (!initialMemoryVersionId) {
       throw new Error("Expected initial memory artifact version id");
