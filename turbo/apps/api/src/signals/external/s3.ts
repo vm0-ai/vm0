@@ -622,13 +622,15 @@ export function verifyS3FilesExist(
   fileCount: number,
 ): Computed<Promise<boolean>> {
   return computed(async (get): Promise<boolean> => {
+    if (fileCount === 0) {
+      return true;
+    }
+
     const manifestKey = `${s3Key}/manifest.json`;
     const archiveKey = `${s3Key}/archive.tar.gz`;
     const [manifestExists, archiveExists] = await Promise.all([
       get(s3ObjectExists(bucket, manifestKey)),
-      fileCount > 0
-        ? get(s3ObjectExists(bucket, archiveKey))
-        : Promise.resolve(true),
+      get(s3ObjectExists(bucket, archiveKey)),
     ]);
 
     return manifestExists && archiveExists;

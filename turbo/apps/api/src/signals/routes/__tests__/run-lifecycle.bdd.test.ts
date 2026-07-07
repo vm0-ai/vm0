@@ -1307,6 +1307,30 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       throw new Error("Expected initial memory artifact version id");
     }
 
+    context.mocks.s3.send.mockClear();
+    const preparedInitialEmpty = await storages.prepareStorage(actor, {
+      storageName: "memory",
+      storageType: "artifact",
+      files: [],
+    });
+    expect(preparedInitialEmpty).toStrictEqual({
+      versionId: initialMemoryVersionId,
+      existing: true,
+    });
+    const committedInitialEmpty = await storages.commitStorage(actor, {
+      storageName: "memory",
+      storageType: "artifact",
+      versionId: initialMemoryVersionId,
+      files: [],
+    });
+    expect(committedInitialEmpty).toMatchObject({
+      success: true,
+      versionId: initialMemoryVersionId,
+      fileCount: 0,
+      deduplicated: true,
+    });
+    expect(context.mocks.s3.send).not.toHaveBeenCalled();
+
     const artifactFile = storageTextFile(
       "artifact.txt",
       `committed artifact ${randomUUID()}`,
