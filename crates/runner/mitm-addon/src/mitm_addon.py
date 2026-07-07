@@ -50,7 +50,6 @@ import builtin_connector_diagnostics
 import builtin_host_policy
 import deferred_callbacks
 import flow_metadata_keys as metadata_keys
-import logging_utils
 import matching
 import network_log_sanitization
 import public_destination
@@ -80,7 +79,10 @@ from firewall_auth_cache import (
 )
 from firewall_auth_config import auth_config_injects_ordinary_upstream_credentials
 from logging_utils import (
+    NETWORK_LOG_MAX_SAFE_SIZE,
+    NETWORK_LOG_MAX_SAFE_SIZE_DIGITS,
     add_firewall_metadata,
+    elapsed_ms,
     flush_log_path,
     log_network_entry,
     log_proxy_entry,
@@ -3286,7 +3288,7 @@ def _single_content_length_response_size(content_length: str, start: int, end: i
         return 0
 
     significant_start = start
-    if end - significant_start > logging_utils.NETWORK_LOG_MAX_SAFE_SIZE_DIGITS:
+    if end - significant_start > NETWORK_LOG_MAX_SAFE_SIZE_DIGITS:
         return None
     for index in range(significant_start, end):
         char = content_length[index]
@@ -3294,7 +3296,7 @@ def _single_content_length_response_size(content_length: str, start: int, end: i
             return None
 
     response_size = int(content_length[significant_start:end])
-    if response_size > logging_utils.NETWORK_LOG_MAX_SAFE_SIZE:
+    if response_size > NETWORK_LOG_MAX_SAFE_SIZE:
         return None
     return response_size
 
@@ -3385,7 +3387,7 @@ def response(flow: http.HTTPFlow) -> None:
         # metadata, so none of this handler's work applies.
         return
 
-    latency_ms = logging_utils.elapsed_ms(start_time)
+    latency_ms = elapsed_ms(start_time)
     original_url = flow.metadata[metadata_keys.ORIGINAL_URL]
     firewall_action = flow.metadata.get(metadata_keys.FIREWALL_ACTION, "ALLOW")
 
@@ -3505,7 +3507,7 @@ def error(flow: http.HTTPFlow) -> None:
     if not run_id or not network_log_path:
         return
 
-    latency_ms = logging_utils.elapsed_ms(start_time)
+    latency_ms = elapsed_ms(start_time)
     original_url = flow.metadata[metadata_keys.ORIGINAL_URL]
     firewall_action = flow.metadata.get(metadata_keys.FIREWALL_ACTION, "ALLOW")
 
