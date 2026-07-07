@@ -136,9 +136,12 @@ class _ForwardRequestAdmissionState(NamedTuple):
 _forward_request_admission_state: _ForwardRequestAdmissionState | None = None
 
 
-def _track_active_closeable(closeable: _Closeable) -> None:
+def _track_active_closeable(closeable: _Closeable) -> bool:
     with _forward_request_lifecycle_lock, _forward_request_active_closeables_lock:
+        if not _forward_request_accepting:
+            return False
         _forward_request_active_closeables.add(closeable)
+        return True
 
 
 def _untrack_active_closeable(closeable: _Closeable) -> None:
@@ -327,8 +330,11 @@ class _ValidatedTLSConnection(http_client.HTTPConnection):
         self._tracked_closeables: list[_Closeable] = []
 
     def _track_closeable(self, closeable: _Closeable) -> None:
+        if not _track_active_closeable(closeable):
+            with suppress(Exception):
+                closeable.close()
+            raise RuntimeError("auth.base forwarding workers are shut down")
         self._tracked_closeables.append(closeable)
-        _track_active_closeable(closeable)
 
     def _untrack_closeables(self) -> None:
         for closeable in self._tracked_closeables:
