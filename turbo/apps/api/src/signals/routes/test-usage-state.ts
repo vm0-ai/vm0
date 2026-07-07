@@ -16,12 +16,17 @@ import { insightsDaily } from "@vm0/db/schema/insights-daily";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import {
+  orgUsageAllowanceEntitlements,
+  orgUsageAllowanceWindows,
+  usageAllowanceAllocations,
+} from "@vm0/db/schema/org-usage-allowance";
 import { usageEvent } from "@vm0/db/schema/usage-event";
 import { usagePricing } from "@vm0/db/schema/usage-pricing";
 import { userCache } from "@vm0/db/schema/user-cache";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 
 import { nowDate } from "../../lib/time";
 import { bodyResultOf, queryOf } from "../context/request";
@@ -117,6 +122,21 @@ async function deleteUsageFixture(
   signal: AbortSignal,
 ): Promise<void> {
   await db.delete(insightsDaily).where(eq(insightsDaily.orgId, fixture.orgId));
+  signal.throwIfAborted();
+
+  await db
+    .delete(usageAllowanceAllocations)
+    .where(eq(usageAllowanceAllocations.orgId, fixture.orgId));
+  signal.throwIfAborted();
+
+  await db
+    .delete(orgUsageAllowanceWindows)
+    .where(eq(orgUsageAllowanceWindows.orgId, fixture.orgId));
+  signal.throwIfAborted();
+
+  await db
+    .delete(orgUsageAllowanceEntitlements)
+    .where(eq(orgUsageAllowanceEntitlements.orgId, fixture.orgId));
   signal.throwIfAborted();
 
   await db
@@ -661,6 +681,139 @@ async function setCreditBalanceForAction(
   return actionOk();
 }
 
+async function readOrgCreditsForAction(
+  db: Db,
+  body: UsageAction<"read-org-credits">,
+  signal: AbortSignal,
+) {
+  const [row] = await db
+    .select({ credits: orgMetadata.credits })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.orgId, body.org_id))
+    .limit(1);
+  signal.throwIfAborted();
+  return {
+    status: 200 as const,
+    body: { ok: true as const, credits: row?.credits ?? 0 },
+  };
+}
+
+async function readRunUsageCreditsForAction(
+  db: Db,
+  body: UsageAction<"read-run-usage-credits">,
+  signal: AbortSignal,
+) {
+  const [row] = await db
+    .select({
+      credits:
+        sql<number>`COALESCE(SUM(COALESCE(${usageEvent.creditsCharged}, 0)), 0)::bigint`.as(
+          "credits",
+        ),
+    })
+    .from(usageEvent)
+    .where(and(eq(usageEvent.runId, body.run_id), eq(usageEvent.status, "processed")));
+  signal.throwIfAborted();
+  return {
+    status: 200 as const,
+    body: { ok: true as const, usage_credits: Number(row?.credits ?? 0) },
+  };
+}
+
+async function seedUsageAllowanceForAction(
+  db: Db,
+  body: UsageAction<"seed-usage-allowance">,
+  signal: AbortSignal,
+) {
+  const updatedAt = nowDate();
+  await db
+    .insert(orgUsageAllowanceEntitlements)
+    .values({
+      orgId: body.org_id,
+      source: "manual",
+      status: body.status ?? "active",
+      shortWindowSeconds: body.short_window_seconds,
+      shortWindowUnits: body.short_window_units,
+      weeklyWindowSeconds: body.weekly_window_seconds ?? 604_800,
+      weeklyWindowUnits: body.weekly_window_units,
+      createdAt: updatedAt,
+      updatedAt,
+    })
+    .onConflictDoUpdate({
+      target: orgUsageAllowanceEntitlements.orgId,
+      set: {
+        source: "manual",
+        status: body.status ?? "active",
+        shortWindowSeconds: body.short_window_seconds,
+        shortWindowUnits: body.short_window_units,
+        weeklyWindowSeconds: body.weekly_window_seconds ?? 604_800,
+        weeklyWindowUnits: body.weekly_window_units,
+        updatedAt,
+      },
+    });
+  signal.throwIfAborted();
+  return actionOk();
+}
+
+async function readUsageAllowanceForAction(
+  db: Db,
+  body: UsageAction<"read-usage-allowance">,
+  signal: AbortSignal,
+) {
+  const windows = await db
+    .select({
+      id: orgUsageAllowanceWindows.id,
+      kind: orgUsageAllowanceWindows.kind,
+      startsAt: orgUsageAllowanceWindows.startsAt,
+      expiresAt: orgUsageAllowanceWindows.expiresAt,
+      unitLimit: orgUsageAllowanceWindows.unitLimit,
+      consumedUnits: orgUsageAllowanceWindows.consumedUnits,
+    })
+    .from(orgUsageAllowanceWindows)
+    .where(eq(orgUsageAllowanceWindows.orgId, body.org_id))
+    .orderBy(
+      asc(orgUsageAllowanceWindows.kind),
+      asc(orgUsageAllowanceWindows.startsAt),
+    );
+  signal.throwIfAborted();
+
+  const allocations = await db
+    .select({
+      usageEventId: usageAllowanceAllocations.usageEventId,
+      runId: usageAllowanceAllocations.runId,
+      unitsApplied: usageAllowanceAllocations.unitsApplied,
+    })
+    .from(usageAllowanceAllocations)
+    .where(eq(usageAllowanceAllocations.orgId, body.org_id))
+    .orderBy(asc(usageAllowanceAllocations.createdAt));
+  signal.throwIfAborted();
+
+  return {
+    status: 200 as const,
+    body: {
+      ok: true as const,
+      usage_allowance: {
+        windows: windows.map((window) => {
+          return {
+            id: window.id,
+            kind: window.kind,
+            starts_at: window.startsAt.toISOString(),
+            expires_at: window.expiresAt.toISOString(),
+            unit_limit: window.unitLimit,
+            consumed_units: window.consumedUnits,
+          };
+        }),
+        allocations: allocations.map((allocation) => {
+          return {
+            usage_event_id: allocation.usageEventId,
+            run_id: allocation.runId,
+            units_applied: allocation.unitsApplied,
+          };
+        }),
+      },
+    },
+  };
+}
+
 async function setOrgTierForAction(
   db: Db,
   body: UsageAction<"set-org-tier">,
@@ -782,6 +935,18 @@ const mutateUsageState$ = command(async ({ get, set }, signal: AbortSignal) => {
     }
     case "set-credit-balance": {
       return await setCreditBalanceForAction(db, body, signal);
+    }
+    case "read-org-credits": {
+      return await readOrgCreditsForAction(db, body, signal);
+    }
+    case "read-run-usage-credits": {
+      return await readRunUsageCreditsForAction(db, body, signal);
+    }
+    case "seed-usage-allowance": {
+      return await seedUsageAllowanceForAction(db, body, signal);
+    }
+    case "read-usage-allowance": {
+      return await readUsageAllowanceForAction(db, body, signal);
     }
     case "set-org-tier": {
       return await setOrgTierForAction(db, body, signal);

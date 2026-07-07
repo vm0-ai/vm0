@@ -84,6 +84,7 @@ import {
 } from "./auth-state-lock.service";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { resolveOrgCreditAvailability } from "./zero-run-admission.service";
+import { resolveUsageAllowanceAvailabilityForRun } from "./usage-allowance.service";
 import {
   connectorRuntimeCredentialStatusForAccess,
   type ConnectorCredentialStatus,
@@ -299,12 +300,22 @@ async function resolveBillableFirewallCacheExpiry(params: {
   if (availability.tier === "pro-suspend") {
     return insufficientCredits();
   }
-  if (availability.spendableCredits <= 0) {
+  const allowance =
+    availability.spendableCredits > 0
+      ? null
+      : await resolveUsageAllowanceAvailabilityForRun(params.db, {
+          orgId: params.auth.orgId,
+          runId: params.auth.runId,
+        });
+  const spendableUnits =
+    Math.max(availability.spendableCredits, 0) +
+    (allowance?.remainingUnits ?? 0);
+  if (spendableUnits <= 0) {
     return insufficientCredits();
   }
 
   const leaseSeconds =
-    availability.spendableCredits <= LOW_BILLABLE_FIREWALL_CREDIT_THRESHOLD
+    spendableUnits <= LOW_BILLABLE_FIREWALL_CREDIT_THRESHOLD
       ? LOW_BILLABLE_FIREWALL_LEASE_SECONDS
       : NORMAL_BILLABLE_FIREWALL_LEASE_SECONDS;
 
