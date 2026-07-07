@@ -28,6 +28,7 @@ from mitmproxy.test import tflow, tutils
 import auth
 import auth_base_forwarder
 import builtin_connector_diagnostics
+import builtin_firewall_catalog
 import logging_utils
 import mitm_addon
 import registry
@@ -52,6 +53,7 @@ def _reset_module_state() -> Iterator[None]:
     """
     auth_base_forwarder.reset_forward_request_state_for_tests()
     builtin_connector_diagnostics.reset_cache_for_tests()
+    builtin_firewall_catalog.reset_cache_for_tests()
     registry.reset_cache_for_tests()
     upstream_destination_binding.reset_for_tests()
     mitm_addon.reset_upstream_destination_resolution_cache_for_tests()
@@ -69,6 +71,7 @@ def _reset_module_state() -> Iterator[None]:
     logging_utils.reset_log_writer_for_tests()
     auth_base_forwarder.reset_forward_request_state_for_tests()
     builtin_connector_diagnostics.reset_cache_for_tests()
+    builtin_firewall_catalog.reset_cache_for_tests()
     upstream_destination_binding.reset_for_tests()
     mitm_addon.reset_upstream_destination_resolution_cache_for_tests()
     mitm_addon.reset_tls_admission_state_for_tests()
@@ -304,11 +307,14 @@ def real_tcp_flow():
 
 
 class _StubOptions:
-    """Plain stand-in for the two addon-specific ``ctx.options`` fields."""
+    """Plain stand-in for addon-specific ``ctx.options`` fields."""
 
-    def __init__(self, *, registry_path: str, api_url: str) -> None:
+    def __init__(
+        self, *, registry_path: str, api_url: str, builtin_firewall_cache_path: str
+    ) -> None:
         self.vm0_proxy_registry_path = registry_path
         self.vm0_api_url = api_url
+        self.vm0_builtin_firewall_catalog_cache_path = builtin_firewall_cache_path
         self.vm0_usage_flush_interval_seconds = usage.DEFAULT_FLUSH_INTERVAL_SECONDS
 
 
@@ -335,10 +341,15 @@ def mitm_ctx(tmp_path):
         *,
         registry_path: str | None = None,
         api_url: str = "https://api.vm0.ai",
+        builtin_firewall_cache_path: str = "",
     ) -> Iterator[MagicMock]:
         if registry_path is None:
             registry_path = default_registry_path
-        options = _StubOptions(registry_path=registry_path, api_url=api_url)
+        options = _StubOptions(
+            registry_path=registry_path,
+            api_url=api_url,
+            builtin_firewall_cache_path=builtin_firewall_cache_path,
+        )
         log = MagicMock()
         with (
             patch.object(mitm_addon.ctx, "options", options, create=True),

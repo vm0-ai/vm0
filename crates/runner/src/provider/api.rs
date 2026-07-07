@@ -1,5 +1,6 @@
 //! [`JobProvider`] backed by an Ably control plane + HTTP polling + REST API.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -14,6 +15,10 @@ use super::api_ably_supervisor::{
     AblySupervisor, AblySupervisorConfig, PollDue, PollOutcome, PollReason, PollWakeups,
 };
 use super::api_direct_candidates::{DirectCandidateInbox, DirectJobCandidate};
+use super::builtin_firewall_refresh::{
+    BuiltinFirewallRefreshHandle, BuiltinFirewallResolveError, BuiltinFirewallsResolveRequest,
+    BuiltinFirewallsResolveResponse,
+};
 use super::network_policy_refresh::NetworkPolicyRefreshHandle;
 use super::{
     ClaimedJob, CompletionAuth, CompletionAuthError, JobCandidate, JobDiscoverySource, JobProvider,
@@ -71,6 +76,7 @@ const POLL_FAST: Duration = Duration::from_secs(5);
 const POLL_WAKEUP_RETRY: Duration = POLL_FAST;
 const DIRECT_CANDIDATE_INBOX_CAPACITY: usize = 128;
 const NETWORK_POLICY_REFRESH_TIMEOUT: Duration = Duration::from_secs(3);
+const BUILTIN_FIREWALL_RESOLVE_TIMEOUT: Duration = Duration::from_secs(5);
 
 enum DiscoveryWakeup {
     Direct(DirectJobCandidate),
@@ -145,6 +151,14 @@ impl ApiProvider {
 
     pub(crate) fn network_policy_refresh_handle(&self) -> NetworkPolicyRefreshHandle {
         self.network_policy_refresh.clone()
+    }
+
+    pub(crate) fn builtin_firewall_refresh_handle(
+        &self,
+        cache_path: PathBuf,
+        lock_path: PathBuf,
+    ) -> BuiltinFirewallRefreshHandle {
+        BuiltinFirewallRefreshHandle::new(self.api.clone(), cache_path, lock_path)
     }
 
     async fn try_recv_direct_candidate(&self) -> Option<DirectJobCandidate> {
@@ -528,6 +542,40 @@ impl ApiClient {
         decode_api_json(resp, "realtime token").await
     }
 
+    pub(super) async fn resolve_builtin_firewalls(
+        &self,
+        names: &[String],
+    ) -> Result<BuiltinFirewallsResolveResponse, BuiltinFirewallResolveError> {
+        let body = BuiltinFirewallsResolveRequest { names };
+        let resp = send_api(
+            self.http
+                .request_route(
+                    routes::runners::builtin_firewalls::resolve::RESOLVE,
+                    &self.token,
+                )
+                .timeout(BUILTIN_FIREWALL_RESOLVE_TIMEOUT)
+                .json(&body),
+            "builtin firewall resolve",
+        )
+        .await
+        .map_err(|e| BuiltinFirewallResolveError::Transient(e.to_string()))?;
+
+        let status = resp.status();
+        if !status.is_success() {
+            let (status, body) = read_api_error(resp).await;
+            let message = format!("builtin firewall resolve {status}: {body}");
+            return if is_transient_builtin_firewall_resolve_status(status) {
+                Err(BuiltinFirewallResolveError::Transient(message))
+            } else {
+                Err(BuiltinFirewallResolveError::Permanent(message))
+            };
+        }
+
+        decode_api_json(resp, "builtin firewall resolve")
+            .await
+            .map_err(|e| BuiltinFirewallResolveError::Permanent(e.to_string()))
+    }
+
     pub(super) async fn refresh_network_policies(
         &self,
         run_id: RunId,
@@ -559,6 +607,17 @@ impl ApiClient {
             .timeout(NETWORK_POLICY_REFRESH_TIMEOUT)
             .json(&serde_json::json!({ "connectorRefs": connector_refs }))
     }
+}
+
+fn is_transient_builtin_firewall_resolve_status(status: StatusCode) -> bool {
+    status.is_server_error()
+        || matches!(
+            status,
+            StatusCode::NOT_FOUND
+                | StatusCode::METHOD_NOT_ALLOWED
+                | StatusCode::TOO_MANY_REQUESTS
+                | StatusCode::REQUEST_TIMEOUT
+        )
 }
 
 fn claim_request_body(candidate: &JobCandidate) -> ClaimRequestBody {

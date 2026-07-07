@@ -18,7 +18,8 @@ VmContext = tuple[
     matching.CompiledFirewallSet | None,
     matching.CompiledNetworkPolicies,
 ]
-_RegistryCacheKey = tuple[str, int, int, int, int]
+_RegistryFileCacheKey = tuple[str, int, int, int, int]
+_RegistryCacheKey = tuple[_RegistryFileCacheKey, object]
 MAX_REGISTRY_BYTES = 16 * 1024 * 1024
 _READ_CHUNK_BYTES = 1024 * 1024
 
@@ -356,7 +357,8 @@ def load_registry_state(registry_path: str) -> RegistryState:
         return _mark_unavailable(state, reason="stat_failed", message=message)
 
     try:
-        key = (path_key, st.st_dev, st.st_ino, st.st_mtime_ns, st.st_size)
+        registry_file_key = (path_key, st.st_dev, st.st_ino, st.st_mtime_ns, st.st_size)
+        key = (registry_file_key, registry_firewalls.builtin_catalog_cache_key())
         if key == state.snapshot.loaded_key:
             state.unavailable = None
             state.stat_error_logged = False

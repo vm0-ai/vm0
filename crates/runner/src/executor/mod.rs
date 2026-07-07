@@ -158,6 +158,7 @@ pub struct ExecutorConfig {
     pub network_log_drain: NetworkLogDrainCoordinator,
     pub mitm_jsonl_flush: Option<MitmJsonlFlushHandle>,
     pub(crate) network_policy_refresh: Option<crate::provider::NetworkPolicyRefreshHandle>,
+    pub(crate) builtin_firewall_refresh: Option<crate::provider::BuiltinFirewallRefreshHandle>,
     pub home: HomePaths,
     pub workspace_cache: Option<SessionWorkspaceCache>,
 }

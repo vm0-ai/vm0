@@ -104,6 +104,7 @@ class TestAddonConfiguration:
             mitm_addon.load(loader)
 
         option_names = [option.name for option in master.options.added]
+        assert "vm0_builtin_firewall_catalog_cache_path" in option_names
         assert "vm0_usage_state_id" in option_names
         assert "vm0_usage_flush_interval_seconds" in option_names
         assert not pending_path.exists()

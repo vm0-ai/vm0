@@ -45,6 +45,8 @@ pub struct ProxyConfig {
     pub registry_path: PathBuf,
     /// Lock file path for coordinating concurrent registry access.
     pub registry_lock_path: PathBuf,
+    /// Local builtin firewall catalog cache path read by the addon.
+    pub builtin_firewall_catalog_cache_path: Option<PathBuf>,
     /// VM0 API URL passed to the addon (optional).
     pub api_url: Option<String>,
 }
@@ -427,6 +429,7 @@ impl MitmProxy {
                     addon_dir: std::path::PathBuf::new(),
                     registry_path: std::path::PathBuf::new(),
                     registry_lock_path: std::path::PathBuf::new(),
+                    builtin_firewall_catalog_cache_path: None,
                     api_url: None,
                 },
                 child: None,
@@ -524,6 +527,12 @@ pub(crate) async fn spawn_mitmdump(
             "ssl_verify_upstream_trusted_ca={}",
             crate::deps::SYSTEM_CA_BUNDLE
         ));
+    if let Some(path) = &config.builtin_firewall_catalog_cache_path {
+        cmd.arg("--set").arg(format!(
+            "vm0_builtin_firewall_catalog_cache_path={}",
+            path.display()
+        ));
+    }
     if let Some(url) = &config.api_url {
         cmd.arg("--set").arg(format!("vm0_api_url={url}"));
     }
@@ -873,6 +882,7 @@ PY
             "body_capture.py",
             "body_decoding.py",
             "body_limits.py",
+            "builtin_firewall_catalog.py",
             "flow_metadata_keys.py",
             "generated/__init__.py",
             "generated/builtin_firewalls/__init__.py",
@@ -954,6 +964,7 @@ PY
             addon_dir: addon_dir.clone(),
             registry_path: dir.path().join("proxy-registry.json"),
             registry_lock_path: dir.path().join("proxy-registry.json.lock"),
+            builtin_firewall_catalog_cache_path: None,
             api_url: None,
         };
 
@@ -981,6 +992,7 @@ PY
             addon_dir: addon_dir.clone(),
             registry_path: registry_path.clone(),
             registry_lock_path: dir.path().join("proxy-registry.json.lock"),
+            builtin_firewall_catalog_cache_path: None,
             api_url: None,
         };
 
@@ -1056,6 +1068,9 @@ PY
             addon_dir: dir.path().join("addon"),
             registry_path: dir.path().join("proxy-registry.json"),
             registry_lock_path: dir.path().join("proxy-registry.json.lock"),
+            builtin_firewall_catalog_cache_path: Some(
+                dir.path().join("builtin-firewall-cache.json"),
+            ),
             api_url: None,
         };
         let (crash_tx, _crash_rx) = mpsc::channel(1);
@@ -1075,6 +1090,13 @@ PY
             "mitmdump args should include vm0_usage_state_id option; got:\n{args}",
         );
         assert!(
+            args.lines().any(|arg| {
+                arg.starts_with("vm0_builtin_firewall_catalog_cache_path=")
+                    && arg.ends_with("builtin-firewall-cache.json")
+            }),
+            "mitmdump args should include builtin firewall cache path; got:\n{args}",
+        );
+        assert!(
             args.lines().all(|arg| arg != "connection_strategy=lazy"),
             "mitmdump args must not use global lazy upstream connections because server-first TCP protocols must keep working; got:\n{args}",
         );
@@ -1092,6 +1114,7 @@ PY
             addon_dir: dir.path().join("addon"),
             registry_path: dir.path().join("proxy-registry.json"),
             registry_lock_path: dir.path().join("proxy-registry.json.lock"),
+            builtin_firewall_catalog_cache_path: None,
             api_url: None,
         };
         let (crash_tx, _crash_rx) = mpsc::channel(1);

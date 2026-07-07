@@ -4,6 +4,7 @@ import copy
 from dataclasses import dataclass
 
 import builtin_base_url
+import builtin_firewall_catalog
 import builtin_host_policy
 from generated.builtin_firewalls import BUILTIN_FIREWALLS
 
@@ -59,7 +60,7 @@ def _resolve_builtin_firewall_entry(entry: dict) -> _ResolvedBuiltinFirewallEntr
     if not isinstance(raw_name, str) or raw_name == "":
         raise FirewallEntryResolutionError("builtin firewall entry name must be a non-empty string")
 
-    catalog_firewall = BUILTIN_FIREWALLS.get(raw_name)
+    catalog_firewall = builtin_firewall_catalog.get_builtin_firewall(raw_name, BUILTIN_FIREWALLS)
     if catalog_firewall is None:
         raise FirewallEntryResolutionError(f'unknown builtin firewall "{raw_name}"')
 
@@ -111,6 +112,10 @@ def _resolve_builtin_firewall_entry(entry: dict) -> _ResolvedBuiltinFirewallEntr
             tuple(resolved_bases),
         ),
     )
+
+
+def builtin_catalog_cache_key() -> object:
+    return builtin_firewall_catalog.cache_key()
 
 
 def _assign_firewall_api_ids(firewalls: list[dict], run_id: str) -> None:

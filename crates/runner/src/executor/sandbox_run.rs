@@ -727,6 +727,12 @@ pub(super) async fn register_proxy(
     let proxy_log_path = config.log_paths.proxy_log(context.run_id);
     let run_id_str = context.run_id.to_string();
     let cli_agent_type = normalized_cli_agent_type(&context.cli_agent_type);
+    if let Some(refresh) = config.builtin_firewall_refresh.as_ref() {
+        refresh
+            .ensure_firewalls_available(context.firewalls.as_deref())
+            .await
+            .map_err(|e| RunnerError::Internal(format!("refresh builtin firewalls: {e}")))?;
+    }
     let registration = proxy::VmRegistration {
         run_id: &run_id_str,
         cli_agent_type,
@@ -748,6 +754,11 @@ pub(super) async fn register_proxy(
         .register_vm(source_ip, &registration)
         .await
         .map_err(|e| RunnerError::Internal(format!("register VM in proxy registry: {e}")))?;
+    if let Some(refresh) = config.builtin_firewall_refresh.as_ref() {
+        refresh
+            .register_run(context.run_id, context.firewalls.as_deref())
+            .await;
+    }
     let network_log_session = config
         .network_log_manager
         .register_source_ip(source_ip, network_log_path)
@@ -849,6 +860,9 @@ pub(super) async fn unregister_proxy_registry(
         .await
         .map_err(|e| RunnerError::Internal(format!("unregister VM from proxy registry: {e}")));
     if let Some(refresh) = config.network_policy_refresh.as_ref() {
+        refresh.unregister_run(run_id).await;
+    }
+    if let Some(refresh) = config.builtin_firewall_refresh.as_ref() {
         refresh.unregister_run(run_id).await;
     }
     result

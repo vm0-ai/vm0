@@ -130,6 +130,7 @@ mod tests {
             addon_dir: dir.path().join("addon"),
             registry_path: dir.path().join("registry.json"),
             registry_lock_path: dir.path().join("registry.lock"),
+            builtin_firewall_catalog_cache_path: None,
             api_url: None,
         })
         .await

@@ -56,7 +56,10 @@ use crate::network_log_drain::NetworkLogDrainCoordinator;
 use crate::network_log_manager::NetworkLogManager;
 use crate::paths::{HomePaths, LogPaths, RunnerPaths, touch_mtime};
 use crate::prefetch;
-use crate::provider::{ApiProvider, JobProvider, LocalProvider, NetworkPolicyRefreshHandle};
+use crate::provider::{
+    ApiProvider, BuiltinFirewallRefreshHandle, JobProvider, LocalProvider,
+    NetworkPolicyRefreshHandle,
+};
 use crate::proxy;
 use crate::resource_budget::ResourceBudget;
 use crate::retry::{RetryState, recv_retry, sleep_until_retry};
@@ -408,12 +411,16 @@ async fn run_start_with_home(
         .unwrap_or(1);
 
     // Start proxy before factory so proxy_port is available for netns pool.
+    let builtin_firewall_catalog_cache_path = local_group_dir
+        .is_none()
+        .then(|| paths.builtin_firewall_catalog_cache());
     let (mut mitm, mitm_crash_rx) = proxy::MitmProxy::new(proxy::ProxyConfig {
         mitmdump_bin: home.mitmdump_bin(deps::MITMPROXY_VERSION),
         ca_dir: runner_config.ca_dir.clone(),
         addon_dir: paths.mitm_addon_dir(),
         registry_path: paths.proxy_registry(),
         registry_lock_path: paths.proxy_registry_lock(),
+        builtin_firewall_catalog_cache_path,
         api_url: Some(server.url.clone()),
     })
     .await?;
@@ -579,10 +586,11 @@ async fn run_start_with_home(
     // Create provider — handles discovery + claim + complete
     let (usage_flush_tx, usage_flush_rx) = mpsc::channel(1);
 
-    let (provider, group_name, network_policy_refresh): (
+    let (provider, group_name, network_policy_refresh, builtin_firewall_refresh): (
         Arc<dyn JobProvider>,
         String,
         Option<NetworkPolicyRefreshHandle>,
+        Option<BuiltinFirewallRefreshHandle>,
     ) = if let Some(group_dir) = local_group_dir {
         let profiles: Vec<String> = runner_config.profiles.keys().cloned().collect();
         let provider = LocalProvider::new(
@@ -591,7 +599,7 @@ async fn run_start_with_home(
             cancel.clone(),
             Arc::clone(&cancel_tokens),
         );
-        (provider, group, None)
+        (provider, group, None, None)
     } else {
         let group_name = group.clone();
         let profiles: Vec<String> = runner_config.profiles.keys().cloned().collect();
@@ -605,7 +613,16 @@ async fn run_start_with_home(
         )
         .await;
         let network_policy_refresh = provider.network_policy_refresh_handle();
-        (provider, group_name, Some(network_policy_refresh))
+        let builtin_firewall_refresh = provider.builtin_firewall_refresh_handle(
+            paths.builtin_firewall_catalog_cache(),
+            paths.builtin_firewall_catalog_cache_lock(),
+        );
+        (
+            provider,
+            group_name,
+            Some(network_policy_refresh),
+            Some(builtin_firewall_refresh),
+        )
     };
 
     let exec_config = Arc::new(ExecutorConfig {
@@ -617,6 +634,7 @@ async fn run_start_with_home(
         network_log_drain,
         mitm_jsonl_flush: Some(mitm.jsonl_flush_handle(usage_flush_tx.clone())),
         network_policy_refresh,
+        builtin_firewall_refresh,
         home: home.clone(),
         workspace_cache: Some(SessionWorkspaceCache::shared(
             paths.clone(),
@@ -1135,6 +1153,9 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     {
         Ok(factories) => factories,
         Err(e) => {
+            if let Some(refresh) = exec_config.builtin_firewall_refresh.as_ref() {
+                refresh.shutdown().await;
+            }
             shutdown_startup_resources_after_factory_failure(
                 provider_state.provider.as_ref(),
                 &mut mitm,
@@ -1573,6 +1594,9 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     teardown.phase_complete("drain_idle_pool", phase);
 
     let phase = teardown.phase_start("provider_shutdown");
+    if let Some(refresh) = exec_config.builtin_firewall_refresh.as_ref() {
+        refresh.shutdown().await;
+    }
     provider_state.provider.shutdown().await;
     teardown.phase_complete("provider_shutdown", phase);
 

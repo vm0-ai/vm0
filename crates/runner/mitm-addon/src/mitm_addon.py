@@ -316,6 +316,12 @@ def load(loader: Loader) -> None:
         help="Runner-generated usage-pending state id",
     )
     loader.add_option(
+        name="vm0_builtin_firewall_catalog_cache_path",
+        typespec=str,
+        default="",
+        help="Path to runner-local builtin firewall catalog cache",
+    )
+    loader.add_option(
         name="vm0_usage_flush_interval_seconds",
         typespec=float,
         default=usage.DEFAULT_FLUSH_INTERVAL_SECONDS,

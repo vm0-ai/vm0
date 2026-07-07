@@ -7,12 +7,14 @@
 mod api;
 mod api_ably_supervisor;
 mod api_direct_candidates;
+mod builtin_firewall_refresh;
 mod local;
 #[cfg(test)]
 pub mod mock;
 mod network_policy_refresh;
 
 pub use api::ApiProvider;
+pub(crate) use builtin_firewall_refresh::BuiltinFirewallRefreshHandle;
 pub use local::LocalProvider;
 pub(crate) use network_policy_refresh::{
     NetworkPolicyRefreshHandle, NetworkPolicyRefreshRegistration,

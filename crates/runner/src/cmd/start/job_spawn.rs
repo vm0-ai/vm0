@@ -201,6 +201,9 @@ impl ExecutorInvocation {
                 if let Some(refresh) = exec_config_for_panic.network_policy_refresh.as_ref() {
                     refresh.unregister_run(run_id).await;
                 }
+                if let Some(refresh) = exec_config_for_panic.builtin_firewall_refresh.as_ref() {
+                    refresh.unregister_run(run_id).await;
+                }
                 // Panic lost the in-flight telemetry buffer; substitute an
                 // empty collector so the post-complete flush path stays
                 // unconditional. `flush` early-returns on empty pending_ops.
