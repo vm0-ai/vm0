@@ -1453,11 +1453,10 @@ function WorkflowTemplatePillRow({
   );
 }
 
-// Groups the (already search-filtered) templates by persona, in
-// WORKFLOW_TEMPLATE_CATEGORIES order, dropping empty categories so a search
-// narrows to just the matching groups. Section headers only appear when more
-// than one group is present; with a single group (e.g. the catalog switch is
-// off, or a search matches one persona) the grid renders flat, without a header.
+// Renders the (already search + pill filtered) templates as a flat grid.
+// Categorization is handled by the persona pill row above, so there are no
+// per-persona section headers — items stay in catalog order (General first)
+// so related cards still cluster.
 function WorkflowTemplateGrid({
   items,
   value,
@@ -1467,40 +1466,16 @@ function WorkflowTemplateGrid({
   value: GenerationTemplateRequest | undefined;
   onSelect: (item: WorkflowTemplateItem) => void;
 }) {
-  const groups = WORKFLOW_TEMPLATE_CATEGORIES.map((category) => {
-    return {
-      category,
-      items: items.filter((item) => {
-        return item.category === category;
-      }),
-    };
-  }).filter((group) => {
-    return group.items.length > 0;
-  });
-  const showHeaders = groups.length > 1;
   return (
-    <div className="flex flex-col gap-6">
-      {groups.map((group) => {
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {items.map((item) => {
         return (
-          <section key={group.category} className="flex flex-col gap-3">
-            {showHeaders && (
-              <p className="px-1 text-xs font-medium text-muted-foreground">
-                {group.category}
-              </p>
-            )}
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {group.items.map((item) => {
-                return (
-                  <WorkflowTemplateCard
-                    key={item.id}
-                    item={item}
-                    selected={isSelectedWorkflowTemplate(item, value)}
-                    onSelect={onSelect}
-                  />
-                );
-              })}
-            </div>
-          </section>
+          <WorkflowTemplateCard
+            key={item.id}
+            item={item}
+            selected={isSelectedWorkflowTemplate(item, value)}
+            onSelect={onSelect}
+          />
         );
       })}
     </div>
