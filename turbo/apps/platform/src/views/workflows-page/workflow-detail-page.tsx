@@ -1047,10 +1047,14 @@ function WorkflowPublicToggle({
               automations other members built on it stop running.
             </DialogDescription>
           </DialogHeader>
-          <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-            {workflowTitle(detail)} will be hidden from other members and their
-            automations will stop.
-          </div>
+          <Alert variant="destructive">
+            <IconAlertTriangle size={16} stroke={1.5} />
+            <AlertTitle>Automations will stop</AlertTitle>
+            <AlertDescription>
+              {workflowTitle(detail)} will be hidden from other members and
+              their automations will stop.
+            </AlertDescription>
+          </Alert>
           <DialogFooter>
             <Button
               type="button"
