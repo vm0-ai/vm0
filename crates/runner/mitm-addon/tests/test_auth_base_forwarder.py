@@ -1,18 +1,21 @@
 """Tests for auth.base HTTPS forwarding behavior."""
 
 import asyncio
+import contextvars
 import errno
 import multiprocessing
 import ssl
 import threading
+from concurrent.futures import Future
 from unittest.mock import MagicMock, call, patch
 
 import pytest
+from mitmproxy import http
 
 import auth_base_forwarder as forwarder
 from tests.auth_base_forwarder_helpers import FakeSocket, fake_forwarder_upstream, http_response
 
-_PROCESS_EXIT_TIMEOUT_SECONDS = 2
+_PROCESS_EXIT_TIMEOUT_SECONDS = 5
 
 
 async def _run_ready_tasks() -> None:
@@ -794,7 +797,7 @@ class TestAuthBaseForwarderResourceCleanup:
 
 class TestForwardRequestAsyncWrapper:
     def test_shutdown_wait_false_does_not_keep_process_alive_with_blocked_forward(self):
-        process = multiprocessing.Process(
+        process = multiprocessing.get_context("spawn").Process(
             target=_run_blocked_forward_then_shutdown_wait_false,
             name="auth-base-shutdown-regression",
         )
@@ -809,6 +812,28 @@ class TestForwardRequestAsyncWrapper:
                 process.join(timeout=_PROCESS_EXIT_TIMEOUT_SECONDS)
 
         assert process.exitcode == 0
+
+    def test_shutdown_before_worker_start_cancels_pending_forward(self):
+        future: Future[tuple[int, bytes, http.Headers]] = Future()
+        with forwarder._forward_request_pending_futures_lock:
+            forwarder._forward_request_pending_futures.add(future)
+
+        forwarder.shutdown_forward_request_workers(wait=False)
+
+        with patch.object(forwarder, "_forward_request_sync_in_context") as forward_sync:
+            forwarder._run_forward_request_worker(
+                future,
+                contextvars.copy_context(),
+                "https://example.com",
+                "GET",
+                [],
+                None,
+            )
+
+        forward_sync.assert_not_called()
+        assert future.cancelled()
+        with forwarder._forward_request_pending_futures_lock:
+            assert future not in forwarder._forward_request_pending_futures
 
     async def test_rejects_body_over_limit_before_forwarding(self):
         with (

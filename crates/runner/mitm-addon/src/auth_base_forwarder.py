@@ -154,6 +154,13 @@ def _cancel_pending_forward_request_futures() -> None:
         future.cancel()
 
 
+def _discard_pending_forward_request_future(
+    future: Future[tuple[int, bytes, http.Headers]],
+) -> None:
+    with _forward_request_pending_futures_lock:
+        _forward_request_pending_futures.discard(future)
+
+
 def _join_forward_request_workers() -> None:
     current_thread = threading.current_thread()
     while True:
@@ -800,10 +807,15 @@ def _run_forward_request_worker(
     body: bytes | None,
 ) -> None:
     try:
-        with _forward_request_pending_futures_lock:
-            _forward_request_pending_futures.discard(future)
-        if not future.set_running_or_notify_cancel():
-            return
+        with _forward_request_lifecycle_lock:
+            if not _forward_request_accepting:
+                future.cancel()
+                _discard_pending_forward_request_future(future)
+                return
+            if not future.set_running_or_notify_cancel():
+                _discard_pending_forward_request_future(future)
+                return
+            _discard_pending_forward_request_future(future)
         try:
             result = _forward_request_sync_in_context(context, url, method, headers, body)
         except BaseException as exc:
