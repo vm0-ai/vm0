@@ -234,6 +234,8 @@ import type { FeedbackItem } from "../../signals/zero-page/chat-feedback.ts";
 import { Markdown } from "../components/markdown.tsx";
 
 const MAX_FILE_SIZE = 1024 * 1024 * 1024; // 1 GB — keep in sync with web constants
+const COMPOSER_CONTROL_FOCUS_CLASS =
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 
 function isHappyDomTestEnvironment(): boolean {
   return (
@@ -5479,6 +5481,7 @@ function TemplatePickerButton({
               type="button"
               className={cn(
                 "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 hover:bg-accent hover:text-foreground sm:h-9 sm:w-9",
+                COMPOSER_CONTROL_FOCUS_CLASS,
                 picker.value && "bg-accent text-foreground",
               )}
               aria-label="Template"
@@ -5555,7 +5558,10 @@ function CreateWorkflowPromptButton({
         <TooltipTrigger asChild>
           <button
             type="button"
-            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 hover:bg-accent hover:text-foreground sm:h-9 sm:w-9"
+            className={cn(
+              "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 hover:bg-accent hover:text-foreground sm:h-9 sm:w-9",
+              COMPOSER_CONTROL_FOCUS_CLASS,
+            )}
             aria-label="Create workflow"
             onClick={onCreateWorkflowPrompt}
           >
@@ -5890,7 +5896,10 @@ function ConnectorsPopoverButton({
             <TooltipTrigger asChild>
               <button
                 type="button"
-                className="inline-flex h-8 min-w-8 shrink-0 items-center justify-center rounded-lg px-1 transition-colors hover:bg-accent sm:h-9 sm:min-w-9 sm:px-1.5"
+                className={cn(
+                  "inline-flex h-8 min-w-8 shrink-0 items-center justify-center rounded-lg px-1 transition-colors hover:bg-accent sm:h-9 sm:min-w-9 sm:px-1.5",
+                  COMPOSER_CONTROL_FOCUS_CLASS,
+                )}
                 aria-label="Connectors"
               >
                 <ConnectorTriggerIcons
@@ -6219,6 +6228,7 @@ function MicButton({
             type="button"
             className={cn(
               "relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors",
+              COMPOSER_CONTROL_FOCUS_CLASS,
               recording || starting || transcribing
                 ? "bg-[#2E9E9F] text-white hover:bg-[#279394]"
                 : "text-muted-foreground hover:bg-accent hover:text-foreground",
@@ -6266,7 +6276,10 @@ function ComposerAttachButton({
         <TooltipTrigger asChild>
           <button
             type="button"
-            className="rounded-lg p-2 transition-colors duration-200 hover:bg-accent hover:text-foreground sm:p-[9px]"
+            className={cn(
+              "rounded-lg p-2 transition-colors duration-200 hover:bg-accent hover:text-foreground sm:p-[9px]",
+              COMPOSER_CONTROL_FOCUS_CLASS,
+            )}
             aria-label="Attach"
             onClick={onSelectFile}
           >
@@ -6317,6 +6330,7 @@ function ComposerUploadMenu({
         type="button"
         className={cn(
           "rounded-lg p-2 transition-colors duration-200 hover:bg-accent hover:text-foreground sm:p-[9px]",
+          COMPOSER_CONTROL_FOCUS_CLASS,
           uploadOpen && "bg-accent text-foreground",
         )}
         aria-label="Upload"
@@ -6703,7 +6717,8 @@ function ComposerModelPickerSlot({
           triggerClassName={cn(
             "h-9 w-9 max-w-none gap-0 border-transparent bg-transparent px-0 text-sm text-muted-foreground transition-colors sm:w-auto sm:max-w-[14rem] sm:gap-1 sm:px-2",
             "[&>span]:flex [&>span]:items-center [&>span]:justify-center sm:[&>span]:justify-start [&>svg]:hidden sm:[&>svg]:block",
-            "hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 data-[state=open]:bg-accent data-[state=open]:text-foreground",
+            "hover:bg-accent hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground",
+            COMPOSER_CONTROL_FOCUS_CLASS,
           )}
           compactTrigger
           mobileIconTrigger
