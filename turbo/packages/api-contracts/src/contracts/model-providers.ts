@@ -150,11 +150,15 @@ export const DEFAULT_ORG_MODEL_POLICY_MODELS = [
   "gpt-5.5",
   "claude-opus-4-8",
   "claude-sonnet-5",
+  "claude-sonnet-4-6",
   "MiniMax-M3",
 ] as const satisfies readonly SupportedRunModel[];
 
 export const DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL =
   "MiniMax-M3" as const satisfies SupportedRunModel;
+
+export const LIMITED_FREE1_DEFAULT_RUN_MODEL =
+  "claude-sonnet-4-6" as const satisfies SupportedRunModel;
 
 export const supportedRunModelSchema = z.enum(SUPPORTED_RUN_MODELS);
 
@@ -215,11 +219,13 @@ export function getCanonicalModelDisplayName(model: string): string {
   return isSupportedRunModel(model) ? SUPPORTED_RUN_MODEL_LABELS[model] : model;
 }
 
-export function getDefaultOrgModelPolicySeed(): DefaultOrgModelPolicySeed[] {
+export function getDefaultOrgModelPolicySeed(
+  defaultModel: SupportedRunModel = DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+): DefaultOrgModelPolicySeed[] {
   return DEFAULT_ORG_MODEL_POLICY_MODELS.map((model) => {
     return {
       model,
-      isDefault: model === DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+      isDefault: model === defaultModel,
       defaultProviderType: "vm0",
       credentialScope: "org",
       modelProviderId: null,
@@ -347,6 +353,9 @@ export function isLimitedFree1RestrictedRunModel(
   }
   const normalized = model.trim().toLowerCase();
   const canonicalModel = normalizeVm0ModelId(normalized);
+  if (canonicalModel === LIMITED_FREE1_DEFAULT_RUN_MODEL) {
+    return false;
+  }
   const vendor = VM0_MODEL_TO_PROVIDER[canonicalModel]?.vendor;
 
   return (
