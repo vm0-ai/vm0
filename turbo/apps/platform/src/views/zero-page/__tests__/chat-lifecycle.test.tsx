@@ -15,6 +15,7 @@ import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
   VIDEO_TEMPLATE_ITEMS,
+  WEBSITE_TEMPLATE_ITEMS,
 } from "@vm0/core";
 import {
   zeroBillingCheckoutContract,
@@ -5172,6 +5173,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     const presentationTemplate = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
     const videoTemplate = VIDEO_TEMPLATE_ITEMS[0]!;
     const illustrationTemplate = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
+    const websiteTemplate = WEBSITE_TEMPLATE_ITEMS[0]!;
 
     mockChatLifecycle(context, {
       threadId,
@@ -5214,6 +5216,17 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           },
           createdAt: "2026-06-09T10:02:00Z",
         },
+        {
+          id: "msg-template-website",
+          role: "user",
+          content: "Create a yoga website",
+          runId: "run-template-website",
+          generationTemplate: {
+            type: "website",
+            selection: { websiteTemplateId: websiteTemplate.id },
+          },
+          createdAt: "2026-06-09T10:03:00Z",
+        },
       ],
     });
 
@@ -5232,6 +5245,16 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       expect(
         screen.getByLabelText(`Message template ${illustrationTemplate.title}`),
       ).toHaveTextContent("Illustration");
+      const websiteTemplateLabel = screen.getByLabelText(
+        `Message template ${websiteTemplate.title}`,
+      );
+      expect(websiteTemplateLabel).toHaveTextContent("Website");
+      expect(
+        websiteTemplateLabel.querySelector(".tabler-icon-world"),
+      ).not.toBeNull();
+      expect(
+        websiteTemplateLabel.querySelector(".tabler-icon-presentation"),
+      ).toBeNull();
     });
   });
 
