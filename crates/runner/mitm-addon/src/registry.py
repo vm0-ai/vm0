@@ -221,6 +221,7 @@ def _classify_registry_vms(
     dict,
     dict[str, InvalidVmEntry],
     dict[str, tuple[registry_firewalls.BuiltinFirewallCoreCacheKey | None, ...]],
+    bool,
 ]:
     new_registry: dict = {}
     invalid_vms: dict[str, InvalidVmEntry] = {}
@@ -228,6 +229,7 @@ def _classify_registry_vms(
         str,
         tuple[registry_firewalls.BuiltinFirewallCoreCacheKey | None, ...],
     ] = {}
+    uses_builtin_catalog_dependency = False
     for client_ip, vm in raw_registry.items():
         if not isinstance(vm, dict):
             invalid_vms[client_ip] = InvalidVmEntry(
@@ -274,6 +276,15 @@ def _classify_registry_vms(
             )
             continue
 
+        raw_firewalls = vm.get("firewalls")
+        uses_builtin_catalog_dependency = uses_builtin_catalog_dependency or (
+            isinstance(raw_firewalls, list)
+            and any(
+                isinstance(entry, dict) and entry.get("kind") == "builtin"
+                for entry in raw_firewalls
+            )
+        )
+
         try:
             resolved_firewalls = registry_firewalls.resolve_firewall_entries(
                 vm,
@@ -291,7 +302,12 @@ def _classify_registry_vms(
 
         new_registry[client_ip] = vm
 
-    return new_registry, invalid_vms, builtin_cache_keys_by_client_ip
+    return (
+        new_registry,
+        invalid_vms,
+        builtin_cache_keys_by_client_ip,
+        uses_builtin_catalog_dependency,
+    )
 
 
 def _open_registry_for_read(path: Path) -> tuple[int, os.stat_result]:
@@ -417,9 +433,27 @@ def load_registry_state(registry_path: str) -> RegistryState:
     finally:
         os.close(fd)
 
-    new_registry, invalid_vms, builtin_cache_keys = _classify_registry_vms(
+    (
+        new_registry,
+        invalid_vms,
+        builtin_cache_keys,
+        uses_builtin_catalog_dependency,
+    ) = _classify_registry_vms(
         raw_registry,
         builtin_firewall_catalog_cache_path=builtin_catalog_cache_path,
+    )
+    loaded_builtin_catalog_file_key = (
+        registry_firewalls.catalog_dependency_file_key(builtin_catalog_cache_path)
+        if uses_builtin_catalog_dependency
+        else None
+    )
+    loaded_key = (
+        path_key,
+        st.st_dev,
+        st.st_ino,
+        st.st_mtime_ns,
+        st.st_size,
+        loaded_builtin_catalog_file_key,
     )
     if invalid_vms:
         ctx.log.warn(f"Rejected {len(invalid_vms)} invalid proxy registry VM entries")
@@ -438,7 +472,7 @@ def load_registry_state(registry_path: str) -> RegistryState:
         invalid_vms,
         new_compiled_registry,
         new_compiled_policy_registry,
-        key,
+        loaded_key,
     )
     state.unavailable = None
     state.failed_key = None

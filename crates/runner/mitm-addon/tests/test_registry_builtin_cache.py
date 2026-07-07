@@ -195,6 +195,73 @@ class TestRegistryBuiltinCache:
         assert compiled_firewalls is not None
         assert vm_info["firewalls"][0]["apis"][0]["id"] == "run-cache-only:0"
 
+    def test_registry_snapshot_uses_actual_loaded_catalog_file_key(
+        self, tmp_path, monkeypatch, mitm_ctx
+    ):
+        registry_path = tmp_path / "registry.json"
+        cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
+        write_multi_vm_registry(
+            registry_path,
+            {"10.200.0.1": builtin_vm("run-racy-cache", "racy-cache")},
+        )
+        _write_catalog_cache(
+            cache_path,
+            digest="sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            version="catalog-a",
+            firewalls={
+                "racy-cache": _cache_firewall(
+                    "racy-cache",
+                    "https://cache.example.com",
+                )
+            },
+        )
+        monkeypatch.setattr(
+            registry_firewalls,
+            "BUILTIN_FIREWALLS",
+            {
+                "racy-cache": {
+                    "name": "racy-cache",
+                    "apis": [
+                        {
+                            "base": "https://bundled.example.com",
+                            "auth": {"headers": {}},
+                            "permissions": [{"name": "read", "rules": ["GET /items"]}],
+                        }
+                    ],
+                }
+            },
+        )
+        original_catalog_file_key = registry_firewalls.catalog_file_key
+        calls = 0
+
+        def racy_catalog_file_key(cache_path: str | None):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                return None
+            return original_catalog_file_key(cache_path)
+
+        monkeypatch.setattr(registry_firewalls, "catalog_file_key", racy_catalog_file_key)
+
+        with mitm_ctx(
+            registry_path=str(registry_path),
+            builtin_firewall_catalog_cache_path=str(cache_path),
+        ):
+            context = registry.get_vm_context("10.200.0.1", str(registry_path))
+            assert context is not None
+            vm_info, compiled_firewalls, _ = context
+            assert compiled_firewalls is not None
+            assert vm_info["firewalls"][0]["apis"][0]["base"] == "https://cache.example.com"
+
+            cache_path.unlink()
+
+            context = registry.get_vm_context("10.200.0.1", str(registry_path))
+
+        assert context is not None
+        vm_info, compiled_firewalls, _ = context
+        assert compiled_firewalls is not None
+        assert vm_info["firewalls"][0]["apis"][0]["base"] == "https://bundled.example.com"
+
     def test_runner_catalog_cache_accepts_valid_template_base(self, tmp_path, mitm_ctx):
         registry_path = tmp_path / "registry.json"
         cache_path = tmp_path / "builtin-firewall-catalog-cache.json"

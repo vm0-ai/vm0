@@ -45,6 +45,12 @@ def catalog_file_key(
     return builtin_firewall_cache.catalog_file_key(cache_path)
 
 
+def catalog_dependency_file_key(
+    cache_path: str | None,
+) -> builtin_firewall_cache.CatalogFileKey | None:
+    return builtin_firewall_cache.catalog_dependency_file_key(cache_path)
+
+
 def _copy_builtin_firewall_shell(
     *,
     firewall_name: str,

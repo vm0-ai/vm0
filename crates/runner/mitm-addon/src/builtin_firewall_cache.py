@@ -78,6 +78,16 @@ def catalog_file_key(cache_path: str | None) -> CatalogFileKey | None:
     return (_path_key(path), st.st_dev, st.st_ino, st.st_mtime_ns, st.st_size)
 
 
+def catalog_dependency_file_key(cache_path: str | None) -> CatalogFileKey | None:
+    """Return the cache file identity observed by the latest load attempt."""
+    if not cache_path:
+        return None
+    path = Path(cache_path)
+    path_key = _path_key(path)
+    state = _state_for_path(path_key)
+    return state.loaded_key or state.failed_key or catalog_file_key(cache_path)
+
+
 def load_catalog(cache_path: str | None) -> BuiltinFirewallCatalog | None:
     """Load the runner-written catalog cache, returning None when unavailable."""
     if not cache_path:
