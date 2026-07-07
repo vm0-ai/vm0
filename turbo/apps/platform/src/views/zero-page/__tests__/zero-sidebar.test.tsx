@@ -1087,6 +1087,28 @@ describe("zero sidebar", () => {
     });
   });
 
+  it("keeps the chat thread focus ring inside the virtual row", async () => {
+    prepareDefaultAgent();
+    mockSidebarThreadStory([
+      createThread(EXISTING_THREAD_ID, "Release plan"),
+      createThread(AUTOMATION_THREAD_ID, "Scheduled launch"),
+    ]);
+
+    setupSidebarPage({
+      context,
+      path: `/chats/${EXISTING_THREAD_ID}`,
+    });
+
+    const link = await waitFor(() => {
+      return threadLinkByTitle("Release plan");
+    });
+
+    expect(link).toHaveClass("focus-visible:outline-none");
+    expect(link).toHaveClass("focus-visible:ring-2");
+    expect(link).toHaveClass("focus-visible:ring-inset");
+    expect(link).toHaveClass("focus-visible:ring-ring");
+  });
+
   it("keeps pinned agents and the chat title outside the thread list scroll area", async () => {
     prepareAgentTeam();
     context.mocks.data.userPreferences({
