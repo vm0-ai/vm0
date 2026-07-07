@@ -150,6 +150,7 @@ describe("release-please API deployment graph", () => {
     expect(consistencyJob).toContain("app_release_created == 'true'");
     expect(consistencyJob).toContain("tag_commit");
     expect(consistencyJob).toContain("instead of release head $head_commit");
+    expect(consistencyJob).toContain('git checkout --force "$HEAD_SHA"');
     expect(consistencyJob).toContain("git diff --quiet");
     expect(consistencyJob).toContain(
       `release-please did not create a \${tag_prefix} release`,
@@ -170,13 +171,19 @@ describe("release-please API deployment graph", () => {
     );
   });
 
-  it("pins production app and API builds to the triggering main commit", () => {
+  it("checks out production app and API builds at the triggering main commit", () => {
     const workflow = readText(".github/workflows/release-please.yml");
     const apiBuildJob = workflowJobBlock(workflow, "build-api-production");
     const appBuildJob = workflowJobBlock(workflow, "build-app-production");
     const releaseHeadRef = `ref: \${{ github.event.workflow_run.head_sha || github.sha }}`;
+    const releaseHeadEnv = `RELEASE_HEAD_SHA: \${{ github.event.workflow_run.head_sha || github.sha }}`;
+    const releaseHeadCheckout = `git checkout --force "$RELEASE_HEAD_SHA"`;
 
-    expect(apiBuildJob).toContain(releaseHeadRef);
-    expect(appBuildJob).toContain(releaseHeadRef);
+    expect(apiBuildJob).not.toContain(releaseHeadRef);
+    expect(appBuildJob).not.toContain(releaseHeadRef);
+    expect(apiBuildJob).toContain(releaseHeadEnv);
+    expect(appBuildJob).toContain(releaseHeadEnv);
+    expect(apiBuildJob).toContain(releaseHeadCheckout);
+    expect(appBuildJob).toContain(releaseHeadCheckout);
   });
 });

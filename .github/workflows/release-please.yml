@@ -785,8 +785,15 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@v7
-        with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Checkout triggering main commit
+        env:
+          RELEASE_HEAD_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 origin "$RELEASE_HEAD_SHA"
+          git checkout --force "$RELEASE_HEAD_SHA"
+
       - uses: ./.github/actions/toolchain-init
 
       - name: Build Runtime API Schema
@@ -1316,9 +1323,8 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           fetch-depth: 0
 
       - name: Ensure app release does not include unreleased API runtime changes
@@ -1340,7 +1346,8 @@ jobs:
             echo "::error::Release head commit $HEAD_SHA is not available"
             exit 1
           fi
-          head_commit=$(git rev-parse "$HEAD_SHA")
+          git checkout --force "$HEAD_SHA"
+          head_commit=$(git rev-parse HEAD)
 
           blocked=0
           check_release_path() {
@@ -1416,8 +1423,15 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@v7
-        with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Checkout triggering main commit
+        env:
+          RELEASE_HEAD_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 origin "$RELEASE_HEAD_SHA"
+          git checkout --force "$RELEASE_HEAD_SHA"
+
       - uses: ./.github/actions/toolchain-init
 
       - name: Notify Slack - Starting
