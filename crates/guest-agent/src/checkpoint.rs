@@ -110,9 +110,9 @@ impl SessionHistoryUpload {
                     bytes: Bytes::from(gzip),
                 })
             }
-            SessionHistoryUploadBody::Gzip { .. } => {
-                Err(compressed_encoding_not_acknowledged(SESSION_HISTORY_ENCODING_GZIP))
-            }
+            SessionHistoryUploadBody::Gzip { .. } => Err(compressed_encoding_not_acknowledged(
+                SESSION_HISTORY_ENCODING_GZIP,
+            )),
             SessionHistoryUploadBody::Zstd { raw: _, zstd }
                 if accepted_encoding == Some(SESSION_HISTORY_ENCODING_ZSTD) =>
             {
