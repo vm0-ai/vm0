@@ -2,6 +2,7 @@
 // oxlint-disable max-lines-per-function
 import { useGet, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
+import { useState } from "react";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   Button,
@@ -128,7 +129,11 @@ export function ZeroSettingsTab({
 
   const pageSignal = useGet(pageSignal$);
 
-  const handleSaveSettings = () => {
+  const [demoteConfirmOpen, setDemoteConfirmOpen] = useState(false);
+  const willDemoteVisibility =
+    initialVisibility === "public" && visibility === "private";
+
+  const runSaveSettings = () => {
     detach(
       (async () => {
         await triggerUpdateSettings(
@@ -146,6 +151,14 @@ export function ZeroSettingsTab({
       })(),
       Reason.DomCallback,
     );
+  };
+
+  const handleSaveSettings = () => {
+    if (willDemoteVisibility) {
+      setDemoteConfirmOpen(true);
+      return;
+    }
+    runSaveSettings();
   };
 
   const handleDelete = () => {
@@ -346,11 +359,18 @@ export function ZeroSettingsTab({
                       <DialogHeader>
                         <DialogTitle>Delete {resolvedAgentName}?</DialogTitle>
                         <DialogDescription>
-                          This will permanently delete the agent, its
-                          instructions, automations, and all associated data.
-                          This action cannot be undone.
+                          This is a dangerous operation. Deleting this agent also
+                          permanently deletes every workflow bound to it and
+                          every member&apos;s chat history under it, including
+                          automations and chats other people created. This action
+                          cannot be undone.
                         </DialogDescription>
                       </DialogHeader>
+                      <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                        {resolvedAgentName} and every member&apos;s workflows,
+                        automations, and chat history under it will be
+                        permanently deleted.
+                      </div>
                       <DialogFooter>
                         <DialogClose asChild>
                           <Button variant="outline" size="sm">
@@ -382,6 +402,46 @@ export function ZeroSettingsTab({
           saving={saving}
         />
       )}
+
+      <Dialog open={demoteConfirmOpen} onOpenChange={setDemoteConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Make {resolvedAgentName} private?</DialogTitle>
+            <DialogDescription>
+              While this agent is private, other members lose access to their
+              chat history under it. They regain access if you make it public
+              again.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            Other members will no longer see {resolvedAgentName} or their chats
+            under it.
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={saving}
+              onClick={() => {
+                setDemoteConfirmOpen(false);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              disabled={saving}
+              onClick={() => {
+                setDemoteConfirmOpen(false);
+                runSaveSettings();
+              }}
+            >
+              {saving ? "Saving…" : "Make private"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

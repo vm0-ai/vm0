@@ -914,7 +914,7 @@ describe("team page navigation", () => {
     const deleteDialog = await screen.findByRole("dialog");
     expect(
       within(deleteDialog).getByText(
-        /instructions, automations, and all associated data/u,
+        /including automations and chats other people created/u,
       ),
     ).toBeInTheDocument();
 
