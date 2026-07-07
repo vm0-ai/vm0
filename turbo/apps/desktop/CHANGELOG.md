@@ -1,5 +1,44 @@
 # Changelog
 
+## [0.23.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.22.50...desktop-v0.23.0) (2026-07-07)
+
+
+### Features
+
+* **computer-use:** add per-command state-size and structure telemetry ([#19868](https://github.com/vm0-ai/vm0/issues/19868)) ([b829cea](https://github.com/vm0-ai/vm0/commit/b829ceaa83f9279225c21b85a83ca65bd36819a4))
+* **desktop:** crash-resilient bootstrap entry owning the auto-updater ([#19942](https://github.com/vm0-ai/vm0/issues/19942)) ([a5abf1b](https://github.com/vm0-ai/vm0/commit/a5abf1b1cfa2e10a22de92c914d44e325b38ca07)), closes [#19927](https://github.com/vm0-ai/vm0/issues/19927)
+
+
+### Bug Fixes
+
+* **desktop:** bundle filesystem mcp sdk dependency ([#20023](https://github.com/vm0-ai/vm0/issues/20023)) ([abe9a2f](https://github.com/vm0-ai/vm0/commit/abe9a2f02b9df1c6597c13cc3e6b3787d272b52e))
+* **desktop:** bundle workspace packages into electron main process ([#19895](https://github.com/vm0-ai/vm0/issues/19895)) ([c1a532c](https://github.com/vm0-ai/vm0/commit/c1a532c2ab63fa46bd741428b09fc26e75632efa))
+* hide filesystem plugin behind developer tools ([#19957](https://github.com/vm0-ai/vm0/issues/19957)) ([557f830](https://github.com/vm0-ai/vm0/commit/557f830dde44ceb9c0cfe5eee675eea63176df1b))
+
+
+### CI
+
+* smoke-test packaged desktop app launch to catch startup crashes ([#19932](https://github.com/vm0-ai/vm0/issues/19932)) ([3c5b7b2](https://github.com/vm0-ai/vm0/commit/3c5b7b22984bd805b346987491d73a9d02db6161))
+
+
+### Refactoring
+
+* **desktop:** decompose main.ts god module into controllers ([#19852](https://github.com/vm0-ai/vm0/issues/19852)) ([0f2f760](https://github.com/vm0-ai/vm0/commit/0f2f7602347e1fdb1004a8cb2d28dbc7af73c1e3))
+* **desktop:** remove vm0-computer CLI daemon ([#19847](https://github.com/vm0-ai/vm0/issues/19847)) ([555e6b8](https://github.com/vm0-ai/vm0/commit/555e6b88cdfbef472aa4f4352516939318e9f505))
+* reduce fallback slop in runtime guards ([#20275](https://github.com/vm0-ai/vm0/issues/20275)) ([73e668c](https://github.com/vm0-ai/vm0/commit/73e668ce7135504b171be98ca2832d09b433f34b))
+
+
+### Performance Improvements
+
+* **desktop:** stop sending unused elements/visibleText/visibleElements in computer-use results ([#19861](https://github.com/vm0-ai/vm0/issues/19861)) ([38f43f4](https://github.com/vm0-ai/vm0/commit/38f43f4b7306640f912d40ce17c60e6b28b893d8)), closes [#19854](https://github.com/vm0-ai/vm0/issues/19854)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.162.0
+
 ## [0.22.50](https://github.com/vm0-ai/vm0/compare/desktop-v0.22.49...desktop-v0.22.50) (2026-07-07)
 
 
