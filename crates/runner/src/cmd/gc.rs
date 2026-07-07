@@ -1,8 +1,10 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::ffi::OsString;
+use std::future::Future;
 use std::os::unix::ffi::OsStringExt;
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
+use std::pin::Pin;
 use std::time::{Duration, SystemTime};
 
 use clap::Args;
@@ -206,6 +208,12 @@ struct GcCandidate {
 }
 
 type ProtectedImageRefs = HashMap<String, HashSet<String>>;
+type ServiceUninstallFuture<'a> = Pin<Box<dyn Future<Output = RunnerResult<()>> + 'a>>;
+type ServiceUninstallFn = for<'a> fn(&'a service::RunnerServiceUnit) -> ServiceUninstallFuture<'a>;
+
+fn real_uninstall_service_unit(unit: &service::RunnerServiceUnit) -> ServiceUninstallFuture<'_> {
+    Box::pin(service::uninstall_service_unit(unit))
+}
 
 #[derive(serde::Deserialize)]
 struct ConfigImageRefs {
@@ -1609,6 +1617,20 @@ async fn version_retention_reason(
 }
 
 #[cfg(test)]
+fn successful_fake_uninstall_service_unit(
+    _unit: &service::RunnerServiceUnit,
+) -> ServiceUninstallFuture<'_> {
+    Box::pin(async { Ok(()) })
+}
+
+#[cfg(test)]
+fn failing_fake_uninstall_service_unit(
+    _unit: &service::RunnerServiceUnit,
+) -> ServiceUninstallFuture<'_> {
+    Box::pin(async { Err(RunnerError::Internal("fake uninstall failed".to_string())) })
+}
+
+#[cfg(test)]
 async fn gc_versions(
     home: &HomePaths,
     dry_run: bool,
@@ -1616,7 +1638,13 @@ async fn gc_versions(
     keep_latest: Option<usize>,
 ) -> RunnerResult<Vec<String>> {
     let analysis = analyze_version_gc(home, protect, keep_latest).await?;
-    gc_versions_with_analysis(home, dry_run, analysis).await
+    gc_versions_with_analysis_and_uninstall(
+        home,
+        dry_run,
+        analysis,
+        successful_fake_uninstall_service_unit,
+    )
+    .await
 }
 
 /// Remove old deployment version directories that are not actively running.
@@ -1639,6 +1667,16 @@ async fn gc_versions_with_analysis(
     home: &HomePaths,
     dry_run: bool,
     analysis: VersionGcAnalysis,
+) -> RunnerResult<Vec<String>> {
+    gc_versions_with_analysis_and_uninstall(home, dry_run, analysis, real_uninstall_service_unit)
+        .await
+}
+
+async fn gc_versions_with_analysis_and_uninstall(
+    home: &HomePaths,
+    dry_run: bool,
+    analysis: VersionGcAnalysis,
+    uninstall_service: ServiceUninstallFn,
 ) -> RunnerResult<Vec<String>> {
     let bin_dir = home.bin_dir();
     let mut removed: Vec<String> = Vec::new();
@@ -1723,10 +1761,9 @@ async fn gc_versions_with_analysis(
             }
             Ok(false) => {}
             Err(e) => {
-                // systemctl unavailable (e.g. in tests or broken PATH).
-                // Log and treat as inactive — the version dir will still be
-                // removed, which is preferable to silently accumulating stale
-                // versions when systemd units are already gone.
+                // systemctl may be unavailable on non-systemd hosts. Continue
+                // to the uninstall step; it will refuse deletion if it cannot
+                // prove the service is stopped.
                 warn!("version {name}: cannot check unit status ({e}), assuming inactive");
             }
         }
@@ -1738,8 +1775,14 @@ async fn gc_versions_with_analysis(
                 warn!("version {name}: service lock missing before delete, skipping");
                 continue;
             };
-            // Best-effort uninstall the systemd service (may not exist).
-            let _ = service::uninstall_service_unit(&unit).await;
+            // Uninstall is best-effort for missing/inactive units, but it
+            // returns an error when it cannot prove the service is stopped.
+            // In that case the version may still be backing a live runner, so
+            // keep the bin/config directories for the next GC pass.
+            if let Err(e) = uninstall_service(&unit).await {
+                warn!("version {name}: cannot uninstall service safely ({e}), skipping");
+                continue;
+            }
 
             // Remove bin directory.
             if let Err(e) = tokio::fs::remove_dir_all(&version_bin).await
@@ -3819,7 +3862,6 @@ server:
         std::fs::create_dir_all(runners_dir.join("v1.0.0")).unwrap();
         age_versions_past_gc_min_age(&home, &["v1.0.0", "v2.0.0"]);
 
-        // systemctl will fail in test env, so versions are treated as inactive
         let mut removed = gc_versions(&home, false, None, None).await.unwrap();
         removed.sort();
         assert_eq!(removed, ["v1.0.0", "v2.0.0"]);
@@ -3830,6 +3872,39 @@ server:
             "non-semver should be untouched"
         );
         assert!(!runners_dir.join("v1.0.0").exists());
+    }
+
+    #[tokio::test]
+    async fn gc_versions_keeps_version_when_service_uninstall_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let bin_dir = home.bin_dir();
+        let runners_dir = home.runners_dir();
+        let version = "v1.0.0";
+
+        std::fs::create_dir_all(bin_dir.join(version)).unwrap();
+        std::fs::create_dir_all(runners_dir.join(version)).unwrap();
+        age_version_past_gc_min_age(&home, version);
+
+        let analysis = analyze_version_gc(&home, None, None).await.unwrap();
+        let removed = gc_versions_with_analysis_and_uninstall(
+            &home,
+            false,
+            analysis,
+            failing_fake_uninstall_service_unit,
+        )
+        .await
+        .unwrap();
+
+        assert!(removed.is_empty());
+        assert!(
+            bin_dir.join(version).exists(),
+            "failed service uninstall must keep version bin dir"
+        );
+        assert!(
+            runners_dir.join(version).exists(),
+            "failed service uninstall must keep version config dir"
+        );
     }
 
     #[tokio::test]
