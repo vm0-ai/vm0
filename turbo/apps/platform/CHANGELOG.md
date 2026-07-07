@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.569.0](https://github.com/vm0-ai/vm0/compare/app-v0.568.1...app-v0.569.0) (2026-07-07)
+
+
+### Features
+
+* simplify lab maintainer filter toolbar ([#20513](https://github.com/vm0-ai/vm0/issues/20513)) ([4db9955](https://github.com/vm0-ai/vm0/commit/4db99551bd2b991c78f463e3b105a68dc378a13d))
+
+
+### Bug Fixes
+
+* require agent google drive authorization for artifact sync ([#20382](https://github.com/vm0-ai/vm0/issues/20382)) ([84c9732](https://github.com/vm0-ai/vm0/commit/84c97329b9edc8aea951959446533c64893594f4))
+
 ## [0.568.1](https://github.com/vm0-ai/vm0/compare/app-v0.568.0...app-v0.568.1) (2026-07-07)
 
 
