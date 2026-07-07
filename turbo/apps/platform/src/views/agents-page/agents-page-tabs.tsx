@@ -236,17 +236,13 @@ function AgentTabsView({
           showCreator={activeTab !== "private"}
         />
       ) : activeTab === "private" ? (
-        <PrivateEmptyState
-          onCreate={() => {
-            return onCreate("private");
-          }}
-        />
+        <PrivateEmptyState />
       ) : null}
     </div>
   );
 }
 
-function PrivateEmptyState({ onCreate }: { onCreate: () => void }) {
+function PrivateEmptyState() {
   return (
     <div className="zero-card flex min-h-[20rem] flex-col items-center justify-center px-6 text-center">
       <img
@@ -261,14 +257,6 @@ function PrivateEmptyState({ onCreate }: { onCreate: () => void }) {
       <p className="mt-1 max-w-[340px] text-sm text-muted-foreground">
         Create an agent only you can see and use. Private agents are unlimited.
       </p>
-      <Button
-        variant="outline"
-        size="sm"
-        className="zero-btn-morandi mt-4 h-8 rounded-lg border"
-        onClick={onCreate}
-      >
-        Create agent
-      </Button>
     </div>
   );
 }
