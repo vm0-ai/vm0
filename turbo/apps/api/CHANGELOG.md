@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.235.1](https://github.com/vm0-ai/vm0/compare/api-v1.235.0...api-v1.235.1) (2026-07-07)
+
+
+### Bug Fixes
+
+* require agent google drive authorization for artifact sync ([#20382](https://github.com/vm0-ai/vm0/issues/20382)) ([84c9732](https://github.com/vm0-ai/vm0/commit/84c97329b9edc8aea951959446533c64893594f4))
+
 ## [1.235.0](https://github.com/vm0-ai/vm0/compare/api-v1.234.0...api-v1.235.0) (2026-07-07)
 
 
