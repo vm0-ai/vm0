@@ -620,9 +620,15 @@ export function verifyS3FilesExist(
   bucket: string,
   s3Key: string,
   fileCount: number,
+  options?: {
+    readonly allowMissingObjectsForEmptyVersion?: boolean;
+  },
 ): Computed<Promise<boolean>> {
   return computed(async (get): Promise<boolean> => {
-    if (fileCount === 0) {
+    if (
+      fileCount === 0 &&
+      options?.allowMissingObjectsForEmptyVersion === true
+    ) {
       return true;
     }
 
@@ -630,7 +636,9 @@ export function verifyS3FilesExist(
     const archiveKey = `${s3Key}/archive.tar.gz`;
     const [manifestExists, archiveExists] = await Promise.all([
       get(s3ObjectExists(bucket, manifestKey)),
-      get(s3ObjectExists(bucket, archiveKey)),
+      fileCount > 0
+        ? get(s3ObjectExists(bucket, archiveKey))
+        : Promise.resolve(true),
     ]);
 
     return manifestExists && archiveExists;
