@@ -509,7 +509,7 @@ fn validate_compressed_ref(
     if raw_size > RESUME_SESSION_HISTORY_MAX_BYTES {
         timings.add_validation(validation_started.elapsed(), false);
         return Err(RunnerError::Internal(format!(
-            "session history is too large: {raw_size} bytes exceeds {RESUME_SESSION_HISTORY_MAX_BYTES} bytes"
+            "session history rawSize is too large: {raw_size} bytes exceeds {RESUME_SESSION_HISTORY_MAX_BYTES} bytes"
         )));
     }
     if history_ref.encoded_size == 0 {
@@ -980,6 +980,88 @@ mod tests {
                 assert_no_phase(timings.hash_verification());
             }
             _ => panic!("expected failed materialization"),
+        }
+    }
+
+    #[tokio::test]
+    async fn materializer_rejects_compressed_ref_with_invalid_metadata() {
+        struct InvalidMetadataCase {
+            name: &'static str,
+            raw_size: u64,
+            encoded_size: u64,
+            expected_error_substrings: &'static [&'static str],
+        }
+
+        let valid_raw_size = 16;
+        let valid_encoded_size = 32;
+        let encodings = [
+            (ResumeSessionHistoryEncoding::Gzip, "gzip"),
+            (ResumeSessionHistoryEncoding::Zstd, "zstd"),
+        ];
+        let metadata_cases = [
+            InvalidMetadataCase {
+                name: "zero rawSize",
+                raw_size: 0,
+                encoded_size: valid_encoded_size,
+                expected_error_substrings: &["rawSize must be positive"],
+            },
+            InvalidMetadataCase {
+                name: "oversized rawSize",
+                raw_size: RESUME_SESSION_HISTORY_MAX_BYTES + 1,
+                encoded_size: valid_encoded_size,
+                expected_error_substrings: &["rawSize", "too large"],
+            },
+            InvalidMetadataCase {
+                name: "zero encodedSize",
+                raw_size: valid_raw_size,
+                encoded_size: 0,
+                expected_error_substrings: &["encodedSize must be positive"],
+            },
+            InvalidMetadataCase {
+                name: "oversized encodedSize",
+                raw_size: valid_raw_size,
+                encoded_size: RESUME_SESSION_HISTORY_MAX_BYTES + 1,
+                expected_error_substrings: &["encoded", "too large"],
+            },
+        ];
+
+        for (encoding, expected_encoding) in encodings {
+            for case in &metadata_cases {
+                let session = compressed_ref_session(
+                    "http://127.0.0.1:9/history.blob?token=secret".to_string(),
+                    hex::encode(Sha256::digest([])),
+                    case.raw_size,
+                    case.encoded_size,
+                    encoding,
+                );
+
+                let result = start_materializer(&session)
+                    .finish(&CancellationToken::new())
+                    .await;
+
+                match result {
+                    SessionHistoryMaterialization::Failed { error, timings, .. } => {
+                        let message = error.to_string();
+                        for expected in case.expected_error_substrings {
+                            assert!(
+                                message.contains(expected),
+                                "{} {}: expected error to contain {expected:?}, got {message:?}",
+                                expected_encoding,
+                                case.name
+                            );
+                        }
+                        assert_eq!(timings.encoding(), Some(expected_encoding));
+                        assert_no_phase(timings.request_status());
+                        assert_no_phase(timings.body_read());
+                        assert_phase_failure(timings.validation());
+                        assert_no_phase(timings.hash_verification());
+                    }
+                    _ => panic!(
+                        "{expected_encoding} {}: expected failed materialization",
+                        case.name
+                    ),
+                }
+            }
         }
     }
 
