@@ -1233,6 +1233,7 @@ class TestModelProviderWebSocketUsage:
         }
         assert flow.websocket is not None
         assert flow.websocket.messages == []
+        assert "model_websocket_usage_enabled" not in flow.metadata
 
         _run_deferred_websocket_trims(deferred_websocket_trim_scheduler)
         assert flow.websocket.messages == []
@@ -1263,6 +1264,7 @@ class TestModelProviderWebSocketUsage:
         }
         assert flow.websocket is not None
         assert flow.websocket.messages == []
+        assert "model_websocket_usage_enabled" not in flow.metadata
 
         _run_deferred_websocket_trims(deferred_websocket_trim_scheduler)
         assert flow.websocket.messages == []

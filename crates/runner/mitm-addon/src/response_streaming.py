@@ -70,6 +70,11 @@ def is_model_websocket_usage_enabled(flow: http.HTTPFlow) -> bool:
     return bool(flow.metadata.get(_MODEL_WEBSOCKET_USAGE_ENABLED, False))
 
 
+def release_model_websocket_usage_state(flow: http.HTTPFlow) -> None:
+    """Disable WebSocket usage extraction after a terminal websocket/error hook."""
+    flow.metadata.pop(_MODEL_WEBSOCKET_USAGE_ENABLED, None)
+
+
 def _make_response_decode_session(
     feed: _ResponseChunkParser,
     headers: http.Headers,

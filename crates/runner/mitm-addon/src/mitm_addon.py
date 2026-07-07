@@ -3117,6 +3117,7 @@ def _release_terminal_flow_state(
         _clear_model_websocket_messages(flow)
         if response_streaming.is_model_websocket_usage_enabled(flow):
             flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE_SOURCES] = {}
+            response_streaming.release_model_websocket_usage_state(flow)
     flow.metadata.pop(_REQUEST_CLASSIFICATION, None)
     flow.metadata.pop(_FIREWALL_AUTH_APPLIED_IN_REQUESTHEADERS, None)
     flow.metadata.pop(metadata_keys.WEBSOCKET_UPGRADE_REQUEST, None)
