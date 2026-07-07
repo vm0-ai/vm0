@@ -178,16 +178,6 @@ fn systemd_run_limit_nofile_property_arg() -> String {
     format!("--property={RUNNER_SERVICE_NOFILE_LIMIT_DIRECTIVE}")
 }
 
-async fn reload_systemd_if_drain_restart_override_removed(
-    unit: &RunnerServiceUnit,
-) -> RunnerResult<bool> {
-    if remove_drain_restart_override(unit)? {
-        run_systemctl(&["daemon-reload"]).await?;
-        return Ok(true);
-    }
-    Ok(false)
-}
-
 fn ensure_drain_restart_policy_applied(
     unit: &RunnerServiceUnit,
     restart_policy: &str,
@@ -281,6 +271,59 @@ impl ServiceResumeOps for RealServiceResumeOps {
     ) -> ServiceFuture<'a, ServiceSignalOutcome> {
         Box::pin(async move { signal_service_main(unit, nix::sys::signal::Signal::SIGUSR2).await })
     }
+}
+
+fn drain_override_cleanup_reload_error(
+    unit: &RunnerServiceUnit,
+    reload_error: RunnerError,
+    restore_error: RunnerError,
+) -> RunnerError {
+    RunnerError::Internal(format!(
+        "failed to reload systemd after removing drain restart override for {}: {reload_error}; additionally failed to restore drain restart override: {restore_error}",
+        unit.unit_name()
+    ))
+}
+
+async fn restore_drain_restart_override_after_failed_cleanup(
+    unit: &RunnerServiceUnit,
+    context: &str,
+) -> RunnerResult<()> {
+    if let Err(e) = write_drain_restart_override(unit) {
+        return Err(RunnerError::Internal(format!(
+            "failed to restore drain restart override for {} after cleanup reload failure ({context}): {e}",
+            unit.unit_name()
+        )));
+    }
+    if let Err(e) = run_systemctl(&["daemon-reload"]).await {
+        return Err(RunnerError::Internal(format!(
+            "failed to reload systemd after restoring drain restart override for {} ({context}): {e}",
+            unit.unit_name()
+        )));
+    }
+    Ok(())
+}
+
+async fn reload_systemd_if_drain_restart_override_removed(
+    unit: &RunnerServiceUnit,
+) -> RunnerResult<bool> {
+    if !remove_drain_restart_override(unit)? {
+        return Ok(false);
+    }
+
+    if let Err(reload_error) = run_systemctl(&["daemon-reload"]).await {
+        if let Err(restore_error) =
+            restore_drain_restart_override_after_failed_cleanup(unit, "remove_reload").await
+        {
+            return Err(drain_override_cleanup_reload_error(
+                unit,
+                reload_error,
+                restore_error,
+            ));
+        }
+        return Err(reload_error);
+    }
+
+    Ok(true)
 }
 
 async fn rollback_drain_restart_override(
@@ -721,16 +764,16 @@ async fn install(args: ServiceRunArgs) -> RunnerResult<()> {
                 &args.env,
                 args.local,
             );
-            cleanup_unit_staging_files(&upath)?;
-            write_unit_file(&upath, &unit_content)?;
             if is_unit_active(&unit_for_activation).await? {
                 warn!(
                     unit = %unit_for_activation.unit_name(),
                     "skipping drain restart override cleanup while service is active"
                 );
             } else {
-                remove_drain_restart_override(&unit_for_activation)?;
+                reload_systemd_if_drain_restart_override_removed(&unit_for_activation).await?;
             }
+            cleanup_unit_staging_files(&upath)?;
+            write_unit_file(&upath, &unit_content)?;
 
             run_systemctl(&["daemon-reload"]).await?;
             run_systemctl(&["enable", "--now", unit_for_activation.service_name()]).await?;
@@ -745,7 +788,8 @@ async fn install(args: ServiceRunArgs) -> RunnerResult<()> {
 
 /// Stop + disable + remove the unit file for the given service unit.
 ///
-/// Best-effort: does not fail if the service is already stopped or missing.
+/// Best-effort for already-stopped or missing services, but refuses to remove
+/// unit files when `systemctl stop` fails and the service still appears active.
 ///
 /// Callers that can race with install/uninstall/GC must hold the service lock.
 pub(crate) async fn uninstall_service_unit(unit: &RunnerServiceUnit) -> RunnerResult<()> {
@@ -754,6 +798,25 @@ pub(crate) async fn uninstall_service_unit(unit: &RunnerServiceUnit) -> RunnerRe
     if let Err(e) = &stop_result {
         warn!(unit = %unit.unit_name(), error = %e, "failed to stop service during uninstall");
     }
+    match stop_result {
+        Ok(()) => {}
+        Err(_) => match is_unit_active(unit).await {
+            Ok(false) => {}
+            Ok(true) => {
+                return Err(RunnerError::Internal(format!(
+                    "failed to stop active service {}; refusing to remove unit files",
+                    unit.unit_name()
+                )));
+            }
+            Err(e) => {
+                return Err(RunnerError::Internal(format!(
+                    "failed to stop service {} and could not verify it is inactive; refusing to remove unit files: {e}",
+                    unit.unit_name()
+                )));
+            }
+        },
+    };
+
     let _ = run_systemctl(&["disable", unit.service_name()]).await;
 
     // Remove the unit file if it exists.
@@ -764,29 +827,21 @@ pub(crate) async fn uninstall_service_unit(unit: &RunnerServiceUnit) -> RunnerRe
     if let Err(e) = remove_unit_file_if_exists(upath) {
         warn!(unit = %unit.unit_name(), error = %e, "failed to remove unit file");
     }
-    let should_remove_drain_override = match stop_result {
-        Ok(()) => true,
-        Err(_) => match is_unit_active(unit).await {
-            Ok(false) => true,
-            Ok(true) => {
-                warn!(
-                    unit = %unit.unit_name(),
-                    "skipping drain restart override cleanup because service is still active after failed stop"
-                );
-                false
-            }
-            Err(e) => {
-                warn!(
-                    unit = %unit.unit_name(),
-                    error = %e,
-                    "skipping drain restart override cleanup because service activity could not be verified after failed stop"
-                );
-                false
-            }
-        },
+    let drain_override_cleanup_reloaded = match reload_systemd_if_drain_restart_override_removed(
+        unit,
+    )
+    .await
+    {
+        Ok(removed) => removed,
+        Err(e) => {
+            warn!(unit = %unit.unit_name(), error = %e, "failed to remove drain restart override");
+            false
+        }
     };
-    if should_remove_drain_override && let Err(e) = remove_drain_restart_override(unit) {
-        warn!(unit = %unit.unit_name(), error = %e, "failed to remove drain restart override");
+
+    if drain_override_cleanup_reloaded {
+        info!(unit = %unit.unit_name(), "service uninstalled");
+        return Ok(());
     }
 
     if let Err(e) = run_systemctl(&["daemon-reload"]).await {
