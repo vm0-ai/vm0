@@ -1505,9 +1505,8 @@ async function createNotionEventTriggerForWorkflow(args: {
               orgId: args.input.orgId,
               userId: args.input.member.userId,
               eventConfig:
-                "pageUrl" in eventConfig || "databaseUrl" in eventConfig
-                  ? eventConfig
-                  : eventConfig.scope.type === "page"
+                "scope" in eventConfig
+                  ? eventConfig.scope.type === "page"
                     ? {
                         provider: "notion",
                         event: "page_content_updated",
@@ -1521,7 +1520,8 @@ async function createNotionEventTriggerForWorkflow(args: {
                         databaseUrl:
                           eventConfig.scope.dataSource.rawUrl ??
                           eventConfig.scope.dataSource.url,
-                      },
+                      }
+                  : eventConfig,
               signal: args.signal,
             },
           )
