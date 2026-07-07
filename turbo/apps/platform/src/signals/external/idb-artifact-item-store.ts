@@ -11,8 +11,6 @@ import {
   ARTIFACT_ITEMS_KIND_CREATED_AT_INDEX,
   ARTIFACT_ITEMS_RUN_FILE_INDEX,
   ARTIFACT_ITEMS_STORE,
-  ARTIFACT_ITEMS_THREAD_CREATED_AT_INDEX,
-  ARTIFACT_ITEMS_URL_INDEX,
 } from "./chat-idb-schema.ts";
 import {
   chatIdbReadOr,
@@ -36,7 +34,6 @@ type StoredArtifactItem = ArtifactItem & {
 export interface ArtifactItemCacheFilter {
   readonly agentId?: string;
   readonly artifactKind?: ArtifactItemKind;
-  readonly threadId?: string;
   readonly query?: string;
   readonly limit?: number;
 }
@@ -51,7 +48,6 @@ export interface ArtifactItemReadStore {
     fileId: string,
     signal?: AbortSignal,
   ): Promise<ArtifactItem | null>;
-  readByUrl(url: string, signal?: AbortSignal): Promise<ArtifactItem | null>;
 }
 
 export interface ArtifactItemWriteStore {
@@ -131,12 +127,6 @@ function prefixRange(prefix: IDBValidKey[]): IDBKeyRange {
 }
 
 function indexedReadPlan(filter: ArtifactItemCacheFilter): IndexedReadPlan {
-  if (filter.threadId) {
-    return {
-      indexName: ARTIFACT_ITEMS_THREAD_CREATED_AT_INDEX,
-      range: prefixRange([filter.threadId]),
-    };
-  }
   if (filter.agentId && filter.artifactKind) {
     return {
       indexName: ARTIFACT_ITEMS_AGENT_KIND_CREATED_AT_INDEX,
@@ -168,9 +158,6 @@ function matchesFilter(
     return false;
   }
   if (filter.artifactKind && item.artifactKind !== filter.artifactKind) {
-    return false;
-  }
-  if (filter.threadId && item.threadId !== filter.threadId) {
     return false;
   }
   return queryTokens.every((token) => {
@@ -230,23 +217,6 @@ function createReadStore(
           const raw = await tx.store
             .index(ARTIFACT_ITEMS_RUN_FILE_INDEX)
             .get([runId, fileId]);
-          return raw === undefined
-            ? null
-            : validateStoredArtifactItem(raw).item;
-        },
-        null,
-        signal,
-      );
-    },
-
-    async readByUrl(url, signal) {
-      return await chatIdbReadOr(
-        "artifacts:readByUrl",
-        async () => {
-          const db = await getDb();
-          signal?.throwIfAborted();
-          const tx = db.transaction(storeName, "readonly");
-          const raw = await tx.store.index(ARTIFACT_ITEMS_URL_INDEX).get(url);
           return raw === undefined
             ? null
             : validateStoredArtifactItem(raw).item;

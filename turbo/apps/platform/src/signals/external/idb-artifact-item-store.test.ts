@@ -7,8 +7,6 @@ import {
   ARTIFACT_ITEMS_CREATED_AT_INDEX,
   ARTIFACT_ITEMS_KIND_CREATED_AT_INDEX,
   ARTIFACT_ITEMS_RUN_FILE_INDEX,
-  ARTIFACT_ITEMS_THREAD_CREATED_AT_INDEX,
-  ARTIFACT_ITEMS_URL_INDEX,
 } from "./chat-idb-schema.ts";
 import { createArtifactItemCacheStores } from "./idb-artifact-item-store.ts";
 
@@ -22,14 +20,14 @@ interface FakeIndex {
     range?: IDBKeyRange,
     direction?: IDBCursorDirection,
   ): Promise<FakeCursor | null>;
-  get(key: IDBValidKey): Promise<unknown | undefined>;
+  get(key: IDBValidKey): Promise<unknown>;
 }
 
 interface FakeStore {
   put(value: unknown): Promise<void>;
   delete(key: IDBValidKey): Promise<void>;
   clear(): Promise<void>;
-  get(key: IDBValidKey): Promise<unknown | undefined>;
+  get(key: IDBValidKey): Promise<unknown>;
   index(indexName: string): FakeIndex;
 }
 
@@ -118,14 +116,8 @@ function indexKey(indexName: string, item: ArtifactItem): IDBValidKey | null {
         ? [item.agentId, item.artifactKind, item.createdAt, item.artifactItemId]
         : null;
     }
-    case ARTIFACT_ITEMS_THREAD_CREATED_AT_INDEX: {
-      return [item.threadId, item.createdAt, item.artifactItemId];
-    }
     case ARTIFACT_ITEMS_RUN_FILE_INDEX: {
       return [item.runId, item.fileId];
-    }
-    case ARTIFACT_ITEMS_URL_INDEX: {
-      return item.url;
     }
     default: {
       throw new Error(`Unexpected index: ${indexName}`);
@@ -323,29 +315,23 @@ describe("artifact item IndexedDB cache reads", () => {
     ).resolves.toStrictEqual([presentation]);
   });
 
-  it("reads by thread and applies lightweight cached search text", async () => {
+  it("applies lightweight cached search text", async () => {
     const { stores } = setupStores();
-    const threadMatch = artifact(1, {
-      threadId: "thread-a",
+    const queryMatch = artifact(1, {
       filename: "Quarterly Plan.html",
     });
-    const threadMiss = artifact(2, {
-      threadId: "thread-a",
+    const queryMiss = artifact(2, {
       filename: "Map Demo.html",
     });
-    const otherThread = artifact(3, {
-      threadId: "thread-b",
-      filename: "Quarterly Plan Copy.html",
-    });
 
-    await stores.writeStore.upsertItems([threadMatch, threadMiss, otherThread]);
+    await stores.writeStore.upsertItems([queryMatch, queryMiss]);
 
     await expect(
-      stores.readStore.readRecent({ threadId: "thread-a", query: "quarterly" }),
-    ).resolves.toStrictEqual([threadMatch]);
+      stores.readStore.readRecent({ query: "quarterly" }),
+    ).resolves.toStrictEqual([queryMatch]);
   });
 
-  it("reads by run/file and url indexes", async () => {
+  it("reads by run/file index", async () => {
     const { stores } = setupStores();
     const item = artifact(1);
 
@@ -354,9 +340,6 @@ describe("artifact item IndexedDB cache reads", () => {
     await expect(
       stores.readStore.readByRunFile(item.runId, item.fileId),
     ).resolves.toStrictEqual(item);
-    await expect(stores.readStore.readByUrl(item.url)).resolves.toStrictEqual(
-      item,
-    );
   });
 });
 
@@ -385,7 +368,7 @@ describe("artifact item IndexedDB cache writes and failures", () => {
 
     await expect(stores.readStore.readRecent()).resolves.toStrictEqual([]);
     await expect(
-      stores.readStore.readByUrl("https://example.test"),
+      stores.readStore.readByRunFile("run-1", "file-1"),
     ).resolves.toBe(null);
   });
 

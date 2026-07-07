@@ -7,8 +7,6 @@ import {
   ARTIFACT_ITEMS_KIND_CREATED_AT_INDEX,
   ARTIFACT_ITEMS_RUN_FILE_INDEX,
   ARTIFACT_ITEMS_STORE,
-  ARTIFACT_ITEMS_THREAD_CREATED_AT_INDEX,
-  ARTIFACT_ITEMS_URL_INDEX,
   CHAT_MESSAGES_ORDER_INDEX,
   CHAT_MESSAGES_STORE,
   CHAT_THREAD_EVENTS_ORDER_INDEX,
@@ -153,17 +151,7 @@ function expectArtifactItemsStoreCreated(
   ]);
   expect(
     createdStores.get(ARTIFACT_ITEMS_STORE)?.createIndex,
-  ).toHaveBeenCalledWith(ARTIFACT_ITEMS_THREAD_CREATED_AT_INDEX, [
-    "threadId",
-    "createdAt",
-    "artifactItemId",
-  ]);
-  expect(
-    createdStores.get(ARTIFACT_ITEMS_STORE)?.createIndex,
   ).toHaveBeenCalledWith(ARTIFACT_ITEMS_RUN_FILE_INDEX, ["runId", "fileId"]);
-  expect(
-    createdStores.get(ARTIFACT_ITEMS_STORE)?.createIndex,
-  ).toHaveBeenCalledWith(ARTIFACT_ITEMS_URL_INDEX, "url");
 }
 
 describe("upgradeChatIdb", () => {

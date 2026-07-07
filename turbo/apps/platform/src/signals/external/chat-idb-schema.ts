@@ -20,9 +20,7 @@ export const ARTIFACT_ITEMS_AGENT_CREATED_AT_INDEX = "byAgentCreatedAt";
 export const ARTIFACT_ITEMS_KIND_CREATED_AT_INDEX = "byArtifactKindCreatedAt";
 export const ARTIFACT_ITEMS_AGENT_KIND_CREATED_AT_INDEX =
   "byAgentKindCreatedAt";
-export const ARTIFACT_ITEMS_THREAD_CREATED_AT_INDEX = "byThreadCreatedAt";
 export const ARTIFACT_ITEMS_RUN_FILE_INDEX = "byRunFile";
-export const ARTIFACT_ITEMS_URL_INDEX = "byUrl";
 
 function createChatMessagesStore(db: IDBPDatabase): void {
   const store = db.createObjectStore(CHAT_MESSAGES_STORE, { keyPath: "id" });
@@ -74,13 +72,7 @@ function createArtifactItemsStore(db: IDBPDatabase): void {
     "createdAt",
     "artifactItemId",
   ]);
-  store.createIndex(ARTIFACT_ITEMS_THREAD_CREATED_AT_INDEX, [
-    "threadId",
-    "createdAt",
-    "artifactItemId",
-  ]);
   store.createIndex(ARTIFACT_ITEMS_RUN_FILE_INDEX, ["runId", "fileId"]);
-  store.createIndex(ARTIFACT_ITEMS_URL_INDEX, "url");
 }
 
 function deleteObjectStoreIfExists(db: IDBPDatabase, storeName: string): void {
