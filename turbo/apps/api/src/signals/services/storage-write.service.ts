@@ -229,6 +229,10 @@ function mergeWithBaseVersion(args: {
       return args.files;
     }
 
+    if (baseVersionRecord.fileCount === 0) {
+      return args.files;
+    }
+
     const baseManifest = await get(
       downloadManifest(args.bucket, baseVersionRecord.s3Key),
     );

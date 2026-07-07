@@ -32,6 +32,10 @@ interface BddStoragePrepareBody {
   readonly storageType: StorageType;
   readonly files: readonly BddStorageFileEntry[];
   readonly force?: boolean;
+  readonly baseVersion?: string;
+  readonly changes?: z.infer<
+    typeof storagesPrepareContract.prepare.body
+  >["changes"];
 }
 
 interface BddStorageCommitBody {

@@ -1302,16 +1302,38 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       archiveUrl: expect.any(String),
       vasVersionId: expect.any(String),
     });
+    const initialMemoryVersionId = initialMemory?.vasVersionId;
+    if (!initialMemoryVersionId) {
+      throw new Error("Expected initial memory artifact version id");
+    }
 
     const artifactFile = storageTextFile(
       "artifact.txt",
       `committed artifact ${randomUUID()}`,
     );
+    context.mocks.s3.send.mockClear();
     const prepared = await storages.prepareStorage(actor, {
       storageName: "memory",
       storageType: "artifact",
+      baseVersion: initialMemoryVersionId,
+      changes: {
+        added: [artifactFile.path],
+        modified: [],
+        deleted: [],
+      },
       files: [artifactFile],
     });
+    const emptyBaseManifestReads = context.mocks.s3.send.mock.calls.filter(
+      ([command]) => {
+        return (
+          s3CommandName(command) === "GetObjectCommand" &&
+          s3CommandKey(command)?.includes(
+            `/artifact/memory/${initialMemoryVersionId}/manifest.json`,
+          ) === true
+        );
+      },
+    );
+    expect(emptyBaseManifestReads).toHaveLength(0);
     await storages.commitStorage(actor, {
       storageName: "memory",
       storageType: "artifact",
