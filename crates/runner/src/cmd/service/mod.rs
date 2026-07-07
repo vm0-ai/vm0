@@ -456,6 +456,9 @@ async fn start(args: ServiceRunArgs) -> RunnerResult<()> {
 /// See [`check_active_jobs_gate`] for the policy.
 async fn stop(args: ServiceStopArgs) -> RunnerResult<()> {
     let unit = RunnerServiceUnit::from_suffix(&args.name)?;
+    let home = HomePaths::new()?;
+    let _service_lock = acquire_service_lock(&unit, &home).await?;
+
     check_active_jobs_gate(&unit, args.force, "stop").await?;
     let svc = unit.service_name();
 
@@ -475,6 +478,13 @@ async fn stop(args: ServiceStopArgs) -> RunnerResult<()> {
     // Clear "failed" latch so systemd fully unloads the transient unit.
     // (stop alone does not clear the failed state.)
     let _ = run_systemctl(&["reset-failed", svc]).await;
+    if let Err(e) = reload_systemd_if_drain_restart_override_removed(&unit).await {
+        warn!(unit = %unit.unit_name(), error = %e, "failed to remove drain restart override after stop");
+        eprintln!(
+            "WARNING: stop could not remove the drain restart override for {}: {e}.",
+            unit.service_name()
+        );
+    }
     Ok(())
 }
 

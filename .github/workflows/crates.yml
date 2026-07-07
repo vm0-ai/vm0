@@ -1455,11 +1455,15 @@ jobs:
           RUNNER_DIR="/var/lib/vm0-runner/runners/${JOB_REF}-drain"
           SVC="${JOB_REF}-drain"
           UNIT="vm0-runner-${SVC}.service"
+          DRAIN_DROP_IN="/run/systemd/system/${UNIT}.d/50-vm0-drain.conf"
           GROUP="vm0/drain-${JOB_REF}"
 
           fail() { echo "FAIL: $1"; exit 1; }
           status_mode() {
             sudo jq -r '.mode // empty' "$RUNNER_DIR/status.json" 2>/dev/null
+          }
+          restart_policy() {
+            sudo systemctl show "$UNIT" --property=Restart --value 2>/dev/null
           }
 
           cleanup() {
@@ -1510,6 +1514,11 @@ jobs:
           # Unit must still be active — the in-flight job keeps it alive.
           sudo systemctl is-active --quiet "$UNIT" \
             || fail "unit should still be active during Draining"
+          [ "$(restart_policy)" = "no" ] \
+            || fail "expected Restart=no during drain, got '$(restart_policy)'"
+          [ -f "$DRAIN_DROP_IN" ] \
+            || fail "expected drain drop-in at $DRAIN_DROP_IN"
+          echo "PASS: Restart=no applied during drain"
 
           # Test 2: a job submitted *during* Draining must stay pending —
           # the Draining arm does not poll discover, so the queued file
@@ -1545,6 +1554,11 @@ jobs:
           [ "$(status_mode)" = "running" ] \
             || fail "expected mode=running after resume, got '$(status_mode)'"
           echo "PASS: mode=running after resume"
+          [ "$(restart_policy)" = "on-failure" ] \
+            || fail "expected Restart=on-failure after resume, got '$(restart_policy)'"
+          [ ! -e "$DRAIN_DROP_IN" ] \
+            || fail "drain drop-in remained after resume at $DRAIN_DROP_IN"
+          echo "PASS: Restart policy restored after resume"
 
           # Test 4: the pending B is picked up after resume and completes.
           echo "--- Test: drain-era submit executes after resume ---"
@@ -1589,6 +1603,11 @@ jobs:
             fail "unit still active 30s after drain on idle runner"
           fi
           echo "PASS: unit stopped via auto-Stop"
+          sudo "$BIN_DIR/runner" service stop --name "$SVC" --force \
+            || fail "stop after idle drain failed"
+          [ ! -e "$DRAIN_DROP_IN" ] \
+            || fail "drain drop-in remained after stop at $DRAIN_DROP_IN"
+          echo "PASS: stop cleaned drain drop-in"
 
           # Test 8: resume refused on an inactive unit (is_unit_active guard).
           echo "--- Test: resume refused after stop ---"
