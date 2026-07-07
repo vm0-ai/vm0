@@ -15,7 +15,7 @@ import {
   PLAYSTATION_AUTH_BASE_URL,
   PLAYSTATION_CLIENT_BASIC_AUTH,
   PLAYSTATION_NPSSO_URL,
-  PLAYSTATION_PROFILE_ME_URL,
+  PLAYSTATION_PROFILE_USERS_URL,
   PLAYSTATION_REDIRECT_URI,
 } from "../playstation/oauth";
 
@@ -56,15 +56,18 @@ function jwtPayload(payload: Readonly<Record<string, string>>): string {
 
 function mockPlaystationProfile(): void {
   server.use(
-    http.get(PLAYSTATION_PROFILE_ME_URL, ({ request }) => {
-      expect(request.headers.get("authorization")).toBe(
-        "Bearer playstation-access-token",
-      );
-      return HttpResponse.json({
-        accountId: "psn-account-123",
-        onlineId: "vm0-player",
-      });
-    }),
+    http.get(
+      `${PLAYSTATION_PROFILE_USERS_URL}/psn-account-123/profiles`,
+      ({ request }) => {
+        expect(request.headers.get("authorization")).toBe(
+          "Bearer playstation-access-token",
+        );
+        return HttpResponse.json({
+          accountId: "psn-account-123",
+          onlineId: "vm0-player",
+        });
+      },
+    ),
   );
 }
 

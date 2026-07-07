@@ -189,7 +189,11 @@ function externalCodeDisplayForCatalog(
     return null;
   }
   const display = getConnectorAuthMethodExternalCodeDisplayConfig(type, id);
-  return {
+  if (!display) {
+    return null;
+  }
+
+  const externalCode = {
     instructions: publicTextOrNull(display?.instructions, privateNames),
     inputLabel: publicTextOrNull(display?.inputLabel, privateNames),
     inputPlaceholder: publicTextOrNull(display?.inputPlaceholder, privateNames),
@@ -199,6 +203,11 @@ function externalCodeDisplayForCatalog(
       privateNames,
     ),
   };
+  return Object.values(externalCode).some((value) => {
+    return value !== null;
+  })
+    ? externalCode
+    : null;
 }
 
 function authMethodDetailForCatalog(

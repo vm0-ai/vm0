@@ -413,6 +413,7 @@ describe("GET /api/zero/connector-catalog", () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     await enableConnectorFeatureSwitches(orgId, userId, {
+      [FeatureSwitchKey.AwsConnector]: true,
       [FeatureSwitchKey.PlaystationConnector]: true,
     });
 
@@ -451,6 +452,19 @@ describe("GET /api/zero/connector-catalog", () => {
         },
       },
     ]);
+
+    const aws = response.body.connectors.find((connector) => {
+      return connector.connectorRef === "aws";
+    });
+    const awsCli = aws?.authMethods.find((authMethod) => {
+      return authMethod.id === "cli";
+    });
+    expect(awsCli).toMatchObject({
+      id: "cli",
+      label: "Sign in with AWS",
+      grantKind: "external-code",
+    });
+    expect(awsCli).not.toHaveProperty("externalCode");
   });
 
   it("returns connected manual grant status from public API-created state", async () => {

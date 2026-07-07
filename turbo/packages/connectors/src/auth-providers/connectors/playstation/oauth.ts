@@ -10,8 +10,8 @@ export const PLAYSTATION_AUTH_BASE_URL =
   "https://ca.account.sony.com/api/authz/v3/oauth";
 export const PLAYSTATION_NPSSO_URL =
   "https://ca.account.sony.com/api/v1/ssocookie";
-export const PLAYSTATION_PROFILE_ME_URL =
-  "https://m.np.playstation.com/api/userProfile/v1/internal/users/me/profiles";
+export const PLAYSTATION_PROFILE_USERS_URL =
+  "https://m.np.playstation.com/api/userProfile/v1/internal/users";
 export const PLAYSTATION_REDIRECT_URI =
   "com.scee.psxandroid.scecompcall://redirect";
 export const PLAYSTATION_CLIENT_BASIC_AUTH =
@@ -232,15 +232,18 @@ function parsePlaystationIdToken(idToken: string): PlaystationIdentity {
 
 async function fetchPlaystationProfile(args: {
   readonly accessToken: string;
+  readonly accountId: string;
   readonly signal: AbortSignal;
 }): Promise<PlaystationProfile> {
-  const response = await fetch(PLAYSTATION_PROFILE_ME_URL, {
-    headers: {
-      Authorization: `Bearer ${args.accessToken}`,
-      "Content-Type": "application/json",
+  const response = await fetch(
+    `${PLAYSTATION_PROFILE_USERS_URL}/${encodeURIComponent(args.accountId)}/profiles`,
+    {
+      headers: {
+        Authorization: `Bearer ${args.accessToken}`,
+      },
+      signal: args.signal,
     },
-    signal: args.signal,
-  });
+  );
   if (!response.ok) {
     await throwOAuthError("PlayStation", "profile", response);
   }
@@ -255,6 +258,7 @@ export async function fetchPlaystationIdentity(args: {
   const tokenIdentity = parsePlaystationIdToken(args.idToken);
   const profile = await fetchPlaystationProfile({
     accessToken: args.accessToken,
+    accountId: tokenIdentity.accountId,
     signal: args.signal,
   });
   return {

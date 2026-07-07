@@ -304,6 +304,8 @@ const SETTINGS_ICON_ASSET_PATHS = {
   plain: "views/zero-page/components/settings/icons/plain-a9121ba278e5.svg",
   plausible:
     "views/zero-page/components/settings/icons/plausible-ff49eddd163e.svg",
+  playstation:
+    "views/zero-page/components/settings/icons/playstation-93cfdbb255ce.svg",
   podchaser:
     "views/zero-page/components/settings/icons/podchaser-86cc6b891620.svg",
   porkbun: "views/zero-page/components/settings/icons/porkbun-6c11e42ddc44.svg",
@@ -380,8 +382,6 @@ const SETTINGS_ICON_ASSET_PATHS = {
     "views/zero-page/components/settings/icons/sociavault-44913bcfa5a4.svg",
   sponge: "views/zero-page/components/settings/icons/sponge-5d9c0211e5bc.svg",
   spotify: "views/zero-page/components/settings/icons/spotify-e27177df2642.svg",
-  playstation:
-    "views/zero-page/components/settings/icons/playstation-93cfdbb255ce.svg",
   steam: "views/zero-page/components/settings/icons/steam-4e2ba2137237.svg",
   sproutgigs:
     "views/zero-page/components/settings/icons/sproutgigs-c1192764dbee.svg",
