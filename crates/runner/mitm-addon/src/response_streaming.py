@@ -16,12 +16,11 @@ Lifecycle:
   separate from tracked usage release.
 """
 
-import base64
-import hashlib
 from collections.abc import Callable
 from typing import NamedTuple
 
 from mitmproxy import http
+from wsproto.utilities import generate_accept_token
 
 import body_decoding
 import flow_metadata
@@ -38,7 +37,6 @@ _MODEL_WEBSOCKET_USAGE_ENABLED = "model_websocket_usage_enabled"
 _CONNECTOR_RESPONSE_FINISH = "connector_response_finish"
 _RESPONSE_STREAM_CALLBACK = "_vm0_response_stream_callback"
 _HTTP_OWS_CHARS = " \t"
-_WEBSOCKET_ACCEPT_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
 _ResponseChunkParser = Callable[[bytes], None]
 _SseUsageParseErrorLogger = Callable[[str, str], None]
@@ -223,12 +221,9 @@ def _is_confirmed_websocket_upgrade_response(flow: http.HTTPFlow) -> bool:
     if request_key is None or response_accept is None:
         return False
     try:
-        accept_source = f"{request_key}{_WEBSOCKET_ACCEPT_GUID}".encode("ascii")
+        expected_accept = generate_accept_token(request_key.encode("ascii")).decode("ascii")
     except UnicodeEncodeError:
         return False
-    expected_accept = base64.b64encode(
-        hashlib.sha1(accept_source, usedforsecurity=False).digest()
-    ).decode("ascii")
     return response_accept == expected_accept
 
 
