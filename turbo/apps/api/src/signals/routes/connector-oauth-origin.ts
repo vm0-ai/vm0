@@ -1,10 +1,14 @@
 import {
   connectorAuthCodeCallbacksUseOnlyApiOrigin,
   getConnectorAuthMethodAuthCodeCallbackOrigin,
+  getConnectorAuthMethodOpenIdAuthCallbackOrigin,
 } from "@vm0/connectors/connector-utils";
 import type {
   AuthCodeGrantConnectorType,
+  ConnectorBrowserAuthCallbackOrigin,
   ConnectorAuthCodeGrantAuthMethodId,
+  ConnectorOpenIdAuthGrantAuthMethodId,
+  OpenIdAuthGrantConnectorType,
 } from "@vm0/connectors/connectors";
 
 import {
@@ -14,6 +18,20 @@ import {
 } from "./oauth-web-origin";
 
 export { getOAuthWebOrigin as getConnectorOAuthOrigin };
+
+function resolveCallbackOrigin(
+  request: Request,
+  callbackOrigin: ConnectorBrowserAuthCallbackOrigin,
+): string {
+  switch (callbackOrigin) {
+    case "api": {
+      return getOAuthApiOrigin(request);
+    }
+    case "web": {
+      return getOAuthWebOrigin(request);
+    }
+  }
+}
 
 export function getConnectorOAuthCallbackOrigin<
   Type extends AuthCodeGrantConnectorType,
@@ -26,14 +44,21 @@ export function getConnectorOAuthCallbackOrigin<
     args.type,
     args.authMethod,
   );
-  switch (callbackOrigin) {
-    case "api": {
-      return getOAuthApiOrigin(args.request);
-    }
-    case "web": {
-      return getOAuthWebOrigin(args.request);
-    }
-  }
+  return resolveCallbackOrigin(args.request, callbackOrigin);
+}
+
+export function getConnectorOpenIdCallbackOrigin<
+  Type extends OpenIdAuthGrantConnectorType,
+>(args: {
+  readonly request: Request;
+  readonly type: Type;
+  readonly authMethod: ConnectorOpenIdAuthGrantAuthMethodId<Type>;
+}): string {
+  const callbackOrigin = getConnectorAuthMethodOpenIdAuthCallbackOrigin(
+    args.type,
+    args.authMethod,
+  );
+  return resolveCallbackOrigin(args.request, callbackOrigin);
 }
 
 export function getConnectorOAuthCanonicalRedirectUrl(

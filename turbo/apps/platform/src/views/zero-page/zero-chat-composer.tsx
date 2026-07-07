@@ -94,6 +94,7 @@ import {
   uploadZeroAttachment$ as singletonUpload$,
   restoreZeroAttachments$ as singletonRestore$,
   removeZeroAttachment$ as singletonRemove$,
+  appendZeroChatInput$ as singletonAppendInput$,
   canSendZeroChat$ as singletonCanSend$,
   zeroDragOver$ as singletonDragOver$,
   setZeroDragOver$ as singletonSetDragOver$,
@@ -220,6 +221,7 @@ import {
 import {
   audioInputAvailable$,
   audioInputQuota$,
+  openAudioInputQuotaRecovery$,
   sttRecording$,
   sttStarting$,
   sttTranscribing$,
@@ -227,11 +229,6 @@ import {
   startRecording$,
   stopAndTranscribe$,
 } from "../../signals/voice-io/voice-io-stt.ts";
-import {
-  setActiveOrgManageTab$,
-  setBillingSubPage$,
-} from "../../signals/zero-page/settings/org-manage-tabs-state.ts";
-import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
 import { readChatMessageFromClipboard } from "../../signals/zero-page/clipboard.ts";
 import type { FeedbackItem } from "../../signals/zero-page/chat-feedback.ts";
 import { Markdown } from "../components/markdown.tsx";
@@ -924,7 +921,6 @@ function isSelectedPresentationTemplate(
 ): boolean {
   return (
     value?.type === "presentation" &&
-    value.selection.designSystemId === item.designSystemId &&
     value.selection.templateId === item.templateId
   );
 }
@@ -938,9 +934,8 @@ function toPresentationGenerationTemplate(
   return {
     type: "presentation",
     selection: {
-      colorSystemId,
-      designSystemId: item.designSystemId,
       templateId: item.templateId,
+      colorSystemId,
       previewUrl: item.embedUrl,
     },
   };
@@ -1004,7 +999,7 @@ function selectedIllustrationTemplateItem(
   });
 }
 
-function formatPresentationTemplateKind(templateId: string): string {
+function formatPresentationRunbookKind(templateId: string): string {
   const label = templateId
     .replace(/^template:/, "")
     .replace(/^html-ppt-/, "")
@@ -1022,9 +1017,8 @@ function presentationTemplateMatchesSearch(
   }
   const searchable = [
     item.title,
-    item.designSystemId,
     item.templateId,
-    formatPresentationTemplateKind(item.templateId),
+    formatPresentationRunbookKind(item.templateId),
   ].join(" ");
   return searchable.toLowerCase().includes(normalizedQuery);
 }
@@ -1122,7 +1116,12 @@ function workflowTemplateMatchesSearch(
   if (!normalizedQuery) {
     return true;
   }
-  const searchable = [item.title, item.id, item.description].join(" ");
+  const searchable = [
+    item.title,
+    item.id,
+    item.description,
+    item.connectors.join(" "),
+  ].join(" ");
   return searchable.toLowerCase().includes(normalizedQuery);
 }
 
@@ -1320,6 +1319,56 @@ function VideoTemplateGrid({
   );
 }
 
+function WorkflowTemplateConnectorIcons({
+  connectors,
+  compact = false,
+  limit = compact ? 3 : 5,
+}: {
+  // Loosely typed: the curated catalog stores connectors as plain strings;
+  // isConnectorIconType narrows to the ones that actually have an icon.
+  connectors: readonly string[];
+  compact?: boolean;
+  limit?: number;
+}) {
+  const connectorIconTypes = connectors.filter(isConnectorIconType);
+  if (connectorIconTypes.length === 0) {
+    return null;
+  }
+
+  const visibleConnectorTypes = connectorIconTypes.slice(0, limit);
+  const remainingCount =
+    connectorIconTypes.length - visibleConnectorTypes.length;
+  return (
+    <span
+      className={cn("flex min-w-0 items-center", compact ? "gap-1" : "gap-1.5")}
+    >
+      {visibleConnectorTypes.map((type) => {
+        return (
+          <span
+            key={type}
+            className={cn(
+              "flex shrink-0 items-center justify-center border border-border/60 bg-background",
+              compact ? "h-5 w-5 rounded" : "h-7 w-7 rounded-md",
+            )}
+          >
+            <ConnectorIcon type={type} size={compact ? 12 : 14} />
+          </span>
+        );
+      })}
+      {remainingCount > 0 ? (
+        <span
+          className={cn(
+            "flex shrink-0 items-center justify-center rounded border border-border/60 bg-background text-[10px] font-medium text-muted-foreground",
+            compact ? "h-5 min-w-5 px-1" : "h-7 min-w-7 px-1.5",
+          )}
+        >
+          +{remainingCount}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
 function WorkflowTemplateCard({
   item,
   selected,
@@ -1329,11 +1378,6 @@ function WorkflowTemplateCard({
   selected: boolean;
   onSelect: (item: WorkflowTemplateItem) => void;
 }) {
-  // Show the workflow's connectors as icons (required first), capped so the row
-  // never crowds the Use button. Unknown connector types are dropped.
-  const connectorTypes = item.connectors
-    .filter(isConnectorIconType)
-    .slice(0, 4);
   return (
     <div
       className={cn(
@@ -1346,19 +1390,11 @@ function WorkflowTemplateCard({
       <p className="mt-1.5 line-clamp-2 text-sm leading-relaxed text-muted-foreground">
         {item.description}
       </p>
-      <div className="mt-auto flex items-center justify-between gap-2 pt-3.5">
-        <div className="flex items-center gap-1.5">
-          {connectorTypes.map((type) => {
-            return (
-              <span
-                key={type}
-                className="flex h-7 w-7 items-center justify-center rounded-md border border-border/60 bg-background"
-              >
-                <ConnectorIcon type={type} size={14} />
-              </span>
-            );
-          })}
-        </div>
+      <div className="mt-auto flex items-center gap-2 pt-3.5">
+        <WorkflowTemplateConnectorIcons
+          connectors={item.connectors}
+          limit={4}
+        />
         <button
           type="button"
           aria-label={`Select workflow template ${item.title}`}
@@ -1367,7 +1403,7 @@ function WorkflowTemplateCard({
             onSelect(item);
           }}
           className={cn(
-            "h-8 shrink-0 rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            "ml-auto h-8 shrink-0 rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             selected
               ? "border-primary/40 bg-primary/10 text-primary"
               : "border-border bg-background text-foreground hover:bg-muted",
@@ -5241,6 +5277,7 @@ function SelectedWorkflowTemplateChip({
   onOpen: () => void;
   onRemove: () => void;
 }) {
+  const hasConnectorIcons = item.connectors.some(isConnectorIconType);
   return (
     <div className="px-4 pt-3">
       <div className="flex">
@@ -5261,6 +5298,15 @@ function SelectedWorkflowTemplateChip({
             <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
               Workflow
             </span>
+            {hasConnectorIcons ? (
+              <>
+                <span className="h-3.5 w-px shrink-0 bg-border/70" />
+                <WorkflowTemplateConnectorIcons
+                  connectors={item.connectors}
+                  compact
+                />
+              </>
+            ) : null}
             <span className="h-3.5 w-px shrink-0 bg-border/70" />
             <span className="min-w-0 truncate text-xs font-medium">
               {item.title}
@@ -6067,13 +6113,54 @@ function ComputerUseDownloadDialog({
 // Voice input mic button
 // ---------------------------------------------------------------------------
 
+interface MicButtonStatus {
+  readonly recording: boolean;
+  readonly starting: boolean;
+  readonly transcribing: boolean;
+  readonly quotaLoading: boolean;
+}
+
+function micButtonAriaLabel(status: MicButtonStatus): string {
+  if (status.recording) {
+    return "Stop recording";
+  }
+  if (status.starting) {
+    return "Starting voice input";
+  }
+  if (status.transcribing) {
+    return "Transcribing";
+  }
+  if (status.quotaLoading) {
+    return "Checking voice input limit";
+  }
+  return "Voice input";
+}
+
+function micButtonTooltip(status: MicButtonStatus): string {
+  if (status.recording) {
+    return "Stop recording";
+  }
+  if (status.starting) {
+    return "Opening microphone...";
+  }
+  if (status.transcribing) {
+    return "Transcribing...";
+  }
+  if (status.quotaLoading) {
+    return "Checking voice input limit";
+  }
+  return "Voice input";
+}
+
 function MicButton({
   onTranscribed,
 }: {
   onTranscribed: (text: string) => void;
 }) {
   const available = useLastResolved(audioInputAvailable$) ?? false;
+  const quotaLoadable = useLoadable(audioInputQuota$);
   const quota = useLastResolved(audioInputQuota$) ?? null;
+  const quotaResolved = quota !== null;
   const recording = useGet(sttRecording$);
   const starting = useGet(sttStarting$);
   const transcribing = useGet(sttTranscribing$);
@@ -6081,10 +6168,15 @@ function MicButton({
   const voiceLevelFill = `${Math.round((voiceLevel / 3) * 100)}%`;
   const startRec = useSet(startRecording$);
   const stopAndTranscribe = useSet(stopAndTranscribe$);
-  const setTab = useSet(setActiveOrgManageTab$);
-  const setSubPage = useSet(setBillingSubPage$);
-  const openOrgManage = useSet(setOrgManageDialogOpen$);
+  const openQuotaRecovery = useSet(openAudioInputQuotaRecovery$);
   const signal = useGet(pageSignal$);
+  const disabled = starting || transcribing || (!recording && !quotaResolved);
+  const status = {
+    recording,
+    starting,
+    transcribing,
+    quotaLoading: quotaLoadable.state === "loading" && !quotaResolved,
+  };
 
   if (!available) {
     return null;
@@ -6104,15 +6196,19 @@ function MicButton({
         })(),
         Reason.DomCallback,
       );
-    } else {
-      if (quota && !quota.allowed) {
-        setTab("billing");
-        setSubPage(true);
-        detach(openOrgManage(true, signal), Reason.DomCallback);
-        return;
-      }
-      detach(startRec(signal), Reason.DomCallback);
+      return;
     }
+    if (!quota) {
+      return;
+    }
+    if (!quota.allowed) {
+      detach(openQuotaRecovery(signal), Reason.DomCallback);
+      return;
+    }
+    detach(
+      startRec(onTranscribed, quota.limit === null, signal),
+      Reason.DomCallback,
+    );
   };
 
   return (
@@ -6128,16 +6224,8 @@ function MicButton({
                 : "text-muted-foreground hover:bg-accent hover:text-foreground",
             )}
             onClick={handleClick}
-            disabled={starting || transcribing}
-            aria-label={
-              recording
-                ? "Stop recording"
-                : starting
-                  ? "Starting voice input"
-                  : transcribing
-                    ? "Transcribing"
-                    : "Voice input"
-            }
+            disabled={disabled}
+            aria-label={micButtonAriaLabel(status)}
           >
             {starting || transcribing ? (
               <span className="mic-starting-spinner" aria-hidden="true" />
@@ -6160,13 +6248,33 @@ function MicButton({
           </button>
         </TooltipTrigger>
         <TooltipContent side="top" className="text-xs">
-          {recording
-            ? "Stop recording"
-            : starting
-              ? "Opening microphone..."
-              : transcribing
-                ? "Transcribing..."
-                : "Voice input"}
+          {micButtonTooltip(status)}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+function ComposerAttachButton({
+  onSelectFile,
+}: {
+  readonly onSelectFile: () => void;
+}) {
+  return (
+    <TooltipProvider delayDuration={300}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            className="rounded-lg p-2 transition-colors duration-200 hover:bg-accent hover:text-foreground sm:p-[9px]"
+            aria-label="Attach"
+            onClick={onSelectFile}
+          >
+            <IconPaperclip size={18} stroke={1.5} />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="text-xs">
+          Attach
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
@@ -6318,6 +6426,9 @@ function useResolvedComposerSignals(
   const setDragOver = useSet(
     draft ? draft.setDragOver$ : singletonSetDragOver$,
   );
+  const appendInput = useSet(
+    draft ? draft.appendInput$ : singletonAppendInput$,
+  );
 
   return {
     canSend,
@@ -6330,6 +6441,7 @@ function useResolvedComposerSignals(
     setFileInputEl,
     dragOver,
     setDragOver,
+    appendInput,
   };
 }
 
@@ -6591,7 +6703,7 @@ function ComposerModelPickerSlot({
           triggerClassName={cn(
             "h-9 w-9 max-w-none gap-0 border-transparent bg-transparent px-0 text-sm text-muted-foreground transition-colors sm:w-auto sm:max-w-[14rem] sm:gap-1 sm:px-2",
             "[&>span]:flex [&>span]:items-center [&>span]:justify-center sm:[&>span]:justify-start [&>svg]:hidden sm:[&>svg]:block",
-            "hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 data-[state=open]:bg-accent data-[state=open]:text-foreground data-[state=open]:ring-2 data-[state=open]:ring-ring data-[state=open]:ring-offset-2",
+            "hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 data-[state=open]:bg-accent data-[state=open]:text-foreground",
           )}
           compactTrigger
           mobileIconTrigger
@@ -6619,6 +6731,11 @@ function useCodexFastModeEnabled(): boolean {
 function usePopoverModelPickerEnabled(): boolean {
   const features = useLastResolved(featureSwitch$);
   return features?.[FeatureSwitchKey.ComposerModelPickerPopover] ?? false;
+}
+
+function useUploadPopoverEnabled(): boolean {
+  const features = useLastResolved(featureSwitch$);
+  return features?.[FeatureSwitchKey.ComposerUploadPopover] ?? false;
 }
 
 export function ZeroChatComposer({
@@ -6659,6 +6776,7 @@ export function ZeroChatComposer({
   const openGoalDialog = useSet(openChatThreadGoalDialog$);
   const codexFastModeEnabled = useCodexFastModeEnabled();
   const popoverModelPickerEnabled = usePopoverModelPickerEnabled();
+  const uploadPopoverEnabled = useUploadPopoverEnabled();
 
   const resolved = useResolvedComposerSignals(
     input,
@@ -6677,6 +6795,7 @@ export function ZeroChatComposer({
     setFileInputEl,
     dragOver,
     setDragOver,
+    appendInput,
   } = resolved;
 
   const ensurePushSubscription = useSet(ensurePushSubscription$);
@@ -7095,12 +7214,16 @@ export function ZeroChatComposer({
               )}
               <div className="flex items-center justify-between gap-2 px-4 pb-3 pt-1">
                 <div className="flex items-center gap-1 text-muted-foreground sm:gap-1.5">
-                  <ComposerUploadMenu
-                    input={input}
-                    onDraftChange={onDraftChange}
-                    onInputChange={onInputChange}
-                    onSelectFile={handleFileSelect}
-                  />
+                  {uploadPopoverEnabled ? (
+                    <ComposerUploadMenu
+                      input={input}
+                      onDraftChange={onDraftChange}
+                      onInputChange={onInputChange}
+                      onSelectFile={handleFileSelect}
+                    />
+                  ) : (
+                    <ComposerAttachButton onSelectFile={handleFileSelect} />
+                  )}
                   <ComposerTemplatePickerSlot picker={templatePicker} />
                   <ComposerWorkflowPromptSlot
                     onCreateWorkflowPrompt={onCreateWorkflowPrompt}
@@ -7130,10 +7253,7 @@ export function ZeroChatComposer({
                   <div className="mx-0 h-5 w-px bg-border/60 sm:mx-0.5" />
                   <MicButton
                     onTranscribed={(text) => {
-                      const base = input;
-                      const separator =
-                        base.length > 0 && !base.endsWith(" ") ? " " : "";
-                      onInputChange(base + separator + text);
+                      appendInput(text);
                       onDraftChange?.();
                     }}
                   />

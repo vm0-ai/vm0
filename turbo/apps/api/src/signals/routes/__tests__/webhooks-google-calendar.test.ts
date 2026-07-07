@@ -1,5 +1,4 @@
 import { zeroWorkflowTriggersContract } from "@vm0/api-contracts/contracts/zero-workflows";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { createStore } from "ccstate";
 import { HttpResponse, http } from "msw";
 import { expect } from "vitest";

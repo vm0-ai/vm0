@@ -71,10 +71,9 @@ function generationTemplateFromSearchParam(
     return {
       type: "presentation",
       selection: {
+        templateId: presentationTemplate.templateId,
         colorSystemId:
           presentationTemplate.colorSystemId ?? "color-system:warm-sand",
-        designSystemId: presentationTemplate.designSystemId,
-        templateId: presentationTemplate.templateId,
         previewUrl: presentationTemplate.embedUrl,
       },
     };

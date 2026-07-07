@@ -3,12 +3,18 @@ import { FeatureSwitchKey } from "../feature-switch-key";
 import {
   isFeatureEnabled,
   getAllFeatureStates,
+  filterUserOverridableFeatureSwitchOverrides,
   getFeatureSwitchDescriptions,
+  getFeatureSwitchMetadata,
+  getUserOverridableFeatureSwitchKeys,
 } from "../feature-switch";
 
 describe("isFeatureEnabled", () => {
   it("should return true for globally enabled switch", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.Dummy, {})).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.BytePlusVoiceInputStt, {})).toBe(
+      true,
+    );
   });
 
   it("should return true for globally enabled switch even with context", () => {
@@ -23,6 +29,12 @@ describe("isFeatureEnabled", () => {
       isFeatureEnabled(FeatureSwitchKey.HtmlArtifactCommentEditing, {}),
     ).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.WebsiteTemplates, {})).toBe(false);
+    expect(isFeatureEnabled(FeatureSwitchKey.AgentDetailWorkflowsTab, {})).toBe(
+      false,
+    );
+    expect(isFeatureEnabled(FeatureSwitchKey.ComposerUploadPopover, {})).toBe(
+      false,
+    );
   });
 
   it("should return false for disabled switch with non-matching userId", () => {
@@ -88,6 +100,7 @@ describe("getAllFeatureStates", () => {
     const states = getAllFeatureStates();
     // Globally enabled switches should be true
     expect(states[FeatureSwitchKey.Dummy]).toBe(true);
+    expect(states[FeatureSwitchKey.BytePlusVoiceInputStt]).toBe(true);
   });
 
   it("should enable switches when orgId matches enabledOrgIdHashes", () => {
@@ -119,7 +132,6 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.CodexFrameworkForMinimax]).toBe(
       true,
     );
-    expect(staffOrgStates[FeatureSwitchKey.ChatGithubPrTracking]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadEmoji]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.RelationshipMemory]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(true);
@@ -131,6 +143,7 @@ describe("getAllFeatureStates", () => {
       true,
     );
     expect(staffOrgStates[FeatureSwitchKey.WebsiteTemplates]).toBe(false);
+    expect(staffOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
 
     const otherOrgStates = getAllFeatureStates({
       orgId: "org_nonexistent",
@@ -143,7 +156,6 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.CodexFrameworkForMinimax]).toBe(
       false,
     );
-    expect(otherOrgStates[FeatureSwitchKey.ChatGithubPrTracking]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatThreadEmoji]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.RelationshipMemory]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(
@@ -157,6 +169,8 @@ describe("getAllFeatureStates", () => {
       false,
     );
     expect(otherOrgStates[FeatureSwitchKey.WebsiteTemplates]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.BytePlusVoiceInputStt]).toBe(true);
   });
 
   it("should apply overrides to enable disabled features", () => {
@@ -166,16 +180,6 @@ describe("getAllFeatureStates", () => {
     expect(states[FeatureSwitchKey.AhrefsConnector]).toBe(true);
     // Non-overridden disabled feature stays false
     expect(states[FeatureSwitchKey.DropboxConnector]).toBe(false);
-  });
-
-  it("should let individuals opt in to chat PR tracking", () => {
-    const states = getAllFeatureStates({
-      orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
-      overrides: {
-        [FeatureSwitchKey.ChatGithubPrTracking]: true,
-      },
-    });
-    expect(states[FeatureSwitchKey.ChatGithubPrTracking]).toBe(true);
   });
 
   it("should enable chat thread emoji for staff orgs", () => {
@@ -205,6 +209,21 @@ describe("getAllFeatureStates", () => {
   });
 });
 
+describe("user-overridable switches", () => {
+  it("excludes internal switches from user override helpers", () => {
+    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
+      FeatureSwitchKey.ComposerUploadPopover,
+    );
+
+    expect(
+      filterUserOverridableFeatureSwitchOverrides({
+        [FeatureSwitchKey.ComposerUploadPopover]: true,
+        [FeatureSwitchKey.Dummy]: false,
+      }),
+    ).toStrictEqual({ [FeatureSwitchKey.Dummy]: false });
+  });
+});
+
 describe("getFeatureSwitchDescriptions", () => {
   it("should return a record with all feature switch keys", () => {
     const descriptions = getFeatureSwitchDescriptions();
@@ -217,6 +236,16 @@ describe("getFeatureSwitchDescriptions", () => {
     const descriptions = getFeatureSwitchDescriptions();
     for (const key of Object.values(FeatureSwitchKey)) {
       expect(descriptions[key]).toEqual(expect.any(String));
+    }
+  });
+});
+
+describe("getFeatureSwitchMetadata", () => {
+  it("should return display metadata for every switch", () => {
+    const metadata = getFeatureSwitchMetadata();
+    for (const key of Object.values(FeatureSwitchKey)) {
+      expect(metadata[key]?.maintainer).toEqual(expect.any(String));
+      expect(metadata[key]?.description).toEqual(expect.any(String));
     }
   });
 });

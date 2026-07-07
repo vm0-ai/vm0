@@ -34,6 +34,7 @@ JSON_PART = r"""{
           "rules": [
             "POST /v1/databases",
             "DELETE /v1/databases/{db}",
+            "PUT /v1/databases/{db}/connection",
             "GET /v1/databases/{db}/schema"
           ]
         },

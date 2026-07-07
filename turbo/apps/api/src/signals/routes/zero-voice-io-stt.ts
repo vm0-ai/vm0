@@ -8,7 +8,7 @@ import { authRoute } from "../auth/auth-route";
 import { request$ } from "../context/hono";
 import { logger } from "../../lib/log";
 import type { RouteEntry } from "../route-entry";
-import { audioInputQuota } from "../services/voice-io.service";
+import { audioInputLifetimeQuota } from "../services/voice-io.service";
 import {
   badRequest,
   getAudioDuration,
@@ -26,7 +26,7 @@ const L = logger("ZeroVoiceIoStt");
 
 const postSttInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  const quota = await get(audioInputQuota(auth.orgId, auth.userId));
+  const quota = await get(audioInputLifetimeQuota(auth.orgId, auth.userId));
   signal.throwIfAborted();
   if (!quota.allowed) {
     return {

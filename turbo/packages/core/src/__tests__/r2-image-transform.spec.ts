@@ -24,6 +24,17 @@ describe("r2ImageTransformUrl", () => {
     );
   });
 
+  it("supports static vm0 asset URLs", () => {
+    expect(
+      r2ImageTransformUrl(
+        "https://static.vm0.io/vm0/artifact-templates/video/id/image.jpg",
+        { width: 480, height: 270 },
+      ),
+    ).toBe(
+      "https://static.vm0.io/cdn-cgi/image/width=480,height=270,fit=scale-down,format=auto,quality=85,metadata=none/vm0/artifact-templates/video/id/image.jpg",
+    );
+  });
+
   it("preserves search params and hashes", () => {
     expect(
       r2ImageTransformUrl(

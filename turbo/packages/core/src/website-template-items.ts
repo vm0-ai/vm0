@@ -25,7 +25,7 @@ export const WEBSITE_TEMPLATE_ITEMS: readonly WebsiteTemplateItem[] = [
     resourceId: "template:warm-cards",
     previewKind: "iframe",
     previewUrl:
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/dbd6ac19-bed3-4abf-bb51-da0bead40914/warm-cards-example.html",
+      "https://static.vm0.io/vm0/artifact-templates/website/dbd6ac19-bed3-4abf-bb51-da0bead40914/warm-cards-example.html",
     sourcePath: "warm-cards",
     target: "website",
   },

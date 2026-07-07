@@ -207,6 +207,7 @@ function createChatAttachment(file: File): ZeroChatAttachment {
 export interface DraftSignals {
   input$: Computed<string>;
   setInput$: Command<void, [string]>;
+  appendInput$: Command<void, [string]>;
   generationTemplate$: Computed<GenerationTemplateRequest | undefined>;
   setGenerationTemplate$: Command<
     void,
@@ -271,6 +272,15 @@ export function createDraftSignals(): DraftSignals {
   });
   const setInput$ = command(({ set }, value: string) => {
     set(internalInput$, value);
+  });
+  const appendInput$ = command(({ get, set }, value: string) => {
+    const text = value.trim();
+    if (!text) {
+      return;
+    }
+    const base = get(internalInput$);
+    const separator = base.length > 0 && !base.endsWith(" ") ? " " : "";
+    set(internalInput$, `${base}${separator}${text}`);
   });
 
   const generationTemplate$ = computed((get) => {
@@ -372,6 +382,7 @@ export function createDraftSignals(): DraftSignals {
   return {
     input$,
     setInput$,
+    appendInput$,
     generationTemplate$,
     setGenerationTemplate$,
     attachments$,
@@ -468,6 +479,13 @@ export const setZeroDragOver$ = command(({ get, set }, value: boolean) => {
   const draft = get(currentDraft$);
   if (draft) {
     set(draft.setDragOver$, value);
+  }
+});
+
+export const appendZeroChatInput$ = command(({ get, set }, value: string) => {
+  const draft = get(currentDraft$);
+  if (draft) {
+    set(draft.appendInput$, value);
   }
 });
 

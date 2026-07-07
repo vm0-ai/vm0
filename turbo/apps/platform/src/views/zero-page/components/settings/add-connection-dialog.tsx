@@ -50,7 +50,7 @@ import {
   connectorCurrentConnectionStatus,
   connectorExpiryCountdownText,
   getConnectorStatusAuthMethod,
-  hasConnectorStatusAuthCodeGrant,
+  hasConnectorStatusBrowserAuthGrant,
   manualGrantInputValuesForMethod,
   type ConnectorStatusAuthMethodDetail,
   type ConnectorExternalCodeState,
@@ -325,7 +325,7 @@ function getOAuthAuthCodeProgressContent({
   isPolling: boolean;
   settling: boolean;
 }) {
-  // While auth-code OAuth is in progress, only show connecting state
+  // While browser authorization is in progress, only show connecting state.
   if (isPolling) {
     const standaloneHint = isStandaloneMode()
       ? " Switch back here after completing sign-in."
@@ -917,6 +917,9 @@ function getConnectMethodContentComponent(
     case "auth-code": {
       return OAuthAuthCodeConnectMethodContent;
     }
+    case "openid-auth": {
+      return OAuthAuthCodeConnectMethodContent;
+    }
     case "device-auth": {
       return OAuthDeviceAuthConnectMethodContent;
     }
@@ -1134,7 +1137,7 @@ function ConnectModalContent({
     await completeExternalCodeAndSettleCommand(args, signal);
   };
 
-  const progressContent = hasConnectorStatusAuthCodeGrant(item)
+  const progressContent = hasConnectorStatusBrowserAuthGrant(item)
     ? getOAuthAuthCodeProgressContent({
         isPolling,
         settling,

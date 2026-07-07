@@ -10,6 +10,8 @@ export enum Mechanism {
 
 const IN_VITEST = env("VITEST") === "true";
 const L = logger("Promise");
+const NON_ERROR_THROWN_PREFIX = "Non-Error thrown: ";
+const NORMALIZED_THROWN_MESSAGE_MAX_LENGTH = 4096;
 
 class PromiseTracker {
   collected = new Set<Promise<unknown>>();
@@ -70,6 +72,40 @@ export function safeSync<T>(
   } catch (error) {
     throwIfAbort(error);
     return { error };
+  }
+}
+
+function safeThrownValueMessage(value: unknown): string {
+  const result = safeSync(() => {
+    return String(value);
+  });
+  const serialized = "ok" in result ? result.ok : "unknown thrown value";
+  const valueMaxLength =
+    NORMALIZED_THROWN_MESSAGE_MAX_LENGTH - NON_ERROR_THROWN_PREFIX.length;
+  const serializedValue =
+    serialized.length <= valueMaxLength
+      ? serialized
+      : `${serialized.slice(0, valueMaxLength - 3)}...`;
+  return `${NON_ERROR_THROWN_PREFIX}${serializedValue}`;
+}
+
+function normalizeThrownError(value: unknown): Error {
+  throwIfAbort(value);
+  if (value instanceof Error) {
+    return value;
+  }
+  return new Error(safeThrownValueMessage(value), {
+    cause: value,
+  });
+}
+
+export async function normalizeThrown<T>(run: () => Promise<T>): Promise<T> {
+  // eslint-disable-next-line no-restricted-syntax -- centralized thrown value normalization
+  try {
+    return await run();
+  } catch (error) {
+    throwIfAbort(error);
+    throw normalizeThrownError(error);
   }
 }
 

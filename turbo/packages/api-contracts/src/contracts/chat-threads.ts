@@ -69,27 +69,6 @@ const htmlArtifactEditSnapshotSchema = z.object({
   updatedAt: z.string(),
 });
 
-const chatThreadGithubPrCheckRunSchema = z.object({
-  name: z.string(),
-  status: z.string(),
-  conclusion: z.string().nullable(),
-  url: z.string().nullable(),
-  startedAt: z.string().nullable(),
-  completedAt: z.string().nullable(),
-});
-
-const chatThreadGithubPrSchema = z.object({
-  repo: z.string(),
-  number: z.number().int(),
-  title: z.string(),
-  url: z.string(),
-  state: z.enum(["open", "closed", "merged"]),
-  headSha: z.string(),
-  mergeStatus: z.enum(["ready", "conflicts", "blocked", "draft"]).nullable(),
-  rollup: z.enum(["success", "failure", "pending", "none", "unknown"]),
-  checks: z.array(chatThreadGithubPrCheckRunSchema),
-});
-
 /**
  * Attachment metadata persisted in chat_threads.draft_attachments.
  *
@@ -225,12 +204,13 @@ const summaryEntrySchema = z.union([
 
 const presentationGenerationTemplateRequestSchema = z.object({
   type: z.literal("presentation"),
-  selection: z.object({
-    colorSystemId: z.string().min(1).optional(),
-    designSystemId: z.string().min(1),
-    templateId: z.string().min(1),
-    previewUrl: z.string().url().optional(),
-  }),
+  selection: z
+    .object({
+      templateId: z.string().min(1),
+      colorSystemId: z.string().min(1).optional(),
+      previewUrl: z.string().url().optional(),
+    })
+    .strict(),
 });
 
 const videoGenerationTemplateRequestSchema = z.object({
@@ -282,10 +262,8 @@ const pagedChatMessageBaseSchema = z.object({
   attachFiles: z.array(resolvedAttachFileSchema).optional(),
   generationTemplate: generationTemplateRequestSchema.optional(),
   sequenceNumber: z.number().nullable().optional(),
-  // Present on user messages posted by a firing automation. `automationId`
-  // links to the automation detail page; `automationSnapshot` preserves the
-  // automation label and description at send time. `automationTitle` is
-  // legacy fallback data.
+  // Deprecated legacy schedule automation metadata. Migration 0545 clears
+  // existing values; new message writes no longer populate these fields.
   automationId: z.string().optional(),
   automationTitle: z.string().optional(),
   automationSnapshot: z
@@ -1120,26 +1098,6 @@ export const chatThreadArtifactsContract = c.router({
   },
 });
 
-export const chatThreadGithubPrsContract = c.router({
-  list: {
-    method: "GET",
-    path: "/api/zero/chat-threads/:threadId/github-prs",
-    headers: authHeadersSchema,
-    pathParams: z.object({ threadId: z.string() }),
-    responses: {
-      200: z.object({
-        prs: z.array(chatThreadGithubPrSchema),
-      }),
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-      502: apiErrorSchema,
-    },
-    summary:
-      "List GitHub pull requests mentioned in a chat thread with their current check-run status.",
-  },
-});
-
 export type ChatThreadsContract = typeof chatThreadsContract;
 export type ChatThreadByIdContract = typeof chatThreadByIdContract;
 export type ChatThreadDraftContract = typeof chatThreadDraftContract;
@@ -1157,7 +1115,6 @@ export type ChatThreadComputerUseHostContract =
 export type ChatMessagesContract = typeof chatMessagesContract;
 export type ChatThreadMessagesContract = typeof chatThreadMessagesContract;
 export type ChatThreadArtifactsContract = typeof chatThreadArtifactsContract;
-export type ChatThreadGithubPrsContract = typeof chatThreadGithubPrsContract;
 export type ChatSearchContract = typeof chatSearchContract;
 export type ChatSearchResponse = z.infer<typeof chatSearchResponseSchema>;
 export type ChatSearchResult = z.infer<typeof chatSearchResultSchema>;
@@ -1186,8 +1143,6 @@ export {
   chatThreadArtifactGoogleDriveSyncSchema,
   chatThreadArtifactRunSchema,
   htmlArtifactEditSnapshotSchema,
-  chatThreadGithubPrCheckRunSchema,
-  chatThreadGithubPrSchema,
 };
 
 export type ModelSelectionRequest = z.infer<typeof modelSelectionRequestSchema>;
@@ -1254,7 +1209,3 @@ export type ChatThreadArtifactRun = z.infer<typeof chatThreadArtifactRunSchema>;
 export type HtmlArtifactEditSnapshot = z.infer<
   typeof htmlArtifactEditSnapshotSchema
 >;
-export type ChatThreadGithubPrCheckRun = z.infer<
-  typeof chatThreadGithubPrCheckRunSchema
->;
-export type ChatThreadGithubPr = z.infer<typeof chatThreadGithubPrSchema>;

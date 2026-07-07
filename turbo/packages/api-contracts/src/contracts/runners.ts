@@ -296,7 +296,7 @@ export const resumeSessionSchema = z.union([
 export const runnerClaimCapabilitySchema = z.string().min(1);
 
 export const secretConnectorMetadataSchema = z.object({
-  sourceType: z.enum(["connector", "model-provider"]),
+  sourceType: z.enum(["connector", "model-provider", "platform-secret"]),
   sourceUserId: z.string().optional(),
   metadataKey: z.string().optional(),
 });

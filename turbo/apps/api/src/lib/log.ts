@@ -145,6 +145,14 @@ interface UsageUnderbillingRootFields {
   readonly component: string;
 }
 
+interface UnhandledRequestErrorRootFields {
+  readonly type: "unhandled_request_error";
+  readonly errorSummary: string;
+  readonly method: string;
+  readonly route?: string;
+  readonly errorCode?: string;
+}
+
 function usageUnderbillingRootFields(
   fields: Record<string, unknown>,
 ): UsageUnderbillingRootFields | null {
@@ -170,6 +178,43 @@ function usageUnderbillingRootFields(
   };
 }
 
+function unhandledRequestErrorRootFields(
+  fields: Record<string, unknown>,
+): UnhandledRequestErrorRootFields | null {
+  const type = fields.type;
+  const errorSummary = fields.errorSummary;
+  const method = fields.method;
+  const route = fields.route;
+  const errorCode = fields.errorCode;
+
+  if (
+    type !== "unhandled_request_error" ||
+    typeof errorSummary !== "string" ||
+    typeof method !== "string" ||
+    (route !== undefined && typeof route !== "string") ||
+    (errorCode !== undefined && typeof errorCode !== "string")
+  ) {
+    return null;
+  }
+
+  return {
+    type,
+    errorSummary,
+    method,
+    ...(route ? { route } : {}),
+    ...(errorCode ? { errorCode } : {}),
+  };
+}
+
+function rootEventFields(
+  fields: Record<string, unknown>,
+): UsageUnderbillingRootFields | UnhandledRequestErrorRootFields | null {
+  return (
+    usageUnderbillingRootFields(fields) ??
+    unhandledRequestErrorRootFields(fields)
+  );
+}
+
 function logToAxiom(level: Level, name: string, args: unknown[]): void {
   const alog = getAxiomLogger();
   if (!alog) {
@@ -178,11 +223,11 @@ function logToAxiom(level: Level, name: string, args: unknown[]): void {
 
   const message = formatMessage(args);
   const fields = extractFields(args);
-  const underbillingRootFields = usageUnderbillingRootFields(fields);
+  const eventRootFields = rootEventFields(fields);
   const data = {
     [EVENT]: {
       source: "api",
-      ...underbillingRootFields,
+      ...eventRootFields,
     },
     ...fields,
     context: name,

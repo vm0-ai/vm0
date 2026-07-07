@@ -23,15 +23,3 @@ export async function listThreadWorkflowTriggers(
   );
   return result.body;
 }
-
-/** Enable or disable a thread-bound workflow trigger. */
-export async function setWorkflowTriggerEnabled(
-  client: ZeroClientFactory,
-  params: { triggerId: string; enabled: boolean },
-): Promise<void> {
-  const workflowTriggers = client(zeroWorkflowTriggersContract);
-  const request = params.enabled
-    ? workflowTriggers.enable({ params: { id: params.triggerId } })
-    : workflowTriggers.disable({ params: { id: params.triggerId } });
-  await accept(request, [200]);
-}

@@ -142,8 +142,7 @@ export const workflowUserTriggerThreads = pgTable(
  * - `loop`: re-scheduled `interval_seconds` after each completion (no overlap).
  * - `once`: fires once at `at_time`, then auto-disables.
  *
- * Aligned with Automation's time-trigger semantics so the same scheduling
- * primitives (`TimeTrigger`) can be reused.
+ * Uses the same schedule semantics as the retired automation trigger rows.
  */
 export type ZeroWorkflowScheduleType = "cron" | "loop" | "once";
 export type ZeroWorkflowTriggerKind = "schedule" | "event";
@@ -155,6 +154,7 @@ export type ZeroWorkflowEventType =
   | "google-calendar-event-updated"
   | "google-calendar-event-cancelled"
   | "google-meet-transcript-generated"
+  | "notion-child-page-created"
   | "webhook-received";
 export type ZeroWorkflowEventConfig = Record<string, unknown>;
 
@@ -230,7 +230,7 @@ export const zeroWorkflowTriggers = pgTable(
           )
           OR (
             kind = 'event'
-            AND event_type IN ('gmail-new-message', 'gmail-label-applied', 'github-label-applied', 'google-calendar-event-created', 'google-calendar-event-updated', 'google-calendar-event-cancelled', 'google-meet-transcript-generated', 'webhook-received')
+            AND event_type IN ('gmail-new-message', 'gmail-label-applied', 'github-label-applied', 'google-calendar-event-created', 'google-calendar-event-updated', 'google-calendar-event-cancelled', 'google-meet-transcript-generated', 'notion-child-page-created', 'webhook-received')
             AND event_config IS NOT NULL
             AND schedule_type IS NULL
             AND cron_expression IS NULL

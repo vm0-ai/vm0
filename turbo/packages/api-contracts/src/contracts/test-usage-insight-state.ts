@@ -18,15 +18,6 @@ export const testUsageInsightStateFixtureSchema = z.object({
 
 const usageInsightFixtureInputSchema = testUsageInsightStateFixtureSchema;
 
-const bonusUsageEventSchema = z.object({
-  kind: z.string(),
-  provider: z.string(),
-  category: z.string(),
-  quantity: z.number(),
-  credits_charged: z.number(),
-  status: z.string(),
-});
-
 export const testUsageInsightStateActionBodySchema = z.discriminatedUnion(
   "action",
   [
@@ -51,7 +42,6 @@ export const testUsageInsightStateActionBodySchema = z.discriminatedUnion(
       user_id: z.string(),
       compose_id: z.string(),
       trigger_source: z.string().optional(),
-      automation_id: z.string().optional(),
       chat_thread_id: z.string().optional(),
       status: z.string().optional(),
       prompt: z.string().optional(),
@@ -64,14 +54,6 @@ export const testUsageInsightStateActionBodySchema = z.discriminatedUnion(
       error: z.string().nullable().optional(),
       last_event_sequence: z.number().nullable().optional(),
       selected_model: z.string().nullable().optional(),
-    }),
-    z.object({
-      action: z.literal("seed-automation"),
-      org_id: z.string(),
-      user_id: z.string(),
-      agent_id: z.string(),
-      name: z.string().optional(),
-      description: z.string().optional(),
     }),
     z.object({
       action: z.literal("seed-chat-thread"),
@@ -112,18 +94,6 @@ export const testUsageInsightStateActionBodySchema = z.discriminatedUnion(
       id: z.string(),
       created_at: z.string(),
     }),
-    z.object({
-      action: z.literal("seed-automation-batch"),
-      org_id: z.string(),
-      user_id: z.string(),
-      compose_id: z.string(),
-      entries: z.array(
-        z.object({
-          credits: z.number(),
-          bonus: bonusUsageEventSchema.nullable().optional(),
-        }),
-      ),
-    }),
   ],
 );
 
@@ -133,10 +103,8 @@ export const testUsageInsightStateActionResponseSchema = z.object({
   compose_id: z.string().optional(),
   agent_id: z.string().optional(),
   run_id: z.string().optional(),
-  automation_id: z.string().optional(),
   chat_thread_id: z.string().optional(),
   usage_event_id: z.string().optional(),
-  automation_ids: z.array(z.string()).optional(),
 });
 
 export const testUsageInsightStateContract = c.router({

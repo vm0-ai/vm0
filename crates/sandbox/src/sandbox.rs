@@ -94,9 +94,9 @@ pub trait Sandbox: Send + Sync + Any {
     /// The network-visible source IP address for this sandbox.
     /// Used as the key for proxy VM registration.
     fn source_ip(&self) -> &str;
-    /// PID of the sandbox's main process (e.g. firecracker).
-    /// Used for host-side diagnostics like OOM detection.
-    fn process_pid(&self) -> Option<u32> {
+    /// Host-side PID of the sandbox backing process (e.g. firecracker).
+    /// Used for host diagnostics like OOM detection.
+    fn host_process_pid(&self) -> Option<u32> {
         None
     }
 

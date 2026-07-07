@@ -1,8 +1,10 @@
 import { httpInstrumentationMiddleware } from "@hono/otel";
 import * as Sentry from "@sentry/node";
+import { serializeError } from "@vm0/core/log-utils";
 // oxlint-disable-next-line no-restricted-imports -- app factory owns the Hono instance, confirmed by ethan@vm0.ai
 import { Hono, type Context } from "hono";
 import { HTTPException } from "hono/http-exception";
+import { matchedRoutes } from "hono/route";
 
 import { corsMiddleware } from "./lib/cors";
 import { env } from "./lib/env";
@@ -10,17 +12,32 @@ import { flushLogs, logger } from "./lib/log";
 import { waitUntil } from "./signals/context/wait-until";
 import { honoSignalHandler } from "./signals/context/route";
 import type { RouteEntry } from "./signals/route-entry";
-import { isAbortError } from "./signals/utils";
+import { isAbortError, normalizeThrown, safeSync } from "./signals/utils";
 
 const L = logger("App");
 
 const WEB_AUTH_PATHS = ["/sign-in", "/sign-up"] as const;
+const UNHANDLED_REQUEST_ERROR_TYPE = "unhandled_request_error" as const;
+const ERROR_CHAIN_MAX_DEPTH = 32;
+const ERROR_SUMMARY_MAX_LENGTH = 240;
+const ERROR_SUMMARY_SOURCE_MAX_LENGTH = 4096;
 
-function shouldCaptureError(error: Error): boolean {
+interface UnhandledRequestErrorLogFields {
+  readonly type: typeof UNHANDLED_REQUEST_ERROR_TYPE;
+  readonly errorSummary: string;
+  readonly method: string;
+  readonly route?: string;
+  readonly errorCode?: string;
+  readonly error: Record<string, unknown>;
+}
+
+type ErrorWithCode = Error & { readonly code?: unknown };
+
+function shouldCaptureError(error: unknown): boolean {
   return !(error instanceof HTTPException) || error.status >= 500;
 }
 
-function captureError(error: Error): void {
+function captureError(error: unknown): void {
   if (shouldCaptureError(error)) {
     Sentry.captureException(error);
   }
@@ -35,7 +52,209 @@ function redirectToWeb(context: Context): Response {
   return context.redirect(target.toString());
 }
 
-function handleError(error: Error, context: Context): Response {
+function readErrorValue(read: () => unknown): unknown {
+  const result = safeSync(read);
+  return "ok" in result ? result.ok : undefined;
+}
+
+function summarySource(value: string): string | undefined {
+  const source = value.slice(0, ERROR_SUMMARY_SOURCE_MAX_LENGTH).trim();
+  return source || undefined;
+}
+
+function readNonErrorMessage(error: unknown): string {
+  if (error !== null && typeof error === "object") {
+    const message = readErrorValue(() => {
+      return (error as { readonly message?: unknown }).message;
+    });
+    if (typeof message === "string") {
+      const source = summarySource(message);
+      if (source) {
+        return source;
+      }
+    }
+  }
+  const value = readErrorValue(() => {
+    return String(error);
+  });
+  if (typeof value === "string") {
+    const source = summarySource(value);
+    if (source) {
+      return source;
+    }
+  }
+  return "unknown error";
+}
+
+function errorCause(error: Error): Error | undefined {
+  const cause = readErrorValue(() => {
+    return error.cause;
+  });
+  return cause instanceof Error ? cause : undefined;
+}
+
+function errorMessage(error: Error): string | undefined {
+  const message = readErrorValue(() => {
+    return error.message;
+  });
+  return typeof message === "string" ? message : undefined;
+}
+
+function errorName(error: Error): string | undefined {
+  const name = readErrorValue(() => {
+    return error.name;
+  });
+  return typeof name === "string" ? name : undefined;
+}
+
+function errorCode(error: Error): unknown {
+  return readErrorValue(() => {
+    return (error as ErrorWithCode).code;
+  });
+}
+
+function errorChain(error: Error): readonly Error[] {
+  const chain: Error[] = [];
+  const seen = new Set<Error>();
+  let current: Error | undefined = error;
+  while (
+    current &&
+    !seen.has(current) &&
+    chain.length < ERROR_CHAIN_MAX_DEPTH
+  ) {
+    chain.push(current);
+    seen.add(current);
+    current = errorCause(current);
+  }
+  return chain;
+}
+
+function sourceErrorMessage(error: unknown): string {
+  if (!(error instanceof Error)) {
+    return readNonErrorMessage(error);
+  }
+  const chain = errorChain(error);
+  for (let index = chain.length - 1; index >= 0; index -= 1) {
+    const current = chain[index];
+    const message = current ? errorMessage(current) : undefined;
+    if (message) {
+      const source = summarySource(message);
+      if (source) {
+        return source;
+      }
+    }
+  }
+  const name = errorName(error);
+  return name ? (summarySource(name) ?? "unknown error") : "unknown error";
+}
+
+function truncateSummary(summary: string): string {
+  if (summary.length <= ERROR_SUMMARY_MAX_LENGTH) {
+    return summary;
+  }
+  return `${summary.slice(0, ERROR_SUMMARY_MAX_LENGTH - 3)}...`;
+}
+
+function replaceControlCharacters(value: string): string {
+  let result = "";
+  for (const char of value) {
+    const code = char.charCodeAt(0);
+    result += code <= 31 || code === 127 ? " " : char;
+  }
+  return result;
+}
+
+function sanitizeErrorSummary(error: unknown): string {
+  const source = sourceErrorMessage(error);
+  if (/^response validation failed:/i.test(source)) {
+    return "response validation failed";
+  }
+
+  const summary = replaceControlCharacters(source)
+    .replace(/\bhttps?:\/\/[^\s]+/gi, "[url]")
+    .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, "[email]")
+    .replace(
+      /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/gi,
+      "[id]",
+    )
+    .replace(
+      /\b(?:user|org)_(?=[A-Za-z0-9_-]*\d)[A-Za-z0-9][A-Za-z0-9_-]{9,}\b/g,
+      "[id]",
+    )
+    .replace(
+      /\bAuthorization\b\s*[:=]\s*["']?(?:Bearer|Basic|Digest|Token)\s+[^,\s"']+/gi,
+      "Authorization=[redacted]",
+    )
+    .replace(/\bBearer\s+[A-Za-z0-9._~+/-]+=*/gi, "Bearer [redacted]")
+    .replace(
+      /\b(api[_\s-]?key|access[_\s-]?token|refresh[_\s-]?token|id[_\s-]?token|client[_\s-]?secret|authorization|password|secret|token)\b\s*[:=]\s*["']?[^,\s"']+/gi,
+      "$1=[redacted]",
+    )
+    .replace(/\b[0-9a-f]{16,}\b/gi, "[hash]")
+    .replace(/\b\d{8,}\b/g, "[number]")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return truncateSummary(summary || "unknown error");
+}
+
+function structuredErrorCode(error: unknown): string | undefined {
+  if (!(error instanceof Error)) {
+    return undefined;
+  }
+  for (const current of errorChain(error)) {
+    const code = errorCode(current);
+    if (typeof code === "number" && Number.isFinite(code)) {
+      return String(code);
+    }
+    if (typeof code === "string") {
+      const normalized = code.trim();
+      if (/^[A-Za-z0-9_.:-]{1,80}$/.test(normalized)) {
+        return normalized;
+      }
+    }
+  }
+  return undefined;
+}
+
+function isTemplateRoute(path: string): boolean {
+  return path !== "*" && path !== "/*";
+}
+
+function requestRouteTemplate(context: Context): string | undefined {
+  const result = safeSync(() => {
+    return matchedRoutes(context);
+  });
+  if (!("ok" in result)) {
+    return undefined;
+  }
+  const routes = result.ok;
+  for (let index = routes.length - 1; index >= 0; index -= 1) {
+    const path = routes[index]?.path;
+    if (path && isTemplateRoute(path)) {
+      return path;
+    }
+  }
+  return undefined;
+}
+
+function unhandledRequestErrorLogFields(
+  error: unknown,
+  context: Context,
+): UnhandledRequestErrorLogFields {
+  const route = requestRouteTemplate(context);
+  const errorCode = structuredErrorCode(error);
+  return {
+    type: UNHANDLED_REQUEST_ERROR_TYPE,
+    errorSummary: sanitizeErrorSummary(error),
+    method: context.req.method,
+    ...(route ? { route } : {}),
+    ...(errorCode ? { errorCode } : {}),
+    error: serializeError(error),
+  };
+}
+
+function handleError(error: unknown, context: Context): Response {
   if (isAbortError(error)) {
     return context.json({ error: "Internal server error" }, 500);
   }
@@ -46,7 +265,8 @@ function handleError(error: Error, context: Context): Response {
     return error.getResponse();
   }
 
-  L.error("Unhandled request error", error);
+  const fields = unhandledRequestErrorLogFields(error, context);
+  L.error(`Unhandled request error: ${fields.errorSummary}`, fields);
   return context.json({ error: "Internal server error" }, 500);
 }
 
@@ -61,6 +281,10 @@ export function createAppWithRoutes({
 }: CreateAppWithRoutesOptions): Hono {
   const app = new Hono();
   app.onError(handleError);
+
+  app.use("*", (_context, next) => {
+    return normalizeThrown(next);
+  });
 
   // OpenTelemetry: each request gets a SERVER span named after its matched
   // route template (e.g. `GET /api/v1/chat-threads/:threadId`). Child spans

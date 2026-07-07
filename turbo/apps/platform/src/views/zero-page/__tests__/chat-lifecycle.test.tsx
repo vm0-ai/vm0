@@ -5,7 +5,6 @@ import { describe, expect, it, vi } from "vitest";
 import {
   chatThreadByIdContract,
   chatThreadArtifactsContract,
-  chatThreadGithubPrsContract,
   chatThreadMarkReadContract,
   chatThreadMessagesContract,
   chatThreadRenameContract,
@@ -22,8 +21,8 @@ import {
   zeroBillingCreditCheckoutContract,
   zeroBillingStatusContract,
 } from "@vm0/api-contracts/contracts/zero-billing";
+import { zeroVoiceIoQuotaContract } from "@vm0/api-contracts/contracts/zero-voice-io-quota";
 import { zeroComputerUseHostsContract } from "@vm0/api-contracts/contracts/zero-computer-use";
-import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { logsByIdContract } from "@vm0/api-contracts/contracts/logs";
 import {
@@ -71,7 +70,6 @@ function detachedSetupPage(
 
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const AUTOMATION_THREAD_ID = "b0000000-0000-4000-a000-000000000701";
-const GITHUB_PR_THREAD_ID = "b0000000-0000-4000-a000-000000000702";
 const FOLLOWUP_THREAD_ID = "b0000000-0000-4000-a000-000000000704";
 const HISTORY_THREAD_ID = "b0000000-0000-4000-a000-000000000705";
 const EVENT_SOURCED_RENAME_THREAD_ID = "b0000000-0000-4000-a000-000000000706";
@@ -603,165 +601,6 @@ function mockServerQueuedThreadStories(): void {
     return respond(200, { lastReadAt: null, unreads: [] });
   });
 }
-
-function mockGithubPrTrackingThread(): void {
-  mockChatLifecycle(context, {
-    threadId: GITHUB_PR_THREAD_ID,
-    threadTitle: "PR review",
-    chatMessages: [
-      {
-        id: "msg-pr-request",
-        role: "user",
-        content: "Review the failing pull request",
-        createdAt: "2026-06-09T10:00:00Z",
-      },
-    ],
-  });
-  context.mocks.data.connectors([
-    {
-      id: "99999999-9999-4999-8999-999999999999",
-      type: "github",
-      authMethod: "oauth",
-      externalId: "github-octocat",
-      externalUsername: "octocat",
-      externalEmail: null,
-      oauthScopes: ["repo"],
-      connectionStatus: "connected",
-      reconnectReason: null,
-      tokenExpiresAt: null,
-      createdAt: "2026-01-01T00:00:00Z",
-      updatedAt: "2026-01-01T00:00:00Z",
-    },
-  ]);
-  context.mocks.data.githubIntegration(
-    context.mocks.data.defaultGithubIntegration(),
-  );
-  context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
-    return respond(200, { enabledTypes: ["github"] });
-  });
-  context.mocks.api(chatThreadGithubPrsContract.list, ({ respond }) => {
-    return respond(200, {
-      prs: [
-        {
-          repo: "vm0-ai/vm0",
-          number: 123,
-          title: "Fix flaky platform tests",
-          url: "https://github.com/vm0-ai/vm0/pull/123",
-          state: "open",
-          headSha: "abc123",
-          mergeStatus: "conflicts",
-          rollup: "failure",
-          checks: [
-            {
-              name: "unit tests",
-              status: "completed",
-              conclusion: "failure",
-              url: "https://github.com/vm0-ai/vm0/actions/runs/1",
-              startedAt: "2026-06-09T10:00:00Z",
-              completedAt: "2026-06-09T10:05:00Z",
-            },
-            {
-              name: "deploy preview",
-              status: "queued",
-              conclusion: null,
-              url: null,
-              startedAt: null,
-              completedAt: null,
-            },
-          ],
-        },
-        {
-          repo: "vm0-ai/vm0",
-          number: 124,
-          title: "Stabilize deploy preview checks",
-          url: "https://github.com/vm0-ai/vm0/pull/124",
-          state: "open",
-          headSha: "def456",
-          mergeStatus: "blocked",
-          rollup: "pending",
-          checks: [
-            {
-              name: "lint",
-              status: "completed",
-              conclusion: "success",
-              url: "https://github.com/vm0-ai/vm0/actions/runs/2",
-              startedAt: "2026-06-09T10:06:00Z",
-              completedAt: "2026-06-09T10:07:00Z",
-            },
-            {
-              name: "security review",
-              status: "in_progress",
-              conclusion: null,
-              url: null,
-              startedAt: "invalid-date",
-              completedAt: null,
-            },
-          ],
-        },
-        {
-          repo: "vm0-ai/vm0",
-          number: 125,
-          title: "Draft data cleanup",
-          url: "https://github.com/vm0-ai/vm0/pull/125",
-          state: "open",
-          headSha: "ghi789",
-          mergeStatus: "draft",
-          rollup: "none",
-          checks: [],
-        },
-        {
-          repo: "vm0-ai/vm0",
-          number: 126,
-          title: "Ready coverage update",
-          url: "https://github.com/vm0-ai/vm0/pull/126",
-          state: "open",
-          headSha: "jkl012",
-          mergeStatus: "ready",
-          rollup: "success",
-          checks: [
-            {
-              name: "coverage",
-              status: "completed",
-              conclusion: "success",
-              url: "https://github.com/vm0-ai/vm0/actions/runs/3",
-              startedAt: "2026-06-09T10:08:00Z",
-              completedAt: "2026-06-09T10:11:00Z",
-            },
-          ],
-        },
-        {
-          repo: "vm0-ai/vm0",
-          number: 127,
-          title: "External checks unavailable",
-          url: "https://github.com/vm0-ai/vm0/pull/127",
-          state: "open",
-          headSha: "mno345",
-          mergeStatus: null,
-          rollup: "unknown",
-          checks: [],
-        },
-      ],
-    });
-  });
-}
-
-async function openGithubPrTracking(): Promise<void> {
-  click(await screen.findByLabelText("Open GitHub PR tracking"));
-
-  await waitFor(() => {
-    expect(screen.getByLabelText("GitHub PR tracking")).toBeInTheDocument();
-  });
-}
-
-function setupGithubPrTrackingPage(): void {
-  mockGithubPrTrackingThread();
-  detachedSetupPage({
-    context,
-    path: `/chats/${GITHUB_PR_THREAD_ID}`,
-    featureSwitches: { [FeatureSwitchKey.ChatGithubPrTracking]: true },
-  });
-}
-
 function buttonByText(text: string, container?: ParentNode): HTMLElement {
   const button = queryAllByRoleFast("button", container).find((candidate) => {
     return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
@@ -5000,210 +4839,6 @@ describe("chat lifecycle", () => {
     expect(screen.queryByLabelText("Active goal")).not.toBeInTheDocument();
   });
 
-  it("shows automation run messages as automation links in chat history", async () => {
-    const threadId = "b0000000-0000-4000-a000-000000000721";
-    const automationId = "f0000001-0000-4000-a000-000000000721";
-    mockChatLifecycle(context, {
-      threadId,
-      threadTitle: "Automation message",
-      chatMessages: [
-        {
-          id: "msg-automation-user",
-          role: "user",
-          content: "Review launch risks",
-          automationId,
-          automationSnapshot: {
-            id: automationId,
-            title: "Launch risk review",
-            description: "Launch review",
-          },
-          createdAt: "2026-06-09T10:00:00Z",
-        },
-        {
-          id: "msg-automation-assistant",
-          role: "assistant",
-          content: "I'll review the launch risks on schedule.",
-          createdAt: "2026-06-09T10:00:01Z",
-        },
-      ],
-    });
-
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
-
-    await waitFor(() => {
-      expect(screen.getByText("Automation message")).toBeInTheDocument();
-      expect(screen.getByText("Launch review")).toBeInTheDocument();
-      expect(screen.queryByText("Review launch risks")).not.toBeInTheDocument();
-    });
-  });
-
-  it("folds earlier runs from the same automation run group", async () => {
-    const threadId = "thread-run-group-folding";
-    const automationId = "f0000001-0000-4000-a000-000000000722";
-    const runGroupId = "f0000001-0000-4000-a000-000000000723";
-    const automationSnapshot = {
-      id: automationId,
-      title: "Daily check",
-      description: "Daily check",
-    };
-    mockChatLifecycle(context, {
-      threadId,
-      threadTitle: "Run group folding",
-      chatMessages: [
-        {
-          id: "msg-run-group-user-1",
-          role: "user",
-          content: "Run the daily check",
-          runId: "f0000001-0000-4000-a000-000000000724",
-          runGroupId,
-          automationId,
-          automationSnapshot,
-          createdAt: "2026-06-09T10:00:00Z",
-        },
-        {
-          id: "msg-run-group-assistant-1",
-          role: "assistant",
-          content: "First daily check result",
-          runId: "f0000001-0000-4000-a000-000000000724",
-          runGroupId,
-          createdAt: "2026-06-09T10:00:01Z",
-        },
-        {
-          id: "msg-run-group-usage-1",
-          role: "assistant",
-          content: null,
-          runId: "f0000001-0000-4000-a000-000000000724",
-          usage: {
-            version: 1,
-            totalCredits: 10,
-            settledAt: "2026-06-09T10:00:02Z",
-            breakdown: [
-              {
-                kind: "connector",
-                credits: 10,
-                providers: [{ provider: "github", credits: 10 }],
-              },
-            ],
-          },
-          createdAt: "2026-06-09T10:00:02Z",
-        },
-        {
-          id: "msg-run-group-user-2",
-          role: "user",
-          content: "Run the daily check",
-          runId: "f0000001-0000-4000-a000-000000000725",
-          runGroupId,
-          automationId,
-          automationSnapshot,
-          createdAt: "2026-06-09T10:01:00Z",
-        },
-        {
-          id: "msg-run-group-assistant-2",
-          role: "assistant",
-          content: "Second daily check result",
-          runId: "f0000001-0000-4000-a000-000000000725",
-          runGroupId,
-          createdAt: "2026-06-09T10:01:01Z",
-        },
-        {
-          id: "msg-run-group-usage-2",
-          role: "assistant",
-          content: null,
-          runId: "f0000001-0000-4000-a000-000000000725",
-          usage: {
-            version: 1,
-            totalCredits: 20,
-            settledAt: "2026-06-09T10:01:02Z",
-            breakdown: [
-              {
-                kind: "connector",
-                credits: 20,
-                providers: [{ provider: "github", credits: 20 }],
-              },
-            ],
-          },
-          createdAt: "2026-06-09T10:01:02Z",
-        },
-        {
-          id: "msg-run-group-user-3",
-          role: "user",
-          content: "Run the daily check",
-          runId: "f0000001-0000-4000-a000-000000000726",
-          runGroupId,
-          automationId,
-          automationSnapshot,
-          createdAt: "2026-06-09T10:02:00Z",
-        },
-        {
-          id: "msg-run-group-assistant-3",
-          role: "assistant",
-          content: "Latest daily check result",
-          runId: "f0000001-0000-4000-a000-000000000726",
-          runGroupId,
-          createdAt: "2026-06-09T10:02:01Z",
-        },
-        {
-          id: "msg-run-group-usage-3",
-          role: "assistant",
-          content: null,
-          runId: "f0000001-0000-4000-a000-000000000726",
-          usage: {
-            version: 1,
-            totalCredits: 30,
-            settledAt: "2026-06-09T10:02:02Z",
-            breakdown: [
-              {
-                kind: "connector",
-                credits: 30,
-                providers: [{ provider: "github", credits: 30 }],
-              },
-            ],
-          },
-          createdAt: "2026-06-09T10:02:02Z",
-        },
-      ],
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${threadId}`,
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("Latest daily check result")).toBeInTheDocument();
-      const foldButton = buttonByLabel("Expand grouped run history");
-      expect(
-        within(foldButton).getByText("2 runs for Daily check"),
-      ).toBeInTheDocument();
-      expect(
-        within(foldButton).getByText("2 runs for Daily check"),
-      ).toHaveClass("truncate", "whitespace-nowrap");
-      expect(
-        screen.queryByText("First daily check result"),
-      ).not.toBeInTheDocument();
-      expect(
-        screen.queryByText("Second daily check result"),
-      ).not.toBeInTheDocument();
-    });
-
-    const credit = await screen.findByLabelText("Credit usage 60");
-    expect(screen.queryByLabelText("Credit usage 30")).not.toBeInTheDocument();
-
-    click(credit);
-
-    await waitFor(() => {
-      expect(screen.getAllByText("Github").length).toBeGreaterThanOrEqual(1);
-      expect(screen.getAllByText("60").length).toBeGreaterThanOrEqual(1);
-    });
-
-    fireEvent.click(buttonByLabel("Expand grouped run history"));
-
-    await waitFor(() => {
-      expect(screen.getByText("First daily check result")).toBeInTheDocument();
-      expect(screen.getByText("Second daily check result")).toBeInTheDocument();
-    });
-  });
-
   it("surfaces archived goal history in the latest assistant row", async () => {
     const threadId = "thread-goal-run-group-folding";
     const runGroupId = "f0000001-0000-4000-a000-00000000072b";
@@ -5539,7 +5174,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           generationTemplate: {
             type: "presentation",
             selection: {
-              designSystemId: presentationTemplate.designSystemId,
               templateId: presentationTemplate.templateId,
             },
           },
@@ -5607,7 +5241,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           generationTemplate: {
             type: "presentation",
             selection: {
-              designSystemId: presentationTemplate.designSystemId,
               templateId: presentationTemplate.templateId,
             },
           },
@@ -5801,116 +5434,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       ).toBeInTheDocument();
     });
   });
-
-  it("opens GitHub PR tracking from the dock", async () => {
-    setupGithubPrTrackingPage();
-    await openGithubPrTracking();
-
-    await waitFor(() => {
-      expect(screen.getByText("vm0-ai/vm0 #123")).toBeInTheDocument();
-      expect(screen.getByText("Fix flaky platform tests")).toBeInTheDocument();
-      expect(screen.getByText("Conflicts")).toBeInTheDocument();
-      expect(screen.getByText("unit tests")).toBeInTheDocument();
-      expect(screen.getByText("deploy preview")).toBeInTheDocument();
-      expect(
-        screen.getByText("Stabilize deploy preview checks"),
-      ).toBeInTheDocument();
-      expect(screen.getAllByText("Pending").length).toBeGreaterThan(0);
-      expect(screen.getByText("security review")).toBeInTheDocument();
-      expect(screen.getByText("Draft data cleanup")).toBeInTheDocument();
-      expect(screen.getByText("Draft")).toBeInTheDocument();
-      expect(screen.getByText("Ready coverage update")).toBeInTheDocument();
-      expect(screen.getByText("Ready to merge")).toBeInTheDocument();
-      expect(
-        screen.getByText("External checks unavailable"),
-      ).toBeInTheDocument();
-      expect(screen.getByText("Unknown")).toBeInTheDocument();
-      expect(screen.getAllByText("No GitHub Actions checks.")).toHaveLength(2);
-    });
-
-    click(screen.getByLabelText("Close GitHub PR tracking"));
-
-    await waitFor(() => {
-      expect(
-        screen.queryByLabelText("GitHub PR tracking"),
-      ).not.toBeInTheDocument();
-    });
-  });
-
-  it("shows an empty GitHub PR tracking state", async () => {
-    mockGithubPrTrackingThread();
-    context.mocks.api(chatThreadGithubPrsContract.list, ({ respond }) => {
-      return respond(200, { prs: [] });
-    });
-    detachedSetupPage({
-      context,
-      path: `/chats/${GITHUB_PR_THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.ChatGithubPrTracking]: true },
-    });
-
-    await openGithubPrTracking();
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("No GitHub PRs found in this chat."),
-      ).toBeInTheDocument();
-    });
-  });
-
-  it("shows GitHub PR tracking load errors and toggles the dock from the header", async () => {
-    mockGithubPrTrackingThread();
-    context.mocks.api(chatThreadGithubPrsContract.list, ({ respond }) => {
-      return respond(502, {
-        error: {
-          message: "GitHub status unavailable",
-          code: "GITHUB_STATUS_UNAVAILABLE",
-        },
-      });
-    });
-    detachedSetupPage({
-      context,
-      path: `/chats/${GITHUB_PR_THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.ChatGithubPrTracking]: true },
-    });
-
-    await openGithubPrTracking();
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("Failed to load GitHub PR status."),
-      ).toBeInTheDocument();
-    });
-    expect(screen.getByLabelText("Open GitHub PR tracking")).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
-
-    click(screen.getByLabelText("Open GitHub PR tracking"));
-
-    await waitFor(() => {
-      expect(
-        screen.queryByLabelText("GitHub PR tracking"),
-      ).not.toBeInTheDocument();
-      expect(screen.getByLabelText("Open GitHub PR tracking")).toHaveAttribute(
-        "aria-pressed",
-        "false",
-      );
-    });
-  });
-
-  it("queues a GitHub PR conflict fix command from the tracking dock", async () => {
-    setupGithubPrTrackingPage();
-    await openGithubPrTracking();
-
-    click(await screen.findByText("Fix conflict"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("fix pr 123 conflict & push"),
-      ).toBeInTheDocument();
-    });
-  });
-
   it("sends a recommended follow-up from the latest assistant reply", async () => {
     const assistantReply = "I can turn this into a launch package.";
     const followupPrompt = "Create a presentation outline";
@@ -6882,6 +6405,136 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     }
   });
 
+  it("transcribes a voice input segment after silence while recording", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "voice-input-segment-thread";
+    const draftPatches: unknown[] = [];
+    const uploadedAudio: string[] = [];
+    let transcriptionCalls = 0;
+    context.mocks.browser.voiceInput({ rms: [0.1, 0.1, 0, 0, 0] });
+    mockChatLifecycle(context, { threadId });
+    context.mocks.http.patch(
+      "*/api/zero/chat-threads/:id",
+      async ({ request }) => {
+        draftPatches.push(await request.json());
+        return new Response(null, { status: 200 });
+      },
+    );
+    context.mocks.http.post("*/api/zero/voice-io/stt", async ({ request }) => {
+      const form = await request.formData();
+      const file = form.get("file");
+      if (!(file instanceof File)) {
+        return new Response(null, { status: 400 });
+      }
+      uploadedAudio.push(await file.text());
+      transcriptionCalls += 1;
+      return new Response(JSON.stringify({ text: "First sentence" }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    const composer = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER);
+    });
+
+    await user.click(await screen.findByLabelText("Voice input"));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(composer).toHaveTextContent("First sentence");
+    });
+    expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
+    expect(transcriptionCalls).toBe(1);
+    expect(uploadedAudio).toStrictEqual(["voice-1"]);
+    await waitFor(() => {
+      expect(draftPatches).toContainEqual({
+        draftContent: "First sentence",
+        draftAttachments: null,
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Voice input")).toBeInTheDocument();
+    });
+    expect(transcriptionCalls).toBe(1);
+  });
+
+  it("automatically stops voice input after extended silence", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "voice-input-auto-stop-thread";
+    let transcriptionCalls = 0;
+    context.mocks.browser.voiceInput({ rms: [0.1, 0.1, 0, 0, 0] });
+    mockChatLifecycle(context, { threadId });
+    context.mocks.api(zeroVoiceIoQuotaContract.get, ({ respond }) => {
+      return respond(200, { allowed: true, count: 0, limit: 10 });
+    });
+    context.mocks.http.post("*/api/zero/voice-io/stt", () => {
+      transcriptionCalls += 1;
+      return new Response(JSON.stringify({ text: "Auto stopped note" }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    const composer = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER);
+    });
+
+    await user.click(await screen.findByLabelText("Voice input"));
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
+    });
+
+    await waitFor(() => {
+      expect(composer).toHaveTextContent("Auto stopped note");
+      expect(screen.getByLabelText("Voice input")).toBeInTheDocument();
+    });
+    expect(transcriptionCalls).toBe(1);
+  });
+
+  it("appends a delayed voice input segment to the current composer text", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "voice-input-append-current-thread";
+    const transcriptionReady = context.mocks.deferred<void>();
+    const transcriptionRequested = context.mocks.deferred<void>();
+    context.mocks.browser.voiceInput({ rms: [0.1, 0.1, 0, 0, 0] });
+    mockChatLifecycle(context, { threadId });
+    context.mocks.http.post("*/api/zero/voice-io/stt", async () => {
+      transcriptionRequested.resolve(undefined);
+      await transcriptionReady.promise;
+      return new Response(JSON.stringify({ text: "voice segment" }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    const composer = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER);
+    });
+
+    await user.click(await screen.findByLabelText("Voice input"));
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
+    });
+    await transcriptionRequested.promise;
+    await fill(composer, "manual note");
+    transcriptionReady.resolve(undefined);
+
+    await waitFor(() => {
+      expect(composer).toHaveTextContent("manual note voice segment");
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Voice input")).toBeInTheDocument();
+    });
+  });
+
   it("shows voice input starting state while the browser opens the microphone", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "voice-input-starting-thread";
@@ -6989,6 +6642,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
 
   it("opens billing recovery when voice input quota is depleted", async () => {
     const user = userEvent.setup({ delay: null });
+    const toastError = vi.spyOn(toast, "error");
     const threadId = "voice-input-quota-thread";
     context.mocks.browser.voiceInput({ rms: 0.1 });
     mockChatLifecycle(context, { threadId });
@@ -7004,27 +6658,123 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       );
     });
 
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
+    try {
+      detachedSetupPage({ context, path: `/chats/${threadId}` });
 
-    await waitFor(() => {
-      expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
+      });
+
+      await user.click(await screen.findByLabelText("Voice input"));
+      await waitFor(() => {
+        expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
+      });
+      await user.click(screen.getByLabelText("Stop recording"));
+
+      await waitFor(() => {
+        expect(toastError).toHaveBeenCalledWith(
+          "Voice input limit reached. Upgrade to Pro or Team for higher limits.",
+          { id: "voice-input-quota-limit" },
+        );
+        expect(screen.getByRole("dialog")).toBeInTheDocument();
+        expect(
+          screen.getByRole("heading", { name: "Compare plans" }),
+        ).toBeInTheDocument();
+        expect(
+          screen.getByText("Upgrade or downgrade anytime."),
+        ).toBeInTheDocument();
+      });
+    } finally {
+      toastError.mockRestore();
+    }
+  });
+
+  it("opens billing recovery before recording when voice input quota is already depleted", async () => {
+    const user = userEvent.setup({ delay: null });
+    const toastError = vi.spyOn(toast, "error");
+    const threadId = "voice-input-preflight-quota-thread";
+    let transcriptionCalls = 0;
+    context.mocks.browser.voiceInput({ rms: 0.1 });
+    mockChatLifecycle(context, { threadId });
+    context.mocks.api(zeroVoiceIoQuotaContract.get, ({ respond }) => {
+      return respond(200, { allowed: false, count: 10, limit: 10 });
+    });
+    context.mocks.http.post("*/api/zero/voice-io/stt", () => {
+      transcriptionCalls += 1;
+      return new Response(JSON.stringify({ text: "Should not upload" }), {
+        headers: { "Content-Type": "application/json" },
+      });
     });
 
-    await user.click(await screen.findByLabelText("Voice input"));
-    await waitFor(() => {
-      expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
-    });
-    await user.click(screen.getByLabelText("Stop recording"));
+    try {
+      detachedSetupPage({ context, path: `/chats/${threadId}` });
 
-    await waitFor(() => {
-      expect(screen.getByRole("dialog")).toBeInTheDocument();
-      expect(
-        screen.getByRole("heading", { name: "Compare plans" }),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByText("Upgrade or downgrade anytime."),
-      ).toBeInTheDocument();
+      const voiceInput = await screen.findByLabelText("Voice input");
+      expect(voiceInput).toBeEnabled();
+      await user.click(voiceInput);
+
+      await waitFor(() => {
+        expect(toastError).toHaveBeenCalledWith(
+          "Voice input limit reached. Upgrade to Pro or Team for higher limits.",
+          { id: "voice-input-quota-limit" },
+        );
+        expect(screen.getByRole("dialog")).toBeInTheDocument();
+        expect(
+          screen.getByRole("heading", { name: "Compare plans" }),
+        ).toBeInTheDocument();
+      });
+      expect(screen.queryByLabelText("Stop recording")).toBeNull();
+      expect(transcriptionCalls).toBe(0);
+    } finally {
+      toastError.mockRestore();
+    }
+  });
+
+  it("opens billing recovery when voice input daily request limit is reached", async () => {
+    const user = userEvent.setup({ delay: null });
+    const toastError = vi.spyOn(toast, "error");
+    const threadId = "voice-input-daily-rate-thread";
+    context.mocks.browser.voiceInput({ rms: 0.1 });
+    mockChatLifecycle(context, { threadId });
+    context.mocks.http.post("*/api/zero/voice-io/stt", () => {
+      return new Response(
+        JSON.stringify({
+          error: {
+            code: "DAILY_RATE_LIMIT_EXCEEDED",
+            message: "Daily request rate limit exceeded",
+          },
+          quota: { count: 10, limit: 10 },
+        }),
+        { status: 429, headers: { "Content-Type": "application/json" } },
+      );
     });
+
+    try {
+      detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
+      });
+
+      await user.click(await screen.findByLabelText("Voice input"));
+      await waitFor(() => {
+        expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
+      });
+      await user.click(screen.getByLabelText("Stop recording"));
+
+      await waitFor(() => {
+        expect(toastError).toHaveBeenCalledWith(
+          "Voice input limit reached. Upgrade to Pro or Team for higher limits.",
+          { id: "voice-input-quota-limit" },
+        );
+        expect(screen.getByRole("dialog")).toBeInTheDocument();
+        expect(
+          screen.getByRole("heading", { name: "Compare plans" }),
+        ).toBeInTheDocument();
+      });
+    } finally {
+      toastError.mockRestore();
+    }
   });
 
   it("shows billing recovery guidance when credits are depleted", async () => {
@@ -7441,7 +7191,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
         selectedModel: null,
         triggerSource: "web",
         triggerAgentName: null,
-        automationId: null,
         status: "running",
         prompt: "Active task prompt",
         appendSystemPrompt: null,

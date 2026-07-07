@@ -15,7 +15,7 @@ import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import {
   allConnectorTypes$,
   connectConnectorOAuthAuthCode$,
-  getOnlyAvailableStatusAuthCodeAuthMethod,
+  getOnlyAvailableStatusBrowserAuthMethod,
   getConnectorStatusConnectLaunchMode,
   justConnectedTypes$,
   pollingOAuthAuthCodeConnectorType$,
@@ -96,7 +96,7 @@ function runDirectedConnect(params: {
     return;
   }
 
-  const authMethod = getOnlyAvailableStatusAuthCodeAuthMethod(params.item);
+  const authMethod = getOnlyAvailableStatusBrowserAuthMethod(params.item);
   if (!authMethod) {
     params.openConnectModal();
     return;

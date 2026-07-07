@@ -190,15 +190,25 @@ const createTriggerInner$ = command(
                     },
                     signal,
                   )
-                : await set(
-                    createWorkflowTrigger$,
-                    {
-                      ...triggerInputBase,
-                      eventType: bodyResult.data.eventType,
-                      eventConfig: bodyResult.data.eventConfig,
-                    },
-                    signal,
-                  );
+                : bodyResult.data.eventType === "notion-child-page-created"
+                  ? await set(
+                      createWorkflowTrigger$,
+                      {
+                        ...triggerInputBase,
+                        eventType: bodyResult.data.eventType,
+                        eventConfig: bodyResult.data.eventConfig,
+                      },
+                      signal,
+                    )
+                  : await set(
+                      createWorkflowTrigger$,
+                      {
+                        ...triggerInputBase,
+                        eventType: bodyResult.data.eventType,
+                        eventConfig: bodyResult.data.eventConfig,
+                      },
+                      signal,
+                    );
     signal.throwIfAborted();
     if (result.kind === "ok") {
       return { status: 201 as const, body: result.summary };

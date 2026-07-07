@@ -349,6 +349,176 @@ describe("permission allow page", () => {
     expect(screen.queryByText("Duration")).not.toBeInTheDocument();
   });
 
+  it("shows the confirmation flow when an existing allow grant is expired", async () => {
+    mockNow();
+    const agentId = "c0000000-0000-4000-a000-000000000009";
+
+    context.mocks.api(zeroAgentsByIdContract.get, ({ respond }) => {
+      return respond(200, {
+        agentId,
+        ownerId: "test-user-123",
+        description: null,
+        displayName: "Expired Grant Bot",
+        sound: null,
+        avatarUrl: null,
+        modelProviderId: null,
+        selectedModel: null,
+        preferPersonalProvider: false,
+      });
+    });
+    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+      return respond(200, [
+        {
+          agentId,
+          connectorRef: "slack",
+          permission: "admin.analytics:read",
+          action: "allow",
+          expiresAt: isoFromNowMs(-60 * 1000),
+          createdAt: "2026-03-10T00:00:00Z",
+          updatedAt: "2026-03-10T00:01:00Z",
+        },
+      ]);
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${agentId}/permissions?ref=slack&permission=admin.analytics%3Aread&action=allow&expiresIn=24h`,
+      user: {
+        id: "test-user-123",
+        fullName: "Taylor Reviewer",
+        firstName: "Taylor",
+      },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Hey Taylor, you're updating your permissions/u),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Confirm")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Already allowed")).not.toBeInTheDocument();
+  });
+
+  it("shows the confirmation flow when an existing allow grant has an invalid expiration", async () => {
+    mockNow();
+    const agentId = "c0000000-0000-4000-a000-000000000011";
+
+    context.mocks.api(zeroAgentsByIdContract.get, ({ respond }) => {
+      return respond(200, {
+        agentId,
+        ownerId: "test-user-123",
+        description: null,
+        displayName: "Invalid Grant Bot",
+        sound: null,
+        avatarUrl: null,
+        modelProviderId: null,
+        selectedModel: null,
+        preferPersonalProvider: false,
+      });
+    });
+    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+      return respond(200, [
+        {
+          agentId,
+          connectorRef: "slack",
+          permission: "admin.analytics:read",
+          action: "allow",
+          expiresAt: "",
+          createdAt: "2026-03-10T00:00:00Z",
+          updatedAt: "2026-03-10T00:01:00Z",
+        },
+      ]);
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${agentId}/permissions?ref=slack&permission=admin.analytics%3Aread&action=allow&expiresIn=24h`,
+      user: {
+        id: "test-user-123",
+        fullName: "Taylor Reviewer",
+        firstName: "Taylor",
+      },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Hey Taylor, you're updating your permissions/u),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Confirm")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Already allowed")).not.toBeInTheDocument();
+  });
+
+  it("does not show expired grant text when the default policy already allows the permission", async () => {
+    mockNow();
+    const agentId = "c0000000-0000-4000-a000-000000000010";
+
+    context.mocks.api(zeroAgentsByIdContract.get, ({ respond }) => {
+      return respond(200, {
+        agentId,
+        ownerId: "test-user-123",
+        description: null,
+        displayName: "Default Allow Bot",
+        sound: null,
+        avatarUrl: null,
+        modelProviderId: null,
+        selectedModel: null,
+        preferPersonalProvider: false,
+      });
+    });
+    context.mocks.api(
+      zeroConnectorCatalogContract.permissions,
+      ({ params, respond }) => {
+        expect(params.connectorRef).toBe("slack");
+        return respond(200, {
+          permissions: catalogPermissionDetail({
+            connectorRef: "slack",
+            label: "Catalog Slack",
+            permissions: [
+              {
+                name: "admin.analytics:read",
+                description: "Access workspace analytics data",
+              },
+            ],
+            defaultPolicy: {
+              permissionDefault: "allow",
+              unknownPolicy: "ask",
+            },
+          }),
+        });
+      },
+    );
+    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+      return respond(200, [
+        {
+          agentId,
+          connectorRef: "slack",
+          permission: "admin.analytics:read",
+          action: "allow",
+          expiresAt: isoFromNowMs(-60 * 1000),
+          createdAt: "2026-03-10T00:00:00Z",
+          updatedAt: "2026-03-10T00:01:00Z",
+        },
+      ]);
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${agentId}/permissions?ref=slack&permission=admin.analytics%3Aread&action=allow&expiresIn=24h`,
+      user: {
+        id: "test-user-123",
+        fullName: "Taylor Reviewer",
+        firstName: "Taylor",
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Already allowed")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Expired")).not.toBeInTheDocument();
+    expect(screen.queryByText("Confirm")).not.toBeInTheDocument();
+  });
+
   it("shows already denied when the permission is already denied", async () => {
     const agentId = "c0000000-0000-4000-a000-000000000006";
 
@@ -401,6 +571,7 @@ describe("permission allow page", () => {
   });
 
   it("lets a user grant unknown endpoints to an agent", async () => {
+    mockNow();
     const agentId = "c0000000-0000-4000-a000-000000000004";
     let grants: UserPermissionGrantResponse[] = [];
 
@@ -433,7 +604,7 @@ describe("permission allow page", () => {
           connectorRef: body.connectorRef,
           permission: appliedGrant.permission,
           action: appliedGrant.action,
-          expiresAt: "2026-03-10T01:00:00Z",
+          expiresAt: isoFromNowMs(60 * 60 * 1000),
           createdAt: "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:01:00Z",
         };

@@ -109,6 +109,24 @@ export const zeroConnectorOauthStartContract = c.router({
   },
 });
 
+export const zeroConnectorOpenIdStartContract = c.router({
+  start: {
+    method: "POST",
+    path: "/api/zero/connectors/:type/openid/start",
+    headers: authHeadersSchema,
+    pathParams: z.object({ type: connectorTypeSchema }),
+    body: z.object({ authMethod: connectorAuthMethodIdSchema }),
+    responses: {
+      200: connectorOauthStartResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Create connector OpenID handoff and authorization URL",
+  },
+});
+
 export const zeroConnectorManualGrantContract = c.router({
   connect: {
     method: "POST",

@@ -977,6 +977,10 @@ def load_json_parts(name: str) -> tuple[str, ...]:
         from . import stability_ai_0
 
         return (stability_ai_0.JSON_PART,)
+    if name == "steam":
+        from . import steam_0
+
+        return (steam_0.JSON_PART,)
     if name == "strapi":
         from . import strapi_0
 

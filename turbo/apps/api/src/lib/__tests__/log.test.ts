@@ -74,6 +74,24 @@ describe("logToAxiom level dispatch", () => {
       expect.objectContaining({ [EVENT]: { source: "api" } }),
     );
   });
+
+  it("uses a fallback Axiom message when string conversion throws", () => {
+    const log = logger("test-bad-string");
+    const value = {
+      [Symbol.toPrimitive]() {
+        throw new Error("string conversion failed");
+      },
+    };
+
+    expect(() => {
+      log.info(value);
+    }).not.toThrow();
+
+    expect(axiomLogging.info).toHaveBeenCalledWith(
+      "[Unreadable]",
+      expect.objectContaining({ [EVENT]: { source: "api" } }),
+    );
+  });
 });
 
 // ── Axiom log calls include [EVENT]: { source: "api" } ───────────────────────────────────
@@ -97,6 +115,30 @@ describe("Axiom log source field", () => {
     expect(axiomLogging.error).toHaveBeenCalledWith(
       "fail",
       expect.objectContaining({ [EVENT]: { source: "api" } }),
+    );
+  });
+
+  it("uses a fallback Axiom message when Error.message is unreadable", () => {
+    const log = logger("source-unreadable-err");
+    const err = new Error("fail");
+    Object.defineProperty(err, "message", {
+      get() {
+        throw new Error("message getter failed");
+      },
+    });
+
+    expect(() => {
+      log.error(err);
+    }).not.toThrow();
+
+    expect(axiomLogging.error).toHaveBeenCalledWith(
+      "[Unreadable]",
+      expect.objectContaining({
+        error: expect.objectContaining({
+          message: "[Unreadable]",
+        }),
+        [EVENT]: { source: "api" },
+      }),
     );
   });
 
@@ -135,6 +177,58 @@ describe("Axiom log source field", () => {
         underbilling_class: "confirmed",
         component: "api",
       },
+    });
+  });
+
+  it("lifts unhandled request error fields into the Axiom event root", () => {
+    const log = logger("unhandled-request-test");
+    log.error("Unhandled request error: database column missing", {
+      type: "unhandled_request_error",
+      errorSummary: "database column missing",
+      route: "/api/test/:id",
+      method: "GET",
+      errorCode: "42703",
+      error: { message: "database column missing" },
+    });
+
+    expect(axiomLogging.error).toHaveBeenCalledWith(
+      "Unhandled request error: database column missing",
+      {
+        type: "unhandled_request_error",
+        errorSummary: "database column missing",
+        route: "/api/test/:id",
+        method: "GET",
+        errorCode: "42703",
+        error: { message: "database column missing" },
+        context: "unhandled-request-test",
+        [EVENT]: {
+          source: "api",
+          type: "unhandled_request_error",
+          errorSummary: "database column missing",
+          route: "/api/test/:id",
+          method: "GET",
+          errorCode: "42703",
+        },
+      },
+    );
+  });
+
+  it("does not lift unknown type fields into the Axiom event root", () => {
+    const log = logger("unknown-type-test");
+    log.error("custom event", {
+      type: "custom_event",
+      errorSummary: "summary",
+      route: "/api/test/:id",
+      method: "GET",
+    });
+
+    expect(axiomLogging.error).toHaveBeenCalledWith("custom event", {
+      type: "custom_event",
+      errorSummary: "summary",
+      route: "/api/test/:id",
+      method: "GET",
+      context: "unknown-type-test",
+      [EVENT]: { source: "api" },
     });
   });
 });
@@ -204,6 +298,245 @@ describe("serializeError via logging", () => {
         }),
       }),
     );
+  });
+
+  it("serializes cyclic error causes without throwing", () => {
+    const log = logger("cyclic-cause-test");
+    const err = new Error("wrapped");
+    Object.defineProperty(err, "cause", { value: err });
+
+    log.error(err);
+
+    expect(axiomLogging.error).toHaveBeenCalledWith(
+      "wrapped",
+      expect.objectContaining({
+        error: expect.objectContaining({
+          message: "wrapped",
+          cause: "[Circular]",
+        }),
+      }),
+    );
+  });
+
+  it("truncates deep error cause chains", () => {
+    const log = logger("deep-cause-test");
+    const err = new Error("depth-0");
+    let current = err;
+    for (let index = 1; index <= 80; index += 1) {
+      const next = new Error(`depth-${index}`);
+      Object.defineProperty(current, "cause", { value: next });
+      current = next;
+    }
+
+    log.error(err);
+
+    const fields = axiomLogging.error.mock.calls[0]?.[1] as
+      | Record<string, unknown>
+      | undefined;
+    const serialized = JSON.stringify(fields?.error);
+    expect(serialized).toContain("depth-32");
+    expect(serialized).toContain("[Truncated]");
+    expect(serialized).not.toContain("depth-80");
+  });
+
+  it("serializes cyclic enumerable error fields into JSON-safe values", () => {
+    const log = logger("cyclic-enumerable-test");
+    const err = new Error("request failed") as Error & Record<string, unknown>;
+    const request: Record<string, unknown> = {
+      url: "https://example.test/api",
+      retryAfter: 1n,
+    };
+    request.self = request;
+    err.request = request;
+
+    log.error(err);
+
+    const fields = axiomLogging.error.mock.calls[0]?.[1] as
+      | Record<string, unknown>
+      | undefined;
+    const serializedError = fields?.error as Record<string, unknown>;
+    expect(serializedError).toMatchObject({
+      message: "request failed",
+      request: {
+        url: "https://example.test/api",
+        retryAfter: "1",
+        self: "[Circular]",
+      },
+    });
+    expect(() => {
+      JSON.stringify(serializedError);
+    }).not.toThrow();
+  });
+
+  it("serializes unreadable error properties without throwing", () => {
+    const log = logger("unreadable-error-test");
+    const err = new Error("request failed") as Error & Record<string, unknown>;
+    Object.defineProperty(err, "cause", {
+      get() {
+        throw new Error("cause getter failed");
+      },
+    });
+    Object.defineProperty(err, "request", {
+      enumerable: true,
+      get() {
+        throw new Error("request getter failed");
+      },
+    });
+
+    expect(() => {
+      log.error(err);
+    }).not.toThrow();
+
+    const fields = axiomLogging.error.mock.calls[0]?.[1] as
+      | Record<string, unknown>
+      | undefined;
+    expect(fields?.error).toMatchObject({
+      message: "request failed",
+      cause: "[Unreadable]",
+      request: "[Unreadable]",
+    });
+  });
+
+  it("bounds enumerable object fields before reading later properties", () => {
+    const log = logger("large-enumerable-test");
+    const err = new Error("request failed") as Error & Record<string, unknown>;
+    const request: Record<string, unknown> = {};
+    for (let index = 0; index < 80; index += 1) {
+      Object.defineProperty(request, `field${index}`, {
+        enumerable: true,
+        get() {
+          if (index >= 64) {
+            throw new Error("late getter should not be read");
+          }
+          return index;
+        },
+      });
+    }
+    err.request = request;
+
+    expect(() => {
+      log.error(err);
+    }).not.toThrow();
+
+    const fields = axiomLogging.error.mock.calls[0]?.[1] as
+      | Record<string, unknown>
+      | undefined;
+    const serializedError = fields?.error as Record<string, unknown>;
+    const serializedRequest = serializedError.request as Record<
+      string,
+      unknown
+    >;
+    expect(serializedRequest.field0).toBe(0);
+    expect(serializedRequest.field63).toBe(63);
+    expect(serializedRequest.field64).toBeUndefined();
+    expect(serializedRequest.__truncated).toBeTruthy();
+    expect(() => {
+      JSON.stringify(serializedError);
+    }).not.toThrow();
+  });
+
+  it("serializes non-string error stacks into JSON-safe values", () => {
+    const log = logger("non-string-stack-test");
+    const err = new Error("request failed");
+    Object.defineProperty(err, "stack", {
+      get() {
+        return 1n;
+      },
+    });
+
+    expect(() => {
+      log.error(err);
+    }).not.toThrow();
+
+    const fields = axiomLogging.error.mock.calls[0]?.[1] as
+      | Record<string, unknown>
+      | undefined;
+    const serializedError = fields?.error as Record<string, unknown>;
+    expect(serializedError.stack).toBe("1");
+    expect(() => {
+      JSON.stringify(serializedError);
+    }).not.toThrow();
+  });
+
+  it("bounds serialized error string fields", () => {
+    const log = logger("long-error-string-test");
+    const err = new Error("x".repeat(10_000));
+    Object.defineProperty(err, "stack", {
+      value: "s".repeat(10_000),
+    });
+
+    log.error("msg", err);
+
+    const fields = axiomLogging.error.mock.calls[0]?.[1] as
+      | Record<string, unknown>
+      | undefined;
+    const serializedError = fields?.error as Record<string, unknown>;
+    expect(serializedError.message).toBe(`${"x".repeat(4093)}...`);
+    expect(serializedError.stack).toBe(`${"s".repeat(4093)}...`);
+  });
+
+  it("preserves special enumerable keys as data fields", () => {
+    const log = logger("special-key-error-test");
+    const err = new Error("special") as Error & Record<string, unknown>;
+    const payload: Record<string, unknown> = {};
+    Object.defineProperty(err, "constructor", {
+      enumerable: true,
+      value: "error-constructor-field",
+    });
+    Object.defineProperty(payload, "__proto__", {
+      enumerable: true,
+      value: { nested: true },
+    });
+    err.payload = payload;
+
+    log.error(err);
+
+    const fields = axiomLogging.error.mock.calls[0]?.[1] as
+      | Record<string, unknown>
+      | undefined;
+    const serializedError = fields?.error as Record<string, unknown>;
+    const serializedPayload = serializedError.payload as Record<
+      string,
+      unknown
+    >;
+    expect(Object.getPrototypeOf(serializedError)).toBe(Object.prototype);
+    expect(Object.getPrototypeOf(serializedPayload)).toBe(Object.prototype);
+    expect(
+      Object.prototype.hasOwnProperty.call(serializedError, "constructor"),
+    ).toBeTruthy();
+    expect(
+      Object.prototype.hasOwnProperty.call(serializedPayload, "__proto__"),
+    ).toBeTruthy();
+    expect(Reflect.get(serializedError, "constructor")).toBe(
+      "error-constructor-field",
+    );
+    expect(Reflect.get(serializedPayload, "__proto__")).toStrictEqual({
+      nested: true,
+    });
+  });
+
+  it("bounds the total serialized error graph", () => {
+    const log = logger("wide-error-graph-test");
+    const err = new Error("wide") as Error & Record<string, unknown>;
+    const payload: Record<string, unknown> = {};
+    for (let childIndex = 0; childIndex < 64; childIndex += 1) {
+      const child: Record<string, unknown> = {};
+      for (let fieldIndex = 0; fieldIndex < 64; fieldIndex += 1) {
+        child[`field${fieldIndex}`] = `${childIndex}:${fieldIndex}`;
+      }
+      payload[`child${childIndex}`] = child;
+    }
+    err.payload = payload;
+
+    log.error(err);
+
+    const fields = axiomLogging.error.mock.calls[0]?.[1] as
+      | Record<string, unknown>
+      | undefined;
+    const serializedError = fields?.error as Record<string, unknown>;
+    const serialized = JSON.stringify(serializedError);
+    expect(serialized).toContain("[Truncated]");
+    expect(serialized.length).toBeLessThan(100_000);
   });
 
   it("surfaces custom enumerable properties on Error", () => {

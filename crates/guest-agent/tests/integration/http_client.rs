@@ -1,4 +1,5 @@
 use crate::support::*;
+use guest_agent::error::AgentError;
 use guest_agent::masker::SecretMasker;
 use httpmock::prelude::*;
 use serde_json::json;
@@ -164,7 +165,37 @@ async fn post_json_4xx_returns_immediately_no_retry() {
 
     // Should fail immediately — only 1 call, no retries.
     mock.assert_calls_async(1).await;
-    assert!(result.is_err());
+    let Err(AgentError::HttpStatus { status, .. }) = result else {
+        panic!("expected structured HTTP status error");
+    };
+    assert_eq!(status, 400);
+}
+
+#[tokio::test]
+async fn post_json_4xx_error_body_preserves_status_and_message() {
+    let api = SharedApiMock::new().await;
+    let server = api.server();
+
+    let mock = server.mock(|when, then| {
+        when.method(POST).path("/test/post-401");
+        then.status(401)
+            .header("Content-Type", "application/json")
+            .json_body(json!({
+                "error": {
+                    "message": "token expired"
+                }
+            }));
+    });
+
+    let url = api.url("/test/post-401");
+    let result = http_client!().post_json(&url, &json!({}), 3).await;
+
+    mock.assert_calls_async(1).await;
+    let Err(AgentError::HttpStatus { status, message }) = result else {
+        panic!("expected structured HTTP status error");
+    };
+    assert_eq!(status, 401);
+    assert!(message.contains("token expired"));
 }
 
 #[tokio::test]

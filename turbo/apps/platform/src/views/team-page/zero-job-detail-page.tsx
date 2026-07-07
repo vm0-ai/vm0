@@ -19,8 +19,10 @@ import {
   IconX,
   IconMessageCircle,
   IconWand,
+  IconRoute,
 } from "@tabler/icons-react";
 import type { ConnectorType } from "@vm0/connectors/connectors";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   Button,
   Tabs,
@@ -91,6 +93,12 @@ import {
   matchesConnectorSearch,
   type ConnectorTypeWithStatus,
 } from "../../signals/zero-page/settings/connectors.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+import { userPreferences$ } from "../../signals/zero-page/settings/user-preferences.ts";
+import {
+  agentVisibleWorkflows$,
+  allWorkflowTriggerEntries$,
+} from "../../signals/workflows-page/workflows-signals.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import {
   permConnectorType$,
@@ -103,15 +111,20 @@ import {
   setPermSavingType$,
 } from "../../signals/zero-page/zero-job-detail-page.ts";
 import type { FirewallPolicies } from "@vm0/connectors/firewall-types";
-import { permissionGrantsToFirewallPolicies } from "@vm0/connectors/firewall-metadata/policy";
 import type { PublicConnectorCatalogPermissionDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import type { UserPermissionGrantResponse } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
+import { activeUserPermissionGrantSnapshot } from "../../signals/user-permission-grants.ts";
+import { useUserPermissionGrantExpiryTick } from "../user-permission-grant-expiry-tick.ts";
 import {
   DetailPageBreadcrumbBar,
   DetailPageHeader,
   DetailPageMain,
   DetailPageShell,
 } from "../components/detail-page-layout.tsx";
+import {
+  WorkflowListPanel,
+  workflowTriggerEntryMap,
+} from "../workflows-page/workflows-page.tsx";
 
 // ---------------------------------------------------------------------------
 // Page shell: skeleton, error, header
@@ -230,11 +243,19 @@ const TAB_TRIGGER_CLASS =
 function resolveVisibleTab(
   rawTab: string,
   hideProfileAndInstructions: boolean,
+  showWorkflows: boolean,
 ): string {
-  if (rawTab === "automations" || rawTab === "workflows") {
+  if (rawTab === "automations") {
     return "authorization";
   }
-  if (hideProfileAndInstructions && rawTab !== "authorization") {
+  if (rawTab === "workflows" && !showWorkflows) {
+    return "authorization";
+  }
+  if (
+    hideProfileAndInstructions &&
+    rawTab !== "authorization" &&
+    rawTab !== "workflows"
+  ) {
     return "authorization";
   }
   return rawTab;
@@ -244,10 +265,12 @@ function AgentTabNav({
   activeTab,
   onTabChange,
   showProfileAndInstructions,
+  showWorkflows,
 }: {
   activeTab: string;
   onTabChange: (tab: string) => void;
   showProfileAndInstructions: boolean;
+  showWorkflows: boolean;
 }) {
   return (
     <Tabs
@@ -263,6 +286,9 @@ function AgentTabNav({
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="authorization">Authorization</SelectItem>
+            {showWorkflows && (
+              <SelectItem value="workflows">Workflows</SelectItem>
+            )}
             {showProfileAndInstructions && (
               <SelectItem value="profile">Profile</SelectItem>
             )}
@@ -278,6 +304,12 @@ function AgentTabNav({
           <IconShield size={14} stroke={1.5} />
           Authorization
         </TabsTrigger>
+        {showWorkflows && (
+          <TabsTrigger value="workflows" className={TAB_TRIGGER_CLASS}>
+            <IconRoute size={14} stroke={1.5} />
+            Workflows
+          </TabsTrigger>
+        )}
         {showProfileAndInstructions && (
           <TabsTrigger value="profile" className={TAB_TRIGGER_CLASS}>
             <IconUserCircle size={14} stroke={1.5} />
@@ -664,9 +696,11 @@ function JobPermissionsTab({
   );
   const userGrants =
     userGrantsLoadable.state === "hasData" ? userGrantsLoadable.data : [];
+  useUserPermissionGrantExpiryTick(userGrants);
+  const activeUserGrantSnapshot = activeUserPermissionGrantSnapshot(userGrants);
   const userGrantPolicies =
     userGrantsLoadable.state === "hasData"
-      ? permissionGrantsToFirewallPolicies(userGrants)
+      ? activeUserGrantSnapshot.policies
       : null;
   const drawerInitialPolicies = userGrantPolicies ?? {};
   const [, applyGrantPolicies] = useLoadableSet(applyUserPermissionGrants$);
@@ -753,7 +787,7 @@ function JobPermissionsTab({
             connectorLabel={connectorLabel}
             displayName={displayName}
             initialPolicies={drawerInitialPolicies}
-            initialGrants={userGrants}
+            initialGrants={activeUserGrantSnapshot.grants}
             resetEnabled
             readOnly={!canManagePermissions}
             onApply={async (intent, { metadata }) => {
@@ -765,7 +799,7 @@ function JobPermissionsTab({
                 connectorRef: connectorType,
                 metadata,
                 initialPolicies: drawerInitialPolicies,
-                initialGrants: userGrants,
+                initialGrants: activeUserGrantSnapshot.grants,
                 intent,
                 pageSignal,
                 applyGrantPolicies,
@@ -828,6 +862,37 @@ function JobInstructionsTab() {
   );
 }
 
+function AgentWorkflowsTab({ agentId }: { readonly agentId: string }) {
+  const workflowsLoadable = useLastLoadable(agentVisibleWorkflows$(agentId));
+  const triggerEntriesLoadable = useLastLoadable(allWorkflowTriggerEntries$);
+  const preferences = useLastResolved(userPreferences$);
+  const loading =
+    workflowsLoadable.state === "loading" ||
+    triggerEntriesLoadable.state === "loading";
+  const workflows =
+    workflowsLoadable.state === "hasData" ? workflowsLoadable.data : null;
+  const triggerEntries =
+    triggerEntriesLoadable.state === "hasData"
+      ? triggerEntriesLoadable.data
+      : [];
+  const displayTimezone =
+    preferences?.timezone ??
+    new Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+  return (
+    <div className="mx-auto max-w-[900px]">
+      <WorkflowListPanel
+        workflows={workflows}
+        loading={loading}
+        emptyDescription="Create a workflow for this agent from chat or save one from a useful run."
+        triggerEntriesByWorkflowId={workflowTriggerEntryMap(triggerEntries)}
+        displayTimezone={displayTimezone}
+        showAgentColumn={false}
+      />
+    </div>
+  );
+}
+
 function AgentHeader({
   displayName,
   description,
@@ -835,6 +900,7 @@ function AgentHeader({
   activeTab,
   onTabChange,
   showProfileAndInstructions,
+  showWorkflows,
 }: {
   displayName: string;
   description: string;
@@ -842,6 +908,7 @@ function AgentHeader({
   activeTab: string;
   onTabChange: (tab: string) => void;
   showProfileAndInstructions: boolean;
+  showWorkflows: boolean;
 }) {
   const nav = useSet(detachedNavigateTo$);
   const openMaker = useSet(openAvatarMaker$);
@@ -909,6 +976,7 @@ function AgentHeader({
           activeTab={activeTab}
           onTabChange={onTabChange}
           showProfileAndInstructions={showProfileAndInstructions}
+          showWorkflows={showWorkflows}
         />
       </div>
     </DetailPageHeader>
@@ -948,6 +1016,9 @@ function AgentTabContent({
   switch (activeTab) {
     case "authorization": {
       return <JobPermissionsTab agentId={agentId} displayName={displayName} />;
+    }
+    case "workflows": {
+      return <AgentWorkflowsTab agentId={agentId} />;
     }
     case "profile": {
       return (
@@ -1005,6 +1076,7 @@ function useAgentFields() {
 }
 
 function useTabVisibility(agentId: string, ownerId: string) {
+  const features = useGet(featureSwitch$);
   const statusLoadable = useLastLoadable(zeroOnboardingStatus$);
   const isDefaultAgent =
     statusLoadable.state === "hasData" &&
@@ -1021,12 +1093,19 @@ function useTabVisibility(agentId: string, ownerId: string) {
   const rawTab = useGet(agentActiveTab$);
   const setActiveTab = useSet(setAgentActiveTab$);
   const hideProfileAndInstructions = !isAdmin && !isOwner;
-  const activeTab = resolveVisibleTab(rawTab, hideProfileAndInstructions);
+  const showWorkflows =
+    features[FeatureSwitchKey.AgentDetailWorkflowsTab] ?? false;
+  const activeTab = resolveVisibleTab(
+    rawTab,
+    hideProfileAndInstructions,
+    showWorkflows,
+  );
 
   return {
     isDefaultAgent,
     hideProfileAndInstructions,
     isOwner,
+    showWorkflows,
     activeTab,
     setActiveTab,
   };
@@ -1042,6 +1121,7 @@ export function ZeroJobDetailPage() {
     isDefaultAgent,
     hideProfileAndInstructions,
     isOwner,
+    showWorkflows,
     activeTab,
     setActiveTab,
   } = useTabVisibility(fields.agentId, fields.ownerId);
@@ -1064,6 +1144,7 @@ export function ZeroJobDetailPage() {
         activeTab={activeTab}
         onTabChange={setActiveTab}
         showProfileAndInstructions={!hideProfileAndInstructions}
+        showWorkflows={showWorkflows}
       />
       <DetailPageMain>
         <AgentTabContent

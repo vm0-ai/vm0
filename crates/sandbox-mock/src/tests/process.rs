@@ -320,7 +320,7 @@ async fn wait_process_returns_queued_process_exit() {
         .await
         .unwrap();
 
-    assert_eq!(result.pid, 77);
+    assert_eq!(result.guest_pid, 77);
     assert_eq!(result.stdout, b"out");
     assert_eq!(result.stderr, b"err");
     assert!(result.stream_overflowed);
@@ -347,7 +347,7 @@ async fn wait_process_default_exit_is_unchanged_without_queued_exit() {
         .await
         .unwrap();
 
-    assert_eq!(result.pid, 1);
+    assert_eq!(result.guest_pid, 1);
     assert_eq!(result.termination, ExecTermination::Exited { exit_code: 0 });
     assert!(result.stdout.is_empty());
     assert!(result.stderr.is_empty());
@@ -409,7 +409,7 @@ async fn wait_process_lifecycle_gate_blocks_until_released() {
 
     gate.release_one();
     let result = wait.await.unwrap().unwrap();
-    assert_eq!(result.pid, 1);
+    assert_eq!(result.guest_pid, 1);
     assert_eq!(result.termination, ExecTermination::Exited { exit_code: 0 });
 }
 

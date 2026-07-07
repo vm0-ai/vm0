@@ -11,7 +11,8 @@ type MockWorkflowTriggerOverrides = Partial<
     | "github-label-applied"
     | "google-calendar-event-created"
     | "google-calendar-event-updated"
-    | "google-calendar-event-cancelled";
+    | "google-calendar-event-cancelled"
+    | "notion-child-page-created";
   readonly eventConfig?: Extract<
     ChatThreadWorkflowTrigger,
     { kind: "event" }
@@ -31,6 +32,42 @@ export function setMockWorkflowTriggers(
 
 export function resetMockWorkflowTriggers(): void {
   mockWorkflowTriggers = [];
+}
+
+type MockWorkflowTriggerBase = {
+  readonly id: string;
+  readonly enabled: boolean;
+  readonly chatThreadId: string;
+  readonly nextRunAt: string | null;
+  readonly lastRunAt: string | null;
+  readonly ownerUserId: string;
+  readonly workflow: ChatThreadWorkflowTrigger["workflow"];
+};
+
+function createMockNotionChildPageTrigger(
+  base: MockWorkflowTriggerBase,
+  overrides: MockWorkflowTriggerOverrides,
+  workflow: ChatThreadWorkflowTrigger["workflow"],
+): ChatThreadWorkflowTrigger {
+  return {
+    ...base,
+    kind: "event",
+    eventType: "notion-child-page-created",
+    eventConfig: {
+      provider: "notion",
+      event: "child_page_created",
+      connectorId: "b0000000-0000-4000-a000-000000000001",
+      parentPage: {
+        id: "11111111-1111-4111-8111-111111111111",
+        title: "Roadmap",
+        url: "https://www.notion.so/Roadmap-11111111111141118111111111111111",
+      },
+    },
+    schedule: null,
+    scheduleSummary: null,
+    ...overrides,
+    workflow,
+  } as ChatThreadWorkflowTrigger;
 }
 
 /** A workflow-trigger store row with sensible defaults. */
@@ -138,6 +175,9 @@ export function createMockWorkflowTrigger(
         ...overrides,
         workflow,
       } as ChatThreadWorkflowTrigger;
+    }
+    if (overrides.eventType === "notion-child-page-created") {
+      return createMockNotionChildPageTrigger(base, overrides, workflow);
     }
     return {
       ...base,
