@@ -770,10 +770,10 @@ jobs:
                   type: mrkdwn
                   text: "*Database Migration* ❌ Migration failed\n📦 Version: `${{ needs.release-please.outputs.api_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/api-v${{ needs.release-please.outputs.api_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
 
-  # Build web app production deployment (Staged - prod-eligible, not serving traffic)
+  # Build API production deployment (Staged - prod-eligible, not serving traffic)
   build-api-production:
     needs: release-please
-    if: ${{ needs.release-please.outputs.api_deploy_required == 'true' }}
+    if: ${{ needs.release-please.outputs.releases_created == 'true' }}
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260622
@@ -1126,9 +1126,7 @@ jobs:
     if: >-
       always() &&
       !failure() && !cancelled() &&
-      needs.release-please.outputs.api_deploy_required == 'true' &&
-      (needs.release-please.outputs.api_release_created != 'true' ||
-       needs.migrate-production.result == 'success')
+      needs.release-please.outputs.releases_created == 'true'
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260622
