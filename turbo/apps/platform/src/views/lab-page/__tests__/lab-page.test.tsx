@@ -104,7 +104,7 @@ describe("lab page", () => {
     });
   });
 
-  it("sorts feature switches by maintainer", async () => {
+  it("shows feature switches in name order without sort controls", async () => {
     context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
       return respond(200, { switches: {}, effectiveSwitches: {} });
     });
@@ -120,15 +120,9 @@ describe("lab page", () => {
       featureSwitchRow(FeatureSwitchKey.ApiKeys),
     );
 
-    click(screen.getByRole("combobox", { name: "Sort features" }));
-    click(await screen.findByRole("option", { name: "Maintainer" }));
-
-    await waitFor(() => {
-      expectBefore(
-        featureSwitchRow(FeatureSwitchKey.ApiKeys),
-        featureSwitchRow(FeatureSwitchKey.AgentsPageRedesign),
-      );
-    });
+    expect(
+      screen.queryByRole("combobox", { name: "Sort features" }),
+    ).not.toBeInTheDocument();
   });
 
   it("filters feature switches by maintainer", async () => {
