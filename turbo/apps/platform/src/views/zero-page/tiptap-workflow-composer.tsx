@@ -616,9 +616,11 @@ export function TiptapWorkflowComposer({
     ) {
       return true;
     }
-    // Defer to the parent for send / global shortcuts. If it consumes the event
-    // (e.g. Enter-to-send) it calls preventDefault; otherwise the editor handles
-    // the keystroke (e.g. Shift+Enter or mobile Enter inserts a newline).
+    // Defer to the parent for send / global shortcuts. Sidebar shortcuts such
+    // as Cmd+B are handled there before ProseMirror gets a chance to consume
+    // the keystroke. If the parent consumes the event (e.g. Enter-to-send) it
+    // calls preventDefault; otherwise the editor handles the keystroke (e.g.
+    // Shift+Enter or mobile Enter inserts a newline).
     onKeyDown(event);
     return event.defaultPrevented;
   }
