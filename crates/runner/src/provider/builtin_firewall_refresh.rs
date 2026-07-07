@@ -381,8 +381,7 @@ impl BuiltinFirewallCacheStore {
         let mut cache = self.read_cache_or_empty().await;
         cache.entries.extend(entries);
         cache.updated_at = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
-        let content = serde_json::to_vec(&cache)
-            .map_err(|e| RunnerError::Internal(format!("serialize builtin firewall cache: {e}")))?;
+        let content = serialize_cache(&cache)?;
         state_file::write_private_atomic(&self.path, &content)
             .await
             .map_err(|e| {
@@ -447,6 +446,18 @@ impl BuiltinFirewallCacheStore {
             }
         }
     }
+}
+
+fn serialize_cache(cache: &BuiltinFirewallCatalogCache) -> RunnerResult<Vec<u8>> {
+    let content = serde_json::to_vec(cache)
+        .map_err(|e| RunnerError::Internal(format!("serialize builtin firewall cache: {e}")))?;
+    if content.len() as u64 > BUILTIN_FIREWALL_CACHE_MAX_BYTES {
+        return Err(RunnerError::Internal(format!(
+            "builtin firewall cache exceeds {} bytes",
+            BUILTIN_FIREWALL_CACHE_MAX_BYTES
+        )));
+    }
+    Ok(content)
 }
 
 fn empty_cache() -> BuiltinFirewallCatalogCache {
@@ -564,6 +575,38 @@ mod tests {
         assert!(cache.entries.contains_key("github"));
         assert!(cache.entries.contains_key("slack"));
         assert!(!cache.entries.contains_key("bad"));
+    }
+
+    #[tokio::test]
+    async fn cache_merge_rejects_oversized_cache_without_overwriting_existing_cache() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = cache_store(&dir);
+        store
+            .merge(BTreeMap::from([(
+                "github".to_string(),
+                cached_firewall("github", "https://api.github.com"),
+            )]))
+            .await
+            .unwrap();
+        let original_content = tokio::fs::read_to_string(&store.path).await.unwrap();
+        let oversized_base = format!(
+            "https://{}.example.com",
+            "a".repeat(BUILTIN_FIREWALL_CACHE_MAX_BYTES as usize)
+        );
+
+        let error = store
+            .merge(BTreeMap::from([(
+                "slack".to_string(),
+                cached_firewall("slack", &oversized_base),
+            )]))
+            .await
+            .unwrap_err();
+
+        assert!(error.to_string().contains("builtin firewall cache exceeds"));
+        assert_eq!(
+            tokio::fs::read_to_string(&store.path).await.unwrap(),
+            original_content
+        );
     }
 
     #[tokio::test]
