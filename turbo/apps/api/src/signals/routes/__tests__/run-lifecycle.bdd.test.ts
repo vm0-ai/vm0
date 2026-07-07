@@ -118,6 +118,10 @@ const RUNNER_POLL_TIMING_ACTION_TYPES = [
   "runner_queue_to_poll_response",
 ] as const;
 const RUNNER_CLAIM_TELEMETRY_ACTION_TYPES = [
+  "direct_candidate_notification_to_enqueue",
+  "direct_candidate_inbox_wait",
+  "provider_discovery_to_main_loop",
+  "main_loop_to_local_admission",
   "runner_poll_due_to_job_discovered",
   "runner_poll_http_request",
 ] as const;
@@ -5358,6 +5362,11 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
           discoverySource: "poll",
           jobDiscoveredToClaimRequestMs: 1234,
           localAdmissionToClaimRequestMs: 56,
+          directCandidateNotificationToEnqueueMs: 12,
+          directCandidateInboxWaitMs: 34,
+          providerDiscoveryToMainLoopMs: 45,
+          mainLoopToLocalAdmissionMs: 67,
+          preLocalAdmissionOutcome: "local_holder",
           pollDueToJobDiscoveredMs: 789,
           pollHttpRequestMs: 321,
           pollReason: "deferred",
@@ -5507,6 +5516,7 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
           auth_type: "user",
           discovery_source: "poll",
           poll_reason: "deferred",
+          pre_local_admission_outcome: "local_holder",
         }),
       );
     }
@@ -5517,6 +5527,46 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     ).toStrictEqual(
       expect.objectContaining({
         duration_ms: 789,
+      }),
+    );
+    expect(
+      timingEvents.find((event) => {
+        return event.op_type === "direct_candidate_notification_to_enqueue";
+      }),
+    ).toStrictEqual(
+      expect.objectContaining({
+        duration_ms: 12,
+        pre_local_admission_outcome: "local_holder",
+      }),
+    );
+    expect(
+      timingEvents.find((event) => {
+        return event.op_type === "direct_candidate_inbox_wait";
+      }),
+    ).toStrictEqual(
+      expect.objectContaining({
+        duration_ms: 34,
+        pre_local_admission_outcome: "local_holder",
+      }),
+    );
+    expect(
+      timingEvents.find((event) => {
+        return event.op_type === "provider_discovery_to_main_loop";
+      }),
+    ).toStrictEqual(
+      expect.objectContaining({
+        duration_ms: 45,
+        pre_local_admission_outcome: "local_holder",
+      }),
+    );
+    expect(
+      timingEvents.find((event) => {
+        return event.op_type === "main_loop_to_local_admission";
+      }),
+    ).toStrictEqual(
+      expect.objectContaining({
+        duration_ms: 67,
+        pre_local_admission_outcome: "local_holder",
       }),
     );
     expect(

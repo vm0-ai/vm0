@@ -14,6 +14,7 @@ pub(super) struct DirectJobCandidate {
     run_id: RunId,
     profile_name: String,
     discovered_at: StdInstant,
+    enqueued_at: Option<StdInstant>,
     cli_agent_session_id: Option<String>,
     affinity_protected_until: Option<String>,
 }
@@ -59,6 +60,7 @@ impl DirectJobCandidate {
             run_id,
             profile_name,
             discovered_at,
+            enqueued_at: None,
             cli_agent_session_id,
             affinity_protected_until,
         }
@@ -77,10 +79,29 @@ impl DirectJobCandidate {
         self.discovered_at
     }
 
+    #[cfg(test)]
+    pub(super) fn enqueued_at(&self) -> Option<StdInstant> {
+        self.enqueued_at
+    }
+
+    fn mark_enqueued(&mut self) {
+        if self.enqueued_at.is_none() {
+            self.enqueued_at = Some(StdInstant::now());
+        }
+    }
+
     pub(super) fn into_job_candidate(self) -> JobCandidate {
+        let dequeued_at = StdInstant::now();
+        let notification_to_enqueue_elapsed = self
+            .enqueued_at
+            .map(|enqueued_at| enqueued_at.saturating_duration_since(self.discovered_at));
+        let inbox_wait_elapsed = self
+            .enqueued_at
+            .map(|enqueued_at| dequeued_at.saturating_duration_since(enqueued_at));
         JobCandidate::new_with_discovered_at(self.run_id, self.profile_name, self.discovered_at)
             .with_affinity_metadata(self.cli_agent_session_id, self.affinity_protected_until)
             .with_discovery_source(JobDiscoverySource::Ably)
+            .with_direct_candidate_timing(notification_to_enqueue_elapsed, inbox_wait_elapsed)
     }
 
     fn merge_metadata_from(&mut self, candidate: Self) {
@@ -180,6 +201,8 @@ impl DirectCandidateInbox {
             };
         }
 
+        let mut candidate = candidate;
+        candidate.mark_enqueued();
         inner.order.push_back(run_id);
         inner.candidates.insert(run_id, candidate);
         let snapshot = snapshot(inner.order.len(), self.capacity);
@@ -279,9 +302,16 @@ mod tests {
 
         let candidate = inbox.try_pop().await.expect("direct candidate");
         assert_eq!(candidate.discovered_at(), first_discovered_at);
+        assert!(candidate.enqueued_at().is_some());
         let candidate = candidate.into_job_candidate();
         assert_eq!(candidate.cli_agent_session_id(), Some("sess-1"));
         assert!(candidate.is_affinity_protected());
+        assert!(
+            candidate
+                .direct_candidate_notification_to_enqueue_elapsed()
+                .is_some_and(|elapsed| elapsed >= Duration::from_secs(5))
+        );
+        assert!(candidate.direct_candidate_inbox_wait_elapsed().is_some());
         assert!(inbox.try_pop().await.is_none());
     }
 
