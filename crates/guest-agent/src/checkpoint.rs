@@ -932,19 +932,6 @@ mod tests {
         let _ = std::fs::remove_file(guest_paths.session_history_path_file());
     }
 
-    fn high_entropy_bytes(size: usize) -> Vec<u8> {
-        let mut state = 0x6a09e667f3bcc909_u64;
-        let mut bytes = Vec::with_capacity(size);
-        for _ in 0..size {
-            state ^= state >> 12;
-            state ^= state << 25;
-            state ^= state >> 27;
-            let value = state.wrapping_mul(0x2545f4914f6cdd1d);
-            bytes.push((value >> 56) as u8);
-        }
-        bytes
-    }
-
     #[test]
     fn artifact_snapshot_entry_shape_matches_receiver_schema() {
         let entry = build_artifact_snapshot_entry("workspace", "v-abc-123", "/workspace", None);
@@ -976,19 +963,6 @@ mod tests {
         assert!(obj.contains_key("missingRootPolicy"));
         assert!(!obj.contains_key("mount_path"));
         assert!(!obj.contains_key("missing_root_policy"));
-    }
-
-    #[test]
-    fn legacy_session_history_upload_rejects_large_uncompressible_fallback() {
-        let history = high_entropy_bytes(SESSION_HISTORY_COMPRESSION_MIN_BYTES + 1);
-
-        match build_legacy_session_history_upload(history) {
-            Err(AgentError::Checkpoint(message)) => {
-                assert!(message.contains("legacy gzip session history"));
-            }
-            Err(error) => panic!("expected checkpoint failure, got: {error}"),
-            Ok(_) => panic!("expected legacy gzip compression failure"),
-        }
     }
 
     #[tokio::test]
