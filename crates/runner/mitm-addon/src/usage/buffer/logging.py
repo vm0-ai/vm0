@@ -1,9 +1,33 @@
-"""Proxy-log helpers for usage buffer flushes."""
+"""Proxy-log helpers for usage buffer flushes.
+
+Most flush summaries are ordinary ``usage_event_buffer_flush`` records, but
+retained or dropped batches can be billing-impacting underbilling signals:
+
+- ``started`` marks enqueue/admission start.
+- ``enqueued`` marks enqueue/admission completion and may include retained
+  counters for batches kept for retry.
+- ``failed`` marks an enqueue exception and logs at error level.
+- ``retained`` marks asynchronous delivery outcomes kept for retry.
+- ``dropped`` marks retained batches whose retry budget was exhausted.
+
+Dropped retained batches always emit ``usage_underbilling`` with
+``reason=retry_budget_exhausted`` and ``underbilling_class=confirmed``.
+Shutdown-retained batches emit ``usage_underbilling`` with
+``reason=shutdown_retained_without_retry`` and ``underbilling_class=risk``.
+
+Operators should use ``retained_source_event_count`` and
+``retained_webhook_batch_count`` for retained work, and
+``dropped_source_event_count`` and ``dropped_webhook_batch_count`` for confirmed
+drops. Dropped retained batches also include ``retained_retry_count``. When no
+proxy log path exists, ordinary flush records are skipped; underbilling records
+use the stderr fallback in ``log_usage_underbilling``.
+"""
 
 from __future__ import annotations
 
 import time
 from collections.abc import Iterable
+from typing import Literal, TypeAlias
 
 from logging_utils import log_proxy_entry
 
@@ -14,6 +38,11 @@ from .models import (
     _PendingBatch,
 )
 from .summaries import _build_flush_summaries
+
+UsageFlushPhase: TypeAlias = Literal["started", "enqueued", "failed", "retained", "dropped"]
+
+_RETRY_BUDGET_EXHAUSTED_REASON = "retry_budget_exhausted"
+_SHUTDOWN_RETAINED_WITHOUT_RETRY_REASON = "shutdown_retained_without_retry"
 
 
 def _log_dropped_batches(
@@ -28,7 +57,7 @@ def _log_dropped_batches(
         trigger,
         flush_sequence,
         _build_flush_summaries([pending_batch.batch for pending_batch in dropped_batches]),
-        reason="retry_budget_exhausted",
+        reason=_RETRY_BUDGET_EXHAUSTED_REASON,
         retained_retry_count=max(
             pending_batch.retained_retry_count for pending_batch in dropped_batches
         ),
@@ -36,7 +65,7 @@ def _log_dropped_batches(
 
 
 def _log_flush_summaries(
-    phase: str,
+    phase: UsageFlushPhase,
     trigger: UsageFlushTrigger,
     flush_sequence: int,
     summaries: Iterable[_FlushSummary],
@@ -90,7 +119,7 @@ def _log_flush_summaries(
             log_usage_underbilling(
                 summary.proxy_log_path,
                 message,
-                reason or "retry_budget_exhausted",
+                reason or _RETRY_BUDGET_EXHAUSTED_REASON,
                 "confirmed",
                 **extra,
             )
@@ -100,7 +129,7 @@ def _log_flush_summaries(
             log_usage_underbilling(
                 summary.proxy_log_path,
                 message,
-                "shutdown_retained_without_retry",
+                _SHUTDOWN_RETAINED_WITHOUT_RETRY_REASON,
                 "risk",
                 **extra,
             )
