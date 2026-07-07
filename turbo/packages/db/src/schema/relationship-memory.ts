@@ -10,6 +10,14 @@ import {
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
+import type {
+  RelationshipInteractionMetadata,
+  RelationshipSyncJobPayload,
+} from "@vm0/db/jsonb-contracts/relationship-memory";
+export type {
+  RelationshipInteractionMetadata,
+  RelationshipSyncJobPayload,
+} from "@vm0/db/jsonb-contracts/relationship-memory";
 
 export const RELATIONSHIP_ENTITY_TYPES = ["person", "organization"] as const;
 export type RelationshipEntityType = (typeof RELATIONSHIP_ENTITY_TYPES)[number];
@@ -68,33 +76,6 @@ export const RELATIONSHIP_MEMORY_BOOTSTRAP_STATUSES = [
 ] as const;
 export type RelationshipMemoryBootstrapStatus =
   (typeof RELATIONSHIP_MEMORY_BOOTSTRAP_STATUSES)[number];
-
-export interface RelationshipSyncJobPayload {
-  readonly connectorId?: string;
-  readonly relationshipStateId?: string;
-  readonly gmailThreadId?: string;
-  readonly gmailMessageIds?: readonly string[];
-  readonly gmailMessage?: {
-    readonly historyId: string;
-    readonly messageId: string;
-    readonly threadId: string | null;
-    readonly mailboxEmail?: string;
-    readonly occurredAt?: string | null;
-    readonly direction?: "received" | "sent" | null;
-    readonly from?: string | null;
-    readonly to?: readonly string[];
-    readonly cc?: readonly string[];
-    readonly subject?: string | null;
-  };
-  readonly historyId?: string;
-  readonly reason?: string;
-}
-
-export interface RelationshipInteractionMetadata {
-  readonly direction?: "sent" | "received" | "mixed" | "unknown";
-  readonly participants?: readonly string[];
-  readonly labels?: readonly string[];
-}
 
 export const relationshipEntities = pgTable(
   "relationship_entities",

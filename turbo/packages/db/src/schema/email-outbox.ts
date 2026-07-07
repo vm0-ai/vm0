@@ -7,6 +7,12 @@ import {
   integer,
   index,
 } from "drizzle-orm/pg-core";
+import type {
+  EmailOutboxAddresses,
+  EmailOutboxHeaders,
+  EmailOutboxPostSendAction,
+  EmailOutboxTemplate,
+} from "@vm0/db/jsonb-contracts/email-outbox";
 
 /**
  * Email Outbox table
@@ -25,17 +31,18 @@ export const emailOutbox = pgTable(
 
     // Email envelope
     fromAddress: text("from_address").notNull(),
-    toAddresses: jsonb("to_addresses").notNull(), // string | string[]
-    ccAddresses: jsonb("cc_addresses"), // string | string[] | null
+    toAddresses: jsonb("to_addresses").$type<EmailOutboxAddresses>().notNull(),
+    ccAddresses: jsonb("cc_addresses").$type<EmailOutboxAddresses>(),
     subject: text("subject").notNull(),
     replyTo: text("reply_to"),
-    headers: jsonb("headers"), // Record<string, string> | null
+    headers: jsonb("headers").$type<EmailOutboxHeaders>(),
 
     // Template (discriminated union stored as JSONB)
-    template: jsonb("template").notNull(), // EmailTemplate
+    template: jsonb("template").$type<EmailOutboxTemplate>().notNull(),
 
     // Post-send action for email threading (discriminated union)
-    postSendAction: jsonb("post_send_action"), // PostSendAction | null
+    postSendAction:
+      jsonb("post_send_action").$type<EmailOutboxPostSendAction>(),
 
     // Queue status
     status: text("status").notNull().default("pending"), // pending | sending | sent | failed

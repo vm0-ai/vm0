@@ -5,6 +5,7 @@ import {
   jsonb,
   primaryKey,
 } from "drizzle-orm/pg-core";
+import type { UserFeatureSwitches } from "@vm0/db/jsonb-contracts/user-feature-switches";
 
 export const userFeatureSwitches = pgTable(
   "user_feature_switches",
@@ -12,7 +13,7 @@ export const userFeatureSwitches = pgTable(
     orgId: text("org_id").notNull(),
     userId: text("user_id").notNull(),
     switches: jsonb("switches")
-      .$type<Record<string, boolean>>()
+      .$type<UserFeatureSwitches>()
       .notNull()
       .default({}),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),

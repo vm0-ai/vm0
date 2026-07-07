@@ -7,13 +7,11 @@ import {
   timestamp,
   index,
 } from "drizzle-orm/pg-core";
-
-export interface RunnerHeldSessionState {
-  // Compatibility JSON field name. Semantically this is the CLI agent session
-  // id that keys runner sandbox reuse affinity.
-  readonly sessionId: string;
-  readonly lastCompletedAt: string;
-}
+import type {
+  RunnerAdmittableProfiles,
+  RunnerHeldSessionStates,
+} from "@vm0/db/jsonb-contracts/runner-state";
+export type { RunnerHeldSessionState } from "@vm0/db/jsonb-contracts/runner-state";
 
 export const runnerState = pgTable(
   "runner_state",
@@ -28,11 +26,11 @@ export const runnerState = pgTable(
     allocatedMemoryMb: integer("allocated_memory_mb").notNull().default(0),
     runningCount: integer("running_count").notNull().default(0),
     admittableProfiles: jsonb("admittable_profiles")
-      .$type<string[]>()
+      .$type<RunnerAdmittableProfiles>()
       .default([])
       .notNull(),
     heldSessionStates: jsonb("held_session_states")
-      .$type<RunnerHeldSessionState[]>()
+      .$type<RunnerHeldSessionStates>()
       .default([])
       .notNull(),
     mode: varchar("mode", { length: 20 }).notNull().default("running"),
