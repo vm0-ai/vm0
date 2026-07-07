@@ -422,19 +422,6 @@ impl CompositeNormalOperation {
             })
     }
 
-    fn mark_possible_guest_write_started(&mut self) -> io::Result<()> {
-        let normal_operation = self.normal_operation.as_mut().ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::InvalidData,
-                "composite normal operation already completed",
-            )
-        })?;
-        normal_operation
-            .mark_possible_guest_write_started()
-            .map_err(normal_operation_transition_error)?;
-        Ok(())
-    }
-
     fn complete(mut self) -> io::Result<()> {
         let normal_operation = self.normal_operation.take().ok_or_else(|| {
             io::Error::new(
@@ -781,7 +768,7 @@ async fn request_on_shared_with_composite_operation_and_observer_frame_builder(
         build_frame,
         timeout,
         || {
-            normal_operation.mark_possible_guest_write_started()?;
+            mark_pending_normal_operation_possible_guest_write(shared, seq, |_| Ok(()))?;
             write_observer.record_write_start()
         },
         rx,
