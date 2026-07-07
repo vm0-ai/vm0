@@ -381,7 +381,7 @@ describe("model-first canonical catalog", () => {
       "claude-sonnet-4-6",
       "MiniMax-M3",
     ]);
-    expect(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL).toBe("MiniMax-M3");
+    expect(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL).toBe("claude-sonnet-4-6");
     expect(LIMITED_FREE1_DEFAULT_RUN_MODEL).toBe("claude-sonnet-4-6");
     expect(getDefaultModel("vm0")).toBe(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL);
     expect(getDefaultOrgModelPolicySeed()).toEqual(

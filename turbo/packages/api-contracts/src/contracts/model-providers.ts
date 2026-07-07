@@ -155,7 +155,7 @@ export const DEFAULT_ORG_MODEL_POLICY_MODELS = [
 ] as const satisfies readonly SupportedRunModel[];
 
 export const DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL =
-  "MiniMax-M3" as const satisfies SupportedRunModel;
+  "claude-sonnet-4-6" as const satisfies SupportedRunModel;
 
 export const LIMITED_FREE1_DEFAULT_RUN_MODEL =
   "claude-sonnet-4-6" as const satisfies SupportedRunModel;
