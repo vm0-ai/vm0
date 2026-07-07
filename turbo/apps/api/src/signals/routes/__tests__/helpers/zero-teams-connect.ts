@@ -34,6 +34,7 @@ export interface TeamsConnectFixture {
   readonly teamsTeamId: string;
   readonly teamsTeamName: string;
   readonly teamsUserId: string;
+  readonly teamsAadObjectId: string;
   readonly serviceUrl: string;
 }
 
@@ -44,6 +45,7 @@ export function setupTeamsConnectTestEnv(
   mockEnv("MICROSOFT_TEAMS_BOT_APP_ID", BOT_APP_ID);
   mockEnv("MICROSOFT_TEAMS_APP_TENANT_ID", TEAMS_APP_TENANT_ID);
   mockEnv("APP_URL", appUrl);
+  mockEnv("VM0_WEB_URL", appUrl);
 }
 
 export function teamsConnectFixture(
@@ -61,6 +63,9 @@ export function teamsConnectFixture(
       `team_${randomUUID().replace(/-/g, "").slice(0, 10)}`,
     teamsTeamName: overrides.teamsTeamName ?? "Test Team",
     teamsUserId: overrides.teamsUserId ?? `29:user-${randomUUID().slice(0, 8)}`,
+    teamsAadObjectId:
+      overrides.teamsAadObjectId ??
+      `aad_${randomUUID().replace(/-/g, "").slice(0, 10)}`,
     serviceUrl: overrides.serviceUrl ?? SERVICE_URL,
   };
 }
@@ -148,7 +153,7 @@ export function teamsMessageActivityForTest(
     from: {
       id: fixture.teamsUserId,
       name: "Ada Lovelace",
-      aadObjectId: "aad-user-1",
+      aadObjectId: fixture.teamsAadObjectId,
       userPrincipalName: "ada@example.com",
     },
     recipient: { id: "28:bot-1", name: "Zero" },

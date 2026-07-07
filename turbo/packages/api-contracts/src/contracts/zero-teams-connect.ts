@@ -12,6 +12,7 @@ const teamsConnectStatusSchema = z.object({
   isConnected: z.boolean(),
   isAdmin: z.boolean(),
   installUrl: nullableStringSchema.optional(),
+  connectUrl: nullableStringSchema.optional(),
   tenantId: nullableStringSchema.optional(),
   tenantName: nullableStringSchema.optional(),
   teamId: nullableStringSchema.optional(),
@@ -19,18 +20,31 @@ const teamsConnectStatusSchema = z.object({
   defaultAgentName: nullableStringSchema.optional(),
 });
 
-const teamsConnectBodySchema = z.object({
-  tenantId: z.string().min(1),
-  teamsUserId: z.string().min(1),
-  teamsUserDisplayName: z.string().min(1).optional(),
-  teamsUserPrincipalName: z.string().min(1).optional(),
-  teamId: z.string().min(1).optional(),
-  teamName: z.string().min(1).optional(),
-  serviceUrl: z.string().min(1).optional(),
-  conversationId: z.string().min(1).optional(),
-  channelId: z.string().min(1).optional(),
-  threadId: z.string().min(1).optional(),
-});
+const teamsConnectBodySchema = z
+  .object({
+    tenantId: z.string().min(1),
+    tenantName: z.string().min(1).optional(),
+    teamsUserId: z.string().min(1).optional(),
+    teamsAadObjectId: z.string().min(1).optional(),
+    teamsUserDisplayName: z.string().min(1).optional(),
+    teamsUserPrincipalName: z.string().min(1).optional(),
+    teamId: z.string().min(1).optional(),
+    teamName: z.string().min(1).optional(),
+    serviceUrl: z.string().min(1).optional(),
+    conversationId: z.string().min(1).optional(),
+    activityId: z.string().min(1).optional(),
+    channelId: z.string().min(1).optional(),
+    threadId: z.string().min(1).optional(),
+  })
+  .refine(
+    (body) => {
+      return Boolean(body.teamsUserId || body.teamsAadObjectId);
+    },
+    {
+      message: "teamsUserId or teamsAadObjectId is required",
+      path: ["teamsUserId"],
+    },
+  );
 
 const teamsConnectResponseSchema = z.object({
   success: z.literal(true),

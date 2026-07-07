@@ -10,9 +10,17 @@ import { teamsUserAgentPreferences } from "@vm0/db/schema/teams-user-agent-prefe
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import type { TeamsInboundActivity } from "@vm0/api-contracts/contracts/zero-teams-bot";
 import { and, eq, or } from "drizzle-orm";
+import { convert } from "html-to-text";
 
 import { logger } from "../../lib/log";
+import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
+import {
+  fetchTeamsChannelMessage,
+  fetchTeamsChannelMessageReplies,
+  fetchTeamsChannelMessages,
+  type TeamsGraphMessage,
+} from "../external/teams-bot-client";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { formatIntegrationRunError$ } from "./integration-run-errors.service";
 import {
@@ -28,11 +36,21 @@ import { buildTeamsConnectUrlForActivity } from "./zero-teams-connect.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
 
 const L = logger("TeamsDispatch");
+const TEAMS_LOGIN_PROMPT_FALLBACK_TEXT = "Please connect your account first";
 
 type TeamsInstallation = typeof teamsOrgInstallations.$inferSelect;
 type BoundTeamsInstallation = TeamsInstallation & { readonly orgId: string };
 type TeamsConnection = typeof teamsOrgConnections.$inferSelect;
 type TeamsMessageActivity = Extract<TeamsInboundActivity, { kind: "message" }>;
+
+interface TeamsContextMessage {
+  readonly id: string | null;
+  readonly createdDateTime: string | null;
+  readonly text: string;
+  readonly senderId: string;
+  readonly senderName: string | null;
+  readonly senderPrincipalName: string | null;
+}
 
 interface TeamsAgent {
   readonly id: string;
@@ -98,8 +116,36 @@ async function installationForTenant(
 async function connectionForTeamsUser(
   db: Db,
   tenantId: string,
-  teamsUserId: string,
+  teamsUserId: string | null,
+  teamsAadObjectId: string | null,
 ): Promise<TeamsConnection | undefined> {
+  if (teamsAadObjectId) {
+    const [connection] = await db
+      .select()
+      .from(teamsOrgConnections)
+      .where(
+        and(
+          eq(teamsOrgConnections.teamsTenantId, tenantId),
+          eq(teamsOrgConnections.teamsAadObjectId, teamsAadObjectId),
+        ),
+      )
+      .limit(1);
+
+    if (connection) {
+      if (teamsUserId && connection.teamsUserId !== teamsUserId) {
+        await db
+          .update(teamsOrgConnections)
+          .set({ teamsUserId, updatedAt: nowDate() })
+          .where(eq(teamsOrgConnections.id, connection.id));
+      }
+      return connection;
+    }
+  }
+
+  if (!teamsUserId) {
+    return undefined;
+  }
+
   const [connection] = await db
     .select()
     .from(teamsOrgConnections)
@@ -289,9 +335,333 @@ async function resolveCompatibleTeamsThreadSession(args: {
   return threadSession.agentSessionId;
 }
 
+function formatTeamsSenderBlock(message: TeamsContextMessage): string {
+  const parts = [`id: ${message.senderId}`];
+  if (message.senderName) {
+    parts.push(`name: ${message.senderName}`);
+  }
+  if (message.senderPrincipalName) {
+    parts.push(`email: ${message.senderPrincipalName}`);
+  }
+  return `- SENDER: {${parts.join(", ")}}`;
+}
+
+function formatTeamsContextMessage(
+  message: TeamsContextMessage,
+  relativeIndex: number,
+): string {
+  return [
+    "---",
+    "",
+    `- RELATIVE_INDEX: ${relativeIndex}`,
+    formatTeamsSenderBlock(message),
+    "",
+    message.text,
+  ].join("\n");
+}
+
+const TEAMS_CONTEXT_PREAMBLE = [
+  "The messages below are from a Microsoft Teams conversation. When responding:",
+  "- Messages closer to RELATIVE_INDEX 0 are more recent; prioritize them.",
+  "- Match the tone of the conversation; casual messages deserve casual replies.",
+  "- Only provide technical analysis when explicitly asked a technical question.",
+  "- Keep responses proportional to the message length and complexity.",
+].join("\n");
+
+function formatTeamsThreadContext(
+  messages: readonly TeamsContextMessage[],
+): string {
+  return formatTeamsContext("# Microsoft Teams Thread Context", messages);
+}
+
+function formatRecentTeamsChannelContext(
+  messages: readonly TeamsContextMessage[],
+): string {
+  return formatTeamsContext("# Recent Channel Messages", messages);
+}
+
+function formatTeamsContext(
+  header: string,
+  messages: readonly TeamsContextMessage[],
+): string {
+  if (messages.length === 0) {
+    return "";
+  }
+
+  const totalMessages = messages.length;
+  const formattedMessages = messages.map((message, index) => {
+    return formatTeamsContextMessage(message, index - totalMessages);
+  });
+  return `${header}\n\n${TEAMS_CONTEXT_PREAMBLE}\n\n${formattedMessages.join(
+    "\n\n",
+  )}\n\n---`;
+}
+
+function teamsGraphMessageText(message: TeamsGraphMessage): string {
+  const content = message.body?.content?.trim() ?? "";
+  if (message.body?.contentType === "html") {
+    return convert(content, { wordwrap: false }).trim();
+  }
+  return content;
+}
+
+function teamsGraphMessageSender(
+  message: TeamsGraphMessage,
+): Pick<
+  TeamsContextMessage,
+  "senderId" | "senderName" | "senderPrincipalName"
+> {
+  const sender =
+    message.from?.user ?? message.from?.application ?? message.from?.device;
+  return {
+    senderId: sender?.id ?? "unknown",
+    senderName: sender?.displayName ?? null,
+    senderPrincipalName: null,
+  };
+}
+
+function teamsGraphContextMessage(
+  message: TeamsGraphMessage,
+): TeamsContextMessage | null {
+  if (message.messageType && message.messageType !== "message") {
+    return null;
+  }
+
+  const text = teamsGraphMessageText(message);
+  if (!text) {
+    return null;
+  }
+
+  return {
+    id: message.id ?? null,
+    createdDateTime: message.createdDateTime ?? null,
+    text,
+    ...teamsGraphMessageSender(message),
+  };
+}
+
+function sortTeamsContextMessages(
+  messages: readonly TeamsContextMessage[],
+): TeamsContextMessage[] {
+  return [...messages].sort((left, right) => {
+    const leftTime = left.createdDateTime ?? "";
+    const rightTime = right.createdDateTime ?? "";
+    const byTime = leftTime.localeCompare(rightTime);
+    if (byTime !== 0) {
+      return byTime;
+    }
+    return (left.id ?? "").localeCompare(right.id ?? "");
+  });
+}
+
+function teamsContextMessages(
+  messages: readonly TeamsGraphMessage[],
+  excludedIds: ReadonlySet<string>,
+): TeamsContextMessage[] {
+  return sortTeamsContextMessages(
+    messages.flatMap((message) => {
+      if (message.id && excludedIds.has(message.id)) {
+        return [];
+      }
+      const contextMessage = teamsGraphContextMessage(message);
+      return contextMessage ? [contextMessage] : [];
+    }),
+  );
+}
+
+function isTeamsThreadReply(activity: TeamsMessageActivity): boolean {
+  return Boolean(
+    activity.activityId && activity.threadId !== activity.activityId,
+  );
+}
+
+function currentTeamsActivityIds(
+  activity: TeamsMessageActivity,
+): ReadonlySet<string> {
+  const ids = new Set<string>();
+  if (activity.activityId) {
+    ids.add(activity.activityId);
+  }
+  return ids;
+}
+
+function recentChannelContextExcludedIds(
+  activity: TeamsMessageActivity,
+): ReadonlySet<string> {
+  const ids = new Set<string>();
+  if (activity.activityId) {
+    ids.add(activity.activityId);
+  }
+  if (activity.threadId) {
+    ids.add(activity.threadId);
+  }
+  return ids;
+}
+
+async function fetchTeamsThreadRootMessage(args: {
+  readonly activity: TeamsMessageActivity;
+  readonly signal: AbortSignal;
+}): Promise<TeamsGraphMessage | null> {
+  const { activity } = args;
+  if (
+    !isTeamsThreadReply(activity) ||
+    !activity.teamId ||
+    !activity.channelId
+  ) {
+    return null;
+  }
+
+  const rootResult = await fetchTeamsChannelMessage({
+    tenantId: activity.tenantId,
+    teamId: activity.teamId,
+    channelId: activity.channelId,
+    messageId: activity.threadId,
+    signal: args.signal,
+  });
+  if (rootResult.kind === "teams-error") {
+    L.warn("Teams thread root context fetch failed", {
+      tenantId: activity.tenantId,
+      teamId: activity.teamId,
+      channelId: activity.channelId,
+      threadId: activity.threadId,
+      status: rootResult.status,
+      error: rootResult.error,
+    });
+    return null;
+  }
+
+  return rootResult.message;
+}
+
+async function fetchTeamsThreadContext(args: {
+  readonly activity: TeamsMessageActivity;
+  readonly rootMessage: TeamsGraphMessage | null;
+  readonly signal: AbortSignal;
+}): Promise<string> {
+  const { activity } = args;
+  if (!args.rootMessage || !activity.teamId || !activity.channelId) {
+    return "";
+  }
+
+  const repliesResult = await fetchTeamsChannelMessageReplies({
+    tenantId: activity.tenantId,
+    teamId: activity.teamId,
+    channelId: activity.channelId,
+    messageId: activity.threadId,
+    limit: 100,
+    signal: args.signal,
+  });
+  if (repliesResult.kind === "teams-error") {
+    L.warn("Teams thread replies context fetch failed", {
+      tenantId: activity.tenantId,
+      teamId: activity.teamId,
+      channelId: activity.channelId,
+      threadId: activity.threadId,
+      status: repliesResult.status,
+      error: repliesResult.error,
+    });
+    return "";
+  }
+
+  return formatTeamsThreadContext(
+    teamsContextMessages(
+      [args.rootMessage, ...repliesResult.messages],
+      currentTeamsActivityIds(activity),
+    ),
+  );
+}
+
+function teamsMessagesBeforeReference(
+  messages: readonly TeamsGraphMessage[],
+  reference: TeamsGraphMessage | null,
+): readonly TeamsGraphMessage[] {
+  const referenceTime = reference?.createdDateTime;
+  if (!referenceTime) {
+    return messages;
+  }
+
+  return messages.filter((message) => {
+    return !message.createdDateTime || message.createdDateTime < referenceTime;
+  });
+}
+
+async function fetchRecentTeamsChannelContext(args: {
+  readonly activity: TeamsMessageActivity;
+  readonly beforeMessage: TeamsGraphMessage | null;
+  readonly signal: AbortSignal;
+}): Promise<string> {
+  const { activity } = args;
+  const teamId = activity.teamId;
+  const channelId = activity.channelId;
+  if (!teamId || !channelId) {
+    return "";
+  }
+
+  const result = await fetchTeamsChannelMessages({
+    tenantId: activity.tenantId,
+    teamId,
+    channelId,
+    limit: 10,
+    signal: args.signal,
+  });
+  if (result.kind === "teams-error") {
+    L.warn("Teams channel context fetch failed", {
+      tenantId: activity.tenantId,
+      teamId: activity.teamId,
+      channelId: activity.channelId,
+      status: result.status,
+      error: result.error,
+    });
+    return "";
+  }
+
+  return formatRecentTeamsChannelContext(
+    teamsContextMessages(
+      teamsMessagesBeforeReference(result.messages, args.beforeMessage),
+      recentChannelContextExcludedIds(activity),
+    ),
+  );
+}
+
+function isTeamsDirectMessage(activity: TeamsMessageActivity): boolean {
+  return activity.conversationType === "personal";
+}
+
+function shouldDispatchTeamsMessage(activity: TeamsMessageActivity): boolean {
+  return isTeamsDirectMessage(activity) || activity.mentionsRecipient;
+}
+
+async function fetchTeamsPromptContext(args: {
+  readonly activity: TeamsMessageActivity;
+  readonly signal: AbortSignal;
+}): Promise<string> {
+  const threadRootMessage = await fetchTeamsThreadRootMessage({
+    activity: args.activity,
+    signal: args.signal,
+  });
+  const recentChannelContext = isTeamsDirectMessage(args.activity)
+    ? ""
+    : await fetchRecentTeamsChannelContext({
+        activity: args.activity,
+        beforeMessage: threadRootMessage,
+        signal: args.signal,
+      });
+  const threadContext = await fetchTeamsThreadContext({
+    activity: args.activity,
+    rootMessage: threadRootMessage,
+    signal: args.signal,
+  });
+  return [recentChannelContext, threadContext]
+    .filter((context) => {
+      return context.length > 0;
+    })
+    .join("\n\n");
+}
+
 function buildTeamsPrompt(args: {
   readonly activity: TeamsMessageActivity;
   readonly installation: TeamsInstallation;
+  readonly threadContext: string;
 }): string {
   const recipient = args.activity.recipient;
   return [
@@ -309,13 +679,12 @@ function buildTeamsPrompt(args: {
     ...optionalLine("Teams app ID", args.activity.teamsAppId),
     ...optionalLine("Bot ID", recipient?.id ?? args.installation.botId),
     ...optionalLine("Bot name", recipient?.name ?? args.installation.botName),
-    `Teams user ID: ${args.activity.sender.id}`,
-    ...optionalLine("Teams user display name", args.activity.sender.name),
-    ...optionalLine(
-      "Teams user principal name",
-      args.activity.sender.userPrincipalName,
-    ),
-  ].join("\n");
+    args.threadContext,
+  ]
+    .filter((line): line is string => {
+      return line.length > 0;
+    })
+    .join("\n");
 }
 
 function callbackPayload(args: {
@@ -356,6 +725,7 @@ const runAgentForTeams$ = command(
       readonly connection: TeamsConnection;
       readonly composeId: string;
       readonly sessionId: string | undefined;
+      readonly threadContext: string;
       readonly apiStartTime: number;
       readonly modelRoute: IntegrationModelRoutePin | undefined;
     },
@@ -383,6 +753,7 @@ const runAgentForTeams$ = command(
         appendSystemPrompt: buildTeamsPrompt({
           activity: args.activity,
           installation: args.installation,
+          threadContext: args.threadContext,
         }),
         userInfoExtras: {
           teamsUserDisplayName: args.activity.sender.name ?? undefined,
@@ -446,11 +817,37 @@ function connectNotice(
   });
   return {
     kind: "notice",
-    replyText: connectUrl
-      ? `Please connect your Microsoft Teams account to Zero first: ${connectUrl}`
-      : "Please connect your Microsoft Teams account to Zero first.",
+    replyText: TEAMS_LOGIN_PROMPT_FALLBACK_TEXT,
     ...(connectUrl ? { connectUrl } : {}),
   };
+}
+
+function composeResolutionNotice(
+  status: Exclude<EffectiveComposeResolution["status"], "resolved">,
+): TeamsMessageDispatchResult {
+  switch (status) {
+    case "not_configured": {
+      return {
+        kind: "notice",
+        replyText:
+          "No agent is configured for this org. Please ask your org admin to set a default agent.",
+      };
+    }
+    case "not_found": {
+      return {
+        kind: "notice",
+        replyText:
+          "The configured agent could not be found. Please contact your org admin.",
+      };
+    }
+    case "not_accessible": {
+      return {
+        kind: "notice",
+        replyText:
+          "The configured agent is not available to your Teams account.",
+      };
+    }
+  }
 }
 
 export const dispatchTeamsMessageToAgent$ = command(
@@ -468,6 +865,10 @@ export const dispatchTeamsMessageToAgent$ = command(
     }
 
     const activity = args.activity;
+    if (!shouldDispatchTeamsMessage(activity)) {
+      return { kind: "ignored" };
+    }
+
     const prompt = activity.text.trim();
     if (!prompt) {
       return {
@@ -495,6 +896,7 @@ export const dispatchTeamsMessageToAgent$ = command(
       db,
       activity.tenantId,
       activity.sender.id,
+      activity.sender.aadObjectId,
     );
     signal.throwIfAborted();
 
@@ -509,31 +911,8 @@ export const dispatchTeamsMessageToAgent$ = command(
     });
     signal.throwIfAborted();
 
-    switch (effectiveCompose.status) {
-      case "not_configured": {
-        return {
-          kind: "notice",
-          replyText:
-            "No agent is configured for this org. Please ask your org admin to set a default agent.",
-        };
-      }
-      case "not_found": {
-        return {
-          kind: "notice",
-          replyText:
-            "The configured agent could not be found. Please contact your org admin.",
-        };
-      }
-      case "not_accessible": {
-        return {
-          kind: "notice",
-          replyText:
-            "The configured agent is not available to your Microsoft Teams account.",
-        };
-      }
-      case "resolved": {
-        break;
-      }
+    if (effectiveCompose.status !== "resolved") {
+      return composeResolutionNotice(effectiveCompose.status);
     }
 
     const modelRoute = await set(
@@ -557,6 +936,12 @@ export const dispatchTeamsMessageToAgent$ = command(
     });
     signal.throwIfAborted();
 
+    const threadContext = await fetchTeamsPromptContext({
+      activity,
+      signal,
+    });
+    signal.throwIfAborted();
+
     const result = await set(
       runAgentForTeams$,
       {
@@ -565,6 +950,7 @@ export const dispatchTeamsMessageToAgent$ = command(
         connection,
         composeId: effectiveCompose.composeId,
         sessionId: existingSessionId,
+        threadContext,
         apiStartTime: args.apiStartTime,
         modelRoute,
       },
