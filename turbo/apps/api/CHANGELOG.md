@@ -1,5 +1,36 @@
 # Changelog
 
+## [1.237.0](https://github.com/vm0-ai/vm0/compare/api-v1.236.0...api-v1.237.0) (2026-07-07)
+
+
+### Features
+
+* add notion database item workflow trigger ([#20533](https://github.com/vm0-ai/vm0/issues/20533)) ([e4c078c](https://github.com/vm0-ai/vm0/commit/e4c078c3a5da6a9e1684941421ef73223c146393))
+* add platform client request headers ([#20518](https://github.com/vm0-ai/vm0/issues/20518)) ([d5ceb5c](https://github.com/vm0-ai/vm0/commit/d5ceb5c312874b48604de701e1ce12887e0d4f91))
+* add playstation connector ([#20459](https://github.com/vm0-ai/vm0/issues/20459)) ([588ee8b](https://github.com/vm0-ai/vm0/commit/588ee8b242242277e752c91f64a1b9698b6d3afd))
+* **api:** log platform client headers on request logs ([#20539](https://github.com/vm0-ai/vm0/issues/20539)) ([a433531](https://github.com/vm0-ai/vm0/commit/a433531030d2deb5f7ab590fd5463f7ad74f17a2))
+* extract slack memory from source ledger ([#20519](https://github.com/vm0-ai/vm0/issues/20519)) ([d60a77c](https://github.com/vm0-ai/vm0/commit/d60a77ce42aa1f0db17f2b4d8dfdf98c59e10d28))
+
+
+### Refactoring
+
+* accept empty artifact manifests without archive urls ([#20525](https://github.com/vm0-ai/vm0/issues/20525)) ([1ce8bfd](https://github.com/vm0-ai/vm0/commit/1ce8bfd954a2c9c0d963dd0a46e34b31fdceb73f))
+
+
+### Performance Improvements
+
+* add session history attribution telemetry ([#20497](https://github.com/vm0-ai/vm0/issues/20497)) ([2daa651](https://github.com/vm0-ai/vm0/commit/2daa6519837d9f2ca3bbc640e2f1d8e8cc135630))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.162.0
+    * @vm0/connectors bumped to 1.147.0
+    * @vm0/core bumped to 8.412.0
+    * @vm0/db bumped to 1.98.0
+
 ## [1.236.0](https://github.com/vm0-ai/vm0/compare/api-v1.235.1...api-v1.236.0) (2026-07-07)
 
 
