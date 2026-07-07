@@ -227,10 +227,31 @@ def _validate_firewall_map(firewalls: dict[str, dict]) -> None:
                 raise BuiltinFirewallCatalogCacheError(
                     f'catalog cache firewall "{name}" api entries must be objects'
                 )
-            _validate_api_permissions(name, api)
+            _validate_api_entry(name, api)
 
 
-def _validate_api_permissions(firewall_name: str, api: dict) -> None:
+def _validate_api_entry(firewall_name: str, api: dict) -> None:
+    raw_base = api.get("base")
+    if not isinstance(raw_base, str) or raw_base == "":
+        raise BuiltinFirewallCatalogCacheError(
+            f'catalog cache firewall "{firewall_name}" api base must be non-empty'
+        )
+    if "${{" not in raw_base and not matching.firewall_base_config_is_valid(raw_base):
+        raise BuiltinFirewallCatalogCacheError(
+            f'catalog cache firewall "{firewall_name}" api base is invalid'
+        )
+
+    if not isinstance(api.get("auth"), dict):
+        raise BuiltinFirewallCatalogCacheError(
+            f'catalog cache firewall "{firewall_name}" api auth must be an object'
+        )
+
+    host_policy = api.get("hostPolicy")
+    if host_policy is not None and not isinstance(host_policy, dict):
+        raise BuiltinFirewallCatalogCacheError(
+            f'catalog cache firewall "{firewall_name}" api hostPolicy must be an object'
+        )
+
     permissions = api.get("permissions")
     if permissions is None:
         return

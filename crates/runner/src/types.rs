@@ -204,6 +204,7 @@ impl FirewallApi {
         if self.base.is_empty() {
             return Err("base must be non-empty".to_string());
         }
+        validate_static_firewall_base_for_cache(&self.base)?;
         self.auth.validate_for_cache()?;
         if let Some(host_policy) = &self.host_policy {
             host_policy.validate_for_cache()?;
@@ -395,6 +396,39 @@ fn is_raw_whitespace(ch: char) -> bool {
 
 fn is_unsafe_url_codepoint(ch: char) -> bool {
     ch < '\u{0020}' || ch == '\u{007f}'
+}
+
+fn validate_static_firewall_base_for_cache(base: &str) -> Result<(), String> {
+    if base.contains("${{") || base.contains('{') || base.contains('}') {
+        return Ok(());
+    }
+    if base.contains('\\') {
+        return Err("base URL must not contain backslash".to_string());
+    }
+    if base.chars().any(is_raw_whitespace) {
+        return Err("base URL must not contain whitespace".to_string());
+    }
+    if base.chars().any(is_unsafe_url_codepoint) {
+        return Err("base URL must not contain control characters".to_string());
+    }
+    let parsed = url::Url::parse(base).map_err(|_| "base URL is invalid".to_string())?;
+    let scheme = parsed.scheme();
+    if scheme != "http" && scheme != "https" {
+        return Err("base URL scheme must be http or https".to_string());
+    }
+    if parsed.host_str().is_none() {
+        return Err("base URL must include a host".to_string());
+    }
+    if !parsed.username().is_empty() || parsed.password().is_some() {
+        return Err("base URL must not contain userinfo".to_string());
+    }
+    if parsed.query().is_some() {
+        return Err("base URL must not contain query string".to_string());
+    }
+    if parsed.fragment().is_some() {
+        return Err("base URL must not contain fragment".to_string());
+    }
+    Ok(())
 }
 
 /// Base-host ownership policy for credentialed builtin firewall APIs.
