@@ -40,6 +40,7 @@ import {
   IconTemplate,
   IconUpload,
   IconVideo,
+  IconWorld,
   IconX,
 } from "@tabler/icons-react";
 import {
@@ -190,6 +191,7 @@ import {
   setUploadPopoverOpen$,
   templatePickerOpen$,
   setTemplatePickerOpen$,
+  openWebsiteTemplatePreview$,
   templatePickerCategory$,
   setTemplatePickerCategory$,
   templatePickerSearch$,
@@ -235,6 +237,7 @@ import {
 import { readChatMessageFromClipboard } from "../../signals/zero-page/clipboard.ts";
 import type { FeedbackItem } from "../../signals/zero-page/chat-feedback.ts";
 import { Markdown } from "../components/markdown.tsx";
+import { WebsiteTemplatePreviewDialogSlot } from "./website-template-preview-dialog.tsx";
 
 const MAX_FILE_SIZE = 1024 * 1024 * 1024; // 1 GB — keep in sync with web constants
 
@@ -1377,20 +1380,36 @@ function WebsiteTemplateCard({
   item,
   selected,
   onSelect,
+  onPreview,
 }: {
   item: WebsiteTemplateItem;
   selected: boolean;
   onSelect: (item: WebsiteTemplateItem) => void;
+  onPreview: (item: WebsiteTemplateItem) => void;
 }) {
+  const preview = () => {
+    onPreview(item);
+  };
+
   return (
     <div
+      role="button"
+      tabIndex={0}
+      aria-label={`Preview website template ${item.title}`}
+      onClick={preview}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          preview();
+        }
+      }}
       className={cn(
-        "group flex h-72 flex-col overflow-hidden rounded-lg border bg-card transition-colors hover:bg-muted/20",
+        "group flex cursor-zoom-in flex-col overflow-hidden rounded-lg border bg-card transition-colors hover:bg-muted/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         TEMPLATE_CARD_SHADOW,
         selected ? "border-primary ring-1 ring-primary" : "border-border",
       )}
     >
-      <div className="relative h-44 shrink-0 overflow-hidden bg-muted">
+      <div className="relative aspect-[16/9] shrink-0 overflow-hidden bg-muted">
         <iframe
           title={`${item.title} website template preview`}
           src={item.previewUrl}
@@ -1399,34 +1418,29 @@ function WebsiteTemplateCard({
           className="pointer-events-none h-full w-full border-0 bg-background"
         />
       </div>
-      <div className="flex flex-1 flex-col px-3.5 py-3">
-        <p className="truncate text-sm font-semibold text-foreground">
-          {item.title}
-        </p>
-        <p className="mt-1.5 line-clamp-2 text-sm leading-relaxed text-muted-foreground">
-          {item.description}
-        </p>
-        <div className="mt-auto flex items-center justify-between gap-3 pt-3">
-          <span className="truncate text-[11px] font-medium text-muted-foreground">
-            {item.resourceId}
-          </span>
-          <button
-            type="button"
-            aria-label={`Select website template ${item.title}`}
-            aria-pressed={selected}
-            onClick={() => {
-              onSelect(item);
-            }}
-            className={cn(
-              "h-8 shrink-0 rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              selected
-                ? "border-primary/40 bg-primary/10 text-primary"
-                : "border-border bg-background text-foreground hover:bg-muted",
-            )}
-          >
-            Use
-          </button>
+      <div className="flex flex-1 flex-wrap items-center gap-2 px-3.5 py-3">
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold text-foreground">
+            {item.title}
+          </p>
         </div>
+        <button
+          type="button"
+          aria-label={`Select website template ${item.title}`}
+          aria-pressed={selected}
+          onClick={(event) => {
+            event.stopPropagation();
+            onSelect(item);
+          }}
+          className={cn(
+            "h-8 shrink-0 cursor-pointer rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            selected
+              ? "border-primary/40 bg-primary/10 text-primary"
+              : "border-border bg-background text-foreground hover:bg-muted",
+          )}
+        >
+          Use
+        </button>
       </div>
     </div>
   );
@@ -1436,10 +1450,12 @@ function WebsiteTemplateGrid({
   items,
   value,
   onSelect,
+  onPreview,
 }: {
   items: readonly WebsiteTemplateItem[];
   value: GenerationTemplateRequest | undefined;
   onSelect: (item: WebsiteTemplateItem) => void;
+  onPreview: (item: WebsiteTemplateItem) => void;
 }) {
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -1450,6 +1466,7 @@ function WebsiteTemplateGrid({
             item={item}
             selected={isSelectedWebsiteTemplate(item, value)}
             onSelect={onSelect}
+            onPreview={onPreview}
           />
         );
       })}
@@ -4593,7 +4610,7 @@ function TemplatePickerTabs({
                   : "border-transparent text-muted-foreground hover:text-foreground",
               )}
             >
-              <IconDeviceDesktop
+              <IconWorld
                 className={cn(
                   "h-5 w-5",
                   selectedCategory === "website"
@@ -4777,6 +4794,7 @@ function TemplatePickerDialog({
   const setDetailPreview = useSet(setTemplateDetailHtmlPreview$);
   const detailThemeIdBySlug = useGet(templateDetailThemeIdBySlug$);
   const setDetailThemeId = useSet(setTemplateDetailThemeId$);
+  const openWebsiteTemplatePreview = useSet(openWebsiteTemplatePreview$);
   const cardThemeIdBySlug = useGet(templateCardThemeIdBySlug$);
   const detailSlideIndexBySlug = useGet(templateDetailSlideIndexBySlug$);
   const setDetailSlideIndex = useSet(setTemplateDetailSlideIndex$);
@@ -4913,6 +4931,10 @@ function TemplatePickerDialog({
   const handleSelectWebsite = (item: WebsiteTemplateItem) => {
     onChange(toWebsiteGenerationTemplate(item));
     closeTemplatePicker();
+  };
+
+  const handlePreviewWebsite = (item: WebsiteTemplateItem) => {
+    openWebsiteTemplatePreview(item.id);
   };
 
   const handleSelectIllustration = (item: IllustrationTemplateItem) => {
@@ -5119,6 +5141,7 @@ function TemplatePickerDialog({
               onSelectPresentation={handleSelectPresentation}
               onPreviewPresentation={handlePreview}
               onSelectWebsite={handleSelectWebsite}
+              onPreviewWebsite={handlePreviewWebsite}
               onSelectIllustration={handleSelectIllustration}
               onIllustrationVariantChange={setIllustrationVariantIndex}
               onSelectVideo={handleSelectVideo}
@@ -5150,6 +5173,7 @@ function TemplatePickerCategoryContent({
   onSelectPresentation,
   onPreviewPresentation,
   onSelectWebsite,
+  onPreviewWebsite,
   onSelectIllustration,
   onIllustrationVariantChange,
   onSelectVideo,
@@ -5179,6 +5203,7 @@ function TemplatePickerCategoryContent({
     slideIndex?: number,
   ) => void;
   onSelectWebsite: (item: WebsiteTemplateItem) => void;
+  onPreviewWebsite: (item: WebsiteTemplateItem) => void;
   onSelectIllustration: (item: IllustrationTemplateItem) => void;
   onIllustrationVariantChange: (slug: string, index: number) => void;
   onSelectVideo: (item: VideoTemplateItem) => void;
@@ -5223,6 +5248,7 @@ function TemplatePickerCategoryContent({
             items={filteredWebsiteItems}
             value={value}
             onSelect={onSelectWebsite}
+            onPreview={onPreviewWebsite}
           />
         ) : (
           <TemplateEmptyPanel
@@ -5650,7 +5676,7 @@ function SelectedWebsiteTemplateChip({
             onClick={onOpen}
           >
             <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
-              <IconDeviceDesktop
+              <IconWorld
                 size={12}
                 stroke={1.5}
                 className="text-muted-foreground"
@@ -7647,6 +7673,7 @@ export function ZeroChatComposer({
           </CardContent>
         </Card>
         <ActiveGoalObjectiveDialog threadId={chatThreadId} />
+        <WebsiteTemplatePreviewDialogSlot />
       </div>
       {selectedConnType && (
         <ConnectModal

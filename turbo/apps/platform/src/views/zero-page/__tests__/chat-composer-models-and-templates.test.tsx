@@ -4187,6 +4187,8 @@ describe("chat composer templates", () => {
       expect(
         screen.getByTitle(`${websiteTemplate.title} website template preview`),
       ).toHaveAttribute("src", websiteTemplate.previewUrl);
+      expect(screen.queryByText(websiteTemplate.description)).toBeNull();
+      expect(screen.queryByText(websiteTemplate.resourceId)).toBeNull();
       expect(screen.queryByText("Saas Landing")).not.toBeInTheDocument();
     });
 
@@ -4213,10 +4215,52 @@ describe("chat composer templates", () => {
       ).toBeInTheDocument();
     });
 
+    click(
+      screen.getByLabelText(`Preview website template ${websiteTemplate.title}`),
+    );
+    await waitFor(() => {
+      expect(tabByText("Website")).toHaveAttribute("aria-selected", "true");
+      expect(
+        screen.getByTitle(`${websiteTemplate.title} website template preview`),
+      ).toHaveAttribute("src", websiteTemplate.previewUrl);
+    });
+
+    click(
+      within(screen.getByRole("dialog")).getByLabelText(
+        `Preview website template ${websiteTemplate.title}`,
+      ),
+    );
+    await waitFor(() => {
+      expect(
+        screen.getByTitle(`${websiteTemplate.title} website full preview`),
+      ).toHaveAttribute("src", websiteTemplate.previewUrl);
+    });
+    const websitePreviewDialog = screen.getByRole("dialog", {
+      name: `Website / ${websiteTemplate.title}`,
+    });
+    const websiteBackButton = queryAllByRoleFast(
+      "button",
+      websitePreviewDialog,
+    ).find((candidate) => {
+      return candidate.textContent?.replace(/\s+/g, " ").trim() === "Website";
+    });
+    if (!websiteBackButton) {
+      throw new Error("Website back button not found");
+    }
+    click(websiteBackButton);
+    await waitFor(() => {
+      expect(
+        screen.queryByTitle(`${websiteTemplate.title} website full preview`),
+      ).not.toBeInTheDocument();
+      expect(tabByText("Website")).toHaveAttribute("aria-selected", "true");
+    });
+    click(screen.getByLabelText("Close"));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
     const editor = await findComposerEditor();
-    await user.click(editor);
-    await user.keyboard("Create a warm website");
-    await user.keyboard("{Enter}");
+    await sendMessageInUI(user, editor, "Create a warm website");
 
     await waitFor(() => {
       expect(submittedTemplate).toStrictEqual({

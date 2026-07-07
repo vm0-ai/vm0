@@ -53,6 +53,7 @@ import {
   IconClock,
   IconCoins,
   IconHourglass,
+  IconWorld,
 } from "@tabler/icons-react";
 import {
   cn,
@@ -6379,24 +6380,33 @@ function UserMessageGenerationTemplate({
   if (!label || !typeLabel) {
     return null;
   }
-  return (
-    <div
-      aria-label={`Message template ${label}`}
-      className="mb-1.5 flex max-w-[85%] items-center gap-1.5 self-end text-xs font-medium text-muted-foreground"
-      title={`${typeLabel} · ${label}`}
-    >
+  const className =
+    "mb-1.5 flex max-w-[85%] items-center gap-1.5 self-end text-xs font-medium text-muted-foreground";
+  const content = (
+    <>
       {generationTemplate?.type === "video" ? (
         <IconVideo size={15} stroke={1.8} className="shrink-0" />
       ) : generationTemplate?.type === "illustration" ? (
         <IconPhoto size={15} stroke={1.8} className="shrink-0" />
       ) : generationTemplate?.type === "workflow" ? (
         <IconRoute size={15} stroke={1.8} className="shrink-0" />
+      ) : generationTemplate?.type === "website" ? (
+        <IconWorld size={15} stroke={1.8} className="shrink-0" />
       ) : (
         <IconPresentation size={15} stroke={1.8} className="shrink-0" />
       )}
       <span className="shrink-0">{typeLabel}</span>
       <span className="shrink-0">·</span>
       <span className="min-w-0 truncate">{label}</span>
+    </>
+  );
+  return (
+    <div
+      aria-label={`Message template ${label}`}
+      className={className}
+      title={`${typeLabel} · ${label}`}
+    >
+      {content}
     </div>
   );
 }
