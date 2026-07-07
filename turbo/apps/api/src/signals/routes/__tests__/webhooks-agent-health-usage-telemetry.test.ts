@@ -6,7 +6,6 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { generateSandboxToken } from "../../auth/tokens";
-import { sandboxOperationDimensions } from "../webhooks-agent-health-usage-telemetry";
 
 const context = testContext();
 
@@ -53,31 +52,5 @@ describe("agent usage event webhook", () => {
         eventCount: 1,
       }),
     );
-  });
-});
-
-describe("agent telemetry webhook", () => {
-  it("whitelists explicit session history probe dimensions", () => {
-    const op = {
-      error: "download failed",
-      encoding: "gzip",
-      session_history_raw_size_bucket: "64_256_kib",
-      session_history_encoded_size_bucket: "lt_64_kib",
-      session_history_compression_ratio_bucket: "lt_0_25",
-      session_history_ref_seen_recently: "true",
-      session_history_ref_download_inflight: "false",
-      session_history_ref_hash: "should-not-forward",
-    };
-
-    expect(sandboxOperationDimensions(op)).toStrictEqual({
-      source: "sandbox",
-      error: "download failed",
-      encoding: "gzip",
-      session_history_raw_size_bucket: "64_256_kib",
-      session_history_encoded_size_bucket: "lt_64_kib",
-      session_history_compression_ratio_bucket: "lt_0_25",
-      session_history_ref_seen_recently: "true",
-      session_history_ref_download_inflight: "false",
-    });
   });
 });

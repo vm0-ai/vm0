@@ -44,19 +44,19 @@ pub(crate) struct SessionHistoryMaterializer {
     state: SessionHistoryMaterializerState,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub(crate) struct SessionHistoryProbe {
     inner: Arc<Mutex<SessionHistoryProbeState>>,
     ttl: Duration,
     capacity: usize,
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 struct SessionHistoryProbeState {
     entries: HashMap<SessionHistoryProbeKey, SessionHistoryProbeEntry>,
 }
 
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Eq, Hash, PartialEq)]
 struct SessionHistoryProbeKey {
     hash: String,
     encoding: ResumeSessionHistoryEncoding,
@@ -64,24 +64,23 @@ struct SessionHistoryProbeKey {
     encoded_size: u64,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy)]
 struct SessionHistoryProbeEntry {
     last_seen: Instant,
     in_flight: usize,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 struct SessionHistoryProbeRegistration {
     observation: SessionHistoryCacheProbeMetadata,
     guard: Option<SessionHistoryProbeGuard>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 struct SessionHistoryProbeGuard {
     inner: Arc<SessionHistoryProbeGuardInner>,
 }
 
-#[derive(Debug)]
 struct SessionHistoryProbeGuardInner {
     probe: SessionHistoryProbe,
     key: Mutex<Option<SessionHistoryProbeKey>>,

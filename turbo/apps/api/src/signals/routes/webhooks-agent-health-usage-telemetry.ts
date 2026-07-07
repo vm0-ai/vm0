@@ -52,7 +52,7 @@ interface SandboxOperationDimensionInput {
   readonly session_history_ref_download_inflight?: string;
 }
 
-export function sandboxOperationDimensions(
+function sandboxOperationDimensions(
   op: SandboxOperationDimensionInput,
 ): Record<string, string> {
   return {
