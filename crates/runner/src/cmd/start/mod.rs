@@ -56,7 +56,10 @@ use crate::network_log_drain::NetworkLogDrainCoordinator;
 use crate::network_log_manager::NetworkLogManager;
 use crate::paths::{HomePaths, LogPaths, RunnerPaths, touch_mtime};
 use crate::prefetch;
-use crate::provider::{ApiProvider, JobProvider, LocalProvider, NetworkPolicyRefreshHandle};
+use crate::provider::{
+    ApiProvider, BuiltinFirewallCatalogCachePaths, JobProvider, LocalProvider,
+    NetworkPolicyRefreshHandle,
+};
 use crate::proxy;
 use crate::resource_budget::ResourceBudget;
 use crate::retry::{RetryState, recv_retry, sleep_until_retry};
@@ -414,6 +417,7 @@ async fn run_start_with_home(
         addon_dir: paths.mitm_addon_dir(),
         registry_path: paths.proxy_registry(),
         registry_lock_path: paths.proxy_registry_lock(),
+        builtin_firewall_catalog_cache_path: paths.builtin_firewall_catalog_cache(),
         api_url: Some(server.url.clone()),
     })
     .await?;
@@ -600,6 +604,10 @@ async fn run_start_with_home(
             server.token,
             group,
             profiles,
+            BuiltinFirewallCatalogCachePaths {
+                cache_path: paths.builtin_firewall_catalog_cache(),
+                lock_path: paths.builtin_firewall_catalog_cache_lock(),
+            },
             cancel.clone(),
             Arc::clone(&cancel_tokens),
         )

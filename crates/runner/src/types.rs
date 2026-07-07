@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::net::IpAddr;
 use std::path::PathBuf;
 
 use sandbox::SandboxId;
@@ -159,6 +160,19 @@ pub struct Firewall {
     pub apis: Vec<FirewallApi>,
 }
 
+impl Firewall {
+    pub(crate) fn validate_for_cache(&self) -> Result<(), String> {
+        if self.name.is_empty() {
+            return Err("firewall name must be non-empty".to_string());
+        }
+        for (index, api) in self.apis.iter().enumerate() {
+            api.validate_for_cache()
+                .map_err(|e| format!("firewall {} apis[{index}]: {e}", self.name))?;
+        }
+        Ok(())
+    }
+}
+
 /// A single firewall API entry with base URL and auth headers for proxy-side matching.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct FirewallApi {
@@ -169,8 +183,27 @@ pub struct FirewallApi {
     pub id: String,
     pub base: String,
     pub auth: FirewallAuth,
+    #[serde(
+        default,
+        rename = "hostPolicy",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub host_policy: Option<FirewallBaseHostPolicy>,
     #[serde(default)]
     pub permissions: Option<Vec<FirewallPermission>>,
+}
+
+impl FirewallApi {
+    fn validate_for_cache(&self) -> Result<(), String> {
+        if self.base.is_empty() {
+            return Err("base must be non-empty".to_string());
+        }
+        self.auth.validate_for_cache()?;
+        if let Some(host_policy) = &self.host_policy {
+            host_policy.validate_for_cache()?;
+        }
+        Ok(())
+    }
 }
 
 /// A named permission group with matching rules for request authorization.
@@ -180,6 +213,107 @@ pub struct FirewallPermission {
     #[serde(default)]
     pub description: Option<String>,
     pub rules: Vec<String>,
+}
+
+/// Base-host ownership policy for credentialed builtin firewall APIs.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(tag = "kind", deny_unknown_fields)]
+pub enum FirewallBaseHostPolicy {
+    #[serde(rename = "providerOwned", rename_all = "camelCase")]
+    ProviderOwned {
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        exact_hosts: Vec<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        suffixes: Vec<String>,
+        #[serde(default, skip_serializing_if = "is_false")]
+        allow_non_default_port: bool,
+    },
+    #[serde(rename = "publicDestination")]
+    PublicDestination,
+}
+
+impl FirewallBaseHostPolicy {
+    fn validate_for_cache(&self) -> Result<(), String> {
+        match self {
+            Self::ProviderOwned {
+                exact_hosts,
+                suffixes,
+                ..
+            } => {
+                if exact_hosts.is_empty() && suffixes.is_empty() {
+                    return Err(
+                        "providerOwned hostPolicy requires exactHosts or suffixes".to_string()
+                    );
+                }
+                for host in exact_hosts {
+                    validate_host_policy_hostname(host, false)?;
+                }
+                for suffix in suffixes {
+                    validate_host_policy_hostname(suffix, true)?;
+                }
+                Ok(())
+            }
+            Self::PublicDestination => Ok(()),
+        }
+    }
+}
+
+fn validate_host_policy_hostname(value: &str, allow_leading_dot: bool) -> Result<(), String> {
+    if value.is_empty() {
+        return Err("hostPolicy host must be non-empty".to_string());
+    }
+    if !allow_leading_dot && value.starts_with('.') {
+        return Err("hostPolicy exactHosts must not start with a dot".to_string());
+    }
+    if !value.is_ascii()
+        || value
+            .chars()
+            .any(|ch| ch.is_whitespace() || ch.is_ascii_control())
+    {
+        return Err(
+            "hostPolicy hosts must be ASCII without whitespace or control characters".to_string(),
+        );
+    }
+    const FORBIDDEN: &[char] = &['%', '*', '[', ']', '/', '?', '#', '@', '\\', ':', '{', '}'];
+    if value.chars().any(|ch| FORBIDDEN.contains(&ch)) {
+        return Err("hostPolicy hosts contain forbidden syntax characters".to_string());
+    }
+
+    let host = if allow_leading_dot && value.starts_with('.') {
+        &value[1..]
+    } else {
+        value
+    };
+    let host = host.strip_suffix('.').unwrap_or(host);
+    if host.is_empty() {
+        return Err("hostPolicy host must be non-empty".to_string());
+    }
+    if host.parse::<IpAddr>().is_ok() {
+        return Err("hostPolicy host must not be an IP address".to_string());
+    }
+    if is_ipv4_literal_like(host) {
+        return Err("hostPolicy host must not look like an IPv4 address".to_string());
+    }
+    let labels: Vec<&str> = host.split('.').collect();
+    if labels.len() < 2 || labels.iter().any(|label| label.is_empty()) {
+        return Err("hostPolicy host must have at least two non-empty labels".to_string());
+    }
+    Ok(())
+}
+
+fn is_ipv4_literal_like(host: &str) -> bool {
+    let labels: Vec<&str> = host.split('.').collect();
+    !labels.is_empty()
+        && labels.len() <= 4
+        && labels.iter().all(|label| {
+            let Some(rest) = label
+                .strip_prefix("0x")
+                .or_else(|| label.strip_prefix("0X"))
+            else {
+                return !label.is_empty() && label.chars().all(|ch| ch.is_ascii_digit());
+            };
+            !rest.is_empty() && rest.chars().all(|ch| ch.is_ascii_hexdigit())
+        })
 }
 
 /// Auth configuration for a firewall API entry.
@@ -195,6 +329,51 @@ pub struct FirewallAuth {
     /// When set, the proxy injects resolved query params into the request URL.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub query: Option<std::collections::HashMap<String, String>>,
+    /// Optional AWS SigV4 auth template.
+    #[serde(default, rename = "awsSigv4", skip_serializing_if = "Option::is_none")]
+    pub aws_sigv4: Option<FirewallAwsSigv4Auth>,
+}
+
+impl FirewallAuth {
+    fn validate_for_cache(&self) -> Result<(), String> {
+        let Some(aws_sigv4) = &self.aws_sigv4 else {
+            return Ok(());
+        };
+        aws_sigv4.validate_for_cache()?;
+        if !self.headers.is_empty() {
+            return Err("auth.headers cannot be combined with auth.awsSigv4".to_string());
+        }
+        if self.query.as_ref().is_some_and(|query| !query.is_empty()) {
+            return Err("auth.query cannot be combined with auth.awsSigv4".to_string());
+        }
+        Ok(())
+    }
+}
+
+/// AWS SigV4 auth template for firewall auth injection.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
+pub struct FirewallAwsSigv4Auth {
+    pub access_key_id: String,
+    pub secret_access_key: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session_token: Option<String>,
+}
+
+impl FirewallAwsSigv4Auth {
+    fn validate_for_cache(&self) -> Result<(), String> {
+        if self.access_key_id.is_empty() {
+            return Err("auth.awsSigv4.accessKeyId must be non-empty".to_string());
+        }
+        if self.secret_access_key.is_empty() {
+            return Err("auth.awsSigv4.secretAccessKey must be non-empty".to_string());
+        }
+        if self.session_token.as_deref() == Some("") {
+            return Err("auth.awsSigv4.sessionToken must be non-empty when present".to_string());
+        }
+        Ok(())
+    }
 }
 
 /// Per-firewall grant configuration: which permissions are authorized and
@@ -748,7 +927,9 @@ mod tests {
                         .collect(),
                     base: None,
                     query: None,
+                    aws_sigv4: None,
                 },
+                host_policy: None,
                 permissions: Some(vec![FirewallPermission {
                     name: "metadata:read".into(),
                     description: Some("read repo metadata".into()),
@@ -773,9 +954,139 @@ mod tests {
             headers: HashMap::new(),
             base: None,
             query: None,
+            aws_sigv4: None,
         };
         let json = serde_json::to_value(&auth).unwrap();
         assert!(json.get("base").is_none());
+    }
+
+    #[test]
+    fn firewall_preserves_host_policy_and_aws_sigv4() {
+        let json = serde_json::json!({
+            "name": "aws",
+            "apis": [{
+                "base": "https://s3.amazonaws.com",
+                "hostPolicy": {
+                    "kind": "providerOwned",
+                    "exactHosts": ["s3.amazonaws.com"],
+                    "allowNonDefaultPort": false
+                },
+                "auth": {
+                    "awsSigv4": {
+                        "accessKeyId": "${{ secrets.AWS_ACCESS_KEY_ID }}",
+                        "secretAccessKey": "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
+                        "sessionToken": "${{ secrets.AWS_SESSION_TOKEN }}"
+                    }
+                },
+                "permissions": [{
+                    "name": "read",
+                    "rules": ["GET /{bucket}"]
+                }]
+            }]
+        });
+
+        let firewall: Firewall = serde_json::from_value(json).unwrap();
+        firewall.validate_for_cache().unwrap();
+        let round_trip = serde_json::to_value(&firewall).unwrap();
+
+        assert_eq!(
+            round_trip["apis"][0]["hostPolicy"]["exactHosts"][0],
+            "s3.amazonaws.com"
+        );
+        assert_eq!(
+            round_trip["apis"][0]["auth"]["awsSigv4"]["accessKeyId"],
+            "${{ secrets.AWS_ACCESS_KEY_ID }}"
+        );
+    }
+
+    #[test]
+    fn firewall_validation_rejects_aws_sigv4_with_headers() {
+        let firewall: Firewall = serde_json::from_value(serde_json::json!({
+            "name": "aws",
+            "apis": [{
+                "base": "https://s3.amazonaws.com",
+                "auth": {
+                    "headers": {"Authorization": "Bearer token"},
+                    "awsSigv4": {
+                        "accessKeyId": "key",
+                        "secretAccessKey": "secret"
+                    }
+                }
+            }]
+        }))
+        .unwrap();
+
+        let error = firewall.validate_for_cache().unwrap_err();
+
+        assert!(
+            error.contains("auth.headers cannot be combined with auth.awsSigv4"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn firewall_validation_rejects_empty_provider_owned_host_policy() {
+        let firewall: Firewall = serde_json::from_value(serde_json::json!({
+            "name": "example",
+            "apis": [{
+                "base": "https://api.example.com",
+                "hostPolicy": {"kind": "providerOwned"},
+                "auth": {"headers": {}}
+            }]
+        }))
+        .unwrap();
+
+        let error = firewall.validate_for_cache().unwrap_err();
+
+        assert!(
+            error.contains("providerOwned hostPolicy requires exactHosts or suffixes"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn firewall_deserialization_rejects_unsupported_host_policy_fields() {
+        let error = serde_json::from_value::<Firewall>(serde_json::json!({
+            "name": "example",
+            "apis": [{
+                "base": "https://api.example.com",
+                "hostPolicy": {
+                    "kind": "providerOwned",
+                    "exactHosts": ["api.example.com"],
+                    "unexpected": true
+                },
+                "auth": {"headers": {}}
+            }]
+        }))
+        .unwrap_err();
+
+        assert!(
+            error.to_string().contains("unknown field"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn firewall_deserialization_rejects_unsupported_aws_sigv4_fields() {
+        let error = serde_json::from_value::<Firewall>(serde_json::json!({
+            "name": "aws",
+            "apis": [{
+                "base": "https://s3.amazonaws.com",
+                "auth": {
+                    "awsSigv4": {
+                        "accessKeyId": "key",
+                        "secretAccessKey": "secret",
+                        "unexpected": true
+                    }
+                }
+            }]
+        }))
+        .unwrap_err();
+
+        assert!(
+            error.to_string().contains("unknown field"),
+            "unexpected error: {error}"
+        );
     }
 
     #[test]

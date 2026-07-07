@@ -310,6 +310,12 @@ def load(loader: Loader) -> None:
         help="Path to proxy registry file",
     )
     loader.add_option(
+        name="vm0_builtin_firewall_catalog_cache_path",
+        typespec=str,
+        default=str(Path(tempfile.gettempdir()) / "builtin-firewall-catalog-cache.json"),
+        help="Path to runner builtin firewall catalog cache file",
+    )
+    loader.add_option(
         name="vm0_usage_state_id",
         typespec=str,
         default="",
@@ -522,6 +528,11 @@ def get_api_url() -> str:
 def get_registry_path() -> str:
     """Get registry path from options."""
     return ctx.options.vm0_proxy_registry_path
+
+
+def get_builtin_firewall_catalog_cache_path() -> str:
+    """Get builtin firewall catalog cache path from options."""
+    return ctx.options.vm0_builtin_firewall_catalog_cache_path
 
 
 def _elapsed_ms(start_time: float | None) -> int:

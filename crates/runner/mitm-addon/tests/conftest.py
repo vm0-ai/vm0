@@ -304,11 +304,18 @@ def real_tcp_flow():
 
 
 class _StubOptions:
-    """Plain stand-in for the two addon-specific ``ctx.options`` fields."""
+    """Plain stand-in for addon-specific ``ctx.options`` fields."""
 
-    def __init__(self, *, registry_path: str, api_url: str) -> None:
+    def __init__(
+        self,
+        *,
+        registry_path: str,
+        api_url: str,
+        builtin_firewall_catalog_cache_path: str,
+    ) -> None:
         self.vm0_proxy_registry_path = registry_path
         self.vm0_api_url = api_url
+        self.vm0_builtin_firewall_catalog_cache_path = builtin_firewall_catalog_cache_path
         self.vm0_usage_flush_interval_seconds = usage.DEFAULT_FLUSH_INTERVAL_SECONDS
 
 
@@ -329,16 +336,26 @@ def mitm_ctx(tmp_path):
     """
 
     default_registry_path = str(tmp_path / "proxy-registry.json")
+    default_builtin_firewall_catalog_cache_path = str(
+        tmp_path / "builtin-firewall-catalog-cache.json"
+    )
 
     @contextlib.contextmanager
     def _stub(
         *,
         registry_path: str | None = None,
         api_url: str = "https://api.vm0.ai",
+        builtin_firewall_catalog_cache_path: str | None = None,
     ) -> Iterator[MagicMock]:
         if registry_path is None:
             registry_path = default_registry_path
-        options = _StubOptions(registry_path=registry_path, api_url=api_url)
+        if builtin_firewall_catalog_cache_path is None:
+            builtin_firewall_catalog_cache_path = default_builtin_firewall_catalog_cache_path
+        options = _StubOptions(
+            registry_path=registry_path,
+            api_url=api_url,
+            builtin_firewall_catalog_cache_path=builtin_firewall_catalog_cache_path,
+        )
         log = MagicMock()
         with (
             patch.object(mitm_addon.ctx, "options", options, create=True),

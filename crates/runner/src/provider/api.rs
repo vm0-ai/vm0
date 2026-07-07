@@ -1,5 +1,6 @@
 //! [`JobProvider`] backed by an Ably control plane + HTTP polling + REST API.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -14,6 +15,9 @@ use super::api_ably_supervisor::{
     AblySupervisor, AblySupervisorConfig, PollDue, PollOutcome, PollReason, PollWakeups,
 };
 use super::api_direct_candidates::{DirectCandidateInbox, DirectJobCandidate};
+use super::builtin_firewall_catalog::{
+    BuiltinFirewallCatalog, BuiltinFirewallCatalogRefreshHandle,
+};
 use super::network_policy_refresh::NetworkPolicyRefreshHandle;
 use super::{
     ClaimedJob, CompletionAuth, CompletionAuthError, JobCandidate, JobDiscoverySource, JobProvider,
@@ -71,6 +75,7 @@ const POLL_FAST: Duration = Duration::from_secs(5);
 const POLL_WAKEUP_RETRY: Duration = POLL_FAST;
 const DIRECT_CANDIDATE_INBOX_CAPACITY: usize = 128;
 const NETWORK_POLICY_REFRESH_TIMEOUT: Duration = Duration::from_secs(3);
+const BUILTIN_FIREWALL_CATALOG_RESOLVE_TIMEOUT: Duration = Duration::from_secs(10);
 
 enum DiscoveryWakeup {
     Direct(DirectJobCandidate),
@@ -102,8 +107,14 @@ pub struct ApiProvider {
     /// Background Ably control-plane task.
     ably_supervisor: AblySupervisor,
     network_policy_refresh: NetworkPolicyRefreshHandle,
+    builtin_firewall_catalog_refresh: BuiltinFirewallCatalogRefreshHandle,
     /// Shutdown signal.
     cancel: CancellationToken,
+}
+
+pub struct BuiltinFirewallCatalogCachePaths {
+    pub cache_path: PathBuf,
+    pub lock_path: PathBuf,
 }
 
 impl ApiProvider {
@@ -113,11 +124,19 @@ impl ApiProvider {
         token: String,
         group: String,
         supported_profiles: Vec<String>,
+        builtin_firewall_catalog_cache_paths: BuiltinFirewallCatalogCachePaths,
         cancel: CancellationToken,
         cancel_tokens: SharedRunCancellationMap,
     ) -> Arc<Self> {
         let api = ApiClient::new(http, token);
         let network_policy_refresh = NetworkPolicyRefreshHandle::new(api.clone());
+        let builtin_firewall_catalog_refresh = BuiltinFirewallCatalogRefreshHandle::start(
+            api.clone(),
+            builtin_firewall_catalog_cache_paths.cache_path,
+            builtin_firewall_catalog_cache_paths.lock_path,
+            cancel.clone(),
+        )
+        .await;
         let poll_wakeups = Arc::new(PollWakeups::new(false));
         let direct_candidates = DirectCandidateInbox::new(DIRECT_CANDIDATE_INBOX_CAPACITY);
         let ably_supervisor = AblySupervisor::spawn(AblySupervisorConfig {
@@ -139,6 +158,7 @@ impl ApiProvider {
             direct_candidates,
             ably_supervisor,
             network_policy_refresh,
+            builtin_firewall_catalog_refresh,
             cancel,
         })
     }
@@ -330,6 +350,7 @@ impl JobProvider for ApiProvider {
     async fn shutdown(&self) {
         self.ably_supervisor.shutdown().await;
         self.network_policy_refresh.shutdown().await;
+        self.builtin_firewall_catalog_refresh.shutdown().await;
     }
 
     async fn complete(
@@ -559,6 +580,32 @@ impl ApiClient {
             .timeout(NETWORK_POLICY_REFRESH_TIMEOUT)
             .json(&serde_json::json!({ "connectorRefs": connector_refs }))
     }
+
+    pub(super) async fn resolve_builtin_firewall_catalog(
+        &self,
+    ) -> RunnerResult<BuiltinFirewallCatalog> {
+        let resp = send_api(
+            self.http
+                .request_route(
+                    routes::runners::builtin_firewalls::resolve::RESOLVE,
+                    &self.token,
+                )
+                .timeout(BUILTIN_FIREWALL_CATALOG_RESOLVE_TIMEOUT)
+                .json(&serde_json::json!({})),
+            "builtin firewall catalog resolve",
+        )
+        .await?;
+
+        let resp = check_api_status(resp, "builtin firewall catalog resolve").await?;
+        let catalog: BuiltinFirewallCatalog =
+            decode_api_json(resp, "builtin firewall catalog resolve").await?;
+        catalog.validate_for_api_response().map_err(|e| {
+            RunnerError::Api(format!(
+                "builtin firewall catalog resolve invalid catalog: {e}"
+            ))
+        })?;
+        Ok(catalog)
+    }
 }
 
 fn claim_request_body(candidate: &JobCandidate) -> ClaimRequestBody {
@@ -727,17 +774,22 @@ fn is_static_json_field(field: &str) -> bool {
     matches!(
         field,
         "allow"
+            | "allowNonDefaultPort"
             | "apiStartTime"
             | "apis"
             | "archiveUrl"
             | "artifacts"
             | "ask"
             | "auth"
+            | "accessKeyId"
+            | "awsSigv4"
             | "base"
             | "baseUrlVars"
             | "billableFirewalls"
             | "cached"
             | "capability"
+            | "catalogDigest"
+            | "catalogVersion"
             | "captureNetworkBodies"
             | "checkpointId"
             | "cliAgentType"
@@ -754,12 +806,14 @@ fn is_static_json_field(field: &str) -> bool {
             | "environment"
             | "experimentalProfile"
             | "expires"
+            | "exactHosts"
             | "featureFlags"
             | "firewall"
             | "firewalls"
             | "headers"
             | "hash"
             | "historyRef"
+            | "hostPolicy"
             | "heldSessionStates"
             | "issued"
             | "job"
@@ -783,7 +837,9 @@ fn is_static_json_field(field: &str) -> bool {
             | "sandboxToken"
             | "secretConnectorMap"
             | "secretConnectorMetadataMap"
+            | "secretAccessKey"
             | "secretValues"
+            | "sessionToken"
             | "sessionHistory"
             | "sessionId"
             | "settings"
@@ -792,6 +848,7 @@ fn is_static_json_field(field: &str) -> bool {
             | "sourceUserId"
             | "storageManifest"
             | "storages"
+            | "suffixes"
             | "timestamp"
             | "token"
             | "lastCompletedAt"
@@ -924,6 +981,123 @@ mod tests {
         );
     }
 
+    #[test]
+    fn builtin_firewall_catalog_resolve_request_uses_bounded_timeout_and_empty_body() {
+        let server = MockServer::start();
+        let api = api_client_for_server(&server);
+
+        let request = api
+            .http
+            .request_route(
+                routes::runners::builtin_firewalls::resolve::RESOLVE,
+                &api.token,
+            )
+            .timeout(BUILTIN_FIREWALL_CATALOG_RESOLVE_TIMEOUT)
+            .json(&serde_json::json!({}))
+            .build()
+            .expect("builtin firewall catalog resolve request should build");
+
+        assert_eq!(
+            request.timeout(),
+            Some(&BUILTIN_FIREWALL_CATALOG_RESOLVE_TIMEOUT)
+        );
+        assert_eq!(
+            request.url().path(),
+            "/api/runners/builtin-firewalls/resolve"
+        );
+        assert_eq!(
+            request
+                .body()
+                .and_then(reqwest::Body::as_bytes)
+                .expect("request should include JSON body"),
+            br#"{}"#
+        );
+    }
+
+    #[tokio::test]
+    async fn api_client_resolves_builtin_firewall_catalog() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path(routes::runners::builtin_firewalls::resolve::RESOLVE.path)
+                    .json_body(serde_json::json!({}));
+                then.status(200).json_body(serde_json::json!({
+                    "catalogDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "catalogVersion": "test-catalog",
+                    "firewalls": {
+                        "aws": {
+                            "name": "aws",
+                            "apis": [{
+                                "base": "https://s3.amazonaws.com",
+                                "hostPolicy": {
+                                    "kind": "providerOwned",
+                                    "exactHosts": ["s3.amazonaws.com"]
+                                },
+                                "auth": {
+                                    "awsSigv4": {
+                                        "accessKeyId": "${{ secrets.AWS_ACCESS_KEY_ID }}",
+                                        "secretAccessKey": "${{ secrets.AWS_SECRET_ACCESS_KEY }}"
+                                    }
+                                },
+                                "permissions": [{"name": "read", "rules": ["GET /{bucket}"]}]
+                            }]
+                        }
+                    }
+                }));
+            })
+            .await;
+        let api = api_client_for_server(&server);
+
+        let catalog = api.resolve_builtin_firewall_catalog().await.unwrap();
+
+        assert_eq!(catalog.catalog_version, "test-catalog");
+        assert_eq!(
+            catalog.firewalls["aws"].apis[0].base,
+            "https://s3.amazonaws.com"
+        );
+        assert!(catalog.firewalls["aws"].apis[0].host_policy.is_some());
+        assert!(catalog.firewalls["aws"].apis[0].auth.aws_sigv4.is_some());
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn api_client_rejects_builtin_firewall_catalog_key_name_mismatch() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path(routes::runners::builtin_firewalls::resolve::RESOLVE.path);
+                then.status(200).json_body(serde_json::json!({
+                    "catalogDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "catalogVersion": "test-catalog",
+                    "firewalls": {
+                        "github": {
+                            "name": "slack",
+                            "apis": [{
+                                "base": "https://slack.com/api",
+                                "auth": {"headers": {}},
+                                "permissions": []
+                            }]
+                        }
+                    }
+                }));
+            })
+            .await;
+        let api = api_client_for_server(&server);
+
+        let error = api.resolve_builtin_firewall_catalog().await.unwrap_err();
+
+        match error {
+            RunnerError::Api(message) => assert!(
+                message.contains("does not match firewall.name"),
+                "unexpected error: {message}"
+            ),
+            other => panic!("expected RunnerError::Api, got {other:?}"),
+        }
+        mock.assert_async().await;
+    }
+
     fn assert_api_error(err: RunnerError, expected: &str) {
         match err {
             RunnerError::Api(message) => assert_eq!(message, expected),
@@ -946,6 +1120,7 @@ mod tests {
         );
         Arc::new(ApiProvider {
             network_policy_refresh: NetworkPolicyRefreshHandle::new(api.clone()),
+            builtin_firewall_catalog_refresh: BuiltinFirewallCatalogRefreshHandle::disabled(),
             api,
             group: "default".to_string(),
             supported_profiles: vec![crate::profile::DEFAULT_PROFILE.to_string()],
