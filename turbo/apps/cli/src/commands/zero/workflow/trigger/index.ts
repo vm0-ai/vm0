@@ -44,6 +44,7 @@ interface AddOptions extends GmailTriggerOptions {
   readonly actor?: string;
   readonly calendarId?: string;
   readonly parentPageUrl?: string;
+  readonly databaseUrl?: string;
 }
 
 interface UpdateOptions extends GmailTriggerOptions {
@@ -64,11 +65,12 @@ const EVENT_KINDS = [
   "google-calendar-event-updated",
   "google-calendar-event-cancelled",
   "notion-child-page-created",
+  "notion-database-item-created",
   "webhook",
 ] as const;
 const TRIGGER_KINDS = [...SCHEDULE_KINDS, ...EVENT_KINDS] as const;
 const EXACTLY_ONE_FLAG_MESSAGE =
-  "Provide exactly one of --expr (cron), --at (once), --every (loop), Gmail match options, --label, --subject, --actor, or --calendar-id";
+  "Provide exactly one of --expr (cron), --at (once), --every (loop), Gmail match options, --label, --subject, --actor, --calendar-id, --parent-page-url, or --database-url";
 
 function addGmailTriggerOptions(command: Command): Command {
   return command
@@ -303,7 +305,9 @@ function hasCalendarTriggerOptions(options: AddOptions): boolean {
 }
 
 function hasNotionTriggerOptions(options: AddOptions): boolean {
-  return options.parentPageUrl !== undefined;
+  return (
+    options.parentPageUrl !== undefined || options.databaseUrl !== undefined
+  );
 }
 
 function hasEventAddOptions(options: AddOptions): boolean {
@@ -545,6 +549,11 @@ function buildNotionChildPageCreatedCreateRequest(
   }
 
   const parentPageUrl = options.parentPageUrl?.trim();
+  if (options.databaseUrl !== undefined) {
+    throw new Error(
+      "--database-url only applies to notion-database-item-created triggers",
+    );
+  }
   if (!parentPageUrl) {
     throw new Error(
       'notion-child-page-created triggers require --parent-page-url "https://www.notion.so/..."',
@@ -558,6 +567,44 @@ function buildNotionChildPageCreatedCreateRequest(
       provider: "notion",
       event: "child_page_created",
       parentPageUrl,
+    },
+  };
+}
+
+function buildNotionDatabaseItemCreatedCreateRequest(
+  options: AddOptions,
+): ZeroWorkflowTriggerCreateRequest {
+  assertNoScheduleAddOptions(options);
+  if (
+    hasGmailTriggerOptions(options) ||
+    hasGmailLabelOption(options) ||
+    hasGithubTriggerOptions(options) ||
+    hasCalendarTriggerOptions(options)
+  ) {
+    throw new Error(
+      "Gmail, GitHub, and Google Calendar trigger flags only apply to their event triggers",
+    );
+  }
+
+  if (options.parentPageUrl !== undefined) {
+    throw new Error(
+      "--parent-page-url only applies to notion-child-page-created triggers",
+    );
+  }
+  const databaseUrl = options.databaseUrl?.trim();
+  if (!databaseUrl) {
+    throw new Error(
+      'notion-database-item-created triggers require --database-url "https://www.notion.so/..."',
+    );
+  }
+
+  return {
+    kind: "event",
+    eventType: "notion-database-item-created",
+    eventConfig: {
+      provider: "notion",
+      event: "database_item_created",
+      databaseUrl,
     },
   };
 }
@@ -609,6 +656,8 @@ function buildCreateRequest(
       return buildGoogleCalendarEventCreateRequest(kind, options);
     case "notion-child-page-created":
       return buildNotionChildPageCreatedCreateRequest(options);
+    case "notion-database-item-created":
+      return buildNotionDatabaseItemCreatedCreateRequest(options);
     case "webhook":
       return buildWebhookCreateRequest(options);
     default:
@@ -742,6 +791,10 @@ const addCommand = addGithubTriggerOptions(
     "--parent-page-url <url>",
     "Parent Notion page URL for notion-child-page-created triggers",
   )
+  .option(
+    "--database-url <url>",
+    "Notion database URL for notion-database-item-created triggers",
+  )
   .option("--agent <id>", "Agent ID for resolving a workflow name")
   .addHelpText(
     "after",
@@ -758,6 +811,7 @@ Examples:
   zero workflow trigger add triage --agent <agent-id> google-calendar-event-updated
   zero workflow trigger add triage --agent <agent-id> google-calendar-event-cancelled
   zero workflow trigger add research-notes --agent <agent-id> notion-child-page-created --parent-page-url "https://www.notion.so/workspace/Page-title-1234567890abcdef1234567890abcdef"
+  zero workflow trigger add research-notes --agent <agent-id> notion-database-item-created --database-url "https://www.notion.so/1234567890abcdef1234567890abcdef?v=abcdef1234567890abcdef1234567890"
   zero workflow trigger add triage --agent <agent-id> webhook
 
 Notes:

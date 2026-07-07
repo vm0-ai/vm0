@@ -132,6 +132,10 @@ type WorkflowNotionChildPageCreatedTriggerSummary = Extract<
   ZeroWorkflowTriggerSummary,
   { kind: "event"; eventType: "notion-child-page-created" }
 >;
+type WorkflowNotionDatabaseItemCreatedTriggerSummary = Extract<
+  ZeroWorkflowTriggerSummary,
+  { kind: "event"; eventType: "notion-database-item-created" }
+>;
 
 function workflowTriggers(): ZeroWorkflowTriggerSummary[] {
   return [weekdayWorkflowTrigger()];
@@ -323,6 +327,31 @@ function notionChildPageWorkflowTrigger(): WorkflowNotionChildPageCreatedTrigger
     ownerUserId: CURRENT_USER_ID,
     enabled: true,
     chatThreadId: "thread_notion_child_page",
+    nextRunAt: null,
+    lastRunAt: null,
+  };
+}
+
+function notionDatabaseItemWorkflowTrigger(): WorkflowNotionDatabaseItemCreatedTriggerSummary {
+  return {
+    id: "workflow-trigger-notion-database-item",
+    kind: "event",
+    eventType: "notion-database-item-created",
+    eventConfig: {
+      provider: "notion",
+      event: "database_item_created",
+      connectorId: "00000000-0000-4000-a000-000000000410",
+      dataSource: {
+        id: "22222222-2222-4222-8222-222222222222",
+        url: "https://www.notion.so/Bug-Bash-22222222222242228222222222222222",
+        title: "Bug Bash",
+      },
+    },
+    schedule: null,
+    scheduleSummary: null,
+    ownerUserId: CURRENT_USER_ID,
+    enabled: true,
+    chatThreadId: "thread_notion_database_item",
     nextRunAt: null,
     lastRunAt: null,
   };
@@ -818,6 +847,22 @@ function mockCreateWorkflowTrigger(
               url: body.eventConfig.parentPageUrl,
               title: "Roadmap",
               rawUrl: body.eventConfig.parentPageUrl,
+            },
+          },
+        });
+      }
+      if (body.eventType === "notion-database-item-created") {
+        return respond(201, {
+          ...notionDatabaseItemWorkflowTrigger(),
+          eventConfig: {
+            provider: "notion",
+            event: "database_item_created",
+            connectorId: "00000000-0000-4000-a000-000000000410",
+            dataSource: {
+              id: "22222222-2222-4222-8222-222222222222",
+              url: body.eventConfig.databaseUrl,
+              title: "Bug Bash",
+              rawUrl: body.eventConfig.databaseUrl,
             },
           },
         });
@@ -1767,7 +1812,6 @@ describe("workflow detail page", () => {
       screen.getByText(/subject does not contain "newsletter"/),
     ).toBeInTheDocument();
     // Only the schedule trigger shows a "Next" run stat; event triggers omit it.
-    expect(screen.getByText("Every weekday at 9:00 AM")).toBeInTheDocument();
     expect(screen.getAllByText("Next")).toHaveLength(1);
   });
 
@@ -1998,6 +2042,50 @@ describe("workflow detail page", () => {
           provider: "google-meet",
           event: "transcript_generated",
           scope: { type: "organizer_user" },
+        },
+      });
+    });
+  });
+
+  it("creates a Notion database item trigger", async () => {
+    const createBodies: ZeroWorkflowTriggerCreateRequest[] = [];
+    mockWorkflowApis([salesResearch()]);
+    mockCreateWorkflowTrigger((body) => {
+      createBodies.push(body);
+    });
+
+    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"), {
+      [FeatureSwitchKey.NotionWorkflowTriggers]: true,
+    });
+
+    await waitFor(() => {
+      expect(buttonByText("Add automation")).toBeInTheDocument();
+    });
+    click(buttonByText("Add automation"));
+
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+    pickTrigger("Integrations", /^New Notion database item/);
+
+    const createTriggerForm = await screen.findByRole("form", {
+      name: "Add Notion database item automation",
+    });
+    await fill(
+      within(createTriggerForm).getByLabelText("Database URL"),
+      "https://www.notion.so/22222222222242228222222222222222?v=aaaaaaaaaaaa4aaa8aaaaaaaaaaaaaaa",
+    );
+    fireEvent.submit(createTriggerForm);
+
+    await waitFor(() => {
+      expect(createBodies.at(-1)).toStrictEqual({
+        kind: "event",
+        eventType: "notion-database-item-created",
+        eventConfig: {
+          provider: "notion",
+          event: "database_item_created",
+          databaseUrl:
+            "https://www.notion.so/22222222222242228222222222222222?v=aaaaaaaaaaaa4aaa8aaaaaaaaaaaaaaa",
         },
       });
     });

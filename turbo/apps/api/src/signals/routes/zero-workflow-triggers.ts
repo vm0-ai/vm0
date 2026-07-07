@@ -190,7 +190,8 @@ const createTriggerInner$ = command(
                     },
                     signal,
                   )
-                : bodyResult.data.eventType === "notion-child-page-created"
+                : bodyResult.data.eventType === "notion-child-page-created" ||
+                    bodyResult.data.eventType === "notion-database-item-created"
                   ? await set(
                       createWorkflowTrigger$,
                       {

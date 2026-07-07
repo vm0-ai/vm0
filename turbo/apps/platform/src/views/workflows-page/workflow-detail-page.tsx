@@ -84,6 +84,7 @@ import {
   createWorkflowGmailLabelAppliedTrigger$,
   createWorkflowGmailNewMessageTrigger$,
   createWorkflowNotionChildPageTrigger$,
+  createWorkflowNotionDatabaseItemTrigger$,
   createWorkflowWebhookTrigger$,
   createGithubLabelActor$,
   createScheduleCronFields$,
@@ -2298,6 +2299,9 @@ function workflowTriggerTitle(trigger: ZeroWorkflowTriggerSummary): string {
   if (trigger.eventType === "notion-child-page-created") {
     return "New Notion child page";
   }
+  if (trigger.eventType === "notion-database-item-created") {
+    return "New Notion database item";
+  }
   return "Webhook";
 }
 
@@ -2336,6 +2340,10 @@ function workflowTriggerSummary(
     const title = trigger.eventConfig.parentPage.title;
     return title ? `Parent page ${quote(title)}` : "Configured parent page";
   }
+  if (trigger.eventType === "notion-database-item-created") {
+    const title = trigger.eventConfig.dataSource.title;
+    return title ? `Database ${quote(title)}` : "Configured database";
+  }
   return null;
 }
 
@@ -2359,6 +2367,7 @@ type TriggerCreateDialogKind =
   | "google-calendar-cancelled"
   | "google-meet-transcript-generated"
   | "notion-child-page"
+  | "notion-database-item"
   | "webhook";
 
 type TriggerCategoryKey = "schedule" | "email" | "calendar" | "integrations";
@@ -2404,12 +2413,20 @@ function buildIntegrationTriggerOptions({
     });
   }
   if (notionWorkflowTriggersEnabled) {
-    integrationOptions.push({
-      kind: "notion-child-page",
-      title: "New Notion child page",
-      description: "Run when a direct child page is created.",
-      icon: IconFileText,
-    });
+    integrationOptions.push(
+      {
+        kind: "notion-child-page",
+        title: "New Notion child page",
+        description: "Run when a direct child page is created.",
+        icon: IconFileText,
+      },
+      {
+        kind: "notion-database-item",
+        title: "New Notion database item",
+        description: "Run when a page is added to a Notion database.",
+        icon: IconFileText,
+      },
+    );
   }
   return integrationOptions;
 }
@@ -2919,6 +2936,13 @@ function TriggersSection({
           setCreateDialog(open ? "notion-child-page" : null);
         }}
       />
+      <CreateNotionDatabaseItemTriggerDialog
+        workflowId={detail.id}
+        open={createDialog === "notion-database-item"}
+        onOpenChange={(open) => {
+          setCreateDialog(open ? "notion-database-item" : null);
+        }}
+      />
       <CreateWebhookTriggerDialog
         workflowId={detail.id}
         open={createDialog === "webhook"}
@@ -2927,6 +2951,96 @@ function TriggersSection({
         }}
       />
     </section>
+  );
+}
+
+function CreateNotionDatabaseItemTriggerDialog({
+  workflowId,
+  open,
+  onOpenChange,
+}: {
+  readonly workflowId: string;
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const [createLoadable, createNotionTrigger] = useLoadableSet(
+    createWorkflowNotionDatabaseItemTrigger$,
+  );
+  const creating = createLoadable.state === "loading";
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Add Notion automation</DialogTitle>
+          <DialogDescription>
+            Run this workflow when a page is added to a Notion database.
+          </DialogDescription>
+        </DialogHeader>
+        <form
+          aria-label="Add Notion database item automation"
+          className="flex flex-col gap-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const form = new FormData(event.currentTarget);
+            const databaseUrl = formTextValue(form, "databaseUrl");
+            if (!databaseUrl) {
+              return;
+            }
+            detach(
+              (async () => {
+                await createNotionTrigger(
+                  {
+                    workflowId,
+                    eventConfig: {
+                      provider: "notion",
+                      event: "database_item_created",
+                      databaseUrl,
+                    },
+                  },
+                  pageSignal,
+                );
+                onOpenChange(false);
+              })(),
+              Reason.DomCallback,
+            );
+          }}
+        >
+          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+            Database URL
+            <input
+              name="databaseUrl"
+              aria-label="Database URL"
+              required
+              disabled={creating}
+              placeholder="https://www.notion.so/..."
+              className={FIELD_CLASS}
+            />
+          </label>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={creating}
+              onClick={() => {
+                onOpenChange(false);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={creating}>
+              {creating ? (
+                <IconLoader2 size={14} className="animate-spin" />
+              ) : (
+                <IconFileText size={14} stroke={1.5} />
+              )}
+              Add Notion automation
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 
