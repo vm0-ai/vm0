@@ -490,11 +490,11 @@ function recommendedFollowupMessages(
   });
 }
 
-function publishedChatThreadRunFinished(threadId: string): boolean {
+function publishedChatThreadFollowupsFinished(threadId: string): boolean {
   return context.mocks.ably.publish.mock.calls.some((call) => {
     const payload = call[1];
     return (
-      call[0] === "chatThreadRunFinished" &&
+      call[0] === "chatThreadFollowupsFinished" &&
       payload !== null &&
       typeof payload === "object" &&
       "threadId" in payload &&
@@ -832,7 +832,7 @@ describe("CHAT-02: completed chat callback", () => {
     ]);
     await expect
       .poll(() => {
-        return publishedChatThreadRunFinished(first.threadId);
+        return publishedChatThreadFollowupsFinished(first.threadId);
       })
       .toBe(true);
 
@@ -997,6 +997,7 @@ describe("CHAT-02: completed chat callback", () => {
     chatCallbacks.mockChatOutputEvents([
       assistantEvent(0, "The final assistant answer"),
     ]);
+    context.mocks.ably.publish.mockClear();
     await completeChatRunOk(run.runId, sandboxHeaders, {
       lastEventSequence: 0,
     });
@@ -1009,6 +1010,7 @@ describe("CHAT-02: completed chat callback", () => {
       throw new Error("Expected a completed lifecycle marker");
     }
     expect(marker.recommendedFollowups).toBeUndefined();
+    expect(publishedChatThreadFollowupsFinished(run.threadId)).toBe(true);
   });
 
   it("auto-sends the queued message before completed-run LLM side effects finish", async () => {
@@ -2019,11 +2021,7 @@ describe("CHAT-02: failed chat callbacks", () => {
         `chatThreadRunCreated:${threadId}`,
         null,
       );
-      await expect
-        .poll(() => {
-          return publishedChatThreadRunFinished(run.threadId);
-        })
-        .toBe(true);
+      await waitForChatThreadMessageCreatedPublish(run.threadId);
     }
     const reportRunId = runIds[2];
     if (!threadId || !reportRunId) {
