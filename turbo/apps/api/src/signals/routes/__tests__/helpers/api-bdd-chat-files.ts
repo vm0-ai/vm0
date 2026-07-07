@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  artifactsContract,
   chatMessagesContract,
   chatSearchContract,
   chatThreadArtifactsContract,
@@ -16,6 +17,8 @@ import {
   chatThreadsContract,
   chatThreadMessagesContract,
   type AttachFile,
+  type ArtifactsListResponse,
+  type ArtifactsListQuery,
   type ChatSearchResponse,
   type ChatThreadArtifactRun,
   type ChatThreadDetail,
@@ -71,6 +74,7 @@ import { storagesDownloadRoutes } from "../../storages-download";
 import { storagesListRoutes } from "../../storages-list";
 import { storagesPrepareRoutes } from "../../storages-prepare";
 import { zeroChatMessagesRoutes } from "../../zero-chat-messages";
+import { zeroArtifactsRoutes } from "../../zero-artifacts";
 import { zeroChatThreadComputerUseHostRoutes } from "../../zero-chat-threads-computer-use-host";
 import { zeroChatThreadCreateRoutes } from "../../zero-chat-threads-create";
 import { zeroChatThreadDeleteRoutes } from "../../zero-chat-threads-delete";
@@ -96,6 +100,8 @@ export { storageTextFile } from "./api-bdd-storage-files";
 
 const MODEL_FIRST_SELECTION_PROVIDER_ID =
   "00000000-0000-4000-8000-000000000000";
+
+type ArtifactsListRequestQuery = Partial<ArtifactsListQuery>;
 
 function defaultCreateThreadModelSelection(): ModelSelectionRequest {
   return {
@@ -235,6 +241,7 @@ function mockObjectStorageObjectsExist(context: TestContext): void {
 const chatFilesRoutes = [
   ...agentComposesRoutes,
   ...agentComposesReadRoutes,
+  ...zeroArtifactsRoutes,
   ...zeroChatThreadRoutes,
   ...zeroChatThreadCreateRoutes,
   ...zeroChatThreadDeleteRoutes,
@@ -304,6 +311,10 @@ export function createChatFilesBddApi(context: TestContext) {
 
   function threadArtifactsClient() {
     return chatFilesApp(context)(chatThreadArtifactsContract);
+  }
+
+  function artifactsClient() {
+    return chatFilesApp(context)(artifactsContract);
   }
 
   function threadMarkReadClient() {
@@ -1028,6 +1039,34 @@ export function createChatFilesBddApi(context: TestContext) {
         threadArtifactsClient().list({
           headers: authenticate(context, actor),
           params: { threadId },
+        }),
+        statuses,
+      );
+    },
+
+    async listArtifacts(
+      actor: ApiTestUser,
+      query: ArtifactsListRequestQuery = {},
+    ): Promise<ArtifactsListResponse> {
+      const response = await accept(
+        artifactsClient().list({
+          headers: authenticate(context, actor),
+          query,
+        }),
+        [200],
+      );
+      return response.body;
+    },
+
+    async requestListArtifacts(
+      actor: ApiTestUser | null,
+      query: ArtifactsListRequestQuery,
+      statuses: readonly (200 | 400 | 401 | 403)[],
+    ) {
+      return await accept(
+        artifactsClient().list({
+          headers: authenticate(context, actor),
+          query,
         }),
         statuses,
       );
