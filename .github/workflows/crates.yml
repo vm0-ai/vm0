@@ -1528,7 +1528,7 @@ jobs:
             SANDBOX_ID=$(sudo jq -r '.active_runs[0].sandbox_id // empty' \
               "$RUNNER_DIR/status.json" 2>/dev/null)
             if [ -n "$RUN_ID" ] && [ -n "$SANDBOX_ID" ] \
-              && sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- test -p /tmp/vm0-drain-release-a 2>/dev/null; then
+              && sudo timeout 10 "$BIN_DIR/runner" exec --timeout 5 --sandbox "$SANDBOX_ID" -- test -p /tmp/vm0-drain-release-a 2>/dev/null; then
               RELEASE_FIFO_READY=1
               break
             fi
@@ -1626,7 +1626,7 @@ jobs:
           # Test 6: the long-running A that straddled drain+resume finishes
           # normally (exit 0) — drain must not cancel in-flight jobs.
           echo "--- Test: A completes normally through drain+resume ---"
-          sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- timeout 10 sh -c 'printf release > /tmp/vm0-drain-release-a' \
+          sudo timeout 20 "$BIN_DIR/runner" exec --timeout 15 --sandbox "$SANDBOX_ID" -- timeout 10 sh -c 'printf release > /tmp/vm0-drain-release-a' \
             || fail "failed to release A after drain+resume"
           wait "$SUBMIT_A_PID"
           SUBMIT_A_EXIT=$?
