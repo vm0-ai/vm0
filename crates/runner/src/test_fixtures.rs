@@ -319,7 +319,9 @@ mod tests {
     const TIMEOUT_CHILD_ENV: &str = "VM0_RUN_IGNORED_CHILD_TIMEOUT_TEST";
 
     #[tokio::test]
-    #[should_panic(expected = "timed out")]
+    #[should_panic(
+        expected = "ignored child test test_fixtures::tests::run_ignored_child_test_timeout_child timed out after"
+    )]
     async fn run_ignored_child_test_times_out() {
         run_ignored_child_test(
             "test_fixtures::tests::run_ignored_child_test_timeout_child",
