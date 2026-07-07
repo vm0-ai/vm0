@@ -629,13 +629,30 @@ mod tests {
 
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("base").join("child");
-        let old_umask = nix::sys::stat::umask(Mode::from_bits_truncate(0o777));
+        let _umask = UmaskGuard::set(Mode::from_bits_truncate(0o777));
         let result = ensure_dir(&path, DirMode::SharedTrustedParent, "test directory");
-        nix::sys::stat::umask(old_umask);
 
         result.unwrap();
         assert_eq!(mode(&dir.path().join("base")), SHARED_TRUSTED_DIR_MODE);
         assert_eq!(mode(&path), SHARED_TRUSTED_DIR_MODE);
+    }
+
+    struct UmaskGuard {
+        original: Mode,
+    }
+
+    impl UmaskGuard {
+        fn set(mask: Mode) -> Self {
+            Self {
+                original: nix::sys::stat::umask(mask),
+            }
+        }
+    }
+
+    impl Drop for UmaskGuard {
+        fn drop(&mut self) {
+            nix::sys::stat::umask(self.original);
+        }
     }
 
     #[test]
