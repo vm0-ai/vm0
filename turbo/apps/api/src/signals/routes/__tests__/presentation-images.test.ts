@@ -61,6 +61,16 @@ async function enableUnsplashPreferred(
   );
 }
 
+async function disableUnsplashPreferred(
+  fixture: PresentationImagesFixture,
+): Promise<void> {
+  await updateFeatureSwitchesForUser(
+    context,
+    { userId: fixture.userId, orgId: fixture.orgId },
+    { [FeatureSwitchKey.PresentationImageUnsplashPreferred]: false },
+  );
+}
+
 describe("POST /api/presentation/images/resolve", () => {
   it("resolves image briefs through Unsplash with per-request query dedupe", async () => {
     const fixture = createFixture();
@@ -339,12 +349,12 @@ describe("POST /api/presentation/images/resolve", () => {
   });
 
   it("resolves directly through Pexels when the switch is off", async () => {
-    // Use an isolated org/user so no PresentationImageUnsplashPreferred override
-    // from earlier tests leaks in and flips this to the Unsplash-preferred path.
+    // Explicitly disable the globally enabled switch for the direct Pexels path.
     const fixture = createFixture("_pexels_only");
     routeMocks.clerk.session(fixture.userId, fixture.orgId);
     mockEnv("UNSPLASH_ACCESS_KEY", "test-unsplash-key");
     mockEnv("PEXELS_API_KEY", "test-pexels-key");
+    await disableUnsplashPreferred(fixture);
 
     let unsplashCalled = false;
     const pexelsQueries: string[] = [];
