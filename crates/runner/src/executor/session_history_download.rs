@@ -1222,6 +1222,34 @@ mod tests {
     }
 
     #[test]
+    fn probe_registration_drop_clears_inflight_ref() {
+        let probe = SessionHistoryProbe::with_limits_for_test(Duration::from_secs(60), 8);
+        let session = ref_session(
+            "http://127.0.0.1/drop.blob".to_string(),
+            hex::encode(Sha256::digest(b"drop")),
+            4,
+            4,
+        );
+        let history_ref = session.history_ref().unwrap();
+
+        let registration = probe.observe(history_ref);
+        let overlapping = probe.observe(history_ref);
+        assert_eq!(
+            overlapping.observation(),
+            SessionHistoryCacheProbeMetadata::new(true, true)
+        );
+        overlapping.finish();
+        drop(registration);
+        let repeated = probe.observe(history_ref);
+
+        assert_eq!(
+            repeated.observation(),
+            SessionHistoryCacheProbeMetadata::new(true, false)
+        );
+        repeated.finish();
+    }
+
+    #[test]
     fn probe_eviction_removes_old_ref_identity() {
         let probe = SessionHistoryProbe::with_limits_for_test(Duration::from_secs(60), 1);
         let first_session = ref_session(
