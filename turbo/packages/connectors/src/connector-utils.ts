@@ -1144,14 +1144,6 @@ export function getConnectorAuthMethodDeviceAuthStartOptionsConfig(
     ?.startOptions;
 }
 
-export function getConnectorAuthMethodExternalCodeDisplayConfig(
-  type: ConnectorType,
-  authMethod: string,
-) {
-  return getConnectorAuthMethodExternalCodeGrantConfig(type, authMethod)
-    ?.display;
-}
-
 export type ConnectorDeviceAuthStartOptionsParseResult =
   | {
       readonly success: true;

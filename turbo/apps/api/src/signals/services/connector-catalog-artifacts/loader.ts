@@ -130,9 +130,6 @@ function assertRequiredCapabilitiesCoverArtifacts(args: {
   for (const connector of args.publicArtifact.connectors) {
     for (const authMethod of connector.authMethods) {
       artifactCapabilities.add(authMethodGrantCapability(authMethod));
-      if (authMethod.externalCode) {
-        artifactCapabilities.add("grant.external-code-display@1");
-      }
     }
   }
 
@@ -356,14 +353,6 @@ function assertAuthMethodShape(args: {
   ) {
     throw new Error(
       `Connector catalog auth method ${args.connectorRef}/${args.authMethod.id} has start options for ${args.authMethod.grantKind} grant`,
-    );
-  }
-  if (
-    args.authMethod.grantKind !== "external-code" &&
-    args.authMethod.externalCode
-  ) {
-    throw new Error(
-      `Connector catalog auth method ${args.connectorRef}/${args.authMethod.id} has external-code display for ${args.authMethod.grantKind} grant`,
     );
   }
   for (const startOption of args.authMethod.startOptions) {

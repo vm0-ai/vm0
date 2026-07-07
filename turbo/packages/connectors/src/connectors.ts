@@ -345,7 +345,6 @@ export type {
   ConnectorDisplayCategoryGroup,
   ConnectorEnvBindingValue,
   ConnectorEnvBindings,
-  ConnectorExternalCodeDisplayConfig,
   ConnectorExternalCodeGrantConfig,
   ConnectorGenerationType,
   ConnectorGrantConfig,

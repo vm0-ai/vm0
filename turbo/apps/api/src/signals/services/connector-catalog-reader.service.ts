@@ -26,7 +26,6 @@ import {
 import {
   getAvailableConnectorAuthMethodIds,
   getConnectorAuthMethodAccessMetadata,
-  getConnectorAuthMethodExternalCodeDisplayConfig,
   getConnectorAuthMethod,
   getConnectorPrivateNames,
   getConnectorGenerationTypes,
@@ -179,54 +178,16 @@ function startOptionsForCatalog(
   );
 }
 
-function externalCodeDisplayForCatalog(
-  type: ConnectorType,
-  id: ConnectorAuthMethodId,
-  method: ConnectorAuthMethodConfig,
-  privateNames: ReadonlySet<string>,
-): PublicConnectorCatalogAuthMethodDetail["externalCode"] {
-  if (method.grant.kind !== "external-code") {
-    return null;
-  }
-  const display = getConnectorAuthMethodExternalCodeDisplayConfig(type, id);
-  if (!display) {
-    return null;
-  }
-
-  const externalCode = {
-    instructions: publicTextOrNull(display?.instructions, privateNames),
-    inputLabel: publicTextOrNull(display?.inputLabel, privateNames),
-    inputPlaceholder: publicTextOrNull(display?.inputPlaceholder, privateNames),
-    openButtonLabel: publicTextOrNull(display?.openButtonLabel, privateNames),
-    missingInputMessage: publicTextOrNull(
-      display?.missingInputMessage,
-      privateNames,
-    ),
-  };
-  return Object.values(externalCode).some((value) => {
-    return value !== null;
-  })
-    ? externalCode
-    : null;
-}
-
 function authMethodDetailForCatalog(
   type: ConnectorType,
   id: ConnectorAuthMethodId,
   method: ConnectorAuthMethodConfig,
   privateNames: ReadonlySet<string>,
 ): PublicConnectorCatalogAuthMethodDetail {
-  const externalCode = externalCodeDisplayForCatalog(
-    type,
-    id,
-    method,
-    privateNames,
-  );
   return {
     ...authMethodSummaryForCatalog(id, method, privateNames),
     manualFields: manualFieldsForCatalog(type, id, method, privateNames),
     startOptions: startOptionsForCatalog(type, id, method),
-    ...(externalCode ? { externalCode } : {}),
   };
 }
 

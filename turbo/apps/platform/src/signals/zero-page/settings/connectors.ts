@@ -69,7 +69,6 @@ const { get$: hiddenConnectorTypesRaw$, set$: setHiddenConnectorTypes$ } =
 type PostConnectOptions = {
   readonly showPermissionDialog?: boolean;
   readonly connectorLabel?: string;
-  readonly externalCodeMissingInputMessage?: string | null;
 };
 export type ConnectorConnectionStatus =
   | "not-connected"
@@ -1830,9 +1829,7 @@ const completeConnectorExternalCode$ = command(
     if (!code) {
       set(internalConnectorExternalCodeState$, {
         ...current,
-        errorMessage:
-          options.externalCodeMissingInputMessage ??
-          `Enter the authorization code from ${options.connectorLabel ?? type}.`,
+        errorMessage: `Enter the code or token from ${options.connectorLabel ?? type}.`,
       });
       return false;
     }

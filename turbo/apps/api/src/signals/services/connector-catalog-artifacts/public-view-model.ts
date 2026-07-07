@@ -56,9 +56,6 @@ function connectorCatalogArtifactToPublicDetail(
             }),
           };
         }),
-        ...(authMethod.externalCode
-          ? { externalCode: { ...authMethod.externalCode } }
-          : {}),
       };
     }),
   };

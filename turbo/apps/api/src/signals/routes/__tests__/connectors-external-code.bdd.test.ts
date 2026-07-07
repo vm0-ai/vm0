@@ -275,7 +275,7 @@ describe("CONN-02: external-code session lifecycle", () => {
     );
     expectApiError(rejected.body);
     expect(rejected.body.error.message).toBe(
-      "External-code authorization code was rejected. Check the code and try again.",
+      "External-code authorization code or token was rejected. Check it and try again.",
     );
 
     const retried = await connectorsApi.completeExternalCode(actor, "aws", {
@@ -297,7 +297,7 @@ describe("CONN-02: external-code session lifecycle", () => {
     await connectorsApi.deleteFeatureSwitches(actor);
   });
 
-  it("returns PlayStation-specific copy when the NPSSO token is rejected", async () => {
+  it("returns generic external-code copy when the PlayStation NPSSO token is rejected", async () => {
     const actor = await playstationActor();
     let authorizeRequestCount = 0;
     server.use(
@@ -327,7 +327,7 @@ describe("CONN-02: external-code session lifecycle", () => {
     );
     expectApiError(rejected.body);
     expect(rejected.body.error.message).toBe(
-      "NPSSO token was rejected. Check it and try again.",
+      "External-code authorization code or token was rejected. Check it and try again.",
     );
     expect(authorizeRequestCount).toBe(1);
   });

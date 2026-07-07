@@ -548,10 +548,7 @@ async function completeClaimedExternalCodeSession(
         errorMessage: errorMessage(providerResult.error),
         signal: args.signal,
       });
-      const badRequest = providerBadRequest(
-        providerResult.error,
-        externalCodeInputLabel(args),
-      );
+      const badRequest = providerBadRequest(providerResult.error);
       if (badRequest) {
         return badRequest;
       }
@@ -590,29 +587,14 @@ async function completeClaimedExternalCodeSession(
   return persistedConnector.value;
 }
 
-function externalCodeInputLabel(methodRef: ExternalCodeMethodRef) {
-  const method = getConnectorAuthMethod(methodRef.type, methodRef.authMethod);
-  if (!method) {
-    return undefined;
-  }
-  return method.grant.kind === "external-code"
-    ? method.grant.display?.inputLabel
-    : undefined;
-}
-
-function providerBadRequest(error: unknown, inputLabel: string | undefined) {
+function providerBadRequest(error: unknown) {
   if (
     isOAuthProviderHttpError(error) &&
     (error.oauthError === "invalid_grant" ||
       (error.status >= 400 && error.status < 500 && error.status !== 429))
   ) {
-    if (inputLabel) {
-      return badRequestMessage(
-        `${inputLabel} was rejected. Check it and try again.`,
-      );
-    }
     return badRequestMessage(
-      "External-code authorization code was rejected. Check the code and try again.",
+      "External-code authorization code or token was rejected. Check it and try again.",
     );
   }
   return null;

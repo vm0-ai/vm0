@@ -2410,7 +2410,7 @@ describe("connectors page", () => {
     });
   });
 
-  it("uses external-code display metadata for PlayStation", async () => {
+  it("uses auth method help text for PlayStation external-code connection", async () => {
     mockConnectors([]);
     mockPublicConnectorStatus([
       publicStatusItem({
@@ -2421,18 +2421,10 @@ describe("connectors page", () => {
             id: "api",
             label: "PlayStation sign-in",
             description:
-              "Connect PlayStation Network by pasting a temporary NPSSO token from your signed-in Sony account.",
+              "First make sure you are signed in to PlayStation at [https://www.playstation.com/](https://www.playstation.com/).\nThen open [https://ca.account.sony.com/api/v1/ssocookie](https://ca.account.sony.com/api/v1/ssocookie) and paste the npsso value from the JSON response.",
             grantKind: "external-code",
             manualFields: [],
             startOptions: [],
-            externalCode: {
-              instructions:
-                "Open the PlayStation NPSSO page while signed in to Sony, then paste only the npsso value from the JSON response.",
-              inputLabel: "NPSSO token",
-              inputPlaceholder: "NPSSO token",
-              openButtonLabel: "Open PlayStation NPSSO page",
-              missingInputMessage: "Enter the PlayStation NPSSO token.",
-            },
           },
         ],
       }),
@@ -2457,16 +2449,21 @@ describe("connectors page", () => {
 
     await waitFor(() => {
       expect(
-        within(connectDialog).getByText(
-          "Open the PlayStation NPSSO page while signed in to Sony, then paste only the npsso value from the JSON response.",
-        ),
+        within(connectDialog).getByRole("link", {
+          name: "https://www.playstation.com/",
+        }),
       ).toBeInTheDocument();
     });
     expect(
-      buttonByText("Open PlayStation NPSSO page", connectDialog),
+      within(connectDialog).getByRole("link", {
+        name: "https://ca.account.sony.com/api/v1/ssocookie",
+      }),
     ).toBeInTheDocument();
     expect(
-      within(connectDialog).getByPlaceholderText("NPSSO token"),
+      buttonByText("Open PlayStation sign-in", connectDialog),
+    ).toBeInTheDocument();
+    expect(
+      within(connectDialog).getByPlaceholderText("Code or token"),
     ).toBeInTheDocument();
   });
 

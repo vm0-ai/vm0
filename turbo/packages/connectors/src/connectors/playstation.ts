@@ -13,7 +13,7 @@ export const playstation = {
         featureFlag: FeatureSwitchKey.PlaystationConnector,
         label: "PlayStation sign-in",
         helpText:
-          "Connect PlayStation Network by pasting a temporary NPSSO token from your signed-in Sony account.",
+          "First make sure you are signed in to PlayStation at [https://www.playstation.com/](https://www.playstation.com/).\nThen open [https://ca.account.sony.com/api/v1/ssocookie](https://ca.account.sony.com/api/v1/ssocookie) and paste the npsso value from the JSON response.",
         client: {
           clientRegistration: "static",
           clientType: "public",
@@ -36,14 +36,6 @@ export const playstation = {
             idToken: "$secrets.PLAYSTATION_ID_TOKEN",
             accountId: "$vars.PLAYSTATION_ACCOUNT_ID",
             onlineId: "$vars.PLAYSTATION_ONLINE_ID",
-          },
-          display: {
-            instructions:
-              "Open the PlayStation NPSSO page while signed in to Sony, then paste only the npsso value from the JSON response.",
-            inputLabel: "NPSSO token",
-            inputPlaceholder: "NPSSO token",
-            openButtonLabel: "Open PlayStation NPSSO page",
-            missingInputMessage: "Enter the PlayStation NPSSO token.",
           },
         },
         access: {

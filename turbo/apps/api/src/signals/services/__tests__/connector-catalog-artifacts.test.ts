@@ -215,46 +215,11 @@ function fixtureDeviceAuthMethod(
   return authMethod;
 }
 
-function fixtureOAuthAuthMethod(
-  publicArtifact: ConnectorCatalogPublicArtifact,
-): ConnectorCatalogPublicArtifact["connectors"][number]["authMethods"][number] {
-  const connector = publicArtifact.connectors.find((item) => {
-    return item.connectorRef === "fixture-oauth";
-  });
-  const authMethod = connector?.authMethods.find((item) => {
-    return item.id === "oauth";
-  });
-  if (!authMethod) {
-    throw new Error("Missing fixture OAuth auth method");
-  }
-  return authMethod;
-}
-
-function addFixtureExternalCodeDisplay(
-  publicArtifact: ConnectorCatalogPublicArtifact,
-): void {
-  const authMethod = fixtureOAuthAuthMethod(publicArtifact);
-  authMethod.grantKind = "external-code";
-  authMethod.externalCode = fixtureExternalCodeDisplay();
-}
-
 function requiredCapabilitiesWith(
   manifest: ConnectorCatalogManifest,
   ...capabilities: readonly string[]
 ): string[] {
   return [...new Set([...manifest.requiredCapabilities, ...capabilities])];
-}
-
-function fixtureExternalCodeDisplay(): NonNullable<
-  ConnectorCatalogPublicArtifact["connectors"][number]["authMethods"][number]["externalCode"]
-> {
-  return {
-    instructions: "Open fixture sign-in and paste the code.",
-    inputLabel: "Fixture code",
-    inputPlaceholder: "code",
-    openButtonLabel: "Open fixture",
-    missingInputMessage: "Enter the fixture code.",
-  };
 }
 
 describe("connector catalog artifacts", () => {
@@ -379,37 +344,6 @@ describe("connector catalog artifacts", () => {
       },
       displayOrder: ["Files"],
     });
-  });
-
-  it("loads external-code display metadata when declared", async () => {
-    const records = await fixtureRecords();
-    const publicArtifact = publicArtifactFromRecords(records);
-    addFixtureExternalCodeDisplay(publicArtifact);
-
-    const recordsWithExternalCode = recordsWithPublicArtifact(
-      records,
-      publicArtifact,
-    );
-    const manifest = manifestFromRecords(recordsWithExternalCode);
-    const artifacts = await loadConnectorCatalogArtifacts({
-      reader: readerFromRecords(
-        recordsWithManifest(recordsWithExternalCode, {
-          ...manifest,
-          requiredCapabilities: requiredCapabilitiesWith(
-            manifest,
-            "grant.external-code@1",
-            "grant.external-code-display@1",
-          ),
-        }),
-      ),
-    });
-
-    expect(
-      getPublicConnectorCatalogDetailFromArtifact(
-        artifacts.publicArtifact,
-        "fixture-oauth",
-      )?.authMethods[0]?.externalCode,
-    ).toStrictEqual(fixtureExternalCodeDisplay());
   });
 
   it("rejects a fixture key that escapes the fixture root", async () => {
@@ -631,34 +565,6 @@ describe("connector catalog artifacts", () => {
       );
     },
   );
-
-  it("rejects external-code display metadata without the display capability", async () => {
-    const records = await fixtureRecords();
-    const publicArtifact = publicArtifactFromRecords(records);
-    addFixtureExternalCodeDisplay(publicArtifact);
-
-    const recordsWithExternalCode = recordsWithPublicArtifact(
-      records,
-      publicArtifact,
-    );
-    const manifest = manifestFromRecords(recordsWithExternalCode);
-
-    await expect(
-      loadConnectorCatalogArtifacts({
-        reader: readerFromRecords(
-          recordsWithManifest(recordsWithExternalCode, {
-            ...manifest,
-            requiredCapabilities: requiredCapabilitiesWith(
-              manifest,
-              "grant.external-code@1",
-            ),
-          }),
-        ),
-      }),
-    ).rejects.toThrow(
-      "Connector catalog manifest requiredCapabilities missing artifact capabilities: grant.external-code-display@1",
-    );
-  });
 
   it("rejects public artifacts that leak private runtime names", async () => {
     const records = await fixtureRecords();
