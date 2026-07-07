@@ -68,9 +68,7 @@ export function resolvePlatformOriginForTarget(
 export function resolveApiBaseForTarget(target: PlatformHostTarget): string {
   const origin = resolvePlatformOriginForTarget(target);
   if (!origin) {
-    throw new Error(
-      "Cannot resolve platform API URL without a browser origin",
-    );
+    throw new Error("Cannot resolve platform API URL without a browser origin");
   }
   return origin;
 }
@@ -79,6 +77,8 @@ export function resolveApiBase(): string {
   return resolveApiBaseForTarget("api");
 }
 
-export function resolveApiBaseForNavigation(target: PlatformHostTarget): string {
+export function resolveApiBaseForNavigation(
+  target: PlatformHostTarget,
+): string {
   return resolveApiBaseForTarget(target);
 }
