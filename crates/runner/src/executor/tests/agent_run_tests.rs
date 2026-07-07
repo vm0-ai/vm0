@@ -44,6 +44,7 @@ use crate::active_input::ActiveInputSource;
 use crate::local_queue::{ActiveInputEntry, LocalQueue};
 use crate::restored_session_identity::RestoredSessionIdentityMismatchReason;
 use crate::storage_fingerprints::{StorageFingerprint, StorageFingerprints};
+use crate::test_fixtures::OneShotSessionHistoryServer;
 use crate::types::{
     ResumeSession, ResumeSessionHistory, ResumeSessionHistoryEncoding, ResumeSessionHistoryRef,
     ResumeSessionHistoryRefKind, SandboxReuseResult,
@@ -61,22 +62,9 @@ fn zstd_bytes(raw: &[u8]) -> Vec<u8> {
     zstd::encode_all(raw, 0).unwrap()
 }
 
-async fn serve_history_once(body: &[u8]) -> String {
-    let body = body.to_vec();
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let address = listener.local_addr().unwrap();
-    tokio::spawn(async move {
-        let (mut stream, _) = listener.accept().await.unwrap();
-        let mut request = [0u8; 1024];
-        let _ = stream.read(&mut request).await;
-        let response = format!(
-            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
-            body.len()
-        );
-        stream.write_all(response.as_bytes()).await.unwrap();
-        stream.write_all(&body).await.unwrap();
-    });
-    format!("http://{address}/history.blob?token=secret")
+async fn serve_history_once(body: &[u8]) -> OneShotSessionHistoryServer {
+    OneShotSessionHistoryServer::respond_once("200 OK", body.to_vec(), Some(body.len() as u64))
+        .await
 }
 
 async fn serve_storage_archive_for_cache(
@@ -111,23 +99,13 @@ async fn serve_history_once_after_request(
     body: &'static [u8],
     request_received: oneshot::Sender<()>,
     release_response: Arc<Notify>,
-) -> String {
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let address = listener.local_addr().unwrap();
-    tokio::spawn(async move {
-        let (mut stream, _) = listener.accept().await.unwrap();
-        let mut request = [0u8; 1024];
-        let _ = stream.read(&mut request).await;
-        let _ = request_received.send(());
-        release_response.notified().await;
-        let response = format!(
-            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
-            body.len()
-        );
-        stream.write_all(response.as_bytes()).await.unwrap();
-        stream.write_all(body).await.unwrap();
-    });
-    format!("http://{address}/history.blob?token=secret")
+) -> OneShotSessionHistoryServer {
+    OneShotSessionHistoryServer::respond_once_after_request(
+        body,
+        request_received,
+        release_response,
+    )
+    .await
 }
 
 fn claude_history_path(session_id: &str) -> String {
@@ -710,6 +688,7 @@ async fn run_in_sandbox_materializes_resume_session_history_ref_before_restore()
     let config = test_executor_config(dir.path()).await;
     let sandbox = sandbox_mock::MockSandbox::new("test");
     let history = b"{\"type\":\"init\"}\n\xff\n";
+    let history_server = serve_history_once(history).await;
     let mut ctx = minimal_context();
     ctx.resume_session = Some(ResumeSession {
         cli_agent_session_id: "sess-ref-123".into(),
@@ -717,7 +696,7 @@ async fn run_in_sandbox_materializes_resume_session_history_ref_before_restore()
             history_ref: ResumeSessionHistoryRef {
                 kind: ResumeSessionHistoryRefKind::Blob,
                 hash: hex::encode(Sha256::digest(history)),
-                url: serve_history_once(history).await,
+                url: history_server.url(),
                 encoding: None,
                 raw_size: history.len() as u64,
                 encoded_size: history.len() as u64,
@@ -749,6 +728,7 @@ async fn run_in_sandbox_materializes_resume_session_history_ref_before_restore()
         "/home/user/.claude/projects/-home-user-workspace/sess-ref-123.jsonl"
     );
     assert_eq!(writes[0].content, history);
+    history_server.assert_served().await;
 }
 
 #[tokio::test]
@@ -758,6 +738,7 @@ async fn run_in_sandbox_records_gzip_session_history_download_encoding() {
     let sandbox = sandbox_mock::MockSandbox::new("test");
     let history = b"{\"type\":\"init\"}\n\xff\n";
     let compressed = gzip_bytes(history);
+    let history_server = serve_history_once(&compressed).await;
     let mut ctx = minimal_context();
     ctx.resume_session = Some(ResumeSession {
         cli_agent_session_id: "sess-gzip-ref-123".into(),
@@ -765,7 +746,7 @@ async fn run_in_sandbox_records_gzip_session_history_download_encoding() {
             history_ref: ResumeSessionHistoryRef {
                 kind: ResumeSessionHistoryRefKind::Blob,
                 hash: hex::encode(Sha256::digest(history)),
-                url: serve_history_once(&compressed).await,
+                url: history_server.url(),
                 encoding: Some(ResumeSessionHistoryEncoding::Gzip),
                 raw_size: history.len() as u64,
                 encoded_size: compressed.len() as u64,
@@ -838,6 +819,7 @@ async fn run_in_sandbox_records_gzip_session_history_download_encoding() {
         "lt_64_kib",
         "ge_1",
     );
+    history_server.assert_served().await;
 }
 
 #[tokio::test]
@@ -847,6 +829,7 @@ async fn run_in_sandbox_records_zstd_session_history_download_encoding() {
     let sandbox = sandbox_mock::MockSandbox::new("test");
     let history = b"{\"type\":\"init\"}\n\xff\n";
     let compressed = zstd_bytes(history);
+    let history_server = serve_history_once(&compressed).await;
     let mut ctx = minimal_context();
     ctx.resume_session = Some(ResumeSession {
         cli_agent_session_id: "sess-zstd-ref-123".into(),
@@ -854,7 +837,7 @@ async fn run_in_sandbox_records_zstd_session_history_download_encoding() {
             history_ref: ResumeSessionHistoryRef {
                 kind: ResumeSessionHistoryRefKind::Blob,
                 hash: hex::encode(Sha256::digest(history)),
-                url: serve_history_once(&compressed).await,
+                url: history_server.url(),
                 encoding: Some(ResumeSessionHistoryEncoding::Zstd),
                 raw_size: history.len() as u64,
                 encoded_size: compressed.len() as u64,
@@ -927,6 +910,7 @@ async fn run_in_sandbox_records_zstd_session_history_download_encoding() {
         "lt_64_kib",
         "ge_1",
     );
+    history_server.assert_served().await;
 }
 
 #[tokio::test]
@@ -937,6 +921,12 @@ async fn run_in_sandbox_uses_prestarted_session_history_materializer() {
     let history = b"{\"type\":\"init\"}\n\xff\n";
     let (request_received_tx, request_received_rx) = oneshot::channel();
     let release_response = Arc::new(Notify::new());
+    let history_server = serve_history_once_after_request(
+        history,
+        request_received_tx,
+        Arc::clone(&release_response),
+    )
+    .await;
     let mut ctx = minimal_context();
     ctx.resume_session = Some(ResumeSession {
         cli_agent_session_id: "sess-prestarted-123".into(),
@@ -944,12 +934,7 @@ async fn run_in_sandbox_uses_prestarted_session_history_materializer() {
             history_ref: ResumeSessionHistoryRef {
                 kind: ResumeSessionHistoryRefKind::Blob,
                 hash: hex::encode(Sha256::digest(history)),
-                url: serve_history_once_after_request(
-                    history,
-                    request_received_tx,
-                    Arc::clone(&release_response),
-                )
-                .await,
+                url: history_server.url(),
                 encoding: None,
                 raw_size: history.len() as u64,
                 encoded_size: history.len() as u64,
@@ -974,6 +959,7 @@ async fn run_in_sandbox_uses_prestarted_session_history_materializer() {
     })
     .await
     .unwrap();
+    history_server.assert_served().await;
 
     let mut telemetry = test_telemetry(&config, &ctx);
     let result = run_in_sandbox(
@@ -1068,6 +1054,7 @@ async fn run_in_sandbox_records_completed_prestarted_materializer_failure() {
     let config = test_executor_config(dir.path()).await;
     let sandbox = sandbox_mock::MockSandbox::new("test");
     let history = br#"{"type":"init"}"#;
+    let history_server = serve_history_once(history).await;
     let mut ctx = minimal_context();
     ctx.resume_session = Some(ResumeSession {
         cli_agent_session_id: "sess-prestarted-failed-123".into(),
@@ -1075,7 +1062,7 @@ async fn run_in_sandbox_records_completed_prestarted_materializer_failure() {
             history_ref: ResumeSessionHistoryRef {
                 kind: ResumeSessionHistoryRefKind::Blob,
                 hash: hex::encode(Sha256::digest(b"different")),
-                url: serve_history_once(history).await,
+                url: history_server.url(),
                 encoding: None,
                 raw_size: history.len() as u64,
                 encoded_size: history.len() as u64,
@@ -1095,6 +1082,7 @@ async fn run_in_sandbox_records_completed_prestarted_materializer_failure() {
     })
     .await
     .unwrap();
+    history_server.assert_served().await;
 
     let mut telemetry = test_telemetry(&config, &ctx);
     let result = run_in_sandbox(
@@ -1989,6 +1977,7 @@ async fn run_in_sandbox_redacts_session_history_download_details_from_telemetry(
     let history = br#"{"type":"init"}"#;
     let expected_hash = hex::encode(Sha256::digest(b"different"));
     let actual_hash = hex::encode(Sha256::digest(history));
+    let history_server = serve_history_once(history).await;
     let mut ctx = minimal_context();
     ctx.resume_session = Some(ResumeSession {
         cli_agent_session_id: "sess-ref-123".into(),
@@ -1996,7 +1985,7 @@ async fn run_in_sandbox_redacts_session_history_download_details_from_telemetry(
             history_ref: ResumeSessionHistoryRef {
                 kind: ResumeSessionHistoryRefKind::Blob,
                 hash: expected_hash.clone(),
-                url: serve_history_once(history).await,
+                url: history_server.url(),
                 encoding: None,
                 raw_size: history.len() as u64,
                 encoded_size: history.len() as u64,
@@ -2087,6 +2076,7 @@ async fn run_in_sandbox_redacts_session_history_download_details_from_telemetry(
     let telemetry_debug = format!("{ops:?}");
     assert!(!telemetry_debug.contains(&expected_hash));
     assert!(!telemetry_debug.contains(&actual_hash));
+    history_server.assert_served().await;
 }
 
 #[tokio::test]

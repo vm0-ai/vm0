@@ -1,5 +1,138 @@
+use std::io;
+use std::sync::Arc;
+use std::time::Duration;
+
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::TcpListener;
+use tokio::sync::{Notify, oneshot};
+use tokio::task::JoinHandle;
+
 use crate::ids::RunId;
 use crate::types::ExecutionContext;
+
+const RAW_HTTP_FIXTURE_TIMEOUT: Duration = Duration::from_secs(5);
+
+pub(crate) struct OneShotSessionHistoryServer {
+    url: String,
+    task: Option<JoinHandle<io::Result<()>>>,
+}
+
+impl OneShotSessionHistoryServer {
+    pub(crate) async fn respond_once(
+        status: impl Into<String>,
+        body: impl Into<Vec<u8>> + Send + 'static,
+        content_length: Option<u64>,
+    ) -> Self {
+        Self::spawn(status, body, content_length, None, None).await
+    }
+
+    pub(crate) async fn respond_once_after_request(
+        body: impl Into<Vec<u8>> + Send + 'static,
+        request_received: oneshot::Sender<()>,
+        release_response: Arc<Notify>,
+    ) -> Self {
+        let body = body.into();
+        let content_length = Some(body.len() as u64);
+        Self::spawn(
+            "200 OK",
+            body,
+            content_length,
+            Some(request_received),
+            Some(release_response),
+        )
+        .await
+    }
+
+    pub(crate) fn url(&self) -> String {
+        self.url.clone()
+    }
+
+    pub(crate) async fn assert_served(mut self) {
+        let mut task = self
+            .task
+            .take()
+            .expect("session history fixture task should be present");
+        match tokio::time::timeout(RAW_HTTP_FIXTURE_TIMEOUT, &mut task).await {
+            Ok(result) => {
+                result
+                    .expect("session history fixture server task should not panic")
+                    .expect("session history fixture server should not fail");
+            }
+            Err(_) => {
+                task.abort();
+                let _ = task.await;
+                panic!("session history fixture server should finish");
+            }
+        }
+    }
+
+    async fn spawn(
+        status: impl Into<String>,
+        body: impl Into<Vec<u8>> + Send + 'static,
+        content_length: Option<u64>,
+        request_received: Option<oneshot::Sender<()>>,
+        release_response: Option<Arc<Notify>>,
+    ) -> Self {
+        let body = body.into();
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let task = tokio::spawn(serve_session_history_once(
+            listener,
+            status.into(),
+            body,
+            content_length,
+            request_received,
+            release_response,
+        ));
+
+        Self {
+            url: format!("http://{address}/history.blob?token=secret"),
+            task: Some(task),
+        }
+    }
+}
+
+impl Drop for OneShotSessionHistoryServer {
+    fn drop(&mut self) {
+        if let Some(task) = self.task.take() {
+            task.abort();
+        }
+    }
+}
+
+async fn serve_session_history_once(
+    listener: TcpListener,
+    status: String,
+    body: Vec<u8>,
+    content_length: Option<u64>,
+    request_received: Option<oneshot::Sender<()>>,
+    release_response: Option<Arc<Notify>>,
+) -> io::Result<()> {
+    let (mut stream, _) = listener.accept().await?;
+    let mut request = [0u8; 1024];
+    let request_bytes = stream.read(&mut request).await?;
+    if request_bytes == 0 {
+        return Err(io::Error::new(
+            io::ErrorKind::UnexpectedEof,
+            "session history fixture received an empty request",
+        ));
+    }
+
+    if let Some(request_received) = request_received {
+        let _ = request_received.send(());
+    }
+    if let Some(release_response) = release_response {
+        release_response.notified().await;
+    }
+
+    let content_length_header = content_length
+        .map(|content_length| format!("Content-Length: {content_length}\r\n"))
+        .unwrap_or_default();
+    let response = format!("HTTP/1.1 {status}\r\n{content_length_header}Connection: close\r\n\r\n");
+    stream.write_all(response.as_bytes()).await?;
+    stream.write_all(&body).await?;
+    Ok(())
+}
 
 pub(crate) fn execution_context_for_test(run_id: RunId) -> ExecutionContext {
     ExecutionContext {
