@@ -215,13 +215,6 @@ function fixtureDeviceAuthMethod(
   return authMethod;
 }
 
-function requiredCapabilitiesWith(
-  manifest: ConnectorCatalogManifest,
-  ...capabilities: readonly string[]
-): string[] {
-  return [...new Set([...manifest.requiredCapabilities, ...capabilities])];
-}
-
 describe("connector catalog artifacts", () => {
   it("loads the fixture artifact set and converts public view models", async () => {
     const artifacts = await loadFixtureConnectorCatalogArtifacts();
