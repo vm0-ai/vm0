@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.137.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.136.6...runner-rs-v0.137.0) (2026-07-07)
+
+
+### Features
+
+* add playstation connector ([#20459](https://github.com/vm0-ai/vm0/issues/20459)) ([588ee8b](https://github.com/vm0-ai/vm0/commit/588ee8b242242277e752c91f64a1b9698b6d3afd))
+
+
+### Bug Fixes
+
+* **runner:** prevent service drain restarts ([#20496](https://github.com/vm0-ai/vm0/issues/20496)) ([1a250e4](https://github.com/vm0-ai/vm0/commit/1a250e4d8e01157eb14d7fc4b35a6a63e916d43f))
+
+
+### Refactoring
+
+* accept empty artifact manifests without archive urls ([#20525](https://github.com/vm0-ai/vm0/issues/20525)) ([1ce8bfd](https://github.com/vm0-ai/vm0/commit/1ce8bfd954a2c9c0d963dd0a46e34b31fdceb73f))
+* **mitm-addon:** extract tcp logging owner ([#20543](https://github.com/vm0-ai/vm0/issues/20543)) ([deb5fbc](https://github.com/vm0-ai/vm0/commit/deb5fbc86cf29ae4dc0b56cb870858a8090a88a3))
+* **mitm-addon:** split flow metadata key linter ([#20545](https://github.com/vm0-ai/vm0/issues/20545)) ([9b51a50](https://github.com/vm0-ai/vm0/commit/9b51a50a180c1e3ac62ab4357e11b9359e863b43))
+
 ## [0.136.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.136.5...runner-rs-v0.136.6) (2026-07-07)
 
 

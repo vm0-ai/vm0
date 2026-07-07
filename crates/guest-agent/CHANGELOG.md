@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.47.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.47.4...guest-agent-v0.47.5) (2026-07-07)
+
+
+### Documentation
+
+* clarify codex app-server client contract ([#20541](https://github.com/vm0-ai/vm0/issues/20541)) ([4f1ff80](https://github.com/vm0-ai/vm0/commit/4f1ff80721e9effd8d8571b7ece4cb77a681c6de))
+
 ## [0.47.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.47.3...guest-agent-v0.47.4) (2026-07-07)
 
 ## [0.47.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.47.2...guest-agent-v0.47.3) (2026-07-07)
