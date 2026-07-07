@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.569.1](https://github.com/vm0-ai/vm0/compare/app-v0.569.0...app-v0.569.1) (2026-07-07)
+
+
+### Bug Fixes
+
+* match private agents empty state to the canonical workflow card style ([#20511](https://github.com/vm0-ai/vm0/issues/20511)) ([30d94f4](https://github.com/vm0-ai/vm0/commit/30d94f4e19c44189795ade49f3f9060f6e80ca57))
+* restore clicks after closing settings dialog ([#20515](https://github.com/vm0-ai/vm0/issues/20515)) ([9c77c0e](https://github.com/vm0-ai/vm0/commit/9c77c0ef57570b79122bf9054eea6c7764793218))
+
+
+### Refactoring
+
+* route platform polling through shared loop helper ([#20522](https://github.com/vm0-ai/vm0/issues/20522)) ([69760a9](https://github.com/vm0-ai/vm0/commit/69760a9176e882c8bde1ce1aa77230726049afd4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.161.0
+    * @vm0/core bumped to 8.411.1
+
 ## [0.569.0](https://github.com/vm0-ai/vm0/compare/app-v0.568.1...app-v0.569.0) (2026-07-07)
 
 
