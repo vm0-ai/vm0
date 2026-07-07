@@ -335,33 +335,6 @@ async fn upload_session_history_candidate(
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
     let response_encoding = prep_resp.get("encoding").and_then(|v| v.as_str());
-    if existing {
-        if requested_encoding == SESSION_HISTORY_ENCODING_ZSTD
-            && response_encoding != Some(SESSION_HISTORY_ENCODING_ZSTD)
-        {
-            log_info!(
-                LOG_TAG,
-                "Prepare-history response did not acknowledge zstd; retrying legacy encoding"
-            );
-            return Ok(SessionHistoryUploadAttempt::RetryLegacy(
-                history_upload.into_raw(),
-            ));
-        }
-        if requested_encoding == SESSION_HISTORY_ENCODING_GZIP
-            && response_encoding != Some(SESSION_HISTORY_ENCODING_GZIP)
-        {
-            return Err(compressed_encoding_not_acknowledged(
-                SESSION_HISTORY_ENCODING_GZIP,
-            ));
-        }
-        let accepted_encoding = response_encoding.unwrap_or(SESSION_HISTORY_ENCODING_IDENTITY);
-        log_info!(
-            LOG_TAG,
-            "Session history already exists in S3 (deduplicated, encoding={accepted_encoding})"
-        );
-        return Ok(SessionHistoryUploadAttempt::Complete);
-    }
-
     if requested_encoding == SESSION_HISTORY_ENCODING_ZSTD
         && response_encoding != Some(SESSION_HISTORY_ENCODING_ZSTD)
     {
@@ -379,6 +352,15 @@ async fn upload_session_history_candidate(
         return Err(compressed_encoding_not_acknowledged(
             SESSION_HISTORY_ENCODING_GZIP,
         ));
+    }
+
+    if existing {
+        let accepted_encoding = response_encoding.unwrap_or(SESSION_HISTORY_ENCODING_IDENTITY);
+        log_info!(
+            LOG_TAG,
+            "Session history already exists in S3 (deduplicated, encoding={accepted_encoding})"
+        );
+        return Ok(SessionHistoryUploadAttempt::Complete);
     }
 
     let presigned_url = prep_resp
