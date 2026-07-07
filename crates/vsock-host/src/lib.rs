@@ -214,6 +214,9 @@ enum ConnectionState {
 struct Shared {
     /// Serialises writes to the stream.
     writer: tokio::sync::Mutex<tokio::net::unix::OwnedWriteHalf>,
+    /// Serialises memory-heavy encoded frame construction without blocking
+    /// ordinary writer-lock users such as lifecycle and control frames.
+    frame_builder: tokio::sync::Mutex<()>,
     /// Raw fd of the underlying socket, used to poison a corrupted stream.
     fd: RawFd,
     /// Monotonically increasing sequence number (starts at 2, skips 0).
@@ -419,19 +422,6 @@ impl CompositeNormalOperation {
             })
     }
 
-    fn mark_possible_guest_write_started(&mut self) -> io::Result<()> {
-        let normal_operation = self.normal_operation.as_mut().ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::InvalidData,
-                "composite normal operation already completed",
-            )
-        })?;
-        normal_operation
-            .mark_possible_guest_write_started()
-            .map_err(normal_operation_transition_error)?;
-        Ok(())
-    }
-
     fn complete(mut self) -> io::Result<()> {
         let normal_operation = self.normal_operation.take().ok_or_else(|| {
             io::Error::new(
@@ -596,18 +586,24 @@ async fn write_request_frame_with_builder(
     before_write: impl FnOnce() -> io::Result<()>,
 ) -> io::Result<()> {
     let mut write_guard = RequestWriteGuard::new(Arc::clone(shared));
-    let mut writer = shared.writer.lock().await;
+    let frame_builder_guard = shared.frame_builder.lock().await;
     let mut frame = Vec::new();
     build_frame(seq, &mut frame)?;
+    let mut writer = shared.writer.lock().await;
     before_write()?;
     write_guard.mark_started();
     let result = writer.write_all(&frame).await;
-    drop(frame);
     if let Err(error) = result {
         write_guard.mark_returned();
         shared.poison_connection();
+        drop(writer);
+        drop(frame);
+        drop(frame_builder_guard);
         return Err(error);
     }
+    drop(writer);
+    drop(frame);
+    drop(frame_builder_guard);
     write_guard.mark_returned();
     Ok(())
 }
@@ -772,7 +768,7 @@ async fn request_on_shared_with_composite_operation_and_observer_frame_builder(
         build_frame,
         timeout,
         || {
-            normal_operation.mark_possible_guest_write_started()?;
+            mark_pending_normal_operation_possible_guest_write(shared, seq, |_| Ok(()))?;
             write_observer.record_write_start()
         },
         rx,
@@ -941,6 +937,7 @@ impl VsockHost {
 
         let shared = Arc::new(Shared {
             writer: tokio::sync::Mutex::new(write_half),
+            frame_builder: tokio::sync::Mutex::new(()),
             fd,
             seq: AtomicU32::new(2),
             state: std::sync::Mutex::new(ConnectionState::Connected {
