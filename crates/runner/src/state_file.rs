@@ -3,8 +3,8 @@
 //! State files handled here are local runner coordination files such as the
 //! proxy registry, mitm-addon flush state, live runner instance records,
 //! workspace cache metadata reads, and diagnostic config reads. The helper
-//! centralizes size-bounded reads and the filesystem checks that make those
-//! reads safe when paths come from local process or runner state.
+//! centralizes size-bounded reads and filesystem checks for paths that come
+//! from local process or runner state.
 //!
 //! On Unix, reads open files with `O_NOFOLLOW`, `O_CLOEXEC`, and
 //! `O_NONBLOCK`, then validate the opened descriptor with `fstat` before
@@ -16,8 +16,8 @@
 //!
 //! Unix writes create a private same-directory temporary file, write and flush
 //! its contents, then rename it over the target. This avoids exposing partial
-//! contents to readers, but it does not fsync the parent directory and should
-//! not be treated as a full crash-durability guarantee.
+//! contents through the target path, but it does not fsync the parent directory
+//! and should not be treated as a full crash-durability guarantee.
 
 use std::path::Path;
 
@@ -205,7 +205,7 @@ fn validate_open_state_file<Fd: std::os::fd::AsRawFd>(
     Ok(())
 }
 
-/// Write a state file without exposing partial contents to readers.
+/// Write a state file without exposing partial contents through the target path.
 ///
 /// On Unix, this writes to a hidden same-directory temporary file created with
 /// private `0600` permissions, flushes the file, renames it over the target,
