@@ -1010,7 +1010,7 @@ describe("POST /api/webhooks/notion", () => {
     ]);
   });
 
-  it("does not enqueue content updated events when the workflow has a pending create event for the page", async () => {
+  it("enqueues content updated events independently from pending create events", async () => {
     const { fixture, workflowId } = await setupFixture();
     await enableNotionWorkflowTriggers(fixture);
     await seedNotionConnector(fixture);
@@ -1092,7 +1092,7 @@ describe("POST /api/webhooks/notion", () => {
       body: {
         success: true,
         kind: "event",
-        pending: 0,
+        pending: 1,
         refreshed: 1,
         duplicates: 0,
       },
@@ -1113,7 +1113,18 @@ describe("POST /api/webhooks/notion", () => {
       action: "get-notion-pending-events",
       trigger_id: contentTrigger.body.id,
     });
-    expect(contentPendingState.events).toStrictEqual([]);
+    expect(contentPendingState.events).toStrictEqual([
+      expect.objectContaining({
+        triggerId: contentTrigger.body.id,
+        pageId: NOTION_CHILD_PAGE_ID,
+        scopeType: "page",
+        scopeId: NOTION_CHILD_PAGE_ID,
+        eventFamily: "page_content_updated",
+        status: "pending",
+        runAfter: "2026-07-06T12:20:00.000Z",
+        latestNotionEventId: "abababab-abab-4bab-8bab-abababababab",
+      }),
+    ]);
   });
 
   it("rejects signed events before Notion verification has configured a token", async () => {

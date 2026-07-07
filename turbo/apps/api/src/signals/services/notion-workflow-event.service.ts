@@ -1349,35 +1349,6 @@ function pageContentUpdatedScopeParent(scope: NotionPageContentUpdatedScope): {
     : { title: scope.dataSource.title, url: scope.dataSource.url };
 }
 
-async function workflowHasActiveCreatePendingForPage(args: {
-  readonly db: Db;
-  readonly workflowId: string;
-  readonly pageId: string;
-  readonly signal: AbortSignal;
-}): Promise<boolean> {
-  const [row] = await args.db
-    .select({ id: notionWorkflowPendingEvents.id })
-    .from(notionWorkflowPendingEvents)
-    .innerJoin(
-      zeroWorkflowTriggers,
-      eq(notionWorkflowPendingEvents.triggerId, zeroWorkflowTriggers.id),
-    )
-    .where(
-      and(
-        eq(zeroWorkflowTriggers.workflowId, args.workflowId),
-        eq(notionWorkflowPendingEvents.pageId, args.pageId),
-        inArray(notionWorkflowPendingEvents.status, ["pending", "running"]),
-        inArray(notionWorkflowPendingEvents.eventFamily, [
-          "new_child_page",
-          "new_database_item",
-        ]),
-      ),
-    )
-    .limit(1);
-  args.signal.throwIfAborted();
-  return row !== undefined;
-}
-
 async function dataSourceIdForContentUpdatedEvent(args: {
   readonly db: Db;
   readonly trigger: TriggerRow;
@@ -1453,16 +1424,6 @@ async function enqueueOrRefreshNotionPageContentUpdatedEvents(args: {
         pageId: args.pageId,
         signal: args.signal,
       }))
-    ) {
-      continue;
-    }
-    if (
-      await workflowHasActiveCreatePendingForPage({
-        db: args.db,
-        workflowId: trigger.workflowId,
-        pageId: args.pageId,
-        signal: args.signal,
-      })
     ) {
       continue;
     }
