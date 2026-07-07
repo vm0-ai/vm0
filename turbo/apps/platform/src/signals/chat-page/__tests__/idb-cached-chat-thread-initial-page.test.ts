@@ -225,7 +225,7 @@ describe("createIdbCachedDataSource initial page cache", () => {
     );
   });
 
-  it("keeps warming later run-finished payloads after a stale thread payload", async () => {
+  it("keeps warming later followups-finished payloads after a stale thread payload", async () => {
     mockUser({ id: "user_1", fullName: "Test User" }, { token: "token" });
     mockOrganization({
       activeOrg: { id: "org_1", name: "Test Org" },
@@ -247,32 +247,34 @@ describe("createIdbCachedDataSource initial page cache", () => {
     });
 
     const { setupRealtime$ } = await import("../../realtime.ts");
-    const { subscribeBackgroundChatThreadRunFinished$ } =
+    const { subscribeBackgroundChatThreadFollowupsFinished$ } =
       await import("../background-chat-thread-cache.ts");
 
     await ctx.store.set(setupRealtime$, ctx.signal);
     const subscriptionPromise = ctx.store.set(
-      subscribeBackgroundChatThreadRunFinished$,
+      subscribeBackgroundChatThreadFollowupsFinished$,
       ctx.signal,
     );
     detach(subscriptionPromise, Reason.Daemon);
     await waitFor(() => {
       expect(
-        ctx.mocks.ably.hasSubscription("chatThreadRunFinished"),
+        ctx.mocks.ably.hasSubscription("chatThreadFollowupsFinished"),
       ).toBeTruthy();
     });
 
-    ctx.mocks.ably.trigger("chatThreadRunFinished", {
+    ctx.mocks.ably.trigger("chatThreadFollowupsFinished", {
       threadId: staleThreadId,
     });
     await waitFor(() => {
       expect(seenThreadIds).toContain(staleThreadId);
     });
 
-    ctx.mocks.ably.trigger("chatThreadRunFinished", {
+    ctx.mocks.ably.trigger("chatThreadFollowupsFinished", {
       threadId: "not-a-valid-thread-id",
     });
-    ctx.mocks.ably.trigger("chatThreadRunFinished", { threadId: liveThreadId });
+    ctx.mocks.ably.trigger("chatThreadFollowupsFinished", {
+      threadId: liveThreadId,
+    });
     await waitFor(() => {
       expect(seenThreadIds).toContain(liveThreadId);
       expect(seenThreadIds).not.toContain("not-a-valid-thread-id");

@@ -12,7 +12,7 @@ import {
   subscribeThreadListChanged$,
 } from "../signals/chat-thread-list-reload.ts";
 import { pollForceUpgradeDialog$ } from "../signals/force-upgrade.ts";
-import { subscribeBackgroundChatThreadRunFinished$ } from "../signals/chat-page/background-chat-thread-cache.ts";
+import { subscribeBackgroundChatThreadFollowupsFinished$ } from "../signals/chat-page/background-chat-thread-cache.ts";
 import { subscribeEventDrivenChatThreads$ } from "../signals/chat-page/chat-thread-event-sourcing.ts";
 import { rootSignal$ } from "../signals/root-signal.ts";
 import { detach, Reason } from "../signals/utils.ts";
@@ -35,7 +35,7 @@ export const setupRouter = (
     Reason.Daemon,
   );
   detach(
-    store.set(subscribeBackgroundChatThreadRunFinished$, signal),
+    store.set(subscribeBackgroundChatThreadFollowupsFinished$, signal),
     Reason.Daemon,
   );
   detach(store.set(subscribeEventDrivenChatThreads$, signal), Reason.Daemon);
