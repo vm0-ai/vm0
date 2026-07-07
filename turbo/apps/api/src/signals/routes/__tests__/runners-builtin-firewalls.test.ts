@@ -21,6 +21,10 @@ const OPENAI_API_KEY_AUTH_HEADER = [
   "{{ secrets.OPENAI_API_KEY }}",
 ].join("");
 
+function compareStrings(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
 function client() {
   return setupAppWithRoutes({ context, routes: runnersRoutes })(
     runnersBuiltinFirewallsResolveContract,
@@ -98,7 +102,7 @@ describe("runner builtin firewall resolver", () => {
 
     expect(body.catalogDigest).toBe(RUNNER_RUNTIME_FIREWALL_CATALOG_DIGEST);
     expect(body.catalogVersion).toBe(RUNNER_RUNTIME_FIREWALL_CATALOG_VERSION);
-    expect(Object.keys(body.firewalls).sort()).toStrictEqual([
+    expect(Object.keys(body.firewalls).sort(compareStrings)).toStrictEqual([
       ...RUNNER_RUNTIME_FIREWALL_NAMES,
     ]);
     expect(body.firewalls.github?.name).toBe("github");
