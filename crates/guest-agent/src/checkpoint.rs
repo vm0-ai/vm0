@@ -73,54 +73,19 @@ impl SessionHistoryUpload {
         }
     }
 
-    fn into_server_accepted_bytes(
-        self,
-        accepted_encoding: Option<&str>,
-    ) -> SessionHistoryServerAcceptedBytes {
+    fn into_server_accepted_bytes(self) -> (&'static str, Bytes) {
         match self.body {
             SessionHistoryUploadBody::Identity(raw) => {
-                SessionHistoryServerAcceptedBytes::Accepted {
-                    encoding: SESSION_HISTORY_ENCODING_IDENTITY,
-                    bytes: Bytes::from(raw),
-                }
+                (SESSION_HISTORY_ENCODING_IDENTITY, Bytes::from(raw))
             }
-            SessionHistoryUploadBody::Gzip { raw: _, gzip }
-                if accepted_encoding == Some(SESSION_HISTORY_ENCODING_GZIP) =>
-            {
-                SessionHistoryServerAcceptedBytes::Accepted {
-                    encoding: SESSION_HISTORY_ENCODING_GZIP,
-                    bytes: Bytes::from(gzip),
-                }
+            SessionHistoryUploadBody::Gzip { raw: _, gzip } => {
+                (SESSION_HISTORY_ENCODING_GZIP, Bytes::from(gzip))
             }
-            SessionHistoryUploadBody::Gzip { raw, .. } => {
-                SessionHistoryServerAcceptedBytes::Accepted {
-                    encoding: SESSION_HISTORY_ENCODING_IDENTITY,
-                    bytes: Bytes::from(raw),
-                }
-            }
-            SessionHistoryUploadBody::Zstd { raw: _, zstd }
-                if accepted_encoding == Some(SESSION_HISTORY_ENCODING_ZSTD) =>
-            {
-                SessionHistoryServerAcceptedBytes::Accepted {
-                    encoding: SESSION_HISTORY_ENCODING_ZSTD,
-                    bytes: Bytes::from(zstd),
-                }
-            }
-            SessionHistoryUploadBody::Zstd { raw, .. } => {
-                SessionHistoryServerAcceptedBytes::UnsupportedZstd { raw }
+            SessionHistoryUploadBody::Zstd { raw: _, zstd } => {
+                (SESSION_HISTORY_ENCODING_ZSTD, Bytes::from(zstd))
             }
         }
     }
-}
-
-enum SessionHistoryServerAcceptedBytes {
-    Accepted {
-        encoding: &'static str,
-        bytes: Bytes,
-    },
-    UnsupportedZstd {
-        raw: Vec<u8>,
-    },
 }
 
 enum SessionHistoryUploadAttempt {
@@ -179,10 +144,9 @@ fn build_legacy_session_history_upload(
 
     let gzip_bytes = gzip_session_history(&history_bytes)?;
     if gzip_bytes.len() >= history_bytes.len() {
-        return Ok(SessionHistoryUpload {
-            raw_size,
-            body: SessionHistoryUploadBody::Identity(history_bytes),
-        });
+        return Err(AgentError::Checkpoint(
+            "legacy gzip session history was not smaller than identity".into(),
+        ));
     }
 
     Ok(SessionHistoryUpload {
@@ -203,6 +167,12 @@ fn zstd_session_history(history_bytes: &[u8]) -> Result<Vec<u8>, AgentError> {
     encoder
         .finish()
         .map_err(|error| AgentError::Checkpoint(format!("finish zstd session history: {error}")))
+}
+
+fn compressed_encoding_not_acknowledged(requested_encoding: &'static str) -> AgentError {
+    AgentError::Checkpoint(format!(
+        "Prepare-history response did not acknowledge {requested_encoding} session history"
+    ))
 }
 
 impl CheckpointMode {
@@ -365,15 +335,6 @@ async fn upload_session_history_candidate(
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
     let response_encoding = prep_resp.get("encoding").and_then(|v| v.as_str());
-    if existing {
-        let accepted_encoding = response_encoding.unwrap_or(SESSION_HISTORY_ENCODING_IDENTITY);
-        log_info!(
-            LOG_TAG,
-            "Session history already exists in S3 (deduplicated, encoding={accepted_encoding})"
-        );
-        return Ok(SessionHistoryUploadAttempt::Complete);
-    }
-
     if requested_encoding == SESSION_HISTORY_ENCODING_ZSTD
         && response_encoding != Some(SESSION_HISTORY_ENCODING_ZSTD)
     {
@@ -385,6 +346,22 @@ async fn upload_session_history_candidate(
             history_upload.into_raw(),
         ));
     }
+    if requested_encoding == SESSION_HISTORY_ENCODING_GZIP
+        && response_encoding != Some(SESSION_HISTORY_ENCODING_GZIP)
+    {
+        return Err(compressed_encoding_not_acknowledged(
+            SESSION_HISTORY_ENCODING_GZIP,
+        ));
+    }
+
+    if existing {
+        let accepted_encoding = response_encoding.unwrap_or(SESSION_HISTORY_ENCODING_IDENTITY);
+        log_info!(
+            LOG_TAG,
+            "Session history already exists in S3 (deduplicated, encoding={accepted_encoding})"
+        );
+        return Ok(SessionHistoryUploadAttempt::Complete);
+    }
 
     let presigned_url = prep_resp
         .get("presignedUrl")
@@ -393,21 +370,7 @@ async fn upload_session_history_candidate(
             AgentError::Checkpoint("No presignedUrl in prepare-history response".into())
         })?;
 
-    let (upload_encoding, upload_bytes) =
-        match history_upload.into_server_accepted_bytes(response_encoding) {
-            SessionHistoryServerAcceptedBytes::Accepted { encoding, bytes } => (encoding, bytes),
-            SessionHistoryServerAcceptedBytes::UnsupportedZstd { raw } => {
-                return Ok(SessionHistoryUploadAttempt::RetryLegacy(raw));
-            }
-        };
-    if requested_encoding == SESSION_HISTORY_ENCODING_GZIP
-        && upload_encoding == SESSION_HISTORY_ENCODING_IDENTITY
-    {
-        log_info!(
-            LOG_TAG,
-            "Prepare-history response did not acknowledge gzip; uploading identity session history"
-        );
-    }
+    let (upload_encoding, upload_bytes) = history_upload.into_server_accepted_bytes();
 
     log_info!(
         LOG_TAG,

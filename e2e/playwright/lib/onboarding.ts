@@ -1,12 +1,19 @@
 import { expect, type Page } from "@playwright/test";
 import { deriveServiceOrigin } from "../playwright.config";
+import { signInFromCurrentHostedAuthPage } from "./auth";
 
 type AuthHeaders = Readonly<Record<"Authorization", string>>;
+
+interface OnboardingAuthOptions {
+  readonly email: string;
+  readonly activeOrganizationId?: string;
+}
 
 interface OnboardingFlowOptions {
   readonly apiUrl: string;
   readonly appUrl: string;
   readonly onboardingUrl: string;
+  readonly auth?: OnboardingAuthOptions;
 }
 
 export function authHeadersForToken(token: string): AuthHeaders {
@@ -22,9 +29,10 @@ export async function completeExploreOnboarding(
   options: OnboardingFlowOptions,
 ): Promise<void> {
   await openOnboarding(page, options);
-  await chooseMakeOption(page, "I will explore on my own");
-  await clickOnboardingButton(page, /^Continue$/i);
-  await waitForChatPage(page, options.appUrl);
+  await submitExploreOnboarding(page);
+  await waitForChatPage(page, options, async () => {
+    await submitExploreOnboarding(page);
+  });
 }
 
 export async function startVideoOnboardingCheckout(
@@ -51,15 +59,12 @@ export async function startVideoOnboardingCheckout(
 
 export async function waitForPaidOnboardingAppHandoff(
   page: Page,
-  appUrl: string,
-): Promise<void> {
-  await waitForExpectedAppUrl(
+  options: Pick<OnboardingFlowOptions, "appUrl" | "auth">,
+): Promise<URL> {
+  return await waitForOnboardingHandoff(
     page,
-    appUrl,
-    (url, appOrigin) =>
-      url.origin === appOrigin &&
-      (url.pathname === "/prompt" ||
-        /\/agents\/[^/]+\/chat/.test(url.pathname)),
+    options,
+    isPromptOrChatUrl,
     180_000,
   );
 }
@@ -74,6 +79,14 @@ async function openOnboarding(
   await expect(
     page.getByRole("heading", { name: "What do you want to make first" }),
   ).toBeVisible({ timeout: 60_000 });
+}
+
+async function submitExploreOnboarding(page: Page): Promise<void> {
+  await expect(
+    page.getByRole("heading", { name: "What do you want to make first" }),
+  ).toBeVisible({ timeout: 60_000 });
+  await chooseMakeOption(page, "I will explore on my own");
+  await clickOnboardingButton(page, /^Continue$/i);
 }
 
 async function chooseMakeOption(page: Page, name: string): Promise<void> {
@@ -91,14 +104,85 @@ async function clickOnboardingButton(page: Page, name: RegExp): Promise<void> {
   await button.click();
 }
 
-async function waitForChatPage(page: Page, appUrl: string): Promise<void> {
-  await waitForExpectedAppUrl(
+async function waitForChatPage(
+  page: Page,
+  options: Pick<OnboardingFlowOptions, "appUrl" | "auth">,
+  continueAfterAuth: (() => Promise<void>) | undefined,
+): Promise<void> {
+  await waitForOnboardingHandoff(
     page,
-    appUrl,
-    (url, appOrigin) =>
-      url.origin === appOrigin && /\/agents\/[^/]+\/chat/.test(url.pathname),
+    options,
+    isChatUrl,
     120_000,
+    continueAfterAuth,
   );
+}
+
+async function waitForOnboardingHandoff(
+  page: Page,
+  options: Pick<OnboardingFlowOptions, "appUrl" | "auth">,
+  isTargetUrl: (url: URL) => boolean,
+  timeout: number,
+  continueAfterAuth?: () => Promise<void>,
+): Promise<URL> {
+  const configuredAppOrigin = new URL(options.appUrl).origin;
+  await waitForExpectedUrl(
+    page,
+    configuredAppOrigin,
+    (url) =>
+      (url.origin === configuredAppOrigin && isTargetUrl(url)) ||
+      isHostedSignInUrl(url),
+    timeout,
+  );
+
+  const currentUrl = new URL(page.url());
+  if (isTargetUrl(currentUrl)) {
+    return currentUrl;
+  }
+
+  if (!options.auth) {
+    throw new Error(
+      `Onboarding handoff required sign-in at ${currentUrl.origin}, but no auth options were provided`,
+    );
+  }
+
+  const redirectOrigin = redirectOriginFromAuthUrl(currentUrl);
+  await signInFromCurrentHostedAuthPage(page, options.auth.email, {
+    activeOrganizationId: options.auth.activeOrganizationId,
+  });
+  const isAllowedTargetUrl = (url: URL) => {
+    return (
+      isTargetUrl(url) &&
+      (url.origin === configuredAppOrigin ||
+        url.origin === redirectOrigin ||
+        redirectOrigin === null)
+    );
+  };
+  await waitForExpectedUrl(
+    page,
+    configuredAppOrigin,
+    (url) => isAllowedTargetUrl(url) || isOnboardingUrl(url),
+    timeout,
+  );
+  const postAuthUrl = new URL(page.url());
+  if (isAllowedTargetUrl(postAuthUrl)) {
+    return postAuthUrl;
+  }
+
+  if (!continueAfterAuth) {
+    throw new Error(
+      `Onboarding handoff returned to ${postAuthUrl.origin}${postAuthUrl.pathname} after sign-in`,
+    );
+  }
+
+  await continueAfterAuth();
+  await waitForExpectedUrl(
+    page,
+    configuredAppOrigin,
+    isAllowedTargetUrl,
+    timeout,
+  );
+  return new URL(page.url());
 }
 
 function onboardingEntryUrl(options: OnboardingFlowOptions): string {
@@ -108,23 +192,18 @@ function onboardingEntryUrl(options: OnboardingFlowOptions): string {
   return url.toString();
 }
 
-type AppUrlMatcher = (url: URL, appOrigin: string) => boolean;
+type UrlMatcher = (url: URL) => boolean;
 
-async function waitForExpectedAppUrl(
+async function waitForExpectedUrl(
   page: Page,
-  appUrl: string,
-  matchesExpectedUrl: AppUrlMatcher,
+  appOrigin: string,
+  matchesExpectedUrl: UrlMatcher,
   timeoutMs: number,
-): Promise<void> {
-  const appOrigin = new URL(appUrl).origin;
+): Promise<URL> {
   const deadline = Date.now() + timeoutMs;
 
   while (true) {
     const currentUrl = new URL(page.url());
-    if (matchesExpectedUrl(currentUrl, appOrigin)) {
-      return;
-    }
-
     const rewrittenUrl = rewritePreviewAppFallbackUrl(currentUrl, appOrigin);
     if (rewrittenUrl) {
       console.log("[e2e] rewriting onboarding preview handoff", {
@@ -133,6 +212,10 @@ async function waitForExpectedAppUrl(
       });
       await page.goto(rewrittenUrl, { waitUntil: "domcontentloaded" });
       continue;
+    }
+
+    if (matchesExpectedUrl(currentUrl)) {
+      return currentUrl;
     }
 
     const remainingMs = deadline - Date.now();
@@ -144,7 +227,7 @@ async function waitForExpectedAppUrl(
 
     await page.waitForURL(
       (url) =>
-        matchesExpectedUrl(url, appOrigin) ||
+        matchesExpectedUrl(url) ||
         rewritePreviewAppFallbackUrl(url, appOrigin) !== null,
       { timeout: remainingMs, waitUntil: "domcontentloaded" },
     );
@@ -208,4 +291,25 @@ function rewriteNestedRedirectUrl(url: URL, appOrigin: string): void {
       throw error;
     }
   }
+}
+
+function isChatUrl(url: URL): boolean {
+  return /\/agents\/[^/]+\/chat/.test(url.pathname);
+}
+
+function isPromptOrChatUrl(url: URL): boolean {
+  return url.pathname === "/prompt" || isChatUrl(url);
+}
+
+function isHostedSignInUrl(url: URL): boolean {
+  return url.pathname.includes("/sign-in");
+}
+
+function isOnboardingUrl(url: URL): boolean {
+  return url.pathname.startsWith("/onboarding/");
+}
+
+function redirectOriginFromAuthUrl(url: URL): string | null {
+  const redirectUrl = url.searchParams.get("redirect_url");
+  return redirectUrl ? new URL(redirectUrl).origin : null;
 }

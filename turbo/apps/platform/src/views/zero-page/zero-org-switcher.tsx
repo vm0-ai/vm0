@@ -227,6 +227,9 @@ function OrgDropdownContent() {
     <DropdownMenuContent
       align="start"
       className="flex max-h-[min(420px,var(--radix-dropdown-menu-content-available-height))] w-72 flex-col overflow-hidden"
+      onCloseAutoFocus={(event) => {
+        event.preventDefault();
+      }}
     >
       <div className="flex min-w-0 shrink-0 items-center gap-3 px-2 py-1.5">
         <OrgAvatar name={orgName} imageUrl={currentOrg?.imageUrl} size="lg" />

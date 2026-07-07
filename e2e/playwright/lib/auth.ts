@@ -5,6 +5,12 @@ export interface HostedAuthSession {
   readonly token: string;
 }
 
+export interface HostedAuthOptions {
+  readonly followRedirect?: boolean;
+  readonly activeOrganizationId?: string;
+  readonly mirrorStorageToUrls?: readonly string[];
+}
+
 export async function refreshClerkSessionToken(
   page: Page,
   options: { readonly activeOrganizationId?: string } = {},
@@ -28,11 +34,7 @@ export async function signInThroughHostedAuth(
   page: Page,
   email: string,
   appUrl: string,
-  options: {
-    readonly followRedirect?: boolean;
-    readonly activeOrganizationId?: string;
-    readonly mirrorStorageToUrls?: readonly string[];
-  } = {},
+  options: HostedAuthOptions = {},
 ): Promise<HostedAuthSession> {
   await page.goto(appUrl, { waitUntil: "domcontentloaded" });
   await page.waitForURL((url) => url.pathname.includes("/sign-in"), {
@@ -51,17 +53,31 @@ export async function signInThroughHostedAuth(
   );
 }
 
+export async function signInFromCurrentHostedAuthPage(
+  page: Page,
+  email: string,
+  options: HostedAuthOptions = {},
+): Promise<HostedAuthSession> {
+  const authUrl = page.url();
+  const appUrl = new URL(authUrl).origin;
+  const redirectUrl = redirectUrlFromAuthUrl(new URL(authUrl));
+  return await signInWithClerkTestingHelper(
+    page,
+    email,
+    appUrl,
+    authUrl,
+    redirectUrl,
+    options,
+  );
+}
+
 async function signInWithClerkTestingHelper(
   page: Page,
   email: string,
   appUrl: string,
   authUrl: string,
   redirectUrl: string | null,
-  options: {
-    readonly followRedirect?: boolean;
-    readonly activeOrganizationId?: string;
-    readonly mirrorStorageToUrls?: readonly string[];
-  },
+  options: HostedAuthOptions,
 ): Promise<HostedAuthSession> {
   const helperUrl = new URL("/_/skeleton", appUrl);
   await page.goto(helperUrl.toString(), { waitUntil: "domcontentloaded" });
