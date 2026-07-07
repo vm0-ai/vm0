@@ -5,6 +5,7 @@ import time
 from mitmproxy import tcp
 
 import deferred_callbacks
+import flow_metadata
 import flow_metadata_keys as metadata_keys
 import logging_utils
 import registry
@@ -58,8 +59,7 @@ def error(flow: tcp.TCPFlow) -> None:
 
 def _is_registered_tcp_log_flow(flow: tcp.TCPFlow) -> bool:
     return bool(
-        flow.metadata.get(metadata_keys.VM_RUN_ID, "")
-        and flow.metadata.get(metadata_keys.VM_NETWORK_LOG_PATH, "")
+        flow_metadata.run_id(flow.metadata) and flow_metadata.network_log_path(flow.metadata)
     )
 
 
@@ -137,8 +137,8 @@ def _tcp_log_sizes(flow: tcp.TCPFlow) -> tuple[int, int]:
 
 
 def _log_tcp(flow: tcp.TCPFlow) -> None:
-    run_id = flow.metadata.get(metadata_keys.VM_RUN_ID, "")
-    network_log_path = flow.metadata.get(metadata_keys.VM_NETWORK_LOG_PATH, "")
+    run_id = flow_metadata.run_id(flow.metadata)
+    network_log_path = flow_metadata.network_log_path(flow.metadata)
     if not run_id or not network_log_path:
         return
 
