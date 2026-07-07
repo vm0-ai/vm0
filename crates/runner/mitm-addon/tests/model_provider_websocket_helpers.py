@@ -8,6 +8,7 @@ import pytest
 from mitmproxy import http, websocket
 from wsproto.frame_protocol import Opcode
 
+import deferred_callbacks
 import mitm_addon
 import response_streaming
 from tests.model_provider_flow_helpers import (
@@ -33,7 +34,7 @@ def _capture_deferred_websocket_trims(
     def call_soon(callback: _WebSocketTrimCallback, flow: http.HTTPFlow) -> None:
         scheduled.append((callback, flow))
 
-    monkeypatch.setattr(mitm_addon, "_call_soon", call_soon)
+    monkeypatch.setattr(deferred_callbacks, "call_soon", call_soon)
     return scheduled
 
 

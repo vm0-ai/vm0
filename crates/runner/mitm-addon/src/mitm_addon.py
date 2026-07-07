@@ -22,11 +22,11 @@ import tempfile
 import threading
 import time
 import urllib.parse
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final, Literal, TypeVar
+from typing import Final, Literal
 
 from mitmproxy import connection, ctx, http, tcp, tls
 from mitmproxy.addonmanager import Loader
@@ -48,7 +48,9 @@ import auth_base_forwarder
 import body_capture
 import builtin_connector_diagnostics
 import builtin_host_policy
+import deferred_callbacks
 import flow_metadata_keys as metadata_keys
+import logging_utils
 import matching
 import network_log_sanitization
 import public_destination
@@ -56,6 +58,7 @@ import registry
 import request_streaming
 import response_encoding_negotiation
 import response_streaming
+import tcp_logging
 import upstream_destination_binding
 import usage
 from auth import (
@@ -211,14 +214,6 @@ _MODEL_PROVIDER_USAGE_REPORTED = "_model_provider_usage_reported"
 # Follow-up owner: #20509 terminal flow lifecycle extraction.
 _MODEL_WEBSOCKET_MESSAGE_TRIM_SCHEDULED = "_model_websocket_message_trim_scheduled"
 
-# TCP message-drain state.
-# Creator: _schedule_tcp_message_drain() and _drain_tcp_messages().
-# Consumer: _tcp_log_sizes().
-# Release: scheduled marker is popped by _drain_tcp_messages(); counters are flow-local.
-# Follow-up owner: #20505 TCP logging extraction.
-_TCP_MESSAGE_DRAIN_SCHEDULED = "_tcp_message_drain_scheduled"
-_TCP_REQUEST_SIZE = "_tcp_request_size"
-_TCP_RESPONSE_SIZE = "_tcp_response_size"
 _EMPTY_RESPONSE_STREAM_CHUNKS: tuple[bytes, ...] = ()
 _GENERIC_AUTH_HEADER_NAMES = frozenset(
     (
@@ -254,9 +249,6 @@ _AUTH_SCHEMES_REQUIRING_CREDENTIAL = frozenset(
 )
 _AUTH_BASE_BODYLESS_METHODS = frozenset(("GET", "HEAD"))
 _HTTP_RESPONSE_BODYLESS_METHODS = frozenset(("CONNECT", "HEAD"))
-# Network log size fields are consumed as JavaScript numbers downstream.
-_MAX_SAFE_NETWORK_LOG_SIZE = 9_007_199_254_740_991
-_MAX_SAFE_NETWORK_LOG_SIZE_DIGITS = len(str(_MAX_SAFE_NETWORK_LOG_SIZE))
 _TLS_ADMISSION_VALID_REGISTRY_VM: Final = "valid_registry_vm"
 _TLS_ADMISSION_INVALID_REGISTRY_VM: Final = "invalid_registry_vm"
 _TLS_ADMISSION_REGISTRY_UNAVAILABLE: Final = "registry_unavailable"
@@ -596,12 +588,6 @@ def get_api_url() -> str:
 def get_registry_path() -> str:
     """Get registry path from options."""
     return ctx.options.vm0_proxy_registry_path
-
-
-def _elapsed_ms(start_time: float | None) -> int:
-    if not start_time:
-        return 0
-    return max(0, int((time.monotonic() - start_time) * 1000))
 
 
 def _set_network_log_target(flow: http.HTTPFlow, *, url: str, host: str, port: int) -> None:
@@ -3189,13 +3175,6 @@ def _report_model_provider_usage_once(flow: http.HTTPFlow, run_id: str) -> None:
         flow.metadata[_MODEL_PROVIDER_USAGE_REPORTED] = True
 
 
-_ScheduledFlow = TypeVar("_ScheduledFlow", http.HTTPFlow, tcp.TCPFlow)
-
-
-def _call_soon(callback: Callable[[_ScheduledFlow], None], flow: _ScheduledFlow) -> None:
-    asyncio.get_running_loop().call_soon(callback, flow)
-
-
 def _is_model_websocket_usage_flow(flow: http.HTTPFlow) -> bool:
     return bool(flow.websocket and response_streaming.is_model_websocket_usage_enabled(flow))
 
@@ -3219,7 +3198,7 @@ def _schedule_model_websocket_message_trim(flow: http.HTTPFlow) -> None:
     if flow.metadata.get(_MODEL_WEBSOCKET_MESSAGE_TRIM_SCHEDULED, False):
         return
     flow.metadata[_MODEL_WEBSOCKET_MESSAGE_TRIM_SCHEDULED] = True
-    _call_soon(_trim_model_websocket_messages, flow)
+    deferred_callbacks.call_soon(_trim_model_websocket_messages, flow)
 
 
 # ============================================================================
@@ -3307,7 +3286,7 @@ def _single_content_length_response_size(content_length: str, start: int, end: i
         return 0
 
     significant_start = start
-    if end - significant_start > _MAX_SAFE_NETWORK_LOG_SIZE_DIGITS:
+    if end - significant_start > logging_utils.NETWORK_LOG_MAX_SAFE_SIZE_DIGITS:
         return None
     for index in range(significant_start, end):
         char = content_length[index]
@@ -3315,7 +3294,7 @@ def _single_content_length_response_size(content_length: str, start: int, end: i
             return None
 
     response_size = int(content_length[significant_start:end])
-    if response_size > _MAX_SAFE_NETWORK_LOG_SIZE:
+    if response_size > logging_utils.NETWORK_LOG_MAX_SAFE_SIZE:
         return None
     return response_size
 
@@ -3406,7 +3385,7 @@ def response(flow: http.HTTPFlow) -> None:
         # metadata, so none of this handler's work applies.
         return
 
-    latency_ms = _elapsed_ms(start_time)
+    latency_ms = logging_utils.elapsed_ms(start_time)
     original_url = flow.metadata[metadata_keys.ORIGINAL_URL]
     firewall_action = flow.metadata.get(metadata_keys.FIREWALL_ACTION, "ALLOW")
 
@@ -3526,7 +3505,7 @@ def error(flow: http.HTTPFlow) -> None:
     if not run_id or not network_log_path:
         return
 
-    latency_ms = _elapsed_ms(start_time)
+    latency_ms = logging_utils.elapsed_ms(start_time)
     original_url = flow.metadata[metadata_keys.ORIGINAL_URL]
     firewall_action = flow.metadata.get(metadata_keys.FIREWALL_ACTION, "ALLOW")
 
@@ -3618,151 +3597,22 @@ def done():
 
 def tcp_start(flow: tcp.TCPFlow) -> None:
     """Track TCP connection start time and look up VM info."""
-    client_ip = flow.client_conn.peername[0] if flow.client_conn.peername else None
-    if not client_ip:
-        return
-
-    registry_state = registry.load_registry_state(get_registry_path())
-    if isinstance(registry_state, registry.RegistryUnavailable):
-        flow.kill()
-        return
-
-    vm_info = registry_state.vms.get(client_ip)
-    if vm_info is None:
-        if client_ip in registry_state.invalid_vms:
-            flow.kill()
-        return
-
-    flow.metadata[metadata_keys.VM_RUN_ID] = vm_info.get("runId", "")
-    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = vm_info.get("networkLogPath", "")
-    flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = vm_info.get("proxyLogPath", "")
-    flow.metadata[metadata_keys.TCP_START_MONOTONIC] = time.monotonic()
+    tcp_logging.start(flow, registry_path=get_registry_path())
 
 
 def tcp_message(flow: tcp.TCPFlow) -> None:
     """Schedule bounded retention cleanup for registered TCP flows."""
-    _schedule_tcp_message_drain(flow)
+    tcp_logging.message(flow)
 
 
 def tcp_end(flow: tcp.TCPFlow) -> None:
     """Log TCP connection details when it closes."""
-    _log_tcp(flow)
+    tcp_logging.end(flow)
 
 
 def tcp_error(flow: tcp.TCPFlow) -> None:
     """Log TCP connection errors."""
-    _log_tcp(flow)
-
-
-def _is_registered_tcp_log_flow(flow: tcp.TCPFlow) -> bool:
-    return bool(
-        flow.metadata.get(metadata_keys.VM_RUN_ID, "")
-        and flow.metadata.get(metadata_keys.VM_NETWORK_LOG_PATH, "")
-    )
-
-
-def _tcp_counter_value(flow: tcp.TCPFlow, key: str) -> int:
-    value = flow.metadata.get(key)
-    if type(value) is not int:
-        return 0
-    return max(0, min(value, _MAX_SAFE_NETWORK_LOG_SIZE))
-
-
-def _has_tcp_size_counters(flow: tcp.TCPFlow) -> bool:
-    return (
-        type(flow.metadata.get(_TCP_REQUEST_SIZE)) is int
-        or type(flow.metadata.get(_TCP_RESPONSE_SIZE)) is int
-    )
-
-
-def _add_tcp_size(flow: tcp.TCPFlow, key: str, delta: int) -> None:
-    flow.metadata[key] = min(
-        _MAX_SAFE_NETWORK_LOG_SIZE,
-        _tcp_counter_value(flow, key) + delta,
-    )
-
-
-def _schedule_tcp_message_drain(flow: tcp.TCPFlow) -> None:
-    if not _is_registered_tcp_log_flow(flow):
-        return
-    if flow.metadata.get(_TCP_MESSAGE_DRAIN_SCHEDULED, False):
-        return
-    flow.metadata[_TCP_MESSAGE_DRAIN_SCHEDULED] = True
-    _call_soon(_drain_tcp_messages, flow)
-
-
-def _drain_tcp_messages(flow: tcp.TCPFlow) -> None:
-    flow.metadata.pop(_TCP_MESSAGE_DRAIN_SCHEDULED, None)
-    if not _is_registered_tcp_log_flow(flow):
-        return
-    if not flow.messages:
-        return
-
-    for message in flow.messages:
-        key = _TCP_REQUEST_SIZE if message.from_client else _TCP_RESPONSE_SIZE
-        _add_tcp_size(flow, key, len(message.content))
-    flow.messages.clear()
-
-
-def _sum_tcp_messages(flow: tcp.TCPFlow) -> tuple[int, int]:
-    request_size = 0
-    response_size = 0
-    for message in flow.messages:
-        if message.from_client:
-            request_size = min(
-                _MAX_SAFE_NETWORK_LOG_SIZE,
-                request_size + len(message.content),
-            )
-        else:
-            response_size = min(
-                _MAX_SAFE_NETWORK_LOG_SIZE,
-                response_size + len(message.content),
-            )
-    return request_size, response_size
-
-
-def _tcp_log_sizes(flow: tcp.TCPFlow) -> tuple[int, int]:
-    if flow.metadata.get(_TCP_MESSAGE_DRAIN_SCHEDULED, False) or _has_tcp_size_counters(flow):
-        _drain_tcp_messages(flow)
-        return (
-            _tcp_counter_value(flow, _TCP_REQUEST_SIZE),
-            _tcp_counter_value(flow, _TCP_RESPONSE_SIZE),
-        )
-
-    request_size, response_size = _sum_tcp_messages(flow)
-    flow.messages.clear()
-    return request_size, response_size
-
-
-def _log_tcp(flow: tcp.TCPFlow) -> None:
-    run_id = flow.metadata.get(metadata_keys.VM_RUN_ID, "")
-    network_log_path = flow.metadata.get(metadata_keys.VM_NETWORK_LOG_PATH, "")
-    if not run_id or not network_log_path:
-        return
-
-    start_time = flow.metadata.get(metadata_keys.TCP_START_MONOTONIC)
-    latency_ms = _elapsed_ms(start_time)
-
-    request_size, response_size = _tcp_log_sizes(flow)
-
-    server_addr = flow.server_conn.address if flow.server_conn else None
-    host = server_addr[0] if server_addr else "unknown"
-    port = server_addr[1] if server_addr else 0
-
-    # [NETWORK_LOG_FIELDS] — TCP fields; api-contracts is the shared schema boundary.
-    log_entry = {
-        "type": "tcp",
-        "host": host,
-        "port": port,
-        "latency_ms": latency_ms,
-        "request_size": request_size,
-        "response_size": response_size,
-    }
-
-    if flow.error:
-        log_entry["error"] = flow.error.msg
-
-    log_network_entry(network_log_path, log_entry)
+    tcp_logging.error(flow)
 
 
 # mitmproxy addon registration
