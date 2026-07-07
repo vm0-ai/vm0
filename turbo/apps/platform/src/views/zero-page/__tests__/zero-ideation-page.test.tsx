@@ -373,7 +373,7 @@ describe("zero ideation page", () => {
 
   it("falls back to all use cases when the selected tab is hidden by catalog filtering", async () => {
     mockConnectorCatalogStatus([]);
-    context.store.set(setIdeationActiveTab$, "reports");
+    context.store.set(setIdeationActiveTab$, "engineering");
 
     detachedSetupPage({
       context,
@@ -383,7 +383,7 @@ describe("zero ideation page", () => {
     await expect(
       screen.findByText("Browser screenshots"),
     ).resolves.toBeInTheDocument();
-    expect(screen.queryByText("Reports")).not.toBeInTheDocument();
+    expect(screen.queryByText("Engineering")).not.toBeInTheDocument();
     expect(
       screen.queryByText("No use cases match your search."),
     ).not.toBeInTheDocument();
