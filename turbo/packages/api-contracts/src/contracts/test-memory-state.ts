@@ -64,6 +64,7 @@ export const testMemoryStateActionBodySchema = z.discriminatedUnion("action", [
     s3_key: z.string(),
     user_id: z.string(),
     created_at: z.string(),
+    file_count: z.number().optional(),
   }),
   z.object({
     action: z.literal("update-version-created-at"),

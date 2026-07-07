@@ -168,6 +168,7 @@ async function seedTwoVersions(
       storageId,
       versionId: v2Id,
       s3Key: v2Key,
+      fileCount: files2.length,
       userId: fixture.userId,
       createdAt: new Date("2999-01-02T09:00:00.000Z"),
     },
@@ -235,6 +236,7 @@ async function seedTwoVersionsNoMock(): Promise<{
       storageId,
       versionId: v2Id,
       s3Key: v2Key,
+      fileCount: 1,
       userId: fixture.userId,
       createdAt: new Date("2999-01-02T09:00:00.000Z"),
     },
@@ -304,6 +306,7 @@ async function seedVersions(versions: readonly DayVersion[]): Promise<{
         storageId,
         versionId: `v${index}-${randomUUID()}`,
         s3Key: key,
+        fileCount: version.files.length,
         userId: fixture.userId,
         createdAt: version.createdAt,
       },
@@ -539,6 +542,75 @@ describe("GET /api/cron/summarize-memory", () => {
     expect(items).toHaveLength(2);
     expect(items).toContain("MEMORY.md");
     expect(items).toContain("facts/coffee.md");
+  });
+
+  it("treats zero-file memory versions as empty without S3 objects", async () => {
+    const llm = mockLlm("Zero learned your preferred package manager.");
+    const fixture = await track(
+      store.set(seedMemoryFixture$, undefined, context.signal),
+    );
+    await enableMemoryViewer(fixture);
+    const base = `orgs/${fixture.orgId}/users/${fixture.userId}/memory`;
+    const emptyKey = `${base}/empty`;
+    const nonEmptyKey = `${base}/v2`;
+    const emptyVersionId = `empty-${randomUUID()}`;
+    const nonEmptyVersionId = `v2-${randomUUID()}`;
+
+    await store.set(
+      seedMemoryStorage$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        s3Key: emptyKey,
+        headVersionId: emptyVersionId,
+        fileCount: 0,
+        updatedAt: new Date(BASELINE_BEFORE_LOOKBACK),
+      },
+      context.signal,
+    );
+
+    const storageId = await store.set(
+      findMemoryStorageId$,
+      fixture.orgId,
+      context.signal,
+    );
+    await updateMemoryVersionCreatedAt(
+      context.signal,
+      emptyVersionId,
+      new Date(BASELINE_BEFORE_LOOKBACK),
+    );
+    await store.set(
+      seedMemoryVersion$,
+      {
+        storageId,
+        versionId: nonEmptyVersionId,
+        s3Key: nonEmptyKey,
+        fileCount: 1,
+        userId: fixture.userId,
+        createdAt: new Date("2999-01-02T09:00:00.000Z"),
+      },
+      context.signal,
+    );
+    mockMemoryVersions(context, [
+      {
+        s3Key: nonEmptyKey,
+        files: [{ path: "facts/package-manager.md", content: "Uses pnpm" }],
+      },
+    ]);
+
+    const response = await accept(
+      apiClient().summarize({ headers: cronHeaders() }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ summarized: 7 });
+    expect(llm.calls).toBe(1);
+    const summary = await findSummary(fixture);
+    expect(summary?.fromVersionId).toBe(emptyVersionId);
+    expect(summary?.toVersionId).toBe(nonEmptyVersionId);
+    await expect(findItems(summary?.id ?? "")).resolves.toStrictEqual([
+      "facts/package-manager.md",
+    ]);
   });
 
   it("backfills quiet cards and makes no LLM call when memory did not change", async () => {

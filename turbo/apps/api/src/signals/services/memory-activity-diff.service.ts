@@ -26,6 +26,11 @@ interface MemoryFileState {
 
 type MemoryFileMap = ReadonlyMap<string, MemoryFileState>;
 
+export interface MemoryVersionSource {
+  readonly s3Key: string;
+  readonly fileCount: number;
+}
+
 const MAX_DIFF_LINES = 300;
 const MAX_DIFF_LINE_CHARS = 500;
 const MAX_LCS_CELLS = 250_000;
@@ -337,16 +342,20 @@ function normalizePath(path: string): string {
 
 function loadVersionFiles(
   bucket: string,
-  s3Key: string,
+  version: MemoryVersionSource,
 ): Computed<Promise<MemoryFileMap>> {
   return computed(async (get): Promise<MemoryFileMap> => {
-    const manifest = await get(downloadManifest(bucket, s3Key));
+    if (version.fileCount === 0) {
+      return new Map();
+    }
+
+    const manifest = await get(downloadManifest(bucket, version.s3Key));
     const entries = manifest.files.map((file) => {
       return { path: normalizePath(file.path), hash: file.hash };
     });
 
     const archiveBuffer = await get(
-      downloadS3Buffer(bucket, `${s3Key}/archive.tar.gz`),
+      downloadS3Buffer(bucket, `${version.s3Key}/archive.tar.gz`),
     );
     const extracted = extractFilesFromTarGz(
       archiveBuffer,
@@ -376,21 +385,22 @@ function loadVersionFiles(
  * per-file hash from each version's manifest and the file bodies from its
  * archive, then delegates to the pure `computeChangeSet`.
  *
- * A null `fromS3Key` means there was no baseline version (the user's memory
+ * A null `fromVersion` means there was no baseline version (the user's memory
  * first appeared in the window), so the from-side is empty and every file in
- * `toS3Key` is treated as newly added.
+ * `toVersion` is treated as newly added. A zero-file version is also empty and
+ * does not require storage objects.
  */
 export function computeMemoryChangeSet(
-  fromS3Key: string | null,
-  toS3Key: string,
+  fromVersion: MemoryVersionSource | null,
+  toVersion: MemoryVersionSource,
 ): Computed<Promise<MemoryChangeSet>> {
   return computed(async (get): Promise<MemoryChangeSet> => {
     const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
     const [fromFiles, toFiles] = await Promise.all([
-      fromS3Key === null
+      fromVersion === null
         ? Promise.resolve<MemoryFileMap>(new Map())
-        : get(loadVersionFiles(bucket, fromS3Key)),
-      get(loadVersionFiles(bucket, toS3Key)),
+        : get(loadVersionFiles(bucket, fromVersion)),
+      get(loadVersionFiles(bucket, toVersion)),
     ]);
     return computeChangeSet(fromFiles, toFiles);
   });
