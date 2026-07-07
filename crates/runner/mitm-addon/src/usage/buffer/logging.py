@@ -57,7 +57,6 @@ def _log_dropped_batches(
         trigger,
         flush_sequence,
         _build_flush_summaries([pending_batch.batch for pending_batch in dropped_batches]),
-        reason=_RETRY_BUDGET_EXHAUSTED_REASON,
         retained_retry_count=max(
             pending_batch.retained_retry_count for pending_batch in dropped_batches
         ),
@@ -72,7 +71,6 @@ def _log_flush_summaries(
     *,
     duration_ms: int | None = None,
     error_type: str | None = None,
-    reason: str | None = None,
     retained_retry_count: int | None = None,
 ) -> None:
     for summary in summaries:
@@ -102,8 +100,8 @@ def _log_flush_summaries(
             extra["duration_ms"] = duration_ms
         if error_type is not None:
             extra["error_type"] = error_type
-        if reason is not None:
-            extra["reason"] = reason
+        if phase == "dropped":
+            extra["reason"] = _RETRY_BUDGET_EXHAUSTED_REASON
         if retained_retry_count is not None:
             extra["retained_retry_count"] = retained_retry_count
         level = "error" if phase == "failed" else "info"
@@ -119,7 +117,7 @@ def _log_flush_summaries(
             log_usage_underbilling(
                 summary.proxy_log_path,
                 message,
-                reason or _RETRY_BUDGET_EXHAUSTED_REASON,
+                _RETRY_BUDGET_EXHAUSTED_REASON,
                 "confirmed",
                 **extra,
             )
