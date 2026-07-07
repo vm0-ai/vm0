@@ -2,7 +2,7 @@
 
 Exports:
 
-- Bounded streaming usage decoding for gzip, deflate, zstd; one-shot
+- Bounded streaming usage decoding for gzip, deflate; one-shot
   decompression for gzip, deflate, br, zstd.
 - Request network-log capture decoding that hides opaque encoded bodies.
 - JSON usage decompression with diagnostic error classification.
@@ -30,14 +30,6 @@ from body_limits import (
 _BROTLI_DECOMPRESS_MIN_INPUT_CHUNK_SIZE = 16
 _BROTLI_DECOMPRESS_MAX_INPUT_CHUNK_SIZE = 1024
 _BROTLI_DECOMPRESS_TARGET_INPUT_CHUNKS = 64
-_ZSTD_STREAM_DECODE_MIN_INPUT_CHUNK_SIZE = 4
-# The streaming zstd API does not expose a per-call output limit. Keep the
-# adaptive ceiling small so a low-ratio prefix cannot make a later high-ratio
-# block materialise a multi-MB decoded ``bytes`` object before _feed_chunks().
-_ZSTD_STREAM_DECODE_MAX_INPUT_CHUNK_SIZE = 12
-_ZSTD_STREAM_DECODE_INPUT_GROWTH_FACTOR = 2
-_ZSTD_STREAM_DECODE_LOW_EXPANSION_RATIO = 2
-
 INVALID_COMPRESSED_BODY = "invalid compressed body"
 INCOMPLETE_COMPRESSED_BODY = "incomplete compressed body"
 DECODED_BODY_LIMIT_EXCEEDED = "decoded body limit exceeded"
@@ -86,33 +78,6 @@ def _feed_chunks(feed: _StreamDecodeFeed, data: bytes, max_decoded_chunk: int) -
 
 def _no_stream_decode_error() -> str | None:
     return None
-
-
-class _ZstdStreamDecodeInputSizer:
-    def __init__(self, *, max_decoded_chunk: int) -> None:
-        self._max_decoded_chunk = max_decoded_chunk
-        self._input_chunk_size = _ZSTD_STREAM_DECODE_MIN_INPUT_CHUNK_SIZE
-
-    @property
-    def input_chunk_size(self) -> int:
-        return self._input_chunk_size
-
-    def reset(self) -> None:
-        self._input_chunk_size = _ZSTD_STREAM_DECODE_MIN_INPUT_CHUNK_SIZE
-
-    def observe(self, source: bytes, decoded: bytes) -> None:
-        if not decoded:
-            return
-        if (
-            len(decoded) >= self._max_decoded_chunk
-            or len(decoded) > len(source) * _ZSTD_STREAM_DECODE_LOW_EXPANSION_RATIO
-        ):
-            self.reset()
-            return
-        self._input_chunk_size = min(
-            _ZSTD_STREAM_DECODE_MAX_INPUT_CHUNK_SIZE,
-            self._input_chunk_size * _ZSTD_STREAM_DECODE_INPUT_GROWTH_FACTOR,
-        )
 
 
 def _create_zlib_stream_decode_session(
@@ -165,62 +130,13 @@ def _create_zlib_stream_decode_session(
     return StreamDecodeSession(decode, finish_error)
 
 
-def _create_zstd_stream_decode_session(
-    feed: _StreamDecodeFeed, *, max_decoded_chunk: int
-) -> StreamDecodeSession:
-    obj = zstandard.ZstdDecompressor().decompressobj()
-    input_sizer = _ZstdStreamDecodeInputSizer(max_decoded_chunk=max_decoded_chunk)
-    decode_error: str | None = None
-    frame_in_progress = False
-    saw_input = False
-
-    def decode(chunk: bytes) -> None:
-        nonlocal decode_error, frame_in_progress, obj, saw_input
-        if decode_error is not None:
-            return
-        if chunk:
-            saw_input = True
-        data = chunk
-        while data:
-            input_chunk_size = input_sizer.input_chunk_size
-            source = data[:input_chunk_size]
-            remainder = data[input_chunk_size:]
-            frame_in_progress = True
-            try:
-                decoded = obj.decompress(source)
-            except zstandard.ZstdError as exc:
-                decode_error = INVALID_COMPRESSED_BODY
-                _log_streaming_decode_error("zstd", exc)
-                return
-            input_sizer.observe(source, decoded)
-            if decoded:
-                _feed_chunks(feed, decoded, max_decoded_chunk)
-            if obj.eof:
-                data = obj.unused_data + remainder
-                obj = zstandard.ZstdDecompressor().decompressobj()
-                input_sizer.reset()
-                frame_in_progress = False
-                continue
-            if obj.unconsumed_tail:
-                data = obj.unconsumed_tail + remainder
-                continue
-            data = remainder
-
-    def finish_error() -> str | None:
-        if decode_error is not None:
-            return decode_error
-        if saw_input and frame_in_progress:
-            return INCOMPLETE_COMPRESSED_BODY
-        return None
-
-    return StreamDecodeSession(decode, finish_error)
-
-
 def _stream_decode_skip_reason(encoding: str) -> str | None:
     if not encoding or encoding == "identity":
         return None
-    if encoding in ("gzip", "deflate", "zstd"):
+    if encoding in ("gzip", "deflate"):
         return None
+    if encoding == "zstd":
+        return "zstd streaming output cannot be hard-bounded"
     if encoding == "br":
         return "brotli streaming output cannot be bounded"
     return "unsupported content encoding"
@@ -246,10 +162,8 @@ def create_stream_decode_session(
 
     Usage parsers are bounded-state scanners and may need to inspect long
     responses, so this helper does not enforce a total decoded-byte cap. It
-    bounds each decoded chunk before parser entry. Codecs without a per-call
-    output cap still use small adaptive input slices as a best-effort guard
-    against high-ratio compressed input. Returns None when a content encoding
-    cannot be safely decoded incrementally.
+    bounds each decoded chunk before parser entry. Returns None when a content
+    encoding cannot be safely decoded incrementally.
 
     The returned session exposes ``finish_error()`` so billing paths can reject
     parser state from compressed streams that never reached a valid frame/member
@@ -268,8 +182,6 @@ def create_stream_decode_session(
             encoding=encoding,
             max_decoded_chunk=max_decoded_chunk,
         )
-    if encoding == "zstd":
-        return _create_zstd_stream_decode_session(feed, max_decoded_chunk=max_decoded_chunk)
     return None
 
 
