@@ -1,8 +1,10 @@
+use std::ffi::OsStr;
 use std::io;
+use std::process::Stdio;
 use std::sync::Arc;
 use std::time::Duration;
 
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 use tokio::sync::{Notify, oneshot};
 use tokio::task::JoinHandle;
@@ -167,5 +169,130 @@ pub(crate) fn execution_context_for_test(run_id: RunId) -> ExecutionContext {
         feature_flags: None,
         billable_firewalls: vec![],
         model_usage_provider: None,
+    }
+}
+
+pub(crate) async fn run_ignored_child_test(
+    child_test_name: &str,
+    env: &[(&str, &str)],
+    timeout: Duration,
+) {
+    let mut command =
+        tokio::process::Command::new(std::env::current_exe().expect("resolve current test binary"));
+    command
+        .arg("--exact")
+        .arg(child_test_name)
+        .arg("--ignored")
+        .arg("--nocapture")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    for (key, value) in env {
+        command.env(key, value);
+    }
+
+    let mut child = command.spawn().expect("spawn ignored child test");
+    let stdout = child
+        .stdout
+        .take()
+        .expect("ignored child test stdout must be piped");
+    let stderr = child
+        .stderr
+        .take()
+        .expect("ignored child test stderr must be piped");
+    let stdout_task = tokio::spawn(read_child_output(stdout));
+    let stderr_task = tokio::spawn(read_child_output(stderr));
+
+    let status = match tokio::time::timeout(timeout, child.wait()).await {
+        Ok(Ok(status)) => status,
+        Ok(Err(error)) => {
+            let _ = child.start_kill();
+            let _ = child.wait().await;
+            let (stdout, stderr) = collect_child_output(stdout_task, stderr_task).await;
+            panic!(
+                "ignored child test {child_test_name} wait failed: {error}\nstdout:\n{stdout}\nstderr:\n{stderr}"
+            );
+        }
+        Err(_) => {
+            let _ = child.start_kill();
+            let killed_status = child.wait().await;
+            let (stdout, stderr) = collect_child_output(stdout_task, stderr_task).await;
+            let timeout_ms = timeout.as_millis();
+            match killed_status {
+                Ok(status) => panic!(
+                    "ignored child test {child_test_name} timed out after {timeout_ms}ms; killed child status: {status}\nstdout:\n{stdout}\nstderr:\n{stderr}"
+                ),
+                Err(error) => panic!(
+                    "ignored child test {child_test_name} timed out after {timeout_ms}ms; wait after kill failed: {error}\nstdout:\n{stdout}\nstderr:\n{stderr}"
+                ),
+            }
+        }
+    };
+
+    let (stdout, stderr) = collect_child_output(stdout_task, stderr_task).await;
+    assert!(
+        status.success(),
+        "ignored child test {child_test_name} failed\nstatus: {status}\nstdout:\n{stdout}\nstderr:\n{stderr}"
+    );
+    assert!(
+        stdout.contains(child_test_name),
+        "ignored child test {child_test_name} did not run\nstdout:\n{stdout}\nstderr:\n{stderr}"
+    );
+}
+
+async fn read_child_output<R>(mut output: R) -> io::Result<Vec<u8>>
+where
+    R: AsyncRead + Unpin,
+{
+    let mut buffer = Vec::new();
+    output.read_to_end(&mut buffer).await?;
+    Ok(buffer)
+}
+
+async fn collect_child_output(
+    stdout_task: JoinHandle<io::Result<Vec<u8>>>,
+    stderr_task: JoinHandle<io::Result<Vec<u8>>>,
+) -> (String, String) {
+    let stdout = join_child_output("stdout", stdout_task).await;
+    let stderr = join_child_output("stderr", stderr_task).await;
+    (
+        String::from_utf8_lossy(&stdout).into_owned(),
+        String::from_utf8_lossy(&stderr).into_owned(),
+    )
+}
+
+async fn join_child_output(stream_name: &str, task: JoinHandle<io::Result<Vec<u8>>>) -> Vec<u8> {
+    match task.await {
+        Ok(Ok(output)) => output,
+        Ok(Err(error)) => panic!("read ignored child test {stream_name}: {error}"),
+        Err(error) => panic!("join ignored child test {stream_name} reader: {error}"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const TIMEOUT_CHILD_ENV: &str = "VM0_RUN_IGNORED_CHILD_TIMEOUT_TEST";
+
+    #[tokio::test]
+    #[should_panic(expected = "timed out")]
+    async fn run_ignored_child_test_times_out() {
+        run_ignored_child_test(
+            "test_fixtures::tests::run_ignored_child_test_timeout_child",
+            &[(TIMEOUT_CHILD_ENV, "1")],
+            Duration::from_millis(10),
+        )
+        .await;
+    }
+
+    #[test]
+    #[ignore]
+    fn run_ignored_child_test_timeout_child() {
+        if std::env::var_os(TIMEOUT_CHILD_ENV).is_none() {
+            return;
+        }
+
+        std::thread::sleep(Duration::from_secs(60));
     }
 }

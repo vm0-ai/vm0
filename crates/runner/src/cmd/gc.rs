@@ -2778,6 +2778,7 @@ fn human_bytes(bytes: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_fixtures::run_ignored_child_test;
     use clap::Parser;
 
     /// `--r2-keep-days 0` would wipe even just-uploaded images. Verify the
@@ -6980,29 +6981,14 @@ server:
 
     const LOW_FD_STORAGE_GC_CHILD_ENV: &str = "VM0_RUNNER_LOW_FD_STORAGE_GC_CHILD";
 
-    #[test]
-    fn gc_storage_cache_many_candidates_does_not_exhaust_lock_fds() {
-        let output = std::process::Command::new(std::env::current_exe().unwrap())
-            .env(LOW_FD_STORAGE_GC_CHILD_ENV, "1")
-            .arg("gc_storage_cache_many_candidates_low_fd_child")
-            .arg("--ignored")
-            .arg("--nocapture")
-            .output()
-            .unwrap();
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let stderr = String::from_utf8_lossy(&output.stderr);
-
-        assert!(
-            output.status.success(),
-            "low-fd storage GC child failed\nstatus: {}\nstdout:\n{}\nstderr:\n{}",
-            output.status,
-            stdout,
-            stderr
-        );
-        assert!(
-            stdout.contains("gc_storage_cache_many_candidates_low_fd_child"),
-            "low-fd storage GC child did not run\nstdout:\n{stdout}\nstderr:\n{stderr}"
-        );
+    #[tokio::test]
+    async fn gc_storage_cache_many_candidates_does_not_exhaust_lock_fds() {
+        run_ignored_child_test(
+            "cmd::gc::tests::gc_storage_cache_many_candidates_low_fd_child",
+            &[(LOW_FD_STORAGE_GC_CHILD_ENV, "1")],
+            Duration::from_secs(60),
+        )
+        .await;
     }
 
     #[tokio::test]

@@ -599,30 +599,23 @@ fn wrap_io(error: io::Error, context: String) -> io::Error {
 mod tests {
     use std::io;
     use std::os::unix::fs::{PermissionsExt, symlink};
-    use std::process::Command;
+    use std::time::Duration;
 
     use super::*;
+    use crate::test_fixtures::run_ignored_child_test;
 
     fn mode(path: &Path) -> u32 {
         std::fs::metadata(path).unwrap().permissions().mode() & 0o777
     }
 
-    #[test]
-    fn ensure_dir_handles_restrictive_umask() {
-        let output = Command::new(std::env::current_exe().unwrap())
-            .env("VM0_RUN_RESTRICTIVE_UMASK_TEST", "1")
-            .arg("--exact")
-            .arg("host_file::tests::ensure_dir_handles_restrictive_umask_child")
-            .arg("--ignored")
-            .output()
-            .unwrap();
-
-        assert!(
-            output.status.success(),
-            "child failed\nstdout:\n{}\nstderr:\n{}",
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr)
-        );
+    #[tokio::test]
+    async fn ensure_dir_handles_restrictive_umask() {
+        run_ignored_child_test(
+            "host_file::tests::ensure_dir_handles_restrictive_umask_child",
+            &[("VM0_RUN_RESTRICTIVE_UMASK_TEST", "1")],
+            Duration::from_secs(60),
+        )
+        .await;
     }
 
     #[test]
