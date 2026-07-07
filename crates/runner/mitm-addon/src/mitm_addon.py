@@ -113,13 +113,14 @@ _BUILTIN_HOST_POLICY_DENIED_ERROR: Final = "builtin_host_policy_denied"
 # this block out of flow_metadata_keys.py unless they become public cross-module
 # contracts.
 
-# Connector intent state.
+_CONNECTOR_INTENT_HEADER: Final = "X-VM0-Connector-Intent"
+
+# Connector intent metadata state.
 # Creator: _capture_and_strip_connector_intent_header().
 # Consumer: _connector_intent_from_flow() and request-header probe restore.
-# Release: metadata values are restored on probe rollback; otherwise no explicit
-# pop before flow completion.
+# Release: restored on probe rollback, otherwise no explicit pop before flow
+# completion.
 # Follow-up owner: #20508 connector diagnostics extraction.
-_CONNECTOR_INTENT_HEADER: Final = "X-VM0-Connector-Intent"
 _CONNECTOR_INTENT_VALUE = "_connector_intent_value"
 _CONNECTOR_INTENT_STATUS = "_connector_intent_status"
 
@@ -132,6 +133,12 @@ _CONNECTOR_INTENT_STATUS = "_connector_intent_status"
 _REQUEST_HEADERS_TERMINATED = "_request_headers_terminated"
 _REQUEST_CLASSIFICATION = "_request_classification"
 _FIREWALL_AUTH_APPLIED_IN_REQUESTHEADERS = "_firewall_auth_applied_in_requestheaders"
+
+# Request-header probe rollback key set.
+# Creator: static key set for requestheaders() snapshots.
+# Consumer: _restore_request_headers_probe_metadata().
+# Release: n/a; the helper restores or removes the listed metadata values.
+# Follow-up owner: #20507 request classification extraction.
 _REQUEST_HEADERS_PROBE_METADATA_KEYS = (
     metadata_keys.VM_RUN_ID,
     metadata_keys.VM_NETWORK_LOG_PATH,
