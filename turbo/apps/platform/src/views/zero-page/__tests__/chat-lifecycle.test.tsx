@@ -4580,6 +4580,9 @@ describe("chat lifecycle", () => {
         },
       }),
     );
+    // Event triggers must not show a "Next run" row — only schedule triggers do.
+    expect(within(sidebar).queryByText("Next run")).not.toBeInTheDocument();
+    expect(within(sidebar).getByText("Last run")).toBeInTheDocument();
     mockWorkflowTriggerUpdate((triggerId, body) => {
       updateBodies.push({ triggerId, body });
     });

@@ -1620,11 +1620,13 @@ function headerWorkflowTriggerRows(
       label: "Last run",
       value: formatHeaderWorkflowTriggerRun(trigger.trigger.lastRunAt),
     },
-    {
+  ];
+  if (trigger.trigger.kind === "schedule") {
+    rows.push({
       label: "Next run",
       value: formatHeaderWorkflowTriggerNextRun(trigger.trigger.nextRunAt),
-    },
-  ];
+    });
+  }
   const matchSummary = gmailTriggerSummary(trigger.trigger);
   if (matchSummary) {
     rows.splice(1, 0, { label: "Match", value: matchSummary });
