@@ -115,7 +115,7 @@ _BUILTIN_HOST_POLICY_DENIED_ERROR: Final = "builtin_host_policy_denied"
 # Connector intent state.
 # Creator: _capture_and_strip_connector_intent_header().
 # Consumer: _connector_intent_from_flow() and request-header probe restore.
-# Release: restored on probe rollback, otherwise flow-local until completion.
+# Release: restored with probe metadata, otherwise flow-local until completion.
 # Follow-up owner: #20508 connector diagnostics extraction.
 _CONNECTOR_INTENT_HEADER: Final = "X-VM0-Connector-Intent"
 _CONNECTOR_INTENT_VALUE = "_connector_intent_value"
@@ -124,7 +124,8 @@ _CONNECTOR_INTENT_STATUS = "_connector_intent_status"
 # Request-header phase state.
 # Creator: requestheaders() and header-phase stream/auth helpers.
 # Consumer: request() and terminal cleanup.
-# Release: request() early-exit paths and _release_terminal_flow_state().
+# Release: classification/auth markers are popped by request() or terminal cleanup.
+# _REQUEST_HEADERS_TERMINATED is a flow-local sentinel for request() early exit.
 # Follow-up owner: #20507 request classification extraction.
 _REQUEST_HEADERS_TERMINATED = "_request_headers_terminated"
 _REQUEST_CLASSIFICATION = "_request_classification"
@@ -197,7 +198,7 @@ _MODEL_WEBSOCKET_MESSAGE_TRIM_SCHEDULED = "_model_websocket_message_trim_schedul
 # TCP message-drain state.
 # Creator: _schedule_tcp_message_drain() and _drain_tcp_messages().
 # Consumer: _tcp_log_sizes().
-# Release: _drain_tcp_messages() and TCP end/error logging.
+# Release: scheduled marker is popped by _drain_tcp_messages(); counters are flow-local.
 # Follow-up owner: #20505 TCP logging extraction.
 _TCP_MESSAGE_DRAIN_SCHEDULED = "_tcp_message_drain_scheduled"
 _TCP_REQUEST_SIZE = "_tcp_request_size"
