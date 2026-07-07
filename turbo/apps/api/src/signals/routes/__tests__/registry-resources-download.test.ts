@@ -4,9 +4,11 @@ import { registryResourceDownloadContract } from "@vm0/api-contracts/contracts/r
 import {
   findColorSystem,
   findDesignSystem,
+  findPresentationRunbookResource,
   findSkill,
   findTemplate,
   findTool,
+  findWebsiteTemplateResource,
 } from "@vm0/core/resource-registry";
 import { VOLUME_ORG_USER_ID } from "@vm0/core/storage-names";
 import { command, createStore, state } from "ccstate";
@@ -170,6 +172,11 @@ const PRIVATE_ARCHIVE_FIXTURES = [
     versionId:
       "e9ea329a25491e347cb3c1156735201a4ff7f8a299dd8990b024d31854b49050",
   },
+  {
+    id: "template:warm-cards",
+    versionId:
+      "dae4ff30aaf7408ae1679d4b5eb25b7cea5c889c00e44b413a572880617e68ce",
+  },
 ] as const;
 
 function storageNameFor(id: string): string {
@@ -182,7 +189,9 @@ function findArchiveSha256(id: string): string {
     findTool(id) ??
     findTemplate(id) ??
     findDesignSystem(id) ??
-    findColorSystem(id);
+    findColorSystem(id) ??
+    findPresentationRunbookResource(id) ??
+    findWebsiteTemplateResource(id);
   const sha256 = entry?.source.archive?.sha256;
   if (!sha256) {
     throw new Error(`missing archive sha for ${id}`);

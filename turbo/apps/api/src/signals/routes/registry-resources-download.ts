@@ -9,6 +9,7 @@ import {
   findTemplate,
   findTool,
   findVideoTemplate,
+  findWebsiteTemplateResource,
   type RegistryEntry,
   type VideoTemplateRegistryEntry,
 } from "@vm0/core/resource-registry";
@@ -130,6 +131,9 @@ const PRIVATE_REGISTRY_RESOURCE_ARCHIVE_VERSION_IDS = {
     "423c53c83c3f7a4b3ca9c6f9ce314b8bec4555cf2497a0fcc9fbd20c36a13acb",
   "template:html-ppt-vantage-runbook":
     "366c1c2028815fcb13b4c8798550ded9e0853cf55fd2df9124ab4327ff012362",
+  // Website template packages (self-contained per-template archives).
+  "template:warm-cards":
+    "dae4ff30aaf7408ae1679d4b5eb25b7cea5c889c00e44b413a572880617e68ce",
 } as const satisfies Record<string, string>;
 
 function privateRegistryResourceArchive(
@@ -158,7 +162,8 @@ function findRegistryResource(id: string): PullableRegistryEntry | undefined {
     findColorSystem(id) ??
     findImageStyle(id) ??
     findVideoTemplate(id) ??
-    findPresentationRunbookResource(id)
+    findPresentationRunbookResource(id) ??
+    findWebsiteTemplateResource(id)
   );
 }
 
