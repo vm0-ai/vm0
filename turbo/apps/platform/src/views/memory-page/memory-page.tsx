@@ -29,6 +29,7 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { Markdown } from "../components/markdown.tsx";
 import { MemoryRelationships } from "./memory-relationships.tsx";
+import { MemorySources } from "./memory-sources.tsx";
 
 const PREFERRED_FILE = "MEMORY.md";
 const LEADING_YAML_FRONTMATTER_PATTERN =
@@ -181,7 +182,12 @@ function deriveMemoryViewerState(
 }
 
 function isMemoryTab(value: string): value is MemoryTab {
-  return value === "updates" || value === "relationships" || value === "raw";
+  return (
+    value === "updates" ||
+    value === "relationships" ||
+    value === "sources" ||
+    value === "raw"
+  );
 }
 
 function MemoryDevRefreshButton({
@@ -230,7 +236,8 @@ export function MemoryPage() {
   const relationshipMemoryEnabled =
     features[FeatureSwitchKey.RelationshipMemory] ?? false;
   const visibleTab =
-    activeTab === "relationships" && !relationshipMemoryEnabled
+    (activeTab === "relationships" || activeTab === "sources") &&
+    !relationshipMemoryEnabled
       ? "updates"
       : activeTab;
 
@@ -258,7 +265,8 @@ export function MemoryPage() {
                 onValueChange={(value) => {
                   if (
                     isMemoryTab(value) &&
-                    (value !== "relationships" || relationshipMemoryEnabled)
+                    ((value !== "relationships" && value !== "sources") ||
+                      relationshipMemoryEnabled)
                   ) {
                     setTab(value);
                   }
@@ -272,6 +280,9 @@ export function MemoryPage() {
                       Relationships
                     </TabsTrigger>
                   ) : null}
+                  {relationshipMemoryEnabled ? (
+                    <TabsTrigger value="sources">Sources</TabsTrigger>
+                  ) : null}
                   <TabsTrigger value="raw">Memory files</TabsTrigger>
                 </TabsList>
               </Tabs>
@@ -280,6 +291,7 @@ export function MemoryPage() {
 
             {visibleTab === "updates" ? <MemoryUpdates /> : null}
             {visibleTab === "relationships" ? <MemoryRelationships /> : null}
+            {visibleTab === "sources" ? <MemorySources /> : null}
             {visibleTab === "raw" ? <MemoryRawFiles /> : null}
           </div>
         </div>

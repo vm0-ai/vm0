@@ -1,6 +1,10 @@
 export interface RelationshipSyncJobPayload {
   readonly connectorId?: string;
   readonly relationshipStateId?: string;
+  readonly memorySource?: {
+    readonly provider: "gmail" | "slack";
+    readonly externalId: string;
+  };
   readonly gmailThreadId?: string;
   readonly gmailMessageIds?: readonly string[];
   readonly gmailMessage?: {

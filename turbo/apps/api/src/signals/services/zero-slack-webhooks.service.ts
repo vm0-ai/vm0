@@ -76,9 +76,9 @@ import {
   type IntegrationModelRoutePin,
 } from "./integration-model-route.service";
 import {
-  memoryContentHash,
-  recordMemorySource,
-} from "./memory-substrate.service";
+  recordSlackMessageMemorySource,
+  type SlackMemoryChannelType,
+} from "./slack-memory-source.service";
 import { canReuseIntegrationSessionForModelRoute } from "./integration-session-model-compatibility.service";
 import { formatIntegrationRunError$ } from "./integration-run-errors.service";
 import { listOrgModelPolicies$ } from "./zero-model-policy.service";
@@ -256,8 +256,6 @@ interface SlackEventCallbackArgs {
 
 type SlackChannelType = "channel" | "dm" | "group_dm";
 
-type SlackMemoryChannelType = "channel" | "group" | "mpim" | "im" | "unknown";
-
 interface WorkspaceAgentSummary {
   readonly id: string;
   readonly name: string;
@@ -408,77 +406,6 @@ function buildOrgConnectUrl(
     params.set("t", threadTs);
   }
   return `${env("APP_URL")}/settings/slack?${params.toString()}`;
-}
-
-function dateFromSlackTs(value: string): Date | null {
-  const [secondsText] = value.split(".");
-  const seconds = Number(secondsText);
-  return Number.isFinite(seconds) ? new Date(seconds * 1000) : null;
-}
-
-function slackMemoryExternalId(args: {
-  readonly workspaceId: string;
-  readonly channelId: string;
-  readonly messageTs: string;
-}): string {
-  return [args.workspaceId, args.channelId, args.messageTs].join(":");
-}
-
-function slackMemorySourceTitle(channelType: SlackMemoryChannelType): string {
-  switch (channelType) {
-    case "im": {
-      return "Slack direct message";
-    }
-    case "mpim": {
-      return "Slack group direct message";
-    }
-    case "group": {
-      return "Slack private channel message";
-    }
-    case "channel": {
-      return "Slack channel message";
-    }
-    case "unknown": {
-      return "Slack message";
-    }
-  }
-}
-
-async function recordSlackMessageMemorySource(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly workspaceId: string;
-  readonly channelId: string;
-  readonly channelType: SlackMemoryChannelType;
-  readonly slackUserId: string;
-  readonly messageText: string;
-  readonly messageTs: string;
-  readonly threadTs?: string;
-  readonly files?: readonly SlackFile[];
-}): Promise<void> {
-  await recordMemorySource(args.db, {
-    orgId: args.orgId,
-    userId: args.userId,
-    provider: "slack",
-    sourceType: "slack_message",
-    externalId: slackMemoryExternalId(args),
-    occurredAt: dateFromSlackTs(args.messageTs),
-    title: slackMemorySourceTitle(args.channelType),
-    contentHash: args.messageText ? memoryContentHash(args.messageText) : null,
-    metadata: {
-      workspaceId: args.workspaceId,
-      channelId: args.channelId,
-      channelType: args.channelType,
-      threadId: args.threadTs ?? null,
-      messageTs: args.messageTs,
-      senderId: args.slackUserId,
-      participantIds: [args.slackUserId],
-      fileIds: (args.files ?? []).flatMap((file) => {
-        return file.id ? [file.id] : [];
-      }),
-    },
-  });
 }
 
 function buildNotInstalledMessage(detail?: string): unknown[] {

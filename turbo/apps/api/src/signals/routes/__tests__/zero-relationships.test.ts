@@ -2,6 +2,7 @@ import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
 
 import { cronDrainRelationshipMemoryContract } from "@vm0/api-contracts/contracts/cron";
+import { zeroMemoryContract } from "@vm0/api-contracts/contracts/zero-memory";
 import { zeroRelationshipsContract } from "@vm0/api-contracts/contracts/zero-relationships";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { createStore } from "ccstate";
@@ -30,6 +31,12 @@ import {
   deleteFeatureSwitchesForUser,
   updateFeatureSwitchesForUser,
 } from "./helpers/zero-feature-switches";
+import {
+  deleteSlackIntegrationFixture$,
+  seedSlackOrgConnection$,
+  seedSlackOrgInstallation$,
+  type SlackIntegrationFixture,
+} from "./helpers/zero-integrations-slack";
 
 const context = testContext();
 const store = createStore();
@@ -52,6 +59,10 @@ function authHeaders() {
 
 function relationshipsClient() {
   return setupApp({ context })(zeroRelationshipsContract);
+}
+
+function memoryClient() {
+  return setupApp({ context })(zeroMemoryContract);
 }
 
 function cronClient() {
@@ -262,8 +273,15 @@ async function deleteRelationshipFixture(
   await deleteFeatureSwitchesForUser(context, fixture);
 }
 
+async function deleteSlackFixture(
+  fixture: SlackIntegrationFixture,
+): Promise<void> {
+  await store.set(deleteSlackIntegrationFixture$, fixture, context.signal);
+}
+
 describe("GET /api/zero/relationships/*", () => {
   const track = createFixtureTracker(deleteRelationshipFixture);
+  const trackSlack = createFixtureTracker(deleteSlackFixture);
 
   it("returns empty read responses in the current org-user scope", async () => {
     await track(seedRelationshipFixture());
@@ -819,5 +837,194 @@ describe("GET /api/zero/relationships/*", () => {
       "Customer Example asked for the security review answer.",
     );
     expect(customer?.items[0]?.sources[0]?.quote).toBeNull();
+  });
+
+  it("backfills Slack source memory and exposes it through memory sources", async () => {
+    const fixture = await track(seedRelationshipFixture());
+    const slackFixture = await trackSlack(
+      store.set(
+        seedSlackOrgInstallation$,
+        {
+          orgId: fixture.orgId,
+          slackWorkspaceId: "T-memory-backfill",
+          slackWorkspaceName: "Memory Test Workspace",
+        },
+        context.signal,
+      ),
+    );
+    const slackUser = await store.set(
+      seedSlackOrgConnection$,
+      {
+        slackWorkspaceId: slackFixture.slackWorkspaceId,
+        vm0UserId: fixture.userId,
+        slackUserId: "U-memory-user",
+      },
+      context.signal,
+    );
+    configureGmailEnv();
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    context.mocks.slack.conversations.list.mockResolvedValue({
+      ok: true,
+      channels: [
+        {
+          id: "C-memory",
+          name: "memory",
+          is_channel: true,
+          is_member: true,
+          is_archived: false,
+        },
+        {
+          id: "C-not-member",
+          name: "private-other",
+          is_group: true,
+          is_member: false,
+          is_archived: false,
+        },
+      ],
+      response_metadata: { next_cursor: "" },
+    });
+    context.mocks.slack.conversations.history.mockResolvedValue({
+      ok: true,
+      messages: [
+        {
+          user: slackUser.slackUserId,
+          ts: "1780000000.000100",
+          text: "Follow up with the workspace launch plan.",
+        },
+        {
+          user: "U-someone-else",
+          ts: "1780000001.000100",
+          text: "Other user's message",
+        },
+        {
+          user: slackUser.slackUserId,
+          ts: "1780000002.000100",
+          text: "Bot-posted message",
+          bot_id: "B-bot",
+        },
+      ],
+      response_metadata: { next_cursor: "" },
+    });
+
+    const started = await accept(
+      memoryClient().slackBackfill({
+        headers: authHeaders(),
+        body: {
+          days: 180,
+          includePublicChannels: true,
+          includePrivateChannels: true,
+          includeDirectMessages: false,
+        },
+      }),
+      [200],
+    );
+    expect(started.body).toMatchObject({
+      provider: "slack",
+      workspaceConnected: true,
+      userConnected: true,
+      workspaceName: "Memory Test Workspace",
+      backfill: { status: "pending", scannedCount: 0, recordedCount: 0 },
+    });
+
+    const drained = await accept(
+      cronClient().drain({
+        headers: cronHeaders(),
+      }),
+      [200],
+    );
+    expect(drained.body.backfill).toStrictEqual({
+      processed: 1,
+      failed: 0,
+      scanned: 3,
+      enqueued: 1,
+    });
+    expect(drained.body.relationshipsUpdated).toBe(1);
+    expect(context.mocks.slack.conversations.list).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        types: "public_channel,private_channel",
+        exclude_archived: true,
+      }),
+    );
+    expect(context.mocks.slack.conversations.history).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        channel: "C-memory",
+      }),
+    );
+    expect(context.mocks.slack.conversations.history).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        channel: "C-memory",
+        latest: "1780000000.000100",
+        inclusive: true,
+        limit: 1,
+      }),
+    );
+
+    const status = await accept(
+      memoryClient().slackStatus({ headers: authHeaders() }),
+      [200],
+    );
+    expect(status.body).toMatchObject({
+      provider: "slack",
+      backfill: {
+        status: "done",
+        scannedCount: 3,
+        recordedCount: 1,
+      },
+    });
+
+    const sources = await accept(
+      memoryClient().sources({
+        headers: authHeaders(),
+        query: { provider: "slack", page: 1, limit: 10 },
+      }),
+      [200],
+    );
+    expect(sources.body.pagination).toMatchObject({
+      page: 1,
+      pageSize: 10,
+      total: 1,
+      totalPages: 1,
+      hasMore: false,
+    });
+    expect(sources.body.sources).toHaveLength(1);
+    expect(sources.body.sources[0]).toMatchObject({
+      provider: "slack",
+      sourceType: "slack_message",
+      title: "Slack channel message",
+      occurredAt: "2026-05-28T20:26:40.000Z",
+      metadata: {
+        workspaceId: "T-memory-backfill",
+        channelId: "C-memory",
+        channelType: "channel",
+        messageTs: "1780000000.000100",
+        senderId: "U-memory-user",
+      },
+    });
+    expect(sources.body.sources[0]?.contentHash).toMatch(/^[a-f0-9]{64}$/);
+
+    const relationships = await accept(
+      relationshipsClient().search({
+        headers: authHeaders(),
+        query: { q: "C-memory" },
+      }),
+      [200],
+    );
+    expect(relationships.body.relationships).toHaveLength(1);
+    expect(relationships.body.relationships[0]).toMatchObject({
+      entity: {
+        type: "organization",
+        displayName: "Slack channel C-memory",
+      },
+      relationshipType: "Slack channel",
+      recentInteractions: [
+        {
+          provider: "slack",
+          externalId: "T-memory-backfill:C-memory:1780000000.000100",
+          messageId: "1780000000.000100",
+          snippet: "The user posted in Slack channel C-memory on Slack.",
+        },
+      ],
+    });
   });
 });

@@ -191,7 +191,8 @@ function sourceText(item: RelationshipRecord["items"][number]): string {
   }
   const date = formatShortDate(source.occurredAt);
   const quote = source.quote ? ` - ${source.quote}` : "";
-  return `Gmail - ${date}${quote}`;
+  const provider = source.provider === "slack" ? "Slack" : "Gmail";
+  return `${provider} - ${date}${quote}`;
 }
 
 function RelationshipSection({
@@ -305,7 +306,17 @@ function RelationshipDetail({
           </div>
           <div className="mt-3 flex flex-wrap gap-2">
             <RelationshipStatusBadge relationship={relationship} />
-            <SourceBadge label="Gmail" />
+            <SourceBadge
+              label={
+                relationship.items.some((item) => {
+                  return item.sources.some((source) => {
+                    return source.provider === "slack";
+                  });
+                })
+                  ? "Slack"
+                  : "Gmail"
+              }
+            />
             <SourceBadge label="This org only" />
           </div>
         </div>
