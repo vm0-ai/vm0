@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.136.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.136.5...runner-rs-v0.136.6) (2026-07-07)
+
+
+### Refactoring
+
+* document mitm hook state ownership ([#20517](https://github.com/vm0-ai/vm0/issues/20517)) ([695971e](https://github.com/vm0-ai/vm0/commit/695971e09a8e4c4e2552e659e4ace4bae7a8ad29))
+* **mitm-addon:** extract flow metadata key linter ([#20503](https://github.com/vm0-ai/vm0/issues/20503)) ([0c0e806](https://github.com/vm0-ai/vm0/commit/0c0e80694a4cc010dcac437de735eb27af8c1a0c))
+
+
+### Performance Improvements
+
+* add session history attribution telemetry ([#20497](https://github.com/vm0-ai/vm0/issues/20497)) ([2daa651](https://github.com/vm0-ai/vm0/commit/2daa6519837d9f2ca3bbc640e2f1d8e8cc135630))
+
 ## [0.136.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.136.4...runner-rs-v0.136.5) (2026-07-07)
 
 
