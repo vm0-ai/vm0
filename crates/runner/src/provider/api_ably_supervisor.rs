@@ -663,6 +663,7 @@ async fn handle_ably_message_with_network_policy_refresh(
     }
 
     let action = {
+        let notification_received_at = StdInstant::now();
         let Some(notif) = parse_job_notification(msg) else {
             return;
         };
@@ -674,9 +675,10 @@ async fn handle_ably_message_with_network_policy_refresh(
                     profile = %profile,
                     "ably: job notification, queueing direct candidate"
                 );
-                JobNotificationAction::Direct(DirectJobCandidate::new_with_affinity(
+                JobNotificationAction::Direct(DirectJobCandidate::new_with_affinity_metadata(
                     notif.run_id,
                     profile.to_owned(),
+                    notification_received_at,
                     notif.cli_agent_session_id.map(str::to_owned),
                     notif.affinity_protected_until.map(str::to_owned),
                 ))

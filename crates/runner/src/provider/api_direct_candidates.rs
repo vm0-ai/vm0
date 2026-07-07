@@ -25,21 +25,6 @@ impl DirectJobCandidate {
         Self::new_with_discovered_at(run_id, profile_name, StdInstant::now())
     }
 
-    pub(super) fn new_with_affinity(
-        run_id: RunId,
-        profile_name: String,
-        cli_agent_session_id: Option<String>,
-        affinity_protected_until: Option<String>,
-    ) -> Self {
-        Self::new_with_affinity_metadata(
-            run_id,
-            profile_name,
-            StdInstant::now(),
-            cli_agent_session_id,
-            affinity_protected_until,
-        )
-    }
-
     #[cfg(test)]
     pub(super) fn new_with_discovered_at(
         run_id: RunId,
