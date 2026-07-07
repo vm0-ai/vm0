@@ -47,6 +47,10 @@ export function isAdminOnlySettingsSection(section: SettingsSection): boolean {
 
 const internalSettingsDialogOpen$ = state(false);
 const internalExternalProfileModalOpen$ = state(false);
+const pendingAccountMenuSettingsSection$ = state<{
+  readonly ownerId: string;
+  readonly section: SettingsSection;
+} | null>(null);
 
 export const settingsDialogOpen$ = computed((get) => {
   return get(internalSettingsDialogOpen$);
@@ -59,6 +63,30 @@ export const externalProfileModalOpen$ = computed((get) => {
 export const setExternalProfileModalOpen$ = command(
   ({ set }, open: boolean) => {
     set(internalExternalProfileModalOpen$, open);
+  },
+);
+
+export const setPendingAccountMenuSettingsSection$ = command(
+  ({ get, set }, ownerId: string, section: SettingsSection | null) => {
+    if (section === null) {
+      const pending = get(pendingAccountMenuSettingsSection$);
+      if (pending?.ownerId === ownerId) {
+        set(pendingAccountMenuSettingsSection$, null);
+      }
+      return;
+    }
+    set(pendingAccountMenuSettingsSection$, { ownerId, section });
+  },
+);
+
+export const consumePendingAccountMenuSettingsSection$ = command(
+  ({ get, set }, ownerId: string) => {
+    const pending = get(pendingAccountMenuSettingsSection$);
+    const section = pending?.ownerId === ownerId ? pending.section : null;
+    if (section !== null) {
+      set(pendingAccountMenuSettingsSection$, null);
+    }
+    return section;
   },
 );
 

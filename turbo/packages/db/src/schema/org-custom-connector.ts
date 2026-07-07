@@ -9,24 +9,18 @@ import {
   index,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-
-export interface OrgCustomConnectorField {
-  readonly key: string;
-  readonly label: string;
-  readonly kind: "secret" | "variable";
-  readonly required: boolean;
-  readonly description?: string;
-}
-
-export interface OrgCustomConnectorHeaderInjection {
-  readonly name: string;
-  readonly valueTemplate: string;
-}
-
-export interface OrgCustomConnectorQueryInjection {
-  readonly name: string;
-  readonly valueTemplate: string;
-}
+import type {
+  OrgCustomConnectorFields,
+  OrgCustomConnectorHeaderInjections,
+  OrgCustomConnectorPrefixes,
+  OrgCustomConnectorPrefixTemplates,
+  OrgCustomConnectorQueryInjections,
+} from "@vm0/db/jsonb-contracts/org-custom-connector";
+export type {
+  OrgCustomConnectorField,
+  OrgCustomConnectorHeaderInjection,
+  OrgCustomConnectorQueryInjection,
+} from "@vm0/db/jsonb-contracts/org-custom-connector";
 
 /**
  * Org-defined custom connectors (v1 of the connector gallery).
@@ -43,25 +37,25 @@ export const orgCustomConnectors = pgTable(
     orgId: text("org_id").notNull(),
     slug: varchar("slug", { length: 64 }).notNull(),
     displayName: varchar("display_name", { length: 128 }).notNull(),
-    prefixes: jsonb("prefixes").notNull().$type<string[]>(),
+    prefixes: jsonb("prefixes").notNull().$type<OrgCustomConnectorPrefixes>(),
     headerName: varchar("header_name", { length: 128 }).notNull(),
     headerTemplate: text("header_template").notNull(),
     prefixTemplates: jsonb("prefix_templates")
       .notNull()
       .default(sql`'[]'::jsonb`)
-      .$type<string[]>(),
+      .$type<OrgCustomConnectorPrefixTemplates>(),
     fields: jsonb("fields")
       .notNull()
       .default(sql`'[]'::jsonb`)
-      .$type<OrgCustomConnectorField[]>(),
+      .$type<OrgCustomConnectorFields>(),
     headerInjections: jsonb("header_injections")
       .notNull()
       .default(sql`'[]'::jsonb`)
-      .$type<OrgCustomConnectorHeaderInjection[]>(),
+      .$type<OrgCustomConnectorHeaderInjections>(),
     queryInjections: jsonb("query_injections")
       .notNull()
       .default(sql`'[]'::jsonb`)
-      .$type<OrgCustomConnectorQueryInjection[]>(),
+      .$type<OrgCustomConnectorQueryInjections>(),
     createdBy: text("created_by").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),

@@ -191,11 +191,9 @@ function nextEventPageRequest(
 
 function createRunPagedEvents(runId: string) {
   const initialPagedEventsList$ = computed(async (get) => {
-    const pages = [
-      createEventPageComputed(runId, INITIAL_AGENT_EVENTS_PAGE_LIMIT),
-    ];
-
-    while (true) {
+    async function resolvePages(
+      pages: Computed<Promise<PagedRunEvents>>[],
+    ): Promise<Computed<Promise<PagedRunEvents>>[]> {
       const lastPage = await get(pages[pages.length - 1]);
       if (!lastPage.hasMore) {
         return pages;
@@ -210,14 +208,20 @@ function createRunPagedEvents(runId: string) {
       if (!request) {
         return pages;
       }
-      pages.push(
+
+      return resolvePages([
+        ...pages,
         createEventPageComputed(
           runId,
           INITIAL_AGENT_EVENTS_PAGE_LIMIT,
           request,
         ),
-      );
+      ]);
     }
+
+    return await resolvePages([
+      createEventPageComputed(runId, INITIAL_AGENT_EVENTS_PAGE_LIMIT),
+    ]);
   });
 
   return { pagedEventsList$: initialPagedEventsList$ };

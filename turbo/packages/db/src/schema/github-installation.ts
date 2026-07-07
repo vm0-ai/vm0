@@ -10,6 +10,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { agentComposes } from "./agent-compose";
+import type { GitHubInstallationRepoConfigs } from "@vm0/db/jsonb-contracts/github-installation";
 
 /**
  * GitHub Installations table
@@ -37,7 +38,7 @@ export const githubInstallations = pgTable(
         },
         { onDelete: "cascade" },
       ),
-    repoConfigs: jsonb("repo_configs"),
+    repoConfigs: jsonb("repo_configs").$type<GitHubInstallationRepoConfigs>(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

@@ -37,8 +37,8 @@ use super::super::{
     effective_cli_framework,
 };
 use super::support::{
-    CancelAfterWaitSandbox, RUN_IN_SANDBOX_TEST_TIMEOUT, api_storage, create_overridden_sandbox,
-    minimal_context, sandbox_exec_error, spawn_run_in_sandbox_test,
+    CancelAfterWaitSandbox, RUN_IN_SANDBOX_TEST_TIMEOUT, api_artifact, api_storage,
+    create_overridden_sandbox, minimal_context, sandbox_exec_error, spawn_run_in_sandbox_test,
     spawn_run_in_sandbox_test_with_timeouts, test_executor_config, test_telemetry,
 };
 use crate::active_input::ActiveInputSource;
@@ -182,6 +182,8 @@ type SessionHistoryTelemetrySnapshot = (
     Option<String>,
     Option<String>,
     Option<String>,
+    Option<String>,
+    Option<String>,
 );
 
 fn assert_successful_action_with_session_history_metadata(
@@ -202,6 +204,23 @@ fn assert_successful_action_with_session_history_metadata(
                 && op.6.as_deref() == Some(compression_ratio_bucket)
         }),
         "expected {action} telemetry with session history metadata, got: {ops:?}"
+    );
+}
+
+fn assert_successful_action_with_session_history_probe(
+    ops: &[SessionHistoryTelemetrySnapshot],
+    action: &str,
+    seen_recently: &str,
+    download_inflight: &str,
+) {
+    assert!(
+        ops.iter().any(|op| {
+            op.0 == action
+                && op.1
+                && op.7.as_deref() == Some(seen_recently)
+                && op.8.as_deref() == Some(download_inflight)
+        }),
+        "expected {action} telemetry with session history probe metadata, got: {ops:?}"
     );
 }
 
@@ -684,6 +703,67 @@ async fn run_in_sandbox_records_storage_manifest_guest_download_failure_timing()
 }
 
 #[tokio::test]
+async fn run_in_sandbox_rejects_non_empty_artifact_without_archive_url() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let sandbox = sandbox_mock::MockSandbox::new("test");
+    let mut ctx = minimal_context();
+    let mut artifact = api_artifact(
+        "memory",
+        "/home/user/.claude/projects/project",
+        "storage-id-1",
+        "version-2",
+        "https://storage.example/artifact.tar.gz",
+    );
+    artifact.archive_url = None;
+    ctx.storage_manifest = Some(StorageManifest {
+        storages: vec![],
+        artifacts: vec![artifact],
+    });
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let result = run_in_sandbox(
+        &sandbox,
+        &ctx,
+        &config,
+        RunStart {
+            restore_guest_state: false,
+            reuse_result: SandboxReuseResult::PoolMiss,
+            prev_storage: None,
+        },
+        &mut telemetry,
+        RunControls::new(tokio_util::sync::CancellationToken::new(), None),
+    )
+    .await;
+
+    let error = match result {
+        Ok(_) => panic!("invalid storage manifest should fail"),
+        Err(error) => error,
+    };
+    assert!(
+        error
+            .to_string()
+            .contains("storage manifest artifact memory version version-2 is missing archiveUrl"),
+        "got: {error}"
+    );
+    let exec_calls = sandbox.exec_calls();
+    assert!(
+        exec_calls
+            .iter()
+            .all(|call| call.cmd != guest_download_stdin_command()),
+        "invalid storage manifest should fail before guest-download; calls: {exec_calls:?}"
+    );
+    let ops = telemetry.pending_ops_snapshot();
+    assert_failed_action_error_once(
+        &ops,
+        "runner_storage_manifest_apply",
+        "internal error: storage manifest artifact memory version version-2 is missing archiveUrl",
+    );
+    assert_no_action(&ops, "runner_storage_manifest_has_work");
+    assert_no_action(&ops, "runner_storage_manifest_guest_download");
+}
+
+#[tokio::test]
 async fn run_in_sandbox_materializes_resume_session_history_ref_before_restore() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
@@ -814,6 +894,14 @@ async fn run_in_sandbox_records_gzip_session_history_download_encoding() {
     );
     assert_successful_action_with_session_history_metadata(
         &ops,
+        "session_history_download_decompression",
+        "gzip",
+        "lt_64_kib",
+        "lt_64_kib",
+        "ge_1",
+    );
+    assert_successful_action_with_session_history_metadata(
+        &ops,
         "session_history_download_hash_verification",
         "gzip",
         "lt_64_kib",
@@ -821,6 +909,12 @@ async fn run_in_sandbox_records_gzip_session_history_download_encoding() {
         "ge_1",
     );
     history_server.assert_served().await;
+    assert_successful_action_with_session_history_probe(
+        &ops,
+        "session_history_download",
+        "false",
+        "false",
+    );
 }
 
 #[tokio::test]
@@ -905,6 +999,14 @@ async fn run_in_sandbox_records_zstd_session_history_download_encoding() {
     );
     assert_successful_action_with_session_history_metadata(
         &ops,
+        "session_history_download_decompression",
+        "zstd",
+        "lt_64_kib",
+        "lt_64_kib",
+        "ge_1",
+    );
+    assert_successful_action_with_session_history_metadata(
+        &ops,
         "session_history_download_hash_verification",
         "zstd",
         "lt_64_kib",
@@ -912,6 +1014,12 @@ async fn run_in_sandbox_records_zstd_session_history_download_encoding() {
         "ge_1",
     );
     history_server.assert_served().await;
+    assert_successful_action_with_session_history_probe(
+        &ops,
+        "session_history_download",
+        "false",
+        "false",
+    );
 }
 
 #[tokio::test]
@@ -948,6 +1056,7 @@ async fn run_in_sandbox_uses_prestarted_session_history_materializer() {
         ctx.resume_session.as_ref(),
         effective_cli_framework(&ctx.cli_agent_type),
         tokio_util::sync::CancellationToken::new(),
+        Some(&config.session_history_probe),
     );
     tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, request_received_rx)
         .await
@@ -1048,6 +1157,12 @@ async fn run_in_sandbox_uses_prestarted_session_history_materializer() {
         "lt_64_kib",
         "identity",
     );
+    assert_successful_action_with_session_history_probe(
+        &ops,
+        "session_history_download",
+        "false",
+        "false",
+    );
 }
 
 #[tokio::test]
@@ -1077,6 +1192,7 @@ async fn run_in_sandbox_records_completed_prestarted_materializer_failure() {
         ctx.resume_session.as_ref(),
         effective_cli_framework(&ctx.cli_agent_type),
         tokio_util::sync::CancellationToken::new(),
+        None,
     );
     tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, async {
         while !materializer.is_download_finished() {
@@ -1570,6 +1686,7 @@ async fn run_in_sandbox_records_fallback_and_restores_prestarted_history() {
         ctx.resume_session.as_ref(),
         effective_cli_framework(&ctx.cli_agent_type),
         tokio_util::sync::CancellationToken::new(),
+        None,
     );
     let mut telemetry = test_telemetry(&config, &ctx);
 
@@ -1656,6 +1773,7 @@ async fn run_in_sandbox_records_missing_idle_identity_reuse_fallback() {
         ctx.resume_session.as_ref(),
         effective_cli_framework(&ctx.cli_agent_type),
         tokio_util::sync::CancellationToken::new(),
+        None,
     );
     let mut telemetry = test_telemetry(&config, &ctx);
 
@@ -1746,6 +1864,7 @@ async fn run_in_sandbox_uses_final_identity_when_restored_history_changes_before
         ctx.resume_session.as_ref(),
         effective_cli_framework(&ctx.cli_agent_type),
         tokio_util::sync::CancellationToken::new(),
+        None,
     );
     let mut telemetry = test_telemetry(&config, &ctx);
 

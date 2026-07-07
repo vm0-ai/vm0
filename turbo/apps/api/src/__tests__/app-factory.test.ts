@@ -29,6 +29,19 @@ vi.mock("../lib/log", async () => {
 
 const c = initContract();
 
+function axiomRequestLogEvents(
+  context: ReturnType<typeof testContext>,
+): readonly Record<string, unknown>[] {
+  return context.mocks.axiom.ingest.mock.calls.flatMap(([dataset, events]) => {
+    if (dataset !== "request-log" || !Array.isArray(events)) {
+      return [];
+    }
+    return events.filter((event): event is Record<string, unknown> => {
+      return typeof event === "object" && event !== null;
+    });
+  });
+}
+
 const errorTestContract = c.router({
   boom: {
     method: "GET",
@@ -584,7 +597,8 @@ describe("createApp", () => {
         headers: {
           origin: "https://app.vm0.ai",
           "access-control-request-method": "GET",
-          "access-control-request-headers": "authorization",
+          "access-control-request-headers":
+            "authorization,x-client-version,x-client-type,x-client-session-id,x-client-request-id",
         },
       });
 
@@ -595,6 +609,13 @@ describe("createApp", () => {
       expect(response.headers.get("access-control-allow-methods")).toContain(
         "GET",
       );
+      const allowHeaders =
+        response.headers.get("access-control-allow-headers") ?? "";
+      expect(allowHeaders).toContain("Authorization");
+      expect(allowHeaders).toContain("X-Client-Version");
+      expect(allowHeaders).toContain("X-Client-Type");
+      expect(allowHeaders).toContain("X-Client-Session-Id");
+      expect(allowHeaders).toContain("X-Client-Request-Id");
     });
 
     it("rejects disallowed origins by omitting the allow-origin header", async () => {
@@ -633,6 +654,65 @@ describe("createApp", () => {
       expect(response.headers.get("access-control-allow-origin")).toBe(
         "https://www.vm7.ai:3042",
       );
+    });
+  });
+
+  describe("axiom request log", () => {
+    it("records platform client headers on request log events", async () => {
+      context.mocks.axiom.flush.mockResolvedValue(undefined);
+      const app = createApp({ signal: context.signal });
+      const response = await app.request("https://api.vm0.test/health", {
+        method: "GET",
+        headers: {
+          "user-agent": "zero-test-agent",
+          "x-forwarded-for": "203.0.113.10, 198.51.100.5",
+          "x-client-version": "0.569.1",
+          "x-client-type": "App",
+          "x-client-session-id": "session-test",
+          "x-client-request-id": "request-test",
+        },
+      });
+
+      expect(response.status).toBe(200);
+      await flushWaitUntilForTest();
+
+      const [event] = axiomRequestLogEvents(context);
+      expect(event).toMatchObject({
+        method: "GET",
+        status: 200,
+        host: "api.vm0.test",
+        path_template: "/health",
+        remote_addr: "203.0.113.10",
+        user_agent: "zero-test-agent",
+        x_client_version: "0.569.1",
+        x_client_type: "App",
+        x_client_session_id: "session-test",
+        x_client_request_id: "request-test",
+      });
+      expect(event?._time).toStrictEqual(expect.any(String));
+      expect(event?.request_time_ms).toStrictEqual(expect.any(Number));
+      expect(context.mocks.axiom.flush).toHaveBeenCalledWith({
+        client: "telemetry",
+      });
+    });
+
+    it("omits platform client header fields when they are absent", async () => {
+      const app = createApp({ signal: context.signal });
+      const response = await app.request("/health", { method: "GET" });
+
+      expect(response.status).toBe(200);
+      await flushWaitUntilForTest();
+
+      const [event] = axiomRequestLogEvents(context);
+      expect(event).toMatchObject({
+        method: "GET",
+        status: 200,
+        path_template: "/health",
+      });
+      expect(event).not.toHaveProperty("x_client_version");
+      expect(event).not.toHaveProperty("x_client_type");
+      expect(event).not.toHaveProperty("x_client_session_id");
+      expect(event).not.toHaveProperty("x_client_request_id");
     });
   });
 

@@ -3986,6 +3986,89 @@ describe("RUN-04/OPS-01: zero run logs", () => {
     expect(sinceFilteredIds).not.toContain(beforeBoundaryRun.runId);
   });
 
+  it("resolves zero log agent identity from the run session when compose versions are shared", async () => {
+    const misc = createMiscRoutesApi(context);
+    const authOrg = createAuthOrgAgentsBddApi(context);
+    const actor = await entitledActor();
+    const foreignActor = bdd.user();
+    await api.ensureOrgModelProvider(actor);
+    const foreignAgent = await bdd.createAgent(foreignActor, {
+      displayName: "Foreign shared agent",
+      description: "Owns the first shared compose version row.",
+      visibility: "private",
+    });
+    const foreignCompose = await authOrg.readComposeById(
+      foreignActor,
+      foreignAgent.agentId,
+    );
+    if (!foreignCompose.content || !foreignCompose.headVersionId) {
+      throw new Error("Expected foreign zero agent compose content");
+    }
+
+    const currentCompose = await authOrg.createCompose(
+      actor,
+      foreignCompose.content,
+    );
+    expect(currentCompose.versionId).toBe(foreignCompose.headVersionId);
+
+    const sharedRun = await api.createDirectRun(actor, {
+      agentComposeId: currentCompose.composeId,
+      prompt: "shared compose version log",
+      vars: { ZERO_AGENT_ID: currentCompose.composeId },
+      secrets: { ZERO_TOKEN: "bdd-zero-token" },
+    });
+
+    const listed = await reads.requestListLogs(actor, {}, [200]);
+    mustOk(listed, "the shared-version log list");
+    expect(listed.body.data).toContainEqual(
+      expect.objectContaining({
+        id: sharedRun.runId,
+        agentId: null,
+        displayName: null,
+        framework: "claude-code",
+      }),
+    );
+    expect(listed.body.filters.agents).not.toContain(foreignAgent.agentId);
+
+    const foreignAgentList = await reads.requestListLogs(
+      actor,
+      { agentId: foreignAgent.agentId },
+      [200],
+    );
+    mustOk(foreignAgentList, "the foreign-agent filtered log list");
+    expect(foreignAgentList.body.data).toStrictEqual([]);
+
+    const detail = await reads.requestReadLogById(
+      actor,
+      sharedRun.runId,
+      [200],
+    );
+    expect(detail.body).toMatchObject({
+      id: sharedRun.runId,
+      agentId: null,
+      displayName: null,
+      framework: "claude-code",
+    });
+
+    context.mocks.axiom.query.mockImplementation((apl: unknown) => {
+      if (typeof apl === "string" && apl.includes(sharedRun.runId)) {
+        return Promise.resolve([
+          agentEvent(sharedRun.runId, 1, "shared match"),
+        ]);
+      }
+      return Promise.resolve([]);
+    });
+
+    const searched = await misc.searchLogs(actor, "shared");
+    expect(searched.body.results).toContainEqual(
+      expect.objectContaining({
+        runId: sharedRun.runId,
+        agentName: currentCompose.composeId,
+        framework: "claude-code",
+      }),
+    );
+  });
+
   it("splits multi-run log searches into a bounded run-id filter", async () => {
     const misc = createMiscRoutesApi(context);
     const actor = await entitledActor();

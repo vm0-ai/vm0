@@ -5,7 +5,7 @@ export interface ChatThreadEmojiItem {
   name: string;
 }
 
-export interface ChatThreadEmojiGroup {
+interface ChatThreadEmojiGroup {
   name: string;
   emojis: ChatThreadEmojiItem[];
 }

@@ -22,7 +22,7 @@ import type { ConnectorAuthMethodIdsByGrantKind } from "@vm0/connectors/connecto
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { zeroConnectorOauthStartContract } from "@vm0/api-contracts/contracts/zero-connectors";
 import type { ChatThreadArtifactFile } from "@vm0/api-contracts/contracts/chat-threads";
-import { useGet, useLastResolved, useSet } from "ccstate-react";
+import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import { accept } from "../../lib/accept.ts";
 import {
   OAUTH_WEB_API_BASE,
@@ -109,6 +109,7 @@ type WaitForGoogleDriveAndSyncArtifactsFn = (
 
 export type ArtifactDownloadSyncTarget = {
   readonly agentId: string | null | undefined;
+  readonly disconnected: boolean;
   readonly fileId: string;
   readonly filename: string;
   readonly onSyncSuccess: () => void;
@@ -205,6 +206,36 @@ function syncArtifactToGoogleDriveAndRefresh(params: {
     })(),
     Reason.DomCallback,
     "artifact google drive sync",
+  );
+}
+
+function authorizeGoogleDriveAndSyncArtifacts(params: {
+  agentId: string | null | undefined;
+  file: ArtifactGoogleDriveSyncFile;
+  pageSignal: AbortSignal;
+  threadId: string;
+  waitForGoogleDriveAndSyncArtifacts: WaitForGoogleDriveAndSyncArtifactsFn;
+  onSyncComplete: () => void;
+}): void {
+  if (!params.agentId) {
+    toast.error("Agent is still loading");
+    return;
+  }
+  const agentId = params.agentId;
+  detach(
+    (async () => {
+      await params.waitForGoogleDriveAndSyncArtifacts(
+        {
+          agentId,
+          threadId: params.threadId,
+          files: [params.file],
+        },
+        params.pageSignal,
+      );
+      params.onSyncComplete();
+    })(),
+    Reason.DomCallback,
+    "artifact google drive authorize sync",
   );
 }
 
@@ -366,7 +397,15 @@ function GoogleDriveMenuItem({
   closeMenu: () => void;
   syncTarget?: ArtifactDownloadSyncTarget;
 }) {
-  const connectorList = useLastResolved(connectors$);
+  const connectorListLoadable = useLoadable(connectors$);
+  const lastConnectorList = useLastResolved(connectors$);
+  const connectorList =
+    connectorListLoadable.state === "hasData"
+      ? connectorListLoadable.data
+      : connectorListLoadable.state === "loading"
+        ? lastConnectorList
+        : undefined;
+  const connectorListLoaded = connectorList !== undefined;
   const googleDriveConnected =
     connectorList?.connectors.some((connector) => {
       return (
@@ -374,6 +413,8 @@ function GoogleDriveMenuItem({
         connector.connectionStatus === "connected"
       );
     }) ?? false;
+  const googleDriveReady =
+    googleDriveConnected && syncTarget?.disconnected !== true;
   const createClient = useGet(zeroClient$);
   const pageSignal = useGet(pageSignal$);
   const waitForGoogleDriveAndSyncArtifacts = useSet(
@@ -398,6 +439,20 @@ function GoogleDriveMenuItem({
     );
   }
 
+  if (!connectorListLoaded) {
+    return (
+      <ArtifactDownloadMenuItem
+        className={syncTarget.disconnected ? "text-muted-foreground" : ""}
+        disabled
+      >
+        <IconBrandGoogleDrive size={14} stroke={1.5} />
+        {syncTarget.disconnected
+          ? "Connect Google Drive"
+          : "Upload to Google Drive"}
+      </ArtifactDownloadMenuItem>
+    );
+  }
+
   const syncOrConnect = () => {
     closeMenu();
     const file = {
@@ -405,7 +460,7 @@ function GoogleDriveMenuItem({
       fileId: syncTarget.fileId,
       filename: syncTarget.filename,
     };
-    if (googleDriveConnected) {
+    if (googleDriveReady) {
       syncArtifactToGoogleDriveAndRefresh({
         sync: syncArtifactFileToGoogleDrive({
           createClient,
@@ -416,6 +471,17 @@ function GoogleDriveMenuItem({
           signal: pageSignal,
         }),
         onSyncSuccess: syncTarget.onSyncSuccess,
+      });
+      return;
+    }
+    if (googleDriveConnected) {
+      authorizeGoogleDriveAndSyncArtifacts({
+        agentId: syncTarget.agentId,
+        file,
+        pageSignal,
+        threadId: syncTarget.threadId,
+        waitForGoogleDriveAndSyncArtifacts,
+        onSyncComplete: syncTarget.onSyncSuccess,
       });
       return;
     }
@@ -430,7 +496,7 @@ function GoogleDriveMenuItem({
     });
   };
 
-  if (googleDriveConnected) {
+  if (googleDriveReady) {
     return (
       <ArtifactDownloadMenuItem onClick={syncOrConnect}>
         <IconBrandGoogleDrive size={14} stroke={1.5} />
@@ -443,10 +509,7 @@ function GoogleDriveMenuItem({
     <TooltipProvider delayDuration={200}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <ArtifactDownloadMenuItem
-            className="text-muted-foreground"
-            onClick={syncOrConnect}
-          >
+          <ArtifactDownloadMenuItem onClick={syncOrConnect}>
             <IconBrandGoogleDrive size={14} stroke={1.5} />
             Connect Google Drive
           </ArtifactDownloadMenuItem>

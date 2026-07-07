@@ -1950,60 +1950,30 @@ export function isStandaloneMode(): boolean {
 
 const OAUTH_AUTH_CODE_POPUP_CLOSED_POLL_MS = IN_VITEST ? 10 : 250;
 
-function waitForOAuthAuthCodePopupClosed(
+async function waitForOAuthAuthCodePopupClosed(
   authWindow: Pick<Window, "closed">,
   signal: AbortSignal,
 ): Promise<"popupClosed"> {
   signal.throwIfAborted();
 
-  const deferred = Promise.withResolvers<"popupClosed">();
-  let settled = false;
-  let intervalId: number | undefined;
-
-  function cleanup() {
-    if (intervalId !== undefined) {
-      window.clearInterval(intervalId);
-      intervalId = undefined;
-    }
-    signal.removeEventListener("abort", onAbort);
-  }
-
-  function resolveClosed() {
-    if (settled) {
-      return;
-    }
-    settled = true;
-    cleanup();
-    deferred.resolve("popupClosed");
-  }
-
-  function rejectAborted() {
-    if (settled) {
-      return;
-    }
-    settled = true;
-    cleanup();
-    deferred.reject(signal.reason);
-  }
-
-  function onAbort() {
-    rejectAborted();
-  }
-
-  function checkClosed() {
-    if (authWindow.closed) {
-      resolveClosed();
-    }
-  }
-
-  intervalId = window.setInterval(
-    checkClosed,
+  let closed = false;
+  await setLoop(
+    () => {
+      if (authWindow.closed) {
+        closed = true;
+        return true;
+      }
+      return false;
+    },
     OAUTH_AUTH_CODE_POPUP_CLOSED_POLL_MS,
+    signal,
   );
-  signal.addEventListener("abort", onAbort, { once: true });
-  checkClosed();
 
-  return deferred.promise;
+  signal.throwIfAborted();
+  if (!closed) {
+    throw new Error("OAuth auth code popup wait ended before popup closed");
+  }
+  return "popupClosed";
 }
 
 const resetOAuthAuthCodeConnectorLoopSignal$ = resetSignal();

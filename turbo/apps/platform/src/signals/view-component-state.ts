@@ -1,6 +1,6 @@
 import { command, computed, state } from "ccstate";
 import { reloadTelegramConnectLinkStatus$ } from "./zero-page/telegram-connect-signals.ts";
-import { onRef, throwIfAbort } from "./utils.ts";
+import { onRef, setLoop, throwIfAbort } from "./utils.ts";
 import { fetchPreviewText } from "./chat-page/parse-body-blocks.ts";
 
 type ImageLoadStatus = "loading" | "loaded" | "error";
@@ -164,7 +164,7 @@ const setTypewriterDisplayed$ = command(
 );
 
 const startTypewriterOnRef$ = command(
-  ({ set }, el: HTMLElement, signal: AbortSignal) => {
+  async ({ set }, el: HTMLElement, signal: AbortSignal) => {
     const key = el.dataset.typewriterKey;
     const text = el.dataset.typewriterText ?? "";
     const parsedSpeed = Number.parseInt(el.dataset.typewriterSpeed ?? "40", 10);
@@ -176,20 +176,14 @@ const startTypewriterOnRef$ = command(
 
     set(resetTypewriterDisplayed$, key);
     let index = 0;
-    const timer = window.setInterval(() => {
-      index += 1;
-      set(setTypewriterDisplayed$, key, text.slice(0, index));
-      if (index >= text.length) {
-        window.clearInterval(timer);
-      }
-    }, speed);
-
-    signal.addEventListener(
-      "abort",
+    await setLoop(
       () => {
-        window.clearInterval(timer);
+        index += 1;
+        set(setTypewriterDisplayed$, key, text.slice(0, index));
+        return index >= text.length;
       },
-      { once: true },
+      speed,
+      signal,
     );
   },
 );
@@ -209,17 +203,19 @@ const openTelegramOnRef$ = command(
 export const telegramAutoOpenRef$ = onRef(openTelegramOnRef$);
 
 const pollTelegramDomainStatusOnRef$ = command(
-  ({ set }, _el: HTMLElement, signal: AbortSignal) => {
-    const intervalId = window.setInterval(() => {
-      set(reloadTelegramConnectLinkStatus$);
-    }, 3000);
-
-    signal.addEventListener(
-      "abort",
+  async ({ set }, _el: HTMLElement, signal: AbortSignal) => {
+    let first = true;
+    await setLoop(
       () => {
-        window.clearInterval(intervalId);
+        if (first) {
+          first = false;
+          return false;
+        }
+        set(reloadTelegramConnectLinkStatus$);
+        return false;
       },
-      { once: true },
+      3000,
+      signal,
     );
   },
 );

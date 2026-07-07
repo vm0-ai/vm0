@@ -46,7 +46,12 @@ import {
   type ZeroAccountAction,
 } from "../../signals/zero-page/zero-nav.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
-import { openSettingsDialogAt$ } from "../../signals/zero-page/settings/settings-dialog.ts";
+import {
+  consumePendingAccountMenuSettingsSection$,
+  openSettingsDialogAt$,
+  setPendingAccountMenuSettingsSection$,
+  type SettingsSection,
+} from "../../signals/zero-page/settings/settings-dialog.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import { billingStatusAsync$ } from "../../signals/zero-page/billing.ts";
@@ -570,10 +575,12 @@ function SignOutItem({
 
 export function AccountDropdown({
   onAccountAction,
+  settingsOwnerId,
   collapsed = false,
   hidePreferences = false,
 }: {
   onAccountAction?: (action: ZeroAccountAction) => void;
+  settingsOwnerId: string;
   collapsed?: boolean;
   hidePreferences?: boolean;
 }) {
@@ -588,6 +595,12 @@ export function AccountDropdown({
     features?.[FeatureSwitchKey.SidebarSubscriptionUsage] ?? false;
   const selectNav = useSet(handleZeroNavSelect$);
   const openSettings = useSet(openSettingsDialogAt$);
+  const setPendingSettingsSection = useSet(
+    setPendingAccountMenuSettingsSection$,
+  );
+  const consumePendingSettingsSection = useSet(
+    consumePendingAccountMenuSettingsSection$,
+  );
   const reloadSubscriptions = useSet(reloadAccountMenuSubscriptionUsageRows$);
   const resetCodexSubscriptionUsage = useSet(
     resetPersonalCodexSubscriptionUsage$,
@@ -661,14 +674,17 @@ export function AccountDropdown({
     setSidebarExpanded(false);
   };
 
-  const handleOpenSettings = () => {
+  const queueSettingsOpen = (section: SettingsSection) => {
     setSidebarExpanded(false);
-    detach(openSettings("preference", pageSignal), Reason.DomCallback);
+    setPendingSettingsSection(settingsOwnerId, section);
+  };
+
+  const handleOpenSettings = () => {
+    queueSettingsOpen("preference");
   };
 
   const handleOpenCreditBalance = () => {
-    setSidebarExpanded(false);
-    detach(openSettings("usage", pageSignal), Reason.DomCallback);
+    queueSettingsOpen("usage");
   };
 
   const handleOpenCodexReset = (resetCredits: number | null) => {
@@ -694,6 +710,9 @@ export function AccountDropdown({
   };
 
   const handleMenuOpenChange = (open: boolean) => {
+    if (open) {
+      setPendingSettingsSection(settingsOwnerId, null);
+    }
     if (!open || hidePreferences || !subscriptionsEnabled) {
       return;
     }
@@ -718,7 +737,12 @@ export function AccountDropdown({
           sideOffset={8}
           className="w-[240px]"
           onCloseAutoFocus={(event) => {
+            const section = consumePendingSettingsSection(settingsOwnerId);
+            if (section === null) {
+              return;
+            }
             event.preventDefault();
+            detach(openSettings(section, pageSignal), Reason.DomCallback);
           }}
         >
           <CurrentAccountHeader

@@ -138,6 +138,19 @@ export const setTemplatePickerOpen$ = command(({ set }, open: boolean) => {
   set(internalTemplatePickerOpen$, open);
 });
 
+const internalWebsiteTemplatePreviewId$ = state<string | null>(null);
+export const websiteTemplatePreviewId$ = computed((get) => {
+  return get(internalWebsiteTemplatePreviewId$);
+});
+export const openWebsiteTemplatePreview$ = command(
+  ({ set }, templateId: string) => {
+    set(internalWebsiteTemplatePreviewId$, templateId);
+  },
+);
+export const closeWebsiteTemplatePreview$ = command(({ set }) => {
+  set(internalWebsiteTemplatePreviewId$, null);
+});
+
 const internalUploadPopoverOpen$ = state(false);
 export const uploadPopoverOpen$ = computed((get) => {
   return get(internalUploadPopoverOpen$);

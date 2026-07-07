@@ -180,11 +180,11 @@ jobs:
             echo "e2b-changed=false" >> "$GITHUB_OUTPUT"
           fi
 
-          if printf '%s\n' "$CHANGED_FILES" | grep -qE "^turbo/packages/db/src/(migrations|schema)/"; then
-            echo "Migration or schema changes detected"
+          if printf '%s\n' "$CHANGED_FILES" | grep -qE "^turbo/packages/db/src/(migrations|schema|jsonb-contracts)/"; then
+            echo "Migration, schema, or JSONB contract changes detected"
             echo "migration-changed=true" >> "$GITHUB_OUTPUT"
           else
-            echo "No migration or schema changes"
+            echo "No migration, schema, or JSONB contract changes"
             echo "migration-changed=false" >> "$GITHUB_OUTPUT"
           fi
 
@@ -494,7 +494,7 @@ jobs:
     needs: prepare
     runs-on: ubuntu-latest
     timeout-minutes: 12
-    # Only run when migration or schema files changed
+    # Only run when migration, schema, or persistent JSONB contract files changed
     if: needs.prepare.outputs.migration-changed == 'true'
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260622
@@ -514,6 +514,27 @@ jobs:
         with:
           fetch-depth: 0
       - uses: ./.github/actions/toolchain-init
+      - name: Prompt for JSONB Contract Changes
+        run: |
+          BASE_REF="${{ needs.prepare.outputs.base-ref }}"
+          CHANGED=$(git diff --name-only "$BASE_REF" -- \
+            'turbo/packages/db/src/jsonb-contracts/**')
+
+          if [ -n "$CHANGED" ]; then
+            echo "::warning title=Persistent JSONB contracts changed::Review production compatibility before merging."
+            echo ""
+            echo "Persistent JSONB contract files changed:"
+            echo "$CHANGED"
+            echo ""
+            echo "Before merging, confirm:"
+            echo "- Existing production rows remain readable by new API code."
+            echo "- Removed/renamed keys have read-time normalization or a data migration."
+            echo "- Strict response schemas tolerate legacy persisted rows, or legacy rows are migrated."
+            echo "- Regression tests cover any legacy persisted JSON shape that should remain readable."
+          fi
+      - name: Check JSONB Contract Usage
+        working-directory: turbo/packages/db
+        run: pnpm lint:jsonb-contracts
       - name: Check Migration Immutability
         if: vars.CI_CHECK_IMMUTABLE_MIGRATE != '0'
         run: |

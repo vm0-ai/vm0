@@ -16,9 +16,10 @@ Source-preserving wrappers skip aggregation and keep the original event
 idempotency keys in the webhook payload for finalized source-level reports.
 
 Flushes are triggered by buffer bounds, the lazy timer, or explicit lifecycle
-calls. The trigger label is emitted in ``usage_event_buffer_flush`` proxy-log
-records, so callers should use the conventional labels captured by
-``UsageFlushTrigger``.
+calls. Flush summaries include the conventional trigger labels captured by
+``UsageFlushTrigger``. Most summaries are ``usage_event_buffer_flush`` proxy-log
+records; retained or dropped batches can become ``usage_underbilling`` records
+under the contract documented by ``usage.buffer.logging``.
 """
 
 from __future__ import annotations

@@ -14,22 +14,8 @@ import {
 import { sql } from "drizzle-orm";
 import { telegramInstallations } from "./telegram-installation";
 import { telegramOfficialUserLinks } from "./telegram-official-user-link";
-
-export interface TelegramMessageEntity {
-  type: string;
-  offset: number;
-  length: number;
-  url?: string;
-  language?: string;
-  custom_emoji_id?: string;
-  user?: {
-    id: number;
-    is_bot?: boolean;
-    first_name?: string;
-    last_name?: string;
-    username?: string;
-  };
-}
+import type { TelegramMessageEntities } from "@vm0/db/jsonb-contracts/telegram-message";
+export type { TelegramMessageEntity } from "@vm0/db/jsonb-contracts/telegram-message";
 
 /**
  * Telegram Messages table
@@ -69,7 +55,7 @@ export const telegramMessages = pgTable(
     fileWidth: integer("file_width"),
     fileHeight: integer("file_height"),
     fileDuration: integer("file_duration"),
-    entities: jsonb("entities").$type<TelegramMessageEntity[]>(),
+    entities: jsonb("entities").$type<TelegramMessageEntities>(),
     isBot: boolean("is_bot").default(false).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },

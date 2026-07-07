@@ -9,6 +9,7 @@ use api_contracts::generated::types::runners::storage::{
     ArtifactEntryMissingRootPolicy, StorageManifest,
 };
 
+use crate::error::{RunnerError, RunnerResult};
 use crate::ids::RunId;
 
 pub(crate) const MAX_HELD_SESSION_STATES: usize = 1024;
@@ -294,22 +295,47 @@ pub struct GuestDownloadArtifactEntry {
     pub missing_root_policy: Option<ArtifactEntryMissingRootPolicy>,
 }
 
-impl From<&StorageManifest> for GuestDownloadManifest {
-    fn from(manifest: &StorageManifest) -> Self {
-        Self::from_storage_manifest(manifest, None)
-    }
-}
-
 impl GuestDownloadManifest {
     pub(crate) fn from_storage_manifest_for_run(
         manifest: &StorageManifest,
         runtime_dir: &str,
-    ) -> Self {
-        Self::from_storage_manifest(manifest, Some(runtime_dir))
+    ) -> RunnerResult<Self> {
+        Self::try_from_storage_manifest(manifest, Some(runtime_dir))
     }
 
-    fn from_storage_manifest(manifest: &StorageManifest, runtime_dir: Option<&str>) -> Self {
-        Self {
+    pub(crate) fn try_from_storage_manifest(
+        manifest: &StorageManifest,
+        runtime_dir: Option<&str>,
+    ) -> RunnerResult<Self> {
+        let artifacts = manifest
+            .artifacts
+            .iter()
+            .map(|artifact| {
+                let empty = artifact.empty.unwrap_or(false);
+                let archive_url = if empty {
+                    None
+                } else {
+                    Some(artifact.archive_url.clone().ok_or_else(|| {
+                        RunnerError::Internal(format!(
+                            "storage manifest artifact {} version {} is missing archiveUrl",
+                            artifact.vas_storage_name, artifact.vas_version_id
+                        ))
+                    })?)
+                };
+                Ok(GuestDownloadArtifactEntry {
+                    mount_path: artifact.mount_path.clone(),
+                    archive_url,
+                    empty,
+                    cached: false,
+                    vas_storage_name: artifact.vas_storage_name.clone(),
+                    vas_storage_id: artifact.vas_storage_id.clone(),
+                    vas_version_id: artifact.vas_version_id.clone(),
+                    missing_root_policy: artifact.missing_root_policy,
+                })
+            })
+            .collect::<RunnerResult<Vec<_>>>()?;
+
+        Ok(Self {
             storages: manifest
                 .storages
                 .iter()
@@ -330,27 +356,10 @@ impl GuestDownloadManifest {
                     }
                 })
                 .collect(),
-            artifacts: manifest
-                .artifacts
-                .iter()
-                .map(|artifact| GuestDownloadArtifactEntry {
-                    mount_path: artifact.mount_path.clone(),
-                    archive_url: if artifact.empty == Some(true) {
-                        None
-                    } else {
-                        Some(artifact.archive_url.clone())
-                    },
-                    empty: artifact.empty.unwrap_or(false),
-                    cached: false,
-                    vas_storage_name: artifact.vas_storage_name.clone(),
-                    vas_storage_id: artifact.vas_storage_id.clone(),
-                    vas_version_id: artifact.vas_version_id.clone(),
-                    missing_root_policy: artifact.missing_root_policy,
-                })
-                .collect(),
+            artifacts,
             cleanup_paths: Vec::new(),
             instruction_cleanups: Vec::new(),
-        }
+        })
     }
 }
 
@@ -403,7 +412,7 @@ pub enum ResumeSessionHistoryRefKind {
     Blob,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq)]
 pub enum ResumeSessionHistoryEncoding {
     #[serde(rename = "identity")]
     Identity,
@@ -1077,7 +1086,7 @@ mod tests {
             }],
             artifacts: vec![ArtifactEntry {
                 mount_path: "/artifacts".into(),
-                archive_url: "https://example.com/artifact.tar.gz".into(),
+                archive_url: Some("https://example.com/artifact.tar.gz".into()),
                 vas_storage_name: "memory".into(),
                 vas_storage_id: "sid-1".into(),
                 vas_version_id: "v2".into(),
@@ -1086,7 +1095,8 @@ mod tests {
             }],
         };
 
-        let guest_manifest = GuestDownloadManifest::from(&manifest);
+        let guest_manifest =
+            GuestDownloadManifest::try_from_storage_manifest(&manifest, None).unwrap();
 
         assert!(guest_manifest.cleanup_paths.is_empty());
         assert!(guest_manifest.instruction_cleanups.is_empty());
@@ -1120,7 +1130,7 @@ mod tests {
             storages: vec![],
             artifacts: vec![ArtifactEntry {
                 mount_path: "/artifacts".into(),
-                archive_url: "https://example.com/compat-empty-artifact.tar.gz".into(),
+                archive_url: Some("https://example.com/compat-empty-artifact.tar.gz".into()),
                 vas_storage_name: "memory".into(),
                 vas_storage_id: "sid-1".into(),
                 vas_version_id: "v-empty".into(),
@@ -1129,13 +1139,61 @@ mod tests {
             }],
         };
 
-        let guest_manifest = GuestDownloadManifest::from(&manifest);
+        let guest_manifest =
+            GuestDownloadManifest::try_from_storage_manifest(&manifest, None).unwrap();
 
         assert!(guest_manifest.artifacts[0].empty);
         assert!(guest_manifest.artifacts[0].archive_url.is_none());
         assert_eq!(
             guest_manifest.artifacts[0].missing_root_policy,
             Some(ArtifactEntryMissingRootPolicy::PreserveParentVersion)
+        );
+    }
+
+    #[test]
+    fn storage_manifest_conversion_accepts_empty_artifacts_without_archive_urls() {
+        let manifest = StorageManifest {
+            storages: vec![],
+            artifacts: vec![ArtifactEntry {
+                mount_path: "/artifacts".into(),
+                archive_url: None,
+                vas_storage_name: "memory".into(),
+                vas_storage_id: "sid-1".into(),
+                vas_version_id: "v-empty".into(),
+                empty: Some(true),
+                missing_root_policy: None,
+            }],
+        };
+
+        let guest_manifest =
+            GuestDownloadManifest::try_from_storage_manifest(&manifest, None).unwrap();
+
+        assert!(guest_manifest.artifacts[0].empty);
+        assert!(guest_manifest.artifacts[0].archive_url.is_none());
+    }
+
+    #[test]
+    fn storage_manifest_conversion_rejects_non_empty_artifacts_without_archive_urls() {
+        let manifest = StorageManifest {
+            storages: vec![],
+            artifacts: vec![ArtifactEntry {
+                mount_path: "/artifacts".into(),
+                archive_url: None,
+                vas_storage_name: "memory".into(),
+                vas_storage_id: "sid-1".into(),
+                vas_version_id: "v2".into(),
+                empty: None,
+                missing_root_policy: None,
+            }],
+        };
+
+        let error = GuestDownloadManifest::try_from_storage_manifest(&manifest, None).unwrap_err();
+
+        assert!(
+            error
+                .to_string()
+                .contains("storage manifest artifact memory version v2 is missing archiveUrl"),
+            "got: {error}"
         );
     }
 
@@ -1166,7 +1224,8 @@ mod tests {
         let guest_manifest = GuestDownloadManifest::from_storage_manifest_for_run(
             &manifest,
             "/home/user/.vm0/guest-agent/runs/run-1",
-        );
+        )
+        .unwrap();
 
         assert_eq!(guest_manifest.storages[0].mount_path, "/home/user/.codex");
         assert_eq!(
@@ -1193,7 +1252,7 @@ mod tests {
             }],
             artifacts: vec![ArtifactEntry {
                 mount_path: "/artifacts".into(),
-                archive_url: "https://example.com/artifact.tar.gz".into(),
+                archive_url: Some("https://example.com/artifact.tar.gz".into()),
                 vas_storage_name: "memory".into(),
                 vas_storage_id: "sid-1".into(),
                 vas_version_id: "v2".into(),
@@ -1202,7 +1261,10 @@ mod tests {
             }],
         };
 
-        let value = serde_json::to_value(GuestDownloadManifest::from(&manifest)).unwrap();
+        let value = serde_json::to_value(
+            GuestDownloadManifest::try_from_storage_manifest(&manifest, None).unwrap(),
+        )
+        .unwrap();
 
         assert!(value["cleanupPaths"].is_array());
         assert!(value.get("instructionCleanups").is_none());

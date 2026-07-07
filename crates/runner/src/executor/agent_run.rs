@@ -234,6 +234,12 @@ fn record_session_history_download_timings(
     );
     record_session_history_download_phase(
         telemetry,
+        "session_history_download_decompression",
+        timings.decompression(),
+        metadata,
+    );
+    record_session_history_download_phase(
+        telemetry,
         "session_history_download_hash_verification",
         timings.hash_verification(),
         metadata,
@@ -823,8 +829,23 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     // 3. Download storage manifest entries (skipping entries unchanged since the previous turn).
     if let Some(manifest) = &context.storage_manifest {
         let runtime_dir = guest_runtime_dir(context.run_id)?;
-        let guest_manifest =
-            GuestDownloadManifest::from_storage_manifest_for_run(manifest, runtime_dir.as_str());
+        let conversion_t = Instant::now();
+        let guest_manifest = match GuestDownloadManifest::from_storage_manifest_for_run(
+            manifest,
+            runtime_dir.as_str(),
+        ) {
+            Ok(guest_manifest) => guest_manifest,
+            Err(error) => {
+                let error_message = error.to_string();
+                telemetry.record(
+                    "runner_storage_manifest_apply",
+                    conversion_t.elapsed(),
+                    false,
+                    Some(&error_message),
+                );
+                return Err(error);
+            }
+        };
         let mut effective: GuestDownloadManifest = match start.prev_storage {
             Some(prev) => {
                 let t = Instant::now();
@@ -929,6 +950,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                         context.resume_session.as_ref(),
                         effective_cli_framework(&context.cli_agent_type),
                         cancel.clone(),
+                        Some(&config.session_history_probe),
                     ))
                 }
             }
@@ -938,6 +960,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             context.resume_session.as_ref(),
             effective_cli_framework(&context.cli_agent_type),
             cancel.clone(),
+            Some(&config.session_history_probe),
         )),
         SessionHistoryRestorePlan::Prestarted {
             materializer,

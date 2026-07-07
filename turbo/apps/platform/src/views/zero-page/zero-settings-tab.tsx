@@ -19,7 +19,12 @@ import {
   Switch,
   cn,
 } from "@vm0/ui";
-import { IconTrash } from "@tabler/icons-react";
+import { IconAlertTriangle, IconTrash } from "@tabler/icons-react";
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+} from "@vm0/ui/components/ui/alert";
 import {
   type Tone,
   TONE_OPTIONS,
@@ -52,6 +57,8 @@ import {
   deleteAgent$,
   settingsVisibility$,
   setSettingsVisibility$,
+  agentDemoteConfirmOpen$,
+  setAgentDemoteConfirmOpen$,
 } from "../../signals/zero-page/settings/settings-tab.ts";
 
 interface ZeroSettingsTabProps {
@@ -128,7 +135,12 @@ export function ZeroSettingsTab({
 
   const pageSignal = useGet(pageSignal$);
 
-  const handleSaveSettings = () => {
+  const demoteConfirmOpen = useGet(agentDemoteConfirmOpen$);
+  const setDemoteConfirmOpen = useSet(setAgentDemoteConfirmOpen$);
+  const willDemoteVisibility =
+    initialVisibility === "public" && visibility === "private";
+
+  const runSaveSettings = () => {
     detach(
       (async () => {
         await triggerUpdateSettings(
@@ -146,6 +158,14 @@ export function ZeroSettingsTab({
       })(),
       Reason.DomCallback,
     );
+  };
+
+  const handleSaveSettings = () => {
+    if (willDemoteVisibility) {
+      setDemoteConfirmOpen(true);
+      return;
+    }
+    runSaveSettings();
   };
 
   const handleDelete = () => {
@@ -346,11 +366,22 @@ export function ZeroSettingsTab({
                       <DialogHeader>
                         <DialogTitle>Delete {resolvedAgentName}?</DialogTitle>
                         <DialogDescription>
-                          This will permanently delete the agent, its
-                          instructions, automations, and all associated data.
+                          This is a dangerous operation. Deleting this agent
+                          also permanently deletes every workflow bound to it
+                          and every member&apos;s chat history under it,
+                          including automations and chats other people created.
                           This action cannot be undone.
                         </DialogDescription>
                       </DialogHeader>
+                      <Alert variant="destructive">
+                        <IconAlertTriangle size={16} stroke={1.5} />
+                        <AlertTitle>This can&apos;t be undone</AlertTitle>
+                        <AlertDescription>
+                          {resolvedAgentName} and every member&apos;s workflows,
+                          automations, and chat history under it will be
+                          permanently deleted.
+                        </AlertDescription>
+                      </Alert>
                       <DialogFooter>
                         <DialogClose asChild>
                           <Button variant="outline" size="sm">
@@ -382,6 +413,50 @@ export function ZeroSettingsTab({
           saving={saving}
         />
       )}
+
+      <Dialog open={demoteConfirmOpen} onOpenChange={setDemoteConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Make {resolvedAgentName} private?</DialogTitle>
+            <DialogDescription>
+              While this agent is private, other members lose access to their
+              chat history under it. They regain access if you make it public
+              again.
+            </DialogDescription>
+          </DialogHeader>
+          <Alert variant="destructive">
+            <IconAlertTriangle size={16} stroke={1.5} />
+            <AlertTitle>Members lose access</AlertTitle>
+            <AlertDescription>
+              Other members will no longer see {resolvedAgentName} or their
+              chats under it.
+            </AlertDescription>
+          </Alert>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={saving}
+              onClick={() => {
+                setDemoteConfirmOpen(false);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              disabled={saving}
+              onClick={() => {
+                setDemoteConfirmOpen(false);
+                runSaveSettings();
+              }}
+            >
+              {saving ? "Saving…" : "Make private"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

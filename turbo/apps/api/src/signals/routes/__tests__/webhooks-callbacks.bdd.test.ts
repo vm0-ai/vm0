@@ -1242,6 +1242,25 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
     expectApiError(malformedTelemetryBucket.body);
     expect(malformedTelemetryBucket.body.error.code).toBe("BAD_REQUEST");
 
+    const malformedTelemetryProbe = await api.requestAgentTelemetryUnchecked(
+      {
+        runId,
+        sandboxOperations: [
+          {
+            ts: nowDate().toISOString(),
+            action_type: "session_history_download",
+            duration_ms: 3,
+            success: true,
+            session_history_ref_seen_recently: "yes",
+          },
+        ],
+      },
+      headers,
+      [400],
+    );
+    expectApiError(malformedTelemetryProbe.body);
+    expect(malformedTelemetryProbe.body.error.code).toBe("BAD_REQUEST");
+
     const missingTelemetryRun = await api.requestAgentTelemetry(
       {
         runId,

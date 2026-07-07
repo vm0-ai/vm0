@@ -10,6 +10,7 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 import { agentRuns } from "./agent-run";
+import type { RunUploadedFileMetadata } from "@vm0/db/jsonb-contracts/run-uploaded-file";
 
 export const RUN_UPLOADED_FILE_SOURCES = [
   "schedule",
@@ -46,7 +47,7 @@ export const runUploadedFiles = pgTable(
     sizeBytes: bigint("size_bytes", { mode: "number" }),
     url: text("url"),
     metadata: jsonb("metadata")
-      .$type<Record<string, unknown>>()
+      .$type<RunUploadedFileMetadata>()
       .notNull()
       .default({}),
     createdAt: timestamp("created_at").defaultNow().notNull(),

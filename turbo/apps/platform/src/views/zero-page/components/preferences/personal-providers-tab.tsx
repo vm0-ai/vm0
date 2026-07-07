@@ -29,6 +29,7 @@ import { PersonalClaudeCodeDeviceAuthDialog } from "../settings/claude-code-devi
 import { PersonalCodexDeviceAuthDialog } from "../settings/codex-device-auth-dialog.tsx";
 import { SettingsSectionHeading } from "../settings/settings-section-heading.tsx";
 import { DropdownMenuModalItem } from "../../../components/dropdown-menu-modal-item.tsx";
+import { formatSubscriptionUsageReset } from "../../subscription-usage-format.ts";
 import {
   CodexResetUsageDialog,
   formatCodexResetCredits,
@@ -331,30 +332,6 @@ function formatUsagePercent(value: number | null): string | null {
   return Number.isInteger(rounded) ? `${rounded}%` : `${rounded.toFixed(1)}%`;
 }
 
-function formatUsageReset(resetAt: string | null): string | null {
-  const text = resetAt?.trim();
-  if (!text) {
-    return null;
-  }
-  const date = new Date(text);
-  if (Number.isNaN(date.getTime())) {
-    return `resets ${text}`;
-  }
-  const options: Intl.DateTimeFormatOptions = {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    timeZoneName: "short",
-  };
-  const browserTimeZone = new Intl.DateTimeFormat().resolvedOptions().timeZone;
-  if (browserTimeZone) {
-    options.timeZone = browserTimeZone;
-  }
-  return `resets ${date.toLocaleDateString("en-US", options)}`;
-}
-
 function fallbackSubscriptionUsage(
   provider: ModelProviderResponse,
 ): SubscriptionUsage | null {
@@ -439,7 +416,7 @@ function SubscriptionUsageMeter({
             window.remainingPercent ??
             (window.usedPercent === null ? null : 100 - window.usedPercent);
           const displayPercent = formatUsagePercent(remainingPercent);
-          const resetText = formatUsageReset(window.resetAt);
+          const reset = formatSubscriptionUsageReset(window.resetAt);
           const tone = usageTone(remainingPercent);
           return (
             <div key={label} className="space-y-1">
@@ -464,10 +441,21 @@ function SubscriptionUsageMeter({
                   }}
                 />
               </div>
-              {resetText ? (
-                <div className="truncate text-[10px] leading-none text-muted-foreground">
-                  {resetText}
-                </div>
+              {reset !== null ? (
+                "fallbackText" in reset ? (
+                  <div className="truncate text-[10px] leading-none text-muted-foreground">
+                    {reset.fallbackText}
+                  </div>
+                ) : (
+                  <div className="flex min-w-0 items-center justify-between gap-2 text-[10px] leading-none text-muted-foreground">
+                    <span className="min-w-0 truncate">
+                      {reset.absoluteResetText}
+                    </span>
+                    <span className="shrink-0 rounded bg-background/70 px-1.5 py-0.5 font-medium text-muted-foreground shadow-[inset_0_0_0_1px_hsl(var(--border)/0.6)]">
+                      {reset.relativeText}
+                    </span>
+                  </div>
+                )
               ) : null}
             </div>
           );

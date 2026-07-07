@@ -181,21 +181,29 @@ if [[ "$MODE" == "named" ]]; then
     log "DNS route: ${FQDN} -> ${CNAME_TARGET}"
   fi
 
-  # Write ingress config
+  # Write ingress config. Prefer local tunnel credentials over --token so the
+  # local ingress rules are honored for this named tunnel.
   CONFIG_FILE="/tmp/cloudflared-config-${TUNNEL_NAME}.yml"
+  CREDENTIALS_FILE="${HOME}/.cloudflared/${TUNNEL_ID}.json"
+  if [[ ! -f "$CREDENTIALS_FILE" ]]; then
+    log "Error: credentials file not found for ${TUNNEL_NAME}: ${CREDENTIALS_FILE}"
+    log "Run 'cloudflared tunnel login' or sync the tunnel credentials before starting this tunnel."
+    exit 1
+  fi
+
   cat > "$CONFIG_FILE" <<EOF
+tunnel: ${TUNNEL_ID}
+credentials-file: ${CREDENTIALS_FILE}
 ingress:
   - hostname: ${FQDN}
     service: http://localhost:${PORT}
   - service: http_status:404
 EOF
 
-  # Start tunnel with token from the environment (no cert.pem needed).
   # QUIC fails in devcontainer environment, must use HTTP/2
-  export TUNNEL_TOKEN
-  unset CF_DNS_AND_TUNNEL_API_TOKEN CF_ACCOUNT_ID
   stop_existing_tunnel
-  start_cloudflared cloudflared tunnel --config "$CONFIG_FILE" --protocol http2 run
+  start_cloudflared env -u CF_DNS_AND_TUNNEL_API_TOKEN -u CF_ACCOUNT_ID \
+    cloudflared tunnel --config "$CONFIG_FILE" --protocol http2 run
 
 else
   log "Anonymous tunnel: localhost:${PORT}"
@@ -221,9 +229,17 @@ while [[ $ATTEMPT -lt $MAX_WAIT ]]; do
   fi
 
   if [[ "$MODE" == "named" ]]; then
-    # Named tunnel: wait for "Registered tunnel connection"
+    # Named tunnel: verify Cloudflare edge can route to this origin. A connector
+    # can register before the DNS route is actually serving this origin.
     if grep -q "Registered tunnel connection" "$TUNNEL_LOG" 2>/dev/null; then
-      break
+      CHECK_PATH="/"
+      if [[ "$PORT" == "3001" ]]; then
+        CHECK_PATH="/health"
+      fi
+      STATUS=$(curl -k -sS --max-time 5 -o "/tmp/cloudflared-${PORT}.check" -w "%{http_code}" "${TUNNEL_URL}${CHECK_PATH}" 2>/dev/null || true)
+      if [[ "$STATUS" =~ ^[234][0-9][0-9]$ ]]; then
+        break
+      fi
     fi
   else
     # Anonymous tunnel: wait for trycloudflare.com URL
