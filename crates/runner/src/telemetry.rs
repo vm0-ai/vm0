@@ -54,6 +54,10 @@ struct SandboxOp {
     session_history_encoded_size_bucket: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     session_history_compression_ratio_bucket: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    session_history_ref_seen_recently: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    session_history_ref_download_inflight: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -69,6 +73,13 @@ pub(crate) struct SessionHistoryTelemetryMetadata {
     raw_size_bucket: &'static str,
     encoded_size_bucket: &'static str,
     compression_ratio_bucket: &'static str,
+    cache_probe: Option<SessionHistoryCacheProbeMetadata>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct SessionHistoryCacheProbeMetadata {
+    seen_recently: bool,
+    download_inflight: bool,
 }
 
 impl SessionHistoryTelemetryMetadata {
@@ -85,7 +96,16 @@ impl SessionHistoryTelemetryMetadata {
                 history_ref.raw_size,
                 history_ref.encoded_size,
             ),
+            cache_probe: None,
         }
+    }
+
+    pub(crate) fn with_cache_probe(
+        mut self,
+        cache_probe: SessionHistoryCacheProbeMetadata,
+    ) -> Self {
+        self.cache_probe = Some(cache_probe);
+        self
     }
 
     pub(crate) fn encoding(self) -> &'static str {
@@ -102,6 +122,27 @@ impl SessionHistoryTelemetryMetadata {
 
     fn compression_ratio_bucket(self) -> &'static str {
         self.compression_ratio_bucket
+    }
+
+    fn cache_probe(self) -> Option<SessionHistoryCacheProbeMetadata> {
+        self.cache_probe
+    }
+}
+
+impl SessionHistoryCacheProbeMetadata {
+    pub(crate) const fn new(seen_recently: bool, download_inflight: bool) -> Self {
+        Self {
+            seen_recently,
+            download_inflight,
+        }
+    }
+
+    fn seen_recently_value(self) -> &'static str {
+        bool_string_value(self.seen_recently)
+    }
+
+    fn download_inflight_value(self) -> &'static str {
+        bool_string_value(self.download_inflight)
     }
 }
 
@@ -245,6 +286,8 @@ impl JobTelemetry {
                     op.session_history_raw_size_bucket.clone(),
                     op.session_history_encoded_size_bucket.clone(),
                     op.session_history_compression_ratio_bucket.clone(),
+                    op.session_history_ref_seen_recently.clone(),
+                    op.session_history_ref_download_inflight.clone(),
                 )
             })
             .collect()
@@ -335,6 +378,8 @@ type SessionHistoryTelemetrySnapshot = (
     Option<String>,
     Option<String>,
     Option<String>,
+    Option<String>,
+    Option<String>,
 );
 
 fn sandbox_op(
@@ -345,6 +390,7 @@ fn sandbox_op(
     encoding: Option<&'static str>,
     metadata: Option<SessionHistoryTelemetryMetadata>,
 ) -> SandboxOp {
+    let cache_probe = metadata.and_then(SessionHistoryTelemetryMetadata::cache_probe);
     SandboxOp {
         ts: Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
         action_type: action_type.to_string(),
@@ -360,6 +406,12 @@ fn sandbox_op(
             .map(String::from),
         session_history_compression_ratio_bucket: metadata
             .map(SessionHistoryTelemetryMetadata::compression_ratio_bucket)
+            .map(String::from),
+        session_history_ref_seen_recently: cache_probe
+            .map(SessionHistoryCacheProbeMetadata::seen_recently_value)
+            .map(String::from),
+        session_history_ref_download_inflight: cache_probe
+            .map(SessionHistoryCacheProbeMetadata::download_inflight_value)
             .map(String::from),
     }
 }
@@ -414,6 +466,10 @@ fn compression_ratio_bucket(
     } else {
         "ge_1"
     }
+}
+
+const fn bool_string_value(value: bool) -> &'static str {
+    if value { "true" } else { "false" }
 }
 
 async fn drain_in_flight_flushes(run_id: RunId, in_flight_flushes: Vec<JoinHandle<()>>) {
@@ -528,6 +584,8 @@ mod tests {
             session_history_raw_size_bucket: None,
             session_history_encoded_size_bucket: None,
             session_history_compression_ratio_bucket: None,
+            session_history_ref_seen_recently: None,
+            session_history_ref_download_inflight: None,
         };
         let json = serde_json::to_value(&op).unwrap();
         assert_eq!(json["ts"], "2026-01-15T10:00:00+00:00");
@@ -551,6 +609,8 @@ mod tests {
                 session_history_raw_size_bucket: Some("64_256_kib".to_string()),
                 session_history_encoded_size_bucket: Some("lt_64_kib".to_string()),
                 session_history_compression_ratio_bucket: Some("lt_0_25".to_string()),
+                session_history_ref_seen_recently: Some("true".to_string()),
+                session_history_ref_download_inflight: Some("false".to_string()),
             }],
         };
         let json = serde_json::to_value(&payload).unwrap();
@@ -568,6 +628,14 @@ mod tests {
         assert_eq!(
             json["sandboxOperations"][0]["session_history_compression_ratio_bucket"],
             "lt_0_25"
+        );
+        assert_eq!(
+            json["sandboxOperations"][0]["session_history_ref_seen_recently"],
+            "true"
+        );
+        assert_eq!(
+            json["sandboxOperations"][0]["session_history_ref_download_inflight"],
+            "false"
         );
     }
 
@@ -613,7 +681,9 @@ mod tests {
             raw_size_bucket: "64_256_kib",
             encoded_size_bucket: "lt_64_kib",
             compression_ratio_bucket: "lt_0_25",
-        };
+            cache_probe: None,
+        }
+        .with_cache_probe(SessionHistoryCacheProbeMetadata::new(false, true));
 
         telemetry.record_with_session_history_metadata(
             "session_history_download",
@@ -632,7 +702,9 @@ mod tests {
                 Some("gzip".to_string()),
                 Some("64_256_kib".to_string()),
                 Some("lt_64_kib".to_string()),
-                Some("lt_0_25".to_string())
+                Some("lt_0_25".to_string()),
+                Some("false".to_string()),
+                Some("true".to_string())
             )]
         );
     }

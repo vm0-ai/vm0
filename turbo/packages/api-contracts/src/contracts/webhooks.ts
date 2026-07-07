@@ -695,6 +695,8 @@ const sessionHistoryCompressionRatioBucketSchema = z.enum([
   "ge_1",
 ]);
 
+const booleanStringSchema = z.enum(["true", "false"]);
+
 /**
  * Sandbox operation schema for internal sandbox operations (init, storage, cli, checkpoint, cleanup)
  */
@@ -710,6 +712,8 @@ const sandboxOperationSchema = z.object({
     sessionHistorySizeBucketSchema.optional(),
   session_history_compression_ratio_bucket:
     sessionHistoryCompressionRatioBucketSchema.optional(),
+  session_history_ref_seen_recently: booleanStringSchema.optional(),
+  session_history_ref_download_inflight: booleanStringSchema.optional(),
 });
 
 /**

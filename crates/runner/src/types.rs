@@ -403,7 +403,7 @@ pub enum ResumeSessionHistoryRefKind {
     Blob,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq)]
 pub enum ResumeSessionHistoryEncoding {
     #[serde(rename = "identity")]
     Identity,
