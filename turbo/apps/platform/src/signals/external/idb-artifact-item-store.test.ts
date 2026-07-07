@@ -228,7 +228,6 @@ function artifact(
     agentId: "agent-1",
     filename: `artifact-${index}.html`,
     contentType: "text/html",
-    size: index,
     url: `https://cdn.vm0.test/artifact-${index}.html`,
     createdAt: new Date(Date.UTC(2026, 0, 1, 0, index)).toISOString(),
     artifactKind: "hosted-site",
