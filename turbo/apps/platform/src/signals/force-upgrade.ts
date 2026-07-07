@@ -9,7 +9,7 @@ const forceUpgradeDialogOpenState$ = state(false);
 
 export const forceUpgradeDialogOpen$ = forceUpgradeDialogOpenState$;
 
-export type ForceUpgradePollOptions = {
+type ForceUpgradePollOptions = {
   readonly check: () => Promise<boolean>;
   readonly onRequired: () => void;
   readonly pollIntervalMs?: number;

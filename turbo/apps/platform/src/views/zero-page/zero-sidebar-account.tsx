@@ -57,6 +57,7 @@ import {
   setAccountMenuCodexResetDialog$,
 } from "../../signals/zero-page/settings/personal-model-providers.ts";
 import { CodexResetUsageDialog } from "./components/preferences/codex-reset-usage-dialog.tsx";
+import { runAfterDropdownMenuClose } from "../components/dropdown-menu-modal-action.ts";
 import {
   AccountMenuSubscriptionsPanel,
   useSubscriptionUsageRows,
@@ -662,16 +663,22 @@ export function AccountDropdown({
 
   const handleOpenSettings = () => {
     setSidebarExpanded(false);
-    detach(openSettings("preference", pageSignal), Reason.DomCallback);
+    runAfterDropdownMenuClose(() => {
+      detach(openSettings("preference", pageSignal), Reason.DomCallback);
+    });
   };
 
   const handleOpenCreditBalance = () => {
     setSidebarExpanded(false);
-    detach(openSettings("usage", pageSignal), Reason.DomCallback);
+    runAfterDropdownMenuClose(() => {
+      detach(openSettings("usage", pageSignal), Reason.DomCallback);
+    });
   };
 
   const handleOpenCodexReset = (resetCredits: number | null) => {
-    setResetDialog({ open: true, resetCredits });
+    runAfterDropdownMenuClose(() => {
+      setResetDialog({ open: true, resetCredits });
+    });
   };
 
   const handleConfirmCodexReset = () => {

@@ -610,6 +610,16 @@ describe("zero sidebar account menu", () => {
     await waitFor(() => {
       expect(screen.getByText("Disabled")).toBeInTheDocument();
     });
+
+    const dialog = screen.getByRole("dialog", { name: "Settings" });
+    click(within(dialog).getByLabelText("Close"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Settings" }),
+      ).not.toBeInTheDocument();
+      expect(document.body.style.pointerEvents).not.toBe("none");
+    });
   });
 
   it("shows account switching, add-account, and sign-out actions", async () => {
