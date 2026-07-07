@@ -138,7 +138,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.AgentUnreadIndicators]).toBe(true);
     expect(
       staffOrgStates[FeatureSwitchKey.MobileUnreadChatThreadShortcuts],
-    ).toBe(true);
+    ).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.HtmlArtifactCommentEditing]).toBe(
       true,
     );
