@@ -2427,7 +2427,7 @@ describe("connectors page", () => {
             startOptions: [],
             externalCode: {
               instructions:
-                "Open the PlayStation NPSSO page while signed in to Sony, then paste only the npsso value from the JSON response. NPSSO is sensitive; vm0 uses it once to create refreshable PlayStation tokens and does not store it. This connector uses community-observed, undocumented PlayStation Network APIs rather than an official third-party OAuth consent flow.",
+                "Open the PlayStation NPSSO page while signed in to Sony, then paste only the npsso value from the JSON response.",
               inputLabel: "NPSSO token",
               inputPlaceholder: "NPSSO token",
               openButtonLabel: "Open PlayStation NPSSO page",
@@ -2458,7 +2458,7 @@ describe("connectors page", () => {
     await waitFor(() => {
       expect(
         within(connectDialog).getByText(
-          "Open the PlayStation NPSSO page while signed in to Sony, then paste only the npsso value from the JSON response. NPSSO is sensitive; vm0 uses it once to create refreshable PlayStation tokens and does not store it. This connector uses community-observed, undocumented PlayStation Network APIs rather than an official third-party OAuth consent flow.",
+          "Open the PlayStation NPSSO page while signed in to Sony, then paste only the npsso value from the JSON response.",
         ),
       ).toBeInTheDocument();
     });
