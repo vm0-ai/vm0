@@ -130,4 +130,54 @@ describe("release-please API deployment graph", () => {
       "needs.migrate-production.result == 'success'",
     );
   });
+
+  it("blocks app promotion when API runtime paths have unreleased diffs", () => {
+    const workflow = readText(".github/workflows/release-please.yml");
+    const consistencyJob = workflowJobBlock(
+      workflow,
+      "verify-release-deploy-consistency",
+    );
+    const buildsCompleteJob = workflowJobBlock(workflow, "builds-complete");
+    const migrateProductionJob = workflowJobBlock(
+      workflow,
+      "migrate-production",
+    );
+    const promoteAppProductionJob = workflowJobBlock(
+      workflow,
+      "promote-app-production",
+    );
+
+    expect(consistencyJob).toContain("app_release_created == 'true'");
+    expect(consistencyJob).toContain("tag_commit");
+    expect(consistencyJob).toContain("instead of release head $head_commit");
+    expect(consistencyJob).toContain("git diff --quiet");
+    expect(consistencyJob).toContain(
+      "release-please did not create a ${tag_prefix} release",
+    );
+    expect(consistencyJob).toContain("turbo/apps/platform");
+    expect(consistencyJob).toContain("turbo/apps/api");
+
+    for (const packagePath of apiRuntimeWorkspaceDependencyPaths()) {
+      expect(consistencyJob).toContain(packagePath);
+    }
+
+    expect(buildsCompleteJob).toContain("verify-release-deploy-consistency");
+    expect(migrateProductionJob).toContain(
+      "needs.builds-complete.result == 'success'",
+    );
+    expect(promoteAppProductionJob).toContain(
+      "needs.builds-complete.result == 'success'",
+    );
+  });
+
+  it("pins production app and API builds to the triggering main commit", () => {
+    const workflow = readText(".github/workflows/release-please.yml");
+    const apiBuildJob = workflowJobBlock(workflow, "build-api-production");
+    const appBuildJob = workflowJobBlock(workflow, "build-app-production");
+    const releaseHeadRef =
+      "ref: ${{ github.event.workflow_run.head_sha || github.sha }}";
+
+    expect(apiBuildJob).toContain(releaseHeadRef);
+    expect(appBuildJob).toContain(releaseHeadRef);
+  });
 });

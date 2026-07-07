@@ -785,6 +785,8 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - uses: ./.github/actions/toolchain-init
 
       - name: Build Runtime API Schema
@@ -1077,6 +1079,7 @@ jobs:
     needs:
       - release-please
       - validate-db-release-coupling
+      - verify-release-deploy-consistency
       - build-app-production
       - build-runner-release-assets
       - runner-production-host-groups
@@ -1306,6 +1309,98 @@ jobs:
 
           echo "Published runtime API schema for $RELEASE_SHA"
 
+  verify-release-deploy-consistency:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.app_release_created == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Ensure app release does not include unreleased API runtime changes
+        shell: bash
+        env:
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+          APP_RELEASE_CREATED: ${{ needs.release-please.outputs.app_release_created }}
+          API_RELEASE_CREATED: ${{ needs.release-please.outputs.api_release_created }}
+          API_CONTRACTS_RELEASE_CREATED: ${{ needs.release-please.outputs.api_contracts_release_created }}
+          CORE_RELEASE_CREATED: ${{ needs.release-please.outputs.core_release_created }}
+          CONNECTORS_RELEASE_CREATED: ${{ needs.release-please.outputs.connectors_release_created }}
+          DB_RELEASE_CREATED: ${{ needs.release-please.outputs.db_release_created }}
+        run: |
+          set -euo pipefail
+
+          git fetch --force --tags origin
+
+          if ! git cat-file -e "${HEAD_SHA}^{commit}"; then
+            echo "::error::Release head commit $HEAD_SHA is not available"
+            exit 1
+          fi
+          head_commit=$(git rev-parse "$HEAD_SHA")
+
+          blocked=0
+          check_release_path() {
+            local package_path="$1"
+            local tag_prefix="$2"
+            local release_created="$3"
+
+            local version
+            version=$(jq -r --arg path "$package_path" '.[$path] // empty' .release-please-manifest.json)
+            if [ -z "$version" ]; then
+              echo "::error::Missing $package_path in .release-please-manifest.json"
+              blocked=1
+              return
+            fi
+
+            local tag="${tag_prefix}-v${version}"
+            local base_ref="${tag}^{commit}"
+            if ! git rev-parse -q --verify "$base_ref" >/dev/null; then
+              echo "::error::Missing release tag $tag for $package_path"
+              blocked=1
+              return
+            fi
+
+            local tag_commit
+            tag_commit=$(git rev-parse "$base_ref")
+
+            if [ "$release_created" = "true" ]; then
+              if [ "$tag_commit" != "$head_commit" ]; then
+                echo "::error::$package_path release was created in this run, but $tag points to $tag_commit instead of release head $head_commit."
+                blocked=1
+                return
+              fi
+
+              echo "$tag points to release head for $package_path"
+              return
+            fi
+
+            if git diff --quiet "$base_ref" "$head_commit" -- "$package_path"; then
+              echo "$package_path has no unreleased diff since $tag"
+              return
+            fi
+
+            echo "::error::$package_path changed since $tag, but release-please did not create a ${tag_prefix} release in this run. Blocking app promotion to avoid an app/API production mismatch."
+            git diff --name-only "$base_ref" "$head_commit" -- "$package_path"
+            blocked=1
+          }
+
+          check_release_path "turbo/apps/platform" "app" "$APP_RELEASE_CREATED"
+          check_release_path "turbo/apps/api" "api" "$API_RELEASE_CREATED"
+          check_release_path "turbo/packages/api-contracts" "api-contracts" "$API_CONTRACTS_RELEASE_CREATED"
+          check_release_path "turbo/packages/core" "core" "$CORE_RELEASE_CREATED"
+          check_release_path "turbo/packages/connectors" "connectors" "$CONNECTORS_RELEASE_CREATED"
+          check_release_path "turbo/packages/db" "db" "$DB_RELEASE_CREATED"
+
+          if [ "$blocked" -ne 0 ]; then
+            exit 1
+          fi
+
+          echo "Release deploy consistency validated."
+
   # Build app (Vite SPA) production deployment (Staged)
   build-app-production:
     needs: release-please
@@ -1321,6 +1416,8 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - uses: ./.github/actions/toolchain-init
 
       - name: Notify Slack - Starting
