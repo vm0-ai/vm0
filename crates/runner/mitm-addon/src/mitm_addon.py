@@ -109,13 +109,15 @@ _BROWSER_USER_AGENT_MARKERS = (
 _TEST_ENDPOINT_BYPASS_HEADER: Final = "x-vm0-test-endpoint-bypass"
 _BUILTIN_HOST_POLICY_DENIED_ERROR: Final = "builtin_host_policy_denied"
 
-# Hook-private flow.metadata markers. Keep these out of flow_metadata_keys.py
-# unless they become public cross-module contracts.
+# Hook-private lifecycle state constants. Keep flow.metadata marker strings in
+# this block out of flow_metadata_keys.py unless they become public cross-module
+# contracts.
 
 # Connector intent state.
 # Creator: _capture_and_strip_connector_intent_header().
 # Consumer: _connector_intent_from_flow() and request-header probe restore.
-# Release: restored with probe metadata, otherwise flow-local until completion.
+# Release: metadata values are restored on probe rollback; otherwise no explicit
+# pop before flow completion.
 # Follow-up owner: #20508 connector diagnostics extraction.
 _CONNECTOR_INTENT_HEADER: Final = "X-VM0-Connector-Intent"
 _CONNECTOR_INTENT_VALUE = "_connector_intent_value"
@@ -149,7 +151,7 @@ _REQUEST_HEADERS_PROBE_METADATA_KEYS = (
 # Connector diagnostic candidate state.
 # Creator: allow-path diagnostic probes and diagnostic metadata helpers.
 # Consumer: request(), response(), and error() diagnostic response helpers.
-# Release: flow-local until terminal hook completion.
+# Release: no explicit pop before flow completion.
 # Follow-up owner: #20508 connector diagnostics extraction.
 _CONNECTOR_DIAGNOSTIC_ELIGIBLE = "_connector_diagnostic_eligible"
 _CONNECTOR_DIAGNOSTIC_ACTIVE_FIREWALL_NAMES = "_connector_diagnostic_active_firewall_names"
@@ -180,16 +182,17 @@ _CONNECTOR_DIAGNOSTIC_PROXY_ENTRY_LOGGED = "_connector_diagnostic_proxy_entry_lo
 # Connector diagnostic ownership state.
 # Creator: shared-base connector diagnostic resolution.
 # Consumer: connector diagnostic proxy-log emission.
-# Release: flow-local until terminal hook completion.
+# Release: no explicit pop before flow completion.
 # Follow-up owner: #20508 connector diagnostics extraction.
 _CONNECTOR_DIAGNOSTIC_OWNERSHIP_REASON = "_connector_diagnostic_ownership_reason"
 _CONNECTOR_DIAGNOSTIC_OWNERSHIP_CANDIDATES = "_connector_diagnostic_ownership_candidates"
 _CONNECTOR_DIAGNOSTIC_OWNERSHIP_HINT_STATUS = "_connector_diagnostic_ownership_hint_status"
 
 # Usage tracking state.
-# Creator: _maybe_track_usage_flow() and model-provider reporting.
+# Creator: _maybe_track_usage_flow() and _report_model_provider_usage_once().
 # Consumer: terminal hooks and duplicate-report guards.
-# Release: _release_tracked_usage_flow(); reported marker is flow-local.
+# Release: tracked marker is popped; reported marker has no explicit pop before
+# flow completion.
 # Follow-up owner: #20509 terminal flow lifecycle extraction.
 _USAGE_FLOW_TRACKED = "_usage_flow_tracked"
 _MODEL_PROVIDER_USAGE_REPORTED = "_model_provider_usage_reported"
@@ -256,7 +259,7 @@ _UPSTREAM_DESTINATION_UNBOUND_ERROR: Final = "upstream_destination_unbound"
 # Upstream binding diagnostics state.
 # Creator: _block_upstream_destination_unbound().
 # Consumer: _http_network_log_entry().
-# Release: flow-local until terminal hook completion.
+# Release: no explicit pop before flow completion.
 # Follow-up owner: #20510 TLS upstream admission extraction.
 _UPSTREAM_BINDING_DIAGNOSTICS = "_upstream_binding_diagnostics"
 _TRUSTED_HOST_ADDRESS_CACHE_TTL_SECONDS: Final = 60.0
