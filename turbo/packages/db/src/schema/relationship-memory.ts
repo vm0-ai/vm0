@@ -37,13 +37,14 @@ export const RELATIONSHIP_ITEM_KINDS = [
 ] as const;
 export type RelationshipItemKind = (typeof RELATIONSHIP_ITEM_KINDS)[number];
 
-export const RELATIONSHIP_MEMORY_PROVIDERS = ["gmail"] as const;
+export const RELATIONSHIP_MEMORY_PROVIDERS = ["gmail", "slack"] as const;
 export type RelationshipMemoryProvider =
   (typeof RELATIONSHIP_MEMORY_PROVIDERS)[number];
 
 export const RELATIONSHIP_SYNC_JOB_KINDS = [
   "gmail_bootstrap",
   "gmail_relationship_refresh",
+  "memory_source_relationship_extract",
 ] as const;
 export type RelationshipSyncJobKind =
   (typeof RELATIONSHIP_SYNC_JOB_KINDS)[number];

@@ -2,7 +2,7 @@ import { zeroClaudeCodeDeviceAuthContract } from "@vm0/api-contracts/contracts/z
 import { zeroCodexDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-codex-device-auth";
 import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
 import { screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   click,
@@ -10,9 +10,14 @@ import {
   fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import { clearMockNow, mockNow } from "../../../lib/time.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
+
+afterEach(() => {
+  clearMockNow();
+});
 
 function stalePersonalCodexProvider(): ModelProviderResponse {
   return {
@@ -305,6 +310,7 @@ describe("personal model providers settings", () => {
 
   it("shows available subscription details in the connected status", async () => {
     mockBrowserTimeZone("America/New_York");
+    mockNow(new Date("2030-01-01T00:48:00.000Z"));
     context.mocks.data.org({
       id: "org_1",
       slug: "test-org",
@@ -329,8 +335,10 @@ describe("personal model providers settings", () => {
     ).not.toBeInTheDocument();
     expect(within(claudeCodeRow).getByText("5h")).toBeInTheDocument();
     expect(within(claudeCodeRow).getByText("88% left")).toBeInTheDocument();
+    expect(within(claudeCodeRow).getByText("in 4h 12m")).toBeInTheDocument();
     expect(within(claudeCodeRow).getByText("Week")).toBeInTheDocument();
     expect(within(claudeCodeRow).getByText("76% left")).toBeInTheDocument();
+    expect(within(claudeCodeRow).getByText("in 5d 23h")).toBeInTheDocument();
     expect(
       within(claudeCodeRow).getByText(
         formatResetInTimeZone("2030-01-01T05:00:00.000Z", "America/New_York"),
@@ -349,7 +357,9 @@ describe("personal model providers settings", () => {
       within(codexRow).queryByText(/codex\.user@example\.com/),
     ).not.toBeInTheDocument();
     expect(within(codexRow).getByText("82% left")).toBeInTheDocument();
+    expect(within(codexRow).getByText("in 4h 12m")).toBeInTheDocument();
     expect(within(codexRow).getByText("55% left")).toBeInTheDocument();
+    expect(within(codexRow).getByText("in 5d 23h")).toBeInTheDocument();
     expect(
       within(codexRow).queryByText(/Account:|Plan:|Reset:|Connected .*resets/),
     ).not.toBeInTheDocument();

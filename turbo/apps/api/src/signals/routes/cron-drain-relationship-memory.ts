@@ -4,6 +4,7 @@ import { command } from "ccstate";
 import type { RouteEntry } from "../route-entry";
 import { drainRelationshipSyncJobs$ } from "../services/relationship-memory-gmail.service";
 import { advanceGmailRelationshipBackfillJobs$ } from "../services/relationship-memory-gmail-backfill.service";
+import { advanceSlackMemorySourceBackfillJobs$ } from "../services/slack-memory-backfill.service";
 import { cronUnauthorized, hasValidCronSecret$ } from "./cron-auth";
 
 const drainRelationshipMemoryRoute$ = command(
@@ -14,13 +15,23 @@ const drainRelationshipMemoryRoute$ = command(
 
     const backfill = await set(advanceGmailRelationshipBackfillJobs$, signal);
     signal.throwIfAborted();
+    const sourceBackfill = await set(
+      advanceSlackMemorySourceBackfillJobs$,
+      signal,
+    );
+    signal.throwIfAborted();
     const drain = await set(drainRelationshipSyncJobs$, signal);
     signal.throwIfAborted();
     return {
       status: 200 as const,
       body: {
         ...drain,
-        backfill,
+        backfill: {
+          processed: backfill.processed + sourceBackfill.processed,
+          failed: backfill.failed + sourceBackfill.failed,
+          scanned: backfill.scanned + sourceBackfill.scanned,
+          enqueued: backfill.enqueued + sourceBackfill.enqueued,
+        },
       },
     };
   },

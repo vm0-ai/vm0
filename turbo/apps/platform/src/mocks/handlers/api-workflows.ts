@@ -453,6 +453,30 @@ function createNotionChildPageTriggerSummary(
   };
 }
 
+function createNotionDatabaseItemTriggerSummary(
+  base: WorkflowTriggerCreateBase,
+  databaseUrl: string,
+): ZeroWorkflowTriggerSummary {
+  return {
+    ...base,
+    kind: "event",
+    eventType: "notion-database-item-created",
+    eventConfig: {
+      provider: "notion",
+      event: "database_item_created",
+      connectorId: "b0000000-0000-4000-a000-000000000001",
+      dataSource: {
+        id: "22222222-2222-4222-8222-222222222222",
+        title: "Bug Bash",
+        url: databaseUrl,
+        rawUrl: databaseUrl,
+      },
+    },
+    schedule: null,
+    scheduleSummary: null,
+  };
+}
+
 function workflowTriggerCreateHandlers() {
   return [
     mockApi(
@@ -557,6 +581,11 @@ function workflowTriggerCreateHandlers() {
           trigger = createNotionChildPageTriggerSummary(
             base,
             body.eventConfig.parentPageUrl,
+          );
+        } else if (body.eventType === "notion-database-item-created") {
+          trigger = createNotionDatabaseItemTriggerSummary(
+            base,
+            body.eventConfig.databaseUrl,
           );
         } else {
           trigger = {

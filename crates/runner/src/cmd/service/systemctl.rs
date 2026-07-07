@@ -71,6 +71,21 @@ pub(super) async fn get_service_pid(unit: &RunnerServiceUnit) -> RunnerResult<Op
     service_pid_from_systemctl_show(svc, &properties, &output.status, &values, &output.stderr)
 }
 
+/// Get the effective systemd Restart policy of a service unit.
+pub(super) async fn get_service_restart_policy(unit: &RunnerServiceUnit) -> RunnerResult<String> {
+    let svc = unit.service_name();
+    let properties = ["Restart"];
+    let output = run_systemctl_show(svc, &properties).await?;
+    let values = parse_systemctl_show_output(svc, &properties, &output)?;
+    service_restart_policy_from_systemctl_show(
+        svc,
+        &properties,
+        &output.status,
+        &values,
+        &output.stderr,
+    )
+}
+
 async fn run_systemctl_show(svc: &str, properties: &[&str]) -> RunnerResult<Output> {
     let mut cmd = tokio::process::Command::new("systemctl");
     cmd.args(["show", svc]);
@@ -218,6 +233,18 @@ fn parse_main_pid(svc: &str, value: &str) -> RunnerResult<Option<u32>> {
         ))
     })?;
     if pid == 0 { Ok(None) } else { Ok(Some(pid)) }
+}
+
+fn service_restart_policy_from_systemctl_show(
+    svc: &str,
+    properties: &[&str],
+    status: &ExitStatus,
+    values: &BTreeMap<String, String>,
+    stderr: &[u8],
+) -> RunnerResult<String> {
+    let restart = required_systemctl_property(svc, values, "Restart")?.to_string();
+    ensure_systemctl_show_status(svc, properties, status, stderr, false)?;
+    Ok(restart)
 }
 
 fn unit_enabled_from_systemctl_is_enabled(
@@ -688,6 +715,84 @@ mod tests {
             .unwrap(),
             None
         );
+    }
+
+    #[test]
+    fn service_restart_policy_from_systemctl_show_returns_restart_value() {
+        use std::os::unix::process::ExitStatusExt;
+
+        let properties = ["Restart"];
+        let values = parse_systemctl_show_properties(
+            "vm0-runner-test.service",
+            &properties,
+            b"Restart=no\n",
+        )
+        .unwrap();
+        let status = ExitStatus::from_raw(0);
+
+        assert_eq!(
+            service_restart_policy_from_systemctl_show(
+                "vm0-runner-test.service",
+                &properties,
+                &status,
+                &values,
+                b"",
+            )
+            .unwrap(),
+            "no"
+        );
+    }
+
+    #[test]
+    fn service_restart_policy_from_systemctl_show_exposes_non_no_policy() {
+        use std::os::unix::process::ExitStatusExt;
+
+        let properties = ["Restart"];
+        let values = parse_systemctl_show_properties(
+            "vm0-runner-test.service",
+            &properties,
+            b"Restart=on-failure\n",
+        )
+        .unwrap();
+        let status = ExitStatus::from_raw(0);
+
+        assert_eq!(
+            service_restart_policy_from_systemctl_show(
+                "vm0-runner-test.service",
+                &properties,
+                &status,
+                &values,
+                b"",
+            )
+            .unwrap(),
+            "on-failure"
+        );
+    }
+
+    #[test]
+    fn service_restart_policy_from_systemctl_show_rejects_failed_status() {
+        use std::os::unix::process::ExitStatusExt;
+
+        let properties = ["Restart"];
+        let values = parse_systemctl_show_properties(
+            "vm0-runner-test.service",
+            &properties,
+            b"Restart=no\n",
+        )
+        .unwrap();
+        let status = ExitStatus::from_raw(0x100);
+        let err = service_restart_policy_from_systemctl_show(
+            "vm0-runner-test.service",
+            &properties,
+            &status,
+            &values,
+            b"Failed to connect to bus\n",
+        )
+        .unwrap_err();
+        let message = err.to_string();
+
+        assert!(message.contains("systemctl show vm0-runner-test.service --property=Restart"));
+        assert!(message.contains("Failed to connect to bus"));
     }
 
     #[test]

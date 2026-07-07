@@ -107,6 +107,7 @@ export const zeroWorkflowEventTypeSchema = z.enum([
   "google-calendar-event-cancelled",
   "google-meet-transcript-generated",
   "notion-child-page-created",
+  "notion-database-item-created",
   "webhook-received",
 ]);
 export type ZeroWorkflowEventType = z.infer<typeof zeroWorkflowEventTypeSchema>;
@@ -290,6 +291,18 @@ export const notionPageReferenceSchema = z
   .strict();
 export type NotionPageReference = z.infer<typeof notionPageReferenceSchema>;
 
+export const notionDataSourceReferenceSchema = z
+  .object({
+    id: z.string().uuid(),
+    url: z.url(),
+    title: z.string().nullable(),
+    rawUrl: z.string().min(1).max(2048).optional(),
+  })
+  .strict();
+export type NotionDataSourceReference = z.infer<
+  typeof notionDataSourceReferenceSchema
+>;
+
 export const notionChildPageCreatedEventConfigSchema = z
   .object({
     provider: z.literal("notion"),
@@ -312,7 +325,33 @@ export const notionChildPageCreatedEventCreateConfigSchema = z
 export type NotionChildPageCreatedEventCreateConfig = z.infer<
   typeof notionChildPageCreatedEventCreateConfigSchema
 >;
-export type NotionWorkflowEventConfig = NotionChildPageCreatedEventConfig;
+
+export const notionDatabaseItemCreatedEventConfigSchema = z
+  .object({
+    provider: z.literal("notion"),
+    event: z.literal("database_item_created"),
+    connectorId: z.string().uuid(),
+    dataSource: notionDataSourceReferenceSchema,
+  })
+  .strict();
+export type NotionDatabaseItemCreatedEventConfig = z.infer<
+  typeof notionDatabaseItemCreatedEventConfigSchema
+>;
+
+export const notionDatabaseItemCreatedEventCreateConfigSchema = z
+  .object({
+    provider: z.literal("notion"),
+    event: z.literal("database_item_created"),
+    databaseUrl: z.string().trim().min(1).max(2048),
+  })
+  .strict();
+export type NotionDatabaseItemCreatedEventCreateConfig = z.infer<
+  typeof notionDatabaseItemCreatedEventCreateConfigSchema
+>;
+
+export type NotionWorkflowEventConfig =
+  | NotionChildPageCreatedEventConfig
+  | NotionDatabaseItemCreatedEventConfig;
 
 /**
  * Schedule configuration, discriminated by `type`. Aligned with Automation's
@@ -432,6 +471,15 @@ export const zeroWorkflowNotionChildPageCreatedTriggerSummarySchema =
     scheduleSummary: z.null(),
   });
 
+export const zeroWorkflowNotionDatabaseItemCreatedTriggerSummarySchema =
+  zeroWorkflowTriggerSummaryBaseSchema.extend({
+    kind: z.literal("event"),
+    eventType: z.literal("notion-database-item-created"),
+    eventConfig: notionDatabaseItemCreatedEventConfigSchema,
+    schedule: z.null(),
+    scheduleSummary: z.null(),
+  });
+
 export const zeroWorkflowWebhookReceivedTriggerSummarySchema =
   zeroWorkflowTriggerSummaryBaseSchema.extend({
     kind: z.literal("event"),
@@ -456,6 +504,7 @@ export const zeroWorkflowEventTriggerSummarySchema = z.discriminatedUnion(
     zeroWorkflowGoogleCalendarEventCancelledTriggerSummarySchema,
     zeroWorkflowGoogleMeetTranscriptGeneratedTriggerSummarySchema,
     zeroWorkflowNotionChildPageCreatedTriggerSummarySchema,
+    zeroWorkflowNotionDatabaseItemCreatedTriggerSummarySchema,
     zeroWorkflowWebhookReceivedTriggerSummarySchema,
   ],
 );
@@ -562,6 +611,15 @@ export const chatThreadWorkflowNotionChildPageCreatedTriggerSchema =
     scheduleSummary: z.null(),
   });
 
+export const chatThreadWorkflowNotionDatabaseItemCreatedTriggerSchema =
+  chatThreadWorkflowTriggerBaseSchema.extend({
+    kind: z.literal("event"),
+    eventType: z.literal("notion-database-item-created"),
+    eventConfig: notionDatabaseItemCreatedEventConfigSchema,
+    schedule: z.null(),
+    scheduleSummary: z.null(),
+  });
+
 export const chatThreadWorkflowTriggerSchema = z.union([
   chatThreadWorkflowScheduleTriggerSchema,
   chatThreadWorkflowGmailNewMessageTriggerSchema,
@@ -572,6 +630,7 @@ export const chatThreadWorkflowTriggerSchema = z.union([
   chatThreadWorkflowGoogleCalendarEventCancelledTriggerSchema,
   chatThreadWorkflowGoogleMeetTranscriptGeneratedTriggerSchema,
   chatThreadWorkflowNotionChildPageCreatedTriggerSchema,
+  chatThreadWorkflowNotionDatabaseItemCreatedTriggerSchema,
 ]);
 export type ChatThreadWorkflowTrigger = z.infer<
   typeof chatThreadWorkflowTriggerSchema
@@ -671,6 +730,14 @@ export const zeroWorkflowNotionChildPageCreatedTriggerCreateRequestSchema =
     enabled: z.boolean().optional(),
   });
 
+export const zeroWorkflowNotionDatabaseItemCreatedTriggerCreateRequestSchema =
+  z.object({
+    kind: z.literal("event"),
+    eventType: z.literal("notion-database-item-created"),
+    eventConfig: notionDatabaseItemCreatedEventCreateConfigSchema,
+    enabled: z.boolean().optional(),
+  });
+
 export const zeroWorkflowWebhookReceivedTriggerCreateRequestSchema = z.object({
   kind: z.literal("event"),
   eventType: z.literal("webhook-received"),
@@ -688,6 +755,7 @@ export const zeroWorkflowTriggerCreateRequestSchema = z.union([
   zeroWorkflowGoogleCalendarEventCancelledTriggerCreateRequestSchema,
   zeroWorkflowGoogleMeetTranscriptGeneratedTriggerCreateRequestSchema,
   zeroWorkflowNotionChildPageCreatedTriggerCreateRequestSchema,
+  zeroWorkflowNotionDatabaseItemCreatedTriggerCreateRequestSchema,
   zeroWorkflowWebhookReceivedTriggerCreateRequestSchema,
 ]);
 export type ZeroWorkflowTriggerCreateRequest = z.infer<

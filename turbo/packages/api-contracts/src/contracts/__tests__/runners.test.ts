@@ -87,7 +87,7 @@ describe("runner storage manifest contract", () => {
     });
   });
 
-  it("accepts explicit empty artifact entries while keeping archive urls required", () => {
+  it("accepts explicit empty artifact entries with compatibility archive urls", () => {
     const manifest = storageManifestSchema.parse({
       storages: [],
       artifacts: [
@@ -106,6 +106,42 @@ describe("runner storage manifest contract", () => {
       archiveUrl: "https://storage.example/artifact.tar.gz",
       empty: true,
     });
+  });
+
+  it("accepts explicit empty artifact entries without archive urls", () => {
+    const manifest = storageManifestSchema.parse({
+      storages: [],
+      artifacts: [
+        {
+          mountPath: "/home/user/.claude/projects/project",
+          vasStorageName: "memory",
+          vasStorageId: "storage-id-1",
+          vasVersionId: "version-2",
+          empty: true,
+        },
+      ],
+    });
+
+    expect(manifest.artifacts[0]).toMatchObject({
+      empty: true,
+    });
+    expect(manifest.artifacts[0]?.archiveUrl).toBeUndefined();
+  });
+
+  it("rejects non-empty artifact entries without archive urls", () => {
+    const result = storageManifestSchema.safeParse({
+      storages: [],
+      artifacts: [
+        {
+          mountPath: "/home/user/.claude/projects/project",
+          vasStorageName: "memory",
+          vasStorageId: "storage-id-1",
+          vasVersionId: "version-2",
+        },
+      ],
+    });
+
+    expect(result.success).toBe(false);
   });
 
   it("rejects guest-download-only nullable archive urls", () => {

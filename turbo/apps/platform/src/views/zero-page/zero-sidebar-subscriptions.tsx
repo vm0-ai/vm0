@@ -1,6 +1,5 @@
 import { useGet, useLoadable } from "ccstate-react";
 import {
-  DropdownMenuItem,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -17,8 +16,9 @@ import {
   type AccountMenuSubscriptionUsageWindow,
   type AccountMenuSubscriptionUsageRowsCacheKey,
 } from "../../signals/zero-page/account-menu-subscriptions.ts";
-import { runAfterDropdownMenuClose } from "../components/dropdown-menu-modal-action.ts";
+import { DropdownMenuModalItem } from "../components/dropdown-menu-modal-item.tsx";
 import { formatCodexResetCredits } from "./components/preferences/codex-reset-usage-dialog.tsx";
+import { formatSubscriptionUsageReset } from "./subscription-usage-format.ts";
 
 type SubscriptionUsage = AccountMenuSubscriptionUsage;
 type SubscriptionUsageWindow = AccountMenuSubscriptionUsageWindow;
@@ -151,12 +151,10 @@ function AccountMenuSubscriptionProviderSection({
         })}
       </div>
       {type === "codex-oauth-token" ? (
-        <DropdownMenuItem
+        <DropdownMenuModalItem
           disabled={!canResetCodex || resetPending}
-          onSelect={() => {
-            runAfterDropdownMenuClose(() => {
-              onResetCodexUsage?.(resetCredits ?? null);
-            });
+          onModalSelect={() => {
+            onResetCodexUsage?.(resetCredits ?? null);
           }}
           className="mt-1 flex h-7 items-center justify-between gap-2 rounded-md px-2 py-1 text-xs"
         >
@@ -164,7 +162,7 @@ function AccountMenuSubscriptionProviderSection({
             {formatCodexResetCredits(resetCredits)}
           </span>
           <span className="shrink-0 font-medium text-foreground">Reset</span>
-        </DropdownMenuItem>
+        </DropdownMenuModalItem>
       ) : null}
     </section>
   );
@@ -187,7 +185,7 @@ function AccountMenuSubscriptionUsageBar({
       ? rawRemainingPercent
       : null;
   const displayPercent = formatUsagePercent(remainingPercent);
-  const resetText = formatUsageReset(window.resetAt);
+  const reset = formatSubscriptionUsageReset(window.resetAt);
   const tone = usageTone(remainingPercent);
   const width =
     remainingPercent === null
@@ -216,8 +214,19 @@ function AccountMenuSubscriptionUsageBar({
             />
           </span>
         </TooltipTrigger>
-        <TooltipContent side="right" align="center">
-          <p className="text-xs">{resetText ?? "Reset time unavailable"}</p>
+        <TooltipContent side="right" align="center" className="max-w-56">
+          {reset === null ? (
+            <p className="text-xs">Reset time unavailable</p>
+          ) : "fallbackText" in reset ? (
+            <p className="text-xs">{reset.fallbackText}</p>
+          ) : (
+            <div className="space-y-0.5">
+              <p className="text-xs font-medium">{reset.tooltipTitle}</p>
+              <p className="text-[10px] text-muted-foreground">
+                {reset.absoluteText}
+              </p>
+            </div>
+          )}
         </TooltipContent>
       </Tooltip>
       <span
@@ -235,30 +244,6 @@ function formatUsagePercent(value: number | null): string | null {
   }
   const rounded = Math.round(value * 10) / 10;
   return Number.isInteger(rounded) ? `${rounded}%` : `${rounded.toFixed(1)}%`;
-}
-
-function formatUsageReset(resetAt: string | null): string | null {
-  const text = resetAt?.trim();
-  if (!text) {
-    return null;
-  }
-  const date = new Date(text);
-  if (Number.isNaN(date.getTime())) {
-    return `resets ${text}`;
-  }
-  const options: Intl.DateTimeFormatOptions = {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    timeZoneName: "short",
-  };
-  const browserTimeZone = new Intl.DateTimeFormat().resolvedOptions().timeZone;
-  if (browserTimeZone) {
-    options.timeZone = browserTimeZone;
-  }
-  return `resets ${date.toLocaleDateString("en-US", options)}`;
 }
 
 function usageTone(remainingPercent: number | null): {

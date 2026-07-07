@@ -20,11 +20,11 @@ use crate::paths;
 use super::codex_app_server::{
     CodexAppServerClient, CodexAppServerConfig, CodexAppServerError, ServerNotification,
 };
+use super::codex_app_server_events::{IGNORED_NOTIFICATION_METHODS, notification_to_codex_event};
 use super::event_delivery::{AckedEventPrefix, PreparedEvent};
 use super::{
     CliEventIngestor, CliExecutionResult, CliRuntimeConfig, HeartbeatMonitor, HeartbeatStatus,
-    LOG_TAG, ParsedEventAction, codex_app_server_events::IGNORED_NOTIFICATION_METHODS, command,
-    notification_to_codex_event,
+    LOG_TAG, ParsedEventAction, command,
 };
 use crate::active_input::{ActiveInputFrame, ActiveInputWriter};
 use guest_common::{log_info, log_warn};
