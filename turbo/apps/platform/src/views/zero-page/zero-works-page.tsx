@@ -33,9 +33,7 @@ import {
 } from "../../signals/zero-page/zero-slack.ts";
 import {
   disconnectTeamsOrg$,
-  setTeamsInstallStarted$,
   teamsOrgData$,
-  teamsInstallStarted$,
   showTeamsUninstallDialog$,
   setShowTeamsUninstallDialog$,
   uninstallTeamsOrg$,
@@ -314,8 +312,6 @@ function TeamsCardActions({
   isAdmin,
   installUrl,
   connectUrl,
-  installStarted,
-  onInstallStarted,
   connectedDetail,
   onDisconnect,
   onUninstall,
@@ -326,34 +322,32 @@ function TeamsCardActions({
   isAdmin: boolean;
   installUrl: string | null | undefined;
   connectUrl: string | null | undefined;
-  installStarted: boolean;
-  onInstallStarted: () => void;
   connectedDetail?: string | null;
   onDisconnect: () => void;
   onUninstall: () => void;
   disconnecting: boolean;
 }) {
+  const installActionUrl = connectUrl ?? installUrl;
   return (
     <>
       {isConnected ? (
         <TeamsConnectedIndicator connectedDetail={connectedDetail} />
       ) : null}
-      {!isInstalled && isAdmin && installUrl && !installStarted && (
+      {!isInstalled && isAdmin && installActionUrl && (
         <Button
           data-testid="teams-install-button"
           variant="outline"
           size="sm"
           className="h-8 shrink-0 gap-1.5 rounded-lg"
           onClick={() => {
-            onInstallStarted();
-            window.open(installUrl, "_blank");
+            return openFreshOAuth(installActionUrl);
           }}
         >
           <IconDownload size={14} stroke={1.5} />
           Install in Teams
         </Button>
       )}
-      {(isInstalled || installStarted) && !isConnected && connectUrl && (
+      {isInstalled && !isConnected && connectUrl && (
         <Button
           data-testid="teams-connect-button"
           variant="outline"
@@ -418,8 +412,6 @@ function TeamsCard({ displayName }: { displayName: string }) {
   const [uninstallLoadable, uninstall] = useLoadableSet(uninstallTeamsOrg$);
   const uninstalling = uninstallLoadable.state === "loading";
   const pageSignal = useGet(pageSignal$);
-  const installStarted = useGet(teamsInstallStarted$);
-  const setTeamsInstallStarted = useSet(setTeamsInstallStarted$);
 
   const showUninstallDialog = useGet(showTeamsUninstallDialog$);
   const setShowUninstallDialog = useSet(setShowTeamsUninstallDialog$);
@@ -431,11 +423,9 @@ function TeamsCard({ displayName }: { displayName: string }) {
   const description =
     !isInstalled && !isAdmin
       ? "Ask your admin to install the Microsoft Teams integration"
-      : !isInstalled && installStarted
-        ? "Connect your Microsoft account after installing Teams"
-        : isInstalled && !isConnected
-          ? "Connect your Microsoft account to finish setup"
-          : "Team communication and collaboration";
+      : isInstalled && !isConnected
+        ? "Connect your Microsoft account to finish setup"
+        : "Team communication and collaboration";
 
   return (
     <>
@@ -456,10 +446,6 @@ function TeamsCard({ displayName }: { displayName: string }) {
             isAdmin={isAdmin}
             installUrl={teamsData?.installUrl}
             connectUrl={teamsData?.connectUrl}
-            installStarted={installStarted}
-            onInstallStarted={() => {
-              setTeamsInstallStarted(true);
-            }}
             connectedDetail={connectedDetail}
             disconnecting={disconnecting}
             onDisconnect={() => {

@@ -8,7 +8,7 @@
 #
 # If git email is @vm0.ai, creates a named tunnel with fixed domain:
 #   tunnel-<username>-<hostname>-<service>.vm7.ai
-# Port-to-service mapping: 3000=web, 3001=docs, 3002=app
+# Port-to-service mapping: 3000=www, 3001=api, 3002=app
 # Otherwise, creates an anonymous quick tunnel:
 #   <random>.trycloudflare.com
 #
@@ -53,6 +53,35 @@ fi
 TUNNEL_LOG="/tmp/cloudflared-${PORT}.log"
 TUNNEL_PIDFILE="/tmp/cloudflared-${PORT}.pid"
 
+stop_existing_tunnel() {
+  local pid
+
+  pid="$(cat "$TUNNEL_PIDFILE" 2>/dev/null || true)"
+  if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+    log "Stopping existing tunnel for port ${PORT} (pid: ${pid})"
+    kill "$pid" 2>/dev/null || true
+    for _ in {1..10}; do
+      if ! kill -0 "$pid" 2>/dev/null; then
+        break
+      fi
+      sleep 0.2
+    done
+    if kill -0 "$pid" 2>/dev/null; then
+      kill -9 "$pid" 2>/dev/null || true
+    fi
+  fi
+
+  rm -f "$TUNNEL_PIDFILE"
+}
+
+start_cloudflared() {
+  if command -v setsid >/dev/null 2>&1; then
+    setsid "$@" > "$TUNNEL_LOG" 2>&1 < /dev/null &
+  else
+    "$@" > "$TUNNEL_LOG" 2>&1 < /dev/null &
+  fi
+}
+
 # --- Determine mode based on git email or TUNNEL_HOSTNAME override ---
 if [[ -n "${TUNNEL_HOSTNAME:-}" ]]; then
   MODE="named"
@@ -72,7 +101,7 @@ else
     # Map well-known ports to service names
     case "$PORT" in
       3000) SERVICE="www" ;;
-      3001) SERVICE="docs" ;;
+      3001) SERVICE="api" ;;
       3002) SERVICE="app" ;;
       *)    SERVICE="$PORT" ;;
     esac
@@ -161,16 +190,20 @@ ingress:
   - service: http_status:404
 EOF
 
-  # Start tunnel with token (no cert.pem needed)
+  # Start tunnel with token from the environment (no cert.pem needed).
   # QUIC fails in devcontainer environment, must use HTTP/2
-  cloudflared tunnel --config "$CONFIG_FILE" --protocol http2 run --token "$TUNNEL_TOKEN" > "$TUNNEL_LOG" 2>&1 &
+  export TUNNEL_TOKEN
+  unset CF_DNS_AND_TUNNEL_API_TOKEN CF_ACCOUNT_ID
+  stop_existing_tunnel
+  start_cloudflared cloudflared tunnel --config "$CONFIG_FILE" --protocol http2 run
 
 else
   log "Anonymous tunnel: localhost:${PORT}"
 
   # Start quick tunnel in background
   # QUIC fails in devcontainer environment, must use HTTP/2
-  cloudflared tunnel --url "http://localhost:${PORT}" --protocol http2 > "$TUNNEL_LOG" 2>&1 &
+  stop_existing_tunnel
+  start_cloudflared cloudflared tunnel --url "http://localhost:${PORT}" --protocol http2
 fi
 
 TUNNEL_PID=$!

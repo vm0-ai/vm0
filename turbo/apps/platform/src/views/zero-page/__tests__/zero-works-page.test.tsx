@@ -8,7 +8,7 @@ import {
 } from "@vm0/api-contracts/contracts/zero-teams-connect";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { screen, waitFor } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { click, detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -125,6 +125,7 @@ describe("works page", () => {
   });
 
   it("shows Microsoft Teams admin install controls", async () => {
+    const openSpy = vi.spyOn(window, "open").mockReturnValue(null);
     mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
     mockTeamsAPI({ isConnected: false, isInstalled: false, isAdmin: true });
 
@@ -132,6 +133,16 @@ describe("works page", () => {
 
     const installButton = await screen.findByTestId("teams-install-button");
     expect(installButton).toHaveTextContent("Install in Teams");
+    click(installButton);
+
+    expect(openSpy).toHaveBeenCalledTimes(1);
+    const [openedUrl, target] = openSpy.mock.calls[0] ?? [];
+    expect(typeof openedUrl).toBe("string");
+    expect(target).toBe("_blank");
+    const url = new URL(String(openedUrl), window.location.origin);
+    expect(url.pathname).toBe("/api/zero/teams/oauth/connect");
+    expect(url.searchParams.get("orgId")).toBe("org_1");
+    expect(url.searchParams.get("vm0UserId")).toBe("user_1");
   });
 
   it("shows Microsoft Teams connect controls after installation", async () => {

@@ -10,7 +10,6 @@ import { setAblyLoop$ } from "../realtime.ts";
 
 const internalReload$ = state(0);
 const internalTeamsStatus$ = state<TeamsConnectStatus | null>(null);
-const teamsInstallStartedState$ = state(false);
 
 export const teamsOrgData$ = computed(async (get) => {
   get(internalReload$);
@@ -71,16 +70,6 @@ export const setShowTeamsUninstallDialog$ = command(
   },
 );
 
-export const teamsInstallStarted$ = computed((get) => {
-  return get(teamsInstallStartedState$);
-});
-
-export const setTeamsInstallStarted$ = command(
-  ({ set }, installStarted: boolean) => {
-    set(teamsInstallStartedState$, installStarted);
-  },
-);
-
 export const disconnectTeamsOrg$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const client = get(zeroClient$)(zeroTeamsConnectContract);
@@ -95,7 +84,6 @@ export const uninstallTeamsOrg$ = command(
     const client = get(zeroClient$)(zeroTeamsConnectContract);
     await accept(client.disconnect({ query: { action: "uninstall" } }), [200]);
     signal.throwIfAborted();
-    set(teamsInstallStartedState$, false);
     set(reloadTeamsOrg$);
   },
 );

@@ -30,6 +30,8 @@ const APP_ORIGIN = "https://app.vm0.test";
 const MICROSOFT_TOKEN_URL =
   "https://login.microsoftonline.com/common/oauth2/v2.0/token";
 const MICROSOFT_ME_URL = "https://graph.microsoft.com/v1.0/me";
+const TEAMS_APP_ID = "00000000-0000-0000-0000-000000000001";
+const TEAMS_APP_TENANT_ID = "11111111-1111-1111-1111-111111111111";
 
 async function appRequest(
   path: string,
@@ -66,6 +68,14 @@ function callbackPath(args: {
   }
   params.set("state", JSON.stringify(args.state));
   return `/api/zero/teams/oauth/callback?${params.toString()}`;
+}
+
+function teamsInstallUrl(tenantId: string): string {
+  const url = new URL(`https://teams.microsoft.com/l/app/${TEAMS_APP_ID}`);
+  url.searchParams.set("installAppPackage", "true");
+  url.searchParams.set("appTenantId", TEAMS_APP_TENANT_ID);
+  url.searchParams.set("tenantId", tenantId);
+  return url.toString();
 }
 
 function mockMicrosoftOAuth(args: {
@@ -108,6 +118,14 @@ async function seedMembership(
   role: "admin" | "member" = "admin",
 ): Promise<void> {
   await store.set(seedOrgMembership$, { orgId, userId, role }, context.signal);
+}
+
+async function uninstalledTeamsFixture(
+  track: (
+    fixturePromise: Promise<TeamsConnectFixture>,
+  ) => Promise<TeamsConnectFixture>,
+): Promise<TeamsConnectFixture> {
+  return await track(Promise.resolve(teamsConnectFixture()));
 }
 
 async function seedTeamsInstallation(
@@ -174,6 +192,57 @@ describe("Teams OAuth API routes", () => {
     );
   });
 
+  it("prepares a Teams install after OAuth and binds it when Teams sends installation metadata", async () => {
+    const fixture = await uninstalledTeamsFixture(track);
+    await seedMembership(fixture.orgId, fixture.userId, "admin");
+    mockMicrosoftOAuth({
+      tenantId: fixture.teamsTenantId,
+      aadObjectId: fixture.teamsAadObjectId,
+    });
+
+    const response = await appRequest(
+      callbackPath({
+        code: "valid-code",
+        state: { orgId: fixture.orgId, vm0UserId: fixture.userId },
+      }),
+      { origin: WEB_ORIGIN },
+    );
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(
+      teamsInstallUrl(fixture.teamsTenantId),
+    );
+
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    const client = setupApp({ context })(zeroTeamsConnectContract);
+    const pendingStatus = await accept(
+      client.getStatus({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(pendingStatus.body).toMatchObject({
+      isInstalled: false,
+      isConnected: false,
+      installUrl: teamsInstallUrl(fixture.teamsTenantId),
+    });
+
+    await installTeamsForTest(context.signal, fixture);
+    const installedStatus = await accept(
+      client.getStatus({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(installedStatus.body).toMatchObject({
+      isInstalled: true,
+      isConnected: true,
+      installUrl: null,
+      connectUrl: null,
+      tenantId: fixture.teamsTenantId,
+    });
+  });
+
   it("connects and binds an unbound Teams installation using Microsoft OAuth", async () => {
     const fixture = await seedTeamsInstallation(track);
     await seedMembership(fixture.orgId, fixture.userId, "admin");
@@ -211,9 +280,23 @@ describe("Teams OAuth API routes", () => {
     });
   });
 
-  it("rejects OAuth users from a different Microsoft tenant", async () => {
+  it("rejects OAuth users when the org is already bound to another Microsoft tenant", async () => {
     const fixture = await seedTeamsInstallation(track);
     await seedMembership(fixture.orgId, fixture.userId, "admin");
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    const client = setupApp({ context })(zeroTeamsConnectContract);
+    await accept(
+      client.connect({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          tenantId: fixture.teamsTenantId,
+          teamsUserId: fixture.teamsUserId,
+          teamsAadObjectId: fixture.teamsAadObjectId,
+        },
+      }),
+      [200],
+    );
+
     mockMicrosoftOAuth({
       tenantId: "tenant-other",
       aadObjectId: fixture.teamsAadObjectId,
@@ -231,7 +314,7 @@ describe("Teams OAuth API routes", () => {
     const location = response.headers.get("location");
     expect(location).toContain(`${APP_ORIGIN}/settings/teams?error=`);
     expect(new URL(location!).searchParams.get("error")).toContain(
-      "Teams installation not found",
+      "active organization doesn't match",
     );
   });
 });

@@ -28,6 +28,14 @@ type TeamsConnectResult =
       readonly installation: TeamsInstallation;
     };
 
+type TeamsPrepareInstallResult =
+  | { readonly kind: "forbidden"; readonly message: string }
+  | {
+      readonly kind: "ok";
+      readonly connectionId: string;
+      readonly installation: TeamsInstallation;
+    };
+
 type TeamsDisconnectResult =
   | { readonly kind: "not_found"; readonly message: string }
   | {
@@ -125,7 +133,7 @@ function buildTeamsOauthConnectUrl(args: {
   return url.toString();
 }
 
-function buildTeamsInstallUrl(tenantId?: string | null): string | null {
+export function buildTeamsInstallUrl(tenantId?: string | null): string | null {
   const appId = env("MICROSOFT_TEAMS_BOT_APP_ID");
   if (!appId) {
     return null;
@@ -138,6 +146,14 @@ function buildTeamsInstallUrl(tenantId?: string | null): string | null {
   }
   setOptionalParam(url.searchParams, "tenantId", tenantId);
   return url.toString();
+}
+
+export function isTeamsInstallationActive(
+  installation: TeamsInstallation,
+): boolean {
+  return Boolean(
+    installation.serviceUrl || installation.teamsAppId || installation.botId,
+  );
 }
 
 export function buildTeamsConnectUrlForActivity(args: {
@@ -379,12 +395,12 @@ export function zeroTeamsConnectStatus(args: {
       .where(eq(teamsOrgInstallations.orgId, args.orgId))
       .limit(1);
 
-    if (!installation) {
+    if (!installation || !isTeamsInstallationActive(installation)) {
       return {
         isInstalled: false,
         isConnected: false,
         isAdmin: args.isAdmin,
-        installUrl: buildTeamsInstallUrl(),
+        installUrl: buildTeamsInstallUrl(installation?.teamsTenantId),
         connectUrl: args.isAdmin
           ? buildTeamsOauthConnectUrl({
               orgId: args.orgId,
@@ -483,6 +499,86 @@ type ConnectTeamsInstallationArgs = {
   readonly teamName?: string;
   readonly serviceUrl?: string;
 };
+
+export const prepareTeamsInstallation$ = command(
+  async (
+    { get, set },
+    args: ConnectTeamsInstallationArgs,
+    signal: AbortSignal,
+  ): Promise<TeamsPrepareInstallResult> => {
+    if (args.orgRole !== "admin") {
+      return { kind: "forbidden", message: adminRequiredMessage };
+    }
+
+    const writeDb = set(writeDb$);
+    const [existingForOrg] = await writeDb
+      .select()
+      .from(teamsOrgInstallations)
+      .where(eq(teamsOrgInstallations.orgId, args.orgId))
+      .limit(1);
+    signal.throwIfAborted();
+
+    if (existingForOrg && existingForOrg.teamsTenantId !== args.tenantId) {
+      return { kind: "forbidden", message: orgMismatchMessage };
+    }
+
+    const [existingForTenant] = await writeDb
+      .select()
+      .from(teamsOrgInstallations)
+      .where(eq(teamsOrgInstallations.teamsTenantId, args.tenantId))
+      .limit(1);
+    signal.throwIfAborted();
+
+    if (existingForTenant?.orgId && existingForTenant.orgId !== args.orgId) {
+      return { kind: "forbidden", message: orgMismatchMessage };
+    }
+
+    const [installation] = await writeDb
+      .insert(teamsOrgInstallations)
+      .values({
+        teamsTenantId: args.tenantId,
+        orgId: args.orgId,
+        installedByUserId: args.userId,
+      })
+      .onConflictDoUpdate({
+        target: teamsOrgInstallations.teamsTenantId,
+        set: {
+          orgId: args.orgId,
+          installedByUserId: args.userId,
+          updatedAt: nowDate(),
+        },
+      })
+      .returning();
+    signal.throwIfAborted();
+
+    if (!installation) {
+      throw new Error("Failed to prepare Teams installation");
+    }
+
+    const connectionId = await upsertTeamsConnection(writeDb, {
+      teamsUserId: args.teamsUserId,
+      teamsAadObjectId: args.teamsAadObjectId,
+      teamsTenantId: args.tenantId,
+      vm0UserId: args.userId,
+      teamsUserDisplayName: args.teamsUserDisplayName,
+      teamsUserPrincipalName: args.teamsUserPrincipalName,
+    });
+    signal.throwIfAborted();
+
+    await get(
+      ensureUserArtifactStorage({
+        db: writeDb,
+        orgId: args.orgId,
+        userId: args.userId,
+        name: "artifact",
+        bucket: env("R2_USER_STORAGES_BUCKET_NAME"),
+      }),
+    );
+    signal.throwIfAborted();
+
+    return { kind: "ok", connectionId, installation };
+  },
+);
 
 export const connectTeamsInstallation$ = command(
   async (

@@ -8,7 +8,10 @@ import { request$ } from "../context/hono";
 import { queryOf } from "../context/request";
 import { getMemberRoleAndUpdateCache$ } from "../services/auth.service";
 import {
+  buildTeamsInstallUrl,
   connectTeamsInstallation$,
+  isTeamsInstallationActive,
+  prepareTeamsInstallation$,
   publishTeamsChanged$,
 } from "../services/zero-teams-connect.service";
 import { safeJsonParse, settle } from "../utils";
@@ -94,6 +97,16 @@ function settingsSuccessRedirect(args: {
     params.set("teamName", args.teamName);
   }
   return redirectResponse(appUrl(`/settings/teams?${params.toString()}`));
+}
+
+function teamsInstallRedirect(tenantId: string): Response {
+  const installUrl = buildTeamsInstallUrl(tenantId);
+  if (!installUrl) {
+    return settingsErrorRedirect(
+      "Microsoft Teams integration is not configured.",
+    );
+  }
+  return noStoreRedirect(installUrl);
 }
 
 function truncatePrompt(prompt: string): string {
@@ -337,25 +350,41 @@ const callbackOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
     throw new Error("You are not a member of this organization");
   }
 
-  const result = await set(
-    connectTeamsInstallation$,
-    {
-      userId: state.vm0UserId,
-      orgId: state.orgId,
-      orgRole: member.role,
-      tenantId: exchange.value.tenantId,
-      teamsAadObjectId: exchange.value.user.id,
-      teamsUserDisplayName: exchange.value.user.displayName ?? undefined,
-      teamsUserPrincipalName:
-        exchange.value.user.userPrincipalName ??
-        exchange.value.user.mail ??
-        undefined,
-    },
-    signal,
-  );
+  const connectArgs = {
+    userId: state.vm0UserId,
+    orgId: state.orgId,
+    orgRole: member.role,
+    tenantId: exchange.value.tenantId,
+    teamsAadObjectId: exchange.value.user.id,
+    teamsUserDisplayName: exchange.value.user.displayName ?? undefined,
+    teamsUserPrincipalName:
+      exchange.value.user.userPrincipalName ??
+      exchange.value.user.mail ??
+      undefined,
+  };
+
+  const result = await set(connectTeamsInstallation$, connectArgs, signal);
   signal.throwIfAborted();
 
-  if (result.kind !== "ok") {
+  if (result.kind === "not_found") {
+    const prepared = await set(prepareTeamsInstallation$, connectArgs, signal);
+    signal.throwIfAborted();
+
+    if (prepared.kind !== "ok") {
+      return settingsErrorRedirect(prepared.message);
+    }
+
+    await set(
+      publishTeamsChanged$,
+      { orgId: state.orgId, userIds: [state.vm0UserId] },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    return teamsInstallRedirect(exchange.value.tenantId);
+  }
+
+  if (result.kind === "forbidden") {
     return settingsErrorRedirect(result.message);
   }
 
@@ -365,6 +394,10 @@ const callbackOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
     signal,
   );
   signal.throwIfAborted();
+
+  if (!isTeamsInstallationActive(result.installation)) {
+    return teamsInstallRedirect(result.installation.teamsTenantId);
+  }
 
   return settingsSuccessRedirect({
     tenantName: result.installation.teamsTenantName,
