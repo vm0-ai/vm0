@@ -376,6 +376,8 @@ install_packages() {
     chromium_version=149.0.7827.196-1~deb12u1
     chromium_arch="$(dpkg --print-architecture)"
     chromium_snapshot_base=https://snapshot.debian.org/archive/debian-security/20260626T014759Z/pool/updates/main/c/chromium
+    chromium_deb_dir="$(mktemp -d)"
+    trap '\''rm -rf "$chromium_deb_dir"'\'' EXIT
     {
       curl -fsSL https://ftp-master.debian.org/keys/archive-key-12.asc
       curl -fsSL https://ftp-master.debian.org/keys/archive-key-12-security.asc
@@ -386,10 +388,13 @@ deb [signed-by=/usr/share/keyrings/debian-bookworm.gpg] http://deb.debian.org/de
 deb [signed-by=/usr/share/keyrings/debian-bookworm.gpg] http://security.debian.org/debian-security bookworm-security main
 EOF
     apt-get update
+    for chromium_package in chromium chromium-common chromium-sandbox; do
+      curl -fsSL \
+        -o "${chromium_deb_dir}/${chromium_package}.deb" \
+        "${chromium_snapshot_base}/${chromium_package}_${chromium_version}_${chromium_arch}.deb"
+    done
     apt-get install -y -t bookworm \
-      "${chromium_snapshot_base}/chromium_${chromium_version}_${chromium_arch}.deb" \
-      "${chromium_snapshot_base}/chromium-common_${chromium_version}_${chromium_arch}.deb" \
-      "${chromium_snapshot_base}/chromium-sandbox_${chromium_version}_${chromium_arch}.deb"
+      "$chromium_deb_dir"/*.deb
     rm -f /etc/apt/sources.list.d/debian-bookworm.list \
          /usr/share/keyrings/debian-bookworm.gpg
     rm -rf /var/lib/apt/lists/* /var/cache/apt/*
