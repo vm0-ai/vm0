@@ -204,7 +204,7 @@ impl FirewallApi {
         if self.base.is_empty() {
             return Err("base must be non-empty".to_string());
         }
-        validate_static_firewall_base_for_cache(&self.base)?;
+        validate_firewall_base_for_cache(&self.base)?;
         self.auth.validate_for_cache()?;
         if let Some(host_policy) = &self.host_policy {
             host_policy.validate_for_cache()?;
@@ -398,8 +398,8 @@ fn is_unsafe_url_codepoint(ch: char) -> bool {
     ch < '\u{0020}' || ch == '\u{007f}'
 }
 
-fn validate_static_firewall_base_for_cache(base: &str) -> Result<(), String> {
-    if base.contains("${{") || base.contains('{') || base.contains('}') {
+fn validate_firewall_base_for_cache(base: &str) -> Result<(), String> {
+    if base.contains("${{") {
         return Ok(());
     }
     if base.contains('\\') {
@@ -410,6 +410,15 @@ fn validate_static_firewall_base_for_cache(base: &str) -> Result<(), String> {
     }
     if base.chars().any(is_unsafe_url_codepoint) {
         return Err("base URL must not contain control characters".to_string());
+    }
+    if base.contains('?') {
+        return Err("base URL must not contain query string".to_string());
+    }
+    if base.contains('#') {
+        return Err("base URL must not contain fragment".to_string());
+    }
+    if base.contains('{') || base.contains('}') {
+        return validate_parameterized_firewall_base_for_cache(base);
     }
     let parsed = url::Url::parse(base).map_err(|_| "base URL is invalid".to_string())?;
     let scheme = parsed.scheme();
@@ -427,6 +436,125 @@ fn validate_static_firewall_base_for_cache(base: &str) -> Result<(), String> {
     }
     if parsed.fragment().is_some() {
         return Err("base URL must not contain fragment".to_string());
+    }
+    Ok(())
+}
+
+fn validate_parameterized_firewall_base_for_cache(base: &str) -> Result<(), String> {
+    let Some((scheme, rest)) = base.split_once("://") else {
+        return Err("base URL missing scheme".to_string());
+    };
+    if scheme.contains('{') || scheme.contains('}') {
+        return Err("base URL scheme must not contain parameters".to_string());
+    }
+    if scheme != "http" && scheme != "https" {
+        return Err("base URL scheme must be http or https".to_string());
+    }
+
+    let (authority, path) = rest
+        .split_once('/')
+        .map_or((rest, ""), |(authority, path)| (authority, path));
+    if authority.is_empty() {
+        return Err("base URL must include a host".to_string());
+    }
+    if authority.contains('@') {
+        return Err("base URL must not contain userinfo".to_string());
+    }
+
+    let host = parameterized_base_host(authority)?;
+    let mut param_names = HashSet::new();
+    validate_parameterized_firewall_base_host(host, &mut param_names)?;
+    validate_parameterized_firewall_base_path(path, &mut param_names)?;
+    Ok(())
+}
+
+fn parameterized_base_host(authority: &str) -> Result<&str, String> {
+    if authority.ends_with(':') {
+        return Err("base URL authority must not include an empty port".to_string());
+    }
+    if authority.contains('[') || authority.contains(']') {
+        return Err("parameterized base URL authority must not be bracketed".to_string());
+    }
+    if authority.contains('%') {
+        return Err(
+            "parameterized base URL authority must not contain percent encoding".to_string(),
+        );
+    }
+    let Some((host, port)) = authority.rsplit_once(':') else {
+        return Ok(authority);
+    };
+    if !port.chars().all(|ch| ch.is_ascii_digit()) {
+        return Err("base URL authority has invalid port".to_string());
+    }
+    if host.is_empty() {
+        return Err("base URL must include a host".to_string());
+    }
+    Ok(host)
+}
+
+fn validate_parameterized_firewall_base_host(
+    host: &str,
+    param_names: &mut HashSet<String>,
+) -> Result<(), String> {
+    let segments: Vec<&str> = host.split('.').collect();
+    if segments.len() < 2 {
+        return Err("base URL host must have at least two segments".to_string());
+    }
+
+    let mut has_static_segment = false;
+    for (index, segment) in segments.iter().enumerate() {
+        if segment.is_empty() {
+            return Err("base URL host segments must be non-empty".to_string());
+        }
+        let Some(param) = parse_firewall_rule_segment(segment)? else {
+            has_static_segment = true;
+            continue;
+        };
+        if !param_names.insert(param.name.to_string()) {
+            return Err(format!(
+                "duplicate parameter name {:?} in base URL host",
+                param.name
+            ));
+        }
+        if param.greedy && index != 0 {
+            return Err(format!(
+                "greedy parameter {:?} must be the first host segment",
+                param.name
+            ));
+        }
+        if param.greedy && param.mixed_with_literal {
+            return Err(format!(
+                "greedy parameter {:?} cannot be combined with a literal prefix or suffix in base URL host",
+                param.name
+            ));
+        }
+    }
+    if !has_static_segment {
+        return Err("base URL host must have at least one static segment".to_string());
+    }
+    Ok(())
+}
+
+fn validate_parameterized_firewall_base_path(
+    path: &str,
+    param_names: &mut HashSet<String>,
+) -> Result<(), String> {
+    for segment in path.split('/') {
+        let Some(param) = parse_firewall_rule_segment(segment)? else {
+            continue;
+        };
+        if param.greedy {
+            return Err(format!(
+                "greedy parameter {:?} is not allowed in base URL path",
+                param.name
+            ));
+        }
+        if !param_names.insert(param.name.to_string()) {
+            return Err(format!(
+                "duplicate parameter name {:?} in base URL path",
+                param.name
+            ));
+        }
     }
     Ok(())
 }
