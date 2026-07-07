@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -33,10 +34,16 @@ def test_registered_flow_metadata_keys_use_registry_constants():
 
 
 def test_check_flow_metadata_keys_cli_passes_current_repository():
+    env = {
+        **os.environ,
+        "PATH": f"{Path(sys.executable).parent}{os.pathsep}{os.environ.get('PATH', '')}",
+    }
+
     # Trusted workspace tooling with constant argv; no user-controlled shell input.
     result = subprocess.run(  # noqa: S603
         [str(_CHECK_SCRIPT)],
         cwd=_ADDON_ROOT,
+        env=env,
         text=True,
         capture_output=True,
         check=False,
