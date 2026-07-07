@@ -43,6 +43,7 @@ import {
   IconLink,
   IconLoader2,
   IconMessageCircle,
+  IconMoodPlus,
   IconPackage,
   IconPresentation,
   IconRoute,
@@ -56,13 +57,8 @@ import {
 import {
   cn,
   Button,
+  Input,
   Skeleton,
-  getShortcutParts,
-  DropdownMenu as UiDropdownMenu,
-  DropdownMenuContent as UiDropdownMenuContent,
-  DropdownMenuItem as UiDropdownMenuItem,
-  DropdownMenuSeparator as UiDropdownMenuSeparator,
-  DropdownMenuTrigger as UiDropdownMenuTrigger,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -258,6 +254,13 @@ import {
   removeChatThreadEmoji,
   CHAT_THREAD_EMOJI_OPTIONS,
 } from "../../signals/chat-page/chat-thread-title.ts";
+import {
+  chatThreadEmojiGroups$,
+  chatThreadEmojiQuery$,
+  filterChatThreadEmojiGroups,
+  setChatThreadEmojiQuery$,
+  type ChatThreadEmojiItem,
+} from "../../signals/chat-page/chat-thread-emoji.ts";
 import type { ChatThread } from "../../signals/agent-chat.ts";
 import { ATTACH_ONLY_PLACEHOLDER } from "../../signals/chat-page/resolve-draft-attachments.ts";
 import {
@@ -545,13 +548,15 @@ function ChatThreadEmojiMenuButton({
 }) {
   const { open, openChatThreadEmojiMenu, closeMenu, selectEmoji, clearEmoji } =
     useChatThreadEmojiMenuActions({ threadId, title });
+  const setEmojiQuery = useSet(setChatThreadEmojiQuery$);
 
   return (
     <TooltipProvider delayDuration={200}>
-      <UiDropdownMenu
+      <Popover
         open={open}
         onOpenChange={(nextOpen) => {
           if (nextOpen) {
+            setEmojiQuery("");
             openChatThreadEmojiMenu({ threadId, title });
           } else {
             closeMenu();
@@ -560,78 +565,171 @@ function ChatThreadEmojiMenuButton({
       >
         <Tooltip>
           <TooltipTrigger asChild>
-            <UiDropdownMenuTrigger asChild>
+            <PopoverTrigger asChild>
               <button
                 type="button"
                 aria-label="Change icon"
                 className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
               >
-                {emoji && (
+                {emoji ? (
                   <span aria-hidden="true" className="text-base leading-none">
                     {emoji}
                   </span>
+                ) : (
+                  <IconMoodPlus size={18} stroke={1.75} aria-hidden="true" />
                 )}
               </button>
-            </UiDropdownMenuTrigger>
+            </PopoverTrigger>
           </TooltipTrigger>
           <TooltipContent side="bottom">Chat thread icon</TooltipContent>
         </Tooltip>
-        <UiDropdownMenuContent
+        <PopoverContent
           align="start"
-          className="w-48"
+          className="w-80 p-0"
           onCloseAutoFocus={(event) => {
             event.preventDefault();
           }}
         >
-          {CHAT_THREAD_EMOJI_OPTIONS.map((option, index) => {
-            const shortcut = `ctrl+shift+${index + 1}`;
-            return (
-              <UiDropdownMenuItem
-                key={option.emoji}
-                aria-label={`${option.label} icon Ctrl Shift ${index + 1}`}
-                className="justify-between gap-4"
-                onSelect={() => {
-                  selectEmoji(option.emoji);
-                }}
-              >
-                <span className="text-base leading-none" aria-hidden>
-                  {option.emoji}
-                </span>
-                <ChatThreadIconShortcutHint shortcut={shortcut} />
-              </UiDropdownMenuItem>
-            );
-          })}
-          <UiDropdownMenuSeparator />
-          <UiDropdownMenuItem
-            aria-label="Clear icon Ctrl Shift 0"
-            className="justify-between gap-4"
-            onSelect={() => {
-              clearEmoji();
-            }}
-          >
-            <span className="whitespace-nowrap">Clear icon</span>
-            <ChatThreadIconShortcutHint shortcut="ctrl+shift+0" />
-          </UiDropdownMenuItem>
-        </UiDropdownMenuContent>
-      </UiDropdownMenu>
+          <ChatThreadEmojiPicker
+            hasEmoji={Boolean(emoji)}
+            onSelect={selectEmoji}
+            onRemove={clearEmoji}
+          />
+        </PopoverContent>
+      </Popover>
     </TooltipProvider>
   );
 }
 
-function ChatThreadIconShortcutHint({ shortcut }: { shortcut: string }) {
+const FREQUENTLY_USED_EMOJI: ChatThreadEmojiItem[] =
+  CHAT_THREAD_EMOJI_OPTIONS.map((option) => {
+    return { emoji: option.emoji, name: option.label };
+  });
+
+function ChatThreadEmojiPicker({
+  hasEmoji,
+  onSelect,
+  onRemove,
+}: {
+  hasEmoji: boolean;
+  onSelect: (emoji: string) => void;
+  onRemove: () => void;
+}) {
+  const query = useGet(chatThreadEmojiQuery$);
+  const setQuery = useSet(setChatThreadEmojiQuery$);
+  const groups = useLastResolved(chatThreadEmojiGroups$) ?? null;
+
+  const isSearching = query.trim().length > 0;
+  const searchResults =
+    isSearching && groups ? filterChatThreadEmojiGroups(groups, query) : [];
+
   return (
-    <span aria-hidden="true" className="ml-4 flex shrink-0 items-center gap-1">
-      {getShortcutParts(shortcut).map((part) => {
-        return (
-          <kbd
-            key={part}
-            className='inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded-md bg-background px-1.5 text-[11px] font-medium text-foreground shadow-[inset_0_-1px_0_hsl(var(--border)),0_0_0_1px_hsl(var(--border))] font-["-apple-system",BlinkMacSystemFont,"Segoe_UI",system-ui,sans-serif]'
+    <div className="flex flex-col">
+      <div className="flex items-center gap-2 p-2">
+        <div className="relative flex-1">
+          <IconSearch
+            size={15}
+            className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
+            aria-hidden="true"
+          />
+          <Input
+            aria-label="Search emoji"
+            placeholder="Search emoji"
+            value={query}
+            autoFocus
+            onChange={(event) => {
+              setQuery(event.target.value);
+            }}
+            className="h-8 pl-8"
+          />
+        </div>
+        {hasEmoji && (
+          <button
+            type="button"
+            className="shrink-0 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            onClick={onRemove}
           >
-            {part}
-          </kbd>
+            Remove
+          </button>
+        )}
+      </div>
+      <div className="max-h-72 overflow-y-auto px-2 pb-2">
+        {isSearching ? (
+          searchResults.length > 0 ? (
+            <ChatThreadEmojiGrid items={searchResults} onSelect={onSelect} />
+          ) : (
+            <p className="px-1 py-6 text-center text-xs text-muted-foreground">
+              No emoji found
+            </p>
+          )
+        ) : (
+          <>
+            <ChatThreadEmojiSection
+              label="Frequently used"
+              items={FREQUENTLY_USED_EMOJI}
+              onSelect={onSelect}
+            />
+            {groups?.map((group) => {
+              return (
+                <ChatThreadEmojiSection
+                  key={group.name}
+                  label={group.name}
+                  items={group.emojis}
+                  onSelect={onSelect}
+                />
+              );
+            })}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ChatThreadEmojiSection({
+  label,
+  items,
+  onSelect,
+}: {
+  label: string;
+  items: ChatThreadEmojiItem[];
+  onSelect: (emoji: string) => void;
+}) {
+  return (
+    <div>
+      <p className="px-1 pb-1 pt-2 text-xs font-medium text-muted-foreground">
+        {label}
+      </p>
+      <ChatThreadEmojiGrid items={items} onSelect={onSelect} />
+    </div>
+  );
+}
+
+function ChatThreadEmojiGrid({
+  items,
+  onSelect,
+}: {
+  items: ChatThreadEmojiItem[];
+  onSelect: (emoji: string) => void;
+}) {
+  return (
+    <div className="grid grid-cols-8 gap-0.5">
+      {items.map((item) => {
+        return (
+          <button
+            key={`${item.name}-${item.emoji}`}
+            type="button"
+            aria-label={item.name}
+            className="flex aspect-square items-center justify-center rounded-md text-xl leading-none transition-colors hover:bg-accent"
+            onClick={() => {
+              onSelect(item.emoji);
+            }}
+          >
+            <span aria-hidden="true">{item.emoji}</span>
+          </button>
         );
       })}
-    </span>
+    </div>
   );
 }
 
