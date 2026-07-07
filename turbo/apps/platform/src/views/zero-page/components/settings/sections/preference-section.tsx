@@ -45,23 +45,25 @@ function AppearanceBlock() {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-center gap-4 bg-card p-4 rounded-xl zero-border">
-        <div className="shrink-0">
-          <div className="flex h-7 w-7 items-center justify-center">
-            <IconPalette
-              size={22}
-              stroke={1.5}
-              className="text-muted-foreground"
-            />
+      <div className="flex flex-col gap-3 bg-card p-4 rounded-xl zero-border sm:flex-row sm:items-center sm:gap-4">
+        <div className="flex flex-1 items-center gap-4 min-w-0">
+          <div className="shrink-0">
+            <div className="flex h-7 w-7 items-center justify-center">
+              <IconPalette
+                size={22}
+                stroke={1.5}
+                className="text-muted-foreground"
+              />
+            </div>
+          </div>
+          <div className="flex flex-1 flex-col gap-1 min-w-0">
+            <div className="text-sm font-medium text-foreground">Theme</div>
+            <div className="text-sm text-muted-foreground">
+              Your preferred color scheme
+            </div>
           </div>
         </div>
-        <div className="flex flex-1 flex-col gap-1 min-w-0">
-          <div className="text-sm font-medium text-foreground">Theme</div>
-          <div className="text-sm text-muted-foreground">
-            Your preferred color scheme
-          </div>
-        </div>
-        <div className="flex gap-2 shrink-0">
+        <div className="flex flex-wrap gap-2 shrink-0">
           {THEME_OPTIONS.map(({ value, label, icon: Icon }) => {
             const isActive = current === value;
             return (
@@ -112,27 +114,29 @@ function EnterBlock() {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-center gap-4 bg-card p-4 rounded-xl zero-border">
-        <div className="shrink-0">
-          <div className="flex h-7 w-7 items-center justify-center">
-            <IconKeyboard
-              size={22}
-              stroke={1.5}
-              className="text-muted-foreground"
-            />
+      <div className="flex flex-col gap-3 bg-card p-4 rounded-xl zero-border sm:flex-row sm:items-center sm:gap-4">
+        <div className="flex flex-1 items-center gap-4 min-w-0">
+          <div className="shrink-0">
+            <div className="flex h-7 w-7 items-center justify-center">
+              <IconKeyboard
+                size={22}
+                stroke={1.5}
+                className="text-muted-foreground"
+              />
+            </div>
+          </div>
+          <div className="flex flex-1 flex-col gap-1 min-w-0">
+            <div className="text-sm font-medium text-foreground">
+              Send message with
+            </div>
+            <div className="text-sm text-muted-foreground">
+              {effective === "enter"
+                ? "Press Enter to send, Shift+Enter for new line"
+                : "Press ⌘/Ctrl+Enter to send, Enter for new line"}
+            </div>
           </div>
         </div>
-        <div className="flex flex-1 flex-col gap-1 min-w-0">
-          <div className="text-sm font-medium text-foreground">
-            Send message with
-          </div>
-          <div className="text-sm text-muted-foreground">
-            {effective === "enter"
-              ? "Press Enter to send, Shift+Enter for new line"
-              : "Press ⌘/Ctrl+Enter to send, Enter for new line"}
-          </div>
-        </div>
-        <div className="flex gap-2 shrink-0">
+        <div className="flex flex-wrap gap-2 shrink-0">
           {SEND_OPTIONS.map(({ value, label }) => {
             const isActive =
               saving === value ? true : saving === null && current === value;
