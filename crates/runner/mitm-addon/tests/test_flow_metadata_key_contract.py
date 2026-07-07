@@ -7,7 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from scripts import flow_metadata_key_linter
+import flow_metadata_key_linter
 
 _ADDON_ROOT = Path(__file__).resolve().parents[1]
 _FIXTURE_ROOT = _ADDON_ROOT / "tests" / "fixtures" / "flow_metadata_key_linter"
@@ -21,8 +21,24 @@ def _fixture_text(*names: str) -> str:
     return "".join((_FIXTURE_ROOT / name).read_text(encoding="utf-8") for name in names)
 
 
+def _expected_lines(name: str) -> list[str]:
+    return (_FIXTURE_ROOT / name).read_text(encoding="utf-8").splitlines()
+
+
 def _write_python_source(path: Path, *fixture_names: str) -> None:
     path.write_text(_fixture_text(*fixture_names), encoding="utf-8")
+
+
+def _normalized_violations(source_path: Path, violations: list[str]) -> list[str]:
+    return [violation.replace(str(source_path), source_path.name) for violation in violations]
+
+
+def _violations_expected_fixture_name() -> str:
+    if _SUPPORTS_PEP695_SYNTAX:
+        return "violations.expected.py312.txt"
+    if _SUPPORTS_EXCEPT_STAR_SYNTAX:
+        return "violations.expected.py311.txt"
+    return "violations.expected.py310.txt"
 
 
 def test_registered_flow_metadata_keys_are_unique():
@@ -71,13 +87,9 @@ def test_registered_flow_metadata_guard_flags_direct_literals(tmp_path):
 
     violations = flow_metadata_key_linter.metadata_key_violations(source_path)
 
-    expected_violation_count = 213
-    if _SUPPORTS_EXCEPT_STAR_SYNTAX:
-        expected_violation_count += 1
-    if _SUPPORTS_PEP695_SYNTAX:
-        expected_violation_count += 13
-    assert len(violations) == expected_violation_count
-    assert all("use metadata_keys." in violation for violation in violations)
+    assert _normalized_violations(source_path, violations) == _expected_lines(
+        _violations_expected_fixture_name()
+    )
 
 
 def test_registered_flow_metadata_guard_flags_literals_after_dynamic_star_args(tmp_path):
@@ -86,14 +98,9 @@ def test_registered_flow_metadata_guard_flags_literals_after_dynamic_star_args(t
 
     violations = flow_metadata_key_linter.metadata_key_violations(source_path)
 
-    assert len(violations) == 7
-    assert any("metadata_keys.VM_RUN_ID" in violation for violation in violations)
-    assert any("metadata_keys.FIREWALL_NAME" in violation for violation in violations)
-    assert any("metadata_keys.FIREWALL_ACTION" in violation for violation in violations)
-    assert any("metadata_keys.AUTH_CACHE_HIT" in violation for violation in violations)
-    assert any("metadata_keys.FIREWALL_ERROR" in violation for violation in violations)
-    assert any("metadata_keys.FIREWALL_PERMISSION" in violation for violation in violations)
-    assert any("metadata_keys.VM_NETWORK_LOG_PATH" in violation for violation in violations)
+    assert _normalized_violations(source_path, violations) == _expected_lines(
+        "dynamic_star_args.expected.txt"
+    )
 
 
 def test_registered_flow_metadata_guard_respects_python_source_encoding(tmp_path):
