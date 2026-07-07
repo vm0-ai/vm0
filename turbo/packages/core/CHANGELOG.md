@@ -1,5 +1,13 @@
 # Changelog
 
+## [8.412.1](https://github.com/vm0-ai/vm0/compare/core-v8.412.0...core-v8.412.1) (2026-07-07)
+
+
+### Bug Fixes
+
+* **core:** disable minimax codex staff rollout ([#20557](https://github.com/vm0-ai/vm0/issues/20557)) ([f0d102d](https://github.com/vm0-ai/vm0/commit/f0d102df364fceecfd3a3146b248a21f325783e2))
+* keep mobile unread shortcuts personal ([#20558](https://github.com/vm0-ai/vm0/issues/20558)) ([de0abb4](https://github.com/vm0-ai/vm0/commit/de0abb489415605332ce985b2ee1b80185ab72a1))
+
 ## [8.412.0](https://github.com/vm0-ai/vm0/compare/core-v8.411.1...core-v8.412.0) (2026-07-07)
 
 
