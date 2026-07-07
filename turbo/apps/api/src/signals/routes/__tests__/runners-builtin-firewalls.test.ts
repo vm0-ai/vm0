@@ -90,6 +90,31 @@ describe("runner builtin firewall resolver", () => {
     });
   });
 
+  it("handles concurrent full generated builtin firewall catalog resolves", async () => {
+    const responses = await Promise.all(
+      Array.from({ length: 3 }, () => {
+        return accept(
+          client().resolve({
+            headers: { authorization: OFFICIAL_RUNNER_AUTHORIZATION },
+            body: {},
+          }),
+          [200],
+        );
+      }),
+    );
+
+    for (const response of responses) {
+      const body: RunnerBuiltinFirewallsResolveResponse = response.body;
+      expect(body.catalogDigest).toBe(RUNNER_RUNTIME_FIREWALL_CATALOG_DIGEST);
+      expect(body.catalogVersion).toBe(
+        RUNNER_RUNTIME_FIREWALL_CATALOG_VERSION,
+      );
+      expect(Object.keys(body.firewalls).sort(compareStrings)).toStrictEqual([
+        ...RUNNER_RUNTIME_FIREWALL_NAMES,
+      ]);
+    }
+  });
+
   it("resolves the full generated builtin firewall catalog when names are omitted", async () => {
     const response = await accept(
       client().resolve({
