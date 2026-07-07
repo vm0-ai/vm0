@@ -2778,7 +2778,7 @@ fn human_bytes(bytes: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_fixtures::run_ignored_child_test;
+    use crate::test_fixtures::{ignored_child_test_env_guard_enabled, run_ignored_child_test};
     use clap::Parser;
 
     /// `--r2-keep-days 0` would wipe even just-uploaded images. Verify the
@@ -6985,7 +6985,7 @@ server:
     async fn gc_storage_cache_many_candidates_does_not_exhaust_lock_fds() {
         run_ignored_child_test(
             "cmd::gc::tests::gc_storage_cache_many_candidates_low_fd_child",
-            &[(LOW_FD_STORAGE_GC_CHILD_ENV, "1")],
+            (LOW_FD_STORAGE_GC_CHILD_ENV, "1"),
             Duration::from_secs(60),
         )
         .await;
@@ -6994,7 +6994,7 @@ server:
     #[tokio::test]
     #[ignore = "spawned by gc_storage_cache_many_candidates_does_not_exhaust_lock_fds"]
     async fn gc_storage_cache_many_candidates_low_fd_child() {
-        if std::env::var_os(LOW_FD_STORAGE_GC_CHILD_ENV).is_none() {
+        if !ignored_child_test_env_guard_enabled(LOW_FD_STORAGE_GC_CHILD_ENV) {
             return;
         }
 

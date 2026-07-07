@@ -602,7 +602,9 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
-    use crate::test_fixtures::run_ignored_child_test;
+    use crate::test_fixtures::{ignored_child_test_env_guard_enabled, run_ignored_child_test};
+
+    const RESTRICTIVE_UMASK_CHILD_ENV: &str = "VM0_RUN_RESTRICTIVE_UMASK_TEST";
 
     fn mode(path: &Path) -> u32 {
         std::fs::metadata(path).unwrap().permissions().mode() & 0o777
@@ -612,7 +614,7 @@ mod tests {
     async fn ensure_dir_handles_restrictive_umask() {
         run_ignored_child_test(
             "host_file::tests::ensure_dir_handles_restrictive_umask_child",
-            &[("VM0_RUN_RESTRICTIVE_UMASK_TEST", "1")],
+            (RESTRICTIVE_UMASK_CHILD_ENV, "1"),
             Duration::from_secs(60),
         )
         .await;
@@ -621,7 +623,7 @@ mod tests {
     #[test]
     #[ignore]
     fn ensure_dir_handles_restrictive_umask_child() {
-        if std::env::var_os("VM0_RUN_RESTRICTIVE_UMASK_TEST").is_none() {
+        if !ignored_child_test_env_guard_enabled(RESTRICTIVE_UMASK_CHILD_ENV) {
             return;
         }
 

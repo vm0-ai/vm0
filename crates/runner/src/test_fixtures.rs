@@ -14,6 +14,8 @@ use crate::types::ExecutionContext;
 
 const RAW_HTTP_FIXTURE_TIMEOUT: Duration = Duration::from_secs(5);
 const CHILD_OUTPUT_TIMEOUT: Duration = Duration::from_secs(5);
+const CHILD_KILL_WAIT_TIMEOUT: Duration = Duration::from_secs(5);
+const CHILD_ENV_GUARD_ACTIVE_PREFIX: &str = "vm0 ignored child env guard active: ";
 
 pub(crate) struct OneShotSessionHistoryServer {
     url: String,
@@ -175,14 +177,22 @@ pub(crate) fn execution_context_for_test(run_id: RunId) -> ExecutionContext {
 
 pub(crate) async fn run_ignored_child_test(
     child_test_name: &str,
-    env: &[(&str, &str)],
+    env_guard: (&str, &str),
     timeout: Duration,
 ) {
+    let (env_guard_key, env_guard_value) = env_guard;
     assert!(
         !child_test_name.is_empty(),
         "ignored child test name must not be empty"
     );
-    assert!(!env.is_empty(), "ignored child test must have an env guard");
+    assert!(
+        !env_guard_key.is_empty(),
+        "ignored child test env guard key must not be empty"
+    );
+    assert!(
+        !env_guard_value.is_empty(),
+        "ignored child test env guard value must not be empty"
+    );
     assert!(
         !timeout.is_zero(),
         "ignored child test timeout must not be zero"
@@ -198,9 +208,7 @@ pub(crate) async fn run_ignored_child_test(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
-    for (key, value) in env {
-        command.env(key, value);
-    }
+    command.env(env_guard_key, env_guard_value);
 
     let mut child = command.spawn().expect("spawn ignored child test");
     let stdout = child
@@ -217,16 +225,19 @@ pub(crate) async fn run_ignored_child_test(
     let status = match tokio::time::timeout(timeout, child.wait()).await {
         Ok(Ok(status)) => status,
         Ok(Err(error)) => {
-            let _ = child.start_kill();
-            let _ = child.wait().await;
+            let kill_error = kill_ignored_child(&mut child).await.err();
             let (stdout, stderr) = collect_child_output(stdout_task, stderr_task).await;
-            panic!(
-                "ignored child test {child_test_name} wait failed: {error}\nstdout:\n{stdout}\nstderr:\n{stderr}"
-            );
+            match kill_error {
+                Some(kill_error) => panic!(
+                    "ignored child test {child_test_name} wait failed: {error}; {kill_error}\nstdout:\n{stdout}\nstderr:\n{stderr}"
+                ),
+                None => panic!(
+                    "ignored child test {child_test_name} wait failed: {error}\nstdout:\n{stdout}\nstderr:\n{stderr}"
+                ),
+            }
         }
         Err(_) => {
-            let _ = child.start_kill();
-            let killed_status = child.wait().await;
+            let killed_status = kill_ignored_child(&mut child).await;
             let (stdout, stderr) = collect_child_output(stdout_task, stderr_task).await;
             let timeout_ms = timeout.as_millis();
             match killed_status {
@@ -249,6 +260,48 @@ pub(crate) async fn run_ignored_child_test(
         stdout.contains(child_test_name),
         "ignored child test {child_test_name} did not run\nstdout:\n{stdout}\nstderr:\n{stderr}"
     );
+    assert!(
+        stdout.contains(&format!("{CHILD_ENV_GUARD_ACTIVE_PREFIX}{env_guard_key}")),
+        "ignored child test {child_test_name} did not activate env guard {env_guard_key}\nstdout:\n{stdout}\nstderr:\n{stderr}"
+    );
+}
+
+async fn kill_ignored_child(
+    child: &mut tokio::process::Child,
+) -> Result<std::process::ExitStatus, String> {
+    let kill_error = child.start_kill().err();
+    let wait_result = tokio::time::timeout(CHILD_KILL_WAIT_TIMEOUT, child.wait()).await;
+
+    match wait_result {
+        Ok(Ok(status)) => Ok(status),
+        Ok(Err(error)) => Err(kill_wait_error(
+            kill_error,
+            format!("wait after kill failed: {error}"),
+        )),
+        Err(_) => Err(kill_wait_error(
+            kill_error,
+            format!(
+                "wait after kill timed out after {}ms",
+                CHILD_KILL_WAIT_TIMEOUT.as_millis()
+            ),
+        )),
+    }
+}
+
+fn kill_wait_error(kill_error: Option<std::io::Error>, wait_error: String) -> String {
+    match kill_error {
+        Some(kill_error) => format!("start kill failed: {kill_error}; {wait_error}"),
+        None => wait_error,
+    }
+}
+
+pub(crate) fn ignored_child_test_env_guard_enabled(env_guard_key: &str) -> bool {
+    if std::env::var_os(env_guard_key).is_none() {
+        return false;
+    }
+
+    println!("{CHILD_ENV_GUARD_ACTIVE_PREFIX}{env_guard_key}");
+    true
 }
 
 async fn read_child_output<R>(mut output: R) -> io::Result<Vec<u8>>
@@ -325,7 +378,7 @@ mod tests {
     async fn run_ignored_child_test_times_out() {
         run_ignored_child_test(
             "test_fixtures::tests::run_ignored_child_test_timeout_child",
-            &[(TIMEOUT_CHILD_ENV, "1")],
+            (TIMEOUT_CHILD_ENV, "1"),
             Duration::from_millis(10),
         )
         .await;
@@ -334,7 +387,7 @@ mod tests {
     #[test]
     #[ignore]
     fn run_ignored_child_test_timeout_child() {
-        if std::env::var_os(TIMEOUT_CHILD_ENV).is_none() {
+        if !ignored_child_test_env_guard_enabled(TIMEOUT_CHILD_ENV) {
             return;
         }
 
