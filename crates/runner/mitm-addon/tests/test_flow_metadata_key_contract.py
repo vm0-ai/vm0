@@ -71,7 +71,7 @@ def test_registered_flow_metadata_guard_flags_direct_literals(tmp_path):
 
     violations = flow_metadata_key_linter.metadata_key_violations(source_path)
 
-    expected_violation_count = 209
+    expected_violation_count = 211
     if _SUPPORTS_EXCEPT_STAR_SYNTAX:
         expected_violation_count += 1
     if _SUPPORTS_PEP695_SYNTAX:

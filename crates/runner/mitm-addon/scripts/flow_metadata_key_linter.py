@@ -69,9 +69,20 @@ def _static_string_value(node: ast.AST) -> str | None:
     if isinstance(node, ast.JoinedStr):
         parts: list[str] = []
         for value in node.values:
-            if not isinstance(value, ast.Constant) or not isinstance(value.value, str):
+            if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                parts.append(value.value)
+                continue
+            if (
+                isinstance(value, ast.FormattedValue)
+                and value.conversion == -1
+                and value.format_spec is None
+            ):
+                formatted_value = _static_string_value(value.value)
+                if formatted_value is not None:
+                    parts.append(formatted_value)
+                    continue
                 return None
-            parts.append(value.value)
+            return None
         return "".join(parts)
     if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
         left = _static_string_value(node.left)

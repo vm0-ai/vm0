@@ -5,6 +5,8 @@ flow.metadata["vm_" + "run_id"] = "run-1"
 flow.metadata["vm_run_id" if condition else "firewall_name"] = "run-1"
 flow.metadata.get("firewall_action")
 flow.metadata.get(f"firewall_action")
+flow.metadata.get(f"{'firewall_action'}")
+flow.metadata.get(f"{'firewall_' + 'error'}")
 flow.metadata.get("firewall_action" if condition else "firewall_error")
 "original_url" in flow.metadata
 f"firewall_name" in flow.metadata

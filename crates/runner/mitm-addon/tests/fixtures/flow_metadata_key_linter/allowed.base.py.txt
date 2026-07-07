@@ -5,6 +5,7 @@ assert "connector_response_finish" in flow.metadata
 flow.metadata["_local_marker"] = "private"
 flow.metadata[f"vm_{dynamic_suffix}"] = "run-1"
 flow.metadata[metadata_keys.VM_RUN_ID + ""] = "run-1"
+flow.metadata[f"{metadata_keys.VM_RUN_ID}"] = "run-1"
 flow.metadata[metadata_keys.VM_RUN_ID if condition else metadata_keys.FIREWALL_NAME] = "run-1"
 flow.metadata.get(
     metadata_keys.FIREWALL_ACTION if condition else metadata_keys.FIREWALL_ERROR
