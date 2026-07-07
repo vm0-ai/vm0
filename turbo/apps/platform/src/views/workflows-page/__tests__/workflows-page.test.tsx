@@ -136,6 +136,10 @@ type WorkflowNotionDatabaseItemCreatedTriggerSummary = Extract<
   ZeroWorkflowTriggerSummary,
   { kind: "event"; eventType: "notion-database-item-created" }
 >;
+type WorkflowNotionPageContentUpdatedTriggerSummary = Extract<
+  ZeroWorkflowTriggerSummary,
+  { kind: "event"; eventType: "notion-page-content-updated" }
+>;
 
 function workflowTriggers(): ZeroWorkflowTriggerSummary[] {
   return [weekdayWorkflowTrigger()];
@@ -352,6 +356,34 @@ function notionDatabaseItemWorkflowTrigger(): WorkflowNotionDatabaseItemCreatedT
     ownerUserId: CURRENT_USER_ID,
     enabled: true,
     chatThreadId: "thread_notion_database_item",
+    nextRunAt: null,
+    lastRunAt: null,
+  };
+}
+
+function notionPageContentUpdatedWorkflowTrigger(): WorkflowNotionPageContentUpdatedTriggerSummary {
+  return {
+    id: "workflow-trigger-notion-page-content-updated",
+    kind: "event",
+    eventType: "notion-page-content-updated",
+    eventConfig: {
+      provider: "notion",
+      event: "page_content_updated",
+      connectorId: "00000000-0000-4000-a000-000000000410",
+      scope: {
+        type: "page",
+        page: {
+          id: "33333333-3333-4333-8333-333333333333",
+          url: "https://www.notion.so/Release-plan-33333333333343338333333333333333",
+          title: "Release plan",
+        },
+      },
+    },
+    schedule: null,
+    scheduleSummary: null,
+    ownerUserId: CURRENT_USER_ID,
+    enabled: true,
+    chatThreadId: "thread_notion_page_content_updated",
     nextRunAt: null,
     lastRunAt: null,
   };
@@ -864,6 +896,35 @@ function mockCreateWorkflowTrigger(
               title: "Bug Bash",
               rawUrl: body.eventConfig.databaseUrl,
             },
+          },
+        });
+      }
+      if (body.eventType === "notion-page-content-updated") {
+        return respond(201, {
+          ...notionPageContentUpdatedWorkflowTrigger(),
+          eventConfig: {
+            provider: "notion",
+            event: "page_content_updated",
+            connectorId: "00000000-0000-4000-a000-000000000410",
+            scope: body.eventConfig.pageUrl
+              ? {
+                  type: "page",
+                  page: {
+                    id: "33333333-3333-4333-8333-333333333333",
+                    url: body.eventConfig.pageUrl,
+                    title: "Release plan",
+                    rawUrl: body.eventConfig.pageUrl,
+                  },
+                }
+              : {
+                  type: "data_source",
+                  dataSource: {
+                    id: "22222222-2222-4222-8222-222222222222",
+                    url: body.eventConfig.databaseUrl ?? "",
+                    title: "Bug Bash",
+                    rawUrl: body.eventConfig.databaseUrl,
+                  },
+                },
           },
         });
       }

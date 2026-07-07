@@ -934,6 +934,30 @@ describe("zero workflow triggers", () => {
     );
   });
 
+  it("rejects Notion page content updated triggers when Notion trigger creation is disabled", async () => {
+    const { workflowId } = await setupFixture();
+    const rejected = await accept(
+      triggersClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: {
+          kind: "event",
+          eventType: "notion-page-content-updated",
+          eventConfig: {
+            provider: "notion",
+            event: "page_content_updated",
+            pageUrl: NOTION_PARENT_PAGE_URL,
+          },
+        },
+      }),
+      [400],
+    );
+
+    expect(rejected.body.error.message).toBe(
+      "Notion workflow triggers are not enabled",
+    );
+  });
+
   it("requires a connected Notion account for Notion child page triggers", async () => {
     const { fixture, workflowId } = await setupFixture();
     await enableNotionWorkflowTriggers(fixture);
@@ -975,6 +999,32 @@ describe("zero workflow triggers", () => {
             provider: "notion",
             event: "database_item_created",
             databaseUrl: NOTION_DATABASE_URL,
+          },
+        },
+      }),
+      [400],
+    );
+
+    expect(rejected.body.error.message).toBe(
+      "Connect Notion before adding a Notion event trigger",
+    );
+  });
+
+  it("requires a connected Notion account for Notion page content updated triggers", async () => {
+    const { fixture, workflowId } = await setupFixture();
+    await enableNotionWorkflowTriggers(fixture);
+
+    const rejected = await accept(
+      triggersClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: {
+          kind: "event",
+          eventType: "notion-page-content-updated",
+          eventConfig: {
+            provider: "notion",
+            event: "page_content_updated",
+            pageUrl: NOTION_PARENT_PAGE_URL,
           },
         },
       }),
@@ -1120,6 +1170,102 @@ describe("zero workflow triggers", () => {
           url: NOTION_DATA_SOURCE_URL,
           title: "Bug Bash",
           rawUrl: NOTION_DATABASE_URL,
+        },
+      },
+      schedule: null,
+      scheduleSummary: null,
+      enabled: true,
+      nextRunAt: null,
+    });
+    expect(created.body.chatThreadId).toBeTruthy();
+  });
+
+  it("creates Notion page content updated triggers for a page scope", async () => {
+    const { fixture, workflowId } = await setupFixture();
+    const connectorId = await seedNotionConnector(fixture);
+    await enableNotionWorkflowTriggers(fixture);
+    configureNotionPageMock();
+
+    const created = await accept(
+      triggersClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: {
+          kind: "event",
+          eventType: "notion-page-content-updated",
+          eventConfig: {
+            provider: "notion",
+            event: "page_content_updated",
+            pageUrl: NOTION_PARENT_PAGE_URL,
+          },
+        },
+      }),
+      [201],
+    );
+
+    expect(created.body).toMatchObject({
+      kind: "event",
+      eventType: "notion-page-content-updated",
+      eventConfig: {
+        provider: "notion",
+        event: "page_content_updated",
+        connectorId,
+        scope: {
+          type: "page",
+          page: {
+            id: NOTION_PARENT_PAGE_ID,
+            url: NOTION_PARENT_PAGE_URL,
+            title: "Roadmap",
+            rawUrl: NOTION_PARENT_PAGE_URL,
+          },
+        },
+      },
+      schedule: null,
+      scheduleSummary: null,
+      enabled: true,
+      nextRunAt: null,
+    });
+    expect(created.body.chatThreadId).toBeTruthy();
+  });
+
+  it("creates Notion page content updated triggers for a database scope", async () => {
+    const { fixture, workflowId } = await setupFixture();
+    const connectorId = await seedNotionConnector(fixture);
+    await enableNotionWorkflowTriggers(fixture);
+    configureNotionDatabaseMock();
+
+    const created = await accept(
+      triggersClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: {
+          kind: "event",
+          eventType: "notion-page-content-updated",
+          eventConfig: {
+            provider: "notion",
+            event: "page_content_updated",
+            databaseUrl: NOTION_DATABASE_URL,
+          },
+        },
+      }),
+      [201],
+    );
+
+    expect(created.body).toMatchObject({
+      kind: "event",
+      eventType: "notion-page-content-updated",
+      eventConfig: {
+        provider: "notion",
+        event: "page_content_updated",
+        connectorId,
+        scope: {
+          type: "data_source",
+          dataSource: {
+            id: NOTION_DATA_SOURCE_ID,
+            url: NOTION_DATA_SOURCE_URL,
+            title: "Bug Bash",
+            rawUrl: NOTION_DATABASE_URL,
+          },
         },
       },
       schedule: null,

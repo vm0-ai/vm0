@@ -7,6 +7,7 @@ import {
   type ZeroWorkflowDetailResponse,
   type ZeroWorkflowSummary,
   type ZeroWorkflowTriggerAutomationEntry,
+  type ZeroWorkflowTriggerCreateRequest,
   type ZeroWorkflowTriggerSummary,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 
@@ -477,6 +478,140 @@ function createNotionDatabaseItemTriggerSummary(
   };
 }
 
+function createNotionPageContentUpdatedTriggerSummary(
+  base: WorkflowTriggerCreateBase,
+  args: { readonly pageUrl?: string; readonly databaseUrl?: string },
+): ZeroWorkflowTriggerSummary {
+  return {
+    ...base,
+    kind: "event",
+    eventType: "notion-page-content-updated",
+    eventConfig: {
+      provider: "notion",
+      event: "page_content_updated",
+      connectorId: "b0000000-0000-4000-a000-000000000001",
+      scope: args.pageUrl
+        ? {
+            type: "page",
+            page: {
+              id: "33333333-3333-4333-8333-333333333333",
+              title: "Release plan",
+              url: args.pageUrl,
+              rawUrl: args.pageUrl,
+            },
+          }
+        : {
+            type: "data_source",
+            dataSource: {
+              id: "22222222-2222-4222-8222-222222222222",
+              title: "Bug Bash",
+              url: args.databaseUrl ?? "https://www.notion.so/database",
+              rawUrl: args.databaseUrl,
+            },
+          },
+    },
+    schedule: null,
+    scheduleSummary: null,
+  };
+}
+
+function createWorkflowTriggerSummaryForRequest(
+  base: WorkflowTriggerCreateBase,
+  body: ZeroWorkflowTriggerCreateRequest,
+): ZeroWorkflowTriggerSummary {
+  if ("schedule" in body) {
+    return {
+      ...base,
+      kind: "schedule",
+      schedule: body.schedule,
+      scheduleSummary: mockScheduleSummary(body.schedule),
+    };
+  }
+  if (body.eventType === "webhook-received") {
+    return {
+      ...base,
+      kind: "event",
+      eventType: "webhook-received",
+      eventConfig: body.eventConfig ?? {
+        provider: "webhook",
+        event: "received",
+        auth: { mode: "hmac-sha256" },
+      },
+      schedule: null,
+      scheduleSummary: null,
+      webhookUrl: "http://localhost:3000/api/webhooks/workflow-triggers/mock",
+      secretLastFour: "mock",
+      lastReceivedAt: null,
+      webhookSecret: "mock-webhook-secret",
+    };
+  }
+  if (body.eventType === "gmail-new-message") {
+    return {
+      ...base,
+      kind: "event",
+      eventType: "gmail-new-message",
+      eventConfig: body.eventConfig,
+      schedule: null,
+      scheduleSummary: null,
+    };
+  }
+  if (body.eventType === "gmail-label-applied") {
+    return {
+      ...base,
+      kind: "event",
+      eventType: "gmail-label-applied",
+      eventConfig: body.eventConfig,
+      schedule: null,
+      scheduleSummary: null,
+    };
+  }
+  if (body.eventType === "github-label-applied") {
+    return {
+      ...base,
+      kind: "event",
+      eventType: "github-label-applied",
+      eventConfig: body.eventConfig,
+      schedule: null,
+      scheduleSummary: null,
+    };
+  }
+  if (
+    body.eventType === "google-calendar-event-created" ||
+    body.eventType === "google-calendar-event-updated" ||
+    body.eventType === "google-calendar-event-cancelled" ||
+    body.eventType === "google-meet-transcript-generated"
+  ) {
+    return {
+      ...base,
+      kind: "event",
+      eventType: body.eventType,
+      eventConfig: body.eventConfig,
+      schedule: null,
+      scheduleSummary: null,
+    } as ZeroWorkflowTriggerSummary;
+  }
+  if (body.eventType === "notion-child-page-created") {
+    return createNotionChildPageTriggerSummary(
+      base,
+      body.eventConfig.parentPageUrl,
+    );
+  }
+  if (body.eventType === "notion-database-item-created") {
+    return createNotionDatabaseItemTriggerSummary(
+      base,
+      body.eventConfig.databaseUrl,
+    );
+  }
+  if (body.eventType === "notion-page-content-updated") {
+    return createNotionPageContentUpdatedTriggerSummary(base, {
+      pageUrl: body.eventConfig.pageUrl,
+      databaseUrl: body.eventConfig.databaseUrl,
+    });
+  }
+  const exhaustive: never = body;
+  return exhaustive;
+}
+
 function workflowTriggerCreateHandlers() {
   return [
     mockApi(
@@ -497,106 +632,7 @@ function workflowTriggerCreateHandlers() {
           nextRunAt: null,
           lastRunAt: null,
         };
-        let trigger: ZeroWorkflowTriggerSummary;
-        if ("schedule" in body) {
-          trigger = {
-            ...base,
-            kind: "schedule",
-            schedule: body.schedule,
-            scheduleSummary: mockScheduleSummary(body.schedule),
-          };
-        } else if (body.eventType === "webhook-received") {
-          trigger = {
-            ...base,
-            kind: "event",
-            eventType: "webhook-received",
-            eventConfig: body.eventConfig ?? {
-              provider: "webhook",
-              event: "received",
-              auth: { mode: "hmac-sha256" },
-            },
-            schedule: null,
-            scheduleSummary: null,
-            webhookUrl:
-              "http://localhost:3000/api/webhooks/workflow-triggers/mock",
-            secretLastFour: "mock",
-            lastReceivedAt: null,
-            webhookSecret: "mock-webhook-secret",
-          };
-        } else if (body.eventType === "gmail-new-message") {
-          trigger = {
-            ...base,
-            kind: "event",
-            eventType: "gmail-new-message",
-            eventConfig: body.eventConfig,
-            schedule: null,
-            scheduleSummary: null,
-          };
-        } else if (body.eventType === "gmail-label-applied") {
-          trigger = {
-            ...base,
-            kind: "event",
-            eventType: "gmail-label-applied",
-            eventConfig: body.eventConfig,
-            schedule: null,
-            scheduleSummary: null,
-          };
-        } else if (body.eventType === "github-label-applied") {
-          trigger = {
-            ...base,
-            kind: "event",
-            eventType: "github-label-applied",
-            eventConfig: body.eventConfig,
-            schedule: null,
-            scheduleSummary: null,
-          };
-        } else if (body.eventType === "google-calendar-event-created") {
-          trigger = {
-            ...base,
-            kind: "event",
-            eventType: "google-calendar-event-created",
-            eventConfig: body.eventConfig,
-            schedule: null,
-            scheduleSummary: null,
-          };
-        } else if (body.eventType === "google-calendar-event-updated") {
-          trigger = {
-            ...base,
-            kind: "event",
-            eventType: "google-calendar-event-updated",
-            eventConfig: body.eventConfig,
-            schedule: null,
-            scheduleSummary: null,
-          };
-        } else if (body.eventType === "google-calendar-event-cancelled") {
-          trigger = {
-            ...base,
-            kind: "event",
-            eventType: "google-calendar-event-cancelled",
-            eventConfig: body.eventConfig,
-            schedule: null,
-            scheduleSummary: null,
-          };
-        } else if (body.eventType === "notion-child-page-created") {
-          trigger = createNotionChildPageTriggerSummary(
-            base,
-            body.eventConfig.parentPageUrl,
-          );
-        } else if (body.eventType === "notion-database-item-created") {
-          trigger = createNotionDatabaseItemTriggerSummary(
-            base,
-            body.eventConfig.databaseUrl,
-          );
-        } else {
-          trigger = {
-            ...base,
-            kind: "event",
-            eventType: "google-meet-transcript-generated",
-            eventConfig: body.eventConfig,
-            schedule: null,
-            scheduleSummary: null,
-          };
-        }
+        const trigger = createWorkflowTriggerSummaryForRequest(base, body);
         workflow.triggers = [...workflow.triggers, trigger];
         return respond(201, trigger);
       },

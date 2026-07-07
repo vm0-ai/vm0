@@ -3893,6 +3893,13 @@
       "when": 1783415065639,
       "tag": "0555_notion_database_item_trigger",
       "breakpoints": true
+    },
+    {
+      "idx": 556,
+      "version": "7",
+      "when": 1783424318236,
+      "tag": "0556_notion_page_content_updated_trigger",
+      "breakpoints": true
     }
   ]
 }

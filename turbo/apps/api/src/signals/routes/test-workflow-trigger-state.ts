@@ -1042,6 +1042,7 @@ async function getRunStateForAction(
         .select({
           id: agentRuns.id,
           prompt: agentRuns.prompt,
+          appendSystemPrompt: agentRuns.appendSystemPrompt,
           status: agentRuns.status,
         })
         .from(agentRuns)
@@ -1237,9 +1238,11 @@ async function getNotionPendingEventsForAction(
       pageId: notionWorkflowPendingEvents.pageId,
       scopeType: notionWorkflowPendingEvents.scopeType,
       scopeId: notionWorkflowPendingEvents.scopeId,
+      eventFamily: notionWorkflowPendingEvents.eventFamily,
       status: notionWorkflowPendingEvents.status,
       runAfter: notionWorkflowPendingEvents.runAfter,
       latestNotionEventId: notionWorkflowPendingEvents.latestNotionEventId,
+      latestEventContext: notionWorkflowPendingEvents.latestEventContext,
       attempts: notionWorkflowPendingEvents.attempts,
       skipReason: notionWorkflowPendingEvents.skipReason,
     })

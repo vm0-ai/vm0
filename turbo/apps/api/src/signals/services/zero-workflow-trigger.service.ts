@@ -9,6 +9,7 @@ import {
   githubLabelAppliedEventConfigSchema,
   notionChildPageCreatedEventConfigSchema,
   notionDatabaseItemCreatedEventConfigSchema,
+  notionPageContentUpdatedEventConfigSchema,
   webhookReceivedEventConfigSchema,
   type ChatThreadWorkflowTrigger,
   type GmailWorkflowEventConfig,
@@ -19,6 +20,8 @@ import {
   type NotionChildPageCreatedEventCreateConfig,
   type NotionDatabaseItemCreatedEventConfig,
   type NotionDatabaseItemCreatedEventCreateConfig,
+  type NotionPageContentUpdatedEventConfig,
+  type NotionPageContentUpdatedEventCreateConfig,
   type NotionWorkflowEventConfig,
   type WebhookReceivedEventConfig,
   type ZeroWorkflowEventType,
@@ -59,6 +62,7 @@ import { prepareGithubLabelEventConfigForPersist } from "./github-workflow-event
 import {
   prepareNotionChildPageEventConfigForPersist,
   prepareNotionDatabaseItemEventConfigForPersist,
+  prepareNotionPageContentUpdatedEventConfigForPersist,
 } from "./notion-workflow-event.service";
 import {
   notionWorkflowTriggerCreationEnabledForOwner,
@@ -107,7 +111,9 @@ type GoogleMeetWorkflowEventType = Extract<
 >;
 type NotionWorkflowEventType = Extract<
   ZeroWorkflowEventType,
-  "notion-child-page-created" | "notion-database-item-created"
+  | "notion-child-page-created"
+  | "notion-database-item-created"
+  | "notion-page-content-updated"
 >;
 
 /**
@@ -325,6 +331,7 @@ function supportedWorkflowEventType(
     eventType === "google-meet-transcript-generated" ||
     eventType === "notion-child-page-created" ||
     eventType === "notion-database-item-created" ||
+    eventType === "notion-page-content-updated" ||
     eventType === "webhook-received"
   );
 }
@@ -364,7 +371,8 @@ function supportedNotionEventType(
 ): eventType is NotionWorkflowEventType {
   return (
     eventType === "notion-child-page-created" ||
-    eventType === "notion-database-item-created"
+    eventType === "notion-database-item-created" ||
+    eventType === "notion-page-content-updated"
   );
 }
 
@@ -423,6 +431,22 @@ function notionDatabaseItemRowSummary(
     kind: "event",
     eventType: "notion-database-item-created",
     eventConfig: notionDatabaseItemCreatedEventConfigSchema.parse(
+      row.eventConfig,
+    ),
+    schedule: null,
+    scheduleSummary: null,
+  };
+}
+
+function notionPageContentUpdatedRowSummary(
+  row: TriggerRow,
+  chatThreadId: string | null,
+): ZeroWorkflowTriggerSummary {
+  return {
+    ...rowSummaryBase(row, chatThreadId),
+    kind: "event",
+    eventType: "notion-page-content-updated",
+    eventConfig: notionPageContentUpdatedEventConfigSchema.parse(
       row.eventConfig,
     ),
     schedule: null,
@@ -517,6 +541,9 @@ function eventRowToSummary(
   }
   if (row.eventType === "notion-database-item-created") {
     return notionDatabaseItemRowSummary(row, chatThreadId);
+  }
+  if (row.eventType === "notion-page-content-updated") {
+    return notionPageContentUpdatedRowSummary(row, chatThreadId);
   }
   return null;
 }
@@ -1005,7 +1032,9 @@ interface CreateNotionEventTriggerInput {
     | NotionChildPageCreatedEventCreateConfig
     | NotionChildPageCreatedEventConfig
     | NotionDatabaseItemCreatedEventCreateConfig
-    | NotionDatabaseItemCreatedEventConfig;
+    | NotionDatabaseItemCreatedEventConfig
+    | NotionPageContentUpdatedEventCreateConfig
+    | NotionPageContentUpdatedEventConfig;
   readonly enabled: boolean;
 }
 
@@ -1414,9 +1443,37 @@ async function createNotionEventTriggerForWorkflow(args: {
   readonly signal: AbortSignal;
 }): Promise<TriggerResult> {
   const eventConfig = args.input.eventConfig;
-  const preparedConfig =
-    args.input.eventType === "notion-database-item-created"
-      ? eventConfig.event === "database_item_created"
+  let preparedConfig:
+    | {
+        readonly kind: "ok";
+        readonly eventConfig: NotionWorkflowEventConfig;
+      }
+    | { readonly kind: "bad-request"; readonly message: string };
+  if (args.input.eventType === "notion-child-page-created") {
+    preparedConfig =
+      eventConfig.event === "child_page_created"
+        ? await prepareNotionChildPageEventConfigForPersist(args.context.db, {
+            orgId: args.input.orgId,
+            userId: args.input.member.userId,
+            eventConfig:
+              "parentPageUrl" in eventConfig
+                ? eventConfig
+                : {
+                    provider: "notion",
+                    event: "child_page_created",
+                    parentPageUrl:
+                      eventConfig.parentPage.rawUrl ??
+                      eventConfig.parentPage.url,
+                  },
+            signal: args.signal,
+          })
+        : {
+            kind: "bad-request",
+            message: "Unsupported Notion workflow event config",
+          };
+  } else if (args.input.eventType === "notion-database-item-created") {
+    preparedConfig =
+      eventConfig.event === "database_item_created"
         ? await prepareNotionDatabaseItemEventConfigForPersist(
             args.context.db,
             {
@@ -1436,29 +1493,43 @@ async function createNotionEventTriggerForWorkflow(args: {
             },
           )
         : {
-            kind: "bad-request" as const,
-            message: "Unsupported Notion workflow event config",
-          }
-      : eventConfig.event === "child_page_created"
-        ? await prepareNotionChildPageEventConfigForPersist(args.context.db, {
-            orgId: args.input.orgId,
-            userId: args.input.member.userId,
-            eventConfig:
-              "parentPageUrl" in eventConfig
-                ? eventConfig
-                : {
-                    provider: "notion",
-                    event: "child_page_created",
-                    parentPageUrl:
-                      eventConfig.parentPage.rawUrl ??
-                      eventConfig.parentPage.url,
-                  },
-            signal: args.signal,
-          })
-        : {
-            kind: "bad-request" as const,
+            kind: "bad-request",
             message: "Unsupported Notion workflow event config",
           };
+  } else {
+    preparedConfig =
+      eventConfig.event === "page_content_updated"
+        ? await prepareNotionPageContentUpdatedEventConfigForPersist(
+            args.context.db,
+            {
+              orgId: args.input.orgId,
+              userId: args.input.member.userId,
+              eventConfig:
+                "scope" in eventConfig
+                  ? eventConfig.scope.type === "page"
+                    ? {
+                        provider: "notion",
+                        event: "page_content_updated",
+                        pageUrl:
+                          eventConfig.scope.page.rawUrl ??
+                          eventConfig.scope.page.url,
+                      }
+                    : {
+                        provider: "notion",
+                        event: "page_content_updated",
+                        databaseUrl:
+                          eventConfig.scope.dataSource.rawUrl ??
+                          eventConfig.scope.dataSource.url,
+                      }
+                  : eventConfig,
+              signal: args.signal,
+            },
+          )
+        : {
+            kind: "bad-request",
+            message: "Unsupported Notion workflow event config",
+          };
+  }
   args.signal.throwIfAborted();
   if (preparedConfig.kind !== "ok") {
     return preparedConfig;
