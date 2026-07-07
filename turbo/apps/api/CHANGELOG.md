@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.238.0](https://github.com/vm0-ai/vm0/compare/api-v1.237.1...api-v1.238.0) (2026-07-07)
+
+
+### Features
+
+* default limited-free workspaces to sonnet 4.6 ([#20564](https://github.com/vm0-ai/vm0/issues/20564)) ([7a876cb](https://github.com/vm0-ai/vm0/commit/7a876cb1f0a8e6a6255b4f5b527fcc3033b3b9ec))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.163.0
+    * @vm0/core bumped to 8.412.2
+    * @vm0/db bumped to 1.98.2
+
 ## [1.237.1](https://github.com/vm0-ai/vm0/compare/api-v1.237.0...api-v1.237.1) (2026-07-07)
 
 
