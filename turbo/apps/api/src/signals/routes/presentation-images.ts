@@ -408,8 +408,9 @@ async function searchPexels(
 }
 
 // Build the ordered provider chain for this request. When Unsplash is preferred
-// (feature switch on) it is tried first with Pexels as fallback; otherwise images
-// resolve directly from Pexels. Providers without a configured key are skipped.
+// (feature switch on) it is tried first, with Pexels used only for provider
+// failures; otherwise images resolve directly from Pexels. Providers without a
+// configured key are skipped.
 function buildProviderChain(
   unsplashPreferred: boolean,
 ): readonly ProviderSearch[] {
@@ -431,6 +432,12 @@ function buildProviderChain(
   return chain;
 }
 
+function shouldTryNextProvider(error: ResolveError): boolean {
+  return (
+    error.code === "PROVIDER_ERROR" || error.code === "DOWNLOAD_TRACKING_FAILED"
+  );
+}
+
 async function resolveThroughChain(
   item: PresentationImageResolveItem,
   chain: readonly ProviderSearch[],
@@ -443,6 +450,9 @@ async function resolveThroughChain(
       return result;
     }
     lastResult = result;
+    if (!shouldTryNextProvider(result.error)) {
+      return result;
+    }
   }
   return (
     lastResult ?? {
