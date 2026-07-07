@@ -6,9 +6,7 @@ import {
   zeroConnectorsByTypeContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
 import { zeroConnectorCatalogContract } from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { zeroSteamPlayerContract } from "@vm0/api-contracts/contracts/zero-steam-player";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 
@@ -45,21 +43,6 @@ function mockSession(actor: TestActor): void {
 function mockSteamRuntimeEnv(): void {
   mockEnv("VM0_API_URL", "https://api.vm0.ai");
   mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
-}
-
-async function enableSteamConnector(actor: TestActor): Promise<void> {
-  mockSession(actor);
-  await accept(
-    setupApp({ context })(zeroFeatureSwitchesContract).update({
-      headers: authHeaders(),
-      body: {
-        switches: {
-          [FeatureSwitchKey.SteamConnector]: true,
-        },
-      },
-    }),
-    [200],
-  );
 }
 
 async function startSteamOpenId(actor: TestActor): Promise<URL> {
@@ -318,23 +301,11 @@ function mockSteamPlayerApis(args: { readonly privateOwnedGames?: boolean }) {
 }
 
 describe("Steam OpenID connector", () => {
-  it("hides Steam until the feature switch is enabled", async () => {
+  it("exposes Steam in the connector catalog by default", async () => {
     const actor = testActor();
     mockSession(actor);
 
     const client = setupApp({ context })(zeroConnectorCatalogContract);
-    const hidden = await accept(
-      client.status({ headers: authHeaders() }),
-      [200],
-    );
-    expect(
-      hidden.body.connectors.some((connector) => {
-        return connector.connectorRef === "steam";
-      }),
-    ).toBeFalsy();
-
-    await enableSteamConnector(actor);
-    mockSession(actor);
     const visible = await accept(
       client.status({ headers: authHeaders() }),
       [200],
@@ -357,7 +328,6 @@ describe("Steam OpenID connector", () => {
   it("starts Steam OpenID auth and stores the verified SteamID on callback", async () => {
     const actor = testActor();
     mockSteamRuntimeEnv();
-    await enableSteamConnector(actor);
 
     const authorizationUrl = await startSteamOpenId(actor);
     expect(authorizationUrl.origin + authorizationUrl.pathname).toBe(
@@ -392,7 +362,6 @@ describe("Steam OpenID connector", () => {
   it("rejects invalid Steam OpenID verification without storing a connection", async () => {
     const actor = testActor();
     mockSteamRuntimeEnv();
-    await enableSteamConnector(actor);
     const authorizationUrl = await startSteamOpenId(actor);
     mockSteamOpenIdVerification(false);
 
@@ -440,7 +409,6 @@ describe("Steam OpenID connector", () => {
   it("reads official Steam player data through the API-owned key", async () => {
     const actor = testActor();
     mockSteamRuntimeEnv();
-    await enableSteamConnector(actor);
     await completeSteamOpenIdCallback(await startSteamOpenId(actor));
     mockSteamPlayerApis({ privateOwnedGames: false });
 
@@ -505,7 +473,6 @@ describe("Steam OpenID connector", () => {
   it("keeps private owned game data distinct from an empty library", async () => {
     const actor = testActor();
     mockSteamRuntimeEnv();
-    await enableSteamConnector(actor);
     await completeSteamOpenIdCallback(await startSteamOpenId(actor));
     mockSteamPlayerApis({ privateOwnedGames: true });
 
@@ -526,7 +493,6 @@ describe("Steam OpenID connector", () => {
   it("returns provider unavailable when Steam returns malformed JSON", async () => {
     const actor = testActor();
     mockSteamRuntimeEnv();
-    await enableSteamConnector(actor);
     await completeSteamOpenIdCallback(await startSteamOpenId(actor));
     mockSteamPlayerApis({ privateOwnedGames: false });
     server.use(
@@ -554,7 +520,6 @@ describe("Steam OpenID connector", () => {
   it("returns provider unavailable when Steam rejects the API key", async () => {
     const actor = testActor();
     mockSteamRuntimeEnv();
-    await enableSteamConnector(actor);
     await completeSteamOpenIdCallback(await startSteamOpenId(actor));
     mockSteamPlayerApis({ privateOwnedGames: false });
     server.use(
