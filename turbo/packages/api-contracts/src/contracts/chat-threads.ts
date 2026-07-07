@@ -65,7 +65,6 @@ const artifactItemSchema = z.object({
   threadTitle: z.string().nullable().optional(),
   filename: z.string(),
   contentType: z.string(),
-  size: z.number(),
   url: z.string(),
   createdAt: z.string(),
   artifactKind: hostedArtifactKindSchema.optional(),

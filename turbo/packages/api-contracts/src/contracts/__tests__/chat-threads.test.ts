@@ -101,7 +101,6 @@ describe("artifacts contract", () => {
       agentId: "agent-1",
       filename: "launch-plan.html",
       contentType: "text/html",
-      size: 4096,
       url: "https://static.vm0.io/artifacts/launch-plan.html",
       createdAt: "2026-07-07T00:00:00.000Z",
     });
@@ -121,7 +120,6 @@ describe("artifacts contract", () => {
       threadTitle: "Launch site",
       filename: "launch-plan.html",
       contentType: "text/html",
-      size: 4096,
       url: "https://static.vm0.io/artifacts/launch-plan.html",
       createdAt: "2026-07-07T00:00:00.000Z",
       artifactKind: "hosted-site",
@@ -143,7 +141,6 @@ describe("artifacts contract", () => {
       fileId: "file-1",
       filename: "launch-plan.html",
       contentType: "text/html",
-      size: 4096,
       url: "https://static.vm0.io/artifacts/launch-plan.html",
       createdAt: "2026-07-07T00:00:00.000Z",
     });
