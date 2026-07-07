@@ -640,7 +640,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn periodic_refresh_updates_active_builtin_names() {
+    async fn active_refresh_updates_registered_builtin_names() {
         let server = MockServer::start_async().await;
         let mock = server
             .mock_async(|when, then| {
@@ -665,7 +665,7 @@ mod tests {
             ApiClient::new(http_client(server.base_url()), "runner-token".to_string()),
             cache_path.clone(),
             dir.path().join("builtin-firewall-cache.json.lock"),
-            Duration::from_millis(20),
+            Duration::from_secs(3600),
         );
         let firewalls = vec![FirewallEntry::Builtin {
             name: "github".to_string(),
@@ -673,10 +673,12 @@ mod tests {
         }];
 
         handle.register_run(RunId::new_v4(), Some(&firewalls)).await;
-        wait_for_cache_entry(&cache_path, "github").await;
+        handle.core.refresh_active_names().await;
         handle.shutdown().await;
 
-        assert!(mock.calls_async().await >= 1);
+        mock.assert_async().await;
+        let cache = read_cache(&cache_path).await;
+        assert!(cache.entries.contains_key("github"));
     }
 
     #[tokio::test]
@@ -729,22 +731,5 @@ mod tests {
             cache.entries["github"].firewall["apis"][0]["base"],
             "https://old.example.com"
         );
-    }
-
-    async fn wait_for_cache_entry(path: &std::path::Path, name: &str) {
-        let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
-        loop {
-            if let Ok(content) = tokio::fs::read_to_string(path).await
-                && let Ok(cache) = serde_json::from_str::<BuiltinFirewallCatalogCache>(&content)
-                && cache.entries.contains_key(name)
-            {
-                return;
-            }
-            assert!(
-                tokio::time::Instant::now() < deadline,
-                "cache entry {name} was not written"
-            );
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
     }
 }
