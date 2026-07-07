@@ -10,6 +10,7 @@ from generated.builtin_firewalls import BUILTIN_FIREWALLS
 
 BuiltinFirewallCatalogFileKey = builtin_firewall_cache.CatalogFileKey
 BuiltinFirewallCatalogIdentity = builtin_firewall_cache.CatalogIdentity | tuple[str, str, str]
+BuiltinFirewallCatalogSnapshot = builtin_firewall_cache.BuiltinFirewallCatalogSnapshot
 BuiltinFirewallCoreCacheKey = tuple[
     str,
     BuiltinFirewallCatalogIdentity,
@@ -45,10 +46,8 @@ def catalog_file_key(
     return builtin_firewall_cache.catalog_file_key(cache_path)
 
 
-def catalog_dependency_file_key(
-    cache_path: str | None,
-) -> builtin_firewall_cache.CatalogFileKey | None:
-    return builtin_firewall_cache.catalog_dependency_file_key(cache_path)
+def load_catalog_snapshot(cache_path: str | None) -> BuiltinFirewallCatalogSnapshot:
+    return builtin_firewall_cache.load_catalog_snapshot(cache_path)
 
 
 def _copy_builtin_firewall_shell(
@@ -84,9 +83,9 @@ def _resolution_error(error: Exception) -> FirewallEntryResolutionError:
 
 def _catalog_source_for_name(
     raw_name: str,
-    cache_path: str | None,
+    catalog_snapshot: BuiltinFirewallCatalogSnapshot,
 ) -> tuple[dict | None, BuiltinFirewallCatalogIdentity]:
-    cached_catalog = builtin_firewall_cache.load_catalog(cache_path)
+    cached_catalog = catalog_snapshot.catalog
     if cached_catalog is not None:
         catalog_firewall = cached_catalog.firewalls.get(raw_name)
         if catalog_firewall is not None:
@@ -99,13 +98,13 @@ def _catalog_source_for_name(
 def _resolve_builtin_firewall_entry(
     entry: dict,
     *,
-    cache_path: str | None,
+    catalog_snapshot: BuiltinFirewallCatalogSnapshot,
 ) -> _ResolvedBuiltinFirewallEntry:
     raw_name = entry.get("name")
     if not isinstance(raw_name, str) or raw_name == "":
         raise FirewallEntryResolutionError("builtin firewall entry name must be a non-empty string")
 
-    catalog_firewall, catalog_identity = _catalog_source_for_name(raw_name, cache_path)
+    catalog_firewall, catalog_identity = _catalog_source_for_name(raw_name, catalog_snapshot)
     if catalog_firewall is None:
         raise FirewallEntryResolutionError(f'unknown builtin firewall "{raw_name}"')
 
@@ -178,6 +177,7 @@ def resolve_firewall_entries(
     vm: dict,
     *,
     builtin_firewall_catalog_cache_path: str | None = None,
+    builtin_firewall_catalog_snapshot: BuiltinFirewallCatalogSnapshot | None = None,
 ) -> ResolvedFirewallEntries:
     raw_firewalls = vm.get("firewalls")
     if raw_firewalls is None:
@@ -193,9 +193,13 @@ def resolve_firewall_entries(
 
         kind = entry.get("kind")
         if kind == "builtin":
+            if builtin_firewall_catalog_snapshot is None:
+                builtin_firewall_catalog_snapshot = load_catalog_snapshot(
+                    builtin_firewall_catalog_cache_path
+                )
             resolved_builtin = _resolve_builtin_firewall_entry(
                 entry,
-                cache_path=builtin_firewall_catalog_cache_path,
+                catalog_snapshot=builtin_firewall_catalog_snapshot,
             )
             resolved.append(resolved_builtin.firewall)
             builtin_cache_keys.append(resolved_builtin.cache_key)

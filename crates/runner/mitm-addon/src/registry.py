@@ -241,6 +241,7 @@ def _classify_registry_vms(
     dict[str, InvalidVmEntry],
     dict[str, tuple[registry_firewalls.BuiltinFirewallCoreCacheKey | None, ...]],
     bool,
+    registry_firewalls.BuiltinFirewallCatalogFileKey | None,
 ]:
     new_registry: dict = {}
     invalid_vms: dict[str, InvalidVmEntry] = {}
@@ -249,6 +250,7 @@ def _classify_registry_vms(
         tuple[registry_firewalls.BuiltinFirewallCoreCacheKey | None, ...],
     ] = {}
     uses_builtin_catalog_dependency = False
+    builtin_catalog_snapshot: registry_firewalls.BuiltinFirewallCatalogSnapshot | None = None
     for client_ip, vm in raw_registry.items():
         if not isinstance(vm, dict):
             invalid_vms[client_ip] = InvalidVmEntry(
@@ -296,18 +298,21 @@ def _classify_registry_vms(
             continue
 
         raw_firewalls = vm.get("firewalls")
-        uses_builtin_catalog_dependency = uses_builtin_catalog_dependency or (
-            isinstance(raw_firewalls, list)
-            and any(
-                isinstance(entry, dict) and entry.get("kind") == "builtin"
-                for entry in raw_firewalls
-            )
+        vm_uses_builtin_catalog_dependency = isinstance(raw_firewalls, list) and any(
+            isinstance(entry, dict) and entry.get("kind") == "builtin" for entry in raw_firewalls
         )
+        if vm_uses_builtin_catalog_dependency:
+            uses_builtin_catalog_dependency = True
+            if builtin_catalog_snapshot is None:
+                builtin_catalog_snapshot = registry_firewalls.load_catalog_snapshot(
+                    builtin_firewall_catalog_cache_path
+                )
 
         try:
             resolved_firewalls = registry_firewalls.resolve_firewall_entries(
                 vm,
                 builtin_firewall_catalog_cache_path=builtin_firewall_catalog_cache_path,
+                builtin_firewall_catalog_snapshot=builtin_catalog_snapshot,
             )
         except registry_firewalls.FirewallEntryResolutionError as e:
             invalid_vms[client_ip] = InvalidVmEntry("invalid_firewalls", str(e))
@@ -326,6 +331,11 @@ def _classify_registry_vms(
         invalid_vms,
         builtin_cache_keys_by_client_ip,
         uses_builtin_catalog_dependency,
+        (
+            builtin_catalog_snapshot.dependency_file_key
+            if builtin_catalog_snapshot is not None
+            else None
+        ),
     )
 
 
@@ -465,12 +475,13 @@ def load_registry_state(registry_path: str) -> RegistryState:
         invalid_vms,
         builtin_cache_keys,
         uses_builtin_catalog_dependency,
+        builtin_catalog_dependency_file_key,
     ) = _classify_registry_vms(
         raw_registry,
         builtin_firewall_catalog_cache_path=builtin_catalog_cache_path,
     )
     loaded_builtin_catalog_file_key = (
-        registry_firewalls.catalog_dependency_file_key(builtin_catalog_cache_path)
+        builtin_catalog_dependency_file_key
         if uses_builtin_catalog_dependency
         else _NO_BUILTIN_FIREWALL_CATALOG_DEPENDENCY
     )

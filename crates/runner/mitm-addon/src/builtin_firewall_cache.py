@@ -32,6 +32,12 @@ class BuiltinFirewallCatalog:
     firewalls: dict[str, dict]
 
 
+@dataclass(frozen=True)
+class BuiltinFirewallCatalogSnapshot:
+    dependency_file_key: CatalogFileKey | None
+    catalog: BuiltinFirewallCatalog | None
+
+
 @dataclass
 class _CatalogCacheState:
     path_key: str | None = None
@@ -78,20 +84,10 @@ def catalog_file_key(cache_path: str | None) -> CatalogFileKey | None:
     return (_path_key(path), st.st_dev, st.st_ino, st.st_mtime_ns, st.st_size)
 
 
-def catalog_dependency_file_key(cache_path: str | None) -> CatalogFileKey | None:
-    """Return the cache file identity observed by the latest load attempt."""
+def load_catalog_snapshot(cache_path: str | None) -> BuiltinFirewallCatalogSnapshot:
+    """Load one catalog cache state for a single registry reload."""
     if not cache_path:
-        return None
-    path = Path(cache_path)
-    path_key = _path_key(path)
-    state = _state_for_path(path_key)
-    return state.loaded_key or state.failed_key or catalog_file_key(cache_path)
-
-
-def load_catalog(cache_path: str | None) -> BuiltinFirewallCatalog | None:
-    """Load the runner-written catalog cache, returning None when unavailable."""
-    if not cache_path:
-        return None
+        return BuiltinFirewallCatalogSnapshot(None, None)
 
     path = Path(cache_path)
     path_key = _path_key(path)
@@ -101,14 +97,14 @@ def load_catalog(cache_path: str | None) -> BuiltinFirewallCatalog | None:
         fd, st = _open_cache_for_read(path)
     except OSError:
         state.reset(path_key)
-        return None
+        return BuiltinFirewallCatalogSnapshot(None, None)
 
     try:
         key = (path_key, st.st_dev, st.st_ino, st.st_mtime_ns, st.st_size)
         if key == state.loaded_key:
-            return state.catalog
+            return BuiltinFirewallCatalogSnapshot(key, state.catalog)
         if key == state.failed_key:
-            return None
+            return BuiltinFirewallCatalogSnapshot(key, None)
         try:
             catalog = _read_catalog(fd, path, st.st_size, key)
         except (BuiltinFirewallCatalogCacheError, OSError, ValueError, RecursionError) as exc:
@@ -116,14 +112,14 @@ def load_catalog(cache_path: str | None) -> BuiltinFirewallCatalog | None:
             state.loaded_key = None
             state.catalog = None
             _warn(f"Failed to read builtin firewall catalog cache: {exc}")
-            return None
+            return BuiltinFirewallCatalogSnapshot(key, None)
     finally:
         os.close(fd)
 
     state.loaded_key = key
     state.failed_key = None
     state.catalog = catalog
-    return catalog
+    return BuiltinFirewallCatalogSnapshot(key, catalog)
 
 
 def _open_cache_for_read(path: Path) -> tuple[int, os.stat_result]:

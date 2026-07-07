@@ -4,6 +4,7 @@ import json
 import os
 from unittest.mock import MagicMock, patch
 
+import builtin_firewall_cache
 import matching
 import registry
 import registry_firewalls
@@ -58,6 +59,23 @@ def _write_catalog_cache(
             },
             sort_keys=True,
         )
+    )
+
+
+def _catalog_snapshot(
+    *,
+    digest_char: str,
+    version: str,
+    firewalls: dict[str, dict],
+) -> builtin_firewall_cache.BuiltinFirewallCatalogSnapshot:
+    key = (f"catalog-cache/{version}.json", 1, 1, len(version), len(firewalls))
+    digest = f"sha256:{digest_char * 64}"
+    return builtin_firewall_cache.BuiltinFirewallCatalogSnapshot(
+        dependency_file_key=key,
+        catalog=builtin_firewall_cache.BuiltinFirewallCatalog(
+            identity=("cache", digest, version, key),
+            firewalls=firewalls,
+        ),
     )
 
 
@@ -315,6 +333,107 @@ class TestRegistryBuiltinCache:
         assert first_vm_info["firewalls"][0]["apis"][0]["base"] == "https://bundled.example.com"
         assert second_vm_info["firewalls"][0]["apis"][0]["base"] == "https://cache.example.com"
         assert _first_firewall_core(first_compiled) is not _first_firewall_core(second_compiled)
+
+    def test_unknown_builtin_registry_reload_when_catalog_cache_appears(
+        self, tmp_path, monkeypatch, mitm_ctx
+    ):
+        registry_path = tmp_path / "registry.json"
+        cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
+        monkeypatch.setattr(registry_firewalls, "BUILTIN_FIREWALLS", {})
+        write_multi_vm_registry(
+            registry_path,
+            {"10.200.0.1": builtin_vm("run-cache-only", "cache-only")},
+        )
+
+        with mitm_ctx(
+            registry_path=str(registry_path),
+            builtin_firewall_catalog_cache_path=str(cache_path),
+        ):
+            first_context = registry.get_vm_context("10.200.0.1", str(registry_path))
+            first_state = registry.load_registry_state(str(registry_path))
+            _write_catalog_cache(
+                cache_path,
+                digest="sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                version="catalog-a",
+                firewalls={
+                    "cache-only": _cache_firewall(
+                        "cache-only",
+                        "https://cache.example.com",
+                    )
+                },
+            )
+            second_context = registry.get_vm_context("10.200.0.1", str(registry_path))
+
+        assert first_context is None
+        assert not isinstance(first_state, registry.RegistryUnavailable)
+        assert first_state.invalid_vms["10.200.0.1"].reason == "invalid_firewalls"
+        assert second_context is not None
+        second_vm_info, second_compiled, _ = second_context
+        assert second_compiled is not None
+        assert second_vm_info["firewalls"][0]["apis"][0]["base"] == "https://cache.example.com"
+
+    def test_registry_reload_pins_one_catalog_snapshot_for_builtin_entries(
+        self, tmp_path, monkeypatch, mitm_ctx
+    ):
+        registry_path = tmp_path / "registry.json"
+        cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
+        write_multi_vm_registry(
+            registry_path,
+            {
+                "10.200.0.1": {
+                    "runId": "run-pinned-cache",
+                    "firewalls": [
+                        {"kind": "builtin", "name": "alpha"},
+                        {"kind": "builtin", "name": "beta"},
+                    ],
+                }
+            },
+        )
+        monkeypatch.setattr(registry_firewalls, "BUILTIN_FIREWALLS", {})
+        snapshots = [
+            _catalog_snapshot(
+                digest_char="a",
+                version="catalog-a",
+                firewalls={
+                    "alpha": _cache_firewall("alpha", "https://alpha-a.example.com"),
+                    "beta": _cache_firewall("beta", "https://beta-a.example.com"),
+                },
+            ),
+            _catalog_snapshot(
+                digest_char="b",
+                version="catalog-b",
+                firewalls={
+                    "alpha": _cache_firewall("alpha", "https://alpha-b.example.com"),
+                    "beta": _cache_firewall("beta", "https://beta-b.example.com"),
+                },
+            ),
+        ]
+        load_calls: list[str | None] = []
+
+        def load_catalog_snapshot(
+            cache_path: str | None,
+        ) -> builtin_firewall_cache.BuiltinFirewallCatalogSnapshot:
+            load_calls.append(cache_path)
+            return snapshots[min(len(load_calls) - 1, len(snapshots) - 1)]
+
+        monkeypatch.setattr(
+            registry_firewalls,
+            "load_catalog_snapshot",
+            load_catalog_snapshot,
+        )
+
+        with mitm_ctx(
+            registry_path=str(registry_path),
+            builtin_firewall_catalog_cache_path=str(cache_path),
+        ):
+            context = registry.get_vm_context("10.200.0.1", str(registry_path))
+
+        assert context is not None
+        vm_info, compiled_firewalls, _ = context
+        assert compiled_firewalls is not None
+        bases = [api["base"] for firewall in vm_info["firewalls"] for api in firewall["apis"]]
+        assert bases == ["https://alpha-a.example.com", "https://beta-a.example.com"]
+        assert load_calls == [str(cache_path)]
 
     def test_runner_catalog_cache_accepts_valid_template_base(self, tmp_path, mitm_ctx):
         registry_path = tmp_path / "registry.json"
