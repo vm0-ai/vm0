@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.568.1](https://github.com/vm0-ai/vm0/compare/app-v0.568.0...app-v0.568.1) (2026-07-07)
+
+
+### Bug Fixes
+
+* align teams system prompt organization ([#19736](https://github.com/vm0-ai/vm0/issues/19736)) ([f196882](https://github.com/vm0-ai/vm0/commit/f196882fbe1eac2e89c9115c3fbb2f81e5949783))
+* fit artifact image previews to viewport ([#20498](https://github.com/vm0-ai/vm0/issues/20498)) ([de379c8](https://github.com/vm0-ai/vm0/commit/de379c82ef608f685de5226af65d57d11c80375c))
+* keep chat thread focus ring inset ([#20490](https://github.com/vm0-ai/vm0/issues/20490)) ([a86e237](https://github.com/vm0-ai/vm0/commit/a86e23768b0f95eaf566bdbdba06a944587b74e9))
+* show full workflow template card description instead of truncating to two lines ([#20495](https://github.com/vm0-ai/vm0/issues/20495)) ([71789a6](https://github.com/vm0-ai/vm0/commit/71789a6a47caff85cfd61ef6376a2de2d74cf93c))
+* warm background chat cache after follow-ups finish ([#20487](https://github.com/vm0-ai/vm0/issues/20487)) ([0173a36](https://github.com/vm0-ai/vm0/commit/0173a36238c741ca6b3748808d64df9eeb8d3a56))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.160.1
+    * @vm0/connectors bumped to 1.146.0
+    * @vm0/core bumped to 8.411.0
+
 ## [0.568.0](https://github.com/vm0-ai/vm0/compare/app-v0.567.0...app-v0.568.0) (2026-07-07)
 
 

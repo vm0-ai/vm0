@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.52](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.51...vsock-host-v0.17.52) (2026-07-07)
+
+
+### Performance Improvements
+
+* build vsock frames outside writer lock ([#20480](https://github.com/vm0-ai/vm0/issues/20480)) ([4160b0f](https://github.com/vm0-ai/vm0/commit/4160b0f6cafd2e29b559996f32ce4c862e390de7))
+
 ## [0.17.51](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.50...vsock-host-v0.17.51) (2026-07-06)
 
 
