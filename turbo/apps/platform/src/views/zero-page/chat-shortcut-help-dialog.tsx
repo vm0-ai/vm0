@@ -21,8 +21,6 @@ const CHAT_THREAD_SHORTCUT_SECTIONS = [
       { key: "ctrl+shift+]", label: "Next agent" },
       { key: "f2", label: "Rename chat" },
       { key: "shift+f2", label: "Change icon" },
-      { key: "ctrl+shift+1", label: "Set icon (Ctrl+Shift+1-9)" },
-      { key: "ctrl+shift+0", label: "Clear icon" },
     ],
   },
   {
@@ -80,7 +78,7 @@ const SIDEBAR_SHORTCUT_SECTIONS = [
 ] as const;
 
 function isChatThreadEmojiShortcutKey(key: string): boolean {
-  return key === "shift+f2" || key === "ctrl+shift+1" || key === "ctrl+shift+0";
+  return key === "shift+f2";
 }
 
 function shortcutSectionsForRoute(
