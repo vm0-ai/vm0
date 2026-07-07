@@ -20,6 +20,7 @@ from collections.abc import Callable
 from typing import NamedTuple
 
 from mitmproxy import http
+from wsproto.utilities import generate_accept_token
 
 import body_decoding
 import flow_metadata
@@ -35,6 +36,7 @@ _MODEL_SSE_USAGE_FINISH = "model_sse_usage_finish"
 _MODEL_WEBSOCKET_USAGE_ENABLED = "model_websocket_usage_enabled"
 _CONNECTOR_RESPONSE_FINISH = "connector_response_finish"
 _RESPONSE_STREAM_CALLBACK = "_vm0_response_stream_callback"
+_HTTP_OWS_CHARS = " \t"
 
 _ResponseChunkParser = Callable[[bytes], None]
 _SseUsageParseErrorLogger = Callable[[str, str], None]
@@ -64,6 +66,11 @@ def is_model_websocket_usage_enabled(flow: http.HTTPFlow) -> bool:
     reporting must wait for ``websocket_end()``.
     """
     return bool(flow.metadata.get(_MODEL_WEBSOCKET_USAGE_ENABLED, False))
+
+
+def release_model_websocket_usage_state(flow: http.HTTPFlow) -> None:
+    """Disable WebSocket usage extraction after a terminal websocket/error hook."""
+    flow.metadata.pop(_MODEL_WEBSOCKET_USAGE_ENABLED, None)
 
 
 def _make_response_decode_session(
@@ -109,8 +116,8 @@ def _configure_response_usage_parser(flow: http.HTTPFlow) -> _ResponseChunkParse
     is_observable_model_provider = usage.is_model_provider_usage_observable(flow)
     if (
         is_observable_model_provider
-        and flow.response.status_code == _HTTP_STATUS_SWITCHING_PROTOCOLS
         and uses_openai_responses_usage_protocol(flow)
+        and _is_confirmed_websocket_upgrade_response(flow)
     ):
         flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {}
         flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE_SOURCES] = {}
@@ -194,6 +201,45 @@ def _configure_response_usage_parser(flow: http.HTTPFlow) -> _ResponseChunkParse
         return decode_session.feed
 
     return None
+
+
+def _is_confirmed_websocket_upgrade_response(flow: http.HTTPFlow) -> bool:
+    response = flow.response
+    if response is None:
+        return False
+    if response.status_code != _HTTP_STATUS_SWITCHING_PROTOCOLS:
+        return False
+    if flow.metadata.get(metadata_keys.WEBSOCKET_UPGRADE_REQUEST) is not True:
+        return False
+    if not _header_values_contain_token(response.headers, "Upgrade", "websocket"):
+        return False
+    if not _header_values_contain_token(response.headers, "Connection", "upgrade"):
+        return False
+
+    request_key = _single_header_value(flow.request.headers, "Sec-WebSocket-Key")
+    response_accept = _single_header_value(response.headers, "Sec-WebSocket-Accept")
+    if request_key is None or response_accept is None:
+        return False
+    try:
+        expected_accept = generate_accept_token(request_key.encode("ascii")).decode("ascii")
+    except UnicodeEncodeError:
+        return False
+    return response_accept == expected_accept
+
+
+def _header_values_contain_token(headers: http.Headers, name: str, expected: str) -> bool:
+    return any(
+        token.strip(_HTTP_OWS_CHARS).lower() == expected
+        for value in headers.get_all(name)
+        for token in value.split(",")
+    )
+
+
+def _single_header_value(headers: http.Headers, name: str) -> str | None:
+    values = headers.get_all(name)
+    if len(values) != 1:
+        return None
+    return values[0].strip(_HTTP_OWS_CHARS)
 
 
 def configure_response_stream(flow: http.HTTPFlow) -> None:

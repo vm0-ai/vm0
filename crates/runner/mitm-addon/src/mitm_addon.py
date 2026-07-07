@@ -12,6 +12,8 @@ This addon runs on the runner HOST (not inside VMs) and:
 """
 
 import asyncio
+import base64
+import binascii
 import functools
 import ipaddress
 import json
@@ -153,6 +155,7 @@ _REQUEST_HEADERS_PROBE_METADATA_KEYS = (
     metadata_keys.VM_SANDBOX_AUTH_KEY,
     metadata_keys.CLI_AGENT_TYPE,
     metadata_keys.BROWSER_USER_AGENT,
+    metadata_keys.WEBSOCKET_UPGRADE_REQUEST,
     metadata_keys.ORIGINAL_URL,
     metadata_keys.TRUSTED_AUTHORITY_HOST,
     metadata_keys.NETWORK_LOG_TARGET,
@@ -252,6 +255,7 @@ _AUTH_SCHEMES_REQUIRING_CREDENTIAL = frozenset(
 )
 _AUTH_BASE_BODYLESS_METHODS = frozenset(("GET", "HEAD"))
 _HTTP_RESPONSE_BODYLESS_METHODS = frozenset(("CONNECT", "HEAD"))
+_WEBSOCKET_KEY_BYTES = 16
 _TLS_ADMISSION_VALID_REGISTRY_VM: Final = "valid_registry_vm"
 _TLS_ADMISSION_INVALID_REGISTRY_VM: Final = "invalid_registry_vm"
 _TLS_ADMISSION_REGISTRY_UNAVAILABLE: Final = "registry_unavailable"
@@ -2900,6 +2904,8 @@ def _maybe_normalize_accept_encoding_for_body_inspection(
     allow: matching.FirewallAllow,
     vm_info: dict,
 ) -> None:
+    if _is_websocket_upgrade_request(flow):
+        flow.metadata[metadata_keys.WEBSOCKET_UPGRADE_REQUEST] = True
     if _expects_http_response_body_usage_inspection(flow, allow, vm_info):
         response_encoding_negotiation.normalize_accept_encoding_for_body_inspection(
             flow.request.headers
@@ -2923,18 +2929,43 @@ def _expects_http_response_body_usage_inspection(
 
 
 def _is_websocket_upgrade_request(flow: http.HTTPFlow) -> bool:
-    if flow.request.headers.get("Upgrade", "").strip(_HTTP_OWS_CHARS).lower() != "websocket":
+    if flow.request.method.upper() != "GET":
+        return False
+    if flow.request.http_version != "HTTP/1.1":
+        return False
+    if not _header_values_contain_token(flow.request.headers, "Upgrade", "websocket"):
+        return False
+    websocket_key = _single_header_value(flow.request.headers, "Sec-WebSocket-Key")
+    if websocket_key is None or not _is_valid_websocket_key(websocket_key):
+        return False
+    websocket_version = _single_header_value(flow.request.headers, "Sec-WebSocket-Version")
+    if websocket_version != "13":
         return False
 
-    connection_values = flow.request.headers.get_all("Connection")
-    if not connection_values:
-        return False
+    return _header_values_contain_token(flow.request.headers, "Connection", "upgrade")
 
+
+def _header_values_contain_token(headers: http.Headers, name: str, expected: str) -> bool:
     return any(
-        token.strip(_HTTP_OWS_CHARS).lower() == "upgrade"
-        for value in connection_values
+        token.strip(_HTTP_OWS_CHARS).lower() == expected
+        for value in headers.get_all(name)
         for token in value.split(",")
     )
+
+
+def _single_header_value(headers: http.Headers, name: str) -> str | None:
+    values = headers.get_all(name)
+    if len(values) != 1:
+        return None
+    return values[0].strip(_HTTP_OWS_CHARS)
+
+
+def _is_valid_websocket_key(value: str) -> bool:
+    try:
+        decoded = base64.b64decode(value, validate=True)
+    except (binascii.Error, ValueError):
+        return False
+    return len(decoded) == _WEBSOCKET_KEY_BYTES
 
 
 def _maybe_track_usage_flow(
@@ -3103,8 +3134,10 @@ def _release_terminal_flow_state(
         _clear_model_websocket_messages(flow)
         if response_streaming.is_model_websocket_usage_enabled(flow):
             flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE_SOURCES] = {}
+            response_streaming.release_model_websocket_usage_state(flow)
     flow.metadata.pop(_REQUEST_CLASSIFICATION, None)
     flow.metadata.pop(_FIREWALL_AUTH_APPLIED_IN_REQUESTHEADERS, None)
+    flow.metadata.pop(metadata_keys.WEBSOCKET_UPGRADE_REQUEST, None)
     request_streaming.release_request_stream_state(flow)
     _release_connector_diagnostic_response_stream_state(flow)
     response_streaming.release_response_stream_state(flow)

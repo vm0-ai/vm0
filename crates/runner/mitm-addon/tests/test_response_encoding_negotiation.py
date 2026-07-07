@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from mitmproxy import http
 
+import flow_metadata_keys as metadata_keys
 import mitm_addon
 import response_encoding_negotiation
 from tests.request_handler_helpers import _single_firewall_vm, _write_registry
@@ -532,30 +533,150 @@ async def test_header_phase_stream_safe_auth_normalizes_accept_encoding_before_a
     assert flow.request.headers[_ACCEPT_ENCODING] == "gzip"
 
 
-async def test_model_provider_websocket_upgrade_keeps_accept_encoding(
+async def test_header_phase_websocket_auth_fallback_restores_upgrade_marker(
     tmp_path: Path,
     real_flow: Callable[..., http.HTTPFlow],
     headers: Callable[..., http.Headers],
     mitm_ctx,
     fake_firewall_headers,
 ) -> None:
-    reg_path = _model_provider_registry(tmp_path)
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            firewall_name=_X_FIREWALL_NAME,
+            api_entry={
+                "base": f"https://{_X_HOST}",
+                "auth": {"headers": {"Authorization": "Bearer token"}},
+                "permissions": [{"name": "read", "rules": [f"GET {_X_PATH}"]}],
+            },
+            network_policy={
+                "allow": ["read"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "deny",
+            },
+            billable_firewalls=[_X_FIREWALL_NAME],
+            include_encrypted_secrets=False,
+            vm_fields={"captureNetworkBodies": True},
+        ),
+    )
     flow = _request_flow(
         real_flow,
         headers,
-        host=_MODEL_PROVIDER_HOST,
-        path=_MODEL_PROVIDER_PATH,
-        method="POST",
+        host=_X_HOST,
+        path=_X_PATH,
+        method="GET",
         accept_encoding="gzip, zstd, br",
-        extra_headers=(("Connection", "keep-alive, Upgrade"), ("Upgrade", "websocket")),
+        extra_headers=(
+            ("Connection", "keep-alive, Upgrade"),
+            ("Upgrade", "websocket"),
+            ("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ=="),
+            ("Sec-WebSocket-Version", "13"),
+            ("Content-Length", str(mitm_addon.STREAM_BUFFER_LIMIT + 1)),
+        ),
     )
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
-        fake_firewall_headers(),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        requestheaders_result = mitm_addon.requestheaders(flow)
+        await await_requestheaders_result(requestheaders_result)
+
+    auth_fetch.assert_not_called()
+    assert metadata_keys.WEBSOCKET_UPGRADE_REQUEST not in flow.metadata
+    assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
+    assert flow.request.headers[_ACCEPT_ENCODING] == "gzip, zstd, br"
+
+
+@pytest.mark.parametrize(
+    "extra_headers",
+    [
+        pytest.param(
+            (
+                ("Connection", "keep-alive, Upgrade"),
+                ("Upgrade", "websocket"),
+                ("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ=="),
+                ("Sec-WebSocket-Version", "13"),
+            ),
+            id="standard",
+        ),
+        pytest.param(
+            (
+                ("Connection", "keep-alive, Upgrade"),
+                ("Upgrade", "h2c, WebSocket"),
+                ("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ=="),
+                ("Sec-WebSocket-Version", "13"),
+            ),
+            id="upgrade-token-list",
+        ),
+        pytest.param(
+            (
+                ("Connection", "keep-alive, Upgrade"),
+                ("Upgrade", "h2c"),
+                ("Upgrade", "websocket"),
+                ("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ=="),
+                ("Sec-WebSocket-Version", "13"),
+            ),
+            id="repeated-upgrade-header",
+        ),
+    ],
+)
+async def test_model_provider_websocket_upgrade_injects_auth_and_keeps_accept_encoding(
+    tmp_path: Path,
+    real_flow: Callable[..., http.HTTPFlow],
+    headers: Callable[..., http.Headers],
+    mitm_ctx,
+    fake_firewall_headers,
+    extra_headers: tuple[tuple[str, str], ...],
+) -> None:
+    firewall_name = "model-provider:openai-api-key"
+    host = "api.openai.com"
+    # Match the generated OpenAI model-provider firewall; upstream endpoint
+    # WebSocket validity is outside the request-hook auth injection boundary.
+    path = "/v1/responses"
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            firewall_name=firewall_name,
+            api_entry={
+                "base": f"https://{host}{path}",
+                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.OPENAI_API_KEY }}"}},
+                "permissions": [],
+            },
+            network_policy={
+                "allow": [],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "allow",
+            },
+            vm_fields={"modelUsageProvider": "gpt-5.5"},
+        ),
+    )
+    flow = _request_flow(
+        real_flow,
+        headers,
+        host=host,
+        path=path,
+        method="GET",
+        accept_encoding="gzip, zstd, br",
+        extra_headers=extra_headers,
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
     ):
         await mitm_addon.request(flow)
 
+    auth_fetch.assert_awaited_once()
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+    assert flow.metadata[metadata_keys.FIREWALL_BASE] == f"https://{host}{path}"
+    assert flow.metadata[metadata_keys.FIREWALL_NAME] == firewall_name
+    assert flow.metadata[metadata_keys.FIREWALL_PERMISSION] == ""
+    assert flow.request.headers["Authorization"] == "Bearer x"
     assert flow.request.headers[_ACCEPT_ENCODING] == "gzip, zstd, br"
 
 
@@ -599,26 +720,139 @@ async def test_response_bodyless_usage_inspected_methods_keep_accept_encoding(
     "extra_headers",
     [
         pytest.param(
-            (("Connection", "keep-alive, Upgrade"), ("Upgrade", "websocket\u2028")),
+            (
+                ("Connection", "keep-alive, Upgrade"),
+                ("Upgrade", "websocket\u2028"),
+                ("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ=="),
+                ("Sec-WebSocket-Version", "13"),
+            ),
             id="invalid-upgrade-value-whitespace",
         ),
         pytest.param(
-            (("Connection", "keep-alive, \u2028Upgrade"), ("Upgrade", "websocket")),
+            (
+                ("Connection", "keep-alive, \u2028Upgrade"),
+                ("Upgrade", "websocket"),
+                ("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ=="),
+                ("Sec-WebSocket-Version", "13"),
+            ),
             id="invalid-connection-token-whitespace",
         ),
         pytest.param(
-            (("Upgrade", "websocket"),),
+            (
+                ("Upgrade", "websocket"),
+                ("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ=="),
+                ("Sec-WebSocket-Version", "13"),
+            ),
             id="missing-connection-upgrade-token",
+        ),
+        pytest.param(
+            (
+                ("Connection", "keep-alive, Upgrade"),
+                ("Upgrade", "websocket"),
+                ("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ=="),
+                ("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ=="),
+                ("Sec-WebSocket-Version", "13"),
+            ),
+            id="duplicate-websocket-key",
+        ),
+        pytest.param(
+            (
+                ("Connection", "keep-alive, Upgrade"),
+                ("Upgrade", "websocket"),
+                ("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ=="),
+                ("Sec-WebSocket-Version", "13"),
+                ("Sec-WebSocket-Version", "12"),
+            ),
+            id="duplicate-websocket-version",
+        ),
+        pytest.param(
+            (
+                ("Connection", "keep-alive, Upgrade"),
+                ("Upgrade", "websocket"),
+                ("Sec-WebSocket-Version", "13"),
+            ),
+            id="missing-websocket-key",
+        ),
+        pytest.param(
+            (
+                ("Connection", "keep-alive, Upgrade"),
+                ("Upgrade", "websocket"),
+                ("Sec-WebSocket-Key", "   "),
+                ("Sec-WebSocket-Version", "13"),
+            ),
+            id="blank-websocket-key",
+        ),
+        pytest.param(
+            (
+                ("Connection", "keep-alive, Upgrade"),
+                ("Upgrade", "websocket"),
+                ("Sec-WebSocket-Key", "not base64"),
+                ("Sec-WebSocket-Version", "13"),
+            ),
+            id="invalid-websocket-key-base64",
+        ),
+        pytest.param(
+            (
+                ("Connection", "keep-alive, Upgrade"),
+                ("Upgrade", "websocket"),
+                ("Sec-WebSocket-Key", "c2hvcnQ="),
+                ("Sec-WebSocket-Version", "13"),
+            ),
+            id="invalid-websocket-key-length",
+        ),
+        pytest.param(
+            (
+                ("Connection", "keep-alive, Upgrade"),
+                ("Upgrade", "websocket"),
+                ("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ=="),
+            ),
+            id="missing-websocket-version",
+        ),
+        pytest.param(
+            (
+                ("Connection", "keep-alive, Upgrade"),
+                ("Upgrade", "websocket"),
+                ("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ=="),
+                ("Sec-WebSocket-Version", "12"),
+            ),
+            id="unsupported-websocket-version",
         ),
     ],
 )
-async def test_invalid_websocket_upgrade_whitespace_normalizes_accept_encoding(
+async def test_invalid_websocket_upgrade_normalizes_accept_encoding(
     tmp_path: Path,
     real_flow: Callable[..., http.HTTPFlow],
     headers: Callable[..., http.Headers],
     mitm_ctx,
     fake_firewall_headers,
     extra_headers: tuple[tuple[str, str], ...],
+) -> None:
+    reg_path = _model_provider_registry(tmp_path, rule_method="GET")
+    flow = _request_flow(
+        real_flow,
+        headers,
+        host=_MODEL_PROVIDER_HOST,
+        path=_MODEL_PROVIDER_PATH,
+        method="GET",
+        accept_encoding="gzip, zstd, br",
+        extra_headers=extra_headers,
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers(),
+    ):
+        await mitm_addon.request(flow)
+
+    assert flow.request.headers[_ACCEPT_ENCODING] == "gzip"
+
+
+async def test_invalid_websocket_upgrade_method_normalizes_accept_encoding(
+    tmp_path: Path,
+    real_flow: Callable[..., http.HTTPFlow],
+    headers: Callable[..., http.Headers],
+    mitm_ctx,
+    fake_firewall_headers,
 ) -> None:
     reg_path = _model_provider_registry(tmp_path)
     flow = _request_flow(
@@ -628,8 +862,48 @@ async def test_invalid_websocket_upgrade_whitespace_normalizes_accept_encoding(
         path=_MODEL_PROVIDER_PATH,
         method="POST",
         accept_encoding="gzip, zstd, br",
-        extra_headers=extra_headers,
+        extra_headers=(
+            ("Connection", "keep-alive, Upgrade"),
+            ("Upgrade", "websocket"),
+            ("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ=="),
+            ("Sec-WebSocket-Version", "13"),
+        ),
     )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers(),
+    ):
+        await mitm_addon.request(flow)
+
+    assert flow.request.headers[_ACCEPT_ENCODING] == "gzip"
+
+
+@pytest.mark.parametrize("http_version", ["HTTP/1.0", "HTTP/2.0", "HTTP/3"])
+async def test_invalid_websocket_upgrade_http_version_normalizes_accept_encoding(
+    tmp_path: Path,
+    real_flow: Callable[..., http.HTTPFlow],
+    headers: Callable[..., http.Headers],
+    mitm_ctx,
+    fake_firewall_headers,
+    http_version: str,
+) -> None:
+    reg_path = _model_provider_registry(tmp_path, rule_method="GET")
+    flow = _request_flow(
+        real_flow,
+        headers,
+        host=_MODEL_PROVIDER_HOST,
+        path=_MODEL_PROVIDER_PATH,
+        method="GET",
+        accept_encoding="gzip, zstd, br",
+        extra_headers=(
+            ("Connection", "keep-alive, Upgrade"),
+            ("Upgrade", "websocket"),
+            ("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ=="),
+            ("Sec-WebSocket-Version", "13"),
+        ),
+    )
+    flow.request.http_version = http_version
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),

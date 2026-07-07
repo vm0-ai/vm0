@@ -10,6 +10,8 @@ import flow_metadata_keys as metadata_keys
 from tests.flow_helpers import header_map
 
 RealFlowFactory = Callable[..., http.HTTPFlow]
+_WEBSOCKET_KEY = "dGhlIHNhbXBsZSBub25jZQ=="
+_WEBSOCKET_ACCEPT = "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
 
 
 def make_model_provider_flow(
@@ -65,9 +67,20 @@ def make_openai_responses_websocket_flow(
         cli_agent_type="codex",
         model_usage_provider="gpt-5.5",
     )
+    flow.request.headers["Connection"] = "keep-alive, Upgrade"
+    flow.request.headers["Upgrade"] = "websocket"
+    flow.request.headers["Sec-WebSocket-Key"] = _WEBSOCKET_KEY
+    flow.request.headers["Sec-WebSocket-Version"] = "13"
+    flow.metadata[metadata_keys.WEBSOCKET_UPGRADE_REQUEST] = True
     flow.response = tutils.tresp(
         status_code=101,
-        headers=http.Headers(upgrade="websocket"),
+        headers=http.Headers(
+            [
+                (b"Connection", b"Upgrade"),
+                (b"Upgrade", b"websocket"),
+                (b"Sec-WebSocket-Accept", _WEBSOCKET_ACCEPT.encode()),
+            ]
+        ),
     )
     return flow
 
