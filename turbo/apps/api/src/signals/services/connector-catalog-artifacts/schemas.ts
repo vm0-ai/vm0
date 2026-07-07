@@ -25,7 +25,7 @@ export const SUPPORTED_CONNECTOR_CATALOG_ARTIFACT_SCHEMA_VERSION = 1;
 export function isSupportedConnectorCatalogCapability(
   capability: string,
 ): boolean {
-  return /^(catalog\.public-connectors@1|catalog\.private-field-mapping@1|grant\.manual@1|grant\.auth-code@1|grant\.external-code@1|grant\.device-auth@1|grant\.managed@1|firewall\.permission-metadata@1)$/.test(
+  return /^(catalog\.public-connectors@1|catalog\.private-field-mapping@1|grant\.manual@1|grant\.auth-code@1|grant\.external-code@1|grant\.external-code-display@1|grant\.device-auth@1|grant\.managed@1|firewall\.permission-metadata@1)$/.test(
     capability,
   );
 }

@@ -130,6 +130,9 @@ function assertRequiredCapabilitiesCoverArtifacts(args: {
   for (const connector of args.publicArtifact.connectors) {
     for (const authMethod of connector.authMethods) {
       artifactCapabilities.add(authMethodGrantCapability(authMethod));
+      if (authMethod.externalCode) {
+        artifactCapabilities.add("grant.external-code-display@1");
+      }
     }
   }
 
