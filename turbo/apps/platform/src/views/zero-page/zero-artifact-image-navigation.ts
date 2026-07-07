@@ -75,8 +75,7 @@ type ArtifactImageMetadata = {
 // optional image marker, label/alt text, and url while allowing escaped label
 // characters. Agent-generated images can render as markdown image lines or
 // media links rather than dedicated preview blocks.
-const MARKDOWN_IMAGE_OR_LINK_PATTERN =
-  /(!?)\[((?:\\.|[^\]\\])*)\]\(([^)]+)\)/g;
+const MARKDOWN_IMAGE_OR_LINK_PATTERN = /(!?)\[((?:\\.|[^\]\\])*)\]\(([^)]+)\)/g;
 
 function unescapeMarkdownText(value: string): string {
   return value.replace(/\\([\]\\])/g, "$1");
