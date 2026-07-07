@@ -28,7 +28,7 @@ import { ProviderIcon } from "../settings/provider-icons.tsx";
 import { PersonalClaudeCodeDeviceAuthDialog } from "../settings/claude-code-device-auth-dialog.tsx";
 import { PersonalCodexDeviceAuthDialog } from "../settings/codex-device-auth-dialog.tsx";
 import { SettingsSectionHeading } from "../settings/settings-section-heading.tsx";
-import { runAfterDropdownMenuClose } from "../../../components/dropdown-menu-modal-action.ts";
+import { DropdownMenuModalItem } from "../../../components/dropdown-menu-modal-item.tsx";
 import {
   CodexResetUsageDialog,
   formatCodexResetCredits,
@@ -485,6 +485,42 @@ interface OAuthMenuItem {
   opensModal?: boolean;
 }
 
+function OAuthMenuEntry({ item }: { item: OAuthMenuItem }) {
+  if (item.kind === "separator") {
+    return <DropdownMenuSeparator />;
+  }
+  if (item.kind === "status") {
+    return (
+      <DropdownMenuItem
+        disabled
+        className="text-xs text-muted-foreground data-[disabled]:opacity-100"
+      >
+        {item.label}
+      </DropdownMenuItem>
+    );
+  }
+  if (item.opensModal && item.onSelect) {
+    return (
+      <DropdownMenuModalItem
+        disabled={item.disabled}
+        onModalSelect={item.onSelect}
+      >
+        {item.label}
+      </DropdownMenuModalItem>
+    );
+  }
+  return (
+    <DropdownMenuItem
+      disabled={item.disabled}
+      onSelect={() => {
+        item.onSelect?.();
+      }}
+    >
+      {item.label}
+    </DropdownMenuItem>
+  );
+}
+
 function OAuthCredentialRow({
   type,
   title,
@@ -564,40 +600,9 @@ function OAuthCredentialRow({
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-44">
-                  {menuItems.map((item) => {
-                    if (item.kind === "separator") {
-                      return <DropdownMenuSeparator key={item.label} />;
-                    }
-                    if (item.kind === "status") {
-                      return (
-                        <DropdownMenuItem
-                          key={item.label}
-                          disabled
-                          className="text-xs text-muted-foreground data-[disabled]:opacity-100"
-                        >
-                          {item.label}
-                        </DropdownMenuItem>
-                      );
-                    }
-                    return (
-                      <DropdownMenuItem
-                        key={item.label}
-                        disabled={item.disabled}
-                        onSelect={() => {
-                          if (!item.onSelect) {
-                            return;
-                          }
-                          if (item.opensModal) {
-                            runAfterDropdownMenuClose(item.onSelect);
-                            return;
-                          }
-                          item.onSelect();
-                        }}
-                      >
-                        {item.label}
-                      </DropdownMenuItem>
-                    );
-                  })}
+                  {menuItems.map((item) => (
+                    <OAuthMenuEntry key={item.label} item={item} />
+                  ))}
                 </DropdownMenuContent>
               </DropdownMenu>
             )}

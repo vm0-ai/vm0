@@ -1,6 +1,5 @@
 import { useGet, useLoadable } from "ccstate-react";
 import {
-  DropdownMenuItem,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -17,7 +16,7 @@ import {
   type AccountMenuSubscriptionUsageWindow,
   type AccountMenuSubscriptionUsageRowsCacheKey,
 } from "../../signals/zero-page/account-menu-subscriptions.ts";
-import { runAfterDropdownMenuClose } from "../components/dropdown-menu-modal-action.ts";
+import { DropdownMenuModalItem } from "../components/dropdown-menu-modal-item.tsx";
 import { formatCodexResetCredits } from "./components/preferences/codex-reset-usage-dialog.tsx";
 
 type SubscriptionUsage = AccountMenuSubscriptionUsage;
@@ -151,12 +150,10 @@ function AccountMenuSubscriptionProviderSection({
         })}
       </div>
       {type === "codex-oauth-token" ? (
-        <DropdownMenuItem
+        <DropdownMenuModalItem
           disabled={!canResetCodex || resetPending}
-          onSelect={() => {
-            runAfterDropdownMenuClose(() => {
-              onResetCodexUsage?.(resetCredits ?? null);
-            });
+          onModalSelect={() => {
+            onResetCodexUsage?.(resetCredits ?? null);
           }}
           className="mt-1 flex h-7 items-center justify-between gap-2 rounded-md px-2 py-1 text-xs"
         >
@@ -164,7 +161,7 @@ function AccountMenuSubscriptionProviderSection({
             {formatCodexResetCredits(resetCredits)}
           </span>
           <span className="shrink-0 font-medium text-foreground">Reset</span>
-        </DropdownMenuItem>
+        </DropdownMenuModalItem>
       ) : null}
     </section>
   );

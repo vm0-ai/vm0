@@ -61,7 +61,7 @@ import {
   AccountMenuSubscriptionsPanel,
   useSubscriptionUsageRows,
 } from "./zero-sidebar-subscriptions.tsx";
-import { runAfterDropdownMenuClose } from "../components/dropdown-menu-modal-action.ts";
+import { DropdownMenuModalItem } from "../components/dropdown-menu-modal-item.tsx";
 
 interface SessionAccount {
   sessionId: string;
@@ -391,10 +391,8 @@ function CreditBalanceItem({
   onOpenCreditBalance: () => void;
 }) {
   return (
-    <DropdownMenuItem
-      onSelect={() => {
-        runAfterDropdownMenuClose(onOpenCreditBalance);
-      }}
+    <DropdownMenuModalItem
+      onModalSelect={onOpenCreditBalance}
       className="gap-3 px-3 py-2.5 rounded-lg"
     >
       <IconCoins size={18} stroke={1.5} className="text-muted-foreground" />
@@ -405,7 +403,7 @@ function CreditBalanceItem({
           creditLabel
         )}
       </span>
-    </DropdownMenuItem>
+    </DropdownMenuModalItem>
   );
 }
 
@@ -433,10 +431,8 @@ function UnifiedSettingsGroup({
           <span>Memory</span>
         </DropdownMenuItem>
       )}
-      <DropdownMenuItem
-        onSelect={() => {
-          runAfterDropdownMenuClose(onOpenSettings);
-        }}
+      <DropdownMenuModalItem
+        onModalSelect={onOpenSettings}
         className="gap-3 px-3 py-2.5 rounded-lg"
       >
         <IconSettings
@@ -445,7 +441,7 @@ function UnifiedSettingsGroup({
           className="text-muted-foreground"
         />
         <span>Settings</span>
-      </DropdownMenuItem>
+      </DropdownMenuModalItem>
       {labEnabled && (
         <DropdownMenuItem
           onClick={() => {
