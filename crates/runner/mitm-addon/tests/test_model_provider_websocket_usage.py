@@ -29,6 +29,9 @@ from tests.model_provider_websocket_helpers import (
 from tests.pending_helpers import assert_pending
 from tests.request_handler_helpers import _single_firewall_vm, _write_registry
 
+_WEBSOCKET_KEY = "dGhlIHNhbXBsZSBub25jZQ=="
+_WEBSOCKET_ACCEPT = "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
+
 
 @pytest.fixture(autouse=True)
 def deferred_websocket_trim_scheduler(
@@ -80,10 +83,20 @@ def _openai_model_websocket_request_flow(
                 (b"Host", b"api.openai.com"),
                 (b"Connection", b"keep-alive, Upgrade"),
                 (b"Upgrade", b"websocket"),
-                (b"Sec-WebSocket-Key", b"dGhlIHNhbXBsZSBub25jZQ=="),
+                (b"Sec-WebSocket-Key", _WEBSOCKET_KEY.encode()),
                 (b"Sec-WebSocket-Version", b"13"),
             ]
         ),
+    )
+
+
+def _openai_websocket_response_headers() -> http.Headers:
+    return http.Headers(
+        [
+            (b"Connection", b"Upgrade"),
+            (b"Upgrade", b"websocket"),
+            (b"Sec-WebSocket-Accept", _WEBSOCKET_ACCEPT.encode()),
+        ]
     )
 
 
@@ -742,7 +755,7 @@ class TestModelProviderWebSocketUsage:
 
             flow.response = tutils.tresp(
                 status_code=101,
-                headers=http.Headers(upgrade="websocket"),
+                headers=_openai_websocket_response_headers(),
             )
             mitm_addon.responseheaders(flow)
             mitm_addon.response(flow)
@@ -847,6 +860,83 @@ class TestModelProviderWebSocketUsage:
             flush_request_id="after-response",
         )
 
+    @pytest.mark.parametrize(
+        "response_headers",
+        [
+            pytest.param(
+                http.Headers(
+                    [
+                        (b"Connection", b"Upgrade"),
+                        (b"Upgrade", b"h2c"),
+                        (b"Sec-WebSocket-Accept", _WEBSOCKET_ACCEPT.encode()),
+                    ]
+                ),
+                id="non-websocket-upgrade",
+            ),
+            pytest.param(
+                http.Headers(
+                    [
+                        (b"Upgrade", b"websocket"),
+                        (b"Sec-WebSocket-Accept", _WEBSOCKET_ACCEPT.encode()),
+                    ]
+                ),
+                id="missing-connection-upgrade",
+            ),
+            pytest.param(
+                http.Headers(
+                    [
+                        (b"Connection", b"Upgrade"),
+                        (b"Upgrade", b"websocket"),
+                        (b"Sec-WebSocket-Accept", b"wrong"),
+                    ]
+                ),
+                id="wrong-accept",
+            ),
+        ],
+    )
+    async def test_invalid_websocket_switching_protocols_response_releases_usage_flow(
+        self,
+        tmp_path,
+        real_flow,
+        mitm_ctx,
+        fake_firewall_headers,
+        usage_webhook_server,
+        response_headers: http.Headers,
+    ):
+        """A malformed 101 WebSocket response must not wait for websocket_end()."""
+        pending_path = tmp_path / "usage-pending"
+        usage.set_pending_path(str(pending_path), usage_state_id="test-usage-state-id")
+        reg_path = _write_openai_model_websocket_registry(tmp_path)
+
+        flow = _openai_model_websocket_request_flow(real_flow)
+
+        with (
+            mitm_ctx(registry_path=str(reg_path), api_url=usage_webhook_server.api_url),
+            fake_firewall_headers(),
+        ):
+            await mitm_addon.request(flow)
+            usage.write_pending_snapshot(flush_request_id="before-response")
+            assert_pending(
+                pending_path,
+                flows=1,
+                buffered=0,
+                reports=0,
+                flush_request_id="before-response",
+            )
+
+            flow.response = tutils.tresp(status_code=101, headers=response_headers)
+            mitm_addon.responseheaders(flow)
+            mitm_addon.response(flow)
+            usage.write_pending_snapshot(flush_request_id="after-response")
+
+        assert_pending(
+            pending_path,
+            flows=0,
+            buffered=0,
+            reports=0,
+            flush_request_id="after-response",
+        )
+
     async def test_model_websocket_error_releases_usage_flow_after_upgrade(
         self,
         tmp_path,
@@ -869,7 +959,7 @@ class TestModelProviderWebSocketUsage:
             await mitm_addon.request(flow)
             flow.response = tutils.tresp(
                 status_code=101,
-                headers=http.Headers(upgrade="websocket"),
+                headers=_openai_websocket_response_headers(),
             )
             mitm_addon.responseheaders(flow)
             mitm_addon.response(flow)
