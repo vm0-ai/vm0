@@ -1253,6 +1253,10 @@ describe("workflow detail page", () => {
       expect(screen.getAllByText("Visibility").length).toBeGreaterThan(0);
     });
     expect(
+      screen.getByText("This workflow belongs to this agent."),
+    ).toBeInTheDocument();
+    expect(screen.getByTitle("Research Bot")).toHaveTextContent("Research Bot");
+    expect(
       screen.queryByText("Gather CRM context before outreach."),
     ).not.toBeInTheDocument();
     click(buttonByText("Instructions"));

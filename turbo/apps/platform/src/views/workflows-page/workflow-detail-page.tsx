@@ -752,9 +752,21 @@ function WorkflowMetadataFields({
   readonly values: WorkflowMetadataValues;
 }) {
   const slugCommand = `/${values.name.trim() || "slug"}`;
+  const ownerAgentLabel = agentLabel(detail);
 
   return (
     <div className="p-4 sm:p-5">
+      <InlineSettingsRow
+        label="Agent"
+        description="This workflow belongs to this agent."
+        wideControls
+      >
+        <div className="flex h-9 w-full items-center rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-gray-50 px-3 text-sm text-muted-foreground">
+          <span className="truncate" title={ownerAgentLabel}>
+            {ownerAgentLabel}
+          </span>
+        </div>
+      </InlineSettingsRow>
       <InlineSettingsRow
         label="Name"
         description="Shown in workflow lists and when choosing a workflow."
