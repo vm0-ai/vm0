@@ -21,15 +21,15 @@ class TestDoneHook:
             patch.object(usage.webhook, "usage_executor", mock_executor),
             patch.object(
                 mitm_addon.auth_base_forwarder,
-                "shutdown_forward_request_executor",
-            ) as shutdown_forward_request_executor,
+                "shutdown_forward_request_workers",
+            ) as shutdown_forward_request_workers,
             patch.object(mitm_addon, "shutdown_log_writer") as shutdown_log_writer,
         ):
             mitm_addon.done()
         flush_usage_events.assert_called_once_with(trigger="shutdown")
         # concurrent.futures boundary: done() must gracefully shut down the pool (#9991).
         mock_executor.shutdown.assert_called_once_with(wait=True)
-        shutdown_forward_request_executor.assert_called_once_with(wait=False)
+        shutdown_forward_request_workers.assert_called_once_with(wait=False)
         shutdown_log_writer.assert_called_once_with()
 
     def test_done_waits_for_runner_flush_before_executor_shutdown(self):
@@ -83,7 +83,7 @@ class TestDoneHook:
             patch.object(usage.webhook, "usage_executor", mock_executor),
             patch.object(
                 mitm_addon.auth_base_forwarder,
-                "shutdown_forward_request_executor",
+                "shutdown_forward_request_workers",
                 lambda *, wait: calls.append(f"auth-base:shutdown:{wait}"),
             ),
             patch.object(mitm_addon, "shutdown_log_writer", lambda: calls.append("jsonl:shutdown")),
@@ -129,8 +129,8 @@ class TestDoneHook:
             patch.object(usage.webhook, "usage_executor", mock_executor),
             patch.object(
                 mitm_addon.auth_base_forwarder,
-                "shutdown_forward_request_executor",
-            ) as shutdown_forward_request_executor,
+                "shutdown_forward_request_workers",
+            ) as shutdown_forward_request_workers,
             patch.object(mitm_addon, "shutdown_log_writer") as shutdown_log_writer,
             pytest.raises(RuntimeError, match="flush failed"),
         ):
@@ -138,5 +138,5 @@ class TestDoneHook:
 
         flush_usage_events.assert_called_once_with(trigger="shutdown")
         mock_executor.shutdown.assert_called_once_with(wait=True)
-        shutdown_forward_request_executor.assert_called_once_with(wait=False)
+        shutdown_forward_request_workers.assert_called_once_with(wait=False)
         shutdown_log_writer.assert_called_once_with()

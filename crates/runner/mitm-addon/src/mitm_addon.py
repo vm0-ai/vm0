@@ -3533,7 +3533,7 @@ def done():
             usage.webhook.usage_executor.shutdown(wait=True)
         finally:
             try:
-                auth_base_forwarder.shutdown_forward_request_executor(wait=False)
+                auth_base_forwarder.shutdown_forward_request_workers(wait=False)
             finally:
                 shutdown_log_writer()
 

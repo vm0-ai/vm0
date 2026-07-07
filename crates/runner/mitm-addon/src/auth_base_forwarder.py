@@ -176,7 +176,7 @@ def reset_forward_request_state_for_tests() -> None:
     global _forward_request_admitted_count
     global _https_context
 
-    shutdown_forward_request_executor(wait=True)
+    shutdown_forward_request_workers(wait=True)
     with _forward_request_budget_lock:
         _forward_request_admitted_count = 0
         _forward_request_admitted_body_bytes = 0
@@ -185,7 +185,7 @@ def reset_forward_request_state_for_tests() -> None:
     _forward_request_accepting = True
 
 
-def shutdown_forward_request_executor(*, wait: bool) -> None:
+def shutdown_forward_request_workers(*, wait: bool) -> None:
     """Shut down auth.base forwarding workers."""
     global _forward_request_admission_state
     global _forward_request_accepting

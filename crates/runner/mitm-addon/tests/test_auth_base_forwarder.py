@@ -38,7 +38,7 @@ def _run_blocked_forward_then_shutdown_wait_false() -> None:
             try:
                 if not await asyncio.to_thread(forward_started.wait, 2):
                     raise RuntimeError("auth.base forward did not start")
-                forwarder.shutdown_forward_request_executor(wait=False)
+                forwarder.shutdown_forward_request_workers(wait=False)
             finally:
                 task.cancel()
 
@@ -1141,7 +1141,7 @@ class TestForwardRequestAsyncWrapper:
                 first_started = await asyncio.to_thread(first_entered.wait, 2)
                 assert first_started
 
-                forwarder.shutdown_forward_request_executor(wait=False)
+                forwarder.shutdown_forward_request_workers(wait=False)
                 release_first.set()
 
                 status, body, headers = await asyncio.wait_for(first_task, timeout=2)
@@ -1185,7 +1185,7 @@ class TestForwardRequestAsyncWrapper:
             )
             try:
                 assert await asyncio.to_thread(setsockopt_entered.wait, 2)
-                forwarder.shutdown_forward_request_executor(wait=False)
+                forwarder.shutdown_forward_request_workers(wait=False)
                 assert await asyncio.to_thread(socket_closed.wait, 2)
             finally:
                 release_setsockopt.set()
