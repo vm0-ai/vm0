@@ -235,6 +235,7 @@ function shouldTouchThreadSortFromNormalSend(
 
 interface NormalSendFeatureSwitches {
   readonly codexFastModeEnabled: boolean;
+  readonly websiteTemplatesEnabled: boolean;
 }
 
 interface ResolvedComputerUseHostGrant {
@@ -1273,7 +1274,24 @@ async function resolveNormalSendFeatureSwitches(
       FeatureSwitchKey.CodexFastMode,
       context,
     ),
+    websiteTemplatesEnabled: isFeatureEnabled(
+      FeatureSwitchKey.WebsiteTemplates,
+      context,
+    ),
   };
+}
+
+function validateGenerationTemplateFeatureSwitches(params: {
+  readonly body: NormalSendBody;
+  readonly featureSwitches: NormalSendFeatureSwitches;
+}): NormalSendFailure | undefined {
+  if (
+    params.body.generationTemplate?.type === "website" &&
+    !params.featureSwitches.websiteTemplatesEnabled
+  ) {
+    return badRequestMessage("Website templates are not enabled");
+  }
+  return undefined;
 }
 
 async function updateUserModelPreference(
@@ -2222,6 +2240,14 @@ const prepareNormalSend$ = command(
     signal.throwIfAborted();
     if (codexServiceTierError) {
       return codexServiceTierError;
+    }
+    const generationTemplateFeatureSwitchError =
+      validateGenerationTemplateFeatureSwitches({
+        body: args.body,
+        featureSwitches,
+      });
+    if (generationTemplateFeatureSwitchError) {
+      return generationTemplateFeatureSwitchError;
     }
     if (args.body.generationTemplate) {
       const validation = buildGenerationTemplatePrompt(

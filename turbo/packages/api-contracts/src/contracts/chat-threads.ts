@@ -234,11 +234,21 @@ const workflowGenerationTemplateRequestSchema = z.object({
   }),
 });
 
+const websiteGenerationTemplateRequestSchema = z.object({
+  type: z.literal("website"),
+  selection: z
+    .object({
+      websiteTemplateId: z.string().min(1),
+    })
+    .strict(),
+});
+
 const generationTemplateRequestSchema = z.discriminatedUnion("type", [
   presentationGenerationTemplateRequestSchema,
   videoGenerationTemplateRequestSchema,
   illustrationGenerationTemplateRequestSchema,
   workflowGenerationTemplateRequestSchema,
+  websiteGenerationTemplateRequestSchema,
 ]);
 
 const pagedChatMessageBaseSchema = z.object({
@@ -1133,6 +1143,7 @@ export {
   presentationGenerationTemplateRequestSchema,
   videoGenerationTemplateRequestSchema,
   illustrationGenerationTemplateRequestSchema,
+  websiteGenerationTemplateRequestSchema,
   pagedChatMessageSchema,
   chatMessageUsagePayloadSchema,
   summaryEntrySchema,
@@ -1154,7 +1165,7 @@ export type GenerationTemplateRequest = z.infer<
 export type GenerationTemplateType = GenerationTemplateRequest["type"];
 export type LegacyThreadGenerationTemplateType = Exclude<
   GenerationTemplateType,
-  "workflow"
+  "workflow" | "website"
 >;
 /**
  * Legacy generation template shape retained for older thread-level storage.
@@ -1181,6 +1192,9 @@ export type IllustrationGenerationTemplateRequest = z.infer<
 >;
 export type WorkflowGenerationTemplateRequest = z.infer<
   typeof workflowGenerationTemplateRequestSchema
+>;
+export type WebsiteGenerationTemplateRequest = z.infer<
+  typeof websiteGenerationTemplateRequestSchema
 >;
 
 export type SummaryEntry = z.infer<typeof summaryEntrySchema>;
