@@ -64,6 +64,7 @@ def _copy_builtin_firewall_shell(
             )
         copied_api = dict(api)
         copied_api.pop("id", None)
+        copied_api.pop(builtin_host_policy.BUILTIN_HOST_POLICY_RUNTIME_MARKER, None)
         copied_apis.append(copied_api)
 
     firewall = dict(catalog_firewall)

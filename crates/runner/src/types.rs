@@ -253,8 +253,148 @@ impl FirewallPermission {
                 self.name
             ));
         }
+        for rule in &self.rules {
+            validate_firewall_permission_rule(rule)
+                .map_err(|e| format!("permission {:?} rule {:?}: {e}", self.name, rule))?;
+        }
         Ok(())
     }
+}
+
+const VALID_FIREWALL_RULE_METHODS: &[&str] = &[
+    "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS", "ANY",
+];
+
+struct FirewallRuleSegmentParam<'a> {
+    name: &'a str,
+    greedy: bool,
+    mixed_with_literal: bool,
+}
+
+fn validate_firewall_permission_rule(rule: &str) -> Result<(), String> {
+    let Some((method, path)) = rule.split_once(' ') else {
+        return Err("must be \"METHOD /path\"".to_string());
+    };
+    if method.is_empty() || path.is_empty() {
+        return Err("must be \"METHOD /path\"".to_string());
+    }
+    if !VALID_FIREWALL_RULE_METHODS.contains(&method) {
+        return Err(format!("unknown method {method:?}"));
+    }
+    if !path.starts_with('/') {
+        return Err("path must start with \"/\"".to_string());
+    }
+    if path.chars().any(is_raw_whitespace) {
+        return Err("path must not contain whitespace".to_string());
+    }
+    if path.chars().any(is_unsafe_url_codepoint) {
+        return Err("path must not contain control characters".to_string());
+    }
+    if path.contains('\\') {
+        return Err("path must not contain backslash".to_string());
+    }
+    if path.contains('?') || path.contains('#') {
+        return Err("path must not contain query string or fragment".to_string());
+    }
+
+    let segments: Vec<&str> = split_firewall_rule_path_segments(path).collect();
+    let last_index = segments.len().saturating_sub(1);
+    let mut param_names = HashSet::new();
+    for (index, segment) in segments.iter().enumerate() {
+        let Some(param) = parse_firewall_rule_segment(segment)? else {
+            continue;
+        };
+        if !param_names.insert(param.name) {
+            return Err(format!("duplicate parameter name {:?}", param.name));
+        }
+        if param.greedy && index != last_index {
+            return Err(format!(
+                "greedy parameter {:?} must be the last segment",
+                param.name
+            ));
+        }
+        if param.greedy && param.mixed_with_literal {
+            return Err(format!(
+                "greedy parameter {:?} cannot be combined with a literal prefix or suffix",
+                param.name
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn split_firewall_rule_path_segments(path: &str) -> impl Iterator<Item = &str> {
+    let path_without_leading_slash = path.strip_prefix('/').unwrap_or(path);
+    path_without_leading_slash
+        .split('/')
+        .filter(|segment| !path_without_leading_slash.is_empty() || !segment.is_empty())
+}
+
+fn parse_firewall_rule_segment(
+    segment: &str,
+) -> Result<Option<FirewallRuleSegmentParam<'_>>, String> {
+    let open_count = segment.matches('{').count();
+    let close_count = segment.matches('}').count();
+
+    if open_count == 0 && close_count == 0 {
+        return Ok(None);
+    }
+    if open_count != close_count {
+        return Err(format!("unbalanced brace in segment {segment:?}"));
+    }
+
+    let Some(open_index) = segment.find('{') else {
+        return Err(format!("unbalanced brace in segment {segment:?}"));
+    };
+    let Some(close_index) = segment.find('}') else {
+        return Err(format!("unbalanced brace in segment {segment:?}"));
+    };
+    if close_index < open_index {
+        return Err(format!("unbalanced brace in segment {segment:?}"));
+    }
+
+    if open_count >= 2 {
+        let open_after_close = segment[close_index + 1..]
+            .find('{')
+            .map(|index| close_index + 1 + index);
+        if open_after_close == Some(close_index + 1) {
+            return Err(format!("adjacent parameters in segment {segment:?}"));
+        }
+        return Err(format!(
+            "literal-separated parameters in segment {segment:?}"
+        ));
+    }
+
+    let prefix = &segment[..open_index];
+    let content = &segment[open_index + 1..close_index];
+    let suffix = &segment[close_index + 1..];
+    if prefix.contains('{') || prefix.contains('}') || suffix.contains('{') || suffix.contains('}')
+    {
+        return Err(format!("unbalanced brace in segment {segment:?}"));
+    }
+
+    let (name, greedy) = content
+        .strip_suffix('+')
+        .map(|name| (name, true))
+        .or_else(|| content.strip_suffix('*').map(|name| (name, true)))
+        .unwrap_or((content, false));
+    if name.is_empty() {
+        return Err(format!("empty parameter name in segment {segment:?}"));
+    }
+
+    Ok(Some(FirewallRuleSegmentParam {
+        name,
+        greedy,
+        mixed_with_literal: !prefix.is_empty() || !suffix.is_empty(),
+    }))
+}
+
+fn is_raw_whitespace(ch: char) -> bool {
+    matches!(ch, ' ' | '\t' | '\n' | '\r' | '\u{000c}' | '\u{000b}')
+}
+
+fn is_unsafe_url_codepoint(ch: char) -> bool {
+    ch < '\u{0020}' || ch == '\u{007f}'
 }
 
 /// Base-host ownership policy for credentialed builtin firewall APIs.

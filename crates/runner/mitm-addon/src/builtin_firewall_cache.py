@@ -9,6 +9,8 @@ from pathlib import Path
 
 from mitmproxy import ctx
 
+import matching
+
 MAX_BUILTIN_FIREWALL_CATALOG_BYTES = 16 * 1024 * 1024
 _READ_CHUNK_BYTES = 1024 * 1024
 _CACHE_SCHEMA_VERSION = 1
@@ -263,10 +265,15 @@ def _validate_api_permissions(firewall_name: str, api: dict) -> None:
             raise BuiltinFirewallCatalogCacheError(
                 f'catalog cache firewall "{firewall_name}" permission rules must be non-empty'
             )
-        if any(not isinstance(rule, str) or rule == "" for rule in rules):
-            raise BuiltinFirewallCatalogCacheError(
-                f'catalog cache firewall "{firewall_name}" permission rules must be strings'
-            )
+        for rule in rules:
+            if not isinstance(rule, str) or rule == "":
+                raise BuiltinFirewallCatalogCacheError(
+                    f'catalog cache firewall "{firewall_name}" permission rules must be strings'
+                )
+            if not matching.firewall_rule_is_valid(rule):
+                raise BuiltinFirewallCatalogCacheError(
+                    f'catalog cache firewall "{firewall_name}" permission rule is invalid'
+                )
 
 
 def _warn(message: str) -> None:

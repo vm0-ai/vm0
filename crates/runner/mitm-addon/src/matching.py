@@ -695,6 +695,11 @@ def _compile_rule(rule_str: str) -> _CompiledRule | None:
     return _CompiledRule(method, rule_str, pattern, _path_specificity(pattern))
 
 
+def firewall_rule_is_valid(rule_str: str) -> bool:
+    """Return whether a firewall permission rule matches the runtime grammar."""
+    return _compile_rule(rule_str) is not None
+
+
 # Compiled matcher contract
 #
 # Registry loading stores these compiled objects and request handling later
