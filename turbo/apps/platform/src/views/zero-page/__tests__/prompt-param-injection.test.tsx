@@ -4,7 +4,9 @@ import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
   VIDEO_TEMPLATE_ITEMS,
+  WEBSITE_TEMPLATE_ITEMS,
 } from "@vm0/core";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { mockChatLifecycle, PLACEHOLDER } from "./chat-test-helpers.ts";
@@ -163,6 +165,61 @@ describe("prompt query parameter injection", () => {
       expect(illustrationStyleId).toBe(
         illustrationTemplate?.illustrationStyleId,
       );
+    });
+  });
+
+  it("starts an optimistic website template chat from the prompt route when enabled", async () => {
+    const websiteTemplate = WEBSITE_TEMPLATE_ITEMS.find((item) => {
+      return item.id === "website-template:warm-cards";
+    });
+    expect(websiteTemplate).toBeDefined();
+
+    let runPrompt: string | undefined;
+    let websiteTemplateId: string | undefined;
+    mockChatLifecycle(context, {
+      onRunCreate: (body) => {
+        runPrompt = body.prompt;
+        websiteTemplateId =
+          body.generationTemplate?.type === "website"
+            ? body.generationTemplate.selection.websiteTemplateId
+            : undefined;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.WebsiteTemplates]: true },
+      path: "/prompt?prompt=Make%20a%20warm%20website&template=website-template%3Awarm-cards",
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Make a warm website")).toBeInTheDocument();
+      expect(runPrompt).toBe("Make a warm website");
+      expect(websiteTemplateId).toBe(websiteTemplate?.id);
+    });
+  });
+
+  it("ignores website template prompt params while the website template switch is off", async () => {
+    let generationTemplate:
+      | {
+          type: string;
+        }
+      | undefined;
+    mockChatLifecycle(context, {
+      onRunCreate: (body) => {
+        generationTemplate = body.generationTemplate;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.WebsiteTemplates]: false },
+      path: "/prompt?prompt=Make%20a%20warm%20website&template=website-template%3Awarm-cards",
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Make a warm website")).toBeInTheDocument();
+      expect(generationTemplate).toBeUndefined();
     });
   });
 });

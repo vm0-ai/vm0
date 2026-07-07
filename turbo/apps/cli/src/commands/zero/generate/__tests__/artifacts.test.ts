@@ -165,6 +165,13 @@ describe("zero generate source-backed artifact commands", () => {
           id: "template:saas-landing",
           description: expect.stringContaining("Single-page SaaS landing"),
         }),
+        expect.objectContaining({
+          id: "template:warm-cards",
+          source: expect.objectContaining({
+            path: "warm-cards",
+            archive: expect.objectContaining({ type: "tar.gz" }),
+          }),
+        }),
       ]),
     );
     expect(websiteSelection.candidates.templates).not.toEqual(
