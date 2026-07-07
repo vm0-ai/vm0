@@ -51,7 +51,27 @@ struct SessionHistoryUpload {
 struct PreparedSessionHistory {
     hash: String,
     raw_size: u64,
-    upload: SessionHistoryUpload,
+    upload_source: PreparedSessionHistoryUploadSource,
+}
+
+enum PreparedSessionHistoryUploadSource {
+    Raw(Vec<u8>),
+    ReusedCodexZstd(Vec<u8>),
+}
+
+impl PreparedSessionHistoryUploadSource {
+    fn into_upload(self, raw_size: u64) -> Result<SessionHistoryUpload, AgentError> {
+        match self {
+            Self::Raw(history_bytes) => build_session_history_upload(history_bytes),
+            Self::ReusedCodexZstd(zstd_bytes) => Ok(SessionHistoryUpload {
+                raw_size,
+                body: SessionHistoryUploadBody::Zstd {
+                    raw: None,
+                    zstd: zstd_bytes,
+                },
+            }),
+        }
+    }
 }
 
 struct DecodedSessionHistoryAnalysis {
@@ -483,8 +503,10 @@ async fn build_and_upload_session_history(
     http: &HttpClient,
     run_id: &str,
     history_hash: &str,
-    history_upload: SessionHistoryUpload,
+    history_size: u64,
+    upload_source: PreparedSessionHistoryUploadSource,
 ) -> Result<(), AgentError> {
+    let history_upload = upload_source.into_upload(history_size)?;
     match upload_session_history_candidate(http, run_id, history_hash, history_upload).await? {
         SessionHistoryUploadAttempt::Complete => Ok(()),
         SessionHistoryUploadAttempt::RetryLegacy(history_bytes) => {
@@ -771,11 +793,10 @@ fn prepare_raw_session_history(
         "Session history hash={}, size={history_size}",
         &history_hash[..8]
     );
-    let upload = build_session_history_upload(history_bytes)?;
     Ok(PreparedSessionHistory {
         hash: history_hash,
         raw_size: history_size,
-        upload,
+        upload_source: PreparedSessionHistoryUploadSource::Raw(history_bytes),
     })
 }
 
@@ -850,13 +871,7 @@ fn prepare_reused_zstd_session_history(
     Ok(PreparedSessionHistory {
         hash: analysis.sha256_hex,
         raw_size: analysis.raw_size,
-        upload: SessionHistoryUpload {
-            raw_size: analysis.raw_size,
-            body: SessionHistoryUploadBody::Zstd {
-                raw: None,
-                zstd: zstd_bytes,
-            },
-        },
+        upload_source: PreparedSessionHistoryUploadSource::ReusedCodexZstd(zstd_bytes),
     })
 }
 
@@ -1024,7 +1039,7 @@ async fn create_checkpoint_impl(
     let PreparedSessionHistory {
         hash: history_hash,
         raw_size: history_size,
-        upload: history_upload,
+        upload_source,
     } = prepared_history;
 
     // History upload and artifact snapshots are independent pre-requisites
@@ -1034,7 +1049,13 @@ async fn create_checkpoint_impl(
     // was longer plus the other; concurrent, it's just the longer one.
     let (artifact_snapshots, _) = tokio::try_join!(
         snapshot_artifact_entries(http, inputs.run_id, inputs.artifact_entries),
-        build_and_upload_session_history(http, inputs.run_id, &history_hash, history_upload,),
+        build_and_upload_session_history(
+            http,
+            inputs.run_id,
+            &history_hash,
+            history_size,
+            upload_source,
+        ),
     )?;
 
     // Build and send checkpoint payload (session history hash only, content uploaded to S3)
