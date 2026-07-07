@@ -49,7 +49,8 @@ pub(crate) enum OwnerCheck {
 /// Read an optional UTF-8 state file with a caller-supplied byte limit.
 ///
 /// Missing files return `Ok(None)`. Existing files must be valid UTF-8 after
-/// the bounded read and platform-specific state-file validation complete.
+/// the configured byte limit and any platform-specific state-file validation
+/// are applied.
 pub(crate) async fn read_to_string(
     path: &Path,
     max_bytes: u64,
@@ -65,8 +66,8 @@ pub(crate) async fn read_to_string(
 
 /// Read a required state file as bytes with a caller-supplied byte limit.
 ///
-/// Missing files are returned as `NotFound` errors. Existing files are read
-/// only after the platform-specific state-file validation completes.
+/// Missing files are returned as `NotFound` errors. Existing files use the
+/// same bounded, platform-specific read path as [`read_to_string`].
 pub(crate) async fn read_to_bytes_required(
     path: &Path,
     max_bytes: u64,
