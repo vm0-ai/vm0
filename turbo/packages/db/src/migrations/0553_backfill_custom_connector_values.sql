@@ -1,9 +1,7 @@
 -- Custom SQL migration file, put your code below! --
--- Block value writes and legacy writes until the bridge trigger, backfill, and
--- stale value prune have run. Do not take a migration-wide connector definition
--- lock here: old API instances can still update connectors during deployment.
--- The connector trigger below may wait for an in-flight connector write, but
--- that old write does not wait on values while holding the connector lock.
+-- Block value writes and legacy writes until the backfill and stale value prune
+-- have run. Do not take a migration-wide connector definition lock here: old
+-- API instances can still update connectors during deployment.
 LOCK TABLE "org_custom_connector_values" IN SHARE ROW EXCLUSIVE MODE;
 --> statement-breakpoint
 LOCK TABLE "org_custom_connector_secrets" IN SHARE ROW EXCLUSIVE MODE;
@@ -26,36 +24,6 @@ AS $$
 		jsonb_build_object('kind', value_kind, 'key', value_key)
 	);
 $$;
---> statement-breakpoint
-
-CREATE OR REPLACE FUNCTION lock_org_custom_connector_for_legacy_secret()
-RETURNS trigger
-LANGUAGE plpgsql
-AS $$
-BEGIN
-	PERFORM 1
-	FROM "org_custom_connectors"
-	WHERE "id" = NEW."connector_id"
-		AND "org_id" = NEW."org_id"
-	-- Use FOR SHARE so ordinary definition updates cannot race this write.
-	FOR SHARE;
-	IF NOT FOUND THEN
-		RAISE EXCEPTION 'custom connector legacy secret references missing connector'
-			USING ERRCODE = '23503';
-	END IF;
-
-	RETURN NEW;
-END;
-$$;
---> statement-breakpoint
-
-DROP TRIGGER IF EXISTS lock_org_custom_connector_for_legacy_secret_trigger
-	ON "org_custom_connector_secrets";
---> statement-breakpoint
-CREATE TRIGGER lock_org_custom_connector_for_legacy_secret_trigger
-BEFORE INSERT OR UPDATE OF "connector_id", "org_id" ON "org_custom_connector_secrets"
-FOR EACH ROW
-EXECUTE FUNCTION lock_org_custom_connector_for_legacy_secret();
 --> statement-breakpoint
 
 CREATE OR REPLACE FUNCTION validate_org_custom_connector_value()
@@ -123,85 +91,8 @@ FOR EACH ROW
 EXECUTE FUNCTION prune_org_custom_connector_values_for_definition();
 --> statement-breakpoint
 
--- Temporary deployment bridge: migrations can run before every old API instance
--- stops serving traffic, so old API writes to the legacy table must still become
--- visible to the new values-only runtime. Do not sync values backward.
-CREATE OR REPLACE FUNCTION sync_org_custom_connector_secret_to_value()
-RETURNS trigger
-LANGUAGE plpgsql
-AS $$
-BEGIN
-	IF pg_trigger_depth() > 1 THEN
-		IF TG_OP = 'DELETE' THEN
-			RETURN OLD;
-		END IF;
-		RETURN NEW;
-	END IF;
-
-	IF TG_OP = 'DELETE' THEN
-		-- Only remove the value row if it is still the legacy-synced copy.
-		-- New API instances write values directly during deployment.
-		DELETE FROM "org_custom_connector_values"
-		WHERE "connector_id" = OLD."connector_id"
-			AND "org_id" = OLD."org_id"
-			AND "user_id" = OLD."user_id"
-			AND "kind" = 'secret'
-			AND "key" = 'secret'
-			AND "encrypted_value" = OLD."encrypted_value"
-			AND "updated_at" = OLD."updated_at";
-		RETURN OLD;
-	END IF;
-
-	PERFORM 1
-	FROM "org_custom_connectors"
-	WHERE "id" = NEW."connector_id"
-		AND "org_id" = NEW."org_id"
-		AND org_custom_connector_value_is_declared("fields", 'secret', 'secret')
-	-- Use FOR SHARE so ordinary definition updates cannot race this sync.
-	FOR SHARE;
-	IF NOT FOUND THEN
-		RETURN NEW;
-	END IF;
-
-	INSERT INTO "org_custom_connector_values" (
-		"connector_id",
-		"user_id",
-		"org_id",
-		"kind",
-		"key",
-		"encrypted_value",
-		"created_at",
-		"updated_at"
-	)
-	VALUES (
-		NEW."connector_id",
-		NEW."user_id",
-		NEW."org_id",
-		'secret',
-		'secret',
-		NEW."encrypted_value",
-		NEW."created_at",
-		NEW."updated_at"
-	)
-	ON CONFLICT ("connector_id", "user_id", "kind", "key") DO UPDATE
-	SET
-		"org_id" = EXCLUDED."org_id",
-		"encrypted_value" = EXCLUDED."encrypted_value",
-		"updated_at" = EXCLUDED."updated_at";
-	RETURN NEW;
-END;
-$$;
---> statement-breakpoint
-
-DROP TRIGGER IF EXISTS sync_org_custom_connector_secret_to_value_trigger
-	ON "org_custom_connector_secrets";
---> statement-breakpoint
-CREATE TRIGGER sync_org_custom_connector_secret_to_value_trigger
-AFTER INSERT OR UPDATE OR DELETE ON "org_custom_connector_secrets"
-FOR EACH ROW
-EXECUTE FUNCTION sync_org_custom_connector_secret_to_value();
---> statement-breakpoint
-
+-- One-time legacy backfill. The deployed old API already writes this table;
+-- do not add a legacy runtime bridge that introduces extra write locks.
 INSERT INTO "org_custom_connector_values" (
 	"connector_id",
 	"user_id",

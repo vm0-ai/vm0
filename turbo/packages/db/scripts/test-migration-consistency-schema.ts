@@ -337,7 +337,7 @@ async function validateCustomConnectorLegacyBackfillRows(
   }
 }
 
-async function validateCustomConnectorLegacySecretBridge(
+async function validateCustomConnectorValueMigrationRules(
   dbUrl: string,
 ): Promise<void> {
   const client = new Client({ connectionString: dbUrl });
@@ -345,9 +345,8 @@ async function validateCustomConnectorLegacySecretBridge(
   try {
     const connectorId = "00000000-0000-0000-0000-000000005550";
     const undeclaredSecretConnectorId = "00000000-0000-0000-0000-000000005551";
-    const orgId = "org_custom_connector_migration_bridge";
-    const primaryUserId = "user_custom_connector_migration_bridge_primary";
-    const deleteUserId = "user_custom_connector_migration_bridge_delete";
+    const orgId = "org_custom_connector_migration_values";
+    const primaryUserId = "user_custom_connector_migration_values_primary";
 
     await client.query(
       `
@@ -368,12 +367,12 @@ async function validateCustomConnectorLegacySecretBridge(
       VALUES (
         $1,
         $2,
-        'migration-bridge',
-        'Migration Bridge',
-        '["https://migration-bridge.example.test/"]'::jsonb,
+        'migration-values',
+        'Migration Values',
+        '["https://migration-values.example.test/"]'::jsonb,
         'Authorization',
         'Bearer {{secret}}',
-        '["https://migration-bridge.example.test/"]'::jsonb,
+        '["https://migration-values.example.test/"]'::jsonb,
         '[{"key":"secret","label":"Secret","kind":"secret","required":true}]'::jsonb,
         '[{"name":"Authorization","valueTemplate":"Bearer {{secrets.secret}}"}]'::jsonb,
         '[]'::jsonb,
@@ -402,12 +401,12 @@ async function validateCustomConnectorLegacySecretBridge(
       VALUES (
         $1,
         $2,
-        'migration-bridge-no-secret',
-        'Migration Bridge No Secret',
-        '["https://migration-bridge-no-secret.example.test/"]'::jsonb,
+        'migration-values-no-secret',
+        'Migration Values No Secret',
+        '["https://migration-values-no-secret.example.test/"]'::jsonb,
         'X-Tenant',
         '{{variables.tenant}}',
-        '["https://migration-bridge-no-secret.example.test/"]'::jsonb,
+        '["https://migration-values-no-secret.example.test/"]'::jsonb,
         '[{"key":"tenant","label":"Tenant","kind":"variable","required":true}]'::jsonb,
         '[]'::jsonb,
         '[{"name":"tenant","valueTemplate":"{{variables.tenant}}"}]'::jsonb,
@@ -432,19 +431,14 @@ async function validateCustomConnectorLegacySecretBridge(
       [connectorId, primaryUserId, orgId],
     );
 
-    let value = await client.query<{ encrypted_value: string }>(
-      `
-      SELECT encrypted_value
-      FROM org_custom_connector_values
-      WHERE connector_id = $1
-        AND user_id = $2
-        AND kind = 'secret'
-        AND key = 'secret'
-      `,
-      [connectorId, primaryUserId],
-    );
-    if (value.rows[0]?.encrypted_value !== "legacy-insert") {
-      throw new Error("Legacy custom connector insert did not sync to values");
+    const legacyOnlyValue = await readLegacySecretValue(client, {
+      connectorId,
+      userId: primaryUserId,
+    });
+    if (legacyOnlyValue !== undefined) {
+      throw new Error(
+        "Post-migration legacy custom connector insert unexpectedly synced to values",
+      );
     }
 
     await client.query(
@@ -462,140 +456,13 @@ async function validateCustomConnectorLegacySecretBridge(
       [undeclaredSecretConnectorId, primaryUserId, orgId],
     );
 
-    const undeclared = await client.query<{ count: string }>(
-      `
-      SELECT COUNT(*)::text AS count
-      FROM org_custom_connector_values
-      WHERE connector_id = $1
-        AND user_id = $2
-        AND kind = 'secret'
-        AND key = 'secret'
-      `,
-      [undeclaredSecretConnectorId, primaryUserId],
-    );
-    if (undeclared.rows[0]?.count !== "0") {
+    const undeclaredLegacyOnlyValue = await readLegacySecretValue(client, {
+      connectorId: undeclaredSecretConnectorId,
+      userId: primaryUserId,
+    });
+    if (undeclaredLegacyOnlyValue !== undefined) {
       throw new Error(
-        "Legacy custom connector secret synced for an undeclared field",
-      );
-    }
-
-    await client.query(
-      `
-      UPDATE org_custom_connector_secrets
-      SET encrypted_value = 'legacy-update',
-          updated_at = '2026-01-02'
-      WHERE connector_id = $1
-        AND user_id = $2
-      `,
-      [connectorId, primaryUserId],
-    );
-
-    value = await client.query<{ encrypted_value: string }>(
-      `
-      SELECT encrypted_value
-      FROM org_custom_connector_values
-      WHERE connector_id = $1
-        AND user_id = $2
-        AND kind = 'secret'
-        AND key = 'secret'
-      `,
-      [connectorId, primaryUserId],
-    );
-    if (value.rows[0]?.encrypted_value !== "legacy-update") {
-      throw new Error("Legacy custom connector update did not sync to values");
-    }
-
-    await client.query(
-      `
-      UPDATE org_custom_connector_values
-      SET encrypted_value = 'direct-new-api-write',
-          updated_at = '2026-01-03'
-      WHERE connector_id = $1
-        AND user_id = $2
-        AND kind = 'secret'
-        AND key = 'secret'
-      `,
-      [connectorId, primaryUserId],
-    );
-
-    const legacyAfterDirectWrite = await client.query<{
-      encrypted_value: string;
-    }>(
-      `
-      SELECT encrypted_value
-      FROM org_custom_connector_secrets
-      WHERE connector_id = $1
-        AND user_id = $2
-      `,
-      [connectorId, primaryUserId],
-    );
-    if (legacyAfterDirectWrite.rows[0]?.encrypted_value !== "legacy-update") {
-      throw new Error(
-        "New custom connector values synced back to legacy secrets",
-      );
-    }
-
-    await client.query(
-      `
-      DELETE FROM org_custom_connector_secrets
-      WHERE connector_id = $1
-        AND user_id = $2
-      `,
-      [connectorId, primaryUserId],
-    );
-
-    value = await client.query<{ encrypted_value: string }>(
-      `
-      SELECT encrypted_value
-      FROM org_custom_connector_values
-      WHERE connector_id = $1
-        AND user_id = $2
-        AND kind = 'secret'
-        AND key = 'secret'
-      `,
-      [connectorId, primaryUserId],
-    );
-    if (value.rows[0]?.encrypted_value !== "direct-new-api-write") {
-      throw new Error("Legacy custom connector delete removed a new value");
-    }
-
-    await client.query(
-      `
-      INSERT INTO org_custom_connector_secrets (
-        connector_id,
-        user_id,
-        org_id,
-        encrypted_value,
-        created_at,
-        updated_at
-      )
-      VALUES ($1, $2, $3, 'legacy-delete', '2026-01-04', '2026-01-04')
-      `,
-      [connectorId, deleteUserId, orgId],
-    );
-    await client.query(
-      `
-      DELETE FROM org_custom_connector_secrets
-      WHERE connector_id = $1
-        AND user_id = $2
-      `,
-      [connectorId, deleteUserId],
-    );
-
-    const deleted = await client.query<{ count: string }>(
-      `
-      SELECT COUNT(*)::text AS count
-      FROM org_custom_connector_values
-      WHERE connector_id = $1
-        AND user_id = $2
-        AND kind = 'secret'
-        AND key = 'secret'
-      `,
-      [connectorId, deleteUserId],
-    );
-    if (deleted.rows[0]?.count !== "0") {
-      throw new Error(
-        "Legacy custom connector delete did not remove the value",
+        "Post-migration undeclared legacy custom connector insert unexpectedly synced to values",
       );
     }
 
@@ -1097,11 +964,11 @@ async function validateLatestSnapshotAccuracy(): Promise<void> {
   }
 
   const latestIdx = latestEntry.idx;
-  const customConnectorBridgeEntry = entries.find((entry) => {
+  const customConnectorValuesEntry = entries.find((entry) => {
     return entry.tag === "0553_backfill_custom_connector_values";
   });
-  if (!customConnectorBridgeEntry) {
-    throw new Error("Missing custom connector bridge migration entry");
+  if (!customConnectorValuesEntry) {
+    throw new Error("Missing custom connector values migration entry");
   }
 
   console.log(`   Validating latest snapshot (migration ${latestIdx})\n`);
@@ -1111,9 +978,9 @@ async function validateLatestSnapshotAccuracy(): Promise<void> {
   const dbUrl = createTestDbUrl(TEST_DB);
 
   try {
-    await runMigrationsUpTo(dbUrl, customConnectorBridgeEntry.idx - 1);
+    await runMigrationsUpTo(dbUrl, customConnectorValuesEntry.idx - 1);
     await seedCustomConnectorLegacyBackfillRows(dbUrl);
-    await runMigrationsUpTo(dbUrl, customConnectorBridgeEntry.idx);
+    await runMigrationsUpTo(dbUrl, customConnectorValuesEntry.idx);
     await validateCustomConnectorLegacyBackfillRows(dbUrl);
     console.log("   ✅ Custom connector legacy secret backfill works");
 
@@ -1174,8 +1041,8 @@ async function validateLatestSnapshotAccuracy(): Promise<void> {
       );
     }
 
-    await validateCustomConnectorLegacySecretBridge(dbUrl);
-    console.log("   ✅ Custom connector legacy secret bridge works");
+    await validateCustomConnectorValueMigrationRules(dbUrl);
+    console.log("   ✅ Custom connector value migration rules work");
   } finally {
     await dropDatabase(TEST_DB);
   }
