@@ -40,6 +40,7 @@ export {
   type WebsiteTemplateItem,
 } from "./website-template-items";
 export {
+  WORKFLOW_TEMPLATE_CATEGORIES,
   WORKFLOW_TEMPLATE_ITEMS,
   findWorkflowTemplateItem,
   type WorkflowTemplateItem,

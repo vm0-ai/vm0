@@ -3,6 +3,12 @@ import {
   WEBSITE_TEMPLATE_ITEMS,
   findWebsiteTemplateItem,
 } from "../website-template-items";
+import {
+  findWebsiteTemplatePackage,
+  findWebsiteTemplateResource,
+  listTemplates,
+  listWebsiteTemplatePackages,
+} from "../resource-registry";
 
 describe("website template items", () => {
   it("exposes the built-in website template catalog in picker order", () => {
@@ -62,5 +68,46 @@ describe("website template items", () => {
     expect(websiteTemplateIds).not.toContain(
       "template:web-prototype-taste-soft",
     );
+  });
+
+  it("resolves the built-in website template as a private R2 pull resource", () => {
+    const item = WEBSITE_TEMPLATE_ITEMS[0]!;
+    const [pkg] = listWebsiteTemplatePackages();
+
+    expect(pkg).toMatchObject({
+      templateId: item.templateId,
+      resourceId: item.resourceId,
+      slug: item.sourcePath,
+      name: item.title,
+      description: item.description,
+      source: {
+        path: item.sourcePath,
+        archive: {
+          type: "tar.gz",
+          sha256:
+            "1fafd9e5541dfe53ffdfafcbb6e45d525328c9a0cc5bb4afb2a06b4685e153d2",
+        },
+      },
+    });
+    expect(findWebsiteTemplatePackage(item.templateId)).toBe(pkg);
+    expect(findWebsiteTemplateResource(item.resourceId)).toEqual(
+      expect.objectContaining({
+        id: item.resourceId,
+        kind: "template",
+        targets: ["website"],
+        source: expect.objectContaining({
+          path: item.sourcePath,
+          archive: expect.objectContaining({ type: "tar.gz" }),
+        }),
+      }),
+    );
+  });
+
+  it("keeps built-in R2 website packages out of the generic template list", () => {
+    expect(
+      listTemplates("website").some((template) => {
+        return template.id === "template:warm-cards";
+      }),
+    ).toBe(false);
   });
 });
