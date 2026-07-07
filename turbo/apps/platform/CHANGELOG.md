@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.568.0](https://github.com/vm0-ai/vm0/compare/app-v0.567.0...app-v0.568.0) (2026-07-07)
+
+
+### Features
+
+* add website generation template api prompt support ([#20456](https://github.com/vm0-ai/vm0/issues/20456)) ([dfccd74](https://github.com/vm0-ai/vm0/commit/dfccd7471f2e01176e6064705cba583cd6b07f30))
+* make emoji shortcut keys discoverable and widen picker to 9 columns ([#20476](https://github.com/vm0-ai/vm0/issues/20476)) ([dffc401](https://github.com/vm0-ai/vm0/commit/dffc4010c01558ec9b82899591b967ef2d9d6de5))
+
+
+### Bug Fixes
+
+* keep add automation trigger cards fixed-height and match rail icon stroke ([#20475](https://github.com/vm0-ai/vm0/issues/20475)) ([9e18f49](https://github.com/vm0-ai/vm0/commit/9e18f49e6abebc0c3e89c4228c1bbce9e75efb3a))
+* navigate markdown image link artifacts ([#20472](https://github.com/vm0-ai/vm0/issues/20472)) ([14abd07](https://github.com/vm0-ai/vm0/commit/14abd07908058d0ed95a2f335e058ae6dd5770b6))
+* only show next upcoming run for schedule-based workflow triggers ([#20437](https://github.com/vm0-ai/vm0/issues/20437)) ([6f327d4](https://github.com/vm0-ai/vm0/commit/6f327d462bd628b51f2b34b3c7525d26255ac18f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.160.0
+    * @vm0/connectors bumped to 1.145.0
+    * @vm0/core bumped to 8.410.0
+
 ## [0.567.0](https://github.com/vm0-ai/vm0/compare/app-v0.566.0...app-v0.567.0) (2026-07-07)
 
 

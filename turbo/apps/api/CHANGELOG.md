@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.234.0](https://github.com/vm0-ai/vm0/compare/api-v1.233.1...api-v1.234.0) (2026-07-07)
+
+
+### Features
+
+* add website generation template api prompt support ([#20456](https://github.com/vm0-ai/vm0/issues/20456)) ([dfccd74](https://github.com/vm0-ai/vm0/commit/dfccd7471f2e01176e6064705cba583cd6b07f30))
+* support full runner builtin firewall catalog resolve ([#20458](https://github.com/vm0-ai/vm0/issues/20458)) ([6bde030](https://github.com/vm0-ai/vm0/commit/6bde030ff15cfdb932c6935c5aefb0c7c269abfc))
+
+
+### Performance Improvements
+
+* skip empty artifact uploads during run creation ([#20447](https://github.com/vm0-ai/vm0/issues/20447)) ([85f5231](https://github.com/vm0-ai/vm0/commit/85f5231cceb002fdcbf8faf826d8ca7df7332a39))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.160.0
+    * @vm0/connectors bumped to 1.145.0
+    * @vm0/core bumped to 8.410.0
+    * @vm0/db bumped to 1.97.0
+
 ## [1.233.1](https://github.com/vm0-ai/vm0/compare/api-v1.233.0...api-v1.233.1) (2026-07-07)
 
 
