@@ -60,6 +60,39 @@ describe("inline feedback thread scoping", () => {
     expect(ctx.store.get(feedbackItemsValue$)).toHaveLength(1);
   });
 
+  it("anchors the toolbar with visible client rects when the range bounds are empty", () => {
+    const bubble = mountThreadBubble("thread-a", "Reply from thread A");
+    const range = document.createRange();
+    range.selectNodeContents(bubble);
+    Object.defineProperty(range, "getBoundingClientRect", {
+      configurable: true,
+      value: () => {
+        return new DOMRect(0, 0, 0, 0);
+      },
+    });
+    Object.defineProperty(range, "getClientRects", {
+      configurable: true,
+      value: () => {
+        return [
+          new DOMRect(0, 0, 0, 0),
+          new DOMRect(24, 32, 180, 20),
+        ] as unknown as DOMRectList;
+      },
+    });
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+
+    ctx.store.set(captureFeedbackSelection$);
+
+    expect(ctx.store.get(feedbackSelectionValue$)?.rect).toStrictEqual({
+      top: 32,
+      left: 24,
+      width: 180,
+      height: 20,
+    });
+  });
+
   it("starts a fresh stack when feedback moves to another thread", () => {
     const bubbleA = mountThreadBubble("thread-a", "Reply from thread A");
     selectContents(bubbleA);
