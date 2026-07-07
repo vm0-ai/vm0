@@ -33,10 +33,12 @@ def test_registered_flow_metadata_keys_use_registry_constants():
     assert flow_metadata_key_linter.repository_metadata_key_violations() == []
 
 
-def test_check_flow_metadata_keys_cli_passes_current_repository():
+def test_check_flow_metadata_keys_cli_passes_current_repository(tmp_path):
+    python3 = tmp_path / "python3"
+    python3.symlink_to(Path(sys.executable).resolve())
     env = {
         **os.environ,
-        "PATH": f"{Path(sys.executable).parent}{os.pathsep}{os.environ.get('PATH', '')}",
+        "PATH": f"{tmp_path}{os.pathsep}{os.environ.get('PATH', '')}",
     }
 
     # Trusted workspace tooling with constant argv; no user-controlled shell input.
