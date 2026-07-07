@@ -4,11 +4,12 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use tokio::io::AsyncWriteExt;
-use vsock_proto::MSG_EXEC_START;
+use vsock_proto::{MSG_EXEC_START, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK};
 
 use super::super::support::{
     MockGuest, assert_connection_accepts_exec_operation, await_mock_guest, host_from_stream,
     make_pair, normal_operation_readiness, pending_request_count, setup_host_and_guest,
+    setup_host_and_mock_guest,
 };
 use super::support::{
     expect_write_file, expect_write_files, send_guest_error, send_write_file_failure,
@@ -438,6 +439,59 @@ async fn write_file_frame_builder_runs_before_waiting_for_writer_lock() {
     assert!(!write.private);
     write_task.await.unwrap().unwrap();
     assert_eq!(before_write_count.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn lifecycle_request_writes_while_file_frame_builder_waits() {
+    let (host, mut guest) = setup_host_and_mock_guest().await;
+    let host = Arc::new(host);
+    let frame_builder_guard = host.shared.frame_builder.lock().await;
+    let write_start_count = Arc::new(AtomicUsize::new(0));
+
+    let write_task = {
+        let host = Arc::clone(&host);
+        let write_start_count = Arc::clone(&write_start_count);
+        tokio::spawn(async move {
+            host.write_file_with_write_observer(
+                "/tmp/waiting-builder.txt",
+                b"hello",
+                false,
+                FrameWriteObserver::new(move || {
+                    write_start_count.fetch_add(1, Ordering::SeqCst);
+                    Ok(())
+                }),
+            )
+            .await
+        })
+    };
+
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while normal_operation_readiness(&host) != NormalOperationReadiness::Busy {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+
+    let shutdown_task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move { host.shutdown(Duration::from_secs(5)).await })
+    };
+    let shutdown = guest.expect_message(MSG_SHUTDOWN).await;
+    assert_eq!(write_start_count.load(Ordering::SeqCst), 0);
+    guest
+        .send_empty_response(MSG_SHUTDOWN_ACK, shutdown.seq)
+        .await;
+    assert!(shutdown_task.await.unwrap());
+    assert_eq!(write_start_count.load(Ordering::SeqCst), 0);
+
+    drop(frame_builder_guard);
+    let write = expect_write_file(guest.stream_mut()).await;
+    assert_eq!(write.path, "/tmp/waiting-builder.txt");
+    assert_eq!(write.content, b"hello");
+    send_write_file_success(guest.stream_mut(), write.seq()).await;
+    write_task.await.unwrap().unwrap();
+    assert_eq!(write_start_count.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test]
