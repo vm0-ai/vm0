@@ -12,7 +12,8 @@ type MockWorkflowTriggerOverrides = Partial<
     | "google-calendar-event-created"
     | "google-calendar-event-updated"
     | "google-calendar-event-cancelled"
-    | "notion-child-page-created";
+    | "notion-child-page-created"
+    | "notion-database-item-created";
   readonly eventConfig?: Extract<
     ChatThreadWorkflowTrigger,
     { kind: "event" }
@@ -61,6 +62,32 @@ function createMockNotionChildPageTrigger(
         id: "11111111-1111-4111-8111-111111111111",
         title: "Roadmap",
         url: "https://www.notion.so/Roadmap-11111111111141118111111111111111",
+      },
+    },
+    schedule: null,
+    scheduleSummary: null,
+    ...overrides,
+    workflow,
+  } as ChatThreadWorkflowTrigger;
+}
+
+function createMockNotionDatabaseItemTrigger(
+  base: MockWorkflowTriggerBase,
+  overrides: MockWorkflowTriggerOverrides,
+  workflow: ChatThreadWorkflowTrigger["workflow"],
+): ChatThreadWorkflowTrigger {
+  return {
+    ...base,
+    kind: "event",
+    eventType: "notion-database-item-created",
+    eventConfig: {
+      provider: "notion",
+      event: "database_item_created",
+      connectorId: "b0000000-0000-4000-a000-000000000001",
+      dataSource: {
+        id: "22222222-2222-4222-8222-222222222222",
+        title: "Bug Bash",
+        url: "https://www.notion.so/Bug-Bash-22222222222242228222222222222222",
       },
     },
     schedule: null,
@@ -178,6 +205,9 @@ export function createMockWorkflowTrigger(
     }
     if (overrides.eventType === "notion-child-page-created") {
       return createMockNotionChildPageTrigger(base, overrides, workflow);
+    }
+    if (overrides.eventType === "notion-database-item-created") {
+      return createMockNotionDatabaseItemTrigger(base, overrides, workflow);
     }
     return {
       ...base,

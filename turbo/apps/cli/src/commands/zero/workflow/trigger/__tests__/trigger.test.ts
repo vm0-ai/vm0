@@ -161,6 +161,27 @@ const notionTrigger = {
   nextRunAt: null,
 };
 
+const notionDatabaseTrigger = {
+  ...triggerBase,
+  kind: "event",
+  eventType: "notion-database-item-created",
+  eventConfig: {
+    provider: "notion",
+    event: "database_item_created",
+    connectorId: "55555555-5555-4555-8555-555555555555",
+    dataSource: {
+      id: "77777777-7777-4777-8777-777777777777",
+      title: "Bug Bash",
+      url: "https://www.notion.so/Bug-Bash-77777777777747778777777777777777",
+      rawUrl:
+        "https://www.notion.so/77777777777747778777777777777777?v=aaaaaaaaaaaa4aaa8aaaaaaaaaaaaaaa",
+    },
+  },
+  schedule: null,
+  scheduleSummary: null,
+  nextRunAt: null,
+};
+
 const webhookTrigger = {
   ...triggerBase,
   kind: "event",
@@ -624,6 +645,38 @@ describe("zero workflow trigger commands", () => {
       expect(logCalls).toContain(notionTrigger.eventConfig.parentPage.url);
     });
 
+    it("should add a Notion database item trigger", async () => {
+      const captured = captureCreateTrigger(notionDatabaseTrigger);
+
+      await triggerCommand.parseAsync([
+        "node",
+        "cli",
+        "add",
+        WORKFLOW_ID,
+        "notion-database-item-created",
+        "--database-url",
+        " https://www.notion.so/77777777777747778777777777777777?v=aaaaaaaaaaaa4aaa8aaaaaaaaaaaaaaa ",
+      ]);
+
+      expect(captured.workflowId).toBe(WORKFLOW_ID);
+      expect(captured.body).toEqual({
+        kind: "event",
+        eventType: "notion-database-item-created",
+        eventConfig: {
+          provider: "notion",
+          event: "database_item_created",
+          databaseUrl:
+            "https://www.notion.so/77777777777747778777777777777777?v=aaaaaaaaaaaa4aaa8aaaaaaaaaaaaaaa",
+        },
+      });
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("New Notion database item");
+      expect(logCalls).toContain("Bug Bash");
+      expect(logCalls).toContain(
+        notionDatabaseTrigger.eventConfig.dataSource.url,
+      );
+    });
+
     it("should add a webhook trigger", async () => {
       const captured = captureCreateTrigger(webhookTrigger);
 
@@ -722,6 +775,25 @@ describe("zero workflow trigger commands", () => {
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining(
           "notion-child-page-created triggers require --parent-page-url",
+        ),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should reject a Notion database item trigger without a database URL", async () => {
+      await expect(async () => {
+        await triggerCommand.parseAsync([
+          "node",
+          "cli",
+          "add",
+          WORKFLOW_ID,
+          "notion-database-item-created",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "notion-database-item-created triggers require --database-url",
         ),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
@@ -1071,6 +1143,7 @@ describe("zero workflow trigger commands", () => {
               gmailTrigger,
               githubLabelTrigger,
               notionTrigger,
+              notionDatabaseTrigger,
             ]);
           },
         ),
@@ -1088,6 +1161,8 @@ describe("zero workflow trigger commands", () => {
       expect(logCalls).toContain("triage");
       expect(logCalls).toContain("New Notion child page");
       expect(logCalls).toContain("Product notes");
+      expect(logCalls).toContain("New Notion database item");
+      expect(logCalls).toContain("Bug Bash");
     });
 
     it("should display an empty state with an add hint", async () => {

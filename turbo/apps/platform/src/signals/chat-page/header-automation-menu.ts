@@ -47,6 +47,9 @@ function workflowTriggerSummary(trigger: ChatThreadWorkflowTrigger): string {
     if (trigger.eventType === "notion-child-page-created") {
       return "New Notion child page";
     }
+    if (trigger.eventType === "notion-database-item-created") {
+      return "New Notion database item";
+    }
     return "Event";
   }
   return trigger.scheduleSummary ?? "Schedule";
