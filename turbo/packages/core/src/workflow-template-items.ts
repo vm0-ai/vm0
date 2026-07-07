@@ -12,10 +12,10 @@ export interface WorkflowTemplateItem {
   readonly promptGuidance: string;
 }
 
-// Ordered persona groups for the template picker. "General" holds the generic
-// starter template; the rest mirror the onboarding personas.
+// Ordered persona groups for the template picker. "Everyone" leads and holds the
+// generic starter template; the rest mirror the onboarding personas.
 export const WORKFLOW_TEMPLATE_CATEGORIES: readonly string[] = [
-  "General",
+  "Everyone",
   "Engineering",
   "Product",
   "Data",
@@ -24,7 +24,6 @@ export const WORKFLOW_TEMPLATE_CATEGORIES: readonly string[] = [
   "Support",
   "CEO",
   "Operations",
-  "Everyone",
 ];
 
 // Built-in workflow templates. Each entry compiles into promptGuidance that
@@ -66,7 +65,7 @@ function defineWorkflowTemplate(args: {
 export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
   defineWorkflowTemplate({
     id: "workflow-template:auto-inbox-label",
-    category: "General",
+    category: "Everyone",
     title: "Auto-inbox label",
     description:
       "Create a workflow that runs when a Gmail label is applied and handles the labeled inbox item.",
