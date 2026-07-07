@@ -67,5 +67,6 @@ export enum FeatureSwitchKey {
   BytePlusVoiceInputStt = "bytePlusVoiceInputStt",
   ImageEditing = "imageEditing",
   PresentationGoogleSlidesUpload = "presentationGoogleSlidesUpload",
+  WorkflowTemplateCatalog = "workflowTemplateCatalog",
   WebsiteTemplates = "websiteTemplates",
 }
