@@ -186,10 +186,26 @@ function rectFromRange(range: Range): FeedbackSelectionRect {
     };
   }
 
-  const top = Math.min(...rects.map((rect) => rect.top));
-  const left = Math.min(...rects.map((rect) => rect.left));
-  const right = Math.max(...rects.map((rect) => rect.right));
-  const bottom = Math.max(...rects.map((rect) => rect.bottom));
+  const top = Math.min(
+    ...rects.map((rect) => {
+      return rect.top;
+    }),
+  );
+  const left = Math.min(
+    ...rects.map((rect) => {
+      return rect.left;
+    }),
+  );
+  const right = Math.max(
+    ...rects.map((rect) => {
+      return rect.right;
+    }),
+  );
+  const bottom = Math.max(
+    ...rects.map((rect) => {
+      return rect.bottom;
+    }),
+  );
   return {
     top,
     left,

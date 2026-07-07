@@ -8,6 +8,7 @@ import type {
 import { PRESENTATION_TEMPLATE_PICKER_ITEMS } from "@vm0/core";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { createDeferredPromise } from "../../../signals/utils.ts";
 import {
   detachedSetupPage,
   fill,
@@ -58,9 +59,13 @@ function selectTextForInlineFeedback(element: HTMLElement): void {
 }
 
 function waitForDeferredSelectionCapture(): Promise<void> {
-  return new Promise((resolve) => {
-    window.setTimeout(resolve, 0);
+  const deferred = createDeferredPromise<void>(context.signal);
+  window.setTimeout(() => {
+    if (!deferred.settled()) {
+      deferred.resolve(undefined);
+    }
   });
+  return deferred.promise;
 }
 
 function selectTextAcrossElementsForInlineFeedback(
