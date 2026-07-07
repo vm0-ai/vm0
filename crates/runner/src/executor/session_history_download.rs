@@ -15,7 +15,7 @@
 //! downloaded bytes must satisfy the declared size, byte cap, and hash contract
 //! before they are restored into the sandbox.
 
-use std::io::Read;
+use std::io::{BufRead, BufReader, Read};
 use std::time::{Duration, Instant};
 
 use api_contracts::generated::constants::runners::RESUME_SESSION_HISTORY_MAX_BYTES;
@@ -24,7 +24,8 @@ use sha2::{Digest, Sha256};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
-use super::session_restore::MaterializedResumeSession;
+use super::cli_framework::EffectiveCliFramework;
+use super::session_restore::{MaterializedResumeSession, codex_session_meta_timestamp_line};
 use crate::error::{RunnerError, RunnerResult};
 use crate::http::HttpClient;
 use crate::telemetry::SessionHistoryTelemetryMetadata;
@@ -165,6 +166,7 @@ impl SessionHistoryMaterializer {
     pub(crate) fn start_cancellable(
         http: &HttpClient,
         session: Option<&ResumeSession>,
+        framework: EffectiveCliFramework,
         cancel: CancellationToken,
     ) -> Self {
         let Some(session) = session else {
@@ -194,7 +196,7 @@ impl SessionHistoryMaterializer {
                         _ = cancel.cancelled() => {
                             SessionHistoryDownloadTaskResult::cancelled(started_at, metadata)
                         }
-                        result = download_resume_session_history_timed(http, session, metadata) => result,
+                        result = download_resume_session_history_timed(http, session, framework, metadata) => result,
                     }
                 })),
             },
@@ -327,11 +329,12 @@ impl Drop for SessionHistoryMaterializer {
 async fn download_resume_session_history_timed(
     http: HttpClient,
     session: ResumeSession,
+    framework: EffectiveCliFramework,
     metadata: SessionHistoryTelemetryMetadata,
 ) -> SessionHistoryDownloadTaskResult {
     let started_at = Instant::now();
     let mut timings = SessionHistoryDownloadTimings::for_metadata(metadata);
-    let result = download_resume_session_history(http, session, &mut timings).await;
+    let result = download_resume_session_history(http, session, framework, &mut timings).await;
     SessionHistoryDownloadTaskResult {
         elapsed: started_at.elapsed(),
         timings,
@@ -342,6 +345,7 @@ async fn download_resume_session_history_timed(
 async fn download_resume_session_history(
     http: HttpClient,
     session: ResumeSession,
+    framework: EffectiveCliFramework,
     timings: &mut SessionHistoryDownloadTimings,
 ) -> RunnerResult<MaterializedResumeSession<'static>> {
     // The history ref is treated as untrusted input. The request timeout and
@@ -396,6 +400,19 @@ async fn download_resume_session_history(
                 timings,
             )
             .await?;
+            if framework == EffectiveCliFramework::Codex {
+                let timestamp = verify_codex_zstd_session_history(
+                    &encoded_bytes,
+                    raw_size,
+                    &history_ref.hash,
+                    timings,
+                )?;
+                return Ok(MaterializedResumeSession::new_codex_zstd(
+                    session.cli_agent_session_id,
+                    encoded_bytes,
+                    timestamp,
+                ));
+            }
             let raw_bytes = unzstd_session_history(&encoded_bytes, raw_size)?;
             validate_decompressed_raw_size(raw_size, raw_bytes.len(), timings)?;
             raw_bytes
@@ -525,6 +542,62 @@ fn validate_decompressed_raw_size(
     }
     timings.add_validation(validation_started.elapsed(), true);
     Ok(())
+}
+
+fn verify_codex_zstd_session_history(
+    encoded_bytes: &[u8],
+    expected_raw_size: u64,
+    expected_hash: &str,
+    timings: &mut SessionHistoryDownloadTimings,
+) -> RunnerResult<Option<chrono::DateTime<chrono::Utc>>> {
+    let decoder = zstd::stream::read::Decoder::new(encoded_bytes).map_err(|error| {
+        RunnerError::Internal(format!("decompress zstd session history: {error}"))
+    })?;
+    let mut reader = BufReader::new(decoder.take(expected_raw_size.saturating_add(1)));
+    let mut hasher = Sha256::new();
+    let mut decoded = 0u64;
+    let mut timestamp = None;
+    let mut line = Vec::new();
+    let hash_started = Instant::now();
+
+    loop {
+        line.clear();
+        let read = reader.read_until(b'\n', &mut line).map_err(|error| {
+            RunnerError::Internal(format!("decompress zstd session history: {error}"))
+        })?;
+        if read == 0 {
+            break;
+        }
+        decoded += read as u64;
+        if decoded > expected_raw_size {
+            timings.record_hash_verification(hash_started.elapsed(), false);
+            return Err(RunnerError::Internal(format!(
+                "session history is too large after decompression: {decoded} bytes exceeds {expected_raw_size} bytes"
+            )));
+        }
+        hasher.update(&line);
+        if timestamp.is_none()
+            && let Ok(line) = std::str::from_utf8(strip_jsonl_line_ending(&line))
+        {
+            timestamp = codex_session_meta_timestamp_line(line);
+        }
+    }
+
+    validate_decompressed_raw_size(expected_raw_size, decoded as usize, timings)?;
+    let actual_hash = hex::encode(hasher.finalize());
+    if actual_hash != expected_hash {
+        timings.record_hash_verification(hash_started.elapsed(), false);
+        return Err(RunnerError::Internal(
+            "session history hash mismatch".into(),
+        ));
+    }
+    timings.record_hash_verification(hash_started.elapsed(), true);
+    Ok(timestamp)
+}
+
+fn strip_jsonl_line_ending(line: &[u8]) -> &[u8] {
+    let line = line.strip_suffix(b"\n").unwrap_or(line);
+    line.strip_suffix(b"\r").unwrap_or(line)
 }
 
 fn gunzip_session_history(encoded_bytes: &[u8], max_raw_bytes: u64) -> RunnerResult<Vec<u8>> {
@@ -789,12 +862,20 @@ mod tests {
         zstd::encode_all(raw, 0).unwrap()
     }
 
-    fn start_materializer(session: &ResumeSession) -> SessionHistoryMaterializer {
+    fn start_materializer_with_framework(
+        session: &ResumeSession,
+        framework: EffectiveCliFramework,
+    ) -> SessionHistoryMaterializer {
         SessionHistoryMaterializer::start_cancellable(
             &http_client(),
             Some(session),
+            framework,
             CancellationToken::new(),
         )
+    }
+
+    fn start_materializer(session: &ResumeSession) -> SessionHistoryMaterializer {
+        start_materializer_with_framework(session, EffectiveCliFramework::ClaudeCode)
     }
 
     fn identity_metadata() -> SessionHistoryTelemetryMetadata {
@@ -961,6 +1042,113 @@ mod tests {
                 assert_phase_success(timings.hash_verification());
             }
             _ => panic!("expected downloaded session"),
+        }
+    }
+
+    #[tokio::test]
+    async fn codex_materializer_preserves_verified_zstd_history() {
+        let body =
+            b"{\"type\":\"session_meta\",\"payload\":{\"timestamp\":\"2026-07-02T10:00:00Z\"}}\n";
+        let compressed = zstd_bytes(body);
+        let encoded_size = compressed.len() as u64;
+        let hash = hex::encode(Sha256::digest(body));
+        let session = zstd_ref_session(
+            serve_once("200 OK", compressed.clone(), None).await,
+            hash,
+            body.len() as u64,
+            encoded_size,
+        );
+
+        let materializer =
+            start_materializer_with_framework(&session, EffectiveCliFramework::Codex);
+        let result = materializer.finish(&CancellationToken::new()).await;
+
+        match result {
+            SessionHistoryMaterialization::Downloaded {
+                session, timings, ..
+            } => {
+                assert_eq!(session.cli_agent_session_id(), "sess-123");
+                assert_eq!(session.history_bytes(), compressed);
+                assert!(session.history_text().is_none());
+                let (_, timestamp) = session
+                    .codex_zstd_history()
+                    .expect("codex zstd history should be preserved");
+                assert_eq!(
+                    timestamp.map(|timestamp| timestamp.to_rfc3339()).as_deref(),
+                    Some("2026-07-02T10:00:00+00:00")
+                );
+                assert_phase_success(timings.request_status());
+                assert_phase_success(timings.body_read());
+                assert_phase_success(timings.validation());
+                assert_phase_success(timings.hash_verification());
+            }
+            _ => panic!("expected downloaded session"),
+        }
+    }
+
+    #[tokio::test]
+    async fn codex_materializer_rejects_zstd_hash_mismatch() {
+        let body =
+            b"{\"type\":\"session_meta\",\"payload\":{\"timestamp\":\"2026-07-02T10:00:00Z\"}}\n";
+        let compressed = zstd_bytes(body);
+        let encoded_size = compressed.len() as u64;
+        let session = zstd_ref_session(
+            serve_once("200 OK", compressed, None).await,
+            "0".repeat(64),
+            body.len() as u64,
+            encoded_size,
+        );
+
+        let materializer =
+            start_materializer_with_framework(&session, EffectiveCliFramework::Codex);
+        let result = materializer.finish(&CancellationToken::new()).await;
+
+        match result {
+            SessionHistoryMaterialization::Failed { error, timings, .. } => {
+                assert!(
+                    error.to_string().contains("session history hash mismatch"),
+                    "unexpected error: {error}"
+                );
+                assert_phase_success(timings.request_status());
+                assert_phase_success(timings.body_read());
+                assert_phase_success(timings.validation());
+                assert_phase_failure(timings.hash_verification());
+            }
+            _ => panic!("expected failed materialization"),
+        }
+    }
+
+    #[tokio::test]
+    async fn codex_materializer_rejects_zstd_body_over_declared_raw_size() {
+        let body =
+            b"{\"type\":\"session_meta\",\"payload\":{\"timestamp\":\"2026-07-02T10:00:00Z\"}}\n";
+        let compressed = zstd_bytes(body);
+        let encoded_size = compressed.len() as u64;
+        let hash = hex::encode(Sha256::digest(body));
+        let session = zstd_ref_session(
+            serve_once("200 OK", compressed, None).await,
+            hash,
+            1,
+            encoded_size,
+        );
+
+        let materializer =
+            start_materializer_with_framework(&session, EffectiveCliFramework::Codex);
+        let result = materializer.finish(&CancellationToken::new()).await;
+
+        match result {
+            SessionHistoryMaterialization::Failed { error, timings, .. } => {
+                assert!(
+                    error
+                        .to_string()
+                        .contains("session history is too large after decompression"),
+                    "unexpected error: {error}"
+                );
+                assert_phase_success(timings.request_status());
+                assert_phase_success(timings.body_read());
+                assert_phase_failure(timings.hash_verification());
+            }
+            _ => panic!("expected failed materialization"),
         }
     }
 
@@ -1392,6 +1580,7 @@ mod tests {
         let materializer = SessionHistoryMaterializer::start_cancellable(
             &http_client(),
             Some(&session),
+            EffectiveCliFramework::ClaudeCode,
             cancel.clone(),
         );
         tokio::time::timeout(Duration::from_secs(5), request_received_rx)
@@ -1436,6 +1625,7 @@ mod tests {
         let materializer = SessionHistoryMaterializer::start_cancellable(
             &http_client(),
             Some(&session),
+            EffectiveCliFramework::ClaudeCode,
             cancel.clone(),
         );
         let result = materializer.finish(&cancel).await;

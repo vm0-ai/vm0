@@ -40,6 +40,7 @@ export type {
   ChatMessageUsagePayload,
   ChatMessageUsageProviderBreakdown,
   ChatMessageVideoGenerationTemplate,
+  ChatMessageWebsiteGenerationTemplate,
   ChatMessageWorkflowGenerationTemplate,
 } from "@vm0/db/jsonb-contracts/chat-message";
 

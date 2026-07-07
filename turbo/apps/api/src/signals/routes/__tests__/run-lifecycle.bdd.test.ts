@@ -3775,11 +3775,14 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     expect(cancelled.status).toBe("cancelled");
   });
 
-  it("withholds platform secrets from the sandbox environment", async () => {
+  it("emits lazy platform-secret metadata without snapshotting platform secrets", async () => {
     const api = createRunsAutomationsApi(context);
     const fw = createFirewallApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
-    mockOptionalEnv("GOOGLE_ADS_DEVELOPER_TOKEN", "developer-token-bdd");
+    mockOptionalEnv(
+      "GOOGLE_ADS_DEVELOPER_TOKEN",
+      "developer-token-before-claim",
+    );
 
     await fw.seedTestConnector(actor, {
       connectorName: "google-ads",
@@ -3800,6 +3803,102 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     expect(claim.environment).not.toHaveProperty("GOOGLE_ADS_DEVELOPER_TOKEN");
     expect(claim.secretConnectorMap).toMatchObject({
       GOOGLE_ADS_TOKEN: "google-ads",
+      GOOGLE_ADS_DEVELOPER_TOKEN: "google-ads",
+    });
+    expect(claim.secretConnectorMetadataMap).toMatchObject({
+      GOOGLE_ADS_DEVELOPER_TOKEN: { sourceType: "platform-secret" },
+    });
+    expect(
+      claim.firewalls?.map((firewall) => {
+        return firewallEntryName(firewall);
+      }),
+    ).toContain("google-ads");
+    if (!claim.encryptedSecrets) {
+      throw new Error(
+        "Expected the google ads claim to carry encrypted secrets",
+      );
+    }
+
+    mockOptionalEnv(
+      "GOOGLE_ADS_DEVELOPER_TOKEN",
+      "developer-token-after-claim",
+    );
+    const resolved = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      {
+        encryptedSecrets: claim.encryptedSecrets,
+        authHeaders: {
+          Authorization: `Bearer \${{ secrets.GOOGLE_ADS_TOKEN }}`,
+          "developer-token": `\${{ secrets.GOOGLE_ADS_DEVELOPER_TOKEN }}`,
+        },
+        secretConnectorMap: claim.secretConnectorMap ?? undefined,
+        secretConnectorMetadataMap:
+          claim.secretConnectorMetadataMap ?? undefined,
+      },
+      [200],
+    );
+    if (resolved.status !== 200) {
+      throw new Error("Expected google ads firewall auth to resolve");
+    }
+    expect(resolved.body.headers).toStrictEqual({
+      Authorization: "Bearer google-ads-bdd-access",
+      "developer-token": "developer-token-after-claim",
+    });
+
+    const missingWithoutMetadata = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      {
+        encryptedSecrets: claim.encryptedSecrets,
+        authHeaders: {
+          "developer-token": `\${{ secrets.GOOGLE_ADS_DEVELOPER_TOKEN }}`,
+        },
+      },
+      [424],
+    );
+    if (missingWithoutMetadata.status !== 424) {
+      throw new Error(
+        "Expected google ads platform secret to require lazy metadata",
+      );
+    }
+    expect(missingWithoutMetadata.body.error.code).toBe(
+      "CONNECTOR_NOT_CONFIGURED",
+    );
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
+  });
+
+  it("filters platform-secret metadata when request secrets override the alias", async () => {
+    const api = createRunsAutomationsApi(context);
+    const fw = createFirewallApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    mockOptionalEnv("GOOGLE_ADS_DEVELOPER_TOKEN", "platform-developer-token");
+
+    await fw.seedTestConnector(actor, {
+      connectorName: "google-ads",
+      authMethod: "oauth",
+      accessToken: "google-ads-bdd-access",
+      refreshToken: "google-ads-bdd-refresh",
+    });
+    await api.enableAgentConnectors(actor, agentId, ["google-ads"]);
+
+    const run = await api.createDirectRun(actor, {
+      ...zeroBackedDirectRunBody({
+        agentId,
+        prompt: "use google ads with explicit developer token",
+      }),
+      secrets: {
+        ZERO_TOKEN: "bdd-zero-direct-token",
+        GOOGLE_ADS_DEVELOPER_TOKEN: "body-developer-token",
+      },
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+
+    expect(claim.environment).not.toHaveProperty("GOOGLE_ADS_DEVELOPER_TOKEN");
+    expect(claim.secretConnectorMap).toMatchObject({
+      GOOGLE_ADS_TOKEN: "google-ads",
     });
     expect(claim.secretConnectorMap ?? {}).not.toHaveProperty(
       "GOOGLE_ADS_DEVELOPER_TOKEN",
@@ -3807,11 +3906,33 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     expect(claim.secretConnectorMetadataMap ?? {}).not.toHaveProperty(
       "GOOGLE_ADS_DEVELOPER_TOKEN",
     );
-    expect(
-      claim.firewalls?.map((firewall) => {
-        return firewallEntryName(firewall);
-      }),
-    ).toContain("google-ads");
+    if (!claim.encryptedSecrets) {
+      throw new Error(
+        "Expected the google ads claim to carry encrypted secrets",
+      );
+    }
+
+    const resolved = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      {
+        encryptedSecrets: claim.encryptedSecrets,
+        authHeaders: {
+          "developer-token": `\${{ secrets.GOOGLE_ADS_DEVELOPER_TOKEN }}`,
+        },
+        secretConnectorMap: claim.secretConnectorMap ?? undefined,
+        secretConnectorMetadataMap:
+          claim.secretConnectorMetadataMap ?? undefined,
+      },
+      [200],
+    );
+    if (resolved.status !== 200) {
+      throw new Error(
+        "Expected explicit google ads developer token to resolve",
+      );
+    }
+    expect(resolved.body.headers).toStrictEqual({
+      "developer-token": "body-developer-token",
+    });
 
     await api.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await api.readRun(actor, run.runId);

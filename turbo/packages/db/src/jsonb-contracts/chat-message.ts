@@ -31,11 +31,19 @@ export interface ChatMessageWorkflowGenerationTemplate {
   };
 }
 
+export interface ChatMessageWebsiteGenerationTemplate {
+  readonly type: "website";
+  readonly selection: {
+    readonly websiteTemplateId: string;
+  };
+}
+
 export type ChatMessageGenerationTemplate =
   | ChatMessagePresentationGenerationTemplate
   | ChatMessageVideoGenerationTemplate
   | ChatMessageIllustrationGenerationTemplate
-  | ChatMessageWorkflowGenerationTemplate;
+  | ChatMessageWorkflowGenerationTemplate
+  | ChatMessageWebsiteGenerationTemplate;
 
 export type ChatMessageRecommendedFollowupKind = "talk" | "generate";
 export type ChatMessageRecommendedFollowupGenerationType =

@@ -24,7 +24,7 @@ use guest_common::{log_error, log_info, log_warn};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::borrow::Cow;
-use std::io::{ErrorKind, Write};
+use std::io::{BufRead, BufReader, ErrorKind, Read, Write};
 use std::time::Duration;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
@@ -40,12 +40,47 @@ enum CheckpointMode {
 enum SessionHistoryUploadBody {
     Identity(Vec<u8>),
     Gzip { raw: Vec<u8>, gzip: Vec<u8> },
-    Zstd { raw: Vec<u8>, zstd: Vec<u8> },
+    Zstd { raw: Option<Vec<u8>>, zstd: Vec<u8> },
 }
 
 struct SessionHistoryUpload {
     raw_size: u64,
     body: SessionHistoryUploadBody,
+}
+
+struct PreparedSessionHistory {
+    hash: String,
+    raw_size: u64,
+    upload_source: PreparedSessionHistoryUploadSource,
+}
+
+enum PreparedSessionHistoryUploadSource {
+    Raw(Vec<u8>),
+    ReusedCodexZstd(Vec<u8>),
+}
+
+impl PreparedSessionHistoryUploadSource {
+    fn into_upload(self, raw_size: u64) -> Result<SessionHistoryUpload, AgentError> {
+        match self {
+            Self::Raw(history_bytes) => build_session_history_upload(history_bytes),
+            Self::ReusedCodexZstd(zstd_bytes) => Ok(SessionHistoryUpload {
+                raw_size,
+                body: SessionHistoryUploadBody::Zstd {
+                    raw: None,
+                    zstd: zstd_bytes,
+                },
+            }),
+        }
+    }
+}
+
+struct DecodedSessionHistoryAnalysis {
+    raw_size: u64,
+    sha256_hex: String,
+    line_count: Option<usize>,
+    invalid_utf8: Option<String>,
+    is_empty: bool,
+    recovery_validation_error: Option<String>,
 }
 
 impl SessionHistoryUpload {
@@ -65,27 +100,66 @@ impl SessionHistoryUpload {
         }
     }
 
-    fn into_raw(self) -> Vec<u8> {
+    fn into_raw(self) -> Result<Vec<u8>, AgentError> {
         match self.body {
             SessionHistoryUploadBody::Identity(raw)
             | SessionHistoryUploadBody::Gzip { raw, .. }
-            | SessionHistoryUploadBody::Zstd { raw, .. } => raw,
+            | SessionHistoryUploadBody::Zstd { raw: Some(raw), .. } => Ok(raw),
+            SessionHistoryUploadBody::Zstd { raw: None, zstd } => {
+                unzstd_session_history_upload_body(&zstd, self.raw_size)
+            }
         }
     }
 
-    fn into_server_accepted_bytes(self) -> (&'static str, Bytes) {
+    fn into_server_accepted_bytes(
+        self,
+        accepted_encoding: Option<&str>,
+    ) -> Result<SessionHistoryServerAcceptedBytes, AgentError> {
         match self.body {
             SessionHistoryUploadBody::Identity(raw) => {
-                (SESSION_HISTORY_ENCODING_IDENTITY, Bytes::from(raw))
+                Ok(SessionHistoryServerAcceptedBytes::Accepted {
+                    encoding: SESSION_HISTORY_ENCODING_IDENTITY,
+                    bytes: Bytes::from(raw),
+                })
             }
-            SessionHistoryUploadBody::Gzip { raw: _, gzip } => {
-                (SESSION_HISTORY_ENCODING_GZIP, Bytes::from(gzip))
+            SessionHistoryUploadBody::Gzip { raw: _, gzip }
+                if accepted_encoding == Some(SESSION_HISTORY_ENCODING_GZIP) =>
+            {
+                Ok(SessionHistoryServerAcceptedBytes::Accepted {
+                    encoding: SESSION_HISTORY_ENCODING_GZIP,
+                    bytes: Bytes::from(gzip),
+                })
             }
-            SessionHistoryUploadBody::Zstd { raw: _, zstd } => {
-                (SESSION_HISTORY_ENCODING_ZSTD, Bytes::from(zstd))
+            SessionHistoryUploadBody::Gzip { .. } => Err(compressed_encoding_not_acknowledged(
+                SESSION_HISTORY_ENCODING_GZIP,
+            )),
+            SessionHistoryUploadBody::Zstd { raw: _, zstd }
+                if accepted_encoding == Some(SESSION_HISTORY_ENCODING_ZSTD) =>
+            {
+                Ok(SessionHistoryServerAcceptedBytes::Accepted {
+                    encoding: SESSION_HISTORY_ENCODING_ZSTD,
+                    bytes: Bytes::from(zstd),
+                })
+            }
+            SessionHistoryUploadBody::Zstd { raw, zstd } => {
+                let raw = match raw {
+                    Some(raw) => raw,
+                    None => unzstd_session_history_upload_body(&zstd, self.raw_size)?,
+                };
+                Ok(SessionHistoryServerAcceptedBytes::UnsupportedZstd { raw })
             }
         }
     }
+}
+
+enum SessionHistoryServerAcceptedBytes {
+    Accepted {
+        encoding: &'static str,
+        bytes: Bytes,
+    },
+    UnsupportedZstd {
+        raw: Vec<u8>,
+    },
 }
 
 enum SessionHistoryUploadAttempt {
@@ -125,7 +199,7 @@ fn build_session_history_upload(
     Ok(SessionHistoryUpload {
         raw_size,
         body: SessionHistoryUploadBody::Zstd {
-            raw: history_bytes,
+            raw: Some(history_bytes),
             zstd: zstd_bytes,
         },
     })
@@ -173,6 +247,26 @@ fn compressed_encoding_not_acknowledged(requested_encoding: &'static str) -> Age
     AgentError::Checkpoint(format!(
         "Prepare-history response did not acknowledge {requested_encoding} session history"
     ))
+}
+
+fn unzstd_session_history_upload_body(
+    zstd_bytes: &[u8],
+    raw_size: u64,
+) -> Result<Vec<u8>, AgentError> {
+    let decoder = zstd::stream::read::Decoder::new(zstd_bytes)
+        .map_err(|error| AgentError::Checkpoint(format!("zstd session history: {error}")))?;
+    let mut reader = decoder.take(raw_size.saturating_add(1));
+    let mut bytes = Vec::new();
+    reader
+        .read_to_end(&mut bytes)
+        .map_err(|error| AgentError::Checkpoint(format!("zstd session history: {error}")))?;
+    if bytes.len() as u64 != raw_size {
+        return Err(AgentError::Checkpoint(format!(
+            "Decoded zstd session history size mismatch: expected {raw_size}, got {}",
+            bytes.len()
+        )));
+    }
+    Ok(bytes)
 }
 
 impl CheckpointMode {
@@ -323,7 +417,7 @@ async fn upload_session_history_candidate(
                     "Prepare-history rejected zstd session history; retrying legacy encoding"
                 );
                 return Ok(SessionHistoryUploadAttempt::RetryLegacy(
-                    history_upload.into_raw(),
+                    history_upload.into_raw()?,
                 ));
             }
             return Err(e);
@@ -343,7 +437,7 @@ async fn upload_session_history_candidate(
             "Prepare-history response did not acknowledge zstd; retrying legacy encoding"
         );
         return Ok(SessionHistoryUploadAttempt::RetryLegacy(
-            history_upload.into_raw(),
+            history_upload.into_raw()?,
         ));
     }
     if requested_encoding == SESSION_HISTORY_ENCODING_GZIP
@@ -370,7 +464,13 @@ async fn upload_session_history_candidate(
             AgentError::Checkpoint("No presignedUrl in prepare-history response".into())
         })?;
 
-    let (upload_encoding, upload_bytes) = history_upload.into_server_accepted_bytes();
+    let (upload_encoding, upload_bytes) =
+        match history_upload.into_server_accepted_bytes(response_encoding)? {
+            SessionHistoryServerAcceptedBytes::Accepted { encoding, bytes } => (encoding, bytes),
+            SessionHistoryServerAcceptedBytes::UnsupportedZstd { raw } => {
+                return Ok(SessionHistoryUploadAttempt::RetryLegacy(raw));
+            }
+        };
 
     log_info!(
         LOG_TAG,
@@ -403,9 +503,10 @@ async fn build_and_upload_session_history(
     http: &HttpClient,
     run_id: &str,
     history_hash: &str,
-    history_bytes: Vec<u8>,
+    history_size: u64,
+    upload_source: PreparedSessionHistoryUploadSource,
 ) -> Result<(), AgentError> {
-    let history_upload = build_session_history_upload(history_bytes)?;
+    let history_upload = upload_source.into_upload(history_size)?;
     match upload_session_history_candidate(http, run_id, history_hash, history_upload).await? {
         SessionHistoryUploadAttempt::Complete => Ok(()),
         SessionHistoryUploadAttempt::RetryLegacy(history_bytes) => {
@@ -603,71 +704,16 @@ async fn create_recovery_checkpoint_with_inputs(
     result
 }
 
-async fn create_checkpoint_impl(
-    http: &HttpClient,
+fn prepare_session_history(
     mode: CheckpointMode,
-    inputs: &CheckpointInputs<'_>,
-) -> Result<(), AgentError> {
-    log_info!(LOG_TAG, "Creating {}...", mode.log_label());
-
-    // Read the CLI agent session id. Let `read_to_string` surface `NotFound`
-    // directly — an explicit `exists()` check would be a redundant stat plus a
-    // TOCTOU race between check and read.
-    let session_id_start = std::time::Instant::now();
-    let cli_agent_session_id = match std::fs::read_to_string(inputs.session_id_file.as_ref()) {
-        Ok(s) => s.trim().to_string(),
-        Err(e) if e.kind() == ErrorKind::NotFound => {
-            return Err(fail(
-                mode,
-                "session_id_read",
-                session_id_start,
-                "No session ID found",
-            ));
-        }
-        Err(e) => {
-            return Err(fail(
-                mode,
-                "session_id_read",
-                session_id_start,
-                format!("Failed to read session ID: {e}"),
-            ));
-        }
-    };
-    if cli_agent_session_id.is_empty() {
-        return Err(fail(
-            mode,
-            "session_id_read",
-            session_id_start,
-            "Session ID is empty",
-        ));
-    }
-    record_sandbox_op("session_id_read", session_id_start.elapsed(), true, None);
-
-    // Read session history. The persisted or derived marker payload is either
-    // a literal jsonl path (Claude) or a codex marker. `session_history`
-    // abstracts the difference and decompresses zstd-compressed codex sessions.
-    let history_read_start = std::time::Instant::now();
-    let history_marker_payload = match crate::session_metadata::resolve_history_marker_payload_from(
-        inputs.framework,
-        inputs.home_dir,
-        inputs.session_history_path_file.as_ref(),
-        &cli_agent_session_id,
-    ) {
-        Ok(payload) => payload,
-        Err(e) => {
-            return Err(fail(
-                mode,
-                "session_history_read",
-                history_read_start,
-                e.to_string(),
-            ));
-        }
-    };
-    let history_bytes = match session_history::read_session_history_from_payload_bounded(
-        &history_marker_payload,
+    history_marker_payload: &str,
+    history_read_start: std::time::Instant,
+) -> Result<PreparedSessionHistory, AgentError> {
+    let source = match session_history::read_session_history_checkpoint_source_from_payload_bounded(
+        history_marker_payload,
         RESUME_SESSION_HISTORY_MAX_BYTES,
     ) {
-        Ok(b) => b,
+        Ok(source) => source,
         Err(e) => {
             return Err(fail(
                 mode,
@@ -677,6 +723,21 @@ async fn create_checkpoint_impl(
             ));
         }
     };
+    match source {
+        session_history::SessionHistoryCheckpointSource::Decoded(history_bytes) => {
+            prepare_raw_session_history(mode, history_read_start, history_bytes)
+        }
+        session_history::SessionHistoryCheckpointSource::CodexZstd { encoded } => {
+            prepare_reused_zstd_session_history(mode, history_read_start, encoded)
+        }
+    }
+}
+
+fn prepare_raw_session_history(
+    mode: CheckpointMode,
+    history_read_start: std::time::Instant,
+    history_bytes: Vec<u8>,
+) -> Result<PreparedSessionHistory, AgentError> {
     let history_size = history_bytes.len() as u64;
 
     let session_history_text = match std::str::from_utf8(&history_bytes) {
@@ -726,13 +787,260 @@ async fn create_checkpoint_impl(
         None,
     );
 
-    // Compute SHA-256 hash of session history for presigned URL upload
     let history_hash = hex::encode(Sha256::digest(&history_bytes));
     log_info!(
         LOG_TAG,
         "Session history hash={}, size={history_size}",
         &history_hash[..8]
     );
+    Ok(PreparedSessionHistory {
+        hash: history_hash,
+        raw_size: history_size,
+        upload_source: PreparedSessionHistoryUploadSource::Raw(history_bytes),
+    })
+}
+
+fn prepare_reused_zstd_session_history(
+    mode: CheckpointMode,
+    history_read_start: std::time::Instant,
+    zstd_bytes: Vec<u8>,
+) -> Result<PreparedSessionHistory, AgentError> {
+    let analysis = analyze_zstd_session_history(
+        &zstd_bytes,
+        RESUME_SESSION_HISTORY_MAX_BYTES,
+        mode.validate_history(),
+    )
+    .map_err(|e| {
+        fail(
+            mode,
+            "session_history_read",
+            history_read_start,
+            e.to_string(),
+        )
+    })?;
+
+    if let Some(msg) = &analysis.invalid_utf8 {
+        if mode.validate_history() {
+            return Err(fail(mode, "session_history_read", history_read_start, msg));
+        }
+        log_warn!(LOG_TAG, "{msg}; preserving session history for checkpoint");
+    }
+
+    if analysis.is_empty {
+        return Err(fail(
+            mode,
+            "session_history_read",
+            history_read_start,
+            "Session history is empty",
+        ));
+    }
+
+    if mode.validate_history()
+        && let Some(msg) = analysis.recovery_validation_error
+    {
+        return Err(fail(
+            mode,
+            "session_history_validate",
+            history_read_start,
+            msg,
+        ));
+    }
+
+    if let Some(line_count) = analysis.line_count {
+        log_info!(LOG_TAG, "Session history loaded ({line_count} lines)");
+    } else {
+        log_info!(
+            LOG_TAG,
+            "Session history loaded ({} raw bytes, invalid UTF-8)",
+            analysis.raw_size
+        );
+    }
+    record_sandbox_op(
+        "session_history_read",
+        history_read_start.elapsed(),
+        true,
+        None,
+    );
+
+    log_info!(
+        LOG_TAG,
+        "Session history hash={}, size={}",
+        &analysis.sha256_hex[..8],
+        analysis.raw_size
+    );
+    Ok(PreparedSessionHistory {
+        hash: analysis.sha256_hex,
+        raw_size: analysis.raw_size,
+        upload_source: PreparedSessionHistoryUploadSource::ReusedCodexZstd(zstd_bytes),
+    })
+}
+
+fn analyze_zstd_session_history(
+    zstd_bytes: &[u8],
+    max_bytes: u64,
+    validate_history: bool,
+) -> Result<DecodedSessionHistoryAnalysis, AgentError> {
+    let decoder = zstd::stream::read::Decoder::new(zstd_bytes).map_err(|error| {
+        AgentError::Checkpoint(format!(
+            "Failed to decompress zstd session history: {error}"
+        ))
+    })?;
+    analyze_decoded_session_history_reader(
+        BufReader::new(decoder.take(max_bytes.saturating_add(1))),
+        max_bytes,
+        validate_history,
+    )
+}
+
+fn analyze_decoded_session_history_reader(
+    mut reader: impl BufRead,
+    max_bytes: u64,
+    validate_history: bool,
+) -> Result<DecodedSessionHistoryAnalysis, AgentError> {
+    let mut hasher = Sha256::new();
+    let mut raw_size = 0u64;
+    let mut line_count = 0usize;
+    let mut all_bytes_ascii_whitespace = true;
+    let mut all_utf8_lines_trim_empty = true;
+    let mut invalid_utf8 = None;
+    let mut recovery_validation_error = None;
+    let mut line = Vec::new();
+
+    loop {
+        line.clear();
+        let bytes_read = reader.read_until(b'\n', &mut line).map_err(|error| {
+            AgentError::Checkpoint(format!(
+                "Failed to decompress zstd session history: {error}"
+            ))
+        })?;
+        if bytes_read == 0 {
+            break;
+        }
+
+        raw_size = raw_size.checked_add(bytes_read as u64).ok_or_else(|| {
+            AgentError::Checkpoint(format!(
+                "Session history exceeds maximum size of {max_bytes} bytes"
+            ))
+        })?;
+        if raw_size > max_bytes {
+            return Err(AgentError::Checkpoint(format!(
+                "Session history exceeds maximum size of {max_bytes} bytes"
+            )));
+        }
+        hasher.update(&line);
+        if line.iter().any(|byte| !byte.is_ascii_whitespace()) {
+            all_bytes_ascii_whitespace = false;
+        }
+
+        let logical_line = strip_jsonl_line_ending(&line);
+        match std::str::from_utf8(logical_line) {
+            Ok(text) => {
+                line_count += 1;
+                if !text.trim().is_empty() {
+                    all_utf8_lines_trim_empty = false;
+                }
+                if validate_history
+                    && recovery_validation_error.is_none()
+                    && let Err(error) = validate_recoverable_session_history_line(line_count, text)
+                {
+                    recovery_validation_error = Some(error);
+                }
+            }
+            Err(error) => {
+                invalid_utf8
+                    .get_or_insert_with(|| format!("Session history is not valid UTF-8: {error}"));
+            }
+        }
+    }
+
+    let is_empty = if invalid_utf8.is_some() {
+        all_bytes_ascii_whitespace
+    } else {
+        all_utf8_lines_trim_empty
+    };
+    Ok(DecodedSessionHistoryAnalysis {
+        raw_size,
+        sha256_hex: hex::encode(hasher.finalize()),
+        line_count: invalid_utf8.is_none().then_some(line_count),
+        invalid_utf8,
+        is_empty,
+        recovery_validation_error,
+    })
+}
+
+fn strip_jsonl_line_ending(line: &[u8]) -> &[u8] {
+    let line = line.strip_suffix(b"\n").unwrap_or(line);
+    line.strip_suffix(b"\r").unwrap_or(line)
+}
+
+async fn create_checkpoint_impl(
+    http: &HttpClient,
+    mode: CheckpointMode,
+    inputs: &CheckpointInputs<'_>,
+) -> Result<(), AgentError> {
+    log_info!(LOG_TAG, "Creating {}...", mode.log_label());
+
+    // Read the CLI agent session id. Let `read_to_string` surface `NotFound`
+    // directly — an explicit `exists()` check would be a redundant stat plus a
+    // TOCTOU race between check and read.
+    let session_id_start = std::time::Instant::now();
+    let cli_agent_session_id = match std::fs::read_to_string(inputs.session_id_file.as_ref()) {
+        Ok(s) => s.trim().to_string(),
+        Err(e) if e.kind() == ErrorKind::NotFound => {
+            return Err(fail(
+                mode,
+                "session_id_read",
+                session_id_start,
+                "No session ID found",
+            ));
+        }
+        Err(e) => {
+            return Err(fail(
+                mode,
+                "session_id_read",
+                session_id_start,
+                format!("Failed to read session ID: {e}"),
+            ));
+        }
+    };
+    if cli_agent_session_id.is_empty() {
+        return Err(fail(
+            mode,
+            "session_id_read",
+            session_id_start,
+            "Session ID is empty",
+        ));
+    }
+    record_sandbox_op("session_id_read", session_id_start.elapsed(), true, None);
+
+    // Read session history. The persisted or derived marker payload is either
+    // a literal jsonl path (Claude) or a codex marker. `session_history`
+    // resolves Codex session files and preserves already-compressed zstd
+    // sources when possible.
+    let history_read_start = std::time::Instant::now();
+    let history_marker_payload = match crate::session_metadata::resolve_history_marker_payload_from(
+        inputs.framework,
+        inputs.home_dir,
+        inputs.session_history_path_file.as_ref(),
+        &cli_agent_session_id,
+    ) {
+        Ok(payload) => payload,
+        Err(e) => {
+            return Err(fail(
+                mode,
+                "session_history_read",
+                history_read_start,
+                e.to_string(),
+            ));
+        }
+    };
+    let prepared_history =
+        prepare_session_history(mode, &history_marker_payload, history_read_start)?;
+    let PreparedSessionHistory {
+        hash: history_hash,
+        raw_size: history_size,
+        upload_source,
+    } = prepared_history;
 
     // History upload and artifact snapshots are independent pre-requisites
     // of the final checkpoint API call, so run them concurrently. The history
@@ -741,7 +1049,13 @@ async fn create_checkpoint_impl(
     // was longer plus the other; concurrent, it's just the longer one.
     let (artifact_snapshots, _) = tokio::try_join!(
         snapshot_artifact_entries(http, inputs.run_id, inputs.artifact_entries),
-        build_and_upload_session_history(http, inputs.run_id, &history_hash, history_bytes),
+        build_and_upload_session_history(
+            http,
+            inputs.run_id,
+            &history_hash,
+            history_size,
+            upload_source,
+        ),
     )?;
 
     // Build and send checkpoint payload (session history hash only, content uploaded to S3)
@@ -879,18 +1193,7 @@ fn write_final_session_history_identity(
 fn validate_recoverable_session_history(session_history: &str) -> Result<(), String> {
     let mut line_count = 0usize;
     for (index, line) in session_history.lines().enumerate() {
-        if line.trim().is_empty() {
-            return Err(format!(
-                "Session history line {} is empty; recovery checkpoint skipped",
-                index + 1
-            ));
-        }
-        serde_json::from_str::<serde_json::Value>(line).map_err(|e| {
-            format!(
-                "Session history line {} is not valid JSON; recovery checkpoint skipped: {e}",
-                index + 1
-            )
-        })?;
+        validate_recoverable_session_history_line(index + 1, line)?;
         line_count += 1;
     }
 
@@ -898,6 +1201,18 @@ fn validate_recoverable_session_history(session_history: &str) -> Result<(), Str
         return Err("Session history has no JSONL entries; recovery checkpoint skipped".into());
     }
 
+    Ok(())
+}
+
+fn validate_recoverable_session_history_line(index: usize, line: &str) -> Result<(), String> {
+    if line.trim().is_empty() {
+        return Err(format!(
+            "Session history line {index} is empty; recovery checkpoint skipped"
+        ));
+    }
+    serde_json::from_str::<serde_json::Value>(line).map_err(|e| {
+        format!("Session history line {index} is not valid JSON; recovery checkpoint skipped: {e}")
+    })?;
     Ok(())
 }
 
@@ -930,6 +1245,29 @@ mod tests {
     fn cleanup_checkpoint_files(guest_paths: &crate::paths::GuestPaths) {
         let _ = std::fs::remove_file(guest_paths.session_id_file());
         let _ = std::fs::remove_file(guest_paths.session_history_path_file());
+    }
+
+    fn http_status(status: u16) -> HttpMockResponse {
+        HttpMockResponse::builder().status(status).build()
+    }
+
+    fn request_header_eq(req: &HttpMockRequest, name: &str, expected: &str) -> bool {
+        req.headers_vec()
+            .iter()
+            .any(|(key, value)| key.eq_ignore_ascii_case(name) && value == expected)
+    }
+
+    fn session_history_upload_response(
+        req: &HttpMockRequest,
+        expected_body: &[u8],
+    ) -> HttpMockResponse {
+        if request_header_eq(req, "content-type", "application/octet-stream")
+            && req.body_ref() == expected_body
+        {
+            http_status(200)
+        } else {
+            http_status(400)
+        }
     }
 
     #[test]
@@ -1245,6 +1583,186 @@ mod tests {
         prepare.assert_calls(0);
         commit.assert_calls(0);
         checkpoint.assert_calls(0);
+    }
+
+    #[tokio::test]
+    async fn checkpoint_reuses_codex_zstd_session_history_upload_body() {
+        let server = MockServer::start();
+        let dir = tempfile::tempdir().unwrap();
+        let guest_paths = crate::paths::GuestPaths::from_runtime_dir(dir.path().join("runtime"));
+        let _files_guard = CheckpointFilesGuard::new(&guest_paths);
+        let thread_id = "019e9154-c304-70f0-adde-36efb1be1701";
+        let history =
+            b"{\"type\":\"session_meta\",\"payload\":{\"timestamp\":\"2026-07-02T10:00:00Z\"}}\n";
+        let compressed = zstd::encode_all(history.as_slice(), 0).unwrap();
+        let history_hash = hex::encode(Sha256::digest(history));
+        let home_dir = dir.path().join("home");
+        let codex_day_dir = home_dir
+            .join(".codex")
+            .join("sessions")
+            .join("2026")
+            .join("07")
+            .join("02");
+        std::fs::create_dir_all(&codex_day_dir).unwrap();
+        std::fs::write(
+            codex_day_dir.join("rollout-019e9154c30470f0adde36efb1be1701.jsonl.zst"),
+            &compressed,
+        )
+        .unwrap();
+        crate::paths::write_private(guest_paths.session_id_file(), thread_id).unwrap();
+
+        let upload_url = server.url("/test/session-history-upload");
+        let prepare = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/checkpoints/prepare-history")
+                .json_body(json!({
+                    "runId": "checkpoint-codex-zstd-reuse",
+                    "hash": history_hash,
+                    "rawSize": history.len() as u64,
+                    "encodedSize": compressed.len() as u64,
+                    "encoding": SESSION_HISTORY_ENCODING_ZSTD,
+                }));
+            then.status(200).json_body(json!({
+                "presignedUrl": upload_url,
+                "encoding": SESSION_HISTORY_ENCODING_ZSTD,
+            }));
+        });
+        let expected_upload = compressed.clone();
+        let upload = server.mock(|when, then| {
+            when.method(PUT).path("/test/session-history-upload");
+            then.respond_with(move |req| session_history_upload_response(req, &expected_upload));
+        });
+        let checkpoint = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/checkpoints")
+                .json_body(json!({
+                    "runId": "checkpoint-codex-zstd-reuse",
+                    "cliAgentType": "codex",
+                    "cliAgentSessionId": thread_id,
+                    "cliAgentSessionHistoryHash": history_hash,
+                }));
+            then.status(200)
+                .json_body(json!({"checkpointId": "checkpoint-codex-zstd"}));
+        });
+        let http = HttpClient::with_api_config(server.base_url(), "test-token", "", Duration::ZERO)
+            .unwrap();
+        let home_dir = home_dir.to_string_lossy().into_owned();
+        let inputs = CheckpointInputs {
+            run_id: "checkpoint-codex-zstd-reuse",
+            framework: env::Framework::Codex,
+            home_dir: &home_dir,
+            artifact_entries: &[],
+            session_id_file: guest_paths.session_id_file().into(),
+            session_history_path_file: guest_paths.session_history_path_file().into(),
+            final_session_history_identity_file: guest_paths
+                .final_session_history_identity_file()
+                .into(),
+        };
+
+        create_checkpoint_impl(&http, CheckpointMode::Success, &inputs)
+            .await
+            .unwrap();
+
+        prepare.assert_calls(1);
+        upload.assert_calls(1);
+        checkpoint.assert_calls(1);
+    }
+
+    #[tokio::test]
+    async fn checkpoint_falls_back_to_legacy_upload_when_prepare_rejects_reused_zstd() {
+        let server = MockServer::start();
+        let dir = tempfile::tempdir().unwrap();
+        let guest_paths = crate::paths::GuestPaths::from_runtime_dir(dir.path().join("runtime"));
+        let _files_guard = CheckpointFilesGuard::new(&guest_paths);
+        let thread_id = "019e9154-c304-70f0-adde-36efb1be1701";
+        let history =
+            b"{\"type\":\"session_meta\",\"payload\":{\"timestamp\":\"2026-07-02T10:00:00Z\"}}\n";
+        let compressed = zstd::encode_all(history.as_slice(), 0).unwrap();
+        let history_hash = hex::encode(Sha256::digest(history));
+        let home_dir = dir.path().join("home");
+        let codex_day_dir = home_dir
+            .join(".codex")
+            .join("sessions")
+            .join("2026")
+            .join("07")
+            .join("02");
+        std::fs::create_dir_all(&codex_day_dir).unwrap();
+        std::fs::write(
+            codex_day_dir.join("rollout-019e9154c30470f0adde36efb1be1701.jsonl.zst"),
+            &compressed,
+        )
+        .unwrap();
+        crate::paths::write_private(guest_paths.session_id_file(), thread_id).unwrap();
+
+        let zstd_prepare = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/checkpoints/prepare-history")
+                .json_body(json!({
+                    "runId": "checkpoint-codex-zstd-legacy-fallback",
+                    "hash": history_hash,
+                    "rawSize": history.len() as u64,
+                    "encodedSize": compressed.len() as u64,
+                    "encoding": SESSION_HISTORY_ENCODING_ZSTD,
+                }));
+            then.status(400).json_body(json!({
+                "error": "unsupported encoding",
+            }));
+        });
+        let upload_url = server.url("/test/session-history-legacy-upload");
+        let legacy_prepare = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/checkpoints/prepare-history")
+                .json_body(json!({
+                    "runId": "checkpoint-codex-zstd-legacy-fallback",
+                    "hash": history_hash,
+                    "rawSize": history.len() as u64,
+                    "encodedSize": history.len() as u64,
+                    "encoding": SESSION_HISTORY_ENCODING_IDENTITY,
+                }));
+            then.status(200).json_body(json!({
+                "presignedUrl": upload_url,
+                "encoding": SESSION_HISTORY_ENCODING_IDENTITY,
+            }));
+        });
+        let upload = server.mock(|when, then| {
+            when.method(PUT).path("/test/session-history-legacy-upload");
+            then.respond_with(move |req| session_history_upload_response(req, history));
+        });
+        let checkpoint = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/checkpoints")
+                .json_body(json!({
+                    "runId": "checkpoint-codex-zstd-legacy-fallback",
+                    "cliAgentType": "codex",
+                    "cliAgentSessionId": thread_id,
+                    "cliAgentSessionHistoryHash": history_hash,
+                }));
+            then.status(200)
+                .json_body(json!({"checkpointId": "checkpoint-codex-zstd-legacy"}));
+        });
+        let http = HttpClient::with_api_config(server.base_url(), "test-token", "", Duration::ZERO)
+            .unwrap();
+        let home_dir = home_dir.to_string_lossy().into_owned();
+        let inputs = CheckpointInputs {
+            run_id: "checkpoint-codex-zstd-legacy-fallback",
+            framework: env::Framework::Codex,
+            home_dir: &home_dir,
+            artifact_entries: &[],
+            session_id_file: guest_paths.session_id_file().into(),
+            session_history_path_file: guest_paths.session_history_path_file().into(),
+            final_session_history_identity_file: guest_paths
+                .final_session_history_identity_file()
+                .into(),
+        };
+
+        create_checkpoint_impl(&http, CheckpointMode::Success, &inputs)
+            .await
+            .unwrap();
+
+        zstd_prepare.assert_calls(1);
+        legacy_prepare.assert_calls(1);
+        upload.assert_calls(1);
+        checkpoint.assert_calls(1);
     }
 
     #[test]
