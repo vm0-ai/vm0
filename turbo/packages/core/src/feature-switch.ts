@@ -257,7 +257,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Expose the experimental MiniMax Codex framework provider route for Responses API compatibility testing.",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.CodexFastMode]: {
     maintainer: "lancy@vm0.ai",

@@ -130,7 +130,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.WorkflowWebhookTriggers]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ApiKeys]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.CodexFrameworkForMinimax]).toBe(
-      true,
+      false,
     );
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadEmoji]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.RelationshipMemory]).toBe(true);
