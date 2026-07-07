@@ -61,6 +61,53 @@ def _write_catalog_cache(
     )
 
 
+def _assert_cache_firewall_falls_back_to_bundled(
+    tmp_path,
+    monkeypatch,
+    mitm_ctx,
+    firewall: dict,
+) -> None:
+    registry_path = tmp_path / "registry.json"
+    cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
+    monkeypatch.setattr(
+        registry_firewalls,
+        "BUILTIN_FIREWALLS",
+        {
+            "fallback": {
+                "name": "fallback",
+                "apis": [
+                    {
+                        "base": "https://bundled.example.com",
+                        "auth": {"headers": {}},
+                        "permissions": [{"name": "read", "rules": ["GET /items"]}],
+                    }
+                ],
+            }
+        },
+    )
+    _write_catalog_cache(
+        cache_path,
+        digest="sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        version="catalog-a",
+        firewalls={"fallback": firewall},
+    )
+    write_multi_vm_registry(
+        registry_path,
+        {"10.200.0.1": builtin_vm("run-fallback", "fallback")},
+    )
+
+    with mitm_ctx(
+        registry_path=str(registry_path),
+        builtin_firewall_catalog_cache_path=str(cache_path),
+    ):
+        context = registry.get_vm_context("10.200.0.1", str(registry_path))
+
+    assert context is not None
+    vm_info, compiled_firewalls, _ = context
+    assert compiled_firewalls is not None
+    assert vm_info["firewalls"][0]["apis"][0]["base"] == "https://bundled.example.com"
+
+
 class TestRegistryBuiltinCache:
     def test_builtin_firewall_entry_resolves_from_catalog(self, tmp_path):
         path = tmp_path / "registry.json"
@@ -495,6 +542,48 @@ class TestRegistryBuiltinCache:
         vm_info, compiled_firewalls, _ = context
         assert compiled_firewalls is not None
         assert vm_info["firewalls"][0]["apis"][0]["base"] == "https://bundled.example.com"
+
+    def test_malformed_auth_base_runner_catalog_cache_falls_back_to_bundled(
+        self, tmp_path, monkeypatch, mitm_ctx
+    ):
+        firewall = _cache_firewall("fallback", "https://cache.example.com")
+        firewall["apis"][0]["auth"] = {"base": "http://auth.example.com"}
+
+        _assert_cache_firewall_falls_back_to_bundled(
+            tmp_path,
+            monkeypatch,
+            mitm_ctx,
+            firewall,
+        )
+
+    def test_malformed_aws_sigv4_runner_catalog_cache_falls_back_to_bundled(
+        self, tmp_path, monkeypatch, mitm_ctx
+    ):
+        firewall = _cache_firewall("fallback", "https://cache.example.com")
+        del firewall["apis"][0]["auth"]["awsSigv4"]["secretAccessKey"]
+
+        _assert_cache_firewall_falls_back_to_bundled(
+            tmp_path,
+            monkeypatch,
+            mitm_ctx,
+            firewall,
+        )
+
+    def test_malformed_host_policy_runner_catalog_cache_falls_back_to_bundled(
+        self, tmp_path, monkeypatch, mitm_ctx
+    ):
+        firewall = _cache_firewall("fallback", "https://cache.example.com")
+        firewall["apis"][0]["hostPolicy"] = {
+            "kind": "providerOwned",
+            "exactHosts": ["127.0.0.1"],
+        }
+
+        _assert_cache_firewall_falls_back_to_bundled(
+            tmp_path,
+            monkeypatch,
+            mitm_ctx,
+            firewall,
+        )
 
     def test_malformed_permission_runner_catalog_cache_falls_back_to_bundled(
         self, tmp_path, monkeypatch, mitm_ctx

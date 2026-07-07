@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 use sandbox::SandboxId;
 use serde::{Deserialize, Serialize};
+use unicode_normalization::UnicodeNormalization;
 use uuid::Uuid;
 
 use api_contracts::generated::types::runners::storage::{
@@ -476,17 +477,21 @@ fn validate_base_url_var_reference(content: &str) -> Result<(), String> {
     let Some(name) = trimmed.strip_prefix("vars.") else {
         return Err("base URL template reference must use vars".to_string());
     };
+    validate_template_identifier(name, "base URL template variable")
+}
+
+fn validate_template_identifier(name: &str, label: &str) -> Result<(), String> {
     let mut chars = name.chars();
     let Some(first) = chars.next() else {
-        return Err("base URL template variable name must be non-empty".to_string());
+        return Err(format!("{label} name must be non-empty"));
     };
     if !(first == '_' || first.is_ascii_alphabetic()) {
-        return Err(
-            "base URL template variable name must start with a letter or underscore".to_string(),
-        );
+        return Err(format!(
+            "{label} name must start with a letter or underscore"
+        ));
     }
     if !chars.all(|ch| ch == '_' || ch.is_ascii_alphanumeric()) {
-        return Err("base URL template variable name must be alphanumeric".to_string());
+        return Err(format!("{label} name must be alphanumeric"));
     }
     Ok(())
 }
@@ -731,6 +736,9 @@ pub struct FirewallAuth {
 
 impl FirewallAuth {
     fn validate_for_cache(&self) -> Result<(), String> {
+        if let Some(base) = &self.base {
+            validate_auth_base_for_cache(base)?;
+        }
         let Some(aws_sigv4) = &self.aws_sigv4 else {
             return Ok(());
         };
@@ -743,6 +751,232 @@ impl FirewallAuth {
         }
         Ok(())
     }
+}
+
+struct AuthBaseStaticValidationTarget {
+    url: Option<String>,
+    dynamic_prefix_suffix: String,
+}
+
+fn validate_auth_base_for_cache(auth_base: &str) -> Result<(), String> {
+    if auth_base.is_empty() {
+        return Err("auth.base must be non-empty when present".to_string());
+    }
+    if auth_base.contains('\\') {
+        return Err("auth.base must not contain backslash".to_string());
+    }
+    let target = auth_base_static_validation_target_for_cache(auth_base)?;
+    validate_dynamic_auth_base_suffix_for_cache(&target.dynamic_prefix_suffix)?;
+    let Some(validation_url) = target.url else {
+        return Ok(());
+    };
+    if validation_url.contains("${{") {
+        return Err("auth.base contains unsupported template reference".to_string());
+    }
+    if validation_url.chars().any(is_raw_whitespace) {
+        return Err("auth.base must not contain whitespace".to_string());
+    }
+    if validation_url.chars().any(is_unsafe_url_codepoint) {
+        return Err("auth.base must not contain control characters".to_string());
+    }
+    if !validation_url.contains("://") {
+        return Err("auth.base URL must include a scheme".to_string());
+    }
+    let parsed =
+        url::Url::parse(&validation_url).map_err(|_| "auth.base URL is invalid".to_string())?;
+    if parsed.scheme() != "https" {
+        return Err("auth.base scheme must be https".to_string());
+    }
+    if parsed.host_str().is_none() {
+        return Err("auth.base URL must include a host".to_string());
+    }
+    if !parsed.username().is_empty() || parsed.password().is_some() {
+        return Err("auth.base must not contain userinfo".to_string());
+    }
+    if parsed.fragment().is_some() {
+        return Err("auth.base must not contain fragment".to_string());
+    }
+    if raw_authority_has_empty_port(&validation_url) {
+        return Err("auth.base URL authority must not include an empty port".to_string());
+    }
+    if path_has_unsafe_segments_for_cache(raw_url_path(&validation_url)) {
+        return Err("auth.base must not contain unsafe path".to_string());
+    }
+    Ok(())
+}
+
+fn auth_base_static_validation_target_for_cache(
+    auth_base: &str,
+) -> Result<AuthBaseStaticValidationTarget, String> {
+    let mut search_start = 0;
+    let mut result = String::new();
+    let mut first_template_end = None;
+    let mut found = false;
+    while let Some(relative_start) = auth_base[search_start..].find("${{") {
+        found = true;
+        let start = search_start + relative_start;
+        let content_start = start + "${{".len();
+        let Some(relative_end) = auth_base[content_start..].find("}}") else {
+            return Err("auth.base template reference is unterminated".to_string());
+        };
+        let end = content_start + relative_end;
+        validate_auth_base_template_reference(&auth_base[content_start..end])?;
+        result.push_str(&auth_base[search_start..start]);
+        result.push_str("placeholder");
+        search_start = end + "}}".len();
+        if start == 0 && first_template_end.is_none() {
+            first_template_end = Some(result.len());
+        }
+    }
+    if !found {
+        return Ok(AuthBaseStaticValidationTarget {
+            url: Some(auth_base.to_string()),
+            dynamic_prefix_suffix: String::new(),
+        });
+    }
+    result.push_str(&auth_base[search_start..]);
+    if let Some(end) = first_template_end {
+        return Ok(AuthBaseStaticValidationTarget {
+            url: None,
+            dynamic_prefix_suffix: result[end..].to_string(),
+        });
+    }
+    Ok(AuthBaseStaticValidationTarget {
+        url: Some(result),
+        dynamic_prefix_suffix: String::new(),
+    })
+}
+
+fn validate_auth_base_template_reference(content: &str) -> Result<(), String> {
+    let trimmed = content.trim();
+    let name = trimmed
+        .strip_prefix("secrets.")
+        .or_else(|| trimmed.strip_prefix("vars."))
+        .ok_or_else(|| "auth.base template reference must use secrets or vars".to_string())?;
+    validate_template_identifier(name, "auth.base template variable")
+}
+
+fn validate_dynamic_auth_base_suffix_for_cache(suffix: &str) -> Result<(), String> {
+    if suffix.contains("${{") {
+        return Err("auth.base contains unsupported template reference".to_string());
+    }
+    if suffix.chars().any(is_raw_whitespace) {
+        return Err("auth.base dynamic URL suffix must not contain whitespace".to_string());
+    }
+    if suffix.chars().any(is_unsafe_url_codepoint) {
+        return Err("auth.base dynamic URL suffix must not contain control characters".to_string());
+    }
+    if suffix.contains('#') {
+        return Err("auth.base must not contain fragment".to_string());
+    }
+    if !suffix.is_empty() && !suffix.starts_with('/') && !suffix.starts_with('?') {
+        return Err("auth.base dynamic URL suffix must start with / or ?".to_string());
+    }
+    if suffix.starts_with('/') {
+        let path = suffix.split_once('?').map_or(suffix, |(path, _)| path);
+        if path_has_unsafe_segments_for_cache(path) {
+            return Err("auth.base dynamic URL suffix must not contain unsafe path".to_string());
+        }
+    }
+    Ok(())
+}
+
+fn path_has_unsafe_segments_for_cache(path: &str) -> bool {
+    path.contains('\\') || path.split('/').any(segment_has_unsafe_path_for_cache)
+}
+
+fn segment_has_unsafe_path_for_cache(raw_segment: &str) -> bool {
+    const MAX_PERCENT_DECODE_PASSES: usize = 5;
+
+    let mut segment = raw_segment.to_string();
+    for _ in 0..MAX_PERCENT_DECODE_PASSES {
+        if segment_has_unsafe_syntax_for_cache(&segment) {
+            return true;
+        }
+        let Some(decoded) = percent_decode_segment(&segment) else {
+            return true;
+        };
+        if decoded == segment {
+            return false;
+        }
+        segment = decoded;
+    }
+
+    if segment_has_unsafe_syntax_for_cache(&segment) {
+        return true;
+    }
+    percent_decode_segment(&segment).is_none_or(|decoded| decoded != segment)
+}
+
+fn segment_has_unsafe_syntax_for_cache(segment: &str) -> bool {
+    if segment_has_unsafe_syntax_parts_for_cache(segment) {
+        return true;
+    }
+
+    let normalized: String = segment.nfkc().collect();
+    normalized != segment
+        && (normalized.contains('%') || segment_has_unsafe_syntax_parts_for_cache(&normalized))
+}
+
+fn segment_has_unsafe_syntax_parts_for_cache(segment: &str) -> bool {
+    segment.chars().any(is_unsafe_url_codepoint)
+        || segment.contains('\\')
+        || path_part_is_dot_segment_for_cache(segment)
+        || segment.split('/').any(path_part_is_dot_segment_for_cache)
+}
+
+fn path_part_is_dot_segment_for_cache(segment: &str) -> bool {
+    let path_part = segment.split_once(';').map_or(segment, |(part, _)| part);
+    path_part == "." || path_part == ".."
+}
+
+fn percent_decode_segment(segment: &str) -> Option<String> {
+    let bytes = segment.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while let Some(&byte) = bytes.get(index) {
+        if byte != b'%' {
+            decoded.push(byte);
+            index += 1;
+            continue;
+        }
+        let high = *bytes.get(index + 1)?;
+        let low = *bytes.get(index + 2)?;
+        decoded.push((hex_value(high)? << 4) | hex_value(low)?);
+        index += 3;
+    }
+    String::from_utf8(decoded).ok()
+}
+
+fn hex_value(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
+    }
+}
+
+fn raw_authority_has_empty_port(value: &str) -> bool {
+    let Some(rest) = value.split_once("://").map(|(_, rest)| rest) else {
+        return false;
+    };
+    let authority_end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+    rest[..authority_end].ends_with(':')
+}
+
+fn raw_url_path(value: &str) -> &str {
+    let Some(rest) = value.split_once("://").map(|(_, rest)| rest) else {
+        return "";
+    };
+    let Some(path_start) = rest.find('/') else {
+        return "";
+    };
+    let path_and_after = &rest[path_start..];
+    let path_end = path_and_after
+        .find(['?', '#'])
+        .unwrap_or(path_and_after.len());
+    &path_and_after[..path_end]
 }
 
 /// AWS SigV4 auth template for firewall auth injection.

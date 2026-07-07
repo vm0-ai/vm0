@@ -373,6 +373,11 @@ def _auth_config_is_valid(api_entry: dict) -> bool:
     return "base" not in raw_auth or _static_auth_base_is_valid(raw_auth["base"])
 
 
+def firewall_api_auth_config_is_valid(api_entry: dict) -> bool:
+    """Return whether an API entry auth config has a valid runtime shape."""
+    return _auth_config_is_valid(api_entry)
+
+
 def _path_specificity(
     pattern: CompiledPathPattern,
 ) -> _PathSpecificity:

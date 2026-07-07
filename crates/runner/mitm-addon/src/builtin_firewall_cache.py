@@ -9,6 +9,7 @@ from pathlib import Path
 
 from mitmproxy import ctx
 
+import builtin_host_policy
 import matching
 from url_syntax import has_raw_whitespace, has_unsafe_url_codepoint
 
@@ -263,16 +264,16 @@ def _validate_api_entry(firewall_name: str, api: dict) -> None:
             f'catalog cache firewall "{firewall_name}" api base is invalid'
         )
 
-    if not isinstance(api.get("auth"), dict):
+    if not matching.firewall_api_auth_config_is_valid(api):
         raise BuiltinFirewallCatalogCacheError(
-            f'catalog cache firewall "{firewall_name}" api auth must be an object'
+            f'catalog cache firewall "{firewall_name}" api auth is invalid'
         )
 
     host_policy = api.get("hostPolicy")
-    if host_policy is not None and not isinstance(host_policy, dict):
-        raise BuiltinFirewallCatalogCacheError(
-            f'catalog cache firewall "{firewall_name}" api hostPolicy must be an object'
-        )
+    builtin_host_policy.validate_host_policy_shape_for_cache(
+        firewall_name=firewall_name,
+        host_policy=host_policy,
+    )
 
     permissions = api.get("permissions")
     if permissions is None:

@@ -369,6 +369,37 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn write_catalog_cache_accepts_valid_auth_base_templates() {
+        for auth_base in [
+            "${{ secrets.WEBHOOK_URL }}",
+            "${{ secrets.WEBHOOK_URL }}/api/v1?source=vm0",
+            "https://api.example.com/${{ secrets.API_TOKEN }}",
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            let cache_path = dir.path().join("builtin-firewall-catalog-cache.json");
+            let lock_path = dir.path().join("builtin-firewall-catalog-cache.json.lock");
+            let mut valid = catalog("github");
+            valid
+                .firewalls
+                .get_mut("github")
+                .expect("catalog should contain github")
+                .apis[0]
+                .auth
+                .base = Some(auth_base.to_string());
+
+            write_catalog_cache(&cache_path, &lock_path, valid)
+                .await
+                .unwrap();
+
+            let cache = read_catalog_cache(&cache_path).await.unwrap().unwrap();
+            assert_eq!(
+                cache.firewalls["github"].apis[0].auth.base.as_deref(),
+                Some(auth_base)
+            );
+        }
+    }
+
+    #[tokio::test]
     async fn invalid_catalog_does_not_overwrite_existing_cache() {
         let dir = tempfile::tempdir().unwrap();
         let cache_path = dir.path().join("builtin-firewall-catalog-cache.json");
@@ -448,6 +479,166 @@ mod tests {
 
         assert!(
             error.to_string().contains("runner assigns api ids"),
+            "unexpected error: {error}"
+        );
+        let after = tokio::fs::read_to_string(&cache_path).await.unwrap();
+        assert_eq!(after, before);
+    }
+
+    #[tokio::test]
+    async fn malformed_auth_base_catalog_does_not_overwrite_existing_cache() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache_path = dir.path().join("builtin-firewall-catalog-cache.json");
+        let lock_path = dir.path().join("builtin-firewall-catalog-cache.json.lock");
+
+        write_catalog_cache(&cache_path, &lock_path, catalog("github"))
+            .await
+            .unwrap();
+        let before = tokio::fs::read_to_string(&cache_path).await.unwrap();
+
+        let mut invalid = catalog("github");
+        invalid
+            .firewalls
+            .get_mut("github")
+            .expect("catalog should contain github")
+            .apis[0]
+            .auth
+            .base = Some("http://example.com".to_string());
+        let error = write_catalog_cache(&cache_path, &lock_path, invalid)
+            .await
+            .unwrap_err();
+
+        assert!(
+            error.to_string().contains("auth.base scheme must be https"),
+            "unexpected error: {error}"
+        );
+        let after = tokio::fs::read_to_string(&cache_path).await.unwrap();
+        assert_eq!(after, before);
+    }
+
+    #[tokio::test]
+    async fn malformed_dynamic_auth_base_path_catalog_does_not_overwrite_existing_cache() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache_path = dir.path().join("builtin-firewall-catalog-cache.json");
+        let lock_path = dir.path().join("builtin-firewall-catalog-cache.json.lock");
+
+        write_catalog_cache(&cache_path, &lock_path, catalog("github"))
+            .await
+            .unwrap();
+        let before = tokio::fs::read_to_string(&cache_path).await.unwrap();
+
+        let mut invalid = catalog("github");
+        invalid
+            .firewalls
+            .get_mut("github")
+            .expect("catalog should contain github")
+            .apis[0]
+            .auth
+            .base = Some("${{ secrets.WEBHOOK_URL }}/%2e%2e".to_string());
+        let error = write_catalog_cache(&cache_path, &lock_path, invalid)
+            .await
+            .unwrap_err();
+
+        assert!(
+            error.to_string().contains("must not contain unsafe path"),
+            "unexpected error: {error}"
+        );
+        let after = tokio::fs::read_to_string(&cache_path).await.unwrap();
+        assert_eq!(after, before);
+    }
+
+    #[tokio::test]
+    async fn malformed_static_auth_base_path_catalog_does_not_overwrite_existing_cache() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache_path = dir.path().join("builtin-firewall-catalog-cache.json");
+        let lock_path = dir.path().join("builtin-firewall-catalog-cache.json.lock");
+
+        write_catalog_cache(&cache_path, &lock_path, catalog("github"))
+            .await
+            .unwrap();
+        let before = tokio::fs::read_to_string(&cache_path).await.unwrap();
+
+        let mut invalid = catalog("github");
+        invalid
+            .firewalls
+            .get_mut("github")
+            .expect("catalog should contain github")
+            .apis[0]
+            .auth
+            .base = Some("https://api.example.com/%2e%2e".to_string());
+        let error = write_catalog_cache(&cache_path, &lock_path, invalid)
+            .await
+            .unwrap_err();
+
+        assert!(
+            error.to_string().contains("must not contain unsafe path"),
+            "unexpected error: {error}"
+        );
+        let after = tokio::fs::read_to_string(&cache_path).await.unwrap();
+        assert_eq!(after, before);
+    }
+
+    #[tokio::test]
+    async fn normalized_malformed_static_auth_base_path_catalog_does_not_overwrite_existing_cache()
+    {
+        let dir = tempfile::tempdir().unwrap();
+        let cache_path = dir.path().join("builtin-firewall-catalog-cache.json");
+        let lock_path = dir.path().join("builtin-firewall-catalog-cache.json.lock");
+
+        write_catalog_cache(&cache_path, &lock_path, catalog("github"))
+            .await
+            .unwrap();
+        let before = tokio::fs::read_to_string(&cache_path).await.unwrap();
+
+        let mut invalid = catalog("github");
+        invalid
+            .firewalls
+            .get_mut("github")
+            .expect("catalog should contain github")
+            .apis[0]
+            .auth
+            .base = Some("https://api.example.com/%EF%BC%8E%EF%BC%8E".to_string());
+        let error = write_catalog_cache(&cache_path, &lock_path, invalid)
+            .await
+            .unwrap_err();
+
+        assert!(
+            error.to_string().contains("must not contain unsafe path"),
+            "unexpected error: {error}"
+        );
+        let after = tokio::fs::read_to_string(&cache_path).await.unwrap();
+        assert_eq!(after, before);
+    }
+
+    #[tokio::test]
+    async fn malformed_host_policy_catalog_does_not_overwrite_existing_cache() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache_path = dir.path().join("builtin-firewall-catalog-cache.json");
+        let lock_path = dir.path().join("builtin-firewall-catalog-cache.json.lock");
+
+        write_catalog_cache(&cache_path, &lock_path, catalog("github"))
+            .await
+            .unwrap();
+        let before = tokio::fs::read_to_string(&cache_path).await.unwrap();
+
+        let mut invalid = catalog("github");
+        let host_policy = crate::types::FirewallBaseHostPolicy::ProviderOwned {
+            exact_hosts: vec!["127.0.0.1".to_string()],
+            suffixes: Vec::new(),
+            allow_non_default_port: false,
+        };
+        invalid
+            .firewalls
+            .get_mut("github")
+            .expect("catalog should contain github")
+            .apis[0]
+            .host_policy = Some(host_policy);
+        let error = write_catalog_cache(&cache_path, &lock_path, invalid)
+            .await
+            .unwrap_err();
+
+        assert!(
+            error.to_string().contains("must not be an IP address"),
             "unexpected error: {error}"
         );
         let after = tokio::fs::read_to_string(&cache_path).await.unwrap();
