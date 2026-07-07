@@ -71,19 +71,35 @@ type ArtifactImageMetadata = {
   readonly runId: string;
 };
 
-// Matches a markdown image `![alt](url)`, capturing the alt (filename) and url
-// while allowing escaped characters in the alt text. Agent-generated images
-// render as markdown image lines rather than dedicated preview blocks (see
-// renderExtractedPreviewLine).
-const MARKDOWN_IMAGE_PATTERN = /!\[((?:\\.|[^\]\\])*)\]\(([^)]+)\)/g;
+// Matches markdown images `![alt](url)` and links `[label](url)`, capturing the
+// optional image marker, label/alt text, and url while allowing escaped label
+// characters. Agent-generated images can render as markdown image lines or
+// media links rather than dedicated preview blocks.
+const MARKDOWN_IMAGE_OR_LINK_PATTERN =
+  /(!?)\[((?:\\.|[^\]\\])*)\]\(([^)]+)\)/g;
 
-function unescapeMarkdownAlt(alt: string): string {
-  return alt.replace(/\\([\]\\])/g, "$1");
+function unescapeMarkdownText(value: string): string {
+  return value.replace(/\\([\]\\])/g, "$1");
 }
 
 function filenameFromImageUrl(url: string): string {
   const path = url.split("?")[0].split("#")[0];
   return path.split("/").pop() || "image";
+}
+
+function isMarkdownImageLinkUrl(url: string): boolean {
+  return (
+    /^https?:\/\//i.test(url) &&
+    /\.(png|jpe?g|gif|webp|svg|bmp|avif)(?:\?|#|$)/i.test(url)
+  );
+}
+
+function filenameFromMarkdownLink(label: string, url: string): string {
+  const text = unescapeMarkdownText(label).trim();
+  if (text.length > 0 && !/^https?:\/\//i.test(text)) {
+    return text;
+  }
+  return filenameFromImageUrl(url);
 }
 
 /** Ordered, de-duplicated images (url + filename) shown in a single message. */
@@ -110,10 +126,23 @@ function messageImages(message: MessageImageSource): MessageImage[] {
       continue;
     }
     if (block.type === "markdown") {
-      for (const match of block.content.matchAll(MARKDOWN_IMAGE_PATTERN)) {
-        const url = match[2];
-        const alt = unescapeMarkdownAlt(match[1] ?? "");
-        add(url, alt || filenameFromImageUrl(url));
+      for (const match of block.content.matchAll(
+        MARKDOWN_IMAGE_OR_LINK_PATTERN,
+      )) {
+        const marker = match[1];
+        const label = match[2] ?? "";
+        const url = match[3];
+        if (!url) {
+          continue;
+        }
+        if (marker === "!") {
+          const alt = unescapeMarkdownText(label);
+          add(url, alt || filenameFromImageUrl(url));
+          continue;
+        }
+        if (isMarkdownImageLinkUrl(url)) {
+          add(url, filenameFromMarkdownLink(label, url));
+        }
       }
     }
   }
