@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.565.0](https://github.com/vm0-ai/vm0/compare/app-v0.564.2...app-v0.565.0) (2026-07-07)
+
+
+### Features
+
+* add agent filter to workflows list ([#20405](https://github.com/vm0-ai/vm0/issues/20405)) ([ed84ad0](https://github.com/vm0-ai/vm0/commit/ed84ad04d38058fb7fce60c9bd824dfe3d8cf7bb))
+* show owning agent as read-only field on workflow settings ([#20425](https://github.com/vm0-ai/vm0/issues/20425)) ([aaa185e](https://github.com/vm0-ai/vm0/commit/aaa185e8339b1e53a2773f07d6923b458a2c075e))
+
 ## [0.564.2](https://github.com/vm0-ai/vm0/compare/app-v0.564.1...app-v0.564.2) (2026-07-06)
 
 
