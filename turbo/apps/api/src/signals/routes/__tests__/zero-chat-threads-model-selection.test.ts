@@ -1,6 +1,10 @@
 import { randomUUID } from "node:crypto";
 
-import { chatThreadMetadataContract } from "@vm0/api-contracts/contracts/chat-threads";
+import {
+  chatThreadMetadataContract,
+  chatThreadModelSelectionContract,
+  MODEL_FIRST_SELECTION_PROVIDER_ID,
+} from "@vm0/api-contracts/contracts/chat-threads";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import { createStore } from "ccstate";
 import { describe, expect, it } from "vitest";
@@ -44,11 +48,15 @@ function zeroToken(args: {
   });
 }
 
-function client() {
+function modelSelectionClient() {
+  return setupApp({ context })(chatThreadModelSelectionContract);
+}
+
+function metadataClient() {
   return setupApp({ context })(chatThreadMetadataContract);
 }
 
-describe("GET /api/zero/chat-threads/:id/metadata", () => {
+describe("POST /api/zero/chat-threads/:id/model-selection", () => {
   const trackThread = createFixtureTracker<ZeroChatThreadFixture>((fixture) => {
     return store.set(deleteZeroChatThread$, fixture, context.signal);
   });
@@ -58,7 +66,53 @@ describe("GET /api/zero/chat-threads/:id/metadata", () => {
     },
   );
 
-  it("returns thread metadata with ZERO_TOKEN chat-thread:read capability", async () => {
+  it("updates thread model selection with ZERO_TOKEN chat-thread:write capability", async () => {
+    const fixture = await trackThread(
+      store.set(seedZeroChatThread$, { title: "Launch plan" }, context.signal),
+    );
+    await trackMembership(
+      store.set(
+        seedOrgMembership$,
+        { orgId: fixture.orgId, userId: fixture.userId },
+        context.signal,
+      ),
+    );
+    const token = zeroToken({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      capabilities: ["chat-thread:read", "chat-thread:write"],
+    });
+
+    await accept(
+      modelSelectionClient().update({
+        headers: { authorization: `Bearer ${token}` },
+        params: { id: fixture.threadId },
+        body: {
+          modelSelection: {
+            modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+            selectedModel: "claude-sonnet-5",
+          },
+        },
+      }),
+      [204],
+    );
+
+    const response = await accept(
+      metadataClient().get({
+        headers: { authorization: `Bearer ${token}` },
+        params: { id: fixture.threadId },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      id: fixture.threadId,
+      title: "Launch plan",
+      selectedModel: "claude-sonnet-5",
+    });
+  });
+
+  it("rejects ZERO_TOKEN without chat-thread:write capability", async () => {
     const fixture = await trackThread(
       store.set(seedZeroChatThread$, { title: "Launch plan" }, context.signal),
     );
@@ -76,41 +130,15 @@ describe("GET /api/zero/chat-threads/:id/metadata", () => {
     });
 
     const response = await accept(
-      client().get({
+      modelSelectionClient().update({
         headers: { authorization: `Bearer ${token}` },
         params: { id: fixture.threadId },
-      }),
-      [200],
-    );
-
-    expect(response.body).toStrictEqual({
-      id: fixture.threadId,
-      title: "Launch plan",
-      selectedModel: null,
-    });
-  });
-
-  it("rejects ZERO_TOKEN without chat-thread:read capability", async () => {
-    const fixture = await trackThread(
-      store.set(seedZeroChatThread$, { title: "Launch plan" }, context.signal),
-    );
-    await trackMembership(
-      store.set(
-        seedOrgMembership$,
-        { orgId: fixture.orgId, userId: fixture.userId },
-        context.signal,
-      ),
-    );
-    const token = zeroToken({
-      userId: fixture.userId,
-      orgId: fixture.orgId,
-      capabilities: ["chat-thread:write"],
-    });
-
-    const response = await accept(
-      client().get({
-        headers: { authorization: `Bearer ${token}` },
-        params: { id: fixture.threadId },
+        body: {
+          modelSelection: {
+            modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+            selectedModel: "claude-sonnet-5",
+          },
+        },
       }),
       [403],
     );
@@ -118,7 +146,7 @@ describe("GET /api/zero/chat-threads/:id/metadata", () => {
     expect(response.body).toStrictEqual({
       error: {
         code: "FORBIDDEN",
-        message: "Missing required capability: chat-thread:read",
+        message: "Missing required capability: chat-thread:write",
       },
     });
   });

@@ -17,7 +17,11 @@ const getInner$ = command(async ({ get }, signal: AbortSignal) => {
 
   const db = get(db$);
   const [thread] = await db
-    .select({ id: chatThreads.id, title: chatThreads.title })
+    .select({
+      id: chatThreads.id,
+      title: chatThreads.title,
+      selectedModel: chatThreads.selectedModel,
+    })
     .from(chatThreads)
     .where(
       and(eq(chatThreads.id, params.id), eq(chatThreads.userId, auth.userId)),

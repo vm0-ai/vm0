@@ -46,7 +46,11 @@ describe("zero chat get command", () => {
         expect(request.headers.get("authorization")).toBe(
           "Bearer test-zero-token",
         );
-        return HttpResponse.json({ id: THREAD_ID, title: "Launch plan" });
+        return HttpResponse.json({
+          id: THREAD_ID,
+          title: "Launch plan",
+          selectedModel: "claude-sonnet-5",
+        });
       }),
     );
 
@@ -56,12 +60,17 @@ describe("zero chat get command", () => {
     expect(output).toContain("Chat thread loaded");
     expect(output).toContain(`Thread: ${THREAD_ID}`);
     expect(output).toContain("Title:  Launch plan");
+    expect(output).toContain("Model:  claude-sonnet-5");
   });
 
   it("prints JSON output when --json is passed", async () => {
     server.use(
       http.get(GET_URL, () => {
-        return HttpResponse.json({ id: THREAD_ID, title: "Launch plan" });
+        return HttpResponse.json({
+          id: THREAD_ID,
+          title: "Launch plan",
+          selectedModel: "claude-sonnet-5",
+        });
       }),
     );
 
@@ -71,6 +80,7 @@ describe("zero chat get command", () => {
       {
         id: THREAD_ID,
         title: "Launch plan",
+        selectedModel: "claude-sonnet-5",
       },
     );
   });
@@ -78,7 +88,11 @@ describe("zero chat get command", () => {
   it("prints an untitled placeholder for null titles", async () => {
     server.use(
       http.get(GET_URL, () => {
-        return HttpResponse.json({ id: THREAD_ID, title: null });
+        return HttpResponse.json({
+          id: THREAD_ID,
+          title: null,
+          selectedModel: null,
+        });
       }),
     );
 
@@ -86,6 +100,7 @@ describe("zero chat get command", () => {
 
     const output = mockConsoleLog.mock.calls.flat().join("\n");
     expect(output).toContain("Title:  (untitled)");
+    expect(output).toContain("Model:  (default)");
   });
 
   it("requires ZERO_CHAT_THREAD_ID from the current web chat", async () => {

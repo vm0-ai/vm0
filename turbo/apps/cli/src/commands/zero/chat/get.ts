@@ -52,5 +52,8 @@ Notes:
       console.log(chalk.green("✓ Chat thread loaded"));
       console.log(chalk.dim(`  Thread: ${thread.id}`));
       console.log(chalk.dim(`  Title:  ${thread.title ?? "(untitled)"}`));
+      console.log(
+        chalk.dim(`  Model:  ${thread.selectedModel ?? "(default)"}`),
+      );
     }),
   );
