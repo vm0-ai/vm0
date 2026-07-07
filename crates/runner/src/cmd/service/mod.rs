@@ -396,6 +396,24 @@ fn removed_drain_override_reload_error(
     ))
 }
 
+fn ensure_resume_mode_is_draining(unit: &RunnerServiceUnit, mode: &str) -> RunnerResult<()> {
+    match mode {
+        "draining" => Ok(()),
+        "stopping" | "stopped" => Err(RunnerError::Internal(format!(
+            "{} is already shutting down (mode={mode}) — cannot resume",
+            unit.unit_name()
+        ))),
+        "running" => Err(RunnerError::Internal(format!(
+            "{} is running, not draining — cannot resume",
+            unit.unit_name()
+        ))),
+        _ => Err(RunnerError::Internal(format!(
+            "{} is in unknown mode {mode:?} — cannot resume",
+            unit.unit_name()
+        ))),
+    }
+}
+
 async fn remove_drain_restart_override_before_resume(
     unit: &RunnerServiceUnit,
     ops: &mut impl ServiceResumeOps,
@@ -875,9 +893,10 @@ async fn drain(args: ServiceDrainArgs) -> RunnerResult<()> {
 ///
 /// Reverses a prior `service drain` while the runner is still `Draining`.
 /// If the runner has already transitioned to `Stopping` (teardown in
-/// progress) or exited, resume is refused. SIGUSR2 on an already-`Running`
-/// runner is a no-op on the runner side (the state guard rejects the
-/// transition).
+/// progress), is still `Running`, or exited, resume is refused when status is
+/// readable. SIGUSR2 on an already-`Running` runner is a no-op on the runner
+/// side, so the CLI must not restore Restart=on-failure until the runner has
+/// actually entered `Draining`.
 async fn resume(args: ServiceResumeArgs) -> RunnerResult<()> {
     let unit = RunnerServiceUnit::from_suffix(&args.name)?;
     let home = HomePaths::new()?;
@@ -890,19 +909,14 @@ async fn resume(args: ServiceResumeArgs) -> RunnerResult<()> {
         )));
     }
 
-    // Preflight: if status.json shows the runner is already past the
-    // resumable point (Stopping = teardown in progress, Stopped = exited),
-    // SIGUSR2 is too late.
+    // Preflight: only remove Restart=no once status.json confirms the runner
+    // has processed SIGUSR1 and entered Draining. A too-early resume while
+    // status is still Running can race with the pending SIGUSR1: SIGUSR2 is a
+    // no-op in Running, but removing the restart override would let a later
+    // Draining runner regain restart behavior.
     if let Some(base_dir) = runner_base_dir(&unit) {
         match read_runner_status(&base_dir).await {
-            Ok(status) if matches!(status.mode.as_str(), "stopping" | "stopped") => {
-                return Err(RunnerError::Internal(format!(
-                    "{} is already shutting down (mode={}) — cannot resume",
-                    unit.unit_name(),
-                    status.mode
-                )));
-            }
-            Ok(_) => {}
+            Ok(status) => ensure_resume_mode_is_draining(&unit, &status.mode)?,
             Err(e) => {
                 warn!(
                     unit = %unit.unit_name(),
@@ -1587,6 +1601,22 @@ profiles:
             .unwrap();
 
         assert_eq!(ops.events, ["signal_resume"]);
+    }
+
+    #[test]
+    fn resume_preflight_allows_only_draining_mode() {
+        let unit = service_unit();
+
+        ensure_resume_mode_is_draining(&unit, "draining").unwrap();
+
+        let running = ensure_resume_mode_is_draining(&unit, "running").unwrap_err();
+        assert!(running.to_string().contains("running, not draining"));
+
+        let stopping = ensure_resume_mode_is_draining(&unit, "stopping").unwrap_err();
+        assert!(stopping.to_string().contains("already shutting down"));
+
+        let unknown = ensure_resume_mode_is_draining(&unit, "paused").unwrap_err();
+        assert!(unknown.to_string().contains("unknown mode"));
     }
 
     #[tokio::test]
