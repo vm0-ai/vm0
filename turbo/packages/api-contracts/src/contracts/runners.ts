@@ -90,12 +90,15 @@ const runnerBuiltinFirewallNameSchema = z
   .min(1)
   .max(128)
   .regex(/^(?:[a-z0-9][a-z0-9-]*|model-provider:[a-z0-9][a-z0-9-]*)$/);
-const runnerBuiltinFirewallsResolveBodySchema = z.object({
-  names: z
-    .array(runnerBuiltinFirewallNameSchema)
-    .min(1)
-    .max(RUNNER_BUILTIN_FIREWALL_RESOLVE_NAMES_MAX),
-});
+const runnerBuiltinFirewallsResolveBodySchema = z
+  .object({
+    names: z
+      .array(runnerBuiltinFirewallNameSchema)
+      .min(1)
+      .max(RUNNER_BUILTIN_FIREWALL_RESOLVE_NAMES_MAX)
+      .optional(),
+  })
+  .strict();
 const runnerBuiltinFirewallsResolveResponseSchema = z.object({
   catalogDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/),
   catalogVersion: z.string().min(1),
@@ -203,6 +206,7 @@ export const artifactEntrySchema = z.object({
   vasStorageId: z.string(),
   vasVersionId: z.string(),
   archiveUrl: z.string(),
+  empty: z.boolean().optional(),
   missingRootPolicy: artifactMissingRootPolicySchema.optional(),
 });
 

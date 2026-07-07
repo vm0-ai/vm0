@@ -599,48 +599,60 @@ fn wrap_io(error: io::Error, context: String) -> io::Error {
 mod tests {
     use std::io;
     use std::os::unix::fs::{PermissionsExt, symlink};
-    use std::process::Command;
+    use std::time::Duration;
 
     use super::*;
+    use crate::test_fixtures::{ignored_child_test_env_guard_enabled, run_ignored_child_test};
+
+    const RESTRICTIVE_UMASK_CHILD_ENV: &str = "VM0_RUN_RESTRICTIVE_UMASK_TEST";
 
     fn mode(path: &Path) -> u32 {
         std::fs::metadata(path).unwrap().permissions().mode() & 0o777
     }
 
-    #[test]
-    fn ensure_dir_handles_restrictive_umask() {
-        let output = Command::new(std::env::current_exe().unwrap())
-            .env("VM0_RUN_RESTRICTIVE_UMASK_TEST", "1")
-            .arg("--exact")
-            .arg("host_file::tests::ensure_dir_handles_restrictive_umask_child")
-            .arg("--ignored")
-            .output()
-            .unwrap();
-
-        assert!(
-            output.status.success(),
-            "child failed\nstdout:\n{}\nstderr:\n{}",
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr)
-        );
+    #[tokio::test]
+    async fn ensure_dir_handles_restrictive_umask() {
+        run_ignored_child_test(
+            "host_file::tests::ensure_dir_handles_restrictive_umask_child",
+            (RESTRICTIVE_UMASK_CHILD_ENV, "1"),
+            Duration::from_secs(60),
+        )
+        .await;
     }
 
     #[test]
     #[ignore]
     fn ensure_dir_handles_restrictive_umask_child() {
-        if std::env::var_os("VM0_RUN_RESTRICTIVE_UMASK_TEST").is_none() {
+        if !ignored_child_test_env_guard_enabled((RESTRICTIVE_UMASK_CHILD_ENV, "1")) {
             return;
         }
 
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("base").join("child");
-        let old_umask = nix::sys::stat::umask(Mode::from_bits_truncate(0o777));
+        let _umask = UmaskGuard::set(Mode::from_bits_truncate(0o777));
         let result = ensure_dir(&path, DirMode::SharedTrustedParent, "test directory");
-        nix::sys::stat::umask(old_umask);
 
         result.unwrap();
         assert_eq!(mode(&dir.path().join("base")), SHARED_TRUSTED_DIR_MODE);
         assert_eq!(mode(&path), SHARED_TRUSTED_DIR_MODE);
+    }
+
+    struct UmaskGuard {
+        original: Mode,
+    }
+
+    impl UmaskGuard {
+        fn set(mask: Mode) -> Self {
+            Self {
+                original: nix::sys::stat::umask(mask),
+            }
+        }
+    }
+
+    impl Drop for UmaskGuard {
+        fn drop(&mut self) {
+            nix::sys::stat::umask(self.original);
+        }
     }
 
     #[test]

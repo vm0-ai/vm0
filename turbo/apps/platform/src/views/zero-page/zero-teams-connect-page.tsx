@@ -5,7 +5,6 @@ import {
   IconArrowLeft,
   IconCircleCheck,
   IconLoader2,
-  IconMessageCircle,
 } from "@tabler/icons-react";
 import { Button } from "@vm0/ui";
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -13,13 +12,16 @@ import { searchParams$ } from "../../signals/route.ts";
 import {
   connectTeamsAccount$,
   effectiveTeamsError$,
+  openTeamsClient,
   teamsConnectStatus$,
   type TeamsConnectPageStatus,
 } from "../../signals/zero-page/teams-connect-signals.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
+import { settingsIconAssetUrl } from "./components/settings/settings-icon-assets.ts";
 
 type PageStatus = TeamsConnectPageStatus | "checking" | "error";
+const teamsIconImg = settingsIconAssetUrl("teams");
 
 function BackLink() {
   return (
@@ -47,10 +49,34 @@ export function ZeroTeamsConnectPage() {
 
 function connectedLabel(params: URLSearchParams): string {
   return (
-    params.get("teamName") ??
-    params.get("tenantName") ??
-    params.get("displayName") ??
-    "Microsoft Teams"
+    params.get("teamName") ?? params.get("tenantName") ?? "Microsoft Teams"
+  );
+}
+
+function teamsParam(
+  params: URLSearchParams,
+  primary: string,
+  fallback?: string,
+): string | null {
+  return params.get(primary) ?? (fallback ? params.get(fallback) : null);
+}
+
+function TeamsLogo({ size }: { readonly size: "sm" | "lg" }) {
+  return (
+    <span
+      className={
+        size === "lg"
+          ? "inline-flex h-10 w-10 items-center justify-center overflow-hidden"
+          : "inline-flex h-4 w-4 items-center justify-center overflow-hidden"
+      }
+    >
+      <img
+        data-testid="teams-connect-logo"
+        src={teamsIconImg}
+        alt=""
+        className={size === "lg" ? "h-10 w-10" : "h-4 w-4"}
+      />
+    </span>
   );
 }
 
@@ -58,7 +84,8 @@ function PageContent() {
   const params = useGet(searchParams$);
   const tenantId = params.get("tenantId");
   const teamsUserId = params.get("teamsUserId");
-  const displayName = params.get("displayName");
+  const teamsAadObjectId = params.get("teamsAadObjectId");
+  const displayName = teamsParam(params, "teamsUserDisplayName", "displayName");
 
   const effectiveError = useGet(effectiveTeamsError$);
   const statusLoadable = useLoadable(teamsConnectStatus$);
@@ -114,10 +141,10 @@ function PageContent() {
             size="default"
             className="w-full gap-2"
             onClick={() => {
-              window.location.href = "https://teams.microsoft.com/";
+              openTeamsClient();
             }}
           >
-            <IconMessageCircle size={16} />
+            <TeamsLogo size="sm" />
             Open Teams
           </Button>
           <div className="flex justify-center">
@@ -144,10 +171,10 @@ function PageContent() {
     );
   }
 
-  if (tenantId && teamsUserId) {
+  if (tenantId && (teamsUserId || teamsAadObjectId)) {
     return (
       <>
-        <IconMessageCircle size={40} className="text-foreground" />
+        <TeamsLogo size="lg" />
         <div className="text-center space-y-1.5">
           <h2 className="text-base font-semibold text-foreground">
             Connect Microsoft Teams

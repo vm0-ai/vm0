@@ -52,7 +52,7 @@ const DialogContent = React.forwardRef<
       >
         {children}
         <DialogPrimitive.Close
-          className="absolute right-4 top-4 flex items-center justify-center size-9 rounded-lg transition-colors opacity-70 hover:opacity-100 hover:bg-accent focus:outline-none"
+          className="absolute right-4 top-4 icon-button opacity-70 hover:opacity-100"
           aria-label="Close"
         >
           <IconX size={20} className="text-foreground" />

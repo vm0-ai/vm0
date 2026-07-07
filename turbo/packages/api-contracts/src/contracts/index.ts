@@ -14,6 +14,15 @@ export {
   type BuildInfoRouteResponse,
 } from "./build-info";
 export {
+  appVersionSchema,
+  webClientCompatibilityContract,
+  webClientCompatibilityQuerySchema,
+  webClientCompatibilityResponseSchema,
+  type WebClientCompatibilityContract,
+  type WebClientCompatibilityResponse,
+  type WebClientCompatibilityRouteResponse,
+} from "./web-client-compatibility";
+export {
   healthAuthContract,
   healthContract,
   healthResponseSchema,
@@ -726,6 +735,7 @@ export {
   modelSelectionRequestSchema,
   generationTemplateRequestSchema,
   presentationGenerationTemplateRequestSchema,
+  websiteGenerationTemplateRequestSchema,
   pagedChatMessageSchema,
   summaryEntrySchema,
   persistedAttachmentSchema,
@@ -737,6 +747,7 @@ export {
   type ModelSelectionRequest,
   type GenerationTemplateRequest,
   type PresentationGenerationTemplateRequest,
+  type WebsiteGenerationTemplateRequest,
   type SummaryEntry,
   type ChatThreadsContract,
   type ChatThreadByIdContract,
@@ -1506,6 +1517,14 @@ export {
   type ZeroTeamsBrowserConnectContract,
   type ZeroTeamsBrowserConnectQuery,
 } from "./zero-teams-browser-connect";
+export {
+  zeroTeamsOauthContract,
+  zeroTeamsOauthCallbackQuerySchema,
+  zeroTeamsOauthConnectQuerySchema,
+  type ZeroTeamsOauthCallbackQuery,
+  type ZeroTeamsOauthConnectQuery,
+  type ZeroTeamsOauthContract,
+} from "./zero-teams-oauth";
 export {
   zeroSlackInteractiveContract,
   type ZeroSlackInteractiveContract,

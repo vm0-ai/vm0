@@ -360,10 +360,12 @@ const MEDIA_MARKDOWN_COMPONENTS = {
   img: MediaImageRenderer,
 } as const;
 
+// Neutralize raw HTML by escaping only `<`: a tag cannot start without it, so
+// escaping `<` alone stops tag injection. Leaving `>` intact preserves Markdown
+// block syntax that relies on a leading `>` — most importantly blockquotes,
+// which otherwise collapse into a literal `>` paragraph once escaped.
 function escapeHtmlTags(source: string): string {
-  return source.replace(/[<>]/g, (char) => {
-    return char === "<" ? "&lt;" : "&gt;";
-  });
+  return source.replace(/</g, "&lt;");
 }
 
 export function Markdown({

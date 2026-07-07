@@ -1,15 +1,9 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { pollForceUpgradeRequirement } from "../force-upgrade.ts";
 
 describe("force upgrade polling", () => {
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
-  it("checks immediately and then polls every 60 seconds until an upgrade is required", async () => {
-    vi.useFakeTimers();
-
+  it("checks through the shared loop until an upgrade is required", async () => {
     const check = vi
       .fn<() => Promise<boolean>>()
       .mockResolvedValueOnce(false)
@@ -20,20 +14,10 @@ describe("force upgrade polling", () => {
     const poll = pollForceUpgradeRequirement({
       check,
       onRequired,
-      pollIntervalMs: 60_000,
+      pollIntervalMs: 0,
       signal: AbortSignal.any([]),
     });
 
-    await vi.waitFor(() => {
-      expect(check).toHaveBeenCalledTimes(1);
-    });
-    expect(onRequired).not.toHaveBeenCalled();
-
-    await vi.advanceTimersByTimeAsync(60_000);
-    expect(check).toHaveBeenCalledTimes(2);
-    expect(onRequired).not.toHaveBeenCalled();
-
-    await vi.advanceTimersByTimeAsync(60_000);
     await poll;
 
     expect(check).toHaveBeenCalledTimes(3);

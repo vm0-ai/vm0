@@ -13,6 +13,10 @@ use crate::ids::RunId;
 
 pub(crate) const MAX_HELD_SESSION_STATES: usize = 1024;
 
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
 // ---------------------------------------------------------------------------
 // Poll
 // ---------------------------------------------------------------------------
@@ -279,6 +283,8 @@ pub struct GuestDownloadInstructionCleanupEntry {
 pub struct GuestDownloadArtifactEntry {
     pub mount_path: String,
     pub archive_url: Option<String>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub empty: bool,
     /// Whether this entry is cached from a previous turn (fingerprint matched).
     pub cached: bool,
     pub vas_storage_name: String,
@@ -329,7 +335,12 @@ impl GuestDownloadManifest {
                 .iter()
                 .map(|artifact| GuestDownloadArtifactEntry {
                     mount_path: artifact.mount_path.clone(),
-                    archive_url: Some(artifact.archive_url.clone()),
+                    archive_url: if artifact.empty == Some(true) {
+                        None
+                    } else {
+                        Some(artifact.archive_url.clone())
+                    },
+                    empty: artifact.empty.unwrap_or(false),
                     cached: false,
                     vas_storage_name: artifact.vas_storage_name.clone(),
                     vas_storage_id: artifact.vas_storage_id.clone(),
@@ -392,7 +403,7 @@ pub enum ResumeSessionHistoryRefKind {
     Blob,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq)]
 pub enum ResumeSessionHistoryEncoding {
     #[serde(rename = "identity")]
     Identity,
@@ -1070,6 +1081,7 @@ mod tests {
                 vas_storage_name: "memory".into(),
                 vas_storage_id: "sid-1".into(),
                 vas_version_id: "v2".into(),
+                empty: None,
                 missing_root_policy: Some(ArtifactEntryMissingRootPolicy::PreserveParentVersion),
             }],
         };
@@ -1091,10 +1103,36 @@ mod tests {
             Some("AGENTS.md")
         );
         assert!(!guest_manifest.artifacts[0].cached);
+        assert!(!guest_manifest.artifacts[0].empty);
         assert_eq!(
             guest_manifest.artifacts[0].archive_url.as_deref(),
             Some("https://example.com/artifact.tar.gz")
         );
+        assert_eq!(
+            guest_manifest.artifacts[0].missing_root_policy,
+            Some(ArtifactEntryMissingRootPolicy::PreserveParentVersion)
+        );
+    }
+
+    #[test]
+    fn storage_manifest_conversion_marks_explicit_empty_artifacts_without_archive_urls() {
+        let manifest = StorageManifest {
+            storages: vec![],
+            artifacts: vec![ArtifactEntry {
+                mount_path: "/artifacts".into(),
+                archive_url: "https://example.com/compat-empty-artifact.tar.gz".into(),
+                vas_storage_name: "memory".into(),
+                vas_storage_id: "sid-1".into(),
+                vas_version_id: "v-empty".into(),
+                empty: Some(true),
+                missing_root_policy: Some(ArtifactEntryMissingRootPolicy::PreserveParentVersion),
+            }],
+        };
+
+        let guest_manifest = GuestDownloadManifest::from(&manifest);
+
+        assert!(guest_manifest.artifacts[0].empty);
+        assert!(guest_manifest.artifacts[0].archive_url.is_none());
         assert_eq!(
             guest_manifest.artifacts[0].missing_root_policy,
             Some(ArtifactEntryMissingRootPolicy::PreserveParentVersion)
@@ -1159,6 +1197,7 @@ mod tests {
                 vas_storage_name: "memory".into(),
                 vas_storage_id: "sid-1".into(),
                 vas_version_id: "v2".into(),
+                empty: None,
                 missing_root_policy: None,
             }],
         };
@@ -1171,6 +1210,7 @@ mod tests {
         assert!(value["storages"][0].get("extractPath").is_none());
         assert!(value["storages"][0].get("name").is_none());
         assert_eq!(value["artifacts"][0]["cached"], false);
+        assert!(value["artifacts"][0].get("empty").is_none());
         assert!(value["artifacts"][0].get("manifestUrl").is_none());
         assert!(value["artifacts"][0].get("missingRootPolicy").is_none());
     }

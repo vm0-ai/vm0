@@ -98,7 +98,12 @@ function controlsFromTransformState({
   };
 }
 
-function calculateImageFitWidth(image: HTMLImageElement) {
+function cssPixelValue(value: string): number {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function calculateImageFitWidth(image: HTMLImageElement): number | null {
   const content = image.parentElement;
   const scrollContainer = image.closest<HTMLElement>(
     "[data-zoomable-image-canvas='true']",
@@ -108,13 +113,23 @@ function calculateImageFitWidth(image: HTMLImageElement) {
   }
 
   const contentStyle = getComputedStyle(content);
-  const paddingLeft = Number.parseFloat(contentStyle.paddingLeft);
-  const paddingRight = Number.parseFloat(contentStyle.paddingRight);
-  const horizontalPadding =
-    (Number.isFinite(paddingLeft) ? paddingLeft : 0) +
-    (Number.isFinite(paddingRight) ? paddingRight : 0);
+  const paddingLeft = cssPixelValue(contentStyle.paddingLeft);
+  const paddingRight = cssPixelValue(contentStyle.paddingRight);
+  const paddingTop = cssPixelValue(contentStyle.paddingTop);
+  const paddingBottom = cssPixelValue(contentStyle.paddingBottom);
+  const horizontalPadding = paddingLeft + paddingRight;
+  const verticalPadding = paddingTop + paddingBottom;
   const availableWidth = scrollContainer.clientWidth - horizontalPadding;
+  const availableHeight = scrollContainer.clientHeight - verticalPadding;
   const naturalWidth = image.naturalWidth;
+  const naturalHeight = image.naturalHeight;
+
+  if (naturalWidth > 0 && naturalHeight > 0) {
+    const widthScale = availableWidth > 0 ? availableWidth / naturalWidth : 1;
+    const heightScale =
+      availableHeight > 0 ? availableHeight / naturalHeight : 1;
+    return naturalWidth * Math.min(1, widthScale, heightScale);
+  }
 
   if (naturalWidth > 0 && availableWidth > 0) {
     return Math.min(naturalWidth, availableWidth);

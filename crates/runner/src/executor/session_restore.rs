@@ -4,6 +4,7 @@ mod codex;
 
 use std::borrow::Cow;
 
+use chrono::{DateTime, Utc};
 use sandbox::Sandbox;
 use tracing::{info, warn};
 
@@ -53,6 +54,12 @@ fn restored_session_framework(framework: EffectiveCliFramework) -> RestoredSessi
     }
 }
 
+pub(super) fn codex_session_meta_timestamp_line(
+    line: &str,
+) -> Option<chrono::DateTime<chrono::Utc>> {
+    codex::codex_session_meta_timestamp_line(line)
+}
+
 #[derive(Debug)]
 pub(super) struct MaterializedResumeSession<'a> {
     cli_agent_session_id: Cow<'a, str>,
@@ -63,6 +70,10 @@ pub(super) struct MaterializedResumeSession<'a> {
 enum MaterializedResumeHistory<'a> {
     InlineText(&'a str),
     Bytes(Vec<u8>),
+    CodexZstd {
+        bytes: Vec<u8>,
+        timestamp: Option<DateTime<Utc>>,
+    },
 }
 
 impl MaterializedResumeSession<'static> {
@@ -70,6 +81,20 @@ impl MaterializedResumeSession<'static> {
         Self {
             cli_agent_session_id: Cow::Owned(cli_agent_session_id),
             history: MaterializedResumeHistory::Bytes(history_bytes),
+        }
+    }
+
+    pub(super) fn new_codex_zstd(
+        cli_agent_session_id: String,
+        history_bytes: Vec<u8>,
+        timestamp: Option<DateTime<Utc>>,
+    ) -> Self {
+        Self {
+            cli_agent_session_id: Cow::Owned(cli_agent_session_id),
+            history: MaterializedResumeHistory::CodexZstd {
+                bytes: history_bytes,
+                timestamp,
+            },
         }
     }
 }
@@ -97,6 +122,7 @@ impl<'a> MaterializedResumeSession<'a> {
         match &self.history {
             MaterializedResumeHistory::InlineText(session_history) => session_history.as_bytes(),
             MaterializedResumeHistory::Bytes(history_bytes) => history_bytes,
+            MaterializedResumeHistory::CodexZstd { bytes, .. } => bytes,
         }
     }
 
@@ -106,6 +132,14 @@ impl<'a> MaterializedResumeSession<'a> {
             MaterializedResumeHistory::Bytes(history_bytes) => {
                 std::str::from_utf8(history_bytes).ok()
             }
+            MaterializedResumeHistory::CodexZstd { .. } => None,
+        }
+    }
+
+    pub(super) fn codex_zstd_history(&self) -> Option<(&[u8], Option<DateTime<Utc>>)> {
+        match &self.history {
+            MaterializedResumeHistory::CodexZstd { bytes, timestamp } => Some((bytes, *timestamp)),
+            MaterializedResumeHistory::InlineText(_) | MaterializedResumeHistory::Bytes(_) => None,
         }
     }
 }

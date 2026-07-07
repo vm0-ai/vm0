@@ -144,7 +144,7 @@ function devArtifactFetchProxy(): PluginOption {
 
 export default defineConfig({
   base: process.env.VITE_BASE_URL || "/",
-  envPrefix: ["VITE_", "PUBLIC_", "ATOM_URL"],
+  envPrefix: ["VITE_", "PUBLIC_"],
   plugins: [
     tailwindcss(),
     react(),

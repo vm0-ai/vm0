@@ -87,6 +87,27 @@ describe("runner storage manifest contract", () => {
     });
   });
 
+  it("accepts explicit empty artifact entries while keeping archive urls required", () => {
+    const manifest = storageManifestSchema.parse({
+      storages: [],
+      artifacts: [
+        {
+          mountPath: "/home/user/.claude/projects/project",
+          vasStorageName: "memory",
+          vasStorageId: "storage-id-1",
+          vasVersionId: "version-2",
+          archiveUrl: "https://storage.example/artifact.tar.gz",
+          empty: true,
+        },
+      ],
+    });
+
+    expect(manifest.artifacts[0]).toMatchObject({
+      archiveUrl: "https://storage.example/artifact.tar.gz",
+      empty: true,
+    });
+  });
+
   it("rejects guest-download-only nullable archive urls", () => {
     const result = storageManifestSchema.safeParse({
       storages: [
@@ -99,6 +120,24 @@ describe("runner storage manifest contract", () => {
         },
       ],
       artifacts: [],
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects nullable artifact archive urls even for explicit empty artifacts", () => {
+    const result = storageManifestSchema.safeParse({
+      storages: [],
+      artifacts: [
+        {
+          mountPath: "/home/user/.claude/projects/project",
+          vasStorageName: "memory",
+          vasStorageId: "storage-id-1",
+          vasVersionId: "version-2",
+          archiveUrl: null,
+          empty: true,
+        },
+      ],
     });
 
     expect(result.success).toBe(false);
@@ -362,6 +401,13 @@ describe("runner claim capability contract", () => {
 });
 
 describe("runner builtin firewall resolve contract", () => {
+  it("accepts omitted names for full catalog resolution", () => {
+    const result =
+      runnersBuiltinFirewallsResolveContract.resolve.body.safeParse({});
+
+    expect(result.success).toBe(true);
+  });
+
   it("accepts connector and model-provider names", () => {
     const result =
       runnersBuiltinFirewallsResolveContract.resolve.body.safeParse({
@@ -373,6 +419,13 @@ describe("runner builtin firewall resolve contract", () => {
 
   it("rejects malformed and oversized requests", () => {
     expect(
+      runnersBuiltinFirewallsResolveContract.resolve.body.safeParse(null)
+        .success,
+    ).toBe(false);
+    expect(
+      runnersBuiltinFirewallsResolveContract.resolve.body.safeParse([]).success,
+    ).toBe(false);
+    expect(
       runnersBuiltinFirewallsResolveContract.resolve.body.safeParse({
         names: ["ModelProvider:openai-api-key"],
       }).success,
@@ -380,6 +433,37 @@ describe("runner builtin firewall resolve contract", () => {
     expect(
       runnersBuiltinFirewallsResolveContract.resolve.body.safeParse({
         names: ["model-provider:"],
+      }).success,
+    ).toBe(false);
+    expect(
+      runnersBuiltinFirewallsResolveContract.resolve.body.safeParse({
+        names: [],
+      }).success,
+    ).toBe(false);
+    expect(
+      runnersBuiltinFirewallsResolveContract.resolve.body.safeParse({
+        names: null,
+      }).success,
+    ).toBe(false);
+    expect(
+      runnersBuiltinFirewallsResolveContract.resolve.body.safeParse({
+        names: "github",
+      }).success,
+    ).toBe(false);
+    expect(
+      runnersBuiltinFirewallsResolveContract.resolve.body.safeParse({
+        names: [""],
+      }).success,
+    ).toBe(false);
+    expect(
+      runnersBuiltinFirewallsResolveContract.resolve.body.safeParse({
+        name: ["github"],
+      }).success,
+    ).toBe(false);
+    expect(
+      runnersBuiltinFirewallsResolveContract.resolve.body.safeParse({
+        names: ["github"],
+        extra: true,
       }).success,
     ).toBe(false);
     expect(

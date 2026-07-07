@@ -2563,7 +2563,7 @@ function TriggerCreateCategoryButton({
           : "text-sidebar-foreground hover:bg-gray-50",
       )}
     >
-      <Icon size={16} className="shrink-0" />
+      <Icon size={16} stroke={1.5} className="shrink-0" />
       <span className="truncate">{category.label}</span>
     </button>
   );
@@ -2670,7 +2670,7 @@ function TriggerCreateMenu({
               );
             })}
           </nav>
-          <div className="grid min-w-0 flex-1 grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="grid min-w-0 flex-1 auto-rows-min grid-cols-1 content-start gap-4 sm:grid-cols-2">
             {activeCategory?.options.map((option) => {
               return (
                 <TriggerCreateOptionCard
@@ -4624,12 +4624,16 @@ function TriggerRow({
           value={lastRunLabel}
           emphasized={hasLastRun}
         />
-        <TriggerRunStat
-          icon={<IconClock size={14} stroke={1.5} />}
-          label="Next"
-          value={nextRunLabel}
-          emphasized={hasNextRun}
-        />
+        {trigger.kind === "schedule" ? (
+          <TriggerRunStat
+            icon={<IconClock size={14} stroke={1.5} />}
+            label="Next"
+            value={nextRunLabel}
+            emphasized={hasNextRun}
+          />
+        ) : (
+          <div aria-hidden="true" />
+        )}
         <TriggerStatusSwitch
           trigger={trigger}
           title={title}

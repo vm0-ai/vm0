@@ -22,8 +22,9 @@ use super::idle_lifecycle::{
 use super::job_spawn::{JobProfile, SpawnContext, SpawnJobRequest, spawn_job};
 use crate::config::ProfileConfig;
 use crate::executor::{
-    RunnerPreSpawnPhase, RunnerPreSpawnTiming, SessionHistoryMaterializer,
-    SessionHistoryRestoreFallback, SessionHistoryRestorePlan, validate_resume_session_id,
+    RunnerPreSpawnPhase, RunnerPreSpawnTiming, SessionHistoryMaterializer, SessionHistoryProbe,
+    SessionHistoryRestoreFallback, SessionHistoryRestorePlan, effective_cli_framework,
+    validate_resume_session_id,
 };
 use crate::http::HttpClient;
 use crate::idle_pool::{IdlePoolSnapshot, IdleUnparkResult, ReusableIdleSandbox};
@@ -165,9 +166,12 @@ pub(super) async fn handle_discovered_job(
         claimed.context(),
         resume_session_valid,
         &job_cancel,
-        reuse_entry.as_ref(),
-        reuse_result,
+        SessionHistoryRestoreReuse {
+            entry: reuse_entry.as_ref(),
+            result: reuse_result,
+        },
         &mut pre_spawn_timing,
+        Some(&ctx.spawn_ctx.exec_config.session_history_probe),
     );
 
     // Determine sandbox_id after the reuse decision. On reuse, the sandbox keeps
@@ -216,14 +220,19 @@ pub(super) async fn handle_discovered_job(
     needs_session_affinity_refresh
 }
 
+struct SessionHistoryRestoreReuse<'a> {
+    entry: Option<&'a ReusableIdleSandbox>,
+    result: SandboxReuseResult,
+}
+
 fn build_session_history_restore_plan(
     http: &HttpClient,
     context: &ExecutionContext,
     resume_session_valid: bool,
     cancel: &RunCancellationHandle,
-    reuse_entry: Option<&ReusableIdleSandbox>,
-    reuse_result: SandboxReuseResult,
+    reuse: SessionHistoryRestoreReuse<'_>,
     pre_spawn_timing: &mut RunnerPreSpawnTiming,
+    probe: Option<&SessionHistoryProbe>,
 ) -> SessionHistoryRestorePlan {
     if !resume_session_valid {
         return SessionHistoryRestorePlan::Default;
@@ -235,11 +244,14 @@ fn build_session_history_restore_plan(
         return SessionHistoryRestorePlan::Default;
     }
 
-    let fallback = match reuse_result {
+    let fallback = match reuse.result {
         SandboxReuseResult::Reused => {
             let requested_identity = RestoredSessionIdentity::from_context(context);
             if let Some(requested_identity) = requested_identity {
-                match reuse_entry.and_then(ReusableIdleSandbox::restored_session_identity) {
+                match reuse
+                    .entry
+                    .and_then(ReusableIdleSandbox::restored_session_identity)
+                {
                     Some(restored_identity)
                         if restored_identity.is_verified_match_for_request(&requested_identity) =>
                     {
@@ -275,8 +287,13 @@ fn build_session_history_restore_plan(
     };
 
     let started_at = Instant::now();
-    let materializer =
-        SessionHistoryMaterializer::start_cancellable(http, Some(resume_session), cancel.token());
+    let materializer = SessionHistoryMaterializer::start_cancellable(
+        http,
+        Some(resume_session),
+        effective_cli_framework(&context.cli_agent_type),
+        cancel.token(),
+        probe,
+    );
     pre_spawn_timing.record_phase_elapsed(
         RunnerPreSpawnPhase::SessionHistoryMaterializerStart,
         started_at,
@@ -877,9 +894,12 @@ mod tests {
             &context,
             true,
             &cancel,
-            Some(&reusable_sandbox),
-            SandboxReuseResult::Reused,
+            SessionHistoryRestoreReuse {
+                entry: Some(&reusable_sandbox),
+                result: SandboxReuseResult::Reused,
+            },
             &mut timing,
+            None,
         );
 
         match plan {
@@ -938,9 +958,12 @@ mod tests {
             &context,
             true,
             &cancel,
-            Some(&reusable_sandbox),
-            SandboxReuseResult::Reused,
+            SessionHistoryRestoreReuse {
+                entry: Some(&reusable_sandbox),
+                result: SandboxReuseResult::Reused,
+            },
             &mut timing,
+            None,
         );
 
         match plan {
@@ -983,9 +1006,12 @@ mod tests {
             &context,
             true,
             &cancel,
-            Some(&reusable_sandbox),
-            SandboxReuseResult::Reused,
+            SessionHistoryRestoreReuse {
+                entry: Some(&reusable_sandbox),
+                result: SandboxReuseResult::Reused,
+            },
             &mut timing,
+            None,
         );
 
         match plan {
@@ -1010,9 +1036,12 @@ mod tests {
             &context,
             true,
             &cancel,
-            Some(&reusable_sandbox),
-            SandboxReuseResult::Reused,
+            SessionHistoryRestoreReuse {
+                entry: Some(&reusable_sandbox),
+                result: SandboxReuseResult::Reused,
+            },
             &mut timing,
+            None,
         );
 
         match plan {
@@ -1055,9 +1084,12 @@ mod tests {
             &context,
             true,
             &cancel,
-            Some(&reusable_sandbox),
-            SandboxReuseResult::Reused,
+            SessionHistoryRestoreReuse {
+                entry: Some(&reusable_sandbox),
+                result: SandboxReuseResult::Reused,
+            },
             &mut timing,
+            None,
         );
 
         match plan {
@@ -1086,9 +1118,12 @@ mod tests {
             &context,
             true,
             &cancel,
-            Some(&reusable_sandbox),
-            SandboxReuseResult::Reused,
+            SessionHistoryRestoreReuse {
+                entry: Some(&reusable_sandbox),
+                result: SandboxReuseResult::Reused,
+            },
             &mut timing,
+            None,
         );
 
         match plan {
@@ -1115,9 +1150,12 @@ mod tests {
             &context,
             true,
             &cancel,
-            Some(&reusable_sandbox),
-            SandboxReuseResult::Reused,
+            SessionHistoryRestoreReuse {
+                entry: Some(&reusable_sandbox),
+                result: SandboxReuseResult::Reused,
+            },
             &mut timing,
+            None,
         );
 
         match plan {
@@ -1145,9 +1183,12 @@ mod tests {
             &context,
             true,
             &cancel,
-            Some(&reusable_sandbox),
-            SandboxReuseResult::Reused,
+            SessionHistoryRestoreReuse {
+                entry: Some(&reusable_sandbox),
+                result: SandboxReuseResult::Reused,
+            },
             &mut timing,
+            None,
         );
 
         match plan {
@@ -1184,9 +1225,12 @@ mod tests {
             &context,
             true,
             &cancel,
-            Some(&reusable_sandbox),
-            SandboxReuseResult::Reused,
+            SessionHistoryRestoreReuse {
+                entry: Some(&reusable_sandbox),
+                result: SandboxReuseResult::Reused,
+            },
             &mut timing,
+            None,
         );
 
         match plan {
@@ -1223,9 +1267,12 @@ mod tests {
             &context,
             true,
             &cancel,
-            Some(&reusable_sandbox),
-            SandboxReuseResult::Reused,
+            SessionHistoryRestoreReuse {
+                entry: Some(&reusable_sandbox),
+                result: SandboxReuseResult::Reused,
+            },
             &mut timing,
+            None,
         );
 
         match plan {

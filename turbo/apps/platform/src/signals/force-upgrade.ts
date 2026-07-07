@@ -1,7 +1,7 @@
 import { command, state } from "ccstate";
-import { delay } from "signal-timers";
 
 import { checkForceUpgrade } from "../lib/force-upgrade.ts";
+import { setLoop } from "./utils.ts";
 
 const FORCE_UPGRADE_POLL_INTERVAL_MS = 60_000;
 
@@ -9,7 +9,7 @@ const forceUpgradeDialogOpenState$ = state(false);
 
 export const forceUpgradeDialogOpen$ = forceUpgradeDialogOpenState$;
 
-export type ForceUpgradePollOptions = {
+type ForceUpgradePollOptions = {
   readonly check: () => Promise<boolean>;
   readonly onRequired: () => void;
   readonly pollIntervalMs?: number;
@@ -22,15 +22,18 @@ export async function pollForceUpgradeRequirement({
   pollIntervalMs = FORCE_UPGRADE_POLL_INTERVAL_MS,
   signal,
 }: ForceUpgradePollOptions): Promise<void> {
-  while (!signal.aborted) {
-    signal.throwIfAborted();
-    const required = await check();
-    if (required) {
-      onRequired();
-      return;
-    }
-    await delay(pollIntervalMs, { signal });
-  }
+  await setLoop(
+    async (loopSignal) => {
+      const required = await check();
+      loopSignal.throwIfAborted();
+      if (required) {
+        onRequired();
+      }
+      return required;
+    },
+    pollIntervalMs,
+    signal,
+  );
 }
 
 export const pollForceUpgradeDialog$ = command(

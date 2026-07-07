@@ -29,6 +29,7 @@ use super::diagnostics::{
     should_collect_agent_abnormal_exit_diagnostics,
     should_log_agent_bootstrap_abnormal_exit_diagnostics,
 };
+use super::effective_cli_framework;
 use super::env::{
     build_env_json_for_run, build_run_payload_for_run, build_user_env_json, write_run_payload_file,
     write_user_env_file,
@@ -229,6 +230,12 @@ fn record_session_history_download_timings(
         telemetry,
         "session_history_download_validation",
         timings.validation(),
+        metadata,
+    );
+    record_session_history_download_phase(
+        telemetry,
+        "session_history_download_decompression",
+        timings.decompression(),
         metadata,
     );
     record_session_history_download_phase(
@@ -926,7 +933,9 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                     Some(SessionHistoryMaterializer::start_cancellable(
                         &config.http,
                         context.resume_session.as_ref(),
+                        effective_cli_framework(&context.cli_agent_type),
                         cancel.clone(),
+                        Some(&config.session_history_probe),
                     ))
                 }
             }
@@ -934,7 +943,9 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         SessionHistoryRestorePlan::Default => Some(SessionHistoryMaterializer::start_cancellable(
             &config.http,
             context.resume_session.as_ref(),
+            effective_cli_framework(&context.cli_agent_type),
             cancel.clone(),
+            Some(&config.session_history_probe),
         )),
         SessionHistoryRestorePlan::Prestarted {
             materializer,

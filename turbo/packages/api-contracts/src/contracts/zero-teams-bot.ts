@@ -35,6 +35,7 @@ export const teamsInboundMessageActivitySchema = teamsActivityBaseSchema.extend(
     recipient: teamsActorSchema.nullable(),
     rawText: z.string(),
     text: z.string(),
+    mentionsRecipient: z.boolean(),
   },
 );
 

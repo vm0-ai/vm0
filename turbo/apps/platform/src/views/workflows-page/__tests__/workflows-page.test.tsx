@@ -1766,6 +1766,9 @@ describe("workflow detail page", () => {
     expect(
       screen.getByText(/subject does not contain "newsletter"/),
     ).toBeInTheDocument();
+    // Only the schedule trigger shows a "Next" run stat; event triggers omit it.
+    expect(screen.getByText("Every weekday at 9:00 AM")).toBeInTheDocument();
+    expect(screen.getAllByText("Next")).toHaveLength(1);
   });
 
   it("runs a trigger immediately and navigates to the bound chat thread", async () => {

@@ -8,6 +8,7 @@ import {
   uniqueIndex,
   index,
 } from "drizzle-orm/pg-core";
+import type { InsightsDailyData } from "@vm0/db/jsonb-contracts/insights-daily";
 
 /**
  * Pre-aggregated daily insights per user within an org.
@@ -27,7 +28,7 @@ export const insightsDaily = pgTable(
     orgId: text("org_id").notNull(),
     userId: text("user_id"),
     date: date("date").notNull(),
-    data: jsonb("data").notNull(),
+    data: jsonb("data").$type<InsightsDailyData>().notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

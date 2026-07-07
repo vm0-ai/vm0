@@ -19,6 +19,7 @@ import {
 import {
   computeMemoryChangeSet,
   type MemoryChangeSet,
+  type MemoryVersionSource,
 } from "./memory-activity-diff.service";
 import { generateMemoryDaySummary } from "./memory-activity-summarize.service";
 import { settle } from "../utils";
@@ -50,7 +51,12 @@ interface SummarizeUserMemoryOptions {
 interface MemoryVersionRow {
   readonly id: string;
   readonly s3Key: string;
+  readonly fileCount: number;
   readonly createdAt: Date;
+}
+
+function memoryVersionSource(version: MemoryVersionRow): MemoryVersionSource {
+  return { s3Key: version.s3Key, fileCount: version.fileCount };
 }
 
 function addDateLabelDays(dateLabel: string, days: number): string {
@@ -116,6 +122,7 @@ async function loadVersions(
     .select({
       id: storageVersions.id,
       s3Key: storageVersions.s3Key,
+      fileCount: storageVersions.fileCount,
       createdAt: storageVersions.createdAt,
     })
     .from(storageVersions)
@@ -284,7 +291,10 @@ function summarizeUserMemory(
         baseline?.id === toVersion.id
           ? { items: [], changed: false }
           : await get(
-              computeMemoryChangeSet(baseline?.s3Key ?? null, toVersion.s3Key),
+              computeMemoryChangeSet(
+                baseline ? memoryVersionSource(baseline) : null,
+                memoryVersionSource(toVersion),
+              ),
             );
       signal.throwIfAborted();
 

@@ -18,6 +18,7 @@ import {
   agentComposeVersions,
 } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { agentSessions } from "@vm0/db/schema/agent-session";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { conversations } from "@vm0/db/schema/conversation";
@@ -205,11 +206,12 @@ export function zeroLogsList(
           agentComposeVersions,
           eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
         )
+        .leftJoin(agentSessions, eq(agentRuns.sessionId, agentSessions.id))
         .leftJoin(
           agentComposes,
-          eq(agentComposeVersions.composeId, agentComposes.id),
+          eq(agentSessions.agentComposeId, agentComposes.id),
         )
-        .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
+        .leftJoin(zeroAgents, eq(agentSessions.agentComposeId, zeroAgents.id))
         .leftJoin(
           triggerAgentAlias,
           eq(zeroRuns.triggerAgentId, triggerAgentAlias.id),
@@ -284,15 +286,9 @@ async function getLogsTotalCount(
     .select({ count: count() })
     .from(agentRuns)
     .leftJoin(zeroRuns, eq(agentRuns.id, zeroRuns.id))
-    .leftJoin(
-      agentComposeVersions,
-      eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
-    )
-    .leftJoin(
-      agentComposes,
-      eq(agentComposeVersions.composeId, agentComposes.id),
-    )
-    .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
+    .leftJoin(agentSessions, eq(agentRuns.sessionId, agentSessions.id))
+    .leftJoin(agentComposes, eq(agentSessions.agentComposeId, agentComposes.id))
+    .leftJoin(zeroAgents, eq(agentSessions.agentComposeId, zeroAgents.id))
     .where(and(...conditions));
 
   return result?.count ?? 0;
@@ -321,15 +317,8 @@ async function getAvailableFilters(
     db
       .selectDistinct({ agentId: zeroAgents.id })
       .from(agentRuns)
-      .leftJoin(
-        agentComposeVersions,
-        eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
-      )
-      .leftJoin(
-        agentComposes,
-        eq(agentComposeVersions.composeId, agentComposes.id),
-      )
-      .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
+      .leftJoin(agentSessions, eq(agentRuns.sessionId, agentSessions.id))
+      .leftJoin(zeroAgents, eq(agentSessions.agentComposeId, zeroAgents.id))
       .where(and(...baseConditions, isNotNull(zeroAgents.id))),
   ]);
 
@@ -418,11 +407,8 @@ export function zeroLogDetail(
         agentComposeVersions,
         eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
       )
-      .leftJoin(
-        agentComposes,
-        eq(agentComposeVersions.composeId, agentComposes.id),
-      )
-      .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
+      .leftJoin(agentSessions, eq(agentRuns.sessionId, agentSessions.id))
+      .leftJoin(zeroAgents, eq(agentSessions.agentComposeId, zeroAgents.id))
       .leftJoin(
         triggerAgentAlias,
         eq(zeroRuns.triggerAgentId, triggerAgentAlias.id),
@@ -578,15 +564,8 @@ async function getUserRunIds(
     const rows = await db
       .select({ runId: agentRuns.id })
       .from(agentRuns)
-      .leftJoin(
-        agentComposeVersions,
-        eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
-      )
-      .leftJoin(
-        agentComposes,
-        eq(agentComposeVersions.composeId, agentComposes.id),
-      )
-      .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
+      .leftJoin(agentSessions, eq(agentRuns.sessionId, agentSessions.id))
+      .leftJoin(zeroAgents, eq(agentSessions.agentComposeId, zeroAgents.id))
       .where(and(...conditions, eq(zeroAgents.id, agentId)));
 
     return rows.map((r) => {
@@ -801,7 +780,7 @@ async function getSearchRunMetadata(
   const rows = await db
     .select({
       runId: agentRuns.id,
-      composeId: agentComposes.id,
+      composeId: agentSessions.agentComposeId,
       composeContent: agentComposeVersions.content,
       displayName: zeroAgents.displayName,
     })
@@ -810,11 +789,8 @@ async function getSearchRunMetadata(
       agentComposeVersions,
       eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
     )
-    .leftJoin(
-      agentComposes,
-      eq(agentComposeVersions.composeId, agentComposes.id),
-    )
-    .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
+    .leftJoin(agentSessions, eq(agentRuns.sessionId, agentSessions.id))
+    .leftJoin(zeroAgents, eq(agentSessions.agentComposeId, zeroAgents.id))
     .where(
       and(
         inArray(agentRuns.id, runIds),
@@ -859,15 +835,8 @@ export function zeroLogSearch(
       const [run] = await db
         .select({ id: agentRuns.id })
         .from(agentRuns)
-        .leftJoin(
-          agentComposeVersions,
-          eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
-        )
-        .leftJoin(
-          agentComposes,
-          eq(agentComposeVersions.composeId, agentComposes.id),
-        )
-        .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
+        .leftJoin(agentSessions, eq(agentRuns.sessionId, agentSessions.id))
+        .leftJoin(zeroAgents, eq(agentSessions.agentComposeId, zeroAgents.id))
         .where(and(...runConditions))
         .limit(1);
 

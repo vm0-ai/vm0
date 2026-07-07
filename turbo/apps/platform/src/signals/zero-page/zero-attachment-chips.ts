@@ -14,6 +14,7 @@ export type AttachmentArtifactMetadata = {
   readonly createdAt: string;
   readonly fileId: string;
   readonly filename: string;
+  readonly googleDriveDisconnected: boolean;
   readonly googleDriveSynced: boolean;
   readonly onSyncSuccess?: () => void;
   readonly runId: string;

@@ -1,5 +1,82 @@
 # Changelog
 
+## [0.569.1](https://github.com/vm0-ai/vm0/compare/app-v0.569.0...app-v0.569.1) (2026-07-07)
+
+
+### Bug Fixes
+
+* match private agents empty state to the canonical workflow card style ([#20511](https://github.com/vm0-ai/vm0/issues/20511)) ([30d94f4](https://github.com/vm0-ai/vm0/commit/30d94f4e19c44189795ade49f3f9060f6e80ca57))
+* restore clicks after closing settings dialog ([#20515](https://github.com/vm0-ai/vm0/issues/20515)) ([9c77c0e](https://github.com/vm0-ai/vm0/commit/9c77c0ef57570b79122bf9054eea6c7764793218))
+
+
+### Refactoring
+
+* route platform polling through shared loop helper ([#20522](https://github.com/vm0-ai/vm0/issues/20522)) ([69760a9](https://github.com/vm0-ai/vm0/commit/69760a9176e882c8bde1ce1aa77230726049afd4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.161.0
+    * @vm0/core bumped to 8.411.1
+
+## [0.569.0](https://github.com/vm0-ai/vm0/compare/app-v0.568.1...app-v0.569.0) (2026-07-07)
+
+
+### Features
+
+* simplify lab maintainer filter toolbar ([#20513](https://github.com/vm0-ai/vm0/issues/20513)) ([4db9955](https://github.com/vm0-ai/vm0/commit/4db99551bd2b991c78f463e3b105a68dc378a13d))
+
+
+### Bug Fixes
+
+* require agent google drive authorization for artifact sync ([#20382](https://github.com/vm0-ai/vm0/issues/20382)) ([84c9732](https://github.com/vm0-ai/vm0/commit/84c97329b9edc8aea951959446533c64893594f4))
+
+## [0.568.1](https://github.com/vm0-ai/vm0/compare/app-v0.568.0...app-v0.568.1) (2026-07-07)
+
+
+### Bug Fixes
+
+* align teams system prompt organization ([#19736](https://github.com/vm0-ai/vm0/issues/19736)) ([f196882](https://github.com/vm0-ai/vm0/commit/f196882fbe1eac2e89c9115c3fbb2f81e5949783))
+* fit artifact image previews to viewport ([#20498](https://github.com/vm0-ai/vm0/issues/20498)) ([de379c8](https://github.com/vm0-ai/vm0/commit/de379c82ef608f685de5226af65d57d11c80375c))
+* keep chat thread focus ring inset ([#20490](https://github.com/vm0-ai/vm0/issues/20490)) ([a86e237](https://github.com/vm0-ai/vm0/commit/a86e23768b0f95eaf566bdbdba06a944587b74e9))
+* show full workflow template card description instead of truncating to two lines ([#20495](https://github.com/vm0-ai/vm0/issues/20495)) ([71789a6](https://github.com/vm0-ai/vm0/commit/71789a6a47caff85cfd61ef6376a2de2d74cf93c))
+* warm background chat cache after follow-ups finish ([#20487](https://github.com/vm0-ai/vm0/issues/20487)) ([0173a36](https://github.com/vm0-ai/vm0/commit/0173a36238c741ca6b3748808d64df9eeb8d3a56))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.160.1
+    * @vm0/connectors bumped to 1.146.0
+    * @vm0/core bumped to 8.411.0
+
+## [0.568.0](https://github.com/vm0-ai/vm0/compare/app-v0.567.0...app-v0.568.0) (2026-07-07)
+
+
+### Features
+
+* add website generation template api prompt support ([#20456](https://github.com/vm0-ai/vm0/issues/20456)) ([dfccd74](https://github.com/vm0-ai/vm0/commit/dfccd7471f2e01176e6064705cba583cd6b07f30))
+* make emoji shortcut keys discoverable and widen picker to 9 columns ([#20476](https://github.com/vm0-ai/vm0/issues/20476)) ([dffc401](https://github.com/vm0-ai/vm0/commit/dffc4010c01558ec9b82899591b967ef2d9d6de5))
+
+
+### Bug Fixes
+
+* keep add automation trigger cards fixed-height and match rail icon stroke ([#20475](https://github.com/vm0-ai/vm0/issues/20475)) ([9e18f49](https://github.com/vm0-ai/vm0/commit/9e18f49e6abebc0c3e89c4228c1bbce9e75efb3a))
+* navigate markdown image link artifacts ([#20472](https://github.com/vm0-ai/vm0/issues/20472)) ([14abd07](https://github.com/vm0-ai/vm0/commit/14abd07908058d0ed95a2f335e058ae6dd5770b6))
+* only show next upcoming run for schedule-based workflow triggers ([#20437](https://github.com/vm0-ai/vm0/issues/20437)) ([6f327d4](https://github.com/vm0-ai/vm0/commit/6f327d462bd628b51f2b34b3c7525d26255ac18f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.160.0
+    * @vm0/connectors bumped to 1.145.0
+    * @vm0/core bumped to 8.410.0
+
 ## [0.567.0](https://github.com/vm0-ai/vm0/compare/app-v0.566.0...app-v0.567.0) (2026-07-07)
 
 

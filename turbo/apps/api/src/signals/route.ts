@@ -1,5 +1,6 @@
 import { buildInfoContract } from "@vm0/api-contracts/contracts/build-info";
 import { healthContract } from "@vm0/api-contracts/contracts/health";
+import { webClientCompatibilityContract } from "@vm0/api-contracts/contracts/web-client-compatibility";
 
 import { agentCheckpointsRoutes } from "./routes/agent-checkpoints-id";
 import { agentComposesByIdRoutes } from "./routes/agent-composes-id";
@@ -40,6 +41,7 @@ import { desktopUpdateRoutes } from "./routes/desktop-updates";
 import { emailUnsubscribeRoutes } from "./routes/email-unsubscribe";
 import { apiHealth$ } from "./routes/health";
 import { apiBuildInfo$ } from "./routes/build-info";
+import { webClientCompatibility$ } from "./routes/web-client-compatibility";
 import { healthAuthProbeRoutes } from "./routes/health-auth-probe";
 import { githubOauthRoutes } from "./routes/github-oauth";
 import { legacyFileRoutes } from "./routes/legacy-file";
@@ -164,6 +166,7 @@ import { zeroSteamPlayerRoutes } from "./routes/zero-steam-player";
 import { zeroTeamsBrowserConnectRoutes } from "./routes/zero-teams-browser-connect";
 import { zeroTeamsBotRoutes } from "./routes/zero-teams-bot";
 import { zeroTeamsConnectRoutes } from "./routes/zero-teams-connect";
+import { zeroTeamsOauthRoutes } from "./routes/zero-teams-oauth";
 import { zeroTeamRoutes } from "./routes/zero-team";
 import { zeroUploadsCompleteRoutes } from "./routes/zero-uploads-complete";
 import { zeroUploadsHtmlDomEditSnapshotRoutes } from "./routes/zero-uploads-html-dom-edit-snapshot";
@@ -220,6 +223,10 @@ export const ROUTES: readonly RouteEntry[] = [
   {
     route: buildInfoContract.get,
     handler: apiBuildInfo$,
+  },
+  {
+    route: webClientCompatibilityContract.get,
+    handler: webClientCompatibility$,
   },
   ...authMeRoutes,
   ...cliAuthRoutes,
@@ -365,6 +372,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroTeamsBrowserConnectRoutes,
   ...zeroTeamsBotRoutes,
   ...zeroTeamsConnectRoutes,
+  ...zeroTeamsOauthRoutes,
   ...zeroIntegrationsAgentPhoneRoutes,
   ...zeroIntegrationsPhoneDownloadFileRoutes,
   ...zeroIntegrationsPhoneMessageRoutes,

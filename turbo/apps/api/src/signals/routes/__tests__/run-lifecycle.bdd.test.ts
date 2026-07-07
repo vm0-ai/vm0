@@ -31,7 +31,6 @@ import {
   expectApiError,
   type ApiTestUser,
 } from "./helpers/api-bdd";
-import { createDeferredPromise } from "../../utils";
 import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
@@ -154,7 +153,6 @@ const API_DISPATCH_TIMING_ACTION_TYPES = [
   "api_dispatch_prepare_storage_manifest_ensure_artifact_insert_storage",
   "api_dispatch_prepare_storage_manifest_ensure_artifact_refetch_storage",
   "api_dispatch_prepare_storage_manifest_ensure_artifact_skip_initialized",
-  "api_dispatch_prepare_storage_manifest_ensure_artifact_upload_empty_objects",
   "api_dispatch_prepare_storage_manifest_ensure_artifact_insert_initial_version",
   "api_dispatch_prepare_storage_manifest_load_storage_index",
   "api_dispatch_prepare_storage_manifest_build_entries",
@@ -177,7 +175,6 @@ const API_DISPATCH_STORAGE_MANIFEST_ACTION_TYPES = [
   "api_dispatch_prepare_storage_manifest_ensure_artifact_insert_storage",
   "api_dispatch_prepare_storage_manifest_ensure_artifact_refetch_storage",
   "api_dispatch_prepare_storage_manifest_ensure_artifact_skip_initialized",
-  "api_dispatch_prepare_storage_manifest_ensure_artifact_upload_empty_objects",
   "api_dispatch_prepare_storage_manifest_ensure_artifact_insert_initial_version",
   "api_dispatch_prepare_storage_manifest_load_storage_index",
   "api_dispatch_prepare_storage_manifest_build_entries",
@@ -919,6 +916,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       compose.composeId,
     );
 
+    context.mocks.s3.send.mockClear();
     const created = await api.createDirectRun(actor, {
       agentComposeVersionId: headVersionId,
       prompt,
@@ -1023,6 +1021,18 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     });
 
     const timingEvents = apiDispatchTimingEventsForRun(created.runId);
+    const emptyArtifactPutCount = context.mocks.s3.send.mock.calls.filter(
+      ([command]) => {
+        return (
+          s3CommandName(command) === "PutObjectCommand" &&
+          s3CommandKey(command)?.includes("/artifact/memory/")
+        );
+      },
+    ).length;
+    expect(emptyArtifactPutCount).toBe(0);
+    expectNoApiDispatchActions(timingEvents, [
+      "api_dispatch_prepare_storage_manifest_ensure_artifact_upload_empty_objects",
+    ]);
     expect(
       singleApiDispatchEvent(
         timingEvents,
@@ -1175,6 +1185,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     });
     expect(memoryArtifact).toMatchObject({
       archiveUrl: expect.any(String),
+      empty: true,
       vasStorageId: expect.any(String),
       vasVersionId: expect.any(String),
       missingRootPolicy: "preserveParentVersion",
@@ -1234,12 +1245,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
           "0",
       }),
     );
-    expect(
-      singleApiDispatchEvent(
-        initializedTimingEvents,
-        "api_dispatch_prepare_storage_manifest_ensure_artifact_upload_empty_objects",
-      ).duration_ms,
-    ).toBe(0);
+    expectNoApiDispatchActions(initializedTimingEvents, [
+      "api_dispatch_prepare_storage_manifest_ensure_artifact_upload_empty_objects",
+    ]);
     expect(
       singleApiDispatchEvent(
         initializedTimingEvents,
@@ -1257,11 +1265,11 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await api.requestCancelRun(actor, initialized.runId, [200]);
   });
 
-  it("keeps a committed artifact head when stale empty initialization finishes later", async () => {
+  it("keeps a committed artifact head after initial empty artifact creation", async () => {
     const api = createRunsAutomationsApi(context);
     const storages = createStoragesBddApi(context);
     const { actor } = await entitledRunActor();
-    const composeName = `bdd-artifact-head-race-${randomUUID().slice(0, 8)}`;
+    const composeName = `bdd-artifact-head-commit-${randomUUID().slice(0, 8)}`;
     const compose = await api.createCompose(actor, {
       version: "1",
       agents: {
@@ -1276,72 +1284,80 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       compose.composeId,
     );
 
-    const emptyUploadsGate = createDeferredPromise<void>(context.signal);
-    const releaseEmptyUploads = (): void => {
-      if (!emptyUploadsGate.settled()) {
-        emptyUploadsGate.resolve(undefined);
-      }
-    };
-    const emptyUploadStarted = createDeferredPromise<void>(context.signal);
-    const markEmptyUploadStarted = (): void => {
-      if (!emptyUploadStarted.settled()) {
-        emptyUploadStarted.resolve(undefined);
-      }
-    };
-
-    let blockedEmptyPutCount = 0;
-    context.mocks.s3.send.mockImplementation((command: unknown) => {
-      if (
-        s3CommandName(command) === "PutObjectCommand" &&
-        s3CommandKey(command)?.includes("/artifact/memory/")
-      ) {
-        blockedEmptyPutCount += 1;
-        markEmptyUploadStarted();
-        return emptyUploadsGate.promise.then(() => {
-          return {};
-        });
-      }
-      return Promise.resolve({});
-    });
-
-    const staleInitializerRun = api.createDirectRun(actor, {
+    const initialRun = await api.createDirectRun(actor, {
       agentComposeVersionId: headVersionId,
-      prompt: "stale empty artifact initialization must not overwrite head",
+      prompt: "initial empty artifact creation should not block later commits",
     });
     onTestFinished(async () => {
-      releaseEmptyUploads();
-      const created = await staleInitializerRun.then(
-        (run) => {
-          return run;
-        },
-        () => {
-          return undefined;
-        },
-      );
-      if (created) {
-        await api.requestCancelRun(actor, created.runId, [200]);
-      }
+      await api.requestCancelRun(actor, initialRun.runId, [200]);
     });
+    const initialClaim = await api.claimRunnerJob(initialRun.runId);
+    const initialMemory = initialClaim.storageManifest?.artifacts.find(
+      (artifact) => {
+        return artifact.vasStorageName === "memory";
+      },
+    );
+    expect(initialMemory).toMatchObject({
+      empty: true,
+      archiveUrl: expect.any(String),
+      vasVersionId: expect.any(String),
+    });
+    const initialMemoryVersionId = initialMemory?.vasVersionId;
+    if (!initialMemoryVersionId) {
+      throw new Error("Expected initial memory artifact version id");
+    }
 
-    const gateResult = await Promise.race([
-      emptyUploadStarted.promise.then(() => {
-        return "empty-upload-started" as const;
-      }),
-      staleInitializerRun.then(() => {
-        return "run-finished" as const;
-      }),
-    ]);
-    expect(gateResult).toBe("empty-upload-started");
+    context.mocks.s3.send.mockClear();
+    const preparedInitialEmpty = await storages.prepareStorage(actor, {
+      storageName: "memory",
+      storageType: "artifact",
+      files: [],
+    });
+    expect(preparedInitialEmpty).toStrictEqual({
+      versionId: initialMemoryVersionId,
+      existing: true,
+    });
+    const committedInitialEmpty = await storages.commitStorage(actor, {
+      storageName: "memory",
+      storageType: "artifact",
+      versionId: initialMemoryVersionId,
+      files: [],
+    });
+    expect(committedInitialEmpty).toMatchObject({
+      success: true,
+      versionId: initialMemoryVersionId,
+      fileCount: 0,
+      deduplicated: true,
+    });
+    expect(context.mocks.s3.send).not.toHaveBeenCalled();
 
     const artifactFile = storageTextFile(
       "artifact.txt",
       `committed artifact ${randomUUID()}`,
     );
+    context.mocks.s3.send.mockClear();
     const prepared = await storages.prepareStorage(actor, {
       storageName: "memory",
       storageType: "artifact",
+      baseVersion: initialMemoryVersionId,
+      changes: {
+        added: [artifactFile.path],
+        modified: [],
+        deleted: [],
+      },
       files: [artifactFile],
     });
+    const emptyBaseManifestReads = context.mocks.s3.send.mock.calls.filter(
+      ([command]) => {
+        return (
+          s3CommandName(command) === "GetObjectCommand" &&
+          s3CommandKey(command)?.includes(
+            `/artifact/memory/${initialMemoryVersionId}/manifest.json`,
+          ) === true
+        );
+      },
+    );
+    expect(emptyBaseManifestReads).toHaveLength(0);
     await storages.commitStorage(actor, {
       storageName: "memory",
       storageType: "artifact",
@@ -1360,9 +1376,24 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       }),
     );
 
-    releaseEmptyUploads();
-    await staleInitializerRun;
-    expect(blockedEmptyPutCount).toBe(2);
+    const committedRun = await api.createDirectRun(actor, {
+      agentComposeVersionId: headVersionId,
+      prompt: "committed artifact head should stay non-empty",
+    });
+    onTestFinished(async () => {
+      await api.requestCancelRun(actor, committedRun.runId, [200]);
+    });
+    const committedClaim = await api.claimRunnerJob(committedRun.runId);
+    const committedMemory = committedClaim.storageManifest?.artifacts.find(
+      (artifact) => {
+        return artifact.vasStorageName === "memory";
+      },
+    );
+    expect(committedMemory).toMatchObject({
+      archiveUrl: expect.any(String),
+      vasVersionId: prepared.versionId,
+    });
+    expect(committedMemory?.empty).toBeUndefined();
     await expect(
       storages.downloadStorage(actor, {
         name: "memory",
@@ -6434,7 +6465,7 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
     expect(mountPaths).toContain("/cache");
     const sandboxHeaders = { authorization: `Bearer ${claim.sandboxToken}` };
 
-    await webhooks.requestAgentTelemetry(
+    await webhooks.requestAgentTelemetryUnchecked(
       {
         runId: created.runId,
         networkLogs: [
@@ -6476,6 +6507,9 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
             session_history_raw_size_bucket: "64_256_kib",
             session_history_encoded_size_bucket: "lt_64_kib",
             session_history_compression_ratio_bucket: "lt_0_25",
+            session_history_ref_seen_recently: "true",
+            session_history_ref_download_inflight: "false",
+            session_history_ref_hash: "should-not-forward",
           },
         ],
       },
@@ -6514,10 +6548,21 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
           session_history_raw_size_bucket: "64_256_kib",
           session_history_encoded_size_bucket: "lt_64_kib",
           session_history_compression_ratio_bucket: "lt_0_25",
+          session_history_ref_seen_recently: "true",
+          session_history_ref_download_inflight: "false",
           source: "sandbox",
         }),
       ],
     );
+    const sandboxOperationIngestCall =
+      context.mocks.axiom.sdkIngest.mock.calls.find(([dataset]) => {
+        return dataset === "vm0-sandbox-op-log-dev";
+      });
+    expect(sandboxOperationIngestCall?.[1]).toStrictEqual([
+      expect.not.objectContaining({
+        session_history_ref_hash: "should-not-forward",
+      }),
+    ]);
 
     const observed = await webhooks.requestAgentModelUsageObservation(
       {

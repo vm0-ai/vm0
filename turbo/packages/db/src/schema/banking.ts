@@ -11,6 +11,15 @@ import {
 } from "drizzle-orm/pg-core";
 
 import { zeroAgents } from "./zero-agent";
+import type {
+  BankingAccessAuditMetadata,
+  BankingAccountMetadata,
+  BankingAccountProviderIds,
+  BankingConnectionAuditMetadata,
+  BankingOperationScope,
+  BankingOperationScopes,
+} from "@vm0/db/jsonb-contracts/banking";
+export type { BankingOperationScope } from "@vm0/db/jsonb-contracts/banking";
 
 export type BankingProvider = "finicity";
 export type BankingConnectionStatus =
@@ -18,10 +27,6 @@ export type BankingConnectionStatus =
   | "repair_required"
   | "revoked"
   | "deleted";
-export type BankingOperationScope =
-  | "accounts.read"
-  | "balances.read"
-  | "transactions.read";
 export type BankingAuditStatus = "allowed" | "denied";
 
 export const bankingConnections = pgTable(
@@ -46,7 +51,7 @@ export const bankingConnections = pgTable(
     revokedAt: timestamp("revoked_at"),
     deletedAt: timestamp("deleted_at"),
     auditMetadata: jsonb("audit_metadata")
-      .$type<Record<string, unknown>>()
+      .$type<BankingConnectionAuditMetadata>()
       .notNull()
       .default({}),
     createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -87,7 +92,7 @@ export const bankingAccounts = pgTable(
     accountNumberLast4: varchar("account_number_last4", { length: 8 }),
     enabled: boolean("enabled").notNull().default(true),
     metadata: jsonb("metadata")
-      .$type<Record<string, unknown>>()
+      .$type<BankingAccountMetadata>()
       .notNull()
       .default({}),
     createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -127,11 +132,11 @@ export const bankingAgentEnablements = pgTable(
         { onDelete: "cascade" },
       ),
     accountProviderIds: jsonb("account_provider_ids")
-      .$type<string[]>()
+      .$type<BankingAccountProviderIds>()
       .notNull()
       .default([]),
     operationScopes: jsonb("operation_scopes")
-      .$type<BankingOperationScope[]>()
+      .$type<BankingOperationScopes>()
       .notNull()
       .default(["accounts.read", "balances.read", "transactions.read"]),
     // Whether automation-triggered runs may use this banking enablement.
@@ -180,7 +185,7 @@ export const bankingAccessAuditEvents = pgTable(
       .notNull(),
     failureCode: varchar("failure_code", { length: 64 }),
     metadata: jsonb("metadata")
-      .$type<Record<string, unknown>>()
+      .$type<BankingAccessAuditMetadata>()
       .notNull()
       .default({}),
     createdAt: timestamp("created_at").defaultNow().notNull(),

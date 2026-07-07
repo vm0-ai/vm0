@@ -704,7 +704,7 @@ export function createWebhookCallbackApi(context: TestContext) {
     async requestAgentTelemetryUnchecked(
       body: unknown,
       headers: SandboxWebhookHeaders,
-      statuses: readonly (400 | 401 | 404 | 500)[],
+      statuses: readonly (200 | 400 | 401 | 404 | 500)[],
     ) {
       return await accept(
         setupApp({ context })(webhookTelemetryContract).send({

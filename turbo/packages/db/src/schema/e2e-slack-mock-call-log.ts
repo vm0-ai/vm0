@@ -7,6 +7,7 @@ import {
   timestamp,
   index,
 } from "drizzle-orm/pg-core";
+import type { E2eSlackMockCallBodyJson } from "@vm0/db/jsonb-contracts/e2e-slack-mock-call-log";
 
 /**
  * Test-only log of calls made to `/api/test/slack-mock/*` endpoints.
@@ -38,7 +39,7 @@ export const e2eSlackMockCallLog = pgTable(
     // because mock endpoints accept both form-encoded and JSON payloads.
     body: text("body").notNull(),
     // Parsed body when the content type was JSON, for easier jq queries.
-    bodyJson: jsonb("body_json"),
+    bodyJson: jsonb("body_json").$type<E2eSlackMockCallBodyJson>(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => {

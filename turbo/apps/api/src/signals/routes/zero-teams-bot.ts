@@ -7,7 +7,12 @@ import {
   readTeamsActivityServiceUrl,
 } from "../../lib/teams-bot-activity";
 import { verifyTeamsBotAuthorization } from "../../lib/teams-bot-auth";
+import { logger } from "../../lib/log";
 import { authorization$, request$ } from "../context/hono";
+import {
+  sendTeamsMessageReply,
+  type TeamsAdaptiveCard,
+} from "../external/teams-bot-client";
 import { now } from "../external/time";
 import type { RouteEntry } from "../route-entry";
 import {
@@ -17,6 +22,10 @@ import {
 } from "../services/zero-teams-connect.service";
 import { dispatchTeamsMessageToAgent$ } from "../services/zero-teams-dispatch.service";
 import { safeJsonParse } from "../utils";
+
+const L = logger("TeamsBot");
+const TEAMS_LOGIN_PROMPT_CARD_TEXT =
+  "To use Zero in Teams, please connect your account first.";
 
 function errorResponse(
   status: 400 | 401 | 403 | 503,
@@ -39,6 +48,29 @@ function authErrorCode(status: 401 | 403 | 503): string {
     return "PROVIDER_UNAVAILABLE";
   }
   return "UNAUTHORIZED";
+}
+
+function buildTeamsLoginPromptCard(args: {
+  readonly connectUrl: string;
+}): TeamsAdaptiveCard {
+  return {
+    type: "AdaptiveCard",
+    version: "1.4",
+    body: [
+      {
+        type: "TextBlock",
+        text: TEAMS_LOGIN_PROMPT_CARD_TEXT,
+        wrap: true,
+      },
+    ],
+    actions: [
+      {
+        type: "Action.OpenUrl",
+        title: "Connect",
+        url: args.connectUrl,
+      },
+    ],
+  };
 }
 
 const handleZeroTeamsBot$ = command(
@@ -108,6 +140,38 @@ const handleZeroTeamsBot$ = command(
       signal,
     );
     signal.throwIfAborted();
+
+    if (
+      normalized.activity.kind === "message" &&
+      (dispatch.kind === "notice" || dispatch.kind === "failed")
+    ) {
+      const reply = await sendTeamsMessageReply({
+        serviceUrl: normalized.activity.serviceUrl,
+        conversationId: normalized.activity.conversationId,
+        activityId: normalized.activity.activityId ?? undefined,
+        tenantId: normalized.activity.tenantId,
+        text: dispatch.replyText,
+        ...(dispatch.kind === "notice" && dispatch.connectUrl
+          ? {
+              card: buildTeamsLoginPromptCard({
+                connectUrl: dispatch.connectUrl,
+              }),
+            }
+          : {}),
+        signal,
+      });
+      signal.throwIfAborted();
+
+      if (reply.kind === "teams-error") {
+        L.warn("Teams dispatch reply failed", {
+          tenantId: normalized.activity.tenantId,
+          conversationId: normalized.activity.conversationId,
+          activityId: normalized.activity.activityId,
+          status: reply.status,
+          error: reply.error,
+        });
+      }
+    }
 
     return {
       status: 200 as const,

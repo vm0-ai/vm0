@@ -53,9 +53,12 @@ import {
   IconClock,
   IconCoins,
   IconHourglass,
+  IconWorld,
 } from "@tabler/icons-react";
 import {
   cn,
+  getShortcutLabel,
+  getShortcutParts,
   Button,
   Input,
   Skeleton,
@@ -91,6 +94,7 @@ import type {
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
+  findWebsiteTemplateItem,
   findVideoTemplateItem,
   findWorkflowTemplateItem,
   r2ImageTransformUrl,
@@ -698,11 +702,24 @@ function ChatThreadEmojiSection({
   onSelect: (emoji: string) => void;
   showShortcutDigits?: boolean;
 }) {
+  // Ctrl+Shift is a shared prefix for every digit shortcut, so surface it once
+  // as a quiet hint next to the label rather than repeating it on each emoji.
+  // getShortcutParts keeps the modifiers OS-aware (⌃⇧ on Mac, Ctrl+Shift else).
+  const shortcutHint = showShortcutDigits
+    ? `${formatModifierPrefix(getShortcutParts("ctrl+shift"))} + number`
+    : null;
   return (
     <div>
-      <p className="px-1 pb-1 pt-2 text-xs font-medium text-muted-foreground">
-        {label}
-      </p>
+      <div className="flex items-baseline justify-between gap-2 px-1 pb-1 pt-2">
+        <span className="text-xs font-medium text-muted-foreground">
+          {label}
+        </span>
+        {shortcutHint && (
+          <span className="text-[11px] text-muted-foreground/70">
+            {shortcutHint}
+          </span>
+        )}
+      </div>
       <ChatThreadEmojiGrid
         items={items}
         onSelect={onSelect}
@@ -710,6 +727,13 @@ function ChatThreadEmojiSection({
       />
     </div>
   );
+}
+
+// Join modifier keycap labels the way each platform reads them: Mac symbols
+// run together (⌃⇧), word labels are joined with "+" (Ctrl+Shift).
+function formatModifierPrefix(modifiers: string[]): string {
+  const usesWords = /[A-Za-z]/.test(modifiers[0] ?? "");
+  return modifiers.join(usesWords ? "+" : "");
 }
 
 function ChatThreadEmojiGrid({
@@ -721,18 +745,26 @@ function ChatThreadEmojiGrid({
   onSelect: (emoji: string) => void;
   showShortcutDigits?: boolean;
 }) {
+  // Nine columns so the nine frequently-used digit shortcuts sit on a single
+  // row; every other emoji group uses the same width to stay aligned.
   return (
-    <div className="grid grid-cols-8 gap-0.5">
+    <div className="grid grid-cols-9 gap-0.5">
       {items.map((item, index) => {
-        // Ctrl+Shift+1-9 set the first nine "frequently used" icons; surface a
-        // faint digit so the shortcut is discoverable without adding clutter.
+        // Ctrl+Shift+1-9 set the first nine "frequently used" icons. Keep a
+        // faint digit in the corner and reveal the full combo on hover so the
+        // shortcut is discoverable without cluttering the grid.
         const shortcutDigit =
           showShortcutDigits && index < 9 ? index + 1 : null;
+        const shortcutLabel =
+          shortcutDigit !== null
+            ? getShortcutLabel(`ctrl+shift+${shortcutDigit}`)
+            : undefined;
         return (
           <button
             key={`${item.name}-${item.emoji}`}
             type="button"
             aria-label={item.name}
+            title={shortcutLabel}
             className="relative flex aspect-square items-center justify-center rounded-md text-xl leading-none transition-colors hover:bg-accent"
             onClick={() => {
               onSelect(item.emoji);
@@ -742,7 +774,7 @@ function ChatThreadEmojiGrid({
             {shortcutDigit !== null && (
               <span
                 aria-hidden="true"
-                className="absolute bottom-0 right-0.5 text-[9px] leading-none text-muted-foreground/60"
+                className="pointer-events-none absolute bottom-0 right-0.5 text-[9px] leading-none text-muted-foreground/60"
               >
                 {shortcutDigit}
               </span>
@@ -1739,11 +1771,13 @@ function headerWorkflowTriggerRows(
       label: "Last run",
       value: formatHeaderWorkflowTriggerRun(trigger.trigger.lastRunAt),
     },
-    {
+  ];
+  if (trigger.trigger.kind === "schedule") {
+    rows.push({
       label: "Next run",
       value: formatHeaderWorkflowTriggerNextRun(trigger.trigger.nextRunAt),
-    },
-  ];
+    });
+  }
   const matchSummary = gmailTriggerSummary(trigger.trigger);
   if (matchSummary) {
     rows.splice(1, 0, { label: "Match", value: matchSummary });
@@ -6305,6 +6339,12 @@ function generationTemplateLabel(
       item?.title ?? formatSelectionIdLabel(value.selection.illustrationStyleId)
     );
   }
+  if (value.type === "website") {
+    const item = findWebsiteTemplateItem(value.selection.websiteTemplateId);
+    return (
+      item?.title ?? formatSelectionIdLabel(value.selection.websiteTemplateId)
+    );
+  }
   const item = PRESENTATION_TEMPLATE_PICKER_ITEMS.find((candidate) => {
     return candidate.templateId === value.selection.templateId;
   });
@@ -6326,6 +6366,9 @@ function generationTemplateTypeLabel(
   if (value.type === "workflow") {
     return "Workflow";
   }
+  if (value.type === "website") {
+    return "Website";
+  }
   return "Presentation";
 }
 
@@ -6339,24 +6382,33 @@ function UserMessageGenerationTemplate({
   if (!label || !typeLabel) {
     return null;
   }
-  return (
-    <div
-      aria-label={`Message template ${label}`}
-      className="mb-1.5 flex max-w-[85%] items-center gap-1.5 self-end text-xs font-medium text-muted-foreground"
-      title={`${typeLabel} · ${label}`}
-    >
+  const className =
+    "mb-1.5 flex max-w-[85%] items-center gap-1.5 self-end text-xs font-medium text-muted-foreground";
+  const content = (
+    <>
       {generationTemplate?.type === "video" ? (
         <IconVideo size={15} stroke={1.8} className="shrink-0" />
       ) : generationTemplate?.type === "illustration" ? (
         <IconPhoto size={15} stroke={1.8} className="shrink-0" />
       ) : generationTemplate?.type === "workflow" ? (
         <IconRoute size={15} stroke={1.8} className="shrink-0" />
+      ) : generationTemplate?.type === "website" ? (
+        <IconWorld size={15} stroke={1.8} className="shrink-0" />
       ) : (
         <IconPresentation size={15} stroke={1.8} className="shrink-0" />
       )}
       <span className="shrink-0">{typeLabel}</span>
       <span className="shrink-0">·</span>
       <span className="min-w-0 truncate">{label}</span>
+    </>
+  );
+  return (
+    <div
+      aria-label={`Message template ${label}`}
+      className={className}
+      title={`${typeLabel} · ${label}`}
+    >
+      {content}
     </div>
   );
 }

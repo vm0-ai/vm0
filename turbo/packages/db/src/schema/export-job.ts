@@ -9,15 +9,8 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-
-/**
- * Artifact URL entry stored in the export job's artifactUrls JSONB column
- */
-export interface ExportArtifactUrl {
-  name: string;
-  downloadUrl: string;
-  expiresAt: string;
-}
+import type { ExportArtifactUrls } from "@vm0/db/jsonb-contracts/export-job";
+export type { ExportArtifactUrl } from "@vm0/db/jsonb-contracts/export-job";
 
 /**
  * Export Jobs table
@@ -34,7 +27,7 @@ export const exportJobs = pgTable(
     // pending -> running -> completed | failed
     status: varchar("status", { length: 20 }).notNull(),
     s3Key: text("s3_key"),
-    artifactUrls: jsonb("artifact_urls").$type<ExportArtifactUrl[]>(),
+    artifactUrls: jsonb("artifact_urls").$type<ExportArtifactUrls>(),
     error: text("error"),
     expiresAt: timestamp("expires_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),

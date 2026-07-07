@@ -101,6 +101,7 @@ pub(crate) fn read_session_history_from_payload(payload: &str) -> Result<Vec<u8>
 ///
 /// The implementation reads one extra decoded byte to detect over-limit
 /// histories without consuming an unbounded stream.
+#[cfg(test)]
 pub(crate) fn read_session_history_from_payload_bounded(
     payload: &str,
     max_bytes: u64,
@@ -117,6 +118,11 @@ fn session_history_exceeds_max_error(max_bytes: u64) -> AgentError {
 pub(crate) struct SessionHistoryDigest {
     pub(crate) size_bytes: u64,
     pub(crate) sha256_hex: String,
+}
+
+pub(crate) enum SessionHistoryCheckpointSource {
+    Decoded(Vec<u8>),
+    CodexZstd { encoded: Vec<u8> },
 }
 
 #[derive(Debug)]
@@ -137,6 +143,27 @@ pub(crate) fn digest_session_history_from_payload_bounded(
     max_bytes: u64,
 ) -> Result<SessionHistoryDigest, SessionHistoryDigestError> {
     resolve_session_history_source(payload)?.digest(max_bytes)
+}
+
+pub(crate) fn read_session_history_checkpoint_source_from_payload_bounded(
+    payload: &str,
+    max_bytes: u64,
+) -> Result<SessionHistoryCheckpointSource, AgentError> {
+    match resolve_session_history_source(payload)? {
+        ResolvedSessionHistorySource::Codex(session) if session.is_zstd() => {
+            if session.encoded_len()? <= max_bytes {
+                let encoded = session.into_zstd_bytes(max_bytes)?;
+                Ok(SessionHistoryCheckpointSource::CodexZstd { encoded })
+            } else {
+                ResolvedSessionHistorySource::Codex(session)
+                    .read(Some(max_bytes))
+                    .map(SessionHistoryCheckpointSource::Decoded)
+            }
+        }
+        source => source
+            .read(Some(max_bytes))
+            .map(SessionHistoryCheckpointSource::Decoded),
+    }
 }
 
 fn read_session_history_from_payload_impl(
@@ -487,6 +514,10 @@ struct ResolvedCodexSession {
 }
 
 impl ResolvedCodexSession {
+    fn is_zstd(&self) -> bool {
+        is_zstd_session_history(&self.path)
+    }
+
     fn into_file(self) -> Result<(PathBuf, File), AgentError> {
         #[cfg(target_os = "linux")]
         {
@@ -498,6 +529,52 @@ impl ResolvedCodexSession {
             open_session_history_file(self.path)
         }
     }
+
+    fn encoded_len(&self) -> Result<u64, AgentError> {
+        #[cfg(target_os = "linux")]
+        {
+            self.file
+                .metadata()
+                .map(|metadata| metadata.len())
+                .map_err(|error| read_history_error(&self.path, error))
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        {
+            std::fs::metadata(&self.path)
+                .map(|metadata| metadata.len())
+                .map_err(|error| read_history_error(&self.path, error))
+        }
+    }
+
+    fn into_zstd_bytes(self, max_encoded_bytes: u64) -> Result<Vec<u8>, AgentError> {
+        #[cfg(target_os = "linux")]
+        {
+            read_zstd_encoded_session_history(self.file, &self.path, max_encoded_bytes)
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        {
+            let file =
+                File::open(&self.path).map_err(|error| read_history_error(&self.path, error))?;
+            read_zstd_encoded_session_history(file, &self.path, max_encoded_bytes)
+        }
+    }
+}
+
+fn read_zstd_encoded_session_history(
+    file: File,
+    path: &Path,
+    max_encoded_bytes: u64,
+) -> Result<Vec<u8>, AgentError> {
+    let mut bytes = Vec::new();
+    file.take(max_encoded_bytes.saturating_add(1))
+        .read_to_end(&mut bytes)
+        .map_err(|error| read_history_error(path, error))?;
+    if bytes.len() as u64 > max_encoded_bytes {
+        return Err(session_history_exceeds_max_error(max_encoded_bytes));
+    }
+    Ok(bytes)
 }
 
 struct CodexSessionLookupBudget {
@@ -830,6 +907,37 @@ mod tests {
         assert_eq!(bytes, history);
         assert_eq!(digest.size_bytes, history.len() as u64);
         assert_eq!(digest.sha256_hex, hex::encode(Sha256::digest(history)));
+    }
+
+    #[test]
+    fn codex_zstd_checkpoint_source_falls_back_to_decoded_when_encoded_exceeds_cap() {
+        let dir = tempfile::tempdir().unwrap();
+        let sessions_dir = dir.path().join("sessions");
+        let day_dir = sessions_dir.join("2026").join("07").join("02");
+        std::fs::create_dir_all(&day_dir).unwrap();
+        let thread_id = "019e9154-c304-70f0-adde-36efb1be1701";
+        let history = b"a";
+        let compressed = zstd::encode_all(history.as_slice(), 0).unwrap();
+        assert!(
+            compressed.len() > history.len(),
+            "fixture must be larger when encoded"
+        );
+        let path = day_dir.join("rollout-019e9154c30470f0adde36efb1be1701.jsonl.zst");
+        std::fs::write(path, compressed).unwrap();
+        let payload = codex_marker_payload(&sessions_dir, thread_id);
+
+        let source = read_session_history_checkpoint_source_from_payload_bounded(
+            &payload,
+            history.len() as u64,
+        )
+        .unwrap();
+
+        match source {
+            SessionHistoryCheckpointSource::Decoded(bytes) => assert_eq!(bytes, history),
+            SessionHistoryCheckpointSource::CodexZstd { .. } => {
+                panic!("oversized encoded body should fall back to decoded history")
+            }
+        }
     }
 
     #[test]

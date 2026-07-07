@@ -7,6 +7,7 @@ import {
   timestamp,
   index,
 } from "drizzle-orm/pg-core";
+import type { E2eTelegramMockCallBodyJson } from "@vm0/db/jsonb-contracts/e2e-telegram-mock-call-log";
 
 /**
  * Test-only log of calls made to `/api/test/telegram-mock/*` endpoints.
@@ -23,7 +24,7 @@ export const e2eTelegramMockCallLog = pgTable(
     botToken: varchar("bot_token", { length: 255 }),
     chatId: varchar("chat_id", { length: 255 }),
     body: text("body").notNull(),
-    bodyJson: jsonb("body_json"),
+    bodyJson: jsonb("body_json").$type<E2eTelegramMockCallBodyJson>(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => {

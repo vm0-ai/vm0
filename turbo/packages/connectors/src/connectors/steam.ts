@@ -1,5 +1,4 @@
 import type { ConnectorConfig } from "../connector-config";
-import { FeatureSwitchKey } from "../feature-switch-key";
 
 export const steam = {
   steam: {
@@ -9,7 +8,6 @@ export const steam = {
       "Connect your Steam account to access player profile, library, playtime, social, wishlist, and game stats data.",
     authMethods: {
       openid: {
-        featureFlag: FeatureSwitchKey.SteamConnector,
         label: "Steam sign-in",
         helpText: "Sign in with Steam to connect your player account.",
         storage: {

@@ -8,11 +8,11 @@ import {
 import { warmLatestChatThreadMessages$ } from "./idb-cached-chat-thread-data-source.ts";
 
 const L = logger("BackgroundChatThreadCache");
-const CHAT_THREAD_RUN_FINISHED_TOPIC = "chatThreadRunFinished";
+const CHAT_THREAD_FOLLOWUPS_FINISHED_TOPIC = "chatThreadFollowupsFinished";
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-function threadIdFromRunFinishedPayload(payload: unknown): string | null {
+function threadIdFromFollowupsFinishedPayload(payload: unknown): string | null {
   if (
     payload === null ||
     typeof payload !== "object" ||
@@ -27,18 +27,18 @@ function threadIdFromRunFinishedPayload(payload: unknown): string | null {
     : null;
 }
 
-const warmFinishedThread$ = command(
+const warmFollowupsFinishedThread$ = command(
   async ({ get, set }, payload: unknown, signal: AbortSignal) => {
-    const threadId = threadIdFromRunFinishedPayload(payload);
+    const threadId = threadIdFromFollowupsFinishedPayload(payload);
     if (!threadId) {
-      L.warn("runFinished:invalidPayload", { payload });
+      L.warn("followupsFinished:invalidPayload", { payload });
       return false;
     }
 
     const leftThreadId = get(currentLeftThread$)?.threadId;
     const rightThreadId = get(currentRightThread$)?.threadId;
     if (threadId === leftThreadId || threadId === rightThreadId) {
-      L.debug("runFinished:threadOpen", { threadId });
+      L.debug("followupsFinished:threadOpen", { threadId });
       return false;
     }
 
@@ -48,13 +48,13 @@ const warmFinishedThread$ = command(
   },
 );
 
-export const subscribeBackgroundChatThreadRunFinished$ = command(
+export const subscribeBackgroundChatThreadFollowupsFinished$ = command(
   async ({ set }, signal: AbortSignal) => {
     await set(
       setAblyPayloadLoop$,
       {
-        topic: CHAT_THREAD_RUN_FINISHED_TOPIC,
-        loopCommand$: warmFinishedThread$,
+        topic: CHAT_THREAD_FOLLOWUPS_FINISHED_TOPIC,
+        loopCommand$: warmFollowupsFinishedThread$,
       },
       signal,
     );

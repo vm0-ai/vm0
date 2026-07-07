@@ -2778,6 +2778,7 @@ fn human_bytes(bytes: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_fixtures::{ignored_child_test_env_guard_enabled, run_ignored_child_test};
     use clap::Parser;
 
     /// `--r2-keep-days 0` would wipe even just-uploaded images. Verify the
@@ -6980,35 +6981,20 @@ server:
 
     const LOW_FD_STORAGE_GC_CHILD_ENV: &str = "VM0_RUNNER_LOW_FD_STORAGE_GC_CHILD";
 
-    #[test]
-    fn gc_storage_cache_many_candidates_does_not_exhaust_lock_fds() {
-        let output = std::process::Command::new(std::env::current_exe().unwrap())
-            .env(LOW_FD_STORAGE_GC_CHILD_ENV, "1")
-            .arg("gc_storage_cache_many_candidates_low_fd_child")
-            .arg("--ignored")
-            .arg("--nocapture")
-            .output()
-            .unwrap();
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let stderr = String::from_utf8_lossy(&output.stderr);
-
-        assert!(
-            output.status.success(),
-            "low-fd storage GC child failed\nstatus: {}\nstdout:\n{}\nstderr:\n{}",
-            output.status,
-            stdout,
-            stderr
-        );
-        assert!(
-            stdout.contains("gc_storage_cache_many_candidates_low_fd_child"),
-            "low-fd storage GC child did not run\nstdout:\n{stdout}\nstderr:\n{stderr}"
-        );
+    #[tokio::test]
+    async fn gc_storage_cache_many_candidates_does_not_exhaust_lock_fds() {
+        run_ignored_child_test(
+            "cmd::gc::tests::gc_storage_cache_many_candidates_low_fd_child",
+            (LOW_FD_STORAGE_GC_CHILD_ENV, "1"),
+            Duration::from_secs(60),
+        )
+        .await;
     }
 
     #[tokio::test]
     #[ignore = "spawned by gc_storage_cache_many_candidates_does_not_exhaust_lock_fds"]
     async fn gc_storage_cache_many_candidates_low_fd_child() {
-        if std::env::var_os(LOW_FD_STORAGE_GC_CHILD_ENV).is_none() {
+        if !ignored_child_test_env_guard_enabled((LOW_FD_STORAGE_GC_CHILD_ENV, "1")) {
             return;
         }
 
@@ -7032,7 +7018,7 @@ server:
             "test storage entries must consume disk blocks"
         );
 
-        set_soft_nofile_limit_for_child(128);
+        let _nofile_limit = set_soft_nofile_limit_for_child(128);
 
         let cap = entry_size * keep_count as u64;
         let freed = gc_storage_cache_with_cap(&home, cap, false).await.unwrap();
@@ -7044,9 +7030,30 @@ server:
         );
     }
 
-    fn set_soft_nofile_limit_for_child(limit: u64) {
-        // This helper runs only in the spawned child process, so lowering the
-        // process-wide fd limit cannot leak into the parent test runner.
+    struct SoftNofileLimitGuard {
+        original: nix::libc::rlimit,
+    }
+
+    impl Drop for SoftNofileLimitGuard {
+        fn drop(&mut self) {
+            unsafe {
+                let rc = nix::libc::setrlimit(nix::libc::RLIMIT_NOFILE, &self.original);
+                if rc != 0 {
+                    let message = format!(
+                        "restore RLIMIT_NOFILE failed: {}",
+                        std::io::Error::last_os_error()
+                    );
+                    if std::thread::panicking() {
+                        eprintln!("{message}");
+                    } else {
+                        panic!("{message}");
+                    }
+                }
+            }
+        }
+    }
+
+    fn set_soft_nofile_limit_for_child(limit: u64) -> SoftNofileLimitGuard {
         unsafe {
             let mut current = std::mem::MaybeUninit::<nix::libc::rlimit>::uninit();
             let rc = nix::libc::getrlimit(nix::libc::RLIMIT_NOFILE, current.as_mut_ptr());
@@ -7074,6 +7081,7 @@ server:
                 "setrlimit(RLIMIT_NOFILE) failed: {}",
                 std::io::Error::last_os_error()
             );
+            SoftNofileLimitGuard { original: current }
         }
     }
 
