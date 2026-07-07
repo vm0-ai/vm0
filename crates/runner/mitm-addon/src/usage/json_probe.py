@@ -28,9 +28,9 @@ class TopLevelStringFieldProbeResult:
 
     - ``found``: the first matching top-level member has a complete string value.
     - ``not_found``: a complete top-level object ended before a matching member.
-    - ``incomplete``: the prefix may become valid if more bytes arrive.
+    - ``incomplete``: more bytes are needed before the probe can decide.
     - ``invalid``: the prefix already violates the JSON structure accepted here.
-    - ``non_string``: the matching member's value starts as a JSON non-string.
+    - ``non_string``: the matching member's value starts with a non-string token.
     - ``bound_exceeded``: a configured key, string, or depth bound stopped probing.
 
     ``field_seen`` is true only after the first matching top-level member's

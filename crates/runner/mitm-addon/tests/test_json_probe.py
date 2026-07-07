@@ -92,6 +92,14 @@ def test_probe_reports_non_string_field_value():
     assert result.field_seen
 
 
+def test_probe_reports_non_string_once_target_value_token_starts():
+    result = probe_top_level_string_field(b'{"type":t')
+
+    assert result.status == "non_string"
+    assert result.value is None
+    assert result.field_seen
+
+
 def test_probe_reports_invalid_json_prefix():
     result = probe_top_level_string_field(b'{"type" "response.completed"}')
 
