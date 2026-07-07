@@ -208,6 +208,18 @@ impl FirewallApi {
         if let Some(host_policy) = &self.host_policy {
             host_policy.validate_for_cache()?;
         }
+        if let Some(permissions) = &self.permissions {
+            let mut seen_names = HashSet::new();
+            for permission in permissions {
+                permission.validate_for_cache()?;
+                if !seen_names.insert(permission.name.as_str()) {
+                    return Err(format!(
+                        "permission name {:?} must be unique per api",
+                        permission.name
+                    ));
+                }
+            }
+        }
         Ok(())
     }
 }
@@ -219,6 +231,30 @@ pub struct FirewallPermission {
     #[serde(default)]
     pub description: Option<String>,
     pub rules: Vec<String>,
+}
+
+impl FirewallPermission {
+    fn validate_for_cache(&self) -> Result<(), String> {
+        if self.name.is_empty() {
+            return Err("permission name must be non-empty".to_string());
+        }
+        if self.name == "all" || self.name == "__unknown__" {
+            return Err(format!("permission name {:?} is reserved", self.name));
+        }
+        if self.rules.is_empty() {
+            return Err(format!(
+                "permission {:?} must have at least one rule",
+                self.name
+            ));
+        }
+        if self.rules.iter().any(|rule| rule.is_empty()) {
+            return Err(format!(
+                "permission {:?} rules must be non-empty",
+                self.name
+            ));
+        }
+        Ok(())
+    }
 }
 
 /// Base-host ownership policy for credentialed builtin firewall APIs.

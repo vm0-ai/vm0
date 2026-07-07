@@ -13,6 +13,7 @@ MAX_BUILTIN_FIREWALL_CATALOG_BYTES = 16 * 1024 * 1024
 _READ_CHUNK_BYTES = 1024 * 1024
 _CACHE_SCHEMA_VERSION = 1
 _SHA256_HEX_LENGTH = 64
+_RESERVED_PERMISSION_NAMES = frozenset(("all", "__unknown__"))
 CatalogFileKey = tuple[str, int, int, int, int]
 CatalogIdentity = tuple[str, str, str, CatalogFileKey]
 
@@ -224,6 +225,48 @@ def _validate_firewall_map(firewalls: dict[str, dict]) -> None:
                 raise BuiltinFirewallCatalogCacheError(
                     f'catalog cache firewall "{name}" api entries must be objects'
                 )
+            _validate_api_permissions(name, api)
+
+
+def _validate_api_permissions(firewall_name: str, api: dict) -> None:
+    permissions = api.get("permissions")
+    if permissions is None:
+        return
+    if not isinstance(permissions, list):
+        raise BuiltinFirewallCatalogCacheError(
+            f'catalog cache firewall "{firewall_name}" api permissions must be a list'
+        )
+
+    seen_names: set[str] = set()
+    for permission in permissions:
+        if not isinstance(permission, dict):
+            raise BuiltinFirewallCatalogCacheError(
+                f'catalog cache firewall "{firewall_name}" permissions must be objects'
+            )
+        raw_name = permission.get("name")
+        if not isinstance(raw_name, str) or raw_name == "":
+            raise BuiltinFirewallCatalogCacheError(
+                f'catalog cache firewall "{firewall_name}" permission names must be non-empty'
+            )
+        if raw_name in _RESERVED_PERMISSION_NAMES:
+            raise BuiltinFirewallCatalogCacheError(
+                f'catalog cache firewall "{firewall_name}" permission name is reserved'
+            )
+        if raw_name in seen_names:
+            raise BuiltinFirewallCatalogCacheError(
+                f'catalog cache firewall "{firewall_name}" permission names must be unique per api'
+            )
+        seen_names.add(raw_name)
+
+        rules = permission.get("rules")
+        if not isinstance(rules, list) or not rules:
+            raise BuiltinFirewallCatalogCacheError(
+                f'catalog cache firewall "{firewall_name}" permission rules must be non-empty'
+            )
+        if any(not isinstance(rule, str) or rule == "" for rule in rules):
+            raise BuiltinFirewallCatalogCacheError(
+                f'catalog cache firewall "{firewall_name}" permission rules must be strings'
+            )
 
 
 def _warn(message: str) -> None:
