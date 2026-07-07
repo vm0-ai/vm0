@@ -594,6 +594,27 @@ describe("firewall metadata generator", () => {
     FULL_FIREWALL_SOURCE_TEST_TIMEOUT_MS,
   );
 
+  it(
+    "keeps PlayStation universal search aligned with psn-api",
+    async () => {
+      const source = await loadGeneratedConnectorFirewallSource("playstation", {
+        connectorsDir: CONNECTORS_DIR,
+      });
+      const searchPermission = source.firewall.apis
+        .flatMap((api) => {
+          return api.permissions ?? [];
+        })
+        .find((permission) => {
+          return permission.name === "playstation-search-read";
+        });
+
+      expect(searchPermission?.rules).toStrictEqual([
+        "POST /api/search/v1/universalSearch",
+      ]);
+    },
+    FULL_FIREWALL_SOURCE_TEST_TIMEOUT_MS,
+  );
+
   it("keeps generated server metadata host-owner only", () => {
     const source = fs.readFileSync(
       path.resolve(

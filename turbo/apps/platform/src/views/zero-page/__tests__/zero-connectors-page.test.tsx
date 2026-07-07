@@ -2410,6 +2410,65 @@ describe("connectors page", () => {
     });
   });
 
+  it("uses auth method help text for PlayStation external-code connection", async () => {
+    mockConnectors([]);
+    mockPublicConnectorStatus([
+      publicStatusItem({
+        connectorRef: "playstation",
+        label: "PlayStation",
+        authMethods: [
+          {
+            id: "api",
+            label: "PlayStation sign-in",
+            description:
+              "First make sure you are signed in to PlayStation at [https://www.playstation.com/](https://www.playstation.com/).\nClick the button below, then copy the `npsso` value.",
+            grantKind: "external-code",
+            manualFields: [],
+            startOptions: [],
+          },
+        ],
+      }),
+    ]);
+    context.mocks.browser.open(createMockAuthWindow());
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    await waitFor(() => {
+      expect(
+        screen.getByPlaceholderText("Find connectors"),
+      ).toBeInTheDocument();
+    });
+
+    await fill(screen.getByPlaceholderText("Find connectors"), "playstation");
+    click(await screen.findByLabelText("Connect PlayStation"));
+
+    const connectDialog = await screen.findByRole("dialog", {
+      name: "PlayStation",
+    });
+    click(buttonByText("Start PlayStation sign-in", connectDialog));
+
+    await waitFor(() => {
+      expect(
+        queryAllByRoleFast("link", connectDialog).find((link) => {
+          return link.textContent === "https://www.playstation.com/";
+        }),
+      ).toBeInTheDocument();
+    });
+    expect(
+      queryAllByRoleFast("link", connectDialog).find((link) => {
+        return (
+          link.textContent === "https://ca.account.sony.com/api/v1/ssocookie"
+        );
+      }),
+    ).toBeUndefined();
+    expect(
+      buttonByText("Open PlayStation sign-in", connectDialog),
+    ).toBeInTheDocument();
+    expect(
+      within(connectDialog).getByPlaceholderText("Code"),
+    ).toBeInTheDocument();
+  });
+
   it("manages a custom connector from creation through deletion", async () => {
     mockCustomConnectorStory();
 

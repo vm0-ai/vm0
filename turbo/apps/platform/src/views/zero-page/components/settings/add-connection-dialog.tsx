@@ -770,10 +770,12 @@ function ExternalCodePendingContent({
   return (
     <form className="flex flex-col gap-3" onSubmit={onComplete}>
       {method.description && <ConnectorHelpText text={method.description} />}
-      <p className="text-sm text-muted-foreground">
-        Open {connectorLabel} sign-in, then paste the authorization code
-        displayed by {connectorLabel}.
-      </p>
+      {!method.description && (
+        <p className="text-sm text-muted-foreground">
+          Open {connectorLabel} sign-in, then paste the code displayed by{" "}
+          {connectorLabel}.
+        </p>
+      )}
       <div className="flex items-center gap-2">
         <Button
           type="button"
@@ -789,12 +791,16 @@ function ExternalCodePendingContent({
           className="p-2 hover:bg-accent"
         />
       </div>
+      <label className="sr-only" htmlFor="connector-external-code-input">
+        Code
+      </label>
       <Input
+        id="connector-external-code-input"
         value={current.code}
         onChange={(event) => {
           onCodeChange(event.target.value);
         }}
-        placeholder="Authorization code"
+        placeholder="Code"
         autoComplete="one-time-code"
         data-testid="connector-external-code-input"
       />

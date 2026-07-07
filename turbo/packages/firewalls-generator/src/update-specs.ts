@@ -7,7 +7,7 @@
  *   tsx src/update-specs.ts axiom gmail xero  # update multiple
  */
 
-import { execSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
@@ -38,6 +38,10 @@ import {
 } from "./stripe-sources";
 import { PERMISSIONS_DOC_URL as SENTRY_PERMISSIONS_DOC_URL } from "./sentry";
 import { STEAM_WEB_API_DOC_URLS } from "./steam";
+import {
+  PLAYSTATION_NPM_LATEST_URL,
+  PLAYSTATION_NPM_PACKAGE_NAME,
+} from "./playstation";
 
 type SpecEntries = Map<string, string>; // key → content
 
@@ -299,6 +303,127 @@ const cloudflareUpdater: Updater = {
   },
 };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function packageSourceFiles(dir: string): string[] {
+  const files: string[] = [];
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const entryPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...packageSourceFiles(entryPath));
+      continue;
+    }
+    files.push(entryPath);
+  }
+  return files;
+}
+
+function isPlaystationProductionSourceFile(relativePath: string): boolean {
+  return (
+    relativePath.startsWith("src/") &&
+    relativePath.endsWith(".ts") &&
+    relativePath !== "src/__playground.ts" &&
+    relativePath !== "src/index.ts" &&
+    !relativePath.endsWith(".test.ts") &&
+    !relativePath.startsWith("src/authenticate/") &&
+    !relativePath.startsWith("src/models/") &&
+    !relativePath.startsWith("src/test/") &&
+    !relativePath.startsWith("src/utils/")
+  );
+}
+
+function parseNpmPackageMetadata(metadataText: string): {
+  readonly version: string;
+  readonly tarballUrl: string;
+} {
+  const metadata = JSON.parse(metadataText) as unknown;
+  if (!isRecord(metadata)) {
+    throw new Error("psn-api latest metadata is not a JSON object");
+  }
+  if (typeof metadata.version !== "string") {
+    throw new Error("psn-api latest metadata does not contain a version");
+  }
+  const dist = metadata.dist;
+  if (!isRecord(dist) || typeof dist.tarball !== "string") {
+    throw new Error("psn-api latest metadata does not contain a tarball URL");
+  }
+  if (!dist.tarball.startsWith("https://registry.npmjs.org/psn-api/-/")) {
+    throw new Error(
+      `Unexpected psn-api tarball URL in npm metadata: ${dist.tarball}`,
+    );
+  }
+  return { version: metadata.version, tarballUrl: dist.tarball };
+}
+
+const playstationUpdater: Updater = {
+  name: "playstation",
+  fetch: async () => {
+    const metadataRes = await fetchRemote(
+      PLAYSTATION_NPM_LATEST_URL,
+      "playstation: psn-api latest metadata",
+    );
+    const metadataText = await metadataRes.text();
+    const { version, tarballUrl } = parseNpmPackageMetadata(metadataText);
+
+    const tarballRes = await fetchRemote(
+      tarballUrl,
+      `playstation: psn-api ${version} tarball`,
+    );
+    const tmpDir = fs.mkdtempSync("/tmp/psn-api-");
+    try {
+      const tarballPath = path.join(tmpDir, "package.tgz");
+      fs.writeFileSync(
+        tarballPath,
+        Buffer.from(await tarballRes.arrayBuffer()),
+      );
+      execFileSync("tar", ["xzf", tarballPath, "-C", tmpDir], {
+        stdio: ["ignore", "ignore", "inherit"],
+      });
+
+      const packageDir = path.join(tmpDir, "package");
+      const entries = new Map<string, string>();
+      entries.set(PLAYSTATION_NPM_LATEST_URL, metadataText);
+
+      const packageJsonPath = path.join(packageDir, "package.json");
+      entries.set(
+        `npm:${PLAYSTATION_NPM_PACKAGE_NAME}@${version}/package.json`,
+        fs.readFileSync(packageJsonPath, "utf-8"),
+      );
+
+      const sourceFiles = packageSourceFiles(path.join(packageDir, "src"))
+        .map((filePath) => {
+          return {
+            filePath,
+            relativePath: path.relative(packageDir, filePath),
+          };
+        })
+        .filter(({ relativePath }) => {
+          return isPlaystationProductionSourceFile(relativePath);
+        })
+        .sort((a, b) => {
+          return a.relativePath.localeCompare(b.relativePath);
+        });
+
+      if (sourceFiles.length === 0) {
+        throw new Error("psn-api tarball did not contain source files");
+      }
+
+      for (const { filePath, relativePath } of sourceFiles) {
+        entries.set(
+          `npm:${PLAYSTATION_NPM_PACKAGE_NAME}@${version}/${relativePath}`,
+          fs.readFileSync(filePath, "utf-8"),
+        );
+      }
+
+      return entries;
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  },
+};
+
 // ── Updater registry ────────────────────────────────────────────────────
 
 const UPDATERS: Updater[] = [
@@ -348,6 +473,7 @@ const UPDATERS: Updater[] = [
     "https://www.googleapis.com/discovery/v1/apis/youtube/v3/rest",
   ]),
   staticUpdater("notion", ["https://developers.notion.com/openapi.json"]),
+  playstationUpdater,
   staticUpdater("sentry", [
     "https://raw.githubusercontent.com/getsentry/sentry-api-schema/refs/heads/main/openapi-derefed.json",
     SENTRY_PERMISSIONS_DOC_URL,

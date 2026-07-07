@@ -168,6 +168,7 @@ export const FIREWALL_CONNECTOR_TYPES = [
   "pipedream",
   "pipedrive",
   "plain",
+  "playstation",
   "plausible",
   "podchaser",
   "posthog",
