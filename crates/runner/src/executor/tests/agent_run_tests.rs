@@ -37,8 +37,8 @@ use super::super::{
     effective_cli_framework,
 };
 use super::support::{
-    CancelAfterWaitSandbox, RUN_IN_SANDBOX_TEST_TIMEOUT, api_storage, create_overridden_sandbox,
-    minimal_context, sandbox_exec_error, spawn_run_in_sandbox_test,
+    CancelAfterWaitSandbox, RUN_IN_SANDBOX_TEST_TIMEOUT, api_artifact, api_storage,
+    create_overridden_sandbox, minimal_context, sandbox_exec_error, spawn_run_in_sandbox_test,
     spawn_run_in_sandbox_test_with_timeouts, test_executor_config, test_telemetry,
 };
 use crate::active_input::ActiveInputSource;
@@ -700,6 +700,67 @@ async fn run_in_sandbox_records_storage_manifest_guest_download_failure_timing()
         apply_failures, 1,
         "top-level storage manifest apply failure should still be recorded once, got: {ops:?}"
     );
+}
+
+#[tokio::test]
+async fn run_in_sandbox_rejects_non_empty_artifact_without_archive_url() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let sandbox = sandbox_mock::MockSandbox::new("test");
+    let mut ctx = minimal_context();
+    let mut artifact = api_artifact(
+        "memory",
+        "/home/user/.claude/projects/project",
+        "storage-id-1",
+        "version-2",
+        "https://storage.example/artifact.tar.gz",
+    );
+    artifact.archive_url = None;
+    ctx.storage_manifest = Some(StorageManifest {
+        storages: vec![],
+        artifacts: vec![artifact],
+    });
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let result = run_in_sandbox(
+        &sandbox,
+        &ctx,
+        &config,
+        RunStart {
+            restore_guest_state: false,
+            reuse_result: SandboxReuseResult::PoolMiss,
+            prev_storage: None,
+        },
+        &mut telemetry,
+        RunControls::new(tokio_util::sync::CancellationToken::new(), None),
+    )
+    .await;
+
+    let error = match result {
+        Ok(_) => panic!("invalid storage manifest should fail"),
+        Err(error) => error,
+    };
+    assert!(
+        error
+            .to_string()
+            .contains("storage manifest artifact memory version version-2 is missing archiveUrl"),
+        "got: {error}"
+    );
+    let exec_calls = sandbox.exec_calls();
+    assert!(
+        exec_calls
+            .iter()
+            .all(|call| call.cmd != guest_download_stdin_command()),
+        "invalid storage manifest should fail before guest-download; calls: {exec_calls:?}"
+    );
+    let ops = telemetry.pending_ops_snapshot();
+    assert_failed_action_error_once(
+        &ops,
+        "runner_storage_manifest_apply",
+        "internal error: storage manifest artifact memory version version-2 is missing archiveUrl",
+    );
+    assert_no_action(&ops, "runner_storage_manifest_has_work");
+    assert_no_action(&ops, "runner_storage_manifest_guest_download");
 }
 
 #[tokio::test]

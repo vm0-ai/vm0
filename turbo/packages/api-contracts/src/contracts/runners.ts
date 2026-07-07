@@ -200,15 +200,27 @@ export const artifactMissingRootPolicySchema = z.enum([
   "preserveParentVersion",
 ]);
 
-export const artifactEntrySchema = z.object({
-  mountPath: z.string(),
-  vasStorageName: z.string(),
-  vasStorageId: z.string(),
-  vasVersionId: z.string(),
-  archiveUrl: z.string(),
-  empty: z.boolean().optional(),
-  missingRootPolicy: artifactMissingRootPolicySchema.optional(),
-});
+export const artifactEntrySchema = z
+  .object({
+    mountPath: z.string(),
+    vasStorageName: z.string(),
+    vasStorageId: z.string(),
+    vasVersionId: z.string(),
+    archiveUrl: z.string().optional(),
+    empty: z.boolean().optional(),
+    missingRootPolicy: artifactMissingRootPolicySchema.optional(),
+  })
+  .superRefine((artifact, ctx) => {
+    if (artifact.empty === true || artifact.archiveUrl !== undefined) {
+      return;
+    }
+
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["archiveUrl"],
+      message: "archiveUrl is required unless empty is true",
+    });
+  });
 
 /**
  * Storage manifest with presigned URLs for download
