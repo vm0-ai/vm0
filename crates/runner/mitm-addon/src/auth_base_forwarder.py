@@ -308,6 +308,11 @@ class _ValidatedTLSConnection(http_client.HTTPConnection):
             _untrack_active_closeable(closeable)
         self._tracked_closeables.clear()
 
+    def _close_and_untrack_after_connect_failure(self, closeable: _Closeable) -> None:
+        with suppress(Exception):
+            closeable.close()
+        self._untrack_closeables()
+
     def connect(self) -> None:
         raw_sock = _connect_to_validated_addresses(self._validated_addresses)(
             (self.host, self.port),
@@ -319,8 +324,7 @@ class _ValidatedTLSConnection(http_client.HTTPConnection):
             raw_sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         except OSError as exc:
             if exc.errno != errno.ENOPROTOOPT:
-                raw_sock.close()
-                self._untrack_closeables()
+                self._close_and_untrack_after_connect_failure(raw_sock)
                 raise
         try:
             wrapped_sock = self._context.wrap_socket(raw_sock, server_hostname=self.host)
@@ -328,8 +332,7 @@ class _ValidatedTLSConnection(http_client.HTTPConnection):
                 self._track_closeable(wrapped_sock)
             self.sock = wrapped_sock
         except Exception:
-            raw_sock.close()
-            self._untrack_closeables()
+            self._close_and_untrack_after_connect_failure(raw_sock)
             raise
 
     def close(self) -> None:

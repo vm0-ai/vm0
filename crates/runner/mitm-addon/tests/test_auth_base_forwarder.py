@@ -389,6 +389,30 @@ class TestAuthBaseForwarderTransportSecurity:
         context.wrap_socket.assert_called_once_with(raw_sock, server_hostname="hooks.example.com")
         assert conn.sock is wrapped_sock
 
+    def test_validated_connection_untracks_raw_socket_when_setsockopt_cleanup_close_fails(self):
+        raw_sock = MagicMock()
+        raw_sock.setsockopt.side_effect = OSError(errno.EINVAL, "setsockopt failed")
+        raw_sock.close.side_effect = OSError("close failed")
+        context = MagicMock()
+        conn = forwarder._make_validated_https_connection(
+            "hooks.example.com",
+            port=None,
+            timeout=30,
+            validated_addresses=(forwarder._ValidatedAddress("93.184.216.34", 443),),
+        )
+        vars(conn)["_context"] = context
+
+        with (
+            patch.object(forwarder.socket, "create_connection", return_value=raw_sock),
+            pytest.raises(OSError, match="setsockopt failed"),
+        ):
+            conn.connect()
+
+        raw_sock.close.assert_called_once_with()
+        context.wrap_socket.assert_not_called()
+        with forwarder._forward_request_active_closeables_lock:
+            assert raw_sock not in forwarder._forward_request_active_closeables
+
     def test_validated_connection_closes_raw_socket_when_tls_wrap_fails(self):
         raw_sock = MagicMock()
         context = MagicMock()
@@ -408,6 +432,29 @@ class TestAuthBaseForwarderTransportSecurity:
             conn.connect()
 
         raw_sock.close.assert_called_once_with()
+
+    def test_validated_connection_untracks_raw_socket_when_tls_cleanup_close_fails(self):
+        raw_sock = MagicMock()
+        raw_sock.close.side_effect = OSError("close failed")
+        context = MagicMock()
+        context.wrap_socket.side_effect = OSError("tls failed")
+        conn = forwarder._make_validated_https_connection(
+            "hooks.example.com",
+            port=None,
+            timeout=30,
+            validated_addresses=(forwarder._ValidatedAddress("93.184.216.34", 443),),
+        )
+        vars(conn)["_context"] = context
+
+        with (
+            patch.object(forwarder.socket, "create_connection", return_value=raw_sock),
+            pytest.raises(OSError, match="tls failed"),
+        ):
+            conn.connect()
+
+        raw_sock.close.assert_called_once_with()
+        with forwarder._forward_request_active_closeables_lock:
+            assert raw_sock not in forwarder._forward_request_active_closeables
 
 
 class TestAuthBaseForwarderRequestBehavior:
