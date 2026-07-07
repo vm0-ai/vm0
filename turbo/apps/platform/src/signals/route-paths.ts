@@ -17,6 +17,7 @@ export const ROUTES = {
   chat: "/chats/:threadId",
   prompt: "/prompt",
   works: "/works",
+  artifacts: "/artifacts",
   ideas: "/ideas",
   connectors: "/connectors",
   customConnectorProposal: "/connectors/custom/proposal",

@@ -30,6 +30,7 @@ import { setupActivityDetailPage$ } from "./activity-page/activity-detail-page-s
 import { setupActivityInspectPage$ } from "./activity-page/activity-inspect-page-setup.ts";
 import { setupAgentsPage$ } from "./agents-page/agents-page-setup.ts";
 import { setupAgentDetailPage$ } from "./agents-page/agent-detail-page-setup.ts";
+import { setupArtifactsPage$ } from "./artifacts-page/artifacts-page-setup.ts";
 import { setupWorkflowsPage$ } from "./workflows-page/workflows-page-setup.ts";
 import { setupWorkflowDetailPage$ } from "./workflows-page/workflow-detail-page-setup.ts";
 import { setupMemoryPage$ } from "./memory-page/memory-page-setup.ts";
@@ -215,6 +216,10 @@ const ROUTE_CONFIG = [
   {
     path: ROUTES.agents,
     setup: setupAuthSidebarPageWrapper(setupAgentsPage$),
+  },
+  {
+    path: ROUTES.artifacts,
+    setup: setupAuthSidebarPageWrapper(setupArtifactsPage$),
   },
   {
     path: ROUTES.memory,
