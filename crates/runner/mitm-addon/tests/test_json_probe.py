@@ -56,6 +56,14 @@ def test_probe_reports_incomplete_after_target_member_boundary():
     assert result.field_seen
 
 
+def test_probe_reports_incomplete_before_target_member_boundary():
+    result = probe_top_level_string_field(b'{"padding":')
+
+    assert result.status == "incomplete"
+    assert result.value is None
+    assert not result.field_seen
+
+
 def test_probe_reports_invalid_after_target_member_boundary():
     result = probe_top_level_string_field(b'{"type":?}')
 
