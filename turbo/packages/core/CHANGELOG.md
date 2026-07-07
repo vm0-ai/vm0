@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.411.0](https://github.com/vm0-ai/vm0/compare/core-v8.410.0...core-v8.411.0) (2026-07-07)
+
+
+### Features
+
+* make steam connector generally available ([#20491](https://github.com/vm0-ai/vm0/issues/20491)) ([2ba3860](https://github.com/vm0-ai/vm0/commit/2ba386084b4134e5b0044dfb8969990b189478ab))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.160.1
+    * @vm0/connectors bumped to 1.146.0
+
 ## [8.410.0](https://github.com/vm0-ai/vm0/compare/core-v8.409.0...core-v8.410.0) (2026-07-07)
 
 
