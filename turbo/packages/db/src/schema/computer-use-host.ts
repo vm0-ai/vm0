@@ -10,35 +10,15 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-
-type JsonObject = Record<string, unknown>;
-
-export interface ComputerUsePermissions {
-  readonly accessibility: boolean;
-  readonly screenRecording: boolean;
-  readonly automation?: {
-    readonly chrome: {
-      readonly status:
-        | "unknown"
-        | "granted"
-        | "denied"
-        | "not_installed"
-        | "not_running";
-      readonly updatedAt: string | null;
-      readonly reason: string | null;
-    };
-    readonly safari: {
-      readonly status:
-        | "unknown"
-        | "granted"
-        | "denied"
-        | "not_installed"
-        | "not_running";
-      readonly updatedAt: string | null;
-      readonly reason: string | null;
-    };
-  };
-}
+import type {
+  ComputerUseCommandAuditError,
+  ComputerUseCommandAuditRedactedResult,
+  ComputerUseCommandPayload,
+  ComputerUseCommandResult,
+  ComputerUsePermissions,
+  ComputerUseSupportedCapabilities,
+} from "@vm0/db/jsonb-contracts/computer-use-host";
+export type { ComputerUsePermissions } from "@vm0/db/jsonb-contracts/computer-use-host";
 
 export const computerUseHosts = pgTable(
   "computer_use_hosts",
@@ -52,7 +32,7 @@ export const computerUseHosts = pgTable(
     appVersion: text("app_version").notNull(),
     osVersion: text("os_version").notNull(),
     supportedCapabilities: jsonb("supported_capabilities")
-      .$type<string[]>()
+      .$type<ComputerUseSupportedCapabilities>()
       .default([])
       .notNull(),
     permissions: jsonb("permissions")
@@ -89,8 +69,11 @@ export const computerUseCommands = pgTable(
     }),
     kind: text("kind").notNull(),
     status: text("status").default("queued").notNull(),
-    payload: jsonb("payload").$type<JsonObject>().default({}).notNull(),
-    result: jsonb("result").$type<JsonObject>(),
+    payload: jsonb("payload")
+      .$type<ComputerUseCommandPayload>()
+      .default({})
+      .notNull(),
+    result: jsonb("result").$type<ComputerUseCommandResult>(),
     error: text("error"),
     timeoutMs: integer("timeout_ms"),
     claimedAt: timestamp("claimed_at"),
@@ -129,8 +112,9 @@ export const computerUseCommandAuditEvents = pgTable(
     app: text("app"),
     event: text("event").notNull(),
     approvalOutcome: text("approval_outcome"),
-    redactedResult: jsonb("redacted_result").$type<JsonObject>(),
-    error: jsonb("error").$type<JsonObject>(),
+    redactedResult:
+      jsonb("redacted_result").$type<ComputerUseCommandAuditRedactedResult>(),
+    error: jsonb("error").$type<ComputerUseCommandAuditError>(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => {

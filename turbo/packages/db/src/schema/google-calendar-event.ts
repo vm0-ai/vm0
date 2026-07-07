@@ -11,6 +11,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { connectors } from "./connector";
 import { zeroWorkflowTriggers } from "./zero-workflow";
+import type { GoogleCalendarEventSnapshot } from "@vm0/db/jsonb-contracts/google-calendar-event";
 
 export const googleCalendarWatchStates = pgTable(
   "google_calendar_watch_states",
@@ -76,7 +77,7 @@ export const googleCalendarEventSnapshots = pgTable(
     endAt: timestamp("end_at"),
     eventCreatedAt: timestamp("event_created_at"),
     eventUpdatedAt: timestamp("event_updated_at"),
-    snapshot: jsonb("snapshot").$type<Record<string, unknown>>(),
+    snapshot: jsonb("snapshot").$type<GoogleCalendarEventSnapshot>(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

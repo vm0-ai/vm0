@@ -10,6 +10,7 @@ import {
   jsonb,
 } from "drizzle-orm/pg-core";
 import { storages } from "./storage";
+import type { SkillFrontmatter } from "@vm0/db/jsonb-contracts/skill";
 
 /**
  * Skills table
@@ -29,7 +30,7 @@ export const skills = pgTable(
     }),
     versionHash: varchar("version_hash", { length: 64 }),
     commitSha: varchar("commit_sha", { length: 40 }),
-    frontmatter: jsonb("frontmatter"),
+    frontmatter: jsonb("frontmatter").$type<SkillFrontmatter>(),
     s3Key: text("s3_key"),
     size: bigint("size", { mode: "number" }).notNull().default(0),
     fileCount: integer("file_count").notNull().default(0),

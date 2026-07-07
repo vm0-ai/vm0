@@ -1,5 +1,6 @@
 import { pgTable, uuid, jsonb, timestamp, index } from "drizzle-orm/pg-core";
 import { agentRuns } from "./agent-run";
+import type { SandboxTelemetryData } from "@vm0/db/jsonb-contracts/sandbox-telemetry";
 
 /**
  * Sandbox Telemetry table
@@ -17,7 +18,7 @@ export const sandboxTelemetry = pgTable(
         { onDelete: "cascade" },
       )
       .notNull(),
-    data: jsonb("data").notNull(), // { systemLog: string, metrics: array }
+    data: jsonb("data").$type<SandboxTelemetryData>().notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => {

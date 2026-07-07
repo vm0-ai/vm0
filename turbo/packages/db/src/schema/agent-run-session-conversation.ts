@@ -11,7 +11,13 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { agentComposes, agentComposeVersions } from "./agent-compose";
-import type { ContextArtifact } from "../types";
+import type {
+  AgentRunAdditionalVolumes,
+  AgentRunResult,
+  AgentRunSecretNames,
+  AgentRunVars,
+  AgentSessionArtifacts,
+} from "@vm0/db/jsonb-contracts/agent-run-session-conversation";
 
 /**
  * Agent Runs table
@@ -44,24 +50,18 @@ export const agentRuns = pgTable(
     status: varchar("status", { length: 20 }).notNull(),
     prompt: text("prompt").notNull(),
     appendSystemPrompt: text("append_system_prompt"),
-    vars: jsonb("vars"),
+    vars: jsonb("vars").$type<AgentRunVars>(),
     // Secret names for validation (values never stored - must be provided at runtime)
-    secretNames: jsonb("secret_names").$type<string[]>(),
+    secretNames: jsonb("secret_names").$type<AgentRunSecretNames>(),
     // Additional volumes passed at run time (name, version, mountPath for checkpoint restore)
-    additionalVolumes: jsonb("additional_volumes").$type<
-      Array<{
-        name: string;
-        version?: string;
-        mountPath: string;
-        system?: boolean;
-      }>
-    >(),
+    additionalVolumes:
+      jsonb("additional_volumes").$type<AgentRunAdditionalVolumes>(),
     sandboxId: varchar("sandbox_id", { length: 255 }),
     // One of: "reused" | "featureDisabled" | "noSessionId" | "poolMiss" |
     // "profileMismatch" | "deviceLimitMismatch" | "unparkFailed". Null means
     // unknown (old runner or historical row).
     sandboxReuseResult: varchar("sandbox_reuse_result", { length: 50 }),
-    result: jsonb("result"),
+    result: jsonb("result").$type<AgentRunResult>(),
     error: text("error"),
     lastEventSequence: integer("last_event_sequence"),
     orgId: text("org_id").notNull(),
@@ -132,7 +132,7 @@ export const agentSessions = pgTable(
       },
     ),
     artifacts: jsonb("artifacts")
-      .$type<ContextArtifact[]>()
+      .$type<AgentSessionArtifacts>()
       .notNull()
       .default([]),
     createdAt: timestamp("created_at").defaultNow().notNull(),

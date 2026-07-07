@@ -8,6 +8,12 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 import { agentRuns } from "./agent-run";
+import type {
+  BuiltInGenerationError,
+  BuiltInGenerationRequest,
+  BuiltInGenerationResult,
+} from "@vm0/db/jsonb-contracts/built-in-generation-job";
+export type { BuiltInGenerationError } from "@vm0/db/jsonb-contracts/built-in-generation-job";
 
 export const BUILT_IN_GENERATION_TYPES = [
   "image",
@@ -25,11 +31,6 @@ export const BUILT_IN_GENERATION_STATUSES = [
 ] as const;
 export type BuiltInGenerationStatus =
   (typeof BUILT_IN_GENERATION_STATUSES)[number];
-
-export interface BuiltInGenerationError {
-  readonly message: string;
-  readonly code: string;
-}
 
 export const builtInGenerationJobs = pgTable(
   "built_in_generation_jobs",
@@ -50,8 +51,8 @@ export const builtInGenerationJobs = pgTable(
       },
       { onDelete: "set null" },
     ),
-    request: jsonb("request").$type<Record<string, unknown>>().notNull(),
-    result: jsonb("result").$type<unknown>(),
+    request: jsonb("request").$type<BuiltInGenerationRequest>().notNull(),
+    result: jsonb("result").$type<BuiltInGenerationResult>(),
     error: jsonb("error").$type<BuiltInGenerationError>(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
