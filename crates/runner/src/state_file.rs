@@ -1,3 +1,24 @@
+//! Bounded, hardened I/O helpers for small runner state files.
+//!
+//! State files handled here are local runner coordination files such as the
+//! proxy registry, mitm-addon flush state, live runner instance records,
+//! workspace cache metadata reads, and diagnostic config reads. The helper
+//! centralizes size-bounded reads and filesystem checks for paths that come
+//! from local process or runner state.
+//!
+//! On Unix, reads open files with `O_NOFOLLOW`, `O_CLOEXEC`, and
+//! `O_NONBLOCK`, then validate the opened descriptor with `fstat` before
+//! reading. The post-open check rejects non-regular files and can optionally
+//! require ownership by the current effective uid through [`OwnerCheck`].
+//! Non-Unix builds use a weaker fallback that keeps the byte limit but does
+//! not provide the Unix-specific open flags, file-type validation, or owner
+//! validation.
+//!
+//! Unix writes create a private same-directory temporary file, write and flush
+//! its contents, then rename it over the target. This avoids exposing partial
+//! contents through the target path, but it does not fsync the file or parent
+//! directory and should not be treated as a crash-durability guarantee.
+
 use std::path::Path;
 
 use crate::error::{RunnerError, RunnerResult};
@@ -8,12 +29,28 @@ pub(crate) const WORKSPACE_METADATA_MAX_BYTES: u64 = 1024 * 1024;
 
 const PRIVATE_FILE_MODE: u32 = 0o600;
 
+/// Ownership policy for reading a runner state file.
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum OwnerCheck {
+    /// Skip owner validation.
+    ///
+    /// Use this for files that may legitimately be produced by another
+    /// runner-adjacent process or uid. On Unix, this still keeps the helper's
+    /// bounded read, nofollow open, nonblocking open, and regular-file checks;
+    /// it only skips the current-euid ownership check.
     None,
+    /// Require the opened file to be owned by the runner process effective uid.
+    ///
+    /// Use this for runner-owned files discovered from local process or state
+    /// paths, where accepting a file owned by another uid would be suspicious.
     CurrentEuid,
 }
 
+/// Read an optional UTF-8 state file with a caller-supplied byte limit.
+///
+/// Missing files return `Ok(None)`. Existing files must be valid UTF-8 after
+/// the configured byte limit and any platform-specific state-file validation
+/// are applied.
 pub(crate) async fn read_to_string(
     path: &Path,
     max_bytes: u64,
@@ -27,6 +64,10 @@ pub(crate) async fn read_to_string(
     })
 }
 
+/// Read a required state file as bytes with a caller-supplied byte limit.
+///
+/// Missing files are returned as `NotFound` errors. Existing files use the
+/// same bounded, platform-specific read path as [`read_to_string`].
 pub(crate) async fn read_to_bytes_required(
     path: &Path,
     max_bytes: u64,
@@ -165,6 +206,14 @@ fn validate_open_state_file<Fd: std::os::fd::AsRawFd>(
     Ok(())
 }
 
+/// Write a state file, using target-path atomic replacement on Unix.
+///
+/// On Unix, this writes to a hidden same-directory temporary file created with
+/// private `0600` permissions, flushes the file, renames it over the target,
+/// and removes the temporary file on errors as best-effort cleanup. This avoids
+/// exposing partial contents through the target path. The file and parent
+/// directory are not fsynced, so this does not provide a crash-durability
+/// guarantee. Non-Unix builds use `tokio::fs::write` as a weaker fallback.
 pub(crate) async fn write_private_atomic(path: &Path, content: &[u8]) -> RunnerResult<()> {
     #[cfg(unix)]
     {

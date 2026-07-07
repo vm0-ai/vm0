@@ -70,9 +70,10 @@ async fn read_registry(path: &std::path::Path) -> RunnerResult<ProxyRegistry> {
         .map_err(|e| RunnerError::Internal(format!("parse registry: {e}")))
 }
 
-/// Write the proxy registry JSON file atomically (write tmp + rename).
+/// Write the proxy registry JSON file with target-path atomic replacement on Unix.
 ///
-/// This ensures the Python mitm-addon never reads a partially-written file.
+/// On supported Unix runner hosts, this ensures the Python mitm-addon never
+/// reads a partially-written file.
 async fn write_registry(path: &std::path::Path, value: &ProxyRegistry) -> RunnerResult<()> {
     let content = serde_json::to_string(value)
         .map_err(|e| RunnerError::Internal(format!("serialize registry: {e}")))?;

@@ -212,6 +212,7 @@ fn generated_storage_manifest_ignores_legacy_artifact_manifest_url() {
         Some("AGENTS.md")
     );
     assert_eq!(manifest.artifacts[0].vas_storage_id, "storage-id-1");
+    assert_eq!(manifest.artifacts[0].empty, None);
 }
 
 #[test]
@@ -231,6 +232,7 @@ fn generated_storage_manifest_serializes_claim_shape() {
             vas_storage_id: "storage-id-1".to_string(),
             vas_version_id: "version-2".to_string(),
             archive_url: "https://storage.example/artifact.tar.gz".to_string(),
+            empty: None,
             missing_root_policy: None,
         }],
     };
@@ -256,6 +258,28 @@ fn generated_storage_manifest_serializes_claim_shape() {
             }],
         })
     );
+}
+
+#[test]
+fn generated_storage_manifest_accepts_explicit_empty_artifacts() {
+    let manifest: runner_storage::StorageManifest = serde_json::from_value(json!({
+        "storages": [],
+        "artifacts": [{
+            "mountPath": "/home/user/.claude/projects/project",
+            "vasStorageName": "memory",
+            "vasStorageId": "storage-id-1",
+            "vasVersionId": "version-2",
+            "archiveUrl": "https://storage.example/artifact.tar.gz",
+            "empty": true,
+        }],
+    }))
+    .unwrap();
+
+    assert_eq!(manifest.artifacts[0].empty, Some(true));
+
+    let value = serde_json::to_value(manifest).unwrap();
+    assert_eq!(value["artifacts"][0]["empty"], true);
+    assert!(value["artifacts"][0]["archiveUrl"].is_string());
 }
 
 #[test]
