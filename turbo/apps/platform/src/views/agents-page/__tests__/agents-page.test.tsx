@@ -59,7 +59,7 @@ async function expectVisibleTooltip(text: string): Promise<void> {
   expect(visibleMatch).toBeDefined();
 }
 
-describe("agents page", () => {
+describe("agents page (legacy)", () => {
   it("shows the creator of a public agent on hover", async () => {
     const user = userEvent.setup();
     context.mocks.data.team(agents);
@@ -86,7 +86,11 @@ describe("agents page", () => {
       ],
     });
 
-    detachedSetupPage({ context, path: "/agents" });
+    detachedSetupPage({
+      context,
+      path: "/agents",
+      featureSwitches: { [FeatureSwitchKey.AgentsPageRedesign]: false },
+    });
 
     await waitFor(() => {
       expect(agentCard("Research Agent")).toBeInTheDocument();
@@ -126,7 +130,10 @@ describe("agents page", () => {
     detachedSetupPage({
       context,
       path: "/agents",
-      featureSwitches: { [FeatureSwitchKey.AgentUnreadIndicators]: true },
+      featureSwitches: {
+        [FeatureSwitchKey.AgentsPageRedesign]: false,
+        [FeatureSwitchKey.AgentUnreadIndicators]: true,
+      },
     });
 
     await waitFor(() => {
@@ -157,7 +164,10 @@ describe("agents page", () => {
     detachedSetupPage({
       context,
       path: "/agents",
-      featureSwitches: { [FeatureSwitchKey.AgentUnreadIndicators]: false },
+      featureSwitches: {
+        [FeatureSwitchKey.AgentsPageRedesign]: false,
+        [FeatureSwitchKey.AgentUnreadIndicators]: false,
+      },
     });
 
     await waitFor(() => {
@@ -177,7 +187,11 @@ describe("agents page", () => {
     context.mocks.data.team(agents);
     context.mocks.data.orgMembers({ members: [] });
 
-    detachedSetupPage({ context, path: "/agents" });
+    detachedSetupPage({
+      context,
+      path: "/agents",
+      featureSwitches: { [FeatureSwitchKey.AgentsPageRedesign]: false },
+    });
 
     await waitFor(() => {
       expect(agentCard("Research Agent")).toBeInTheDocument();

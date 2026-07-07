@@ -144,6 +144,7 @@ describe("getAllFeatureStates", () => {
     );
     expect(staffOrgStates[FeatureSwitchKey.WebsiteTemplates]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
+    expect(staffOrgStates[FeatureSwitchKey.AgentsPageRedesign]).toBe(true);
 
     const otherOrgStates = getAllFeatureStates({
       orgId: "org_nonexistent",
@@ -171,6 +172,7 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.WebsiteTemplates]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.BytePlusVoiceInputStt]).toBe(true);
+    expect(otherOrgStates[FeatureSwitchKey.AgentsPageRedesign]).toBe(true);
   });
 
   it("should apply overrides to enable disabled features", () => {
