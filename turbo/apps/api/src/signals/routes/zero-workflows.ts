@@ -126,6 +126,19 @@ function requireAgentWritePermission(
   });
 }
 
+function requireVisibleAgentForPrivateWorkflowCreate(
+  agent: { readonly owner: string; readonly visibility: "public" | "private" },
+  member: WorkflowMember,
+) {
+  if (agent.visibility === "public" || agent.owner === member.userId) {
+    return null;
+  }
+
+  return forbidden(
+    "Only the private agent owner can create private workflows on this agent",
+  );
+}
+
 async function publicWorkflowSlugExists(
   db: Db,
   args: {
@@ -309,11 +322,14 @@ const createWorkflowInner$ = command(
       return notFound(`Agent not found: ${body.agentId}`);
     }
 
-    const permissionError = requireAgentWritePermission(
-      agent,
-      member,
-      "create workflows on this agent",
-    );
+    const permissionError =
+      visibility === "public"
+        ? requireAgentWritePermission(
+            agent,
+            member,
+            "create workflows on this agent",
+          )
+        : requireVisibleAgentForPrivateWorkflowCreate(agent, member);
     if (permissionError) {
       return permissionError;
     }
