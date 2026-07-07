@@ -111,6 +111,7 @@ _forward_request_admission_state: (
     tuple[asyncio.AbstractEventLoop, int, asyncio.Semaphore] | None
 ) = None
 _forward_request_accepting = True
+_forward_request_lifecycle_lock = threading.Lock()
 _forward_request_workers: set[threading.Thread] = set()
 _forward_request_workers_lock = threading.Lock()
 _forward_request_pending_futures: set[Future[tuple[int, bytes, http.Headers]]] = set()
@@ -189,8 +190,9 @@ def shutdown_forward_request_executor(*, wait: bool) -> None:
     global _forward_request_admission_state
     global _forward_request_accepting
 
-    _forward_request_accepting = False
-    _forward_request_admission_state = None
+    with _forward_request_lifecycle_lock:
+        _forward_request_accepting = False
+        _forward_request_admission_state = None
     _cancel_pending_forward_request_futures()
     _close_active_forward_request_closeables()
     if wait:
@@ -733,29 +735,31 @@ def _forward_request_sync(
 def _get_forward_request_admission_semaphore() -> asyncio.Semaphore:
     global _forward_request_admission_state
 
-    if not _forward_request_accepting:
-        raise RuntimeError("auth.base forwarding workers are shut down")
-    loop = asyncio.get_running_loop()
-    max_workers = MAX_CONCURRENT_AUTH_BASE_FORWARDS
-    if (
-        _forward_request_admission_state is None
-        or _forward_request_admission_state[0] is not loop
-        or _forward_request_admission_state[1] != max_workers
-    ):
-        _forward_request_admission_state = (
-            loop,
-            max_workers,
-            asyncio.Semaphore(max_workers),
-        )
-    return _forward_request_admission_state[2]
+    with _forward_request_lifecycle_lock:
+        if not _forward_request_accepting:
+            raise RuntimeError("auth.base forwarding workers are shut down")
+        loop = asyncio.get_running_loop()
+        max_workers = MAX_CONCURRENT_AUTH_BASE_FORWARDS
+        if (
+            _forward_request_admission_state is None
+            or _forward_request_admission_state[0] is not loop
+            or _forward_request_admission_state[1] != max_workers
+        ):
+            _forward_request_admission_state = (
+                loop,
+                max_workers,
+                asyncio.Semaphore(max_workers),
+            )
+        return _forward_request_admission_state[2]
 
 
 def _can_submit_forward_request(semaphore: asyncio.Semaphore) -> bool:
-    return (
-        _forward_request_accepting
-        and _forward_request_admission_state is not None
-        and _forward_request_admission_state[2] is semaphore
-    )
+    with _forward_request_lifecycle_lock:
+        return (
+            _forward_request_accepting
+            and _forward_request_admission_state is not None
+            and _forward_request_admission_state[2] is semaphore
+        )
 
 
 def _release_forward_request_resources(
@@ -826,19 +830,22 @@ def _start_forward_request_worker(
         name="auth-base-forward",
         daemon=True,
     )
-    with _forward_request_pending_futures_lock:
-        _forward_request_pending_futures.add(future)
-    with _forward_request_workers_lock:
-        _forward_request_workers.add(worker)
-    try:
-        worker.start()
-    except BaseException:
+    with _forward_request_lifecycle_lock:
+        if not _forward_request_accepting:
+            raise RuntimeError("auth.base forwarding workers are shut down")
         with _forward_request_pending_futures_lock:
-            _forward_request_pending_futures.discard(future)
+            _forward_request_pending_futures.add(future)
         with _forward_request_workers_lock:
-            _forward_request_workers.discard(worker)
-        future.cancel()
-        raise
+            _forward_request_workers.add(worker)
+        try:
+            worker.start()
+        except BaseException:
+            with _forward_request_pending_futures_lock:
+                _forward_request_pending_futures.discard(future)
+            with _forward_request_workers_lock:
+                _forward_request_workers.discard(worker)
+            future.cancel()
+            raise
     return future
 
 

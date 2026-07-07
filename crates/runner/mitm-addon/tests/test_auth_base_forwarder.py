@@ -2,13 +2,9 @@
 
 import asyncio
 import errno
-import os
+import multiprocessing
 import ssl
-import subprocess
-import sys
-import textwrap
 import threading
-from pathlib import Path
 from unittest.mock import MagicMock, call, patch
 
 import pytest
@@ -16,14 +12,37 @@ import pytest
 import auth_base_forwarder as forwarder
 from tests.auth_base_forwarder_helpers import FakeSocket, fake_forwarder_upstream, http_response
 
-_ADDON_ROOT = Path(__file__).resolve().parents[1]
-_SUBPROCESS_TIMEOUT_SECONDS = 5
+_PROCESS_EXIT_TIMEOUT_SECONDS = 2
 
 
 async def _run_ready_tasks() -> None:
     ready = asyncio.Event()
     asyncio.get_running_loop().call_soon(ready.set)
     await ready.wait()
+
+
+def _run_blocked_forward_then_shutdown_wait_false() -> None:
+    async def main():
+        forward_started = threading.Event()
+        never_release = threading.Event()
+
+        def create_connection(_address, _timeout, _source_address):
+            forward_started.set()
+            never_release.wait()
+            return FakeSocket(http_response())
+
+        with fake_forwarder_upstream(create_connection=create_connection):
+            task = asyncio.create_task(
+                forwarder.forward_request("https://example.com", "GET", [], None)
+            )
+            try:
+                if not await asyncio.to_thread(forward_started.wait, 2):
+                    raise RuntimeError("auth.base forward did not start")
+                forwarder.shutdown_forward_request_executor(wait=False)
+            finally:
+                task.cancel()
+
+    asyncio.run(main())
 
 
 class TestAuthBaseForwarderSecurity:
@@ -775,62 +794,21 @@ class TestAuthBaseForwarderResourceCleanup:
 
 class TestForwardRequestAsyncWrapper:
     def test_shutdown_wait_false_does_not_keep_process_alive_with_blocked_forward(self):
-        script = textwrap.dedent(
-            """
-            import asyncio
-            import threading
-
-            import auth_base_forwarder as forwarder
-            from tests.auth_base_forwarder_helpers import (
-                FakeSocket,
-                fake_forwarder_upstream,
-                http_response,
-            )
-
-
-            async def main():
-                forward_started = threading.Event()
-                never_release = threading.Event()
-
-                def create_connection(_address, _timeout, _source_address):
-                    forward_started.set()
-                    never_release.wait()
-                    return FakeSocket(http_response())
-
-                with fake_forwarder_upstream(create_connection=create_connection):
-                    task = asyncio.create_task(
-                        forwarder.forward_request("https://example.com", "GET", [], None)
-                    )
-                    try:
-                        if not await asyncio.to_thread(forward_started.wait, 2):
-                            raise RuntimeError("auth.base forward did not start")
-                        forwarder.shutdown_forward_request_executor(wait=False)
-                    finally:
-                        task.cancel()
-
-
-            asyncio.run(main())
-            """
+        process = multiprocessing.Process(
+            target=_run_blocked_forward_then_shutdown_wait_false,
+            name="auth-base-shutdown-regression",
         )
-        env = os.environ.copy()
-        python_paths = [
-            str(_ADDON_ROOT / "src"),
-            str(_ADDON_ROOT),
-        ]
-        if env.get("PYTHONPATH"):
-            python_paths.append(env["PYTHONPATH"])
-        env["PYTHONPATH"] = os.pathsep.join(python_paths)
+        process.start()
+        try:
+            process.join(timeout=_PROCESS_EXIT_TIMEOUT_SECONDS)
+            assert not process.is_alive()
+            assert process.exitcode == 0
+        finally:
+            if process.is_alive():
+                process.kill()
+                process.join(timeout=_PROCESS_EXIT_TIMEOUT_SECONDS)
 
-        result = subprocess.run(  # noqa: S603
-            [sys.executable, "-c", script],
-            capture_output=True,
-            check=False,
-            env=env,
-            text=True,
-            timeout=_SUBPROCESS_TIMEOUT_SECONDS,
-        )
-
-        assert result.returncode == 0, result.stderr
+        assert process.exitcode == 0
 
     async def test_rejects_body_over_limit_before_forwarding(self):
         with (
