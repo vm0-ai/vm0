@@ -7018,7 +7018,7 @@ server:
             "test storage entries must consume disk blocks"
         );
 
-        set_soft_nofile_limit_for_child(128);
+        let _nofile_limit = set_soft_nofile_limit_for_child(128);
 
         let cap = entry_size * keep_count as u64;
         let freed = gc_storage_cache_with_cap(&home, cap, false).await.unwrap();
@@ -7030,9 +7030,25 @@ server:
         );
     }
 
-    fn set_soft_nofile_limit_for_child(limit: u64) {
-        // This helper runs only in the spawned child process, so lowering the
-        // process-wide fd limit cannot leak into the parent test runner.
+    struct SoftNofileLimitGuard {
+        original: nix::libc::rlimit,
+    }
+
+    impl Drop for SoftNofileLimitGuard {
+        fn drop(&mut self) {
+            unsafe {
+                let rc = nix::libc::setrlimit(nix::libc::RLIMIT_NOFILE, &self.original);
+                if rc != 0 {
+                    eprintln!(
+                        "restore RLIMIT_NOFILE failed: {}",
+                        std::io::Error::last_os_error()
+                    );
+                }
+            }
+        }
+    }
+
+    fn set_soft_nofile_limit_for_child(limit: u64) -> SoftNofileLimitGuard {
         unsafe {
             let mut current = std::mem::MaybeUninit::<nix::libc::rlimit>::uninit();
             let rc = nix::libc::getrlimit(nix::libc::RLIMIT_NOFILE, current.as_mut_ptr());
@@ -7060,6 +7076,7 @@ server:
                 "setrlimit(RLIMIT_NOFILE) failed: {}",
                 std::io::Error::last_os_error()
             );
+            SoftNofileLimitGuard { original: current }
         }
     }
 
