@@ -170,7 +170,11 @@ export const zeroChatThreadModelSelectionRoutes: readonly RouteEntry[] = [
   {
     route: chatThreadModelSelectionContract.update,
     handler: authRoute(
-      { requireOrganization: true, missingOrganizationStatus: 401 },
+      {
+        requireOrganization: true,
+        missingOrganizationStatus: 401,
+        requiredCapability: "chat-thread:write",
+      },
       updateModelSelectionInner$,
     ),
   },

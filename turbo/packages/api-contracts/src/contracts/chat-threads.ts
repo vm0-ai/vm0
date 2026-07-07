@@ -8,7 +8,7 @@ import { triggerSourceSchema } from "./logs";
 import { isSupportedRunModel } from "./model-providers";
 
 const c = initContract();
-const MODEL_FIRST_SELECTION_PROVIDER_ID =
+export const MODEL_FIRST_SELECTION_PROVIDER_ID =
   "00000000-0000-4000-8000-000000000000";
 
 /**
@@ -342,6 +342,7 @@ const chatThreadDetailSchema = z.object({
 const chatThreadMetadataSchema = z.object({
   id: z.string(),
   title: z.string().nullable(),
+  selectedModel: z.string().nullable(),
 });
 
 const chatThreadDraftSchema = z.object({
@@ -747,6 +748,7 @@ export const chatThreadModelSelectionContract = c.router({
       400: apiErrorSchema,
       401: apiErrorSchema,
       402: apiErrorSchema,
+      403: apiErrorSchema,
       404: apiErrorSchema,
     },
     summary: "Update a chat thread model selection",

@@ -196,6 +196,7 @@ export {
   getZeroChatThread,
   renameZeroChatThread,
   searchZeroChat,
+  updateZeroChatThreadModelSelection,
 } from "./domains/zero-chat";
 
 // Domain modules - Zero Relationships

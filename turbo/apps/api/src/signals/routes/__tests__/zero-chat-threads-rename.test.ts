@@ -112,6 +112,7 @@ describe("POST /api/zero/chat-threads/:id/rename", () => {
     expect(metadataResponse.body).toStrictEqual({
       id: fixture.threadId,
       title: "CLI renamed title",
+      selectedModel: null,
     });
   });
 

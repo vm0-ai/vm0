@@ -733,6 +733,7 @@ export {
   chatThreadDetailSchema,
   chatThreadMetadataSchema,
   chatThreadDraftSchema,
+  MODEL_FIRST_SELECTION_PROVIDER_ID,
   modelSelectionRequestSchema,
   generationTemplateRequestSchema,
   presentationGenerationTemplateRequestSchema,
