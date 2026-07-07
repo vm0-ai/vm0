@@ -1294,6 +1294,30 @@ function validateGenerationTemplateFeatureSwitches(params: {
   return undefined;
 }
 
+function validateGenerationTemplatePrompt(
+  body: NormalSendBody,
+): NormalSendFailure | undefined {
+  const generationTemplate = body.generationTemplate;
+  if (!generationTemplate) {
+    return undefined;
+  }
+  const validation = buildGenerationTemplatePrompt(generationTemplate);
+  if (validation.status === "invalid") {
+    return badRequestMessage(validation.message);
+  }
+  return undefined;
+}
+
+function validateGenerationTemplateForNormalSend(params: {
+  readonly body: NormalSendBody;
+  readonly featureSwitches: NormalSendFeatureSwitches;
+}): NormalSendFailure | undefined {
+  return (
+    validateGenerationTemplateFeatureSwitches(params) ??
+    validateGenerationTemplatePrompt(params.body)
+  );
+}
+
 async function updateUserModelPreference(
   db: Db,
   orgId: string,
@@ -2241,21 +2265,12 @@ const prepareNormalSend$ = command(
     if (codexServiceTierError) {
       return codexServiceTierError;
     }
-    const generationTemplateFeatureSwitchError =
-      validateGenerationTemplateFeatureSwitches({
-        body: args.body,
-        featureSwitches,
-      });
-    if (generationTemplateFeatureSwitchError) {
-      return generationTemplateFeatureSwitchError;
-    }
-    if (args.body.generationTemplate) {
-      const validation = buildGenerationTemplatePrompt(
-        args.body.generationTemplate,
-      );
-      if (validation.status === "invalid") {
-        return badRequestMessage(validation.message);
-      }
+    const generationTemplateError = validateGenerationTemplateForNormalSend({
+      body: args.body,
+      featureSwitches,
+    });
+    if (generationTemplateError) {
+      return generationTemplateError;
     }
 
     const initialPin = await resolveInitialThreadModelPin({
