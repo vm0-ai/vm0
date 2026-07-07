@@ -1,7 +1,8 @@
 /**
  * helper gap:
  * - Expired OAuth states, stale/hidden legacy connector rows, stale OAuth scope
- *   rows, duplicate custom connector storage conflicts, sandbox/CLI token
+ *   rows, duplicate custom connector storage conflicts, historical custom
+ *   connector value rows left by older deployments, sandbox/CLI token
  *   capability cases, and simultaneous callback races do not have a stable
  *   public API constructor/assertion path. They are intentionally not rebuilt
  *   with direct database fixtures here.
@@ -1953,6 +1954,94 @@ describe("CONN-03: custom connectors and connector-owned values", () => {
         return candidate.id === connector.id;
       }),
     ).toMatchObject({
+      connected: false,
+      configuredFieldKeys: ["subdomain"],
+      missingRequiredFields: ["api_key"],
+    });
+
+    await connectorsApi.deleteCustomConnector(admin, connector.id);
+  });
+
+  it("does not restore stale values left by an older definition update", async () => {
+    const bdd = createBddApi(context);
+    const admin = bdd.user({ orgRole: "org:admin" });
+    const rand = randomUUID().replace(/-/g, "").slice(0, 8);
+    const prefixTemplate = `https://{{variables.subdomain}}.${rand}.test/v1/`;
+    const apiKeyField = {
+      key: "api_key",
+      label: "API key",
+      kind: "secret" as const,
+      required: true,
+    };
+    const subdomainField = {
+      key: "subdomain",
+      label: "Subdomain",
+      kind: "variable" as const,
+      required: true,
+    };
+
+    const connector = await connectorsApi.createCustomConnector(admin, {
+      displayName: "BDD Stale Removed Values API",
+      prefixTemplates: [prefixTemplate],
+      fields: [apiKeyField, subdomainField],
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{secrets.api_key}}",
+        },
+      ],
+      queryInjections: [],
+    });
+    await connectorsApi.setCustomConnectorValues(admin, connector.id, [
+      { key: "api_key", kind: "secret", value: "stale-field-secret" },
+      { key: "subdomain", kind: "variable", value: "acme" },
+    ]);
+    const olderQueryInjections = [
+      { name: "tenant", valueTemplate: "{{variables.subdomain}}" },
+    ];
+
+    await db().execute(sql`
+      UPDATE org_custom_connectors
+      SET
+        fields = ${JSON.stringify([subdomainField])}::jsonb,
+        header_injections = '[]'::jsonb,
+        query_injections = ${JSON.stringify(olderQueryInjections)}::jsonb,
+        header_name = 'X-VM0-Custom-Connector',
+        header_template = '{{secret}}',
+        updated_at = now()
+      WHERE id = ${connector.id}
+        AND org_id = ${admin.orgId}
+    `);
+
+    const duringOlderDefinition =
+      await connectorsApi.listCustomConnectors(admin);
+    expect(
+      duringOlderDefinition.find((candidate) => {
+        return candidate.id === connector.id;
+      }),
+    ).toMatchObject({
+      connected: true,
+      configuredFieldKeys: ["subdomain"],
+      missingRequiredFields: [],
+    });
+
+    const readdedField = await connectorsApi.updateCustomConnector(
+      admin,
+      connector.id,
+      {
+        displayName: "BDD Stale Removed Values API",
+        prefixTemplates: [prefixTemplate],
+        fields: [apiKeyField, subdomainField],
+        headerInjections: [
+          {
+            name: "Authorization",
+            valueTemplate: "Bearer {{secrets.api_key}}",
+          },
+        ],
+        queryInjections: [],
+      },
+    );
+    expect(readdedField).toMatchObject({
       connected: false,
       configuredFieldKeys: ["subdomain"],
       missingRequiredFields: ["api_key"],

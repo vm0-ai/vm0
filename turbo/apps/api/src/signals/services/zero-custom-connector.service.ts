@@ -1200,6 +1200,11 @@ async function updateCustomConnectorDefinitionRow(
   await deleteUndeclaredConnectorValues(tx, {
     orgId: args.orgId,
     connectorId: args.connectorId,
+    fields: existingConnector.fields,
+  });
+  await deleteUndeclaredConnectorValues(tx, {
+    orgId: args.orgId,
+    connectorId: args.connectorId,
     fields: args.definition.fields,
   });
   if (
