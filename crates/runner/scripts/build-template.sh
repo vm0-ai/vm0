@@ -370,8 +370,12 @@ install_packages() {
 
   # Chromium from Debian Bookworm security (Ubuntu 24.04 snap stub does not work).
   # Installed separately to avoid cross-distro dependency conflicts.
+  # Pin to 149 until Debian #1141488 is fixed in the Bookworm security package.
   sudo chroot "$ROOTFS_DIR" bash -c 'set -e
     export DEBIAN_FRONTEND=noninteractive
+    chromium_version=149.0.7827.196-1~deb12u1
+    chromium_arch="$(dpkg --print-architecture)"
+    chromium_snapshot_base=https://snapshot.debian.org/archive/debian-security/20260626T014759Z/pool/updates/main/c/chromium
     {
       curl -fsSL https://ftp-master.debian.org/keys/archive-key-12.asc
       curl -fsSL https://ftp-master.debian.org/keys/archive-key-12-security.asc
@@ -383,9 +387,9 @@ deb [signed-by=/usr/share/keyrings/debian-bookworm.gpg] http://security.debian.o
 EOF
     apt-get update
     apt-get install -y -t bookworm \
-      chromium/bookworm-security \
-      chromium-common/bookworm-security \
-      chromium-sandbox/bookworm-security
+      "${chromium_snapshot_base}/chromium_${chromium_version}_${chromium_arch}.deb" \
+      "${chromium_snapshot_base}/chromium-common_${chromium_version}_${chromium_arch}.deb" \
+      "${chromium_snapshot_base}/chromium-sandbox_${chromium_version}_${chromium_arch}.deb"
     rm -f /etc/apt/sources.list.d/debian-bookworm.list \
          /usr/share/keyrings/debian-bookworm.gpg
     rm -rf /var/lib/apt/lists/* /var/cache/apt/*
