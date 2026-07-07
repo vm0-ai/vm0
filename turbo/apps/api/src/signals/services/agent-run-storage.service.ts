@@ -1076,7 +1076,6 @@ interface EnsureArtifactStorageArgs {
   readonly orgId: string;
   readonly userId: string;
   readonly name: string;
-  readonly bucket: string;
   readonly timing?: StorageManifestArtifactEnsureTiming;
   readonly stats?: StorageManifestBuildStats;
 }
@@ -1241,7 +1240,6 @@ export function ensureUserArtifactStorage(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly name: string;
-  readonly bucket: string;
 }): Computed<Promise<void>> {
   return ensureArtifactStorage(args);
 }
@@ -1857,7 +1855,6 @@ async function ensureStorageManifestArtifacts(
     readonly db: Db;
     readonly runtimeOrgId: string;
     readonly userId: string;
-    readonly bucket: string;
     readonly artifacts: readonly ContextArtifact[];
     readonly timing?: ApiDispatchTimingCollector;
     readonly stats?: StorageManifestBuildStats;
@@ -1879,7 +1876,6 @@ async function ensureStorageManifestArtifacts(
               orgId: args.runtimeOrgId,
               userId: args.userId,
               name: artifact.name,
-              bucket: args.bucket,
               timing: artifactEnsureTiming,
               stats: args.stats,
             }),
@@ -2193,7 +2189,6 @@ export function prepareAgentRunStorageManifest(
       db: args.db,
       runtimeOrgId: args.runtimeOrgId,
       userId: args.userId,
-      bucket,
       artifacts,
       timing: args.timing,
       stats: args.stats,
