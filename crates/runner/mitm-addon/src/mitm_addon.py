@@ -530,11 +530,6 @@ def get_registry_path() -> str:
     return ctx.options.vm0_proxy_registry_path
 
 
-def get_builtin_firewall_catalog_cache_path() -> str:
-    """Get builtin firewall catalog cache path from options."""
-    return ctx.options.vm0_builtin_firewall_catalog_cache_path
-
-
 def _elapsed_ms(start_time: float | None) -> int:
     if not start_time:
         return 0

@@ -18,7 +18,7 @@ def _first_firewall_core(compiled_firewalls: matching.CompiledFirewallSet):
     return compiled_firewalls.firewalls[0].core
 
 
-def _cache_firewall(name: str, base: str) -> dict:
+def _cache_firewall(name: str, base: str, *, rules: list[str] | None = None) -> dict:
     return {
         "name": name,
         "apis": [
@@ -34,7 +34,7 @@ def _cache_firewall(name: str, base: str) -> dict:
                         "secretAccessKey": "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
                     }
                 },
-                "permissions": [{"name": "read", "rules": ["GET /items"]}],
+                "permissions": [{"name": "read", "rules": rules or ["GET /items"]}],
             }
         ],
     }
@@ -159,6 +159,49 @@ class TestRegistryBuiltinCache:
         assert compiled_firewalls is not None
         assert vm_info["firewalls"][0]["apis"][0]["base"] == "https://bundled.example.com"
 
+    def test_empty_api_runner_catalog_cache_falls_back_to_bundled(
+        self, tmp_path, monkeypatch, mitm_ctx
+    ):
+        registry_path = tmp_path / "registry.json"
+        cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
+        monkeypatch.setattr(
+            registry_firewalls,
+            "BUILTIN_FIREWALLS",
+            {
+                "fallback": {
+                    "name": "fallback",
+                    "apis": [
+                        {
+                            "base": "https://bundled.example.com",
+                            "auth": {"headers": {}},
+                            "permissions": [{"name": "read", "rules": ["GET /items"]}],
+                        }
+                    ],
+                }
+            },
+        )
+        _write_catalog_cache(
+            cache_path,
+            digest="sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            version="catalog-a",
+            firewalls={"fallback": {"name": "fallback", "apis": []}},
+        )
+        write_multi_vm_registry(
+            registry_path,
+            {"10.200.0.1": builtin_vm("run-fallback", "fallback")},
+        )
+
+        with mitm_ctx(
+            registry_path=str(registry_path),
+            builtin_firewall_catalog_cache_path=str(cache_path),
+        ):
+            context = registry.get_vm_context("10.200.0.1", str(registry_path))
+
+        assert context is not None
+        vm_info, compiled_firewalls, _ = context
+        assert compiled_firewalls is not None
+        assert vm_info["firewalls"][0]["apis"][0]["base"] == "https://bundled.example.com"
+
     def test_runner_catalog_cache_change_invalidates_registry_snapshot(self, tmp_path, mitm_ctx):
         registry_path = tmp_path / "registry.json"
         cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
@@ -197,6 +240,85 @@ class TestRegistryBuiltinCache:
         assert first_vm_info["firewalls"][0]["apis"][0]["base"] == "https://cache-a.example.com"
         assert second_vm_info["firewalls"][0]["apis"][0]["base"] == "https://cache-b.example.com"
         assert _first_firewall_core(first_compiled) is not _first_firewall_core(second_compiled)
+
+    def test_runner_catalog_cache_change_recompiles_core_when_metadata_is_unchanged(
+        self, tmp_path, mitm_ctx
+    ):
+        registry_path = tmp_path / "registry.json"
+        cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
+        write_multi_vm_registry(
+            registry_path,
+            {
+                "10.200.0.1": {
+                    **builtin_vm("run-mutable", "mutable"),
+                    "networkPolicies": {
+                        "mutable": {
+                            "allow": ["read"],
+                            "deny": [],
+                            "unknownPolicy": "deny",
+                        }
+                    },
+                }
+            },
+        )
+        digest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        version = "catalog-a"
+        _write_catalog_cache(
+            cache_path,
+            digest=digest,
+            version=version,
+            firewalls={
+                "mutable": _cache_firewall(
+                    "mutable",
+                    "https://cache.example.com",
+                    rules=["GET /items"],
+                )
+            },
+        )
+        os.utime(cache_path, ns=(1_700_000_000_000_000_000, 1_700_000_000_000_000_000))
+
+        with mitm_ctx(
+            registry_path=str(registry_path),
+            builtin_firewall_catalog_cache_path=str(cache_path),
+        ):
+            first_context = registry.get_vm_context("10.200.0.1", str(registry_path))
+            _write_catalog_cache(
+                cache_path,
+                digest=digest,
+                version=version,
+                firewalls={
+                    "mutable": _cache_firewall(
+                        "mutable",
+                        "https://cache.example.com",
+                        rules=["POST /items"],
+                    )
+                },
+            )
+            os.utime(cache_path, ns=(1_700_000_000_000_000_001, 1_700_000_000_000_000_001))
+            second_context = registry.get_vm_context("10.200.0.1", str(registry_path))
+
+        assert first_context is not None
+        assert second_context is not None
+        _first_vm_info, first_compiled, first_policies = first_context
+        _second_vm_info, second_compiled, second_policies = second_context
+        assert first_compiled is not None
+        assert second_compiled is not None
+        assert _first_firewall_core(first_compiled) is not _first_firewall_core(second_compiled)
+        first_result = matching.match_compiled_firewall_request(
+            "https://cache.example.com/items",
+            "GET",
+            first_compiled,
+            first_policies,
+        )
+        second_result = matching.match_compiled_firewall_request(
+            "https://cache.example.com/items",
+            "GET",
+            second_compiled,
+            second_policies,
+        )
+        assert isinstance(first_result, matching.FirewallAllow)
+        assert isinstance(second_result, matching.FirewallBlock)
+        assert second_result.reason == "unknown_endpoint"
 
     def test_repeated_builtin_firewall_refs_share_core_but_keep_vm_api_ids(self, tmp_path):
         path = tmp_path / "registry.json"

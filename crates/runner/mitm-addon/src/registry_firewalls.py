@@ -8,8 +8,8 @@ import builtin_firewall_cache
 import builtin_host_policy
 from generated.builtin_firewalls import BUILTIN_FIREWALLS
 
-BuiltinFirewallCatalogIdentity = tuple[str, str, str]
 BuiltinFirewallCatalogFileKey = builtin_firewall_cache.CatalogFileKey
+BuiltinFirewallCatalogIdentity = builtin_firewall_cache.CatalogIdentity | tuple[str, str, str]
 BuiltinFirewallCoreCacheKey = tuple[
     str,
     BuiltinFirewallCatalogIdentity,

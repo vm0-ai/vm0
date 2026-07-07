@@ -347,6 +347,36 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn empty_api_catalog_does_not_overwrite_existing_cache() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache_path = dir.path().join("builtin-firewall-catalog-cache.json");
+        let lock_path = dir.path().join("builtin-firewall-catalog-cache.json.lock");
+
+        write_catalog_cache(&cache_path, &lock_path, catalog("github"))
+            .await
+            .unwrap();
+        let before = tokio::fs::read_to_string(&cache_path).await.unwrap();
+
+        let mut invalid = catalog("github");
+        invalid
+            .firewalls
+            .get_mut("github")
+            .expect("catalog should contain github")
+            .apis
+            .clear();
+        let error = write_catalog_cache(&cache_path, &lock_path, invalid)
+            .await
+            .unwrap_err();
+
+        assert!(
+            error.to_string().contains("must have at least one api"),
+            "unexpected error: {error}"
+        );
+        let after = tokio::fs::read_to_string(&cache_path).await.unwrap();
+        assert_eq!(after, before);
+    }
+
+    #[tokio::test]
     async fn read_catalog_cache_rejects_malformed_cache() {
         let dir = tempfile::tempdir().unwrap();
         let cache_path = dir.path().join("builtin-firewall-catalog-cache.json");

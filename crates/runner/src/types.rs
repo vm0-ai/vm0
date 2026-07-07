@@ -165,6 +165,9 @@ impl Firewall {
         if self.name.is_empty() {
             return Err("firewall name must be non-empty".to_string());
         }
+        if self.apis.is_empty() {
+            return Err(format!("firewall {} must have at least one api", self.name));
+        }
         for (index, api) in self.apis.iter().enumerate() {
             api.validate_for_cache()
                 .map_err(|e| format!("firewall {} apis[{index}]: {e}", self.name))?;
@@ -1040,6 +1043,22 @@ mod tests {
 
         assert!(
             error.contains("providerOwned hostPolicy requires exactHosts or suffixes"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn firewall_validation_rejects_empty_apis() {
+        let firewall: Firewall = serde_json::from_value(serde_json::json!({
+            "name": "empty",
+            "apis": []
+        }))
+        .unwrap();
+
+        let error = firewall.validate_for_cache().unwrap_err();
+
+        assert!(
+            error.contains("must have at least one api"),
             "unexpected error: {error}"
         );
     }

@@ -14,6 +14,7 @@ _READ_CHUNK_BYTES = 1024 * 1024
 _CACHE_SCHEMA_VERSION = 1
 _SHA256_HEX_LENGTH = 64
 CatalogFileKey = tuple[str, int, int, int, int]
+CatalogIdentity = tuple[str, str, str, CatalogFileKey]
 
 
 class BuiltinFirewallCatalogCacheError(ValueError):
@@ -22,7 +23,7 @@ class BuiltinFirewallCatalogCacheError(ValueError):
 
 @dataclass(frozen=True)
 class BuiltinFirewallCatalog:
-    identity: tuple[str, str, str]
+    identity: CatalogIdentity
     firewalls: dict[str, dict]
 
 
@@ -94,7 +95,7 @@ def load_catalog(cache_path: str | None) -> BuiltinFirewallCatalog | None:
         if key == state.failed_key:
             return None
         try:
-            catalog = _read_catalog(fd, path, st.st_size)
+            catalog = _read_catalog(fd, path, st.st_size, key)
         except (BuiltinFirewallCatalogCacheError, OSError, ValueError, RecursionError) as exc:
             state.failed_key = key
             state.loaded_key = None
@@ -151,7 +152,12 @@ def _read_cache_bytes(fd: int, path: Path, st_size: int) -> bytes:
     return b"".join(chunks)
 
 
-def _read_catalog(fd: int, path: Path, st_size: int) -> BuiltinFirewallCatalog:
+def _read_catalog(
+    fd: int,
+    path: Path,
+    st_size: int,
+    key: CatalogFileKey,
+) -> BuiltinFirewallCatalog:
     raw = json.loads(_read_cache_bytes(fd, path, st_size).decode("utf-8"))
     if not isinstance(raw, dict):
         raise BuiltinFirewallCatalogCacheError("catalog cache must be an object")
@@ -179,7 +185,7 @@ def _read_catalog(fd: int, path: Path, st_size: int) -> BuiltinFirewallCatalog:
     _validate_firewall_map(firewalls)
 
     return BuiltinFirewallCatalog(
-        identity=("cache", catalog_digest, catalog_version),
+        identity=("cache", catalog_digest, catalog_version, key),
         firewalls=firewalls,
     )
 
@@ -209,10 +215,15 @@ def _validate_firewall_map(firewalls: dict[str, dict]) -> None:
                 f'catalog cache firewall key "{name}" does not match firewall.name'
             )
         apis = firewall.get("apis")
-        if not isinstance(apis, list):
+        if not isinstance(apis, list) or not apis:
             raise BuiltinFirewallCatalogCacheError(
-                f'catalog cache firewall "{name}" apis must be a list'
+                f'catalog cache firewall "{name}" apis must be a non-empty list'
             )
+        for api in apis:
+            if not isinstance(api, dict):
+                raise BuiltinFirewallCatalogCacheError(
+                    f'catalog cache firewall "{name}" api entries must be objects'
+                )
 
 
 def _warn(message: str) -> None:
