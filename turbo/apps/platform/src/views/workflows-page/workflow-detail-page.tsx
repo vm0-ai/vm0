@@ -2,7 +2,6 @@
 // (SKILL.md is never shown), automations, visibility controls, metadata
 // editing, slash use, copy, and delete.
 import type { FormEvent, ReactNode } from "react";
-import { useState } from "react";
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import type {
@@ -127,6 +126,8 @@ import {
   updateWorkflowScheduleTrigger$,
   updateWorkflow$,
   workflowActionDialog$,
+  workflowDemoteConfirmOpen$,
+  setWorkflowDemoteConfirmOpen$,
   setWorkflowTriggerPickerCategory$,
   setWorkflowTriggerPickerOpen$,
   workflowCopyForm$,
@@ -973,7 +974,8 @@ function WorkflowPublicToggle({
   const [changeLoadable, changeVisibility] = useLoadableSet(
     changeWorkflowVisibility$,
   );
-  const [demoteConfirmOpen, setDemoteConfirmOpen] = useState(false);
+  const demoteConfirmOpen = useGet(workflowDemoteConfirmOpen$);
+  const setDemoteConfirmOpen = useSet(setWorkflowDemoteConfirmOpen$);
   const busy = changeLoadable.state === "loading";
   const isPublic = detail.visibility === "public";
   const statusLabel = isPublic ? "Public" : "Private";
@@ -1069,9 +1071,7 @@ function WorkflowPublicToggle({
                 submitVisibilityAction("demote");
               }}
             >
-              {busy ? (
-                <IconLoader2 size={14} className="animate-spin" />
-              ) : null}
+              {busy ? <IconLoader2 size={14} className="animate-spin" /> : null}
               Make private
             </Button>
           </DialogFooter>

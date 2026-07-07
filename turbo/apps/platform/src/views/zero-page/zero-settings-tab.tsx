@@ -2,7 +2,6 @@
 // oxlint-disable max-lines-per-function
 import { useGet, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
-import { useState } from "react";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   Button,
@@ -53,6 +52,8 @@ import {
   deleteAgent$,
   settingsVisibility$,
   setSettingsVisibility$,
+  agentDemoteConfirmOpen$,
+  setAgentDemoteConfirmOpen$,
 } from "../../signals/zero-page/settings/settings-tab.ts";
 
 interface ZeroSettingsTabProps {
@@ -129,7 +130,8 @@ export function ZeroSettingsTab({
 
   const pageSignal = useGet(pageSignal$);
 
-  const [demoteConfirmOpen, setDemoteConfirmOpen] = useState(false);
+  const demoteConfirmOpen = useGet(agentDemoteConfirmOpen$);
+  const setDemoteConfirmOpen = useSet(setAgentDemoteConfirmOpen$);
   const willDemoteVisibility =
     initialVisibility === "public" && visibility === "private";
 
@@ -359,11 +361,11 @@ export function ZeroSettingsTab({
                       <DialogHeader>
                         <DialogTitle>Delete {resolvedAgentName}?</DialogTitle>
                         <DialogDescription>
-                          This is a dangerous operation. Deleting this agent also
-                          permanently deletes every workflow bound to it and
-                          every member&apos;s chat history under it, including
-                          automations and chats other people created. This action
-                          cannot be undone.
+                          This is a dangerous operation. Deleting this agent
+                          also permanently deletes every workflow bound to it
+                          and every member&apos;s chat history under it,
+                          including automations and chats other people created.
+                          This action cannot be undone.
                         </DialogDescription>
                       </DialogHeader>
                       <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">

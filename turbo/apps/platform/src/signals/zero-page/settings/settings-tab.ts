@@ -165,3 +165,16 @@ export const deleteAgent$ = command(
     await deleteFn();
   },
 );
+
+// ---------------------------------------------------------------------------
+// Destructive-action confirmation state
+// ---------------------------------------------------------------------------
+
+/** Whether the public → private confirmation dialog is open. */
+const internalDemoteConfirmOpen$ = state<boolean>(false);
+export const agentDemoteConfirmOpen$ = computed((get) => {
+  return get(internalDemoteConfirmOpen$);
+});
+export const setAgentDemoteConfirmOpen$ = command(({ set }, open: boolean) => {
+  set(internalDemoteConfirmOpen$, open);
+});
