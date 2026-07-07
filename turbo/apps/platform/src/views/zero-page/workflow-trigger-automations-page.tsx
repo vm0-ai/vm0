@@ -14,6 +14,7 @@ import {
   IconBrandGithub,
   IconCalendarTime,
   IconClock,
+  IconFileText,
   IconLink,
   IconMail,
   IconMessageCircle,
@@ -135,6 +136,39 @@ function quote(value: string): string {
   return `"${value}"`;
 }
 
+function notionReadableTriggerRuleLabel(
+  trigger: ZeroWorkflowTriggerSummary,
+): string | null {
+  if (trigger.kind !== "event") {
+    return null;
+  }
+  if (trigger.eventType === "notion-child-page-created") {
+    const title = trigger.eventConfig.parentPage.title;
+    return title
+      ? `When Notion child page is created under ${quote(title)}`
+      : "When a Notion child page is created";
+  }
+  if (trigger.eventType === "notion-database-item-created") {
+    const title = trigger.eventConfig.dataSource.title;
+    return title
+      ? `When Notion database ${quote(title)} gets a new item`
+      : "When a Notion database gets a new item";
+  }
+  if (trigger.eventType !== "notion-page-content-updated") {
+    return null;
+  }
+  if (trigger.eventConfig.scope.type === "page") {
+    const title = trigger.eventConfig.scope.page.title;
+    return title
+      ? `When Notion page ${quote(title)} content is updated`
+      : "When a Notion page content is updated";
+  }
+  const title = trigger.eventConfig.scope.dataSource.title;
+  return title
+    ? `When Notion database ${quote(title)} item content is updated`
+    : "When Notion database item content is updated";
+}
+
 export function humanReadableTriggerRuleLabel(
   trigger: ZeroWorkflowTriggerSummary,
   displayTimezone: string,
@@ -182,6 +216,10 @@ export function humanReadableTriggerRuleLabel(
   if (trigger.eventType === "google-meet-transcript-generated") {
     return "When Google Meet finishes generating a transcript";
   }
+  const notionLabel = notionReadableTriggerRuleLabel(trigger);
+  if (notionLabel) {
+    return notionLabel;
+  }
   if (trigger.eventType === "webhook-received") {
     return "When an inbound webhook is received";
   }
@@ -210,6 +248,13 @@ export function triggerTypeLabel(trigger: ZeroWorkflowTriggerSummary): string {
   }
   if (trigger.eventType === "google-meet-transcript-generated") {
     return "Google Meet";
+  }
+  if (
+    trigger.eventType === "notion-child-page-created" ||
+    trigger.eventType === "notion-database-item-created" ||
+    trigger.eventType === "notion-page-content-updated"
+  ) {
+    return "Notion";
   }
   if (trigger.eventType === "webhook-received") {
     return "Webhook";
@@ -276,6 +321,13 @@ export function TriggerListIcon({
     }
     if (trigger.eventType === "google-meet-transcript-generated") {
       return IconVideo;
+    }
+    if (
+      trigger.eventType === "notion-child-page-created" ||
+      trigger.eventType === "notion-database-item-created" ||
+      trigger.eventType === "notion-page-content-updated"
+    ) {
+      return IconFileText;
     }
     if (trigger.eventType === "gmail-label-applied") {
       return IconTag;

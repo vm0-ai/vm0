@@ -9,6 +9,7 @@ import type {
   GmailNewMessageEventConfig,
   GithubLabelAppliedEventConfig,
   GithubLabelAppliedSubjectFilter,
+  NotionPageContentUpdatedEventCreateConfig,
   WorkflowFileEntry,
   WorkflowFileMetadata,
   ZeroWorkflowDetailResponse,
@@ -78,6 +79,7 @@ import { agents$ } from "../../signals/agent.ts";
 import { user$ } from "../../signals/auth.ts";
 import {
   changeWorkflowVisibility$,
+  createNotionPageContentUpdatedScope$,
   createWorkflowGithubLabelAppliedTrigger$,
   createWorkflowGoogleCalendarEventTrigger$,
   createWorkflowGoogleMeetTranscriptGeneratedTrigger$,
@@ -85,6 +87,7 @@ import {
   createWorkflowGmailNewMessageTrigger$,
   createWorkflowNotionChildPageTrigger$,
   createWorkflowNotionDatabaseItemTrigger$,
+  createWorkflowNotionPageContentUpdatedTrigger$,
   createWorkflowWebhookTrigger$,
   createGithubLabelActor$,
   createScheduleCronFields$,
@@ -108,6 +111,7 @@ import {
   runWorkflowTriggerNow$,
   selectedWorkflowFilePath$,
   setCreateGithubLabelActor$,
+  setCreateNotionPageContentUpdatedScope$,
   setCreateScheduleCronFields$,
   setCreatedWorkflowWebhookTrigger$,
   setEditingGithubLabelActor$,
@@ -142,6 +146,8 @@ import {
   type WorkflowCronFields,
   type WorkflowCronFrequency,
   type WorkflowDetailTab,
+  type WorkflowTriggerCreateDialog,
+  type NotionPageContentUpdatedScopeMode,
   workflowMetadataPatch$,
 } from "../../signals/workflows-page/workflows-signals.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
@@ -2302,6 +2308,9 @@ function workflowTriggerTitle(trigger: ZeroWorkflowTriggerSummary): string {
   if (trigger.eventType === "notion-database-item-created") {
     return "New Notion database item";
   }
+  if (trigger.eventType === "notion-page-content-updated") {
+    return "Notion page content updated";
+  }
   return "Webhook";
 }
 
@@ -2344,6 +2353,14 @@ function workflowTriggerSummary(
     const title = trigger.eventConfig.dataSource.title;
     return title ? `Database ${quote(title)}` : "Configured database";
   }
+  if (trigger.eventType === "notion-page-content-updated") {
+    if (trigger.eventConfig.scope.type === "page") {
+      const title = trigger.eventConfig.scope.page.title;
+      return title ? `Page ${quote(title)}` : "Configured page";
+    }
+    const title = trigger.eventConfig.scope.dataSource.title;
+    return title ? `Database ${quote(title)}` : "Configured database";
+  }
   return null;
 }
 
@@ -2368,6 +2385,7 @@ type TriggerCreateDialogKind =
   | "google-meet-transcript-generated"
   | "notion-child-page"
   | "notion-database-item"
+  | "notion-page-content-updated"
   | "webhook";
 
 type TriggerCategoryKey = "schedule" | "email" | "calendar" | "integrations";
@@ -2424,6 +2442,12 @@ function buildIntegrationTriggerOptions({
         kind: "notion-database-item",
         title: "New Notion database item",
         description: "Run when a page is added to a Notion database.",
+        icon: IconFileText,
+      },
+      {
+        kind: "notion-page-content-updated",
+        title: "Notion page content updated",
+        description: "Run when a page or database item content changes.",
         icon: IconFileText,
       },
     );
@@ -2873,15 +2897,38 @@ function TriggersSection({
           </div>
         )}
       </div>
-      <CreateIntervalTriggerDialog
+      <WorkflowTriggerCreateDialogs
         workflowId={detail.id}
+        displayTimezone={displayTimezone}
+        createDialog={createDialog}
+        setCreateDialog={setCreateDialog}
+      />
+    </section>
+  );
+}
+
+function WorkflowTriggerCreateDialogs({
+  workflowId,
+  displayTimezone,
+  createDialog,
+  setCreateDialog,
+}: {
+  readonly workflowId: string;
+  readonly displayTimezone: string;
+  readonly createDialog: WorkflowTriggerCreateDialog;
+  readonly setCreateDialog: (dialog: WorkflowTriggerCreateDialog) => void;
+}) {
+  return (
+    <>
+      <CreateIntervalTriggerDialog
+        workflowId={workflowId}
         open={createDialog === "interval"}
         onOpenChange={(open) => {
           setCreateDialog(open ? "interval" : null);
         }}
       />
       <CreateScheduledTriggerDialog
-        workflowId={detail.id}
+        workflowId={workflowId}
         displayTimezone={displayTimezone}
         open={createDialog === "scheduled"}
         onOpenChange={(open) => {
@@ -2889,7 +2936,7 @@ function TriggersSection({
         }}
       />
       <CreateOnceTriggerDialog
-        workflowId={detail.id}
+        workflowId={workflowId}
         displayTimezone={displayTimezone}
         open={createDialog === "once"}
         onOpenChange={(open) => {
@@ -2897,60 +2944,67 @@ function TriggersSection({
         }}
       />
       <CreateGmailNewMessageTriggerDialog
-        workflowId={detail.id}
+        workflowId={workflowId}
         open={createDialog === "gmail"}
         onOpenChange={(open) => {
           setCreateDialog(open ? "gmail" : null);
         }}
       />
       <CreateGmailLabelAppliedTriggerDialog
-        workflowId={detail.id}
+        workflowId={workflowId}
         open={createDialog === "gmail-label"}
         onOpenChange={(open) => {
           setCreateDialog(open ? "gmail-label" : null);
         }}
       />
       <CreateGithubLabelAppliedTriggerDialog
-        workflowId={detail.id}
+        workflowId={workflowId}
         open={createDialog === "github-label"}
         onOpenChange={(open) => {
           setCreateDialog(open ? "github-label" : null);
         }}
       />
       <GoogleCalendarTriggerDialogs
-        workflowId={detail.id}
+        workflowId={workflowId}
         createDialog={createDialog}
         setCreateDialog={setCreateDialog}
       />
       <CreateGoogleMeetTranscriptGeneratedTriggerDialog
-        workflowId={detail.id}
+        workflowId={workflowId}
         open={createDialog === "google-meet-transcript-generated"}
         onOpenChange={(open) => {
           setCreateDialog(open ? "google-meet-transcript-generated" : null);
         }}
       />
       <CreateNotionChildPageTriggerDialog
-        workflowId={detail.id}
+        workflowId={workflowId}
         open={createDialog === "notion-child-page"}
         onOpenChange={(open) => {
           setCreateDialog(open ? "notion-child-page" : null);
         }}
       />
       <CreateNotionDatabaseItemTriggerDialog
-        workflowId={detail.id}
+        workflowId={workflowId}
         open={createDialog === "notion-database-item"}
         onOpenChange={(open) => {
           setCreateDialog(open ? "notion-database-item" : null);
         }}
       />
+      <CreateNotionPageContentUpdatedTriggerDialog
+        workflowId={workflowId}
+        open={createDialog === "notion-page-content-updated"}
+        onOpenChange={(open) => {
+          setCreateDialog(open ? "notion-page-content-updated" : null);
+        }}
+      />
       <CreateWebhookTriggerDialog
-        workflowId={detail.id}
+        workflowId={workflowId}
         open={createDialog === "webhook"}
         onOpenChange={(open) => {
           setCreateDialog(open ? "webhook" : null);
         }}
       />
-    </section>
+    </>
   );
 }
 
@@ -3018,6 +3072,173 @@ function CreateNotionDatabaseItemTriggerDialog({
               className={FIELD_CLASS}
             />
           </label>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={creating}
+              onClick={() => {
+                onOpenChange(false);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={creating}>
+              {creating ? (
+                <IconLoader2 size={14} className="animate-spin" />
+              ) : (
+                <IconFileText size={14} stroke={1.5} />
+              )}
+              Add Notion automation
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function notionPageContentUpdatedEventConfigFromForm(
+  form: FormData,
+  scope: NotionPageContentUpdatedScopeMode,
+): NotionPageContentUpdatedEventCreateConfig | null {
+  const pageUrl = formTextValue(form, "pageUrl");
+  const databaseUrl = formTextValue(form, "databaseUrl");
+  if (scope === "page") {
+    return pageUrl
+      ? {
+          provider: "notion",
+          event: "page_content_updated",
+          pageUrl,
+        }
+      : null;
+  }
+  return databaseUrl
+    ? {
+        provider: "notion",
+        event: "page_content_updated",
+        databaseUrl,
+      }
+    : null;
+}
+
+function NotionPageContentUpdatedScopeFields({
+  scope,
+  creating,
+  setScope,
+}: {
+  readonly scope: NotionPageContentUpdatedScopeMode;
+  readonly creating: boolean;
+  readonly setScope: (scope: NotionPageContentUpdatedScopeMode) => void;
+}) {
+  return (
+    <>
+      <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+        Scope
+        <Select
+          value={scope}
+          disabled={creating}
+          onValueChange={(value) => {
+            setScope(value === "database" ? "database" : "page");
+          }}
+        >
+          <SelectTrigger aria-label="Notion content update scope">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="page">Page</SelectItem>
+            <SelectItem value="database">Database</SelectItem>
+          </SelectContent>
+        </Select>
+      </label>
+      {scope === "page" ? (
+        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+          Page URL
+          <input
+            name="pageUrl"
+            aria-label="Page URL"
+            required
+            disabled={creating}
+            placeholder="https://www.notion.so/workspace/Page-title-..."
+            className={FIELD_CLASS}
+          />
+        </label>
+      ) : (
+        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+          Database URL
+          <input
+            name="databaseUrl"
+            aria-label="Database URL"
+            required
+            disabled={creating}
+            placeholder="https://www.notion.so/..."
+            className={FIELD_CLASS}
+          />
+        </label>
+      )}
+    </>
+  );
+}
+
+function CreateNotionPageContentUpdatedTriggerDialog({
+  workflowId,
+  open,
+  onOpenChange,
+}: {
+  readonly workflowId: string;
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const scope = useGet(createNotionPageContentUpdatedScope$);
+  const setScope = useSet(setCreateNotionPageContentUpdatedScope$);
+  const [createLoadable, createNotionTrigger] = useLoadableSet(
+    createWorkflowNotionPageContentUpdatedTrigger$,
+  );
+  const creating = createLoadable.state === "loading";
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Add Notion automation</DialogTitle>
+          <DialogDescription>
+            Run this workflow when a Notion page content update settles.
+          </DialogDescription>
+        </DialogHeader>
+        <form
+          aria-label="Add Notion page content updated automation"
+          className="flex flex-col gap-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const form = new FormData(event.currentTarget);
+            const eventConfig = notionPageContentUpdatedEventConfigFromForm(
+              form,
+              scope,
+            );
+            if (!eventConfig) {
+              return;
+            }
+            detach(
+              (async () => {
+                await createNotionTrigger(
+                  {
+                    workflowId,
+                    eventConfig,
+                  },
+                  pageSignal,
+                );
+                onOpenChange(false);
+              })(),
+              Reason.DomCallback,
+            );
+          }}
+        >
+          <NotionPageContentUpdatedScopeFields
+            scope={scope}
+            creating={creating}
+            setScope={setScope}
+          />
           <DialogFooter>
             <Button
               type="button"

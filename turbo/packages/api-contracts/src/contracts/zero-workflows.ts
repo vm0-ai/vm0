@@ -108,6 +108,7 @@ export const zeroWorkflowEventTypeSchema = z.enum([
   "google-meet-transcript-generated",
   "notion-child-page-created",
   "notion-database-item-created",
+  "notion-page-content-updated",
   "webhook-received",
 ]);
 export type ZeroWorkflowEventType = z.infer<typeof zeroWorkflowEventTypeSchema>;
@@ -349,9 +350,63 @@ export type NotionDatabaseItemCreatedEventCreateConfig = z.infer<
   typeof notionDatabaseItemCreatedEventCreateConfigSchema
 >;
 
+export const notionPageContentUpdatedScopeSchema = z.discriminatedUnion(
+  "type",
+  [
+    z
+      .object({
+        type: z.literal("page"),
+        page: notionPageReferenceSchema,
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("data_source"),
+        dataSource: notionDataSourceReferenceSchema,
+      })
+      .strict(),
+  ],
+);
+export type NotionPageContentUpdatedScope = z.infer<
+  typeof notionPageContentUpdatedScopeSchema
+>;
+
+export const notionPageContentUpdatedEventConfigSchema = z
+  .object({
+    provider: z.literal("notion"),
+    event: z.literal("page_content_updated"),
+    connectorId: z.string().uuid(),
+    scope: notionPageContentUpdatedScopeSchema,
+  })
+  .strict();
+export type NotionPageContentUpdatedEventConfig = z.infer<
+  typeof notionPageContentUpdatedEventConfigSchema
+>;
+
+export const notionPageContentUpdatedEventCreateConfigSchema = z
+  .object({
+    provider: z.literal("notion"),
+    event: z.literal("page_content_updated"),
+    pageUrl: z.string().trim().min(1).max(2048).optional(),
+    databaseUrl: z.string().trim().min(1).max(2048).optional(),
+  })
+  .strict()
+  .refine(
+    (value) => {
+      return (
+        (value.pageUrl !== undefined) !== (value.databaseUrl !== undefined)
+      );
+    },
+    { message: "Provide exactly one of pageUrl or databaseUrl" },
+  );
+export type NotionPageContentUpdatedEventCreateConfig = z.infer<
+  typeof notionPageContentUpdatedEventCreateConfigSchema
+>;
+
 export type NotionWorkflowEventConfig =
   | NotionChildPageCreatedEventConfig
-  | NotionDatabaseItemCreatedEventConfig;
+  | NotionDatabaseItemCreatedEventConfig
+  | NotionPageContentUpdatedEventConfig;
 
 /**
  * Schedule configuration, discriminated by `type`. Aligned with Automation's
@@ -480,6 +535,15 @@ export const zeroWorkflowNotionDatabaseItemCreatedTriggerSummarySchema =
     scheduleSummary: z.null(),
   });
 
+export const zeroWorkflowNotionPageContentUpdatedTriggerSummarySchema =
+  zeroWorkflowTriggerSummaryBaseSchema.extend({
+    kind: z.literal("event"),
+    eventType: z.literal("notion-page-content-updated"),
+    eventConfig: notionPageContentUpdatedEventConfigSchema,
+    schedule: z.null(),
+    scheduleSummary: z.null(),
+  });
+
 export const zeroWorkflowWebhookReceivedTriggerSummarySchema =
   zeroWorkflowTriggerSummaryBaseSchema.extend({
     kind: z.literal("event"),
@@ -505,6 +569,7 @@ export const zeroWorkflowEventTriggerSummarySchema = z.discriminatedUnion(
     zeroWorkflowGoogleMeetTranscriptGeneratedTriggerSummarySchema,
     zeroWorkflowNotionChildPageCreatedTriggerSummarySchema,
     zeroWorkflowNotionDatabaseItemCreatedTriggerSummarySchema,
+    zeroWorkflowNotionPageContentUpdatedTriggerSummarySchema,
     zeroWorkflowWebhookReceivedTriggerSummarySchema,
   ],
 );
@@ -620,6 +685,15 @@ export const chatThreadWorkflowNotionDatabaseItemCreatedTriggerSchema =
     scheduleSummary: z.null(),
   });
 
+export const chatThreadWorkflowNotionPageContentUpdatedTriggerSchema =
+  chatThreadWorkflowTriggerBaseSchema.extend({
+    kind: z.literal("event"),
+    eventType: z.literal("notion-page-content-updated"),
+    eventConfig: notionPageContentUpdatedEventConfigSchema,
+    schedule: z.null(),
+    scheduleSummary: z.null(),
+  });
+
 export const chatThreadWorkflowTriggerSchema = z.union([
   chatThreadWorkflowScheduleTriggerSchema,
   chatThreadWorkflowGmailNewMessageTriggerSchema,
@@ -631,6 +705,7 @@ export const chatThreadWorkflowTriggerSchema = z.union([
   chatThreadWorkflowGoogleMeetTranscriptGeneratedTriggerSchema,
   chatThreadWorkflowNotionChildPageCreatedTriggerSchema,
   chatThreadWorkflowNotionDatabaseItemCreatedTriggerSchema,
+  chatThreadWorkflowNotionPageContentUpdatedTriggerSchema,
 ]);
 export type ChatThreadWorkflowTrigger = z.infer<
   typeof chatThreadWorkflowTriggerSchema
@@ -738,6 +813,14 @@ export const zeroWorkflowNotionDatabaseItemCreatedTriggerCreateRequestSchema =
     enabled: z.boolean().optional(),
   });
 
+export const zeroWorkflowNotionPageContentUpdatedTriggerCreateRequestSchema =
+  z.object({
+    kind: z.literal("event"),
+    eventType: z.literal("notion-page-content-updated"),
+    eventConfig: notionPageContentUpdatedEventCreateConfigSchema,
+    enabled: z.boolean().optional(),
+  });
+
 export const zeroWorkflowWebhookReceivedTriggerCreateRequestSchema = z.object({
   kind: z.literal("event"),
   eventType: z.literal("webhook-received"),
@@ -756,6 +839,7 @@ export const zeroWorkflowTriggerCreateRequestSchema = z.union([
   zeroWorkflowGoogleMeetTranscriptGeneratedTriggerCreateRequestSchema,
   zeroWorkflowNotionChildPageCreatedTriggerCreateRequestSchema,
   zeroWorkflowNotionDatabaseItemCreatedTriggerCreateRequestSchema,
+  zeroWorkflowNotionPageContentUpdatedTriggerCreateRequestSchema,
   zeroWorkflowWebhookReceivedTriggerCreateRequestSchema,
 ]);
 export type ZeroWorkflowTriggerCreateRequest = z.infer<

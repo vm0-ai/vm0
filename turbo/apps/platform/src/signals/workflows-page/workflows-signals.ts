@@ -13,6 +13,7 @@ import {
   type GithubLabelAppliedEventConfig,
   type NotionChildPageCreatedEventCreateConfig,
   type NotionDatabaseItemCreatedEventCreateConfig,
+  type NotionPageContentUpdatedEventCreateConfig,
   type ZeroWorkflowDetailResponse,
   type ZeroWorkflowSchedule,
   type ZeroWorkflowWebhookSecretResponse,
@@ -61,7 +62,7 @@ function defaultWorkflowCopyForm(): WorkflowCopyFormState {
     removeOriginal: false,
   };
 }
-type WorkflowTriggerCreateDialog =
+export type WorkflowTriggerCreateDialog =
   | "interval"
   | "scheduled"
   | "once"
@@ -74,8 +75,10 @@ type WorkflowTriggerCreateDialog =
   | "google-meet-transcript-generated"
   | "notion-child-page"
   | "notion-database-item"
+  | "notion-page-content-updated"
   | "webhook"
   | null;
+export type NotionPageContentUpdatedScopeMode = "page" | "database";
 export type WorkflowTriggerCategoryKey =
   | "schedule"
   | "email"
@@ -202,6 +205,8 @@ const internalCreatedWorkflowWebhookTrigger$ =
 const internalWorkflowTriggerPickerOpen$ = state(false);
 const internalWorkflowTriggerPickerCategory$ =
   state<WorkflowTriggerCategoryKey>("schedule");
+const internalCreateNotionPageContentUpdatedScope$ =
+  state<NotionPageContentUpdatedScopeMode>("page");
 const internalRevealWebhookSecretTriggerId$ = state<string | null>(null);
 const internalCreateGithubLabelActor$ = state<WorkflowGithubLabelActor>("me");
 const internalEditingGithubLabelActors$ = state<
@@ -462,6 +467,9 @@ export const setWorkflowTriggerCreateDialog$ = command(
     if (dialog === "github-label") {
       set(internalCreateGithubLabelActor$, "me");
     }
+    if (dialog === "notion-page-content-updated") {
+      set(internalCreateNotionPageContentUpdatedScope$, "page");
+    }
   },
 );
 
@@ -486,6 +494,16 @@ export const workflowTriggerPickerCategory$ = computed((get) => {
 export const setWorkflowTriggerPickerCategory$ = command(
   ({ set }, category: WorkflowTriggerCategoryKey) => {
     set(internalWorkflowTriggerPickerCategory$, category);
+  },
+);
+
+export const createNotionPageContentUpdatedScope$ = computed((get) => {
+  return get(internalCreateNotionPageContentUpdatedScope$);
+});
+
+export const setCreateNotionPageContentUpdatedScope$ = command(
+  ({ set }, scope: NotionPageContentUpdatedScopeMode) => {
+    set(internalCreateNotionPageContentUpdatedScope$, scope);
   },
 );
 
@@ -1035,6 +1053,33 @@ export const createWorkflowNotionDatabaseItemTrigger$ = command(
         body: {
           kind: "event",
           eventType: "notion-database-item-created",
+          eventConfig: input.eventConfig,
+        },
+        fetchOptions: { signal },
+      }),
+      [201],
+    );
+    signal.throwIfAborted();
+    set(reloadWorkflows$);
+  },
+);
+
+export const createWorkflowNotionPageContentUpdatedTrigger$ = command(
+  async (
+    { get, set },
+    input: {
+      readonly workflowId: string;
+      readonly eventConfig: NotionPageContentUpdatedEventCreateConfig;
+    },
+    signal: AbortSignal,
+  ) => {
+    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
+    await accept(
+      client.create({
+        params: { workflowId: input.workflowId },
+        body: {
+          kind: "event",
+          eventType: "notion-page-content-updated",
           eventConfig: input.eventConfig,
         },
         fetchOptions: { signal },

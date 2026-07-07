@@ -33,6 +33,13 @@ type WorkflowNotionDatabaseItemTriggerSummary = Extract<
     readonly eventType: "notion-database-item-created";
   }
 >;
+type WorkflowNotionPageContentUpdatedTriggerSummary = Extract<
+  ZeroWorkflowTriggerSummary,
+  {
+    readonly kind: "event";
+    readonly eventType: "notion-page-content-updated";
+  }
+>;
 
 function isWebhookTrigger(
   trigger: ZeroWorkflowTriggerSummary,
@@ -55,6 +62,15 @@ function isNotionDatabaseItemTrigger(
   return (
     trigger.kind === "event" &&
     trigger.eventType === "notion-database-item-created"
+  );
+}
+
+function isNotionPageContentUpdatedTrigger(
+  trigger: ZeroWorkflowTriggerSummary,
+): trigger is WorkflowNotionPageContentUpdatedTriggerSummary {
+  return (
+    trigger.kind === "event" &&
+    trigger.eventType === "notion-page-content-updated"
   );
 }
 
@@ -153,6 +169,24 @@ function formatNotionDatabase(
   );
 }
 
+function formatNotionContentUpdatedScope(
+  trigger: WorkflowNotionPageContentUpdatedTriggerSummary,
+): string {
+  return trigger.eventConfig.scope.type === "page"
+    ? (trigger.eventConfig.scope.page.title ??
+        trigger.eventConfig.scope.page.url)
+    : (trigger.eventConfig.scope.dataSource.title ??
+        trigger.eventConfig.scope.dataSource.url);
+}
+
+function formatNotionContentUpdatedScopeUrl(
+  trigger: WorkflowNotionPageContentUpdatedTriggerSummary,
+): string {
+  return trigger.eventConfig.scope.type === "page"
+    ? trigger.eventConfig.scope.page.url
+    : trigger.eventConfig.scope.dataSource.url;
+}
+
 function formatWorkflowTriggerEntry(
   trigger: ZeroWorkflowTriggerSummary,
 ): string {
@@ -240,6 +274,8 @@ function workflowTriggerKindLabel(trigger: ZeroWorkflowTriggerSummary): string {
       return `New Notion child page: ${formatNotionParentPage(trigger)}`;
     case "notion-database-item-created":
       return `New Notion database item: ${formatNotionDatabase(trigger)}`;
+    case "notion-page-content-updated":
+      return `Notion page content updated: ${formatNotionContentUpdatedScope(trigger)}`;
     case "webhook-received":
       return "Webhook";
   }
@@ -354,6 +390,17 @@ export function printWorkflowTriggerDetails(
     console.log(`${"Database:".padEnd(14)}${formatNotionDatabase(trigger)}`);
     console.log(
       `${"Database URL:".padEnd(14)}${trigger.eventConfig.dataSource.url}`,
+    );
+  }
+  if (isNotionPageContentUpdatedTrigger(trigger)) {
+    const scopeLabel =
+      trigger.eventConfig.scope.type === "page" ? "Page" : "Database";
+    console.log(`${"Scope:".padEnd(14)}${scopeLabel}`);
+    console.log(
+      `${`${scopeLabel}:`.padEnd(14)}${formatNotionContentUpdatedScope(trigger)}`,
+    );
+    console.log(
+      `${`${scopeLabel} URL:`.padEnd(14)}${formatNotionContentUpdatedScopeUrl(trigger)}`,
     );
   }
   if (isWebhookTrigger(trigger)) {

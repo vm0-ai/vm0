@@ -182,6 +182,30 @@ const notionDatabaseTrigger = {
   nextRunAt: null,
 };
 
+const notionContentUpdatedTrigger = {
+  ...triggerBase,
+  kind: "event",
+  eventType: "notion-page-content-updated",
+  eventConfig: {
+    provider: "notion",
+    event: "page_content_updated",
+    connectorId: "55555555-5555-4555-8555-555555555555",
+    scope: {
+      type: "page",
+      page: {
+        id: "88888888-8888-4888-8888-888888888888",
+        title: "Release plan",
+        url: "https://www.notion.so/workspace/Release-plan-88888888888848888888888888888888",
+        rawUrl:
+          "https://www.notion.so/workspace/Release-plan-88888888888848888888888888888888?pvs=4",
+      },
+    },
+  },
+  schedule: null,
+  scheduleSummary: null,
+  nextRunAt: null,
+};
+
 const webhookTrigger = {
   ...triggerBase,
   kind: "event",
@@ -677,6 +701,79 @@ describe("zero workflow trigger commands", () => {
       );
     });
 
+    it("should add a Notion page content updated trigger for a page", async () => {
+      const captured = captureCreateTrigger(notionContentUpdatedTrigger);
+
+      await triggerCommand.parseAsync([
+        "node",
+        "cli",
+        "add",
+        WORKFLOW_ID,
+        "notion-page-content-updated",
+        "--page-url",
+        " https://www.notion.so/workspace/Release-plan-88888888888848888888888888888888?pvs=4 ",
+      ]);
+
+      expect(captured.workflowId).toBe(WORKFLOW_ID);
+      expect(captured.body).toEqual({
+        kind: "event",
+        eventType: "notion-page-content-updated",
+        eventConfig: {
+          provider: "notion",
+          event: "page_content_updated",
+          pageUrl:
+            "https://www.notion.so/workspace/Release-plan-88888888888848888888888888888888?pvs=4",
+        },
+      });
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Notion page content updated");
+      expect(logCalls).toContain("Release plan");
+      expect(logCalls).toContain(
+        notionContentUpdatedTrigger.eventConfig.scope.page.url,
+      );
+    });
+
+    it("should add a Notion page content updated trigger for a database", async () => {
+      const captured = captureCreateTrigger({
+        ...notionContentUpdatedTrigger,
+        eventConfig: {
+          ...notionContentUpdatedTrigger.eventConfig,
+          scope: {
+            type: "data_source",
+            dataSource: notionDatabaseTrigger.eventConfig.dataSource,
+          },
+        },
+      });
+
+      await triggerCommand.parseAsync([
+        "node",
+        "cli",
+        "add",
+        WORKFLOW_ID,
+        "notion-page-content-updated",
+        "--database-url",
+        " https://www.notion.so/77777777777747778777777777777777?v=aaaaaaaaaaaa4aaa8aaaaaaaaaaaaaaa ",
+      ]);
+
+      expect(captured.workflowId).toBe(WORKFLOW_ID);
+      expect(captured.body).toEqual({
+        kind: "event",
+        eventType: "notion-page-content-updated",
+        eventConfig: {
+          provider: "notion",
+          event: "page_content_updated",
+          databaseUrl:
+            "https://www.notion.so/77777777777747778777777777777777?v=aaaaaaaaaaaa4aaa8aaaaaaaaaaaaaaa",
+        },
+      });
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Notion page content updated");
+      expect(logCalls).toContain("Bug Bash");
+      expect(logCalls).toContain(
+        notionDatabaseTrigger.eventConfig.dataSource.url,
+      );
+    });
+
     it("should add a webhook trigger", async () => {
       const captured = captureCreateTrigger(webhookTrigger);
 
@@ -794,6 +891,48 @@ describe("zero workflow trigger commands", () => {
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining(
           "notion-database-item-created triggers require --database-url",
+        ),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should reject a Notion page content updated trigger without a scope URL", async () => {
+      await expect(async () => {
+        await triggerCommand.parseAsync([
+          "node",
+          "cli",
+          "add",
+          WORKFLOW_ID,
+          "notion-page-content-updated",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "notion-page-content-updated triggers require exactly one of --page-url",
+        ),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should reject a Notion page content updated trigger with both page and database URLs", async () => {
+      await expect(async () => {
+        await triggerCommand.parseAsync([
+          "node",
+          "cli",
+          "add",
+          WORKFLOW_ID,
+          "notion-page-content-updated",
+          "--page-url",
+          "https://www.notion.so/workspace/Release-plan-88888888888848888888888888888888",
+          "--database-url",
+          "https://www.notion.so/77777777777747778777777777777777",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "notion-page-content-updated triggers require exactly one of --page-url",
         ),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
@@ -1144,6 +1283,7 @@ describe("zero workflow trigger commands", () => {
               githubLabelTrigger,
               notionTrigger,
               notionDatabaseTrigger,
+              notionContentUpdatedTrigger,
             ]);
           },
         ),
@@ -1158,6 +1298,8 @@ describe("zero workflow trigger commands", () => {
       expect(logCalls).toContain("Gmail new message");
       expect(logCalls).toContain('from contains "@acme.com"');
       expect(logCalls).toContain("GitHub label applied");
+      expect(logCalls).toContain("Notion page content updated");
+      expect(logCalls).toContain("Release plan");
       expect(logCalls).toContain("triage");
       expect(logCalls).toContain("New Notion child page");
       expect(logCalls).toContain("Product notes");

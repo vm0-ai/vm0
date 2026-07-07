@@ -43,6 +43,7 @@ interface AddOptions extends GmailTriggerOptions {
   readonly subject?: string;
   readonly actor?: string;
   readonly calendarId?: string;
+  readonly pageUrl?: string;
   readonly parentPageUrl?: string;
   readonly databaseUrl?: string;
 }
@@ -66,11 +67,12 @@ const EVENT_KINDS = [
   "google-calendar-event-cancelled",
   "notion-child-page-created",
   "notion-database-item-created",
+  "notion-page-content-updated",
   "webhook",
 ] as const;
 const TRIGGER_KINDS = [...SCHEDULE_KINDS, ...EVENT_KINDS] as const;
 const EXACTLY_ONE_FLAG_MESSAGE =
-  "Provide exactly one of --expr (cron), --at (once), --every (loop), Gmail match options, --label, --subject, --actor, --calendar-id, --parent-page-url, or --database-url";
+  "Provide exactly one of --expr (cron), --at (once), --every (loop), Gmail match options, --label, --subject, --actor, --calendar-id, --page-url, --parent-page-url, or --database-url";
 
 function addGmailTriggerOptions(command: Command): Command {
   return command
@@ -306,7 +308,9 @@ function hasCalendarTriggerOptions(options: AddOptions): boolean {
 
 function hasNotionTriggerOptions(options: AddOptions): boolean {
   return (
-    options.parentPageUrl !== undefined || options.databaseUrl !== undefined
+    options.pageUrl !== undefined ||
+    options.parentPageUrl !== undefined ||
+    options.databaseUrl !== undefined
   );
 }
 
@@ -549,9 +553,9 @@ function buildNotionChildPageCreatedCreateRequest(
   }
 
   const parentPageUrl = options.parentPageUrl?.trim();
-  if (options.databaseUrl !== undefined) {
+  if (options.pageUrl !== undefined || options.databaseUrl !== undefined) {
     throw new Error(
-      "--database-url only applies to notion-database-item-created triggers",
+      "--page-url and --database-url do not apply to notion-child-page-created triggers",
     );
   }
   if (!parentPageUrl) {
@@ -586,9 +590,9 @@ function buildNotionDatabaseItemCreatedCreateRequest(
     );
   }
 
-  if (options.parentPageUrl !== undefined) {
+  if (options.pageUrl !== undefined || options.parentPageUrl !== undefined) {
     throw new Error(
-      "--parent-page-url only applies to notion-child-page-created triggers",
+      "--page-url and --parent-page-url do not apply to notion-database-item-created triggers",
     );
   }
   const databaseUrl = options.databaseUrl?.trim();
@@ -606,6 +610,55 @@ function buildNotionDatabaseItemCreatedCreateRequest(
       event: "database_item_created",
       databaseUrl,
     },
+  };
+}
+
+function buildNotionPageContentUpdatedCreateRequest(
+  options: AddOptions,
+): ZeroWorkflowTriggerCreateRequest {
+  assertNoScheduleAddOptions(options);
+  if (
+    hasGmailTriggerOptions(options) ||
+    hasGmailLabelOption(options) ||
+    hasGithubTriggerOptions(options) ||
+    hasCalendarTriggerOptions(options)
+  ) {
+    throw new Error(
+      "Gmail, GitHub, and Google Calendar trigger flags only apply to their event triggers",
+    );
+  }
+
+  if (options.parentPageUrl !== undefined) {
+    throw new Error(
+      "--parent-page-url only applies to notion-child-page-created triggers",
+    );
+  }
+  const pageUrl = options.pageUrl?.trim();
+  const databaseUrl = options.databaseUrl?.trim();
+  if (
+    (pageUrl !== undefined && pageUrl.length > 0) ===
+    (databaseUrl !== undefined && databaseUrl.length > 0)
+  ) {
+    throw new Error(
+      'notion-page-content-updated triggers require exactly one of --page-url "https://www.notion.so/..." or --database-url "https://www.notion.so/..."',
+    );
+  }
+
+  return {
+    kind: "event",
+    eventType: "notion-page-content-updated",
+    eventConfig:
+      pageUrl !== undefined && pageUrl.length > 0
+        ? {
+            provider: "notion",
+            event: "page_content_updated",
+            pageUrl,
+          }
+        : {
+            provider: "notion",
+            event: "page_content_updated",
+            databaseUrl: databaseUrl ?? "",
+          },
   };
 }
 
@@ -658,6 +711,8 @@ function buildCreateRequest(
       return buildNotionChildPageCreatedCreateRequest(options);
     case "notion-database-item-created":
       return buildNotionDatabaseItemCreatedCreateRequest(options);
+    case "notion-page-content-updated":
+      return buildNotionPageContentUpdatedCreateRequest(options);
     case "webhook":
       return buildWebhookCreateRequest(options);
     default:
@@ -788,12 +843,16 @@ const addCommand = addGithubTriggerOptions(
     "Google Calendar ID for Google Calendar event triggers (default: primary)",
   )
   .option(
+    "--page-url <url>",
+    "Notion page URL for notion-page-content-updated triggers",
+  )
+  .option(
     "--parent-page-url <url>",
     "Parent Notion page URL for notion-child-page-created triggers",
   )
   .option(
     "--database-url <url>",
-    "Notion database URL for notion-database-item-created triggers",
+    "Notion database URL for notion-database-item-created or notion-page-content-updated triggers",
   )
   .option("--agent <id>", "Agent ID for resolving a workflow name")
   .addHelpText(
@@ -812,6 +871,8 @@ Examples:
   zero workflow trigger add triage --agent <agent-id> google-calendar-event-cancelled
   zero workflow trigger add research-notes --agent <agent-id> notion-child-page-created --parent-page-url "https://www.notion.so/workspace/Page-title-1234567890abcdef1234567890abcdef"
   zero workflow trigger add research-notes --agent <agent-id> notion-database-item-created --database-url "https://www.notion.so/1234567890abcdef1234567890abcdef?v=abcdef1234567890abcdef1234567890"
+  zero workflow trigger add research-notes --agent <agent-id> notion-page-content-updated --page-url "https://www.notion.so/workspace/Page-title-1234567890abcdef1234567890abcdef"
+  zero workflow trigger add research-notes --agent <agent-id> notion-page-content-updated --database-url "https://www.notion.so/1234567890abcdef1234567890abcdef?v=abcdef1234567890abcdef1234567890"
   zero workflow trigger add triage --agent <agent-id> webhook
 
 Notes:

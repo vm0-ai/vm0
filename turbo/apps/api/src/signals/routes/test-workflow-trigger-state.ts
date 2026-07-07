@@ -1237,9 +1237,11 @@ async function getNotionPendingEventsForAction(
       pageId: notionWorkflowPendingEvents.pageId,
       scopeType: notionWorkflowPendingEvents.scopeType,
       scopeId: notionWorkflowPendingEvents.scopeId,
+      eventFamily: notionWorkflowPendingEvents.eventFamily,
       status: notionWorkflowPendingEvents.status,
       runAfter: notionWorkflowPendingEvents.runAfter,
       latestNotionEventId: notionWorkflowPendingEvents.latestNotionEventId,
+      latestEventContext: notionWorkflowPendingEvents.latestEventContext,
       attempts: notionWorkflowPendingEvents.attempts,
       skipReason: notionWorkflowPendingEvents.skipReason,
     })
