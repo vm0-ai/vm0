@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.571.0](https://github.com/vm0-ai/vm0/compare/app-v0.570.2...app-v0.571.0) (2026-07-07)
+
+
+### Features
+
+* add notion page content updated workflow trigger ([#20562](https://github.com/vm0-ai/vm0/issues/20562)) ([833395e](https://github.com/vm0-ai/vm0/commit/833395ed1bd75e7e94b5baa1ede1506d3584ecea))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.164.0
+    * @vm0/core bumped to 8.412.3
+
 ## [0.570.2](https://github.com/vm0-ai/vm0/compare/app-v0.570.1...app-v0.570.2) (2026-07-07)
 
 
