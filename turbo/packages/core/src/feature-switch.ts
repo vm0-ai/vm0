@@ -265,13 +265,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ComposerModelPickerPopover]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Use the Popover-based chat composer model picker instead of Radix Select.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.ComposerUploadPopover]: {
     maintainer: "bingjie@vm0.ai",
     description:
