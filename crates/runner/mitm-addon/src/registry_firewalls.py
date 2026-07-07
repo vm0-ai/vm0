@@ -62,7 +62,9 @@ def _copy_builtin_firewall_shell(
             raise FirewallEntryResolutionError(
                 f'builtin firewall "{firewall_name}" api entries must be objects'
             )
-        copied_apis.append(dict(api))
+        copied_api = dict(api)
+        copied_api.pop("id", None)
+        copied_apis.append(copied_api)
 
     firewall = dict(catalog_firewall)
     firewall["apis"] = copied_apis
@@ -159,7 +161,9 @@ def _assign_firewall_api_ids(firewalls: list[dict], run_id: str) -> None:
         for api in raw_apis:
             if not isinstance(api, dict):
                 continue
-            api["id"] = f"{run_id}:{index}"
+            raw_id = api.get("id")
+            if not isinstance(raw_id, str) or raw_id == "":
+                api["id"] = f"{run_id}:{index}"
             index += 1
 
 

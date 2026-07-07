@@ -650,3 +650,16 @@ class TestRegistryBuiltinCache:
         assert isinstance(second_result, matching.FirewallAllow)
         assert first_result.api_entry is first_vm_info["firewalls"][0]["apis"][0]
         assert second_result.api_entry is second_vm_info["firewalls"][0]["apis"][0]
+
+    def test_inline_firewall_api_ids_are_preserved(self, tmp_path):
+        path = tmp_path / "registry.json"
+        vm = inline_vm("run-inline")
+        vm["firewalls"][0]["firewall"]["apis"][0]["id"] = "custom-api-id"
+        write_multi_vm_registry(path, {"10.200.0.1": vm})
+
+        context = registry.get_vm_context("10.200.0.1", str(path))
+
+        assert context is not None
+        vm_info, compiled_firewalls, _ = context
+        assert compiled_firewalls is not None
+        assert vm_info["firewalls"][0]["apis"][0]["id"] == "custom-api-id"
