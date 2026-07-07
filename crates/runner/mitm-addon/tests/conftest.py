@@ -30,6 +30,7 @@ import auth_base_forwarder
 import builtin_connector_diagnostics
 import logging_utils
 import mitm_addon
+import platform_api
 import registry
 import upstream_destination_binding
 import usage
@@ -57,6 +58,7 @@ def _reset_module_state() -> Iterator[None]:
     mitm_addon.reset_upstream_destination_resolution_cache_for_tests()
     mitm_addon.reset_runner_usage_flush_state_for_tests()
     mitm_addon.reset_tls_admission_state_for_tests()
+    platform_api.configure_client_headers(client_session_id="", client_version="")
     clear_auth_state()
     _usage_connectors._unregistered_handler_warned.clear()
     usage.counters.reset_for_tests()
@@ -72,6 +74,7 @@ def _reset_module_state() -> Iterator[None]:
     upstream_destination_binding.reset_for_tests()
     mitm_addon.reset_upstream_destination_resolution_cache_for_tests()
     mitm_addon.reset_tls_admission_state_for_tests()
+    platform_api.configure_client_headers(client_session_id="", client_version="")
     usage.webhook.reset_delivery_capacity_for_tests()
     usage.counters.reset_for_tests()
 
@@ -369,7 +372,17 @@ def mitm_ctx(tmp_path):
             patch.object(mitm_addon.ctx, "options", options, create=True),
             patch.object(mitm_addon.ctx, "log", log, create=True),
         ):
-            yield log
+            platform_api.configure_client_headers(
+                client_session_id=client_session_id,
+                client_version=client_version,
+            )
+            try:
+                yield log
+            finally:
+                platform_api.configure_client_headers(
+                    client_session_id="",
+                    client_version="",
+                )
 
     return _stub
 

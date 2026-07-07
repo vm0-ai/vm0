@@ -14,6 +14,13 @@ PLATFORM_CLIENT_TYPE_HEADER = "X-Client-Type"
 PLATFORM_CLIENT_SESSION_ID_HEADER = "X-Client-Session-Id"
 PLATFORM_CLIENT_REQUEST_ID_HEADER = "X-Client-Request-Id"
 MITM_ADDON_CLIENT_TYPE = "MitmAddon"
+_CLIENT_HEADERS = ("", "")
+
+
+def configure_client_headers(*, client_session_id: str, client_version: str) -> None:
+    """Snapshot runner-provided client header values for worker-thread requests."""
+    global _CLIENT_HEADERS
+    _CLIENT_HEADERS = (client_session_id, client_version)
 
 
 def get_api_url() -> str:
@@ -30,6 +37,7 @@ def make_api_request(url: str, data: bytes, sandbox_token: str) -> urllib.reques
     parsed_url = urllib.parse.urlsplit(url)
     if parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
         raise ValueError("Platform API URL must be an absolute http(s) URL")
+    client_session_id, client_version = _CLIENT_HEADERS
 
     # S310 (suspicious-url-open-usage): callers build `url` from the
     # operator-configured platform API URL, and the scheme is validated above
@@ -41,9 +49,9 @@ def make_api_request(url: str, data: bytes, sandbox_token: str) -> urllib.reques
             "Content-Type": "application/json",
             "Authorization": f"Bearer {sandbox_token}",
             "User-Agent": "vm0-mitm-addon/1.0",
-            PLATFORM_CLIENT_VERSION_HEADER: ctx.options.vm0_client_version,
+            PLATFORM_CLIENT_VERSION_HEADER: client_version,
             PLATFORM_CLIENT_TYPE_HEADER: MITM_ADDON_CLIENT_TYPE,
-            PLATFORM_CLIENT_SESSION_ID_HEADER: ctx.options.vm0_client_session_id,
+            PLATFORM_CLIENT_SESSION_ID_HEADER: client_session_id,
             PLATFORM_CLIENT_REQUEST_ID_HEADER: str(uuid.uuid4()),
         },
     )
