@@ -58,6 +58,7 @@ import { zeroClient$ } from "../api-client.ts";
 import { agentById } from "../agent.ts";
 import { chatMessageOrderSequence } from "../chat-message-order.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
+import { generationTemplateForFeatureSwitches } from "./generation-template-feature-switch.ts";
 import { pinnedAgentIds$ } from "../zero-page/zero-pinned-agents.ts";
 import { MODEL_FIRST_SELECTION_PROVIDER_ID } from "../zero-page/model-default-selection.ts";
 import {
@@ -2607,7 +2608,10 @@ function createSendMessage(deps: SendMessageDeps) {
         L.debug("sendMessage$ no agentId, abort", { threadId });
         return;
       }
-      const generationTemplate = get(draft.generationTemplate$);
+      const generationTemplate = generationTemplateForFeatureSwitches(
+        get(draft.generationTemplate$),
+        get(featureSwitch$),
+      );
       const result =
         options?.includeDraftAttachments === false
           ? prepareTextOnlyUserMessage(prompt)
@@ -2728,7 +2732,10 @@ function createQueueMessage(deps: QueueMessageDeps) {
         L.debug("queueMessage$ no thread metadata, abort", { threadId });
         return;
       }
-      const generationTemplate = get(draft.generationTemplate$);
+      const generationTemplate = generationTemplateForFeatureSwitches(
+        get(draft.generationTemplate$),
+        get(featureSwitch$),
+      );
 
       const modelSelection = await get(modelSelection$);
       signal.throwIfAborted();

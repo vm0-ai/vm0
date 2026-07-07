@@ -3,6 +3,7 @@ import { withErrorHandler } from "../../../lib/command";
 import { createHtmlArtifactAuthoringPacket } from "../shared/html-artifact-authoring";
 import {
   findDesignSystem,
+  findWebsiteTemplateResource,
   findTemplate,
   listDesignSystems,
   listTemplates,
@@ -136,7 +137,9 @@ ${formatRegistryListing(templates, "website templates")}`;
       let resolvedTemplate;
       if (options.template !== undefined) {
         const canonical = canonicalizeRegistryId("template", options.template);
-        const entry = findTemplate(options.template) ?? findTemplate(canonical);
+        const entry =
+          findWebsiteTemplateResource(options.template) ??
+          findTemplate(canonical);
         if (!entry || !entry.targets?.includes(WEBSITE_TARGET)) {
           throw unknownTemplateError(options.template);
         }

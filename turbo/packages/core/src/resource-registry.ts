@@ -3878,10 +3878,9 @@ export function listTemplates(
 }
 
 export function findTemplate(id: string): RegistryEntry | undefined {
-  const template = filterByKind("template").find((entry) => {
+  return filterByKind("template").find((entry) => {
     return entry.id === id;
   });
-  return template ?? findWebsiteTemplateResource(id);
 }
 
 export function toGenerationTarget(value: string): GenerationTarget {
