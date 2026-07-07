@@ -117,6 +117,8 @@ GWS_CLI_VERSION="0.22.5"
 XURL_VERSION="1.2.2"
 AGENT_BROWSER_VERSION="0.31.1"
 PNPM_VERSION="11.10.0"
+CHROMIUM_VERSION="149.0.7827.196-1~deb12u1"
+CHROMIUM_SECURITY_SNAPSHOT_URL="https://snapshot.debian.org/archive/debian-security/20260626T014759Z"
 
 # ---------------------------------------------------------------------------
 # Dependency checks
@@ -371,13 +373,11 @@ install_packages() {
   # Chromium from Debian Bookworm security (Ubuntu 24.04 snap stub does not work).
   # Installed separately to avoid cross-distro dependency conflicts.
   # Pin to 149 until Debian #1141488 is fixed in the Bookworm security package.
-  sudo chroot "$ROOTFS_DIR" bash -c 'set -e
+  sudo chroot "$ROOTFS_DIR" env \
+    CHROMIUM_VERSION="$CHROMIUM_VERSION" \
+    CHROMIUM_SECURITY_SNAPSHOT_URL="$CHROMIUM_SECURITY_SNAPSHOT_URL" \
+    bash -c 'set -e
     export DEBIAN_FRONTEND=noninteractive
-    chromium_version=149.0.7827.196-1~deb12u1
-    chromium_arch="$(dpkg --print-architecture)"
-    chromium_snapshot_base=https://snapshot.debian.org/archive/debian-security/20260626T014759Z/pool/updates/main/c/chromium
-    chromium_deb_dir="$(mktemp -d)"
-    trap '\''rm -rf "$chromium_deb_dir"'\'' EXIT
     {
       curl -fsSL https://ftp-master.debian.org/keys/archive-key-12.asc
       curl -fsSL https://ftp-master.debian.org/keys/archive-key-12-security.asc
@@ -385,16 +385,13 @@ install_packages() {
       | gpg --dearmor -o /usr/share/keyrings/debian-bookworm.gpg
     cat > /etc/apt/sources.list.d/debian-bookworm.list <<EOF
 deb [signed-by=/usr/share/keyrings/debian-bookworm.gpg] http://deb.debian.org/debian bookworm main
-deb [signed-by=/usr/share/keyrings/debian-bookworm.gpg] http://security.debian.org/debian-security bookworm-security main
+deb [check-valid-until=no signed-by=/usr/share/keyrings/debian-bookworm.gpg] ${CHROMIUM_SECURITY_SNAPSHOT_URL}/ bookworm-security main
 EOF
     apt-get update
-    for chromium_package in chromium chromium-common chromium-sandbox; do
-      curl -fsSL \
-        -o "${chromium_deb_dir}/${chromium_package}.deb" \
-        "${chromium_snapshot_base}/${chromium_package}_${chromium_version}_${chromium_arch}.deb"
-    done
     apt-get install -y -t bookworm \
-      "$chromium_deb_dir"/*.deb
+      chromium="${CHROMIUM_VERSION}" \
+      chromium-common="${CHROMIUM_VERSION}" \
+      chromium-sandbox="${CHROMIUM_VERSION}"
     rm -f /etc/apt/sources.list.d/debian-bookworm.list \
          /usr/share/keyrings/debian-bookworm.gpg
     rm -rf /var/lib/apt/lists/* /var/cache/apt/*
