@@ -716,6 +716,9 @@ export function AccountDropdown({
           align="start"
           sideOffset={8}
           className="w-[240px]"
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+          }}
         >
           <CurrentAccountHeader
             display={accountDisplay}
