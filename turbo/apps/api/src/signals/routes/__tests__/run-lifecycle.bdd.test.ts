@@ -1190,8 +1190,10 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       vasVersionId: expect.any(String),
       missingRootPolicy: "preserveParentVersion",
     });
-    if (!memoryArtifact) {
-      throw new Error("Expected the claim manifest to include memory");
+    if (!memoryArtifact || typeof memoryArtifact.archiveUrl !== "string") {
+      throw new Error(
+        "Expected the claim manifest to include memory with an archive URL",
+      );
     }
     expectApiDispatchTimingEventsNotToLeak(timingEvents, [
       memoryArtifact.archiveUrl,
