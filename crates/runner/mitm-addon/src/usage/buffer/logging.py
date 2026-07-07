@@ -39,7 +39,7 @@ from .models import (
 )
 from .summaries import _build_flush_summaries
 
-UsageFlushPhase: TypeAlias = Literal["started", "enqueued", "failed", "retained", "dropped"]
+_UsageFlushPhase: TypeAlias = Literal["started", "enqueued", "failed", "retained", "dropped"]
 
 _RETRY_BUDGET_EXHAUSTED_REASON = "retry_budget_exhausted"
 _SHUTDOWN_RETAINED_WITHOUT_RETRY_REASON = "shutdown_retained_without_retry"
@@ -64,7 +64,7 @@ def _log_dropped_batches(
 
 
 def _log_flush_summaries(
-    phase: UsageFlushPhase,
+    phase: _UsageFlushPhase,
     trigger: UsageFlushTrigger,
     flush_sequence: int,
     summaries: Iterable[_FlushSummary],
