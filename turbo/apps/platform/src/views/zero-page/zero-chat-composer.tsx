@@ -86,7 +86,6 @@ import {
   closeChatThreadGoalDialog$,
   openChatThreadGoalDialog$,
 } from "../../signals/chat-page/chat-goal.ts";
-import { generationTemplateForFeatureSwitches } from "../../signals/chat-page/generation-template-feature-switch.ts";
 import type { DraftSignals } from "../../signals/chat-page/create-chat-thread.ts";
 import { isVisualAttachment } from "../../signals/chat-page/resolve-draft-attachments.ts";
 import type { Command, Computed } from "ccstate";
@@ -5722,15 +5721,13 @@ function SelectedTemplateChipSlot({
   const cardThemeIdBySlug = useGet(templateCardThemeIdBySlug$);
   const features = useLastResolved(featureSwitch$);
   const hasWebsiteTab = features?.[FeatureSwitchKey.WebsiteTemplates] ?? false;
-  const pickerValue = generationTemplateForFeatureSwitches(
-    picker?.value,
-    features,
-  );
-  const presentationItem = selectedPresentationTemplateItem(pickerValue);
-  const illustrationItem = selectedIllustrationTemplateItem(pickerValue);
-  const videoItem = selectedVideoTemplateItem(pickerValue);
-  const workflowItem = selectedWorkflowTemplateItem(pickerValue);
-  const websiteItem = selectedWebsiteTemplateItem(pickerValue);
+  const presentationItem = selectedPresentationTemplateItem(picker?.value);
+  const illustrationItem = selectedIllustrationTemplateItem(picker?.value);
+  const videoItem = selectedVideoTemplateItem(picker?.value);
+  const workflowItem = selectedWorkflowTemplateItem(picker?.value);
+  const websiteItem = hasWebsiteTab
+    ? selectedWebsiteTemplateItem(picker?.value)
+    : undefined;
   if (!picker) {
     return null;
   }
@@ -5854,10 +5851,7 @@ function TemplatePickerButton({
   const setSearch = useSet(setTemplatePickerSearch$);
   const setPreviewSlug = useSet(setTemplatePickerPreviewSlug$);
   const cardThemeIdBySlug = useGet(templateCardThemeIdBySlug$);
-  const pickerValue = generationTemplateForFeatureSwitches(picker.value, {
-    [FeatureSwitchKey.WebsiteTemplates]: hasWebsiteTab,
-  });
-  const selectedTitle = selectedTemplateTitle(pickerValue);
+  const selectedTitle = selectedTemplateTitle(picker.value);
   const selectedCategory = resolveTemplatePickerCategory({
     category,
     hasPptTab,
@@ -5890,10 +5884,10 @@ function TemplatePickerButton({
               className={cn(
                 "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 hover:bg-accent hover:text-foreground sm:h-9 sm:w-9",
                 COMPOSER_CONTROL_FOCUS_CLASS,
-                pickerValue && "bg-accent text-foreground",
+                picker.value && "bg-accent text-foreground",
               )}
               aria-label="Template"
-              aria-pressed={pickerValue !== undefined}
+              aria-pressed={picker.value !== undefined}
               onPointerEnter={prewarmPicker}
               onFocus={prewarmPicker}
               onPointerDown={prewarmPicker}
@@ -5914,7 +5908,7 @@ function TemplatePickerButton({
       </TooltipProvider>
       {open && (
         <TemplatePickerDialog
-          value={pickerValue}
+          value={picker.value}
           onChange={picker.onChange}
           onClose={() => {
             setOpen(false);
@@ -7165,25 +7159,6 @@ function useUploadPopoverEnabled(): boolean {
   return features?.[FeatureSwitchKey.ComposerUploadPopover] ?? false;
 }
 
-function useFeatureSwitchedTemplatePicker(
-  templatePicker: ComposerTemplatePicker | undefined,
-): ComposerTemplatePicker | undefined {
-  const features = useLastResolved(featureSwitch$);
-  if (!templatePicker) {
-    return undefined;
-  }
-  return {
-    ...templatePicker,
-    value: generationTemplateForFeatureSwitches(templatePicker.value, features),
-  };
-}
-
-function composerTemplatePickerValue(
-  templatePicker: ComposerTemplatePicker | undefined,
-): GenerationTemplateRequest | undefined {
-  return templatePicker?.value;
-}
-
 export function ZeroChatComposer({
   input,
   onInputChange,
@@ -7223,11 +7198,6 @@ export function ZeroChatComposer({
   const codexFastModeEnabled = useCodexFastModeEnabled();
   const popoverModelPickerEnabled = usePopoverModelPickerEnabled();
   const uploadPopoverEnabled = useUploadPopoverEnabled();
-  const resolvedTemplatePicker =
-    useFeatureSwitchedTemplatePicker(templatePicker);
-  const templatePickerValue = composerTemplatePickerValue(
-    resolvedTemplatePicker,
-  );
 
   const resolved = useResolvedComposerSignals(
     input,
@@ -7493,11 +7463,11 @@ export function ZeroChatComposer({
     if (sendAction === "send") {
       // Fire-and-forget: request push permission on first send, never blocks
       detach(ensurePushSubscription(rootSignal), Reason.DomCallback);
-      onSend(input.trim(), templatePickerValue);
+      onSend(input.trim(), templatePicker?.value);
       return;
     }
     if (sendAction === "queue") {
-      onQueue?.(input.trim(), templatePickerValue);
+      onQueue?.(input.trim(), templatePicker?.value);
     }
   };
 
@@ -7520,7 +7490,7 @@ export function ZeroChatComposer({
       return;
     }
     if (sending && queueWhileSending && onQueue) {
-      onQueue(input.trim(), templatePickerValue);
+      onQueue(input.trim(), templatePicker?.value);
     } else {
       handleSend();
     }
@@ -7634,7 +7604,7 @@ export function ZeroChatComposer({
                   turn can also carry a template or attachments, so they render
                   above the feedback rows just as they do above the textarea. */}
               <SelectedTemplateChipSlot
-                picker={resolvedTemplatePicker}
+                picker={templatePicker}
                 onDraftChange={onDraftChange}
               />
               {visibleAttachments.length > 0 && (
@@ -7675,7 +7645,7 @@ export function ZeroChatComposer({
                   ) : (
                     <ComposerAttachButton onSelectFile={handleFileSelect} />
                   )}
-                  <ComposerTemplatePickerSlot picker={resolvedTemplatePicker} />
+                  <ComposerTemplatePickerSlot picker={templatePicker} />
                   <ComposerWorkflowPromptSlot
                     onCreateWorkflowPrompt={onCreateWorkflowPrompt}
                   />

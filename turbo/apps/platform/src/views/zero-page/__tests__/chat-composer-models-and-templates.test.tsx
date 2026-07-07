@@ -50,10 +50,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 import { reloadUserModelPreference$ } from "../../../signals/external/user-model-preference.ts";
-import {
-  setNewThreadGenerationTemplate$,
-  templateCardThemeIdBySlug$,
-} from "../../../signals/zero-page/zero-chat-composer.ts";
+import { templateCardThemeIdBySlug$ } from "../../../signals/zero-page/zero-chat-composer.ts";
 import {
   click,
   detachedSetupPage,
@@ -4281,51 +4278,6 @@ describe("chat composer templates", () => {
           `Remove website template ${websiteTemplate.title}`,
         ),
       ).not.toBeInTheDocument();
-    });
-  });
-
-  it("drops stale website template selections when the feature switch is off", async () => {
-    const user = userEvent.setup({ delay: null });
-    const websiteTemplate = WEBSITE_TEMPLATE_ITEMS[0]!;
-    let submittedTemplate: GenerationTemplateRequest | undefined;
-    mockChatLifecycle(context, {
-      onRunCreate: (body) => {
-        submittedTemplate = body.generationTemplate;
-      },
-    });
-    context.store.set(setNewThreadGenerationTemplate$, {
-      type: "website",
-      selection: { websiteTemplateId: websiteTemplate.id },
-    });
-
-    detachedSetupPage({
-      context,
-      featureSwitches: { [FeatureSwitchKey.WebsiteTemplates]: false },
-      path: `/agents/${AGENT_ID}/chat`,
-    });
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Template")).toHaveAttribute(
-        "aria-pressed",
-        "false",
-      );
-      expect(screen.queryByText("Website")).not.toBeInTheDocument();
-      expect(
-        screen.queryByLabelText(
-          `Remove website template ${websiteTemplate.title}`,
-        ),
-      ).not.toBeInTheDocument();
-    });
-
-    const editor = await findComposerEditor();
-    await sendMessageInUI(user, editor, "Create a warm website");
-
-    await waitFor(() => {
-      expect(submittedTemplate).toBeUndefined();
-      expect(screen.getByLabelText("Template")).toHaveAttribute(
-        "aria-pressed",
-        "false",
-      );
     });
   });
 
