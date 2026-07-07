@@ -362,6 +362,13 @@ describe("runner claim capability contract", () => {
 });
 
 describe("runner builtin firewall resolve contract", () => {
+  it("accepts omitted names for full catalog resolution", () => {
+    const result =
+      runnersBuiltinFirewallsResolveContract.resolve.body.safeParse({});
+
+    expect(result.success).toBe(true);
+  });
+
   it("accepts connector and model-provider names", () => {
     const result =
       runnersBuiltinFirewallsResolveContract.resolve.body.safeParse({
@@ -380,6 +387,11 @@ describe("runner builtin firewall resolve contract", () => {
     expect(
       runnersBuiltinFirewallsResolveContract.resolve.body.safeParse({
         names: ["model-provider:"],
+      }).success,
+    ).toBe(false);
+    expect(
+      runnersBuiltinFirewallsResolveContract.resolve.body.safeParse({
+        names: [],
       }).success,
     ).toBe(false);
     expect(

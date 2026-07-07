@@ -16,6 +16,7 @@ import {
   RUNNER_RUNTIME_FIREWALL_CATALOG_DIGEST,
   RUNNER_RUNTIME_FIREWALL_CATALOG_VERSION,
   hasRunnerRuntimeFirewall,
+  loadAllRunnerRuntimeFirewalls,
   loadRunnerRuntimeFirewalls,
 } from "@vm0/connectors/firewall-metadata/runner-runtime";
 import { runnerRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
@@ -1946,17 +1947,21 @@ const builtinFirewallsResolveInner$ = command(
       return body.response;
     }
 
-    const names = [...new Set(body.data.names)];
-    const missingNames = names.filter((name) => {
-      return !hasRunnerRuntimeFirewall(name);
-    });
-    if (missingNames.length > 0) {
-      return badRequestMessage(
-        `Unknown builtin firewall: ${missingNames.join(", ")}`,
-      );
+    let firewalls: Awaited<ReturnType<typeof loadRunnerRuntimeFirewalls>>;
+    if (body.data.names === undefined) {
+      firewalls = await loadAllRunnerRuntimeFirewalls();
+    } else {
+      const names = [...new Set(body.data.names)];
+      const missingNames = names.filter((name) => {
+        return !hasRunnerRuntimeFirewall(name);
+      });
+      if (missingNames.length > 0) {
+        return badRequestMessage(
+          `Unknown builtin firewall: ${missingNames.join(", ")}`,
+        );
+      }
+      firewalls = await loadRunnerRuntimeFirewalls(names);
     }
-
-    const firewalls = await loadRunnerRuntimeFirewalls(names);
     signal.throwIfAborted();
 
     return {
