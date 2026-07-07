@@ -1,5 +1,5 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
 import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
@@ -143,6 +143,39 @@ function buttonByLabel(
   return button;
 }
 
+function formatResetInTimeZone(resetAt: string, timeZone: string): string {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone,
+    timeZoneName: "short",
+  }).format(new Date(resetAt));
+}
+
+function mockBrowserTimeZone(timeZone: string): void {
+  const resolvedOptions = new Intl.DateTimeFormat().resolvedOptions();
+  vi.spyOn(Intl.DateTimeFormat.prototype, "resolvedOptions").mockReturnValue({
+    ...resolvedOptions,
+    timeZone,
+  });
+}
+
+function expectVisibleText(text: string): void {
+  const matches = screen.getAllByText(text);
+  const visibleMatch = matches.find((element) => {
+    try {
+      expect(element).toBeVisible();
+      return true;
+    } catch {
+      return false;
+    }
+  });
+  expect(visibleMatch).toBeDefined();
+}
+
 async function openAccountMenu(): Promise<HTMLElement> {
   const accountName = await screen.findByText("Alex Rivera");
   const accountButton = accountName.closest("button");
@@ -271,6 +304,8 @@ describe("zero sidebar account menu", () => {
   });
 
   it("shows subscription usage grouped below credits in the account menu", async () => {
+    mockBrowserTimeZone("America/New_York");
+    mockNow(new Date("2030-01-01T00:48:00.000Z"));
     mockAdminAccountSidebar();
     context.mocks.data.personalModelProviders([
       connectedPersonalCodexProvider(),
@@ -308,6 +343,7 @@ describe("zero sidebar account menu", () => {
     expect(within(panel).getByText("88%")).toBeInTheDocument();
     expect(within(panel).getByText("76%")).toBeInTheDocument();
     expect(within(panel).getByText("2 resets left")).toBeInTheDocument();
+    expect(within(panel).queryByText(/^resets /)).not.toBeInTheDocument();
     expect(
       within(panel).queryByText(/codex\.user@example\.com/),
     ).not.toBeInTheDocument();
@@ -316,6 +352,14 @@ describe("zero sidebar account menu", () => {
       name: "Codex 5h remaining",
     });
     expect(codexFiveHour).toHaveAttribute("aria-valuenow", "82");
+    fireEvent.focus(codexFiveHour);
+
+    await waitFor(() => {
+      expectVisibleText("Resets in 4h 12m");
+      expectVisibleText(
+        formatResetInTimeZone("2030-01-01T05:00:00.000Z", "America/New_York"),
+      );
+    });
 
     const credits = within(menu).getByText("12,500 credits");
     const codex = within(panel).getByRole("heading", { name: "Codex" });
