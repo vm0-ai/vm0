@@ -596,9 +596,9 @@ async fn write_request_frame_with_builder(
     before_write: impl FnOnce() -> io::Result<()>,
 ) -> io::Result<()> {
     let mut write_guard = RequestWriteGuard::new(Arc::clone(shared));
-    let mut writer = shared.writer.lock().await;
     let mut frame = Vec::new();
     build_frame(seq, &mut frame)?;
+    let mut writer = shared.writer.lock().await;
     before_write()?;
     write_guard.mark_started();
     let result = writer.write_all(&frame).await;

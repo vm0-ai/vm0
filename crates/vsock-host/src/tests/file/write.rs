@@ -379,6 +379,72 @@ async fn write_file_rejects_protocol_path_too_long_before_waiting_for_writer() {
 }
 
 #[tokio::test]
+async fn write_file_frame_builder_runs_before_waiting_for_writer_lock() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let frame_built_count = Arc::new(AtomicUsize::new(0));
+    let before_write_count = Arc::new(AtomicUsize::new(0));
+    let writer_guard = host.shared.writer.lock().await;
+
+    let write_task = {
+        let host = Arc::clone(&host);
+        let frame_built_count = Arc::clone(&frame_built_count);
+        let before_write_count = Arc::clone(&before_write_count);
+        tokio::spawn(async move {
+            crate::write_request_frame_with_builder(
+                &host.shared,
+                123,
+                move |seq, frame| {
+                    vsock_proto::encode_write_file_frame_into(
+                        frame,
+                        seq,
+                        "/tmp/built-before-lock.txt",
+                        b"hello",
+                        false,
+                        false,
+                    )
+                    .map_err(|error| {
+                        io::Error::new(io::ErrorKind::InvalidInput, error.to_string())
+                    })?;
+                    frame_built_count.fetch_add(1, Ordering::SeqCst);
+                    Ok(())
+                },
+                move || {
+                    before_write_count.fetch_add(1, Ordering::SeqCst);
+                    Ok(())
+                },
+            )
+            .await
+        })
+    };
+
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while frame_built_count.load(Ordering::SeqCst) != 1 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(before_write_count.load(Ordering::SeqCst), 0);
+    match guest.try_read(&mut [0u8; 1]) {
+        Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
+        Ok(n) => panic!("frame must not be sent before writer lock is released; read {n} bytes"),
+        Err(err) => panic!("unexpected read error before writer lock is released: {err}"),
+    }
+
+    drop(writer_guard);
+    let write = expect_write_file(&mut guest).await;
+    assert_eq!(write.seq(), 123);
+    assert_eq!(write.path, "/tmp/built-before-lock.txt");
+    assert_eq!(write.content, b"hello");
+    assert!(!write.sudo);
+    assert!(!write.append);
+    assert!(!write.private);
+    write_task.await.unwrap().unwrap();
+    assert_eq!(before_write_count.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
 async fn write_file_rejects_invalid_path_before_sending_frame() {
     let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
