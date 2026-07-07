@@ -1042,6 +1042,7 @@ async function getRunStateForAction(
         .select({
           id: agentRuns.id,
           prompt: agentRuns.prompt,
+          appendSystemPrompt: agentRuns.appendSystemPrompt,
           status: agentRuns.status,
         })
         .from(agentRuns)

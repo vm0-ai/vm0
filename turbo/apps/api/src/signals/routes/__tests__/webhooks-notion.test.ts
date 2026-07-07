@@ -6,6 +6,8 @@ import { HttpResponse, http } from "msw";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
+import { clearMockedEnv, mockEnv, mockOptionalEnv } from "../../../lib/env";
+import { clearMockNow, mockNow } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import {
   createFixtureTracker,
@@ -19,8 +21,11 @@ import {
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
 const WORKFLOW_TRIGGER_STATE_PATH = "/api/test/workflow-trigger-state/action";
+const CRON_EXECUTE_WORKFLOW_TRIGGERS_PATH =
+  "/api/cron/execute-workflow-triggers";
 
 const WORKFLOW_NAME = "notion-webhook-workflow";
+const CRON_SECRET = "test-cron-secret";
 const NOTION_PARENT_PAGE_ID = "11111111-1111-4111-8111-111111111111";
 const NOTION_CHILD_PAGE_ID = "22222222-2222-4222-8222-222222222222";
 const NOTION_DATABASE_ID = "77777777-7777-4777-8777-777777777777";
@@ -38,6 +43,11 @@ const NOTION_WORKSPACE_ID = "33333333-3333-4333-8333-333333333333";
 const NOTION_SUBSCRIPTION_ID = "44444444-4444-4444-8444-444444444444";
 const NOTION_INTEGRATION_ID = "55555555-5555-4555-8555-555555555555";
 const NOTION_AUTHOR_ID = "66666666-6666-4666-8666-666666666666";
+
+afterEach(() => {
+  clearMockedEnv();
+  clearMockNow();
+});
 
 interface WorkflowsFixture {
   readonly orgId: string;
@@ -127,7 +137,13 @@ function configureNotionChildPageMock(
         readonly data_source_id: string;
         readonly database_id?: string;
       } = { type: "page_id", page_id: NOTION_PARENT_PAGE_ID },
+  options: {
+    readonly title?: string;
+    readonly lastEditedTime?: string;
+    readonly extraProperties?: Record<string, unknown>;
+  } = {},
 ): void {
+  const title = options.title ?? "Launch notes";
   server.use(
     http.get(
       "https://api.notion.com/v1/pages/:pageId",
@@ -141,7 +157,8 @@ function configureNotionChildPageMock(
           object: "page",
           id: NOTION_CHILD_PAGE_ID,
           created_time: "2026-07-01T00:00:00.000Z",
-          last_edited_time: "2026-07-06T12:00:00.000Z",
+          last_edited_time:
+            options.lastEditedTime ?? "2026-07-06T12:00:00.000Z",
           archived: false,
           in_trash: false,
           url: NOTION_CHILD_PAGE_URL,
@@ -150,8 +167,9 @@ function configureNotionChildPageMock(
             title: {
               id: "title",
               type: "title",
-              title: [{ type: "text", plain_text: "Launch notes" }],
+              title: [{ type: "text", plain_text: title }],
             },
+            ...options.extraProperties,
           },
         });
       },
@@ -301,6 +319,45 @@ async function postNotionWebhook(args: {
     },
   );
   return { status: response.status, body: await response.json() };
+}
+
+async function executeDueWorkflowTriggers(): Promise<{
+  readonly status: number;
+  readonly body: unknown;
+}> {
+  const response = await createApp({ signal: context.signal }).request(
+    CRON_EXECUTE_WORKFLOW_TRIGGERS_PATH,
+    { headers: { authorization: `Bearer ${CRON_SECRET}` } },
+  );
+  return { status: response.status, body: await response.json() };
+}
+
+function records(value: unknown): readonly Record<string, unknown>[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((item): item is Record<string, unknown> => {
+    return typeof item === "object" && item !== null && !Array.isArray(item);
+  });
+}
+
+function record(value: unknown, label: string): Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`Expected ${label} to be an object`);
+  }
+  return value as Record<string, unknown>;
+}
+
+function notionEventContextFromPrompt(
+  appendSystemPrompt: string,
+): Record<string, unknown> {
+  const marker = "# Notion event\n";
+  const markerIndex = appendSystemPrompt.indexOf(marker);
+  expect(markerIndex).toBeGreaterThanOrEqual(0);
+  const parsed: unknown = JSON.parse(
+    appendSystemPrompt.slice(markerIndex + marker.length),
+  );
+  return record(parsed, "Notion event context");
 }
 
 describe("POST /api/webhooks/notion", () => {
@@ -737,6 +794,143 @@ describe("POST /api/webhooks/notion", () => {
       expect.objectContaining({
         runAfter: "2026-07-06T12:25:00.000Z",
         latestNotionEventId: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+      }),
+    ]);
+  });
+
+  it("executes due page content updated events with the latest page context", async () => {
+    mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
+    mockEnv("CRON_SECRET", CRON_SECRET);
+    const { fixture, workflowId } = await setupFixture();
+    await enableNotionWorkflowTriggers(fixture);
+    await seedNotionConnector(fixture);
+    configureNotionChildPageMock();
+
+    const created = await accept(
+      triggersClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: {
+          kind: "event",
+          eventType: "notion-page-content-updated",
+          eventConfig: {
+            provider: "notion",
+            event: "page_content_updated",
+            pageUrl: NOTION_CHILD_PAGE_URL,
+          },
+        },
+      }),
+      [201],
+    );
+    if (
+      created.body.kind !== "event" ||
+      created.body.eventType !== "notion-page-content-updated"
+    ) {
+      throw new Error("Expected a Notion page content updated trigger");
+    }
+
+    const verification = await postNotionWebhook({
+      rawBody: JSON.stringify({ verification_token: NOTION_WEBHOOK_TOKEN }),
+    });
+    expect(verification.status).toBe(200);
+
+    const contentRaw = JSON.stringify(
+      notionPageEvent({
+        id: "babababa-baba-4bab-8bab-babababababa",
+        type: "page.content_updated",
+        timestamp: "2026-07-06T12:00:00.000Z",
+      }),
+    );
+    const enqueued = await postNotionWebhook({
+      rawBody: contentRaw,
+      signature: notionSignature(contentRaw),
+    });
+    expect(enqueued).toStrictEqual({
+      status: 200,
+      body: {
+        success: true,
+        kind: "event",
+        pending: 1,
+        refreshed: 0,
+        duplicates: 0,
+      },
+    });
+
+    configureNotionChildPageMock(undefined, {
+      title: "Launch notes v2",
+      lastEditedTime: "2026-07-06T12:16:00.000Z",
+      extraProperties: {
+        Status: {
+          id: "status",
+          type: "select",
+          select: { name: "In review", color: "yellow" },
+        },
+      },
+    });
+    mockNow(new Date("2026-07-06T12:20:00.000Z"));
+
+    const executed = await executeDueWorkflowTriggers();
+    expect(executed).toStrictEqual({
+      status: 200,
+      body: { success: true, executed: 1, skipped: 0 },
+    });
+
+    const runState = await workflowTriggerStateAction({
+      action: "get-run-state",
+      trigger_id: created.body.id,
+    });
+    const runs = records(runState.runs);
+    expect(runs).toHaveLength(1);
+    const run = runs[0]!;
+    expect(run.triggerSource).toBe("workflow-event");
+    expect(run.triggerBrief).toBe(
+      'Notion page content updated "Launch notes v2" in Launch notes v2',
+    );
+
+    const agentRun = record(runState.run, "agent run");
+    const appendSystemPrompt = agentRun.appendSystemPrompt;
+    if (typeof appendSystemPrompt !== "string") {
+      throw new Error("Expected appendSystemPrompt to be persisted");
+    }
+    const eventContext = notionEventContextFromPrompt(appendSystemPrompt);
+    const page = record(eventContext.page, "Notion page");
+    const properties = record(page.properties, "Notion page properties");
+    expect(eventContext).toMatchObject({
+      event: "page_content_updated",
+      page: {
+        id: NOTION_CHILD_PAGE_ID,
+        title: "Launch notes v2",
+        url: NOTION_CHILD_PAGE_URL,
+        lastEditedTime: "2026-07-06T12:16:00.000Z",
+      },
+      latestEventContext: {
+        workspaceName: "Zero Test Workspace",
+        attemptNumber: 1,
+      },
+    });
+    expect(record(properties.Status, "Status property")).toMatchObject({
+      type: "select",
+      select: { name: "In review" },
+    });
+    expect(eventContext).not.toHaveProperty("body");
+    expect(eventContext).not.toHaveProperty("content");
+    expect(page).not.toHaveProperty("body");
+    expect(page).not.toHaveProperty("content");
+
+    const pendingState = await workflowTriggerStateAction({
+      action: "get-notion-pending-events",
+      trigger_id: created.body.id,
+    });
+    expect(pendingState.events).toStrictEqual([
+      expect.objectContaining({
+        triggerId: created.body.id,
+        pageId: NOTION_CHILD_PAGE_ID,
+        scopeType: "page",
+        scopeId: NOTION_CHILD_PAGE_ID,
+        eventFamily: "page_content_updated",
+        status: "processed",
+        latestNotionEventId: "babababa-baba-4bab-8bab-babababababa",
+        skipReason: null,
       }),
     ]);
   });
