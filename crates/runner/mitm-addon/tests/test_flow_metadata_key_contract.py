@@ -38,7 +38,10 @@ def test_check_flow_metadata_keys_cli_passes_current_repository(tmp_path):
     python3.symlink_to(Path(sys.executable).resolve())
     env = {
         **os.environ,
+        "LC_ALL": "C",
         "PATH": f"{tmp_path}{os.pathsep}{os.environ.get('PATH', '')}",
+        "PYTHONCOERCECLOCALE": "0",
+        "PYTHONUTF8": "0",
     }
 
     # Trusted workspace tooling with constant argv; no user-controlled shell input.

@@ -1340,7 +1340,7 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
 
 
 def metadata_key_violations(path: Path) -> list[str]:
-    tree = ast.parse(path.read_text(), filename=str(path))
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     visitor = _MetadataKeyVisitor(path)
     visitor.visit(tree)
     return visitor.violations
