@@ -2417,6 +2417,7 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
       code: "drive-no-refresh",
       state: stateFromAuthorizationUrl(start.authorizationUrl),
     });
+    await api.enableAgentConnectors(actor, agentId, ["google-drive"]);
     mockGoogleDriveFilesList(() => {
       return { status: 401 };
     });
