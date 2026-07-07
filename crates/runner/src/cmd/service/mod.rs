@@ -180,11 +180,12 @@ fn systemd_run_limit_nofile_property_arg() -> String {
 
 async fn reload_systemd_if_drain_restart_override_removed(
     unit: &RunnerServiceUnit,
-) -> RunnerResult<()> {
+) -> RunnerResult<bool> {
     if remove_drain_restart_override(unit)? {
         run_systemctl(&["daemon-reload"]).await?;
+        return Ok(true);
     }
-    Ok(())
+    Ok(false)
 }
 
 fn ensure_drain_restart_policy_applied(
@@ -215,7 +216,17 @@ trait ServiceDrainOps {
     fn disable<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, ()>;
 }
 
+trait ServiceResumeOps {
+    fn write_restart_override(&mut self, unit: &RunnerServiceUnit) -> RunnerResult<()>;
+    fn daemon_reload(&mut self) -> ServiceFuture<'_, ()>;
+    fn signal_resume<'a>(
+        &'a mut self,
+        unit: &'a RunnerServiceUnit,
+    ) -> ServiceFuture<'a, ServiceSignalOutcome>;
+}
+
 struct RealServiceDrainOps;
+struct RealServiceResumeOps;
 
 impl ServiceDrainOps for RealServiceDrainOps {
     fn is_active<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, bool> {
@@ -250,6 +261,23 @@ impl ServiceDrainOps for RealServiceDrainOps {
     }
 }
 
+impl ServiceResumeOps for RealServiceResumeOps {
+    fn write_restart_override(&mut self, unit: &RunnerServiceUnit) -> RunnerResult<()> {
+        write_drain_restart_override(unit)
+    }
+
+    fn daemon_reload(&mut self) -> ServiceFuture<'_, ()> {
+        Box::pin(async { run_systemctl(&["daemon-reload"]).await })
+    }
+
+    fn signal_resume<'a>(
+        &'a mut self,
+        unit: &'a RunnerServiceUnit,
+    ) -> ServiceFuture<'a, ServiceSignalOutcome> {
+        Box::pin(async move { signal_service_main(unit, nix::sys::signal::Signal::SIGUSR2).await })
+    }
+}
+
 async fn rollback_drain_restart_override(
     unit: &RunnerServiceUnit,
     ops: &mut impl ServiceDrainOps,
@@ -274,6 +302,68 @@ async fn rollback_drain_restart_override(
                 error = %e,
                 "failed to remove drain restart override after drain failure"
             );
+        }
+    }
+}
+
+async fn restore_drain_restart_override_after_failed_resume(
+    unit: &RunnerServiceUnit,
+    ops: &mut impl ServiceResumeOps,
+    context: &str,
+) {
+    if let Err(e) = ops.write_restart_override(unit) {
+        warn!(
+            unit = %unit.unit_name(),
+            context,
+            error = %e,
+            "failed to restore drain restart override after resume failure"
+        );
+        return;
+    }
+    if let Err(e) = ops.daemon_reload().await {
+        warn!(
+            unit = %unit.unit_name(),
+            context,
+            error = %e,
+            "failed to reload systemd after restoring drain restart override"
+        );
+    }
+}
+
+async fn signal_resume_after_restart_policy_restored(
+    unit: &RunnerServiceUnit,
+    removed_drain_restart_override: bool,
+    ops: &mut impl ServiceResumeOps,
+) -> RunnerResult<()> {
+    match ops.signal_resume(unit).await {
+        Ok(ServiceSignalOutcome::Sent { pid }) => {
+            info!(unit = %unit.unit_name(), pid, "sent SIGUSR2 (resume)");
+            Ok(())
+        }
+        Ok(ServiceSignalOutcome::AlreadyGone) => {
+            if removed_drain_restart_override {
+                restore_drain_restart_override_after_failed_resume(unit, ops, "signal_resume_gone")
+                    .await;
+            }
+            info!(
+                unit = %unit.unit_name(),
+                "runner exited between preflight and signal; refusing resume",
+            );
+            Err(RunnerError::Internal(format!(
+                "{} is not active — cannot resume an inactive runner",
+                unit.unit_name()
+            )))
+        }
+        Err(e) => {
+            if removed_drain_restart_override {
+                restore_drain_restart_override_after_failed_resume(
+                    unit,
+                    ops,
+                    "signal_resume_error",
+                )
+                .await;
+            }
+            Err(e)
         }
     }
 }
@@ -677,28 +767,19 @@ async fn resume(args: ServiceResumeArgs) -> RunnerResult<()> {
         }
     }
 
-    reload_systemd_if_drain_restart_override_removed(&unit).await?;
+    let removed_drain_restart_override =
+        reload_systemd_if_drain_restart_override_removed(&unit).await?;
 
     // Same race as in `drain`: the runner can exit after the preflight
-    // `is_unit_active` check but before we deliver SIGUSR2. Unlike drain,
-    // there is no useful cleanup left once the runner is gone — resume is
-    // meaningless — so surface the same "not active" error the preflight
-    // branch above already returns.
-    match signal_service_main(&unit, nix::sys::signal::Signal::SIGUSR2).await? {
-        ServiceSignalOutcome::Sent { pid } => {
-            info!(unit = %unit.unit_name(), pid, "sent SIGUSR2 (resume)");
-        }
-        ServiceSignalOutcome::AlreadyGone => {
-            info!(
-                unit = %unit.unit_name(),
-                "runner exited between preflight and signal; refusing resume",
-            );
-            return Err(RunnerError::Internal(format!(
-                "{} is not active — cannot resume an inactive runner",
-                unit.unit_name()
-            )));
-        }
-    }
+    // `is_unit_active` check but before we deliver SIGUSR2. If resume does not
+    // deliver SIGUSR2 after restoring Restart=on-failure, put the drain override
+    // back so a still-draining old runner does not regain restart behavior.
+    signal_resume_after_restart_policy_restored(
+        &unit,
+        removed_drain_restart_override,
+        &mut RealServiceResumeOps,
+    )
+    .await?;
 
     // Re-enable so the unit restarts on reboot (undoes the disable from drain).
     // Use `enable` (not `--now`) — the service is already running. SIGUSR2
@@ -974,6 +1055,14 @@ profiles:
         disable_error: bool,
     }
 
+    struct FakeResumeOps {
+        events: Vec<&'static str>,
+        write_error: bool,
+        reload_error: bool,
+        signal_error: bool,
+        signal_outcome: ServiceSignalOutcome,
+    }
+
     impl Default for FakeDrainOps {
         fn default() -> Self {
             Self {
@@ -987,6 +1076,18 @@ profiles:
                 signal_error: false,
                 signal_outcome: ServiceSignalOutcome::Sent { pid: 123 },
                 disable_error: false,
+            }
+        }
+    }
+
+    impl Default for FakeResumeOps {
+        fn default() -> Self {
+            Self {
+                events: Vec::new(),
+                write_error: false,
+                reload_error: false,
+                signal_error: false,
+                signal_outcome: ServiceSignalOutcome::Sent { pid: 123 },
             }
         }
     }
@@ -1060,6 +1161,38 @@ profiles:
                 Err(fake_error("disable failed"))
             } else {
                 Ok(())
+            }))
+        }
+    }
+
+    impl ServiceResumeOps for FakeResumeOps {
+        fn write_restart_override(&mut self, _unit: &RunnerServiceUnit) -> RunnerResult<()> {
+            self.events.push("write_restart_override");
+            if self.write_error {
+                Err(fake_error("write failed"))
+            } else {
+                Ok(())
+            }
+        }
+
+        fn daemon_reload(&mut self) -> ServiceFuture<'_, ()> {
+            self.events.push("daemon_reload");
+            Box::pin(std::future::ready(if self.reload_error {
+                Err(fake_error("reload failed"))
+            } else {
+                Ok(())
+            }))
+        }
+
+        fn signal_resume<'a>(
+            &'a mut self,
+            _unit: &'a RunnerServiceUnit,
+        ) -> ServiceFuture<'a, ServiceSignalOutcome> {
+            self.events.push("signal_resume");
+            Box::pin(std::future::ready(if self.signal_error {
+                Err(fake_error("signal failed"))
+            } else {
+                Ok(self.signal_outcome)
             }))
         }
     }
@@ -1280,6 +1413,72 @@ profiles:
                 "disable",
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn resume_signal_sent_keeps_restored_restart_policy() {
+        let unit = service_unit();
+        let mut ops = FakeResumeOps::default();
+
+        signal_resume_after_restart_policy_restored(&unit, true, &mut ops)
+            .await
+            .unwrap();
+
+        assert_eq!(ops.events, ["signal_resume"]);
+    }
+
+    #[tokio::test]
+    async fn resume_signal_failure_restores_removed_drain_override() {
+        let unit = service_unit();
+        let mut ops = FakeResumeOps {
+            signal_error: true,
+            ..FakeResumeOps::default()
+        };
+
+        let err = signal_resume_after_restart_policy_restored(&unit, true, &mut ops)
+            .await
+            .unwrap_err();
+
+        assert!(err.to_string().contains("signal failed"));
+        assert_eq!(
+            ops.events,
+            ["signal_resume", "write_restart_override", "daemon_reload"]
+        );
+    }
+
+    #[tokio::test]
+    async fn resume_already_gone_restores_removed_drain_override() {
+        let unit = service_unit();
+        let mut ops = FakeResumeOps {
+            signal_outcome: ServiceSignalOutcome::AlreadyGone,
+            ..FakeResumeOps::default()
+        };
+
+        let err = signal_resume_after_restart_policy_restored(&unit, true, &mut ops)
+            .await
+            .unwrap_err();
+
+        assert!(err.to_string().contains("cannot resume an inactive runner"));
+        assert_eq!(
+            ops.events,
+            ["signal_resume", "write_restart_override", "daemon_reload"]
+        );
+    }
+
+    #[tokio::test]
+    async fn resume_signal_failure_without_removed_override_does_not_write_override() {
+        let unit = service_unit();
+        let mut ops = FakeResumeOps {
+            signal_error: true,
+            ..FakeResumeOps::default()
+        };
+
+        let err = signal_resume_after_restart_policy_restored(&unit, false, &mut ops)
+            .await
+            .unwrap_err();
+
+        assert!(err.to_string().contains("signal failed"));
+        assert_eq!(ops.events, ["signal_resume"]);
     }
 
     #[test]
