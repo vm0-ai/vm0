@@ -1,5 +1,5 @@
 use crate::support::*;
-use flate2::read::GzDecoder;
+use flate2::{Compression, read::GzDecoder, write::GzEncoder};
 use guest_contracts::session_history_identity::{
     FinalSessionHistoryFramework, FinalSessionHistoryIdentity, FinalSessionHistoryRefKind,
 };
@@ -10,9 +10,6 @@ use std::{
     ffi::OsString,
     io::{Read, Write},
 };
-
-use flate2::{Compression, write::GzEncoder};
-
 const LARGE_SESSION_HISTORY_SIZE_BYTES: usize = 1024 * 1024 + 1;
 
 fn runtime_from_process_env() -> Result<guest_agent::run_context::GuestRuntime, String> {
