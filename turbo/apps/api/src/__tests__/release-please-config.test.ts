@@ -84,34 +84,14 @@ describe("release-please API deployment graph", () => {
     }
   });
 
-  it("deploys API when runtime workspace dependencies release", () => {
+  it("builds and promotes API for every release", () => {
     const workflow = readText(".github/workflows/release-please.yml");
-    const apiDeployRequiredLine =
-      workflow.split("\n").find((line) => {
-        return line.includes("api_deploy_required:");
-      }) ?? "";
+    const apiBuildJob = workflowJobBlock(workflow, "build-api-production");
 
-    expect(apiDeployRequiredLine).toContain("turbo/apps/api--release_created");
-
-    const dbReleaseIsHandledByMigrationCoupling = new Set([
-      "turbo/packages/db",
-    ]);
-    const deployDependencyPaths = apiRuntimeWorkspaceDependencyPaths().filter(
-      (packagePath) => {
-        return !dbReleaseIsHandledByMigrationCoupling.has(packagePath);
-      },
+    expect(apiBuildJob).toContain(
+      `if: \${{ needs.release-please.outputs.releases_created == 'true' }}`,
     );
-
-    for (const packagePath of deployDependencyPaths) {
-      expect(apiDeployRequiredLine).toContain(
-        `${packagePath}--release_created`,
-      );
-    }
-
-    expect(workflow).toContain(
-      "if: $" +
-        "{{ needs.release-please.outputs.api_deploy_required == 'true' }}",
-    );
+    expect(apiBuildJob).not.toContain("api_deploy_required");
 
     const promoteApiProductionJob = workflowJobBlock(
       workflow,
@@ -121,69 +101,9 @@ describe("release-please API deployment graph", () => {
     expect(promoteApiProductionJob).toContain("migrate-production");
     expect(promoteApiProductionJob).toContain("always() &&");
     expect(promoteApiProductionJob).toContain(
-      "needs.release-please.outputs.api_deploy_required == 'true'",
+      "needs.release-please.outputs.releases_created == 'true'",
     );
-    expect(promoteApiProductionJob).toContain(
-      "needs.release-please.outputs.api_release_created != 'true'",
-    );
-    expect(promoteApiProductionJob).toContain(
-      "needs.migrate-production.result == 'success'",
-    );
-  });
-
-  it("blocks app promotion when API runtime paths have unreleased diffs", () => {
-    const workflow = readText(".github/workflows/release-please.yml");
-    const consistencyJob = workflowJobBlock(
-      workflow,
-      "verify-release-deploy-consistency",
-    );
-    const buildsCompleteJob = workflowJobBlock(workflow, "builds-complete");
-    const migrateProductionJob = workflowJobBlock(
-      workflow,
-      "migrate-production",
-    );
-    const promoteAppProductionJob = workflowJobBlock(
-      workflow,
-      "promote-app-production",
-    );
-
-    expect(consistencyJob).toContain("app_release_created == 'true'");
-    expect(consistencyJob).toContain("tag_commit");
-    expect(consistencyJob).toContain("instead of release head $head_commit");
-    expect(consistencyJob).toContain('git checkout --force "$HEAD_SHA"');
-    expect(consistencyJob).toContain("git diff --quiet");
-    expect(consistencyJob).toContain(
-      `release-please did not create a \${tag_prefix} release`,
-    );
-    expect(consistencyJob).toContain("turbo/apps/platform");
-    expect(consistencyJob).toContain("turbo/apps/api");
-
-    for (const packagePath of apiRuntimeWorkspaceDependencyPaths()) {
-      expect(consistencyJob).toContain(packagePath);
-    }
-
-    expect(buildsCompleteJob).toContain("verify-release-deploy-consistency");
-    expect(migrateProductionJob).toContain(
-      "needs.builds-complete.result == 'success'",
-    );
-    expect(promoteAppProductionJob).toContain(
-      "needs.builds-complete.result == 'success'",
-    );
-  });
-
-  it("checks out production app and API builds at the triggering main commit", () => {
-    const workflow = readText(".github/workflows/release-please.yml");
-    const apiBuildJob = workflowJobBlock(workflow, "build-api-production");
-    const appBuildJob = workflowJobBlock(workflow, "build-app-production");
-    const releaseHeadRef = `ref: \${{ github.event.workflow_run.head_sha || github.sha }}`;
-    const releaseHeadEnv = `RELEASE_HEAD_SHA: \${{ github.event.workflow_run.head_sha || github.sha }}`;
-    const releaseHeadCheckout = `git checkout --force "$RELEASE_HEAD_SHA"`;
-
-    expect(apiBuildJob).not.toContain(releaseHeadRef);
-    expect(appBuildJob).not.toContain(releaseHeadRef);
-    expect(apiBuildJob).toContain(releaseHeadEnv);
-    expect(appBuildJob).toContain(releaseHeadEnv);
-    expect(apiBuildJob).toContain(releaseHeadCheckout);
-    expect(appBuildJob).toContain(releaseHeadCheckout);
+    expect(promoteApiProductionJob).not.toContain("api_deploy_required");
+    expect(promoteApiProductionJob).not.toContain("api_release_created");
   });
 });
