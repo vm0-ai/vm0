@@ -1,4 +1,5 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
@@ -610,6 +611,43 @@ describe("zero sidebar account menu", () => {
     await waitFor(() => {
       expect(screen.getByText("Disabled")).toBeInTheDocument();
     });
+  });
+
+  it("restores page interactivity after closing settings", async () => {
+    prepareDefaultAgent();
+    const user = userEvent.setup({ delay: null });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Open chat list menu")).toBeInTheDocument();
+    });
+
+    const menu = await openAccountMenu();
+    click(within(menu).getByText("Settings"));
+
+    const dialog = await screen.findByRole("dialog", { name: "Settings" });
+    click(within(dialog).getByLabelText("Close"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Settings" }),
+      ).not.toBeInTheDocument();
+    });
+
+    expect(document.querySelector(".zero-dialog-overlay")).toBeNull();
+    expect(document.body.style.pointerEvents).not.toBe("none");
+
+    await user.click(screen.getByLabelText("Open chat list menu"));
+    expect(await screen.findByRole("menu")).toBeInTheDocument();
   });
 
   it("shows account switching, add-account, and sign-out actions", async () => {

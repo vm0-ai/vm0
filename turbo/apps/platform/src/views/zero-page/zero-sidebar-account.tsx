@@ -61,6 +61,7 @@ import {
   AccountMenuSubscriptionsPanel,
   useSubscriptionUsageRows,
 } from "./zero-sidebar-subscriptions.tsx";
+import { runAfterDropdownMenuClose } from "../components/dropdown-menu-modal-action.ts";
 
 interface SessionAccount {
   sessionId: string;
@@ -391,7 +392,9 @@ function CreditBalanceItem({
 }) {
   return (
     <DropdownMenuItem
-      onClick={onOpenCreditBalance}
+      onSelect={() => {
+        runAfterDropdownMenuClose(onOpenCreditBalance);
+      }}
       className="gap-3 px-3 py-2.5 rounded-lg"
     >
       <IconCoins size={18} stroke={1.5} className="text-muted-foreground" />
@@ -431,7 +434,9 @@ function UnifiedSettingsGroup({
         </DropdownMenuItem>
       )}
       <DropdownMenuItem
-        onClick={onOpenSettings}
+        onSelect={() => {
+          runAfterDropdownMenuClose(onOpenSettings);
+        }}
         className="gap-3 px-3 py-2.5 rounded-lg"
       >
         <IconSettings
