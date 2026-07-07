@@ -147,7 +147,6 @@ type ArtifactListSqlRow = Record<string, unknown> & {
   readonly external_id: string;
   readonly filename: string | null;
   readonly content_type: string | null;
-  readonly size_bytes: number | string | null;
   readonly url: string;
   readonly metadata: unknown;
   readonly created_at: Date | string;
@@ -1021,15 +1020,6 @@ function artifactRowCreatedAt(row: ArtifactListSqlRow): Date {
     : new Date(row.created_at);
 }
 
-function artifactRowSize(row: ArtifactListSqlRow): number {
-  if (row.size_bytes === null) {
-    return 0;
-  }
-  return typeof row.size_bytes === "number"
-    ? row.size_bytes
-    : Number(row.size_bytes);
-}
-
 function toArtifactItem(row: ArtifactListSqlRow): ArtifactItem {
   const filename = row.filename ?? row.external_id;
   const artifactKind = parseHostedArtifactKindFromMetadata(row.metadata);
@@ -1044,7 +1034,6 @@ function toArtifactItem(row: ArtifactListSqlRow): ArtifactItem {
     threadTitle: row.thread_title,
     filename,
     contentType: row.content_type ?? inferMimetype(filename),
-    size: artifactRowSize(row),
     url: row.url,
     createdAt: artifactRowCreatedAt(row).toISOString(),
     ...(artifactKind ? { artifactKind } : {}),
@@ -1131,7 +1120,6 @@ export const zeroArtifacts$ = command(
           ${runUploadedFiles.externalId} AS external_id,
           ${runUploadedFiles.filename} AS filename,
           ${runUploadedFiles.contentType} AS content_type,
-          ${runUploadedFiles.sizeBytes} AS size_bytes,
           ${runUploadedFiles.url} AS url,
           ${runUploadedFiles.metadata} AS metadata,
           ${runUploadedFiles.createdAt} AS created_at,

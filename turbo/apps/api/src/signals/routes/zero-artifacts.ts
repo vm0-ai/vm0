@@ -3,7 +3,6 @@ import {
   artifactsContract,
   type ArtifactItem,
   type ChatThreadArtifactGoogleDriveSync,
-  type ChatThreadArtifactRun,
 } from "@vm0/api-contracts/contracts/chat-threads";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
@@ -11,8 +10,8 @@ import { authRoute } from "../auth/auth-route";
 import { queryOf } from "../context/request";
 import { badRequestMessage } from "../../lib/error";
 import {
-  applyGoogleDriveArtifactSyncStatuses,
   googleDriveArtifactStatusLookup,
+  resolveGoogleDriveArtifactSyncStatus,
 } from "../services/google-drive-artifact-sync.service";
 import {
   decodeArtifactListCursor,
@@ -22,29 +21,6 @@ import type { RouteEntry } from "../route-entry";
 
 function artifactSyncKey(runId: string, fileId: string): string {
   return `${runId}:${fileId}`;
-}
-
-function artifactRunsForSync(
-  artifacts: readonly ArtifactItem[],
-): ChatThreadArtifactRun[] {
-  const byRun = new Map<string, ChatThreadArtifactRun>();
-  for (const artifact of artifacts) {
-    const run = byRun.get(artifact.runId) ?? {
-      runId: artifact.runId,
-      files: [],
-    };
-    run.files.push({
-      id: artifact.fileId,
-      filename: artifact.filename,
-      contentType: artifact.contentType,
-      size: artifact.size,
-      url: artifact.url,
-      createdAt: artifact.createdAt,
-      ...(artifact.artifactKind ? { artifactKind: artifact.artifactKind } : {}),
-    });
-    byRun.set(artifact.runId, run);
-  }
-  return [...byRun.values()];
 }
 
 const listArtifactsInner$ = command(
@@ -89,19 +65,15 @@ const listArtifactsInner$ = command(
           }),
         );
         signal.throwIfAborted();
-        const runs = applyGoogleDriveArtifactSyncStatuses(
-          artifactRunsForSync(artifacts),
-          lookup,
-        );
-        for (const run of runs) {
-          for (const file of run.files) {
-            if (file.googleDriveSync) {
-              syncByArtifact.set(
-                artifactSyncKey(run.runId, file.id),
-                file.googleDriveSync,
-              );
-            }
-          }
+        for (const artifact of artifacts) {
+          syncByArtifact.set(
+            artifactSyncKey(artifact.runId, artifact.fileId),
+            resolveGoogleDriveArtifactSyncStatus(
+              lookup,
+              artifact.runId,
+              artifact.fileId,
+            ),
+          );
         }
       }),
     );
