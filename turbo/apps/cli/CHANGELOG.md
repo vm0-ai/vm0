@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.228.0](https://github.com/vm0-ai/vm0/compare/cli-v9.227.2...cli-v9.228.0) (2026-07-07)
+
+
+### Features
+
+* add notion page content updated workflow trigger ([#20562](https://github.com/vm0-ai/vm0/issues/20562)) ([833395e](https://github.com/vm0-ai/vm0/commit/833395ed1bd75e7e94b5baa1ede1506d3584ecea))
+* add zero chat model switching ([#20566](https://github.com/vm0-ai/vm0/issues/20566)) ([5a996cb](https://github.com/vm0-ai/vm0/commit/5a996cb2d1b8201887831aaf2122f09a636c2dda))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.164.0
+    * @vm0/core bumped to 8.412.3
+
 ## [9.227.2](https://github.com/vm0-ai/vm0/compare/cli-v9.227.1...cli-v9.227.2) (2026-07-07)
 
 

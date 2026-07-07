@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.239.0](https://github.com/vm0-ai/vm0/compare/api-v1.238.0...api-v1.239.0) (2026-07-07)
+
+
+### Features
+
+* add notion page content updated workflow trigger ([#20562](https://github.com/vm0-ai/vm0/issues/20562)) ([833395e](https://github.com/vm0-ai/vm0/commit/833395ed1bd75e7e94b5baa1ede1506d3584ecea))
+* add zero chat model switching ([#20566](https://github.com/vm0-ai/vm0/issues/20566)) ([5a996cb](https://github.com/vm0-ai/vm0/commit/5a996cb2d1b8201887831aaf2122f09a636c2dda))
+
+
+### CI
+
+* **release:** revert app/api release guard ([#20567](https://github.com/vm0-ai/vm0/issues/20567)) ([595cbfd](https://github.com/vm0-ai/vm0/commit/595cbfdfb2f40777604134f175e2606542597662))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.164.0
+    * @vm0/core bumped to 8.412.3
+    * @vm0/db bumped to 1.99.0
+
 ## [1.238.0](https://github.com/vm0-ai/vm0/compare/api-v1.237.1...api-v1.238.0) (2026-07-07)
 
 
