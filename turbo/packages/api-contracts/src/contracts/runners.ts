@@ -96,7 +96,7 @@ const runnerBuiltinFirewallsResolveBodySchema = z.object({
     .min(1)
     .max(RUNNER_BUILTIN_FIREWALL_RESOLVE_NAMES_MAX)
     .optional(),
-});
+}).strict();
 const runnerBuiltinFirewallsResolveResponseSchema = z.object({
   catalogDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/),
   catalogVersion: z.string().min(1),
