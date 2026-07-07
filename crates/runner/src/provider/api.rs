@@ -578,6 +578,35 @@ impl ApiClient {
 }
 
 fn claim_request_body(candidate: &JobCandidate) -> ClaimRequestBody {
+    let is_ably_candidate = candidate.discovery_source() == Some(JobDiscoverySource::Ably);
+    let (
+        direct_candidate_notification_to_enqueue_ms,
+        direct_candidate_inbox_wait_ms,
+        provider_discovery_to_main_loop_ms,
+        main_loop_to_local_admission_ms,
+        pre_local_admission_outcome,
+    ) = if is_ably_candidate {
+        (
+            candidate
+                .direct_candidate_notification_to_enqueue_elapsed()
+                .map(claim_telemetry_duration_ms),
+            candidate
+                .direct_candidate_inbox_wait_elapsed()
+                .map(claim_telemetry_duration_ms),
+            candidate
+                .provider_discovery_to_main_loop_elapsed()
+                .map(claim_telemetry_duration_ms),
+            candidate
+                .main_loop_to_local_admission_elapsed()
+                .map(claim_telemetry_duration_ms),
+            candidate
+                .pre_local_admission_outcome()
+                .map(PreLocalAdmissionOutcome::as_str),
+        )
+    } else {
+        (None, None, None, None, None)
+    };
+
     ClaimRequestBody {
         telemetry: ClaimRequestTelemetry {
             discovery_source: candidate.discovery_source().map(JobDiscoverySource::as_str),
@@ -587,21 +616,11 @@ fn claim_request_body(candidate: &JobCandidate) -> ClaimRequestBody {
             local_admission_to_claim_request_ms: candidate
                 .local_admission_elapsed()
                 .map(claim_telemetry_duration_ms),
-            direct_candidate_notification_to_enqueue_ms: candidate
-                .direct_candidate_notification_to_enqueue_elapsed()
-                .map(claim_telemetry_duration_ms),
-            direct_candidate_inbox_wait_ms: candidate
-                .direct_candidate_inbox_wait_elapsed()
-                .map(claim_telemetry_duration_ms),
-            provider_discovery_to_main_loop_ms: candidate
-                .provider_discovery_to_main_loop_elapsed()
-                .map(claim_telemetry_duration_ms),
-            main_loop_to_local_admission_ms: candidate
-                .main_loop_to_local_admission_elapsed()
-                .map(claim_telemetry_duration_ms),
-            pre_local_admission_outcome: candidate
-                .pre_local_admission_outcome()
-                .map(PreLocalAdmissionOutcome::as_str),
+            direct_candidate_notification_to_enqueue_ms,
+            direct_candidate_inbox_wait_ms,
+            provider_discovery_to_main_loop_ms,
+            main_loop_to_local_admission_ms,
+            pre_local_admission_outcome,
             poll_due_to_job_discovered_ms: candidate
                 .poll_due_to_job_discovered_elapsed()
                 .map(claim_telemetry_duration_ms),
@@ -1170,6 +1189,46 @@ mod tests {
             body["telemetry"]["preLocalAdmissionOutcome"],
             "local_holder"
         );
+    }
+
+    #[test]
+    fn claim_request_body_omits_ably_only_timing_splits_for_poll_candidates() {
+        let mut candidate =
+            JobCandidate::new(RunId::nil(), crate::profile::DEFAULT_PROFILE.to_string())
+                .with_discovery_source(JobDiscoverySource::Poll)
+                .with_direct_candidate_timing(
+                    Some(Duration::from_millis(3)),
+                    Some(Duration::from_millis(5)),
+                )
+                .with_pre_local_admission_outcome(PreLocalAdmissionOutcome::NotProtected);
+        candidate.mark_provider_discovery_returned();
+        candidate.mark_main_loop_handling_started();
+        candidate.mark_local_admission_started();
+
+        let body = serde_json::to_value(claim_request_body(&candidate)).unwrap();
+
+        assert_eq!(body["telemetry"]["discoverySource"], "poll");
+        assert!(
+            body["telemetry"]
+                .get("directCandidateNotificationToEnqueueMs")
+                .is_none()
+        );
+        assert!(
+            body["telemetry"]
+                .get("directCandidateInboxWaitMs")
+                .is_none()
+        );
+        assert!(
+            body["telemetry"]
+                .get("providerDiscoveryToMainLoopMs")
+                .is_none()
+        );
+        assert!(
+            body["telemetry"]
+                .get("mainLoopToLocalAdmissionMs")
+                .is_none()
+        );
+        assert!(body["telemetry"].get("preLocalAdmissionOutcome").is_none());
     }
 
     #[test]
