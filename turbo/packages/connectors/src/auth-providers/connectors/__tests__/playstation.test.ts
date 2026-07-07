@@ -71,6 +71,36 @@ function mockPlaystationProfile(): void {
   );
 }
 
+async function expectInvalidPlaystationNpssoCodeRejected(
+  code: string,
+): Promise<void> {
+  let authorizeRequestCount = 0;
+  server.use(
+    http.get(PLAYSTATION_AUTHORIZE_URL, () => {
+      authorizeRequestCount += 1;
+      return new HttpResponse(null, { status: 302 });
+    }),
+  );
+
+  await expect(
+    completeConnectorExternalCodeAuthorization({
+      type: "playstation",
+      authMethod: "api",
+      authClient: playstationAuthClient(),
+      providerState: JSON.stringify({ version: 1 }),
+      code,
+      signal: testSignal(),
+    }),
+  ).rejects.toSatisfy((error: unknown) => {
+    return (
+      isOAuthProviderHttpError(error) &&
+      error.status === 400 &&
+      error.oauthError === "invalid_grant"
+    );
+  });
+  expect(authorizeRequestCount).toBe(0);
+}
+
 describe("PlayStation external-code provider", () => {
   it("starts by opening the PlayStation NPSSO cookie page", async () => {
     const result = await startConnectorExternalCodeAuthorization({
@@ -175,6 +205,51 @@ describe("PlayStation external-code provider", () => {
     expect(captured.tokenRequestBody?.get("token_format")).toBe("jwt");
   });
 
+  it("accepts the full NPSSO JSON response", async () => {
+    let cookieHeader: string | null = null;
+    server.use(
+      http.get(PLAYSTATION_AUTHORIZE_URL, ({ request }) => {
+        cookieHeader = request.headers.get("cookie");
+        return new HttpResponse(null, {
+          status: 302,
+          headers: {
+            location:
+              "com.playstation.PlayStationApp://redirect/?code=psn-access-code&cid=cid",
+          },
+        });
+      }),
+      http.post(PLAYSTATION_TOKEN_URL, () => {
+        return HttpResponse.json({
+          access_token: "playstation-access-token",
+          expires_in: 3600,
+          id_token: jwtPayload({ sub: "psn-account-123" }),
+          refresh_token: "playstation-refresh-token",
+          refresh_token_expires_in: 5184000,
+          scope: "psn:mobile.v2.core psn:clientapp",
+          token_type: "bearer",
+        });
+      }),
+    );
+    mockPlaystationProfile();
+
+    await expect(
+      completeConnectorExternalCodeAuthorization({
+        type: "playstation",
+        authMethod: "api",
+        authClient: playstationAuthClient(),
+        providerState: JSON.stringify({ version: 1 }),
+        code: '{ "npsso": "test-npsso" }',
+        signal: testSignal(),
+      }),
+    ).resolves.toMatchObject({
+      userInfo: {
+        id: "psn-account-123",
+        username: "vm0-player",
+      },
+    });
+    expect(cookieHeader).toBe("npsso=test-npsso");
+  });
+
   it("rejects NPSSO responses without an authorization code", async () => {
     server.use(
       http.get(PLAYSTATION_AUTHORIZE_URL, () => {
@@ -198,6 +273,15 @@ describe("PlayStation external-code provider", () => {
         error.oauthError === "invalid_grant"
       );
     });
+  });
+
+  it("rejects invalid NPSSO input before building a cookie header", async () => {
+    await expectInvalidPlaystationNpssoCodeRejected("bad\nnpsso");
+    await expectInvalidPlaystationNpssoCodeRejected("bad\u0000npsso");
+  });
+
+  it("rejects NPSSO JSON without an NPSSO value", async () => {
+    await expectInvalidPlaystationNpssoCodeRejected('{"notNpsso":"value"}');
   });
 
   it("refreshes PlayStation access tokens", async () => {

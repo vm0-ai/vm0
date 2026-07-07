@@ -66,6 +66,61 @@ const playstationIdTokenClaimsSchema = z
   })
   .passthrough();
 
+const playstationNpssoJsonSchema = z
+  .object({
+    npsso: z.string().min(1),
+  })
+  .passthrough();
+
+function invalidNpssoError(): OAuthProviderHttpError {
+  return new OAuthProviderHttpError(
+    "PlayStation NPSSO exchange failed: invalid NPSSO token",
+    400,
+    "invalid_grant",
+  );
+}
+
+function normalizePlaystationNpsso(input: string): string {
+  const trimmed = input.trim();
+  let value = trimmed;
+
+  if (trimmed.startsWith("{")) {
+    try {
+      const parsed: unknown = JSON.parse(trimmed);
+      const npssoJson = playstationNpssoJsonSchema.safeParse(parsed);
+      if (!npssoJson.success) {
+        throw invalidNpssoError();
+      }
+      value = npssoJson.data.npsso.trim();
+    } catch {
+      throw invalidNpssoError();
+    }
+  }
+
+  if (!value || hasInvalidNpssoCookieCharacter(value)) {
+    throw invalidNpssoError();
+  }
+  return value;
+}
+
+function hasInvalidNpssoCookieCharacter(value: string): boolean {
+  for (const character of value) {
+    const codePoint = character.codePointAt(0);
+    if (
+      codePoint === undefined ||
+      codePoint < 0x21 ||
+      codePoint > 0x7e ||
+      codePoint === 0x22 ||
+      codePoint === 0x2c ||
+      codePoint === 0x3b ||
+      codePoint === 0x5c
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function buildPlaystationNpssoUrl(): string {
   return PLAYSTATION_NPSSO_URL;
 }
@@ -107,6 +162,7 @@ export async function exchangePlaystationNpssoForAccessCode(args: {
   readonly grant: ConnectorExternalCodeGrantConfig;
   readonly signal: AbortSignal;
 }): Promise<string> {
+  const npsso = normalizePlaystationNpsso(args.npsso);
   const response = await fetch(
     buildPlaystationAuthorizationUrl({
       clientId: args.clientId,
@@ -114,7 +170,7 @@ export async function exchangePlaystationNpssoForAccessCode(args: {
     }),
     {
       headers: {
-        Cookie: `npsso=${args.npsso}`,
+        Cookie: `npsso=${npsso}`,
       },
       redirect: "manual",
       signal: args.signal,

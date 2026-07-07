@@ -28,7 +28,7 @@ function createPlaystationExternalCodeGrantProvider(): ExternalCodeConnectorAuth
     },
     completeExternalCodeAuthorization: async (args) => {
       const accessCode = await exchangePlaystationNpssoForAccessCode({
-        npsso: args.code.trim(),
+        npsso: args.code,
         clientId: args.authClient.clientId,
         grant: args.externalCodeGrant,
         signal: args.signal,
