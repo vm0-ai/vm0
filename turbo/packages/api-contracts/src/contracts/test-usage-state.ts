@@ -6,6 +6,7 @@ const c = initContract();
 
 const nullableDateStringSchema = z.string().nullable();
 const optionalDateStringSchema = z.string().optional();
+const insightDataSchema = z.record(z.string(), z.unknown());
 
 const testUsageStateErrorSchema = z.object({
   error: z.string(),
@@ -122,7 +123,7 @@ export const testUsageStateActionBodySchema = z.discriminatedUnion("action", [
     user_id: z.string(),
     date: z.string(),
     updated_at: z.string(),
-    data: z.unknown().optional(),
+    data: insightDataSchema.optional(),
   }),
 ]);
 
@@ -137,7 +138,7 @@ export const testUsageStateActionResponseSchema = z.object({
 });
 
 export const testUsageStateInsightsResponseSchema = z.object({
-  data: z.unknown().nullable(),
+  data: insightDataSchema.nullable(),
 });
 
 export const testUsageStateContract = c.router({

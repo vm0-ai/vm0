@@ -269,6 +269,19 @@ interface AssistantEventItem {
   readonly content: string;
 }
 
+function terminalCallbackErrorMessage(
+  callbackError: string | null | undefined,
+  runError: string | null | undefined,
+): string {
+  if (callbackError !== null && callbackError !== undefined) {
+    return callbackError;
+  }
+  if (runError !== null && runError !== undefined) {
+    return runError;
+  }
+  return "Run failed";
+}
+
 interface ResultEventItem {
   readonly sequenceNumber: number;
   readonly content: string;
@@ -2580,7 +2593,10 @@ async function processTerminalChatCallback(args: {
           runId,
           run,
           chatThread,
-          errorMessage: args.callback.error ?? run.error ?? "Run failed",
+          errorMessage: terminalCallbackErrorMessage(
+            args.callback.error,
+            run.error,
+          ),
           dependencies: args.dependencies,
           timing,
           signal: args.signal,
