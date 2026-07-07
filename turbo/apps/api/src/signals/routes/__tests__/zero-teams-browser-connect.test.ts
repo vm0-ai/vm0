@@ -23,12 +23,15 @@ const APP_ORIGIN = "https://app.vm0.test";
 
 function connectUrl(params: {
   readonly tenantId?: string;
+  readonly tenantName?: string;
   readonly teamsUserId?: string;
   readonly teamsAadObjectId?: string;
   readonly teamsUserDisplayName?: string;
   readonly teamsUserPrincipalName?: string;
   readonly displayName?: string;
   readonly upn?: string;
+  readonly teamId?: string;
+  readonly teamName?: string;
   readonly serviceUrl?: string;
   readonly activityId?: string;
   readonly orgId?: string;
@@ -36,6 +39,9 @@ function connectUrl(params: {
   const url = new URL(CONNECT_PATH);
   if (params.tenantId) {
     url.searchParams.set("tenantId", params.tenantId);
+  }
+  if (params.tenantName) {
+    url.searchParams.set("tenantName", params.tenantName);
   }
   if (params.teamsUserId) {
     url.searchParams.set("teamsUserId", params.teamsUserId);
@@ -57,6 +63,12 @@ function connectUrl(params: {
   }
   if (params.upn) {
     url.searchParams.set("upn", params.upn);
+  }
+  if (params.teamId) {
+    url.searchParams.set("teamId", params.teamId);
+  }
+  if (params.teamName) {
+    url.searchParams.set("teamName", params.teamName);
   }
   if (params.serviceUrl) {
     url.searchParams.set("serviceUrl", params.serviceUrl);
@@ -102,8 +114,9 @@ async function seedTeamsInstallation(
   track: (
     fixturePromise: Promise<TeamsConnectFixture>,
   ) => Promise<TeamsConnectFixture>,
+  values: Partial<TeamsConnectFixture> = {},
 ): Promise<TeamsConnectFixture> {
-  const fixture = await track(Promise.resolve(teamsConnectFixture()));
+  const fixture = await track(Promise.resolve(teamsConnectFixture(values)));
   await installTeamsForTest(context.signal, fixture);
   return fixture;
 }
@@ -125,6 +138,11 @@ async function bindTeamsInstallation(
 
 async function expectTeamsConnected(
   fixture: TeamsConnectFixture,
+  expected: {
+    readonly tenantName?: string | null;
+    readonly teamId?: string | null;
+    readonly teamName?: string | null;
+  } = {},
 ): Promise<void> {
   const client = setupApp({ context })(zeroTeamsConnectContract);
   const status = await accept(
@@ -137,6 +155,9 @@ async function expectTeamsConnected(
     isInstalled: true,
     isConnected: true,
     tenantId: fixture.teamsTenantId,
+    tenantName: expected.tenantName ?? fixture.teamsTenantName,
+    teamId: expected.teamId ?? fixture.teamsTeamId,
+    teamName: expected.teamName ?? fixture.teamsTeamName,
   });
 }
 
@@ -174,16 +195,22 @@ describe("GET /api/zero/teams/connect", () => {
   });
 
   it("binds an unbound installation for an admin and creates one connection", async () => {
-    const fixture = await seedTeamsInstallation(track);
+    const fixture = await seedTeamsInstallation(track, {
+      teamsTenantName: "",
+      teamsTeamName: "",
+    });
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
     const response = await requestConnect(
       connectUrl({
         tenantId: fixture.teamsTenantId,
+        tenantName: "Tenant From Link",
         teamsUserId: fixture.teamsUserId,
         teamsAadObjectId: fixture.teamsAadObjectId,
         teamsUserDisplayName: "Ada Lovelace",
         teamsUserPrincipalName: "ada@example.com",
+        teamId: "team-from-link",
+        teamName: "Team From Link",
         serviceUrl: fixture.serviceUrl,
         activityId: "activity-1",
       }),
@@ -196,6 +223,7 @@ describe("GET /api/zero/teams/connect", () => {
     expect(redirectUrl.searchParams.get("tenantId")).toBe(
       fixture.teamsTenantId,
     );
+    expect(redirectUrl.searchParams.get("tenantName")).toBe("Tenant From Link");
     expect(redirectUrl.searchParams.get("teamsUserId")).toBe(
       fixture.teamsUserId,
     );
@@ -208,12 +236,15 @@ describe("GET /api/zero/teams/connect", () => {
     expect(redirectUrl.searchParams.get("teamsUserPrincipalName")).toBe(
       "ada@example.com",
     );
+    expect(redirectUrl.searchParams.get("teamId")).toBe("team-from-link");
     expect(redirectUrl.searchParams.get("serviceUrl")).toBe(fixture.serviceUrl);
     expect(redirectUrl.searchParams.get("activityId")).toBe("activity-1");
-    expect(redirectUrl.searchParams.get("teamName")).toBe(
-      fixture.teamsTeamName,
-    );
-    await expectTeamsConnected(fixture);
+    expect(redirectUrl.searchParams.get("teamName")).toBe("Team From Link");
+    await expectTeamsConnected(fixture, {
+      tenantName: "Tenant From Link",
+      teamId: "team-from-link",
+      teamName: "Team From Link",
+    });
   });
 
   it("rejects a member connecting an unbound installation", async () => {

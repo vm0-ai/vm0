@@ -32,12 +32,15 @@ function appRedirect(path: string): Response {
 function teamsSettingsParams(
   query: {
     readonly tenantId?: string;
+    readonly tenantName?: string;
     readonly teamsUserId?: string;
     readonly teamsAadObjectId?: string;
     readonly teamsUserDisplayName?: string;
     readonly teamsUserPrincipalName?: string;
     readonly displayName?: string;
     readonly upn?: string;
+    readonly teamId?: string;
+    readonly teamName?: string;
     readonly serviceUrl?: string;
     readonly conversationId?: string;
     readonly activityId?: string;
@@ -56,6 +59,9 @@ function teamsSettingsParams(
   if (query.tenantId) {
     params.set("tenantId", query.tenantId);
   }
+  if (query.tenantName) {
+    params.set("tenantName", query.tenantName);
+  }
   if (query.teamsUserId) {
     params.set("teamsUserId", query.teamsUserId);
   }
@@ -73,6 +79,12 @@ function teamsSettingsParams(
   }
   if (query.teamsUserPrincipalName) {
     params.set("teamsUserPrincipalName", query.teamsUserPrincipalName);
+  }
+  if (query.teamId) {
+    params.set("teamId", query.teamId);
+  }
+  if (query.teamName) {
+    params.set("teamName", query.teamName);
   }
   if (query.serviceUrl) {
     params.set("serviceUrl", query.serviceUrl);
@@ -216,12 +228,13 @@ const browserConnect$ = command(async ({ get, set }, signal: AbortSignal) => {
       orgId,
       orgRole: auth.orgRole === "admin" ? "admin" : "member",
       tenantId,
+      tenantName: query.tenantName ?? installation.teamsTenantName ?? undefined,
       teamsUserId,
       teamsAadObjectId,
       teamsUserDisplayName: query.teamsUserDisplayName ?? query.displayName,
       teamsUserPrincipalName: query.teamsUserPrincipalName ?? query.upn,
-      teamId: installation.teamsTeamId ?? undefined,
-      teamName: installation.teamsTeamName ?? undefined,
+      teamId: query.teamId ?? installation.teamsTeamId ?? undefined,
+      teamName: query.teamName ?? installation.teamsTeamName ?? undefined,
       serviceUrl: query.serviceUrl ?? installation.serviceUrl ?? undefined,
     },
     signal,

@@ -85,6 +85,7 @@ export const connectTeamsAccount$ = command(
       "displayName",
     );
     const upn = teamsParam(params, "teamsUserPrincipalName", "upn");
+    const tenantName = params.get("tenantName");
     const teamId = params.get("teamId");
     const teamName = params.get("teamName");
     const serviceUrl = params.get("serviceUrl");
@@ -97,6 +98,7 @@ export const connectTeamsAccount$ = command(
       client.connect({
         body: {
           tenantId,
+          ...(tenantName ? { tenantName } : {}),
           ...(teamsUserId ? { teamsUserId } : {}),
           ...(teamsAadObjectId ? { teamsAadObjectId } : {}),
           ...(displayName ? { teamsUserDisplayName: displayName } : {}),

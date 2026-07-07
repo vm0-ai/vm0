@@ -419,7 +419,8 @@ function TeamsCard({ displayName }: { displayName: string }) {
   const isConnected = teamsData?.isConnected ?? false;
   const isInstalled = teamsData?.isInstalled ?? false;
   const isAdmin = teamsData?.isAdmin ?? false;
-  const connectedDetail = teamsData?.teamName ?? teamsData?.tenantName;
+  const connectedDetail =
+    teamsData?.teamName ?? teamsData?.tenantName ?? teamsData?.tenantId;
   const description =
     !isInstalled && !isAdmin
       ? "Ask your admin to install the Microsoft Teams integration"

@@ -124,6 +124,25 @@ describe("works page", () => {
     });
   });
 
+  it("falls back to the Microsoft Teams tenant id when names are unavailable", async () => {
+    mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
+    mockTeamsAPI({
+      isConnected: true,
+      isInstalled: true,
+      isAdmin: true,
+      tenantId: "tenant-123",
+      tenantName: null,
+      teamName: null,
+    });
+
+    setupWorksPage({ teamsEnabled: true });
+
+    await waitFor(() => {
+      expect(screen.getByText("Microsoft Teams")).toBeInTheDocument();
+      expect(screen.getByText("Connected (tenant-123)")).toBeInTheDocument();
+    });
+  });
+
   it("shows Microsoft Teams admin install controls", async () => {
     const openSpy = vi.spyOn(window, "open").mockReturnValue(null);
     mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });

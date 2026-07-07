@@ -491,6 +491,7 @@ type ConnectTeamsInstallationArgs = {
   readonly orgId: string;
   readonly orgRole: "admin" | "member";
   readonly tenantId: string;
+  readonly tenantName?: string;
   readonly teamsUserId?: string;
   readonly teamsAadObjectId?: string;
   readonly teamsUserDisplayName?: string;
@@ -537,6 +538,7 @@ export const prepareTeamsInstallation$ = command(
       .insert(teamsOrgInstallations)
       .values({
         teamsTenantId: args.tenantId,
+        teamsTenantName: args.tenantName,
         orgId: args.orgId,
         installedByUserId: args.userId,
       })
@@ -544,6 +546,7 @@ export const prepareTeamsInstallation$ = command(
         target: teamsOrgInstallations.teamsTenantId,
         set: {
           orgId: args.orgId,
+          teamsTenantName: sql`coalesce(excluded.teams_tenant_name, ${teamsOrgInstallations.teamsTenantName})`,
           installedByUserId: args.userId,
           updatedAt: nowDate(),
         },
@@ -604,6 +607,7 @@ export const connectTeamsInstallation$ = command(
       }
 
       await updateTeamsInstallationMetadata(writeDb, args.tenantId, {
+        tenantName: args.tenantName,
         teamId: args.teamId,
         teamName: args.teamName,
         serviceUrl: args.serviceUrl,
@@ -676,6 +680,7 @@ export const connectTeamsInstallation$ = command(
     }
 
     await updateTeamsInstallationMetadata(writeDb, args.tenantId, {
+      tenantName: args.tenantName,
       teamId: args.teamId,
       teamName: args.teamName,
       serviceUrl: args.serviceUrl,

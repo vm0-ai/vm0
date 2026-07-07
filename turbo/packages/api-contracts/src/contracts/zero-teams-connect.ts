@@ -23,6 +23,7 @@ const teamsConnectStatusSchema = z.object({
 const teamsConnectBodySchema = z
   .object({
     tenantId: z.string().min(1),
+    tenantName: z.string().min(1).optional(),
     teamsUserId: z.string().min(1).optional(),
     teamsAadObjectId: z.string().min(1).optional(),
     teamsUserDisplayName: z.string().min(1).optional(),

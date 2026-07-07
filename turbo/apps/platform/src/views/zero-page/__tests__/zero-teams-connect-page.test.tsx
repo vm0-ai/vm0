@@ -67,6 +67,7 @@ describe("zero Teams connect page", () => {
     context.mocks.api(zeroTeamsConnectContract.connect, ({ body, respond }) => {
       expect(body).toMatchObject({
         tenantId: "tenant-123",
+        tenantName: "Acme Tenant",
         teamsUserId: "29:user-123",
         teamsAadObjectId: "aad-user-123",
         teamsUserDisplayName: "Ada Lovelace",
@@ -84,6 +85,7 @@ describe("zero Teams connect page", () => {
     setupTeamsPage(
       teamsConnectPath({
         tenantId: "tenant-123",
+        tenantName: "Acme Tenant",
         teamsUserId: "29:user-123",
         teamsAadObjectId: "aad-user-123",
         teamsUserDisplayName: "Ada Lovelace",
