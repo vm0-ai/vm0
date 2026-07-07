@@ -2886,6 +2886,8 @@ def _maybe_normalize_accept_encoding_for_body_inspection(
     allow: matching.FirewallAllow,
     vm_info: dict,
 ) -> None:
+    if _is_websocket_upgrade_request(flow):
+        flow.metadata[metadata_keys.WEBSOCKET_UPGRADE_REQUEST] = True
     if _expects_http_response_body_usage_inspection(flow, allow, vm_info):
         response_encoding_negotiation.normalize_accept_encoding_for_body_inspection(
             flow.request.headers
@@ -3116,6 +3118,7 @@ def _release_terminal_flow_state(
             flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE_SOURCES] = {}
     flow.metadata.pop(_REQUEST_CLASSIFICATION, None)
     flow.metadata.pop(_FIREWALL_AUTH_APPLIED_IN_REQUESTHEADERS, None)
+    flow.metadata.pop(metadata_keys.WEBSOCKET_UPGRADE_REQUEST, None)
     request_streaming.release_request_stream_state(flow)
     _release_connector_diagnostic_response_stream_state(flow)
     response_streaming.release_response_stream_state(flow)

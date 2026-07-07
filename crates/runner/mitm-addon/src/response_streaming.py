@@ -111,6 +111,7 @@ def _configure_response_usage_parser(flow: http.HTTPFlow) -> _ResponseChunkParse
         is_observable_model_provider
         and flow.response.status_code == _HTTP_STATUS_SWITCHING_PROTOCOLS
         and uses_openai_responses_usage_protocol(flow)
+        and flow.metadata.get(metadata_keys.WEBSOCKET_UPGRADE_REQUEST) is True
     ):
         flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {}
         flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE_SOURCES] = {}

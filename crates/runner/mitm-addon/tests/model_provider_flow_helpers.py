@@ -65,6 +65,7 @@ def make_openai_responses_websocket_flow(
         cli_agent_type="codex",
         model_usage_provider="gpt-5.5",
     )
+    flow.metadata[metadata_keys.WEBSOCKET_UPGRADE_REQUEST] = True
     flow.response = tutils.tresp(
         status_code=101,
         headers=http.Headers(upgrade="websocket"),

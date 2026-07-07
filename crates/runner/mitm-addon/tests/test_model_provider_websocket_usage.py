@@ -49,7 +49,7 @@ def _write_openai_model_websocket_registry(tmp_path: Path) -> Path:
             api_entry={
                 "base": "https://api.openai.com",
                 "auth": {"headers": {"Authorization": "Bearer token"}},
-                "permissions": [{"name": "responses", "rules": ["POST /v1/responses"]}],
+                "permissions": [{"name": "responses", "rules": ["GET /v1/responses"]}],
             },
             network_policy={
                 "allow": ["responses"],
@@ -74,7 +74,16 @@ def _openai_model_websocket_request_flow(
         client_ip="10.200.0.5",
         host="api.openai.com",
         path="/v1/responses",
-        method="POST",
+        method="GET",
+        request_headers=http.Headers(
+            [
+                (b"Host", b"api.openai.com"),
+                (b"Connection", b"keep-alive, Upgrade"),
+                (b"Upgrade", b"websocket"),
+                (b"Sec-WebSocket-Key", b"dGhlIHNhbXBsZSBub25jZQ=="),
+                (b"Sec-WebSocket-Version", b"13"),
+            ]
+        ),
     )
 
 
@@ -785,6 +794,57 @@ class TestModelProviderWebSocketUsage:
             buffered=0,
             reports=0,
             flush_request_id="after-websocket-end",
+        )
+
+    async def test_non_websocket_switching_protocols_response_releases_usage_flow(
+        self,
+        tmp_path,
+        real_flow,
+        mitm_ctx,
+        fake_firewall_headers,
+        usage_webhook_server,
+    ):
+        """A non-WebSocket 101 response is terminal and must not wait for websocket_end()."""
+        pending_path = tmp_path / "usage-pending"
+        usage.set_pending_path(str(pending_path), usage_state_id="test-usage-state-id")
+        reg_path = _write_openai_model_websocket_registry(tmp_path)
+
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="api.openai.com",
+            path="/v1/responses",
+            method="GET",
+        )
+
+        with (
+            mitm_ctx(registry_path=str(reg_path), api_url=usage_webhook_server.api_url),
+            fake_firewall_headers(),
+        ):
+            await mitm_addon.request(flow)
+            usage.write_pending_snapshot(flush_request_id="before-response")
+            assert_pending(
+                pending_path,
+                flows=1,
+                buffered=0,
+                reports=0,
+                flush_request_id="before-response",
+            )
+
+            flow.response = tutils.tresp(
+                status_code=101,
+                headers=http.Headers(upgrade="h2c"),
+            )
+            mitm_addon.responseheaders(flow)
+            mitm_addon.response(flow)
+            usage.write_pending_snapshot(flush_request_id="after-response")
+
+        assert_pending(
+            pending_path,
+            flows=0,
+            buffered=0,
+            reports=0,
+            flush_request_id="after-response",
         )
 
     async def test_model_websocket_error_releases_usage_flow_after_upgrade(

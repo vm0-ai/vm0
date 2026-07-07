@@ -34,6 +34,10 @@ Request context
   the request matches the short-term browser passthrough User-Agent heuristic.
   Read by request dispatch to skip connector firewall handling and managed
   credential mutation, and by network-log entry construction.
+- ``WEBSOCKET_UPGRADE_REQUEST``: ``bool`` written by request handling when the
+  HTTP/1.1 request is a confirmed WebSocket upgrade handshake. Read by
+  response streaming so only matching 101 responses defer model-provider usage
+  release until ``websocket_end()``.
 
 Timing context
 --------------
@@ -166,6 +170,7 @@ CAPTURE_BODY: Final = "capture_body"
 SUPPRESS_REQUEST_BODY_CAPTURE: Final = "suppress_request_body_capture"
 CLI_AGENT_TYPE: Final = "cli_agent_type"
 BROWSER_USER_AGENT: Final = "browser_user_agent"
+WEBSOCKET_UPGRADE_REQUEST: Final = "websocket_upgrade_request"
 
 # Timing metadata
 HTTP_REQUEST_START_MONOTONIC: Final = "http_request_start_monotonic"
