@@ -218,6 +218,7 @@ trait ServiceDrainOps {
 
 trait ServiceResumeOps {
     fn write_restart_override(&mut self, unit: &RunnerServiceUnit) -> RunnerResult<()>;
+    fn remove_restart_override(&mut self, unit: &RunnerServiceUnit) -> RunnerResult<bool>;
     fn daemon_reload(&mut self) -> ServiceFuture<'_, ()>;
     fn signal_resume<'a>(
         &'a mut self,
@@ -264,6 +265,10 @@ impl ServiceDrainOps for RealServiceDrainOps {
 impl ServiceResumeOps for RealServiceResumeOps {
     fn write_restart_override(&mut self, unit: &RunnerServiceUnit) -> RunnerResult<()> {
         write_drain_restart_override(unit)
+    }
+
+    fn remove_restart_override(&mut self, unit: &RunnerServiceUnit) -> RunnerResult<bool> {
+        remove_drain_restart_override(unit)
     }
 
     fn daemon_reload(&mut self) -> ServiceFuture<'_, ()> {
@@ -335,6 +340,42 @@ fn resume_error_with_restore_failure(
         "resume failed for {}: {resume_error}; additionally failed to restore drain restart override: {restore_error}",
         unit.unit_name()
     ))
+}
+
+fn removed_drain_override_reload_error(
+    unit: &RunnerServiceUnit,
+    reload_error: RunnerError,
+    restore_error: RunnerError,
+) -> RunnerError {
+    RunnerError::Internal(format!(
+        "failed to reload systemd after removing drain restart override for {} before resume: {reload_error}; additionally failed to restore drain restart override: {restore_error}",
+        unit.unit_name()
+    ))
+}
+
+async fn remove_drain_restart_override_before_resume(
+    unit: &RunnerServiceUnit,
+    ops: &mut impl ServiceResumeOps,
+) -> RunnerResult<bool> {
+    let removed = ops.remove_restart_override(unit)?;
+    if !removed {
+        return Ok(false);
+    }
+
+    if let Err(reload_error) = ops.daemon_reload().await {
+        if let Err(restore_error) =
+            restore_drain_restart_override_after_failed_resume(unit, ops, "remove_reload").await
+        {
+            return Err(removed_drain_override_reload_error(
+                unit,
+                reload_error,
+                restore_error,
+            ));
+        }
+        return Err(reload_error);
+    }
+
+    Ok(true)
 }
 
 async fn signal_resume_after_restart_policy_restored(
@@ -682,7 +723,14 @@ async fn install(args: ServiceRunArgs) -> RunnerResult<()> {
             );
             cleanup_unit_staging_files(&upath)?;
             write_unit_file(&upath, &unit_content)?;
-            remove_drain_restart_override(&unit_for_activation)?;
+            if is_unit_active(&unit_for_activation).await? {
+                warn!(
+                    unit = %unit_for_activation.unit_name(),
+                    "skipping drain restart override cleanup while service is active"
+                );
+            } else {
+                remove_drain_restart_override(&unit_for_activation)?;
+            }
 
             run_systemctl(&["daemon-reload"]).await?;
             run_systemctl(&["enable", "--now", unit_for_activation.service_name()]).await?;
@@ -702,7 +750,10 @@ async fn install(args: ServiceRunArgs) -> RunnerResult<()> {
 /// Callers that can race with install/uninstall/GC must hold the service lock.
 pub(crate) async fn uninstall_service_unit(unit: &RunnerServiceUnit) -> RunnerResult<()> {
     // Best-effort stop + disable (may already be stopped/disabled).
-    let _ = run_systemctl(&["stop", unit.service_name()]).await;
+    let stop_result = run_systemctl(&["stop", unit.service_name()]).await;
+    if let Err(e) = &stop_result {
+        warn!(unit = %unit.unit_name(), error = %e, "failed to stop service during uninstall");
+    }
     let _ = run_systemctl(&["disable", unit.service_name()]).await;
 
     // Remove the unit file if it exists.
@@ -713,7 +764,28 @@ pub(crate) async fn uninstall_service_unit(unit: &RunnerServiceUnit) -> RunnerRe
     if let Err(e) = remove_unit_file_if_exists(upath) {
         warn!(unit = %unit.unit_name(), error = %e, "failed to remove unit file");
     }
-    if let Err(e) = remove_drain_restart_override(unit) {
+    let should_remove_drain_override = match stop_result {
+        Ok(()) => true,
+        Err(_) => match is_unit_active(unit).await {
+            Ok(false) => true,
+            Ok(true) => {
+                warn!(
+                    unit = %unit.unit_name(),
+                    "skipping drain restart override cleanup because service is still active after failed stop"
+                );
+                false
+            }
+            Err(e) => {
+                warn!(
+                    unit = %unit.unit_name(),
+                    error = %e,
+                    "skipping drain restart override cleanup because service activity could not be verified after failed stop"
+                );
+                false
+            }
+        },
+    };
+    if should_remove_drain_override && let Err(e) = remove_drain_restart_override(unit) {
         warn!(unit = %unit.unit_name(), error = %e, "failed to remove drain restart override");
     }
 
@@ -787,8 +859,9 @@ async fn resume(args: ServiceResumeArgs) -> RunnerResult<()> {
         }
     }
 
+    let mut resume_ops = RealServiceResumeOps;
     let removed_drain_restart_override =
-        reload_systemd_if_drain_restart_override_removed(&unit).await?;
+        remove_drain_restart_override_before_resume(&unit, &mut resume_ops).await?;
 
     // Same race as in `drain`: the runner can exit after the preflight
     // `is_unit_active` check but before we deliver SIGUSR2. If resume does not
@@ -797,7 +870,7 @@ async fn resume(args: ServiceResumeArgs) -> RunnerResult<()> {
     signal_resume_after_restart_policy_restored(
         &unit,
         removed_drain_restart_override,
-        &mut RealServiceResumeOps,
+        &mut resume_ops,
     )
     .await?;
 
@@ -1078,7 +1151,9 @@ profiles:
     struct FakeResumeOps {
         events: Vec<&'static str>,
         write_error: bool,
-        reload_error: bool,
+        remove_error: bool,
+        removed_restart_override: bool,
+        reload_errors: VecDeque<bool>,
         signal_error: bool,
         signal_outcome: ServiceSignalOutcome,
     }
@@ -1105,7 +1180,9 @@ profiles:
             Self {
                 events: Vec::new(),
                 write_error: false,
-                reload_error: false,
+                remove_error: false,
+                removed_restart_override: true,
+                reload_errors: VecDeque::new(),
                 signal_error: false,
                 signal_outcome: ServiceSignalOutcome::Sent { pid: 123 },
             }
@@ -1195,9 +1272,19 @@ profiles:
             }
         }
 
+        fn remove_restart_override(&mut self, _unit: &RunnerServiceUnit) -> RunnerResult<bool> {
+            self.events.push("remove_restart_override");
+            if self.remove_error {
+                Err(fake_error("remove failed"))
+            } else {
+                Ok(self.removed_restart_override)
+            }
+        }
+
         fn daemon_reload(&mut self) -> ServiceFuture<'_, ()> {
             self.events.push("daemon_reload");
-            Box::pin(std::future::ready(if self.reload_error {
+            let reload_error = self.reload_errors.pop_front().unwrap_or(false);
+            Box::pin(std::future::ready(if reload_error {
                 Err(fake_error("reload failed"))
             } else {
                 Ok(())
@@ -1448,6 +1535,100 @@ profiles:
     }
 
     #[tokio::test]
+    async fn resume_remove_missing_override_skips_reload() {
+        let unit = service_unit();
+        let mut ops = FakeResumeOps {
+            removed_restart_override: false,
+            ..FakeResumeOps::default()
+        };
+
+        let removed = remove_drain_restart_override_before_resume(&unit, &mut ops)
+            .await
+            .unwrap();
+
+        assert!(!removed);
+        assert_eq!(ops.events, ["remove_restart_override"]);
+    }
+
+    #[tokio::test]
+    async fn resume_remove_reload_failure_restores_removed_drain_override() {
+        let unit = service_unit();
+        let mut ops = FakeResumeOps {
+            reload_errors: VecDeque::from([true, false]),
+            ..FakeResumeOps::default()
+        };
+
+        let err = remove_drain_restart_override_before_resume(&unit, &mut ops)
+            .await
+            .unwrap_err();
+
+        assert!(err.to_string().contains("reload failed"));
+        assert_eq!(
+            ops.events,
+            [
+                "remove_restart_override",
+                "daemon_reload",
+                "write_restart_override",
+                "daemon_reload",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn resume_remove_reload_failure_reports_restore_write_failure() {
+        let unit = service_unit();
+        let mut ops = FakeResumeOps {
+            write_error: true,
+            reload_errors: VecDeque::from([true]),
+            ..FakeResumeOps::default()
+        };
+
+        let err = remove_drain_restart_override_before_resume(&unit, &mut ops)
+            .await
+            .unwrap_err();
+        let message = err.to_string();
+
+        assert!(message.contains("failed to reload systemd after removing drain restart override"));
+        assert!(message.contains("additionally failed to restore drain restart override"));
+        assert!(message.contains("write failed"));
+        assert_eq!(
+            ops.events,
+            [
+                "remove_restart_override",
+                "daemon_reload",
+                "write_restart_override",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn resume_remove_reload_failure_reports_restore_reload_failure() {
+        let unit = service_unit();
+        let mut ops = FakeResumeOps {
+            reload_errors: VecDeque::from([true, true]),
+            ..FakeResumeOps::default()
+        };
+
+        let err = remove_drain_restart_override_before_resume(&unit, &mut ops)
+            .await
+            .unwrap_err();
+        let message = err.to_string();
+
+        assert!(message.contains("failed to reload systemd after removing drain restart override"));
+        assert!(message.contains("additionally failed to restore drain restart override"));
+        assert!(message.contains("reload failed"));
+        assert_eq!(
+            ops.events,
+            [
+                "remove_restart_override",
+                "daemon_reload",
+                "write_restart_override",
+                "daemon_reload",
+            ]
+        );
+    }
+
+    #[tokio::test]
     async fn resume_signal_failure_restores_removed_drain_override() {
         let unit = service_unit();
         let mut ops = FakeResumeOps {
@@ -1490,7 +1671,7 @@ profiles:
     async fn resume_signal_failure_reports_restore_reload_failure() {
         let unit = service_unit();
         let mut ops = FakeResumeOps {
-            reload_error: true,
+            reload_errors: VecDeque::from([true]),
             signal_error: true,
             ..FakeResumeOps::default()
         };
