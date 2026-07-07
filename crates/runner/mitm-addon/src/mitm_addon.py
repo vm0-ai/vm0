@@ -2906,6 +2906,8 @@ def _expects_http_response_body_usage_inspection(
 
 
 def _is_websocket_upgrade_request(flow: http.HTTPFlow) -> bool:
+    if flow.request.method.upper() != "GET":
+        return False
     if flow.request.headers.get("Upgrade", "").strip(_HTTP_OWS_CHARS).lower() != "websocket":
         return False
 

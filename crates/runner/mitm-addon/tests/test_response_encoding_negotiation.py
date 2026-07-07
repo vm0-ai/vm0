@@ -675,6 +675,38 @@ async def test_invalid_websocket_upgrade_whitespace_normalizes_accept_encoding(
     assert flow.request.headers[_ACCEPT_ENCODING] == "gzip"
 
 
+async def test_invalid_websocket_upgrade_method_normalizes_accept_encoding(
+    tmp_path: Path,
+    real_flow: Callable[..., http.HTTPFlow],
+    headers: Callable[..., http.Headers],
+    mitm_ctx,
+    fake_firewall_headers,
+) -> None:
+    reg_path = _model_provider_registry(tmp_path)
+    flow = _request_flow(
+        real_flow,
+        headers,
+        host=_MODEL_PROVIDER_HOST,
+        path=_MODEL_PROVIDER_PATH,
+        method="POST",
+        accept_encoding="gzip, zstd, br",
+        extra_headers=(
+            ("Connection", "keep-alive, Upgrade"),
+            ("Upgrade", "websocket"),
+            ("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ=="),
+            ("Sec-WebSocket-Version", "13"),
+        ),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers(),
+    ):
+        await mitm_addon.request(flow)
+
+    assert flow.request.headers[_ACCEPT_ENCODING] == "gzip"
+
+
 async def test_browser_passthrough_keeps_accept_encoding_for_parser_connector(
     tmp_path: Path,
     real_flow: Callable[..., http.HTTPFlow],
