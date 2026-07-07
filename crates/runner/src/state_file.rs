@@ -16,8 +16,8 @@
 //!
 //! Unix writes create a private same-directory temporary file, write and flush
 //! its contents, then rename it over the target. This avoids exposing partial
-//! contents through the target path, but it does not fsync the parent directory
-//! and should not be treated as a full crash-durability guarantee.
+//! contents through the target path, but it does not fsync the file or parent
+//! directory and should not be treated as a crash-durability guarantee.
 
 use std::path::Path;
 
@@ -211,9 +211,9 @@ fn validate_open_state_file<Fd: std::os::fd::AsRawFd>(
 /// On Unix, this writes to a hidden same-directory temporary file created with
 /// private `0600` permissions, flushes the file, renames it over the target,
 /// and removes the temporary file on errors as best-effort cleanup. This avoids
-/// exposing partial contents through the target path. The parent directory is
-/// not fsynced, so this does not provide a full crash-durability guarantee.
-/// Non-Unix builds use `tokio::fs::write` as a weaker fallback.
+/// exposing partial contents through the target path. The file and parent
+/// directory are not fsynced, so this does not provide a crash-durability
+/// guarantee. Non-Unix builds use `tokio::fs::write` as a weaker fallback.
 pub(crate) async fn write_private_atomic(path: &Path, content: &[u8]) -> RunnerResult<()> {
     #[cfg(unix)]
     {
