@@ -456,6 +456,36 @@ class TestAuthBaseForwarderTransportSecurity:
         with forwarder._forward_request_active_closeables_lock:
             assert raw_sock not in forwarder._forward_request_active_closeables
 
+    def test_validated_connection_closes_socket_tracked_after_shutdown(self):
+        class CloseAwareSocket(FakeSocket):
+            def setsockopt(self, level: int, optname: int, value: int) -> None:
+                super().setsockopt(level, optname, value)
+                if self.closed:
+                    raise OSError(errno.EBADF, "closed during shutdown")
+
+        raw_sock = CloseAwareSocket(http_response())
+        context = MagicMock()
+        conn = forwarder._make_validated_https_connection(
+            "hooks.example.com",
+            port=None,
+            timeout=30,
+            validated_addresses=(forwarder._ValidatedAddress("93.184.216.34", 443),),
+        )
+        vars(conn)["_context"] = context
+
+        forwarder.shutdown_forward_request_workers(wait=False)
+        with (
+            patch.object(forwarder.socket, "create_connection", return_value=raw_sock),
+            pytest.raises(OSError, match="closed during shutdown"),
+        ):
+            conn.connect()
+
+        assert raw_sock.closed
+        assert raw_sock.close_count >= 1
+        context.wrap_socket.assert_not_called()
+        with forwarder._forward_request_active_closeables_lock:
+            assert raw_sock not in forwarder._forward_request_active_closeables
+
 
 class TestAuthBaseForwarderRequestBehavior:
     async def test_returns_redirect_response_without_following(self):
@@ -867,6 +897,10 @@ class TestForwardRequestAsyncWrapper:
 
         forwarder.shutdown_forward_request_workers(wait=False)
 
+        assert future.cancelled()
+        with forwarder._forward_request_pending_futures_lock:
+            assert future not in forwarder._forward_request_pending_futures
+
         with patch.object(forwarder, "_forward_request_sync_in_context") as forward_sync:
             forwarder._run_forward_request_worker(
                 future,
@@ -879,8 +913,6 @@ class TestForwardRequestAsyncWrapper:
 
         forward_sync.assert_not_called()
         assert future.cancelled()
-        with forwarder._forward_request_pending_futures_lock:
-            assert future not in forwarder._forward_request_pending_futures
 
     def test_shutdown_rejects_new_forward_admission(self):
         forwarder.shutdown_forward_request_workers(wait=False)

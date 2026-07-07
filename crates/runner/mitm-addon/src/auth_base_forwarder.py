@@ -130,8 +130,13 @@ class _Closeable(Protocol):
 
 
 def _track_active_closeable(closeable: _Closeable) -> None:
-    with _forward_request_active_closeables_lock:
-        _forward_request_active_closeables.add(closeable)
+    with _forward_request_lifecycle_lock:
+        close_after_track = not _forward_request_accepting
+        with _forward_request_active_closeables_lock:
+            _forward_request_active_closeables.add(closeable)
+    if close_after_track:
+        with suppress(Exception):
+            closeable.close()
 
 
 def _untrack_active_closeable(closeable: _Closeable) -> None:
@@ -150,6 +155,7 @@ def _close_active_forward_request_closeables() -> None:
 def _cancel_pending_forward_request_futures() -> None:
     with _forward_request_pending_futures_lock:
         futures = tuple(_forward_request_pending_futures)
+        _forward_request_pending_futures.clear()
     for future in futures:
         future.cancel()
 
