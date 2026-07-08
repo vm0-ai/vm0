@@ -12,6 +12,15 @@
     esac
     timeout 10s systemctl disable "$unit" 2>/dev/null || true
     timeout 10s systemctl reset-failed "$unit" 2>/dev/null || true
+    for _ in $(seq 1 10); do
+      state="$(systemctl show "$unit" --property=ActiveState --value 2>/dev/null || true)"
+      case "$state" in
+        active|activating|reloading|deactivating) sleep 1 ;;
+        *) exit 0 ;;
+      esac
+    done
+    echo "failed to stop $unit; ActiveState=$state" >&2
+    exit 1
   args:
     executable: /bin/bash
   changed_when: true
