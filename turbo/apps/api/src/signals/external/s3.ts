@@ -82,6 +82,7 @@ function defaultS3Credentials(): S3Credentials {
 }
 
 export function publicS3DownloadSource(): SessionHistoryDownloadSource {
+  // Mirror `generatePresignedGetUrl(..., usePublicEndpoint=true)` without exposing the endpoint.
   return env("S3_PUBLIC_ENDPOINT") || env("S3_ENDPOINT")
     ? SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT
     : SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT;
