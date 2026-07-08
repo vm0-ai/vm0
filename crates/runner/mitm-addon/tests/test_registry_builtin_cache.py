@@ -4,6 +4,8 @@ import json
 import os
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 import builtin_firewall_cache
 import matching
 import registry
@@ -131,6 +133,20 @@ def _assert_cache_firewall_falls_back_to_bundled(
 
 
 class TestRegistryBuiltinCache:
+    def test_resolved_firewall_entries_enforces_cache_key_alignment(self):
+        inline_firewall = {"name": "inline", "apis": []}
+
+        registry_firewalls.ResolvedFirewallEntries(None, None)
+        registry_firewalls.ResolvedFirewallEntries([], ())
+        registry_firewalls.ResolvedFirewallEntries([inline_firewall], (None,))
+
+        with pytest.raises(ValueError, match="absent when firewalls are absent"):
+            registry_firewalls.ResolvedFirewallEntries(None, (None,))
+        with pytest.raises(ValueError, match="present when firewalls are present"):
+            registry_firewalls.ResolvedFirewallEntries([inline_firewall], None)
+        with pytest.raises(ValueError, match="align with resolved firewalls"):
+            registry_firewalls.ResolvedFirewallEntries([inline_firewall], ())
+
     def test_builtin_firewall_entry_resolves_from_catalog(self, tmp_path):
         path = tmp_path / "registry.json"
         path.write_text(
