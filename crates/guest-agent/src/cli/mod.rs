@@ -21,6 +21,7 @@ mod child_env;
 pub mod codex_app_server;
 mod codex_app_server_backend;
 mod codex_app_server_events;
+mod codex_runtime_config;
 mod codex_setup;
 mod command;
 mod diagnostics;
@@ -62,6 +63,7 @@ use tokio::sync::oneshot;
 use tokio::time::Sleep;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
+const OPENAI_BASE_URL_ENV_KEY: &str = "OPENAI_BASE_URL";
 
 #[derive(serde::Serialize)]
 struct ClaudeUserFrame<'a> {
@@ -279,6 +281,7 @@ pub(super) struct CliRuntimeConfig<'a> {
     anthropic_model: Cow<'a, str>,
     openai_model: Cow<'a, str>,
     openai_base_url: Cow<'a, str>,
+    codex_runtime_config: Option<codex_runtime_config::CodexRuntimeConfig>,
     codex_oauth_mode: bool,
     codex_fast_mode: bool,
     stuck_tool_timeout_secs: u64,
@@ -291,8 +294,16 @@ pub(super) struct CliRuntimeConfig<'a> {
 }
 
 impl<'a> CliRuntimeConfig<'a> {
-    fn from_config(config: &'a env::GuestConfig, paths: &'a paths::GuestPaths) -> Self {
-        Self {
+    fn from_config(
+        config: &'a env::GuestConfig,
+        paths: &'a paths::GuestPaths,
+    ) -> Result<Self, AgentError> {
+        let codex_runtime_config = if matches!(config.framework, env::Framework::Codex) {
+            codex_runtime_config::parse_raw(&config.codex_runtime_config)?
+        } else {
+            None
+        };
+        Ok(Self {
             framework: config.framework,
             run_id: Cow::Borrowed(&config.run_id),
             prompt: Cow::Borrowed(&config.prompt),
@@ -311,7 +322,11 @@ impl<'a> CliRuntimeConfig<'a> {
             api_start_time: Cow::Borrowed(&config.api_start_time),
             anthropic_model: Cow::Borrowed(user_env_value(&config.user_env, "ANTHROPIC_MODEL")),
             openai_model: Cow::Borrowed(user_env_value(&config.user_env, "OPENAI_MODEL")),
-            openai_base_url: Cow::Borrowed(user_env_value(&config.user_env, "OPENAI_BASE_URL")),
+            openai_base_url: Cow::Borrowed(user_env_value(
+                &config.user_env,
+                OPENAI_BASE_URL_ENV_KEY,
+            )),
+            codex_runtime_config,
             codex_oauth_mode: !user_env_value(&config.user_env, "CHATGPT_ACCOUNT_ID").is_empty(),
             codex_fast_mode: !user_env_value(&config.user_env, "CHATGPT_ACCOUNT_ID").is_empty()
                 && user_env_value(&config.user_env, "VM0_CODEX_SERVICE_TIER") == "fast",
@@ -326,11 +341,36 @@ impl<'a> CliRuntimeConfig<'a> {
             session_history_path_file: Cow::Borrowed(paths.session_history_path_file()),
             event_error_flag: Cow::Borrowed(paths.event_error_flag()),
             user_env: &config.user_env,
-        }
+        })
     }
 
     fn codex_home(&self) -> String {
         codex_home_for_home_dir(self.home_dir.as_ref())
+    }
+
+    fn codex_startup_config_overrides(&self) -> Vec<String> {
+        let codex_home = self.codex_home();
+        codex_runtime_config::startup_config_overrides(
+            self.codex_runtime_config.as_ref(),
+            Path::new(&codex_home),
+        )
+    }
+
+    fn codex_model_provider_id(&self) -> Option<&str> {
+        self.codex_runtime_config
+            .as_ref()
+            .map(|config| config.provider_id.as_str())
+    }
+
+    fn child_user_env(&self) -> Cow<'_, HashMap<String, String>> {
+        if self.codex_runtime_config.is_none()
+            || !self.user_env.contains_key(OPENAI_BASE_URL_ENV_KEY)
+        {
+            return Cow::Borrowed(self.user_env);
+        }
+        let mut user_env = self.user_env.clone();
+        user_env.remove(OPENAI_BASE_URL_ENV_KEY);
+        Cow::Owned(user_env)
     }
 }
 
@@ -481,7 +521,7 @@ pub async fn execute_cli_with_active_input_for_config(
     config: &env::GuestConfig,
     paths: &paths::GuestPaths,
 ) -> Result<CliExecutionResult, AgentError> {
-    let runtime = CliRuntimeConfig::from_config(config, paths);
+    let runtime = CliRuntimeConfig::from_config(config, paths)?;
     execute_cli_inner(masker, heartbeat_monitor, http, active_input, &runtime).await
 }
 
@@ -1329,8 +1369,8 @@ mod tests {
     use super::termination::{CliTerminationRuntime, PostResultCleanupPolicy};
     use super::{
         CliExitObservation, CliFailureDiagnostic, CliRuntimeConfig, child_env,
-        claude_initial_prompt_frame, codex_home_for_home_dir, command, exec_boundary,
-        record_cli_exit, select_failure_diagnostic, set_cli_current_dir,
+        claude_initial_prompt_frame, codex_home_for_home_dir, codex_runtime_config, command,
+        exec_boundary, record_cli_exit, select_failure_diagnostic, set_cli_current_dir,
         with_carried_failure_reason,
     };
     use crate::active_input::ActiveInputRuntime;
@@ -1369,6 +1409,7 @@ mod tests {
             anthropic_model: Cow::Borrowed(""),
             openai_model: Cow::Borrowed(""),
             openai_base_url: Cow::Borrowed(""),
+            codex_runtime_config: None,
             codex_oauth_mode: false,
             codex_fast_mode: false,
             stuck_tool_timeout_secs: constants::STUCK_TOOL_TIMEOUT_SECS,
@@ -1448,6 +1489,63 @@ mod tests {
             &env_values,
         )
         .unwrap();
+    }
+
+    #[test]
+    fn legacy_codex_child_env_keeps_openai_base_url_without_structured_runtime_config() {
+        let user_env = HashMap::from([
+            ("OPENAI_API_KEY".to_string(), "sk-test".to_string()),
+            ("OPENAI_MODEL".to_string(), "gpt-5".to_string()),
+            (
+                "OPENAI_BASE_URL".to_string(),
+                "https://api.legacy-provider.test/v1".to_string(),
+            ),
+        ]);
+        let runtime =
+            runtime_for_exec_boundary_test(env::Framework::Codex, "prompt", "", false, &user_env);
+
+        let env_values = child_env::values_for_runtime(&runtime);
+
+        assert!(env_values.iter().any(|(key, value)| {
+            key == "OPENAI_BASE_URL" && value == "https://api.legacy-provider.test/v1"
+        }));
+    }
+
+    #[test]
+    fn structured_codex_runtime_config_omits_legacy_openai_base_url_from_child_env() {
+        let user_env = HashMap::from([
+            ("OPENAI_API_KEY".to_string(), "sk-test".to_string()),
+            ("OPENAI_MODEL".to_string(), "MiniMax-M3".to_string()),
+            (
+                "OPENAI_BASE_URL".to_string(),
+                "https://api.should-not-win.test/v1".to_string(),
+            ),
+        ]);
+        let mut runtime =
+            runtime_for_exec_boundary_test(env::Framework::Codex, "prompt", "", false, &user_env);
+        runtime.codex_runtime_config = Some(codex_runtime_config::CodexRuntimeConfig {
+            provider_id: "minimax".to_string(),
+            name: "MiniMax".to_string(),
+            base_url: "https://api.minimax.io/v1".to_string(),
+            env_key: "OPENAI_API_KEY".to_string(),
+            wire_api: "responses".to_string(),
+            supports_websockets: false,
+            model_catalog: None,
+        });
+
+        let env_values = child_env::values_for_runtime(&runtime);
+
+        assert!(
+            env_values
+                .iter()
+                .any(|(key, value)| { key == "OPENAI_API_KEY" && value == "sk-test" })
+        );
+        assert!(
+            env_values
+                .iter()
+                .any(|(key, value)| { key == "OPENAI_MODEL" && value == "MiniMax-M3" })
+        );
+        assert!(!env_values.iter().any(|(key, _)| key == "OPENAI_BASE_URL"));
     }
 
     #[test]
