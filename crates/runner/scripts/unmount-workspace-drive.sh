@@ -78,8 +78,8 @@ is_workspace_ref() {
 }
 
 is_workspace_child_mountpoint() {
-  mount_point=$1
-  case "$mount_point" in
+  workspace_child_mount_point=$1
+  case "$workspace_child_mount_point" in
     "$workspace_dir"/*) return 0 ;;
   esac
 
@@ -89,11 +89,35 @@ is_workspace_child_mountpoint() {
 decode_mountinfo_path() {
   awk 'BEGIN {
     value = ARGV[1]
-    gsub(/\\040/, " ", value)
-    gsub(/\\011/, "\t", value)
-    gsub(/\\012/, "\n", value)
-    gsub(/\\134/, "\\", value)
-    printf "%s", value
+    decoded = ""
+    for (i = 1; i <= length(value); i++) {
+      char = substr(value, i, 1)
+      if (char == "\\" && i + 3 <= length(value)) {
+        escape = substr(value, i + 1, 3)
+        if (escape == "040") {
+          decoded = decoded " "
+          i += 3
+          continue
+        }
+        if (escape == "011") {
+          decoded = decoded sprintf("%c", 9)
+          i += 3
+          continue
+        }
+        if (escape == "012") {
+          decoded = decoded sprintf("%c", 10)
+          i += 3
+          continue
+        }
+        if (escape == "134") {
+          decoded = decoded "\\"
+          i += 3
+          continue
+        }
+      }
+      decoded = decoded char
+    }
+    printf "%s", decoded
     exit
   }' "$1"
 }

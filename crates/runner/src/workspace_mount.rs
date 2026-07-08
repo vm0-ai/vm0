@@ -863,7 +863,7 @@ exit 0
     fn unmount_script_unmounts_workspace_child_mounts_before_parent_retry() {
         let temp = tempfile::tempdir().unwrap();
         let workspace_dir = temp.path().join("workspace");
-        let shallow_child = workspace_dir.join("child with space\\backslash");
+        let shallow_child = workspace_dir.join("child with space\\040literal\\backslash");
         let deep_child = shallow_child.join("grandchild");
         let workspace_device = temp.path().join("vdb");
         let fake_bin = temp.path().join("bin");
@@ -899,9 +899,15 @@ exit 0
         assert!(!stderr.contains("workspace mount diagnostics"));
 
         let log = fs::read_to_string(log_path).unwrap();
+        let mountinfo = fs::read_to_string(&mountinfo_path).unwrap();
         let deep_unmount = log
             .find(&format!("umount target={} ", deep_child.display()))
-            .expect("deep child unmount");
+            .unwrap_or_else(|| {
+                panic!(
+                    "deep child unmount missing: expected={} mountinfo={mountinfo} log={log}",
+                    deep_child.display()
+                )
+            });
         let shallow_unmount = log
             .find(&format!("umount target={} ", shallow_child.display()))
             .expect("shallow child unmount");
