@@ -5544,6 +5544,11 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     expect(runtimeMemoryAppendSystemPrompt).toContain(
       "Follow up on the security review injection preview.",
     );
+    // The query-relevant memory sits outside the bounded profile window and is
+    // surfaced only by prompt recall in the "Relevant memories" section.
+    expect(runtimeMemoryAppendSystemPrompt).toContain(
+      "Capture findings from the security review injection preview session.",
+    );
     await api.requestCancelRun(actor, runtimeMemoryRun.runId, [200]);
   });
 

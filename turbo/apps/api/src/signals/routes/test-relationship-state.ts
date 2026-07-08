@@ -4,6 +4,7 @@ import {
   type TestRelationshipStateActionBody,
 } from "@vm0/api-contracts/contracts/test-relationship-state";
 import {
+  type MemoryKind,
   memories,
   memoryEntities,
   memoryEntityAliases,
@@ -306,38 +307,89 @@ async function seedRuntimeInjectionMemoriesForAction(
     throw new Error("Expected runtime injection fixture entity");
   }
 
-  await db.insert(memories).values([
+  // Mirrors supermemory's profile-vs-search split: the stable/recent profile is
+  // a bounded window, while the "relevant memories" section is a full-corpus
+  // search that surfaces prompt-relevant memories the bounded window left out.
+  // The dynamic (recent_context) window keeps only its highest-ranked rows, so
+  // the low-confidence, older query-relevant row below is excluded from the
+  // profile and can only reach the prompt via query recall (and is therefore not
+  // deduped away against the profile).
+  const seedRows: Array<{
+    readonly kind: MemoryKind;
+    readonly text: string;
+    readonly confidence: number;
+    readonly lastSeenAt: string;
+  }> = [
+    // Stable profile.
     {
-      orgId: body.fixture.org_id,
-      userId: body.fixture.user_id,
-      entityId: entity.id,
       kind: "preference",
-      status: "active",
       text: "The user prefers concise launch summaries.",
       confidence: 92,
-      lastSeenAt: new Date("2026-07-05T12:00:00.000Z"),
+      lastSeenAt: "2026-07-05T12:00:00.000Z",
     },
+    // Current context (open loop + recent context inside the bounded window).
     {
-      orgId: body.fixture.org_id,
-      userId: body.fixture.user_id,
-      entityId: entity.id,
-      kind: "recent_context",
-      status: "active",
-      text: "The current work is validating runtime memory injection.",
-      confidence: 84,
-      lastSeenAt: new Date("2026-07-06T12:00:00.000Z"),
-    },
-    {
-      orgId: body.fixture.org_id,
-      userId: body.fixture.user_id,
-      entityId: entity.id,
       kind: "open_loop",
-      status: "active",
       text: "Follow up on the security review injection preview.",
       confidence: 88,
-      lastSeenAt: new Date("2026-07-07T12:00:00.000Z"),
+      lastSeenAt: "2026-07-07T12:00:00.000Z",
     },
-  ]);
+    {
+      kind: "recent_context",
+      text: "The current work is validating runtime memory injection.",
+      confidence: 84,
+      lastSeenAt: "2026-07-06T12:00:00.000Z",
+    },
+    // Higher-ranked recent context that fills the bounded window and pushes the
+    // query-relevant row below out of the profile sections.
+    {
+      kind: "recent_context",
+      text: "Reviewing the Q3 roadmap draft.",
+      confidence: 90,
+      lastSeenAt: "2026-07-07T12:00:00.000Z",
+    },
+    {
+      kind: "recent_context",
+      text: "Preparing the weekly investor update.",
+      confidence: 89,
+      lastSeenAt: "2026-07-07T12:00:00.000Z",
+    },
+    {
+      kind: "recent_context",
+      text: "Coordinating the design system migration.",
+      confidence: 87,
+      lastSeenAt: "2026-07-06T12:00:00.000Z",
+    },
+    {
+      kind: "recent_context",
+      text: "Testing the new onboarding flow.",
+      confidence: 86,
+      lastSeenAt: "2026-07-06T12:00:00.000Z",
+    },
+    // Query-relevant memory that falls outside the bounded recent-context window
+    // (lowest confidence, oldest) and is only surfaced by prompt recall.
+    {
+      kind: "recent_context",
+      text: "Capture findings from the security review injection preview session.",
+      confidence: 55,
+      lastSeenAt: "2026-06-20T12:00:00.000Z",
+    },
+  ];
+
+  await db.insert(memories).values(
+    seedRows.map((row) => {
+      return {
+        orgId: body.fixture.org_id,
+        userId: body.fixture.user_id,
+        entityId: entity.id,
+        kind: row.kind,
+        status: "active" as const,
+        text: row.text,
+        confidence: row.confidence,
+        lastSeenAt: new Date(row.lastSeenAt),
+      };
+    }),
+  );
   signal.throwIfAborted();
   return actionOk();
 }
