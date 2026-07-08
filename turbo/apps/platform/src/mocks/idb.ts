@@ -8,12 +8,15 @@
 
 function fakeIndex() {
   return {
+    get: () => Promise.resolve(undefined),
     openCursor: () => Promise.resolve(null),
   };
 }
 
 function fakeStore() {
   return {
+    clear: () => Promise.resolve(),
+    delete: () => Promise.resolve(),
     get: () => Promise.resolve(undefined),
     index: () => fakeIndex(),
     put: () => Promise.resolve(),

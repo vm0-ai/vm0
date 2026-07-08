@@ -4,7 +4,7 @@ const CHAT_IDB_FULL_CACHE_RESET_VERSION = 4;
 const CHAT_IDB_MESSAGES_ORDER_RESET_VERSION = 6;
 const CHAT_IDB_RUN_FINISH_UNREAD_RESET_VERSION = 10;
 const CHAT_IDB_THREAD_EVENT_CACHE_RESET_VERSION = 11;
-const CHAT_IDB_SCHEMA_VERSION = 11;
+const CHAT_IDB_SCHEMA_VERSION = 12;
 const LEGACY_CHAT_THREAD_META_STORE = "chat_thread_agents";
 
 export const CHAT_IDB_VERSION = CHAT_IDB_SCHEMA_VERSION;
@@ -12,8 +12,15 @@ export const CHAT_MESSAGES_STORE = "chat_messages";
 export const CHAT_THREAD_SNAPSHOT_STORE = "chat_thread_snapshot";
 export const CHAT_THREAD_EVENTS_STORE = "chat_thread_events";
 export const CHAT_THREAD_EVENT_SYNC_STORE = "chat_thread_event_sync";
+export const ARTIFACT_ITEMS_STORE = "artifact_items";
 export const CHAT_MESSAGES_ORDER_INDEX = "byThreadAndOrder";
 export const CHAT_THREAD_EVENTS_ORDER_INDEX = "byCreatedAt";
+export const ARTIFACT_ITEMS_CREATED_AT_INDEX = "byCreatedAt";
+export const ARTIFACT_ITEMS_AGENT_CREATED_AT_INDEX = "byAgentCreatedAt";
+export const ARTIFACT_ITEMS_KIND_CREATED_AT_INDEX = "byArtifactKindCreatedAt";
+export const ARTIFACT_ITEMS_AGENT_KIND_CREATED_AT_INDEX =
+  "byAgentKindCreatedAt";
+export const ARTIFACT_ITEMS_RUN_FILE_INDEX = "byRunFile";
 
 function createChatMessagesStore(db: IDBPDatabase): void {
   const store = db.createObjectStore(CHAT_MESSAGES_STORE, { keyPath: "id" });
@@ -39,6 +46,33 @@ function createChatThreadEventsStore(db: IDBPDatabase): void {
 
 function createChatThreadEventSyncStore(db: IDBPDatabase): void {
   db.createObjectStore(CHAT_THREAD_EVENT_SYNC_STORE, { keyPath: "id" });
+}
+
+function createArtifactItemsStore(db: IDBPDatabase): void {
+  const store = db.createObjectStore(ARTIFACT_ITEMS_STORE, {
+    keyPath: "artifactItemId",
+  });
+  store.createIndex(ARTIFACT_ITEMS_CREATED_AT_INDEX, [
+    "createdAt",
+    "artifactItemId",
+  ]);
+  store.createIndex(ARTIFACT_ITEMS_AGENT_CREATED_AT_INDEX, [
+    "agentId",
+    "createdAt",
+    "artifactItemId",
+  ]);
+  store.createIndex(ARTIFACT_ITEMS_KIND_CREATED_AT_INDEX, [
+    "artifactKind",
+    "createdAt",
+    "artifactItemId",
+  ]);
+  store.createIndex(ARTIFACT_ITEMS_AGENT_KIND_CREATED_AT_INDEX, [
+    "agentId",
+    "artifactKind",
+    "createdAt",
+    "artifactItemId",
+  ]);
+  store.createIndex(ARTIFACT_ITEMS_RUN_FILE_INDEX, ["runId", "fileId"]);
 }
 
 function deleteObjectStoreIfExists(db: IDBPDatabase, storeName: string): void {
@@ -81,5 +115,8 @@ export function upgradeChatIdb(db: IDBPDatabase, oldVersion: number): void {
   }
   if (!db.objectStoreNames.contains(CHAT_THREAD_EVENT_SYNC_STORE)) {
     createChatThreadEventSyncStore(db);
+  }
+  if (!db.objectStoreNames.contains(ARTIFACT_ITEMS_STORE)) {
+    createArtifactItemsStore(db);
   }
 }

@@ -1,6 +1,12 @@
 import type { IDBPDatabase } from "idb";
 import { describe, expect, it, vi } from "vitest";
 import {
+  ARTIFACT_ITEMS_AGENT_CREATED_AT_INDEX,
+  ARTIFACT_ITEMS_AGENT_KIND_CREATED_AT_INDEX,
+  ARTIFACT_ITEMS_CREATED_AT_INDEX,
+  ARTIFACT_ITEMS_KIND_CREATED_AT_INDEX,
+  ARTIFACT_ITEMS_RUN_FILE_INDEX,
+  ARTIFACT_ITEMS_STORE,
   CHAT_MESSAGES_ORDER_INDEX,
   CHAT_MESSAGES_STORE,
   CHAT_THREAD_EVENTS_ORDER_INDEX,
@@ -108,6 +114,46 @@ function expectThreadEventStoresDeleted(
   expect(deleteObjectStore).toHaveBeenCalledWith(CHAT_THREAD_EVENT_SYNC_STORE);
 }
 
+function expectArtifactItemsStoreCreated(
+  createdStores: ReturnType<typeof fakeDb>["createdStores"],
+  createObjectStore: ReturnType<typeof fakeDb>["createObjectStore"],
+): void {
+  expect(createObjectStore).toHaveBeenCalledWith(ARTIFACT_ITEMS_STORE, {
+    keyPath: "artifactItemId",
+  });
+  expect(
+    createdStores.get(ARTIFACT_ITEMS_STORE)?.createIndex,
+  ).toHaveBeenCalledWith(ARTIFACT_ITEMS_CREATED_AT_INDEX, [
+    "createdAt",
+    "artifactItemId",
+  ]);
+  expect(
+    createdStores.get(ARTIFACT_ITEMS_STORE)?.createIndex,
+  ).toHaveBeenCalledWith(ARTIFACT_ITEMS_AGENT_CREATED_AT_INDEX, [
+    "agentId",
+    "createdAt",
+    "artifactItemId",
+  ]);
+  expect(
+    createdStores.get(ARTIFACT_ITEMS_STORE)?.createIndex,
+  ).toHaveBeenCalledWith(ARTIFACT_ITEMS_KIND_CREATED_AT_INDEX, [
+    "artifactKind",
+    "createdAt",
+    "artifactItemId",
+  ]);
+  expect(
+    createdStores.get(ARTIFACT_ITEMS_STORE)?.createIndex,
+  ).toHaveBeenCalledWith(ARTIFACT_ITEMS_AGENT_KIND_CREATED_AT_INDEX, [
+    "agentId",
+    "artifactKind",
+    "createdAt",
+    "artifactItemId",
+  ]);
+  expect(
+    createdStores.get(ARTIFACT_ITEMS_STORE)?.createIndex,
+  ).toHaveBeenCalledWith(ARTIFACT_ITEMS_RUN_FILE_INDEX, ["runId", "fileId"]);
+}
+
 describe("upgradeChatIdb", () => {
   it("clears legacy chat cache when upgrading from before v4", () => {
     const { db, createdStores, createObjectStore, deleteObjectStore } = fakeDb([
@@ -124,6 +170,7 @@ describe("upgradeChatIdb", () => {
     expectLegacyStoreNotCreated(createObjectStore);
     expectChatMessagesStoreCreated(createdStores, createObjectStore);
     expectThreadEventStoresCreated(createdStores, createObjectStore);
+    expectArtifactItemsStoreCreated(createdStores, createObjectStore);
   });
 
   it("drops legacy thread metadata when resetting v4 messages for the order index", () => {
@@ -138,10 +185,11 @@ describe("upgradeChatIdb", () => {
     expect(deleteObjectStore).toHaveBeenCalledWith(
       LEGACY_CHAT_THREAD_META_STORE,
     );
-    expect(createObjectStore).toHaveBeenCalledTimes(4);
+    expect(createObjectStore).toHaveBeenCalledTimes(5);
     expectLegacyStoreNotCreated(createObjectStore);
     expectChatMessagesStoreCreated(createdStores, createObjectStore);
     expectThreadEventStoresCreated(createdStores, createObjectStore);
+    expectArtifactItemsStoreCreated(createdStores, createObjectStore);
   });
 
   it("drops legacy thread metadata when resetting v5 messages for terminal marker ordering", () => {
@@ -156,10 +204,11 @@ describe("upgradeChatIdb", () => {
     expect(deleteObjectStore).toHaveBeenCalledWith(
       LEGACY_CHAT_THREAD_META_STORE,
     );
-    expect(createObjectStore).toHaveBeenCalledTimes(4);
+    expect(createObjectStore).toHaveBeenCalledTimes(5);
     expectLegacyStoreNotCreated(createObjectStore);
     expectChatMessagesStoreCreated(createdStores, createObjectStore);
     expectThreadEventStoresCreated(createdStores, createObjectStore);
+    expectArtifactItemsStoreCreated(createdStores, createObjectStore);
   });
 
   it("resets v9 chat caches so cached unread calculations include run-finish markers", () => {
@@ -175,9 +224,10 @@ describe("upgradeChatIdb", () => {
     expect(deleteObjectStore).toHaveBeenCalledTimes(4);
     expect(deleteObjectStore).toHaveBeenCalledWith(CHAT_MESSAGES_STORE);
     expectThreadEventStoresDeleted(deleteObjectStore);
-    expect(createObjectStore).toHaveBeenCalledTimes(4);
+    expect(createObjectStore).toHaveBeenCalledTimes(5);
     expectChatMessagesStoreCreated(createdStores, createObjectStore);
     expectThreadEventStoresCreated(createdStores, createObjectStore);
+    expectArtifactItemsStoreCreated(createdStores, createObjectStore);
   });
 
   it("resets v10 chat, thread, and event caches", () => {
@@ -193,8 +243,39 @@ describe("upgradeChatIdb", () => {
     expect(deleteObjectStore).toHaveBeenCalledTimes(4);
     expect(deleteObjectStore).toHaveBeenCalledWith(CHAT_MESSAGES_STORE);
     expectThreadEventStoresDeleted(deleteObjectStore);
-    expect(createObjectStore).toHaveBeenCalledTimes(4);
+    expect(createObjectStore).toHaveBeenCalledTimes(5);
     expectChatMessagesStoreCreated(createdStores, createObjectStore);
     expectThreadEventStoresCreated(createdStores, createObjectStore);
+    expectArtifactItemsStoreCreated(createdStores, createObjectStore);
+  });
+
+  it("adds artifact items when upgrading from the previous chat schema", () => {
+    const { db, createdStores, createObjectStore, deleteObjectStore } = fakeDb([
+      CHAT_MESSAGES_STORE,
+      CHAT_THREAD_SNAPSHOT_STORE,
+      CHAT_THREAD_EVENTS_STORE,
+      CHAT_THREAD_EVENT_SYNC_STORE,
+    ]);
+
+    upgradeChatIdb(db, 11);
+
+    expect(deleteObjectStore).not.toHaveBeenCalled();
+    expect(createObjectStore).toHaveBeenCalledTimes(1);
+    expectArtifactItemsStoreCreated(createdStores, createObjectStore);
+  });
+
+  it("does not recreate artifact items when the store already exists", () => {
+    const { db, createObjectStore, deleteObjectStore } = fakeDb([
+      CHAT_MESSAGES_STORE,
+      CHAT_THREAD_SNAPSHOT_STORE,
+      CHAT_THREAD_EVENTS_STORE,
+      CHAT_THREAD_EVENT_SYNC_STORE,
+      ARTIFACT_ITEMS_STORE,
+    ]);
+
+    upgradeChatIdb(db, 12);
+
+    expect(deleteObjectStore).not.toHaveBeenCalled();
+    expect(createObjectStore).not.toHaveBeenCalled();
   });
 });
