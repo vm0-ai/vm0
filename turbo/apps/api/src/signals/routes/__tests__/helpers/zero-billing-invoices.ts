@@ -1,5 +1,6 @@
 import { command } from "ccstate";
 
+import { now } from "../../../../lib/time";
 import {
   createBillingWebhookFixture,
   generatedStripeCustomerId,
@@ -42,7 +43,7 @@ function subscriptionTier(tier: string | undefined): "pro" | "team" | null {
 }
 
 function defaultCurrentPeriodEnd(): Date {
-  return new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+  return new Date(now() + 30 * 24 * 60 * 60 * 1000);
 }
 
 export const seedInvoicesOrg$ = command(

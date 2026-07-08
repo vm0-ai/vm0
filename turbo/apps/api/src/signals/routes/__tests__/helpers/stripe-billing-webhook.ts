@@ -6,10 +6,10 @@ import { getApiTestMocks } from "../../../../__tests__/mocks";
 import { createAppWithRoutes } from "../../../../app-factory-core";
 import { webhooksStripeRoutes } from "../../webhooks-stripe";
 
-export const TEST_PRICE_PRO = "price_test_pro";
-export const TEST_PRICE_TEAM = "price_test_team";
+const TEST_PRICE_PRO = "price_test_pro";
+const TEST_PRICE_TEAM = "price_test_team";
 export const TEST_PRICE_CONCURRENCY = "price_test_concurrency";
-export const TEST_PRICE_ATOM_GRANT = "price_test_atom_grant";
+const TEST_PRICE_ATOM_GRANT = "price_test_atom_grant";
 
 const STRIPE_WEBHOOK_SECRET = "whsec_billing_state_test";
 const DEFAULT_CREDIT_EXPIRES_MS = 30 * 24 * 60 * 60 * 1000;
@@ -19,7 +19,7 @@ export interface BillingWebhookFixture {
   readonly userId: string;
 }
 
-export interface SubscriptionWebhookInput extends BillingWebhookFixture {
+interface SubscriptionWebhookInput extends BillingWebhookFixture {
   readonly tier: "pro" | "team";
   readonly customerId: string;
   readonly subscriptionId: string;
@@ -29,7 +29,7 @@ export interface SubscriptionWebhookInput extends BillingWebhookFixture {
   readonly scheduleId?: string | null;
 }
 
-export interface ConcurrencyWebhookLine {
+interface ConcurrencyWebhookLine {
   readonly slots: number;
   readonly startsAt: Date;
   readonly expiresAt: Date;
@@ -56,7 +56,7 @@ export function subscriptionCredits(tier: "pro" | "team"): number {
   return tier === "team" ? 120_000 : 20_000;
 }
 
-export function configureBillingWebhookEnv(): void {
+function configureBillingWebhookEnv(): void {
   mockEnv("ZERO_PRICE_PRO", TEST_PRICE_PRO);
   mockEnv("ZERO_PRICE_TEAM", TEST_PRICE_TEAM);
   mockEnv("ZERO_PRICE_CONCURRENCY", TEST_PRICE_CONCURRENCY);
@@ -73,7 +73,7 @@ export function configureBillingWebhookEnv(): void {
   mockOptionalEnv("STRIPE_WEBHOOK_SECRET", STRIPE_WEBHOOK_SECRET);
 }
 
-export function mockClerkOrganization(fixture: BillingWebhookFixture): void {
+function mockClerkOrganization(fixture: BillingWebhookFixture): void {
   getApiTestMocks().clerk.organizations.getOrganization.mockResolvedValue({
     id: fixture.orgId,
     slug: `billing-${fixture.orgId.slice(-8)}`,
