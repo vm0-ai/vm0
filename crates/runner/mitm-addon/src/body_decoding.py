@@ -30,6 +30,9 @@ from body_limits import (
 _BROTLI_DECOMPRESS_MIN_INPUT_CHUNK_SIZE = 16
 _BROTLI_DECOMPRESS_MAX_INPUT_CHUNK_SIZE = 1024
 _BROTLI_DECOMPRESS_TARGET_INPUT_CHUNKS = 64
+# zstd's Python decompression object has no zlib-style max_length argument.
+# Keep validation input chunks small so the discarded decoded output is bounded.
+_ZSTD_VALIDATE_INPUT_CHUNK_SIZE = 32
 INVALID_COMPRESSED_BODY = "invalid compressed body"
 INCOMPLETE_COMPRESSED_BODY = "incomplete compressed body"
 DECODED_BODY_LIMIT_EXCEEDED = "decoded body limit exceeded"
@@ -399,17 +402,40 @@ def _decompress_zlib_json_usage_body(
     return bytes(out), None
 
 
-def _validate_complete_zstd_frames(data: bytes) -> str | None:
+def _validate_complete_zstd_frames(data: bytes, max_output: int) -> str | None:
+    # stream_reader can silently accept a valid frame followed by a truncated
+    # frame, so strict JSON usage decoding needs a separate complete-frame pass.
+    if max_output <= 0:
+        return DECODED_BODY_LIMIT_EXCEEDED if data else None
+
     remaining_data = data
+    decoded_size = 0
     while remaining_data:
         obj = zstandard.ZstdDecompressor().decompressobj()
-        try:
-            obj.decompress(remaining_data)
-        except zstandard.ZstdError:
-            return INVALID_COMPRESSED_BODY
-        if not obj.eof:
+        offset = 0
+        unconsumed_tail = b""
+
+        while offset < len(remaining_data) or unconsumed_tail:
+            if unconsumed_tail:
+                chunk = unconsumed_tail
+                unconsumed_tail = b""
+            else:
+                chunk = remaining_data[offset : offset + _ZSTD_VALIDATE_INPUT_CHUNK_SIZE]
+                offset += len(chunk)
+            try:
+                decoded = obj.decompress(chunk)
+            except zstandard.ZstdError:
+                return INVALID_COMPRESSED_BODY
+
+            decoded_size += len(decoded)
+            if decoded_size > max_output:
+                return DECODED_BODY_LIMIT_EXCEEDED
+            if obj.eof:
+                remaining_data = obj.unused_data + remaining_data[offset:]
+                break
+            unconsumed_tail = obj.unconsumed_tail
+        else:
             return INCOMPLETE_COMPRESSED_BODY
-        remaining_data = obj.unused_data
     return None
 
 
@@ -430,7 +456,7 @@ def _decompress_zstd_json_usage_body(data: bytes, max_output: int) -> tuple[byte
 
     if extra:
         return body, DECODED_BODY_LIMIT_EXCEEDED
-    return body, _validate_complete_zstd_frames(data)
+    return body, _validate_complete_zstd_frames(data, max_output)
 
 
 def _decode_supported_body_with_complete_status(

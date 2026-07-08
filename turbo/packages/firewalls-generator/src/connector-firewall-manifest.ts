@@ -294,6 +294,7 @@ const NON_FIREWALL_CONNECTOR_TYPES = [
   "limrun",
   "minicor",
   "netter",
+  "nintendo-eshop-catalog",
   "oddpool",
   "primitive",
   "qomplement",

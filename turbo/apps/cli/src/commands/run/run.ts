@@ -116,8 +116,7 @@ export const mainRunCommand = new Command()
     "--capture-network-bodies",
     "Capture HTTP header names, selected safe header values, request bodies, and response bodies in network logs",
   )
-  .addOption(new Option("--debug-no-mock-claude").hideHelp())
-  .addOption(new Option("--debug-no-mock-codex").hideHelp())
+  .addOption(new Option("--real-agent-in-preview").hideHelp())
   .addOption(new Option("--model-provider-type <type>").hideHelp())
   .addOption(new Option("--no-auto-update").hideHelp())
   .action(
@@ -144,8 +143,7 @@ export const mainRunCommand = new Command()
           permissionPolicies?: string;
           verbose?: boolean;
           captureNetworkBodies?: boolean;
-          debugNoMockClaude?: boolean;
-          debugNoMockCodex?: boolean;
+          realAgentInPreview?: boolean;
           modelProviderType?: string;
           autoUpdate?: boolean;
         },
@@ -240,8 +238,7 @@ export const mainRunCommand = new Command()
             options.permissionPolicies,
           ),
           captureNetworkBodies: options.captureNetworkBodies || undefined,
-          debugNoMockClaude: options.debugNoMockClaude || undefined,
-          debugNoMockCodex: options.debugNoMockCodex || undefined,
+          realAgentInPreview: options.realAgentInPreview || undefined,
           modelProviderType: parseModelProviderType(options.modelProviderType),
         });
 

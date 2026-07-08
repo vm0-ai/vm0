@@ -24,6 +24,7 @@ import {
 import {
   zeroConnectorExternalCodeSessionContract,
   zeroConnectorManualGrantContract,
+  zeroConnectorNoAuthGrantContract,
   zeroConnectorOauthDeviceAuthSessionContract,
   zeroConnectorsByTypeContract,
   zeroConnectorScopeDiffContract,
@@ -102,7 +103,7 @@ function defaultOauthDeviceAuthSessionStartResponse(
   };
 }
 
-function createMockManualGrantConnector(
+function createMockLocalGrantConnector(
   type: ConnectorType,
   authMethod: ConnectorAuthMethodId,
 ): ConnectorResponse {
@@ -474,7 +475,19 @@ export const apiConnectorsHandlers = [
   mockApi(
     zeroConnectorManualGrantContract.connect,
     ({ body, params, respond }) => {
-      const connector = createMockManualGrantConnector(
+      const connector = createMockLocalGrantConnector(
+        params.type,
+        body.authMethod,
+      );
+      upsertMockConnector(connector);
+      return respond(200, connector);
+    },
+  ),
+
+  mockApi(
+    zeroConnectorNoAuthGrantContract.connect,
+    ({ body, params, respond }) => {
+      const connector = createMockLocalGrantConnector(
         params.type,
         body.authMethod,
       );

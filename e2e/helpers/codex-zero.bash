@@ -184,13 +184,11 @@ send_chat_run_message() {
     local agent_id="$1"
     local prompt="$2"
     local payload body
-    # debugNoMockCodex=true bypasses USE_MOCK_CODEX in the runner so the real
+    # realAgentInPreview=true bypasses USE_MOCK_CODEX in the runner so the real
     # codex CLI executes against $OPENAI_API_KEY. Without it, CI's
     # USE_MOCK_CODEX=true env var causes guest-mock-codex to echo the prompt
     # verbatim — see crates/runner/src/executor.rs (insert_codex_env) and
-    # guest_mock_codex::build_events. The chat/messages contract
-    # exposes this flag via chatMessagesContract.body.debugNoMockCodex, mirroring
-    # the same passthrough on /api/zero/runs.
+    # guest_mock_codex::build_events.
     # Model-first selection can carry either the sentinel provider id for an org
     # policy route, or a concrete provider id for an explicit model/provider pin.
     # BYOK smoke tests use a concrete id so they do not mutate shared org policy.
@@ -201,7 +199,7 @@ send_chat_run_message() {
         --arg prompt "$prompt" \
         --arg modelProviderId "$model_provider_id" \
         --arg selectedModel "$selected_model" \
-        '{agentId: $agentId, prompt: $prompt, modelSelection: {modelProviderId: $modelProviderId, selectedModel: $selectedModel}, hasTextContent: true, debugNoMockCodex: true}')
+        '{agentId: $agentId, prompt: $prompt, modelSelection: {modelProviderId: $modelProviderId, selectedModel: $selectedModel}, hasTextContent: true, realAgentInPreview: true}')
     body=$(_codex_zero_curl "/api/zero/chat/messages" \
         -X POST \
         -d "$payload")

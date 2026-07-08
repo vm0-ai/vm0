@@ -508,7 +508,7 @@ export type ConnectorAuthMethodGrantMetadata =
       readonly outputs: Readonly<Record<string, ConnectorGrantOutputMetadata>>;
     }
   | {
-      readonly kind: "manual" | "managed";
+      readonly kind: "none" | "manual" | "managed";
       readonly outputs: Readonly<Record<string, ConnectorGrantOutputMetadata>>;
     };
 
@@ -730,6 +730,7 @@ export function getConnectorAuthMethodGrantMetadata(
         kind: method.grant.kind,
         outputs: connectorGrantOutputMetadataMap(method.grant.outputs),
       };
+    case "none":
     case "manual":
     case "managed":
       return {
@@ -1260,6 +1261,7 @@ function connectorGrantScopes(
     case "device-auth":
       return grant.scopes;
     case "openid-auth":
+    case "none":
     case "manual":
     case "managed":
     case undefined:
@@ -1359,6 +1361,7 @@ export function getAvailableConnectorAuthMethodIds(
       case "auth-code":
       case "external-code":
       case "device-auth":
+      case "none":
       case "manual": {
         break;
       }
@@ -1705,6 +1708,9 @@ function hasRuntimeAvailableAuthMethod(
         return true;
       }
       case "manual": {
+        return true;
+      }
+      case "none": {
         return true;
       }
       case "managed":

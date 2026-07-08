@@ -18,6 +18,7 @@ import {
   zeroConnectorOpenIdStartContract,
   zeroConnectorOauthStartContract,
   zeroConnectorManualGrantContract,
+  zeroConnectorNoAuthGrantContract,
   zeroConnectorsMainContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
 import { getConnectorAuthMethod } from "@vm0/connectors/connector-utils";
@@ -118,7 +119,7 @@ export interface ConnectorTypeWithStatus {
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
 
-type ConnectorConnectLaunchMode = "browser-auth" | "modal";
+type ConnectorConnectLaunchMode = "browser-auth" | "no-auth" | "modal";
 type BrowserAuthGrantKind = "auth-code" | "openid-auth";
 
 export type ConnectorStatusAuthMethodDetail = Omit<
@@ -147,6 +148,10 @@ function isBrowserAuthGrantKind(
   grantKind: ConnectorStatusGrantKind,
 ): grantKind is BrowserAuthGrantKind {
   return grantKind === "auth-code" || grantKind === "openid-auth";
+}
+
+function isNoAuthGrantKind(grantKind: ConnectorStatusGrantKind): boolean {
+  return grantKind === "none";
 }
 
 function connectorBrowserAuthGrantKind(
@@ -243,10 +248,13 @@ export function hasConnectorStatusBrowserAuthGrant(
 export function getConnectorStatusConnectLaunchMode(
   connector: ConnectorTypeWithStatus,
 ): ConnectorConnectLaunchMode {
-  if (!getOnlyAvailableStatusBrowserAuthMethod(connector)) {
-    return "modal";
+  if (getOnlyAvailableStatusBrowserAuthMethod(connector)) {
+    return "browser-auth";
   }
-  return "browser-auth";
+  if (getOnlyAvailableStatusNoAuthMethod(connector)) {
+    return "no-auth";
+  }
+  return "modal";
 }
 
 export function getAvailableStatusAuthCodeAuthMethod(
@@ -305,6 +313,31 @@ export function getOnlyAvailableStatusBrowserAuthMethod(
     return getOnlyAvailableStatusAuthCodeAuthMethod(connector);
   }
   return method?.grantKind === "openid-auth" ? authMethod : null;
+}
+
+export function getAvailableStatusNoAuthMethod(
+  connector: ConnectorTypeWithStatus,
+  authMethod: string,
+): ConnectorAuthMethodId | null {
+  const parsed = connectorAuthMethodIdSchema.safeParse(authMethod);
+  if (!parsed.success) {
+    return null;
+  }
+  const method = getConnectorStatusAuthMethod(connector, parsed.data);
+  if (!method || !isNoAuthGrantKind(method.grantKind)) {
+    return null;
+  }
+  return parsed.data;
+}
+
+export function getOnlyAvailableStatusNoAuthMethod(
+  connector: ConnectorTypeWithStatus,
+): ConnectorAuthMethodId | null {
+  const [authMethod] = connector.availableAuthMethods;
+  if (connector.availableAuthMethods.length !== 1 || !authMethod) {
+    return null;
+  }
+  return getAvailableStatusNoAuthMethod(connector, authMethod);
 }
 
 function connectorTokenExpiresAtMs(
@@ -982,6 +1015,85 @@ export const submitManualGrant$ = command(
         }
       },
     );
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Enable no-auth connector grant command
+// ---------------------------------------------------------------------------
+
+type ConnectNoAuthParams = {
+  readonly type: ConnectorType;
+  readonly authMethod: ConnectorAuthMethodId;
+  readonly options: PostConnectOptions;
+};
+
+export const connectConnectorNoAuth$ = command(
+  async (
+    { get, set },
+    { type, authMethod, options }: ConnectNoAuthParams,
+    signal: AbortSignal,
+  ): Promise<boolean> => {
+    if (
+      connectorConnectOperationIsActive({
+        authCodeConnectorType: get(internalPollingOAuthAuthCodeConnectorType$),
+        connectFlow: get(internalConnectFlowState$),
+        deviceAuthState: get(internalConnectorOAuthDeviceAuthState$),
+        externalCodeState: get(internalConnectorExternalCodeState$),
+      })
+    ) {
+      return false;
+    }
+
+    const flow = createConnectorConnectFlowState(type);
+    set(internalConnectFlowState$, flow);
+    let connectorStateChanged = false;
+    return await withCleanup(
+      (async () => {
+        const createClient = get(zeroClient$);
+        const connectorClient = createClient(zeroConnectorNoAuthGrantContract);
+        await accept(
+          connectorClient.connect({
+            params: { type },
+            body: { authMethod },
+            fetchOptions: { signal },
+          }),
+          [200],
+        );
+        connectorStateChanged = true;
+        signal.throwIfAborted();
+        set(finishConnectorConnection$, type, {
+          ...options,
+          reloadConnectors: false,
+          toastMessage: `${options.connectorLabel ?? type} enabled successfully`,
+        });
+        return true;
+      })(),
+      () => {
+        set(internalConnectFlowState$, (current) => {
+          return current?.id === flow.id ? null : current;
+        });
+        if (connectorStateChanged) {
+          set(reloadConnectors$);
+        }
+      },
+    );
+  },
+);
+
+export const connectConnectorNoAuthAndSettle$ = command(
+  async (
+    { set },
+    args: ConnectNoAuthParams & {
+      readonly onSuccess: () => void | Promise<void>;
+    },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const connected = await set(connectConnectorNoAuth$, args, signal);
+    if (connected) {
+      signal.throwIfAborted();
+      await args.onSuccess();
+    }
   },
 );
 

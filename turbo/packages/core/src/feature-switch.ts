@@ -101,6 +101,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Neon serverless Postgres connector",
     enabled: false,
   },
+  [FeatureSwitchKey.NintendoEshopCatalogConnector]: {
+    maintainer: "liangyou@vm0.ai",
+    description: "Enable the Nintendo eShop public catalog connector",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    userOverridable: false,
+  },
   [FeatureSwitchKey.GarminConnectConnector]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable the Garmin Connect wellness connector",
@@ -258,6 +265,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable Codex fast mode for ChatGPT subscription GPT 5.5 web chat runs.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.RealAgentInPreview]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Send preview chat runs through real agent CLIs instead of preview mock runners.",
+    enabled: false,
   },
   [FeatureSwitchKey.ComposerUploadPopover]: {
     maintainer: "bingjie@vm0.ai",

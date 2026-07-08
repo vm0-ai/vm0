@@ -16,6 +16,8 @@ This package exposes the stable surface consumed by ``mitm_addon.py`` and
 ``response_streaming.py``.
 Tests should exercise these public hook/provider paths and the local HTTP
 webhook boundary instead of patching private transport internals.
+Delivery admission tests may target the production ``usage.webhook`` enqueue
+boundary used by the usage buffer; retry and transport helpers remain private.
 """
 
 from . import webhook

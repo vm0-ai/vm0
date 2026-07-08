@@ -79,8 +79,7 @@ export const continueCommand = new Command()
     'Permission policies JSON (e.g., \'{"github": {"actions:read": "allow"}}\')',
   )
   .option("--verbose", "Show full tool inputs and outputs")
-  .addOption(new Option("--debug-no-mock-claude").hideHelp())
-  .addOption(new Option("--debug-no-mock-codex").hideHelp())
+  .addOption(new Option("--real-agent-in-preview").hideHelp())
   .action(
     withErrorHandler(
       async (
@@ -101,8 +100,7 @@ export const continueCommand = new Command()
           settings?: string;
           permissionPolicies?: string;
           verbose?: boolean;
-          debugNoMockClaude?: boolean;
-          debugNoMockCodex?: boolean;
+          realAgentInPreview?: boolean;
         },
         command: { optsWithGlobals: () => Record<string, unknown> },
       ) => {
@@ -124,8 +122,7 @@ export const continueCommand = new Command()
           settings?: string;
           permissionPolicies?: string;
           verbose?: boolean;
-          debugNoMockClaude?: boolean;
-          debugNoMockCodex?: boolean;
+          realAgentInPreview?: boolean;
         };
 
         // Merge vars and secrets from command options
@@ -176,13 +173,9 @@ export const continueCommand = new Command()
           permissionPolicies: parsePermissionPolicies(
             options.permissionPolicies || allOpts.permissionPolicies,
           ),
-          debugNoMockClaude: pickOpt(
-            options.debugNoMockClaude,
-            allOpts.debugNoMockClaude,
-          ),
-          debugNoMockCodex: pickOpt(
-            options.debugNoMockCodex,
-            allOpts.debugNoMockCodex,
+          realAgentInPreview: pickOpt(
+            options.realAgentInPreview,
+            allOpts.realAgentInPreview,
           ),
         });
 

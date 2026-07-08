@@ -74,8 +74,7 @@ export const resumeCommand = new Command()
     'Permission policies JSON (e.g., \'{"github": {"actions:read": "allow"}}\')',
   )
   .option("--verbose", "Show full tool inputs and outputs")
-  .addOption(new Option("--debug-no-mock-claude").hideHelp())
-  .addOption(new Option("--debug-no-mock-codex").hideHelp())
+  .addOption(new Option("--real-agent-in-preview").hideHelp())
   .action(
     withErrorHandler(
       async (
@@ -96,8 +95,7 @@ export const resumeCommand = new Command()
           settings?: string;
           permissionPolicies?: string;
           verbose?: boolean;
-          debugNoMockClaude?: boolean;
-          debugNoMockCodex?: boolean;
+          realAgentInPreview?: boolean;
         },
         command: { optsWithGlobals: () => Record<string, unknown> },
       ) => {
@@ -120,8 +118,7 @@ export const resumeCommand = new Command()
           settings?: string;
           permissionPolicies?: string;
           verbose?: boolean;
-          debugNoMockClaude?: boolean;
-          debugNoMockCodex?: boolean;
+          realAgentInPreview?: boolean;
         };
 
         // Merge vars and secrets from command options
@@ -179,10 +176,10 @@ export const resumeCommand = new Command()
           permissionPolicies: parsePermissionPolicies(
             options.permissionPolicies || allOpts.permissionPolicies,
           ),
-          debugNoMockClaude:
-            options.debugNoMockClaude || allOpts.debugNoMockClaude,
-          debugNoMockCodex:
-            options.debugNoMockCodex || allOpts.debugNoMockCodex,
+          realAgentInPreview:
+            options.realAgentInPreview ||
+            allOpts.realAgentInPreview ||
+            undefined,
         });
 
         // 4. Check for immediate failure (e.g., missing secrets)

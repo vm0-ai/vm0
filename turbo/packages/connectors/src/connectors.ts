@@ -36,6 +36,7 @@ import { docusign } from "./connectors/docusign";
 import { googleAds } from "./connectors/google-ads";
 import { googleMaps } from "./connectors/google-maps";
 import { gumroad } from "./connectors/gumroad";
+import { nintendoEshopCatalog } from "./connectors/nintendo-eshop-catalog";
 import { playstation } from "./connectors/playstation";
 import { spotify } from "./connectors/spotify";
 import { steam } from "./connectors/steam";
@@ -351,6 +352,7 @@ export type {
   ConnectorManagedGrantConfig,
   ConnectorManualGrantConfig,
   ConnectorManualGrantFieldConfig,
+  ConnectorNoAuthGrantConfig,
   ConnectorNoAccessConfig,
   ConnectorOutputValueRef,
   ConnectorOpenIdAuthGrantConfig,
@@ -452,6 +454,7 @@ const CONNECTOR_TYPES_DEF = defineConnectors({
   ...googleCloud,
   ...googleMaps,
   ...gumroad,
+  ...nintendoEshopCatalog,
   ...playstation,
   ...spotify,
   ...steam,
