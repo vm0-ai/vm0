@@ -893,7 +893,7 @@ export const createCustomConnector$ = command(
   },
 );
 
-export const updateCustomConnectorDefinition$ = command(
+const updateCustomConnectorDefinition$ = command(
   async (
     { set },
     args: {
@@ -1181,54 +1181,6 @@ export const setCustomConnectorValues$ = command(
     });
     signal.throwIfAborted();
     return serialiseCustomConnector({ row: connector, valueMarkers: markers });
-  },
-);
-
-export const deleteCustomConnectorValues$ = command(
-  async (
-    { get, set },
-    args: {
-      readonly orgId: string;
-      readonly userId: string;
-      readonly connectorId: string;
-      readonly syncLegacySecret?: boolean;
-    },
-    signal: AbortSignal,
-  ): Promise<NotFoundResponse | undefined> => {
-    const connector = await get(
-      getCustomConnectorById({
-        orgId: args.orgId,
-        connectorId: args.connectorId,
-      }),
-    );
-    signal.throwIfAborted();
-    if (!connector) {
-      return notFound("Custom connector not found");
-    }
-    const writeDb = set(writeDb$);
-    await writeDb
-      .delete(orgCustomConnectorValues)
-      .where(
-        and(
-          eq(orgCustomConnectorValues.connectorId, args.connectorId),
-          eq(orgCustomConnectorValues.userId, args.userId),
-          eq(orgCustomConnectorValues.orgId, args.orgId),
-        ),
-      );
-    signal.throwIfAborted();
-    if (args.syncLegacySecret) {
-      await writeDb
-        .delete(orgCustomConnectorSecrets)
-        .where(
-          and(
-            eq(orgCustomConnectorSecrets.connectorId, args.connectorId),
-            eq(orgCustomConnectorSecrets.userId, args.userId),
-            eq(orgCustomConnectorSecrets.orgId, args.orgId),
-          ),
-        );
-    }
-    signal.throwIfAborted();
-    return undefined;
   },
 );
 
