@@ -29,17 +29,12 @@ import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
 const L = logger("ZeroVoiceIoPost");
 
 export const OPENAI_AUDIO_SPEECH_URL = "https://api.openai.com/v1/audio/speech";
-const OPENAI_AUDIO_TRANSCRIPTIONS_URL =
-  "https://api.openai.com/v1/audio/transcriptions";
 const BYTEPLUS_ASR_FLASH_URL =
   "https://byteplus-proxy.vm0.ai/api/v3/auc/bigmodel/recognize/flash";
 const BYTEPLUS_ASR_RESOURCE_ID = "volc.seedasr.auc_turbo";
 const BYTEPLUS_ASR_MODEL = "bigmodel";
 const BYTEPLUS_ERROR_BODY_LOG_MAX_LENGTH = 4000;
 export const VOICE_IO_TTS_MODEL = "gpt-4o-mini-tts";
-// Verbose transcription (per-segment timestamps) requires whisper-1;
-// gpt-4o-mini-transcribe does not return segment timestamps.
-const VOICE_IO_STT_VERBOSE_MODEL = "whisper-1";
 const SPEECH_CONTENT_TYPE = "audio/wav";
 export const SPEECH_RESPONSE_FORMAT = "wav";
 export const SPEECH_MAX_INPUT_TOKENS = 2000;
@@ -204,25 +199,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-function isTranscriptionBody(
-  value: unknown,
-): value is { readonly text: string } {
-  return isRecord(value) && typeof value.text === "string";
-}
-
-function isVerboseTranscriptionSegment(value: unknown): value is {
-  readonly start: number;
-  readonly end: number;
-  readonly text: string;
-} {
-  return (
-    isRecord(value) &&
-    typeof value.start === "number" &&
-    typeof value.end === "number" &&
-    typeof value.text === "string"
-  );
-}
-
 function bytePlusAudioFormatForKey(value: string): string | undefined {
   if (isBytePlusWavFormat(value)) {
     return "wav";
@@ -370,55 +346,6 @@ function bytePlusSegments(
       text: utterance.text,
     };
   });
-}
-
-export async function transcribeOpenAiVoiceInputFile(
-  file: File,
-  signal: AbortSignal,
-): Promise<VoiceInputSttProviderResult> {
-  const openaiForm = new FormData();
-  openaiForm.append("file", file, file.name || "audio.webm");
-  openaiForm.append("model", VOICE_IO_STT_VERBOSE_MODEL);
-  openaiForm.append("response_format", "verbose_json");
-
-  const openaiResponse = await fetch(OPENAI_AUDIO_TRANSCRIPTIONS_URL, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${env("OPENAI_API_KEY")}` },
-    body: openaiForm,
-    signal,
-  });
-  signal.throwIfAborted();
-
-  if (!openaiResponse.ok) {
-    const errorBody = await openaiResponse.text();
-    signal.throwIfAborted();
-    L.error("OpenAI STT API error", {
-      status: openaiResponse.status,
-      statusText: openaiResponse.statusText,
-      body: errorBody,
-      fileMime: file.type,
-      fileSize: file.size,
-      fileName: file.name,
-    });
-    return internalError("Transcription failed");
-  }
-
-  const result: unknown = await openaiResponse.json();
-  signal.throwIfAborted();
-  if (!isTranscriptionBody(result)) {
-    return internalError("Transcription failed");
-  }
-
-  const segments = Array.isArray((result as Record<string, unknown>).segments)
-    ? ((result as Record<string, unknown>).segments as unknown[]).filter(
-        isVerboseTranscriptionSegment,
-      )
-    : undefined;
-
-  return {
-    text: result.text,
-    ...(segments !== undefined && { segments }),
-  };
 }
 
 export async function transcribeBytePlusVoiceInputFile(

@@ -4,16 +4,12 @@ import {
   type PresentationImageAsset,
   type PresentationImageResolveItem,
 } from "@vm0/api-contracts/contracts/presentation-images";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { command } from "ccstate";
 
 import { env } from "../../lib/env";
-import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import type { RouteEntry } from "../route-entry";
-import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import { safeJsonParse, settle } from "../utils";
 
 const UNSPLASH_SEARCH_URL = "https://api.unsplash.com/search/photos";
@@ -407,17 +403,15 @@ async function searchPexels(
   return noResults(item.query, "Pexels");
 }
 
-// Build the ordered provider chain for this request. When Unsplash is preferred
-// (feature switch on) it is tried first with Pexels as fallback; otherwise images
-// resolve directly from Pexels. Providers without a configured key are skipped.
-function buildProviderChain(
-  unsplashPreferred: boolean,
-): readonly ProviderSearch[] {
+// Build the ordered provider chain for this request. Unsplash is tried first
+// when configured, with Pexels as fallback. Providers without a configured key
+// are skipped.
+function buildProviderChain(): readonly ProviderSearch[] {
   const chain: ProviderSearch[] = [];
   const unsplashKey = env("UNSPLASH_ACCESS_KEY");
   const pexelsKey = env("PEXELS_API_KEY");
 
-  if (unsplashPreferred && unsplashKey) {
+  if (unsplashKey) {
     chain.push((item, signal) => {
       return searchUnsplash(item, unsplashKey, signal);
     });
@@ -479,17 +473,7 @@ async function mapWithConcurrency<T, U>(
 
 const resolvePresentationImagesInner$ = command(
   async ({ get }, signal: AbortSignal) => {
-    const auth = get(organizationAuthContext$);
-    const overrides = await get(
-      userFeatureSwitchOverrides(auth.orgId, auth.userId),
-    );
-    signal.throwIfAborted();
-
-    const unsplashPreferred = isFeatureEnabled(
-      FeatureSwitchKey.PresentationImageUnsplashPreferred,
-      { orgId: auth.orgId, userId: auth.userId, overrides },
-    );
-    const chain = buildProviderChain(unsplashPreferred);
+    const chain = buildProviderChain();
     if (chain.length === 0) {
       return serviceUnavailable(
         "Presentation image resolution is not configured",
