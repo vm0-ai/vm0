@@ -63,19 +63,34 @@ export interface AppRouteSpec {
   readonly summary?: string;
 }
 
-type SchemaOutput<T> =
-  T extends z.ZodType<infer Output>
-    ? Output
-    : T extends ZodLikeSchema<infer Output>
-      ? Output
-      : T extends TypeMarker<infer Output>
-        ? Output
-        : T extends NoBodyMarker
-          ? undefined
-          : never;
+// Read Zod v4 input/output through its shallow structural slots. Matching
+// `z.ZodType<infer T>` forces expensive variance checks across Zod internals.
+type ZodSchemaOutput<T> = T extends {
+  readonly _zod: { readonly output: infer Output };
+}
+  ? Output
+  : never;
 
-type SchemaInput<T> = T extends z.ZodType
-  ? z.input<T>
+type ZodSchemaInput<T> = T extends {
+  readonly _zod: { readonly input: infer Input };
+}
+  ? Input
+  : never;
+
+export type SchemaOutput<T> = T extends {
+  readonly _zod: { readonly output: unknown };
+}
+  ? ZodSchemaOutput<T>
+  : T extends ZodLikeSchema<infer Output>
+    ? Output
+    : T extends TypeMarker<infer Output>
+      ? Output
+      : T extends NoBodyMarker
+        ? undefined
+        : never;
+
+type SchemaInput<T> = T extends { readonly _zod: { readonly input: unknown } }
+  ? ZodSchemaInput<T>
   : T extends ZodLikeSchema<infer Output>
     ? Output
     : T extends TypeMarker<infer Output>
