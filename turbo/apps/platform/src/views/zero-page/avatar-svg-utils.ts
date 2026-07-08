@@ -40,6 +40,18 @@ interface NavigatorWithConnection extends Navigator {
   readonly connection?: NavigatorConnectionLike;
 }
 
+type ImageConstructor = new (
+  width?: number,
+  height?: number,
+) => HTMLImageElement;
+
+function avatarSvgImageConstructor(): ImageConstructor | null {
+  if (typeof window === "undefined" || typeof window.Image !== "function") {
+    return null;
+  }
+  return window.Image;
+}
+
 /**
  * Serialize an avatar config to a storable string like `svg:r1s0h3c2f1d`.
  */
@@ -149,7 +161,12 @@ function preloadAvatarSvgLayerUrl(
     return;
   }
 
-  const image = new Image();
+  const ImageCtor = avatarSvgImageConstructor();
+  if (!ImageCtor) {
+    return;
+  }
+
+  const image = new ImageCtor();
   image.decoding = "async";
   image.fetchPriority = "low";
   image.src = url;
@@ -211,7 +228,7 @@ function scheduleAvatarSvgPreloadBatches(
 
 export function preloadAvatarSvgLayerAssets(): void {
   if (
-    typeof Image === "undefined" ||
+    avatarSvgImageConstructor() === null ||
     typeof window === "undefined" ||
     prefersReducedData()
   ) {
