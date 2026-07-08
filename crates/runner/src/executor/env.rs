@@ -7,10 +7,7 @@ use super::cli_framework::{
     EffectiveCliFramework, effective_cli_framework, normalized_cli_agent_type,
 };
 use super::session_id::{canonical_codex_thread_id, is_valid_session_id};
-use super::{
-    GUEST_USER_ENV_DIR_NAME, GUEST_USER_ENV_FILENAME, RunnerError, RunnerResult, guest_runtime_dir,
-    guest_runtime_path,
-};
+use super::{RunnerError, RunnerResult, guest_runtime_dir, guest_runtime_path};
 use crate::ids::RunId;
 use crate::types::{CodexRuntimeConfig, ExecutionContext, SandboxReuseResult};
 
@@ -310,8 +307,8 @@ fn for_each_guest_user_env_entry<'a>(
 
 pub(super) fn guest_user_env_file_path(run_id: RunId) -> RunnerResult<String> {
     guest_runtime_path(run_id, |dir| {
-        dir.join(GUEST_USER_ENV_DIR_NAME)
-            .join(GUEST_USER_ENV_FILENAME)
+        dir.join(guest_contracts::env::USER_ENV_PRIVATE_DIR_NAME)
+            .join(guest_contracts::env::USER_ENV_FILENAME)
     })
 }
 

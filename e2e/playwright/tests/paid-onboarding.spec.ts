@@ -1,5 +1,5 @@
 import { clerkSetup, setupClerkTestingToken } from "@clerk/testing/playwright";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "../fixtures";
 import { signInThroughHostedAuth } from "../lib/auth";
 import {
   createOrganization,

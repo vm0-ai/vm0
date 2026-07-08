@@ -5419,6 +5419,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       "Local changes or newly-created workflow folders",
       "runtime-only and will not persist, sync back, or affect future runs",
       "zero workflow create|edit <name> --dir <path>",
+      "run `zero intro` first",
       "zero developer-support --help",
       "zero maps --help",
       "zero slack message send --help",

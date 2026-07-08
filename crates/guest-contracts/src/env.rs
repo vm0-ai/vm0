@@ -112,6 +112,12 @@ pub const CLI_AGENT_TYPE_ENV: &str = "CLI_AGENT_TYPE";
 /// payload.
 pub const USER_ENV_FILE_ENV: &str = "VM0_USER_ENV_FILE";
 
+/// Private runtime subdirectory used by [`USER_ENV_FILE_ENV`].
+pub const USER_ENV_PRIVATE_DIR_NAME: &str = "user-env";
+
+/// Private runtime filename used by [`USER_ENV_FILE_ENV`].
+pub const USER_ENV_FILENAME: &str = "env.json";
+
 /// Path to the private runner-owned run payload JSON file.
 ///
 /// Large prompt-like and configuration payloads use this file instead of
@@ -405,7 +411,11 @@ mod tests {
         assert_eq!(RUN_ID_ENV, "VM0_RUN_ID");
         assert_eq!(CLI_AGENT_TYPE_ENV, "CLI_AGENT_TYPE");
         assert_eq!(USER_ENV_FILE_ENV, "VM0_USER_ENV_FILE");
+        assert_eq!(USER_ENV_PRIVATE_DIR_NAME, "user-env");
+        assert_eq!(USER_ENV_FILENAME, "env.json");
         assert_eq!(RUN_PAYLOAD_FILE_ENV, "VM0_RUN_PAYLOAD_FILE");
+        assert_eq!(RUN_PAYLOAD_PRIVATE_DIR_NAME, "run-payload");
+        assert_eq!(RUN_PAYLOAD_FILENAME, "payload.json");
     }
 
     #[test]
@@ -561,6 +571,7 @@ mod tests {
         for key in [
             API_URL_ENV,
             WORKING_DIR_ENV,
+            USER_ENV_FILE_ENV,
             RUN_PAYLOAD_FILE_ENV,
             CLI_AGENT_TYPE_ENV,
             USE_MOCK_CLAUDE_ENV,
