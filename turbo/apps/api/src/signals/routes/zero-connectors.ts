@@ -1,6 +1,7 @@
 import { command, computed } from "ccstate";
 import {
   zeroConnectorManualGrantContract,
+  zeroConnectorNoAuthGrantContract,
   zeroConnectorOpenIdStartContract,
   zeroConnectorOauthStartContract,
   zeroConnectorScopeDiffContract,
@@ -29,6 +30,7 @@ import { nowDate } from "../../lib/time";
 import { writeDb$ } from "../external/db";
 import {
   connectManualGrantConnector$,
+  connectNoAuthConnector$,
   deleteZeroConnectorLocalState$,
   zeroConnectorByType,
   zeroConnectorList,
@@ -318,6 +320,62 @@ const connectManualGrantConnectorInner$ = command(
   },
 );
 
+const connectNoAuthConnectorInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const params = get(pathParamsOf(zeroConnectorNoAuthGrantContract.connect));
+    const bodyResult = await get(
+      bodyResultOf(zeroConnectorNoAuthGrantContract.connect),
+    );
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+
+    const method = getConnectorAuthMethod(
+      params.type,
+      bodyResult.data.authMethod,
+    );
+    if (!method) {
+      return badRequestMessage(
+        `${params.type} connector does not have ${bodyResult.data.authMethod} auth method`,
+      );
+    }
+    if (method.grant.kind !== "none") {
+      return badRequestMessage(
+        `${params.type} ${bodyResult.data.authMethod} auth method does not use a no-auth grant`,
+      );
+    }
+
+    const availability = await get(
+      userConnectorAvailability(auth.orgId, auth.userId),
+    );
+    signal.throwIfAborted();
+    if (
+      !availability.isAuthMethodAvailable(
+        params.type,
+        bodyResult.data.authMethod,
+      )
+    ) {
+      return connectorUnavailable(params.type);
+    }
+
+    const result = await set(
+      connectNoAuthConnector$,
+      {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        type: params.type,
+        authMethod: bodyResult.data.authMethod,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    return { status: 200 as const, body: result.connector };
+  },
+);
+
 const startConnectorOauthInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const params = get(pathParamsOf(zeroConnectorOauthStartContract.start));
@@ -520,6 +578,10 @@ export const zeroConnectorsRoutes: readonly RouteEntry[] = [
   {
     route: zeroConnectorManualGrantContract.connect,
     handler: authRoute(connectorWriteAuth, connectManualGrantConnectorInner$),
+  },
+  {
+    route: zeroConnectorNoAuthGrantContract.connect,
+    handler: authRoute(connectorWriteAuth, connectNoAuthConnectorInner$),
   },
   {
     route: zeroConnectorsSearchContract.search,

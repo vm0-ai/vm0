@@ -1167,6 +1167,7 @@ export {
   zeroConnectorsByTypeContract,
   zeroConnectorScopeDiffContract,
   zeroConnectorManualGrantContract,
+  zeroConnectorNoAuthGrantContract,
   zeroConnectorOauthDeviceAuthSessionContract,
   zeroConnectorsSearchContract,
   type ConnectorSearchAuthMethod,
@@ -1174,6 +1175,7 @@ export {
   type ZeroConnectorsByTypeContract,
   type ZeroConnectorScopeDiffContract,
   type ZeroConnectorManualGrantContract,
+  type ZeroConnectorNoAuthGrantContract,
   type ZeroConnectorOauthDeviceAuthSessionContract,
   type ZeroConnectorsSearchContract,
 } from "./zero-connectors";

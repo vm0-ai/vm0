@@ -24,6 +24,7 @@ import {
 import {
   zeroConnectorExternalCodeSessionContract,
   zeroConnectorManualGrantContract,
+  zeroConnectorNoAuthGrantContract,
   zeroConnectorOauthDeviceAuthSessionContract,
   zeroConnectorsByTypeContract,
   zeroConnectorScopeDiffContract,
@@ -473,6 +474,18 @@ export const apiConnectorsHandlers = [
 
   mockApi(
     zeroConnectorManualGrantContract.connect,
+    ({ body, params, respond }) => {
+      const connector = createMockManualGrantConnector(
+        params.type,
+        body.authMethod,
+      );
+      upsertMockConnector(connector);
+      return respond(200, connector);
+    },
+  ),
+
+  mockApi(
+    zeroConnectorNoAuthGrantContract.connect,
     ({ body, params, respond }) => {
       const connector = createMockManualGrantConnector(
         params.type,
