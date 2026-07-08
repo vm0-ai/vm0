@@ -145,6 +145,10 @@ impl SessionWorkspaceCache {
             Some(metadata) => allocated_bytes(metadata),
             None => 0,
         };
+        let persistent_allocated_bytes = current_allocated_bytes.saturating_add(
+            self.session_history_sidecar_allocated_bytes(&cache_key)
+                .await,
+        );
 
         let entry = match (current_metadata, metadata) {
             (None, metadata) => {
@@ -164,7 +168,7 @@ impl SessionWorkspaceCache {
                     Some(reason.into()),
                     metadata.as_ref(),
                     None,
-                    0,
+                    persistent_allocated_bytes,
                     temporary,
                 )
             }
@@ -178,7 +182,7 @@ impl SessionWorkspaceCache {
                     Some(reason),
                     None,
                     Some(&current_metadata),
-                    current_allocated_bytes,
+                    persistent_allocated_bytes,
                     temporary,
                 )
             }
@@ -197,7 +201,7 @@ impl SessionWorkspaceCache {
                     reason,
                     Some(&metadata),
                     Some(&current_metadata),
-                    current_allocated_bytes,
+                    persistent_allocated_bytes,
                     temporary,
                 )
             }

@@ -2,6 +2,8 @@ use std::collections::HashMap;
 use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 
+use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
+
 use super::fs::{
     allocated_bytes, has_copy_headroom, local_timestamp, sparse_copy_with_timeout,
     workspace_cache_path_allocated_bytes,
@@ -15,13 +17,16 @@ use super::path_safety::{
     filter_storage_fingerprints_for_working_dir, is_safe_guest_working_dir,
     normalize_safe_guest_working_dir,
 };
+use super::types::WorkspaceSessionHistorySidecarMiss;
 use super::*;
 use crate::error::RunnerError;
 use crate::ids::RunId;
 use crate::paths::{RunnerPaths, scoped_session_workspace_cache_key, session_workspace_cache_key};
+use crate::restored_session_identity::{RestoredSessionFramework, RestoredSessionIdentity};
 use crate::storage_fingerprints::StorageFingerprint;
 use crate::storage_fingerprints::StorageFingerprints;
-use crate::types::{HeldSessionState, MAX_HELD_SESSION_STATES};
+use crate::types::{HeldSessionState, MAX_HELD_SESSION_STATES, ResumeSessionHistoryRefKind};
+use sha2::{Digest, Sha256};
 use tokio::fs;
 
 const TEST_PROFILE_NAME: &str = "vm0/default";
@@ -89,6 +94,39 @@ async fn write_current_cache_entry(
         .await
         .unwrap();
     key
+}
+
+fn test_restored_session_identity(session_id: &str, history: &[u8]) -> RestoredSessionIdentity {
+    RestoredSessionIdentity::new(
+        RestoredSessionFramework::ClaudeCode,
+        session_id,
+        ResumeSessionHistoryRefKind::Blob,
+        hex::encode(Sha256::digest(history)),
+        Some(history.len() as u64),
+    )
+}
+
+async fn publish_test_session_history_sidecar(
+    cache: &SessionWorkspaceCache,
+    cache_key: &str,
+    run_id: RunId,
+    session_id: &str,
+    history: &[u8],
+) -> RestoredSessionIdentity {
+    let tmp_path = cache.session_workspace_cache_tmp_sidecar(cache_key, run_id);
+    fs::write(&tmp_path, history).await.unwrap();
+    let identity = test_restored_session_identity(session_id, history);
+    let source = WorkspaceSessionHistorySidecarPromotionSource {
+        tmp_path,
+        representation: WorkspaceSessionHistorySidecarRepresentation::Raw,
+        encoded_size: history.len() as u64,
+        restored_session_identity: identity.clone(),
+    };
+    cache
+        .publish_session_history_sidecar(cache_key, run_id, Some(&source))
+        .await
+        .unwrap();
+    identity
 }
 
 async fn promote_current_cache_entry(
@@ -1383,6 +1421,7 @@ async fn abandoned_cache_hit_promotion_context_invalidates_consumed_entry() {
             run_id,
             sandbox_id,
             cli_agent_session_id_override: None,
+            restored_session_identity: None,
             terminal_status: WorkspaceCacheTerminalStatus::Success,
             completed_at: "2026-05-02T00:00:00.000Z".into(),
             storage_fingerprints: StorageFingerprints::default(),
@@ -1455,6 +1494,7 @@ async fn promotion_context_preserves_existing_newer_cache_entry() {
             run_id,
             sandbox_id,
             cli_agent_session_id_override: Some(session_id),
+            restored_session_identity: None,
             terminal_status: WorkspaceCacheTerminalStatus::Success,
             completed_at: "2026-05-01T00:00:00.000Z".into(),
             storage_fingerprints: StorageFingerprints::default(),
@@ -1474,6 +1514,158 @@ async fn promotion_context_preserves_existing_newer_cache_entry() {
         fs::try_exists(paths.session_workspace_cache_current_image(&cache_key))
             .await
             .unwrap()
+    );
+}
+
+#[tokio::test]
+async fn session_history_sidecar_publish_and_probe_hit() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = RunnerPaths::new(dir.path().join("runner"));
+    tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+    let cache = SessionWorkspaceCache::new(paths.clone());
+    let run_id = RunId::new_v4();
+    let session_id = "sess-sidecar-hit";
+    let history = br#"{"type":"message","content":"hello"}"#;
+    let cache_key = write_current_cache_entry(
+        &cache,
+        run_id,
+        session_id,
+        CANONICAL_WORKING_DIR,
+        "2026-05-01T00:00:00.000Z",
+        "2026-05-01T00:00:00.000Z",
+    )
+    .await;
+
+    let identity =
+        publish_test_session_history_sidecar(&cache, &cache_key, run_id, session_id, history).await;
+    let sidecar = cache
+        .probe_session_history_sidecar(&cache_key, &identity)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        sidecar.representation,
+        WorkspaceSessionHistorySidecarRepresentation::Raw
+    );
+    assert_eq!(sidecar.encoded_size, history.len() as u64);
+    assert_eq!(fs::read(sidecar.path).await.unwrap(), history);
+}
+
+#[tokio::test]
+async fn session_history_sidecar_publish_none_prunes_existing_sidecar() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = RunnerPaths::new(dir.path().join("runner"));
+    tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+    let cache = SessionWorkspaceCache::new(paths.clone());
+    let run_id = RunId::new_v4();
+    let session_id = "sess-sidecar-prune";
+    let history = br#"{"type":"message","content":"old"}"#;
+    let cache_key = write_current_cache_entry(
+        &cache,
+        run_id,
+        session_id,
+        CANONICAL_WORKING_DIR,
+        "2026-05-01T00:00:00.000Z",
+        "2026-05-01T00:00:00.000Z",
+    )
+    .await;
+    let identity =
+        publish_test_session_history_sidecar(&cache, &cache_key, run_id, session_id, history).await;
+
+    cache
+        .publish_session_history_sidecar(&cache_key, RunId::new_v4(), None)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        cache
+            .probe_session_history_sidecar(&cache_key, &identity)
+            .await
+            .unwrap_err(),
+        WorkspaceSessionHistorySidecarMiss::Missing
+    );
+}
+
+#[tokio::test]
+async fn session_history_sidecar_probe_rejects_mismatched_body_identity() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = RunnerPaths::new(dir.path().join("runner"));
+    tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+    let cache = SessionWorkspaceCache::new(paths.clone());
+    let run_id = RunId::new_v4();
+    let session_id = "sess-sidecar-mismatch";
+    let history = br#"{"type":"message","content":"stable"}"#;
+    let cache_key = write_current_cache_entry(
+        &cache,
+        run_id,
+        session_id,
+        CANONICAL_WORKING_DIR,
+        "2026-05-01T00:00:00.000Z",
+        "2026-05-01T00:00:00.000Z",
+    )
+    .await;
+    let identity =
+        publish_test_session_history_sidecar(&cache, &cache_key, run_id, session_id, history).await;
+    fs::write(
+        paths
+            .session_workspace_cache_entry_dir(&cache_key)
+            .join("session-history.blob"),
+        b"changed",
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        cache
+            .probe_session_history_sidecar(&cache_key, &identity)
+            .await
+            .unwrap_err(),
+        WorkspaceSessionHistorySidecarMiss::FileIdentityMismatch
+    );
+}
+
+#[tokio::test]
+async fn session_history_sidecar_counts_toward_gc_candidate_and_inspection() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = RunnerPaths::new(dir.path().join("runner"));
+    tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+    let cache = SessionWorkspaceCache::new(paths.clone());
+    let run_id = RunId::new_v4();
+    let session_id = "sess-sidecar-accounting";
+    let history = br#"{"type":"message","content":"accounting"}"#;
+    let cache_key = write_current_cache_entry(
+        &cache,
+        run_id,
+        session_id,
+        CANONICAL_WORKING_DIR,
+        "2026-05-01T00:00:00.000Z",
+        "2026-05-01T00:00:00.000Z",
+    )
+    .await;
+    publish_test_session_history_sidecar(&cache, &cache_key, run_id, session_id, history).await;
+    let current_allocated = workspace_cache_path_allocated_bytes(
+        &paths.session_workspace_cache_current_image(&cache_key),
+    )
+    .await;
+    let sidecar_allocated = cache
+        .session_history_sidecar_allocated_bytes(&cache_key)
+        .await;
+
+    let candidate = cache.gc_candidate(cache_key.clone()).await.unwrap();
+    assert_eq!(
+        candidate.allocated_bytes,
+        current_allocated.saturating_add(sidecar_allocated)
+    );
+
+    let inspection = cache.inspect().await.unwrap();
+    let entry = inspection
+        .entries
+        .iter()
+        .find(|entry| entry.cache_key == cache_key)
+        .unwrap();
+    assert_eq!(
+        entry.allocated_bytes,
+        current_allocated.saturating_add(sidecar_allocated)
     );
 }
 
@@ -1515,6 +1707,7 @@ async fn no_lock_promotion_context_abandonment_preserves_existing_entry() {
             run_id,
             sandbox_id,
             cli_agent_session_id_override: Some(session_id),
+            restored_session_identity: None,
             terminal_status: WorkspaceCacheTerminalStatus::Success,
             completed_at: "2026-05-01T00:00:00.000Z".into(),
             storage_fingerprints: StorageFingerprints::default(),
@@ -2920,6 +3113,7 @@ async fn promotion_context_keeps_entry_locked_until_reused_active_lease_drops() 
             run_id,
             sandbox_id,
             cli_agent_session_id_override: Some(session_id),
+            restored_session_identity: None,
             terminal_status: WorkspaceCacheTerminalStatus::Success,
             completed_at: local_timestamp(),
             storage_fingerprints: StorageFingerprints::default(),
@@ -3019,6 +3213,7 @@ async fn promotion_context_validates_expected_identity() {
             run_id,
             sandbox_id,
             cli_agent_session_id_override: Some(session_id),
+            restored_session_identity: None,
             terminal_status: WorkspaceCacheTerminalStatus::Success,
             completed_at: local_timestamp(),
             storage_fingerprints: StorageFingerprints::default(),
@@ -4246,6 +4441,7 @@ async fn no_session_checkout_without_late_cli_agent_session_id_has_no_promotion_
                 run_id,
                 sandbox_id,
                 cli_agent_session_id_override: None,
+                restored_session_identity: None,
                 terminal_status: WorkspaceCacheTerminalStatus::Success,
                 completed_at: "2026-05-01T00:00:00.000Z".into(),
                 storage_fingerprints: StorageFingerprints::default(),
@@ -4345,6 +4541,7 @@ async fn late_session_promotion_skips_when_entry_lock_is_busy() {
             run_id,
             sandbox_id,
             cli_agent_session_id_override: Some(session_id),
+            restored_session_identity: None,
             terminal_status: WorkspaceCacheTerminalStatus::Success,
             completed_at: "2026-05-01T00:00:00.000Z".into(),
             storage_fingerprints: StorageFingerprints::default(),
@@ -4395,6 +4592,7 @@ async fn no_lock_promotion_context_survives_reuse_active_lease() {
             run_id,
             sandbox_id,
             cli_agent_session_id_override: Some(session_id),
+            restored_session_identity: None,
             terminal_status: WorkspaceCacheTerminalStatus::Success,
             completed_at: "2026-05-01T00:00:00.000Z".into(),
             storage_fingerprints: StorageFingerprints::default(),
@@ -4419,6 +4617,7 @@ async fn no_lock_promotion_context_survives_reuse_active_lease() {
                 run_id: RunId::new_v4(),
                 sandbox_id,
                 cli_agent_session_id_override: Some(session_id),
+                restored_session_identity: None,
                 terminal_status: WorkspaceCacheTerminalStatus::Success,
                 completed_at: "2026-05-01T00:00:01.000Z".into(),
                 storage_fingerprints: StorageFingerprints::default(),

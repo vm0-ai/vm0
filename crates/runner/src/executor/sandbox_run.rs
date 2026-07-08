@@ -8,9 +8,12 @@ use futures_util::FutureExt;
 use sandbox::{
     Sandbox, SandboxConfig, SandboxCreateObserver, SandboxCreateStage, SandboxFactory, SandboxId,
 };
+use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
-use super::agent_run::{AgentExecutionResult, RunControls, RunStart, run_in_sandbox};
+use super::agent_run::{
+    AgentExecutionResult, RunControls, RunStart, SessionHistoryRestorePlan, run_in_sandbox,
+};
 use super::cli_framework::{
     EffectiveCliFramework, effective_cli_framework, normalized_cli_agent_type,
 };
@@ -24,13 +27,14 @@ use super::session_id::{
 use super::telemetry::record_workspace_cache_result;
 use super::{
     ExecuteOutcome, ExecutionFailure, ExecutorConfig, JobParams, NewSandboxDispatch, RunnerError,
-    RunnerResult, SandboxPreparedNotifier, SandboxReuseResult,
+    RunnerResult, SandboxPreparedNotifier, SandboxReuseResult, SessionHistoryMaterializer,
 };
 use crate::duration::duration_ms;
 use crate::ids::RunId;
 use crate::network_log_manager::NetworkLogSession;
 use crate::provider::NetworkPolicyRefreshRegistration;
 use crate::proxy;
+use crate::restored_session_identity::RestoredSessionIdentity;
 use crate::telemetry::JobTelemetry;
 use crate::types::{ExecutionContext, FirewallEntry};
 use crate::workspace_image_cache::{
@@ -154,7 +158,7 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
         reuse_result,
     } = dispatch;
     let NewSandboxHooks {
-        controls,
+        mut controls,
         sandbox_prepared,
     } = hooks;
     let prepare_started = Instant::now();
@@ -164,6 +168,15 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
         config,
         &params.profile_name,
         params.workspace_disk_mb,
+        telemetry,
+    )
+    .await;
+    controls.session_history_restore_plan = resolve_fresh_session_history_restore_plan(
+        std::mem::take(&mut controls.session_history_restore_plan),
+        workspace_image.as_ref(),
+        context,
+        config,
+        controls.cancel.clone(),
         telemetry,
     )
     .await;
@@ -208,6 +221,14 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
                 None,
             );
             workspace_image = None;
+            controls.session_history_restore_plan =
+                discard_local_sidecar_restore_plan_for_workspace_retry(
+                    std::mem::take(&mut controls.session_history_restore_plan),
+                    context,
+                    config,
+                    controls.cancel.clone(),
+                    telemetry,
+                );
             match create_started_sandbox(
                 factory,
                 context,
@@ -341,6 +362,119 @@ pub(super) async fn prepare_workspace_image(
     );
     record_workspace_cache_result(telemetry, lease.result());
     Some(lease)
+}
+
+async fn resolve_fresh_session_history_restore_plan(
+    plan: SessionHistoryRestorePlan,
+    workspace_image: Option<&WorkspaceImageLease>,
+    context: &ExecutionContext,
+    config: &ExecutorConfig,
+    cancel: CancellationToken,
+    telemetry: &mut JobTelemetry,
+) -> SessionHistoryRestorePlan {
+    let fallback = match plan {
+        SessionHistoryRestorePlan::DeferredHashBacked { fallback } => fallback,
+        other => return other,
+    };
+    let Some(workspace_image) = workspace_image else {
+        return start_fresh_session_history_materializer(
+            context, config, cancel, telemetry, fallback,
+        );
+    };
+    if !workspace_image.is_cache_hit() {
+        return start_fresh_session_history_materializer(
+            context, config, cancel, telemetry, fallback,
+        );
+    }
+    let Some(expected) = RestoredSessionIdentity::from_context(context) else {
+        telemetry.record(
+            "session_history_workspace_cache_miss",
+            Duration::ZERO,
+            true,
+            Some("identity_mismatch"),
+        );
+        return start_fresh_session_history_materializer(
+            context, config, cancel, telemetry, fallback,
+        );
+    };
+    let probe_started = Instant::now();
+    telemetry.record(
+        "session_history_workspace_cache_probe",
+        Duration::ZERO,
+        true,
+        None,
+    );
+    match workspace_image
+        .probe_session_history_sidecar(&expected)
+        .await
+    {
+        Ok(sidecar) => {
+            telemetry.record(
+                "session_history_workspace_cache_hit",
+                probe_started.elapsed(),
+                true,
+                None,
+            );
+            SessionHistoryRestorePlan::LocalSidecar { sidecar, fallback }
+        }
+        Err(reason) => {
+            telemetry.record(
+                "session_history_workspace_cache_miss",
+                probe_started.elapsed(),
+                true,
+                Some(reason.as_str()),
+            );
+            start_fresh_session_history_materializer(context, config, cancel, telemetry, fallback)
+        }
+    }
+}
+
+fn discard_local_sidecar_restore_plan_for_workspace_retry(
+    plan: SessionHistoryRestorePlan,
+    context: &ExecutionContext,
+    config: &ExecutorConfig,
+    cancel: CancellationToken,
+    telemetry: &mut JobTelemetry,
+) -> SessionHistoryRestorePlan {
+    match plan {
+        SessionHistoryRestorePlan::LocalSidecar { fallback, .. } => {
+            telemetry.record(
+                "session_history_workspace_cache_miss",
+                Duration::ZERO,
+                true,
+                Some("sandbox_retry_without_workspace_image"),
+            );
+            start_fresh_session_history_materializer(context, config, cancel, telemetry, fallback)
+        }
+        other => other,
+    }
+}
+
+fn start_fresh_session_history_materializer(
+    context: &ExecutionContext,
+    config: &ExecutorConfig,
+    cancel: CancellationToken,
+    telemetry: &mut JobTelemetry,
+    fallback: Option<super::SessionHistoryRestoreFallback>,
+) -> SessionHistoryRestorePlan {
+    let started = Instant::now();
+    let materializer = SessionHistoryMaterializer::start_cancellable(
+        &config.http,
+        context.resume_session.as_ref(),
+        effective_cli_framework(&context.cli_agent_type),
+        cancel,
+        Some(&config.session_history_probe),
+    );
+    telemetry.record(
+        "runner_fresh_session_history_materializer_start",
+        started.elapsed(),
+        true,
+        None,
+    );
+    SessionHistoryRestorePlan::Prestarted {
+        materializer,
+        fallback,
+    }
 }
 
 fn workspace_image_prepare_error(result: WorkspaceCacheCheckoutResult) -> Option<&'static str> {
