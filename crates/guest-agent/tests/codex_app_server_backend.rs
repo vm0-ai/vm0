@@ -7,6 +7,7 @@ mod common;
 
 use guest_agent::masker::SecretMasker;
 use serde_json::Value;
+use std::collections::HashMap;
 use std::time::Duration;
 
 #[tokio::test]
@@ -14,17 +15,48 @@ async fn codex_app_server_backend_runs_initial_turn_and_synthesizes_thread_start
 -> Result<(), Box<dyn std::error::Error>> {
     let mock = common::build_and_locate_mock_codex()?;
     let tmp = tempfile::tempdir()?;
+    let run_id = "codex-app-server-backend-test";
+    let prompt = "drive the app-server backend";
 
     unsafe {
         common::setup_codex_app_server_env(
             &mock,
             tmp.path(),
             common::CodexAppServerEnvConfig {
-                run_id: "codex-app-server-backend-test",
-                prompt: "drive the app-server backend",
+                run_id,
+                prompt,
                 scenario: Some("runtime-turn-complete-without-thread-started"),
                 resume_session_id: None,
             },
+        )?;
+        let runtime_dir = guest_contracts::runtime_paths::run_dir_for_home(tmp.path(), run_id)
+            .map_err(|error| format!("resolve runtime dir: {error}"))?;
+        common::set_run_payload_file_env_for_test(
+            &runtime_dir,
+            &guest_contracts::env::RunPayload {
+                prompt: prompt.to_string(),
+                codex_runtime_config: r#"{
+                    "providerId": "minimax",
+                    "name": "MiniMax",
+                    "baseUrl": "https://api.minimax.io/v1",
+                    "envKey": "OPENAI_API_KEY",
+                    "wireApi": "responses",
+                    "supportsWebsockets": false
+                }"#
+                .to_string(),
+                ..guest_contracts::env::RunPayload::default()
+            },
+        )?;
+        common::set_user_env_file_env_for_test(
+            &runtime_dir,
+            &HashMap::from([
+                ("OPENAI_API_KEY".to_string(), "sk-test".to_string()),
+                ("OPENAI_MODEL".to_string(), "MiniMax-M3".to_string()),
+                (
+                    "OPENAI_BASE_URL".to_string(),
+                    "https://api.should-not-win.test/v1".to_string(),
+                ),
+            ]),
         )?;
     }
     let runtime = common::guest_runtime_from_process_env()?;
@@ -74,6 +106,23 @@ async fn codex_app_server_backend_runs_initial_turn_and_synthesizes_thread_start
             .get("thread_request_has_runtime_workspace_roots")
             .and_then(Value::as_bool),
         Some(false)
+    );
+    assert_eq!(
+        input_event
+            .get("thread_request_model")
+            .and_then(Value::as_str),
+        Some("MiniMax-M3")
+    );
+    assert_eq!(
+        input_event
+            .get("thread_request_model_provider")
+            .and_then(Value::as_str),
+        Some("minimax")
+    );
+    assert!(
+        input_event
+            .get("child_env_openai_base_url")
+            .is_some_and(Value::is_null)
     );
     assert_eq!(
         input_event
