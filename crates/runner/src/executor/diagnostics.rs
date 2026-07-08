@@ -220,10 +220,7 @@ fn unattributed_sigkill_cli_failure(diagnostic: &FailureDiagnostic, exit_code: i
     diagnostic.failure_class == FailureClass::CliNonzero
         && diagnostic.cli_exit_code == Some(exit_code)
         && diagnostic.cli_termination.is_none()
-        && matches!(
-            diagnostic.failure_detail_source,
-            None | Some(FailureDetailSource::FallbackExitCode)
-        )
+        && diagnostic.failure_detail_source == Some(FailureDetailSource::FallbackExitCode)
         && diagnostic
             .cli_observed_exit
             .as_ref()

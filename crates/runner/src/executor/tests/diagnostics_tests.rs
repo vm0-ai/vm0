@@ -203,6 +203,24 @@ fn unattributed_sigkill_resource_diagnostics_require_observed_sigkill() {
 }
 
 #[test]
+fn unattributed_sigkill_resource_diagnostics_require_fallback_detail_source() {
+    let exit = ProcessExit::new(1, 137, Vec::new(), Vec::new());
+    let diagnostic = FailureDiagnostic::new(
+        FailureClass::CliNonzero,
+        AgentFramework::ClaudeCode,
+        PromptMetadata::from_prompt("/help"),
+    )
+    .with_cli_exit_code(137)
+    .with_cli_observed_exit(CliObservedExitDiagnostic::from_signal(libc::SIGKILL));
+
+    assert!(!should_collect_unattributed_sigkill_resource_diagnostics(
+        false,
+        &exit,
+        Some(&diagnostic)
+    ));
+}
+
+#[test]
 fn unattributed_sigkill_resource_diagnostics_require_matching_exit_code() {
     let exit = ProcessExit::new(1, 1, Vec::new(), Vec::new());
     let diagnostic = fallback_cli_nonzero_diagnostic(137)

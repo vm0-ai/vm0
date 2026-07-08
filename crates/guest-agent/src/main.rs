@@ -404,13 +404,10 @@ async fn execute(
                         FailureClass::ClaudeZeroTurnNoHistory,
                     )
                     .with_cli_exit_code(cli_exit_code)
-                    .with_cli_observed_exit(
-                        cli_result
-                            .cli_observed_exit
-                            .unwrap_or_else(|| CliObservedExitDiagnostic::from_exit_code(0)),
-                    )
                     .with_claude_num_turns(Some(0))
                     .with_session_history_status(session_history_status);
+                    let diagnostic =
+                        with_cli_observed_exit(diagnostic, cli_result.cli_observed_exit);
                     (
                         cli_exit_code,
                         1,
