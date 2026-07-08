@@ -6,12 +6,12 @@
     state="$(systemctl show "$unit" --property=ActiveState --value 2>/dev/null || true)"
     case "$state" in
       active|activating|reloading|deactivating)
-        systemctl kill --kill-whom=all --signal=SIGKILL "$unit" 2>/dev/null || true
-        systemctl stop --no-block "$unit" 2>/dev/null || true
+        timeout 10s systemctl kill --kill-whom=all --signal=SIGKILL "$unit" 2>/dev/null || true
+        timeout 10s systemctl stop --no-block "$unit" 2>/dev/null || true
         ;;
     esac
-    systemctl disable "$unit" 2>/dev/null || true
-    systemctl reset-failed "$unit" 2>/dev/null || true
+    timeout 10s systemctl disable "$unit" 2>/dev/null || true
+    timeout 10s systemctl reset-failed "$unit" 2>/dev/null || true
   args:
     executable: /bin/bash
   changed_when: true
