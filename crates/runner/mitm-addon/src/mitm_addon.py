@@ -460,9 +460,9 @@ def _prebind_requestheaders_upstream_destination(
 
 
 def _prebind_bounded_requestheaders_upstream_destination(flow: http.HTTPFlow) -> None:
-    api_url = getattr(getattr(ctx, "options", None), "vm0_api_url", None)
-    if not isinstance(api_url, str):
+    if getattr(ctx, "options", None) is None:
         return
+    api_url = get_api_url()
     metadata_snapshot = {
         key: flow.metadata[key]
         for key in _request_headers_probe_metadata_keys()
