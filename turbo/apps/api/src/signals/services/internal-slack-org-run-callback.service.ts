@@ -584,6 +584,15 @@ async function handleCompletion(args: {
         })
       : undefined;
   if (completedOutput?.kind === "failed") {
+    refreshThreadStatus({
+      token: botToken,
+      channelId: args.payload.channelId,
+      threadTs: args.payload.threadTs,
+      status: "",
+      runId: args.runId,
+      failureMessage:
+        "Failed to clear thread status after output lookup failed",
+    });
     return errorResponse(502, completedOutput.error);
   }
   const logsUrl = await resolveAuditLogsUrl({

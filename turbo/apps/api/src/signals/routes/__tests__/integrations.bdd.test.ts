@@ -2709,6 +2709,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     const unresolvedRunId = await pollSlackRun(runnerGroup);
     const unresolvedClaim = await runs.claimRunnerJob(unresolvedRunId);
     context.mocks.slack.chat.postMessage.mockClear();
+    context.mocks.slack.assistant.threads.setStatus.mockClear();
     await completeSlackTriggeredRun({
       runId: unresolvedRunId,
       sandboxToken: unresolvedClaim.sandboxToken,
@@ -2720,6 +2721,15 @@ describe("INT-01: Slack app deep webhook flows", () => {
     expect(context.mocks.slack.chat.postMessage).not.toHaveBeenCalled();
     expect(slackPostMessageCallsJson()).not.toContain(
       "Task completed successfully.",
+    );
+    expect(
+      context.mocks.slack.assistant.threads.setStatus,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel_id: channelId,
+        thread_ts: "4050.000200",
+        status: "",
+      }),
     );
   }, 90_000);
 

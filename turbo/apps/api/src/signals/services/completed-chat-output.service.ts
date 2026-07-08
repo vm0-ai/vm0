@@ -135,9 +135,15 @@ export async function queryChatOutputEvents(args: {
   readonly resultFallback: ResultEventItem | null;
   readonly watermarkVisible: boolean;
 }> {
+  args.signal.throwIfAborted();
   const visibility = await waitForRunEventWatermarkVisibility(
     args.runId,
     args.lastEventSequence,
+    {
+      sleep: (ms) => {
+        return delay(ms, { signal: args.signal });
+      },
+    },
   );
   args.signal.throwIfAborted();
   const watermarkVisible =
