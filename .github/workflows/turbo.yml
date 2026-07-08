@@ -1941,9 +1941,6 @@ jobs:
             for PGID in "${START_PGIDS[@]}"; do
               kill -TERM -- "-$PGID" 2>/dev/null || true
             done
-            for PID in "${START_PIDS[@]}"; do
-              timeout 10s tail --pid="$PID" -f /dev/null >/dev/null 2>&1 || true
-            done
             for PGID in "${START_PGIDS[@]}"; do
               kill -KILL -- "-$PGID" 2>/dev/null || true
             done
@@ -1966,7 +1963,7 @@ jobs:
               echo "::warning::Requesting stop for partially started runner ${RUNNER_NAME} on ${HOST}"
               (
                 # shellcheck disable=SC2029
-                timeout 45s ssh "$REMOTE" "sudo systemctl stop --no-block '${UNIT}' 2>/dev/null || true; sudo systemctl reset-failed '${UNIT}' 2>/dev/null || true" >/dev/null 2>&1 || true
+                timeout 45s ssh "$REMOTE" "UNIT='${UNIT}'; timeout 20s sudo systemctl stop \"\$UNIT\" 2>/dev/null || true; if sudo systemctl is-active --quiet \"\$UNIT\" 2>/dev/null; then sudo systemctl kill --kill-whom=all --signal=SIGKILL \"\$UNIT\" 2>/dev/null || true; sudo systemctl stop --no-block \"\$UNIT\" 2>/dev/null || true; fi; sudo systemctl reset-failed \"\$UNIT\" 2>/dev/null || true" >/dev/null 2>&1 || true
               ) &
               STOP_PIDS+=($!)
             done
