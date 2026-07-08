@@ -588,26 +588,41 @@ describe("createApp", () => {
       expect(response.status).toBe(200);
     });
 
-    it("allows preview requests with a matching bypass cookie value", async () => {
+    it("allows preview requests with a matching Vercel bypass cookie", async () => {
       mockEnv("ENV", "preview");
       mockEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
       const app = createApp({ signal: context.signal });
 
       const response = await app.request("/health", {
         method: "GET",
-        headers: { cookie: "unrelated=1; bypass=preview-secret" },
+        headers: {
+          cookie: "unrelated=1; x-vercel-protection-bypass=preview-secret",
+        },
       });
 
       expect(response.status).toBe(200);
     });
 
-    it("allows preview requests with a matching diagnostic bypass query", async () => {
+    it("rejects preview requests with the bypass secret in an unrelated cookie", async () => {
+      mockEnv("ENV", "preview");
+      mockEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
+      const app = createApp({ signal: context.signal });
+
+      const response = await app.request("/health", {
+        method: "GET",
+        headers: { cookie: "unrelated=preview-secret" },
+      });
+
+      expect(response.status).toBe(403);
+    });
+
+    it("allows preview requests with the matching Vercel bypass query", async () => {
       mockEnv("ENV", "preview");
       mockEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
       const app = createApp({ signal: context.signal });
 
       const response = await app.request(
-        "/health?vm0_preview_bypass=preview-secret",
+        "/health?x-vercel-protection-bypass=preview-secret",
         { method: "GET" },
       );
 
