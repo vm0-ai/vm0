@@ -3,6 +3,7 @@ import { useLastResolved, useGet, useSet } from "ccstate-react";
 import {
   IconChartLine,
   IconLayoutGrid,
+  IconPackage,
   IconRoute,
   IconUsers,
   IconEdit,
@@ -69,6 +70,14 @@ const MANAGE_NAV: readonly ManageNavItem[] = [
     pathname: "/agents",
     label: "Agents",
     icon: IconUsers as NavIcon,
+  },
+  {
+    id: "artifacts",
+    activeKeys: ["artifacts"],
+    pathname: "/artifacts",
+    label: "Artifacts",
+    icon: IconPackage as NavIcon,
+    featureGate: FeatureSwitchKey.Artifacts,
   },
   {
     id: "workflows",
