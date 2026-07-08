@@ -1,5 +1,5 @@
 import { clerk, clerkSetup } from "@clerk/testing/playwright";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "../fixtures";
 import { deriveAppUrl } from "../playwright.config";
 
 /**
@@ -20,8 +20,7 @@ import { deriveAppUrl } from "../playwright.config";
 const VALID_AUTH_JSON = JSON.stringify({
   OPENAI_API_KEY: null,
   tokens: {
-    access_token:
-      "REAL-AT-pw-7f3a82d1-9b4c-4e5f-a1b2-c3d4e5f60718-DO-NOT-LEAK",
+    access_token: "REAL-AT-pw-7f3a82d1-9b4c-4e5f-a1b2-c3d4e5f60718-DO-NOT-LEAK",
     refresh_token:
       "REAL-RT-pw-1a2b3c4d-5e6f-7g8h-9i0j-k1l2m3n4o5p6-DO-NOT-LEAK",
     account_id: "ws_REAL_ACCOUNT_pw_DO_NOT_LEAK",
@@ -36,7 +35,9 @@ async function pasteFlowSupported(
   email: string,
   bypassSecret: string | undefined,
 ): Promise<boolean> {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
   if (bypassSecret) {
     headers["x-vercel-protection-bypass"] = bypassSecret;
   }
@@ -78,7 +79,9 @@ async function ensurePasteModalAvailable(
   }
   await addButton.click();
 
-  const codexCard = page.locator("[data-testid='provider-card-codex-oauth-token']");
+  const codexCard = page.locator(
+    "[data-testid='provider-card-codex-oauth-token']",
+  );
   if ((await codexCard.count()) === 0) {
     return false;
   }
@@ -107,15 +110,14 @@ test.describe("codex-oauth paste flow", () => {
 
     const appUrl = deriveAppUrl(apiUrl);
     if (!(await ensurePasteModalAvailable(page, appUrl, email))) {
-      test.skip(
-        true,
-        "Paste modal not yet shipped (sub-issue #11980 pending)",
-      );
+      test.skip(true, "Paste modal not yet shipped (sub-issue #11980 pending)");
       return;
     }
 
     const modal = page.locator("[data-testid='codex-paste-modal']");
-    const textarea = modal.locator("[data-testid='codex-paste-modal-textarea']");
+    const textarea = modal.locator(
+      "[data-testid='codex-paste-modal-textarea']",
+    );
     const submit = modal.locator("[data-testid='codex-paste-modal-submit']");
 
     // Submit disabled with empty textarea
@@ -152,15 +154,14 @@ test.describe("codex-oauth paste flow", () => {
 
     const appUrl = deriveAppUrl(apiUrl);
     if (!(await ensurePasteModalAvailable(page, appUrl, email))) {
-      test.skip(
-        true,
-        "Paste modal not yet shipped (sub-issue #11980 pending)",
-      );
+      test.skip(true, "Paste modal not yet shipped (sub-issue #11980 pending)");
       return;
     }
 
     const modal = page.locator("[data-testid='codex-paste-modal']");
-    const textarea = modal.locator("[data-testid='codex-paste-modal-textarea']");
+    const textarea = modal.locator(
+      "[data-testid='codex-paste-modal-textarea']",
+    );
     const submit = modal.locator("[data-testid='codex-paste-modal-submit']");
 
     await textarea.fill("not valid json {");
@@ -187,10 +188,7 @@ test.describe("codex-oauth paste flow", () => {
 
     const appUrl = deriveAppUrl(apiUrl);
     if (!(await ensurePasteModalAvailable(page, appUrl, email))) {
-      test.skip(
-        true,
-        "Paste modal not yet shipped (sub-issue #11980 pending)",
-      );
+      test.skip(true, "Paste modal not yet shipped (sub-issue #11980 pending)");
       return;
     }
 
@@ -222,7 +220,9 @@ test.describe("codex-oauth paste flow", () => {
     });
 
     const modal = page.locator("[data-testid='codex-paste-modal']");
-    const textarea = modal.locator("[data-testid='codex-paste-modal-textarea']");
+    const textarea = modal.locator(
+      "[data-testid='codex-paste-modal-textarea']",
+    );
     const submit = modal.locator("[data-testid='codex-paste-modal-submit']");
 
     await textarea.fill(freePlanAuthJson);
