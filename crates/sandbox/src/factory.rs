@@ -5,10 +5,11 @@ use crate::config::SandboxConfig;
 use crate::error::Result;
 use crate::sandbox::Sandbox;
 
-/// Provider-neutral stages inside sandbox factory creation.
+/// Low-cardinality stages inside sandbox factory creation.
 ///
-/// These stages are optional observations for attribution. Providers that do
-/// not expose a matching internal boundary can ignore the observer.
+/// The current stage set matches the factory boundaries that runner telemetry
+/// needs to attribute. Providers that do not expose a matching internal
+/// boundary can ignore the observer.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SandboxCreateStage {
     CowPoolAcquire,
@@ -68,7 +69,7 @@ pub trait SandboxFactory: Send + Sync {
     /// The returned sandbox belongs to this factory's lifecycle and should be
     /// released through [`destroy`](Self::destroy) on the normal teardown path.
     async fn create(&self, config: SandboxConfig) -> Result<Box<dyn Sandbox>>;
-    /// Create a sandbox while optionally reporting provider-neutral stage timings.
+    /// Create a sandbox while optionally reporting create-stage timings.
     ///
     /// The default implementation preserves existing factory behavior for
     /// providers that do not expose internal create-stage attribution.
