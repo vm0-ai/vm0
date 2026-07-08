@@ -1,0 +1,249 @@
+mod handlers;
+mod messages;
+mod persistence;
+mod scenario;
+
+use messages::{write_error, write_success};
+use persistence::session_artifact_thread_id;
+use scenario::Scenario;
+use serde_json::Value;
+use std::collections::BTreeMap;
+use std::io::{self, BufRead, Write};
+use std::process::Command;
+use std::thread;
+
+const INVALID_REQUEST: i64 = -32600;
+const METHOD_NOT_FOUND: i64 = -32601;
+
+pub fn run_app_server(listen: &str) -> io::Result<()> {
+    if listen != "stdio://" {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!(
+                "guest-mock-codex app-server only supports stdio transport, got {:?}",
+                listen
+            ),
+        ));
+    }
+
+    let scenario = Scenario::from_env()?;
+    let stdin = io::stdin();
+    let stdout = io::stdout();
+    let mut state = AppServerState::new(scenario);
+    state.run(stdin.lock(), stdout.lock())
+}
+
+#[derive(Debug)]
+struct AppServerState {
+    initialized: bool,
+    current_thread: Option<AppServerThread>,
+    session_artifact_thread_ids: BTreeMap<String, String>,
+    initial_inputs: Vec<String>,
+    steered_inputs: Vec<String>,
+    initialized_notification_received: bool,
+    opt_out_notification_methods: Vec<String>,
+    pending_response: Option<PendingResponse>,
+    pending_split_stdout_suffix: Option<String>,
+    server_request_responses: Vec<Value>,
+    scenario: Scenario,
+}
+
+#[derive(Debug)]
+struct PendingResponse {
+    id: Value,
+    result: Value,
+}
+
+#[derive(Debug)]
+struct AppServerThread {
+    protocol_thread_id: String,
+    artifact_thread_id: String,
+    active_turn_id: Option<String>,
+    thread_request_has_runtime_workspace_roots: bool,
+    thread_request_model: Option<String>,
+    thread_request_model_provider: Option<String>,
+}
+
+impl AppServerState {
+    fn new(scenario: Scenario) -> Self {
+        Self {
+            initialized: false,
+            current_thread: None,
+            session_artifact_thread_ids: BTreeMap::new(),
+            initial_inputs: Vec::new(),
+            steered_inputs: Vec::new(),
+            initialized_notification_received: false,
+            opt_out_notification_methods: Vec::new(),
+            pending_response: None,
+            pending_split_stdout_suffix: None,
+            server_request_responses: Vec::new(),
+            scenario,
+        }
+    }
+
+    fn run<R: BufRead, W: Write>(&mut self, input: R, mut output: W) -> io::Result<()> {
+        for line_result in input.lines() {
+            let line = line_result?;
+            if line.trim().is_empty() {
+                continue;
+            }
+
+            let message: Value = serde_json::from_str(&line)
+                .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
+            if self.handle_message(message, &mut output)? == ServerAction::Stop {
+                return Ok(());
+            }
+        }
+        match self.scenario {
+            Scenario::HangOnStdinEof => loop {
+                thread::park();
+            },
+            Scenario::SigtermDeafOnStdinEof => {
+                ignore_sigterm();
+                loop {
+                    thread::park();
+                }
+            }
+            Scenario::StderrHolderOnStdinEof => {
+                spawn_stderr_holder()?;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    fn handle_message<W: Write>(
+        &mut self,
+        message: Value,
+        output: &mut W,
+    ) -> io::Result<ServerAction> {
+        if let Some(method) = message.get("method").and_then(Value::as_str) {
+            let params = message.get("params").unwrap_or(&Value::Null);
+            if let Some(id) = message.get("id").cloned() {
+                self.handle_request(id, method, params, output)
+            } else {
+                self.handle_notification(method);
+                Ok(ServerAction::Continue)
+            }
+        } else {
+            self.handle_client_response(message, output)
+        }
+    }
+
+    fn handle_request<W: Write>(
+        &mut self,
+        id: Value,
+        method: &str,
+        params: &Value,
+        output: &mut W,
+    ) -> io::Result<ServerAction> {
+        match method {
+            "initialize" => self.handle_initialize(id, params, output),
+            "thread/start" => self.handle_thread_start(id, params, output),
+            "thread/resume" => self.handle_thread_resume(id, params, output),
+            "turn/start" => self.handle_turn_start(id, params, output),
+            "turn/steer" => self.handle_turn_steer(id, params, output),
+            "mock/inputs" => self.handle_mock_inputs(id, output),
+            "mock/state" => self.handle_mock_state(id, output),
+            "mock/complete-split-notification" => {
+                self.handle_mock_complete_split_notification(id, output)
+            }
+            _ => {
+                write_error(output, id, METHOD_NOT_FOUND, "unsupported method")?;
+                Ok(ServerAction::Continue)
+            }
+        }
+    }
+
+    fn handle_client_response<W: Write>(
+        &mut self,
+        message: Value,
+        output: &mut W,
+    ) -> io::Result<ServerAction> {
+        if message.get("id").is_none()
+            || (message.get("result").is_none() && message.get("error").is_none())
+        {
+            return Err(io::Error::new(io::ErrorKind::InvalidData, "missing method"));
+        }
+
+        if !self.scenario.accepts_client_response() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "unexpected client response",
+            ));
+        }
+
+        let Some(pending) = self.pending_response.take() else {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "unexpected client response",
+            ));
+        };
+        self.server_request_responses.push(message);
+        write_success(output, pending.id, pending.result)?;
+
+        Ok(ServerAction::Continue)
+    }
+
+    fn handle_notification(&mut self, method: &str) {
+        // The client sends `initialized` after the `initialize` request. It
+        // must not substitute for the request itself because later requests
+        // need initialize response state to exist.
+        if method == "initialized" {
+            self.initialized_notification_received = true;
+        }
+    }
+
+    fn set_current_thread(
+        &mut self,
+        thread_id: String,
+        thread_request_has_runtime_workspace_roots: bool,
+        thread_request_model: Option<String>,
+        thread_request_model_provider: Option<String>,
+    ) {
+        let artifact_thread_id = self
+            .session_artifact_thread_ids
+            .entry(thread_id.clone())
+            .or_insert_with(|| session_artifact_thread_id(&thread_id))
+            .clone();
+        self.current_thread = Some(AppServerThread {
+            protocol_thread_id: thread_id,
+            artifact_thread_id,
+            active_turn_id: None,
+            thread_request_has_runtime_workspace_roots,
+            thread_request_model,
+            thread_request_model_provider,
+        });
+    }
+
+    fn current_thread(&self, requested_thread_id: &str) -> Result<&AppServerThread, &str> {
+        let Some(current_thread) = &self.current_thread else {
+            return Err("no active thread");
+        };
+        if requested_thread_id != current_thread.protocol_thread_id {
+            return Err("unknown threadId");
+        }
+        Ok(current_thread)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ServerAction {
+    Continue,
+    Stop,
+}
+
+fn spawn_stderr_holder() -> io::Result<()> {
+    let _child = Command::new("tail").args(["-f", "/dev/null"]).spawn()?;
+    Ok(())
+}
+
+#[cfg(unix)]
+fn ignore_sigterm() {
+    unsafe {
+        libc::signal(libc::SIGTERM, libc::SIG_IGN);
+    }
+}
+
+#[cfg(not(unix))]
+fn ignore_sigterm() {}
