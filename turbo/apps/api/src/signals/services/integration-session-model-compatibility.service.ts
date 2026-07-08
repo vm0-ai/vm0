@@ -7,14 +7,14 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { conversations } from "@vm0/db/schema/conversation";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 
 import type { Db, ReadonlyDb } from "../external/db";
 
 interface IntegrationSessionModelSignature {
   readonly modelProvider: string | null;
   readonly selectedModel: string | null;
-  readonly cliAgentType: string;
+  readonly cliAgentType: string | null;
 }
 
 interface IntegrationRunModelRoute {
@@ -37,7 +37,10 @@ function areIntegrationSessionModelsCompatible(
   previous: IntegrationSessionModelSignature,
   current: IntegrationRunModelRoute,
 ): boolean {
-  if (previous.cliAgentType !== current.cliAgentType) {
+  if (
+    previous.cliAgentType !== null &&
+    previous.cliAgentType !== current.cliAgentType
+  ) {
     return false;
   }
 
@@ -56,7 +59,7 @@ function areIntegrationSessionModelsCompatible(
   );
 }
 
-async function currentIntegrationSessionModelSignature(
+async function latestIntegrationSessionModelSignature(
   db: Db | ReadonlyDb,
   sessionId: string,
 ): Promise<IntegrationSessionModelSignature | null> {
@@ -66,14 +69,12 @@ async function currentIntegrationSessionModelSignature(
       selectedModel: zeroRuns.selectedModel,
       cliAgentType: conversations.cliAgentType,
     })
-    .from(agentSessions)
-    .innerJoin(
-      conversations,
-      eq(conversations.id, agentSessions.conversationId),
-    )
-    .innerJoin(agentRuns, eq(agentRuns.id, conversations.runId))
+    .from(agentRuns)
     .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
-    .where(eq(agentSessions.id, sessionId))
+    .innerJoin(agentSessions, eq(agentSessions.id, agentRuns.sessionId))
+    .leftJoin(conversations, eq(conversations.id, agentSessions.conversationId))
+    .where(eq(agentRuns.sessionId, sessionId))
+    .orderBy(desc(agentRuns.createdAt))
     .limit(1);
 
   return previousRun ?? null;
@@ -88,7 +89,7 @@ export async function canReuseIntegrationSessionForModelRoute(args: {
     return true;
   }
 
-  const previous = await currentIntegrationSessionModelSignature(
+  const previous = await latestIntegrationSessionModelSignature(
     args.db,
     args.sessionId,
   );
