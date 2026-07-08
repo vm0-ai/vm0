@@ -1884,9 +1884,25 @@ jobs:
           }
 
           LOG_DIR=$(mktemp -d)
-          trap 'rm -rf "$LOG_DIR"' EXIT
           HOSTS=()
           PIDS=()
+
+          cleanup_logs() {
+            rm -rf "$LOG_DIR"
+          }
+
+          stop_started_hosts() {
+            for i in "${!HOSTS[@]}"; do
+              local HOST="${HOSTS[$i]}"
+              local RUNNER_NAME="${JOB_REF}-$((i + 1))"
+              local REMOTE="${METAL_USER}@${HOST}"
+              echo "::warning::Stopping partially started runner ${RUNNER_NAME} on ${HOST}"
+              # shellcheck disable=SC2029
+              ssh "$REMOTE" "sudo ${BIN_DIR}/runner service stop --name ${RUNNER_NAME} --force" >/dev/null 2>&1 || true
+            done
+          }
+
+          trap cleanup_logs EXIT
           HOST_INDEX=0
           for HOST in $(echo "$METAL_HOSTS" | tr ',' ' '); do
             HOST_INDEX=$((HOST_INDEX + 1))
@@ -1906,6 +1922,7 @@ jobs:
           done
           rm -rf "$LOG_DIR"
           if [ "$FAILED" -ne 0 ]; then
+            stop_started_hosts
             exit 1
           fi
 
@@ -1913,11 +1930,16 @@ jobs:
           TOTAL=0
           for HOST in $(echo "$METAL_HOSTS" | tr ',' ' '); do
             if ! MC=$(read_host_capacity "$HOST"); then
-              exit 1
+              FAILED=1
+              break
             fi
             echo "Host ${HOST}: max_concurrent=${MC}"
             TOTAL=$((TOTAL + MC))
           done
+          if [ "$FAILED" -ne 0 ]; then
+            stop_started_hosts
+            exit 1
+          fi
           echo "total-capacity=${TOTAL}" >> "$GITHUB_OUTPUT"
           echo "Total capacity across all hosts: ${TOTAL}"
 
