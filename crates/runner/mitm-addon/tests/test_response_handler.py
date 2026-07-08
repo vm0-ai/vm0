@@ -1678,12 +1678,9 @@ class TestResponseHandler:
         cache_key = auth_cache_key(run_id="run-conn-re", api_id="run-conn-re:0")
         flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY] = cache_key
         # Simulate: last forced refresh happened well before the cooldown window
-        set_last_force_refresh_monotonic_at(
-            cache_key,
-            time.monotonic() - auth_cache.force_refresh_cooldown_secs_for_tests() - 1,
-        )
+        set_last_force_refresh_monotonic_at(cache_key, 0.0)
 
-        with mitm_ctx():
+        with patch.object(auth_cache.time, "monotonic", return_value=10_000.0), mitm_ctx():
             mitm_addon.response(flow)
 
         # Cooldown elapsed → marker re-added

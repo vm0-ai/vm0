@@ -207,11 +207,6 @@ def auth_state_is_empty_for_tests() -> bool:
     return not _auth_state
 
 
-def force_refresh_cooldown_secs_for_tests() -> float:
-    """Return the force-refresh cooldown used by auth cache tests."""
-    return _FORCE_REFRESH_COOLDOWN_SECS
-
-
 def _has_valid_expiry(value: object, now: float | None = None) -> bool:
     if isinstance(value, bool) or not isinstance(value, int | float):
         return False
