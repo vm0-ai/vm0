@@ -1,7 +1,9 @@
 """Tests for usage webhook delivery admission and accounting."""
 
+import contextlib
 import json
 import time
+import urllib.request
 from unittest.mock import patch
 
 import pytest
@@ -46,9 +48,13 @@ def test_sync_executor_worker_error_preserves_other_pending_reports(tmp_path, sy
         sync_usage_executor.shutdown(wait=True)
 
 
-def test_enqueue_logs_body_free_payload_summary(tmp_path):
+def test_enqueue_logs_body_free_payload_summary(
+    mitm_ctx, tmp_path, sync_usage_executor, usage_webhook_server
+):
     proxy_log = tmp_path / "proxy.jsonl"
-    executor = QueuedUsageExecutor()
+    pending_path = tmp_path / "usage-pending"
+    usage.set_pending_path(str(pending_path))
+    usage_webhook_server.queue_response(204)
     payload = {
         "url": "payload-url",
         "type": "payload-type",
@@ -58,29 +64,43 @@ def test_enqueue_logs_body_free_payload_summary(tmp_path):
         "events": [],
     }
 
-    with patch.object(usage.webhook, "usage_executor", executor):
+    with mitm_ctx():
         assert usage.webhook.enqueue_webhook_delivery(
-            "https://api.vm0.ai/api/webhooks/agent/usage-event",
+            usage_webhook_server.url("/usage"),
             "tok",
             payload,
             str(proxy_log),
             "usage_event",
         )
-    assert len(executor.submissions) == 1
 
-    [entry] = read_jsonl_entries_after_flush(proxy_log)
-    assert entry["url"] == "https://api.vm0.ai/api/webhooks/agent/usage-event"
-    assert entry["type"] == "usage_event"
-    assert_body_free_webhook_entry(entry, run_id="run-1", event_count=0)
-    assert "payload_bytes" not in entry
+    assert usage_webhook_server.request_count == 1
+    assert usage.webhook.pending_delivery_payload_count_for_tests() == 0
+    assert_current_pending(
+        pending_path,
+        flows=0,
+        buffered=0,
+        reports=0,
+        flush_request_id="enqueue-log",
+    )
+    entries = read_jsonl_entries_after_flush(proxy_log)
+    enqueued_entry = entries[0]
+    assert enqueued_entry["url"] == usage_webhook_server.url("/usage")
+    assert enqueued_entry["type"] == "usage_event"
+    assert_body_free_webhook_entry(enqueued_entry, run_id="run-1", event_count=0)
+    assert "payload_bytes" not in enqueued_entry
 
 
-def test_enqueue_sanitizes_sensitive_webhook_url_in_message(tmp_path):
+def test_enqueue_sanitizes_sensitive_webhook_url_in_message(tmp_path, sync_usage_executor):
     proxy_log = tmp_path / "proxy.jsonl"
-    executor = QueuedUsageExecutor()
+    pending_path = tmp_path / "usage-pending"
+    usage.set_pending_path(str(pending_path))
     payload = {"runId": "run-1", "events": []}
 
-    with patch.object(usage.webhook, "usage_executor", executor):
+    with patch.object(
+        urllib.request.OpenerDirector,
+        "open",
+        return_value=contextlib.nullcontext(),
+    ):
         assert usage.webhook.enqueue_webhook_delivery(
             SENSITIVE_WEBHOOK_URL,
             "tok",
@@ -88,14 +108,23 @@ def test_enqueue_sanitizes_sensitive_webhook_url_in_message(tmp_path):
             str(proxy_log),
             "usage_event",
         )
-    assert len(executor.submissions) == 1
 
-    [entry] = read_jsonl_entries_after_flush(proxy_log)
-    assert entry["url"] == SANITIZED_WEBHOOK_URL
-    assert entry["message"] == f"Webhook POST to {SANITIZED_WEBHOOK_URL} enqueued"
-    assert entry["type"] == "usage_event"
-    assert_body_free_webhook_entry(entry, run_id="run-1", event_count=0)
-    assert_sensitive_webhook_url_parts_absent(entry)
+    assert usage.webhook.pending_delivery_payload_count_for_tests() == 0
+    assert_current_pending(
+        pending_path,
+        flows=0,
+        buffered=0,
+        reports=0,
+        flush_request_id="enqueue-sanitized",
+    )
+    entries = read_jsonl_entries_after_flush(proxy_log)
+    enqueued_entry = entries[0]
+    assert enqueued_entry["url"] == SANITIZED_WEBHOOK_URL
+    assert enqueued_entry["message"] == f"Webhook POST to {SANITIZED_WEBHOOK_URL} enqueued"
+    assert enqueued_entry["type"] == "usage_event"
+    assert_body_free_webhook_entry(enqueued_entry, run_id="run-1", event_count=0)
+    for entry in entries:
+        assert_sensitive_webhook_url_parts_absent(entry)
 
 
 def test_submit_failure_rolls_back_pending_report(tmp_path):
