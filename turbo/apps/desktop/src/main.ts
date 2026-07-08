@@ -53,6 +53,7 @@ import {
 import { createComputerUseNativeBackend } from "./computer-use-native";
 import { resolveDesktopConfig } from "./config";
 import { checkForDesktopUpdates } from "./desktop-auto-updates";
+import { createDesktopClientHeaderInjector } from "./desktop-client-headers";
 import type { DesktopMainModule } from "./desktop-main-module";
 import { DesktopComputerUseAutoStartSupervisor } from "./desktop-computer-use-autostart";
 import { createDesktopComputerUseSessionFetch } from "./desktop-computer-use-api";
@@ -110,6 +111,9 @@ import { decideWindowOpen, isAllowedAppNavigation } from "./window-policy";
 
 const config = resolveDesktopConfig();
 const desktopApiBaseUrl = resolveComputerUseApiBaseUrl(config.platformUrl);
+const addDesktopClientHeaders = createDesktopClientHeaderInjector({
+  clientVersion: app.getVersion(),
+});
 const desktopAuthStartUrl = buildDesktopAuthStartUrl(
   config.webUrl,
   config.identity.authScheme,
@@ -269,6 +273,7 @@ function getAuthSession(): DesktopAuthSession {
     apiBaseUrl: desktopApiBaseUrl,
     cookieUrls: [config.webUrl, config.platformUrl],
     cookieSource: session.fromPartition(config.sessionPartition),
+    addClientHeaders: addDesktopClientHeaders,
     tokenUrl: desktopAuthTokenUrl,
     consumeUrl: (code, handoffId) =>
       buildDesktopAuthConsumeUrl(config.webUrl, code, handoffId),
@@ -450,12 +455,14 @@ function createComputerUseHostRuntime(): ComputerUseHostRuntime {
     sessionFetch: createDesktopComputerUseSessionFetch({
       platformUrl: config.platformUrl,
       session: desktopSession,
+      addClientHeaders: addDesktopClientHeaders,
       getCachedAuthToken: () => getAuthSession().getCachedToken(),
       getAuthToken: (options) => getAuthSession().getToken(options),
     }),
     hostFetch: (input, init) => {
       return fetch(input, init);
     },
+    addClientHeaders: addDesktopClientHeaders,
     getPermissions: refreshComputerUsePermissionState,
     getSupportedCapabilities: supportedComputerUseCapabilities,
     executeCommand: (command, permissions) => {

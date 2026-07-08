@@ -69,9 +69,9 @@ def _assert_sensitive_webhook_url_parts_absent(entry: dict) -> None:
     assert "pass@api.vm0.ai" not in serialized
 
 
-def _assert_platform_client_headers(request, *, session_id: str = "runner-session-test") -> None:
+def _assert_client_headers(request, *, session_id: str = "runner-session-test") -> None:
     assert request.header("x-client-version") == "runner-version-test"
-    assert request.header("x-client-type") == "MitmAddon"
+    assert request.header("x-client-type") == platform_api.CLIENT_TYPE_MITM_ADDON
     assert request.header("x-client-session-id") == session_id
     uuid.UUID(request.header("x-client-request-id"))
 
@@ -139,7 +139,7 @@ class TestUsageWebhookDelivery:
         assert request.header("content-type") == "application/json"
         assert request.header("authorization") == "Bearer tok"
         assert request.header("user-agent") == "vm0-mitm-addon/1.0"
-        _assert_platform_client_headers(request)
+        _assert_client_headers(request)
         body = request.json_body()
         assert body["runId"] == "run-1"
         assert set(body) == {"runId", "events"}

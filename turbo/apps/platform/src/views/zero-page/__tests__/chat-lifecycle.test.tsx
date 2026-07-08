@@ -3527,6 +3527,7 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: "/chats/b0000000-0000-4000-a000-000000000708",
+      featureSwitches: { [FeatureSwitchKey.ChatThreadEmoji]: false },
     });
 
     await waitFor(() => {

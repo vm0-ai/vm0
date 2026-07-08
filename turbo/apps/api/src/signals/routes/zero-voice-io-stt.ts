@@ -1,7 +1,5 @@
 import { command } from "ccstate";
 import { zeroVoiceIoSttContract } from "@vm0/api-contracts/contracts/zero-voice-io-stt";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -18,9 +16,7 @@ import {
   recordSttUsage$,
   sttDailyPolicy$,
   transcribeBytePlusVoiceInputFile,
-  transcribeOpenAiVoiceInputFile,
 } from "../services/zero-voice-io-post.service";
-import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 
 const L = logger("ZeroVoiceIoStt");
 
@@ -102,23 +98,11 @@ const postSttInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return policy;
   }
 
-  const overrides = await get(
-    userFeatureSwitchOverrides(auth.orgId, auth.userId),
-  );
-  signal.throwIfAborted();
-  const useBytePlus = isFeatureEnabled(FeatureSwitchKey.BytePlusVoiceInputStt, {
-    orgId: auth.orgId,
-    userId: auth.userId,
-    overrides,
-  });
-
-  const result = await (useBytePlus
-    ? transcribeBytePlusVoiceInputFile(file, signal)
-    : transcribeOpenAiVoiceInputFile(file, signal));
+  const result = await transcribeBytePlusVoiceInputFile(file, signal);
   signal.throwIfAborted();
   if ("status" in result) {
     L.warn("STT provider rejected transcription", {
-      provider: useBytePlus ? "byteplus" : "openai",
+      provider: "byteplus",
       status: result.status,
       fileMime: file.type,
       fileSize: file.size,
