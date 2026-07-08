@@ -905,6 +905,7 @@ describe("POST /api/test/telegram-state", () => {
         }),
       ]),
     );
+    expect(JSON.stringify(timingEvents)).not.toContain(contextMentionedUserId);
   });
 
   it("keeps creating Slack runs when Slack user info lookup rejects", async () => {
