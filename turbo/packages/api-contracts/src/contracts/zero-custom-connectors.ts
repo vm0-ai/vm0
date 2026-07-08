@@ -118,13 +118,6 @@ export type CustomConnectorValueInput = z.infer<
   typeof customConnectorValueInputSchema
 >;
 
-export const setCustomConnectorValuesBodySchema = z.object({
-  values: z.array(customConnectorValueInputSchema),
-});
-export type SetCustomConnectorValuesBody = z.infer<
-  typeof setCustomConnectorValuesBodySchema
->;
-
 export const patchCustomConnectorBodySchema = z.object({
   displayName: z.string().min(1).max(128),
 });
@@ -247,22 +240,6 @@ export const zeroCustomConnectorByIdContract = c.router({
     },
     summary: "Rename an org custom connector",
   },
-  update: {
-    method: "PUT",
-    path: "/api/zero/custom-connectors/:id",
-    headers: authHeadersSchema,
-    pathParams: z.object({ id: z.string().uuid() }),
-    body: updateCustomConnectorBodySchema,
-    responses: {
-      200: customConnectorResponseSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-      500: apiErrorSchema,
-    },
-    summary: "Update an org custom connector definition",
-  },
 });
 export type ZeroCustomConnectorByIdContract =
   typeof zeroCustomConnectorByIdContract;
@@ -304,39 +281,6 @@ export const zeroCustomConnectorSecretContract = c.router({
 });
 export type ZeroCustomConnectorSecretContract =
   typeof zeroCustomConnectorSecretContract;
-
-export const zeroCustomConnectorValuesContract = c.router({
-  set: {
-    method: "PUT",
-    path: "/api/zero/custom-connectors/:id/values",
-    headers: authHeadersSchema,
-    pathParams: z.object({ id: z.string().uuid() }),
-    body: setCustomConnectorValuesBodySchema,
-    responses: {
-      200: customConnectorResponseSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      404: apiErrorSchema,
-      500: apiErrorSchema,
-    },
-    summary: "Set the calling user's values for a custom connector",
-  },
-  delete: {
-    method: "DELETE",
-    path: "/api/zero/custom-connectors/:id/values",
-    headers: authHeadersSchema,
-    pathParams: z.object({ id: z.string().uuid() }),
-    responses: {
-      204: c.noBody(),
-      401: apiErrorSchema,
-      404: apiErrorSchema,
-      500: apiErrorSchema,
-    },
-    summary: "Clear the calling user's values for a custom connector",
-  },
-});
-export type ZeroCustomConnectorValuesContract =
-  typeof zeroCustomConnectorValuesContract;
 
 export const zeroCustomConnectorProposalContract = c.router({
   save: {
