@@ -288,6 +288,14 @@ type ConnectorTokenRevokeProviderEntries<Type extends ConnectorType> = {
   >;
 };
 
+type TokenRevokeAuthMethodRef = {
+  readonly type: TokenRevokeConnectorType;
+  readonly authMethod: ConnectorAuthMethodIdsByRevokeKind<
+    TokenRevokeConnectorType,
+    "token-revoke"
+  >;
+};
+
 type ConnectorProviderBackedAuthMethodEntries<
   Type extends ConnectorProviderBackedType,
 > = ConnectorAuthCodeGrantProviderEntries<Type> &
@@ -1073,10 +1081,12 @@ export async function revokeConnectorAuthMethodAccessToken(args: {
   if (!connectorAuthMethodRefHasRevokeKind(authMethodRef, "token-revoke")) {
     return { status: "unsupported" };
   }
+  // The guard above is the runtime source of truth for dynamic revoke refs.
+  const tokenRevokeAuthMethodRef = authMethodRef as TokenRevokeAuthMethodRef;
 
   return await revokeTokenRevokeConnectorAccessToken({
-    type: authMethodRef.type,
-    authMethod: authMethodRef.authMethod,
+    type: tokenRevokeAuthMethodRef.type,
+    authMethod: tokenRevokeAuthMethodRef.authMethod,
     readEnv: args.readEnv,
     loadInputs: args.loadInputs,
   });

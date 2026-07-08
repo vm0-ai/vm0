@@ -3557,9 +3557,9 @@ describe("getConnectorEnvBindingEntries", () => {
       ) {
         continue;
       }
-      const hasRefreshTokenAccess = connectorAuthMethodRefHasAccessKind(
-        oauthAuthMethodRef,
-        "refresh-token",
+      const accessMetadata = getConnectorAuthMethodAccessMetadata(
+        oauthAuthMethodRef.type,
+        oauthAuthMethodRef.authMethod,
       );
       const grantMetadata = getConnectorAuthMethodGrantMetadata(type, "oauth");
       const runtimeMetadata = getConnectorAuthMethodRuntimeMetadata(
@@ -3595,11 +3595,7 @@ describe("getConnectorEnvBindingEntries", () => {
         `${type}: oauth secrets must include ${accessSecretName}`,
       ).toContain(accessSecretName);
 
-      if (hasRefreshTokenAccess) {
-        const accessMetadata = getConnectorAuthMethodAccessMetadata(
-          oauthAuthMethodRef.type,
-          oauthAuthMethodRef.authMethod,
-        );
+      if (accessMetadata?.kind === "refresh-token") {
         expect(
           connectorSecretTargetName(
             getConnectorGrantOutputTarget(grantMetadata, "refreshToken"),
@@ -3667,7 +3663,7 @@ describe("getConnectorEnvBindingEntries", () => {
 
       expect(oauthSecrets, `${type}: unexpected primary OAuth secrets`).toEqual(
         expect.arrayContaining(
-          hasRefreshTokenAccess
+          accessMetadata?.kind === "refresh-token"
             ? [accessSecretName, refreshSecretName]
             : [accessSecretName],
         ),
