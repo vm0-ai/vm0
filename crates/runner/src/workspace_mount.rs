@@ -863,7 +863,7 @@ exit 0
     fn unmount_script_unmounts_workspace_child_mounts_before_parent_retry() {
         let temp = tempfile::tempdir().unwrap();
         let workspace_dir = temp.path().join("workspace");
-        let shallow_child = workspace_dir.join("child with space");
+        let shallow_child = workspace_dir.join("child with space\\backslash");
         let deep_child = shallow_child.join("grandchild");
         let workspace_device = temp.path().join("vdb");
         let fake_bin = temp.path().join("bin");

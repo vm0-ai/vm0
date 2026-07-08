@@ -87,7 +87,15 @@ is_workspace_child_mountpoint() {
 }
 
 decode_mountinfo_path() {
-  printf '%b' "$1"
+  awk 'BEGIN {
+    value = ARGV[1]
+    gsub(/\\040/, " ", value)
+    gsub(/\\011/, "\t", value)
+    gsub(/\\012/, "\n", value)
+    gsub(/\\134/, "\\", value)
+    printf "%s", value
+    exit
+  }' "$1"
 }
 
 proc_uid() {
