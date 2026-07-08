@@ -12,6 +12,7 @@ const UNIX_SIGQUIT_SIGNAL_NUMBER: i32 = 3;
 const UNIX_SIGKILL_SIGNAL_NUMBER: i32 = 9;
 const UNIX_SIGTERM_SIGNAL_NUMBER: i32 = 15;
 const UNIX_SIGPIPE_SIGNAL_NUMBER: i32 = 13;
+const SHELL_SIGNAL_EXIT_CODE_OFFSET: i32 = 128;
 
 /// Structured information describing why a guest agent run failed.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -166,7 +167,7 @@ impl CliObservedExitDiagnostic {
             exit_code: None,
             signal_number: Some(signal_number),
             signal_name: observed_signal_name(signal_number).map(String::from),
-            mapped_exit_code: 128 + signal_number,
+            mapped_exit_code: shell_signal_exit_code(signal_number),
         }
     }
 
@@ -219,6 +220,10 @@ fn observed_signal_name(signal_number: i32) -> Option<&'static str> {
         UNIX_SIGPIPE_SIGNAL_NUMBER => Some("sigpipe"),
         _ => None,
     }
+}
+
+const fn shell_signal_exit_code(signal_number: i32) -> i32 {
+    SHELL_SIGNAL_EXIT_CODE_OFFSET.saturating_add(signal_number)
 }
 
 /// Details about how the guest agent terminated a CLI process.
@@ -704,6 +709,18 @@ mod tests {
         let round_trip: FailureDiagnostic = serde_json::from_value(json).unwrap();
         assert_eq!(round_trip, diagnostic);
         assert!(round_trip.cli_observed_exit.unwrap().is_sigkill());
+    }
+
+    #[test]
+    fn observed_signal_exit_code_uses_shell_mapping_without_overflow() {
+        assert_eq!(
+            CliObservedExitDiagnostic::from_signal(UNIX_SIGKILL_SIGNAL_NUMBER).mapped_exit_code,
+            137
+        );
+        assert_eq!(
+            CliObservedExitDiagnostic::from_signal(i32::MAX).mapped_exit_code,
+            i32::MAX
+        );
     }
 
     #[test]
