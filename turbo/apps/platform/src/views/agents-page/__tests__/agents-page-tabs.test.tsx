@@ -106,7 +106,6 @@ describe("agents page (redesign)", () => {
     detachedSetupPage({
       context,
       path: "/agents",
-      featureSwitches: { [FeatureSwitchKey.AgentsPageRedesign]: true },
     });
 
     await waitFor(() => {
@@ -147,7 +146,6 @@ describe("agents page (redesign)", () => {
     detachedSetupPage({
       context,
       path: "/agents",
-      featureSwitches: { [FeatureSwitchKey.AgentsPageRedesign]: true },
     });
 
     await waitFor(() => {
@@ -174,7 +172,6 @@ describe("agents page (redesign)", () => {
       context,
       path: "/agents",
       featureSwitches: {
-        [FeatureSwitchKey.AgentsPageRedesign]: true,
         [FeatureSwitchKey.AgentUnreadIndicators]: true,
       },
     });
@@ -215,7 +212,6 @@ describe("agents page (redesign)", () => {
       context,
       path: "/agents",
       featureSwitches: {
-        [FeatureSwitchKey.AgentsPageRedesign]: true,
         [FeatureSwitchKey.AgentUnreadIndicators]: false,
       },
     });

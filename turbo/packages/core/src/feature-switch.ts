@@ -281,9 +281,8 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.ChatThreadEmoji]: {
     maintainer: "ethan@vm0.ai",
     description:
-      "Show the chat thread emoji icon in chat headers and enable the Shift+F2 emoji picker shortcut for staff orgs.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+      "Show the chat thread emoji icon in chat headers and enable the Shift+F2 emoji picker shortcut.",
+    enabled: true,
   },
   [FeatureSwitchKey.MemoryViewer]: {
     maintainer: "lancy@vm0.ai",
@@ -320,12 +319,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.PresentationImageUnsplashPreferred]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Prefer Unsplash for presentation image resolution, falling back to Pexels when Unsplash has no result or is unconfigured. When off, presentation images are resolved directly from Pexels.",
-    enabled: true,
-  },
   [FeatureSwitchKey.AgentUnreadIndicators]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -353,12 +346,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.AgentsPageRedesign]: {
-    maintainer: "ming@vm0.ai",
-    description:
-      "New Agents page with Public/Private tabs, a public-slot indicator, a Created by footer on every card, a name-first create dialog with a visibility select, and a private empty state.",
-    enabled: true,
-  },
   [FeatureSwitchKey.SidebarManageIconCollapse]: {
     maintainer: "ming@vm0.ai",
     description:
@@ -379,12 +366,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show standalone Microsoft Teams integration settings, connect flows, and Works page entry points.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.BytePlusVoiceInputStt]: {
-    maintainer: "yuma@vm0.ai",
-    description:
-      "Route voice input speech-to-text requests through BytePlus Seed ASR flash mode instead of OpenAI.",
-    enabled: true,
   },
   [FeatureSwitchKey.ImageEditing]: {
     maintainer: "bingjie@vm0.ai",
