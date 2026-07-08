@@ -530,3 +530,35 @@ async def test_server_connect_does_not_bind_when_source_endpoint_changes_during_
 
     assert data.server.address == ("203.0.113.99", 443)
     assert upstream_destination_binding.binding_snapshot_for_tests() == {}
+
+
+async def test_server_connect_does_not_bind_sockname_source_after_server_address_changes(
+    registry_file, mitm_ctx
+):
+    data = _data(
+        client_ip="10.200.0.1",
+        sni="",
+        address=("127.0.0.1", 8080),
+        client_sockname=("198.18.20.34", 443),
+    )
+    lookup_started = threading.Event()
+    release_lookup = threading.Event()
+
+    def getaddrinfo(host: str, port: int, *args, **kwargs):
+        lookup_started.set()
+        if not release_lookup.wait(timeout=5):
+            raise AssertionError("timed out waiting to release DNS lookup")
+        return _API_ADDRINFO
+
+    with (
+        mitm_ctx(registry_path=str(registry_file), api_url="https://pr-test-api.vm6.ai"),
+        patch.object(upstream_admission.socket, "getaddrinfo", side_effect=getaddrinfo),
+    ):
+        connect_task = asyncio.create_task(mitm_addon.server_connect(data))
+        assert await asyncio.to_thread(lookup_started.wait, 5)
+        data.server.address = ("203.0.113.99", 443)
+        release_lookup.set()
+        await connect_task
+
+    assert data.server.address == ("203.0.113.99", 443)
+    assert upstream_destination_binding.binding_snapshot_for_tests() == {}

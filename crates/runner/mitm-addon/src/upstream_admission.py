@@ -333,14 +333,16 @@ async def _bind_api_upstream_destination_from_original_address(
         return False
     api_hostname, api_port = api_destination
 
+    starting_server_address = connection_endpoints.server_address(server)
+    starting_client_sockname = connection_endpoints.connection_sockname(client)
     original_address: tuple[str, int] | None = None
     original_address_source: _ApiOriginalAddressSource | None = None
     candidate_addresses: tuple[
         tuple[_ApiOriginalAddressSource, tuple[str, int] | None],
         ...,
     ] = (
-        ("server_address", connection_endpoints.server_address(server)),
-        ("client_sockname", connection_endpoints.connection_sockname(client)),
+        ("server_address", starting_server_address),
+        ("client_sockname", starting_client_sockname),
     )
     for candidate_source, candidate_address in candidate_addresses:
         if await _address_resolves_to_trusted_host(
@@ -354,6 +356,8 @@ async def _bind_api_upstream_destination_from_original_address(
     if original_address is None or original_address_source is None:
         return False
     if bool(getattr(server, "connected", False)) or getattr(server, "error", None):
+        return False
+    if connection_endpoints.server_address(server) != starting_server_address:
         return False
     if not _original_address_source_still_matches(
         client=client,
