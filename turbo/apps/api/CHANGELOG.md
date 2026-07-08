@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.243.1](https://github.com/vm0-ai/vm0/compare/api-v1.243.0...api-v1.243.1) (2026-07-08)
+
+
+### Performance Improvements
+
+* reduce slack pre-create latency ([#20604](https://github.com/vm0-ai/vm0/issues/20604)) ([fa1deeb](https://github.com/vm0-ai/vm0/commit/fa1deeb93eee34a981d4506d880e548b9bfeb8f3))
+
 ## [1.243.0](https://github.com/vm0-ai/vm0/compare/api-v1.242.0...api-v1.243.0) (2026-07-08)
 
 
