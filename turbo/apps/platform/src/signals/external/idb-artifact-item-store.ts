@@ -21,6 +21,7 @@ import {
   ARTIFACT_ITEMS_STORE,
 } from "./chat-idb-schema.ts";
 import { chatIdbReadOr, chatIdbWriteBestEffort } from "./chat-idb-safe.ts";
+import { openChatIdb } from "./chat-idb-store.ts";
 
 const L = logger("ChatIdbCache");
 const DEFAULT_ARTIFACT_ITEM_LIMIT = 50;
@@ -309,5 +310,14 @@ export function createArtifactItemCacheStores(
   return Object.freeze({
     readStore: createReadStore(ARTIFACT_ITEMS_STORE, getDb),
     writeStore: createWriteStore(ARTIFACT_ITEMS_STORE, getDb),
+  });
+}
+
+export function createIdbArtifactItemStores(
+  userId: string,
+  orgId: string,
+): ArtifactItemStores {
+  return createArtifactItemCacheStores(() => {
+    return openChatIdb(userId, orgId);
   });
 }
