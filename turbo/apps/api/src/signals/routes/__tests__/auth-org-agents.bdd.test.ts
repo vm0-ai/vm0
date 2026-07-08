@@ -962,6 +962,10 @@ describe("COMPOSE-01", () => {
     );
     expectApiError(invalid.body);
 
+    await api.updateAgent(admin, created.composeId, {
+      displayName: "BDD Compose Zero",
+      visibility: "private",
+    });
     await api.deleteAgent(admin, created.composeId);
     const deleted = await api.requestReadComposeById(
       admin,

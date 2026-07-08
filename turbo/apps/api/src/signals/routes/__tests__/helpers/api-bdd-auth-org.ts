@@ -1470,6 +1470,25 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       return response.body;
     },
 
+    async updateAgent(
+      actor: ApiTestUser,
+      agentId: string,
+      body: ZeroAgentRequest,
+    ): Promise<ZeroAgentResponse> {
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroAgentsByIdContract,
+      );
+      const response = await accept(
+        client.update({
+          params: { id: agentId },
+          headers: authenticate(actor),
+          body,
+        }),
+        [200],
+      );
+      return response.body;
+    },
+
     async requestUpdateAgentMetadata(
       actor: ApiTestUser | null,
       agentId: string,
