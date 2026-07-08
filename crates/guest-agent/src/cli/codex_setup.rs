@@ -1,8 +1,8 @@
-//! Codex auth setup boundary.
+//! Codex setup boundary.
 //!
-//! This module owns the guest-side setup wrapper that runs before
-//! `codex exec`. Auth-state file construction lives in `codex_auth`;
-//! command construction stays in `cli::command`.
+//! This module owns the guest-side setup wrapper that runs before Codex starts.
+//! Auth-state file construction lives in `codex_auth`; command construction
+//! stays in `cli::command`.
 
 use std::time::Instant;
 
@@ -14,9 +14,16 @@ use crate::env;
 use crate::error::AgentError;
 use crate::masker::SecretMasker;
 
+use super::codex_runtime_config;
+
 const LOG_TAG: &str = "sandbox:guest-agent";
 
-/// Reconcile Codex auth using the config captured during guest-agent bootstrap.
+/// Reconcile Codex runtime files using the config captured during bootstrap.
+///
+/// Auth reconciliation owns `CODEX_HOME` validation and permissions. API-owned
+/// runtime provider metadata writes the model catalog only after that boundary
+/// succeeds, before `codex exec` or `codex app-server` can observe startup
+/// config.
 ///
 /// Three mutually-exclusive states are supported:
 ///
@@ -43,7 +50,11 @@ pub async fn setup_codex_for_config(
         .get("OPENAI_API_KEY")
         .map(String::as_str)
         .unwrap_or("");
-    setup_codex_with_values(codex_oauth_mode, &config.home_dir, api_key)
+    setup_codex_with_values(codex_oauth_mode, &config.home_dir, api_key)?;
+    codex_runtime_config::write_model_catalog_from_raw(
+        &config.home_dir,
+        &config.codex_runtime_config,
+    )
 }
 
 fn setup_codex_with_values(
