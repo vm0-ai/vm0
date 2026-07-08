@@ -54,16 +54,6 @@ async function awsActor(): Promise<ApiTestUser> {
   return actor;
 }
 
-async function playstationActor(): Promise<ApiTestUser> {
-  const bdd = createBddApi(context);
-  const actor = bdd.user();
-  context.mocks.ably.publish.mockResolvedValue(undefined);
-  await connectorsApi.updateFeatureSwitches(actor, {
-    [FeatureSwitchKey.PlaystationConnector]: true,
-  });
-  return actor;
-}
-
 function expectNoVisibleSecret(value: unknown, secret: string): void {
   expect(JSON.stringify(value)).not.toContain(secret);
 }
@@ -298,8 +288,10 @@ describe("CONN-02: external-code session lifecycle", () => {
   });
 
   it("returns generic external-code copy when the PlayStation NPSSO token is rejected", async () => {
-    const actor = await playstationActor();
+    const bdd = createBddApi(context);
+    const actor = bdd.user();
     let authorizeRequestCount = 0;
+    context.mocks.ably.publish.mockResolvedValue(undefined);
     server.use(
       http.get(PLAYSTATION_AUTHORIZE_URL, ({ request }) => {
         authorizeRequestCount += 1;
