@@ -473,6 +473,7 @@ describe("POST /api/zero/billing/downgrade", () => {
 
     const periodStartUnix = Math.floor((now() - 86_400 * 1000) / 1000);
     const periodEndUnix = Math.floor(periodEnd.getTime() / 1000);
+    const expectedEffectiveDate = new Date(periodEndUnix * 1000).toISOString();
     context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
       id: subId,
       schedule: null,
@@ -504,7 +505,7 @@ describe("POST /api/zero/billing/downgrade", () => {
 
     expect(response.body).toStrictEqual({
       success: true,
-      effectiveDate: periodEnd.toISOString(),
+      effectiveDate: expectedEffectiveDate,
     });
     expect(context.mocks.stripe.subscriptions.update).toHaveBeenCalledWith(
       subId,
@@ -519,7 +520,7 @@ describe("POST /api/zero/billing/downgrade", () => {
     expect(status.body.scheduledChange).toStrictEqual({
       type: "cancel",
       targetTier: "pro-suspend",
-      effectiveDate: periodEnd.toISOString(),
+      effectiveDate: expectedEffectiveDate,
     });
   });
 
@@ -542,6 +543,7 @@ describe("POST /api/zero/billing/downgrade", () => {
 
     const periodStartUnix = Math.floor((now() - 86_400 * 1000) / 1000);
     const periodEndUnix = Math.floor(periodEnd.getTime() / 1000);
+    const expectedEffectiveDate = new Date(periodEndUnix * 1000).toISOString();
     context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
       id: subId,
       schedule: null,
@@ -573,7 +575,7 @@ describe("POST /api/zero/billing/downgrade", () => {
 
     expect(response.body).toStrictEqual({
       success: true,
-      effectiveDate: periodEnd.toISOString(),
+      effectiveDate: expectedEffectiveDate,
     });
     expect(context.mocks.stripe.subscriptions.update).toHaveBeenCalledWith(
       subId,
