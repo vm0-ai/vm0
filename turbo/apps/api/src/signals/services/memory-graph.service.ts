@@ -146,6 +146,31 @@ async function insertEntityAliases(args: {
     .onConflictDoNothing();
 }
 
+async function updateGraphRelationshipEntity(args: {
+  readonly db: Db;
+  readonly entityId: string;
+  readonly target: GraphRelationshipTarget;
+}): Promise<void> {
+  await args.db
+    .update(memoryEntities)
+    .set({
+      type: args.target.type,
+      displayName: args.target.displayName,
+      updatedAt: nowDate(),
+    })
+    .where(eq(memoryEntities.id, args.entityId));
+}
+
+function relationshipIdentityAlias(aliases: readonly GraphAlias[]): GraphAlias {
+  const alias = aliases.find((candidate) => {
+    return candidate.aliasType === "relationship_identity";
+  });
+  if (!alias) {
+    throw new Error("Expected relationship graph entity identity alias");
+  }
+  return alias;
+}
+
 export async function upsertGraphRelationshipEntity(args: {
   readonly db: Db;
   readonly orgId: string;
@@ -159,14 +184,11 @@ export async function upsertGraphRelationshipEntity(args: {
     if (!existingEntityId) {
       continue;
     }
-    await args.db
-      .update(memoryEntities)
-      .set({
-        type: args.target.type,
-        displayName: args.target.displayName,
-        updatedAt: nowDate(),
-      })
-      .where(eq(memoryEntities.id, existingEntityId));
+    await updateGraphRelationshipEntity({
+      db: args.db,
+      entityId: existingEntityId,
+      target: args.target,
+    });
     await insertEntityAliases({
       db: args.db,
       scope,
@@ -200,7 +222,32 @@ export async function upsertGraphRelationshipEntity(args: {
     aliases,
     now: currentTime,
   });
-  return entity.id;
+  const canonicalEntityId = await findEntityIdByAlias(
+    args.db,
+    scope,
+    relationshipIdentityAlias(aliases),
+  );
+  if (!canonicalEntityId) {
+    throw new Error("Failed to claim graph memory entity identity alias");
+  }
+  if (canonicalEntityId !== entity.id) {
+    await args.db
+      .delete(memoryEntities)
+      .where(eq(memoryEntities.id, entity.id));
+    await updateGraphRelationshipEntity({
+      db: args.db,
+      entityId: canonicalEntityId,
+      target: args.target,
+    });
+    await insertEntityAliases({
+      db: args.db,
+      scope,
+      entityId: canonicalEntityId,
+      aliases,
+      now: nowDate(),
+    });
+  }
+  return canonicalEntityId;
 }
 
 export async function loadGraphMemoryCandidates(
