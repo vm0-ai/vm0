@@ -48,6 +48,7 @@ pub struct CodexAppServerConfig {
     codex_home: PathBuf,
     child_env: Option<CodexAppServerChildEnv>,
     extra_env: Vec<(String, String)>,
+    config_overrides: Vec<String>,
     current_dir: Option<PathBuf>,
     opt_out_notification_methods: Vec<String>,
 }
@@ -71,6 +72,7 @@ impl CodexAppServerConfig {
             codex_home: codex_home.into(),
             child_env: None,
             extra_env: Vec::new(),
+            config_overrides: Vec::new(),
             current_dir: None,
             opt_out_notification_methods: Vec::new(),
         }
@@ -113,6 +115,16 @@ impl CodexAppServerConfig {
     /// directory from Tokio's command builder.
     pub fn with_current_dir(mut self, current_dir: impl Into<PathBuf>) -> Self {
         self.current_dir = Some(current_dir.into());
+        self
+    }
+
+    /// Add Codex root `-c key=value` startup configuration overrides.
+    pub fn with_config_overrides<I, S>(mut self, overrides: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.config_overrides = overrides.into_iter().map(Into::into).collect();
         self
     }
 
@@ -330,17 +342,17 @@ impl CodexAppServerClient {
         ));
         child_env_values.retain(|(key, _)| key != "MOCK_CODEX_FIXTURE");
         let child_env_values = child_env::normalize_values(child_env_values);
-        let args = ["app-server", "--listen", "stdio://"];
+        let args = app_server_args(&config.config_overrides);
         let binary = config.binary.to_string_lossy();
         exec_boundary::validate_process_argv_env(
             "codex app-server argv/env too large",
             &binary,
-            args,
+            args.iter().map(String::as_str),
             &child_env_values,
         )
         .map_err(CodexAppServerError::Protocol)?;
         child_env::apply_values_to_tokio_command(&mut cmd, &child_env_values);
-        cmd.args(args)
+        cmd.args(&args)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -999,6 +1011,18 @@ impl CodexAppServerClient {
     }
 }
 
+fn app_server_args(config_overrides: &[String]) -> Vec<String> {
+    let mut args = Vec::with_capacity((config_overrides.len() * 2) + 3);
+    for override_value in config_overrides {
+        args.push("-c".to_string());
+        args.push(override_value.clone());
+    }
+    args.push("app-server".to_string());
+    args.push("--listen".to_string());
+    args.push("stdio://".to_string());
+    args
+}
+
 impl Drop for CodexAppServerClient {
     fn drop(&mut self) {
         if !self.closed {
@@ -1238,5 +1262,31 @@ fn bounded_error_message(message: &str) -> String {
         format!("{bounded}...")
     } else {
         bounded
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::app_server_args;
+
+    #[test]
+    fn app_server_args_put_root_config_overrides_before_subcommand() {
+        let args = app_server_args(&[
+            r#"model_provider="minimax""#.to_string(),
+            r#"model_providers.minimax.supports_websockets=false"#.to_string(),
+        ]);
+
+        let expected = [
+            "-c",
+            r#"model_provider="minimax""#,
+            "-c",
+            r#"model_providers.minimax.supports_websockets=false"#,
+            "app-server",
+            "--listen",
+            "stdio://",
+        ]
+        .map(String::from)
+        .to_vec();
+        assert_eq!(args, expected);
     }
 }

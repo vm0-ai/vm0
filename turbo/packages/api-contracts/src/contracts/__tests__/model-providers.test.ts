@@ -6,6 +6,7 @@ import {
   getModels,
   getDefaultModel,
   getModelProviderEnvBindings,
+  getModelProviderCodexRuntimeConfig,
   getModelProviderFirewall,
   getFrameworkForType,
   getVm0VisibleModels,
@@ -470,7 +471,7 @@ describe("getProviderBaseUrl", () => {
     },
   );
 
-  it("returns MiniMax OpenAI base URL when Codex framework switch is enabled", () => {
+  it("returns MiniMax Codex runtime base URL when the framework switch is enabled", () => {
     expect(
       getProviderBaseUrl("minimax-api-key", {
         [FeatureSwitchKey.CodexFrameworkForMinimax]: true,
@@ -740,7 +741,7 @@ describe("minimax-api-key provider", () => {
     expect(getSecretNameForType("minimax-api-key")).toBe("MINIMAX_API_KEY");
   });
 
-  it("maps OpenAI-style Codex env bindings when the feature flag is enabled", () => {
+  it("maps Codex env bindings with old-runner base URL compatibility", () => {
     const envBindings = getModelProviderEnvBindings("minimax-api-key", {
       [FeatureSwitchKey.CodexFrameworkForMinimax]: true,
     });
@@ -748,6 +749,30 @@ describe("minimax-api-key provider", () => {
     expect(envBindings!["OPENAI_API_KEY"]).toBe("$secret");
     expect(envBindings!["OPENAI_BASE_URL"]).toBe("https://api.minimax.io/v1");
     expect(envBindings!["OPENAI_MODEL"]).toBe("$model");
+  });
+
+  it("declares MiniMax Codex runtime config when the feature flag is enabled", () => {
+    const config = getModelProviderCodexRuntimeConfig("minimax-api-key", {
+      [FeatureSwitchKey.CodexFrameworkForMinimax]: true,
+    });
+
+    expect(config).toMatchObject({
+      providerId: "minimax",
+      name: "MiniMax",
+      baseUrl: "https://api.minimax.io/v1",
+      envKey: "OPENAI_API_KEY",
+      wireApi: "responses",
+      supportsWebsockets: false,
+    });
+    expect(config?.modelCatalog).toMatchObject({
+      models: [expect.objectContaining({ slug: "MiniMax-M3" })],
+    });
+  });
+
+  it("omits MiniMax Codex runtime config when the feature flag is disabled", () => {
+    expect(
+      getModelProviderCodexRuntimeConfig("minimax-api-key"),
+    ).toBeUndefined();
   });
 
   it("does not add a second selectable provider when the feature switch is enabled", () => {

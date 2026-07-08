@@ -1,14 +1,22 @@
 import { command } from "ccstate";
-import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
+import {
+  getFrameworkForType,
+  getVm0ConcreteProviderType,
+  type ModelProviderCredentialScope,
+} from "@vm0/api-contracts/contracts/model-providers";
+import { getAllFeatureStates } from "@vm0/core/feature-switch";
+import type { SupportedFramework } from "@vm0/core/frameworks";
 
 import { listOrgModelPolicies$ } from "./zero-model-policy.service";
 import { userModelPreference } from "./zero-user-data.service";
+import { userFeatureSwitchContext } from "./feature-switches.service";
 
 export interface IntegrationModelRoutePin {
   readonly modelProviderType: string;
   readonly modelProviderId: string | null;
   readonly modelProviderCredentialScope: ModelProviderCredentialScope;
   readonly selectedModel: string;
+  readonly cliAgentType: SupportedFramework;
 }
 
 export const resolveIntegrationModelRouteForUser$ = command(
@@ -30,6 +38,11 @@ export const resolveIntegrationModelRouteForUser$ = command(
       { orgId: args.orgId, userId: args.userId },
       signal,
     );
+    const featureSwitchContext = await get(
+      userFeatureSwitchContext(args.orgId, args.userId),
+    );
+    signal.throwIfAborted();
+    const featureStates = getAllFeatureStates(featureSwitchContext);
 
     const preferredPolicy = preference.selectedModel
       ? policies.policies.find((policy) => {
@@ -54,6 +67,12 @@ export const resolveIntegrationModelRouteForUser$ = command(
       modelProviderId: routePolicy.modelProviderId,
       modelProviderCredentialScope: routePolicy.credentialScope,
       selectedModel: routePolicy.model,
+      cliAgentType: getFrameworkForType(
+        routePolicy.defaultProviderType === "vm0"
+          ? getVm0ConcreteProviderType(routePolicy.model)
+          : routePolicy.defaultProviderType,
+        featureStates,
+      ),
     };
   },
 );

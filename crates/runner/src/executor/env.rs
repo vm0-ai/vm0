@@ -12,7 +12,7 @@ use super::{
     guest_runtime_path,
 };
 use crate::ids::RunId;
-use crate::types::{ExecutionContext, SandboxReuseResult};
+use crate::types::{CodexRuntimeConfig, ExecutionContext, SandboxReuseResult};
 
 pub(super) struct ProtectedModelProviderEnvKey {
     name: &'static str,
@@ -172,6 +172,10 @@ fn validate_run_payload_fields_before_sandbox(context: &ExecutionContext) -> Res
         validate_run_payload_field(guest_contracts::env::SETTINGS_ENV, settings)?;
     }
 
+    if let Some(config) = &context.codex_runtime_config {
+        validate_codex_runtime_config_field(config)?;
+    }
+
     Ok(())
 }
 
@@ -180,6 +184,38 @@ fn validate_run_payload_field(name: &str, value: &str) -> Result<(), String> {
         return Err(format!("run payload contains NUL byte for {name}"));
     }
     Ok(())
+}
+
+fn validate_codex_runtime_config_field(config: &CodexRuntimeConfig) -> Result<(), String> {
+    for value in [
+        config.provider_id.as_str(),
+        config.name.as_str(),
+        config.base_url.as_str(),
+        config.env_key.as_str(),
+        config.wire_api.as_str(),
+    ] {
+        validate_run_payload_field(guest_contracts::env::CODEX_RUNTIME_CONFIG_ENV, value)?;
+    }
+    if let Some(model_catalog) = &config.model_catalog
+        && json_value_contains_nul_string(model_catalog)
+    {
+        return Err(format!(
+            "run payload contains NUL byte for {}",
+            guest_contracts::env::CODEX_RUNTIME_CONFIG_ENV
+        ));
+    }
+    Ok(())
+}
+
+fn json_value_contains_nul_string(value: &serde_json::Value) -> bool {
+    match value {
+        serde_json::Value::String(value) => value.contains('\0'),
+        serde_json::Value::Array(values) => values.iter().any(json_value_contains_nul_string),
+        serde_json::Value::Object(values) => values.values().any(json_value_contains_nul_string),
+        serde_json::Value::Null | serde_json::Value::Bool(_) | serde_json::Value::Number(_) => {
+            false
+        }
+    }
 }
 
 fn validate_bootstrap_environment_for_guest(
@@ -445,6 +481,7 @@ pub(super) fn build_run_payload_for_run(
         secret_values: serialize_secret_values(context),
         artifacts: serialize_artifacts_payload(context)?,
         feature_flags: serialize_feature_flags_payload(context)?,
+        codex_runtime_config: serialize_codex_runtime_config_payload(context)?,
         ..guest_contracts::env::RunPayload::default()
     };
 
@@ -526,6 +563,14 @@ fn serialize_feature_flags_payload(context: &ExecutionContext) -> RunnerResult<S
     }
     serde_json::to_string(flags)
         .map_err(|e| RunnerError::Internal(format!("serialize feature flags payload: {e}")))
+}
+
+fn serialize_codex_runtime_config_payload(context: &ExecutionContext) -> RunnerResult<String> {
+    let Some(config) = &context.codex_runtime_config else {
+        return Ok(String::new());
+    };
+    serde_json::to_string(config)
+        .map_err(|e| RunnerError::Internal(format!("serialize Codex runtime config: {e}")))
 }
 
 fn validate_run_payload_for_guest(

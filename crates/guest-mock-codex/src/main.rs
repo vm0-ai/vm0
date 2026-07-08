@@ -15,13 +15,13 @@
 //!
 //! Usage (mirrors real Codex CLI):
 //! ```text
-//!   guest-mock-codex exec [--json] [--sandbox <mode>] [--skip-git-repo-check]
-//!                          [-C <dir>] [-m <model>] [-c <config>]
+//!   guest-mock-codex [-c <config>] exec [--json] [--sandbox <mode>] [--skip-git-repo-check]
+//!                          [-C <dir>] [-m <model>]
 //!                          [--append-system-prompt <s>] [--last]
 //!                          [-- <prompt>]
-//!   guest-mock-codex exec resume <canonical-uuid-thread-id> [-- <prompt>]
-//!   guest-mock-codex app-server --listen stdio:// [-c <config>]
-//!   guest-mock-codex app-server --stdio [-c <config>]
+//!   guest-mock-codex [-c <config>] exec resume <canonical-uuid-thread-id> [-- <prompt>]
+//!   guest-mock-codex [-c <config>] app-server --listen stdio://
+//!   guest-mock-codex [-c <config>] app-server --stdio
 //! ```
 //!
 //! Fixture mode: when `MOCK_CODEX_FIXTURE=<name>` is set in the env, the
@@ -46,6 +46,10 @@ use std::path::PathBuf;
 #[derive(Parser, Debug)]
 #[command(name = "guest-mock-codex", version)]
 struct Cli {
+    /// Codex config override (accepted, ignored).
+    #[arg(short = 'c', long = "config", global = true)]
+    config: Vec<String>,
+
     #[command(subcommand)]
     command: Cmd,
 }
@@ -84,10 +88,6 @@ struct ExecArgs {
     #[arg(short = 'm', long)]
     model: Option<String>,
 
-    /// Codex config override (accepted, ignored).
-    #[arg(short = 'c', long = "config")]
-    config: Vec<String>,
-
     /// Append-system-prompt (accepted, ignored).
     #[arg(long = "append-system-prompt")]
     append_system_prompt: Option<String>,
@@ -123,21 +123,13 @@ struct AppServerArgs {
     /// Use stdio transport.
     #[arg(long)]
     stdio: bool,
-
-    /// Codex config override (accepted, ignored).
-    #[arg(short = 'c', long = "config")]
-    config: Vec<String>,
 }
 
 fn main() -> io::Result<()> {
-    let cli = Cli::parse();
+    let Cli { command, config: _ } = Cli::parse();
 
-    match cli.command {
-        Cmd::AppServer(AppServerArgs {
-            listen,
-            stdio: _,
-            config: _,
-        }) => run_app_server(&listen),
+    match command {
+        Cmd::AppServer(AppServerArgs { listen, stdio: _ }) => run_app_server(&listen),
         Cmd::Exec(ExecArgs {
             sub: Some(ExecSub::Resume { thread_id, prompt }),
             ..

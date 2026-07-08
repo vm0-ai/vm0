@@ -1,4 +1,4 @@
-//! Codex auth setup failures should stop before launching the CLI.
+//! Codex setup failures should stop before launching the CLI.
 //!
 //! This test uses the real guest-agent binary because the fail-closed boundary
 //! lives in `main.rs`, not in the public `cli::setup_codex` helper.
@@ -8,12 +8,12 @@ mod common;
 use guest_contracts::diagnostics::{FailureClass, FailureDiagnostic};
 use shell_quote::quote_shell_arg;
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Output};
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 
 #[test]
-fn codex_auth_setup_failure_exits_before_cli_spawn() -> TestResult {
+fn codex_setup_failure_exits_before_cli_spawn() -> TestResult {
     common::ensure_canonical_workspace_for_test()?;
 
     let tmp = tempfile::tempdir()?;
@@ -31,40 +31,29 @@ fn codex_auth_setup_failure_exits_before_cli_spawn() -> TestResult {
         },
     )?;
 
-    let guest_agent = env!("CARGO_BIN_EXE_guest-agent");
-    let output = Command::new(guest_agent)
-        .env_clear()
-        .env("CLI_AGENT_TYPE", "codex")
-        .env("USE_MOCK_CODEX", "true")
-        .env("VM0_MOCK_CODEX_PATH", &fake_codex)
-        .env("VM0_RUN_ID", "codex-auth-setup-fail-closed")
-        .env(guest_contracts::env::RUN_PAYLOAD_FILE_ENV, run_payload_path)
-        .env("VM0_API_URL", "http://127.0.0.1:1")
-        .env("VM0_API_TOKEN", "")
-        .env("VM0_SANDBOX_ID", "00000000-0000-4000-8000-000000000abc")
-        .env("VM0_SANDBOX_REUSE_RESULT", "reused")
-        .env(
-            guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
-            &runtime_dir,
-        )
-        .env("HOME", tmp.path())
-        .output()?;
+    let output = run_guest_agent(GuestAgentInvocation {
+        fake_codex: &fake_codex,
+        runtime_dir: &runtime_dir,
+        run_payload_path: &run_payload_path,
+        home: tmp.path(),
+        run_id: "codex-auth-setup-fail-closed",
+    })?;
 
     assert!(
         !output.status.success(),
-        "guest-agent should fail when Codex auth setup cannot reconcile"
+        "guest-agent should fail when Codex setup cannot reconcile"
     );
     assert_eq!(output.status.code(), Some(1));
     assert!(
         !invoked_marker.exists(),
-        "guest-agent must not launch Codex after auth setup fails"
+        "guest-agent must not launch Codex after setup fails"
     );
 
     let error_path = guest_contracts::runtime_paths::checkpoint_error_file(&runtime_dir);
     let error = std::fs::read_to_string(error_path)?;
     assert!(
-        error.contains("Codex auth setup failed"),
-        "guest error should describe Codex auth setup failure: {error}"
+        error.contains("Codex setup failed"),
+        "guest error should describe Codex setup failure: {error}"
     );
 
     let diagnostic_path = guest_contracts::runtime_paths::failure_diagnostic_file(&runtime_dir);
@@ -72,6 +61,103 @@ fn codex_auth_setup_failure_exits_before_cli_spawn() -> TestResult {
     assert_eq!(diagnostic.failure_class, FailureClass::CliExecutionError);
 
     Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn codex_setup_rejects_symlinked_home_before_model_catalog_write() -> TestResult {
+    common::ensure_canonical_workspace_for_test()?;
+
+    let tmp = tempfile::tempdir()?;
+    let fake_codex = tmp.path().join("codex");
+    let invoked_marker = tmp.path().join("codex-invoked");
+    let runtime_dir = tmp.path().join("runtime");
+    let target_codex_home = tmp.path().join("target-codex-home");
+    std::fs::create_dir_all(&target_codex_home)?;
+    std::os::unix::fs::symlink(&target_codex_home, tmp.path().join(".codex"))?;
+    write_fake_codex(&fake_codex, &invoked_marker)?;
+    let run_payload_path = common::write_run_payload_file_for_test(
+        &runtime_dir,
+        &guest_contracts::env::RunPayload {
+            prompt: "should not reach codex".to_string(),
+            codex_runtime_config: serde_json::json!({
+                "providerId": "minimax",
+                "name": "MiniMax",
+                "baseUrl": "https://api.minimax.io/v1",
+                "envKey": "OPENAI_API_KEY",
+                "wireApi": "responses",
+                "supportsWebsockets": false,
+                "modelCatalog": {
+                    "models": [{ "slug": "MiniMax-M3" }],
+                },
+            })
+            .to_string(),
+            ..guest_contracts::env::RunPayload::default()
+        },
+    )?;
+
+    let output = run_guest_agent(GuestAgentInvocation {
+        fake_codex: &fake_codex,
+        runtime_dir: &runtime_dir,
+        run_payload_path: &run_payload_path,
+        home: tmp.path(),
+        run_id: "codex-auth-setup-symlink-fail-closed",
+    })?;
+
+    assert!(
+        !output.status.success(),
+        "guest-agent should fail when Codex setup rejects symlinked CODEX_HOME"
+    );
+    assert_eq!(output.status.code(), Some(1));
+    assert!(
+        !invoked_marker.exists(),
+        "guest-agent must not launch Codex after setup fails"
+    );
+    assert!(
+        !target_codex_home.join("vm0-model-catalog.json").exists(),
+        "Codex setup must not write model catalog through symlinked CODEX_HOME"
+    );
+
+    let error_path = guest_contracts::runtime_paths::checkpoint_error_file(&runtime_dir);
+    let error = std::fs::read_to_string(error_path)?;
+    assert!(
+        error.contains("Codex setup failed"),
+        "guest error should describe Codex setup failure: {error}"
+    );
+
+    Ok(())
+}
+
+struct GuestAgentInvocation<'a> {
+    fake_codex: &'a Path,
+    runtime_dir: &'a Path,
+    run_payload_path: &'a Path,
+    home: &'a Path,
+    run_id: &'a str,
+}
+
+fn run_guest_agent(args: GuestAgentInvocation<'_>) -> Result<Output, std::io::Error> {
+    let guest_agent = env!("CARGO_BIN_EXE_guest-agent");
+    Command::new(guest_agent)
+        .env_clear()
+        .env("CLI_AGENT_TYPE", "codex")
+        .env("USE_MOCK_CODEX", "true")
+        .env("VM0_MOCK_CODEX_PATH", args.fake_codex)
+        .env("VM0_RUN_ID", args.run_id)
+        .env(
+            guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
+            args.run_payload_path,
+        )
+        .env("VM0_API_URL", "http://127.0.0.1:1")
+        .env("VM0_API_TOKEN", "")
+        .env("VM0_SANDBOX_ID", "00000000-0000-4000-8000-000000000abc")
+        .env("VM0_SANDBOX_REUSE_RESULT", "reused")
+        .env(
+            guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+            args.runtime_dir,
+        )
+        .env("HOME", args.home)
+        .output()
 }
 
 fn write_fake_codex(path: &Path, marker: &Path) -> TestResult {

@@ -75,6 +75,20 @@ export async function seedVm0ManagedDefaultModelKey(
   return response.selected_model;
 }
 
+export async function seedVm0ManagedModelKey(
+  context: TestContext,
+  selectedModel: string,
+): Promise<string> {
+  const response = await postAction(context, {
+    action: "seed-vm0-managed-model-key",
+    selected_model: selectedModel,
+  });
+  if (!response.selected_model) {
+    throw new Error("seedVm0ManagedModelKey missing selected_model");
+  }
+  return response.selected_model;
+}
+
 export async function deleteVm0ManagedDefaultModelKey(
   context: TestContext,
 ): Promise<void> {

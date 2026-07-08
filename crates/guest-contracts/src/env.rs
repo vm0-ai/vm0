@@ -139,6 +139,9 @@ pub const ARTIFACTS_ENV: &str = "VM0_ARTIFACTS";
 /// Unset or empty means there are no feature flags.
 pub const FEATURE_FLAGS_ENV: &str = "VM0_FEATURE_FLAGS";
 
+/// Logical run-payload field name for API-owned Codex runtime metadata.
+pub const CODEX_RUNTIME_CONFIG_ENV: &str = "VM0_CODEX_RUNTIME_CONFIG";
+
 /// Runner-owned variable-length run payload sent through
 /// [`RUN_PAYLOAD_FILE_ENV`].
 ///
@@ -169,6 +172,9 @@ pub struct RunPayload {
     /// JSON map of feature flag names to enabled states.
     #[serde(default)]
     pub feature_flags: String,
+    /// JSON object describing API-owned Codex provider/runtime metadata.
+    #[serde(default)]
+    pub codex_runtime_config: String,
 }
 
 /// Borrowed logical string field from [`RunPayload`].
@@ -182,7 +188,7 @@ pub struct RunPayloadField<'a> {
 
 impl RunPayload {
     /// Return all logical string fields carried by this run payload.
-    pub fn fields(&self) -> [RunPayloadField<'_>; 8] {
+    pub fn fields(&self) -> [RunPayloadField<'_>; 9] {
         let Self {
             prompt,
             append_system_prompt,
@@ -192,6 +198,7 @@ impl RunPayload {
             settings,
             artifacts,
             feature_flags,
+            codex_runtime_config,
         } = self;
 
         [
@@ -226,6 +233,10 @@ impl RunPayload {
             RunPayloadField {
                 name: FEATURE_FLAGS_ENV,
                 value: feature_flags,
+            },
+            RunPayloadField {
+                name: CODEX_RUNTIME_CONFIG_ENV,
+                value: codex_runtime_config,
             },
         ]
     }
@@ -408,6 +419,7 @@ mod tests {
             settings: "{}".to_string(),
             artifacts: "[]".to_string(),
             feature_flags: r#"{"flag":true}"#.to_string(),
+            codex_runtime_config: r#"{"providerId":"minimax"}"#.to_string(),
         };
 
         let json = serde_json::to_value(&payload).unwrap();
@@ -417,6 +429,7 @@ mod tests {
         assert_eq!(json["secretValues"], "secret");
         assert_eq!(json["disallowedTools"], "WebFetch");
         assert_eq!(json["featureFlags"], r#"{"flag":true}"#);
+        assert_eq!(json["codexRuntimeConfig"], r#"{"providerId":"minimax"}"#);
     }
 
     #[test]
@@ -430,6 +443,7 @@ mod tests {
             settings: "{}".to_string(),
             artifacts: "[]".to_string(),
             feature_flags: r#"{"flag":true}"#.to_string(),
+            codex_runtime_config: r#"{"providerId":"minimax"}"#.to_string(),
         };
 
         let fields = payload.fields();
@@ -469,6 +483,10 @@ mod tests {
                     name: FEATURE_FLAGS_ENV,
                     value: r#"{"flag":true}"#
                 },
+                RunPayloadField {
+                    name: CODEX_RUNTIME_CONFIG_ENV,
+                    value: r#"{"providerId":"minimax"}"#
+                },
             ]
         );
     }
@@ -494,6 +512,7 @@ mod tests {
             settings: "{}".to_string(),
             artifacts: "[]".to_string(),
             feature_flags: r#"{"flag":true}"#.to_string(),
+            codex_runtime_config: r#"{"providerId":"minimax"}"#.to_string(),
         };
 
         assert_eq!(payload.first_nul_field(), None);
