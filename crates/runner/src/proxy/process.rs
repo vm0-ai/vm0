@@ -904,6 +904,7 @@ PY
             "registry.py",
             "response_streaming.py",
             "terminal_usage.py",
+            "upstream_admission.py",
             "url_utils.py",
             "logging_utils.py",
             "usage/__init__.py",

@@ -9,6 +9,7 @@ from mitmproxy import connection
 import builtin_host_policy
 import flow_metadata_keys as metadata_keys
 import mitm_addon
+import upstream_admission
 import upstream_destination_binding
 from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
 from tests.request_handler_helpers import (
@@ -188,7 +189,7 @@ async def test_runtime_host_policy_blocks_public_destination_hostname_without_ip
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
         patch.object(
-            mitm_addon.socket,
+            upstream_admission.socket,
             "getaddrinfo",
             side_effect=AssertionError("runtime host policy must not use DNS"),
         ),
@@ -629,7 +630,7 @@ async def test_matching_sni_and_host_blocks_connected_firewall_auth_without_veri
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
         fake_firewall_headers() as auth_fetch,
         patch.object(
-            mitm_addon.socket,
+            upstream_admission.socket,
             "getaddrinfo",
             side_effect=AssertionError("unverified connected connector must not use fresh DNS"),
         ),
@@ -663,7 +664,7 @@ async def test_matching_sni_and_host_blocks_connected_firewall_auth_when_upstrea
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
         fake_firewall_headers() as auth_fetch,
         patch.object(
-            mitm_addon.socket,
+            upstream_admission.socket,
             "getaddrinfo",
             side_effect=AssertionError("mismatched upstream TLS must not use fresh DNS"),
         ),
@@ -698,7 +699,7 @@ async def test_matching_sni_and_host_blocks_connected_firewall_auth_when_upstrea
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
         fake_firewall_headers() as auth_fetch,
         patch.object(
-            mitm_addon.socket,
+            upstream_admission.socket,
             "getaddrinfo",
             side_effect=AssertionError("failed upstream TLS must not use fresh DNS"),
         ),
@@ -739,7 +740,7 @@ async def test_matching_sni_and_host_allows_connected_firewall_auth_with_early_b
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
         fake_firewall_headers() as auth_fetch,
         patch.object(
-            mitm_addon.socket,
+            upstream_admission.socket,
             "getaddrinfo",
             side_effect=AssertionError("bound connector request must not use fresh DNS"),
         ),
@@ -782,7 +783,7 @@ async def test_matching_sni_and_host_allows_connected_firewall_auth_after_retarg
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
         fake_firewall_headers() as auth_fetch,
         patch.object(
-            mitm_addon.socket,
+            upstream_admission.socket,
             "getaddrinfo",
             side_effect=AssertionError("verified retargeted binding must not use fresh DNS"),
         ),
@@ -828,7 +829,7 @@ async def test_matching_sni_and_host_allows_connected_firewall_auth_with_verifie
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
         fake_firewall_headers() as auth_fetch,
         patch.object(
-            mitm_addon.socket,
+            upstream_admission.socket,
             "getaddrinfo",
             side_effect=AssertionError("verified retargeted binding must not use fresh DNS"),
         ),
@@ -871,7 +872,7 @@ async def test_matching_sni_and_host_blocks_connected_firewall_auth_without_endp
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
         fake_firewall_headers() as auth_fetch,
         patch.object(
-            mitm_addon.socket,
+            upstream_admission.socket,
             "getaddrinfo",
             side_effect=AssertionError("unverified direct binding must not use fresh DNS"),
         ),
@@ -915,7 +916,7 @@ async def test_matching_sni_and_host_blocks_connected_firewall_auth_with_loopbac
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
         fake_firewall_headers() as auth_fetch,
         patch.object(
-            mitm_addon.socket,
+            upstream_admission.socket,
             "getaddrinfo",
             side_effect=AssertionError("unverified loopback endpoint must not use fresh DNS"),
         ),
@@ -956,7 +957,7 @@ async def test_matching_sni_and_host_blocks_connected_firewall_auth_with_stale_b
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
         fake_firewall_headers() as auth_fetch,
         patch.object(
-            mitm_addon.socket,
+            upstream_admission.socket,
             "getaddrinfo",
             side_effect=AssertionError("stale direct binding must not use fresh DNS"),
         ),
@@ -1103,7 +1104,7 @@ async def test_matching_sni_and_host_blocks_connected_vm0_api_edge_when_unbound(
     with (
         mitm_ctx(registry_path=str(registry_file), api_url="https://api.vm0.ai"),
         patch.object(
-            mitm_addon.socket,
+            upstream_admission.socket,
             "getaddrinfo",
             side_effect=AssertionError("unverified connected API edge must not use fresh DNS"),
         ),
@@ -1139,7 +1140,7 @@ async def test_matching_sni_and_host_allows_authenticated_connected_vm0_api_edge
     with (
         mitm_ctx(registry_path=str(registry_file), api_url="https://api.vm0.ai"),
         patch.object(
-            mitm_addon.socket,
+            upstream_admission.socket,
             "getaddrinfo",
             side_effect=AssertionError("verified connected API edge must not use fresh DNS"),
         ),
@@ -1178,7 +1179,7 @@ async def test_matching_sni_and_host_allows_test_connector_on_authenticated_api_
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
         fake_firewall_headers() as auth_fetch,
         patch.object(
-            mitm_addon.socket,
+            upstream_admission.socket,
             "getaddrinfo",
             side_effect=AssertionError("verified connected test connector must not use fresh DNS"),
         ),
@@ -1225,7 +1226,7 @@ async def test_test_connector_extends_existing_api_allow_binding(
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
         fake_firewall_headers() as auth_fetch,
         patch.object(
-            mitm_addon.socket,
+            upstream_admission.socket,
             "getaddrinfo",
             side_effect=AssertionError("existing binding should not use fresh DNS"),
         ),
@@ -1271,7 +1272,7 @@ async def test_test_connector_without_bypass_does_not_extend_existing_api_allow_
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
         fake_firewall_headers() as auth_fetch,
         patch.object(
-            mitm_addon.socket,
+            upstream_admission.socket,
             "getaddrinfo",
             side_effect=AssertionError("unbypassed existing binding must not use fresh DNS"),
         ),
@@ -1348,7 +1349,7 @@ async def test_test_connector_without_bypass_does_not_reuse_connector_auth_bindi
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
         fake_firewall_headers() as auth_fetch,
         patch.object(
-            mitm_addon.socket,
+            upstream_admission.socket,
             "getaddrinfo",
             side_effect=AssertionError("unbypassed connector auth binding must not use DNS"),
         ),
@@ -1466,7 +1467,7 @@ async def test_matching_sni_and_host_blocks_test_connector_api_edge_without_bypa
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
         fake_firewall_headers() as auth_fetch,
         patch.object(
-            mitm_addon.socket,
+            upstream_admission.socket,
             "getaddrinfo",
             side_effect=AssertionError("unbypassed test connector must not use fresh DNS"),
         ),
