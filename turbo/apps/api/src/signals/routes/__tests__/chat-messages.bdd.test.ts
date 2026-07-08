@@ -1657,16 +1657,13 @@ describe("CHAT-02: admission without spendable credits", () => {
     const agent = await bdd.createAgent(actor, {
       displayName: "Pro-suspend chat agent",
     });
-    const { providerId } = await upsertOrgModelProvider(actor, {
-      type: "vm0",
-    });
     await api.updateOrgModelPolicies(actor, [
       {
         model: "claude-sonnet-4-6",
         isDefault: true,
         defaultProviderType: "vm0",
         credentialScope: "org",
-        modelProviderId: providerId,
+        modelProviderId: null,
       },
     ]);
 
@@ -1802,16 +1799,13 @@ describe("CHAT-02: model-first provider policies", () => {
     // database: 503 when no vm0 execution key exists (no public provisioning
     // surface), 201 when another suite's alive legacy test has seeded a
     // global vm0 key. Both prove the credits-ok admission arm.
-    const { providerId: vm0Id } = await upsertOrgModelProvider(actor, {
-      type: "vm0",
-    });
     await api.updateOrgModelPolicies(actor, [
       {
         model: "claude-sonnet-4-6",
         isDefault: true,
         defaultProviderType: "vm0",
         credentialScope: "org",
-        modelProviderId: vm0Id,
+        modelProviderId: null,
       },
     ]);
     const vm0Send = await requestSendMessageRaw(actor, {
@@ -2112,16 +2106,13 @@ describe("CHAT-02: model-first provider policies", () => {
     };
 
     await (async () => {
-      const { providerId } = await upsertOrgModelProvider(actor, {
-        type: "vm0",
-      });
       await api.updateOrgModelPolicies(actor, [
         {
           model: "kimi-k2.7-code",
           isDefault: true,
           defaultProviderType: "vm0",
           credentialScope: "org",
-          modelProviderId: providerId,
+          modelProviderId: null,
         },
       ]);
 
@@ -2170,16 +2161,13 @@ describe("CHAT-02: model-first provider policies", () => {
       ],
     });
 
-    const { providerId } = await upsertOrgModelProvider(actor, {
-      type: "vm0",
-    });
     await api.updateOrgModelPolicies(actor, [
       {
         model: "glm-5.2",
         isDefault: true,
         defaultProviderType: "vm0",
         credentialScope: "org",
-        modelProviderId: providerId,
+        modelProviderId: null,
       },
     ]);
 
@@ -2453,7 +2441,9 @@ describe("CHAT-02: run-level model overrides", () => {
       [400],
     );
     expectApiError(invalidVm0Model.body);
-    expect(invalidVm0Model.body.error.message).toBe("Invalid model selection");
+    expect(invalidVm0Model.body.error.message).toBe(
+      "model: Invalid model selection",
+    );
     await chat.requestReadThread(actor, vm0ThreadId, [404]);
 
     // Removed sentinel models fail contract validation.

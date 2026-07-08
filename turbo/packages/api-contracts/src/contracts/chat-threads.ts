@@ -392,30 +392,111 @@ const selectedModelRequestSchema = z
     }
   });
 
-const chatThreadCreateBodySchema = z.object({
-  agentId: z.string().min(1),
-  clientThreadId: z.string().uuid().optional(),
-  eventId: chatThreadEventIdSchema.optional(),
-  /**
-   * Selected model id. The API resolves the effective model provider from org
-   * policy and available credentials.
-   */
-  model: selectedModelRequestSchema,
-  title: z.string().optional(),
-});
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
 
-const chatThreadModelSelectionUpdateBodySchema = z.object({
-  /**
-   * Selected model id, or null to clear the thread's selected model.
-   */
-  model: selectedModelRequestSchema.nullable(),
-  codexServiceTier: codexServiceTierSchema.nullable().optional(),
-  eventId: chatThreadEventIdSchema.optional(),
-});
+function legacyModelSelectionModel(value: unknown): string | null | undefined {
+  if (value === null) {
+    return null;
+  }
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const selectedModel = value.selectedModel;
+  return typeof selectedModel === "string" ? selectedModel : undefined;
+}
+
+function normalizeLegacyModelSelectionInput(
+  value: unknown,
+  options: { readonly allowNull: boolean },
+): unknown {
+  if (!isRecord(value) || "model" in value || !("modelSelection" in value)) {
+    return value;
+  }
+  const model = legacyModelSelectionModel(value.modelSelection);
+  if (model === undefined || (model === null && !options.allowNull)) {
+    return value;
+  }
+  return { ...value, model };
+}
+
+const chatThreadCreateBodySchema = z.preprocess(
+  (value) => {
+    return normalizeLegacyModelSelectionInput(value, { allowNull: false });
+  },
+  z.object({
+    agentId: z.string().min(1),
+    clientThreadId: z.string().uuid().optional(),
+    eventId: chatThreadEventIdSchema.optional(),
+    /**
+     * Selected model id. The API resolves the effective model provider from org
+     * policy and available credentials.
+     */
+    model: selectedModelRequestSchema,
+    title: z.string().optional(),
+  }),
+);
+
+const chatThreadModelSelectionUpdateBodySchema = z.preprocess(
+  (value) => {
+    return normalizeLegacyModelSelectionInput(value, { allowNull: true });
+  },
+  z.object({
+    /**
+     * Selected model id, or null to clear the thread's selected model.
+     */
+    model: selectedModelRequestSchema.nullable(),
+    codexServiceTier: codexServiceTierSchema.nullable().optional(),
+    eventId: chatThreadEventIdSchema.optional(),
+  }),
+);
 
 const chatRunOptionsRequestSchema = z.object({
   codexServiceTier: codexServiceTierSchema.optional(),
 });
+
+const chatMessageNormalSendBodySchema = z.preprocess(
+  (value) => {
+    return normalizeLegacyModelSelectionInput(value, { allowNull: false });
+  },
+  z.object({
+    agentId: z.string().min(1),
+    prompt: z.string().min(1),
+    threadId: z.string().optional(),
+    clientThreadId: z.string().uuid().optional(),
+    chatThreadEventId: chatThreadEventIdSchema.optional(),
+    // Client-generated UUID for the sort touch created by direct user sends.
+    // Lets event-sourced clients reconcile optimistic sidebar recency by id.
+    chatThreadSortEventId: chatThreadEventIdSchema.optional(),
+    /**
+     * Selected model id. The API resolves the effective provider from org
+     * policy and available credentials. Existing threads may omit it to
+     * reuse the thread's persisted model.
+     */
+    model: selectedModelRequestSchema.optional(),
+    runOptions: chatRunOptionsRequestSchema.optional(),
+    generationTemplate: generationTemplateRequestSchema.optional(),
+    computerUseHostId: z.string().uuid().nullable().optional(),
+    // Optional for backward compatibility: older clients that omit this field
+    // still trigger title generation (server guards with !== false, not === true).
+    hasTextContent: z.boolean().optional(),
+    attachFiles: z.array(attachFileSchema).optional(),
+    // Client-generated UUID used as the user message's primary key.
+    // Lets the client render an optimistic row and reconcile with the
+    // server row by id — no temp-id swap, no React remount.
+    clientMessageId: z.string().uuid().optional(),
+    // Test-only escape hatch: when the host runner has USE_MOCK_CODEX
+    // set (CI default), allow the request to bypass the mock and execute
+    // the real codex CLI. Mirrors `debugNoMockClaude` / `debugNoMockCodex`
+    // on /api/zero/runs so e2e BYOK smoke tests can exercise the chat
+    // entry path end-to-end.
+    debugNoMockClaude: z.boolean().optional(),
+    debugNoMockCodex: z.boolean().optional(),
+    revokesMessageId: z.string().min(1).optional(),
+    interruptsRunId: z.undefined().optional(),
+  }),
+);
 
 /**
  * Chat thread collection route contract.
@@ -819,42 +900,7 @@ export const chatMessagesContract = c.router({
     path: "/api/zero/chat/messages",
     headers: authHeadersSchema,
     body: z.union([
-      z.object({
-        agentId: z.string().min(1),
-        prompt: z.string().min(1),
-        threadId: z.string().optional(),
-        clientThreadId: z.string().uuid().optional(),
-        chatThreadEventId: chatThreadEventIdSchema.optional(),
-        // Client-generated UUID for the sort touch created by direct user sends.
-        // Lets event-sourced clients reconcile optimistic sidebar recency by id.
-        chatThreadSortEventId: chatThreadEventIdSchema.optional(),
-        /**
-         * Selected model id. The API resolves the effective provider from org
-         * policy and available credentials. Existing threads may omit it to
-         * reuse the thread's persisted model.
-         */
-        model: selectedModelRequestSchema.optional(),
-        runOptions: chatRunOptionsRequestSchema.optional(),
-        generationTemplate: generationTemplateRequestSchema.optional(),
-        computerUseHostId: z.string().uuid().nullable().optional(),
-        // Optional for backward compatibility: older clients that omit this field
-        // still trigger title generation (server guards with !== false, not === true).
-        hasTextContent: z.boolean().optional(),
-        attachFiles: z.array(attachFileSchema).optional(),
-        // Client-generated UUID used as the user message's primary key.
-        // Lets the client render an optimistic row and reconcile with the
-        // server row by id — no temp-id swap, no React remount.
-        clientMessageId: z.string().uuid().optional(),
-        // Test-only escape hatch: when the host runner has USE_MOCK_CODEX
-        // set (CI default), allow the request to bypass the mock and execute
-        // the real codex CLI. Mirrors `debugNoMockClaude` / `debugNoMockCodex`
-        // on /api/zero/runs so e2e BYOK smoke tests can exercise the chat
-        // entry path end-to-end.
-        debugNoMockClaude: z.boolean().optional(),
-        debugNoMockCodex: z.boolean().optional(),
-        revokesMessageId: z.string().min(1).optional(),
-        interruptsRunId: z.undefined().optional(),
-      }),
+      chatMessageNormalSendBodySchema,
       z.object({
         agentId: z.string().min(1),
         threadId: z.string().min(1),
