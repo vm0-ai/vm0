@@ -9,7 +9,11 @@ import { computeHmacSignature } from "../../lib/event-consumer/hmac";
 import { logger } from "../../lib/log";
 import type { Db } from "../external/db";
 import { now, nowDate } from "../external/time";
-import { createAbortSignalWithTimeout, settle } from "../utils";
+import {
+  createAbortSignalWithTimeout,
+  discardResponseBody,
+  settle,
+} from "../utils";
 import { decryptPersistentSecretValue } from "./crypto.utils";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { handleAgentInternalCallback$ } from "./internal-agent-run-callback.service";
@@ -531,6 +535,7 @@ async function dispatchHttpCallback(
     await markCallbackFailed(db, callback.id, errorMessage);
     return { callbackId: callback.id, success: false, error: errorMessage };
   }
+  const callbackUrl = callback.url;
   const secret = await decryptPersistentSecretValue(
     callback.encryptedSecret,
     input.featureSwitchContext,
@@ -565,12 +570,16 @@ async function dispatchHttpCallback(
     description: "agent run callback dispatch timeout",
   });
   const responseResult = await settle(
-    fetch(resolveCallbackUrl(callback.url), {
-      method: "POST",
-      headers,
-      body,
-      signal: abort.signal,
-    }).finally(abort.cleanup),
+    (async () => {
+      const response = await fetch(resolveCallbackUrl(callbackUrl), {
+        method: "POST",
+        headers,
+        body,
+        signal: abort.signal,
+      });
+      await discardResponseBody(response);
+      return response;
+    })().finally(abort.cleanup),
   );
 
   if (!responseResult.ok) {

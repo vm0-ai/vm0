@@ -8,7 +8,7 @@ import { computeHmacSignature } from "../../lib/event-consumer/hmac";
 import { env } from "../../lib/env";
 import { now } from "../../lib/time";
 import { db$ } from "../external/db";
-import { createAbortSignalWithTimeout } from "../utils";
+import { createAbortSignalWithTimeout, discardResponseBody } from "../utils";
 import { decryptPersistentSecretValue } from "./crypto.utils";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
 import { handleAgentPhoneInternalCallback$ } from "./internal-agentphone-run-callback.service";
@@ -119,6 +119,7 @@ export const dispatchProgressCallbacks$ = command(
         if (!callback.url) {
           return;
         }
+        const callbackUrl = callback.url;
         const body = JSON.stringify({
           callbackId: callback.id,
           runId,
@@ -141,16 +142,19 @@ export const dispatchProgressCallbacks$ = command(
           timeoutMessage: `Callback dispatch timed out after ${CALLBACK_HTTP_TIMEOUT_MS}ms`,
           description: "agent run progress callback dispatch timeout",
         });
-        return fetch(resolveCallbackUrl(callback.url), {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-VM0-Signature": signature,
-            "X-VM0-Timestamp": timestamp.toString(),
-          },
-          body,
-          signal: abort.signal,
-        }).finally(abort.cleanup);
+        return (async () => {
+          const response = await fetch(resolveCallbackUrl(callbackUrl), {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-VM0-Signature": signature,
+              "X-VM0-Timestamp": timestamp.toString(),
+            },
+            body,
+            signal: abort.signal,
+          });
+          await discardResponseBody(response);
+        })().finally(abort.cleanup);
       }),
     );
   },

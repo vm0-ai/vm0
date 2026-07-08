@@ -213,6 +213,13 @@ export async function settle<T>(
   }
 }
 
+export async function discardResponseBody(response: Response): Promise<void> {
+  if (!response.body) {
+    return;
+  }
+  await settle(response.body.cancel());
+}
+
 export function detach(
   promise: Promise<unknown>,
   mechanism: Mechanism,
