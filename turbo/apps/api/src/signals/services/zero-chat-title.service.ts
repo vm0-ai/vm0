@@ -10,7 +10,7 @@ import { optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { publishThreadListChanged } from "../external/realtime";
 import type { Db } from "../external/db";
-import { safeJsonParse, settle } from "../utils";
+import { createAbortSignalWithTimeout, safeJsonParse, settle } from "../utils";
 import { visibleChatMessageCondition } from "./zero-chat-message-shared.service";
 import {
   RECOMMENDED_FOLLOWUP_LIMIT,
@@ -22,6 +22,7 @@ const log = logger("api:zero:chat-title");
 const OPENROUTER_CHAT_COMPLETIONS_URL =
   "https://openrouter.ai/api/v1/chat/completions";
 const FAST_CHAT_MODEL = "google/gemini-3.1-flash-lite-preview";
+const TEXT_GENERATION_TIMEOUT_MS = 15_000;
 const TITLE_CONTEXT_CHAR_CAP = 150;
 const TITLE_PRIOR_MESSAGE_CAP = 10;
 const FOLLOWUP_CONTEXT_CHAR_CAP = 700;
@@ -99,6 +100,7 @@ async function generateText(
   maxTokens = 30,
   options?: {
     readonly stripMarkdown?: boolean;
+    readonly signal?: AbortSignal;
   },
 ): Promise<string | null> {
   const apiKey = optionalEnv("OPENROUTER_API_KEY");
@@ -106,37 +108,47 @@ async function generateText(
     return null;
   }
 
-  const response = await fetch(OPENROUTER_CHAT_COMPLETIONS_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: FAST_CHAT_MODEL,
-      messages,
-      max_tokens: maxTokens,
-      temperature: 0.3,
-    }),
+  const abort = createAbortSignalWithTimeout({
+    signal: options?.signal,
+    timeoutMs: TEXT_GENERATION_TIMEOUT_MS,
+    timeoutMessage: `OpenRouter text generation timed out after ${TEXT_GENERATION_TIMEOUT_MS}ms`,
+    description: "openrouter text generation timeout",
   });
+  return await (async () => {
+    const response = await fetch(OPENROUTER_CHAT_COMPLETIONS_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: FAST_CHAT_MODEL,
+        messages,
+        max_tokens: maxTokens,
+        temperature: 0.3,
+      }),
+      signal: abort.signal,
+    });
 
-  if (!response.ok) {
-    const settled = await settle(response.text());
-    const text = settled.ok ? settled.value : "unknown error";
-    throw new Error(`OpenRouter request failed: ${response.status} ${text}`);
-  }
+    if (!response.ok) {
+      const settled = await settle(response.text(), abort.signal);
+      const text = settled.ok ? settled.value : "unknown error";
+      throw new Error(`OpenRouter request failed: ${response.status} ${text}`);
+    }
 
-  const data = (await response.json()) as OpenRouterResponse;
-  const rawContent = data.choices[0]?.message.content;
-  if (rawContent === undefined) {
-    throw new Error("OpenRouter returned empty content");
-  }
-  const content = rawContent.trim();
-  if (!content) {
-    throw new Error("OpenRouter returned empty content");
-  }
+    const data = (await response.json()) as OpenRouterResponse;
+    abort.signal.throwIfAborted();
+    const rawContent = data.choices[0]?.message.content;
+    if (rawContent === undefined) {
+      throw new Error("OpenRouter returned empty content");
+    }
+    const content = rawContent.trim();
+    if (!content) {
+      throw new Error("OpenRouter returned empty content");
+    }
 
-  return options?.stripMarkdown === false ? content : stripMarkdown(content);
+    return options?.stripMarkdown === false ? content : stripMarkdown(content);
+  })().finally(abort.cleanup);
 }
 
 function generateChatTitle(input: ChatTitleInput): Promise<string | null> {
@@ -363,6 +375,7 @@ export async function generateAndPersistChatThreadTitleFromCallback(args: {
 export function generateChatNotificationSummary(
   prompt: string,
   resultText: string,
+  signal?: AbortSignal,
 ): Promise<string | null> {
   return generateText(
     [
@@ -377,6 +390,7 @@ export function generateChatNotificationSummary(
       },
     ],
     35,
+    { signal },
   );
 }
 
@@ -429,6 +443,7 @@ async function getLatestFollowupContextMessages(
 
 async function generateRecommendedFollowups(
   messages: readonly ChatCompletionContextMessage[],
+  signal?: AbortSignal,
 ): Promise<ChatMessageRecommendedFollowups> {
   const last = messages[messages.length - 1];
   if (last?.role !== "assistant" || last.content.trim().length === 0) {
@@ -461,7 +476,7 @@ async function generateRecommendedFollowups(
       },
     ],
     260,
-    { stripMarkdown: false },
+    { signal, stripMarkdown: false },
   );
 
   return text === null ? [] : parseRecommendedFollowups(text);
@@ -477,8 +492,12 @@ export async function loadChatThreadRecommendedFollowupContext(args: {
 export async function generateChatThreadRecommendedFollowupsFromContext(args: {
   readonly messages: readonly ChatCompletionContextMessage[];
   readonly threadId?: string;
+  readonly signal?: AbortSignal;
 }): Promise<ChatMessageRecommendedFollowups> {
-  const result = await settle(generateRecommendedFollowups(args.messages));
+  const result = await settle(
+    generateRecommendedFollowups(args.messages, args.signal),
+    args.signal,
+  );
   if (!result.ok) {
     log.warn("Recommended follow-up generation failed", {
       ...(args.threadId ? { threadId: args.threadId } : {}),

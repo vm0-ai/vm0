@@ -710,6 +710,7 @@ async function generateRecommendedFollowupsForCompletedRun(args: {
   const suggestions = await generateChatThreadRecommendedFollowupsFromContext({
     messages: args.followupContext,
     threadId: args.threadId,
+    signal: args.signal,
   });
   args.signal.throwIfAborted();
   return suggestions.length > 0 ? suggestions : undefined;
@@ -916,7 +917,12 @@ async function runCompletedChatCallbackSideEffects(args: {
     let summary: string | null = null;
     if (args.lastResultText) {
       const generated = await settle(
-        generateChatNotificationSummary(args.run.prompt, args.lastResultText),
+        generateChatNotificationSummary(
+          args.run.prompt,
+          args.lastResultText,
+          args.signal,
+        ),
+        args.signal,
       );
       if (generated.ok) {
         summary = generated.value;
