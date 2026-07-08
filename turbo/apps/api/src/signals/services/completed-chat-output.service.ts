@@ -262,6 +262,37 @@ ${sequenceCap}
   return { text: null, watermarkVisible };
 }
 
+async function queryLatestTerminalResult(args: {
+  readonly runId: string;
+  readonly signal: AbortSignal;
+}): Promise<string | null> {
+  const dataset = getDatasetName(AGENT_RUN_EVENTS_DATASET);
+  const apl = `['${dataset}']
+| where runId == "${escapeAplString(args.runId)}"
+| where eventType == "result"
+| order by sequenceNumber desc
+| limit 1`;
+
+  const events = await queryAxiomDirect<AxiomChatOutputEvent>(apl, {
+    noCache: true,
+  });
+  args.signal.throwIfAborted();
+
+  for (const event of events) {
+    const sequenceNumber =
+      event.sequenceNumber ?? event.eventData?.sequenceNumber;
+    if (typeof sequenceNumber !== "number") {
+      continue;
+    }
+    const fallback = extractResultFallback(sequenceNumber, event);
+    if (fallback !== null) {
+      return fallback.content;
+    }
+  }
+
+  return null;
+}
+
 export async function latestEventBackedAssistantMessage(
   db: Db,
   runId: string,
@@ -368,6 +399,13 @@ async function resolveCompletedChatOutputOnce(args: {
   }
 
   if (args.lastEventSequence === null) {
+    const terminalResult = await queryLatestTerminalResult({
+      runId: args.runId,
+      signal: args.signal,
+    });
+    if (terminalResult !== null) {
+      return { kind: "ready", text: terminalResult };
+    }
     return {
       kind: "not_visible_yet",
       reason: "missing_last_event_sequence",

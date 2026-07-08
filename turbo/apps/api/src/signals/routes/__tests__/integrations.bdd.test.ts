@@ -2761,6 +2761,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     let legacySandboxToken = "";
     let legacyWatermarkInjected = false;
     let legacyMissingWatermarkDelays = 0;
+    let legacyUnwatermarkedTerminalResultQueries = 0;
     let legacyUnwatermarkedOutputQueries = 0;
     let legacyWatermarkedOutputQueries = 0;
     let legacyVisibilityQuerySeen = false;
@@ -2785,6 +2786,13 @@ describe("INT-01: Slack app deep webhook flows", () => {
       if (apl.includes("| project sequenceNumber")) {
         legacyVisibilityQuerySeen = true;
         return Promise.resolve([{ sequenceNumber: 0 }]);
+      }
+      if (
+        apl.includes('| where eventType == "result"') &&
+        !apl.includes("| where sequenceNumber <= 0")
+      ) {
+        legacyUnwatermarkedTerminalResultQueries++;
+        return Promise.resolve([]);
       }
       if (apl.includes('eventType == "assistant"')) {
         if (!apl.includes("| where sequenceNumber <= 0")) {
@@ -2837,6 +2845,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     });
     expect(legacyWatermarkInjected).toBeTruthy();
     expect(legacyMissingWatermarkDelays).toBe(3);
+    expect(legacyUnwatermarkedTerminalResultQueries).toBe(3);
     expect(legacyUnwatermarkedOutputQueries).toBe(0);
     expect(legacyWatermarkedOutputQueries).toBe(1);
     expect(legacyVisibilityQuerySeen).toBeTruthy();
