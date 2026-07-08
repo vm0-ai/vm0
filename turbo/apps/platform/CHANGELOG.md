@@ -1,5 +1,45 @@
 # Changelog
 
+## [0.575.1](https://github.com/vm0-ai/vm0/compare/app-v0.575.0...app-v0.575.1) (2026-07-08)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.167.1
+    * @vm0/core bumped to 8.414.2
+
+## [0.575.0](https://github.com/vm0-ai/vm0/compare/app-v0.574.0...app-v0.575.0) (2026-07-08)
+
+
+### Features
+
+* add memory source detail view ([#20607](https://github.com/vm0-ai/vm0/issues/20607)) ([e32c1d0](https://github.com/vm0-ai/vm0/commit/e32c1d0eb01994ffc384b1274810ed396e40f034))
+* add Notion workflow trigger category ([#20602](https://github.com/vm0-ai/vm0/issues/20602)) ([0dc8817](https://github.com/vm0-ai/vm0/commit/0dc8817b9df97265286fb3c43880c723735b9ca2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.167.0
+    * @vm0/core bumped to 8.414.1
+
+## [0.574.0](https://github.com/vm0-ai/vm0/compare/app-v0.573.0...app-v0.574.0) (2026-07-08)
+
+
+### Features
+
+* **platform:** copy workflows before deleting agents ([#20484](https://github.com/vm0-ai/vm0/issues/20484)) ([277e286](https://github.com/vm0-ai/vm0/commit/277e286b8ca79338d1af33301ee477e4c62457e7))
+
+
+### Bug Fixes
+
+* **platform:** tighten user bubble emoji-to-text word-spacing ([#20551](https://github.com/vm0-ai/vm0/issues/20551)) ([2751145](https://github.com/vm0-ai/vm0/commit/2751145d0df5ace2b5655025cf38a03053f1fbd7))
+* stack settings theme card on mobile to prevent button overlap ([#20581](https://github.com/vm0-ai/vm0/issues/20581)) ([5b723bb](https://github.com/vm0-ai/vm0/commit/5b723bb05649269ceaf2885d1799cf553e5479fb))
+* **workflows:** prevent content shift when the list scrolls ([#20548](https://github.com/vm0-ai/vm0/issues/20548)) ([66572ec](https://github.com/vm0-ai/vm0/commit/66572ec132ce98bbed2d1169f1ab479dcc6f0924))
+
 ## [0.573.0](https://github.com/vm0-ai/vm0/compare/app-v0.572.0...app-v0.573.0) (2026-07-08)
 
 

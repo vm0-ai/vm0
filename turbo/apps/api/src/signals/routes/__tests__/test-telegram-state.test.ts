@@ -751,8 +751,16 @@ describe("POST /api/test/telegram-state", () => {
     for (const actionType of [
       "api_dispatch_pre_create_zero_slack_entrypoint_gap",
       "api_dispatch_pre_create_zero_slack_resolve_message",
+      "api_dispatch_pre_create_zero_slack_record_memory_source",
       "api_dispatch_pre_create_zero_slack_set_thread_status",
       "api_dispatch_pre_create_zero_slack_build_run_params",
+      "api_dispatch_pre_create_zero_slack_build_run_params_enrich_message",
+      "api_dispatch_pre_create_zero_slack_build_run_params_resolve_model_route",
+      "api_dispatch_pre_create_zero_slack_build_run_params_load_thread_binding",
+      "api_dispatch_pre_create_zero_slack_build_run_params_resolve_session",
+      "api_dispatch_pre_create_zero_slack_build_run_params_resolve_computer_use_host",
+      "api_dispatch_pre_create_zero_slack_build_run_params_fetch_conversation_context",
+      "api_dispatch_pre_create_zero_slack_build_run_params_assemble",
       "api_dispatch_pre_create_zero_slack_create_run",
     ]) {
       expect(actionTypes).toContain(actionType);

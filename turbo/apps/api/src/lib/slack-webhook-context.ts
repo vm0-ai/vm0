@@ -401,6 +401,14 @@ function formatCurrentMessageFiles(files: readonly SlackFile[]): string {
   return files.map(formatFileInfo).join("\n");
 }
 
+function unwrapSettled<T>(result: PromiseSettledResult<T>): T {
+  if (result.status === "rejected") {
+    throw result.reason;
+  }
+
+  return result.value;
+}
+
 export async function fetchConversationContexts(
   client: WebClient,
   channelId: string,
@@ -409,15 +417,21 @@ export async function fetchConversationContexts(
 ): Promise<{ readonly executionContext: string }> {
   const isDm = channelId.startsWith("D");
   const contextType = threadTs ? "thread" : "channel";
-  const allMessages = threadTs
-    ? await fetchThreadContext(client, channelId, threadTs)
-    : isDm
-      ? []
-      : await fetchChannelContext(client, channelId, 10);
-  const channelMessages =
-    threadTs && !isDm
-      ? await fetchChannelContext(client, channelId, 10, threadTs)
-      : [];
+  let allMessages: readonly SlackMessage[];
+  let channelMessages: readonly SlackMessage[];
+  if (threadTs) {
+    const [threadResult, channelResult] = await Promise.allSettled([
+      fetchThreadContext(client, channelId, threadTs),
+      isDm
+        ? Promise.resolve([])
+        : fetchChannelContext(client, channelId, 10, threadTs),
+    ]);
+    allMessages = unwrapSettled(threadResult);
+    channelMessages = unwrapSettled(channelResult);
+  } else {
+    allMessages = isDm ? [] : await fetchChannelContext(client, channelId, 10);
+    channelMessages = [];
+  }
   const contextMessages = currentMessageTs
     ? allMessages.filter((message) => {
         return message.ts !== currentMessageTs;

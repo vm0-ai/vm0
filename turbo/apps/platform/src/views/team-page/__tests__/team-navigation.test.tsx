@@ -20,6 +20,7 @@ import {
 } from "@vm0/api-contracts/contracts/zero-agents";
 import {
   zeroWorkflowsCollectionContract,
+  zeroWorkflowsDetailContract,
   zeroWorkflowTriggersContract,
   type ZeroWorkflowSummary,
 } from "@vm0/api-contracts/contracts/zero-workflows";
@@ -244,6 +245,21 @@ function buttonByText(
     throw new Error(`${text} button not found`);
   }
   return button;
+}
+
+function selectOptionByLabel(
+  label: string,
+  option: string | RegExp,
+  container: HTMLElement,
+): void {
+  const control =
+    within(container)
+      .getAllByLabelText(label)
+      .find((element) => {
+        return element.getAttribute("role") === "combobox";
+      }) ?? within(container).getByLabelText(label);
+  click(control);
+  click(screen.getByRole("option", { name: option }));
 }
 
 function buttonByAriaLabel(
@@ -927,6 +943,105 @@ describe("team page navigation", () => {
       ).toBeInTheDocument();
     });
     expect(screen.queryByText(/Agent not found/u)).not.toBeInTheDocument();
+  });
+
+  it("copies a bound workflow onto another agent before deleting the agent", async () => {
+    mockTeamAPIs();
+    mockAgentWorkflowApis();
+    const copyRequests: { workflowId: string; toAgentId: string }[] = [];
+    context.mocks.api(
+      zeroWorkflowsDetailContract.copy,
+      ({ params, body, respond }) => {
+        copyRequests.push({
+          workflowId: params.workflowId,
+          toAgentId: body.toAgentId,
+        });
+        return respond(
+          201,
+          createWorkflowSummary({
+            id: "d0000000-0000-4000-a000-0000000007ff",
+            agentId: zeroAgentId,
+            agentName: "zero",
+            agentDisplayName: "Zero",
+            displayName: "Sales Research",
+            visibility: "private",
+          }),
+        );
+      },
+    );
+    let deleted = false;
+    context.mocks.api(zeroAgentsByIdContract.delete, ({ params, respond }) => {
+      if (params.id === researchAgentId) {
+        deleted = true;
+      }
+      return respond(204);
+    });
+    context.mocks.api(zeroAgentsByIdContract.get, ({ params, respond }) => {
+      if (params.id === researchAgentId && deleted) {
+        return respond(404, {
+          error: {
+            message: `Agent not found: ${researchAgentId}`,
+            code: "NOT_FOUND",
+          },
+        });
+      }
+      const agent = params.id === zeroAgentId ? "Zero" : "Research Agent";
+      return respond(200, {
+        agentId: params.id,
+        ownerId: "test-owner-id",
+        displayName: agent,
+        description: "Finds and summarizes information",
+        sound: null,
+        avatarUrl: null,
+        modelProviderId: null,
+        selectedModel: null,
+        preferPersonalProvider: false,
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${researchAgentId}?tab=profile`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue("Research Agent")).toBeInTheDocument();
+    });
+
+    click(screen.getByText("Delete agent"));
+    const deleteDialog = await screen.findByRole("dialog");
+
+    // The delete dialog offers to rescue each bound workflow by copying it.
+    await waitFor(() => {
+      expect(
+        within(deleteDialog).getByText("Keep any of these workflows?"),
+      ).toBeInTheDocument();
+      expect(
+        within(deleteDialog).getByText("Sales Research"),
+      ).toBeInTheDocument();
+    });
+
+    // Copy "Sales Research" onto Zero; leave "Ops Playbook" to be deleted.
+    selectOptionByLabel(
+      "Handle workflow Sales Research",
+      /Copy to Zero/,
+      deleteDialog,
+    );
+
+    click(buttonByText("Delete agent", deleteDialog));
+
+    // The workflow is copied first, then the agent is deleted.
+    await waitFor(() => {
+      expect(copyRequests).toStrictEqual([
+        {
+          workflowId: "d0000000-0000-4000-a000-000000000701",
+          toAgentId: zeroAgentId,
+        },
+      ]);
+    });
+    await waitFor(() => {
+      expect(deleted).toBeTruthy();
+    });
   });
 
   it("hides legacy agent automation and workflow tabs", async () => {

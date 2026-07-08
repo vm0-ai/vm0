@@ -4,6 +4,8 @@ import json
 import os
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 import builtin_firewall_cache
 import matching
 import registry
@@ -131,6 +133,20 @@ def _assert_cache_firewall_falls_back_to_bundled(
 
 
 class TestRegistryBuiltinCache:
+    def test_resolved_firewall_entries_enforces_cache_key_alignment(self):
+        inline_firewall = {"name": "inline", "apis": []}
+
+        registry_firewalls.ResolvedFirewallEntries(None, None)
+        registry_firewalls.ResolvedFirewallEntries([], ())
+        registry_firewalls.ResolvedFirewallEntries([inline_firewall], (None,))
+
+        with pytest.raises(ValueError, match="absent when firewalls are absent"):
+            registry_firewalls.ResolvedFirewallEntries(None, (None,))
+        with pytest.raises(ValueError, match="present when firewalls are present"):
+            registry_firewalls.ResolvedFirewallEntries([inline_firewall], None)
+        with pytest.raises(ValueError, match="align with resolved firewalls"):
+            registry_firewalls.ResolvedFirewallEntries([inline_firewall], ())
+
     def test_builtin_firewall_entry_resolves_from_catalog(self, tmp_path):
         path = tmp_path / "registry.json"
         path.write_text(
@@ -375,6 +391,104 @@ class TestRegistryBuiltinCache:
         second_vm_info, second_compiled, _ = second_context
         assert second_compiled is not None
         assert second_vm_info["firewalls"][0]["apis"][0]["base"] == "https://cache.example.com"
+
+    def test_missing_runner_catalog_cache_logs_bundled_fallback_once(
+        self, tmp_path, monkeypatch, mitm_ctx
+    ):
+        cache_path = tmp_path / "missing-builtin-firewall-catalog-cache.json"
+        monkeypatch.setattr(
+            registry_firewalls,
+            "BUILTIN_FIREWALLS",
+            {
+                "fallback": {
+                    "name": "fallback",
+                    "apis": [
+                        {
+                            "base": "https://bundled.example.com",
+                            "auth": {"headers": {}},
+                            "permissions": [{"name": "read", "rules": ["GET /items"]}],
+                        }
+                    ],
+                }
+            },
+        )
+        snapshot = builtin_firewall_cache.BuiltinFirewallCatalogSnapshot(
+            dependency_file_key=None,
+            catalog=None,
+            cache_path=str(cache_path),
+            fallback_reason="cache_file_missing",
+        )
+
+        with mitm_ctx() as log:
+            for _ in range(2):
+                resolved = registry_firewalls.resolve_firewall_entries(
+                    builtin_vm("run-fallback", "fallback"),
+                    builtin_firewall_catalog_snapshot=snapshot,
+                )
+                assert resolved.firewalls is not None
+                assert resolved.firewalls[0]["apis"][0]["base"] == "https://bundled.example.com"
+
+        log.warn.assert_called_once()
+        warning = log.warn.call_args.args[0]
+        assert "Using bundled builtin firewall fallback" in warning
+        assert "reason=cache_file_missing" in warning
+        assert "firewall_name=fallback" in warning
+        assert f"cache_path={cache_path}" in warning
+
+    def test_runner_catalog_cache_missing_firewall_logs_bundled_fallback(
+        self, monkeypatch, mitm_ctx
+    ):
+        monkeypatch.setattr(
+            registry_firewalls,
+            "BUILTIN_FIREWALLS",
+            {
+                "fallback": {
+                    "name": "fallback",
+                    "apis": [
+                        {
+                            "base": "https://bundled.example.com",
+                            "auth": {"headers": {}},
+                            "permissions": [{"name": "read", "rules": ["GET /items"]}],
+                        }
+                    ],
+                }
+            },
+        )
+        snapshot = _catalog_snapshot(
+            digest_char="a",
+            version="catalog-a",
+            firewalls={
+                "other": _cache_firewall(
+                    "other",
+                    "https://cache.example.com",
+                )
+            },
+        )
+        rewritten_snapshot = builtin_firewall_cache.BuiltinFirewallCatalogSnapshot(
+            dependency_file_key=("catalog-cache/catalog-a.json", 1, 2, 3, 4),
+            catalog=snapshot.catalog,
+        )
+
+        with mitm_ctx() as log:
+            for current_snapshot in (snapshot, rewritten_snapshot):
+                resolved = registry_firewalls.resolve_firewall_entries(
+                    builtin_vm("run-fallback", "fallback"),
+                    builtin_firewall_catalog_snapshot=current_snapshot,
+                )
+                assert resolved.firewalls is not None
+                assert resolved.firewalls[0]["apis"][0]["base"] == "https://bundled.example.com"
+
+        log.warn.assert_called_once()
+        warning = log.warn.call_args.args[0]
+        assert "Using bundled builtin firewall fallback" in warning
+        assert "reason=cache_missing_firewall" in warning
+        assert "firewall_name=fallback" in warning
+        assert (
+            "catalog_digest=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            in warning
+        )
+        assert "catalog_version=catalog-a" in warning
+        assert "cache_file_key=" not in warning
 
     def test_registry_reload_pins_one_catalog_snapshot_for_builtin_entries(
         self, tmp_path, monkeypatch, mitm_ctx
@@ -812,6 +926,56 @@ class TestRegistryBuiltinCache:
             firewall,
             cache_mode=0o666,
         )
+
+    def test_world_writable_runner_catalog_cache_logs_untrusted_fallback(
+        self, tmp_path, monkeypatch, mitm_ctx
+    ):
+        registry_path = tmp_path / "registry.json"
+        cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
+        monkeypatch.setattr(
+            registry_firewalls,
+            "BUILTIN_FIREWALLS",
+            {
+                "fallback": {
+                    "name": "fallback",
+                    "apis": [
+                        {
+                            "base": "https://bundled.example.com",
+                            "auth": {"headers": {}},
+                            "permissions": [{"name": "read", "rules": ["GET /items"]}],
+                        }
+                    ],
+                }
+            },
+        )
+        _write_catalog_cache(
+            cache_path,
+            digest="sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            version="catalog-a",
+            firewalls={"fallback": _cache_firewall("fallback", "https://cache.example.com")},
+        )
+        cache_path.chmod(0o666)
+        write_multi_vm_registry(
+            registry_path,
+            {"10.200.0.1": builtin_vm("run-fallback", "fallback")},
+        )
+
+        with mitm_ctx(
+            registry_path=str(registry_path),
+            builtin_firewall_catalog_cache_path=str(cache_path),
+        ) as log:
+            context = registry.get_vm_context("10.200.0.1", str(registry_path))
+
+        assert context is not None
+        vm_info, compiled_firewalls, _ = context
+        assert compiled_firewalls is not None
+        assert vm_info["firewalls"][0]["apis"][0]["base"] == "https://bundled.example.com"
+        log.warn.assert_called_once()
+        warning = log.warn.call_args.args[0]
+        assert "Using bundled builtin firewall fallback" in warning
+        assert "reason=cache_untrusted" in warning
+        assert "firewall_name=fallback" in warning
+        assert f"cache_path={cache_path}" in warning
 
     def test_malformed_aws_sigv4_runner_catalog_cache_falls_back_to_bundled(
         self, tmp_path, monkeypatch, mitm_ctx

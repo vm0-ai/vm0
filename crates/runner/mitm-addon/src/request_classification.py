@@ -1,0 +1,510 @@
+"""Request classification owner for HTTP mitmproxy hooks."""
+
+import urllib.parse
+from dataclasses import dataclass
+from typing import Literal, Protocol
+
+from mitmproxy import http
+
+import connection_endpoints
+import flow_metadata
+import flow_metadata_keys as metadata_keys
+import http_network_log
+import matching
+import public_destination
+import registry
+import upstream_destination_binding
+from url_utils import AuthorityValidationError, get_trusted_authority, normalize_trusted_hostname
+
+REQUEST_CLASSIFICATION_METADATA_KEY = "_request_classification"
+REQUEST_HEADERS_PROBE_METADATA_KEYS = (
+    metadata_keys.VM_RUN_ID,
+    metadata_keys.VM_NETWORK_LOG_PATH,
+    metadata_keys.VM_PROXY_LOG_PATH,
+    metadata_keys.CAPTURE_BODY,
+    metadata_keys.VM_SANDBOX_AUTH_KEY,
+    metadata_keys.CLI_AGENT_TYPE,
+    metadata_keys.BROWSER_USER_AGENT,
+    metadata_keys.WEBSOCKET_UPGRADE_REQUEST,
+    metadata_keys.ORIGINAL_URL,
+    metadata_keys.TRUSTED_AUTHORITY_HOST,
+    metadata_keys.NETWORK_LOG_TARGET,
+    metadata_keys.HTTP_REQUEST_START_MONOTONIC,
+)
+
+_BROWSER_USER_AGENT_MARKERS = (
+    " chrome/",
+    " chromium/",
+    " crios/",
+    " edg/",
+    " firefox/",
+    " fxios/",
+    " headlesschrome/",
+    " opr/",
+    " safari/",
+)
+
+RequestClassificationKind = Literal[
+    "no_client_ip",
+    "pass_through",
+    "registry_unavailable",
+    "stale_tls_admission",
+    "invalid_registry_vm",
+    "authority_denied",
+    "api_allow",
+    "browser_allow",
+    "firewall_block",
+    "firewall_allow",
+    "public_destination_denied",
+    "allow",
+]
+
+
+class TlsAdmissionView(Protocol):
+    @property
+    def client_ip(self) -> str:
+        raise NotImplementedError
+
+    @property
+    def run_id(self) -> str | None:
+        raise NotImplementedError
+
+
+@dataclass(frozen=True)
+class PublicDestinationDenial:
+    name: str
+    base: str
+    trusted_authority_host: str
+    destination_host: str
+    reason: public_destination.DestinationDenialReason
+
+
+@dataclass(frozen=True)
+class RequestClassification:
+    kind: RequestClassificationKind
+    vm_info: dict | None = None
+    registry_unavailable: registry.RegistryUnavailable | None = None
+    invalid_vm: registry.InvalidVmEntry | None = None
+    authority_error: AuthorityValidationError | None = None
+    firewall_block: matching.FirewallBlock | None = None
+    firewall_allow: matching.FirewallAllow | None = None
+    public_destination_denial: PublicDestinationDenial | None = None
+    stale_tls_reason: str = ""
+
+
+def cache_classification(flow: http.HTTPFlow, classification: RequestClassification) -> None:
+    flow.metadata[REQUEST_CLASSIFICATION_METADATA_KEY] = classification
+
+
+def pop_cached_classification(flow: http.HTTPFlow) -> RequestClassification | None:
+    classification = flow.metadata.pop(REQUEST_CLASSIFICATION_METADATA_KEY, None)
+    return classification if isinstance(classification, RequestClassification) else None
+
+
+def cached_classification(flow: http.HTTPFlow) -> RequestClassification | None:
+    classification = flow.metadata.get(REQUEST_CLASSIFICATION_METADATA_KEY)
+    return classification if isinstance(classification, RequestClassification) else None
+
+
+def classification_for_request(
+    flow: http.HTTPFlow,
+    *,
+    registry_path: str,
+    api_url: str,
+    tls_admission: TlsAdmissionView | None,
+) -> RequestClassification:
+    classification = cached_classification(flow)
+    if classification is not None:
+        return classification
+    return classify_request(
+        flow,
+        registry_path=registry_path,
+        api_url=api_url,
+        tls_admission=tls_admission,
+    )
+
+
+def classify_request(
+    flow: http.HTTPFlow,
+    *,
+    registry_path: str,
+    api_url: str,
+    tls_admission: TlsAdmissionView | None,
+    defer_unresolved_public_destination: bool = False,
+) -> RequestClassification:
+    client_ip = flow.client_conn.peername[0] if flow.client_conn.peername else None
+
+    if not client_ip:
+        if tls_admission is not None:
+            return RequestClassification(
+                kind="stale_tls_admission",
+                stale_tls_reason="client_ip_missing",
+            )
+        return RequestClassification(kind="no_client_ip")
+
+    registry_state = registry.load_registry_state(registry_path)
+    if isinstance(registry_state, registry.RegistryUnavailable):
+        return RequestClassification(
+            kind="registry_unavailable",
+            registry_unavailable=registry_state,
+        )
+
+    if tls_admission is not None and tls_admission.client_ip != client_ip:
+        return RequestClassification(
+            kind="stale_tls_admission",
+            stale_tls_reason="client_ip_mismatch",
+        )
+
+    vm_info = registry_state.vms.get(client_ip)
+    if vm_info is None:
+        invalid_vm = registry_state.invalid_vms.get(client_ip)
+        if invalid_vm is not None:
+            return RequestClassification(
+                kind="invalid_registry_vm",
+                invalid_vm=invalid_vm,
+            )
+        if tls_admission is not None:
+            return RequestClassification(
+                kind="stale_tls_admission",
+                stale_tls_reason="registry_entry_missing",
+            )
+        return RequestClassification(kind="pass_through")
+
+    run_id = vm_info.get("runId", "")
+    if (
+        tls_admission is not None
+        and tls_admission.run_id is not None
+        and tls_admission.run_id != run_id
+    ):
+        return RequestClassification(
+            kind="stale_tls_admission",
+            vm_info=vm_info,
+            stale_tls_reason="run_id_mismatch",
+        )
+
+    _store_registered_request_metadata(flow, vm_info=vm_info, run_id=run_id)
+
+    if is_browser_passthrough_heuristic(flow):
+        flow.metadata[metadata_keys.BROWSER_USER_AGENT] = True
+
+    try:
+        trusted_authority = get_trusted_authority(flow)
+    except AuthorityValidationError as e:
+        return RequestClassification(
+            kind="authority_denied",
+            vm_info=vm_info,
+            authority_error=e,
+        )
+
+    original_url = trusted_authority.url
+    _store_trusted_authority_metadata(
+        flow,
+        original_url=original_url,
+        host=trusted_authority.host,
+        port=trusted_authority.port,
+    )
+
+    hostname = trusted_authority.host.lower()
+    if _api_hostname_matches(api_url, hostname) and not flow.request.path.startswith("/api/test/"):
+        return RequestClassification(kind="api_allow", vm_info=vm_info)
+
+    if flow.metadata.get(metadata_keys.BROWSER_USER_AGENT):
+        return RequestClassification(kind="browser_allow", vm_info=vm_info)
+
+    compiled_firewalls = registry_state.compiled_firewalls.get(client_ip)
+    compiled_network_policies = registry_state.compiled_network_policies[client_ip]
+    if compiled_firewalls:
+        result = matching.match_compiled_firewall_request(
+            original_url,
+            flow.request.method,
+            compiled_firewalls,
+            compiled_network_policies,
+        )
+        if isinstance(result, matching.FirewallBlock):
+            return RequestClassification(
+                kind="firewall_block",
+                vm_info=vm_info,
+                firewall_block=result,
+            )
+        if isinstance(result, matching.FirewallAllow):
+            public_destination_denial = _public_destination_denial(
+                flow,
+                result,
+                trusted_authority_host=trusted_authority.host,
+                defer_unresolved_hostnames=defer_unresolved_public_destination,
+            )
+            if public_destination_denial is not None:
+                return RequestClassification(
+                    kind="public_destination_denied",
+                    vm_info=vm_info,
+                    public_destination_denial=public_destination_denial,
+                )
+            return RequestClassification(
+                kind="firewall_allow",
+                vm_info=vm_info,
+                firewall_allow=result,
+            )
+
+    return RequestClassification(kind="allow", vm_info=vm_info)
+
+
+def classification_needs_request_timing(classification: RequestClassification) -> bool:
+    return classification.kind in (
+        "authority_denied",
+        "api_allow",
+        "browser_allow",
+        "firewall_block",
+        "firewall_allow",
+        "public_destination_denied",
+        "allow",
+    )
+
+
+def should_stream_capture_request(classification: RequestClassification) -> bool:
+    if classification.kind not in ("api_allow", "browser_allow", "allow"):
+        return False
+    vm_info = classification.vm_info
+    return isinstance(vm_info, dict) and bool(vm_info.get("captureNetworkBodies", False))
+
+
+def should_try_firewall_stream_capture_request(classification: RequestClassification) -> bool:
+    if classification.kind != "firewall_allow":
+        return False
+    allow = classification.firewall_allow
+    if allow is None or firewall_allow_uses_public_destination(allow):
+        return False
+    vm_info = classification.vm_info
+    return isinstance(vm_info, dict) and bool(vm_info.get("captureNetworkBodies", False))
+
+
+def firewall_allow_uses_public_destination(allow: matching.FirewallAllow) -> bool:
+    host_policy = allow.api_entry.get("hostPolicy")
+    return isinstance(host_policy, dict) and host_policy.get("kind") == "publicDestination"
+
+
+def current_public_destination_denial(
+    flow: http.HTTPFlow,
+    allow: matching.FirewallAllow,
+) -> PublicDestinationDenial | None:
+    trusted_authority_host = flow_metadata.trusted_authority_host(flow.metadata)
+    if not trusted_authority_host:
+        try:
+            trusted_authority_host = get_trusted_authority(flow).host
+        except AuthorityValidationError:
+            trusted_authority_host = ""
+    return _public_destination_denial(
+        flow,
+        allow,
+        trusted_authority_host=trusted_authority_host,
+    )
+
+
+def is_browser_user_agent(user_agent: str | None) -> bool:
+    if not user_agent:
+        return False
+
+    normalized = f" {user_agent.lower()}"
+    return "mozilla/" in normalized and any(
+        marker in normalized for marker in _BROWSER_USER_AGENT_MARKERS
+    )
+
+
+def is_browser_passthrough_heuristic(flow: http.HTTPFlow) -> bool:
+    # Short-term business passthrough heuristic for browser-originated traffic.
+    # This is not trusted browser provenance: any sandbox client can set this
+    # header. The spoofable User-Agent heuristic is currently accepted as a
+    # known tradeoff until runner-owned browser provenance is prioritized again.
+    return is_browser_user_agent(flow.request.headers.get("User-Agent"))
+
+
+def restore_request_headers_probe_metadata(
+    flow: http.HTTPFlow,
+    snapshot: dict[str, object],
+    *,
+    extra_keys: tuple[str, ...] = (),
+) -> None:
+    for key in (*REQUEST_HEADERS_PROBE_METADATA_KEYS, *extra_keys):
+        if key in snapshot:
+            flow.metadata[key] = snapshot[key]
+        else:
+            flow.metadata.pop(key, None)
+
+
+def _store_registered_request_metadata(
+    flow: http.HTTPFlow,
+    *,
+    vm_info: dict,
+    run_id: str,
+) -> None:
+    flow.metadata[metadata_keys.VM_RUN_ID] = run_id
+    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = vm_info.get("networkLogPath", "")
+    flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = vm_info.get("proxyLogPath", "")
+    flow.metadata[metadata_keys.CAPTURE_BODY] = vm_info.get("captureNetworkBodies", False)
+    flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = vm_info.get("sandboxToken", "")
+    flow.metadata[metadata_keys.CLI_AGENT_TYPE] = vm_info.get("cliAgentType") or "claude-code"
+
+
+def _store_trusted_authority_metadata(
+    flow: http.HTTPFlow,
+    *,
+    original_url: str,
+    host: str,
+    port: int,
+) -> None:
+    flow.metadata[metadata_keys.ORIGINAL_URL] = original_url
+    flow.metadata[metadata_keys.TRUSTED_AUTHORITY_HOST] = host
+    http_network_log.set_target(
+        flow,
+        url=original_url,
+        host=host,
+        port=port,
+    )
+
+
+def _api_hostname_matches(api_url: str, hostname: str) -> bool:
+    if not api_url:
+        return False
+    parsed_api = urllib.parse.urlparse(api_url)
+    api_hostname = parsed_api.hostname.lower() if parsed_api.hostname else ""
+    return bool(
+        api_hostname and (hostname == api_hostname or hostname.endswith(f".{api_hostname}"))
+    )
+
+
+def _public_destination_denial(
+    flow: http.HTTPFlow,
+    allow: matching.FirewallAllow,
+    *,
+    trusted_authority_host: str,
+    defer_unresolved_hostnames: bool = False,
+) -> PublicDestinationDenial | None:
+    host_policy = allow.api_entry.get("hostPolicy")
+    if not isinstance(host_policy, dict) or host_policy.get("kind") != "publicDestination":
+        return None
+
+    validation = _public_destination_runtime_denial(
+        flow,
+        defer_unresolved_hostnames=defer_unresolved_hostnames,
+    )
+    if validation is None:
+        return None
+
+    raw_base = allow.api_entry.get("base", "")
+    base = raw_base if isinstance(raw_base, str) else ""
+    if validation.reason is None:
+        raise RuntimeError("publicDestination denial is missing a reason")
+    return PublicDestinationDenial(
+        name=allow.name,
+        base=base,
+        trusted_authority_host=trusted_authority_host,
+        destination_host=validation.destination_host,
+        reason=validation.reason,
+    )
+
+
+def _public_destination_runtime_denial(
+    flow: http.HTTPFlow,
+    *,
+    defer_unresolved_hostnames: bool = False,
+) -> public_destination.RuntimeDestinationCheck | None:
+    for runtime_host in _public_destination_runtime_hosts(flow):
+        validation = public_destination.validate_runtime_destination_host(runtime_host)
+        if (
+            not validation.allowed
+            and defer_unresolved_hostnames
+            and _public_destination_runtime_host_is_deferable(runtime_host)
+        ):
+            continue
+        if not validation.allowed:
+            return validation
+    return None
+
+
+def _public_destination_runtime_hosts(flow: http.HTTPFlow) -> tuple[object, ...]:
+    original_address = upstream_destination_binding.server_binding_original_address(
+        flow.server_conn
+    )
+
+    if flow.server_conn.connected:
+        hosts = _public_destination_original_and_request_hosts(flow, original_address)
+        hosts.extend(_public_destination_connected_runtime_hosts(flow))
+        return tuple(hosts)
+
+    if original_address is not None:
+        return tuple(_public_destination_original_and_request_hosts(flow, original_address))
+
+    server_address = connection_endpoints.server_address(flow.server_conn)
+    if server_address is not None:
+        return (_public_destination_endpoint_host_for_request(flow, server_address),)
+
+    return (flow.request.host,)
+
+
+def _public_destination_endpoint_host_for_request(
+    flow: http.HTTPFlow,
+    endpoint: tuple[str, int],
+) -> str | None:
+    endpoint_host, endpoint_port = endpoint
+    if endpoint_port != flow.request.port:
+        return None
+    return endpoint_host
+
+
+def _public_destination_original_and_request_hosts(
+    flow: http.HTTPFlow,
+    original_address: tuple[str, int] | None,
+) -> list[object]:
+    hosts: list[object] = []
+    if original_address is not None:
+        endpoint_host = _public_destination_endpoint_host_for_request(flow, original_address)
+        if (
+            endpoint_host is None
+            or public_destination.public_ip_literal_is_public(endpoint_host) is not None
+            or not flow.server_conn.connected
+        ):
+            hosts.append(endpoint_host)
+    if public_destination.public_ip_literal_is_public(flow.request.host) is not None:
+        hosts.append(flow.request.host)
+    return hosts
+
+
+def _public_destination_connected_runtime_hosts(flow: http.HTTPFlow) -> tuple[object, ...]:
+    hosts: list[object] = []
+    for endpoint in (
+        connection_endpoints.server_peername(flow.server_conn),
+        connection_endpoints.server_address(flow.server_conn),
+    ):
+        if endpoint is None:
+            continue
+
+        endpoint_host, endpoint_port = endpoint
+        if public_destination.public_ip_literal_is_public(endpoint_host) is None:
+            continue
+
+        if endpoint_port != flow.request.port:
+            hosts.append(None)
+            continue
+
+        hosts.append(endpoint_host)
+
+    if hosts:
+        return tuple(hosts)
+
+    connected_endpoint = connection_endpoints.connected_ip_destination_endpoint(
+        flow.server_conn,
+        port=flow.request.port,
+        extra_endpoints=(connection_endpoints.connection_sockname(flow.client_conn),),
+    )
+    return (connected_endpoint[0] if connected_endpoint is not None else None,)
+
+
+def _public_destination_runtime_host_is_deferable(runtime_host: object) -> bool:
+    if not isinstance(runtime_host, str):
+        return False
+    if public_destination.public_ip_literal_is_public(runtime_host) is not None:
+        return False
+    try:
+        normalize_trusted_hostname(runtime_host)
+    except (UnicodeError, ValueError):
+        return False
+    return True

@@ -572,5 +572,14 @@ describe("POST /api/test/slack-dispatch-probe", () => {
         code: "slack_status_failed",
       },
     });
+    const state = await readSlackState(fixture);
+    expect(
+      state.recent_runs.find((run) => {
+        return (
+          run.triggerSource === "slack" &&
+          run.promptPreview === "trigger an error"
+        );
+      }),
+    ).toBeUndefined();
   });
 });

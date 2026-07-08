@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 import type {
+  MemorySourceDetailResponse,
   MemorySourceListResponse,
   MemorySourceProvider,
 } from "@vm0/api-contracts/contracts/zero-memory";
@@ -114,6 +115,68 @@ function compactMemorySourceMetadata(
     ...(metadata.mailboxEmail ? { mailboxEmail: metadata.mailboxEmail } : {}),
     ...(metadata.direction ? { direction: metadata.direction } : {}),
   };
+}
+
+function serializeMemorySourceMetadata(
+  metadata: MemorySourceMetadata,
+): MemorySourceDetailResponse["metadata"] {
+  return {
+    workspaceId: metadata.workspaceId,
+    channelId: metadata.channelId,
+    channelType: metadata.channelType,
+    threadId: metadata.threadId,
+    messageId: metadata.messageId,
+    messageTs: metadata.messageTs,
+    senderId: metadata.senderId,
+    participantIds: metadata.participantIds
+      ? [...metadata.participantIds]
+      : undefined,
+    fileIds: metadata.fileIds ? [...metadata.fileIds] : undefined,
+    mailboxEmail: metadata.mailboxEmail,
+    historyId: metadata.historyId,
+    direction: metadata.direction,
+    from: metadata.from,
+    to: metadata.to ? [...metadata.to] : undefined,
+    cc: metadata.cc ? [...metadata.cc] : undefined,
+    reason: metadata.reason,
+  };
+}
+
+function serializeMemorySourceDetail(
+  row: typeof memorySources.$inferSelect,
+): MemorySourceDetailResponse {
+  return {
+    id: row.id,
+    provider: row.provider,
+    sourceType: row.sourceType,
+    title: row.title,
+    occurredAt: serializeDate(row.occurredAt),
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+    externalId: row.externalId,
+    connectorId: row.connectorId,
+    contentHash: row.contentHash,
+    metadata: serializeMemorySourceMetadata(row.metadata),
+  };
+}
+
+export async function getMemorySourceDetail(
+  db: ReadonlyDb,
+  args: MemoryScope & { readonly sourceId: string },
+): Promise<MemorySourceDetailResponse | null> {
+  const [row] = await db
+    .select()
+    .from(memorySources)
+    .where(
+      and(
+        eq(memorySources.orgId, args.orgId),
+        eq(memorySources.userId, args.userId),
+        eq(memorySources.id, args.sourceId),
+      ),
+    )
+    .limit(1);
+
+  return row ? serializeMemorySourceDetail(row) : null;
 }
 
 export async function listMemorySources(

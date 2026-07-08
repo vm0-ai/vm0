@@ -50,6 +50,9 @@ interface SandboxOperationDimensionInput {
   readonly session_history_compression_ratio_bucket?: string;
   readonly session_history_ref_seen_recently?: string;
   readonly session_history_ref_download_inflight?: string;
+  readonly session_history_content_length_state?: string;
+  readonly session_history_content_encoding_state?: string;
+  readonly session_history_transfer_encoding_state?: string;
 }
 
 function sandboxOperationDimensions(
@@ -86,6 +89,24 @@ function sandboxOperationDimensions(
       ? {
           session_history_ref_download_inflight:
             op.session_history_ref_download_inflight,
+        }
+      : {}),
+    ...(op.session_history_content_length_state
+      ? {
+          session_history_content_length_state:
+            op.session_history_content_length_state,
+        }
+      : {}),
+    ...(op.session_history_content_encoding_state
+      ? {
+          session_history_content_encoding_state:
+            op.session_history_content_encoding_state,
+        }
+      : {}),
+    ...(op.session_history_transfer_encoding_state
+      ? {
+          session_history_transfer_encoding_state:
+            op.session_history_transfer_encoding_state,
         }
       : {}),
   };

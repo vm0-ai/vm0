@@ -249,6 +249,7 @@ function buildIntegrationToolsPrompt(
     case "web": {
       return [
         "- Web chat files: use `zero web download-file -h` when a web chat message includes a `[Web file]` block. `zero web upload-file -h` can share a local file back to the web chat user when file delivery is needed.",
+        "- Cross-integration messages from web chat: if the user explicitly asks you to send or post through another integration, use the integration CLI and ask for the destination when it is missing. Slack: `zero slack message send --help` for channels, DMs, and thread replies. Telegram: `zero telegram bot list` to choose the bot, then `zero telegram message send --help` for chats, replies, and forum topics. AgentPhone/SMS: `zero phone message --help`. GitHub, Microsoft Teams, and email do not currently have dedicated Zero message-send commands, so do not invent `zero github message`, `zero teams message`, or `zero email message` commands.",
         ...localFileContextLines,
       ];
     }

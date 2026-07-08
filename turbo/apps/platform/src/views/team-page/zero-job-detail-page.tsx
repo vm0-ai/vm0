@@ -74,7 +74,11 @@ import {
 } from "../../signals/utils.ts";
 import { AgentAvatarImg } from "../zero-page/zero-sidebar-shared.tsx";
 import { openAvatarMaker$ } from "../../signals/zero-page/settings/avatar-maker.ts";
-import { currentAgent$, currentAgentId$ } from "../../signals/agent.ts";
+import {
+  agents$,
+  currentAgent$,
+  currentAgentId$,
+} from "../../signals/agent.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import { user$ } from "../../signals/auth.ts";
 import { ZeroNoPermissionIllustration } from "../zero-page/components/zero-no-permission-illustration.tsx";
@@ -98,6 +102,7 @@ import { userPreferences$ } from "../../signals/zero-page/settings/user-preferen
 import {
   agentVisibleWorkflows$,
   allWorkflowTriggerEntries$,
+  copyWorkflow$,
 } from "../../signals/workflows-page/workflows-signals.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import {
@@ -983,6 +988,81 @@ function AgentHeader({
   );
 }
 
+// Wraps the shared settings tab with agent-scoped data so the delete dialog can
+// offer to copy bound workflows onto another agent before the agent is removed.
+function AgentProfileSettings({
+  agentId,
+  displayName,
+  description,
+  avatarUrl,
+  resolvedSound,
+  isDefaultAgent,
+  visibility,
+  canEditVisibility,
+  onDelete,
+}: {
+  agentId: string;
+  displayName: string;
+  description: string;
+  avatarUrl: string | null;
+  resolvedSound: Tone;
+  isDefaultAgent: boolean;
+  visibility: "public" | "private";
+  canEditVisibility: boolean;
+  onDelete: () => Promise<void>;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const workflowsLoadable = useLastLoadable(agentVisibleWorkflows$(agentId));
+  const agentsLoadable = useLoadable(agents$);
+  const [, copyWorkflow] = useLoadableSet(copyWorkflow$);
+
+  const deleteWorkflows =
+    workflowsLoadable.state === "hasData"
+      ? workflowsLoadable.data.map((workflow) => {
+          return {
+            id: workflow.id,
+            title: workflow.displayName ?? workflow.name,
+          };
+        })
+      : [];
+  const deleteCopyTargets =
+    agentsLoadable.state === "hasData"
+      ? agentsLoadable.data
+          .filter((agent) => {
+            return agent.id !== agentId;
+          })
+          .map((agent) => {
+            return { id: agent.id, displayName: agent.displayName };
+          })
+      : [];
+
+  const copyWorkflowBeforeDelete = async (
+    workflowId: string,
+    toAgentId: string,
+  ) => {
+    await copyWorkflow({ workflowId, toAgentId }, pageSignal);
+  };
+
+  return (
+    <ZeroSettingsTab
+      key={`${displayName}\0${description}\0${resolvedSound}\0${avatarUrl}\0${visibility}`}
+      displayName={displayName}
+      description={description}
+      sound={resolvedSound}
+      avatarUrl={avatarUrl}
+      visibility={visibility}
+      canEditVisibility={canEditVisibility}
+      updateSettings$={updateAgentSettings$}
+      inputId="job-agent-name"
+      isDefaultAgent={isDefaultAgent}
+      onDelete={onDelete}
+      deleteWorkflows={deleteWorkflows}
+      deleteCopyTargets={deleteCopyTargets}
+      onCopyWorkflowBeforeDelete={copyWorkflowBeforeDelete}
+    />
+  );
+}
+
 function AgentTabContent({
   activeTab,
   agentId,
@@ -1022,17 +1102,15 @@ function AgentTabContent({
     }
     case "profile": {
       return (
-        <ZeroSettingsTab
-          key={`${displayName}\0${description}\0${resolvedSound}\0${avatarUrl}\0${visibility}`}
+        <AgentProfileSettings
+          agentId={agentId}
           displayName={displayName}
           description={description}
-          sound={resolvedSound}
           avatarUrl={avatarUrl}
+          resolvedSound={resolvedSound}
+          isDefaultAgent={isDefaultAgent}
           visibility={visibility}
           canEditVisibility={canEditVisibility}
-          updateSettings$={updateAgentSettings$}
-          inputId="job-agent-name"
-          isDefaultAgent={isDefaultAgent}
           onDelete={handleDelete}
         />
       );

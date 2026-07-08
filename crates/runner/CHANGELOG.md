@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.138.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.138.1...runner-rs-v0.138.2) (2026-07-08)
+
+
+### Performance Improvements
+
+* add session history fetch response telemetry ([#20605](https://github.com/vm0-ai/vm0/issues/20605)) ([146fc5b](https://github.com/vm0-ai/vm0/commit/146fc5b39f9697ebb318bf01ca086506e7c0bc66))
+
+## [0.138.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.138.0...runner-rs-v0.138.1) (2026-07-08)
+
+
+### Bug Fixes
+
+* add builtin firewall fallback telemetry ([#20603](https://github.com/vm0-ai/vm0/issues/20603)) ([8c99cfb](https://github.com/vm0-ai/vm0/commit/8c99cfbe7327e0e50bad252fdf773d7ff7c8f000))
+
+
+### Refactoring
+
+* **mitm-addon:** extract request classification owner ([#20587](https://github.com/vm0-ai/vm0/issues/20587)) ([a571d98](https://github.com/vm0-ai/vm0/commit/a571d98dd8d4a3a456306fa41edf710f877ec176))
+
 ## [0.138.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.137.0...runner-rs-v0.138.0) (2026-07-08)
 
 

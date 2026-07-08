@@ -12,6 +12,7 @@ import builtin_host_policy
 import firewall_auth_client as auth_client
 import flow_metadata_keys as metadata_keys
 import mitm_addon
+import request_classification
 import upstream_destination_binding
 from body_limits import STREAM_BUFFER_LIMIT
 from tests.request_handler_helpers import (
@@ -45,7 +46,7 @@ def _assert_no_request_stream(flow) -> None:
     assert flow.request.stream is False
     assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
     assert metadata_keys.REQUEST_STREAM_BUFFER_STATE not in flow.metadata
-    assert mitm_addon._REQUEST_CLASSIFICATION not in flow.metadata
+    assert request_classification.REQUEST_CLASSIFICATION_METADATA_KEY not in flow.metadata
 
 
 def test_capture_enabled_api_allow_installs_request_stream(tmp_path, real_flow, mitm_ctx):
@@ -102,7 +103,7 @@ async def test_capture_enabled_api_allow_retargets_unconnected_upstream(
         await mitm_addon.request(flow)
 
     assert flow.response is None
-    assert mitm_addon._REQUEST_CLASSIFICATION not in flow.metadata
+    assert request_classification.REQUEST_CLASSIFICATION_METADATA_KEY not in flow.metadata
     assert flow.metadata[metadata_keys.REQUEST_STREAM_COMPLETE] is True
     binding = upstream_destination_binding.binding_snapshot_for_tests()[flow.server_conn.id]
     assert binding.host == "api.vm0.ai"
@@ -856,10 +857,10 @@ async def test_request_releases_cached_classification_after_stream_setup(
 
     with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
         mitm_addon.requestheaders(flow)
-        assert mitm_addon._REQUEST_CLASSIFICATION in flow.metadata
+        assert request_classification.REQUEST_CLASSIFICATION_METADATA_KEY in flow.metadata
         await mitm_addon.request(flow)
 
-    assert mitm_addon._REQUEST_CLASSIFICATION not in flow.metadata
+    assert request_classification.REQUEST_CLASSIFICATION_METADATA_KEY not in flow.metadata
 
 
 def test_capture_enabled_chunked_body_installs_request_stream(
@@ -962,7 +963,7 @@ async def test_capture_enabled_firewall_allow_header_auth_installs_request_strea
         await mitm_addon.request(flow)
 
     auth_fetch.assert_awaited_once()
-    assert mitm_addon._REQUEST_CLASSIFICATION not in flow.metadata
+    assert request_classification.REQUEST_CLASSIFICATION_METADATA_KEY not in flow.metadata
     assert flow.metadata[metadata_keys.REQUEST_STREAM_COMPLETE] is True
 
 
@@ -1001,7 +1002,7 @@ async def test_firewall_allow_header_auth_requestheaders_strips_connector_intent
 
     auth_fetch.assert_awaited_once()
     assert flow.response is None
-    assert mitm_addon._REQUEST_CLASSIFICATION not in flow.metadata
+    assert request_classification.REQUEST_CLASSIFICATION_METADATA_KEY not in flow.metadata
     assert flow.metadata[metadata_keys.REQUEST_STREAM_COMPLETE] is True
 
 
@@ -1353,7 +1354,7 @@ async def test_firewall_allow_header_auth_requestheaders_retargets_unconnected_u
 
     auth_fetch.assert_awaited_once()
     assert flow.response is None
-    assert mitm_addon._REQUEST_CLASSIFICATION not in flow.metadata
+    assert request_classification.REQUEST_CLASSIFICATION_METADATA_KEY not in flow.metadata
     assert flow.metadata[metadata_keys.REQUEST_STREAM_COMPLETE] is True
     binding = upstream_destination_binding.binding_snapshot_for_tests()[flow.server_conn.id]
     assert binding.host == "api.github.com"
@@ -1781,4 +1782,4 @@ def test_auth_base_requestheaders_rejection_does_not_install_request_stream(
     _assert_no_request_stream(flow)
     assert flow.live is False
     assert flow.error is not None
-    assert mitm_addon._REQUEST_CLASSIFICATION not in flow.metadata
+    assert request_classification.REQUEST_CLASSIFICATION_METADATA_KEY not in flow.metadata

@@ -13,6 +13,7 @@ import auth_base_forwarder
 import builtin_connector_diagnostics
 import flow_metadata_keys as metadata_keys
 import mitm_addon
+import request_classification
 import request_streaming
 import upstream_destination_binding
 import usage
@@ -1260,7 +1261,7 @@ async def test_public_destination_revalidates_cached_auth_base_classification(
 
     with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
         assert mitm_addon.requestheaders(flow) is None
-        assert mitm_addon._REQUEST_CLASSIFICATION in flow.metadata
+        assert request_classification.REQUEST_CLASSIFICATION_METADATA_KEY in flow.metadata
         assert auth_base_forwarder.forward_request_admission_state_for_tests() == (
             1,
             mitm_addon.STREAM_BUFFER_LIMIT + 1,
@@ -1300,7 +1301,7 @@ async def test_public_destination_revalidates_cached_auth_base_hostname_classifi
 
     with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
         assert mitm_addon.requestheaders(flow) is None
-        assert mitm_addon._REQUEST_CLASSIFICATION in flow.metadata
+        assert request_classification.REQUEST_CLASSIFICATION_METADATA_KEY in flow.metadata
         assert auth_base_forwarder.forward_request_admission_state_for_tests() == (
             1,
             mitm_addon.STREAM_BUFFER_LIMIT + 1,
@@ -1590,7 +1591,7 @@ async def test_shared_base_requestheaders_diagnoses_before_stream_safe_auth(
     assert "Authorization" not in flow.request.headers
     assert "X-VM0-Connector-Intent" not in flow.request.headers
     assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
-    assert mitm_addon._REQUEST_CLASSIFICATION not in flow.metadata
+    assert request_classification.REQUEST_CLASSIFICATION_METADATA_KEY not in flow.metadata
 
 
 async def test_inactive_builtin_connector_url_without_auth_gets_local_diagnostic(
@@ -1706,7 +1707,7 @@ async def test_streamed_inactive_builtin_connector_request_waits_for_response_fa
     assert metadata_keys.FIREWALL_ERROR not in flow.metadata
     assert metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE not in flow.metadata
     assert request_streaming.streamed_request_size(flow) == len(b"partial request")
-    assert mitm_addon._REQUEST_CLASSIFICATION not in flow.metadata
+    assert request_classification.REQUEST_CLASSIFICATION_METADATA_KEY not in flow.metadata
 
 
 async def test_browser_builtin_connector_url_does_not_record_diagnostic_candidate(

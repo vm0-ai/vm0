@@ -5205,6 +5205,11 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       "zero workflow create|edit <name> --dir <path>",
       "zero developer-support --help",
       "zero maps --help",
+      "zero slack message send --help",
+      "zero telegram bot list",
+      "zero telegram message send --help",
+      "zero phone message --help",
+      "do not invent `zero github message`, `zero teams message`, or `zero email message` commands",
     ]) {
       expect(appendSystemPrompt).toContain(toolHint);
     }
@@ -6633,6 +6638,9 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
             session_history_compression_ratio_bucket: "lt_0_25",
             session_history_ref_seen_recently: "true",
             session_history_ref_download_inflight: "false",
+            session_history_content_length_state: "matches_expected",
+            session_history_content_encoding_state: "absent",
+            session_history_transfer_encoding_state: "chunked",
             session_history_ref_hash: "should-not-forward",
           },
         ],
@@ -6674,6 +6682,9 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
           session_history_compression_ratio_bucket: "lt_0_25",
           session_history_ref_seen_recently: "true",
           session_history_ref_download_inflight: "false",
+          session_history_content_length_state: "matches_expected",
+          session_history_content_encoding_state: "absent",
+          session_history_transfer_encoding_state: "chunked",
           source: "sandbox",
         }),
       ],
