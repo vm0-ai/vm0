@@ -1,0 +1,469 @@
+use crate::support::*;
+use ably_subscriber::protocol::{
+    AblyMessage, ConnectionDetails, ErrorInfo, ProtocolMessage, action, encode_msg, error_code,
+};
+use ably_subscriber::{Event, TimingConfig, subscribe};
+use futures_util::{SinkExt, StreamExt};
+use httpmock::prelude::*;
+use std::time::Duration;
+use tokio_tungstenite::tungstenite;
+
+#[tokio::test]
+async fn connect_and_receive_message() {
+    let http = MockServer::start();
+    let ws = MockAblyServer::start().await.unwrap();
+    mock_token_endpoint(&http, "testKey.testId");
+
+    let ws_port = ws.port;
+    let server_task = tokio::spawn(async move {
+        let mut conn = ws.accept_and_handshake("test-ch", "conn-1").await.unwrap();
+        send_message(
+            &mut conn,
+            "test-ch",
+            "greeting",
+            serde_json::json!({"hello": "world"}),
+        )
+        .await
+        .unwrap();
+    });
+
+    let mut sub = subscribe(test_config(ws_port, http.port(), "test-ch"))
+        .await
+        .unwrap();
+
+    let event = expect_event(&mut sub, "initial Connected").await.unwrap();
+    assert!(matches!(event, Event::Connected));
+
+    let event = expect_event(&mut sub, "greeting message").await.unwrap();
+    match event {
+        Event::Message(msg) => {
+            assert_eq!(msg.name.as_deref(), Some("greeting"));
+            assert_eq!(msg.data, serde_json::json!({"hello": "world"}));
+        }
+        other => panic!("expected Message, got {other:?}"),
+    }
+
+    join_server_task(server_task, "mock server").await.unwrap();
+}
+
+#[tokio::test]
+async fn initial_attach_is_clean_without_resume_or_serial() {
+    let http = MockServer::start();
+    let ws = MockAblyServer::start().await.unwrap();
+    mock_token_endpoint(&http, "testKey.testId");
+
+    let ws_port = ws.port;
+    let (connected_seen_tx, connected_seen_rx) = tokio::sync::oneshot::channel::<()>();
+    let server_task = tokio::spawn(async move {
+        let mut conn = ws.accept_raw().await.unwrap();
+        let connected = ProtocolMessage {
+            action: action::CONNECTED,
+            connection_id: Some("conn-1".into()),
+            connection_key: Some("conn-1!key".into()),
+            connection_details: Some(ConnectionDetails {
+                connection_key: Some("conn-1!key".into()),
+                connection_state_ttl: Some(120_000),
+                max_idle_interval: Some(15_000),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        conn.send(tungstenite::Message::Binary(
+            encode_msg(&connected).unwrap().into(),
+        ))
+        .await
+        .unwrap();
+
+        let msg = expect_protocol_msg(&mut conn, "initial ATTACH")
+            .await
+            .unwrap();
+        assert_eq!(msg.action, action::ATTACH);
+        assert_eq!(msg.channel.as_deref(), Some("ch"));
+        assert!(msg.channel_serial.is_none());
+        assert_attach_resume(&msg, false);
+
+        let attached = ProtocolMessage {
+            action: action::ATTACHED,
+            channel: Some("ch".into()),
+            channel_serial: Some("serial-0".into()),
+            ..Default::default()
+        };
+        conn.send(tungstenite::Message::Binary(
+            encode_msg(&attached).unwrap().into(),
+        ))
+        .await
+        .unwrap();
+        wait_for_test_observation(connected_seen_rx, "initial Connected event").await;
+    });
+
+    let mut sub = subscribe(test_config(ws_port, http.port(), "ch"))
+        .await
+        .unwrap();
+
+    expect_connected(&mut sub, "Connected event").await.unwrap();
+    connected_seen_tx.send(()).unwrap();
+
+    join_server_task(server_task, "mock server").await.unwrap();
+}
+
+#[tokio::test]
+async fn non_target_channel_events_do_not_pollute_resume_serial() {
+    let http = MockServer::start();
+    let ws = MockAblyServer::start().await.unwrap();
+    mock_token_endpoint(&http, "testKey.testId");
+
+    let ws_port = ws.port;
+    let server_task = tokio::spawn(async move {
+        let mut conn = ws.accept_and_handshake("ch", "conn-1").await.unwrap();
+        let missing_channel = ProtocolMessage {
+            action: action::MESSAGE,
+            channel: None,
+            channel_serial: Some("serial-missing-channel".into()),
+            messages: Some(vec![AblyMessage {
+                name: Some("wrong".into()),
+                data: Some(serde_json::json!("ignored")),
+                timestamp: Some(now_ms()),
+                ..Default::default()
+            }]),
+            ..Default::default()
+        };
+        conn.send(tungstenite::Message::Binary(
+            encode_msg(&missing_channel).unwrap().into(),
+        ))
+        .await
+        .unwrap();
+
+        let other_channel_attached = ProtocolMessage {
+            action: action::ATTACHED,
+            channel: Some("other-channel".into()),
+            channel_serial: Some("other-serial".into()),
+            ..Default::default()
+        };
+        conn.send(tungstenite::Message::Binary(
+            encode_msg(&other_channel_attached).unwrap().into(),
+        ))
+        .await
+        .unwrap();
+
+        let other_channel_detached = ProtocolMessage {
+            action: action::DETACHED,
+            channel: Some("other-channel".into()),
+            error: Some(ErrorInfo {
+                code: 80003,
+                status_code: Some(500),
+                message: "other channel detached".into(),
+            }),
+            ..Default::default()
+        };
+        conn.send(tungstenite::Message::Binary(
+            encode_msg(&other_channel_detached).unwrap().into(),
+        ))
+        .await
+        .unwrap();
+        assert!(
+            tokio::time::timeout(Duration::from_millis(250), conn.next())
+                .await
+                .is_err(),
+            "other-channel ATTACHED/DETACHED should not trigger ATTACH"
+        );
+
+        let detached = ProtocolMessage {
+            action: action::DETACHED,
+            channel: Some("ch".into()),
+            error: Some(ErrorInfo {
+                code: 80003,
+                status_code: Some(500),
+                message: "channel detached".into(),
+            }),
+            ..Default::default()
+        };
+        conn.send(tungstenite::Message::Binary(
+            encode_msg(&detached).unwrap().into(),
+        ))
+        .await
+        .unwrap();
+
+        let msg = expect_protocol_msg(&mut conn, "ATTACH after ignored message")
+            .await
+            .unwrap();
+        assert_eq!(msg.action, action::ATTACH);
+        assert_eq!(msg.channel.as_deref(), Some("ch"));
+        assert_eq!(msg.channel_serial.as_deref(), Some("serial-0"));
+        assert_attach_resume(&msg, true);
+
+        let attached = ProtocolMessage {
+            action: action::ATTACHED,
+            channel: Some("ch".into()),
+            channel_serial: Some("serial-2".into()),
+            ..Default::default()
+        };
+        conn.send(tungstenite::Message::Binary(
+            encode_msg(&attached).unwrap().into(),
+        ))
+        .await
+        .unwrap();
+
+        send_message(&mut conn, "ch", "expected", serde_json::json!("ok"))
+            .await
+            .unwrap();
+    });
+
+    let mut sub = subscribe(test_config(ws_port, http.port(), "ch"))
+        .await
+        .unwrap();
+
+    expect_connected(&mut sub, "Connected event").await.unwrap();
+    let event = expect_event(&mut sub, "matching-channel message")
+        .await
+        .unwrap();
+    match event {
+        Event::Message(msg) => assert_eq!(msg.name.as_deref(), Some("expected")),
+        other => panic!("expected Message, got {other:?}"),
+    }
+
+    join_server_task(server_task, "mock server").await.unwrap();
+}
+
+#[tokio::test]
+async fn zero_event_channel_capacity_uses_minimum_capacity() {
+    let http = MockServer::start();
+    let ws = MockAblyServer::start().await.unwrap();
+    mock_token_endpoint(&http, "testKey.testId");
+
+    let ws_port = ws.port;
+    let (message_seen_tx, message_seen_rx) = tokio::sync::oneshot::channel::<()>();
+    let server_task = tokio::spawn(async move {
+        let mut conn = ws.accept_and_handshake("ch", "conn-1").await.unwrap();
+        send_message(&mut conn, "ch", "after-connect", serde_json::json!(1))
+            .await
+            .unwrap();
+        wait_for_test_observation(message_seen_rx, "after-connect message").await;
+    });
+
+    let mut timing = TimingConfig::default();
+    timing.event_channel_capacity = 0;
+    let mut sub = subscribe(test_config_with_timing(ws_port, http.port(), "ch", timing))
+        .await
+        .unwrap();
+
+    expect_connected(&mut sub, "Connected event").await.unwrap();
+    let event = expect_event(&mut sub, "message").await.unwrap();
+    match event {
+        Event::Message(msg) => {
+            assert_eq!(msg.name.as_deref(), Some("after-connect"));
+            message_seen_tx.send(()).unwrap();
+        }
+        other => panic!("expected Message, got {other:?}"),
+    }
+
+    join_server_task(server_task, "mock server").await.unwrap();
+}
+
+// ---------------------------------------------------------------------------
+// Test 2: multiple messages received in order
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn multiple_messages() {
+    let http = MockServer::start();
+    let ws = MockAblyServer::start().await.unwrap();
+    mock_token_endpoint(&http, "testKey.testId");
+
+    let ws_port = ws.port;
+    let server_task = tokio::spawn(async move {
+        let mut conn = ws.accept_and_handshake("ch", "conn-1").await.unwrap();
+        for i in 0..3 {
+            send_message(&mut conn, "ch", &format!("evt-{i}"), serde_json::json!(i))
+                .await
+                .unwrap();
+        }
+    });
+
+    let mut sub = subscribe(test_config(ws_port, http.port(), "ch"))
+        .await
+        .unwrap();
+
+    expect_connected(&mut sub, "Connected event").await.unwrap();
+    for i in 0..3 {
+        match expect_event(&mut sub, "message in sequence").await.unwrap() {
+            Event::Message(msg) => {
+                assert_eq!(msg.name.as_deref(), Some(format!("evt-{i}").as_str()));
+            }
+            other => panic!("expected Message, got {other:?}"),
+        }
+    }
+
+    join_server_task(server_task, "mock server").await.unwrap();
+}
+
+// ---------------------------------------------------------------------------
+// Test 3: batched messages in a single frame
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn batched_messages_in_single_frame() {
+    let http = MockServer::start();
+    let ws = MockAblyServer::start().await.unwrap();
+    mock_token_endpoint(&http, "testKey.testId");
+
+    let ws_port = ws.port;
+    let server_task = tokio::spawn(async move {
+        let mut conn = ws.accept_and_handshake("ch", "conn-1").await.unwrap();
+        let msg = ProtocolMessage {
+            action: action::MESSAGE,
+            channel: Some("ch".into()),
+            channel_serial: Some("serial-1".into()),
+            messages: Some(vec![
+                AblyMessage {
+                    name: Some("a".into()),
+                    data: Some(serde_json::json!(1)),
+                    ..Default::default()
+                },
+                AblyMessage {
+                    name: Some("b".into()),
+                    data: Some(serde_json::json!(2)),
+                    ..Default::default()
+                },
+                AblyMessage {
+                    name: Some("c".into()),
+                    data: Some(serde_json::json!(3)),
+                    ..Default::default()
+                },
+            ]),
+            ..Default::default()
+        };
+        conn.send(tungstenite::Message::Binary(
+            encode_msg(&msg).unwrap().into(),
+        ))
+        .await
+        .unwrap();
+    });
+
+    let mut sub = subscribe(test_config(ws_port, http.port(), "ch"))
+        .await
+        .unwrap();
+
+    expect_connected(&mut sub, "Connected event").await.unwrap();
+
+    let mut names = Vec::new();
+    for _ in 0..3 {
+        match expect_event(&mut sub, "batched message").await.unwrap() {
+            Event::Message(m) => names.push(m.name.unwrap_or_default()),
+            other => panic!("expected Message, got {other:?}"),
+        }
+    }
+
+    assert_eq!(names, vec!["a", "b", "c"]);
+
+    join_server_task(server_task, "mock server").await.unwrap();
+}
+
+// ---------------------------------------------------------------------------
+// Test 4: message with json encoding
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn message_with_json_encoding() {
+    let http = MockServer::start();
+    let ws = MockAblyServer::start().await.unwrap();
+    mock_token_endpoint(&http, "testKey.testId");
+
+    let ws_port = ws.port;
+    tokio::spawn(async move {
+        let mut conn = ws.accept_and_handshake("ch", "conn-1").await.unwrap();
+        let msg = ProtocolMessage {
+            action: action::MESSAGE,
+            channel: Some("ch".into()),
+            channel_serial: Some("serial-1".into()),
+            messages: Some(vec![AblyMessage {
+                name: Some("evt".into()),
+                data: Some(serde_json::json!(r#"{"runId":"uuid-123"}"#)),
+                encoding: Some("json".into()),
+                ..Default::default()
+            }]),
+            ..Default::default()
+        };
+        conn.send(tungstenite::Message::Binary(
+            encode_msg(&msg).unwrap().into(),
+        ))
+        .await
+        .unwrap();
+    });
+
+    let mut sub = subscribe(test_config(ws_port, http.port(), "ch"))
+        .await
+        .unwrap();
+
+    expect_connected(&mut sub, "Connected event").await.unwrap();
+
+    match expect_event(&mut sub, "JSON-encoded message")
+        .await
+        .unwrap()
+    {
+        Event::Message(msg) => {
+            assert_eq!(msg.data, serde_json::json!({"runId": "uuid-123"}));
+        }
+        other => panic!("expected Message, got {other:?}"),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Test 5: server error during handshake
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn server_error_during_handshake() {
+    let http = MockServer::start();
+    let ws = MockAblyServer::start().await.unwrap();
+    mock_token_endpoint(&http, "testKey.testId");
+
+    let ws_port = ws.port;
+    tokio::spawn(async move {
+        let mut conn = ws.accept_raw().await.unwrap();
+        let error_msg = ProtocolMessage {
+            action: action::ERROR,
+            error: Some(ErrorInfo {
+                code: error_code::FAILED,
+                status_code: Some(401),
+                message: "Unauthorized".into(),
+            }),
+            ..Default::default()
+        };
+        conn.send(tungstenite::Message::Binary(
+            encode_msg(&error_msg).unwrap().into(),
+        ))
+        .await
+        .unwrap();
+    });
+
+    let result = subscribe(test_config(ws_port, http.port(), "ch")).await;
+    match result {
+        Err(ably_subscriber::Error::Protocol { .. }) => {}
+        Err(other) => panic!("expected Protocol error, got {other:?}"),
+        Ok(_) => panic!("expected error, got Ok"),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Test 6: connection closed before CONNECTED
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn connection_closed_before_connected() {
+    let http = MockServer::start();
+    let ws = MockAblyServer::start().await.unwrap();
+    mock_token_endpoint(&http, "testKey.testId");
+
+    let ws_port = ws.port;
+    tokio::spawn(async move {
+        let conn = ws.accept_raw().await.unwrap();
+        drop(conn);
+    });
+
+    let result = subscribe(test_config(ws_port, http.port(), "ch")).await;
+    assert!(result.is_err());
+}
+
+// ---------------------------------------------------------------------------
+// Test 7: HTTP token exchange error (500)
+// ---------------------------------------------------------------------------
