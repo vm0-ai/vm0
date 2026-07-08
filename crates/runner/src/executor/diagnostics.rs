@@ -204,11 +204,9 @@ pub(super) fn should_collect_unattributed_sigkill_resource_diagnostics(
     wait_cancelled: bool,
     exit: &sandbox::ProcessExit,
     failure_diagnostic: Option<&FailureDiagnostic>,
-    guest_error: Option<&str>,
 ) -> bool {
     !wait_cancelled
         && process_exited_nonzero(exit)
-        && guest_error.is_none()
         && failure_diagnostic.is_some_and(unattributed_sigkill_cli_failure)
 }
 

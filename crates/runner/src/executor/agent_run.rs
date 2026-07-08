@@ -1529,7 +1529,6 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                 wait_cancelled,
                 &exit,
                 failure_diagnostic.as_ref(),
-                guest_error.as_deref(),
             );
         let should_collect_resource_diagnostics =
             should_collect_resource_diagnostics || should_collect_sigkill_resource_diagnostics;

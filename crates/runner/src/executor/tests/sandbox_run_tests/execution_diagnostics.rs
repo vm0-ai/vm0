@@ -849,7 +849,7 @@ async fn execute_inner_unattributed_sigkill_failure_collects_resource_diagnostic
     .with_cli_observed_exit(CliObservedExitDiagnostic::from_signal(libc::SIGKILL))
     .with_failure_detail_source(FailureDetailSource::FallbackExitCode);
     overrides.push_read_file_result(Ok(Some(serde_json::to_vec(&diagnostic).unwrap())));
-    overrides.push_read_file_result(Ok(None));
+    overrides.push_read_file_result(Ok(Some(b"Agent exited with code 137".to_vec())));
     overrides.add_exec_matcher(sandbox_mock::ExecMatcher {
         pattern: "guest-agent-binary".to_string(),
         exit_code: 0,

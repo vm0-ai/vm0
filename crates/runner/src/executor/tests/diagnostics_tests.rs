@@ -173,8 +173,7 @@ fn unattributed_sigkill_resource_diagnostics_match_observed_sigkill() {
     assert!(should_collect_unattributed_sigkill_resource_diagnostics(
         false,
         &exit,
-        Some(&diagnostic),
-        None
+        Some(&diagnostic)
     ));
 }
 
@@ -187,8 +186,7 @@ fn unattributed_sigkill_resource_diagnostics_do_not_match_explicit_exit_137() {
     assert!(!should_collect_unattributed_sigkill_resource_diagnostics(
         false,
         &exit,
-        Some(&diagnostic),
-        None
+        Some(&diagnostic)
     ));
 }
 
@@ -200,8 +198,7 @@ fn unattributed_sigkill_resource_diagnostics_support_old_137_diagnostics() {
     assert!(should_collect_unattributed_sigkill_resource_diagnostics(
         false,
         &exit,
-        Some(&diagnostic),
-        None
+        Some(&diagnostic)
     ));
 }
 
@@ -237,38 +234,27 @@ fn unattributed_sigkill_resource_diagnostics_require_unattributed_fallback_failu
     assert!(!should_collect_unattributed_sigkill_resource_diagnostics(
         false,
         &exit,
-        Some(&attributed_diagnostic),
-        None
+        Some(&attributed_diagnostic)
     ));
     assert!(!should_collect_unattributed_sigkill_resource_diagnostics(
         false,
         &exit,
-        Some(&specific_diagnostic),
-        None
+        Some(&specific_diagnostic)
     ));
     assert!(!should_collect_unattributed_sigkill_resource_diagnostics(
         false,
         &exit,
-        Some(&non_cli_diagnostic),
-        None
+        Some(&non_cli_diagnostic)
     ));
     assert!(!should_collect_unattributed_sigkill_resource_diagnostics(
         false,
         &timed_out_exit,
-        Some(&fallback_cli_nonzero_diagnostic(137)),
-        None
+        Some(&fallback_cli_nonzero_diagnostic(137))
     ));
     assert!(!should_collect_unattributed_sigkill_resource_diagnostics(
         true,
         &exit,
-        Some(&fallback_cli_nonzero_diagnostic(137)),
-        None
-    ));
-    assert!(!should_collect_unattributed_sigkill_resource_diagnostics(
-        false,
-        &exit,
-        Some(&fallback_cli_nonzero_diagnostic(137)),
-        Some("guest error")
+        Some(&fallback_cli_nonzero_diagnostic(137))
     ));
 }
 
