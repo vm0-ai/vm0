@@ -7,6 +7,8 @@ import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/
 import { permissionGrantsToFirewallPolicies } from "@vm0/connectors/firewall-metadata";
 import { resolveFirewallServerMetadataPolicies } from "@vm0/connectors/firewall-metadata/server";
 import type { FirewallPolicies } from "@vm0/connectors/firewall-types";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import {
@@ -39,6 +41,7 @@ import { loadAgentConnectorScope } from "./agent-connector-scope.service";
 import { loadActiveUserPermissionGrants } from "./zero-user-permission-grants.service";
 import { loadWorkflowsForRun } from "./zero-workflow-data.service";
 import type { InternalRunCallbackKind } from "./internal-run-callback";
+import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 
 type ZeroRunCreateBody = z.infer<(typeof zeroRunsMainContract.create)["body"]>;
 type ZeroRunOrigin =
@@ -99,6 +102,11 @@ interface UserInfo {
   readonly telegramUserId?: string;
   readonly telegramLanguage?: string;
   readonly agentphoneHandle?: string;
+}
+
+interface ZeroRunPromptContext {
+  readonly userInfo: UserInfo;
+  readonly relationshipMemoryEnabled: boolean;
 }
 
 interface ZeroAgentConfig {
@@ -292,15 +300,31 @@ function buildIntegrationToolsPrompt(
   }
 }
 
-function buildAgentToolsPrompt(triggerSource: TriggerSource): string {
+function buildZeroMemoryToolsPrompt(
+  relationshipMemoryEnabled: boolean,
+): readonly string[] {
+  if (!relationshipMemoryEnabled) {
+    return [];
+  }
+
+  return [
+    '- Relationship memory: when durable relationship context would materially help, use `zero memory recall "<query>"` to search structured memory or `zero memory context --query "<topic>"` for prompt-ready context. Run `zero memory --help` for options. These commands are read-only and use the authenticated user\'s active organization.',
+  ];
+}
+
+function buildAgentToolsPrompt(args: {
+  readonly triggerSource: TriggerSource;
+  readonly relationshipMemoryEnabled: boolean;
+}): string {
   return [
     "# Agent Tools",
     "You have access to the Zero CLI. Run commands with: `npx -p @vm0/cli zero <command>`",
     "- Discover available commands: `zero --help`.",
     "- Search agent run logs, web chat messages, or external services via connectors: `zero search --help`.",
+    ...buildZeroMemoryToolsPrompt(args.relationshipMemoryEnabled),
     "- Manage recurring workflow triggers: `zero workflow trigger --help`. Do NOT use /loop, cron tools (CronCreate, CronList, CronDelete), or ScheduleWakeup — they are not available.",
     "- Browser access: the runtime environment includes `agent-browser` for browser automation and inspection.",
-    ...buildIntegrationToolsPrompt(triggerSource),
+    ...buildIntegrationToolsPrompt(args.triggerSource),
     "- Maps, geocoding, directions, and places: use `zero maps --help`.",
     "- Static web artifacts can be published with `zero host <dir> --site <slug> [--spa]`; for HTML presentations, include `--artifact-kind presentation-html`; run `zero host --help` for details.",
     "- Third-party services (GitHub, Slack, Notion, 100+ more) are accessed via connectors that expose environment names like `GH_TOKEN`. Find: `zero connector search <keyword>`. List connected: `zero connector list`. Inspect: `zero connector status <type>`.",
@@ -365,11 +389,15 @@ function buildAppendSystemPrompt(args: {
   readonly agent: ZeroAgentRunRecord;
   readonly userInfo: UserInfo;
   readonly triggerSource: TriggerSource;
+  readonly relationshipMemoryEnabled: boolean;
 }): string {
   const identity = buildAgentIdentityPrompt(args.agent);
   return [
     identity,
-    buildAgentToolsPrompt(args.triggerSource),
+    buildAgentToolsPrompt({
+      triggerSource: args.triggerSource,
+      relationshipMemoryEnabled: args.relationshipMemoryEnabled,
+    }),
     buildCurrentUserPrompt(args.userInfo),
   ]
     .filter((part): part is string => {
@@ -553,6 +581,35 @@ async function loadUserInfo(
   };
 }
 
+async function loadRelationshipMemoryEnabled(
+  db: Db,
+  args: {
+    readonly userId: string;
+    readonly orgId: string;
+  },
+): Promise<boolean> {
+  const context = await loadUserFeatureSwitchContext(
+    db,
+    args.orgId,
+    args.userId,
+  );
+  return isFeatureEnabled(FeatureSwitchKey.RelationshipMemory, context);
+}
+
+async function loadZeroRunPromptContext(
+  db: Db,
+  args: {
+    readonly userId: string;
+    readonly orgId: string;
+  },
+): Promise<ZeroRunPromptContext> {
+  const [userInfo, relationshipMemoryEnabled] = await Promise.all([
+    loadUserInfo(db, args),
+    loadRelationshipMemoryEnabled(db, args),
+  ]);
+  return { userInfo, relationshipMemoryEnabled };
+}
+
 async function triggerAgentIdForAuth(
   db: Db,
   auth: AuthContext & { readonly orgId: string },
@@ -578,6 +635,7 @@ function createRunBody(args: {
   readonly body: ZeroRunCreateBody;
   readonly agent: ZeroAgentRunRecord;
   readonly userInfo: UserInfo;
+  readonly relationshipMemoryEnabled: boolean;
   readonly permissionPolicies: FirewallPolicies | null | undefined;
   readonly triggerAgentId: string | undefined;
   readonly triggerSource: TriggerSource | undefined;
@@ -590,6 +648,7 @@ function createRunBody(args: {
     agent: args.agent,
     userInfo: args.userInfo,
     triggerSource,
+    relationshipMemoryEnabled: args.relationshipMemoryEnabled,
   });
   return {
     prompt: args.body.prompt,
@@ -621,6 +680,7 @@ function createIntegrationRunBody(args: {
   readonly sessionId: string | undefined;
   readonly agent: ZeroAgentRunRecord;
   readonly userInfo: UserInfo;
+  readonly relationshipMemoryEnabled: boolean;
   readonly permissionPolicies: FirewallPolicies | null | undefined;
   readonly triggerSource: TriggerSource;
   readonly appendSystemPrompt: string | undefined;
@@ -636,6 +696,7 @@ function createIntegrationRunBody(args: {
         agent: args.agent,
         userInfo: args.userInfo,
         triggerSource: args.triggerSource,
+        relationshipMemoryEnabled: args.relationshipMemoryEnabled,
       }),
       args.appendSystemPrompt,
     ),
@@ -731,6 +792,7 @@ function buildZeroCreateAgentRunArgs(args: {
   readonly command: CreateZeroRunCommandArgs;
   readonly agent: ZeroAgentRunRecord;
   readonly userInfo: UserInfo;
+  readonly relationshipMemoryEnabled: boolean;
   readonly runPermissionPolicies: FirewallPolicies | null | undefined;
   readonly triggerAgentId: string | undefined;
   readonly workflows: Awaited<ReturnType<typeof loadWorkflowsForRun>>;
@@ -746,6 +808,7 @@ function buildZeroCreateAgentRunArgs(args: {
       body: command.body,
       agent: args.agent,
       userInfo: { ...args.userInfo, ...command.userInfoExtras },
+      relationshipMemoryEnabled: args.relationshipMemoryEnabled,
       permissionPolicies: args.runPermissionPolicies,
       triggerAgentId: args.triggerAgentId,
       triggerSource: command.triggerSource,
@@ -799,6 +862,7 @@ function buildZeroIntegrationCreateAgentRunArgs(args: {
   readonly command: CreateZeroIntegrationRunCommandArgs;
   readonly agent: ZeroAgentRunRecord;
   readonly userInfo: UserInfo;
+  readonly relationshipMemoryEnabled: boolean;
   readonly runPermissionPolicies: FirewallPolicies | null | undefined;
   readonly workflows: Awaited<ReturnType<typeof loadWorkflowsForRun>>;
   readonly allowedConnectorTypes: readonly ConnectorType[];
@@ -814,6 +878,7 @@ function buildZeroIntegrationCreateAgentRunArgs(args: {
       sessionId: command.sessionId,
       agent: args.agent,
       userInfo: { ...args.userInfo, ...command.userInfoExtras },
+      relationshipMemoryEnabled: args.relationshipMemoryEnabled,
       permissionPolicies: args.runPermissionPolicies,
       triggerSource: command.triggerSource,
       appendSystemPrompt: command.appendSystemPrompt,
@@ -865,11 +930,11 @@ export const createZeroIntegrationRun$ = command(
       return forbidden("Only the private agent owner can run this agent");
     }
 
-    const userInfo = await measureZeroPreCreate(
+    const { userInfo, relationshipMemoryEnabled } = await measureZeroPreCreate(
       timing,
       "api_dispatch_pre_create_zero_load_user_info",
       async () => {
-        return await loadUserInfo(db, {
+        return await loadZeroRunPromptContext(db, {
           userId: args.userId,
           orgId: args.orgId,
         });
@@ -929,6 +994,7 @@ export const createZeroIntegrationRun$ = command(
           command: args,
           agent,
           userInfo,
+          relationshipMemoryEnabled,
           runPermissionPolicies,
           workflows,
           allowedConnectorTypes,
@@ -982,11 +1048,11 @@ export const createZeroRun$ = command(
       return forbidden("Only the private agent owner can run this agent");
     }
 
-    const userInfo = await measureZeroPreCreate(
+    const { userInfo, relationshipMemoryEnabled } = await measureZeroPreCreate(
       timing,
       "api_dispatch_pre_create_zero_load_user_info",
       async () => {
-        return await loadUserInfo(db, {
+        return await loadZeroRunPromptContext(db, {
           userId: args.auth.userId,
           orgId: args.auth.orgId,
         });
@@ -1058,6 +1124,7 @@ export const createZeroRun$ = command(
           command: args,
           agent,
           userInfo,
+          relationshipMemoryEnabled,
           runPermissionPolicies,
           triggerAgentId,
           workflows,
