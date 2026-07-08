@@ -3,7 +3,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use sandbox::{
     ProcessOutputChunk, ProcessOutputMode, Sandbox, SandboxConfig, SandboxCreateObserver,
-    SandboxCreateStage, SandboxFactory, SandboxId,
+    SandboxCreateStage, SandboxError, SandboxFactory, SandboxId, SandboxInitializationPhase,
 };
 use sandbox_mock::MockSandboxFactory;
 
@@ -83,14 +83,38 @@ fn assert_action_success(telemetry: &JobTelemetry, action: &str, success: bool) 
     assert_eq!(op.1, success, "{action} success flag");
 }
 
+fn assert_action_outcome(
+    telemetry: &JobTelemetry,
+    action: &str,
+    success: bool,
+    error: Option<&str>,
+) {
+    let ops = telemetry.pending_ops_snapshot();
+    let op = ops
+        .iter()
+        .find(|op| op.0 == action)
+        .unwrap_or_else(|| panic!("expected telemetry action {action}, got: {ops:?}"));
+    assert_eq!(op.1, success, "{action} success flag");
+    assert_eq!(op.2.as_deref(), error, "{action} error");
+}
+
 struct ObservedMockSandboxFactory {
     inner: MockSandboxFactory,
+    failed_stage: Option<SandboxCreateStage>,
 }
 
 impl ObservedMockSandboxFactory {
     fn new() -> Self {
         Self {
             inner: MockSandboxFactory::new(),
+            failed_stage: None,
+        }
+    }
+
+    fn with_failed_stage(stage: SandboxCreateStage) -> Self {
+        Self {
+            inner: MockSandboxFactory::new(),
+            failed_stage: Some(stage),
         }
     }
 }
@@ -114,6 +138,16 @@ impl SandboxFactory for ObservedMockSandboxFactory {
         config: SandboxConfig,
         observer: Option<&mut dyn SandboxCreateObserver>,
     ) -> sandbox::Result<Box<dyn Sandbox>> {
+        if let Some(stage) = self.failed_stage {
+            if let Some(observer) = observer {
+                observer.record_stage(stage, Duration::from_millis(1), false);
+            }
+            return Err(SandboxError::Initialization {
+                phase: SandboxInitializationPhase::SandboxAllocation,
+                message: "observed mock create failure".to_string(),
+            });
+        }
+
         if let Some(observer) = observer {
             for (index, stage) in SandboxCreateStage::ALL.iter().copied().enumerate() {
                 observer.record_stage(stage, Duration::from_millis(index as u64 + 1), true);
@@ -333,6 +367,42 @@ async fn execute_job_records_runner_pre_spawn_and_fresh_path_timing() {
     assert_lacks_action(&telemetry, "runner_reused_sandbox_prepare");
     assert_lacks_action(&telemetry, "runner_fresh_workspace_image_prepare");
     assert_lacks_action(&telemetry, "runner_guest_state_restore");
+}
+
+#[tokio::test]
+async fn execute_job_records_failed_fresh_sandbox_factory_stage_timing() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let factory = ObservedMockSandboxFactory::with_failed_stage(SandboxCreateStage::NbdCowCreate);
+
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let (_outcome, telemetry) = execute_job(
+        &factory,
+        minimal_context(),
+        NewSandboxDispatch {
+            id: SandboxId::new_v4(),
+            reuse_result: SandboxReuseResult::PoolMiss,
+        },
+        &config,
+        &default_params(),
+        cancel,
+    )
+    .await;
+
+    assert_action_outcome(
+        &telemetry,
+        "runner_fresh_sandbox_factory_nbd_cow_create",
+        false,
+        Some("sandbox_factory_create_stage_failed"),
+    );
+    assert_action_outcome(
+        &telemetry,
+        "runner_fresh_sandbox_factory_create",
+        false,
+        Some("sandbox_factory_create_failed"),
+    );
+    assert_action_success(&telemetry, "vm_create", false);
+    assert_lacks_action(&telemetry, "runner_fresh_sandbox_start");
 }
 
 #[tokio::test]
