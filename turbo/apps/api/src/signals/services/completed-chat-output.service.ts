@@ -418,11 +418,10 @@ export async function resolveCompletedChatOutputWithRetry(args: {
   readonly maxAttempts?: number;
   readonly retryDelayMs?: number;
 }): Promise<CompletedChatOutputResolution> {
-  const maxAttempts =
-    args.maxAttempts ??
-    (args.lastEventSequence === null
-      ? COMPLETED_CHAT_OUTPUT_MISSING_WATERMARK_RETRY_ATTEMPTS
-      : COMPLETED_CHAT_OUTPUT_RETRY_ATTEMPTS);
+  const maxMissingWatermarkAttempts =
+    args.maxAttempts ?? COMPLETED_CHAT_OUTPUT_MISSING_WATERMARK_RETRY_ATTEMPTS;
+  const maxWatermarkedAttempts =
+    args.maxAttempts ?? COMPLETED_CHAT_OUTPUT_RETRY_ATTEMPTS;
   const retryDelayMs =
     args.retryDelayMs ?? COMPLETED_CHAT_OUTPUT_RETRY_DELAY_MS;
   let lastEventSequence = args.lastEventSequence;
@@ -430,11 +429,19 @@ export async function resolveCompletedChatOutputWithRetry(args: {
     kind: "not_visible_yet",
     reason: "axiom_no_output",
   };
+  let missingWatermarkAttempts = 0;
+  let watermarkedAttempts = 0;
 
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+  for (;;) {
     if (lastEventSequence === null) {
       lastEventSequence = await loadRunLastEventSequence(args.db, args.runId);
       args.signal.throwIfAborted();
+    }
+    const hasWatermark = lastEventSequence !== null;
+    if (hasWatermark) {
+      watermarkedAttempts++;
+    } else {
+      missingWatermarkAttempts++;
     }
 
     lastResult = await resolveCompletedChatOutput({
@@ -446,7 +453,21 @@ export async function resolveCompletedChatOutputWithRetry(args: {
     if (lastResult.kind !== "not_visible_yet") {
       return lastResult;
     }
-    if (attempt + 1 >= maxAttempts) {
+    if (!hasWatermark) {
+      lastEventSequence = await loadRunLastEventSequence(args.db, args.runId);
+      args.signal.throwIfAborted();
+      if (lastEventSequence !== null) {
+        continue;
+      }
+    }
+
+    const attempts = hasWatermark
+      ? watermarkedAttempts
+      : missingWatermarkAttempts;
+    const maxAttempts = hasWatermark
+      ? maxWatermarkedAttempts
+      : maxMissingWatermarkAttempts;
+    if (attempts >= maxAttempts) {
       break;
     }
 

@@ -2760,7 +2760,8 @@ describe("INT-01: Slack app deep webhook flows", () => {
     let legacyRunId = "";
     let legacySandboxToken = "";
     let legacyWatermarkInjected = false;
-    let legacyOutputQueryCount = 0;
+    let legacyUnwatermarkedOutputQueries = 0;
+    let legacyWatermarkedOutputQueries = 0;
     let legacyVisibilityQuerySeen = false;
     context.mocks.axiom.query.mockImplementation(async (...args: unknown[]) => {
       const apl = typeof args[0] === "string" ? args[0] : "";
@@ -2769,8 +2770,11 @@ describe("INT-01: Slack app deep webhook flows", () => {
         return [{ sequenceNumber: 0 }];
       }
       if (apl.includes('eventType == "assistant"')) {
-        legacyOutputQueryCount++;
-        if (!legacyWatermarkInjected) {
+        if (!apl.includes("| where sequenceNumber <= 0")) {
+          legacyUnwatermarkedOutputQueries++;
+          if (legacyUnwatermarkedOutputQueries < 4) {
+            return [];
+          }
           legacyWatermarkInjected = true;
           await webhooks.requestAgentComplete(
             {
@@ -2783,15 +2787,14 @@ describe("INT-01: Slack app deep webhook flows", () => {
           );
           return [];
         }
-        return apl.includes("| where sequenceNumber <= 0")
-          ? [
-              {
-                eventType: "result",
-                sequenceNumber: 0,
-                eventData: { result: legacyCompleteText },
-              },
-            ]
-          : [];
+        legacyWatermarkedOutputQueries++;
+        return [
+          {
+            eventType: "result",
+            sequenceNumber: 0,
+            eventData: { result: legacyCompleteText },
+          },
+        ];
       }
       return [];
     });
@@ -2822,7 +2825,9 @@ describe("INT-01: Slack app deep webhook flows", () => {
         }),
       );
     });
-    expect(legacyOutputQueryCount).toBe(2);
+    expect(legacyWatermarkInjected).toBeTruthy();
+    expect(legacyUnwatermarkedOutputQueries).toBe(4);
+    expect(legacyWatermarkedOutputQueries).toBe(1);
     expect(legacyVisibilityQuerySeen).toBeTruthy();
 
     context.mocks.axiom.query.mockImplementation((...args: unknown[]) => {
