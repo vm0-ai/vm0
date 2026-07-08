@@ -856,6 +856,9 @@ exit 0
         assert!(stderr.contains("workspace mount: category=child id=101"));
         assert!(stderr.contains("workspace mount: category=same-device id=102"));
         assert!(stderr.contains("workspace mount diagnostics: mountinfo scan completed"));
+        let log = fs::read_to_string(log_path).unwrap();
+        assert!(log.contains(&child_mount.display().to_string()));
+        assert!(!log.contains(&sibling_mount.display().to_string()));
     }
 
     #[test]
