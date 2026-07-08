@@ -1,5 +1,6 @@
 import { ApiRequestError, getBaseUrl } from "../core/client-factory";
 import { getActiveToken } from "../config";
+import { headersWithCliClientHeaders } from "../client-headers";
 
 type ZeroMapsOperation =
   | "geocode"
@@ -77,7 +78,7 @@ export async function callZeroMaps(
     new URL(`/api/zero/maps/${operation}`, baseUrl),
     {
       method: "POST",
-      headers: authenticatedJsonHeaders(token),
+      headers: headersWithCliClientHeaders(authenticatedJsonHeaders(token)),
       body: JSON.stringify(body),
     },
   );

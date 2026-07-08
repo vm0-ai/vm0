@@ -6,6 +6,7 @@ import type {
 } from "@vm0/api-contracts/contracts/zero-host";
 import { ApiRequestError, getBaseUrl } from "../core/client-factory";
 import { getActiveToken } from "../config";
+import { headersWithCliClientHeaders } from "../client-headers";
 
 function authHeaders(
   token: string,
@@ -62,7 +63,7 @@ export async function prepareHostedSite(
     new URL("/api/zero/host/deployments/prepare", baseUrl),
     {
       method: "POST",
-      headers: authHeaders(token, { json: true }),
+      headers: headersWithCliClientHeaders(authHeaders(token, { json: true })),
       body: JSON.stringify(body),
     },
   );
@@ -87,7 +88,7 @@ export async function completeHostedSite(
     ),
     {
       method: "POST",
-      headers: authHeaders(token, { json: true }),
+      headers: headersWithCliClientHeaders(authHeaders(token, { json: true })),
       body: JSON.stringify({}),
     },
   );
@@ -112,7 +113,7 @@ export async function getHostedSiteFiles(
     ),
     {
       method: "GET",
-      headers: authHeaders(token),
+      headers: headersWithCliClientHeaders(authHeaders(token)),
     },
   );
   if (!response.ok) {

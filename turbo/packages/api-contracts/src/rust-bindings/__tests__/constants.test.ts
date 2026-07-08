@@ -17,6 +17,7 @@ import {
   CLIENT_REQUEST_ID_HEADER,
   CLIENT_SESSION_ID_HEADER,
   CLIENT_TYPE_APP,
+  CLIENT_TYPE_CLI,
   CLIENT_TYPE_DESKTOP,
   CLIENT_TYPE_GUEST_AGENT,
   CLIENT_TYPE_HEADER,
@@ -140,6 +141,12 @@ const expectedBindings = [
     rustConstName: "CLIENT_TYPE_APP",
     value: rustString(CLIENT_TYPE_APP),
     rustDoc: ["Client type value for the platform web app."],
+  },
+  {
+    rustModulePath: ["client", "types"],
+    rustConstName: "CLIENT_TYPE_CLI",
+    value: rustString(CLIENT_TYPE_CLI),
+    rustDoc: ["Client type value for the CLI."],
   },
   {
     rustModulePath: ["client", "types"],
@@ -430,6 +437,9 @@ describe("Rust constant bindings", () => {
     );
     expect(firstRender).toContain(
       `pub const CLIENT_TYPE_APP: &str = "${CLIENT_TYPE_APP}";`,
+    );
+    expect(firstRender).toContain(
+      `pub const CLIENT_TYPE_CLI: &str = "${CLIENT_TYPE_CLI}";`,
     );
     expect(firstRender).toContain(
       `pub const CLIENT_TYPE_DESKTOP: &str = "${CLIENT_TYPE_DESKTOP}";`,
