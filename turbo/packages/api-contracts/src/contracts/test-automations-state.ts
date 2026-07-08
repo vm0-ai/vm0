@@ -29,6 +29,10 @@ export const testAutomationsStateActionBodySchema = z.discriminatedUnion(
       action: z.literal("seed-vm0-managed-default-model-key"),
     }),
     z.object({
+      action: z.literal("seed-vm0-managed-model-key"),
+      selected_model: z.string(),
+    }),
+    z.object({
       action: z.literal("delete-vm0-managed-default-model-key"),
     }),
     z.object({

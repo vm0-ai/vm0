@@ -21,6 +21,7 @@ mod system_log;
 
 use nix::sys::inotify::{AddWatchFlags, InitFlags, Inotify};
 use serde_json::{Value, json};
+use std::collections::HashMap;
 use std::io;
 use std::os::fd::{AsFd, AsRawFd, OwnedFd};
 use std::path::{Path, PathBuf};
@@ -530,6 +531,26 @@ pub unsafe fn set_run_payload_file_env_for_test(
     let path = write_run_payload_file_for_test(runtime_dir, payload)?;
     unsafe {
         std::env::set_var(guest_contracts::env::RUN_PAYLOAD_FILE_ENV, path);
+    }
+    Ok(())
+}
+
+/// Write model-provider/user environment and expose it through process env.
+///
+/// # Safety
+/// Call before any other test thread reads process environment.
+pub unsafe fn set_user_env_file_env_for_test(
+    runtime_dir: &Path,
+    user_env: &HashMap<String, String>,
+) -> Result<(), String> {
+    let dir = runtime_dir.join("user-env");
+    std::fs::create_dir_all(&dir).map_err(|error| format!("create user env dir: {error}"))?;
+    let path = dir.join("env.json");
+    let bytes =
+        serde_json::to_vec(user_env).map_err(|error| format!("serialize user env: {error}"))?;
+    std::fs::write(&path, bytes).map_err(|error| format!("write user env: {error}"))?;
+    unsafe {
+        std::env::set_var(guest_contracts::env::USER_ENV_FILE_ENV, path);
     }
     Ok(())
 }

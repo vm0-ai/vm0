@@ -1,6 +1,6 @@
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
-use std::time::Instant as StdInstant;
+use std::time::{Duration, Instant as StdInstant};
 
 use tokio::sync::{Mutex, Notify};
 use tokio_util::sync::CancellationToken;
@@ -8,6 +8,8 @@ use tracing::warn;
 
 use super::{JobCandidate, JobDiscoverySource};
 use crate::ids::RunId;
+
+pub(super) const DIRECT_CANDIDATE_STALE_AFTER: Duration = Duration::from_secs(60);
 
 #[derive(Debug)]
 pub(super) struct DirectJobCandidate {
@@ -32,6 +34,19 @@ impl DirectJobCandidate {
         discovered_at: StdInstant,
     ) -> Self {
         Self::new_with_affinity_metadata(run_id, profile_name, discovered_at, None, None)
+    }
+
+    #[cfg(test)]
+    pub(super) fn new_with_enqueued_at(
+        run_id: RunId,
+        profile_name: String,
+        discovered_at: StdInstant,
+        enqueued_at: StdInstant,
+    ) -> Self {
+        let mut candidate =
+            Self::new_with_affinity_metadata(run_id, profile_name, discovered_at, None, None);
+        candidate.enqueued_at = Some(enqueued_at);
+        candidate
     }
 
     pub(super) fn new_with_affinity_metadata(
@@ -69,9 +84,9 @@ impl DirectJobCandidate {
         self.enqueued_at
     }
 
-    fn mark_enqueued(&mut self) {
+    fn mark_enqueued_at(&mut self, enqueued_at: StdInstant) {
         if self.enqueued_at.is_none() {
-            self.enqueued_at = Some(StdInstant::now());
+            self.enqueued_at = Some(enqueued_at);
         }
     }
 
@@ -110,12 +125,19 @@ impl DirectJobCandidate {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum DirectCandidateInsertOutcome {
-    Inserted(DirectCandidateInboxSnapshot),
-    Updated(DirectCandidateInboxSnapshot),
+    Inserted {
+        snapshot: DirectCandidateInboxSnapshot,
+        pruned: Option<DirectCandidatePruneSnapshot>,
+    },
+    Updated {
+        snapshot: DirectCandidateInboxSnapshot,
+        pruned: Option<DirectCandidatePruneSnapshot>,
+    },
     Overflow {
         snapshot: DirectCandidateInboxSnapshot,
         coalesced_count: u64,
         should_wake_poll: bool,
+        pruned: Option<DirectCandidatePruneSnapshot>,
     },
 }
 
@@ -123,8 +145,16 @@ impl DirectCandidateInsertOutcome {
     #[cfg(test)]
     pub(super) fn snapshot(self) -> DirectCandidateInboxSnapshot {
         match self {
-            Self::Inserted(snapshot) | Self::Updated(snapshot) => snapshot,
+            Self::Inserted { snapshot, .. } | Self::Updated { snapshot, .. } => snapshot,
             Self::Overflow { snapshot, .. } => snapshot,
+        }
+    }
+
+    pub(super) fn pruned(self) -> Option<DirectCandidatePruneSnapshot> {
+        match self {
+            Self::Inserted { pruned, .. }
+            | Self::Updated { pruned, .. }
+            | Self::Overflow { pruned, .. } => pruned,
         }
     }
 }
@@ -133,6 +163,21 @@ impl DirectCandidateInsertOutcome {
 pub(super) struct DirectCandidateInboxSnapshot {
     pub(super) depth: usize,
     pub(super) capacity: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct DirectCandidatePruneSnapshot {
+    pub(super) pruned_count: usize,
+    pub(super) depth: usize,
+    pub(super) capacity: usize,
+    pub(super) stale_after: Duration,
+    pub(super) oldest_pruned_wait_elapsed: Duration,
+}
+
+#[derive(Debug)]
+pub(super) struct DirectCandidatePopOutcome {
+    pub(super) candidate: Option<DirectJobCandidate>,
+    pub(super) pruned: Option<DirectCandidatePruneSnapshot>,
 }
 
 #[derive(Debug)]
@@ -146,14 +191,16 @@ struct DirectCandidateInboxInner {
 #[derive(Debug)]
 pub(super) struct DirectCandidateInbox {
     capacity: usize,
+    stale_after: Duration,
     inner: Mutex<DirectCandidateInboxInner>,
     notify: Notify,
 }
 
 impl DirectCandidateInbox {
-    pub(super) fn new(capacity: usize) -> Arc<Self> {
+    pub(super) fn new(capacity: usize, stale_after: Duration) -> Arc<Self> {
         Arc::new(Self {
             capacity,
+            stale_after,
             inner: Mutex::new(DirectCandidateInboxInner {
                 order: VecDeque::new(),
                 candidates: HashMap::new(),
@@ -166,13 +213,15 @@ impl DirectCandidateInbox {
 
     pub(super) async fn push(&self, candidate: DirectJobCandidate) -> DirectCandidateInsertOutcome {
         let mut inner = self.inner.lock().await;
+        let now = StdInstant::now();
+        let pruned = prune_stale_candidates(&mut inner, now, self.capacity, self.stale_after);
         let run_id = candidate.run_id();
         if let Some(existing) = inner.candidates.get_mut(&run_id) {
             existing.merge_metadata_from(candidate);
-            return DirectCandidateInsertOutcome::Updated(snapshot(
-                inner.order.len(),
-                self.capacity,
-            ));
+            return DirectCandidateInsertOutcome::Updated {
+                snapshot: snapshot(inner.order.len(), self.capacity),
+                pruned,
+            };
         }
 
         if inner.order.len() >= self.capacity {
@@ -183,29 +232,42 @@ impl DirectCandidateInbox {
                 snapshot: snapshot(inner.order.len(), self.capacity),
                 coalesced_count: inner.overflow_count,
                 should_wake_poll,
+                pruned,
             };
         }
 
         let mut candidate = candidate;
-        candidate.mark_enqueued();
+        candidate.mark_enqueued_at(now);
         inner.order.push_back(run_id);
         inner.candidates.insert(run_id, candidate);
         let snapshot = snapshot(inner.order.len(), self.capacity);
         drop(inner);
         self.notify.notify_one();
-        DirectCandidateInsertOutcome::Inserted(snapshot)
+        DirectCandidateInsertOutcome::Inserted { snapshot, pruned }
     }
 
+    #[cfg(test)]
     pub(super) async fn try_pop(&self) -> Option<DirectJobCandidate> {
+        self.try_pop_with_prune().await.candidate
+    }
+
+    pub(super) async fn try_pop_with_prune(&self) -> DirectCandidatePopOutcome {
         let mut inner = self.inner.lock().await;
+        let pruned = prune_stale_candidates(
+            &mut inner,
+            StdInstant::now(),
+            self.capacity,
+            self.stale_after,
+        );
         let candidate = pop_candidate(&mut inner);
-        if candidate.is_some() && inner.order.len() < self.capacity {
+        if (candidate.is_some() || pruned.is_some()) && inner.order.len() < self.capacity {
             inner.overflow_active = false;
             inner.overflow_count = 0;
         }
-        candidate
+        DirectCandidatePopOutcome { candidate, pruned }
     }
 
+    #[cfg(test)]
     pub(super) async fn wait_pop(&self, cancel: &CancellationToken) -> Option<DirectJobCandidate> {
         loop {
             if let Some(candidate) = self.try_pop().await {
@@ -219,6 +281,60 @@ impl DirectCandidateInbox {
             }
         }
     }
+
+    pub(super) async fn wait_for_notification(&self, cancel: &CancellationToken) -> bool {
+        let notified = self.notify.notified();
+        tokio::pin!(notified);
+        notified.as_mut().enable();
+
+        tokio::select! {
+            biased;
+            () = cancel.cancelled() => false,
+            () = &mut notified => true,
+        }
+    }
+}
+
+fn prune_stale_candidates(
+    inner: &mut DirectCandidateInboxInner,
+    now: StdInstant,
+    capacity: usize,
+    stale_after: Duration,
+) -> Option<DirectCandidatePruneSnapshot> {
+    let mut pruned_count = 0;
+    let mut oldest_pruned_wait_elapsed = Duration::ZERO;
+
+    while let Some(run_id) = inner.order.front().copied() {
+        let Some(candidate) = inner.candidates.get(&run_id) else {
+            inner.order.pop_front();
+            continue;
+        };
+        let queued_at = candidate.enqueued_at.unwrap_or(candidate.discovered_at);
+        let wait_elapsed = now.saturating_duration_since(queued_at);
+        if wait_elapsed < stale_after {
+            break;
+        }
+
+        inner.order.pop_front();
+        inner.candidates.remove(&run_id);
+        pruned_count += 1;
+        oldest_pruned_wait_elapsed = oldest_pruned_wait_elapsed.max(wait_elapsed);
+    }
+
+    if pruned_count == 0 {
+        return None;
+    }
+    if inner.order.len() < capacity {
+        inner.overflow_active = false;
+        inner.overflow_count = 0;
+    }
+    Some(DirectCandidatePruneSnapshot {
+        pruned_count,
+        depth: inner.order.len(),
+        capacity,
+        stale_after,
+        oldest_pruned_wait_elapsed,
+    })
 }
 
 fn pop_candidate(inner: &mut DirectCandidateInboxInner) -> Option<DirectJobCandidate> {
@@ -244,9 +360,30 @@ mod tests {
         RunId::from(uuid::Uuid::from_u128(value))
     }
 
+    fn direct_candidate_inbox(capacity: usize) -> Arc<DirectCandidateInbox> {
+        DirectCandidateInbox::new(capacity, DIRECT_CANDIDATE_STALE_AFTER)
+    }
+
+    fn direct_candidate_inbox_with_stale_after(
+        capacity: usize,
+        stale_after: Duration,
+    ) -> Arc<DirectCandidateInbox> {
+        DirectCandidateInbox::new(capacity, stale_after)
+    }
+
+    fn candidate_with_enqueued_at(run_id: RunId, enqueued_at: StdInstant) -> DirectJobCandidate {
+        let mut candidate = DirectJobCandidate::new_with_discovered_at(
+            run_id,
+            "vm0/default".to_string(),
+            enqueued_at,
+        );
+        candidate.enqueued_at = Some(enqueued_at);
+        candidate
+    }
+
     #[tokio::test]
     async fn duplicate_run_id_occupies_one_slot_and_preserves_first_discovery_time() {
-        let inbox = DirectCandidateInbox::new(4);
+        let inbox = direct_candidate_inbox(4);
         let first_discovered_at = StdInstant::now() - Duration::from_secs(5);
         let second_discovered_at = StdInstant::now();
         let run_id = run_id(1);
@@ -279,10 +416,13 @@ mod tests {
             .await;
         assert!(matches!(
             updated,
-            DirectCandidateInsertOutcome::Updated(DirectCandidateInboxSnapshot {
-                depth: 1,
-                capacity: 4,
-            })
+            DirectCandidateInsertOutcome::Updated {
+                snapshot: DirectCandidateInboxSnapshot {
+                    depth: 1,
+                    capacity: 4,
+                },
+                pruned: None,
+            }
         ));
 
         let candidate = inbox.try_pop().await.expect("direct candidate");
@@ -302,7 +442,7 @@ mod tests {
 
     #[tokio::test]
     async fn overflow_is_coalesced_until_capacity_makes_progress() {
-        let inbox = DirectCandidateInbox::new(1);
+        let inbox = direct_candidate_inbox(1);
         let _ = inbox
             .push(DirectJobCandidate::new(
                 run_id(1),
@@ -325,6 +465,7 @@ mod tests {
                 },
                 coalesced_count: 1,
                 should_wake_poll: true,
+                pruned: None,
             }
         ));
 
@@ -343,6 +484,7 @@ mod tests {
                 },
                 coalesced_count: 2,
                 should_wake_poll: false,
+                pruned: None,
             }
         ));
 
@@ -367,14 +509,116 @@ mod tests {
             DirectCandidateInsertOutcome::Overflow {
                 coalesced_count: 1,
                 should_wake_poll: true,
+                pruned: None,
                 ..
             }
         ));
     }
 
     #[tokio::test]
+    async fn stale_candidates_are_pruned_before_push_and_reset_overflow_state() {
+        let stale_after = Duration::from_secs(60);
+        let inbox = direct_candidate_inbox_with_stale_after(1, stale_after);
+        let stale_enqueued_at = StdInstant::now() - Duration::from_secs(120);
+        let _ = inbox
+            .push(candidate_with_enqueued_at(run_id(1), stale_enqueued_at))
+            .await;
+
+        let inserted_after_prune = inbox
+            .push(DirectJobCandidate::new(
+                run_id(2),
+                "vm0/default".to_string(),
+            ))
+            .await;
+
+        assert!(matches!(
+            inserted_after_prune,
+            DirectCandidateInsertOutcome::Inserted {
+                snapshot: DirectCandidateInboxSnapshot {
+                    depth: 1,
+                    capacity: 1,
+                },
+                pruned: Some(DirectCandidatePruneSnapshot {
+                    pruned_count: 1,
+                    depth: 0,
+                    capacity: 1,
+                    stale_after: pruned_stale_after,
+                    oldest_pruned_wait_elapsed,
+                }),
+            } if pruned_stale_after == stale_after
+                && oldest_pruned_wait_elapsed >= stale_after
+        ));
+
+        let overflow_after_prune = inbox
+            .push(DirectJobCandidate::new(
+                run_id(3),
+                "vm0/default".to_string(),
+            ))
+            .await;
+        assert!(matches!(
+            overflow_after_prune,
+            DirectCandidateInsertOutcome::Overflow {
+                coalesced_count: 1,
+                should_wake_poll: true,
+                pruned: None,
+                ..
+            }
+        ));
+        assert_eq!(
+            inbox.try_pop().await.expect("fresh candidate").run_id(),
+            run_id(2)
+        );
+        assert!(inbox.try_pop().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn stale_candidates_are_pruned_before_pop() {
+        let stale_after = Duration::from_secs(60);
+        let inbox = direct_candidate_inbox_with_stale_after(1, stale_after);
+        let stale_enqueued_at = StdInstant::now() - Duration::from_secs(120);
+        let _ = inbox
+            .push(candidate_with_enqueued_at(run_id(1), stale_enqueued_at))
+            .await;
+
+        let outcome = inbox.try_pop_with_prune().await;
+
+        assert!(outcome.candidate.is_none());
+        assert!(matches!(
+            outcome.pruned,
+            Some(DirectCandidatePruneSnapshot {
+                pruned_count: 1,
+                depth: 0,
+                capacity: 1,
+                stale_after: pruned_stale_after,
+                oldest_pruned_wait_elapsed,
+            }) if pruned_stale_after == stale_after
+                && oldest_pruned_wait_elapsed >= stale_after
+        ));
+        assert!(inbox.try_pop().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn fresh_candidates_are_preserved_before_pop() {
+        let stale_after = Duration::from_secs(60);
+        let inbox = direct_candidate_inbox_with_stale_after(1, stale_after);
+        let fresh_enqueued_at = StdInstant::now() - Duration::from_secs(5);
+        let _ = inbox
+            .push(candidate_with_enqueued_at(run_id(1), fresh_enqueued_at))
+            .await;
+
+        let outcome = inbox.try_pop_with_prune().await;
+
+        assert!(outcome.pruned.is_none());
+        assert_eq!(
+            outcome.candidate.expect("fresh candidate").run_id(),
+            run_id(1)
+        );
+        assert!(inbox.try_pop().await.is_none());
+    }
+
+    #[tokio::test]
     async fn wait_pop_exits_on_cancel() {
-        let inbox = DirectCandidateInbox::new(1);
+        let inbox = direct_candidate_inbox(1);
         let cancel = CancellationToken::new();
         cancel.cancel();
 

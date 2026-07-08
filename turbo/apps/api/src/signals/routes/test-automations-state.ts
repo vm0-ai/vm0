@@ -109,6 +109,14 @@ async function seedVm0ManagedDefaultModelKey(
   if (!selectedModel) {
     throw new Error("Expected vm0 to define a default model");
   }
+  return await seedVm0ManagedModelKey(db, selectedModel, signal);
+}
+
+async function seedVm0ManagedModelKey(
+  db: Db,
+  selectedModel: string,
+  signal: AbortSignal,
+): Promise<string> {
   await db
     .delete(vm0ApiKeys)
     .where(eq(vm0ApiKeys.apiKey, RUN_LIFECYCLE_TEST_VM0_MANAGED_API_KEY));
@@ -179,6 +187,19 @@ const postAutomationsStateAction$ = command(
           body: {
             ok: true as const,
             selected_model: await seedVm0ManagedDefaultModelKey(db, signal),
+          },
+        };
+      }
+      case "seed-vm0-managed-model-key": {
+        return {
+          status: 200 as const,
+          body: {
+            ok: true as const,
+            selected_model: await seedVm0ManagedModelKey(
+              db,
+              body.selected_model,
+              signal,
+            ),
           },
         };
       }

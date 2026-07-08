@@ -39,7 +39,6 @@ const NOTION_DATABASE_URL =
 const NOTION_DATA_SOURCE_URL =
   "https://www.notion.so/Bug-Bash-88888888888848888888888888888888";
 const NOTION_WEBHOOK_TOKEN = "notion-webhook-verification-token";
-const NOTION_REPLACEMENT_WEBHOOK_TOKEN = "notion-webhook-resend-token";
 const NOTION_WORKSPACE_ID = "33333333-3333-4333-8333-333333333333";
 const NOTION_SUBSCRIPTION_ID = "44444444-4444-4444-8444-444444444444";
 const NOTION_INTEGRATION_ID = "55555555-5555-4555-8555-555555555555";
@@ -271,11 +270,10 @@ function configureNotionDatabaseMock(): void {
   );
 }
 
-function notionSignature(
-  rawBody: string,
-  token: string = NOTION_WEBHOOK_TOKEN,
-): string {
-  return `sha256=${createHmac("sha256", token).update(rawBody).digest("hex")}`;
+function notionSignature(rawBody: string): string {
+  return `sha256=${createHmac("sha256", NOTION_WEBHOOK_TOKEN)
+    .update(rawBody)
+    .digest("hex")}`;
 }
 
 function notionPageEvent(args: {
@@ -444,27 +442,16 @@ describe("POST /api/webhooks/notion", () => {
     expect(secretState.secrets).toHaveLength(1);
 
     const replacement = await postNotionWebhook({
-      rawBody: JSON.stringify({
-        verification_token: NOTION_REPLACEMENT_WEBHOOK_TOKEN,
-      }),
+      rawBody: JSON.stringify({ verification_token: "attacker-token" }),
     });
     expect(replacement).toStrictEqual({
-      status: 200,
-      body: {
-        success: true,
-        kind: "verification",
-        pending: 0,
-        refreshed: 0,
-        duplicates: 0,
-      },
+      status: 401,
+      body: { error: "Unauthorized" },
     });
-    const replacedSecretState = await workflowTriggerStateAction({
+    const unchangedSecretState = await workflowTriggerStateAction({
       action: "get-notion-webhook-secret",
     });
-    expect(replacedSecretState.secrets).toStrictEqual([
-      expect.objectContaining({ active: false }),
-      expect.objectContaining({ active: true }),
-    ]);
+    expect(unchangedSecretState.secrets).toHaveLength(1);
 
     const createdRaw = JSON.stringify(
       notionPageEvent({
@@ -475,7 +462,7 @@ describe("POST /api/webhooks/notion", () => {
     );
     const first = await postNotionWebhook({
       rawBody: createdRaw,
-      signature: notionSignature(createdRaw, NOTION_REPLACEMENT_WEBHOOK_TOKEN),
+      signature: notionSignature(createdRaw),
     });
     expect(first).toStrictEqual({
       status: 200,
@@ -515,7 +502,7 @@ describe("POST /api/webhooks/notion", () => {
     );
     const update = await postNotionWebhook({
       rawBody: updateRaw,
-      signature: notionSignature(updateRaw, NOTION_REPLACEMENT_WEBHOOK_TOKEN),
+      signature: notionSignature(updateRaw),
     });
     expect(update).toStrictEqual({
       status: 200,
@@ -542,7 +529,7 @@ describe("POST /api/webhooks/notion", () => {
 
     const duplicate = await postNotionWebhook({
       rawBody: updateRaw,
-      signature: notionSignature(updateRaw, NOTION_REPLACEMENT_WEBHOOK_TOKEN),
+      signature: notionSignature(updateRaw),
     });
     expect(duplicate).toStrictEqual({
       status: 200,
