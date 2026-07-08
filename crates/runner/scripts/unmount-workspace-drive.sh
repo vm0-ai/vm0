@@ -86,6 +86,29 @@ is_workspace_child_mountpoint() {
   return 1
 }
 
+is_safe_workspace_child_mountpoint_path() {
+  workspace_child_mount_point=$1
+  is_workspace_child_mountpoint "$workspace_child_mount_point" || return 1
+
+  workspace_child_relative_path=${workspace_child_mount_point#"$workspace_dir"/}
+  check_path=$workspace_dir
+  while [ -n "$workspace_child_relative_path" ]; do
+    component=${workspace_child_relative_path%%/*}
+    if [ "$workspace_child_relative_path" = "$component" ]; then
+      workspace_child_relative_path=
+    else
+      workspace_child_relative_path=${workspace_child_relative_path#*/}
+    fi
+    case "$component" in
+      ""|"."|"..") return 1 ;;
+    esac
+    check_path="$check_path/$component"
+    [ ! -L "$check_path" ] || return 1
+  done
+
+  return 0
+}
+
 decode_mountinfo_path() {
   awk 'BEGIN {
     value = ARGV[1]
@@ -432,6 +455,11 @@ cleanup_workspace_child_mounts() {
     count=$((count + 1))
     child_mount="$(decode_mountinfo_path "$encoded_child_mount")"
     child_mount_log="$(sanitize_log_value "$child_mount")"
+    if ! is_safe_workspace_child_mountpoint_path "$child_mount"; then
+      failed_status=64
+      echo "workspace mount cleanup: child unmount skipped unsafe path mount=$child_mount_log" >&2
+      continue
+    fi
     echo "workspace mount cleanup: child unmount started mount=$child_mount_log" >&2
     if umount -- "$child_mount"; then
       echo "workspace mount cleanup: child unmount succeeded mount=$child_mount_log" >&2

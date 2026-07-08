@@ -929,6 +929,50 @@ exit 0
 
     #[test]
     #[cfg(target_os = "linux")]
+    fn unmount_script_skips_child_mounts_with_symlink_components() {
+        let temp = tempfile::tempdir().unwrap();
+        let workspace_dir = temp.path().join("workspace");
+        let outside_dir = temp.path().join("outside");
+        let symlink_path = workspace_dir.join("redirect");
+        let unsafe_child_mount = symlink_path.join("child");
+        let workspace_device = temp.path().join("vdb");
+        let fake_bin = temp.path().join("bin");
+        let log_path = temp.path().join("calls.log");
+        let count_path = temp.path().join("umount-count");
+        let mountinfo_path = temp.path().join("mountinfo");
+        fs::create_dir(&workspace_dir).unwrap();
+        fs::create_dir(&outside_dir).unwrap();
+        fs::create_dir(outside_dir.join("child")).unwrap();
+        std::os::unix::fs::symlink(&outside_dir, &symlink_path).unwrap();
+        fs::create_dir(&fake_bin).unwrap();
+        write_fake_mountpoint(&fake_bin, &workspace_dir, &workspace_device);
+        write_fake_sync(&fake_bin, &log_path);
+        write_always_busy_fake_umount(&fake_bin, &log_path, &count_path);
+        write_mountinfo(
+            &mountinfo_path,
+            &[
+                mountinfo_line(100, 1, "123", "/", &workspace_dir),
+                mountinfo_line(101, 100, "456", "/", &unsafe_child_mount),
+            ],
+        );
+
+        let output = run_unmount_script_with_mountinfo(
+            &workspace_dir,
+            &workspace_device,
+            &fake_bin,
+            Some(&mountinfo_path),
+        );
+        let stderr = String::from_utf8_lossy(&output.stderr);
+
+        assert!(!output.status.success(), "stderr={stderr}");
+        assert!(stderr.contains("workspace mount cleanup: child unmount skipped unsafe path"));
+        assert!(!stderr.contains("workspace mount cleanup: child unmount started"));
+        let log = fs::read_to_string(log_path).unwrap();
+        assert!(!log.contains(&unsafe_child_mount.display().to_string()));
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
     fn unmount_script_succeeds_when_child_cleanup_races_with_parent_unmount() {
         let temp = tempfile::tempdir().unwrap();
         let workspace_dir = temp.path().join("workspace");
@@ -1056,6 +1100,8 @@ exit 0
         assert!(cmd.contains("scan_workspace_mountinfo_refs()"));
         assert!(cmd.contains("scan_workspace_child_mountpoints()"));
         assert!(cmd.contains("decode_mountinfo_path()"));
+        assert!(cmd.contains("is_safe_workspace_child_mountpoint_path()"));
+        assert!(cmd.contains("\"\"|\".\"|\"..\") return 1 ;;"));
         assert!(cmd.contains("cleanup_workspace_child_mounts()"));
         assert!(cmd.contains("log_workspace_mount_diagnostics()"));
         assert!(cmd.contains("scan_proc_ref \"$pid\" cwd \"$proc_dir/cwd\""));
@@ -1096,6 +1142,7 @@ exit 0
         assert!(cmd.contains("workspace holder cleanup: maps KILL started"));
         assert!(cmd.contains("workspace mount cleanup: child scan started"));
         assert!(cmd.contains("workspace mount cleanup: child unmount started"));
+        assert!(cmd.contains("workspace mount cleanup: child unmount skipped unsafe path"));
         assert!(cmd.contains("workspace mount diagnostics: mountinfo scan started"));
         assert!(cmd.contains("pid=%s uid=%s comm=%s ref=%s path=%s"));
         assert!(cmd.contains(
