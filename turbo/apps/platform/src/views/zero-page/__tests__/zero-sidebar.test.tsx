@@ -1109,6 +1109,32 @@ describe("zero sidebar", () => {
     expect(link).toHaveClass("focus-visible:ring-ring");
   });
 
+  it("focuses the current main chat when the thread list receives focus", async () => {
+    prepareDefaultAgent();
+    mockSidebarThreadStory([
+      createThread(INCIDENT_THREAD_ID, "Incident notes"),
+      createThread(EXISTING_THREAD_ID, "Release plan"),
+      createThread(AUTOMATION_THREAD_ID, "Scheduled launch"),
+    ]);
+
+    setupSidebarPage({
+      context,
+      path: `/chats/${EXISTING_THREAD_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(within(sidebar()).getByText("Incident notes")).toBeInTheDocument();
+      expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
+    });
+
+    screen.getByTestId("sidebar-scroll-area").focus();
+
+    await waitFor(() => {
+      expect(threadLinkByTitle("Release plan")).toHaveFocus();
+    });
+    expect(threadLinkByTitle("Incident notes")).not.toHaveFocus();
+  });
+
   it("keeps pinned agents and the chat title outside the thread list scroll area", async () => {
     prepareAgentTeam();
     context.mocks.data.userPreferences({
