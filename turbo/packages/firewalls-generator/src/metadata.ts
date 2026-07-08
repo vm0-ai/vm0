@@ -658,55 +658,103 @@ function buildRoutingIndexMetadata(
 function renderDetailFile(metadata: FirewallPermissionDetailMetadata): string {
   return `${generatedHeader()}import type { FirewallPermissionDetailMetadata } from "../types";
 
-export const firewallPermissionMetadata = ${stableJson(metadata)} as const satisfies FirewallPermissionDetailMetadata;
+const firewallPermissionMetadataJson = ${JSON.stringify(stableJson(metadata))};
+const firewallPermissionMetadataValue: unknown = JSON.parse(firewallPermissionMetadataJson);
+
+export const firewallPermissionMetadata = firewallPermissionMetadataValue as FirewallPermissionDetailMetadata;
 `;
 }
 
 function renderRoutingDetailFile(metadata: FirewallRoutingMetadata): string {
   return `${generatedHeader()}import type { FirewallRoutingMetadata } from "../types";
 
-export const firewallRoutingMetadata = ${stableJson(metadata)} as const satisfies FirewallRoutingMetadata;
+const firewallRoutingMetadataJson = ${JSON.stringify(stableJson(metadata))};
+const firewallRoutingMetadataValue: unknown = JSON.parse(firewallRoutingMetadataJson);
+
+export const firewallRoutingMetadata = firewallRoutingMetadataValue as FirewallRoutingMetadata;
 `;
 }
 
 function renderRunnerRuntimeDetailFile(firewall: Firewall): string {
   return `${generatedHeader()}import type { Firewall } from "../../firewall-types";
 
-export const runnerRuntimeFirewall = ${stableJson(firewall)} as const satisfies Firewall;
+const runnerRuntimeFirewallJson = ${JSON.stringify(stableJson(firewall))};
+const runnerRuntimeFirewallValue: unknown = JSON.parse(runnerRuntimeFirewallJson);
+
+export const runnerRuntimeFirewall = runnerRuntimeFirewallValue as Firewall;
 `;
 }
 
 function renderRoutingIndexFile(
   metadata: Record<string, FirewallRoutingIndexMetadata>,
 ): string {
+  const connectorTypes = Object.keys(metadata);
   return `${generatedHeader()}import type { FirewallRoutingIndexMetadata } from "./types";
 
-export const FIREWALL_ROUTING_METADATA_INDEX = ${stableJson(metadata)} as const satisfies Readonly<Record<string, FirewallRoutingIndexMetadata>>;
+export const FIREWALL_ROUTING_METADATA_CONNECTOR_TYPES = Object.freeze(${stableJson(connectorTypes)} as const);
+export type FirewallRoutingMetadataConnectorType =
+  (typeof FIREWALL_ROUTING_METADATA_CONNECTOR_TYPES)[number];
+
+const firewallRoutingMetadataIndexJson = ${JSON.stringify(stableJson(metadata))};
+const firewallRoutingMetadataIndexValue: unknown = JSON.parse(firewallRoutingMetadataIndexJson);
+
+export const FIREWALL_ROUTING_METADATA_INDEX =
+  firewallRoutingMetadataIndexValue as Readonly<
+    Record<FirewallRoutingMetadataConnectorType, FirewallRoutingIndexMetadata>
+  >;
 `;
 }
 
 function renderSummaryFile(
   summaries: Record<string, FirewallPermissionSummaryMetadata>,
 ): string {
+  const connectorTypes = Object.keys(summaries);
   return `${generatedHeader()}import type { FirewallPermissionSummaryMetadata } from "./types";
 
-export const FIREWALL_PERMISSION_METADATA_SUMMARIES = ${stableJson(summaries)} as const satisfies Readonly<Record<string, FirewallPermissionSummaryMetadata>>;
+export const FIREWALL_PERMISSION_METADATA_CONNECTOR_TYPES = Object.freeze(${stableJson(connectorTypes)} as const);
+export type FirewallPermissionMetadataConnectorType =
+  (typeof FIREWALL_PERMISSION_METADATA_CONNECTOR_TYPES)[number];
+
+const firewallPermissionMetadataSummariesJson = ${JSON.stringify(stableJson(summaries))};
+const firewallPermissionMetadataSummariesValue: unknown = JSON.parse(firewallPermissionMetadataSummariesJson);
+
+export const FIREWALL_PERMISSION_METADATA_SUMMARIES =
+  firewallPermissionMetadataSummariesValue as Readonly<
+    Record<FirewallPermissionMetadataConnectorType, FirewallPermissionSummaryMetadata>
+  >;
 `;
 }
 
 function renderServerExecutionFile(
   metadata: Record<string, FirewallExecutionMetadata>,
 ): string {
+  const connectorTypes = Object.keys(metadata);
   return `${generatedHeader()}import type { FirewallExecutionMetadata } from "./types";
 
-export const FIREWALL_SERVER_EXECUTION_METADATA = ${stableJson(metadata)} as const satisfies Readonly<Record<string, FirewallExecutionMetadata>>;
+export const FIREWALL_SERVER_EXECUTION_METADATA_CONNECTOR_TYPES = Object.freeze(${stableJson(connectorTypes)} as const);
+export type FirewallServerExecutionMetadataConnectorType =
+  (typeof FIREWALL_SERVER_EXECUTION_METADATA_CONNECTOR_TYPES)[number];
+
+const firewallServerExecutionMetadataJson = ${JSON.stringify(stableJson(metadata))};
+const firewallServerExecutionMetadataValue: unknown = JSON.parse(firewallServerExecutionMetadataJson);
+
+export const FIREWALL_SERVER_EXECUTION_METADATA =
+  firewallServerExecutionMetadataValue as Readonly<
+    Record<FirewallServerExecutionMetadataConnectorType, FirewallExecutionMetadata>
+  >;
 `;
 }
 
 function renderServerFile(fixedHostOwners: Record<string, string>): string {
-  return `${generatedHeader()}import type { FirewallPermissionSummaryMetadata } from "./types";
+  return `${generatedHeader()}import type { FirewallPermissionMetadataConnectorType } from "./permission-summaries.generated";
 
-export const BUILTIN_FIREWALL_FIXED_HOST_OWNERS = ${stableJson(fixedHostOwners)} as const satisfies Readonly<Record<string, FirewallPermissionSummaryMetadata["type"]>>;
+const builtinFirewallFixedHostOwnersJson = ${JSON.stringify(stableJson(fixedHostOwners))};
+const builtinFirewallFixedHostOwnersValue: unknown = JSON.parse(builtinFirewallFixedHostOwnersJson);
+
+export const BUILTIN_FIREWALL_FIXED_HOST_OWNERS =
+  builtinFirewallFixedHostOwnersValue as Readonly<
+    Record<string, FirewallPermissionMetadataConnectorType>
+  >;
 `;
 }
 
