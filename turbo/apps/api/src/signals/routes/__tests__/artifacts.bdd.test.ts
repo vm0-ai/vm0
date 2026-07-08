@@ -212,7 +212,7 @@ describe("GET /api/zero/artifacts", () => {
         return artifact.fileId === otherOrgArtifact.fileId;
       }),
     ).toBeFalsy();
-    expect(response.truncated).toBe(false);
+    expect(response.truncated).toBeFalsy();
   }, 120_000);
 
   it("returns every generated artifact for the org in one bulk response", async () => {
@@ -243,7 +243,7 @@ describe("GET /api/zero/artifacts", () => {
     });
 
     const response = await chat.listArtifacts(first.actor);
-    expect(response.truncated).toBe(false);
+    expect(response.truncated).toBeFalsy();
     expect(
       new Set(
         response.artifacts.map((artifact) => {

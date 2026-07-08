@@ -7,7 +7,6 @@ import {
   IconPackage,
   IconSearch,
 } from "@tabler/icons-react";
-import { useMemo } from "react";
 import {
   useGet,
   useLastLoadable,
@@ -481,16 +480,12 @@ export function ArtifactsPage() {
     cachedLoadable.state === "hasData" ? cachedLoadable.data : null;
   // Cache-first + in-memory merge: paint whatever the cache holds immediately,
   // union the remote set over it once it lands (remote wins per id).
-  const merged = useMemo(() => {
-    return mergeArtifactsById(remoteData ?? [], cachedData ?? []);
-  }, [remoteData, cachedData]);
-  const artifacts = useMemo(() => {
-    return filterArtifacts(merged, {
-      search,
-      agentId: selectedAgentId,
-      category: selectedCategory,
-    });
-  }, [merged, search, selectedAgentId, selectedCategory]);
+  const merged = mergeArtifactsById(remoteData ?? [], cachedData ?? []);
+  const artifacts = filterArtifacts(merged, {
+    search,
+    agentId: selectedAgentId,
+    category: selectedCategory,
+  });
   // Drive first-paint loading / error off the merged set (not the filtered
   // view, which is legitimately empty when a filter matches nothing).
   const nothingCached = merged.length === 0;

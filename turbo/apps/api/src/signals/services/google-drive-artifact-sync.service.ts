@@ -294,7 +294,7 @@ function buildStatusMap(
   return map;
 }
 
-export function resolveGoogleDriveArtifactSyncStatus(
+function resolveGoogleDriveArtifactSyncStatus(
   lookup: DriveStatusLookup,
   runId: string,
   fileId: string,
