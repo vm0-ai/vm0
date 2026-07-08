@@ -6,23 +6,15 @@ import {
   type RelationshipSearchResponse,
 } from "@vm0/api-contracts/contracts/zero-relationships";
 import {
-  relationshipEntities,
-  relationshipInteractions,
-  relationshipItems,
-  relationshipItemSources,
-  relationshipStates,
-} from "@vm0/db/schema/relationship-memory";
-import {
-  and,
-  desc,
-  eq,
-  ilike,
-  inArray,
-  isNull,
-  or,
-  sql,
-  type SQL,
-} from "drizzle-orm";
+  memories,
+  memoryEntities,
+  memoryEntityAliases,
+  memoryProfiles,
+  memorySourceLinks,
+  memorySources,
+} from "@vm0/db/schema/memory-substrate";
+import { alias } from "drizzle-orm/pg-core";
+import { and, desc, eq, ilike, inArray, or, sql, type SQL } from "drizzle-orm";
 
 import { db$, type ReadonlyDb } from "../external/db";
 
@@ -33,9 +25,9 @@ type RelationshipBaseRow = {
   readonly displayName: string;
   readonly primaryEmail: string | null;
   readonly domain: string | null;
-  readonly relationshipType: string;
-  readonly status: "active" | "quiet" | "archived";
-  readonly summary: string;
+  readonly relationshipType: string | null;
+  readonly status: "active" | "quiet" | "archived" | null;
+  readonly summary: string | null;
   readonly lastInteractionAt: Date | null;
 };
 
@@ -58,6 +50,29 @@ interface RelationshipSearchParams extends RelationshipScope {
   readonly itemKind?: "key_fact" | "preference" | "open_loop";
 }
 
+const relationshipIdentityAliases = alias(
+  memoryEntityAliases,
+  "relationship_identity_aliases",
+);
+const emailAliases = alias(memoryEntityAliases, "relationship_email_aliases");
+const domainAliases = alias(memoryEntityAliases, "relationship_domain_aliases");
+const relationshipTypeProfiles = alias(
+  memoryProfiles,
+  "relationship_type_profiles",
+);
+const relationshipStatusProfiles = alias(
+  memoryProfiles,
+  "relationship_status_profiles",
+);
+const relationshipSummaryProfiles = alias(
+  memoryProfiles,
+  "relationship_summary_profiles",
+);
+const relationshipLastInteractionProfiles = alias(
+  memoryProfiles,
+  "relationship_last_interaction_profiles",
+);
+
 function serializeDate(value: Date | null): string | null {
   return value ? value.toISOString() : null;
 }
@@ -68,6 +83,22 @@ function normalizeLookup(value: string): string {
 
 function emptySearch(q: string | undefined): boolean {
   return q === undefined || q.trim().length === 0;
+}
+
+function parseProfileDate(value: string | null): Date | null {
+  if (!value) {
+    return null;
+  }
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function relationshipStatus(
+  value: string | null,
+): RelationshipBaseRow["status"] {
+  return value === "active" || value === "quiet" || value === "archived"
+    ? value
+    : null;
 }
 
 function exactMatchScore(row: RelationshipBaseRow, query: string): number {
@@ -107,6 +138,53 @@ function compareRelationshipRows(q: string | undefined) {
   };
 }
 
+function sourceMetadataValue(
+  metadata: unknown,
+  key: "threadId" | "messageId" | "messageTs",
+): string | null {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return null;
+  }
+  const value = (metadata as Record<string, unknown>)[key];
+  return typeof value === "string" ? value : null;
+}
+
+function relationshipBaseFilters(scope: RelationshipScope): SQL[] {
+  return [
+    eq(memoryEntities.orgId, scope.orgId),
+    eq(memoryEntities.userId, scope.userId),
+    sql`${memoryEntities.type} in ('person', 'organization')`,
+  ];
+}
+
+function rowToRelationshipBase(row: {
+  readonly entityId: string;
+  readonly entityType: string;
+  readonly displayName: string;
+  readonly primaryEmail: string | null;
+  readonly domain: string | null;
+  readonly relationshipType: string | null;
+  readonly relationshipStatus: string | null;
+  readonly relationshipSummary: string | null;
+  readonly relationshipLastInteractionAt: string | null;
+}): RelationshipBaseRow | null {
+  if (row.entityType !== "person" && row.entityType !== "organization") {
+    return null;
+  }
+  return {
+    stateId: row.entityId,
+    entityId: row.entityId,
+    entityType: row.entityType,
+    displayName: row.displayName,
+    primaryEmail: row.primaryEmail,
+    domain: row.domain,
+    relationshipType: row.relationshipType,
+    status: relationshipStatus(row.relationshipStatus),
+    summary: row.relationshipSummary,
+    lastInteractionAt: parseProfileDate(row.relationshipLastInteractionAt),
+  };
+}
+
 async function loadRelationshipRowsByStateIds(
   db: ReadonlyDb,
   scope: RelationshipScope,
@@ -116,31 +194,87 @@ async function loadRelationshipRowsByStateIds(
     return [];
   }
 
-  return await db
+  const rows = await db
     .select({
-      stateId: relationshipStates.id,
-      entityId: relationshipEntities.id,
-      entityType: relationshipEntities.type,
-      displayName: relationshipEntities.displayName,
-      primaryEmail: relationshipEntities.primaryEmail,
-      domain: relationshipEntities.domain,
-      relationshipType: relationshipStates.relationshipType,
-      status: relationshipStates.status,
-      summary: relationshipStates.summary,
-      lastInteractionAt: relationshipStates.lastInteractionAt,
+      entityId: memoryEntities.id,
+      entityType: memoryEntities.type,
+      displayName: memoryEntities.displayName,
+      primaryEmail: emailAliases.aliasValue,
+      domain: domainAliases.aliasValue,
+      relationshipType: relationshipTypeProfiles.content,
+      relationshipStatus: relationshipStatusProfiles.content,
+      relationshipSummary: relationshipSummaryProfiles.content,
+      relationshipLastInteractionAt:
+        relationshipLastInteractionProfiles.content,
     })
-    .from(relationshipStates)
+    .from(memoryEntities)
     .innerJoin(
-      relationshipEntities,
-      eq(relationshipEntities.id, relationshipStates.entityId),
+      relationshipIdentityAliases,
+      and(
+        eq(relationshipIdentityAliases.entityId, memoryEntities.id),
+        eq(relationshipIdentityAliases.aliasType, "relationship_identity"),
+      ),
+    )
+    .leftJoin(
+      emailAliases,
+      and(
+        eq(emailAliases.entityId, memoryEntities.id),
+        eq(emailAliases.aliasType, "email"),
+      ),
+    )
+    .leftJoin(
+      domainAliases,
+      and(
+        eq(domainAliases.entityId, memoryEntities.id),
+        eq(domainAliases.aliasType, "domain"),
+      ),
+    )
+    .leftJoin(
+      relationshipTypeProfiles,
+      and(
+        eq(relationshipTypeProfiles.entityId, memoryEntities.id),
+        eq(relationshipTypeProfiles.section, "relationship_type"),
+      ),
+    )
+    .leftJoin(
+      relationshipStatusProfiles,
+      and(
+        eq(relationshipStatusProfiles.entityId, memoryEntities.id),
+        eq(relationshipStatusProfiles.section, "relationship_status"),
+      ),
+    )
+    .leftJoin(
+      relationshipSummaryProfiles,
+      and(
+        eq(relationshipSummaryProfiles.entityId, memoryEntities.id),
+        eq(relationshipSummaryProfiles.section, "relationship_summary"),
+      ),
+    )
+    .leftJoin(
+      relationshipLastInteractionProfiles,
+      and(
+        eq(relationshipLastInteractionProfiles.entityId, memoryEntities.id),
+        eq(
+          relationshipLastInteractionProfiles.section,
+          "relationship_last_interaction_at",
+        ),
+      ),
     )
     .where(
       and(
-        eq(relationshipStates.orgId, scope.orgId),
-        eq(relationshipStates.userId, scope.userId),
-        inArray(relationshipStates.id, [...stateIds]),
+        ...relationshipBaseFilters(scope),
+        inArray(memoryEntities.id, [...stateIds]),
       ),
     );
+
+  const rowsByStateId = new Map<string, RelationshipBaseRow>();
+  for (const row of rows) {
+    const base = rowToRelationshipBase(row);
+    if (base && !rowsByStateId.has(base.stateId)) {
+      rowsByStateId.set(base.stateId, base);
+    }
+  }
+  return [...rowsByStateId.values()];
 }
 
 async function loadRelationshipItemsByStateId(
@@ -154,23 +288,24 @@ async function loadRelationshipItemsByStateId(
 
   const itemRows = await db
     .select({
-      id: relationshipItems.id,
-      relationshipStateId: relationshipItems.relationshipStateId,
-      kind: relationshipItems.kind,
-      text: relationshipItems.text,
-      confidence: relationshipItems.confidence,
-      lastSeenAt: relationshipItems.lastSeenAt,
+      id: memories.id,
+      entityId: memories.entityId,
+      kind: memories.kind,
+      text: memories.text,
+      confidence: memories.confidence,
+      lastSeenAt: memories.lastSeenAt,
     })
-    .from(relationshipItems)
+    .from(memories)
     .where(
       and(
-        eq(relationshipItems.orgId, scope.orgId),
-        eq(relationshipItems.userId, scope.userId),
-        inArray(relationshipItems.relationshipStateId, [...stateIds]),
-        isNull(relationshipItems.archivedAt),
+        eq(memories.orgId, scope.orgId),
+        eq(memories.userId, scope.userId),
+        inArray(memories.entityId, [...stateIds]),
+        eq(memories.status, "active"),
+        sql`${memories.kind} in ('key_fact', 'preference', 'open_loop')`,
       ),
     )
-    .orderBy(relationshipItems.kind, desc(relationshipItems.lastSeenAt));
+    .orderBy(memories.kind, desc(memories.lastSeenAt));
 
   const itemIds = itemRows.map((item) => {
     return item.id;
@@ -181,55 +316,62 @@ async function loadRelationshipItemsByStateId(
       ? []
       : await db
           .select({
-            id: relationshipItemSources.id,
-            relationshipItemId: relationshipItemSources.relationshipItemId,
-            provider: relationshipItemSources.provider,
-            externalId: relationshipItemSources.externalId,
-            threadId: relationshipItemSources.threadId,
-            messageId: relationshipItemSources.messageId,
-            quote: relationshipItemSources.quote,
-            occurredAt: relationshipItemSources.occurredAt,
+            id: memorySourceLinks.id,
+            memoryId: memorySourceLinks.memoryId,
+            provider: memorySources.provider,
+            externalId: memorySources.externalId,
+            metadata: memorySources.metadata,
+            occurredAt: memorySources.occurredAt,
           })
-          .from(relationshipItemSources)
+          .from(memorySourceLinks)
+          .innerJoin(
+            memorySources,
+            eq(memorySources.id, memorySourceLinks.sourceId),
+          )
           .where(
             and(
-              eq(relationshipItemSources.orgId, scope.orgId),
-              eq(relationshipItemSources.userId, scope.userId),
-              inArray(relationshipItemSources.relationshipItemId, itemIds),
+              eq(memorySourceLinks.orgId, scope.orgId),
+              eq(memorySourceLinks.userId, scope.userId),
+              inArray(memorySourceLinks.memoryId, itemIds),
             ),
           )
-          .orderBy(desc(relationshipItemSources.occurredAt));
+          .orderBy(desc(memorySources.occurredAt));
 
   const sourcesByItemId = new Map<
     string,
     RelationshipRecord["items"][number]["sources"]
   >();
   for (const source of sourceRows) {
-    const bucket = sourcesByItemId.get(source.relationshipItemId) ?? [];
+    const bucket = sourcesByItemId.get(source.memoryId) ?? [];
     bucket.push({
       id: source.id,
       provider: source.provider,
       externalId: source.externalId,
-      threadId: source.threadId,
-      messageId: source.messageId,
-      quote: source.quote,
+      threadId: sourceMetadataValue(source.metadata, "threadId"),
+      messageId:
+        sourceMetadataValue(source.metadata, "messageId") ??
+        sourceMetadataValue(source.metadata, "messageTs"),
+      quote: null,
       occurredAt: serializeDate(source.occurredAt),
     });
-    sourcesByItemId.set(source.relationshipItemId, bucket);
+    sourcesByItemId.set(source.memoryId, bucket);
   }
 
   const itemsByStateId = new Map<string, RelationshipRecord["items"]>();
   for (const item of itemRows) {
-    const bucket = itemsByStateId.get(item.relationshipStateId) ?? [];
+    if (!item.entityId) {
+      continue;
+    }
+    const bucket = itemsByStateId.get(item.entityId) ?? [];
     bucket.push({
       id: item.id,
-      kind: item.kind,
+      kind: item.kind as RelationshipRecord["items"][number]["kind"],
       text: item.text,
       confidence: item.confidence,
       lastSeenAt: item.lastSeenAt.toISOString(),
       sources: sourcesByItemId.get(item.id) ?? [],
     });
-    itemsByStateId.set(item.relationshipStateId, bucket);
+    itemsByStateId.set(item.entityId, bucket);
   }
 
   return itemsByStateId;
@@ -246,35 +388,40 @@ async function loadRecentInteractionsByStateId(
 
   const rows = await db
     .select({
-      id: relationshipInteractions.id,
-      relationshipStateId: relationshipInteractions.relationshipStateId,
-      provider: relationshipInteractions.provider,
-      externalId: relationshipInteractions.externalId,
-      threadId: relationshipInteractions.threadId,
-      messageId: relationshipInteractions.messageId,
-      subject: relationshipInteractions.subject,
-      snippet: relationshipInteractions.snippet,
-      occurredAt: relationshipInteractions.occurredAt,
+      id: memories.id,
+      entityId: memories.entityId,
+      snippet: memories.text,
+      occurredAt: memories.lastSeenAt,
+      provider: memorySources.provider,
+      externalId: memorySources.externalId,
+      metadata: memorySources.metadata,
+      sourceOccurredAt: memorySources.occurredAt,
     })
-    .from(relationshipInteractions)
+    .from(memories)
+    .innerJoin(memorySourceLinks, eq(memorySourceLinks.memoryId, memories.id))
+    .innerJoin(memorySources, eq(memorySources.id, memorySourceLinks.sourceId))
     .where(
       and(
-        eq(relationshipInteractions.orgId, scope.orgId),
-        eq(relationshipInteractions.userId, scope.userId),
-        inArray(relationshipInteractions.relationshipStateId, [...stateIds]),
+        eq(memories.orgId, scope.orgId),
+        eq(memories.userId, scope.userId),
+        inArray(memories.entityId, [...stateIds]),
+        eq(memories.kind, "recent_context"),
+        eq(memories.status, "active"),
       ),
     )
-    .orderBy(
-      relationshipInteractions.relationshipStateId,
-      desc(relationshipInteractions.occurredAt),
-    );
+    .orderBy(memories.entityId, desc(memories.lastSeenAt));
 
+  const seenMemoryIds = new Set<string>();
   const interactionsByStateId = new Map<
     string,
     RelationshipRecord["recentInteractions"]
   >();
   for (const row of rows) {
-    const bucket = interactionsByStateId.get(row.relationshipStateId) ?? [];
+    if (!row.entityId || seenMemoryIds.has(row.id)) {
+      continue;
+    }
+    seenMemoryIds.add(row.id);
+    const bucket = interactionsByStateId.get(row.entityId) ?? [];
     if (bucket.length >= RELATIONSHIP_RECENT_INTERACTION_LIMIT) {
       continue;
     }
@@ -282,13 +429,15 @@ async function loadRecentInteractionsByStateId(
       id: row.id,
       provider: row.provider,
       externalId: row.externalId,
-      threadId: row.threadId,
-      messageId: row.messageId,
-      subject: row.subject,
+      threadId: sourceMetadataValue(row.metadata, "threadId"),
+      messageId:
+        sourceMetadataValue(row.metadata, "messageId") ??
+        sourceMetadataValue(row.metadata, "messageTs"),
+      subject: null,
       snippet: row.snippet,
-      occurredAt: row.occurredAt.toISOString(),
+      occurredAt: (row.sourceOccurredAt ?? row.occurredAt).toISOString(),
     });
-    interactionsByStateId.set(row.relationshipStateId, bucket);
+    interactionsByStateId.set(row.entityId, bucket);
   }
   return interactionsByStateId;
 }
@@ -330,51 +479,96 @@ async function loadResolvedRelationshipRow(
   db: ReadonlyDb,
   params: RelationshipResolveParams,
 ): Promise<RelationshipBaseRow | null> {
-  const filters = [
-    eq(relationshipStates.orgId, params.orgId),
-    eq(relationshipStates.userId, params.userId),
-  ];
+  const filters = relationshipBaseFilters(params);
 
   if (params.id) {
-    filters.push(eq(relationshipStates.id, params.id));
+    filters.push(eq(memoryEntities.id, params.id));
   } else if (params.email) {
-    filters.push(ilike(relationshipEntities.primaryEmail, params.email));
+    filters.push(ilike(emailAliases.aliasValue, params.email));
   } else if (params.domain) {
     filters.push(
-      ilike(relationshipEntities.domain, normalizeLookup(params.domain)),
+      ilike(domainAliases.aliasValue, normalizeLookup(params.domain)),
     );
   }
 
   const orderBy = params.domain
     ? [
-        sql`case when ${relationshipEntities.type} = 'organization' then 0 else 1 end`,
-        desc(relationshipStates.lastInteractionAt),
+        sql`case when ${memoryEntities.type} = 'organization' then 0 else 1 end`,
+        desc(relationshipLastInteractionProfiles.content),
       ]
-    : [desc(relationshipStates.lastInteractionAt)];
+    : [desc(relationshipLastInteractionProfiles.content)];
 
   const [row] = await db
     .select({
-      stateId: relationshipStates.id,
-      entityId: relationshipEntities.id,
-      entityType: relationshipEntities.type,
-      displayName: relationshipEntities.displayName,
-      primaryEmail: relationshipEntities.primaryEmail,
-      domain: relationshipEntities.domain,
-      relationshipType: relationshipStates.relationshipType,
-      status: relationshipStates.status,
-      summary: relationshipStates.summary,
-      lastInteractionAt: relationshipStates.lastInteractionAt,
+      entityId: memoryEntities.id,
+      entityType: memoryEntities.type,
+      displayName: memoryEntities.displayName,
+      primaryEmail: emailAliases.aliasValue,
+      domain: domainAliases.aliasValue,
+      relationshipType: relationshipTypeProfiles.content,
+      relationshipStatus: relationshipStatusProfiles.content,
+      relationshipSummary: relationshipSummaryProfiles.content,
+      relationshipLastInteractionAt:
+        relationshipLastInteractionProfiles.content,
     })
-    .from(relationshipStates)
+    .from(memoryEntities)
     .innerJoin(
-      relationshipEntities,
-      eq(relationshipEntities.id, relationshipStates.entityId),
+      relationshipIdentityAliases,
+      and(
+        eq(relationshipIdentityAliases.entityId, memoryEntities.id),
+        eq(relationshipIdentityAliases.aliasType, "relationship_identity"),
+      ),
+    )
+    .leftJoin(
+      emailAliases,
+      and(
+        eq(emailAliases.entityId, memoryEntities.id),
+        eq(emailAliases.aliasType, "email"),
+      ),
+    )
+    .leftJoin(
+      domainAliases,
+      and(
+        eq(domainAliases.entityId, memoryEntities.id),
+        eq(domainAliases.aliasType, "domain"),
+      ),
+    )
+    .leftJoin(
+      relationshipTypeProfiles,
+      and(
+        eq(relationshipTypeProfiles.entityId, memoryEntities.id),
+        eq(relationshipTypeProfiles.section, "relationship_type"),
+      ),
+    )
+    .leftJoin(
+      relationshipStatusProfiles,
+      and(
+        eq(relationshipStatusProfiles.entityId, memoryEntities.id),
+        eq(relationshipStatusProfiles.section, "relationship_status"),
+      ),
+    )
+    .leftJoin(
+      relationshipSummaryProfiles,
+      and(
+        eq(relationshipSummaryProfiles.entityId, memoryEntities.id),
+        eq(relationshipSummaryProfiles.section, "relationship_summary"),
+      ),
+    )
+    .leftJoin(
+      relationshipLastInteractionProfiles,
+      and(
+        eq(relationshipLastInteractionProfiles.entityId, memoryEntities.id),
+        eq(
+          relationshipLastInteractionProfiles.section,
+          "relationship_last_interaction_at",
+        ),
+      ),
     )
     .where(and(...filters))
     .orderBy(...orderBy)
     .limit(1);
 
-  return row ?? null;
+  return row ? rowToRelationshipBase(row) : null;
 }
 
 async function resolveRelationshipMemory(
@@ -391,26 +585,23 @@ async function resolveRelationshipMemory(
 
 function relationshipSearchFilters(params: RelationshipSearchParams): SQL[] {
   const query = params.q?.trim() ?? "";
-  const filters: SQL[] = [
-    eq(relationshipStates.orgId, params.orgId),
-    eq(relationshipStates.userId, params.userId),
-  ];
+  const filters = relationshipBaseFilters(params);
 
   if (params.entityType) {
-    filters.push(eq(relationshipEntities.type, params.entityType));
+    filters.push(eq(memoryEntities.type, params.entityType));
   }
   if (params.itemKind) {
-    filters.push(eq(relationshipItems.kind, params.itemKind));
+    filters.push(eq(memories.kind, params.itemKind));
   }
   if (!emptySearch(params.q)) {
     const pattern = `%${query}%`;
     const searchFilter = or(
-      ilike(relationshipEntities.displayName, pattern),
-      ilike(relationshipEntities.primaryEmail, pattern),
-      ilike(relationshipEntities.domain, pattern),
-      ilike(relationshipStates.relationshipType, pattern),
-      ilike(relationshipStates.summary, pattern),
-      ilike(relationshipItems.text, pattern),
+      ilike(memoryEntities.displayName, pattern),
+      ilike(emailAliases.aliasValue, pattern),
+      ilike(domainAliases.aliasValue, pattern),
+      ilike(relationshipTypeProfiles.content, pattern),
+      ilike(relationshipSummaryProfiles.content, pattern),
+      ilike(memories.text, pattern),
     );
     if (searchFilter) {
       filters.push(searchFilter);
@@ -427,18 +618,50 @@ async function countSearchRelationships(
   const filters = relationshipSearchFilters(params);
   const [row] = await db
     .select({
-      total: sql<number>`count(distinct ${relationshipStates.id})::int`,
+      total: sql<number>`count(distinct ${memoryEntities.id})::int`,
     })
-    .from(relationshipStates)
+    .from(memoryEntities)
     .innerJoin(
-      relationshipEntities,
-      eq(relationshipEntities.id, relationshipStates.entityId),
+      relationshipIdentityAliases,
+      and(
+        eq(relationshipIdentityAliases.entityId, memoryEntities.id),
+        eq(relationshipIdentityAliases.aliasType, "relationship_identity"),
+      ),
     )
     .leftJoin(
-      relationshipItems,
+      emailAliases,
       and(
-        eq(relationshipItems.relationshipStateId, relationshipStates.id),
-        isNull(relationshipItems.archivedAt),
+        eq(emailAliases.entityId, memoryEntities.id),
+        eq(emailAliases.aliasType, "email"),
+      ),
+    )
+    .leftJoin(
+      domainAliases,
+      and(
+        eq(domainAliases.entityId, memoryEntities.id),
+        eq(domainAliases.aliasType, "domain"),
+      ),
+    )
+    .leftJoin(
+      relationshipTypeProfiles,
+      and(
+        eq(relationshipTypeProfiles.entityId, memoryEntities.id),
+        eq(relationshipTypeProfiles.section, "relationship_type"),
+      ),
+    )
+    .leftJoin(
+      relationshipSummaryProfiles,
+      and(
+        eq(relationshipSummaryProfiles.entityId, memoryEntities.id),
+        eq(relationshipSummaryProfiles.section, "relationship_summary"),
+      ),
+    )
+    .leftJoin(
+      memories,
+      and(
+        eq(memories.entityId, memoryEntities.id),
+        eq(memories.status, "active"),
+        sql`${memories.kind} in ('key_fact', 'preference', 'open_loop')`,
       ),
     )
     .where(and(...filters));
@@ -455,29 +678,78 @@ async function loadSearchStateIds(
 
   const rows = await db
     .select({
-      stateId: relationshipStates.id,
+      stateId: memoryEntities.id,
     })
-    .from(relationshipStates)
+    .from(memoryEntities)
     .innerJoin(
-      relationshipEntities,
-      eq(relationshipEntities.id, relationshipStates.entityId),
+      relationshipIdentityAliases,
+      and(
+        eq(relationshipIdentityAliases.entityId, memoryEntities.id),
+        eq(relationshipIdentityAliases.aliasType, "relationship_identity"),
+      ),
     )
     .leftJoin(
-      relationshipItems,
+      emailAliases,
       and(
-        eq(relationshipItems.relationshipStateId, relationshipStates.id),
-        isNull(relationshipItems.archivedAt),
+        eq(emailAliases.entityId, memoryEntities.id),
+        eq(emailAliases.aliasType, "email"),
+      ),
+    )
+    .leftJoin(
+      domainAliases,
+      and(
+        eq(domainAliases.entityId, memoryEntities.id),
+        eq(domainAliases.aliasType, "domain"),
+      ),
+    )
+    .leftJoin(
+      relationshipTypeProfiles,
+      and(
+        eq(relationshipTypeProfiles.entityId, memoryEntities.id),
+        eq(relationshipTypeProfiles.section, "relationship_type"),
+      ),
+    )
+    .leftJoin(
+      relationshipStatusProfiles,
+      and(
+        eq(relationshipStatusProfiles.entityId, memoryEntities.id),
+        eq(relationshipStatusProfiles.section, "relationship_status"),
+      ),
+    )
+    .leftJoin(
+      relationshipSummaryProfiles,
+      and(
+        eq(relationshipSummaryProfiles.entityId, memoryEntities.id),
+        eq(relationshipSummaryProfiles.section, "relationship_summary"),
+      ),
+    )
+    .leftJoin(
+      relationshipLastInteractionProfiles,
+      and(
+        eq(relationshipLastInteractionProfiles.entityId, memoryEntities.id),
+        eq(
+          relationshipLastInteractionProfiles.section,
+          "relationship_last_interaction_at",
+        ),
+      ),
+    )
+    .leftJoin(
+      memories,
+      and(
+        eq(memories.entityId, memoryEntities.id),
+        eq(memories.status, "active"),
+        sql`${memories.kind} in ('key_fact', 'preference', 'open_loop')`,
       ),
     )
     .where(and(...filters))
     .groupBy(
-      relationshipStates.id,
-      relationshipStates.status,
-      relationshipStates.lastInteractionAt,
+      memoryEntities.id,
+      relationshipStatusProfiles.content,
+      relationshipLastInteractionProfiles.content,
     )
     .orderBy(
-      sql`case when ${relationshipStates.status} = 'active' then 0 else 1 end`,
-      desc(relationshipStates.lastInteractionAt),
+      sql`case when ${relationshipStatusProfiles.content} = 'active' or ${relationshipStatusProfiles.content} is null then 0 else 1 end`,
+      desc(relationshipLastInteractionProfiles.content),
     )
     .limit(params.limit)
     .offset(offset);

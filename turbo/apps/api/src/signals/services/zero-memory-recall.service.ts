@@ -5,23 +5,15 @@ import type {
   MemoryRecallResponse,
 } from "@vm0/api-contracts/contracts/zero-memory";
 import {
-  relationshipEntities,
-  relationshipItems,
-  relationshipItemSources,
-  relationshipStates,
-} from "@vm0/db/schema/relationship-memory";
-import {
-  and,
-  desc,
-  eq,
-  ilike,
-  inArray,
-  isNull,
-  ne,
-  or,
-  sql,
-  type SQL,
-} from "drizzle-orm";
+  memories,
+  memoryEntities,
+  memoryEntityAliases,
+  memoryProfiles,
+  memorySourceLinks,
+  memorySources,
+} from "@vm0/db/schema/memory-substrate";
+import { alias } from "drizzle-orm/pg-core";
+import { and, desc, eq, ilike, inArray, or, sql, type SQL } from "drizzle-orm";
 
 import type { ReadonlyDb } from "../external/db";
 
@@ -41,45 +33,85 @@ interface ContextParams extends MemoryScope {
   readonly limit: number;
 }
 
-type MemoryRecallRow = {
+type GraphMemoryRecallRow = {
   readonly id: string;
   readonly kind: MemoryRecallItemKind;
   readonly text: string;
   readonly confidence: number;
   readonly lastSeenAt: Date;
-  readonly relationshipStateId: string;
-  readonly relationshipType: string;
-  readonly relationshipStatus: "active" | "quiet" | "archived";
-  readonly relationshipSummary: string;
-  readonly lastInteractionAt: Date | null;
   readonly entityId: string;
   readonly entityType: "person" | "organization";
   readonly displayName: string;
   readonly primaryEmail: string | null;
   readonly domain: string | null;
+  readonly relationshipType: string | null;
+  readonly relationshipStatus: string | null;
+  readonly relationshipSummary: string | null;
+  readonly relationshipLastInteractionAt: string | null;
 };
+
+const RECALL_MEMORY_KINDS = ["key_fact", "preference", "open_loop"] as const;
+
+const relationshipIdentityAliases = alias(
+  memoryEntityAliases,
+  "relationship_identity_aliases",
+);
+const emailAliases = alias(memoryEntityAliases, "relationship_email_aliases");
+const domainAliases = alias(memoryEntityAliases, "relationship_domain_aliases");
+const relationshipTypeProfiles = alias(
+  memoryProfiles,
+  "relationship_type_profiles",
+);
+const relationshipStatusProfiles = alias(
+  memoryProfiles,
+  "relationship_status_profiles",
+);
+const relationshipSummaryProfiles = alias(
+  memoryProfiles,
+  "relationship_summary_profiles",
+);
+const relationshipLastInteractionProfiles = alias(
+  memoryProfiles,
+  "relationship_last_interaction_profiles",
+);
 
 function serializeDate(value: Date | null): string | null {
   return value ? value.toISOString() : null;
 }
 
-function queryFilter(query: string): SQL | undefined {
+function parseProfileDate(value: string | null): Date | null {
+  if (!value) {
+    return null;
+  }
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function relationshipStatus(
+  value: string | null,
+): MemoryRecallItem["relationship"]["status"] {
+  return value === "active" || value === "quiet" || value === "archived"
+    ? value
+    : null;
+}
+
+function graphQueryFilter(query: string): SQL | undefined {
   const trimmed = query.trim();
   if (trimmed.length === 0) {
     return undefined;
   }
   const pattern = `%${trimmed}%`;
   return or(
-    ilike(relationshipItems.text, pattern),
-    ilike(relationshipEntities.displayName, pattern),
-    ilike(relationshipEntities.primaryEmail, pattern),
-    ilike(relationshipEntities.domain, pattern),
-    ilike(relationshipStates.relationshipType, pattern),
-    ilike(relationshipStates.summary, pattern),
+    ilike(memories.text, pattern),
+    ilike(memoryEntities.displayName, pattern),
+    ilike(emailAliases.aliasValue, pattern),
+    ilike(domainAliases.aliasValue, pattern),
+    ilike(relationshipTypeProfiles.content, pattern),
+    ilike(relationshipSummaryProfiles.content, pattern),
   );
 }
 
-function memoryFilters(
+function graphMemoryFilters(
   scope: MemoryScope,
   options: {
     readonly q?: string;
@@ -87,16 +119,17 @@ function memoryFilters(
   },
 ): SQL[] {
   const filters: SQL[] = [
-    eq(relationshipItems.orgId, scope.orgId),
-    eq(relationshipItems.userId, scope.userId),
-    isNull(relationshipItems.archivedAt),
-    ne(relationshipStates.status, "archived"),
+    eq(memories.orgId, scope.orgId),
+    eq(memories.userId, scope.userId),
+    eq(memories.status, "active"),
+    inArray(memories.kind, [...RECALL_MEMORY_KINDS]),
+    sql`${memoryEntities.type} in ('person', 'organization')`,
   ];
   if (options.kind) {
-    filters.push(eq(relationshipItems.kind, options.kind));
+    filters.push(eq(memories.kind, options.kind));
   }
   if (options.q) {
-    const filter = queryFilter(options.q);
+    const filter = graphQueryFilter(options.q);
     if (filter) {
       filters.push(filter);
     }
@@ -104,24 +137,24 @@ function memoryFilters(
   return filters;
 }
 
-function queryRank(query: string | undefined): SQL {
+function graphQueryRank(query: string | undefined): SQL {
   if (!query || query.trim().length === 0) {
     return sql`0`;
   }
   const pattern = `%${query.trim()}%`;
   return sql`
     case
-      when ${relationshipItems.text} ilike ${pattern} then 0
-      when ${relationshipEntities.displayName} ilike ${pattern} then 1
-      when ${relationshipStates.summary} ilike ${pattern} then 2
+      when ${memories.text} ilike ${pattern} then 0
+      when ${memoryEntities.displayName} ilike ${pattern} then 1
+      when ${relationshipSummaryProfiles.content} ilike ${pattern} then 2
       else 3
     end
   `;
 }
 
-function kindRank(): SQL {
+function graphKindRank(): SQL {
   return sql`
-    case ${relationshipItems.kind}
+    case ${memories.kind}
       when 'preference' then 0
       when 'open_loop' then 1
       when 'key_fact' then 2
@@ -130,111 +163,193 @@ function kindRank(): SQL {
   `;
 }
 
-async function loadMemoryRows(
+async function loadGraphMemoryRows(
   db: ReadonlyDb,
   params: RecallParams | ContextParams,
-): Promise<readonly MemoryRecallRow[]> {
-  const filters = memoryFilters(params, {
+): Promise<readonly GraphMemoryRecallRow[]> {
+  const filters = graphMemoryFilters(params, {
     q: params.q,
     kind: "kind" in params ? params.kind : undefined,
   });
-  const rankingOrder = params.q?.trim() ? [queryRank(params.q)] : [];
+  const rankingOrder = params.q?.trim() ? [graphQueryRank(params.q)] : [];
 
-  return await db
+  const rows = await db
     .select({
-      id: relationshipItems.id,
-      kind: relationshipItems.kind,
-      text: relationshipItems.text,
-      confidence: relationshipItems.confidence,
-      lastSeenAt: relationshipItems.lastSeenAt,
-      relationshipStateId: relationshipStates.id,
-      relationshipType: relationshipStates.relationshipType,
-      relationshipStatus: relationshipStates.status,
-      relationshipSummary: relationshipStates.summary,
-      lastInteractionAt: relationshipStates.lastInteractionAt,
-      entityId: relationshipEntities.id,
-      entityType: relationshipEntities.type,
-      displayName: relationshipEntities.displayName,
-      primaryEmail: relationshipEntities.primaryEmail,
-      domain: relationshipEntities.domain,
+      id: memories.id,
+      kind: memories.kind,
+      text: memories.text,
+      confidence: memories.confidence,
+      lastSeenAt: memories.lastSeenAt,
+      entityId: memoryEntities.id,
+      entityType: memoryEntities.type,
+      displayName: memoryEntities.displayName,
+      primaryEmail: emailAliases.aliasValue,
+      domain: domainAliases.aliasValue,
+      relationshipType: relationshipTypeProfiles.content,
+      relationshipStatus: relationshipStatusProfiles.content,
+      relationshipSummary: relationshipSummaryProfiles.content,
+      relationshipLastInteractionAt:
+        relationshipLastInteractionProfiles.content,
     })
-    .from(relationshipItems)
+    .from(memories)
+    .innerJoin(memoryEntities, eq(memoryEntities.id, memories.entityId))
     .innerJoin(
-      relationshipStates,
-      eq(relationshipStates.id, relationshipItems.relationshipStateId),
+      relationshipIdentityAliases,
+      and(
+        eq(relationshipIdentityAliases.entityId, memoryEntities.id),
+        eq(relationshipIdentityAliases.aliasType, "relationship_identity"),
+      ),
     )
-    .innerJoin(
-      relationshipEntities,
-      eq(relationshipEntities.id, relationshipStates.entityId),
+    .leftJoin(
+      emailAliases,
+      and(
+        eq(emailAliases.entityId, memoryEntities.id),
+        eq(emailAliases.aliasType, "email"),
+      ),
+    )
+    .leftJoin(
+      domainAliases,
+      and(
+        eq(domainAliases.entityId, memoryEntities.id),
+        eq(domainAliases.aliasType, "domain"),
+      ),
+    )
+    .leftJoin(
+      relationshipTypeProfiles,
+      and(
+        eq(relationshipTypeProfiles.entityId, memoryEntities.id),
+        eq(relationshipTypeProfiles.section, "relationship_type"),
+      ),
+    )
+    .leftJoin(
+      relationshipStatusProfiles,
+      and(
+        eq(relationshipStatusProfiles.entityId, memoryEntities.id),
+        eq(relationshipStatusProfiles.section, "relationship_status"),
+      ),
+    )
+    .leftJoin(
+      relationshipSummaryProfiles,
+      and(
+        eq(relationshipSummaryProfiles.entityId, memoryEntities.id),
+        eq(relationshipSummaryProfiles.section, "relationship_summary"),
+      ),
+    )
+    .leftJoin(
+      relationshipLastInteractionProfiles,
+      and(
+        eq(relationshipLastInteractionProfiles.entityId, memoryEntities.id),
+        eq(
+          relationshipLastInteractionProfiles.section,
+          "relationship_last_interaction_at",
+        ),
+      ),
     )
     .where(and(...filters))
     .orderBy(
       ...rankingOrder,
-      kindRank(),
-      desc(relationshipItems.confidence),
-      desc(relationshipItems.lastSeenAt),
+      graphKindRank(),
+      desc(memories.confidence),
+      desc(memories.lastSeenAt),
     )
     .limit(params.limit);
+
+  const dedupedRows: GraphMemoryRecallRow[] = [];
+  const seenMemoryIds = new Set<string>();
+  for (const row of rows) {
+    if (row.entityType !== "organization" && row.entityType !== "person") {
+      continue;
+    }
+    if (seenMemoryIds.has(row.id)) {
+      continue;
+    }
+    seenMemoryIds.add(row.id);
+    dedupedRows.push({
+      ...row,
+      kind: row.kind as MemoryRecallItemKind,
+      entityType: row.entityType,
+    });
+  }
+  return dedupedRows;
 }
 
-async function loadSourcesByItemId(
+function sourceMetadataValue(
+  metadata: unknown,
+  key: "threadId" | "messageId" | "messageTs",
+): string | null {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return null;
+  }
+  const value = (metadata as Record<string, unknown>)[key];
+  return typeof value === "string" ? value : null;
+}
+
+async function loadGraphSourcesByMemoryId(
   db: ReadonlyDb,
   scope: MemoryScope,
-  itemIds: readonly string[],
+  memoryIds: readonly string[],
 ): Promise<ReadonlyMap<string, MemoryRecallItem["sources"]>> {
-  if (itemIds.length === 0) {
+  if (memoryIds.length === 0) {
     return new Map();
   }
 
   const rows = await db
     .select({
-      id: relationshipItemSources.id,
-      relationshipItemId: relationshipItemSources.relationshipItemId,
-      provider: relationshipItemSources.provider,
-      externalId: relationshipItemSources.externalId,
-      threadId: relationshipItemSources.threadId,
-      messageId: relationshipItemSources.messageId,
-      quote: relationshipItemSources.quote,
-      occurredAt: relationshipItemSources.occurredAt,
+      id: memorySourceLinks.id,
+      memoryId: memorySourceLinks.memoryId,
+      provider: memorySources.provider,
+      externalId: memorySources.externalId,
+      metadata: memorySources.metadata,
+      occurredAt: memorySources.occurredAt,
     })
-    .from(relationshipItemSources)
+    .from(memorySourceLinks)
+    .innerJoin(memorySources, eq(memorySources.id, memorySourceLinks.sourceId))
     .where(
       and(
-        eq(relationshipItemSources.orgId, scope.orgId),
-        eq(relationshipItemSources.userId, scope.userId),
-        inArray(relationshipItemSources.relationshipItemId, [...itemIds]),
+        eq(memorySourceLinks.orgId, scope.orgId),
+        eq(memorySourceLinks.userId, scope.userId),
+        inArray(memorySourceLinks.memoryId, [...memoryIds]),
       ),
     )
-    .orderBy(desc(relationshipItemSources.occurredAt));
+    .orderBy(desc(memorySources.occurredAt));
 
-  const sourcesByItemId = new Map<string, MemoryRecallItem["sources"]>();
+  const sourcesByMemoryId = new Map<string, MemoryRecallItem["sources"]>();
   for (const row of rows) {
-    const bucket = sourcesByItemId.get(row.relationshipItemId) ?? [];
+    const bucket = sourcesByMemoryId.get(row.memoryId) ?? [];
     bucket.push({
       id: row.id,
       provider: row.provider,
       externalId: row.externalId,
-      threadId: row.threadId,
-      messageId: row.messageId,
-      quote: row.quote,
+      threadId: sourceMetadataValue(row.metadata, "threadId"),
+      messageId:
+        sourceMetadataValue(row.metadata, "messageId") ??
+        sourceMetadataValue(row.metadata, "messageTs"),
+      quote: null,
       occurredAt: serializeDate(row.occurredAt),
     });
-    sourcesByItemId.set(row.relationshipItemId, bucket);
+    sourcesByMemoryId.set(row.memoryId, bucket);
   }
-  return sourcesByItemId;
+  return sourcesByMemoryId;
 }
 
-async function hydrateMemories(
+async function hydrateGraphMemories(
   db: ReadonlyDb,
   scope: MemoryScope,
-  rows: readonly MemoryRecallRow[],
+  rows: readonly GraphMemoryRecallRow[],
 ): Promise<readonly MemoryRecallItem[]> {
-  const itemIds = rows.map((row) => {
+  const memoryIds = rows.map((row) => {
     return row.id;
   });
-  const sourcesByItemId = await loadSourcesByItemId(db, scope, itemIds);
+  const sourcesByMemoryId = await loadGraphSourcesByMemoryId(
+    db,
+    scope,
+    memoryIds,
+  );
 
   return rows.map((row) => {
+    const profileLastInteraction = parseProfileDate(
+      row.relationshipLastInteractionAt,
+    );
     return {
       id: row.id,
       kind: row.kind,
@@ -242,7 +357,7 @@ async function hydrateMemories(
       confidence: row.confidence,
       lastSeenAt: row.lastSeenAt.toISOString(),
       relationship: {
-        id: row.relationshipStateId,
+        id: row.entityId,
         entity: {
           id: row.entityId,
           type: row.entityType,
@@ -251,21 +366,28 @@ async function hydrateMemories(
           domain: row.domain,
         },
         relationshipType: row.relationshipType,
-        status: row.relationshipStatus,
+        status: relationshipStatus(row.relationshipStatus),
         summary: row.relationshipSummary,
-        lastInteractionAt: serializeDate(row.lastInteractionAt),
+        lastInteractionAt: serializeDate(profileLastInteraction),
       },
-      sources: sourcesByItemId.get(row.id) ?? [],
+      sources: sourcesByMemoryId.get(row.id) ?? [],
     };
   });
+}
+
+async function loadMemoryItems(
+  db: ReadonlyDb,
+  params: RecallParams | ContextParams,
+): Promise<readonly MemoryRecallItem[]> {
+  const graphRows = await loadGraphMemoryRows(db, params);
+  return await hydrateGraphMemories(db, params, graphRows);
 }
 
 export async function recallZeroMemory(
   db: ReadonlyDb,
   params: RecallParams,
 ): Promise<MemoryRecallResponse> {
-  const rows = await loadMemoryRows(db, params);
-  const memories = await hydrateMemories(db, params, rows);
+  const memories = await loadMemoryItems(db, params);
   return { query: params.q, memories: [...memories] };
 }
 
@@ -317,8 +439,7 @@ export async function getZeroMemoryContext(
   db: ReadonlyDb,
   params: ContextParams,
 ): Promise<MemoryContextResponse> {
-  const rows = await loadMemoryRows(db, params);
-  const memories = await hydrateMemories(db, params, rows);
+  const memories = await loadMemoryItems(db, params);
   return {
     query: params.q ?? null,
     context: formatMemoryContext(memories),

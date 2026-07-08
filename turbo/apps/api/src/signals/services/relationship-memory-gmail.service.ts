@@ -1,16 +1,8 @@
-import { createHash } from "node:crypto";
-
 import { command } from "ccstate";
 import { z } from "zod";
 import {
-  relationshipEntities,
-  relationshipInteractions,
-  relationshipItems,
-  relationshipItemSources,
   relationshipMemorySettings,
-  relationshipStates,
   relationshipSyncJobs,
-  type RelationshipItemKind,
   type RelationshipMemoryProvider,
   type RelationshipSyncJobPayload,
 } from "@vm0/db/schema/relationship-memory";
@@ -18,7 +10,7 @@ import {
   memorySources,
   type MemorySourceMetadata,
 } from "@vm0/db/schema/memory-substrate";
-import { and, asc, eq, isNull, lte, sql } from "drizzle-orm";
+import { and, asc, eq, lte, sql } from "drizzle-orm";
 import { htmlToText } from "html-to-text";
 
 import { logger } from "../../lib/log";
@@ -38,6 +30,17 @@ import {
   type GmailRelationshipMessage,
   type RelationshipTarget,
 } from "./relationship-memory-gmail-queue.service";
+import {
+  loadGraphMemoryCandidates,
+  loadGraphRelationshipState,
+  recordGraphInteraction,
+  upsertGraphMemory,
+  upsertGraphRelationshipEntity,
+  upsertGraphRelationshipState,
+  type GraphMemoryCandidate,
+  type GraphMemoryRelation,
+  type GraphRelationshipState,
+} from "./memory-graph.service";
 import { resolveSlackMemoryAccess } from "./slack-memory-backfill.service";
 import type { SlackMemoryChannelType } from "./slack-memory-source.service";
 
@@ -74,7 +77,6 @@ interface LoadedSlackRelationshipMessage {
   readonly source: RelationshipEvidenceSource;
   readonly target: RelationshipTarget;
   readonly evidence: RelationshipEvidence;
-  readonly fallbackSummary: string;
   readonly occurredAt: Date;
 }
 
@@ -82,6 +84,15 @@ const extractionItemSchema = z.object({
   kind: z.enum(["key_fact", "preference", "open_loop"]),
   text: z.string().min(1).max(500),
   confidence: z.number().int().min(0).max(100).default(80),
+  relations: z
+    .array(
+      z.object({
+        memoryRef: z.string().min(1).max(32),
+        relation: z.enum(["updates", "extends", "contradicts", "resolves"]),
+      }),
+    )
+    .max(4)
+    .default([]),
 });
 
 const extractionSchema = z.object({
@@ -125,18 +136,6 @@ function transientBodyExcerptFromMessage(
   return text ? truncate(text, MAX_TRANSIENT_BODY_EXCERPT_LENGTH) : null;
 }
 
-function fallbackInteractionSummary(
-  target: RelationshipTarget,
-  message: RelationshipMemoryMessage,
-): string {
-  return truncate(
-    message.direction === "sent"
-      ? `The user sent ${target.displayName} a Gmail message.`
-      : `${target.displayName} sent a Gmail message.`,
-    MAX_INTERACTION_SUMMARY_LENGTH,
-  );
-}
-
 function parsedMessageOccurredAt(value: string | null): Date | null {
   if (!value) {
     return null;
@@ -166,20 +165,6 @@ function relationshipDirectionFromContext(
   return null;
 }
 
-function relationshipItemSourceExternalId(args: {
-  readonly sourceExternalId: string;
-  readonly kind: RelationshipItemKind;
-  readonly text: string;
-}): string {
-  const digest = createHash("sha256")
-    .update(args.kind)
-    .update("\0")
-    .update(args.text)
-    .digest("hex")
-    .slice(0, 16);
-  return [args.sourceExternalId, args.kind, digest].join(":");
-}
-
 function extractJsonObject(text: string): unknown {
   const trimmed = text.trim();
   const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
@@ -191,6 +176,7 @@ async function extractRelationshipMemory(args: {
   readonly target: RelationshipTarget;
   readonly existingSummary: string | null;
   readonly evidence: RelationshipEvidence;
+  readonly existingMemories: readonly GraphMemoryCandidate[];
 }): Promise<RelationshipExtraction> {
   if (!isLlmConfigured()) {
     return {
@@ -216,6 +202,9 @@ async function extractRelationshipMemory(args: {
           "Use source.direction when present: sent means the user sent the message; received means the user received it.",
           "Every item must be directly supported by the source evidence.",
           "Do not invent facts. If there is no durable memory, return an empty items array.",
+          "When a new item changes an existing memory, add a relation using the provided memoryRef.",
+          "Use resolves only when the source directly shows an existing open_loop is completed, answered, cancelled, or no longer needed.",
+          "Use updates when the source supersedes an older memory; use extends when it adds supporting context; use contradicts when it conflicts without resolving.",
         ].join("\n"),
       },
       {
@@ -230,13 +219,20 @@ async function extractRelationshipMemory(args: {
               existingSummary: args.existingSummary,
             },
             source: args.evidence.payload,
+            existingMemories: args.existingMemories.map((memory) => {
+              return {
+                memoryRef: memory.ref,
+                kind: memory.kind,
+                text: memory.text,
+              };
+            }),
             outputSchema: {
               summary: "string|null",
               relationshipType: "string|null",
               interactionSummary:
                 "string|null; one short user-facing sentence that paraphrases the interaction",
               items:
-                "Array<{ kind: 'key_fact'|'preference'|'open_loop', text: string, confidence: 0-100 }>",
+                "Array<{ kind: 'key_fact'|'preference'|'open_loop', text: string, confidence: 0-100, relations?: Array<{ memoryRef: string, relation: 'updates'|'extends'|'contradicts'|'resolves' }> }>",
             },
           },
           null,
@@ -263,272 +259,30 @@ async function extractRelationshipMemory(args: {
   return parsed.data;
 }
 
-async function loadExistingState(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly identityKey: string;
-}) {
-  const [row] = await args.db
-    .select({
-      stateId: relationshipStates.id,
-      entityId: relationshipEntities.id,
-      summary: relationshipStates.summary,
-      relationshipType: relationshipStates.relationshipType,
-      lastInteractionAt: relationshipStates.lastInteractionAt,
-    })
-    .from(relationshipEntities)
-    .innerJoin(
-      relationshipStates,
-      eq(relationshipStates.entityId, relationshipEntities.id),
-    )
-    .where(
-      and(
-        eq(relationshipEntities.orgId, args.orgId),
-        eq(relationshipEntities.userId, args.userId),
-        eq(relationshipEntities.identityKey, args.identityKey),
-      ),
-    )
-    .limit(1);
-  return row ?? null;
-}
-
 function relationshipStateText(args: {
   readonly extraction: RelationshipExtraction;
-  readonly existing: Awaited<ReturnType<typeof loadExistingState>>;
-  readonly target: RelationshipTarget;
+  readonly existing: GraphRelationshipState;
   readonly occurredAt: Date;
-}): { readonly summary: string; readonly relationshipType: string } {
+}): {
+  readonly summary: string | null;
+  readonly relationshipType: string | null;
+} {
   const canRefreshStateText = isSameOrNewerDate(
     args.occurredAt,
-    args.existing?.lastInteractionAt ?? null,
+    args.existing.lastInteractionAt,
   );
   if (canRefreshStateText) {
     return {
-      summary:
-        args.extraction.summary ??
-        args.existing?.summary ??
-        args.target.fallbackSummary,
+      summary: args.extraction.summary ?? args.existing.summary,
       relationshipType:
-        args.extraction.relationshipType ??
-        args.existing?.relationshipType ??
-        args.target.relationshipType,
+        args.extraction.relationshipType ?? args.existing.relationshipType,
     };
   }
   return {
-    summary:
-      args.existing?.summary ??
-      args.extraction.summary ??
-      args.target.fallbackSummary,
+    summary: args.existing.summary ?? args.extraction.summary,
     relationshipType:
-      args.existing?.relationshipType ??
-      args.extraction.relationshipType ??
-      args.target.relationshipType,
+      args.existing.relationshipType ?? args.extraction.relationshipType,
   };
-}
-
-async function upsertRelationshipState(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly target: RelationshipTarget;
-  readonly extraction: RelationshipExtraction;
-  readonly existing: Awaited<ReturnType<typeof loadExistingState>>;
-  readonly occurredAt: Date;
-}) {
-  const currentTime = nowDate();
-  const [entity] = await args.db
-    .insert(relationshipEntities)
-    .values({
-      orgId: args.orgId,
-      userId: args.userId,
-      type: args.target.type,
-      identityKey: args.target.identityKey,
-      displayName: args.target.displayName,
-      primaryEmail: args.target.primaryEmail,
-      domain: args.target.domain,
-      createdAt: currentTime,
-      updatedAt: currentTime,
-    })
-    .onConflictDoUpdate({
-      target: [
-        relationshipEntities.orgId,
-        relationshipEntities.userId,
-        relationshipEntities.identityKey,
-      ],
-      set: {
-        displayName: args.target.displayName,
-        primaryEmail: args.target.primaryEmail,
-        domain: args.target.domain,
-        updatedAt: currentTime,
-      },
-    })
-    .returning({ id: relationshipEntities.id });
-
-  const entityId = entity?.id ?? args.existing?.entityId;
-  if (!entityId) {
-    throw new Error("Failed to upsert relationship entity");
-  }
-
-  const { summary, relationshipType } = relationshipStateText(args);
-  const lastInteractionAt = args.existing?.lastInteractionAt
-    ? latestDate(args.existing.lastInteractionAt, args.occurredAt)
-    : args.occurredAt;
-
-  const [state] = await args.db
-    .insert(relationshipStates)
-    .values({
-      orgId: args.orgId,
-      userId: args.userId,
-      entityId,
-      relationshipType,
-      status: "active",
-      summary,
-      lastInteractionAt,
-      createdAt: currentTime,
-      updatedAt: currentTime,
-    })
-    .onConflictDoUpdate({
-      target: [
-        relationshipStates.orgId,
-        relationshipStates.userId,
-        relationshipStates.entityId,
-      ],
-      set: {
-        relationshipType,
-        status: "active",
-        summary,
-        lastInteractionAt,
-        updatedAt: currentTime,
-      },
-    })
-    .returning({ id: relationshipStates.id });
-
-  const stateId = state?.id ?? args.existing?.stateId;
-  if (!stateId) {
-    throw new Error("Failed to upsert relationship state");
-  }
-
-  return { entityId, stateId };
-}
-
-async function upsertRelationshipItem(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly stateId: string;
-  readonly kind: RelationshipItemKind;
-  readonly text: string;
-  readonly confidence: number;
-  readonly source: RelationshipEvidenceSource;
-  readonly occurredAt: Date;
-}) {
-  const currentTime = nowDate();
-  const [existing] = await args.db
-    .select({
-      id: relationshipItems.id,
-      lastSeenAt: relationshipItems.lastSeenAt,
-    })
-    .from(relationshipItems)
-    .where(
-      and(
-        eq(relationshipItems.orgId, args.orgId),
-        eq(relationshipItems.userId, args.userId),
-        eq(relationshipItems.relationshipStateId, args.stateId),
-        eq(relationshipItems.kind, args.kind),
-        eq(relationshipItems.text, args.text),
-        isNull(relationshipItems.archivedAt),
-      ),
-    )
-    .limit(1);
-
-  const itemId =
-    existing?.id ??
-    (
-      await args.db
-        .insert(relationshipItems)
-        .values({
-          orgId: args.orgId,
-          userId: args.userId,
-          relationshipStateId: args.stateId,
-          kind: args.kind,
-          text: args.text,
-          confidence: args.confidence,
-          createdAt: currentTime,
-          updatedAt: currentTime,
-          lastSeenAt: args.occurredAt,
-        })
-        .returning({ id: relationshipItems.id })
-    )[0]?.id;
-
-  if (!itemId) {
-    throw new Error("Failed to upsert relationship item");
-  }
-
-  if (existing) {
-    await args.db
-      .update(relationshipItems)
-      .set({
-        confidence: args.confidence,
-        updatedAt: currentTime,
-        lastSeenAt: latestDate(existing.lastSeenAt, args.occurredAt),
-      })
-      .where(eq(relationshipItems.id, itemId));
-  }
-
-  await args.db
-    .insert(relationshipItemSources)
-    .values({
-      orgId: args.orgId,
-      userId: args.userId,
-      relationshipItemId: itemId,
-      provider: args.source.provider,
-      connectorId: args.source.connectorId,
-      externalId: relationshipItemSourceExternalId({
-        sourceExternalId: args.source.externalId,
-        kind: args.kind,
-        text: args.text,
-      }),
-      threadId: args.source.threadId,
-      messageId: args.source.messageId,
-      quote: null,
-      occurredAt: args.occurredAt,
-      createdAt: currentTime,
-    })
-    .onConflictDoNothing();
-}
-
-async function recordInteraction(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly stateId: string;
-  readonly entityId: string;
-  readonly source: RelationshipEvidenceSource;
-  readonly snippet: string;
-  readonly occurredAt: Date;
-}) {
-  await args.db
-    .insert(relationshipInteractions)
-    .values({
-      orgId: args.orgId,
-      userId: args.userId,
-      relationshipStateId: args.stateId,
-      entityId: args.entityId,
-      provider: args.source.provider,
-      connectorId: args.source.connectorId,
-      externalId: args.source.externalId,
-      threadId: args.source.threadId,
-      messageId: args.source.messageId,
-      subject: null,
-      snippet: args.snippet,
-      occurredAt: args.occurredAt,
-      metadata: {
-        direction: args.source.direction,
-      },
-      createdAt: nowDate(),
-    })
-    .onConflictDoNothing();
 }
 
 async function applyRelationshipExtraction(args: {
@@ -538,22 +292,33 @@ async function applyRelationshipExtraction(args: {
   readonly target: RelationshipTarget;
   readonly source: RelationshipEvidenceSource;
   readonly evidence: RelationshipEvidence;
-  readonly fallbackSummary: string;
   readonly occurredAt: Date;
   readonly failureLogMessage: string;
   readonly logContext: Record<string, string | null>;
 }): Promise<void> {
-  const existing = await loadExistingState({
+  const graphEntityId = await upsertGraphRelationshipEntity({
     db: args.db,
     orgId: args.orgId,
     userId: args.userId,
-    identityKey: args.target.identityKey,
+    target: args.target,
+  });
+  const existing = await loadGraphRelationshipState(args.db, {
+    orgId: args.orgId,
+    userId: args.userId,
+    entityId: graphEntityId,
+  });
+  const graphCandidates = await loadGraphMemoryCandidates(args.db, {
+    orgId: args.orgId,
+    userId: args.userId,
+    entityId: graphEntityId,
+    limit: 12,
   });
   const extractionResult = await settle(
     extractRelationshipMemory({
       target: args.target,
-      existingSummary: existing?.summary ?? null,
+      existingSummary: existing.summary,
       evidence: args.evidence,
+      existingMemories: graphCandidates,
     }),
   );
   const extraction = extractionResult.ok
@@ -574,37 +339,50 @@ async function applyRelationshipExtraction(args: {
     });
   }
 
-  const state = await upsertRelationshipState({
-    db: args.db,
-    orgId: args.orgId,
-    userId: args.userId,
-    target: args.target,
+  const { summary, relationshipType } = relationshipStateText({
     extraction,
     existing,
     occurredAt: args.occurredAt,
   });
-  await recordInteraction({
+  const lastInteractionAt = existing.lastInteractionAt
+    ? latestDate(existing.lastInteractionAt, args.occurredAt)
+    : args.occurredAt;
+
+  await upsertGraphRelationshipState({
     db: args.db,
     orgId: args.orgId,
     userId: args.userId,
-    stateId: state.stateId,
-    entityId: state.entityId,
-    source: args.source,
-    snippet: extraction.interactionSummary ?? args.fallbackSummary,
-    occurredAt: args.occurredAt,
+    entityId: graphEntityId,
+    summary,
+    relationshipType,
+    status: "active",
+    lastInteractionAt,
   });
-
-  for (const item of extraction.items) {
-    await upsertRelationshipItem({
+  if (extraction.interactionSummary !== null) {
+    await recordGraphInteraction({
       db: args.db,
       orgId: args.orgId,
       userId: args.userId,
-      stateId: state.stateId,
+      entityId: graphEntityId,
+      source: args.source,
+      snippet: extraction.interactionSummary,
+      occurredAt: args.occurredAt,
+    });
+  }
+
+  for (const item of extraction.items) {
+    await upsertGraphMemory({
+      db: args.db,
+      orgId: args.orgId,
+      userId: args.userId,
+      entityId: graphEntityId,
       kind: item.kind,
       text: item.text,
       confidence: item.confidence,
       source: args.source,
       occurredAt: args.occurredAt,
+      relations: item.relations as readonly GraphMemoryRelation[],
+      candidates: graphCandidates,
     });
   }
 }
@@ -721,8 +499,6 @@ function slackRelationshipTarget(args: {
     displayName,
     primaryEmail: null,
     domain: null,
-    relationshipType: label,
-    fallbackSummary: `The user has recent Slack activity in ${displayName}.`,
   };
 }
 
@@ -903,7 +679,6 @@ async function loadSlackSourceForRelationshipExtraction(
         ),
       },
     },
-    fallbackSummary: `The user posted in ${target.displayName} on Slack.`,
     occurredAt,
   };
 }
@@ -961,7 +736,6 @@ async function processGmailRelationshipRefreshJob(
       target,
       source,
       evidence,
-      fallbackSummary: fallbackInteractionSummary(target, message),
       occurredAt,
       failureLogMessage: "Relationship memory extraction failed",
       logContext: {
@@ -1030,7 +804,6 @@ async function processSlackSourceRelationshipExtractionJob(
     target: loaded.target,
     source: loaded.source,
     evidence: loaded.evidence,
-    fallbackSummary: loaded.fallbackSummary,
     occurredAt: loaded.occurredAt,
     failureLogMessage: "Slack relationship memory extraction failed",
     logContext: {
