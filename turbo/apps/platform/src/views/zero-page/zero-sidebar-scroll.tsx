@@ -1,6 +1,7 @@
 import type {
   CSSProperties,
   FocusEventHandler,
+  PointerEventHandler,
   ReactNode,
   UIEvent,
 } from "react";
@@ -20,6 +21,7 @@ export function OverlayScrollArea({
   className,
   children,
   onFocus,
+  onPointerDownCapture,
   onScroll,
   style,
   "data-testid": dataTestId,
@@ -29,6 +31,7 @@ export function OverlayScrollArea({
   className?: string;
   children: ReactNode;
   onFocus?: FocusEventHandler<HTMLDivElement>;
+  onPointerDownCapture?: PointerEventHandler<HTMLDivElement>;
   onScroll?: (e: UIEvent<HTMLDivElement>) => void;
   style?: CSSProperties;
   "data-testid"?: string;
@@ -78,6 +81,7 @@ export function OverlayScrollArea({
         className="h-full overflow-y-auto overflow-x-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         style={style}
         onFocus={onFocus}
+        onPointerDownCapture={onPointerDownCapture}
         onScroll={handleScroll}
         tabIndex={tabIndex}
         aria-label={ariaLabel}
