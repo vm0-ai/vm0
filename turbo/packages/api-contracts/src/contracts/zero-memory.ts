@@ -15,6 +15,11 @@ const memoryFileContentSchema = z.object({
 });
 
 const memorySourceProviderSchema = z.enum(["gmail", "slack"]);
+const memoryRecallItemKindSchema = z.enum([
+  "key_fact",
+  "preference",
+  "open_loop",
+]);
 const memorySourceDirectionSchema = z.enum([
   "sent",
   "received",
@@ -65,6 +70,52 @@ const memorySourceDetailResponseSchema = memorySourceBaseSchema.extend({
   connectorId: z.string().uuid().nullable(),
   updatedAt: z.string(),
   metadata: memorySourceMetadataSchema,
+});
+
+const memoryRecallRelationshipSchema = z.object({
+  id: z.string().uuid(),
+  entity: z.object({
+    id: z.string().uuid(),
+    type: z.enum(["person", "organization"]),
+    displayName: z.string(),
+    primaryEmail: z.string().nullable(),
+    domain: z.string().nullable(),
+  }),
+  relationshipType: z.string(),
+  status: z.enum(["active", "quiet", "archived"]),
+  summary: z.string(),
+  lastInteractionAt: z.string().nullable(),
+});
+
+const memoryRecallSourceSchema = z.object({
+  id: z.string().uuid(),
+  provider: memorySourceProviderSchema,
+  externalId: z.string(),
+  threadId: z.string().nullable(),
+  messageId: z.string().nullable(),
+  quote: z.string().nullable(),
+  occurredAt: z.string().nullable(),
+});
+
+const memoryRecallItemSchema = z.object({
+  id: z.string().uuid(),
+  kind: memoryRecallItemKindSchema,
+  text: z.string(),
+  confidence: z.number().int().min(0).max(100),
+  lastSeenAt: z.string(),
+  relationship: memoryRecallRelationshipSchema,
+  sources: z.array(memoryRecallSourceSchema),
+});
+
+export const memoryRecallResponseSchema = z.object({
+  query: z.string(),
+  memories: z.array(memoryRecallItemSchema),
+});
+
+export const memoryContextResponseSchema = z.object({
+  query: z.string().nullable(),
+  context: z.string(),
+  memories: z.array(memoryRecallItemSchema),
 });
 
 export const memorySourceListResponseSchema = z.object({
@@ -129,6 +180,10 @@ export const memoryDetailResponseSchema = z.object({
 });
 
 export type MemoryDetailResponse = z.infer<typeof memoryDetailResponseSchema>;
+export type MemoryRecallItemKind = z.infer<typeof memoryRecallItemKindSchema>;
+export type MemoryRecallItem = z.infer<typeof memoryRecallItemSchema>;
+export type MemoryRecallResponse = z.infer<typeof memoryRecallResponseSchema>;
+export type MemoryContextResponse = z.infer<typeof memoryContextResponseSchema>;
 export type MemorySourceProvider = z.infer<typeof memorySourceProviderSchema>;
 export type MemorySourceListResponse = z.infer<
   typeof memorySourceListResponseSchema
@@ -159,6 +214,40 @@ export const zeroMemoryContract = c.router({
       500: apiErrorSchema,
     },
     summary: "Get the current user's memory artifact contents",
+  },
+  recall: {
+    method: "GET",
+    path: "/api/zero/memory/recall",
+    headers: authHeadersSchema,
+    query: z.object({
+      q: z.string().min(1).max(300),
+      kind: memoryRecallItemKindSchema.optional(),
+      limit: z.coerce.number().int().min(1).max(25).default(10),
+    }),
+    responses: {
+      200: memoryRecallResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Recall structured memories for the current user",
+  },
+  context: {
+    method: "GET",
+    path: "/api/zero/memory/context",
+    headers: authHeadersSchema,
+    query: z.object({
+      q: z.string().min(1).max(300).optional(),
+      limit: z.coerce.number().int().min(1).max(30).default(12),
+    }),
+    responses: {
+      200: memoryContextResponseSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Get prompt-ready structured memory context for the current user",
   },
   sources: {
     method: "GET",
