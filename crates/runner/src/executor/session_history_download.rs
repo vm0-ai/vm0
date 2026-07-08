@@ -22,6 +22,7 @@ use std::time::{Duration, Instant};
 
 use api_contracts::generated::constants::runners::RESUME_SESSION_HISTORY_MAX_BYTES;
 use flate2::read::MultiGzDecoder;
+use reqwest::header::{CONTENT_ENCODING, TRANSFER_ENCODING};
 use sha2::{Digest, Sha256};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
@@ -30,7 +31,11 @@ use super::cli_framework::EffectiveCliFramework;
 use super::session_restore::{MaterializedResumeSession, codex_session_meta_timestamp_line};
 use crate::error::{RunnerError, RunnerResult};
 use crate::http::HttpClient;
-use crate::telemetry::{SessionHistoryCacheProbeMetadata, SessionHistoryTelemetryMetadata};
+use crate::telemetry::{
+    SessionHistoryCacheProbeMetadata, SessionHistoryContentEncodingState,
+    SessionHistoryContentLengthState, SessionHistoryResponseTelemetryMetadata,
+    SessionHistoryTelemetryMetadata, SessionHistoryTransferEncodingState,
+};
 use crate::types::{
     ResumeSession, ResumeSessionHistoryEncoding, ResumeSessionHistoryRef,
     ResumeSessionHistoryRefKind,
@@ -168,10 +173,22 @@ impl SessionHistoryDownloadTimings {
         self.request_status = Some(SessionHistoryDownloadPhaseTiming { elapsed, success });
     }
 
+    #[cfg(test)]
+    pub(super) fn response_metadata(&self) -> Option<SessionHistoryResponseTelemetryMetadata> {
+        self.metadata
+            .and_then(SessionHistoryTelemetryMetadata::response)
+    }
+
     fn for_metadata(metadata: SessionHistoryTelemetryMetadata) -> Self {
         Self {
             metadata: Some(metadata),
             ..Self::default()
+        }
+    }
+
+    fn record_response_metadata(&mut self, response: SessionHistoryResponseTelemetryMetadata) {
+        if let Some(metadata) = self.metadata {
+            self.metadata = Some(metadata.with_response(response));
         }
     }
 
@@ -963,6 +980,9 @@ async fn download_body(
         }
     };
 
+    let response_metadata = session_history_response_metadata(&response, expected_size);
+    timings.record_response_metadata(response_metadata);
+
     let validation_started = Instant::now();
     if let Some(content_length) = response.content_length() {
         if content_length > RESUME_SESSION_HISTORY_MAX_BYTES {
@@ -1028,6 +1048,86 @@ async fn download_body(
     timings.record_body_read(body_started.elapsed(), true);
 
     Ok(body)
+}
+
+fn session_history_response_metadata(
+    response: &reqwest::Response,
+    expected_size: Option<u64>,
+) -> SessionHistoryResponseTelemetryMetadata {
+    SessionHistoryResponseTelemetryMetadata::new(
+        content_length_state(response.content_length(), expected_size),
+        content_encoding_state(response.headers()),
+        transfer_encoding_state(response.headers()),
+    )
+}
+
+fn content_length_state(
+    content_length: Option<u64>,
+    expected_size: Option<u64>,
+) -> SessionHistoryContentLengthState {
+    let Some(content_length) = content_length else {
+        return SessionHistoryContentLengthState::Absent;
+    };
+    if content_length > RESUME_SESSION_HISTORY_MAX_BYTES {
+        return SessionHistoryContentLengthState::Oversized;
+    }
+    let Some(expected_size) = expected_size else {
+        return SessionHistoryContentLengthState::PresentWithoutExpected;
+    };
+    if content_length == expected_size {
+        SessionHistoryContentLengthState::MatchesExpected
+    } else {
+        SessionHistoryContentLengthState::MismatchesExpected
+    }
+}
+
+fn content_encoding_state(
+    headers: &reqwest::header::HeaderMap,
+) -> SessionHistoryContentEncodingState {
+    let values = headers.get_all(CONTENT_ENCODING);
+    let mut saw_header = false;
+    for value in values {
+        saw_header = true;
+        let Ok(value) = value.to_str() else {
+            return SessionHistoryContentEncodingState::Other;
+        };
+        for item in value.split(',').map(str::trim) {
+            if item.eq_ignore_ascii_case("gzip") {
+                return SessionHistoryContentEncodingState::Gzip;
+            }
+            if item.eq_ignore_ascii_case("zstd") {
+                return SessionHistoryContentEncodingState::Zstd;
+            }
+        }
+    }
+    if !saw_header {
+        return SessionHistoryContentEncodingState::Absent;
+    }
+    SessionHistoryContentEncodingState::Other
+}
+
+fn transfer_encoding_state(
+    headers: &reqwest::header::HeaderMap,
+) -> SessionHistoryTransferEncodingState {
+    let values = headers.get_all(TRANSFER_ENCODING);
+    let mut saw_header = false;
+    for value in values {
+        saw_header = true;
+        let Ok(value) = value.to_str() else {
+            return SessionHistoryTransferEncodingState::Other;
+        };
+        if value
+            .split(',')
+            .map(str::trim)
+            .any(|item| item.eq_ignore_ascii_case("chunked"))
+        {
+            return SessionHistoryTransferEncodingState::Chunked;
+        }
+    }
+    if !saw_header {
+        return SessionHistoryTransferEncodingState::Absent;
+    }
+    SessionHistoryTransferEncodingState::Other
 }
 
 fn redact_url_query(url: &str) -> String {
@@ -1187,6 +1287,20 @@ mod tests {
 
     fn assert_no_phase(phase: Option<SessionHistoryDownloadPhaseTiming>) {
         assert!(phase.is_none(), "phase should not be recorded: {phase:?}");
+    }
+
+    fn assert_response_metadata(
+        timings: &SessionHistoryDownloadTimings,
+        content_length_state: SessionHistoryContentLengthState,
+        content_encoding_state: SessionHistoryContentEncodingState,
+        transfer_encoding_state: SessionHistoryTransferEncodingState,
+    ) {
+        let metadata = timings
+            .response_metadata()
+            .expect("response metadata should be recorded");
+        assert_eq!(metadata.content_length_state(), content_length_state);
+        assert_eq!(metadata.content_encoding_state(), content_encoding_state);
+        assert_eq!(metadata.transfer_encoding_state(), transfer_encoding_state);
     }
 
     #[test]
@@ -1350,6 +1464,69 @@ mod tests {
                 assert_phase_success(timings.validation());
                 assert_no_phase(timings.decompression());
                 assert_phase_success(timings.hash_verification());
+                assert_response_metadata(
+                    &timings,
+                    SessionHistoryContentLengthState::MatchesExpected,
+                    SessionHistoryContentEncodingState::Absent,
+                    SessionHistoryTransferEncodingState::Absent,
+                );
+            }
+            _ => panic!("expected downloaded session"),
+        }
+        server.assert_served().await;
+    }
+
+    #[tokio::test]
+    async fn materializer_records_response_content_encoding_state() {
+        let body = b"{\"type\":\"init\"}\n";
+        let hash = hex::encode(Sha256::digest(body));
+        let server = OneShotSessionHistoryServer::respond_once_with_headers(
+            "200 OK",
+            body,
+            Some(body.len() as u64),
+            vec![("Content-Encoding", "gzip")],
+        )
+        .await;
+        let session = ref_session(server.url(), hash, body.len() as u64, body.len() as u64);
+
+        let result = start_materializer(&session)
+            .finish(&CancellationToken::new())
+            .await;
+
+        match result {
+            SessionHistoryMaterialization::Downloaded { timings, .. } => {
+                assert_response_metadata(
+                    &timings,
+                    SessionHistoryContentLengthState::MatchesExpected,
+                    SessionHistoryContentEncodingState::Gzip,
+                    SessionHistoryTransferEncodingState::Absent,
+                );
+            }
+            _ => panic!("expected downloaded session"),
+        }
+        server.assert_served().await;
+    }
+
+    #[tokio::test]
+    async fn materializer_records_chunked_transfer_response_metadata() {
+        let body = b"{\"type\":\"init\"}\n";
+        let hash = hex::encode(Sha256::digest(body));
+        let server =
+            OneShotSessionHistoryServer::respond_once_chunked("200 OK", body.to_vec()).await;
+        let session = ref_session(server.url(), hash, body.len() as u64, body.len() as u64);
+
+        let result = start_materializer(&session)
+            .finish(&CancellationToken::new())
+            .await;
+
+        match result {
+            SessionHistoryMaterialization::Downloaded { timings, .. } => {
+                assert_response_metadata(
+                    &timings,
+                    SessionHistoryContentLengthState::Absent,
+                    SessionHistoryContentEncodingState::Absent,
+                    SessionHistoryTransferEncodingState::Chunked,
+                );
             }
             _ => panic!("expected downloaded session"),
         }
@@ -1507,6 +1684,12 @@ mod tests {
                 assert_phase_success(timings.validation());
                 assert_phase_success(timings.decompression());
                 assert_phase_success(timings.hash_verification());
+                assert_response_metadata(
+                    &timings,
+                    SessionHistoryContentLengthState::Absent,
+                    SessionHistoryContentEncodingState::Absent,
+                    SessionHistoryTransferEncodingState::Absent,
+                );
             }
             _ => panic!("expected downloaded session"),
         }
@@ -1908,6 +2091,44 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn materializer_records_mismatched_content_length_metadata() {
+        let body = b"actual";
+        let server = serve_once("200 OK", body, Some(999)).await;
+        let session = ref_session(
+            server.url(),
+            hex::encode(Sha256::digest(body)),
+            body.len() as u64,
+            body.len() as u64,
+        );
+
+        let result = start_materializer(&session)
+            .finish(&CancellationToken::new())
+            .await;
+
+        match result {
+            SessionHistoryMaterialization::Failed { error, timings, .. } => {
+                assert!(
+                    error.to_string().contains("content-length mismatch"),
+                    "unexpected error: {error}"
+                );
+                assert_phase_success(timings.request_status());
+                assert_no_phase(timings.body_read());
+                assert_phase_failure(timings.validation());
+                assert_no_phase(timings.decompression());
+                assert_no_phase(timings.hash_verification());
+                assert_response_metadata(
+                    &timings,
+                    SessionHistoryContentLengthState::MismatchesExpected,
+                    SessionHistoryContentEncodingState::Absent,
+                    SessionHistoryTransferEncodingState::Absent,
+                );
+            }
+            _ => panic!("expected failed download"),
+        }
+        server.assert_served().await;
+    }
+
+    #[tokio::test]
     async fn materializer_rejects_oversized_content_length() {
         let server = serve_once("200 OK", b"", Some(RESUME_SESSION_HISTORY_MAX_BYTES + 1)).await;
         let session = ref_session(server.url(), hex::encode(Sha256::digest(b"")), 1, 1);
@@ -1924,6 +2145,12 @@ mod tests {
                 assert_phase_failure(timings.validation());
                 assert_no_phase(timings.decompression());
                 assert_no_phase(timings.hash_verification());
+                assert_response_metadata(
+                    &timings,
+                    SessionHistoryContentLengthState::Oversized,
+                    SessionHistoryContentEncodingState::Absent,
+                    SessionHistoryTransferEncodingState::Absent,
+                );
             }
             _ => panic!("expected failed download"),
         }
