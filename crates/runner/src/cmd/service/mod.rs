@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use std::pin::Pin;
 
 use crate::error::{RunnerError, RunnerResult};
+use crate::live_runner_instances::{self, LiveRunnerInstance};
 use crate::paths::{HomePaths, touch_mtime};
 use crate::status_file::{self, StatusFileReadError, StatusForReadiness};
 use clap::{Args, Subcommand};
@@ -981,6 +982,31 @@ async fn resume(args: ServiceResumeArgs) -> RunnerResult<()> {
     Ok(())
 }
 
+fn readiness_base_dir_from_live_instances(
+    unit: &RunnerServiceUnit,
+    home: &HomePaths,
+    instances: &[LiveRunnerInstance],
+) -> RunnerResult<PathBuf> {
+    let matches = instances
+        .iter()
+        .filter(|instance| instance.runner_name == unit.suffix() && instance.subcommand == "start")
+        .collect::<Vec<_>>();
+
+    match matches.as_slice() {
+        [instance] => Ok(instance.base_dir.clone()),
+        [] => Ok(home.runners_dir().join(unit.suffix())),
+        _ => Err(RunnerError::Internal(format!(
+            "{} has multiple live runner instance records for readiness",
+            unit.unit_name()
+        ))),
+    }
+}
+
+async fn readiness_base_dir(unit: &RunnerServiceUnit, home: &HomePaths) -> RunnerResult<PathBuf> {
+    let instances = live_runner_instances::try_list(home).await?;
+    readiness_base_dir_from_live_instances(unit, home, &instances)
+}
+
 async fn wait_running(args: ServiceWaitRunningArgs) -> RunnerResult<()> {
     if args.timeout_secs == 0 {
         return Err(RunnerError::Internal(
@@ -990,7 +1016,6 @@ async fn wait_running(args: ServiceWaitRunningArgs) -> RunnerResult<()> {
 
     let unit = RunnerServiceUnit::from_suffix(&args.name)?;
     let home = HomePaths::new()?;
-    let base_dir = home.runners_dir().join(unit.suffix());
     let deadline = TokioInstant::now() + TokioDuration::from_secs(args.timeout_secs);
     let mut last_observation = "not checked".to_string();
 
@@ -1003,6 +1028,7 @@ async fn wait_running(args: ServiceWaitRunningArgs) -> RunnerResult<()> {
             )));
         }
 
+        let base_dir = readiness_base_dir(&unit, &home).await?;
         match status_file::read_as::<StatusForReadiness>(&base_dir).await {
             Ok(Some(status)) => match status.mode.as_str() {
                 "running" => {
@@ -1301,6 +1327,19 @@ profiles:
         RunnerServiceUnit::from_suffix("test").unwrap()
     }
 
+    fn live_runner_instance(runner_name: &str, base_dir: PathBuf) -> LiveRunnerInstance {
+        LiveRunnerInstance {
+            pid: 123,
+            starttime: 456,
+            config_path: base_dir.join("runner.yaml"),
+            base_dir,
+            runner_name: runner_name.to_string(),
+            runner_group: "test/group".to_string(),
+            subcommand: "start".to_string(),
+            started_at: "2026-01-01T00:00:00.000Z".to_string(),
+        }
+    }
+
     struct FakeDrainOps {
         events: Vec<&'static str>,
         active_results: VecDeque<RunnerResult<bool>>,
@@ -1487,6 +1526,45 @@ profiles:
                 "signal_drain",
                 "disable",
             ]
+        );
+    }
+
+    #[test]
+    fn readiness_base_dir_falls_back_to_service_suffix_without_live_record() {
+        let home = HomePaths::with_root(PathBuf::from("/vm0-runner"));
+        let unit = RunnerServiceUnit::from_suffix("pr-123-1").unwrap();
+
+        let base_dir = readiness_base_dir_from_live_instances(&unit, &home, &[]).unwrap();
+
+        assert_eq!(base_dir, PathBuf::from("/vm0-runner/runners/pr-123-1"));
+    }
+
+    #[test]
+    fn readiness_base_dir_uses_live_record_for_nonstandard_runner_dirname() {
+        let home = HomePaths::with_root(PathBuf::from("/vm0-runner"));
+        let unit = RunnerServiceUnit::from_suffix("pr-123-1").unwrap();
+        let actual_base_dir = PathBuf::from("/vm0-runner/runners/pr-123");
+        let instances = vec![live_runner_instance("pr-123-1", actual_base_dir.clone())];
+
+        let base_dir = readiness_base_dir_from_live_instances(&unit, &home, &instances).unwrap();
+
+        assert_eq!(base_dir, actual_base_dir);
+    }
+
+    #[test]
+    fn readiness_base_dir_rejects_duplicate_live_records() {
+        let home = HomePaths::with_root(PathBuf::from("/vm0-runner"));
+        let unit = RunnerServiceUnit::from_suffix("pr-123-1").unwrap();
+        let instances = vec![
+            live_runner_instance("pr-123-1", PathBuf::from("/vm0-runner/runners/pr-123")),
+            live_runner_instance("pr-123-1", PathBuf::from("/vm0-runner/runners/other")),
+        ];
+
+        let error = readiness_base_dir_from_live_instances(&unit, &home, &instances).unwrap_err();
+
+        assert!(
+            error.to_string().contains("multiple live runner instance"),
+            "unexpected error: {error}"
         );
     }
 
