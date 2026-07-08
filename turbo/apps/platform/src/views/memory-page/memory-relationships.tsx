@@ -98,9 +98,29 @@ function formatShortDate(value: string | null): string {
 function relationshipSubtitle(relationship: RelationshipRecord): string {
   const primary =
     relationship.entity.primaryEmail ?? relationship.entity.domain ?? null;
-  return [primary, formatShortDate(relationship.lastInteractionAt)]
+  return [
+    primary,
+    relationship.lastInteractionAt
+      ? formatShortDate(relationship.lastInteractionAt)
+      : null,
+  ]
     .filter(Boolean)
     .join(" - ");
+}
+
+function relationshipSourceLabels(
+  relationship: RelationshipRecord,
+): readonly string[] {
+  const providers = new Set(
+    relationship.items.flatMap((item) => {
+      return item.sources.map((source) => {
+        return source.provider;
+      });
+    }),
+  );
+  return [...providers].map((provider) => {
+    return provider === "slack" ? "Slack" : "Gmail";
+  });
 }
 
 function relationshipItems(
@@ -162,6 +182,9 @@ function RelationshipStatusBadge({
 }: {
   readonly relationship: RelationshipRecord;
 }) {
+  if (relationship.status === null) {
+    return null;
+  }
   return (
     <span
       className={cn(
@@ -287,6 +310,15 @@ function RelationshipDetail({
   const keyFacts = relationshipItems(relationship, "key_fact");
   const preferences = relationshipItems(relationship, "preference");
   const openLoops = relationshipItems(relationship, "open_loop");
+  const sourceLabels = relationshipSourceLabels(relationship);
+  const detailSubtitle = [
+    relationship.relationshipType,
+    relationship.lastInteractionAt
+      ? `last touch ${formatShortDate(relationship.lastInteractionAt)}`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" - ");
 
   return (
     <section className="min-w-0 bg-background">
@@ -298,25 +330,18 @@ function RelationshipDetail({
               <h2 className="truncate text-base font-semibold leading-6 text-foreground">
                 {relationship.entity.displayName}
               </h2>
-              <p className="mt-0.5 truncate text-sm text-muted-foreground">
-                {relationship.relationshipType} - last touch{" "}
-                {formatShortDate(relationship.lastInteractionAt)}
-              </p>
+              {detailSubtitle ? (
+                <p className="mt-0.5 truncate text-sm text-muted-foreground">
+                  {detailSubtitle}
+                </p>
+              ) : null}
             </div>
           </div>
           <div className="mt-3 flex flex-wrap gap-2">
             <RelationshipStatusBadge relationship={relationship} />
-            <SourceBadge
-              label={
-                relationship.items.some((item) => {
-                  return item.sources.some((source) => {
-                    return source.provider === "slack";
-                  });
-                })
-                  ? "Slack"
-                  : "Gmail"
-              }
-            />
+            {sourceLabels.map((label) => {
+              return <SourceBadge key={label} label={label} />;
+            })}
             <SourceBadge label="This org only" />
           </div>
         </div>
@@ -345,12 +370,14 @@ function RelationshipDetail({
       </header>
 
       <div className="flex flex-col gap-3 p-4">
-        <section className="rounded-lg border border-border/70 bg-muted/20 p-3">
-          <h3 className="text-sm font-semibold text-foreground">Summary</h3>
-          <p className="mt-2 text-sm leading-6 text-foreground">
-            {relationship.summary || "No summary yet"}
-          </p>
-        </section>
+        {relationship.summary ? (
+          <section className="rounded-lg border border-border/70 bg-muted/20 p-3">
+            <h3 className="text-sm font-semibold text-foreground">Summary</h3>
+            <p className="mt-2 text-sm leading-6 text-foreground">
+              {relationship.summary}
+            </p>
+          </section>
+        ) : null}
         <div className="grid gap-3 md:grid-cols-2">
           <RelationshipSection
             title="Key facts"
@@ -929,9 +956,11 @@ function RelationshipList({
                         <IconClock className="h-3.5 w-3.5 shrink-0 text-amber-600" />
                       ) : null}
                     </span>
-                    <span className="mt-0.5 block truncate text-xs leading-5 text-muted-foreground">
-                      {relationship.relationshipType}
-                    </span>
+                    {relationship.relationshipType ? (
+                      <span className="mt-0.5 block truncate text-xs leading-5 text-muted-foreground">
+                        {relationship.relationshipType}
+                      </span>
+                    ) : null}
                     <span className="block truncate text-xs leading-5 text-muted-foreground">
                       {relationshipSubtitle(relationship)}
                     </span>

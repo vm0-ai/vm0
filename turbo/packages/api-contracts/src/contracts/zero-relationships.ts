@@ -57,9 +57,9 @@ const relationshipInteractionSchema = z.object({
 export const relationshipRecordSchema = z.object({
   id: z.string().uuid(),
   entity: relationshipEntitySchema,
-  relationshipType: z.string(),
-  status: z.enum(["active", "quiet", "archived"]),
-  summary: z.string(),
+  relationshipType: z.string().nullable(),
+  status: z.enum(["active", "quiet", "archived"]).nullable(),
+  summary: z.string().nullable(),
   lastInteractionAt: z.string().nullable(),
   items: z.array(relationshipItemSchema),
   recentInteractions: z.array(relationshipInteractionSchema),

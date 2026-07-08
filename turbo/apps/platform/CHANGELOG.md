@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.578.0](https://github.com/vm0-ai/vm0/compare/app-v0.577.4...app-v0.578.0) (2026-07-08)
+
+
+### Features
+
+* load artifacts page from a bulk fetch cached in indexeddb ([#20601](https://github.com/vm0-ai/vm0/issues/20601)) ([854bb86](https://github.com/vm0-ai/vm0/commit/854bb867c952ecc0bbc6d9ae3c65c53c0da42d94))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.171.0
+    * @vm0/connectors bumped to 1.149.0
+    * @vm0/core bumped to 8.415.0
+
 ## [0.577.4](https://github.com/vm0-ai/vm0/compare/app-v0.577.3...app-v0.577.4) (2026-07-08)
 
 
