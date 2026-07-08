@@ -542,7 +542,7 @@ async def test_server_connect_does_not_bind_after_connect_error_during_dns(regis
         data.server.error = "connect failed"
         mitm_addon.server_connect_error(data)
         release_lookup.set()
-        await connect_task
+        _ = await connect_task
 
     assert data.server.address == ("198.18.20.34", 443)
     assert upstream_destination_binding.binding_snapshot_for_tests() == {}
@@ -574,7 +574,7 @@ async def test_server_connect_does_not_bind_when_source_endpoint_changes_during_
         assert await asyncio.to_thread(lookup_started.wait, 5)
         data.server.address = ("203.0.113.99", 443)
         release_lookup.set()
-        await connect_task
+        _ = await connect_task
 
     assert data.server.address == ("203.0.113.99", 443)
     assert upstream_destination_binding.binding_snapshot_for_tests() == {}
@@ -606,7 +606,7 @@ async def test_server_connect_does_not_bind_sockname_source_after_server_address
         assert await asyncio.to_thread(lookup_started.wait, 5)
         data.server.address = ("203.0.113.99", 443)
         release_lookup.set()
-        await connect_task
+        _ = await connect_task
 
     assert data.server.address == ("203.0.113.99", 443)
     assert upstream_destination_binding.binding_snapshot_for_tests() == {}
