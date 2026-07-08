@@ -1026,6 +1026,55 @@ exit 0
 
     #[test]
     #[cfg(target_os = "linux")]
+    fn unmount_script_sanitizes_control_characters_in_mount_logs() {
+        let temp = tempfile::tempdir().unwrap();
+        let workspace_dir = temp.path().join("workspace");
+        let child_mount = workspace_dir.join("child\r\u{1b}\\c");
+        let workspace_device = temp.path().join("vdb");
+        let fake_bin = temp.path().join("bin");
+        let log_path = temp.path().join("calls.log");
+        let count_path = temp.path().join("umount-count");
+        let mountinfo_path = temp.path().join("mountinfo");
+        fs::create_dir_all(&child_mount).unwrap();
+        fs::create_dir(&fake_bin).unwrap();
+        write_fake_mountpoint(&fake_bin, &workspace_dir, &workspace_device);
+        write_fake_sync(&fake_bin, &log_path);
+        write_child_mount_cleanup_fake_umount(&fake_bin, &workspace_dir, &log_path, &count_path);
+        write_mountinfo(
+            &mountinfo_path,
+            &[
+                mountinfo_line(100, 1, "123", "/", &workspace_dir),
+                mountinfo_line(101, 100, "456", "/", &child_mount),
+            ],
+        );
+
+        let output = run_unmount_script_with_mountinfo(
+            &workspace_dir,
+            &workspace_device,
+            &fake_bin,
+            Some(&mountinfo_path),
+        );
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let expected_log_path = format!("mount={}/child  \\c", workspace_dir.display());
+
+        assert!(output.status.success(), "stderr={stderr} stdout={stdout}");
+        assert!(
+            !stderr.contains('\r'),
+            "stderr should sanitize CR: {stderr:?}"
+        );
+        assert!(
+            !stderr.contains('\u{1b}'),
+            "stderr should sanitize ESC: {stderr:?}"
+        );
+        assert!(
+            stderr.contains(&expected_log_path),
+            "stderr should preserve printable backslashes without echo truncation: {stderr:?}"
+        );
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
     fn unmount_script_skips_child_mounts_with_symlink_components() {
         let temp = tempfile::tempdir().unwrap();
         let workspace_dir = temp.path().join("workspace");

@@ -165,7 +165,7 @@ proc_comm() {
 }
 
 sanitize_log_value() {
-  value="$(printf '%s' "$1" | tr '\n\t' '  ')"
+  value="$(printf '%s' "$1" | tr '[:cntrl:]' ' ')"
   if [ "${#value}" -gt "$WORKSPACE_HOLDER_VALUE_LIMIT" ]; then
     value="$(printf '%s' "$value" | cut -c 1-"$WORKSPACE_HOLDER_VALUE_LIMIT")..."
   fi
@@ -473,16 +473,16 @@ cleanup_workspace_child_mounts() {
     child_mount_log="$(sanitize_log_value "$child_mount")"
     if ! is_safe_workspace_child_mountpoint_path "$child_mount"; then
       failed_status=64
-      echo "workspace mount cleanup: child unmount skipped unsafe path mount=$child_mount_log" >&2
+      printf 'workspace mount cleanup: child unmount skipped unsafe path mount=%s\n' "$child_mount_log" >&2
       continue
     fi
-    echo "workspace mount cleanup: child unmount started mount=$child_mount_log" >&2
+    printf 'workspace mount cleanup: child unmount started mount=%s\n' "$child_mount_log" >&2
     if umount -- "$child_mount"; then
-      echo "workspace mount cleanup: child unmount succeeded mount=$child_mount_log" >&2
+      printf 'workspace mount cleanup: child unmount succeeded mount=%s\n' "$child_mount_log" >&2
     else
       status=$?
       failed_status=$status
-      echo "workspace mount cleanup: child unmount failed exit_code=$status mount=$child_mount_log" >&2
+      printf 'workspace mount cleanup: child unmount failed exit_code=%s mount=%s\n' "$status" "$child_mount_log" >&2
     fi
   done < "$child_mount_records"
 
