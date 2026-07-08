@@ -195,10 +195,15 @@ describe("Usage Allowance", () => {
       quantity: 80,
     });
 
+    context.mocks.ably.publish.mockClear();
     await processUsageEvents();
 
     await expect(readOrgCredits(actor)).resolves.toBe(10);
-    await expect(readRunCreditsCharged(actor, run.runId)).resolves.toBe(0);
+    await expect(readRunCreditsCharged(actor, run.runId)).resolves.toBe(80);
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "billing:changed",
+      null,
+    );
   });
 
   it("falls back to org credits after the binding window cap is exhausted", async () => {
@@ -256,7 +261,9 @@ describe("Usage Allowance", () => {
     await processUsageEvents();
 
     await expect(readOrgCredits(actor)).resolves.toBe(50);
-    await expect(readRunCreditsCharged(actor, firstRun.runId)).resolves.toBe(0);
+    await expect(readRunCreditsCharged(actor, firstRun.runId)).resolves.toBe(
+      100,
+    );
     await expect(readRunCreditsCharged(actor, secondRun.runId)).resolves.toBe(
       50,
     );
@@ -298,7 +305,7 @@ describe("Usage Allowance", () => {
 
     await expect(readOrgCredits(actor)).resolves.toBe(100);
     await expect(readRunCreditsCharged(actor, secondRun.runId)).resolves.toBe(
-      0,
+      50,
     );
   });
 
@@ -336,7 +343,7 @@ describe("Usage Allowance", () => {
     // full coverage of the 50-unit event proves the weekly window refreshed.
     await expect(readOrgCredits(actor)).resolves.toBe(100);
     await expect(readRunCreditsCharged(actor, secondRun.runId)).resolves.toBe(
-      0,
+      50,
     );
   });
 
@@ -362,7 +369,7 @@ describe("Usage Allowance", () => {
       quantity: 10,
     });
     await processUsageEvents();
-    await expect(readRunCreditsCharged(actor, run.runId)).resolves.toBe(0);
+    await expect(readRunCreditsCharged(actor, run.runId)).resolves.toBe(10);
   });
 
   it("rejects vm0 run admission after allowance is exhausted", async () => {
@@ -521,7 +528,7 @@ describe("Usage Allowance", () => {
     await processUsageEvents();
 
     await expect(readOrgCredits(actor)).resolves.toBe(0);
-    await expect(readRunCreditsCharged(actor, run.runId)).resolves.toBe(0);
+    await expect(readRunCreditsCharged(actor, run.runId)).resolves.toBe(80);
   });
 
   it("denies billable firewall auth when the run has no allowance window", async () => {

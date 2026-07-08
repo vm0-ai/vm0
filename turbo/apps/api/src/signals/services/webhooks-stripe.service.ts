@@ -4,7 +4,10 @@ import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { orgConcurrencyEntitlements } from "@vm0/db/schema/org-concurrency-entitlement";
 import { orgConcurrencySubscriptions } from "@vm0/db/schema/org-concurrency-subscription";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { orgUsageAllowanceEntitlements } from "@vm0/db/schema/org-usage-allowance";
+import {
+  orgUsageAllowanceEntitlements,
+  orgUsageAllowanceWindows,
+} from "@vm0/db/schema/org-usage-allowance";
 import { command } from "ccstate";
 import { and, eq, gt, isNull, lte, sql } from "drizzle-orm";
 
@@ -2833,6 +2836,11 @@ interface UsageAllowanceSubscriptionUpdateTarget {
   readonly by: "subscription" | "org";
 }
 
+interface UsageAllowanceSubscriptionCreditsUpdate {
+  readonly shortWindowUnits: number;
+  readonly weeklyWindowUnits: number;
+}
+
 async function usageAllowanceSubscriptionUpdateTarget(
   db: Db,
   subscription: Pick<SubscriptionInput, "id" | "metadata">,
@@ -2873,6 +2881,74 @@ async function usageAllowanceSubscriptionUpdateTarget(
   return { by: "org", orgIds: [orgRow.orgId] };
 }
 
+function usageAllowanceSubscriptionCreditsUpdate(
+  subscription: Pick<SubscriptionInput, "metadata">,
+): UsageAllowanceSubscriptionCreditsUpdate | null {
+  const metadata = subscription.metadata;
+  if (!metadata || !isUsageAllowanceMetadata(metadata)) {
+    return null;
+  }
+
+  const shortWindowUnits = positiveMetadataInteger(
+    metadata,
+    "shortWindowUnits",
+  );
+  const weeklyWindowUnits = positiveMetadataInteger(
+    metadata,
+    "weeklyWindowUnits",
+  );
+  if (!shortWindowUnits || !weeklyWindowUnits) {
+    return null;
+  }
+
+  return { shortWindowUnits, weeklyWindowUnits };
+}
+
+async function updateActiveUsageAllowanceWindowLimits(
+  db: Db,
+  args: {
+    readonly orgIds: readonly string[];
+    readonly credits: UsageAllowanceSubscriptionCreditsUpdate;
+    readonly at: Date;
+    readonly updatedAt: Date;
+  },
+): Promise<void> {
+  await Promise.all(
+    args.orgIds.flatMap((orgId) => {
+      return [
+        db
+          .update(orgUsageAllowanceWindows)
+          .set({
+            unitLimit: args.credits.shortWindowUnits,
+            updatedAt: args.updatedAt,
+          })
+          .where(
+            and(
+              eq(orgUsageAllowanceWindows.orgId, orgId),
+              eq(orgUsageAllowanceWindows.kind, "short"),
+              lte(orgUsageAllowanceWindows.startsAt, args.at),
+              gt(orgUsageAllowanceWindows.expiresAt, args.at),
+            ),
+          ),
+        db
+          .update(orgUsageAllowanceWindows)
+          .set({
+            unitLimit: args.credits.weeklyWindowUnits,
+            updatedAt: args.updatedAt,
+          })
+          .where(
+            and(
+              eq(orgUsageAllowanceWindows.orgId, orgId),
+              eq(orgUsageAllowanceWindows.kind, "weekly"),
+              lte(orgUsageAllowanceWindows.startsAt, args.at),
+              gt(orgUsageAllowanceWindows.expiresAt, args.at),
+            ),
+          ),
+      ];
+    }),
+  );
+}
+
 async function handleUsageAllowanceSubscriptionUpdated(
   db: Db,
   subscription: SubscriptionInput,
@@ -2887,11 +2963,18 @@ async function handleUsageAllowanceSubscriptionUpdated(
     subscription.status === "canceled" ||
     subscription.status === "incomplete_expired";
   const updatedAt = nowDate();
+  const credits = usageAllowanceSubscriptionCreditsUpdate(subscription);
   const rows = await db
     .update(orgUsageAllowanceEntitlements)
     .set({
       status: terminalStatus ? "canceled" : subscription.status,
       ...(periodEnd ? { expiresAt: periodEnd } : {}),
+      ...(credits
+        ? {
+            shortWindowUnits: credits.shortWindowUnits,
+            weeklyWindowUnits: credits.weeklyWindowUnits,
+          }
+        : {}),
       stripeSubscriptionId: subscription.id,
       updatedAt,
     })
@@ -2904,6 +2987,17 @@ async function handleUsageAllowanceSubscriptionUpdated(
         : eq(orgUsageAllowanceEntitlements.orgId, target.orgIds[0] ?? ""),
     )
     .returning({ orgId: orgUsageAllowanceEntitlements.orgId });
+
+  if (credits) {
+    await updateActiveUsageAllowanceWindowLimits(db, {
+      orgIds: rows.map((row) => {
+        return row.orgId;
+      }),
+      credits,
+      at: updatedAt,
+      updatedAt,
+    });
+  }
 
   return rows.map((row) => {
     return row.orgId;

@@ -8,14 +8,16 @@ import {
   type ChatMessageUsageProviderBreakdown,
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { usageAllowanceAllocations } from "@vm0/db/schema/org-usage-allowance";
 import { usageEvent } from "@vm0/db/schema/usage-event";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 
 import { logger } from "../../lib/log";
-import { writeDb$ } from "../external/db";
+import { writeDb$, type Db } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
 
 const L = logger("ChatUsageMessage");
+type WriteTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 const TERMINAL_RUN_STATUSES = ["completed", "failed", "cancelled"] as const;
 const USAGE_CONTEXT_GROUP_BY_COLUMNS = [
@@ -82,9 +84,16 @@ function usagePayloadKey(payload: ChatMessageUsagePayload): string {
         return {
           kind: kind.kind,
           credits: kind.credits,
-          providers: [...kind.providers].sort((a, b) => {
-            return a.provider.localeCompare(b.provider);
-          }),
+          providers: [...kind.providers]
+            .sort((a, b) => {
+              return a.provider.localeCompare(b.provider);
+            })
+            .map((provider) => {
+              return {
+                provider: provider.provider,
+                credits: provider.credits,
+              };
+            }),
         };
       })
       .sort((a, b) => {
@@ -102,17 +111,72 @@ function usagePayloadEquals(
 
 function usageMessageMatchesPayload(
   message: {
-    readonly createdAt: Date;
     readonly usagePayload: ChatMessageUsagePayload | null;
   },
   payload: ChatMessageUsagePayload,
 ): boolean {
-  const payloadCreatedAt = new Date(payload.settledAt);
   return (
-    message.createdAt.getTime() === payloadCreatedAt.getTime() ||
-    (message.usagePayload !== null &&
-      usagePayloadEquals(message.usagePayload, payload))
+    message.usagePayload !== null &&
+    usagePayloadEquals(message.usagePayload, payload)
   );
+}
+
+function isSameUsageSettledAt(
+  message: { readonly createdAt: Date },
+  payload: ChatMessageUsagePayload,
+): boolean {
+  return message.createdAt.getTime() === new Date(payload.settledAt).getTime();
+}
+
+function usageCreditsExpression() {
+  return sql`COALESCE(${usageEvent.creditsCharged}, 0) + COALESCE(${usageAllowanceAllocations.unitsApplied}, 0)`;
+}
+
+async function loadUsageMessageContext(tx: WriteTx, runId: string) {
+  return await tx
+    .select({
+      status: agentRuns.status,
+      chatThreadId: zeroRuns.chatThreadId,
+      runGroupId: zeroRuns.runGroupId,
+      userId: chatThreads.userId,
+      pendingCount: sql<number>`COUNT(${usageEvent.id}) FILTER (WHERE ${usageEvent.status} = 'pending')::int`,
+      processedCount: sql<number>`COUNT(${usageEvent.id}) FILTER (WHERE ${usageEvent.status} = 'processed')::int`,
+      totalCredits: sql<number>`COALESCE(SUM(${usageCreditsExpression()}) FILTER (WHERE ${usageEvent.status} = 'processed'), 0)::bigint`,
+      settledAt: sql<Date>`COALESCE(
+        MAX(${usageEvent.processedAt}) FILTER (WHERE ${usageEvent.status} = 'processed'),
+        MAX(${usageEvent.createdAt}) FILTER (WHERE ${usageEvent.status} = 'processed'),
+        MAX(${agentRuns.completedAt}),
+        MAX(${agentRuns.createdAt})
+      )`,
+    })
+    .from(agentRuns)
+    .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
+    .leftJoin(chatThreads, eq(chatThreads.id, zeroRuns.chatThreadId))
+    .leftJoin(usageEvent, eq(usageEvent.runId, agentRuns.id))
+    .leftJoin(
+      usageAllowanceAllocations,
+      eq(usageAllowanceAllocations.usageEventId, usageEvent.id),
+    )
+    .where(eq(agentRuns.id, runId))
+    .groupBy(...USAGE_CONTEXT_GROUP_BY_COLUMNS)
+    .limit(1);
+}
+
+async function loadUsageBreakdownRows(tx: WriteTx, runId: string) {
+  return await tx
+    .select({
+      kind: usageEvent.kind,
+      provider: sql<string>`COALESCE(NULLIF(${usageEvent.provider}, ''), 'unknown')`,
+      credits: sql<number>`COALESCE(SUM(${usageCreditsExpression()}), 0)::bigint`,
+    })
+    .from(usageEvent)
+    .leftJoin(
+      usageAllowanceAllocations,
+      eq(usageAllowanceAllocations.usageEventId, usageEvent.id),
+    )
+    .where(and(eq(usageEvent.runId, runId), eq(usageEvent.status, "processed")))
+    .groupBy(usageEvent.kind, usageEvent.provider)
+    .orderBy(usageEvent.kind, usageEvent.provider);
 }
 
 export const maybeEmitRunUsageMessage$ = command(
@@ -125,29 +189,7 @@ export const maybeEmitRunUsageMessage$ = command(
       );
       signal.throwIfAborted();
 
-      const [context] = await tx
-        .select({
-          status: agentRuns.status,
-          chatThreadId: zeroRuns.chatThreadId,
-          runGroupId: zeroRuns.runGroupId,
-          userId: chatThreads.userId,
-          pendingCount: sql<number>`COUNT(${usageEvent.id}) FILTER (WHERE ${usageEvent.status} = 'pending')::int`,
-          processedCount: sql<number>`COUNT(${usageEvent.id}) FILTER (WHERE ${usageEvent.status} = 'processed')::int`,
-          totalCredits: sql<number>`COALESCE(SUM(COALESCE(${usageEvent.creditsCharged}, 0)) FILTER (WHERE ${usageEvent.status} = 'processed'), 0)::bigint`,
-          settledAt: sql<Date>`COALESCE(
-            MAX(${usageEvent.processedAt}) FILTER (WHERE ${usageEvent.status} = 'processed'),
-            MAX(${usageEvent.createdAt}) FILTER (WHERE ${usageEvent.status} = 'processed'),
-            MAX(${agentRuns.completedAt}),
-            MAX(${agentRuns.createdAt})
-          )`,
-        })
-        .from(agentRuns)
-        .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
-        .leftJoin(chatThreads, eq(chatThreads.id, zeroRuns.chatThreadId))
-        .leftJoin(usageEvent, eq(usageEvent.runId, agentRuns.id))
-        .where(eq(agentRuns.id, runId))
-        .groupBy(...USAGE_CONTEXT_GROUP_BY_COLUMNS)
-        .limit(1);
+      const [context] = await loadUsageMessageContext(tx, runId);
       signal.throwIfAborted();
 
       if (!context) {
@@ -170,18 +212,7 @@ export const maybeEmitRunUsageMessage$ = command(
         return null;
       }
 
-      const breakdownRows = await tx
-        .select({
-          kind: usageEvent.kind,
-          provider: sql<string>`COALESCE(NULLIF(${usageEvent.provider}, ''), 'unknown')`,
-          credits: sql<number>`COALESCE(SUM(COALESCE(${usageEvent.creditsCharged}, 0)), 0)::bigint`,
-        })
-        .from(usageEvent)
-        .where(
-          and(eq(usageEvent.runId, runId), eq(usageEvent.status, "processed")),
-        )
-        .groupBy(usageEvent.kind, usageEvent.provider)
-        .orderBy(usageEvent.kind, usageEvent.provider);
+      const breakdownRows = await loadUsageBreakdownRows(tx, runId);
       signal.throwIfAborted();
 
       const payload: ChatMessageUsagePayload = {
@@ -193,6 +224,7 @@ export const maybeEmitRunUsageMessage$ = command(
 
       const existingUsageMessages = await tx
         .select({
+          id: chatMessages.id,
           createdAt: chatMessages.createdAt,
           usagePayload: chatMessages.usagePayload,
         })
@@ -210,6 +242,25 @@ export const maybeEmitRunUsageMessage$ = command(
       });
       if (hasExistingPayload) {
         return null;
+      }
+
+      const staleSameSettledAtMessage = existingUsageMessages.find(
+        (message) => {
+          return isSameUsageSettledAt(message, payload);
+        },
+      );
+      if (staleSameSettledAtMessage) {
+        await tx
+          .update(chatMessages)
+          .set({ usagePayload: payload })
+          .where(eq(chatMessages.id, staleSameSettledAtMessage.id));
+        signal.throwIfAborted();
+
+        return {
+          chatThreadId: context.chatThreadId,
+          userId: context.userId,
+          totalCredits: payload.totalCredits,
+        };
       }
 
       const [inserted] = await tx

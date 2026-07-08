@@ -104,19 +104,9 @@ function expiresLabel(grant: CreditGrant): string {
   return `Expires ${formatCreditDate(grant.expiresAt)}`;
 }
 
-function formatUsagePercent(value: number | null): string | null {
-  if (value === null || !Number.isFinite(value)) {
-    return null;
-  }
-  const rounded = Math.round(value * 10) / 10;
-  return Number.isInteger(rounded) ? `${rounded}%` : `${rounded.toFixed(1)}%`;
-}
-
-function allowanceRemainingPercent(
-  window: UsageAllowanceWindow,
-): number | null {
+function allowanceRemainingPercent(window: UsageAllowanceWindow): number {
   if (window.unitLimit <= 0) {
-    return null;
+    return 0;
   }
   return (window.remainingUnits / window.unitLimit) * 100;
 }
@@ -148,8 +138,9 @@ function usageTone(remainingPercent: number | null): {
 }
 
 function formatAllowanceWindowLabel(window: UsageAllowanceWindow): string {
-  if (window.kind === "weekly" && window.windowSeconds === 604_800) {
-    return "week";
+  if (window.kind === "weekly" || window.windowSeconds % 604_800 === 0) {
+    const weeks = Math.max(1, window.windowSeconds / 604_800);
+    return `${weeks}w`;
   }
   if (window.windowSeconds % 86_400 === 0) {
     return `${window.windowSeconds / 86_400}d`;
@@ -163,69 +154,55 @@ function formatAllowanceWindowLabel(window: UsageAllowanceWindow): string {
   return window.kind;
 }
 
+function formatAllowanceReset(window: UsageAllowanceWindow): string {
+  const reset = formatSubscriptionUsageReset(window.expiresAt);
+  if (reset === null) {
+    return "";
+  }
+  if ("fallbackText" in reset) {
+    return reset.fallbackText;
+  }
+  return `Resets ${reset.absoluteText}`;
+}
+
 function UsageAllowanceWindowRow({ window }: { window: UsageAllowanceWindow }) {
   const remainingPercent = allowanceRemainingPercent(window);
-  const displayPercent = formatUsagePercent(remainingPercent);
-  const reset = formatSubscriptionUsageReset(window.expiresAt);
   const tone = usageTone(remainingPercent);
   const label = formatAllowanceWindowLabel(window);
-  const width =
-    remainingPercent === null
-      ? 0
-      : Math.min(100, Math.max(0, remainingPercent));
+  const width = Math.min(100, Math.max(0, remainingPercent));
 
   return (
-    <div className="grid grid-cols-[42px_minmax(0,1fr)_44px] items-center gap-2">
-      <span className="truncate text-[10px] font-medium leading-none text-muted-foreground">
-        {label}
-      </span>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span
-            tabIndex={0}
-            role="progressbar"
-            aria-label={`Usage allowance ${label} remaining`}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={remainingPercent ?? undefined}
-            className={`block h-1.5 min-w-0 overflow-hidden rounded-full outline-none ring-offset-1 ring-offset-card transition-shadow focus-visible:ring-2 focus-visible:ring-ring ${tone.trackClassName}`}
-          >
-            <span
-              className={`block h-full rounded-full transition-[width] ${tone.barClassName}`}
-              style={{ width: `${width}%` }}
-            />
-          </span>
-        </TooltipTrigger>
-        <TooltipContent side="top" sideOffset={8} className="max-w-60">
-          <div className="text-xs font-medium">
-            {window.remainingUnits.toLocaleString()} of{" "}
-            {window.unitLimit.toLocaleString()} credits left
+    <div className="flex flex-col gap-2">
+      <div className="flex min-w-0 items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-sm font-medium text-foreground">{label}</div>
+          <div className="mt-0.5 truncate text-xs text-muted-foreground">
+            {formatAllowanceReset(window)}
           </div>
-          {reset === null ? (
-            <div className="mt-0.5 text-[10px] text-muted-foreground">
-              Reset time unavailable
-            </div>
-          ) : "fallbackText" in reset ? (
-            <div className="mt-0.5 text-[10px] text-muted-foreground">
-              {reset.fallbackText}
-            </div>
-          ) : (
-            <div className="mt-0.5 text-[10px] text-muted-foreground">
-              {reset.tooltipTitle} · {reset.absoluteText}
-            </div>
-          )}
-        </TooltipContent>
-      </Tooltip>
-      <span
-        className={`text-right text-[10px] font-medium leading-none ${tone.textClassName}`}
+        </div>
+        <div className="shrink-0 text-right text-xs font-medium tabular-nums text-muted-foreground">
+          {window.remainingUnits.toLocaleString()} /{" "}
+          {window.unitLimit.toLocaleString()} credits
+        </div>
+      </div>
+      <div
+        role="progressbar"
+        aria-label={`Usage allowance ${label} remaining`}
+        aria-valuemin={0}
+        aria-valuemax={window.unitLimit}
+        aria-valuenow={window.remainingUnits}
+        className={`h-2.5 overflow-hidden rounded-full ${tone.trackClassName}`}
       >
-        {displayPercent ?? "--"}
-      </span>
+        <span
+          className={`block h-full rounded-full transition-[width] ${tone.barClassName}`}
+          style={{ width: `${width}%` }}
+        />
+      </div>
     </div>
   );
 }
 
-function UsageAllowancePanel({
+function UsageAllowanceCard({
   allowance,
 }: {
   allowance: UsageAllowance | null | undefined;
@@ -240,22 +217,14 @@ function UsageAllowancePanel({
   return (
     <div
       data-testid="usage-allowance-section"
-      className="mt-4 border-t border-border/50 pt-3"
+      className="overflow-hidden rounded-xl bg-card px-5 py-4 zero-border"
     >
-      <div className="mb-2 flex min-w-0 items-center justify-between gap-2 px-2">
-        <span className="truncate text-xs font-medium text-muted-foreground">
-          Usage allowance
-        </span>
+      <p className="text-sm font-medium text-foreground">Usage allowance</p>
+      <div className="mt-3 flex flex-col gap-4">
+        {windows.map((window) => {
+          return <UsageAllowanceWindowRow key={window.kind} window={window} />;
+        })}
       </div>
-      <TooltipProvider delayDuration={100}>
-        <div className="flex flex-col gap-1.5 px-2">
-          {windows.map((window) => {
-            return (
-              <UsageAllowanceWindowRow key={window.kind} window={window} />
-            );
-          })}
-        </div>
-      </TooltipProvider>
     </div>
   );
 }
@@ -454,7 +423,6 @@ function CreditBalanceChart({
         </div>
       )}
       <CreditGrantList grants={billing.creditGrants} />
-      <UsageAllowancePanel allowance={billing.usageAllowance} />
     </div>
   );
 }
@@ -480,21 +448,29 @@ export function CreditBalanceCard({
   const billingLoading = billingLoadable.state === "loading";
 
   return (
-    <div className="overflow-hidden rounded-xl bg-card zero-border">
-      {billingLoading && !billing ? (
-        <div className="px-5 py-4 space-y-2">
-          <div className="h-4 w-48 rounded bg-muted/50 animate-pulse" />
-          <div className="h-1.5 w-full rounded-full bg-muted/40 animate-pulse" />
-        </div>
-      ) : billing ? (
-        <CreditBalanceChart billing={billing} onComparePlans={onComparePlans} />
-      ) : (
-        <div className="px-5 py-4">
-          <p className="text-sm text-muted-foreground">
-            Credit balance unavailable.
-          </p>
-        </div>
-      )}
+    <div className="flex flex-col gap-3">
+      {billing ? (
+        <UsageAllowanceCard allowance={billing.usageAllowance} />
+      ) : null}
+      <div className="overflow-hidden rounded-xl bg-card zero-border">
+        {billingLoading && !billing ? (
+          <div className="px-5 py-4 space-y-2">
+            <div className="h-4 w-48 rounded bg-muted/50 animate-pulse" />
+            <div className="h-1.5 w-full rounded-full bg-muted/40 animate-pulse" />
+          </div>
+        ) : billing ? (
+          <CreditBalanceChart
+            billing={billing}
+            onComparePlans={onComparePlans}
+          />
+        ) : (
+          <div className="px-5 py-4">
+            <p className="text-sm text-muted-foreground">
+              Credit balance unavailable.
+            </p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

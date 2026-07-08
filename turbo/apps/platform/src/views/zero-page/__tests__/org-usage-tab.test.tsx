@@ -7,8 +7,22 @@ import { describe, expect, it } from "vitest";
 
 import { click, detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { formatSubscriptionUsageReset } from "../subscription-usage-format.ts";
 
 const context = testContext();
+const SHORT_ALLOWANCE_RESET = "2026-03-01T05:00:00Z";
+const WEEKLY_ALLOWANCE_RESET = "2026-03-08T00:00:00Z";
+
+function expectedAllowanceResetText(value: string): string {
+  const reset = formatSubscriptionUsageReset(value);
+  if (reset === null) {
+    throw new Error("Expected usage allowance reset text");
+  }
+  if ("fallbackText" in reset) {
+    return reset.fallbackText;
+  }
+  return `Resets ${reset.absoluteText}`;
+}
 
 function mockUsageStory(): void {
   const orgMembers: OrgMembersResponse = {
@@ -92,7 +106,7 @@ function mockUsageStory(): void {
             consumedUnits: 1250,
             remainingUnits: 3750,
             startsAt: "2026-03-01T00:00:00Z",
-            expiresAt: "2026-03-01T05:00:00Z",
+            expiresAt: SHORT_ALLOWANCE_RESET,
           },
           {
             kind: "weekly",
@@ -101,7 +115,7 @@ function mockUsageStory(): void {
             consumedUnits: 10_000,
             remainingUnits: 40_000,
             startsAt: "2026-03-01T00:00:00Z",
-            expiresAt: "2026-03-08T00:00:00Z",
+            expiresAt: WEEKLY_ALLOWANCE_RESET,
           },
         ],
       },
@@ -163,9 +177,18 @@ describe("organization usage settings", () => {
     expect(screen.getByTestId("usage-allowance-section")).toBeInTheDocument();
     expect(screen.getByText("Usage allowance")).toBeInTheDocument();
     expect(screen.getByText("5h")).toBeInTheDocument();
-    expect(screen.getByText("week")).toBeInTheDocument();
-    expect(screen.getByText("75%")).toBeInTheDocument();
-    expect(screen.getByText("80%")).toBeInTheDocument();
+    expect(screen.getByText("1w")).toBeInTheDocument();
+    expect(screen.getByText("3,750 / 5,000 credits")).toBeInTheDocument();
+    expect(screen.getByText("40,000 / 50,000 credits")).toBeInTheDocument();
+    expect(
+      screen.getByText(expectedAllowanceResetText(SHORT_ALLOWANCE_RESET)),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(expectedAllowanceResetText(WEEKLY_ALLOWANCE_RESET)),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("75%")).not.toBeInTheDocument();
+    expect(screen.queryByText("80%")).not.toBeInTheDocument();
+    expect(screen.queryByText("Expires Mar 1, 2026")).not.toBeInTheDocument();
 
     click(screen.getByTestId("credit-grants-toggle"));
     expect(screen.getByText("March Pro credits")).toBeInTheDocument();

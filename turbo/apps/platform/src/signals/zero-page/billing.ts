@@ -14,6 +14,8 @@ import {
 } from "@vm0/api-contracts/contracts/zero-billing";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { zeroClient$ } from "../api-client.ts";
+import { clerk$ } from "../auth.ts";
+import { setAblyLoop$ } from "../realtime.ts";
 import { accept } from "../../lib/accept.ts";
 import {
   applyStoredAdAttribution,
@@ -268,6 +270,30 @@ export const reloadBillingStatus$ = command(({ set }) => {
     return x + 1;
   });
 });
+
+const reloadBillingStatusFromRealtime$ = command(({ set }) => {
+  set(reloadBillingStatus$);
+  return false;
+});
+
+export const setupBillingRealtime$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const clerk = await get(clerk$);
+    signal.throwIfAborted();
+    if (!clerk.user) {
+      return;
+    }
+
+    await set(
+      setAblyLoop$,
+      {
+        topic: "billing:changed",
+        loopCommand$: reloadBillingStatusFromRealtime$,
+      },
+      signal,
+    );
+  },
+);
 
 export const startCheckout$ = command(
   async (
