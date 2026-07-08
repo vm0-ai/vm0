@@ -137,6 +137,7 @@ class TestRegistryBuiltinCache:
         inline_firewall = {"name": "inline", "apis": []}
 
         registry_firewalls.ResolvedFirewallEntries(None, None)
+        registry_firewalls.ResolvedFirewallEntries([], ())
         registry_firewalls.ResolvedFirewallEntries([inline_firewall], (None,))
 
         with pytest.raises(ValueError, match="absent when firewalls are absent"):
