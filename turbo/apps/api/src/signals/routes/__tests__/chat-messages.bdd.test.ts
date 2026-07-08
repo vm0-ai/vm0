@@ -1743,6 +1743,10 @@ describe("CHAT-02: explicit provider pins", () => {
     const { claim } = await claimChatRun(runnerGroup, run.runId);
     const appendSystemPrompt = claim.appendSystemPrompt ?? "";
     expect(claim.cliAgentType).toBe("codex");
+    expect(appendSystemPrompt).toContain(
+      "You are currently running inside: Web",
+    );
+    expect(appendSystemPrompt).toContain("zero web upload-file -h");
     expect(appendSystemPrompt).toContain(CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET);
     expect(appendSystemPrompt).not.toContain("When running in Codex");
     await cancelChatRun(actor, run.runId);

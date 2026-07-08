@@ -2983,7 +2983,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     expect(cancelled.status).toBe("cancelled");
   });
 
-  it("adds Codex image upload guidance only to web Codex runs", async () => {
+  it("does not add Codex image upload guidance outside web chat Codex runs", async () => {
     const api = createRunsAutomationsApi(context);
     const fw = createFirewallApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
@@ -2998,14 +2998,14 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
 
     const codexWebRun = await api.createRun(actor, {
       agentId,
-      prompt: "generate an image with codex",
+      prompt: "generate an image with codex without a chat thread",
       modelProvider: "codex-oauth-token",
     });
     await api.heartbeatRunner(runnerGroup);
     const codexWebClaim = await api.claimRunnerJob(codexWebRun.runId);
     const codexWebPrompt = codexWebClaim.appendSystemPrompt ?? "";
     expect(codexWebClaim.cliAgentType).toBe("codex");
-    expect(codexWebPrompt).toContain(CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET);
+    expect(codexWebPrompt).not.toContain(CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET);
     expect(codexWebPrompt).not.toContain("When running in Codex");
     await api.requestCancelRun(actor, codexWebRun.runId, [200]);
 

@@ -246,7 +246,7 @@ type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
 type RunAdmissionDb = Pick<Db, "select">;
 
 const CODEX_WEB_IMAGE_GENERATION_UPLOAD_PROMPT =
-  "If you use the built-in image generation tool and it saves an image to a local path, upload the saved image with `zero web upload-file -f <path>` before telling the web chat user the image is available. Do not provide only a sandbox-local path, because users cannot open local files.";
+  "If you use the built-in image generation tool and it saves one or more image files to local paths, upload each saved file with `zero web upload-file -f <path>` before telling the web chat user the image is available. Quote the path when needed. Do not provide only sandbox-local paths, because users cannot open local files.";
 
 function withZeroTokenSecret(
   body: CreateRunBody,
@@ -268,8 +268,9 @@ function withPendingZeroTokenSecret(body: CreateRunBody): CreateRunBody {
 function withFinalFrameworkAppendSystemPrompt(
   body: CreateRunBody,
   framework: SupportedFramework,
+  chatThreadId: string | undefined,
 ): CreateRunBody {
-  if (framework !== "codex" || body.triggerSource !== "web") {
+  if (framework !== "codex" || body.triggerSource !== "web" || !chatThreadId) {
     return body;
   }
 
@@ -6683,6 +6684,7 @@ function prepareRunContext(
       const body = withFinalFrameworkAppendSystemPrompt(
         bodyContext.body,
         runtimeContext.framework,
+        args.chatThreadId,
       );
 
       const validation = await timing.measure(
