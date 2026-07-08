@@ -60,10 +60,10 @@ def uses_openai_responses_usage_protocol(flow: http.HTTPFlow) -> bool:
 def is_model_websocket_usage_enabled(flow: http.HTTPFlow) -> bool:
     """Return whether model-provider WebSocket usage extraction is active.
 
-    Read-only predicate used by ``websocket_message()`` feeding and by the
-    ``response()`` tracking decorator. Reads ``_MODEL_WEBSOCKET_USAGE_ENABLED``;
-    true means an HTTP 101 response is not terminal for tracked usage and
-    reporting must wait for ``websocket_end()``.
+    Read-only predicate used by ``websocket_message()`` feeding and terminal
+    response cleanup. Reads ``_MODEL_WEBSOCKET_USAGE_ENABLED``; true means an
+    HTTP 101 response is not terminal for tracked usage and reporting must wait
+    for ``websocket_end()``.
     """
     return bool(flow.metadata.get(_MODEL_WEBSOCKET_USAGE_ENABLED, False))
 

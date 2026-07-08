@@ -5358,6 +5358,8 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     ]) {
       expect(appendSystemPrompt).not.toContain(otherIntegrationHint);
     }
+    expect(appendSystemPrompt).not.toContain("zero memory recall");
+    expect(appendSystemPrompt).not.toContain("zero memory context");
     expect(appendSystemPrompt).toContain("# Current User Info");
     expect(appendSystemPrompt).toContain("Name: BDD User");
     expect(appendSystemPrompt).toContain(`Email: ${actor.email}`);
@@ -5377,6 +5379,32 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await api.readRun(actor, run.runId);
     expect(cancelled.status).toBe("cancelled");
+
+    if (!actor.orgId) {
+      throw new Error("Expected actor to belong to an org");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      {
+        [FeatureSwitchKey.RelationshipMemory]: true,
+      },
+    );
+
+    const memoryRun = await api.createRun(actor, {
+      agentId: agent.agentId,
+      prompt: "summarize relationship context",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const memoryClaim = await api.claimRunnerJob(memoryRun.runId);
+    const memoryAppendSystemPrompt = memoryClaim.appendSystemPrompt ?? "";
+    expect(memoryAppendSystemPrompt).toContain('zero memory recall "<query>"');
+    expect(memoryAppendSystemPrompt).toContain(
+      'zero memory context --query "<topic>"',
+    );
+    expect(memoryAppendSystemPrompt).toContain("These commands are read-only");
+    await api.requestCancelRun(actor, memoryRun.runId, [200]);
   });
 
   it("keeps goal tools allowed when no feature flags are enabled", async () => {
