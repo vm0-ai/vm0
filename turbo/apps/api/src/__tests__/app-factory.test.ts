@@ -670,10 +670,36 @@ describe("createApp", () => {
       const allowHeaders =
         response.headers.get("access-control-allow-headers") ?? "";
       expect(allowHeaders).toContain("Authorization");
+      expect(allowHeaders).toContain("X-Vercel-Protection-Bypass");
       expect(allowHeaders).toContain("X-Client-Version");
       expect(allowHeaders).toContain("X-Client-Type");
       expect(allowHeaders).toContain("X-Client-Session-Id");
       expect(allowHeaders).toContain("X-Client-Request-Id");
+    });
+
+    it("answers preview preflight before enforcing the automation bypass", async () => {
+      mockEnv("ENV", "preview");
+      mockEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
+      const app = createApp({ signal: context.signal });
+      const response = await app.request("/api/zero/org", {
+        method: "OPTIONS",
+        headers: {
+          origin: "https://pr-20640-app.vm6.ai",
+          "access-control-request-method": "GET",
+          "access-control-request-headers":
+            "authorization,x-vercel-protection-bypass,x-client-version",
+        },
+      });
+
+      expect(response.status).toBe(204);
+      expect(response.headers.get("access-control-allow-origin")).toBe(
+        "https://pr-20640-app.vm6.ai",
+      );
+      const allowHeaders =
+        response.headers.get("access-control-allow-headers") ?? "";
+      expect(allowHeaders).toContain("Authorization");
+      expect(allowHeaders).toContain("X-Vercel-Protection-Bypass");
+      expect(allowHeaders).toContain("X-Client-Version");
     });
 
     it("rejects disallowed origins by omitting the allow-origin header", async () => {

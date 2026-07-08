@@ -340,6 +340,14 @@ function requestHasPreviewAutomationBypass(
   );
 }
 
+function isCorsPreflightRequest(context: Context): boolean {
+  return (
+    context.req.method === "OPTIONS" &&
+    Boolean(requestHeader(context, "origin")) &&
+    Boolean(requestHeader(context, "access-control-request-method"))
+  );
+}
+
 function bypassFingerprint(value: string | undefined): string | undefined {
   if (!value) {
     return undefined;
@@ -372,7 +380,11 @@ async function previewAutomationBypassMiddleware(
   next: Next,
 ): Promise<Response | void> {
   const secret = previewAutomationBypassSecret();
-  if (!secret || requestHasPreviewAutomationBypass(context, secret)) {
+  if (
+    !secret ||
+    isCorsPreflightRequest(context) ||
+    requestHasPreviewAutomationBypass(context, secret)
+  ) {
     await next();
     return;
   }

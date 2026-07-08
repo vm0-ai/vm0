@@ -2,7 +2,10 @@ import { expect, type Page } from "@playwright/test";
 import { deriveServiceOrigin } from "../playwright.config";
 import { signInFromCurrentHostedAuthPage } from "./auth";
 
-type AuthHeaders = Readonly<Record<"Authorization", string>>;
+type AuthHeaders = Readonly<
+  Record<"Authorization", string> &
+    Partial<Record<"x-vercel-protection-bypass", string>>
+>;
 
 interface OnboardingAuthOptions {
   readonly email: string;
@@ -17,7 +20,13 @@ interface OnboardingFlowOptions {
 }
 
 export function authHeadersForToken(token: string): AuthHeaders {
-  return { Authorization: `Bearer ${token}` };
+  const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+  return {
+    Authorization: `Bearer ${token}`,
+    ...(bypassSecret
+      ? { "x-vercel-protection-bypass": bypassSecret }
+      : undefined),
+  };
 }
 
 export function deriveOnboardingUrl(apiUrl: string): string {
