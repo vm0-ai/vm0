@@ -30,6 +30,8 @@ from body_limits import (
 _BROTLI_DECOMPRESS_MIN_INPUT_CHUNK_SIZE = 16
 _BROTLI_DECOMPRESS_MAX_INPUT_CHUNK_SIZE = 1024
 _BROTLI_DECOMPRESS_TARGET_INPUT_CHUNKS = 64
+# zstd's Python decompression object has no zlib-style max_length argument.
+# Keep validation input chunks small so the discarded decoded output is bounded.
 _ZSTD_VALIDATE_INPUT_CHUNK_SIZE = 32
 INVALID_COMPRESSED_BODY = "invalid compressed body"
 INCOMPLETE_COMPRESSED_BODY = "incomplete compressed body"
@@ -401,6 +403,8 @@ def _decompress_zlib_json_usage_body(
 
 
 def _validate_complete_zstd_frames(data: bytes, max_output: int) -> str | None:
+    # stream_reader can silently accept a valid frame followed by a truncated
+    # frame, so strict JSON usage decoding needs a separate complete-frame pass.
     if max_output <= 0:
         return DECODED_BODY_LIMIT_EXCEEDED if data else None
 
