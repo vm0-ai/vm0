@@ -184,6 +184,9 @@ type SessionHistoryTelemetrySnapshot = (
     Option<String>,
     Option<String>,
     Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
 );
 
 fn assert_successful_action_with_session_history_metadata(

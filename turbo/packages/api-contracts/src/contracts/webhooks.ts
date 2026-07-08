@@ -697,6 +697,27 @@ const sessionHistoryCompressionRatioBucketSchema = z.enum([
 
 const booleanStringSchema = z.enum(["true", "false"]);
 
+const sessionHistoryContentLengthStateSchema = z.enum([
+  "absent",
+  "matches_expected",
+  "mismatches_expected",
+  "present_without_expected",
+  "oversized",
+]);
+
+const sessionHistoryContentEncodingStateSchema = z.enum([
+  "absent",
+  "gzip",
+  "zstd",
+  "other",
+]);
+
+const sessionHistoryTransferEncodingStateSchema = z.enum([
+  "absent",
+  "chunked",
+  "other",
+]);
+
 /**
  * Sandbox operation schema for internal sandbox operations (init, storage, cli, checkpoint, cleanup)
  */
@@ -714,6 +735,12 @@ const sandboxOperationSchema = z.object({
     sessionHistoryCompressionRatioBucketSchema.optional(),
   session_history_ref_seen_recently: booleanStringSchema.optional(),
   session_history_ref_download_inflight: booleanStringSchema.optional(),
+  session_history_content_length_state:
+    sessionHistoryContentLengthStateSchema.optional(),
+  session_history_content_encoding_state:
+    sessionHistoryContentEncodingStateSchema.optional(),
+  session_history_transfer_encoding_state:
+    sessionHistoryTransferEncodingStateSchema.optional(),
 });
 
 /**
