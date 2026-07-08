@@ -1203,6 +1203,7 @@ jobs:
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
           API_PREVIEW_URL: ${{ needs.prepare.outputs.api-preview-url }}
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: |
           set -euo pipefail
           cd ansible
@@ -1226,6 +1227,11 @@ jobs:
           fi
 
           FORWARD_URL="${API_PREVIEW_URL%/}/api/webhooks/stripe"
+          if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
+            encoded_bypass="$(node -e 'process.stdout.write(encodeURIComponent(process.env.VERCEL_AUTOMATION_BYPASS_SECRET || ""))')"
+            echo "::add-mask::$encoded_bypass"
+            FORWARD_URL="${FORWARD_URL}?vm0_preview_bypass=${encoded_bypass}"
+          fi
           EXTRA_VARS="$(jq -nc \
             --arg ansible_user "$METAL_USER" \
             --arg job_ref "$JOB_REF" \
@@ -1343,6 +1349,11 @@ jobs:
           echo "::add-mask::$stripe_webhook_secret"
 
           forward_url="${API_PREVIEW_URL%/}/api/webhooks/stripe"
+          if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
+            encoded_bypass="$(node -e 'process.stdout.write(encodeURIComponent(process.env.VERCEL_AUTOMATION_BYPASS_SECRET || ""))')"
+            echo "::add-mask::$encoded_bypass"
+            forward_url="${forward_url}?vm0_preview_bypass=${encoded_bypass}"
+          fi
           stripe listen \
             --api-key "$STRIPE_SECRET_KEY" \
             --events checkout.session.completed,invoice.paid,customer.subscription.updated,customer.subscription.deleted \
@@ -1369,6 +1380,7 @@ jobs:
         env:
           API_PREVIEW_URL: ${{ needs.deploy-api.outputs.preview-url }}
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
       - name: Run Playwright E2E tests
         run: cd e2e && npx playwright test --config playwright/playwright.config.ts
         env:
@@ -1378,6 +1390,7 @@ jobs:
           CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
       - name: Print Stripe webhook forwarding log
         if: always() && github.event_name == 'push' && needs.prepare.outputs.job-ref != 'staging'
         run: |
