@@ -2,6 +2,7 @@
 
 import json
 import urllib.error
+import urllib.request
 from pathlib import Path
 from unittest.mock import patch
 
@@ -54,7 +55,7 @@ def test_rejects_invalid_url_before_open(tmp_path, sync_usage_executor):
     payload = {"url": "payload-url", "runId": "run-1", "events": []}
     payload_bytes = len(json.dumps(payload).encode())
 
-    with patch.object(usage.webhook._opener, "open") as mock_open:
+    with patch.object(urllib.request.OpenerDirector, "open") as mock_open:
         assert usage.webhook.enqueue_webhook_delivery(
             "file:///etc/passwd",
             "tok",
@@ -217,7 +218,7 @@ def test_url_error_is_retryable(tmp_path, sync_usage_executor):
 
     with (
         patch.object(
-            usage.webhook._opener,
+            urllib.request.OpenerDirector,
             "open",
             side_effect=urllib.error.URLError("connection refused"),
         ) as mock_open,
@@ -256,7 +257,7 @@ def test_retry_failure_sanitizes_sensitive_webhook_url_in_message_and_error(
     url_without_fragment = SENSITIVE_WEBHOOK_URL.removesuffix("#frag")
 
     with patch.object(
-        usage.webhook._opener,
+        urllib.request.OpenerDirector,
         "open",
         side_effect=urllib.error.URLError(
             f"failed {SENSITIVE_WEBHOOK_URL} and {url_without_fragment}"
