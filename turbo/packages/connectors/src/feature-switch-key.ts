@@ -31,7 +31,6 @@ export enum FeatureSwitchKey {
   ResendConnector = "resendConnector",
   PexelsConnector = "pexelsConnector",
   SpotifyConnector = "spotifyConnector",
-  PlaystationConnector = "playstationConnector",
   ZeroDebug = "zeroDebug",
   Banking = "banking",
   Lab = "lab",

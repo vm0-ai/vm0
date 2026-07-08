@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.247.0](https://github.com/vm0-ai/vm0/compare/api-v1.246.1...api-v1.247.0) (2026-07-08)
+
+
+### Features
+
+* accept runner starting heartbeat mode ([#20672](https://github.com/vm0-ai/vm0/issues/20672)) ([7c49c7b](https://github.com/vm0-ai/vm0/commit/7c49c7b703a6163b1ebf4b5084c284ee60d9ff13))
+
+
+### Refactoring
+
+* remove unused zero compose and custom connector routes ([#20644](https://github.com/vm0-ai/vm0/issues/20644)) ([f40d11e](https://github.com/vm0-ai/vm0/commit/f40d11eb3e65bd5c7c685171f785f367270c3857))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.170.0
+    * @vm0/core bumped to 8.414.8
+    * @vm0/db bumped to 1.100.5
+
 ## [1.246.1](https://github.com/vm0-ai/vm0/compare/api-v1.246.0...api-v1.246.1) (2026-07-08)
 
 
