@@ -83,8 +83,9 @@ const notionEntitySchema = z
 
 const notionParentDataSchema = z
   .object({
-    id: z.string(),
-    type: z.string(),
+    id: z.string().optional(),
+    type: z.string().optional(),
+    data_source_id: z.string().optional(),
   })
   .passthrough();
 
@@ -1128,21 +1129,27 @@ function verifyNotionSignature(args: {
 
 function eventPageParentId(event: NotionWebhookEvent): string | null {
   const parent = event.data.parent;
-  if (!parent || (parent.type !== "page" && parent.type !== "page_id")) {
+  if (!parent || parent.data_source_id) {
     return null;
   }
-  return normalizeNotionUuid(parent.id);
+  if (parent.type && parent.type !== "page" && parent.type !== "page_id") {
+    return null;
+  }
+  return parent.id ? normalizeNotionUuid(parent.id) : null;
 }
 
 function eventDataSourceParentId(event: NotionWebhookEvent): string | null {
   const parent = event.data.parent;
-  if (
-    !parent ||
-    (parent.type !== "data_source" && parent.type !== "data_source_id")
-  ) {
+  if (!parent) {
     return null;
   }
-  return normalizeNotionUuid(parent.id);
+  if (parent.data_source_id) {
+    return normalizeNotionUuid(parent.data_source_id);
+  }
+  if (parent.type !== "data_source" && parent.type !== "data_source_id") {
+    return null;
+  }
+  return parent.id ? normalizeNotionUuid(parent.id) : null;
 }
 
 function eventPageId(event: NotionWebhookEvent): string | null {
