@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.574.0](https://github.com/vm0-ai/vm0/compare/app-v0.573.0...app-v0.574.0) (2026-07-08)
+
+
+### Features
+
+* **platform:** copy workflows before deleting agents ([#20484](https://github.com/vm0-ai/vm0/issues/20484)) ([277e286](https://github.com/vm0-ai/vm0/commit/277e286b8ca79338d1af33301ee477e4c62457e7))
+
+
+### Bug Fixes
+
+* **platform:** tighten user bubble emoji-to-text word-spacing ([#20551](https://github.com/vm0-ai/vm0/issues/20551)) ([2751145](https://github.com/vm0-ai/vm0/commit/2751145d0df5ace2b5655025cf38a03053f1fbd7))
+* stack settings theme card on mobile to prevent button overlap ([#20581](https://github.com/vm0-ai/vm0/issues/20581)) ([5b723bb](https://github.com/vm0-ai/vm0/commit/5b723bb05649269ceaf2885d1799cf553e5479fb))
+* **workflows:** prevent content shift when the list scrolls ([#20548](https://github.com/vm0-ai/vm0/issues/20548)) ([66572ec](https://github.com/vm0-ai/vm0/commit/66572ec132ce98bbed2d1169f1ab479dcc6f0924))
+
 ## [0.573.0](https://github.com/vm0-ai/vm0/compare/app-v0.572.0...app-v0.573.0) (2026-07-08)
 
 
