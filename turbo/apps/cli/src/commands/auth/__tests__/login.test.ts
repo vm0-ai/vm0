@@ -9,6 +9,13 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { http, HttpResponse } from "msw";
+import {
+  CLIENT_REQUEST_ID_HEADER,
+  CLIENT_SESSION_ID_HEADER,
+  CLIENT_TYPE_CLI,
+  CLIENT_TYPE_HEADER,
+  CLIENT_VERSION_HEADER,
+} from "@vm0/api-contracts/contracts/client-headers";
 import { server } from "../../../mocks/server";
 import { loginCommand } from "../login";
 import { mkdtempSync } from "fs";
@@ -28,6 +35,14 @@ vi.mock("os", async (importOriginal) => {
     },
   };
 });
+
+function requiredHeader(headers: Headers, name: string): string {
+  const value = headers.get(name);
+  if (!value) {
+    throw new Error(`Missing ${name}`);
+  }
+  return value;
+}
 
 describe("auth login", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
@@ -125,8 +140,10 @@ describe("auth login", () => {
     });
 
     it("should save token on successful authentication", async () => {
+      const capturedHeaders: Headers[] = [];
       server.use(
-        http.post("http://localhost:3000/api/cli/auth/device", () => {
+        http.post("http://localhost:3000/api/cli/auth/device", (ctx) => {
+          capturedHeaders.push(ctx.request.headers);
           return HttpResponse.json({
             device_code: "test-device-code",
             user_code: "TEST-CODE",
@@ -135,7 +152,8 @@ describe("auth login", () => {
             interval: 5,
           });
         }),
-        http.post("http://localhost:3000/api/cli/auth/token", () => {
+        http.post("http://localhost:3000/api/cli/auth/token", (ctx) => {
+          capturedHeaders.push(ctx.request.headers);
           return HttpResponse.json({
             access_token: "saved-access-token",
             token_type: "bearer",
@@ -157,6 +175,26 @@ describe("auth login", () => {
       const configContent = await fs.readFile(configPath, "utf8");
       const config = JSON.parse(configContent);
       expect(config.token).toBe("saved-access-token");
+
+      expect(capturedHeaders).toHaveLength(2);
+      const deviceHeaders = capturedHeaders[0];
+      const tokenHeaders = capturedHeaders[1];
+      if (!deviceHeaders || !tokenHeaders) {
+        throw new Error("Expected device and token requests");
+      }
+
+      expect(deviceHeaders.get(CLIENT_VERSION_HEADER)).toBe("0.0.0-test");
+      expect(deviceHeaders.get(CLIENT_TYPE_HEADER)).toBe(CLIENT_TYPE_CLI);
+      expect(tokenHeaders.get(CLIENT_VERSION_HEADER)).toBe("0.0.0-test");
+      expect(tokenHeaders.get(CLIENT_TYPE_HEADER)).toBe(CLIENT_TYPE_CLI);
+
+      const sessionId = requiredHeader(deviceHeaders, CLIENT_SESSION_ID_HEADER);
+      expect(requiredHeader(tokenHeaders, CLIENT_SESSION_ID_HEADER)).toBe(
+        sessionId,
+      );
+      expect(requiredHeader(deviceHeaders, CLIENT_REQUEST_ID_HEADER)).not.toBe(
+        requiredHeader(tokenHeaders, CLIENT_REQUEST_ID_HEADER),
+      );
     });
   });
 

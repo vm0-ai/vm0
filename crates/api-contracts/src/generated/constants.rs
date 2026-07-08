@@ -25,6 +25,9 @@ pub mod client {
         /// Client type value for the platform web app.
         pub const CLIENT_TYPE_APP: &str = "App";
 
+        /// Client type value for the CLI.
+        pub const CLIENT_TYPE_CLI: &str = "CLI";
+
         /// Client type value for the desktop client.
         pub const CLIENT_TYPE_DESKTOP: &str = "Desktop";
 

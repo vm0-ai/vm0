@@ -5,6 +5,7 @@ export const CLIENT_REQUEST_ID_HEADER = "X-Client-Request-Id";
 
 // Canonical X-Client-Type wire values emitted by first-party clients.
 export const CLIENT_TYPE_APP = "App";
+export const CLIENT_TYPE_CLI = "CLI";
 export const CLIENT_TYPE_DESKTOP = "Desktop";
 export const CLIENT_TYPE_GUEST_AGENT = "GuestAgent";
 export const CLIENT_TYPE_MITM_ADDON = "MitmAddon";
