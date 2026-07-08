@@ -119,6 +119,11 @@ async fn codex_app_server_backend_runs_initial_turn_and_synthesizes_thread_start
             .and_then(Value::as_str),
         Some("minimax")
     );
+    assert!(
+        input_event
+            .get("child_env_openai_base_url")
+            .is_some_and(Value::is_null)
+    );
     assert_eq!(
         input_event
             .get("turn_request_has_runtime_workspace_roots")
