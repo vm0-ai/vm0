@@ -363,10 +363,19 @@ exit 0
         mount_root: &str,
         mount_point: &Path,
     ) -> String {
+        let mount_point = encode_mountinfo_path_for_test(mount_point);
         format!(
-            "{mount_id} {parent_id} {mount_dev} {mount_root} {} rw,relatime - ext4 /dev/vdb rw",
-            mount_point.display()
+            "{mount_id} {parent_id} {mount_dev} {mount_root} {mount_point} rw,relatime - ext4 /dev/vdb rw"
         )
+    }
+
+    fn encode_mountinfo_path_for_test(path: &Path) -> String {
+        path.display()
+            .to_string()
+            .replace('\\', "\\134")
+            .replace(' ', "\\040")
+            .replace('\t', "\\011")
+            .replace('\n', "\\012")
     }
 
     fn run_unmount_script(
@@ -854,7 +863,7 @@ exit 0
     fn unmount_script_unmounts_workspace_child_mounts_before_parent_retry() {
         let temp = tempfile::tempdir().unwrap();
         let workspace_dir = temp.path().join("workspace");
-        let shallow_child = workspace_dir.join("child");
+        let shallow_child = workspace_dir.join("child with space");
         let deep_child = shallow_child.join("grandchild");
         let workspace_device = temp.path().join("vdb");
         let fake_bin = temp.path().join("bin");
@@ -1037,6 +1046,7 @@ exit 0
         assert!(cmd.contains("scan_workspace_maps_holder_refs()"));
         assert!(cmd.contains("scan_workspace_mountinfo_refs()"));
         assert!(cmd.contains("scan_workspace_child_mountpoints()"));
+        assert!(cmd.contains("decode_mountinfo_path()"));
         assert!(cmd.contains("cleanup_workspace_child_mounts()"));
         assert!(cmd.contains("log_workspace_mount_diagnostics()"));
         assert!(cmd.contains("scan_proc_ref \"$pid\" cwd \"$proc_dir/cwd\""));
