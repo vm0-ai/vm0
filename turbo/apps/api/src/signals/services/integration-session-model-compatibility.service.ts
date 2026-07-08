@@ -4,19 +4,23 @@ import {
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { agentSessions } from "@vm0/db/schema/agent-session";
+import { conversations } from "@vm0/db/schema/conversation";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { desc, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 import type { Db, ReadonlyDb } from "../external/db";
 
 interface IntegrationSessionModelSignature {
   readonly modelProvider: string | null;
   readonly selectedModel: string | null;
+  readonly cliAgentType: string;
 }
 
 interface IntegrationRunModelRoute {
   readonly modelProviderType: string | null | undefined;
   readonly selectedModel: string | null | undefined;
+  readonly cliAgentType: string;
 }
 
 function isKnownModelProvider(
@@ -33,6 +37,10 @@ function areIntegrationSessionModelsCompatible(
   previous: IntegrationSessionModelSignature,
   current: IntegrationRunModelRoute,
 ): boolean {
+  if (previous.cliAgentType !== current.cliAgentType) {
+    return false;
+  }
+
   if (
     isKnownModelProvider(previous.modelProvider) &&
     isKnownModelProvider(current.modelProviderType) &&
@@ -48,7 +56,7 @@ function areIntegrationSessionModelsCompatible(
   );
 }
 
-async function latestIntegrationSessionModelSignature(
+async function currentIntegrationSessionModelSignature(
   db: Db | ReadonlyDb,
   sessionId: string,
 ): Promise<IntegrationSessionModelSignature | null> {
@@ -56,11 +64,16 @@ async function latestIntegrationSessionModelSignature(
     .select({
       modelProvider: zeroRuns.modelProvider,
       selectedModel: zeroRuns.selectedModel,
+      cliAgentType: conversations.cliAgentType,
     })
-    .from(agentRuns)
+    .from(agentSessions)
+    .innerJoin(
+      conversations,
+      eq(conversations.id, agentSessions.conversationId),
+    )
+    .innerJoin(agentRuns, eq(agentRuns.id, conversations.runId))
     .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
-    .where(eq(agentRuns.sessionId, sessionId))
-    .orderBy(desc(agentRuns.createdAt))
+    .where(eq(agentSessions.id, sessionId))
     .limit(1);
 
   return previousRun ?? null;
@@ -75,7 +88,7 @@ export async function canReuseIntegrationSessionForModelRoute(args: {
     return true;
   }
 
-  const previous = await latestIntegrationSessionModelSignature(
+  const previous = await currentIntegrationSessionModelSignature(
     args.db,
     args.sessionId,
   );
