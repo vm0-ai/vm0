@@ -249,13 +249,13 @@ function buildIntegrationToolsPrompt(
     case "web": {
       return [
         "- Web chat files: use `zero web download-file -h` when a web chat message includes a `[Web file]` block. `zero web upload-file -h` can share a local file back to the web chat user when file delivery is needed.",
-        "- Cross-integration messages from web chat: if the user explicitly asks you to send or post through another integration, use the integration CLI and ask for the destination when it is missing. Slack: `zero slack message send --help` for channels, DMs, and thread replies. Telegram: `zero telegram bot list` to choose the bot, then `zero telegram message send --help` for chats, replies, and forum topics. AgentPhone/SMS: `zero phone message --help`. GitHub, Microsoft Teams, and email do not currently have dedicated Zero message-send commands, so do not invent `zero github message`, `zero teams message`, or `zero email message` commands.",
+        "- Cross-integration messages from web chat: if the user explicitly asks you to send or post through another integration, use the integration CLI and ask for the destination when it is missing. Telegram: `zero telegram bot list` to choose the bot, then `zero telegram message send --help` for chats, replies, and forum topics. AgentPhone/SMS: `zero phone message --help`. GitHub, Microsoft Teams, and email do not currently have dedicated Zero message-send commands, so do not invent `zero github message`, `zero teams message`, or `zero email message` commands.",
         ...localFileContextLines,
       ];
     }
     case "slack": {
       return [
-        "- Slack messaging and files: use `zero slack --help`. Normal replies are automatically sent to the originating thread, so Slack commands are for different channels/threads or explicit extra messages. Use `zero slack download-file -h` for `[Slack file]` blocks. `zero slack upload-file -h` can attach a local file to Slack when file delivery is needed. Never use SLACK_TOKEN directly — it's a user OAuth token.",
+        "- Slack messaging and files: normal replies are automatically sent to the originating thread, so do not duplicate them. Use Slack commands for different channels/threads or explicit extra messages. Use `zero slack download-file -h` for `[Slack file]` blocks. `zero slack upload-file -h` can attach a local file to Slack when file delivery is needed. Never use SLACK_TOKEN directly — it's a user OAuth token.",
         ...localFileContextLines,
       ];
     }
@@ -300,6 +300,7 @@ function buildAgentToolsPrompt(triggerSource: TriggerSource): string {
     "- Search agent run logs, web chat messages, or external services via connectors: `zero search --help`.",
     "- Manage recurring workflow triggers: `zero workflow trigger --help`. Do NOT use /loop, cron tools (CronCreate, CronList, CronDelete), or ScheduleWakeup — they are not available.",
     "- Browser access: the runtime environment includes `agent-browser` for browser automation and inspection.",
+    "- Slack messages: when the task explicitly asks to send or post to Slack, use `zero slack message send --help` for channels, DMs, and thread replies.",
     ...buildIntegrationToolsPrompt(triggerSource),
     "- Maps, geocoding, directions, and places: use `zero maps --help`.",
     "- Static web artifacts can be published with `zero host <dir> --site <slug> [--spa]`; for HTML presentations, include `--artifact-kind presentation-html`; run `zero host --help` for details.",
