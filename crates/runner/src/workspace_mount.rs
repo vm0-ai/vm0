@@ -111,8 +111,9 @@ fn workspace_mount_command() -> String {
 fn workspace_unmount_command() -> String {
     let workspace_dir = quote_shell_arg(CANONICAL_WORKING_DIR);
     let workspace_device = quote_shell_arg(WORKSPACE_DEVICE);
+    let workspace_mountinfo_path = quote_shell_arg("/proc/self/mountinfo");
     format!(
-        "workspace_dir={workspace_dir}\nworkspace_device={workspace_device}\n{WORKSPACE_UNMOUNT_SCRIPT}"
+        "workspace_dir={workspace_dir}\nworkspace_device={workspace_device}\nworkspace_mountinfo_path={workspace_mountinfo_path}\n{WORKSPACE_UNMOUNT_SCRIPT}"
     )
 }
 
@@ -382,16 +383,17 @@ exit 0
         fake_bin: &Path,
         mountinfo_path: Option<&Path>,
     ) -> Output {
-        let mountinfo_assignment = mountinfo_path.map_or(String::new(), |path| {
-            format!(
-                "workspace_mountinfo_path={}\n",
-                quote_shell_arg(path.to_str().unwrap())
-            )
-        });
+        let workspace_mountinfo_path = quote_shell_arg(
+            mountinfo_path
+                .unwrap_or(Path::new("/proc/self/mountinfo"))
+                .to_str()
+                .unwrap(),
+        );
         let cmd = format!(
-            "workspace_dir={}\nworkspace_device={}\n{mountinfo_assignment}{}",
+            "workspace_dir={}\nworkspace_device={}\nworkspace_mountinfo_path={}\n{}",
             quote_shell_arg(workspace_dir.to_str().unwrap()),
             quote_shell_arg(workspace_device.to_str().unwrap()),
+            workspace_mountinfo_path,
             WORKSPACE_UNMOUNT_SCRIPT
         );
         Command::new("sh")
@@ -563,6 +565,7 @@ exit 0
 
         assert!(cmd.contains("workspace_dir='/home/user/workspace'"));
         assert!(cmd.contains("workspace_device='/dev/vdb'"));
+        assert!(cmd.contains("workspace_mountinfo_path='/proc/self/mountinfo'"));
         assert!(cmd.contains("sync -f -- \"$workspace_dir\""));
         assert!(cmd.contains("umount -- \"$workspace_dir\""));
         assert_eq!(cmd.matches("umount -- \"$workspace_dir\"").count(), 2);
