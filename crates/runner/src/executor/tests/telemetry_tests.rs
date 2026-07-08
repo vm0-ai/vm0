@@ -357,7 +357,7 @@ async fn execute_job_records_runner_pre_spawn_and_fresh_path_timing() {
         assert_has_action(&telemetry, action);
     }
     for action in FRESH_SANDBOX_FACTORY_STAGE_ACTIONS {
-        assert_has_action(&telemetry, action);
+        assert_action_success(&telemetry, action, true);
     }
     assert_pre_spawn_phase_actions_succeeded(&telemetry);
     assert_lacks_action(&telemetry, "runner_reused_sandbox_prepare");
