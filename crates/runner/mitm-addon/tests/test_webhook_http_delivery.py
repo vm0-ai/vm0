@@ -244,6 +244,51 @@ def test_retry_exhaustion_logs_body_free_payload_summary_with_colliding_fields(
         )
 
 
+def test_retry_success_logs_body_free_payload_summary_with_colliding_fields(
+    tmp_path, sync_usage_executor, usage_webhook_server
+):
+    proxy_log = tmp_path / "proxy.jsonl"
+    payload = {
+        "url": "payload-url",
+        "type": "payload-type",
+        "attempt": 99,
+        "error": "payload-error",
+        "runId": "run-1",
+        "events": [],
+    }
+    payload_bytes = len(json.dumps(payload).encode())
+    usage_webhook_server.queue_response(500)
+    usage_webhook_server.queue_response(204)
+
+    with patch.object(time, "sleep") as mock_sleep:
+        assert usage.webhook.enqueue_webhook_delivery(
+            usage_webhook_server.url("/usage"),
+            "tok",
+            payload,
+            str(proxy_log),
+            "usage_event",
+        )
+        sync_usage_executor.shutdown(wait=True)
+
+    assert usage_webhook_server.request_count == 2
+    mock_sleep.assert_called_once_with(0.5)
+    attempt_entries = [
+        entry for entry in read_jsonl_entries_after_flush(proxy_log) if "attempt" in entry
+    ]
+    assert [entry["attempt"] for entry in attempt_entries] == [1, 2]
+    assert "succeeded" in attempt_entries[-1]["message"]
+    assert all(entry["url"] == usage_webhook_server.url("/usage") for entry in attempt_entries)
+    assert all(entry["type"] == "usage_event" for entry in attempt_entries)
+    assert "error" not in attempt_entries[-1]
+    for entry in attempt_entries:
+        assert_body_free_webhook_entry(
+            entry,
+            run_id="run-1",
+            event_count=0,
+            payload_bytes=payload_bytes,
+        )
+
+
 def test_http_429_is_retryable(tmp_path, real_flow, fresh_usage_executor, usage_webhook_api):
     flow = model_usage_flow(real_flow, tmp_path)
     proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
