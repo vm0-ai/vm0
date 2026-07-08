@@ -19,6 +19,7 @@ import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { seedUsageFixture$ } from "./helpers/zero-usage";
 
 const context = testContext();
 const store = createStore();
@@ -331,6 +332,10 @@ describe("POST /api/zero/billing/checkout", () => {
     return createOnboardingPaymentPendingOrg();
   }
 
+  function trackedCustomSeed(): Promise<{ orgId: string; userId: string }> {
+    return store.set(seedUsageFixture$, { tier: "custom" }, context.signal);
+  }
+
   it("returns 503 when STRIPE_SECRET_KEY is not configured", async () => {
     mockOptionalEnv("STRIPE_SECRET_KEY", undefined);
 
@@ -596,6 +601,37 @@ describe("POST /api/zero/billing/checkout", () => {
         code: "BAD_REQUEST",
       },
     });
+    expect(
+      context.mocks.stripe.checkout.sessions.create,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 for subscription checkout when current tier is custom", async () => {
+    const fixture = await trackedCustomSeed();
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    const client = setupApp({ context })(zeroBillingCheckoutContract);
+
+    for (const tier of ["pro", "team"] as const) {
+      const response = await accept(
+        client.create({
+          body: {
+            tier,
+            successUrl: `${APP_ORIGIN}/billing?billing=success`,
+            cancelUrl: `${APP_ORIGIN}/billing?billing=canceled`,
+          },
+          headers: { authorization: "Bearer clerk-session" },
+        }),
+        [400],
+      );
+
+      expect(response.body).toStrictEqual({
+        error: {
+          message: `Cannot create ${tier === "pro" ? "Pro" : "Team"} checkout while current tier is Custom; use billing management to change plans`,
+          code: "BAD_REQUEST",
+        },
+      });
+    }
     expect(
       context.mocks.stripe.checkout.sessions.create,
     ).not.toHaveBeenCalled();

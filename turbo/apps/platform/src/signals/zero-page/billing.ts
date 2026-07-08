@@ -32,7 +32,8 @@ export type BillingTier =
   | "limited-free-1"
   | "pro-suspend"
   | "pro"
-  | "team";
+  | "team"
+  | "custom";
 type DowngradeTargetTier = "pro-suspend" | "pro";
 export type CreditCheckoutSelection =
   | { readonly credits: number; readonly customAmount?: false }
@@ -68,7 +69,8 @@ export function apiTierToBillingTier(tier: string | undefined): BillingTier {
     tier === "limited-free-1" ||
     tier === "pro-suspend" ||
     tier === "pro" ||
-    tier === "team"
+    tier === "team" ||
+    tier === "custom"
   ) {
     return tier;
   }

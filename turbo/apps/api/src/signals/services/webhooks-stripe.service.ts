@@ -321,6 +321,9 @@ function monthlyCreditsForTier(tier: OrgTier): number {
     case "pro-suspend": {
       return 0;
     }
+    case "custom": {
+      return 0;
+    }
     case "pro": {
       return 20_000;
     }

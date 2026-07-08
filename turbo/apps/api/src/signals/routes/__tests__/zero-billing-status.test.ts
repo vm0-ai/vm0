@@ -17,6 +17,11 @@ import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
+import {
+  deleteUsageFixture$,
+  seedUsageFixture$,
+  type UsageFixture,
+} from "./helpers/zero-usage";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 
 const context = testContext();
@@ -67,6 +72,9 @@ function mockMemberRole(
 describe("GET /api/zero/billing/status", () => {
   const track = createFixtureTracker<BillingStatusFixture>((fixture) => {
     return store.set(deleteBillingStatusOrg$, fixture, context.signal);
+  });
+  const trackUsage = createFixtureTracker<UsageFixture>((fixture) => {
+    return store.set(deleteUsageFixture$, fixture, context.signal);
   });
 
   it("returns 401 when not authenticated", async () => {
@@ -192,6 +200,26 @@ describe("GET /api/zero/billing/status", () => {
     expect(response.body.cancelAtPeriodEnd).toBeFalsy();
     expect(response.body.scheduledChange).toBeNull();
     expect(response.body.hasSubscription).toBeTruthy();
+  });
+
+  it("returns custom tier status without subscription plan credits", async () => {
+    const fixture = await trackUsage(
+      store.set(seedUsageFixture$, { tier: "custom" }, context.signal),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(zeroBillingStatusContract);
+
+    const response = await accept(
+      client.get({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
+    );
+
+    expect(response.body.tier).toBe("custom");
+    expect(response.body.hasSubscription).toBeFalsy();
+    expect(response.body.currentPeriodEnd).toBeNull();
+    expect(response.body.concurrencyLimit).toBe(10);
+    expect(response.body.creditBreakdown).toStrictEqual([]);
   });
 
   it("returns finite concurrency limit when the concurrency cap is disabled", async () => {

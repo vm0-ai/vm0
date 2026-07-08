@@ -565,8 +565,10 @@ function OverviewSection({
         </section>
       )}
 
-      {/* Members — only for paid plans */}
-      {(currentTier === "pro" || currentTier === "team") && (
+      {/* Members — only for workspaces with shared usage access */}
+      {(currentTier === "pro" ||
+        currentTier === "team" ||
+        currentTier === "custom") && (
         <section className="flex flex-col gap-3">
           <h3 className="text-sm font-medium text-foreground">Members</h3>
 
@@ -583,7 +585,7 @@ function OverviewSection({
           ) : !period ? (
             <div className="rounded-xl bg-card px-5 py-8 text-center text-sm text-muted-foreground zero-border">
               No active billing period. Credit usage by member is available on
-              paid plans.
+              eligible workspaces.
             </div>
           ) : members.length === 0 ? (
             <div className="flex flex-col items-center gap-2 rounded-xl bg-card px-5 py-10 text-center zero-border">

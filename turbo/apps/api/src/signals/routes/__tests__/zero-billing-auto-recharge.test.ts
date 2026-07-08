@@ -1,11 +1,13 @@
 import { randomUUID } from "node:crypto";
 
 import { zeroBillingAutoRechargeContract } from "@vm0/api-contracts/contracts/zero-billing";
+import { createStore } from "ccstate";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { setUsageOrgTier$ } from "./helpers/zero-usage";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
@@ -13,6 +15,7 @@ const bdd = createBddApi(context);
 const billingApi = createBillingMediaApi(context);
 const runsApi = createRunsAutomationsApi(context);
 const mocks = createZeroRouteMocks(context);
+const store = createStore();
 
 const defaultAutoRechargeConfig = Object.freeze({
   enabled: false,
@@ -193,6 +196,27 @@ describe("PUT /api/zero/billing/auto-recharge", () => {
     expect(readBack).toStrictEqual(response.body);
   });
 
+  it("enables auto-recharge for custom tier org", async () => {
+    const admin = await createOnboardedActor();
+    await store.set(
+      setUsageOrgTier$,
+      { orgId: admin.orgId, tier: "custom" },
+      context.signal,
+    );
+
+    const response = await billingApi.updateAutoRecharge(
+      admin,
+      { enabled: true, threshold: 1000, amount: 5000 },
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      enabled: true,
+      threshold: 1000,
+      amount: 5000,
+    });
+  });
+
   it("triggers auto-recharge immediately when enabling below threshold", async () => {
     const { admin, entitlement } = await createProActor();
     const status = await billingApi.readBillingStatus(admin);
@@ -271,7 +295,8 @@ describe("PUT /api/zero/billing/auto-recharge", () => {
 
     expect(response.body).toStrictEqual({
       error: {
-        message: "Auto-recharge is only available for paid plans (Pro/Team)",
+        message:
+          "Auto-recharge is only available for Pro, Team, or Custom workspaces",
         code: "BAD_REQUEST",
       },
     });

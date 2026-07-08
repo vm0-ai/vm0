@@ -27,6 +27,7 @@ const TIER_RANK = Object.freeze<Record<OrgTier, number>>({
   "pro-suspend": 0,
   pro: 1,
   team: 2,
+  custom: 3,
 });
 
 type DowngradeResult =

@@ -65,6 +65,9 @@ function tierBaseConcurrencyLimit(tier: string | null | undefined): number {
     case "team": {
       return 10;
     }
+    case "custom": {
+      return 10;
+    }
     case "pro-suspend":
     default: {
       return 0;
