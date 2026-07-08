@@ -4,6 +4,7 @@ import { execFile } from "node:child_process";
 import { access, mkdir, mkdtemp, rm, stat, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
@@ -28,6 +29,10 @@ const backgroundScale = 2;
 const backgroundDpi = 72 * backgroundScale;
 const appIconPosition = { x: 170, y: 224 };
 const applicationsIconPosition = { x: 490, y: 224 };
+const detachRetryDelaysMs = [1_000, 2_000, 5_000];
+const detachedErrorPattern =
+  /No such file or directory|not currently mounted|not mounted|not attached/i;
+const retryableDetachErrorPattern = /Resource busy|couldn't eject|busy/i;
 
 function usage() {
   return [
@@ -116,6 +121,91 @@ async function pathExists(targetPath) {
   }
 }
 
+function commandErrorText(error) {
+  return [error?.message, error?.stdout, error?.stderr]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function isAlreadyDetachedError(error) {
+  return detachedErrorPattern.test(commandErrorText(error));
+}
+
+function isRetryableDetachError(error) {
+  return retryableDetachErrorPattern.test(commandErrorText(error));
+}
+
+function parseAttachDevice(attachOutput, mountPath) {
+  const mountLine = attachOutput
+    .split(/\r?\n/)
+    .find((line) => line.includes(path.resolve(mountPath)));
+  const mountDevice = mountLine?.match(/^(\/dev\/disk\d+)/)?.[1];
+  if (mountDevice) {
+    return mountDevice;
+  }
+
+  return attachOutput.match(/^\/dev\/disk\d+/m)?.[0] ?? null;
+}
+
+async function detachDmg({
+  mountPath,
+  device,
+  runCommand = run,
+  wait = delay,
+  retryDelaysMs = detachRetryDelaysMs,
+  force = true,
+}) {
+  const target = device ?? mountPath;
+  if (!target) {
+    throw new Error("Expected a DMG device or mount path to detach.");
+  }
+
+  let lastError;
+
+  for (let attempt = 0; attempt <= retryDelaysMs.length; attempt += 1) {
+    try {
+      await runCommand("hdiutil", ["detach", target]);
+      return;
+    } catch (error) {
+      if (isAlreadyDetachedError(error)) {
+        return;
+      }
+
+      lastError = error;
+
+      if (attempt >= retryDelaysMs.length || !isRetryableDetachError(error)) {
+        break;
+      }
+
+      const retryDelayMs = retryDelaysMs[attempt];
+      console.warn(`hdiutil detach failed; retrying in ${retryDelayMs}ms`, {
+        target,
+        error: commandErrorText(error),
+      });
+      try {
+        await runCommand("sync", [], { silent: true });
+      } catch {
+        // Best-effort flush before retrying detach.
+      }
+      await wait(retryDelayMs);
+    }
+  }
+
+  if (force) {
+    try {
+      await runCommand("hdiutil", ["detach", "-force", target]);
+      return;
+    } catch (error) {
+      if (isAlreadyDetachedError(error)) {
+        return;
+      }
+      lastError = error;
+    }
+  }
+
+  throw lastError;
+}
+
 async function appSizeMegabytes(appPath) {
   const stdout = await run("du", ["-sm", appPath], { silent: true });
   const [size] = stdout.trim().split(/\s+/);
@@ -177,6 +267,7 @@ async function createStyledDmg({
   const backgroundPng = path.join(backgroundDir, "background.png");
   const dsStore = path.join(mountPath, ".DS_Store");
   let mounted = false;
+  let attachedDevice = null;
 
   try {
     const sourceSizeMb = await appSizeMegabytes(appPath);
@@ -195,13 +286,14 @@ async function createStyledDmg({
       "-ov",
       rwDmgPath,
     ]);
-    await run("hdiutil", [
+    const attachOutput = await run("hdiutil", [
       "attach",
       rwDmgPath,
       "-nobrowse",
       "-mountpoint",
       mountPath,
     ]);
+    attachedDevice = parseAttachDevice(attachOutput, mountPath);
     mounted = true;
 
     await run("ditto", [appPath, path.join(mountPath, appName)]);
@@ -238,7 +330,7 @@ async function createStyledDmg({
     }
     await run("sync", []);
 
-    await run("hdiutil", ["detach", mountPath]);
+    await detachDmg({ mountPath, device: attachedDevice });
     mounted = false;
 
     await run("hdiutil", [
@@ -255,7 +347,11 @@ async function createStyledDmg({
   } finally {
     if (mounted) {
       try {
-        await run("hdiutil", ["detach", mountPath]);
+        await detachDmg({
+          mountPath,
+          device: attachedDevice,
+          retryDelaysMs: [1_000],
+        });
       } catch (error) {
         console.warn("Failed to detach DMG mount", { mountPath, error });
       }
@@ -268,6 +364,13 @@ async function createStyledDmg({
   }
 }
 
-const options = parseArgs(process.argv.slice(2));
-await createStyledDmg(options);
-console.log(`Created styled DMG: ${options.outPath}`);
+if (
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+) {
+  const options = parseArgs(process.argv.slice(2));
+  await createStyledDmg(options);
+  console.log(`Created styled DMG: ${options.outPath}`);
+}
+
+export { createStyledDmg, detachDmg, parseAttachDevice };
