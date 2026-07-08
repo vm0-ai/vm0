@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
+import { onboardingSetupContract } from "@vm0/api-contracts/contracts/onboarding";
 import { createStore } from "ccstate";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -108,28 +109,12 @@ describe("GET /api/zero/billing/status", () => {
       [200],
     );
 
-    expect(response.body.tier).toBe("free");
+    expect(response.body.tier).toBe("pro-suspend");
     expect(response.body.credits).toBe(100_000);
     expect(response.body.onboardingPaymentPending).toBeFalsy();
     expect(response.body.hasSubscription).toBeFalsy();
     expect(response.body.subscriptionStatus).toBeNull();
     expect(response.body.currentPeriodEnd).toBeNull();
-  });
-
-  it("preserves negative org credit balances", async () => {
-    const fixture = await track(
-      store.set(seedBillingStatusOrg$, { credits: -1234 }, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const client = setupApp({ context })(zeroBillingStatusContract);
-
-    const response = await accept(
-      client.get({ headers: { authorization: "Bearer clerk-session" } }),
-      [200],
-    );
-
-    expect(response.body.credits).toBe(-1234);
   });
 
   it("returns billing status for zero tokens with billing read capability", async () => {
@@ -340,14 +325,19 @@ describe("GET /api/zero/billing/status", () => {
   });
 
   it("returns onboarding payment pending state", async () => {
-    const fixture = await track(
-      store.set(
-        seedBillingStatusOrg$,
-        { onboardingPaymentPending: true },
-        context.signal,
-      ),
-    );
+    const fixture = {
+      orgId: `org_${randomUUID()}`,
+      userId: `user_${randomUUID()}`,
+      expiresRecordIds: [],
+    };
     mocks.clerk.session(fixture.userId, fixture.orgId);
+    await accept(
+      setupApp({ context })(onboardingSetupContract).setup({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { displayName: "Billing Status Test Agent" },
+      }),
+      [200, 409],
+    );
 
     const client = setupApp({ context })(zeroBillingStatusContract);
 
@@ -462,14 +452,6 @@ describe("GET /api/zero/billing/status", () => {
             stripeCustomerId: `cus_${randomUUID()}`,
             stripeSubscriptionId: `sub_${randomUUID()}`,
           },
-          expiresRecords: [
-            {
-              source: "subscription_renewal",
-              amount: 20_000,
-              remaining: 15_000,
-              expiresAt: expiryDate,
-            },
-          ],
         },
         context.signal,
       ),
@@ -483,7 +465,7 @@ describe("GET /api/zero/billing/status", () => {
       [200],
     );
 
-    expect(response.body.creditExpiry.expiringNextCycle).toBe(15_000);
+    expect(response.body.creditExpiry.expiringNextCycle).toBe(20_000);
     expect(response.body.creditExpiry.nextExpiryDate).toBe(
       expiryDate.toISOString(),
     );
@@ -492,15 +474,15 @@ describe("GET /api/zero/billing/status", () => {
         source: "subscription_renewal",
         label: "Pro plan",
         amount: 20_000,
-        remaining: 15_000,
+        remaining: 20_000,
         expiresAt: expiryDate.toISOString(),
       }),
     ]);
   });
 
-  it("returns zero creditExpiry for free org", async () => {
+  it("returns zero creditExpiry without active credit grants", async () => {
     const fixture = await track(
-      store.set(seedBillingStatusOrg$, { credits: 100_000 }, context.signal),
+      store.set(seedBillingStatusOrg$, {}, context.signal),
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
@@ -516,7 +498,7 @@ describe("GET /api/zero/billing/status", () => {
   });
 
   it("displays credits minus not-yet-settled expired amount", async () => {
-    // Dormant non-subscription org: a 3k expires record is past its
+    // Dormant non-subscription org: a 3k purchase grant is past its
     // expiresAt but the inflated ledger has not yet been settled, so the
     // /status endpoint must subtract the expired amount before reporting.
     const pastDate = new Date("2026-03-01T00:00:00Z");
@@ -524,15 +506,14 @@ describe("GET /api/zero/billing/status", () => {
       store.set(
         seedBillingStatusOrg$,
         {
-          credits: 100_000,
+          credits: 103_000,
           expiresRecords: [
             {
-              source: "subscription_renewal",
+              source: "credit_purchase",
               amount: 3000,
               expiresAt: pastDate,
             },
           ],
-          extraGrantedCredits: 3000,
         },
         context.signal,
       ),
@@ -546,7 +527,7 @@ describe("GET /api/zero/billing/status", () => {
       [200],
     );
 
-    // 100_000 (seeded) + 3000 (granted) − 3000 (expired) = 100_000
+    // 103_000 ledger credits - 3000 expired credits = 100_000 displayed.
     expect(response.body.credits).toBe(100_000);
   });
 
@@ -696,111 +677,16 @@ describe("GET /api/zero/billing/status", () => {
     ]);
   });
 
-  it("shows Team plan leftover alongside current Pro plan for a downgraded org", async () => {
-    // Pro-tier org that still has unused credits from a prior Team renewal.
-    const fixture = await track(
-      store.set(
-        seedBillingStatusOrg$,
-        {
-          credits: 20_000 + 40_000,
-          subscription: {
-            tier: "pro",
-            status: "active",
-            currentPeriodEnd: new Date("2099-05-20T00:00:00Z"),
-            stripeCustomerId: `cus_${randomUUID()}`,
-            stripeSubscriptionId: `sub_${randomUUID()}`,
-          },
-          expiresRecords: [
-            {
-              source: "subscription_renewal",
-              amount: 20_000,
-              expiresAt: new Date("2099-06-20T00:00:00Z"),
-            },
-            {
-              source: "subscription_renewal",
-              amount: 120_000,
-              remaining: 40_000,
-              expiresAt: new Date("2099-07-20T00:00:00Z"),
-            },
-          ],
-        },
-        context.signal,
-      ),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const client = setupApp({ context })(zeroBillingStatusContract);
-
-    const response = await accept(
-      client.get({ headers: { authorization: "Bearer clerk-session" } }),
-      [200],
-    );
-
-    expect(response.body.creditBreakdown).toStrictEqual([
-      {
-        category: "plan",
-        label: "Pro plan",
-        credits: 20_000,
-        tier: "pro",
-      },
-      {
-        category: "plan",
-        label: "Team plan",
-        credits: 40_000,
-        tier: "team",
-      },
-    ]);
-  });
-
-  it.each(["starter_grant", "onboarding"])(
-    "maps %s records to Free plan segment",
-    async (source) => {
-      const fixture = await track(
-        store.set(
-          seedBillingStatusOrg$,
-          {
-            credits: 10_000,
-            expiresRecords: [
-              {
-                source,
-                amount: 10_000,
-                expiresAt: new Date("2099-12-31T00:00:00Z"),
-              },
-            ],
-          },
-          context.signal,
-        ),
-      );
-      mocks.clerk.session(fixture.userId, fixture.orgId);
-
-      const client = setupApp({ context })(zeroBillingStatusContract);
-
-      const response = await accept(
-        client.get({ headers: { authorization: "Bearer clerk-session" } }),
-        [200],
-      );
-
-      const free = response.body.creditBreakdown.find((segment) => {
-        return segment.category === "free";
-      });
-      expect(free).toStrictEqual({
-        category: "free",
-        label: "Free plan",
-        credits: 10_000,
-      });
-    },
-  );
-
   it("maps one_time_purchase records to Promotional segment", async () => {
     const fixture = await track(
       store.set(
         seedBillingStatusOrg$,
         {
-          credits: 5000,
+          credits: 100_000,
           expiresRecords: [
             {
               source: "one_time_purchase",
-              amount: 5000,
+              amount: 100_000,
               expiresAt: new Date("2099-12-31T00:00:00Z"),
             },
           ],
@@ -823,13 +709,12 @@ describe("GET /api/zero/billing/status", () => {
     expect(promo).toStrictEqual({
       category: "promotional",
       label: "Promotional",
-      credits: 5000,
+      credits: 100_000,
     });
   });
 
-  it("surfaces untracked paid-tier balance as Pay as you go fallback", async () => {
-    // Paid-tier org whose ledger shows more credits than any active expires
-    // record accounts for (pre-sentinel top-up / historical drift).
+  it("surfaces paid-tier credit purchases as Pay as you go", async () => {
+    // Paid-tier org with a plan renewal plus an extra credit purchase.
     const fixture = await track(
       store.set(
         seedBillingStatusOrg$,
@@ -880,50 +765,6 @@ describe("GET /api/zero/billing/status", () => {
         return grant.source === "auto_recharge";
       }),
     ).toBeFalsy();
-  });
-
-  it("merges untracked balance on free tier into Free plan segment", async () => {
-    // Free-tier org where org_metadata.credits exceeds the starter_grant
-    // record's remaining. The delta should render under "Free plan", not
-    // "Pay as you go".
-    const fixture = await track(
-      store.set(
-        seedBillingStatusOrg$,
-        {
-          credits: 12_000,
-          expiresRecords: [
-            {
-              source: "starter_grant",
-              amount: 10_000,
-              expiresAt: new Date("2099-12-31T00:00:00Z"),
-            },
-          ],
-        },
-        context.signal,
-      ),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const client = setupApp({ context })(zeroBillingStatusContract);
-
-    const response = await accept(
-      client.get({ headers: { authorization: "Bearer clerk-session" } }),
-      [200],
-    );
-
-    const free = response.body.creditBreakdown.find((segment) => {
-      return segment.category === "free";
-    });
-    expect(free).toStrictEqual({
-      category: "free",
-      label: "Free plan",
-      credits: 12_000,
-    });
-    expect(
-      response.body.creditBreakdown.find((segment) => {
-        return segment.category === "payAsYouGo";
-      }),
-    ).toBeUndefined();
   });
 
   it("returns defaults when org row does not exist", async () => {

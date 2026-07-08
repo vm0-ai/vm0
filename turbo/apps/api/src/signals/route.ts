@@ -201,7 +201,6 @@ import { testSystemStoragePresignedUrlCacheStateRoutes } from "./routes/test-sys
 import { testWorkflowSkillStoragePresignedUrlCacheStateRoutes } from "./routes/test-workflow-skill-storage-presigned-url-cache-state";
 import { testEmailStateRoutes } from "./routes/test-email-state";
 import { testBillingRedeemStateRoutes } from "./routes/test-billing-redeem-state";
-import { testBillingStatusStateRoutes } from "./routes/test-billing-status-state";
 import { testTelegramDispatchProbeRoutes } from "./routes/test-telegram-dispatch-probe";
 import { testTelegramMockRoutes } from "./routes/test-telegram-mock";
 import { testTelegramStateRoutes } from "./routes/test-telegram-state";
@@ -424,7 +423,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...testWorkflowSkillStoragePresignedUrlCacheStateRoutes,
   ...testEmailStateRoutes,
   ...testBillingRedeemStateRoutes,
-  ...testBillingStatusStateRoutes,
   ...testTelegramDispatchProbeRoutes,
   ...testTelegramMockRoutes,
   ...testTelegramStateRoutes,
