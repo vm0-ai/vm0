@@ -741,14 +741,14 @@ describe("minimax-api-key provider", () => {
     expect(getSecretNameForType("minimax-api-key")).toBe("MINIMAX_API_KEY");
   });
 
-  it("maps Codex env bindings with old-runner base URL compatibility", () => {
+  it("maps MiniMax Codex env bindings without provider base URL", () => {
     const envBindings = getModelProviderEnvBindings("minimax-api-key", {
       [FeatureSwitchKey.CodexFrameworkForMinimax]: true,
     });
-    expect(envBindings).toBeDefined();
-    expect(envBindings!["OPENAI_API_KEY"]).toBe("$secret");
-    expect(envBindings!["OPENAI_BASE_URL"]).toBe("https://api.minimax.io/v1");
-    expect(envBindings!["OPENAI_MODEL"]).toBe("$model");
+    expect(envBindings).toStrictEqual({
+      OPENAI_API_KEY: "$secret",
+      OPENAI_MODEL: "$model",
+    });
   });
 
   it("declares MiniMax Codex runtime config when the feature flag is enabled", () => {
