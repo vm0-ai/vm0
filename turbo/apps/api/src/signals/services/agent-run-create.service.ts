@@ -1715,6 +1715,10 @@ async function multiAuthModelProviderEnvironment(
     ),
     secrets: hasFirewallAuth ? {} : forwardableSecrets,
     selectedModel,
+    codexRuntimeConfig: getModelProviderCodexRuntimeConfig(
+      args.type,
+      featureStates,
+    ),
     firewall,
     inlineFirewall: shouldInlineModelProviderFirewall(args.type, featureStates),
     secretConnectorMap: authMaps?.secretConnectorMap,
@@ -1766,6 +1770,10 @@ async function vm0ModelProviderEnvironment(
     ),
     secrets: { [secretName]: apiKey },
     selectedModel,
+    codexRuntimeConfig: getModelProviderCodexRuntimeConfig(
+      concreteType,
+      featureStates,
+    ),
     firewall: getModelProviderFirewall(concreteType, featureStates),
     inlineFirewall: shouldInlineModelProviderFirewall(
       concreteType,
