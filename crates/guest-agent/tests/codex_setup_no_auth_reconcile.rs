@@ -9,8 +9,8 @@ type TestResult = Result<(), Box<dyn std::error::Error>>;
 async fn codex_setup_no_auth_removes_stale_auth_json() -> TestResult {
     let tmp = tempfile::tempdir()?;
     let runtime_dir = tmp.path().join("runtime");
-    let user_env_dir = runtime_dir.join("user-env");
-    let user_env_path = user_env_dir.join("env.json");
+    let user_env_dir = runtime_dir.join(guest_contracts::env::USER_ENV_PRIVATE_DIR_NAME);
+    let user_env_path = user_env_dir.join(guest_contracts::env::USER_ENV_FILENAME);
     let run_payload_dir = runtime_dir.join(guest_contracts::env::RUN_PAYLOAD_PRIVATE_DIR_NAME);
     let run_payload_path = run_payload_dir.join(guest_contracts::env::RUN_PAYLOAD_FILENAME);
     let codex_home = tmp.path().join(".codex");
