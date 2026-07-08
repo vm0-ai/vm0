@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.241.0](https://github.com/vm0-ai/vm0/compare/api-v1.240.0...api-v1.241.0) (2026-07-08)
+
+
+### Features
+
+* add org-level artifacts api ([#20563](https://github.com/vm0-ai/vm0/issues/20563)) ([1828d6c](https://github.com/vm0-ai/vm0/commit/1828d6c3d4d6259c7c4f35ef95093b0c06ecefe9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.166.0
+    * @vm0/connectors bumped to 1.148.0
+    * @vm0/core bumped to 8.414.0
+    * @vm0/db bumped to 1.99.2
+
 ## [1.240.0](https://github.com/vm0-ai/vm0/compare/api-v1.239.0...api-v1.240.0) (2026-07-08)
 
 

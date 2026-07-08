@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.573.0](https://github.com/vm0-ai/vm0/compare/app-v0.572.0...app-v0.573.0) (2026-07-08)
+
+
+### Features
+
+* add artifact item indexeddb metadata cache ([#20559](https://github.com/vm0-ai/vm0/issues/20559)) ([5788bad](https://github.com/vm0-ai/vm0/commit/5788bad047657879d406aa7fe8a8b4e098f176c9))
+* add manage artifacts page ([#20560](https://github.com/vm0-ai/vm0/issues/20560)) ([08e2f04](https://github.com/vm0-ai/vm0/commit/08e2f04e5ccf69f934b836c6b82b6a03503fe48f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.166.0
+    * @vm0/connectors bumped to 1.148.0
+    * @vm0/core bumped to 8.414.0
+
 ## [0.572.0](https://github.com/vm0-ai/vm0/compare/app-v0.571.0...app-v0.572.0) (2026-07-08)
 
 

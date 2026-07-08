@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.414.0](https://github.com/vm0-ai/vm0/compare/core-v8.413.0...core-v8.414.0) (2026-07-08)
+
+
+### Features
+
+* add manage artifacts page ([#20560](https://github.com/vm0-ai/vm0/issues/20560)) ([08e2f04](https://github.com/vm0-ai/vm0/commit/08e2f04e5ccf69f934b836c6b82b6a03503fe48f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.166.0
+    * @vm0/connectors bumped to 1.148.0
+
 ## [8.413.0](https://github.com/vm0-ai/vm0/compare/core-v8.412.3...core-v8.413.0) (2026-07-08)
 
 
