@@ -568,7 +568,7 @@ export const heartbeatBodySchema = z.object({
   runningCount: z.number().int().nonnegative(),
   admittableProfiles: runnerProfileListSchema,
   heldSessionStates: z.array(heldSessionStateSchema).max(1024),
-  mode: z.enum(["running", "draining", "stopping"]),
+  mode: z.enum(["starting", "running", "draining", "stopping"]),
 });
 
 /**
