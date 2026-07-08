@@ -1,6 +1,7 @@
 """Tests for usage webhook HTTP delivery behavior."""
 
 import json
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -84,7 +85,7 @@ def test_closes_http_error_response(tmp_path, real_flow, fresh_usage_executor, u
 
     with (
         usage_webhook_api() as webhook,
-        patch.object(usage.webhook.time, "sleep"),
+        patch.object(time, "sleep"),
         patch.object(urllib.error.HTTPError, "close", autospec=True) as close_mock,
     ):
         webhook.queue_response(500)
@@ -163,7 +164,7 @@ def test_retries_on_failure(tmp_path, real_flow, fresh_usage_executor, usage_web
 
     with (
         usage_webhook_api() as webhook,
-        patch.object(usage.webhook.time, "sleep") as mock_sleep,
+        patch.object(time, "sleep") as mock_sleep,
     ):
         webhook.queue_response(500)
         webhook.queue_response(204)
@@ -179,7 +180,7 @@ def test_gives_up_after_retry_budget(tmp_path, real_flow, fresh_usage_executor, 
 
     with (
         usage_webhook_api() as webhook,
-        patch.object(usage.webhook.time, "sleep"),
+        patch.object(time, "sleep"),
     ):
         webhook.queue_response(500)
         webhook.queue_response(500)
@@ -198,7 +199,7 @@ def test_http_429_is_retryable(tmp_path, real_flow, fresh_usage_executor, usage_
 
     with (
         usage_webhook_api() as webhook,
-        patch.object(usage.webhook.time, "sleep") as mock_sleep,
+        patch.object(time, "sleep") as mock_sleep,
     ):
         webhook.queue_response(429)
         webhook.queue_response(429)
@@ -222,7 +223,7 @@ def test_url_error_is_retryable(tmp_path, sync_usage_executor):
             "open",
             side_effect=urllib.error.URLError("connection refused"),
         ) as mock_open,
-        patch.object(usage.webhook.time, "sleep") as mock_sleep,
+        patch.object(time, "sleep") as mock_sleep,
     ):
         assert usage.webhook.enqueue_webhook_delivery(
             "https://api.vm0.ai/api/webhooks/agent/usage-event",

@@ -1,6 +1,7 @@
 """Tests for usage webhook delivery admission and accounting."""
 
 import json
+import time
 from unittest.mock import patch
 
 import pytest
@@ -274,7 +275,7 @@ def test_delivery_capacity_released_after_retry_exhaustion(
     usage_webhook_server.queue_response(500)
     usage_webhook_server.queue_response(500)
 
-    with mitm_ctx(), patch.object(usage.webhook.time, "sleep"):
+    with mitm_ctx(), patch.object(time, "sleep"):
         assert usage.webhook.enqueue_webhook_delivery(
             usage_webhook_server.url("/usage"),
             "tok",
