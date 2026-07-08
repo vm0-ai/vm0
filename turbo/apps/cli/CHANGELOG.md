@@ -1,5 +1,22 @@
 # Changelog
 
+## [9.229.0](https://github.com/vm0-ai/vm0/compare/cli-v9.228.0...cli-v9.229.0) (2026-07-08)
+
+
+### Features
+
+* add website template deep-link and cli support ([#20542](https://github.com/vm0-ai/vm0/issues/20542)) ([5d0e5a6](https://github.com/vm0-ai/vm0/commit/5d0e5a638e321b937327d2b02958f4803a67a4f6))
+* **cli:** split image prompt generation modes ([#20580](https://github.com/vm0-ai/vm0/issues/20580)) ([1cb5e06](https://github.com/vm0-ai/vm0/commit/1cb5e06c00ea331d15df5412c994ec8ee934aa91))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.165.0
+    * @vm0/connectors bumped to 1.147.1
+    * @vm0/core bumped to 8.413.0
+
 ## [9.228.0](https://github.com/vm0-ai/vm0/compare/cli-v9.227.2...cli-v9.228.0) (2026-07-07)
 
 

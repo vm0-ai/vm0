@@ -1,5 +1,25 @@
 # Changelog
 
+## [8.413.0](https://github.com/vm0-ai/vm0/compare/core-v8.412.3...core-v8.413.0) (2026-07-08)
+
+
+### Features
+
+* add website template deep-link and cli support ([#20542](https://github.com/vm0-ai/vm0/issues/20542)) ([5d0e5a6](https://github.com/vm0-ai/vm0/commit/5d0e5a638e321b937327d2b02958f4803a67a4f6))
+
+
+### Refactoring
+
+* remove composer model picker popover switch ([#20572](https://github.com/vm0-ai/vm0/issues/20572)) ([fcd3c46](https://github.com/vm0-ai/vm0/commit/fcd3c46b34e221487e110a96bc1bef9acff0fc2e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.165.0
+    * @vm0/connectors bumped to 1.147.1
+
 ## [8.412.3](https://github.com/vm0-ai/vm0/compare/core-v8.412.2...core-v8.412.3) (2026-07-07)
 
 

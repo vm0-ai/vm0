@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.54](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.53...guest-download-v0.20.54) (2026-07-08)
+
+
+### Refactoring
+
+* clean up empty artifact compatibility ([#20574](https://github.com/vm0-ai/vm0/issues/20574)) ([dc86eae](https://github.com/vm0-ai/vm0/commit/dc86eae0bf05e3c6a5787c330b9490548c3512a4))
+
 ## [0.20.53](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.52...guest-download-v0.20.53) (2026-07-07)
 
 
