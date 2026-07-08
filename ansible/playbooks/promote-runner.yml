@@ -64,7 +64,10 @@
     - name: Wait for target runner readiness
       shell: |
         set -euo pipefail
-        state="$(systemctl show vm0-runner-{{ runner_name }}.service --property=ActiveState --value)"
+        if ! state="$(systemctl show vm0-runner-{{ runner_name }}.service --property=ActiveState --value)"; then
+          echo "target service ActiveState=<unavailable>" >&2
+          exit 2
+        fi
         case "$state" in
           active) ;;
           activating|reloading)
