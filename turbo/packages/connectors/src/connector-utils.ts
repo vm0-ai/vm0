@@ -13,7 +13,6 @@ import {
   type ConnectorAuthMethodIdsByRevokeKind,
   type ConnectorTypesByAccessKind,
   type ConnectorTypesByGrantKind,
-  type ConnectorTypesByRevokeKind,
   type ConnectorAuthClientConfigForMethod,
   type ConnectorAuthMethodConfigFor,
   type RefreshTokenAccessConnectorType,
@@ -949,21 +948,15 @@ export type ConnectorAuthMethodRefByGrantKind<Kind extends ConnectorGrantKind> =
 
 export type ConnectorAuthMethodRefByAccessKind<
   Kind extends ConnectorAccessKind,
-> = {
-  readonly [Type in ConnectorTypesByAccessKind<Kind>]: {
-    readonly type: Type;
-    readonly authMethod: ConnectorAuthMethodIdsByAccessKind<Type, Kind>;
-  };
-}[ConnectorTypesByAccessKind<Kind>];
+> = ConnectorAuthMethodRef & {
+  readonly __connectorAuthMethodAccessKind?: Kind;
+};
 
 export type ConnectorAuthMethodRefByRevokeKind<
   Kind extends ConnectorRevokeKind,
-> = {
-  readonly [Type in ConnectorTypesByRevokeKind<Kind>]: {
-    readonly type: Type;
-    readonly authMethod: ConnectorAuthMethodIdsByRevokeKind<Type, Kind>;
-  };
-}[ConnectorTypesByRevokeKind<Kind>];
+> = ConnectorAuthMethodRef & {
+  readonly __connectorAuthMethodRevokeKind?: Kind;
+};
 
 export function connectorAuthMethodRefHasGrantKind<
   Kind extends ConnectorGrantKind,
