@@ -219,7 +219,6 @@ interface PreparedNormalSend {
   readonly persistedExplicitSelection: boolean;
   readonly initialThinkingEnabled: boolean;
   readonly codexFastModeEnabled: boolean;
-  readonly realAgentInPreviewEnabled: boolean;
 }
 
 function shouldTouchThreadSortFromNormalSend(
@@ -236,7 +235,6 @@ function shouldTouchThreadSortFromNormalSend(
 interface NormalSendFeatureSwitches {
   readonly codexFastModeEnabled: boolean;
   readonly websiteTemplatesEnabled: boolean;
-  readonly realAgentInPreviewEnabled: boolean;
 }
 
 interface ResolvedComputerUseHostGrant {
@@ -1280,10 +1278,6 @@ async function resolveNormalSendFeatureSwitches(
     ),
     websiteTemplatesEnabled: isFeatureEnabled(
       FeatureSwitchKey.WebsiteTemplates,
-      context,
-    ),
-    realAgentInPreviewEnabled: isFeatureEnabled(
-      FeatureSwitchKey.RealAgentInPreview,
       context,
     ),
   };
@@ -2357,7 +2351,6 @@ const prepareNormalSend$ = command(
       persistedExplicitSelection,
       initialThinkingEnabled: args.zeroPreCreateSource === undefined,
       codexFastModeEnabled: featureSwitches.codexFastModeEnabled,
-      realAgentInPreviewEnabled: featureSwitches.realAgentInPreviewEnabled,
     };
   },
 );
@@ -2773,9 +2766,7 @@ function buildCreateZeroRunArgs(params: {
       ...(providerAdmission.effectiveModelProvider
         ? { modelProvider: providerAdmission.effectiveModelProvider }
         : {}),
-      ...(args.body.realAgentInPreview && prepared.realAgentInPreviewEnabled
-        ? { realAgentInPreview: true }
-        : {}),
+      ...(args.body.realAgentInPreview ? { realAgentInPreview: true } : {}),
     },
     triggerSource: "web" as const,
     dispatchFailedCallbacks: dispatchFailedRunCallbacks,
