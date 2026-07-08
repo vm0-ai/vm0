@@ -86,6 +86,8 @@ def test_enqueue_logs_body_free_payload_summary(
     enqueued_entry = entries[0]
     assert enqueued_entry["url"] == usage_webhook_server.url("/usage")
     assert enqueued_entry["type"] == "usage_event"
+    assert "attempt" not in enqueued_entry
+    assert "error" not in enqueued_entry
     assert_body_free_webhook_entry(enqueued_entry, run_id="run-1", event_count=0)
     assert "payload_bytes" not in enqueued_entry
 

@@ -70,6 +70,10 @@ def test_rejects_invalid_url_before_open(tmp_path, sync_usage_executor):
 
     mock_open.assert_not_called()
     entries = read_jsonl_entries_after_flush(proxy_log)
+    messages = [entry["message"] for entry in entries]
+    assert sum("non-retryable" in message for message in messages) == 1
+    assert all("retrying" not in message for message in messages)
+    assert all("failed after" not in message for message in messages)
     error_entry = entries[-1]
     assert error_entry["url"] == "file:///etc/passwd"
     assert "non-retryable" in error_entry["message"]
