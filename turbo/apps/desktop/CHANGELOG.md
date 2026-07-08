@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.24.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.23.6...desktop-v0.24.0) (2026-07-08)
+
+
+### Features
+
+* add desktop client request headers ([#20622](https://github.com/vm0-ai/vm0/issues/20622)) ([00a66b8](https://github.com/vm0-ai/vm0/commit/00a66b894644a59f4646c31799a918e6ceafa19a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.168.0
+
 ## [0.23.6](https://github.com/vm0-ai/vm0/compare/desktop-v0.23.5...desktop-v0.23.6) (2026-07-08)
 
 

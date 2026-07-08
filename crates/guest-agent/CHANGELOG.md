@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.49.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.48.0...guest-agent-v0.49.0) (2026-07-08)
+
+
+### Features
+
+* add desktop client request headers ([#20622](https://github.com/vm0-ai/vm0/issues/20622)) ([00a66b8](https://github.com/vm0-ai/vm0/commit/00a66b894644a59f4646c31799a918e6ceafa19a))
+
 ## [0.48.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.47.5...guest-agent-v0.48.0) (2026-07-08)
 
 
