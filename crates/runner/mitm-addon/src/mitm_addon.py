@@ -36,13 +36,13 @@ from mitmproxy.addonmanager import Loader
 # --- Sub-module imports ---
 #
 # auth_base_forwarder/body_capture/connector_diagnostics/matching/registry/
-# response_encoding_negotiation/response_streaming/usage are imported by module
-# (not selective `from X import ...`)
+# response_encoding_negotiation/response_streaming/terminal_usage/usage are
+# imported by module (not selective `from X import ...`)
 # so that:
 #   1. Cross-module calls read as ``auth_base_forwarder.X(...)`` /
 #      ``body_capture.X(...)`` / ``connector_diagnostics.X(...)`` /
 #      ``matching.X(...)`` / ``registry.X(...)`` / ``response_streaming.X(...)`` /
-#      ``usage.X(...)``,
+#      ``terminal_usage.X(...)`` / ``usage.X(...)``,
 #      making the module boundary visible at call sites.
 #   2. Tests can patch names on the owning module object and affect all
 #      callers — no mock-placement pitfalls from copied function bindings.
@@ -51,7 +51,6 @@ import body_capture
 import builtin_host_policy
 import connection_endpoints
 import connector_diagnostics
-import deferred_callbacks
 import flow_metadata
 import flow_metadata_keys as metadata_keys
 import http_local_responses
@@ -65,6 +64,7 @@ import request_streaming
 import response_encoding_negotiation
 import response_streaming
 import tcp_logging
+import terminal_usage
 import upstream_destination_binding
 import usage
 from auth import (
@@ -111,22 +111,6 @@ _TEST_ENDPOINT_BYPASS_HEADER: Final = "x-vm0-test-endpoint-bypass"
 # _REQUEST_HEADERS_TERMINATED is a flow-local sentinel for request() early exit.
 _REQUEST_HEADERS_TERMINATED = "_request_headers_terminated"
 _FIREWALL_AUTH_APPLIED_IN_REQUESTHEADERS = "_firewall_auth_applied_in_requestheaders"
-
-# Usage tracking state.
-# Creator: _maybe_track_usage_flow() and _report_model_provider_usage_once().
-# Consumer: terminal hooks and duplicate-report guards.
-# Release: tracked marker is popped; reported marker has no explicit pop before
-# flow completion.
-# Follow-up owner: #20509 terminal flow lifecycle extraction.
-_USAGE_FLOW_TRACKED = "_usage_flow_tracked"
-_MODEL_PROVIDER_USAGE_REPORTED = "_model_provider_usage_reported"
-
-# Model WebSocket retention state.
-# Creator: _schedule_model_websocket_message_trim().
-# Consumer: scheduled trim and clear helpers.
-# Release: _trim_model_websocket_messages() and _clear_model_websocket_messages().
-# Follow-up owner: #20509 terminal flow lifecycle extraction.
-_MODEL_WEBSOCKET_MESSAGE_TRIM_SCHEDULED = "_model_websocket_message_trim_scheduled"
 
 _AUTH_BASE_BODYLESS_METHODS = frozenset(("GET", "HEAD"))
 _HTTP_RESPONSE_BODYLESS_METHODS = frozenset(("CONNECT", "HEAD"))
@@ -1591,7 +1575,7 @@ async def _try_firewall_request_stream_capture_from_headers(
         _restore_request_headers_probe_metadata(flow, metadata_snapshot)
         return
 
-    _maybe_track_usage_flow(
+    terminal_usage.track_flow_if_needed(
         flow,
         is_billable_firewall(allow.name, vm_info),
         _is_model_provider_usage_observable(allow.name, vm_info),
@@ -1711,7 +1695,7 @@ async def request(flow: http.HTTPFlow) -> None:
             )
             if public_destination_denial is not None:
                 auth_base_forwarder.release_forward_request_admission_from_flow(flow)
-                _release_tracked_usage_flow(flow)
+                terminal_usage.release_tracked_flow(flow)
                 _block_public_destination_denied(flow, public_destination_denial)
                 return
             if flow.metadata.get(_FIREWALL_AUTH_APPLIED_IN_REQUESTHEADERS):
@@ -1721,7 +1705,7 @@ async def request(flow: http.HTTPFlow) -> None:
                 classification,
             ):
                 auth_base_forwarder.release_forward_request_admission_from_flow(flow)
-                _release_tracked_usage_flow(flow)
+                terminal_usage.release_tracked_flow(flow)
                 return
             if _firewall_allow_injects_ordinary_upstream_credentials(
                 allow
@@ -1739,7 +1723,7 @@ async def request(flow: http.HTTPFlow) -> None:
                 )
                 return
             _maybe_normalize_accept_encoding_for_body_inspection(flow, allow, vm_info)
-            _maybe_track_usage_flow(
+            terminal_usage.track_flow_if_needed(
                 flow,
                 is_billable_firewall(allow.name, vm_info),
                 _is_model_provider_usage_observable(allow.name, vm_info),
@@ -1750,7 +1734,7 @@ async def request(flow: http.HTTPFlow) -> None:
                 # need pre-tracking to keep shutdown from racing while auth is
                 # resolving, so release as soon as the local response exists.
                 auth_base_forwarder.release_forward_request_admission_from_flow(flow)
-                _release_tracked_usage_flow(flow)
+                terminal_usage.release_tracked_flow(flow)
             return
 
         vm_info = classification.vm_info
@@ -1769,7 +1753,7 @@ async def request(flow: http.HTTPFlow) -> None:
         flow.metadata.pop(metadata_keys.HTTP_REQUEST_START_MONOTONIC, None)
         auth_base_forwarder.release_forward_request_admission_from_flow(flow)
         upstream_destination_binding.forget_server_binding(flow.server_conn)
-        _release_tracked_usage_flow(flow)
+        terminal_usage.release_tracked_flow(flow)
         raise
     finally:
         if flow.response is not None or flow.error is not None:
@@ -1856,65 +1840,6 @@ def _is_valid_websocket_key(value: str) -> bool:
     return len(decoded) == _WEBSOCKET_KEY_BYTES
 
 
-def _maybe_track_usage_flow(
-    flow: http.HTTPFlow, firewall_billable: bool, model_usage_observable: bool
-) -> None:
-    """Track usage flows before provider work can outlive shutdown.
-
-    This closes the shutdown drain gap before standard upstream dispatch and
-    before auth.base URL rewrites, where the addon itself forwards upstream.
-    Normal HTTP flows release from response/error.  Model-provider WebSocket
-    upgrades release from websocket_end/error because the 101 response does not
-    complete the usage reporting lifecycle.
-    """
-    if flow.metadata.get(_USAGE_FLOW_TRACKED):
-        return
-    if firewall_billable or model_usage_observable:
-        usage.increment_in_flight_flows()
-        flow.metadata[_USAGE_FLOW_TRACKED] = True
-
-
-def _release_tracked_usage_flow(flow: http.HTTPFlow) -> None:
-    if flow.metadata.pop(_USAGE_FLOW_TRACKED, False):
-        usage.decrement_in_flight_flows()
-
-
-def _report_model_provider_usage_once(flow: http.HTTPFlow, run_id: str) -> None:
-    """Avoid duplicate usage webhook enqueue if response/error both fire."""
-    if flow.metadata.get(_MODEL_PROVIDER_USAGE_REPORTED, False):
-        return
-    reported_usage = usage.report_model_provider_usage(flow, run_id)
-    reported_observation = usage.report_model_provider_usage_observation(flow, run_id)
-    if reported_usage or reported_observation:
-        flow.metadata[_MODEL_PROVIDER_USAGE_REPORTED] = True
-
-
-def _is_model_websocket_usage_flow(flow: http.HTTPFlow) -> bool:
-    return bool(flow.websocket and response_streaming.is_model_websocket_usage_enabled(flow))
-
-
-def _trim_model_websocket_messages(flow: http.HTTPFlow) -> None:
-    flow.metadata.pop(_MODEL_WEBSOCKET_MESSAGE_TRIM_SCHEDULED, None)
-    if not _is_model_websocket_usage_flow(flow):
-        return
-    if not flow.websocket or not flow.websocket.messages:
-        return
-    flow.websocket.messages[:] = flow.websocket.messages[-1:]
-
-
-def _clear_model_websocket_messages(flow: http.HTTPFlow) -> None:
-    flow.metadata.pop(_MODEL_WEBSOCKET_MESSAGE_TRIM_SCHEDULED, None)
-    if _is_model_websocket_usage_flow(flow) and flow.websocket:
-        flow.websocket.messages.clear()
-
-
-def _schedule_model_websocket_message_trim(flow: http.HTTPFlow) -> None:
-    if flow.metadata.get(_MODEL_WEBSOCKET_MESSAGE_TRIM_SCHEDULED, False):
-        return
-    flow.metadata[_MODEL_WEBSOCKET_MESSAGE_TRIM_SCHEDULED] = True
-    deferred_callbacks.call_soon(_trim_model_websocket_messages, flow)
-
-
 # ============================================================================
 # HTTP Response Handlers
 # ============================================================================
@@ -1938,10 +1863,10 @@ def websocket_message(flow: http.HTTPFlow) -> None:
 
     message = flow.websocket.messages[-1]
     if getattr(message, "from_client", False):
-        _schedule_model_websocket_message_trim(flow)
+        terminal_usage.schedule_model_websocket_message_trim(flow)
         return
     response_streaming.feed_model_websocket_usage(flow, message.content)
-    _schedule_model_websocket_message_trim(flow)
+    terminal_usage.schedule_model_websocket_message_trim(flow)
 
 
 def _response_size(flow: http.HTTPFlow) -> int:
@@ -2018,10 +1943,7 @@ def _release_terminal_flow_state(
     release_tracking: bool,
 ) -> None:
     if release_tracking:
-        _clear_model_websocket_messages(flow)
-        if response_streaming.is_model_websocket_usage_enabled(flow):
-            flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE_SOURCES] = {}
-            response_streaming.release_model_websocket_usage_state(flow)
+        terminal_usage.release_model_websocket_terminal_state(flow)
     request_classification.pop_cached_classification(flow)
     flow.metadata.pop(_FIREWALL_AUTH_APPLIED_IN_REQUESTHEADERS, None)
     flow.metadata.pop(metadata_keys.WEBSOCKET_UPGRADE_REQUEST, None)
@@ -2032,52 +1954,29 @@ def _release_terminal_flow_state(
     if flow.error is not None:
         upstream_destination_binding.forget_server_binding(flow.server_conn)
     if release_tracking:
-        _release_tracked_usage_flow(flow)
+        terminal_usage.release_tracked_flow(flow)
 
 
-def _track_usage_flow(fn):
-    """Decorator ensuring tracked usage flows release after terminal hooks.
-
-    Pairs with ``increment_in_flight_flows()`` in ``request()``. Uses ``pop`` so
-    duplicate terminal hooks decrement at most once.
-    """
-
-    @functools.wraps(fn)
-    def wrapper(flow: http.HTTPFlow, *args, **kwargs):
-        try:
-            return fn(flow, *args, **kwargs)
-        finally:
-            _release_terminal_flow_state(flow, release_tracking=True)
-
-    return wrapper
-
-
-def _track_response_usage_flow(fn):
-    """Decorator for response() where a 101 WebSocket upgrade is not terminal."""
-
-    @functools.wraps(fn)
-    def wrapper(flow: http.HTTPFlow, *args, **kwargs):
-        release_tracking = True
-        try:
-            result = fn(flow, *args, **kwargs)
-            release_tracking = not response_streaming.is_model_websocket_usage_enabled(flow)
-            return result
-        finally:
-            _release_terminal_flow_state(flow, release_tracking=release_tracking)
-
-    return wrapper
-
-
-@_track_usage_flow
 def websocket_end(flow: http.HTTPFlow) -> None:
     """Report model-provider usage extracted from a WebSocket-upgraded response."""
-    run_id = flow_metadata.run_id(flow.metadata)
-    if run_id:
-        _report_model_provider_usage_once(flow, run_id)
+    try:
+        run_id = flow_metadata.run_id(flow.metadata)
+        if run_id:
+            terminal_usage.report_model_provider_usage_once(flow, run_id)
+    finally:
+        _release_terminal_flow_state(flow, release_tracking=True)
 
 
-@_track_response_usage_flow
 def response(flow: http.HTTPFlow) -> None:
+    release_tracking = True
+    try:
+        _handle_response(flow)
+        release_tracking = not response_streaming.is_model_websocket_usage_enabled(flow)
+    finally:
+        _release_terminal_flow_state(flow, release_tracking=release_tracking)
+
+
+def _handle_response(flow: http.HTTPFlow) -> None:
     """
     Handle response and log network activity.
     """
@@ -2161,7 +2060,7 @@ def response(flow: http.HTTPFlow) -> None:
                 type="usage_event",
                 error=json_error,
             )
-    _report_model_provider_usage_once(flow, run_id)
+    terminal_usage.report_model_provider_usage_once(flow, run_id)
 
     # Billable connector usage observation (issue #9504, stage 0).
     response_streaming.finalize_connector_response_state(flow)
@@ -2195,8 +2094,14 @@ def response(flow: http.HTTPFlow) -> None:
         )
 
 
-@_track_usage_flow
 def error(flow: http.HTTPFlow) -> None:
+    try:
+        _handle_error(flow)
+    finally:
+        _release_terminal_flow_state(flow, release_tracking=True)
+
+
+def _handle_error(flow: http.HTTPFlow) -> None:
     """
     Log connection-level errors (timeout, RST, TLS failure) to the
     per-run JSONL network log and clean up request tracking state.
@@ -2242,7 +2147,7 @@ def error(flow: http.HTTPFlow) -> None:
     # The SSE parser may have partially populated model_provider_usage before the
     # connection error occurred.  Partial data is better than none.
     response_streaming.finalize_model_sse_usage(flow)
-    _report_model_provider_usage_once(flow, run_id)
+    terminal_usage.report_model_provider_usage_once(flow, run_id)
 
     # Billable connector usage for X NDJSON streams that crash mid-flight
     # (issue #9534): the incremental parser populated x_ndjson_state during
