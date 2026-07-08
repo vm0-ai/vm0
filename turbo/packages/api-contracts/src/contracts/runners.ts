@@ -28,6 +28,10 @@ export const RESUME_SESSION_HISTORY_MAX_BYTES = 128 * 1024 * 1024;
 export const SESSION_HISTORY_ENCODING_IDENTITY = "identity";
 export const SESSION_HISTORY_ENCODING_GZIP = "gzip";
 export const SESSION_HISTORY_ENCODING_ZSTD = "zstd";
+export const SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT =
+  "configured_public_endpoint";
+export const SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT =
+  "default_r2_endpoint";
 export const SESSION_HISTORY_GZIP_MIN_BYTES = 64 * 1024;
 export const NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX = 256;
 export const RUNNER_BUILTIN_FIREWALL_RESOLVE_NAMES_MAX = 512;
@@ -35,6 +39,10 @@ export const sessionHistoryEncodingSchema = z.enum([
   SESSION_HISTORY_ENCODING_IDENTITY,
   SESSION_HISTORY_ENCODING_GZIP,
   SESSION_HISTORY_ENCODING_ZSTD,
+]);
+export const sessionHistoryDownloadSourceSchema = z.enum([
+  SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT,
+  SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT,
 ]);
 
 export function elapsedSinceApiStartMs(
@@ -258,6 +266,9 @@ const resumeSessionHistoryBlobRefSchema = z.object({
   kind: z.literal("blob"),
   hash: z.string().regex(/^[a-f0-9]{64}$/),
 });
+const resumeSessionHistoryDownloadSourceFieldSchema = {
+  downloadSource: sessionHistoryDownloadSourceSchema.optional(),
+};
 const resumeSessionHistoryRawSizeSchema = z
   .number()
   .int()
@@ -282,6 +293,7 @@ const resumeSessionIdentityHistoryRefSchema = resumeSessionHistoryBlobRefSchema
     encoding: z.literal("identity").optional(),
     rawSize: resumeSessionHistoryRawSizeSchema,
     encodedSize: resumeSessionHistoryEncodedSizeSchema,
+    ...resumeSessionHistoryDownloadSourceFieldSchema,
   })
   .strict();
 
@@ -291,6 +303,7 @@ const resumeSessionGzipHistoryRefSchema = resumeSessionHistoryBlobRefSchema
     encoding: z.literal("gzip"),
     rawSize: resumeSessionHistoryRawSizeSchema,
     encodedSize: resumeSessionHistoryEncodedSizeSchema,
+    ...resumeSessionHistoryDownloadSourceFieldSchema,
   })
   .strict();
 
@@ -300,6 +313,7 @@ const resumeSessionZstdHistoryRefSchema = resumeSessionHistoryBlobRefSchema
     encoding: z.literal("zstd"),
     rawSize: resumeSessionHistoryRawSizeSchema,
     encodedSize: resumeSessionHistoryEncodedSizeSchema,
+    ...resumeSessionHistoryDownloadSourceFieldSchema,
   })
   .strict();
 
@@ -619,5 +633,8 @@ export type ArtifactEntry = z.infer<typeof artifactEntrySchema>;
 export type StorageManifest = z.infer<typeof storageManifestSchema>;
 export type StoredResumeSession = z.infer<typeof storedResumeSessionSchema>;
 export type ResumeSession = z.infer<typeof resumeSessionSchema>;
+export type SessionHistoryDownloadSource = z.infer<
+  typeof sessionHistoryDownloadSourceSchema
+>;
 
 export type RunnerClaimCapability = z.infer<typeof runnerClaimCapabilitySchema>;

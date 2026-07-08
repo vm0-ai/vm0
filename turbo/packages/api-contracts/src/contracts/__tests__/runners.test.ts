@@ -4,6 +4,7 @@ import {
   elapsedSinceApiStartMs,
   executionContextSchema,
   RUNNER_BUILTIN_FIREWALL_RESOLVE_NAMES_MAX,
+  SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT,
   RESUME_SESSION_HISTORY_MAX_BYTES,
   resumeSessionSchema,
   runnersBuiltinFirewallsResolveContract,
@@ -362,10 +363,28 @@ describe("runner resume session contract", () => {
         encoding: "gzip",
         rawSize: 1024,
         encodedSize: 128,
+        downloadSource:
+          SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT,
       },
     };
 
     expect(resumeSessionSchema.parse(resumeSession)).toEqual(resumeSession);
+  });
+
+  it("rejects unknown hash-backed claim resume session download sources", () => {
+    const resumeSession = {
+      sessionId: "sess-123",
+      historyRef: {
+        kind: "blob",
+        hash: historyHash,
+        url: "https://r2.example.com/blobs/history.blob?sig=secret",
+        rawSize: 1024,
+        encodedSize: 1024,
+        downloadSource: "regional_edge_cache",
+      },
+    };
+
+    expect(resumeSessionSchema.safeParse(resumeSession).success).toBe(false);
   });
 
   it("accepts zstd hash-backed stored and claim resume sessions", () => {

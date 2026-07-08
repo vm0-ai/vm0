@@ -29,6 +29,8 @@ import {
   CANONICAL_WORKING_DIR,
   NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX,
   RESUME_SESSION_HISTORY_MAX_BYTES,
+  SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT,
+  SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT,
   SESSION_HISTORY_ENCODING_GZIP,
   SESSION_HISTORY_ENCODING_IDENTITY,
   SESSION_HISTORY_ENCODING_ZSTD,
@@ -67,6 +69,14 @@ const sessionHistoryEncodingIdentityDoc = [
 const sessionHistoryEncodingZstdDoc = [
   "Wire and blob metadata value for zstd-compressed resume session history.",
   "Rust and TypeScript components use this shared contract value when negotiating session history uploads and claim responses.",
+] as const;
+const sessionHistoryDownloadSourceConfiguredPublicEndpointDoc = [
+  "Telemetry value for session history downloads signed with a configured S3 endpoint.",
+  "Rust and TypeScript components use this shared contract value when attributing runner download latency.",
+] as const;
+const sessionHistoryDownloadSourceDefaultR2EndpointDoc = [
+  "Telemetry value for session history downloads signed with the default R2 endpoint.",
+  "Rust and TypeScript components use this shared contract value when attributing runner download latency.",
 ] as const;
 const sessionHistoryGzipMinBytesDoc = [
   "Minimum raw resume session history size before the guest attempts gzip upload negotiation.",
@@ -184,6 +194,20 @@ const expectedBindings = [
     rustConstName: "SESSION_HISTORY_ENCODING_ZSTD",
     value: rustString(SESSION_HISTORY_ENCODING_ZSTD),
     rustDoc: sessionHistoryEncodingZstdDoc,
+  },
+  {
+    rustModulePath: ["runners"],
+    rustConstName: "SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT",
+    value: rustString(
+      SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT,
+    ),
+    rustDoc: sessionHistoryDownloadSourceConfiguredPublicEndpointDoc,
+  },
+  {
+    rustModulePath: ["runners"],
+    rustConstName: "SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT",
+    value: rustString(SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT),
+    rustDoc: sessionHistoryDownloadSourceDefaultR2EndpointDoc,
   },
   {
     rustModulePath: ["runners"],
@@ -376,6 +400,18 @@ describe("Rust constant bindings", () => {
     );
     expect(firstRender).toContain(
       `pub const SESSION_HISTORY_ENCODING_ZSTD: &str = "${SESSION_HISTORY_ENCODING_ZSTD}";`,
+    );
+    expect(firstRender).toContain(
+      "pub const SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT: &str =",
+    );
+    expect(firstRender).toContain(
+      `"${SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT}";`,
+    );
+    expect(firstRender).toContain(
+      "pub const SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT: &str =",
+    );
+    expect(firstRender).toContain(
+      `"${SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT}";`,
     );
     expect(firstRender).toContain(
       `pub const SESSION_HISTORY_GZIP_MIN_BYTES: u64 = ${SESSION_HISTORY_GZIP_MIN_BYTES};`,
