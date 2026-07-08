@@ -191,11 +191,11 @@ fn unattributed_sigkill_resource_diagnostics_do_not_match_explicit_exit_137() {
 }
 
 #[test]
-fn unattributed_sigkill_resource_diagnostics_support_old_137_diagnostics() {
+fn unattributed_sigkill_resource_diagnostics_require_observed_sigkill() {
     let exit = ProcessExit::new(1, 137, Vec::new(), Vec::new());
     let diagnostic = fallback_cli_nonzero_diagnostic(137);
 
-    assert!(should_collect_unattributed_sigkill_resource_diagnostics(
+    assert!(!should_collect_unattributed_sigkill_resource_diagnostics(
         false,
         &exit,
         Some(&diagnostic)

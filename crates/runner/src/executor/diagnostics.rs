@@ -218,14 +218,10 @@ fn unattributed_sigkill_cli_failure(diagnostic: &FailureDiagnostic) -> bool {
             diagnostic.failure_detail_source,
             None | Some(FailureDetailSource::FallbackExitCode)
         )
-        && observed_or_compatible_sigkill(diagnostic)
-}
-
-fn observed_or_compatible_sigkill(diagnostic: &FailureDiagnostic) -> bool {
-    if let Some(observed_exit) = diagnostic.cli_observed_exit.as_ref() {
-        return observed_exit.is_sigkill();
-    }
-    diagnostic.cli_exit_code == Some(libc::SIGKILL + 128)
+        && diagnostic
+            .cli_observed_exit
+            .as_ref()
+            .is_some_and(|observed_exit| observed_exit.is_sigkill())
 }
 
 pub(super) fn should_log_agent_bootstrap_abnormal_exit_diagnostics(
