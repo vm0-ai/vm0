@@ -1793,19 +1793,27 @@ jobs:
           read_host_capacity() {
             local HOST=$1
             local REMOTE="${METAL_USER}@${HOST}"
+            local STATUS=""
+            local MODE=""
             local MC=""
 
             for _ in $(seq 1 60); do
               # shellcheck disable=SC2029
-              MC=$(ssh "$REMOTE" "sudo jq -r '.max_concurrent // empty' ${RUNNER_DIR}/status.json 2>/dev/null") || true
-              if [[ "$MC" =~ ^[0-9]+$ ]]; then
+              STATUS=$(ssh "$REMOTE" "sudo jq -r '\"\\(.mode // \"\")\\t\\(.max_concurrent // \"\")\"' ${RUNNER_DIR}/status.json 2>/dev/null") || true
+              MODE="${STATUS%%$'\t'*}"
+              MC="${STATUS#*$'\t'}"
+              if [[ "$MODE" == "running" && "$MC" =~ ^[0-9]+$ ]]; then
                 echo "$MC"
                 return 0
+              fi
+              if [[ "$MODE" == "stopping" || "$MODE" == "stopped" ]]; then
+                echo "::error::Runner on ${HOST} entered ${MODE} before readiness" >&2
+                return 1
               fi
               sleep 1
             done
 
-            echo "::error::Failed to read max_concurrent from ${HOST}" >&2
+            echo "::error::Failed to observe running runner status on ${HOST}" >&2
             return 1
           }
 
@@ -1863,13 +1871,13 @@ jobs:
               --env USE_MOCK_CLAUDE=true \
               --env USE_MOCK_CODEX=true"
 
-            # Wait for the runner main loop to publish status.json before
-            # health checks. systemd-run returns once the process starts, but
-            # proxy/DNS setup and the initial status write can take longer.
+            # Wait for the runner to become job-admitting before health checks.
+            # systemd-run returns once the process starts, but startup
+            # readiness can keep status.json at mode=starting for longer.
             if ! MC=$(read_host_capacity "$HOST"); then
               return 1
             fi
-            echo "Runner status ready on ${HOST}: max_concurrent=${MC}"
+            echo "Runner ready on ${HOST}: max_concurrent=${MC}"
             # shellcheck disable=SC2029
             ssh "$REMOTE" "sudo ${BIN_DIR}/runner doctor --name ${RUNNER_NAME}"
             echo "=== Runner started on ${HOST} ==="

@@ -12,6 +12,8 @@ use crate::ids::RunId;
 
 /// Runner lifecycle state.
 ///
+/// - `Starting`: startup/readiness work is still in progress. The process is
+///   alive, but must not discover or claim new jobs.
 /// - `Running`: normal operation — discover and claim new jobs.
 /// - `Draining`: soft drain. No new jobs claimed; in-flight jobs keep
 ///   running; idle pool destroyed. **Resumable** via SIGUSR2.
@@ -24,6 +26,7 @@ use crate::ids::RunId;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum RunnerMode {
+    Starting,
     Running,
     Draining,
     Stopping,
@@ -158,7 +161,7 @@ impl StatusTracker {
             dns_port,
             path,
             state: Mutex::new(MutableState {
-                mode: RunnerMode::Running,
+                mode: RunnerMode::Starting,
                 active_runs: BTreeMap::new(),
                 idle_revision: 0,
                 idle_vms: Vec::new(),
@@ -166,8 +169,7 @@ impl StatusTracker {
         }
     }
 
-    /// Transition the reported lifecycle mode (Running / Draining /
-    /// Stopping / Stopped) and flush the status file.
+    /// Transition the reported lifecycle mode and flush the status file.
     pub async fn set_mode(&self, mode: RunnerMode) {
         let mut state = self.state.lock().await;
         state.mode = mode;
@@ -375,7 +377,7 @@ impl StatusTracker {
 /// Remove a status file from a previous runner process, if present.
 ///
 /// Called only after the new process owns the runner base-dir lock. This clears
-/// stale `running` snapshots before startup has reached the main reactor.
+/// stale live snapshots before startup has published this process's state.
 pub async fn remove_stale_status_file(path: &Path) -> RunnerResult<()> {
     match tokio::fs::remove_file(path).await {
         Ok(()) => Ok(()),
@@ -418,7 +420,7 @@ mod tests {
         tracker.write_initial().await;
 
         let status = read_status(&path);
-        assert_eq!(status["mode"], "running");
+        assert_eq!(status["mode"], "starting");
         assert_eq!(status["max_concurrent"], 4);
         assert!(status["active_runs"].as_array().unwrap().is_empty());
         assert!(status["started_at"].as_str().is_some());
@@ -446,7 +448,7 @@ mod tests {
                 .is_symlink()
         );
         let status = read_status(&path);
-        assert_eq!(status["mode"], "running");
+        assert_eq!(status["mode"], "starting");
     }
 
     #[tokio::test]

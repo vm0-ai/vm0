@@ -18,11 +18,11 @@
 # conditional step — it fires only if the per-version bin dir was evicted
 # by gc (6+ newer releases since).
 #
-# The install path (Phase 5 + 6) is skipped entirely when the target is
-# already Running on the host — either because it was the live version
-# at Phase 1, or because Phase 3's SIGUSR2 resume brought it back from
-# Draining. In those cases only Phase 7/8 run (reconcile non-target
-# runners + gc + final doctor).
+# The install path (Phase 5 + 6) is skipped entirely when the target service is
+# already active on the host — either already running, still starting, or
+# brought back from Draining by Phase 3's SIGUSR2 resume. A shared readiness
+# wait still requires mode=running before Phase 7/8 converge non-target
+# runners and run gc/final doctor.
 #
 # Usage:
 #   ansible-playbook -i "host1,host2," playbooks/rollback-runner.yml \
@@ -44,10 +44,10 @@
 #                   SIGKILL (only matters if the runner is wedged).
 #
 # Conditionally Required (Phase 5 consumes them only on the install path —
-# skipped when target is already Running. CI callers cannot predict the
-# target state a priori, so they should always pass these; the "conditional"
-# qualifier only matters for manual invocations against a known-Running
-# target where the variables can legitimately be omitted):
+# skipped when target is already active. CI callers cannot predict the target
+# state a priori, so they should always pass these; the "conditional" qualifier
+# only matters for manual invocations against a known-active target where the
+# variables can legitimately be omitted):
 #   - official_runner_secret: Runner auth secret, baked into runner.yaml by
 #                             `runner config`.
 #   - api_url: vm0 API URL, baked into runner.yaml.
@@ -103,6 +103,7 @@
     # into a single `target_state` fact, one of:
     #
     #   running   — target is already live (log + skip install; Phase 7/8 still run)
+    #   starting  — target process is alive but not job-admitting yet
     #   draining  — SIGUSR1 was sent; process is soft-draining, resumable
     #   stopping  — irreversible teardown committed; about to exit
     #   stopped   — teardown finished; process about to exit
@@ -115,29 +116,44 @@
       register: tgt_active
       changed_when: false
 
-    # Retry to absorb the narrow window where systemd has marked the unit
-    # active but StatusTracker hasn't yet flushed its first status.json
-    # (proxy/dns port allocation + initial fact collection). If the file
-    # is still missing after retries, fail loudly rather than silently
-    # falling back — an active unit without a readable status is a
-    # degraded state, not a `running` target.
-    - name: Read target status.json
-      slurp:
-        src: "{{ runner_dir }}/status.json"
-      register: tgt_status_raw
-      when: tgt_active.stdout == "active"
-      retries: 5
-      delay: 1
-      until: tgt_status_raw is not failed
-
     - name: Resolve target_state
+      shell: |
+        set -euo pipefail
+        if [ "{{ tgt_active.stdout }}" != "active" ]; then
+          echo inactive
+          exit 0
+        fi
+
+        mode="$(
+          python3 - "{{ runner_dir }}/status.json" <<'PY'
+        import json
+        import sys
+
+        try:
+            with open(sys.argv[1], encoding="utf-8") as status_file:
+                mode = json.load(status_file).get("mode", "")
+        except Exception:
+            mode = ""
+
+        if isinstance(mode, str):
+            print(mode)
+        PY
+        )"
+        if [ -n "$mode" ]; then
+          echo "$mode"
+        else
+          # Missing or malformed status from an active target is not ready yet.
+          # Treat it like starting and let the readiness wait below decide.
+          echo starting
+        fi
+      args:
+        executable: /bin/bash
+      register: target_state_probe
+      changed_when: false
+
+    - name: Store target_state
       set_fact:
-        target_state: >-
-          {%- if tgt_active.stdout != "active" -%}
-            inactive
-          {%- else -%}
-            {{ (tgt_status_raw.content | b64decode | from_json).mode }}
-          {%- endif -%}
+        target_state: "{{ target_state_probe.stdout }}"
 
     - name: Reject unknown target mode
       fail:
@@ -147,17 +163,17 @@
           inspection required.
       when:
         - tgt_active.stdout == "active"
-        - target_state not in ["running", "draining", "stopping", "stopped"]
+        - target_state not in ["starting", "running", "draining", "stopping", "stopped"]
 
     # ========================================
-    # Phase 2: target_state=running → log only
+    # Phase 2: active target states → log only
     # ========================================
     #
     # This phase is observability-only. It does NOT set skip_install and does
     # NOT end_host. The actual "skip install" decision lives at the tail of
-    # Phase 3 (the "Mark install as not needed — target is running" task),
-    # which fires for both this case and the resume-to-Running case so the
-    # two flows converge on the same set_fact.
+    # Phase 3 (the "Mark install as not needed — target service is active"
+    # task), which fires for both this case and the resume-to-Running case so
+    # the flows converge on the same set_fact.
     #
     # We do NOT end_host because fleet drift (e.g. a previous rollback
     # partially succeeded and left a non-target version also live on this
@@ -168,6 +184,13 @@
         msg: >-
           Runner v{{ runner_version }} is already running on this host —
           skipping install; Phase 7/8 will reconcile any non-target drift.
+
+    - name: Report target still starting
+      when: target_state == "starting"
+      debug:
+        msg: >-
+          Runner v{{ runner_version }} is active but not ready yet —
+          skipping reinstall and waiting for mode=running before convergence.
 
     # ========================================
     # Phase 3: target_state=draining → SIGUSR2 resume (best-effort)
@@ -188,7 +211,8 @@
     #   - resume won     → target_state=running → skip_install=true, go to P7/8
     #   - race lost      → target_state=stopping/stopped → P4 waits, P5/6 install
     # Either way P7 (drain non-target) and P8 (gc + doctor) always run.
-    # Only set skip_install once we confirm mode is running.
+    # Only set skip_install automatically for an active target that can either
+    # become ready in-place or is already running.
     - name: Attempt resume from Draining
       when: target_state == "draining"
       command: "{{ bin_dir }}/runner service resume --name {{ runner_name }}"
@@ -211,17 +235,19 @@
       set_fact:
         target_state: "{{ (tgt_status_after_resume.content | b64decode | from_json).mode }}"
 
-    # Confluence point for two flows that both end at target=Running:
+    # Confluence point for flows where the target service is already active:
     #   (a) Phase 1 saw mode=running already → target_state never changed,
     #       Phase 2 only logged, this task sets skip_install.
-    #   (b) Phase 1 saw mode=draining → Phase 3 sent SIGUSR2 and re-read
+    #   (b) Phase 1 saw mode=starting → the process is alive but not ready;
+    #       skip reinstall and let the readiness wait below decide.
+    #   (c) Phase 1 saw mode=draining → Phase 3 sent SIGUSR2 and re-read
     #       status.json; if the re-read settled on "running", the preceding
     #       "Update target_state" flipped target_state here, and this task
     #       fires. If instead the race was lost and mode settled on
     #       stopping/stopped, target_state is now "stopping"/"stopped" and
     #       this task is skipped, falling through to Phase 4 + install.
-    - name: Mark install as not needed — target is running
-      when: target_state == "running"
+    - name: Mark install as not needed — target service is active
+      when: target_state in ["starting", "running"]
       set_fact:
         skip_install: true
 
@@ -259,8 +285,8 @@
     # Phase 5: Prepare target artifacts (install path only)
     # ========================================
     #
-    # Skipped when skip_install=true (either target was already running at
-    # Phase 1, or Phase 3 resume brought it back from Draining).
+    # Skipped when skip_install=true (target was already active at Phase 1, or
+    # Phase 3 resume brought it back from Draining).
     #
     # On the install path, we mirror build-runner.yml exactly: always run
     # `runner setup` + `runner build` + `runner config`. Each is idempotent
@@ -375,8 +401,8 @@
     # ========================================
     #
     # Rewrites the unit file, daemon-reloads, and `enable --now` starts the
-    # unit. A fresh process initializes mode=Running (StatusTracker::new
-    # hard-codes it; status.json is an export, not a control input).
+    # unit. A fresh process publishes mode=starting first, then transitions to
+    # running only after startup readiness is complete.
     - name: Install and start target runner service
       when: not (skip_install | default(false))
       command: >
@@ -386,6 +412,57 @@
         {% if sentry_dsn is defined and sentry_dsn %}
         --env SENTRY_DSN={{ sentry_dsn }}
         {% endif %}
+
+    - name: Wait for target runner readiness
+      shell: |
+        set -euo pipefail
+        state="$(systemctl show vm0-runner-{{ runner_name }}.service --property=ActiveState --value)"
+        case "$state" in
+          active) ;;
+          activating|reloading)
+            echo "target service ActiveState=$state" >&2
+            exit 1
+            ;;
+          *)
+            echo "target service ActiveState=$state" >&2
+            exit 2
+            ;;
+        esac
+
+        mode="$(
+          python3 - "{{ runner_dir }}/status.json" <<'PY'
+        import json
+        import sys
+
+        try:
+            with open(sys.argv[1], encoding="utf-8") as status_file:
+                mode = json.load(status_file).get("mode", "")
+        except Exception:
+            mode = ""
+
+        if isinstance(mode, str):
+            print(mode)
+        PY
+        )"
+        case "$mode" in
+          running) exit 0 ;;
+          stopping|stopped)
+            echo "target runner mode=$mode" >&2
+            exit 2
+            ;;
+          *)
+            echo "target runner mode=${mode:-<unavailable>}" >&2
+            exit 1
+            ;;
+        esac
+      args:
+        executable: /bin/bash
+      register: target_readiness
+      retries: 60
+      delay: 2
+      until: target_readiness.rc == 0
+      changed_when: false
+      failed_when: target_readiness.rc not in [0, 1]
 
     - name: Verify target runner health
       when: not (skip_install | default(false))

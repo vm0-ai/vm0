@@ -407,6 +407,10 @@ fn ensure_resume_mode_is_draining(unit: &RunnerServiceUnit, mode: &str) -> Runne
             "{} is running, not draining — cannot resume",
             unit.unit_name()
         ))),
+        "starting" => Err(RunnerError::Internal(format!(
+            "{} is starting, not draining — cannot resume",
+            unit.unit_name()
+        ))),
         _ => Err(RunnerError::Internal(format!(
             "{} is in unknown mode {mode:?} — cannot resume",
             unit.unit_name()
@@ -1611,6 +1615,9 @@ profiles:
 
         let running = ensure_resume_mode_is_draining(&unit, "running").unwrap_err();
         assert!(running.to_string().contains("running, not draining"));
+
+        let starting = ensure_resume_mode_is_draining(&unit, "starting").unwrap_err();
+        assert!(starting.to_string().contains("starting, not draining"));
 
         let stopping = ensure_resume_mode_is_draining(&unit, "stopping").unwrap_err();
         assert!(stopping.to_string().contains("already shutting down"));

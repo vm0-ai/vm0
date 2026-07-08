@@ -2776,6 +2776,15 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn report_no_proxy_or_dns_warning_while_starting() {
+        let report =
+            build_test_runner_report("starting", Some(32821), Some(5353), vec![], vec![]).await;
+
+        assert!(!has_proxy_warning(&report));
+        assert!(!has_dns_warning(&report));
+    }
+
+    #[tokio::test]
     async fn report_no_warning_for_running_with_proxy() {
         let report = build_test_runner_report(
             "running",

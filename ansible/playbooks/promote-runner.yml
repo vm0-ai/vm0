@@ -59,8 +59,59 @@
         {% endif %}
 
     # ========================================
-    # Phase 4: Health check
+    # Phase 4: Readiness + health check
     # ========================================
+    - name: Wait for target runner readiness
+      shell: |
+        set -euo pipefail
+        state="$(systemctl show vm0-runner-{{ runner_name }}.service --property=ActiveState --value)"
+        case "$state" in
+          active) ;;
+          activating|reloading)
+            echo "target service ActiveState=$state" >&2
+            exit 1
+            ;;
+          *)
+            echo "target service ActiveState=$state" >&2
+            exit 2
+            ;;
+        esac
+
+        mode="$(
+          python3 - "{{ runner_dir }}/status.json" <<'PY'
+        import json
+        import sys
+
+        try:
+            with open(sys.argv[1], encoding="utf-8") as status_file:
+                mode = json.load(status_file).get("mode", "")
+        except Exception:
+            mode = ""
+
+        if isinstance(mode, str):
+            print(mode)
+        PY
+        )"
+        case "$mode" in
+          running) exit 0 ;;
+          stopping|stopped)
+            echo "target runner mode=$mode" >&2
+            exit 2
+            ;;
+          *)
+            echo "target runner mode=${mode:-<unavailable>}" >&2
+            exit 1
+            ;;
+        esac
+      args:
+        executable: /bin/bash
+      register: target_readiness
+      retries: 60
+      delay: 2
+      until: target_readiness.rc == 0
+      changed_when: false
+      failed_when: target_readiness.rc not in [0, 1]
+
     - name: Verify runner health
       command: "{{ bin_dir }}/runner doctor --name {{ runner_name }}"
 
