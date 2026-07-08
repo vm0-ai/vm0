@@ -83,6 +83,7 @@ export type WorkflowTriggerCategoryKey =
   | "schedule"
   | "email"
   | "calendar"
+  | "notion"
   | "integrations";
 type WorkflowWebhookTriggerSummary = Extract<
   ZeroWorkflowTriggerSummary,
