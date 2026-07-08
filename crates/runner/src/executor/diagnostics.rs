@@ -207,6 +207,7 @@ pub(super) fn should_collect_unattributed_sigkill_resource_diagnostics(
 ) -> bool {
     !wait_cancelled
         && process_exited_nonzero(exit)
+        && exit.diagnostic.is_empty()
         && failure_diagnostic.is_some_and(unattributed_sigkill_cli_failure)
 }
 

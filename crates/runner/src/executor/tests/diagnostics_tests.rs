@@ -205,6 +205,10 @@ fn unattributed_sigkill_resource_diagnostics_support_old_137_diagnostics() {
 #[test]
 fn unattributed_sigkill_resource_diagnostics_require_unattributed_fallback_failure() {
     let exit = ProcessExit::new(1, 137, Vec::new(), Vec::new());
+    let exit_with_process_diagnostic = ProcessExit {
+        diagnostic: "wait failed inside provider".to_string(),
+        ..ProcessExit::new(1, 137, Vec::new(), Vec::new())
+    };
     let termination = CliTerminationDiagnostic::new(CliTerminationReason::StuckToolWatchdog)
         .record_signal(CliTerminationSignal::Sigkill, Some(42), Some(1_000))
         .with_observed_exit_code(137);
@@ -245,6 +249,11 @@ fn unattributed_sigkill_resource_diagnostics_require_unattributed_fallback_failu
         false,
         &exit,
         Some(&non_cli_diagnostic)
+    ));
+    assert!(!should_collect_unattributed_sigkill_resource_diagnostics(
+        false,
+        &exit_with_process_diagnostic,
+        Some(&fallback_cli_nonzero_diagnostic(137))
     ));
     assert!(!should_collect_unattributed_sigkill_resource_diagnostics(
         false,
