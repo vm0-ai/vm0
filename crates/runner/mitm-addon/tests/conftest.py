@@ -32,6 +32,7 @@ import logging_utils
 import mitm_addon
 import platform_api
 import registry
+import upstream_admission
 import upstream_destination_binding
 import usage
 from tests.auth_state_helpers import clear_auth_state
@@ -55,9 +56,9 @@ def _reset_module_state() -> Iterator[None]:
     builtin_connector_diagnostics.reset_cache_for_tests()
     registry.reset_cache_for_tests()
     upstream_destination_binding.reset_for_tests()
-    mitm_addon.reset_upstream_destination_resolution_cache_for_tests()
+    upstream_admission.reset_upstream_destination_resolution_cache_for_tests()
     mitm_addon.reset_runner_usage_flush_state_for_tests()
-    mitm_addon.reset_tls_admission_state_for_tests()
+    upstream_admission.reset_tls_admission_state_for_tests()
     platform_api.configure_client_headers(client_session_id="", client_version="")
     clear_auth_state()
     _usage_connectors._unregistered_handler_warned.clear()
@@ -72,8 +73,8 @@ def _reset_module_state() -> Iterator[None]:
     auth_base_forwarder.reset_forward_request_state_for_tests()
     builtin_connector_diagnostics.reset_cache_for_tests()
     upstream_destination_binding.reset_for_tests()
-    mitm_addon.reset_upstream_destination_resolution_cache_for_tests()
-    mitm_addon.reset_tls_admission_state_for_tests()
+    upstream_admission.reset_upstream_destination_resolution_cache_for_tests()
+    upstream_admission.reset_tls_admission_state_for_tests()
     platform_api.configure_client_headers(client_session_id="", client_version="")
     usage.webhook.reset_delivery_capacity_for_tests()
     usage.counters.reset_for_tests()
