@@ -1,5 +1,9 @@
 use std::time::{Duration, Instant};
 
+use api_contracts::generated::constants::runners::{
+    SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT,
+    SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT,
+};
 use api_contracts::generated::routes;
 use chrono::Utc;
 use serde::Serialize;
@@ -585,9 +589,11 @@ const fn session_history_download_source_value(
 ) -> &'static str {
     match source {
         ResumeSessionHistoryDownloadSource::ConfiguredPublicEndpoint => {
-            "configured_public_endpoint"
+            SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT
         }
-        ResumeSessionHistoryDownloadSource::DefaultR2Endpoint => "default_r2_endpoint",
+        ResumeSessionHistoryDownloadSource::DefaultR2Endpoint => {
+            SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT
+        }
     }
 }
 

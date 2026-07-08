@@ -13,6 +13,8 @@ import {
   CANONICAL_WORKING_DIR,
   NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX,
   RESUME_SESSION_HISTORY_MAX_BYTES,
+  SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT,
+  SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT,
   SESSION_HISTORY_ENCODING_GZIP,
   SESSION_HISTORY_ENCODING_IDENTITY,
   SESSION_HISTORY_ENCODING_ZSTD,
@@ -243,6 +245,26 @@ export const rustConstantBindings = [
     rustDoc: [
       "Wire and blob metadata value for zstd-compressed resume session history.",
       "Rust and TypeScript components use this shared contract value when negotiating session history uploads and claim responses.",
+    ],
+  },
+  {
+    rustModulePath: ["runners"],
+    rustConstName: "SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT",
+    value: rustString(
+      SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT,
+    ),
+    rustDoc: [
+      "Telemetry value for session history downloads signed with a configured S3 endpoint.",
+      "Rust and TypeScript components use this shared contract value when attributing runner download latency.",
+    ],
+  },
+  {
+    rustModulePath: ["runners"],
+    rustConstName: "SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT",
+    value: rustString(SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT),
+    rustDoc: [
+      "Telemetry value for session history downloads signed with the default R2 endpoint.",
+      "Rust and TypeScript components use this shared contract value when attributing runner download latency.",
     ],
   },
   {

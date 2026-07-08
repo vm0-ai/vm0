@@ -3,6 +3,7 @@ import { gzipSync, zstdCompressSync } from "node:zlib";
 
 import {
   CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
+  SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT,
   SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT,
 } from "@vm0/api-contracts/contracts/runners";
 import { delay } from "signal-timers";
@@ -953,7 +954,7 @@ describe("RUN-04: session and checkpoint reads", () => {
 describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning", () => {
   it("returns compressed resume history refs", async () => {
     mockEnv("S3_ENDPOINT", undefined);
-    mockEnv("S3_PUBLIC_ENDPOINT", undefined);
+    mockEnv("S3_PUBLIC_ENDPOINT", "https://public-s3.example.test");
     const actor = await entitledActor();
     const composeName = `bdd-gzip-resume-${randomUUID().slice(0, 8)}`;
     const compose = await api.createCompose(actor, {
@@ -1047,7 +1048,8 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
         encoding: "gzip",
         rawSize: Buffer.byteLength(history, "utf8"),
         encodedSize: compressedHistory.length,
-        downloadSource: SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT,
+        downloadSource:
+          SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT,
       },
     });
     await api.requestCancelRun(actor, compressedResume.runId, [200]);

@@ -87,6 +87,15 @@ pub mod runners {
     /// Rust and TypeScript components use this shared contract value when validating resume history refs, downloads, and idle-reuse verification.
     pub const RESUME_SESSION_HISTORY_MAX_BYTES: u64 = 134217728;
 
+    /// Telemetry value for session history downloads signed with a configured S3 endpoint.
+    /// Rust and TypeScript components use this shared contract value when attributing runner download latency.
+    pub const SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT: &str =
+        "configured_public_endpoint";
+
+    /// Telemetry value for session history downloads signed with the default R2 endpoint.
+    /// Rust and TypeScript components use this shared contract value when attributing runner download latency.
+    pub const SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT: &str = "default_r2_endpoint";
+
     /// Wire and blob metadata value for gzip-compressed resume session history.
     /// Rust and TypeScript components use this shared contract value when negotiating session history uploads and claim responses.
     pub const SESSION_HISTORY_ENCODING_GZIP: &str = "gzip";
