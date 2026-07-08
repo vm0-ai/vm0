@@ -680,6 +680,15 @@ describe("POST /api/test/slack-dispatch-probe", () => {
         code: "slack_history_failed",
       },
     });
+    const state = await readSlackState(fixture);
+    expect(
+      state.recent_runs.find((run) => {
+        return (
+          run.triggerSource === "slack" &&
+          run.promptPreview === "trigger cleanup failure"
+        );
+      }),
+    ).toBeUndefined();
     expect(context.mocks.slack.assistant.threads.setStatus).toHaveBeenCalledTimes(
       2,
     );
