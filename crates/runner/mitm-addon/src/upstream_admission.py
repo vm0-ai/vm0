@@ -34,6 +34,7 @@ TlsAdmissionKind = Literal[
     "invalid_registry_vm",
     "registry_unavailable",
 ]
+_ApiOriginalAddressSource = Literal["server_address", "client_sockname"]
 
 _trusted_host_address_cache: dict[tuple[str, int], tuple[float, frozenset[str]]] = {}
 _trusted_host_address_lookup_tasks: dict[tuple[str, int], asyncio.Task[frozenset[str]]] = {}
@@ -324,7 +325,7 @@ async def _bind_api_upstream_destination_from_original_address(
     server: connection.Server,
     api_url: str,
 ) -> bool:
-    if bool(getattr(server, "connected", False)):
+    if bool(getattr(server, "connected", False)) or getattr(server, "error", None):
         return False
 
     api_destination = _api_destination(api_url)
@@ -332,25 +333,33 @@ async def _bind_api_upstream_destination_from_original_address(
         return False
     api_hostname, api_port = api_destination
 
-    original_address = None
-    for candidate_address in (
-        connection_endpoints.server_address(server),
-        connection_endpoints.connection_sockname(client),
-    ):
+    original_address: tuple[str, int] | None = None
+    original_address_source: _ApiOriginalAddressSource | None = None
+    candidate_addresses: tuple[
+        tuple[_ApiOriginalAddressSource, tuple[str, int] | None],
+        ...,
+    ] = (
+        ("server_address", connection_endpoints.server_address(server)),
+        ("client_sockname", connection_endpoints.connection_sockname(client)),
+    )
+    for candidate_source, candidate_address in candidate_addresses:
         if await _address_resolves_to_trusted_host(
             candidate_address,
             host=api_hostname,
             port=api_port,
         ):
             original_address = candidate_address
+            original_address_source = candidate_source
             break
-    if original_address is None:
+    if original_address is None or original_address_source is None:
         return False
     if bool(getattr(server, "connected", False)) or getattr(server, "error", None):
         return False
-    if original_address not in (
-        connection_endpoints.server_address(server),
-        connection_endpoints.connection_sockname(client),
+    if not _original_address_source_still_matches(
+        client=client,
+        server=server,
+        original_address=original_address,
+        source=original_address_source,
     ):
         return False
 
@@ -364,6 +373,18 @@ async def _bind_api_upstream_destination_from_original_address(
         original_address=original_address,
     )
     return True
+
+
+def _original_address_source_still_matches(
+    *,
+    client: object,
+    server: object,
+    original_address: tuple[str, int],
+    source: _ApiOriginalAddressSource,
+) -> bool:
+    if source == "server_address":
+        return connection_endpoints.server_address(server) == original_address
+    return connection_endpoints.connection_sockname(client) == original_address
 
 
 def _server_connect_binding_kinds(
