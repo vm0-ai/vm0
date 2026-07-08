@@ -108,9 +108,9 @@
       register: target_readiness
       retries: 60
       delay: 2
-      until: target_readiness.rc == 0
+      until: target_readiness.rc in [0, 2]
       changed_when: false
-      failed_when: target_readiness.rc not in [0, 1]
+      failed_when: target_readiness.rc != 0
 
     - name: Verify runner health
       command: "{{ bin_dir }}/runner doctor --name {{ runner_name }}"

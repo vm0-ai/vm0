@@ -340,6 +340,40 @@ async fn drain_during_startup_exits_after_readiness_without_running() {
 }
 
 #[tokio::test]
+async fn stop_during_startup_exits_after_readiness_without_running() {
+    let (entered_tx, entered_rx) = tokio::sync::oneshot::channel();
+    let (release_tx, release_rx) = tokio::sync::oneshot::channel();
+    let runtime = BlockingFactoryRuntime::new(entered_tx, release_rx);
+    let (config, env) =
+        mock_run_config_with_runtime(test_profiles(), 8, 32768, 4, Box::new(runtime));
+    let status_path = env._temp_dir.path().join("status.json");
+    let run_handle = tokio::spawn(run(config));
+
+    tokio::time::timeout(Duration::from_secs(2), entered_rx)
+        .await
+        .expect("factory startup should be entered")
+        .expect("factory startup should report entry");
+
+    env.trigger_stopping().await;
+    assert_eq!(
+        *env.mode_tx.borrow(),
+        RunnerMode::Stopping,
+        "startup stop must not be lost before factories become ready",
+    );
+
+    release_tx
+        .send(())
+        .expect("runner should still be waiting for factory release");
+    assert_run_exits_within(
+        run_handle,
+        Duration::from_secs(5),
+        "startup stop should exit without entering Running",
+    )
+    .await;
+    wait_status_mode(&status_path, "stopped", Duration::from_secs(5)).await;
+}
+
+#[tokio::test]
 async fn factory_startup_failure_stops_status_and_cleans_startup_resources() {
     let create_calls = Arc::new(AtomicUsize::new(0));
     let runtime_shutdowns = Arc::new(AtomicUsize::new(0));
