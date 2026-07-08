@@ -45,11 +45,7 @@ import {
   type ZeroAgentRequest,
   type ZeroAgentResponse,
 } from "@vm0/api-contracts/contracts/zero-agents";
-import {
-  zeroComposesByIdContract,
-  zeroComposesListContract,
-  zeroComposesMetadataContract,
-} from "@vm0/api-contracts/contracts/zero-composes";
+import { zeroComposesListContract } from "@vm0/api-contracts/contracts/zero-composes";
 import {
   zeroCustomConnectorByIdContract,
   zeroCustomConnectorSecretContract,
@@ -120,8 +116,6 @@ import { zeroCustomConnectorsGetRoutes } from "../../zero-custom-connectors-get"
 import { zeroCustomConnectorsPatchRoutes } from "../../zero-custom-connectors-patch";
 import { zeroCustomConnectorSecretDeleteRoutes } from "../../zero-custom-connectors-secret-delete";
 import { zeroCustomConnectorsSecretSetRoutes } from "../../zero-custom-connectors-secret-set";
-import { zeroCustomConnectorsUpdateRoutes } from "../../zero-custom-connectors-update";
-import { zeroCustomConnectorValuesRoutes } from "../../zero-custom-connectors-values";
 import { zeroDefaultAgentRoutes } from "../../zero-default-agent";
 import { zeroOnboardingCompleteRoutes } from "../../zero-onboarding-complete";
 import { zeroOnboardingSetupRoutes } from "../../zero-onboarding-setup";
@@ -272,12 +266,10 @@ const authOrgRoutes = [
   ...zeroCustomConnectorsRoutes,
   ...zeroCustomConnectorsCreateRoutes,
   ...zeroCustomConnectorsGetRoutes,
-  ...zeroCustomConnectorsUpdateRoutes,
   ...zeroCustomConnectorsPatchRoutes,
   ...zeroCustomConnectorsDeleteRoutes,
   ...zeroCustomConnectorsSecretSetRoutes,
   ...zeroCustomConnectorSecretDeleteRoutes,
-  ...zeroCustomConnectorValuesRoutes,
 ] as const;
 
 function isBearerActor(actor: LogoUploadActor): actor is BearerActor {
@@ -1478,6 +1470,25 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       return response.body;
     },
 
+    async updateAgent(
+      actor: ApiTestUser,
+      agentId: string,
+      body: ZeroAgentRequest,
+    ): Promise<ZeroAgentResponse> {
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroAgentsByIdContract,
+      );
+      const response = await accept(
+        client.update({
+          params: { id: agentId },
+          headers: authenticate(actor),
+          body,
+        }),
+        [200],
+      );
+      return response.body;
+    },
+
     async requestUpdateAgentMetadata(
       actor: ApiTestUser | null,
       agentId: string,
@@ -1650,40 +1661,6 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       return response.body;
     },
 
-    async readZeroComposeById(
-      actor: ApiTestUser,
-      composeId: string,
-    ): Promise<ComposeResponse> {
-      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroComposesByIdContract,
-      );
-      const response = await accept(
-        client.getById({
-          headers: authenticate(actor),
-          params: { id: composeId },
-        }),
-        [200],
-      );
-      return response.body;
-    },
-
-    async requestReadZeroComposeById(
-      actor: ApiTestUser | null,
-      composeId: string,
-      statuses: readonly (200 | 400 | 401 | 403 | 404)[],
-    ) {
-      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroComposesByIdContract,
-      );
-      return await accept(
-        client.getById({
-          headers: authenticate(actor),
-          params: { id: composeId },
-        }),
-        statuses,
-      );
-    },
-
     async listZeroComposes(
       actor: ApiTestUser,
     ): Promise<readonly ComposeListItem[]> {
@@ -1695,28 +1672,6 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
         [200],
       );
       return response.body.composes;
-    },
-
-    async updateZeroComposeMetadata(
-      actor: ApiTestUser,
-      composeId: string,
-      body: {
-        readonly displayName?: string | null;
-        readonly description?: string | null;
-        readonly sound?: string | null;
-      },
-    ): Promise<void> {
-      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroComposesMetadataContract,
-      );
-      await accept(
-        client.update({
-          headers: authenticate(actor),
-          params: { id: composeId },
-          body,
-        }),
-        [200],
-      );
     },
 
     async createCustomConnector(
