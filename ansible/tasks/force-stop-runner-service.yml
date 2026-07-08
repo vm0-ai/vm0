@@ -1,0 +1,17 @@
+- name: Force stop runner service unit
+  shell: |
+    set -euo pipefail
+    unit="vm0-runner-{{ force_stop_runner_name }}.service"
+    timeout 20s systemctl stop "$unit" 2>/dev/null || true
+    state="$(systemctl show "$unit" --property=ActiveState --value 2>/dev/null || true)"
+    case "$state" in
+      active|activating|reloading|deactivating)
+        systemctl kill --kill-whom=all --signal=SIGKILL "$unit" 2>/dev/null || true
+        systemctl stop --no-block "$unit" 2>/dev/null || true
+        ;;
+    esac
+    systemctl disable "$unit" 2>/dev/null || true
+    systemctl reset-failed "$unit" 2>/dev/null || true
+  args:
+    executable: /bin/bash
+  changed_when: true

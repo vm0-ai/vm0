@@ -1914,8 +1914,9 @@ jobs:
           }
 
           stop_background_start_jobs() {
-            local START_PIDS=()
+            local JOB_PIDS=()
             local START_PGIDS=()
+            local WAIT_PIDS=()
             local CURRENT_PGID
             CURRENT_PGID=$(process_group_for_pid "$$" || true)
             for PGID in "${PGIDS[@]}"; do
@@ -1924,12 +1925,13 @@ jobs:
               fi
             done
             for PID in $(jobs -pr); do
-              START_PIDS+=("$PID")
+              JOB_PIDS+=("$PID")
+              WAIT_PIDS+=("$PID")
             done
             for PID in "${PIDS[@]}"; do
-              START_PIDS+=("$PID")
+              WAIT_PIDS+=("$PID")
             done
-            for PID in "${START_PIDS[@]}"; do
+            for PID in "${JOB_PIDS[@]}"; do
               local PGID
               PGID=$(process_group_for_pid "$PID" || true)
               if [[ "$PGID" =~ ^[0-9]+$ && "$PGID" != "$CURRENT_PGID" ]]; then
@@ -1944,10 +1946,10 @@ jobs:
             for PGID in "${START_PGIDS[@]}"; do
               kill -KILL -- "-$PGID" 2>/dev/null || true
             done
-            for PID in "${START_PIDS[@]}"; do
+            for PID in "${JOB_PIDS[@]}"; do
               kill -KILL "$PID" 2>/dev/null || true
             done
-            for PID in "${START_PIDS[@]}"; do
+            for PID in "${WAIT_PIDS[@]}"; do
               wait "$PID" 2>/dev/null || true
             done
           }
@@ -1963,7 +1965,7 @@ jobs:
               echo "::warning::Requesting stop for partially started runner ${RUNNER_NAME} on ${HOST}"
               (
                 # shellcheck disable=SC2029
-                timeout 45s ssh "$REMOTE" "UNIT='${UNIT}'; timeout 20s sudo systemctl stop \"\$UNIT\" 2>/dev/null || true; if sudo systemctl is-active --quiet \"\$UNIT\" 2>/dev/null; then sudo systemctl kill --kill-whom=all --signal=SIGKILL \"\$UNIT\" 2>/dev/null || true; sudo systemctl stop --no-block \"\$UNIT\" 2>/dev/null || true; fi; sudo systemctl reset-failed \"\$UNIT\" 2>/dev/null || true" >/dev/null 2>&1 || true
+                timeout 45s ssh "$REMOTE" "UNIT='${UNIT}'; timeout 20s sudo systemctl stop \"\$UNIT\" 2>/dev/null || true; STATE=\$(sudo systemctl show \"\$UNIT\" --property=ActiveState --value 2>/dev/null || true); case \"\$STATE\" in active|activating|reloading|deactivating) sudo systemctl kill --kill-whom=all --signal=SIGKILL \"\$UNIT\" 2>/dev/null || true; sudo systemctl stop --no-block \"\$UNIT\" 2>/dev/null || true ;; esac; sudo systemctl reset-failed \"\$UNIT\" 2>/dev/null || true" >/dev/null 2>&1 || true
               ) &
               STOP_PIDS+=($!)
             done
