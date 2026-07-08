@@ -760,6 +760,9 @@ describe("POST /api/test/telegram-state", () => {
       "api_dispatch_pre_create_zero_slack_build_run_params_resolve_session",
       "api_dispatch_pre_create_zero_slack_build_run_params_resolve_computer_use_host",
       "api_dispatch_pre_create_zero_slack_build_run_params_fetch_conversation_context",
+      "api_dispatch_pre_create_zero_slack_build_run_params_fetch_conversation_context_history",
+      "api_dispatch_pre_create_zero_slack_build_run_params_fetch_conversation_context_user_info",
+      "api_dispatch_pre_create_zero_slack_build_run_params_fetch_conversation_context_format",
       "api_dispatch_pre_create_zero_slack_build_run_params_assemble",
       "api_dispatch_pre_create_zero_slack_create_run",
     ]) {
@@ -775,6 +778,19 @@ describe("POST /api/test/telegram-state", () => {
           trigger_source: "slack",
           zero_run_origin: "zero_run",
           span_kind: "nested",
+        }),
+      ]),
+    );
+    expect(timingEvents).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          op_type:
+            "api_dispatch_pre_create_zero_slack_build_run_params_fetch_conversation_context",
+          slack_context_shape: "channel_no_thread",
+          slack_context_thread_message_count_bucket: "0",
+          slack_context_channel_message_count_bucket: expect.any(String),
+          slack_context_total_message_count_bucket: expect.any(String),
+          slack_context_user_info_id_count_bucket: expect.any(String),
         }),
       ]),
     );

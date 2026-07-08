@@ -245,6 +245,9 @@ type CreateRunBody = z.infer<typeof unifiedRunRequestSchema>;
 type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
 type RunAdmissionDb = Pick<Db, "select">;
 
+const CODEX_WEB_IMAGE_GENERATION_UPLOAD_PROMPT =
+  "If you use the built-in image generation tool and it saves generated output image file(s) to local paths, upload each output file you intend to show with `zero web upload-file -f <path>` before telling the web chat user the image is available. Quote the path when needed. Do not provide only sandbox-local paths, because users cannot open local files.";
+
 function withZeroTokenSecret(
   body: CreateRunBody,
   zeroToken: string,
@@ -260,6 +263,28 @@ function withZeroTokenSecret(
 
 function withPendingZeroTokenSecret(body: CreateRunBody): CreateRunBody {
   return withZeroTokenSecret(body, "__pending_zero_token__");
+}
+
+function withFinalFrameworkAppendSystemPrompt(
+  body: CreateRunBody,
+  framework: SupportedFramework,
+  chatThreadId: string | undefined,
+): CreateRunBody {
+  if (framework !== "codex" || body.triggerSource !== "web" || !chatThreadId) {
+    return body;
+  }
+
+  return {
+    ...body,
+    appendSystemPrompt: [
+      body.appendSystemPrompt,
+      CODEX_WEB_IMAGE_GENERATION_UPLOAD_PROMPT,
+    ]
+      .filter((part): part is string => {
+        return Boolean(part);
+      })
+      .join("\n\n"),
+  };
 }
 
 interface ContextArtifact {
@@ -6656,6 +6681,11 @@ function prepareRunContext(
       if (isRouteError(runtimeContext)) {
         return runtimeContext;
       }
+      const body = withFinalFrameworkAppendSystemPrompt(
+        bodyContext.body,
+        runtimeContext.framework,
+        args.chatThreadId,
+      );
 
       const validation = await timing.measure(
         "api_dispatch_prepare_context_validate_environment",
@@ -6664,7 +6694,7 @@ function prepareRunContext(
           return await Promise.resolve(
             validateRunEnvironmentReferences({
               resolved: bodyContext.resolved,
-              body: bodyContext.body,
+              body,
               modelProvider: runtimeContext.modelProvider,
               connectorContext: runtimeContext.connectorContext,
               customConnectorContext: runtimeContext.customConnectorContext,
@@ -6697,7 +6727,7 @@ function prepareRunContext(
               connectorScope: bodyContext.connectorScope,
               framework: runtimeContext.framework,
               featureSwitchContext: bodyContext.featureSwitchContext,
-              body: bodyContext.body,
+              body,
               resolved: bodyContext.resolved,
             }),
           );
@@ -6705,7 +6735,7 @@ function prepareRunContext(
       );
 
       return {
-        body: bodyContext.body,
+        body,
         resolved: bodyContext.resolved,
         framework: runtimeContext.framework,
         modelProvider: runtimeContext.modelProvider,
