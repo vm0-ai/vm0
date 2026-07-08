@@ -2756,6 +2756,60 @@ describe("INT-01: Slack app deep webhook flows", () => {
     });
     expect(latestOutputQuerySeen).toBeTruthy();
 
+    const legacyCompleteText = "Delayed output without a terminal watermark";
+    let legacyOutputQueryCount = 0;
+    let legacyVisibilityQuerySeen = false;
+    context.mocks.axiom.query.mockImplementation((...args: unknown[]) => {
+      const apl = typeof args[0] === "string" ? args[0] : "";
+      if (apl.includes("| project sequenceNumber")) {
+        legacyVisibilityQuerySeen = true;
+        return Promise.resolve([]);
+      }
+      if (apl.includes('eventType == "assistant"')) {
+        legacyOutputQueryCount++;
+        return Promise.resolve(
+          legacyOutputQueryCount < 4
+            ? []
+            : [
+                {
+                  eventType: "result",
+                  sequenceNumber: 0,
+                  eventData: { result: legacyCompleteText },
+                },
+              ],
+        );
+      }
+      return Promise.resolve([]);
+    });
+
+    await integrations.postSlackEvent(teamId, {
+      type: "app_mention",
+      user: slackUser,
+      text: "handle legacy completion without lastEventSequence",
+      ts: "4050.000175",
+      channel: channelId,
+    });
+    const legacyRunId = await pollSlackRun(runnerGroup);
+    const legacyClaim = await runs.claimRunnerJob(legacyRunId);
+    context.mocks.slack.chat.postMessage.mockClear();
+    await completeSlackTriggeredRun({
+      runId: legacyRunId,
+      sandboxToken: legacyClaim.sandboxToken,
+      cliAgentType: "claude-code",
+    });
+
+    await waitForExpectation(() => {
+      expect(context.mocks.slack.chat.postMessage).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          channel: channelId,
+          thread_ts: "4050.000175",
+          text: legacyCompleteText,
+        }),
+      );
+    });
+    expect(legacyOutputQueryCount).toBe(4);
+    expect(legacyVisibilityQuerySeen).toBeFalsy();
+
     context.mocks.axiom.query.mockImplementation((...args: unknown[]) => {
       const apl = typeof args[0] === "string" ? args[0] : "";
       if (apl.includes("| project sequenceNumber")) {

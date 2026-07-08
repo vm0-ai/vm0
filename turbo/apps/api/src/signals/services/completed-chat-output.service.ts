@@ -11,6 +11,7 @@ import { settle } from "../utils";
 
 const AGENT_RUN_EVENTS_DATASET = "agent-run-events";
 const COMPLETED_CHAT_OUTPUT_RETRY_ATTEMPTS = 2;
+const COMPLETED_CHAT_OUTPUT_MISSING_WATERMARK_RETRY_ATTEMPTS = 4;
 const COMPLETED_CHAT_OUTPUT_RETRY_DELAY_MS = 500;
 const LATEST_OUTPUT_EVENT_LIMIT = 200;
 
@@ -404,7 +405,11 @@ export async function resolveCompletedChatOutputWithRetry(args: {
   readonly maxAttempts?: number;
   readonly retryDelayMs?: number;
 }): Promise<CompletedChatOutputResolution> {
-  const maxAttempts = args.maxAttempts ?? COMPLETED_CHAT_OUTPUT_RETRY_ATTEMPTS;
+  const maxAttempts =
+    args.maxAttempts ??
+    (args.lastEventSequence === null
+      ? COMPLETED_CHAT_OUTPUT_MISSING_WATERMARK_RETRY_ATTEMPTS
+      : COMPLETED_CHAT_OUTPUT_RETRY_ATTEMPTS);
   const retryDelayMs =
     args.retryDelayMs ?? COMPLETED_CHAT_OUTPUT_RETRY_DELAY_MS;
   let lastResult: CompletedChatOutputResolution = {
