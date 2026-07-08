@@ -1886,6 +1886,7 @@ jobs:
           LOG_DIR=$(mktemp -d)
           HOSTS=()
           PIDS=()
+          RUNNER_START_SUCCEEDED=0
 
           cleanup_logs() {
             rm -rf "$LOG_DIR"
@@ -1902,7 +1903,16 @@ jobs:
             done
           }
 
-          trap cleanup_logs EXIT
+          cleanup_runner_start() {
+            local EXIT_CODE=$?
+            if [ "$RUNNER_START_SUCCEEDED" -ne 1 ]; then
+              stop_started_hosts
+            fi
+            cleanup_logs
+            return "$EXIT_CODE"
+          }
+
+          trap cleanup_runner_start EXIT
           HOST_INDEX=0
           for HOST in $(echo "$METAL_HOSTS" | tr ',' ' '); do
             HOST_INDEX=$((HOST_INDEX + 1))
@@ -1922,7 +1932,6 @@ jobs:
           done
           rm -rf "$LOG_DIR"
           if [ "$FAILED" -ne 0 ]; then
-            stop_started_hosts
             exit 1
           fi
 
@@ -1937,11 +1946,11 @@ jobs:
             TOTAL=$((TOTAL + MC))
           done
           if [ "$FAILED" -ne 0 ]; then
-            stop_started_hosts
             exit 1
           fi
           echo "total-capacity=${TOTAL}" >> "$GITHUB_OUTPUT"
           echo "Total capacity across all hosts: ${TOTAL}"
+          RUNNER_START_SUCCEEDED=1
 
   # Run CLI E2E tests - Phase 3: Runner tests (needs runner deployed)
   # Bootstrap runner E2E test account (runs once, in parallel with deploy-runner-start)
