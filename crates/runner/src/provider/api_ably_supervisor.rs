@@ -1069,6 +1069,47 @@ mod tests {
         vec![crate::profile::DEFAULT_PROFILE.to_string()]
     }
 
+    fn malformed_network_policy_refresh_messages(
+        unrelated_name: &'static str,
+    ) -> [(&'static str, Option<&'static str>, serde_json::Value); 5] {
+        [
+            (
+                "invalid runId",
+                Some("network-policy-refresh"),
+                serde_json::json!({
+                    "runId": "not-a-uuid",
+                    "connectorRef": "github"
+                }),
+            ),
+            (
+                "missing runId",
+                Some("network-policy-refresh"),
+                serde_json::json!({ "connectorRef": "github" }),
+            ),
+            (
+                "missing connectorRef",
+                Some("network-policy-refresh"),
+                serde_json::json!({ "runId": "00000000-0000-0000-0000-000000000003" }),
+            ),
+            (
+                "empty connectorRef",
+                Some("network-policy-refresh"),
+                serde_json::json!({
+                    "runId": "00000000-0000-0000-0000-000000000003",
+                    "connectorRef": ""
+                }),
+            ),
+            (
+                "unrelated message name",
+                Some(unrelated_name),
+                serde_json::json!({
+                    "runId": "00000000-0000-0000-0000-000000000003",
+                    "connectorRef": "github"
+                }),
+            ),
+        ]
+    }
+
     #[tokio::test(start_paused = true)]
     async fn wait_for_poll_due_consumes_stateful_immediate_wakeup() {
         let wakeups = PollWakeups::new(true);
@@ -2069,6 +2110,41 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn malformed_network_policy_refresh_notification_does_not_mutate_handler_state() {
+        for (case, name, data) in
+            malformed_network_policy_refresh_messages("network-policy-refresh-v2")
+        {
+            let sentinel_run_id: RunId = "00000000-0000-0000-0000-000000000099".parse().unwrap();
+            let sentinel_handle = RunCancellationHandle::new();
+            let sentinel_token = sentinel_handle.token();
+            let tokens = Mutex::new(HashMap::from([(sentinel_run_id, sentinel_handle)]));
+            let wakeups = PollWakeups::new(true);
+            let direct_candidates = direct_candidate_inbox();
+            let profiles = default_profiles();
+            let _ = wakeups
+                .wait_for_poll_due(
+                    &CancellationToken::new(),
+                    Duration::from_secs(30),
+                    Duration::from_secs(5),
+                )
+                .await;
+            let msg = make_message(name, data);
+
+            handle_ably_message(&msg, &profiles, &wakeups, &direct_candidates, &tokens).await;
+
+            let snapshot = wakeups.snapshot().await;
+            assert_no_direct_candidate(&direct_candidates).await;
+            assert!(!snapshot.poll_now, "{case}");
+            assert!(snapshot.deferred_poll_at.is_none(), "{case}");
+            assert!(!sentinel_token.is_cancelled(), "{case}");
+
+            let tokens = tokens.lock().await;
+            assert_eq!(tokens.len(), 1, "{case}");
+            assert!(tokens.contains_key(&sentinel_run_id), "{case}");
+        }
+    }
+
+    #[tokio::test]
     async fn supervisor_shutdown_awaits_task_termination() {
         let (done_tx, done_rx) = tokio::sync::oneshot::channel();
         let supervisor = AblySupervisor::spawn_test_task(|shutdown| async move {
@@ -2141,6 +2217,18 @@ mod tests {
             "00000000-0000-0000-0000-000000000003"
         );
         assert_eq!(notification.connector_ref, "github");
+    }
+
+    #[test]
+    fn parse_network_policy_refresh_notification_rejects_malformed_messages() {
+        for (case, name, data) in malformed_network_policy_refresh_messages("other") {
+            let msg = make_message(name, data);
+
+            assert!(
+                parse_network_policy_refresh_notification(&msg).is_none(),
+                "{case}"
+            );
+        }
     }
 
     #[test]
