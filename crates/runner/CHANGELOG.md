@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.138.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.138.1...runner-rs-v0.138.2) (2026-07-08)
+
+
+### Performance Improvements
+
+* add session history fetch response telemetry ([#20605](https://github.com/vm0-ai/vm0/issues/20605)) ([146fc5b](https://github.com/vm0-ai/vm0/commit/146fc5b39f9697ebb318bf01ca086506e7c0bc66))
+
 ## [0.138.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.138.0...runner-rs-v0.138.1) (2026-07-08)
 
 

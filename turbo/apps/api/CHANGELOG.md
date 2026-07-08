@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.243.0](https://github.com/vm0-ai/vm0/compare/api-v1.242.0...api-v1.243.0) (2026-07-08)
+
+
+### Features
+
+* add web integration messaging prompt ([#20550](https://github.com/vm0-ai/vm0/issues/20550)) ([3b2a106](https://github.com/vm0-ai/vm0/commit/3b2a106102a0883fa995171166f42e77201b6ab8))
+
+
+### Performance Improvements
+
+* add session history fetch response telemetry ([#20605](https://github.com/vm0-ai/vm0/issues/20605)) ([146fc5b](https://github.com/vm0-ai/vm0/commit/146fc5b39f9697ebb318bf01ca086506e7c0bc66))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.167.1
+    * @vm0/core bumped to 8.414.2
+    * @vm0/db bumped to 1.99.4
+
 ## [1.242.0](https://github.com/vm0-ai/vm0/compare/api-v1.241.0...api-v1.242.0) (2026-07-08)
 
 
