@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.138.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.137.0...runner-rs-v0.138.0) (2026-07-08)
+
+
+### Features
+
+* add platform client headers to runner requests ([#20577](https://github.com/vm0-ai/vm0/issues/20577)) ([dee5306](https://github.com/vm0-ai/vm0/commit/dee53066bbc014e302a85aa085136b408e2df833))
+* preload runner builtin firewall catalog ([#20535](https://github.com/vm0-ai/vm0/issues/20535)) ([72eec90](https://github.com/vm0-ai/vm0/commit/72eec90baafa5c7600c59184ee3746249154a0dc))
+
+
+### Bug Fixes
+
+* **mitm-addon:** detach auth base forwards from executor shutdown ([#20529](https://github.com/vm0-ai/vm0/issues/20529)) ([323833a](https://github.com/vm0-ai/vm0/commit/323833af1318279b31062d044cecae21d229bfd3))
+
+
+### Refactoring
+
+* **mitm-addon:** add flow metadata boundaries ([#20552](https://github.com/vm0-ai/vm0/issues/20552)) ([9787277](https://github.com/vm0-ai/vm0/commit/97872771829f96ec3daf03868d6905b32038d6ee))
+* **mitm-addon:** extract local response construction ([#20554](https://github.com/vm0-ai/vm0/issues/20554)) ([9495f55](https://github.com/vm0-ai/vm0/commit/9495f55419face681f2a63c7cb8e9e3bb87e10e6))
+
+
+### Performance Improvements
+
+* add direct ably claim timing telemetry ([#20579](https://github.com/vm0-ai/vm0/issues/20579)) ([3167db5](https://github.com/vm0-ai/vm0/commit/3167db5f5a44b4c72fd07ebf6b162d2e41b1cad9))
+
 ## [0.137.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.136.6...runner-rs-v0.137.0) (2026-07-07)
 
 
