@@ -26,7 +26,7 @@ pub mod client {
         pub const CLIENT_TYPE_APP: &str = "App";
 
         /// Client type value for the desktop client.
-        pub const CLIENT_TYPE_DESKTOP: &str = "desktop";
+        pub const CLIENT_TYPE_DESKTOP: &str = "Desktop";
 
         /// Client type value for the guest agent.
         pub const CLIENT_TYPE_GUEST_AGENT: &str = "GuestAgent";
@@ -104,6 +104,15 @@ pub mod runners {
     /// Maximum resume session history blob size accepted by the API, runner, and guest verifier.
     /// Rust and TypeScript components use this shared contract value when validating resume history refs, downloads, and idle-reuse verification.
     pub const RESUME_SESSION_HISTORY_MAX_BYTES: u64 = 134217728;
+
+    /// Telemetry value for session history downloads signed with a configured S3 endpoint.
+    /// Rust and TypeScript components use this shared contract value when attributing runner download latency.
+    pub const SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT: &str =
+        "configured_public_endpoint";
+
+    /// Telemetry value for session history downloads signed with the default R2 endpoint.
+    /// Rust and TypeScript components use this shared contract value when attributing runner download latency.
+    pub const SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT: &str = "default_r2_endpoint";
 
     /// Wire and blob metadata value for gzip-compressed resume session history.
     /// Rust and TypeScript components use this shared contract value when negotiating session history uploads and claim responses.

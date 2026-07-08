@@ -45,10 +45,12 @@ use crate::active_input::ActiveInputSource;
 use crate::local_queue::{ActiveInputEntry, LocalQueue};
 use crate::restored_session_identity::RestoredSessionIdentityMismatchReason;
 use crate::storage_fingerprints::{StorageFingerprint, StorageFingerprints};
+use crate::telemetry::SessionHistoryTelemetrySnapshot;
 use crate::test_fixtures::OneShotSessionHistoryServer;
 use crate::types::{
-    ResumeSession, ResumeSessionHistory, ResumeSessionHistoryEncoding, ResumeSessionHistoryRef,
-    ResumeSessionHistoryRefKind, SandboxReuseResult,
+    ResumeSession, ResumeSessionHistory, ResumeSessionHistoryDownloadSource,
+    ResumeSessionHistoryEncoding, ResumeSessionHistoryRef, ResumeSessionHistoryRefKind,
+    SandboxReuseResult,
 };
 
 const LARGE_SESSION_HISTORY_SIZE_BYTES: usize = 1024 * 1024 + 1;
@@ -174,21 +176,6 @@ fn assert_failed_action_error_once(
     );
 }
 
-type SessionHistoryTelemetrySnapshot = (
-    String,
-    bool,
-    Option<String>,
-    Option<String>,
-    Option<String>,
-    Option<String>,
-    Option<String>,
-    Option<String>,
-    Option<String>,
-    Option<String>,
-    Option<String>,
-    Option<String>,
-);
-
 fn assert_successful_action_with_session_history_metadata(
     ops: &[SessionHistoryTelemetrySnapshot],
     action: &str,
@@ -199,12 +186,12 @@ fn assert_successful_action_with_session_history_metadata(
 ) {
     assert!(
         ops.iter().any(|op| {
-            op.0 == action
-                && op.1
-                && op.3.as_deref() == Some(encoding)
-                && op.4.as_deref() == Some(raw_size_bucket)
-                && op.5.as_deref() == Some(encoded_size_bucket)
-                && op.6.as_deref() == Some(compression_ratio_bucket)
+            op.action_type == action
+                && op.success
+                && op.encoding.as_deref() == Some(encoding)
+                && op.raw_size_bucket.as_deref() == Some(raw_size_bucket)
+                && op.encoded_size_bucket.as_deref() == Some(encoded_size_bucket)
+                && op.compression_ratio_bucket.as_deref() == Some(compression_ratio_bucket)
         }),
         "expected {action} telemetry with session history metadata, got: {ops:?}"
     );
@@ -218,12 +205,27 @@ fn assert_successful_action_with_session_history_probe(
 ) {
     assert!(
         ops.iter().any(|op| {
-            op.0 == action
-                && op.1
-                && op.7.as_deref() == Some(seen_recently)
-                && op.8.as_deref() == Some(download_inflight)
+            op.action_type == action
+                && op.success
+                && op.ref_seen_recently.as_deref() == Some(seen_recently)
+                && op.ref_download_inflight.as_deref() == Some(download_inflight)
         }),
         "expected {action} telemetry with session history probe metadata, got: {ops:?}"
+    );
+}
+
+fn assert_successful_action_with_session_history_download_source(
+    ops: &[SessionHistoryTelemetrySnapshot],
+    action: &str,
+    download_source: &str,
+) {
+    assert!(
+        ops.iter().any(|op| {
+            op.action_type == action
+                && op.success
+                && op.download_source.as_deref() == Some(download_source)
+        }),
+        "expected {action} telemetry with session history download source, got: {ops:?}"
     );
 }
 
@@ -238,13 +240,13 @@ fn assert_failed_action_with_session_history_metadata(
 ) {
     assert!(
         ops.iter().any(|op| {
-            op.0 == action
-                && !op.1
-                && op.2.as_deref() == Some(error)
-                && op.3.as_deref() == Some(encoding)
-                && op.4.as_deref() == Some(raw_size_bucket)
-                && op.5.as_deref() == Some(encoded_size_bucket)
-                && op.6.as_deref() == Some(compression_ratio_bucket)
+            op.action_type == action
+                && !op.success
+                && op.error.as_deref() == Some(error)
+                && op.encoding.as_deref() == Some(encoding)
+                && op.raw_size_bucket.as_deref() == Some(raw_size_bucket)
+                && op.encoded_size_bucket.as_deref() == Some(encoded_size_bucket)
+                && op.compression_ratio_bucket.as_deref() == Some(compression_ratio_bucket)
         }),
         "expected failed {action} telemetry with session history metadata, got: {ops:?}"
     );
@@ -284,6 +286,7 @@ async fn assert_checkpointed_final_identity_helper_failure_falls_back(
                 encoding: None,
                 raw_size: history.len() as u64,
                 encoded_size: history.len() as u64,
+                download_source: None,
             },
         },
     });
@@ -784,6 +787,7 @@ async fn run_in_sandbox_materializes_resume_session_history_ref_before_restore()
                 encoding: None,
                 raw_size: history.len() as u64,
                 encoded_size: history.len() as u64,
+                download_source: None,
             },
         },
     });
@@ -834,6 +838,7 @@ async fn run_in_sandbox_records_gzip_session_history_download_encoding() {
                 encoding: Some(ResumeSessionHistoryEncoding::Gzip),
                 raw_size: history.len() as u64,
                 encoded_size: compressed.len() as u64,
+                download_source: Some(ResumeSessionHistoryDownloadSource::ConfiguredPublicEndpoint),
             },
         },
     });
@@ -918,6 +923,11 @@ async fn run_in_sandbox_records_gzip_session_history_download_encoding() {
         "false",
         "false",
     );
+    assert_successful_action_with_session_history_download_source(
+        &ops,
+        "session_history_download",
+        "configured_public_endpoint",
+    );
 }
 
 #[tokio::test]
@@ -939,6 +949,7 @@ async fn run_in_sandbox_records_zstd_session_history_download_encoding() {
                 encoding: Some(ResumeSessionHistoryEncoding::Zstd),
                 raw_size: history.len() as u64,
                 encoded_size: compressed.len() as u64,
+                download_source: None,
             },
         },
     });
@@ -1050,6 +1061,7 @@ async fn run_in_sandbox_uses_prestarted_session_history_materializer() {
                 encoding: None,
                 raw_size: history.len() as u64,
                 encoded_size: history.len() as u64,
+                download_source: None,
             },
         },
     });
@@ -1186,6 +1198,7 @@ async fn run_in_sandbox_records_completed_prestarted_materializer_failure() {
                 encoding: None,
                 raw_size: history.len() as u64,
                 encoded_size: history.len() as u64,
+                download_source: None,
             },
         },
     });
@@ -1273,6 +1286,7 @@ async fn run_in_sandbox_skips_checkpointed_final_session_history_restore() {
                 encoding: None,
                 raw_size: history.len() as u64,
                 encoded_size: history.len() as u64,
+                download_source: None,
             },
         },
     });
@@ -1395,6 +1409,7 @@ async fn run_in_sandbox_restores_when_checkpointed_final_identity_helper_reports
                 encoding: None,
                 raw_size: history.len() as u64,
                 encoded_size: history.len() as u64,
+                download_source: None,
             },
         },
     });
@@ -1488,6 +1503,7 @@ async fn run_in_sandbox_restores_when_checkpointed_final_identity_helper_exec_er
                 encoding: None,
                 raw_size: history.len() as u64,
                 encoded_size: history.len() as u64,
+                download_source: None,
             },
         },
     });
@@ -1594,6 +1610,7 @@ async fn run_in_sandbox_restores_when_skip_verified_identity_mismatches_request(
                 encoding: None,
                 raw_size: history.len() as u64,
                 encoded_size: history.len() as u64,
+                download_source: None,
             },
         },
     });
@@ -1608,6 +1625,7 @@ async fn run_in_sandbox_restores_when_skip_verified_identity_mismatches_request(
                 encoding: None,
                 raw_size: history.len() as u64,
                 encoded_size: history.len() as u64,
+                download_source: None,
             },
         },
     });
@@ -1680,6 +1698,7 @@ async fn run_in_sandbox_records_fallback_and_restores_prestarted_history() {
                 encoding: None,
                 raw_size: history.len() as u64,
                 encoded_size: history.len() as u64,
+                download_source: None,
             },
         },
     });
@@ -1767,6 +1786,7 @@ async fn run_in_sandbox_records_missing_idle_identity_reuse_fallback() {
                 encoding: None,
                 raw_size: history.len() as u64,
                 encoded_size: history.len() as u64,
+                download_source: None,
             },
         },
     });
@@ -1853,6 +1873,7 @@ async fn run_in_sandbox_uses_final_identity_when_restored_history_changes_before
                 encoding: None,
                 raw_size: history.len() as u64,
                 encoded_size: history.len() as u64,
+                download_source: None,
             },
         },
     });
@@ -2117,6 +2138,7 @@ async fn run_in_sandbox_redacts_session_history_download_details_from_telemetry(
                 encoding: None,
                 raw_size: history.len() as u64,
                 encoded_size: history.len() as u64,
+                download_source: None,
             },
         },
     });

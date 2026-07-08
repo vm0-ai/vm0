@@ -845,7 +845,10 @@ export {
   CANONICAL_WORKING_DIR,
   DEFAULT_PROFILE,
   RUNNER_BUILTIN_FIREWALL_RESOLVE_NAMES_MAX,
+  SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT,
+  SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT,
   artifactEntrySchema,
+  sessionHistoryDownloadSourceSchema,
   storageManifestSchema,
   resumeSessionSchema,
   type RunnersPollContract,
@@ -862,6 +865,7 @@ export {
   type ArtifactEntry,
   type StorageManifest,
   type ResumeSession,
+  type SessionHistoryDownloadSource,
   type RunnerBuiltinFirewallsResolveBody,
   type RunnerBuiltinFirewallsResolveResponse,
 } from "./runners";

@@ -58,6 +58,7 @@ fn history_ref(hash: impl Into<String>, raw_size: u64) -> ResumeSessionHistoryRe
         encoding: None,
         raw_size,
         encoded_size: raw_size,
+        download_source: None,
     }
 }
 
