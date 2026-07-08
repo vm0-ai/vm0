@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.230.0](https://github.com/vm0-ai/vm0/compare/cli-v9.229.4...cli-v9.230.0) (2026-07-08)
+
+
+### Features
+
+* add zero memory recall surfaces ([#20630](https://github.com/vm0-ai/vm0/issues/20630)) ([c937665](https://github.com/vm0-ai/vm0/commit/c9376657012a4fefedfabc0a033b53d18c7065cb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.169.0
+    * @vm0/core bumped to 8.414.4
+
 ## [9.229.4](https://github.com/vm0-ai/vm0/compare/cli-v9.229.3...cli-v9.229.4) (2026-07-08)
 
 
