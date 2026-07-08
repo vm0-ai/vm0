@@ -1,6 +1,7 @@
 import { env } from "../lib/env";
 import { logger } from "../lib/log";
 import { singleton } from "../lib/singleton";
+import { delay } from "signal-timers";
 
 export enum Mechanism {
   WaitUntil = "wait_until",
@@ -238,6 +239,47 @@ export function detach(
       tracker().descriptions.set(promise, description);
     }
   }
+}
+
+export function createAbortSignalWithTimeout(args: {
+  readonly signal?: AbortSignal;
+  readonly timeoutMs: number;
+  readonly timeoutMessage: string;
+  readonly description: string;
+}): {
+  readonly signal: AbortSignal;
+  readonly cleanup: () => void;
+} {
+  const controller = new AbortController();
+  const timeoutController = new AbortController();
+  detach(
+    (async () => {
+      await delay(args.timeoutMs, { signal: timeoutController.signal });
+      controller.abort(new Error(args.timeoutMessage));
+    })(),
+    Mechanism.BestEffortCleanup,
+    args.description,
+  );
+
+  const callerSignal = args.signal;
+  const abortFromCaller = (): void => {
+    controller.abort(callerSignal?.reason);
+  };
+  if (callerSignal) {
+    if (callerSignal.aborted) {
+      abortFromCaller();
+    } else {
+      callerSignal.addEventListener("abort", abortFromCaller, { once: true });
+    }
+  }
+
+  return {
+    signal: controller.signal,
+    cleanup: () => {
+      timeoutController.abort();
+      callerSignal?.removeEventListener("abort", abortFromCaller);
+    },
+  };
 }
 
 export function createDeferredPromise<T>(signal: AbortSignal): {

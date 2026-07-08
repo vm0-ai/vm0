@@ -8,12 +8,15 @@ import { computeHmacSignature } from "../../lib/event-consumer/hmac";
 import { env } from "../../lib/env";
 import { now } from "../../lib/time";
 import { db$ } from "../external/db";
+import { createAbortSignalWithTimeout } from "../utils";
 import { decryptPersistentSecretValue } from "./crypto.utils";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
 import { handleAgentPhoneInternalCallback$ } from "./internal-agentphone-run-callback.service";
 import { internalRunCallbackKindForRecord } from "./internal-run-callback";
 import { handleSlackOrgInternalCallback$ } from "./internal-slack-org-run-callback.service";
 import { handleTelegramInternalCallback$ } from "./internal-telegram-run-callback.service";
+
+const CALLBACK_HTTP_TIMEOUT_MS = 15_000;
 
 function resolveCallbackUrl(url: string): string {
   return env("ENV") === "development" && url.startsWith("https://tunnel-")
@@ -132,6 +135,12 @@ export const dispatchProgressCallbacks$ = command(
           timestamp,
         );
 
+        const abort = createAbortSignalWithTimeout({
+          signal,
+          timeoutMs: CALLBACK_HTTP_TIMEOUT_MS,
+          timeoutMessage: `Callback dispatch timed out after ${CALLBACK_HTTP_TIMEOUT_MS}ms`,
+          description: "agent run progress callback dispatch timeout",
+        });
         return fetch(resolveCallbackUrl(callback.url), {
           method: "POST",
           headers: {
@@ -140,8 +149,8 @@ export const dispatchProgressCallbacks$ = command(
             "X-VM0-Timestamp": timestamp.toString(),
           },
           body,
-          signal,
-        });
+          signal: abort.signal,
+        }).finally(abort.cleanup);
       }),
     );
   },

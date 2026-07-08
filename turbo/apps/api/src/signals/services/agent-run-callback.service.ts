@@ -9,7 +9,7 @@ import { computeHmacSignature } from "../../lib/event-consumer/hmac";
 import { logger } from "../../lib/log";
 import type { Db } from "../external/db";
 import { now, nowDate } from "../external/time";
-import { settle } from "../utils";
+import { createAbortSignalWithTimeout, settle } from "../utils";
 import { decryptPersistentSecretValue } from "./crypto.utils";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { handleAgentInternalCallback$ } from "./internal-agent-run-callback.service";
@@ -50,6 +50,7 @@ import {
 import { continueGoalIfIdle$ } from "./zero-goal-continuation.service";
 
 const L = logger("AgentRunCallback");
+const CALLBACK_HTTP_TIMEOUT_MS = 15_000;
 
 interface CallbackRecord {
   readonly id: string;
@@ -83,6 +84,7 @@ interface DispatchSingleCallbackInput {
   readonly result?: Record<string, unknown>;
   readonly error?: string;
   readonly featureSwitchContext: FeatureSwitchContext;
+  readonly signal?: AbortSignal;
 }
 
 interface DispatchInternalRunCallbackInput {
@@ -364,6 +366,7 @@ export const dispatchRunCallbacks$ = command(
             result,
             error,
             featureSwitchContext,
+            signal,
           });
       signal.throwIfAborted();
       results.push(dispatchResult);
@@ -555,12 +558,19 @@ async function dispatchHttpCallback(
     headers["x-vercel-protection-bypass"] = bypass;
   }
 
+  const abort = createAbortSignalWithTimeout({
+    signal: input.signal,
+    timeoutMs: CALLBACK_HTTP_TIMEOUT_MS,
+    timeoutMessage: `Callback dispatch timed out after ${CALLBACK_HTTP_TIMEOUT_MS}ms`,
+    description: "agent run callback dispatch timeout",
+  });
   const responseResult = await settle(
     fetch(resolveCallbackUrl(callback.url), {
       method: "POST",
       headers,
       body,
-    }),
+      signal: abort.signal,
+    }).finally(abort.cleanup),
   );
 
   if (!responseResult.ok) {

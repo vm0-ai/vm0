@@ -1,4 +1,4 @@
-import { HttpResponse, http } from "msw";
+import { HttpResponse, delay as mswDelay, http } from "msw";
 import { describe, expect, it, vi } from "vitest";
 
 import { getApiTestMocks } from "../../../__tests__/mocks";
@@ -143,5 +143,25 @@ describe("queryAxiomDirect", () => {
         log: "abortable query",
       },
     ]);
+  });
+
+  it("reports direct fetch timeout as a query error", async () => {
+    const { queryAxiomDirect } =
+      await vi.importActual<typeof import("../axiom")>("../axiom");
+    const apl = "['vm0-agent-run-events-dev'] | limit 1";
+
+    server.use(
+      http.post("https://api.axiom.co/v1/datasets/_apl", async () => {
+        await mswDelay(100);
+        return HttpResponse.json({ matches: [] });
+      }),
+    );
+
+    await expect(
+      queryAxiomDirect(apl, {
+        noCache: true,
+        timeoutMs: 1,
+      }),
+    ).rejects.toThrow("Axiom query timed out after 1ms");
   });
 });

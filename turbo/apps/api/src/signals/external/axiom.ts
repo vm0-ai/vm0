@@ -1,9 +1,8 @@
 import { computed, type Computed } from "ccstate";
 import { Axiom } from "@axiomhq/js";
-import { delay } from "signal-timers";
 import { env, optionalEnv } from "../../lib/env";
 import { singleton } from "../../lib/singleton";
-import { detach, Mechanism } from "../utils";
+import { createAbortSignalWithTimeout } from "../utils";
 import {
   getAxiomTokenEnvNameForApl,
   getAxiomTokenEnvNameForDataset,
@@ -173,42 +172,17 @@ function queryAxiomDirectWithCursor<T>(
   return queryAxiomDirectFetch<T>(apl, options);
 }
 
-function axiomQueryAbort(args: { readonly options: QueryAxiomOptions }): {
+function axiomQueryAbort(options: QueryAxiomOptions): {
   readonly signal: AbortSignal;
   readonly cleanup: () => void;
 } {
-  const controller = new AbortController();
-  const timeoutController = new AbortController();
-  detach(
-    (async () => {
-      await delay(args.options.timeoutMs ?? AXIOM_QUERY_TIMEOUT_MS, {
-        signal: timeoutController.signal,
-      });
-      controller.abort();
-    })(),
-    Mechanism.BestEffortCleanup,
-    "axiom query timeout",
-  );
-
-  const callerSignal = args.options.signal;
-  const abortFromCaller = (): void => {
-    controller.abort(callerSignal?.reason);
-  };
-  if (callerSignal) {
-    if (callerSignal.aborted) {
-      abortFromCaller();
-    } else {
-      callerSignal.addEventListener("abort", abortFromCaller, { once: true });
-    }
-  }
-
-  return {
-    signal: controller.signal,
-    cleanup: () => {
-      timeoutController.abort();
-      callerSignal?.removeEventListener("abort", abortFromCaller);
-    },
-  };
+  const timeoutMs = options.timeoutMs ?? AXIOM_QUERY_TIMEOUT_MS;
+  return createAbortSignalWithTimeout({
+    signal: options.signal,
+    timeoutMs,
+    timeoutMessage: `Axiom query timed out after ${timeoutMs}ms`,
+    description: "axiom query timeout",
+  });
 }
 
 function axiomQueryErrorMessage(status: number, body: string): string {
@@ -226,7 +200,7 @@ async function queryAxiomDirectFetch<T>(
   apl: string,
   options: QueryAxiomOptions,
 ): Promise<readonly T[]> {
-  const abort = axiomQueryAbort({ options });
+  const abort = axiomQueryAbort(options);
   return await (async () => {
     const response = await fetch(axiomAplQueryUrl(options), {
       method: "POST",
