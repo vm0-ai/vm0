@@ -1,59 +1,9 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
-import { composeResponseSchema, composeListItemSchema } from "./composes";
+import { composeListItemSchema } from "./composes";
 
 const c = initContract();
-
-/**
- * Zero composes by ID contract (GET /api/zero/composes/:id)
- * Proxies to composesByIdContract
- */
-export const zeroComposesByIdContract = c.router({
-  getById: {
-    method: "GET",
-    path: "/api/zero/composes/:id",
-    headers: authHeadersSchema,
-    pathParams: z.object({
-      id: z.string().uuid("Compose ID must be a valid UUID"),
-    }),
-    responses: {
-      200: composeResponseSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Get agent compose by ID (zero proxy)",
-  },
-});
-
-/**
- * Zero composes metadata contract (PATCH /api/zero/composes/:id/metadata)
- * Separate sub-contract so adding the typed PATCH route doesn't force
- * zeroComposesByIdContract consumers to also implement it.
- */
-export const zeroComposesMetadataContract = c.router({
-  update: {
-    method: "PATCH",
-    path: "/api/zero/composes/:id/metadata",
-    headers: authHeadersSchema,
-    pathParams: z.object({
-      id: z.string().uuid("Compose ID is required"),
-    }),
-    body: z.object({
-      displayName: z.string().nullable().optional(),
-      description: z.string().nullable().optional(),
-      sound: z.string().nullable().optional(),
-    }),
-    responses: {
-      200: z.object({ ok: z.literal(true) }),
-      401: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Update agent compose metadata (zero proxy)",
-  },
-});
 
 /**
  * Zero composes list contract (GET /api/zero/composes/list)
@@ -76,6 +26,4 @@ export const zeroComposesListContract = c.router({
   },
 });
 
-export type ZeroComposesByIdContract = typeof zeroComposesByIdContract;
 export type ZeroComposesListContract = typeof zeroComposesListContract;
-export type ZeroComposesMetadataContract = typeof zeroComposesMetadataContract;

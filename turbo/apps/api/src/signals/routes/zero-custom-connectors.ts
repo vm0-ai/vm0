@@ -12,8 +12,6 @@ import { zeroCustomConnectorsPatchRoutes } from "./zero-custom-connectors-patch"
 import { zeroCustomConnectorProposalRoutes } from "./zero-custom-connectors-proposal";
 import { zeroCustomConnectorSecretDeleteRoutes } from "./zero-custom-connectors-secret-delete";
 import { zeroCustomConnectorsSecretSetRoutes } from "./zero-custom-connectors-secret-set";
-import { zeroCustomConnectorsUpdateRoutes } from "./zero-custom-connectors-update";
-import { zeroCustomConnectorValuesRoutes } from "./zero-custom-connectors-values";
 
 const listCustomConnectorsInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
@@ -39,8 +37,6 @@ export const zeroCustomConnectorsRoutes: readonly RouteEntry[] = [
   ...zeroCustomConnectorsGetRoutes,
   ...zeroCustomConnectorsDeleteRoutes,
   ...zeroCustomConnectorsPatchRoutes,
-  ...zeroCustomConnectorsUpdateRoutes,
-  ...zeroCustomConnectorValuesRoutes,
   ...zeroCustomConnectorProposalRoutes,
   ...zeroCustomConnectorSecretDeleteRoutes,
   ...zeroCustomConnectorsSecretSetRoutes,

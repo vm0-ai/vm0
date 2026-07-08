@@ -48,6 +48,19 @@ _codex_zero_curl() {
     curl -fsS "${hdrs[@]}" "$@" "$base$path"
 }
 
+_codex_zero_test_curl() {
+    local path="$1"; shift
+    local token base
+    token=$(_codex_zero_token)
+    base=$(_codex_zero_api_url)
+    local -a hdrs=(-H "Authorization: Bearer $token" -H "Content-Type: application/json")
+    if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
+        hdrs+=(-H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET")
+        hdrs+=(-H "x-vm0-test-endpoint-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET")
+    fi
+    curl -fsS "${hdrs[@]}" "$@" "$base$path"
+}
+
 # Enable the codex-beta feature switch for the current test user.
 # Key must match FeatureSwitchKey.CodexBeta = "codexBeta" (camelCase) in
 # turbo/packages/connectors/src/feature-switch-key.ts. isFeatureEnabled()
