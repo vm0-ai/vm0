@@ -375,6 +375,7 @@ async function resolveCompletedChatOutputOnce(args: {
   readonly db: Db;
   readonly runId: string;
   readonly lastEventSequence: number | null;
+  readonly allowUnwatermarkedTerminalResult: boolean;
   readonly signal: AbortSignal;
 }): Promise<CompletedChatOutputResolution> {
   const dbOutputState = await loadDbCompletedChatOutputState({
@@ -399,12 +400,14 @@ async function resolveCompletedChatOutputOnce(args: {
   }
 
   if (args.lastEventSequence === null) {
-    const terminalResult = await queryLatestTerminalResult({
-      runId: args.runId,
-      signal: args.signal,
-    });
-    if (terminalResult !== null) {
-      return { kind: "ready", text: terminalResult };
+    if (args.allowUnwatermarkedTerminalResult) {
+      const terminalResult = await queryLatestTerminalResult({
+        runId: args.runId,
+        signal: args.signal,
+      });
+      if (terminalResult !== null) {
+        return { kind: "ready", text: terminalResult };
+      }
     }
     return {
       kind: "not_visible_yet",
@@ -443,6 +446,7 @@ async function resolveCompletedChatOutput(args: {
   readonly db: Db;
   readonly runId: string;
   readonly lastEventSequence: number | null;
+  readonly allowUnwatermarkedTerminalResult: boolean;
   readonly signal: AbortSignal;
 }): Promise<CompletedChatOutputResolution> {
   const result = await settle(
@@ -493,6 +497,9 @@ export async function resolveCompletedChatOutputWithRetry(args: {
       db: args.db,
       runId: args.runId,
       lastEventSequence,
+      allowUnwatermarkedTerminalResult:
+        !hasWatermark &&
+        missingWatermarkAttempts >= maxMissingWatermarkAttempts,
       signal: args.signal,
     });
     if (lastResult.kind !== "not_visible_yet") {

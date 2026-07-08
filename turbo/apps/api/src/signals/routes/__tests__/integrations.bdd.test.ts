@@ -2845,13 +2845,74 @@ describe("INT-01: Slack app deep webhook flows", () => {
     });
     expect(legacyWatermarkInjected).toBeTruthy();
     expect(legacyMissingWatermarkDelays).toBe(3);
-    expect(legacyUnwatermarkedTerminalResultQueries).toBe(3);
+    expect(legacyUnwatermarkedTerminalResultQueries).toBe(0);
     expect(legacyUnwatermarkedOutputQueries).toBe(0);
     expect(legacyWatermarkedOutputQueries).toBe(1);
     expect(legacyVisibilityQuerySeen).toBeTruthy();
     expect(slackPostMessageCallsJson()).not.toContain("STALE_UNBOUNDED_OUTPUT");
 
     context.mocks.signalTimers.delay.mockResolvedValue(undefined);
+    const legacyTerminalOnlyText = "Legacy terminal result output";
+    let legacyTerminalOnlyQueries = 0;
+    let legacyTerminalOnlyUnboundedOutputQueries = 0;
+    context.mocks.axiom.query.mockImplementation((...args: unknown[]) => {
+      const apl = typeof args[0] === "string" ? args[0] : "";
+      if (
+        apl.includes('| where eventType == "result"') &&
+        !apl.includes("| where sequenceNumber <=")
+      ) {
+        legacyTerminalOnlyQueries++;
+        return Promise.resolve([
+          {
+            eventType: "result",
+            sequenceNumber: 0,
+            eventData: { result: legacyTerminalOnlyText },
+          },
+        ]);
+      }
+      if (apl.includes('eventType == "assistant"')) {
+        legacyTerminalOnlyUnboundedOutputQueries++;
+        return Promise.resolve([
+          {
+            eventType: "result",
+            sequenceNumber: 0,
+            eventData: { result: "STALE_LEGACY_OUTPUT" },
+          },
+        ]);
+      }
+      return Promise.resolve([]);
+    });
+
+    await integrations.postSlackEvent(teamId, {
+      type: "app_mention",
+      user: slackUser,
+      text: "handle old runner terminal result output",
+      ts: "4050.000190",
+      channel: channelId,
+    });
+    const legacyTerminalOnlyRunId = await pollSlackRun(runnerGroup);
+    const legacyTerminalOnlyClaim = await runs.claimRunnerJob(
+      legacyTerminalOnlyRunId,
+    );
+    context.mocks.slack.chat.postMessage.mockClear();
+    await completeSlackTriggeredRun({
+      runId: legacyTerminalOnlyRunId,
+      sandboxToken: legacyTerminalOnlyClaim.sandboxToken,
+      cliAgentType: "claude-code",
+    });
+    await waitForExpectation(() => {
+      expect(context.mocks.slack.chat.postMessage).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          channel: channelId,
+          thread_ts: "4050.000190",
+          text: legacyTerminalOnlyText,
+        }),
+      );
+    });
+    expect(legacyTerminalOnlyQueries).toBe(1);
+    expect(legacyTerminalOnlyUnboundedOutputQueries).toBe(0);
+    expect(slackPostMessageCallsJson()).not.toContain("STALE_LEGACY_OUTPUT");
+
     context.mocks.axiom.query.mockImplementation((...args: unknown[]) => {
       const apl = typeof args[0] === "string" ? args[0] : "";
       if (apl.includes("| project sequenceNumber")) {
