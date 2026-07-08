@@ -106,7 +106,8 @@ Pre-commit hooks run `pytest` on staged Python files in the addon.
 | `test_connector_usage.py` | Connector usage reporter and stream-path detection |
 | `test_usage_idempotency.py` | Usage event idempotency key helpers |
 | `test_usage_reporting_idempotency.py` | Hook-level usage reporting idempotency |
-| `test_webhook.py` | Usage webhook delivery |
+| `test_webhook_delivery_admission.py` | Usage webhook delivery admission, capacity, pending counter, and executor fallback behavior |
+| `test_webhook_http_delivery.py` | Usage webhook HTTP delivery, retry, request, and log behavior |
 | `test_counters.py` | Usage pending counters |
 
 ## Patterns

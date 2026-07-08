@@ -1,0 +1,326 @@
+"""Tests for usage webhook delivery admission and accounting."""
+
+import contextlib
+import json
+import time
+import urllib.request
+from unittest.mock import patch
+
+import pytest
+
+import usage
+from tests.jsonl_log_helpers import read_jsonl_entries_after_flush, read_jsonl_text_after_flush
+from tests.pending_helpers import assert_current_pending
+from tests.webhook_test_helpers import (
+    SANITIZED_WEBHOOK_URL,
+    SENSITIVE_WEBHOOK_URL,
+    QueuedUsageExecutor,
+    assert_body_free_webhook_entry,
+    assert_sensitive_webhook_url_parts_absent,
+)
+
+
+def test_sync_executor_worker_error_preserves_other_pending_reports(tmp_path, sync_usage_executor):
+    """Synchronous executor fixture should store worker exceptions on its Future."""
+    proxy_log = tmp_path / "proxy.jsonl"
+    pending_path = tmp_path / "usage-pending"
+    usage.set_pending_path(str(pending_path))
+    usage.counters.increment_pending_reports()
+
+    usage.webhook.enqueue_webhook_delivery(
+        "not-a-url",
+        "tok",
+        {"runId": "run-1", "events": []},
+        str(proxy_log),
+        "usage_event",
+    )
+
+    assert_current_pending(
+        pending_path,
+        flows=0,
+        buffered=0,
+        reports=1,
+        flush_request_id="worker-error",
+    )
+    assert usage.webhook.pending_delivery_payload_count_for_tests() == 0
+    assert "non-retryable" in read_jsonl_text_after_flush(proxy_log)
+    with pytest.raises(ValueError, match="absolute http"):
+        sync_usage_executor.shutdown(wait=True)
+
+
+def test_enqueue_logs_body_free_payload_summary(
+    mitm_ctx, tmp_path, sync_usage_executor, usage_webhook_server
+):
+    proxy_log = tmp_path / "proxy.jsonl"
+    pending_path = tmp_path / "usage-pending"
+    usage.set_pending_path(str(pending_path))
+    usage_webhook_server.queue_response(204)
+    payload = {
+        "url": "payload-url",
+        "type": "payload-type",
+        "attempt": 99,
+        "error": "payload-error",
+        "runId": "run-1",
+        "events": [],
+    }
+
+    with mitm_ctx():
+        assert usage.webhook.enqueue_webhook_delivery(
+            usage_webhook_server.url("/usage"),
+            "tok",
+            payload,
+            str(proxy_log),
+            "usage_event",
+        )
+
+    assert usage_webhook_server.request_count == 1
+    assert usage.webhook.pending_delivery_payload_count_for_tests() == 0
+    assert_current_pending(
+        pending_path,
+        flows=0,
+        buffered=0,
+        reports=0,
+        flush_request_id="enqueue-log",
+    )
+    entries = read_jsonl_entries_after_flush(proxy_log)
+    enqueued_entry = entries[0]
+    assert enqueued_entry["url"] == usage_webhook_server.url("/usage")
+    assert enqueued_entry["type"] == "usage_event"
+    assert "attempt" not in enqueued_entry
+    assert "error" not in enqueued_entry
+    assert_body_free_webhook_entry(enqueued_entry, run_id="run-1", event_count=0)
+    assert "payload_bytes" not in enqueued_entry
+
+
+def test_enqueue_sanitizes_sensitive_webhook_url_in_message(tmp_path, sync_usage_executor):
+    proxy_log = tmp_path / "proxy.jsonl"
+    pending_path = tmp_path / "usage-pending"
+    usage.set_pending_path(str(pending_path))
+    payload = {"runId": "run-1", "events": []}
+
+    with patch.object(
+        urllib.request.OpenerDirector,
+        "open",
+        return_value=contextlib.nullcontext(),
+    ):
+        assert usage.webhook.enqueue_webhook_delivery(
+            SENSITIVE_WEBHOOK_URL,
+            "tok",
+            payload,
+            str(proxy_log),
+            "usage_event",
+        )
+
+    assert usage.webhook.pending_delivery_payload_count_for_tests() == 0
+    assert_current_pending(
+        pending_path,
+        flows=0,
+        buffered=0,
+        reports=0,
+        flush_request_id="enqueue-sanitized",
+    )
+    entries = read_jsonl_entries_after_flush(proxy_log)
+    enqueued_entry = entries[0]
+    assert enqueued_entry["url"] == SANITIZED_WEBHOOK_URL
+    assert enqueued_entry["message"] == f"Webhook POST to {SANITIZED_WEBHOOK_URL} enqueued"
+    assert enqueued_entry["type"] == "usage_event"
+    assert_body_free_webhook_entry(enqueued_entry, run_id="run-1", event_count=0)
+    for entry in entries:
+        assert_sensitive_webhook_url_parts_absent(entry)
+
+
+def test_submit_failure_rolls_back_pending_report(tmp_path):
+    pending_path = tmp_path / "usage-pending"
+    usage.set_pending_path(str(pending_path))
+
+    with (
+        patch.object(usage.webhook.usage_executor, "submit", side_effect=OSError("no threads")),
+        pytest.raises(OSError, match="no threads"),
+    ):
+        usage.webhook.enqueue_webhook_delivery(
+            "https://api.vm0.ai/api/webhooks/agent/usage-event",
+            "tok",
+            {"runId": "run-1", "events": [{"category": "tokens.input", "quantity": 1}]},
+            "",
+            "usage_event",
+        )
+
+    assert usage.webhook.pending_delivery_payload_count_for_tests() == 0
+    assert_current_pending(
+        pending_path, flows=0, buffered=0, reports=0, flush_request_id="submit-failed"
+    )
+
+
+def test_sync_fallback_log_failure_rolls_back_pending_report(tmp_path):
+    pending_path = tmp_path / "usage-pending"
+    usage.set_pending_path(str(pending_path))
+
+    with (
+        patch.object(usage.webhook.usage_executor, "submit", side_effect=RuntimeError("shutdown")),
+        patch.object(usage.webhook, "log_proxy_entry", side_effect=[None, OSError("disk full")]),
+        pytest.raises(OSError, match="disk full"),
+    ):
+        usage.webhook.enqueue_webhook_delivery(
+            "https://api.vm0.ai/api/webhooks/agent/usage-event",
+            "tok",
+            {"runId": "run-1", "events": [{"category": "tokens.input", "quantity": 1}]},
+            str(tmp_path / "proxy.jsonl"),
+            "usage_event",
+        )
+
+    assert usage.webhook.pending_delivery_payload_count_for_tests() == 0
+    assert_current_pending(
+        pending_path,
+        flows=0,
+        buffered=0,
+        reports=0,
+        flush_request_id="fallback-log-failed",
+    )
+
+
+def test_does_not_admit_when_delivery_capacity_is_saturated(tmp_path):
+    proxy_log = tmp_path / "proxy.jsonl"
+    pending_path = tmp_path / "usage-pending"
+    executor = QueuedUsageExecutor()
+    usage.set_pending_path(str(pending_path))
+
+    with patch.object(usage.webhook, "usage_executor", executor):
+        for index in range(usage.webhook.MAX_PENDING_WEBHOOK_PAYLOADS):
+            assert usage.webhook.enqueue_webhook_delivery(
+                "https://api.vm0.ai/api/webhooks/agent/usage-event",
+                "tok",
+                {"runId": f"run-{index}", "events": []},
+                str(proxy_log),
+                "usage_event",
+            )
+
+        admitted = usage.webhook.enqueue_webhook_delivery(
+            "https://api.vm0.ai/api/webhooks/agent/usage-event",
+            "tok",
+            {
+                "runId": "run-drop",
+                "events": [{"idempotencyKey": "secret-key", "quantity": 1}],
+                "payload": "secret-payload",
+            },
+            str(proxy_log),
+            "usage_event",
+        )
+
+    assert admitted is False
+    assert len(executor.submissions) == usage.webhook.MAX_PENDING_WEBHOOK_PAYLOADS
+    assert_current_pending(
+        pending_path,
+        flows=0,
+        buffered=0,
+        reports=usage.webhook.MAX_PENDING_WEBHOOK_PAYLOADS,
+        flush_request_id="saturated",
+    )
+
+    entries = read_jsonl_entries_after_flush(proxy_log)
+    saturated_entry = entries[-1]
+    assert saturated_entry["level"] == "info"
+    assert saturated_entry["reason"] == "delivery_saturated"
+    assert "not admitted" in saturated_entry["message"]
+    assert "saturated" in saturated_entry["message"]
+    assert "dropped" not in saturated_entry["message"]
+    assert saturated_entry["webhook_delivery_capacity"] == (
+        usage.webhook.MAX_PENDING_WEBHOOK_PAYLOADS
+    )
+    assert saturated_entry["webhook_delivery_pending"] == (
+        usage.webhook.MAX_PENDING_WEBHOOK_PAYLOADS
+    )
+    assert_body_free_webhook_entry(saturated_entry, run_id="run-drop", event_count=1)
+    assert "payload_bytes" not in saturated_entry
+    assert "secret-payload" not in json.dumps(saturated_entry)
+
+
+def test_delivery_capacity_released_after_success(
+    mitm_ctx, tmp_path, sync_usage_executor, usage_webhook_server
+):
+    proxy_log = tmp_path / "proxy.jsonl"
+    pending_path = tmp_path / "usage-pending"
+    usage.set_pending_path(str(pending_path))
+    usage_webhook_server.queue_response(204)
+
+    with mitm_ctx():
+        assert usage.webhook.enqueue_webhook_delivery(
+            usage_webhook_server.url("/usage"),
+            "tok",
+            {"runId": "run-1", "events": []},
+            str(proxy_log),
+            "usage_event",
+        )
+
+    assert usage_webhook_server.request_count == 1
+    assert usage.webhook.pending_delivery_payload_count_for_tests() == 0
+    assert_current_pending(
+        pending_path,
+        flows=0,
+        buffered=0,
+        reports=0,
+        flush_request_id="success",
+    )
+
+
+def test_delivery_capacity_released_when_outcome_callback_fails(
+    mitm_ctx, tmp_path, sync_usage_executor, usage_webhook_server
+):
+    proxy_log = tmp_path / "proxy.jsonl"
+    pending_path = tmp_path / "usage-pending"
+    usage.set_pending_path(str(pending_path))
+    usage_webhook_server.queue_response(204)
+
+    def fail_callback(_outcome: usage.webhook.WebhookDeliveryOutcome) -> None:
+        raise RuntimeError("callback failed")
+
+    with mitm_ctx():
+        assert usage.webhook.enqueue_webhook_delivery(
+            usage_webhook_server.url("/usage"),
+            "tok",
+            {"runId": "run-1", "events": []},
+            str(proxy_log),
+            "usage_event",
+            delivery_outcome_callback=fail_callback,
+        )
+
+    with pytest.raises(RuntimeError, match="callback failed"):
+        sync_usage_executor.shutdown(wait=True)
+
+    assert usage_webhook_server.request_count == 1
+    assert usage.webhook.pending_delivery_payload_count_for_tests() == 0
+    assert_current_pending(
+        pending_path,
+        flows=0,
+        buffered=0,
+        reports=0,
+        flush_request_id="callback-failed",
+    )
+
+
+def test_delivery_capacity_released_after_retry_exhaustion(
+    mitm_ctx, tmp_path, sync_usage_executor, usage_webhook_server
+):
+    proxy_log = tmp_path / "proxy.jsonl"
+    pending_path = tmp_path / "usage-pending"
+    usage.set_pending_path(str(pending_path))
+    usage_webhook_server.queue_response(500)
+    usage_webhook_server.queue_response(500)
+
+    with mitm_ctx(), patch.object(time, "sleep"):
+        assert usage.webhook.enqueue_webhook_delivery(
+            usage_webhook_server.url("/usage"),
+            "tok",
+            {"runId": "run-1", "events": []},
+            str(proxy_log),
+            "usage_event",
+        )
+
+    assert usage_webhook_server.request_count == 2
+    assert usage.webhook.pending_delivery_payload_count_for_tests() == 0
+    assert_current_pending(
+        pending_path,
+        flows=0,
+        buffered=0,
+        reports=0,
+        flush_request_id="retry-exhausted",
+    )
