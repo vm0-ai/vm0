@@ -147,6 +147,38 @@ class TestFirewallHeaderCache:
         assert require_cached_headers(explicit_key).headers == {"Authorization": "Bearer explicit"}
         assert require_cached_headers(default_key).headers == {"Authorization": "Bearer default"}
 
+    def test_cached_header_snapshot_is_detached_from_internal_state(self):
+        """Seeded inputs and returned snapshots cannot mutate live cache state."""
+        cache_key = auth_cache_key()
+        headers = {"Authorization": "Bearer original"}
+        resolved_secrets = ["TOKEN"]
+        query = {"api_key": "original-key"}
+        set_cached_headers(
+            cache_key,
+            headers=headers,
+            resolved_secrets=resolved_secrets,
+            query=query,
+        )
+
+        headers["Authorization"] = "Bearer changed"
+        resolved_secrets.append("OTHER")
+        query["api_key"] = "changed-key"
+
+        snapshot = require_cached_headers(cache_key)
+        assert snapshot.headers == {"Authorization": "Bearer original"}
+        assert snapshot.resolved_secrets == ["TOKEN"]
+        assert snapshot.query == {"api_key": "original-key"}
+
+        snapshot.headers["Authorization"] = "Bearer mutated"
+        snapshot.resolved_secrets.append("MUTATED")
+        assert snapshot.query is not None
+        snapshot.query["api_key"] = "mutated-key"
+
+        fresh_snapshot = require_cached_headers(cache_key)
+        assert fresh_snapshot.headers == {"Authorization": "Bearer original"}
+        assert fresh_snapshot.resolved_secrets == ["TOKEN"]
+        assert fresh_snapshot.query == {"api_key": "original-key"}
+
     async def test_fetch_failure_does_not_cache(self, mitm_ctx):
         """Failed fetch should not populate cache; next caller retries independently."""
         cache_key = auth_cache_key()
