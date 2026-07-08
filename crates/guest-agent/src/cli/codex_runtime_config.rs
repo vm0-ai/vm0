@@ -85,7 +85,30 @@ pub(super) fn write_model_catalog(
     };
     std::fs::create_dir_all(codex_home)?;
     let path = model_catalog_path(codex_home);
-    std::fs::write(path, serde_json::to_vec(model_catalog)?)?;
+    write_model_catalog_json_atomic(codex_home, &path, &serde_json::to_vec(model_catalog)?)?;
+    Ok(())
+}
+
+fn write_model_catalog_json_atomic(
+    codex_home: &Path,
+    path: &Path,
+    serialized: &[u8],
+) -> Result<(), AgentError> {
+    use std::io::Write as _;
+
+    let mut temp = tempfile::NamedTempFile::new_in(codex_home)?;
+    temp.as_file_mut().write_all(serialized)?;
+    temp.as_file_mut().flush()?;
+    temp.persist(path).map_err(|error| {
+        AgentError::Io(std::io::Error::new(
+            error.error.kind(),
+            format!(
+                "failed to replace {} atomically: {}",
+                path.display(),
+                error.error
+            ),
+        ))
+    })?;
     Ok(())
 }
 
@@ -263,6 +286,45 @@ mod tests {
         write_model_catalog(tmp.path(), &config).unwrap();
 
         let written = std::fs::read_to_string(model_catalog_path(tmp.path())).unwrap();
+        assert_eq!(written, r#"{"models":[{"slug":"MiniMax-M3"}]}"#);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn write_model_catalog_replaces_existing_symlink_without_touching_target() {
+        use std::os::unix::fs::symlink;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let codex_home = tmp.path().join(".codex");
+        std::fs::create_dir_all(&codex_home).unwrap();
+        let symlink_target = tmp.path().join("target-catalog.json");
+        std::fs::write(&symlink_target, b"TARGET_CONTENT_MUST_SURVIVE").unwrap();
+        symlink(&symlink_target, model_catalog_path(&codex_home)).unwrap();
+        let config = CodexRuntimeConfig {
+            provider_id: "minimax".to_string(),
+            name: "MiniMax".to_string(),
+            base_url: "https://api.minimax.io/v1".to_string(),
+            env_key: "OPENAI_API_KEY".to_string(),
+            wire_api: "responses".to_string(),
+            supports_websockets: false,
+            model_catalog: Some(json!({ "models": [{ "slug": "MiniMax-M3" }] })),
+        };
+
+        write_model_catalog(&codex_home, &config).unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(&symlink_target).unwrap(),
+            "TARGET_CONTENT_MUST_SURVIVE",
+            "model catalog replacement must not write through an existing symlink"
+        );
+        assert!(
+            !std::fs::symlink_metadata(model_catalog_path(&codex_home))
+                .unwrap()
+                .file_type()
+                .is_symlink(),
+            "model catalog path should be a regular replacement file, not the old symlink"
+        );
+        let written = std::fs::read_to_string(model_catalog_path(&codex_home)).unwrap();
         assert_eq!(written, r#"{"models":[{"slug":"MiniMax-M3"}]}"#);
     }
 }
