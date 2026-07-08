@@ -5,6 +5,14 @@ use serde::{Deserialize, Serialize};
 /// Current JSON schema version for failure diagnostics.
 pub const FAILURE_DIAGNOSTIC_SCHEMA_VERSION: u8 = 1;
 
+// These are stable Unix signal numbers in the serialized diagnostic contract.
+const UNIX_SIGHUP_SIGNAL_NUMBER: i32 = 1;
+const UNIX_SIGINT_SIGNAL_NUMBER: i32 = 2;
+const UNIX_SIGQUIT_SIGNAL_NUMBER: i32 = 3;
+const UNIX_SIGKILL_SIGNAL_NUMBER: i32 = 9;
+const UNIX_SIGTERM_SIGNAL_NUMBER: i32 = 15;
+const UNIX_SIGPIPE_SIGNAL_NUMBER: i32 = 13;
+
 /// Structured information describing why a guest agent run failed.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -165,7 +173,8 @@ impl CliObservedExitDiagnostic {
     /// Return true when this observation is an observed SIGKILL.
     #[must_use]
     pub fn is_sigkill(&self) -> bool {
-        self.kind == CliObservedExitKind::Signal && self.signal_number == Some(libc::SIGKILL)
+        self.kind == CliObservedExitKind::Signal
+            && self.signal_number == Some(UNIX_SIGKILL_SIGNAL_NUMBER)
     }
 }
 
@@ -192,12 +201,12 @@ impl CliObservedExitKind {
 
 fn observed_signal_name(signal_number: i32) -> Option<&'static str> {
     match signal_number {
-        libc::SIGHUP => Some("sighup"),
-        libc::SIGINT => Some("sigint"),
-        libc::SIGQUIT => Some("sigquit"),
-        libc::SIGTERM => Some("sigterm"),
-        libc::SIGKILL => Some("sigkill"),
-        libc::SIGPIPE => Some("sigpipe"),
+        UNIX_SIGHUP_SIGNAL_NUMBER => Some("sighup"),
+        UNIX_SIGINT_SIGNAL_NUMBER => Some("sigint"),
+        UNIX_SIGQUIT_SIGNAL_NUMBER => Some("sigquit"),
+        UNIX_SIGTERM_SIGNAL_NUMBER => Some("sigterm"),
+        UNIX_SIGKILL_SIGNAL_NUMBER => Some("sigkill"),
+        UNIX_SIGPIPE_SIGNAL_NUMBER => Some("sigpipe"),
         _ => None,
     }
 }
@@ -662,7 +671,7 @@ mod tests {
 
     #[test]
     fn failure_diagnostic_serializes_observed_signal_exit() {
-        let observed_exit = CliObservedExitDiagnostic::from_signal(libc::SIGKILL);
+        let observed_exit = CliObservedExitDiagnostic::from_signal(UNIX_SIGKILL_SIGNAL_NUMBER);
         let diagnostic = FailureDiagnostic::new(
             FailureClass::CliNonzero,
             AgentFramework::ClaudeCode,
