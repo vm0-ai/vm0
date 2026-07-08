@@ -32,11 +32,11 @@ def auth_state_is_empty() -> bool:
 def set_cached_headers(
     cache_key: auth_cache.FirewallAuthCacheKey,
     *,
-    headers: dict,
+    headers: dict[str, str],
     expires_at: object = None,
-    resolved_secrets: list | None = None,
+    resolved_secrets: list[str] | None = None,
     base: str | None = None,
-    query: dict | None = None,
+    query: dict[str, str] | None = None,
     aws_sigv4: AwsSigV4Credentials | None = None,
 ) -> None:
     auth_cache.seed_cached_headers_for_tests(
