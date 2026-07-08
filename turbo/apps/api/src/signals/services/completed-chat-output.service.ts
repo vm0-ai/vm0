@@ -12,6 +12,7 @@ import { settle } from "../utils";
 const AGENT_RUN_EVENTS_DATASET = "agent-run-events";
 const COMPLETED_CHAT_OUTPUT_RETRY_ATTEMPTS = 2;
 const COMPLETED_CHAT_OUTPUT_RETRY_DELAY_MS = 500;
+const LATEST_OUTPUT_EVENT_LIMIT = 200;
 
 const COMPLETED_CHAT_OUTPUT_UNAVAILABLE_ERROR =
   "Completed run output was not visible before delivery timeout";
@@ -66,6 +67,8 @@ type CompletedChatOutputResolution =
         | "axiom_no_output";
     }
   | { readonly kind: "query_failed"; readonly error: unknown };
+
+type ChatOutputVisibility = { readonly watermarkVisible: boolean };
 
 function extractAnthropicContent(
   blocks: readonly ContentBlock[],
@@ -126,15 +129,11 @@ function extractResultFallback(
   return { sequenceNumber, content: result };
 }
 
-export async function queryChatOutputEvents(args: {
+async function waitForChatOutputVisibility(args: {
   readonly runId: string;
   readonly lastEventSequence: number | null;
   readonly signal: AbortSignal;
-}): Promise<{
-  readonly assistantItems: readonly AssistantEventItem[];
-  readonly resultFallback: ResultEventItem | null;
-  readonly watermarkVisible: boolean;
-}> {
+}): Promise<ChatOutputVisibility> {
   args.signal.throwIfAborted();
   const visibility = await waitForRunEventWatermarkVisibility(
     args.runId,
@@ -148,7 +147,19 @@ export async function queryChatOutputEvents(args: {
   args.signal.throwIfAborted();
   const watermarkVisible =
     visibility.kind === "checked" ? visibility.visible : false;
+  return { watermarkVisible };
+}
 
+export async function queryChatOutputEvents(args: {
+  readonly runId: string;
+  readonly lastEventSequence: number | null;
+  readonly signal: AbortSignal;
+}): Promise<{
+  readonly assistantItems: readonly AssistantEventItem[];
+  readonly resultFallback: ResultEventItem | null;
+  readonly watermarkVisible: boolean;
+}> {
+  const { watermarkVisible } = await waitForChatOutputVisibility(args);
   const dataset = getDatasetName(AGENT_RUN_EVENTS_DATASET);
   const sequenceCap =
     args.lastEventSequence === null
@@ -194,6 +205,59 @@ ${sequenceCap}
   }
 
   return { assistantItems, resultFallback, watermarkVisible };
+}
+
+async function queryLatestChatOutput(args: {
+  readonly runId: string;
+  readonly lastEventSequence: number | null;
+  readonly signal: AbortSignal;
+}): Promise<{
+  readonly text: string | null;
+  readonly watermarkVisible: boolean;
+}> {
+  const { watermarkVisible } = await waitForChatOutputVisibility(args);
+  const dataset = getDatasetName(AGENT_RUN_EVENTS_DATASET);
+  const sequenceCap =
+    args.lastEventSequence === null
+      ? ""
+      : `\n| where sequenceNumber <= ${args.lastEventSequence}`;
+  const apl = `['${dataset}']
+| where runId == "${escapeAplString(args.runId)}"
+| where eventType == "assistant" or eventType == "result" or (eventType == "item.completed" and ['eventData.item.type'] == "agent_message")
+${sequenceCap}
+| order by sequenceNumber desc
+| limit ${LATEST_OUTPUT_EVENT_LIMIT}`;
+
+  const events = await queryAxiomDirect<AxiomChatOutputEvent>(apl, {
+    noCache: true,
+  });
+  args.signal.throwIfAborted();
+
+  for (const event of events) {
+    const sequenceNumber =
+      event.sequenceNumber ?? event.eventData?.sequenceNumber;
+    if (typeof sequenceNumber !== "number") {
+      continue;
+    }
+    if (
+      args.lastEventSequence !== null &&
+      sequenceNumber > args.lastEventSequence
+    ) {
+      continue;
+    }
+
+    const assistant = extractAssistantContent(event);
+    if (assistant !== null) {
+      return { text: assistant, watermarkVisible };
+    }
+
+    const fallback = extractResultFallback(sequenceNumber, event);
+    if (fallback !== null) {
+      return { text: fallback.content, watermarkVisible };
+    }
+  }
+
+  return { text: null, watermarkVisible };
 }
 
 export async function latestEventBackedAssistantMessage(
@@ -262,14 +326,6 @@ export async function loadDbCompletedChatOutputState(args: {
   };
 }
 
-function latestAssistantText(
-  assistantItems: readonly AssistantEventItem[],
-): string | null {
-  return assistantItems.length > 0
-    ? assistantItems[assistantItems.length - 1]!.content
-    : null;
-}
-
 async function resolveCompletedChatOutputOnce(args: {
   readonly db: Db;
   readonly runId: string;
@@ -297,19 +353,15 @@ async function resolveCompletedChatOutputOnce(args: {
     return { kind: "empty_after_complete_visibility" };
   }
 
-  const axiomOutput = await queryChatOutputEvents({
+  const axiomOutput = await queryLatestChatOutput({
     runId: args.runId,
     lastEventSequence: args.lastEventSequence,
     signal: args.signal,
   });
   args.signal.throwIfAborted();
 
-  const assistantText = latestAssistantText(axiomOutput.assistantItems);
-  if (assistantText !== null) {
-    return { kind: "ready", text: assistantText };
-  }
-  if (axiomOutput.resultFallback !== null) {
-    return { kind: "ready", text: axiomOutput.resultFallback.content };
+  if (axiomOutput.text !== null) {
+    return { kind: "ready", text: axiomOutput.text };
   }
   if (dbOutputState.kind === "complete") {
     return dbOutputState.hasResultFallbackCandidate

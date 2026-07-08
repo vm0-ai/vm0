@@ -2691,6 +2691,71 @@ describe("INT-01: Slack app deep webhook flows", () => {
     });
     expect(outputQueryCount).toBe(2);
 
+    const finalLongRunText = "Final answer after many intermediate events";
+    let latestOutputQuerySeen = false;
+    context.mocks.axiom.query.mockImplementation((...args: unknown[]) => {
+      const apl = typeof args[0] === "string" ? args[0] : "";
+      if (apl.includes("| project sequenceNumber")) {
+        return Promise.resolve([{ sequenceNumber: 250 }]);
+      }
+      if (apl.includes('eventType == "assistant"')) {
+        latestOutputQuerySeen = apl.includes("| order by sequenceNumber desc");
+        if (latestOutputQuerySeen) {
+          return Promise.resolve([
+            {
+              eventType: "result",
+              sequenceNumber: 250,
+              eventData: { result: finalLongRunText },
+            },
+          ]);
+        }
+        return Promise.resolve(
+          Array.from({ length: 200 }, (_, sequenceNumber) => {
+            return {
+              eventType: "assistant",
+              sequenceNumber,
+              eventData: {
+                message: {
+                  content: [
+                    { type: "text", text: `Old output ${sequenceNumber}` },
+                  ],
+                },
+              },
+            };
+          }),
+        );
+      }
+      return Promise.resolve([]);
+    });
+
+    await integrations.postSlackEvent(teamId, {
+      type: "app_mention",
+      user: slackUser,
+      text: "use the final output from a long run",
+      ts: "4050.000150",
+      channel: channelId,
+    });
+    const longRunId = await pollSlackRun(runnerGroup);
+    const longRunClaim = await runs.claimRunnerJob(longRunId);
+    context.mocks.slack.chat.postMessage.mockClear();
+    await completeSlackTriggeredRun({
+      runId: longRunId,
+      sandboxToken: longRunClaim.sandboxToken,
+      cliAgentType: "claude-code",
+      lastEventSequence: 250,
+    });
+
+    await waitForExpectation(() => {
+      expect(context.mocks.slack.chat.postMessage).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          channel: channelId,
+          thread_ts: "4050.000150",
+          text: finalLongRunText,
+        }),
+      );
+    });
+    expect(latestOutputQuerySeen).toBeTruthy();
+
     context.mocks.axiom.query.mockImplementation((...args: unknown[]) => {
       const apl = typeof args[0] === "string" ? args[0] : "";
       if (apl.includes("| project sequenceNumber")) {
