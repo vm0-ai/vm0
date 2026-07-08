@@ -120,6 +120,7 @@ export type DesktopComputerUseFilesystemPluginStatus =
   | "disabled"
   | "starting"
   | "running"
+  | "restarting"
   | "error";
 
 export interface DesktopComputerUseFilesystemPluginState {
