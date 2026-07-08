@@ -1854,19 +1854,21 @@ const handleSlackRunResult$ = command(
       const errorReplyResultPromise = result.runId
         ? undefined
         : Promise.allSettled([
-            set(postPreDispatchErrorReply$, {
-              db: message.db,
-              client: resolved.client,
-              channelId: message.channelId,
-              threadTs: resolved.threadTs,
-              errorText:
-                result.response ??
-                "Sorry, an error occurred. Please try again.",
-              orgId: resolved.installation.orgId,
-              vm0UserId: resolved.connection.vm0UserId,
-              composeId: resolved.composeId,
-              agentLabel: resolved.agent.displayName ?? resolved.agent.name,
-            }),
+            (async () => {
+              await set(postPreDispatchErrorReply$, {
+                db: message.db,
+                client: resolved.client,
+                channelId: message.channelId,
+                threadTs: resolved.threadTs,
+                errorText:
+                  result.response ??
+                  "Sorry, an error occurred. Please try again.",
+                orgId: resolved.installation.orgId,
+                vm0UserId: resolved.connection.vm0UserId,
+                composeId: resolved.composeId,
+                agentLabel: resolved.agent.displayName ?? resolved.agent.name,
+              });
+            })(),
           ]);
       await clearSlackThreadStatusBestEffort({
         client: resolved.client,
