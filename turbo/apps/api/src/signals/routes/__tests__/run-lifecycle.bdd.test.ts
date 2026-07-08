@@ -3059,6 +3059,22 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
         [FeatureSwitchKey.CodexFrameworkForMinimax]: true,
       },
     );
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "claude-sonnet-4-6",
+        isDefault: true,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+        modelProviderId: null,
+      },
+      {
+        model: "MiniMax-M3",
+        isDefault: false,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+        modelProviderId: null,
+      },
+    ]);
 
     const sent = await chat.requestSendMessage(
       actor,
