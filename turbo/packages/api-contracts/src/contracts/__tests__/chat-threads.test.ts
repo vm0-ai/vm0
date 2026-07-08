@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import {
   artifactItemSchema,
   artifactsContract,
-  artifactsListQuerySchema,
   artifactsListResponseSchema,
   generationTemplateRequestSchema,
 } from "../chat-threads";
@@ -87,7 +86,7 @@ describe("chat thread generation template contract", () => {
 });
 
 describe("artifacts contract", () => {
-  it("exposes an org-level generated artifacts list route", () => {
+  it("exposes an org-level bulk generated artifacts route", () => {
     expect(artifactsContract.list.method).toBe("GET");
     expect(artifactsContract.list.path).toBe("/api/zero/artifacts");
   });
@@ -148,39 +147,10 @@ describe("artifacts contract", () => {
     expect(parsed.success).toBe(false);
   });
 
-  it("parses list query filters with a default limit", () => {
-    const parsed = artifactsListQuerySchema.safeParse({
-      agentId: "agent-1",
-      query: " launch ",
-      artifactKind: "presentation-html",
-      cursor: "cursor-1",
-    });
-
-    expect(parsed.success).toBe(true);
-    if (!parsed.success) {
-      throw new Error("Expected artifacts list query to parse");
-    }
-    expect(parsed.data).toEqual({
-      agentId: "agent-1",
-      query: "launch",
-      artifactKind: "presentation-html",
-      cursor: "cursor-1",
-      limit: 50,
-    });
-  });
-
-  it("rejects unsupported artifact kind filters", () => {
-    const parsed = artifactsListQuerySchema.safeParse({
-      artifactKind: "plain-upload",
-    });
-
-    expect(parsed.success).toBe(false);
-  });
-
-  it("accepts paginated list responses", () => {
+  it("accepts a bulk list response", () => {
     const parsed = artifactsListResponseSchema.safeParse({
       artifacts: [],
-      nextCursor: null,
+      truncated: false,
     });
 
     expect(parsed.success).toBe(true);

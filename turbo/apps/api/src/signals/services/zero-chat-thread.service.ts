@@ -71,7 +71,6 @@ import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
 import { excludeGoalMarkerCondition } from "./zero-chat-goal-marker.service";
 import { cancelRun$, type CancelRunResult } from "./zero-run-cancel.service";
 import { buildWorkflowScheduleTriggerBrief } from "./zero-workflow-trigger-brief.service";
-import { safeJsonParse } from "../utils";
 
 export { insertAssistantEventMessages$ };
 
@@ -126,20 +125,6 @@ type ChatMessageRow = {
   readonly workflowTriggerTimezone: string | null;
   readonly workflowTriggerUserTimezone: string | null;
 };
-
-interface ArtifactListCursor {
-  readonly createdAt: Date;
-  readonly rowId: string;
-}
-
-interface EncodedArtifactListCursor {
-  readonly createdAt: string;
-  readonly rowId: string;
-}
-
-type DecodeArtifactListCursorResult =
-  | { readonly ok: true; readonly cursor?: ArtifactListCursor }
-  | { readonly ok: false };
 
 type ArtifactListSqlRow = Record<string, unknown> & {
   readonly row_id: string;
@@ -398,45 +383,6 @@ function escapeLikePattern(value: string): string {
     .replace(/\\/g, String.raw`\\`)
     .replace(/%/g, String.raw`\%`)
     .replace(/_/g, String.raw`\_`);
-}
-
-const artifactListCursorSchema = z.object({
-  createdAt: z.string().datetime(),
-  rowId: z.string().uuid(),
-});
-
-export function decodeArtifactListCursor(
-  value: string | undefined,
-): DecodeArtifactListCursorResult {
-  if (!value) {
-    return { ok: true };
-  }
-
-  const decoded = safeJsonParse(
-    Buffer.from(value, "base64url").toString("utf8"),
-  );
-  if (decoded === undefined) {
-    return { ok: false };
-  }
-  const parsed = artifactListCursorSchema.safeParse(decoded);
-  if (!parsed.success) {
-    return { ok: false };
-  }
-
-  const createdAt = new Date(parsed.data.createdAt);
-  if (Number.isNaN(createdAt.getTime())) {
-    return { ok: false };
-  }
-
-  return { ok: true, cursor: { createdAt, rowId: parsed.data.rowId } };
-}
-
-function encodeArtifactListCursor(row: ArtifactListSqlRow): string {
-  const value: EncodedArtifactListCursor = {
-    createdAt: artifactRowCreatedAt(row).toISOString(),
-    rowId: row.row_id,
-  };
-  return Buffer.from(JSON.stringify(value), "utf8").toString("base64url");
 }
 
 function parseHostedArtifactKind(
@@ -1040,38 +986,16 @@ function toArtifactItem(row: ArtifactListSqlRow): ArtifactItem {
   };
 }
 
-function artifactSearchCondition(query: string | undefined): SQL | undefined {
-  if (!query) {
-    return undefined;
-  }
-  const pattern = `%${escapeLikePattern(query)}%`;
-  return sql<boolean>`(
-    COALESCE(${runUploadedFiles.filename}, '') ILIKE ${pattern}
-    OR COALESCE(${runUploadedFiles.contentType}, '') ILIKE ${pattern}
-    OR COALESCE(${runUploadedFiles.metadata}->>'artifactKind', '') ILIKE ${pattern}
-  )`;
-}
-
-function artifactCursorCondition(cursor: ArtifactListCursor | undefined): SQL {
-  if (!cursor) {
-    return sql``;
-  }
-  return sql`WHERE (created_at, row_id) < (${cursor.createdAt}::timestamp, ${cursor.rowId}::uuid)`;
-}
+const ARTIFACTS_BULK_LIMIT = 10_000;
 
 interface ZeroArtifactsArgs {
   readonly userId: string;
   readonly orgId: string;
-  readonly agentId?: string;
-  readonly query?: string;
-  readonly artifactKind?: HostedArtifactKind;
-  readonly cursor?: ArtifactListCursor;
-  readonly limit: number;
 }
 
 interface ZeroArtifactsResult {
   readonly artifacts: readonly ArtifactItem[];
-  readonly nextCursor: string | null;
+  readonly truncated: boolean;
 }
 
 export const zeroArtifacts$ = command(
@@ -1099,18 +1023,6 @@ export const zeroArtifacts$ = command(
         OR ${runUploadedFiles.metadata}->>'artifactKind' IN ('hosted-site', 'presentation-html')
       )`,
     ];
-    if (args.agentId) {
-      conditions.push(sql`${zeroAgents.id} = ${args.agentId}`);
-    }
-    if (args.artifactKind) {
-      conditions.push(
-        sql`${runUploadedFiles.metadata}->>'artifactKind' = ${args.artifactKind}`,
-      );
-    }
-    const searchCondition = artifactSearchCondition(args.query);
-    if (searchCondition) {
-      conditions.push(searchCondition);
-    }
 
     const rows = await db.execute<ArtifactListSqlRow>(sql`
       WITH scoped_artifacts AS (
@@ -1157,21 +1069,19 @@ export const zeroArtifacts$ = command(
       )
       SELECT *
       FROM deduped_artifacts
-      ${artifactCursorCondition(args.cursor)}
       ORDER BY created_at DESC, row_id DESC
-      LIMIT ${args.limit + 1}
+      LIMIT ${ARTIFACTS_BULK_LIMIT + 1}
     `);
     signal.throwIfAborted();
 
-    const pageRows = rows.rows.slice(0, args.limit);
-    const lastRow = pageRows.at(-1);
+    const truncated = rows.rows.length > ARTIFACTS_BULK_LIMIT;
+    const pageRows = truncated
+      ? rows.rows.slice(0, ARTIFACTS_BULK_LIMIT)
+      : rows.rows;
 
     return {
       artifacts: pageRows.map(toArtifactItem),
-      nextCursor:
-        rows.rows.length > args.limit && lastRow
-          ? encodeArtifactListCursor(lastRow)
-          : null,
+      truncated,
     };
   },
 );
