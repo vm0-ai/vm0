@@ -259,6 +259,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.RealAgentInPreview]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Send preview chat runs through real agent CLIs instead of preview mock runners.",
+    enabled: false,
+  },
   [FeatureSwitchKey.ComposerUploadPopover]: {
     maintainer: "bingjie@vm0.ai",
     description:

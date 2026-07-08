@@ -118,8 +118,7 @@ interface NormalSendBody {
   readonly attachFiles?: AttachFile[];
   readonly computerUseHostId?: string | null;
   readonly clientMessageId?: string;
-  readonly debugNoMockClaude?: boolean;
-  readonly debugNoMockCodex?: boolean;
+  readonly realAgentInPreview?: boolean;
   readonly revokesMessageId?: string;
 }
 
@@ -220,6 +219,7 @@ interface PreparedNormalSend {
   readonly persistedExplicitSelection: boolean;
   readonly initialThinkingEnabled: boolean;
   readonly codexFastModeEnabled: boolean;
+  readonly realAgentInPreviewEnabled: boolean;
 }
 
 function shouldTouchThreadSortFromNormalSend(
@@ -236,6 +236,7 @@ function shouldTouchThreadSortFromNormalSend(
 interface NormalSendFeatureSwitches {
   readonly codexFastModeEnabled: boolean;
   readonly websiteTemplatesEnabled: boolean;
+  readonly realAgentInPreviewEnabled: boolean;
 }
 
 interface ResolvedComputerUseHostGrant {
@@ -1279,6 +1280,10 @@ async function resolveNormalSendFeatureSwitches(
     ),
     websiteTemplatesEnabled: isFeatureEnabled(
       FeatureSwitchKey.WebsiteTemplates,
+      context,
+    ),
+    realAgentInPreviewEnabled: isFeatureEnabled(
+      FeatureSwitchKey.RealAgentInPreview,
       context,
     ),
   };
@@ -2352,6 +2357,7 @@ const prepareNormalSend$ = command(
       persistedExplicitSelection,
       initialThinkingEnabled: args.zeroPreCreateSource === undefined,
       codexFastModeEnabled: featureSwitches.codexFastModeEnabled,
+      realAgentInPreviewEnabled: featureSwitches.realAgentInPreviewEnabled,
     };
   },
 );
@@ -2767,8 +2773,9 @@ function buildCreateZeroRunArgs(params: {
       ...(providerAdmission.effectiveModelProvider
         ? { modelProvider: providerAdmission.effectiveModelProvider }
         : {}),
-      debugNoMockClaude: args.body.debugNoMockClaude,
-      debugNoMockCodex: args.body.debugNoMockCodex,
+      ...(args.body.realAgentInPreview && prepared.realAgentInPreviewEnabled
+        ? { realAgentInPreview: true }
+        : {}),
     },
     triggerSource: "web" as const,
     dispatchFailedCallbacks: dispatchFailedRunCallbacks,

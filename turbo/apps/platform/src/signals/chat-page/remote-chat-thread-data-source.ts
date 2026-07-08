@@ -157,6 +157,7 @@ const appendQueuedMessage$ = command(
       generationTemplate,
       computerUseHostId,
       runOptions,
+      realAgentInPreview,
     }: AppendQueuedMessageArgs,
     signal: AbortSignal,
   ) => {
@@ -172,6 +173,7 @@ const appendQueuedMessage$ = command(
           chatThreadSortEventId,
           generationTemplate,
           ...(runOptions ? { runOptions } : {}),
+          ...(realAgentInPreview ? { realAgentInPreview: true } : {}),
           ...(computerUseHostId === undefined ? {} : { computerUseHostId }),
           attachFiles: attachments ?? undefined,
         },
