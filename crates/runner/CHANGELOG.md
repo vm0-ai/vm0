@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.139.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.139.3...runner-rs-v0.139.4) (2026-07-08)
+
+
+### Documentation
+
+* **runner:** document network policy refresh safety contract ([#20695](https://github.com/vm0-ai/vm0/issues/20695)) ([ac6d18c](https://github.com/vm0-ai/vm0/commit/ac6d18c9b3733f429fa1fe3805100d4bfb752793))
+
+
+### Refactoring
+
+* **mitm-addon:** extract upstream admission owner ([#20677](https://github.com/vm0-ai/vm0/issues/20677)) ([fedd3e4](https://github.com/vm0-ai/vm0/commit/fedd3e4cd6a13c016658f0d973ceb531c80f6f7d))
+
 ## [0.139.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.139.2...runner-rs-v0.139.3) (2026-07-08)
 
 ## [0.139.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.139.1...runner-rs-v0.139.2) (2026-07-08)

@@ -81,9 +81,9 @@ const memoryRecallRelationshipSchema = z.object({
     primaryEmail: z.string().nullable(),
     domain: z.string().nullable(),
   }),
-  relationshipType: z.string(),
-  status: z.enum(["active", "quiet", "archived"]),
-  summary: z.string(),
+  relationshipType: z.string().nullable(),
+  status: z.enum(["active", "quiet", "archived"]).nullable(),
+  summary: z.string().nullable(),
   lastInteractionAt: z.string().nullable(),
 });
 

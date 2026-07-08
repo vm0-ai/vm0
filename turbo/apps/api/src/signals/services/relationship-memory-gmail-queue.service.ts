@@ -48,8 +48,6 @@ export interface RelationshipTarget {
   readonly displayName: string;
   readonly primaryEmail: string | null;
   readonly domain: string | null;
-  readonly relationshipType: string;
-  readonly fallbackSummary: string;
 }
 
 function normalizeEmail(value: string): string {
@@ -114,10 +112,6 @@ export function relationshipTargets(
       continue;
     }
 
-    const personSummary =
-      message.direction === "sent"
-        ? `${address.displayName} received recent Gmail messages from the user.`
-        : `${address.displayName} has recent Gmail interactions with the user.`;
     const organizationName = displayNameFromDomain(address.domain);
 
     targets.set(`person:${address.email}`, {
@@ -126,8 +120,6 @@ export function relationshipTargets(
       displayName: address.displayName,
       primaryEmail: address.email,
       domain: address.domain,
-      relationshipType: "External contact",
-      fallbackSummary: personSummary,
     });
     targets.set(`organization:${address.domain}`, {
       type: "organization",
@@ -135,8 +127,6 @@ export function relationshipTargets(
       displayName: organizationName,
       primaryEmail: null,
       domain: address.domain,
-      relationshipType: "Organization",
-      fallbackSummary: `${organizationName} appears in recent Gmail interactions.`,
     });
   }
 

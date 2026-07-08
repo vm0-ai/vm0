@@ -1,5 +1,21 @@
 # Changelog
 
+## [8.415.0](https://github.com/vm0-ai/vm0/compare/core-v8.414.8...core-v8.415.0) (2026-07-08)
+
+
+### Features
+
+* enable playstation connector for all users ([#20693](https://github.com/vm0-ai/vm0/issues/20693)) ([78572ef](https://github.com/vm0-ai/vm0/commit/78572efdae6b293e07558df9cd1dd1ee72e29231))
+* load artifacts page from a bulk fetch cached in indexeddb ([#20601](https://github.com/vm0-ai/vm0/issues/20601)) ([854bb86](https://github.com/vm0-ai/vm0/commit/854bb867c952ecc0bbc6d9ae3c65c53c0da42d94))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.171.0
+    * @vm0/connectors bumped to 1.149.0
+
 ## [8.414.8](https://github.com/vm0-ai/vm0/compare/core-v8.414.7...core-v8.414.8) (2026-07-08)
 
 
