@@ -48,7 +48,7 @@ class _Client:
 
 
 class _ServerConnectData:
-    def __init__(self, *, client: _Client, server: _Server) -> None:
+    def __init__(self, *, client: object, server: _Server) -> None:
         self.client = client
         self.server = server
 
@@ -83,20 +83,22 @@ async def test_server_connect_retargets_credentialed_connector_host(tmp_path, mi
     assert binding.original_address == ("203.0.113.10", 443)
 
 
-async def test_server_connect_uses_tls_clienthello_sni_when_client_sni_is_empty(tmp_path, mitm_ctx):
+async def test_server_connect_uses_tls_clienthello_sni_when_client_sni_is_empty(
+    tmp_path,
+    mitm_ctx,
+    make_tls_data,
+):
     reg_path = _write_github_firewall_registry(tmp_path)
-    data = _data(sni="")
-    upstream_admission.record_tls_admission(
-        data.client,
-        upstream_admission.TlsAdmission(
-            client_ip="10.200.0.5",
-            kind=upstream_admission.TLS_ADMISSION_VALID_REGISTRY_VM,
-            run_id="run-conn-1",
-            sni="api.github.com",
-        ),
+    tls_data = make_tls_data(
+        client_ip="10.200.0.5",
+        client_sni="",
+        sni="api.github.com",
+        server_connected=True,
     )
+    data = _ServerConnectData(client=tls_data.context.client, server=_Server())
 
     with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        mitm_addon.tls_clienthello(tls_data)
         await mitm_addon.server_connect(data)
 
     assert data.server.address == ("api.github.com", 443)
