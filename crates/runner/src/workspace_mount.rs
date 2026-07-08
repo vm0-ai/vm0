@@ -315,6 +315,53 @@ exit 0
         );
     }
 
+    fn write_trailing_newline_child_mount_fake_umount(
+        fake_bin: &Path,
+        workspace_dir: &Path,
+        expected_child_mount: &Path,
+        log_path: &Path,
+        count_path: &Path,
+        child_unmounted_marker_path: &Path,
+    ) {
+        let workspace_dir = quote_shell_arg(workspace_dir.to_str().unwrap());
+        let expected_child_mount = quote_shell_arg(expected_child_mount.to_str().unwrap());
+        let log_path = quote_shell_arg(log_path.to_str().unwrap());
+        let count_path = quote_shell_arg(count_path.to_str().unwrap());
+        let child_unmounted_marker_path =
+            quote_shell_arg(child_unmounted_marker_path.to_str().unwrap());
+        write_executable(
+            &fake_bin.join("umount"),
+            &format!(
+                r#"#!/bin/sh
+set -eu
+workspace_dir={workspace_dir}
+expected_child_mount={expected_child_mount}
+target=$2
+printf 'umount target=%s args=%s\n' "$target" "$*" >> {log_path}
+if [ "$target" = "$expected_child_mount" ]; then
+  printf unmounted > {child_unmounted_marker_path}
+  exit 0
+fi
+if [ "$target" != "$workspace_dir" ]; then
+  echo "unexpected child mount target" >&2
+  exit 33
+fi
+count=0
+if [ -f {count_path} ]; then
+  count="$(cat {count_path})"
+fi
+count=$((count + 1))
+printf '%s\n' "$count" > {count_path}
+if [ -f {child_unmounted_marker_path} ] && [ "$count" -ge 2 ]; then
+  exit 0
+fi
+echo "target is busy" >&2
+exit 32
+"#
+            ),
+        );
+    }
+
     fn write_child_mount_failure_parent_success_fake_umount(
         fake_bin: &Path,
         workspace_dir: &Path,
@@ -929,6 +976,56 @@ exit 0
 
     #[test]
     #[cfg(target_os = "linux")]
+    fn unmount_script_preserves_trailing_newline_in_mountinfo_paths() {
+        let temp = tempfile::tempdir().unwrap();
+        let workspace_dir = temp.path().join("workspace");
+        let child_mount = workspace_dir.join("child\n");
+        let workspace_device = temp.path().join("vdb");
+        let fake_bin = temp.path().join("bin");
+        let log_path = temp.path().join("calls.log");
+        let count_path = temp.path().join("umount-count");
+        let mountinfo_path = temp.path().join("mountinfo");
+        let child_unmounted_marker_path = temp.path().join("child-unmounted");
+        fs::create_dir_all(&child_mount).unwrap();
+        fs::create_dir(&fake_bin).unwrap();
+        write_fake_mountpoint(&fake_bin, &workspace_dir, &workspace_device);
+        write_fake_sync(&fake_bin, &log_path);
+        write_trailing_newline_child_mount_fake_umount(
+            &fake_bin,
+            &workspace_dir,
+            &child_mount,
+            &log_path,
+            &count_path,
+            &child_unmounted_marker_path,
+        );
+        write_mountinfo(
+            &mountinfo_path,
+            &[
+                mountinfo_line(100, 1, "123", "/", &workspace_dir),
+                mountinfo_line(101, 100, "456", "/", &child_mount),
+            ],
+        );
+
+        let output = run_unmount_script_with_mountinfo(
+            &workspace_dir,
+            &workspace_device,
+            &fake_bin,
+            Some(&mountinfo_path),
+        );
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+
+        assert!(output.status.success(), "stderr={stderr} stdout={stdout}");
+        assert_eq!(
+            fs::read_to_string(child_unmounted_marker_path).unwrap(),
+            "unmounted"
+        );
+        assert!(!stderr.contains("unexpected child mount target"));
+        assert!(!stderr.contains("workspace mount diagnostics"));
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
     fn unmount_script_skips_child_mounts_with_symlink_components() {
         let temp = tempfile::tempdir().unwrap();
         let workspace_dir = temp.path().join("workspace");
@@ -1100,6 +1197,7 @@ exit 0
         assert!(cmd.contains("scan_workspace_mountinfo_refs()"));
         assert!(cmd.contains("scan_workspace_child_mountpoints()"));
         assert!(cmd.contains("decode_mountinfo_path()"));
+        assert!(cmd.contains("decode_mountinfo_path_to_result()"));
         assert!(cmd.contains("is_safe_workspace_child_mountpoint_path()"));
         assert!(cmd.contains("\"\"|\".\"|\"..\") return 1 ;;"));
         assert!(cmd.contains("cleanup_workspace_child_mounts()"));

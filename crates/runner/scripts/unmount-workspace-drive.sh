@@ -145,6 +145,17 @@ decode_mountinfo_path() {
   }' "$1"
 }
 
+decode_mountinfo_path_to_result() {
+  decoded_mountinfo_path_result="$(
+    set +e
+    decode_mountinfo_path "$1"
+    decode_mountinfo_status=$?
+    printf .
+    exit "$decode_mountinfo_status"
+  )"
+  decoded_mountinfo_path_result=${decoded_mountinfo_path_result%.}
+}
+
 proc_uid() {
   stat -c %u "/proc/$1" 2>/dev/null || true
 }
@@ -221,7 +232,8 @@ scan_workspace_mountinfo_refs() {
 
   while IFS=' ' read -r mount_id parent_id mount_dev mount_root mount_point mount_options _rest; do
     [ -n "$mount_point" ] || continue
-    decoded_mount_point="$(decode_mountinfo_path "$mount_point")"
+    decode_mountinfo_path_to_result "$mount_point"
+    decoded_mount_point=$decoded_mountinfo_path_result
     category=
     if [ "$decoded_mount_point" = "$workspace_dir" ]; then
       category=workspace
@@ -241,7 +253,8 @@ scan_workspace_child_mountpoints() {
 
   while IFS=' ' read -r _mount_id _parent_id _mount_dev _mount_root mount_point _mount_options _rest; do
     [ -n "$mount_point" ] || continue
-    decoded_mount_point="$(decode_mountinfo_path "$mount_point")"
+    decode_mountinfo_path_to_result "$mount_point"
+    decoded_mount_point=$decoded_mountinfo_path_result
     is_workspace_child_mountpoint "$decoded_mount_point" || continue
     depth="$(printf '%s' "$decoded_mount_point" | tr -cd '/' | wc -c | tr -d ' ')"
     [ -n "$depth" ] || depth=0
@@ -432,8 +445,10 @@ log_workspace_mount_diagnostics() {
   while IFS="$tab" read -r category mount_id parent_id mount_dev mount_root mount_point mount_options; do
     count=$((count + 1))
     if [ "$count" -le "$WORKSPACE_MOUNT_DIAGNOSTIC_LIMIT" ]; then
-      mount_root="$(sanitize_log_value "$(decode_mountinfo_path "$mount_root")")"
-      mount_point="$(sanitize_log_value "$(decode_mountinfo_path "$mount_point")")"
+      decode_mountinfo_path_to_result "$mount_root"
+      mount_root="$(sanitize_log_value "$decoded_mountinfo_path_result")"
+      decode_mountinfo_path_to_result "$mount_point"
+      mount_point="$(sanitize_log_value "$decoded_mountinfo_path_result")"
       mount_options="$(sanitize_log_value "$mount_options")"
       printf 'workspace mount: category=%s id=%s parent=%s dev=%s root=%s mount=%s options=%s\n' \
         "$category" "$mount_id" "$parent_id" "$mount_dev" "$mount_root" "$mount_point" "$mount_options" >&2
@@ -453,7 +468,8 @@ cleanup_workspace_child_mounts() {
   while IFS= read -r encoded_child_mount; do
     [ -n "$encoded_child_mount" ] || continue
     count=$((count + 1))
-    child_mount="$(decode_mountinfo_path "$encoded_child_mount")"
+    decode_mountinfo_path_to_result "$encoded_child_mount"
+    child_mount=$decoded_mountinfo_path_result
     child_mount_log="$(sanitize_log_value "$child_mount")"
     if ! is_safe_workspace_child_mountpoint_path "$child_mount"; then
       failed_status=64
