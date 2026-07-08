@@ -88,10 +88,7 @@ describe("POST /api/zero/chat-threads/:id/model-selection", () => {
         headers: { authorization: `Bearer ${token}` },
         params: { id: fixture.threadId },
         body: {
-          modelSelection: {
-            modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-            selectedModel: "claude-sonnet-5",
-          },
+          model: "claude-sonnet-5",
         },
       }),
       [204],

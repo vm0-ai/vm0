@@ -176,6 +176,7 @@ type BddSendMessageBody =
       readonly threadId?: string;
       readonly clientThreadId?: string;
       readonly modelProvider?: string;
+      readonly model?: string;
       readonly modelSelection?: ModelSelectionRequest | null;
       readonly runOptions?: ChatRunOptionsRequest;
       readonly generationTemplate?: GenerationTemplateRequest;
@@ -459,6 +460,7 @@ export function createChatFilesBddApi(context: TestContext) {
         readonly title?: string;
         readonly clientThreadId?: string;
         readonly eventId?: string;
+        readonly model?: string;
         readonly modelSelection?: ModelSelectionRequest;
       },
     ): Promise<{ readonly id: string; readonly title: string | null }> {
@@ -467,8 +469,9 @@ export function createChatFilesBddApi(context: TestContext) {
           headers: authenticate(context, actor),
           body: {
             ...body,
-            modelSelection:
-              body.modelSelection ?? defaultCreateThreadModelSelection(),
+            ...(body.model === undefined && body.modelSelection === undefined
+              ? { model: defaultCreateThreadModelSelection().selectedModel }
+              : {}),
           },
         }),
         [201],
@@ -483,6 +486,7 @@ export function createChatFilesBddApi(context: TestContext) {
         readonly title?: string;
         readonly clientThreadId?: string;
         readonly eventId?: string;
+        readonly model?: string;
         readonly modelSelection?: ModelSelectionRequest;
       },
       statuses: readonly (201 | 401 | 402 | 404)[],
@@ -492,8 +496,9 @@ export function createChatFilesBddApi(context: TestContext) {
           headers: authenticate(context, actor),
           body: {
             ...body,
-            modelSelection:
-              body.modelSelection ?? defaultCreateThreadModelSelection(),
+            ...(body.model === undefined && body.modelSelection === undefined
+              ? { model: defaultCreateThreadModelSelection().selectedModel }
+              : {}),
           },
         }),
         statuses,
@@ -855,7 +860,12 @@ export function createChatFilesBddApi(context: TestContext) {
           headers: authenticate(context, actor),
           params: { id: threadId },
           body: {
-            modelSelection,
+            ...(modelSelection === null
+              ? { model: null }
+              : modelSelection?.modelProviderId ===
+                  MODEL_FIRST_SELECTION_PROVIDER_ID
+                ? { model: modelSelection.selectedModel }
+                : { modelSelection }),
             codexServiceTier: options?.codexServiceTier,
             eventId: options?.eventId,
           },
@@ -879,7 +889,12 @@ export function createChatFilesBddApi(context: TestContext) {
           headers: authenticate(context, actor),
           params: { id: threadId },
           body: {
-            modelSelection,
+            ...(modelSelection === null
+              ? { model: null }
+              : modelSelection?.modelProviderId ===
+                  MODEL_FIRST_SELECTION_PROVIDER_ID
+                ? { model: modelSelection.selectedModel }
+                : { modelSelection }),
             codexServiceTier: options?.codexServiceTier,
             eventId: options?.eventId,
           },
@@ -1199,12 +1214,12 @@ export function createChatFilesBddApi(context: TestContext) {
       const requestBody =
         "prompt" in body
           ? (() => {
-              const modelSelection =
-                body.modelSelection !== undefined
-                  ? body.modelSelection
-                  : body.threadId === undefined
-                    ? defaultCreateThreadModelSelection()
-                    : undefined;
+              const defaultModel =
+                body.threadId === undefined &&
+                body.model === undefined &&
+                body.modelSelection === undefined
+                  ? defaultCreateThreadModelSelection().selectedModel
+                  : undefined;
               return {
                 agentId: body.agentId,
                 prompt: body.prompt,
@@ -1217,7 +1232,14 @@ export function createChatFilesBddApi(context: TestContext) {
                 ...(body.modelProvider === undefined
                   ? {}
                   : { modelProvider: body.modelProvider }),
-                ...(modelSelection === undefined ? {} : { modelSelection }),
+                ...(body.model === undefined
+                  ? defaultModel === undefined
+                    ? {}
+                    : { model: defaultModel }
+                  : { model: body.model }),
+                ...(body.modelSelection === undefined
+                  ? {}
+                  : { modelSelection: body.modelSelection }),
                 ...(body.runOptions === undefined
                   ? {}
                   : { runOptions: body.runOptions }),

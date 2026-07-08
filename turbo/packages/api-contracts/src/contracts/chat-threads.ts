@@ -380,10 +380,22 @@ const chatThreadDraftSchema = z.object({
   draftAttachments: z.array(persistedAttachmentSchema).nullable(),
 });
 
+const selectedModelRequestSchema = z
+  .string()
+  .min(1)
+  .superRefine((value, ctx) => {
+    if (!isSupportedRunModel(value)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Invalid model selection",
+      });
+    }
+  });
+
 /**
- * Per-run model selection from the composer. Both fields are required when
- * the object is present; pass `null` to clear the thread's override and fall
- * back to the agent/org default; omit to leave the thread's override unchanged.
+ * Legacy per-run model selection from clients that still send an explicit
+ * provider pin. New clients should send `model` and let the API resolve the
+ * provider through org policy.
  */
 const modelSelectionRequestSchema = z
   .object({
@@ -399,6 +411,74 @@ const modelSelectionRequestSchema = z
         code: z.ZodIssueCode.custom,
         path: ["selectedModel"],
         message: "Invalid model selection",
+      });
+    }
+  });
+
+function rejectConflictingModelFields(
+  value: {
+    readonly model?: string | null;
+    readonly modelSelection?: unknown;
+  },
+  ctx: z.RefinementCtx,
+): void {
+  if (value.model !== undefined && value.modelSelection !== undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["modelSelection"],
+      message: "Use model instead of modelSelection",
+    });
+  }
+}
+
+const chatThreadCreateBodySchema = z
+  .object({
+    agentId: z.string().min(1),
+    clientThreadId: z.string().uuid().optional(),
+    eventId: chatThreadEventIdSchema.optional(),
+    /**
+     * Selected model id. The API resolves the effective model provider from
+     * org policy and available credentials.
+     */
+    model: selectedModelRequestSchema.optional(),
+    /**
+     * Backward-compatible provider pin. Prefer `model`.
+     */
+    modelSelection: modelSelectionRequestSchema.optional(),
+    title: z.string().optional(),
+  })
+  .superRefine((value, ctx) => {
+    rejectConflictingModelFields(value, ctx);
+    if (value.model === undefined && value.modelSelection === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["model"],
+        message: "A model selection is required",
+      });
+    }
+  });
+
+const chatThreadModelSelectionUpdateBodySchema = z
+  .object({
+    /**
+     * Selected model id, or null to clear the thread's selected model.
+     */
+    model: selectedModelRequestSchema.nullable().optional(),
+    /**
+     * Backward-compatible provider pin, or null to clear the thread's selected
+     * model. Prefer `model`.
+     */
+    modelSelection: modelSelectionRequestSchema.nullable().optional(),
+    codexServiceTier: codexServiceTierSchema.nullable().optional(),
+    eventId: chatThreadEventIdSchema.optional(),
+  })
+  .superRefine((value, ctx) => {
+    rejectConflictingModelFields(value, ctx);
+    if (value.model === undefined && value.modelSelection === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["model"],
+        message: "A model selection is required",
       });
     }
   });
@@ -460,13 +540,7 @@ export const chatThreadsContract = c.router({
     method: "POST",
     path: "/api/zero/chat-threads",
     headers: authHeadersSchema,
-    body: z.object({
-      agentId: z.string().min(1),
-      clientThreadId: z.string().uuid().optional(),
-      eventId: chatThreadEventIdSchema.optional(),
-      modelSelection: modelSelectionRequestSchema,
-      title: z.string().optional(),
-    }),
+    body: chatThreadCreateBodySchema,
     responses: {
       201: z.object({
         id: z.string(),
@@ -768,11 +842,7 @@ export const chatThreadModelSelectionContract = c.router({
     path: "/api/zero/chat-threads/:id/model-selection",
     headers: authHeadersSchema,
     pathParams: chatThreadIdPathParamsSchema,
-    body: z.object({
-      modelSelection: modelSelectionRequestSchema.nullable(),
-      codexServiceTier: codexServiceTierSchema.nullable().optional(),
-      eventId: chatThreadEventIdSchema.optional(),
-    }),
+    body: chatThreadModelSelectionUpdateBodySchema,
     responses: {
       204: c.noBody(),
       400: apiErrorSchema,
@@ -830,12 +900,15 @@ export const chatMessagesContract = c.router({
         chatThreadSortEventId: chatThreadEventIdSchema.optional(),
         modelProvider: z.string().optional(),
         /**
-         * Per-run model override. This does not mutate the thread's selected
-         * model; thread model changes are persisted through
-         * `chatThreadModelSelectionContract.update`.
+         * Selected model id. The API resolves the effective provider from org
+         * policy and available credentials.
+         */
+        model: selectedModelRequestSchema.optional(),
+        /**
+         * Backward-compatible per-run provider pin. Prefer `model`.
          *
-         * When omitted, the run resolves from the thread's persisted
-         * `selected_model`.
+         * When both fields are omitted, the run resolves from the thread's
+         * persisted `selected_model`.
          */
         modelSelection: modelSelectionRequestSchema.nullable().optional(),
         runOptions: chatRunOptionsRequestSchema.optional(),
@@ -869,6 +942,7 @@ export const chatMessagesContract = c.router({
         chatThreadEventId: z.undefined().optional(),
         chatThreadSortEventId: z.undefined().optional(),
         modelProvider: z.undefined().optional(),
+        model: z.undefined().optional(),
         modelSelection: z.undefined().optional(),
         runOptions: z.undefined().optional(),
         generationTemplate: z.undefined().optional(),
@@ -889,6 +963,7 @@ export const chatMessagesContract = c.router({
         chatThreadEventId: z.undefined().optional(),
         chatThreadSortEventId: z.undefined().optional(),
         modelProvider: z.undefined().optional(),
+        model: z.undefined().optional(),
         modelSelection: z.undefined().optional(),
         runOptions: z.undefined().optional(),
         generationTemplate: z.undefined().optional(),

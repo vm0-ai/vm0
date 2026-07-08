@@ -106,6 +106,7 @@ interface NormalSendBody {
   readonly chatThreadEventId?: string;
   readonly chatThreadSortEventId?: string;
   readonly modelProvider?: string;
+  readonly model?: string;
   readonly modelSelection?: {
     readonly modelProviderId: string;
     readonly selectedModel: string;
@@ -462,6 +463,41 @@ function isInterruptSendBody(body: SendBody): body is InterruptSendBody {
 
 function isNormalSendBody(body: SendBody): body is NormalSendBody {
   return "prompt" in body && body.prompt !== undefined;
+}
+
+function modelFirstSelection(
+  selectedModel: string,
+): NonNullable<NormalSendBody["modelSelection"]> {
+  return {
+    modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+    selectedModel,
+  };
+}
+
+function normalizeNormalSendBody(
+  body: NormalSendBody,
+):
+  | { readonly ok: true; readonly data: NormalSendBody }
+  | {
+      readonly ok: false;
+      readonly response: ReturnType<typeof badRequestMessage>;
+    } {
+  if (body.model !== undefined && body.modelSelection !== undefined) {
+    return {
+      ok: false,
+      response: badRequestMessage("Use model instead of modelSelection"),
+    };
+  }
+  if (body.model === undefined || body.modelSelection !== undefined) {
+    return { ok: true, data: body };
+  }
+  return {
+    ok: true,
+    data: {
+      ...body,
+      modelSelection: modelFirstSelection(body.model),
+    },
+  };
 }
 
 function hasAgentSessionId(
@@ -3039,13 +3075,17 @@ const sendChatMessageInner$ = command(
     if (!isNormalSendBody(body.data)) {
       return badRequestMessage("Prompt is required");
     }
+    const normalizedBody = normalizeNormalSendBody(body.data);
+    if (!normalizedBody.ok) {
+      return normalizedBody.response;
+    }
 
     const apiStartTime = now();
     const timing = new ApiDispatchTimingCollector();
     return await set(
       sendNormalMessage$,
       {
-        body: body.data,
+        body: normalizedBody.data,
         auth,
         userId: auth.userId,
         orgId: auth.orgId,

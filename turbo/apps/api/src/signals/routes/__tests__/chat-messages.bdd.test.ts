@@ -174,6 +174,7 @@ interface ChatRunSendBody {
   readonly threadId?: string;
   readonly clientThreadId?: string;
   readonly clientMessageId?: string;
+  readonly model?: string;
   readonly modelSelection?: ModelSelectionRequest;
   readonly runOptions?: ChatRunOptionsRequest;
   readonly generationTemplate?: GenerationTemplateRequest;
@@ -1860,10 +1861,7 @@ describe("CHAT-02: explicit provider pins", () => {
         agentId,
         prompt: "run codex fast with switch off",
         clientThreadId: switchOffThreadId,
-        modelSelection: {
-          modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-          selectedModel: "gpt-5.5",
-        },
+        model: "gpt-5.5",
         runOptions: { codexServiceTier: "fast" },
       },
       [400],
@@ -1881,10 +1879,7 @@ describe("CHAT-02: explicit provider pins", () => {
     const fast = await sendChatRun(actor, {
       agentId,
       prompt: "run codex fast",
-      modelSelection: {
-        modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-        selectedModel: "gpt-5.5",
-      },
+      model: "gpt-5.5",
       runOptions: { codexServiceTier: "fast" },
     });
     expect((await chat.readThread(actor, fast.threadId)).codexServiceTier).toBe(

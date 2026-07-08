@@ -1,18 +1,28 @@
 import { command } from "ccstate";
-import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
+import {
+  chatThreadsContract,
+  MODEL_FIRST_SELECTION_PROVIDER_ID,
+} from "@vm0/api-contracts/contracts/chat-threads";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import { writeDb$ } from "../external/db";
 import { publishThreadListChanged } from "../external/realtime";
-import { notFound } from "../../lib/error";
+import { badRequestMessage, notFound } from "../../lib/error";
 import { createChatThread$ } from "../services/zero-chat-thread.service";
 import { zeroComposeExists } from "../services/zero-compose-data.service";
 import { resolveModelSelectionPin } from "../services/zero-model-selection.service";
 import type { RouteEntry } from "../route-entry";
 
 const createBody$ = bodyResultOf(chatThreadsContract.create);
+
+function modelFirstSelection(selectedModel: string) {
+  return {
+    modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+    selectedModel,
+  };
+}
 
 const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
@@ -33,11 +43,18 @@ const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return notFound("Agent not found");
   }
 
+  const modelSelection =
+    body.data.modelSelection ??
+    (body.data.model ? modelFirstSelection(body.data.model) : undefined);
+  if (!modelSelection) {
+    return badRequestMessage("A model selection is required");
+  }
+
   const pin = await resolveModelSelectionPin({
     db: set(writeDb$),
     orgId: auth.orgId,
     userId: auth.userId,
-    modelSelection: body.data.modelSelection,
+    modelSelection,
   });
   signal.throwIfAborted();
   if ("status" in pin) {
