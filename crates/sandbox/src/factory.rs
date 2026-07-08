@@ -22,6 +22,20 @@ pub enum SandboxCreateStage {
     NbdCowCreate,
 }
 
+impl SandboxCreateStage {
+    /// All create stages in the stable order used by telemetry tests.
+    pub const ALL: [Self; 8] = [
+        Self::CowPoolAcquire,
+        Self::WorkspaceDirRename,
+        Self::WorkspaceDrivePrepare,
+        Self::WorkspaceSeedSparseCopy,
+        Self::WorkspaceFreshFormat,
+        Self::SockDirPrepare,
+        Self::NetnsAcquire,
+        Self::NbdCowCreate,
+    ];
+}
+
 /// Receives low-cardinality sandbox factory create stage timings.
 pub trait SandboxCreateObserver: Send {
     fn record_stage(&mut self, stage: SandboxCreateStage, duration: Duration, success: bool);

@@ -39,18 +39,7 @@ macro_rules! emit_success_summary_event {
     };
 }
 
-const SANDBOX_CREATE_STAGES: [SandboxCreateStage; 8] = [
-    SandboxCreateStage::CowPoolAcquire,
-    SandboxCreateStage::WorkspaceDirRename,
-    SandboxCreateStage::WorkspaceDrivePrepare,
-    SandboxCreateStage::WorkspaceSeedSparseCopy,
-    SandboxCreateStage::WorkspaceFreshFormat,
-    SandboxCreateStage::SockDirPrepare,
-    SandboxCreateStage::NetnsAcquire,
-    SandboxCreateStage::NbdCowCreate,
-];
-
-const SANDBOX_CREATE_STAGE_COUNT: usize = SANDBOX_CREATE_STAGES.len();
+const SANDBOX_CREATE_STAGE_COUNT: usize = SandboxCreateStage::ALL.len();
 
 fn sandbox_create_stage_name(stage: SandboxCreateStage) -> &'static str {
     match stage {
@@ -474,7 +463,7 @@ mod tests {
             .collect();
 
         assert_eq!(stage_fields.len(), SANDBOX_CREATE_STAGE_COUNT);
-        for stage in SANDBOX_CREATE_STAGES {
+        for stage in SandboxCreateStage::ALL {
             let Some((_, field)) = SUCCESS_SUMMARY_STAGE_FIELDS
                 .iter()
                 .find(|(candidate, _)| *candidate == stage)
@@ -621,7 +610,7 @@ mod tests {
                 "vm0/default".into(),
                 Some(&mut observer),
             );
-            for stage in SANDBOX_CREATE_STAGES {
+            for stage in SandboxCreateStage::ALL {
                 timing
                     .record_stage_result(stage, Instant::now(), Ok::<(), &str>(()))
                     .unwrap();

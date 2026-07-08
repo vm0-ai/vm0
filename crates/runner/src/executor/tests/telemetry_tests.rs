@@ -115,7 +115,7 @@ impl SandboxFactory for ObservedMockSandboxFactory {
         observer: Option<&mut dyn SandboxCreateObserver>,
     ) -> sandbox::Result<Box<dyn Sandbox>> {
         if let Some(observer) = observer {
-            for (index, stage) in SANDBOX_CREATE_STAGES.iter().copied().enumerate() {
+            for (index, stage) in SandboxCreateStage::ALL.iter().copied().enumerate() {
                 observer.record_stage(stage, Duration::from_millis(index as u64 + 1), true);
             }
         }
@@ -130,17 +130,6 @@ impl SandboxFactory for ObservedMockSandboxFactory {
         self.inner.shutdown().await;
     }
 }
-
-const SANDBOX_CREATE_STAGES: &[SandboxCreateStage] = &[
-    SandboxCreateStage::CowPoolAcquire,
-    SandboxCreateStage::WorkspaceDirRename,
-    SandboxCreateStage::WorkspaceDrivePrepare,
-    SandboxCreateStage::WorkspaceSeedSparseCopy,
-    SandboxCreateStage::WorkspaceFreshFormat,
-    SandboxCreateStage::SockDirPrepare,
-    SandboxCreateStage::NetnsAcquire,
-    SandboxCreateStage::NbdCowCreate,
-];
 
 const FRESH_SANDBOX_FACTORY_STAGE_ACTIONS: &[&str] = &[
     "runner_fresh_sandbox_factory_cow_pool_acquire",
