@@ -4,6 +4,8 @@ import {
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { agentSessions } from "@vm0/db/schema/agent-session";
+import { conversations } from "@vm0/db/schema/conversation";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { desc, eq } from "drizzle-orm";
 
@@ -12,11 +14,13 @@ import type { Db, ReadonlyDb } from "../external/db";
 interface IntegrationSessionModelSignature {
   readonly modelProvider: string | null;
   readonly selectedModel: string | null;
+  readonly cliAgentType: string | null;
 }
 
 interface IntegrationRunModelRoute {
   readonly modelProviderType: string | null | undefined;
   readonly selectedModel: string | null | undefined;
+  readonly cliAgentType: string;
 }
 
 function isKnownModelProvider(
@@ -33,6 +37,13 @@ function areIntegrationSessionModelsCompatible(
   previous: IntegrationSessionModelSignature,
   current: IntegrationRunModelRoute,
 ): boolean {
+  if (
+    previous.cliAgentType !== null &&
+    previous.cliAgentType !== current.cliAgentType
+  ) {
+    return false;
+  }
+
   if (
     isKnownModelProvider(previous.modelProvider) &&
     isKnownModelProvider(current.modelProviderType) &&
@@ -56,9 +67,12 @@ async function latestIntegrationSessionModelSignature(
     .select({
       modelProvider: zeroRuns.modelProvider,
       selectedModel: zeroRuns.selectedModel,
+      cliAgentType: conversations.cliAgentType,
     })
     .from(agentRuns)
     .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
+    .innerJoin(agentSessions, eq(agentSessions.id, agentRuns.sessionId))
+    .leftJoin(conversations, eq(conversations.id, agentSessions.conversationId))
     .where(eq(agentRuns.sessionId, sessionId))
     .orderBy(desc(agentRuns.createdAt))
     .limit(1);
