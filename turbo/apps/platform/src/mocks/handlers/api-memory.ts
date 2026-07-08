@@ -25,4 +25,14 @@ export const apiMemoryHandlers = [
   mockApi(zeroMemoryContract.get, ({ respond }) => {
     return respond(200, mockMemory);
   }),
+  mockApi(zeroMemoryContract.recall, ({ query, respond }) => {
+    return respond(200, { query: query.q, memories: [] });
+  }),
+  mockApi(zeroMemoryContract.context, ({ query, respond }) => {
+    return respond(200, {
+      query: query.q ?? null,
+      context: "",
+      memories: [],
+    });
+  }),
 ];

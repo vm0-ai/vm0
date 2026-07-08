@@ -2,6 +2,7 @@ import { screen, waitFor } from "@testing-library/react";
 import {
   zeroMemoryContract,
   type MemoryDetailResponse,
+  type MemoryRecallResponse,
   type MemorySourceDetailResponse,
   type MemorySourceListResponse,
   type SlackMemoryStatusResponse,
@@ -71,6 +72,16 @@ function getButtonWithText(text: string): HTMLElement {
   });
   if (!button) {
     throw new Error(`Could not find button with text: ${text}`);
+  }
+  return button;
+}
+
+function getNonTabButtonWithText(text: string): HTMLElement {
+  const button = queryAllByRoleFast("button").find((el) => {
+    return el.getAttribute("role") !== "tab" && el.textContent?.trim() === text;
+  });
+  if (!button) {
+    throw new Error(`Could not find non-tab button with text: ${text}`);
   }
   return button;
 }
@@ -560,6 +571,46 @@ function emptyRelationshipSearchPage(): RelationshipSearchResponse {
   };
 }
 
+function memoryRecallResponse(query: string): MemoryRecallResponse {
+  return {
+    query,
+    memories: [
+      {
+        id: "00000000-0000-4000-8000-000000000103",
+        kind: "open_loop",
+        text: "Send the security data-retention answer.",
+        confidence: 90,
+        lastSeenAt: "2026-07-02T12:00:00.000Z",
+        relationship: {
+          id: "00000000-0000-4000-8000-000000000101",
+          entity: {
+            id: "00000000-0000-4000-8000-000000000102",
+            type: "person",
+            displayName: "Alice Lee",
+            primaryEmail: "alice@acme.com",
+            domain: "acme.com",
+          },
+          relationshipType: "Customer champion",
+          status: "active",
+          summary: "Alice is waiting for the security review answer.",
+          lastInteractionAt: "2026-07-02T12:00:00.000Z",
+        },
+        sources: [
+          {
+            id: "00000000-0000-4000-8000-000000000104",
+            provider: "gmail",
+            externalId: "gmail-message-1:open_loop:security",
+            threadId: "thread-1",
+            messageId: "gmail-message-1",
+            quote: "Can you send the retention answer?",
+            occurredAt: "2026-07-02T12:00:00.000Z",
+          },
+        ],
+      },
+    ],
+  };
+}
+
 function relationshipRecord(
   index: number,
   displayName: string,
@@ -700,6 +751,11 @@ describe("memory page", () => {
         return tab.textContent?.trim() === "Relationships";
       }),
     ).toBeFalsy();
+    expect(
+      queryAllByRoleFast("tab").some((tab) => {
+        return tab.textContent?.trim() === "Recall";
+      }),
+    ).toBeFalsy();
   });
 
   it("shows relationship memory when the relationship switch is enabled", async () => {
@@ -779,6 +835,55 @@ describe("memory page", () => {
     expect(
       screen.getByText("Share the partner pricing follow-up."),
     ).toBeInTheDocument();
+  });
+
+  it("recalls structured memory from the recall tab", async () => {
+    context.mocks.api(zeroMemoryActivityContract.get, ({ query, respond }) => {
+      expect(query.limit).toBe(7);
+      return respond(200, memoryActivityPage(query.cursor));
+    });
+    context.mocks.api(zeroMemoryContract.get, ({ respond }) => {
+      return respond(200, memoryDetailResponse());
+    });
+    const recallQueries: string[] = [];
+    context.mocks.api(zeroMemoryContract.recall, ({ query, respond }) => {
+      recallQueries.push(query.q);
+      expect(query.limit).toBe(10);
+      expect(query.kind).toBeUndefined();
+      return respond(200, memoryRecallResponse(query.q));
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/memory",
+      featureSwitches: {
+        [FeatureSwitchKey.MemoryViewer]: true,
+        [FeatureSwitchKey.RelationshipMemory]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("launch preferences")).toBeInTheDocument();
+    });
+
+    click(getTabByText("Recall"));
+    await fill(
+      screen.getByPlaceholderText("Ask what Zero should remember"),
+      "security review",
+    );
+    click(getNonTabButtonWithText("Recall"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Send the security data-retention answer."),
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByText(/Alice Lee/)).toBeInTheDocument();
+    expect(screen.getByText("Evidence refs")).toBeInTheDocument();
+    expect(
+      screen.getByText("gmail-message-1:open_loop:security"),
+    ).toBeInTheDocument();
+    expect(recallQueries).toStrictEqual(["security review"]);
   });
 
   it("shows Slack structured sources and starts Slack backfill", async () => {
