@@ -157,7 +157,7 @@ async function insertGraphEntityAliases(
               },
             ]
           : []),
-        ...(entity.domain
+        ...(entity.type === "organization" && entity.domain
           ? [
               {
                 orgId: body.fixture.org_id,

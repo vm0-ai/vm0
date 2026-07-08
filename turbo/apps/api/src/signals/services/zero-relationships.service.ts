@@ -93,6 +93,11 @@ function parseProfileDate(value: string | null): Date | null {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+function emailDomain(value: string | null): string | null {
+  const domain = value?.split("@")[1]?.trim().toLowerCase();
+  return domain && domain.length > 0 ? domain : null;
+}
+
 function relationshipStatus(
   value: string | null,
 ): RelationshipBaseRow["status"] {
@@ -177,7 +182,9 @@ function rowToRelationshipBase(row: {
     entityType: row.entityType,
     displayName: row.displayName,
     primaryEmail: row.primaryEmail,
-    domain: row.domain,
+    domain:
+      row.domain ??
+      (row.entityType === "person" ? emailDomain(row.primaryEmail) : null),
     relationshipType: row.relationshipType,
     status: relationshipStatus(row.relationshipStatus),
     summary: row.relationshipSummary,

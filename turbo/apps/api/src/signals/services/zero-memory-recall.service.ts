@@ -87,6 +87,11 @@ function parseProfileDate(value: string | null): Date | null {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+function emailDomain(value: string | null): string | null {
+  const domain = value?.split("@")[1]?.trim().toLowerCase();
+  return domain && domain.length > 0 ? domain : null;
+}
+
 function relationshipStatus(
   value: string | null,
 ): MemoryRecallItem["relationship"]["status"] {
@@ -350,6 +355,9 @@ async function hydrateGraphMemories(
     const profileLastInteraction = parseProfileDate(
       row.relationshipLastInteractionAt,
     );
+    const domain =
+      row.domain ??
+      (row.entityType === "person" ? emailDomain(row.primaryEmail) : null);
     return {
       id: row.id,
       kind: row.kind,
@@ -363,7 +371,7 @@ async function hydrateGraphMemories(
           type: row.entityType,
           displayName: row.displayName,
           primaryEmail: row.primaryEmail,
-          domain: row.domain,
+          domain,
         },
         relationshipType: row.relationshipType,
         status: relationshipStatus(row.relationshipStatus),

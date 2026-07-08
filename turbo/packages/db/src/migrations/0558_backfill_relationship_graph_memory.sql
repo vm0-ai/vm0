@@ -16,6 +16,8 @@ WITH existing_alias_targets AS (
 				AND "memory_entity_aliases"."alias_value" = "relationship_entities"."primary_email"
 			)
 			OR (
+				"relationship_entities"."type" = 'organization'
+				AND
 				"relationship_entities"."domain" IS NOT NULL
 				AND "memory_entity_aliases"."alias_type" = 'domain'
 				AND "memory_entity_aliases"."alias_value" = "relationship_entities"."domain"
@@ -191,6 +193,7 @@ INNER JOIN "memory_entity_aliases"
 	AND "memory_entity_aliases"."alias_type" = 'relationship_identity'
 	AND "memory_entity_aliases"."alias_value" = "relationship_entities"."identity_key"
 WHERE "relationship_entities"."domain" IS NOT NULL
+	AND "relationship_entities"."type" = 'organization'
 ON CONFLICT DO NOTHING;
 --> statement-breakpoint
 INSERT INTO "memory_entity_aliases" (

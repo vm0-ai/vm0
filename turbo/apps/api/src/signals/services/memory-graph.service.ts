@@ -81,7 +81,7 @@ function targetAliases(target: GraphRelationshipTarget): readonly GraphAlias[] {
   if (target.primaryEmail) {
     aliases.push({ aliasType: "email", aliasValue: target.primaryEmail });
   }
-  if (target.domain) {
+  if (target.type === "organization" && target.domain) {
     aliases.push({ aliasType: "domain", aliasValue: target.domain });
   }
   const slackChannel = target.identityKey.match(
