@@ -5,6 +5,7 @@ reads plus narrow shared state transitions. Domain-specific lifecycle state
 stays with the module that creates and releases it.
 """
 
+import time
 from collections.abc import Mapping, MutableMapping
 
 import flow_metadata_keys as metadata_keys
@@ -83,6 +84,11 @@ def should_capture_body(meta: Mapping[str, object]) -> bool:
 
 def model_usage_provider(meta: Mapping[str, object]) -> str:
     return _metadata_str(meta, metadata_keys.MODEL_USAGE_PROVIDER)
+
+
+def start_request_timing(meta: MutableMapping[str, object]) -> None:
+    if metadata_keys.HTTP_REQUEST_START_MONOTONIC not in meta:
+        meta[metadata_keys.HTTP_REQUEST_START_MONOTONIC] = time.monotonic()
 
 
 def set_firewall_decision(
