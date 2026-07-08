@@ -367,6 +367,13 @@ async function resolveCompletedChatOutputOnce(args: {
     return { kind: "empty_after_complete_visibility" };
   }
 
+  if (args.lastEventSequence === null) {
+    return {
+      kind: "not_visible_yet",
+      reason: "missing_last_event_sequence",
+    };
+  }
+
   const axiomOutput = await queryLatestChatOutput({
     runId: args.runId,
     lastEventSequence: args.lastEventSequence,

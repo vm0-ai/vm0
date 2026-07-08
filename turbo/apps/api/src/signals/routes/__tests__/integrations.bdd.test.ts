@@ -2760,43 +2760,53 @@ describe("INT-01: Slack app deep webhook flows", () => {
     let legacyRunId = "";
     let legacySandboxToken = "";
     let legacyWatermarkInjected = false;
+    let legacyMissingWatermarkDelays = 0;
     let legacyUnwatermarkedOutputQueries = 0;
     let legacyWatermarkedOutputQueries = 0;
     let legacyVisibilityQuerySeen = false;
-    context.mocks.axiom.query.mockImplementation(async (...args: unknown[]) => {
+    context.mocks.signalTimers.delay.mockImplementation(async () => {
+      legacyMissingWatermarkDelays++;
+      if (legacyMissingWatermarkDelays < 3 || legacyWatermarkInjected) {
+        return;
+      }
+      legacyWatermarkInjected = true;
+      await webhooks.requestAgentComplete(
+        {
+          runId: legacyRunId,
+          exitCode: 0,
+          lastEventSequence: 0,
+        },
+        { authorization: `Bearer ${legacySandboxToken}` },
+        [200],
+      );
+    });
+    context.mocks.axiom.query.mockImplementation((...args: unknown[]) => {
       const apl = typeof args[0] === "string" ? args[0] : "";
       if (apl.includes("| project sequenceNumber")) {
         legacyVisibilityQuerySeen = true;
-        return [{ sequenceNumber: 0 }];
+        return Promise.resolve([{ sequenceNumber: 0 }]);
       }
       if (apl.includes('eventType == "assistant"')) {
         if (!apl.includes("| where sequenceNumber <= 0")) {
           legacyUnwatermarkedOutputQueries++;
-          if (legacyUnwatermarkedOutputQueries < 4) {
-            return [];
-          }
-          legacyWatermarkInjected = true;
-          await webhooks.requestAgentComplete(
+          return Promise.resolve([
             {
-              runId: legacyRunId,
-              exitCode: 0,
-              lastEventSequence: 0,
+              eventType: "result",
+              sequenceNumber: 0,
+              eventData: { result: "STALE_UNBOUNDED_OUTPUT" },
             },
-            { authorization: `Bearer ${legacySandboxToken}` },
-            [200],
-          );
-          return [];
+          ]);
         }
         legacyWatermarkedOutputQueries++;
-        return [
+        return Promise.resolve([
           {
             eventType: "result",
             sequenceNumber: 0,
             eventData: { result: legacyCompleteText },
           },
-        ];
+        ]);
       }
-      return [];
+      return Promise.resolve([]);
     });
 
     await integrations.postSlackEvent(teamId, {
@@ -2826,10 +2836,13 @@ describe("INT-01: Slack app deep webhook flows", () => {
       );
     });
     expect(legacyWatermarkInjected).toBeTruthy();
-    expect(legacyUnwatermarkedOutputQueries).toBe(4);
+    expect(legacyMissingWatermarkDelays).toBe(3);
+    expect(legacyUnwatermarkedOutputQueries).toBe(0);
     expect(legacyWatermarkedOutputQueries).toBe(1);
     expect(legacyVisibilityQuerySeen).toBeTruthy();
+    expect(slackPostMessageCallsJson()).not.toContain("STALE_UNBOUNDED_OUTPUT");
 
+    context.mocks.signalTimers.delay.mockResolvedValue(undefined);
     context.mocks.axiom.query.mockImplementation((...args: unknown[]) => {
       const apl = typeof args[0] === "string" ? args[0] : "";
       if (apl.includes("| project sequenceNumber")) {
