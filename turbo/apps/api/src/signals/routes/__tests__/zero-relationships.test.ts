@@ -17,8 +17,11 @@ import {
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
 import {
+  createRelationshipAliasRaceTrigger$,
+  deleteRelationshipAliasRaceTrigger$,
   deleteRelationshipRowsForFixture$,
   seedRelationshipRows$,
+  type RelationshipAliasRaceTrigger,
   type RelationshipFixture,
 } from "./helpers/zero-relationships";
 import type { ApiTestUser } from "./helpers/api-bdd";
@@ -273,6 +276,12 @@ async function deleteRelationshipFixture(
   await deleteFeatureSwitchesForUser(context, fixture);
 }
 
+async function deleteRelationshipAliasRaceTrigger(
+  trigger: RelationshipAliasRaceTrigger,
+): Promise<void> {
+  await store.set(deleteRelationshipAliasRaceTrigger$, trigger, context.signal);
+}
+
 async function deleteSlackFixture(
   fixture: SlackIntegrationFixture,
 ): Promise<void> {
@@ -282,6 +291,9 @@ async function deleteSlackFixture(
 describe("GET /api/zero/relationships/*", () => {
   const track = createFixtureTracker(deleteRelationshipFixture);
   const trackSlack = createFixtureTracker(deleteSlackFixture);
+  const trackAliasRace = createFixtureTracker(
+    deleteRelationshipAliasRaceTrigger,
+  );
 
   it("returns empty read responses in the current org-user scope", async () => {
     await track(seedRelationshipFixture());
@@ -546,6 +558,77 @@ describe("GET /api/zero/relationships/*", () => {
       },
     });
     expect(person?.id).not.toBe(organization?.id);
+  });
+
+  it("resolves the canonical relationship when Gmail extraction races entity alias creation", async () => {
+    const fixture = await track(seedRelationshipFixture());
+    const suffix = randomUUID().replaceAll("-", "");
+    const targetEmail = `alias-race-${suffix}@example.test`;
+    const raceTrigger = await trackAliasRace(
+      Promise.resolve({
+        displayName: targetEmail,
+        identityKey: `person:${targetEmail}`,
+        functionName: `vm0_test_claim_alias_${suffix}`,
+        triggerName: `vm0_test_claim_alias_${suffix}`,
+      }),
+    );
+    const gmailEmail = `relationship-${randomUUID()}@example.com`;
+    configureGmailEnv();
+    configureGmailWatchMock();
+    configureGmailBackfillMocks(gmailEmail, {
+      from: `Alias Race <${targetEmail}>`,
+      messageId: `msg-alias-race-${suffix}`,
+      bodyText: "Please send the alias race follow-up.",
+    });
+    await store.set(
+      createRelationshipAliasRaceTrigger$,
+      { fixture, trigger: raceTrigger },
+      context.signal,
+    );
+    await connectGmail(fixture, gmailEmail);
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    await accept(
+      relationshipsClient().gmailEnable({
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+    const drained = await accept(
+      cronClient().drain({
+        headers: cronHeaders(),
+      }),
+      [200],
+    );
+    expect(drained.body.relationshipsUpdated).toBeGreaterThanOrEqual(1);
+
+    const resolved = await accept(
+      relationshipsClient().resolve({
+        headers: authHeaders(),
+        query: { email: targetEmail },
+      }),
+      [200],
+    );
+    expect(resolved.body.relationship).toMatchObject({
+      entity: {
+        type: "person",
+        displayName: targetEmail,
+        primaryEmail: targetEmail,
+        domain: "example.test",
+      },
+    });
+
+    const search = await accept(
+      relationshipsClient().search({
+        headers: authHeaders(),
+        query: { q: targetEmail, page: 1, limit: 100 },
+      }),
+      [200],
+    );
+    expect(search.body.relationships).toHaveLength(1);
+    expect(search.body.relationships[0]?.id).toBe(
+      resolved.body.relationship?.id,
+    );
   });
 
   it("uses the Gmail message time for relationship state dates without fallback interactions", async () => {
