@@ -20,6 +20,7 @@ import {
   handleError,
 } from "../core/client-factory";
 import { getActiveToken } from "../config";
+import { headersWithCliClientHeaders } from "../client-headers";
 
 export async function sendSlackMessage(
   body: SendSlackMessageBody,
@@ -99,7 +100,9 @@ export async function downloadSlackFile(
     headers["x-vercel-protection-bypass"] = bypassSecret;
   }
 
-  const response = await fetch(url, { headers });
+  const response = await fetch(url, {
+    headers: headersWithCliClientHeaders(headers),
+  });
 
   if (!response.ok) {
     let message = `Failed to download Slack file (HTTP ${response.status})`;

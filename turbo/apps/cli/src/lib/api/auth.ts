@@ -6,6 +6,7 @@ import {
   getApiUrl,
   getToken,
 } from "./config";
+import { headersWithCliClientHeaders } from "./client-headers";
 
 /**
  * Build headers with optional Vercel bypass secret
@@ -34,7 +35,7 @@ async function requestDeviceCode(apiUrl: string): Promise<{
 }> {
   const response = await fetch(`${apiUrl}/api/cli/auth/device`, {
     method: "POST",
-    headers: buildHeaders(),
+    headers: headersWithCliClientHeaders(buildHeaders()),
     body: JSON.stringify({}),
   });
 
@@ -67,7 +68,7 @@ async function exchangeToken(
 }> {
   const response = await fetch(`${apiUrl}/api/cli/auth/token`, {
     method: "POST",
-    headers: buildHeaders(),
+    headers: headersWithCliClientHeaders(buildHeaders()),
     body: JSON.stringify({ device_code: deviceCode }),
   });
 

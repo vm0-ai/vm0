@@ -19,6 +19,10 @@ import {
   handleError,
 } from "../core/client-factory";
 import { getActiveToken } from "../config";
+import {
+  cliClientHeaderApi,
+  headersWithCliClientHeaders,
+} from "../client-headers";
 
 function normalizeConfiguredUrl(value: string): string {
   return value.startsWith("http") ? value : `https://${value}`;
@@ -59,6 +63,7 @@ async function getComputerUseClientConfig() {
     baseUrl,
     baseHeaders: buildHeaders(token),
     jsonQuery: false as const,
+    api: cliClientHeaderApi,
   };
 }
 
@@ -195,7 +200,7 @@ export async function fetchComputerUseScreenshot(
     `${config.baseUrl}/api/zero/computer-use/commands/${encodeURIComponent(
       commandId,
     )}/screenshot`,
-    { headers: config.baseHeaders },
+    { headers: headersWithCliClientHeaders(config.baseHeaders) },
   );
 
   if (!response.ok) {
@@ -224,7 +229,7 @@ export async function fetchComputerUsePluginContent(
     `${config.baseUrl}/api/zero/computer-use/commands/${encodeURIComponent(
       commandId,
     )}/plugin-content`,
-    { headers: config.baseHeaders },
+    { headers: headersWithCliClientHeaders(config.baseHeaders) },
   );
 
   if (!response.ok) {
