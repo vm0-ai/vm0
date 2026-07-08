@@ -346,6 +346,13 @@ async def _bind_api_upstream_destination_from_original_address(
             break
     if original_address is None:
         return False
+    if bool(getattr(server, "connected", False)) or getattr(server, "error", None):
+        return False
+    if original_address not in (
+        connection_endpoints.server_address(server),
+        connection_endpoints.connection_sockname(client),
+    ):
+        return False
 
     server.address = (api_hostname, api_port)
     upstream_destination_binding.record_server_binding(
