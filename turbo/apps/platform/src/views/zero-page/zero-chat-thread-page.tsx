@@ -576,7 +576,10 @@ function ChatThreadEmojiMenuButton({
                 className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
               >
                 {emoji ? (
-                  <span aria-hidden="true" className="text-base leading-none">
+                  <span
+                    aria-hidden="true"
+                    className="zero-emoji text-base leading-none"
+                  >
                     {emoji}
                   </span>
                 ) : (
@@ -770,7 +773,9 @@ function ChatThreadEmojiGrid({
               onSelect(item.emoji);
             }}
           >
-            <span aria-hidden="true">{item.emoji}</span>
+            <span aria-hidden="true" className="zero-emoji">
+              {item.emoji}
+            </span>
             {shortcutDigit !== null && (
               <span
                 aria-hidden="true"
