@@ -973,6 +973,27 @@ function ChatThreadsSkeleton() {
   );
 }
 
+function markPointerFocus(viewport: HTMLElement) {
+  const token = Math.random().toString(36);
+  viewport.dataset.sidebarPointerFocusToken = token;
+  viewport.ownerDocument.defaultView?.setTimeout(() => {
+    if (viewport.dataset.sidebarPointerFocusToken !== token) {
+      return;
+    }
+
+    delete viewport.dataset.sidebarPointerFocusToken;
+  }, 350);
+}
+
+function consumePointerFocus(viewport: HTMLElement) {
+  if (!viewport.dataset.sidebarPointerFocusToken) {
+    return false;
+  }
+
+  delete viewport.dataset.sidebarPointerFocusToken;
+  return true;
+}
+
 function ChatThreadsContent() {
   // useLastLoadable keeps the previous resolved list rendered while
   // sidebarChatThreads$ recomputes on a pane/thread switch; useLoadable would
@@ -1058,8 +1079,14 @@ function ChatThreadsContent() {
       aria-label="Chat threads"
       data-testid="sidebar-scroll-area"
       tabIndex={currentMainThreadId ? 0 : undefined}
+      onPointerDownCapture={(event) => {
+        markPointerFocus(event.currentTarget);
+      }}
       onFocus={(event) => {
         if (event.target !== event.currentTarget) {
+          return;
+        }
+        if (consumePointerFocus(event.currentTarget)) {
           return;
         }
         focusCurrentMainThreadLink(event.currentTarget);
