@@ -10,6 +10,7 @@ import {
   storedExecutionContextSchema,
   type ExecutionContext,
   type HeldSessionState,
+  type SessionHistoryDownloadSource,
   type StoredExecutionContext,
 } from "@vm0/api-contracts/contracts/runners";
 import {
@@ -35,6 +36,7 @@ import { waitUntil } from "../context/wait-until";
 import { writeDb$, type Db } from "../external/db";
 import {
   generatePresignedGetUrl,
+  publicS3DownloadSource,
   S3ObjectSizeLimitError,
   s3ObjectContentLength,
 } from "../external/s3";
@@ -985,12 +987,14 @@ interface CompressedResumeSessionHistoryRepresentation {
   readonly rawSize: number;
   readonly encodedSize: number;
   readonly objectKey: string;
+  readonly downloadSource: SessionHistoryDownloadSource;
 }
 
 interface IdentityResumeSessionHistoryRepresentation {
   readonly encoding: typeof SESSION_HISTORY_ENCODING_IDENTITY;
   readonly rawSize: number;
   readonly encodedSize: number;
+  readonly downloadSource: SessionHistoryDownloadSource;
 }
 
 function hasResumeSessionHistoryRef(
@@ -1078,6 +1082,7 @@ const loadCompressedResumeSessionHistoryRepresentation$ = command(
       rawSize: blob.rawSize,
       encodedSize: blob.encodedSize,
       objectKey: resumeSessionHistoryBlobKey(args.hash, encoding),
+      downloadSource: publicS3DownloadSource(),
     };
   },
 );
@@ -1186,6 +1191,7 @@ const loadIdentityResumeSessionHistoryRepresentation$ = command(
       encoding: SESSION_HISTORY_ENCODING_IDENTITY,
       rawSize,
       encodedSize,
+      downloadSource: publicS3DownloadSource(),
     };
   },
 );
@@ -1238,6 +1244,7 @@ async function resolveResumeSessionForClaim(args: {
         encoding: compressedRepresentation.encoding,
         rawSize: compressedRepresentation.rawSize,
         encodedSize: compressedRepresentation.encodedSize,
+        downloadSource: compressedRepresentation.downloadSource,
       },
     };
   }
@@ -1262,6 +1269,7 @@ async function resolveResumeSessionForClaim(args: {
       encoding: identityRepresentation.encoding,
       rawSize: identityRepresentation.rawSize,
       encodedSize: identityRepresentation.encodedSize,
+      downloadSource: identityRepresentation.downloadSource,
     },
   };
 }

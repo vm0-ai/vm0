@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.246.0](https://github.com/vm0-ai/vm0/compare/api-v1.245.1...api-v1.246.0) (2026-07-08)
+
+
+### Features
+
+* expose zero memory tools in run prompts ([#20657](https://github.com/vm0-ai/vm0/issues/20657)) ([37664a5](https://github.com/vm0-ai/vm0/commit/37664a5bb31673b649ab0af28f5778800c7b3da1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.169.2
+    * @vm0/connectors bumped to 1.148.2
+    * @vm0/core bumped to 8.414.6
+    * @vm0/db bumped to 1.100.3
+
 ## [1.245.1](https://github.com/vm0-ai/vm0/compare/api-v1.245.0...api-v1.245.1) (2026-07-08)
 
 

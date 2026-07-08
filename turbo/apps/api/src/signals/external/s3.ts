@@ -9,6 +9,11 @@ import {
   S3Client,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import {
+  SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT,
+  SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT,
+  type SessionHistoryDownloadSource,
+} from "@vm0/api-contracts/contracts/runners";
 
 import { env } from "../../lib/env";
 import { detach, Mechanism, settle } from "../utils";
@@ -74,6 +79,13 @@ function defaultS3Credentials(): S3Credentials {
     accessKeyId: env("R2_ACCESS_KEY_ID"),
     secretAccessKey: env("R2_SECRET_ACCESS_KEY"),
   };
+}
+
+export function publicS3DownloadSource(): SessionHistoryDownloadSource {
+  // Mirror `generatePresignedGetUrl(..., usePublicEndpoint=true)` without exposing the endpoint.
+  return env("S3_PUBLIC_ENDPOINT") || env("S3_ENDPOINT")
+    ? SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT
+    : SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT;
 }
 
 function userArtifactsS3Credentials(): S3Credentials {

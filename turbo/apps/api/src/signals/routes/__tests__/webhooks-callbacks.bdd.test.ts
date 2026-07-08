@@ -1288,6 +1288,26 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
     expectApiError(malformedTelemetryResponseState.body);
     expect(malformedTelemetryResponseState.body.error.code).toBe("BAD_REQUEST");
 
+    const unknownTelemetryDownloadSource =
+      await api.requestAgentTelemetryUnchecked(
+        {
+          runId,
+          sandboxOperations: [
+            {
+              ts: nowDate().toISOString(),
+              action_type: "session_history_download",
+              duration_ms: 3,
+              success: true,
+              session_history_download_source: "regional_edge_cache",
+            },
+          ],
+        },
+        headers,
+        [404],
+      );
+    expectApiError(unknownTelemetryDownloadSource.body);
+    expect(unknownTelemetryDownloadSource.body.error.code).toBe("NOT_FOUND");
+
     const missingTelemetryRun = await api.requestAgentTelemetry(
       {
         runId,
