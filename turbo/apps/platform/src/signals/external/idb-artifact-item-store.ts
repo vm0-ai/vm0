@@ -64,6 +64,10 @@ export interface ArtifactItemWriteStore {
     items: readonly ArtifactItem[],
     signal?: AbortSignal,
   ): Promise<void>;
+  replaceItems(
+    items: readonly ArtifactItem[],
+    signal?: AbortSignal,
+  ): Promise<void>;
   deleteItems(
     artifactItemIds: readonly string[],
     signal?: AbortSignal,
@@ -246,6 +250,25 @@ function createWriteStore(
           }
           await tx.done;
           L.debug("artifacts:upsertItems:done", { count: items.length });
+        },
+        signal,
+      );
+    },
+
+    async replaceItems(items, signal) {
+      await chatIdbWriteBestEffort(
+        "artifacts:replaceItems",
+        async () => {
+          const db = await getDb();
+          signal?.throwIfAborted();
+          const tx = db.transaction(storeName, "readwrite");
+          await tx.store.clear();
+          for (const item of items) {
+            signal?.throwIfAborted();
+            await tx.store.put(storedArtifactItem(item));
+          }
+          await tx.done;
+          L.debug("artifacts:replaceItems:done", { count: items.length });
         },
         signal,
       );

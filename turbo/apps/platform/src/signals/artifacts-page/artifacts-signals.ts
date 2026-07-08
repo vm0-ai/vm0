@@ -27,6 +27,11 @@ const internalArtifactsAgentId$ = state<string | null>(null);
 const internalArtifactsCategory$ = state<ArtifactCategory | null>(null);
 const internalArtifactsReload$ = state(0);
 
+export interface ArtifactsPageData {
+  readonly artifacts: readonly ArtifactItem[];
+  readonly truncated: boolean;
+}
+
 export const artifactsSearch$ = computed((get) => {
   return get(internalArtifactsSearch$);
 });
@@ -72,59 +77,42 @@ export const reloadArtifacts$ = command(({ set }) => {
 // loadable so the view can fall back to the cache. Reacts only to the reload
 // counter, never to the filters, so filtering never triggers a re-fetch.
 export const remoteArtifacts$ = computed(
-  async (get): Promise<ArtifactItem[]> => {
+  async (get): Promise<ArtifactsPageData> => {
     get(internalArtifactsReload$);
     const clerk = await get(clerk$);
     const userId = clerk.user?.id;
     const orgId = clerk.organization?.id;
     if (!userId || !orgId) {
-      return [];
+      return { artifacts: [], truncated: false };
     }
     const client = get(zeroClient$)(artifactsContract);
     const result = await accept(client.list(), [200], { toast: false });
-    await createIdbArtifactItemStores(userId, orgId).writeStore.upsertItems(
+    await createIdbArtifactItemStores(userId, orgId).writeStore.replaceItems(
       result.body.artifacts,
     );
-    return result.body.artifacts;
+    return result.body;
   },
 );
 
 // Cache-first paint: the last-known artifact set from IndexedDB. Never throws
 // (reads degrade to an empty list), so it is always a safe fallback.
 export const cachedArtifacts$ = computed(
-  async (get): Promise<ArtifactItem[]> => {
+  async (get): Promise<ArtifactsPageData> => {
     const clerk = await get(clerk$);
     const userId = clerk.user?.id;
     const orgId = clerk.organization?.id;
     if (!userId || !orgId) {
-      return [];
+      return { artifacts: [], truncated: false };
     }
-    return await createIdbArtifactItemStores(
+    const artifacts = await createIdbArtifactItemStores(
       userId,
       orgId,
     ).readStore.readRecent({ limit: ARTIFACTS_CACHE_READ_LIMIT });
+    return { artifacts, truncated: false };
   },
 );
 
-// In-memory merge of the remote and cached sets, keyed by artifact id (remote
-// wins), newest first. This is the single display source the view filters.
-export function mergeArtifactsById(
-  primary: readonly ArtifactItem[],
-  fallback: readonly ArtifactItem[],
-): ArtifactItem[] {
-  const byId = new Map<string, ArtifactItem>();
-  for (const item of fallback) {
-    byId.set(item.artifactItemId, item);
-  }
-  for (const item of primary) {
-    byId.set(item.artifactItemId, item);
-  }
-  return [...byId.values()].sort((left, right) => {
-    return right.createdAt.localeCompare(left.createdAt);
-  });
-}
-
-// Applies the search / agent / category filters in memory over the merged set,
+// Applies the search / agent / category filters in memory over the active set,
 // so switching filters is instant and never re-fetches or truncates.
 export function filterArtifacts(
   artifacts: readonly ArtifactItem[],

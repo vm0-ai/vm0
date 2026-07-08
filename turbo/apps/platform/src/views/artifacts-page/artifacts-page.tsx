@@ -29,7 +29,6 @@ import {
   artifactsSearch$,
   cachedArtifacts$,
   filterArtifacts,
-  mergeArtifactsById,
   navigateToArtifactThread$,
   remoteArtifacts$,
   selectedArtifactsAgentId$,
@@ -431,12 +430,14 @@ function ArtifactsList({
   hasFilters,
   loading,
   error,
+  truncated,
   onOpenChat,
 }: {
   readonly artifacts: readonly ArtifactItem[];
   readonly hasFilters: boolean;
   readonly loading: boolean;
   readonly error: boolean;
+  readonly truncated: boolean;
   readonly onOpenChat: (threadId: string) => void;
 }) {
   if (loading) {
@@ -449,17 +450,27 @@ function ArtifactsList({
     return <ArtifactsEmptyState filtered={hasFilters} />;
   }
   return (
-    <div className="columns-[220px] gap-3">
-      {artifacts.map((artifact) => {
-        return (
-          <ArtifactCard
-            key={artifact.artifactItemId}
-            item={artifact}
-            onOpenChat={onOpenChat}
-          />
-        );
-      })}
-    </div>
+    <>
+      {truncated && (
+        <div
+          role="status"
+          className="mb-3 rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground"
+        >
+          Showing the newest 10,000 artifacts. Filters apply to this capped set.
+        </div>
+      )}
+      <div className="columns-[220px] gap-3">
+        {artifacts.map((artifact) => {
+          return (
+            <ArtifactCard
+              key={artifact.artifactItemId}
+              item={artifact}
+              onOpenChat={onOpenChat}
+            />
+          );
+        })}
+      </div>
+    </>
   );
 }
 
@@ -478,17 +489,19 @@ export function ArtifactsPage() {
     remoteLoadable.state === "hasData" ? remoteLoadable.data : null;
   const cachedData =
     cachedLoadable.state === "hasData" ? cachedLoadable.data : null;
-  // Cache-first + in-memory merge: paint whatever the cache holds immediately,
-  // union the remote set over it once it lands (remote wins per id).
-  const merged = mergeArtifactsById(remoteData ?? [], cachedData ?? []);
-  const artifacts = filterArtifacts(merged, {
+  // Cache-first paint, then let the successful remote bulk response become the
+  // authoritative set. Cached fallback is only used before remote data loads or
+  // when the refresh errors.
+  const sourceData = remoteData ?? cachedData;
+  const sourceArtifacts = sourceData?.artifacts ?? [];
+  const artifacts = filterArtifacts(sourceArtifacts, {
     search,
     agentId: selectedAgentId,
     category: selectedCategory,
   });
-  // Drive first-paint loading / error off the merged set (not the filtered
+  // Drive first-paint loading / error off the source set (not the filtered
   // view, which is legitimately empty when a filter matches nothing).
-  const nothingCached = merged.length === 0;
+  const nothingCached = sourceArtifacts.length === 0;
   const loading =
     nothingCached &&
     (remoteLoadable.state === "loading" || cachedLoadable.state === "loading");
@@ -529,6 +542,7 @@ export function ArtifactsPage() {
             hasFilters={hasFilters}
             loading={loading}
             error={error}
+            truncated={sourceData?.truncated ?? false}
             onOpenChat={openChat}
           />
         </div>

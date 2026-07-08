@@ -5,7 +5,7 @@ import {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   click,
@@ -15,140 +15,291 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import type { ArtifactCategory } from "../../../signals/artifacts-page/artifact-category.ts";
+import { openChatIdb } from "../../../signals/external/chat-idb-store.ts";
+import { createArtifactItemCacheStores } from "../../../signals/external/idb-artifact-item-store.ts";
 
-const idbArtifactStoreMock = vi.hoisted(() => {
-  type CachedArtifact = Record<string, unknown> & {
-    readonly artifactItemId?: unknown;
-    readonly agentId?: unknown;
-    readonly filename?: unknown;
-    readonly contentType?: unknown;
-    readonly artifactKind?: unknown;
-    readonly artifactCategory?: unknown;
-    readonly runId?: unknown;
-    readonly fileId?: unknown;
-  };
-
-  let cachedArtifacts: CachedArtifact[] = [];
-
-  function searchableText(item: CachedArtifact): string {
-    return [item.filename, item.contentType, item.artifactKind]
-      .filter((value): value is string => {
-        return typeof value === "string";
-      })
-      .join("\n")
-      .toLowerCase();
+const artifactIdbMock = vi.hoisted(() => {
+  interface StoredObjectStore {
+    readonly keyPath: string;
+    readonly rows: Map<string, Record<string, unknown>>;
   }
 
-  const readRecent = vi.fn(
-    (filter?: {
-      readonly agentId?: string;
-      readonly artifactCategory?: ArtifactCategory;
-      readonly query?: string;
-      readonly limit?: number;
-    }) => {
-      const queryTokens =
-        filter?.query
-          ?.trim()
-          .toLowerCase()
-          .split(/\s+/)
-          .filter((token) => {
-            return token.length > 0;
-          }) ?? [];
-      const limit = filter?.limit ?? 50;
-      return Promise.resolve(
-        cachedArtifacts
-          .filter((item) => {
-            if (
-              filter?.agentId &&
-              typeof item.agentId === "string" &&
-              item.agentId !== filter.agentId
-            ) {
-              return false;
-            }
-            const text = searchableText(item);
-            if (
-              filter?.artifactCategory === "image" &&
-              typeof item.contentType === "string" &&
-              !item.contentType.startsWith("image/")
-            ) {
-              return false;
-            }
-            if (
-              filter?.artifactCategory === "website" &&
-              item.artifactKind !== "hosted-site"
-            ) {
-              return false;
-            }
-            return queryTokens.every((token) => {
-              return text.includes(token);
-            });
-          })
-          .slice(0, limit),
-      );
-    },
-  );
+  interface IndexedRow {
+    readonly key: IDBValidKey;
+    readonly value: Record<string, unknown>;
+  }
 
-  const readByRunFile = vi.fn((runId: string, fileId: string) => {
-    return Promise.resolve(
-      cachedArtifacts.find((item) => {
-        return item.runId === runId && item.fileId === fileId;
-      }) ?? null,
-    );
-  });
+  class MemoryCursor {
+    private position = 0;
 
-  const upsertItems = vi.fn((items: readonly CachedArtifact[]) => {
-    for (const item of items) {
-      const index = cachedArtifacts.findIndex((cached) => {
-        return cached.artifactItemId === item.artifactItemId;
-      });
-      if (index === -1) {
-        cachedArtifacts.push(item);
-      } else {
-        cachedArtifacts[index] = item;
+    constructor(private readonly values: readonly Record<string, unknown>[]) {}
+
+    get value(): unknown {
+      return this.values[this.position];
+    }
+
+    continue(): Promise<MemoryCursor | null> {
+      this.position += 1;
+      return Promise.resolve(this.position < this.values.length ? this : null);
+    }
+  }
+
+  function compareIdbKeys(left: IDBValidKey, right: IDBValidKey): number {
+    if (Array.isArray(left) && Array.isArray(right)) {
+      const length = Math.min(left.length, right.length);
+      for (let index = 0; index < length; index += 1) {
+        const comparison = compareIdbKeys(left[index]!, right[index]!);
+        if (comparison !== 0) {
+          return comparison;
+        }
+      }
+      return left.length - right.length;
+    }
+
+    if (Array.isArray(left)) {
+      return 1;
+    }
+    if (Array.isArray(right)) {
+      return -1;
+    }
+    if (left instanceof Date && right instanceof Date) {
+      return left.getTime() - right.getTime();
+    }
+    if (typeof left === "number" && typeof right === "number") {
+      return left - right;
+    }
+    if (typeof left === "string" && typeof right === "string") {
+      if (left < right) {
+        return -1;
+      }
+      if (left > right) {
+        return 1;
       }
     }
-    return Promise.resolve();
-  });
+    return 0;
+  }
+
+  function keyMatchesRange(
+    range: IDBKeyRange | undefined,
+    key: IDBValidKey,
+  ): boolean {
+    return range === undefined || range.includes(key);
+  }
+
+  function artifactIndexKey(
+    indexName: string,
+    item: Record<string, unknown>,
+  ): IDBValidKey | null {
+    switch (indexName) {
+      case "byCreatedAt": {
+        return [item.createdAt as string, item.artifactItemId as string];
+      }
+      case "byAgentCreatedAt": {
+        return [
+          item.agentId as string,
+          item.createdAt as string,
+          item.artifactItemId as string,
+        ];
+      }
+      case "byArtifactKindCreatedAt": {
+        return typeof item.artifactKind === "string"
+          ? [
+              item.artifactKind,
+              item.createdAt as string,
+              item.artifactItemId as string,
+            ]
+          : null;
+      }
+      case "byAgentKindCreatedAt": {
+        return typeof item.artifactKind === "string"
+          ? [
+              item.agentId as string,
+              item.artifactKind,
+              item.createdAt as string,
+              item.artifactItemId as string,
+            ]
+          : null;
+      }
+      case "byRunFile": {
+        return [item.runId as string, item.fileId as string];
+      }
+      default: {
+        return null;
+      }
+    }
+  }
+
+  class MemoryObjectStore {
+    constructor(private readonly store: StoredObjectStore) {}
+
+    put(value: Record<string, unknown>): Promise<void> {
+      const key = value[this.store.keyPath];
+      if (typeof key === "string") {
+        this.store.rows.set(key, value);
+      }
+      return Promise.resolve();
+    }
+
+    delete(key: IDBValidKey): Promise<void> {
+      if (typeof key === "string") {
+        this.store.rows.delete(key);
+      }
+      return Promise.resolve();
+    }
+
+    clear(): Promise<void> {
+      for (const key of this.store.rows.keys()) {
+        this.store.rows.delete(key);
+      }
+      return Promise.resolve();
+    }
+
+    get(key: IDBValidKey): Promise<unknown> {
+      return Promise.resolve(
+        typeof key === "string" ? this.store.rows.get(key) : undefined,
+      );
+    }
+
+    createIndex(): void {
+      return undefined;
+    }
+
+    index(indexName: string): {
+      get: (key: IDBValidKey) => Promise<unknown>;
+      openCursor: (
+        range?: IDBKeyRange,
+        direction?: IDBCursorDirection,
+      ) => Promise<MemoryCursor | null>;
+    } {
+      return {
+        get: (key) => {
+          return Promise.resolve(
+            this.indexedRows(indexName).find((row) => {
+              return compareIdbKeys(row.key, key) === 0;
+            })?.value,
+          );
+        },
+        openCursor: (range, direction) => {
+          const rows = this.indexedRows(indexName).filter((row) => {
+            return keyMatchesRange(range, row.key);
+          });
+          rows.sort((left, right) => {
+            return compareIdbKeys(left.key, right.key);
+          });
+          if (direction === "prev" || direction === "prevunique") {
+            rows.reverse();
+          }
+          if (rows.length === 0) {
+            return Promise.resolve(null);
+          }
+          return Promise.resolve(
+            new MemoryCursor(
+              rows.map((row) => {
+                return row.value;
+              }),
+            ),
+          );
+        },
+      };
+    }
+
+    private indexedRows(indexName: string): IndexedRow[] {
+      if (this.store.keyPath !== "artifactItemId") {
+        return [];
+      }
+      return Array.from(this.store.rows.values()).flatMap((item) => {
+        const key = artifactIndexKey(indexName, item);
+        return key === null ? [] : [{ key, value: item }];
+      });
+    }
+  }
+
+  class MemoryDb {
+    private readonly stores = new Map<string, StoredObjectStore>();
+
+    readonly objectStoreNames = {
+      contains: (storeName: string) => {
+        return this.stores.has(storeName);
+      },
+    };
+
+    createObjectStore(
+      storeName: string,
+      options?: { readonly keyPath?: string },
+    ): MemoryObjectStore {
+      return this.ensureStore(storeName, options?.keyPath ?? "id");
+    }
+
+    deleteObjectStore(storeName: string): void {
+      this.stores.delete(storeName);
+    }
+
+    transaction(storeName: string): {
+      readonly store: MemoryObjectStore;
+      readonly done: Promise<void>;
+      objectStore: () => MemoryObjectStore;
+    } {
+      const store = this.ensureStore(
+        storeName,
+        storeName === "artifact_items" ? "artifactItemId" : "id",
+      );
+      return {
+        store,
+        done: Promise.resolve(),
+        objectStore: () => {
+          return store;
+        },
+      };
+    }
+
+    addEventListener(): void {
+      return undefined;
+    }
+
+    close(): void {
+      return undefined;
+    }
+
+    private ensureStore(storeName: string, keyPath: string): MemoryObjectStore {
+      const existing = this.stores.get(storeName);
+      if (existing !== undefined) {
+        return new MemoryObjectStore(existing);
+      }
+      const store = {
+        keyPath,
+        rows: new Map<string, Record<string, unknown>>(),
+      };
+      this.stores.set(storeName, store);
+      return new MemoryObjectStore(store);
+    }
+  }
+
+  const dbs = new Map<string, MemoryDb>();
 
   return {
-    readRecent,
-    readByRunFile,
-    upsertItems,
-    setItems(items: readonly CachedArtifact[]) {
-      cachedArtifacts = [...items];
-    },
-    items() {
-      return cachedArtifacts;
-    },
-    reset() {
-      cachedArtifacts = [];
-      readRecent.mockClear();
-      readByRunFile.mockClear();
-      upsertItems.mockClear();
+    async openDB(
+      name: string,
+      _version?: number,
+      callbacks?: {
+        readonly upgrade?: (db: MemoryDb, oldVersion: number) => void;
+      },
+    ): Promise<MemoryDb> {
+      await Promise.resolve();
+      const existing = dbs.get(name);
+      if (existing !== undefined) {
+        return existing;
+      }
+      const db = new MemoryDb();
+      dbs.set(name, db);
+      callbacks?.upgrade?.(db, 0);
+      return db;
     },
   };
 });
 
-vi.mock("../../../signals/external/idb-artifact-item-store.ts", () => {
+vi.mock("idb", () => {
   return {
-    createIdbArtifactItemStores: () => {
-      return {
-        readStore: {
-          readRecent: idbArtifactStoreMock.readRecent,
-          readByRunFile: idbArtifactStoreMock.readByRunFile,
-        },
-        writeStore: {
-          upsertItems: idbArtifactStoreMock.upsertItems,
-          deleteItems: vi.fn(() => {
-            return Promise.resolve();
-          }),
-          clear: vi.fn(() => {
-            return Promise.resolve();
-          }),
-        },
-      };
-    },
+    openDB: artifactIdbMock.openDB,
   };
 });
 
@@ -240,11 +391,34 @@ function setupArtifactsPage({
   });
 }
 
+function resolvedChatIdb(db: Awaited<ReturnType<typeof openChatIdb>>) {
+  return async () => {
+    await Promise.resolve();
+    return db;
+  };
+}
+
 async function seedCachedArtifacts(
+  scope: TestAuthScope,
   artifacts: readonly ArtifactItem[],
 ): Promise<void> {
-  idbArtifactStoreMock.setItems(artifacts);
-  await Promise.resolve();
+  const db = await openChatIdb(scope.userId, scope.orgId);
+  const stores = createArtifactItemCacheStores(resolvedChatIdb(db));
+  await stores.writeStore.replaceItems(artifacts);
+  const seeded = await stores.readStore.readRecent({ limit: 10_000 });
+  if (seeded.length !== artifacts.length) {
+    throw new Error("Expected artifact cache seed to be readable");
+  }
+}
+
+async function cachedArtifactIds(scope: TestAuthScope): Promise<string[]> {
+  const db = await openChatIdb(scope.userId, scope.orgId);
+  const artifacts = await createArtifactItemCacheStores(
+    resolvedChatIdb(db),
+  ).readStore.readRecent({ limit: 10_000 });
+  return artifacts.map((artifact) => {
+    return artifact.artifactItemId;
+  });
 }
 
 function queryLinkByText(text: string): HTMLElement | undefined {
@@ -272,10 +446,6 @@ function buttonByLabel(label: string): HTMLElement {
 }
 
 describe("artifacts page", () => {
-  afterEach(() => {
-    idbArtifactStoreMock.reset();
-  });
-
   it("hides the entry and redirects when the feature switch is disabled", async () => {
     setupTeam();
     const scope = testAuthScope("disabled");
@@ -413,7 +583,7 @@ describe("artifacts page", () => {
   it("renders cached artifacts while the remote refresh is pending", async () => {
     setupTeam();
     const scope = testAuthScope("pending-refresh");
-    await seedCachedArtifacts([
+    await seedCachedArtifacts(scope, [
       createArtifact({
         artifactItemId: "cached-run:file-1",
         runId: "cached-run",
@@ -445,19 +615,48 @@ describe("artifacts page", () => {
     setupArtifactsPage({ scope });
 
     await screen.findByText("remote-summary.html");
+    await waitFor(async () => {
+      await expect(cachedArtifactIds(scope)).resolves.toStrictEqual([
+        artifact.artifactItemId,
+      ]);
+    });
+  });
+
+  it("replaces stale cached artifacts after a successful remote refresh", async () => {
+    setupTeam();
+    const scope = testAuthScope("remote-cache-replace");
+    const staleArtifact = createArtifact({
+      artifactItemId: "stale-run:file-1",
+      runId: "stale-run",
+      filename: "stale-summary.html",
+      createdAt: "2026-01-02T00:00:00Z",
+    });
+    const remoteArtifact = createArtifact({
+      artifactItemId: "fresh-run:file-1",
+      runId: "fresh-run",
+      filename: "fresh-summary.html",
+      createdAt: "2026-01-03T00:00:00Z",
+    });
+    await seedCachedArtifacts(scope, [staleArtifact]);
+    mockArtifacts([remoteArtifact]);
+
+    setupArtifactsPage({ scope });
+
+    await screen.findByText("fresh-summary.html");
     await waitFor(() => {
-      expect(
-        idbArtifactStoreMock.items().some((item) => {
-          return item.artifactItemId === artifact.artifactItemId;
-        }),
-      ).toBeTruthy();
+      expect(screen.queryByText("stale-summary.html")).not.toBeInTheDocument();
+    });
+    await waitFor(async () => {
+      await expect(cachedArtifactIds(scope)).resolves.toStrictEqual([
+        remoteArtifact.artifactItemId,
+      ]);
     });
   });
 
   it("falls back to cached artifacts when the remote refresh fails", async () => {
     setupTeam();
     const scope = testAuthScope("remote-error");
-    await seedCachedArtifacts([
+    await seedCachedArtifacts(scope, [
       createArtifact({
         artifactItemId: "cached-error-run:file-1",
         runId: "cached-error-run",
@@ -479,5 +678,31 @@ describe("artifacts page", () => {
       screen.findByText("cached-after-error.html"),
     ).resolves.toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("surfaces capped bulk responses before applying local filters", async () => {
+    setupTeam();
+    const scope = testAuthScope("truncated");
+    context.mocks.api(artifactsContract.list, ({ respond }) => {
+      return respond(200, {
+        artifacts: [
+          createArtifact({
+            artifactItemId: "truncated-run:file-1",
+            runId: "truncated-run",
+            filename: "truncated-summary.html",
+          }),
+        ],
+        truncated: true,
+      });
+    });
+
+    setupArtifactsPage({ scope });
+
+    await screen.findByText("truncated-summary.html");
+    expect(
+      screen.getByText(
+        "Showing the newest 10,000 artifacts. Filters apply to this capped set.",
+      ),
+    ).toBeInTheDocument();
   });
 });
