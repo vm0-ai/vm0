@@ -121,10 +121,16 @@ describe("POST /api/zero/billing/portal", () => {
   });
 
   it("returns portal URL on success", async () => {
+    const customerId = `cus-portal-${randomUUID().slice(0, 8)}`;
     const fixture = await track(
       store.set(
         seedInvoicesOrg$,
-        { stripeCustomerId: `cus-portal-${randomUUID().slice(0, 8)}` },
+        {
+          stripeCustomerId: customerId,
+          stripeSubscriptionId: `sub-portal-${randomUUID().slice(0, 8)}`,
+          subscriptionStatus: "active",
+          tier: "pro",
+        },
         context.signal,
       ),
     );

@@ -126,6 +126,21 @@ pub struct ExecutionContext {
     pub billable_firewalls: Vec<String>,
     #[serde(default)]
     pub model_usage_provider: Option<String>,
+    #[serde(default)]
+    pub codex_runtime_config: Option<CodexRuntimeConfig>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexRuntimeConfig {
+    pub provider_id: String,
+    pub name: String,
+    pub base_url: String,
+    pub env_key: String,
+    pub wire_api: String,
+    pub supports_websockets: bool,
+    #[serde(default)]
+    pub model_catalog: Option<serde_json::Value>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

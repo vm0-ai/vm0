@@ -24,9 +24,11 @@ use tracing::{error, info, warn};
 
 use super::api::ApiClient;
 use super::api_direct_candidates::{
-    DirectCandidateInbox, DirectCandidateInsertOutcome, DirectJobCandidate,
+    DirectCandidateInbox, DirectCandidateInsertOutcome, DirectCandidatePruneSnapshot,
+    DirectJobCandidate,
 };
 use super::network_policy_refresh::NetworkPolicyRefreshHandle;
+use crate::duration::duration_ms;
 use crate::ids::RunId;
 use crate::retry::{RetryState, recv_retry, sleep_until_retry};
 use crate::run_cancellation::{RunCancellationHandle, SharedRunCancellationMap};
@@ -740,12 +742,18 @@ async fn enqueue_direct_candidate(
 ) {
     let run_id = candidate.run_id();
     let profile = candidate.profile_name().to_owned();
-    match direct_candidates.push(candidate).await {
-        DirectCandidateInsertOutcome::Inserted(_) | DirectCandidateInsertOutcome::Updated(_) => {}
+    let outcome = direct_candidates.push(candidate).await;
+    if let Some(pruned) = outcome.pruned() {
+        log_direct_candidate_pruned(&profile, "push", pruned);
+    }
+    match outcome {
+        DirectCandidateInsertOutcome::Inserted { .. }
+        | DirectCandidateInsertOutcome::Updated { .. } => {}
         DirectCandidateInsertOutcome::Overflow {
             snapshot,
             coalesced_count,
             should_wake_poll,
+            ..
         } => {
             if !should_wake_poll {
                 return;
@@ -762,6 +770,23 @@ async fn enqueue_direct_candidate(
             poll_wakeups.request_immediate_poll().await;
         }
     }
+}
+
+fn log_direct_candidate_pruned(
+    profile: &str,
+    source: &'static str,
+    pruned: DirectCandidatePruneSnapshot,
+) {
+    info!(
+        profile,
+        source,
+        pruned_count = pruned.pruned_count,
+        depth = pruned.depth,
+        capacity = pruned.capacity,
+        stale_after_ms = duration_ms(pruned.stale_after),
+        oldest_pruned_wait_ms = duration_ms(pruned.oldest_pruned_wait_elapsed),
+        "ably: stale direct candidates pruned"
+    );
 }
 
 fn parse_cancel_notification(msg: &ably_subscriber::Message) -> Option<RunId> {
@@ -1019,7 +1044,17 @@ mod tests {
     }
 
     fn direct_candidate_inbox_with_capacity(capacity: usize) -> Arc<DirectCandidateInbox> {
-        DirectCandidateInbox::new(capacity)
+        direct_candidate_inbox_with_stale_after(
+            capacity,
+            crate::provider::api_direct_candidates::DIRECT_CANDIDATE_STALE_AFTER,
+        )
+    }
+
+    fn direct_candidate_inbox_with_stale_after(
+        capacity: usize,
+        stale_after: Duration,
+    ) -> Arc<DirectCandidateInbox> {
+        DirectCandidateInbox::new(capacity, stale_after)
     }
 
     async fn pop_direct_candidate(inbox: &DirectCandidateInbox) -> DirectJobCandidate {
@@ -1891,6 +1926,50 @@ mod tests {
         let candidate = pop_direct_candidate(&direct_candidates).await;
         assert_eq!(candidate.profile_name(), "vm0/default");
         assert!(wakeups.snapshot().await.poll_now);
+    }
+
+    #[tokio::test]
+    async fn stale_full_direct_candidate_queue_prunes_before_enqueueing() {
+        let tokens = Mutex::new(HashMap::new());
+        let wakeups = PollWakeups::new(true);
+        let stale_after = Duration::from_secs(60);
+        let direct_candidates = direct_candidate_inbox_with_stale_after(1, stale_after);
+        let profiles = default_profiles();
+        let _ = wakeups
+            .wait_for_poll_due(
+                &CancellationToken::new(),
+                Duration::from_secs(30),
+                Duration::from_secs(5),
+            )
+            .await;
+        let stale_enqueued_at = StdInstant::now() - Duration::from_secs(120);
+        let stale_run_id: RunId = "00000000-0000-0000-0000-000000000001".parse().unwrap();
+        let _ = direct_candidates
+            .push(DirectJobCandidate::new_with_enqueued_at(
+                stale_run_id,
+                "vm0/default".to_string(),
+                stale_enqueued_at,
+                stale_enqueued_at,
+            ))
+            .await;
+        let msg = make_message(
+            Some("job"),
+            serde_json::json!({
+                "runId": "00000000-0000-0000-0000-000000000002",
+                "profile": "vm0/default"
+            }),
+        );
+
+        handle_ably_message(&msg, &profiles, &wakeups, &direct_candidates, &tokens).await;
+
+        let candidate = pop_direct_candidate(&direct_candidates).await;
+        assert_eq!(
+            candidate.run_id(),
+            "00000000-0000-0000-0000-000000000002"
+                .parse::<RunId>()
+                .unwrap()
+        );
+        assert!(!wakeups.snapshot().await.poll_now);
     }
 
     #[tokio::test]

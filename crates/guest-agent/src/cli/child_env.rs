@@ -28,9 +28,10 @@ const OPTIONAL_BASE_ENV_KEYS: &[&str] = &[
 ];
 
 pub(super) fn values_for_runtime(runtime: &CliRuntimeConfig<'_>) -> Vec<(String, String)> {
+    let user_env = runtime.child_user_env();
     values_with_inputs(
         runtime.home_dir.as_ref(),
-        runtime.user_env,
+        user_env.as_ref(),
         runtime.api_url.as_ref(),
     )
 }

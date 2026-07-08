@@ -99,6 +99,9 @@ describe("Steam permission manifest", () => {
     expect(officialMethodRules.get("ISteamApps/GetAppList")).toContain(
       "GET /ISteamApps/GetAppList/v2/",
     );
+    expect(
+      officialMethodRules.get("ISteamWebAPIUtil/GetSupportedAPIList"),
+    ).toContain("GET /ISteamWebAPIUtil/GetSupportedAPIList/v1/");
     expect(officialMethodRules.get("ISteamApps/GetSDRConfig")).toContain(
       "GET /ISteamApps/GetSDRConfig/v1/",
     );
@@ -154,6 +157,10 @@ describe("Steam permission manifest", () => {
         (permission) => permission.name === "player-game-stats-read",
       )?.rules,
     ).toContain("GET /ISteamUserStats/GetSchemaForGame/v2/");
+    expect(
+      permissions.find((permission) => permission.name === "steam-apps-read")
+        ?.rules,
+    ).toContain("GET /ISteamWebAPIUtil/GetSupportedAPIList/v1/");
     expect(
       permissions.find((permission) => permission.name === "steam-apps-read")
         ?.rules,
@@ -260,6 +267,10 @@ describe("Steam permission manifest", () => {
             ["GET /ISteamUserStats/GetNumberOfCurrentPlayers/v1/"],
           ],
           ["ISteamApps/GetAppList", ["GET /ISteamApps/GetAppList/v2/"]],
+          [
+            "ISteamWebAPIUtil/GetSupportedAPIList",
+            ["GET /ISteamWebAPIUtil/GetSupportedAPIList/v1/"],
+          ],
           ["ISteamApps/GetSDRConfig", ["GET /ISteamApps/GetSDRConfig/v1/"]],
           [
             "ISteamApps/GetServersAtAddress",

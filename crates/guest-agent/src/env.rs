@@ -242,6 +242,7 @@ pub struct GuestConfig {
     pub home_dir: String,
     pub artifacts: Vec<ArtifactEnv>,
     pub feature_flags: String,
+    pub codex_runtime_config: String,
     pub stuck_tool_timeout_secs: u64,
     pub post_result_sigterm_grace: Duration,
     pub post_result_total_cap: Duration,
@@ -306,6 +307,7 @@ impl GuestConfig {
             home_dir,
             artifacts,
             feature_flags: payload.feature_flags,
+            codex_runtime_config: payload.codex_runtime_config,
             stuck_tool_timeout_secs: u64_value_or(
                 guest_contracts::env::STUCK_TOOL_TIMEOUT_SECS_ENV,
                 non_empty(&raw.stuck_tool_timeout_secs),
@@ -832,6 +834,7 @@ mod tests {
                 r#"[{"name":"artifact","mountPath":"/mnt/a","storageId":"storage","versionId":"v1"}]"#
                     .to_string(),
             feature_flags: r#"{"flag":true}"#.to_string(),
+            codex_runtime_config: r#"{"providerId":"minimax"}"#.to_string(),
         };
         let path = write_run_payload_fixture(&runtime_dir, &payload);
         let parent = path.parent().unwrap().to_path_buf();
@@ -852,6 +855,7 @@ mod tests {
         assert_eq!(config.settings, "{}");
         assert_eq!(config.artifacts.len(), 1);
         assert_eq!(config.feature_flags, r#"{"flag":true}"#);
+        assert_eq!(config.codex_runtime_config, r#"{"providerId":"minimax"}"#);
         assert!(!path.exists());
         assert!(!parent.exists());
     }

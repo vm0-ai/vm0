@@ -1,6 +1,6 @@
 [package]
 name = "guest-download"
-version = "0.20.54"
+version = "0.20.55"
 edition.workspace = true
 
 [dependencies]
