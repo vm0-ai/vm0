@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import { describe, expect, it } from "vitest";
 
@@ -20,6 +20,7 @@ import {
   mockGoogleDriveFilesList,
 } from "./helpers/api-bdd-connectors";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 
 const context = testContext();
 const bdd = createBddApi(context);
@@ -27,6 +28,7 @@ const api = createRunsAutomationsApi(context);
 const chat = createChatFilesBddApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
 const connectorsApi = createConnectorBddApi(context);
+const webhooks = createWebhookCallbackApi(context);
 
 type RunnerClaim = Awaited<ReturnType<typeof api.claimRunnerJob>>;
 
@@ -101,6 +103,30 @@ function zeroTokenFromClaim(claim: RunnerClaim): string {
   return token;
 }
 
+async function completeChatRunOk(
+  runId: string,
+  sandboxHeaders: { readonly authorization: string },
+): Promise<void> {
+  const historyHash = createHash("sha256")
+    .update(`bdd artifacts history ${runId}`)
+    .digest("hex");
+  await webhooks.requestAgentCheckpoint(
+    {
+      runId,
+      cliAgentType: "claude-code",
+      cliAgentSessionId: `bdd-cli-${runId}`,
+      cliAgentSessionHistoryHash: historyHash,
+    },
+    sandboxHeaders,
+    [200],
+  );
+  await webhooks.requestAgentComplete(
+    { runId, exitCode: 0 },
+    sandboxHeaders,
+    [200],
+  );
+}
+
 async function createHostedArtifact(args: {
   readonly actor: ApiTestUser;
   readonly agentId: string;
@@ -117,7 +143,10 @@ async function createHostedArtifact(args: {
     agentId: args.agentId,
     prompt: `create ${args.site}`,
   });
-  const { claim } = await claimChatRun(args.runnerGroup, run.runId);
+  const { claim, sandboxHeaders } = await claimChatRun(
+    args.runnerGroup,
+    run.runId,
+  );
   const bearer = `Bearer ${zeroTokenFromClaim(claim)}`;
   const prepared = await chat.prepareHostedSiteWithBearer(bearer, {
     site: args.site,
@@ -126,6 +155,7 @@ async function createHostedArtifact(args: {
     files: [hostedTextFile("/index.html", `<main>${args.site}</main>`)],
   });
   await chat.completeHostedSiteWithBearer(bearer, prepared.deploymentId);
+  await completeChatRunOk(run.runId, sandboxHeaders);
   return {
     runId: run.runId,
     threadId: run.threadId,
