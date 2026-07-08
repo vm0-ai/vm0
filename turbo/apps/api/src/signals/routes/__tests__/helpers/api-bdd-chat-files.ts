@@ -1044,32 +1044,14 @@ export function createChatFilesBddApi(context: TestContext) {
       );
     },
 
-    async listArtifacts(
-      actor: ApiTestUser,
-      query: ArtifactsListRequestQuery = {},
-    ): Promise<ArtifactsListResponse> {
+    async listArtifacts(actor: ApiTestUser): Promise<ArtifactsListResponse> {
       const response = await accept(
         artifactsClient().list({
           headers: authenticate(context, actor),
-          query,
         }),
         [200],
       );
       return response.body;
-    },
-
-    async requestListArtifacts(
-      actor: ApiTestUser | null,
-      query: ArtifactsListRequestQuery,
-      statuses: readonly (200 | 400 | 401 | 403)[],
-    ) {
-      return await accept(
-        artifactsClient().list({
-          headers: authenticate(context, actor),
-          query,
-        }),
-        statuses,
-      );
     },
 
     async searchChat(

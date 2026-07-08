@@ -177,12 +177,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Spotify connector integration",
     enabled: false,
   },
-  [FeatureSwitchKey.PlaystationConnector]: {
-    maintainer: "liangyou@vm0.ai",
-    description: "Enable the PlayStation player connector integration",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.ZeroDebug]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -386,7 +380,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Show the Artifacts manage page for generated artifacts in the current organization.",
     enabled: false,
-    userOverridable: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.WorkflowTemplateCatalog]: {
     maintainer: "ming@vm0.ai",

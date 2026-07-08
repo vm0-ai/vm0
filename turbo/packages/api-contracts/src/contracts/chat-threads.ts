@@ -71,17 +71,9 @@ const artifactItemSchema = z.object({
   googleDriveSync: chatThreadArtifactGoogleDriveSyncSchema.optional(),
 });
 
-const artifactsListQuerySchema = z.object({
-  agentId: z.string().optional(),
-  query: z.string().trim().min(1).max(200).optional(),
-  artifactKind: hostedArtifactKindSchema.optional(),
-  cursor: z.string().optional(),
-  limit: z.coerce.number().int().min(1).max(100).default(50),
-});
-
 const artifactsListResponseSchema = z.object({
   artifacts: z.array(artifactItemSchema),
-  nextCursor: z.string().nullable(),
+  truncated: z.boolean(),
 });
 
 const htmlArtifactEditSnapshotQuerySchema = z.object({
@@ -1185,14 +1177,13 @@ export const artifactsContract = c.router({
     method: "GET",
     path: "/api/zero/artifacts",
     headers: authHeadersSchema,
-    query: artifactsListQuerySchema,
     responses: {
       200: artifactsListResponseSchema,
-      400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
     },
-    summary: "List generated artifacts for the caller's current organization",
+    summary:
+      "List all generated artifacts for the caller's current organization (bulk, capped)",
   },
 });
 
@@ -1239,7 +1230,6 @@ export {
   attachFileSchema,
   resolvedAttachFileSchema,
   artifactItemSchema,
-  artifactsListQuerySchema,
   artifactsListResponseSchema,
   chatThreadArtifactFileSchema,
   chatThreadArtifactGoogleDriveSyncSchema,
@@ -1311,7 +1301,6 @@ export type ChatThreadArtifactGoogleDriveSync = z.infer<
 >;
 export type ChatThreadArtifactRun = z.infer<typeof chatThreadArtifactRunSchema>;
 export type ArtifactItem = z.infer<typeof artifactItemSchema>;
-export type ArtifactsListQuery = z.infer<typeof artifactsListQuerySchema>;
 export type ArtifactsListResponse = z.infer<typeof artifactsListResponseSchema>;
 export type HtmlArtifactEditSnapshot = z.infer<
   typeof htmlArtifactEditSnapshotSchema

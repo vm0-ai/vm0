@@ -1,5 +1,4 @@
 import type { ConnectorConfig } from "../connector-config";
-import { FeatureSwitchKey } from "../feature-switch-key";
 
 export const playstation = {
   playstation: {
@@ -10,7 +9,6 @@ export const playstation = {
       "Connect your PlayStation Network account to access player profile, game, friends, presence, and trophy data.",
     authMethods: {
       api: {
-        featureFlag: FeatureSwitchKey.PlaystationConnector,
         label: "PlayStation sign-in",
         helpText:
           "First make sure you are signed in to PlayStation at [https://www.playstation.com/](https://www.playstation.com/).\nClick the button below, then copy the `npsso` value.",
