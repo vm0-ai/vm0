@@ -10,8 +10,8 @@ use std::time::Instant;
 
 use async_trait::async_trait;
 use sandbox::{
-    Sandbox, SandboxConfig, SandboxCreateObserver, SandboxError, SandboxFactory,
-    SandboxInitializationPhase, SandboxInvalidStateContext,
+    Sandbox, SandboxConfig, SandboxCreateObserver, SandboxCreateStage, SandboxError,
+    SandboxFactory, SandboxInitializationPhase, SandboxInvalidStateContext,
 };
 use tracing::{info, warn};
 
@@ -20,7 +20,7 @@ use crate::cow_cleanup::CowCleanupOutcome;
 use crate::duration::duration_ms;
 use crate::factory::cleanup_group::{FactoryCleanupGroup, FactoryCleanupTaskKind};
 use crate::factory::cow_cleanup::destroy_cow_device_with_retries;
-use crate::factory::create_timing::{SandboxCreateStage, SandboxCreateTiming};
+use crate::factory::create_timing::SandboxCreateTiming;
 use crate::factory::create_transaction::{
     FactoryCreateRollbackCleanup, SandboxCreateResources, SandboxCreateTransaction,
     rollback_create_transaction,
