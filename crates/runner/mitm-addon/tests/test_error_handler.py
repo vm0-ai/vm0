@@ -11,6 +11,7 @@ from mitmproxy.test import tutils
 import auth_base_forwarder
 import flow_metadata_keys as metadata_keys
 import mitm_addon
+import request_classification
 import request_streaming
 import upstream_destination_binding
 import usage
@@ -175,7 +176,7 @@ class TestErrorHandler:
         assert entry["connector_diagnostic_env_names"] == ["FAL_TOKEN"]
         assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
         assert metadata_keys.REQUEST_STREAM_BUFFER_STATE not in flow.metadata
-        assert mitm_addon._REQUEST_CLASSIFICATION not in flow.metadata
+        assert request_classification.REQUEST_CLASSIFICATION_METADATA_KEY not in flow.metadata
 
     def test_header_phase_connector_diagnostic_error_keeps_connection_error(
         self, tmp_path, real_flow, mitm_ctx
@@ -254,7 +255,7 @@ class TestErrorHandler:
         assert "firewall_error" not in entry
         assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
         assert metadata_keys.REQUEST_STREAM_BUFFER_STATE not in flow.metadata
-        assert mitm_addon._REQUEST_CLASSIFICATION not in flow.metadata
+        assert request_classification.REQUEST_CLASSIFICATION_METADATA_KEY not in flow.metadata
 
     async def test_browser_connector_candidate_error_keeps_original_error(
         self, tmp_path, real_flow, mitm_ctx, headers

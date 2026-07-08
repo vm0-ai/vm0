@@ -12,6 +12,7 @@ from mitmproxy.test import tutils
 import firewall_auth_cache as auth_cache
 import flow_metadata_keys as metadata_keys
 import mitm_addon
+import request_classification
 import request_streaming
 from body_limits import STREAM_BUFFER_LIMIT
 from tests.auth_state_helpers import (
@@ -1291,7 +1292,7 @@ class TestResponseHandler:
 
         with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
             mitm_addon.requestheaders(flow)
-            assert mitm_addon._REQUEST_CLASSIFICATION in flow.metadata
+            assert request_classification.REQUEST_CLASSIFICATION_METADATA_KEY in flow.metadata
             stream = flow.request.stream
             assert callable(stream)
             assert stream(b"partial request") == b"partial request"
@@ -1301,14 +1302,14 @@ class TestResponseHandler:
                 content=b"ok",
             )
             mitm_addon.response(flow)
-            assert mitm_addon._REQUEST_CLASSIFICATION not in flow.metadata
+            assert request_classification.REQUEST_CLASSIFICATION_METADATA_KEY not in flow.metadata
             reg_path.write_text("{ broken registry")
             await mitm_addon.request(flow)
 
         assert flow.response.status_code == 200
         assert flow.response.content == b"ok"
         assert metadata_keys.FIREWALL_ERROR not in flow.metadata
-        assert mitm_addon._REQUEST_CLASSIFICATION not in flow.metadata
+        assert request_classification.REQUEST_CLASSIFICATION_METADATA_KEY not in flow.metadata
 
     @pytest.mark.parametrize(
         ("content_length", "expected_size"),
