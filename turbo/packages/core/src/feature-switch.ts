@@ -105,6 +105,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "liangyou@vm0.ai",
     description: "Enable the Nintendo eShop public catalog connector",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.GarminConnectConnector]: {
     maintainer: "yuma@vm0.ai",

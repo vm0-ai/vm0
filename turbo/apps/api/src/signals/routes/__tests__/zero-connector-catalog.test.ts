@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
 
-import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import {
   zeroConnectorCatalogContract,
   type PublicConnectorCatalogListResponse,
   type PublicConnectorCatalogStatusResponse,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { createStore } from "ccstate";
 import { afterEach } from "vitest";
@@ -33,6 +33,7 @@ const bdd = createBddApi(context);
 const connectorsApi = createConnectorBddApi(context);
 const authDevice = createAuthDeviceApiActions(context);
 const store = createStore();
+const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 
 async function enableFeatureSwitches(
   orgId: string,
@@ -231,7 +232,7 @@ describe("GET /api/zero/connector-catalog", () => {
     expect(openai?.permissionSummary).not.toHaveProperty("permissions");
   });
 
-  it("hides no-auth connector catalog entries until their feature switch is enabled", async () => {
+  it("shows staff-only no-auth connector catalog entries for staff orgs", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     mocks.clerk.session(userId, orgId);
@@ -257,16 +258,14 @@ describe("GET /api/zero/connector-catalog", () => {
       }),
     ).toBeUndefined();
 
-    await enableConnectorFeatureSwitches(orgId, userId, {
-      [FeatureSwitchKey.NintendoEshopCatalogConnector]: true,
-    });
+    mocks.clerk.session(userId, STAFF_ORG_ID);
 
-    const enabledList = await accept(
+    const staffList = await accept(
       client.list({ headers: { authorization: "Bearer clerk-session" } }),
       [200],
     );
     expect(
-      enabledList.body.connectors.find((connector) => {
+      staffList.body.connectors.find((connector) => {
         return connector.connectorRef === "nintendo-eshop-catalog";
       }),
     ).toMatchObject({
@@ -279,12 +278,12 @@ describe("GET /api/zero/connector-catalog", () => {
       ],
     });
 
-    const enabledStatus = await accept(
+    const staffStatus = await accept(
       client.status({ headers: { authorization: "Bearer clerk-session" } }),
       [200],
     );
     expect(
-      enabledStatus.body.connectors.find((connector) => {
+      staffStatus.body.connectors.find((connector) => {
         return connector.connectorRef === "nintendo-eshop-catalog";
       }),
     ).toMatchObject({

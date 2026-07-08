@@ -1,12 +1,10 @@
 import { randomUUID } from "node:crypto";
 
-import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import {
   zeroConnectorManualGrantContract,
   zeroConnectorsByTypeContract,
   zeroConnectorsMainContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { afterEach } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -14,6 +12,7 @@ import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
+const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 
 interface AuthenticatedFixture {
   readonly orgId: string;
@@ -62,32 +61,6 @@ async function deleteGitlab(fixture: AuthenticatedFixture): Promise<void> {
   );
 }
 
-async function updateFeatureSwitches(
-  fixture: AuthenticatedFixture,
-  switches: Partial<Record<FeatureSwitchKey, boolean>>,
-): Promise<void> {
-  mocks.clerk.session(fixture.userId, fixture.orgId);
-  await accept(
-    setupApp({ context })(zeroFeatureSwitchesContract).update({
-      headers: authHeaders(),
-      body: { switches },
-    }),
-    [200],
-  );
-}
-
-async function deleteFeatureSwitches(
-  fixture: AuthenticatedFixture,
-): Promise<void> {
-  mocks.clerk.session(fixture.userId, fixture.orgId);
-  await accept(
-    setupApp({ context })(zeroFeatureSwitchesContract).delete({
-      headers: authHeaders(),
-    }),
-    [200],
-  );
-}
-
 describe("GET /api/zero/connectors", () => {
   const seededFixtures: AuthenticatedFixture[] = [];
 
@@ -96,7 +69,6 @@ describe("GET /api/zero/connectors", () => {
       const fixture = seededFixtures.pop();
       if (fixture) {
         await deleteGitlab(fixture);
-        await deleteFeatureSwitches(fixture);
       }
     }
   });
@@ -122,23 +94,17 @@ describe("GET /api/zero/connectors", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const client = setupApp({ context })(zeroConnectorsMainContract);
-    const initial = await accept(
+    const nonStaff = await accept(
       client.list({ headers: authHeaders() }),
       [200],
     );
-    expect(initial.body.configuredTypes).not.toContain(
+    expect(nonStaff.body.configuredTypes).not.toContain(
       "nintendo-eshop-catalog",
     );
 
-    await updateFeatureSwitches(fixture, {
-      [FeatureSwitchKey.NintendoEshopCatalogConnector]: true,
-    });
-
-    const enabled = await accept(
-      client.list({ headers: authHeaders() }),
-      [200],
-    );
-    expect(enabled.body.configuredTypes).toContain("nintendo-eshop-catalog");
+    mocks.clerk.session(fixture.userId, STAFF_ORG_ID);
+    const staff = await accept(client.list({ headers: authHeaders() }), [200]);
+    expect(staff.body.configuredTypes).toContain("nintendo-eshop-catalog");
   });
 
   it("returns connectors created through the connector API", async () => {

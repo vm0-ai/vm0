@@ -1,12 +1,10 @@
 import { randomUUID } from "node:crypto";
 
 import { zeroConnectorCatalogContract } from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import {
   zeroConnectorNoAuthGrantContract,
   zeroConnectorsByTypeContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { afterEach } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -14,6 +12,7 @@ import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
+const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 
 interface AuthenticatedFixture {
   readonly orgId: string;
@@ -24,39 +23,13 @@ function authHeaders() {
   return { authorization: "Bearer clerk-session" };
 }
 
-function seedFixture(): AuthenticatedFixture {
+function seedFixture(orgId = `org_${randomUUID()}`): AuthenticatedFixture {
   const fixture = {
-    orgId: `org_${randomUUID()}`,
+    orgId,
     userId: `user_${randomUUID()}`,
   };
   mocks.clerk.session(fixture.userId, fixture.orgId);
   return fixture;
-}
-
-async function updateFeatureSwitches(
-  fixture: AuthenticatedFixture,
-  switches: Partial<Record<FeatureSwitchKey, boolean>>,
-): Promise<void> {
-  mocks.clerk.session(fixture.userId, fixture.orgId);
-  await accept(
-    setupApp({ context })(zeroFeatureSwitchesContract).update({
-      headers: authHeaders(),
-      body: { switches },
-    }),
-    [200],
-  );
-}
-
-async function deleteFeatureSwitches(
-  fixture: AuthenticatedFixture,
-): Promise<void> {
-  mocks.clerk.session(fixture.userId, fixture.orgId);
-  await accept(
-    setupApp({ context })(zeroFeatureSwitchesContract).delete({
-      headers: authHeaders(),
-    }),
-    [200],
-  );
 }
 
 async function deleteNintendoConnector(
@@ -80,7 +53,6 @@ describe("POST /api/zero/connectors/:type/no-auth", () => {
       const fixture = fixtures.pop();
       if (fixture) {
         await deleteNintendoConnector(fixture);
-        await deleteFeatureSwitches(fixture);
       }
     }
   });
@@ -136,11 +108,9 @@ describe("POST /api/zero/connectors/:type/no-auth", () => {
     expect(response.body.error.code).toBe("FORBIDDEN");
   });
 
-  it("creates a zero-credential local connector row when enabled", async () => {
-    const fixture = trackFixture();
-    await updateFeatureSwitches(fixture, {
-      [FeatureSwitchKey.NintendoEshopCatalogConnector]: true,
-    });
+  it("creates a zero-credential local connector row for staff orgs", async () => {
+    const fixture = seedFixture(STAFF_ORG_ID);
+    fixtures.push(fixture);
 
     const response = await accept(
       setupApp({ context })(zeroConnectorNoAuthGrantContract).connect({
