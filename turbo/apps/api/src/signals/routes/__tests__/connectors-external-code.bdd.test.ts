@@ -54,13 +54,10 @@ async function awsActor(): Promise<ApiTestUser> {
   return actor;
 }
 
-async function playstationActor(): Promise<ApiTestUser> {
+function playstationActor(): ApiTestUser {
   const bdd = createBddApi(context);
   const actor = bdd.user();
   context.mocks.ably.publish.mockResolvedValue(undefined);
-  await connectorsApi.updateFeatureSwitches(actor, {
-    [FeatureSwitchKey.PlaystationConnector]: true,
-  });
   return actor;
 }
 
