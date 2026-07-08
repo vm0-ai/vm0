@@ -54,6 +54,36 @@ const chatThreadArtifactRunSchema = z.object({
   files: z.array(chatThreadArtifactFileSchema),
 });
 
+const artifactItemSchema = z.object({
+  artifactItemId: z.string(),
+  threadId: z.string(),
+  runId: z.string(),
+  fileId: z.string(),
+  agentId: z.string(),
+  agentName: z.string().nullable().optional(),
+  agentAvatarUrl: z.string().nullable().optional(),
+  threadTitle: z.string().nullable().optional(),
+  filename: z.string(),
+  contentType: z.string(),
+  url: z.string(),
+  createdAt: z.string(),
+  artifactKind: hostedArtifactKindSchema.optional(),
+  googleDriveSync: chatThreadArtifactGoogleDriveSyncSchema.optional(),
+});
+
+const artifactsListQuerySchema = z.object({
+  agentId: z.string().optional(),
+  query: z.string().trim().min(1).max(200).optional(),
+  artifactKind: hostedArtifactKindSchema.optional(),
+  cursor: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+});
+
+const artifactsListResponseSchema = z.object({
+  artifacts: z.array(artifactItemSchema),
+  nextCursor: z.string().nullable(),
+});
+
 const htmlArtifactEditSnapshotQuerySchema = z.object({
   url: z.string().url(),
 });
@@ -1110,6 +1140,22 @@ export const chatThreadArtifactsContract = c.router({
   },
 });
 
+export const artifactsContract = c.router({
+  list: {
+    method: "GET",
+    path: "/api/zero/artifacts",
+    headers: authHeadersSchema,
+    query: artifactsListQuerySchema,
+    responses: {
+      200: artifactsListResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+    },
+    summary: "List generated artifacts for the caller's current organization",
+  },
+});
+
 export type ChatThreadsContract = typeof chatThreadsContract;
 export type ChatThreadByIdContract = typeof chatThreadByIdContract;
 export type ChatThreadDraftContract = typeof chatThreadDraftContract;
@@ -1127,6 +1173,7 @@ export type ChatThreadComputerUseHostContract =
 export type ChatMessagesContract = typeof chatMessagesContract;
 export type ChatThreadMessagesContract = typeof chatThreadMessagesContract;
 export type ChatThreadArtifactsContract = typeof chatThreadArtifactsContract;
+export type ArtifactsContract = typeof artifactsContract;
 export type ChatSearchContract = typeof chatSearchContract;
 export type ChatSearchResponse = z.infer<typeof chatSearchResponseSchema>;
 export type ChatSearchResult = z.infer<typeof chatSearchResultSchema>;
@@ -1152,6 +1199,9 @@ export {
   persistedAttachmentSchema,
   attachFileSchema,
   resolvedAttachFileSchema,
+  artifactItemSchema,
+  artifactsListQuerySchema,
+  artifactsListResponseSchema,
   chatThreadArtifactFileSchema,
   chatThreadArtifactGoogleDriveSyncSchema,
   chatThreadArtifactRunSchema,
@@ -1222,6 +1272,9 @@ export type ChatThreadArtifactGoogleDriveSync = z.infer<
   typeof chatThreadArtifactGoogleDriveSyncSchema
 >;
 export type ChatThreadArtifactRun = z.infer<typeof chatThreadArtifactRunSchema>;
+export type ArtifactItem = z.infer<typeof artifactItemSchema>;
+export type ArtifactsListQuery = z.infer<typeof artifactsListQuerySchema>;
+export type ArtifactsListResponse = z.infer<typeof artifactsListResponseSchema>;
 export type HtmlArtifactEditSnapshot = z.infer<
   typeof htmlArtifactEditSnapshotSchema
 >;
