@@ -1892,17 +1892,18 @@ jobs:
             rm -rf "$LOG_DIR"
           }
 
-          kill_process_tree() {
+          collect_process_tree() {
             local PID=$1
             local CHILD
+            echo "$PID"
             for CHILD in $(pgrep -P "$PID" 2>/dev/null || true); do
-              kill_process_tree "$CHILD"
+              collect_process_tree "$CHILD"
             done
-            kill "$PID" 2>/dev/null || true
           }
 
           stop_background_start_jobs() {
             local START_PIDS=()
+            local TREE_PIDS=()
             for PID in $(jobs -pr); do
               START_PIDS+=("$PID")
             done
@@ -1910,7 +1911,18 @@ jobs:
               START_PIDS+=("$PID")
             done
             for PID in "${START_PIDS[@]}"; do
-              kill_process_tree "$PID"
+              for TREE_PID in $(collect_process_tree "$PID"); do
+                TREE_PIDS+=("$TREE_PID")
+              done
+            done
+            for PID in "${TREE_PIDS[@]}"; do
+              kill -TERM "$PID" 2>/dev/null || true
+            done
+            for PID in "${START_PIDS[@]}"; do
+              timeout 10s tail --pid="$PID" -f /dev/null >/dev/null 2>&1 || true
+            done
+            for PID in "${TREE_PIDS[@]}"; do
+              kill -KILL "$PID" 2>/dev/null || true
             done
             for PID in "${START_PIDS[@]}"; do
               wait "$PID" 2>/dev/null || true
