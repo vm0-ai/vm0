@@ -37,6 +37,11 @@ fn validate_config(config: &CodexRuntimeConfig) -> Result<(), AgentError> {
             "invalid Codex runtime provider id".to_string(),
         ));
     }
+    if !is_env_var_name(&config.env_key) {
+        return Err(AgentError::Execution(
+            "invalid Codex runtime auth env key".to_string(),
+        ));
+    }
     Ok(())
 }
 
@@ -45,6 +50,16 @@ fn is_codex_config_key_segment(value: &str) -> bool {
         && value
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-')
+}
+
+fn is_env_var_name(value: &str) -> bool {
+    let Some(first) = value.bytes().next() else {
+        return false;
+    };
+    (first.is_ascii_alphabetic() || first == b'_')
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
 }
 
 pub(super) fn write_model_catalog_from_raw(home_dir: &str, raw: &str) -> Result<(), AgentError> {
@@ -189,6 +204,23 @@ mod tests {
 
         assert!(error.contains("invalid Codex runtime provider id"));
         assert!(!error.contains("provider.with.dot"));
+    }
+
+    #[test]
+    fn parse_raw_rejects_invalid_auth_env_keys() {
+        let raw = r#"{
+            "providerId": "provider",
+            "name": "Provider",
+            "baseUrl": "https://example.test/v1",
+            "envKey": "OPENAI-API-KEY",
+            "wireApi": "responses",
+            "supportsWebsockets": false
+        }"#;
+
+        let error = parse_raw(raw).unwrap_err().to_string();
+
+        assert!(error.contains("invalid Codex runtime auth env key"));
+        assert!(!error.contains("OPENAI-API-KEY"));
     }
 
     #[test]

@@ -79,7 +79,7 @@ export const modelProviderCodexRuntimeConfigSchema = z.object({
   providerId: z.string().regex(/^[A-Za-z0-9_-]+$/),
   name: z.string().min(1),
   baseUrl: z.url(),
-  envKey: z.string().min(1),
+  envKey: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/),
   wireApi: z.literal("responses"),
   supportsWebsockets: z.boolean(),
   modelCatalog: z.record(z.string(), z.unknown()).optional(),
