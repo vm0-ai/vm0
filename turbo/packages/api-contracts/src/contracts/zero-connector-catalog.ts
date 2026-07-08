@@ -12,6 +12,7 @@ const publicConnectorCatalogAuthMethodSummarySchema = z.object({
   label: z.string(),
   description: z.string().nullable(),
   grantKind: z.enum([
+    "none",
     "manual",
     "auth-code",
     "openid-auth",

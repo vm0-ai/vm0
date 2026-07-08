@@ -31,6 +31,7 @@ import {
   connectorOAuthDeviceAuthState$,
   connectConnectorOAuthAuthCodeAndSettle$,
   connectConnectorOAuthDeviceAuthAndSettle$,
+  connectConnectorNoAuthAndSettle$,
   connectConnectorExternalCode$,
   completeConnectorExternalCodeAndSettle$,
   openConnectorExternalCodeAuthorizationPage$,
@@ -138,6 +139,16 @@ type CompleteExternalCodeAndSettleFn = (
   signal: AbortSignal,
 ) => Promise<void>;
 
+type ConnectNoAuthAndSettleFn = (
+  args: {
+    readonly type: ConnectorType;
+    readonly authMethod: ConnectorAuthMethodId;
+    readonly onSuccess: () => void | Promise<void>;
+    readonly options: PostConnectOptions;
+  },
+  signal: AbortSignal,
+) => Promise<void>;
+
 type ConnectModalContentProps = {
   item: ConnectorTypeWithStatus;
   onSuccess: () => void | Promise<void>;
@@ -151,8 +162,10 @@ type ConnectMethodContentProps = ConnectModalContentProps & {
   connectOAuthDeviceAuthAndSettle: ConnectOAuthDeviceAuthAndSettleFn;
   connectExternalCode: ConnectExternalCodeFn;
   completeExternalCodeAndSettle: CompleteExternalCodeAndSettleFn;
+  connectNoAuthAndSettle: ConnectNoAuthAndSettleFn;
   submitManualGrant: SubmitManualGrantFn;
   manualGrantSubmitting: boolean;
+  noAuthSubmitting: boolean;
   signal: AbortSignal;
 };
 
@@ -916,6 +929,40 @@ function ManualGrantConnectMethodContent(props: ConnectMethodContentProps) {
   );
 }
 
+function NoAuthConnectMethodContent(props: ConnectMethodContentProps) {
+  const enable = onDomEventFn(async () => {
+    await props.connectNoAuthAndSettle(
+      {
+        type: props.item.type,
+        authMethod: props.authMethod,
+        onSuccess: props.onSuccess,
+        options: {
+          showPermissionDialog: props.showPermissionDialogOnConnect,
+          connectorLabel: props.item.label,
+        },
+      },
+      props.signal,
+    );
+  });
+
+  return (
+    <div className="flex flex-col gap-3">
+      {props.method.description && (
+        <ConnectorHelpText text={props.method.description} />
+      )}
+      <Button
+        type="button"
+        variant="outline"
+        onClick={enable}
+        disabled={props.noAuthSubmitting}
+        className="w-full"
+      >
+        {props.noAuthSubmitting ? "Enabling..." : `Enable ${props.item.label}`}
+      </Button>
+    </div>
+  );
+}
+
 function getConnectMethodContentComponent(
   method: ConnectorStatusAuthMethodDetail,
 ): ConnectMethodContentComponent | null {
@@ -934,6 +981,9 @@ function getConnectMethodContentComponent(
     }
     case "manual": {
       return ManualGrantConnectMethodContent;
+    }
+    case "none": {
+      return NoAuthConnectMethodContent;
     }
     case "managed": {
       return null;
@@ -1031,8 +1081,10 @@ function StandardConnectMethodsContent({
   connectOAuthDeviceAuthAndSettle,
   connectExternalCode,
   completeExternalCodeAndSettle,
+  connectNoAuthAndSettle,
   submitManualGrant,
   manualGrantSubmitting,
+  noAuthSubmitting,
   signal,
   entries,
 }: ConnectModalContentProps & {
@@ -1040,8 +1092,10 @@ function StandardConnectMethodsContent({
   connectOAuthDeviceAuthAndSettle: ConnectOAuthDeviceAuthAndSettleFn;
   connectExternalCode: ConnectExternalCodeFn;
   completeExternalCodeAndSettle: CompleteExternalCodeAndSettleFn;
+  connectNoAuthAndSettle: ConnectNoAuthAndSettleFn;
   submitManualGrant: SubmitManualGrantFn;
   manualGrantSubmitting: boolean;
+  noAuthSubmitting: boolean;
   signal: AbortSignal;
   entries: readonly ConnectMethodContentEntry[];
 }) {
@@ -1058,8 +1112,10 @@ function StandardConnectMethodsContent({
           connectOAuthDeviceAuthAndSettle,
           connectExternalCode,
           completeExternalCodeAndSettle,
+          connectNoAuthAndSettle,
           submitManualGrant,
           manualGrantSubmitting,
+          noAuthSubmitting,
           signal,
         }}
       />
@@ -1086,6 +1142,9 @@ function ConnectModalContent({
   );
   const [manualGrantLoadable, submitManualGrantCommand] =
     useLoadableSet(submitManualGrant$);
+  const [noAuthLoadable, connectNoAuthAndSettleCommand] = useLoadableSet(
+    connectConnectorNoAuthAndSettle$,
+  );
   const submitManualGrant: SubmitManualGrantFn = async (
     type,
     authMethod,
@@ -1103,6 +1162,7 @@ function ConnectModalContent({
   const pollingType = useGet(pollingOAuthAuthCodeConnectorType$);
   const settling = settleLoadable.state === "loading";
   const manualGrantSubmitting = manualGrantLoadable.state === "loading";
+  const noAuthSubmitting = noAuthLoadable.state === "loading";
   const isPolling = pollingType === item.type;
   const entries = getConnectMethodContentEntries(item);
   const onConnectSuccess = async () => {
@@ -1142,6 +1202,12 @@ function ConnectModalContent({
   ) => {
     await completeExternalCodeAndSettleCommand(args, signal);
   };
+  const connectNoAuthAndSettle: ConnectNoAuthAndSettleFn = async (
+    args,
+    signal,
+  ) => {
+    await connectNoAuthAndSettleCommand(args, signal);
+  };
 
   const progressContent = hasConnectorStatusBrowserAuthGrant(item)
     ? getOAuthAuthCodeProgressContent({
@@ -1162,8 +1228,10 @@ function ConnectModalContent({
       connectOAuthDeviceAuthAndSettle={connectOAuthDeviceAuthAndSettleCommandFn}
       connectExternalCode={connectExternalCode}
       completeExternalCodeAndSettle={completeExternalCodeAndSettle}
+      connectNoAuthAndSettle={connectNoAuthAndSettle}
       submitManualGrant={submitManualGrant}
       manualGrantSubmitting={manualGrantSubmitting}
+      noAuthSubmitting={noAuthSubmitting}
       signal={pageSignal}
       entries={entries}
     />

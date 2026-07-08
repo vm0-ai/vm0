@@ -8,7 +8,11 @@ import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import {
   allConnectorTypes$,
   connectConnectorOAuthAuthCode$,
+  connectConnectorNoAuth$,
+  connectFlowType$,
+  getConnectorStatusConnectLaunchMode,
   getOnlyAvailableStatusBrowserAuthMethod,
+  getOnlyAvailableStatusNoAuthMethod,
   justConnectedTypes$,
   pollingOAuthAuthCodeConnectorType$,
   type ConnectorTypeWithStatus,
@@ -264,6 +268,14 @@ function runDirectedAuthorize(params: {
     options: { readonly connectorLabel?: string },
     signal: AbortSignal,
   ) => Promise<boolean>;
+  readonly connectNoAuth: (
+    args: {
+      readonly type: ConnectorType;
+      readonly authMethod: ConnectorAuthMethodId;
+      readonly options: { readonly connectorLabel?: string };
+    },
+    signal: AbortSignal,
+  ) => Promise<boolean>;
   readonly openConnectModal: () => void;
 }): void {
   if (!params.canAuthorize) {
@@ -276,16 +288,34 @@ function runDirectedAuthorize(params: {
     );
     return;
   }
-  const authMethod = params.authMethod;
+  const launchMode = params.item
+    ? getConnectorStatusConnectLaunchMode(params.item)
+    : "modal";
+  const authMethod =
+    launchMode === "browser-auth"
+      ? params.authMethod
+      : params.item
+        ? getOnlyAvailableStatusNoAuthMethod(params.item)
+        : null;
   if (authMethod) {
     detach(
       (async () => {
-        const connected = await params.connect(
-          params.connectorType,
-          authMethod,
-          { connectorLabel: params.connectorLabel },
-          params.signal,
-        );
+        const connected =
+          launchMode === "browser-auth"
+            ? await params.connect(
+                params.connectorType,
+                authMethod,
+                { connectorLabel: params.connectorLabel },
+                params.signal,
+              )
+            : await params.connectNoAuth(
+                {
+                  type: params.connectorType,
+                  authMethod,
+                  options: { connectorLabel: params.connectorLabel },
+                },
+                params.signal,
+              );
         if (!connected) {
           return;
         }
@@ -307,7 +337,9 @@ function runDirectedAuthorize(params: {
 function DirectedAuthorizeCard() {
   const params = useDirectedAuthorizeParams();
   const pollingType = useGet(pollingOAuthAuthCodeConnectorType$);
+  const connectFlowType = useGet(connectFlowType$);
   const connect = useSet(connectConnectorOAuthAuthCode$);
+  const connectNoAuth = useSet(connectConnectorNoAuth$);
   const authorize = useSet(authorizeConnector$);
   const signal = useGet(pageSignal$);
   const connectModalKey = useGet(directedAuthorizeConnectModalKey$);
@@ -334,7 +366,8 @@ function DirectedAuthorizeCard() {
   }
 
   const { connectorType, agentId } = params;
-  const isConnecting = pollingType === connectorType;
+  const isConnecting =
+    pollingType === connectorType || connectFlowType === connectorType;
   if (unavailable) {
     return null;
   }
@@ -359,6 +392,7 @@ function DirectedAuthorizeCard() {
       signal,
       authorize,
       connect,
+      connectNoAuth,
       openConnectModal: () => {
         setDirectedAuthorizeConnectModalKey({ connectorType, agentId, signal });
       },

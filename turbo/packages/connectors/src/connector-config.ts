@@ -87,12 +87,17 @@ export type PublicConnectorAuthClientConfig =
   | DynamicPublicConnectorAuthClientConfig;
 
 export type ConnectorGrantKind =
+  | "none"
   | "manual"
   | "auth-code"
   | "openid-auth"
   | "external-code"
   | "device-auth"
   | "managed";
+
+export interface ConnectorNoAuthGrantConfig {
+  readonly kind: "none";
+}
 
 export interface ConnectorManualGrantConfig {
   readonly kind: "manual";
@@ -165,6 +170,7 @@ export interface ConnectorManagedGrantConfig {
 }
 
 export type ConnectorGrantConfig =
+  | ConnectorNoAuthGrantConfig
   | ConnectorManualGrantConfig
   | ConnectorAuthCodeGrantConfig
   | ConnectorOpenIdAuthGrantConfig
@@ -282,6 +288,15 @@ interface ConnectorAuthMethodConfigBase {
  * Auth method configuration for user-selectable connector connection flows.
  */
 export type ConnectorAuthMethodConfig =
+  | (ConnectorAuthMethodConfigBase & {
+      readonly client?: never;
+      readonly grant: ConnectorNoAuthGrantConfig;
+      readonly access: ConnectorNoAccessConfig;
+      readonly revoke: Extract<
+        ConnectorRevokeConfig,
+        { readonly kind: "none" }
+      >;
+    })
   | (ConnectorAuthMethodConfigBase & {
       readonly client: ConnectorAuthClientConfig;
       readonly grant: ConnectorAuthCodeGrantConfig;

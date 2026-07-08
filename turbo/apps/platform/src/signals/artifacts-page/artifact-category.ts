@@ -109,15 +109,3 @@ export function artifactMatchesCategory(
     !isDataArtifact(item)
   );
 }
-
-export function filterArtifactsByCategory(
-  artifacts: readonly ArtifactItem[],
-  category: ArtifactCategory | null,
-): ArtifactItem[] {
-  if (!category) {
-    return [...artifacts];
-  }
-  return artifacts.filter((artifact) => {
-    return artifactMatchesCategory(artifact, category);
-  });
-}

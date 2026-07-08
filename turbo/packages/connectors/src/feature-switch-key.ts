@@ -16,6 +16,7 @@ export enum FeatureSwitchKey {
   MercuryConnector = "mercuryConnector",
   Microsoft365Connector = "microsoft365Connector",
   NeonConnector = "neonConnector",
+  NintendoEshopCatalogConnector = "nintendoEshopCatalogConnector",
   GarminConnectConnector = "garminConnectConnector",
   QuickBooksConnector = "quickbooksConnector",
   RedditConnector = "redditConnector",

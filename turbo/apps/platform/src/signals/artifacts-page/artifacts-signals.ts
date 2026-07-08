@@ -27,7 +27,7 @@ const internalArtifactsAgentId$ = state<string | null>(null);
 const internalArtifactsCategory$ = state<ArtifactCategory | null>(null);
 const internalArtifactsReload$ = state(0);
 
-export interface ArtifactsPageData {
+interface ArtifactsPageData {
   readonly artifacts: readonly ArtifactItem[];
   readonly truncated: boolean;
 }
