@@ -1922,8 +1922,8 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
       status: "active",
       shortWindowSeconds: 3600,
       shortWindowUnits: 5000,
-      weeklyWindowSeconds: 604800,
-      weeklyWindowUnits: 50000,
+      weeklyWindowSeconds: 604_800,
+      weeklyWindowUnits: 50_000,
       effectiveAt: isoOf(effectiveAtUnix),
       expiresAt: isoOf(expiresAtUnix),
       stripeCustomerId: `cus_bdd_allowance_${suffix}`,
@@ -1931,7 +1931,8 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
       stripeInvoiceId: `in_bdd_usage_allowance_${suffix}`,
     });
 
-    const cancelAtUnix = epochSeconds(7);
+    const subscriptionPeriodEndUnix = epochSeconds(21);
+    const cancelAtUnix = epochSeconds(60);
     await api.postStripeEvent(
       stripeEvent({
         type: "customer.subscription.updated",
@@ -1945,7 +1946,9 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
             purpose: "usage_allowance",
             orgId,
           },
-          items: { data: [] },
+          items: {
+            data: [{ current_period_end: subscriptionPeriodEndUnix }],
+          },
         },
       }),
       [200],
@@ -1956,7 +1959,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     expect(canceledAtPeriod).toMatchObject({
       orgId,
       status: "active",
-      expiresAt: isoOf(cancelAtUnix),
+      expiresAt: isoOf(subscriptionPeriodEndUnix),
       stripeSubscriptionId: `sub_bdd_allowance_${suffix}`,
     });
   });

@@ -83,6 +83,28 @@ function mockUsageStory(): void {
           expiresAt: "2026-04-01T00:00:00Z",
         },
       ],
+      usageAllowance: {
+        windows: [
+          {
+            kind: "short",
+            windowSeconds: 18_000,
+            unitLimit: 5000,
+            consumedUnits: 1250,
+            remainingUnits: 3750,
+            startsAt: "2026-03-01T00:00:00Z",
+            expiresAt: "2026-03-01T05:00:00Z",
+          },
+          {
+            kind: "weekly",
+            windowSeconds: 604_800,
+            unitLimit: 50_000,
+            consumedUnits: 10_000,
+            remainingUnits: 40_000,
+            startsAt: "2026-03-01T00:00:00Z",
+            expiresAt: "2026-03-08T00:00:00Z",
+          },
+        ],
+      },
       concurrencyLimit: 0,
       concurrencySubscriptions: [],
     });
@@ -138,6 +160,12 @@ describe("organization usage settings", () => {
     });
     expect(screen.getByText("Pro credits")).toBeInTheDocument();
     expect(screen.getByText("Purchased credits")).toBeInTheDocument();
+    expect(screen.getByTestId("usage-allowance-section")).toBeInTheDocument();
+    expect(screen.getByText("Usage allowance")).toBeInTheDocument();
+    expect(screen.getByText("5h")).toBeInTheDocument();
+    expect(screen.getByText("week")).toBeInTheDocument();
+    expect(screen.getByText("75%")).toBeInTheDocument();
+    expect(screen.getByText("80%")).toBeInTheDocument();
 
     click(screen.getByTestId("credit-grants-toggle"));
     expect(screen.getByText("March Pro credits")).toBeInTheDocument();

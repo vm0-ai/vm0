@@ -138,9 +138,12 @@ function subscriptionCancelAt(
 function subscriptionScheduledEnd(
   subscription: UsageAllowanceSubscriptionInput,
 ): Date | null {
-  return (
-    subscriptionCancelAt(subscription) ?? subscriptionPeriodEnd(subscription)
-  );
+  const periodEnd = subscriptionPeriodEnd(subscription);
+  const cancelAt = subscriptionCancelAt(subscription);
+  if (!periodEnd) {
+    return null;
+  }
+  return cancelAt && cancelAt < periodEnd ? cancelAt : periodEnd;
 }
 
 function subscriptionCanBackUsageAllowance(

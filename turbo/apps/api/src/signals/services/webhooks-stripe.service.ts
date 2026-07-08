@@ -6,7 +6,7 @@ import { orgConcurrencySubscriptions } from "@vm0/db/schema/org-concurrency-subs
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { orgUsageAllowanceEntitlements } from "@vm0/db/schema/org-usage-allowance";
 import { command } from "ccstate";
-import { and, eq, gt, isNull, lte, or, sql } from "drizzle-orm";
+import { and, eq, gt, isNull, lte, sql } from "drizzle-orm";
 
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
@@ -188,6 +188,11 @@ interface UsageAllowanceInvoiceDetails {
   readonly subscriptionId: string | null;
 }
 
+interface UsageAllowanceMetadataSource {
+  readonly metadata: Record<string, string>;
+  readonly source: "invoice" | "product";
+}
+
 function subscriptionPeriodEnd(subscription: SubscriptionInput): Date | null {
   const periodEndUnix = subscription.items.data[0]?.current_period_end;
   return typeof periodEndUnix === "number"
@@ -248,6 +253,17 @@ async function subscriptionScheduledEnd(
       ? subscriptionPeriodEnd(subscription)
       : null)
   );
+}
+
+function usageAllowanceSubscriptionEnd(
+  subscription: SubscriptionInput,
+): Date | null {
+  const periodEnd = subscriptionPeriodEnd(subscription);
+  const cancelAt = subscriptionCancelAt(subscription);
+  if (!periodEnd) {
+    return null;
+  }
+  return cancelAt && cancelAt < periodEnd ? cancelAt : periodEnd;
 }
 
 function customerIdFromSubscription(
@@ -454,8 +470,8 @@ function invoiceAtomGrantLine(invoice: InvoiceInput): InvoiceLineInput | null {
 
 function invoiceMergedMetadata(invoice: InvoiceInput): Record<string, string> {
   return {
-    ...(invoice.parent?.subscription_details?.metadata ?? {}),
-    ...(invoice.metadata ?? {}),
+    ...invoice.parent?.subscription_details?.metadata,
+    ...invoice.metadata,
   };
 }
 
@@ -613,13 +629,67 @@ function invoicePeriodEnd(invoice: InvoiceInput): Date | null {
   return typeof end === "number" ? new Date(end * 1000) : null;
 }
 
-function usageAllowanceInvoiceDetails(
+function invoiceLineWithPrice(invoice: InvoiceInput): InvoiceLineInput | null {
+  return (
+    invoice.lines.data.find((line) => {
+      return invoiceLinePriceId(line) !== null;
+    }) ?? null
+  );
+}
+
+async function usageAllowanceProductMetadata(
   invoice: InvoiceInput,
-): UsageAllowanceInvoiceDetails | null {
-  const metadata = invoiceMergedMetadata(invoice);
-  if (!isUsageAllowanceMetadata(metadata)) {
+): Promise<Record<string, string> | null> {
+  const line = invoiceLineWithPrice(invoice);
+  const priceId = line ? invoiceLinePriceId(line) : null;
+  if (!priceId) {
     return null;
   }
+
+  const price = await getStripeClient().prices.retrieve(priceId, {
+    expand: ["product"],
+  });
+  const product = price.product;
+  if (typeof product === "string" || "deleted" in product) {
+    return null;
+  }
+  return product.metadata ?? null;
+}
+
+async function usageAllowanceMetadataSource(
+  invoice: InvoiceInput,
+): Promise<UsageAllowanceMetadataSource | null> {
+  const invoiceMetadata = invoiceMergedMetadata(invoice);
+  if (isUsageAllowanceMetadata(invoiceMetadata)) {
+    const hasWindowMetadata =
+      positiveMetadataInteger(invoiceMetadata, "shortWindowSeconds") !== null &&
+      positiveMetadataInteger(invoiceMetadata, "shortWindowUnits") !== null &&
+      positiveMetadataInteger(invoiceMetadata, "weeklyWindowSeconds") !==
+        null &&
+      positiveMetadataInteger(invoiceMetadata, "weeklyWindowUnits") !== null;
+    if (hasWindowMetadata) {
+      return { metadata: invoiceMetadata, source: "invoice" };
+    }
+  }
+
+  const productMetadata = await usageAllowanceProductMetadata(invoice);
+  if (productMetadata && isUsageAllowanceMetadata(productMetadata)) {
+    return { metadata: productMetadata, source: "product" };
+  }
+
+  return isUsageAllowanceMetadata(invoiceMetadata)
+    ? { metadata: invoiceMetadata, source: "invoice" }
+    : null;
+}
+
+async function usageAllowanceInvoiceDetails(
+  invoice: InvoiceInput,
+): Promise<UsageAllowanceInvoiceDetails | null> {
+  const metadataSource = await usageAllowanceMetadataSource(invoice);
+  if (!metadataSource) {
+    return null;
+  }
+  const { metadata, source } = metadataSource;
 
   const orgId = metadata.orgId;
   const shortWindowSeconds = positiveMetadataInteger(
@@ -652,6 +722,7 @@ function usageAllowanceInvoiceDetails(
     L.warn("usage allowance invoice has invalid metadata", {
       invoiceId: invoice.id,
       hasOrgId: Boolean(orgId),
+      source,
       metadata,
     });
     return null;
@@ -698,7 +769,7 @@ async function handleUsageAllowanceInvoicePaid(
     return { handled: false, drainOrgId: null };
   }
 
-  const details = usageAllowanceInvoiceDetails(invoice);
+  const details = await usageAllowanceInvoiceDetails(invoice);
   if (!details) {
     return { handled: true, drainOrgId: null };
   }
@@ -2811,8 +2882,7 @@ async function handleUsageAllowanceSubscriptionUpdated(
     return [];
   }
 
-  const periodEnd =
-    (await subscriptionScheduledEnd(getStripeClient(), subscription)) ?? null;
+  const periodEnd = usageAllowanceSubscriptionEnd(subscription);
   const terminalStatus =
     subscription.status === "canceled" ||
     subscription.status === "incomplete_expired";

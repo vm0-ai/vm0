@@ -94,6 +94,18 @@ interface ReconciledUsageAllowance {
   readonly status: string | null;
 }
 
+interface UsageAllowanceCandidateRow {
+  readonly orgId: string;
+  readonly stripeSubscriptionId: string | null;
+}
+
+interface ReconcileCandidateRows {
+  readonly candidates: readonly BillingCandidate[];
+  readonly atomGrantCandidates: readonly AtomGrantCandidate[];
+  readonly concurrencyCandidates: readonly ConcurrencyCandidate[];
+  readonly usageAllowanceCandidates: readonly UsageAllowanceCandidateRow[];
+}
+
 interface ReconcileBillingContext {
   readonly db: Db;
   readonly stripe: ReturnType<typeof getStripeClient>;
@@ -159,6 +171,17 @@ function subscriptionScheduledEnd(
   );
 }
 
+function usageAllowanceSubscriptionEnd(
+  subscription: SubscriptionInput,
+): Date | null {
+  const periodEnd = subscriptionPeriodEnd(subscription);
+  const cancelAt = subscriptionCancelAt(subscription);
+  if (!periodEnd) {
+    return null;
+  }
+  return cancelAt && cancelAt < periodEnd ? cancelAt : periodEnd;
+}
+
 function subscriptionCanRefreshPaidThrough(
   subscription: SubscriptionInput,
 ): boolean {
@@ -179,6 +202,50 @@ function subscriptionIsTerminalUsageAllowance(
   return TERMINAL_USAGE_ALLOWANCE_STATUSES.includes(
     subscription.status as (typeof TERMINAL_USAGE_ALLOWANCE_STATUSES)[number],
   );
+}
+
+function currentUsageAllowanceCandidateWhere(
+  candidate: UsageAllowanceCandidate,
+) {
+  return and(
+    eq(
+      orgUsageAllowanceEntitlements.stripeSubscriptionId,
+      candidate.stripeSubscriptionId,
+    ),
+    inArray(orgUsageAllowanceEntitlements.status, [
+      ...USAGE_ALLOWANCE_RECONCILE_STATUSES,
+    ]),
+  );
+}
+
+async function updateUsageAllowanceCandidate(
+  context: ReconcileBillingContext,
+  candidate: UsageAllowanceCandidate,
+  values: {
+    readonly status: string;
+    readonly expiresAt: Date;
+  },
+): Promise<ReconciledUsageAllowance[]> {
+  const rows = await context.db
+    .update(orgUsageAllowanceEntitlements)
+    .set({
+      status: values.status,
+      expiresAt: values.expiresAt,
+      updatedAt: context.now,
+    })
+    .where(currentUsageAllowanceCandidateWhere(candidate))
+    .returning({
+      orgId: orgUsageAllowanceEntitlements.orgId,
+      subscriptionId: orgUsageAllowanceEntitlements.stripeSubscriptionId,
+      status: orgUsageAllowanceEntitlements.status,
+    });
+  context.signal.throwIfAborted();
+  return rows.map((row) => {
+    return {
+      ...row,
+      subscriptionId: row.subscriptionId ?? candidate.stripeSubscriptionId,
+    };
+  });
 }
 
 function priceIdsForTier(tier: SubscriptionPriceTier): readonly string[] {
@@ -512,45 +579,20 @@ async function reconcileUsageAllowanceCandidate(
   context: ReconcileBillingContext,
   candidate: UsageAllowanceCandidate,
 ): Promise<ReconciledUsageAllowance[]> {
-  const { db, stripe, now, staleBefore, signal } = context;
+  const { stripe, now, staleBefore, signal } = context;
   const subscription = (await stripe.subscriptions.retrieve(
     candidate.stripeSubscriptionId,
   )) as SubscriptionInput;
   signal.throwIfAborted();
 
-  const periodEnd = subscriptionScheduledEnd(subscription);
+  const periodEnd = usageAllowanceSubscriptionEnd(subscription);
   const canRefreshPaidThrough = subscriptionCanRefreshPaidThrough(subscription);
   const isPaymentFailed = subscriptionIsPaymentFailed(subscription);
-  const currentCandidate = and(
-    eq(
-      orgUsageAllowanceEntitlements.stripeSubscriptionId,
-      candidate.stripeSubscriptionId,
-    ),
-    inArray(orgUsageAllowanceEntitlements.status, [
-      ...USAGE_ALLOWANCE_RECONCILE_STATUSES,
-    ]),
-  );
 
   if (subscriptionIsTerminalUsageAllowance(subscription)) {
-    const rows = await db
-      .update(orgUsageAllowanceEntitlements)
-      .set({
-        status: "canceled",
-        expiresAt: now,
-        updatedAt: now,
-      })
-      .where(currentCandidate)
-      .returning({
-        orgId: orgUsageAllowanceEntitlements.orgId,
-        subscriptionId: orgUsageAllowanceEntitlements.stripeSubscriptionId,
-        status: orgUsageAllowanceEntitlements.status,
-      });
-    signal.throwIfAborted();
-    return rows.map((row) => {
-      return {
-        ...row,
-        subscriptionId: row.subscriptionId ?? candidate.stripeSubscriptionId,
-      };
+    return await updateUsageAllowanceCandidate(context, candidate, {
+      status: "canceled",
+      expiresAt: now,
     });
   }
 
@@ -577,25 +619,9 @@ async function reconcileUsageAllowanceCandidate(
       return [];
     }
 
-    const rows = await db
-      .update(orgUsageAllowanceEntitlements)
-      .set({
-        status: subscription.status,
-        expiresAt: periodEnd,
-        updatedAt: now,
-      })
-      .where(currentCandidate)
-      .returning({
-        orgId: orgUsageAllowanceEntitlements.orgId,
-        subscriptionId: orgUsageAllowanceEntitlements.stripeSubscriptionId,
-        status: orgUsageAllowanceEntitlements.status,
-      });
-    signal.throwIfAborted();
-    return rows.map((row) => {
-      return {
-        ...row,
-        subscriptionId: row.subscriptionId ?? candidate.stripeSubscriptionId,
-      };
+    return await updateUsageAllowanceCandidate(context, candidate, {
+      status: subscription.status,
+      expiresAt: periodEnd,
     });
   }
 
@@ -609,48 +635,110 @@ async function reconcileUsageAllowanceCandidate(
       },
     );
   } else if (periodEnd > staleBefore) {
-    const rows = await db
-      .update(orgUsageAllowanceEntitlements)
-      .set({
-        status: subscription.status,
-        expiresAt: periodEnd,
-        updatedAt: now,
-      })
-      .where(currentCandidate)
-      .returning({
-        orgId: orgUsageAllowanceEntitlements.orgId,
-        subscriptionId: orgUsageAllowanceEntitlements.stripeSubscriptionId,
-        status: orgUsageAllowanceEntitlements.status,
-      });
-    signal.throwIfAborted();
-    return rows.map((row) => {
-      return {
-        ...row,
-        subscriptionId: row.subscriptionId ?? candidate.stripeSubscriptionId,
-      };
+    return await updateUsageAllowanceCandidate(context, candidate, {
+      status: subscription.status,
+      expiresAt: periodEnd,
     });
   }
 
-  const rows = await db
-    .update(orgUsageAllowanceEntitlements)
-    .set({
-      status: "canceled",
-      expiresAt: now,
-      updatedAt: now,
-    })
-    .where(currentCandidate)
-    .returning({
-      orgId: orgUsageAllowanceEntitlements.orgId,
-      subscriptionId: orgUsageAllowanceEntitlements.stripeSubscriptionId,
-      status: orgUsageAllowanceEntitlements.status,
-    });
-  signal.throwIfAborted();
-  return rows.map((row) => {
-    return {
-      ...row,
-      subscriptionId: row.subscriptionId ?? candidate.stripeSubscriptionId,
-    };
+  return await updateUsageAllowanceCandidate(context, candidate, {
+    status: "canceled",
+    expiresAt: now,
   });
+}
+
+async function loadReconcileCandidateRows(
+  db: Db,
+  now: Date,
+  staleBefore: Date,
+): Promise<ReconcileCandidateRows> {
+  const [
+    candidates,
+    atomGrantCandidates,
+    concurrencyCandidates,
+    usageAllowanceCandidates,
+  ] = await Promise.all([
+    db
+      .select({
+        orgId: orgMetadata.orgId,
+        stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
+      })
+      .from(orgMetadata)
+      .where(
+        and(
+          inArray(orgMetadata.tier, ["pro", "team"]),
+          isNotNull(orgMetadata.stripeSubscriptionId),
+          inArray(orgMetadata.subscriptionStatus, [
+            ...PAYMENT_FAILED_SUBSCRIPTION_STATUSES,
+          ]),
+          or(
+            and(
+              isNull(orgMetadata.currentPeriodEnd),
+              lte(orgMetadata.updatedAt, staleBefore),
+            ),
+            lte(orgMetadata.currentPeriodEnd, staleBefore),
+          ),
+        ),
+      ),
+    db
+      .select({
+        orgId: orgMetadata.orgId,
+      })
+      .from(orgMetadata)
+      .where(
+        and(
+          inArray(orgMetadata.tier, ["pro", "team"]),
+          isNull(orgMetadata.stripeSubscriptionId),
+          eq(orgMetadata.subscriptionStatus, ATOM_GRANT_SUBSCRIPTION_STATUS),
+          isNotNull(orgMetadata.currentPeriodEnd),
+          lte(orgMetadata.currentPeriodEnd, now),
+        ),
+      ),
+    db
+      .select({
+        orgId: orgConcurrencySubscriptions.orgId,
+        stripeSubscriptionId: orgConcurrencySubscriptions.stripeSubscriptionId,
+      })
+      .from(orgConcurrencySubscriptions)
+      .where(
+        and(
+          inArray(orgConcurrencySubscriptions.subscriptionStatus, [
+            ...CONCURRENCY_SUBSCRIPTION_PAYMENT_FAILED_STATUSES,
+          ]),
+          or(
+            and(
+              isNull(orgConcurrencySubscriptions.currentPeriodEnd),
+              lte(orgConcurrencySubscriptions.updatedAt, staleBefore),
+            ),
+            lte(orgConcurrencySubscriptions.currentPeriodEnd, staleBefore),
+          ),
+        ),
+      ),
+    db
+      .select({
+        orgId: orgUsageAllowanceEntitlements.orgId,
+        stripeSubscriptionId:
+          orgUsageAllowanceEntitlements.stripeSubscriptionId,
+      })
+      .from(orgUsageAllowanceEntitlements)
+      .where(
+        and(
+          isNotNull(orgUsageAllowanceEntitlements.stripeSubscriptionId),
+          inArray(orgUsageAllowanceEntitlements.status, [
+            ...USAGE_ALLOWANCE_RECONCILE_STATUSES,
+          ]),
+          isNotNull(orgUsageAllowanceEntitlements.expiresAt),
+          lte(orgUsageAllowanceEntitlements.expiresAt, now),
+        ),
+      ),
+  ]);
+
+  return {
+    candidates,
+    atomGrantCandidates,
+    concurrencyCandidates,
+    usageAllowanceCandidates,
+  };
 }
 
 export const reconcileBillingEntitlements$ = command(
@@ -665,87 +753,12 @@ export const reconcileBillingEntitlements$ = command(
       now.getTime() - PAYMENT_FAILURE_DOWNGRADE_GRACE_MS,
     );
 
-    const [
+    const {
       candidates,
       atomGrantCandidates,
       concurrencyCandidates,
       usageAllowanceCandidates,
-    ] = await Promise.all([
-      db
-        .select({
-          orgId: orgMetadata.orgId,
-          stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
-        })
-        .from(orgMetadata)
-        .where(
-          and(
-            inArray(orgMetadata.tier, ["pro", "team"]),
-            isNotNull(orgMetadata.stripeSubscriptionId),
-            inArray(orgMetadata.subscriptionStatus, [
-              ...PAYMENT_FAILED_SUBSCRIPTION_STATUSES,
-            ]),
-            or(
-              and(
-                isNull(orgMetadata.currentPeriodEnd),
-                lte(orgMetadata.updatedAt, staleBefore),
-              ),
-              lte(orgMetadata.currentPeriodEnd, staleBefore),
-            ),
-          ),
-        ),
-      db
-        .select({
-          orgId: orgMetadata.orgId,
-        })
-        .from(orgMetadata)
-        .where(
-          and(
-            inArray(orgMetadata.tier, ["pro", "team"]),
-            isNull(orgMetadata.stripeSubscriptionId),
-            eq(orgMetadata.subscriptionStatus, ATOM_GRANT_SUBSCRIPTION_STATUS),
-            isNotNull(orgMetadata.currentPeriodEnd),
-            lte(orgMetadata.currentPeriodEnd, now),
-          ),
-        ),
-      db
-        .select({
-          orgId: orgConcurrencySubscriptions.orgId,
-          stripeSubscriptionId:
-            orgConcurrencySubscriptions.stripeSubscriptionId,
-        })
-        .from(orgConcurrencySubscriptions)
-        .where(
-          and(
-            inArray(orgConcurrencySubscriptions.subscriptionStatus, [
-              ...CONCURRENCY_SUBSCRIPTION_PAYMENT_FAILED_STATUSES,
-            ]),
-            or(
-              and(
-                isNull(orgConcurrencySubscriptions.currentPeriodEnd),
-                lte(orgConcurrencySubscriptions.updatedAt, staleBefore),
-              ),
-              lte(orgConcurrencySubscriptions.currentPeriodEnd, staleBefore),
-            ),
-          ),
-        ),
-      db
-        .select({
-          orgId: orgUsageAllowanceEntitlements.orgId,
-          stripeSubscriptionId:
-            orgUsageAllowanceEntitlements.stripeSubscriptionId,
-        })
-        .from(orgUsageAllowanceEntitlements)
-        .where(
-          and(
-            isNotNull(orgUsageAllowanceEntitlements.stripeSubscriptionId),
-            inArray(orgUsageAllowanceEntitlements.status, [
-              ...USAGE_ALLOWANCE_RECONCILE_STATUSES,
-            ]),
-            isNotNull(orgUsageAllowanceEntitlements.expiresAt),
-            lte(orgUsageAllowanceEntitlements.expiresAt, now),
-          ),
-        ),
-    ]);
+    } = await loadReconcileCandidateRows(db, now, staleBefore);
     signal.throwIfAborted();
 
     const downgraded: DowngradedSubscription[] = [];

@@ -16,6 +16,7 @@ import {
   apiTierToBillingTier,
 } from "../../../../signals/zero-page/billing.ts";
 import { openBillingPlans$ } from "../../../../signals/zero-page/settings/org-manage-tabs-state.ts";
+import { formatSubscriptionUsageReset } from "../../subscription-usage-format.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -72,6 +73,8 @@ function segmentKey(seg: CreditSegment): string {
 }
 
 type CreditGrant = BillingStatusResponse["creditGrants"][number];
+type UsageAllowance = NonNullable<BillingStatusResponse["usageAllowance"]>;
+type UsageAllowanceWindow = UsageAllowance["windows"][number];
 
 function descriptionForSegment(
   seg: CreditSegment,
@@ -99,6 +102,162 @@ function expiresLabel(grant: CreditGrant): string {
     return "Never expires";
   }
   return `Expires ${formatCreditDate(grant.expiresAt)}`;
+}
+
+function formatUsagePercent(value: number | null): string | null {
+  if (value === null || !Number.isFinite(value)) {
+    return null;
+  }
+  const rounded = Math.round(value * 10) / 10;
+  return Number.isInteger(rounded) ? `${rounded}%` : `${rounded.toFixed(1)}%`;
+}
+
+function allowanceRemainingPercent(
+  window: UsageAllowanceWindow,
+): number | null {
+  if (window.unitLimit <= 0) {
+    return null;
+  }
+  return (window.remainingUnits / window.unitLimit) * 100;
+}
+
+function usageTone(remainingPercent: number | null): {
+  readonly barClassName: string;
+  readonly textClassName: string;
+  readonly trackClassName: string;
+} {
+  if (remainingPercent !== null && remainingPercent < 20) {
+    return {
+      barClassName: "bg-red-500",
+      textClassName: "text-red-600 dark:text-red-400",
+      trackClassName: "bg-red-500/15",
+    };
+  }
+  if (remainingPercent !== null && remainingPercent < 50) {
+    return {
+      barClassName: "bg-amber-500",
+      textClassName: "text-amber-600 dark:text-amber-400",
+      trackClassName: "bg-amber-500/15",
+    };
+  }
+  return {
+    barClassName: "bg-emerald-500",
+    textClassName: "text-emerald-600 dark:text-emerald-400",
+    trackClassName: "bg-emerald-500/15",
+  };
+}
+
+function formatAllowanceWindowLabel(window: UsageAllowanceWindow): string {
+  if (window.kind === "weekly" && window.windowSeconds === 604_800) {
+    return "week";
+  }
+  if (window.windowSeconds % 86_400 === 0) {
+    return `${window.windowSeconds / 86_400}d`;
+  }
+  if (window.windowSeconds % 3600 === 0) {
+    return `${window.windowSeconds / 3600}h`;
+  }
+  if (window.windowSeconds % 60 === 0) {
+    return `${window.windowSeconds / 60}m`;
+  }
+  return window.kind;
+}
+
+function UsageAllowanceWindowRow({ window }: { window: UsageAllowanceWindow }) {
+  const remainingPercent = allowanceRemainingPercent(window);
+  const displayPercent = formatUsagePercent(remainingPercent);
+  const reset = formatSubscriptionUsageReset(window.expiresAt);
+  const tone = usageTone(remainingPercent);
+  const label = formatAllowanceWindowLabel(window);
+  const width =
+    remainingPercent === null
+      ? 0
+      : Math.min(100, Math.max(0, remainingPercent));
+
+  return (
+    <div className="grid grid-cols-[42px_minmax(0,1fr)_44px] items-center gap-2">
+      <span className="truncate text-[10px] font-medium leading-none text-muted-foreground">
+        {label}
+      </span>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span
+            tabIndex={0}
+            role="progressbar"
+            aria-label={`Usage allowance ${label} remaining`}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={remainingPercent ?? undefined}
+            className={`block h-1.5 min-w-0 overflow-hidden rounded-full outline-none ring-offset-1 ring-offset-card transition-shadow focus-visible:ring-2 focus-visible:ring-ring ${tone.trackClassName}`}
+          >
+            <span
+              className={`block h-full rounded-full transition-[width] ${tone.barClassName}`}
+              style={{ width: `${width}%` }}
+            />
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="top" sideOffset={8} className="max-w-60">
+          <div className="text-xs font-medium">
+            {window.remainingUnits.toLocaleString()} of{" "}
+            {window.unitLimit.toLocaleString()} credits left
+          </div>
+          {reset === null ? (
+            <div className="mt-0.5 text-[10px] text-muted-foreground">
+              Reset time unavailable
+            </div>
+          ) : "fallbackText" in reset ? (
+            <div className="mt-0.5 text-[10px] text-muted-foreground">
+              {reset.fallbackText}
+            </div>
+          ) : (
+            <div className="mt-0.5 text-[10px] text-muted-foreground">
+              {reset.tooltipTitle} · {reset.absoluteText}
+            </div>
+          )}
+        </TooltipContent>
+      </Tooltip>
+      <span
+        className={`text-right text-[10px] font-medium leading-none ${tone.textClassName}`}
+      >
+        {displayPercent ?? "--"}
+      </span>
+    </div>
+  );
+}
+
+function UsageAllowancePanel({
+  allowance,
+}: {
+  allowance: UsageAllowance | null | undefined;
+}) {
+  const windows = allowance?.windows.filter((window) => {
+    return window.unitLimit > 0;
+  });
+  if (!windows || windows.length === 0) {
+    return null;
+  }
+
+  return (
+    <div
+      data-testid="usage-allowance-section"
+      className="mt-4 border-t border-border/50 pt-3"
+    >
+      <div className="mb-2 flex min-w-0 items-center justify-between gap-2 px-2">
+        <span className="truncate text-xs font-medium text-muted-foreground">
+          Usage allowance
+        </span>
+      </div>
+      <TooltipProvider delayDuration={100}>
+        <div className="flex flex-col gap-1.5 px-2">
+          {windows.map((window) => {
+            return (
+              <UsageAllowanceWindowRow key={window.kind} window={window} />
+            );
+          })}
+        </div>
+      </TooltipProvider>
+    </div>
+  );
 }
 
 function CreditGrantRow({ grant }: { grant: CreditGrant }) {
@@ -295,6 +454,7 @@ function CreditBalanceChart({
         </div>
       )}
       <CreditGrantList grants={billing.creditGrants} />
+      <UsageAllowancePanel allowance={billing.usageAllowance} />
     </div>
   );
 }
