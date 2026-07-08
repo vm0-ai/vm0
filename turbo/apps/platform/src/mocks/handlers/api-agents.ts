@@ -2,10 +2,7 @@ import {
   zeroTeamContract,
   type TeamComposeItem,
 } from "@vm0/api-contracts/contracts/zero-team";
-import {
-  zeroComposesListContract,
-  zeroComposesByIdContract,
-} from "@vm0/api-contracts/contracts/zero-composes";
+import { zeroComposesListContract } from "@vm0/api-contracts/contracts/zero-composes";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import {
   zeroAgentsByIdContract,
@@ -103,21 +100,6 @@ export const apiAgentsHandlers = [
   // GET /api/zero/composes/list
   mockApi(zeroComposesListContract.list, ({ respond }) => {
     return respond(200, { composes: mockComposesList });
-  }),
-
-  // GET /api/zero/composes/:id (kept for backwards compat with other tests)
-  mockApi(zeroComposesByIdContract.getById, ({ params, respond }) => {
-    return respond(200, {
-      id: params.id,
-      name: "zero",
-      headVersionId: "version_1",
-      content: {
-        version: "1",
-        agents: { zero: { framework: "claude-code" } },
-      },
-      createdAt: "2024-01-01T00:00:00Z",
-      updatedAt: "2024-01-01T00:00:00Z",
-    });
   }),
 
   // GET /api/zero/agents/:id/user-connectors

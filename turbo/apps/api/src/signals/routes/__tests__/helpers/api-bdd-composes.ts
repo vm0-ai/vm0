@@ -6,10 +6,7 @@ import {
   composesMainContract,
   composesVersionsContract,
 } from "@vm0/api-contracts/contracts/composes";
-import {
-  zeroComposesListContract,
-  zeroComposesMetadataContract,
-} from "@vm0/api-contracts/contracts/zero-composes";
+import { zeroComposesListContract } from "@vm0/api-contracts/contracts/zero-composes";
 import type { z } from "zod";
 
 import { createAppWithRoutes } from "../../../../app-factory-core";
@@ -37,12 +34,6 @@ interface AuthHeaders {
   readonly authorization?: string;
 }
 
-interface ZeroComposeMetadataBody {
-  readonly displayName?: string | null;
-  readonly description?: string | null;
-  readonly sound?: string | null;
-}
-
 interface ComposeVersionQuery {
   readonly composeId: string;
   readonly version: string;
@@ -57,7 +48,6 @@ interface RawComposeRequest {
 type CreateStatus = 200 | 201 | 400 | 401 | 403;
 type ReadStatus = 200 | 400 | 401 | 403 | 404;
 type ListStatus = 200 | 400 | 401 | 403;
-type ZeroMetadataStatus = 200 | 401 | 404;
 
 const composeRoutes = [
   ...agentComposesRoutes,
@@ -163,12 +153,6 @@ export function createComposesBddApi(context: TestContext) {
   function zeroListClient() {
     return setupAppWithRoutes({ context, routes: composeRoutes })(
       zeroComposesListContract,
-    );
-  }
-
-  function zeroMetadataClient() {
-    return setupAppWithRoutes({ context, routes: composeRoutes })(
-      zeroComposesMetadataContract,
     );
   }
 
@@ -282,22 +266,6 @@ export function createComposesBddApi(context: TestContext) {
     ) {
       return await accept(
         zeroListClient().list({ headers: authenticate(auth), query: {} }),
-        statuses,
-      );
-    },
-
-    async requestUpdateZeroComposeMetadata<TStatus extends ZeroMetadataStatus>(
-      auth: ComposeAuth,
-      composeId: string,
-      body: ZeroComposeMetadataBody,
-      statuses: readonly TStatus[],
-    ) {
-      return await accept(
-        zeroMetadataClient().update({
-          headers: authenticate(auth),
-          params: { id: composeId },
-          body,
-        }),
         statuses,
       );
     },
