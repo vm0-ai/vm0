@@ -2,6 +2,7 @@ import { command } from "ccstate";
 import {
   testRelationshipStateContract,
   type TestRelationshipStateActionBody,
+  type TestRelationshipStateFixture,
 } from "@vm0/api-contracts/contracts/test-relationship-state";
 import {
   type MemoryKind,
@@ -288,16 +289,24 @@ async function seedRelationshipsForAction(
   return actionOk();
 }
 
-async function seedRuntimeInjectionMemoriesForAction(
+interface RuntimeInjectionSeedRow {
+  readonly kind: MemoryKind;
+  readonly text: string;
+  readonly confidence: number;
+  readonly lastSeenAt: string;
+}
+
+async function insertRuntimeInjectionMemories(
   db: Db,
-  body: RelationshipAction<"seed-runtime-injection-memories">,
+  fixture: TestRelationshipStateFixture,
+  seedRows: readonly RuntimeInjectionSeedRow[],
   signal: AbortSignal,
 ) {
   const [entity] = await db
     .insert(memoryEntities)
     .values({
-      orgId: body.fixture.org_id,
-      userId: body.fixture.user_id,
+      orgId: fixture.org_id,
+      userId: fixture.user_id,
       type: "person",
       displayName: "Alice Runtime",
     })
@@ -307,19 +316,70 @@ async function seedRuntimeInjectionMemoriesForAction(
     throw new Error("Expected runtime injection fixture entity");
   }
 
+  await db.insert(memories).values(
+    seedRows.map((row) => {
+      return {
+        orgId: fixture.org_id,
+        userId: fixture.user_id,
+        entityId: entity.id,
+        kind: row.kind,
+        status: "active" as const,
+        text: row.text,
+        confidence: row.confidence,
+        lastSeenAt: new Date(row.lastSeenAt),
+      };
+    }),
+  );
+  signal.throwIfAborted();
+  return actionOk();
+}
+
+async function seedRuntimeInjectionMemoriesForAction(
+  db: Db,
+  body: RelationshipAction<"seed-runtime-injection-memories">,
+  signal: AbortSignal,
+) {
+  const seedRows: readonly RuntimeInjectionSeedRow[] = [
+    {
+      kind: "preference",
+      text: "The user prefers concise launch summaries.",
+      confidence: 92,
+      lastSeenAt: "2026-07-05T12:00:00.000Z",
+    },
+    {
+      kind: "recent_context",
+      text: "The current work is validating runtime memory injection.",
+      confidence: 84,
+      lastSeenAt: "2026-07-06T12:00:00.000Z",
+    },
+    {
+      kind: "open_loop",
+      text: "Follow up on the security review injection preview.",
+      confidence: 88,
+      lastSeenAt: "2026-07-07T12:00:00.000Z",
+    },
+  ];
+  return await insertRuntimeInjectionMemories(
+    db,
+    body.fixture,
+    seedRows,
+    signal,
+  );
+}
+
+async function seedRuntimeInjectionWindowMemoriesForAction(
+  db: Db,
+  body: RelationshipAction<"seed-runtime-injection-window-memories">,
+  signal: AbortSignal,
+) {
   // Mirrors supermemory's profile-vs-search split: the stable/recent profile is
   // a bounded window, while the "relevant memories" section is a full-corpus
   // search that surfaces prompt-relevant memories the bounded window left out.
-  // The dynamic (recent_context) window keeps only its highest-ranked rows, so
-  // the low-confidence, older query-relevant row below is excluded from the
-  // profile and can only reach the prompt via query recall (and is therefore not
-  // deduped away against the profile).
-  const seedRows: Array<{
-    readonly kind: MemoryKind;
-    readonly text: string;
-    readonly confidence: number;
-    readonly lastSeenAt: string;
-  }> = [
+  // The higher-ranked recent_context rows fill the dynamic window, so the
+  // low-confidence, older query-relevant row is excluded from the profile and
+  // can only reach the prompt via query recall (and is therefore not deduped
+  // away against the profile).
+  const seedRows: readonly RuntimeInjectionSeedRow[] = [
     // Stable profile.
     {
       kind: "preference",
@@ -375,23 +435,12 @@ async function seedRuntimeInjectionMemoriesForAction(
       lastSeenAt: "2026-06-20T12:00:00.000Z",
     },
   ];
-
-  await db.insert(memories).values(
-    seedRows.map((row) => {
-      return {
-        orgId: body.fixture.org_id,
-        userId: body.fixture.user_id,
-        entityId: entity.id,
-        kind: row.kind,
-        status: "active" as const,
-        text: row.text,
-        confidence: row.confidence,
-        lastSeenAt: new Date(row.lastSeenAt),
-      };
-    }),
+  return await insertRuntimeInjectionMemories(
+    db,
+    body.fixture,
+    seedRows,
+    signal,
   );
-  signal.throwIfAborted();
-  return actionOk();
 }
 
 const mutateRelationshipState$ = command(
@@ -417,6 +466,13 @@ const mutateRelationshipState$ = command(
       }
       case "seed-runtime-injection-memories": {
         return await seedRuntimeInjectionMemoriesForAction(db, body, signal);
+      }
+      case "seed-runtime-injection-window-memories": {
+        return await seedRuntimeInjectionWindowMemoriesForAction(
+          db,
+          body,
+          signal,
+        );
       }
     }
   },

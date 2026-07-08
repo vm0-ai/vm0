@@ -48,7 +48,7 @@ import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createFixtureTracker } from "./helpers/zero-route-test";
 import {
   deleteRelationshipRowsForFixture$,
-  seedRuntimeInjectionMemoryRows$,
+  seedRuntimeInjectionWindowMemoryRows$,
   type RelationshipFixture,
 } from "./helpers/zero-relationships";
 import {
@@ -5479,7 +5479,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       }),
     );
     await relationshipStore.set(
-      seedRuntimeInjectionMemoryRows$,
+      seedRuntimeInjectionWindowMemoryRows$,
       memoryFixture,
       context.signal,
     );

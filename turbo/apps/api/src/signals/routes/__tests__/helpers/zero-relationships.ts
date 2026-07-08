@@ -104,3 +104,16 @@ export const seedRuntimeInjectionMemoryRows$ = command(
     });
   },
 );
+
+export const seedRuntimeInjectionWindowMemoryRows$ = command(
+  async (
+    _,
+    fixture: RelationshipFixture,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    await postAction(signal, {
+      action: "seed-runtime-injection-window-memories",
+      fixture: fixtureToWire(fixture),
+    });
+  },
+);
