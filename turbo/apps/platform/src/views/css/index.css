@@ -18,6 +18,12 @@
     Roboto, sans-serif;
   --font-family-mono:
     "JetBrains Mono", ui-monospace, "SF Mono", Monaco, Consolas, monospace;
+  /* Color-emoji fonts must come first so dual-presentation codepoints (e.g. the
+     "squared CJK" buttons 🈶🈯🈹) resolve to their color glyph instead of the
+     text glyph a CJK text font would otherwise supply. */
+  --font-family-emoji:
+    "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol",
+    "Noto Color Emoji", sans-serif;
 
   /* Sidebar colors - using tokens for dark mode support */
   --color-sidebar: hsl(var(--gray-0));
@@ -322,6 +328,13 @@ body {
 }
 
 /* Reusable 0.7px border utilities — replaces inline style={{ border: "0.7px solid ..." }} */
+/* Force the color-emoji font ahead of the inherited CJK/text stack so emoji
+   glyphs render in color. Without this, dual-presentation codepoints fall back
+   to a CJK text font and appear as flat black outlines. */
+.zero-emoji {
+  font-family: var(--font-family-emoji);
+}
+
 .zero-border {
   border: 0.7px solid hsl(var(--gray-400));
 }
