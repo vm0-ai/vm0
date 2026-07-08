@@ -81,9 +81,7 @@ class TestFirewallHeaderCache:
         cache_hit_flags = [result["cache_hit"] for result in results]
         assert sum(flag is False for flag in cache_hit_flags) == 1
         assert sum(flag is True for flag in cache_hit_flags) == 2
-        assert require_cached_headers(cache_key).payload.headers == {
-            "Authorization": "Bearer token"
-        }
+        assert require_cached_headers(cache_key).headers == {"Authorization": "Bearer token"}
 
     async def test_different_keys_fetch_independently(self, mitm_ctx):
         """Different auth cache keys should fetch independently."""
@@ -113,7 +111,7 @@ class TestFirewallHeaderCache:
         assert first["cache_hit"] is False
         assert second["cache_hit"] is False
         cached_tokens = {
-            require_cached_headers(cache_key).payload.headers["Authorization"]
+            require_cached_headers(cache_key).headers["Authorization"]
             for cache_key in (first_key, second_key)
         }
         assert cached_tokens == {"Bearer token-1", "Bearer token-2"}
@@ -146,12 +144,8 @@ class TestFirewallHeaderCache:
         assert endpoint.request_count == 2
         assert explicit["headers"] == {"Authorization": "Bearer explicit"}
         assert default["headers"] == {"Authorization": "Bearer default"}
-        assert require_cached_headers(explicit_key).payload.headers == {
-            "Authorization": "Bearer explicit"
-        }
-        assert require_cached_headers(default_key).payload.headers == {
-            "Authorization": "Bearer default"
-        }
+        assert require_cached_headers(explicit_key).headers == {"Authorization": "Bearer explicit"}
+        assert require_cached_headers(default_key).headers == {"Authorization": "Bearer default"}
 
     async def test_fetch_failure_does_not_cache(self, mitm_ctx):
         """Failed fetch should not populate cache; next caller retries independently."""
@@ -176,9 +170,7 @@ class TestFirewallHeaderCache:
             assert retry["headers"] == {"Authorization": "Bearer retry"}
             assert retry["cache_hit"] is False
             assert endpoint.request_count == 2
-            assert require_cached_headers(cache_key).payload.headers == {
-                "Authorization": "Bearer retry"
-            }
+            assert require_cached_headers(cache_key).headers == {"Authorization": "Bearer retry"}
 
             cached = await auth_cache.get_firewall_headers(cache_key, _firewall_auth_request())
             assert cached["headers"] == {"Authorization": "Bearer retry"}

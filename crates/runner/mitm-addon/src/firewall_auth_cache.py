@@ -5,6 +5,7 @@ import math
 import time
 from dataclasses import dataclass, field
 
+from aws_sigv4 import AwsSigV4Credentials
 from firewall_auth_client import (
     FirewallAuthPayload,
     FirewallAuthRequest,
@@ -39,6 +40,21 @@ class _FirewallAuthState:
 
     cache: _FirewallHeaderCacheEntry | None = None
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    force_refresh_pending: bool = False
+    last_force_refresh_monotonic_at: float | None = None
+
+
+@dataclass(frozen=True)
+class FirewallAuthStateSnapshotForTests:
+    """Copied auth cache state exposed to tests without leaking private storage."""
+
+    has_cached_headers: bool
+    headers: dict[str, str] = field(default_factory=dict)
+    resolved_secrets: list[str] = field(default_factory=list)
+    base: str | None = None
+    query: dict[str, str] | None = None
+    aws_sigv4: AwsSigV4Credentials | None = None
+    expires_at: object = None
     force_refresh_pending: bool = False
     last_force_refresh_monotonic_at: float | None = None
 
@@ -113,6 +129,87 @@ def evict_stale_cache_keys(active_run_ids: set[str]) -> None:
 def evict_all_cache_keys() -> None:
     """Remove all auth cache entries when active registry ownership is unknown."""
     _auth_state.clear()
+
+
+def reset_cache_for_tests() -> None:
+    """Reset auth cache module state between tests."""
+    _auth_state.clear()
+
+
+def seed_cached_headers_for_tests(
+    cache_key: FirewallAuthCacheKey,
+    *,
+    headers: dict[str, str],
+    expires_at: object = None,
+    resolved_secrets: list[str] | None = None,
+    base: str | None = None,
+    query: dict[str, str] | None = None,
+    aws_sigv4: AwsSigV4Credentials | None = None,
+) -> None:
+    """Seed cached firewall auth payload for focused cache lifecycle tests."""
+    state = _get_auth_state(cache_key)
+    state.cache = _FirewallHeaderCacheEntry(
+        payload=FirewallAuthPayload(
+            headers=dict(headers),
+            resolved_secrets=list(resolved_secrets or []),
+            base=base,
+            query=dict(query) if query is not None else None,
+            aws_sigv4=aws_sigv4,
+        ),
+        expires_at=expires_at,
+    )
+
+
+def set_force_refresh_state_for_tests(
+    cache_key: FirewallAuthCacheKey,
+    *,
+    pending: bool,
+    last_monotonic_at: float | None,
+) -> None:
+    """Seed force-refresh lifecycle state for focused cache lifecycle tests."""
+    state = _get_auth_state(cache_key)
+    state.force_refresh_pending = pending
+    state.last_force_refresh_monotonic_at = last_monotonic_at
+
+
+def auth_state_snapshot_for_tests(
+    cache_key: FirewallAuthCacheKey,
+) -> FirewallAuthStateSnapshotForTests | None:
+    """Return a copied snapshot of one auth cache state for tests."""
+    state = _auth_state.get(cache_key)
+    if state is None:
+        return None
+
+    cache = state.cache
+    if cache is None:
+        return FirewallAuthStateSnapshotForTests(
+            has_cached_headers=False,
+            force_refresh_pending=state.force_refresh_pending,
+            last_force_refresh_monotonic_at=state.last_force_refresh_monotonic_at,
+        )
+
+    payload = cache.payload
+    return FirewallAuthStateSnapshotForTests(
+        has_cached_headers=True,
+        headers=dict(payload.headers),
+        resolved_secrets=list(payload.resolved_secrets),
+        base=payload.base,
+        query=dict(payload.query) if payload.query is not None else None,
+        aws_sigv4=payload.aws_sigv4,
+        expires_at=cache.expires_at,
+        force_refresh_pending=state.force_refresh_pending,
+        last_force_refresh_monotonic_at=state.last_force_refresh_monotonic_at,
+    )
+
+
+def auth_state_is_empty_for_tests() -> bool:
+    """Return whether tests have left the auth cache without any state."""
+    return not _auth_state
+
+
+def force_refresh_cooldown_secs_for_tests() -> float:
+    """Return the force-refresh cooldown used by auth cache tests."""
+    return _FORCE_REFRESH_COOLDOWN_SECS
 
 
 def _has_valid_expiry(value: object, now: float | None = None) -> bool:

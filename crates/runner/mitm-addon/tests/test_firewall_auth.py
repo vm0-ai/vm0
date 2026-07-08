@@ -236,7 +236,7 @@ class TestGetFirewallHeaders:
         assert mock_fetch.call_args.kwargs == {"force_refresh": False}
 
         assert cached_headers(cache_key)
-        assert require_cached_headers(cache_key).payload.headers == mock_headers
+        assert require_cached_headers(cache_key).headers == mock_headers
 
     async def test_cache_hit_returns_cached(self, headers):
         cache_key = auth_cache_key(api_id="https://api.github.com")
@@ -290,7 +290,7 @@ class TestGetFirewallHeaders:
         # fetch_firewall_headers wraps urllib; pins the TTL-expiry→re-fetch contract (#9991).
         mock_fetch.assert_called_once()
         # Verify cache was updated with new entry
-        assert require_cached_headers(cache_key).payload.headers == fresh_headers
+        assert require_cached_headers(cache_key).headers == fresh_headers
 
     async def test_cache_with_null_expires_at_never_evicts(self, headers):
         """Cached entry with expiresAt=None (non-expiring) should never be evicted by TTL."""
@@ -472,7 +472,7 @@ class TestGetFirewallHeaders:
         assert second["query"] == cached_query
         assert second["cache_hit"] is True
         mock_fetch.assert_called_once()
-        assert require_cached_headers(cache_key).payload.query == cached_query
+        assert require_cached_headers(cache_key).query == cached_query
 
     async def test_base_and_query_are_cached_together(self):
         """auth.base and auth.query survive the same cache entry."""
@@ -499,8 +499,8 @@ class TestGetFirewallHeaders:
         assert second["cache_hit"] is True
         mock_fetch.assert_called_once()
         cached = require_cached_headers(cache_key)
-        assert cached.payload.base == cached_base
-        assert cached.payload.query == cached_query
+        assert cached.base == cached_base
+        assert cached.query == cached_query
 
     async def test_cache_hit_omits_base_when_absent(self, headers):
         """Cached entry without 'base' does not include it in result."""
@@ -655,7 +655,7 @@ class TestGetFirewallHeaders:
         assert forced_result["cache_hit"] is False
         assert not force_refresh_pending(cache_key)
         assert require_last_force_refresh_monotonic_at(cache_key) >= before_forced
-        assert require_cached_headers(cache_key).payload.headers == forced_headers
+        assert require_cached_headers(cache_key).headers == forced_headers
 
     async def test_waiting_request_force_refreshes_after_in_flight_marker(self, headers):
         """A same-key waiter must not reuse headers from the stale-prone leader fetch."""
@@ -702,9 +702,7 @@ class TestGetFirewallHeaders:
         assert force_refresh_values == [False, True]
         assert leader_result["headers"] == {"Authorization": "Bearer maybe-stale"}
         assert waiter_result["headers"] == {"Authorization": "Bearer refreshed"}
-        assert require_cached_headers(cache_key).payload.headers == {
-            "Authorization": "Bearer refreshed"
-        }
+        assert require_cached_headers(cache_key).headers == {"Authorization": "Bearer refreshed"}
         assert not force_refresh_pending(cache_key)
 
     async def test_force_refresh_absent_passes_false(self, headers):

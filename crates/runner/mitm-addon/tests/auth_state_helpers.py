@@ -2,11 +2,10 @@
 
 import firewall_auth_cache as auth_cache
 from aws_sigv4 import AwsSigV4Credentials
-from firewall_auth_client import FirewallAuthPayload
 
 
 def clear_auth_state() -> None:
-    auth_cache._auth_state.clear()
+    auth_cache.reset_cache_for_tests()
 
 
 def auth_cache_key(
@@ -23,7 +22,11 @@ def auth_cache_key(
 
 
 def has_auth_state(cache_key: auth_cache.FirewallAuthCacheKey) -> bool:
-    return cache_key in auth_cache._auth_state
+    return auth_cache.auth_state_snapshot_for_tests(cache_key) is not None
+
+
+def auth_state_is_empty() -> bool:
+    return auth_cache.auth_state_is_empty_for_tests()
 
 
 def set_cached_headers(
@@ -36,53 +39,72 @@ def set_cached_headers(
     query: dict | None = None,
     aws_sigv4: AwsSigV4Credentials | None = None,
 ) -> None:
-    auth_cache._get_auth_state(cache_key).cache = auth_cache._FirewallHeaderCacheEntry(
-        payload=FirewallAuthPayload(
-            headers=headers,
-            resolved_secrets=resolved_secrets or [],
-            base=base,
-            query=query,
-            aws_sigv4=aws_sigv4,
-        ),
+    auth_cache.seed_cached_headers_for_tests(
+        cache_key,
+        headers=headers,
         expires_at=expires_at,
+        resolved_secrets=resolved_secrets,
+        base=base,
+        query=query,
+        aws_sigv4=aws_sigv4,
     )
+
+
+def auth_state_snapshot(
+    cache_key: auth_cache.FirewallAuthCacheKey,
+) -> auth_cache.FirewallAuthStateSnapshotForTests | None:
+    return auth_cache.auth_state_snapshot_for_tests(cache_key)
 
 
 def cached_headers(
     cache_key: auth_cache.FirewallAuthCacheKey,
-) -> auth_cache._FirewallHeaderCacheEntry | None:
-    state = auth_cache._auth_state.get(cache_key)
-    return state.cache if state else None
+) -> auth_cache.FirewallAuthStateSnapshotForTests | None:
+    snapshot = auth_state_snapshot(cache_key)
+    if snapshot is None or not snapshot.has_cached_headers:
+        return None
+    return snapshot
 
 
 def require_cached_headers(
     cache_key: auth_cache.FirewallAuthCacheKey,
-) -> auth_cache._FirewallHeaderCacheEntry:
-    entry = cached_headers(cache_key)
-    assert entry is not None
-    return entry
+) -> auth_cache.FirewallAuthStateSnapshotForTests:
+    snapshot = cached_headers(cache_key)
+    assert snapshot is not None
+    return snapshot
 
 
 def mark_force_refresh(cache_key: auth_cache.FirewallAuthCacheKey) -> None:
-    auth_cache._get_auth_state(cache_key).force_refresh_pending = True
+    snapshot = auth_state_snapshot(cache_key)
+    auth_cache.set_force_refresh_state_for_tests(
+        cache_key,
+        pending=True,
+        last_monotonic_at=(
+            snapshot.last_force_refresh_monotonic_at if snapshot is not None else None
+        ),
+    )
 
 
 def force_refresh_pending(cache_key: auth_cache.FirewallAuthCacheKey) -> bool:
-    state = auth_cache._auth_state.get(cache_key)
-    return bool(state and state.force_refresh_pending)
+    snapshot = auth_state_snapshot(cache_key)
+    return bool(snapshot and snapshot.force_refresh_pending)
 
 
 def set_last_force_refresh_monotonic_at(
     cache_key: auth_cache.FirewallAuthCacheKey, timestamp: float
 ) -> None:
-    auth_cache._get_auth_state(cache_key).last_force_refresh_monotonic_at = timestamp
+    snapshot = auth_state_snapshot(cache_key)
+    auth_cache.set_force_refresh_state_for_tests(
+        cache_key,
+        pending=bool(snapshot and snapshot.force_refresh_pending),
+        last_monotonic_at=timestamp,
+    )
 
 
 def last_force_refresh_monotonic_at(
     cache_key: auth_cache.FirewallAuthCacheKey,
 ) -> float | None:
-    state = auth_cache._auth_state.get(cache_key)
-    return state.last_force_refresh_monotonic_at if state else None
+    snapshot = auth_state_snapshot(cache_key)
+    return snapshot.last_force_refresh_monotonic_at if snapshot else None
 
 
 def require_last_force_refresh_monotonic_at(
