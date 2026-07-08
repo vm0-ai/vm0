@@ -96,6 +96,7 @@ import {
   setChatThreadVirtualListElement$,
   getChatThreadVirtualListScrollMargin,
   CHAT_THREAD_VIRTUAL_ROW_HEIGHT,
+  scrollChatThreadVirtualListToIndex$,
 } from "../../signals/zero-page/zero-sidebar-state.ts";
 import { Link } from "../router/link.tsx";
 import { OverlayScrollArea } from "./zero-sidebar-scroll.tsx";
@@ -517,6 +518,7 @@ function ChatThreadItemLink({
       pathname="/chats/:threadId"
       options={{ pathParams: { threadId: session.id } }}
       aria-current={state.isCurrentPage ? "page" : undefined}
+      data-sidebar-chat-thread-id={session.id}
       onClick={(e) => {
         handleChatThreadClick(e, {
           closeSidebarOnSelect,
@@ -982,6 +984,59 @@ function ChatThreadsContent() {
   const collapsed = useGet(sessionListCollapsed$);
   const isScrolled = useGet(isScrolled$);
   const setIsScrolledFn = useSet(setIsScrolled$);
+  const pathParams = useGet(pathParams$);
+  const currentMainThreadId =
+    typeof pathParams?.threadId === "string" ? pathParams.threadId : null;
+  const scrollVirtualListToIndex = useSet(scrollChatThreadVirtualListToIndex$);
+  const focusThreadLink = (
+    viewport: HTMLElement,
+    threadId: string,
+  ): boolean => {
+    const link = Array.from(
+      viewport.querySelectorAll<HTMLAnchorElement>(
+        "[data-sidebar-chat-thread-id]",
+      ),
+    ).find((candidate) => {
+      return candidate.dataset.sidebarChatThreadId === threadId;
+    });
+    if (!link?.isConnected) {
+      return false;
+    }
+    link.focus({ preventScroll: true });
+    return true;
+  };
+  const focusThreadLinkOnNextFrame = (
+    viewport: HTMLElement,
+    threadId: string,
+  ) => {
+    const win = viewport.ownerDocument.defaultView;
+    const focus = () => {
+      focusThreadLink(viewport, threadId);
+    };
+    if (win?.requestAnimationFrame) {
+      win.requestAnimationFrame(focus);
+    } else {
+      queueMicrotask(focus);
+    }
+  };
+  const focusCurrentMainThreadLink = (viewport: HTMLElement) => {
+    if (
+      !currentMainThreadId ||
+      focusThreadLink(viewport, currentMainThreadId)
+    ) {
+      return;
+    }
+
+    const currentIndex = chatThreads.findIndex((thread) => {
+      return thread.id === currentMainThreadId;
+    });
+    if (currentIndex === -1) {
+      return;
+    }
+
+    scrollVirtualListToIndex(currentIndex, "top");
+    focusThreadLinkOnNextFrame(viewport, currentMainThreadId);
+  };
 
   if (collapsed) {
     return null;
@@ -1000,7 +1055,15 @@ function ChatThreadsContent() {
   return (
     <OverlayScrollArea
       className="mt-1 min-h-0 flex-1"
+      aria-label="Chat threads"
       data-testid="sidebar-scroll-area"
+      tabIndex={currentMainThreadId ? 0 : undefined}
+      onFocus={(event) => {
+        if (event.target !== event.currentTarget) {
+          return;
+        }
+        focusCurrentMainThreadLink(event.currentTarget);
+      }}
       onScroll={(e) => {
         return setIsScrolledFn(e.currentTarget.scrollTop > 0);
       }}
