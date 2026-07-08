@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.6](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.3.5...guest-contracts-v0.3.6) (2026-07-08)
+
+
+### Bug Fixes
+
+* add runner exit signal diagnostics ([#20674](https://github.com/vm0-ai/vm0/issues/20674)) ([bf46c07](https://github.com/vm0-ai/vm0/commit/bf46c07f8a9954576040760dfcfb3bb81ee2d1ea))
+
+
+### Refactoring
+
+* centralize guest private runtime file handling ([#20671](https://github.com/vm0-ai/vm0/issues/20671)) ([24ca30c](https://github.com/vm0-ai/vm0/commit/24ca30c56b4c9b657a3aad8da2affac5a49e5b4b))
+
 ## [0.3.5](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.3.4...guest-contracts-v0.3.5) (2026-07-08)
 
 

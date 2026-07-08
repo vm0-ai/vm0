@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.49.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.49.2...guest-agent-v0.49.3) (2026-07-08)
+
+
+### Bug Fixes
+
+* add runner exit signal diagnostics ([#20674](https://github.com/vm0-ai/vm0/issues/20674)) ([bf46c07](https://github.com/vm0-ai/vm0/commit/bf46c07f8a9954576040760dfcfb3bb81ee2d1ea))
+* remove minimax codex legacy base url ([#20707](https://github.com/vm0-ai/vm0/issues/20707)) ([a4a9e77](https://github.com/vm0-ai/vm0/commit/a4a9e77fe2d8e1065f1b57a9ead26565b054fa39))
+
+
+### Refactoring
+
+* centralize guest private runtime file handling ([#20671](https://github.com/vm0-ai/vm0/issues/20671)) ([24ca30c](https://github.com/vm0-ai/vm0/commit/24ca30c56b4c9b657a3aad8da2affac5a49e5b4b))
+
 ## [0.49.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.49.1...guest-agent-v0.49.2) (2026-07-08)
 
 ## [0.49.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.49.0...guest-agent-v0.49.1) (2026-07-08)
