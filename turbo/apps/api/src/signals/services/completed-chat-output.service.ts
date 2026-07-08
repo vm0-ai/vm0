@@ -546,7 +546,10 @@ export async function resolveCompletedChatOutputWithRetry(args: {
         missingWatermarkAttempts >= maxMissingWatermarkAttempts,
       signal: args.signal,
     });
-    if (lastResult.kind !== "not_visible_yet") {
+    if (
+      lastResult.kind !== "not_visible_yet" &&
+      lastResult.kind !== "query_failed"
+    ) {
       return lastResult;
     }
 

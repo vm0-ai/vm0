@@ -2691,6 +2691,57 @@ describe("INT-01: Slack app deep webhook flows", () => {
     });
     expect(outputQueryCount).toBe(2);
 
+    const transientAxiomText = "Recovered after a transient Axiom error";
+    let transientAxiomOutputQueries = 0;
+    context.mocks.axiom.query.mockImplementation((...args: unknown[]) => {
+      const apl = typeof args[0] === "string" ? args[0] : "";
+      if (apl.includes("| project sequenceNumber")) {
+        return Promise.resolve([{ sequenceNumber: 0 }]);
+      }
+      if (apl.includes('eventType == "assistant"')) {
+        transientAxiomOutputQueries++;
+        if (transientAxiomOutputQueries === 1) {
+          return Promise.reject(new Error("temporary Axiom query failure"));
+        }
+        return Promise.resolve([
+          {
+            eventType: "result",
+            sequenceNumber: 0,
+            eventData: { result: transientAxiomText },
+          },
+        ]);
+      }
+      return Promise.resolve([]);
+    });
+
+    await integrations.postSlackEvent(teamId, {
+      type: "app_mention",
+      user: slackUser,
+      text: "retry a transient completed output query failure",
+      ts: "4050.000125",
+      channel: channelId,
+    });
+    const transientRunId = await pollSlackRun(runnerGroup);
+    const transientClaim = await runs.claimRunnerJob(transientRunId);
+    context.mocks.slack.chat.postMessage.mockClear();
+    await completeSlackTriggeredRun({
+      runId: transientRunId,
+      sandboxToken: transientClaim.sandboxToken,
+      cliAgentType: "claude-code",
+      lastEventSequence: 0,
+    });
+
+    await waitForExpectation(() => {
+      expect(context.mocks.slack.chat.postMessage).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          channel: channelId,
+          thread_ts: "4050.000125",
+          text: transientAxiomText,
+        }),
+      );
+    });
+    expect(transientAxiomOutputQueries).toBe(2);
+
     const finalLongRunText = "Final answer after many intermediate events";
     let latestOutputQuerySeen = false;
     context.mocks.axiom.query.mockImplementation((...args: unknown[]) => {
