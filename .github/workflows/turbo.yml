@@ -405,7 +405,48 @@ jobs:
       # dependsOn ^check-types does not re-run the shared packages here.
       - name: Type Check (api)
         working-directory: turbo
-        run: pnpm --filter api run check-types
+        run: |
+          set +e
+          result_file=".memory-results/api-check-types.jsonl"
+          rm -f "$result_file"
+
+          node scripts/measure-memory.mjs \
+            --label ci-api-check-types \
+            --json "$result_file" \
+            -- pnpm --filter api run check-types
+          status=$?
+
+          # shellcheck disable=SC2016
+          node -e '
+            const fs = require("node:fs");
+            const file = process.argv[1];
+            if (!fs.existsSync(file)) {
+              process.exit(0);
+            }
+
+            const lines = fs.readFileSync(file, "utf8").trim().split(/\n/).filter(Boolean);
+            if (lines.length === 0) {
+              process.exit(0);
+            }
+
+            const result = JSON.parse(lines[lines.length - 1]);
+            const durationSeconds = (result.durationMs / 1000).toFixed(1);
+            const summary = [
+              "### Type Check (api) memory",
+              "",
+              `- Peak RSS: ${result.peakRssMiB} MiB (${result.peakRssKiB} KiB)`,
+              `- Duration: ${durationSeconds}s`,
+              `- Exit code: ${result.exitCode}`,
+              "",
+            ].join("\n");
+
+            console.log(`Peak RSS (api check-types): ${result.peakRssMiB} MiB (${result.peakRssKiB} KiB), duration ${durationSeconds}s`);
+            if (process.env.GITHUB_STEP_SUMMARY) {
+              fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary);
+            }
+          ' "$result_file"
+
+          exit "$status"
       - name: Type Check (@vm0/app)
         working-directory: turbo
         run: pnpm --filter @vm0/app run check-types
