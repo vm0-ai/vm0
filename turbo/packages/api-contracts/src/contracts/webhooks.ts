@@ -720,12 +720,16 @@ const sessionHistoryTransferEncodingStateSchema = z.enum([
 ]);
 
 const sandboxOperationDownloadSourceSchema = z
-  .union([
-    sessionHistoryDownloadSourceSchema,
-    z.string().transform(() => {
+  .preprocess((value) => {
+    const parsed = sessionHistoryDownloadSourceSchema.safeParse(value);
+    if (parsed.success) {
+      return parsed.data;
+    }
+    if (typeof value === "string") {
       return undefined;
-    }),
-  ])
+    }
+    return value;
+  }, sessionHistoryDownloadSourceSchema.optional())
   .optional();
 
 /**
