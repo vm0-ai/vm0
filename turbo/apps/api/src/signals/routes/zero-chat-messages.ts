@@ -1326,20 +1326,28 @@ async function updateUserModelPreference(
   orgId: string,
   userId: string,
   selectedModel: string,
+  codexServiceTier: CodexServiceTier | null,
 ): Promise<void> {
   const nowValue = nowDate();
+  const selectedModelCodexServiceTier =
+    selectedModel === "gpt-5.5" ? codexServiceTier : null;
   await db
     .insert(orgMembersMetadata)
     .values({
       orgId,
       userId,
       selectedModel,
+      selectedModelCodexServiceTier,
       createdAt: nowValue,
       updatedAt: nowValue,
     })
     .onConflictDoUpdate({
       target: [orgMembersMetadata.orgId, orgMembersMetadata.userId],
-      set: { selectedModel, updatedAt: nowValue },
+      set: {
+        selectedModel,
+        selectedModelCodexServiceTier,
+        updatedAt: nowValue,
+      },
     });
 }
 
@@ -1348,6 +1356,7 @@ async function maybePersistExplicitModelFirstSelection(params: {
   readonly orgId: string;
   readonly userId: string;
   readonly modelSelection: IncomingModelSelection;
+  readonly codexServiceTier: CodexServiceTier | null;
 }): Promise<boolean> {
   if (!params.modelSelection) {
     return false;
@@ -1362,6 +1371,7 @@ async function maybePersistExplicitModelFirstSelection(params: {
     params.orgId,
     params.userId,
     params.modelSelection.selectedModel,
+    params.codexServiceTier,
   );
   return true;
 }
@@ -2321,6 +2331,7 @@ const prepareNormalSend$ = command(
         orgId: args.orgId,
         userId: args.userId,
         modelSelection: args.body.modelSelection,
+        codexServiceTier: args.body.runOptions?.codexServiceTier ?? null,
       });
     signal.throwIfAborted();
     await maybePersistExplicitCodexServiceTier({
@@ -2901,6 +2912,7 @@ const createNormalChatRun$ = command(
         args.orgId,
         args.userId,
         modelPin.selectedModel,
+        args.body.runOptions?.codexServiceTier ?? null,
       );
       signal.throwIfAborted();
     }

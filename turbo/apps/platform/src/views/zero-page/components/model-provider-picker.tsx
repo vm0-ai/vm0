@@ -205,9 +205,22 @@ function getModelFirstIconType(model: string): ModelProviderType | undefined {
 
 function resolveModelFirstDefault(
   value: ModelProviderSelection | null,
-  userPreference: { selectedModel: string | null } | null | undefined,
+  userPreference:
+    | {
+        selectedModel: string | null;
+        codexServiceTier?: CodexServiceTier | null;
+      }
+    | null
+    | undefined,
   policies: OrgModelPolicy[],
+  codexFastModeEnabled: boolean,
 ): ModelProviderSelection | null {
+  const userDefaultCodexServiceTier =
+    codexFastModeEnabled &&
+    userPreference?.codexServiceTier === "fast" &&
+    codexFastModeAvailableForModel(policies, userPreference.selectedModel)
+      ? userPreference.codexServiceTier
+      : undefined;
   const validUserDefault =
     userPreference?.selectedModel &&
     policies.some((policy) => {
@@ -219,6 +232,9 @@ function resolveModelFirstDefault(
       ? {
           modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
           selectedModel: userPreference.selectedModel,
+          ...(userDefaultCodexServiceTier
+            ? { codexServiceTier: userDefaultCodexServiceTier }
+            : {}),
         }
       : null;
   const validWorkspaceDefault = policies.find((policy) => {
@@ -357,6 +373,7 @@ function ModelFirstDisabledPickerLabel({
   triggerClassName,
   userPreference,
   policies,
+  codexFastModeEnabled,
 }: Pick<
   ModelProviderPickerProps,
   | "value"
@@ -369,9 +386,21 @@ function ModelFirstDisabledPickerLabel({
   compactTrigger: boolean;
   mobileIconTrigger: boolean;
   policies: OrgModelPolicy[];
-  userPreference: { selectedModel: string | null } | null | undefined;
+  userPreference:
+    | {
+        selectedModel: string | null;
+        codexServiceTier?: CodexServiceTier | null;
+      }
+    | null
+    | undefined;
+  codexFastModeEnabled: boolean;
 }) {
-  const resolved = resolveModelFirstDefault(value, userPreference, policies);
+  const resolved = resolveModelFirstDefault(
+    value,
+    userPreference,
+    policies,
+    codexFastModeEnabled,
+  );
   const selectedModel = resolved?.selectedModel ?? null;
   return (
     <span
@@ -701,7 +730,13 @@ function resolveModelFirstModelPickerState({
   placeholder,
 }: {
   value: ModelProviderSelection | null;
-  userPreference: { selectedModel: string | null } | null | undefined;
+  userPreference:
+    | {
+        selectedModel: string | null;
+        codexServiceTier?: CodexServiceTier | null;
+      }
+    | null
+    | undefined;
   policyResponse: { policies: OrgModelPolicy[] } | null | undefined;
   limitedFree1: boolean;
   resolveDefaultSelection: boolean;
@@ -716,6 +751,7 @@ function resolveModelFirstModelPickerState({
         selectableValue,
         userPreference,
         selectablePolicies,
+        codexFastModeEnabled,
       )
     : selectableValue;
   const selectedModel = resolved?.selectedModel ?? null;
@@ -724,7 +760,7 @@ function resolveModelFirstModelPickerState({
     codexFastModeAvailableForModel(selectablePolicies, selectedModel);
   const codexServiceTier = codexServiceTierForTrigger(
     codexFastModeAvailable,
-    value,
+    resolved,
   );
   return {
     policies,
@@ -814,7 +850,13 @@ function ModelFirstModelPicker({
   placeholder: string;
   compactTrigger: boolean;
   mobileIconTrigger: boolean;
-  userPreference: { selectedModel: string | null } | null | undefined;
+  userPreference:
+    | {
+        selectedModel: string | null;
+        codexServiceTier?: CodexServiceTier | null;
+      }
+    | null
+    | undefined;
   resolveDefaultSelection: boolean;
 }) {
   const policiesLoadable = useLoadable(orgModelPolicies$);
@@ -848,6 +890,7 @@ function ModelFirstModelPicker({
         triggerClassName={triggerClassName}
         userPreference={resolveDefaultSelection ? userPreference : null}
         policies={resolveDefaultSelection ? state.selectablePolicies : []}
+        codexFastModeEnabled={codexFastModeEnabled}
       />
     );
   }

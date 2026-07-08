@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { afterEach, describe, expect, it } from "vitest";
 import { DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL } from "@vm0/api-contracts/contracts/model-providers";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 import { testContext } from "../../../__tests__/test-context";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
@@ -10,7 +11,9 @@ import {
   type ApiTestUser,
 } from "./helpers/api-bdd-auth-org";
 import { expectApiError } from "./helpers/api-bdd";
+import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createUserConfigBddApi } from "./helpers/api-bdd-user-config";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 
 /*
 Round-5 cluster auth-03 (AUTH-01/AUTH-03): user-owned configuration plus the
@@ -23,6 +26,7 @@ api-bdd-computer-use precedent).
 
 const context = testContext();
 const api = createAuthOrgAgentsBddApi(context);
+const runs = createRunsAutomationsApi(context);
 const cfg = createUserConfigBddApi(context);
 
 afterEach(() => {
@@ -475,6 +479,78 @@ describe("AUTH-03 user model preference", () => {
     expect(cleared).toStrictEqual({ selectedModel: null, updatedAt: null });
     const readCleared = await cfg.readModelPreference(admin);
     expect(readCleared).toStrictEqual({ selectedModel: null, updatedAt: null });
+  });
+
+  it("persists Codex fast mode on the user model preference", async () => {
+    const admin = api.user();
+    await onboardAdmin(admin, { slug: slug("bdd-uc-b3") });
+    const orgId = admin.orgId;
+    if (!orgId) {
+      throw new Error("Expected onboarded admin to have an org");
+    }
+    await runs.updateOrgModelPolicies(admin, [
+      {
+        model: "gpt-5.5",
+        isDefault: true,
+        defaultProviderType: "codex-oauth-token",
+        credentialScope: "member",
+        modelProviderId: null,
+      },
+      {
+        model: "gpt-5.4",
+        isDefault: false,
+        defaultProviderType: "codex-oauth-token",
+        credentialScope: "member",
+        modelProviderId: null,
+      },
+    ]);
+
+    const switchOff = await cfg.requestUpdateModelPreference(
+      admin,
+      { selectedModel: "gpt-5.5", codexServiceTier: "fast" },
+      [400],
+    );
+    expectApiError(switchOff.body);
+    expect(switchOff.body.error.message).toBe(
+      "Codex fast mode is not enabled for this workspace",
+    );
+
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...admin, orgId },
+      {
+        [FeatureSwitchKey.CodexFastMode]: true,
+      },
+    );
+    const fast = await cfg.updateModelPreference(admin, {
+      selectedModel: "gpt-5.5",
+      codexServiceTier: "fast",
+    });
+    expect(fast).toStrictEqual({
+      selectedModel: "gpt-5.5",
+      codexServiceTier: "fast",
+      updatedAt: expect.any(String),
+    });
+    await expect(cfg.readModelPreference(admin)).resolves.toStrictEqual(fast);
+
+    const invalidFast = await cfg.requestUpdateModelPreference(
+      admin,
+      { selectedModel: "gpt-5.4", codexServiceTier: "fast" },
+      [400],
+    );
+    expectApiError(invalidFast.body);
+    expect(invalidFast.body.error.message).toBe(
+      "Codex fast mode is only available for ChatGPT (Codex) GPT 5.5 runs",
+    );
+
+    const standard = await cfg.updateModelPreference(admin, {
+      selectedModel: "gpt-5.5",
+      codexServiceTier: null,
+    });
+    expect(standard).toStrictEqual({
+      selectedModel: "gpt-5.5",
+      updatedAt: expect.any(String),
+    });
   });
 
   it("rejects contract-invalid model preference bodies and unauthenticated access", async () => {

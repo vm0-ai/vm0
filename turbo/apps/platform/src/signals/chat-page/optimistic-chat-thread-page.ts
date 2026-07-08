@@ -43,6 +43,7 @@ import { logger } from "../log.ts";
 import {
   modelSelectionRequestFromSelection,
   runOptionsFromModelProviderSelection,
+  threadCodexServiceTierFromSelection,
 } from "./model-selection-request.ts";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import { registerOptimisticChatThreadEvent$ } from "./chat-thread-event-sourcing.ts";
@@ -149,6 +150,7 @@ function resolveNewThreadModelSelection(
   args: {
     readonly policies: OrgModelPoliciesResponse | null | undefined;
     readonly userPreference: UserModelPreferenceResponse | null | undefined;
+    readonly codexFastModeEnabled: boolean;
   },
 ): ModelProviderSelection | null {
   if (modelSelection) {
@@ -157,6 +159,7 @@ function resolveNewThreadModelSelection(
   return resolveModelFirstUserDefaultSelection({
     userPreference: args.userPreference,
     policies: args.policies,
+    codexFastModeEnabled: args.codexFastModeEnabled,
   });
 }
 
@@ -287,6 +290,9 @@ async function createChatThread(args: {
         modelSelection: modelSelectionRequestFromSelection(
           args.modelSelection,
         )!,
+        codexServiceTier: threadCodexServiceTierFromSelection(
+          args.modelSelection,
+        ),
         ...(args.title ? { title: args.title } : {}),
       },
       fetchOptions: { signal: args.signal },
@@ -310,9 +316,11 @@ const startNewChatThreadCreate$ = command(
     signal.throwIfAborted();
     const userPreference = await get(userModelPreference$);
     signal.throwIfAborted();
+    const features = get(featureSwitch$);
     const modelSelection = resolveNewThreadModelSelection(null, {
       policies,
       userPreference,
+      codexFastModeEnabled: codexFastModeSwitchEnabled(features),
     });
     if (!modelSelection) {
       throw new Error("A model selection is required");
@@ -390,11 +398,13 @@ const sendNewThreadMessage$ = command(
     signal.throwIfAborted();
     const userPreference = await get(userModelPreference$);
     signal.throwIfAborted();
+    const features = get(featureSwitch$);
     const resolvedModelSelection = resolveNewThreadModelSelection(
       modelSelection,
       {
         policies,
         userPreference,
+        codexFastModeEnabled: codexFastModeSwitchEnabled(features),
       },
     );
     if (!resolvedModelSelection) {
@@ -465,7 +475,7 @@ const sendNewThreadMessage$ = command(
           clientMessageId,
           prepared,
           modelSelection: resolvedModelSelection,
-          codexFastModeEnabled: codexFastModeSwitchEnabled(get(featureSwitch$)),
+          codexFastModeEnabled: codexFastModeSwitchEnabled(features),
           generationTemplate,
           computerUseHostId,
         }),

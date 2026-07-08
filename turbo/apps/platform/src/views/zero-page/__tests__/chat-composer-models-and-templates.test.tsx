@@ -1184,6 +1184,83 @@ describe("chat composer models", () => {
     });
   });
 
+  it("uses saved Codex fast mode for new chat defaults", async () => {
+    const user = userEvent.setup({ delay: null });
+    const codexProvider = buildProvider({
+      id: "00000000-0000-4000-a000-000000000923",
+      type: "codex-oauth-token",
+      framework: "codex",
+      secretName: null,
+      authMethod: "auth_json",
+      secretNames: ["CODEX_AUTH_JSON"],
+    });
+    let sentBody:
+      | {
+          runOptions?: { codexServiceTier?: "fast" };
+        }
+      | undefined;
+    let createdBody:
+      | {
+          codexServiceTier?: "fast" | null;
+        }
+      | undefined;
+
+    context.mocks.data.orgModelPolicies([
+      buildModelPolicy({
+        id: "00000000-0000-4000-a000-000000000924",
+        model: "gpt-5.5",
+        modelLabel: "GPT 5.5",
+        isDefault: true,
+        defaultProviderType: "codex-oauth-token",
+        credentialScope: "member",
+      }),
+    ]);
+    context.mocks.data.userModelPreference({
+      selectedModel: "gpt-5.5",
+      codexServiceTier: "fast",
+      updatedAt: "2026-03-10T00:00:00Z",
+    });
+    context.mocks.data.personalModelProviders([codexProvider]);
+    mockAgent();
+    mockChatLifecycle(context, {
+      onThreadCreate: (body) => {
+        createdBody = body;
+      },
+      onRunCreate: (body) => {
+        sentBody = body;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.CodexFastMode]: true },
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    click(await findComposerModel("GPT 5.5"));
+    const runSpeed = await screen.findByRole("group", { name: "Run speed" });
+    await waitFor(() => {
+      expect(buttonContainingText("Fast", runSpeed)).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+    });
+    await user.keyboard("{Escape}");
+
+    await sendMessageInUI(
+      user,
+      screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
+      "Use saved fast mode",
+    );
+
+    await waitFor(() => {
+      expect(createdBody?.codexServiceTier).toBe("fast");
+      expect(sentBody?.runOptions).toStrictEqual({
+        codexServiceTier: "fast",
+      });
+    });
+  });
+
   it("keeps Codex fast mode when continuing a hydrated thread", async () => {
     const user = userEvent.setup({ delay: null });
     const codexProvider = buildProvider({

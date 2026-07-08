@@ -8,6 +8,7 @@ import {
   jsonb,
   varchar,
 } from "drizzle-orm/pg-core";
+import type { CodexServiceTier } from "@vm0/api-contracts/contracts/chat-threads";
 import type { OrgMembersPinnedAgentIds } from "@vm0/db/jsonb-contracts/org-members-metadata";
 
 /**
@@ -26,6 +27,10 @@ export const orgMembersMetadata = pgTable(
       .default([]),
     sendMode: text("send_mode").notNull().default("enter"),
     selectedModel: varchar("selected_model", { length: 255 }),
+    selectedModelCodexServiceTier: varchar(
+      "selected_model_codex_service_tier",
+      { length: 20 },
+    ).$type<CodexServiceTier>(),
     onboardingDone: boolean("onboarding_done").notNull().default(false),
     captureNetworkBodiesRemaining: integer(
       "capture_network_bodies_remaining",

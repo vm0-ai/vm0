@@ -132,7 +132,7 @@ const chatThreadUnreadAgentsSchema = z.object({
 });
 
 const chatThreadEventIdSchema = z.string().uuid();
-const codexServiceTierSchema = z.enum(["fast"]);
+export const codexServiceTierSchema = z.enum(["fast"]);
 
 const chatThreadListItemSchema = z.object({
   id: z.string(),
@@ -465,6 +465,7 @@ export const chatThreadsContract = c.router({
       clientThreadId: z.string().uuid().optional(),
       eventId: chatThreadEventIdSchema.optional(),
       modelSelection: modelSelectionRequestSchema,
+      codexServiceTier: codexServiceTierSchema.nullable().optional(),
       title: z.string().optional(),
     }),
     responses: {
@@ -473,6 +474,7 @@ export const chatThreadsContract = c.router({
         title: z.string().nullable(),
         createdAt: z.string(),
       }),
+      400: apiErrorSchema,
       401: apiErrorSchema,
       402: apiErrorSchema,
       404: apiErrorSchema,

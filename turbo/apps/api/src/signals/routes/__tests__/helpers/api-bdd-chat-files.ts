@@ -460,6 +460,7 @@ export function createChatFilesBddApi(context: TestContext) {
         readonly clientThreadId?: string;
         readonly eventId?: string;
         readonly modelSelection?: ModelSelectionRequest;
+        readonly codexServiceTier?: CodexServiceTier | null;
       },
     ): Promise<{ readonly id: string; readonly title: string | null }> {
       const response = await accept(
@@ -484,8 +485,9 @@ export function createChatFilesBddApi(context: TestContext) {
         readonly clientThreadId?: string;
         readonly eventId?: string;
         readonly modelSelection?: ModelSelectionRequest;
+        readonly codexServiceTier?: CodexServiceTier | null;
       },
-      statuses: readonly (201 | 401 | 402 | 404)[],
+      statuses: readonly (201 | 400 | 401 | 402 | 404)[],
     ) {
       return await accept(
         threadsClient().create({

@@ -1,4 +1,5 @@
 import { command, computed, state } from "ccstate";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { talkDraft$ } from "./chat-draft.ts";
 import { getRandomPrompts } from "../../views/zero-page/zero-ideation-data.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
@@ -64,9 +65,11 @@ export const chatPageModelSelection$ = computed(
     }
     const policies = await get(orgModelPolicies$);
     const userPreference = await get(userModelPreference$);
+    const features = get(featureSwitch$);
     return resolveModelFirstUserDefaultSelection({
       userPreference,
       policies,
+      codexFastModeEnabled: features[FeatureSwitchKey.CodexFastMode] ?? false,
     });
   },
 );

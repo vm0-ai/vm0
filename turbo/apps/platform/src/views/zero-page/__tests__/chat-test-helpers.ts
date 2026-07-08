@@ -441,6 +441,7 @@ export function mockChatLifecycle(
     onThreadCreate?: (body: {
       clientThreadId?: string;
       modelSelection: ModelSelectionRequest;
+      codexServiceTier?: CodexServiceTier | null;
     }) => void;
     onModelSelectionUpdate?: (body: {
       modelSelection?: ModelSelectionRequest | null;
@@ -864,6 +865,7 @@ export function mockChatLifecycle(
     options?.onThreadCreate?.({
       clientThreadId: body.clientThreadId,
       modelSelection: body.modelSelection,
+      codexServiceTier: body.codexServiceTier,
     });
     return respond(201, {
       id: threadId,

@@ -491,6 +491,66 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     ).toBeFalsy();
   });
 
+  it("persists Codex fast mode when creating an empty thread", async () => {
+    const { actor, agentId } = await entitledChatActor(
+      "Fast mode empty thread agent",
+    );
+    const orgId = actor.orgId;
+    if (!orgId) {
+      throw new Error("Expected entitled chat actor to have an org");
+    }
+
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "gpt-5.5",
+        isDefault: true,
+        defaultProviderType: "codex-oauth-token",
+        credentialScope: "member",
+        modelProviderId: null,
+      },
+    ]);
+
+    const switchOff = await chat.requestCreateThread(
+      actor,
+      {
+        agentId,
+        title: "Fast mode switch off",
+        modelSelection: {
+          modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+          selectedModel: "gpt-5.5",
+        },
+        codexServiceTier: "fast",
+      },
+      [400],
+    );
+    expectApiError(switchOff.body);
+    expect(switchOff.body.error.message).toBe(
+      "Codex fast mode is not enabled for this workspace",
+    );
+
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId },
+      { [FeatureSwitchKey.CodexFastMode]: true },
+    );
+
+    const thread = await chat.createThread(actor, {
+      agentId,
+      title: "Fast mode empty thread",
+      modelSelection: {
+        modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+        selectedModel: "gpt-5.5",
+      },
+      codexServiceTier: "fast",
+    });
+
+    await expect(chat.readThread(actor, thread.id)).resolves.toStrictEqual({
+      lastReadAt: null,
+      computerUseHostId: null,
+      codexServiceTier: "fast",
+    });
+  });
+
   it("returns chat thread snapshot and lifecycle events with cursor expiry", async () => {
     const actor = bdd.user();
     const agent = await bdd.createAgent(actor, {

@@ -472,7 +472,14 @@ function useAgentChatComposerModel(pageSignal: AbortSignal) {
     const selectedModel = selection?.selectedModel;
     if (isSupportedRunModel(selectedModel)) {
       detach(
-        updateUserModelPreference({ selectedModel }, pageSignal),
+        updateUserModelPreference(
+          {
+            selectedModel,
+            codexServiceTier:
+              selection?.codexServiceTier === "fast" ? "fast" : null,
+          },
+          pageSignal,
+        ),
         Reason.DomCallback,
       );
     }

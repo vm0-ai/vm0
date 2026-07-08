@@ -30,6 +30,9 @@ export const apiUserModelPreferenceHandlers = [
   mockApi(zeroUserModelPreferenceContract.update, ({ body, respond }) => {
     mockUserModelPreference = {
       selectedModel: body.selectedModel,
+      ...(body.codexServiceTier === "fast"
+        ? { codexServiceTier: body.codexServiceTier }
+        : {}),
       updatedAt: nowDate().toISOString(),
     };
     return respond(200, mockUserModelPreference);

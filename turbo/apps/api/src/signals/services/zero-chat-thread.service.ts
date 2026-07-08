@@ -1455,6 +1455,7 @@ export const createChatThread$ = command(
       readonly modelProviderType: string | null;
       readonly modelProviderCredentialScope: ModelProviderCredentialScope | null;
       readonly selectedModel: string | null;
+      readonly codexServiceTier: CodexServiceTier | null;
     },
     signal: AbortSignal,
   ): Promise<{ id: string; createdAt: Date }> => {
@@ -1474,6 +1475,7 @@ export const createChatThread$ = command(
           modelProviderType: args.modelProviderType,
           modelProviderCredentialScope: args.modelProviderCredentialScope,
           selectedModel: args.selectedModel,
+          codexServiceTier: args.codexServiceTier,
         })
         .returning({ id: chatThreads.id, createdAt: chatThreads.createdAt });
       if (!createdThread) {
