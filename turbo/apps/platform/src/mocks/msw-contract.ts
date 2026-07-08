@@ -26,7 +26,10 @@ export interface SignalContextLike {
   readonly signal: AbortSignal;
 }
 
-type AnyResponse<R extends AppRoute> = ServerInferResponses<R>;
+type AnyResponse<R extends AppRoute> = ServerInferResponses<R> & {
+  readonly status: number;
+  readonly body?: unknown;
+};
 
 type Respond<R extends AppRoute> = <
   Status extends keyof R["responses"] & number,
