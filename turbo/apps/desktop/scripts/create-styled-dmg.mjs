@@ -178,7 +178,8 @@ async function detachDmg({
       }
 
       const retryDelayMs = retryDelaysMs[attempt];
-      console.warn(`hdiutil detach failed; retrying in ${retryDelayMs}ms`, {
+      console.warn("hdiutil detach failed; retrying", {
+        retryDelayMs,
         target,
         error: commandErrorText(error),
       });
