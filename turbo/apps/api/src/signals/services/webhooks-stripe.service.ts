@@ -4,8 +4,9 @@ import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { orgConcurrencyEntitlements } from "@vm0/db/schema/org-concurrency-entitlement";
 import { orgConcurrencySubscriptions } from "@vm0/db/schema/org-concurrency-subscription";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { orgUsageAllowanceEntitlements } from "@vm0/db/schema/org-usage-allowance";
 import { command } from "ccstate";
-import { and, eq, gt, isNull, lte, sql } from "drizzle-orm";
+import { and, eq, gt, isNull, lte, or, sql } from "drizzle-orm";
 
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
@@ -175,6 +176,18 @@ interface AtomGrantInvoiceDetails {
   readonly credits: number;
 }
 
+interface UsageAllowanceInvoiceDetails {
+  readonly orgId: string;
+  readonly shortWindowSeconds: number;
+  readonly shortWindowUnits: number;
+  readonly weeklyWindowSeconds: number;
+  readonly weeklyWindowUnits: number;
+  readonly effectiveAt: Date;
+  readonly expiresAt: Date | null;
+  readonly customerId: string | null;
+  readonly subscriptionId: string | null;
+}
+
 function subscriptionPeriodEnd(subscription: SubscriptionInput): Date | null {
   const periodEndUnix = subscription.items.data[0]?.current_period_end;
   return typeof periodEndUnix === "number"
@@ -320,6 +333,7 @@ const CREDIT_PURCHASE_EXPIRES_AT_METADATA_KEY = "creditsExpiresAt";
 const ATOM_GRANT_EXPIRES_AT_METADATA_KEY = "atomGrantExpiresAt";
 const ATOM_GRANT_PURPOSE = "atom_grant";
 const ATOM_GRANT_SUBSCRIPTION_STATUS = "atom_grant";
+const USAGE_ALLOWANCE_PURPOSE = "usage_allowance";
 
 function isAtomDayGrantSource(source: string | undefined): boolean {
   return source === "atom_entitlement" || source === "atom_redeem_code";
@@ -438,7 +452,27 @@ function invoiceAtomGrantLine(invoice: InvoiceInput): InvoiceLineInput | null {
   );
 }
 
+function invoiceMergedMetadata(invoice: InvoiceInput): Record<string, string> {
+  return {
+    ...(invoice.parent?.subscription_details?.metadata ?? {}),
+    ...(invoice.metadata ?? {}),
+  };
+}
+
+function isUsageAllowanceMetadata(
+  metadata: Readonly<Record<string, string>> | null | undefined,
+): boolean {
+  return (
+    metadata?.purpose === USAGE_ALLOWANCE_PURPOSE ||
+    metadata?.type === USAGE_ALLOWANCE_PURPOSE
+  );
+}
+
 function isAtomGrantInvoice(invoice: InvoiceInput): boolean {
+  if (isUsageAllowanceMetadata(invoiceMergedMetadata(invoice))) {
+    return false;
+  }
+
   return (
     invoice.metadata?.purpose === ATOM_GRANT_PURPOSE ||
     invoice.metadata?.type === ATOM_GRANT_PURPOSE ||
@@ -555,6 +589,188 @@ function atomGrantWouldReplaceWithSameOrLowerTier(args: {
     currentTier: args.lockedOrg.tier,
     targetTier: args.targetTier,
   });
+}
+
+function positiveMetadataInteger(
+  metadata: Readonly<Record<string, string>>,
+  key: string,
+): number | null {
+  const value = Number(metadata[key]);
+  return Number.isInteger(value) && value > 0 ? value : null;
+}
+
+function invoicePeriodStart(invoice: InvoiceInput): Date | null {
+  const start = invoice.lines.data.find((line) => {
+    return typeof line.period.start === "number";
+  })?.period.start;
+  return typeof start === "number" ? new Date(start * 1000) : null;
+}
+
+function invoicePeriodEnd(invoice: InvoiceInput): Date | null {
+  const end = invoice.lines.data.find((line) => {
+    return typeof line.period.end === "number";
+  })?.period.end;
+  return typeof end === "number" ? new Date(end * 1000) : null;
+}
+
+function usageAllowanceInvoiceDetails(
+  invoice: InvoiceInput,
+): UsageAllowanceInvoiceDetails | null {
+  const metadata = invoiceMergedMetadata(invoice);
+  if (!isUsageAllowanceMetadata(metadata)) {
+    return null;
+  }
+
+  const orgId = metadata.orgId;
+  const shortWindowSeconds = positiveMetadataInteger(
+    metadata,
+    "shortWindowSeconds",
+  );
+  const shortWindowUnits = positiveMetadataInteger(
+    metadata,
+    "shortWindowUnits",
+  );
+  const weeklyWindowSeconds = positiveMetadataInteger(
+    metadata,
+    "weeklyWindowSeconds",
+  );
+  const weeklyWindowUnits = positiveMetadataInteger(
+    metadata,
+    "weeklyWindowUnits",
+  );
+  const subscriptionId = subscriptionIdFromInvoice(invoice);
+  const effectiveAt = invoicePeriodStart(invoice) ?? nowDate();
+  const expiresAt = invoicePeriodEnd(invoice);
+
+  if (
+    !orgId ||
+    !shortWindowSeconds ||
+    !shortWindowUnits ||
+    !weeklyWindowSeconds ||
+    !weeklyWindowUnits
+  ) {
+    L.warn("usage allowance invoice has invalid metadata", {
+      invoiceId: invoice.id,
+      hasOrgId: Boolean(orgId),
+      metadata,
+    });
+    return null;
+  }
+
+  if (!subscriptionId || !expiresAt) {
+    L.warn("usage allowance invoice is not a subscription period invoice", {
+      invoiceId: invoice.id,
+      orgId,
+      hasSubscriptionId: Boolean(subscriptionId),
+      hasPeriodEnd: Boolean(expiresAt),
+    });
+    return null;
+  }
+
+  if (expiresAt.getTime() <= effectiveAt.getTime()) {
+    L.warn("usage allowance invoice has invalid entitlement time range", {
+      invoiceId: invoice.id,
+      orgId,
+      effectiveAt: effectiveAt.toISOString(),
+      expiresAt: expiresAt.toISOString(),
+    });
+    return null;
+  }
+
+  return {
+    orgId,
+    shortWindowSeconds,
+    shortWindowUnits,
+    weeklyWindowSeconds,
+    weeklyWindowUnits,
+    effectiveAt,
+    expiresAt,
+    customerId: customerIdFromInvoice(invoice),
+    subscriptionId,
+  };
+}
+
+async function handleUsageAllowanceInvoicePaid(
+  db: Db,
+  invoice: InvoiceInput,
+): Promise<PaidWebhookOutcome> {
+  if (!isUsageAllowanceMetadata(invoiceMergedMetadata(invoice))) {
+    return { handled: false, drainOrgId: null };
+  }
+
+  const details = usageAllowanceInvoiceDetails(invoice);
+  if (!details) {
+    return { handled: true, drainOrgId: null };
+  }
+
+  const existingRows = await db
+    .select({
+      effectiveAt: orgUsageAllowanceEntitlements.effectiveAt,
+      stripeSubscriptionId: orgUsageAllowanceEntitlements.stripeSubscriptionId,
+    })
+    .from(orgUsageAllowanceEntitlements)
+    .where(eq(orgUsageAllowanceEntitlements.orgId, details.orgId))
+    .limit(1);
+  const existing = existingRows[0];
+  if (
+    existing?.stripeSubscriptionId &&
+    existing.stripeSubscriptionId !== details.subscriptionId &&
+    existing.effectiveAt.getTime() >= details.effectiveAt.getTime()
+  ) {
+    L.warn("stale usage allowance invoice ignored", {
+      invoiceId: invoice.id,
+      orgId: details.orgId,
+      currentSubscriptionId: existing.stripeSubscriptionId,
+      invoiceSubscriptionId: details.subscriptionId,
+      currentEffectiveAt: existing.effectiveAt.toISOString(),
+      invoiceEffectiveAt: details.effectiveAt.toISOString(),
+    });
+    return { handled: true, drainOrgId: null };
+  }
+
+  const updatedAt = nowDate();
+  await db
+    .insert(orgUsageAllowanceEntitlements)
+    .values({
+      orgId: details.orgId,
+      source: "atom_usage_allowance",
+      status: "active",
+      shortWindowSeconds: details.shortWindowSeconds,
+      shortWindowUnits: details.shortWindowUnits,
+      weeklyWindowSeconds: details.weeklyWindowSeconds,
+      weeklyWindowUnits: details.weeklyWindowUnits,
+      effectiveAt: details.effectiveAt,
+      expiresAt: details.expiresAt,
+      stripeCustomerId: details.customerId,
+      stripeSubscriptionId: details.subscriptionId,
+      stripeInvoiceId: invoice.id,
+      updatedAt,
+    })
+    .onConflictDoUpdate({
+      target: orgUsageAllowanceEntitlements.orgId,
+      set: {
+        source: "atom_usage_allowance",
+        status: "active",
+        shortWindowSeconds: details.shortWindowSeconds,
+        shortWindowUnits: details.shortWindowUnits,
+        weeklyWindowSeconds: details.weeklyWindowSeconds,
+        weeklyWindowUnits: details.weeklyWindowUnits,
+        effectiveAt: details.effectiveAt,
+        expiresAt: details.expiresAt,
+        stripeCustomerId: details.customerId,
+        stripeSubscriptionId: details.subscriptionId,
+        stripeInvoiceId: invoice.id,
+        updatedAt,
+      },
+    });
+
+  L.debug("usage allowance invoice processed", {
+    invoiceId: invoice.id,
+    orgId: details.orgId,
+    subscriptionId: details.subscriptionId,
+    expiresAt: details.expiresAt?.toISOString() ?? null,
+  });
+  return { handled: true, drainOrgId: details.orgId };
 }
 
 function stripePreviewMetadataForEvent(
@@ -2428,6 +2644,14 @@ async function handleInvoicePaid(
     return creditPurchaseResult.drainOrgId;
   }
 
+  const usageAllowanceResult = await handleUsageAllowanceInvoicePaid(
+    db,
+    invoice,
+  );
+  if (usageAllowanceResult.handled) {
+    return usageAllowanceResult.drainOrgId;
+  }
+
   const atomGrantResult = await handleAtomGrantInvoicePaid(db, invoice);
   if (atomGrantResult.handled) {
     return atomGrantResult.drainOrgId;
@@ -2533,11 +2757,102 @@ async function handleConcurrencySubscriptionUpdated(
   });
 }
 
+interface UsageAllowanceSubscriptionUpdateTarget {
+  readonly orgIds: readonly string[];
+  readonly by: "subscription" | "org";
+}
+
+async function usageAllowanceSubscriptionUpdateTarget(
+  db: Db,
+  subscription: Pick<SubscriptionInput, "id" | "metadata">,
+): Promise<UsageAllowanceSubscriptionUpdateTarget | null> {
+  const subscriptionRows = await db
+    .select({ orgId: orgUsageAllowanceEntitlements.orgId })
+    .from(orgUsageAllowanceEntitlements)
+    .where(
+      eq(orgUsageAllowanceEntitlements.stripeSubscriptionId, subscription.id),
+    );
+  if (subscriptionRows.length > 0) {
+    return {
+      by: "subscription",
+      orgIds: subscriptionRows.map((row) => {
+        return row.orgId;
+      }),
+    };
+  }
+
+  const metadataOrgId = subscription.metadata?.orgId;
+  if (!metadataOrgId || !isUsageAllowanceMetadata(subscription.metadata)) {
+    return null;
+  }
+
+  const orgRows = await db
+    .select({
+      orgId: orgUsageAllowanceEntitlements.orgId,
+      stripeSubscriptionId: orgUsageAllowanceEntitlements.stripeSubscriptionId,
+    })
+    .from(orgUsageAllowanceEntitlements)
+    .where(eq(orgUsageAllowanceEntitlements.orgId, metadataOrgId))
+    .limit(1);
+  const orgRow = orgRows[0];
+  if (!orgRow || orgRow.stripeSubscriptionId) {
+    return null;
+  }
+
+  return { by: "org", orgIds: [orgRow.orgId] };
+}
+
+async function handleUsageAllowanceSubscriptionUpdated(
+  db: Db,
+  subscription: SubscriptionInput,
+): Promise<readonly string[]> {
+  const target = await usageAllowanceSubscriptionUpdateTarget(db, subscription);
+  if (!target) {
+    return [];
+  }
+
+  const periodEnd =
+    (await subscriptionScheduledEnd(getStripeClient(), subscription)) ?? null;
+  const terminalStatus =
+    subscription.status === "canceled" ||
+    subscription.status === "incomplete_expired";
+  const updatedAt = nowDate();
+  const rows = await db
+    .update(orgUsageAllowanceEntitlements)
+    .set({
+      status: terminalStatus ? "canceled" : subscription.status,
+      ...(periodEnd ? { expiresAt: periodEnd } : {}),
+      stripeSubscriptionId: subscription.id,
+      updatedAt,
+    })
+    .where(
+      target.by === "subscription"
+        ? eq(
+            orgUsageAllowanceEntitlements.stripeSubscriptionId,
+            subscription.id,
+          )
+        : eq(orgUsageAllowanceEntitlements.orgId, target.orgIds[0] ?? ""),
+    )
+    .returning({ orgId: orgUsageAllowanceEntitlements.orgId });
+
+  return rows.map((row) => {
+    return row.orgId;
+  });
+}
+
 async function handleSubscriptionUpdated(
   db: Db,
   subscription: SubscriptionInput,
   previousAttributes: SubscriptionPreviousAttributes | undefined,
 ): Promise<readonly string[]> {
+  const allowanceOrgIds = await handleUsageAllowanceSubscriptionUpdated(
+    db,
+    subscription,
+  );
+  if (allowanceOrgIds.length > 0) {
+    return allowanceOrgIds;
+  }
+
   const concurrencyOrgIds = await handleConcurrencySubscriptionUpdated(
     db,
     subscription,
@@ -2682,6 +2997,23 @@ async function handleSubscriptionDeleted(
   db: Db,
   subscription: SubscriptionDeletedInput,
 ): Promise<readonly string[]> {
+  const allowanceRows = await db
+    .update(orgUsageAllowanceEntitlements)
+    .set({
+      status: "canceled",
+      expiresAt: nowDate(),
+      updatedAt: nowDate(),
+    })
+    .where(
+      eq(orgUsageAllowanceEntitlements.stripeSubscriptionId, subscription.id),
+    )
+    .returning({ orgId: orgUsageAllowanceEntitlements.orgId });
+  if (allowanceRows.length > 0) {
+    return allowanceRows.map((row) => {
+      return row.orgId;
+    });
+  }
+
   const concurrencyRows = await db
     .update(orgConcurrencySubscriptions)
     .set({
