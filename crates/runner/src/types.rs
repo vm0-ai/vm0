@@ -1926,7 +1926,8 @@ mod tests {
                     "url": "https://r2.example.com/blobs/a.blob.gz?sig=secret",
                     "encoding": "gzip",
                     "rawSize": 42,
-                    "encodedSize": 24
+                    "encodedSize": 24,
+                    "downloadSource": "configured_public_endpoint"
                 }
             },
             "billableFirewalls": []
@@ -1943,6 +1944,10 @@ mod tests {
         );
         assert_eq!(history_ref.raw_size, 42);
         assert_eq!(history_ref.encoded_size, 24);
+        assert_eq!(
+            history_ref.download_source,
+            Some(ResumeSessionHistoryDownloadSource::ConfiguredPublicEndpoint)
+        );
     }
 
     #[test]
