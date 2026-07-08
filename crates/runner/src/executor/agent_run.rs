@@ -40,6 +40,7 @@ use super::guest_state::{restore_guest_state, sync_guest_timezone};
 use super::session_history_download::{
     SessionHistoryDownloadPhaseTiming, SessionHistoryDownloadTimings,
     SessionHistoryMaterialization, SessionHistoryMaterializer,
+    verify_codex_zstd_session_history_bytes, verify_identity_session_history_bytes,
 };
 use super::session_restore::{MaterializedResumeSession, restore_session};
 use super::storage::{apply_storage_fingerprint_reuse, download_storages, guest_download_has_work};
@@ -329,17 +330,28 @@ async fn materialize_session_history_sidecar(
     let resume_session = context.resume_session.as_ref().ok_or_else(|| {
         RunnerError::Internal("resume session missing for sidecar restore".into())
     })?;
+    let history_ref = resume_session.history_ref().ok_or_else(|| {
+        RunnerError::Internal("resume session history ref missing for sidecar restore".into())
+    })?;
     let bytes = read_session_history_sidecar_bytes(sidecar).await?;
     match sidecar.representation {
-        WorkspaceSessionHistorySidecarRepresentation::Raw => Ok(MaterializedResumeSession::new(
-            resume_session.cli_agent_session_id.clone(),
-            bytes,
-        )),
+        WorkspaceSessionHistorySidecarRepresentation::Raw => {
+            verify_identity_session_history_bytes(&bytes, history_ref.raw_size, &history_ref.hash)?;
+            Ok(MaterializedResumeSession::new(
+                resume_session.cli_agent_session_id.clone(),
+                bytes,
+            ))
+        }
         WorkspaceSessionHistorySidecarRepresentation::CodexZstd => {
+            let timestamp = verify_codex_zstd_session_history_bytes(
+                &bytes,
+                history_ref.raw_size,
+                &history_ref.hash,
+            )?;
             Ok(MaterializedResumeSession::new_codex_zstd(
                 resume_session.cli_agent_session_id.clone(),
                 bytes,
-                None,
+                timestamp,
             ))
         }
     }
@@ -1108,18 +1120,18 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                     "session_history_workspace_cache_restore",
                     restore_started.elapsed(),
                     false,
-                    Some("read_error"),
+                    Some("materialize_error"),
                 );
                 telemetry.record(
                     "session_history_workspace_cache_miss",
                     Duration::ZERO,
                     true,
-                    Some("read_error"),
+                    Some("materialize_error"),
                 );
                 warn!(
                     run_id = %context.run_id,
                     error = %error,
-                    "workspace session history sidecar read failed; falling back to remote history"
+                    "workspace session history sidecar materialization failed; falling back to remote history"
                 );
                 session_history_materializer = Some(SessionHistoryMaterializer::start_cancellable(
                     &config.http,
