@@ -94,9 +94,7 @@ pub struct ExecutionContext {
     pub secret_connector_metadata_map: Option<HashMap<String, SecretConnectorMetadata>>,
     pub cli_agent_type: String,
     #[serde(default)]
-    pub debug_no_mock_claude: Option<bool>,
-    #[serde(default)]
-    pub debug_no_mock_codex: Option<bool>,
+    pub real_agent_in_preview: Option<bool>,
     #[serde(default)]
     pub api_start_time: Option<u64>,
     #[serde(default)]
@@ -1481,8 +1479,7 @@ mod tests {
                     "metadataKey": "codex-oauth-token"
                 }
             },
-            "debugNoMockClaude": true,
-            "debugNoMockCodex": true,
+            "realAgentInPreview": true,
             "apiStartTime": 1_700_000_000_000u64,
             "userTimezone": "America/New_York",
             "firewalls": [{"kind": "builtin", "name": "github"}],
@@ -1510,8 +1507,7 @@ mod tests {
             metadata["CHATGPT_ACCESS_TOKEN"].source_user_id.as_deref(),
             Some("user-123")
         );
-        assert!(ctx.debug_no_mock_claude.unwrap());
-        assert!(ctx.debug_no_mock_codex.unwrap());
+        assert!(ctx.real_agent_in_preview.unwrap());
         assert_eq!(ctx.api_start_time, Some(1_700_000_000_000));
         let FirewallEntry::Builtin { name, .. } = &ctx.firewalls.as_ref().unwrap()[0] else {
             panic!("expected builtin firewall entry");

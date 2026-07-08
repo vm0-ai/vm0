@@ -242,7 +242,7 @@ teardown_file() {
 
     run $VM0_CLI run "$AGENT_NAME" \
         --model-provider-type "codex-oauth-token" \
-        --debug-no-mock-codex \
+        --real-agent-in-preview \
         -- "Run this exact Bash command and include its output:
 curl -sS -m 10 -o /tmp/curl-out.txt -w 'HTTP_CODE=%{http_code} EXIT=%{exitcode}' https://auth.openai.com/oauth/token; echo
 cat /tmp/curl-out.txt 2>/dev/null || echo 'NO_RESPONSE_BODY'"

@@ -252,7 +252,6 @@ EOF
         "BODY_FILE=\$(mktemp) && SLACK_STATUS=\$(curl -sS -o \"\$BODY_FILE\" -w '%{http_code}' -X POST https://slack.com/api/chat.postMessage -H \"Authorization: Bearer \$SLACK_TOKEN\" -H 'Content-Type: application/json' --data '{\"channel\":\"C0000000000\",\"text\":\"e2e\"}') && echo \"SLACK_WRITE_STATUS=\$SLACK_STATUS\" && echo \"SLACK_WRITE_BODY=\$(cat \"\$BODY_FILE\")\"" \
         "$(zero_model_first_selection_provider_id)" \
         "claude-sonnet-4-6" \
-        false \
         false
     THREAD_ID="$LAST_THREAD_ID"
 
@@ -376,7 +375,6 @@ EOF
         "$prompt" \
         "$(zero_model_first_selection_provider_id)" \
         "claude-sonnet-4-6" \
-        false \
         false
     THREAD_ID="$LAST_THREAD_ID"
 

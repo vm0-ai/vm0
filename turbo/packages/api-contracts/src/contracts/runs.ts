@@ -125,11 +125,9 @@ const unifiedRunRequestSchema = z
       )
       .optional(),
 
-    // Debug flag to force real Claude in mock environments (internal use only)
-    debugNoMockClaude: z.boolean().optional(),
-
-    // Debug flag to force real Codex in mock environments (internal use only)
-    debugNoMockCodex: z.boolean().optional(),
+    // Preview evaluation escape hatch: bypass preview mock CLIs and use the
+    // real agent runtime.
+    realAgentInPreview: z.boolean().optional(),
 
     // Capture HTTP header names, selected safe header values, request bodies, and response bodies
     // in network logs
