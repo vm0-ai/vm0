@@ -9,6 +9,7 @@ import {
 
 const AXIOM_API_ORIGIN = "https://api.axiom.co";
 const AXIOM_QUERY_TIMEOUT_MS = 120_000;
+const AXIOM_ERROR_BODY_MAX_LENGTH = 500;
 
 const sessionsAxiomClient = singleton(() => {
   return new Axiom({ token: env("AXIOM_TOKEN_SESSIONS") });
@@ -105,12 +106,13 @@ export async function flushAxiom(
 
 // Minimal options surface. `noCache` is used by the agent-event watermark wait
 // to bypass Axiom's per-request cache for freshly-completed runs; `cursor` is
-// used for Axiom-managed time pagination. Other options from web's queryAxiom
-// (maxRetries, streamingDuration, timeoutMs) intentionally NOT ported — see
-// leader guidance on issue #12424; add them when a caller actually needs them.
+// used for Axiom-managed time pagination. `signal`/`timeoutMs` force the
+// direct fetch path for callers that must bound background work.
 export interface QueryAxiomOptions {
   readonly noCache?: boolean;
   readonly cursor?: string;
+  readonly signal?: AbortSignal;
+  readonly timeoutMs?: number;
 }
 
 interface AxiomQueryMatch {
@@ -162,9 +164,36 @@ function mapAxiomMatches<T>(result: AxiomQueryResult): readonly T[] {
   );
 }
 
-async function queryAxiomDirectWithCursor<T>(
+function queryAxiomDirectWithCursor<T>(
   apl: string,
   options: QueryAxiomOptions & { readonly cursor: string },
+): Promise<readonly T[]> {
+  return queryAxiomDirectFetch<T>(apl, options);
+}
+
+function axiomQuerySignal(options: QueryAxiomOptions): AbortSignal {
+  const timeoutSignal = AbortSignal.timeout(
+    options.timeoutMs ?? AXIOM_QUERY_TIMEOUT_MS,
+  );
+  return options.signal
+    ? AbortSignal.any([options.signal, timeoutSignal])
+    : timeoutSignal;
+}
+
+function axiomQueryErrorMessage(status: number, body: string): string {
+  if (!body) {
+    return `Axiom query failed with status ${status}`;
+  }
+  const suffix =
+    body.length <= AXIOM_ERROR_BODY_MAX_LENGTH
+      ? body
+      : `${body.slice(0, AXIOM_ERROR_BODY_MAX_LENGTH)}...`;
+  return `Axiom query failed with status ${status}: ${suffix}`;
+}
+
+async function queryAxiomDirectFetch<T>(
+  apl: string,
+  options: QueryAxiomOptions,
 ): Promise<readonly T[]> {
   const response = await fetch(axiomAplQueryUrl(options), {
     method: "POST",
@@ -175,13 +204,15 @@ async function queryAxiomDirectWithCursor<T>(
     },
     body: JSON.stringify({
       apl,
-      cursor: options.cursor,
+      ...(options.cursor === undefined ? {} : { cursor: options.cursor }),
     }),
-    signal: AbortSignal.timeout(AXIOM_QUERY_TIMEOUT_MS),
+    signal: axiomQuerySignal(options),
   });
 
   if (!response.ok) {
-    throw new Error(`Axiom query failed with status ${response.status}`);
+    throw new Error(
+      axiomQueryErrorMessage(response.status, await response.text()),
+    );
   }
 
   const payload: unknown = await response.json();
@@ -201,6 +232,9 @@ export async function queryAxiomDirect<T = Record<string, unknown>>(
       ...options,
       cursor: options.cursor,
     });
+  }
+  if (options?.signal !== undefined || options?.timeoutMs !== undefined) {
+    return queryAxiomDirectFetch<T>(apl, options);
   }
 
   const client = axiomClientForApl(apl);

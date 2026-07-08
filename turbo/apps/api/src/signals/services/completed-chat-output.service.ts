@@ -6,7 +6,11 @@ import { delay } from "signal-timers";
 
 import { waitForRunEventWatermarkVisibility } from "../../lib/agent-event-visibility";
 import { escapeAplString } from "../../lib/axiom-apl";
-import { getDatasetName, queryAxiomDirect } from "../external/axiom";
+import {
+  getDatasetName,
+  queryAxiomDirect,
+  type QueryAxiomOptions,
+} from "../external/axiom";
 import type { Db } from "../external/db";
 import { settle } from "../utils";
 
@@ -14,6 +18,7 @@ const AGENT_RUN_EVENTS_DATASET = "agent-run-events";
 const COMPLETED_CHAT_OUTPUT_RETRY_ATTEMPTS = 2;
 const COMPLETED_CHAT_OUTPUT_MISSING_WATERMARK_RETRY_ATTEMPTS = 4;
 const COMPLETED_CHAT_OUTPUT_RETRY_DELAY_MS = 500;
+const COMPLETED_CHAT_OUTPUT_AXIOM_QUERY_TIMEOUT_MS = 5000;
 const LATEST_OUTPUT_EVENT_LIMIT = 200;
 
 const COMPLETED_CHAT_OUTPUT_UNAVAILABLE_ERROR =
@@ -131,6 +136,14 @@ function extractResultFallback(
   return { sequenceNumber, content: result };
 }
 
+function freshAxiomOptions(signal: AbortSignal): QueryAxiomOptions {
+  return {
+    noCache: true,
+    signal,
+    timeoutMs: COMPLETED_CHAT_OUTPUT_AXIOM_QUERY_TIMEOUT_MS,
+  };
+}
+
 async function waitForChatOutputVisibility(args: {
   readonly runId: string;
   readonly lastEventSequence: number | null;
@@ -143,6 +156,13 @@ async function waitForChatOutputVisibility(args: {
     {
       sleep: (ms) => {
         return delay(ms, { signal: args.signal });
+      },
+      queryAxiomFn: (apl, options) => {
+        return queryAxiomDirect(apl, {
+          ...options,
+          signal: args.signal,
+          timeoutMs: COMPLETED_CHAT_OUTPUT_AXIOM_QUERY_TIMEOUT_MS,
+        });
       },
     },
   );
@@ -174,9 +194,10 @@ ${sequenceCap}
 | order by sequenceNumber asc
 | limit 200`;
 
-  const events = await queryAxiomDirect<AxiomChatOutputEvent>(apl, {
-    noCache: true,
-  });
+  const events = await queryAxiomDirect<AxiomChatOutputEvent>(
+    apl,
+    freshAxiomOptions(args.signal),
+  );
   args.signal.throwIfAborted();
 
   const assistantItems: AssistantEventItem[] = [];
@@ -230,9 +251,10 @@ ${sequenceCap}
 | order by sequenceNumber desc
 | limit ${LATEST_OUTPUT_EVENT_LIMIT}`;
 
-  const events = await queryAxiomDirect<AxiomChatOutputEvent>(apl, {
-    noCache: true,
-  });
+  const events = await queryAxiomDirect<AxiomChatOutputEvent>(
+    apl,
+    freshAxiomOptions(args.signal),
+  );
   args.signal.throwIfAborted();
 
   for (const event of events) {
@@ -273,9 +295,10 @@ async function queryLatestTerminalResult(args: {
 | order by sequenceNumber desc
 | limit 1`;
 
-  const events = await queryAxiomDirect<AxiomChatOutputEvent>(apl, {
-    noCache: true,
-  });
+  const events = await queryAxiomDirect<AxiomChatOutputEvent>(
+    apl,
+    freshAxiomOptions(args.signal),
+  );
   args.signal.throwIfAborted();
 
   for (const event of events) {

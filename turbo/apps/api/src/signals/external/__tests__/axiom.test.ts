@@ -92,4 +92,56 @@ describe("queryAxiomDirect", () => {
       },
     ]);
   });
+
+  it("uses direct fetch when a cancellation signal is supplied", async () => {
+    const { queryAxiomDirect } =
+      await vi.importActual<typeof import("../axiom")>("../axiom");
+    const mocks = getApiTestMocks();
+    const apl = "['vm0-agent-run-events-dev'] | limit 1";
+    const requests: {
+      readonly body: unknown;
+      readonly url: string;
+    }[] = [];
+
+    server.use(
+      http.post(
+        "https://api.axiom.co/v1/datasets/_apl",
+        async ({ request }) => {
+          requests.push({
+            body: await request.json(),
+            url: request.url,
+          });
+
+          return HttpResponse.json({
+            matches: [
+              {
+                _time: "2026-06-10T12:30:00Z",
+                data: { log: "abortable query" },
+              },
+            ],
+          });
+        },
+      ),
+    );
+
+    const rows = await queryAxiomDirect(apl, {
+      noCache: true,
+      signal: new AbortController().signal,
+      timeoutMs: 1000,
+    });
+
+    expect(mocks.axiom.query).not.toHaveBeenCalled();
+    expect(requests).toStrictEqual([
+      {
+        body: { apl },
+        url: "https://api.axiom.co/v1/datasets/_apl?format=legacy&nocache=true",
+      },
+    ]);
+    expect(rows).toStrictEqual([
+      {
+        _time: "2026-06-10T12:30:00Z",
+        log: "abortable query",
+      },
+    ]);
+  });
 });
