@@ -4,6 +4,7 @@ import json
 import time
 import urllib.error
 import urllib.request
+import uuid
 from pathlib import Path
 from unittest.mock import patch
 
@@ -117,6 +118,7 @@ def test_succeeds_on_first_attempt(tmp_path, real_flow, fresh_usage_executor, us
     body = request.json_body()
     assert body["runId"] == "run-1"
     assert set(body) == {"runId", "events"}
+    uuid.UUID(body["events"][0]["idempotencyKey"])
     assert [
         {key: value for key, value in event.items() if key != "idempotencyKey"}
         for event in body["events"]
