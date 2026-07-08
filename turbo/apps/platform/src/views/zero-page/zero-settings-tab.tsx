@@ -16,6 +16,11 @@ import {
   DialogTitle,
   DialogTrigger,
   Input,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
   Switch,
   cn,
 } from "@vm0/ui";
@@ -59,7 +64,24 @@ import {
   setSettingsVisibility$,
   agentDemoteConfirmOpen$,
   setAgentDemoteConfirmOpen$,
+  agentDeleteCopyChoices$,
+  setAgentDeleteCopyChoices$,
+  agentDeleteCopying$,
+  setAgentDeleteCopying$,
 } from "../../signals/zero-page/settings/settings-tab.ts";
+
+export interface AgentDeleteWorkflow {
+  readonly id: string;
+  readonly title: string;
+}
+
+export interface AgentDeleteCopyTarget {
+  readonly id: string;
+  readonly displayName: string | null;
+}
+
+/** Sentinel Select value meaning "let this workflow be deleted with the agent". */
+const DELETE_WITH_AGENT = "__delete_with_agent__";
 
 interface ZeroSettingsTabProps {
   displayName: string;
@@ -68,6 +90,15 @@ interface ZeroSettingsTabProps {
   avatarUrl: string | null;
   visibility?: "public" | "private";
   canEditVisibility?: boolean;
+  /** Workflows bound to this agent, offered for rescue in the delete dialog. */
+  deleteWorkflows?: readonly AgentDeleteWorkflow[];
+  /** Agents the caller can copy a workflow onto before deleting this agent. */
+  deleteCopyTargets?: readonly AgentDeleteCopyTarget[];
+  /** Copy a workflow onto another agent before the agent is deleted. */
+  onCopyWorkflowBeforeDelete?: (
+    workflowId: string,
+    toAgentId: string,
+  ) => Promise<void>;
   updateSettings$: Command<
     Promise<void>,
     [
@@ -99,6 +130,9 @@ export function ZeroSettingsTab({
   inputId = "zero-agent-name",
   isDefaultAgent = false,
   onDelete,
+  deleteWorkflows = [],
+  deleteCopyTargets = [],
+  onCopyWorkflowBeforeDelete,
 }: ZeroSettingsTabProps) {
   useSet(initSettingsForm$)({
     name: resolvedAgentName,
@@ -168,11 +202,48 @@ export function ZeroSettingsTab({
     runSaveSettings();
   };
 
+  // Delete reconcile: each bound workflow maps to a Select value that is either
+  // DELETE_WITH_AGENT (default) or a target agent id to copy it onto first.
+  const copyChoices = useGet(agentDeleteCopyChoices$);
+  const setCopyChoices = useSet(setAgentDeleteCopyChoices$);
+  const copying = useGet(agentDeleteCopying$);
+  const setCopying = useSet(setAgentDeleteCopying$);
+  const canReconcile =
+    deleteWorkflows.length > 0 &&
+    deleteCopyTargets.length > 0 &&
+    onCopyWorkflowBeforeDelete !== undefined;
+
   const handleDelete = () => {
     if (!onDelete) {
       return;
     }
-    detach(deleteAgentFn(onDelete, pageSignal), Reason.DomCallback);
+    // Scope rescues to this agent's workflows so stale choices from a
+    // previously opened delete dialog never trigger an unrelated copy.
+    const currentWorkflowIds = new Set(
+      deleteWorkflows.map((workflow) => {
+        return workflow.id;
+      }),
+    );
+    const rescues = Object.entries(copyChoices).filter(
+      ([workflowId, target]) => {
+        return (
+          target !== DELETE_WITH_AGENT && currentWorkflowIds.has(workflowId)
+        );
+      },
+    );
+    detach(
+      (async () => {
+        if (rescues.length > 0 && onCopyWorkflowBeforeDelete) {
+          setCopying(true);
+          for (const [workflowId, toAgentId] of rescues) {
+            await onCopyWorkflowBeforeDelete(workflowId, toAgentId);
+          }
+          setCopying(false);
+        }
+        await deleteAgentFn(onDelete, pageSignal);
+      })(),
+      Reason.DomCallback,
+    );
   };
 
   return (
@@ -382,6 +453,70 @@ export function ZeroSettingsTab({
                           permanently deleted.
                         </AlertDescription>
                       </Alert>
+                      {canReconcile && (
+                        <div className="space-y-2">
+                          <p className="text-sm font-medium text-foreground">
+                            Keep any of these workflows?
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            Copy a workflow to another agent to keep it.
+                            Anything left as &quot;Delete with agent&quot; is
+                            removed.
+                          </p>
+                          <div className="flex flex-col gap-2">
+                            {deleteWorkflows.map((workflow) => {
+                              return (
+                                <div
+                                  key={workflow.id}
+                                  className="flex items-center justify-between gap-3"
+                                >
+                                  <span
+                                    className="min-w-0 truncate text-sm text-foreground"
+                                    title={workflow.title}
+                                  >
+                                    {workflow.title}
+                                  </span>
+                                  <Select
+                                    value={
+                                      copyChoices[workflow.id] ??
+                                      DELETE_WITH_AGENT
+                                    }
+                                    onValueChange={(value) => {
+                                      setCopyChoices({
+                                        ...copyChoices,
+                                        [workflow.id]: value,
+                                      });
+                                    }}
+                                  >
+                                    <SelectTrigger
+                                      className="h-8 w-[210px] shrink-0"
+                                      aria-label={`Handle workflow ${workflow.title}`}
+                                    >
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value={DELETE_WITH_AGENT}>
+                                        Delete with agent
+                                      </SelectItem>
+                                      {deleteCopyTargets.map((target) => {
+                                        return (
+                                          <SelectItem
+                                            key={target.id}
+                                            value={target.id}
+                                          >
+                                            Copy to{" "}
+                                            {target.displayName ?? target.id}
+                                          </SelectItem>
+                                        );
+                                      })}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
                       <DialogFooter>
                         <DialogClose asChild>
                           <Button variant="outline" size="sm">
@@ -391,10 +526,14 @@ export function ZeroSettingsTab({
                         <Button
                           variant="destructive"
                           size="sm"
-                          disabled={deleting}
+                          disabled={deleting || copying}
                           onClick={handleDelete}
                         >
-                          {deleting ? "Deleting…" : "Delete agent"}
+                          {copying
+                            ? "Copying…"
+                            : deleting
+                              ? "Deleting…"
+                              : "Delete agent"}
                         </Button>
                       </DialogFooter>
                     </DialogContent>
