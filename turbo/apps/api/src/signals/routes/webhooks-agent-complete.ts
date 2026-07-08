@@ -38,9 +38,14 @@ const completeAgentRunRoute$ = command(
     signal.throwIfAborted();
 
     if (result.sideEffects) {
+      const backgroundSignal = new AbortController().signal;
       waitUntil(
         tapError(
-          set(dispatchCompleteSideEffects$, result.sideEffects, signal),
+          set(
+            dispatchCompleteSideEffects$,
+            result.sideEffects,
+            backgroundSignal,
+          ),
           (error) => {
             L.error("dispatchCompleteSideEffects failed", {
               runId: result.sideEffects?.runId,
