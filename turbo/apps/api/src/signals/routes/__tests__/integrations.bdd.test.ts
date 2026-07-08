@@ -219,6 +219,7 @@ async function completeSlackTriggeredRun(args: {
   readonly runId: string;
   readonly sandboxToken: string;
   readonly cliAgentType: string;
+  readonly lastEventSequence?: number;
 }): Promise<void> {
   const sandboxHeaders = {
     authorization: `Bearer ${args.sandboxToken}`,
@@ -236,7 +237,13 @@ async function completeSlackTriggeredRun(args: {
     [200],
   );
   await webhooks.requestAgentComplete(
-    { runId: args.runId, exitCode: 0 },
+    {
+      runId: args.runId,
+      exitCode: 0,
+      ...(args.lastEventSequence === undefined
+        ? {}
+        : { lastEventSequence: args.lastEventSequence }),
+    },
     sandboxHeaders,
     [200],
   );
@@ -1230,6 +1237,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       expect.objectContaining({ id: run1Id, triggerSource: "slack" }),
     );
 
+    integrations.mockSlackRunResultOutput("SLACK_SESSION_OUTPUT_1");
     await completeSlackTriggeredRun({
       runId: run1Id,
       sandboxToken: claim1.sandboxToken,
@@ -1273,6 +1281,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       ]),
     );
     expect(claim2.resumeSession?.sessionId).toBe(`bdd-slack-cli-${run1Id}`);
+    integrations.mockSlackRunResultOutput("SLACK_SESSION_OUTPUT_2");
     await completeSlackTriggeredRun({
       runId: run2Id,
       sandboxToken: claim2.sandboxToken,
@@ -1309,6 +1318,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     const run3Id = await pollSlackRun(runnerGroup);
     const claim3 = await runs.claimRunnerJob(run3Id);
     expect(claim3.resumeSession).toBeNull();
+    integrations.mockSlackRunResultOutput("SLACK_SWITCH_OUTPUT");
     await completeSlackTriggeredRun({
       runId: run3Id,
       sandboxToken: claim3.sandboxToken,
@@ -1346,6 +1356,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       OPENAI_API_KEY: expect.stringMatching(/.+/),
       OPENAI_MODEL: "gpt-5.5",
     });
+    integrations.mockSlackRunResultOutput("SLACK_GPT_OUTPUT");
     await completeSlackTriggeredRun({
       runId: run4Id,
       sandboxToken: claim4.sandboxToken,
@@ -1370,6 +1381,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     const claim5 = await runs.claimRunnerJob(run5Id);
     expect(claim5.cliAgentType).toBe("claude-code");
     expect(claim5.resumeSession).toBeNull();
+    integrations.mockSlackRunResultOutput("SLACK_BACK_TO_CLAUDE_OUTPUT");
     await completeSlackTriggeredRun({
       runId: run5Id,
       sandboxToken: claim5.sandboxToken,
@@ -1410,6 +1422,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     const claim1 = await runs.claimRunnerJob(run1Id);
     expect(claim1.cliAgentType).toBe("claude-code");
     expect(claim1.resumeSession).toBeNull();
+    integrations.mockSlackRunResultOutput("SLACK_MINIMAX_OUTPUT");
     await completeSlackTriggeredRun({
       runId: run1Id,
       sandboxToken: claim1.sandboxToken,
@@ -2503,6 +2516,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     const run3Id = await pollSlackRun(runnerGroup);
     const claim3 = await runs.claimRunnerJob(run3Id);
     context.mocks.slack.chat.postMessage.mockClear();
+    integrations.mockSlackRunResultOutput("SLACK_SECOND_OPINION_OUTPUT");
     await completeSlackTriggeredRun({
       runId: run3Id,
       sandboxToken: claim3.sandboxToken,
@@ -2601,6 +2615,112 @@ describe("INT-01: Slack app deep webhook flows", () => {
     });
     const run6 = await runs.readRun(actor, run6Id);
     expect(run6.status).toBe("completed");
+  }, 90_000);
+
+  it("waits for Slack completed output before posting success text", async () => {
+    const actor = bdd.user();
+    runs.acceptStorageDownloads();
+    runs.acceptTelemetryIngest();
+    integrations.configureSlackAppMocks();
+    integrations.acceptSlackSessionHistoryDownloads();
+    const runnerGroup = runs.configureRunnerGroup();
+    await runs.grantProEntitlement(actor);
+    await integrations.configureSlackRunModelPolicies(actor);
+    await bdd.readOnboardingStatus(actor);
+    const slackUser = uniqueSlackUserId();
+    const { teamId } = await integrations.installSlackWorkspace(actor, {
+      installerSlackUserId: slackUser,
+    });
+    context.mocks.signalTimers.delay.mockResolvedValue(undefined);
+
+    const delayedText = "First paragraph\n\nSecond paragraph";
+    let visibilityQueryCount = 0;
+    let outputQueryCount = 0;
+    context.mocks.axiom.query.mockImplementation((...args: unknown[]) => {
+      const apl = typeof args[0] === "string" ? args[0] : "";
+      if (apl.includes("| project sequenceNumber")) {
+        visibilityQueryCount++;
+        if (visibilityQueryCount === 1) {
+          return Promise.reject(new Error("watermark not indexed yet"));
+        }
+        return Promise.resolve([{ sequenceNumber: 0 }]);
+      }
+      if (apl.includes('eventType == "assistant"')) {
+        outputQueryCount++;
+        return Promise.resolve(
+          outputQueryCount === 1
+            ? []
+            : [
+                {
+                  eventType: "result",
+                  sequenceNumber: 0,
+                  eventData: { result: delayedText },
+                },
+              ],
+        );
+      }
+      return Promise.resolve([]);
+    });
+
+    const channelId = "C_BDD_ORG_OUTPUT_WAIT";
+    await integrations.postSlackEvent(teamId, {
+      type: "app_mention",
+      user: slackUser,
+      text: "wait for the final answer",
+      ts: "4050.000100",
+      channel: channelId,
+    });
+    const delayedRunId = await pollSlackRun(runnerGroup);
+    const delayedClaim = await runs.claimRunnerJob(delayedRunId);
+    context.mocks.slack.chat.postMessage.mockClear();
+    await completeSlackTriggeredRun({
+      runId: delayedRunId,
+      sandboxToken: delayedClaim.sandboxToken,
+      cliAgentType: "claude-code",
+      lastEventSequence: 0,
+    });
+
+    await waitForExpectation(() => {
+      expect(context.mocks.slack.chat.postMessage).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          channel: channelId,
+          thread_ts: "4050.000100",
+          text: delayedText,
+        }),
+      );
+    });
+    expect(outputQueryCount).toBe(2);
+
+    context.mocks.axiom.query.mockImplementation((...args: unknown[]) => {
+      const apl = typeof args[0] === "string" ? args[0] : "";
+      if (apl.includes("| project sequenceNumber")) {
+        return Promise.reject(new Error("watermark unavailable"));
+      }
+      return Promise.resolve([]);
+    });
+
+    await integrations.postSlackEvent(teamId, {
+      type: "app_mention",
+      user: slackUser,
+      text: "do not post a fallback before output is visible",
+      ts: "4050.000200",
+      channel: channelId,
+    });
+    const unresolvedRunId = await pollSlackRun(runnerGroup);
+    const unresolvedClaim = await runs.claimRunnerJob(unresolvedRunId);
+    context.mocks.slack.chat.postMessage.mockClear();
+    await completeSlackTriggeredRun({
+      runId: unresolvedRunId,
+      sandboxToken: unresolvedClaim.sandboxToken,
+      cliAgentType: "claude-code",
+      lastEventSequence: 0,
+    });
+    await flushWaitUntilForTest();
+
+    expect(context.mocks.slack.chat.postMessage).not.toHaveBeenCalled();
+    expect(slackPostMessageCallsJson()).not.toContain(
+      "Task completed successfully.",
+    );
   }, 90_000);
 
   it("keeps Slack org callbacks visible when model routes unpin and installs vanish", async () => {

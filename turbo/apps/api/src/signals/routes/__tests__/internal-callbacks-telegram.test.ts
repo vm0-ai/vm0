@@ -458,12 +458,19 @@ async function dispatchTelegramCallback(body: {
 }
 
 function completedOutput(text = "**Done** with `code`"): void {
-  context.mocks.axiom.query.mockResolvedValueOnce([
-    {
-      eventType: "result",
-      eventData: { result: text },
-    },
-  ]);
+  context.mocks.axiom.query.mockImplementation((...args: unknown[]) => {
+    const apl = typeof args[0] === "string" ? args[0] : "";
+    if (apl.includes("| project sequenceNumber")) {
+      return Promise.resolve([{ sequenceNumber: 0 }]);
+    }
+    return Promise.resolve([
+      {
+        eventType: "result",
+        sequenceNumber: 0,
+        eventData: { result: text },
+      },
+    ]);
+  });
 }
 
 async function enableAuditLink(fixture: TelegramFixture): Promise<void> {

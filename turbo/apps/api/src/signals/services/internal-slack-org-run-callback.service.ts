@@ -35,7 +35,6 @@ import {
   loadUserFeatureSwitchContext,
   userFeatureSwitchOverrides,
 } from "./feature-switches.service";
-import { getRunOutputText } from "./run-output.service";
 import { saveRunSummary, saveRunSummary$ } from "./run-summary.service";
 import { formatRunErrorForRunOwner$ } from "./run-error-format.service";
 import type { InternalRunCallbackEnvelope } from "./internal-run-callback";
@@ -45,6 +44,10 @@ import {
   slackOrgCallbackPayloadSchema,
   type SlackOrgCallbackPayload,
 } from "./slack-org-callback-payload";
+import {
+  completedChatOutputFailureMessage,
+  resolveCompletedChatOutputWithRetry,
+} from "./completed-chat-output.service";
 
 const L = logger("InternalCallbacksSlackOrg");
 const ORG_SENTINEL_USER_ID = "__org__";
@@ -63,6 +66,23 @@ interface RunContext {
 interface SlackInstallation {
   readonly encryptedBotToken: string;
 }
+
+type GetFeatureOverrides = (
+  orgId: string,
+  userId: string,
+) => Promise<Record<string, boolean>>;
+
+type FormatRunError = (params: {
+  readonly runId: string;
+  readonly chatThreadId: string | null | undefined;
+  readonly errorMessage: string;
+}) => Promise<string>;
+
+type SaveRunSummary = (
+  runId: string,
+  prompt: string,
+  resultText: string,
+) => Promise<void>;
 
 type SlackOrgCallbackResult =
   | { readonly status: 200; readonly body: { readonly success: true } }
@@ -387,6 +407,14 @@ function buildResponseText(args: {
   return args.output ?? "Task completed successfully.";
 }
 
+type CompletedOutputResult =
+  | {
+      readonly kind: "ready";
+      readonly responseText: string;
+      readonly summaryText: string;
+    }
+  | { readonly kind: "failed"; readonly error: string };
+
 function refreshThreadStatus(args: {
   readonly token: string;
   readonly channelId: string;
@@ -406,23 +434,60 @@ function refreshThreadStatus(args: {
   );
 }
 
-async function resolveCompletionText(args: {
+async function resolveCompletedOutput(args: {
+  readonly db: Db;
   readonly runId: string;
-  readonly status: TerminalStatus;
   readonly run: RunContext | undefined;
   readonly signal: AbortSignal;
-}): Promise<string | undefined> {
-  if (args.status === "failed") {
-    return undefined;
-  }
-
-  const output = await getRunOutputText(args.runId, {
-    waitForOutput: false,
-    knownLastEventSequence: args.run?.lastEventSequence,
+}): Promise<CompletedOutputResult> {
+  const output = await resolveCompletedChatOutputWithRetry({
+    db: args.db,
+    runId: args.runId,
+    lastEventSequence: args.run?.lastEventSequence ?? null,
     signal: args.signal,
   });
   args.signal.throwIfAborted();
-  return output;
+
+  switch (output.kind) {
+    case "ready": {
+      return {
+        kind: "ready",
+        responseText: output.text,
+        summaryText: output.text,
+      };
+    }
+    case "empty_after_complete_visibility": {
+      return {
+        kind: "ready",
+        responseText: "Task completed successfully.",
+        summaryText: "",
+      };
+    }
+    case "not_visible_yet":
+    case "query_failed": {
+      return {
+        kind: "failed",
+        error: completedChatOutputFailureMessage(output),
+      };
+    }
+  }
+}
+
+async function resolveFailedRunResponseText(args: {
+  readonly status: TerminalStatus;
+  readonly runId: string;
+  readonly run: RunContext | undefined;
+  readonly error: string | undefined;
+  readonly formatRunError: FormatRunError;
+}): Promise<string | undefined> {
+  if (args.status !== "failed") {
+    return undefined;
+  }
+  return await args.formatRunError({
+    runId: args.runId,
+    chatThreadId: args.run?.chatThreadId,
+    errorMessage: args.error ?? "Agent execution failed.",
+  });
 }
 
 async function handleProgress(args: {
@@ -476,20 +541,9 @@ async function handleCompletion(args: {
   readonly status: TerminalStatus;
   readonly error: string | undefined;
   readonly payload: SlackOrgCallbackPayload;
-  readonly getFeatureOverrides: (
-    orgId: string,
-    userId: string,
-  ) => Promise<Record<string, boolean>>;
-  readonly formatRunError: (params: {
-    readonly runId: string;
-    readonly chatThreadId: string | null | undefined;
-    readonly errorMessage: string;
-  }) => Promise<string>;
-  readonly saveRunSummary: (
-    runId: string,
-    prompt: string,
-    resultText: string,
-  ) => Promise<void>;
+  readonly getFeatureOverrides: GetFeatureOverrides;
+  readonly formatRunError: FormatRunError;
+  readonly saveRunSummary: SaveRunSummary;
   readonly signal: AbortSignal;
 }): Promise<SlackOrgCallbackResult> {
   const installation = await loadInstallation({
@@ -520,12 +574,18 @@ async function handleCompletion(args: {
     installation.encryptedBotToken,
     featureSwitchContext,
   );
-  const output = await resolveCompletionText({
-    runId: args.runId,
-    status: args.status,
-    run,
-    signal: args.signal,
-  });
+  const completedOutput =
+    args.status === "completed"
+      ? await resolveCompletedOutput({
+          db: args.db,
+          runId: args.runId,
+          run,
+          signal: args.signal,
+        })
+      : undefined;
+  if (completedOutput?.kind === "failed") {
+    return errorResponse(502, completedOutput.error);
+  }
   const logsUrl = await resolveAuditLogsUrl({
     runId: args.runId,
     run,
@@ -551,20 +611,19 @@ async function handleCompletion(args: {
     : undefined;
   args.signal.throwIfAborted();
 
-  const errorText =
-    args.status === "failed"
-      ? await args.formatRunError({
-          runId: args.runId,
-          chatThreadId: run?.chatThreadId,
-          errorMessage: args.error ?? "Agent execution failed.",
-        })
-      : undefined;
+  const errorText = await resolveFailedRunResponseText({
+    status: args.status,
+    runId: args.runId,
+    run,
+    error: args.error,
+    formatRunError: args.formatRunError,
+  });
   args.signal.throwIfAborted();
 
   const responseText = buildResponseText({
     status: args.status,
     errorText,
-    output,
+    output: completedOutput?.responseText,
   });
   const client = createSlackClient(botToken);
   const postResult = await postMessage(
@@ -582,7 +641,11 @@ async function handleCompletion(args: {
   }
 
   if (run?.prompt) {
-    await args.saveRunSummary(args.runId, run.prompt, output ?? "");
+    await args.saveRunSummary(
+      args.runId,
+      run.prompt,
+      completedOutput?.summaryText ?? "",
+    );
     args.signal.throwIfAborted();
   }
 
@@ -602,20 +665,9 @@ async function handleCompletion(args: {
 interface HandleSlackOrgInternalCallbackInput {
   readonly db: Db;
   readonly callback: InternalRunCallbackEnvelope;
-  readonly getFeatureOverrides: (
-    orgId: string,
-    userId: string,
-  ) => Promise<Record<string, boolean>>;
-  readonly formatRunError: (params: {
-    readonly runId: string;
-    readonly chatThreadId: string | null | undefined;
-    readonly errorMessage: string;
-  }) => Promise<string>;
-  readonly saveRunSummary: (
-    runId: string,
-    prompt: string,
-    resultText: string,
-  ) => Promise<void>;
+  readonly getFeatureOverrides: GetFeatureOverrides;
+  readonly formatRunError: FormatRunError;
+  readonly saveRunSummary: SaveRunSummary;
   readonly signal?: AbortSignal;
 }
 

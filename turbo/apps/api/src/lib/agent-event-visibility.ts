@@ -53,6 +53,10 @@ interface AgentEventVisibilityResult {
   readonly error?: unknown;
 }
 
+type RunEventWatermarkVisibilityResult =
+  | { readonly kind: "not_requested" }
+  | ({ readonly kind: "checked" } & AgentEventVisibilityResult);
+
 /**
  * Decide which sequence number a paged read needs to wait for, given the
  * caller's `since` cursor (exclusive), the page `limit`, and the run's known
@@ -214,34 +218,10 @@ async function waitForAgentEventPrefixVisible(
   };
 }
 
-/**
- * Best-effort barrier for code that reads run events back from Axiom after
- * the terminal webhook. Callers always supply `knownTargetSequence` from
- * their own DB read (the api side never falls back to the per-runId lookup
- * web has — that branch is dead code in api context).
- *
- * Returns the target sequence on success / `not_configured` (so the caller
- * can stamp it into a watermark column if desired); returns `undefined`
- * when no wait was attempted (target is null).
- */
-export async function waitForRunEventWatermarkVisible(
+function logIncompleteVisibility(
   runId: string,
-  knownTargetSequence: number | null,
-  options: WaitOptions = {},
-): Promise<number | undefined> {
-  if (knownTargetSequence === null) {
-    return undefined;
-  }
-
-  const visibility = await waitForAgentEventPrefixVisible(
-    runId,
-    knownTargetSequence,
-    options,
-  );
-  if (visibility.visible) {
-    return knownTargetSequence;
-  }
-
+  visibility: AgentEventVisibilityResult,
+): void {
   log.warn("Reading run Axiom events before terminal watermark is visible", {
     runId,
     targetSequence: visibility.targetSequence,
@@ -251,5 +231,50 @@ export async function waitForRunEventWatermarkVisible(
     reason: visibility.reason,
     error: visibility.error,
   });
-  return knownTargetSequence;
+}
+
+/**
+ * Best-effort barrier for code that reads run events back from Axiom after
+ * the terminal webhook. Callers always supply `knownTargetSequence` from
+ * their own DB read (the api side never falls back to the per-runId lookup
+ * web has — that branch is dead code in api context).
+ *
+ * Returns a structured visibility result when a target sequence is known;
+ * returns `not_requested` when no wait was attempted (target is null).
+ */
+export async function waitForRunEventWatermarkVisibility(
+  runId: string,
+  knownTargetSequence: number | null,
+  options: WaitOptions = {},
+): Promise<RunEventWatermarkVisibilityResult> {
+  if (knownTargetSequence === null) {
+    return { kind: "not_requested" };
+  }
+
+  const visibility = await waitForAgentEventPrefixVisible(
+    runId,
+    knownTargetSequence,
+    options,
+  );
+  if (!visibility.visible) {
+    logIncompleteVisibility(runId, visibility);
+  }
+
+  return { kind: "checked", ...visibility };
+}
+
+export async function waitForRunEventWatermarkVisible(
+  runId: string,
+  knownTargetSequence: number | null,
+  options: WaitOptions = {},
+): Promise<number | undefined> {
+  const visibility = await waitForRunEventWatermarkVisibility(
+    runId,
+    knownTargetSequence,
+    options,
+  );
+  if (visibility.kind === "not_requested") {
+    return undefined;
+  }
+  return visibility.targetSequence;
 }

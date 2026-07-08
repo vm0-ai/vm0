@@ -276,6 +276,7 @@ async function completeSandboxRun(args: {
   readonly sandboxToken: string;
   readonly exitCode: number;
   readonly error?: string;
+  readonly lastEventSequence?: number;
 }): Promise<string | undefined> {
   const sandboxHeaders = { authorization: `Bearer ${args.sandboxToken}` };
   if (args.exitCode === 0) {
@@ -310,7 +311,13 @@ async function completeSandboxRun(args: {
       [200],
     );
     await webhooksApi.requestAgentComplete(
-      { runId: args.runId, exitCode: args.exitCode },
+      {
+        runId: args.runId,
+        exitCode: args.exitCode,
+        ...(args.lastEventSequence === undefined
+          ? {}
+          : { lastEventSequence: args.lastEventSequence }),
+      },
       sandboxHeaders,
       [200],
     );
@@ -329,6 +336,16 @@ async function completeSandboxRun(args: {
   );
   await flushWaitUntilForTest();
   return undefined;
+}
+
+function mockVisibleEmptyRunOutput(): void {
+  context.mocks.axiom.query.mockImplementation((...args: unknown[]) => {
+    const apl = typeof args[0] === "string" ? args[0] : "";
+    if (apl.includes("| project sequenceNumber")) {
+      return Promise.resolve([{ sequenceNumber: 0 }]);
+    }
+    return Promise.resolve([]);
+  });
 }
 
 async function claimFollowUpInThread(args: {
@@ -375,10 +392,12 @@ describe("Teams org internal callbacks", () => {
       runId,
     });
 
+    mockVisibleEmptyRunOutput();
     const cliAgentSessionId = await completeSandboxRun({
       runId,
       sandboxToken: claim.sandboxToken,
       exitCode: 0,
+      lastEventSequence: 0,
     });
 
     expect(teamsApi.tokenRequests).toHaveLength(1);
@@ -499,10 +518,12 @@ describe("Teams org internal callbacks", () => {
       runId,
     });
 
+    mockVisibleEmptyRunOutput();
     await completeSandboxRun({
       runId,
       sandboxToken: claim.sandboxToken,
       exitCode: 0,
+      lastEventSequence: 0,
     });
 
     expect(teamsApi.tokenRequests).toHaveLength(1);

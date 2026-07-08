@@ -18,7 +18,6 @@ import {
   userFeatureSwitchOverrides,
 } from "./feature-switches.service";
 import type { InternalRunCallbackEnvelope } from "./internal-run-callback";
-import { getRunOutputText } from "./run-output.service";
 import { formatRunErrorForRunOwner$ } from "./run-error-format.service";
 import {
   formatAgentPhoneAuditLink,
@@ -32,6 +31,10 @@ import {
   type AgentPhoneChannel,
 } from "./agentphone-shared.service";
 import { settle } from "../utils";
+import {
+  completedChatOutputFailureMessage,
+  resolveCompletedChatOutputWithRetry,
+} from "./completed-chat-output.service";
 
 const log = logger("api:callback:agentphone");
 
@@ -75,6 +78,9 @@ type GetFeatureOverrides = (
   orgId: string,
   userId: string,
 ) => Promise<Record<string, boolean>>;
+type CompletionTextResult =
+  | { readonly kind: "ready"; readonly text: string }
+  | { readonly kind: "failed"; readonly error: string };
 
 type AgentPhoneCallbackCompletionResponse =
   | { readonly status: 200; readonly body: { readonly success: true } }
@@ -172,29 +178,49 @@ async function loadRunContext(args: {
 }
 
 async function resolveCompletionText(args: {
+  readonly db: Db;
   readonly runId: string;
   readonly status: "completed" | "failed";
   readonly error: string | undefined;
   readonly run: RunContext | undefined;
   readonly formatRunError: FormatRunError;
   readonly signal: AbortSignal;
-}): Promise<string> {
+}): Promise<CompletionTextResult> {
   if (args.status === "failed") {
-    return await args.formatRunError({
-      runId: args.runId,
-      chatThreadId: args.run?.chatThreadId,
-      errorMessage:
-        args.error ?? "The agent encountered an error during execution.",
-    });
+    return {
+      kind: "ready",
+      text: await args.formatRunError({
+        runId: args.runId,
+        chatThreadId: args.run?.chatThreadId,
+        errorMessage:
+          args.error ?? "The agent encountered an error during execution.",
+      }),
+    };
   }
 
-  const output = await getRunOutputText(args.runId, {
-    waitForOutput: false,
-    knownLastEventSequence: args.run?.lastEventSequence,
+  const output = await resolveCompletedChatOutputWithRetry({
+    db: args.db,
+    runId: args.runId,
+    lastEventSequence: args.run?.lastEventSequence ?? null,
     signal: args.signal,
   });
   args.signal.throwIfAborted();
-  return output ?? "Task completed successfully.";
+
+  switch (output.kind) {
+    case "ready": {
+      return { kind: "ready", text: output.text };
+    }
+    case "empty_after_complete_visibility": {
+      return { kind: "ready", text: "Task completed successfully." };
+    }
+    case "not_visible_yet":
+    case "query_failed": {
+      return {
+        kind: "failed",
+        error: completedChatOutputFailureMessage(output),
+      };
+    }
+  }
 }
 
 function buildAgentPhoneCompletionText(args: {
@@ -380,6 +406,7 @@ async function handleCompletion(args: {
   }
 
   const mainText = await resolveCompletionText({
+    db: args.db,
     runId: args.runId,
     status: args.status,
     error: args.error,
@@ -387,6 +414,9 @@ async function handleCompletion(args: {
     formatRunError: args.formatRunError,
     signal: args.signal,
   });
+  if (mainText.kind === "failed") {
+    return { status: 502, body: { error: mainText.error } };
+  }
   const logsUrl = run
     ? await resolveAgentPhoneAuditLogsUrl({
         orgId: run.orgId,
@@ -406,7 +436,7 @@ async function handleCompletion(args: {
   args.signal.throwIfAborted();
 
   const body = buildAgentPhoneCompletionText({
-    mainText,
+    mainText: mainText.text,
     logsUrl,
     footerText,
   });

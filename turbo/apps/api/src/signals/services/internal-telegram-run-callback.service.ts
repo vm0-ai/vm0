@@ -30,7 +30,6 @@ import {
   userFeatureSwitchOverrides,
 } from "./feature-switches.service";
 import type { InternalRunCallbackEnvelope } from "./internal-run-callback";
-import { getRunOutputText } from "./run-output.service";
 import { formatRunErrorForRunOwner$ } from "./run-error-format.service";
 import {
   saveTelegramThreadSession,
@@ -38,6 +37,10 @@ import {
 } from "./zero-telegram-callback-persistence.service";
 import { resolveTelegramAgentReplyFooterText } from "./zero-telegram-footer.service";
 import { settle } from "../utils";
+import {
+  completedChatOutputFailureMessage,
+  resolveCompletedChatOutputWithRetry,
+} from "./completed-chat-output.service";
 
 const L = logger("InternalCallbacksTelegram");
 const TELEGRAM_COMPLETION_CHUNK_THROTTLE_MS = 1100;
@@ -348,23 +351,39 @@ async function loadRunContext(args: {
   return run;
 }
 
-async function resolveCompletionText(args: {
+type CompletedTextResult =
+  | { readonly kind: "ready"; readonly text: string }
+  | { readonly kind: "failed"; readonly error: string };
+
+async function resolveCompletedText(args: {
+  readonly db: Db;
   readonly runId: string;
-  readonly status: "completed" | "failed";
   readonly run: RunContext | undefined;
   readonly signal: AbortSignal;
-}): Promise<string | undefined> {
-  if (args.status === "failed") {
-    return undefined;
-  }
-
-  const output = await getRunOutputText(args.runId, {
-    waitForOutput: false,
-    knownLastEventSequence: args.run?.lastEventSequence,
+}): Promise<CompletedTextResult> {
+  const output = await resolveCompletedChatOutputWithRetry({
+    db: args.db,
+    runId: args.runId,
+    lastEventSequence: args.run?.lastEventSequence ?? null,
     signal: args.signal,
   });
   args.signal.throwIfAborted();
-  return output;
+
+  switch (output.kind) {
+    case "ready": {
+      return { kind: "ready", text: output.text };
+    }
+    case "empty_after_complete_visibility": {
+      return { kind: "ready", text: "Task completed successfully." };
+    }
+    case "not_visible_yet":
+    case "query_failed": {
+      return {
+        kind: "failed",
+        error: completedChatOutputFailureMessage(output),
+      };
+    }
+  }
 }
 
 async function resolveCompletionDecorations(args: {
@@ -553,12 +572,18 @@ async function handleCompletion(args: {
     });
   }
 
-  const output = await resolveCompletionText({
-    runId: args.runId,
-    status: args.status,
-    run,
-    signal: args.signal,
-  });
+  const completedText =
+    args.status === "completed"
+      ? await resolveCompletedText({
+          db: args.db,
+          runId: args.runId,
+          run,
+          signal: args.signal,
+        })
+      : undefined;
+  if (completedText?.kind === "failed") {
+    return errorResponse(502, completedText.error);
+  }
   const { logsUrl, footerText } = await resolveCompletionDecorations({
     db: args.db,
     runId: args.runId,
@@ -580,7 +605,7 @@ async function handleCompletion(args: {
   args.signal.throwIfAborted();
   const { htmlOutput, responseText } = buildCompletionOutput({
     status: args.status,
-    output,
+    output: completedText?.text,
     errorDetail,
     logsUrl,
     footerText,

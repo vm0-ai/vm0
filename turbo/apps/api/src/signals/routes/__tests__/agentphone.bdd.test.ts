@@ -368,8 +368,10 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     expect(run2.appendSystemPrompt).toContain("SENDER: {id: BOT}");
 
     const beforeRun2Completion = sends.messages.length;
+    ap.mockCompletionRunOutput("Task completed successfully.");
     await completeSandboxRun(run2.sandboxToken, run2.runId, 0);
     await waitForSendCount(sends, beforeRun2Completion + 1);
+    ap.restoreCompletionRunOutput();
     expect(lastSend(sends).body).toBe("Task completed successfully.");
     await waitForRunSessionId(actor, run2.runId, session1);
 
@@ -394,7 +396,9 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
       isGroup: false,
     });
     const run3 = await claimDispatchedRun(runnerGroup);
+    ap.mockCompletionRunOutput("Task completed successfully.");
     await completeSandboxRun(run3.sandboxToken, run3.runId, 0);
+    ap.restoreCompletionRunOutput();
     const session3 = await waitForRunSessionIdPresent(actor, run3.runId);
     expect(session3).not.toBe(session1);
 
@@ -439,8 +443,10 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
       ].join("\n\n"),
     );
     const beforeRun1Completion = sends.messages.length;
+    ap.mockCompletionRunOutput("Task completed successfully.");
     await completeSandboxRun(run1.sandboxToken, run1.runId, 0);
     await waitForSendCount(sends, beforeRun1Completion + 1);
+    ap.restoreCompletionRunOutput();
     const mediaSession = await waitForRunSessionIdPresent(actor, run1.runId);
 
     // Provider-sent recent history wins over stored context: full entries
@@ -479,8 +485,10 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     // Session continuity: the second DM reuses the session saved by the
     // first completion.
     const beforeRun2Completion = sends.messages.length;
+    ap.mockCompletionRunOutput("Task completed successfully.");
     await completeSandboxRun(run2.sandboxToken, run2.runId, 0);
     await waitForSendCount(sends, beforeRun2Completion + 1);
+    ap.restoreCompletionRunOutput();
     await waitForRunSessionId(actor, run2.runId, mediaSession);
 
     // Re-pointing the default model policy at an incompatible provider
@@ -492,7 +500,9 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
       body: "after provider switch",
     });
     const run3 = await claimDispatchedRun(runnerGroup);
+    ap.mockCompletionRunOutput("Task completed successfully.");
     await completeSandboxRun(run3.sandboxToken, run3.runId, 0);
+    ap.restoreCompletionRunOutput();
     await expect(ap.readRunSessionId(actor, run3.runId)).resolves.not.toBe(
       mediaSession,
     );
@@ -613,8 +623,10 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
 
     // The completion replies into the conversation, not to a number.
     const beforeGroupCompletion = sends.messages.length;
+    ap.mockCompletionRunOutput("Task completed successfully.");
     await completeSandboxRun(run1.sandboxToken, run1.runId, 0);
     await waitForSendCount(sends, beforeGroupCompletion + 1);
+    ap.restoreCompletionRunOutput();
     const groupReply = lastSend(sends);
     expect(groupReply.conversationId).toBe(conversationId);
     expect(groupReply.replyToMessageId).toBe(groupMessageId);
@@ -841,7 +853,9 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     );
     expectApiError(unauthorized.body);
 
+    ap.mockCompletionRunOutput("Task completed successfully.");
     await completeSandboxRun(claim.sandboxToken, run.runId, 0);
+    ap.restoreCompletionRunOutput();
   });
 
   it("guards startLink against foreign-owner handles and provider network failures", async () => {

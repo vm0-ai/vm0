@@ -35,11 +35,14 @@ import type {
   InternalRunCallbackEnvelope,
 } from "./internal-run-callback";
 import { formatRunErrorForRunOwner$ } from "./run-error-format.service";
-import { getRunOutputText } from "./run-output.service";
 import {
   teamsOrgCallbackPayloadSchema,
   type TeamsOrgCallbackPayload,
 } from "./teams-org-callback-payload";
+import {
+  completedChatOutputFailureMessage,
+  resolveCompletedChatOutputWithRetry,
+} from "./completed-chat-output.service";
 
 const L = logger("InternalCallbacksTeamsOrg");
 const ORG_SENTINEL_USER_ID = "__org__";
@@ -301,23 +304,39 @@ function buildTeamsResponseText(args: {
     .join("\n\n");
 }
 
-async function resolveCompletionText(args: {
+type CompletedTextResult =
+  | { readonly kind: "ready"; readonly text: string }
+  | { readonly kind: "failed"; readonly error: string };
+
+async function resolveCompletedText(args: {
+  readonly db: Db;
   readonly runId: string;
-  readonly status: TerminalStatus;
   readonly run: RunContext | undefined;
   readonly signal: AbortSignal;
-}): Promise<string | undefined> {
-  if (args.status === "failed") {
-    return undefined;
-  }
-
-  const output = await getRunOutputText(args.runId, {
-    waitForOutput: false,
-    knownLastEventSequence: args.run?.lastEventSequence,
+}): Promise<CompletedTextResult> {
+  const output = await resolveCompletedChatOutputWithRetry({
+    db: args.db,
+    runId: args.runId,
+    lastEventSequence: args.run?.lastEventSequence ?? null,
     signal: args.signal,
   });
   args.signal.throwIfAborted();
-  return output;
+
+  switch (output.kind) {
+    case "ready": {
+      return { kind: "ready", text: output.text };
+    }
+    case "empty_after_complete_visibility": {
+      return { kind: "ready", text: "Task completed successfully." };
+    }
+    case "not_visible_yet":
+    case "query_failed": {
+      return {
+        kind: "failed",
+        error: completedChatOutputFailureMessage(output),
+      };
+    }
+  }
 }
 
 function teamsApiCallbackError(
@@ -491,12 +510,18 @@ async function handleCompletion(args: {
     return errorResponse(400, "Microsoft Teams serviceUrl is missing");
   }
 
-  const output = await resolveCompletionText({
-    runId: args.runId,
-    status: args.status,
-    run,
-    signal: args.signal,
-  });
+  const completedText =
+    args.status === "completed"
+      ? await resolveCompletedText({
+          db: args.db,
+          runId: args.runId,
+          run,
+          signal: args.signal,
+        })
+      : undefined;
+  if (completedText?.kind === "failed") {
+    return errorResponse(502, completedText.error);
+  }
   const logsUrl = await resolveAuditLogsUrl({
     runId: args.runId,
     run,
@@ -527,7 +552,7 @@ async function handleCompletion(args: {
     mainText:
       args.status === "failed"
         ? (errorText ?? "Agent execution failed.")
-        : (output ?? "Task completed successfully."),
+        : (completedText?.text ?? "Task completed successfully."),
     logsUrl,
     footerText,
   });

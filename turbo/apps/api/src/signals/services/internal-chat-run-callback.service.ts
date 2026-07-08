@@ -4,7 +4,6 @@ import { command } from "ccstate";
 import { formatRunErrorForExternalSurface } from "@vm0/api-contracts/contracts/errors";
 import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
 import { agentRuns } from "@vm0/db/schema/agent-run";
-import { chatOutputMaterializations } from "@vm0/db/schema/chat-output-materialization";
 import {
   chatMessages,
   type ChatMessageGenerationTemplate,
@@ -14,25 +13,12 @@ import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import {
-  and,
-  asc,
-  desc,
-  eq,
-  inArray,
-  isNotNull,
-  lte,
-  ne,
-  sql,
-} from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 
-import { waitForRunEventWatermarkVisible } from "../../lib/agent-event-visibility";
-import { escapeAplString } from "../../lib/axiom-apl";
 import { logger } from "../../lib/log";
 import { now, nowDate } from "../../lib/time";
 import { waitUntil } from "../context/wait-until";
-import { getDatasetName, queryAxiomDirect } from "../external/axiom";
 import { writeDb$, type Db } from "../external/db";
 import {
   publishChatThreadFollowupsFinished,
@@ -78,9 +64,16 @@ import { createZeroRun$ } from "./zero-runs-create.service";
 import { loadActiveGoalForThread } from "./zero-goal.service";
 import { onRejection, settle, tapError, throwIfAbort } from "../utils";
 import { resolveThreadGenerationTemplatePrompt } from "../routes/thread-generation-template";
+import {
+  latestEventBackedAssistantMessage,
+  loadDbCompletedChatOutputState,
+  queryChatOutputEvents,
+  type AssistantEventItem,
+  type DbCompletedChatOutputState,
+  type ResultEventItem,
+} from "./completed-chat-output.service";
 
 const log = logger("callback:chat");
-const AGENT_RUN_EVENTS_DATASET = "agent-run-events";
 const PG_FOREIGN_KEY_VIOLATION = "23503";
 const RECENT_CHAT_RUN_LIMIT = 10;
 const PRIOR_MESSAGE_CHAR_CAP = 4000;
@@ -243,32 +236,6 @@ const chatCallbackPayloadSchema = z
 
 type ChatCallbackPayload = z.infer<typeof chatCallbackPayloadSchema>;
 
-interface ContentBlock {
-  readonly type?: string;
-  readonly text?: string;
-}
-
-interface CodexItem {
-  readonly type?: string;
-  readonly text?: string;
-}
-
-interface AxiomChatOutputEvent {
-  readonly eventType?: string;
-  readonly sequenceNumber?: number;
-  readonly eventData?: {
-    readonly message?: { readonly content?: readonly ContentBlock[] };
-    readonly item?: CodexItem;
-    readonly result?: string;
-    readonly sequenceNumber?: number;
-  };
-}
-
-interface AssistantEventItem {
-  readonly sequenceNumber: number;
-  readonly content: string;
-}
-
 function terminalCallbackErrorMessage(
   callbackError: string | null | undefined,
   runError: string | null | undefined,
@@ -281,19 +248,6 @@ function terminalCallbackErrorMessage(
   }
   return "Run failed";
 }
-
-interface ResultEventItem {
-  readonly sequenceNumber: number;
-  readonly content: string;
-}
-
-type DbCompletedChatOutputState =
-  | {
-      readonly kind: "complete";
-      readonly latestAssistantContent: string | null;
-      readonly hasResultFallbackCandidate: boolean;
-    }
-  | { readonly kind: "incomplete" };
 
 interface CompletedChatOutputLoad {
   readonly assistantItems: readonly AssistantEventItem[];
@@ -511,189 +465,6 @@ function buildQueuedCreateZeroRunArgs(
         ? { modelProvider: input.queuedMessage.modelProviderType }
         : {}),
     },
-  };
-}
-
-function extractAnthropicContent(
-  blocks: readonly ContentBlock[],
-): string | null {
-  const parts = blocks.flatMap((block) => {
-    return block.type === "text" &&
-      typeof block.text === "string" &&
-      block.text.trim().length > 0
-      ? [block.text]
-      : [];
-  });
-  if (parts.length === 0) {
-    return null;
-  }
-  return parts.length === 1 ? parts[0]! : parts.join("\n\n");
-}
-
-function extractCodexAgentMessageContent(item: CodexItem): string | null {
-  if (
-    item.type !== "agent_message" ||
-    typeof item.text !== "string" ||
-    item.text.trim().length === 0
-  ) {
-    return null;
-  }
-  return item.text;
-}
-
-function extractAssistantContent(event: AxiomChatOutputEvent): string | null {
-  const content =
-    event.eventType === "assistant" ? event.eventData?.message?.content : null;
-  if (content) {
-    return extractAnthropicContent(content);
-  }
-  const item =
-    event.eventType === "item.completed" ? event.eventData?.item : null;
-  if (item) {
-    return extractCodexAgentMessageContent(item);
-  }
-  return null;
-}
-
-function extractResultFallback(
-  sequenceNumber: number,
-  event: AxiomChatOutputEvent,
-): ResultEventItem | null {
-  if (event.eventType !== "result") {
-    return null;
-  }
-
-  const result = event.eventData?.result;
-  if (typeof result !== "string") {
-    return null;
-  }
-  if (!result.trim()) {
-    return null;
-  }
-  return { sequenceNumber, content: result };
-}
-
-async function queryChatOutputEvents(args: {
-  readonly runId: string;
-  readonly lastEventSequence: number | null;
-  readonly signal: AbortSignal;
-}): Promise<{
-  readonly assistantItems: readonly AssistantEventItem[];
-  readonly resultFallback: ResultEventItem | null;
-}> {
-  await waitForRunEventWatermarkVisible(args.runId, args.lastEventSequence);
-  args.signal.throwIfAborted();
-
-  const dataset = getDatasetName(AGENT_RUN_EVENTS_DATASET);
-  const sequenceCap =
-    args.lastEventSequence === null
-      ? ""
-      : `\n| where sequenceNumber <= ${args.lastEventSequence}`;
-  const apl = `['${dataset}']
-| where runId == "${escapeAplString(args.runId)}"
-| where eventType == "assistant" or eventType == "result" or eventType == "item.completed"
-${sequenceCap}
-| order by sequenceNumber asc
-| limit 200`;
-
-  const events = await queryAxiomDirect<AxiomChatOutputEvent>(apl, {
-    noCache: true,
-  });
-  args.signal.throwIfAborted();
-
-  const assistantItems: AssistantEventItem[] = [];
-  let resultFallback: ResultEventItem | null = null;
-  for (const event of events) {
-    const sequenceNumber =
-      event.sequenceNumber ?? event.eventData?.sequenceNumber;
-    if (typeof sequenceNumber !== "number") {
-      continue;
-    }
-    if (
-      args.lastEventSequence !== null &&
-      sequenceNumber > args.lastEventSequence
-    ) {
-      continue;
-    }
-
-    const assistant = extractAssistantContent(event);
-    if (assistant !== null) {
-      assistantItems.push({ sequenceNumber, content: assistant });
-      continue;
-    }
-
-    const fallback = extractResultFallback(sequenceNumber, event);
-    if (fallback !== null) {
-      resultFallback = fallback;
-    }
-  }
-
-  return { assistantItems, resultFallback };
-}
-
-async function latestEventBackedAssistantMessage(
-  db: Db,
-  runId: string,
-  options: { readonly maxSequenceNumber?: number } = {},
-): Promise<{ readonly content: string } | null> {
-  const [message] = await db
-    .select({ content: chatMessages.content })
-    .from(chatMessages)
-    .where(
-      and(
-        eq(chatMessages.runId, runId),
-        eq(chatMessages.role, "assistant"),
-        isNotNull(chatMessages.sequenceNumber),
-        isNotNull(chatMessages.content),
-        sql<boolean>`NOT (${chatMessages.content} ~ '^[[:space:]]*$')`,
-        ...(options.maxSequenceNumber === undefined
-          ? []
-          : [lte(chatMessages.sequenceNumber, options.maxSequenceNumber)]),
-      ),
-    )
-    .orderBy(desc(chatMessages.sequenceNumber))
-    .limit(1);
-
-  if (!message || message.content === null) {
-    return null;
-  }
-  return { content: message.content };
-}
-
-async function loadDbCompletedChatOutputState(args: {
-  readonly db: Db;
-  readonly runId: string;
-  readonly lastEventSequence: number | null;
-}): Promise<DbCompletedChatOutputState> {
-  if (args.lastEventSequence === null) {
-    return { kind: "incomplete" };
-  }
-
-  const [state] = await args.db
-    .select({
-      processedThroughSequence:
-        chatOutputMaterializations.processedThroughSequence,
-      latestResultSequence: chatOutputMaterializations.latestResultSequence,
-    })
-    .from(chatOutputMaterializations)
-    .where(eq(chatOutputMaterializations.runId, args.runId))
-    .limit(1);
-
-  if (!state || state.processedThroughSequence < args.lastEventSequence) {
-    return { kind: "incomplete" };
-  }
-
-  const latestAssistant = await latestEventBackedAssistantMessage(
-    args.db,
-    args.runId,
-    { maxSequenceNumber: args.lastEventSequence },
-  );
-  return {
-    kind: "complete",
-    latestAssistantContent: latestAssistant?.content ?? null,
-    hasResultFallbackCandidate:
-      state.latestResultSequence !== null &&
-      state.latestResultSequence <= args.lastEventSequence,
   };
 }
 
