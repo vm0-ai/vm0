@@ -5,7 +5,9 @@ use std::panic::AssertUnwindSafe;
 use std::time::{Duration, Instant};
 
 use futures_util::FutureExt;
-use sandbox::{Sandbox, SandboxConfig, SandboxFactory, SandboxId};
+use sandbox::{
+    Sandbox, SandboxConfig, SandboxCreateObserver, SandboxCreateStage, SandboxFactory, SandboxId,
+};
 use tracing::{info, warn};
 
 use super::agent_run::{AgentExecutionResult, RunControls, RunStart, run_in_sandbox};
@@ -41,6 +43,24 @@ use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 const SLOW_PROXY_REGISTER_THRESHOLD: Duration = Duration::from_secs(3);
 const RUNNER_FRESH_WORKSPACE_IMAGE_PREPARE: &str = "runner_fresh_workspace_image_prepare";
 const RUNNER_FRESH_SANDBOX_FACTORY_CREATE: &str = "runner_fresh_sandbox_factory_create";
+const RUNNER_FRESH_SANDBOX_FACTORY_COW_POOL_ACQUIRE: &str =
+    "runner_fresh_sandbox_factory_cow_pool_acquire";
+const RUNNER_FRESH_SANDBOX_FACTORY_WORKSPACE_DIR_RENAME: &str =
+    "runner_fresh_sandbox_factory_workspace_dir_rename";
+// `workspace_drive_prepare` contains the seed-copy/fresh-format child stages;
+// downstream queries should not sum the parent and child durations together.
+const RUNNER_FRESH_SANDBOX_FACTORY_WORKSPACE_DRIVE_PREPARE: &str =
+    "runner_fresh_sandbox_factory_workspace_drive_prepare";
+const RUNNER_FRESH_SANDBOX_FACTORY_WORKSPACE_SEED_SPARSE_COPY: &str =
+    "runner_fresh_sandbox_factory_workspace_seed_sparse_copy";
+const RUNNER_FRESH_SANDBOX_FACTORY_WORKSPACE_FRESH_FORMAT: &str =
+    "runner_fresh_sandbox_factory_workspace_fresh_format";
+const RUNNER_FRESH_SANDBOX_FACTORY_SOCK_DIR_PREPARE: &str =
+    "runner_fresh_sandbox_factory_sock_dir_prepare";
+const RUNNER_FRESH_SANDBOX_FACTORY_NETNS_ACQUIRE: &str =
+    "runner_fresh_sandbox_factory_netns_acquire";
+const RUNNER_FRESH_SANDBOX_FACTORY_NBD_COW_CREATE: &str =
+    "runner_fresh_sandbox_factory_nbd_cow_create";
 const RUNNER_FRESH_SANDBOX_PROXY_REGISTER: &str = "runner_fresh_sandbox_proxy_register";
 const RUNNER_FRESH_SANDBOX_START: &str = "runner_fresh_sandbox_start";
 const RUNNER_FRESH_SANDBOX_RETRY_WITHOUT_WORKSPACE_IMAGE: &str =
@@ -52,8 +72,48 @@ const WORKSPACE_IMAGE_PREPARE_LOCK_BUSY: &str = "workspace_image_prepare_lock_bu
 const WORKSPACE_IMAGE_PREPARE_INVALID_METADATA: &str = "workspace_image_prepare_invalid_metadata";
 const WORKSPACE_IMAGE_PREPARE_DISK_PRESSURE: &str = "workspace_image_prepare_disk_pressure";
 const SANDBOX_FACTORY_CREATE_FAILED: &str = "sandbox_factory_create_failed";
+const SANDBOX_FACTORY_CREATE_STAGE_FAILED: &str = "sandbox_factory_create_stage_failed";
 const SANDBOX_PROXY_REGISTER_FAILED: &str = "sandbox_proxy_register_failed";
 const SANDBOX_START_FAILED: &str = "sandbox_start_failed";
+
+struct FreshSandboxFactoryCreateObserver<'a> {
+    telemetry: &'a mut JobTelemetry,
+}
+
+impl SandboxCreateObserver for FreshSandboxFactoryCreateObserver<'_> {
+    fn record_stage(&mut self, stage: SandboxCreateStage, duration: Duration, success: bool) {
+        let error = if success {
+            None
+        } else {
+            Some(SANDBOX_FACTORY_CREATE_STAGE_FAILED)
+        };
+        self.telemetry.record(
+            fresh_sandbox_factory_stage_action(stage),
+            duration,
+            success,
+            error,
+        );
+    }
+}
+
+fn fresh_sandbox_factory_stage_action(stage: SandboxCreateStage) -> &'static str {
+    match stage {
+        SandboxCreateStage::CowPoolAcquire => RUNNER_FRESH_SANDBOX_FACTORY_COW_POOL_ACQUIRE,
+        SandboxCreateStage::WorkspaceDirRename => RUNNER_FRESH_SANDBOX_FACTORY_WORKSPACE_DIR_RENAME,
+        SandboxCreateStage::WorkspaceDrivePrepare => {
+            RUNNER_FRESH_SANDBOX_FACTORY_WORKSPACE_DRIVE_PREPARE
+        }
+        SandboxCreateStage::WorkspaceSeedSparseCopy => {
+            RUNNER_FRESH_SANDBOX_FACTORY_WORKSPACE_SEED_SPARSE_COPY
+        }
+        SandboxCreateStage::WorkspaceFreshFormat => {
+            RUNNER_FRESH_SANDBOX_FACTORY_WORKSPACE_FRESH_FORMAT
+        }
+        SandboxCreateStage::SockDirPrepare => RUNNER_FRESH_SANDBOX_FACTORY_SOCK_DIR_PREPARE,
+        SandboxCreateStage::NetnsAcquire => RUNNER_FRESH_SANDBOX_FACTORY_NETNS_ACQUIRE,
+        SandboxCreateStage::NbdCowCreate => RUNNER_FRESH_SANDBOX_FACTORY_NBD_COW_CREATE,
+    }
+}
 
 #[cfg(test)]
 pub(super) async fn execute_new_sandbox(
@@ -333,7 +393,13 @@ async fn create_started_sandbox(
     info!(run_id = %context.run_id, sandbox_id = %sandbox_id, "creating sandbox");
     let t = Instant::now();
     let factory_create_started = Instant::now();
-    let mut sandbox = match factory.create(sandbox_config).await {
+    let create_result = {
+        let mut observer = FreshSandboxFactoryCreateObserver { telemetry };
+        factory
+            .create_with_observer(sandbox_config, &mut observer)
+            .await
+    };
+    let mut sandbox = match create_result {
         Ok(s) => {
             telemetry.record(
                 RUNNER_FRESH_SANDBOX_FACTORY_CREATE,
