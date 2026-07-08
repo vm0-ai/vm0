@@ -622,10 +622,10 @@ pub(super) fn insert_claude_code_env(
     context: &ExecutionContext,
     host_env: &HostEnv,
 ) {
-    // Pass USE_MOCK_CLAUDE from host environment for testing
-    // (skip if debugNoMockClaude is set in execution context)
+    // Pass USE_MOCK_CLAUDE from host environment for testing unless preview
+    // evaluation explicitly asks for the real agent runtime.
     if let Some(val) = &host_env.use_mock_claude
-        && !context.debug_no_mock_claude.unwrap_or(false)
+        && !context.real_agent_in_preview.unwrap_or(false)
     {
         env.insert(
             guest_contracts::env::USE_MOCK_CLAUDE_ENV.into(),
@@ -690,10 +690,10 @@ pub(super) fn insert_codex_env(
         );
     }
 
-    // Pass USE_MOCK_CODEX from host environment for testing
-    // (skip if debugNoMockCodex is set in execution context).
+    // Pass USE_MOCK_CODEX from host environment for testing unless preview
+    // evaluation explicitly asks for the real agent runtime.
     if let Some(val) = &host_env.use_mock_codex
-        && !context.debug_no_mock_codex.unwrap_or(false)
+        && !context.real_agent_in_preview.unwrap_or(false)
     {
         env.insert(guest_contracts::env::USE_MOCK_CODEX_ENV.into(), val.clone());
     }

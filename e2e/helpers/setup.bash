@@ -240,8 +240,7 @@ zero_chat_run_with_model_selection() {
     local prompt="$2"
     local model_provider_id="$3"
     local selected_model="$4"
-    local debug_no_mock_claude="${5:-false}"
-    local debug_no_mock_codex="${6:-false}"
+    local real_agent_in_preview="${5:-false}"
     local payload body
 
     payload=$(jq -nc \
@@ -249,9 +248,8 @@ zero_chat_run_with_model_selection() {
         --arg prompt "$prompt" \
         --arg modelProviderId "$model_provider_id" \
         --arg selectedModel "$selected_model" \
-        --argjson debugNoMockClaude "$debug_no_mock_claude" \
-        --argjson debugNoMockCodex "$debug_no_mock_codex" \
-        '{agentId: $agentId, prompt: $prompt, modelSelection: {modelProviderId: $modelProviderId, selectedModel: $selectedModel}, hasTextContent: true, debugNoMockClaude: $debugNoMockClaude, debugNoMockCodex: $debugNoMockCodex}')
+        --argjson realAgentInPreview "$real_agent_in_preview" \
+        '{agentId: $agentId, prompt: $prompt, modelSelection: {modelProviderId: $modelProviderId, selectedModel: $selectedModel}, hasTextContent: true, realAgentInPreview: $realAgentInPreview}')
 
     body=$(zero_curl "/api/zero/chat/messages" -X POST -d "$payload")
     LAST_RUN_ID=$(printf '%s' "$body" | jq -r '.runId // ""')

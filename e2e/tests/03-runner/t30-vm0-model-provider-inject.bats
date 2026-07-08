@@ -32,7 +32,6 @@ teardown() {
         "case \"\$CLAUDE_CODE_OAUTH_TOKEN\" in \"\"|\"***\") marker=MISMATCH ;; *) marker=OK ;; esac; printf 'INJECTED_%s\n' \"\$marker\"" \
         "$provider_id" \
         "claude-sonnet-4-6" \
-        false \
         false
     THREAD_ID="$LAST_THREAD_ID"
 

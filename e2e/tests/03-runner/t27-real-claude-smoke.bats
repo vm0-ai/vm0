@@ -116,7 +116,7 @@ ensure_anthropic_model_provider() {
     # Run claude --version inside the sandbox to confirm which binary is installed
     run $VM0_CLI run "$AGENT_NAME" \
         --model-provider-type "anthropic-api-key" \
-        --debug-no-mock-claude \
+        --real-agent-in-preview \
         "Run 'claude --version' with the Bash tool and include the exact output"
 
     assert_success
@@ -135,7 +135,7 @@ ensure_anthropic_model_provider() {
 
     run $VM0_CLI run "$AGENT_NAME" \
         --model-provider-type "anthropic-api-key" \
-        --debug-no-mock-claude \
+        --real-agent-in-preview \
         "Compute 123+456 and reply with exactly: RESULT=<answer>"
 
     assert_success
@@ -159,7 +159,7 @@ ensure_anthropic_model_provider() {
     # (Commander.js <tools...> would otherwise swallow subsequent args)
     run $VM0_CLI run "${AGENT_NAME}-flags" \
         --model-provider-type "anthropic-api-key" \
-        --debug-no-mock-claude \
+        --real-agent-in-preview \
         --append-system-prompt "In your final response, output exactly two lines and no extra text. Line 1: RESULT=<answer>. Line 2: SIGNATURE=smoke-test." \
         --disallowed-tools CronCreate CronList CronDelete \
         -- "Compute 789+101 and follow the required final response format."
@@ -189,7 +189,7 @@ ensure_anthropic_model_provider() {
 
     run $VM0_CLI run "${AGENT_NAME}-settings" \
         --model-provider-type "anthropic-api-key" \
-        --debug-no-mock-claude \
+        --real-agent-in-preview \
         --settings "$settings" \
         -- "Step 1: run 'echo hello'. Step 2: run 'cat /tmp/hook_sentinel.txt'. Include the exact output of step 2 in your response."
 

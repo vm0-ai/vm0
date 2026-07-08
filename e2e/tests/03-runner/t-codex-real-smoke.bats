@@ -64,7 +64,7 @@ ensure_openai_model_provider() {
 
     run $VM0_CLI run "$AGENT_NAME" \
         --model-provider-type "openai-api-key" \
-        --debug-no-mock-codex \
+        --real-agent-in-preview \
         "Run 'codex --version' with the shell tool and include the exact output"
 
     assert_success
@@ -77,7 +77,7 @@ ensure_openai_model_provider() {
 
     run $VM0_CLI run "$AGENT_NAME" \
         --model-provider-type "openai-api-key" \
-        --debug-no-mock-codex \
+        --real-agent-in-preview \
         "Compute 123+456 and reply with exactly: RESULT=<answer>"
 
     assert_success
