@@ -48,7 +48,12 @@ export function createAuthedContractClient<T extends AppRouter>(
           headers.set("Authorization", `Bearer ${token}`);
         }
         addClientHeaders(headers);
-        return trpcRestFetchApi({ ...args, headers, path });
+        return trpcRestFetchApi({
+          ...args,
+          fetchOptions: { ...args.fetchOptions, credentials: "include" },
+          headers,
+          path,
+        });
       };
 
       let response = await requestWithToken(initialToken);

@@ -37,7 +37,7 @@ const L = logger("App");
 
 const WEB_AUTH_PATHS = ["/sign-in", "/sign-up"] as const;
 const VERCEL_PROTECTION_BYPASS_HEADER = "x-vercel-protection-bypass";
-const VM0_PREVIEW_BYPASS_QUERY_PARAM = "vm0_preview_bypass";
+const VERCEL_PROTECTION_BYPASS_COOKIE = VERCEL_PROTECTION_BYPASS_HEADER;
 const PREVIEW_AUTOMATION_BYPASS_ERROR = "Preview automation bypass required";
 const BYPASS_FINGERPRINT_LENGTH = 12;
 const UNHANDLED_REQUEST_ERROR_TYPE = "unhandled_request_error" as const;
@@ -304,20 +304,40 @@ function unquoteCookieValue(value: string): string {
     : value;
 }
 
-function cookieHeaderContainsBypassSecret(
+function safeDecodeURIComponent(value: string): string {
+  const result = safeSync(() => {
+    return decodeURIComponent(value);
+  });
+  return "ok" in result ? result.ok : value;
+}
+
+function cookieHeaderValue(
+  cookieHeader: string | undefined,
+  name: string,
+): string | undefined {
+  for (const cookie of cookieHeader?.split(";") ?? []) {
+    const separatorIndex = cookie.indexOf("=");
+    if (separatorIndex === -1) {
+      continue;
+    }
+    const key = cookie.slice(0, separatorIndex).trim();
+    if (key !== name) {
+      continue;
+    }
+    return unquoteCookieValue(cookie.slice(separatorIndex + 1).trim());
+  }
+  return undefined;
+}
+
+function cookieHeaderHasBypassSecret(
   cookieHeader: string | undefined,
   secret: string,
 ): boolean {
-  return (
-    cookieHeader?.split(";").some((cookie) => {
-      const separatorIndex = cookie.indexOf("=");
-      if (separatorIndex === -1) {
-        return false;
-      }
-      const rawValue = cookie.slice(separatorIndex + 1).trim();
-      return unquoteCookieValue(rawValue) === secret;
-    }) ?? false
+  const value = cookieHeaderValue(
+    cookieHeader,
+    VERCEL_PROTECTION_BYPASS_COOKIE,
   );
+  return value === secret || safeDecodeURIComponent(value ?? "") === secret;
 }
 
 function requestHasPreviewAutomationBypass(
@@ -328,16 +348,10 @@ function requestHasPreviewAutomationBypass(
     return true;
   }
   const url = safeUrlParse(context.req.url);
-  if (
-    url?.searchParams.get(VM0_PREVIEW_BYPASS_QUERY_PARAM) === secret ||
-    url?.searchParams.get(VERCEL_PROTECTION_BYPASS_HEADER) === secret
-  ) {
+  if (url?.searchParams.get(VERCEL_PROTECTION_BYPASS_HEADER) === secret) {
     return true;
   }
-  return cookieHeaderContainsBypassSecret(
-    requestHeader(context, "cookie"),
-    secret,
-  );
+  return cookieHeaderHasBypassSecret(requestHeader(context, "cookie"), secret);
 }
 
 function isCorsPreflightRequest(context: Context): boolean {
@@ -366,10 +380,13 @@ function previewAutomationBypassDebug(context: Context, secret: string) {
       requestHeader(context, VERCEL_PROTECTION_BYPASS_HEADER),
     ),
     query: bypassFingerprint(
-      url?.searchParams.get(VM0_PREVIEW_BYPASS_QUERY_PARAM) ?? undefined,
-    ),
-    vercelQuery: bypassFingerprint(
       url?.searchParams.get(VERCEL_PROTECTION_BYPASS_HEADER) ?? undefined,
+    ),
+    cookie: bypassFingerprint(
+      cookieHeaderValue(
+        requestHeader(context, "cookie"),
+        VERCEL_PROTECTION_BYPASS_COOKIE,
+      ),
     ),
     cookieHeaderPresent: Boolean(requestHeader(context, "cookie")),
   };

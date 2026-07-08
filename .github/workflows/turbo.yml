@@ -1230,7 +1230,7 @@ jobs:
           if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
             encoded_bypass="$(node -e 'process.stdout.write(encodeURIComponent(process.env.VERCEL_AUTOMATION_BYPASS_SECRET || ""))')"
             echo "::add-mask::$encoded_bypass"
-            FORWARD_URL="${FORWARD_URL}?vm0_preview_bypass=${encoded_bypass}"
+            FORWARD_URL="${FORWARD_URL}?x-vercel-protection-bypass=${encoded_bypass}"
           fi
           EXTRA_VARS="$(jq -nc \
             --arg ansible_user "$METAL_USER" \
@@ -1352,7 +1352,7 @@ jobs:
           if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
             encoded_bypass="$(node -e 'process.stdout.write(encodeURIComponent(process.env.VERCEL_AUTOMATION_BYPASS_SECRET || ""))')"
             echo "::add-mask::$encoded_bypass"
-            forward_url="${forward_url}?vm0_preview_bypass=${encoded_bypass}"
+            forward_url="${forward_url}?x-vercel-protection-bypass=${encoded_bypass}"
           fi
           stripe listen \
             --api-key "$STRIPE_SECRET_KEY" \
