@@ -28,6 +28,7 @@ import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { Markdown } from "../components/markdown.tsx";
+import { MemoryRecall } from "./memory-recall.tsx";
 import { MemoryRelationships } from "./memory-relationships.tsx";
 import { MemorySources } from "./memory-sources.tsx";
 
@@ -184,6 +185,7 @@ function deriveMemoryViewerState(
 function isMemoryTab(value: string): value is MemoryTab {
   return (
     value === "updates" ||
+    value === "recall" ||
     value === "relationships" ||
     value === "sources" ||
     value === "raw"
@@ -236,7 +238,9 @@ export function MemoryPage() {
   const relationshipMemoryEnabled =
     features[FeatureSwitchKey.RelationshipMemory] ?? false;
   const visibleTab =
-    (activeTab === "relationships" || activeTab === "sources") &&
+    (activeTab === "recall" ||
+      activeTab === "relationships" ||
+      activeTab === "sources") &&
     !relationshipMemoryEnabled
       ? "updates"
       : activeTab;
@@ -265,7 +269,9 @@ export function MemoryPage() {
                 onValueChange={(value) => {
                   if (
                     isMemoryTab(value) &&
-                    ((value !== "relationships" && value !== "sources") ||
+                    ((value !== "recall" &&
+                      value !== "relationships" &&
+                      value !== "sources") ||
                       relationshipMemoryEnabled)
                   ) {
                     setTab(value);
@@ -275,6 +281,9 @@ export function MemoryPage() {
               >
                 <TabsList className="max-w-full justify-start overflow-x-auto">
                   <TabsTrigger value="updates">Updates</TabsTrigger>
+                  {relationshipMemoryEnabled ? (
+                    <TabsTrigger value="recall">Recall</TabsTrigger>
+                  ) : null}
                   {relationshipMemoryEnabled ? (
                     <TabsTrigger value="relationships">
                       Relationships
@@ -290,6 +299,7 @@ export function MemoryPage() {
             </div>
 
             {visibleTab === "updates" ? <MemoryUpdates /> : null}
+            {visibleTab === "recall" ? <MemoryRecall /> : null}
             {visibleTab === "relationships" ? <MemoryRelationships /> : null}
             {visibleTab === "sources" ? <MemorySources /> : null}
             {visibleTab === "raw" ? <MemoryRawFiles /> : null}
