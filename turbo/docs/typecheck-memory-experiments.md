@@ -5,6 +5,10 @@ Base branch: `main`
 Latest validation base commit: `ba104205214ef487ef0488ad0c92c38352bf2eaa`
 Original experiment base commit: `7b14b934a4ea535d43bfa55f485af1e5a6687ef0`
 
+Note: this document records historical experiments. The experimental `api`
+split tsconfig files referenced below were removed after validation because
+`apps/api/package.json` continued to use only `tsc --noEmit` for `check-types`.
+
 ## Constraints
 
 - Do not reduce type strictness.
