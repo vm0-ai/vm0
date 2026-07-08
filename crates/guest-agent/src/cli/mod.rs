@@ -351,6 +351,12 @@ impl<'a> CliRuntimeConfig<'a> {
             Path::new(&codex_home),
         )
     }
+
+    fn codex_model_provider_id(&self) -> Option<&str> {
+        self.codex_runtime_config
+            .as_ref()
+            .map(|config| config.provider_id.as_str())
+    }
 }
 
 fn codex_home_for_home_dir(home_dir: &str) -> String {

@@ -437,6 +437,12 @@ fn thread_param_fields(runtime: &CliRuntimeConfig<'_>) -> Map<String, Value> {
             Value::String(runtime.openai_model.to_string()),
         );
     }
+    if let Some(provider_id) = runtime.codex_model_provider_id() {
+        params.insert(
+            "modelProvider".to_string(),
+            Value::String(provider_id.to_string()),
+        );
+    }
     if !runtime.append_system_prompt.is_empty() {
         params.insert(
             "developerInstructions".to_string(),
