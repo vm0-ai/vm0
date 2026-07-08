@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.139.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.139.0...runner-rs-v0.139.1) (2026-07-08)
+
+
+### Bug Fixes
+
+* configure minimax codex runtime provider ([#20588](https://github.com/vm0-ai/vm0/issues/20588)) ([a5ae66b](https://github.com/vm0-ai/vm0/commit/a5ae66be4034b2b018175593b02b57d00a90615e))
+* prune stale runner direct candidates ([#20649](https://github.com/vm0-ai/vm0/issues/20649)) ([191387f](https://github.com/vm0-ai/vm0/commit/191387fcdb094faae15cb83c940d463bcf5d580a))
+
 ## [0.139.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.138.2...runner-rs-v0.139.0) (2026-07-08)
 
 
