@@ -42,6 +42,8 @@ WORKSPACE_HOLDER_MAPS_LINE_LIMIT=4096
 WORKSPACE_HOLDER_VALUE_LIMIT=240
 WORKSPACE_HOLDER_KILL_GRACE_SECONDS=1
 WORKSPACE_HOLDER_TERM_GRACE_SECONDS=1
+WORKSPACE_MOUNT_DIAGNOSTIC_LIMIT=40
+workspace_mountinfo_path=${workspace_mountinfo_path:-/proc/self/mountinfo}
 
 holder_record_dir="$(mktemp -d)"
 direct_holder_records="$holder_record_dir/direct"
@@ -49,6 +51,8 @@ remaining_direct_holder_records="$holder_record_dir/direct-remaining"
 fd_holder_records="$holder_record_dir/fd"
 remaining_fd_holder_records="$holder_record_dir/fd-remaining"
 maps_holder_records="$holder_record_dir/maps"
+child_mount_records="$holder_record_dir/child-mounts"
+mount_diagnostic_records="$holder_record_dir/mount-diagnostics"
 cleanup_workspace_holder_records() {
   rm -rf -- "$holder_record_dir"
 }
@@ -68,6 +72,15 @@ is_workspace_ref() {
         "$workspace_dir"/*) return 0 ;;
       esac
       ;;
+  esac
+
+  return 1
+}
+
+is_workspace_child_mountpoint() {
+  mount_point=$1
+  case "$mount_point" in
+    "$workspace_dir"/*) return 0 ;;
   esac
 
   return 1
@@ -142,6 +155,37 @@ scan_proc_maps() {
   fi
 
   return 0
+}
+
+scan_workspace_mountinfo_refs() {
+  [ -r "$workspace_mountinfo_path" ] || return 0
+
+  while IFS=' ' read -r mount_id parent_id mount_dev mount_root mount_point mount_options _rest; do
+    [ -n "$mount_point" ] || continue
+    category=
+    if [ "$mount_point" = "$workspace_dir" ]; then
+      category=workspace
+    elif is_workspace_child_mountpoint "$mount_point"; then
+      category=child
+    elif [ -n "$workspace_dev" ] && [ "$mount_dev" = "$workspace_dev" ]; then
+      category=same-device
+    fi
+    [ -n "$category" ] || continue
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+      "$category" "$mount_id" "$parent_id" "$mount_dev" "$mount_root" "$mount_point" "$mount_options"
+  done < "$workspace_mountinfo_path"
+}
+
+scan_workspace_child_mountpoints() {
+  [ -r "$workspace_mountinfo_path" ] || return 0
+
+  while IFS=' ' read -r _mount_id _parent_id _mount_dev _mount_root mount_point _mount_options _rest; do
+    [ -n "$mount_point" ] || continue
+    is_workspace_child_mountpoint "$mount_point" || continue
+    depth="$(printf '%s' "$mount_point" | tr -cd '/' | wc -c | tr -d ' ')"
+    [ -n "$depth" ] || depth=0
+    printf '%s\t%s\n' "$depth" "$mount_point"
+  done < "$workspace_mountinfo_path" | sort -rn -k1,1 | cut -f2-
 }
 
 is_scannable_holder_pid() {
@@ -318,6 +362,58 @@ collect_and_log_workspace_holders() {
   echo "workspace holder cleanup: $label scan completed holder_ref_count=$count" >&2
 }
 
+log_workspace_mount_diagnostics() {
+  echo "workspace mount diagnostics: mountinfo scan started" >&2
+  : > "$mount_diagnostic_records"
+  scan_workspace_mountinfo_refs > "$mount_diagnostic_records" || true
+  count=0
+  tab="$(printf '\t')"
+  while IFS="$tab" read -r category mount_id parent_id mount_dev mount_root mount_point mount_options; do
+    count=$((count + 1))
+    if [ "$count" -le "$WORKSPACE_MOUNT_DIAGNOSTIC_LIMIT" ]; then
+      mount_root="$(sanitize_log_value "$mount_root")"
+      mount_point="$(sanitize_log_value "$mount_point")"
+      mount_options="$(sanitize_log_value "$mount_options")"
+      printf 'workspace mount: category=%s id=%s parent=%s dev=%s root=%s mount=%s options=%s\n' \
+        "$category" "$mount_id" "$parent_id" "$mount_dev" "$mount_root" "$mount_point" "$mount_options" >&2
+    elif [ "$count" -eq "$((WORKSPACE_MOUNT_DIAGNOSTIC_LIMIT + 1))" ]; then
+      echo "workspace mount diagnostics truncated after $WORKSPACE_MOUNT_DIAGNOSTIC_LIMIT entries" >&2
+    fi
+  done < "$mount_diagnostic_records"
+  echo "workspace mount diagnostics: mountinfo scan completed mount_ref_count=$count" >&2
+}
+
+cleanup_workspace_child_mounts() {
+  : > "$child_mount_records"
+  scan_workspace_child_mountpoints > "$child_mount_records" || true
+
+  count=0
+  failed_status=0
+  while IFS= read -r child_mount; do
+    [ -n "$child_mount" ] || continue
+    count=$((count + 1))
+    child_mount_log="$(sanitize_log_value "$child_mount")"
+    echo "workspace mount cleanup: child unmount started mount=$child_mount_log" >&2
+    if umount -- "$child_mount"; then
+      echo "workspace mount cleanup: child unmount succeeded mount=$child_mount_log" >&2
+    else
+      status=$?
+      failed_status=$status
+      echo "workspace mount cleanup: child unmount failed exit_code=$status mount=$child_mount_log" >&2
+    fi
+  done < "$child_mount_records"
+
+  echo "workspace mount cleanup: child scan completed mount_count=$count" >&2
+  if [ "$count" -eq 0 ]; then
+    echo "no workspace child mounts found" >&2
+  fi
+
+  if [ "$failed_status" -eq 0 ]; then
+    return 0
+  fi
+  return "$failed_status"
+}
+
 holder_record_pids() {
   sed -n '/^[0-9][0-9]*$/p' "$1" | sort -u
 }
@@ -471,4 +567,20 @@ else
   echo "no workspace maps holder processes found" >&2
 fi
 
-retry_workspace_unmount "slow maps diagnostics"
+echo "workspace mount cleanup: child scan started" >&2
+if cleanup_workspace_child_mounts; then
+  child_mount_cleanup_status=0
+else
+  child_mount_cleanup_status=$?
+fi
+
+if retry_workspace_unmount "child mount cleanup"; then
+  if [ "$child_mount_cleanup_status" -ne 0 ]; then
+    echo "workspace mount cleanup: parent unmount succeeded after child cleanup failure" >&2
+  fi
+  exit 0
+else
+  final_unmount_status=$?
+fi
+log_workspace_mount_diagnostics || true
+exit "$final_unmount_status"

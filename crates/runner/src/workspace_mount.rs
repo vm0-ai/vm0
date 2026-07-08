@@ -16,7 +16,8 @@
 //! processes. A clean unmount is attempted first. If that fails, diagnostics and
 //! cleanup stay targeted to processes that still reference the workspace:
 //! direct cwd/root/exe holder cleanup, fd holder cleanup, a slower maps scan,
-//! and final retry diagnostics. Holder diagnostics are bounded and truncated.
+//! workspace child mount cleanup, and final mount-topology diagnostics. Holder
+//! and mount diagnostics are bounded and truncated.
 //!
 //! Keep this as a high-level contract. The included shell helpers and their
 //! tests remain the source of truth for exact command behavior and limits.
@@ -277,13 +278,118 @@ exit 32
         );
     }
 
+    fn write_child_mount_cleanup_fake_umount(
+        fake_bin: &Path,
+        workspace_dir: &Path,
+        log_path: &Path,
+        count_path: &Path,
+    ) {
+        let workspace_dir = quote_shell_arg(workspace_dir.to_str().unwrap());
+        let log_path = quote_shell_arg(log_path.to_str().unwrap());
+        let count_path = quote_shell_arg(count_path.to_str().unwrap());
+        write_executable(
+            &fake_bin.join("umount"),
+            &format!(
+                r#"#!/bin/sh
+set -eu
+workspace_dir={workspace_dir}
+target=$2
+printf 'umount target=%s args=%s\n' "$target" "$*" >> {log_path}
+if [ "$target" != "$workspace_dir" ]; then
+  exit 0
+fi
+count=0
+if [ -f {count_path} ]; then
+  count="$(cat {count_path})"
+fi
+count=$((count + 1))
+printf '%s\n' "$count" > {count_path}
+if [ "$count" -lt 4 ]; then
+  echo "target is busy" >&2
+  exit 32
+fi
+exit 0
+"#
+            ),
+        );
+    }
+
+    fn write_child_mount_failure_parent_success_fake_umount(
+        fake_bin: &Path,
+        workspace_dir: &Path,
+        log_path: &Path,
+        count_path: &Path,
+    ) {
+        let workspace_dir = quote_shell_arg(workspace_dir.to_str().unwrap());
+        let log_path = quote_shell_arg(log_path.to_str().unwrap());
+        let count_path = quote_shell_arg(count_path.to_str().unwrap());
+        write_executable(
+            &fake_bin.join("umount"),
+            &format!(
+                r#"#!/bin/sh
+set -eu
+workspace_dir={workspace_dir}
+target=$2
+printf 'umount target=%s args=%s\n' "$target" "$*" >> {log_path}
+if [ "$target" != "$workspace_dir" ]; then
+  echo "child mount is already gone" >&2
+  exit 32
+fi
+count=0
+if [ -f {count_path} ]; then
+  count="$(cat {count_path})"
+fi
+count=$((count + 1))
+printf '%s\n' "$count" > {count_path}
+if [ "$count" -lt 4 ]; then
+  echo "target is busy" >&2
+  exit 32
+fi
+exit 0
+"#
+            ),
+        );
+    }
+
+    fn write_mountinfo(path: &Path, lines: &[String]) {
+        fs::write(path, format!("{}\n", lines.join("\n"))).unwrap();
+    }
+
+    fn mountinfo_line(
+        mount_id: u32,
+        parent_id: u32,
+        mount_dev: &str,
+        mount_root: &str,
+        mount_point: &Path,
+    ) -> String {
+        format!(
+            "{mount_id} {parent_id} {mount_dev} {mount_root} {} rw,relatime - ext4 /dev/vdb rw",
+            mount_point.display()
+        )
+    }
+
     fn run_unmount_script(
         workspace_dir: &Path,
         workspace_device: &Path,
         fake_bin: &Path,
     ) -> Output {
+        run_unmount_script_with_mountinfo(workspace_dir, workspace_device, fake_bin, None)
+    }
+
+    fn run_unmount_script_with_mountinfo(
+        workspace_dir: &Path,
+        workspace_device: &Path,
+        fake_bin: &Path,
+        mountinfo_path: Option<&Path>,
+    ) -> Output {
+        let mountinfo_assignment = mountinfo_path.map_or(String::new(), |path| {
+            format!(
+                "workspace_mountinfo_path={}\n",
+                quote_shell_arg(path.to_str().unwrap())
+            )
+        });
         let cmd = format!(
-            "workspace_dir={}\nworkspace_device={}\n{}",
+            "workspace_dir={}\nworkspace_device={}\n{mountinfo_assignment}{}",
             quote_shell_arg(workspace_dir.to_str().unwrap()),
             quote_shell_arg(workspace_device.to_str().unwrap()),
             WORKSPACE_UNMOUNT_SCRIPT
@@ -476,13 +582,15 @@ exit 32
         write_successful_fake_umount(&fake_bin, &log_path);
 
         let output = run_unmount_script(&workspace_dir, &workspace_device, &fake_bin);
+        let stderr = String::from_utf8_lossy(&output.stderr);
 
         assert!(
             output.status.success(),
             "stderr={} stdout={}",
-            String::from_utf8_lossy(&output.stderr),
+            stderr,
             String::from_utf8_lossy(&output.stdout)
         );
+        assert!(!stderr.contains("workspace mount diagnostics"));
         let log = fs::read_to_string(log_path).unwrap();
         assert!(log.contains("sync cwd=/ args=-f --"));
         assert!(log.contains("umount cwd=/ args=--"));
@@ -536,6 +644,7 @@ exit 32
                 .contains("workspace holder cleanup: retry umount after direct cleanup succeeded")
         );
         assert!(!stderr.contains("workspace holder cleanup: fd scan started"));
+        assert!(!stderr.contains("workspace mount diagnostics"));
         let log = fs::read_to_string(log_path).unwrap();
         assert_eq!(log.matches("umount call=").count(), 2);
         assert!(log.contains("umount call=1 cwd=/ args=--"));
@@ -590,6 +699,7 @@ exit 32
         assert!(
             stderr.contains("workspace holder cleanup: retry umount after fd cleanup succeeded")
         );
+        assert!(!stderr.contains("workspace mount diagnostics"));
         let log = fs::read_to_string(log_path).unwrap();
         assert_eq!(log.matches("umount call=").count(), 3);
         assert!(log.contains("umount call=1 cwd=/ args=--"));
@@ -677,13 +787,169 @@ exit 32
         assert!(stderr.contains("workspace holder cleanup: retry umount after fd cleanup failed"));
         assert!(stderr.contains("workspace holder cleanup: slow maps scan started"));
         assert!(stderr.contains("no workspace maps holder processes found"));
+        assert!(stderr.contains("workspace mount cleanup: child scan started"));
+        assert!(stderr.contains("no workspace child mounts found"));
         assert!(
             stderr.contains(
-                "workspace holder cleanup: retry umount after slow maps diagnostics failed"
+                "workspace holder cleanup: retry umount after child mount cleanup failed"
             )
         );
+        assert!(stderr.contains("workspace mount diagnostics: mountinfo scan started"));
         let log = fs::read_to_string(log_path).unwrap();
         assert_eq!(log.matches("umount call=").count(), 4);
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn unmount_script_reports_mount_topology_when_process_holders_are_empty() {
+        let temp = tempfile::tempdir().unwrap();
+        let workspace_dir = temp.path().join("workspace");
+        let child_mount = workspace_dir.join("nested");
+        let sibling_mount = temp.path().join("same-device");
+        let workspace_device = temp.path().join("vdb");
+        let fake_bin = temp.path().join("bin");
+        let log_path = temp.path().join("calls.log");
+        let count_path = temp.path().join("umount-count");
+        let mountinfo_path = temp.path().join("mountinfo");
+        fs::create_dir_all(&child_mount).unwrap();
+        fs::create_dir(&sibling_mount).unwrap();
+        fs::create_dir(&fake_bin).unwrap();
+        write_fake_mountpoint(&fake_bin, &workspace_dir, &workspace_device);
+        write_fake_sync(&fake_bin, &log_path);
+        write_always_busy_fake_umount(&fake_bin, &log_path, &count_path);
+        write_mountinfo(
+            &mountinfo_path,
+            &[
+                mountinfo_line(100, 1, "123", "/", &workspace_dir),
+                mountinfo_line(101, 100, "456", "/", &child_mount),
+                mountinfo_line(102, 1, "123", "/", &sibling_mount),
+            ],
+        );
+
+        let output = run_unmount_script_with_mountinfo(
+            &workspace_dir,
+            &workspace_device,
+            &fake_bin,
+            Some(&mountinfo_path),
+        );
+        let stderr = String::from_utf8_lossy(&output.stderr);
+
+        assert!(!output.status.success(), "stderr={stderr}");
+        assert!(stderr.contains("workspace holder cleanup: direct scan holder_pid_count=0"));
+        assert!(stderr.contains("workspace holder cleanup: fd scan holder_pid_count=0"));
+        assert!(stderr.contains("workspace holder cleanup: slow maps scan holder_pid_count=0"));
+        assert!(stderr.contains("workspace mount cleanup: child unmount started"));
+        assert!(stderr.contains("workspace mount diagnostics: mountinfo scan started"));
+        assert!(stderr.contains("workspace mount: category=workspace id=100"));
+        assert!(stderr.contains("workspace mount: category=child id=101"));
+        assert!(stderr.contains("workspace mount: category=same-device id=102"));
+        assert!(stderr.contains("workspace mount diagnostics: mountinfo scan completed"));
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn unmount_script_unmounts_workspace_child_mounts_before_parent_retry() {
+        let temp = tempfile::tempdir().unwrap();
+        let workspace_dir = temp.path().join("workspace");
+        let shallow_child = workspace_dir.join("child");
+        let deep_child = shallow_child.join("grandchild");
+        let workspace_device = temp.path().join("vdb");
+        let fake_bin = temp.path().join("bin");
+        let log_path = temp.path().join("calls.log");
+        let count_path = temp.path().join("umount-count");
+        let mountinfo_path = temp.path().join("mountinfo");
+        fs::create_dir_all(&deep_child).unwrap();
+        fs::create_dir(&fake_bin).unwrap();
+        write_fake_mountpoint(&fake_bin, &workspace_dir, &workspace_device);
+        write_fake_sync(&fake_bin, &log_path);
+        write_child_mount_cleanup_fake_umount(&fake_bin, &workspace_dir, &log_path, &count_path);
+        write_mountinfo(
+            &mountinfo_path,
+            &[
+                mountinfo_line(100, 1, "123", "/", &workspace_dir),
+                mountinfo_line(101, 100, "456", "/", &shallow_child),
+                mountinfo_line(102, 101, "789", "/", &deep_child),
+            ],
+        );
+
+        let output = run_unmount_script_with_mountinfo(
+            &workspace_dir,
+            &workspace_device,
+            &fake_bin,
+            Some(&mountinfo_path),
+        );
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+
+        assert!(output.status.success(), "stderr={stderr} stdout={stdout}");
+        assert!(stderr.contains("workspace mount cleanup: child scan started"));
+        assert!(stderr.contains("workspace mount cleanup: child unmount succeeded"));
+        assert!(!stderr.contains("workspace mount diagnostics"));
+
+        let log = fs::read_to_string(log_path).unwrap();
+        let deep_unmount = log
+            .find(&format!("umount target={} ", deep_child.display()))
+            .expect("deep child unmount");
+        let shallow_unmount = log
+            .find(&format!("umount target={} ", shallow_child.display()))
+            .expect("shallow child unmount");
+        let final_parent_unmount = log
+            .rfind(&format!("umount target={} ", workspace_dir.display()))
+            .expect("final parent unmount");
+        assert!(
+            deep_unmount < shallow_unmount,
+            "deeper child mount should unmount before shallower child: {log}"
+        );
+        assert!(
+            shallow_unmount < final_parent_unmount,
+            "child mounts should unmount before final parent retry: {log}"
+        );
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn unmount_script_succeeds_when_child_cleanup_races_with_parent_unmount() {
+        let temp = tempfile::tempdir().unwrap();
+        let workspace_dir = temp.path().join("workspace");
+        let child_mount = workspace_dir.join("child");
+        let workspace_device = temp.path().join("vdb");
+        let fake_bin = temp.path().join("bin");
+        let log_path = temp.path().join("calls.log");
+        let count_path = temp.path().join("umount-count");
+        let mountinfo_path = temp.path().join("mountinfo");
+        fs::create_dir_all(&child_mount).unwrap();
+        fs::create_dir(&fake_bin).unwrap();
+        write_fake_mountpoint(&fake_bin, &workspace_dir, &workspace_device);
+        write_fake_sync(&fake_bin, &log_path);
+        write_child_mount_failure_parent_success_fake_umount(
+            &fake_bin,
+            &workspace_dir,
+            &log_path,
+            &count_path,
+        );
+        write_mountinfo(
+            &mountinfo_path,
+            &[
+                mountinfo_line(100, 1, "123", "/", &workspace_dir),
+                mountinfo_line(101, 100, "456", "/", &child_mount),
+            ],
+        );
+
+        let output = run_unmount_script_with_mountinfo(
+            &workspace_dir,
+            &workspace_device,
+            &fake_bin,
+            Some(&mountinfo_path),
+        );
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+
+        assert!(output.status.success(), "stderr={stderr} stdout={stdout}");
+        assert!(stderr.contains("workspace mount cleanup: child unmount failed exit_code=32"));
+        assert!(stderr.contains(
+            "workspace mount cleanup: parent unmount succeeded after child cleanup failure"
+        ));
+        assert!(!stderr.contains("workspace mount diagnostics"));
     }
 
     #[test]
@@ -766,6 +1032,10 @@ exit 32
         assert!(cmd.contains("scan_workspace_direct_holder_refs()"));
         assert!(cmd.contains("scan_workspace_fd_holder_refs()"));
         assert!(cmd.contains("scan_workspace_maps_holder_refs()"));
+        assert!(cmd.contains("scan_workspace_mountinfo_refs()"));
+        assert!(cmd.contains("scan_workspace_child_mountpoints()"));
+        assert!(cmd.contains("cleanup_workspace_child_mounts()"));
+        assert!(cmd.contains("log_workspace_mount_diagnostics()"));
         assert!(cmd.contains("scan_proc_ref \"$pid\" cwd \"$proc_dir/cwd\""));
         assert!(cmd.contains("scan_proc_ref \"$pid\" root \"$proc_dir/root\""));
         assert!(cmd.contains("scan_proc_ref \"$pid\" exe \"$proc_dir/exe\""));
@@ -784,9 +1054,16 @@ exit 32
         assert!(cmd.contains("WORKSPACE_HOLDER_MAPS_LINE_LIMIT=4096"));
         assert!(cmd.contains("WORKSPACE_HOLDER_VALUE_LIMIT=240"));
         assert!(cmd.contains("WORKSPACE_HOLDER_KILL_GRACE_SECONDS=1"));
+        assert!(cmd.contains("WORKSPACE_MOUNT_DIAGNOSTIC_LIMIT=40"));
+        assert!(cmd.contains(
+            "workspace_mountinfo_path=${workspace_mountinfo_path:-/proc/self/mountinfo}"
+        ));
         assert!(cmd.contains("wait_for_workspace_holder_records_to_clear()"));
         assert!(cmd.contains("holder_records_have_workspace_ref()"));
         assert!(cmd.contains("diagnostics truncated after $WORKSPACE_HOLDER_DIAGNOSTIC_LIMIT"));
+        assert!(cmd.contains(
+            "workspace mount diagnostics truncated after $WORKSPACE_MOUNT_DIAGNOSTIC_LIMIT"
+        ));
         assert!(cmd.contains("workspace holder cleanup: direct scan started"));
         assert!(cmd.contains("workspace holder cleanup: direct TERM started"));
         assert!(cmd.contains("workspace holder cleanup: direct KILL started"));
@@ -795,7 +1072,13 @@ exit 32
         assert!(cmd.contains("workspace holder cleanup: fd KILL started"));
         assert!(cmd.contains("workspace holder cleanup: slow maps scan started"));
         assert!(cmd.contains("workspace holder cleanup: maps KILL started"));
+        assert!(cmd.contains("workspace mount cleanup: child scan started"));
+        assert!(cmd.contains("workspace mount cleanup: child unmount started"));
+        assert!(cmd.contains("workspace mount diagnostics: mountinfo scan started"));
         assert!(cmd.contains("pid=%s uid=%s comm=%s ref=%s path=%s"));
+        assert!(cmd.contains(
+            "workspace mount: category=%s id=%s parent=%s dev=%s root=%s mount=%s options=%s"
+        ));
         assert!(cmd.contains("comm=\"$(sanitize_log_value \"$comm\")\""));
         assert!(cmd.contains("target=\"$(sanitize_log_value \"$target\")\""));
         assert!(cmd.contains("pid_has_cleanup_workspace_ref \"$pid\" \"$ref_mode\" || continue"));
@@ -889,11 +1172,18 @@ exit 32
             "wait_for_workspace_holder_records_to_clear \"$maps_holder_records\" maps \"$WORKSPACE_HOLDER_KILL_GRACE_SECONDS\"",
             maps_kill,
         );
-        let maps_retry = find_after(
+        let child_scan = find_after(
             &cmd,
-            "retry_workspace_unmount \"slow maps diagnostics\"",
+            "echo \"workspace mount cleanup: child scan started\"",
             maps_wait,
         );
+        let child_cleanup = find_after(&cmd, "cleanup_workspace_child_mounts", child_scan);
+        let child_retry = find_after(
+            &cmd,
+            "retry_workspace_unmount \"child mount cleanup\"",
+            child_cleanup,
+        );
+        let mount_diagnostics = find_after(&cmd, "log_workspace_mount_diagnostics", child_retry);
 
         assert!(
             clean_unmount < direct_scan,
@@ -968,8 +1258,20 @@ exit 32
             "maps KILL must wait for maps refs to clear"
         );
         assert!(
-            maps_wait < maps_retry,
-            "maps wait must happen before final retry unmount"
+            maps_wait < child_scan,
+            "maps wait must happen before child mount cleanup"
+        );
+        assert!(
+            child_scan < child_cleanup,
+            "child mount cleanup must start after the maps cleanup phase"
+        );
+        assert!(
+            child_cleanup < child_retry,
+            "child mounts must be cleaned before the final parent retry"
+        );
+        assert!(
+            child_retry < mount_diagnostics,
+            "mount diagnostics should only run after the final parent retry fails"
         );
     }
 
@@ -978,6 +1280,7 @@ exit 32
         let cmd = workspace_unmount_command();
 
         assert!(!cmd.contains("umount -l"));
+        assert!(!cmd.contains("umount -f"));
         assert!(!cmd.contains("pkill"));
         assert!(!cmd.contains("killall"));
         assert!(!cmd.contains("cmdline"));
