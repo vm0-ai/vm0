@@ -2925,9 +2925,9 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     expect(claim.cliAgentType).toBe("codex");
     expect(claim.environment).toMatchObject({
       OPENAI_API_KEY: minimaxApiKeyPlaceholder,
+      OPENAI_BASE_URL: "https://api.minimax.io/v1",
       OPENAI_MODEL: "MiniMax-M3",
     });
-    expect(claim.environment).not.toHaveProperty("OPENAI_BASE_URL");
     expect(claim.codexRuntimeConfig).toMatchObject({
       providerId: "minimax",
       name: "MiniMax",

@@ -89,12 +89,16 @@ export type ModelProviderCodexRuntimeConfig = z.infer<
   typeof modelProviderCodexRuntimeConfigSchema
 >;
 
+const MINIMAX_CODEX_BASE_URL = "https://api.minimax.io/v1";
+
 const MINIMAX_CODEX_ENV_BINDINGS = {
   OPENAI_API_KEY: "$secret",
+  // Deployment compatibility: old runners ignore codexRuntimeConfig and still
+  // need the legacy base URL. New guest-agent code ignores OPENAI_BASE_URL
+  // whenever structured Codex runtime config is present.
+  OPENAI_BASE_URL: MINIMAX_CODEX_BASE_URL,
   OPENAI_MODEL: "$model",
 } as const satisfies ModelProviderEnvBindings;
-
-const MINIMAX_CODEX_BASE_URL = "https://api.minimax.io/v1";
 
 const MINIMAX_CODEX_RUNTIME_CONFIG = {
   providerId: "minimax",
