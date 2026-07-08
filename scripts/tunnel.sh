@@ -181,17 +181,13 @@ if [[ "$MODE" == "named" ]]; then
     log "DNS route: ${FQDN} -> ${CNAME_TARGET}"
   fi
 
-  # Write ingress config. Prefer local tunnel credentials over --token so the
-  # local ingress rules are honored for this named tunnel.
+  # Write ingress config. Prefer local tunnel credentials, but fall back to the
+  # API-fetched tunnel token so devcontainers do not need per-tunnel files.
   CONFIG_FILE="/tmp/cloudflared-config-${TUNNEL_NAME}.yml"
   CREDENTIALS_FILE="${HOME}/.cloudflared/${TUNNEL_ID}.json"
-  if [[ ! -f "$CREDENTIALS_FILE" ]]; then
-    log "Error: credentials file not found for ${TUNNEL_NAME}: ${CREDENTIALS_FILE}"
-    log "Run 'cloudflared tunnel login' or sync the tunnel credentials before starting this tunnel."
-    exit 1
-  fi
 
-  cat > "$CONFIG_FILE" <<EOF
+  if [[ -f "$CREDENTIALS_FILE" ]]; then
+    cat > "$CONFIG_FILE" <<EOF
 tunnel: ${TUNNEL_ID}
 credentials-file: ${CREDENTIALS_FILE}
 ingress:
@@ -199,11 +195,32 @@ ingress:
     service: http://localhost:${PORT}
   - service: http_status:404
 EOF
+    TUNNEL_AUTH_ARGS=(env -u CF_DNS_AND_TUNNEL_API_TOKEN -u CF_ACCOUNT_ID -u TUNNEL_TOKEN)
+    USE_TUNNEL_TOKEN=0
+    log "Using local tunnel credentials: ${CREDENTIALS_FILE}"
+  else
+    cat > "$CONFIG_FILE" <<EOF
+ingress:
+  - hostname: ${FQDN}
+    service: http://localhost:${PORT}
+  - service: http_status:404
+EOF
+    TUNNEL_AUTH_ARGS=(env -u CF_DNS_AND_TUNNEL_API_TOKEN -u CF_ACCOUNT_ID)
+    USE_TUNNEL_TOKEN=1
+    log "Credentials file not found for ${TUNNEL_NAME}: ${CREDENTIALS_FILE}"
+    log "Using API-fetched tunnel token instead."
+  fi
 
   # QUIC fails in devcontainer environment, must use HTTP/2
   stop_existing_tunnel
-  start_cloudflared env -u CF_DNS_AND_TUNNEL_API_TOKEN -u CF_ACCOUNT_ID \
+  if [[ "$USE_TUNNEL_TOKEN" == "1" ]]; then
+    export TUNNEL_TOKEN
+  fi
+  start_cloudflared "${TUNNEL_AUTH_ARGS[@]}" \
     cloudflared tunnel --config "$CONFIG_FILE" --protocol http2 run
+  if [[ "$USE_TUNNEL_TOKEN" == "1" ]]; then
+    unset TUNNEL_TOKEN
+  fi
 
 else
   log "Anonymous tunnel: localhost:${PORT}"
