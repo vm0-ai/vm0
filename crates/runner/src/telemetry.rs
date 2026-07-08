@@ -641,7 +641,7 @@ async fn send_telemetry(
         .timeout(TELEMETRY_TIMEOUT)
         .json(&payload);
 
-    match req.send().await {
+    match req.send("telemetry").await {
         Ok(resp) if !resp.status().is_success() => {
             warn!(run_id = %run_id, status = %resp.status(), "telemetry flush rejected");
         }

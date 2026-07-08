@@ -391,7 +391,7 @@ impl JobProvider for ApiProvider {
 
     async fn heartbeat(&self, state: &HeartbeatState) {
         if let Err(e) = self.api.heartbeat(state).await {
-            warn!(error = %e, "heartbeat failed");
+            log_heartbeat_failure(state, &e);
         }
     }
 
@@ -450,6 +450,44 @@ impl JobProvider for ApiProvider {
             }
         }
     }
+}
+
+fn log_heartbeat_failure(state: &HeartbeatState, error: &RunnerError) {
+    let sessions = state.held_session_states.len();
+    if let RunnerError::ApiTransport(api_error) = error {
+        let request = &api_error.request;
+        warn!(
+            error = %error,
+            endpoint = request.endpoint_label,
+            method = %request.method,
+            host = %request.host,
+            path = %request.path,
+            client_request_id = %request.client_request_id,
+            client_session_id = %request.client_session_id,
+            client_version = %request.client_version,
+            failure_kind = api_error.failure_kind.as_str(),
+            error_summary = %api_error.summary,
+            runner_id = %state.runner_id,
+            runner_name = %state.runner_name,
+            runner_group = %state.group,
+            mode = %state.mode,
+            running = state.running_count,
+            sessions,
+            "heartbeat failed"
+        );
+        return;
+    }
+
+    warn!(
+        error = %error,
+        runner_id = %state.runner_id,
+        runner_name = %state.runner_name,
+        runner_group = %state.group,
+        mode = %state.mode,
+        running = state.running_count,
+        sessions,
+        "heartbeat failed"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -745,8 +783,8 @@ fn poll_reason_value(reason: PollReason) -> &'static str {
     }
 }
 
-async fn send_api(req: ApiRequestBuilder, label: &str) -> RunnerResult<Response> {
-    match req.send().await {
+async fn send_api(req: ApiRequestBuilder, label: &'static str) -> RunnerResult<Response> {
+    match req.send(label).await {
         Ok(resp) => Ok(resp),
         Err(RunnerError::Api(message)) => Err(RunnerError::Api(format!("{label}: {message}"))),
         Err(error) => Err(error),
@@ -1028,6 +1066,10 @@ mod tests {
     use tokio::net::TcpListener;
     use tokio::sync::mpsc;
     use tokio::task::JoinHandle;
+    use tracing::Level;
+    use tracing_subscriber::prelude::*;
+    use tracing_test_support::{CapturedEvent, CapturedEvents};
+    use uuid::Uuid;
 
     use crate::http::HttpClientConfig;
 
@@ -1224,6 +1266,59 @@ mod tests {
         })
     }
 
+    async fn capture_api_provider_events<F>(future: F) -> (F::Output, Vec<CapturedEvent>)
+    where
+        F: std::future::Future,
+    {
+        let captured = CapturedEvents::default();
+        let subscriber = tracing_subscriber::registry().with(captured.clone());
+        let guard = tracing::subscriber::set_default(subscriber);
+        tracing::callsite::rebuild_interest_cache();
+        let output = future.await;
+        drop(guard);
+        (output, captured.entries())
+    }
+
+    fn captured_event<'a>(events: &'a [CapturedEvent], message: &str) -> &'a CapturedEvent {
+        events
+            .iter()
+            .find(|event| {
+                event
+                    .fields
+                    .get("message")
+                    .is_some_and(|actual| actual == message)
+            })
+            .unwrap_or_else(|| panic!("missing event {message}; events={events:#?}"))
+    }
+
+    fn event_field<'a>(event: &'a CapturedEvent, field: &str) -> &'a str {
+        event
+            .fields
+            .get(field)
+            .map(String::as_str)
+            .unwrap_or_else(|| panic!("missing field {field}; event={event:#?}"))
+    }
+
+    fn heartbeat_state_for_test() -> HeartbeatState {
+        HeartbeatState {
+            runner_id: "runner-heartbeat-test".to_string(),
+            runner_name: "runner test".to_string(),
+            group: "vm0/test".to_string(),
+            total_vcpu: 8,
+            total_memory_mb: 32768,
+            max_concurrent: 4,
+            allocated_vcpu: 2,
+            allocated_memory_mb: 4096,
+            running_count: 1,
+            admittable_profiles: vec![crate::profile::DEFAULT_PROFILE.to_string()],
+            held_session_states: vec![crate::types::HeldSessionState {
+                session_id: "held-session-test".to_string(),
+                last_completed_at: "2026-07-08T00:00:00.000Z".to_string(),
+            }],
+            mode: "running".to_string(),
+        }
+    }
+
     async fn push_direct_candidate_for_test(provider: &ApiProvider, candidate: DirectJobCandidate) {
         provider.direct_candidates.push(candidate).await;
     }
@@ -1321,6 +1416,61 @@ mod tests {
                 .lines()
                 .any(|line| line.eq_ignore_ascii_case(&expected)),
             "completion request should use sandbox auth; request was:\n{request}",
+        );
+    }
+
+    #[tokio::test]
+    async fn heartbeat_send_failure_logs_transport_and_state_context_without_secrets() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let api_url = format!("http://{}", listener.local_addr().unwrap());
+        drop(listener);
+        let provider = api_provider_for_test(
+            api_url.clone(),
+            CancellationToken::new(),
+            Arc::new(PollWakeups::new(false)),
+        );
+        let state = heartbeat_state_for_test();
+
+        let (_, events) = capture_api_provider_events(provider.heartbeat(&state)).await;
+        let event = captured_event(&events, "heartbeat failed");
+
+        assert_eq!(event.level, Level::WARN);
+        assert_eq!(event_field(event, "runner_id"), "runner-heartbeat-test");
+        assert_eq!(event_field(event, "runner_name"), "runner test");
+        assert_eq!(event_field(event, "runner_group"), "vm0/test");
+        assert_eq!(event_field(event, "mode"), "running");
+        assert_eq!(event_field(event, "running"), "1");
+        assert_eq!(event_field(event, "sessions"), "1");
+        assert_eq!(event_field(event, "endpoint"), "heartbeat");
+        assert_eq!(event_field(event, "method"), "POST");
+        assert_eq!(
+            event_field(event, "path"),
+            routes::runners::heartbeat::HEARTBEAT.path
+        );
+        assert_eq!(
+            event_field(event, "client_session_id"),
+            "runner-session-test"
+        );
+        assert_eq!(
+            event_field(event, "client_version"),
+            env!("CARGO_PKG_VERSION")
+        );
+        assert_eq!(event_field(event, "failure_kind"), "connect");
+        assert!(
+            event_field(event, "host").starts_with("127.0.0.1:"),
+            "host should include only host and port; event={event:#?}"
+        );
+        Uuid::parse_str(event_field(event, "client_request_id"))
+            .expect("client_request_id should be a UUID");
+
+        let event_debug = format!("{event:#?}");
+        assert!(
+            !event_debug.contains(&api_url),
+            "event should not include full URL: {event_debug}"
+        );
+        assert!(
+            !event_debug.contains("runner-token") && !event_debug.contains("held-session-test"),
+            "event should not include bearer token or heartbeat body: {event_debug}"
         );
     }
 
