@@ -58,6 +58,7 @@ import * as e2eTelegramMockCallLogSchema from "./schema/e2e-telegram-mock-call-l
 import * as orgSchema from "./schema/org-metadata";
 import * as orgConcurrencyEntitlementSchema from "./schema/org-concurrency-entitlement";
 import * as orgConcurrencySubscriptionSchema from "./schema/org-concurrency-subscription";
+import * as orgUsageAllowanceSchema from "./schema/org-usage-allowance";
 import * as orgCacheSchema from "./schema/org-cache";
 import * as orgMembersSchema from "./schema/org-members-metadata";
 import * as orgMembersCacheSchema from "./schema/org-members-cache";
@@ -161,6 +162,7 @@ export const schema = {
   ...orgSchema,
   ...orgConcurrencyEntitlementSchema,
   ...orgConcurrencySubscriptionSchema,
+  ...orgUsageAllowanceSchema,
   ...orgCacheSchema,
   ...orgMembersSchema,
   ...orgMembersCacheSchema,

@@ -3,6 +3,7 @@ import { isLimitedFree1RestrictedRunModel } from "@vm0/api-contracts/contracts/m
 
 import { insufficientCredits } from "../../lib/error";
 import type { Db } from "../external/db";
+import { resolveUsageAllowanceAvailability } from "./usage-allowance.service";
 
 type CreditDb = Pick<Db, "execute">;
 
@@ -85,7 +86,17 @@ export async function checkOrgCreditsForRunAdmission(params: {
     return undefined;
   }
 
-  return availability.spendableCredits > 0 ? undefined : insufficientCredits();
+  if (availability.spendableCredits > 0) {
+    return undefined;
+  }
+
+  const allowance = await resolveUsageAllowanceAvailability(
+    params.db,
+    params.orgId,
+  );
+  return allowance && allowance.remainingUnits > 0
+    ? undefined
+    : insufficientCredits();
 }
 
 export async function checkLimitedFreeRunModelAdmission(params: {

@@ -43,6 +43,15 @@ interface SeedUsagePricingArgs {
   readonly unitSize: number;
 }
 
+interface SeedUsageAllowanceArgs {
+  readonly orgId: string;
+  readonly shortWindowSeconds: number;
+  readonly shortWindowUnits: number;
+  readonly weeklyWindowSeconds?: number;
+  readonly weeklyWindowUnits: number;
+  readonly status?: string;
+}
+
 interface InsertModelUsageArgs {
   readonly orgId: string;
   readonly userId: string;
@@ -67,6 +76,7 @@ interface SeedRunArgs {
   readonly createdAt?: Date;
   readonly startedAt?: Date | null;
   readonly completedAt?: Date | null;
+  readonly activateUsageAllowanceWindows?: boolean;
 }
 
 interface SeedChatThreadRunArgs {
@@ -76,6 +86,26 @@ interface SeedChatThreadRunArgs {
   readonly triggerSource?: string;
   readonly threadId?: string;
   readonly createdAt?: Date;
+}
+
+export interface UsageAllowanceWindowState {
+  readonly id: string;
+  readonly kind: string;
+  readonly startsAt: Date;
+  readonly expiresAt: Date;
+  readonly unitLimit: number;
+  readonly consumedUnits: number;
+}
+
+export interface UsageAllowanceAllocationState {
+  readonly usageEventId: string;
+  readonly runId: string | null;
+  readonly unitsApplied: number;
+}
+
+export interface UsageAllowanceState {
+  readonly windows: readonly UsageAllowanceWindowState[];
+  readonly allocations: readonly UsageAllowanceAllocationState[];
 }
 
 export interface InsightData {
@@ -241,6 +271,85 @@ export const seedUsagePricing$ = command(
   },
 );
 
+export const seedUsageAllowance$ = command(
+  async (
+    _,
+    args: SeedUsageAllowanceArgs,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    await postAction(signal, {
+      action: "seed-usage-allowance",
+      org_id: args.orgId,
+      short_window_seconds: args.shortWindowSeconds,
+      short_window_units: args.shortWindowUnits,
+      weekly_window_seconds: args.weeklyWindowSeconds,
+      weekly_window_units: args.weeklyWindowUnits,
+      status: args.status,
+    });
+  },
+);
+
+export const readUsageOrgCredits$ = command(
+  async (_, orgId: string, signal: AbortSignal): Promise<number> => {
+    const response = await postAction(signal, {
+      action: "read-org-credits",
+      org_id: orgId,
+    });
+    if (response.credits === undefined) {
+      throw new Error("readUsageOrgCredits$: response missing credits");
+    }
+    return response.credits;
+  },
+);
+
+export const readRunUsageCredits$ = command(
+  async (_, runId: string, signal: AbortSignal): Promise<number> => {
+    const response = await postAction(signal, {
+      action: "read-run-usage-credits",
+      run_id: runId,
+    });
+    if (response.usage_credits === undefined) {
+      throw new Error("readRunUsageCredits$: response missing usage_credits");
+    }
+    return response.usage_credits;
+  },
+);
+
+export const readUsageAllowance$ = command(
+  async (
+    _,
+    orgId: string,
+    signal: AbortSignal,
+  ): Promise<UsageAllowanceState> => {
+    const response = await postAction(signal, {
+      action: "read-usage-allowance",
+      org_id: orgId,
+    });
+    if (!response.usage_allowance) {
+      throw new Error("readUsageAllowance$: response missing usage_allowance");
+    }
+    return {
+      windows: response.usage_allowance.windows.map((window) => {
+        return {
+          id: window.id,
+          kind: window.kind,
+          startsAt: new Date(window.starts_at),
+          expiresAt: new Date(window.expires_at),
+          unitLimit: window.unit_limit,
+          consumedUnits: window.consumed_units,
+        };
+      }),
+      allocations: response.usage_allowance.allocations.map((allocation) => {
+        return {
+          usageEventId: allocation.usage_event_id,
+          runId: allocation.run_id,
+          unitsApplied: allocation.units_applied,
+        };
+      }),
+    };
+  },
+);
+
 export const emitRunUsageMessage$ = command(
   async (_, runId: string, signal: AbortSignal): Promise<boolean> => {
     const response = await postAction(signal, {
@@ -287,6 +396,7 @@ export const seedRun$ = command(
       created_at: dateToWire(args.createdAt) ?? undefined,
       started_at: dateToWire(args.startedAt),
       completed_at: dateToWire(args.completedAt),
+      activate_usage_allowance_windows: args.activateUsageAllowanceWindows,
     });
     if (!response.run_id || !response.compose_id) {
       throw new Error("seedRun$: response missing run identifiers");

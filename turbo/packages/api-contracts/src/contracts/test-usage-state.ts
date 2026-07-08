@@ -24,6 +24,26 @@ const usageFixtureInputSchema = z.object({
   user_ids: z.array(z.string()),
 });
 
+const usageAllowanceWindowStateSchema = z.object({
+  id: z.string(),
+  kind: z.string(),
+  starts_at: z.string(),
+  expires_at: z.string(),
+  unit_limit: z.number(),
+  consumed_units: z.number(),
+});
+
+const usageAllowanceAllocationStateSchema = z.object({
+  usage_event_id: z.string(),
+  run_id: z.string().nullable(),
+  units_applied: z.number(),
+});
+
+const usageAllowanceStateSchema = z.object({
+  windows: z.array(usageAllowanceWindowStateSchema),
+  allocations: z.array(usageAllowanceAllocationStateSchema),
+});
+
 export const testUsageStateActionBodySchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("seed-fixture"),
@@ -84,6 +104,7 @@ export const testUsageStateActionBodySchema = z.discriminatedUnion("action", [
     created_at: optionalDateStringSchema,
     started_at: nullableDateStringSchema.optional(),
     completed_at: nullableDateStringSchema.optional(),
+    activate_usage_allowance_windows: z.boolean().optional(),
   }),
   z.object({
     action: z.literal("seed-chat-thread-run"),
@@ -98,6 +119,27 @@ export const testUsageStateActionBodySchema = z.discriminatedUnion("action", [
     action: z.literal("set-credit-balance"),
     org_id: z.string(),
     credits: z.number(),
+  }),
+  z.object({
+    action: z.literal("read-org-credits"),
+    org_id: z.string(),
+  }),
+  z.object({
+    action: z.literal("read-run-usage-credits"),
+    run_id: z.string(),
+  }),
+  z.object({
+    action: z.literal("seed-usage-allowance"),
+    org_id: z.string(),
+    short_window_seconds: z.number().int().positive(),
+    short_window_units: z.number().int().positive(),
+    weekly_window_seconds: z.number().int().positive().optional(),
+    weekly_window_units: z.number().int().positive(),
+    status: z.string().optional(),
+  }),
+  z.object({
+    action: z.literal("read-usage-allowance"),
+    org_id: z.string(),
   }),
   z.object({
     action: z.literal("set-org-tier"),
@@ -135,6 +177,9 @@ export const testUsageStateActionResponseSchema = z.object({
   compose_id: z.string().optional(),
   thread_id: z.string().optional(),
   emitted: z.boolean().optional(),
+  credits: z.number().optional(),
+  usage_credits: z.number().optional(),
+  usage_allowance: usageAllowanceStateSchema.optional(),
 });
 
 export const testUsageStateInsightsResponseSchema = z.object({

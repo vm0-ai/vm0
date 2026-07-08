@@ -17,6 +17,7 @@ import {
   type CreditLowBalanceAlertArgs,
 } from "./zero-credit-low-balance-alert.service";
 import { triggerAutoRecharge$ } from "./zero-credit-recharge.service";
+import { applyUsageAllowanceToUsageEvent } from "./usage-allowance.service";
 
 const L = logger("CreditUsage");
 
@@ -128,7 +129,7 @@ async function deductFromExpiresRecords(
 }
 
 interface ProcessOrgUsageEventsResult {
-  readonly totalCredits: number;
+  readonly billableCredits: number;
   readonly runIds: readonly string[];
   readonly lowBalanceAlert: CreditLowBalanceAlertArgs | null;
 }
@@ -149,7 +150,7 @@ async function processOrgUsageEventsInTransaction(
     .where(and(eq(usageEvent.orgId, orgId), eq(usageEvent.status, "pending")));
 
   if (pendingRecords.length === 0) {
-    return { totalCredits: 0, runIds: [], lowBalanceAlert: null };
+    return { billableCredits: 0, runIds: [], lowBalanceAlert: null };
   }
   const runIds = [
     ...new Set(
@@ -166,7 +167,7 @@ async function processOrgUsageEventsInTransaction(
     }),
   );
 
-  let totalCredits = 0;
+  let billableCredits = 0;
   for (const record of pendingRecords) {
     const exactPricing = pricingByKey.get(
       `${record.kind}|${record.provider}|${record.category}`,
@@ -214,9 +215,16 @@ async function processOrgUsageEventsInTransaction(
       });
     }
 
-    const creditsCharged = Math.ceil(
+    const grossCredits = Math.ceil(
       (record.quantity * pricing.unitPrice) / pricing.unitSize,
     );
+    const allowanceUnits = await applyUsageAllowanceToUsageEvent(tx, {
+      usageEventId: record.id,
+      orgId,
+      runId: record.runId,
+      grossUnits: grossCredits,
+    });
+    const creditsCharged = grossCredits - allowanceUnits;
     await tx
       .update(usageEvent)
       .set({
@@ -226,19 +234,19 @@ async function processOrgUsageEventsInTransaction(
         billingError: exactPricing ? null : "fallback_pricing",
       })
       .where(eq(usageEvent.id, record.id));
-    totalCredits += creditsCharged;
+    billableCredits += creditsCharged;
   }
   signal.throwIfAborted();
 
   let lowBalanceAlert: CreditLowBalanceAlertArgs | null = null;
-  if (totalCredits > 0) {
+  if (billableCredits > 0) {
     // Order matters: settle expired credits BEFORE the new deduction.
     const beforeCredits = await getOrgCredits(tx, orgId);
     const totalExpired = await expireCredits(tx, orgId);
     const effectiveBeforeCredits = Math.max(beforeCredits - totalExpired, 0);
-    await deductOrgCredits(tx, orgId, totalCredits);
+    await deductOrgCredits(tx, orgId, billableCredits);
     const afterCredits = await getOrgCredits(tx, orgId);
-    await deductFromExpiresRecords(tx, orgId, totalCredits);
+    await deductFromExpiresRecords(tx, orgId, billableCredits);
     if (
       effectiveBeforeCredits > LOW_CREDIT_EMAIL_ALERT_THRESHOLD_CREDITS &&
       afterCredits <= LOW_CREDIT_EMAIL_ALERT_THRESHOLD_CREDITS
@@ -251,12 +259,12 @@ async function processOrgUsageEventsInTransaction(
     }
   }
   signal.throwIfAborted();
-  return { totalCredits, runIds, lowBalanceAlert };
+  return { billableCredits, runIds, lowBalanceAlert };
 }
 
 /**
  * Atomically process pending usage_event records for an org and deduct
- * the total from the org's credit balance.
+ * the allowance-uncovered total from the org's credit balance.
  *
  * Mirrors apps/web's `processOrgUsageEvents`. The transactional invariant
  * is critical: events are marked processed IFF the credit deduction
@@ -280,14 +288,13 @@ export const processOrgUsageEvents$ = command(
   async ({ set }, orgId: string, signal: AbortSignal): Promise<void> => {
     const writeDb = set(writeDb$);
 
-    const { totalCredits, runIds, lowBalanceAlert } = await writeDb.transaction(
-      (tx) => {
+    const { billableCredits, runIds, lowBalanceAlert } =
+      await writeDb.transaction((tx) => {
         return processOrgUsageEventsInTransaction(tx, orgId, signal);
-      },
-    );
+      });
     signal.throwIfAborted();
 
-    if (totalCredits > 0) {
+    if (billableCredits > 0) {
       // Auto-recharge runs OUTSIDE the deduction transaction (Stripe
       // can't be transactional with DB). triggerAutoRecharge$ catches
       // its own errors (clearPendingFlag in catch); the await here is

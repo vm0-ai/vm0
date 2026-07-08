@@ -176,7 +176,11 @@ import {
   cappedBaseConcurrencyLimit,
   totalConcurrencyLimit,
 } from "./org-concurrency-entitlements.service";
-import { checkLimitedFreeRunModelAdmission } from "./zero-run-admission.service";
+import {
+  checkLimitedFreeRunModelAdmission,
+  checkOrgCreditsForRunAdmission,
+} from "./zero-run-admission.service";
+import { activateUsageAllowanceWindowsForRun } from "./usage-allowance.service";
 import {
   ApiDispatchTimingCollector,
   measureApiDispatchTiming,
@@ -609,12 +613,6 @@ interface PersistedRunEnvironmentVariable {
 interface PersistedRunEnvironmentSnapshot {
   readonly secrets: readonly PersistedRunEnvironmentSecret[];
   readonly variables: readonly PersistedRunEnvironmentVariable[];
-}
-
-interface CreditCheckRow extends Record<string, unknown> {
-  readonly tier: string | null;
-  readonly credits: string | null;
-  readonly unsettled_expired: string | null;
 }
 
 interface CustomConnectorRuntimeContext {
@@ -3932,38 +3930,16 @@ async function checkRunConcurrencyLimit(
 
 async function checkVm0Credits(
   db: Db,
-  args: { readonly orgId: string },
+  args: { readonly orgId: string; readonly selectedModel?: string | null },
 ): Promise<CreateRunErrorResult | null> {
-  const { rows } = await db.execute<CreditCheckRow>(sql`
-    WITH org AS (
-      SELECT tier, credits FROM org_metadata
-      WHERE org_id = ${args.orgId}
-      LIMIT 1
-    ),
-    expired AS (
-      SELECT COALESCE(SUM(remaining), 0)::bigint AS total
-      FROM credit_expires_record
-      WHERE org_id = ${args.orgId}
-        AND expires_at <= now()
-        AND remaining > 0
-    )
-    SELECT
-      (SELECT tier FROM org) AS tier,
-      (SELECT credits FROM org) AS credits,
-      (SELECT total FROM expired) AS unsettled_expired
-  `);
-
-  const row = rows[0];
-  if (!row || row.credits === null) {
-    return insufficientCredits();
-  }
-  if (row.tier === "pro-suspend") {
-    return insufficientCredits();
-  }
-
-  const credits = Number(row.credits);
-  const unsettledExpired = Number(row.unsettled_expired ?? 0);
-  return credits - unsettledExpired > 0 ? null : insufficientCredits();
+  return (
+    (await checkOrgCreditsForRunAdmission({
+      db,
+      orgId: args.orgId,
+      modelProviderType: "vm0",
+      selectedModel: args.selectedModel,
+    })) ?? null
+  );
 }
 
 async function checkOrgRunTier(
@@ -4667,7 +4643,15 @@ async function insertRunRecord(
     runnerGroup: undefined,
     error: undefined,
   });
-  return runRecordFromLaunchIdentity(identity, "pending", createdAt);
+  const run = runRecordFromLaunchIdentity(identity, "pending", createdAt);
+  if (args.modelProvider?.type === "vm0") {
+    await activateUsageAllowanceWindowsForRun(tx, {
+      orgId: args.orgId,
+      runId: run.id,
+      runCreatedAt: run.createdAt,
+    });
+  }
+  return run;
 }
 
 async function insertQueuedRunRecord(
@@ -4708,7 +4692,15 @@ async function insertQueuedRunRecord(
     runnerGroup: undefined,
     error: undefined,
   });
-  return runRecordFromLaunchIdentity(identity, "queued", createdAt);
+  const run = runRecordFromLaunchIdentity(identity, "queued", createdAt);
+  if (args.modelProvider?.type === "vm0") {
+    await activateUsageAllowanceWindowsForRun(tx, {
+      orgId: args.orgId,
+      runId: run.id,
+      runCreatedAt: run.createdAt,
+    });
+  }
+  return run;
 }
 
 async function buildStoredExecutionContext(args: {
@@ -5700,11 +5692,19 @@ async function insertAtomicLaunchRunRecord(args: {
       });
     },
   );
-  return runRecordFromLaunchIdentity(
+  const run = runRecordFromLaunchIdentity(
     args.commit.identity,
     args.status,
     createdAt,
   );
+  if (args.commit.context.modelProvider?.type === "vm0") {
+    await activateUsageAllowanceWindowsForRun(args.tx, {
+      orgId: args.commit.createArgs.orgId,
+      runId: run.id,
+      runCreatedAt: run.createdAt,
+    });
+  }
+  return run;
 }
 
 async function commitQueuedPreparedLaunch(
@@ -6009,7 +6009,10 @@ async function resolveRunModelProvider(
   }
 
   if (args.enforceVm0Credits && args.modelProviderType === "vm0") {
-    const creditGate = await checkVm0Credits(db, { orgId: args.orgId });
+    const creditGate = await checkVm0Credits(db, {
+      orgId: args.orgId,
+      selectedModel: args.selectedModelOverride,
+    });
     options.signal.throwIfAborted();
     if (creditGate) {
       return creditGate;
@@ -7278,7 +7281,12 @@ export const createAgentRun$ = command(
         "api_dispatch_check_vm0_credits",
         "top_level",
         async () => {
-          return await checkVm0Credits(db, { orgId: args.orgId });
+          return await checkVm0Credits(db, {
+            orgId: args.orgId,
+            selectedModel:
+              context.modelProvider?.selectedModel ??
+              args.selectedModelOverride,
+          });
         },
       );
       signal.throwIfAborted();
