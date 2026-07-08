@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.245.1](https://github.com/vm0-ai/vm0/compare/api-v1.245.0...api-v1.245.1) (2026-07-08)
+
+
+### Bug Fixes
+
+* clear slack pre-run status on dispatch failure ([#20628](https://github.com/vm0-ai/vm0/issues/20628)) ([1b5d359](https://github.com/vm0-ai/vm0/commit/1b5d3595b78dde333cf9c2a7aaecf5e56e0d0423))
+* configure minimax codex runtime provider ([#20588](https://github.com/vm0-ai/vm0/issues/20588)) ([a5ae66b](https://github.com/vm0-ai/vm0/commit/a5ae66be4034b2b018175593b02b57d00a90615e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.169.1
+    * @vm0/core bumped to 8.414.5
+    * @vm0/db bumped to 1.100.2
+
 ## [1.245.0](https://github.com/vm0-ai/vm0/compare/api-v1.244.0...api-v1.245.0) (2026-07-08)
 
 
