@@ -4,9 +4,9 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use guest_contracts::diagnostics::{
-    AgentFramework, CliObservedExitDiagnostic, CliTerminationDiagnostic, CliTerminationReason,
-    CliTerminationSignal, FAILURE_DIAGNOSTIC_SCHEMA_VERSION, FailureClass, FailureDetailSource,
-    FailureDiagnostic, FailureReason, PromptMetadata, SessionHistoryStatus,
+    AgentFramework, CliObservedExitDiagnostic, CliObservedExitKind, CliTerminationDiagnostic,
+    CliTerminationReason, CliTerminationSignal, FAILURE_DIAGNOSTIC_SCHEMA_VERSION, FailureClass,
+    FailureDetailSource, FailureDiagnostic, FailureReason, PromptMetadata, SessionHistoryStatus,
 };
 use sandbox::{ExecTermination, ProcessExit, ProcessOutputChunk};
 use sandbox_mock::MockSandbox;
@@ -239,6 +239,25 @@ fn unattributed_sigkill_resource_diagnostics_require_standard_sigkill_mapping() 
     let mut observed_exit = CliObservedExitDiagnostic::from_signal(libc::SIGKILL);
     observed_exit.mapped_exit_code = 99;
     let diagnostic = fallback_cli_nonzero_diagnostic(99).with_cli_observed_exit(observed_exit);
+
+    assert!(!should_collect_unattributed_sigkill_resource_diagnostics(
+        false,
+        &exit,
+        Some(&diagnostic)
+    ));
+}
+
+#[test]
+fn unattributed_sigkill_resource_diagnostics_require_signal_exit_shape() {
+    let exit = ProcessExit::new(1, 137, Vec::new(), Vec::new());
+    let diagnostic =
+        fallback_cli_nonzero_diagnostic(137).with_cli_observed_exit(CliObservedExitDiagnostic {
+            kind: CliObservedExitKind::Signal,
+            exit_code: Some(137),
+            signal_number: Some(libc::SIGKILL),
+            signal_name: Some("sigkill".to_string()),
+            mapped_exit_code: 137,
+        });
 
     assert!(!should_collect_unattributed_sigkill_resource_diagnostics(
         false,

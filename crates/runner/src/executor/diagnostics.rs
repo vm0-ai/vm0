@@ -236,6 +236,7 @@ fn observed_sigkill_matches_exit_code(
     exit_code: i32,
 ) -> bool {
     observed_exit.is_sigkill()
+        && observed_exit.exit_code.is_none()
         && observed_exit.signal_number == Some(EXIT_SIGNAL_KILL)
         && observed_exit.mapped_exit_code == EXIT_SIGKILL
         && exit_code == EXIT_SIGKILL
