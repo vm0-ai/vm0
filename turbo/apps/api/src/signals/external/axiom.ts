@@ -1,7 +1,9 @@
 import { computed, type Computed } from "ccstate";
 import { Axiom } from "@axiomhq/js";
+import { delay } from "signal-timers";
 import { env, optionalEnv } from "../../lib/env";
 import { singleton } from "../../lib/singleton";
+import { detach, Mechanism } from "../utils";
 import {
   getAxiomTokenEnvNameForApl,
   getAxiomTokenEnvNameForDataset,
@@ -171,13 +173,42 @@ function queryAxiomDirectWithCursor<T>(
   return queryAxiomDirectFetch<T>(apl, options);
 }
 
-function axiomQuerySignal(options: QueryAxiomOptions): AbortSignal {
-  const timeoutSignal = AbortSignal.timeout(
-    options.timeoutMs ?? AXIOM_QUERY_TIMEOUT_MS,
+function axiomQueryAbort(args: { readonly options: QueryAxiomOptions }): {
+  readonly signal: AbortSignal;
+  readonly cleanup: () => void;
+} {
+  const controller = new AbortController();
+  const timeoutController = new AbortController();
+  detach(
+    (async () => {
+      await delay(args.options.timeoutMs ?? AXIOM_QUERY_TIMEOUT_MS, {
+        signal: timeoutController.signal,
+      });
+      controller.abort();
+    })(),
+    Mechanism.BestEffortCleanup,
+    "axiom query timeout",
   );
-  return options.signal
-    ? AbortSignal.any([options.signal, timeoutSignal])
-    : timeoutSignal;
+
+  const callerSignal = args.options.signal;
+  const abortFromCaller = (): void => {
+    controller.abort(callerSignal?.reason);
+  };
+  if (callerSignal) {
+    if (callerSignal.aborted) {
+      abortFromCaller();
+    } else {
+      callerSignal.addEventListener("abort", abortFromCaller, { once: true });
+    }
+  }
+
+  return {
+    signal: controller.signal,
+    cleanup: () => {
+      timeoutController.abort();
+      callerSignal?.removeEventListener("abort", abortFromCaller);
+    },
+  };
 }
 
 function axiomQueryErrorMessage(status: number, body: string): string {
@@ -195,32 +226,35 @@ async function queryAxiomDirectFetch<T>(
   apl: string,
   options: QueryAxiomOptions,
 ): Promise<readonly T[]> {
-  const response = await fetch(axiomAplQueryUrl(options), {
-    method: "POST",
-    headers: {
-      accept: "application/json",
-      authorization: `Bearer ${env(getAxiomTokenEnvNameForApl(apl))}`,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
-      apl,
-      ...(options.cursor === undefined ? {} : { cursor: options.cursor }),
-    }),
-    signal: axiomQuerySignal(options),
-  });
+  const abort = axiomQueryAbort({ options });
+  return await (async () => {
+    const response = await fetch(axiomAplQueryUrl(options), {
+      method: "POST",
+      headers: {
+        accept: "application/json",
+        authorization: `Bearer ${env(getAxiomTokenEnvNameForApl(apl))}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        apl,
+        ...(options.cursor === undefined ? {} : { cursor: options.cursor }),
+      }),
+      signal: abort.signal,
+    });
 
-  if (!response.ok) {
-    throw new Error(
-      axiomQueryErrorMessage(response.status, await response.text()),
-    );
-  }
+    if (!response.ok) {
+      throw new Error(
+        axiomQueryErrorMessage(response.status, await response.text()),
+      );
+    }
 
-  const payload: unknown = await response.json();
-  if (!isAxiomQueryResult(payload)) {
-    throw new Error("Axiom query returned an unexpected response shape");
-  }
+    const payload: unknown = await response.json();
+    if (!isAxiomQueryResult(payload)) {
+      throw new Error("Axiom query returned an unexpected response shape");
+    }
 
-  return mapAxiomMatches<T>(payload);
+    return mapAxiomMatches<T>(payload);
+  })().finally(abort.cleanup);
 }
 
 export async function queryAxiomDirect<T = Record<string, unknown>>(
