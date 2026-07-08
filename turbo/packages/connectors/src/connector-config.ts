@@ -289,7 +289,7 @@ interface ConnectorAuthMethodConfigBase {
  */
 export type ConnectorAuthMethodConfig =
   | (ConnectorAuthMethodConfigBase & {
-      readonly client?: ConnectorAuthClientConfig;
+      readonly client?: never;
       readonly grant: ConnectorNoAuthGrantConfig;
       readonly access: ConnectorNoAccessConfig;
       readonly revoke: Extract<

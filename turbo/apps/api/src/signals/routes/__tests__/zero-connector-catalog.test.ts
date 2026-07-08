@@ -231,6 +231,74 @@ describe("GET /api/zero/connector-catalog", () => {
     expect(openai?.permissionSummary).not.toHaveProperty("permissions");
   });
 
+  it("hides no-auth connector catalog entries until their feature switch is enabled", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    mocks.clerk.session(userId, orgId);
+
+    const client = setupApp({ context })(zeroConnectorCatalogContract);
+    const initialList = await accept(
+      client.list({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
+    );
+    expect(
+      initialList.body.connectors.find((connector) => {
+        return connector.connectorRef === "nintendo-eshop-catalog";
+      }),
+    ).toBeUndefined();
+
+    const initialStatus = await accept(
+      client.status({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
+    );
+    expect(
+      initialStatus.body.connectors.find((connector) => {
+        return connector.connectorRef === "nintendo-eshop-catalog";
+      }),
+    ).toBeUndefined();
+
+    await enableConnectorFeatureSwitches(orgId, userId, {
+      [FeatureSwitchKey.NintendoEshopCatalogConnector]: true,
+    });
+
+    const enabledList = await accept(
+      client.list({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
+    );
+    expect(
+      enabledList.body.connectors.find((connector) => {
+        return connector.connectorRef === "nintendo-eshop-catalog";
+      }),
+    ).toMatchObject({
+      connectorRef: "nintendo-eshop-catalog",
+      authMethods: [
+        {
+          id: "api",
+          grantKind: "none",
+        },
+      ],
+    });
+
+    const enabledStatus = await accept(
+      client.status({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
+    );
+    expect(
+      enabledStatus.body.connectors.find((connector) => {
+        return connector.connectorRef === "nintendo-eshop-catalog";
+      }),
+    ).toMatchObject({
+      connectorRef: "nintendo-eshop-catalog",
+      connected: false,
+      authMethods: [
+        {
+          id: "api",
+          grantKind: "none",
+        },
+      ],
+    });
+  });
+
   it("accepts a ZERO_TOKEN carrying the connector:read capability", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;

@@ -103,7 +103,7 @@ function defaultOauthDeviceAuthSessionStartResponse(
   };
 }
 
-function createMockManualGrantConnector(
+function createMockLocalGrantConnector(
   type: ConnectorType,
   authMethod: ConnectorAuthMethodId,
 ): ConnectorResponse {
@@ -475,7 +475,7 @@ export const apiConnectorsHandlers = [
   mockApi(
     zeroConnectorManualGrantContract.connect,
     ({ body, params, respond }) => {
-      const connector = createMockManualGrantConnector(
+      const connector = createMockLocalGrantConnector(
         params.type,
         body.authMethod,
       );
@@ -487,7 +487,7 @@ export const apiConnectorsHandlers = [
   mockApi(
     zeroConnectorNoAuthGrantContract.connect,
     ({ body, params, respond }) => {
-      const connector = createMockManualGrantConnector(
+      const connector = createMockLocalGrantConnector(
         params.type,
         body.authMethod,
       );
