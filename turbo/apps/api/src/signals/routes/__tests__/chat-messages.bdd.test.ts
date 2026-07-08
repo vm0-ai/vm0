@@ -69,6 +69,7 @@ const chatCallbacks = createChatCallbacksApi(context);
 const cu = createComputerUseBddApi(context);
 const misc = createMiscRoutesApi(context);
 const routeMocks = createZeroRouteMocks(context);
+const CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET = "zero web upload-file -f <path>";
 const API_DISPATCH_ZERO_WEB_CHAT_PRE_CREATE_ACTION_TYPES = [
   "api_dispatch_pre_create_zero_web_chat_prepare_normal_send",
   "api_dispatch_pre_create_zero_web_chat_resolve_client_message",
@@ -1708,6 +1709,46 @@ describe("CHAT-02: admission without spendable credits", () => {
 });
 
 describe("CHAT-02: model-first provider policies", () => {
+  it("adds Codex image upload guidance for web chat Codex sends", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    await misc.upsertPersonalModelProvider(
+      actor,
+      {
+        type: "codex-oauth-token",
+        authMethod: "auth_json",
+        secrets: { CODEX_AUTH_JSON: codexAuthJson() },
+      },
+      [200, 201],
+    );
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "gpt-5.4",
+        isDefault: true,
+        defaultProviderType: "codex-oauth-token",
+        credentialScope: "member",
+        modelProviderId: null,
+      },
+    ]);
+
+    const run = await sendChatRun(actor, {
+      agentId,
+      prompt: "generate an image in web chat",
+      model: "gpt-5.4",
+    });
+    const { claim } = await claimChatRun(runnerGroup, run.runId);
+    const appendSystemPrompt = claim.appendSystemPrompt ?? "";
+    expect(claim.cliAgentType).toBe("codex");
+    expect(appendSystemPrompt).toContain(
+      "You are currently running inside: Web",
+    );
+    expect(appendSystemPrompt).toContain("zero web upload-file -h");
+    expect(appendSystemPrompt).toContain(CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET);
+    expect(appendSystemPrompt).not.toContain("When running in Codex");
+    await cancelChatRun(actor, run.runId);
+  });
+
   it("routes model policy providers into the runner claim", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
