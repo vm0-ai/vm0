@@ -625,9 +625,9 @@ describe("POST /api/test/slack-dispatch-probe", () => {
         );
       }),
     ).toBeUndefined();
-    expect(context.mocks.slack.assistant.threads.setStatus).toHaveBeenCalledTimes(
-      2,
-    );
+    expect(
+      context.mocks.slack.assistant.threads.setStatus,
+    ).toHaveBeenCalledTimes(2);
     expect(
       context.mocks.slack.assistant.threads.setStatus,
     ).toHaveBeenNthCalledWith(1, {
@@ -689,9 +689,9 @@ describe("POST /api/test/slack-dispatch-probe", () => {
         );
       }),
     ).toBeUndefined();
-    expect(context.mocks.slack.assistant.threads.setStatus).toHaveBeenCalledTimes(
-      2,
-    );
+    expect(
+      context.mocks.slack.assistant.threads.setStatus,
+    ).toHaveBeenCalledTimes(2);
     expect(
       context.mocks.slack.assistant.threads.setStatus,
     ).toHaveBeenNthCalledWith(1, {
