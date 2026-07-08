@@ -107,7 +107,11 @@ pub(crate) struct StatusActiveRunMapping {
 pub(crate) struct StatusActiveRun {
     pub(crate) run_id: String,
     pub(crate) sandbox_id: String,
+    // Optional for rolling compatibility with status files written before
+    // active-run phases were added. Current writers always serialize it.
     pub(crate) phase: Option<String>,
+    // Optional for the same compatibility reason. Current writers always
+    // serialize it as the current phase start time.
     pub(crate) phase_started_at: Option<String>,
 }
 
