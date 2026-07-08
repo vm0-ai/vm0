@@ -1,7 +1,10 @@
 import { createHash, randomUUID } from "node:crypto";
 import { gzipSync, zstdCompressSync } from "node:zlib";
 
-import { CANONICAL_CLAUDE_MEMORY_MOUNT_PATH } from "@vm0/api-contracts/contracts/runners";
+import {
+  CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
+  SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT,
+} from "@vm0/api-contracts/contracts/runners";
 import { delay } from "signal-timers";
 import { describe, expect, it } from "vitest";
 
@@ -949,6 +952,8 @@ describe("RUN-04: session and checkpoint reads", () => {
 
 describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning", () => {
   it("returns compressed resume history refs", async () => {
+    mockEnv("S3_ENDPOINT", undefined);
+    mockEnv("S3_PUBLIC_ENDPOINT", undefined);
     const actor = await entitledActor();
     const composeName = `bdd-gzip-resume-${randomUUID().slice(0, 8)}`;
     const compose = await api.createCompose(actor, {
@@ -1042,12 +1047,15 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
         encoding: "gzip",
         rawSize: Buffer.byteLength(history, "utf8"),
         encodedSize: compressedHistory.length,
+        downloadSource: SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT,
       },
     });
     await api.requestCancelRun(actor, compressedResume.runId, [200]);
   });
 
   it("returns zstd-compressed resume history refs", async () => {
+    mockEnv("S3_ENDPOINT", undefined);
+    mockEnv("S3_PUBLIC_ENDPOINT", undefined);
     const actor = await entitledActor();
     const composeName = `bdd-zstd-resume-${randomUUID().slice(0, 8)}`;
     const compose = await api.createCompose(actor, {
@@ -1145,6 +1153,7 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
         encoding: "zstd",
         rawSize: Buffer.byteLength(history, "utf8"),
         encodedSize: compressedHistory.length,
+        downloadSource: SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT,
       },
     });
     await api.requestCancelRun(actor, compressedResume.runId, [200]);
@@ -1329,6 +1338,8 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
   });
 
   it("restores volumes, memory, and conversation state when resuming checkpoints", async () => {
+    mockEnv("S3_ENDPOINT", undefined);
+    mockEnv("S3_PUBLIC_ENDPOINT", undefined);
     const storages = createStoragesBddApi(context);
     const actor = await entitledActor();
     storages.mockStoragePresignedUrls();
@@ -1474,6 +1485,7 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
         encoding: "identity",
         rawSize: Buffer.byteLength(history, "utf8"),
         encodedSize: Buffer.byteLength(history, "utf8"),
+        downloadSource: SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT,
       },
     });
     await api.requestCancelRun(actor, refResumed.runId, [200]);
@@ -1502,6 +1514,7 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
         encoding: "identity",
         rawSize: Buffer.byteLength(history, "utf8"),
         encodedSize: Buffer.byteLength(history, "utf8"),
+        downloadSource: SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT,
       },
     });
     expect(claim2.storageManifest?.storages).toMatchObject([
@@ -1635,6 +1648,7 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
         encoding: "identity",
         rawSize: Buffer.byteLength(history, "utf8"),
         encodedSize: Buffer.byteLength(history, "utf8"),
+        downloadSource: SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT,
       },
     });
     const continuedMemory = continuedClaim.storageManifest?.artifacts.find(

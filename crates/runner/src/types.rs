@@ -1212,6 +1212,8 @@ pub struct ResumeSessionHistoryRef {
     pub raw_size: u64,
     #[serde(rename = "encodedSize")]
     pub encoded_size: u64,
+    #[serde(rename = "downloadSource", default)]
+    pub download_source: Option<ResumeSessionHistoryDownloadSource>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
@@ -1228,6 +1230,14 @@ pub enum ResumeSessionHistoryEncoding {
     Gzip,
     #[serde(rename = "zstd")]
     Zstd,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+pub enum ResumeSessionHistoryDownloadSource {
+    #[serde(rename = "configured_public_endpoint")]
+    ConfiguredPublicEndpoint,
+    #[serde(rename = "default_r2_endpoint")]
+    DefaultR2Endpoint,
 }
 
 impl ResumeSession {

@@ -4,6 +4,7 @@ import { apiErrorSchema } from "./errors";
 import {
   artifactMissingRootPolicySchema,
   RESUME_SESSION_HISTORY_MAX_BYTES,
+  sessionHistoryDownloadSourceSchema,
   sessionHistoryEncodingSchema,
   secretConnectorMetadataMapSchema,
 } from "./runners";
@@ -741,6 +742,8 @@ const sandboxOperationSchema = z.object({
     sessionHistoryContentEncodingStateSchema.optional(),
   session_history_transfer_encoding_state:
     sessionHistoryTransferEncodingStateSchema.optional(),
+  session_history_download_source:
+    sessionHistoryDownloadSourceSchema.optional(),
 });
 
 /**
