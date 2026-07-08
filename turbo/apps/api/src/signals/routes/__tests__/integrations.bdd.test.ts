@@ -2756,6 +2756,83 @@ describe("INT-01: Slack app deep webhook flows", () => {
     });
     expect(latestOutputQuerySeen).toBeTruthy();
 
+    const refreshedWatermarkText = "Final answer after refreshed watermark";
+    let refreshedRunId = "";
+    let refreshedSandboxToken = "";
+    let refreshedWatermarkInjected = false;
+    let refreshedLowWatermarkQueries = 0;
+    let refreshedHighWatermarkQueries = 0;
+    context.mocks.axiom.query.mockImplementation((...args: unknown[]) => {
+      const apl = typeof args[0] === "string" ? args[0] : "";
+      if (apl.includes("| project sequenceNumber")) {
+        return Promise.resolve([{ sequenceNumber: 0 }]);
+      }
+      if (apl.includes('eventType == "assistant"')) {
+        if (apl.includes("| where sequenceNumber <= 0")) {
+          refreshedLowWatermarkQueries++;
+          if (!refreshedWatermarkInjected) {
+            refreshedWatermarkInjected = true;
+            return webhooks
+              .requestAgentComplete(
+                {
+                  runId: refreshedRunId,
+                  exitCode: 0,
+                  lastEventSequence: 250,
+                },
+                { authorization: `Bearer ${refreshedSandboxToken}` },
+                [200],
+              )
+              .then(() => {
+                return [];
+              });
+          }
+          return Promise.resolve([]);
+        }
+        if (apl.includes("| where sequenceNumber <= 250")) {
+          refreshedHighWatermarkQueries++;
+          return Promise.resolve([
+            {
+              eventType: "result",
+              sequenceNumber: 250,
+              eventData: { result: refreshedWatermarkText },
+            },
+          ]);
+        }
+      }
+      return Promise.resolve([]);
+    });
+
+    await integrations.postSlackEvent(teamId, {
+      type: "app_mention",
+      user: slackUser,
+      text: "handle a refreshed completion watermark",
+      ts: "4050.000165",
+      channel: channelId,
+    });
+    refreshedRunId = await pollSlackRun(runnerGroup);
+    const refreshedClaim = await runs.claimRunnerJob(refreshedRunId);
+    refreshedSandboxToken = refreshedClaim.sandboxToken;
+    context.mocks.slack.chat.postMessage.mockClear();
+    await completeSlackTriggeredRun({
+      runId: refreshedRunId,
+      sandboxToken: refreshedClaim.sandboxToken,
+      cliAgentType: "claude-code",
+      lastEventSequence: 0,
+    });
+
+    await waitForExpectation(() => {
+      expect(context.mocks.slack.chat.postMessage).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          channel: channelId,
+          thread_ts: "4050.000165",
+          text: refreshedWatermarkText,
+        }),
+      );
+    });
+    expect(refreshedWatermarkInjected).toBeTruthy();
+    expect(refreshedLowWatermarkQueries).toBe(1);
+    expect(refreshedHighWatermarkQueries).toBe(1);
+
     const legacyCompleteText = "Delayed output without a terminal watermark";
     let legacyRunId = "";
     let legacySandboxToken = "";

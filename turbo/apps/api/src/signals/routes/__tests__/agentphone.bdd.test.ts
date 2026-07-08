@@ -151,7 +151,12 @@ async function completeSandboxRun(
     );
   }
   await webhooks.requestAgentComplete(
-    { runId, exitCode, ...(error === undefined ? {} : { error }) },
+    {
+      runId,
+      exitCode,
+      ...(exitCode === 0 ? { lastEventSequence: 0 } : {}),
+      ...(error === undefined ? {} : { error }),
+    },
     sandboxHeaders,
     [200],
   );

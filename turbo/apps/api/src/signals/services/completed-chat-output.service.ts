@@ -371,6 +371,26 @@ async function loadRunLastEventSequence(
   return run?.lastEventSequence ?? null;
 }
 
+async function hasNewerLastEventSequence(args: {
+  readonly db: Db;
+  readonly runId: string;
+  readonly lastEventSequence: number | null;
+  readonly signal: AbortSignal;
+}): Promise<boolean> {
+  if (args.lastEventSequence === null) {
+    return false;
+  }
+  const persistedLastEventSequence = await loadRunLastEventSequence(
+    args.db,
+    args.runId,
+  );
+  args.signal.throwIfAborted();
+  return (
+    persistedLastEventSequence !== null &&
+    persistedLastEventSequence > args.lastEventSequence
+  );
+}
+
 async function resolveCompletedChatOutputOnce(args: {
   readonly db: Db;
   readonly runId: string;
@@ -396,6 +416,9 @@ async function resolveCompletedChatOutputOnce(args: {
     dbOutputState.kind === "complete" &&
     !dbOutputState.hasResultFallbackCandidate
   ) {
+    if (await hasNewerLastEventSequence(args)) {
+      return { kind: "not_visible_yet", reason: "axiom_no_output" };
+    }
     return { kind: "empty_after_complete_visibility" };
   }
 
@@ -426,11 +449,20 @@ async function resolveCompletedChatOutputOnce(args: {
     return { kind: "ready", text: axiomOutput.text };
   }
   if (dbOutputState.kind === "complete") {
+    if (
+      !dbOutputState.hasResultFallbackCandidate &&
+      (await hasNewerLastEventSequence(args))
+    ) {
+      return { kind: "not_visible_yet", reason: "axiom_no_output" };
+    }
     return dbOutputState.hasResultFallbackCandidate
       ? { kind: "not_visible_yet", reason: "axiom_no_output" }
       : { kind: "empty_after_complete_visibility" };
   }
   if (args.lastEventSequence !== null && axiomOutput.watermarkVisible) {
+    if (await hasNewerLastEventSequence(args)) {
+      return { kind: "not_visible_yet", reason: "axiom_no_output" };
+    }
     return { kind: "empty_after_complete_visibility" };
   }
   return {
@@ -482,10 +514,22 @@ export async function resolveCompletedChatOutputWithRetry(args: {
   let watermarkedAttempts = 0;
 
   for (;;) {
-    if (lastEventSequence === null) {
-      lastEventSequence = await loadRunLastEventSequence(args.db, args.runId);
-      args.signal.throwIfAborted();
+    const persistedLastEventSequence = await loadRunLastEventSequence(
+      args.db,
+      args.runId,
+    );
+    args.signal.throwIfAborted();
+    if (
+      persistedLastEventSequence !== null &&
+      (lastEventSequence === null ||
+        persistedLastEventSequence > lastEventSequence)
+    ) {
+      if (lastEventSequence !== null) {
+        watermarkedAttempts = 0;
+      }
+      lastEventSequence = persistedLastEventSequence;
     }
+
     const hasWatermark = lastEventSequence !== null;
     if (hasWatermark) {
       watermarkedAttempts++;
@@ -505,12 +549,22 @@ export async function resolveCompletedChatOutputWithRetry(args: {
     if (lastResult.kind !== "not_visible_yet") {
       return lastResult;
     }
-    if (!hasWatermark) {
-      lastEventSequence = await loadRunLastEventSequence(args.db, args.runId);
-      args.signal.throwIfAborted();
+
+    const refreshedLastEventSequence = await loadRunLastEventSequence(
+      args.db,
+      args.runId,
+    );
+    args.signal.throwIfAborted();
+    if (
+      refreshedLastEventSequence !== null &&
+      (lastEventSequence === null ||
+        refreshedLastEventSequence > lastEventSequence)
+    ) {
       if (lastEventSequence !== null) {
-        continue;
+        watermarkedAttempts = 0;
       }
+      lastEventSequence = refreshedLastEventSequence;
+      continue;
     }
 
     const attempts = hasWatermark
