@@ -10,8 +10,8 @@ use std::time::{Duration, Instant};
 
 use futures_util::FutureExt;
 use guest_contracts::diagnostics::{
-    CliObservedExitDiagnostic, CliTerminationDiagnostic, FailureClass, FailureDiagnostic,
-    FailureReason,
+    CliObservedExitDiagnostic, CliObservedExitKind, CliTerminationDiagnostic, FailureClass,
+    FailureDiagnostic, FailureReason,
 };
 use sandbox::SandboxId;
 use tokio::sync::mpsc;
@@ -904,11 +904,21 @@ impl From<Option<&CliTerminationDiagnostic>> for JobCliTerminationLogFields {
 
 impl From<Option<&CliObservedExitDiagnostic>> for JobCliObservedExitLogFields {
     fn from(diagnostic: Option<&CliObservedExitDiagnostic>) -> Self {
+        let is_exit =
+            diagnostic.is_some_and(|diagnostic| diagnostic.kind == CliObservedExitKind::Exit);
+        let is_signal =
+            diagnostic.is_some_and(|diagnostic| diagnostic.kind == CliObservedExitKind::Signal);
         Self {
             kind: diagnostic.map(|diagnostic| diagnostic.kind.as_str()),
-            exit_code: diagnostic.and_then(|diagnostic| diagnostic.exit_code),
-            signal_number: diagnostic.and_then(|diagnostic| diagnostic.signal_number),
-            signal_name: diagnostic.and_then(CliObservedExitDiagnostic::known_signal_name),
+            exit_code: is_exit
+                .then(|| diagnostic.and_then(|diagnostic| diagnostic.exit_code))
+                .flatten(),
+            signal_number: is_signal
+                .then(|| diagnostic.and_then(|diagnostic| diagnostic.signal_number))
+                .flatten(),
+            signal_name: is_signal
+                .then(|| diagnostic.and_then(CliObservedExitDiagnostic::known_signal_name))
+                .flatten(),
             mapped_exit_code: diagnostic.map(|diagnostic| diagnostic.mapped_exit_code),
         }
     }
@@ -1630,7 +1640,7 @@ mod tests {
             .with_cli_exit_code(137)
             .with_cli_observed_exit(CliObservedExitDiagnostic {
                 kind: CliObservedExitKind::Signal,
-                exit_code: None,
+                exit_code: Some(137),
                 signal_number: Some(libc::SIGKILL),
                 signal_name: Some("tampered".to_string()),
                 mapped_exit_code: 137,
@@ -1641,6 +1651,7 @@ mod tests {
         let event = capture_job_failure_log(&failure);
 
         assert_field_eq(&event, "cli_observed_signal_name", "sigkill");
+        assert!(!event.fields.contains_key("cli_observed_exit_code"));
     }
 
     #[test]
