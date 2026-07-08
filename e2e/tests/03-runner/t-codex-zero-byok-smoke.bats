@@ -60,12 +60,11 @@ EOF
     [[ -n "$AGENT_ID" && "$AGENT_ID" != "null" ]] \
         || { echo "# compose --json output: $compose_json" >&2; return 1; }
 
-    # 4. Seed the zero_agents row (PK = composeId). vm0 compose's
-    # POST /api/agent/composes only inserts agent_composes +
-    # agent_compose_versions; PUT /api/zero/agents/:id composes the
-    # server-side agent record and upserts zero_agents before chat runs.
-    _codex_zero_curl "/api/zero/agents/$AGENT_ID" \
-        -X PUT -d '{"displayName":"BYOK codex e2e","visibility":"private"}' >/dev/null
+    # 4. Seed the zero_agents row (PK = composeId) without changing the
+    # compose version created above; the product PUT route rewrites server-side
+    # agent compose content and would erase framework: codex from this fixture.
+    _codex_zero_test_curl "/api/test/zero-agent-state/action" \
+        -X POST -d "{\"action\":\"seed-agent\",\"agent_id\":\"$AGENT_ID\",\"display_name\":\"BYOK codex e2e\",\"visibility\":\"private\"}" >/dev/null
 }
 
 teardown_file() {

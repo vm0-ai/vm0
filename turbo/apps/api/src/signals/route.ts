@@ -214,6 +214,7 @@ import { testUserExportStateRoutes } from "./routes/test-user-export-state";
 import { testWorkflowTriggerStateRoutes } from "./routes/test-workflow-trigger-state";
 import { testChatMessagesStateRoutes } from "./routes/test-chat-messages-state";
 import { testWebhooksStateRoutes } from "./routes/test-webhooks-state";
+import { testZeroAgentStateRoutes } from "./routes/test-zero-agent-state";
 
 export const ROUTES: readonly RouteEntry[] = [
   {
@@ -436,4 +437,5 @@ export const ROUTES: readonly RouteEntry[] = [
   ...testWorkflowTriggerStateRoutes,
   ...testChatMessagesStateRoutes,
   ...testWebhooksStateRoutes,
+  ...testZeroAgentStateRoutes,
 ];
