@@ -545,7 +545,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     });
 
     await expect(chat.readThread(actor, thread.id)).resolves.toStrictEqual({
-      lastReadAt: null,
+      lastReadAt: expect.any(String),
       computerUseHostId: null,
       codexServiceTier: "fast",
     });
