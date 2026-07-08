@@ -1,4 +1,42 @@
 //! Runtime network policy refresh for active API-backed runs.
+//!
+//! This module is the runner-side safety boundary that keeps connector network
+//! policies fresh while an API-backed run is active. A run is registered after
+//! its VM is written to the proxy registry, carrying the source IP, registry
+//! handle, active connector refs, per-run cancellation state, and any initial
+//! `nextRefreshAt` deadlines returned with the claim.
+//!
+//! Refresh work comes from two sources: realtime/API notifications and
+//! scheduled deadlines. Notifications are accepted only for currently active
+//! run/connector pairs. Scheduled refreshes are tracked per connector within one
+//! run, replacing older tasks for the same connector and coalescing nearby due
+//! connectors for that same run before enqueueing work. The worker drains a
+//! bounded queue, deduplicates active connector refs, splits API requests by
+//! `NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX`, validates each API response
+//! against the requested active connector set, patches the proxy registry, and
+//! replaces the next schedule from the returned `nextRefreshAt`.
+//!
+//! The safety contract is to trigger fail-closed patching when freshness cannot
+//! be established for an active connector. Queue overflow, API refresh failure,
+//! omitted requested connectors, duplicate requested connectors, malformed
+//! `nextRefreshAt`, and registry patch errors trigger fail-closed patching for
+//! the affected connector when it is still active. Registry writes always
+//! re-check source IP, run id, and connector ref so a stale refresh task cannot
+//! patch a later run that reused the same source IP.
+//!
+//! Not every stale or shutdown path fails closed. Inactive runs and unknown
+//! connector refs are ignored. Extra unrequested response connectors are ignored.
+//! A closed refresh queue during shutdown is logged and stopped. A valid but
+//! already-expired deadline is retried after
+//! `EXPIRED_REFRESH_DEADLINE_RETRY_DELAY`. A registry patch result of
+//! `Ok(false)` means the registry no longer matches the active run/connector,
+//! so refresh tracking for that run is stopped instead of force-patching stale
+//! registry state.
+//!
+//! Unregister and shutdown remove active run state, cancel per-run tokens, and
+//! abort scheduled task handles. Dropping the worker cancels the global token
+//! and aborts the worker task, preventing orphaned scheduled tasks from
+//! enqueueing stale registry refreshes.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex as StdMutex};
