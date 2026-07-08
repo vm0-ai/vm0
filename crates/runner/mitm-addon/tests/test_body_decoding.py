@@ -617,4 +617,4 @@ class TestDecompressJsonUsageBody:
         assert decoded == body
         assert error is None
         assert validation_input_sizes
-        assert max(validation_input_sizes) < len(compressed)
+        assert max(validation_input_sizes) <= 32
