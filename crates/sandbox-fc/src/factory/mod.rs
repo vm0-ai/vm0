@@ -10,8 +10,8 @@ use std::time::Instant;
 
 use async_trait::async_trait;
 use sandbox::{
-    Sandbox, SandboxConfig, SandboxError, SandboxFactory, SandboxInitializationPhase,
-    SandboxInvalidStateContext,
+    Sandbox, SandboxConfig, SandboxCreateObserver, SandboxError, SandboxFactory,
+    SandboxInitializationPhase, SandboxInvalidStateContext,
 };
 use tracing::{info, warn};
 
@@ -223,11 +223,20 @@ impl SandboxFactory for FirecrackerFactory {
     }
 
     async fn create(&self, config: SandboxConfig) -> sandbox::Result<Box<dyn Sandbox>> {
+        self.create_with_observer(config, None).await
+    }
+
+    async fn create_with_observer(
+        &self,
+        config: SandboxConfig,
+        observer: Option<&mut dyn SandboxCreateObserver>,
+    ) -> sandbox::Result<Box<dyn Sandbox>> {
         let resources = self.resources()?;
         let device_rate_limits = convert_device_rate_limits(config.device_rate_limits.as_ref())?;
         let leak_tx = resources.leak_cleaner.sender();
         let id = config.id.to_string();
-        let mut timing = SandboxCreateTiming::new(id.clone(), self.config.profile.clone());
+        let mut timing =
+            SandboxCreateTiming::new(id.clone(), self.config.profile.clone(), observer);
         let rollback_cleanup = FactoryCreateRollbackCleanup {
             id: id.clone(),
             netns_pool: resources.netns_pool.clone(),

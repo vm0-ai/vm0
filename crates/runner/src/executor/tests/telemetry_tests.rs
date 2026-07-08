@@ -1,7 +1,10 @@
 use std::time::Duration;
 
-use sandbox::SandboxId;
-use sandbox::{ProcessOutputChunk, ProcessOutputMode};
+use async_trait::async_trait;
+use sandbox::{
+    ProcessOutputChunk, ProcessOutputMode, Sandbox, SandboxConfig, SandboxCreateObserver,
+    SandboxCreateStage, SandboxFactory, SandboxId,
+};
 use sandbox_mock::MockSandboxFactory;
 
 use super::super::telemetry::{
@@ -79,6 +82,76 @@ fn assert_action_success(telemetry: &JobTelemetry, action: &str, success: bool) 
         .unwrap_or_else(|| panic!("expected telemetry action {action}, got: {ops:?}"));
     assert_eq!(op.1, success, "{action} success flag");
 }
+
+struct ObservedMockSandboxFactory {
+    inner: MockSandboxFactory,
+}
+
+impl ObservedMockSandboxFactory {
+    fn new() -> Self {
+        Self {
+            inner: MockSandboxFactory::new(),
+        }
+    }
+}
+
+#[async_trait]
+impl SandboxFactory for ObservedMockSandboxFactory {
+    fn name(&self) -> &str {
+        "observed-mock"
+    }
+
+    fn config_hash(&self) -> String {
+        self.inner.config_hash()
+    }
+
+    async fn create(&self, config: SandboxConfig) -> sandbox::Result<Box<dyn Sandbox>> {
+        self.inner.create(config).await
+    }
+
+    async fn create_with_observer(
+        &self,
+        config: SandboxConfig,
+        observer: Option<&mut dyn SandboxCreateObserver>,
+    ) -> sandbox::Result<Box<dyn Sandbox>> {
+        if let Some(observer) = observer {
+            for (index, stage) in SANDBOX_CREATE_STAGES.iter().copied().enumerate() {
+                observer.record_stage(stage, Duration::from_millis(index as u64 + 1), true);
+            }
+        }
+        self.inner.create(config).await
+    }
+
+    async fn destroy(&self, sandbox: Box<dyn Sandbox>) {
+        self.inner.destroy(sandbox).await;
+    }
+
+    async fn shutdown(&mut self) {
+        self.inner.shutdown().await;
+    }
+}
+
+const SANDBOX_CREATE_STAGES: &[SandboxCreateStage] = &[
+    SandboxCreateStage::CowPoolAcquire,
+    SandboxCreateStage::WorkspaceDirRename,
+    SandboxCreateStage::WorkspaceDrivePrepare,
+    SandboxCreateStage::WorkspaceSeedSparseCopy,
+    SandboxCreateStage::WorkspaceFreshFormat,
+    SandboxCreateStage::SockDirPrepare,
+    SandboxCreateStage::NetnsAcquire,
+    SandboxCreateStage::NbdCowCreate,
+];
+
+const FRESH_SANDBOX_FACTORY_STAGE_ACTIONS: &[&str] = &[
+    "runner_fresh_sandbox_factory_cow_pool_acquire",
+    "runner_fresh_sandbox_factory_workspace_dir_rename",
+    "runner_fresh_sandbox_factory_workspace_drive_prepare",
+    "runner_fresh_sandbox_factory_workspace_seed_sparse_copy",
+    "runner_fresh_sandbox_factory_workspace_fresh_format",
+    "runner_fresh_sandbox_factory_sock_dir_prepare",
+    "runner_fresh_sandbox_factory_netns_acquire",
+    "runner_fresh_sandbox_factory_nbd_cow_create",
+];
 
 const RUNNER_PRE_SPAWN_PHASE_ACTIONS: &[&str] = &[
     "runner_claim_resume_session_validation",
@@ -223,7 +296,7 @@ async fn execute_job_reuse_records_sandbox_reuse_hit_in_telemetry() {
 async fn execute_job_records_runner_pre_spawn_and_fresh_path_timing() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
-    let factory = MockSandboxFactory::new();
+    let factory = ObservedMockSandboxFactory::new();
 
     let cancel = tokio_util::sync::CancellationToken::new();
     let (_outcome, telemetry) = execute_job_with_prepared_notifier(
@@ -262,6 +335,9 @@ async fn execute_job_records_runner_pre_spawn_and_fresh_path_timing() {
         "workspace_drive_mount",
         "agent_execute",
     ] {
+        assert_has_action(&telemetry, action);
+    }
+    for action in FRESH_SANDBOX_FACTORY_STAGE_ACTIONS {
         assert_has_action(&telemetry, action);
     }
     assert_pre_spawn_phase_actions_succeeded(&telemetry);
@@ -327,6 +403,9 @@ async fn execute_job_reuse_records_runner_pre_spawn_and_reuse_path_timing() {
     assert_pre_spawn_phase_actions_succeeded(&telemetry);
     assert_lacks_action(&telemetry, "runner_fresh_sandbox_prepare");
     assert_lacks_action(&telemetry, "runner_fresh_sandbox_factory_create");
+    for action in FRESH_SANDBOX_FACTORY_STAGE_ACTIONS {
+        assert_lacks_action(&telemetry, action);
+    }
     assert_lacks_action(&telemetry, "runner_fresh_sandbox_proxy_register");
     assert_lacks_action(&telemetry, "runner_fresh_sandbox_start");
     assert_lacks_action(&telemetry, "runner_guest_timezone_sync");

@@ -160,23 +160,29 @@ impl SandboxCreateStageDurations {
     }
 }
 
-pub(crate) struct SandboxCreateTiming {
+pub(crate) struct SandboxCreateTiming<'a> {
     sandbox_id: String,
     profile: String,
     started_at: Instant,
     durations: SandboxCreateStageDurations,
+    observer: Option<&'a mut dyn sandbox::SandboxCreateObserver>,
     workspace_drive_present: bool,
     workspace_seed_image_used: bool,
     failure_logged: bool,
 }
 
-impl SandboxCreateTiming {
-    pub(super) fn new(sandbox_id: String, profile: String) -> Self {
+impl<'a> SandboxCreateTiming<'a> {
+    pub(super) fn new(
+        sandbox_id: String,
+        profile: String,
+        observer: Option<&'a mut dyn sandbox::SandboxCreateObserver>,
+    ) -> Self {
         Self {
             sandbox_id,
             profile,
             started_at: Instant::now(),
             durations: SandboxCreateStageDurations::default(),
+            observer,
             workspace_drive_present: false,
             workspace_seed_image_used: false,
             failure_logged: false,
@@ -203,8 +209,12 @@ impl SandboxCreateTiming {
         let elapsed = started_at.elapsed();
         self.record_stage_duration(stage, elapsed);
         match result {
-            Ok(value) => Ok(value),
+            Ok(value) => {
+                self.record_observer_stage(stage, elapsed, true);
+                Ok(value)
+            }
             Err(error) => {
+                self.record_observer_stage(stage, elapsed, false);
                 let message = error.to_string();
                 self.emit_stage_failure(stage, elapsed, &message);
                 Err(error)
@@ -223,6 +233,18 @@ impl SandboxCreateTiming {
 
     fn record_stage_duration(&mut self, stage: SandboxCreateStage, duration: Duration) {
         self.durations.set(stage, duration);
+    }
+
+    fn record_observer_stage(
+        &mut self,
+        stage: SandboxCreateStage,
+        duration: Duration,
+        success: bool,
+    ) {
+        let Some(observer) = self.observer.as_deref_mut() else {
+            return;
+        };
+        observer.record_stage(stage.into(), duration, success);
     }
 
     fn stage_duration_ms(&self, stage: SandboxCreateStage) -> u64 {
@@ -255,7 +277,22 @@ impl SandboxCreateTiming {
     }
 }
 
-impl WorkspaceDriveImagePrepareObserver for SandboxCreateTiming {
+impl From<SandboxCreateStage> for sandbox::SandboxCreateStage {
+    fn from(stage: SandboxCreateStage) -> Self {
+        match stage {
+            SandboxCreateStage::CowPoolAcquire => Self::CowPoolAcquire,
+            SandboxCreateStage::WorkspaceDirRename => Self::WorkspaceDirRename,
+            SandboxCreateStage::WorkspaceDrivePrepare => Self::WorkspaceDrivePrepare,
+            SandboxCreateStage::WorkspaceSeedSparseCopy => Self::WorkspaceSeedSparseCopy,
+            SandboxCreateStage::WorkspaceFreshFormat => Self::WorkspaceFreshFormat,
+            SandboxCreateStage::SockDirPrepare => Self::SockDirPrepare,
+            SandboxCreateStage::NetnsAcquire => Self::NetnsAcquire,
+            SandboxCreateStage::NbdCowCreate => Self::NbdCowCreate,
+        }
+    }
+}
+
+impl WorkspaceDriveImagePrepareObserver for SandboxCreateTiming<'_> {
     fn mark_workspace_drive_present(&mut self) {
         SandboxCreateTiming::mark_workspace_drive_present(self);
     }
@@ -337,6 +374,22 @@ mod tests {
     use tracing_test_support::{CapturedEvent, CapturedEvents};
 
     use super::*;
+
+    #[derive(Default)]
+    struct RecordingCreateObserver {
+        records: Vec<(sandbox::SandboxCreateStage, Duration, bool)>,
+    }
+
+    impl sandbox::SandboxCreateObserver for RecordingCreateObserver {
+        fn record_stage(
+            &mut self,
+            stage: sandbox::SandboxCreateStage,
+            duration: Duration,
+            success: bool,
+        ) {
+            self.records.push((stage, duration, success));
+        }
+    }
 
     const SUCCESS_SUMMARY_FIELD_NAMES: &[&str] = &[
         "cow_pool_acquire_ms",
@@ -466,7 +519,7 @@ mod tests {
 
     #[test]
     fn fast_success_emits_info_summary() {
-        let timing = SandboxCreateTiming::new("sandbox-1".into(), "vm0/default".into());
+        let timing = SandboxCreateTiming::new("sandbox-1".into(), "vm0/default".into(), None);
 
         let event = capture_success_summary_event(&timing, SLOW_SANDBOX_CREATE_THRESHOLD / 2);
 
@@ -494,8 +547,8 @@ mod tests {
 
     #[test]
     fn success_summary_fast_and_slow_field_sets_match() {
-        let fast_timing = SandboxCreateTiming::new("sandbox-1".into(), "vm0/default".into());
-        let slow_timing = SandboxCreateTiming::new("sandbox-2".into(), "vm0/default".into());
+        let fast_timing = SandboxCreateTiming::new("sandbox-1".into(), "vm0/default".into(), None);
+        let slow_timing = SandboxCreateTiming::new("sandbox-2".into(), "vm0/default".into(), None);
 
         let fast_event =
             capture_success_summary_event(&fast_timing, SLOW_SANDBOX_CREATE_THRESHOLD / 2);
@@ -510,7 +563,7 @@ mod tests {
 
     #[test]
     fn slow_success_emits_summary_with_stable_fields() {
-        let mut timing = SandboxCreateTiming::new("sandbox-1".into(), "vm0/default".into());
+        let mut timing = SandboxCreateTiming::new("sandbox-1".into(), "vm0/default".into(), None);
         timing.mark_workspace_drive_present();
         timing.mark_workspace_seed_image_used();
         for (index, (stage, _)) in SUCCESS_SUMMARY_STAGE_FIELDS.iter().copied().enumerate() {
@@ -540,7 +593,7 @@ mod tests {
 
     #[test]
     fn success_summary_saturates_large_durations() {
-        let mut timing = SandboxCreateTiming::new("sandbox-1".into(), "vm0/default".into());
+        let mut timing = SandboxCreateTiming::new("sandbox-1".into(), "vm0/default".into(), None);
         timing.record_stage_duration(SandboxCreateStage::CowPoolAcquire, Duration::MAX);
 
         let event = capture_success_summary_event(&timing, Duration::MAX);
@@ -554,7 +607,7 @@ mod tests {
 
     #[test]
     fn workspace_drive_image_observer_maps_to_sandbox_create_timing() {
-        let mut timing = SandboxCreateTiming::new("sandbox-1".into(), "vm0/default".into());
+        let mut timing = SandboxCreateTiming::new("sandbox-1".into(), "vm0/default".into(), None);
 
         WorkspaceDriveImagePrepareObserver::mark_workspace_drive_present(&mut timing);
         WorkspaceDriveImagePrepareObserver::mark_workspace_seed_image_used(&mut timing);
@@ -588,8 +641,64 @@ mod tests {
     }
 
     #[test]
+    fn stage_results_forward_to_external_observer() {
+        let mut observer = RecordingCreateObserver::default();
+        {
+            let mut timing = SandboxCreateTiming::new(
+                "sandbox-1".into(),
+                "vm0/default".into(),
+                Some(&mut observer),
+            );
+            for stage in SandboxCreateStage::ALL {
+                timing
+                    .record_stage_result(stage, Instant::now(), Ok::<(), &str>(()))
+                    .unwrap();
+            }
+        }
+
+        let stages: Vec<_> = observer.records.iter().map(|record| record.0).collect();
+        assert_eq!(
+            stages,
+            vec![
+                sandbox::SandboxCreateStage::CowPoolAcquire,
+                sandbox::SandboxCreateStage::WorkspaceDirRename,
+                sandbox::SandboxCreateStage::WorkspaceDrivePrepare,
+                sandbox::SandboxCreateStage::WorkspaceSeedSparseCopy,
+                sandbox::SandboxCreateStage::WorkspaceFreshFormat,
+                sandbox::SandboxCreateStage::SockDirPrepare,
+                sandbox::SandboxCreateStage::NetnsAcquire,
+                sandbox::SandboxCreateStage::NbdCowCreate,
+            ]
+        );
+        assert!(observer.records.iter().all(|record| record.2));
+    }
+
+    #[test]
+    fn failed_stage_result_forwards_failure_to_external_observer() {
+        let mut observer = RecordingCreateObserver::default();
+        {
+            let mut timing = SandboxCreateTiming::new(
+                "sandbox-1".into(),
+                "vm0/default".into(),
+                Some(&mut observer),
+            );
+            let result =
+                timing.record_stage_result(SandboxCreateStage::NbdCowCreate, Instant::now(), {
+                    Err::<(), _>("nbd failed")
+                });
+            assert!(result.is_err());
+        }
+
+        let [(stage, _duration, success)] = observer.records.as_slice() else {
+            panic!("expected one observer record, got {:?}", observer.records);
+        };
+        assert_eq!(*stage, sandbox::SandboxCreateStage::NbdCowCreate);
+        assert!(!success);
+    }
+
+    #[test]
     fn stage_failure_emits_warning_once() {
-        let mut timing = SandboxCreateTiming::new("sandbox-1".into(), "vm0/default".into());
+        let mut timing = SandboxCreateTiming::new("sandbox-1".into(), "vm0/default".into(), None);
 
         let events = capture_events(|| {
             timing.emit_stage_failure(
@@ -618,7 +727,7 @@ mod tests {
 
     #[test]
     fn stage_failure_redacts_paths_and_command_argv() {
-        let mut timing = SandboxCreateTiming::new("sandbox-1".into(), "vm0/default".into());
+        let mut timing = SandboxCreateTiming::new("sandbox-1".into(), "vm0/default".into(), None);
 
         let events = capture_events(|| {
             timing.emit_stage_failure(

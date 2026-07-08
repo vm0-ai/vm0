@@ -1,8 +1,30 @@
 use async_trait::async_trait;
+use std::time::Duration;
 
 use crate::config::SandboxConfig;
 use crate::error::Result;
 use crate::sandbox::Sandbox;
+
+/// Provider-neutral stages inside sandbox factory creation.
+///
+/// These stages are optional observations for attribution. Providers that do
+/// not expose a matching internal boundary can ignore the observer.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SandboxCreateStage {
+    CowPoolAcquire,
+    WorkspaceDirRename,
+    WorkspaceDrivePrepare,
+    WorkspaceSeedSparseCopy,
+    WorkspaceFreshFormat,
+    SockDirPrepare,
+    NetnsAcquire,
+    NbdCowCreate,
+}
+
+/// Receives low-cardinality sandbox factory create stage timings.
+pub trait SandboxCreateObserver: Send {
+    fn record_stage(&mut self, stage: SandboxCreateStage, duration: Duration, success: bool);
+}
 
 /// Creates and owns the normal teardown path for sandboxes in one profile.
 ///
@@ -46,6 +68,18 @@ pub trait SandboxFactory: Send + Sync {
     /// The returned sandbox belongs to this factory's lifecycle and should be
     /// released through [`destroy`](Self::destroy) on the normal teardown path.
     async fn create(&self, config: SandboxConfig) -> Result<Box<dyn Sandbox>>;
+    /// Create a sandbox while optionally reporting provider-neutral stage timings.
+    ///
+    /// The default implementation preserves existing factory behavior for
+    /// providers that do not expose internal create-stage attribution.
+    async fn create_with_observer(
+        &self,
+        config: SandboxConfig,
+        _observer: Option<&mut dyn SandboxCreateObserver>,
+    ) -> Result<Box<dyn Sandbox>> {
+        self.create(config).await
+    }
+
     /// Explicitly tear down a sandbox created by this factory.
     ///
     /// This is the normal resource-release path for sandbox-owned provider
