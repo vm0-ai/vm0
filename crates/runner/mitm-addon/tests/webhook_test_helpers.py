@@ -6,7 +6,6 @@ from concurrent.futures import Future
 
 import flow_metadata_keys as metadata_keys
 import platform_api
-import usage
 
 SENSITIVE_WEBHOOK_URL = (
     "https://user:pass@api.vm0.ai/api/webhooks/agent/usage-event?token=secret#frag"
@@ -22,13 +21,6 @@ class QueuedUsageExecutor:
         future: Future = Future()
         self.submissions.append((fn, args, kwargs))
         return future
-
-
-def release_queued_pending_reports(executor: QueuedUsageExecutor) -> None:
-    for _, args, _ in executor.submissions:
-        pending_report = args[5]
-        assert isinstance(pending_report, usage.counters.PendingReportLease)
-        pending_report.release()
 
 
 def assert_body_free_webhook_entry(

@@ -14,7 +14,6 @@ from tests.webhook_test_helpers import (
     QueuedUsageExecutor,
     assert_body_free_webhook_entry,
     assert_sensitive_webhook_url_parts_absent,
-    release_queued_pending_reports,
 )
 
 
@@ -58,19 +57,15 @@ def test_enqueue_logs_body_free_payload_summary(tmp_path):
         "events": [],
     }
 
-    try:
-        with patch.object(usage.webhook, "usage_executor", executor):
-            assert usage.webhook.enqueue_webhook_delivery(
-                "https://api.vm0.ai/api/webhooks/agent/usage-event",
-                "tok",
-                payload,
-                str(proxy_log),
-                "usage_event",
-            )
-        assert len(executor.submissions) == 1
-    finally:
-        release_queued_pending_reports(executor)
-        usage.webhook.reset_delivery_capacity_for_tests()
+    with patch.object(usage.webhook, "usage_executor", executor):
+        assert usage.webhook.enqueue_webhook_delivery(
+            "https://api.vm0.ai/api/webhooks/agent/usage-event",
+            "tok",
+            payload,
+            str(proxy_log),
+            "usage_event",
+        )
+    assert len(executor.submissions) == 1
 
     [entry] = read_jsonl_entries_after_flush(proxy_log)
     assert entry["url"] == "https://api.vm0.ai/api/webhooks/agent/usage-event"
@@ -84,19 +79,15 @@ def test_enqueue_sanitizes_sensitive_webhook_url_in_message(tmp_path):
     executor = QueuedUsageExecutor()
     payload = {"runId": "run-1", "events": []}
 
-    try:
-        with patch.object(usage.webhook, "usage_executor", executor):
-            assert usage.webhook.enqueue_webhook_delivery(
-                SENSITIVE_WEBHOOK_URL,
-                "tok",
-                payload,
-                str(proxy_log),
-                "usage_event",
-            )
-        assert len(executor.submissions) == 1
-    finally:
-        release_queued_pending_reports(executor)
-        usage.webhook.reset_delivery_capacity_for_tests()
+    with patch.object(usage.webhook, "usage_executor", executor):
+        assert usage.webhook.enqueue_webhook_delivery(
+            SENSITIVE_WEBHOOK_URL,
+            "tok",
+            payload,
+            str(proxy_log),
+            "usage_event",
+        )
+    assert len(executor.submissions) == 1
 
     [entry] = read_jsonl_entries_after_flush(proxy_log)
     assert entry["url"] == SANITIZED_WEBHOOK_URL
