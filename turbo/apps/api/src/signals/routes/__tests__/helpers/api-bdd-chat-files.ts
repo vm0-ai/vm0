@@ -18,7 +18,6 @@ import {
   chatThreadMessagesContract,
   type AttachFile,
   type ArtifactsListResponse,
-  type ArtifactsListQuery,
   type ChatSearchResponse,
   type ChatThreadArtifactRun,
   type ChatThreadDetail,
@@ -96,8 +95,6 @@ import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
 export { hostedTextFile } from "./api-bdd-host-files";
 export { storageTextFile } from "./api-bdd-storage-files";
-
-type ArtifactsListRequestQuery = Partial<ArtifactsListQuery>;
 
 function defaultCreateThreadModel(): string {
   return "claude-sonnet-4-6";
