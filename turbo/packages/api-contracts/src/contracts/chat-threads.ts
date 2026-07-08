@@ -392,96 +392,26 @@ const selectedModelRequestSchema = z
     }
   });
 
-/**
- * Legacy per-run model selection from clients that still send an explicit
- * provider pin. New clients should send `model` and let the API resolve the
- * provider through org policy.
- */
-const modelSelectionRequestSchema = z
-  .object({
-    modelProviderId: z.string().uuid(),
-    selectedModel: z.string().min(1),
-  })
-  .superRefine((value, ctx) => {
-    if (
-      value.modelProviderId === MODEL_FIRST_SELECTION_PROVIDER_ID &&
-      !isSupportedRunModel(value.selectedModel)
-    ) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["selectedModel"],
-        message: "Invalid model selection",
-      });
-    }
-  });
+const chatThreadCreateBodySchema = z.object({
+  agentId: z.string().min(1),
+  clientThreadId: z.string().uuid().optional(),
+  eventId: chatThreadEventIdSchema.optional(),
+  /**
+   * Selected model id. The API resolves the effective model provider from org
+   * policy and available credentials.
+   */
+  model: selectedModelRequestSchema,
+  title: z.string().optional(),
+});
 
-function rejectConflictingModelFields(
-  value: {
-    readonly model?: string | null;
-    readonly modelSelection?: unknown;
-  },
-  ctx: z.RefinementCtx,
-): void {
-  if (value.model !== undefined && value.modelSelection !== undefined) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ["modelSelection"],
-      message: "Use model instead of modelSelection",
-    });
-  }
-}
-
-const chatThreadCreateBodySchema = z
-  .object({
-    agentId: z.string().min(1),
-    clientThreadId: z.string().uuid().optional(),
-    eventId: chatThreadEventIdSchema.optional(),
-    /**
-     * Selected model id. The API resolves the effective model provider from
-     * org policy and available credentials.
-     */
-    model: selectedModelRequestSchema.optional(),
-    /**
-     * Backward-compatible provider pin. Prefer `model`.
-     */
-    modelSelection: modelSelectionRequestSchema.optional(),
-    title: z.string().optional(),
-  })
-  .superRefine((value, ctx) => {
-    rejectConflictingModelFields(value, ctx);
-    if (value.model === undefined && value.modelSelection === undefined) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["model"],
-        message: "A model selection is required",
-      });
-    }
-  });
-
-const chatThreadModelSelectionUpdateBodySchema = z
-  .object({
-    /**
-     * Selected model id, or null to clear the thread's selected model.
-     */
-    model: selectedModelRequestSchema.nullable().optional(),
-    /**
-     * Backward-compatible provider pin, or null to clear the thread's selected
-     * model. Prefer `model`.
-     */
-    modelSelection: modelSelectionRequestSchema.nullable().optional(),
-    codexServiceTier: codexServiceTierSchema.nullable().optional(),
-    eventId: chatThreadEventIdSchema.optional(),
-  })
-  .superRefine((value, ctx) => {
-    rejectConflictingModelFields(value, ctx);
-    if (value.model === undefined && value.modelSelection === undefined) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["model"],
-        message: "A model selection is required",
-      });
-    }
-  });
+const chatThreadModelSelectionUpdateBodySchema = z.object({
+  /**
+   * Selected model id, or null to clear the thread's selected model.
+   */
+  model: selectedModelRequestSchema.nullable(),
+  codexServiceTier: codexServiceTierSchema.nullable().optional(),
+  eventId: chatThreadEventIdSchema.optional(),
+});
 
 const chatRunOptionsRequestSchema = z.object({
   codexServiceTier: codexServiceTierSchema.optional(),
@@ -898,19 +828,12 @@ export const chatMessagesContract = c.router({
         // Client-generated UUID for the sort touch created by direct user sends.
         // Lets event-sourced clients reconcile optimistic sidebar recency by id.
         chatThreadSortEventId: chatThreadEventIdSchema.optional(),
-        modelProvider: z.string().optional(),
         /**
          * Selected model id. The API resolves the effective provider from org
-         * policy and available credentials.
+         * policy and available credentials. Existing threads may omit it to
+         * reuse the thread's persisted model.
          */
         model: selectedModelRequestSchema.optional(),
-        /**
-         * Backward-compatible per-run provider pin. Prefer `model`.
-         *
-         * When both fields are omitted, the run resolves from the thread's
-         * persisted `selected_model`.
-         */
-        modelSelection: modelSelectionRequestSchema.nullable().optional(),
         runOptions: chatRunOptionsRequestSchema.optional(),
         generationTemplate: generationTemplateRequestSchema.optional(),
         computerUseHostId: z.string().uuid().nullable().optional(),
@@ -941,9 +864,7 @@ export const chatMessagesContract = c.router({
         clientThreadId: z.undefined().optional(),
         chatThreadEventId: z.undefined().optional(),
         chatThreadSortEventId: z.undefined().optional(),
-        modelProvider: z.undefined().optional(),
         model: z.undefined().optional(),
-        modelSelection: z.undefined().optional(),
         runOptions: z.undefined().optional(),
         generationTemplate: z.undefined().optional(),
         computerUseHostId: z.undefined().optional(),
@@ -962,9 +883,7 @@ export const chatMessagesContract = c.router({
         clientThreadId: z.undefined().optional(),
         chatThreadEventId: z.undefined().optional(),
         chatThreadSortEventId: z.undefined().optional(),
-        modelProvider: z.undefined().optional(),
         model: z.undefined().optional(),
-        modelSelection: z.undefined().optional(),
         runOptions: z.undefined().optional(),
         generationTemplate: z.undefined().optional(),
         computerUseHostId: z.undefined().optional(),
@@ -1261,7 +1180,6 @@ export {
   chatThreadDetailSchema,
   chatThreadMetadataSchema,
   chatThreadDraftSchema,
-  modelSelectionRequestSchema,
   chatRunOptionsRequestSchema,
   generationTemplateRequestSchema,
   presentationGenerationTemplateRequestSchema,
@@ -1283,7 +1201,6 @@ export {
   htmlArtifactEditSnapshotSchema,
 };
 
-export type ModelSelectionRequest = z.infer<typeof modelSelectionRequestSchema>;
 export type CodexServiceTier = z.infer<typeof codexServiceTierSchema>;
 export type ChatRunOptionsRequest = z.infer<typeof chatRunOptionsRequestSchema>;
 export type GenerationTemplateRequest = z.infer<

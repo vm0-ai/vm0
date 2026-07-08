@@ -68,10 +68,6 @@ const context = testContext();
 const ASSISTANT_MESSAGE_ID_NAMESPACE = "bfec4fb6-d5b8-43e4-a72a-9f58f87d7e01";
 const TEST_DATA_KEY = Buffer.from("0123456789abcdef0123456789abcdef", "utf8");
 
-// Sentinel provider id for model-first thread selections (the wire-protocol
-// value the chat composer sends when picking a model instead of a provider).
-const MODEL_FIRST_SELECTION_PROVIDER_ID =
-  "00000000-0000-4000-8000-000000000000";
 const API_DISPATCH_QUEUE_PERSISTENCE_ACTION_TYPES = [
   "api_dispatch_persist_custom_connector_auth_refs",
   "api_dispatch_insert_runner_job_queue",
@@ -3066,10 +3062,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
         agentId: agent.agentId,
         threadId: thread.id,
         prompt: "run on the pinned member provider",
-        modelSelection: {
-          modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-          selectedModel: "gpt-5.4-mini",
-        },
+        model: "gpt-5.4-mini",
       },
       [201],
     );

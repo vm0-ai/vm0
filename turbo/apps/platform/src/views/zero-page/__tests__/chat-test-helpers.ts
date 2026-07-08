@@ -19,7 +19,6 @@ import {
   type ChatRunOptionsRequest,
   type CodexServiceTier,
   type GenerationTemplateRequest,
-  type ModelSelectionRequest,
   type PagedChatMessage,
   type PersistedAttachment,
 } from "@vm0/api-contracts/contracts/chat-threads";
@@ -45,6 +44,11 @@ const DEFAULT_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const MOCK_RUN_ID = "d0000000-0000-4000-a000-000000000001";
 const SUB_AGENT_ID = "a1111111-0000-4000-a000-000000000001";
 
+interface ModelSelectionRequest {
+  readonly modelProviderId: string;
+  readonly selectedModel: string;
+}
+
 function modelFirstSelection(selectedModel: string): ModelSelectionRequest {
   return {
     modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
@@ -54,11 +58,7 @@ function modelFirstSelection(selectedModel: string): ModelSelectionRequest {
 
 function modelSelectionFromBody(body: {
   readonly model?: string | null;
-  readonly modelSelection?: ModelSelectionRequest | null;
 }): ModelSelectionRequest | null | undefined {
-  if (body.modelSelection !== undefined) {
-    return body.modelSelection;
-  }
   if (body.model === undefined) {
     return undefined;
   }
@@ -675,7 +675,6 @@ export function mockChatLifecycle(
     hasTextContent?: boolean;
     generationTemplate?: GenerationTemplateRequest;
     model?: string;
-    modelSelection?: ModelSelectionRequest | null;
     runOptions?: ChatRunOptionsRequest;
   }) => {
     const clientMessageId = body.clientMessageId ?? crypto.randomUUID();
@@ -722,7 +721,6 @@ export function mockChatLifecycle(
     hasTextContent?: boolean;
     generationTemplate?: GenerationTemplateRequest;
     model?: string;
-    modelSelection?: ModelSelectionRequest | null;
     runOptions?: ChatRunOptionsRequest;
     computerUseHostId?: string | null;
     revokesMessageId?: string;

@@ -1109,19 +1109,13 @@ describe("chat composer models", () => {
     });
     let sentBody:
       | {
-          modelSelection?: {
-            modelProviderId: string;
-            selectedModel: string;
-          } | null;
+          model?: string;
           runOptions?: { codexServiceTier?: "fast" };
         }
       | undefined;
     let createdBody:
       | {
-          modelSelection: {
-            modelProviderId: string;
-            selectedModel: string;
-          };
+          model?: string;
         }
       | undefined;
 
@@ -1173,11 +1167,8 @@ describe("chat composer models", () => {
     );
 
     await waitFor(() => {
-      expect(createdBody?.modelSelection).toStrictEqual({
-        modelProviderId: "00000000-0000-4000-8000-000000000000",
-        selectedModel: "gpt-5.5",
-      });
-      expect(sentBody?.modelSelection).toBeUndefined();
+      expect(createdBody?.model).toBe("gpt-5.5");
+      expect(sentBody?.model).toBeUndefined();
       expect(sentBody?.runOptions).toStrictEqual({
         codexServiceTier: "fast",
       });

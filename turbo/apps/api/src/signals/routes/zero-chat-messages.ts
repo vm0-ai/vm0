@@ -105,7 +105,6 @@ interface NormalSendBody {
   readonly clientThreadId?: string;
   readonly chatThreadEventId?: string;
   readonly chatThreadSortEventId?: string;
-  readonly modelProvider?: string;
   readonly model?: string;
   readonly modelSelection?: {
     readonly modelProviderId: string;
@@ -474,21 +473,13 @@ function modelFirstSelection(
   };
 }
 
-function normalizeNormalSendBody(
-  body: NormalSendBody,
-):
+function normalizeNormalSendBody(body: NormalSendBody):
   | { readonly ok: true; readonly data: NormalSendBody }
   | {
       readonly ok: false;
       readonly response: ReturnType<typeof badRequestMessage>;
     } {
-  if (body.model !== undefined && body.modelSelection !== undefined) {
-    return {
-      ok: false,
-      response: badRequestMessage("Use model instead of modelSelection"),
-    };
-  }
-  if (body.model === undefined || body.modelSelection !== undefined) {
+  if (body.model === undefined) {
     return { ok: true, data: body };
   }
   return {
@@ -1288,7 +1279,7 @@ async function validateCodexServiceTierBeforeThread(params: {
     orgId: params.orgId,
     userId: params.userId,
     modelPin,
-    requestedModelProvider: requestedModelProviderFor(params.body),
+    requestedModelProvider: undefined,
   });
   const codexServiceTierError = validateCodexServiceTier({
     body: params.body,
@@ -2681,12 +2672,6 @@ async function resolveTimedRunModelPin(
   );
 }
 
-function requestedModelProviderFor(body: NormalSendBody): string | undefined {
-  return body.modelProvider && body.modelProvider !== "default"
-    ? body.modelProvider
-    : undefined;
-}
-
 async function resolveTimedProviderAdmission(params: {
   readonly args: NormalSendArgs;
   readonly prepared: PreparedNormalSend;
@@ -2858,7 +2843,7 @@ const createNormalChatRun$ = command(
       args,
       prepared,
       modelPin,
-      requestedModelProvider: requestedModelProviderFor(args.body),
+      requestedModelProvider: undefined,
     });
     signal.throwIfAborted();
     if (providerAdmission.error) {

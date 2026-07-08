@@ -54,8 +54,6 @@ function goalsClient() {
   return setupApp({ context })(zeroGoalsContract);
 }
 
-const MODEL_FIRST_SELECTION_PROVIDER_ID =
-  "00000000-0000-4000-8000-000000000000";
 const USER_ARTIFACTS_BUCKET = "test-user-artifacts";
 const CHAT_CALLBACK_PRE_CREATE_TIMING_PREFIX =
   "api_dispatch_pre_create_zero_chat_callback_";
@@ -169,13 +167,8 @@ async function startChatRun(
         ? {}
         : { attachFiles: body.attachFiles }),
       ...(body.selectedModel === undefined
-        ? { modelProvider: "anthropic-api-key" }
-        : {
-            modelSelection: {
-              modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-              selectedModel: body.selectedModel,
-            },
-          }),
+        ? { model: "claude-sonnet-4-6" }
+        : { model: body.selectedModel }),
     },
     [201],
   );
@@ -2450,10 +2443,11 @@ describe("CHAT-02: auto-send across a model switch", () => {
       prompt: "And stringify?",
     });
     const secondHeaders = await claimChatRun(runnerGroup, second.runId);
-    await chat.updateThreadModelSelection(actor, first.threadId, {
-      modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-      selectedModel: "claude-sonnet-4-6",
-    });
+    await chat.updateThreadModelSelection(
+      actor,
+      first.threadId,
+      "claude-sonnet-4-6",
+    );
     await queueChatMessage(actor, {
       agentId,
       threadId: first.threadId,

@@ -35,22 +35,6 @@ function modelFirstSelection(selectedModel: string) {
   };
 }
 
-function modelSelectionFromBody(body: {
-  readonly model?: string | null;
-  readonly modelSelection?: {
-    readonly modelProviderId: string;
-    readonly selectedModel: string;
-  } | null;
-}) {
-  if (body.modelSelection !== undefined) {
-    return body.modelSelection;
-  }
-  if (body.model === undefined) {
-    return undefined;
-  }
-  return body.model === null ? null : modelFirstSelection(body.model);
-}
-
 function isCodexFastServiceTierModel(
   model: string | null | undefined,
 ): boolean {
@@ -112,10 +96,8 @@ const updateModelSelectionInner$ = command(
     }
 
     const writeDb = set(writeDb$);
-    const modelSelection = modelSelectionFromBody(body.data);
-    if (modelSelection === undefined) {
-      return badRequestMessage("A model selection is required");
-    }
+    const modelSelection =
+      body.data.model === null ? null : modelFirstSelection(body.data.model);
     const pin = modelSelection
       ? await resolveModelSelectionPin({
           db: writeDb,

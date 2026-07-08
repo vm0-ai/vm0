@@ -27,7 +27,6 @@ import {
   type ChatRunOptionsRequest,
   type CodexServiceTier,
   type GenerationTemplateRequest,
-  type ModelSelectionRequest,
   type PagedChatMessage,
   type PersistedAttachment,
 } from "@vm0/api-contracts/contracts/chat-threads";
@@ -98,16 +97,10 @@ import { createZeroRouteMocks } from "./zero-route-test";
 export { hostedTextFile } from "./api-bdd-host-files";
 export { storageTextFile } from "./api-bdd-storage-files";
 
-const MODEL_FIRST_SELECTION_PROVIDER_ID =
-  "00000000-0000-4000-8000-000000000000";
-
 type ArtifactsListRequestQuery = Partial<ArtifactsListQuery>;
 
-function defaultCreateThreadModelSelection(): ModelSelectionRequest {
-  return {
-    modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-    selectedModel: "claude-sonnet-4-6",
-  };
+function defaultCreateThreadModel(): string {
+  return "claude-sonnet-4-6";
 }
 
 type StorageType = "volume" | "artifact";
@@ -175,9 +168,7 @@ type BddSendMessageBody =
       readonly prompt: string;
       readonly threadId?: string;
       readonly clientThreadId?: string;
-      readonly modelProvider?: string;
       readonly model?: string;
-      readonly modelSelection?: ModelSelectionRequest | null;
       readonly runOptions?: ChatRunOptionsRequest;
       readonly generationTemplate?: GenerationTemplateRequest;
       readonly hasTextContent?: boolean;
@@ -461,17 +452,19 @@ export function createChatFilesBddApi(context: TestContext) {
         readonly clientThreadId?: string;
         readonly eventId?: string;
         readonly model?: string;
-        readonly modelSelection?: ModelSelectionRequest;
       },
     ): Promise<{ readonly id: string; readonly title: string | null }> {
       const response = await accept(
         threadsClient().create({
           headers: authenticate(context, actor),
           body: {
-            ...body,
-            ...(body.model === undefined && body.modelSelection === undefined
-              ? { model: defaultCreateThreadModelSelection().selectedModel }
-              : {}),
+            agentId: body.agentId,
+            ...(body.title === undefined ? {} : { title: body.title }),
+            ...(body.clientThreadId === undefined
+              ? {}
+              : { clientThreadId: body.clientThreadId }),
+            ...(body.eventId === undefined ? {} : { eventId: body.eventId }),
+            model: body.model ?? defaultCreateThreadModel(),
           },
         }),
         [201],
@@ -487,7 +480,6 @@ export function createChatFilesBddApi(context: TestContext) {
         readonly clientThreadId?: string;
         readonly eventId?: string;
         readonly model?: string;
-        readonly modelSelection?: ModelSelectionRequest;
       },
       statuses: readonly (201 | 401 | 402 | 404)[],
     ) {
@@ -495,10 +487,13 @@ export function createChatFilesBddApi(context: TestContext) {
         threadsClient().create({
           headers: authenticate(context, actor),
           body: {
-            ...body,
-            ...(body.model === undefined && body.modelSelection === undefined
-              ? { model: defaultCreateThreadModelSelection().selectedModel }
-              : {}),
+            agentId: body.agentId,
+            ...(body.title === undefined ? {} : { title: body.title }),
+            ...(body.clientThreadId === undefined
+              ? {}
+              : { clientThreadId: body.clientThreadId }),
+            ...(body.eventId === undefined ? {} : { eventId: body.eventId }),
+            model: body.model ?? defaultCreateThreadModel(),
           },
         }),
         statuses,
@@ -849,7 +844,7 @@ export function createChatFilesBddApi(context: TestContext) {
     async updateThreadModelSelection(
       actor: ApiTestUser,
       threadId: string,
-      modelSelection: ModelSelectionRequest | null,
+      model: string | null,
       options?: {
         readonly codexServiceTier?: CodexServiceTier | null;
         readonly eventId?: string;
@@ -860,12 +855,7 @@ export function createChatFilesBddApi(context: TestContext) {
           headers: authenticate(context, actor),
           params: { id: threadId },
           body: {
-            ...(modelSelection === null
-              ? { model: null }
-              : modelSelection?.modelProviderId ===
-                  MODEL_FIRST_SELECTION_PROVIDER_ID
-                ? { model: modelSelection.selectedModel }
-                : { modelSelection }),
+            model,
             codexServiceTier: options?.codexServiceTier,
             eventId: options?.eventId,
           },
@@ -877,7 +867,7 @@ export function createChatFilesBddApi(context: TestContext) {
     async requestUpdateThreadModelSelection(
       actor: ApiTestUser | null,
       threadId: string,
-      modelSelection: ModelSelectionRequest | null,
+      model: string | null,
       statuses: readonly (204 | 400 | 401 | 402 | 404)[],
       options?: {
         readonly codexServiceTier?: CodexServiceTier | null;
@@ -889,12 +879,7 @@ export function createChatFilesBddApi(context: TestContext) {
           headers: authenticate(context, actor),
           params: { id: threadId },
           body: {
-            ...(modelSelection === null
-              ? { model: null }
-              : modelSelection?.modelProviderId ===
-                  MODEL_FIRST_SELECTION_PROVIDER_ID
-                ? { model: modelSelection.selectedModel }
-                : { modelSelection }),
+            model,
             codexServiceTier: options?.codexServiceTier,
             eventId: options?.eventId,
           },
@@ -1215,11 +1200,10 @@ export function createChatFilesBddApi(context: TestContext) {
         "prompt" in body
           ? (() => {
               const defaultModel =
-                body.threadId === undefined &&
-                body.model === undefined &&
-                body.modelSelection === undefined
-                  ? defaultCreateThreadModelSelection().selectedModel
+                body.threadId === undefined && body.model === undefined
+                  ? defaultCreateThreadModel()
                   : undefined;
+              const selectedModel = body.model ?? defaultModel;
               return {
                 agentId: body.agentId,
                 prompt: body.prompt,
@@ -1229,17 +1213,9 @@ export function createChatFilesBddApi(context: TestContext) {
                 ...(body.clientThreadId === undefined
                   ? {}
                   : { clientThreadId: body.clientThreadId }),
-                ...(body.modelProvider === undefined
+                ...(selectedModel === undefined
                   ? {}
-                  : { modelProvider: body.modelProvider }),
-                ...(body.model === undefined
-                  ? defaultModel === undefined
-                    ? {}
-                    : { model: defaultModel }
-                  : { model: body.model }),
-                ...(body.modelSelection === undefined
-                  ? {}
-                  : { modelSelection: body.modelSelection }),
+                  : { model: selectedModel }),
                 ...(body.runOptions === undefined
                   ? {}
                   : { runOptions: body.runOptions }),

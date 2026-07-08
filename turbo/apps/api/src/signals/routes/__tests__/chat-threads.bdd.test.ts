@@ -76,8 +76,6 @@ const cu = createComputerUseBddApi(context);
 const connectorsApi = createConnectorBddApi(context);
 const authOrg = createAuthOrgAgentsBddApi(context);
 const routeMocks = createZeroRouteMocks(context);
-const MODEL_FIRST_SELECTION_PROVIDER_ID =
-  "00000000-0000-4000-8000-000000000000";
 const CHAT_THREAD_SNAPSHOT_CRON_SECRET = "chat-thread-snapshot-cron-secret";
 
 type AssistantMessage = Extract<PagedChatMessage, { role: "assistant" }>;
@@ -166,10 +164,7 @@ async function sendChatRun(
     readonly prompt: string;
     readonly threadId?: string;
     readonly chatThreadSortEventId?: string;
-    readonly modelSelection?: {
-      readonly modelProviderId: string;
-      readonly selectedModel: string;
-    };
+    readonly model?: string;
   },
 ): Promise<{ readonly runId: string; readonly threadId: string }> {
   const sent = await chat.requestSendMessage(actor, body, [201]);
@@ -520,10 +515,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     await chat.updateThreadModelSelection(
       actor,
       thread.id,
-      {
-        modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-        selectedModel: "claude-sonnet-4-6",
-      },
+      "claude-sonnet-4-6",
       { eventId: modelSelectionEventId },
     );
 
@@ -692,10 +684,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     await chat.updateThreadModelSelection(
       actor,
       liveThread.id,
-      {
-        modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-        selectedModel: "claude-sonnet-4-6",
-      },
+      "claude-sonnet-4-6",
       { eventId: modelSelectionEventId },
     );
     chat.mockObjectStorageObjectsExist();
@@ -837,10 +826,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     const run = await sendChatRun(actor, {
       agentId,
       prompt: "pin the first run model",
-      modelSelection: {
-        modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-        selectedModel: "claude-sonnet-4-6",
-      },
+      model: "claude-sonnet-4-6",
     });
 
     let detail = await chat.readThread(actor, run.threadId);
@@ -859,10 +845,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     const invalidSelection = await chat.requestUpdateThreadModelSelection(
       actor,
       run.threadId,
-      {
-        modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-        selectedModel: "not-a-supported-model",
-      },
+      "not-a-supported-model",
       [400],
     );
     expectApiError(invalidSelection.body);
@@ -889,10 +872,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
 
     const thread = await chat.createThread(actor, {
       agentId,
-      modelSelection: {
-        modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-        selectedModel: "claude-sonnet-4-6",
-      },
+      model: "claude-sonnet-4-6",
       title: "limited free model pin",
     });
     for (const selectedModel of [
@@ -904,10 +884,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       const restrictedSelection = await chat.requestUpdateThreadModelSelection(
         actor,
         thread.id,
-        {
-          modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-          selectedModel,
-        },
+        selectedModel,
         [402],
       );
       expectApiError(restrictedSelection.body);
@@ -922,32 +899,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       ).resolves.not.toHaveProperty("selectedModel");
     }
 
-    const { providerId: byokProviderId } = await api.createOrgModelProvider(
-      actor,
-      {
-        type: "anthropic-api-key",
-        secret: "sk-ant-limited-free-byok",
-      },
-    );
-    const byokSelection = await chat.requestUpdateThreadModelSelection(
-      actor,
-      thread.id,
-      {
-        modelProviderId: byokProviderId,
-        selectedModel: "MiniMax-M3",
-      },
-      [402],
-    );
-    expectApiError(byokSelection.body);
-    expect(byokSelection.body.error.code).toBe("INSUFFICIENT_CREDITS");
-    await expect(chat.readThread(actor, thread.id)).resolves.not.toHaveProperty(
-      "modelProviderId",
-    );
-
-    await chat.updateThreadModelSelection(actor, thread.id, {
-      modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-      selectedModel: "MiniMax-M3",
-    });
+    await chat.updateThreadModelSelection(actor, thread.id, "MiniMax-M3");
     const detail = await chat.readThread(actor, thread.id);
     expect(detail).not.toHaveProperty("selectedModel");
   }, 90_000);

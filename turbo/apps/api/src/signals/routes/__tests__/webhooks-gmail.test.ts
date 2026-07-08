@@ -42,8 +42,6 @@ const miscApi = createMiscRoutesApi(context);
 const webhooksApi = createWebhookCallbackApi(context);
 
 const WORKFLOW_NAME = "gmail-webhook-workflow";
-const MODEL_FIRST_SELECTION_PROVIDER_ID =
-  "00000000-0000-4000-8000-000000000000";
 const GMAIL_TOPIC_NAME = "projects/vm0-ai-488909/topics/gmail-events";
 const GMAIL_AUDIENCE = "https://api.vm0.ai/api/webhooks/gmail";
 const GMAIL_PUSH_SERVICE_ACCOUNT =
@@ -429,10 +427,11 @@ async function configureTriggerThreadModel(
   actor: ApiTestUser,
   chatThreadId: string,
 ): Promise<void> {
-  await chatApi.updateThreadModelSelection(actor, chatThreadId, {
-    modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-    selectedModel: GMAIL_WORKSPACE_MODEL,
-  });
+  await chatApi.updateThreadModelSelection(
+    actor,
+    chatThreadId,
+    GMAIL_WORKSPACE_MODEL,
+  );
 }
 
 async function grantVisibleCredits(
