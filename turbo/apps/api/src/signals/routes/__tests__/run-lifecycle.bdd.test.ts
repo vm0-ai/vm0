@@ -21,6 +21,7 @@ import { getFirewallExecutionMetadata } from "@vm0/connectors/firewall-metadata/
 import { HttpResponse, http } from "msw";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { v5 as uuidv5 } from "uuid";
+import { createStore } from "ccstate";
 
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now, nowDate } from "../../../lib/time";
@@ -44,6 +45,12 @@ import { storageTextFile } from "./helpers/api-bdd-storage-files";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
+import { createFixtureTracker } from "./helpers/zero-route-test";
+import {
+  deleteRelationshipRowsForFixture$,
+  seedRuntimeInjectionWindowMemoryRows$,
+  type RelationshipFixture,
+} from "./helpers/zero-relationships";
 import {
   deleteVm0ManagedDefaultModelKey,
   enableAutomationsFakeKms,
@@ -67,6 +74,16 @@ import {
  */
 
 const context = testContext();
+const relationshipStore = createStore();
+const trackRelationshipFixture = createFixtureTracker(
+  async (fixture: RelationshipFixture): Promise<void> => {
+    await relationshipStore.set(
+      deleteRelationshipRowsForFixture$,
+      fixture,
+      context.signal,
+    );
+  },
+);
 const ASSISTANT_MESSAGE_ID_NAMESPACE = "bfec4fb6-d5b8-43e4-a72a-9f58f87d7e01";
 const TEST_DATA_KEY = Buffer.from("0123456789abcdef0123456789abcdef", "utf8");
 
@@ -5457,6 +5474,18 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     if (!actor.orgId) {
       throw new Error("Expected actor to belong to an org");
     }
+    const memoryFixture = await trackRelationshipFixture(
+      Promise.resolve({
+        orgId: actor.orgId,
+        userId: actor.userId,
+      }),
+    );
+    await relationshipStore.set(
+      seedRuntimeInjectionWindowMemoryRows$,
+      memoryFixture,
+      context.signal,
+    );
+
     await updateFeatureSwitchesForUser(
       context,
       { ...actor, orgId: actor.orgId },
@@ -5467,7 +5496,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
 
     const memoryRun = await api.createRun(actor, {
       agentId: agent.agentId,
-      prompt: "summarize relationship context",
+      prompt: "security review injection preview",
       modelProvider: "anthropic-api-key",
     });
     await api.heartbeatRunner(runnerGroup);
@@ -5478,7 +5507,51 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       'zero memory context --query "<topic>"',
     );
     expect(memoryAppendSystemPrompt).toContain("These commands are read-only");
+    expect(memoryAppendSystemPrompt).not.toContain("# Zero Memory Context");
+    expect(memoryAppendSystemPrompt).not.toContain(
+      "The user prefers concise launch summaries.",
+    );
     await api.requestCancelRun(actor, memoryRun.runId, [200]);
+
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      {
+        [FeatureSwitchKey.RelationshipMemory]: true,
+        [FeatureSwitchKey.RelationshipMemoryRuntimeInjection]: true,
+      },
+    );
+
+    const runtimeMemoryRun = await api.createRun(actor, {
+      agentId: agent.agentId,
+      prompt: "security review injection preview",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const runtimeMemoryClaim = await api.claimRunnerJob(runtimeMemoryRun.runId);
+    const runtimeMemoryAppendSystemPrompt =
+      runtimeMemoryClaim.appendSystemPrompt ?? "";
+    expect(runtimeMemoryAppendSystemPrompt).toContain("# Zero Memory Context");
+    expect(runtimeMemoryAppendSystemPrompt).toContain("Stable profile:");
+    expect(runtimeMemoryAppendSystemPrompt).toContain("Current context:");
+    expect(runtimeMemoryAppendSystemPrompt).toContain(
+      "Relevant memories for this request:",
+    );
+    expect(runtimeMemoryAppendSystemPrompt).toContain(
+      "The user prefers concise launch summaries.",
+    );
+    expect(runtimeMemoryAppendSystemPrompt).toContain(
+      "The current work is validating runtime memory injection.",
+    );
+    expect(runtimeMemoryAppendSystemPrompt).toContain(
+      "Follow up on the security review injection preview.",
+    );
+    // The query-relevant memory sits outside the bounded profile window and is
+    // surfaced only by prompt recall in the "Relevant memories" section.
+    expect(runtimeMemoryAppendSystemPrompt).toContain(
+      "Capture findings from the security review injection preview session.",
+    );
+    await api.requestCancelRun(actor, runtimeMemoryRun.runId, [200]);
   });
 
   it("keeps goal tools allowed when no feature flags are enabled", async () => {

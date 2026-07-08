@@ -52,6 +52,7 @@ export enum FeatureSwitchKey {
   ChatThreadEmoji = "chatThreadEmoji",
   MemoryViewer = "memoryViewer",
   RelationshipMemory = "relationshipMemory",
+  RelationshipMemoryRuntimeInjection = "relationshipMemoryRuntimeInjection",
   HtmlArtifactCommentEditing = "htmlArtifactCommentEditing",
   ComputerUseDesktopPlugins = "computerUseDesktopPlugins",
   DesktopX64Download = "desktopX64Download",

@@ -2,8 +2,10 @@ import { command } from "ccstate";
 import {
   testRelationshipStateContract,
   type TestRelationshipStateActionBody,
+  type TestRelationshipStateFixture,
 } from "@vm0/api-contracts/contracts/test-relationship-state";
 import {
+  type MemoryKind,
   memories,
   memoryEntities,
   memoryEntityAliases,
@@ -287,6 +289,160 @@ async function seedRelationshipsForAction(
   return actionOk();
 }
 
+interface RuntimeInjectionSeedRow {
+  readonly kind: MemoryKind;
+  readonly text: string;
+  readonly confidence: number;
+  readonly lastSeenAt: string;
+}
+
+async function insertRuntimeInjectionMemories(
+  db: Db,
+  fixture: TestRelationshipStateFixture,
+  seedRows: readonly RuntimeInjectionSeedRow[],
+  signal: AbortSignal,
+) {
+  const [entity] = await db
+    .insert(memoryEntities)
+    .values({
+      orgId: fixture.org_id,
+      userId: fixture.user_id,
+      type: "person",
+      displayName: "Alice Runtime",
+    })
+    .returning({ id: memoryEntities.id });
+  signal.throwIfAborted();
+  if (!entity) {
+    throw new Error("Expected runtime injection fixture entity");
+  }
+
+  await db.insert(memories).values(
+    seedRows.map((row) => {
+      return {
+        orgId: fixture.org_id,
+        userId: fixture.user_id,
+        entityId: entity.id,
+        kind: row.kind,
+        status: "active" as const,
+        text: row.text,
+        confidence: row.confidence,
+        lastSeenAt: new Date(row.lastSeenAt),
+      };
+    }),
+  );
+  signal.throwIfAborted();
+  return actionOk();
+}
+
+async function seedRuntimeInjectionMemoriesForAction(
+  db: Db,
+  body: RelationshipAction<"seed-runtime-injection-memories">,
+  signal: AbortSignal,
+) {
+  const seedRows: readonly RuntimeInjectionSeedRow[] = [
+    {
+      kind: "preference",
+      text: "The user prefers concise launch summaries.",
+      confidence: 92,
+      lastSeenAt: "2026-07-05T12:00:00.000Z",
+    },
+    {
+      kind: "recent_context",
+      text: "The current work is validating runtime memory injection.",
+      confidence: 84,
+      lastSeenAt: "2026-07-06T12:00:00.000Z",
+    },
+    {
+      kind: "open_loop",
+      text: "Follow up on the security review injection preview.",
+      confidence: 88,
+      lastSeenAt: "2026-07-07T12:00:00.000Z",
+    },
+  ];
+  return await insertRuntimeInjectionMemories(
+    db,
+    body.fixture,
+    seedRows,
+    signal,
+  );
+}
+
+async function seedRuntimeInjectionWindowMemoriesForAction(
+  db: Db,
+  body: RelationshipAction<"seed-runtime-injection-window-memories">,
+  signal: AbortSignal,
+) {
+  // Mirrors supermemory's profile-vs-search split: the stable/recent profile is
+  // a bounded window, while the "relevant memories" section is a full-corpus
+  // search that surfaces prompt-relevant memories the bounded window left out.
+  // The higher-ranked recent_context rows fill the dynamic window, so the
+  // low-confidence, older query-relevant row is excluded from the profile and
+  // can only reach the prompt via query recall (and is therefore not deduped
+  // away against the profile).
+  const seedRows: readonly RuntimeInjectionSeedRow[] = [
+    // Stable profile.
+    {
+      kind: "preference",
+      text: "The user prefers concise launch summaries.",
+      confidence: 92,
+      lastSeenAt: "2026-07-05T12:00:00.000Z",
+    },
+    // Current context (open loop + recent context inside the bounded window).
+    {
+      kind: "open_loop",
+      text: "Follow up on the security review injection preview.",
+      confidence: 88,
+      lastSeenAt: "2026-07-07T12:00:00.000Z",
+    },
+    {
+      kind: "recent_context",
+      text: "The current work is validating runtime memory injection.",
+      confidence: 84,
+      lastSeenAt: "2026-07-06T12:00:00.000Z",
+    },
+    // Higher-ranked recent context that fills the bounded window and pushes the
+    // query-relevant row below out of the profile sections.
+    {
+      kind: "recent_context",
+      text: "Reviewing the Q3 roadmap draft.",
+      confidence: 90,
+      lastSeenAt: "2026-07-07T12:00:00.000Z",
+    },
+    {
+      kind: "recent_context",
+      text: "Preparing the weekly investor update.",
+      confidence: 89,
+      lastSeenAt: "2026-07-07T12:00:00.000Z",
+    },
+    {
+      kind: "recent_context",
+      text: "Coordinating the design system migration.",
+      confidence: 87,
+      lastSeenAt: "2026-07-06T12:00:00.000Z",
+    },
+    {
+      kind: "recent_context",
+      text: "Testing the new onboarding flow.",
+      confidence: 86,
+      lastSeenAt: "2026-07-06T12:00:00.000Z",
+    },
+    // Query-relevant memory that falls outside the bounded recent-context window
+    // (lowest confidence, oldest) and is only surfaced by prompt recall.
+    {
+      kind: "recent_context",
+      text: "Capture findings from the security review injection preview session.",
+      confidence: 55,
+      lastSeenAt: "2026-06-20T12:00:00.000Z",
+    },
+  ];
+  return await insertRuntimeInjectionMemories(
+    db,
+    body.fixture,
+    seedRows,
+    signal,
+  );
+}
+
 const mutateRelationshipState$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     if (!isTestEndpointAllowed(get(request$))) {
@@ -307,6 +463,16 @@ const mutateRelationshipState$ = command(
       }
       case "seed-relationships": {
         return await seedRelationshipsForAction(db, body, signal);
+      }
+      case "seed-runtime-injection-memories": {
+        return await seedRuntimeInjectionMemoriesForAction(db, body, signal);
+      }
+      case "seed-runtime-injection-window-memories": {
+        return await seedRuntimeInjectionWindowMemoriesForAction(
+          db,
+          body,
+          signal,
+        );
       }
     }
   },

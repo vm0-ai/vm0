@@ -133,6 +133,9 @@ describe("getAllFeatureStates", () => {
     );
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadEmoji]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.RelationshipMemory]).toBe(true);
+    expect(
+      staffOrgStates[FeatureSwitchKey.RelationshipMemoryRuntimeInjection],
+    ).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.AgentUnreadIndicators]).toBe(true);
     expect(
@@ -160,6 +163,9 @@ describe("getAllFeatureStates", () => {
     );
     expect(otherOrgStates[FeatureSwitchKey.ChatThreadEmoji]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.RelationshipMemory]).toBe(false);
+    expect(
+      otherOrgStates[FeatureSwitchKey.RelationshipMemoryRuntimeInjection],
+    ).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(
       false,
     );
