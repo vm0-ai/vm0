@@ -100,7 +100,12 @@
     # ========================================
     #
     # Combine systemctl's ActiveState with the runner's own status.json mode
-    # into a single `target_state` fact, one of:
+    # into a single `target_state` fact. systemd active-like states
+    # (`active`, `activating`, `reloading`, `refreshing`) are live target
+    # services; missing or malformed status from those states is treated as
+    # `starting` and left to the readiness wait below.
+    #
+    # Values:
     #
     #   running   — target is already live (log + skip install; Phase 7/8 still run)
     #   starting  — target process is alive but not job-admitting yet
@@ -119,10 +124,13 @@
     - name: Resolve target_state
       shell: |
         set -euo pipefail
-        if [ "{{ tgt_active.stdout }}" != "active" ]; then
-          echo inactive
-          exit 0
-        fi
+        case "{{ tgt_active.stdout }}" in
+          active|activating|reloading|refreshing) ;;
+          *)
+            echo inactive
+            exit 0
+            ;;
+        esac
 
         mode="$(
           python3 - "{{ runner_dir }}/status.json" <<'PY'
@@ -162,7 +170,7 @@
           unknown mode '{{ target_state }}'. Refusing to proceed — manual
           inspection required.
       when:
-        - tgt_active.stdout == "active"
+        - target_state != "inactive"
         - target_state not in ["starting", "running", "draining", "stopping", "stopped"]
 
     # ========================================

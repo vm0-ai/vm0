@@ -5,7 +5,7 @@
     timeout 20s systemctl stop "$unit" 2>/dev/null || true
     state="$(systemctl show "$unit" --property=ActiveState --value 2>/dev/null || true)"
     case "$state" in
-      active|activating|reloading|deactivating)
+      active|activating|reloading|refreshing|deactivating)
         timeout 10s systemctl kill --kill-whom=all --signal=SIGKILL "$unit" 2>/dev/null || true
         timeout 10s systemctl stop --no-block "$unit" 2>/dev/null || true
         ;;
@@ -15,7 +15,7 @@
     for _ in $(seq 1 10); do
       state="$(systemctl show "$unit" --property=ActiveState --value 2>/dev/null || true)"
       case "$state" in
-        active|activating|reloading|deactivating) sleep 1 ;;
+        active|activating|reloading|refreshing|deactivating) sleep 1 ;;
         *) exit 0 ;;
       esac
     done
