@@ -625,16 +625,19 @@ describe("POST /api/test/slack-dispatch-probe", () => {
         );
       }),
     ).toBeUndefined();
+    expect(context.mocks.slack.assistant.threads.setStatus).toHaveBeenCalledTimes(
+      2,
+    );
     expect(
       context.mocks.slack.assistant.threads.setStatus,
-    ).toHaveBeenCalledWith({
+    ).toHaveBeenNthCalledWith(1, {
       channel_id: "C-test",
       thread_ts: "1710000003.000000",
       status: "is thinking...",
     });
     expect(
       context.mocks.slack.assistant.threads.setStatus,
-    ).toHaveBeenCalledWith({
+    ).toHaveBeenNthCalledWith(2, {
       channel_id: "C-test",
       thread_ts: "1710000003.000000",
       status: "",
@@ -677,16 +680,19 @@ describe("POST /api/test/slack-dispatch-probe", () => {
         code: "slack_history_failed",
       },
     });
+    expect(context.mocks.slack.assistant.threads.setStatus).toHaveBeenCalledTimes(
+      2,
+    );
     expect(
       context.mocks.slack.assistant.threads.setStatus,
-    ).toHaveBeenCalledWith({
+    ).toHaveBeenNthCalledWith(1, {
       channel_id: "C-test",
       thread_ts: "1710000004.000000",
       status: "is thinking...",
     });
     expect(
       context.mocks.slack.assistant.threads.setStatus,
-    ).toHaveBeenCalledWith({
+    ).toHaveBeenNthCalledWith(2, {
       channel_id: "C-test",
       thread_ts: "1710000004.000000",
       status: "",
