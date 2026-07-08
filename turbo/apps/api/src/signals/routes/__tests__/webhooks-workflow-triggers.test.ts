@@ -21,6 +21,7 @@ import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
+import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import {
   deleteFeatureSwitchesForUser,
   updateFeatureSwitchesForUser,
@@ -163,6 +164,8 @@ describe("POST /api/webhooks/workflow-triggers/:token", () => {
     const { fixture, workflowId } = await setupFixture();
     await track(Promise.resolve(fixture));
     await enableWebhookWorkflowTriggers(fixture);
+    const runsApi = createRunsAutomationsApi(context);
+    const runnerGroup = runsApi.configureRunnerGroup();
 
     const created = await accept(
       triggersClient().create({
@@ -221,6 +224,15 @@ describe("POST /api/webhooks/workflow-triggers/:token", () => {
     expect(runsAfterFirst).toStrictEqual([
       { id: first.body.runId, triggerSource: "workflow-event" },
     ]);
+    await runsApi.heartbeatRunner(runnerGroup);
+    const workflowClaim = await runsApi.claimRunnerJob(first.body.runId);
+    const workflowPrompt = workflowClaim.appendSystemPrompt ?? "";
+    expect(workflowPrompt).toContain("zero slack message send --help");
+    expect(workflowPrompt).not.toContain(
+      "normal replies are automatically sent to the originating thread",
+    );
+    expect(workflowPrompt).not.toContain("Never use SLACK_TOKEN directly");
+
     const timingEvents = sandboxOperationEventsForRun(first.body.runId);
     const actionTypes = new Set(
       timingEvents.map((event) => {
