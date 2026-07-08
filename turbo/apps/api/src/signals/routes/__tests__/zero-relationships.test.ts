@@ -512,7 +512,7 @@ describe("GET /api/zero/relationships/*", () => {
     ).toBeTruthy();
   });
 
-  it("uses the Gmail message time for relationship interaction dates", async () => {
+  it("uses the Gmail message time for relationship state dates without fallback interactions", async () => {
     const messageOccurredAt = "2026-02-03T04:05:06.000Z";
     const jobRunAt = new Date("2026-05-06T07:08:09.000Z");
     mockNow(jobRunAt);
@@ -553,7 +553,7 @@ describe("GET /api/zero/relationships/*", () => {
       return relationship.entity.primaryEmail === "customer@example.com";
     });
     expect(customer?.lastInteractionAt).toBe(messageOccurredAt);
-    expect(customer?.recentInteractions[0]?.occurredAt).toBe(messageOccurredAt);
+    expect(customer?.recentInteractions).toStrictEqual([]);
     expect(customer?.lastInteractionAt).not.toBe(jobRunAt.toISOString());
   });
 
@@ -1045,15 +1045,10 @@ describe("GET /api/zero/relationships/*", () => {
         type: "organization",
         displayName: "Slack channel C-memory",
       },
-      relationshipType: "Slack channel",
-      recentInteractions: [
-        {
-          provider: "slack",
-          externalId: "T-memory-backfill:C-memory:1780000000.000100",
-          messageId: "1780000000.000100",
-          snippet: "The user posted in Slack channel C-memory on Slack.",
-        },
-      ],
+      relationshipType: null,
+      status: "active",
+      lastInteractionAt: "2026-05-28T20:26:40.000Z",
+      recentInteractions: [],
     });
   });
 });

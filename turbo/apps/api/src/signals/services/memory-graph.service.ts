@@ -18,7 +18,7 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import type { Db, ReadonlyDb } from "../external/db";
 import { nowDate } from "../external/time";
 
-export interface GraphRelationshipTarget {
+interface GraphRelationshipTarget {
   readonly type: "person" | "organization";
   readonly identityKey: string;
   readonly displayName: string;
