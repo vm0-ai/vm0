@@ -161,7 +161,7 @@ class TestAddonConfiguration:
 
         assert not pending_path.exists()
 
-    def test_configure_snapshots_platform_client_headers(self):
+    def test_configure_snapshots_client_headers(self):
         with patch.object(
             mitm_addon.ctx,
             "options",

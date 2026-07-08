@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.139.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.138.2...runner-rs-v0.139.0) (2026-07-08)
+
+
+### Features
+
+* add desktop client request headers ([#20622](https://github.com/vm0-ai/vm0/issues/20622)) ([00a66b8](https://github.com/vm0-ai/vm0/commit/00a66b894644a59f4646c31799a918e6ceafa19a))
+
+
+### Refactoring
+
+* **mitm-addon:** extract connector diagnostic owner ([#20624](https://github.com/vm0-ai/vm0/issues/20624)) ([96ec313](https://github.com/vm0-ai/vm0/commit/96ec313c48ccba2f838c642b353bbfb1fdb3d5c7))
+
 ## [0.138.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.138.1...runner-rs-v0.138.2) (2026-07-08)
 
 

@@ -3,6 +3,42 @@
 //! These constants are shared TypeScript/Rust contract values.
 //! Token-shaped placeholder values in this module are fake marker bytes, not secrets.
 
+/// Client request contract constants shared by TypeScript and Rust.
+pub mod client {
+    /// HTTP header names used to identify vm0 clients in API request logs.
+    pub mod headers {
+        /// HTTP header carrying the per-request vm0 client request identifier.
+        pub const CLIENT_REQUEST_ID_HEADER: &str = "X-Client-Request-Id";
+
+        /// HTTP header carrying the sending vm0 client session identifier.
+        pub const CLIENT_SESSION_ID_HEADER: &str = "X-Client-Session-Id";
+
+        /// HTTP header carrying the sending vm0 client component type.
+        pub const CLIENT_TYPE_HEADER: &str = "X-Client-Type";
+
+        /// HTTP header carrying the sending vm0 client component version.
+        pub const CLIENT_VERSION_HEADER: &str = "X-Client-Version";
+    }
+
+    /// Client type values used to identify vm0 API request originators.
+    pub mod types {
+        /// Client type value for the platform web app.
+        pub const CLIENT_TYPE_APP: &str = "App";
+
+        /// Client type value for the desktop client.
+        pub const CLIENT_TYPE_DESKTOP: &str = "desktop";
+
+        /// Client type value for the guest agent.
+        pub const CLIENT_TYPE_GUEST_AGENT: &str = "GuestAgent";
+
+        /// Client type value for the mitmproxy addon.
+        pub const CLIENT_TYPE_MITM_ADDON: &str = "MitmAddon";
+
+        /// Client type value for the runner.
+        pub const CLIENT_TYPE_RUNNER: &str = "Runner";
+    }
+}
+
 /// Codex OAuth token contract constants shared by TypeScript and Rust.
 pub mod codex_oauth_token {
     /// Fake Codex OAuth token placeholder marker values.
@@ -56,24 +92,6 @@ pub mod model_provider_env {
         /// Fake marker bytes for the `OPENAI_API_KEY` placeholder.
         /// This value is not a secret and must not be treated as a usable credential.
         pub const OPENAI_API_KEY: &str = "sk-proj-CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocaT3BlbkFJCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLoca";
-    }
-}
-
-/// Platform client request header contract constants shared by TypeScript and Rust.
-pub mod platform_client {
-    /// HTTP header names used to identify vm0 platform clients in API request logs.
-    pub mod headers {
-        /// HTTP header carrying the per-request vm0 client request identifier.
-        pub const PLATFORM_CLIENT_REQUEST_ID_HEADER: &str = "X-Client-Request-Id";
-
-        /// HTTP header carrying the sending vm0 client session identifier.
-        pub const PLATFORM_CLIENT_SESSION_ID_HEADER: &str = "X-Client-Session-Id";
-
-        /// HTTP header carrying the sending vm0 client component type.
-        pub const PLATFORM_CLIENT_TYPE_HEADER: &str = "X-Client-Type";
-
-        /// HTTP header carrying the sending vm0 client component version.
-        pub const PLATFORM_CLIENT_VERSION_HEADER: &str = "X-Client-Version";
     }
 }
 

@@ -658,7 +658,7 @@ describe("createApp", () => {
   });
 
   describe("axiom request log", () => {
-    it("records platform client headers on request log events", async () => {
+    it("records client headers on request log events", async () => {
       context.mocks.axiom.flush.mockResolvedValue(undefined);
       const app = createApp({ signal: context.signal });
       const response = await app.request("https://api.vm0.test/health", {
@@ -696,7 +696,7 @@ describe("createApp", () => {
       });
     });
 
-    it("omits platform client header fields when they are absent", async () => {
+    it("omits client header fields when they are absent", async () => {
       const app = createApp({ signal: context.signal });
       const response = await app.request("/health", { method: "GET" });
 

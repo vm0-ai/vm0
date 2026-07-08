@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.576.0](https://github.com/vm0-ai/vm0/compare/app-v0.575.1...app-v0.576.0) (2026-07-08)
+
+
+### Features
+
+* add desktop client request headers ([#20622](https://github.com/vm0-ai/vm0/issues/20622)) ([00a66b8](https://github.com/vm0-ai/vm0/commit/00a66b894644a59f4646c31799a918e6ceafa19a))
+
+
+### Bug Fixes
+
+* focus current main chat in sidebar thread list ([#20620](https://github.com/vm0-ai/vm0/issues/20620)) ([bca420f](https://github.com/vm0-ai/vm0/commit/bca420fd120235180a9105accf51d54913fb44f3))
+
+
+### Refactoring
+
+* **feature-switches:** remove rolled-out presentation, agents, and voice gates ([#20616](https://github.com/vm0-ai/vm0/issues/20616)) ([849d717](https://github.com/vm0-ai/vm0/commit/849d7176b5145d875e3378627c7209790d79dc99))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.168.0
+    * @vm0/connectors bumped to 1.148.1
+    * @vm0/core bumped to 8.414.3
+
 ## [0.575.1](https://github.com/vm0-ai/vm0/compare/app-v0.575.0...app-v0.575.1) (2026-07-08)
 
 

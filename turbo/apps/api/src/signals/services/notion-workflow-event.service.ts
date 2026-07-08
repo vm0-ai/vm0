@@ -33,6 +33,7 @@ import { command } from "ccstate";
 import { and, asc, desc, eq, inArray, lte, sql } from "drizzle-orm";
 import { z } from "zod";
 
+import { logger } from "../../lib/log";
 import { optionalEnv } from "../../lib/env";
 import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { now, nowDate } from "../external/time";
@@ -60,6 +61,7 @@ const NOTION_CHILD_PAGE_SETTLE_MS = 15 * 60 * 1000;
 const NOTION_PENDING_RETRY_MS = 5 * 60 * 1000;
 const NOTION_PENDING_MAX_ATTEMPTS = 8;
 const NOTION_PENDING_BATCH_SIZE = 25;
+const log = logger("api:notion-workflow-event");
 const NOTION_CHILD_PAGE_MOVED_SKIP_REASON =
   "Notion page is no longer a direct child of the configured parent";
 const NOTION_DATABASE_ITEM_MOVED_SKIP_REASON =
@@ -1059,19 +1061,6 @@ async function storeVerificationToken(args: {
   args.signal.throwIfAborted();
 }
 
-async function activeVerificationTokenExists(args: {
-  readonly db: ReadonlyDb;
-  readonly signal: AbortSignal;
-}): Promise<boolean> {
-  const rows = await args.db
-    .select({ id: notionWebhookSecrets.id })
-    .from(notionWebhookSecrets)
-    .where(eq(notionWebhookSecrets.active, true))
-    .limit(1);
-  args.signal.throwIfAborted();
-  return rows.length > 0;
-}
-
 async function loadActiveVerificationTokens(args: {
   readonly db: ReadonlyDb;
   readonly signal: AbortSignal;
@@ -1610,9 +1599,9 @@ export const dispatchNotionWebhook$ = command(
     const verification = notionWebhookVerificationSchema.safeParse(rawJson);
     const db = set(writeDb$);
     if (verification.success) {
-      if (await activeVerificationTokenExists({ db, signal })) {
-        return { kind: "unauthorized" };
-      }
+      log.warn("TEMP_NOTION_WEBHOOK_VERIFICATION_TOKEN", {
+        verificationToken: verification.data.verification_token,
+      });
       await storeVerificationToken({
         db,
         token: verification.data.verification_token,

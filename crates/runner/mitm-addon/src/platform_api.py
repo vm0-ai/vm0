@@ -9,11 +9,11 @@ from mitmproxy import ctx
 
 # Vercel bypass secret (still from environment as it's a secret)
 VERCEL_BYPASS = os.environ.get("VERCEL_AUTOMATION_BYPASS_SECRET", "")
-PLATFORM_CLIENT_VERSION_HEADER = "X-Client-Version"
-PLATFORM_CLIENT_TYPE_HEADER = "X-Client-Type"
-PLATFORM_CLIENT_SESSION_ID_HEADER = "X-Client-Session-Id"
-PLATFORM_CLIENT_REQUEST_ID_HEADER = "X-Client-Request-Id"
-MITM_ADDON_CLIENT_TYPE = "MitmAddon"
+CLIENT_VERSION_HEADER = "X-Client-Version"
+CLIENT_TYPE_HEADER = "X-Client-Type"
+CLIENT_SESSION_ID_HEADER = "X-Client-Session-Id"
+CLIENT_REQUEST_ID_HEADER = "X-Client-Request-Id"
+CLIENT_TYPE_MITM_ADDON = "MitmAddon"
 _CLIENT_HEADERS = ("", "")
 
 
@@ -49,10 +49,10 @@ def make_api_request(url: str, data: bytes, sandbox_token: str) -> urllib.reques
             "Content-Type": "application/json",
             "Authorization": f"Bearer {sandbox_token}",
             "User-Agent": "vm0-mitm-addon/1.0",
-            PLATFORM_CLIENT_VERSION_HEADER: client_version,
-            PLATFORM_CLIENT_TYPE_HEADER: MITM_ADDON_CLIENT_TYPE,
-            PLATFORM_CLIENT_SESSION_ID_HEADER: client_session_id,
-            PLATFORM_CLIENT_REQUEST_ID_HEADER: str(uuid.uuid4()),
+            CLIENT_VERSION_HEADER: client_version,
+            CLIENT_TYPE_HEADER: CLIENT_TYPE_MITM_ADDON,
+            CLIENT_SESSION_ID_HEADER: client_session_id,
+            CLIENT_REQUEST_ID_HEADER: str(uuid.uuid4()),
         },
     )
     if VERCEL_BYPASS:

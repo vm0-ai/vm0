@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.414.3](https://github.com/vm0-ai/vm0/compare/core-v8.414.2...core-v8.414.3) (2026-07-08)
+
+
+### Refactoring
+
+* **feature-switches:** remove rolled-out presentation, agents, and voice gates ([#20616](https://github.com/vm0-ai/vm0/issues/20616)) ([849d717](https://github.com/vm0-ai/vm0/commit/849d7176b5145d875e3378627c7209790d79dc99))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.168.0
+    * @vm0/connectors bumped to 1.148.1
+
 ## [8.414.2](https://github.com/vm0-ai/vm0/compare/core-v8.414.1...core-v8.414.2) (2026-07-08)
 
 

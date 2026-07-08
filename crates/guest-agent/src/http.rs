@@ -4,10 +4,10 @@ use crate::constants;
 use crate::env;
 use crate::error::AgentError;
 use crate::urls;
-use api_contracts::generated::constants::platform_client::headers::{
-    PLATFORM_CLIENT_REQUEST_ID_HEADER, PLATFORM_CLIENT_SESSION_ID_HEADER,
-    PLATFORM_CLIENT_TYPE_HEADER, PLATFORM_CLIENT_VERSION_HEADER,
+use api_contracts::generated::constants::client::headers::{
+    CLIENT_REQUEST_ID_HEADER, CLIENT_SESSION_ID_HEADER, CLIENT_TYPE_HEADER, CLIENT_VERSION_HEADER,
 };
+use api_contracts::generated::constants::client::types::CLIENT_TYPE_GUEST_AGENT;
 use bytes::{Bytes, BytesMut};
 use guest_common::log_warn;
 use http_body::{Frame, SizeHint};
@@ -27,7 +27,6 @@ use uuid::Uuid;
 const LOG_TAG: &str = "sandbox:guest-agent";
 const HTTP_TOO_MANY_REQUESTS: u16 = 429;
 const DEFAULT_RETRY_DELAY: Duration = Duration::from_secs(1);
-const GUEST_AGENT_CLIENT_TYPE: &str = "GuestAgent";
 const GUEST_AGENT_CLIENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 fn format_reqwest_error(error: reqwest::Error) -> String {
@@ -337,13 +336,10 @@ impl HttpClient {
                 }
 
                 req = req
-                    .header(PLATFORM_CLIENT_VERSION_HEADER, GUEST_AGENT_CLIENT_VERSION)
-                    .header(PLATFORM_CLIENT_TYPE_HEADER, GUEST_AGENT_CLIENT_TYPE)
-                    .header(
-                        PLATFORM_CLIENT_SESSION_ID_HEADER,
-                        api.client_session_id.as_str(),
-                    )
-                    .header(PLATFORM_CLIENT_REQUEST_ID_HEADER, request_id);
+                    .header(CLIENT_VERSION_HEADER, GUEST_AGENT_CLIENT_VERSION)
+                    .header(CLIENT_TYPE_HEADER, CLIENT_TYPE_GUEST_AGENT)
+                    .header(CLIENT_SESSION_ID_HEADER, api.client_session_id.as_str())
+                    .header(CLIENT_REQUEST_ID_HEADER, request_id);
 
                 std::future::ready(Ok(req))
             },
