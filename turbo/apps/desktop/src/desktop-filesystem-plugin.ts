@@ -26,6 +26,7 @@ import type {
   ComputerUseCommandFailure,
 } from "./computer-use-accessibility";
 import type { DesktopComputerUseFilesystemPluginState } from "./computer-use-types";
+import { PluginRestartPolicy } from "./desktop-plugin-restart-policy";
 import {
   readDesktopPreferenceRecord,
   writeDesktopPreferenceRecord,
@@ -321,6 +322,8 @@ export class DesktopFilesystemPluginManager {
   private hostRuntimeOnline = false;
   private runtime: FilesystemPluginRuntime | null = null;
   private startPromise: Promise<void> | null = null;
+  private readonly restartPolicy = new PluginRestartPolicy();
+  private restartTimer: NodeJS.Timeout | null = null;
   private status: DesktopComputerUseFilesystemPluginState["status"] =
     "disabled";
   private lastError: string | null = null;
@@ -466,10 +469,10 @@ export class DesktopFilesystemPluginManager {
         "Filesystem plugin has no allowed directories.",
       );
     }
-    if (this.status === "starting") {
+    if (this.status === "starting" || this.status === "restarting") {
       return commandFailure(
         "plugin_restarting",
-        "Filesystem plugin is starting.",
+        `Filesystem plugin is ${this.status}.`,
       );
     }
     if (this.status !== "running" || !this.runtime) {
@@ -517,6 +520,8 @@ export class DesktopFilesystemPluginManager {
   }
 
   stop(): void {
+    this.cancelScheduledRestart();
+    this.restartPolicy.reset();
     void this.stopRuntime();
   }
 
@@ -530,11 +535,40 @@ export class DesktopFilesystemPluginManager {
   }
 
   private reconcile(): void {
+    this.cancelScheduledRestart();
+    this.restartPolicy.reset();
     if (!this.shouldRun()) {
       void this.stopRuntime();
       return;
     }
     void this.restartRuntime();
+  }
+
+  private cancelScheduledRestart(): void {
+    if (this.restartTimer) {
+      clearTimeout(this.restartTimer);
+      this.restartTimer = null;
+    }
+  }
+
+  private scheduleRestartOrFail(message: string): void {
+    if (this.restartTimer) {
+      return;
+    }
+    const delayMs = this.restartPolicy.nextDelayMs();
+    if (delayMs === null) {
+      this.status = "error";
+      this.lastError = message;
+      this.onChange();
+      return;
+    }
+    this.status = "restarting";
+    this.lastError = message;
+    this.onChange();
+    this.restartTimer = setTimeout(() => {
+      this.restartTimer = null;
+      void this.restartRuntime();
+    }, delayMs);
   }
 
   private save(): void {
@@ -556,8 +590,9 @@ export class DesktopFilesystemPluginManager {
   }
 
   private async startRuntime(): Promise<void> {
+    let transport: StdioClientTransport | null = null;
     try {
-      const transport = new StdioClientTransport({
+      transport = new StdioClientTransport({
         command: process.execPath,
         args: [filesystemServerEntry(), ...this.preferences.allowedDirectories],
         env: {
@@ -574,12 +609,11 @@ export class DesktopFilesystemPluginManager {
       transport.onclose = () => {
         this.runtime = null;
         if (this.shouldRun()) {
-          this.status = "error";
-          this.lastError = "Filesystem plugin process exited.";
-        } else {
-          this.status = "disabled";
-          this.lastError = null;
+          this.scheduleRestartOrFail("Filesystem plugin process exited.");
+          return;
         }
+        this.status = "disabled";
+        this.lastError = null;
         this.onChange();
       };
       const client = new Client(
@@ -605,9 +639,23 @@ export class DesktopFilesystemPluginManager {
       this.runtime = { client, transport, tools };
       this.status = "running";
       this.lastError = null;
+      this.restartPolicy.notifyStarted();
       this.onChange();
     } catch (error) {
       this.runtime = null;
+      if (transport) {
+        transport.onclose = undefined;
+        transport.onerror = undefined;
+        try {
+          await transport.close();
+        } catch (closeError) {
+          console.warn("Unable to close filesystem plugin process", closeError);
+        }
+      }
+      if (this.shouldRun()) {
+        this.scheduleRestartOrFail(errorMessage(error));
+        return;
+      }
       this.status = "error";
       this.lastError = errorMessage(error);
       this.onChange();
