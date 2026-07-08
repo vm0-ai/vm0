@@ -1370,7 +1370,7 @@ export function getProviderBaseUrl(
 
 /**
  * Check if two model providers are compatible for session continuation.
- * Providers are compatible if they resolve to the same ANTHROPIC_BASE_URL.
+ * Providers are compatible if they resolve to the same upstream base URL.
  */
 export function areProvidersCompatible(
   a: ModelProviderType,

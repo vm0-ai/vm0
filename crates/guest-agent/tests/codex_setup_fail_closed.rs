@@ -1,4 +1,4 @@
-//! Codex auth setup failures should stop before launching the CLI.
+//! Codex setup failures should stop before launching the CLI.
 //!
 //! This test uses the real guest-agent binary because the fail-closed boundary
 //! lives in `main.rs`, not in the public `cli::setup_codex` helper.
@@ -13,7 +13,7 @@ use std::process::Command;
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 
 #[test]
-fn codex_auth_setup_failure_exits_before_cli_spawn() -> TestResult {
+fn codex_setup_failure_exits_before_cli_spawn() -> TestResult {
     common::ensure_canonical_workspace_for_test()?;
 
     let tmp = tempfile::tempdir()?;
@@ -52,19 +52,19 @@ fn codex_auth_setup_failure_exits_before_cli_spawn() -> TestResult {
 
     assert!(
         !output.status.success(),
-        "guest-agent should fail when Codex auth setup cannot reconcile"
+        "guest-agent should fail when Codex setup cannot reconcile"
     );
     assert_eq!(output.status.code(), Some(1));
     assert!(
         !invoked_marker.exists(),
-        "guest-agent must not launch Codex after auth setup fails"
+        "guest-agent must not launch Codex after setup fails"
     );
 
     let error_path = guest_contracts::runtime_paths::checkpoint_error_file(&runtime_dir);
     let error = std::fs::read_to_string(error_path)?;
     assert!(
-        error.contains("Codex auth setup failed"),
-        "guest error should describe Codex auth setup failure: {error}"
+        error.contains("Codex setup failed"),
+        "guest error should describe Codex setup failure: {error}"
     );
 
     let diagnostic_path = guest_contracts::runtime_paths::failure_diagnostic_file(&runtime_dir);
