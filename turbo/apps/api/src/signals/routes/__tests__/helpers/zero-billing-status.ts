@@ -1,14 +1,19 @@
 import { command } from "ccstate";
-import type {
-  TestBillingStatusStateActionBody,
-  TestBillingStatusStateActionResponse,
-  TestBillingStatusStateFixture,
-} from "@vm0/api-contracts/contracts/test-billing-status-state";
 
-import { createAppWithRoutes } from "../../../../app-factory-core";
-import { testBillingStatusStateRoutes } from "../../test-billing-status-state";
-
-const BILLING_STATUS_STATE_ROUTE = "/api/test/billing-status-state";
+import {
+  createBillingWebhookFixture,
+  generatedStripeCustomerId,
+  generatedStripeSubscriptionId,
+  postAutoRechargeInvoicePaid,
+  postBillingDowngradeCheckoutCompleted,
+  postConcurrencyEntitlementsInvoicePaid,
+  postCreditPurchaseInvoicePaid,
+  postOneTimePurchaseCompleted,
+  postSubscriptionInvoicePaid,
+  subscriptionCredits,
+  TEST_PRICE_CONCURRENCY,
+  type BillingWebhookFixture,
+} from "./stripe-billing-webhook";
 
 export interface BillingStatusFixture {
   readonly orgId: string;
@@ -57,120 +62,175 @@ interface BillingStatusSeedValues {
   readonly extraGrantedCredits?: number;
 }
 
-function requestBillingStatusState(
-  signal: AbortSignal,
-  path: string,
-  init?: RequestInit,
-): Promise<Response> {
-  const app = createAppWithRoutes({
-    signal,
-    routes: testBillingStatusStateRoutes,
-  });
-  return Promise.resolve(app.request(path, init));
-}
-
-async function readJson<T>(response: Response): Promise<T> {
-  return (await response.json()) as T;
-}
-
-function expectOk(response: Response, operation: string): void {
-  if (response.ok) {
-    return;
-  }
-  throw new Error(`${operation} failed with ${response.status}`);
-}
-
-async function postAction(
-  signal: AbortSignal,
-  body: TestBillingStatusStateActionBody,
-): Promise<TestBillingStatusStateActionResponse> {
-  const response = await requestBillingStatusState(
-    signal,
-    `${BILLING_STATUS_STATE_ROUTE}/action`,
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    },
-  );
-  signal.throwIfAborted();
-  expectOk(response, `billing status state action ${body.action}`);
-  signal.throwIfAborted();
-  const result = await readJson<TestBillingStatusStateActionResponse>(response);
-  signal.throwIfAborted();
-  return result;
-}
-
-function fixtureFromWire(
-  fixture: TestBillingStatusStateFixture,
+function fixtureFromWebhook(
+  fixture: BillingWebhookFixture,
 ): BillingStatusFixture {
-  return {
-    orgId: fixture.org_id,
-    userId: fixture.user_id,
-    expiresRecordIds: fixture.expires_record_ids,
-  };
+  return { ...fixture, expiresRecordIds: [] };
 }
 
-function fixtureToWire(
-  fixture: BillingStatusFixture,
-): TestBillingStatusStateFixture {
-  return {
-    org_id: fixture.orgId,
-    user_id: fixture.userId,
-    expires_record_ids: [...fixture.expiresRecordIds],
-  };
+function subscriptionTier(tier: string): "pro" | "team" | null {
+  if (tier === "pro" || tier === "team") {
+    return tier;
+  }
+  return null;
 }
 
-function seedValuesToWire(
-  values: BillingStatusSeedValues,
-): TestBillingStatusStateActionBody {
-  return {
-    action: "seed-org",
-    credits: values.credits,
-    onboarding_payment_pending: values.onboardingPaymentPending,
-    subscription: values.subscription
-      ? {
-          tier: values.subscription.tier,
-          status: values.subscription.status,
-          current_period_end:
-            values.subscription.currentPeriodEnd.toISOString(),
-          cancel_at_period_end: values.subscription.cancelAtPeriodEnd,
-          stripe_customer_id: values.subscription.stripeCustomerId,
-          stripe_subscription_id: values.subscription.stripeSubscriptionId,
-          pending_subscription_schedule_id:
-            values.subscription.pendingSubscriptionScheduleId,
-          pending_subscription_target_tier:
-            values.subscription.pendingSubscriptionTargetTier,
-          pending_subscription_change_at:
-            values.subscription.pendingSubscriptionChangeAt?.toISOString(),
-        }
-      : undefined,
-    expires_records: values.expiresRecords?.map((record) => {
-      return {
-        source: record.source,
-        amount: record.amount,
-        remaining: record.remaining,
-        expires_at: record.expiresAt.toISOString(),
-        stripe_invoice_id: record.stripeInvoiceId,
-      };
-    }),
-    concurrency_entitlements: values.concurrencyEntitlements?.map(
-      (entitlement) => {
+function unsupportedSyntheticState(values: BillingStatusSeedValues): string[] {
+  const reasons: string[] = [];
+  if (values.credits !== undefined && values.credits < 0) {
+    reasons.push("negative credits");
+  }
+  if (values.onboardingPaymentPending) {
+    reasons.push("onboarding payment pending metadata");
+  }
+  for (const record of values.expiresRecords ?? []) {
+    if (record.remaining !== undefined && record.remaining !== record.amount) {
+      reasons.push(`${record.source} partial remaining credits`);
+    }
+    if (record.source === "starter_grant" || record.source === "onboarding") {
+      reasons.push(`${record.source} grant source`);
+    }
+  }
+  return reasons;
+}
+
+async function applySubscriptionSeed(
+  signal: AbortSignal,
+  fixture: BillingWebhookFixture,
+  seed: SubscriptionSeed | undefined,
+  customerId: string,
+): Promise<number> {
+  if (!seed) {
+    return 0;
+  }
+
+  const tier = subscriptionTier(seed.tier);
+  if (!tier) {
+    return 0;
+  }
+
+  const subscriptionId =
+    seed.stripeSubscriptionId ?? generatedStripeSubscriptionId();
+  await postSubscriptionInvoicePaid(signal, {
+    ...fixture,
+    tier,
+    customerId,
+    subscriptionId,
+    status: seed.status,
+    currentPeriodEnd: seed.currentPeriodEnd,
+    cancelAtPeriodEnd: seed.cancelAtPeriodEnd,
+    scheduleId:
+      seed.pendingSubscriptionTargetTier === "pro"
+        ? null
+        : (seed.pendingSubscriptionScheduleId ?? null),
+  });
+
+  if (seed.pendingSubscriptionTargetTier === "pro" && tier === "team") {
+    await postBillingDowngradeCheckoutCompleted(signal, {
+      ...fixture,
+      tier,
+      customerId,
+      subscriptionId,
+      status: seed.status,
+      currentPeriodEnd:
+        seed.pendingSubscriptionChangeAt ?? seed.currentPeriodEnd,
+      cancelAtPeriodEnd: false,
+      targetTier: "pro",
+      scheduleId:
+        seed.pendingSubscriptionScheduleId ?? generatedStripeSubscriptionId(),
+    });
+  }
+  return subscriptionCredits(tier);
+}
+
+async function applyExpiresRecordSeed(
+  signal: AbortSignal,
+  fixture: BillingWebhookFixture,
+  record: ExpiresRecordSeed,
+): Promise<number> {
+  switch (record.source) {
+    case "credit_purchase": {
+      await postCreditPurchaseInvoicePaid(signal, {
+        orgId: fixture.orgId,
+        credits: record.amount,
+        expiresAt: record.expiresAt,
+        invoiceId: record.stripeInvoiceId,
+      });
+      return record.amount;
+    }
+    case "auto_recharge": {
+      await postAutoRechargeInvoicePaid(signal, {
+        orgId: fixture.orgId,
+        credits: record.amount,
+        invoiceId: record.stripeInvoiceId,
+      });
+      return record.amount;
+    }
+    case "one_time_purchase": {
+      if (
+        await postOneTimePurchaseCompleted(signal, {
+          orgId: fixture.orgId,
+          credits: record.amount,
+          sessionId: record.stripeInvoiceId,
+        })
+      ) {
+        return record.amount;
+      }
+      return 0;
+    }
+    case "subscription_renewal":
+    case "starter_grant":
+    case "onboarding":
+    default: {
+      return 0;
+    }
+  }
+}
+
+async function applyConcurrencySeeds(
+  signal: AbortSignal,
+  fixture: BillingWebhookFixture,
+  customerId: string,
+  values: readonly ConcurrencyEntitlementSeed[] | undefined,
+): Promise<void> {
+  const bySubscription = new Map<string, ConcurrencyEntitlementSeed[]>();
+  for (const entitlement of values ?? []) {
+    const subscriptionId =
+      entitlement.stripeSubscriptionId ?? generatedStripeSubscriptionId();
+    bySubscription.set(subscriptionId, [
+      ...(bySubscription.get(subscriptionId) ?? []),
+      { ...entitlement, stripeSubscriptionId: subscriptionId },
+    ]);
+  }
+
+  for (const [subscriptionId, entitlements] of bySubscription) {
+    const first = entitlements[0];
+    if (!first) {
+      continue;
+    }
+    await postConcurrencyEntitlementsInvoicePaid(signal, {
+      ...fixture,
+      customerId,
+      subscriptionId,
+      invoiceId: first.stripeInvoiceId,
+      lines: entitlements.map((entitlement) => {
         return {
           slots: entitlement.slots,
-          starts_at: entitlement.startsAt.toISOString(),
-          expires_at: entitlement.expiresAt.toISOString(),
-          subscription_status: entitlement.subscriptionStatus,
-          cancel_at_period_end: entitlement.cancelAtPeriodEnd,
-          stripe_subscription_id: entitlement.stripeSubscriptionId,
-          stripe_invoice_id: entitlement.stripeInvoiceId,
-          stripe_invoice_line_id: entitlement.stripeInvoiceLineId,
-          stripe_price_id: entitlement.stripePriceId,
+          startsAt: entitlement.startsAt,
+          expiresAt: entitlement.expiresAt,
+          invoiceLineId: entitlement.stripeInvoiceLineId,
+          priceId: entitlement.stripePriceId ?? TEST_PRICE_CONCURRENCY,
         };
-      },
-    ),
-    extra_granted_credits: values.extraGrantedCredits,
-  };
+      }),
+      subscriptionStatus:
+        entitlements.find((entitlement) => {
+          return entitlement.subscriptionStatus;
+        })?.subscriptionStatus ?? "active",
+      cancelAtPeriodEnd: entitlements.some((entitlement) => {
+        return entitlement.cancelAtPeriodEnd === true;
+      }),
+    });
+  }
 }
 
 export const seedBillingStatusOrg$ = command(
@@ -179,23 +239,61 @@ export const seedBillingStatusOrg$ = command(
     values: BillingStatusSeedValues,
     signal: AbortSignal,
   ): Promise<BillingStatusFixture> => {
-    const response = await postAction(signal, seedValuesToWire(values));
-    if (!response.fixture) {
-      throw new Error("seedBillingStatusOrg$: response missing fixture");
+    const unsupported = unsupportedSyntheticState(values);
+    if (unsupported.length > 0) {
+      throw new Error(
+        `seedBillingStatusOrg$ cannot create synthetic billing state through Stripe webhooks: ${unsupported.join(", ")}`,
+      );
     }
-    return fixtureFromWire(response.fixture);
+
+    const fixture = createBillingWebhookFixture();
+    const customerId =
+      values.subscription?.stripeCustomerId ?? generatedStripeCustomerId();
+    let grantedCredits = await applySubscriptionSeed(
+      signal,
+      fixture,
+      values.subscription,
+      customerId,
+    );
+
+    for (const record of values.expiresRecords ?? []) {
+      grantedCredits += await applyExpiresRecordSeed(signal, fixture, record);
+    }
+
+    await applyConcurrencySeeds(
+      signal,
+      fixture,
+      customerId,
+      values.concurrencyEntitlements,
+    );
+
+    if (values.extraGrantedCredits && values.extraGrantedCredits > 0) {
+      await postCreditPurchaseInvoicePaid(signal, {
+        orgId: fixture.orgId,
+        credits: values.extraGrantedCredits,
+      });
+      grantedCredits += values.extraGrantedCredits;
+    }
+
+    const requestedCredits = values.credits ?? 0;
+    const topUpCredits = requestedCredits - grantedCredits;
+    if (topUpCredits > 0) {
+      await postCreditPurchaseInvoicePaid(signal, {
+        orgId: fixture.orgId,
+        credits: topUpCredits,
+      });
+    }
+
+    return fixtureFromWebhook(fixture);
   },
 );
 
 export const deleteBillingStatusOrg$ = command(
   async (
     _,
-    fixture: BillingStatusFixture,
-    signal: AbortSignal,
+    _fixture: BillingStatusFixture,
+    _signal: AbortSignal,
   ): Promise<void> => {
-    await postAction(signal, {
-      action: "delete-org",
-      fixture: fixtureToWire(fixture),
-    });
+    await Promise.resolve();
   },
 );
