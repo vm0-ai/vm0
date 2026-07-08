@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.242.0](https://github.com/vm0-ai/vm0/compare/api-v1.241.0...api-v1.242.0) (2026-07-08)
+
+
+### Features
+
+* add memory source detail view ([#20607](https://github.com/vm0-ai/vm0/issues/20607)) ([e32c1d0](https://github.com/vm0-ai/vm0/commit/e32c1d0eb01994ffc384b1274810ed396e40f034))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.167.0
+    * @vm0/core bumped to 8.414.1
+    * @vm0/db bumped to 1.99.3
+
 ## [1.241.0](https://github.com/vm0-ai/vm0/compare/api-v1.240.0...api-v1.241.0) (2026-07-08)
 
 

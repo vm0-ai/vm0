@@ -27,6 +27,12 @@ class BuiltinFirewallCatalogCacheError(ValueError):
     """Builtin firewall catalog cache is unavailable or malformed."""
 
 
+class _CatalogCacheOpenError(OSError):
+    def __init__(self, reason: str, message: str) -> None:
+        super().__init__(message)
+        self.reason = reason
+
+
 @dataclass(frozen=True)
 class BuiltinFirewallCatalog:
     identity: CatalogIdentity
@@ -37,6 +43,8 @@ class BuiltinFirewallCatalog:
 class BuiltinFirewallCatalogSnapshot:
     dependency_file_key: CatalogFileKey | None
     catalog: BuiltinFirewallCatalog | None
+    cache_path: str | None = None
+    fallback_reason: str | None = None
 
 
 @dataclass
@@ -44,12 +52,14 @@ class _CatalogCacheState:
     path_key: str | None = None
     loaded_key: CatalogFileKey | None = None
     failed_key: CatalogFileKey | None = None
+    failed_reason: str | None = None
     catalog: BuiltinFirewallCatalog | None = None
 
     def reset(self, path_key: str | None = None) -> None:
         self.path_key = path_key
         self.loaded_key = None
         self.failed_key = None
+        self.failed_reason = None
         self.catalog = None
 
 
@@ -88,7 +98,11 @@ def catalog_file_key(cache_path: str | None) -> CatalogFileKey | None:
 def load_catalog_snapshot(cache_path: str | None) -> BuiltinFirewallCatalogSnapshot:
     """Load one catalog cache state for a single registry reload."""
     if not cache_path:
-        return BuiltinFirewallCatalogSnapshot(None, None)
+        return BuiltinFirewallCatalogSnapshot(
+            None,
+            None,
+            fallback_reason="cache_path_missing",
+        )
 
     path = Path(cache_path)
     path_key = _path_key(path)
@@ -96,31 +110,58 @@ def load_catalog_snapshot(cache_path: str | None) -> BuiltinFirewallCatalogSnaps
 
     try:
         fd, st = _open_cache_for_read(path)
-    except OSError:
+    except OSError as exc:
         state.reset(path_key)
-        return BuiltinFirewallCatalogSnapshot(None, None)
+        return BuiltinFirewallCatalogSnapshot(
+            None,
+            None,
+            cache_path=path_key,
+            fallback_reason=_open_error_fallback_reason(exc),
+        )
 
     try:
         key = (path_key, st.st_dev, st.st_ino, st.st_mtime_ns, st.st_size)
         if key == state.loaded_key:
-            return BuiltinFirewallCatalogSnapshot(key, state.catalog)
+            return BuiltinFirewallCatalogSnapshot(key, state.catalog, cache_path=path_key)
         if key == state.failed_key:
-            return BuiltinFirewallCatalogSnapshot(key, None)
+            return BuiltinFirewallCatalogSnapshot(
+                key,
+                None,
+                cache_path=path_key,
+                fallback_reason=state.failed_reason or "cache_invalid",
+            )
         try:
             catalog = _read_catalog(fd, path, st.st_size, key)
         except (BuiltinFirewallCatalogCacheError, OSError, ValueError, RecursionError) as exc:
             state.failed_key = key
+            state.failed_reason = "cache_invalid"
             state.loaded_key = None
             state.catalog = None
             _warn(f"Failed to read builtin firewall catalog cache: {exc}")
-            return BuiltinFirewallCatalogSnapshot(key, None)
+            return BuiltinFirewallCatalogSnapshot(
+                key,
+                None,
+                cache_path=path_key,
+                fallback_reason=state.failed_reason,
+            )
     finally:
         os.close(fd)
 
     state.loaded_key = key
     state.failed_key = None
+    state.failed_reason = None
     state.catalog = catalog
-    return BuiltinFirewallCatalogSnapshot(key, catalog)
+    return BuiltinFirewallCatalogSnapshot(key, catalog, cache_path=path_key)
+
+
+def _open_error_fallback_reason(exc: OSError) -> str:
+    if isinstance(exc, _CatalogCacheOpenError):
+        return exc.reason
+    if isinstance(exc, FileNotFoundError):
+        return "cache_file_missing"
+    if isinstance(exc, PermissionError):
+        return "cache_permission_denied"
+    return "cache_unavailable"
 
 
 def _open_cache_for_read(path: Path) -> tuple[int, os.stat_result]:
@@ -135,10 +176,16 @@ def _open_cache_for_read(path: Path) -> tuple[int, os.stat_result]:
         raise
     if not stat.S_ISREG(st.st_mode):
         os.close(fd)
-        raise OSError(f"builtin firewall catalog cache is not a regular file: {path}")
+        raise _CatalogCacheOpenError(
+            "cache_not_regular",
+            f"builtin firewall catalog cache is not a regular file: {path}",
+        )
     if not _cache_file_stat_is_trusted(st):
         os.close(fd)
-        raise OSError(f"builtin firewall catalog cache is not trusted: {path}")
+        raise _CatalogCacheOpenError(
+            "cache_untrusted",
+            f"builtin firewall catalog cache is not trusted: {path}",
+        )
     return fd, st
 
 

@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.575.0](https://github.com/vm0-ai/vm0/compare/app-v0.574.0...app-v0.575.0) (2026-07-08)
+
+
+### Features
+
+* add memory source detail view ([#20607](https://github.com/vm0-ai/vm0/issues/20607)) ([e32c1d0](https://github.com/vm0-ai/vm0/commit/e32c1d0eb01994ffc384b1274810ed396e40f034))
+* add Notion workflow trigger category ([#20602](https://github.com/vm0-ai/vm0/issues/20602)) ([0dc8817](https://github.com/vm0-ai/vm0/commit/0dc8817b9df97265286fb3c43880c723735b9ca2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.167.0
+    * @vm0/core bumped to 8.414.1
+
 ## [0.574.0](https://github.com/vm0-ai/vm0/compare/app-v0.573.0...app-v0.574.0) (2026-07-08)
 
 

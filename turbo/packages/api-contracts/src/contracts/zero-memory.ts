@@ -15,8 +15,38 @@ const memoryFileContentSchema = z.object({
 });
 
 const memorySourceProviderSchema = z.enum(["gmail", "slack"]);
+const memorySourceDirectionSchema = z.enum([
+  "sent",
+  "received",
+  "mixed",
+  "unknown",
+]);
 
-const memorySourceSchema = z.object({
+const memorySourceCompactMetadataSchema = z.object({
+  workspaceId: z.string().optional(),
+  channelId: z.string().optional(),
+  channelType: z.string().optional(),
+  threadId: z.string().nullable().optional(),
+  messageTs: z.string().optional(),
+  senderId: z.string().optional(),
+  mailboxEmail: z.string().optional(),
+  direction: memorySourceDirectionSchema.optional(),
+});
+
+const memorySourceMetadataSchema = memorySourceCompactMetadataSchema
+  .extend({
+    messageId: z.string().nullable().optional(),
+    participantIds: z.array(z.string()).optional(),
+    fileIds: z.array(z.string()).optional(),
+    historyId: z.string().optional(),
+    from: z.string().nullable().optional(),
+    to: z.array(z.string()).optional(),
+    cc: z.array(z.string()).optional(),
+    reason: z.string().optional(),
+  })
+  .passthrough();
+
+const memorySourceBaseSchema = z.object({
   id: z.string().uuid(),
   provider: memorySourceProviderSchema,
   sourceType: z.enum(["gmail_message", "slack_message"]),
@@ -24,16 +54,17 @@ const memorySourceSchema = z.object({
   occurredAt: z.string().nullable(),
   createdAt: z.string(),
   contentHash: z.string().nullable(),
-  metadata: z.object({
-    workspaceId: z.string().optional(),
-    channelId: z.string().optional(),
-    channelType: z.string().optional(),
-    threadId: z.string().nullable().optional(),
-    messageTs: z.string().optional(),
-    senderId: z.string().optional(),
-    mailboxEmail: z.string().optional(),
-    direction: z.enum(["sent", "received", "mixed", "unknown"]).optional(),
-  }),
+});
+
+const memorySourceSchema = memorySourceBaseSchema.extend({
+  metadata: memorySourceCompactMetadataSchema,
+});
+
+const memorySourceDetailResponseSchema = memorySourceBaseSchema.extend({
+  externalId: z.string(),
+  connectorId: z.string().uuid().nullable(),
+  updatedAt: z.string(),
+  metadata: memorySourceMetadataSchema,
 });
 
 export const memorySourceListResponseSchema = z.object({
@@ -102,6 +133,9 @@ export type MemorySourceProvider = z.infer<typeof memorySourceProviderSchema>;
 export type MemorySourceListResponse = z.infer<
   typeof memorySourceListResponseSchema
 >;
+export type MemorySourceDetailResponse = z.infer<
+  typeof memorySourceDetailResponseSchema
+>;
 export type SlackMemoryStatusResponse = z.infer<
   typeof slackMemoryStatusResponseSchema
 >;
@@ -142,6 +176,22 @@ export const zeroMemoryContract = c.router({
       500: apiErrorSchema,
     },
     summary: "List structured memory sources for the current user",
+  },
+  source: {
+    method: "GET",
+    path: "/api/zero/memory/sources/:sourceId",
+    pathParams: z.object({
+      sourceId: z.string().uuid(),
+    }),
+    headers: authHeadersSchema,
+    responses: {
+      200: memorySourceDetailResponseSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Get structured memory source details for the current user",
   },
   slackStatus: {
     method: "GET",

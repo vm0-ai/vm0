@@ -3,12 +3,14 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import {
   IconBrandSlack,
   IconDatabase,
+  IconInfoCircle,
   IconLoader2,
   IconMail,
   IconPlayerStop,
   IconRefresh,
 } from "@tabler/icons-react";
 import type {
+  MemorySourceDetailResponse,
   MemorySourceListResponse,
   SlackMemoryBackfillRequest,
   SlackMemoryStatusResponse,
@@ -43,8 +45,11 @@ import {
   memorySources$,
   reloadMemorySources$,
   reloadSlackMemoryStatus$,
+  selectedMemorySourceDetail$,
+  selectedMemorySourceId$,
   setMemorySourceProviderFilter$,
   setMemorySourceRowsPerPage$,
+  setSelectedMemorySourceId$,
   setSlackMemoryBackfillDialogOpen$,
   slackMemoryBackfillDialogOpen$,
   slackMemoryBackfillRequest$,
@@ -75,6 +80,25 @@ const SLACK_BACKFILL_DAY_OPTIONS = [
 ] as const;
 
 type MemorySource = MemorySourceListResponse["sources"][number];
+
+const SOURCE_DETAIL_METADATA_ORDER: readonly string[] = [
+  "workspaceId",
+  "channelId",
+  "channelType",
+  "threadId",
+  "messageId",
+  "messageTs",
+  "senderId",
+  "participantIds",
+  "fileIds",
+  "mailboxEmail",
+  "historyId",
+  "direction",
+  "from",
+  "to",
+  "cc",
+  "reason",
+];
 
 function formatDateTime(value: string | null): string {
   if (!value) {
@@ -142,6 +166,212 @@ function sourceCountLabel(
   const start = (pagination.page - 1) * pagination.pageSize + 1;
   const end = Math.min(start + visibleCount - 1, pagination.total);
   return `${start}-${end} of ${pagination.total}`;
+}
+
+function detailMetadataLabel(key: string): string {
+  if (key === "workspaceId") {
+    return "Workspace ID";
+  }
+  if (key === "channelId") {
+    return "Channel ID";
+  }
+  if (key === "channelType") {
+    return "Channel type";
+  }
+  if (key === "threadId") {
+    return "Thread ID";
+  }
+  if (key === "messageId") {
+    return "Message ID";
+  }
+  if (key === "messageTs") {
+    return "Message timestamp";
+  }
+  if (key === "senderId") {
+    return "Sender ID";
+  }
+  if (key === "participantIds") {
+    return "Participants";
+  }
+  if (key === "fileIds") {
+    return "Files";
+  }
+  if (key === "mailboxEmail") {
+    return "Mailbox";
+  }
+  if (key === "historyId") {
+    return "History ID";
+  }
+  if (key === "direction") {
+    return "Direction";
+  }
+  if (key === "from") {
+    return "From";
+  }
+  if (key === "to") {
+    return "To";
+  }
+  if (key === "cc") {
+    return "Cc";
+  }
+  if (key === "reason") {
+    return "Reason";
+  }
+  return key;
+}
+
+function detailMetadataEntries(
+  metadata: MemorySourceDetailResponse["metadata"],
+): [string, unknown][] {
+  return Object.entries(metadata).sort(([left], [right]) => {
+    const leftIndex = SOURCE_DETAIL_METADATA_ORDER.indexOf(left);
+    const rightIndex = SOURCE_DETAIL_METADATA_ORDER.indexOf(right);
+    if (leftIndex === -1 && rightIndex === -1) {
+      return left.localeCompare(right);
+    }
+    if (leftIndex === -1) {
+      return 1;
+    }
+    if (rightIndex === -1) {
+      return -1;
+    }
+    return leftIndex - rightIndex;
+  });
+}
+
+function detailValueText(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "None";
+  }
+  if (Array.isArray(value)) {
+    return value.length > 0 ? value.join(", ") : "None";
+  }
+  if (typeof value === "object") {
+    return JSON.stringify(value);
+  }
+  return String(value);
+}
+
+function SourceDetailField({
+  label,
+  mono = false,
+  value,
+}: {
+  readonly label: string;
+  readonly mono?: boolean;
+  readonly value: unknown;
+}) {
+  return (
+    <div className="grid gap-1 border-b border-border/60 py-2 last:border-b-0 sm:grid-cols-[9rem_1fr] sm:gap-3">
+      <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
+      <dd
+        className={cn(
+          "min-w-0 break-words text-sm text-foreground",
+          mono ? "font-mono text-xs leading-5" : null,
+        )}
+      >
+        {detailValueText(value)}
+      </dd>
+    </div>
+  );
+}
+
+function SourceDetailDialog() {
+  const selectedSourceId = useGet(selectedMemorySourceId$);
+  const setSelectedSourceId = useSet(setSelectedMemorySourceId$);
+  const detailLoadable = useLoadable(selectedMemorySourceDetail$);
+  const open = selectedSourceId !== null;
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) {
+          setSelectedSourceId(null);
+        }
+      }}
+    >
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Source details</DialogTitle>
+          <DialogDescription>
+            Review the identifiers and metadata recorded for this source.
+          </DialogDescription>
+        </DialogHeader>
+        {detailLoadable.state === "loading" ? (
+          <div className="flex min-h-40 items-center justify-center gap-2 text-sm text-muted-foreground">
+            <IconLoader2 className="h-4 w-4 animate-spin" />
+            <span>Loading source details</span>
+          </div>
+        ) : detailLoadable.state === "hasError" ? (
+          <div className="flex min-h-40 items-center justify-center px-6 text-center text-sm text-muted-foreground">
+            Source details are unavailable.
+          </div>
+        ) : detailLoadable.data ? (
+          <div className="max-h-[70vh] overflow-y-auto pr-1">
+            <dl className="rounded-lg border border-border/70 px-3">
+              <SourceDetailField
+                label="Title"
+                value={detailLoadable.data.title}
+              />
+              <SourceDetailField
+                label="Provider"
+                value={providerLabel(detailLoadable.data.provider)}
+              />
+              <SourceDetailField
+                label="Source type"
+                value={sourceTypeLabel(detailLoadable.data)}
+              />
+              <SourceDetailField
+                label="Occurred"
+                value={formatDateTime(detailLoadable.data.occurredAt)}
+              />
+              <SourceDetailField
+                label="Created"
+                value={formatDateTime(detailLoadable.data.createdAt)}
+              />
+              <SourceDetailField
+                label="Updated"
+                value={formatDateTime(detailLoadable.data.updatedAt)}
+              />
+              <SourceDetailField
+                label="External ID"
+                mono
+                value={detailLoadable.data.externalId}
+              />
+              <SourceDetailField
+                label="Connector ID"
+                mono
+                value={detailLoadable.data.connectorId}
+              />
+              <SourceDetailField
+                label="Content hash"
+                mono
+                value={detailLoadable.data.contentHash}
+              />
+            </dl>
+            <div className="mt-4">
+              <p className="text-sm font-medium text-foreground">Metadata</p>
+              <dl className="mt-2 rounded-lg border border-border/70 px-3">
+                {detailMetadataEntries(detailLoadable.data.metadata).map(
+                  ([key, value]) => {
+                    return (
+                      <SourceDetailField
+                        key={key}
+                        label={detailMetadataLabel(key)}
+                        mono={Array.isArray(value) || key.endsWith("Id")}
+                        value={value}
+                      />
+                    );
+                  },
+                )}
+              </dl>
+            </div>
+          </div>
+        ) : null}
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 function backfillProgressText(
@@ -544,6 +774,7 @@ function SourcesToolbar({
 function SourceRow({ source }: { readonly source: MemorySource }) {
   const Icon = providerIcon(source);
   const metadataParts = sourceMetadataParts(source);
+  const setSelectedSourceId = useSet(setSelectedMemorySourceId$);
 
   return (
     <article className="flex min-w-0 gap-3 border-b border-border/70 px-4 py-3 last:border-b-0">
@@ -576,6 +807,18 @@ function SourceRow({ source }: { readonly source: MemorySource }) {
           </p>
         ) : null}
       </div>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="h-8 shrink-0 gap-1.5 px-2.5 text-xs"
+        onClick={() => {
+          setSelectedSourceId(source.id);
+        }}
+      >
+        <IconInfoCircle className="h-3.5 w-3.5" />
+        <span>Details</span>
+      </Button>
     </article>
   );
 }
@@ -680,6 +923,7 @@ export function MemorySources() {
           onRowsPerPageChange={setRowsPerPage}
         />
       </div>
+      <SourceDetailDialog />
     </section>
   );
 }
