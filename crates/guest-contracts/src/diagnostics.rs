@@ -170,6 +170,16 @@ impl CliObservedExitDiagnostic {
         }
     }
 
+    /// Return the stable signal name derived from the observed signal number.
+    #[must_use]
+    pub fn known_signal_name(&self) -> Option<&'static str> {
+        if self.kind != CliObservedExitKind::Signal {
+            return None;
+        }
+
+        self.signal_number.and_then(observed_signal_name)
+    }
+
     /// Return true when this observation is an observed SIGKILL.
     #[must_use]
     pub fn is_sigkill(&self) -> bool {
@@ -694,6 +704,14 @@ mod tests {
         let round_trip: FailureDiagnostic = serde_json::from_value(json).unwrap();
         assert_eq!(round_trip, diagnostic);
         assert!(round_trip.cli_observed_exit.unwrap().is_sigkill());
+    }
+
+    #[test]
+    fn observed_signal_name_is_derived_from_signal_number() {
+        let mut observed_exit = CliObservedExitDiagnostic::from_signal(UNIX_SIGKILL_SIGNAL_NUMBER);
+        observed_exit.signal_name = Some("tampered".to_string());
+
+        assert_eq!(observed_exit.known_signal_name(), Some("sigkill"));
     }
 
     #[test]

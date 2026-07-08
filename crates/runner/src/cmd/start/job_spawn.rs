@@ -879,11 +879,11 @@ struct JobCliTerminationLogFields {
     observed_exit_code: Option<i32>,
 }
 
-struct JobCliObservedExitLogFields<'a> {
+struct JobCliObservedExitLogFields {
     kind: Option<&'static str>,
     exit_code: Option<i32>,
     signal_number: Option<i32>,
-    signal_name: Option<&'a str>,
+    signal_name: Option<&'static str>,
     mapped_exit_code: Option<i32>,
 }
 
@@ -902,13 +902,13 @@ impl From<Option<&CliTerminationDiagnostic>> for JobCliTerminationLogFields {
     }
 }
 
-impl<'a> From<Option<&'a CliObservedExitDiagnostic>> for JobCliObservedExitLogFields<'a> {
-    fn from(diagnostic: Option<&'a CliObservedExitDiagnostic>) -> Self {
+impl From<Option<&CliObservedExitDiagnostic>> for JobCliObservedExitLogFields {
+    fn from(diagnostic: Option<&CliObservedExitDiagnostic>) -> Self {
         Self {
             kind: diagnostic.map(|diagnostic| diagnostic.kind.as_str()),
             exit_code: diagnostic.and_then(|diagnostic| diagnostic.exit_code),
             signal_number: diagnostic.and_then(|diagnostic| diagnostic.signal_number),
-            signal_name: diagnostic.and_then(|diagnostic| diagnostic.signal_name.as_deref()),
+            signal_name: diagnostic.and_then(CliObservedExitDiagnostic::known_signal_name),
             mapped_exit_code: diagnostic.map(|diagnostic| diagnostic.mapped_exit_code),
         }
     }
@@ -1013,8 +1013,9 @@ mod tests {
     use std::time::Duration;
 
     use guest_contracts::diagnostics::{
-        AgentFramework, CliTerminationDiagnostic, CliTerminationReason, CliTerminationSignal,
-        FailureClass, FailureDetailSource, PromptMetadata, SessionHistoryStatus,
+        AgentFramework, CliObservedExitKind, CliTerminationDiagnostic, CliTerminationReason,
+        CliTerminationSignal, FailureClass, FailureDetailSource, PromptMetadata,
+        SessionHistoryStatus,
     };
     use sandbox::SandboxId;
     use sandbox_mock::MockSandbox;
@@ -1621,6 +1622,25 @@ mod tests {
         assert_field_eq(&event, "cli_observed_signal_number", "9");
         assert_field_eq(&event, "cli_observed_signal_name", "sigkill");
         assert_field_eq(&event, "cli_observed_mapped_exit_code", "137");
+    }
+
+    #[test]
+    fn diagnostic_failure_logs_observed_signal_name_from_number() {
+        let diagnostic = job_failure_diagnostic(None)
+            .with_cli_exit_code(137)
+            .with_cli_observed_exit(CliObservedExitDiagnostic {
+                kind: CliObservedExitKind::Signal,
+                exit_code: None,
+                signal_number: Some(libc::SIGKILL),
+                signal_name: Some("tampered".to_string()),
+                mapped_exit_code: 137,
+            });
+        let failure =
+            executor::ExecutionFailure::new(137, "Agent exited with code 137", Some(diagnostic));
+
+        let event = capture_job_failure_log(&failure);
+
+        assert_field_eq(&event, "cli_observed_signal_name", "sigkill");
     }
 
     #[test]
