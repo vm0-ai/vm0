@@ -12,9 +12,6 @@ import {
 describe("isFeatureEnabled", () => {
   it("should return true for globally enabled switch", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.Dummy, {})).toBe(true);
-    expect(isFeatureEnabled(FeatureSwitchKey.BytePlusVoiceInputStt, {})).toBe(
-      true,
-    );
   });
 
   it("should return true for globally enabled switch even with context", () => {
@@ -100,7 +97,6 @@ describe("getAllFeatureStates", () => {
     const states = getAllFeatureStates();
     // Globally enabled switches should be true
     expect(states[FeatureSwitchKey.Dummy]).toBe(true);
-    expect(states[FeatureSwitchKey.BytePlusVoiceInputStt]).toBe(true);
   });
 
   it("should enable switches when orgId matches enabledOrgIdHashes", () => {
@@ -144,7 +140,6 @@ describe("getAllFeatureStates", () => {
     );
     expect(staffOrgStates[FeatureSwitchKey.WebsiteTemplates]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
-    expect(staffOrgStates[FeatureSwitchKey.AgentsPageRedesign]).toBe(true);
 
     const otherOrgStates = getAllFeatureStates({
       orgId: "org_nonexistent",
@@ -157,7 +152,7 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.CodexFrameworkForMinimax]).toBe(
       false,
     );
-    expect(otherOrgStates[FeatureSwitchKey.ChatThreadEmoji]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ChatThreadEmoji]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.RelationshipMemory]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(
       false,
@@ -171,8 +166,6 @@ describe("getAllFeatureStates", () => {
     );
     expect(otherOrgStates[FeatureSwitchKey.WebsiteTemplates]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.BytePlusVoiceInputStt]).toBe(true);
-    expect(otherOrgStates[FeatureSwitchKey.AgentsPageRedesign]).toBe(true);
   });
 
   it("should apply overrides to enable disabled features", () => {
@@ -184,9 +177,9 @@ describe("getAllFeatureStates", () => {
     expect(states[FeatureSwitchKey.DropboxConnector]).toBe(false);
   });
 
-  it("should enable chat thread emoji for staff orgs", () => {
+  it("should enable chat thread emoji globally", () => {
     const states = getAllFeatureStates({
-      orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
+      orgId: "org_nonexistent",
     });
     expect(states[FeatureSwitchKey.ChatThreadEmoji]).toBe(true);
   });

@@ -116,7 +116,7 @@ describe("lab page", () => {
     });
 
     expectBefore(
-      featureSwitchRow(FeatureSwitchKey.AgentsPageRedesign),
+      featureSwitchRow(FeatureSwitchKey.AgentDetailWorkflowsTab),
       featureSwitchRow(FeatureSwitchKey.ApiKeys),
     );
 

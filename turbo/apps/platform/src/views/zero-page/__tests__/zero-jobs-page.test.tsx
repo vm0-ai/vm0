@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -17,7 +17,6 @@ import {
   type TeamComposeItem,
   zeroTeamContract,
 } from "@vm0/api-contracts/contracts/zero-team";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 const context = testContext();
 
@@ -61,20 +60,6 @@ function mockAgentsPage(team: TeamComposeItem[]): void {
   });
 }
 
-function findSectionCreateButton(sectionName: "Public" | "Private"): Element {
-  const section = screen.getByText(sectionName).closest("section");
-  if (!section) {
-    throw new Error(`${sectionName} section not found`);
-  }
-  const createButton = queryAllByRoleFast("button", section).find((button) => {
-    return button.textContent?.trim() === "Create";
-  });
-  if (!createButton) {
-    throw new Error(`${sectionName} create button not found`);
-  }
-  return createButton;
-}
-
 function tabByText(text: string): HTMLElement {
   const tab = queryAllByRoleFast("tab").find((candidate) => {
     return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
@@ -85,13 +70,27 @@ function tabByText(text: string): HTMLElement {
   return tab;
 }
 
+function newAgentButton(): HTMLElement {
+  const button = queryAllByRoleFast("button").find((candidate) => {
+    return candidate.textContent?.replace(/\s+/g, " ").trim() === "New agent";
+  });
+  if (!button) {
+    throw new Error("New agent button not found");
+  }
+  return button;
+}
+
 async function openCreateDialog(
-  sectionName: "Public" | "Private",
+  tabName: "Public" | "Private",
 ): Promise<HTMLElement> {
   await waitFor(() => {
-    expect(screen.getByText(sectionName)).toBeInTheDocument();
+    expect(tabByText(tabName)).toBeInTheDocument();
   });
-  click(findSectionCreateButton(sectionName));
+  click(tabByText(tabName));
+  await waitFor(() => {
+    expect(tabByText(tabName)).toHaveAttribute("aria-selected", "true");
+  });
+  click(newAgentButton());
   return await screen.findByRole("dialog");
 }
 
@@ -161,7 +160,6 @@ describe("zero jobs page", () => {
     detachedSetupPage({
       context,
       path: "/agents",
-      featureSwitches: { [FeatureSwitchKey.AgentsPageRedesign]: false },
     });
 
     await waitFor(() => {
@@ -169,6 +167,12 @@ describe("zero jobs page", () => {
       expect(
         screen.getByText("Finds and summarizes information"),
       ).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Writes content based on research")).toBeNull();
+    expect(newAgentButton()).toBeInTheDocument();
+
+    click(tabByText("Private"));
+    await waitFor(() => {
       expect(
         screen.getByText("a0000000-0000-4000-a000-000000000102"),
       ).toBeInTheDocument();
@@ -176,8 +180,8 @@ describe("zero jobs page", () => {
         screen.getByText("Writes content based on research"),
       ).toBeInTheDocument();
     });
-    expect(findSectionCreateButton("Public")).toBeInTheDocument();
-    expect(findSectionCreateButton("Private")).toBeInTheDocument();
+    expect(screen.queryByText("Finds and summarizes information")).toBeNull();
+    expect(newAgentButton()).toBeInTheDocument();
   });
 
   it("creates public and private agents, customizes avatars, supports Enter submit, cancel, and card navigation", async () => {
@@ -239,7 +243,6 @@ describe("zero jobs page", () => {
     detachedSetupPage({
       context,
       path: "/agents",
-      featureSwitches: { [FeatureSwitchKey.AgentsPageRedesign]: false },
     });
 
     let dialog = await openCreateDialog("Public");
@@ -285,7 +288,9 @@ describe("zero jobs page", () => {
     });
 
     dialog = await openCreateDialog("Private");
-    expect(screen.getByText("Create a new private agent")).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole("heading", { name: "Create a new agent" }),
+    ).toBeInTheDocument();
     click(screen.getByText("Cancel"));
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -296,16 +301,18 @@ describe("zero jobs page", () => {
       "e.g. Research Assistant",
     );
     await fill(privateAgentInput, "Private Analyst");
-    const privateAgentForm = privateAgentInput.closest("form");
-    expect(privateAgentForm).not.toBeNull();
-    fireEvent.submit(privateAgentForm!);
+    fireEvent.keyDown(privateAgentInput, { key: "Enter" });
 
     await waitFor(() => {
       expect(screen.getByText("Private Analyst")).toBeInTheDocument();
-      expect(screen.getByLabelText("Private agent")).toBeInTheDocument();
     });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(dialog).not.toBeInTheDocument();
+
+    click(tabByText("Public"));
+    await waitFor(() => {
+      expect(screen.getByText("Marketing Bot")).toBeInTheDocument();
+    });
 
     const marketingBotLink = queryAllByRoleFast("link").find((link) => {
       return (
