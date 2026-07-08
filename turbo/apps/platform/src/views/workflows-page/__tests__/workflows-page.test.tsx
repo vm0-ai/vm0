@@ -2127,7 +2127,7 @@ describe("workflow detail page", () => {
     await waitFor(() => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
-    pickTrigger("Integrations", /^New Notion database item/);
+    pickTrigger("Notion", /^New Notion database item/);
 
     const createTriggerForm = await screen.findByRole("form", {
       name: "Add Notion database item automation",

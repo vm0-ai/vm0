@@ -2388,7 +2388,12 @@ type TriggerCreateDialogKind =
   | "notion-page-content-updated"
   | "webhook";
 
-type TriggerCategoryKey = "schedule" | "email" | "calendar" | "integrations";
+type TriggerCategoryKey =
+  | "schedule"
+  | "email"
+  | "calendar"
+  | "notion"
+  | "integrations";
 
 type TriggerCreateOption = {
   readonly kind: TriggerCreateDialogKind;
@@ -2406,11 +2411,9 @@ type TriggerCreateCategory = {
 
 function buildIntegrationTriggerOptions({
   githubLabelTriggersEnabled,
-  notionWorkflowTriggersEnabled,
   webhookTriggersEnabled,
 }: {
   readonly githubLabelTriggersEnabled: boolean;
-  readonly notionWorkflowTriggersEnabled: boolean;
   readonly webhookTriggersEnabled: boolean;
 }): TriggerCreateOption[] {
   const integrationOptions: TriggerCreateOption[] = [];
@@ -2430,29 +2433,35 @@ function buildIntegrationTriggerOptions({
       icon: IconLink,
     });
   }
-  if (notionWorkflowTriggersEnabled) {
-    integrationOptions.push(
-      {
-        kind: "notion-child-page",
-        title: "New Notion child page",
-        description: "Run when a direct child page is created.",
-        icon: IconFileText,
-      },
-      {
-        kind: "notion-database-item",
-        title: "New Notion database item",
-        description: "Run when a page is added to a Notion database.",
-        icon: IconFileText,
-      },
-      {
-        kind: "notion-page-content-updated",
-        title: "Notion page content updated",
-        description: "Run when a page or database item content changes.",
-        icon: IconFileText,
-      },
-    );
-  }
   return integrationOptions;
+}
+
+function buildNotionTriggerOptions(
+  notionWorkflowTriggersEnabled: boolean,
+): TriggerCreateOption[] {
+  if (!notionWorkflowTriggersEnabled) {
+    return [];
+  }
+  return [
+    {
+      kind: "notion-child-page",
+      title: "New Notion child page",
+      description: "Run when a direct child page is created.",
+      icon: IconFileText,
+    },
+    {
+      kind: "notion-database-item",
+      title: "New Notion database item",
+      description: "Run when a page is added to a Notion database.",
+      icon: IconFileText,
+    },
+    {
+      kind: "notion-page-content-updated",
+      title: "Notion page content updated",
+      description: "Run when a page or database item content changes.",
+      icon: IconFileText,
+    },
+  ];
 }
 
 // Each category owns a single hue that colours only the card icon chip on the
@@ -2462,6 +2471,7 @@ const TRIGGER_CATEGORY_CHIP: Readonly<Record<TriggerCategoryKey, string>> =
     schedule: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
     email: "bg-violet-500/10 text-violet-600 dark:text-violet-400",
     calendar: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+    notion: "bg-gray-500/10 text-gray-700 dark:text-gray-300",
     integrations: "bg-amber-500/10 text-amber-600 dark:text-amber-500",
   });
 
@@ -2512,9 +2522,11 @@ function buildTriggerCreateCategories({
 
   const integrationOptions = buildIntegrationTriggerOptions({
     githubLabelTriggersEnabled,
-    notionWorkflowTriggersEnabled,
     webhookTriggersEnabled,
   });
+  const notionOptions = buildNotionTriggerOptions(
+    notionWorkflowTriggersEnabled,
+  );
 
   const categories: readonly TriggerCreateCategory[] = [
     {
@@ -2566,6 +2578,12 @@ function buildTriggerCreateCategories({
       label: "Calendar",
       icon: IconCalendarTime,
       options: calendarOptions,
+    },
+    {
+      key: "notion",
+      label: "Notion",
+      icon: IconFileText,
+      options: notionOptions,
     },
     {
       key: "integrations",
