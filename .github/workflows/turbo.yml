@@ -1761,7 +1761,7 @@ jobs:
     needs: [prepare, deploy-runner-prepare, deploy-api]
     outputs:
       total-capacity: ${{ steps.start.outputs.total-capacity }}
-    timeout-minutes: 2
+    timeout-minutes: 4
     if: |
       needs.prepare.outputs.job-ref != '' &&
       needs.prepare.outputs.turbo-runner-consumer-needed == 'true'
