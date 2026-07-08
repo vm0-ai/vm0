@@ -396,7 +396,7 @@ async fn create_started_sandbox(
     let create_result = {
         let mut observer = FreshSandboxFactoryCreateObserver { telemetry };
         factory
-            .create_with_observer(sandbox_config, Some(&mut observer))
+            .create_with_observer(sandbox_config, &mut observer)
             .await
     };
     let mut sandbox = match create_result {

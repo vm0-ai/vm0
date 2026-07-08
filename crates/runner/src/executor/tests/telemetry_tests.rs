@@ -136,22 +136,18 @@ impl SandboxFactory for ObservedMockSandboxFactory {
     async fn create_with_observer(
         &self,
         config: SandboxConfig,
-        observer: Option<&mut dyn SandboxCreateObserver>,
+        observer: &mut dyn SandboxCreateObserver,
     ) -> sandbox::Result<Box<dyn Sandbox>> {
         if let Some(stage) = self.failed_stage {
-            if let Some(observer) = observer {
-                observer.record_stage(stage, Duration::from_millis(1), false);
-            }
+            observer.record_stage(stage, Duration::from_millis(1), false);
             return Err(SandboxError::Initialization {
                 phase: SandboxInitializationPhase::SandboxAllocation,
                 message: "observed mock create failure".to_string(),
             });
         }
 
-        if let Some(observer) = observer {
-            for (index, stage) in SandboxCreateStage::ALL.iter().copied().enumerate() {
-                observer.record_stage(stage, Duration::from_millis(index as u64 + 1), true);
-            }
+        for (index, stage) in SandboxCreateStage::ALL.iter().copied().enumerate() {
+            observer.record_stage(stage, Duration::from_millis(index as u64 + 1), true);
         }
         self.inner.create(config).await
     }

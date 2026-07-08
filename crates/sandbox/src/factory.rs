@@ -83,14 +83,14 @@ pub trait SandboxFactory: Send + Sync {
     /// The returned sandbox belongs to this factory's lifecycle and should be
     /// released through [`destroy`](Self::destroy) on the normal teardown path.
     async fn create(&self, config: SandboxConfig) -> Result<Box<dyn Sandbox>>;
-    /// Create a sandbox while optionally reporting create-stage timings.
+    /// Create a sandbox while reporting create-stage timings to `observer`.
     ///
     /// The default implementation preserves existing factory behavior for
     /// providers that do not expose internal create-stage attribution.
     async fn create_with_observer(
         &self,
         config: SandboxConfig,
-        _observer: Option<&mut dyn SandboxCreateObserver>,
+        _observer: &mut dyn SandboxCreateObserver,
     ) -> Result<Box<dyn Sandbox>> {
         self.create(config).await
     }
