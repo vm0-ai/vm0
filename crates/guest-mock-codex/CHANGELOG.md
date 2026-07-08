@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.3](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.6.2...guest-mock-codex-v0.6.3) (2026-07-08)
+
+
+### Refactoring
+
+* **guest-mock-codex:** split app-server handlers ([#20683](https://github.com/vm0-ai/vm0/issues/20683)) ([b512da3](https://github.com/vm0-ai/vm0/commit/b512da3cdc16fc41b29253a6f312ba5a51f339fd))
+
 ## [0.6.2](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.6.1...guest-mock-codex-v0.6.2) (2026-07-08)
 
 

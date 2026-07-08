@@ -4,10 +4,12 @@ import {
   type TestRelationshipStateActionBody,
 } from "@vm0/api-contracts/contracts/test-relationship-state";
 import {
-  relationshipEntities,
-  relationshipItems,
-  relationshipStates,
-} from "@vm0/db/schema/relationship-memory";
+  memories,
+  memoryEntities,
+  memoryEntityAliases,
+  memoryProfiles,
+  memorySources,
+} from "@vm0/db/schema/memory-substrate";
 import { and, eq } from "drizzle-orm";
 
 import { bodyResultOf } from "../context/request";
@@ -20,6 +22,7 @@ import {
 } from "./test-oauth-provider-helpers";
 
 const actionBody$ = bodyResultOf(testRelationshipStateContract.action);
+const FIXTURE_START_TIME = Date.parse("2026-07-05T12:00:00.000Z");
 
 type RelationshipAction<
   TAction extends TestRelationshipStateActionBody["action"],
@@ -29,21 +32,239 @@ function actionOk() {
   return { status: 200 as const, body: { ok: true as const } };
 }
 
+function scopedWhere(body: RelationshipAction<"delete-relationships">) {
+  return {
+    orgId: body.fixture.org_id,
+    userId: body.fixture.user_id,
+  };
+}
+
 async function deleteRelationshipsForAction(
   db: Db,
   body: RelationshipAction<"delete-relationships">,
   signal: AbortSignal,
 ) {
+  const scope = scopedWhere(body);
   await db
-    .delete(relationshipEntities)
+    .delete(memories)
+    .where(
+      and(eq(memories.orgId, scope.orgId), eq(memories.userId, scope.userId)),
+    );
+  await db
+    .delete(memorySources)
     .where(
       and(
-        eq(relationshipEntities.orgId, body.fixture.org_id),
-        eq(relationshipEntities.userId, body.fixture.user_id),
+        eq(memorySources.orgId, scope.orgId),
+        eq(memorySources.userId, scope.userId),
+      ),
+    );
+  await db
+    .delete(memoryEntities)
+    .where(
+      and(
+        eq(memoryEntities.orgId, scope.orgId),
+        eq(memoryEntities.userId, scope.userId),
       ),
     );
   signal.throwIfAborted();
   return actionOk();
+}
+
+function relationshipEntityValues(
+  body: RelationshipAction<"seed-relationships">,
+) {
+  return Array.from({ length: body.count }, (_, index) => {
+    const entityType: "person" | "organization" =
+      index % 2 === 0 ? "person" : "organization";
+    return {
+      orgId: body.fixture.org_id,
+      userId: body.fixture.user_id,
+      type: entityType,
+      identityKey: `${entityType}-${index}@relationship.test`,
+      displayName: `Relationship ${String(index + 1).padStart(3, "0")}`,
+      primaryEmail:
+        entityType === "person" ? `person-${index}@relationship.test` : null,
+      domain: `relationship-${index}.test`,
+    };
+  });
+}
+
+async function insertRelationshipEntityFixtures(
+  db: Db,
+  body: RelationshipAction<"seed-relationships">,
+) {
+  const values = relationshipEntityValues(body);
+  const entities = await db
+    .insert(memoryEntities)
+    .values(
+      values.map((entity) => {
+        return {
+          orgId: entity.orgId,
+          userId: entity.userId,
+          type: entity.type,
+          displayName: entity.displayName,
+        };
+      }),
+    )
+    .returning({
+      id: memoryEntities.id,
+      type: memoryEntities.type,
+      displayName: memoryEntities.displayName,
+    });
+  return entities.map((entity, index) => {
+    const value = values[index];
+    if (!value) {
+      throw new Error("Expected relationship fixture entity value");
+    }
+    return {
+      ...entity,
+      identityKey: value.identityKey,
+      primaryEmail: value.primaryEmail,
+      domain: value.domain,
+    };
+  });
+}
+
+type RelationshipEntityFixture = Awaited<
+  ReturnType<typeof insertRelationshipEntityFixtures>
+>[number];
+
+async function insertGraphEntityAliases(
+  db: Db,
+  body: RelationshipAction<"seed-relationships">,
+  entities: readonly RelationshipEntityFixture[],
+) {
+  await db.insert(memoryEntityAliases).values(
+    entities.flatMap((entity) => {
+      return [
+        {
+          orgId: body.fixture.org_id,
+          userId: body.fixture.user_id,
+          entityId: entity.id,
+          provider: null,
+          aliasType: "relationship_identity" as const,
+          aliasValue: entity.identityKey,
+        },
+        ...(entity.primaryEmail
+          ? [
+              {
+                orgId: body.fixture.org_id,
+                userId: body.fixture.user_id,
+                entityId: entity.id,
+                provider: null,
+                aliasType: "email" as const,
+                aliasValue: entity.primaryEmail,
+              },
+            ]
+          : []),
+        ...(entity.type === "organization" && entity.domain
+          ? [
+              {
+                orgId: body.fixture.org_id,
+                userId: body.fixture.user_id,
+                entityId: entity.id,
+                provider: null,
+                aliasType: "domain" as const,
+                aliasValue: entity.domain,
+              },
+            ]
+          : []),
+      ];
+    }),
+  );
+}
+
+async function insertRelationshipProfileFixtures(
+  db: Db,
+  body: RelationshipAction<"seed-relationships">,
+  entities: readonly RelationshipEntityFixture[],
+) {
+  await db.insert(memoryProfiles).values(
+    entities.flatMap((entity, index) => {
+      const lastInteractionAt = new Date(
+        FIXTURE_START_TIME - index * 60_000,
+      ).toISOString();
+      return [
+        {
+          orgId: body.fixture.org_id,
+          userId: body.fixture.user_id,
+          entityId: entity.id,
+          section: "relationship_type",
+          content: index % 2 === 0 ? "Customer contact" : "Organization",
+        },
+        {
+          orgId: body.fixture.org_id,
+          userId: body.fixture.user_id,
+          entityId: entity.id,
+          section: "relationship_status",
+          content: "active",
+        },
+        {
+          orgId: body.fixture.org_id,
+          userId: body.fixture.user_id,
+          entityId: entity.id,
+          section: "relationship_summary",
+          content: `Relationship pagination fixture ${index + 1}`,
+        },
+        {
+          orgId: body.fixture.org_id,
+          userId: body.fixture.user_id,
+          entityId: entity.id,
+          section: "relationship_last_interaction_at",
+          content: lastInteractionAt,
+        },
+      ];
+    }),
+  );
+}
+
+function openLoopFixtureItems(
+  body: RelationshipAction<"seed-relationships">,
+  entities: readonly RelationshipEntityFixture[],
+) {
+  return entities
+    .map((entity, index) => {
+      if (index % 10 !== 0) {
+        return null;
+      }
+      return {
+        orgId: body.fixture.org_id,
+        userId: body.fixture.user_id,
+        entityId: entity.id,
+        kind: "open_loop" as const,
+        text: `Follow up with relationship ${index + 1}`,
+        confidence: 90,
+        lastSeenAt: new Date(FIXTURE_START_TIME - index * 60_000),
+      };
+    })
+    .filter((item): item is NonNullable<typeof item> => {
+      return item !== null;
+    });
+}
+
+async function insertOpenLoopFixtures(
+  db: Db,
+  body: RelationshipAction<"seed-relationships">,
+  entities: readonly RelationshipEntityFixture[],
+) {
+  const openLoopItems = openLoopFixtureItems(body, entities);
+  if (openLoopItems.length > 0) {
+    await db.insert(memories).values(
+      openLoopItems.map((item) => {
+        return {
+          orgId: item.orgId,
+          userId: item.userId,
+          entityId: item.entityId,
+          kind: item.kind,
+          status: "active" as const,
+          text: item.text,
+          confidence: item.confidence,
+          sourceCount: 0,
+          lastSeenAt: item.lastSeenAt,
+        };
+      }),
+    );
+  }
 }
 
 async function seedRelationshipsForAction(
@@ -55,72 +276,13 @@ async function seedRelationshipsForAction(
     return actionOk();
   }
 
-  const entities = await db
-    .insert(relationshipEntities)
-    .values(
-      Array.from({ length: body.count }, (_, index) => {
-        const entityType: "person" | "organization" =
-          index % 2 === 0 ? "person" : "organization";
-        return {
-          orgId: body.fixture.org_id,
-          userId: body.fixture.user_id,
-          type: entityType,
-          identityKey: `${entityType}-${index}@relationship.test`,
-          displayName: `Relationship ${String(index + 1).padStart(3, "0")}`,
-          primaryEmail:
-            entityType === "person"
-              ? `person-${index}@relationship.test`
-              : null,
-          domain: `relationship-${index}.test`,
-        };
-      }),
-    )
-    .returning({ id: relationshipEntities.id });
+  const entities = await insertRelationshipEntityFixtures(db, body);
   signal.throwIfAborted();
-
-  const states = await db
-    .insert(relationshipStates)
-    .values(
-      entities.map((entity, index) => {
-        return {
-          orgId: body.fixture.org_id,
-          userId: body.fixture.user_id,
-          entityId: entity.id,
-          relationshipType:
-            index % 2 === 0 ? "Customer contact" : "Organization",
-          summary: `Relationship pagination fixture ${index + 1}`,
-          lastInteractionAt: new Date(
-            Date.parse("2026-07-05T12:00:00.000Z") - index * 60_000,
-          ),
-        };
-      }),
-    )
-    .returning({ id: relationshipStates.id });
+  await insertGraphEntityAliases(db, body, entities);
   signal.throwIfAborted();
-
-  const openLoopItems = states
-    .map((state, index) => {
-      if (index % 10 !== 0) {
-        return null;
-      }
-      return {
-        orgId: body.fixture.org_id,
-        userId: body.fixture.user_id,
-        relationshipStateId: state.id,
-        kind: "open_loop" as const,
-        text: `Follow up with relationship ${index + 1}`,
-        confidence: 90,
-        lastSeenAt: new Date(
-          Date.parse("2026-07-05T12:00:00.000Z") - index * 60_000,
-        ),
-      };
-    })
-    .filter((item): item is NonNullable<typeof item> => {
-      return item !== null;
-    });
-  if (openLoopItems.length > 0) {
-    await db.insert(relationshipItems).values(openLoopItems);
-  }
+  await insertRelationshipProfileFixtures(db, body, entities);
+  signal.throwIfAborted();
+  await insertOpenLoopFixtures(db, body, entities);
   signal.throwIfAborted();
   return actionOk();
 }
