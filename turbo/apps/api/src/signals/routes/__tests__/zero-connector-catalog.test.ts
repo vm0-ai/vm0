@@ -258,6 +258,19 @@ describe("GET /api/zero/connector-catalog", () => {
       }),
     ).toBeUndefined();
 
+    await enableConnectorFeatureSwitches(orgId, userId, {
+      [FeatureSwitchKey.NintendoEshopCatalogConnector]: true,
+    });
+    const overriddenList = await accept(
+      client.list({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
+    );
+    expect(
+      overriddenList.body.connectors.find((connector) => {
+        return connector.connectorRef === "nintendo-eshop-catalog";
+      }),
+    ).toBeUndefined();
+
     mocks.clerk.session(userId, STAFF_ORG_ID);
 
     const staffList = await accept(

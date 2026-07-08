@@ -5,6 +5,8 @@ import {
   zeroConnectorNoAuthGrantContract,
   zeroConnectorsByTypeContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
+import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { afterEach } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -42,6 +44,20 @@ async function deleteNintendoConnector(
       headers: authHeaders(),
     }),
     [204, 404],
+  );
+}
+
+async function updateFeatureSwitches(
+  fixture: AuthenticatedFixture,
+  switches: Partial<Record<FeatureSwitchKey, boolean>>,
+): Promise<void> {
+  mocks.clerk.session(fixture.userId, fixture.orgId);
+  await accept(
+    setupApp({ context })(zeroFeatureSwitchesContract).update({
+      headers: authHeaders(),
+      body: { switches },
+    }),
+    [200],
   );
 }
 
@@ -95,6 +111,24 @@ describe("POST /api/zero/connectors/:type/no-auth", () => {
 
   it("rejects feature-gated no-auth connectors when unavailable", async () => {
     trackFixture();
+
+    const response = await accept(
+      setupApp({ context })(zeroConnectorNoAuthGrantContract).connect({
+        params: { type: "nintendo-eshop-catalog" },
+        body: { authMethod: "api" },
+        headers: authHeaders(),
+      }),
+      [403],
+    );
+
+    expect(response.body.error.code).toBe("FORBIDDEN");
+  });
+
+  it("rejects user override attempts for staff-only no-auth connectors", async () => {
+    const fixture = trackFixture();
+    await updateFeatureSwitches(fixture, {
+      [FeatureSwitchKey.NintendoEshopCatalogConnector]: true,
+    });
 
     const response = await accept(
       setupApp({ context })(zeroConnectorNoAuthGrantContract).connect({
