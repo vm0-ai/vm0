@@ -571,6 +571,7 @@ mod tests {
         for key in [
             API_URL_ENV,
             WORKING_DIR_ENV,
+            USER_ENV_FILE_ENV,
             RUN_PAYLOAD_FILE_ENV,
             CLI_AGENT_TYPE_ENV,
             USE_MOCK_CLAUDE_ENV,
