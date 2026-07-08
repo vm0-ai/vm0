@@ -3065,11 +3065,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       {
         agentId,
         prompt: "vm0 managed minimax codex provider",
-        modelProvider: "vm0",
-        modelSelection: {
-          modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-          selectedModel,
-        },
+        model: selectedModel,
       },
       [201],
     );
