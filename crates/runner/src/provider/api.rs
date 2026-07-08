@@ -14,7 +14,10 @@ use serde::{Serialize, de::DeserializeOwned};
 use super::api_ably_supervisor::{
     AblySupervisor, AblySupervisorConfig, PollDue, PollOutcome, PollReason, PollWakeups,
 };
-use super::api_direct_candidates::{DirectCandidateInbox, DirectJobCandidate};
+use super::api_direct_candidates::{
+    DIRECT_CANDIDATE_STALE_AFTER, DirectCandidateInbox, DirectCandidatePruneSnapshot,
+    DirectJobCandidate,
+};
 use super::builtin_firewall_catalog::{
     BuiltinFirewallCatalog, BuiltinFirewallCatalogRefreshHandle,
 };
@@ -149,7 +152,10 @@ impl ApiProvider {
         )
         .await;
         let poll_wakeups = Arc::new(PollWakeups::new(false));
-        let direct_candidates = DirectCandidateInbox::new(DIRECT_CANDIDATE_INBOX_CAPACITY);
+        let direct_candidates = DirectCandidateInbox::new(
+            DIRECT_CANDIDATE_INBOX_CAPACITY,
+            DIRECT_CANDIDATE_STALE_AFTER,
+        );
         let ably_supervisor = AblySupervisor::spawn(AblySupervisorConfig {
             api: api.clone(),
             group: group.clone(),
@@ -179,11 +185,41 @@ impl ApiProvider {
     }
 
     async fn try_recv_direct_candidate(&self) -> Option<DirectJobCandidate> {
-        self.direct_candidates.try_pop().await
+        let outcome = self.direct_candidates.try_pop_with_prune().await;
+        if let Some(pruned) = outcome.pruned {
+            Self::log_direct_candidate_pruned("pop", pruned);
+            if outcome.candidate.is_none() {
+                self.poll_wakeups.request_immediate_poll().await;
+            }
+        }
+        outcome.candidate
     }
 
     async fn wait_for_direct_candidate(&self) -> Option<DirectJobCandidate> {
-        self.direct_candidates.wait_pop(&self.cancel).await
+        loop {
+            if let Some(candidate) = self.try_recv_direct_candidate().await {
+                return Some(candidate);
+            }
+            if !self
+                .direct_candidates
+                .wait_for_notification(&self.cancel)
+                .await
+            {
+                return None;
+            }
+        }
+    }
+
+    fn log_direct_candidate_pruned(source: &'static str, pruned: DirectCandidatePruneSnapshot) {
+        info!(
+            source,
+            pruned_count = pruned.pruned_count,
+            depth = pruned.depth,
+            capacity = pruned.capacity,
+            stale_after_ms = duration_ms(pruned.stale_after),
+            oldest_pruned_wait_ms = duration_ms(pruned.oldest_pruned_wait_elapsed),
+            "ably: stale direct candidates pruned"
+        );
     }
 
     async fn wait_for_discovery_wakeup(&self) -> Option<DiscoveryWakeup> {
@@ -1179,7 +1215,10 @@ mod tests {
             group: "default".to_string(),
             supported_profiles: vec![crate::profile::DEFAULT_PROFILE.to_string()],
             poll_wakeups,
-            direct_candidates: DirectCandidateInbox::new(DIRECT_CANDIDATE_INBOX_CAPACITY),
+            direct_candidates: DirectCandidateInbox::new(
+                DIRECT_CANDIDATE_INBOX_CAPACITY,
+                DIRECT_CANDIDATE_STALE_AFTER,
+            ),
             ably_supervisor: AblySupervisor::disabled(),
             cancel,
         })
@@ -1679,6 +1718,68 @@ mod tests {
         );
         assert!(provider.try_discover_ready().await.is_none());
         poll_mock.assert_calls_async(0).await;
+    }
+
+    #[tokio::test]
+    async fn discover_prunes_stale_direct_candidate_and_polls_immediately() {
+        let server = MockServer::start_async().await;
+        let stale_run_id: RunId = "00000000-0000-0000-0000-000000000017".parse().unwrap();
+        let poll_run_id: RunId = "00000000-0000-0000-0000-000000000018".parse().unwrap();
+        let poll_mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path(routes::runners::poll::POLL.path)
+                    .json_body(serde_json::json!({
+                        "group": "default",
+                        "supportedProfiles": [crate::profile::DEFAULT_PROFILE],
+                        "telemetry": {
+                            "pollReason": "immediate"
+                        }
+                    }));
+                then.status(200).json_body(serde_json::json!({
+                    "job": {
+                        "runId": poll_run_id,
+                        "experimentalProfile": crate::profile::DEFAULT_PROFILE
+                    }
+                }));
+            })
+            .await;
+        let wakeups = Arc::new(PollWakeups::new(true));
+        let initial_poll = wakeups
+            .wait_for_poll_due(&CancellationToken::new(), POLL_SLOW, POLL_FAST)
+            .await
+            .unwrap();
+        wakeups
+            .record_poll_result(initial_poll, PollOutcome::Empty, POLL_WAKEUP_RETRY)
+            .await;
+        let provider = api_provider_for_test(
+            server.base_url(),
+            CancellationToken::new(),
+            Arc::clone(&wakeups),
+        );
+        let stale_enqueued_at = Instant::now() - Duration::from_secs(120);
+        push_direct_candidate_for_test(
+            &provider,
+            DirectJobCandidate::new_with_enqueued_at(
+                stale_run_id,
+                crate::profile::DEFAULT_PROFILE.to_string(),
+                stale_enqueued_at,
+                stale_enqueued_at,
+            ),
+        )
+        .await;
+
+        let discovered = tokio::time::timeout(Duration::from_secs(1), provider.discover())
+            .await
+            .expect("stale direct pruning should wake immediate poll")
+            .unwrap();
+
+        assert_eq!(discovered.run_id(), poll_run_id);
+        assert_eq!(
+            discovered.discovery_source(),
+            Some(JobDiscoverySource::Poll)
+        );
+        poll_mock.assert_async().await;
     }
 
     #[tokio::test]
