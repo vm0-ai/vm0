@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.245.0](https://github.com/vm0-ai/vm0/compare/api-v1.244.0...api-v1.245.0) (2026-07-08)
+
+
+### Features
+
+* add zero memory recall surfaces ([#20630](https://github.com/vm0-ai/vm0/issues/20630)) ([c937665](https://github.com/vm0-ai/vm0/commit/c9376657012a4fefedfabc0a033b53d18c7065cb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.169.0
+    * @vm0/core bumped to 8.414.4
+    * @vm0/db bumped to 1.100.1
+
 ## [1.244.0](https://github.com/vm0-ai/vm0/compare/api-v1.243.1...api-v1.244.0) (2026-07-08)
 
 
