@@ -346,6 +346,60 @@ def _validate_public_destination_host_policy(
         )
 
 
+def validate_host_policy_shape_for_cache(
+    *,
+    firewall_name: str,
+    host_policy: object,
+) -> None:
+    """Validate cache-level hostPolicy shape without binding it to a resolved base."""
+    if host_policy is None:
+        return
+    if not isinstance(host_policy, dict):
+        raise BuiltinHostPolicyError(
+            f'builtin firewall "{firewall_name}" hostPolicy must be an object'
+        )
+    kind = host_policy.get("kind")
+    if kind == "providerOwned":
+        _validate_host_policy_keys(
+            firewall_name=firewall_name,
+            policy=host_policy,
+            allowed_keys=_PROVIDER_OWNED_HOST_POLICY_KEYS,
+        )
+        exact_hosts = _host_policy_string_list(host_policy, "exactHosts")
+        suffixes = _host_policy_string_list(host_policy, "suffixes")
+        _host_policy_optional_bool(
+            firewall_name=firewall_name,
+            policy=host_policy,
+            key="allowNonDefaultPort",
+        )
+        if not exact_hosts and not suffixes:
+            raise BuiltinHostPolicyError(
+                f'builtin firewall "{firewall_name}" providerOwned hostPolicy '
+                "requires exactHosts or suffixes"
+            )
+        for exact_host in exact_hosts:
+            if not _host_policy_host_has_fixed_ownership(exact_host, allow_leading_dot=False):
+                raise BuiltinHostPolicyError(
+                    f'builtin firewall "{firewall_name}" providerOwned hostPolicy '
+                    "exactHosts must be fixed hostnames with at least two labels"
+                )
+        for suffix in suffixes:
+            if not _host_policy_host_has_fixed_ownership(suffix, allow_leading_dot=True):
+                raise BuiltinHostPolicyError(
+                    f'builtin firewall "{firewall_name}" providerOwned hostPolicy '
+                    "suffixes must be fixed hostnames with at least two labels"
+                )
+        return
+    if kind == "publicDestination":
+        _validate_host_policy_keys(
+            firewall_name=firewall_name,
+            policy=host_policy,
+            allowed_keys=_PUBLIC_DESTINATION_HOST_POLICY_KEYS,
+        )
+        return
+    raise BuiltinHostPolicyError(f'builtin firewall "{firewall_name}" hostPolicy kind is invalid')
+
+
 def _runtime_host_policy_error(
     *,
     reason: str,

@@ -265,13 +265,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ComposerModelPickerPopover]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Use the Popover-based chat composer model picker instead of Radix Select.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.ComposerUploadPopover]: {
     maintainer: "bingjie@vm0.ai",
     description:
@@ -406,6 +399,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable uploading a presentation artifact to the user's Google Drive as a native, editable Google Slides deck.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.Artifacts]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Show the Artifacts manage page for generated artifacts in the current organization.",
+    enabled: false,
+    userOverridable: false,
   },
   [FeatureSwitchKey.WorkflowTemplateCatalog]: {
     maintainer: "ming@vm0.ai",

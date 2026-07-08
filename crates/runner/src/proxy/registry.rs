@@ -398,7 +398,9 @@ mod tests {
                         headers: HashMap::new(),
                         base: None,
                         query: None,
+                        aws_sigv4: None,
                     },
+                    host_policy: None,
                     permissions: Some(vec![
                         FirewallPermission {
                             name: "repos.read".to_string(),
@@ -845,7 +847,9 @@ mod tests {
                         )]),
                         base: None,
                         query: None,
+                        aws_sigv4: None,
                     },
+                    host_policy: None,
                     permissions: Some(vec![FirewallPermission {
                         name: "mail-read".to_string(),
                         description: None,
@@ -1003,7 +1007,9 @@ mod tests {
                         headers: std::collections::HashMap::new(),
                         base: Some("${{ secrets.DISCORD_WEBHOOK_URL }}".to_string()),
                         query: None,
+                        aws_sigv4: None,
                     },
+                    host_policy: None,
                     permissions: None,
                 }],
             },
@@ -1052,7 +1058,9 @@ mod tests {
                             .into_iter()
                             .collect(),
                         ),
+                        aws_sigv4: None,
                     },
+                    host_policy: None,
                     permissions: None,
                 }],
             },

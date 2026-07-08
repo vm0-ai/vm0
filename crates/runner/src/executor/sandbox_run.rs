@@ -912,7 +912,9 @@ mod tests {
                             headers: HashMap::new(),
                             base: None,
                             query: None,
+                            aws_sigv4: None,
                         },
+                        host_policy: None,
                         permissions: Some(vec![FirewallPermission {
                             name: "records.read".to_string(),
                             description: None,

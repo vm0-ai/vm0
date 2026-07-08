@@ -130,7 +130,11 @@ mod tests {
             addon_dir: dir.path().join("addon"),
             registry_path: dir.path().join("registry.json"),
             registry_lock_path: dir.path().join("registry.lock"),
+            builtin_firewall_catalog_cache_path: dir
+                .path()
+                .join("builtin-firewall-catalog-cache.json"),
             api_url: None,
+            client_session_id: "runner-session-test".to_string(),
         })
         .await
         .unwrap();

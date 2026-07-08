@@ -623,6 +623,18 @@ describe("zero sidebar account menu", () => {
       expect(screen.getByText("alex.rivera@example.test")).toBeInTheDocument();
     });
 
+    const openedSettingsDialog = screen.getByRole("dialog", {
+      name: "Settings",
+    });
+    await waitFor(() => {
+      const activeElement = document.activeElement;
+      expect(openedSettingsDialog).not.toHaveFocus();
+      expect(activeElement).toBeInstanceOf(HTMLElement);
+      expect(openedSettingsDialog).toContainElement(
+        activeElement as HTMLElement,
+      );
+    });
+
     click(buttonByText("Manage"));
 
     await waitFor(() => {

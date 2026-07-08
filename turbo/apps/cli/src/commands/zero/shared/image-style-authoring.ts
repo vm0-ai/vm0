@@ -1,21 +1,18 @@
 import {
   type GenerationOutputKind,
-  type ResourceCandidateSlice,
   type RegistryEntry,
-  selectResourceCandidates,
 } from "./resource-registry";
 
-interface StyledImageAuthoringOptions {
+interface StyledImageCompilationOptions {
   readonly prompt: string;
   readonly details: readonly string[];
   readonly style: RegistryEntry;
 }
 
-interface StyledImageAuthoringPacket {
-  readonly type: "generation-source-selection";
+interface StyledImageCompilationPacket {
+  readonly type: "image-prompt-compilation";
   readonly kind: "image";
   readonly prompt: string;
-  readonly registryVersion: string;
   readonly artifact: {
     readonly outputMode: "primary-image";
     readonly primaryArtifact: {
@@ -30,14 +27,6 @@ interface StyledImageAuthoringPacket {
     readonly previewKind: "image";
     readonly outputDir: string;
   };
-  readonly selection: {
-    readonly candidates: ResourceCandidateSlice["candidates"];
-    readonly outputSchema: {
-      readonly imageStyle: "string";
-      readonly skills: "string[]";
-      readonly rationale: "string";
-    };
-  };
   readonly authoring: {
     readonly details: readonly string[];
     readonly artifactRules: readonly string[];
@@ -46,38 +35,26 @@ interface StyledImageAuthoringPacket {
   readonly instructions: string;
 }
 
-function formatCandidateSource(
-  source: ResourceCandidateSlice["sources"][number],
-): string {
+function formatStyleSource(source: RegistryEntry["source"]): readonly string[] {
   if ("repo" in source) {
-    return `- \`${source.repo}@${source.ref}\``;
+    return [
+      `- Repository: \`${source.repo}@${source.ref}\``,
+      `- Path: \`${source.path}\``,
+    ];
   }
-  return `- ${source.description}`;
+  return [`- Path: \`${source.path}\``];
 }
 
 const outputDir = "./generated/images";
 const artifactRules = [
-  "Resolve the selected style source before generating the image.",
-  "Use the style skill's referenced assets and generation path when it provides one.",
-  "Produce a single final image file and keep any temporary metadata under the output directory.",
+  "Compile the user prompt into a final image prompt before generating.",
+  "Use the style source, referenced assets, and generation path when they are available.",
+  "Generate with `--compiled-prompt`; do not pass `--style` during final image generation.",
 ] as const;
 
-export function createStyledImageAuthoringPacket(
-  options: StyledImageAuthoringOptions,
-): StyledImageAuthoringPacket {
-  const baseSlice = selectResourceCandidates();
-  const candidateSlice: ResourceCandidateSlice = {
-    ...baseSlice,
-    candidates: {
-      ...baseSlice.candidates,
-      imageStyles: [options.style],
-    },
-  };
-  const selectionSchema = {
-    imageStyle: "string",
-    skills: "string[]",
-    rationale: "string",
-  } as const;
+export function createStyledImageCompilationPacket(
+  options: StyledImageCompilationOptions,
+): StyledImageCompilationPacket {
   const artifact = {
     outputMode: "primary-image",
     primaryArtifact: {
@@ -95,47 +72,27 @@ export function createStyledImageAuthoringPacket(
     outputDir,
   } as const;
   const instructions = [
-    `# Zero generate image --style ${options.style.id}`,
+    `# Zero generate image prompt compile ${options.style.id}`,
     "",
-    "This is a federated generation source-selection packet for the current agent.",
-    "Zero is not generating this image on the server yet. The image style has already been selected by the caller — resolve it and generate the styled image.",
+    "This is an image prompt-compilation packet for the current agent.",
+    "Zero is not generating this image yet. The image style has already been selected — compile the user prompt into a final image prompt, then generate with `--compiled-prompt`.",
     "",
     "## User Prompt",
     options.prompt,
     "",
     "## Selected Image Style",
     `- \`${options.style.id}\` — ${options.style.name}`,
+    `- ${options.style.description}`,
     "",
-    "## Stage 1: Supporting Resource Selection",
-    "- The image style is locked. Optionally pick supporting skills/templates from the candidate slice below.",
-    "- Choose only IDs present in this packet; do not invent registry IDs.",
-    "- Treat the selection JSON as internal working state, then continue to generation.",
+    "## Style Source",
+    ...formatStyleSource(options.style.source),
     "",
-    "## Selection Output Schema",
-    "```json",
-    JSON.stringify(selectionSchema, null, 2),
-    "```",
-    "",
-    "## Candidate Registry Slice",
-    `Registry: \`${candidateSlice.registryVersion}\``,
-    "Sources:",
-    ...candidateSlice.sources.map(formatCandidateSource),
-    "",
-    "```json",
-    JSON.stringify(candidateSlice.candidates, null, 2),
-    "```",
-    "",
-    "## Stage 2: Resolve Selected Resources",
-    "- Fetch or read the selected resource source before generation.",
-    "- Each candidate carries a `source` object with `path` and optional `repo`/`ref`; when `repo`/`ref` are omitted, fall back to the registry-level source above.",
-    "- If `source.archive` is present, pull the private R2 archive with `zero resource pull <resource-id> --dir ./generated/resources`; the CLI requests an authenticated short-lived download URL, verifies the digest, and then extracts `source.path`.",
-    "- For directory refs, inspect the most relevant files such as `SKILL.md`, references, examples, and templates.",
-    "- If a source file cannot be fetched, state that limitation and fall back to the registry metadata for that resource.",
-    "",
-    "## Stage 3: Generate Image",
-    "- Generate one production-quality image using the selected style.",
-    "- Follow the selected style skill's generation path when it defines one.",
-    "- If the style skill delegates to a model or connector, use that flow directly instead of restating the style text manually.",
+    "## Prompt Compiler Task",
+    "- Read the selected style source when available, especially `SKILL.md`, references, examples, and templates.",
+    "- Rewrite the user prompt into one final image-generation prompt that obeys the selected style.",
+    "- Include style-specific composition, medium, palette, subject handling, reference usage, and must-avoid constraints in the final prompt.",
+    "- Keep user intent intact; expand only the visual details needed to satisfy the style.",
+    "- Return only the compiled prompt text when preparing the next command.",
     "",
     "## Artifact Output Model",
     `- Primary artifact: \`${artifact.primaryArtifact.kind}\` under \`${artifact.primaryArtifact.path}\`.`,
@@ -152,6 +109,11 @@ export function createStyledImageAuthoringPacket(
       return `- ${rule}`;
     }),
     "",
+    "## Next Command Template",
+    "```bash",
+    'zero generate image --compiled-prompt "<compiled prompt>"',
+    "```",
+    "",
     "## Verification",
     "- Verify the final image exists and is nonblank.",
     "- Check that the selected style's required reference anchors or source assets were used when applicable.",
@@ -159,15 +121,10 @@ export function createStyledImageAuthoringPacket(
   ].join("\n");
 
   return {
-    type: "generation-source-selection",
+    type: "image-prompt-compilation",
     kind: "image",
     prompt: options.prompt,
-    registryVersion: candidateSlice.registryVersion,
     artifact,
-    selection: {
-      candidates: candidateSlice.candidates,
-      outputSchema: selectionSchema,
-    },
     authoring: {
       details: options.details,
       artifactRules,

@@ -778,6 +778,7 @@ mod tests {
             HttpClient::new(HttpClientConfig {
                 api_url: server.base_url(),
                 vercel_bypass: None,
+                client_session_id: "runner-session-test".to_string(),
             })
             .expect("test API URL should be valid"),
             "runner-token".to_string(),

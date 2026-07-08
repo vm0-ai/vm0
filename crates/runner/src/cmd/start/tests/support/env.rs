@@ -246,6 +246,7 @@ fn build_mock_run_config_with_runtime(
             http: crate::http::HttpClient::new(crate::http::HttpClientConfig {
                 api_url: api_url.to_string(),
                 vercel_bypass: None,
+                client_session_id: "runner-session-test".to_string(),
             })
             .unwrap(),
             log_paths: crate::paths::LogPaths::new(log_dir),

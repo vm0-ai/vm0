@@ -7,6 +7,7 @@ from typing import Final
 from mitmproxy import http
 
 import builtin_host_policy
+import flow_metadata
 import flow_metadata_keys as metadata_keys
 import http_network_log
 import matching
@@ -23,11 +24,10 @@ def block_authority_validation_error(
     flow: http.HTTPFlow,
     error: AuthorityValidationError,
 ) -> None:
-    proxy_log_path = flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, "")
+    proxy_log_path = flow_metadata.proxy_log_path(flow.metadata)
     flow.metadata[metadata_keys.ORIGINAL_URL] = error.fallback_url
     http_network_log.set_target_from_url(flow, error.fallback_url)
-    flow.metadata[metadata_keys.FIREWALL_ACTION] = "DENY"
-    flow.metadata[metadata_keys.FIREWALL_ERROR] = error.reason
+    flow_metadata.set_firewall_decision(flow.metadata, "DENY", error=error.reason)
 
     log_proxy_entry(
         proxy_log_path,
@@ -61,8 +61,11 @@ def block_registry_unavailable(
     flow: http.HTTPFlow,
     unavailable: registry.RegistryUnavailable,
 ) -> None:
-    flow.metadata[metadata_keys.FIREWALL_ACTION] = "BLOCK"
-    flow.metadata[metadata_keys.FIREWALL_ERROR] = "registry_unavailable"
+    flow_metadata.set_firewall_decision(
+        flow.metadata,
+        "BLOCK",
+        error="registry_unavailable",
+    )
     flow.response = http.Response.make(
         503,
         json.dumps(
@@ -80,8 +83,11 @@ def block_invalid_registry_vm(
     flow: http.HTTPFlow,
     invalid_vm: registry.InvalidVmEntry,
 ) -> None:
-    flow.metadata[metadata_keys.FIREWALL_ACTION] = "BLOCK"
-    flow.metadata[metadata_keys.FIREWALL_ERROR] = "invalid_registry_vm"
+    flow_metadata.set_firewall_decision(
+        flow.metadata,
+        "BLOCK",
+        error="invalid_registry_vm",
+    )
     flow.response = http.Response.make(
         503,
         json.dumps(
@@ -96,8 +102,11 @@ def block_invalid_registry_vm(
 
 
 def block_stale_tls_admission(flow: http.HTTPFlow, *, reason: str) -> None:
-    flow.metadata[metadata_keys.FIREWALL_ACTION] = "BLOCK"
-    flow.metadata[metadata_keys.FIREWALL_ERROR] = _STALE_TLS_ADMISSION_ERROR
+    flow_metadata.set_firewall_decision(
+        flow.metadata,
+        "BLOCK",
+        error=_STALE_TLS_ADMISSION_ERROR,
+    )
     flow.response = http.Response.make(
         503,
         json.dumps(
@@ -121,8 +130,8 @@ def block_upstream_destination_unbound(
     server_address: object,
     diagnostics: dict[str, object],
 ) -> None:
-    trusted_host = flow.metadata.get(metadata_keys.TRUSTED_AUTHORITY_HOST)
-    proxy_log_path = flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, "")
+    trusted_host = flow_metadata.trusted_authority_host(flow.metadata)
+    proxy_log_path = flow_metadata.proxy_log_path(flow.metadata)
     log_proxy_entry(
         proxy_log_path,
         "warn",
@@ -135,8 +144,11 @@ def block_upstream_destination_unbound(
         server_address=server_address,
         diagnostics=diagnostics,
     )
-    flow.metadata[metadata_keys.FIREWALL_ACTION] = "BLOCK"
-    flow.metadata[metadata_keys.FIREWALL_ERROR] = _UPSTREAM_DESTINATION_UNBOUND_ERROR
+    flow_metadata.set_firewall_decision(
+        flow.metadata,
+        "BLOCK",
+        error=_UPSTREAM_DESTINATION_UNBOUND_ERROR,
+    )
     body: dict[str, object] = {
         "error": _UPSTREAM_DESTINATION_UNBOUND_ERROR,
         "message": "Request blocked: upstream destination is not bound to trusted authority",
@@ -145,8 +157,8 @@ def block_upstream_destination_unbound(
         "request_host": flow.request.host,
         "request_port": flow.request.port,
     }
-    firewall_base = flow.metadata.get(metadata_keys.FIREWALL_BASE)
-    if isinstance(firewall_base, str):
+    firewall_base = flow_metadata.firewall_base(flow.metadata)
+    if firewall_base:
         body["base"] = firewall_base
     flow.response = http.Response.make(
         403,
@@ -162,8 +174,8 @@ def block_builtin_host_policy_denied(
     error: builtin_host_policy.BuiltinRuntimeHostPolicyError,
     upstream_endpoint: str,
 ) -> None:
-    proxy_log_path = flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, "")
-    trusted_host = flow.metadata.get(metadata_keys.TRUSTED_AUTHORITY_HOST, "")
+    proxy_log_path = flow_metadata.proxy_log_path(flow.metadata)
+    trusted_host = flow_metadata.trusted_authority_host(flow.metadata)
     log_proxy_entry(
         proxy_log_path,
         "warn",
@@ -175,8 +187,11 @@ def block_builtin_host_policy_denied(
         request_port=flow.request.port,
         upstream_endpoint=upstream_endpoint,
     )
-    flow.metadata[metadata_keys.FIREWALL_ACTION] = "BLOCK"
-    flow.metadata[metadata_keys.FIREWALL_ERROR] = _BUILTIN_HOST_POLICY_DENIED_ERROR
+    flow_metadata.set_firewall_decision(
+        flow.metadata,
+        "BLOCK",
+        error=_BUILTIN_HOST_POLICY_DENIED_ERROR,
+    )
     body: dict[str, object] = {
         "error": _BUILTIN_HOST_POLICY_DENIED_ERROR,
         "message": "Request blocked: builtin firewall host policy rejected credential injection",
@@ -185,8 +200,8 @@ def block_builtin_host_policy_denied(
         "trusted_host": trusted_host,
         "request_port": flow.request.port,
     }
-    firewall_base = flow.metadata.get(metadata_keys.FIREWALL_BASE)
-    if isinstance(firewall_base, str):
+    firewall_base = flow_metadata.firewall_base(flow.metadata)
+    if firewall_base:
         body["base"] = firewall_base
     flow.response = http.Response.make(
         403,
@@ -196,7 +211,7 @@ def block_builtin_host_policy_denied(
 
 
 def set_firewall_block_response(flow: http.HTTPFlow, result: matching.FirewallBlock) -> None:
-    proxy_log_path = flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, "")
+    proxy_log_path = flow_metadata.proxy_log_path(flow.metadata)
     if result.reason == "malformed_network_policy":
         block_message = "malformed network policy"
         response_message = "Request blocked: malformed network policy"
@@ -214,7 +229,7 @@ def set_firewall_block_response(flow: http.HTTPFlow, result: matching.FirewallBl
         name=result.name,
         reason=result.reason,
     )
-    flow.metadata[metadata_keys.FIREWALL_ACTION] = "DENY"
+    flow_metadata.set_firewall_decision(flow.metadata, "DENY")
     flow.metadata[metadata_keys.FIREWALL_BASE] = result.base
     flow.metadata[metadata_keys.FIREWALL_NAME] = result.name
     original_url = flow.metadata[metadata_keys.ORIGINAL_URL]
@@ -252,10 +267,13 @@ def block_public_destination_denied(
     reason: str,
     send_response: bool = True,
 ) -> None:
-    proxy_log_path = flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, "")
+    proxy_log_path = flow_metadata.proxy_log_path(flow.metadata)
     flow.request.stream = False
-    flow.metadata[metadata_keys.FIREWALL_ACTION] = "DENY"
-    flow.metadata[metadata_keys.FIREWALL_ERROR] = "unsafe_public_destination"
+    flow_metadata.set_firewall_decision(
+        flow.metadata,
+        "DENY",
+        error="unsafe_public_destination",
+    )
     flow.metadata[metadata_keys.FIREWALL_BASE] = base
     flow.metadata[metadata_keys.FIREWALL_NAME] = name
 

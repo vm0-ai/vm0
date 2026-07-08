@@ -1260,7 +1260,10 @@ async function validateCodexServiceTierBeforeThread(params: {
     providerAdmission,
     codexFastModeEnabled: params.codexFastModeEnabled,
   });
-  return codexServiceTierError ?? providerAdmission.error ?? undefined;
+  if (codexServiceTierError) {
+    return codexServiceTierError;
+  }
+  return providerAdmission.error;
 }
 
 async function resolveNormalSendFeatureSwitches(

@@ -132,6 +132,7 @@ fn checkpoint_http_client(
         server.base_url(),
         "test-token",
         "",
+        "test-run-001",
         Duration::ZERO,
     )
 }

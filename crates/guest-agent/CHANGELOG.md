@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.48.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.47.5...guest-agent-v0.48.0) (2026-07-08)
+
+
+### Features
+
+* add platform client headers to runner requests ([#20577](https://github.com/vm0-ai/vm0/issues/20577)) ([dee5306](https://github.com/vm0-ai/vm0/commit/dee53066bbc014e302a85aa085136b408e2df833))
+
 ## [0.47.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.47.4...guest-agent-v0.47.5) (2026-07-07)
 
 

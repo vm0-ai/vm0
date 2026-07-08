@@ -267,7 +267,8 @@ function buildIllustrationGenerationTemplatePrompt(
       `- Style description: ${imageStyle.description}`,
       "",
       "When you produce an illustration or image from the user's request:",
-      `- Run: zero generate image --provider built-in --style ${imageStyle.id} --prompt "<user request>"`,
+      `- Run: zero generate image --provider built-in --style ${imageStyle.id} --prompt "<user request>" --compile`,
+      '- Compile the returned packet into a final image prompt, then run `zero generate image --provider built-in --compiled-prompt "<compiled prompt>"` with any reference image URLs and requested generation parameters from the packet.',
       "- If a flag above no longer applies, run `zero generate image -h` to discover the current flags, models, providers, and styles.",
     ].join("\n"),
   };

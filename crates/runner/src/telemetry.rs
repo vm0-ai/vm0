@@ -524,6 +524,7 @@ mod tests {
         HttpClient::new(HttpClientConfig {
             api_url: api_url.to_string(),
             vercel_bypass: None,
+            client_session_id: "runner-session-test".to_string(),
         })
         .unwrap()
     }

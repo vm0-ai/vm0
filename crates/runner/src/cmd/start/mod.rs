@@ -38,6 +38,7 @@ use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
+use uuid::Uuid;
 
 use crate::duration::duration_ms as saturated_duration_ms;
 use crate::ids::RunId;
@@ -56,7 +57,10 @@ use crate::network_log_drain::NetworkLogDrainCoordinator;
 use crate::network_log_manager::NetworkLogManager;
 use crate::paths::{HomePaths, LogPaths, RunnerPaths, touch_mtime};
 use crate::prefetch;
-use crate::provider::{ApiProvider, JobProvider, LocalProvider, NetworkPolicyRefreshHandle};
+use crate::provider::{
+    ApiProvider, BuiltinFirewallCatalogCachePaths, JobProvider, LocalProvider,
+    NetworkPolicyRefreshHandle,
+};
 use crate::proxy;
 use crate::resource_budget::ResourceBudget;
 use crate::retry::{RetryState, recv_retry, sleep_until_retry};
@@ -363,9 +367,11 @@ async fn run_start_with_home(
     // checks can fail due to config/filesystem state and should not leave
     // runtime-owned pools behind.
     let cancel = CancellationToken::new();
+    let runner_client_session_id = Uuid::new_v4().to_string();
     let http = HttpClient::new(HttpClientConfig {
         api_url: server.url.clone(),
         vercel_bypass: std::env::var("VERCEL_AUTOMATION_BYPASS_SECRET").ok(),
+        client_session_id: runner_client_session_id.clone(),
     })?;
     let name = runner_config.name;
     let group = runner_config.group;
@@ -414,7 +420,9 @@ async fn run_start_with_home(
         addon_dir: paths.mitm_addon_dir(),
         registry_path: paths.proxy_registry(),
         registry_lock_path: paths.proxy_registry_lock(),
+        builtin_firewall_catalog_cache_path: paths.builtin_firewall_catalog_cache(),
         api_url: Some(server.url.clone()),
+        client_session_id: runner_client_session_id,
     })
     .await?;
     mitm.start().await?;
@@ -600,6 +608,10 @@ async fn run_start_with_home(
             server.token,
             group,
             profiles,
+            BuiltinFirewallCatalogCachePaths {
+                cache_path: paths.builtin_firewall_catalog_cache(),
+                lock_path: paths.builtin_firewall_catalog_cache_lock(),
+            },
             cancel.clone(),
             Arc::clone(&cancel_tokens),
         )

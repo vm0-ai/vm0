@@ -696,6 +696,7 @@ class TestRunnerUsageFlushSignal:
         self,
         runner_usage_flush_files: RunnerUsageFlushFiles,
         sync_usage_executor,
+        mitm_ctx,
         usage_webhook_server,
     ):
         del sync_usage_executor
@@ -712,7 +713,7 @@ class TestRunnerUsageFlushSignal:
         try:
             usage_webhook_server.queue_response(500)
             usage_webhook_server.queue_response(500)
-            with patch.object(usage.webhook.time, "sleep"):
+            with mitm_ctx(), patch.object(usage.webhook.time, "sleep"):
                 mitm_addon._handle_runner_usage_flush_signal(0, None)
                 wait_for_usage_flush_worker_to_stop()
 
@@ -727,8 +728,9 @@ class TestRunnerUsageFlushSignal:
             )
 
             usage_webhook_server.queue_response(204)
-            mitm_addon._handle_runner_usage_flush_signal(0, None)
-            wait_for_usage_flush_worker_to_stop()
+            with mitm_ctx():
+                mitm_addon._handle_runner_usage_flush_signal(0, None)
+                wait_for_usage_flush_worker_to_stop()
 
             assert usage_webhook_server.request_count == 3
             retry_key = usage_webhook_server.requests[2].json_body()["events"][0]["idempotencyKey"]

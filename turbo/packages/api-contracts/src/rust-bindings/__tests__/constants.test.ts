@@ -14,6 +14,12 @@ import {
   MODEL_PROVIDER_FIREWALL_CONFIGS,
 } from "../../contracts/model-providers";
 import {
+  PLATFORM_CLIENT_REQUEST_ID_HEADER,
+  PLATFORM_CLIENT_SESSION_ID_HEADER,
+  PLATFORM_CLIENT_TYPE_HEADER,
+  PLATFORM_CLIENT_VERSION_HEADER,
+} from "../../contracts/platform-client-headers";
+import {
   CANONICAL_GUEST_HOME_DIR,
   CANONICAL_WORKING_DIR,
   NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX,
@@ -61,6 +67,18 @@ const sessionHistoryGzipMinBytesDoc = [
   "Minimum raw resume session history size before the guest attempts gzip upload negotiation.",
   "Smaller histories stay identity-encoded to avoid gzip work when it cannot materially reduce transport size.",
 ] as const;
+const platformClientVersionHeaderDoc = [
+  "HTTP header carrying the sending vm0 client component version.",
+] as const;
+const platformClientTypeHeaderDoc = [
+  "HTTP header carrying the sending vm0 client component type.",
+] as const;
+const platformClientSessionIdHeaderDoc = [
+  "HTTP header carrying the sending vm0 client session identifier.",
+] as const;
+const platformClientRequestIdHeaderDoc = [
+  "HTTP header carrying the per-request vm0 client request identifier.",
+] as const;
 
 function rustString(value: string): RustConstantValue {
   return { kind: "string", value };
@@ -78,6 +96,30 @@ function placeholderRustDoc(name: string): readonly string[] {
 }
 
 const expectedBindings = [
+  {
+    rustModulePath: ["platform_client", "headers"],
+    rustConstName: "PLATFORM_CLIENT_VERSION_HEADER",
+    value: rustString(PLATFORM_CLIENT_VERSION_HEADER),
+    rustDoc: platformClientVersionHeaderDoc,
+  },
+  {
+    rustModulePath: ["platform_client", "headers"],
+    rustConstName: "PLATFORM_CLIENT_TYPE_HEADER",
+    value: rustString(PLATFORM_CLIENT_TYPE_HEADER),
+    rustDoc: platformClientTypeHeaderDoc,
+  },
+  {
+    rustModulePath: ["platform_client", "headers"],
+    rustConstName: "PLATFORM_CLIENT_SESSION_ID_HEADER",
+    value: rustString(PLATFORM_CLIENT_SESSION_ID_HEADER),
+    rustDoc: platformClientSessionIdHeaderDoc,
+  },
+  {
+    rustModulePath: ["platform_client", "headers"],
+    rustConstName: "PLATFORM_CLIENT_REQUEST_ID_HEADER",
+    value: rustString(PLATFORM_CLIENT_REQUEST_ID_HEADER),
+    rustDoc: platformClientRequestIdHeaderDoc,
+  },
   {
     rustModulePath: ["runners"],
     rustConstName: "NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX",
@@ -251,8 +293,10 @@ describe("Rust constant bindings", () => {
     expect(secondRender).toBe(firstRender);
     expect(firstRender).toContain("pub mod codex_oauth_token {");
     expect(firstRender).toContain("pub mod model_provider_env {");
+    expect(firstRender).toContain("pub mod platform_client {");
     expect(firstRender).toContain("pub mod runners {");
     expect(firstRender).toContain("pub mod placeholders {");
+    expect(firstRender).toContain("pub mod headers {");
     expect(firstRender).toContain(
       "//! Generated Rust constants for `@vm0/api-contracts`.",
     );
@@ -300,6 +344,18 @@ describe("Rust constant bindings", () => {
     );
     expect(firstRender).toContain(
       `pub const SESSION_HISTORY_GZIP_MIN_BYTES: u64 = ${SESSION_HISTORY_GZIP_MIN_BYTES};`,
+    );
+    expect(firstRender).toContain(
+      `pub const PLATFORM_CLIENT_VERSION_HEADER: &str = "${PLATFORM_CLIENT_VERSION_HEADER}";`,
+    );
+    expect(firstRender).toContain(
+      `pub const PLATFORM_CLIENT_TYPE_HEADER: &str = "${PLATFORM_CLIENT_TYPE_HEADER}";`,
+    );
+    expect(firstRender).toContain(
+      `pub const PLATFORM_CLIENT_SESSION_ID_HEADER: &str = "${PLATFORM_CLIENT_SESSION_ID_HEADER}";`,
+    );
+    expect(firstRender).toContain(
+      `pub const PLATFORM_CLIENT_REQUEST_ID_HEADER: &str = "${PLATFORM_CLIENT_REQUEST_ID_HEADER}";`,
     );
     expect(firstRender).toContain(
       `pub const CHATGPT_ACCOUNT_ID: &str = "${codexOauthPlaceholders.CHATGPT_ACCOUNT_ID}";`,

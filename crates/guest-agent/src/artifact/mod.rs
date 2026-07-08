@@ -511,7 +511,13 @@ mod tests {
     }
 
     fn test_http_client(server: &httpmock::MockServer) -> Result<HttpClient, AgentError> {
-        HttpClient::with_api_config(server.base_url(), "test-token", "", Duration::ZERO)
+        HttpClient::with_api_config(
+            server.base_url(),
+            "test-token",
+            "",
+            "test-run-001",
+            Duration::ZERO,
+        )
     }
 
     fn file_json_values(files: &[FileEntry]) -> Vec<serde_json::Value> {

@@ -1,5 +1,6 @@
 import { command, computed, type Computed } from "ccstate";
 import {
+  type ArtifactItem,
   type ChatSearchMessage,
   type ChatSearchResult,
   type ChatThreadDraft,
@@ -52,6 +53,7 @@ import {
   isNull,
   lt,
   or,
+  type SQL,
   sql,
 } from "drizzle-orm";
 import { z } from "zod";
@@ -69,6 +71,7 @@ import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
 import { excludeGoalMarkerCondition } from "./zero-chat-goal-marker.service";
 import { cancelRun$, type CancelRunResult } from "./zero-run-cancel.service";
 import { buildWorkflowScheduleTriggerBrief } from "./zero-workflow-trigger-brief.service";
+import { safeJsonParse } from "../utils";
 
 export { insertAssistantEventMessages$ };
 
@@ -122,6 +125,36 @@ type ChatMessageRow = {
   readonly workflowTriggerAtTime: Date | null;
   readonly workflowTriggerTimezone: string | null;
   readonly workflowTriggerUserTimezone: string | null;
+};
+
+interface ArtifactListCursor {
+  readonly createdAt: Date;
+  readonly rowId: string;
+}
+
+interface EncodedArtifactListCursor {
+  readonly createdAt: string;
+  readonly rowId: string;
+}
+
+type DecodeArtifactListCursorResult =
+  | { readonly ok: true; readonly cursor?: ArtifactListCursor }
+  | { readonly ok: false };
+
+type ArtifactListSqlRow = Record<string, unknown> & {
+  readonly row_id: string;
+  readonly run_id: string;
+  readonly external_id: string;
+  readonly filename: string | null;
+  readonly content_type: string | null;
+  readonly url: string;
+  readonly metadata: unknown;
+  readonly created_at: Date | string;
+  readonly thread_id: string;
+  readonly thread_title: string | null;
+  readonly agent_id: string;
+  readonly agent_name: string | null;
+  readonly agent_avatar_url: string | null;
 };
 
 type ChatSearchMessageRow = {
@@ -365,6 +398,45 @@ function escapeLikePattern(value: string): string {
     .replace(/\\/g, String.raw`\\`)
     .replace(/%/g, String.raw`\%`)
     .replace(/_/g, String.raw`\_`);
+}
+
+const artifactListCursorSchema = z.object({
+  createdAt: z.string().datetime(),
+  rowId: z.string().uuid(),
+});
+
+export function decodeArtifactListCursor(
+  value: string | undefined,
+): DecodeArtifactListCursorResult {
+  if (!value) {
+    return { ok: true };
+  }
+
+  const decoded = safeJsonParse(
+    Buffer.from(value, "base64url").toString("utf8"),
+  );
+  if (decoded === undefined) {
+    return { ok: false };
+  }
+  const parsed = artifactListCursorSchema.safeParse(decoded);
+  if (!parsed.success) {
+    return { ok: false };
+  }
+
+  const createdAt = new Date(parsed.data.createdAt);
+  if (Number.isNaN(createdAt.getTime())) {
+    return { ok: false };
+  }
+
+  return { ok: true, cursor: { createdAt, rowId: parsed.data.rowId } };
+}
+
+function encodeArtifactListCursor(row: ArtifactListSqlRow): string {
+  const value: EncodedArtifactListCursor = {
+    createdAt: artifactRowCreatedAt(row).toISOString(),
+    rowId: row.row_id,
+  };
+  return Buffer.from(JSON.stringify(value), "utf8").toString("base64url");
 }
 
 function parseHostedArtifactKind(
@@ -934,6 +1006,175 @@ export function zeroChatThreadArtifacts(args: {
     },
   );
 }
+
+function generatedArtifactCondition(): SQL {
+  return sql<boolean>`(
+    jsonb_typeof(${runUploadedFiles.metadata}->'generatedBy') = 'string'
+    OR ${runUploadedFiles.metadata}->>'artifactKind' IN ('hosted-site', 'presentation-html')
+  )`;
+}
+
+function artifactRowCreatedAt(row: ArtifactListSqlRow): Date {
+  return row.created_at instanceof Date
+    ? row.created_at
+    : new Date(row.created_at);
+}
+
+function toArtifactItem(row: ArtifactListSqlRow): ArtifactItem {
+  const filename = row.filename ?? row.external_id;
+  const artifactKind = parseHostedArtifactKindFromMetadata(row.metadata);
+  return {
+    artifactItemId: `${row.run_id}:${row.external_id}`,
+    threadId: row.thread_id,
+    runId: row.run_id,
+    fileId: row.external_id,
+    agentId: row.agent_id,
+    agentName: row.agent_name,
+    agentAvatarUrl: row.agent_avatar_url,
+    threadTitle: row.thread_title,
+    filename,
+    contentType: row.content_type ?? inferMimetype(filename),
+    url: row.url,
+    createdAt: artifactRowCreatedAt(row).toISOString(),
+    ...(artifactKind ? { artifactKind } : {}),
+  };
+}
+
+function artifactSearchCondition(query: string | undefined): SQL | undefined {
+  if (!query) {
+    return undefined;
+  }
+  const pattern = `%${escapeLikePattern(query)}%`;
+  return sql<boolean>`(
+    COALESCE(${runUploadedFiles.filename}, '') ILIKE ${pattern}
+    OR COALESCE(${runUploadedFiles.contentType}, '') ILIKE ${pattern}
+    OR COALESCE(${runUploadedFiles.metadata}->>'artifactKind', '') ILIKE ${pattern}
+  )`;
+}
+
+function artifactCursorCondition(cursor: ArtifactListCursor | undefined): SQL {
+  if (!cursor) {
+    return sql``;
+  }
+  return sql`WHERE (created_at, row_id) < (${cursor.createdAt}::timestamp, ${cursor.rowId}::uuid)`;
+}
+
+interface ZeroArtifactsArgs {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly agentId?: string;
+  readonly query?: string;
+  readonly artifactKind?: HostedArtifactKind;
+  readonly cursor?: ArtifactListCursor;
+  readonly limit: number;
+}
+
+interface ZeroArtifactsResult {
+  readonly artifacts: readonly ArtifactItem[];
+  readonly nextCursor: string | null;
+}
+
+export const zeroArtifacts$ = command(
+  async (
+    { set },
+    args: ZeroArtifactsArgs,
+    signal: AbortSignal,
+  ): Promise<ZeroArtifactsResult> => {
+    const db = set(writeDb$);
+    const conditions: SQL[] = [
+      sql`${agentRuns.orgId} = ${args.orgId}`,
+      sql`${chatThreads.userId} = ${args.userId}`,
+      sql`${agentComposes.orgId} = ${args.orgId}`,
+      sql`${runUploadedFiles.url} IS NOT NULL`,
+      generatedArtifactCondition(),
+      sql`(
+        NOT EXISTS (
+          SELECT 1
+          FROM ${runUploadedFiles} hosted_files
+          WHERE hosted_files.run_id = ${runUploadedFiles.runId}
+            AND (
+              hosted_files.metadata->>'artifactKind' IN ('hosted-site', 'presentation-html')
+            )
+        )
+        OR ${runUploadedFiles.metadata}->>'artifactKind' IN ('hosted-site', 'presentation-html')
+      )`,
+    ];
+    if (args.agentId) {
+      conditions.push(sql`${zeroAgents.id} = ${args.agentId}`);
+    }
+    if (args.artifactKind) {
+      conditions.push(
+        sql`${runUploadedFiles.metadata}->>'artifactKind' = ${args.artifactKind}`,
+      );
+    }
+    const searchCondition = artifactSearchCondition(args.query);
+    if (searchCondition) {
+      conditions.push(searchCondition);
+    }
+
+    const rows = await db.execute<ArtifactListSqlRow>(sql`
+      WITH scoped_artifacts AS (
+        SELECT
+          ${runUploadedFiles.id} AS row_id,
+          ${runUploadedFiles.runId} AS run_id,
+          ${runUploadedFiles.externalId} AS external_id,
+          ${runUploadedFiles.filename} AS filename,
+          ${runUploadedFiles.contentType} AS content_type,
+          ${runUploadedFiles.url} AS url,
+          ${runUploadedFiles.metadata} AS metadata,
+          ${runUploadedFiles.createdAt} AS created_at,
+          ${chatThreads.id} AS thread_id,
+          ${chatThreads.title} AS thread_title,
+          ${zeroAgents.id} AS agent_id,
+          COALESCE(${zeroAgents.displayName}, ${agentComposes.name}) AS agent_name,
+          ${zeroAgents.avatarUrl} AS agent_avatar_url
+        FROM ${runUploadedFiles}
+        INNER JOIN ${agentRuns}
+          ON ${agentRuns.id} = ${runUploadedFiles.runId}
+        INNER JOIN ${zeroRuns}
+          ON ${zeroRuns.id} = ${runUploadedFiles.runId}
+        INNER JOIN ${chatThreads}
+          ON ${chatThreads.id} = COALESCE(
+            ${zeroRuns.chatThreadId},
+            (
+              SELECT ${chatMessages.chatThreadId}
+              FROM ${chatMessages}
+              WHERE ${chatMessages.runId} = ${runUploadedFiles.runId}
+              ORDER BY ${chatMessages.createdAt} ASC
+              LIMIT 1
+            )
+          )
+        INNER JOIN ${agentComposes}
+          ON ${agentComposes.id} = ${chatThreads.agentComposeId}
+        INNER JOIN ${zeroAgents}
+          ON ${zeroAgents.id} = ${agentComposes.id}
+        WHERE ${sql.join(conditions, sql` AND `)}
+      ),
+      deduped_artifacts AS (
+        SELECT DISTINCT ON (url) *
+        FROM scoped_artifacts
+        ORDER BY url, created_at DESC, row_id DESC
+      )
+      SELECT *
+      FROM deduped_artifacts
+      ${artifactCursorCondition(args.cursor)}
+      ORDER BY created_at DESC, row_id DESC
+      LIMIT ${args.limit + 1}
+    `);
+    signal.throwIfAborted();
+
+    const pageRows = rows.rows.slice(0, args.limit);
+    const lastRow = pageRows.at(-1);
+
+    return {
+      artifacts: pageRows.map(toArtifactItem),
+      nextCursor:
+        rows.rows.length > args.limit && lastRow
+          ? encodeArtifactListCursor(lastRow)
+          : null,
+    };
+  },
+);
 
 function toChatSearchMessage(row: ChatSearchMessageRow): ChatSearchMessage {
   if (row.content === null) {

@@ -117,7 +117,13 @@ const RUNNER_POLL_TIMING_ACTION_TYPES = [
   "runner_poll_request_to_job_response",
   "runner_queue_to_poll_response",
 ] as const;
-const RUNNER_CLAIM_TELEMETRY_ACTION_TYPES = [
+const RUNNER_CLAIM_ABLY_TIMING_ACTION_TYPES = [
+  "direct_candidate_notification_to_enqueue",
+  "direct_candidate_inbox_wait",
+  "provider_discovery_to_main_loop",
+  "main_loop_to_local_admission",
+] as const;
+const RUNNER_CLAIM_POLL_TIMING_ACTION_TYPES = [
   "runner_poll_due_to_job_discovered",
   "runner_poll_http_request",
 ] as const;
@@ -585,6 +591,17 @@ function singleApiDispatchEvent(
   return matchingEvents[0]!;
 }
 
+function singleSandboxOperationEvent(
+  events: readonly Record<string, unknown>[],
+  actionType: string,
+): Record<string, unknown> {
+  const matchingEvents = events.filter((event) => {
+    return event.op_type === actionType;
+  });
+  expect(matchingEvents).toHaveLength(1);
+  return matchingEvents[0]!;
+}
+
 function expectCustomConnectorRuntimePhaseTimingEvents(
   events: readonly Record<string, unknown>[],
 ): void {
@@ -614,6 +631,80 @@ function expectApiDispatchTimingEventsNotToLeak(
       expect(serialized).not.toContain(forbiddenValue);
     }
   }
+}
+
+function expectDirectAblyClaimTimingEvents(args: {
+  readonly events: readonly Record<string, unknown>[];
+  readonly runId: string;
+  readonly runnerGroup: string;
+  readonly forbiddenValues: readonly string[];
+}): void {
+  for (const actionType of RUNNER_CLAIM_ABLY_TIMING_ACTION_TYPES) {
+    const event = singleSandboxOperationEvent(args.events, actionType);
+    expect(event).toStrictEqual(
+      expect.objectContaining({
+        source: "api",
+        sandbox_type: "runner",
+        run_id: args.runId,
+        success: true,
+        runner_group: args.runnerGroup,
+        profile: "vm0/default",
+        auth_type: "user",
+        discovery_source: "ably",
+        pre_local_admission_outcome: "local_holder",
+      }),
+    );
+    expect(event).not.toHaveProperty("poll_reason");
+  }
+
+  expect(
+    singleSandboxOperationEvent(
+      args.events,
+      "direct_candidate_notification_to_enqueue",
+    ),
+  ).toStrictEqual(
+    expect.objectContaining({
+      duration_ms: 12,
+      pre_local_admission_outcome: "local_holder",
+    }),
+  );
+  expect(
+    singleSandboxOperationEvent(args.events, "direct_candidate_inbox_wait"),
+  ).toStrictEqual(
+    expect.objectContaining({
+      duration_ms: 34,
+      pre_local_admission_outcome: "local_holder",
+    }),
+  );
+  expect(
+    singleSandboxOperationEvent(args.events, "provider_discovery_to_main_loop"),
+  ).toStrictEqual(
+    expect.objectContaining({
+      duration_ms: 45,
+      pre_local_admission_outcome: "local_holder",
+    }),
+  );
+  expect(
+    singleSandboxOperationEvent(args.events, "main_loop_to_local_admission"),
+  ).toStrictEqual(
+    expect.objectContaining({
+      duration_ms: 67,
+      pre_local_admission_outcome: "local_holder",
+    }),
+  );
+
+  const ablyTimingActionTypes = new Set<string>(
+    RUNNER_CLAIM_ABLY_TIMING_ACTION_TYPES,
+  );
+  expectApiDispatchTimingEventsNotToLeak(
+    args.events.filter((event) => {
+      return (
+        typeof event.op_type === "string" &&
+        ablyTimingActionTypes.has(event.op_type)
+      );
+    }),
+    args.forbiddenValues,
+  );
 }
 
 function s3CommandName(command: unknown): string | undefined {
@@ -1050,7 +1141,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         storage_manifest_final_storage_count_bucket: "1",
         storage_manifest_final_artifact_count_bucket: "1",
         storage_manifest_dropped_compose_count_bucket: "1",
-        storage_manifest_planned_presign_count_bucket: "2_4",
+        storage_manifest_planned_presign_count_bucket: "1",
         storage_manifest_duplicate_presign_candidate_count_bucket: "0",
         storage_manifest_source_compose_volume_resolved_count_bucket: "1",
         storage_manifest_source_compose_volume_planned_presign_count_bucket:
@@ -1064,8 +1155,8 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         storage_manifest_source_request_additional_volume_non_system_presign_count_bucket:
           "1",
         storage_manifest_source_artifact_resolved_count_bucket: "1",
-        storage_manifest_source_artifact_planned_presign_count_bucket: "1",
-        storage_manifest_source_artifact_non_system_presign_count_bucket: "1",
+        storage_manifest_source_artifact_planned_presign_count_bucket: "0",
+        storage_manifest_source_artifact_non_system_presign_count_bucket: "0",
         storage_manifest_artifact_ensure_already_initialized_count_bucket: "0",
         storage_manifest_artifact_ensure_missing_storage_count_bucket: "1",
         storage_manifest_artifact_ensure_created_storage_count_bucket: "1",
@@ -1101,7 +1192,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         storage_manifest_resolved_compose_count_bucket: "1",
         storage_manifest_resolved_additional_count_bucket: "1",
         storage_manifest_resolved_artifact_count_bucket: "1",
-        storage_manifest_planned_presign_count_bucket: "2_4",
+        storage_manifest_planned_presign_count_bucket: "1",
         storage_manifest_duplicate_presign_candidate_count_bucket: "0",
         storage_manifest_source_compose_volume_resolved_count_bucket: "1",
         storage_manifest_source_request_additional_volume_resolved_count_bucket:
@@ -1111,8 +1202,8 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
           "1",
         storage_manifest_source_request_additional_volume_non_system_presign_count_bucket:
           "1",
-        storage_manifest_source_artifact_planned_presign_count_bucket: "1",
-        storage_manifest_source_artifact_non_system_presign_count_bucket: "1",
+        storage_manifest_source_artifact_planned_presign_count_bucket: "0",
+        storage_manifest_source_artifact_non_system_presign_count_bucket: "0",
       }),
     );
     expect(
@@ -1151,9 +1242,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       ),
     ).toStrictEqual(
       expect.objectContaining({
-        storage_manifest_artifact_planned_presign_count_bucket: "1",
-        storage_manifest_source_artifact_planned_presign_count_bucket: "1",
-        storage_manifest_source_artifact_non_system_presign_count_bucket: "1",
+        storage_manifest_artifact_planned_presign_count_bucket: "0",
+        storage_manifest_source_artifact_planned_presign_count_bucket: "0",
+        storage_manifest_source_artifact_non_system_presign_count_bucket: "0",
         storage_manifest_source_request_additional_volume_planned_presign_count_bucket:
           "0",
       }),
@@ -1184,19 +1275,16 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       return artifact.vasStorageName === "memory";
     });
     expect(memoryArtifact).toMatchObject({
-      archiveUrl: expect.any(String),
       empty: true,
       vasStorageId: expect.any(String),
       vasVersionId: expect.any(String),
       missingRootPolicy: "preserveParentVersion",
     });
-    if (!memoryArtifact || typeof memoryArtifact.archiveUrl !== "string") {
-      throw new Error(
-        "Expected the claim manifest to include memory with an archive URL",
-      );
+    if (!memoryArtifact) {
+      throw new Error("Expected the claim manifest to include memory");
     }
+    expect(memoryArtifact.archiveUrl).toBeUndefined();
     expectApiDispatchTimingEventsNotToLeak(timingEvents, [
-      memoryArtifact.archiveUrl,
       memoryArtifact.vasStorageId,
       memoryArtifact.vasVersionId,
     ]);
@@ -1301,9 +1389,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     );
     expect(initialMemory).toMatchObject({
       empty: true,
-      archiveUrl: expect.any(String),
       vasVersionId: expect.any(String),
     });
+    expect(initialMemory?.archiveUrl).toBeUndefined();
     const initialMemoryVersionId = initialMemory?.vasVersionId;
     if (!initialMemoryVersionId) {
       throw new Error("Expected initial memory artifact version id");
@@ -5487,7 +5575,7 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
       expect(event.duration_ms).toStrictEqual(expect.any(Number));
       expect(Number(event.duration_ms)).toBeGreaterThanOrEqual(0);
     }
-    for (const actionType of RUNNER_CLAIM_TELEMETRY_ACTION_TYPES) {
+    for (const actionType of RUNNER_CLAIM_POLL_TIMING_ACTION_TYPES) {
       const events = timingEvents.filter((event) => {
         return event.op_type === actionType;
       });
@@ -5530,7 +5618,7 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     );
     const newRunnerTimingActionTypes = new Set<string>([
       ...RUNNER_POLL_TIMING_ACTION_TYPES,
-      ...RUNNER_CLAIM_TELEMETRY_ACTION_TYPES,
+      ...RUNNER_CLAIM_POLL_TIMING_ACTION_TYPES,
     ]);
     for (const event of timingEvents.filter((timingEvent) => {
       return (
@@ -5549,9 +5637,10 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     const claimedRun = await api.readRun(actor, first.runId);
     expect(claimedRun.status).toBe("running");
 
+    const secondPrompt = "user runner job two";
     const second = await api.createRun(actor, {
       agentId,
-      prompt: "user runner job two",
+      prompt: secondPrompt,
       modelProvider: "anthropic-api-key",
     });
 
@@ -5574,6 +5663,39 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     );
     expectApiError(crossClaim.body);
     expect(crossClaim.body.error.message).toBe("Job does not belong to user");
+
+    const directClaimed = await api.requestClaimRunnerJobAs(
+      bearer,
+      second.runId,
+      [200],
+      {
+        telemetry: {
+          discoverySource: "ably",
+          jobDiscoveredToClaimRequestMs: 111,
+          localAdmissionToClaimRequestMs: 22,
+          directCandidateNotificationToEnqueueMs: 12,
+          directCandidateInboxWaitMs: 34,
+          providerDiscoveryToMainLoopMs: 45,
+          mainLoopToLocalAdmissionMs: 67,
+          preLocalAdmissionOutcome: "local_holder",
+        },
+      },
+    );
+    if (directClaimed.status !== 200) {
+      throw new Error("Expected the direct Ably runner claim to succeed");
+    }
+    expect(directClaimed.body.prompt).toBe(secondPrompt);
+
+    expectDirectAblyClaimTimingEvents({
+      events: sandboxOperationEventsForRun(second.runId),
+      runId: second.runId,
+      runnerGroup,
+      forbiddenValues: [
+        secondPrompt,
+        directClaimed.body.sandboxToken,
+        apiKey.token,
+      ],
+    });
 
     const tokenRequest = {
       keyName: "bdd-key",

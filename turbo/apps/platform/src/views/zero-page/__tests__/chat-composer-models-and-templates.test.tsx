@@ -1638,44 +1638,6 @@ describe("chat composer models", () => {
     });
   });
 
-  it("uses the popover model picker behind the feature switch", async () => {
-    const user = userEvent.setup({ delay: null });
-    mockOrgModelRoutes("kimi-k2.7-code");
-    mockAgent();
-
-    detachedSetupPage({
-      context,
-      featureSwitches: {
-        [FeatureSwitchKey.ComposerModelPickerPopover]: true,
-      },
-      path: `/agents/${AGENT_ID}/chat`,
-    });
-
-    const trigger = await findComposerModel("Kimi K2.7 Code");
-    fireEvent.click(trigger);
-
-    await waitFor(() => {
-      const openTrigger = screen.getByRole("combobox", {
-        name: "Kimi K2.7 Code",
-      });
-      expect(openTrigger).toHaveAttribute("aria-expanded", "true");
-      expect(openTrigger).toHaveAttribute("data-state", "open");
-      expect(openTrigger).toHaveClass("data-[state=open]:bg-accent");
-      expect(openTrigger).not.toHaveClass("data-[state=open]:ring-2");
-    });
-    expect(screen.getByRole("listbox", { name: "Models" })).toBeInTheDocument();
-    expect(
-      screen.getByRole("option", { name: /Kimi K2\.7 Code/ }),
-    ).toHaveAttribute("aria-selected", "true");
-
-    await user.click(
-      screen.getByRole("option", { name: /Claude Sonnet 4\.6/ }),
-    );
-
-    await expectComposerModel("Claude Sonnet 4.6");
-    expect(screen.queryByRole("listbox", { name: "Models" })).toBeNull();
-  });
-
   it("blocks routed model sends until the matching device login is opened", async () => {
     const user = userEvent.setup({ delay: null });
     const codexApproval = context.mocks.deferred<void>();

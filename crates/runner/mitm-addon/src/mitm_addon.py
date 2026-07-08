@@ -12,6 +12,8 @@ This addon runs on the runner HOST (not inside VMs) and:
 """
 
 import asyncio
+import base64
+import binascii
 import functools
 import ipaddress
 import json
@@ -49,11 +51,13 @@ import body_capture
 import builtin_connector_diagnostics
 import builtin_host_policy
 import deferred_callbacks
+import flow_metadata
 import flow_metadata_keys as metadata_keys
 import http_local_responses
 import http_network_log
 import matching
 import network_log_sanitization
+import platform_api
 import public_destination
 import registry
 import request_streaming
@@ -151,6 +155,7 @@ _REQUEST_HEADERS_PROBE_METADATA_KEYS = (
     metadata_keys.VM_SANDBOX_AUTH_KEY,
     metadata_keys.CLI_AGENT_TYPE,
     metadata_keys.BROWSER_USER_AGENT,
+    metadata_keys.WEBSOCKET_UPGRADE_REQUEST,
     metadata_keys.ORIGINAL_URL,
     metadata_keys.TRUSTED_AUTHORITY_HOST,
     metadata_keys.NETWORK_LOG_TARGET,
@@ -250,6 +255,7 @@ _AUTH_SCHEMES_REQUIRING_CREDENTIAL = frozenset(
 )
 _AUTH_BASE_BODYLESS_METHODS = frozenset(("GET", "HEAD"))
 _HTTP_RESPONSE_BODYLESS_METHODS = frozenset(("CONNECT", "HEAD"))
+_WEBSOCKET_KEY_BYTES = 16
 _TLS_ADMISSION_VALID_REGISTRY_VM: Final = "valid_registry_vm"
 _TLS_ADMISSION_INVALID_REGISTRY_VM: Final = "invalid_registry_vm"
 _TLS_ADMISSION_REGISTRY_UNAVAILABLE: Final = "registry_unavailable"
@@ -375,10 +381,28 @@ def load(loader: Loader) -> None:
         help="Path to proxy registry file",
     )
     loader.add_option(
+        name="vm0_builtin_firewall_catalog_cache_path",
+        typespec=str,
+        default=str(Path(tempfile.gettempdir()) / "builtin-firewall-catalog-cache.json"),
+        help="Path to runner builtin firewall catalog cache file",
+    )
+    loader.add_option(
         name="vm0_usage_state_id",
         typespec=str,
         default="",
         help="Runner-generated usage-pending state id",
+    )
+    loader.add_option(
+        name="vm0_client_session_id",
+        typespec=str,
+        default="",
+        help="Runner-generated client session id for platform API requests",
+    )
+    loader.add_option(
+        name="vm0_client_version",
+        typespec=str,
+        default="",
+        help="Runner package version for platform API request attribution",
     )
     loader.add_option(
         name="vm0_usage_flush_interval_seconds",
@@ -389,6 +413,10 @@ def load(loader: Loader) -> None:
 
 
 def configure(updated: set[str]) -> None:
+    platform_api.configure_client_headers(
+        client_session_id=ctx.options.vm0_client_session_id,
+        client_version=ctx.options.vm0_client_version,
+    )
     if "vm0_usage_flush_interval_seconds" in updated:
         usage.configure_usage_buffer(
             flush_interval_seconds=ctx.options.vm0_usage_flush_interval_seconds
@@ -822,8 +850,8 @@ def _current_public_destination_denial(
     flow: http.HTTPFlow,
     allow: matching.FirewallAllow,
 ) -> _PublicDestinationDenial | None:
-    trusted_authority_host = flow.metadata.get(metadata_keys.TRUSTED_AUTHORITY_HOST)
-    if not isinstance(trusted_authority_host, str) or not trusted_authority_host:
+    trusted_authority_host = flow_metadata.trusted_authority_host(flow.metadata)
+    if not trusted_authority_host:
         try:
             trusted_authority_host = get_trusted_authority(flow).host
         except AuthorityValidationError:
@@ -1080,8 +1108,8 @@ def _builtin_host_policy_error_for_firewall_allow(
         return None
     if not _firewall_allow_injects_ordinary_upstream_credentials(allow):
         return None
-    trusted_host = flow.metadata.get(metadata_keys.TRUSTED_AUTHORITY_HOST)
-    if not isinstance(trusted_host, str) or not trusted_host:
+    trusted_host = flow_metadata.trusted_authority_host(flow.metadata)
+    if not trusted_host:
         return builtin_host_policy.BuiltinRuntimeHostPolicyError(
             reason="trusted_authority_unavailable",
             message="trusted request authority is unavailable",
@@ -1120,8 +1148,8 @@ def _bind_flow_upstream_destination(
     *,
     kind: upstream_destination_binding.BindingKind,
 ) -> bool:
-    trusted_host = flow.metadata.get(metadata_keys.TRUSTED_AUTHORITY_HOST)
-    if not isinstance(trusted_host, str) or not trusted_host:
+    trusted_host = flow_metadata.trusted_authority_host(flow.metadata)
+    if not trusted_host:
         return False
     try:
         normalized_host = normalize_trusted_hostname(trusted_host)
@@ -1562,7 +1590,7 @@ def _log_connector_diagnostic_proxy_entry(
     if isinstance(ownership_hint_status, str) and ownership_hint_status:
         extra["ownership_hint_status"] = ownership_hint_status
     log_proxy_entry(
-        flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, ""),
+        flow_metadata.proxy_log_path(flow.metadata),
         "warn",
         f"{candidate.connector_type} is not configured for this run: {safe_url}",
         type="connector_diagnostic",
@@ -1592,7 +1620,7 @@ def _maybe_make_connector_diagnostic_local_response(
 
     _start_request_timing(flow)
     _set_connector_diagnostic_failure_metadata(flow, candidate)
-    flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+    flow_metadata.set_firewall_decision(flow.metadata, "ALLOW")
     flow.response = http.Response.make(
         _HTTP_STATUS_FAILED_DEPENDENCY,
         _connector_diagnostic_response_body(candidate, upstream_status=0),
@@ -1626,8 +1654,8 @@ def _maybe_make_firewall_allow_connector_diagnostic_local_response(
     if allow is None or vm_info is None or not _firewall_allow_is_unknown_endpoint(allow):
         return False
 
-    original_url = flow.metadata.get(metadata_keys.ORIGINAL_URL)
-    if not isinstance(original_url, str) or not original_url:
+    original_url = flow_metadata.original_url(flow.metadata)
+    if not original_url:
         return False
 
     resolution = builtin_connector_diagnostics.resolve_shared_base_ownership(
@@ -1649,7 +1677,7 @@ def _maybe_make_firewall_allow_connector_diagnostic_local_response(
     flow.metadata[_CONNECTOR_DIAGNOSTIC_OWNERSHIP_REASON] = resolution.reason
     flow.metadata[_CONNECTOR_DIAGNOSTIC_OWNERSHIP_CANDIDATES] = resolution.candidate_connector_types
     flow.metadata[_CONNECTOR_DIAGNOSTIC_OWNERSHIP_HINT_STATUS] = resolution.hint_status
-    flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+    flow_metadata.set_firewall_decision(flow.metadata, "ALLOW")
     flow.response = http.Response.make(
         _HTTP_STATUS_FAILED_DEPENDENCY,
         _connector_diagnostic_response_body(candidate, upstream_status=0),
@@ -1830,8 +1858,8 @@ def _http_network_log_entry(
         "request_size": request_size,
         "response_size": response_size,
     }
-    firewall_error = flow.metadata.get(metadata_keys.FIREWALL_ERROR)
-    if isinstance(firewall_error, str):
+    firewall_error = flow_metadata.firewall_error(flow.metadata)
+    if firewall_error is not None:
         entry["firewall_error"] = firewall_error
     upstream_binding_diagnostics = flow.metadata.get(_UPSTREAM_BINDING_DIAGNOSTICS)
     if isinstance(upstream_binding_diagnostics, dict):
@@ -1911,9 +1939,7 @@ def _upstream_binding_diagnostics(
     *,
     reason: upstream_destination_binding.BindingKind,
 ) -> dict[str, object]:
-    trusted_host = flow.metadata.get(metadata_keys.TRUSTED_AUTHORITY_HOST, "")
-    if not isinstance(trusted_host, str):
-        trusted_host = ""
+    trusted_host = flow_metadata.trusted_authority_host(flow.metadata)
     diagnostics = upstream_destination_binding.diagnostic_snapshot_for_flow(
         flow,
         allowed_kinds=frozenset((reason,)),
@@ -2210,8 +2236,8 @@ def _flow_requires_platform_connector_auth_bypass(
 ) -> bool:
     if kind != "connector_auth":
         return False
-    trusted_host = flow.metadata.get(metadata_keys.TRUSTED_AUTHORITY_HOST)
-    if not isinstance(trusted_host, str) or not trusted_host:
+    trusted_host = flow_metadata.trusted_authority_host(flow.metadata)
+    if not trusted_host:
         return False
     try:
         normalized_host = normalize_trusted_hostname(trusted_host)
@@ -2565,7 +2591,7 @@ def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
     ):
         _start_request_timing(flow)
         prepare_firewall_metadata(flow, allow, vm_info)
-        proxy_log_path = flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, "")
+        proxy_log_path = flow_metadata.proxy_log_path(flow.metadata)
         firewall_base = flow.metadata[metadata_keys.FIREWALL_BASE]
         if body_check.kind == "too_large":
             mark_auth_base_request_too_large(
@@ -2604,7 +2630,7 @@ def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
         ):
             _start_request_timing(flow)
             prepare_firewall_metadata(flow, allow, vm_info)
-            proxy_log_path = flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, "")
+            proxy_log_path = flow_metadata.proxy_log_path(flow.metadata)
             firewall_base = flow.metadata[metadata_keys.FIREWALL_BASE]
             mark_auth_base_forwarding_saturated(
                 flow,
@@ -2770,13 +2796,13 @@ async def request(flow: http.HTTPFlow) -> None:
             if not _ensure_bound_upstream_destination(flow, kind="api_allow"):
                 _block_upstream_destination_unbound(flow, reason="api_allow")
                 return
-            flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+            flow_metadata.set_firewall_decision(flow.metadata, "ALLOW")
             return
         if classification.kind == "browser_allow":
             # Browser-originated traffic intentionally bypasses connector
             # firewall handling. User-Agent is the short-term heuristic for that
             # business passthrough, not trusted provenance.
-            flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+            flow_metadata.set_firewall_decision(flow.metadata, "ALLOW")
             flow.metadata[metadata_keys.FIREWALL_BILLABLE] = False
             return
         if classification.kind == "firewall_block":
@@ -2850,7 +2876,7 @@ async def request(flow: http.HTTPFlow) -> None:
                 original_url=original_url,
             ):
                 return
-        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow_metadata.set_firewall_decision(flow.metadata, "ALLOW")
     except (asyncio.CancelledError, Exception):
         flow.metadata.pop(metadata_keys.HTTP_REQUEST_START_MONOTONIC, None)
         auth_base_forwarder.release_forward_request_admission_from_flow(flow)
@@ -2878,6 +2904,8 @@ def _maybe_normalize_accept_encoding_for_body_inspection(
     allow: matching.FirewallAllow,
     vm_info: dict,
 ) -> None:
+    if _is_websocket_upgrade_request(flow):
+        flow.metadata[metadata_keys.WEBSOCKET_UPGRADE_REQUEST] = True
     if _expects_http_response_body_usage_inspection(flow, allow, vm_info):
         response_encoding_negotiation.normalize_accept_encoding_for_body_inspection(
             flow.request.headers
@@ -2901,18 +2929,43 @@ def _expects_http_response_body_usage_inspection(
 
 
 def _is_websocket_upgrade_request(flow: http.HTTPFlow) -> bool:
-    if flow.request.headers.get("Upgrade", "").strip(_HTTP_OWS_CHARS).lower() != "websocket":
+    if flow.request.method.upper() != "GET":
+        return False
+    if flow.request.http_version != "HTTP/1.1":
+        return False
+    if not _header_values_contain_token(flow.request.headers, "Upgrade", "websocket"):
+        return False
+    websocket_key = _single_header_value(flow.request.headers, "Sec-WebSocket-Key")
+    if websocket_key is None or not _is_valid_websocket_key(websocket_key):
+        return False
+    websocket_version = _single_header_value(flow.request.headers, "Sec-WebSocket-Version")
+    if websocket_version != "13":
         return False
 
-    connection_values = flow.request.headers.get_all("Connection")
-    if not connection_values:
-        return False
+    return _header_values_contain_token(flow.request.headers, "Connection", "upgrade")
 
+
+def _header_values_contain_token(headers: http.Headers, name: str, expected: str) -> bool:
     return any(
-        token.strip(_HTTP_OWS_CHARS).lower() == "upgrade"
-        for value in connection_values
+        token.strip(_HTTP_OWS_CHARS).lower() == expected
+        for value in headers.get_all(name)
         for token in value.split(",")
     )
+
+
+def _single_header_value(headers: http.Headers, name: str) -> str | None:
+    values = headers.get_all(name)
+    if len(values) != 1:
+        return None
+    return values[0].strip(_HTTP_OWS_CHARS)
+
+
+def _is_valid_websocket_key(value: str) -> bool:
+    try:
+        decoded = base64.b64decode(value, validate=True)
+    except (binascii.Error, ValueError):
+        return False
+    return len(decoded) == _WEBSOCKET_KEY_BYTES
 
 
 def _maybe_track_usage_flow(
@@ -2991,7 +3044,7 @@ def websocket_message(flow: http.HTTPFlow) -> None:
     """Feed server-side WebSocket frames into model-provider usage parsers."""
     if not flow.websocket or not flow.websocket.messages:
         return
-    if not flow.metadata.get(metadata_keys.VM_RUN_ID, ""):
+    if not flow_metadata.run_id(flow.metadata):
         return
     if not response_streaming.is_model_websocket_usage_enabled(flow):
         return
@@ -3081,8 +3134,10 @@ def _release_terminal_flow_state(
         _clear_model_websocket_messages(flow)
         if response_streaming.is_model_websocket_usage_enabled(flow):
             flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE_SOURCES] = {}
+            response_streaming.release_model_websocket_usage_state(flow)
     flow.metadata.pop(_REQUEST_CLASSIFICATION, None)
     flow.metadata.pop(_FIREWALL_AUTH_APPLIED_IN_REQUESTHEADERS, None)
+    flow.metadata.pop(metadata_keys.WEBSOCKET_UPGRADE_REQUEST, None)
     request_streaming.release_request_stream_state(flow)
     _release_connector_diagnostic_response_stream_state(flow)
     response_streaming.release_response_stream_state(flow)
@@ -3139,7 +3194,7 @@ def _track_response_usage_flow(fn):
 @_track_usage_flow
 def websocket_end(flow: http.HTTPFlow) -> None:
     """Report model-provider usage extracted from a WebSocket-upgraded response."""
-    run_id = flow.metadata.get(metadata_keys.VM_RUN_ID, "")
+    run_id = flow_metadata.run_id(flow.metadata)
     if run_id:
         _report_model_provider_usage_once(flow, run_id)
 
@@ -3152,7 +3207,7 @@ def response(flow: http.HTTPFlow) -> None:
     # Pop before any early return so tracked flows consume timing exactly once.
     start_time = flow.metadata.pop(metadata_keys.HTTP_REQUEST_START_MONOTONIC, None)
 
-    run_id = flow.metadata.get(metadata_keys.VM_RUN_ID, "")
+    run_id = flow_metadata.run_id(flow.metadata)
     if not run_id:
         # Unregistered VM: the request handler returned before populating
         # metadata, so none of this handler's work applies.
@@ -3160,7 +3215,7 @@ def response(flow: http.HTTPFlow) -> None:
 
     latency_ms = elapsed_ms(start_time)
     original_url = flow.metadata[metadata_keys.ORIGINAL_URL]
-    firewall_action = flow.metadata.get(metadata_keys.FIREWALL_ACTION, "ALLOW")
+    firewall_action = flow_metadata.firewall_action(flow.metadata)
 
     _maybe_replace_connector_diagnostic_response(flow, original_url=original_url)
 
@@ -3171,8 +3226,8 @@ def response(flow: http.HTTPFlow) -> None:
     # Log HTTP network entry for this run. DNS/kmsg rows are produced by the
     # Rust runner; api-contracts is the shared network-log schema boundary.
     # [NETWORK_LOG_FIELDS]
-    network_log_path = flow.metadata.get(metadata_keys.VM_NETWORK_LOG_PATH, "")
-    proxy_log_path = flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, "")
+    network_log_path = flow_metadata.network_log_path(flow.metadata)
+    proxy_log_path = flow_metadata.proxy_log_path(flow.metadata)
     if network_log_path:
         response_size = _response_size(flow)
         log_entry = _http_network_log_entry(
@@ -3186,12 +3241,12 @@ def response(flow: http.HTTPFlow) -> None:
         )
 
         # Add firewall match info if this was a firewall request
-        firewall_base = flow.metadata.get(metadata_keys.FIREWALL_BASE)
+        firewall_base = flow_metadata.firewall_base(flow.metadata)
         if firewall_base:
             add_firewall_metadata(flow, log_entry)
 
         # Add captured header names, selected safe header values, and bodies when enabled
-        if flow.metadata.get(metadata_keys.CAPTURE_BODY):
+        if flow_metadata.should_capture_body(flow.metadata):
             body_capture.add_capture_fields(flow, log_entry)
 
         log_network_entry(network_log_path, log_entry)
@@ -3244,7 +3299,7 @@ def response(flow: http.HTTPFlow) -> None:
     if (
         flow.response
         and flow.response.status_code == _HTTP_STATUS_UNAUTHORIZED
-        and flow.metadata.get(metadata_keys.FIREWALL_BASE)
+        and flow_metadata.firewall_base(flow.metadata)
     ):
         cache_key = flow.metadata.get(metadata_keys.FIREWALL_AUTH_CACHE_KEY)
         if isinstance(cache_key, FirewallAuthCacheKey):
@@ -3271,16 +3326,16 @@ def error(flow: http.HTTPFlow) -> None:
     """
     start_time = flow.metadata.pop(metadata_keys.HTTP_REQUEST_START_MONOTONIC, None)
 
-    run_id = flow.metadata.get(metadata_keys.VM_RUN_ID, "")
-    network_log_path = flow.metadata.get(metadata_keys.VM_NETWORK_LOG_PATH, "")
-    proxy_log_path = flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, "")
+    run_id = flow_metadata.run_id(flow.metadata)
+    network_log_path = flow_metadata.network_log_path(flow.metadata)
+    proxy_log_path = flow_metadata.proxy_log_path(flow.metadata)
 
     if not run_id or not network_log_path:
         return
 
     latency_ms = elapsed_ms(start_time)
     original_url = flow.metadata[metadata_keys.ORIGINAL_URL]
-    firewall_action = flow.metadata.get(metadata_keys.FIREWALL_ACTION, "ALLOW")
+    firewall_action = flow_metadata.firewall_action(flow.metadata)
 
     _maybe_make_connector_diagnostic_error_response(flow, original_url=original_url)
 
@@ -3300,7 +3355,7 @@ def error(flow: http.HTTPFlow) -> None:
     log_entry["error"] = error_msg
 
     # Add firewall context if available
-    firewall_base = flow.metadata.get(metadata_keys.FIREWALL_BASE)
+    firewall_base = flow_metadata.firewall_base(flow.metadata)
     if firewall_base:
         add_firewall_metadata(flow, log_entry)
 
@@ -3345,8 +3400,9 @@ def done():
     executor while a SIGUSR1 worker is still converting buffered usage into
     webhook reports. After that, ``shutdown(wait=True)`` drains submitted
     webhook futures during graceful stop. Auth.base forwarding does not need
-    to finish queued work during shutdown, so its executor cancels queued
-    futures without waiting for slow upstream responses.
+    to finish running work during shutdown, so its worker shutdown stops new
+    forwards and best-effort closes active upstream sockets without waiting for
+    slow upstream responses.
     """
     try:
         # Wait for any in-flight runner-triggered flush before closing the
@@ -3358,7 +3414,7 @@ def done():
             usage.webhook.usage_executor.shutdown(wait=True)
         finally:
             try:
-                auth_base_forwarder.shutdown_forward_request_executor(wait=False)
+                auth_base_forwarder.shutdown_forward_request_workers(wait=False)
             finally:
                 shutdown_log_writer()
 

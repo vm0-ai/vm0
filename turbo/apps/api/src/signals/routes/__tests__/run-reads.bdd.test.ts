@@ -766,7 +766,8 @@ describe("RUN-04: session and checkpoint reads", () => {
     if (!outArtifact) {
       throw new Error("Expected the claim manifest to mount bdd-out");
     }
-    expect(outArtifact.archiveUrl).toStrictEqual(expect.any(String));
+    expect(outArtifact.empty).toBeTruthy();
+    expect(outArtifact.archiveUrl).toBeUndefined();
     expect(outArtifact.vasStorageId).toStrictEqual(expect.any(String));
     expect(outArtifact.vasVersionId).toStrictEqual(expect.any(String));
     expect("manifestUrl" in outArtifact).toBeFalsy();
@@ -1407,7 +1408,7 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
     });
     expect(memory1).toMatchObject({
       mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
-      archiveUrl: expect.any(String),
+      empty: true,
       vasStorageId: expect.any(String),
       vasVersionId: expect.any(String),
       missingRootPolicy: "preserveParentVersion",
@@ -1415,6 +1416,7 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
     if (!memory1) {
       throw new Error("Expected the claim manifest to mount memory");
     }
+    expect(memory1.archiveUrl).toBeUndefined();
     expect("manifestUrl" in memory1).toBeFalsy();
     expect(
       hasManifestPresign(presignedUrlKeysSince(presignCallsBeforeRun)),

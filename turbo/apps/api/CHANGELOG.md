@@ -1,5 +1,50 @@
 # Changelog
 
+## [1.241.0](https://github.com/vm0-ai/vm0/compare/api-v1.240.0...api-v1.241.0) (2026-07-08)
+
+
+### Features
+
+* add org-level artifacts api ([#20563](https://github.com/vm0-ai/vm0/issues/20563)) ([1828d6c](https://github.com/vm0-ai/vm0/commit/1828d6c3d4d6259c7c4f35ef95093b0c06ecefe9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.166.0
+    * @vm0/connectors bumped to 1.148.0
+    * @vm0/core bumped to 8.414.0
+    * @vm0/db bumped to 1.99.2
+
+## [1.240.0](https://github.com/vm0-ai/vm0/compare/api-v1.239.0...api-v1.240.0) (2026-07-08)
+
+
+### Features
+
+* **cli:** split image prompt generation modes ([#20580](https://github.com/vm0-ai/vm0/issues/20580)) ([1cb5e06](https://github.com/vm0-ai/vm0/commit/1cb5e06c00ea331d15df5412c994ec8ee934aa91))
+
+
+### Refactoring
+
+* clean up empty artifact compatibility ([#20574](https://github.com/vm0-ai/vm0/issues/20574)) ([dc86eae](https://github.com/vm0-ai/vm0/commit/dc86eae0bf05e3c6a5787c330b9490548c3512a4))
+* reduce fallback slop in runtime boundaries ([#20589](https://github.com/vm0-ai/vm0/issues/20589)) ([36dcf45](https://github.com/vm0-ai/vm0/commit/36dcf451acde410fca40dfd910ebe3ab2e12fa4b))
+
+
+### Performance Improvements
+
+* add direct ably claim timing telemetry ([#20579](https://github.com/vm0-ai/vm0/issues/20579)) ([3167db5](https://github.com/vm0-ai/vm0/commit/3167db5f5a44b4c72fd07ebf6b162d2e41b1cad9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.165.0
+    * @vm0/connectors bumped to 1.147.1
+    * @vm0/core bumped to 8.413.0
+    * @vm0/db bumped to 1.99.1
+
 ## [1.239.0](https://github.com/vm0-ai/vm0/compare/api-v1.238.0...api-v1.239.0) (2026-07-07)
 
 

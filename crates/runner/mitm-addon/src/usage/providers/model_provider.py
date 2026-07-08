@@ -51,10 +51,10 @@ def is_model_provider_usage_observable(flow: http.HTTPFlow) -> bool:
     be observable when the run context supplies a non-empty
     ``MODEL_USAGE_PROVIDER``.
     """
-    firewall_name = flow_metadata.get_firewall_name_metadata(flow.metadata)
+    firewall_name = flow_metadata.firewall_name(flow.metadata)
     if not firewall_name.startswith("model-provider:"):
         return False
-    return bool(_string_or_none(flow.metadata.get(metadata_keys.MODEL_USAGE_PROVIDER)))
+    return bool(flow_metadata.model_usage_provider(flow.metadata))
 
 
 def has_positive_model_provider_usage(source_usage: dict) -> bool:
@@ -81,10 +81,10 @@ def report_model_provider_usage(flow: http.HTTPFlow, run_id: str) -> bool:
     """
     if not run_id:
         return False
-    firewall_name = flow_metadata.get_firewall_name_metadata(flow.metadata)
+    firewall_name = flow_metadata.firewall_name(flow.metadata)
     if not firewall_name.startswith("model-provider:"):
         return False
-    if not flow.metadata.get(metadata_keys.FIREWALL_BILLABLE, False):
+    if not flow_metadata.is_firewall_billable(flow.metadata):
         return False
     events = _build_model_provider_usage_events(flow, run_id, USAGE_EVENT_NAMESPACE_MODEL)
     if not events:
@@ -169,7 +169,7 @@ def report_model_provider_usage_source(
     context = usage_reporting_context(flow)
     if not context.is_complete:
         if usage_events:
-            firewall_name = flow_metadata.get_firewall_name_metadata(flow.metadata)
+            firewall_name = flow_metadata.firewall_name(flow.metadata)
             _log_usage_reporting_context_missing(context, run_id, firewall_name)
         if observation_events:
             _log_model_usage_observation_context_missing(context)
@@ -323,7 +323,7 @@ def _build_usage_events(
 
 def _reported_model(flow: http.HTTPFlow, usage: dict) -> str:
     return (
-        _string_or_none(flow.metadata.get(metadata_keys.MODEL_USAGE_PROVIDER))
+        flow_metadata.model_usage_provider(flow.metadata)
         or _string_or_none(usage.get("model"))
         or "unknown"
     )
@@ -342,7 +342,7 @@ def _string_or_none(value: object) -> str | None:
 def _is_billable_model_provider(flow: http.HTTPFlow, run_id: str) -> bool:
     if not run_id:
         return False
-    firewall_name = flow_metadata.get_firewall_name_metadata(flow.metadata)
+    firewall_name = flow_metadata.firewall_name(flow.metadata)
     if not firewall_name.startswith("model-provider:"):
         return False
-    return bool(flow.metadata.get(metadata_keys.FIREWALL_BILLABLE, False))
+    return flow_metadata.is_firewall_billable(flow.metadata)

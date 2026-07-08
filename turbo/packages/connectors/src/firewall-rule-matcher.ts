@@ -1877,7 +1877,7 @@ export function matchFirewallPath(
 export function findMatchingPermissions(
   method: string,
   path: string,
-  config: FirewallConfig,
+  config: unknown,
   options: FindMatchingPermissionsOptions = {},
 ): string[] {
   if (!isObjectRecord(config)) return [];
