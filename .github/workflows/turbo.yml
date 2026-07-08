@@ -1892,10 +1892,26 @@ jobs:
             rm -rf "$LOG_DIR"
           }
 
+          stop_background_start_jobs() {
+            for PID in $(jobs -pr); do
+              kill "$PID" 2>/dev/null || true
+            done
+            for PID in "${PIDS[@]}"; do
+              kill "$PID" 2>/dev/null || true
+            done
+            for PID in $(jobs -pr); do
+              wait "$PID" 2>/dev/null || true
+            done
+            for PID in "${PIDS[@]}"; do
+              wait "$PID" 2>/dev/null || true
+            done
+          }
+
           stop_started_hosts() {
-            for i in "${!HOSTS[@]}"; do
-              local HOST="${HOSTS[$i]}"
-              local RUNNER_NAME="${JOB_REF}-$((i + 1))"
+            local HOST_INDEX=0
+            for HOST in $(echo "$METAL_HOSTS" | tr ',' ' '); do
+              HOST_INDEX=$((HOST_INDEX + 1))
+              local RUNNER_NAME="${JOB_REF}-${HOST_INDEX}"
               local REMOTE="${METAL_USER}@${HOST}"
               echo "::warning::Stopping partially started runner ${RUNNER_NAME} on ${HOST}"
               # shellcheck disable=SC2029
@@ -1905,20 +1921,24 @@ jobs:
 
           cleanup_runner_start() {
             local EXIT_CODE=$?
+            trap - EXIT INT TERM
             if [ "$RUNNER_START_SUCCEEDED" -ne 1 ]; then
+              stop_background_start_jobs
               stop_started_hosts
             fi
             cleanup_logs
-            return "$EXIT_CODE"
+            exit "$EXIT_CODE"
           }
 
           trap cleanup_runner_start EXIT
+          trap 'exit 130' INT
+          trap 'exit 143' TERM
           HOST_INDEX=0
           for HOST in $(echo "$METAL_HOSTS" | tr ',' ' '); do
             HOST_INDEX=$((HOST_INDEX + 1))
+            HOSTS+=("$HOST")
             start_on_host "$HOST" "$HOST_INDEX" > "${LOG_DIR}/${HOST}.log" 2>&1 &
             PIDS+=($!)
-            HOSTS+=("$HOST")
           done
 
           FAILED=0
