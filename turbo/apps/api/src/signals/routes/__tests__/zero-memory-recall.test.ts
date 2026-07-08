@@ -17,6 +17,7 @@ import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import {
   deleteRelationshipRowsForFixture$,
   seedRelationshipRows$,
+  seedRuntimeInjectionMemoryRows$,
   type RelationshipFixture,
 } from "./helpers/zero-relationships";
 
@@ -32,9 +33,30 @@ function memoryClient() {
   return setupApp({ context })(zeroMemoryContract);
 }
 
+interface RelationshipFixtureOptions {
+  readonly relationshipMemoryEnabled?: boolean;
+  readonly runtimeInjectionEnabled?: boolean;
+}
+
+function normalizeRelationshipFixtureOptions(
+  options: boolean | RelationshipFixtureOptions,
+): Required<RelationshipFixtureOptions> {
+  if (typeof options === "boolean") {
+    return {
+      relationshipMemoryEnabled: options,
+      runtimeInjectionEnabled: false,
+    };
+  }
+  return {
+    relationshipMemoryEnabled: options.relationshipMemoryEnabled ?? true,
+    runtimeInjectionEnabled: options.runtimeInjectionEnabled ?? false,
+  };
+}
+
 async function seedRelationshipFixture(
-  enabled = true,
+  options: boolean | RelationshipFixtureOptions = true,
 ): Promise<RelationshipFixture> {
+  const normalized = normalizeRelationshipFixtureOptions(options);
   const orgId = `org_${randomUUID()}`;
   const userId = `user_${randomUUID()}`;
   await store.set(
@@ -45,7 +67,12 @@ async function seedRelationshipFixture(
   await updateFeatureSwitchesForUser(
     context,
     { orgId, userId },
-    { [FeatureSwitchKey.RelationshipMemory]: enabled },
+    {
+      [FeatureSwitchKey.RelationshipMemory]:
+        normalized.relationshipMemoryEnabled,
+      [FeatureSwitchKey.RelationshipMemoryRuntimeInjection]:
+        normalized.runtimeInjectionEnabled,
+    },
   );
   mocks.clerk.session(userId, orgId);
   return { orgId, userId };
@@ -133,5 +160,58 @@ describe("GET /api/zero/memory/recall", () => {
       "Follow up with relationship 1 (Relationship 001)",
     );
     expect(response.body.memories).toHaveLength(1);
+  });
+
+  it("rejects injection preview when runtime injection is disabled", async () => {
+    await track(
+      seedRelationshipFixture({
+        relationshipMemoryEnabled: true,
+        runtimeInjectionEnabled: false,
+      }),
+    );
+
+    const response = await accept(
+      memoryClient().injectionPreview({
+        headers: authHeaders(),
+        body: { prompt: "Prepare the security review" },
+      }),
+      [403],
+    );
+
+    expect(response.body.error.message).toBe(
+      "Relationship memory runtime injection is not enabled for this organization.",
+    );
+  });
+
+  it("previews runtime memory system prompt injection", async () => {
+    const fixture = await track(
+      seedRelationshipFixture({
+        relationshipMemoryEnabled: true,
+        runtimeInjectionEnabled: true,
+      }),
+    );
+    await store.set(seedRuntimeInjectionMemoryRows$, fixture, context.signal);
+
+    const response = await accept(
+      memoryClient().injectionPreview({
+        headers: authHeaders(),
+        body: { prompt: "Prepare the security review" },
+      }),
+      [200],
+    );
+
+    expect(response.body.prompt).toBe("Prepare the security review");
+    expect(response.body.appendSystemPrompt).toContain("# Zero Memory Context");
+    expect(response.body.appendSystemPrompt).toContain("Stable profile:");
+    expect(response.body.appendSystemPrompt).toContain("Current context:");
+    expect(response.body.appendSystemPrompt).toContain(
+      "The user prefers concise launch summaries.",
+    );
+    expect(response.body.appendSystemPrompt).toContain(
+      "validating runtime memory injection",
+    );
+    expect(response.body.profile.static).toHaveLength(1);
+    expect(response.body.profile.dynamic).toHaveLength(2);
+    expect(response.body.stats.injectedCount).toBeGreaterThan(0);
   });
 });

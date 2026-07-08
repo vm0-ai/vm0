@@ -19,6 +19,7 @@ import {
   getZeroMemoryContext,
   recallZeroMemory,
 } from "../services/zero-memory-recall.service";
+import { buildZeroMemoryRuntimeInjection } from "../services/zero-memory-injection.service";
 import {
   getSlackMemoryStatus,
   restartSlackMemoryBackfill,
@@ -46,13 +47,48 @@ const memorySourceDisabled = Object.freeze({
   }),
 });
 
+const memoryRuntimeInjectionDisabled = Object.freeze({
+  status: 403 as const,
+  body: Object.freeze({
+    error: Object.freeze({
+      message:
+        "Relationship memory runtime injection is not enabled for this organization.",
+      code: "FORBIDDEN",
+    }),
+  }),
+});
+
+async function loadMemoryFeatureState(
+  db: ReadonlyDb,
+  orgId: string,
+  userId: string,
+): Promise<{
+  readonly relationshipMemoryEnabled: boolean;
+  readonly runtimeInjectionEnabled: boolean;
+}> {
+  const context = await loadUserFeatureSwitchContext(db, orgId, userId);
+  const relationshipMemoryEnabled = isFeatureEnabled(
+    FeatureSwitchKey.RelationshipMemory,
+    context,
+  );
+  return {
+    relationshipMemoryEnabled,
+    runtimeInjectionEnabled:
+      relationshipMemoryEnabled &&
+      isFeatureEnabled(
+        FeatureSwitchKey.RelationshipMemoryRuntimeInjection,
+        context,
+      ),
+  };
+}
+
 async function isMemorySourceEnabled(
   db: ReadonlyDb,
   orgId: string,
   userId: string,
 ): Promise<boolean> {
-  const context = await loadUserFeatureSwitchContext(db, orgId, userId);
-  return isFeatureEnabled(FeatureSwitchKey.RelationshipMemory, context);
+  const state = await loadMemoryFeatureState(db, orgId, userId);
+  return state.relationshipMemoryEnabled;
 }
 
 const getMemoryInner$ = computed(async (get): Promise<unknown> => {
@@ -66,6 +102,9 @@ const getMemoryInner$ = computed(async (get): Promise<unknown> => {
 
 const memoryRecallQuery$ = queryOf(zeroMemoryContract.recall);
 const memoryContextQuery$ = queryOf(zeroMemoryContract.context);
+const memoryInjectionPreviewBody$ = bodyResultOf(
+  zeroMemoryContract.injectionPreview,
+);
 const memorySourcesQuery$ = queryOf(zeroMemoryContract.sources);
 const memorySourceParams$ = pathParamsOf(zeroMemoryContract.source);
 const slackBackfillBody$ = bodyResultOf(zeroMemoryContract.slackBackfill);
@@ -99,6 +138,33 @@ const memoryContextInner$ = computed(async (get): Promise<unknown> => {
     userId: auth.userId,
     q: query.q,
     limit: query.limit,
+  });
+  return { status: 200 as const, body: result };
+});
+
+const memoryInjectionPreviewInner$ = computed(async (get): Promise<unknown> => {
+  const auth = get(organizationAuthContext$);
+  const featureState = await loadMemoryFeatureState(
+    get(db$),
+    auth.orgId,
+    auth.userId,
+  );
+  if (!featureState.relationshipMemoryEnabled) {
+    return memorySourceDisabled;
+  }
+  if (!featureState.runtimeInjectionEnabled) {
+    return memoryRuntimeInjectionDisabled;
+  }
+
+  const bodyResult = await get(memoryInjectionPreviewBody$);
+  if (!bodyResult.ok) {
+    return bodyResult.response;
+  }
+
+  const result = await buildZeroMemoryRuntimeInjection(get(db$), {
+    orgId: auth.orgId,
+    userId: auth.userId,
+    prompt: bodyResult.data.prompt,
   });
   return { status: 200 as const, body: result };
 });
@@ -238,6 +304,10 @@ export const zeroMemoryRoutes: readonly RouteEntry[] = [
   {
     route: zeroMemoryContract.context,
     handler: authRoute(memoryRecallAuthOptions, memoryContextInner$),
+  },
+  {
+    route: zeroMemoryContract.injectionPreview,
+    handler: authRoute(memoryRecallAuthOptions, memoryInjectionPreviewInner$),
   },
   {
     route: zeroMemoryContract.sources,

@@ -2,6 +2,7 @@ import { screen, waitFor } from "@testing-library/react";
 import {
   zeroMemoryContract,
   type MemoryDetailResponse,
+  type MemoryInjectionPreviewResponse,
   type MemoryRecallResponse,
   type MemorySourceDetailResponse,
   type MemorySourceListResponse,
@@ -611,6 +612,54 @@ function memoryRecallResponse(query: string): MemoryRecallResponse {
   };
 }
 
+function memoryInjectionPreviewResponse(
+  prompt: string,
+): MemoryInjectionPreviewResponse {
+  return {
+    prompt,
+    appendSystemPrompt:
+      "# Zero Memory Context\n\nStable profile:\n- The user prefers concise launch summaries. (preference; Alice Lee; id=00000000-0000-4000-8000-000000000701)\n\nCurrent context:\n- The current work is validating runtime memory injection. (recent context; Alice Lee; id=00000000-0000-4000-8000-000000000702)",
+    profile: {
+      static: [
+        {
+          id: "00000000-0000-4000-8000-000000000701",
+          kind: "preference",
+          text: "The user prefers concise launch summaries.",
+          confidence: 92,
+          lastSeenAt: "2026-07-05T12:00:00.000Z",
+          entity: {
+            id: "00000000-0000-4000-8000-000000000102",
+            type: "person",
+            displayName: "Alice Lee",
+          },
+          sources: [],
+        },
+      ],
+      dynamic: [
+        {
+          id: "00000000-0000-4000-8000-000000000702",
+          kind: "recent_context",
+          text: "The current work is validating runtime memory injection.",
+          confidence: 84,
+          lastSeenAt: "2026-07-06T12:00:00.000Z",
+          entity: {
+            id: "00000000-0000-4000-8000-000000000102",
+            type: "person",
+            displayName: "Alice Lee",
+          },
+          sources: [],
+        },
+      ],
+    },
+    queryMemories: [],
+    stats: {
+      injectedCount: 2,
+      omittedCount: 0,
+      characterCount: 285,
+    },
+  };
+}
+
 function relationshipRecord(
   index: number,
   displayName: string,
@@ -756,6 +805,11 @@ describe("memory page", () => {
         return tab.textContent?.trim() === "Recall";
       }),
     ).toBeFalsy();
+    expect(
+      queryAllByRoleFast("tab").some((tab) => {
+        return tab.textContent?.trim() === "Injection";
+      }),
+    ).toBeFalsy();
   });
 
   it("shows relationship memory when the relationship switch is enabled", async () => {
@@ -811,6 +865,11 @@ describe("memory page", () => {
     expect(
       screen.getByText("Support and operations are the first pilot teams."),
     ).toBeInTheDocument();
+    expect(
+      queryAllByRoleFast("tab").some((tab) => {
+        return tab.textContent?.trim() === "Injection";
+      }),
+    ).toBeFalsy();
 
     click(getButtonContaining("All"));
     await waitFor(() => {
@@ -884,6 +943,55 @@ describe("memory page", () => {
       screen.getByText("gmail-message-1:open_loop:security"),
     ).toBeInTheDocument();
     expect(recallQueries).toStrictEqual(["security review"]);
+  });
+
+  it("previews runtime memory injection when the sub-switch is enabled", async () => {
+    context.mocks.api(zeroMemoryActivityContract.get, ({ query, respond }) => {
+      expect(query.limit).toBe(7);
+      return respond(200, memoryActivityPage(query.cursor));
+    });
+    context.mocks.api(zeroMemoryContract.get, ({ respond }) => {
+      return respond(200, memoryDetailResponse());
+    });
+    const previewPrompts: string[] = [];
+    context.mocks.api(
+      zeroMemoryContract.injectionPreview,
+      ({ body, respond }) => {
+        previewPrompts.push(body.prompt);
+        return respond(200, memoryInjectionPreviewResponse(body.prompt));
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/memory",
+      featureSwitches: {
+        [FeatureSwitchKey.MemoryViewer]: true,
+        [FeatureSwitchKey.RelationshipMemory]: true,
+        [FeatureSwitchKey.RelationshipMemoryRuntimeInjection]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("launch preferences")).toBeInTheDocument();
+    });
+
+    click(getTabByText("Injection"));
+    await fill(
+      screen.getByPlaceholderText("User prompt to preview memory injection"),
+      "prepare launch summary",
+    );
+    click(getNonTabButtonWithText("Preview injection"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Append system prompt")).toBeInTheDocument();
+    });
+    expect(screen.getByText(/# Zero Memory Context/)).toBeInTheDocument();
+    expect(
+      screen.getAllByText("The user prefers concise launch summaries.").length,
+    ).toBeGreaterThan(0);
+    expect(screen.getByText("2 injected, 0 omitted")).toBeInTheDocument();
+    expect(previewPrompts).toStrictEqual(["prepare launch summary"]);
   });
 
   it("shows Slack structured sources and starts Slack backfill", async () => {

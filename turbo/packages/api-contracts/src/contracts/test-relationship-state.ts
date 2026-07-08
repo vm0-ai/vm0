@@ -25,6 +25,10 @@ export const testRelationshipStateActionBodySchema = z.discriminatedUnion(
       fixture: testRelationshipStateFixtureSchema,
       count: z.number().int().min(0).max(500),
     }),
+    z.object({
+      action: z.literal("seed-runtime-injection-memories"),
+      fixture: testRelationshipStateFixtureSchema,
+    }),
   ],
 );
 

@@ -91,3 +91,16 @@ export const seedRelationshipRows$ = command(
     });
   },
 );
+
+export const seedRuntimeInjectionMemoryRows$ = command(
+  async (
+    _,
+    fixture: RelationshipFixture,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    await postAction(signal, {
+      action: "seed-runtime-injection-memories",
+      fixture: fixtureToWire(fixture),
+    });
+  },
+);

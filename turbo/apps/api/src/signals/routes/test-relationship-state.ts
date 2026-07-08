@@ -287,6 +287,61 @@ async function seedRelationshipsForAction(
   return actionOk();
 }
 
+async function seedRuntimeInjectionMemoriesForAction(
+  db: Db,
+  body: RelationshipAction<"seed-runtime-injection-memories">,
+  signal: AbortSignal,
+) {
+  const [entity] = await db
+    .insert(memoryEntities)
+    .values({
+      orgId: body.fixture.org_id,
+      userId: body.fixture.user_id,
+      type: "person",
+      displayName: "Alice Runtime",
+    })
+    .returning({ id: memoryEntities.id });
+  signal.throwIfAborted();
+  if (!entity) {
+    throw new Error("Expected runtime injection fixture entity");
+  }
+
+  await db.insert(memories).values([
+    {
+      orgId: body.fixture.org_id,
+      userId: body.fixture.user_id,
+      entityId: entity.id,
+      kind: "preference",
+      status: "active",
+      text: "The user prefers concise launch summaries.",
+      confidence: 92,
+      lastSeenAt: new Date("2026-07-05T12:00:00.000Z"),
+    },
+    {
+      orgId: body.fixture.org_id,
+      userId: body.fixture.user_id,
+      entityId: entity.id,
+      kind: "recent_context",
+      status: "active",
+      text: "The current work is validating runtime memory injection.",
+      confidence: 84,
+      lastSeenAt: new Date("2026-07-06T12:00:00.000Z"),
+    },
+    {
+      orgId: body.fixture.org_id,
+      userId: body.fixture.user_id,
+      entityId: entity.id,
+      kind: "open_loop",
+      status: "active",
+      text: "Follow up on the security review injection preview.",
+      confidence: 88,
+      lastSeenAt: new Date("2026-07-07T12:00:00.000Z"),
+    },
+  ]);
+  signal.throwIfAborted();
+  return actionOk();
+}
+
 const mutateRelationshipState$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     if (!isTestEndpointAllowed(get(request$))) {
@@ -307,6 +362,9 @@ const mutateRelationshipState$ = command(
       }
       case "seed-relationships": {
         return await seedRelationshipsForAction(db, body, signal);
+      }
+      case "seed-runtime-injection-memories": {
+        return await seedRuntimeInjectionMemoriesForAction(db, body, signal);
       }
     }
   },
