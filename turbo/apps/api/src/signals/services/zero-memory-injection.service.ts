@@ -136,6 +136,9 @@ async function loadInjectionMemoryRows(
   db: ReadonlyDb,
   params: LoadInjectionMemoryParams,
 ): Promise<readonly InjectionMemoryRow[]> {
+  const rankingOrder = params.query?.trim()
+    ? [memoryQueryRank(params.query)]
+    : [];
   const rows = await db
     .select({
       id: memories.id,
@@ -151,7 +154,7 @@ async function loadInjectionMemoryRows(
     .innerJoin(memoryEntities, eq(memoryEntities.id, memories.entityId))
     .where(and(...profileFilters(params)))
     .orderBy(
-      memoryQueryRank(params.query),
+      ...rankingOrder,
       injectionKindRank(),
       desc(memories.confidence),
       desc(memories.lastSeenAt),
