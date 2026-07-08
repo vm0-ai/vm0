@@ -7,6 +7,9 @@ pub enum RunnerError {
     #[error("api error: {0}")]
     Api(String),
 
+    #[error("api error: {0}")]
+    ApiTransport(Box<ApiTransportError>),
+
     #[error("job already claimed by another runner")]
     AlreadyClaimed,
 
@@ -116,6 +119,55 @@ pub fn format_short_duration(d: Duration) -> String {
 }
 
 pub type RunnerResult<T> = Result<T, RunnerError>;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ApiRequestContext {
+    pub endpoint_label: &'static str,
+    pub method: String,
+    pub host: String,
+    pub path: String,
+    pub client_request_id: String,
+    pub client_session_id: String,
+    pub client_version: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ApiFailureKind {
+    Timeout,
+    Connect,
+    Request,
+    Body,
+    Unknown,
+}
+
+impl ApiFailureKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Timeout => "timeout",
+            Self::Connect => "connect",
+            Self::Request => "request",
+            Self::Body => "body",
+            Self::Unknown => "unknown",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ApiTransportError {
+    pub request: ApiRequestContext,
+    pub failure_kind: ApiFailureKind,
+    pub summary: String,
+}
+
+impl std::fmt::Display for ApiTransportError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}: send API request failed: {}",
+            self.request.endpoint_label, self.summary
+        )
+    }
+}
 
 #[cfg(test)]
 mod tests {

@@ -202,7 +202,7 @@ impl<'a> NetworkLogBatchUploader<'a> {
             .http
             .request_route(routes::webhooks::agent::telemetry::SEND, self.sandbox_token)
             .json(&payload)
-            .send()
+            .send("network_logs")
             .await;
 
         match result {
