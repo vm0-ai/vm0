@@ -234,6 +234,20 @@ fn unattributed_sigkill_resource_diagnostics_require_matching_exit_code() {
 }
 
 #[test]
+fn unattributed_sigkill_resource_diagnostics_require_standard_sigkill_mapping() {
+    let exit = ProcessExit::new(1, 99, Vec::new(), Vec::new());
+    let mut observed_exit = CliObservedExitDiagnostic::from_signal(libc::SIGKILL);
+    observed_exit.mapped_exit_code = 99;
+    let diagnostic = fallback_cli_nonzero_diagnostic(99).with_cli_observed_exit(observed_exit);
+
+    assert!(!should_collect_unattributed_sigkill_resource_diagnostics(
+        false,
+        &exit,
+        Some(&diagnostic)
+    ));
+}
+
+#[test]
 fn unattributed_sigkill_resource_diagnostics_require_unattributed_fallback_failure() {
     let exit = ProcessExit::new(1, 137, Vec::new(), Vec::new());
     let exit_with_process_diagnostic = ProcessExit {

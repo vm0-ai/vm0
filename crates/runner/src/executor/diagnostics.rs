@@ -27,7 +27,8 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use guest_contracts::diagnostics::{
-    FAILURE_DIAGNOSTIC_SCHEMA_VERSION, FailureClass, FailureDetailSource, FailureDiagnostic,
+    CliObservedExitDiagnostic, FAILURE_DIAGNOSTIC_SCHEMA_VERSION, FailureClass,
+    FailureDetailSource, FailureDiagnostic,
 };
 use sandbox::{
     CopyFileOptions, EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, ExecTermination, ProcessOutputReceiver,
@@ -42,9 +43,10 @@ use super::session_restore::SessionRestoreDiagnostics;
 use super::{
     AGENT_ABNORMAL_EXIT_DIAGNOSTIC_SCRIPT, AGENT_ABNORMAL_EXIT_DIAGNOSTIC_TIMEOUT,
     AGENT_ENV_KEY_DIAGNOSTIC_LIMIT, AGENT_ENV_KEY_MAX_CHARS, BOOTSTRAP_SENSITIVE_ENV_KEYS,
-    DEFAULT_EXEC_TIMEOUT, GUEST_LOG_COPY_MAX_BYTES, ResourceFailureDiagnostics,
-    ResourceFailureKind, SMALL_GUEST_FILE_MAX_BYTES, STDOUT_STREAM_LIMIT_MARKER,
-    STDOUT_STREAM_OVERFLOW_MARKER, SandboxReuseResult, guest_runtime_path,
+    DEFAULT_EXEC_TIMEOUT, EXIT_SIGKILL, EXIT_SIGNAL_KILL, GUEST_LOG_COPY_MAX_BYTES,
+    ResourceFailureDiagnostics, ResourceFailureKind, SMALL_GUEST_FILE_MAX_BYTES,
+    STDOUT_STREAM_LIMIT_MARKER, STDOUT_STREAM_OVERFLOW_MARKER, SandboxReuseResult,
+    guest_runtime_path,
 };
 use crate::helper_exec::{helper_exec_succeeded, helper_exec_termination_label};
 use crate::ids::RunId;
@@ -225,8 +227,18 @@ fn unattributed_sigkill_cli_failure(diagnostic: &FailureDiagnostic, exit_code: i
             .cli_observed_exit
             .as_ref()
             .is_some_and(|observed_exit| {
-                observed_exit.is_sigkill() && observed_exit.mapped_exit_code == exit_code
+                observed_sigkill_matches_exit_code(observed_exit, exit_code)
             })
+}
+
+fn observed_sigkill_matches_exit_code(
+    observed_exit: &CliObservedExitDiagnostic,
+    exit_code: i32,
+) -> bool {
+    observed_exit.is_sigkill()
+        && observed_exit.signal_number == Some(EXIT_SIGNAL_KILL)
+        && observed_exit.mapped_exit_code == EXIT_SIGKILL
+        && exit_code == EXIT_SIGKILL
 }
 
 pub(super) fn should_log_agent_bootstrap_abnormal_exit_diagnostics(
