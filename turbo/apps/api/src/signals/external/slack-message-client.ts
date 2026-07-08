@@ -256,21 +256,14 @@ export function createSlackUserInfoResolver(
   let inFlightHitCount = 0;
 
   const startLookup = (userId: string): Promise<SlackUserInfo | undefined> => {
-    const lookup = (async () => {
-      const info = await fetchSlackUserInfo(client, userId);
-      if (info) {
-        cache.set(userId, info);
-      }
-      return info;
-    })();
     const promise = onRejection(
       (async () => {
-        const result = await settle(lookup);
-        inFlight.delete(userId);
-        if (!result.ok) {
-          throw result.error;
+        const info = await fetchSlackUserInfo(client, userId);
+        if (info) {
+          cache.set(userId, info);
         }
-        return result.value;
+        inFlight.delete(userId);
+        return info;
       })(),
       () => {
         inFlight.delete(userId);
