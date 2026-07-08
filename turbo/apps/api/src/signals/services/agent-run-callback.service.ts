@@ -471,44 +471,54 @@ async function dispatchInternalCallbackWithoutCcstate(
       return await handleAgentPhoneInternalCallbackWithoutCcstate(
         input.db,
         callbackEnvelope(input),
+        input.signal,
       );
     }
     case "chat": {
       return await handleChatInternalCallbackWithoutCcstate(
         input.db,
         callbackEnvelope(input),
+        input.signal,
       );
     }
     case "github:issues": {
       return await handleGithubIssuesInternalCallbackWithoutCcstate(
         input.db,
         callbackEnvelope(input),
+        input.signal,
       );
     }
     case "slack:org": {
       return await handleSlackOrgInternalCallbackWithoutCcstate(
         input.db,
         callbackEnvelope(input),
+        input.signal,
       );
     }
     case "teams:org": {
       return await handleTeamsOrgInternalCallbackWithoutCcstate(
         input.db,
         callbackEnvelope(input),
+        input.signal,
       );
     }
     case "telegram": {
       return await handleTelegramInternalCallbackWithoutCcstate(
         input.db,
         callbackEnvelope(input),
+        input.signal,
       );
     }
     case "workflow-trigger:cron":
     case "workflow-trigger:loop": {
-      return await handleWorkflowTriggerInternalCallback(input.db, {
-        kind,
-        callback: callbackEnvelope(input),
-      });
+      return await handleWorkflowTriggerInternalCallback(
+        input.db,
+        {
+          kind,
+          callback: callbackEnvelope(input),
+        },
+        input.signal,
+      );
     }
   }
 }
