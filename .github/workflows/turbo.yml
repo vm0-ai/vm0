@@ -819,7 +819,11 @@ jobs:
           WEB_API_ENV_FILE: ${{ steps.api-seed-env.outputs.file }}
           ANTHROPIC_API_KEY: ${{ secrets.CI_ANTHROPIC_API_KEY }}
           DEV_MODEL_ANTHROPIC_KEY: ${{ secrets.CI_ANTHROPIC_API_KEY }}
-          DEV_MODEL_DEEPSEEK_KEY: fake-key
+          DEV_MODEL_OPENAI_KEY: ${{ secrets.OPENAI_API_KEY }}
+          DEV_MODEL_OPENROUTER_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          DEV_MODEL_DEEPSEEK_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          DEV_MODEL_MOONSHOT_KEY: ${{ secrets.MOONSHOT_API_KEY }}
+          DEV_MODEL_MINIMAX_KEY: ${{ secrets.MINIMAX_API_KEY }}
         run: |
           while IFS= read -r line; do
             if [ -n "$line" ]; then
@@ -828,6 +832,26 @@ jobs:
               export "$key=$value"
             fi
           done < "$WEB_API_ENV_FILE"
+
+          required_seed_env=(
+            DEV_MODEL_ANTHROPIC_KEY
+            DEV_MODEL_OPENAI_KEY
+            DEV_MODEL_OPENROUTER_KEY
+            DEV_MODEL_DEEPSEEK_KEY
+            DEV_MODEL_MOONSHOT_KEY
+            DEV_MODEL_MINIMAX_KEY
+          )
+          missing_seed_env=()
+          for key in "${required_seed_env[@]}"; do
+            value="${!key:-}"
+            if [ -z "$value" ]; then
+              missing_seed_env+=("$key")
+            fi
+          done
+          if [ "${#missing_seed_env[@]}" -gt 0 ]; then
+            printf '::error::Missing preview seed model key env(s): %s\n' "${missing_seed_env[*]}"
+            exit 1
+          fi
 
           npm install -g neonctl@2.15.0
 

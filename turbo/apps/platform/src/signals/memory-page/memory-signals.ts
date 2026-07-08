@@ -2,6 +2,8 @@ import { command, computed, state } from "ccstate";
 import {
   zeroMemoryContract,
   type MemoryDetailResponse,
+  type MemoryRecallItemKind,
+  type MemoryRecallResponse,
   type MemorySourceDetailResponse,
   type MemorySourceListResponse,
   type MemorySourceProvider,
@@ -36,7 +38,14 @@ export type MemoryRelationshipFilter =
 
 export type MemorySourceProviderFilter = "all" | MemorySourceProvider;
 
-export type MemoryTab = "updates" | "relationships" | "sources" | "raw";
+export type MemoryRecallKindFilter = "all" | MemoryRecallItemKind;
+
+export type MemoryTab =
+  | "updates"
+  | "recall"
+  | "relationships"
+  | "sources"
+  | "raw";
 
 export const MEMORY_ACTIVITY_RECENT_LIMIT = 7;
 
@@ -114,6 +123,53 @@ const internalGmailRelationshipBackfillRequest$ =
   state<GmailRelationshipBackfillRequest>(
     defaultGmailRelationshipBackfillRequest(),
   );
+
+const internalMemoryRecallQuery$ = state("");
+const internalSubmittedMemoryRecallQuery$ = state("");
+const internalMemoryRecallKindFilter$ = state<MemoryRecallKindFilter>("all");
+const internalMemoryRecallLimit$ = state(10);
+const internalMemoryRecallReload$ = state(0);
+
+export const memoryRecallQuery$ = computed((get) => {
+  return get(internalMemoryRecallQuery$);
+});
+
+export const setMemoryRecallQuery$ = command(({ set }, query: string) => {
+  set(internalMemoryRecallQuery$, query);
+});
+
+export const submittedMemoryRecallQuery$ = computed((get) => {
+  return get(internalSubmittedMemoryRecallQuery$);
+});
+
+export const submitMemoryRecall$ = command(({ get, set }) => {
+  const query = get(internalMemoryRecallQuery$).trim();
+  const previousQuery = get(internalSubmittedMemoryRecallQuery$).trim();
+  set(internalSubmittedMemoryRecallQuery$, query);
+  if (query === previousQuery) {
+    set(internalMemoryRecallReload$, (current) => {
+      return current + 1;
+    });
+  }
+});
+
+export const memoryRecallKindFilter$ = computed((get) => {
+  return get(internalMemoryRecallKindFilter$);
+});
+
+export const setMemoryRecallKindFilter$ = command(
+  ({ set }, filter: MemoryRecallKindFilter) => {
+    set(internalMemoryRecallKindFilter$, filter);
+  },
+);
+
+export const memoryRecallLimit$ = computed((get) => {
+  return get(internalMemoryRecallLimit$);
+});
+
+export const setMemoryRecallLimit$ = command(({ set }, limit: number) => {
+  set(internalMemoryRecallLimit$, limit);
+});
 
 export const memoryRelationshipSearch$ = computed((get) => {
   return get(internalMemoryRelationshipSearch$);
@@ -455,6 +511,31 @@ export const memoryRelationships$ = computed(
           page,
           limit,
           ...relationshipSearchQueryFilter(filter),
+        },
+      }),
+      [200],
+    );
+    return result.body;
+  },
+);
+
+export const memoryRecallResults$ = computed(
+  async (get): Promise<MemoryRecallResponse | null> => {
+    get(internalMemoryRecallReload$);
+    const query = get(submittedMemoryRecallQuery$).trim();
+    if (query.length === 0) {
+      return null;
+    }
+
+    const kindFilter = get(memoryRecallKindFilter$);
+    const limit = get(memoryRecallLimit$);
+    const client = get(zeroClient$)(zeroMemoryContract);
+    const result = await accept(
+      client.recall({
+        query: {
+          q: query,
+          kind: kindFilter === "all" ? undefined : kindFilter,
+          limit,
         },
       }),
       [200],

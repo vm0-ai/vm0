@@ -1384,6 +1384,20 @@ function settledValue<T>(result: PromiseSettledResult<T>): T {
   return result.value;
 }
 
+async function clearSlackThreadStatusBestEffort(args: {
+  readonly client: ReturnType<typeof createSlackClient>;
+  readonly channelId: string;
+  readonly threadTs: string;
+  readonly failureMessage: string;
+}): Promise<void> {
+  const [result] = await Promise.allSettled([
+    setThreadStatus(args.client, args.channelId, args.threadTs, ""),
+  ]);
+  if (result.status === "rejected") {
+    L.warn(args.failureMessage, { error: result.reason });
+  }
+}
+
 async function loadSlackRunParamBundle(args: {
   readonly timing: ApiDispatchTimingCollector;
   readonly db: Db;
@@ -1837,31 +1851,37 @@ const handleSlackRunResult$ = command(
         ],
       });
     } else if (result.status === "failed") {
-      if (!result.runId) {
-        await set(postPreDispatchErrorReply$, {
-          db: message.db,
-          client: resolved.client,
-          channelId: message.channelId,
-          threadTs: resolved.threadTs,
-          errorText:
-            result.response ?? "Sorry, an error occurred. Please try again.",
-          orgId: resolved.installation.orgId,
-          vm0UserId: resolved.connection.vm0UserId,
-          composeId: resolved.composeId,
-          agentLabel: resolved.agent.displayName ?? resolved.agent.name,
-        });
+      const errorReplyResultPromise = result.runId
+        ? undefined
+        : Promise.allSettled([
+            (async () => {
+              await set(postPreDispatchErrorReply$, {
+                db: message.db,
+                client: resolved.client,
+                channelId: message.channelId,
+                threadTs: resolved.threadTs,
+                errorText:
+                  result.response ??
+                  "Sorry, an error occurred. Please try again.",
+                orgId: resolved.installation.orgId,
+                vm0UserId: resolved.connection.vm0UserId,
+                composeId: resolved.composeId,
+                agentLabel: resolved.agent.displayName ?? resolved.agent.name,
+              });
+            })(),
+          ]);
+      await clearSlackThreadStatusBestEffort({
+        client: resolved.client,
+        channelId: message.channelId,
+        threadTs: resolved.threadTs,
+        failureMessage: "Failed to clear thread status",
+      });
+      const [errorReplyResult] = errorReplyResultPromise
+        ? await errorReplyResultPromise
+        : [];
+      if (errorReplyResult?.status === "rejected") {
+        throw errorReplyResult.reason;
       }
-      await tapError(
-        setThreadStatus(
-          resolved.client,
-          message.channelId,
-          resolved.threadTs,
-          "",
-        ),
-        (error) => {
-          L.warn("Failed to clear thread status", { error });
-        },
-      );
     }
   },
 );
@@ -1937,9 +1957,26 @@ const handleSlackAgentMessage$ = command(
       ),
     ]);
     settledValue(statusResult);
-    const runParams = settledValue(runParamsResult);
-    const result = await set(runAgentForSlackOrg$, runParams, args.signal);
-    await set(handleSlackRunResult$, { message: args, resolved, result });
+    const [runResult] = await Promise.allSettled([
+      (async () => {
+        const runParams = settledValue(runParamsResult);
+        return await set(runAgentForSlackOrg$, runParams, args.signal);
+      })(),
+    ]);
+    if (runResult.status === "rejected") {
+      await clearSlackThreadStatusBestEffort({
+        client: resolved.client,
+        channelId: args.channelId,
+        threadTs: resolved.threadTs,
+        failureMessage: "Failed to clear pre-run thread status",
+      });
+      throw runResult.reason;
+    }
+    await set(handleSlackRunResult$, {
+      message: args,
+      resolved,
+      result: runResult.value,
+    });
   },
 );
 

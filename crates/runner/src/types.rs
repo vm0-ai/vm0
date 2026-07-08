@@ -126,6 +126,21 @@ pub struct ExecutionContext {
     pub billable_firewalls: Vec<String>,
     #[serde(default)]
     pub model_usage_provider: Option<String>,
+    #[serde(default)]
+    pub codex_runtime_config: Option<CodexRuntimeConfig>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexRuntimeConfig {
+    pub provider_id: String,
+    pub name: String,
+    pub base_url: String,
+    pub env_key: String,
+    pub wire_api: String,
+    pub supports_websockets: bool,
+    #[serde(default)]
+    pub model_catalog: Option<serde_json::Value>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -1212,6 +1227,8 @@ pub struct ResumeSessionHistoryRef {
     pub raw_size: u64,
     #[serde(rename = "encodedSize")]
     pub encoded_size: u64,
+    #[serde(rename = "downloadSource", default)]
+    pub download_source: Option<ResumeSessionHistoryDownloadSource>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
@@ -1228,6 +1245,16 @@ pub enum ResumeSessionHistoryEncoding {
     Gzip,
     #[serde(rename = "zstd")]
     Zstd,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+pub enum ResumeSessionHistoryDownloadSource {
+    #[serde(rename = "configured_public_endpoint")]
+    ConfiguredPublicEndpoint,
+    #[serde(rename = "default_r2_endpoint")]
+    DefaultR2Endpoint,
+    #[serde(other)]
+    Unknown,
 }
 
 impl ResumeSession {
@@ -1916,7 +1943,8 @@ mod tests {
                     "url": "https://r2.example.com/blobs/a.blob.gz?sig=secret",
                     "encoding": "gzip",
                     "rawSize": 42,
-                    "encodedSize": 24
+                    "encodedSize": 24,
+                    "downloadSource": "configured_public_endpoint"
                 }
             },
             "billableFirewalls": []
@@ -1933,6 +1961,41 @@ mod tests {
         );
         assert_eq!(history_ref.raw_size, 42);
         assert_eq!(history_ref.encoded_size, 24);
+        assert_eq!(
+            history_ref.download_source,
+            Some(ResumeSessionHistoryDownloadSource::ConfiguredPublicEndpoint)
+        );
+    }
+
+    #[test]
+    fn cli_agent_session_id_tolerates_unknown_resume_session_history_download_source() {
+        let json = json!({
+            "runId": "550e8400-e29b-41d4-a716-446655440000",
+            "prompt": "hello",
+            "sandboxToken": "tok",
+            "cliAgentType": "claude_code",
+            "resumeSession": {
+                "sessionId": "sess-ref-123",
+                "historyRef": {
+                    "kind": "blob",
+                    "hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "url": "https://r2.example.com/blobs/a.blob.gz?sig=secret",
+                    "encoding": "gzip",
+                    "rawSize": 42,
+                    "encodedSize": 24,
+                    "downloadSource": "future_edge_cache"
+                }
+            },
+            "billableFirewalls": []
+        });
+        let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
+        let session = ctx.resume_session.as_ref().unwrap();
+        let history_ref = session.history_ref().unwrap();
+        assert_eq!(ctx.cli_agent_session_id(), Some("sess-ref-123"));
+        assert_eq!(
+            history_ref.download_source,
+            Some(ResumeSessionHistoryDownloadSource::Unknown)
+        );
     }
 
     #[test]

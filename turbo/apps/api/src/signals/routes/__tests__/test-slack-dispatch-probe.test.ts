@@ -583,4 +583,129 @@ describe("POST /api/test/slack-dispatch-probe", () => {
       }),
     ).toBeUndefined();
   });
+
+  it("clears thread status when pre-create fails after status succeeds", async () => {
+    const fixture = await track(
+      seedSlackProbeFixture({ withConnection: true, withDefaultAgent: true }),
+    );
+    const historyError = Object.assign(
+      new Error("conversation history failed"),
+      {
+        code: "slack_history_failed",
+      },
+    );
+    context.mocks.slack.conversations.history.mockRejectedValueOnce(
+      historyError,
+    );
+
+    const response = await postProbe({
+      team_id: fixture.slackWorkspaceId,
+      channel_id: "C-test",
+      user_id: fixture.slackUserId,
+      message_text: "trigger a context error",
+      message_ts: "1710000003.000000",
+      channel_type: "channel",
+    });
+
+    expect(response.status).toBe(200);
+    const body = await readJson<TestSlackDispatchProbeResponse>(response);
+    expect(body).toMatchObject({
+      ok: false,
+      error: {
+        name: "Error",
+        message: "conversation history failed",
+        code: "slack_history_failed",
+      },
+    });
+    const state = await readSlackState(fixture);
+    expect(
+      state.recent_runs.find((run) => {
+        return (
+          run.triggerSource === "slack" &&
+          run.promptPreview === "trigger a context error"
+        );
+      }),
+    ).toBeUndefined();
+    expect(
+      context.mocks.slack.assistant.threads.setStatus,
+    ).toHaveBeenCalledTimes(2);
+    expect(
+      context.mocks.slack.assistant.threads.setStatus,
+    ).toHaveBeenNthCalledWith(1, {
+      channel_id: "C-test",
+      thread_ts: "1710000003.000000",
+      status: "is thinking...",
+    });
+    expect(
+      context.mocks.slack.assistant.threads.setStatus,
+    ).toHaveBeenNthCalledWith(2, {
+      channel_id: "C-test",
+      thread_ts: "1710000003.000000",
+      status: "",
+    });
+  });
+
+  it("preserves the pre-create error when status cleanup fails", async () => {
+    const fixture = await track(
+      seedSlackProbeFixture({ withConnection: true, withDefaultAgent: true }),
+    );
+    context.mocks.slack.assistant.threads.setStatus
+      .mockResolvedValueOnce({ ok: true })
+      .mockRejectedValueOnce(new Error("status cleanup failed"));
+    const historyError = Object.assign(
+      new Error("conversation history still failed"),
+      {
+        code: "slack_history_failed",
+      },
+    );
+    context.mocks.slack.conversations.history.mockRejectedValueOnce(
+      historyError,
+    );
+
+    const response = await postProbe({
+      team_id: fixture.slackWorkspaceId,
+      channel_id: "C-test",
+      user_id: fixture.slackUserId,
+      message_text: "trigger cleanup failure",
+      message_ts: "1710000004.000000",
+      channel_type: "channel",
+    });
+
+    expect(response.status).toBe(200);
+    const body = await readJson<TestSlackDispatchProbeResponse>(response);
+    expect(body).toMatchObject({
+      ok: false,
+      error: {
+        name: "Error",
+        message: "conversation history still failed",
+        code: "slack_history_failed",
+      },
+    });
+    const state = await readSlackState(fixture);
+    expect(
+      state.recent_runs.find((run) => {
+        return (
+          run.triggerSource === "slack" &&
+          run.promptPreview === "trigger cleanup failure"
+        );
+      }),
+    ).toBeUndefined();
+    expect(
+      context.mocks.slack.assistant.threads.setStatus,
+    ).toHaveBeenCalledTimes(2);
+    expect(
+      context.mocks.slack.assistant.threads.setStatus,
+    ).toHaveBeenNthCalledWith(1, {
+      channel_id: "C-test",
+      thread_ts: "1710000004.000000",
+      status: "is thinking...",
+    });
+    expect(
+      context.mocks.slack.assistant.threads.setStatus,
+    ).toHaveBeenNthCalledWith(2, {
+      channel_id: "C-test",
+      thread_ts: "1710000004.000000",
+      status: "",
+    });
+  });
 });

@@ -1,5 +1,55 @@
 # Changelog
 
+## [1.246.0](https://github.com/vm0-ai/vm0/compare/api-v1.245.1...api-v1.246.0) (2026-07-08)
+
+
+### Features
+
+* expose zero memory tools in run prompts ([#20657](https://github.com/vm0-ai/vm0/issues/20657)) ([37664a5](https://github.com/vm0-ai/vm0/commit/37664a5bb31673b649ab0af28f5778800c7b3da1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.169.2
+    * @vm0/connectors bumped to 1.148.2
+    * @vm0/core bumped to 8.414.6
+    * @vm0/db bumped to 1.100.3
+
+## [1.245.1](https://github.com/vm0-ai/vm0/compare/api-v1.245.0...api-v1.245.1) (2026-07-08)
+
+
+### Bug Fixes
+
+* clear slack pre-run status on dispatch failure ([#20628](https://github.com/vm0-ai/vm0/issues/20628)) ([1b5d359](https://github.com/vm0-ai/vm0/commit/1b5d3595b78dde333cf9c2a7aaecf5e56e0d0423))
+* configure minimax codex runtime provider ([#20588](https://github.com/vm0-ai/vm0/issues/20588)) ([a5ae66b](https://github.com/vm0-ai/vm0/commit/a5ae66be4034b2b018175593b02b57d00a90615e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.169.1
+    * @vm0/core bumped to 8.414.5
+    * @vm0/db bumped to 1.100.2
+
+## [1.245.0](https://github.com/vm0-ai/vm0/compare/api-v1.244.0...api-v1.245.0) (2026-07-08)
+
+
+### Features
+
+* add zero memory recall surfaces ([#20630](https://github.com/vm0-ai/vm0/issues/20630)) ([c937665](https://github.com/vm0-ai/vm0/commit/c9376657012a4fefedfabc0a033b53d18c7065cb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.169.0
+    * @vm0/core bumped to 8.414.4
+    * @vm0/db bumped to 1.100.1
+
 ## [1.244.0](https://github.com/vm0-ai/vm0/compare/api-v1.243.1...api-v1.244.0) (2026-07-08)
 
 

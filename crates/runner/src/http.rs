@@ -13,12 +13,17 @@ use tracing::info;
 use uuid::Uuid;
 
 use crate::config::normalize_api_base_url;
-use crate::error::{RunnerError, RunnerResult};
+use crate::error::{
+    ApiFailureKind, ApiRequestContext, ApiTransportError, RunnerError, RunnerResult,
+};
 
 /// Default timeout for API requests (covers large claim payloads).
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(10);
 const VERCEL_BYPASS_HEADER: &str = "x-vercel-protection-bypass";
 const RUNNER_CLIENT_VERSION: &str = env!("CARGO_PKG_VERSION");
+const API_ERROR_SUMMARY_MAX_CHARS: usize = 512;
+const API_ERROR_SUMMARY_TRUNCATION_MARKER: &str = "...";
+const API_ERROR_SUMMARY_TRUNCATION_MARKER_CHARS: usize = 3;
 
 /// Configuration for the shared runner API HTTP client.
 pub struct HttpClientConfig {
@@ -46,6 +51,17 @@ struct ClientHeaders {
     client_type: HeaderValue,
     client_version: HeaderValue,
     client_session_id: HeaderValue,
+}
+
+struct AppliedClientHeaders {
+    client_version: String,
+    client_session_id: String,
+    client_request_id: String,
+}
+
+struct FinalizedApiRequest {
+    request: Request,
+    context: ApiRequestContext,
 }
 
 /// Request builder for generated vm0 API routes.
@@ -85,27 +101,38 @@ impl ApiRequestBuilder {
         }
     }
 
-    pub async fn send(self) -> RunnerResult<Response> {
+    pub async fn send(self, endpoint_label: &'static str) -> RunnerResult<Response> {
         let client = self.client.clone();
-        let request = self.finalize()?;
+        let finalized = self.finalize(endpoint_label)?;
+        let context = finalized.context;
         client
-            .execute(request)
+            .execute(finalized.request)
             .await
-            .map_err(|e| RunnerError::Api(format!("send API request: {e}")))
+            .map_err(|e| api_transport_error(context, e))
     }
 
     #[cfg(test)]
     pub fn build(self) -> RunnerResult<Request> {
-        self.finalize()
+        Ok(self.finalize("test")?.request)
     }
 
-    fn finalize(self) -> RunnerResult<Request> {
+    #[cfg(test)]
+    pub fn build_with_context_for_test(
+        self,
+        endpoint_label: &'static str,
+    ) -> RunnerResult<(Request, ApiRequestContext)> {
+        let finalized = self.finalize(endpoint_label)?;
+        Ok((finalized.request, finalized.context))
+    }
+
+    fn finalize(self, endpoint_label: &'static str) -> RunnerResult<FinalizedApiRequest> {
         let mut request = self
             .builder
             .build()
             .map_err(|e| RunnerError::Api(format!("build API request: {e}")))?;
-        self.client_headers.apply(request.headers_mut())?;
-        Ok(request)
+        let applied_headers = self.client_headers.apply(request.headers_mut())?;
+        let context = request_context(endpoint_label, &request, applied_headers);
+        Ok(FinalizedApiRequest { request, context })
     }
 
     #[cfg(test)]
@@ -135,7 +162,7 @@ impl ClientHeaders {
         })
     }
 
-    fn apply(&self, headers: &mut HeaderMap) -> RunnerResult<()> {
+    fn apply(&self, headers: &mut HeaderMap) -> RunnerResult<AppliedClientHeaders> {
         let request_id = Uuid::new_v4().to_string();
         let request_id = match HeaderValue::from_str(&request_id) {
             Ok(value) => value,
@@ -148,9 +175,20 @@ impl ClientHeaders {
         headers.insert(CLIENT_VERSION_HEADER, self.client_version.clone());
         headers.insert(CLIENT_TYPE_HEADER, self.client_type.clone());
         headers.insert(CLIENT_SESSION_ID_HEADER, self.client_session_id.clone());
-        headers.insert(CLIENT_REQUEST_ID_HEADER, request_id);
-        Ok(())
+        headers.insert(CLIENT_REQUEST_ID_HEADER, request_id.clone());
+        Ok(AppliedClientHeaders {
+            client_version: header_value_string(&self.client_version, "client version")?,
+            client_session_id: header_value_string(&self.client_session_id, "client session id")?,
+            client_request_id: header_value_string(&request_id, "client request id")?,
+        })
     }
+}
+
+fn header_value_string(value: &HeaderValue, label: &str) -> RunnerResult<String> {
+    value
+        .to_str()
+        .map(str::to_string)
+        .map_err(|e| RunnerError::Internal(format!("invalid {label}: {e}")))
 }
 
 impl HttpClient {
@@ -244,10 +282,91 @@ fn reqwest_method(method: Method) -> reqwest::Method {
     }
 }
 
+fn request_context(
+    endpoint_label: &'static str,
+    request: &Request,
+    headers: AppliedClientHeaders,
+) -> ApiRequestContext {
+    let url = request.url();
+    let host = match (url.host_str(), url.port()) {
+        (Some(host), Some(port)) if host.contains(':') && !host.starts_with('[') => {
+            format!("[{host}]:{port}")
+        }
+        (Some(host), Some(port)) => format!("{host}:{port}"),
+        (Some(host), None) => host.to_string(),
+        (None, _) => String::new(),
+    };
+    ApiRequestContext {
+        endpoint_label,
+        method: request.method().as_str().to_string(),
+        host,
+        path: url.path().to_string(),
+        client_request_id: headers.client_request_id,
+        client_session_id: headers.client_session_id,
+        client_version: headers.client_version,
+    }
+}
+
+fn api_transport_error(context: ApiRequestContext, error: reqwest::Error) -> RunnerError {
+    let failure_kind = api_failure_kind(&error);
+    let summary = sanitize_api_error_summary(error.without_url().to_string());
+    RunnerError::ApiTransport(Box::new(ApiTransportError {
+        request: context,
+        failure_kind,
+        summary,
+    }))
+}
+
+fn api_failure_kind(error: &reqwest::Error) -> ApiFailureKind {
+    if error.is_timeout() {
+        ApiFailureKind::Timeout
+    } else if error.is_connect() {
+        ApiFailureKind::Connect
+    } else if error.is_body() {
+        ApiFailureKind::Body
+    } else if error.is_request() {
+        ApiFailureKind::Request
+    } else {
+        ApiFailureKind::Unknown
+    }
+}
+
+fn sanitize_api_error_summary(summary: String) -> String {
+    let mut sanitized = String::with_capacity(summary.len().min(API_ERROR_SUMMARY_MAX_CHARS));
+    let mut previous_was_whitespace = false;
+    let mut emitted = 0;
+    let max_body_chars =
+        API_ERROR_SUMMARY_MAX_CHARS.saturating_sub(API_ERROR_SUMMARY_TRUNCATION_MARKER_CHARS);
+    let mut truncated = false;
+    for ch in summary.chars() {
+        if emitted >= max_body_chars {
+            truncated = true;
+            break;
+        }
+        if ch.is_control() || ch.is_whitespace() {
+            if !previous_was_whitespace {
+                sanitized.push(' ');
+                emitted += 1;
+                previous_was_whitespace = true;
+            }
+            continue;
+        }
+        sanitized.push(ch);
+        emitted += 1;
+        previous_was_whitespace = false;
+    }
+    let mut sanitized = sanitized.trim().to_string();
+    if truncated {
+        sanitized.push_str(API_ERROR_SUMMARY_TRUNCATION_MARKER);
+    }
+    sanitized
+}
+
 #[cfg(test)]
 mod tests {
     use api_contracts::generated::routes;
     use reqwest::header::AUTHORIZATION;
+    use tokio::net::TcpListener;
 
     use super::*;
 
@@ -268,6 +387,13 @@ mod tests {
             .to_str()
             .unwrap()
             .to_string()
+    }
+
+    fn api_transport_error(error: RunnerError) -> ApiTransportError {
+        match error {
+            RunnerError::ApiTransport(error) => *error,
+            other => panic!("expected RunnerError::ApiTransport, got {other:?}"),
+        }
     }
 
     #[test]
@@ -413,6 +539,110 @@ mod tests {
             "runner-session-test"
         );
         Uuid::parse_str(&header_value(&request, CLIENT_REQUEST_ID_HEADER)).unwrap();
+    }
+
+    #[test]
+    fn build_with_context_matches_generated_headers_and_excludes_sensitive_request_data() {
+        let http = http_client("https://api.vm0.dev/");
+
+        let (request, context) = http
+            .request_route(routes::webhooks::agent::telemetry::SEND, "sandbox-token")
+            .json(&serde_json::json!({"secret": "body-secret"}))
+            .build_with_context_for_test("telemetry")
+            .unwrap();
+
+        assert_eq!(context.endpoint_label, "telemetry");
+        assert_eq!(context.method, "POST");
+        assert_eq!(context.host, "api.vm0.dev");
+        assert_eq!(context.path, "/api/webhooks/agent/telemetry");
+        assert_eq!(
+            context.client_request_id,
+            header_value(&request, CLIENT_REQUEST_ID_HEADER)
+        );
+        assert_eq!(context.client_session_id, "runner-session-test");
+        assert_eq!(context.client_version, RUNNER_CLIENT_VERSION);
+
+        let context_debug = format!("{context:?}");
+        assert!(
+            !context_debug.contains("sandbox-token"),
+            "context should not include authorization token: {context_debug}"
+        );
+        assert!(
+            !context_debug.contains("body-secret"),
+            "context should not include request body: {context_debug}"
+        );
+        assert!(
+            !context.path.contains('?'),
+            "context path should exclude query strings"
+        );
+    }
+
+    #[test]
+    fn build_with_context_formats_ipv6_host_with_port_as_authority() {
+        let http = http_client("http://[::1]:8080/base/");
+
+        let (_, context) = http
+            .request_route(routes::webhooks::agent::telemetry::SEND, "sandbox-token")
+            .build_with_context_for_test("telemetry")
+            .unwrap();
+
+        assert_eq!(context.host, "[::1]:8080");
+        assert_eq!(context.path, "/base/api/webhooks/agent/telemetry");
+    }
+
+    #[tokio::test]
+    async fn send_timeout_returns_structured_api_transport_error() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let api_url = format!("http://{}", listener.local_addr().unwrap());
+        let server_task = tokio::spawn(async move {
+            let (_socket, _) = listener.accept().await.unwrap();
+            std::future::pending::<()>().await;
+        });
+        let error = http_client(&api_url)
+            .request_route(routes::runners::heartbeat::HEARTBEAT, "runner-token")
+            .timeout(Duration::from_millis(10))
+            .json(&serde_json::json!({"token": "body-token"}))
+            .send("heartbeat")
+            .await
+            .unwrap_err();
+        server_task.abort();
+        let _ = server_task.await;
+        let error = api_transport_error(error);
+
+        assert_eq!(error.request.endpoint_label, "heartbeat");
+        assert_eq!(error.request.method, "POST");
+        assert_eq!(
+            error.request.path,
+            routes::runners::heartbeat::HEARTBEAT.path
+        );
+        assert_eq!(error.failure_kind, ApiFailureKind::Timeout);
+        assert_eq!(error.failure_kind.as_str(), "timeout");
+        assert!(
+            !error.summary.contains(&api_url),
+            "summary should not include full URL: {}",
+            error.summary
+        );
+        assert!(
+            !error.summary.contains("body-token") && !error.summary.contains("runner-token"),
+            "summary should not include token or body: {}",
+            error.summary
+        );
+    }
+
+    #[test]
+    fn sanitize_api_error_summary_collapses_whitespace_and_caps_output() {
+        let summary = format!(
+            "connect\nfailed\t{}",
+            "x".repeat(API_ERROR_SUMMARY_MAX_CHARS * 2)
+        );
+
+        let sanitized = sanitize_api_error_summary(summary);
+
+        assert!(sanitized.starts_with("connect failed "));
+        assert!(sanitized.ends_with(API_ERROR_SUMMARY_TRUNCATION_MARKER));
+        assert!(sanitized.chars().count() <= API_ERROR_SUMMARY_MAX_CHARS);
+        assert!(!sanitized.contains('\n'));
+        assert!(!sanitized.contains('\t'));
     }
 
     #[test]

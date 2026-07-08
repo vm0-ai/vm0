@@ -14,7 +14,10 @@ use serde::{Serialize, de::DeserializeOwned};
 use super::api_ably_supervisor::{
     AblySupervisor, AblySupervisorConfig, PollDue, PollOutcome, PollReason, PollWakeups,
 };
-use super::api_direct_candidates::{DirectCandidateInbox, DirectJobCandidate};
+use super::api_direct_candidates::{
+    DIRECT_CANDIDATE_STALE_AFTER, DirectCandidateInbox, DirectCandidatePruneSnapshot,
+    DirectJobCandidate,
+};
 use super::builtin_firewall_catalog::{
     BuiltinFirewallCatalog, BuiltinFirewallCatalogRefreshHandle,
 };
@@ -149,7 +152,10 @@ impl ApiProvider {
         )
         .await;
         let poll_wakeups = Arc::new(PollWakeups::new(false));
-        let direct_candidates = DirectCandidateInbox::new(DIRECT_CANDIDATE_INBOX_CAPACITY);
+        let direct_candidates = DirectCandidateInbox::new(
+            DIRECT_CANDIDATE_INBOX_CAPACITY,
+            DIRECT_CANDIDATE_STALE_AFTER,
+        );
         let ably_supervisor = AblySupervisor::spawn(AblySupervisorConfig {
             api: api.clone(),
             group: group.clone(),
@@ -179,11 +185,41 @@ impl ApiProvider {
     }
 
     async fn try_recv_direct_candidate(&self) -> Option<DirectJobCandidate> {
-        self.direct_candidates.try_pop().await
+        let outcome = self.direct_candidates.try_pop_with_prune().await;
+        if let Some(pruned) = outcome.pruned {
+            Self::log_direct_candidate_pruned("pop", pruned);
+            if outcome.candidate.is_none() {
+                self.poll_wakeups.request_immediate_poll().await;
+            }
+        }
+        outcome.candidate
     }
 
     async fn wait_for_direct_candidate(&self) -> Option<DirectJobCandidate> {
-        self.direct_candidates.wait_pop(&self.cancel).await
+        loop {
+            if let Some(candidate) = self.try_recv_direct_candidate().await {
+                return Some(candidate);
+            }
+            if !self
+                .direct_candidates
+                .wait_for_notification(&self.cancel)
+                .await
+            {
+                return None;
+            }
+        }
+    }
+
+    fn log_direct_candidate_pruned(source: &'static str, pruned: DirectCandidatePruneSnapshot) {
+        info!(
+            source,
+            pruned_count = pruned.pruned_count,
+            depth = pruned.depth,
+            capacity = pruned.capacity,
+            stale_after_ms = duration_ms(pruned.stale_after),
+            oldest_pruned_wait_ms = duration_ms(pruned.oldest_pruned_wait_elapsed),
+            "ably: stale direct candidates pruned"
+        );
     }
 
     async fn wait_for_discovery_wakeup(&self) -> Option<DiscoveryWakeup> {
@@ -355,7 +391,7 @@ impl JobProvider for ApiProvider {
 
     async fn heartbeat(&self, state: &HeartbeatState) {
         if let Err(e) = self.api.heartbeat(state).await {
-            warn!(error = %e, "heartbeat failed");
+            log_heartbeat_failure(state, &e);
         }
     }
 
@@ -414,6 +450,44 @@ impl JobProvider for ApiProvider {
             }
         }
     }
+}
+
+fn log_heartbeat_failure(state: &HeartbeatState, error: &RunnerError) {
+    let sessions = state.held_session_states.len();
+    if let RunnerError::ApiTransport(api_error) = error {
+        let request = &api_error.request;
+        warn!(
+            error = %error,
+            endpoint = request.endpoint_label,
+            method = %request.method,
+            host = %request.host,
+            path = %request.path,
+            client_request_id = %request.client_request_id,
+            client_session_id = %request.client_session_id,
+            client_version = %request.client_version,
+            failure_kind = api_error.failure_kind.as_str(),
+            error_summary = %api_error.summary,
+            runner_id = %state.runner_id,
+            runner_name = %state.runner_name,
+            runner_group = %state.group,
+            mode = %state.mode,
+            running = state.running_count,
+            sessions,
+            "heartbeat failed"
+        );
+        return;
+    }
+
+    warn!(
+        error = %error,
+        runner_id = %state.runner_id,
+        runner_name = %state.runner_name,
+        runner_group = %state.group,
+        mode = %state.mode,
+        running = state.running_count,
+        sessions,
+        "heartbeat failed"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -709,8 +783,8 @@ fn poll_reason_value(reason: PollReason) -> &'static str {
     }
 }
 
-async fn send_api(req: ApiRequestBuilder, label: &str) -> RunnerResult<Response> {
-    match req.send().await {
+async fn send_api(req: ApiRequestBuilder, label: &'static str) -> RunnerResult<Response> {
+    match req.send(label).await {
         Ok(resp) => Ok(resp),
         Err(RunnerError::Api(message)) => Err(RunnerError::Api(format!("{label}: {message}"))),
         Err(error) => Err(error),
@@ -992,6 +1066,10 @@ mod tests {
     use tokio::net::TcpListener;
     use tokio::sync::mpsc;
     use tokio::task::JoinHandle;
+    use tracing::Level;
+    use tracing_subscriber::prelude::*;
+    use tracing_test_support::{CapturedEvent, CapturedEvents};
+    use uuid::Uuid;
 
     use crate::http::HttpClientConfig;
 
@@ -1179,10 +1257,66 @@ mod tests {
             group: "default".to_string(),
             supported_profiles: vec![crate::profile::DEFAULT_PROFILE.to_string()],
             poll_wakeups,
-            direct_candidates: DirectCandidateInbox::new(DIRECT_CANDIDATE_INBOX_CAPACITY),
+            direct_candidates: DirectCandidateInbox::new(
+                DIRECT_CANDIDATE_INBOX_CAPACITY,
+                DIRECT_CANDIDATE_STALE_AFTER,
+            ),
             ably_supervisor: AblySupervisor::disabled(),
             cancel,
         })
+    }
+
+    async fn capture_api_provider_events<F>(future: F) -> (F::Output, Vec<CapturedEvent>)
+    where
+        F: std::future::Future,
+    {
+        let captured = CapturedEvents::default();
+        let subscriber = tracing_subscriber::registry().with(captured.clone());
+        let guard = tracing::subscriber::set_default(subscriber);
+        tracing::callsite::rebuild_interest_cache();
+        let output = future.await;
+        drop(guard);
+        (output, captured.entries())
+    }
+
+    fn captured_event<'a>(events: &'a [CapturedEvent], message: &str) -> &'a CapturedEvent {
+        events
+            .iter()
+            .find(|event| {
+                event
+                    .fields
+                    .get("message")
+                    .is_some_and(|actual| actual == message)
+            })
+            .unwrap_or_else(|| panic!("missing event {message}; events={events:#?}"))
+    }
+
+    fn event_field<'a>(event: &'a CapturedEvent, field: &str) -> &'a str {
+        event
+            .fields
+            .get(field)
+            .map(String::as_str)
+            .unwrap_or_else(|| panic!("missing field {field}; event={event:#?}"))
+    }
+
+    fn heartbeat_state_for_test() -> HeartbeatState {
+        HeartbeatState {
+            runner_id: "runner-heartbeat-test".to_string(),
+            runner_name: "runner test".to_string(),
+            group: "vm0/test".to_string(),
+            total_vcpu: 8,
+            total_memory_mb: 32768,
+            max_concurrent: 4,
+            allocated_vcpu: 2,
+            allocated_memory_mb: 4096,
+            running_count: 1,
+            admittable_profiles: vec![crate::profile::DEFAULT_PROFILE.to_string()],
+            held_session_states: vec![crate::types::HeldSessionState {
+                session_id: "held-session-test".to_string(),
+                last_completed_at: "2026-07-08T00:00:00.000Z".to_string(),
+            }],
+            mode: "running".to_string(),
+        }
     }
 
     async fn push_direct_candidate_for_test(provider: &ApiProvider, candidate: DirectJobCandidate) {
@@ -1282,6 +1416,65 @@ mod tests {
                 .lines()
                 .any(|line| line.eq_ignore_ascii_case(&expected)),
             "completion request should use sandbox auth; request was:\n{request}",
+        );
+    }
+
+    #[tokio::test]
+    async fn heartbeat_send_failure_logs_transport_and_state_context_without_secrets() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let api_url = format!("http://{}", listener.local_addr().unwrap());
+        let server_task = tokio::spawn(async move {
+            let (_socket, _) = listener.accept().await.unwrap();
+        });
+        let provider = api_provider_for_test(
+            api_url.clone(),
+            CancellationToken::new(),
+            Arc::new(PollWakeups::new(false)),
+        );
+        let state = heartbeat_state_for_test();
+
+        let (_, events) = capture_api_provider_events(provider.heartbeat(&state)).await;
+        server_task.abort();
+        let _ = server_task.await;
+        let event = captured_event(&events, "heartbeat failed");
+
+        assert_eq!(event.level, Level::WARN);
+        assert_eq!(event_field(event, "runner_id"), "runner-heartbeat-test");
+        assert_eq!(event_field(event, "runner_name"), "runner test");
+        assert_eq!(event_field(event, "runner_group"), "vm0/test");
+        assert_eq!(event_field(event, "mode"), "running");
+        assert_eq!(event_field(event, "running"), "1");
+        assert_eq!(event_field(event, "sessions"), "1");
+        assert_eq!(event_field(event, "endpoint"), "heartbeat");
+        assert_eq!(event_field(event, "method"), "POST");
+        assert_eq!(
+            event_field(event, "path"),
+            routes::runners::heartbeat::HEARTBEAT.path
+        );
+        assert_eq!(
+            event_field(event, "client_session_id"),
+            "runner-session-test"
+        );
+        assert_eq!(
+            event_field(event, "client_version"),
+            env!("CARGO_PKG_VERSION")
+        );
+        assert!(!event_field(event, "failure_kind").is_empty());
+        assert!(
+            event_field(event, "host").starts_with("127.0.0.1:"),
+            "host should include only host and port; event={event:#?}"
+        );
+        Uuid::parse_str(event_field(event, "client_request_id"))
+            .expect("client_request_id should be a UUID");
+
+        let event_debug = format!("{event:#?}");
+        assert!(
+            !event_debug.contains(&api_url),
+            "event should not include full URL: {event_debug}"
+        );
+        assert!(
+            !event_debug.contains("runner-token") && !event_debug.contains("held-session-test"),
+            "event should not include bearer token or heartbeat body: {event_debug}"
         );
     }
 
@@ -1679,6 +1872,68 @@ mod tests {
         );
         assert!(provider.try_discover_ready().await.is_none());
         poll_mock.assert_calls_async(0).await;
+    }
+
+    #[tokio::test]
+    async fn discover_prunes_stale_direct_candidate_and_polls_immediately() {
+        let server = MockServer::start_async().await;
+        let stale_run_id: RunId = "00000000-0000-0000-0000-000000000017".parse().unwrap();
+        let poll_run_id: RunId = "00000000-0000-0000-0000-000000000018".parse().unwrap();
+        let poll_mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path(routes::runners::poll::POLL.path)
+                    .json_body(serde_json::json!({
+                        "group": "default",
+                        "supportedProfiles": [crate::profile::DEFAULT_PROFILE],
+                        "telemetry": {
+                            "pollReason": "immediate"
+                        }
+                    }));
+                then.status(200).json_body(serde_json::json!({
+                    "job": {
+                        "runId": poll_run_id,
+                        "experimentalProfile": crate::profile::DEFAULT_PROFILE
+                    }
+                }));
+            })
+            .await;
+        let wakeups = Arc::new(PollWakeups::new(true));
+        let initial_poll = wakeups
+            .wait_for_poll_due(&CancellationToken::new(), POLL_SLOW, POLL_FAST)
+            .await
+            .unwrap();
+        wakeups
+            .record_poll_result(initial_poll, PollOutcome::Empty, POLL_WAKEUP_RETRY)
+            .await;
+        let provider = api_provider_for_test(
+            server.base_url(),
+            CancellationToken::new(),
+            Arc::clone(&wakeups),
+        );
+        let stale_enqueued_at = Instant::now() - Duration::from_secs(120);
+        push_direct_candidate_for_test(
+            &provider,
+            DirectJobCandidate::new_with_enqueued_at(
+                stale_run_id,
+                crate::profile::DEFAULT_PROFILE.to_string(),
+                stale_enqueued_at,
+                stale_enqueued_at,
+            ),
+        )
+        .await;
+
+        let discovered = tokio::time::timeout(Duration::from_secs(1), provider.discover())
+            .await
+            .expect("stale direct pruning should wake immediate poll")
+            .unwrap();
+
+        assert_eq!(discovered.run_id(), poll_run_id);
+        assert_eq!(
+            discovered.discovery_source(),
+            Some(JobDiscoverySource::Poll)
+        );
+        poll_mock.assert_async().await;
     }
 
     #[tokio::test]

@@ -1181,6 +1181,7 @@ mod tests {
                     encoding: None,
                     raw_size,
                     encoded_size,
+                    download_source: None,
                 },
             },
         }
@@ -1233,6 +1234,7 @@ mod tests {
                     encoding: Some(encoding),
                     raw_size,
                     encoded_size,
+                    download_source: None,
                 },
             },
         }

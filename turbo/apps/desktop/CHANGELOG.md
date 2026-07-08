@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.24.3](https://github.com/vm0-ai/vm0/compare/desktop-v0.24.2...desktop-v0.24.3) (2026-07-08)
+
+
+### Bug Fixes
+
+* **desktop:** retry signed dmg detach during release packaging ([#20654](https://github.com/vm0-ai/vm0/issues/20654)) ([f900f26](https://github.com/vm0-ai/vm0/commit/f900f26d98e2538f8cccfe018b492f4073ed3f43))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.169.2
+
+## [0.24.2](https://github.com/vm0-ai/vm0/compare/desktop-v0.24.1...desktop-v0.24.2) (2026-07-08)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.169.1
+
+## [0.24.1](https://github.com/vm0-ai/vm0/compare/desktop-v0.24.0...desktop-v0.24.1) (2026-07-08)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.169.0
+
 ## [0.24.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.23.6...desktop-v0.24.0) (2026-07-08)
 
 

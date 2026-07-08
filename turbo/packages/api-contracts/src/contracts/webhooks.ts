@@ -4,6 +4,7 @@ import { apiErrorSchema } from "./errors";
 import {
   artifactMissingRootPolicySchema,
   RESUME_SESSION_HISTORY_MAX_BYTES,
+  sessionHistoryDownloadSourceSchema,
   sessionHistoryEncodingSchema,
   secretConnectorMetadataMapSchema,
 } from "./runners";
@@ -718,6 +719,19 @@ const sessionHistoryTransferEncodingStateSchema = z.enum([
   "other",
 ]);
 
+const sandboxOperationDownloadSourceSchema = z
+  .preprocess((value) => {
+    const parsed = sessionHistoryDownloadSourceSchema.safeParse(value);
+    if (parsed.success) {
+      return parsed.data;
+    }
+    if (typeof value === "string") {
+      return undefined;
+    }
+    return value;
+  }, sessionHistoryDownloadSourceSchema.optional())
+  .optional();
+
 /**
  * Sandbox operation schema for internal sandbox operations (init, storage, cli, checkpoint, cleanup)
  */
@@ -741,6 +755,7 @@ const sandboxOperationSchema = z.object({
     sessionHistoryContentEncodingStateSchema.optional(),
   session_history_transfer_encoding_state:
     sessionHistoryTransferEncodingStateSchema.optional(),
+  session_history_download_source: sandboxOperationDownloadSourceSchema,
 });
 
 /**

@@ -1,5 +1,41 @@
 # Changelog
 
+## [0.577.2](https://github.com/vm0-ai/vm0/compare/app-v0.577.1...app-v0.577.2) (2026-07-08)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.169.2
+    * @vm0/connectors bumped to 1.148.2
+    * @vm0/core bumped to 8.414.6
+
+## [0.577.1](https://github.com/vm0-ai/vm0/compare/app-v0.577.0...app-v0.577.1) (2026-07-08)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.169.1
+    * @vm0/core bumped to 8.414.5
+
+## [0.577.0](https://github.com/vm0-ai/vm0/compare/app-v0.576.0...app-v0.577.0) (2026-07-08)
+
+
+### Features
+
+* add zero memory recall surfaces ([#20630](https://github.com/vm0-ai/vm0/issues/20630)) ([c937665](https://github.com/vm0-ai/vm0/commit/c9376657012a4fefedfabc0a033b53d18c7065cb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.169.0
+    * @vm0/core bumped to 8.414.4
+
 ## [0.576.0](https://github.com/vm0-ai/vm0/compare/app-v0.575.1...app-v0.576.0) (2026-07-08)
 
 
