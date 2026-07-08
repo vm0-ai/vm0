@@ -361,6 +361,17 @@ describe("artifact item IndexedDB cache writes and failures", () => {
     await expect(stores.readStore.readRecent()).resolves.toStrictEqual([]);
   });
 
+  it("replaces the cached artifact set", async () => {
+    const { stores } = setupStores();
+    const stale = artifact(1);
+    const fresh = artifact(2);
+
+    await stores.writeStore.upsertItems([stale]);
+    await stores.writeStore.replaceItems([fresh]);
+
+    await expect(stores.readStore.readRecent()).resolves.toStrictEqual([fresh]);
+  });
+
   it("falls back to cache miss values when IndexedDB reads fail", async () => {
     const stores = createArtifactItemCacheStores(() => {
       return Promise.reject(new Error("open failed"));
@@ -380,6 +391,9 @@ describe("artifact item IndexedDB cache writes and failures", () => {
 
     await expect(
       stores.writeStore.upsertItems([item]),
+    ).resolves.toBeUndefined();
+    await expect(
+      stores.writeStore.replaceItems([item]),
     ).resolves.toBeUndefined();
     await expect(
       stores.writeStore.deleteItems([item.artifactItemId]),

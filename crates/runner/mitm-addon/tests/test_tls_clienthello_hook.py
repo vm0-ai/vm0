@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 import mitm_addon
 import registry
+import upstream_admission
 import upstream_destination_binding
 from tests.request_handler_helpers import _write_github_firewall_registry
 
@@ -88,7 +89,7 @@ class TestTlsClienthello:
                 api_url="https://pr-test-api.vm6.ai",
             ),
             patch.object(
-                mitm_addon.socket,
+                upstream_admission.socket,
                 "getaddrinfo",
                 return_value=[(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("66.33.60.34", 443))],
             ),
@@ -137,7 +138,7 @@ class TestTlsClienthello:
         with (
             mitm_ctx(registry_path=str(registry_file), api_url="https://api.vm0.ai"),
             patch.object(
-                mitm_addon.socket,
+                upstream_admission.socket,
                 "getaddrinfo",
                 return_value=[(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("140.82.112.5", 443))],
             ),
@@ -162,7 +163,7 @@ class TestTlsClienthello:
         with (
             mitm_ctx(registry_path=str(registry_file), api_url="https://api.vm0.ai"),
             patch.object(
-                mitm_addon.socket,
+                upstream_admission.socket,
                 "getaddrinfo",
                 side_effect=AssertionError("connector binding must not use fresh DNS"),
             ),

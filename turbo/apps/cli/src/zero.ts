@@ -49,6 +49,7 @@ const COMMAND_CAPABILITY_MAP: Record<
   whoami: null,
   "developer-support": null,
   "computer-use": "computer-use:write",
+  intro: null,
   generate: null,
   web: null,
   video: null,
@@ -223,6 +224,13 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
     description: "Show agent identity, run ID, and capabilities",
     load: async () => {
       return (await import("./commands/zero/whoami")).zeroWhoamiCommand;
+    },
+  },
+  {
+    name: "intro",
+    description: "Print Zero's self-introduction and capability guide",
+    load: async () => {
+      return (await import("./commands/zero/intro")).zeroIntroCommand;
     },
   },
   {
@@ -412,6 +420,7 @@ export function buildZeroHelpText(
     ...(shouldHideCommand("memory", payload)
       ? []
       : ['  Recall memory?       zero memory recall "customer follow up"']),
+    "  Introduce Zero?       zero intro",
     "  List generators?       zero generate --help",
     '  Generate image?        zero generate image --raw-prompt "..."',
     '  Generate website?      zero generate website --prompt "..."',

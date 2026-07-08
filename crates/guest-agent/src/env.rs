@@ -16,8 +16,6 @@ use guest_common::log_warn;
 const LOG_TAG: &str = "sandbox:guest-agent";
 const USER_ENV_FILE_ENV_KEY: &str = guest_contracts::env::USER_ENV_FILE_ENV;
 const RUN_PAYLOAD_FILE_ENV_KEY: &str = guest_contracts::env::RUN_PAYLOAD_FILE_ENV;
-const USER_ENV_PRIVATE_DIR_NAME: &str = "user-env";
-const USER_ENV_FILENAME: &str = "env.json";
 const POST_RESULT_CLEANUP_MAX_SECS: u64 = 60 * 60;
 
 fn env_or_empty(name: &str) -> String {
@@ -372,6 +370,25 @@ fn parse_artifacts_value(raw: &str) -> Result<Vec<ArtifactEnv>, serde_json::Erro
     serde_json::from_str::<Vec<ArtifactEnv>>(raw)
 }
 
+#[derive(Clone, Copy)]
+struct PrivateRuntimeFileSpec {
+    env_key: &'static str,
+    private_dir_name: &'static str,
+    filename: &'static str,
+}
+
+const RUN_PAYLOAD_PRIVATE_FILE: PrivateRuntimeFileSpec = PrivateRuntimeFileSpec {
+    env_key: RUN_PAYLOAD_FILE_ENV_KEY,
+    private_dir_name: guest_contracts::env::RUN_PAYLOAD_PRIVATE_DIR_NAME,
+    filename: guest_contracts::env::RUN_PAYLOAD_FILENAME,
+};
+
+const USER_ENV_PRIVATE_FILE: PrivateRuntimeFileSpec = PrivateRuntimeFileSpec {
+    env_key: USER_ENV_FILE_ENV_KEY,
+    private_dir_name: guest_contracts::env::USER_ENV_PRIVATE_DIR_NAME,
+    filename: guest_contracts::env::USER_ENV_FILENAME,
+};
+
 fn load_run_payload_from_raw(
     raw: &GuestConfigRaw,
 ) -> Result<guest_contracts::env::RunPayload, String> {
@@ -386,64 +403,18 @@ fn load_run_payload_from_raw(
             .as_deref()
             .or_else(|| raw.home.as_deref().map(Path::new)),
     )?;
-    validate_run_payload_file_path_for_runtime(path, &runtime_dir)?;
+    validate_private_runtime_file_path_for_runtime(path, &runtime_dir, RUN_PAYLOAD_PRIVATE_FILE)?;
     load_run_payload_from_path(path)
 }
 
 fn load_run_payload_from_path(path: &Path) -> Result<guest_contracts::env::RunPayload, String> {
-    let raw = std::fs::read_to_string(path)
-        .map_err(|e| format!("read {RUN_PAYLOAD_FILE_ENV_KEY} {}: {e}", path.display()))?;
-    remove_run_payload_file(path)?;
+    let raw = read_and_remove_private_runtime_file(path, RUN_PAYLOAD_PRIVATE_FILE)?;
 
     let payload: guest_contracts::env::RunPayload = serde_json::from_str(&raw)
         .map_err(|e| format!("parse {RUN_PAYLOAD_FILE_ENV_KEY} JSON: {e}"))?;
     validate_run_payload(&payload)?;
 
     Ok(payload)
-}
-
-fn remove_run_payload_file(path: &Path) -> Result<(), String> {
-    std::fs::remove_file(path)
-        .map_err(|e| format!("remove {RUN_PAYLOAD_FILE_ENV_KEY} {}: {e}", path.display()))?;
-    if let Some(parent) = path.parent()
-        && is_run_payload_private_dir(parent)
-    {
-        std::fs::remove_dir(parent).map_err(|e| {
-            format!(
-                "remove {RUN_PAYLOAD_FILE_ENV_KEY} parent {}: {e}",
-                parent.display()
-            )
-        })?;
-    }
-
-    Ok(())
-}
-
-fn is_run_payload_private_dir(path: &Path) -> bool {
-    path.file_name()
-        .and_then(|name| name.to_str())
-        .is_some_and(|name| name == guest_contracts::env::RUN_PAYLOAD_PRIVATE_DIR_NAME)
-}
-
-fn run_payload_file_path_for_runtime(runtime_dir: &Path) -> PathBuf {
-    runtime_dir
-        .join(guest_contracts::env::RUN_PAYLOAD_PRIVATE_DIR_NAME)
-        .join(guest_contracts::env::RUN_PAYLOAD_FILENAME)
-}
-
-fn validate_run_payload_file_path_for_runtime(
-    path: &Path,
-    runtime_dir: &Path,
-) -> Result<(), String> {
-    if path == run_payload_file_path_for_runtime(runtime_dir) {
-        return Ok(());
-    }
-
-    Err(format!(
-        "{RUN_PAYLOAD_FILE_ENV_KEY} must point to guest runtime {}/{}",
-        guest_contracts::env::RUN_PAYLOAD_PRIVATE_DIR_NAME,
-        guest_contracts::env::RUN_PAYLOAD_FILENAME
-    ))
 }
 
 fn validate_run_payload(payload: &guest_contracts::env::RunPayload) -> Result<(), String> {
@@ -470,14 +441,12 @@ fn load_user_env_from_raw(raw: &GuestConfigRaw) -> Result<HashMap<String, String
             .as_deref()
             .or_else(|| raw.home.as_deref().map(Path::new)),
     )?;
-    validate_user_env_file_path_for_runtime(path, &runtime_dir)?;
+    validate_private_runtime_file_path_for_runtime(path, &runtime_dir, USER_ENV_PRIVATE_FILE)?;
     load_user_env_from_path(path)
 }
 
 fn load_user_env_from_path(path: &Path) -> Result<HashMap<String, String>, String> {
-    let raw = std::fs::read_to_string(path)
-        .map_err(|e| format!("read {USER_ENV_FILE_ENV_KEY} {}: {e}", path.display()))?;
-    remove_user_env_file(path)?;
+    let raw = read_and_remove_private_runtime_file(path, USER_ENV_PRIVATE_FILE)?;
 
     let user_env: HashMap<String, String> = serde_json::from_str(&raw)
         .map_err(|e| format!("parse {USER_ENV_FILE_ENV_KEY} JSON: {e}"))?;
@@ -486,27 +455,33 @@ fn load_user_env_from_path(path: &Path) -> Result<HashMap<String, String>, Strin
     Ok(user_env)
 }
 
-fn remove_user_env_file(path: &Path) -> Result<(), String> {
+fn read_and_remove_private_runtime_file(
+    path: &Path,
+    spec: PrivateRuntimeFileSpec,
+) -> Result<String, String> {
+    let raw = std::fs::read_to_string(path)
+        .map_err(|e| format!("read {} {}: {e}", spec.env_key, path.display()))?;
+    remove_private_runtime_file(path, spec)?;
+    Ok(raw)
+}
+
+fn remove_private_runtime_file(path: &Path, spec: PrivateRuntimeFileSpec) -> Result<(), String> {
     std::fs::remove_file(path)
-        .map_err(|e| format!("remove {USER_ENV_FILE_ENV_KEY} {}: {e}", path.display()))?;
+        .map_err(|e| format!("remove {} {}: {e}", spec.env_key, path.display()))?;
     if let Some(parent) = path.parent()
-        && is_user_env_private_dir(parent)
+        && is_private_runtime_dir(parent, spec)
     {
-        std::fs::remove_dir(parent).map_err(|e| {
-            format!(
-                "remove {USER_ENV_FILE_ENV_KEY} parent {}: {e}",
-                parent.display()
-            )
-        })?;
+        std::fs::remove_dir(parent)
+            .map_err(|e| format!("remove {} parent {}: {e}", spec.env_key, parent.display()))?;
     }
 
     Ok(())
 }
 
-fn is_user_env_private_dir(path: &Path) -> bool {
+fn is_private_runtime_dir(path: &Path, spec: PrivateRuntimeFileSpec) -> bool {
     path.file_name()
         .and_then(|name| name.to_str())
-        .is_some_and(|name| name == USER_ENV_PRIVATE_DIR_NAME)
+        .is_some_and(|name| name == spec.private_dir_name)
 }
 
 fn guest_runtime_dir_for_private_file_values(
@@ -539,19 +514,25 @@ fn guest_runtime_dir_for_private_file_values(
         .map_err(|e| format!("resolve guest runtime dir for {env_key}: {e}"))
 }
 
-fn user_env_file_path_for_runtime(runtime_dir: &Path) -> PathBuf {
-    runtime_dir
-        .join(USER_ENV_PRIVATE_DIR_NAME)
-        .join(USER_ENV_FILENAME)
+fn private_runtime_file_path_for_runtime(
+    runtime_dir: &Path,
+    spec: PrivateRuntimeFileSpec,
+) -> PathBuf {
+    runtime_dir.join(spec.private_dir_name).join(spec.filename)
 }
 
-fn validate_user_env_file_path_for_runtime(path: &Path, runtime_dir: &Path) -> Result<(), String> {
-    if path == user_env_file_path_for_runtime(runtime_dir) {
+fn validate_private_runtime_file_path_for_runtime(
+    path: &Path,
+    runtime_dir: &Path,
+    spec: PrivateRuntimeFileSpec,
+) -> Result<(), String> {
+    if path == private_runtime_file_path_for_runtime(runtime_dir, spec) {
         return Ok(());
     }
 
     Err(format!(
-        "{USER_ENV_FILE_ENV_KEY} must point to guest runtime {USER_ENV_PRIVATE_DIR_NAME}/{USER_ENV_FILENAME}"
+        "{} must point to guest runtime {}/{}",
+        spec.env_key, spec.private_dir_name, spec.filename
     ))
 }
 
@@ -606,9 +587,11 @@ mod tests {
 
     fn write_user_env_fixture(json: &str) -> (tempfile::TempDir, std::path::PathBuf) {
         let tmp = tempfile::tempdir().unwrap();
-        let dir = tmp.path().join(USER_ENV_PRIVATE_DIR_NAME);
+        let dir = tmp
+            .path()
+            .join(guest_contracts::env::USER_ENV_PRIVATE_DIR_NAME);
         std::fs::create_dir(&dir).unwrap();
-        let path = dir.join(USER_ENV_FILENAME);
+        let path = dir.join(guest_contracts::env::USER_ENV_FILENAME);
         std::fs::write(&path, json).unwrap();
         (tmp, path)
     }
@@ -789,9 +772,9 @@ mod tests {
     fn guest_config_from_raw_loads_user_env_and_removes_private_file() {
         let tmp = tempfile::tempdir().unwrap();
         let runtime_dir = tmp.path().join("runtime");
-        let user_env_dir = runtime_dir.join(USER_ENV_PRIVATE_DIR_NAME);
+        let user_env_dir = runtime_dir.join(guest_contracts::env::USER_ENV_PRIVATE_DIR_NAME);
         std::fs::create_dir_all(&user_env_dir).unwrap();
-        let user_env_path = user_env_dir.join(USER_ENV_FILENAME);
+        let user_env_path = user_env_dir.join(guest_contracts::env::USER_ENV_FILENAME);
         std::fs::write(
             &user_env_path,
             r#"{"HOME":"/home/from-user-env","OPENAI_MODEL":"gpt-test"}"#,
@@ -925,9 +908,9 @@ mod tests {
         let runtime_home = tmp.path().join("home");
         let runtime_dir =
             guest_contracts::runtime_paths::run_dir_for_home(&runtime_home, "run-123").unwrap();
-        let user_env_dir = runtime_dir.join(USER_ENV_PRIVATE_DIR_NAME);
+        let user_env_dir = runtime_dir.join(guest_contracts::env::USER_ENV_PRIVATE_DIR_NAME);
         std::fs::create_dir_all(&user_env_dir).unwrap();
-        let user_env_path = user_env_dir.join(USER_ENV_FILENAME);
+        let user_env_path = user_env_dir.join(guest_contracts::env::USER_ENV_FILENAME);
         std::fs::write(
             &user_env_path,
             r#"{"HOME":"/home/from-user-env","OPENAI_MODEL":"gpt-runtime-home"}"#,
@@ -1005,7 +988,11 @@ mod tests {
     fn guest_config_from_raw_rejects_user_env_outside_runtime_dir_without_path_leak() {
         let tmp = tempfile::tempdir().unwrap();
         let runtime_dir = tmp.path().join("runtime");
-        let unexpected = tmp.path().join("other").join("user-env").join("env.json");
+        let unexpected = tmp
+            .path()
+            .join("other")
+            .join(guest_contracts::env::USER_ENV_PRIVATE_DIR_NAME)
+            .join(guest_contracts::env::USER_ENV_FILENAME);
         let run_payload_file =
             write_run_payload_fixture(&runtime_dir, &guest_contracts::env::RunPayload::default());
 
@@ -1071,7 +1058,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let dir = tmp.path().join("unexpected-user-env-dir");
         std::fs::create_dir(&dir).unwrap();
-        let path = dir.join("env.json");
+        let path = dir.join(guest_contracts::env::USER_ENV_FILENAME);
         std::fs::write(&path, r#"{"OPENAI_MODEL":"gpt-test"}"#).unwrap();
 
         let user_env = load_user_env_from_path(&path).unwrap();
@@ -1082,19 +1069,48 @@ mod tests {
     }
 
     #[test]
+    fn load_run_payload_from_path_keeps_unexpected_parent_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("unexpected-run-payload-dir");
+        std::fs::create_dir(&dir).unwrap();
+        let path = dir.join(guest_contracts::env::RUN_PAYLOAD_FILENAME);
+        let payload = guest_contracts::env::RunPayload {
+            prompt: "payload prompt".to_string(),
+            ..guest_contracts::env::RunPayload::default()
+        };
+        std::fs::write(&path, serde_json::to_vec(&payload).unwrap()).unwrap();
+
+        let loaded = load_run_payload_from_path(&path).unwrap();
+
+        assert_eq!(loaded.prompt, "payload prompt");
+        assert!(!path.exists());
+        assert!(dir.exists());
+    }
+
+    #[test]
     fn validate_user_env_file_path_rejects_unexpected_path() {
         let tmp = tempfile::tempdir().unwrap();
         let runtime_dir = tmp.path().join("runtime");
-        let unexpected = tmp.path().join("other").join("user-env").join("env.json");
+        let unexpected = tmp
+            .path()
+            .join("other")
+            .join(guest_contracts::env::USER_ENV_PRIVATE_DIR_NAME)
+            .join(guest_contracts::env::USER_ENV_FILENAME);
 
-        let err = validate_user_env_file_path_for_runtime(&unexpected, &runtime_dir).unwrap_err();
+        let err = validate_private_runtime_file_path_for_runtime(
+            &unexpected,
+            &runtime_dir,
+            USER_ENV_PRIVATE_FILE,
+        )
+        .unwrap_err();
 
         assert!(err.contains("user-env/env.json"));
         assert!(!err.contains(unexpected.to_string_lossy().as_ref()));
         assert!(
-            validate_user_env_file_path_for_runtime(
-                &user_env_file_path_for_runtime(&runtime_dir),
+            validate_private_runtime_file_path_for_runtime(
+                &private_runtime_file_path_for_runtime(&runtime_dir, USER_ENV_PRIVATE_FILE),
                 &runtime_dir,
+                USER_ENV_PRIVATE_FILE,
             )
             .is_ok()
         );

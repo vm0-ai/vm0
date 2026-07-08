@@ -38,6 +38,7 @@ describe("zero CLI program", () => {
       "phone",
       "variable",
       "whoami",
+      "intro",
       "developer-support",
       "computer-use",
       "generate",
@@ -69,7 +70,7 @@ describe("zero CLI program", () => {
     }
   });
 
-  it("should have exactly 33 commands", () => {
-    expect(commandNames).toHaveLength(33);
+  it("should have exactly 34 commands", () => {
+    expect(commandNames).toHaveLength(34);
   });
 });

@@ -409,12 +409,11 @@ describe("GET /api/zero/connector-catalog", () => {
     ).toStrictEqual(["api-token"]);
   });
 
-  it("returns PlayStation external-code catalog metadata when enabled", async () => {
+  it("returns PlayStation external-code catalog metadata", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     await enableConnectorFeatureSwitches(orgId, userId, {
       [FeatureSwitchKey.AwsConnector]: true,
-      [FeatureSwitchKey.PlaystationConnector]: true,
     });
 
     const client = setupApp({ context })(zeroConnectorCatalogContract);

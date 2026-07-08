@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.414.8](https://github.com/vm0-ai/vm0/compare/core-v8.414.7...core-v8.414.8) (2026-07-08)
+
+
+### Refactoring
+
+* remove unused zero compose and custom connector routes ([#20644](https://github.com/vm0-ai/vm0/issues/20644)) ([f40d11e](https://github.com/vm0-ai/vm0/commit/f40d11eb3e65bd5c7c685171f785f367270c3857))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.170.0
+
 ## [8.414.7](https://github.com/vm0-ai/vm0/compare/core-v8.414.6...core-v8.414.7) (2026-07-08)
 
 

@@ -3,6 +3,14 @@ import {
   artifactItemSchema,
   type ArtifactItem,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import {
+  artifactMatchesCategory,
+  type ArtifactCategory,
+} from "../artifacts-page/artifact-category.ts";
+import {
+  artifactSearchText,
+  normalizedSearchTokens,
+} from "../artifacts-page/artifact-search.ts";
 import { logger } from "../log.ts";
 import {
   ARTIFACT_ITEMS_AGENT_CREATED_AT_INDEX,
@@ -33,6 +41,7 @@ type StoredArtifactItem = ArtifactItem & {
 
 export interface ArtifactItemCacheFilter {
   readonly agentId?: string;
+  readonly artifactCategory?: ArtifactCategory;
   readonly artifactKind?: ArtifactItemKind;
   readonly query?: string;
   readonly limit?: number;
@@ -52,6 +61,10 @@ export interface ArtifactItemReadStore {
 
 export interface ArtifactItemWriteStore {
   upsertItems(
+    items: readonly ArtifactItem[],
+    signal?: AbortSignal,
+  ): Promise<void>;
+  replaceItems(
     items: readonly ArtifactItem[],
     signal?: AbortSignal,
   ): Promise<void>;
@@ -77,22 +90,6 @@ interface IndexedReadPlan {
 interface ValidatedStoredArtifactItem {
   readonly item: ArtifactItem;
   readonly searchText: string;
-}
-
-function normalizedSearchTokens(query: string | undefined): readonly string[] {
-  const normalized = query?.trim().toLowerCase();
-  if (!normalized) {
-    return [];
-  }
-  return normalized.split(/\s+/).filter((token) => {
-    return token.length > 0;
-  });
-}
-
-function artifactSearchText(item: ArtifactItem): string {
-  return [item.filename, item.contentType, item.artifactKind ?? ""]
-    .join("\n")
-    .toLowerCase();
 }
 
 function storedArtifactItem(item: ArtifactItem): StoredArtifactItem {
@@ -158,6 +155,9 @@ function matchesFilter(
     return false;
   }
   if (filter.artifactKind && item.artifactKind !== filter.artifactKind) {
+    return false;
+  }
+  if (!artifactMatchesCategory(item, filter.artifactCategory)) {
     return false;
   }
   return queryTokens.every((token) => {
@@ -250,6 +250,25 @@ function createWriteStore(
           }
           await tx.done;
           L.debug("artifacts:upsertItems:done", { count: items.length });
+        },
+        signal,
+      );
+    },
+
+    async replaceItems(items, signal) {
+      await chatIdbWriteBestEffort(
+        "artifacts:replaceItems",
+        async () => {
+          const db = await getDb();
+          signal?.throwIfAborted();
+          const tx = db.transaction(storeName, "readwrite");
+          await tx.store.clear();
+          for (const item of items) {
+            signal?.throwIfAborted();
+            await tx.store.put(storedArtifactItem(item));
+          }
+          await tx.done;
+          L.debug("artifacts:replaceItems:done", { count: items.length });
         },
         signal,
       );
