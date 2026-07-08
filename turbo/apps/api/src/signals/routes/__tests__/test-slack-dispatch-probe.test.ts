@@ -345,6 +345,7 @@ describe("POST /api/test/slack-dispatch-probe", () => {
       method: "POST",
       headers: {
         "content-type": "application/json",
+        "x-vercel-protection-bypass": "preview-secret",
         "x-vm0-test-endpoint-bypass": "preview-secret",
       },
       body: JSON.stringify({}),

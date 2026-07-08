@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { httpInstrumentationMiddleware } from "@hono/otel";
 import * as Sentry from "@sentry/node";
 import {
@@ -8,7 +10,7 @@ import {
 } from "@vm0/api-contracts/contracts/client-headers";
 import { serializeError } from "@vm0/core/log-utils";
 // oxlint-disable-next-line no-restricted-imports -- app factory owns the Hono instance, confirmed by ethan@vm0.ai
-import { Hono, type Context } from "hono";
+import { Hono, type Context, type Next } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { matchedRoutes } from "hono/route";
 
@@ -34,6 +36,10 @@ import {
 const L = logger("App");
 
 const WEB_AUTH_PATHS = ["/sign-in", "/sign-up"] as const;
+const VERCEL_PROTECTION_BYPASS_HEADER = "x-vercel-protection-bypass";
+const VM0_PREVIEW_BYPASS_QUERY_PARAM = "vm0_preview_bypass";
+const PREVIEW_AUTOMATION_BYPASS_ERROR = "Preview automation bypass required";
+const BYPASS_FINGERPRINT_LENGTH = 12;
 const UNHANDLED_REQUEST_ERROR_TYPE = "unhandled_request_error" as const;
 const REQUEST_LOG_DATASET = "request-log";
 const ERROR_CHAIN_MAX_DEPTH = 32;
@@ -285,6 +291,101 @@ function requestHeader(context: Context, name: string): string | undefined {
   return presentHeaderValue(context.req.raw.headers.get(name));
 }
 
+function previewAutomationBypassSecret(): string | undefined {
+  if (env("ENV") !== "preview") {
+    return undefined;
+  }
+  return env("VERCEL_AUTOMATION_BYPASS_SECRET");
+}
+
+function unquoteCookieValue(value: string): string {
+  return value.startsWith('"') && value.endsWith('"')
+    ? value.slice(1, -1)
+    : value;
+}
+
+function cookieHeaderContainsBypassSecret(
+  cookieHeader: string | undefined,
+  secret: string,
+): boolean {
+  return (
+    cookieHeader?.split(";").some((cookie) => {
+      const separatorIndex = cookie.indexOf("=");
+      if (separatorIndex === -1) {
+        return false;
+      }
+      const rawValue = cookie.slice(separatorIndex + 1).trim();
+      return unquoteCookieValue(rawValue) === secret;
+    }) ?? false
+  );
+}
+
+function requestHasPreviewAutomationBypass(
+  context: Context,
+  secret: string,
+): boolean {
+  if (requestHeader(context, VERCEL_PROTECTION_BYPASS_HEADER) === secret) {
+    return true;
+  }
+  const url = safeUrlParse(context.req.url);
+  if (
+    url?.searchParams.get(VM0_PREVIEW_BYPASS_QUERY_PARAM) === secret ||
+    url?.searchParams.get(VERCEL_PROTECTION_BYPASS_HEADER) === secret
+  ) {
+    return true;
+  }
+  return cookieHeaderContainsBypassSecret(
+    requestHeader(context, "cookie"),
+    secret,
+  );
+}
+
+function bypassFingerprint(value: string | undefined): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+  return createHash("sha256")
+    .update(value)
+    .digest("hex")
+    .slice(0, BYPASS_FINGERPRINT_LENGTH);
+}
+
+function previewAutomationBypassDebug(context: Context, secret: string) {
+  const url = safeUrlParse(context.req.url);
+  return {
+    expected: bypassFingerprint(secret),
+    header: bypassFingerprint(
+      requestHeader(context, VERCEL_PROTECTION_BYPASS_HEADER),
+    ),
+    query: bypassFingerprint(
+      url?.searchParams.get(VM0_PREVIEW_BYPASS_QUERY_PARAM) ?? undefined,
+    ),
+    vercelQuery: bypassFingerprint(
+      url?.searchParams.get(VERCEL_PROTECTION_BYPASS_HEADER) ?? undefined,
+    ),
+    cookieHeaderPresent: Boolean(requestHeader(context, "cookie")),
+  };
+}
+
+async function previewAutomationBypassMiddleware(
+  context: Context,
+  next: Next,
+): Promise<Response | void> {
+  const secret = previewAutomationBypassSecret();
+  if (!secret || requestHasPreviewAutomationBypass(context, secret)) {
+    await next();
+    return;
+  }
+
+  return context.json(
+    {
+      error: PREVIEW_AUTOMATION_BYPASS_ERROR,
+      debug: previewAutomationBypassDebug(context, secret),
+    },
+    403,
+  );
+}
+
 function clientHeaderLogFields(context: Context): ClientHeaderLogFields {
   const clientVersion = requestHeader(context, CLIENT_VERSION_HEADER);
   const clientType = requestHeader(context, CLIENT_TYPE_HEADER);
@@ -435,6 +536,8 @@ export function createAppWithRoutes({
     await next();
     scheduleAxiomRequestLog(c, startedAt);
   });
+
+  app.use("*", previewAutomationBypassMiddleware);
 
   // Browser cross-origin requests (e.g. https://app.vm0.ai -> api.vm0.ai). Must
   // run before the route handlers so OPTIONS preflight short-circuits without
