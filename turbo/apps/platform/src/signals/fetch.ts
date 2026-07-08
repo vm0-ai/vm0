@@ -6,7 +6,7 @@ import {
   unauthorizedRedirectSuppressionUntil$,
 } from "./auth-retry.ts";
 import { resolveApiBase, resolveApiBaseForNavigation } from "./api-base.ts";
-import { addPlatformClientHeaders } from "./platform-client-headers.ts";
+import { addClientHeaders } from "./client-headers.ts";
 
 const OAUTH_WEB_NAVIGATION_TARGET = "www";
 
@@ -42,7 +42,7 @@ function mergeHeadersWithClientHeaders(
     }
   }
 
-  addPlatformClientHeaders(headers);
+  addClientHeaders(headers);
   return headers;
 }
 

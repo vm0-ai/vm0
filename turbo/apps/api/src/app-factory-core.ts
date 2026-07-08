@@ -1,11 +1,11 @@
 import { httpInstrumentationMiddleware } from "@hono/otel";
 import * as Sentry from "@sentry/node";
 import {
-  PLATFORM_CLIENT_REQUEST_ID_HEADER,
-  PLATFORM_CLIENT_SESSION_ID_HEADER,
-  PLATFORM_CLIENT_TYPE_HEADER,
-  PLATFORM_CLIENT_VERSION_HEADER,
-} from "@vm0/api-contracts/contracts/platform-client-headers";
+  CLIENT_REQUEST_ID_HEADER,
+  CLIENT_SESSION_ID_HEADER,
+  CLIENT_TYPE_HEADER,
+  CLIENT_VERSION_HEADER,
+} from "@vm0/api-contracts/contracts/client-headers";
 import { serializeError } from "@vm0/core/log-utils";
 // oxlint-disable-next-line no-restricted-imports -- app factory owns the Hono instance, confirmed by ethan@vm0.ai
 import { Hono, type Context } from "hono";
@@ -49,7 +49,7 @@ interface UnhandledRequestErrorLogFields {
   readonly error: Record<string, unknown>;
 }
 
-interface PlatformClientHeaderLogFields {
+interface ClientHeaderLogFields {
   readonly x_client_version?: string;
   readonly x_client_type?: string;
   readonly x_client_session_id?: string;
@@ -57,7 +57,7 @@ interface PlatformClientHeaderLogFields {
 }
 
 interface AxiomRequestLogEvent
-  extends PlatformClientHeaderLogFields, Record<string, unknown> {
+  extends ClientHeaderLogFields, Record<string, unknown> {
   readonly _time: string;
   readonly method: string;
   readonly status: number;
@@ -285,19 +285,11 @@ function requestHeader(context: Context, name: string): string | undefined {
   return presentHeaderValue(context.req.raw.headers.get(name));
 }
 
-function platformClientHeaderLogFields(
-  context: Context,
-): PlatformClientHeaderLogFields {
-  const clientVersion = requestHeader(context, PLATFORM_CLIENT_VERSION_HEADER);
-  const clientType = requestHeader(context, PLATFORM_CLIENT_TYPE_HEADER);
-  const clientSessionId = requestHeader(
-    context,
-    PLATFORM_CLIENT_SESSION_ID_HEADER,
-  );
-  const clientRequestId = requestHeader(
-    context,
-    PLATFORM_CLIENT_REQUEST_ID_HEADER,
-  );
+function clientHeaderLogFields(context: Context): ClientHeaderLogFields {
+  const clientVersion = requestHeader(context, CLIENT_VERSION_HEADER);
+  const clientType = requestHeader(context, CLIENT_TYPE_HEADER);
+  const clientSessionId = requestHeader(context, CLIENT_SESSION_ID_HEADER);
+  const clientRequestId = requestHeader(context, CLIENT_REQUEST_ID_HEADER);
 
   return {
     ...(clientVersion ? { x_client_version: clientVersion } : {}),
@@ -360,7 +352,7 @@ function axiomRequestLogEvent(
     ...(bodyBytes !== undefined ? { body_bytes_sent: bodyBytes } : {}),
     ...(remoteAddress ? { remote_addr: remoteAddress } : {}),
     ...(userAgent ? { user_agent: userAgent } : {}),
-    ...platformClientHeaderLogFields(context),
+    ...clientHeaderLogFields(context),
   };
 }
 
@@ -394,7 +386,7 @@ function unhandledRequestErrorLogFields(
     method: context.req.method,
     ...(route ? { route } : {}),
     ...(errorCode ? { errorCode } : {}),
-    ...platformClientHeaderLogFields(context),
+    ...clientHeaderLogFields(context),
     error: serializeError(error),
   };
 }

@@ -18,6 +18,7 @@ import {
   COMPUTER_USE_UNAUTHENTICATED_MESSAGE,
 } from "./computer-use-startup-gate";
 import { resolveComputerUseApiBaseUrl } from "./desktop-api-base-url";
+import type { DesktopClientHeaderInjector } from "./desktop-client-headers";
 
 const ONLINE_POLL_MS = 2_000;
 const RECOVERY_RETRY_BASE_MS = 2_000;
@@ -52,6 +53,7 @@ interface ComputerUseHostRuntimeOptions {
   readonly appVersion: string;
   readonly sessionFetch: ComputerUseHostFetch;
   readonly hostFetch: ComputerUseHostFetch;
+  readonly addClientHeaders: DesktopClientHeaderInjector;
   readonly getPermissions: () => MaybePromise<ComputerUsePermissionState>;
   readonly getSupportedCapabilities?: () => readonly string[];
   readonly executeCommand: (
@@ -227,6 +229,7 @@ export class ComputerUseHostRuntime {
   private readonly appVersion: string;
   private readonly sessionFetch: ComputerUseHostFetch;
   private readonly hostFetchRequest: ComputerUseHostFetch;
+  private readonly addClientHeaders: DesktopClientHeaderInjector;
   private readonly getPermissions: ComputerUseHostRuntimeOptions["getPermissions"];
   private readonly getSupportedCapabilities: () => readonly string[];
   private readonly executeCommand: ComputerUseHostRuntimeOptions["executeCommand"];
@@ -261,6 +264,7 @@ export class ComputerUseHostRuntime {
     this.appVersion = options.appVersion;
     this.sessionFetch = options.sessionFetch;
     this.hostFetchRequest = options.hostFetch;
+    this.addClientHeaders = options.addClientHeaders;
     this.getPermissions = options.getPermissions;
     this.getSupportedCapabilities =
       options.getSupportedCapabilities ??
@@ -947,11 +951,7 @@ export class ComputerUseHostRuntime {
     }
     return this.hostFetchRequest(`${this.apiBaseUrl}${path}`, {
       ...init,
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${this.hostToken}`,
-        ...init.headers,
-      },
+      headers: this.hostHeaders(this.hostToken, init.headers),
     });
   }
 
@@ -961,10 +961,7 @@ export class ComputerUseHostRuntime {
       {
         method: "POST",
         body: JSON.stringify({}),
-        headers: {
-          "content-type": "application/json",
-          authorization: `Bearer ${hostToken}`,
-        },
+        headers: this.hostHeaders(hostToken),
       },
     );
     if (response.status === 401) {
@@ -973,5 +970,20 @@ export class ComputerUseHostRuntime {
     if (!response.ok) {
       throw new Error(`Computer Use host stop failed: ${response.status}`);
     }
+  }
+
+  private hostHeaders(hostToken: string, initHeaders?: HeadersInit): Headers {
+    const headers = new Headers({
+      "content-type": "application/json",
+      authorization: `Bearer ${hostToken}`,
+    });
+    if (initHeaders) {
+      const callerHeaders = new Headers(initHeaders);
+      for (const [key, value] of callerHeaders) {
+        headers.set(key, value);
+      }
+    }
+    this.addClientHeaders(headers);
+    return headers;
   }
 }

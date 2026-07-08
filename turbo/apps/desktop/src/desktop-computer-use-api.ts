@@ -1,4 +1,5 @@
 import type { ComputerUseHostFetch } from "./computer-use-host";
+import type { DesktopClientHeaderInjector } from "./desktop-client-headers";
 import {
   headersWithSessionCookies,
   type DesktopSessionCookieSource,
@@ -7,6 +8,7 @@ import {
 export function createDesktopComputerUseSessionFetch(params: {
   readonly platformUrl: URL;
   readonly session: DesktopSessionCookieSource;
+  readonly addClientHeaders: DesktopClientHeaderInjector;
   readonly getCachedAuthToken?: () => Promise<string | null> | string | null;
   readonly getAuthToken?: (options?: {
     readonly forceRefresh?: boolean;
@@ -23,6 +25,7 @@ export function createDesktopComputerUseSessionFetch(params: {
       if (token) {
         headers.set("authorization", `Bearer ${token}`);
       }
+      params.addClientHeaders(headers);
       return headers;
     };
 

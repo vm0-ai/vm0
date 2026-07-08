@@ -1,0 +1,17 @@
+export const CLIENT_VERSION_HEADER = "X-Client-Version";
+export const CLIENT_TYPE_HEADER = "X-Client-Type";
+export const CLIENT_SESSION_ID_HEADER = "X-Client-Session-Id";
+export const CLIENT_REQUEST_ID_HEADER = "X-Client-Request-Id";
+
+export const CLIENT_TYPE_APP = "App";
+export const CLIENT_TYPE_DESKTOP = "desktop";
+export const CLIENT_TYPE_GUEST_AGENT = "GuestAgent";
+export const CLIENT_TYPE_MITM_ADDON = "MitmAddon";
+export const CLIENT_TYPE_RUNNER = "Runner";
+
+export const CLIENT_HEADER_NAMES = [
+  CLIENT_VERSION_HEADER,
+  CLIENT_TYPE_HEADER,
+  CLIENT_SESSION_ID_HEADER,
+  CLIENT_REQUEST_ID_HEADER,
+] as const;

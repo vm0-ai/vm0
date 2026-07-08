@@ -3,11 +3,16 @@ import {
   MODEL_PROVIDER_FIREWALL_CONFIGS,
 } from "../contracts/model-providers";
 import {
-  PLATFORM_CLIENT_REQUEST_ID_HEADER,
-  PLATFORM_CLIENT_SESSION_ID_HEADER,
-  PLATFORM_CLIENT_TYPE_HEADER,
-  PLATFORM_CLIENT_VERSION_HEADER,
-} from "../contracts/platform-client-headers";
+  CLIENT_REQUEST_ID_HEADER,
+  CLIENT_SESSION_ID_HEADER,
+  CLIENT_TYPE_APP,
+  CLIENT_TYPE_DESKTOP,
+  CLIENT_TYPE_GUEST_AGENT,
+  CLIENT_TYPE_HEADER,
+  CLIENT_TYPE_MITM_ADDON,
+  CLIENT_TYPE_RUNNER,
+  CLIENT_VERSION_HEADER,
+} from "../contracts/client-headers";
 import {
   CANONICAL_GUEST_HOME_DIR,
   CANONICAL_WORKING_DIR,
@@ -71,7 +76,8 @@ const modelProviderEnvPlaceholderModule = [
   "model_provider_env",
   "placeholders",
 ] as const;
-const platformClientHeadersModule = ["platform_client", "headers"] as const;
+const clientHeadersModule = ["client", "headers"] as const;
+const clientTypesModule = ["client", "types"] as const;
 const runnerPathsModule = ["runners", "paths"] as const;
 
 export const rustConstantRootDoc = [
@@ -109,15 +115,21 @@ export const rustConstantModuleDocs = [
     ],
   },
   {
-    rustModulePath: ["platform_client"],
+    rustModulePath: ["client"],
     rustDoc: [
-      "Platform client request header contract constants shared by TypeScript and Rust.",
+      "Client request contract constants shared by TypeScript and Rust.",
     ],
   },
   {
-    rustModulePath: platformClientHeadersModule,
+    rustModulePath: clientHeadersModule,
     rustDoc: [
-      "HTTP header names used to identify vm0 platform clients in API request logs.",
+      "HTTP header names used to identify vm0 clients in API request logs.",
+    ],
+  },
+  {
+    rustModulePath: clientTypesModule,
+    rustDoc: [
+      "Client type values used to identify vm0 API request originators.",
     ],
   },
   {
@@ -173,32 +185,62 @@ function rustU64(value: number): RustConstantValue {
 
 export const rustConstantBindings = [
   {
-    rustModulePath: platformClientHeadersModule,
-    rustConstName: "PLATFORM_CLIENT_VERSION_HEADER",
-    value: rustString(PLATFORM_CLIENT_VERSION_HEADER),
+    rustModulePath: clientHeadersModule,
+    rustConstName: "CLIENT_VERSION_HEADER",
+    value: rustString(CLIENT_VERSION_HEADER),
     rustDoc: ["HTTP header carrying the sending vm0 client component version."],
   },
   {
-    rustModulePath: platformClientHeadersModule,
-    rustConstName: "PLATFORM_CLIENT_TYPE_HEADER",
-    value: rustString(PLATFORM_CLIENT_TYPE_HEADER),
+    rustModulePath: clientHeadersModule,
+    rustConstName: "CLIENT_TYPE_HEADER",
+    value: rustString(CLIENT_TYPE_HEADER),
     rustDoc: ["HTTP header carrying the sending vm0 client component type."],
   },
   {
-    rustModulePath: platformClientHeadersModule,
-    rustConstName: "PLATFORM_CLIENT_SESSION_ID_HEADER",
-    value: rustString(PLATFORM_CLIENT_SESSION_ID_HEADER),
+    rustModulePath: clientHeadersModule,
+    rustConstName: "CLIENT_SESSION_ID_HEADER",
+    value: rustString(CLIENT_SESSION_ID_HEADER),
     rustDoc: [
       "HTTP header carrying the sending vm0 client session identifier.",
     ],
   },
   {
-    rustModulePath: platformClientHeadersModule,
-    rustConstName: "PLATFORM_CLIENT_REQUEST_ID_HEADER",
-    value: rustString(PLATFORM_CLIENT_REQUEST_ID_HEADER),
+    rustModulePath: clientHeadersModule,
+    rustConstName: "CLIENT_REQUEST_ID_HEADER",
+    value: rustString(CLIENT_REQUEST_ID_HEADER),
     rustDoc: [
       "HTTP header carrying the per-request vm0 client request identifier.",
     ],
+  },
+  {
+    rustModulePath: clientTypesModule,
+    rustConstName: "CLIENT_TYPE_APP",
+    value: rustString(CLIENT_TYPE_APP),
+    rustDoc: ["Client type value for the platform web app."],
+  },
+  {
+    rustModulePath: clientTypesModule,
+    rustConstName: "CLIENT_TYPE_DESKTOP",
+    value: rustString(CLIENT_TYPE_DESKTOP),
+    rustDoc: ["Client type value for the desktop client."],
+  },
+  {
+    rustModulePath: clientTypesModule,
+    rustConstName: "CLIENT_TYPE_GUEST_AGENT",
+    value: rustString(CLIENT_TYPE_GUEST_AGENT),
+    rustDoc: ["Client type value for the guest agent."],
+  },
+  {
+    rustModulePath: clientTypesModule,
+    rustConstName: "CLIENT_TYPE_MITM_ADDON",
+    value: rustString(CLIENT_TYPE_MITM_ADDON),
+    rustDoc: ["Client type value for the mitmproxy addon."],
+  },
+  {
+    rustModulePath: clientTypesModule,
+    rustConstName: "CLIENT_TYPE_RUNNER",
+    value: rustString(CLIENT_TYPE_RUNNER),
+    rustDoc: ["Client type value for the runner."],
   },
   {
     rustModulePath: ["runners"],

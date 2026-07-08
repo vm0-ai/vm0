@@ -1,10 +1,10 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use api_contracts::generated::constants::platform_client::headers::{
-    PLATFORM_CLIENT_REQUEST_ID_HEADER, PLATFORM_CLIENT_SESSION_ID_HEADER,
-    PLATFORM_CLIENT_TYPE_HEADER, PLATFORM_CLIENT_VERSION_HEADER,
+use api_contracts::generated::constants::client::headers::{
+    CLIENT_REQUEST_ID_HEADER, CLIENT_SESSION_ID_HEADER, CLIENT_TYPE_HEADER, CLIENT_VERSION_HEADER,
 };
+use api_contracts::generated::constants::client::types::CLIENT_TYPE_RUNNER;
 use api_contracts::{Method, ResolvedRoute, Route};
 use reqwest::header::{HeaderMap, HeaderValue};
 use reqwest::{Client, Request, Response};
@@ -18,7 +18,6 @@ use crate::error::{RunnerError, RunnerResult};
 /// Default timeout for API requests (covers large claim payloads).
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(10);
 const VERCEL_BYPASS_HEADER: &str = "x-vercel-protection-bypass";
-const RUNNER_CLIENT_TYPE: &str = "Runner";
 const RUNNER_CLIENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Configuration for the shared runner API HTTP client.
@@ -130,7 +129,7 @@ impl ClientHeaders {
             .map_err(|e| RunnerError::Internal(format!("invalid client session id: {e}")))?;
 
         Ok(Self {
-            client_type: HeaderValue::from_static(RUNNER_CLIENT_TYPE),
+            client_type: HeaderValue::from_static(CLIENT_TYPE_RUNNER),
             client_version: HeaderValue::from_static(RUNNER_CLIENT_VERSION),
             client_session_id,
         })
@@ -146,13 +145,10 @@ impl ClientHeaders {
                 )));
             }
         };
-        headers.insert(PLATFORM_CLIENT_VERSION_HEADER, self.client_version.clone());
-        headers.insert(PLATFORM_CLIENT_TYPE_HEADER, self.client_type.clone());
-        headers.insert(
-            PLATFORM_CLIENT_SESSION_ID_HEADER,
-            self.client_session_id.clone(),
-        );
-        headers.insert(PLATFORM_CLIENT_REQUEST_ID_HEADER, request_id);
+        headers.insert(CLIENT_VERSION_HEADER, self.client_version.clone());
+        headers.insert(CLIENT_TYPE_HEADER, self.client_type.clone());
+        headers.insert(CLIENT_SESSION_ID_HEADER, self.client_session_id.clone());
+        headers.insert(CLIENT_REQUEST_ID_HEADER, request_id);
         Ok(())
     }
 }
@@ -396,7 +392,7 @@ mod tests {
     }
 
     #[test]
-    fn request_includes_platform_client_headers() {
+    fn request_includes_client_headers() {
         let http = http_client("https://api.vm0.dev/");
 
         let request = http
@@ -405,18 +401,18 @@ mod tests {
             .unwrap();
 
         assert_eq!(
-            header_value(&request, PLATFORM_CLIENT_VERSION_HEADER),
+            header_value(&request, CLIENT_VERSION_HEADER),
             RUNNER_CLIENT_VERSION
         );
         assert_eq!(
-            header_value(&request, PLATFORM_CLIENT_TYPE_HEADER),
-            RUNNER_CLIENT_TYPE
+            header_value(&request, CLIENT_TYPE_HEADER),
+            CLIENT_TYPE_RUNNER
         );
         assert_eq!(
-            header_value(&request, PLATFORM_CLIENT_SESSION_ID_HEADER),
+            header_value(&request, CLIENT_SESSION_ID_HEADER),
             "runner-session-test"
         );
-        Uuid::parse_str(&header_value(&request, PLATFORM_CLIENT_REQUEST_ID_HEADER)).unwrap();
+        Uuid::parse_str(&header_value(&request, CLIENT_REQUEST_ID_HEADER)).unwrap();
     }
 
     #[test]
@@ -433,70 +429,55 @@ mod tests {
             .unwrap();
 
         assert_eq!(
-            header_value(&first, PLATFORM_CLIENT_SESSION_ID_HEADER),
-            header_value(&second, PLATFORM_CLIENT_SESSION_ID_HEADER)
+            header_value(&first, CLIENT_SESSION_ID_HEADER),
+            header_value(&second, CLIENT_SESSION_ID_HEADER)
         );
         assert_ne!(
-            header_value(&first, PLATFORM_CLIENT_REQUEST_ID_HEADER),
-            header_value(&second, PLATFORM_CLIENT_REQUEST_ID_HEADER)
+            header_value(&first, CLIENT_REQUEST_ID_HEADER),
+            header_value(&second, CLIENT_REQUEST_ID_HEADER)
         );
     }
 
     #[test]
-    fn generated_platform_client_headers_override_caller_headers() {
+    fn generated_client_headers_override_caller_headers() {
         let http = http_client("https://api.vm0.dev/");
 
         let request = http
             .request_route(routes::webhooks::agent::telemetry::SEND, "sandbox-token")
-            .header_for_test(PLATFORM_CLIENT_VERSION_HEADER, "caller-version")
-            .header_for_test(PLATFORM_CLIENT_TYPE_HEADER, "caller-type")
-            .header_for_test(PLATFORM_CLIENT_SESSION_ID_HEADER, "caller-session")
-            .header_for_test(PLATFORM_CLIENT_REQUEST_ID_HEADER, "caller-request")
+            .header_for_test(CLIENT_VERSION_HEADER, "caller-version")
+            .header_for_test(CLIENT_TYPE_HEADER, "caller-type")
+            .header_for_test(CLIENT_SESSION_ID_HEADER, "caller-session")
+            .header_for_test(CLIENT_REQUEST_ID_HEADER, "caller-request")
             .build()
             .unwrap();
 
         assert_eq!(
-            header_value(&request, PLATFORM_CLIENT_VERSION_HEADER),
+            header_value(&request, CLIENT_VERSION_HEADER),
             RUNNER_CLIENT_VERSION
         );
         assert_eq!(
-            header_value(&request, PLATFORM_CLIENT_TYPE_HEADER),
-            RUNNER_CLIENT_TYPE
+            header_value(&request, CLIENT_TYPE_HEADER),
+            CLIENT_TYPE_RUNNER
         );
         assert_eq!(
-            header_value(&request, PLATFORM_CLIENT_SESSION_ID_HEADER),
+            header_value(&request, CLIENT_SESSION_ID_HEADER),
             "runner-session-test"
         );
         assert_ne!(
-            header_value(&request, PLATFORM_CLIENT_REQUEST_ID_HEADER),
+            header_value(&request, CLIENT_REQUEST_ID_HEADER),
             "caller-request"
         );
     }
 
     #[test]
-    fn external_get_excludes_platform_client_headers() {
+    fn external_get_excludes_client_headers() {
         let http = http_client("https://api.vm0.dev/");
 
         let request = http.get("https://blob.example/history").build().unwrap();
 
-        assert!(
-            request
-                .headers()
-                .get(PLATFORM_CLIENT_VERSION_HEADER)
-                .is_none()
-        );
-        assert!(request.headers().get(PLATFORM_CLIENT_TYPE_HEADER).is_none());
-        assert!(
-            request
-                .headers()
-                .get(PLATFORM_CLIENT_SESSION_ID_HEADER)
-                .is_none()
-        );
-        assert!(
-            request
-                .headers()
-                .get(PLATFORM_CLIENT_REQUEST_ID_HEADER)
-                .is_none()
-        );
+        assert!(request.headers().get(CLIENT_VERSION_HEADER).is_none());
+        assert!(request.headers().get(CLIENT_TYPE_HEADER).is_none());
+        assert!(request.headers().get(CLIENT_SESSION_ID_HEADER).is_none());
+        assert!(request.headers().get(CLIENT_REQUEST_ID_HEADER).is_none());
     }
 }

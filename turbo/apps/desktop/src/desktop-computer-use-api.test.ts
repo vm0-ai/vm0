@@ -1,6 +1,28 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  CLIENT_REQUEST_ID_HEADER,
+  CLIENT_SESSION_ID_HEADER,
+  CLIENT_TYPE_DESKTOP,
+  CLIENT_TYPE_HEADER,
+  CLIENT_VERSION_HEADER,
+} from "@vm0/api-contracts/contracts/client-headers";
+import { createDesktopClientHeaderInjector } from "./desktop-client-headers";
 import { createDesktopComputerUseSessionFetch } from "./desktop-computer-use-api";
 import type { DesktopSessionCookieSource } from "./desktop-session-cookies";
+
+const noopAddClientHeaders = () => {};
+
+function uuidSequence(...values: readonly string[]): () => string {
+  let index = 0;
+  return () => {
+    const value = values[index];
+    index += 1;
+    if (!value) {
+      throw new Error("UUID sequence exhausted");
+    }
+    return value;
+  };
+}
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -39,13 +61,23 @@ describe("createDesktopComputerUseSessionFetch", () => {
     const sessionFetch = createDesktopComputerUseSessionFetch({
       platformUrl: new URL("https://app.vm0.ai"),
       session,
+      addClientHeaders: createDesktopClientHeaderInjector({
+        clientVersion: "1.2.3",
+        createUuid: uuidSequence("session-id", "request-id-1"),
+      }),
       getCachedAuthToken: () => {
         return "desktop-token";
       },
     });
     await sessionFetch("https://api.vm0.ai/api/zero/computer-use/hosts/start", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        [CLIENT_VERSION_HEADER]: "caller-version",
+        [CLIENT_TYPE_HEADER]: "caller-type",
+        [CLIENT_SESSION_ID_HEADER]: "caller-session-id",
+        [CLIENT_REQUEST_ID_HEADER]: "caller-request-id",
+      },
     });
 
     expect(cookieUrls).toStrictEqual([
@@ -66,6 +98,10 @@ describe("createDesktopComputerUseSessionFetch", () => {
       "app_session=app-cookie; api_session=api-cookie",
     );
     expect(headers.get("authorization")).toBe("Bearer desktop-token");
+    expect(headers.get(CLIENT_VERSION_HEADER)).toBe("1.2.3");
+    expect(headers.get(CLIENT_TYPE_HEADER)).toBe(CLIENT_TYPE_DESKTOP);
+    expect(headers.get(CLIENT_SESSION_ID_HEADER)).toBe("session-id");
+    expect(headers.get(CLIENT_REQUEST_ID_HEADER)).toBe("request-id-1");
   });
 
   it("refreshes the desktop auth token and retries once on 401", async () => {
@@ -98,6 +134,10 @@ describe("createDesktopComputerUseSessionFetch", () => {
     const sessionFetch = createDesktopComputerUseSessionFetch({
       platformUrl: new URL("https://app.vm0.ai"),
       session,
+      addClientHeaders: createDesktopClientHeaderInjector({
+        clientVersion: "1.2.3",
+        createUuid: uuidSequence("session-id", "request-id-1", "request-id-2"),
+      }),
       getCachedAuthToken: () => {
         return cachedToken;
       },
@@ -113,6 +153,26 @@ describe("createDesktopComputerUseSessionFetch", () => {
     expect(
       new Headers(fetchMock.mock.calls[1]?.[1]?.headers).get("authorization"),
     ).toBe("Bearer fresh-token");
+    expect(
+      new Headers(fetchMock.mock.calls[0]?.[1]?.headers).get(
+        CLIENT_SESSION_ID_HEADER,
+      ),
+    ).toBe("session-id");
+    expect(
+      new Headers(fetchMock.mock.calls[1]?.[1]?.headers).get(
+        CLIENT_SESSION_ID_HEADER,
+      ),
+    ).toBe("session-id");
+    expect(
+      new Headers(fetchMock.mock.calls[0]?.[1]?.headers).get(
+        CLIENT_REQUEST_ID_HEADER,
+      ),
+    ).toBe("request-id-1");
+    expect(
+      new Headers(fetchMock.mock.calls[1]?.[1]?.headers).get(
+        CLIENT_REQUEST_ID_HEADER,
+      ),
+    ).toBe("request-id-2");
   });
 
   it("uses cookies without refreshing auth when the first request succeeds", async () => {
@@ -137,6 +197,7 @@ describe("createDesktopComputerUseSessionFetch", () => {
     const sessionFetch = createDesktopComputerUseSessionFetch({
       platformUrl: new URL("https://app.vm0.ai"),
       session,
+      addClientHeaders: noopAddClientHeaders,
       getCachedAuthToken: () => null,
       getAuthToken: refreshAuthToken,
     });
@@ -170,6 +231,7 @@ describe("createDesktopComputerUseSessionFetch", () => {
     const sessionFetch = createDesktopComputerUseSessionFetch({
       platformUrl: new URL("https://app.vm0.ai"),
       session,
+      addClientHeaders: noopAddClientHeaders,
       getCachedAuthToken: () => null,
       getAuthToken: () => null,
     });

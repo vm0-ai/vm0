@@ -1,5 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  CLIENT_REQUEST_ID_HEADER,
+  CLIENT_SESSION_ID_HEADER,
+  CLIENT_TYPE_DESKTOP,
+  CLIENT_TYPE_HEADER,
+  CLIENT_VERSION_HEADER,
+} from "@vm0/api-contracts/contracts/client-headers";
 import { DesktopAuthSession } from "./desktop-auth-session";
+import {
+  createDesktopClientHeaderInjector,
+  type DesktopClientHeaderInjector,
+} from "./desktop-client-headers";
 import type { DesktopSessionCookieSource } from "./desktop-session-cookies";
 
 const TOKEN_URL = "https://www.vm0.ai/desktop-auth/token";
@@ -12,7 +23,21 @@ function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
   });
 }
 
-function createSession() {
+function uuidSequence(...values: readonly string[]): () => string {
+  let index = 0;
+  return () => {
+    const value = values[index];
+    index += 1;
+    if (!value) {
+      throw new Error("UUID sequence exhausted");
+    }
+    return value;
+  };
+}
+
+function createSession(
+  options: { readonly addClientHeaders?: DesktopClientHeaderInjector } = {},
+) {
   const onChange = vi.fn();
   const onAuthCompleted = vi.fn(async () => {});
   const cookieSource: DesktopSessionCookieSource = {
@@ -33,6 +58,7 @@ function createSession() {
     apiBaseUrl: "https://api.vm0.ai",
     cookieUrls: [new URL("https://www.vm0.ai"), new URL("https://app.vm0.ai")],
     cookieSource,
+    addClientHeaders: options.addClientHeaders ?? (() => {}),
     tokenUrl: TOKEN_URL,
     consumeUrl: (code, handoffId) => {
       const url = new URL("https://www.vm0.ai/desktop-auth/consume");
@@ -289,14 +315,36 @@ describe("DesktopAuthSession", () => {
   });
 
   it("retries auth state with cookies when the cached token is rejected", async () => {
-    const { session } = createSession();
+    const { session } = createSession({
+      addClientHeaders: createDesktopClientHeaderInjector({
+        clientVersion: "1.2.3",
+        createUuid: uuidSequence(
+          "session-id",
+          "request-id-1",
+          "request-id-2",
+          "request-id-3",
+        ),
+      }),
+    });
     const observedAuthorization: (string | null)[] = [];
+    const observedClientHeaders: Array<{
+      readonly requestId: string | null;
+      readonly sessionId: string | null;
+      readonly type: string | null;
+      readonly version: string | null;
+    }> = [];
     session.completeSignIn("stale");
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
         const headers = new Headers(init?.headers);
         observedAuthorization.push(headers.get("authorization"));
+        observedClientHeaders.push({
+          requestId: headers.get(CLIENT_REQUEST_ID_HEADER),
+          sessionId: headers.get(CLIENT_SESSION_ID_HEADER),
+          type: headers.get(CLIENT_TYPE_HEADER),
+          version: headers.get(CLIENT_VERSION_HEADER),
+        });
         const url = String(input);
         if (url.endsWith("/api/auth/me") && headers.has("authorization")) {
           return new Response(null, { status: 401 });
@@ -314,6 +362,26 @@ describe("DesktopAuthSession", () => {
       organization: { id: "o1", name: "Org One", slug: "org-one" },
     });
     expect(observedAuthorization).toStrictEqual(["Bearer stale", null, null]);
+    expect(observedClientHeaders).toStrictEqual([
+      {
+        requestId: "request-id-1",
+        sessionId: "session-id",
+        type: CLIENT_TYPE_DESKTOP,
+        version: "1.2.3",
+      },
+      {
+        requestId: "request-id-2",
+        sessionId: "session-id",
+        type: CLIENT_TYPE_DESKTOP,
+        version: "1.2.3",
+      },
+      {
+        requestId: "request-id-3",
+        sessionId: "session-id",
+        type: CLIENT_TYPE_DESKTOP,
+        version: "1.2.3",
+      },
+    ]);
     expect(session.getCachedToken()).toBeNull();
   });
 
