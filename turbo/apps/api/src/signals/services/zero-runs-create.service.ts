@@ -105,6 +105,10 @@ interface UserInfo {
   readonly agentphoneHandle?: string;
 }
 
+function optionalAgentSetting(value: string | null): string | undefined {
+  return value === null ? undefined : value;
+}
+
 interface ZeroRunPromptContext {
   readonly userInfo: UserInfo;
   readonly relationshipMemoryEnabled: boolean;
@@ -848,6 +852,8 @@ async function buildZeroCreateAgentRunArgs(args: {
   readonly timing: ApiDispatchTimingCollector;
 }): Promise<CreateAgentRunArgs> {
   const command = args.command;
+  const agentModelProviderId = optionalAgentSetting(args.agent.modelProviderId);
+  const agentSelectedModel = optionalAgentSetting(args.agent.selectedModel);
   const memoryRuntimeAppendSystemPrompt =
     await loadMemoryRuntimeAppendSystemPrompt(args.db, {
       enabled: args.relationshipMemoryRuntimeInjectionEnabled,
@@ -870,12 +876,10 @@ async function buildZeroCreateAgentRunArgs(args: {
       appendSystemPrompt: command.appendSystemPrompt,
     }),
     apiStartTime: command.apiStartTime,
-    modelProviderId:
-      command.modelProviderId ?? args.agent.modelProviderId ?? undefined,
+    modelProviderId: command.modelProviderId ?? agentModelProviderId,
     modelProviderCredentialScope: command.modelProviderCredentialScope,
     modelProviderType: command.body.modelProvider,
-    selectedModelOverride:
-      command.selectedModelOverride ?? args.agent.selectedModel ?? undefined,
+    selectedModelOverride: command.selectedModelOverride ?? agentSelectedModel,
     chatThreadId: command.chatThreadId,
     extraEnvironment: buildZeroRunExtraEnvironment({
       agentId: args.agent.id,
@@ -949,8 +953,8 @@ async function buildZeroIntegrationCreateAgentRunArgs(args: {
       appendSystemPrompt: command.appendSystemPrompt,
     }),
     apiStartTime: command.apiStartTime,
-    modelProviderId: args.agent.modelProviderId ?? undefined,
-    selectedModelOverride: args.agent.selectedModel ?? undefined,
+    modelProviderId: optionalAgentSetting(args.agent.modelProviderId),
+    selectedModelOverride: optionalAgentSetting(args.agent.selectedModel),
     extraEnvironment: { ZERO_AGENT_ID: args.agent.id },
     callbacks: command.callbacks,
     includeZeroTokenSecret: true,
