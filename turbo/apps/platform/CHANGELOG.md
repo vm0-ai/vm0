@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.579.0](https://github.com/vm0-ai/vm0/compare/app-v0.578.0...app-v0.579.0) (2026-07-08)
+
+
+### Features
+
+* add nintendo eshop catalog connector ([#20660](https://github.com/vm0-ai/vm0/issues/20660)) ([2ea4549](https://github.com/vm0-ai/vm0/commit/2ea45494646c4ecfcdfe1dcce65c8517d902cabd))
+
+
+### Bug Fixes
+
+* persist Vercel preview bypass cookie ([#20715](https://github.com/vm0-ai/vm0/issues/20715)) ([972b41f](https://github.com/vm0-ai/vm0/commit/972b41f88246bf49059300c11eeb7823895f9764))
+* preserve sidebar virtual list position on touch focus ([#20719](https://github.com/vm0-ai/vm0/issues/20719)) ([098fc7d](https://github.com/vm0-ai/vm0/commit/098fc7ddd32dbcc56984541903daa2cb7d9f973e))
+* reset chat indexeddb cache ([#20716](https://github.com/vm0-ai/vm0/issues/20716)) ([01e37a4](https://github.com/vm0-ai/vm0/commit/01e37a438c46479d4e9386a41eb0cfe33ed7c4e5))
+
+
+### Performance Improvements
+
+* reduce api contract route type instantiations ([#20699](https://github.com/vm0-ai/vm0/issues/20699)) ([6430708](https://github.com/vm0-ai/vm0/commit/6430708b4f7dba7bd8bab324a9d55a275805f8f6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.172.0
+    * @vm0/connectors bumped to 1.150.0
+    * @vm0/core bumped to 8.416.0
+
 ## [0.578.0](https://github.com/vm0-ai/vm0/compare/app-v0.577.4...app-v0.578.0) (2026-07-08)
 
 

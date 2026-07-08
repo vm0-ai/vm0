@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.231.0](https://github.com/vm0-ai/vm0/compare/cli-v9.230.5...cli-v9.231.0) (2026-07-08)
+
+
+### Features
+
+* **cli:** report client request headers ([#20673](https://github.com/vm0-ai/vm0/issues/20673)) ([5b53561](https://github.com/vm0-ai/vm0/commit/5b535614ba0f017eb3f6f80805f6c555b3c2daaa)), closes [#20667](https://github.com/vm0-ai/vm0/issues/20667)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.172.0
+    * @vm0/connectors bumped to 1.150.0
+    * @vm0/core bumped to 8.416.0
+
 ## [9.230.5](https://github.com/vm0-ai/vm0/compare/cli-v9.230.4...cli-v9.230.5) (2026-07-08)
 
 
