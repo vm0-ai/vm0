@@ -26,7 +26,9 @@ use std::io::{self, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use guest_contracts::diagnostics::{FAILURE_DIAGNOSTIC_SCHEMA_VERSION, FailureDiagnostic};
+use guest_contracts::diagnostics::{
+    FAILURE_DIAGNOSTIC_SCHEMA_VERSION, FailureClass, FailureDetailSource, FailureDiagnostic,
+};
 use sandbox::{
     CopyFileOptions, EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, ExecTermination, ProcessOutputReceiver,
     Sandbox,
@@ -196,6 +198,35 @@ pub(super) fn should_collect_agent_abnormal_exit_diagnostics(
         && stderr.is_empty()
         && failure_diagnostic.is_none()
         && guest_error.is_none()
+}
+
+pub(super) fn should_collect_unattributed_sigkill_resource_diagnostics(
+    wait_cancelled: bool,
+    exit: &sandbox::ProcessExit,
+    failure_diagnostic: Option<&FailureDiagnostic>,
+    guest_error: Option<&str>,
+) -> bool {
+    !wait_cancelled
+        && process_exited_nonzero(exit)
+        && guest_error.is_none()
+        && failure_diagnostic.is_some_and(unattributed_sigkill_cli_failure)
+}
+
+fn unattributed_sigkill_cli_failure(diagnostic: &FailureDiagnostic) -> bool {
+    diagnostic.failure_class == FailureClass::CliNonzero
+        && diagnostic.cli_termination.is_none()
+        && matches!(
+            diagnostic.failure_detail_source,
+            None | Some(FailureDetailSource::FallbackExitCode)
+        )
+        && observed_or_compatible_sigkill(diagnostic)
+}
+
+fn observed_or_compatible_sigkill(diagnostic: &FailureDiagnostic) -> bool {
+    if let Some(observed_exit) = diagnostic.cli_observed_exit.as_ref() {
+        return observed_exit.is_sigkill();
+    }
+    diagnostic.cli_exit_code == Some(libc::SIGKILL + 128)
 }
 
 pub(super) fn should_log_agent_bootstrap_abnormal_exit_diagnostics(

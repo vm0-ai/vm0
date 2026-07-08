@@ -10,7 +10,8 @@ use std::time::{Duration, Instant};
 
 use futures_util::FutureExt;
 use guest_contracts::diagnostics::{
-    CliTerminationDiagnostic, FailureClass, FailureDiagnostic, FailureReason,
+    CliObservedExitDiagnostic, CliTerminationDiagnostic, FailureClass, FailureDiagnostic,
+    FailureReason,
 };
 use sandbox::SandboxId;
 use tokio::sync::mpsc;
@@ -733,6 +734,8 @@ fn log_job_execution_failed(
             let failure_reason = diagnostic.failure_reason.map(|reason| reason.as_str());
             let cli_termination_fields =
                 JobCliTerminationLogFields::from(diagnostic.cli_termination.as_ref());
+            let cli_observed_exit_fields =
+                JobCliObservedExitLogFields::from(diagnostic.cli_observed_exit.as_ref());
             error!(
                 run_id = %run_id,
                 exit_code,
@@ -754,6 +757,11 @@ fn log_job_execution_failed(
                 cli_termination_signal_grace_ms = cli_termination_fields.signal_grace_ms,
                 cli_termination_escalated = cli_termination_fields.escalated,
                 cli_termination_observed_exit_code = cli_termination_fields.observed_exit_code,
+                cli_observed_exit_kind = cli_observed_exit_fields.kind,
+                cli_observed_exit_code = cli_observed_exit_fields.exit_code,
+                cli_observed_signal_number = cli_observed_exit_fields.signal_number,
+                cli_observed_signal_name = cli_observed_exit_fields.signal_name,
+                cli_observed_mapped_exit_code = cli_observed_exit_fields.mapped_exit_code,
                 session_history_status = diagnostic.session_history_status.as_str(),
                 prompt_shape = diagnostic.prompt_shape.as_str(),
                 prompt_bytes = diagnostic.prompt_bytes,
@@ -792,6 +800,8 @@ fn log_job_execution_failed(
         let failure_reason = diagnostic.failure_reason.map(|reason| reason.as_str());
         let cli_termination_fields =
             JobCliTerminationLogFields::from(diagnostic.cli_termination.as_ref());
+        let cli_observed_exit_fields =
+            JobCliObservedExitLogFields::from(diagnostic.cli_observed_exit.as_ref());
         macro_rules! log_with_diagnostic {
             ($level:ident) => {
                 $level!(
@@ -812,6 +822,11 @@ fn log_job_execution_failed(
                     cli_termination_signal_grace_ms = cli_termination_fields.signal_grace_ms,
                     cli_termination_escalated = cli_termination_fields.escalated,
                     cli_termination_observed_exit_code = cli_termination_fields.observed_exit_code,
+                    cli_observed_exit_kind = cli_observed_exit_fields.kind,
+                    cli_observed_exit_code = cli_observed_exit_fields.exit_code,
+                    cli_observed_signal_number = cli_observed_exit_fields.signal_number,
+                    cli_observed_signal_name = cli_observed_exit_fields.signal_name,
+                    cli_observed_mapped_exit_code = cli_observed_exit_fields.mapped_exit_code,
                     session_history_status = diagnostic.session_history_status.as_str(),
                     prompt_shape = diagnostic.prompt_shape.as_str(),
                     prompt_bytes = diagnostic.prompt_bytes,
@@ -864,6 +879,14 @@ struct JobCliTerminationLogFields {
     observed_exit_code: Option<i32>,
 }
 
+struct JobCliObservedExitLogFields<'a> {
+    kind: Option<&'static str>,
+    exit_code: Option<i32>,
+    signal_number: Option<i32>,
+    signal_name: Option<&'a str>,
+    mapped_exit_code: Option<i32>,
+}
+
 impl From<Option<&CliTerminationDiagnostic>> for JobCliTerminationLogFields {
     fn from(diagnostic: Option<&CliTerminationDiagnostic>) -> Self {
         Self {
@@ -875,6 +898,18 @@ impl From<Option<&CliTerminationDiagnostic>> for JobCliTerminationLogFields {
             signal_grace_ms: diagnostic.and_then(|diagnostic| diagnostic.signal_grace_ms),
             escalated: diagnostic.map(|diagnostic| diagnostic.escalated),
             observed_exit_code: diagnostic.and_then(|diagnostic| diagnostic.observed_exit_code),
+        }
+    }
+}
+
+impl<'a> From<Option<&'a CliObservedExitDiagnostic>> for JobCliObservedExitLogFields<'a> {
+    fn from(diagnostic: Option<&'a CliObservedExitDiagnostic>) -> Self {
+        Self {
+            kind: diagnostic.map(|diagnostic| diagnostic.kind.as_str()),
+            exit_code: diagnostic.and_then(|diagnostic| diagnostic.exit_code),
+            signal_number: diagnostic.and_then(|diagnostic| diagnostic.signal_number),
+            signal_name: diagnostic.and_then(|diagnostic| diagnostic.signal_name.as_deref()),
+            mapped_exit_code: diagnostic.map(|diagnostic| diagnostic.mapped_exit_code),
         }
     }
 }
@@ -1539,6 +1574,7 @@ mod tests {
         );
         assert!(!event.fields.contains_key("failure_reason"));
         assert!(!event.fields.contains_key("cli_termination_reason"));
+        assert!(!event.fields.contains_key("cli_observed_exit_kind"));
     }
 
     #[test]
@@ -1562,6 +1598,29 @@ mod tests {
         assert_field_eq(&event, "cli_termination_signal_grace_ms", "10000");
         assert_field_eq(&event, "cli_termination_escalated", "false");
         assert_field_eq(&event, "cli_termination_observed_exit_code", "143");
+    }
+
+    #[test]
+    fn diagnostic_failure_logs_cli_observed_exit_fields() {
+        let diagnostic = job_failure_diagnostic(None)
+            .with_cli_exit_code(137)
+            .with_cli_observed_exit(CliObservedExitDiagnostic::from_signal(libc::SIGKILL));
+        let failure =
+            executor::ExecutionFailure::new(137, "Agent exited with code 137", Some(diagnostic));
+
+        let event = capture_job_failure_log(&failure);
+
+        assert_eq!(event.level, Level::ERROR);
+        assert_eq!(
+            event.fields.get("message").map(String::as_str),
+            Some("job execution failed")
+        );
+        assert_field_eq(&event, "failure_cli_exit_code", "137");
+        assert_field_eq(&event, "cli_observed_exit_kind", "signal");
+        assert!(!event.fields.contains_key("cli_observed_exit_code"));
+        assert_field_eq(&event, "cli_observed_signal_number", "9");
+        assert_field_eq(&event, "cli_observed_signal_name", "sigkill");
+        assert_field_eq(&event, "cli_observed_mapped_exit_code", "137");
     }
 
     #[test]

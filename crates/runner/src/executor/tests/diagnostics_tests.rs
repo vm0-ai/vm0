@@ -4,7 +4,8 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use guest_contracts::diagnostics::{
-    AgentFramework, FAILURE_DIAGNOSTIC_SCHEMA_VERSION, FailureClass, FailureDetailSource,
+    AgentFramework, CliObservedExitDiagnostic, CliTerminationDiagnostic, CliTerminationReason,
+    CliTerminationSignal, FAILURE_DIAGNOSTIC_SCHEMA_VERSION, FailureClass, FailureDetailSource,
     FailureDiagnostic, FailureReason, PromptMetadata, SessionHistoryStatus,
 };
 use sandbox::{ExecTermination, ProcessExit, ProcessOutputChunk};
@@ -17,6 +18,7 @@ use super::super::diagnostics::{
     host_dmesg_indicates_oom, parse_agent_abnormal_exit_resource_diagnostics,
     read_guest_cli_agent_session_id, read_guest_error_file, read_guest_failure_diagnostic_file,
     should_collect_agent_abnormal_exit_diagnostics,
+    should_collect_unattributed_sigkill_resource_diagnostics,
     should_log_agent_bootstrap_abnormal_exit_diagnostics,
 };
 use super::super::sandbox_run::post_job_cleanup;
@@ -149,6 +151,124 @@ fn bootstrap_abnormal_exit_diagnostics_allow_captured_stderr_without_resource_pr
         &timed_out_exit,
         None,
         None
+    ));
+}
+
+fn fallback_cli_nonzero_diagnostic(exit_code: i32) -> FailureDiagnostic {
+    FailureDiagnostic::new(
+        FailureClass::CliNonzero,
+        AgentFramework::ClaudeCode,
+        PromptMetadata::from_prompt("/help"),
+    )
+    .with_cli_exit_code(exit_code)
+    .with_failure_detail_source(FailureDetailSource::FallbackExitCode)
+}
+
+#[test]
+fn unattributed_sigkill_resource_diagnostics_match_observed_sigkill() {
+    let exit = ProcessExit::new(1, 137, Vec::new(), Vec::new());
+    let diagnostic = fallback_cli_nonzero_diagnostic(137)
+        .with_cli_observed_exit(CliObservedExitDiagnostic::from_signal(libc::SIGKILL));
+
+    assert!(should_collect_unattributed_sigkill_resource_diagnostics(
+        false,
+        &exit,
+        Some(&diagnostic),
+        None
+    ));
+}
+
+#[test]
+fn unattributed_sigkill_resource_diagnostics_do_not_match_explicit_exit_137() {
+    let exit = ProcessExit::new(1, 137, Vec::new(), Vec::new());
+    let diagnostic = fallback_cli_nonzero_diagnostic(137)
+        .with_cli_observed_exit(CliObservedExitDiagnostic::from_exit_code(137));
+
+    assert!(!should_collect_unattributed_sigkill_resource_diagnostics(
+        false,
+        &exit,
+        Some(&diagnostic),
+        None
+    ));
+}
+
+#[test]
+fn unattributed_sigkill_resource_diagnostics_support_old_137_diagnostics() {
+    let exit = ProcessExit::new(1, 137, Vec::new(), Vec::new());
+    let diagnostic = fallback_cli_nonzero_diagnostic(137);
+
+    assert!(should_collect_unattributed_sigkill_resource_diagnostics(
+        false,
+        &exit,
+        Some(&diagnostic),
+        None
+    ));
+}
+
+#[test]
+fn unattributed_sigkill_resource_diagnostics_require_unattributed_fallback_failure() {
+    let exit = ProcessExit::new(1, 137, Vec::new(), Vec::new());
+    let termination = CliTerminationDiagnostic::new(CliTerminationReason::StuckToolWatchdog)
+        .record_signal(CliTerminationSignal::Sigkill, Some(42), Some(1_000))
+        .with_observed_exit_code(137);
+    let attributed_diagnostic =
+        fallback_cli_nonzero_diagnostic(137).with_cli_termination(termination);
+    let specific_diagnostic = FailureDiagnostic::new(
+        FailureClass::CliNonzero,
+        AgentFramework::ClaudeCode,
+        PromptMetadata::from_prompt("/help"),
+    )
+    .with_cli_exit_code(137)
+    .with_cli_observed_exit(CliObservedExitDiagnostic::from_signal(libc::SIGKILL))
+    .with_failure_detail_source(FailureDetailSource::ClaudeResult);
+    let non_cli_diagnostic = FailureDiagnostic::new(
+        FailureClass::CheckpointFailed,
+        AgentFramework::ClaudeCode,
+        PromptMetadata::from_prompt("/help"),
+    )
+    .with_cli_exit_code(137)
+    .with_cli_observed_exit(CliObservedExitDiagnostic::from_signal(libc::SIGKILL))
+    .with_failure_detail_source(FailureDetailSource::FallbackExitCode);
+    let timed_out_exit = ProcessExit {
+        termination: ExecTermination::TimedOut,
+        ..ProcessExit::new(1, 137, Vec::new(), Vec::new())
+    };
+
+    assert!(!should_collect_unattributed_sigkill_resource_diagnostics(
+        false,
+        &exit,
+        Some(&attributed_diagnostic),
+        None
+    ));
+    assert!(!should_collect_unattributed_sigkill_resource_diagnostics(
+        false,
+        &exit,
+        Some(&specific_diagnostic),
+        None
+    ));
+    assert!(!should_collect_unattributed_sigkill_resource_diagnostics(
+        false,
+        &exit,
+        Some(&non_cli_diagnostic),
+        None
+    ));
+    assert!(!should_collect_unattributed_sigkill_resource_diagnostics(
+        false,
+        &timed_out_exit,
+        Some(&fallback_cli_nonzero_diagnostic(137)),
+        None
+    ));
+    assert!(!should_collect_unattributed_sigkill_resource_diagnostics(
+        true,
+        &exit,
+        Some(&fallback_cli_nonzero_diagnostic(137)),
+        None
+    ));
+    assert!(!should_collect_unattributed_sigkill_resource_diagnostics(
+        false,
+        &exit,
+        Some(&fallback_cli_nonzero_diagnostic(137)),
+        Some("guest error")
     ));
 }
 

@@ -27,6 +27,7 @@ use super::diagnostics::{
     log_agent_abnormal_exit_env_diagnostics, log_agent_bootstrap_abnormal_exit_diagnostics,
     log_agent_process_exit_summary, read_guest_error_file, read_guest_failure_diagnostic_file,
     should_collect_agent_abnormal_exit_diagnostics,
+    should_collect_unattributed_sigkill_resource_diagnostics,
     should_log_agent_bootstrap_abnormal_exit_diagnostics,
 };
 use super::effective_cli_framework;
@@ -1523,6 +1524,15 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             failure_diagnostic.as_ref(),
             guest_error.as_deref(),
         );
+        let should_collect_sigkill_resource_diagnostics =
+            should_collect_unattributed_sigkill_resource_diagnostics(
+                wait_cancelled,
+                &exit,
+                failure_diagnostic.as_ref(),
+                guest_error.as_deref(),
+            );
+        let should_collect_resource_diagnostics =
+            should_collect_resource_diagnostics || should_collect_sigkill_resource_diagnostics;
         let mut resource_diagnostics = None;
         if should_log_bootstrap_diagnostics || should_collect_resource_diagnostics {
             let env_key_diagnostics = build_agent_env_key_diagnostics(&env_pairs);
