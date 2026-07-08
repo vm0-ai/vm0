@@ -1,4 +1,8 @@
-import { FIREWALL_ROUTING_METADATA_INDEX } from "./routing-index.generated";
+import {
+  FIREWALL_ROUTING_METADATA_CONNECTOR_TYPES,
+  FIREWALL_ROUTING_METADATA_INDEX,
+  type FirewallRoutingMetadataConnectorType,
+} from "./routing-index.generated";
 import { loadGeneratedFirewallRoutingMetadata } from "./routing-loader.generated";
 import type {
   FirewallRoutingIndexMetadata,
@@ -14,12 +18,8 @@ export type {
   FirewallRoutingRouteMetadata,
 } from "./types";
 
-export type FirewallRoutingMetadataConnectorType =
-  keyof typeof FIREWALL_ROUTING_METADATA_INDEX;
-
-export const FIREWALL_ROUTING_METADATA_CONNECTOR_TYPES = Object.keys(
-  FIREWALL_ROUTING_METADATA_INDEX,
-) as FirewallRoutingMetadataConnectorType[];
+export { FIREWALL_ROUTING_METADATA_CONNECTOR_TYPES };
+export type { FirewallRoutingMetadataConnectorType };
 
 export function isFirewallRoutingMetadataConnectorType(
   type: string,
