@@ -183,7 +183,7 @@ impl SessionHistoryTelemetryMetadata {
 
     fn download_source(self) -> Option<&'static str> {
         self.download_source
-            .map(session_history_download_source_value)
+            .and_then(session_history_download_source_value)
     }
 
     fn cache_probe(self) -> Option<SessionHistoryCacheProbeMetadata> {
@@ -586,14 +586,15 @@ const fn session_history_encoding_value(encoding: ResumeSessionHistoryEncoding) 
 
 const fn session_history_download_source_value(
     source: ResumeSessionHistoryDownloadSource,
-) -> &'static str {
+) -> Option<&'static str> {
     match source {
         ResumeSessionHistoryDownloadSource::ConfiguredPublicEndpoint => {
-            SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT
+            Some(SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT)
         }
         ResumeSessionHistoryDownloadSource::DefaultR2Endpoint => {
-            SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT
+            Some(SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT)
         }
+        ResumeSessionHistoryDownloadSource::Unknown => None,
     }
 }
 
@@ -916,6 +917,29 @@ mod tests {
                 download_source: Some("configured_public_endpoint".to_string()),
             }]
         );
+    }
+
+    #[test]
+    fn sandbox_op_omits_unknown_session_history_download_source() {
+        let metadata = SessionHistoryTelemetryMetadata {
+            encoding: "gzip",
+            raw_size_bucket: "64_256_kib",
+            encoded_size_bucket: "lt_64_kib",
+            compression_ratio_bucket: "lt_0_25",
+            download_source: Some(ResumeSessionHistoryDownloadSource::Unknown),
+            cache_probe: None,
+            response: None,
+        };
+        let op = sandbox_op(
+            "session_history_download",
+            Duration::from_millis(5),
+            true,
+            None,
+            Some("gzip"),
+            Some(metadata),
+        );
+        let json = serde_json::to_value(&op).unwrap();
+        assert!(json.get("session_history_download_source").is_none());
     }
 
     #[test]

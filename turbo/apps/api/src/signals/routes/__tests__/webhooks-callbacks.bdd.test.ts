@@ -1288,7 +1288,7 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
     expectApiError(malformedTelemetryResponseState.body);
     expect(malformedTelemetryResponseState.body.error.code).toBe("BAD_REQUEST");
 
-    const malformedTelemetryDownloadSource =
+    const unknownTelemetryDownloadSource =
       await api.requestAgentTelemetryUnchecked(
         {
           runId,
@@ -1303,12 +1303,10 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
           ],
         },
         headers,
-        [400],
+        [404],
       );
-    expectApiError(malformedTelemetryDownloadSource.body);
-    expect(malformedTelemetryDownloadSource.body.error.code).toBe(
-      "BAD_REQUEST",
-    );
+    expectApiError(unknownTelemetryDownloadSource.body);
+    expect(unknownTelemetryDownloadSource.body.error.code).toBe("NOT_FOUND");
 
     const missingTelemetryRun = await api.requestAgentTelemetry(
       {

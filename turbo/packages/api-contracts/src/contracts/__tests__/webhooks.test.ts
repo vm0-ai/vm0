@@ -22,7 +22,7 @@ describe("webhook telemetry contract", () => {
     expect(result.success).toBe(true);
   });
 
-  it("rejects unknown session history download sources", () => {
+  it("drops unknown session history download source strings", () => {
     const result = webhookTelemetryContract.send.body.safeParse({
       runId: "00000000-0000-4000-8000-000000000000",
       sandboxOperations: [
@@ -32,6 +32,29 @@ describe("webhook telemetry contract", () => {
           duration_ms: 10,
           success: true,
           session_history_download_source: "regional_edge_cache",
+        },
+      ],
+    });
+
+    expect(result.success).toBe(true);
+    if (!result.success) {
+      throw new Error("expected webhook telemetry body to parse");
+    }
+    expect(
+      result.data.sandboxOperations?.[0]?.session_history_download_source,
+    ).toBeUndefined();
+  });
+
+  it("rejects non-string session history download sources", () => {
+    const result = webhookTelemetryContract.send.body.safeParse({
+      runId: "00000000-0000-4000-8000-000000000000",
+      sandboxOperations: [
+        {
+          ts: "2026-01-15T10:00:00.000Z",
+          action_type: "session_history_download",
+          duration_ms: 10,
+          success: true,
+          session_history_download_source: 123,
         },
       ],
     });

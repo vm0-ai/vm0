@@ -1238,6 +1238,8 @@ pub enum ResumeSessionHistoryDownloadSource {
     ConfiguredPublicEndpoint,
     #[serde(rename = "default_r2_endpoint")]
     DefaultR2Endpoint,
+    #[serde(other)]
+    Unknown,
 }
 
 impl ResumeSession {
@@ -1947,6 +1949,37 @@ mod tests {
         assert_eq!(
             history_ref.download_source,
             Some(ResumeSessionHistoryDownloadSource::ConfiguredPublicEndpoint)
+        );
+    }
+
+    #[test]
+    fn cli_agent_session_id_tolerates_unknown_resume_session_history_download_source() {
+        let json = json!({
+            "runId": "550e8400-e29b-41d4-a716-446655440000",
+            "prompt": "hello",
+            "sandboxToken": "tok",
+            "cliAgentType": "claude_code",
+            "resumeSession": {
+                "sessionId": "sess-ref-123",
+                "historyRef": {
+                    "kind": "blob",
+                    "hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "url": "https://r2.example.com/blobs/a.blob.gz?sig=secret",
+                    "encoding": "gzip",
+                    "rawSize": 42,
+                    "encodedSize": 24,
+                    "downloadSource": "future_edge_cache"
+                }
+            },
+            "billableFirewalls": []
+        });
+        let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
+        let session = ctx.resume_session.as_ref().unwrap();
+        let history_ref = session.history_ref().unwrap();
+        assert_eq!(ctx.cli_agent_session_id(), Some("sess-ref-123"));
+        assert_eq!(
+            history_ref.download_source,
+            Some(ResumeSessionHistoryDownloadSource::Unknown)
         );
     }
 

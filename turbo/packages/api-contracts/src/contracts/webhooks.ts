@@ -719,6 +719,15 @@ const sessionHistoryTransferEncodingStateSchema = z.enum([
   "other",
 ]);
 
+const sandboxOperationDownloadSourceSchema = z
+  .union([
+    sessionHistoryDownloadSourceSchema,
+    z.string().transform(() => {
+      return undefined;
+    }),
+  ])
+  .optional();
+
 /**
  * Sandbox operation schema for internal sandbox operations (init, storage, cli, checkpoint, cleanup)
  */
@@ -742,8 +751,7 @@ const sandboxOperationSchema = z.object({
     sessionHistoryContentEncodingStateSchema.optional(),
   session_history_transfer_encoding_state:
     sessionHistoryTransferEncodingStateSchema.optional(),
-  session_history_download_source:
-    sessionHistoryDownloadSourceSchema.optional(),
+  session_history_download_source: sandboxOperationDownloadSourceSchema,
 });
 
 /**
