@@ -20,8 +20,15 @@ import {
   ARTIFACT_ITEMS_RUN_FILE_INDEX,
   ARTIFACT_ITEMS_STORE,
 } from "./chat-idb-schema.ts";
-import { chatIdbReadOr, chatIdbWriteBestEffort } from "./chat-idb-safe.ts";
+import {
+  chatIdbReadOr,
+  chatIdbWriteBestEffort,
+  disabledChatIdbError,
+  logChatIdbDisabled,
+  withChatIdbTimeout,
+} from "./chat-idb-safe.ts";
 import { openChatIdb } from "./chat-idb-store.ts";
+import { onRejection } from "../utils.ts";
 
 const L = logger("ChatIdbCache");
 const DEFAULT_ARTIFACT_ITEM_LIMIT = 50;
@@ -317,7 +324,42 @@ export function createIdbArtifactItemStores(
   userId: string,
   orgId: string,
 ): ArtifactItemStores {
-  return createArtifactItemCacheStores(() => {
-    return openChatIdb(userId, orgId);
-  });
+  const dbName = `vm0-chat-${userId}-${orgId}`;
+
+  let dbPromise: Promise<IDBPDatabase> | null = null;
+  let disabled = false;
+
+  function disableForSession(reason: unknown): void {
+    if (disabled) {
+      return;
+    }
+    disabled = true;
+    logChatIdbDisabled(dbName, reason);
+  }
+
+  async function getDb(): Promise<IDBPDatabase> {
+    if (disabled) {
+      throw disabledChatIdbError(dbName);
+    }
+
+    if (!dbPromise) {
+      L.debug("openDB", { dbName, storeName: ARTIFACT_ITEMS_STORE });
+      dbPromise = openChatIdb(userId, orgId);
+    }
+
+    const pending = dbPromise;
+    return await onRejection(
+      withChatIdbTimeout("artifacts:openDB", () => {
+        return pending;
+      }),
+      (error) => {
+        if (dbPromise === pending) {
+          dbPromise = null;
+        }
+        disableForSession(error);
+      },
+    );
+  }
+
+  return createArtifactItemCacheStores(getDb);
 }
