@@ -205,14 +205,20 @@ pub(super) fn should_collect_unattributed_sigkill_resource_diagnostics(
     exit: &sandbox::ProcessExit,
     failure_diagnostic: Option<&FailureDiagnostic>,
 ) -> bool {
+    let ExecTermination::Exited { exit_code } = exit.termination else {
+        return false;
+    };
+
     !wait_cancelled
-        && process_exited_nonzero(exit)
+        && exit_code != 0
         && exit.diagnostic.is_empty()
-        && failure_diagnostic.is_some_and(unattributed_sigkill_cli_failure)
+        && failure_diagnostic
+            .is_some_and(|diagnostic| unattributed_sigkill_cli_failure(diagnostic, exit_code))
 }
 
-fn unattributed_sigkill_cli_failure(diagnostic: &FailureDiagnostic) -> bool {
+fn unattributed_sigkill_cli_failure(diagnostic: &FailureDiagnostic, exit_code: i32) -> bool {
     diagnostic.failure_class == FailureClass::CliNonzero
+        && diagnostic.cli_exit_code == Some(exit_code)
         && diagnostic.cli_termination.is_none()
         && matches!(
             diagnostic.failure_detail_source,
@@ -221,7 +227,9 @@ fn unattributed_sigkill_cli_failure(diagnostic: &FailureDiagnostic) -> bool {
         && diagnostic
             .cli_observed_exit
             .as_ref()
-            .is_some_and(|observed_exit| observed_exit.is_sigkill())
+            .is_some_and(|observed_exit| {
+                observed_exit.is_sigkill() && observed_exit.mapped_exit_code == exit_code
+            })
 }
 
 pub(super) fn should_log_agent_bootstrap_abnormal_exit_diagnostics(
