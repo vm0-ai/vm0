@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.139.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.139.1...runner-rs-v0.139.2) (2026-07-08)
+
+
+### Bug Fixes
+
+* add runner api transport diagnostics ([#20648](https://github.com/vm0-ai/vm0/issues/20648)) ([73243b9](https://github.com/vm0-ai/vm0/commit/73243b94d15d23d161b99807c2f4f0cf3374632d))
+
 ## [0.139.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.139.0...runner-rs-v0.139.1) (2026-07-08)
 
 
