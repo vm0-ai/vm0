@@ -16,13 +16,13 @@
 //! against the requested active connector set, patches the proxy registry, and
 //! replaces the next schedule from the returned `nextRefreshAt`.
 //!
-//! The safety contract is fail-closed when freshness cannot be established for
-//! an active connector. Queue overflow, API refresh failure, omitted requested
-//! connectors, duplicate requested connectors, malformed `nextRefreshAt`, and
-//! registry patch errors fail closed for the affected connector when it is still
-//! active. Registry writes always re-check source IP, run id, and connector ref
-//! so a stale refresh task cannot patch a later run that reused the same source
-//! IP.
+//! The safety contract is to trigger fail-closed patching when freshness cannot
+//! be established for an active connector. Queue overflow, API refresh failure,
+//! omitted requested connectors, duplicate requested connectors, malformed
+//! `nextRefreshAt`, and registry patch errors trigger fail-closed patching for
+//! the affected connector when it is still active. Registry writes always
+//! re-check source IP, run id, and connector ref so a stale refresh task cannot
+//! patch a later run that reused the same source IP.
 //!
 //! Not every stale or shutdown path fails closed. Inactive runs and unknown
 //! connector refs are ignored. Extra unrequested response connectors are ignored.
