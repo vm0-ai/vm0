@@ -26,7 +26,7 @@ pub mod client {
         pub const CLIENT_TYPE_APP: &str = "App";
 
         /// Client type value for the desktop client.
-        pub const CLIENT_TYPE_DESKTOP: &str = "desktop";
+        pub const CLIENT_TYPE_DESKTOP: &str = "Desktop";
 
         /// Client type value for the guest agent.
         pub const CLIENT_TYPE_GUEST_AGENT: &str = "GuestAgent";
