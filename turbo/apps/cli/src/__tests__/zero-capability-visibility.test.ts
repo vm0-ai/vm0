@@ -18,6 +18,7 @@ function buildCommands(): Command[] {
     new Command("model-provider"),
     new Command("agent"),
     new Command("connector"),
+    new Command("memory"),
     new Command("credit"),
     new Command("logs"),
     new Command("chat"),
@@ -147,6 +148,7 @@ describe("registerZeroCommands", () => {
       "model",
       "model-provider",
       "agent",
+      "memory",
       "resource",
       "whoami",
       "generate",
@@ -210,6 +212,31 @@ describe("registerZeroCommands", () => {
       "generate",
       "web",
     ]);
+  });
+
+  it("should show memory when relationship:read capability is present", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["relationship:read"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    const prog = buildProgram();
+
+    expect(visibleCommandNames(prog)).toContain("memory");
+    expect(visibleCommandNames(prog)).toContain("whoami");
+  });
+
+  it("should hide memory when relationship:read capability is missing", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["agent:read"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    const prog = buildProgram();
+
+    expect(hiddenCommandNames(prog)).toContain("memory");
   });
 
   it("should show model commands even without model-provider capabilities", () => {
@@ -590,6 +617,28 @@ describe("registerZeroCommands", () => {
     );
   });
 
+  it("should show the memory help example when relationship:read capability is present", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["relationship:read"],
+    });
+
+    expect(buildZeroHelpText(decodeZeroTokenPayload(token))).toContain(
+      "Recall memory?",
+    );
+  });
+
+  it("should hide the memory help example when relationship:read capability is missing", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["agent:read"],
+    });
+
+    expect(buildZeroHelpText(decodeZeroTokenPayload(token))).not.toContain(
+      "Recall memory?",
+    );
+  });
+
   it("should show the host help example when host:write capability is present", () => {
     const token = buildZeroToken({
       scope: "zero",
@@ -716,6 +765,7 @@ describe("registerZeroCommands", () => {
     expect(visibleCommandNames(prog)).toEqual([
       "model",
       "model-provider",
+      "memory",
       "resource",
       "whoami",
       "generate",

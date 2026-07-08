@@ -29,6 +29,7 @@ const COMMAND_CAPABILITY_MAP: Record<
   workflow: "agent:read",
   goal: ["goal:read", "goal:agent-result:write", "goal:user-control:write"],
   connector: "connector:read",
+  memory: "relationship:read",
   relationship: "relationship:read",
   // "schedule" and "automation" are deliberately absent: the removal stubs
   // stay out of token-scoped (agent) help but remain invokable and visible to
@@ -99,6 +100,13 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
     load: async () => {
       return (await import("./commands/zero/relationship"))
         .zeroRelationshipCommand;
+    },
+  },
+  {
+    name: "memory",
+    description: "Recall structured memory",
+    load: async () => {
+      return (await import("./commands/zero/memory")).zeroMemoryCommand;
     },
   },
   {
@@ -401,6 +409,9 @@ export function buildZeroHelpText(
     ...(shouldHideCommand("chat", payload)
       ? []
       : ['  Rename this chat?     zero chat rename "New title"']),
+    ...(shouldHideCommand("memory", payload)
+      ? []
+      : ['  Recall memory?       zero memory recall "customer follow up"']),
     "  List generators?       zero generate --help",
     '  Generate image?        zero generate image --raw-prompt "..."',
     '  Generate website?      zero generate website --prompt "..."',
