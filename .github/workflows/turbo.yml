@@ -1886,10 +1886,26 @@ jobs:
           LOG_DIR=$(mktemp -d)
           HOSTS=()
           PIDS=()
+          PGIDS=()
           RUNNER_START_SUCCEEDED=0
+          RUNNER_START_SIGNAL_EXIT=0
+          RUNNER_START_RECORDING=0
 
           cleanup_logs() {
             rm -rf "$LOG_DIR"
+          }
+
+          request_runner_start_exit() {
+            RUNNER_START_SIGNAL_EXIT=$1
+            if [ "$RUNNER_START_RECORDING" -ne 1 ]; then
+              exit "$RUNNER_START_SIGNAL_EXIT"
+            fi
+          }
+
+          check_runner_start_exit() {
+            if [ "$RUNNER_START_SIGNAL_EXIT" -ne 0 ]; then
+              exit "$RUNNER_START_SIGNAL_EXIT"
+            fi
           }
 
           process_group_for_pid() {
@@ -1902,6 +1918,11 @@ jobs:
             local START_PGIDS=()
             local CURRENT_PGID
             CURRENT_PGID=$(process_group_for_pid "$$" || true)
+            for PGID in "${PGIDS[@]}"; do
+              if [[ "$PGID" =~ ^[0-9]+$ && "$PGID" != "$CURRENT_PGID" ]]; then
+                START_PGIDS+=("$PGID")
+              fi
+            done
             for PID in $(jobs -pr); do
               START_PIDS+=("$PID")
             done
@@ -1967,25 +1988,32 @@ jobs:
           }
 
           trap cleanup_runner_start EXIT
-          trap 'exit 130' INT
-          trap 'exit 143' TERM
+          trap 'request_runner_start_exit 130' INT
+          trap 'request_runner_start_exit 143' TERM
           export -f read_host_capacity start_on_host
           HOST_INDEX=0
           for HOST in $(echo "$METAL_HOSTS" | tr ',' ' '); do
             HOST_INDEX=$((HOST_INDEX + 1))
             HOSTS+=("$HOST")
+            RUNNER_START_RECORDING=1
             setsid bash -c 'start_on_host "$@"' start_on_host "$HOST" "$HOST_INDEX" > "${LOG_DIR}/${HOST}.log" 2>&1 &
             PIDS+=($!)
+            PGIDS+=($!)
+            RUNNER_START_RECORDING=0
+            check_runner_start_exit
           done
 
           FAILED=0
           for i in "${!PIDS[@]}"; do
             if ! wait "${PIDS[$i]}"; then
+              check_runner_start_exit
               FAILED=1
               echo "::error::Runner start failed on ${HOSTS[$i]}"
             fi
+            check_runner_start_exit
             echo "=== ${HOSTS[$i]} ==="
             cat "${LOG_DIR}/${HOSTS[$i]}.log"
+            check_runner_start_exit
           done
           rm -rf "$LOG_DIR"
           if [ "$FAILED" -ne 0 ]; then
@@ -1996,9 +2024,11 @@ jobs:
           TOTAL=0
           for HOST in $(echo "$METAL_HOSTS" | tr ',' ' '); do
             if ! MC=$(read_host_capacity "$HOST"); then
+              check_runner_start_exit
               FAILED=1
               break
             fi
+            check_runner_start_exit
             echo "Host ${HOST}: max_concurrent=${MC}"
             TOTAL=$((TOTAL + MC))
           done
