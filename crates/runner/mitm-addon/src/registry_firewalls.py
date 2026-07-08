@@ -131,12 +131,13 @@ def _warn_bundled_fallback(
     catalog_version = None
     if cached_catalog is not None:
         _, catalog_digest, catalog_version, _ = cached_catalog.identity
+    warning_file_key = None if cached_catalog is not None else catalog_snapshot.dependency_file_key
 
     warning_key = (
         raw_name,
         reason,
         catalog_snapshot.cache_path,
-        catalog_snapshot.dependency_file_key,
+        warning_file_key,
         catalog_digest,
         catalog_version,
     )
@@ -155,8 +156,8 @@ def _warn_bundled_fallback(
         fields.append(f"catalog_digest={catalog_digest}")
     if catalog_version is not None:
         fields.append(f"catalog_version={catalog_version}")
-    if catalog_snapshot.dependency_file_key is not None:
-        fields.append(f"cache_file_key={catalog_snapshot.dependency_file_key!r}")
+    if warning_file_key is not None:
+        fields.append(f"cache_file_key={warning_file_key!r}")
 
     with suppress(Exception):
         ctx.log.warn(" ".join(fields))

@@ -27,6 +27,12 @@ class BuiltinFirewallCatalogCacheError(ValueError):
     """Builtin firewall catalog cache is unavailable or malformed."""
 
 
+class _CatalogCacheOpenError(OSError):
+    def __init__(self, reason: str, message: str) -> None:
+        super().__init__(message)
+        self.reason = reason
+
+
 @dataclass(frozen=True)
 class BuiltinFirewallCatalog:
     identity: CatalogIdentity
@@ -149,6 +155,8 @@ def load_catalog_snapshot(cache_path: str | None) -> BuiltinFirewallCatalogSnaps
 
 
 def _open_error_fallback_reason(exc: OSError) -> str:
+    if isinstance(exc, _CatalogCacheOpenError):
+        return exc.reason
     if isinstance(exc, FileNotFoundError):
         return "cache_file_missing"
     if isinstance(exc, PermissionError):
@@ -168,10 +176,16 @@ def _open_cache_for_read(path: Path) -> tuple[int, os.stat_result]:
         raise
     if not stat.S_ISREG(st.st_mode):
         os.close(fd)
-        raise OSError(f"builtin firewall catalog cache is not a regular file: {path}")
+        raise _CatalogCacheOpenError(
+            "cache_not_regular",
+            f"builtin firewall catalog cache is not a regular file: {path}",
+        )
     if not _cache_file_stat_is_trusted(st):
         os.close(fd)
-        raise OSError(f"builtin firewall catalog cache is not trusted: {path}")
+        raise _CatalogCacheOpenError(
+            "cache_untrusted",
+            f"builtin firewall catalog cache is not trusted: {path}",
+        )
     return fd, st
 
 
