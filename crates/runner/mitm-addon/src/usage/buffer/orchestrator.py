@@ -9,7 +9,7 @@ from collections.abc import Callable, Iterable
 from typing import Protocol
 
 from ..counters import set_buffered_usage_events
-from ..webhook import WebhookDeliveryOutcome, _enqueue_webhook
+from ..webhook import WebhookDeliveryOutcome, enqueue_webhook_delivery
 from .logging import _elapsed_ms, _log_dropped_batches, _log_flush_summaries
 from .models import (
     DEFAULT_FLUSH_INTERVAL_SECONDS,
@@ -315,7 +315,11 @@ class UsageEventBuffer:
             )
             admission_result = _enqueue_batches(
                 pending_flush.batches,
-                self._enqueue_webhook if self._enqueue_webhook is not None else _enqueue_webhook,
+                (
+                    self._enqueue_webhook
+                    if self._enqueue_webhook is not None
+                    else enqueue_webhook_delivery
+                ),
                 lambda pending_batch: self._make_delivery_outcome_callback(
                     pending_flush, pending_batch
                 ),
