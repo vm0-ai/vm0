@@ -498,7 +498,7 @@ describe("GET /api/zero/relationships/*", () => {
       },
     });
 
-    const search = await accept(
+    const customerSearch = await accept(
       relationshipsClient().search({
         headers: authHeaders(),
         query: { q: "customer" },
@@ -506,13 +506,49 @@ describe("GET /api/zero/relationships/*", () => {
       [200],
     );
     expect(
-      search.body.relationships.some((relationship) => {
+      customerSearch.body.relationships.some((relationship) => {
         return relationship.entity.primaryEmail === "customer@example.com";
       }),
     ).toBeTruthy();
+
+    const allRelationships = await accept(
+      relationshipsClient().search({
+        headers: authHeaders(),
+        query: { page: 1, limit: 100 },
+      }),
+      [200],
+    );
+    const person = allRelationships.body.relationships.find((relationship) => {
+      return relationship.entity.primaryEmail === "customer@example.com";
+    });
+    const organization = allRelationships.body.relationships.find(
+      (relationship) => {
+        return (
+          relationship.entity.type === "organization" &&
+          relationship.entity.domain === "example.com"
+        );
+      },
+    );
+    expect(person).toMatchObject({
+      entity: {
+        type: "person",
+        displayName: "customer@example.com",
+        primaryEmail: "customer@example.com",
+        domain: "example.com",
+      },
+    });
+    expect(organization).toMatchObject({
+      entity: {
+        type: "organization",
+        displayName: "Example",
+        primaryEmail: null,
+        domain: "example.com",
+      },
+    });
+    expect(person?.id).not.toBe(organization?.id);
   });
 
-  it("uses the Gmail message time for relationship interaction dates", async () => {
+  it("uses the Gmail message time for relationship state dates without fallback interactions", async () => {
     const messageOccurredAt = "2026-02-03T04:05:06.000Z";
     const jobRunAt = new Date("2026-05-06T07:08:09.000Z");
     mockNow(jobRunAt);
@@ -553,7 +589,7 @@ describe("GET /api/zero/relationships/*", () => {
       return relationship.entity.primaryEmail === "customer@example.com";
     });
     expect(customer?.lastInteractionAt).toBe(messageOccurredAt);
-    expect(customer?.recentInteractions[0]?.occurredAt).toBe(messageOccurredAt);
+    expect(customer?.recentInteractions).toStrictEqual([]);
     expect(customer?.lastInteractionAt).not.toBe(jobRunAt.toISOString());
   });
 
@@ -1045,15 +1081,10 @@ describe("GET /api/zero/relationships/*", () => {
         type: "organization",
         displayName: "Slack channel C-memory",
       },
-      relationshipType: "Slack channel",
-      recentInteractions: [
-        {
-          provider: "slack",
-          externalId: "T-memory-backfill:C-memory:1780000000.000100",
-          messageId: "1780000000.000100",
-          snippet: "The user posted in Slack channel C-memory on Slack.",
-        },
-      ],
+      relationshipType: null,
+      status: "active",
+      lastInteractionAt: "2026-05-28T20:26:40.000Z",
+      recentInteractions: [],
     });
   });
 });
