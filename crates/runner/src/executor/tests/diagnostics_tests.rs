@@ -240,11 +240,14 @@ fn unattributed_sigkill_resource_diagnostics_require_unattributed_fallback_failu
         diagnostic: "wait failed inside provider".to_string(),
         ..ProcessExit::new(1, 137, Vec::new(), Vec::new())
     };
+    let observed_sigkill_diagnostic = fallback_cli_nonzero_diagnostic(137)
+        .with_cli_observed_exit(CliObservedExitDiagnostic::from_signal(libc::SIGKILL));
     let termination = CliTerminationDiagnostic::new(CliTerminationReason::StuckToolWatchdog)
         .record_signal(CliTerminationSignal::Sigkill, Some(42), Some(1_000))
         .with_observed_exit_code(137);
-    let attributed_diagnostic =
-        fallback_cli_nonzero_diagnostic(137).with_cli_termination(termination);
+    let attributed_diagnostic = observed_sigkill_diagnostic
+        .clone()
+        .with_cli_termination(termination);
     let specific_diagnostic = FailureDiagnostic::new(
         FailureClass::CliNonzero,
         AgentFramework::ClaudeCode,
@@ -284,17 +287,17 @@ fn unattributed_sigkill_resource_diagnostics_require_unattributed_fallback_failu
     assert!(!should_collect_unattributed_sigkill_resource_diagnostics(
         false,
         &exit_with_process_diagnostic,
-        Some(&fallback_cli_nonzero_diagnostic(137))
+        Some(&observed_sigkill_diagnostic)
     ));
     assert!(!should_collect_unattributed_sigkill_resource_diagnostics(
         false,
         &timed_out_exit,
-        Some(&fallback_cli_nonzero_diagnostic(137))
+        Some(&observed_sigkill_diagnostic)
     ));
     assert!(!should_collect_unattributed_sigkill_resource_diagnostics(
         true,
         &exit,
-        Some(&fallback_cli_nonzero_diagnostic(137))
+        Some(&observed_sigkill_diagnostic)
     ));
 }
 
