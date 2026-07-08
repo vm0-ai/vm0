@@ -240,16 +240,18 @@ describe("Nintendo eShop catalog sources", () => {
         "https://search.nintendo.jp/nintendo_soft_sg/search.json",
         () => {
           return HttpResponse.json({
-            result: [
-              {
-                title: "Pikmin",
-                nsuid: "70010000000007",
-                price: "79.90",
-                current_price: "59.90",
-                currency: "SGD",
-                sale_flg: 1,
-              },
-            ],
+            result: {
+              items: [
+                {
+                  title: "Pikmin",
+                  nsuid: "70010000000007",
+                  price: "79.90",
+                  current_price: "59.90",
+                  currency: "SGD",
+                  sale_flg: 1,
+                },
+              ],
+            },
           });
         },
       ),

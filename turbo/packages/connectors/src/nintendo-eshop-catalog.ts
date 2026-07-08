@@ -679,8 +679,9 @@ async function searchSoutheastAsia(
   );
   const body = await fetchJson(url, { signal: args.signal });
   const root = record(body);
+  const result = root ? record(root.result) : null;
   const sourceRecords = records(
-    root?.result ?? root?.items ?? root?.soft ?? body,
+    result?.items ?? root?.result ?? root?.items ?? root?.soft ?? body,
   );
   return normalizeRecords({
     sourceFamily: "southeast-asia-search",
