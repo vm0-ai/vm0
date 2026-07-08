@@ -20,9 +20,10 @@ const LOG_TAG: &str = "sandbox:guest-agent";
 
 /// Reconcile Codex runtime files using the config captured during bootstrap.
 ///
-/// API-owned runtime provider metadata may write a model catalog before auth
-/// reconciliation so both `codex exec` and `codex app-server` observe the same
-/// startup config.
+/// Auth reconciliation owns `CODEX_HOME` validation and permissions. API-owned
+/// runtime provider metadata writes the model catalog only after that boundary
+/// succeeds, before `codex exec` or `codex app-server` can observe startup
+/// config.
 ///
 /// Three mutually-exclusive states are supported:
 ///
@@ -40,10 +41,6 @@ pub async fn setup_codex_for_config(
     _masker: &SecretMasker,
     config: &env::GuestConfig,
 ) -> Result<(), AgentError> {
-    codex_runtime_config::write_model_catalog_from_raw(
-        &config.home_dir,
-        &config.codex_runtime_config,
-    )?;
     let codex_oauth_mode = config
         .user_env
         .get("CHATGPT_ACCOUNT_ID")
@@ -53,7 +50,11 @@ pub async fn setup_codex_for_config(
         .get("OPENAI_API_KEY")
         .map(String::as_str)
         .unwrap_or("");
-    setup_codex_with_values(codex_oauth_mode, &config.home_dir, api_key)
+    setup_codex_with_values(codex_oauth_mode, &config.home_dir, api_key)?;
+    codex_runtime_config::write_model_catalog_from_raw(
+        &config.home_dir,
+        &config.codex_runtime_config,
+    )
 }
 
 fn setup_codex_with_values(
