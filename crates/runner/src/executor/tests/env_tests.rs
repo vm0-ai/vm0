@@ -1041,6 +1041,14 @@ async fn write_user_env_file_uses_private_write_for_small_env() {
         .unwrap();
 
     assert_eq!(path, guest_user_env_file_path(run_id).unwrap());
+    assert!(
+        path.ends_with(&format!(
+            "/{}/{}",
+            guest_contracts::env::USER_ENV_PRIVATE_DIR_NAME,
+            guest_contracts::env::USER_ENV_FILENAME
+        )),
+        "got: {path}"
+    );
     assert!(sandbox.exec_calls().is_empty());
     assert!(sandbox.write_file_calls().is_empty());
     let writes = sandbox.private_write_file_calls();

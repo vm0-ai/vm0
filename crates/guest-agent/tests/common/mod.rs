@@ -543,9 +543,9 @@ pub unsafe fn set_user_env_file_env_for_test(
     runtime_dir: &Path,
     user_env: &HashMap<String, String>,
 ) -> Result<(), String> {
-    let dir = runtime_dir.join("user-env");
+    let dir = runtime_dir.join(guest_contracts::env::USER_ENV_PRIVATE_DIR_NAME);
     std::fs::create_dir_all(&dir).map_err(|error| format!("create user env dir: {error}"))?;
-    let path = dir.join("env.json");
+    let path = dir.join(guest_contracts::env::USER_ENV_FILENAME);
     let bytes =
         serde_json::to_vec(user_env).map_err(|error| format!("serialize user env: {error}"))?;
     std::fs::write(&path, bytes).map_err(|error| format!("write user env: {error}"))?;

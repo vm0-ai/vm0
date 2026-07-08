@@ -108,8 +108,6 @@ const BOOTSTRAP_SENSITIVE_ENV_KEYS: &[&str] = &[
     "NODE_OPTIONS",
 ];
 const USER_ENV_FILE_ENV_KEY: &str = guest_contracts::env::USER_ENV_FILE_ENV;
-const GUEST_USER_ENV_DIR_NAME: &str = "user-env";
-const GUEST_USER_ENV_FILENAME: &str = "env.json";
 const AGENT_ABNORMAL_EXIT_DIAGNOSTIC_SCRIPT: &str =
     include_str!("../../scripts/agent-abnormal-exit-diagnostics.sh");
 

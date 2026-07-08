@@ -6,8 +6,8 @@ mod common;
 fn process_env_config_loads_user_env_once() {
     let tmp = tempfile::tempdir().unwrap();
     let runtime_dir = tmp.path().join("runtime");
-    let user_env_dir = runtime_dir.join("user-env");
-    let user_env_path = user_env_dir.join("env.json");
+    let user_env_dir = runtime_dir.join(guest_contracts::env::USER_ENV_PRIVATE_DIR_NAME);
+    let user_env_path = user_env_dir.join(guest_contracts::env::USER_ENV_FILENAME);
     std::fs::create_dir_all(&user_env_dir).unwrap();
     std::fs::write(
         &user_env_path,
