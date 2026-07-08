@@ -23,17 +23,17 @@ describe("zero resource pull registry resolver", () => {
   });
 
   it("resolves a built-in website template package archive", () => {
-    expect(findRegistryResourceForPull("template:warm-cards")).toEqual(
+    expect(findRegistryResourceForPull("template:black-slabs")).toEqual(
       expect.objectContaining({
-        id: "template:warm-cards",
+        id: "template:black-slabs",
         kind: "template",
         targets: ["website"],
         source: expect.objectContaining({
-          path: "warm-cards",
+          path: "black-slabs",
           archive: expect.objectContaining({
             type: "tar.gz",
             sha256:
-              "1fafd9e5541dfe53ffdfafcbb6e45d525328c9a0cc5bb4afb2a06b4685e153d2",
+              "7e2dfc9f61dc1b9d187661d36854d27b150c0be92f882d845e5adcfd4054e6ba",
           }),
         }),
       }),
@@ -41,8 +41,8 @@ describe("zero resource pull registry resolver", () => {
   });
 
   it("canonicalizes unprefixed built-in website template ids", () => {
-    expect(findRegistryResourceForPull("warm-cards")?.id).toBe(
-      "template:warm-cards",
+    expect(findRegistryResourceForPull("black-slabs")?.id).toBe(
+      "template:black-slabs",
     );
   });
 });
