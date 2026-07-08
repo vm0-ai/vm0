@@ -1921,7 +1921,8 @@ jobs:
 
           cleanup_runner_start() {
             local EXIT_CODE=$?
-            trap - EXIT INT TERM
+            trap - EXIT
+            trap '' INT TERM
             if [ "$RUNNER_START_SUCCEEDED" -ne 1 ]; then
               stop_background_start_jobs
               stop_started_hosts
