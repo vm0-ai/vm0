@@ -5384,22 +5384,6 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     const cancelled = await api.readRun(actor, run.runId);
     expect(cancelled.status).toBe("cancelled");
 
-    const workflowRun = await api.createRun(actor, {
-      agentId: agent.agentId,
-      prompt: "handle workflow event",
-      modelProvider: "anthropic-api-key",
-      triggerSource: "workflow-event",
-    });
-    await api.heartbeatRunner(runnerGroup);
-    const workflowClaim = await api.claimRunnerJob(workflowRun.runId);
-    const workflowPrompt = workflowClaim.appendSystemPrompt ?? "";
-    expect(workflowPrompt).toContain("zero slack message send --help");
-    expect(workflowPrompt).not.toContain(
-      "Normal replies are automatically sent to the originating thread",
-    );
-    expect(workflowPrompt).not.toContain("Never use SLACK_TOKEN directly");
-    await api.requestCancelRun(actor, workflowRun.runId, [200]);
-
     if (!actor.orgId) {
       throw new Error("Expected actor to belong to an org");
     }

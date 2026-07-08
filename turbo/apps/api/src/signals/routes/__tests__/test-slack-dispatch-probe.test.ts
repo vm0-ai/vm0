@@ -433,11 +433,15 @@ describe("POST /api/test/slack-dispatch-probe", () => {
     expect(claim.appendSystemPrompt).toContain(
       "You are currently running inside: Slack",
     );
-    expect(claim.appendSystemPrompt).toContain("zero slack message send --help");
     expect(claim.appendSystemPrompt).toContain(
-      "Normal replies are automatically sent to the originating thread",
+      "zero slack message send --help",
     );
-    expect(claim.appendSystemPrompt).toContain("Never use SLACK_TOKEN directly");
+    expect(claim.appendSystemPrompt).toContain(
+      "normal replies are automatically sent to the originating thread",
+    );
+    expect(claim.appendSystemPrompt).toContain(
+      "Never use SLACK_TOKEN directly",
+    );
     expect(claim.appendSystemPrompt).toContain("Channel type: Channel");
     const state = await readSlackState(fixture);
     expect(state.recent_runs).toStrictEqual(
