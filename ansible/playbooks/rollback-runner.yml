@@ -396,6 +396,17 @@
         --api-url {{ api_url }}
         --token vm0_official_{{ official_runner_secret }}
 
+    # Both the readiness wait and the later non-target drain/stop operations
+    # shell out to the target runner binary. On the skip_install path, Phase 5
+    # was skipped, so assert the binary exists before entering the rescue-wrapped
+    # readiness block. A missing binary should fail rollback clearly, not force
+    # stop an already-active target service.
+    - name: Assert target binary present before readiness and drain/stop
+      stat:
+        path: "{{ bin_dir }}/runner"
+      register: tgt_bin_precheck
+      failed_when: not (tgt_bin_precheck.stat.exists and tgt_bin_precheck.stat.executable)
+
     # ========================================
     # Phase 6: Install target service + verify health (install path only)
     # ========================================
@@ -416,58 +427,8 @@
             {% endif %}
 
         - name: Wait for target runner readiness
-          shell: |
-            set -euo pipefail
-            if ! state="$(systemctl show vm0-runner-{{ runner_name }}.service --property=ActiveState --value)"; then
-              echo "target service ActiveState=<unavailable>" >&2
-              exit 2
-            fi
-            case "$state" in
-              active) ;;
-              activating|reloading)
-                echo "target service ActiveState=$state" >&2
-                exit 1
-                ;;
-              *)
-                echo "target service ActiveState=$state" >&2
-                exit 2
-                ;;
-            esac
-
-            mode="$(
-              python3 - "{{ runner_dir }}/status.json" <<'PY'
-            import json
-            import sys
-
-            try:
-                with open(sys.argv[1], encoding="utf-8") as status_file:
-                    mode = json.load(status_file).get("mode", "")
-            except Exception:
-                mode = ""
-
-            if isinstance(mode, str):
-                print(mode)
-            PY
-            )"
-            case "$mode" in
-              running) exit 0 ;;
-              stopping|stopped)
-                echo "target runner mode=$mode" >&2
-                exit 2
-                ;;
-              *)
-                echo "target runner mode=${mode:-<unavailable>}" >&2
-                exit 1
-                ;;
-            esac
-          args:
-            executable: /bin/bash
-          register: target_readiness
-          retries: 60
-          delay: 2
-          until: target_readiness.rc in [0, 2]
+          command: "{{ bin_dir }}/runner service wait-running --name {{ runner_name }} --timeout-secs 120"
           changed_when: false
-          failed_when: target_readiness.rc != 0
 
         - name: Verify target runner health
           when: not (skip_install | default(false))
@@ -505,17 +466,6 @@
     #               the bad version is worse than the cost of aborting
     #               in-flight user tasks.
     #
-    # Both branches shell out to `{{ bin_dir }}/runner`. On the
-    # skip_install path, Phase 5/6 were skipped so no prior task has
-    # touched the binary — assert it exists so a host where gc evicted
-    # the target (yet somehow still has the unit active) surfaces a
-    # clear error instead of a confusing "No such file or directory".
-    - name: Assert target binary present before drain/stop
-      stat:
-        path: "{{ bin_dir }}/runner"
-      register: tgt_bin_precheck
-      failed_when: not (tgt_bin_precheck.stat.exists and tgt_bin_precheck.stat.executable)
-
     - name: Find runner services to drain or stop
       shell: |
         (
