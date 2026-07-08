@@ -1635,6 +1635,23 @@ mod tests {
     }
 
     #[test]
+    fn diagnostic_failure_logs_cli_observed_normal_exit_fields() {
+        let diagnostic = job_failure_diagnostic(None)
+            .with_cli_exit_code(2)
+            .with_cli_observed_exit(CliObservedExitDiagnostic::from_exit_code(2));
+        let failure =
+            executor::ExecutionFailure::new(2, "Agent exited with code 2", Some(diagnostic));
+
+        let event = capture_job_failure_log(&failure);
+
+        assert_field_eq(&event, "cli_observed_exit_kind", "exit");
+        assert_field_eq(&event, "cli_observed_exit_code", "2");
+        assert!(!event.fields.contains_key("cli_observed_signal_number"));
+        assert!(!event.fields.contains_key("cli_observed_signal_name"));
+        assert_field_eq(&event, "cli_observed_mapped_exit_code", "2");
+    }
+
+    #[test]
     fn diagnostic_failure_logs_observed_signal_name_from_number() {
         let diagnostic = job_failure_diagnostic(None)
             .with_cli_exit_code(137)
