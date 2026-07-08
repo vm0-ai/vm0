@@ -480,11 +480,15 @@ export function zeroConnectorList(args: {
     const connectorProvidedBindings =
       connectorProvidedBindingsForStoredConnectors(connectorList);
 
+    const configuredTypes = getRuntimeAvailableConnectorTypes((name) => {
+      return optionalEnv(name);
+    }).filter((type) => {
+      return storedConnectorTypeIsVisible(type, featureStates);
+    });
+
     return {
       connectors: connectorList,
-      configuredTypes: getRuntimeAvailableConnectorTypes((name) => {
-        return optionalEnv(name);
-      }),
+      configuredTypes,
       connectorProvidedBindings,
     };
   });
