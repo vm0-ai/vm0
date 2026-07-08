@@ -62,10 +62,12 @@ RequestClassificationKind = Literal[
 
 class TlsAdmissionView(Protocol):
     @property
-    def client_ip(self) -> str: ...
+    def client_ip(self) -> str:
+        raise NotImplementedError
 
     @property
-    def run_id(self) -> str | None: ...
+    def run_id(self) -> str | None:
+        raise NotImplementedError
 
 
 @dataclass(frozen=True)
