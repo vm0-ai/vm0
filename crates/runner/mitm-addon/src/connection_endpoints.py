@@ -6,18 +6,18 @@ _ADDRESS_PAIR_LENGTH = 2
 
 
 def server_address(server: object) -> tuple[str, int] | None:
-    return address_pair(getattr(server, "address", None))
+    return _address_pair(getattr(server, "address", None))
 
 
 def server_peername(server: object) -> tuple[str, int] | None:
-    return address_pair(getattr(server, "peername", None))
+    return _address_pair(getattr(server, "peername", None))
 
 
 def connection_sockname(connection: object) -> tuple[str, int] | None:
-    return address_pair(getattr(connection, "sockname", None))
+    return _address_pair(getattr(connection, "sockname", None))
 
 
-def address_pair(address: object) -> tuple[str, int] | None:
+def _address_pair(address: object) -> tuple[str, int] | None:
     if not isinstance(address, tuple) or len(address) < _ADDRESS_PAIR_LENGTH:
         return None
     host, port = address[:_ADDRESS_PAIR_LENGTH]
@@ -26,7 +26,7 @@ def address_pair(address: object) -> tuple[str, int] | None:
     return host, port
 
 
-def is_authoritative_connected_endpoint(endpoint: tuple[str, int] | None) -> bool:
+def _is_authoritative_connected_endpoint(endpoint: tuple[str, int] | None) -> bool:
     if endpoint is None:
         return False
     endpoint_host, _endpoint_port = endpoint
@@ -43,7 +43,7 @@ def connected_ip_destination_endpoint(
     port: int,
     extra_endpoints: tuple[tuple[str, int] | None, ...] = (),
 ) -> tuple[str, int] | None:
-    for peer in connected_destination_candidate_endpoints(
+    for peer in _connected_destination_candidate_endpoints(
         server,
         extra_endpoints=extra_endpoints,
     ):
@@ -54,23 +54,23 @@ def connected_ip_destination_endpoint(
         if peer_port != port:
             continue
 
-        if is_authoritative_connected_endpoint(peer):
+        if _is_authoritative_connected_endpoint(peer):
             return peer
 
     return None
 
 
-def connected_destination_candidate_endpoints(
+def _connected_destination_candidate_endpoints(
     server: object,
     *,
     extra_endpoints: tuple[tuple[str, int] | None, ...] = (),
 ) -> tuple[tuple[str, int] | None, ...]:
     peername = server_peername(server)
-    if is_authoritative_connected_endpoint(peername):
+    if _is_authoritative_connected_endpoint(peername):
         return (peername,)
 
     address = server_address(server)
-    if is_authoritative_connected_endpoint(address):
+    if _is_authoritative_connected_endpoint(address):
         return (address,)
 
     return (peername, address, *extra_endpoints)
