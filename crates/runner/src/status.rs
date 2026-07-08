@@ -30,22 +30,39 @@ pub enum RunnerMode {
     Stopped,
 }
 
-/// One active run's identity: the `run_id` the user sees and the `sandbox_id`
-/// that identifies the Firecracker VM hosting it. After sandbox reuse these
-/// differ: the VM keeps its original `sandbox_id` while each successive job
-/// has a fresh `run_id`.
+/// Active run lifecycle phase serialized as `active_runs[*].phase`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ActiveRunPhase {
+    /// The run is claimed and visible in `active_runs`, but a fresh sandbox is
+    /// still being prepared. Its Firecracker process may not exist yet.
     Preparing,
+    /// Sandbox preparation has completed and the run is expected to be
+    /// associated with a Firecracker process.
     Running,
 }
 
+/// One active run entry serialized under `status.json` `active_runs`.
+///
+/// `run_id` is the user/control-plane visible run identity. `sandbox_id` is
+/// the VM identity used by runner maintenance commands to correlate
+/// Firecracker state. After sandbox reuse these can differ: the VM keeps its
+/// original `sandbox_id`, while each successive job has a fresh `run_id`.
 #[derive(Debug, Clone, Serialize)]
 pub struct ActiveRun {
+    /// User/control-plane visible run id.
     pub run_id: RunId,
+    /// Firecracker sandbox/VM id hosting this run.
+    ///
+    /// Runner doctor, kill, and exec use this as the join key when correlating
+    /// status entries with Firecracker processes.
     pub sandbox_id: SandboxId,
+    /// Current active-run phase serialized as `active_runs[*].phase`.
     pub phase: ActiveRunPhase,
+    /// Timestamp when the current phase started.
+    ///
+    /// This is reset on `preparing -> running`; it is not the run creation
+    /// timestamp.
     #[serde(serialize_with = "serialize_iso")]
     pub phase_started_at: DateTime<Utc>,
 }
