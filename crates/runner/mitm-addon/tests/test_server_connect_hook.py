@@ -7,6 +7,7 @@ import uuid
 from unittest.mock import patch
 
 import mitm_addon
+import upstream_admission
 import upstream_destination_binding
 from tests.request_handler_helpers import (
     _single_firewall_vm,
@@ -85,11 +86,11 @@ async def test_server_connect_retargets_credentialed_connector_host(tmp_path, mi
 async def test_server_connect_uses_tls_clienthello_sni_when_client_sni_is_empty(tmp_path, mitm_ctx):
     reg_path = _write_github_firewall_registry(tmp_path)
     data = _data(sni="")
-    mitm_addon._record_tls_admission(
+    upstream_admission.record_tls_admission(
         data.client,
-        mitm_addon._TlsAdmission(
+        upstream_admission.TlsAdmission(
             client_ip="10.200.0.5",
-            kind=mitm_addon._TLS_ADMISSION_VALID_REGISTRY_VM,
+            kind=upstream_admission.TLS_ADMISSION_VALID_REGISTRY_VM,
             run_id="run-conn-1",
             sni="api.github.com",
         ),
@@ -153,7 +154,7 @@ async def test_server_connect_does_not_bind_connected_api_edge_from_sni_only(
     with (
         mitm_ctx(registry_path=str(registry_file), api_url="https://pr-test-api.vm6.ai"),
         patch.object(
-            mitm_addon.socket,
+            upstream_admission.socket,
             "getaddrinfo",
             return_value=[(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("66.33.60.34", 443))],
         ),
@@ -176,7 +177,7 @@ async def test_server_connect_does_not_bind_connected_connector_from_sni_only(tm
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
         patch.object(
-            mitm_addon.socket,
+            upstream_admission.socket,
             "getaddrinfo",
             side_effect=AssertionError("connector binding must not use fresh DNS"),
         ),
@@ -192,7 +193,7 @@ async def test_server_connect_binds_api_host_from_original_address(registry_file
 
     with (
         mitm_ctx(registry_path=str(registry_file), api_url="https://pr-test-api.vm6.ai"),
-        patch.object(mitm_addon.socket, "getaddrinfo", return_value=_API_ADDRINFO),
+        patch.object(upstream_admission.socket, "getaddrinfo", return_value=_API_ADDRINFO),
     ):
         await mitm_addon.server_connect(data)
 
@@ -216,7 +217,7 @@ async def test_server_connect_does_not_bind_connected_api_host_from_original_add
 
     with (
         mitm_ctx(registry_path=str(registry_file), api_url="https://pr-test-api.vm6.ai"),
-        patch.object(mitm_addon.socket, "getaddrinfo", return_value=_API_ADDRINFO),
+        patch.object(upstream_admission.socket, "getaddrinfo", return_value=_API_ADDRINFO),
     ):
         await mitm_addon.server_connect(data)
 
@@ -234,7 +235,7 @@ async def test_server_connect_binds_api_host_from_transparent_sockname(registry_
 
     with (
         mitm_ctx(registry_path=str(registry_file), api_url="https://pr-test-api.vm6.ai"),
-        patch.object(mitm_addon.socket, "getaddrinfo", return_value=_API_ADDRINFO),
+        patch.object(upstream_admission.socket, "getaddrinfo", return_value=_API_ADDRINFO),
     ):
         await mitm_addon.server_connect(data)
 
@@ -252,7 +253,7 @@ async def test_server_connect_does_not_bind_api_host_when_original_address_misse
 
     with (
         mitm_ctx(registry_path=str(registry_file), api_url="https://pr-test-api.vm6.ai"),
-        patch.object(mitm_addon.socket, "getaddrinfo", return_value=_API_ADDRINFO),
+        patch.object(upstream_admission.socket, "getaddrinfo", return_value=_API_ADDRINFO),
     ):
         await mitm_addon.server_connect(data)
 
@@ -328,8 +329,12 @@ async def test_server_connect_negative_caches_dns_errors(registry_file, mitm_ctx
 
     with (
         mitm_ctx(registry_path=str(registry_file), api_url="https://pr-test-api.vm6.ai"),
-        patch.object(mitm_addon, "_trusted_host_address_cache_time", return_value=10.0),
-        patch.object(mitm_addon.socket, "getaddrinfo", side_effect=OSError("dns down")) as dns,
+        patch.object(upstream_admission, "trusted_host_address_cache_time", return_value=10.0),
+        patch.object(
+            upstream_admission.socket,
+            "getaddrinfo",
+            side_effect=OSError("dns down"),
+        ) as dns,
     ):
         await mitm_addon.server_connect(first)
         await mitm_addon.server_connect(second)
@@ -346,8 +351,8 @@ async def test_server_connect_negative_caches_empty_dns_results(registry_file, m
 
     with (
         mitm_ctx(registry_path=str(registry_file), api_url="https://pr-test-api.vm6.ai"),
-        patch.object(mitm_addon, "_trusted_host_address_cache_time", return_value=10.0),
-        patch.object(mitm_addon.socket, "getaddrinfo", return_value=[]) as dns,
+        patch.object(upstream_admission, "trusted_host_address_cache_time", return_value=10.0),
+        patch.object(upstream_admission.socket, "getaddrinfo", return_value=[]) as dns,
     ):
         await mitm_addon.server_connect(first)
         await mitm_addon.server_connect(second)
@@ -366,12 +371,12 @@ async def test_server_connect_retries_after_negative_dns_cache_expires(registry_
     with (
         mitm_ctx(registry_path=str(registry_file), api_url="https://pr-test-api.vm6.ai"),
         patch.object(
-            mitm_addon,
-            "_trusted_host_address_cache_time",
+            upstream_admission,
+            "trusted_host_address_cache_time",
             side_effect=monotonic_values,
         ),
         patch.object(
-            mitm_addon.socket,
+            upstream_admission.socket,
             "getaddrinfo",
             side_effect=[OSError("dns down"), _API_ADDRINFO],
         ) as dns,
@@ -391,8 +396,8 @@ async def test_server_connect_positive_caches_dns_results(registry_file, mitm_ct
 
     with (
         mitm_ctx(registry_path=str(registry_file), api_url="https://pr-test-api.vm6.ai"),
-        patch.object(mitm_addon, "_trusted_host_address_cache_time", return_value=10.0),
-        patch.object(mitm_addon.socket, "getaddrinfo", return_value=_API_ADDRINFO) as dns,
+        patch.object(upstream_admission, "trusted_host_address_cache_time", return_value=10.0),
+        patch.object(upstream_admission.socket, "getaddrinfo", return_value=_API_ADDRINFO) as dns,
     ):
         await mitm_addon.server_connect(first)
         await mitm_addon.server_connect(second)
@@ -418,7 +423,7 @@ async def test_server_connect_coalesces_concurrent_dns_resolution(registry_file,
 
     with (
         mitm_ctx(registry_path=str(registry_file), api_url="https://pr-test-api.vm6.ai"),
-        patch.object(mitm_addon.socket, "getaddrinfo", side_effect=getaddrinfo),
+        patch.object(upstream_admission.socket, "getaddrinfo", side_effect=getaddrinfo),
     ):
         first_task = asyncio.create_task(mitm_addon.server_connect(first))
         assert await asyncio.to_thread(lookup_started.wait, 5)
@@ -450,7 +455,7 @@ async def test_server_connect_cancelled_waiter_does_not_cancel_shared_dns_lookup
 
     with (
         mitm_ctx(registry_path=str(registry_file), api_url="https://pr-test-api.vm6.ai"),
-        patch.object(mitm_addon.socket, "getaddrinfo", side_effect=getaddrinfo),
+        patch.object(upstream_admission.socket, "getaddrinfo", side_effect=getaddrinfo),
     ):
         cancelled_task = asyncio.create_task(mitm_addon.server_connect(cancelled))
         assert await asyncio.to_thread(lookup_started.wait, 5)
