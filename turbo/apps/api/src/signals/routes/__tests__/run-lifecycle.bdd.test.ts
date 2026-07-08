@@ -74,6 +74,7 @@ const TEST_DATA_KEY = Buffer.from("0123456789abcdef0123456789abcdef", "utf8");
 // value the chat composer sends when picking a model instead of a provider).
 const MODEL_FIRST_SELECTION_PROVIDER_ID =
   "00000000-0000-4000-8000-000000000000";
+const CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET = "zero web upload-file -f <path>";
 const API_DISPATCH_QUEUE_PERSISTENCE_ACTION_TYPES = [
   "api_dispatch_persist_custom_connector_auth_refs",
   "api_dispatch_insert_runner_job_queue",
@@ -2990,6 +2991,62 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await api.readRun(actor, run.runId);
     expect(cancelled.status).toBe("cancelled");
+  });
+
+  it("does not add Codex image upload guidance outside web chat Codex runs", async () => {
+    const api = createRunsAutomationsApi(context);
+    const fw = createFirewallApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    await fw.seedOrgCodexProvider(actor, {
+      accessToken: "chatgpt-access-image-guidance",
+      refreshToken: "chatgpt-refresh-image-guidance",
+      accountId: "workspace-id-image-guidance",
+      idToken: "chatgpt-id-token-image-guidance",
+      expiresIn: 3600,
+    });
+
+    const codexWebRun = await api.createRun(actor, {
+      agentId,
+      prompt: "generate an image with codex without a chat thread",
+      modelProvider: "codex-oauth-token",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const codexWebClaim = await api.claimRunnerJob(codexWebRun.runId);
+    const codexWebPrompt = codexWebClaim.appendSystemPrompt ?? "";
+    expect(codexWebClaim.cliAgentType).toBe("codex");
+    expect(codexWebPrompt).not.toContain(CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET);
+    expect(codexWebPrompt).not.toContain("When running in Codex");
+    await api.requestCancelRun(actor, codexWebRun.runId, [200]);
+
+    const claudeWebRun = await api.createRun(actor, {
+      agentId,
+      prompt: "generate an image with claude",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claudeWebClaim = await api.claimRunnerJob(claudeWebRun.runId);
+    expect(claudeWebClaim.cliAgentType).toBe("claude-code");
+    expect(claudeWebClaim.appendSystemPrompt ?? "").not.toContain(
+      CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET,
+    );
+    await api.requestCancelRun(actor, claudeWebRun.runId, [200]);
+
+    const codexSlackRun = await api.createDirectRun(actor, {
+      agentComposeId: agentId,
+      prompt: "generate an image from slack",
+      modelProviderType: "codex-oauth-token",
+      triggerSource: "slack",
+      vars: { ZERO_AGENT_ID: agentId },
+      secrets: { ZERO_TOKEN: "bdd-zero-direct-token" },
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const codexSlackClaim = await api.claimRunnerJob(codexSlackRun.runId);
+    expect(codexSlackClaim.cliAgentType).toBe("codex");
+    expect(codexSlackClaim.appendSystemPrompt ?? "").not.toContain(
+      CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET,
+    );
+    await api.requestCancelRun(actor, codexSlackRun.runId, [200]);
   });
 
   it("claims MiniMax Codex runs with structured runtime config", async () => {
