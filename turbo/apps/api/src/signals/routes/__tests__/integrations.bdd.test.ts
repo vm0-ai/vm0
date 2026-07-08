@@ -2757,29 +2757,43 @@ describe("INT-01: Slack app deep webhook flows", () => {
     expect(latestOutputQuerySeen).toBeTruthy();
 
     const legacyCompleteText = "Delayed output without a terminal watermark";
+    let legacyRunId = "";
+    let legacySandboxToken = "";
+    let legacyWatermarkInjected = false;
     let legacyOutputQueryCount = 0;
     let legacyVisibilityQuerySeen = false;
-    context.mocks.axiom.query.mockImplementation((...args: unknown[]) => {
+    context.mocks.axiom.query.mockImplementation(async (...args: unknown[]) => {
       const apl = typeof args[0] === "string" ? args[0] : "";
       if (apl.includes("| project sequenceNumber")) {
         legacyVisibilityQuerySeen = true;
-        return Promise.resolve([]);
+        return [{ sequenceNumber: 0 }];
       }
       if (apl.includes('eventType == "assistant"')) {
         legacyOutputQueryCount++;
-        return Promise.resolve(
-          legacyOutputQueryCount < 4
-            ? []
-            : [
-                {
-                  eventType: "result",
-                  sequenceNumber: 0,
-                  eventData: { result: legacyCompleteText },
-                },
-              ],
-        );
+        if (!legacyWatermarkInjected) {
+          legacyWatermarkInjected = true;
+          await webhooks.requestAgentComplete(
+            {
+              runId: legacyRunId,
+              exitCode: 0,
+              lastEventSequence: 0,
+            },
+            { authorization: `Bearer ${legacySandboxToken}` },
+            [200],
+          );
+          return [];
+        }
+        return apl.includes("| where sequenceNumber <= 0")
+          ? [
+              {
+                eventType: "result",
+                sequenceNumber: 0,
+                eventData: { result: legacyCompleteText },
+              },
+            ]
+          : [];
       }
-      return Promise.resolve([]);
+      return [];
     });
 
     await integrations.postSlackEvent(teamId, {
@@ -2789,8 +2803,9 @@ describe("INT-01: Slack app deep webhook flows", () => {
       ts: "4050.000175",
       channel: channelId,
     });
-    const legacyRunId = await pollSlackRun(runnerGroup);
+    legacyRunId = await pollSlackRun(runnerGroup);
     const legacyClaim = await runs.claimRunnerJob(legacyRunId);
+    legacySandboxToken = legacyClaim.sandboxToken;
     context.mocks.slack.chat.postMessage.mockClear();
     await completeSlackTriggeredRun({
       runId: legacyRunId,
@@ -2807,8 +2822,8 @@ describe("INT-01: Slack app deep webhook flows", () => {
         }),
       );
     });
-    expect(legacyOutputQueryCount).toBe(4);
-    expect(legacyVisibilityQuerySeen).toBeFalsy();
+    expect(legacyOutputQueryCount).toBe(2);
+    expect(legacyVisibilityQuerySeen).toBeTruthy();
 
     context.mocks.axiom.query.mockImplementation((...args: unknown[]) => {
       const apl = typeof args[0] === "string" ? args[0] : "";

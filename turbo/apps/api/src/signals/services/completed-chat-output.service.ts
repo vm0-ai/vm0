@@ -1,5 +1,6 @@
 import { chatOutputMaterializations } from "@vm0/db/schema/chat-output-materialization";
 import { chatMessages } from "@vm0/db/schema/chat-message";
+import { agentRuns } from "@vm0/db/schema/agent-run";
 import { and, desc, eq, isNotNull, lte, sql } from "drizzle-orm";
 import { delay } from "signal-timers";
 
@@ -327,6 +328,18 @@ export async function loadDbCompletedChatOutputState(args: {
   };
 }
 
+async function loadRunLastEventSequence(
+  db: Db,
+  runId: string,
+): Promise<number | null> {
+  const [run] = await db
+    .select({ lastEventSequence: agentRuns.lastEventSequence })
+    .from(agentRuns)
+    .where(eq(agentRuns.id, runId))
+    .limit(1);
+  return run?.lastEventSequence ?? null;
+}
+
 async function resolveCompletedChatOutputOnce(args: {
   readonly db: Db;
   readonly runId: string;
@@ -412,13 +425,24 @@ export async function resolveCompletedChatOutputWithRetry(args: {
       : COMPLETED_CHAT_OUTPUT_RETRY_ATTEMPTS);
   const retryDelayMs =
     args.retryDelayMs ?? COMPLETED_CHAT_OUTPUT_RETRY_DELAY_MS;
+  let lastEventSequence = args.lastEventSequence;
   let lastResult: CompletedChatOutputResolution = {
     kind: "not_visible_yet",
     reason: "axiom_no_output",
   };
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    lastResult = await resolveCompletedChatOutput(args);
+    if (lastEventSequence === null) {
+      lastEventSequence = await loadRunLastEventSequence(args.db, args.runId);
+      args.signal.throwIfAborted();
+    }
+
+    lastResult = await resolveCompletedChatOutput({
+      db: args.db,
+      runId: args.runId,
+      lastEventSequence,
+      signal: args.signal,
+    });
     if (lastResult.kind !== "not_visible_yet") {
       return lastResult;
     }
