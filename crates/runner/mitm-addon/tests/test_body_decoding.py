@@ -7,7 +7,6 @@ import brotli
 import pytest
 import zstandard
 
-import body_decoding
 from body_decoding import (
     can_stream_decode_usage,
     create_stream_decode_feed,
@@ -571,7 +570,7 @@ class TestDecompressJsonUsageBody:
         body = frame_body * 200
         hdrs = headers(("Content-Encoding", "zstd"))
         validation_input_sizes: list[int] = []
-        real_factory = body_decoding.zstandard.ZstdDecompressor
+        real_factory = zstandard.ZstdDecompressor
 
         class TrackingDecompressionObj:
             def __init__(self, wrapped):
