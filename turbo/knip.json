@@ -87,7 +87,8 @@
         "src/**/__tests__/**/*.{test,spec}.ts",
         "src/**/*.{test,spec}.ts"
       ],
-      "project": ["src/**/*.ts"]
+      "project": ["src/**/*.ts"],
+      "ignore": ["src/connector-registry.validation.ts"]
     },
     "packages/api-contracts": {
       "entry": [
