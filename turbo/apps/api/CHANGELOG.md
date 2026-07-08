@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.244.0](https://github.com/vm0-ai/vm0/compare/api-v1.243.1...api-v1.244.0) (2026-07-08)
+
+
+### Features
+
+* add desktop client request headers ([#20622](https://github.com/vm0-ai/vm0/issues/20622)) ([00a66b8](https://github.com/vm0-ai/vm0/commit/00a66b894644a59f4646c31799a918e6ceafa19a))
+* add usage allowance billing ([#20524](https://github.com/vm0-ai/vm0/issues/20524)) ([118cdc1](https://github.com/vm0-ai/vm0/commit/118cdc130c407c030d6c766387afa6105a0db229))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.168.0
+    * @vm0/connectors bumped to 1.148.1
+    * @vm0/core bumped to 8.414.3
+    * @vm0/db bumped to 1.100.0
+
 ## [1.243.1](https://github.com/vm0-ai/vm0/compare/api-v1.243.0...api-v1.243.1) (2026-07-08)
 
 
