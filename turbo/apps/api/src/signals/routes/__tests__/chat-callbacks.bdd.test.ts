@@ -167,7 +167,9 @@ async function startChatRun(
         ? {}
         : { attachFiles: body.attachFiles }),
       ...(body.selectedModel === undefined
-        ? { model: "claude-sonnet-4-6" }
+        ? body.threadId === undefined
+          ? { model: "claude-sonnet-4-6" }
+          : {}
         : { model: body.selectedModel }),
     },
     [201],

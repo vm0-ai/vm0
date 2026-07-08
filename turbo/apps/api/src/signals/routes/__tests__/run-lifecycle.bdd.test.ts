@@ -859,7 +859,10 @@ async function sendChatRunMessage(
   const chat = createChatFilesBddApi(context);
   const sent = await chat.requestSendMessage(
     actor,
-    { ...body, modelProvider: "anthropic-api-key" },
+    {
+      ...body,
+      ...(body.threadId === undefined ? { model: "claude-sonnet-5" } : {}),
+    },
     [201],
   );
   if (sent.status !== 201 || sent.body.runId === null) {
