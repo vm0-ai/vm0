@@ -45,14 +45,14 @@ pub enum ActiveRunPhase {
 /// One active run entry serialized under `status.json` `active_runs`.
 ///
 /// `run_id` is the user/control-plane visible run identity. `sandbox_id` is
-/// the VM identity used by runner maintenance commands to correlate
+/// the sandbox identity used by runner maintenance commands to correlate
 /// Firecracker state. After sandbox reuse these can differ: the VM keeps its
 /// original `sandbox_id`, while each successive job has a fresh `run_id`.
 #[derive(Debug, Clone, Serialize)]
 pub struct ActiveRun {
     /// User/control-plane visible run id.
     pub run_id: RunId,
-    /// Firecracker sandbox/VM id hosting this run.
+    /// Sandbox/VM id assigned to this run.
     ///
     /// Runner doctor, kill, and exec use this as the join key when correlating
     /// status entries with Firecracker processes.
