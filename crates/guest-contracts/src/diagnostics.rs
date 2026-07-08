@@ -5,6 +5,15 @@ use serde::{Deserialize, Serialize};
 /// Current JSON schema version for failure diagnostics.
 pub const FAILURE_DIAGNOSTIC_SCHEMA_VERSION: u8 = 1;
 
+// These are stable Unix signal numbers in the serialized diagnostic contract.
+const UNIX_SIGHUP_SIGNAL_NUMBER: i32 = 1;
+const UNIX_SIGINT_SIGNAL_NUMBER: i32 = 2;
+const UNIX_SIGQUIT_SIGNAL_NUMBER: i32 = 3;
+const UNIX_SIGKILL_SIGNAL_NUMBER: i32 = 9;
+const UNIX_SIGTERM_SIGNAL_NUMBER: i32 = 15;
+const UNIX_SIGPIPE_SIGNAL_NUMBER: i32 = 13;
+const SHELL_SIGNAL_EXIT_CODE_OFFSET: i32 = 128;
+
 /// Structured information describing why a guest agent run failed.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -17,6 +26,8 @@ pub struct FailureDiagnostic {
     pub framework: AgentFramework,
     /// Exit code observed from the CLI process, when available.
     pub cli_exit_code: Option<i32>,
+    /// Raw CLI process exit observation before signal exits are flattened.
+    pub cli_observed_exit: Option<CliObservedExitDiagnostic>,
     /// Guest-agent termination details for the CLI process, when available.
     pub cli_termination: Option<CliTerminationDiagnostic>,
     /// Number of turns reported by Claude Code, when available.
@@ -48,6 +59,7 @@ impl FailureDiagnostic {
             failure_class,
             framework,
             cli_exit_code: None,
+            cli_observed_exit: None,
             cli_termination: None,
             claude_num_turns: None,
             failure_detail_source: None,
@@ -63,6 +75,13 @@ impl FailureDiagnostic {
     #[must_use]
     pub fn with_cli_exit_code(mut self, cli_exit_code: i32) -> Self {
         self.cli_exit_code = Some(cli_exit_code);
+        self
+    }
+
+    /// Attach the raw CLI process exit observation.
+    #[must_use]
+    pub fn with_cli_observed_exit(mut self, cli_observed_exit: CliObservedExitDiagnostic) -> Self {
+        self.cli_observed_exit = Some(cli_observed_exit);
         self
     }
 
@@ -106,6 +125,105 @@ impl FailureDiagnostic {
         self.session_history_status = session_history_status;
         self
     }
+}
+
+/// Raw CLI process exit observation before guest-agent maps it to a numeric exit code.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CliObservedExitDiagnostic {
+    /// Shape of the observed process exit.
+    pub kind: CliObservedExitKind,
+    /// Normal process exit code, when the process exited normally.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exit_code: Option<i32>,
+    /// Unix signal number, when the process was killed by a signal.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signal_number: Option<i32>,
+    /// Stable snake_case signal name for common Unix signals, when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signal_name: Option<String>,
+    /// Existing shell-style mapped code used by `cliExitCode`.
+    pub mapped_exit_code: i32,
+}
+
+impl CliObservedExitDiagnostic {
+    /// Build a normal exit observation.
+    #[must_use]
+    pub const fn from_exit_code(exit_code: i32) -> Self {
+        Self {
+            kind: CliObservedExitKind::Exit,
+            exit_code: Some(exit_code),
+            signal_number: None,
+            signal_name: None,
+            mapped_exit_code: exit_code,
+        }
+    }
+
+    /// Build a Unix signal exit observation.
+    #[must_use]
+    pub fn from_signal(signal_number: i32) -> Self {
+        Self {
+            kind: CliObservedExitKind::Signal,
+            exit_code: None,
+            signal_number: Some(signal_number),
+            signal_name: observed_signal_name(signal_number).map(String::from),
+            mapped_exit_code: shell_signal_exit_code(signal_number),
+        }
+    }
+
+    /// Return the stable signal name derived from the observed signal number.
+    #[must_use]
+    pub fn known_signal_name(&self) -> Option<&'static str> {
+        if self.kind != CliObservedExitKind::Signal {
+            return None;
+        }
+
+        self.signal_number.and_then(observed_signal_name)
+    }
+
+    /// Return true when this observation is an observed SIGKILL.
+    #[must_use]
+    pub fn is_sigkill(&self) -> bool {
+        self.kind == CliObservedExitKind::Signal
+            && self.signal_number == Some(UNIX_SIGKILL_SIGNAL_NUMBER)
+    }
+}
+
+/// Shape of the raw CLI process exit observation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CliObservedExitKind {
+    /// The process exited normally with an exit code.
+    Exit,
+    /// The process was killed by a Unix signal.
+    Signal,
+}
+
+impl CliObservedExitKind {
+    /// Return the stable snake_case string representation.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Exit => "exit",
+            Self::Signal => "signal",
+        }
+    }
+}
+
+fn observed_signal_name(signal_number: i32) -> Option<&'static str> {
+    match signal_number {
+        UNIX_SIGHUP_SIGNAL_NUMBER => Some("sighup"),
+        UNIX_SIGINT_SIGNAL_NUMBER => Some("sigint"),
+        UNIX_SIGQUIT_SIGNAL_NUMBER => Some("sigquit"),
+        UNIX_SIGTERM_SIGNAL_NUMBER => Some("sigterm"),
+        UNIX_SIGKILL_SIGNAL_NUMBER => Some("sigkill"),
+        UNIX_SIGPIPE_SIGNAL_NUMBER => Some("sigpipe"),
+        _ => None,
+    }
+}
+
+const fn shell_signal_exit_code(signal_number: i32) -> i32 {
+    SHELL_SIGNAL_EXIT_CODE_OFFSET.saturating_add(signal_number)
 }
 
 /// Details about how the guest agent terminated a CLI process.
@@ -564,6 +682,102 @@ mod tests {
 
         let round_trip: FailureDiagnostic = serde_json::from_value(json).unwrap();
         assert_eq!(round_trip, diagnostic);
+    }
+
+    #[test]
+    fn failure_diagnostic_serializes_observed_signal_exit() {
+        let observed_exit = CliObservedExitDiagnostic::from_signal(UNIX_SIGKILL_SIGNAL_NUMBER);
+        let diagnostic = FailureDiagnostic::new(
+            FailureClass::CliNonzero,
+            AgentFramework::ClaudeCode,
+            PromptMetadata::from_prompt("debug failure"),
+        )
+        .with_cli_exit_code(137)
+        .with_cli_observed_exit(observed_exit);
+
+        let json = serde_json::to_value(&diagnostic).unwrap();
+        assert_eq!(
+            json["cliObservedExit"],
+            serde_json::json!({
+                "kind": "signal",
+                "signalNumber": 9,
+                "signalName": "sigkill",
+                "mappedExitCode": 137
+            })
+        );
+
+        let round_trip: FailureDiagnostic = serde_json::from_value(json).unwrap();
+        assert_eq!(round_trip, diagnostic);
+        assert!(round_trip.cli_observed_exit.unwrap().is_sigkill());
+    }
+
+    #[test]
+    fn observed_signal_exit_code_uses_shell_mapping_without_overflow() {
+        assert_eq!(
+            CliObservedExitDiagnostic::from_signal(UNIX_SIGKILL_SIGNAL_NUMBER).mapped_exit_code,
+            137
+        );
+        assert_eq!(
+            CliObservedExitDiagnostic::from_signal(i32::MAX).mapped_exit_code,
+            i32::MAX
+        );
+    }
+
+    #[test]
+    fn observed_signal_name_is_derived_from_signal_number() {
+        let mut observed_exit = CliObservedExitDiagnostic::from_signal(UNIX_SIGKILL_SIGNAL_NUMBER);
+        observed_exit.signal_name = Some("tampered".to_string());
+
+        assert_eq!(observed_exit.known_signal_name(), Some("sigkill"));
+    }
+
+    #[test]
+    fn failure_diagnostic_serializes_observed_normal_exit() {
+        let observed_exit = CliObservedExitDiagnostic::from_exit_code(137);
+        let diagnostic = FailureDiagnostic::new(
+            FailureClass::CliNonzero,
+            AgentFramework::ClaudeCode,
+            PromptMetadata::from_prompt("debug failure"),
+        )
+        .with_cli_exit_code(137)
+        .with_cli_observed_exit(observed_exit);
+
+        let json = serde_json::to_value(&diagnostic).unwrap();
+        assert_eq!(
+            json["cliObservedExit"],
+            serde_json::json!({
+                "kind": "exit",
+                "exitCode": 137,
+                "mappedExitCode": 137
+            })
+        );
+
+        let round_trip: FailureDiagnostic = serde_json::from_value(json).unwrap();
+        assert_eq!(round_trip, diagnostic);
+        assert!(!round_trip.cli_observed_exit.unwrap().is_sigkill());
+    }
+
+    #[test]
+    fn failure_diagnostic_deserializes_without_observed_exit() {
+        let json = serde_json::json!({
+            "schemaVersion": 1,
+            "failureClass": "cli_nonzero",
+            "framework": "claude_code",
+            "cliExitCode": 137,
+            "cliTermination": null,
+            "claudeNumTurns": null,
+            "failureDetailSource": "fallback_exit_code",
+            "failureReason": null,
+            "sessionHistoryStatus": "present",
+            "promptShape": "plain",
+            "promptBytes": 5,
+            "firstLineBytes": 5
+        });
+
+        let diagnostic: FailureDiagnostic = serde_json::from_value(json).unwrap();
+
+        assert_eq!(diagnostic.cli_exit_code, Some(137));
+        assert_eq!(diagnostic.cli_observed_exit, None);
     }
 
     #[test]
