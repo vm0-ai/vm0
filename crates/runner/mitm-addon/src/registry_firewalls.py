@@ -25,8 +25,30 @@ class FirewallEntryResolutionError(ValueError):
 
 @dataclass(frozen=True)
 class ResolvedFirewallEntries:
+    """Resolved registry firewall configs and aligned builtin cache keys.
+
+    `firewalls` contains the runtime firewall configs that registry state should
+    use after builtin and inline expansion. `firewalls is None` preserves a VM
+    that did not provide a `firewalls` entry at all.
+
+    When firewalls are present, `builtin_cache_keys` is positionally aligned
+    with them: `builtin_cache_keys[i]` describes `firewalls[i]`. A per-entry
+    cache key of `None` means that firewall came from an inline entry and must
+    bypass builtin compiled-core cache reuse.
+    """
+
     firewalls: list[dict] | None
     builtin_cache_keys: tuple[BuiltinFirewallCoreCacheKey | None, ...] | None
+
+    def __post_init__(self) -> None:
+        if self.firewalls is None:
+            if self.builtin_cache_keys is not None:
+                raise ValueError("builtin cache keys must be absent when firewalls are absent")
+            return
+        if self.builtin_cache_keys is None:
+            raise ValueError("builtin cache keys must be present when firewalls are present")
+        if len(self.firewalls) != len(self.builtin_cache_keys):
+            raise ValueError("builtin cache keys must align with resolved firewalls")
 
 
 @dataclass(frozen=True)
@@ -43,10 +65,12 @@ def reset_cache_for_tests() -> None:
 def catalog_file_key(
     cache_path: str | None,
 ) -> builtin_firewall_cache.CatalogFileKey | None:
+    """Return the registry-facing builtin catalog cache identity."""
     return builtin_firewall_cache.catalog_file_key(cache_path)
 
 
 def load_catalog_snapshot(cache_path: str | None) -> BuiltinFirewallCatalogSnapshot:
+    """Load the registry-facing builtin catalog snapshot for one resolver pass."""
     return builtin_firewall_cache.load_catalog_snapshot(cache_path)
 
 
@@ -179,6 +203,21 @@ def resolve_firewall_entries(
     builtin_firewall_catalog_cache_path: str | None = None,
     builtin_firewall_catalog_snapshot: BuiltinFirewallCatalogSnapshot | None = None,
 ) -> ResolvedFirewallEntries:
+    """Expand a registry VM's firewall entries into runtime firewall configs.
+
+    Supported entry kinds are `builtin` and `inline`. Builtins resolve from the
+    supplied catalog snapshot when provided, otherwise from the catalog cache
+    path. A supplied snapshot pins builtin resolution for this call so a single
+    registry pass cannot mix catalog versions.
+
+    Inline firewalls are deep-copied and receive per-entry `None` builtin cache
+    keys. API IDs are assigned after expansion and before returning. Callers must
+    validate `vm["runId"]` as a non-empty string before calling.
+
+    Raises `FirewallEntryResolutionError` for malformed firewall lists or
+    entries, unsupported entry kinds, unknown builtins, invalid builtin base URL
+    templates, and builtin host-policy validation failures.
+    """
     raw_firewalls = vm.get("firewalls")
     if raw_firewalls is None:
         return ResolvedFirewallEntries(None, None)
