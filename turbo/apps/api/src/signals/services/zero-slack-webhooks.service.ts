@@ -52,6 +52,9 @@ import {
 import {
   enrichMessageContent,
   fetchConversationContexts,
+  type SlackConversationContextObserver,
+  type SlackConversationContextPhase,
+  type SlackConversationContextTelemetryDimensions,
   type SlackFile,
 } from "../../lib/slack-webhook-context";
 import { request$ } from "../context/hono";
@@ -67,6 +70,8 @@ import { now, nowDate } from "../external/time";
 import { writeDb$, type Db } from "../external/db";
 import {
   ApiDispatchTimingCollector,
+  type ApiDispatchTimingActionType,
+  type ApiDispatchTimingDimensions,
   measureApiDispatchTiming,
 } from "./api-dispatch-timing.service";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
@@ -1398,6 +1403,53 @@ async function clearSlackThreadStatusBestEffort(args: {
   }
 }
 
+const SLACK_CONVERSATION_CONTEXT_PHASE_ACTION_TYPES = {
+  replies:
+    "api_dispatch_pre_create_zero_slack_build_run_params_fetch_conversation_context_replies",
+  history:
+    "api_dispatch_pre_create_zero_slack_build_run_params_fetch_conversation_context_history",
+  user_info:
+    "api_dispatch_pre_create_zero_slack_build_run_params_fetch_conversation_context_user_info",
+  format:
+    "api_dispatch_pre_create_zero_slack_build_run_params_fetch_conversation_context_format",
+} as const satisfies Record<
+  SlackConversationContextPhase,
+  ApiDispatchTimingActionType
+>;
+
+function createSlackConversationContextObserver(
+  timing: ApiDispatchTimingCollector,
+): {
+  readonly observer: SlackConversationContextObserver;
+  readonly dimensions: () => ApiDispatchTimingDimensions | undefined;
+} {
+  let dimensions: SlackConversationContextTelemetryDimensions | undefined;
+  const currentDimensions = (): ApiDispatchTimingDimensions | undefined => {
+    if (!dimensions) {
+      return undefined;
+    }
+    return { ...dimensions };
+  };
+
+  return {
+    observer: {
+      async measure(phase, operation) {
+        return await measureApiDispatchTiming(
+          timing,
+          SLACK_CONVERSATION_CONTEXT_PHASE_ACTION_TYPES[phase],
+          "nested",
+          operation,
+          currentDimensions,
+        );
+      },
+      dimensions(nextDimensions) {
+        dimensions = nextDimensions;
+      },
+    },
+    dimensions: currentDimensions,
+  };
+}
+
 async function loadSlackRunParamBundle(args: {
   readonly timing: ApiDispatchTimingCollector;
   readonly db: Db;
@@ -1414,6 +1466,9 @@ async function loadSlackRunParamBundle(args: {
   readonly fetchConversationContext: () => Promise<{
     readonly executionContext: string;
   }>;
+  readonly fetchConversationContextDimensions: () =>
+    | ApiDispatchTimingDimensions
+    | undefined;
 }): Promise<SlackRunParamBundle> {
   const enrichPromise = measureApiDispatchTiming(
     args.timing,
@@ -1438,6 +1493,7 @@ async function loadSlackRunParamBundle(args: {
     "api_dispatch_pre_create_zero_slack_build_run_params_fetch_conversation_context",
     "nested",
     args.fetchConversationContext,
+    args.fetchConversationContextDimensions,
   );
 
   const initialResultsPromise = Promise.allSettled([
@@ -1759,6 +1815,9 @@ const buildRunAgentParams$ = command(
     args: SlackAgentMessageArgs,
     resolved: ResolvedSlackAgentMessage,
   ): Promise<RunAgentParams> => {
+    const conversationContextObserver = createSlackConversationContextObserver(
+      args.timing,
+    );
     const { inputs, threadContext } = await loadSlackRunParamBundle({
       timing: args.timing,
       db: args.db,
@@ -1797,8 +1856,11 @@ const buildRunAgentParams$ = command(
           args.channelId,
           args.threadTs,
           args.messageTs,
+          conversationContextObserver.observer,
         );
       },
+      fetchConversationContextDimensions:
+        conversationContextObserver.dimensions,
     });
 
     return await measureApiDispatchTiming(

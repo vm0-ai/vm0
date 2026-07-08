@@ -1190,6 +1190,9 @@ describe("INT-01: Slack app deep webhook flows", () => {
       "api_dispatch_pre_create_zero_slack_build_run_params_resolve_session",
       "api_dispatch_pre_create_zero_slack_build_run_params_resolve_computer_use_host",
       "api_dispatch_pre_create_zero_slack_build_run_params_fetch_conversation_context",
+      "api_dispatch_pre_create_zero_slack_build_run_params_fetch_conversation_context_history",
+      "api_dispatch_pre_create_zero_slack_build_run_params_fetch_conversation_context_user_info",
+      "api_dispatch_pre_create_zero_slack_build_run_params_fetch_conversation_context_format",
       "api_dispatch_pre_create_zero_slack_build_run_params_assemble",
       "api_dispatch_pre_create_zero_slack_create_run",
     ]) {
@@ -1253,6 +1256,21 @@ describe("INT-01: Slack app deep webhook flows", () => {
     });
     const run2Id = await pollSlackRun(runnerGroup);
     const claim2 = await runs.claimRunnerJob(run2Id);
+    const slackThreadTimingActionTypes = Array.from(
+      new Set(
+        sandboxOperationEventsForRun(run2Id).map((event) => {
+          return event.op_type;
+        }),
+      ),
+    );
+    expect(slackThreadTimingActionTypes).toStrictEqual(
+      expect.arrayContaining([
+        "api_dispatch_pre_create_zero_slack_build_run_params_fetch_conversation_context_replies",
+        "api_dispatch_pre_create_zero_slack_build_run_params_fetch_conversation_context_history",
+        "api_dispatch_pre_create_zero_slack_build_run_params_fetch_conversation_context_user_info",
+        "api_dispatch_pre_create_zero_slack_build_run_params_fetch_conversation_context_format",
+      ]),
+    );
     expect(claim2.resumeSession?.sessionId).toBe(`bdd-slack-cli-${run1Id}`);
     await completeSlackTriggeredRun({
       runId: run2Id,

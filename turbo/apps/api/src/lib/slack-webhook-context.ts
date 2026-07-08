@@ -71,6 +71,36 @@ interface SlackMessage {
   readonly blocks?: readonly SlackBlock[];
 }
 
+export type SlackConversationContextPhase =
+  | "replies"
+  | "history"
+  | "user_info"
+  | "format";
+
+export type SlackConversationContextShape =
+  | "dm_no_thread"
+  | "channel_no_thread"
+  | "dm_thread"
+  | "channel_thread";
+
+export interface SlackConversationContextTelemetryDimensions {
+  readonly slack_context_shape: SlackConversationContextShape;
+  readonly slack_context_thread_message_count_bucket: string;
+  readonly slack_context_channel_message_count_bucket: string;
+  readonly slack_context_total_message_count_bucket: string;
+  readonly slack_context_user_info_id_count_bucket: string;
+}
+
+export interface SlackConversationContextObserver {
+  readonly measure: <T>(
+    phase: SlackConversationContextPhase,
+    operation: () => T | Promise<T>,
+  ) => Promise<T>;
+  readonly dimensions: (
+    dimensions: SlackConversationContextTelemetryDimensions,
+  ) => void;
+}
+
 async function fetchThreadContext(
   client: WebClient,
   channel: string,
@@ -401,6 +431,35 @@ function formatCurrentMessageFiles(files: readonly SlackFile[]): string {
   return files.map(formatFileInfo).join("\n");
 }
 
+function countBucket(count: number): string {
+  if (count <= 0) {
+    return "0";
+  }
+  if (count === 1) {
+    return "1";
+  }
+  if (count <= 4) {
+    return "2_4";
+  }
+  if (count <= 8) {
+    return "5_8";
+  }
+  if (count <= 16) {
+    return "9_16";
+  }
+  return "17_plus";
+}
+
+function slackConversationContextShape(args: {
+  readonly isDm: boolean;
+  readonly hasThread: boolean;
+}): SlackConversationContextShape {
+  if (args.hasThread) {
+    return args.isDm ? "dm_thread" : "channel_thread";
+  }
+  return args.isDm ? "dm_no_thread" : "channel_no_thread";
+}
+
 function unwrapSettled<T>(result: PromiseSettledResult<T>): T {
   if (result.status === "rejected") {
     throw result.reason;
@@ -414,22 +473,44 @@ export async function fetchConversationContexts(
   channelId: string,
   threadTs: string | undefined,
   currentMessageTs?: string,
+  observer?: SlackConversationContextObserver,
 ): Promise<{ readonly executionContext: string }> {
+  const measureContext = async <T>(
+    phase: SlackConversationContextPhase,
+    operation: () => T | Promise<T>,
+  ): Promise<T> => {
+    if (observer) {
+      return await observer.measure(phase, operation);
+    }
+    return await operation();
+  };
   const isDm = channelId.startsWith("D");
   const contextType = threadTs ? "thread" : "channel";
+  const contextShape = slackConversationContextShape({
+    isDm,
+    hasThread: Boolean(threadTs),
+  });
   let allMessages: readonly SlackMessage[];
   let channelMessages: readonly SlackMessage[];
   if (threadTs) {
     const [threadResult, channelResult] = await Promise.allSettled([
-      fetchThreadContext(client, channelId, threadTs),
+      measureContext("replies", async () => {
+        return await fetchThreadContext(client, channelId, threadTs);
+      }),
       isDm
         ? Promise.resolve([])
-        : fetchChannelContext(client, channelId, 10, threadTs),
+        : measureContext("history", async () => {
+            return await fetchChannelContext(client, channelId, 10, threadTs);
+          }),
     ]);
     allMessages = unwrapSettled(threadResult);
     channelMessages = unwrapSettled(channelResult);
   } else {
-    allMessages = isDm ? [] : await fetchChannelContext(client, channelId, 10);
+    allMessages = isDm
+      ? []
+      : await measureContext("history", async () => {
+          return await fetchChannelContext(client, channelId, 10);
+        });
     channelMessages = [];
   }
   const contextMessages = currentMessageTs
@@ -442,18 +523,41 @@ export async function fetchConversationContexts(
     return message.user && !message.bot_id ? [message.user] : [];
   });
   const mentionedIds = extractMentionedUserIds(allContextMessages);
-  const userInfoMap = await fetchSlackUserInfoMap(client, [
-    ...senderIds,
-    ...mentionedIds,
-  ]);
-  const channelContextPrefix =
-    channelMessages.length > 0
-      ? formatContextForAgent(channelMessages, "channel", userInfoMap)
-      : "";
-  const threadExecContext =
-    contextMessages.length > 0
-      ? formatContextForAgent(contextMessages, contextType, userInfoMap)
-      : "";
+  const userInfoIds = [...senderIds, ...mentionedIds];
+  const threadMessageCount = threadTs ? allMessages.length : 0;
+  const channelMessageCount = threadTs
+    ? channelMessages.length
+    : allMessages.length;
+  observer?.dimensions({
+    slack_context_shape: contextShape,
+    slack_context_thread_message_count_bucket: countBucket(threadMessageCount),
+    slack_context_channel_message_count_bucket:
+      countBucket(channelMessageCount),
+    slack_context_total_message_count_bucket: countBucket(
+      allContextMessages.length,
+    ),
+    slack_context_user_info_id_count_bucket: countBucket(
+      new Set(userInfoIds).size,
+    ),
+  });
+  const userInfoMap = await measureContext("user_info", async () => {
+    return await fetchSlackUserInfoMap(client, userInfoIds);
+  });
+  const { channelContextPrefix, threadExecContext } = await measureContext(
+    "format",
+    () => {
+      return {
+        channelContextPrefix:
+          channelMessages.length > 0
+            ? formatContextForAgent(channelMessages, "channel", userInfoMap)
+            : "",
+        threadExecContext:
+          contextMessages.length > 0
+            ? formatContextForAgent(contextMessages, contextType, userInfoMap)
+            : "",
+      };
+    },
+  );
   return {
     executionContext: channelContextPrefix
       ? `${channelContextPrefix}\n\n${threadExecContext}`
