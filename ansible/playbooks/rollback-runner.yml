@@ -408,12 +408,13 @@
       failed_when: not (tgt_bin_precheck.stat.exists and tgt_bin_precheck.stat.executable)
 
     # ========================================
-    # Phase 6: Install target service + verify health (install path only)
+    # Phase 6: Ensure target service readiness + verify health
     # ========================================
     #
-    # Rewrites the unit file, daemon-reloads, and `enable --now` starts the
-    # unit. A fresh process publishes mode=starting first, then transitions to
-    # running only after startup readiness is complete.
+    # On the install path, rewrites the unit file, daemon-reloads, and
+    # `enable --now` starts the unit. Skip-install paths reuse the already
+    # active target service. All paths must pass readiness and doctor before
+    # non-target runners are drained/stopped.
     - name: Ensure target runner is ready
       block:
         - name: Install and start target runner service
@@ -431,7 +432,6 @@
           changed_when: false
 
         - name: Verify target runner health
-          when: not (skip_install | default(false))
           command: "{{ bin_dir }}/runner doctor --name {{ runner_name }}"
       rescue:
         - name: Stop failed target runner service
