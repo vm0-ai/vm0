@@ -126,6 +126,7 @@ async function sendMessageWithTelegramRateLimitRetry(args: {
   for (let attempt = 0; ; attempt++) {
     const result = await sendMessage(args.botToken, args.chatId, args.text, {
       replyToMessageId: args.replyToMessageId,
+      signal: args.signal,
     });
     args.signal.throwIfAborted();
 
@@ -269,13 +270,20 @@ async function deleteThinkingMessageIfPresent(args: {
   readonly botToken: string;
   readonly chatId: string;
   readonly thinkingMessageId: string | null | undefined;
+  readonly signal: AbortSignal;
 }): Promise<void> {
   if (!args.thinkingMessageId) {
     return;
   }
 
   const result = await settle(
-    deleteMessage(args.botToken, args.chatId, Number(args.thinkingMessageId)),
+    deleteMessage(
+      args.botToken,
+      args.chatId,
+      Number(args.thinkingMessageId),
+      args.signal,
+    ),
+    args.signal,
   );
   if (!result.ok) {
     L.debug("Failed to delete legacy thinking placeholder", {
@@ -551,10 +559,11 @@ async function handleCompletion(args: {
     botToken: args.botToken,
     chatId,
     thinkingMessageId,
+    signal: args.signal,
   });
   args.signal.throwIfAborted();
 
-  await sendChatAction(args.botToken, chatId, "typing");
+  await sendChatAction(args.botToken, chatId, "typing", args.signal);
   args.signal.throwIfAborted();
 
   const run = await loadRunContext({
@@ -683,7 +692,8 @@ async function handleTelegramInternalCallback(
 
   if (callback.status === "progress") {
     const typing = await settle(
-      sendChatAction(botToken, payload.chatId, "typing"),
+      sendChatAction(botToken, payload.chatId, "typing", signal),
+      signal,
     );
     signal.throwIfAborted();
     if (!typing.ok) {

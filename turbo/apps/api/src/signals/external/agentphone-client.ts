@@ -1,7 +1,9 @@
 import { optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
+import { createNativeAbortSignalWithTimeout } from "../utils";
 
 const log = logger("api:agentphone");
+const AGENTPHONE_API_TIMEOUT_MS = 15_000;
 
 interface AgentPhoneSentMessage {
   readonly id: string;
@@ -45,6 +47,18 @@ function makeAgentPhoneApiError(
   });
 }
 
+function createAgentPhoneRequestAbort(signal?: AbortSignal): {
+  readonly signal: AbortSignal;
+  readonly cleanup: () => void;
+} {
+  return createNativeAbortSignalWithTimeout({
+    signal,
+    timeoutMs: AGENTPHONE_API_TIMEOUT_MS,
+    timeoutMessage: `AgentPhone API request timed out after ${AGENTPHONE_API_TIMEOUT_MS}ms`,
+    description: "agentphone api request timeout",
+  });
+}
+
 export function isAgentPhoneApiError(
   error: unknown,
 ): error is AgentPhoneApiError {
@@ -67,82 +81,95 @@ export async function sendAgentPhoneMessage(
   },
   signal?: AbortSignal,
 ): Promise<AgentPhoneSentMessage> {
-  const response = await fetch(`${agentPhoneApiBase()}/v1/messages`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${agentPhoneApiKey()}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      agent_id: opts.agentphoneAgentId,
-      ...(opts.toNumber ? { to_number: opts.toNumber } : {}),
-      ...(opts.conversationId ? { conversation_id: opts.conversationId } : {}),
-      ...(opts.replyToMessageId
-        ? { reply_to_message_id: opts.replyToMessageId }
-        : {}),
-      body: opts.body,
-      ...(opts.mediaUrl ? { media_url: opts.mediaUrl } : {}),
-      ...(opts.mediaUrls?.length ? { media_urls: opts.mediaUrls } : {}),
-    }),
-    signal,
-  });
-
-  if (!response.ok) {
-    const text = await response.text();
-    log.error("AgentPhone send message failed", {
-      status: response.status,
-      body: text,
+  const abort = createAgentPhoneRequestAbort(signal);
+  return await (async () => {
+    const response = await fetch(`${agentPhoneApiBase()}/v1/messages`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${agentPhoneApiKey()}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        agent_id: opts.agentphoneAgentId,
+        ...(opts.toNumber ? { to_number: opts.toNumber } : {}),
+        ...(opts.conversationId
+          ? { conversation_id: opts.conversationId }
+          : {}),
+        ...(opts.replyToMessageId
+          ? { reply_to_message_id: opts.replyToMessageId }
+          : {}),
+        body: opts.body,
+        ...(opts.mediaUrl ? { media_url: opts.mediaUrl } : {}),
+        ...(opts.mediaUrls?.length ? { media_urls: opts.mediaUrls } : {}),
+      }),
+      signal: abort.signal,
     });
-    throw makeAgentPhoneApiError(response.status, text);
-  }
 
-  const result = (await response.json()) as Record<string, unknown>;
-  const mediaUrls = Array.isArray(result.media_urls)
-    ? result.media_urls.filter((item): item is string => {
-        return typeof item === "string";
-      })
-    : [];
+    if (!response.ok) {
+      const text = await response.text();
+      abort.signal.throwIfAborted();
+      log.error("AgentPhone send message failed", {
+        status: response.status,
+        body: text,
+      });
+      throw makeAgentPhoneApiError(response.status, text);
+    }
 
-  return {
-    id: typeof result.id === "string" ? result.id : "unknown",
-    status: typeof result.status === "string" ? result.status : "sent",
-    channel: typeof result.channel === "string" ? result.channel : null,
-    fromNumber:
-      typeof result.from_number === "string" ? result.from_number : null,
-    toNumber:
-      typeof result.to_number === "string"
-        ? result.to_number
-        : (opts.toNumber ?? null),
-    mediaUrls,
-  };
+    const result = (await response.json()) as Record<string, unknown>;
+    abort.signal.throwIfAborted();
+    const mediaUrls = Array.isArray(result.media_urls)
+      ? result.media_urls.filter((item): item is string => {
+          return typeof item === "string";
+        })
+      : [];
+
+    return {
+      id: typeof result.id === "string" ? result.id : "unknown",
+      status: typeof result.status === "string" ? result.status : "sent",
+      channel: typeof result.channel === "string" ? result.channel : null,
+      fromNumber:
+        typeof result.from_number === "string" ? result.from_number : null,
+      toNumber:
+        typeof result.to_number === "string"
+          ? result.to_number
+          : (opts.toNumber ?? null),
+      mediaUrls,
+    };
+  })().finally(abort.cleanup);
 }
 
 export async function sendAgentPhoneTypingIndicator(
   opts: { readonly conversationId: string },
   signal?: AbortSignal,
 ): Promise<void> {
-  const response = await fetch(
-    `${agentPhoneApiBase()}/v1/conversations/${encodeURIComponent(
-      opts.conversationId,
-    )}/typing`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${agentPhoneApiKey()}`,
-        "Content-Type": "application/json",
+  const abort = createAgentPhoneRequestAbort(signal);
+  await (async () => {
+    const response = await fetch(
+      `${agentPhoneApiBase()}/v1/conversations/${encodeURIComponent(
+        opts.conversationId,
+      )}/typing`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${agentPhoneApiKey()}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({}),
+        signal: abort.signal,
       },
-      body: JSON.stringify({}),
-      signal,
-    },
-  );
+    );
 
-  if (!response.ok) {
-    const text = await response.text();
-    log.debug("AgentPhone typing indicator failed", {
-      conversationId: opts.conversationId,
-      status: response.status,
-      body: text,
-    });
-    throw makeAgentPhoneApiError(response.status, text);
-  }
+    if (!response.ok) {
+      const text = await response.text();
+      abort.signal.throwIfAborted();
+      log.debug("AgentPhone typing indicator failed", {
+        conversationId: opts.conversationId,
+        status: response.status,
+        body: text,
+      });
+      throw makeAgentPhoneApiError(response.status, text);
+    }
+    await response.text();
+    abort.signal.throwIfAborted();
+  })().finally(abort.cleanup);
 }

@@ -8,6 +8,9 @@ import {
 import { optionalEnv } from "../../lib/env";
 import { settle } from "../utils";
 
+const SLACK_API_TIMEOUT_MS = 15_000;
+const SLACK_API_RETRIES = 1;
+
 type OpenDmResult =
   | { readonly kind: "ok"; readonly channelId: string }
   | { readonly kind: "slack_error"; readonly error: string };
@@ -48,8 +51,12 @@ function resolveSlackApiUrl(): string | undefined {
 
 export function createSlackClient(token: string): WebClient {
   const slackApiUrl = resolveSlackApiUrl();
+  const clientOptions = {
+    retryConfig: { retries: SLACK_API_RETRIES },
+    timeout: SLACK_API_TIMEOUT_MS,
+  };
   if (!slackApiUrl) {
-    return new WebClient(token);
+    return new WebClient(token, clientOptions);
   }
 
   const bypass = optionalEnv("VERCEL_AUTOMATION_BYPASS_SECRET");
@@ -61,10 +68,9 @@ export function createSlackClient(token: string): WebClient {
     : {};
 
   return new WebClient(token, {
+    ...clientOptions,
     slackApiUrl,
     headers,
-    retryConfig: { retries: 1 },
-    timeout: 5000,
   });
 }
 

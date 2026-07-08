@@ -1,6 +1,8 @@
 import { optionalEnv } from "../../lib/env";
+import { createNativeAbortSignalWithTimeout } from "../utils";
 
 const DEFAULT_TELEGRAM_API_BASE = "https://api.telegram.org/bot";
+const TELEGRAM_API_TIMEOUT_MS = 15_000;
 
 interface TelegramApiErrorPayload {
   readonly ok: false;
@@ -22,6 +24,10 @@ function isTelegramApiErrorPayload(
 interface TelegramApiErrorShape {
   readonly status: number;
   readonly description: string | undefined;
+}
+
+interface TelegramRequestOptions {
+  readonly signal?: AbortSignal;
 }
 
 class TelegramApiError extends Error implements TelegramApiErrorShape {
@@ -87,24 +93,86 @@ function buildTelegramApiHeaders(): Record<string, string> {
   return headers;
 }
 
+function createTelegramRequestAbort(signal?: AbortSignal): {
+  readonly signal: AbortSignal;
+  readonly cleanup: () => void;
+} {
+  return createNativeAbortSignalWithTimeout({
+    signal,
+    timeoutMs: TELEGRAM_API_TIMEOUT_MS,
+    timeoutMessage: `Telegram API request timed out after ${TELEGRAM_API_TIMEOUT_MS}ms`,
+    description: "telegram api request timeout",
+  });
+}
+
+async function readTelegramResponseJson(
+  response: Response,
+  signal: AbortSignal,
+): Promise<unknown> {
+  const text = await response.text();
+  signal.throwIfAborted();
+  return JSON.parse(text) as unknown;
+}
+
+function telegramErrorDescription(data: unknown): string | undefined {
+  if (isTelegramApiErrorPayload(data)) {
+    return data.description;
+  }
+  if (
+    typeof data === "object" &&
+    data !== null &&
+    "description" in data &&
+    typeof (data as { readonly description: unknown }).description === "string"
+  ) {
+    return (data as { readonly description: string }).description;
+  }
+  return undefined;
+}
+
+async function fetchTelegramApiJson(args: {
+  readonly token: string;
+  readonly method: string;
+  readonly params?: Record<string, string>;
+  readonly body?: Record<string, unknown>;
+  readonly forcePost?: boolean;
+  readonly signal?: AbortSignal;
+}): Promise<{ readonly response: Response; readonly data: unknown }> {
+  const url = buildTelegramApiUrl(args.token, args.method);
+  const abort = createTelegramRequestAbort(args.signal);
+  return await (async () => {
+    const usePost = args.forcePost === true || isE2eTelegramMockEnabled();
+    const response = usePost
+      ? await fetch(url, {
+          method: "POST",
+          headers: buildTelegramApiHeaders(),
+          body: JSON.stringify(args.body ?? args.params ?? {}),
+          signal: abort.signal,
+        })
+      : await fetch(
+          `${url}${
+            args.params ? `?${new URLSearchParams(args.params).toString()}` : ""
+          }`,
+          { headers: buildTelegramApiHeaders(), signal: abort.signal },
+        );
+    return {
+      response,
+      data: await readTelegramResponseJson(response, abort.signal),
+    };
+  })().finally(abort.cleanup);
+}
+
 async function callTelegramApi<T>(
   token: string,
   method: string,
   params?: Record<string, string>,
+  options: TelegramRequestOptions = {},
 ): Promise<T> {
-  const url = buildTelegramApiUrl(token, method);
-  const response = isE2eTelegramMockEnabled()
-    ? await fetch(url, {
-        method: "POST",
-        headers: buildTelegramApiHeaders(),
-        body: JSON.stringify(params ?? {}),
-      })
-    : await fetch(
-        `${url}${params ? `?${new URLSearchParams(params).toString()}` : ""}`,
-        { headers: buildTelegramApiHeaders() },
-      );
-
-  const data: unknown = await response.json();
+  const { response, data } = await fetchTelegramApiJson({
+    token,
+    method,
+    params,
+    signal: options.signal,
+  });
 
   const errorPayload = isTelegramApiErrorPayload(data) ? data : null;
 
@@ -155,10 +223,15 @@ export function buildFileDownloadUrl(token: string, filePath: string): string {
   return `https://api.telegram.org/file/bot${token}/${filePath}`;
 }
 
-export async function deleteWebhook(token: string): Promise<void> {
-  const response = await fetch(buildTelegramApiUrl(token, "deleteWebhook"), {
-    method: "POST",
-    headers: buildTelegramApiHeaders(),
+export async function deleteWebhook(
+  token: string,
+  signal?: AbortSignal,
+): Promise<void> {
+  const { response, data } = await fetchTelegramApiJson({
+    token,
+    method: "deleteWebhook",
+    forcePost: true,
+    signal,
   });
 
   if (!response.ok) {
@@ -167,7 +240,6 @@ export async function deleteWebhook(token: string): Promise<void> {
     );
   }
 
-  const data: unknown = await response.json();
   if (isTelegramApiErrorPayload(data)) {
     throw new Error(`Telegram API error: ${data.description}`);
   }
@@ -177,15 +249,18 @@ export async function setWebhook(
   token: string,
   url: string,
   secretToken: string,
+  signal?: AbortSignal,
 ): Promise<void> {
-  const response = await fetch(buildTelegramApiUrl(token, "setWebhook"), {
-    method: "POST",
-    headers: buildTelegramApiHeaders(),
-    body: JSON.stringify({
+  const { response, data } = await fetchTelegramApiJson({
+    token,
+    method: "setWebhook",
+    body: {
       url,
       secret_token: secretToken,
       allowed_updates: ["message"],
-    }),
+    },
+    forcePost: true,
+    signal,
   });
 
   if (!response.ok) {
@@ -194,7 +269,6 @@ export async function setWebhook(
     );
   }
 
-  const data: unknown = await response.json();
   if (isTelegramApiErrorPayload(data)) {
     throw new Error(`Telegram API error: ${data.description}`);
   }
@@ -206,11 +280,14 @@ export async function setMyCommands(
     readonly command: string;
     readonly description: string;
   }[],
+  signal?: AbortSignal,
 ): Promise<void> {
-  const response = await fetch(buildTelegramApiUrl(token, "setMyCommands"), {
-    method: "POST",
-    headers: buildTelegramApiHeaders(),
-    body: JSON.stringify({ commands }),
+  const { response, data } = await fetchTelegramApiJson({
+    token,
+    method: "setMyCommands",
+    body: { commands },
+    forcePost: true,
+    signal,
   });
 
   if (!response.ok) {
@@ -219,7 +296,6 @@ export async function setMyCommands(
     );
   }
 
-  const data: unknown = await response.json();
   if (isTelegramApiErrorPayload(data)) {
     throw new Error(`Telegram API error: ${data.description}`);
   }
@@ -262,18 +338,20 @@ export async function sendChatAction(
   token: string,
   chatId: string,
   action: string,
+  signal?: AbortSignal,
 ): Promise<void> {
-  const response = await fetch(buildTelegramApiUrl(token, "sendChatAction"), {
-    method: "POST",
-    headers: buildTelegramApiHeaders(),
-    body: JSON.stringify({ chat_id: chatId, action }),
+  const { response, data } = await fetchTelegramApiJson({
+    token,
+    method: "sendChatAction",
+    body: { chat_id: chatId, action },
+    forcePost: true,
+    signal,
   });
   if (!response.ok) {
     throw new Error(
       `Telegram API error: ${response.status} ${response.statusText}`,
     );
   }
-  const data: unknown = await response.json();
   if (isTelegramApiErrorPayload(data)) {
     throw new Error(`Telegram API error: ${data.description}`);
   }
@@ -289,18 +367,20 @@ export async function deleteMessage(
   token: string,
   chatId: string,
   messageId: number,
+  signal?: AbortSignal,
 ): Promise<void> {
-  const response = await fetch(buildTelegramApiUrl(token, "deleteMessage"), {
-    method: "POST",
-    headers: buildTelegramApiHeaders(),
-    body: JSON.stringify({ chat_id: chatId, message_id: messageId }),
+  const { response, data } = await fetchTelegramApiJson({
+    token,
+    method: "deleteMessage",
+    body: { chat_id: chatId, message_id: messageId },
+    forcePost: true,
+    signal,
   });
   if (!response.ok) {
     throw new Error(
       `Telegram API error: ${response.status} ${response.statusText}`,
     );
   }
-  const data: unknown = await response.json();
   if (isTelegramApiErrorPayload(data)) {
     throw new Error(`Telegram API error: ${data.description}`);
   }
@@ -344,6 +424,7 @@ export async function sendMessage(
     readonly replyToMessageId?: number;
     readonly messageThreadId?: number;
     readonly replyMarkup?: TelegramReplyMarkup;
+    readonly signal?: AbortSignal;
   } = {},
 ): Promise<SendTelegramMessageResult> {
   const payload: Record<string, unknown> = {
@@ -361,25 +442,19 @@ export async function sendMessage(
     payload.reply_markup = options.replyMarkup;
   }
 
-  const response = await fetch(buildTelegramApiUrl(token, "sendMessage"), {
-    method: "POST",
-    headers: buildTelegramApiHeaders(),
-    body: JSON.stringify(payload),
+  const { response, data } = await fetchTelegramApiJson({
+    token,
+    method: "sendMessage",
+    body: payload,
+    forcePost: true,
+    signal: options.signal,
   });
 
-  const data: unknown = await response.json();
-
   if (!response.ok) {
-    const description =
-      data && typeof data === "object" && "description" in data
-        ? typeof (data as { description: unknown }).description === "string"
-          ? ((data as { description: string }).description as string)
-          : undefined
-        : undefined;
     return {
       kind: "telegram-error",
       status: response.status,
-      description,
+      description: telegramErrorDescription(data),
     };
   }
 
@@ -442,6 +517,7 @@ export async function sendDocument(
   options: {
     readonly caption?: string;
     readonly messageThreadId?: number;
+    readonly signal?: AbortSignal;
   } = {},
 ): Promise<SendTelegramDocumentResult> {
   const payload: Record<string, unknown> = {
@@ -455,25 +531,19 @@ export async function sendDocument(
     payload.message_thread_id = options.messageThreadId;
   }
 
-  const response = await fetch(buildTelegramApiUrl(token, "sendDocument"), {
-    method: "POST",
-    headers: buildTelegramApiHeaders(),
-    body: JSON.stringify(payload),
+  const { response, data } = await fetchTelegramApiJson({
+    token,
+    method: "sendDocument",
+    body: payload,
+    forcePost: true,
+    signal: options.signal,
   });
 
-  const data: unknown = await response.json();
-
   if (!response.ok) {
-    const description =
-      data && typeof data === "object" && "description" in data
-        ? typeof (data as { description: unknown }).description === "string"
-          ? ((data as { description: string }).description as string)
-          : undefined
-        : undefined;
     return {
       kind: "telegram-error",
       status: response.status,
-      description,
+      description: telegramErrorDescription(data),
     };
   }
 

@@ -1,3 +1,5 @@
+import { setTimeout as nativeDelay } from "node:timers/promises";
+
 import { env } from "../lib/env";
 import { logger } from "../lib/log";
 import { singleton } from "../lib/singleton";
@@ -248,12 +250,17 @@ export function detach(
   }
 }
 
-export function createAbortSignalWithTimeout(args: {
+interface AbortSignalWithTimeoutArgs {
   readonly signal?: AbortSignal;
   readonly timeoutMs: number;
   readonly timeoutMessage: string;
   readonly description: string;
-}): {
+}
+
+function createAbortSignalWithTimer(
+  args: AbortSignalWithTimeoutArgs,
+  scheduleTimeout: (signal: AbortSignal) => Promise<void>,
+): {
   readonly signal: AbortSignal;
   readonly cleanup: () => void;
 } {
@@ -261,7 +268,7 @@ export function createAbortSignalWithTimeout(args: {
   const timeoutController = new AbortController();
   detach(
     (async () => {
-      await delay(args.timeoutMs, { signal: timeoutController.signal });
+      await scheduleTimeout(timeoutController.signal);
       controller.abort(new Error(args.timeoutMessage));
     })(),
     Mechanism.BestEffortCleanup,
@@ -287,6 +294,28 @@ export function createAbortSignalWithTimeout(args: {
       callerSignal?.removeEventListener("abort", abortFromCaller);
     },
   };
+}
+
+export function createAbortSignalWithTimeout(
+  args: AbortSignalWithTimeoutArgs,
+): {
+  readonly signal: AbortSignal;
+  readonly cleanup: () => void;
+} {
+  return createAbortSignalWithTimer(args, async (signal) => {
+    await delay(args.timeoutMs, { signal });
+  });
+}
+
+export function createNativeAbortSignalWithTimeout(
+  args: AbortSignalWithTimeoutArgs,
+): {
+  readonly signal: AbortSignal;
+  readonly cleanup: () => void;
+} {
+  return createAbortSignalWithTimer(args, async (signal) => {
+    await nativeDelay(args.timeoutMs, undefined, { ref: false, signal });
+  });
 }
 
 export function createDeferredPromise<T>(signal: AbortSignal): {

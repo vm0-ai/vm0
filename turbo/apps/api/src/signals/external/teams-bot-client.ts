@@ -1,11 +1,17 @@
 import { z } from "zod";
 
 import { env, optionalEnv } from "../../lib/env";
-import { safeJsonParse, safeUrlParse, settle } from "../utils";
+import {
+  createNativeAbortSignalWithTimeout,
+  safeJsonParse,
+  safeUrlParse,
+  settle,
+} from "../utils";
 
 const BOT_FRAMEWORK_SCOPE = "https://api.botframework.com/.default";
 const MICROSOFT_GRAPH_SCOPE = "https://graph.microsoft.com/.default";
 const MICROSOFT_GRAPH_BASE_URL = "https://graph.microsoft.com/v1.0";
+const TEAMS_API_TIMEOUT_MS = 15_000;
 
 const teamsTokenResponseSchema = z
   .object({
@@ -151,6 +157,18 @@ function teamsApiError(status: number, error: string): TeamsApiErrorResult {
   return { kind: "teams-error", status, error };
 }
 
+function createTeamsRequestAbort(signal: AbortSignal): {
+  readonly signal: AbortSignal;
+  readonly cleanup: () => void;
+} {
+  return createNativeAbortSignalWithTimeout({
+    signal,
+    timeoutMs: TEAMS_API_TIMEOUT_MS,
+    timeoutMessage: `Microsoft Teams API request timed out after ${TEAMS_API_TIMEOUT_MS}ms`,
+    description: "microsoft teams api request timeout",
+  });
+}
+
 async function fetchClientCredentialsAccessToken(args: {
   readonly tokenUrl: string;
   readonly scope: string;
@@ -173,35 +191,35 @@ async function fetchClientCredentialsAccessToken(args: {
     scope: args.scope,
   });
 
+  const abort = createTeamsRequestAbort(args.signal);
   const responseResult = await settle(
-    fetch(args.tokenUrl, {
-      method: "POST",
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-      },
-      body,
-      signal: args.signal,
-    }),
-    args.signal,
+    (async () => {
+      const response = await fetch(args.tokenUrl, {
+        method: "POST",
+        headers: {
+          "content-type": "application/x-www-form-urlencoded",
+        },
+        body,
+        signal: abort.signal,
+      });
+      const text = await response.text();
+      abort.signal.throwIfAborted();
+      return { response, text };
+    })().finally(abort.cleanup),
   );
   if (!responseResult.ok) {
     return teamsApiError(502, networkErrorMessage(responseResult.error));
   }
 
-  const response = responseResult.value;
+  const { response, text } = responseResult.value;
   if (!response.ok) {
-    const text = await response.text();
-    args.signal.throwIfAborted();
     return teamsApiError(
       502,
       text || `OAuth token request failed with HTTP ${response.status}`,
     );
   }
 
-  const parsed = teamsTokenResponseSchema.safeParse(
-    safeJsonParse(await response.text()),
-  );
-  args.signal.throwIfAborted();
+  const parsed = teamsTokenResponseSchema.safeParse(safeJsonParse(text));
   if (!parsed.success) {
     return teamsApiError(502, "Invalid OAuth token response");
   }
@@ -292,23 +310,26 @@ async function fetchTeamsGraphJson<T>(args: {
     return accessToken;
   }
 
+  const abort = createTeamsRequestAbort(args.signal);
   const responseResult = await settle(
-    fetch(args.url, {
-      method: "GET",
-      headers: {
-        authorization: `Bearer ${accessToken.accessToken}`,
-      },
-      signal: args.signal,
-    }),
-    args.signal,
+    (async () => {
+      const response = await fetch(args.url, {
+        method: "GET",
+        headers: {
+          authorization: `Bearer ${accessToken.accessToken}`,
+        },
+        signal: abort.signal,
+      });
+      const text = await response.text();
+      abort.signal.throwIfAborted();
+      return { response, text };
+    })().finally(abort.cleanup),
   );
   if (!responseResult.ok) {
     return teamsApiError(502, networkErrorMessage(responseResult.error));
   }
 
-  const response = responseResult.value;
-  const responseText = await response.text();
-  args.signal.throwIfAborted();
+  const { response, text: responseText } = responseResult.value;
   if (!response.ok) {
     return teamsApiError(
       response.status,
@@ -348,25 +369,28 @@ async function postTeamsActivity(args: {
     return teamsApiError(400, "Invalid Microsoft Teams serviceUrl");
   }
 
+  const abort = createTeamsRequestAbort(args.signal);
   const responseResult = await settle(
-    fetch(url, {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${accessToken.accessToken}`,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify(args.activity),
-      signal: args.signal,
-    }),
-    args.signal,
+    (async () => {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${accessToken.accessToken}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(args.activity),
+        signal: abort.signal,
+      });
+      const text = await response.text();
+      abort.signal.throwIfAborted();
+      return { response, text };
+    })().finally(abort.cleanup),
   );
   if (!responseResult.ok) {
     return teamsApiError(502, networkErrorMessage(responseResult.error));
   }
 
-  const response = responseResult.value;
-  const responseText = await response.text();
-  args.signal.throwIfAborted();
+  const { response, text: responseText } = responseResult.value;
   if (!response.ok) {
     return teamsApiError(
       response.status,
