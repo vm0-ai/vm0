@@ -456,6 +456,18 @@ def _bind_privileged_upstream_destination(
     if not kinds:
         return
 
+    if all(
+        upstream_destination_binding.add_server_binding_kind_if_matching(
+            server,
+            client=client,
+            host=hostname,
+            port=port,
+            kind=kind,
+        )
+        for kind in kinds
+    ):
+        return
+
     if bool(getattr(server, "connected", False)):
         return
 
