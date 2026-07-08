@@ -1892,17 +1892,27 @@ jobs:
             rm -rf "$LOG_DIR"
           }
 
+          kill_process_tree() {
+            local PID=$1
+            local CHILD
+            for CHILD in $(pgrep -P "$PID" 2>/dev/null || true); do
+              kill_process_tree "$CHILD"
+            done
+            kill "$PID" 2>/dev/null || true
+          }
+
           stop_background_start_jobs() {
+            local START_PIDS=()
             for PID in $(jobs -pr); do
-              kill "$PID" 2>/dev/null || true
+              START_PIDS+=("$PID")
             done
             for PID in "${PIDS[@]}"; do
-              kill "$PID" 2>/dev/null || true
+              START_PIDS+=("$PID")
             done
-            for PID in $(jobs -pr); do
-              wait "$PID" 2>/dev/null || true
+            for PID in "${START_PIDS[@]}"; do
+              kill_process_tree "$PID"
             done
-            for PID in "${PIDS[@]}"; do
+            for PID in "${START_PIDS[@]}"; do
               wait "$PID" 2>/dev/null || true
             done
           }
