@@ -1884,6 +1884,7 @@ jobs:
           }
 
           LOG_DIR=$(mktemp -d)
+          trap 'rm -rf "$LOG_DIR"' EXIT
           HOSTS=()
           PIDS=()
           HOST_INDEX=0
