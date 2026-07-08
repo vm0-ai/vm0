@@ -1892,18 +1892,16 @@ jobs:
             rm -rf "$LOG_DIR"
           }
 
-          collect_process_tree() {
+          process_group_for_pid() {
             local PID=$1
-            local CHILD
-            echo "$PID"
-            for CHILD in $(pgrep -P "$PID" 2>/dev/null || true); do
-              collect_process_tree "$CHILD"
-            done
+            ps -o pgid= -p "$PID" 2>/dev/null | tr -d ' '
           }
 
           stop_background_start_jobs() {
             local START_PIDS=()
-            local TREE_PIDS=()
+            local START_PGIDS=()
+            local CURRENT_PGID
+            CURRENT_PGID=$(process_group_for_pid "$$" || true)
             for PID in $(jobs -pr); do
               START_PIDS+=("$PID")
             done
@@ -1911,17 +1909,24 @@ jobs:
               START_PIDS+=("$PID")
             done
             for PID in "${START_PIDS[@]}"; do
-              for TREE_PID in $(collect_process_tree "$PID"); do
-                TREE_PIDS+=("$TREE_PID")
-              done
+              local PGID
+              PGID=$(process_group_for_pid "$PID" || true)
+              if [[ "$PGID" =~ ^[0-9]+$ && "$PGID" != "$CURRENT_PGID" ]]; then
+                START_PGIDS+=("$PGID")
+              else
+                kill -TERM "$PID" 2>/dev/null || true
+              fi
             done
-            for PID in "${TREE_PIDS[@]}"; do
-              kill -TERM "$PID" 2>/dev/null || true
+            for PGID in "${START_PGIDS[@]}"; do
+              kill -TERM -- "-$PGID" 2>/dev/null || true
             done
             for PID in "${START_PIDS[@]}"; do
               timeout 10s tail --pid="$PID" -f /dev/null >/dev/null 2>&1 || true
             done
-            for PID in "${TREE_PIDS[@]}"; do
+            for PGID in "${START_PGIDS[@]}"; do
+              kill -KILL -- "-$PGID" 2>/dev/null || true
+            done
+            for PID in "${START_PIDS[@]}"; do
               kill -KILL "$PID" 2>/dev/null || true
             done
             for PID in "${START_PIDS[@]}"; do
@@ -1964,11 +1969,12 @@ jobs:
           trap cleanup_runner_start EXIT
           trap 'exit 130' INT
           trap 'exit 143' TERM
+          export -f read_host_capacity start_on_host
           HOST_INDEX=0
           for HOST in $(echo "$METAL_HOSTS" | tr ',' ' '); do
             HOST_INDEX=$((HOST_INDEX + 1))
             HOSTS+=("$HOST")
-            start_on_host "$HOST" "$HOST_INDEX" > "${LOG_DIR}/${HOST}.log" 2>&1 &
+            setsid bash -c 'start_on_host "$@"' start_on_host "$HOST" "$HOST_INDEX" > "${LOG_DIR}/${HOST}.log" 2>&1 &
             PIDS+=($!)
           done
 
