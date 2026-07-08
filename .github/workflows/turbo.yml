@@ -416,6 +416,7 @@ jobs:
             -- pnpm --filter api run check-types
           status=$?
 
+          # shellcheck disable=SC2016
           node -e '
             const fs = require("node:fs");
             const file = process.argv[1];
