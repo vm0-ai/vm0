@@ -1968,7 +1968,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
 
     async function heartbeatHolder(args: {
       readonly admittableProfiles?: string[];
-      readonly mode?: "running" | "draining" | "stopping";
+      readonly mode?: "starting" | "running" | "draining" | "stopping";
     }): Promise<void> {
       await api.requestHeartbeatRunner(true, [200], {
         runnerId: affinityRunnerId,
@@ -2071,6 +2071,16 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(finalHeartbeatHolder.job?.affinityProtectedUntil).toStrictEqual(
       expect.any(String),
     );
+
+    await heartbeatHolder({
+      admittableProfiles: ["vm0/default"],
+      mode: "starting",
+    });
+    const startingHolder = await pollFollowUp(
+      "continue while holder is starting",
+    );
+    expect(startingHolder.job?.cliAgentSessionId).toBe(cliAgentSessionId);
+    expect(startingHolder.job?.affinityProtectedUntil).toBeNull();
 
     await heartbeatHolder({
       admittableProfiles: [],

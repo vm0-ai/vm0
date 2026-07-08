@@ -1,8 +1,5 @@
 import { command, computed, type Computed } from "ccstate";
-import type {
-  ComposeListItem,
-  ComposeResponse,
-} from "@vm0/api-contracts/contracts/composes";
+import type { ComposeListItem } from "@vm0/api-contracts/contracts/composes";
 import {
   agentComposes,
   agentComposeVersions,
@@ -15,37 +12,8 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 
 import { db$, writeDb$ } from "../external/db";
 import { deleteS3Objects, listS3ObjectsUnderPrefix } from "../external/s3";
-import { nowDate } from "../external/time";
 import { env } from "../../lib/env";
-import { conflict, notFound } from "../../lib/error";
-
-type ComposeContent = ComposeResponse["content"];
-
-function canAccessCompose(
-  userId: string,
-  orgId: string,
-  compose: { readonly userId: string; readonly orgId: string },
-): boolean {
-  return compose.orgId === orgId || compose.userId === userId;
-}
-
-function composeResponse(row: {
-  readonly id: string;
-  readonly name: string;
-  readonly headVersionId: string | null;
-  readonly content: unknown;
-  readonly createdAt: Date;
-  readonly updatedAt: Date;
-}): ComposeResponse {
-  return {
-    id: row.id,
-    name: row.name,
-    headVersionId: row.headVersionId,
-    content: (row.content as ComposeContent) ?? null,
-    createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
-  };
-}
+import { conflict } from "../../lib/error";
 
 export function zeroComposeExists(args: {
   readonly orgId: string;
@@ -64,39 +32,6 @@ export function zeroComposeExists(args: {
       .limit(1);
 
     return Boolean(row);
-  });
-}
-
-export function zeroComposeById(args: {
-  readonly composeId: string;
-  readonly userId: string;
-  readonly orgId: string;
-}): Computed<Promise<ComposeResponse | null>> {
-  return computed(async (get): Promise<ComposeResponse | null> => {
-    const [row] = await get(db$)
-      .select({
-        id: agentComposes.id,
-        userId: agentComposes.userId,
-        orgId: agentComposes.orgId,
-        name: agentComposes.name,
-        headVersionId: agentComposes.headVersionId,
-        createdAt: agentComposes.createdAt,
-        updatedAt: agentComposes.updatedAt,
-        content: agentComposeVersions.content,
-      })
-      .from(agentComposes)
-      .leftJoin(
-        agentComposeVersions,
-        eq(agentComposes.headVersionId, agentComposeVersions.id),
-      )
-      .where(eq(agentComposes.id, args.composeId))
-      .limit(1);
-
-    if (!row || !canAccessCompose(args.userId, args.orgId, row)) {
-      return null;
-    }
-
-    return composeResponse(row);
   });
 }
 
@@ -135,7 +70,6 @@ export function zeroComposeList(
   });
 }
 
-type NotFoundResponse = ReturnType<typeof notFound>;
 type ConflictResponse = ReturnType<typeof conflict>;
 
 const ACTIVE_RUN_STATUSES = ["pending", "running"] as const;
@@ -236,73 +170,6 @@ export const deleteComposeById$ = command(
       );
       signal.throwIfAborted();
     }
-
-    return undefined;
-  },
-);
-
-export const updateComposeMetadata$ = command(
-  async (
-    { set },
-    args: {
-      readonly composeId: string;
-      readonly userId: string;
-      readonly orgId: string;
-      readonly body: {
-        readonly displayName?: string | null;
-        readonly description?: string | null;
-        readonly sound?: string | null;
-      };
-    },
-    signal: AbortSignal,
-  ): Promise<NotFoundResponse | undefined> => {
-    const writeDb = set(writeDb$);
-
-    // Match apps/web's access semantics: canAccessCompose allows the compose's
-    // owner OR any user in the compose's org. Migration policy keeps logic
-    // unchanged — do not narrow to user-only without explicit approval.
-    const [compose] = await writeDb
-      .select({
-        id: agentComposes.id,
-        userId: agentComposes.userId,
-        orgId: agentComposes.orgId,
-        name: agentComposes.name,
-      })
-      .from(agentComposes)
-      .where(eq(agentComposes.id, args.composeId))
-      .limit(1);
-    signal.throwIfAborted();
-
-    if (!compose || !canAccessCompose(args.userId, args.orgId, compose)) {
-      return notFound("Agent compose not found");
-    }
-
-    const { body } = args;
-    await writeDb
-      .insert(zeroAgents)
-      .values({
-        id: compose.id,
-        orgId: compose.orgId,
-        owner: compose.userId,
-        name: compose.name,
-        displayName: body.displayName ?? null,
-        description: body.description ?? null,
-        sound: body.sound ?? null,
-      })
-      .onConflictDoUpdate({
-        target: [zeroAgents.orgId, zeroAgents.name],
-        set: {
-          ...(body.displayName !== undefined && {
-            displayName: body.displayName,
-          }),
-          ...(body.description !== undefined && {
-            description: body.description,
-          }),
-          ...(body.sound !== undefined && { sound: body.sound }),
-          updatedAt: nowDate(),
-        },
-      });
-    signal.throwIfAborted();
 
     return undefined;
   },
