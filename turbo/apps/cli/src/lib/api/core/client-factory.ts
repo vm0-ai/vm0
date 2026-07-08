@@ -1,5 +1,6 @@
 import { getApiUrl, getActiveToken } from "../config";
 import type { ApiErrorResponse } from "@vm0/api-contracts/contracts/errors";
+import { cliClientHeaderApi } from "../client-headers";
 
 /**
  * Custom API request error with code and HTTP status
@@ -57,7 +58,12 @@ export async function getClientConfig() {
   const baseHeaders = buildHeaders(token);
 
   // JWT tokens carry orgId in payload — server extracts it from authCtx.orgId
-  return { baseUrl, baseHeaders, jsonQuery: false as const };
+  return {
+    baseUrl,
+    baseHeaders,
+    jsonQuery: false as const,
+    api: cliClientHeaderApi,
+  };
 }
 
 /**

@@ -6,6 +6,7 @@ import {
   CLIENT_REQUEST_ID_HEADER,
   CLIENT_SESSION_ID_HEADER,
   CLIENT_TYPE_APP,
+  CLIENT_TYPE_CLI,
   CLIENT_TYPE_DESKTOP,
   CLIENT_TYPE_GUEST_AGENT,
   CLIENT_TYPE_HEADER,
@@ -219,6 +220,12 @@ export const rustConstantBindings = [
     rustConstName: "CLIENT_TYPE_APP",
     value: rustString(CLIENT_TYPE_APP),
     rustDoc: ["Client type value for the platform web app."],
+  },
+  {
+    rustModulePath: clientTypesModule,
+    rustConstName: "CLIENT_TYPE_CLI",
+    value: rustString(CLIENT_TYPE_CLI),
+    rustDoc: ["Client type value for the CLI."],
   },
   {
     rustModulePath: clientTypesModule,
