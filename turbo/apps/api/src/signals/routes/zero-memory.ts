@@ -5,12 +5,16 @@ import { isFeatureEnabled } from "@vm0/core/feature-switch";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { bodyResultOf, queryOf } from "../context/request";
+import { notFound } from "../../lib/error";
+import { bodyResultOf, pathParamsOf, queryOf } from "../context/request";
 import type { RouteEntry } from "../route-entry";
 import { zeroMemoryDetail } from "../services/zero-memory-detail.service";
 import { db$, writeDb$, type ReadonlyDb } from "../external/db";
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
-import { listMemorySources } from "../services/memory-substrate.service";
+import {
+  getMemorySourceDetail,
+  listMemorySources,
+} from "../services/memory-substrate.service";
 import {
   getSlackMemoryStatus,
   restartSlackMemoryBackfill,
@@ -51,6 +55,7 @@ const getMemoryInner$ = computed(async (get): Promise<unknown> => {
 });
 
 const memorySourcesQuery$ = queryOf(zeroMemoryContract.sources);
+const memorySourceParams$ = pathParamsOf(zeroMemoryContract.source);
 const slackBackfillBody$ = bodyResultOf(zeroMemoryContract.slackBackfill);
 
 const memorySourcesInner$ = computed(async (get): Promise<unknown> => {
@@ -72,6 +77,26 @@ const memorySourcesInner$ = computed(async (get): Promise<unknown> => {
     status: 200 as const,
     body: result,
   };
+});
+
+const memorySourceInner$ = computed(async (get): Promise<unknown> => {
+  const auth = get(organizationAuthContext$);
+  if (!(await isMemorySourceEnabled(get(db$), auth.orgId, auth.userId))) {
+    return memorySourceDisabled;
+  }
+
+  const params = get(memorySourceParams$);
+  const result = await getMemorySourceDetail(get(db$), {
+    orgId: auth.orgId,
+    userId: auth.userId,
+    sourceId: params.sourceId,
+  });
+
+  if (!result) {
+    return notFound("Memory source not found");
+  }
+
+  return { status: 200 as const, body: result };
 });
 
 const slackStatusInner$ = computed(async (get): Promise<unknown> => {
@@ -164,6 +189,10 @@ export const zeroMemoryRoutes: readonly RouteEntry[] = [
   {
     route: zeroMemoryContract.sources,
     handler: authRoute(memoryAuthOptions, memorySourcesInner$),
+  },
+  {
+    route: zeroMemoryContract.source,
+    handler: authRoute(memoryAuthOptions, memorySourceInner$),
   },
   {
     route: zeroMemoryContract.slackStatus,

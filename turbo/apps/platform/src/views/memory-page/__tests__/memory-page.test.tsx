@@ -2,6 +2,7 @@ import { screen, waitFor } from "@testing-library/react";
 import {
   zeroMemoryContract,
   type MemoryDetailResponse,
+  type MemorySourceDetailResponse,
   type MemorySourceListResponse,
   type SlackMemoryStatusResponse,
 } from "@vm0/api-contracts/contracts/zero-memory";
@@ -195,6 +196,31 @@ function memorySourceListPage(
       total: sources.length,
       totalPages: 1,
       hasMore: false,
+    },
+  };
+}
+
+function memorySourceDetail(sourceId: string): MemorySourceDetailResponse {
+  return {
+    id: sourceId,
+    provider: "slack",
+    sourceType: "slack_message",
+    title: "Slack channel message",
+    occurredAt: `${localDateDaysAgo(0)}T10:00:00Z`,
+    createdAt: `${localDateDaysAgo(0)}T10:01:00Z`,
+    updatedAt: `${localDateDaysAgo(0)}T10:02:00Z`,
+    externalId: "T-memory:C-memory:1780000000.000100",
+    connectorId: null,
+    contentHash: "a".repeat(64),
+    metadata: {
+      workspaceId: "T-memory",
+      channelId: "C-memory",
+      channelType: "channel",
+      threadId: null,
+      messageTs: "1780000000.000100",
+      senderId: "U-memory-user",
+      participantIds: ["U-memory-user"],
+      fileIds: [],
     },
   };
 }
@@ -768,6 +794,10 @@ describe("memory page", () => {
       sourceQueries.push(query.provider);
       return respond(200, memorySourceListPage(query.provider));
     });
+    context.mocks.api(zeroMemoryContract.source, ({ params, respond }) => {
+      expect(params.sourceId).toBe("00000000-0000-4000-8000-000000000301");
+      return respond(200, memorySourceDetail(params.sourceId));
+    });
 
     let status = slackMemoryStatus();
     context.mocks.api(zeroMemoryContract.slackStatus, ({ respond }) => {
@@ -837,6 +867,16 @@ describe("memory page", () => {
         screen.getByText("Backfilling Slack - 0 scanned, 0 recorded"),
       ).toBeInTheDocument();
     });
+
+    click(getButtonWithText("Details"));
+    await waitFor(() => {
+      expect(screen.getByText("Source details")).toBeInTheDocument();
+    });
+    expect(
+      screen.getByText("T-memory:C-memory:1780000000.000100"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Participants")).toBeInTheDocument();
+    expect(screen.getAllByText("U-memory-user").length).toBeGreaterThan(0);
   });
 
   it("moves through relationship pages from the relationships tab", async () => {

@@ -2,6 +2,7 @@ import { command, computed, state } from "ccstate";
 import {
   zeroMemoryContract,
   type MemoryDetailResponse,
+  type MemorySourceDetailResponse,
   type MemorySourceListResponse,
   type MemorySourceProvider,
   type SlackMemoryBackfillRequest,
@@ -246,6 +247,7 @@ const internalMemorySourceProviderFilter$ =
 const internalMemorySourcePage$ = state(1);
 const internalMemorySourceLimit$ = state(50);
 const internalMemorySourcesReload$ = state(0);
+const internalSelectedMemorySourceId$ = state<string | null>(null);
 const internalSlackMemoryStatusReload$ = state(0);
 const internalSlackMemoryBackfillDialogOpen$ = state(false);
 const internalSlackMemoryBackfillRequest$ = state<SlackMemoryBackfillRequest>(
@@ -255,6 +257,16 @@ const internalSlackMemoryBackfillRequest$ = state<SlackMemoryBackfillRequest>(
 export const memorySourceProviderFilter$ = computed((get) => {
   return get(internalMemorySourceProviderFilter$);
 });
+
+export const selectedMemorySourceId$ = computed((get) => {
+  return get(internalSelectedMemorySourceId$);
+});
+
+export const setSelectedMemorySourceId$ = command(
+  ({ set }, sourceId: string | null) => {
+    set(internalSelectedMemorySourceId$, sourceId);
+  },
+);
 
 export const setMemorySourceProviderFilter$ = command(
   ({ set }, filter: MemorySourceProviderFilter) => {
@@ -411,6 +423,19 @@ export const memorySources$ = computed(
       }),
       [200],
     );
+    return result.body;
+  },
+);
+
+export const selectedMemorySourceDetail$ = computed(
+  async (get): Promise<MemorySourceDetailResponse | null> => {
+    const sourceId = get(selectedMemorySourceId$);
+    if (!sourceId) {
+      return null;
+    }
+
+    const client = get(zeroClient$)(zeroMemoryContract);
+    const result = await accept(client.source({ params: { sourceId } }), [200]);
     return result.body;
   },
 );

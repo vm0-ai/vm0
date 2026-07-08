@@ -1003,6 +1003,35 @@ describe("GET /api/zero/relationships/*", () => {
     });
     expect(sources.body.sources[0]?.contentHash).toMatch(/^[a-f0-9]{64}$/);
 
+    const sourceId = sources.body.sources[0]?.id;
+    expect(sourceId).toBeDefined();
+    const sourceDetail = await accept(
+      memoryClient().source({
+        headers: authHeaders(),
+        params: { sourceId: sourceId ?? randomUUID() },
+      }),
+      [200],
+    );
+    expect(sourceDetail.body).toMatchObject({
+      id: sourceId,
+      provider: "slack",
+      sourceType: "slack_message",
+      externalId: "T-memory-backfill:C-memory:1780000000.000100",
+      connectorId: null,
+      title: "Slack channel message",
+      occurredAt: "2026-05-28T20:26:40.000Z",
+      metadata: {
+        workspaceId: "T-memory-backfill",
+        channelId: "C-memory",
+        channelType: "channel",
+        threadId: null,
+        messageTs: "1780000000.000100",
+        senderId: "U-memory-user",
+        participantIds: ["U-memory-user"],
+        fileIds: [],
+      },
+    });
+
     const relationships = await accept(
       relationshipsClient().search({
         headers: authHeaders(),
