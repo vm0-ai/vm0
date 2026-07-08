@@ -76,6 +76,16 @@ function getButtonWithText(text: string): HTMLElement {
   return button;
 }
 
+function getNonTabButtonWithText(text: string): HTMLElement {
+  const button = queryAllByRoleFast("button").find((el) => {
+    return el.getAttribute("role") !== "tab" && el.textContent?.trim() === text;
+  });
+  if (!button) {
+    throw new Error(`Could not find non-tab button with text: ${text}`);
+  }
+  return button;
+}
+
 function getBackfillDialogButtonContaining(text: string): HTMLElement {
   const dialog = screen
     .getByText("Backfill Gmail relationships")
@@ -861,7 +871,7 @@ describe("memory page", () => {
       screen.getByPlaceholderText("Ask what Zero should remember"),
       "security review",
     );
-    click(screen.getByRole("button", { name: "Recall" }));
+    click(getNonTabButtonWithText("Recall"));
 
     await waitFor(() => {
       expect(

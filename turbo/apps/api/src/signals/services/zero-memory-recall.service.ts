@@ -138,6 +138,7 @@ async function loadMemoryRows(
     q: params.q,
     kind: "kind" in params ? params.kind : undefined,
   });
+  const rankingOrder = params.q?.trim() ? [queryRank(params.q)] : [];
 
   return await db
     .select({
@@ -168,7 +169,7 @@ async function loadMemoryRows(
     )
     .where(and(...filters))
     .orderBy(
-      queryRank(params.q),
+      ...rankingOrder,
       kindRank(),
       desc(relationshipItems.confidence),
       desc(relationshipItems.lastSeenAt),
