@@ -29,6 +29,7 @@ export type MemoryEntityType = (typeof MEMORY_ENTITY_TYPES)[number];
 export const MEMORY_ALIAS_TYPES = [
   "email",
   "domain",
+  "relationship_identity",
   "slack_user",
   "slack_workspace",
   "slack_channel",
@@ -52,6 +53,7 @@ export type MemoryStatus = (typeof MEMORY_STATUSES)[number];
 export const MEMORY_EDGE_TYPES = [
   "updates",
   "extends",
+  "resolves",
   "derives_from",
   "contradicts",
 ] as const;
