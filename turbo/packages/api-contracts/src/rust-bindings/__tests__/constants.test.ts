@@ -14,11 +14,16 @@ import {
   MODEL_PROVIDER_FIREWALL_CONFIGS,
 } from "../../contracts/model-providers";
 import {
-  PLATFORM_CLIENT_REQUEST_ID_HEADER,
-  PLATFORM_CLIENT_SESSION_ID_HEADER,
-  PLATFORM_CLIENT_TYPE_HEADER,
-  PLATFORM_CLIENT_VERSION_HEADER,
-} from "../../contracts/platform-client-headers";
+  CLIENT_REQUEST_ID_HEADER,
+  CLIENT_SESSION_ID_HEADER,
+  CLIENT_TYPE_APP,
+  CLIENT_TYPE_DESKTOP,
+  CLIENT_TYPE_GUEST_AGENT,
+  CLIENT_TYPE_HEADER,
+  CLIENT_TYPE_MITM_ADDON,
+  CLIENT_TYPE_RUNNER,
+  CLIENT_VERSION_HEADER,
+} from "../../contracts/client-headers";
 import {
   CANONICAL_GUEST_HOME_DIR,
   CANONICAL_WORKING_DIR,
@@ -67,16 +72,16 @@ const sessionHistoryGzipMinBytesDoc = [
   "Minimum raw resume session history size before the guest attempts gzip upload negotiation.",
   "Smaller histories stay identity-encoded to avoid gzip work when it cannot materially reduce transport size.",
 ] as const;
-const platformClientVersionHeaderDoc = [
+const clientVersionHeaderDoc = [
   "HTTP header carrying the sending vm0 client component version.",
 ] as const;
-const platformClientTypeHeaderDoc = [
+const clientTypeHeaderDoc = [
   "HTTP header carrying the sending vm0 client component type.",
 ] as const;
-const platformClientSessionIdHeaderDoc = [
+const clientSessionIdHeaderDoc = [
   "HTTP header carrying the sending vm0 client session identifier.",
 ] as const;
-const platformClientRequestIdHeaderDoc = [
+const clientRequestIdHeaderDoc = [
   "HTTP header carrying the per-request vm0 client request identifier.",
 ] as const;
 
@@ -97,28 +102,58 @@ function placeholderRustDoc(name: string): readonly string[] {
 
 const expectedBindings = [
   {
-    rustModulePath: ["platform_client", "headers"],
-    rustConstName: "PLATFORM_CLIENT_VERSION_HEADER",
-    value: rustString(PLATFORM_CLIENT_VERSION_HEADER),
-    rustDoc: platformClientVersionHeaderDoc,
+    rustModulePath: ["client", "headers"],
+    rustConstName: "CLIENT_VERSION_HEADER",
+    value: rustString(CLIENT_VERSION_HEADER),
+    rustDoc: clientVersionHeaderDoc,
   },
   {
-    rustModulePath: ["platform_client", "headers"],
-    rustConstName: "PLATFORM_CLIENT_TYPE_HEADER",
-    value: rustString(PLATFORM_CLIENT_TYPE_HEADER),
-    rustDoc: platformClientTypeHeaderDoc,
+    rustModulePath: ["client", "headers"],
+    rustConstName: "CLIENT_TYPE_HEADER",
+    value: rustString(CLIENT_TYPE_HEADER),
+    rustDoc: clientTypeHeaderDoc,
   },
   {
-    rustModulePath: ["platform_client", "headers"],
-    rustConstName: "PLATFORM_CLIENT_SESSION_ID_HEADER",
-    value: rustString(PLATFORM_CLIENT_SESSION_ID_HEADER),
-    rustDoc: platformClientSessionIdHeaderDoc,
+    rustModulePath: ["client", "headers"],
+    rustConstName: "CLIENT_SESSION_ID_HEADER",
+    value: rustString(CLIENT_SESSION_ID_HEADER),
+    rustDoc: clientSessionIdHeaderDoc,
   },
   {
-    rustModulePath: ["platform_client", "headers"],
-    rustConstName: "PLATFORM_CLIENT_REQUEST_ID_HEADER",
-    value: rustString(PLATFORM_CLIENT_REQUEST_ID_HEADER),
-    rustDoc: platformClientRequestIdHeaderDoc,
+    rustModulePath: ["client", "headers"],
+    rustConstName: "CLIENT_REQUEST_ID_HEADER",
+    value: rustString(CLIENT_REQUEST_ID_HEADER),
+    rustDoc: clientRequestIdHeaderDoc,
+  },
+  {
+    rustModulePath: ["client", "types"],
+    rustConstName: "CLIENT_TYPE_APP",
+    value: rustString(CLIENT_TYPE_APP),
+    rustDoc: ["Client type value for the platform web app."],
+  },
+  {
+    rustModulePath: ["client", "types"],
+    rustConstName: "CLIENT_TYPE_DESKTOP",
+    value: rustString(CLIENT_TYPE_DESKTOP),
+    rustDoc: ["Client type value for the desktop client."],
+  },
+  {
+    rustModulePath: ["client", "types"],
+    rustConstName: "CLIENT_TYPE_GUEST_AGENT",
+    value: rustString(CLIENT_TYPE_GUEST_AGENT),
+    rustDoc: ["Client type value for the guest agent."],
+  },
+  {
+    rustModulePath: ["client", "types"],
+    rustConstName: "CLIENT_TYPE_MITM_ADDON",
+    value: rustString(CLIENT_TYPE_MITM_ADDON),
+    rustDoc: ["Client type value for the mitmproxy addon."],
+  },
+  {
+    rustModulePath: ["client", "types"],
+    rustConstName: "CLIENT_TYPE_RUNNER",
+    value: rustString(CLIENT_TYPE_RUNNER),
+    rustDoc: ["Client type value for the runner."],
   },
   {
     rustModulePath: ["runners"],
@@ -293,7 +328,7 @@ describe("Rust constant bindings", () => {
     expect(secondRender).toBe(firstRender);
     expect(firstRender).toContain("pub mod codex_oauth_token {");
     expect(firstRender).toContain("pub mod model_provider_env {");
-    expect(firstRender).toContain("pub mod platform_client {");
+    expect(firstRender).toContain("pub mod client {");
     expect(firstRender).toContain("pub mod runners {");
     expect(firstRender).toContain("pub mod placeholders {");
     expect(firstRender).toContain("pub mod headers {");
@@ -346,16 +381,31 @@ describe("Rust constant bindings", () => {
       `pub const SESSION_HISTORY_GZIP_MIN_BYTES: u64 = ${SESSION_HISTORY_GZIP_MIN_BYTES};`,
     );
     expect(firstRender).toContain(
-      `pub const PLATFORM_CLIENT_VERSION_HEADER: &str = "${PLATFORM_CLIENT_VERSION_HEADER}";`,
+      `pub const CLIENT_VERSION_HEADER: &str = "${CLIENT_VERSION_HEADER}";`,
     );
     expect(firstRender).toContain(
-      `pub const PLATFORM_CLIENT_TYPE_HEADER: &str = "${PLATFORM_CLIENT_TYPE_HEADER}";`,
+      `pub const CLIENT_TYPE_HEADER: &str = "${CLIENT_TYPE_HEADER}";`,
     );
     expect(firstRender).toContain(
-      `pub const PLATFORM_CLIENT_SESSION_ID_HEADER: &str = "${PLATFORM_CLIENT_SESSION_ID_HEADER}";`,
+      `pub const CLIENT_SESSION_ID_HEADER: &str = "${CLIENT_SESSION_ID_HEADER}";`,
     );
     expect(firstRender).toContain(
-      `pub const PLATFORM_CLIENT_REQUEST_ID_HEADER: &str = "${PLATFORM_CLIENT_REQUEST_ID_HEADER}";`,
+      `pub const CLIENT_REQUEST_ID_HEADER: &str = "${CLIENT_REQUEST_ID_HEADER}";`,
+    );
+    expect(firstRender).toContain(
+      `pub const CLIENT_TYPE_APP: &str = "${CLIENT_TYPE_APP}";`,
+    );
+    expect(firstRender).toContain(
+      `pub const CLIENT_TYPE_DESKTOP: &str = "${CLIENT_TYPE_DESKTOP}";`,
+    );
+    expect(firstRender).toContain(
+      `pub const CLIENT_TYPE_GUEST_AGENT: &str = "${CLIENT_TYPE_GUEST_AGENT}";`,
+    );
+    expect(firstRender).toContain(
+      `pub const CLIENT_TYPE_MITM_ADDON: &str = "${CLIENT_TYPE_MITM_ADDON}";`,
+    );
+    expect(firstRender).toContain(
+      `pub const CLIENT_TYPE_RUNNER: &str = "${CLIENT_TYPE_RUNNER}";`,
     );
     expect(firstRender).toContain(
       `pub const CHATGPT_ACCOUNT_ID: &str = "${codexOauthPlaceholders.CHATGPT_ACCOUNT_ID}";`,

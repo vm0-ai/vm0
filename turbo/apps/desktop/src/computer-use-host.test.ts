@@ -1,10 +1,21 @@
 import os from "node:os";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  CLIENT_REQUEST_ID_HEADER,
+  CLIENT_SESSION_ID_HEADER,
+  CLIENT_TYPE_DESKTOP,
+  CLIENT_TYPE_HEADER,
+  CLIENT_VERSION_HEADER,
+} from "@vm0/api-contracts/contracts/client-headers";
+import {
   ComputerUseHostRuntime,
   readSystemHostName,
   type ComputerUseHostFetch,
 } from "./computer-use-host";
+import {
+  createDesktopClientHeaderInjector,
+  type DesktopClientHeaderInjector,
+} from "./desktop-client-headers";
 import type {
   ComputerUseCommand,
   ComputerUseCommandFailure,
@@ -13,6 +24,7 @@ import type {
 import type { ComputerUsePermissionState } from "./computer-use-types";
 
 const INSTALLATION_ID = "00000000-0000-4000-8000-000000000001";
+const noopAddClientHeaders = () => {};
 
 function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
   return new Response(JSON.stringify(body), {
@@ -30,6 +42,18 @@ function deferred<T>(): {
     resolve = next;
   });
   return { promise, resolve };
+}
+
+function uuidSequence(...values: readonly string[]): () => string {
+  let index = 0;
+  return () => {
+    const value = values[index];
+    index += 1;
+    if (!value) {
+      throw new Error("UUID sequence exhausted");
+    }
+    return value;
+  };
 }
 
 function hungResponseUntilAbort(
@@ -54,6 +78,7 @@ function createRuntime(
   options: {
     readonly sessionFetch?: ComputerUseHostFetch;
     readonly hostFetch?: ComputerUseHostFetch;
+    readonly addClientHeaders?: DesktopClientHeaderInjector;
     readonly executeCommand?: (
       command: ComputerUseCommand,
       permissions: ComputerUsePermissionState,
@@ -84,6 +109,7 @@ function createRuntime(
     appVersion: "1.2.3",
     sessionFetch,
     hostFetch,
+    addClientHeaders: options.addClientHeaders ?? noopAddClientHeaders,
     getPermissions() {
       return { accessibility: true, screenRecording: false };
     },
@@ -176,7 +202,19 @@ describe("ComputerUseHostRuntime", () => {
       }
       return jsonResponse({ status: "idle" });
     });
-    const { runtime } = createRuntime({ sessionFetch, hostFetch });
+    const { runtime } = createRuntime({
+      sessionFetch,
+      hostFetch,
+      addClientHeaders: createDesktopClientHeaderInjector({
+        clientVersion: "1.2.3",
+        createUuid: uuidSequence(
+          "session-id",
+          "request-id-1",
+          "request-id-2",
+          "request-id-3",
+        ),
+      }),
+    });
 
     await runtime.start();
     await vi.advanceTimersByTimeAsync(2_000);
@@ -190,6 +228,10 @@ describe("ComputerUseHostRuntime", () => {
     const headers = new Headers(heartbeatCall[1]?.headers);
     expect(headers.get("authorization")).toBe("Bearer token-1");
     expect(headers.get("cookie")).toBeNull();
+    expect(headers.get(CLIENT_VERSION_HEADER)).toBe("1.2.3");
+    expect(headers.get(CLIENT_TYPE_HEADER)).toBe(CLIENT_TYPE_DESKTOP);
+    expect(headers.get(CLIENT_SESSION_ID_HEADER)).toBe("session-id");
+    expect(headers.get(CLIENT_REQUEST_ID_HEADER)).toBe("request-id-1");
     expect(JSON.parse(String(heartbeatCall[1]?.body))).toMatchObject({
       installationId: INSTALLATION_ID,
     });

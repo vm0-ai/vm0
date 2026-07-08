@@ -42,7 +42,7 @@ function mockSignedInUser(): void {
   });
 }
 
-describe("platform api client headers", () => {
+describe("api client headers", () => {
   it("adds type, version, session, and per-request ids to contract requests", async () => {
     const observedHeaders: ObservedClientHeaders[] = [];
     const agentId = "c0000000-0000-4000-a000-000000000001";

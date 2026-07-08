@@ -1,8 +1,8 @@
 use crate::support::*;
-use api_contracts::generated::constants::platform_client::headers::{
-    PLATFORM_CLIENT_REQUEST_ID_HEADER, PLATFORM_CLIENT_SESSION_ID_HEADER,
-    PLATFORM_CLIENT_TYPE_HEADER, PLATFORM_CLIENT_VERSION_HEADER,
+use api_contracts::generated::constants::client::headers::{
+    CLIENT_REQUEST_ID_HEADER, CLIENT_SESSION_ID_HEADER, CLIENT_TYPE_HEADER, CLIENT_VERSION_HEADER,
 };
+use api_contracts::generated::constants::client::types::CLIENT_TYPE_GUEST_AGENT;
 use guest_agent::error::AgentError;
 use guest_agent::masker::SecretMasker;
 use httpmock::prelude::*;
@@ -265,7 +265,7 @@ async fn post_json_sends_vercel_bypass_header() {
 }
 
 #[tokio::test]
-async fn post_json_sends_platform_client_headers() {
+async fn post_json_sends_client_headers() {
     let api = SharedApiMock::new().await;
     let server = api.server();
     let request_ids = Arc::new(Mutex::new(Vec::new()));
@@ -277,7 +277,7 @@ async fn post_json_sends_platform_client_headers() {
             let request_id = req
                 .headers_vec()
                 .iter()
-                .find(|(key, _)| key.eq_ignore_ascii_case(PLATFORM_CLIENT_REQUEST_ID_HEADER))
+                .find(|(key, _)| key.eq_ignore_ascii_case(CLIENT_REQUEST_ID_HEADER))
                 .map(|(_, value)| value.as_str());
             let Some(request_id) = request_id else {
                 return http_status(400);
@@ -285,12 +285,9 @@ async fn post_json_sends_platform_client_headers() {
             if Uuid::parse_str(request_id).is_err() {
                 return http_status(400);
             }
-            if !request_header_eq(
-                req,
-                PLATFORM_CLIENT_VERSION_HEADER,
-                env!("CARGO_PKG_VERSION"),
-            ) || !request_header_eq(req, PLATFORM_CLIENT_TYPE_HEADER, "GuestAgent")
-                || !request_header_eq(req, PLATFORM_CLIENT_SESSION_ID_HEADER, TEST_RUN_ID)
+            if !request_header_eq(req, CLIENT_VERSION_HEADER, env!("CARGO_PKG_VERSION"))
+                || !request_header_eq(req, CLIENT_TYPE_HEADER, CLIENT_TYPE_GUEST_AGENT)
+                || !request_header_eq(req, CLIENT_SESSION_ID_HEADER, TEST_RUN_ID)
             {
                 return http_status(400);
             }
