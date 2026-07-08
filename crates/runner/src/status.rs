@@ -37,8 +37,8 @@ pub enum ActiveRunPhase {
     /// The run is claimed and visible in `active_runs`, but a fresh sandbox is
     /// still being prepared. Its Firecracker process may not exist yet.
     Preparing,
-    /// Sandbox preparation has completed and the run is expected to be
-    /// associated with a Firecracker process.
+    /// The sandbox is prepared, and the run is expected to be associated with
+    /// a Firecracker process.
     Running,
 }
 
