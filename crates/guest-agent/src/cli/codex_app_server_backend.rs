@@ -28,7 +28,6 @@ use super::{
 };
 use crate::active_input::{ActiveInputFrame, ActiveInputWriter};
 use guest_common::{log_info, log_warn};
-use guest_contracts::diagnostics::CliObservedExitDiagnostic;
 
 const TURN_NOTIFICATION_LABEL: &str = "turn notification";
 
@@ -309,7 +308,9 @@ async fn run_codex_app_server(
 
         Ok::<CliExecutionResult, AgentError>(CliExecutionResult {
             exit_code,
-            cli_observed_exit: Some(CliObservedExitDiagnostic::from_exit_code(exit_code)),
+            // App-server terminal events report a protocol-level turn status,
+            // not the child process wait status.
+            cli_observed_exit: None,
             stderr_lines: Vec::new(),
             last_event_sequence: None,
             claude_result: None,

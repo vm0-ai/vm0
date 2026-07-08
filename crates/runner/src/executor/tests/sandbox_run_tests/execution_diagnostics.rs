@@ -835,6 +835,58 @@ async fn execute_inner_nonzero_with_failure_diagnostic_skips_abnormal_exit_diagn
 }
 
 #[tokio::test]
+async fn execute_inner_unattributed_sigkill_failure_collects_resource_diagnostics() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.push_wait_process_exit(ProcessExit::new(1, 137, Vec::new(), Vec::new()));
+    let diagnostic = FailureDiagnostic::new(
+        FailureClass::CliNonzero,
+        AgentFramework::ClaudeCode,
+        PromptMetadata::from_prompt("/help"),
+    )
+    .with_cli_exit_code(137)
+    .with_cli_observed_exit(CliObservedExitDiagnostic::from_signal(libc::SIGKILL))
+    .with_failure_detail_source(FailureDetailSource::FallbackExitCode);
+    overrides.push_read_file_result(Ok(Some(serde_json::to_vec(&diagnostic).unwrap())));
+    overrides.push_read_file_result(Ok(None));
+    overrides.add_exec_matcher(sandbox_mock::ExecMatcher {
+        pattern: "guest-agent-binary".to_string(),
+        exit_code: 0,
+        stdout: b"/dev/root       7.8G  7.4G   20K 100% /\nMem:            3934        3310         255           0         552         624\n".to_vec(),
+        stderr: Vec::new(),
+    });
+    let factory = sandbox_mock::MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+
+    let outcome = run_new_sandbox_outcome(&factory, &minimal_context(), &config, &default_params())
+        .await
+        .unwrap();
+
+    let failure = outcome.failure.as_ref().expect("expected failure");
+    assert_eq!(failure.exit_code, 137);
+    assert_eq!(failure.error.as_str(), "Agent exited with code 137");
+    let resource_diagnostics = failure
+        .resource_diagnostics
+        .expect("expected resource diagnostics");
+    assert_eq!(
+        resource_diagnostics.failure_kind,
+        Some(ResourceFailureKind::GuestRootFilesystemFull)
+    );
+    assert_eq!(resource_diagnostics.guest_root_fs_used_percent, Some(100));
+    assert_eq!(resource_diagnostics.guest_memory_available_mb, Some(624));
+    let diagnostic_calls: Vec<sandbox_mock::ExecCall> = overrides
+        .exec_calls()
+        .into_iter()
+        .filter(|call| call.cmd.contains("guest-agent-binary"))
+        .collect();
+    assert_eq!(diagnostic_calls.len(), 1);
+    assert_eq!(
+        diagnostic_calls[0].timeout,
+        AGENT_ABNORMAL_EXIT_DIAGNOSTIC_TIMEOUT
+    );
+}
+
+#[tokio::test]
 async fn execute_inner_nonzero_records_agent_execute_error() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
