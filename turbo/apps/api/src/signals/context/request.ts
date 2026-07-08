@@ -1,6 +1,8 @@
-import type { AppRoute } from "@vm0/api-contracts/contracts/trpc-contract";
+import type {
+  AppRoute,
+  SchemaOutput,
+} from "@vm0/api-contracts/contracts/trpc-contract";
 import { computed, type Computed } from "ccstate";
-import type { z } from "zod";
 
 import { badRequest, badRequestMessage } from "../../lib/error";
 import { rawPathParams$, rawQuery$, request$, route$ } from "./hono";
@@ -104,17 +106,17 @@ type RouteWithPathParams = AppRoute & { readonly pathParams: unknown };
 type RouteWithQuery = AppRoute & { readonly query: unknown };
 type RouteWithBody = AppRoute & { readonly body: unknown };
 
-// Cheap structural body-type extractor. Avoids matching against
-// `z.ZodType<T>`, whose three-parameter generic (Output/Input/Internals)
-// triggers deep `IndexedAccess<SubstitutionType<TypeParameter>>` chains
-// in Zod v4. `z.output<S>` is a shallow conditional on `{ _zod: { output } }`.
+// Reuse the contract-level shallow extractor so request helpers do not rematch
+// against `z.ZodType<infer T>` and reopen Zod v4 variance checks.
 type InferPathParams<R> = R extends { readonly pathParams: infer S }
-  ? z.output<S>
+  ? SchemaOutput<S>
   : never;
 type InferQuery<R> = R extends { readonly query: infer S }
-  ? z.output<S>
+  ? SchemaOutput<S>
   : never;
-type InferBody<R> = R extends { readonly body: infer S } ? z.output<S> : never;
+type InferBody<R> = R extends { readonly body: infer S }
+  ? SchemaOutput<S>
+  : never;
 
 type BodyResult<T> =
   | { readonly ok: true; readonly data: T }
