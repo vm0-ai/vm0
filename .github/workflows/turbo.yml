@@ -1908,14 +1908,22 @@ jobs:
           }
 
           stop_started_hosts() {
+            local STOP_PIDS=()
             local HOST_INDEX=0
             for HOST in $(echo "$METAL_HOSTS" | tr ',' ' '); do
               HOST_INDEX=$((HOST_INDEX + 1))
               local RUNNER_NAME="${JOB_REF}-${HOST_INDEX}"
+              local UNIT="vm0-runner-${RUNNER_NAME}.service"
               local REMOTE="${METAL_USER}@${HOST}"
-              echo "::warning::Stopping partially started runner ${RUNNER_NAME} on ${HOST}"
-              # shellcheck disable=SC2029
-              ssh "$REMOTE" "sudo ${BIN_DIR}/runner service stop --name ${RUNNER_NAME} --force" >/dev/null 2>&1 || true
+              echo "::warning::Requesting stop for partially started runner ${RUNNER_NAME} on ${HOST}"
+              (
+                # shellcheck disable=SC2029
+                timeout 45s ssh "$REMOTE" "sudo systemctl stop --no-block '${UNIT}' 2>/dev/null || true; sudo systemctl reset-failed '${UNIT}' 2>/dev/null || true" >/dev/null 2>&1 || true
+              ) &
+              STOP_PIDS+=($!)
+            done
+            for PID in "${STOP_PIDS[@]}"; do
+              wait "$PID" 2>/dev/null || true
             done
           }
 
