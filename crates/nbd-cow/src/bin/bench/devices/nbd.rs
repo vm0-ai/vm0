@@ -2,7 +2,7 @@
 ///
 /// The sysfs `pid` field is the connecting thread TID, not necessarily the
 /// process PID. In multi-runner hosts, only disconnect after acquiring the
-/// host-global NBD claim so an active cooperating runner cannot be interrupted.
+/// cooperative NBD claim so an active cooperating runner cannot be interrupted.
 pub(crate) fn cleanup_stale_nbd_devices() {
     let max = nbd_cow::netlink::nbds_max();
     for i in 0..max {

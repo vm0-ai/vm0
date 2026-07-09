@@ -10,18 +10,18 @@ use super::lease::DeviceLease;
 use super::state::DevicePoolSnapshot;
 use super::state::{DevicePool, DevicePoolConfig};
 
-/// Cloneable handle to the host-global NBD device pool.
+/// Cloneable handle to the cooperative NBD device pool.
 ///
 /// All clones share one background actor and command channel. That actor owns
 /// the pool state machine and serializes transitions for `/dev/nbdN` claims,
 /// pending scans, cooldown slots, and checked-out [`DeviceLease`] returns.
 ///
-/// The handle coordinates this process-local pool state, while host-global
-/// safety still comes from per-index lock files and sysfs checks. Dropping a
-/// handle is not normal device cleanup. Checked-out leases also carry return
-/// senders, so dropping every handle only stops the actor after outstanding
-/// leases release those senders. Successful pooled devices must finish through
-/// an explicit [`crate::PooledNbdCowDevice`] finalizer such as
+/// The handle coordinates this process-local pool state, while cross-process
+/// safety still comes from shared per-index lock files and sysfs checks.
+/// Dropping a handle is not normal device cleanup. Checked-out leases also carry
+/// return senders, so dropping every handle only stops the actor after
+/// outstanding leases release those senders. Successful pooled devices must
+/// finish through an explicit [`crate::PooledNbdCowDevice`] finalizer such as
 /// [`crate::PooledNbdCowDevice::destroy_with_retries`],
 /// [`crate::PooledNbdCowDevice::destroy_keep_cow_with_retries`], or
 /// [`crate::PooledNbdCowDevice::abandon`].

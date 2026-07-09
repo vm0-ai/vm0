@@ -1,4 +1,4 @@
-//! Host-global NBD device index locks.
+//! Cooperative NBD device index locks.
 //!
 //! These locks coordinate `/dev/nbdN` ownership across runner processes that
 //! resolve their lock files through the same host-visible lock directory.
@@ -44,7 +44,7 @@ const MAX_STALE_INODE_RETRIES: usize = 16;
 const PRIVATE_FILE_MODE: u32 = 0o600;
 const GROUP_OR_OTHER_WRITE_BITS: u32 = 0o022;
 
-/// Owned host-global claim for one NBD device index.
+/// Owned cooperative claim for one NBD device index.
 ///
 /// Dropping this value releases the corresponding per-index `flock`.
 #[derive(Debug)]
@@ -81,7 +81,7 @@ fn device_lock_path_in(index: u32, lock_dir: &Path) -> PathBuf {
     lock_dir.join(format!("{LOCK_FILE_PREFIX}-{index}.lock"))
 }
 
-/// Try to acquire a host-global claim for an NBD device index.
+/// Try to acquire a cooperative claim for an NBD device index.
 ///
 /// This uses [`default_lock_dir`] for the lock file directory. Returns
 /// `Ok(Some(_))` when the caller owns the claim until the returned
@@ -94,7 +94,7 @@ pub fn try_acquire_device_claim(index: u32) -> io::Result<Option<NbdDeviceClaim>
     try_acquire_device_claim_in(index, &default_lock_dir())
 }
 
-/// Try to acquire a host-global claim in a custom lock directory.
+/// Try to acquire a cooperative claim in a custom lock directory.
 ///
 /// `lock_dir` must already exist. The per-index lock path is
 /// `lock_dir/vm0-nbd-{index}.lock`. Missing per-index lock files are created
