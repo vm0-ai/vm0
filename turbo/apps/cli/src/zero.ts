@@ -438,6 +438,9 @@ export function buildZeroHelpText(
       : [
           '  Get directions?       zero maps directions --origin "SFO" --destination "Mountain View" --json',
         ]),
+    ...(shouldHideCommand("scrape", payload)
+      ? []
+      : ["  Scrape a web page?    zero scrape https://example.com --json"]),
     ...(shouldHideCommand("banking", payload)
       ? []
       : ["  Read bank data?       zero banking accounts --json"]),

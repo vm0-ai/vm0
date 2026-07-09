@@ -648,6 +648,28 @@ describe("registerZeroCommands", () => {
     );
   });
 
+  it("should show the scrape help example when scrape:read capability is present", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["scrape:read"],
+    });
+
+    expect(buildZeroHelpText(decodeZeroTokenPayload(token))).toContain(
+      "Scrape a web page?",
+    );
+  });
+
+  it("should hide the scrape help example when scrape:read capability is missing", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["file:write"],
+    });
+
+    expect(buildZeroHelpText(decodeZeroTokenPayload(token))).not.toContain(
+      "Scrape a web page?",
+    );
+  });
+
   it("should show the banking help example when banking:read capability is present", () => {
     const token = buildZeroToken({
       scope: "zero",
