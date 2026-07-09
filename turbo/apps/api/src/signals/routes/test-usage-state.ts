@@ -5,7 +5,7 @@ import {
 } from "@vm0/api-contracts/contracts/test-usage-state";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { usagePricing } from "@vm0/db/schema/usage-pricing";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { bodyResultOf } from "../context/request";
 import { request$ } from "../context/hono";
@@ -52,6 +52,24 @@ async function seedUsagePricingForAction(
   return actionOk();
 }
 
+async function deleteUsagePricingForAction(
+  db: Db,
+  body: UsageAction<"delete-usage-pricing">,
+  signal: AbortSignal,
+) {
+  await db
+    .delete(usagePricing)
+    .where(
+      and(
+        eq(usagePricing.kind, body.kind ?? "connector"),
+        eq(usagePricing.provider, body.provider),
+        eq(usagePricing.category, body.category),
+      ),
+    );
+  signal.throwIfAborted();
+  return actionOk();
+}
+
 async function setCreditBalanceForAction(
   db: Db,
   body: UsageAction<"set-credit-balance">,
@@ -82,6 +100,9 @@ const mutateUsageState$ = command(async ({ get, set }, signal: AbortSignal) => {
   switch (body.action) {
     case "seed-usage-pricing": {
       return await seedUsagePricingForAction(db, body, signal);
+    }
+    case "delete-usage-pricing": {
+      return await deleteUsagePricingForAction(db, body, signal);
     }
     case "set-credit-balance": {
       return await setCreditBalanceForAction(db, body, signal);

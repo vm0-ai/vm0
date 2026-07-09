@@ -2,11 +2,15 @@ import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 import { createStore } from "ccstate";
 
-import { zeroScrapeContract } from "@vm0/api-contracts/contracts/zero-scrape";
+import {
+  zeroScrapeContract,
+  type ZeroScrapeRequest,
+} from "@vm0/api-contracts/contracts/zero-scrape";
 import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 import { mockEnv } from "../../../lib/env";
+import { createAppWithRoutes } from "../../../app-factory-core";
 import { server } from "../../../mocks/server";
 import { setupAppWithRoutes } from "../../../__tests__/test-app";
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -22,6 +26,7 @@ import {
 } from "./helpers/api-bdd";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import {
+  deleteUsagePricing$,
   seedUsagePricing$,
   setUsageFixtureCreditBalance$,
 } from "./helpers/zero-usage";
@@ -66,6 +71,24 @@ function client(signal?: AbortSignal) {
     context,
     routes: scrapeRoutes,
     ...(signal ? { signal } : {}),
+  });
+}
+
+function rawScrapeRequest(
+  actor: ApiTestUser | null,
+  body: ZeroScrapeRequest,
+): Promise<Response> {
+  const app = createAppWithRoutes({
+    signal: context.signal,
+    routes: scrapeRoutes,
+  });
+  return app.request("/api/zero/scrape", {
+    method: "POST",
+    headers: {
+      ...authenticate(actor),
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(body),
   });
 }
 
@@ -588,6 +611,51 @@ describe("zero scrape route", () => {
     expect(second.body.creditsCharged).toBe(4);
     expect(firecrawlRequests).toBe(2);
     expect(beforeCredits - afterCredits).toBe(8);
+  });
+
+  it("does not return successful content when usage processing records a billing error", async () => {
+    const actor = await scrapeEnabledActor();
+    allowExampleDotCom();
+    configureProvider();
+    await seedScrapePricing();
+    await fundActor(actor);
+    const beforeCredits = await credits(actor);
+
+    server.use(
+      http.post(FIRECRAWL_SCRAPE_URL, async () => {
+        await store.set(
+          deleteUsagePricing$,
+          {
+            kind: "scrape",
+            provider: "firecrawl",
+            category: "standard.markdown",
+          },
+          context.signal,
+        );
+        return HttpResponse.json({
+          success: true,
+          data: {
+            markdown: "# Example page",
+            metadata: {
+              sourceURL: "https://example.com/page",
+            },
+          },
+        });
+      }),
+    );
+
+    const response = await rawScrapeRequest(actor, {
+      url: "https://example.com/page",
+      format: "markdown",
+      mode: "standard",
+    });
+    const afterCredits = await credits(actor);
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: "Internal server error",
+    });
+    expect(afterCredits).toBe(beforeCredits);
   });
 
   it("scrapes public IPv6 literal targets without DNS lookup", async () => {

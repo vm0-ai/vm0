@@ -195,12 +195,20 @@ export const recordManagedUsage$ = command(
     signal.throwIfAborted();
 
     const [processed] = await writeDb
-      .select({ creditsCharged: usageEvent.creditsCharged })
+      .select({
+        billingError: usageEvent.billingError,
+        creditsCharged: usageEvent.creditsCharged,
+      })
       .from(usageEvent)
       .where(eq(usageEvent.id, inserted.id));
     signal.throwIfAborted();
     if (!processed || processed.creditsCharged === null) {
       throw new Error(`Failed to process ${args.label} usage event`);
+    }
+    if (processed.billingError !== null) {
+      throw new Error(
+        `Failed to bill ${args.label} usage event: ${processed.billingError}`,
+      );
     }
     return processed.creditsCharged;
   },

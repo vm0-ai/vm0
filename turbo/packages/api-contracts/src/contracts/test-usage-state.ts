@@ -18,6 +18,12 @@ export const testUsageStateActionBodySchema = z.discriminatedUnion("action", [
     unit_size: z.number().int().positive(),
   }),
   z.object({
+    action: z.literal("delete-usage-pricing"),
+    kind: z.string().min(1).optional(),
+    provider: z.string().min(1),
+    category: z.string().min(1),
+  }),
+  z.object({
     action: z.literal("set-credit-balance"),
     org_id: z.string().min(1),
     credits: z.number().int().nonnegative(),

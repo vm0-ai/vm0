@@ -9,10 +9,13 @@ import { testUsageStateRoutes } from "../../test-usage-state";
 
 const USAGE_STATE_ROUTE = "/api/test/usage-state";
 
-interface SeedUsagePricingArgs {
+interface UsagePricingKeyArgs {
   readonly kind?: string;
   readonly provider: string;
   readonly category: string;
+}
+
+interface SeedUsagePricingArgs extends UsagePricingKeyArgs {
   readonly unitPrice: number;
   readonly unitSize: number;
 }
@@ -73,6 +76,17 @@ export const seedUsagePricing$ = command(
       category: args.category,
       unit_price: args.unitPrice,
       unit_size: args.unitSize,
+    });
+  },
+);
+
+export const deleteUsagePricing$ = command(
+  async (_, args: UsagePricingKeyArgs, signal: AbortSignal): Promise<void> => {
+    await postAction(signal, {
+      action: "delete-usage-pricing",
+      kind: args.kind,
+      provider: args.provider,
+      category: args.category,
     });
   },
 );
