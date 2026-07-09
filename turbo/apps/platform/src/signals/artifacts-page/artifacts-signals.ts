@@ -14,7 +14,8 @@ import {
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { clerk$ } from "../auth.ts";
-import { createIdbArtifactItemStores } from "../external/idb-artifact-item-store.ts";
+import { openChatIdb } from "../external/chat-idb-store.ts";
+import { createArtifactItemCacheStores } from "../external/idb-artifact-item-store.ts";
 import { detachedNavigateTo$ } from "../route.ts";
 import { ROUTES } from "../route-paths.ts";
 
@@ -30,6 +31,12 @@ const internalArtifactsReload$ = state(0);
 interface ArtifactsPageData {
   readonly artifacts: readonly ArtifactItem[];
   readonly truncated: boolean;
+}
+
+function artifactItemCacheStores(userId: string, orgId: string) {
+  return createArtifactItemCacheStores(() => {
+    return openChatIdb(userId, orgId);
+  });
 }
 
 export const artifactsSearch$ = computed((get) => {
@@ -87,7 +94,7 @@ export const remoteArtifacts$ = computed(
     }
     const client = get(zeroClient$)(artifactsContract);
     const result = await accept(client.list(), [200], { toast: false });
-    await createIdbArtifactItemStores(userId, orgId).writeStore.replaceItems(
+    await artifactItemCacheStores(userId, orgId).writeStore.replaceItems(
       result.body.artifacts,
     );
     return result.body;
@@ -104,7 +111,7 @@ export const cachedArtifacts$ = computed(
     if (!userId || !orgId) {
       return { artifacts: [], truncated: false };
     }
-    const artifacts = await createIdbArtifactItemStores(
+    const artifacts = await artifactItemCacheStores(
       userId,
       orgId,
     ).readStore.readRecent({ limit: ARTIFACTS_CACHE_READ_LIMIT });

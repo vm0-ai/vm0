@@ -93,6 +93,19 @@ function activeTeamBillingStatus(): BillingStatusResponse {
   };
 }
 
+function activeCustomBillingStatus(): BillingStatusResponse {
+  return {
+    ...activeProBillingStatus(),
+    tier: "custom",
+    credits: 0,
+    subscriptionStatus: null,
+    currentPeriodEnd: null,
+    hasSubscription: false,
+    creditBreakdown: [],
+    concurrencyLimit: 10,
+  };
+}
+
 function noActiveBillingStatus(): BillingStatusResponse {
   return {
     tier: "pro-suspend",
@@ -152,7 +165,7 @@ function mockBillingStory(): void {
       cancelAtPeriodEnd: true,
       scheduledChange: {
         type: "cancel",
-        targetTier: "pro-suspend",
+        targetTier: "limited-free-1",
         effectiveDate: "2026-04-01T00:00:00Z",
       },
     };
@@ -270,6 +283,48 @@ describe("organization billing settings", () => {
         "https://billing.stripe.com/customer-portal/test-org",
       );
     });
+  });
+
+  it("shows custom tier access and disables Pro and Team checkout", async () => {
+    context.mocks.data.org({
+      id: "org_1",
+      slug: "custom-org",
+      name: "Custom Org",
+      role: "admin",
+    });
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(200, activeCustomBillingStatus());
+    });
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Custom plan")).toBeInTheDocument();
+      expect(
+        screen.getByText("Custom access with 10 concurrent runs"),
+      ).toBeInTheDocument();
+      expect(screen.getByText("10 concurrent runs")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Manage billing")).not.toBeInTheDocument();
+    expect(screen.queryByText("Upgrade")).not.toBeInTheDocument();
+    expect(screen.queryByText("Downgrade")).not.toBeInTheDocument();
+
+    click(screen.getByText("Compare all plans"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "Custom workspaces cannot switch to Pro or Team checkout.",
+        ),
+      ).toBeInTheDocument();
+    });
+    const unavailableButtons = queryAllByRoleFast("button").filter((button) => {
+      return button.textContent?.trim() === "Unavailable";
+    });
+    expect(unavailableButtons).toHaveLength(2);
+    for (const button of unavailableButtons) {
+      expect(button).toBeDisabled();
+    }
   });
 
   it("shows team concurrency add-on and starts checkout for more slots", async () => {
@@ -469,7 +524,7 @@ describe("organization billing settings", () => {
         cancelAtPeriodEnd: true,
         scheduledChange: {
           type: "cancel",
-          targetTier: "pro-suspend",
+          targetTier: "limited-free-1",
           effectiveDate: "2026-04-01T00:00:00Z",
         },
       });
@@ -640,10 +695,10 @@ describe("organization billing settings", () => {
     context.mocks.api(
       zeroBillingDowngradeContract.create,
       ({ body, respond }) => {
-        const targetTier = body.targetTier === "pro" ? "pro" : "pro-suspend";
+        const targetTier = body.targetTier === "pro" ? "pro" : "limited-free-1";
         billingStatus = {
           ...billingStatus,
-          cancelAtPeriodEnd: targetTier === "pro-suspend",
+          cancelAtPeriodEnd: targetTier === "limited-free-1",
           scheduledChange:
             targetTier === "pro"
               ? {
@@ -653,7 +708,7 @@ describe("organization billing settings", () => {
                 }
               : {
                   type: "cancel",
-                  targetTier: "pro-suspend",
+                  targetTier: "limited-free-1",
                   effectiveDate: "2026-05-01T00:00:00Z",
                 },
         };
@@ -749,7 +804,7 @@ describe("organization billing settings", () => {
       cancelAtPeriodEnd: true,
       scheduledChange: {
         type: "cancel",
-        targetTier: "pro-suspend",
+        targetTier: "limited-free-1",
         effectiveDate: "2026-05-01T00:00:00Z",
       },
     };

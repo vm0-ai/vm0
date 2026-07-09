@@ -27,6 +27,7 @@ import {
 } from "./org-concurrency-entitlements.service";
 
 const L = logger("CronBillingEntitlements");
+const PAID_TIERS = ["pro", "team", "custom"] as const;
 const STRIPE_SUBSCRIPTION_PRICE_TIERS = ["pro", "team"] as const;
 type SubscriptionPriceTier = (typeof STRIPE_SUBSCRIPTION_PRICE_TIERS)[number];
 
@@ -42,6 +43,7 @@ const TERMINAL_USAGE_ALLOWANCE_STATUSES = [
   "canceled",
   "incomplete_expired",
 ] as const;
+const CANCELED_SUBSCRIPTION_TARGET_TIER = "limited-free-1";
 
 interface SubscriptionInput {
   readonly id: string;
@@ -306,7 +308,7 @@ async function reconcileBillingCandidate(
     const rows = await db
       .update(orgMetadata)
       .set({
-        tier: "pro-suspend",
+        tier: CANCELED_SUBSCRIPTION_TARGET_TIER,
         subscriptionStatus: "canceled",
         stripeSubscriptionId: null,
         cancelAtPeriodEnd: false,
@@ -370,7 +372,7 @@ async function reconcileBillingCandidate(
   const rows = await db
     .update(orgMetadata)
     .set({
-      tier: "pro-suspend",
+      tier: CANCELED_SUBSCRIPTION_TARGET_TIER,
       ...syncedFields,
     })
     .where(currentCandidate)
@@ -441,7 +443,7 @@ async function reconcileAtomGrantCandidate(
   const rows = await db
     .update(orgMetadata)
     .set({
-      tier: "pro-suspend",
+      tier: CANCELED_SUBSCRIPTION_TARGET_TIER,
       subscriptionStatus: "expired",
       cancelAtPeriodEnd: false,
       currentPeriodEnd: null,
@@ -453,7 +455,7 @@ async function reconcileAtomGrantCandidate(
     .where(
       and(
         eq(orgMetadata.orgId, candidate.orgId),
-        inArray(orgMetadata.tier, ["pro", "team"]),
+        inArray(orgMetadata.tier, PAID_TIERS),
         isNull(orgMetadata.stripeSubscriptionId),
         eq(orgMetadata.subscriptionStatus, ATOM_GRANT_SUBSCRIPTION_STATUS),
         isNotNull(orgMetadata.currentPeriodEnd),
@@ -666,7 +668,7 @@ async function loadReconcileCandidateRows(
       .from(orgMetadata)
       .where(
         and(
-          inArray(orgMetadata.tier, ["pro", "team"]),
+          inArray(orgMetadata.tier, PAID_TIERS),
           isNotNull(orgMetadata.stripeSubscriptionId),
           inArray(orgMetadata.subscriptionStatus, [
             ...PAYMENT_FAILED_SUBSCRIPTION_STATUSES,
@@ -687,7 +689,7 @@ async function loadReconcileCandidateRows(
       .from(orgMetadata)
       .where(
         and(
-          inArray(orgMetadata.tier, ["pro", "team"]),
+          inArray(orgMetadata.tier, PAID_TIERS),
           isNull(orgMetadata.stripeSubscriptionId),
           eq(orgMetadata.subscriptionStatus, ATOM_GRANT_SUBSCRIPTION_STATUS),
           isNotNull(orgMetadata.currentPeriodEnd),

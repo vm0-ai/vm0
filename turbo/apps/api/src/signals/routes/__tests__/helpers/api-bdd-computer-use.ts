@@ -464,7 +464,7 @@ export function createComputerUseBddApi(context: TestContext) {
     },
 
     async requestListComputerUseHosts(
-      actor: ApiTestUser | null,
+      actor: ComputerUseAuth,
       statuses: readonly (200 | 401 | 403)[],
     ) {
       return await accept(
@@ -474,7 +474,7 @@ export function createComputerUseBddApi(context: TestContext) {
     },
 
     async listComputerUseHosts(
-      actor: ApiTestUser,
+      actor: ComputerUseAuth,
     ): Promise<ComputerUseHostListResponse> {
       const response = await accept(
         hostsClient().list({ headers: authenticate(actor) }),

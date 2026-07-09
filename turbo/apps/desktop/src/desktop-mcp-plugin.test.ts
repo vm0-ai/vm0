@@ -1,4 +1,10 @@
-import { mkdtempSync, realpathSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  writeFileSync,
+} from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -99,10 +105,14 @@ describe("parseMcpServersJson", () => {
 describe("DesktopMcpPluginManager", () => {
   const managers: DesktopMcpPluginManager[] = [];
 
-  function createManager(preferencesPath: string): DesktopMcpPluginManager {
+  function createManager(
+    preferencesPath: string,
+    resolveShellPath?: () => Promise<string | null>,
+  ): DesktopMcpPluginManager {
     const manager = new DesktopMcpPluginManager({
       preferencesPath,
       onChange: () => {},
+      resolveShellPath: resolveShellPath ?? (async () => null),
     });
     managers.push(manager);
     return manager;
@@ -234,6 +244,72 @@ describe("DesktopMcpPluginManager", () => {
     expect(reloaded.getState().servers).toMatchObject([
       { name: "files", enabled: true, transport: "stdio" },
     ]);
+  }, 30_000);
+
+  it("resolves bare stdio commands through the login shell PATH", async () => {
+    const workspace = realpathSync(
+      mkdtempSync(path.join(tmpdir(), "mcp-plugin-")),
+    );
+    const binDir = path.join(workspace, "bin");
+    mkdirSync(binDir);
+    const preferencesPath = path.join(workspace, "preferences.json");
+    writeFileSync(path.join(workspace, "hello.txt"), "hello from path\n");
+    // A bare command that only resolves through the injected shell PATH; it
+    // execs the filesystem MCP server via the node binary running this test.
+    const nodeDir = path.dirname(process.execPath);
+    const script = `#!/bin/sh\nexec node "${filesystemServerEntry()}" "${workspace}"\n`;
+    const scriptPath = path.join(binDir, "fake-mcp");
+    writeFileSync(scriptPath, script, { mode: 0o755 });
+    chmodSync(scriptPath, 0o755);
+
+    const manager = createManager(preferencesPath, async () => {
+      return `${binDir}:${nodeDir}`;
+    });
+    manager.load();
+    manager.importServersJson(
+      JSON.stringify({ mcpServers: { pathy: { command: "fake-mcp" } } }),
+    );
+    manager.setFeatureEnabled(true);
+    manager.setHostRuntimeOnline(true);
+    manager.setServerEnabled("pathy", true);
+
+    await waitForServerStatus(manager, "pathy", "running");
+    expect(manager.getCapabilities()).toStrictEqual(["plugin.mcp.pathy"]);
+  }, 30_000);
+
+  it("lets a configured env.PATH override the resolved shell PATH", async () => {
+    const workspace = realpathSync(
+      mkdtempSync(path.join(tmpdir(), "mcp-plugin-")),
+    );
+    const preferencesPath = path.join(workspace, "preferences.json");
+
+    // Shell PATH would resolve the command, but the explicit env.PATH wins
+    // and points nowhere, so the spawn fails with an ENOENT hint.
+    const manager = createManager(preferencesPath, async () => {
+      return path.dirname(process.execPath);
+    });
+    manager.load();
+    manager.importServersJson(
+      JSON.stringify({
+        mcpServers: {
+          pinned: {
+            command: "node",
+            args: ["-e", "process.exit(0)"],
+            env: { PATH: "/nonexistent-bin" },
+          },
+        },
+      }),
+    );
+    manager.setFeatureEnabled(true);
+    manager.setHostRuntimeOnline(true);
+    manager.setServerEnabled("pinned", true);
+
+    await waitForServerStatus(manager, "pinned", "restarting");
+    const server = manager
+      .getState()
+      .servers.find((entry) => entry.name === "pinned");
+    expect(server?.lastError).toContain("ENOENT");
+    expect(server?.lastError).toContain("PATH");
   }, 30_000);
 
   it("rejects calls while the plugin feature switch is off", async () => {
