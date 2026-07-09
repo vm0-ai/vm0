@@ -554,6 +554,46 @@ async def test_header_sigv4_seeded_cache_matches_auth_query_identity(
     )
 
 
+async def test_header_sigv4_cache_miss_when_auth_query_changes(
+    real_flow,
+    headers,
+    tmp_path,
+    mitm_ctx,
+):
+    cached_allow = aws_allow(aws_api_entry(include_session_token=False))
+    active_allow = aws_allow(
+        aws_api_entry(
+            auth_query={"trace": "${{ secrets.TRACE_ID }}"},
+            include_session_token=False,
+        )
+    )
+    endpoint = FakeAuthEndpoint()
+    flow = make_sts_header_sigv4_flow(real_flow, headers)
+    cache_aws_sigv4_credentials(
+        tmp_path,
+        allow=cached_allow,
+        credentials=resolved_aws_sigv4_credentials(session_token=None),
+        query={"trace": "cached-trace"},
+    )
+
+    result = await handle_firewall_request_with_auth_endpoint(
+        flow,
+        tmp_path,
+        mitm_ctx,
+        endpoint=endpoint,
+        auth_response=aws_auth_response(
+            include_session_token=False,
+            query={"trace": "fresh-trace"},
+        ),
+        allow=active_allow,
+    )
+
+    assert result is auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
+    assert flow.metadata[metadata_keys.AUTH_CACHE_HIT] is False
+    assert len(endpoint.requests) == 1
+    assert flow.request.query["trace"] == "fresh-trace"
+
+
 async def test_header_sigv4_seeded_cache_matches_allow_context_identity(
     real_flow,
     headers,
@@ -584,6 +624,42 @@ async def test_header_sigv4_seeded_cache_matches_allow_context_identity(
     assert flow.request.headers["Authorization"].startswith(
         "AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE/"
     )
+
+
+async def test_header_sigv4_cache_miss_when_billable_context_changes(
+    real_flow,
+    headers,
+    tmp_path,
+    mitm_ctx,
+):
+    allow = aws_allow(aws_api_entry(api_id="aws-sts-api", include_session_token=False))
+    cached_vm_info = aws_vm_info(tmp_path)
+    active_vm_info = aws_vm_info(tmp_path, billable_firewalls=["aws"])
+    endpoint = FakeAuthEndpoint()
+    flow = make_sts_header_sigv4_flow(real_flow, headers)
+    cache_aws_sigv4_credentials(
+        tmp_path,
+        allow=allow,
+        vm_info=cached_vm_info,
+        credentials=resolved_aws_sigv4_credentials(session_token=None),
+        expires_at=FAR_FUTURE_EXPIRES_AT,
+    )
+
+    result = await handle_firewall_request_with_auth_endpoint(
+        flow,
+        tmp_path,
+        mitm_ctx,
+        endpoint=endpoint,
+        auth_response=aws_auth_response(include_session_token=False),
+        allow=allow,
+        vm_info=active_vm_info,
+    )
+
+    assert result is auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
+    assert flow.metadata[metadata_keys.AUTH_CACHE_HIT] is False
+    assert flow.metadata[metadata_keys.FIREWALL_API_ID] == "aws-sts-api"
+    assert flow.metadata[metadata_keys.FIREWALL_BILLABLE] is True
+    assert len(endpoint.requests) == 1
 
 
 async def test_header_sigv4_without_trusted_original_url_fails_closed(
