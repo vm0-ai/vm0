@@ -57,6 +57,7 @@ const TIER_CONCURRENCY_LIMITS = Object.freeze<Record<OrgTier, number>>({
   "pro-suspend": 0,
   pro: 2,
   team: 10,
+  custom: 10,
 });
 
 type ReadDb = Pick<Db, "select">;

@@ -29,6 +29,7 @@ import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
+import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import {
   createBddApi,
   expectApiError,
@@ -1418,6 +1419,14 @@ describe("CHAT-02: admission without spendable credits", () => {
         modelProviderId: null,
       },
     ]);
+    if (!actor.orgId) {
+      throw new Error("Expected pro-suspend chat actor to have an org");
+    }
+    await seedOrgMetadata({
+      orgId: actor.orgId,
+      tier: "pro-suspend",
+      credits: 0,
+    });
 
     const clientMessageId = randomUUID();
     const sendBody: ChatRunSendBody = {

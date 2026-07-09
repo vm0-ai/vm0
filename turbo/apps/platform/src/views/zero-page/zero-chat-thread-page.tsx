@@ -5808,17 +5808,17 @@ function InsufficientCreditsCard() {
   const setSubPage = useSet(setBillingSubPage$);
   const pageSignal = useGet(pageSignal$);
 
-  const tier =
-    billingLoadable.state === "hasData" ? billingLoadable.data.tier : null;
-  const credits =
-    billingLoadable.state === "hasData" ? billingLoadable.data.credits : null;
+  const billingResolved = billingLoadable.state === "hasData";
+  const tier = billingResolved ? billingLoadable.data.tier : null;
+  const credits = billingResolved ? billingLoadable.data.credits : null;
   const isAdminLoadable = useLastLoadable(isOrgAdmin$);
   const roleResolved = isAdminLoadable.state === "hasData";
   const canManageBilling = roleResolved ? isAdminLoadable.data : false;
   const requiresPro = tier === "pro-suspend" || tier === "limited-free-1";
   const hasAvailableCredits = !requiresPro && credits !== null && credits > 0;
-  const isFree = tier === "free" || tier === "limited-free-1" || tier === null;
+  const isFree = tier === "free" || tier === "limited-free-1";
   const shouldStartProCheckout = requiresPro || isFree;
+  const canShowBillingAction = billingResolved && canManageBilling;
   const redirecting =
     checkoutLoadable.state === "loading" ||
     creditCheckoutLoadable.state === "loading";
@@ -5830,8 +5830,8 @@ function InsufficientCreditsCard() {
   const { headline, helper } = insufficientCreditsCopy({
     isFree,
     requiresPro,
-    roleResolved,
-    canManageBilling,
+    roleResolved: billingResolved && roleResolved,
+    canManageBilling: billingResolved && canManageBilling,
   });
 
   const openBilling = () => {
@@ -5864,7 +5864,7 @@ function InsufficientCreditsCard() {
     <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-3 max-w-md">
       <p className="text-[0.9375rem] font-medium text-foreground">{headline}</p>
       <p className="mt-1 text-sm text-muted-foreground">{helper}</p>
-      {!canManageBilling ? null : shouldStartProCheckout ? (
+      {!canShowBillingAction ? null : shouldStartProCheckout ? (
         <button
           type="button"
           onClick={handleUpgradeClick}

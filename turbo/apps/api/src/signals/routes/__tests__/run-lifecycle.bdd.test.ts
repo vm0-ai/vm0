@@ -27,6 +27,7 @@ import { clearMockNow, mockNow, now, nowDate } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-context";
 import { server } from "../../../mocks/server";
 import { seedLexicalRelationshipMemory } from "../../../test-fixtures/relationship-memory";
+import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import {
   createBddApi,
   expectApiError,
@@ -2410,11 +2411,20 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     api.configureRunnerGroup();
 
     await bdd.setupOnboarding(actor, { displayName: "BDD Suspended Agent" });
+    if (!actor.orgId) {
+      throw new Error("Expected suspended run actor to have an org");
+    }
+    await seedOrgMetadata({ orgId: actor.orgId, tier: "pro", credits: 20_000 });
     await api.ensureOrgModelProvider(actor);
     const agent = await bdd.createAgent(actor, {
       displayName: "BDD suspended-org agent",
       description: "Covers the pro-suspend admission branch.",
       visibility: "private",
+    });
+    await seedOrgMetadata({
+      orgId: actor.orgId,
+      tier: "pro-suspend",
+      credits: 0,
     });
 
     const rejected = await api.requestCreateRun(

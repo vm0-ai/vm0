@@ -23,7 +23,7 @@ export const orgMetadata = pgTable(
     // or legacy/manual grants. The column DEFAULT is 0 — never rely on the
     // default to materialise a grant.
     credits: bigint("credits", { mode: "number" }).notNull().default(0),
-    tier: text("tier").notNull().default("pro-suspend"),
+    tier: text("tier").notNull().default("limited-free-1"),
     defaultAgentId: uuid("default_agent_id").references(
       () => {
         return agentComposes.id;
