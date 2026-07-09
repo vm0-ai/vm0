@@ -14,9 +14,12 @@ import {
 
 const PLACEHOLDER_VALUE = "nintendo_play_activity_access_token_placeholder";
 const RUNTIME_TOKEN_SECRET = "NINTENDO_PLAY_ACTIVITY_TOKEN";
+const RUNTIME_LOCALE_VAR = "NINTENDO_PLAY_ACTIVITY_LOCALE";
+const USER_AGENT = "com.nintendo.znej/1.13.0 (Android/7.1.2)";
 
 interface NintendoPlayActivityApi {
   readonly base: string;
+  readonly localeHeader?: boolean;
   readonly permissions: readonly PermissionGroup[];
 }
 
@@ -33,6 +36,7 @@ const NINTENDO_PLAY_ACTIVITY_APIS: readonly NintendoPlayActivityApi[] = [
   },
   {
     base: "https://app-api.znej.nintendo.com",
+    localeHeader: true,
     permissions: [
       {
         name: "nintendo-store-play-activity-read",
@@ -70,6 +74,10 @@ function renderApi(api: NintendoPlayActivityApi): string[] {
     "      auth: {",
     "        headers: {",
     `          Authorization: "Bearer \${{ secrets.${RUNTIME_TOKEN_SECRET} }}",`,
+    `          "User-Agent": "${USER_AGENT}",`,
+    ...(api.localeHeader === true
+      ? [`          "gentry-locale": "\${{ vars.${RUNTIME_LOCALE_VAR} }}",`]
+      : []),
     "        },",
     "      },",
     "      permissions: [",

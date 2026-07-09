@@ -232,7 +232,7 @@ describe("GET /api/zero/connector-catalog", () => {
     expect(openai?.permissionSummary).not.toHaveProperty("permissions");
   });
 
-  it("shows staff-only no-auth connector catalog entries for staff orgs", async () => {
+  it("shows no-auth connector catalog entries when enabled", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     mocks.clerk.session(userId, orgId);
@@ -269,7 +269,15 @@ describe("GET /api/zero/connector-catalog", () => {
       overriddenList.body.connectors.find((connector) => {
         return connector.connectorRef === "nintendo-eshop-catalog";
       }),
-    ).toBeUndefined();
+    ).toMatchObject({
+      connectorRef: "nintendo-eshop-catalog",
+      authMethods: [
+        {
+          id: "api",
+          grantKind: "none",
+        },
+      ],
+    });
 
     mocks.clerk.session(userId, STAFF_ORG_ID);
 
@@ -572,7 +580,7 @@ describe("GET /api/zero/connector-catalog", () => {
       connectionStatus: "not-connected",
       permissionSummary: {
         hasPermissions: true,
-        permissionCount: 2,
+        permissionCount: 4,
         hasCategories: false,
         hasDefaultPolicyOverrides: true,
       },
@@ -582,7 +590,7 @@ describe("GET /api/zero/connector-catalog", () => {
         id: "api",
         label: "Nintendo sign-in",
         description:
-          "Sign in with Nintendo, then paste the full `npf...://auth` redirect URL or the `session_token_code` value.",
+          "Sign in with Nintendo. After signing in, right-click the redirect button and copy its link address, then paste the full `npf...://auth` redirect URL or the `session_token_code` value.",
         grantKind: "external-code",
         manualFields: [],
         startOptions: [],

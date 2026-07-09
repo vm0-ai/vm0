@@ -3134,7 +3134,8 @@ CONNECTOR_DIAGNOSTIC_FIREWALLS = json.loads(r"""[
     "apis": [
       {
         "authHeaderNames": [
-          "Authorization"
+          "Authorization",
+          "User-Agent"
         ],
         "authQueryParamNames": [],
         "base": "https://api.accounts.nintendo.com",
@@ -3144,17 +3145,21 @@ CONNECTOR_DIAGNOSTIC_FIREWALLS = json.loads(r"""[
       },
       {
         "authHeaderNames": [
-          "Authorization"
+          "Authorization",
+          "User-Agent",
+          "gentry-locale"
         ],
         "authQueryParamNames": [],
         "base": "https://app-api.znej.nintendo.com",
         "envNames": [
-          "NINTENDO_PLAY_ACTIVITY_TOKEN"
+          "NINTENDO_PLAY_ACTIVITY_TOKEN",
+          "NINTENDO_PLAY_ACTIVITY_LOCALE"
         ]
       },
       {
         "authHeaderNames": [
-          "Authorization"
+          "Authorization",
+          "User-Agent"
         ],
         "authQueryParamNames": [],
         "base": "https://news-api.entry.nintendo.co.jp",
@@ -3164,7 +3169,8 @@ CONNECTOR_DIAGNOSTIC_FIREWALLS = json.loads(r"""[
       },
       {
         "authHeaderNames": [
-          "Authorization"
+          "Authorization",
+          "User-Agent"
         ],
         "authQueryParamNames": [],
         "base": "https://mypage-api.entry.nintendo.co.jp",
