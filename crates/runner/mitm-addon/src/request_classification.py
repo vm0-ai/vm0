@@ -30,8 +30,9 @@ import upstream_destination_binding
 from url_utils import AuthorityValidationError, get_trusted_authority, normalize_trusted_hostname
 
 REQUEST_CLASSIFICATION_METADATA_KEY = "_request_classification"
-# Metadata that may be written by requestheaders probe classification and must
-# be restored if that probe is not carried forward into request handling.
+# Metadata that the requestheaders probe path may write while using this
+# classification result. Restore it when the probe is not carried forward into
+# request handling.
 REQUEST_HEADERS_PROBE_METADATA_KEYS = (
     metadata_keys.VM_RUN_ID,
     metadata_keys.VM_NETWORK_LOG_PATH,
@@ -406,10 +407,10 @@ def restore_request_headers_probe_metadata(
 ) -> None:
     """Restore metadata after a requestheaders classification probe.
 
-    `REQUEST_HEADERS_PROBE_METADATA_KEYS` covers metadata owned by this module.
-    `extra_keys` lets callers restore companion probe metadata owned by modules
-    that participated in the same header-phase decision, such as connector
-    diagnostics.
+    `REQUEST_HEADERS_PROBE_METADATA_KEYS` covers the metadata touched by this
+    module and adjacent requestheaders processing that depends on the
+    classification result. `extra_keys` lets callers restore companion probe
+    metadata owned by other modules, such as connector diagnostics.
     """
 
     for key in (*REQUEST_HEADERS_PROBE_METADATA_KEYS, *extra_keys):
