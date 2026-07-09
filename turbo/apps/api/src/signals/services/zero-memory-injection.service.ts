@@ -205,8 +205,8 @@ export async function buildZeroMemoryRuntimeInjection(
   params: ZeroMemoryInjectionParams,
 ): Promise<MemoryInjectionPreviewResponse> {
   const prompt = params.prompt.trim();
-  const retrievalQuery =
-    params.retrievalQuery === undefined ? prompt : params.retrievalQuery.trim();
+  const trimmedRetrievalQuery = params.retrievalQuery?.trim();
+  const retrievalQuery = trimmedRetrievalQuery || prompt;
   const [profile, search] = await Promise.all([
     getZeroMemoryProfile(db, {
       orgId: params.orgId,

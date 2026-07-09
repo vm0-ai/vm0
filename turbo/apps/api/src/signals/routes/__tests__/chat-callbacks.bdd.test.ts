@@ -19,7 +19,10 @@ import { testContext } from "../../../__tests__/test-context";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { now } from "../../external/time";
-import { seedSemanticRecallMemory } from "../../../test-fixtures/relationship-memory";
+import {
+  seedLexicalRelationshipMemory,
+  seedSemanticRecallMemory,
+} from "../../../test-fixtures/relationship-memory";
 import { createDeferredPromise } from "../../utils";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { mockClerkMembership } from "./helpers/api-bdd-clerk";
@@ -1232,6 +1235,78 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     );
     expect(goalContext.body.appendSystemPrompt ?? "").toContain(
       "The user prefers JPM IJTXX Treasury allocation.",
+    );
+
+    await api.requestCancelRun(actor, goalContinuation.runId, [200]);
+    await waitForRunStatus(actor, goalContinuation.runId, "cancelled");
+    await flushWaitUntilForTest();
+  }, 90_000);
+
+  it("does not broad-load runtime memory when a goal memory query compacts to empty", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    await enableGoalWorkflows(actor);
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor for goal continuation");
+    }
+    mockOptionalEnv("OPENROUTER_API_KEY", undefined);
+    mockOptionalEnv("ZERO_MEMORY_EMBEDDING_PROVIDER", undefined);
+    await updateFeatureSwitchesForUser(
+      context,
+      { userId: actor.userId, orgId: actor.orgId, orgRole: actor.orgRole },
+      {
+        [FeatureSwitchKey.RelationshipMemory]: true,
+        [FeatureSwitchKey.RelationshipMemoryRuntimeInjection]: true,
+      },
+    );
+    const broadMemoryText = "The user wants broad memory to stay out.";
+    await seedLexicalRelationshipMemory({
+      fixture: { orgId: actor.orgId, userId: actor.userId },
+      displayName: "Broad Memory",
+      kind: "preference",
+      text: broadMemoryText,
+    });
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const first = await startChatRun(actor, {
+      agentId,
+      prompt: "finish before markdown-only goal continuation",
+    });
+    const goalObjective = "---";
+    const goalBrief = goalObjective;
+    await createGoalForRun(actor, first.runId, goalObjective);
+
+    chatCallbacks.mockChatOutputEvents([
+      assistantEvent(0, "completed before markdown-only goal continuation"),
+    ]);
+
+    const sandboxHeaders = await claimChatRun(runnerGroup, first.runId);
+    await completeChatRunOk(first.runId, sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+
+    const messages = await waitForThreadMessages(
+      actor,
+      first.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return isGoalContinuationUserMessage(message, goalBrief);
+        });
+      },
+    );
+    const goalContinuation = userMessages(messages.messages).find((message) => {
+      return isGoalContinuationUserMessage(message, goalBrief);
+    });
+    expect(goalContinuation?.goalSnapshot).toStrictEqual({
+      objectiveBrief: goalBrief,
+    });
+    if (!goalContinuation?.runId) {
+      throw new Error("Expected markdown-only goal continuation run id");
+    }
+    const goalContext = await waitForRunContext(actor, goalContinuation.runId);
+    expect(goalContext.body.prompt).toContain("# Active thread goal");
+    expect(goalContext.body.prompt).toContain(goalObjective);
+    expect(goalContext.body.appendSystemPrompt ?? "").not.toContain(
+      broadMemoryText,
     );
 
     await api.requestCancelRun(actor, goalContinuation.runId, [200]);

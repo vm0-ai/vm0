@@ -38,7 +38,21 @@ function fallbackObjectiveBrief(objective: string): string {
     .find((line) => {
       return line.length > 0;
     });
-  return capText(firstNonEmptyLine ?? compactText(objective));
+  const rawFirstNonEmptyLine = objective
+    .split(/\r?\n/)
+    .map((line) => {
+      return line.trim();
+    })
+    .find((line) => {
+      return line.length > 0;
+    });
+  const compactObjective = compactText(objective);
+  const fallback =
+    firstNonEmptyLine ??
+    (compactObjective.length > 0 ? compactObjective : undefined) ??
+    rawFirstNonEmptyLine ??
+    "Untitled goal";
+  return capText(fallback);
 }
 
 export async function generateGoalObjectiveBrief(
