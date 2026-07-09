@@ -1,7 +1,7 @@
 """AWS SigV4 firewall-auth integration helpers for mitm-addon tests."""
 
 import copy
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import Protocol, TypedDict
@@ -104,8 +104,8 @@ def aws_api_entry(
     api_id: str | None = None,
     base: str = f"https://{STS_HOST}",
     auth_base: str | None = None,
-    auth_headers: dict[str, str] | None = None,
-    auth_query: dict[str, str] | None = None,
+    auth_headers: Mapping[str, str] | None = None,
+    auth_query: Mapping[str, str] | None = None,
     include_session_token: bool = True,
 ) -> AwsApiEntry:
     auth_config: AwsAuthConfig = {
@@ -130,7 +130,7 @@ def aws_allow(
     *,
     firewall_name: str = "aws",
     permission: str = "identity",
-    params: dict[str, str] | None = None,
+    params: Mapping[str, str] | None = None,
     rule: str = "POST /",
     rel_path: str = "/",
 ) -> matching.FirewallAllow:
@@ -152,9 +152,9 @@ def aws_vm_info(
     sandbox_token: str | None = None,
     encrypted_secrets: str = "iv:tag:data",
     region: str = DEFAULT_AWS_REGION,
-    billable_firewalls: list[str] | None = None,
-    secret_connector_map: dict[str, str] | None = None,
-    secret_connector_metadata_map: dict[str, object] | None = None,
+    billable_firewalls: Sequence[str] | None = None,
+    secret_connector_map: Mapping[str, str] | None = None,
+    secret_connector_metadata_map: Mapping[str, object] | None = None,
 ) -> AwsVmInfo:
     vm_info: AwsVmInfo = {
         "runId": run_id,
@@ -167,7 +167,7 @@ def aws_vm_info(
     if secret_connector_map is not None:
         vm_info["secretConnectorMap"] = dict(secret_connector_map)
     if secret_connector_metadata_map is not None:
-        vm_info["secretConnectorMetadataMap"] = copy.deepcopy(secret_connector_metadata_map)
+        vm_info["secretConnectorMetadataMap"] = copy.deepcopy(dict(secret_connector_metadata_map))
     return vm_info
 
 
@@ -177,8 +177,8 @@ def aws_auth_response(
     access_key_id: str = REAL_AWS_ACCESS_KEY_ID,
     secret_access_key: str = REAL_AWS_SECRET_ACCESS_KEY,
     session_token: str = REAL_AWS_SESSION_TOKEN,
-    headers: dict[str, str] | None = None,
-    query: dict[str, str] | None = None,
+    headers: Mapping[str, str] | None = None,
+    query: Mapping[str, str] | None = None,
 ) -> dict[str, object]:
     aws_sigv4 = {
         "accessKeyId": access_key_id,
@@ -345,8 +345,8 @@ def cache_aws_sigv4_credentials(
     allow: matching.FirewallAllow | None = None,
     vm_info: AwsVmInfo | None = None,
     credentials: AwsSigV4Credentials | None = None,
-    headers: dict[str, str] | None = None,
-    query: dict[str, str] | None = None,
+    headers: Mapping[str, str] | None = None,
+    query: Mapping[str, str] | None = None,
     expires_at: object = None,
 ) -> None:
     set_cached_headers(
