@@ -362,6 +362,18 @@ function isCorsPreflightRequest(context: Context): boolean {
   );
 }
 
+// External server-to-server webhook callers cannot present the Vercel bypass
+// secret, so the preview automation guard must let their paths through even on
+// protected preview/staging deployments. This covers every third-party and
+// runner webhook (Stripe/Clerk/GitHub/... and `/api/webhooks/agent/*`). Each of
+// these endpoints authenticates its own requests (webhook signatures, runner
+// auth tokens), so exempting them from the preview guard does not widen access.
+// Browser-driven OAuth callbacks are intentionally excluded: they carry the
+// bypass cookie and stay behind the guard.
+function isPreviewAutomationBypassExemptPath(context: Context): boolean {
+  return context.req.path.startsWith("/api/webhooks/");
+}
+
 function bypassFingerprint(value: string | undefined): string | undefined {
   if (!value) {
     return undefined;
@@ -400,6 +412,7 @@ async function previewAutomationBypassMiddleware(
   if (
     !secret ||
     isCorsPreflightRequest(context) ||
+    isPreviewAutomationBypassExemptPath(context) ||
     requestHasPreviewAutomationBypass(context, secret)
   ) {
     await next();
