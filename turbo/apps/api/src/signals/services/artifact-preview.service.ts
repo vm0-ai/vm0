@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, lt, or, sql } from "drizzle-orm";
 import { FeatureSwitchKey, isFeatureEnabled } from "@vm0/core";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 
@@ -8,10 +8,13 @@ import { buildArtifactKey, buildFileUrl } from "../../lib/file-url";
 import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
 import { waitUntil } from "../context/wait-until";
-import { writeDb$ } from "../external/db";
+import { writeDb$, type ReadonlyDb } from "../external/db";
 import { putS3Object } from "../external/s3";
 import { tapError } from "../utils";
-import { userFeatureSwitchContext } from "./feature-switches.service";
+import {
+  loadUserFeatureSwitchContext,
+  userFeatureSwitchContext,
+} from "./feature-switches.service";
 import { publishArtifactsChangedForRun } from "./run-uploaded-files.service";
 
 const log = logger("artifacts:preview");
@@ -21,6 +24,8 @@ const log = logger("artifacts:preview");
 // backfill / retry safety net behind the deploy-time trigger, so steady-state
 // batches are tiny.
 const PREVIEW_BATCH_SIZE = 10;
+const PREVIEW_SCAN_PAGE_SIZE = 50;
+const PREVIEW_SCAN_MAX_PAGES = 20;
 // Render at a full 1280-wide desktop layout for fidelity, but rasterize at half
 // resolution (deviceScaleFactor 0.5 -> 640x400) since the grid only shows the
 // image a few hundred px wide. WebP keeps the file small (~tens of KB).
@@ -31,6 +36,11 @@ const PREVIEW_VIEWPORT = {
 } as const;
 const PREVIEW_IMAGE_CONTENT_TYPE = "image/webp";
 const PREVIEW_IMAGE_EXTENSION = "webp";
+
+interface PreviewCandidateCursor {
+  readonly createdAt: Date;
+  readonly id: string;
+}
 
 export interface RenderArtifactPreviewArgs {
   // The run_uploaded_files row id; also namespaces the R2 object key.
@@ -49,6 +59,49 @@ export interface RenderArtifactPreviewArgs {
 function previewImageFilename(deploymentId: string | null): string {
   const base = deploymentId ? `preview-${deploymentId}` : "preview";
   return `${base}.${PREVIEW_IMAGE_EXTENSION}`;
+}
+
+async function isArtifactPreviewEnabledForOwner(
+  db: ReadonlyDb,
+  args: {
+    readonly orgId: string | null;
+    readonly userId: string;
+  },
+): Promise<boolean> {
+  const featureCtx = await loadUserFeatureSwitchContext(
+    db,
+    args.orgId ?? "",
+    args.userId,
+  );
+  return isFeatureEnabled(FeatureSwitchKey.ArtifactPreviewImage, featureCtx);
+}
+
+function previewCandidateWhere(cursor?: PreviewCandidateCursor) {
+  const conditions = [
+    isNull(runUploadedFiles.previewImageUrl),
+    sql`${runUploadedFiles.url} IS NOT NULL`,
+    sql`${runUploadedFiles.metadata}->>'artifactKind' IN ('hosted-site', 'presentation-html')`,
+    // Grace window: skip rows touched in the last 2 minutes so the deploy-time
+    // fast path can finish first. The cron only picks up rows it demonstrably
+    // failed on, plus pre-feature backfill (already old), avoiding a duplicate
+    // render racing the deploy trigger.
+    sql`${runUploadedFiles.updatedAt} < now() - interval '2 minutes'`,
+  ];
+
+  if (cursor) {
+    const cursorCondition = or(
+      lt(runUploadedFiles.createdAt, cursor.createdAt),
+      and(
+        eq(runUploadedFiles.createdAt, cursor.createdAt),
+        lt(runUploadedFiles.id, cursor.id),
+      ),
+    );
+    if (cursorCondition) {
+      conditions.push(cursorCondition);
+    }
+  }
+
+  return and(...conditions);
 }
 
 async function renderArtifactScreenshot(
@@ -172,63 +225,82 @@ export const generateArtifactPreviews$ = command(
     }
 
     const db = set(writeDb$);
-    const rows = await db
-      .select({
-        id: runUploadedFiles.id,
-        runId: runUploadedFiles.runId,
-        userId: runUploadedFiles.userId,
-        orgId: runUploadedFiles.orgId,
-        url: runUploadedFiles.url,
-        deploymentId: sql<
-          string | null
-        >`${runUploadedFiles.metadata}->>'deploymentId'`,
-      })
-      .from(runUploadedFiles)
-      .where(
-        and(
-          isNull(runUploadedFiles.previewImageUrl),
-          sql`${runUploadedFiles.url} IS NOT NULL`,
-          sql`${runUploadedFiles.metadata}->>'artifactKind' IN ('hosted-site', 'presentation-html')`,
-          // Grace window: skip rows touched in the last 2 minutes so the
-          // deploy-time fast path can finish first. The cron only picks up rows
-          // it demonstrably failed on, plus pre-feature backfill (already old),
-          // avoiding a duplicate render racing the deploy trigger.
-          sql`${runUploadedFiles.updatedAt} < now() - interval '2 minutes'`,
-        ),
-      )
-      .orderBy(desc(runUploadedFiles.createdAt))
-      .limit(PREVIEW_BATCH_SIZE);
-    signal.throwIfAborted();
-
     let generated = 0;
-    for (const row of rows) {
-      if (!row.url) {
-        continue;
-      }
-      const succeeded = await tapError(
-        set(
-          renderAndStoreArtifactPreview$,
-          {
-            id: row.id,
-            runId: row.runId,
-            userId: row.userId,
-            orgId: row.orgId,
-            url: row.url,
-            deploymentId: row.deploymentId,
-          },
-          signal,
-        ),
-        (error) => {
-          log.warn("Failed to render artifact preview", {
-            artifactId: row.id,
-            url: row.url,
-            error: error instanceof Error ? error.message : String(error),
-          });
-        },
-      );
+    let cursor: PreviewCandidateCursor | undefined;
+    let pages = 0;
+    const ownerFeatureEnabled = new Map<string, boolean>();
+
+    while (generated < PREVIEW_BATCH_SIZE && pages < PREVIEW_SCAN_MAX_PAGES) {
+      const rows = await db
+        .select({
+          id: runUploadedFiles.id,
+          runId: runUploadedFiles.runId,
+          userId: runUploadedFiles.userId,
+          orgId: runUploadedFiles.orgId,
+          url: runUploadedFiles.url,
+          createdAt: runUploadedFiles.createdAt,
+          deploymentId: sql<
+            string | null
+          >`${runUploadedFiles.metadata}->>'deploymentId'`,
+        })
+        .from(runUploadedFiles)
+        .where(previewCandidateWhere(cursor))
+        .orderBy(desc(runUploadedFiles.createdAt), desc(runUploadedFiles.id))
+        .limit(PREVIEW_SCAN_PAGE_SIZE);
       signal.throwIfAborted();
-      if (succeeded) {
-        generated++;
+      if (rows.length === 0) {
+        break;
+      }
+      pages++;
+
+      for (const row of rows) {
+        cursor = { createdAt: row.createdAt, id: row.id };
+        if (!row.url) {
+          continue;
+        }
+
+        const featureKey = `${row.orgId ?? ""}:${row.userId}`;
+        let enabled = ownerFeatureEnabled.get(featureKey);
+        if (enabled === undefined) {
+          enabled = await isArtifactPreviewEnabledForOwner(db, {
+            orgId: row.orgId,
+            userId: row.userId,
+          });
+          ownerFeatureEnabled.set(featureKey, enabled);
+          signal.throwIfAborted();
+        }
+        if (!enabled) {
+          continue;
+        }
+
+        const succeeded = await tapError(
+          set(
+            renderAndStoreArtifactPreview$,
+            {
+              id: row.id,
+              runId: row.runId,
+              userId: row.userId,
+              orgId: row.orgId,
+              url: row.url,
+              deploymentId: row.deploymentId,
+            },
+            signal,
+          ),
+          (error) => {
+            log.warn("Failed to render artifact preview", {
+              artifactId: row.id,
+              url: row.url,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          },
+        );
+        signal.throwIfAborted();
+        if (succeeded) {
+          generated++;
+        }
+        if (generated >= PREVIEW_BATCH_SIZE) {
+          break;
+        }
       }
     }
 

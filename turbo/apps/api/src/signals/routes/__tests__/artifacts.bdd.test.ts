@@ -2,16 +2,15 @@ import { createHash, randomUUID } from "node:crypto";
 
 import { cronArtifactPreviewContract } from "@vm0/api-contracts/contracts/cron";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { sql } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
-import { db } from "../../../lib/db";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
+import { markHostedArtifactEligibleForPreviewCron } from "./helpers/artifact-preview-state";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import {
   createChatFilesBddApi,
@@ -194,18 +193,49 @@ async function createHostedArtifact(args: {
   };
 }
 
-async function markHostedArtifactEligibleForPreviewCron(artifact: {
-  readonly runId: string;
-  readonly url: string;
-}): Promise<void> {
-  const { rows } = await db().execute<{ id: string }>(sql`
-    UPDATE run_uploaded_files
-    SET preview_image_url = NULL, updated_at = now() - interval '3 minutes'
-    WHERE run_id = ${artifact.runId} AND external_id = ${artifact.url}
-    RETURNING id
-  `);
-
-  expect(rows).toHaveLength(1);
+async function createHostedArtifactsInRun(args: {
+  readonly actor: ApiTestUser;
+  readonly agentId: string;
+  readonly runnerGroup: string;
+  readonly sites: readonly string[];
+  readonly artifactKind?: "hosted-site" | "presentation-html";
+}): Promise<
+  readonly {
+    readonly runId: string;
+    readonly threadId: string;
+    readonly fileId: string;
+    readonly url: string;
+    readonly deploymentId: string;
+  }[]
+> {
+  const run = await sendChatRun(args.actor, {
+    agentId: args.agentId,
+    prompt: `create ${args.sites.join(", ")}`,
+  });
+  const { claim, sandboxHeaders } = await claimChatRun(
+    args.runnerGroup,
+    run.runId,
+  );
+  const bearer = `Bearer ${zeroTokenFromClaim(claim)}`;
+  const artifacts = [];
+  for (const site of args.sites) {
+    const prepared = await chat.prepareHostedSiteWithBearer(bearer, {
+      site,
+      artifactKind: args.artifactKind ?? "hosted-site",
+      spaFallback: false,
+      files: [hostedTextFile("/index.html", `<main>${site}</main>`)],
+    });
+    await chat.completeHostedSiteWithBearer(bearer, prepared.deploymentId);
+    artifacts.push({
+      runId: run.runId,
+      threadId: run.threadId,
+      fileId: prepared.url,
+      url: prepared.url,
+      deploymentId: prepared.deploymentId,
+    });
+  }
+  await completeChatRunOk(run.runId, sandboxHeaders);
+  return artifacts;
 }
 
 describe("GET /api/cron/artifact-preview", () => {
@@ -228,8 +258,16 @@ describe("GET /api/cron/artifact-preview", () => {
 
   it("generates stale hosted artifact previews through the cron fallback", async () => {
     const owner = await artifactActor("Artifacts API cron preview agent");
+    const disabledOwner = await artifactActor(
+      "Artifacts API cron disabled preview agent",
+    );
     if (!owner.actor.orgId) {
       throw new Error("Expected cron preview test actor to have an org");
+    }
+    if (!disabledOwner.actor.orgId) {
+      throw new Error(
+        "Expected cron preview disabled test actor to have an org",
+      );
     }
     mockEnv("CRON_SECRET", CRON_SECRET);
     mockEnv("CLOUDFLARE_BROWSER_RENDERING_API_TOKEN", undefined);
@@ -241,10 +279,21 @@ describe("GET /api/cron/artifact-preview", () => {
       runnerGroup: owner.runnerGroup,
       site: `cron-preview-${randomUUID().slice(0, 8)}`,
     });
+    const disabledArtifacts = await createHostedArtifactsInRun({
+      actor: disabledOwner.actor,
+      agentId: disabledOwner.agentId,
+      runnerGroup: disabledOwner.runnerGroup,
+      sites: Array.from({ length: 10 }, (_, index) => {
+        return `cron-disabled-${index}-${randomUUID().slice(0, 8)}`;
+      }),
+    });
     await flushWaitUntilForTest();
     expect(screenshotRequests).toHaveLength(0);
 
-    await markHostedArtifactEligibleForPreviewCron(artifact);
+    await markHostedArtifactEligibleForPreviewCron(context, artifact);
+    for (const disabledArtifact of disabledArtifacts) {
+      await markHostedArtifactEligibleForPreviewCron(context, disabledArtifact);
+    }
     await updateFeatureSwitchesForUser(
       context,
       {
@@ -254,6 +303,17 @@ describe("GET /api/cron/artifact-preview", () => {
       },
       {
         [FeatureSwitchKey.ArtifactPreviewImage]: true,
+      },
+    );
+    await updateFeatureSwitchesForUser(
+      context,
+      {
+        userId: disabledOwner.actor.userId,
+        orgId: disabledOwner.actor.orgId,
+        orgRole: disabledOwner.actor.orgRole,
+      },
+      {
+        [FeatureSwitchKey.ArtifactPreviewImage]: false,
       },
     );
     mockEnv("CLOUDFLARE_BROWSER_RENDERING_API_TOKEN", "preview-token");
@@ -293,7 +353,16 @@ describe("GET /api/cron/artifact-preview", () => {
         );
       }),
     ).toBeTruthy();
-  }, 120_000);
+
+    const disabledResponse = await chat.listArtifacts(disabledOwner.actor);
+    for (const disabledArtifact of disabledArtifacts) {
+      const item = disabledResponse.artifacts.find((candidate) => {
+        return candidate.fileId === disabledArtifact.fileId;
+      });
+      expect(item).toBeDefined();
+      expect(item).not.toHaveProperty("previewImageUrl");
+    }
+  }, 180_000);
 });
 
 describe("GET /api/zero/artifacts", () => {
