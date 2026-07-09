@@ -13,7 +13,6 @@ import { env } from "../../lib/env";
 import { safeJsonParse } from "../utils";
 import {
   checkManagedCredits$,
-  MANAGED_USAGE_COMMIT_SIGNAL,
   recordManagedUsage$,
   type ManagedUsageErrorResponse,
 } from "./zero-managed-usage.service";
@@ -410,7 +409,7 @@ export const zeroMapsGeocode$ = command(
             runId: runIdForUsage(args.auth),
             category: GEOCODING_CATEGORY,
           },
-          MANAGED_USAGE_COMMIT_SIGNAL,
+          signal,
         );
       },
     });
@@ -460,7 +459,7 @@ export const zeroMapsReverseGeocode$ = command(
             runId: runIdForUsage(args.auth),
             category: GEOCODING_CATEGORY,
           },
-          MANAGED_USAGE_COMMIT_SIGNAL,
+          signal,
         );
       },
     });
@@ -522,7 +521,7 @@ export const zeroMapsDirections$ = command(
             runId: runIdForUsage(args.auth),
             category: billingCategory,
           },
-          MANAGED_USAGE_COMMIT_SIGNAL,
+          signal,
         );
       },
     });
@@ -596,7 +595,7 @@ export const zeroMapsPlacesSearch$ = command(
             runId: runIdForUsage(args.auth),
             category: billingCategory,
           },
-          MANAGED_USAGE_COMMIT_SIGNAL,
+          signal,
         );
       },
     });
@@ -657,7 +656,7 @@ export const zeroMapsPlacesDetails$ = command(
             runId: runIdForUsage(args.auth),
             category: billingCategory,
           },
-          MANAGED_USAGE_COMMIT_SIGNAL,
+          signal,
         );
       },
     });

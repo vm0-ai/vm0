@@ -41,7 +41,7 @@ interface ManagedUsageActor {
 // Usage commit work runs after a managed provider has completed paid work, so
 // client request cancellation must not skip the billing record. An empty
 // AbortSignal.any creates a never-aborted signal without a mutable controller.
-export const MANAGED_USAGE_COMMIT_SIGNAL = AbortSignal.any([]);
+const MANAGED_USAGE_COMMIT_SIGNAL = AbortSignal.any([]);
 
 function errorBody(message: string, code: string) {
   return { error: { message, code } };

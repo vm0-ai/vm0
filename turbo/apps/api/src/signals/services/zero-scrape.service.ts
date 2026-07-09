@@ -10,7 +10,6 @@ import { env } from "../../lib/env";
 import { bestEffort, safeAsync, safeJsonParse } from "../utils";
 import {
   checkManagedCredits$,
-  MANAGED_USAGE_COMMIT_SIGNAL,
   recordManagedUsage$,
   type ManagedUsageErrorResponse,
 } from "./zero-managed-usage.service";
@@ -697,7 +696,7 @@ export const zeroScrape$ = command(
             },
             label: "scrape",
           },
-          MANAGED_USAGE_COMMIT_SIGNAL,
+          signal,
         );
       },
     });
