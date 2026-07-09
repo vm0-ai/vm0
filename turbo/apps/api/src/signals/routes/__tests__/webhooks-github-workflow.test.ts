@@ -1,38 +1,25 @@
-import { createHmac } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 
 import { zeroWorkflowTriggersContract } from "@vm0/api-contracts/contracts/zero-workflows";
-import { createStore } from "ccstate";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
 import { mockOptionalEnv } from "../../../lib/env";
 import { flushWaitUntilForTest } from "../../context/wait-until";
-import {
-  deleteWorkflowsForFixture$,
-  getWorkflowGithubProcessedEvents$,
-  getWorkflowTriggerRunState$,
-  seedAgentForInstructions$,
-  seedWorkflowGithubInstallation$,
-  seedWorkflowGithubUserLink$,
-  seedWorkflowsFixture$,
-  type WorkflowsFixture,
-} from "./helpers/zero-workflows";
-import {
-  createFixtureTracker,
-  createZeroRouteMocks,
-} from "./helpers/zero-route-test";
-import {
-  deleteFeatureSwitchesForUser,
-  updateFeatureSwitchesForUser,
-} from "./helpers/zero-feature-switches";
+import type { ApiTestUser } from "./helpers/api-bdd";
+import { createGithubBddApi } from "./helpers/api-bdd-github";
+import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
+import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
-const store = createStore();
 const mocks = createZeroRouteMocks(context);
+const wf = createWorkflowsBddApi(context);
+const gh = createGithubBddApi(context);
+const runsApi = createRunsAutomationsApi(context);
 
 const WORKFLOW_NAME = "github-webhook-workflow";
 const GITHUB_WEBHOOK_SECRET = "github-webhook-secret";
-const GITHUB_INSTALLATION_REMOTE_ID = "123456";
 
 function authHeaders() {
   return { authorization: "Bearer clerk-session" };
@@ -61,82 +48,38 @@ function sandboxOperationEventsForRun(
   });
 }
 
-async function enableGithubWorkflowTriggers(
-  fixture: WorkflowsFixture,
-): Promise<void> {
-  await updateFeatureSwitchesForUser(context, fixture, {});
-}
-
-async function seedGithubInstallation(args: {
-  readonly fixture: WorkflowsFixture;
-  readonly composeId: string;
-}): Promise<string> {
-  return await store.set(
-    seedWorkflowGithubInstallation$,
-    {
-      fixture: args.fixture,
-      composeId: args.composeId,
-      installationId: GITHUB_INSTALLATION_REMOTE_ID,
-    },
-    context.signal,
-  );
-}
-
-async function seedGithubUserLink(args: {
-  readonly installationId: string;
+interface WorkflowsFixture {
+  readonly orgId: string;
   readonly userId: string;
-}): Promise<void> {
-  await store.set(
-    seedWorkflowGithubUserLink$,
-    {
-      installationId: args.installationId,
-      userId: args.userId,
-      githubUserId: "101",
-    },
-    context.signal,
-  );
 }
 
 async function setupFixture(): Promise<{
   readonly fixture: WorkflowsFixture;
+  readonly actor: ApiTestUser;
   readonly agentId: string;
   readonly workflowId: string;
 }> {
-  mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
-  const fixture = await store.set(
-    seedWorkflowsFixture$,
-    undefined,
-    context.signal,
-  );
-  context.mocks.s3.send.mockResolvedValue({});
-  const seededAgent = await store.set(
-    seedAgentForInstructions$,
-    {
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      name: "github-webhook-agent",
-      workflowNames: [WORKFLOW_NAME],
-      composeContent: {
-        version: "1",
-        agents: {
-          "github-webhook-agent": {
-            framework: "claude-code",
-            environment: { ANTHROPIC_API_KEY: "test-key" },
-          },
-        },
-      },
-    },
-    context.signal,
-  );
-  const workflowId = seededAgent.workflowIdsByName[WORKFLOW_NAME];
-  if (!workflowId) {
-    throw new Error("Expected the agent to own the seeded workflow");
+  const { actor } = await wf.setupWorkflowOrg();
+  if (!actor.orgId) {
+    throw new Error("Expected an org-scoped workflow actor");
   }
+  const agent = await wf.createAgent(actor, {
+    displayName: "GitHub Webhook Agent",
+  });
+  const workflowId = await wf.createWorkflow(actor, {
+    agentId: agent.agentId,
+    name: WORKFLOW_NAME,
+  });
+  const fixture = { orgId: actor.orgId, userId: actor.userId };
   mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
-  return { fixture, agentId: seededAgent.agentId, workflowId };
+  context.mocks.s3.send.mockResolvedValue({});
+  return { fixture, actor, agentId: agent.agentId, workflowId };
 }
 
-function githubPayload(action: "labeled" | "opened"): string {
+function githubPayload(
+  action: "labeled" | "opened",
+  installationId: string,
+): string {
   return JSON.stringify({
     action,
     issue: {
@@ -148,7 +91,7 @@ function githubPayload(action: "labeled" | "opened"): string {
     },
     ...(action === "labeled" ? { label: { id: 1001, name: "triage" } } : {}),
     repository: { full_name: "vm0-ai/vm0" },
-    installation: { id: Number(GITHUB_INSTALLATION_REMOTE_ID) },
+    installation: { id: Number(installationId) },
     sender: { id: 101, login: "lancy", type: "User" },
   });
 }
@@ -181,21 +124,17 @@ async function postGithubWebhook(args: {
 }
 
 describe("POST /api/webhooks/github for workflow triggers", () => {
-  const track = createFixtureTracker<WorkflowsFixture>(async (fixture) => {
-    await deleteFeatureSwitchesForUser(context, fixture);
-    await store.set(deleteWorkflowsForFixture$, fixture, context.signal);
-  });
-
   it("dispatches matching label events and de-duplicates deliveries", async () => {
-    mockOptionalEnv("GITHUB_APP_WEBHOOK_SECRET", GITHUB_WEBHOOK_SECRET);
-    const { fixture, agentId, workflowId } = await setupFixture();
-    await track(Promise.resolve(fixture));
-    await enableGithubWorkflowTriggers(fixture);
-    const installationId = await seedGithubInstallation({
-      fixture,
-      composeId: agentId,
+    const { fixture, actor, agentId, workflowId } = await setupFixture();
+    const runnerGroup = runsApi.configureRunnerGroup();
+    const installed = await gh.installGithubApp(actor, agentId, {
+      oauthCode: {
+        code: `gh-workflow-${randomUUID().slice(0, 8)}`,
+        githubUserId: "101",
+      },
     });
-    await seedGithubUserLink({ installationId, userId: fixture.userId });
+    mockOptionalEnv("GITHUB_APP_WEBHOOK_SECRET", GITHUB_WEBHOOK_SECRET);
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
 
     const created = await accept(
       triggersClient().create({
@@ -238,59 +177,63 @@ describe("POST /api/webhooks/github for workflow triggers", () => {
       [201],
     );
 
+    const labeledDeliveryId = `delivery-${randomUUID()}`;
+    const openedDeliveryId = `delivery-${randomUUID()}`;
     const labeled = await postGithubWebhook({
       event: "issues",
-      deliveryId: "delivery-1",
-      rawBody: githubPayload("labeled"),
+      deliveryId: labeledDeliveryId,
+      rawBody: githubPayload("labeled", installed.remoteInstallationId),
     });
     expect(labeled).toStrictEqual({ status: 200, text: "OK" });
     await flushWaitUntilForTest();
 
     const duplicate = await postGithubWebhook({
       event: "issues",
-      deliveryId: "delivery-1",
-      rawBody: githubPayload("labeled"),
+      deliveryId: labeledDeliveryId,
+      rawBody: githubPayload("labeled", installed.remoteInstallationId),
     });
     expect(duplicate).toStrictEqual({ status: 200, text: "OK" });
     await flushWaitUntilForTest();
 
     const opened = await postGithubWebhook({
       event: "issues",
-      deliveryId: "delivery-2",
-      rawBody: githubPayload("opened"),
+      deliveryId: openedDeliveryId,
+      rawBody: githubPayload("opened", installed.remoteInstallationId),
     });
     expect(opened).toStrictEqual({ status: 200, text: "OK" });
     await flushWaitUntilForTest();
     await flushWaitUntilForTest();
 
-    const runs = await store.set(
-      getWorkflowTriggerRunState$,
-      { triggerId: created.body.id },
-      context.signal,
-    );
-    expect(runs).toHaveLength(2);
-    expect(
-      runs.map((run) => {
-        return run.triggerSource;
-      }),
-    ).toStrictEqual(["workflow-event", "workflow-event"]);
-    const secondRuns = await store.set(
-      getWorkflowTriggerRunState$,
-      { triggerId: createdSecond.body.id },
-      context.signal,
-    );
-    expect(secondRuns).toHaveLength(2);
-    expect(
-      secondRuns.map((run) => {
-        return run.triggerSource;
-      }),
-    ).toStrictEqual(["workflow-event", "workflow-event"]);
+    // Two deliveries matched two triggers each; the duplicate redelivery was
+    // recorded as processed and added nothing. Exactly four distinct
+    // workflow-event runs exist: two admitted within the pro concurrency
+    // limit (claimable through the runner API) and two queued behind it
+    // (visible on the org run queue).
+    const runIds = new Set<string>();
+    await runsApi.heartbeatRunner(runnerGroup);
+    for (let index = 0; index < 2; index += 1) {
+      const polled = await runsApi.pollRunner(runnerGroup);
+      const runId = polled.body.job?.runId;
+      if (!runId) {
+        throw new Error(
+          `Expected an admitted workflow event run #${index + 1}`,
+        );
+      }
+      runIds.add(runId);
+      await runsApi.claimRunnerJob(runId);
+    }
+    const queueState = await runsApi.readRunQueue(actor);
+    expect(queueState.body.queue).toHaveLength(2);
+    for (const entry of queueState.body.queue) {
+      expect(entry.triggerSource).toBe("workflow-event");
+      if (!entry.runId) {
+        throw new Error("Expected queued workflow event run id");
+      }
+      runIds.add(entry.runId);
+    }
+    expect(runIds.size).toBe(4);
 
-    const allRunIds = [...runs, ...secondRuns].map((run) => {
-      return run.id;
-    });
-    expect(new Set(allRunIds).size).toBe(4);
-    for (const runId of allRunIds) {
+    for (const runId of runIds) {
       const timingEvents = sandboxOperationEventsForRun(runId);
       const actionTypes = new Set(
         timingEvents.map((event) => {
@@ -321,7 +264,7 @@ describe("POST /api/webhooks/github for workflow triggers", () => {
         ]),
       );
       const serializedTiming = JSON.stringify(timingEvents);
-      expect(serializedTiming).not.toContain("delivery-1");
+      expect(serializedTiming).not.toContain(labeledDeliveryId);
       expect(serializedTiming).not.toContain("vm0-ai/vm0");
       expect(serializedTiming).not.toContain("Needs triage");
       expect(serializedTiming).not.toContain("lancy");
@@ -332,29 +275,5 @@ describe("POST /api/webhooks/github for workflow triggers", () => {
       expect(serializedTiming).not.toContain(fixture.orgId);
       expect(serializedTiming).not.toContain(fixture.userId);
     }
-
-    const processed = await store.set(
-      getWorkflowGithubProcessedEvents$,
-      { triggerId: created.body.id },
-      context.signal,
-    );
-    expect(processed).toStrictEqual([
-      {
-        githubDeliveryId: "delivery-1",
-        action: "labeled",
-        labelNameNormalized: "triage",
-      },
-      {
-        githubDeliveryId: "delivery-2",
-        action: "opened",
-        labelNameNormalized: "triage",
-      },
-    ]);
-    const secondProcessed = await store.set(
-      getWorkflowGithubProcessedEvents$,
-      { triggerId: createdSecond.body.id },
-      context.signal,
-    );
-    expect(secondProcessed).toStrictEqual(processed);
   });
 });

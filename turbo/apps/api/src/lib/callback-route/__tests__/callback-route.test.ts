@@ -7,10 +7,8 @@ import { testContext } from "../../../__tests__/test-context";
 import { computeHmacSignature } from "../../event-consumer/hmac";
 import { now } from "../../time";
 import { seedAgentRunCallback$ } from "../../../signals/routes/__tests__/helpers/agent-run-callback";
-import {
-  seedCompose$,
-  seedRun$,
-} from "../../../signals/routes/__tests__/helpers/zero-usage-insight";
+import { createBddApi } from "../../../signals/routes/__tests__/helpers/api-bdd";
+import { createRunsAutomationsApi } from "../../../signals/routes/__tests__/helpers/api-bdd-runs-automations";
 import type { RouteEntry } from "../../../signals/route-entry";
 
 import { callbackPayload$, callbackRoute } from "../callback-route";
@@ -65,28 +63,34 @@ async function seedCallback(): Promise<{
   runId: string;
   callbackId: string;
 }> {
-  const orgId = `org_${randomUUID().slice(0, 8)}`;
-  const userId = `user_${randomUUID().slice(0, 8)}`;
-  const { composeId } = await store.set(
-    seedCompose$,
-    { orgId, userId },
-    context.signal,
-  );
-  const { runId } = await store.set(
-    seedRun$,
-    { orgId, userId, composeId },
-    context.signal,
-  );
+  const bdd = createBddApi(context);
+  const api = createRunsAutomationsApi(context);
+  const actor = bdd.user();
+  bdd.acceptAgentStorageWrites();
+  api.acceptStorageDownloads();
+  api.acceptTelemetryIngest();
+  api.configureRunnerGroup();
+  await api.grantProEntitlement(actor);
+  await api.ensureOrgModelProvider(actor);
+  const agent = await bdd.createAgent(actor, {
+    displayName: "Callback route probe agent",
+    visibility: "private",
+  });
+  const run = await api.createRun(actor, {
+    agentId: agent.agentId,
+    prompt: "callback route probe run",
+    modelProvider: "anthropic-api-key",
+  });
   const { callbackId } = await store.set(
     seedAgentRunCallback$,
     {
-      runId,
+      runId: run.runId,
       url: `http://localhost${PATH}`,
       payload: {},
     },
     context.signal,
   );
-  return { runId, callbackId };
+  return { runId: run.runId, callbackId };
 }
 
 describe("callbackRoute$ primitive", () => {

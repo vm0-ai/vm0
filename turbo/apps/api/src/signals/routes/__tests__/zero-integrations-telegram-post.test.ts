@@ -23,6 +23,7 @@ import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
+import { testTelegramStateRoutes } from "../test-telegram-state";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -145,14 +146,14 @@ function expectOk(response: Response, operation: string): void {
 async function postTelegramStateAction(
   body: TestTelegramStateActionBody,
 ): Promise<TestTelegramStateActionResponse> {
-  const response = await createApp({ signal: context.signal }).request(
-    TELEGRAM_STATE_ACTION_ROUTE,
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    },
-  );
+  const response = await createApp({
+    signal: context.signal,
+    routes: testTelegramStateRoutes,
+  }).request(TELEGRAM_STATE_ACTION_ROUTE, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
   await expectOk(response, `telegram state action ${body.action}`);
   return await readJson<TestTelegramStateActionResponse>(response);
 }
@@ -160,9 +161,10 @@ async function postTelegramStateAction(
 async function readTelegramState(
   botId: string,
 ): Promise<TestTelegramStateResponse> {
-  const response = await createApp({ signal: context.signal }).request(
-    `${TELEGRAM_STATE_ROUTE}?bot_id=${encodeURIComponent(botId)}`,
-  );
+  const response = await createApp({
+    signal: context.signal,
+    routes: testTelegramStateRoutes,
+  }).request(`${TELEGRAM_STATE_ROUTE}?bot_id=${encodeURIComponent(botId)}`);
   await expectOk(response, "read telegram state");
   return await readJson<TestTelegramStateResponse>(response);
 }

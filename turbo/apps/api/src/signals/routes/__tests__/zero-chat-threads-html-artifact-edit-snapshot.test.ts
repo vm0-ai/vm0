@@ -1,26 +1,40 @@
-import { createStore } from "ccstate";
 import { describe, expect, it } from "vitest";
 
 import { chatThreadArtifactsContract } from "@vm0/api-contracts/contracts/chat-threads";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import {
-  deleteZeroChatThread$,
-  seedZeroChatThread$,
-  type ZeroChatThreadFixture,
-} from "./helpers/zero-chat-threads";
-import {
-  createFixtureTracker,
-  createZeroRouteMocks,
-} from "./helpers/zero-route-test";
+import { createBddApi } from "./helpers/api-bdd";
+import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
+import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
-const store = createStore();
 const mocks = createZeroRouteMocks(context);
+const bdd = createBddApi(context);
+const chat = createChatFilesBddApi(context);
 
-const trackThread = createFixtureTracker<ZeroChatThreadFixture>((fixture) => {
-  return store.set(deleteZeroChatThread$, fixture, context.signal);
-});
+interface ChatThreadFixture {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly threadId: string;
+}
+
+/** Creates an agent and chat thread through the product routes. */
+async function seedChatThread(title: string): Promise<ChatThreadFixture> {
+  const actor = bdd.user();
+  bdd.acceptAgentStorageWrites();
+  const agent = await bdd.createAgent(actor, {
+    displayName: "HTML artifact snapshot agent",
+    visibility: "private",
+  });
+  const thread = await chat.createThread(actor, {
+    agentId: agent.agentId,
+    title,
+  });
+  if (!actor.orgId) {
+    throw new Error("Expected the seeded actor to belong to an org");
+  }
+  return { userId: actor.userId, orgId: actor.orgId, threadId: thread.id };
+}
 
 function commandInput(command: unknown): Record<string, unknown> {
   if (
@@ -41,12 +55,11 @@ function client() {
 
 describe("HTML artifact edit snapshots", () => {
   it("saves, reads, overwrites, and deletes a stable snapshot for a thread artifact", async () => {
-    const fixture = await trackThread(
-      store.set(seedZeroChatThread$, { title: "Launch" }, context.signal),
-    );
+    const fixture = await seedChatThread("Launch");
     const artifactUrl = "https://launch.sites.vm7.io";
     const firstHtml = "<!doctype html><html><body>first</body></html>";
     const secondHtml = "<!doctype html><html><body>second</body></html>";
+    context.mocks.s3.send.mockClear();
     context.mocks.s3.send.mockResolvedValue({});
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
@@ -143,9 +156,7 @@ describe("HTML artifact edit snapshots", () => {
   });
 
   it("does not expose snapshots across users", async () => {
-    const fixture = await trackThread(
-      store.set(seedZeroChatThread$, { title: "Launch" }, context.signal),
-    );
+    const fixture = await seedChatThread("Launch");
     context.mocks.s3.send.mockResolvedValue({});
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
@@ -180,9 +191,7 @@ describe("HTML artifact edit snapshots", () => {
   });
 
   it("requires an organization context", async () => {
-    const fixture = await trackThread(
-      store.set(seedZeroChatThread$, { title: "Launch" }, context.signal),
-    );
+    const fixture = await seedChatThread("Launch");
     mocks.clerk.session(fixture.userId, null);
 
     const response = await accept(

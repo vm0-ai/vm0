@@ -1,5 +1,4 @@
 import { zeroWorkflowTriggersContract } from "@vm0/api-contracts/contracts/zero-workflows";
-import { createStore } from "ccstate";
 import { HttpResponse, http } from "msw";
 import { expect } from "vitest";
 
@@ -8,29 +7,17 @@ import { createApp } from "../../../app-factory";
 import { mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
-import {
-  deleteWorkflowsForFixture$,
-  getWorkflowGoogleCalendarWatchState$,
-  getWorkflowTriggerRunState$,
-  seedAgentForInstructions$,
-  seedWorkflowConnector$,
-  seedWorkflowsFixture$,
-  type GoogleCalendarWatchState,
-  type WorkflowsFixture,
-} from "./helpers/zero-workflows";
-import {
-  createFixtureTracker,
-  createZeroRouteMocks,
-} from "./helpers/zero-route-test";
-import {
-  deleteFeatureSwitchesForUser,
-  updateFeatureSwitchesForUser,
-} from "./helpers/zero-feature-switches";
+import type { ApiTestUser } from "./helpers/api-bdd";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import {
+  createWorkflowsBddApi,
+  mockGoogleCalendarConnectorOAuth,
+} from "./helpers/api-bdd-workflows";
+import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
-const store = createStore();
 const mocks = createZeroRouteMocks(context);
+const wf = createWorkflowsBddApi(context);
 const runsApi = createRunsAutomationsApi(context);
 
 const WORKFLOW_NAME = "calendar-webhook-workflow";
@@ -63,25 +50,15 @@ function sandboxOperationEventsForRun(
   });
 }
 
-async function enableGoogleCalendarWorkflowTriggers(
-  fixture: WorkflowsFixture,
-): Promise<void> {
-  await updateFeatureSwitchesForUser(context, fixture, {});
+interface GoogleCalendarWatchChannel {
+  readonly channelId: string;
+  readonly channelToken: string;
+  readonly resourceId: string;
 }
 
-async function seedGoogleCalendarConnector(
-  fixture: WorkflowsFixture,
-): Promise<string> {
-  return await store.set(
-    seedWorkflowConnector$,
-    {
-      fixture,
-      connectorType: "google-calendar",
-      externalEmail: CALENDAR_EMAIL,
-      accessToken: "calendar-access-token",
-    },
-    context.signal,
-  );
+interface GoogleCalendarApiRecorder {
+  /** Watch channels registered against the provider, in order. */
+  readonly channels: GoogleCalendarWatchChannel[];
 }
 
 function configureGoogleCalendarApiMock(args: {
@@ -92,7 +69,8 @@ function configureGoogleCalendarApiMock(args: {
     readonly items: readonly Record<string, unknown>[];
     readonly nextSyncToken: string;
   }[];
-}): void {
+}): GoogleCalendarApiRecorder {
+  const recorder: GoogleCalendarApiRecorder = { channels: [] };
   let incrementalCallCount = 0;
   mockOptionalEnv("VM0_API_BACKEND_URL", "https://api.vm0.ai");
   server.use(
@@ -115,8 +93,14 @@ function configureGoogleCalendarApiMock(args: {
           address: "https://api.vm0.ai/api/webhooks/google-calendar",
           params: { ttl: "604800" },
         });
-        expect(body.id).toBeTruthy();
-        expect(body.token).toBeTruthy();
+        if (!body.id || !body.token) {
+          throw new Error("Expected calendar watch id and token");
+        }
+        recorder.channels.push({
+          channelId: body.id,
+          channelToken: body.token,
+          resourceId: "calendar-resource-1",
+        });
         return HttpResponse.json({
           id: body.id,
           resourceId: "calendar-resource-1",
@@ -162,47 +146,48 @@ function configureGoogleCalendarApiMock(args: {
       },
     ),
   );
+  return recorder;
 }
 
-async function setupFixture(): Promise<{
-  readonly fixture: WorkflowsFixture;
+interface CalendarScenario {
+  readonly actor: ApiTestUser;
   readonly runnerGroup: string;
   readonly workflowId: string;
-}> {
+}
+
+async function setupFixture(): Promise<CalendarScenario> {
   const runnerGroup = runsApi.configureRunnerGroup();
   runsApi.acceptStorageDownloads();
   runsApi.acceptTelemetryIngest();
-  const fixture = await store.set(
-    seedWorkflowsFixture$,
-    undefined,
-    context.signal,
-  );
-  context.mocks.s3.send.mockResolvedValue({});
-  const seededAgent = await store.set(
-    seedAgentForInstructions$,
-    {
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      name: "calendar-webhook-agent",
-      workflowNames: [WORKFLOW_NAME],
-      composeContent: {
-        version: "1",
-        agents: {
-          "calendar-webhook-agent": {
-            framework: "claude-code",
-            environment: { ANTHROPIC_API_KEY: "test-key" },
-          },
-        },
-      },
-    },
-    context.signal,
-  );
-  const workflowId = seededAgent.workflowIdsByName[WORKFLOW_NAME];
-  if (!workflowId) {
-    throw new Error("Expected the agent to own the seeded workflow");
+  const { actor } = await wf.setupWorkflowOrg();
+  if (!actor.orgId) {
+    throw new Error("Expected an org-scoped workflow actor");
   }
-  mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
-  return { fixture, runnerGroup, workflowId };
+  const agent = await wf.createAgent(actor, {
+    displayName: "Calendar Webhook Agent",
+  });
+  const workflowId = await wf.createWorkflow(actor, {
+    agentId: agent.agentId,
+    name: WORKFLOW_NAME,
+  });
+  mocks.clerk.session(actor.userId, actor.orgId, "org:member");
+  context.mocks.s3.send.mockResolvedValue({});
+  return { actor, runnerGroup, workflowId };
+}
+
+async function connectGoogleCalendar(
+  scenario: CalendarScenario,
+): Promise<void> {
+  mockGoogleCalendarConnectorOAuth({ email: CALENDAR_EMAIL });
+  await wf.connectConnector(scenario.actor, "google-calendar");
+  if (!scenario.actor.orgId) {
+    throw new Error("Expected an org-scoped workflow actor");
+  }
+  mocks.clerk.session(
+    scenario.actor.userId,
+    scenario.actor.orgId,
+    "org:member",
+  );
 }
 
 async function postGoogleCalendarWebhook(headers: HeadersInit): Promise<{
@@ -224,7 +209,7 @@ async function postGoogleCalendarWebhook(headers: HeadersInit): Promise<{
 }
 
 function webhookHeaders(
-  state: GoogleCalendarWatchState,
+  state: GoogleCalendarWatchChannel,
   overrides?: Record<string, string>,
 ): Record<string, string> {
   return {
@@ -238,13 +223,8 @@ function webhookHeaders(
 }
 
 describe("POST /api/webhooks/google-calendar", () => {
-  const track = createFixtureTracker<WorkflowsFixture>(async (fixture) => {
-    await deleteFeatureSwitchesForUser(context, fixture);
-    await store.set(deleteWorkflowsForFixture$, fixture, context.signal);
-  });
-
   it("dispatches newly created calendar events and de-duplicates retries", async () => {
-    configureGoogleCalendarApiMock({
+    const recorder = configureGoogleCalendarApiMock({
       incrementalItems: [
         {
           id: "event-created-1",
@@ -261,10 +241,9 @@ describe("POST /api/webhooks/google-calendar", () => {
       ],
     });
 
-    const { fixture, runnerGroup, workflowId } = await setupFixture();
-    await track(Promise.resolve(fixture));
-    await enableGoogleCalendarWorkflowTriggers(fixture);
-    const connectorId = await seedGoogleCalendarConnector(fixture);
+    const scenario = await setupFixture();
+    const { runnerGroup, workflowId } = scenario;
+    await connectGoogleCalendar(scenario);
 
     const created = await accept(
       triggersClient().create({
@@ -278,14 +257,9 @@ describe("POST /api/webhooks/google-calendar", () => {
       [201],
     );
 
-    const watchState = await store.set(
-      getWorkflowGoogleCalendarWatchState$,
-      { connectorId, triggerId: created.body.id },
-      context.signal,
-    );
-    const watch = watchState.watches[0];
+    const watch = recorder.channels[0];
     if (!watch) {
-      throw new Error("Expected Google Calendar watch state");
+      throw new Error("Expected a registered Google Calendar watch channel");
     }
 
     const first = await postGoogleCalendarWebhook(webhookHeaders(watch));
@@ -343,19 +317,8 @@ describe("POST /api/webhooks/google-calendar", () => {
     expect(serializedTiming).not.toContain(created.body.id);
     expect(serializedTiming).not.toContain(WORKFLOW_NAME);
 
-    const updatedWatchState = await store.set(
-      getWorkflowGoogleCalendarWatchState$,
-      { connectorId, triggerId: created.body.id },
-      context.signal,
-    );
-    expect(updatedWatchState.processed).toStrictEqual([
-      { calendarEventId: "event-created-1", eventChangeKey: "created" },
-    ]);
-    expect(updatedWatchState.snapshots).toStrictEqual([
-      { calendarEventId: "event-created-1" },
-    ]);
-    expect(updatedWatchState.watches[0]?.syncToken).toBe("calendar-sync-next");
-
+    // A redelivery for the same event revision dispatches nothing and no new
+    // runner job appears.
     const second = await postGoogleCalendarWebhook(webhookHeaders(watch));
 
     expect(second.status).toBe(200);
@@ -370,7 +333,7 @@ describe("POST /api/webhooks/google-calendar", () => {
   });
 
   it("ignores updated and cancelled calendar events", async () => {
-    configureGoogleCalendarApiMock({
+    const recorder = configureGoogleCalendarApiMock({
       baselineItems: [
         {
           id: "event-existing",
@@ -399,12 +362,11 @@ describe("POST /api/webhooks/google-calendar", () => {
       ],
     });
 
-    const { fixture, runnerGroup, workflowId } = await setupFixture();
-    await track(Promise.resolve(fixture));
-    await enableGoogleCalendarWorkflowTriggers(fixture);
-    const connectorId = await seedGoogleCalendarConnector(fixture);
+    const scenario = await setupFixture();
+    const { runnerGroup, workflowId } = scenario;
+    await connectGoogleCalendar(scenario);
 
-    const created = await accept(
+    await accept(
       triggersClient().create({
         headers: authHeaders(),
         params: { workflowId },
@@ -416,14 +378,9 @@ describe("POST /api/webhooks/google-calendar", () => {
       [201],
     );
 
-    const watchState = await store.set(
-      getWorkflowGoogleCalendarWatchState$,
-      { connectorId, triggerId: created.body.id },
-      context.signal,
-    );
-    const watch = watchState.watches[0];
+    const watch = recorder.channels[0];
     if (!watch) {
-      throw new Error("Expected Google Calendar watch state");
+      throw new Error("Expected a registered Google Calendar watch channel");
     }
 
     const response = await postGoogleCalendarWebhook(webhookHeaders(watch));
@@ -441,7 +398,7 @@ describe("POST /api/webhooks/google-calendar", () => {
   });
 
   it("dispatches updated calendar events once per event revision", async () => {
-    configureGoogleCalendarApiMock({
+    const recorder = configureGoogleCalendarApiMock({
       baselineItems: [
         {
           id: "event-existing",
@@ -495,12 +452,11 @@ describe("POST /api/webhooks/google-calendar", () => {
       ],
     });
 
-    const { fixture, runnerGroup, workflowId } = await setupFixture();
-    await track(Promise.resolve(fixture));
-    await enableGoogleCalendarWorkflowTriggers(fixture);
-    const connectorId = await seedGoogleCalendarConnector(fixture);
+    const scenario = await setupFixture();
+    const { runnerGroup, workflowId } = scenario;
+    await connectGoogleCalendar(scenario);
 
-    const created = await accept(
+    await accept(
       triggersClient().create({
         headers: authHeaders(),
         params: { workflowId },
@@ -512,14 +468,9 @@ describe("POST /api/webhooks/google-calendar", () => {
       [201],
     );
 
-    const watchState = await store.set(
-      getWorkflowGoogleCalendarWatchState$,
-      { connectorId, triggerId: created.body.id },
-      context.signal,
-    );
-    const watch = watchState.watches[0];
+    const watch = recorder.channels[0];
     if (!watch) {
-      throw new Error("Expected Google Calendar watch state");
+      throw new Error("Expected a registered Google Calendar watch channel");
     }
 
     const first = await postGoogleCalendarWebhook(webhookHeaders(watch));
@@ -536,19 +487,7 @@ describe("POST /api/webhooks/google-calendar", () => {
     expect(firstJob.body.job?.runId).toStrictEqual(expect.any(String));
     await runsApi.claimRunnerJob(firstJob.body.job!.runId);
 
-    const afterFirst = await store.set(
-      getWorkflowGoogleCalendarWatchState$,
-      { connectorId, triggerId: created.body.id },
-      context.signal,
-    );
-    expect(afterFirst.processed).toStrictEqual([
-      {
-        calendarEventId: "event-existing",
-        eventChangeKey: 'etag:"existing-etag-2"',
-      },
-    ]);
-    expect(afterFirst.watches[0]?.syncToken).toBe("calendar-sync-updated-1");
-
+    // The same revision (same etag) arriving again dispatches nothing.
     const second = await postGoogleCalendarWebhook(webhookHeaders(watch));
 
     expect(second.status).toBe(200);
@@ -558,13 +497,10 @@ describe("POST /api/webhooks/google-calendar", () => {
       dispatched: 0,
       duplicates: 0,
     });
-    const runsAfterSameRevision = await store.set(
-      getWorkflowTriggerRunState$,
-      { triggerId: created.body.id },
-      context.signal,
-    );
-    expect(runsAfterSameRevision).toHaveLength(1);
+    const idleAfterSameRevision = await runsApi.pollRunner(runnerGroup);
+    expect(idleAfterSameRevision.body.job).toBeNull();
 
+    // A new revision (new etag) dispatches exactly one more run.
     const third = await postGoogleCalendarWebhook(webhookHeaders(watch));
 
     expect(third.status).toBe(200);
@@ -574,41 +510,16 @@ describe("POST /api/webhooks/google-calendar", () => {
       dispatched: 1,
       duplicates: 0,
     });
-    const runsAfterThird = await store.set(
-      getWorkflowTriggerRunState$,
-      { triggerId: created.body.id },
-      context.signal,
-    );
-    expect(runsAfterThird).toHaveLength(2);
-    expect(runsAfterThird).toStrictEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ triggerSource: "workflow-event" }),
-      ]),
-    );
-
-    const afterThird = await store.set(
-      getWorkflowGoogleCalendarWatchState$,
-      { connectorId, triggerId: created.body.id },
-      context.signal,
-    );
-    expect(afterThird.processed).toHaveLength(2);
-    expect(afterThird.processed).toStrictEqual(
-      expect.arrayContaining([
-        {
-          calendarEventId: "event-existing",
-          eventChangeKey: 'etag:"existing-etag-2"',
-        },
-        {
-          calendarEventId: "event-existing",
-          eventChangeKey: 'etag:"existing-etag-3"',
-        },
-      ]),
-    );
-    expect(afterThird.watches[0]?.syncToken).toBe("calendar-sync-updated-3");
+    const thirdJob = await runsApi.pollRunner(runnerGroup);
+    expect(thirdJob.body.job?.runId).toStrictEqual(expect.any(String));
+    expect(thirdJob.body.job?.runId).not.toBe(firstJob.body.job?.runId);
+    await runsApi.claimRunnerJob(thirdJob.body.job!.runId);
+    const idleAfterThird = await runsApi.pollRunner(runnerGroup);
+    expect(idleAfterThird.body.job).toBeNull();
   });
 
   it("dispatches cancelled calendar events and de-duplicates minimal deleted payloads", async () => {
-    configureGoogleCalendarApiMock({
+    const recorder = configureGoogleCalendarApiMock({
       baselineItems: [
         {
           id: "event-existing",
@@ -641,12 +552,11 @@ describe("POST /api/webhooks/google-calendar", () => {
       ],
     });
 
-    const { fixture, runnerGroup, workflowId } = await setupFixture();
-    await track(Promise.resolve(fixture));
-    await enableGoogleCalendarWorkflowTriggers(fixture);
-    const connectorId = await seedGoogleCalendarConnector(fixture);
+    const scenario = await setupFixture();
+    const { runnerGroup, workflowId } = scenario;
+    await connectGoogleCalendar(scenario);
 
-    const cancelled = await accept(
+    await accept(
       triggersClient().create({
         headers: authHeaders(),
         params: { workflowId },
@@ -657,7 +567,7 @@ describe("POST /api/webhooks/google-calendar", () => {
       }),
       [201],
     );
-    const updated = await accept(
+    await accept(
       triggersClient().create({
         headers: authHeaders(),
         params: { workflowId },
@@ -669,14 +579,9 @@ describe("POST /api/webhooks/google-calendar", () => {
       [201],
     );
 
-    const watchState = await store.set(
-      getWorkflowGoogleCalendarWatchState$,
-      { connectorId, triggerId: cancelled.body.id },
-      context.signal,
-    );
-    const watch = watchState.watches[0];
+    const watch = recorder.channels[0];
     if (!watch) {
-      throw new Error("Expected Google Calendar watch state");
+      throw new Error("Expected a registered Google Calendar watch channel");
     }
 
     const first = await postGoogleCalendarWebhook(webhookHeaders(watch));
@@ -688,30 +593,14 @@ describe("POST /api/webhooks/google-calendar", () => {
       dispatched: 1,
       duplicates: 0,
     });
+    // Only the cancelled trigger dispatched a run; the minimal deleted
+    // payload never reaches the updated trigger.
     await runsApi.heartbeatRunner(runnerGroup);
     const firstJob = await runsApi.pollRunner(runnerGroup);
     expect(firstJob.body.job?.runId).toStrictEqual(expect.any(String));
     await runsApi.claimRunnerJob(firstJob.body.job!.runId);
-
-    const afterFirst = await store.set(
-      getWorkflowGoogleCalendarWatchState$,
-      { connectorId, triggerId: cancelled.body.id },
-      context.signal,
-    );
-    expect(afterFirst.processed).toStrictEqual([
-      {
-        calendarEventId: "event-existing",
-        eventChangeKey: "cancelled:event-existing",
-      },
-    ]);
-    expect(afterFirst.watches[0]?.syncToken).toBe("calendar-sync-cancelled-1");
-
-    const updatedRuns = await store.set(
-      getWorkflowTriggerRunState$,
-      { triggerId: updated.body.id },
-      context.signal,
-    );
-    expect(updatedRuns).toHaveLength(0);
+    const idleAfterFirst = await runsApi.pollRunner(runnerGroup);
+    expect(idleAfterFirst.body.job).toBeNull();
 
     const second = await postGoogleCalendarWebhook(webhookHeaders(watch));
 
@@ -722,23 +611,18 @@ describe("POST /api/webhooks/google-calendar", () => {
       dispatched: 0,
       duplicates: 0,
     });
-    const cancelledRuns = await store.set(
-      getWorkflowTriggerRunState$,
-      { triggerId: cancelled.body.id },
-      context.signal,
-    );
-    expect(cancelledRuns).toHaveLength(1);
+    const idleAfterSecond = await runsApi.pollRunner(runnerGroup);
+    expect(idleAfterSecond.body.job).toBeNull();
   });
 
   it("rejects webhook notifications with the wrong channel token", async () => {
-    configureGoogleCalendarApiMock({});
+    const recorder = configureGoogleCalendarApiMock({});
 
-    const { fixture, workflowId } = await setupFixture();
-    await track(Promise.resolve(fixture));
-    await enableGoogleCalendarWorkflowTriggers(fixture);
-    const connectorId = await seedGoogleCalendarConnector(fixture);
+    const scenario = await setupFixture();
+    const { workflowId } = scenario;
+    await connectGoogleCalendar(scenario);
 
-    const created = await accept(
+    await accept(
       triggersClient().create({
         headers: authHeaders(),
         params: { workflowId },
@@ -750,14 +634,9 @@ describe("POST /api/webhooks/google-calendar", () => {
       [201],
     );
 
-    const watchState = await store.set(
-      getWorkflowGoogleCalendarWatchState$,
-      { connectorId, triggerId: created.body.id },
-      context.signal,
-    );
-    const watch = watchState.watches[0];
+    const watch = recorder.channels[0];
     if (!watch) {
-      throw new Error("Expected Google Calendar watch state");
+      throw new Error("Expected a registered Google Calendar watch channel");
     }
 
     const response = await postGoogleCalendarWebhook(

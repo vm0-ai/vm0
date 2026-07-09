@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 
-import { createStore } from "ccstate";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 
@@ -15,26 +14,23 @@ import { mockEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
-import type { ApiTestUser } from "./helpers/api-bdd";
+import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createGithubBddApi } from "./helpers/api-bdd-github";
-import {
-  createFixtureTracker,
-  createZeroRouteMocks,
-} from "./helpers/zero-route-test";
-import {
-  deleteUsageInsightFixture$,
-  seedCompose$,
-  seedRun$,
-  seedUsageInsightFixture$,
-  type UsageInsightFixture,
-} from "./helpers/zero-usage-insight";
+import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createComposesBddApi } from "./helpers/api-bdd-composes";
+import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
-const store = createStore();
 const mocks = createZeroRouteMocks(context);
 const github = createGithubBddApi(context);
+const bdd = createBddApi(context);
+const api = createRunsAutomationsApi(context);
+const composes = createComposesBddApi(context);
 
-interface GitHubFileFixture extends UsageInsightFixture {
+interface GitHubFileFixture {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly actor: ApiTestUser;
   readonly composeId: string;
   readonly remoteInstallationId: string;
 }
@@ -77,32 +73,60 @@ function setupGitHubTokenMock(installationId: string): void {
 }
 
 describe("GitHub zero file integration routes", () => {
-  const trackUsage = createFixtureTracker<UsageInsightFixture>((fixture) => {
-    return store.set(deleteUsageInsightFixture$, fixture, context.signal);
-  });
   async function seedFixture(): Promise<GitHubFileFixture> {
-    const fixture = await trackUsage(
-      store.set(seedUsageInsightFixture$, undefined, context.signal),
-    );
-    const compose = await store.set(
-      seedCompose$,
-      { orgId: fixture.orgId, userId: fixture.userId },
-      context.signal,
-    );
-    const actor: ApiTestUser = {
-      userId: fixture.userId,
-      orgId: fixture.orgId,
-      orgRole: "org:admin",
-      email: `${fixture.userId}@example.com`,
-    };
-    const install = await github.installGithubApp(actor, compose.composeId, {
+    const actor = bdd.user();
+    if (!actor.orgId) {
+      throw new Error("GitHub file fixtures require an org-scoped actor");
+    }
+    const agent = await bdd.createAgent(actor, {
+      displayName: "GitHub Files Agent",
+      visibility: "private",
+    });
+    const install = await github.installGithubApp(actor, agent.agentId, {
       targetLogin: "bdd-files-org",
     });
     return {
-      ...fixture,
-      composeId: compose.composeId,
+      orgId: actor.orgId,
+      userId: actor.userId,
+      actor,
+      composeId: agent.agentId,
       remoteInstallationId: install.remoteInstallationId,
     };
+  }
+
+  /**
+   * Creates a real run for the fixture agent through POST /api/zero/runs.
+   * Run admission needs org credits, granted through the Stripe webhook
+   * product path; the agent compose head is updated (through the product
+   * compose upsert) to declare an inline ANTHROPIC_API_KEY so run creation
+   * does not require an org model provider.
+   */
+  async function seedRunForFixture(
+    fixture: GitHubFileFixture,
+  ): Promise<{ readonly runId: string }> {
+    bdd.acceptAgentStorageWrites();
+    await api.grantProEntitlement(fixture.actor);
+    const composeRead = await composes.requestReadComposeById(
+      fixture.actor,
+      fixture.composeId,
+      [200],
+    );
+    await api.createCompose(fixture.actor, {
+      version: "1.0",
+      agents: {
+        [composeRead.body.name]: {
+          framework: "claude-code",
+          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+        },
+      },
+    });
+    api.acceptStorageDownloads();
+    api.acceptTelemetryIngest();
+    const run = await api.createRun(fixture.actor, {
+      agentId: fixture.composeId,
+      prompt: "deliver github file",
+    });
+    return { runId: run.runId };
   }
 
   it("streams a GitHub context file from an allowed URL", async () => {
@@ -289,16 +313,7 @@ describe("GitHub zero file integration routes", () => {
 
   it("posts an uploaded file URL to GitHub and records the run artifact", async () => {
     const fixture = await seedFixture();
-    const run = await store.set(
-      seedRun$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        composeId: fixture.composeId,
-        triggerSource: "github",
-      },
-      context.signal,
-    );
+    const run = await seedRunForFixture(fixture);
     setupGitHubTokenMock(fixture.remoteInstallationId);
 
     const uploadId = randomUUID();

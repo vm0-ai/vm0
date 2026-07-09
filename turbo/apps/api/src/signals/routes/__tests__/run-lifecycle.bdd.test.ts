@@ -21,7 +21,6 @@ import { getFirewallExecutionMetadata } from "@vm0/connectors/firewall-metadata/
 import { HttpResponse, http } from "msw";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { v5 as uuidv5 } from "uuid";
-import { createStore } from "ccstate";
 
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now, nowDate } from "../../../lib/time";
@@ -45,12 +44,7 @@ import { storageTextFile } from "./helpers/api-bdd-storage-files";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
-import { createFixtureTracker } from "./helpers/zero-route-test";
-import {
-  deleteRelationshipRowsForFixture$,
-  seedRuntimeInjectionWindowMemoryRows$,
-  type RelationshipFixture,
-} from "./helpers/zero-relationships";
+import { seedRuntimeInjectionWindowMemories } from "../../../test-fixtures/relationship-memory";
 import {
   deleteVm0ManagedDefaultModelKey,
   enableAutomationsFakeKms,
@@ -74,16 +68,6 @@ import {
  */
 
 const context = testContext();
-const relationshipStore = createStore();
-const trackRelationshipFixture = createFixtureTracker(
-  async (fixture: RelationshipFixture): Promise<void> => {
-    await relationshipStore.set(
-      deleteRelationshipRowsForFixture$,
-      fixture,
-      context.signal,
-    );
-  },
-);
 const ASSISTANT_MESSAGE_ID_NAMESPACE = "bfec4fb6-d5b8-43e4-a72a-9f58f87d7e01";
 const TEST_DATA_KEY = Buffer.from("0123456789abcdef0123456789abcdef", "utf8");
 
@@ -5474,17 +5458,12 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     if (!actor.orgId) {
       throw new Error("Expected actor to belong to an org");
     }
-    const memoryFixture = await trackRelationshipFixture(
-      Promise.resolve({
-        orgId: actor.orgId,
-        userId: actor.userId,
-      }),
-    );
-    await relationshipStore.set(
-      seedRuntimeInjectionWindowMemoryRows$,
-      memoryFixture,
-      context.signal,
-    );
+    // Isolation comes from the actor's random org/user ids; the seeded memory
+    // rows are invisible to other tests without a teardown.
+    await seedRuntimeInjectionWindowMemories({
+      orgId: actor.orgId,
+      userId: actor.userId,
+    });
 
     await updateFeatureSwitchesForUser(
       context,
@@ -5587,6 +5566,15 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     const { actor, agentId, runnerGroup } = await entitledRunActor();
     await connectors.updateFeatureSwitches(actor, {
       [FeatureSwitchKey.MemoryViewer]: true,
+    });
+    // The memory summarize cron globally sweeps every MemoryViewer-enabled
+    // user in the shared database; leaving this actor opted in would hand
+    // that sweep this actor's storages in every later run. Opt back out
+    // through the same product API.
+    onTestFinished(async () => {
+      await connectors.updateFeatureSwitches(actor, {
+        [FeatureSwitchKey.MemoryViewer]: false,
+      });
     });
 
     const firstStartedAt = now();

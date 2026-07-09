@@ -34,9 +34,9 @@ import { server } from "../../../mocks/server";
 import { writeDb$ } from "../../external/db";
 import { nowDate } from "../../external/time";
 import {
-  seedZeroChatThread$,
-  type ZeroChatThreadFixture,
-} from "../__tests__/helpers/zero-chat-threads";
+  seedLegacyChatThread,
+  type LegacyChatThreadFixture,
+} from "../../../test-fixtures/chat-threads";
 import { seedUserModelProvider$ } from "./helpers/zero-model-providers";
 import { seedOrgMembership$ } from "../__tests__/helpers/zero-org-membership";
 import { createZeroRouteMocks } from "../__tests__/helpers/zero-route-test";
@@ -301,7 +301,7 @@ async function seedBackgroundLoad(): Promise<void> {
 }
 
 async function seedTargetThreadRuns(
-  fixture: ZeroChatThreadFixture,
+  fixture: LegacyChatThreadFixture,
 ): Promise<void> {
   const db = store.set(writeDb$);
   const versionId = randomUUID();
@@ -391,7 +391,7 @@ async function seedTargetThreadRuns(
 }
 
 async function seedSideEffectFreeGetData(
-  fixture: ZeroChatThreadFixture,
+  fixture: LegacyChatThreadFixture,
 ): Promise<void> {
   const db = store.set(writeDb$);
 
@@ -483,7 +483,7 @@ async function seedSideEffectFreeGetData(
 }
 
 async function logPlannerDiagnostic(
-  fixture: ZeroChatThreadFixture,
+  fixture: LegacyChatThreadFixture,
 ): Promise<void> {
   const db = store.set(writeDb$);
   await db.execute(sql`
@@ -513,16 +513,12 @@ async function logPlannerDiagnostic(
   );
 }
 
-const ensureSeeded: () => Promise<ZeroChatThreadFixture> = (() => {
-  let cached: Promise<ZeroChatThreadFixture> | undefined;
+const ensureSeeded: () => Promise<LegacyChatThreadFixture> = (() => {
+  let cached: Promise<LegacyChatThreadFixture> | undefined;
   return () => {
     cached ??= (async () => {
       installR2ListMock();
-      const seeded = await store.set(
-        seedZeroChatThread$,
-        { title: "bench" },
-        context.signal,
-      );
+      const seeded = await seedLegacyChatThread({ title: "bench" });
       await seedBackgroundLoad();
       await seedTargetThreadRuns(seeded);
       await seedSideEffectFreeGetData(seeded);

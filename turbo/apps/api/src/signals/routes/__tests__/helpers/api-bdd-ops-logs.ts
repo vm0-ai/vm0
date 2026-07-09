@@ -1,7 +1,6 @@
 import type { z } from "zod";
 import { cronAggregateModelStatsContract } from "@vm0/api-contracts/contracts/cron";
 import { logsSearchContract } from "@vm0/api-contracts/contracts/runs";
-import type { TestUserExportStateActionBody } from "@vm0/api-contracts/contracts/test-user-export-state";
 import { userExportContract } from "@vm0/api-contracts/contracts/user-export";
 
 import { createApp } from "../../../../app-factory";
@@ -19,7 +18,6 @@ type AuthHeaders = { readonly authorization?: string };
 type LogsSearchQuery = z.input<(typeof logsSearchContract.searchLogs)["query"]>;
 
 const CRON_AUTHORIZATION = "Bearer test-cron-secret";
-const USER_EXPORT_STATE_ROUTE = "/api/test/user-export-state/action";
 
 interface ClerkUserProfile {
   readonly id: string;
@@ -63,43 +61,6 @@ function authenticate(
     data: [clerkUserProfile(nextActor)],
   });
   return { authorization: "Bearer clerk-session" };
-}
-
-async function postUserExportState(
-  body: TestUserExportStateActionBody,
-): Promise<void> {
-  const app = createApp({ signal: new AbortController().signal });
-  const response = await app.request(USER_EXPORT_STATE_ROUTE, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!response.ok) {
-    throw new Error(`user export state action failed with ${response.status}`);
-  }
-}
-
-export async function cleanupUserExportState(
-  actor: ApiTestUser,
-): Promise<void> {
-  await postUserExportState({
-    action: "delete-user-export-state",
-    user_id: actor.userId,
-    email: actor.email,
-  });
-}
-
-export async function seedUserExportChatMessages(args: {
-  readonly userId: string;
-  readonly agentId: string;
-  readonly threadId: string;
-}): Promise<void> {
-  await postUserExportState({
-    action: "seed-chat-messages",
-    user_id: args.userId,
-    agent_id: args.agentId,
-    thread_id: args.threadId,
-  });
 }
 
 export function createOpsLogsApi(context: TestContext) {
