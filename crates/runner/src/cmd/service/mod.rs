@@ -1110,8 +1110,17 @@ async fn stop_cleanup_with_ops(
         }
     }
 
-    let state = ops.cleanup_active_state(unit).await?;
-    if stop_needs_escalation && state.is_active_like() {
+    let state = match ops.cleanup_active_state(unit).await {
+        Ok(state) => Some(state),
+        Err(e) => {
+            warn!(unit = %unit.unit_name(), error = %e, "failed to read service state after stop during cleanup");
+            None
+        }
+    };
+    if stop_needs_escalation
+        && let Some(state) = state.as_ref()
+        && state.is_active_like()
+    {
         warn!(
             unit = %unit.unit_name(),
             active_state = state.active_state(),
@@ -2087,6 +2096,43 @@ profiles:
         let unit = service_unit();
         let home = fake_home();
         let mut ops = FakeStopOps::default();
+
+        stop_with_ops(
+            &unit,
+            &home,
+            true,
+            Some(StopCleanupPolicy::FailedStart),
+            &mut ops,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            ops.events,
+            [
+                "check_gate",
+                "acquire_cleanup_lock",
+                "stop_bounded",
+                "cleanup_active_state",
+                "disable",
+                "reset_failed_bounded",
+                "cleanup_drain_restart_override_bounded",
+                "cleanup_active_state",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn stop_failed_start_cleanup_disables_when_initial_state_read_fails() {
+        let unit = service_unit();
+        let home = fake_home();
+        let mut ops = FakeStopOps {
+            cleanup_states: VecDeque::from([
+                Err(fake_error("state unavailable")),
+                cleanup_state("inactive", false),
+            ]),
+            ..FakeStopOps::default()
+        };
 
         stop_with_ops(
             &unit,
