@@ -222,7 +222,7 @@ fn parse_service_unit_from_cgroup(content: &str) -> Option<String> {
 
 fn cgroup_path_from_line(line: &str) -> Option<(CgroupPathPriority, &str)> {
     let mut parts = line.splitn(3, ':');
-    let hierarchy_id = parts.next()?.parse::<u32>().ok()?;
+    let hierarchy_id = parse_cgroup_hierarchy_id(parts.next()?)?;
     let controllers = parts.next()?;
     let path = parts.next()?;
     if !path.starts_with('/') {
@@ -249,6 +249,13 @@ fn cgroup_path_from_line(line: &str) -> Option<(CgroupPathPriority, &str)> {
         CgroupPathPriority::Fallback
     };
     Some((priority, path))
+}
+
+fn parse_cgroup_hierarchy_id(field: &str) -> Option<u32> {
+    if field.is_empty() || !field.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    field.parse().ok()
 }
 
 fn service_unit_from_cgroup_path(path: &str) -> Option<String> {
@@ -400,6 +407,10 @@ mod tests {
         );
         assert_eq!(
             parse_service_unit_from_cgroup("abc:cpu:/system.slice/vm0-runner-invalid.service\n"),
+            None
+        );
+        assert_eq!(
+            parse_service_unit_from_cgroup("+1:cpu:/system.slice/vm0-runner-invalid.service\n"),
             None
         );
         assert_eq!(
