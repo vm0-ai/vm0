@@ -4,7 +4,7 @@ import {
 } from "@vm0/api-contracts/contracts/test-artifact-preview-state";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 import { command } from "ccstate";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, or, sql } from "drizzle-orm";
 
 import { request$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
@@ -51,7 +51,10 @@ const actionHandlers = {
       .where(
         and(
           eq(runUploadedFiles.runId, body.run_id),
-          eq(runUploadedFiles.externalId, body.url),
+          or(
+            eq(runUploadedFiles.externalId, body.url),
+            eq(runUploadedFiles.url, body.url),
+          ),
         ),
       )
       .returning({ id: runUploadedFiles.id });
