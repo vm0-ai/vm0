@@ -265,12 +265,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.Gpt56Models]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Expose GPT 5.6 Sol, Terra, and Luna in model selection and org model policies.",
-    enabled: false,
-  },
   [FeatureSwitchKey.RealAgentInPreview]: {
     maintainer: "ethan@vm0.ai",
     description:

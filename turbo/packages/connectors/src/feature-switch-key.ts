@@ -45,7 +45,6 @@ export enum FeatureSwitchKey {
   ApiKeys = "apiKeys",
   CodexFrameworkForMinimax = "codexFrameworkForMinimax",
   CodexFastMode = "codexFastMode",
-  Gpt56Models = "gpt56Models",
   RealAgentInPreview = "realAgentInPreview",
   ComposerUploadPopover = "composerUploadPopover",
 
