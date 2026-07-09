@@ -86,25 +86,38 @@ describe("chat thread model request compatibility", () => {
     expect(parsed.data).not.toHaveProperty("modelSelection");
   });
 
-  it("rejects legacy thread create bodies pinned to a concrete provider", () => {
+  it("normalizes legacy thread create bodies pinned to a concrete provider", () => {
     const parsed = chatThreadsContract.create.body.safeParse({
       agentId: "agent-1",
       modelSelection: legacyProviderPinnedModelSelection,
       title: "Launch plan",
     });
 
-    expect(parsed.success).toBe(false);
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) {
+      return;
+    }
+    expect(parsed.data).toMatchObject({
+      agentId: "agent-1",
+      model: "claude-sonnet-4-6",
+      title: "Launch plan",
+    });
+    expect(parsed.data).not.toHaveProperty("modelSelection");
   });
 
-  it("rejects legacy thread model updates pinned to a concrete provider", () => {
+  it("normalizes legacy thread model updates pinned to a concrete provider", () => {
     const parsed = chatThreadModelSelectionContract.update.body.safeParse({
       modelSelection: legacyProviderPinnedModelSelection,
     });
 
-    expect(parsed.success).toBe(false);
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) {
+      return;
+    }
+    expect(parsed.data).toStrictEqual({ model: "claude-sonnet-4-6" });
   });
 
-  it("rejects legacy chat send bodies pinned to a concrete provider", () => {
+  it("normalizes legacy chat send bodies pinned to a concrete provider", () => {
     const parsed = chatMessagesContract.send.body.safeParse({
       agentId: "agent-1",
       prompt: "Build a launch plan",
@@ -112,7 +125,17 @@ describe("chat thread model request compatibility", () => {
       modelSelection: legacyProviderPinnedModelSelection,
     });
 
-    expect(parsed.success).toBe(false);
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) {
+      return;
+    }
+    expect(parsed.data).toMatchObject({
+      agentId: "agent-1",
+      prompt: "Build a launch plan",
+      model: "claude-sonnet-4-6",
+    });
+    expect(parsed.data).not.toHaveProperty("modelProvider");
+    expect(parsed.data).not.toHaveProperty("modelSelection");
   });
 });
 

@@ -312,9 +312,7 @@ async function createChatThread(args: {
       modelSelectionClient.update({
         params: { id: args.clientThreadId },
         body: {
-          modelSelection: modelSelectionRequestFromSelection(
-            args.modelSelection,
-          ),
+          model: args.modelSelection.selectedModel,
           codexServiceTier: "fast",
           eventId: crypto.randomUUID(),
         },

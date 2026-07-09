@@ -43,6 +43,7 @@ import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
+import { overwriteModelProviderSecretForTests } from "./helpers/zero-model-provider-state";
 import {
   deleteBddVm0ApiKeys,
   replaceBddVm0ApiKeys,
@@ -2006,10 +2007,6 @@ describe("CHAT-02: model-first provider policies", () => {
   it("rejects legacy blank OpenRouter provider secrets during firewall auth", async () => {
     const fw = createFirewallApi(context);
     const { actor, agentId, runnerGroup } = await entitledChatActor();
-    const orgId = actor.orgId;
-    if (!orgId) {
-      throw new Error("Expected entitled actor to have an org");
-    }
     const { providerId } = await upsertOrgModelProvider(actor, {
       type: "openrouter-api-key",
       secret: "test-openrouter-key",
@@ -2023,7 +2020,11 @@ describe("CHAT-02: model-first provider policies", () => {
         modelProviderId: providerId,
       },
     ]);
-    await overwriteOrgModelProviderSecret(orgId, "OPENROUTER_API_KEY", "   ");
+    await overwriteModelProviderSecretForTests(context.signal, {
+      providerId,
+      secretName: "OPENROUTER_API_KEY",
+      secret: "   ",
+    });
 
     const run = await sendChatRun(actor, {
       agentId,
