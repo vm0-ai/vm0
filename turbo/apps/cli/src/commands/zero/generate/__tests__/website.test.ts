@@ -127,7 +127,7 @@ describe("zero generate website command", () => {
     expect(stdout).toContain('"id": "template:black-slabs"');
     expect(stdout).toContain('"type": "tar.gz"');
     expect(stdout).toContain(
-      '"sha256": "7e2dfc9f61dc1b9d187661d36854d27b150c0be92f882d845e5adcfd4054e6ba"',
+      '"sha256": "8f30984e444283bf0322106a1099623346e153bc11d26e3044fbf61ef43514c3"',
     );
   });
 
