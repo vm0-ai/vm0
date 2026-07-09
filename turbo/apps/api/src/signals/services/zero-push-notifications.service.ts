@@ -43,43 +43,41 @@ export async function sendUserPushNotifications(args: {
   }
 
   const payload = JSON.stringify(args.notification);
-  await Promise.all(
-    subscriptions.map(async (subscription) => {
-      const result = await settle(
-        webpush.sendNotification(
-          {
-            endpoint: subscription.endpoint,
-            keys: {
-              p256dh: subscription.p256dh,
-              auth: subscription.auth,
-            },
-          },
-          payload,
-          { timeout: PUSH_NOTIFICATION_TIMEOUT_MS },
-        ),
-      );
-      if (result.ok) {
-        return;
-      }
-
-      const statusCode =
-        result.error instanceof WebPushError
-          ? result.error.statusCode
-          : undefined;
-      if (statusCode === 410 || statusCode === 404) {
-        await args.db
-          .delete(pushSubscriptions)
-          .where(eq(pushSubscriptions.id, subscription.id));
-        log.debug("Removed stale push subscription", {
+  for (const subscription of subscriptions) {
+    const result = await settle(
+      webpush.sendNotification(
+        {
           endpoint: subscription.endpoint,
-        });
-        return;
-      }
+          keys: {
+            p256dh: subscription.p256dh,
+            auth: subscription.auth,
+          },
+        },
+        payload,
+        { timeout: PUSH_NOTIFICATION_TIMEOUT_MS },
+      ),
+    );
+    if (result.ok) {
+      continue;
+    }
 
-      log.warn("Failed to send push notification", {
+    const statusCode =
+      result.error instanceof WebPushError
+        ? result.error.statusCode
+        : undefined;
+    if (statusCode === 410 || statusCode === 404) {
+      await args.db
+        .delete(pushSubscriptions)
+        .where(eq(pushSubscriptions.id, subscription.id));
+      log.debug("Removed stale push subscription", {
         endpoint: subscription.endpoint,
-        error: result.error,
       });
-    }),
-  );
+      continue;
+    }
+
+    log.warn("Failed to send push notification", {
+      endpoint: subscription.endpoint,
+      error: result.error,
+    });
+  }
 }
