@@ -1,5 +1,6 @@
 """AWS SigV4 firewall-auth integration helpers for mitm-addon tests."""
 
+import copy
 from pathlib import Path
 from typing import TypedDict
 
@@ -62,28 +63,6 @@ class AwsVmInfo(AwsVmInfoBase, total=False):
     secretConnectorMetadataMap: dict[str, object]
 
 
-def _copy_aws_auth_config(auth_config: AwsAuthConfig) -> AwsAuthConfig:
-    copied_auth_config: AwsAuthConfig = {
-        "headers": dict(auth_config["headers"]),
-        "awsSigv4": dict(auth_config["awsSigv4"]),
-    }
-    if "base" in auth_config:
-        copied_auth_config["base"] = auth_config["base"]
-    if "query" in auth_config:
-        copied_auth_config["query"] = dict(auth_config["query"])
-    return copied_auth_config
-
-
-def _copy_aws_api_entry(api_entry: AwsApiEntry) -> AwsApiEntry:
-    copied_api_entry: AwsApiEntry = {
-        "base": api_entry["base"],
-        "auth": _copy_aws_auth_config(api_entry["auth"]),
-    }
-    if "id" in api_entry:
-        copied_api_entry["id"] = api_entry["id"]
-    return copied_api_entry
-
-
 def aws_sigv4_auth_config(*, include_session_token: bool = True) -> dict[str, str]:
     config = {
         "accessKeyId": "${{ secrets.AWS_ACCESS_KEY_ID }}",
@@ -130,7 +109,7 @@ def aws_allow(
     rel_path: str = "/",
 ) -> matching.FirewallAllow:
     return matching.FirewallAllow(
-        dict(_copy_aws_api_entry(aws_api_entry() if api_entry is None else api_entry)),
+        dict(copy.deepcopy(aws_api_entry() if api_entry is None else api_entry)),
         firewall_name,
         permission,
         {} if params is None else dict(params),
