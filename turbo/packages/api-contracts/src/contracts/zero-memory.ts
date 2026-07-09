@@ -53,6 +53,7 @@ const memorySourceCompactMetadataSchema = z.object({
   githubRepository: z.string().optional(),
   githubSubjectKind: z.enum(["issue", "pull_request"]).optional(),
   githubSubjectNumber: z.number().int().positive().optional(),
+  githubIssueCommentId: z.string().optional(),
   githubActorLogin: z.string().optional(),
   notionWorkspaceName: z.string().nullable().optional(),
   notionPageId: z.string().optional(),
