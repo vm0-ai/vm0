@@ -27,8 +27,10 @@ import {
 import { agents$ } from "../../signals/agent.ts";
 import {
   artifactsSearch$,
+  artifactsWindow$,
   cachedArtifacts$,
   filterArtifacts,
+  growArtifactsWindow$,
   navigateToArtifactThread$,
   remoteArtifacts$,
   selectedArtifactsAgentId$,
@@ -431,14 +433,16 @@ function ArtifactsList({
   hasFilters,
   loading,
   error,
-  truncated,
+  visibleCount,
+  onLoadMore,
   onOpenChat,
 }: {
   readonly artifacts: readonly ArtifactItem[];
   readonly hasFilters: boolean;
   readonly loading: boolean;
   readonly error: boolean;
-  readonly truncated: boolean;
+  readonly visibleCount: number;
+  readonly onLoadMore: () => void;
   readonly onOpenChat: (threadId: string) => void;
 }) {
   if (loading) {
@@ -450,18 +454,14 @@ function ArtifactsList({
   if (artifacts.length === 0) {
     return <ArtifactsEmptyState filtered={hasFilters} />;
   }
+  // Render only the current window so a large set never mounts thousands of
+  // cards (and their iframes) at once; "Load more" reveals the next window.
+  const windowed = artifacts.slice(0, visibleCount);
+  const hasMore = windowed.length < artifacts.length;
   return (
     <>
-      {truncated && (
-        <div
-          role="status"
-          className="mb-3 rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground"
-        >
-          Showing the newest 10,000 artifacts. Filters apply to this capped set.
-        </div>
-      )}
       <div className="columns-[220px] gap-3">
-        {artifacts.map((artifact) => {
+        {windowed.map((artifact) => {
           return (
             <ArtifactCard
               key={artifact.artifactItemId}
@@ -471,6 +471,13 @@ function ArtifactsList({
           );
         })}
       </div>
+      {hasMore && (
+        <div className="flex justify-center pt-1">
+          <Button variant="secondary" onClick={onLoadMore}>
+            Load more
+          </Button>
+        </div>
+      )}
     </>
   );
 }
@@ -483,6 +490,8 @@ export function ArtifactsPage() {
   const setSelectedAgentId = useSet(setSelectedArtifactsAgentId$);
   const setSelectedCategory = useSet(setSelectedArtifactsCategory$);
   const openChat = useSet(navigateToArtifactThread$);
+  const visibleCount = useGet(artifactsWindow$);
+  const loadMore = useSet(growArtifactsWindow$);
   const remoteLoadable = useLastLoadable(remoteArtifacts$);
   const cachedLoadable = useLastLoadable(cachedArtifacts$);
   const agents = useLastResolved(agents$) ?? [];
@@ -543,7 +552,8 @@ export function ArtifactsPage() {
             hasFilters={hasFilters}
             loading={loading}
             error={error}
-            truncated={sourceData?.truncated ?? false}
+            visibleCount={visibleCount}
+            onLoadMore={loadMore}
             onOpenChat={openChat}
           />
         </div>
