@@ -1,5 +1,8 @@
 import { command } from "ccstate";
-import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
+import {
+  chatThreadsContract,
+  MODEL_FIRST_SELECTION_PROVIDER_ID,
+} from "@vm0/api-contracts/contracts/chat-threads";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -13,6 +16,13 @@ import { resolveModelSelectionPin } from "../services/zero-model-selection.servi
 import type { RouteEntry } from "../route-entry";
 
 const createBody$ = bodyResultOf(chatThreadsContract.create);
+
+function modelFirstSelection(selectedModel: string) {
+  return {
+    modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+    selectedModel,
+  };
+}
 
 const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
@@ -37,7 +47,7 @@ const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     db: set(writeDb$),
     orgId: auth.orgId,
     userId: auth.userId,
-    modelSelection: body.data.modelSelection,
+    modelSelection: modelFirstSelection(body.data.model),
   });
   signal.throwIfAborted();
   if ("status" in pin) {

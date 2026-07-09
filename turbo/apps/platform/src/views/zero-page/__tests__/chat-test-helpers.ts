@@ -15,10 +15,10 @@ import {
   chatThreadModelSelectionContract,
   chatThreadMessagesContract,
   chatMessagesContract,
+  MODEL_FIRST_SELECTION_PROVIDER_ID,
   type ChatRunOptionsRequest,
   type CodexServiceTier,
   type GenerationTemplateRequest,
-  type ModelSelectionRequest,
   type PagedChatMessage,
   type PersistedAttachment,
 } from "@vm0/api-contracts/contracts/chat-threads";
@@ -43,6 +43,27 @@ export const PLACEHOLDER = "Ask me to automate workflows, manage tasks...";
 const DEFAULT_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const MOCK_RUN_ID = "d0000000-0000-4000-a000-000000000001";
 const SUB_AGENT_ID = "a1111111-0000-4000-a000-000000000001";
+
+interface ModelSelectionRequest {
+  readonly modelProviderId: string;
+  readonly selectedModel: string;
+}
+
+function modelFirstSelection(selectedModel: string): ModelSelectionRequest {
+  return {
+    modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+    selectedModel,
+  };
+}
+
+function modelSelectionFromBody(body: {
+  readonly model?: string | null;
+}): ModelSelectionRequest | null | undefined {
+  if (body.model === undefined) {
+    return undefined;
+  }
+  return body.model === null ? null : modelFirstSelection(body.model);
+}
 
 export function mockSubagentThread(context: TestContext, _threadId: string) {
   context.mocks.data.team([
@@ -429,6 +450,7 @@ export function mockChatLifecycle(
       }[];
       hasTextContent?: boolean;
       generationTemplate?: GenerationTemplateRequest;
+      model?: string;
       modelSelection?: ModelSelectionRequest | null;
       runOptions?: ChatRunOptionsRequest;
       computerUseHostId?: string | null;
@@ -436,13 +458,16 @@ export function mockChatLifecycle(
     }) => void;
     onSendRequest?: (body: {
       clientThreadId?: string;
+      model?: string;
       modelSelection?: ModelSelectionRequest | null;
     }) => void;
     onThreadCreate?: (body: {
       clientThreadId?: string;
+      model?: string;
       modelSelection: ModelSelectionRequest;
     }) => void;
     onModelSelectionUpdate?: (body: {
+      model?: string | null;
       modelSelection?: ModelSelectionRequest | null;
       codexServiceTier?: CodexServiceTier | null;
     }) => void;
@@ -649,7 +674,7 @@ export function mockChatLifecycle(
     clientMessageId?: string;
     hasTextContent?: boolean;
     generationTemplate?: GenerationTemplateRequest;
-    modelSelection?: ModelSelectionRequest | null;
+    model?: string;
     runOptions?: ChatRunOptionsRequest;
   }) => {
     const clientMessageId = body.clientMessageId ?? crypto.randomUUID();
@@ -659,13 +684,14 @@ export function mockChatLifecycle(
         url: `https://cdn.vm7.io/artifacts/test/${file.id}/${file.filename}`,
       };
     });
+    const modelSelection = modelSelectionFromBody(body);
     options?.onQueuedMessageAppend?.({
       content: body.prompt,
       hasTextContent: body.hasTextContent,
       attachments: attachFiles,
       clientMessageId,
       generationTemplate: body.generationTemplate,
-      modelSelection: body.modelSelection,
+      modelSelection,
       runOptions: body.runOptions,
     });
     if (options?.appendGate) {
@@ -694,7 +720,7 @@ export function mockChatLifecycle(
     }[];
     hasTextContent?: boolean;
     generationTemplate?: GenerationTemplateRequest;
-    modelSelection?: ModelSelectionRequest | null;
+    model?: string;
     runOptions?: ChatRunOptionsRequest;
     computerUseHostId?: string | null;
     revokesMessageId?: string;
@@ -706,8 +732,9 @@ export function mockChatLifecycle(
       runPrompt = body.prompt;
     }
     rememberRunUserMessageId(body.clientMessageId);
-    options?.onRunCreate?.(body);
-    selectedModel = body.modelSelection?.selectedModel ?? selectedModel;
+    const modelSelection = modelSelectionFromBody(body);
+    options?.onRunCreate?.({ ...body, modelSelection });
+    selectedModel = modelSelection?.selectedModel ?? selectedModel;
     codexServiceTier = body.runOptions?.codexServiceTier ?? null;
     runAssociated = true;
     createChatRun(threadId);
@@ -812,10 +839,12 @@ export function mockChatLifecycle(
   context.mocks.api(
     chatThreadModelSelectionContract.update,
     ({ body, respond }) => {
-      selectedModel = body.modelSelection?.selectedModel ?? null;
+      const modelSelection = modelSelectionFromBody(body);
+      selectedModel = modelSelection?.selectedModel ?? null;
       codexServiceTier = body.codexServiceTier ?? null;
       options?.onModelSelectionUpdate?.({
-        modelSelection: body.modelSelection,
+        model: body.model,
+        modelSelection,
         codexServiceTier: body.codexServiceTier,
       });
       return respond(204);
@@ -860,10 +889,15 @@ export function mockChatLifecycle(
   });
   context.mocks.api(chatThreadsContract.create, ({ body, respond }) => {
     threadId = body.clientThreadId ?? threadId;
-    selectedModel = body.modelSelection.selectedModel;
+    const modelSelection = modelSelectionFromBody(body);
+    if (!modelSelection) {
+      throw new Error("Expected chat thread create to include model");
+    }
+    selectedModel = modelSelection.selectedModel;
     options?.onThreadCreate?.({
       clientThreadId: body.clientThreadId,
-      modelSelection: body.modelSelection,
+      model: body.model,
+      modelSelection,
     });
     return respond(201, {
       id: threadId,
@@ -883,7 +917,8 @@ export function mockChatLifecycle(
 
     options?.onSendRequest?.({
       clientThreadId: body.clientThreadId,
-      modelSelection: body.modelSelection,
+      model: body.model,
+      modelSelection: modelSelectionFromBody(body),
     });
     threadId = body.clientThreadId ?? threadId;
     const responseBody = hasActiveRun()

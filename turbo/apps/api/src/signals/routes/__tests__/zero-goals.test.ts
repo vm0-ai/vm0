@@ -82,7 +82,7 @@ async function seedGoalApiFixture(): Promise<GoalApiFixture> {
     {
       agentId: agent.agentId,
       prompt: "goal precondition",
-      modelProvider: "anthropic-api-key",
+      model: "claude-sonnet-4-6",
     },
     [201],
   );

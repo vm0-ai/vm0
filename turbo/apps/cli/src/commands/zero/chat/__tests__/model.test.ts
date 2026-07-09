@@ -15,8 +15,6 @@ import { server } from "../../../../mocks/server";
 import { zeroChatCommand } from "../index";
 
 const THREAD_ID = "00000000-0000-4000-8000-000000000001";
-const MODEL_FIRST_SELECTION_PROVIDER_ID =
-  "00000000-0000-4000-8000-000000000000";
 const GET_URL = `http://localhost:3000/api/zero/chat-threads/${THREAD_ID}/metadata`;
 const MODEL_SELECTION_URL = `http://localhost:3000/api/zero/chat-threads/${THREAD_ID}/model-selection`;
 const MODEL_POLICIES_URL = "http://localhost:3000/api/zero/model-policies";
@@ -132,10 +130,7 @@ describe("zero chat model command", () => {
           "Bearer test-zero-token",
         );
         await expect(request.json()).resolves.toStrictEqual({
-          modelSelection: {
-            modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-            selectedModel: "claude-sonnet-5",
-          },
+          model: "claude-sonnet-5",
         });
         return new HttpResponse(null, { status: 204 });
       }),

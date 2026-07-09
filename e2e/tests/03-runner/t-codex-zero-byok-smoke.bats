@@ -31,18 +31,20 @@ setup_file() {
     # 1. Feature switch on (also fails the file early if not yet wired)
     enable_codex_beta
 
-    # 2. Org-level openai-api-key provider. The selected model is explicitly
-    # pinned to this provider on the chat message, without provider defaults or
-    # shared org policy mutation.
+    # 2. Org-level openai-api-key provider. Chat writes only carry the selected
+    # model; provider resolution comes from org model policy.
     $ZERO_CLI org model-provider setup --type "openai-api-key" --secret "$OPENAI_API_KEY" >/dev/null
     export OPENAI_PROVIDER_ID
     OPENAI_PROVIDER_ID=$(zero_model_provider_id_by_type "openai-api-key")
     export CODEX_ZERO_SELECTED_MODEL="gpt-5.4-mini"
-    export CODEX_ZERO_MODEL_PROVIDER_ID="$OPENAI_PROVIDER_ID"
+    configure_codex_zero_model_policy \
+        "$CODEX_ZERO_SELECTED_MODEL" \
+        "openai-api-key" \
+        "$OPENAI_PROVIDER_ID"
 
     # 3. Compose declares framework: codex explicitly. The framework is
-    # resolved from the explicit model-first provider pin. At secret resolution
-    # the provider's declared framework wins (Epic #11520) and is propagated
+    # resolved from the org model policy route. At secret resolution the
+    # provider's declared framework wins (Epic #11520) and is propagated
     # downstream via build-zero-context.ts's resolvedFramework, with no
     # compose-vs-provider equality check.
     cat > "$TEST_DIR/vm0-basic.yaml" <<EOF
@@ -103,10 +105,10 @@ teardown_file() {
     # survive the subshell boundary.
     wait_for_chat_assistant_done "$THREAD_ID"
 
-    # Assert: real codex produced the expected sentinel. The org's only
-    # provider is openai-api-key, so a real (non-mock) codex completion
-    # already proves the BYOK provider routing chain resolved end-to-end —
-    # without the key the run cannot produce the sentinel.
+    # Assert: real codex produced the expected sentinel. The selected model's
+    # policy routes to openai-api-key, so a real (non-mock) codex completion
+    # proves the BYOK provider routing chain resolved end-to-end — without the
+    # key the run cannot produce the sentinel.
     [[ "$LAST_MSG_CONTENT" == *"RESULT=579"* ]] \
         || fail "Expected 'RESULT=579' in assistant content, got: $LAST_MSG_CONTENT"
 }

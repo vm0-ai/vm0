@@ -588,7 +588,7 @@ describe("GET /api/zero/usage/insight", () => {
         agentId: agent.agentId,
         prompt: "generate chat usage",
         threadId: thread.id,
-        modelProvider: "anthropic-api-key",
+        model: "claude-sonnet-4-6",
       },
       [201],
     );

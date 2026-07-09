@@ -391,32 +391,122 @@ const chatThreadDraftSchema = z.object({
   draftAttachments: z.array(persistedAttachmentSchema).nullable(),
 });
 
-/**
- * Per-run model selection from the composer. Both fields are required when
- * the object is present; pass `null` to clear the thread's override and fall
- * back to the agent/org default; omit to leave the thread's override unchanged.
- */
-const modelSelectionRequestSchema = z
-  .object({
-    modelProviderId: z.string().uuid(),
-    selectedModel: z.string().min(1),
-  })
+const selectedModelRequestSchema = z
+  .string()
+  .min(1)
   .superRefine((value, ctx) => {
-    if (
-      value.modelProviderId === MODEL_FIRST_SELECTION_PROVIDER_ID &&
-      !isSupportedRunModel(value.selectedModel)
-    ) {
+    if (!isSupportedRunModel(value)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ["selectedModel"],
         message: "Invalid model selection",
       });
     }
   });
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function legacyModelSelectionModel(value: unknown): string | null | undefined {
+  if (value === null) {
+    return null;
+  }
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const selectedModel = value.selectedModel;
+  return typeof selectedModel === "string" ? selectedModel : undefined;
+}
+
+function normalizeLegacyModelSelectionInput(
+  value: unknown,
+  options: { readonly allowNull: boolean },
+): unknown {
+  if (!isRecord(value) || "model" in value || !("modelSelection" in value)) {
+    return value;
+  }
+  const legacyModelSelection = legacyModelSelectionModel(value.modelSelection);
+  if (
+    legacyModelSelection === undefined ||
+    (legacyModelSelection === null && !options.allowNull)
+  ) {
+    return value;
+  }
+  return { ...value, model: legacyModelSelection };
+}
+
+const chatThreadCreateBodySchema = z.preprocess(
+  (value) => {
+    return normalizeLegacyModelSelectionInput(value, { allowNull: false });
+  },
+  z.object({
+    agentId: z.string().min(1),
+    clientThreadId: z.string().uuid().optional(),
+    eventId: chatThreadEventIdSchema.optional(),
+    /**
+     * Selected model id. The API resolves the effective model provider from org
+     * policy and available credentials.
+     */
+    model: selectedModelRequestSchema,
+    title: z.string().optional(),
+  }),
+);
+
+const chatThreadModelSelectionUpdateBodySchema = z.preprocess(
+  (value) => {
+    return normalizeLegacyModelSelectionInput(value, { allowNull: true });
+  },
+  z.object({
+    /**
+     * Selected model id, or null to clear the thread's selected model.
+     */
+    model: selectedModelRequestSchema.nullable(),
+    codexServiceTier: codexServiceTierSchema.nullable().optional(),
+    eventId: chatThreadEventIdSchema.optional(),
+  }),
+);
+
 const chatRunOptionsRequestSchema = z.object({
   codexServiceTier: codexServiceTierSchema.optional(),
 });
+
+const chatMessageNormalSendBodySchema = z.preprocess(
+  (value) => {
+    return normalizeLegacyModelSelectionInput(value, { allowNull: false });
+  },
+  z.object({
+    agentId: z.string().min(1),
+    prompt: z.string().min(1),
+    threadId: z.string().optional(),
+    clientThreadId: z.string().uuid().optional(),
+    chatThreadEventId: chatThreadEventIdSchema.optional(),
+    // Client-generated UUID for the sort touch created by direct user sends.
+    // Lets event-sourced clients reconcile optimistic sidebar recency by id.
+    chatThreadSortEventId: chatThreadEventIdSchema.optional(),
+    /**
+     * Selected model id. The API resolves the effective provider from org
+     * policy and available credentials. Existing threads may omit it to
+     * reuse the thread's persisted model.
+     */
+    model: selectedModelRequestSchema.optional(),
+    runOptions: chatRunOptionsRequestSchema.optional(),
+    generationTemplate: generationTemplateRequestSchema.optional(),
+    computerUseHostId: z.string().uuid().nullable().optional(),
+    // Optional for backward compatibility: older clients that omit this field
+    // still trigger title generation (server guards with !== false, not === true).
+    hasTextContent: z.boolean().optional(),
+    attachFiles: z.array(attachFileSchema).optional(),
+    // Client-generated UUID used as the user message's primary key.
+    // Lets the client render an optimistic row and reconcile with the
+    // server row by id — no temp-id swap, no React remount.
+    clientMessageId: z.string().uuid().optional(),
+    // Preview evaluation escape hatch: when enabled, the request asks the
+    // runner to bypass preview mock CLIs and use the real agent runtime.
+    realAgentInPreview: z.boolean().optional(),
+    revokesMessageId: z.string().min(1).optional(),
+    interruptsRunId: z.undefined().optional(),
+  }),
+);
 
 /**
  * Chat thread collection route contract.
@@ -471,13 +561,7 @@ export const chatThreadsContract = c.router({
     method: "POST",
     path: "/api/zero/chat-threads",
     headers: authHeadersSchema,
-    body: z.object({
-      agentId: z.string().min(1),
-      clientThreadId: z.string().uuid().optional(),
-      eventId: chatThreadEventIdSchema.optional(),
-      modelSelection: modelSelectionRequestSchema,
-      title: z.string().optional(),
-    }),
+    body: chatThreadCreateBodySchema,
     responses: {
       201: z.object({
         id: z.string(),
@@ -779,11 +863,7 @@ export const chatThreadModelSelectionContract = c.router({
     path: "/api/zero/chat-threads/:id/model-selection",
     headers: authHeadersSchema,
     pathParams: chatThreadIdPathParamsSchema,
-    body: z.object({
-      modelSelection: modelSelectionRequestSchema.nullable(),
-      codexServiceTier: codexServiceTierSchema.nullable().optional(),
-      eventId: chatThreadEventIdSchema.optional(),
-    }),
+    body: chatThreadModelSelectionUpdateBodySchema,
     responses: {
       204: c.noBody(),
       400: apiErrorSchema,
@@ -830,42 +910,7 @@ export const chatMessagesContract = c.router({
     path: "/api/zero/chat/messages",
     headers: authHeadersSchema,
     body: z.union([
-      z.object({
-        agentId: z.string().min(1),
-        prompt: z.string().min(1),
-        threadId: z.string().optional(),
-        clientThreadId: z.string().uuid().optional(),
-        chatThreadEventId: chatThreadEventIdSchema.optional(),
-        // Client-generated UUID for the sort touch created by direct user sends.
-        // Lets event-sourced clients reconcile optimistic sidebar recency by id.
-        chatThreadSortEventId: chatThreadEventIdSchema.optional(),
-        modelProvider: z.string().optional(),
-        /**
-         * Per-run model override. This does not mutate the thread's selected
-         * model; thread model changes are persisted through
-         * `chatThreadModelSelectionContract.update`.
-         *
-         * When omitted, the run resolves from the thread's persisted
-         * `selected_model`.
-         */
-        modelSelection: modelSelectionRequestSchema.nullable().optional(),
-        runOptions: chatRunOptionsRequestSchema.optional(),
-        generationTemplate: generationTemplateRequestSchema.optional(),
-        computerUseHostId: z.string().uuid().nullable().optional(),
-        // Optional for backward compatibility: older clients that omit this field
-        // still trigger title generation (server guards with !== false, not === true).
-        hasTextContent: z.boolean().optional(),
-        attachFiles: z.array(attachFileSchema).optional(),
-        // Client-generated UUID used as the user message's primary key.
-        // Lets the client render an optimistic row and reconcile with the
-        // server row by id — no temp-id swap, no React remount.
-        clientMessageId: z.string().uuid().optional(),
-        // Preview evaluation escape hatch: when enabled, the request asks the
-        // runner to bypass preview mock CLIs and use the real agent runtime.
-        realAgentInPreview: z.boolean().optional(),
-        revokesMessageId: z.string().min(1).optional(),
-        interruptsRunId: z.undefined().optional(),
-      }),
+      chatMessageNormalSendBodySchema,
       z.object({
         agentId: z.string().min(1),
         threadId: z.string().min(1),
@@ -875,8 +920,7 @@ export const chatMessagesContract = c.router({
         clientThreadId: z.undefined().optional(),
         chatThreadEventId: z.undefined().optional(),
         chatThreadSortEventId: z.undefined().optional(),
-        modelProvider: z.undefined().optional(),
-        modelSelection: z.undefined().optional(),
+        model: z.undefined().optional(),
         runOptions: z.undefined().optional(),
         generationTemplate: z.undefined().optional(),
         computerUseHostId: z.undefined().optional(),
@@ -894,8 +938,7 @@ export const chatMessagesContract = c.router({
         clientThreadId: z.undefined().optional(),
         chatThreadEventId: z.undefined().optional(),
         chatThreadSortEventId: z.undefined().optional(),
-        modelProvider: z.undefined().optional(),
-        modelSelection: z.undefined().optional(),
+        model: z.undefined().optional(),
         runOptions: z.undefined().optional(),
         generationTemplate: z.undefined().optional(),
         computerUseHostId: z.undefined().optional(),
@@ -1191,7 +1234,6 @@ export {
   chatThreadDetailSchema,
   chatThreadMetadataSchema,
   chatThreadDraftSchema,
-  modelSelectionRequestSchema,
   chatRunOptionsRequestSchema,
   generationTemplateRequestSchema,
   presentationGenerationTemplateRequestSchema,
@@ -1212,7 +1254,6 @@ export {
   htmlArtifactEditSnapshotSchema,
 };
 
-export type ModelSelectionRequest = z.infer<typeof modelSelectionRequestSchema>;
 export type CodexServiceTier = z.infer<typeof codexServiceTierSchema>;
 export type ChatRunOptionsRequest = z.infer<typeof chatRunOptionsRequestSchema>;
 export type GenerationTemplateRequest = z.infer<

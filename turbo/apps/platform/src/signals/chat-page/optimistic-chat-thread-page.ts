@@ -45,10 +45,7 @@ import { featureSwitch$ } from "../external/feature-switch.ts";
 import { codexFastModeLocalDefault$ } from "../zero-page/codex-fast-local-default.ts";
 import { generationTemplateForFeatureSwitches } from "./generation-template-feature-switch.ts";
 import { logger } from "../log.ts";
-import {
-  modelSelectionRequestFromSelection,
-  runOptionsFromModelProviderSelection,
-} from "./model-selection-request.ts";
+import { runOptionsFromModelProviderSelection } from "./model-selection-request.ts";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import { registerOptimisticChatThreadEvent$ } from "./chat-thread-event-sourcing.ts";
 
@@ -299,9 +296,7 @@ async function createChatThread(args: {
         agentId: args.agentId,
         clientThreadId: args.clientThreadId,
         eventId: args.eventId,
-        modelSelection: modelSelectionRequestFromSelection(
-          args.modelSelection,
-        )!,
+        model: args.modelSelection.selectedModel,
         ...(args.title ? { title: args.title } : {}),
       },
       fetchOptions: { signal: args.signal },
@@ -317,9 +312,7 @@ async function createChatThread(args: {
       modelSelectionClient.update({
         params: { id: args.clientThreadId },
         body: {
-          modelSelection: modelSelectionRequestFromSelection(
-            args.modelSelection,
-          ),
+          model: args.modelSelection.selectedModel,
           codexServiceTier: "fast",
           eventId: crypto.randomUUID(),
         },
