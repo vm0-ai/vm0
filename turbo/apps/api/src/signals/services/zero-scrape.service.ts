@@ -676,6 +676,7 @@ export const zeroScrape$ = command(
     }
     signal.throwIfAborted();
 
+    const runId = runIdForUsage(args.auth);
     return completeScrapeAfterProvider({
       apiKey,
       request: args.body,
@@ -687,9 +688,7 @@ export const zeroScrape$ = command(
             actor: {
               orgId: args.auth.orgId,
               userId: args.auth.userId,
-              ...(runIdForUsage(args.auth)
-                ? { runId: runIdForUsage(args.auth) }
-                : {}),
+              ...(runId ? { runId } : {}),
             },
             resource: {
               kind: USAGE_KIND,

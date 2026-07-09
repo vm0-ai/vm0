@@ -42,7 +42,7 @@ function renderScrapeMetadata(response: ZeroScrapeResponse): void {
 
 function renderScrapeResult(response: ZeroScrapeResponse): void {
   if (response.format === "links") {
-    for (const link of response.result.links ?? []) {
+    for (const link of response.result.links) {
       console.log(link);
     }
     return;
