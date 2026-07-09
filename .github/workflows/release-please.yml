@@ -497,7 +497,7 @@ jobs:
       RELEASE_TAG: desktop-v${{ needs.release-please.outputs.desktop_version }}
       MANIFEST_TAG: desktop-updates
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@v7
         with:
           ref: desktop-v${{ needs.release-please.outputs.desktop_version }}
 
@@ -794,7 +794,7 @@ jobs:
         run: pnpm --filter @vm0/api-contracts run build:runtime-api-schema -- --out "$GITHUB_WORKSPACE/turbo/runtime-api-schema.json"
 
       - name: Upload Runtime API Schema Artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@v7
         with:
           name: runtime-api-schema
           path: turbo/runtime-api-schema.json
@@ -884,7 +884,7 @@ jobs:
         run: tar -C .vercel -czf /tmp/api-production-build-output.tgz output
 
       - name: Upload API Production Build Output
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@v7
         with:
           name: api-production-build-output
           path: /tmp/api-production-build-output.tgz
@@ -1252,7 +1252,7 @@ jobs:
           DOPPLER_SECRETS_JSON: ${{ toJSON(steps.doppler-oauth.outputs) }}
 
       - name: Download API Production Build Output
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        uses: actions/download-artifact@v8.0.1
         with:
           name: api-production-build-output
           path: /tmp/api-production-build-output
@@ -1350,7 +1350,7 @@ jobs:
       contents: write
     steps:
       - name: Download Runtime API Schema Artifact
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        uses: actions/download-artifact@v8.0.1
         with:
           name: runtime-api-schema
           path: /tmp/runtime-api-schema
