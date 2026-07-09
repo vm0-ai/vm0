@@ -158,6 +158,8 @@ async function fetchFirecrawlScrape(
         url: targetUrl.toString(),
         formats: [request.format],
         proxy: firecrawlProxy(request.mode),
+        skipTlsVerification: false,
+        storeInCache: false,
       }),
       signal: AbortSignal.any([
         signal,

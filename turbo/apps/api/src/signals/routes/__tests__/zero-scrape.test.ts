@@ -263,6 +263,8 @@ describe("zero scrape route", () => {
       url: "https://example.com/page",
       formats: ["links"],
       proxy: "enhanced",
+      skipTlsVerification: false,
+      storeInCache: false,
     });
     expect(authorization).toBe("Bearer test-firecrawl-token");
     expect(response.body).toMatchObject({
