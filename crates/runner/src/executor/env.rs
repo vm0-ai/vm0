@@ -7,10 +7,7 @@ use super::cli_framework::{
     EffectiveCliFramework, effective_cli_framework, normalized_cli_agent_type,
 };
 use super::session_id::{canonical_codex_thread_id, is_valid_session_id};
-use super::{
-    GUEST_USER_ENV_DIR_NAME, GUEST_USER_ENV_FILENAME, RunnerError, RunnerResult, guest_runtime_dir,
-    guest_runtime_path,
-};
+use super::{RunnerError, RunnerResult, guest_runtime_dir, guest_runtime_path};
 use crate::ids::RunId;
 use crate::types::{CodexRuntimeConfig, ExecutionContext, SandboxReuseResult};
 
@@ -310,8 +307,8 @@ fn for_each_guest_user_env_entry<'a>(
 
 pub(super) fn guest_user_env_file_path(run_id: RunId) -> RunnerResult<String> {
     guest_runtime_path(run_id, |dir| {
-        dir.join(GUEST_USER_ENV_DIR_NAME)
-            .join(GUEST_USER_ENV_FILENAME)
+        dir.join(guest_contracts::env::USER_ENV_PRIVATE_DIR_NAME)
+            .join(guest_contracts::env::USER_ENV_FILENAME)
     })
 }
 
@@ -625,10 +622,10 @@ pub(super) fn insert_claude_code_env(
     context: &ExecutionContext,
     host_env: &HostEnv,
 ) {
-    // Pass USE_MOCK_CLAUDE from host environment for testing
-    // (skip if debugNoMockClaude is set in execution context)
+    // Pass USE_MOCK_CLAUDE from host environment for testing unless preview
+    // evaluation explicitly asks for the real agent runtime.
     if let Some(val) = &host_env.use_mock_claude
-        && !context.debug_no_mock_claude.unwrap_or(false)
+        && !context.real_agent_in_preview.unwrap_or(false)
     {
         env.insert(
             guest_contracts::env::USE_MOCK_CLAUDE_ENV.into(),
@@ -693,10 +690,10 @@ pub(super) fn insert_codex_env(
         );
     }
 
-    // Pass USE_MOCK_CODEX from host environment for testing
-    // (skip if debugNoMockCodex is set in execution context).
+    // Pass USE_MOCK_CODEX from host environment for testing unless preview
+    // evaluation explicitly asks for the real agent runtime.
     if let Some(val) = &host_env.use_mock_codex
-        && !context.debug_no_mock_codex.unwrap_or(false)
+        && !context.real_agent_in_preview.unwrap_or(false)
     {
         env.insert(guest_contracts::env::USE_MOCK_CODEX_ENV.into(), val.clone());
     }

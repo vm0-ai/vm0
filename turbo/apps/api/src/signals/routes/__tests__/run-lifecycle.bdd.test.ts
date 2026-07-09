@@ -21,6 +21,7 @@ import { getFirewallExecutionMetadata } from "@vm0/connectors/firewall-metadata/
 import { HttpResponse, http } from "msw";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { v5 as uuidv5 } from "uuid";
+import { createStore } from "ccstate";
 
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now, nowDate } from "../../../lib/time";
@@ -44,6 +45,12 @@ import { storageTextFile } from "./helpers/api-bdd-storage-files";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
+import { createFixtureTracker } from "./helpers/zero-route-test";
+import {
+  deleteRelationshipRowsForFixture$,
+  seedRuntimeInjectionWindowMemoryRows$,
+  type RelationshipFixture,
+} from "./helpers/zero-relationships";
 import {
   deleteVm0ManagedDefaultModelKey,
   enableAutomationsFakeKms,
@@ -67,6 +74,16 @@ import {
  */
 
 const context = testContext();
+const relationshipStore = createStore();
+const trackRelationshipFixture = createFixtureTracker(
+  async (fixture: RelationshipFixture): Promise<void> => {
+    await relationshipStore.set(
+      deleteRelationshipRowsForFixture$,
+      fixture,
+      context.signal,
+    );
+  },
+);
 const ASSISTANT_MESSAGE_ID_NAMESPACE = "bfec4fb6-d5b8-43e4-a72a-9f58f87d7e01";
 const TEST_DATA_KEY = Buffer.from("0123456789abcdef0123456789abcdef", "utf8");
 
@@ -74,6 +91,7 @@ const TEST_DATA_KEY = Buffer.from("0123456789abcdef0123456789abcdef", "utf8");
 // value the chat composer sends when picking a model instead of a provider).
 const MODEL_FIRST_SELECTION_PROVIDER_ID =
   "00000000-0000-4000-8000-000000000000";
+const CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET = "zero web upload-file -f <path>";
 const API_DISPATCH_QUEUE_PERSISTENCE_ACTION_TYPES = [
   "api_dispatch_persist_custom_connector_auth_refs",
   "api_dispatch_insert_runner_job_queue",
@@ -2992,6 +3010,62 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     expect(cancelled.status).toBe("cancelled");
   });
 
+  it("does not add Codex image upload guidance outside web chat Codex runs", async () => {
+    const api = createRunsAutomationsApi(context);
+    const fw = createFirewallApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    await fw.seedOrgCodexProvider(actor, {
+      accessToken: "chatgpt-access-image-guidance",
+      refreshToken: "chatgpt-refresh-image-guidance",
+      accountId: "workspace-id-image-guidance",
+      idToken: "chatgpt-id-token-image-guidance",
+      expiresIn: 3600,
+    });
+
+    const codexWebRun = await api.createRun(actor, {
+      agentId,
+      prompt: "generate an image with codex without a chat thread",
+      modelProvider: "codex-oauth-token",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const codexWebClaim = await api.claimRunnerJob(codexWebRun.runId);
+    const codexWebPrompt = codexWebClaim.appendSystemPrompt ?? "";
+    expect(codexWebClaim.cliAgentType).toBe("codex");
+    expect(codexWebPrompt).not.toContain(CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET);
+    expect(codexWebPrompt).not.toContain("When running in Codex");
+    await api.requestCancelRun(actor, codexWebRun.runId, [200]);
+
+    const claudeWebRun = await api.createRun(actor, {
+      agentId,
+      prompt: "generate an image with claude",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claudeWebClaim = await api.claimRunnerJob(claudeWebRun.runId);
+    expect(claudeWebClaim.cliAgentType).toBe("claude-code");
+    expect(claudeWebClaim.appendSystemPrompt ?? "").not.toContain(
+      CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET,
+    );
+    await api.requestCancelRun(actor, claudeWebRun.runId, [200]);
+
+    const codexSlackRun = await api.createDirectRun(actor, {
+      agentComposeId: agentId,
+      prompt: "generate an image from slack",
+      modelProviderType: "codex-oauth-token",
+      triggerSource: "slack",
+      vars: { ZERO_AGENT_ID: agentId },
+      secrets: { ZERO_TOKEN: "bdd-zero-direct-token" },
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const codexSlackClaim = await api.claimRunnerJob(codexSlackRun.runId);
+    expect(codexSlackClaim.cliAgentType).toBe("codex");
+    expect(codexSlackClaim.appendSystemPrompt ?? "").not.toContain(
+      CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET,
+    );
+    await api.requestCancelRun(actor, codexSlackRun.runId, [200]);
+  });
+
   it("claims MiniMax Codex runs with structured runtime config", async () => {
     const api = createRunsAutomationsApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
@@ -3031,9 +3105,9 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     expect(claim.cliAgentType).toBe("codex");
     expect(claim.environment).toMatchObject({
       OPENAI_API_KEY: minimaxApiKeyPlaceholder,
-      OPENAI_BASE_URL: "https://api.minimax.io/v1",
       OPENAI_MODEL: "MiniMax-M3",
     });
+    expect(claim.environment).not.toHaveProperty("OPENAI_BASE_URL");
     expect(claim.codexRuntimeConfig).toMatchObject({
       providerId: "minimax",
       name: "MiniMax",
@@ -3103,9 +3177,9 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     expect(claim.cliAgentType).toBe("codex");
     expect(claim.environment).toMatchObject({
       OPENAI_API_KEY: minimaxApiKeyPlaceholder,
-      OPENAI_BASE_URL: "https://api.minimax.io/v1",
       OPENAI_MODEL: "MiniMax-M3",
     });
+    expect(claim.environment).not.toHaveProperty("OPENAI_BASE_URL");
     expect(claim.codexRuntimeConfig).toMatchObject({
       providerId: "minimax",
       name: "MiniMax",
@@ -5351,9 +5425,12 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       "zero doctor permission-change --help",
       "--duration 1h|24h|7d|always",
       "zero workflow --help",
+      "Workflow and automation requests use the `workflow-setup` skill first",
       "Local changes or newly-created workflow folders",
       "runtime-only and will not persist, sync back, or affect future runs",
-      "zero workflow create|edit <name> --dir <path>",
+      "Create or update a durable workflow with `zero workflow create|edit <name>`, passing the workflow body via `--instruction <text>` or `--instruction-file <path>`",
+      "`--dir <path>` uploads supplementary files only and must not contain a `SKILL.md`",
+      "run `zero intro` first",
       "zero developer-support --help",
       "zero maps --help",
       "zero slack message send --help",
@@ -5397,6 +5474,18 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     if (!actor.orgId) {
       throw new Error("Expected actor to belong to an org");
     }
+    const memoryFixture = await trackRelationshipFixture(
+      Promise.resolve({
+        orgId: actor.orgId,
+        userId: actor.userId,
+      }),
+    );
+    await relationshipStore.set(
+      seedRuntimeInjectionWindowMemoryRows$,
+      memoryFixture,
+      context.signal,
+    );
+
     await updateFeatureSwitchesForUser(
       context,
       { ...actor, orgId: actor.orgId },
@@ -5407,7 +5496,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
 
     const memoryRun = await api.createRun(actor, {
       agentId: agent.agentId,
-      prompt: "summarize relationship context",
+      prompt: "security review injection preview",
       modelProvider: "anthropic-api-key",
     });
     await api.heartbeatRunner(runnerGroup);
@@ -5418,7 +5507,51 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       'zero memory context --query "<topic>"',
     );
     expect(memoryAppendSystemPrompt).toContain("These commands are read-only");
+    expect(memoryAppendSystemPrompt).not.toContain("# Zero Memory Context");
+    expect(memoryAppendSystemPrompt).not.toContain(
+      "The user prefers concise launch summaries.",
+    );
     await api.requestCancelRun(actor, memoryRun.runId, [200]);
+
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      {
+        [FeatureSwitchKey.RelationshipMemory]: true,
+        [FeatureSwitchKey.RelationshipMemoryRuntimeInjection]: true,
+      },
+    );
+
+    const runtimeMemoryRun = await api.createRun(actor, {
+      agentId: agent.agentId,
+      prompt: "security review injection preview",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const runtimeMemoryClaim = await api.claimRunnerJob(runtimeMemoryRun.runId);
+    const runtimeMemoryAppendSystemPrompt =
+      runtimeMemoryClaim.appendSystemPrompt ?? "";
+    expect(runtimeMemoryAppendSystemPrompt).toContain("# Zero Memory Context");
+    expect(runtimeMemoryAppendSystemPrompt).toContain("Stable profile:");
+    expect(runtimeMemoryAppendSystemPrompt).toContain("Current context:");
+    expect(runtimeMemoryAppendSystemPrompt).toContain(
+      "Relevant memories for this request:",
+    );
+    expect(runtimeMemoryAppendSystemPrompt).toContain(
+      "The user prefers concise launch summaries.",
+    );
+    expect(runtimeMemoryAppendSystemPrompt).toContain(
+      "The current work is validating runtime memory injection.",
+    );
+    expect(runtimeMemoryAppendSystemPrompt).toContain(
+      "Follow up on the security review injection preview.",
+    );
+    // The query-relevant memory sits outside the bounded profile window and is
+    // surfaced only by prompt recall in the "Relevant memories" section.
+    expect(runtimeMemoryAppendSystemPrompt).toContain(
+      "Capture findings from the security review injection preview session.",
+    );
+    await api.requestCancelRun(actor, runtimeMemoryRun.runId, [200]);
   });
 
   it("keeps goal tools allowed when no feature flags are enabled", async () => {

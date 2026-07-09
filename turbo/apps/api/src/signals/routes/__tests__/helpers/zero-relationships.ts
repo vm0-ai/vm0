@@ -15,6 +15,13 @@ export interface RelationshipFixture {
   readonly userId: string;
 }
 
+export interface RelationshipAliasRaceTrigger {
+  readonly displayName: string;
+  readonly functionName: string;
+  readonly identityKey: string;
+  readonly triggerName: string;
+}
+
 function requestRelationshipState(
   signal: AbortSignal,
   path: string,
@@ -88,6 +95,66 @@ export const seedRelationshipRows$ = command(
       action: "seed-relationships",
       fixture: fixtureToWire(args.fixture),
       count: args.count,
+    });
+  },
+);
+
+export const seedRuntimeInjectionMemoryRows$ = command(
+  async (
+    _,
+    fixture: RelationshipFixture,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    await postAction(signal, {
+      action: "seed-runtime-injection-memories",
+      fixture: fixtureToWire(fixture),
+    });
+  },
+);
+
+export const seedRuntimeInjectionWindowMemoryRows$ = command(
+  async (
+    _,
+    fixture: RelationshipFixture,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    await postAction(signal, {
+      action: "seed-runtime-injection-window-memories",
+      fixture: fixtureToWire(fixture),
+    });
+  },
+);
+
+export const createRelationshipAliasRaceTrigger$ = command(
+  async (
+    _,
+    args: {
+      readonly fixture: RelationshipFixture;
+      readonly trigger: RelationshipAliasRaceTrigger;
+    },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    await postAction(signal, {
+      action: "create-alias-race-trigger",
+      fixture: fixtureToWire(args.fixture),
+      display_name: args.trigger.displayName,
+      identity_key: args.trigger.identityKey,
+      function_name: args.trigger.functionName,
+      trigger_name: args.trigger.triggerName,
+    });
+  },
+);
+
+export const deleteRelationshipAliasRaceTrigger$ = command(
+  async (
+    _,
+    trigger: Pick<RelationshipAliasRaceTrigger, "functionName" | "triggerName">,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    await postAction(signal, {
+      action: "delete-alias-race-trigger",
+      function_name: trigger.functionName,
+      trigger_name: trigger.triggerName,
     });
   },
 );

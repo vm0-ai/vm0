@@ -1366,7 +1366,7 @@ jobs:
             VITE_VAPID_PUBLIC_KEY=${{ vars.VAPID_PUBLIC_KEY }}
             VITE_PLAUSIBLE_SCRIPT_URL=${{ vars.PLAUSIBLE_SCRIPT_URL_PROD }}
             VITE_POSTHOG_KEY=${{ vars.POSTHOG_KEY }}
-            VITE_SENTRY_DSN=${{ secrets.SENTRY_DSN_APP }}
+            VITE_SENTRY_DSN=${{ vars.SENTRY_DSN_APP }}
             SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
             SENTRY_ORG=${{ vars.SENTRY_ORG }}
             SENTRY_PROJECT=${{ vars.SENTRY_PROJECT_APP }}

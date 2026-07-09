@@ -1,5 +1,67 @@
 # Changelog
 
+## [1.249.0](https://github.com/vm0-ai/vm0/compare/api-v1.248.0...api-v1.249.0) (2026-07-08)
+
+
+### Features
+
+* add nintendo eshop catalog connector ([#20660](https://github.com/vm0-ai/vm0/issues/20660)) ([2ea4549](https://github.com/vm0-ai/vm0/commit/2ea45494646c4ecfcdfe1dcce65c8517d902cabd))
+
+
+### Bug Fixes
+
+* persist Vercel preview bypass cookie ([#20715](https://github.com/vm0-ai/vm0/issues/20715)) ([972b41f](https://github.com/vm0-ai/vm0/commit/972b41f88246bf49059300c11eeb7823895f9764))
+* remove minimax codex legacy base url ([#20707](https://github.com/vm0-ai/vm0/issues/20707)) ([a4a9e77](https://github.com/vm0-ai/vm0/commit/a4a9e77fe2d8e1065f1b57a9ead26565b054fa39))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.172.0
+    * @vm0/connectors bumped to 1.150.0
+    * @vm0/core bumped to 8.416.0
+    * @vm0/db bumped to 1.100.7
+
+## [1.248.0](https://github.com/vm0-ai/vm0/compare/api-v1.247.0...api-v1.248.0) (2026-07-08)
+
+
+### Features
+
+* enable playstation connector for all users ([#20693](https://github.com/vm0-ai/vm0/issues/20693)) ([78572ef](https://github.com/vm0-ai/vm0/commit/78572efdae6b293e07558df9cd1dd1ee72e29231))
+* load artifacts page from a bulk fetch cached in indexeddb ([#20601](https://github.com/vm0-ai/vm0/issues/20601)) ([854bb86](https://github.com/vm0-ai/vm0/commit/854bb867c952ecc0bbc6d9ae3c65c53c0da42d94))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.171.0
+    * @vm0/connectors bumped to 1.149.0
+    * @vm0/core bumped to 8.415.0
+    * @vm0/db bumped to 1.100.6
+
+## [1.247.0](https://github.com/vm0-ai/vm0/compare/api-v1.246.1...api-v1.247.0) (2026-07-08)
+
+
+### Features
+
+* accept runner starting heartbeat mode ([#20672](https://github.com/vm0-ai/vm0/issues/20672)) ([7c49c7b](https://github.com/vm0-ai/vm0/commit/7c49c7b703a6163b1ebf4b5084c284ee60d9ff13))
+
+
+### Refactoring
+
+* remove unused zero compose and custom connector routes ([#20644](https://github.com/vm0-ai/vm0/issues/20644)) ([f40d11e](https://github.com/vm0-ai/vm0/commit/f40d11eb3e65bd5c7c685171f785f367270c3857))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.170.0
+    * @vm0/core bumped to 8.414.8
+    * @vm0/db bumped to 1.100.5
+
 ## [1.246.1](https://github.com/vm0-ai/vm0/compare/api-v1.246.0...api-v1.246.1) (2026-07-08)
 
 

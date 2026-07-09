@@ -1,5 +1,6 @@
 import {
   zeroConnectorManualGrantContract,
+  zeroConnectorNoAuthGrantContract,
   zeroConnectorOpenIdStartContract,
   zeroConnectorOauthStartContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
@@ -480,6 +481,84 @@ describe("directed connector authorize page", () => {
       expect(screen.getByText("Steam authorized")).toBeInTheDocument();
       expect(screen.getByText("Authorized")).toBeInTheDocument();
     });
+  });
+
+  it("connects a no-auth connector directly before authorizing the agent", async () => {
+    let connectCalls = 0;
+    context.mocks.api(
+      zeroConnectorNoAuthGrantContract.connect,
+      ({ body, params, respond }) => {
+        connectCalls += 1;
+        expect(params.type).toBe("nintendo-eshop-catalog");
+        expect(body).toStrictEqual({ authMethod: "api" });
+        return respond(200, {
+          id: crypto.randomUUID(),
+          type: "nintendo-eshop-catalog",
+          authMethod: body.authMethod,
+          externalId: null,
+          externalUsername: null,
+          externalEmail: null,
+          oauthScopes: null,
+          connectionStatus: "connected",
+          reconnectReason: null,
+          tokenExpiresAt: null,
+          createdAt: "2026-01-01T00:00:00Z",
+          updatedAt: "2026-01-01T00:00:00Z",
+        });
+      },
+    );
+    let updateCalls = 0;
+    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+      return respond(200, { enabledTypes: [] });
+    });
+    context.mocks.api(
+      zeroUserConnectorsContract.update,
+      ({ body, params, respond }) => {
+        updateCalls += 1;
+        expect(params.id).toBe(AGENT_ID);
+        expect(body).toStrictEqual({
+          enabledTypes: ["nintendo-eshop-catalog"],
+          operation: "add",
+        });
+        return respond(200, { enabledTypes: body.enabledTypes });
+      },
+    );
+    mockPublicConnectorStatus([
+      publicStatusItem({
+        connectorRef: "nintendo-eshop-catalog",
+        label: "Nintendo eShop Catalog",
+        authMethods: [
+          {
+            id: "api",
+            label: "Public catalog",
+            description: null,
+            grantKind: "none",
+            manualFields: [],
+            startOptions: [],
+          },
+        ],
+      }),
+    ]);
+
+    detachedSetupPage({
+      context,
+      path: `/connectors/nintendo-eshop-catalog/authorize?agentId=${AGENT_ID}`,
+    });
+
+    await screen.findByText("Zero needs Nintendo eShop Catalog to proceed");
+    click(getButtonByText("Authorize Zero"));
+
+    await waitFor(() => {
+      expect(connectCalls).toBe(1);
+      expect(updateCalls).toBe(1);
+      expect(
+        screen.getByText("Nintendo eShop Catalog authorized"),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Authorized")).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByRole("dialog", { name: "Nintendo eShop Catalog" }),
+    ).not.toBeInTheDocument();
   });
 
   it("does not authorize the agent when OAuth connection is cancelled", async () => {

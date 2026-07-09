@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.99](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.98...sandbox-fc-v0.37.99) (2026-07-08)
+
+
+### Performance Improvements
+
+* add fresh sandbox factory stage telemetry ([#20689](https://github.com/vm0-ai/vm0/issues/20689)) ([d33d7cb](https://github.com/vm0-ai/vm0/commit/d33d7cb235410c3080092de8ee2117d081b19308))
+
 ## [0.37.98](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.97...sandbox-fc-v0.37.98) (2026-07-08)
 
 ## [0.37.97](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.96...sandbox-fc-v0.37.97) (2026-07-07)

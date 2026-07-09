@@ -13,7 +13,6 @@ import {
   type ConnectorAuthMethodIdsByRevokeKind,
   type ConnectorTypesByAccessKind,
   type ConnectorTypesByGrantKind,
-  type ConnectorTypesByRevokeKind,
   type ConnectorAuthClientConfigForMethod,
   type ConnectorAuthMethodConfigFor,
   type RefreshTokenAccessConnectorType,
@@ -509,7 +508,7 @@ export type ConnectorAuthMethodGrantMetadata =
       readonly outputs: Readonly<Record<string, ConnectorGrantOutputMetadata>>;
     }
   | {
-      readonly kind: "manual" | "managed";
+      readonly kind: "none" | "manual" | "managed";
       readonly outputs: Readonly<Record<string, ConnectorGrantOutputMetadata>>;
     };
 
@@ -731,6 +730,7 @@ export function getConnectorAuthMethodGrantMetadata(
         kind: method.grant.kind,
         outputs: connectorGrantOutputMetadataMap(method.grant.outputs),
       };
+    case "none":
     case "manual":
     case "managed":
       return {
@@ -949,21 +949,15 @@ export type ConnectorAuthMethodRefByGrantKind<Kind extends ConnectorGrantKind> =
 
 export type ConnectorAuthMethodRefByAccessKind<
   Kind extends ConnectorAccessKind,
-> = {
-  readonly [Type in ConnectorTypesByAccessKind<Kind>]: {
-    readonly type: Type;
-    readonly authMethod: ConnectorAuthMethodIdsByAccessKind<Type, Kind>;
-  };
-}[ConnectorTypesByAccessKind<Kind>];
+> = ConnectorAuthMethodRef & {
+  readonly __connectorAuthMethodAccessKind?: Kind;
+};
 
 export type ConnectorAuthMethodRefByRevokeKind<
   Kind extends ConnectorRevokeKind,
-> = {
-  readonly [Type in ConnectorTypesByRevokeKind<Kind>]: {
-    readonly type: Type;
-    readonly authMethod: ConnectorAuthMethodIdsByRevokeKind<Type, Kind>;
-  };
-}[ConnectorTypesByRevokeKind<Kind>];
+> = ConnectorAuthMethodRef & {
+  readonly __connectorAuthMethodRevokeKind?: Kind;
+};
 
 export function connectorAuthMethodRefHasGrantKind<
   Kind extends ConnectorGrantKind,
@@ -1267,6 +1261,7 @@ function connectorGrantScopes(
     case "device-auth":
       return grant.scopes;
     case "openid-auth":
+    case "none":
     case "manual":
     case "managed":
     case undefined:
@@ -1366,6 +1361,7 @@ export function getAvailableConnectorAuthMethodIds(
       case "auth-code":
       case "external-code":
       case "device-auth":
+      case "none":
       case "manual": {
         break;
       }
@@ -1712,6 +1708,9 @@ function hasRuntimeAvailableAuthMethod(
         return true;
       }
       case "manual": {
+        return true;
+      }
+      case "none": {
         return true;
       }
       case "managed":

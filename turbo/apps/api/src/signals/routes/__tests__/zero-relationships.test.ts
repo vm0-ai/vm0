@@ -17,8 +17,11 @@ import {
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
 import {
+  createRelationshipAliasRaceTrigger$,
+  deleteRelationshipAliasRaceTrigger$,
   deleteRelationshipRowsForFixture$,
   seedRelationshipRows$,
+  type RelationshipAliasRaceTrigger,
   type RelationshipFixture,
 } from "./helpers/zero-relationships";
 import type { ApiTestUser } from "./helpers/api-bdd";
@@ -273,6 +276,12 @@ async function deleteRelationshipFixture(
   await deleteFeatureSwitchesForUser(context, fixture);
 }
 
+async function deleteRelationshipAliasRaceTrigger(
+  trigger: RelationshipAliasRaceTrigger,
+): Promise<void> {
+  await store.set(deleteRelationshipAliasRaceTrigger$, trigger, context.signal);
+}
+
 async function deleteSlackFixture(
   fixture: SlackIntegrationFixture,
 ): Promise<void> {
@@ -282,6 +291,9 @@ async function deleteSlackFixture(
 describe("GET /api/zero/relationships/*", () => {
   const track = createFixtureTracker(deleteRelationshipFixture);
   const trackSlack = createFixtureTracker(deleteSlackFixture);
+  const trackAliasRace = createFixtureTracker(
+    deleteRelationshipAliasRaceTrigger,
+  );
 
   it("returns empty read responses in the current org-user scope", async () => {
     await track(seedRelationshipFixture());
@@ -498,7 +510,7 @@ describe("GET /api/zero/relationships/*", () => {
       },
     });
 
-    const search = await accept(
+    const customerSearch = await accept(
       relationshipsClient().search({
         headers: authHeaders(),
         query: { q: "customer" },
@@ -506,13 +518,120 @@ describe("GET /api/zero/relationships/*", () => {
       [200],
     );
     expect(
-      search.body.relationships.some((relationship) => {
+      customerSearch.body.relationships.some((relationship) => {
         return relationship.entity.primaryEmail === "customer@example.com";
       }),
     ).toBeTruthy();
+
+    const allRelationships = await accept(
+      relationshipsClient().search({
+        headers: authHeaders(),
+        query: { page: 1, limit: 100 },
+      }),
+      [200],
+    );
+    const person = allRelationships.body.relationships.find((relationship) => {
+      return relationship.entity.primaryEmail === "customer@example.com";
+    });
+    const organization = allRelationships.body.relationships.find(
+      (relationship) => {
+        return (
+          relationship.entity.type === "organization" &&
+          relationship.entity.domain === "example.com"
+        );
+      },
+    );
+    expect(person).toMatchObject({
+      entity: {
+        type: "person",
+        displayName: "customer@example.com",
+        primaryEmail: "customer@example.com",
+        domain: "example.com",
+      },
+    });
+    expect(organization).toMatchObject({
+      entity: {
+        type: "organization",
+        displayName: "Example",
+        primaryEmail: null,
+        domain: "example.com",
+      },
+    });
+    expect(person?.id).not.toBe(organization?.id);
   });
 
-  it("uses the Gmail message time for relationship interaction dates", async () => {
+  it("resolves the canonical relationship when Gmail extraction races entity alias creation", async () => {
+    const fixture = await track(seedRelationshipFixture());
+    const suffix = randomUUID().replaceAll("-", "");
+    const targetEmail = `alias-race-${suffix}@example.test`;
+    const raceTrigger = await trackAliasRace(
+      Promise.resolve({
+        displayName: targetEmail,
+        identityKey: `person:${targetEmail}`,
+        functionName: `vm0_test_claim_alias_${suffix}`,
+        triggerName: `vm0_test_claim_alias_${suffix}`,
+      }),
+    );
+    const gmailEmail = `relationship-${randomUUID()}@example.com`;
+    configureGmailEnv();
+    configureGmailWatchMock();
+    configureGmailBackfillMocks(gmailEmail, {
+      from: `Alias Race <${targetEmail}>`,
+      messageId: `msg-alias-race-${suffix}`,
+      bodyText: "Please send the alias race follow-up.",
+    });
+    await store.set(
+      createRelationshipAliasRaceTrigger$,
+      { fixture, trigger: raceTrigger },
+      context.signal,
+    );
+    await connectGmail(fixture, gmailEmail);
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    await accept(
+      relationshipsClient().gmailEnable({
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+    const drained = await accept(
+      cronClient().drain({
+        headers: cronHeaders(),
+      }),
+      [200],
+    );
+    expect(drained.body.relationshipsUpdated).toBeGreaterThanOrEqual(1);
+
+    const resolved = await accept(
+      relationshipsClient().resolve({
+        headers: authHeaders(),
+        query: { email: targetEmail },
+      }),
+      [200],
+    );
+    expect(resolved.body.relationship).toMatchObject({
+      entity: {
+        type: "person",
+        displayName: targetEmail,
+        primaryEmail: targetEmail,
+        domain: "example.test",
+      },
+    });
+
+    const search = await accept(
+      relationshipsClient().search({
+        headers: authHeaders(),
+        query: { q: targetEmail, page: 1, limit: 100 },
+      }),
+      [200],
+    );
+    expect(search.body.relationships).toHaveLength(1);
+    expect(search.body.relationships[0]?.id).toBe(
+      resolved.body.relationship?.id,
+    );
+  });
+
+  it("uses the Gmail message time for relationship state dates without fallback interactions", async () => {
     const messageOccurredAt = "2026-02-03T04:05:06.000Z";
     const jobRunAt = new Date("2026-05-06T07:08:09.000Z");
     mockNow(jobRunAt);
@@ -553,7 +672,7 @@ describe("GET /api/zero/relationships/*", () => {
       return relationship.entity.primaryEmail === "customer@example.com";
     });
     expect(customer?.lastInteractionAt).toBe(messageOccurredAt);
-    expect(customer?.recentInteractions[0]?.occurredAt).toBe(messageOccurredAt);
+    expect(customer?.recentInteractions).toStrictEqual([]);
     expect(customer?.lastInteractionAt).not.toBe(jobRunAt.toISOString());
   });
 
@@ -1045,15 +1164,10 @@ describe("GET /api/zero/relationships/*", () => {
         type: "organization",
         displayName: "Slack channel C-memory",
       },
-      relationshipType: "Slack channel",
-      recentInteractions: [
-        {
-          provider: "slack",
-          externalId: "T-memory-backfill:C-memory:1780000000.000100",
-          messageId: "1780000000.000100",
-          snippet: "The user posted in Slack channel C-memory on Slack.",
-        },
-      ],
+      relationshipType: null,
+      status: "active",
+      lastInteractionAt: "2026-05-28T20:26:40.000Z",
+      recentInteractions: [],
     });
   });
 });

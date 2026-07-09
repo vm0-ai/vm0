@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.139.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.139.4...runner-rs-v0.139.5) (2026-07-08)
+
+
+### Bug Fixes
+
+* bound zstd usage validation ([#20708](https://github.com/vm0-ai/vm0/issues/20708)) ([ba4069e](https://github.com/vm0-ai/vm0/commit/ba4069e87f9cc56e1fad5168fe6c9750141d69fc))
+
+
+### Documentation
+
+* clarify runner active run status schema ([#20686](https://github.com/vm0-ai/vm0/issues/20686)) ([1849808](https://github.com/vm0-ai/vm0/commit/18498089b25834157327be0142ed89637bedc6c0))
+
+
+### Refactoring
+
+* expose auth cache test hooks ([#20705](https://github.com/vm0-ai/vm0/issues/20705)) ([bfaceb4](https://github.com/vm0-ai/vm0/commit/bfaceb452d465411cceb39fd5beab4db3955dbe3))
+
+## [0.139.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.139.3...runner-rs-v0.139.4) (2026-07-08)
+
+
+### Documentation
+
+* **runner:** document network policy refresh safety contract ([#20695](https://github.com/vm0-ai/vm0/issues/20695)) ([ac6d18c](https://github.com/vm0-ai/vm0/commit/ac6d18c9b3733f429fa1fe3805100d4bfb752793))
+
+
+### Refactoring
+
+* **mitm-addon:** extract upstream admission owner ([#20677](https://github.com/vm0-ai/vm0/issues/20677)) ([fedd3e4](https://github.com/vm0-ai/vm0/commit/fedd3e4cd6a13c016658f0d973ceb531c80f6f7d))
+
 ## [0.139.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.139.2...runner-rs-v0.139.3) (2026-07-08)
 
 ## [0.139.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.139.1...runner-rs-v0.139.2) (2026-07-08)

@@ -47,7 +47,9 @@ use event_delivery::{AckedEventPrefix, PreparedEvent};
 use framework::CliFrameworkBehavior;
 use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_info, log_warn};
-use guest_contracts::diagnostics::{CliTerminationDiagnostic, FailureDetailSource, FailureReason};
+use guest_contracts::diagnostics::{
+    CliObservedExitDiagnostic, CliTerminationDiagnostic, FailureDetailSource, FailureReason,
+};
 use process_group::ChildProcessGroup;
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -180,6 +182,9 @@ pub struct CliExecutionResult {
     /// On Unix, signal termination is mapped to `128 + signal`, matching shell
     /// convention, so SIGKILL is reported as `137`.
     pub exit_code: i32,
+
+    /// Raw CLI process exit observation before signal exits are flattened.
+    pub cli_observed_exit: Option<CliObservedExitDiagnostic>,
 
     /// Best-effort, secret-masked stderr tail captured from the CLI.
     ///
@@ -368,6 +373,8 @@ impl<'a> CliRuntimeConfig<'a> {
         {
             return Cow::Borrowed(self.user_env);
         }
+        // Structured Codex runtime config is authoritative; do not let stale
+        // provider env leak a conflicting base URL into the child process.
         let mut user_env = self.user_env.clone();
         user_env.remove(OPENAI_BASE_URL_ENV_KEY);
         Cow::Owned(user_env)
@@ -1172,23 +1179,7 @@ async fn execute_cli_inner(
             None,
         );
     }
-    let exit_code = match status.code() {
-        Some(code) => code,
-        None => {
-            let mut code = 1;
-            #[cfg(unix)]
-            {
-                use std::os::unix::process::ExitStatusExt;
-                if let Some(sig) = status.signal() {
-                    log_warn!(LOG_TAG, "Process killed by signal {sig}");
-                    // Map signal to 128+signal (same convention as bash/vsock-guest)
-                    // so the runner can detect OOM kills (SIGKILL=9 → exit 137).
-                    code = 128 + sig;
-                }
-            }
-            code
-        }
-    };
+    let (exit_code, cli_observed_exit) = cli_exit_summary_from_status(&status);
 
     // Apply the same drain deadline to stderr — orphaned child processes
     // may hold the stderr fd open just like stdout.
@@ -1223,6 +1214,7 @@ async fn execute_cli_inner(
 
     Ok(CliExecutionResult {
         exit_code,
+        cli_observed_exit,
         stderr_lines: masked_stderr_lines,
         last_event_sequence,
         claude_result,
@@ -1231,6 +1223,24 @@ async fn execute_cli_inner(
         control_error,
         cli_termination,
     })
+}
+
+fn cli_exit_summary_from_status(status: &ExitStatus) -> (i32, Option<CliObservedExitDiagnostic>) {
+    if let Some(code) = status.code() {
+        return (code, Some(CliObservedExitDiagnostic::from_exit_code(code)));
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::ExitStatusExt;
+        if let Some(sig) = status.signal() {
+            log_warn!(LOG_TAG, "Process killed by signal {sig}");
+            let observed_exit = CliObservedExitDiagnostic::from_signal(sig);
+            return (observed_exit.mapped_exit_code, Some(observed_exit));
+        }
+    }
+
+    (1, None)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1369,9 +1379,9 @@ mod tests {
     use super::termination::{CliTerminationRuntime, PostResultCleanupPolicy};
     use super::{
         CliExitObservation, CliFailureDiagnostic, CliRuntimeConfig, child_env,
-        claude_initial_prompt_frame, codex_home_for_home_dir, codex_runtime_config, command,
-        exec_boundary, record_cli_exit, select_failure_diagnostic, set_cli_current_dir,
-        with_carried_failure_reason,
+        claude_initial_prompt_frame, cli_exit_summary_from_status, codex_home_for_home_dir,
+        codex_runtime_config, command, exec_boundary, record_cli_exit, select_failure_diagnostic,
+        set_cli_current_dir, with_carried_failure_reason,
     };
     use crate::active_input::ActiveInputRuntime;
     use crate::{constants, env};
@@ -1512,7 +1522,7 @@ mod tests {
     }
 
     #[test]
-    fn structured_codex_runtime_config_omits_legacy_openai_base_url_from_child_env() {
+    fn structured_codex_runtime_config_omits_stale_openai_base_url_from_child_env() {
         let user_env = HashMap::from([
             ("OPENAI_API_KEY".to_string(), "sk-test".to_string()),
             ("OPENAI_MODEL".to_string(), "MiniMax-M3".to_string()),
@@ -1602,6 +1612,38 @@ mod tests {
             String::from_utf8_lossy(&output.stdout).trim(),
             dir.path().to_string_lossy()
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn cli_exit_summary_preserves_normal_exit_137() {
+        let status = std::process::ExitStatus::from_raw(137 << 8);
+
+        let (exit_code, observed_exit) = cli_exit_summary_from_status(&status);
+
+        let observed_exit = observed_exit.expect("normal exit should be observed");
+        assert_eq!(exit_code, 137);
+        assert_eq!(
+            observed_exit,
+            guest_contracts::diagnostics::CliObservedExitDiagnostic::from_exit_code(137)
+        );
+        assert!(!observed_exit.is_sigkill());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn cli_exit_summary_preserves_signal_exit_before_mapping() {
+        let status = std::process::ExitStatus::from_raw(libc::SIGKILL);
+
+        let (exit_code, observed_exit) = cli_exit_summary_from_status(&status);
+
+        let observed_exit = observed_exit.expect("signal exit should be observed");
+        assert_eq!(exit_code, 137);
+        assert_eq!(
+            observed_exit,
+            guest_contracts::diagnostics::CliObservedExitDiagnostic::from_signal(libc::SIGKILL)
+        );
+        assert!(observed_exit.is_sigkill());
     }
 
     #[cfg(unix)]

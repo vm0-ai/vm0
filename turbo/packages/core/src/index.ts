@@ -343,6 +343,7 @@ export {
   zeroConnectorsByTypeContract,
   zeroConnectorScopeDiffContract,
   zeroConnectorManualGrantContract,
+  zeroConnectorNoAuthGrantContract,
   zeroConnectorsSearchContract,
   zeroOrgContract,
   zeroOrgLeaveContract,

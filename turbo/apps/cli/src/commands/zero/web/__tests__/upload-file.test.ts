@@ -12,6 +12,13 @@ import { mkdirSync, rmSync, writeFileSync } from "fs";
 import { basename, join } from "path";
 import { tmpdir } from "os";
 import { http, HttpResponse } from "msw";
+import {
+  CLIENT_REQUEST_ID_HEADER,
+  CLIENT_SESSION_ID_HEADER,
+  CLIENT_TYPE_CLI,
+  CLIENT_TYPE_HEADER,
+  CLIENT_VERSION_HEADER,
+} from "@vm0/api-contracts/contracts/client-headers";
 import { server } from "../../../../mocks/server";
 import { uploadFileCommand } from "../upload-file";
 import chalk from "chalk";
@@ -19,6 +26,14 @@ import chalk from "chalk";
 const PREPARE_URL = "http://localhost:3000/api/zero/uploads/prepare";
 const COMPLETE_URL = "http://localhost:3000/api/zero/uploads/complete";
 const PUT_URL = "https://mock-r2.test/upload-target";
+
+function requiredHeader(headers: Headers, name: string): string {
+  const value = headers.get(name);
+  if (!value) {
+    throw new Error(`Missing ${name}`);
+  }
+  return value;
+}
 
 describe("zero web upload-file command", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
@@ -34,6 +49,7 @@ describe("zero web upload-file command", () => {
   beforeEach(() => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+    vi.stubEnv("ZERO_TOKEN", undefined);
     vi.stubEnv("VM0_TOKEN", "test-token");
 
     tmpDir = join(tmpdir(), `web-upload-test-${Date.now()}`);
@@ -62,6 +78,8 @@ describe("zero web upload-file command", () => {
 
       let putReceivedContentType: string | null = null;
       let completed = false;
+      let prepareSessionId: string | undefined;
+      let prepareRequestId: string | undefined;
 
       server.use(
         http.post(PREPARE_URL, async ({ request }) => {
@@ -69,6 +87,16 @@ describe("zero web upload-file command", () => {
             "Bearer test-token",
           );
           expect(request.headers.get("content-type")).toBe("application/json");
+          expect(request.headers.get(CLIENT_VERSION_HEADER)).toBe("0.0.0-test");
+          expect(request.headers.get(CLIENT_TYPE_HEADER)).toBe(CLIENT_TYPE_CLI);
+          prepareSessionId = requiredHeader(
+            request.headers,
+            CLIENT_SESSION_ID_HEADER,
+          );
+          prepareRequestId = requiredHeader(
+            request.headers,
+            CLIENT_REQUEST_ID_HEADER,
+          );
 
           const body = (await request.json()) as {
             filename: string;
@@ -83,12 +111,24 @@ describe("zero web upload-file command", () => {
         }),
         http.put(PUT_URL, ({ request }) => {
           putReceivedContentType = request.headers.get("content-type");
+          expect(request.headers.get(CLIENT_TYPE_HEADER)).toBeNull();
+          expect(request.headers.get(CLIENT_VERSION_HEADER)).toBeNull();
+          expect(request.headers.get(CLIENT_SESSION_ID_HEADER)).toBeNull();
+          expect(request.headers.get(CLIENT_REQUEST_ID_HEADER)).toBeNull();
           return new HttpResponse(null, { status: 200 });
         }),
         http.post(COMPLETE_URL, async ({ request }) => {
           expect(request.headers.get("authorization")).toBe(
             "Bearer test-token",
           );
+          expect(request.headers.get(CLIENT_VERSION_HEADER)).toBe("0.0.0-test");
+          expect(request.headers.get(CLIENT_TYPE_HEADER)).toBe(CLIENT_TYPE_CLI);
+          expect(
+            requiredHeader(request.headers, CLIENT_SESSION_ID_HEADER),
+          ).toBe(prepareSessionId);
+          expect(
+            requiredHeader(request.headers, CLIENT_REQUEST_ID_HEADER),
+          ).not.toBe(prepareRequestId);
           expect(await request.json()).toEqual({
             id: prepared.id,
             contentType: prepared.contentType,

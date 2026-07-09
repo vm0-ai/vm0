@@ -8,6 +8,7 @@ import {
   zeroConnectorOpenIdStartContract,
   zeroConnectorOauthStartContract,
   zeroConnectorManualGrantContract,
+  zeroConnectorNoAuthGrantContract,
   zeroConnectorOauthDeviceAuthSessionContract,
   zeroConnectorScopeDiffContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
@@ -1586,6 +1587,143 @@ describe("connectors page", () => {
       expect(authWindow.location.href).toBe(
         "https://oauth.test/stripe/authorize",
       );
+    });
+  });
+
+  it("enables a single no-auth connector without opening the connect dialog", async () => {
+    mockConnectors([]);
+    mockPublicConnectorStatus([
+      publicStatusItem({
+        connectorRef: "nintendo-eshop-catalog",
+        label: "Nintendo eShop Catalog",
+        description: "Nintendo eShop public catalog",
+        authMethods: [
+          {
+            id: "api",
+            label: "Public catalog",
+            description: "Enable public catalog data.",
+            grantKind: "none",
+            manualFields: [],
+            startOptions: [],
+          },
+        ],
+      }),
+    ]);
+    const authWindow = createMockAuthWindow();
+    const openMock = context.mocks.browser.open(authWindow);
+    let connectCount = 0;
+    context.mocks.api(
+      zeroConnectorNoAuthGrantContract.connect,
+      ({ body, params, respond }) => {
+        connectCount += 1;
+        expect(params.type).toBe("nintendo-eshop-catalog");
+        expect(body.authMethod).toBe("api");
+        return respond(200, {
+          id: crypto.randomUUID(),
+          type: params.type,
+          authMethod: body.authMethod,
+          externalId: null,
+          externalUsername: null,
+          externalEmail: null,
+          oauthScopes: null,
+          connectionStatus: "connected",
+          reconnectReason: null,
+          tokenExpiresAt: null,
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        });
+      },
+    );
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    await fill(
+      await screen.findByPlaceholderText("Find connectors"),
+      "nintendo",
+    );
+    click(await screen.findByLabelText("Connect Nintendo eShop Catalog"));
+
+    await waitFor(() => {
+      expect(connectCount).toBe(1);
+    });
+    expect(openMock.calls).toHaveLength(0);
+    expect(
+      screen.getByText(/You've successfully connected with/u),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Public catalog")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Enable public catalog data."),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows a no-auth method in the multi-method connect dialog", async () => {
+    mockConnectors([]);
+    mockPublicConnectorStatus([
+      publicStatusItem({
+        connectorRef: "stripe",
+        label: "Public Stripe",
+        description: "Public Stripe description",
+        authMethods: [
+          {
+            id: "oauth",
+            label: "Public OAuth",
+            description: "Public OAuth description",
+            grantKind: "auth-code",
+            manualFields: [],
+            startOptions: [],
+          },
+          {
+            id: "api",
+            label: "Public catalog",
+            description: "Enable public catalog data.",
+            grantKind: "none",
+            manualFields: [],
+            startOptions: [],
+          },
+        ],
+      }),
+    ]);
+    let connectCount = 0;
+    context.mocks.api(
+      zeroConnectorNoAuthGrantContract.connect,
+      ({ body, params, respond }) => {
+        connectCount += 1;
+        expect(params.type).toBe("stripe");
+        expect(body.authMethod).toBe("api");
+        return respond(200, {
+          id: crypto.randomUUID(),
+          type: params.type,
+          authMethod: body.authMethod,
+          externalId: null,
+          externalUsername: null,
+          externalEmail: null,
+          oauthScopes: null,
+          connectionStatus: "connected",
+          reconnectReason: null,
+          tokenExpiresAt: null,
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        });
+      },
+    );
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    await fill(await screen.findByPlaceholderText("Find connectors"), "stripe");
+    click(await screen.findByLabelText("Connect Public Stripe"));
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Public Stripe",
+    });
+    expect(within(dialog).getByText("Public OAuth")).toBeInTheDocument();
+    expect(within(dialog).getByText("Public catalog")).toBeInTheDocument();
+    expect(
+      within(dialog).getByText("Enable public catalog data."),
+    ).toBeInTheDocument();
+    click(buttonByText("Enable Public Stripe", dialog));
+
+    await waitFor(() => {
+      expect(connectCount).toBe(1);
     });
   });
 

@@ -1,4 +1,4 @@
-export type PlatformEnvironment = "development" | "preview" | "production";
+type PlatformEnvironment = "development" | "preview" | "production";
 
 function browserHostname(): string | null {
   if (typeof location === "undefined" || !location.hostname) {
@@ -7,7 +7,7 @@ function browserHostname(): string | null {
   return location.hostname.toLowerCase();
 }
 
-export function isProductionHostname(hostname: string): boolean {
+function isProductionHostname(hostname: string): boolean {
   return hostname === "vm0.ai" || hostname.endsWith(".vm0.ai");
 }
 

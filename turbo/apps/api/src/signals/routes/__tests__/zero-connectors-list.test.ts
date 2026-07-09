@@ -12,6 +12,7 @@ import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
+const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 
 interface AuthenticatedFixture {
   readonly orgId: string;
@@ -85,6 +86,25 @@ describe("GET /api/zero/connectors", () => {
     expect(response.body.connectors).toStrictEqual([]);
     expect(Array.isArray(response.body.configuredTypes)).toBeTruthy();
     expect(Array.isArray(response.body.connectorProvidedBindings)).toBeTruthy();
+  });
+
+  it("filters configured connector types by feature availability", async () => {
+    const fixture = seedAuthenticatedFixture();
+    seededFixtures.push(fixture);
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(zeroConnectorsMainContract);
+    const nonStaff = await accept(
+      client.list({ headers: authHeaders() }),
+      [200],
+    );
+    expect(nonStaff.body.configuredTypes).not.toContain(
+      "nintendo-eshop-catalog",
+    );
+
+    mocks.clerk.session(fixture.userId, STAFF_ORG_ID);
+    const staff = await accept(client.list({ headers: authHeaders() }), [200]);
+    expect(staff.body.configuredTypes).toContain("nintendo-eshop-catalog");
   });
 
   it("returns connectors created through the connector API", async () => {

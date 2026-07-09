@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.25.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.24.6...desktop-v0.25.0) (2026-07-08)
+
+
+### Features
+
+* auto-restart desktop plugin mcp server process with bounded backoff ([#20710](https://github.com/vm0-ai/vm0/issues/20710)) ([246006e](https://github.com/vm0-ai/vm0/commit/246006e8b05e8017bce233fba2a852988d226ceb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.172.0
+
+## [0.24.6](https://github.com/vm0-ai/vm0/compare/desktop-v0.24.5...desktop-v0.24.6) (2026-07-08)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.171.0
+
+## [0.24.5](https://github.com/vm0-ai/vm0/compare/desktop-v0.24.4...desktop-v0.24.5) (2026-07-08)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.170.0
+
 ## [0.24.4](https://github.com/vm0-ai/vm0/compare/desktop-v0.24.3...desktop-v0.24.4) (2026-07-08)
 
 

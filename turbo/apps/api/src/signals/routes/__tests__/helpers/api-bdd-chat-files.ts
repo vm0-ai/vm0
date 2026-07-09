@@ -18,7 +18,6 @@ import {
   chatThreadMessagesContract,
   type AttachFile,
   type ArtifactsListResponse,
-  type ArtifactsListQuery,
   type ChatSearchResponse,
   type ChatThreadArtifactRun,
   type ChatThreadDetail,
@@ -100,8 +99,6 @@ export { storageTextFile } from "./api-bdd-storage-files";
 
 const MODEL_FIRST_SELECTION_PROVIDER_ID =
   "00000000-0000-4000-8000-000000000000";
-
-type ArtifactsListRequestQuery = Partial<ArtifactsListQuery>;
 
 function defaultCreateThreadModelSelection(): ModelSelectionRequest {
   return {
@@ -1044,32 +1041,14 @@ export function createChatFilesBddApi(context: TestContext) {
       );
     },
 
-    async listArtifacts(
-      actor: ApiTestUser,
-      query: ArtifactsListRequestQuery = {},
-    ): Promise<ArtifactsListResponse> {
+    async listArtifacts(actor: ApiTestUser): Promise<ArtifactsListResponse> {
       const response = await accept(
         artifactsClient().list({
           headers: authenticate(context, actor),
-          query,
         }),
         [200],
       );
       return response.body;
-    },
-
-    async requestListArtifacts(
-      actor: ApiTestUser | null,
-      query: ArtifactsListRequestQuery,
-      statuses: readonly (200 | 400 | 401 | 403)[],
-    ) {
-      return await accept(
-        artifactsClient().list({
-          headers: authenticate(context, actor),
-          query,
-        }),
-        statuses,
-      );
     },
 
     async searchChat(

@@ -71,17 +71,9 @@ const artifactItemSchema = z.object({
   googleDriveSync: chatThreadArtifactGoogleDriveSyncSchema.optional(),
 });
 
-const artifactsListQuerySchema = z.object({
-  agentId: z.string().optional(),
-  query: z.string().trim().min(1).max(200).optional(),
-  artifactKind: hostedArtifactKindSchema.optional(),
-  cursor: z.string().optional(),
-  limit: z.coerce.number().int().min(1).max(100).default(50),
-});
-
 const artifactsListResponseSchema = z.object({
   artifacts: z.array(artifactItemSchema),
-  nextCursor: z.string().nullable(),
+  truncated: z.boolean(),
 });
 
 const htmlArtifactEditSnapshotQuerySchema = z.object({
@@ -849,13 +841,9 @@ export const chatMessagesContract = c.router({
         // Lets the client render an optimistic row and reconcile with the
         // server row by id — no temp-id swap, no React remount.
         clientMessageId: z.string().uuid().optional(),
-        // Test-only escape hatch: when the host runner has USE_MOCK_CODEX
-        // set (CI default), allow the request to bypass the mock and execute
-        // the real codex CLI. Mirrors `debugNoMockClaude` / `debugNoMockCodex`
-        // on /api/zero/runs so e2e BYOK smoke tests can exercise the chat
-        // entry path end-to-end.
-        debugNoMockClaude: z.boolean().optional(),
-        debugNoMockCodex: z.boolean().optional(),
+        // Preview evaluation escape hatch: when enabled, the request asks the
+        // runner to bypass preview mock CLIs and use the real agent runtime.
+        realAgentInPreview: z.boolean().optional(),
         revokesMessageId: z.string().min(1).optional(),
         interruptsRunId: z.undefined().optional(),
       }),
@@ -875,8 +863,7 @@ export const chatMessagesContract = c.router({
         computerUseHostId: z.undefined().optional(),
         hasTextContent: z.undefined().optional(),
         attachFiles: z.undefined().optional(),
-        debugNoMockClaude: z.undefined().optional(),
-        debugNoMockCodex: z.undefined().optional(),
+        realAgentInPreview: z.undefined().optional(),
         interruptsRunId: z.undefined().optional(),
       }),
       z.object({
@@ -895,8 +882,7 @@ export const chatMessagesContract = c.router({
         computerUseHostId: z.undefined().optional(),
         hasTextContent: z.undefined().optional(),
         attachFiles: z.undefined().optional(),
-        debugNoMockClaude: z.undefined().optional(),
-        debugNoMockCodex: z.undefined().optional(),
+        realAgentInPreview: z.undefined().optional(),
         revokesMessageId: z.undefined().optional(),
       }),
     ]),
@@ -1145,14 +1131,13 @@ export const artifactsContract = c.router({
     method: "GET",
     path: "/api/zero/artifacts",
     headers: authHeadersSchema,
-    query: artifactsListQuerySchema,
     responses: {
       200: artifactsListResponseSchema,
-      400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
     },
-    summary: "List generated artifacts for the caller's current organization",
+    summary:
+      "List all generated artifacts for the caller's current organization (bulk, capped)",
   },
 });
 
@@ -1200,7 +1185,6 @@ export {
   attachFileSchema,
   resolvedAttachFileSchema,
   artifactItemSchema,
-  artifactsListQuerySchema,
   artifactsListResponseSchema,
   chatThreadArtifactFileSchema,
   chatThreadArtifactGoogleDriveSyncSchema,
@@ -1273,7 +1257,6 @@ export type ChatThreadArtifactGoogleDriveSync = z.infer<
 >;
 export type ChatThreadArtifactRun = z.infer<typeof chatThreadArtifactRunSchema>;
 export type ArtifactItem = z.infer<typeof artifactItemSchema>;
-export type ArtifactsListQuery = z.infer<typeof artifactsListQuerySchema>;
 export type ArtifactsListResponse = z.infer<typeof artifactsListResponseSchema>;
 export type HtmlArtifactEditSnapshot = z.infer<
   typeof htmlArtifactEditSnapshotSchema

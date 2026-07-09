@@ -54,8 +54,7 @@ teardown_file() {
         "Reply with exactly: DONE" \
         "$ANTHROPIC_PROVIDER_ID" \
         "claude-sonnet-4-6" \
-        true \
-        false
+        true
     THREAD_IDS="$THREAD_IDS $LAST_THREAD_ID"
     export THREAD_IDS
 
@@ -79,8 +78,7 @@ teardown_file() {
         "Reply with exactly: DONE" \
         "$(zero_model_first_selection_provider_id)" \
         "claude-sonnet-4-6" \
-        true \
-        false
+        true
     THREAD_IDS="$THREAD_IDS $LAST_THREAD_ID"
     export THREAD_IDS
 

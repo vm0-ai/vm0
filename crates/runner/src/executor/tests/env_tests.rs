@@ -1041,6 +1041,14 @@ async fn write_user_env_file_uses_private_write_for_small_env() {
         .unwrap();
 
     assert_eq!(path, guest_user_env_file_path(run_id).unwrap());
+    assert!(
+        path.ends_with(&format!(
+            "/{}/{}",
+            guest_contracts::env::USER_ENV_PRIVATE_DIR_NAME,
+            guest_contracts::env::USER_ENV_FILENAME
+        )),
+        "got: {path}"
+    );
     assert!(sandbox.exec_calls().is_empty());
     assert!(sandbox.write_file_calls().is_empty());
     let writes = sandbox.private_write_file_calls();
@@ -1361,9 +1369,9 @@ fn build_env_json_with_mock_claude() {
 }
 
 #[test]
-fn build_env_json_mock_claude_suppressed_by_debug_flag() {
+fn build_env_json_mock_claude_suppressed_by_real_agent_preview_flag() {
     let mut ctx = minimal_context();
-    ctx.debug_no_mock_claude = Some(true);
+    ctx.real_agent_in_preview = Some(true);
     let env = build_env_for_test_with_host_env(
         &ctx,
         "http://localhost",
@@ -1392,10 +1400,10 @@ fn build_env_json_with_mock_codex() {
 }
 
 #[test]
-fn build_env_json_mock_codex_suppressed_by_debug_flag() {
+fn build_env_json_mock_codex_suppressed_by_real_agent_preview_flag() {
     let mut ctx = minimal_context();
     ctx.cli_agent_type = "codex".into();
-    ctx.debug_no_mock_codex = Some(true);
+    ctx.real_agent_in_preview = Some(true);
     let env = build_env_for_test_with_host_env(
         &ctx,
         "http://localhost",

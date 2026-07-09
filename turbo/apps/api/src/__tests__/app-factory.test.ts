@@ -557,6 +557,79 @@ describe("createApp", () => {
     });
   });
 
+  describe("preview automation bypass", () => {
+    it("rejects preview requests without the Vercel bypass header or cookie", async () => {
+      mockEnv("ENV", "preview");
+      mockEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
+      const app = createApp({ signal: context.signal });
+
+      const response = await app.request("/health", { method: "GET" });
+
+      expect(response.status).toBe(403);
+      await expect(response.json()).resolves.toStrictEqual({
+        error: "Preview automation bypass required",
+        debug: {
+          expected: "582906dc0bca",
+          cookieHeaderPresent: false,
+        },
+      });
+    });
+
+    it("allows preview requests with the matching Vercel bypass header", async () => {
+      mockEnv("ENV", "preview");
+      mockEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
+      const app = createApp({ signal: context.signal });
+
+      const response = await app.request("/health", {
+        method: "GET",
+        headers: { "x-vercel-protection-bypass": "preview-secret" },
+      });
+
+      expect(response.status).toBe(200);
+    });
+
+    it("allows preview requests with a matching Vercel bypass cookie", async () => {
+      mockEnv("ENV", "preview");
+      mockEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
+      const app = createApp({ signal: context.signal });
+
+      const response = await app.request("/health", {
+        method: "GET",
+        headers: {
+          cookie: "unrelated=1; x-vercel-protection-bypass=preview-secret",
+        },
+      });
+
+      expect(response.status).toBe(200);
+    });
+
+    it("rejects preview requests with the bypass secret in an unrelated cookie", async () => {
+      mockEnv("ENV", "preview");
+      mockEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
+      const app = createApp({ signal: context.signal });
+
+      const response = await app.request("/health", {
+        method: "GET",
+        headers: { cookie: "unrelated=preview-secret" },
+      });
+
+      expect(response.status).toBe(403);
+    });
+
+    it("allows preview requests with the matching Vercel bypass query", async () => {
+      mockEnv("ENV", "preview");
+      mockEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
+      const app = createApp({ signal: context.signal });
+
+      const response = await app.request(
+        "/health?x-vercel-protection-bypass=preview-secret",
+        { method: "GET" },
+      );
+
+      expect(response.status).toBe(200);
+    });
+  });
+
   describe("cors", () => {
     it("echoes allowed cross-origin on registered route responses", async () => {
       mockEnv("ENV", "production");
@@ -612,10 +685,36 @@ describe("createApp", () => {
       const allowHeaders =
         response.headers.get("access-control-allow-headers") ?? "";
       expect(allowHeaders).toContain("Authorization");
+      expect(allowHeaders).toContain("X-Vercel-Protection-Bypass");
       expect(allowHeaders).toContain("X-Client-Version");
       expect(allowHeaders).toContain("X-Client-Type");
       expect(allowHeaders).toContain("X-Client-Session-Id");
       expect(allowHeaders).toContain("X-Client-Request-Id");
+    });
+
+    it("answers preview preflight before enforcing the automation bypass", async () => {
+      mockEnv("ENV", "preview");
+      mockEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
+      const app = createApp({ signal: context.signal });
+      const response = await app.request("/api/zero/org", {
+        method: "OPTIONS",
+        headers: {
+          origin: "https://pr-20640-app.vm6.ai",
+          "access-control-request-method": "GET",
+          "access-control-request-headers":
+            "authorization,x-vercel-protection-bypass,x-client-version",
+        },
+      });
+
+      expect(response.status).toBe(204);
+      expect(response.headers.get("access-control-allow-origin")).toBe(
+        "https://pr-20640-app.vm6.ai",
+      );
+      const allowHeaders =
+        response.headers.get("access-control-allow-headers") ?? "";
+      expect(allowHeaders).toContain("Authorization");
+      expect(allowHeaders).toContain("X-Vercel-Protection-Bypass");
+      expect(allowHeaders).toContain("X-Client-Version");
     });
 
     it("rejects disallowed origins by omitting the allow-origin header", async () => {

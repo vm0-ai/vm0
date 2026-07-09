@@ -1,5 +1,6 @@
 import { ApiRequestError, getBaseUrl } from "../core/client-factory";
 import { getActiveToken } from "../config";
+import { headersWithCliClientHeaders } from "../client-headers";
 
 export type ZeroBankingOperation = "accounts" | "balances" | "transactions";
 
@@ -70,7 +71,7 @@ export async function callZeroBanking(
     new URL(`/api/zero/banking/${operation}`, baseUrl),
     {
       method: "POST",
-      headers: authenticatedJsonHeaders(token),
+      headers: headersWithCliClientHeaders(authenticatedJsonHeaders(token)),
       body: JSON.stringify(body),
     },
   );

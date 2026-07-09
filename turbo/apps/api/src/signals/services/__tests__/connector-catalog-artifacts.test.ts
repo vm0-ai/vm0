@@ -339,6 +339,101 @@ describe("connector catalog artifacts", () => {
     });
   });
 
+  it("loads no-auth connector catalog artifacts", async () => {
+    const records = await fixtureRecords();
+    const publicArtifact = publicArtifactFromRecords(records);
+    const privateArtifact = privateArtifactFromRecords(records);
+    publicArtifact.connectors.push({
+      connectorRef: "fixture-public-catalog",
+      label: "Fixture Public Catalog",
+      description: "Public catalog fixture connector",
+      category: "Development",
+      generation: ["text"],
+      tags: ["fixture", "public"],
+      authMethods: [
+        {
+          id: "api",
+          label: "Public catalog",
+          description: "Enable public catalog data.",
+          grantKind: "none",
+          manualFields: [],
+          startOptions: [],
+        },
+      ],
+      permissionSummary: {
+        hasPermissions: false,
+        permissionCount: 0,
+        hasCategories: false,
+        hasDefaultPolicyOverrides: false,
+      },
+    });
+    privateArtifact.connectors.push({
+      connectorRef: "fixture-public-catalog",
+      authMethods: [
+        {
+          id: "api",
+          manualFieldMappings: [],
+          startOptionMappings: [],
+        },
+      ],
+      runtimeArtifactRefs: [],
+    });
+
+    const recordsWithPublic = recordsWithPublicArtifact(
+      recordsWithPrivateArtifact(records, privateArtifact),
+      publicArtifact,
+    );
+    const manifest = manifestFromRecords(recordsWithPublic);
+    const recordsWithNoAuth = recordsWithManifest(recordsWithPublic, {
+      ...manifest,
+      requiredCapabilities: [...manifest.requiredCapabilities, "grant.none@1"],
+    });
+
+    const artifacts = await loadConnectorCatalogArtifacts({
+      reader: readerFromRecords(recordsWithNoAuth),
+    });
+
+    expect(
+      getPublicConnectorCatalogDetailFromArtifact(
+        artifacts.publicArtifact,
+        "fixture-public-catalog",
+      )?.authMethods,
+    ).toStrictEqual([
+      {
+        id: "api",
+        label: "Public catalog",
+        description: "Enable public catalog data.",
+        grantKind: "none",
+        manualFields: [],
+        startOptions: [],
+      },
+    ]);
+    expect(
+      listPublicConnectorCatalogFromArtifact(artifacts.publicArtifact),
+    ).toContainEqual({
+      connectorRef: "fixture-public-catalog",
+      label: "Fixture Public Catalog",
+      description: "Public catalog fixture connector",
+      category: "Development",
+      generation: ["text"],
+      tags: ["fixture", "public"],
+      authMethods: [
+        {
+          id: "api",
+          label: "Public catalog",
+          description: "Enable public catalog data.",
+          grantKind: "none",
+        },
+      ],
+      permissionSummary: {
+        hasPermissions: false,
+        permissionCount: 0,
+        hasCategories: false,
+        hasDefaultPolicyOverrides: false,
+      },
+    });
+  });
+
   it("rejects a fixture key that escapes the fixture root", async () => {
     const reader = createFixtureConnectorCatalogArtifactReader();
 

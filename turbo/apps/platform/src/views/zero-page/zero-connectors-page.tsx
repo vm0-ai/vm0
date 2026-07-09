@@ -33,6 +33,8 @@ import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import {
   allConnectorTypes$,
   connectConnectorOAuthAuthCode$,
+  connectConnectorNoAuth$,
+  connectFlowType$,
   connectorsSearch$,
   connectorsConnectionFilter$,
   closePermissionDialog$,
@@ -51,6 +53,7 @@ import {
   isStandaloneMode,
   getAvailableStatusAuthCodeAuthMethod,
   getOnlyAvailableStatusBrowserAuthMethod,
+  getOnlyAvailableStatusNoAuthMethod,
   getConnectorStatusConnectLaunchMode,
   connectorCurrentConnectionStatus,
   connectorExpiryCountdownText,
@@ -910,7 +913,9 @@ export function ZeroConnectorsPage() {
   const catalogStatusLoadable = useLastLoadable(connectorCatalogStatus$);
   const pollingAuthCodeType = useGet(pollingOAuthAuthCodeConnectorType$);
   const pollingDeviceAuthType = useGet(pollingOAuthDeviceAuthConnectorType$);
+  const connectFlowType = useGet(connectFlowType$);
   const connect = useSet(connectConnectorOAuthAuthCode$);
+  const connectNoAuth = useSet(connectConnectorNoAuth$);
   const [disconnectLoadable, disconnect] = useLoadableSet(disconnectConnector$);
   const signal = useGet(pageSignal$);
   const selectedType = useGet(selectedConnectorType$);
@@ -969,7 +974,9 @@ export function ZeroConnectorsPage() {
     const launchMode = getConnectorStatusConnectLaunchMode(ct);
     if (launchMode === "modal") {
       setSelected(type);
-    } else {
+      return;
+    }
+    if (launchMode === "browser-auth") {
       const authMethod = getOnlyAvailableStatusBrowserAuthMethod(ct);
       if (!authMethod) {
         setSelected(type);
@@ -984,7 +991,24 @@ export function ZeroConnectorsPage() {
         ),
         Reason.DomCallback,
       );
+      return;
     }
+    const authMethod = getOnlyAvailableStatusNoAuthMethod(ct);
+    if (!authMethod) {
+      setSelected(type);
+      return;
+    }
+    detach(
+      connectNoAuth(
+        {
+          type,
+          authMethod,
+          options: { showPermissionDialog: true, connectorLabel: ct.label },
+        },
+        signal,
+      ),
+      Reason.DomCallback,
+    );
   };
 
   const disconnectHandler = async (
@@ -1006,7 +1030,9 @@ export function ZeroConnectorsPage() {
   const renderCard = (c: ConnectorTypeWithStatus) => {
     const optimisticConnector = getOptimisticConnector(c);
     const isPolling =
-      pollingAuthCodeType === c.type || pollingDeviceAuthType === c.type;
+      pollingAuthCodeType === c.type ||
+      pollingDeviceAuthType === c.type ||
+      connectFlowType === c.type;
     if (!optimisticConnector.connected) {
       return (
         <AvailableConnectorCard

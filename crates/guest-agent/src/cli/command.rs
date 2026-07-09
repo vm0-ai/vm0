@@ -603,14 +603,14 @@ mod tests {
     #[test]
     fn build_codex_args_with_openai_base_url() {
         let args = build_codex_args_with_base_url_for_test(
-            "MiniMax-M3",
-            "https://api.minimax.io/v1",
+            "legacy-model",
+            "https://api.legacy-provider.test/v1",
             "",
             "p",
         );
         assert!(codex_args_have_config(
             &args,
-            r#"openai_base_url="https://api.minimax.io/v1""#
+            r#"openai_base_url="https://api.legacy-provider.test/v1""#
         ));
     }
 
@@ -635,7 +635,7 @@ mod tests {
         disable_system_log();
         let args = build_codex_args(
             "MiniMax-M3",
-            "https://api.minimax.io/v1",
+            "https://api.should-not-win.test/v1",
             &[r#"model_provider="minimax""#.to_string()],
             false,
             "",

@@ -17,6 +17,7 @@ import {
   handleError,
 } from "../core/client-factory";
 import { getActiveToken } from "../config";
+import { headersWithCliClientHeaders } from "../client-headers";
 
 interface DownloadGithubFileResult {
   path: string;
@@ -79,7 +80,9 @@ export async function downloadGithubFile(
     headers["x-vercel-protection-bypass"] = bypassSecret;
   }
 
-  const response = await fetch(url, { headers });
+  const response = await fetch(url, {
+    headers: headersWithCliClientHeaders(headers),
+  });
 
   if (!response.ok) {
     let message = `Failed to download GitHub file (HTTP ${response.status})`;

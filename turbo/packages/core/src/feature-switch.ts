@@ -101,6 +101,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Neon serverless Postgres connector",
     enabled: false,
   },
+  [FeatureSwitchKey.NintendoEshopCatalogConnector]: {
+    maintainer: "liangyou@vm0.ai",
+    description: "Enable the Nintendo eShop public catalog connector",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    userOverridable: false,
+  },
   [FeatureSwitchKey.GarminConnectConnector]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable the Garmin Connect wellness connector",
@@ -176,12 +183,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "yuma@vm0.ai",
     description: "Enable the Spotify connector integration",
     enabled: false,
-  },
-  [FeatureSwitchKey.PlaystationConnector]: {
-    maintainer: "liangyou@vm0.ai",
-    description: "Enable the PlayStation player connector integration",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ZeroDebug]: {
     maintainer: "ethan@vm0.ai",
@@ -265,6 +266,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.RealAgentInPreview]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Send preview chat runs through real agent CLIs instead of preview mock runners.",
+    enabled: false,
+  },
   [FeatureSwitchKey.ComposerUploadPopover]: {
     maintainer: "bingjie@vm0.ai",
     description:
@@ -295,6 +302,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Show the experimental relationship memory tab in the Memory page for org-user-scoped relationship context.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.RelationshipMemoryRuntimeInjection]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Inject compact relationship memory profile and prompt-relevant memories into Zero run system prompts.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -386,7 +400,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Show the Artifacts manage page for generated artifacts in the current organization.",
     enabled: false,
-    userOverridable: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.WorkflowTemplateCatalog]: {
     maintainer: "ming@vm0.ai",

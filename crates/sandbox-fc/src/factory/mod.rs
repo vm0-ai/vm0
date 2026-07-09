@@ -10,8 +10,8 @@ use std::time::Instant;
 
 use async_trait::async_trait;
 use sandbox::{
-    Sandbox, SandboxConfig, SandboxError, SandboxFactory, SandboxInitializationPhase,
-    SandboxInvalidStateContext,
+    Sandbox, SandboxConfig, SandboxCreateObserver, SandboxCreateStage, SandboxError,
+    SandboxFactory, SandboxInitializationPhase, SandboxInvalidStateContext,
 };
 use tracing::{info, warn};
 
@@ -20,7 +20,7 @@ use crate::cow_cleanup::CowCleanupOutcome;
 use crate::duration::duration_ms;
 use crate::factory::cleanup_group::{FactoryCleanupGroup, FactoryCleanupTaskKind};
 use crate::factory::cow_cleanup::destroy_cow_device_with_retries;
-use crate::factory::create_timing::{SandboxCreateStage, SandboxCreateTiming};
+use crate::factory::create_timing::SandboxCreateTiming;
 use crate::factory::create_transaction::{
     FactoryCreateRollbackCleanup, SandboxCreateResources, SandboxCreateTransaction,
     rollback_create_transaction,
@@ -210,24 +210,18 @@ impl FirecrackerFactory {
             },
         }
     }
-}
 
-#[async_trait]
-impl SandboxFactory for FirecrackerFactory {
-    fn name(&self) -> &str {
-        "firecracker"
-    }
-
-    fn config_hash(&self) -> String {
-        config_hash()
-    }
-
-    async fn create(&self, config: SandboxConfig) -> sandbox::Result<Box<dyn Sandbox>> {
+    async fn create_inner(
+        &self,
+        config: SandboxConfig,
+        observer: Option<&mut dyn SandboxCreateObserver>,
+    ) -> sandbox::Result<Box<dyn Sandbox>> {
         let resources = self.resources()?;
         let device_rate_limits = convert_device_rate_limits(config.device_rate_limits.as_ref())?;
         let leak_tx = resources.leak_cleaner.sender();
         let id = config.id.to_string();
-        let mut timing = SandboxCreateTiming::new(id.clone(), self.config.profile.clone());
+        let mut timing =
+            SandboxCreateTiming::new(id.clone(), self.config.profile.clone(), observer);
         let rollback_cleanup = FactoryCreateRollbackCleanup {
             id: id.clone(),
             netns_pool: resources.netns_pool.clone(),
@@ -389,6 +383,29 @@ impl SandboxFactory for FirecrackerFactory {
             leak_tx,
         });
         Ok(Box::new(sandbox))
+    }
+}
+
+#[async_trait]
+impl SandboxFactory for FirecrackerFactory {
+    fn name(&self) -> &str {
+        "firecracker"
+    }
+
+    fn config_hash(&self) -> String {
+        config_hash()
+    }
+
+    async fn create(&self, config: SandboxConfig) -> sandbox::Result<Box<dyn Sandbox>> {
+        self.create_inner(config, None).await
+    }
+
+    async fn create_with_observer(
+        &self,
+        config: SandboxConfig,
+        observer: &mut dyn SandboxCreateObserver,
+    ) -> sandbox::Result<Box<dyn Sandbox>> {
+        self.create_inner(config, Some(observer)).await
     }
 
     async fn destroy(&self, sandbox: Box<dyn Sandbox>) {

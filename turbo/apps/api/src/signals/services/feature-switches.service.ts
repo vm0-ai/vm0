@@ -14,6 +14,7 @@ const ORG_SENTINEL_USER_ID = "__org__";
 
 const ORG_SCOPED_FEATURE_SWITCH_KEYS: readonly string[] = [
   FeatureSwitchKey.RelationshipMemory,
+  FeatureSwitchKey.RelationshipMemoryRuntimeInjection,
   FeatureSwitchKey.AgentUnreadIndicators,
   FeatureSwitchKey.ChatThreadUnifiedSearch,
 ];

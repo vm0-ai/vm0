@@ -109,6 +109,7 @@ function newThreadSendBody({
   prepared,
   modelSelection,
   codexFastModeEnabled,
+  realAgentInPreviewEnabled,
   generationTemplate,
   computerUseHostId,
 }: {
@@ -118,6 +119,7 @@ function newThreadSendBody({
   prepared: PreparedNewThreadPayload;
   modelSelection: ModelProviderSelection;
   codexFastModeEnabled: boolean;
+  realAgentInPreviewEnabled: boolean;
   generationTemplate: GenerationTemplateRequest | undefined;
   computerUseHostId?: string | null;
 }) {
@@ -132,6 +134,7 @@ function newThreadSendBody({
     hasTextContent: prepared.hasTextContent,
     clientMessageId,
     ...(runOptions ? { runOptions } : {}),
+    ...(realAgentInPreviewEnabled ? { realAgentInPreview: true } : {}),
     generationTemplate,
     ...(computerUseHostId === undefined ? {} : { computerUseHostId }),
     attachFiles: prepared.attachFiles,
@@ -466,6 +469,8 @@ const sendNewThreadMessage$ = command(
           prepared,
           modelSelection: resolvedModelSelection,
           codexFastModeEnabled: codexFastModeSwitchEnabled(get(featureSwitch$)),
+          realAgentInPreviewEnabled:
+            get(featureSwitch$)[FeatureSwitchKey.RealAgentInPreview] ?? false,
           generationTemplate,
           computerUseHostId,
         }),

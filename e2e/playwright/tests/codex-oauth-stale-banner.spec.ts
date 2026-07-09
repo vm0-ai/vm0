@@ -1,5 +1,5 @@
 import { clerk, clerkSetup } from "@clerk/testing/playwright";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "../fixtures";
 import { deriveAppUrl } from "../playwright.config";
 
 /**
@@ -111,7 +111,9 @@ test("codex-oauth stale provider renders banner with re-paste CTA", async ({
   await expect(codexBanner).toBeVisible({ timeout: 30_000 });
 
   // Re-paste CTA opens the paste modal in-page (no cross-origin redirect).
-  const cta = codexBanner.getByRole("button", { name: /re-?paste auth\.json/i });
+  const cta = codexBanner.getByRole("button", {
+    name: /re-?paste auth\.json/i,
+  });
   await expect(cta).toBeVisible();
   await cta.click();
 

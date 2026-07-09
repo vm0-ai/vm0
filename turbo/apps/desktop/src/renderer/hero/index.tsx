@@ -43,6 +43,7 @@ const FILESYSTEM_PLUGIN_STATUS_LABELS = {
   disabled: "Disabled",
   starting: "Starting",
   running: "Ready",
+  restarting: "Restarting",
   error: "Error",
 } as const satisfies Record<FilesystemPluginState["status"], string>;
 
