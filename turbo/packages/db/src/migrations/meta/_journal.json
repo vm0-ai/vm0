@@ -3970,6 +3970,13 @@
       "when": 1783591372547,
       "tag": "0566_pink_fallen_one",
       "breakpoints": true
+    },
+    {
+      "idx": 567,
+      "version": "7",
+      "when": 1783607257142,
+      "tag": "0567_amused_klaw",
+      "breakpoints": true
     }
   ]
 }

@@ -95,6 +95,24 @@ function mockCloudflareVideoFrame(status = 200): MediaFrameRequest[] {
   return requests;
 }
 
+function featureSwitchActor(actor: ApiTestUser): {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly orgRole?: "org:admin" | "org:member";
+} {
+  if (actor.orgId === null) {
+    throw new Error("Expected artifact test actor to have an org");
+  }
+  if (actor.orgRole === undefined) {
+    return { userId: actor.userId, orgId: actor.orgId };
+  }
+  return {
+    userId: actor.userId,
+    orgId: actor.orgId,
+    orgRole: actor.orgRole,
+  };
+}
+
 async function artifactActor(
   displayName: string,
   actor: ApiTestUser = bdd.user(),
@@ -878,5 +896,87 @@ describe("GET /api/zero/artifacts", () => {
     // no skips — proving keyset walks the deduped winner set correctly.
     expect(collected).toHaveLength(created.length);
     expect(new Set(collected)).toStrictEqual(new Set(created));
+  }, 120_000);
+});
+
+describe("POST /api/zero/artifacts/favorite", () => {
+  it("creates and deletes user-scoped artifact favorite records", async () => {
+    const owner = await artifactActor("Artifacts API favorites agent");
+    const artifact = await createHostedArtifact({
+      actor: owner.actor,
+      agentId: owner.agentId,
+      runnerGroup: owner.runnerGroup,
+      site: `favorite-${randomUUID().slice(0, 8)}`,
+    });
+
+    const disabled = await chat.requestFavoriteArtifact(
+      owner.actor,
+      artifact.url,
+      [204],
+    );
+    if (disabled.status !== 204) {
+      throw new Error("Expected disabled favorite request to no-op");
+    }
+
+    const disabledList = await chat.listArtifacts(owner.actor);
+    const disabledArtifact = disabledList.artifacts.find((item) => {
+      return item.fileId === artifact.fileId;
+    });
+    if (!disabledArtifact) {
+      throw new Error("Expected disabled favorite artifact to be listed");
+    }
+    expect(disabledArtifact.isFavorited).toBeFalsy();
+
+    await updateFeatureSwitchesForUser(
+      context,
+      featureSwitchActor(owner.actor),
+      {
+        [FeatureSwitchKey.ArtifactFavorites]: true,
+      },
+    );
+
+    await chat.favoriteArtifact(owner.actor, artifact.url);
+
+    const favorited = await chat.listArtifacts(owner.actor);
+    const favoritedArtifact = favorited.artifacts.find((item) => {
+      return item.fileId === artifact.fileId;
+    });
+    if (!favoritedArtifact) {
+      throw new Error("Expected favorite artifact to be listed");
+    }
+    expect(favoritedArtifact.isFavorited).toBeTruthy();
+
+    await chat.unfavoriteArtifact(owner.actor, artifact.url);
+
+    const unfavorited = await chat.listArtifacts(owner.actor);
+    const unfavoritedArtifact = unfavorited.artifacts.find((item) => {
+      return item.fileId === artifact.fileId;
+    });
+    if (!unfavoritedArtifact) {
+      throw new Error("Expected unfavorited artifact to be listed");
+    }
+    expect(unfavoritedArtifact.isFavorited).toBeFalsy();
+  }, 120_000);
+
+  it("rejects favorite requests for artifacts outside the caller visibility set", async () => {
+    const owner = await artifactActor("Artifacts API favorites visibility");
+    await updateFeatureSwitchesForUser(
+      context,
+      featureSwitchActor(owner.actor),
+      {
+        [FeatureSwitchKey.ArtifactFavorites]: true,
+      },
+    );
+
+    const missing = await chat.requestFavoriteArtifact(
+      owner.actor,
+      `https://artifacts.example.com/${randomUUID()}.html`,
+      [404],
+    );
+
+    if (missing.status !== 404) {
+      throw new Error("Expected missing artifact favorite request to 404");
+    }
+    expect(missing.body.error.code).toBe("NOT_FOUND");
   }, 120_000);
 });
