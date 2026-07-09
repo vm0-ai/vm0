@@ -1242,7 +1242,7 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     await flushWaitUntilForTest();
   }, 90_000);
 
-  it("does not broad-load runtime memory when a goal memory query compacts to empty", async () => {
+  it("does not broad-load runtime memory when a goal has no searchable text", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     await enableGoalWorkflows(actor);
     if (!actor.orgId) {
@@ -1258,7 +1258,8 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
         [FeatureSwitchKey.RelationshipMemoryRuntimeInjection]: true,
       },
     );
-    const broadMemoryText = "The user wants broad memory to stay out.";
+    const broadMemoryText =
+      "The user keeps unrelated placeholder plans named Untitled goal.";
     await seedLexicalRelationshipMemory({
       fixture: { orgId: actor.orgId, userId: actor.userId },
       displayName: "Broad Memory",
@@ -1269,14 +1270,14 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
 
     const first = await startChatRun(actor, {
       agentId,
-      prompt: "finish before markdown-only goal continuation",
+      prompt: "finish before empty-text goal continuation",
     });
-    const goalObjective = "---";
-    const goalBrief = goalObjective;
+    const goalObjective = "   ";
+    const goalBrief = "Untitled goal";
     await createGoalForRun(actor, first.runId, goalObjective);
 
     chatCallbacks.mockChatOutputEvents([
-      assistantEvent(0, "completed before markdown-only goal continuation"),
+      assistantEvent(0, "completed before empty-text goal continuation"),
     ]);
 
     const sandboxHeaders = await claimChatRun(runnerGroup, first.runId);
@@ -1300,12 +1301,12 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
       objectiveBrief: goalBrief,
     });
     if (!goalContinuation?.runId) {
-      throw new Error("Expected markdown-only goal continuation run id");
+      throw new Error("Expected empty-text goal continuation run id");
     }
     const goalRunId = goalContinuation.runId;
     const goalContext = await waitForRunContext(actor, goalRunId);
     expect(goalContext.body.prompt).toContain("# Active thread goal");
-    expect(goalContext.body.prompt).toContain(goalObjective);
+    expect(goalContext.body.prompt).toContain(goalBrief);
     expect(goalContext.body.appendSystemPrompt ?? "").not.toContain(
       broadMemoryText,
     );

@@ -20,7 +20,10 @@ import {
   loadActiveGoalForThread,
   type GoalBootstrap,
 } from "./zero-goal.service";
-import { normalizeGoalObjectiveBrief } from "./zero-goal-objective-brief-normalization.service";
+import {
+  DEFAULT_GOAL_OBJECTIVE_BRIEF,
+  normalizeGoalObjectiveBrief,
+} from "./zero-goal-objective-brief-normalization.service";
 import {
   resolveModelFirstProviderAdmission,
   type ModelFirstPin,
@@ -150,6 +153,12 @@ function buildGoalMemoryRetrievalQuery(goal: {
     compactGoalMemoryQueryText(goal.objective),
     GOAL_MEMORY_OBJECTIVE_EXCERPT_MAX_CHARS,
   );
+  if (
+    objectiveExcerpt.length === 0 &&
+    objectiveBrief === DEFAULT_GOAL_OBJECTIVE_BRIEF
+  ) {
+    return "";
+  }
   const parts =
     objectiveBrief === objectiveExcerpt ||
     objectiveExcerpt.startsWith(`${objectiveBrief} `)

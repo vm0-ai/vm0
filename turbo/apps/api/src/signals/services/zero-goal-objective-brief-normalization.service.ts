@@ -1,5 +1,5 @@
 const OBJECTIVE_BRIEF_MAX_CHARS = 140;
-const DEFAULT_OBJECTIVE_BRIEF = "Untitled goal";
+export const DEFAULT_GOAL_OBJECTIVE_BRIEF = "Untitled goal";
 
 function stripMarkdown(text: string): string {
   return text
@@ -45,7 +45,7 @@ export function fallbackGoalObjectiveBrief(objective: string): string {
     firstNonEmptyLine ??
     (compactObjective.length > 0 ? compactObjective : undefined) ??
     rawFirstNonEmptyLine ??
-    DEFAULT_OBJECTIVE_BRIEF;
+    DEFAULT_GOAL_OBJECTIVE_BRIEF;
   return capGoalObjectiveBriefText(fallback);
 }
 
@@ -55,7 +55,7 @@ export function nonEmptyGoalObjectiveBrief(
   const trimmed = objectiveBrief?.trim() ?? "";
   return trimmed.length > 0
     ? capGoalObjectiveBriefText(trimmed)
-    : DEFAULT_OBJECTIVE_BRIEF;
+    : DEFAULT_GOAL_OBJECTIVE_BRIEF;
 }
 
 export function goalObjectiveBriefFromJson(value: unknown): string {
