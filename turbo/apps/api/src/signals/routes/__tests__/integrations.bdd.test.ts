@@ -1193,6 +1193,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       "api_dispatch_pre_create_zero_slack_build_run_params_fetch_conversation_context_history",
       "api_dispatch_pre_create_zero_slack_build_run_params_fetch_conversation_context_user_info",
       "api_dispatch_pre_create_zero_slack_build_run_params_fetch_conversation_context_format",
+      "api_dispatch_pre_create_zero_slack_build_run_params_user_info_resolver",
       "api_dispatch_pre_create_zero_slack_build_run_params_assemble",
       "api_dispatch_pre_create_zero_slack_create_run",
     ]) {

@@ -61,10 +61,12 @@ import { request$ } from "../context/hono";
 import { waitUntil } from "../context/wait-until";
 import {
   createSlackClient,
+  createSlackUserInfoResolver,
   openView,
   postMessage,
   publishAppHome,
   setThreadStatus,
+  type SlackUserInfoResolverStats,
 } from "../external/slack-message-client";
 import { now, nowDate } from "../external/time";
 import { writeDb$, type Db } from "../external/db";
@@ -1417,6 +1419,40 @@ const SLACK_CONVERSATION_CONTEXT_PHASE_ACTION_TYPES = {
   ApiDispatchTimingActionType
 >;
 
+function slackUserInfoResolverCountBucket(count: number): string {
+  if (count <= 0) {
+    return "0";
+  }
+  if (count === 1) {
+    return "1";
+  }
+  if (count <= 4) {
+    return "2_4";
+  }
+  if (count <= 8) {
+    return "5_8";
+  }
+  if (count <= 16) {
+    return "9_16";
+  }
+  return "17_plus";
+}
+
+function slackUserInfoResolverDimensions(
+  stats: SlackUserInfoResolverStats,
+): ApiDispatchTimingDimensions {
+  return {
+    slack_user_info_resolver_requested_count_bucket:
+      slackUserInfoResolverCountBucket(stats.requestedCount),
+    slack_user_info_resolver_cache_hit_count_bucket:
+      slackUserInfoResolverCountBucket(stats.cacheHitCount),
+    slack_user_info_resolver_miss_count_bucket:
+      slackUserInfoResolverCountBucket(stats.missCount),
+    slack_user_info_resolver_in_flight_hit_count_bucket:
+      slackUserInfoResolverCountBucket(stats.inFlightHitCount),
+  };
+}
+
 function createSlackConversationContextObserver(
   timing: ApiDispatchTimingCollector,
 ): {
@@ -1818,6 +1854,7 @@ const buildRunAgentParams$ = command(
     const conversationContextObserver = createSlackConversationContextObserver(
       args.timing,
     );
+    const userInfoResolver = createSlackUserInfoResolver(resolved.client);
     const { inputs, threadContext } = await loadSlackRunParamBundle({
       timing: args.timing,
       db: args.db,
@@ -1830,6 +1867,7 @@ const buildRunAgentParams$ = command(
           files: args.files,
           client: resolved.client,
           userId: args.slackUserId,
+          userInfoResolver,
         });
       },
       resolveModelRoute: async () => {
@@ -1856,12 +1894,24 @@ const buildRunAgentParams$ = command(
           args.channelId,
           args.threadTs,
           args.messageTs,
-          conversationContextObserver.observer,
+          {
+            observer: conversationContextObserver.observer,
+            userInfoResolver,
+          },
         );
       },
       fetchConversationContextDimensions:
         conversationContextObserver.dimensions,
     });
+    await measureApiDispatchTiming(
+      args.timing,
+      "api_dispatch_pre_create_zero_slack_build_run_params_user_info_resolver",
+      "nested",
+      () => {
+        return undefined;
+      },
+      slackUserInfoResolverDimensions(userInfoResolver.stats()),
+    );
 
     return await measureApiDispatchTiming(
       args.timing,
