@@ -159,6 +159,49 @@ pub(in super::super) async fn seed_idle_pool_with_workspace_promotion(
     sandbox_id
 }
 
+pub(in super::super) async fn seed_workspace_cache_state(
+    cache: &SessionWorkspaceCache,
+    paths: &RunnerPaths,
+    session_id: &str,
+    profile_name: &str,
+    image_size_bytes: u64,
+) {
+    let run_id = RunId::new_v4();
+    let sandbox_id = SandboxId::new_v4();
+    let lease = cache
+        .prepare(WorkspaceImagePrepareRequest {
+            identity: WorkspaceImageLeaseIdentity {
+                run_id,
+                sandbox_id,
+                profile_name,
+                cli_agent_session_id: Some(session_id),
+                working_dir: CANONICAL_WORKING_DIR,
+                image_size_bytes,
+            },
+            workspace_drive_required: true,
+        })
+        .await;
+    let active_image = paths.active_workspace_image(&sandbox_id);
+    tokio::fs::create_dir_all(active_image.parent().unwrap())
+        .await
+        .unwrap();
+    let file = tokio::fs::File::create(&active_image).await.unwrap();
+    file.set_len(image_size_bytes).await.unwrap();
+    drop(file);
+    assert!(
+        lease
+            .promote(
+                run_id,
+                None,
+                WorkspaceCacheTerminalStatus::Success,
+                TEST_SESSION_LAST_COMPLETED_AT.into(),
+                &StorageFingerprints::default(),
+            )
+            .await
+            .unwrap()
+    );
+}
+
 pub(in super::super) async fn seed_idle_pool_expired(
     pool: &SharedIdlePool,
     budget: &Arc<ResourceBudget>,
