@@ -270,8 +270,10 @@ async def test_re_signs_header_sigv4_request_keeps_resolved_query_with_trusted_u
     tmp_path,
     mitm_ctx,
 ):
-    auth_response = aws_auth_response(include_session_token=False)
-    auth_response["query"] = {"Trace": "secret-value"}
+    auth_response = aws_auth_response(
+        include_session_token=False,
+        query={"Trace": "secret-value"},
+    )
     api_entry = aws_api_entry(
         base="https://iam.amazonaws.com",
         auth_query={"Trace": "${{ secrets.TRACE }}"},
@@ -482,18 +484,16 @@ async def test_header_sigv4_with_invalid_resolved_access_key_fails_closed(
     tmp_path,
     mitm_ctx,
 ):
-    response = aws_auth_response()
-    response["awsSigv4"] = {
-        "accessKeyId": "AKID/EXAMPLE",
-        "secretAccessKey": "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY",
-    }
     flow = make_sts_header_sigv4_flow(real_flow, headers)
 
     result = await handle_firewall_request_with_auth_endpoint(
         flow,
         tmp_path,
         mitm_ctx,
-        auth_response=response,
+        auth_response=aws_auth_response(
+            access_key_id="AKID/EXAMPLE",
+            include_session_token=False,
+        ),
     )
 
     assert_sigv4_failed_closed(result, flow, "Invalid AWS access key ID")
