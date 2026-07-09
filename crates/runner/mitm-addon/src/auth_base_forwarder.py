@@ -477,6 +477,7 @@ def forwarded_auth_base_client_header_pairs(
     headers,
     *,
     preserve_aws_sigv4_authorization: bool = False,
+    extra_excluded_names: frozenset[str] = frozenset(),
 ) -> list[tuple[str, str]]:
     """Return client headers allowed to cross an auth.base rewrite.
 
@@ -488,7 +489,11 @@ def forwarded_auth_base_client_header_pairs(
     supported AWS SigV4 authorization value.
     """
     pairs = forwarded_request_header_pairs(headers)
-    excluded_names = _CLIENT_CREDENTIAL_HEADER_NAMES | _templated_builtin_auth_header_names()
+    excluded_names = (
+        _CLIENT_CREDENTIAL_HEADER_NAMES
+        | _templated_builtin_auth_header_names()
+        | extra_excluded_names
+    )
     return [
         (name, value)
         for name, value in pairs

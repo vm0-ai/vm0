@@ -256,6 +256,14 @@ def _merge_auth_headers(
     ] + auth_pairs
 
 
+def _auth_config_header_names(allow: matching.FirewallAllow) -> frozenset[str]:
+    auth_config = allow.api_entry.get("auth", {})
+    auth_headers = auth_config.get("headers") if isinstance(auth_config, dict) else None
+    if not isinstance(auth_headers, dict):
+        return frozenset()
+    return frozenset(name.lower() for name in auth_headers if isinstance(name, str))
+
+
 def _record_firewall_auth_success_metadata(flow: http.HTTPFlow, token_meta: dict) -> None:
     flow_metadata.set_firewall_decision(flow.metadata, "ALLOW")
     flow.metadata[metadata_keys.AUTH_RESOLVED_SECRETS] = token_meta.get("resolved_secrets", [])
@@ -782,6 +790,7 @@ async def _apply_url_rewrite(
     client_headers = forwarded_auth_base_client_header_pairs(
         flow.request.headers,
         preserve_aws_sigv4_authorization=aws_sigv4 is not None,
+        extra_excluded_names=_auth_config_header_names(allow),
     )
     req_headers = _merge_auth_headers(client_headers, headers)
     req_body = flow.request.raw_content if flow.request.raw_content is not None else None

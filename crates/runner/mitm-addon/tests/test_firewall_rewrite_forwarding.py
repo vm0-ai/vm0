@@ -247,6 +247,35 @@ class TestAuthBaseUrlRewriteForwarding:
             assert upstream.socket.request_header_values(name) == []
         assert upstream.socket.request_header_values("X-Keep") == ["client"]
 
+    async def test_url_rewrite_strips_current_auth_headers_without_resolved_headers(
+        self, headers, real_flow, mitm_ctx, tmp_path
+    ):
+        """Client-provided current auth headers must not cross auth.base rewrites."""
+        flow, allow, vm_info, token_meta = make_forwarding_rewrite_inputs(
+            real_flow,
+            tmp_path,
+            request_headers=headers(
+                ("Host", "firewall-placeholder.vm3.ai"),
+                ("X-Tenant", "client-tenant"),
+                ("X-Keep", "client"),
+            ),
+            auth_overrides={
+                "headers": {
+                    "X-Tenant": "${{ vars.TENANT }}",
+                },
+            },
+        )
+        token_meta["headers"] = {}
+        with (
+            fake_forwarder_upstream() as upstream,
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            mitm_ctx(),
+        ):
+            await auth.handle_firewall_request(flow, allow, vm_info)
+
+        assert upstream.socket.request_header_values("X-Tenant") == []
+        assert upstream.socket.request_header_values("X-Keep") == ["client"]
+
     async def test_url_rewrite_preserves_client_static_metadata_headers(
         self, headers, real_flow, mitm_ctx, tmp_path
     ):
