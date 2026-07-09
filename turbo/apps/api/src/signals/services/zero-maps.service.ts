@@ -77,7 +77,7 @@ interface CompleteGoogleMapsResultArgs {
   readonly operation: ZeroMapsResponse["operation"];
   readonly result: unknown | MapsErrorResponse;
   readonly billingCategory: string;
-  readonly legacyStatus?: boolean;
+  readonly validateLegacyGoogleStatus?: boolean;
   readonly recordUsage: () => Promise<number>;
 }
 
@@ -346,7 +346,7 @@ async function completeGoogleMapsResult(
   if (isMapsErrorResponse(args.result)) {
     return args.result;
   }
-  if (args.legacyStatus) {
+  if (args.validateLegacyGoogleStatus) {
     const failure = legacyMapsFailure(args.result);
     if (failure) {
       return failure;
@@ -399,7 +399,7 @@ export const zeroMapsGeocode$ = command(
       operation: "geocode",
       result,
       billingCategory: GEOCODING_CATEGORY,
-      legacyStatus: true,
+      validateLegacyGoogleStatus: true,
       recordUsage: () => {
         return set(
           recordMapsUsage$,
@@ -449,7 +449,7 @@ export const zeroMapsReverseGeocode$ = command(
       operation: "reverse-geocode",
       result,
       billingCategory: GEOCODING_CATEGORY,
-      legacyStatus: true,
+      validateLegacyGoogleStatus: true,
       recordUsage: () => {
         return set(
           recordMapsUsage$,
@@ -511,7 +511,7 @@ export const zeroMapsDirections$ = command(
       operation: "directions",
       result,
       billingCategory,
-      legacyStatus: true,
+      validateLegacyGoogleStatus: true,
       recordUsage: () => {
         return set(
           recordMapsUsage$,
