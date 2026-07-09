@@ -29,9 +29,14 @@ struct UnitStateEntry {
 }
 
 pub(super) async fn run(args: UnitStateArgs) -> RunnerResult<()> {
-    let mut services = Vec::with_capacity(args.names.len());
-    for name in args.names {
-        let unit = RunnerServiceUnit::from_suffix(&name)?;
+    let units = args
+        .names
+        .iter()
+        .map(|name| RunnerServiceUnit::from_suffix(name))
+        .collect::<RunnerResult<Vec<_>>>()?;
+
+    let mut services = Vec::with_capacity(units.len());
+    for unit in units {
         let state = read_service_unit_state(&unit).await?;
         services.push(unit_state_entry(unit, state));
     }
