@@ -169,7 +169,7 @@ function maybeShowPendingRestoreToast(status: BillingStatusResponse): void {
   const tier = apiTierToBillingTier(status.tier);
   const restored =
     status.hasSubscription &&
-    (tier === "pro" || tier === "team") &&
+    (tier === "pro" || tier === "team" || tier === "custom") &&
     !status.cancelAtPeriodEnd &&
     status.scheduledChange === null;
   if (!restored) {
