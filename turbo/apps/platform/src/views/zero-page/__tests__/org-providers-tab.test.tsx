@@ -233,12 +233,19 @@ async function openAddApiKeyModelDialog(): Promise<void> {
   await openProvidersTab();
 
   click(screen.getByText("Add model"));
+  await selectDialogModel("Claude Opus 4.7");
   click(screen.getByRole("radio", { name: /API key/u }));
   await waitFor(() => {
     expect(
       screen.getByPlaceholderText("Enter your API key"),
     ).toBeInTheDocument();
   });
+}
+
+async function selectDialogModel(modelName: string): Promise<void> {
+  const dialog = screen.getByRole("dialog", { name: /Add model|Edit model/u });
+  click(within(dialog).getByRole("combobox"));
+  click(await screen.findByRole("option", { name: modelName }));
 }
 
 function buttonByText(
@@ -376,6 +383,7 @@ describe("organization model providers settings", () => {
     await openProvidersTab();
 
     click(buttonByText("Add model"));
+    await selectDialogModel("Claude Opus 4.7");
     click(screen.getByRole("radio", { name: /Claude subscription/u }));
     click(buttonByText("Add model"));
 

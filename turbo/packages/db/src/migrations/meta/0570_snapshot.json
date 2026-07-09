@@ -1,6 +1,6 @@
 {
-  "id": "feec056e-741c-4f6a-afa3-0ba2dc4c1098",
-  "prevId": "d9b57dd5-2272-4904-ada7-4df1066d3d04",
+  "id": "c276bcc4-2132-4253-9a6d-51f70225ad21",
+  "prevId": "feec056e-741c-4f6a-afa3-0ba2dc4c1098",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -8516,6 +8516,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "context_space_id": {
+          "name": "context_space_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "entity_id": {
           "name": "entity_id",
           "type": "uuid",
@@ -8605,6 +8611,27 @@
           "method": "btree",
           "with": {}
         },
+        "idx_memories_context_status": {
+          "name": "idx_memories_context_status",
+          "columns": [
+            {
+              "expression": "context_space_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "idx_memories_entity_status": {
           "name": "idx_memories_entity_status",
           "columns": [
@@ -8628,6 +8655,19 @@
         }
       },
       "foreignKeys": {
+        "memories_context_space_id_memory_context_spaces_id_fk": {
+          "name": "memories_context_space_id_memory_context_spaces_id_fk",
+          "tableFrom": "memories",
+          "tableTo": "memory_context_spaces",
+          "columnsFrom": [
+            "context_space_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
         "memories_entity_id_memory_entities_id_fk": {
           "name": "memories_entity_id_memory_entities_id_fk",
           "tableFrom": "memories",
@@ -9777,6 +9817,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "context_space_id": {
+          "name": "context_space_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "entity_id": {
           "name": "entity_id",
           "type": "uuid",
@@ -9859,9 +9905,37 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "idx_memory_profiles_context": {
+          "name": "idx_memory_profiles_context",
+          "columns": [
+            {
+              "expression": "context_space_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
+        "memory_profiles_context_space_id_memory_context_spaces_id_fk": {
+          "name": "memory_profiles_context_space_id_memory_context_spaces_id_fk",
+          "tableFrom": "memory_profiles",
+          "tableTo": "memory_context_spaces",
+          "columnsFrom": [
+            "context_space_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
         "memory_profiles_entity_id_memory_entities_id_fk": {
           "name": "memory_profiles_entity_id_memory_entities_id_fk",
           "tableFrom": "memory_profiles",
@@ -9904,6 +9978,12 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "context_space_id": {
+          "name": "context_space_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
         },
         "memory_id": {
           "name": "memory_id",
@@ -10050,6 +10130,21 @@
           "method": "btree",
           "with": {}
         },
+        "idx_memory_search_entries_context": {
+          "name": "idx_memory_search_entries_context",
+          "columns": [
+            {
+              "expression": "context_space_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "idx_memory_search_entries_entity": {
           "name": "idx_memory_search_entries_entity",
           "columns": [
@@ -10082,6 +10177,19 @@
         }
       },
       "foreignKeys": {
+        "memory_search_entries_context_space_id_memory_context_spaces_id_fk": {
+          "name": "memory_search_entries_context_space_id_memory_context_spaces_id_fk",
+          "tableFrom": "memory_search_entries",
+          "tableTo": "memory_context_spaces",
+          "columnsFrom": [
+            "context_space_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
         "memory_search_entries_memory_id_memories_id_fk": {
           "name": "memory_search_entries_memory_id_memories_id_fk",
           "tableFrom": "memory_search_entries",
