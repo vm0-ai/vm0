@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use crate::error::{RunnerError, RunnerResult};
 use tokio::io::AsyncReadExt;
+use tokio::task::JoinHandle;
 
 use super::diagnostic::status_field_preview;
 use super::target::RunnerServiceUnit;
@@ -127,40 +128,25 @@ async fn run_command_output_bounded(
         Ok(Ok(status)) => status,
         Ok(Err(e)) => {
             if let Err(kill_error) = kill_and_reap_child(program, &mut child).await {
-                stdout_task.abort();
-                stderr_task.abort();
-                let _ = stdout_task.await;
-                let _ = stderr_task.await;
+                abort_child_output_tasks(stdout_task, stderr_task).await;
                 return Err(kill_error);
             }
-            let _ = stdout_task.await;
-            let _ = stderr_task.await;
+            abort_child_output_tasks(stdout_task, stderr_task).await;
             return Err(RunnerError::Internal(format!("wait {program}: {e}")));
         }
         Err(_) => {
             if let Err(e) = kill_and_reap_child(program, &mut child).await {
-                stdout_task.abort();
-                stderr_task.abort();
-                let _ = stdout_task.await;
-                let _ = stderr_task.await;
+                abort_child_output_tasks(stdout_task, stderr_task).await;
                 return Err(e);
             }
-            let _ = stdout_task.await;
-            let _ = stderr_task.await;
+            abort_child_output_tasks(stdout_task, stderr_task).await;
             return Err(RunnerError::Internal(format!(
                 "{program} timed out after {}ms",
                 duration.as_millis()
             )));
         }
     };
-    let stdout = stdout_task
-        .await
-        .map_err(|e| RunnerError::Internal(format!("{program} stdout task failed: {e}")))?
-        .map_err(|e| RunnerError::Internal(format!("read {program} stdout: {e}")))?;
-    let stderr = stderr_task
-        .await
-        .map_err(|e| RunnerError::Internal(format!("{program} stderr task failed: {e}")))?
-        .map_err(|e| RunnerError::Internal(format!("read {program} stderr: {e}")))?;
+    let (stdout, stderr) = collect_child_output_tasks(program, stdout_task, stderr_task).await?;
 
     Ok(Output {
         status,
@@ -176,6 +162,57 @@ where
     let mut output = Vec::new();
     reader.read_to_end(&mut output).await?;
     Ok(output)
+}
+
+async fn collect_child_output_tasks(
+    program: &str,
+    mut stdout_task: JoinHandle<std::io::Result<Vec<u8>>>,
+    mut stderr_task: JoinHandle<std::io::Result<Vec<u8>>>,
+) -> RunnerResult<(Vec<u8>, Vec<u8>)> {
+    let stdout = match wait_child_output_task(program, "stdout", &mut stdout_task).await {
+        Ok(output) => output,
+        Err(e) => {
+            stderr_task.abort();
+            let _ = stderr_task.await;
+            return Err(e);
+        }
+    };
+    let stderr = wait_child_output_task(program, "stderr", &mut stderr_task).await?;
+    Ok((stdout, stderr))
+}
+
+async fn wait_child_output_task(
+    program: &str,
+    stream: &str,
+    task: &mut JoinHandle<std::io::Result<Vec<u8>>>,
+) -> RunnerResult<Vec<u8>> {
+    match tokio::time::timeout(BOUNDED_COMMAND_KILL_WAIT_TIMEOUT, &mut *task).await {
+        Ok(Ok(Ok(output))) => Ok(output),
+        Ok(Ok(Err(e))) => Err(RunnerError::Internal(format!(
+            "read {program} {stream}: {e}"
+        ))),
+        Ok(Err(e)) => Err(RunnerError::Internal(format!(
+            "{program} {stream} task failed: {e}"
+        ))),
+        Err(_) => {
+            task.abort();
+            let _ = task.await;
+            Err(RunnerError::Internal(format!(
+                "{program} {stream} task did not finish within {}ms after child exit",
+                BOUNDED_COMMAND_KILL_WAIT_TIMEOUT.as_millis()
+            )))
+        }
+    }
+}
+
+async fn abort_child_output_tasks(
+    stdout_task: JoinHandle<std::io::Result<Vec<u8>>>,
+    stderr_task: JoinHandle<std::io::Result<Vec<u8>>>,
+) {
+    stdout_task.abort();
+    stderr_task.abort();
+    let _ = stdout_task.await;
+    let _ = stderr_task.await;
 }
 
 async fn kill_and_reap_child(program: &str, child: &mut tokio::process::Child) -> RunnerResult<()> {
@@ -634,6 +671,21 @@ mod tests {
             .unwrap_err();
 
         assert!(err.to_string().contains("timed out"));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn collect_child_output_tasks_times_out_when_reader_stays_open() {
+        let stdout_task = tokio::spawn(async {
+            tokio::time::sleep(Duration::from_secs(60)).await;
+            Ok(Vec::new())
+        });
+        let stderr_task = tokio::spawn(async { Ok(Vec::new()) });
+
+        let err = collect_child_output_tasks("systemctl", stdout_task, stderr_task)
+            .await
+            .unwrap_err();
+
+        assert!(err.to_string().contains("stdout task did not finish"));
     }
 
     #[test]
