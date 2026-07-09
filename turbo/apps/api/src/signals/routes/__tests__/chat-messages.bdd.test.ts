@@ -1936,8 +1936,8 @@ describe("CHAT-02: model-first provider policies", () => {
     const devSeedKey = `vm0-key-bdd-dev-seed-${keySuffix}`;
 
     await replaceBddVm0ApiKeys({
-      vendor: "openrouter",
-      model: "z-ai/glm-5.2",
+      vendor: "zai",
+      model: "glm-5.2",
       keys: [
         {
           apiKey: fakeKey,
@@ -1972,13 +1972,12 @@ describe("CHAT-02: model-first provider policies", () => {
     );
     const environment = claimEnvironment(claim);
     expect(environment.ANTHROPIC_AUTH_TOKEN).toBe(
-      modelProviderSecretPlaceholder(
-        "openrouter-api-key",
-        "OPENROUTER_API_KEY",
-      ),
+      modelProviderSecretPlaceholder("zai-api-key", "ZAI_API_KEY"),
     );
-    expect(environment.ANTHROPIC_BASE_URL).toBe("https://openrouter.ai/api");
-    expect(environment.ANTHROPIC_MODEL).toBe("z-ai/glm-5.2");
+    expect(environment.ANTHROPIC_BASE_URL).toBe(
+      "https://api.z.ai/api/anthropic",
+    );
+    expect(environment.ANTHROPIC_MODEL).toBe("glm-5.2");
 
     if (!claim.encryptedSecrets) {
       throw new Error("Expected vm0 claim to carry encrypted secrets");
@@ -1988,7 +1987,7 @@ describe("CHAT-02: model-first provider policies", () => {
       {
         encryptedSecrets: claim.encryptedSecrets,
         authHeaders: {
-          Authorization: `Bearer ${secretTemplate("OPENROUTER_API_KEY")}`,
+          Authorization: `Bearer ${secretTemplate("ZAI_API_KEY")}`,
         },
       },
       [200],
@@ -2000,8 +1999,8 @@ describe("CHAT-02: model-first provider policies", () => {
 
     await api.requestCancelRun(actor, run.runId, [200]);
     await deleteBddVm0ApiKeys({
-      vendor: "openrouter",
-      model: "z-ai/glm-5.2",
+      vendor: "zai",
+      model: "glm-5.2",
     });
   }, 90_000);
   it("rejects legacy blank OpenRouter provider secrets during firewall auth", async () => {

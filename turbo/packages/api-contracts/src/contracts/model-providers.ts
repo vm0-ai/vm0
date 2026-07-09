@@ -347,14 +347,12 @@ export const VM0_MODEL_TO_PROVIDER: Record<string, Vm0ModelConfig> = {
     vendor: "anthropic",
   },
   "glm-5.2": {
-    concreteType: "openrouter-api-key",
-    vendor: "openrouter",
-    apiModel: "z-ai/glm-5.2",
+    concreteType: "zai-api-key",
+    vendor: "zai",
   },
   "glm-5.1": {
-    concreteType: "openrouter-api-key",
-    vendor: "openrouter",
-    apiModel: "z-ai/glm-5.1",
+    concreteType: "zai-api-key",
+    vendor: "zai",
   },
   "mimo-v2.5": {
     concreteType: "openrouter-api-key",
