@@ -94,6 +94,11 @@ describe("release-please API deployment graph", () => {
     expect(apiBuildJob).toContain("Build API Production Output");
     expect(apiBuildJob).toContain("Upload API Production Build Output");
     expect(apiBuildJob).toContain("retention-days: 3");
+    expect(apiBuildJob).not.toContain("environment: production");
+    expect(apiBuildJob).not.toContain("id-token: write");
+    expect(apiBuildJob).not.toContain("Get Production Database URL");
+    expect(apiBuildJob).not.toContain("Fetch production Doppler OAuth config");
+    expect(apiBuildJob).not.toContain("API_PRODUCTION_ENV_FILE");
     expect(apiBuildJob).not.toContain("./.github/actions/vercel-deploy");
     expect(apiBuildJob).not.toContain("skip-domain");
     expect(apiBuildJob).not.toContain("api_deploy_required");

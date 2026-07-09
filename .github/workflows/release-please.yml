@@ -782,8 +782,6 @@ jobs:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260622
     permissions:
       contents: read
-      id-token: write
-    environment: production
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/toolchain-init
@@ -800,9 +798,6 @@ jobs:
           if-no-files-found: error
           overwrite: true
           retention-days: 14
-
-      - name: Install neonctl
-        run: npm install -g neonctl@2.15.0
 
       - name: Notify Slack - Starting
         id: slack-start
@@ -824,54 +819,10 @@ jobs:
         id: timer
         run: echo "start=$(date +%s)" >> "$GITHUB_OUTPUT"
 
-      - name: Get Production Database URL
-        id: get-db-url
-        run: |
-          DATABASE_URL=$(neonctl connection-string production --project-id ${{ vars.NEON_PROJECT_ID }} --database-name neondb --role-name neondb_owner --pooled)
-          echo "database-url=$DATABASE_URL" >> "$GITHUB_OUTPUT"
-        env:
-          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
-
-      - name: Fetch production Doppler OAuth config
-        id: doppler-oauth
-        uses: dopplerhq/secrets-fetch-action@v2.0.0
-        with:
-          auth-method: oidc
-          doppler-identity-id: ${{ vars.DOPPLER_SERVICE_IDENTITY_ID }}
-          doppler-project: vm0
-          doppler-config: prd
-
-      - name: Resolve API production environment
-        id: api-production-env
-        uses: ./.github/actions/web-api-env
-        with:
-          app: api
-          environment: production
-          database-url: ${{ steps.get-db-url.outputs.database-url }}
-          web-url: https://www.vm0.ai
-          app-url: https://app.vm0.ai
-          api-url: ${{ vars.VM0_API_URL }}
-        env:
-          REPO_VARS_JSON: ${{ toJSON(vars) }}
-          REPO_SECRETS_JSON: ${{ toJSON(secrets) }}
-          DOPPLER_SECRETS_JSON: ${{ toJSON(steps.doppler-oauth.outputs) }}
-
       - name: Build API Production Output
         shell: bash
-        env:
-          API_PRODUCTION_ENV_FILE: ${{ steps.api-production-env.outputs.file }}
         run: |
           set -euo pipefail
-
-          while IFS= read -r line; do
-            line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-            if [ -n "$line" ]; then
-              KEY="${line%%=*}"
-              VALUE="${line#*=}"
-              echo "Exporting env: $KEY"
-              export "$KEY=$VALUE"
-            fi
-          done < "$API_PRODUCTION_ENV_FILE"
 
           pnpm --dir turbo/apps/api build
           rm -rf .vercel/output
