@@ -452,13 +452,18 @@ describe("GET /api/cron/artifact-preview", () => {
       filename: "reference-footage.mp4",
       contentType: "video/mp4",
     });
-    await markHostedArtifactEligibleForPreviewCron(context, videoArtifact, {
-      generatedBy: "zero-official-video",
-    });
-    await markHostedArtifactEligibleForPreviewCron(
+    const videoArtifactRowId = await markHostedArtifactEligibleForPreviewCron(
       context,
-      ordinaryVideoUpload,
+      videoArtifact,
+      {
+        generatedBy: "zero-official-video",
+      },
     );
+    const ordinaryVideoUploadRowId =
+      await markHostedArtifactEligibleForPreviewCron(
+        context,
+        ordinaryVideoUpload,
+      );
     await updateFeatureSwitchesForUser(
       context,
       {
@@ -488,15 +493,15 @@ describe("GET /api/cron/artifact-preview", () => {
       bucket: "test-user-artifacts",
       contentType: "image/jpeg",
     });
-    expect(posterPuts[0]?.key).toContain(`/${videoArtifact.fileId}/poster.jpg`);
-    expect(posterPuts[0]?.key).not.toContain(`/${ordinaryVideoUpload.fileId}/`);
+    expect(posterPuts[0]?.key).toContain(`/${videoArtifactRowId}/poster.jpg`);
+    expect(posterPuts[0]?.key).not.toContain(`/${ordinaryVideoUploadRowId}/`);
 
     const response = await chat.listArtifacts(owner.actor);
     const previewedArtifact = response.artifacts.find((item) => {
       return item.fileId === videoArtifact.fileId;
     });
     expect(previewedArtifact?.previewImageUrl).toContain(
-      `/${videoArtifact.fileId}/poster.jpg`,
+      `/${videoArtifactRowId}/poster.jpg`,
     );
     expect(
       response.artifacts.some((item) => {

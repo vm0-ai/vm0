@@ -46,7 +46,7 @@ export async function markHostedArtifactEligibleForPreviewCron(
     readonly url: string;
   },
   options: { readonly generatedBy?: string } = {},
-): Promise<void> {
+): Promise<string> {
   const body = await postArtifactPreviewState(context, {
     action: "mark-preview-cron-eligible",
     run_id: artifact.runId,
@@ -58,4 +58,9 @@ export async function markHostedArtifactEligibleForPreviewCron(
       `Expected one artifact preview state row update, received ${body.updated ?? 0}`,
     );
   }
+  const [id] = body.ids ?? [];
+  if (!id) {
+    throw new Error("Expected artifact preview state action to return row id");
+  }
+  return id;
 }

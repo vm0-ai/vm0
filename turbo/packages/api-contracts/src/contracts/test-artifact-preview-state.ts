@@ -22,6 +22,7 @@ export const testArtifactPreviewStateActionBodySchema = z.discriminatedUnion(
 
 export const testArtifactPreviewStateActionResponseSchema = z.object({
   ok: z.literal(true),
+  ids: z.array(z.string()).optional(),
   updated: z.number().optional(),
 });
 

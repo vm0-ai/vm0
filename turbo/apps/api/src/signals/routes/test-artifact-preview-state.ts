@@ -59,7 +59,12 @@ const actionHandlers = {
       )
       .returning({ id: runUploadedFiles.id });
     signal.throwIfAborted();
-    return actionOk({ updated: rows.length });
+    return actionOk({
+      ids: rows.map((row) => {
+        return row.id;
+      }),
+      updated: rows.length,
+    });
   },
 } satisfies Record<
   ArtifactPreviewStateAction,
