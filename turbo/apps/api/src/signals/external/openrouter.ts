@@ -4,9 +4,21 @@ import { settle } from "../utils";
 const OPENROUTER_CHAT_COMPLETIONS_URL =
   "https://openrouter.ai/api/v1/chat/completions";
 
+export interface OpenRouterTextPart {
+  readonly type: "text";
+  readonly text: string;
+}
+
+export interface OpenRouterImagePart {
+  readonly type: "image_url";
+  readonly image_url: { readonly url: string };
+}
+
+export type OpenRouterContentPart = OpenRouterTextPart | OpenRouterImagePart;
+
 interface OpenRouterMessage {
   readonly role: "system" | "user" | "assistant";
-  readonly content: string;
+  readonly content: string | readonly OpenRouterContentPart[];
 }
 
 interface OpenRouterResponse {
