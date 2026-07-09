@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.418.0](https://github.com/vm0-ai/vm0/compare/core-v8.417.0...core-v8.418.0) (2026-07-09)
+
+
+### Features
+
+* use image previews for website templates ([#20766](https://github.com/vm0-ai/vm0/issues/20766)) ([eeeaafd](https://github.com/vm0-ai/vm0/commit/eeeaafd05bfd37c62adf890aac2e7cebd277d684))
+
 ## [8.417.0](https://github.com/vm0-ai/vm0/compare/core-v8.416.0...core-v8.417.0) (2026-07-09)
 
 

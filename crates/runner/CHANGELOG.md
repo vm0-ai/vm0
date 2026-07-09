@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.140.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.140.0...runner-rs-v0.140.1) (2026-07-09)
+
+
+### Bug Fixes
+
+* retry transient session history blob downloads ([#20760](https://github.com/vm0-ai/vm0/issues/20760)) ([fd7e2d2](https://github.com/vm0-ai/vm0/commit/fd7e2d2434e77c7b1709c24a5d4005165f7170fa))
+
 ## [0.140.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.139.5...runner-rs-v0.140.0) (2026-07-09)
 
 
