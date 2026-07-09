@@ -124,6 +124,54 @@ export async function seedSemanticRecallMemory(
   });
 }
 
+export async function seedLexicalRelationshipMemory(args: {
+  readonly fixture: RelationshipMemoryFixture;
+  readonly displayName: string;
+  readonly kind: MemoryKind;
+  readonly text: string;
+  readonly confidence?: number;
+  readonly lastSeenAt?: Date;
+}): Promise<{
+  readonly entityId: string;
+  readonly memoryId: string;
+}> {
+  const db = createStore().set(writeDb$);
+  const [entity] = await db
+    .insert(memoryEntities)
+    .values({
+      orgId: args.fixture.orgId,
+      userId: args.fixture.userId,
+      type: "organization",
+      displayName: args.displayName,
+    })
+    .returning({ id: memoryEntities.id });
+  if (!entity) {
+    throw new Error("Expected lexical relationship memory fixture entity");
+  }
+
+  const [memory] = await db
+    .insert(memories)
+    .values({
+      orgId: args.fixture.orgId,
+      userId: args.fixture.userId,
+      entityId: entity.id,
+      kind: args.kind,
+      status: "active" as const,
+      text: args.text,
+      confidence: args.confidence ?? 91,
+      lastSeenAt: args.lastSeenAt ?? new Date("2026-07-05T12:00:00.000Z"),
+    })
+    .returning({ id: memories.id });
+  if (!memory) {
+    throw new Error("Expected lexical relationship memory fixture memory");
+  }
+
+  return {
+    entityId: entity.id,
+    memoryId: memory.id,
+  };
+}
+
 export async function seedGraphExpansionMemories(
   fixture: RelationshipMemoryFixture,
   query: string,

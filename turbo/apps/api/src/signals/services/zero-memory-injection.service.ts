@@ -9,6 +9,7 @@ import {
   getZeroMemoryProfile,
   toMemoryInjectionItem,
 } from "./zero-memory-profile.service";
+import type { ZeroMemoryTimingObserver } from "./zero-memory-timing.service";
 
 interface MemoryScope {
   readonly orgId: string;
@@ -17,6 +18,7 @@ interface MemoryScope {
 
 interface ZeroMemoryInjectionParams extends MemoryScope {
   readonly prompt: string;
+  readonly timing?: ZeroMemoryTimingObserver;
 }
 
 const QUERY_MEMORY_KINDS = [
@@ -162,6 +164,7 @@ export async function buildZeroMemoryRuntimeInjection(
     dynamicLimit: 0,
     searchLimit: DEFAULT_QUERY_LIMIT,
     includeGraphExpansion: true,
+    timing: params.timing,
   });
 
   const staticProfile = profile.profile.static.map(toMemoryInjectionItem);

@@ -1,9 +1,9 @@
-export const VERCEL_PROTECTION_BYPASS_NAME = "x-vercel-protection-bypass";
+const VERCEL_PROTECTION_BYPASS_NAME = "x-vercel-protection-bypass";
 
 const PREVIEW_BYPASS_COOKIE_MAX_AGE_SECONDS = 60 * 60;
 const PREVIEW_COOKIE_ROOT_DOMAIN = "vm6.ai";
 
-export interface PreviewBypassCookieLocation {
+interface PreviewBypassCookieLocation {
   readonly hostname: string;
   readonly protocol: string;
   readonly search: string;

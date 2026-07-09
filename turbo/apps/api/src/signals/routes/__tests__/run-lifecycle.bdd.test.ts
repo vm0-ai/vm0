@@ -26,6 +26,7 @@ import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now, nowDate } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-context";
 import { server } from "../../../mocks/server";
+import { seedLexicalRelationshipMemory } from "../../../test-fixtures/relationship-memory";
 import {
   createBddApi,
   expectApiError,
@@ -213,6 +214,35 @@ const API_DISPATCH_ZERO_PRE_CREATE_ACTION_TYPES = [
   "api_dispatch_pre_create_zero_load_workflows",
   "api_dispatch_pre_create_zero_resolve_permission_policies",
   "api_dispatch_pre_create_zero_build_create_run_args",
+] as const;
+const API_DISPATCH_ZERO_MEMORY_RUNTIME_ACTION_TYPES = [
+  "api_dispatch_pre_create_zero_build_create_run_args_memory_runtime_injection",
+] as const;
+const API_DISPATCH_ZERO_MEMORY_PROFILE_ACTION_TYPES = [
+  "api_dispatch_pre_create_zero_memory_profile_static",
+  "api_dispatch_pre_create_zero_memory_profile_dynamic",
+  "api_dispatch_pre_create_zero_memory_profile_search",
+  "api_dispatch_pre_create_zero_memory_profile_search_lexical",
+  "api_dispatch_pre_create_zero_memory_profile_search_semantic_embedding",
+  "api_dispatch_pre_create_zero_memory_profile_search_semantic_query",
+  "api_dispatch_pre_create_zero_memory_profile_search_graph_expansion",
+  "api_dispatch_pre_create_zero_memory_profile_search_seed_rank",
+  "api_dispatch_pre_create_zero_memory_profile_search_final_rank",
+  "api_dispatch_pre_create_zero_memory_profile_hydrate",
+  "api_dispatch_pre_create_zero_memory_profile_load_sources",
+] as const;
+const ZERO_MEMORY_TIMING_BUCKET_DIMENSION_KEYS = [
+  "memory_runtime_prompt_length_bucket",
+  "memory_profile_static_result_count_bucket",
+  "memory_profile_dynamic_result_count_bucket",
+  "memory_profile_search_result_count_bucket",
+  "memory_profile_lexical_candidate_count_bucket",
+  "memory_profile_semantic_candidate_count_bucket",
+  "memory_profile_expansion_candidate_count_bucket",
+  "memory_profile_seed_ranked_count_bucket",
+  "memory_profile_final_ranked_count_bucket",
+  "memory_profile_hydrated_count_bucket",
+  "memory_profile_source_loaded_count_bucket",
 ] as const;
 const API_DISPATCH_ZERO_INTERNAL_ENTRYPOINT_ACTION_TYPES = [
   "api_dispatch_pre_create_zero_entrypoint_gap",
@@ -628,6 +658,38 @@ function expectCustomConnectorRuntimePhaseTimingEvents(
   }
 }
 
+function expectApiDispatchEventsSpanKind(
+  events: readonly Record<string, unknown>[],
+  expectedActionTypes: readonly string[],
+  spanKind: string,
+): void {
+  for (const actionType of expectedActionTypes) {
+    const matchingEvents = events.filter((event) => {
+      return event.op_type === actionType;
+    });
+    expect(matchingEvents.length).toBeGreaterThan(0);
+    for (const event of matchingEvents) {
+      expect(event).toStrictEqual(
+        expect.objectContaining({
+          span_kind: spanKind,
+        }),
+      );
+    }
+  }
+}
+
+function expectZeroMemoryTimingBucketDimensions(
+  events: readonly Record<string, unknown>[],
+): void {
+  for (const event of events) {
+    for (const key of ZERO_MEMORY_TIMING_BUCKET_DIMENSION_KEYS) {
+      if (key in event) {
+        expect(typeof event[key]).toBe("string");
+      }
+    }
+  }
+}
+
 function expectApiDispatchTimingEventsNotToLeak(
   events: readonly Record<string, unknown>[],
   forbiddenValues: readonly string[],
@@ -996,6 +1058,165 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       expect(["top_level", "nested"]).toContain(event.span_kind);
     }
     expectApiDispatchTimingEventsNotToLeak(timingEvents, [prompt, agentId]);
+  });
+
+  it("emits memory runtime attribution timing for zero runs", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    if (!actor.orgId) {
+      throw new Error("Memory runtime timing test requires an org");
+    }
+    const prompt = "security review answer";
+    const seededMemoryText = "Send the security review answer to the customer.";
+    await updateFeatureSwitchesForUser(
+      context,
+      { userId: actor.userId, orgId: actor.orgId, orgRole: "org:admin" },
+      {
+        [FeatureSwitchKey.RelationshipMemory]: true,
+        [FeatureSwitchKey.RelationshipMemoryRuntimeInjection]: true,
+      },
+    );
+    const seeded = await seedLexicalRelationshipMemory({
+      fixture: { orgId: actor.orgId, userId: actor.userId },
+      displayName: "Security Review",
+      kind: "preference",
+      text: seededMemoryText,
+    });
+
+    const created = await api.createRun(actor, {
+      agentId,
+      prompt,
+      modelProvider: "anthropic-api-key",
+    });
+
+    const timingEvents = apiDispatchTimingEventsForRun(created.runId);
+    const zeroMemoryActionTypes = new Set<string>([
+      ...API_DISPATCH_ZERO_MEMORY_RUNTIME_ACTION_TYPES,
+      ...API_DISPATCH_ZERO_MEMORY_PROFILE_ACTION_TYPES,
+    ]);
+    const memoryTimingEvents = timingEvents.filter((event) => {
+      return (
+        typeof event.op_type === "string" &&
+        zeroMemoryActionTypes.has(event.op_type)
+      );
+    });
+    expectApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_ZERO_MEMORY_RUNTIME_ACTION_TYPES,
+    );
+    const expectedProfileActionTypes =
+      API_DISPATCH_ZERO_MEMORY_PROFILE_ACTION_TYPES.filter((actionType) => {
+        return (
+          actionType !==
+          "api_dispatch_pre_create_zero_memory_profile_search_semantic_query"
+        );
+      });
+    expectApiDispatchActions(timingEvents, expectedProfileActionTypes);
+    expectApiDispatchEventsSpanKind(
+      timingEvents,
+      [
+        ...API_DISPATCH_ZERO_MEMORY_RUNTIME_ACTION_TYPES,
+        ...expectedProfileActionTypes,
+      ],
+      "nested",
+    );
+    expectNoApiDispatchActions(timingEvents, [
+      "api_dispatch_pre_create_zero_memory_profile_search_semantic_query",
+    ]);
+
+    const runtimeEvent = singleApiDispatchEvent(
+      timingEvents,
+      "api_dispatch_pre_create_zero_build_create_run_args_memory_runtime_injection",
+    );
+    expect(runtimeEvent).toStrictEqual(
+      expect.objectContaining({
+        memory_runtime_injection_enabled: "true",
+        memory_runtime_prompt_length_bucket: "1_256",
+        zero_run_origin: "zero_run",
+        trigger_source: "web",
+      }),
+    );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_pre_create_zero_memory_profile_static",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        memory_profile_static_result_count_bucket: expect.any(String),
+      }),
+    );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_pre_create_zero_memory_profile_search_semantic_embedding",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        memory_profile_semantic_embedding_result: "empty",
+      }),
+    );
+    expectZeroMemoryTimingBucketDimensions(memoryTimingEvents);
+    expectApiDispatchTimingEventsNotToLeak(memoryTimingEvents, [
+      prompt,
+      agentId,
+      actor.userId,
+      actor.orgId,
+      seeded.entityId,
+      seeded.memoryId,
+      seededMemoryText,
+    ]);
+
+    await api.requestCancelRun(actor, created.runId, [200]);
+  });
+
+  it("emits disabled memory runtime attribution without profile spans", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    if (!actor.orgId) {
+      throw new Error("Memory runtime disabled timing test requires an org");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { userId: actor.userId, orgId: actor.orgId, orgRole: "org:admin" },
+      {
+        [FeatureSwitchKey.RelationshipMemory]: true,
+        [FeatureSwitchKey.RelationshipMemoryRuntimeInjection]: false,
+      },
+    );
+    const prompt = "memory runtime disabled timing should not leak prompt";
+
+    const created = await api.createRun(actor, {
+      agentId,
+      prompt,
+      modelProvider: "anthropic-api-key",
+    });
+
+    const timingEvents = apiDispatchTimingEventsForRun(created.runId);
+    expectApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_ZERO_MEMORY_RUNTIME_ACTION_TYPES,
+    );
+    expectNoApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_ZERO_MEMORY_PROFILE_ACTION_TYPES,
+    );
+    const runtimeEvent = singleApiDispatchEvent(
+      timingEvents,
+      "api_dispatch_pre_create_zero_build_create_run_args_memory_runtime_injection",
+    );
+    expect(runtimeEvent).toStrictEqual(
+      expect.objectContaining({
+        memory_runtime_injection_enabled: "false",
+        memory_runtime_prompt_length_bucket: "1_256",
+      }),
+    );
+    expectApiDispatchTimingEventsNotToLeak(
+      [runtimeEvent],
+      [prompt, agentId, actor.userId, actor.orgId],
+    );
+
+    await api.requestCancelRun(actor, created.runId, [200]);
   });
 
   it("emits api dispatch timing for direct create route runs", async () => {
