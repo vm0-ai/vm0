@@ -360,6 +360,9 @@ export const secretConnectorMetadataMapSchema = z.record(
 export const storedExecutionContextSchema = z.object({
   storageManifest: storageManifestSchema.nullable(),
   environment: z.record(z.string(), z.string()).nullable(),
+  // Connector-owned runtime vars used by proxy/firewall template resolution.
+  // User-provided run vars stay in agent_runs.vars and are merged at claim time.
+  vars: z.record(z.string(), z.string()).nullable().optional(),
   resumeSession: storedResumeSessionSchema.nullable(),
   // AES-256-GCM encrypted Record<string, string>. Keys are the runtime secret
   // names used by `${{ secrets.NAME }}`; connector/model-provider keys are env

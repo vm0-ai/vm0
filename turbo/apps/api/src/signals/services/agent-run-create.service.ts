@@ -4794,6 +4794,7 @@ async function buildStoredExecutionContext(args: {
         }),
         ...args.extraEnvironment,
       },
+      vars: args.connectorContext.vars ?? null,
       resumeSession: args.resolved.resumeSession ?? null,
       encryptedSecrets: await encryptPersistentSecretsMap(
         executionSecrets.secrets ?? null,
