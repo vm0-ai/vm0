@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 
@@ -119,7 +120,8 @@ pub struct ApiProvider {
     /// Supported direct job candidates delivered by Ably notifications.
     direct_candidates: Arc<DirectCandidateInbox>,
     /// Background Ably control-plane task.
-    ably_supervisor: AblySupervisor,
+    ably_supervisor: Mutex<Option<AblySupervisor>>,
+    cancel_tokens: SharedRunCancellationMap,
     network_policy_refresh: NetworkPolicyRefreshHandle,
     builtin_firewall_catalog_refresh: BuiltinFirewallCatalogRefreshController,
     /// Shutdown signal.
@@ -132,7 +134,7 @@ pub struct BuiltinFirewallCatalogCachePaths {
 }
 
 impl ApiProvider {
-    /// Create a new API-backed provider and start the Ably supervisor.
+    /// Create a new API-backed provider.
     pub fn new(
         http: HttpClient,
         token: String,
@@ -155,16 +157,6 @@ impl ApiProvider {
             DIRECT_CANDIDATE_INBOX_CAPACITY,
             DIRECT_CANDIDATE_STALE_AFTER,
         );
-        let ably_supervisor = AblySupervisor::spawn(AblySupervisorConfig {
-            api: api.clone(),
-            group: group.clone(),
-            profiles: supported_profiles.clone(),
-            poll_wakeups: Arc::clone(&poll_wakeups),
-            direct_candidates: Arc::clone(&direct_candidates),
-            cancel_tokens,
-            network_policy_refresh: network_policy_refresh.clone(),
-            provider_cancel: cancel.clone(),
-        });
 
         Arc::new(Self {
             api,
@@ -172,7 +164,8 @@ impl ApiProvider {
             supported_profiles,
             poll_wakeups,
             direct_candidates,
-            ably_supervisor,
+            ably_supervisor: Mutex::new(None),
+            cancel_tokens,
             network_policy_refresh,
             builtin_firewall_catalog_refresh,
             cancel,
@@ -243,6 +236,24 @@ impl ApiProvider {
             }
         }
     }
+
+    async fn ensure_ably_supervisor_started(&self) {
+        let mut ably_supervisor = self.ably_supervisor.lock().await;
+        if ably_supervisor.is_some() {
+            return;
+        }
+
+        *ably_supervisor = Some(AblySupervisor::spawn(AblySupervisorConfig {
+            api: self.api.clone(),
+            group: self.group.clone(),
+            profiles: self.supported_profiles.clone(),
+            poll_wakeups: Arc::clone(&self.poll_wakeups),
+            direct_candidates: Arc::clone(&self.direct_candidates),
+            cancel_tokens: Arc::clone(&self.cancel_tokens),
+            network_policy_refresh: self.network_policy_refresh.clone(),
+            provider_cancel: self.cancel.clone(),
+        }));
+    }
 }
 
 #[async_trait::async_trait]
@@ -250,7 +261,14 @@ impl JobProvider for ApiProvider {
     async fn prepare_startup_readiness(&self) -> RunnerResult<()> {
         self.builtin_firewall_catalog_refresh
             .prepare_startup_readiness()
-            .await
+            .await?;
+        if self.cancel.is_cancelled() {
+            return Err(RunnerError::Internal(
+                "provider startup readiness cancelled".to_string(),
+            ));
+        }
+        self.ensure_ably_supervisor_started().await;
+        Ok(())
     }
 
     async fn discover(&self) -> Option<JobCandidate> {
@@ -405,7 +423,10 @@ impl JobProvider for ApiProvider {
     }
 
     async fn shutdown(&self) {
-        self.ably_supervisor.shutdown().await;
+        let ably_supervisor = self.ably_supervisor.lock().await.take();
+        if let Some(ably_supervisor) = ably_supervisor {
+            ably_supervisor.shutdown().await;
+        }
         self.network_policy_refresh.shutdown().await;
         self.builtin_firewall_catalog_refresh.shutdown().await;
     }
@@ -1265,7 +1286,8 @@ mod tests {
                 DIRECT_CANDIDATE_INBOX_CAPACITY,
                 DIRECT_CANDIDATE_STALE_AFTER,
             ),
-            ably_supervisor: AblySupervisor::disabled(),
+            ably_supervisor: Mutex::new(Some(AblySupervisor::disabled())),
+            cancel_tokens: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
             cancel,
         })
     }
