@@ -111,7 +111,7 @@ def aws_allow(
         dict(aws_api_entry() if api_entry is None else api_entry),
         firewall_name,
         permission,
-        {} if params is None else params,
+        {} if params is None else dict(params),
         rule,
         rel_path,
     )
@@ -133,7 +133,7 @@ def aws_vm_info(
         "sandboxToken": DEFAULT_SANDBOX_TOKEN if sandbox_token is None else sandbox_token,
         "encryptedSecrets": encrypted_secrets,
         "networkLogPath": str(tmp_path / "network.jsonl"),
-        "billableFirewalls": [] if billable_firewalls is None else billable_firewalls,
+        "billableFirewalls": [] if billable_firewalls is None else list(billable_firewalls),
         "vars": {"AWS_REGION": region},
     }
     if secret_connector_map is not None:
