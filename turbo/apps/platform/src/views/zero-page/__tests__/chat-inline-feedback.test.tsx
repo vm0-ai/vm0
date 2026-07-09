@@ -1,10 +1,7 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import type {
-  GenerationTemplateRequest,
-  ModelSelectionRequest,
-} from "@vm0/api-contracts/contracts/chat-threads";
+import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/chat-threads";
 import { PRESENTATION_TEMPLATE_PICKER_ITEMS } from "@vm0/core";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -19,6 +16,11 @@ import { mockChatLifecycle } from "./chat-test-helpers.ts";
 const context = testContext();
 
 const FEEDBACK_THREAD_ID = "b0000000-0000-4000-a000-000000000703";
+
+interface ModelSelectionRequest {
+  readonly modelProviderId: string;
+  readonly selectedModel: string;
+}
 
 interface RunCreateCapture {
   prompt?: string;

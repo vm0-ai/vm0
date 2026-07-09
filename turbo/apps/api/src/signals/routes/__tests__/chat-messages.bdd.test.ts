@@ -14,7 +14,6 @@ import {
   type AttachFile,
   type ChatRunOptionsRequest,
   type GenerationTemplateRequest,
-  type ModelSelectionRequest,
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
@@ -45,6 +44,7 @@ import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
+import { overwriteModelProviderSecretForTests } from "./helpers/zero-model-provider-state";
 import {
   deleteBddVm0ApiKeys,
   replaceBddVm0ApiKeys,
@@ -69,8 +69,6 @@ const chatCallbacks = createChatCallbacksApi(context);
 const cu = createComputerUseBddApi(context);
 const misc = createMiscRoutesApi(context);
 const routeMocks = createZeroRouteMocks(context);
-const MODEL_FIRST_SELECTION_PROVIDER_ID =
-  "00000000-0000-4000-8000-000000000000";
 const CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET = "zero web upload-file -f <path>";
 const API_DISPATCH_ZERO_WEB_CHAT_PRE_CREATE_ACTION_TYPES = [
   "api_dispatch_pre_create_zero_web_chat_prepare_normal_send",
@@ -174,7 +172,7 @@ interface ChatRunSendBody {
   readonly threadId?: string;
   readonly clientThreadId?: string;
   readonly clientMessageId?: string;
-  readonly modelSelection?: ModelSelectionRequest;
+  readonly model?: string;
   readonly runOptions?: ChatRunOptionsRequest;
   readonly generationTemplate?: GenerationTemplateRequest;
   readonly attachFiles?: readonly AttachFile[];
@@ -1403,7 +1401,7 @@ describe("CHAT-02: dispatch failure", () => {
 });
 
 describe("CHAT-02: admission without spendable credits", () => {
-  it("blocks admission for provider-pinned sends through visible chat messages", async () => {
+  it("blocks admission for model-first sends through visible chat messages", async () => {
     const actor = bdd.user();
     bdd.acceptAgentStorageWrites();
     await bdd.setupOnboarding(actor, {
@@ -1412,9 +1410,15 @@ describe("CHAT-02: admission without spendable credits", () => {
     const agent = await bdd.createAgent(actor, {
       displayName: "Pro-suspend chat agent",
     });
-    const { providerId } = await upsertOrgModelProvider(actor, {
-      type: "vm0",
-    });
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "claude-sonnet-4-6",
+        isDefault: true,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+        modelProviderId: null,
+      },
+    ]);
     if (!actor.orgId) {
       throw new Error("Expected pro-suspend chat actor to have an org");
     }
@@ -1428,10 +1432,7 @@ describe("CHAT-02: admission without spendable credits", () => {
     const sendBody: ChatRunSendBody = {
       agentId: agent.agentId,
       prompt: "blocked by suspended plan",
-      modelSelection: {
-        modelProviderId: providerId,
-        selectedModel: "claude-sonnet-4-6",
-      },
+      model: "claude-sonnet-4-6",
       clientMessageId,
     };
     const sent = await chat.requestSendMessage(actor, sendBody, [201]);
@@ -1467,7 +1468,7 @@ describe("CHAT-02: admission without spendable credits", () => {
   }, 60_000);
 });
 
-describe("CHAT-02: explicit provider pins", () => {
+describe("CHAT-02: model-first provider policies", () => {
   it("adds Codex image upload guidance for web chat Codex sends", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -1494,10 +1495,7 @@ describe("CHAT-02: explicit provider pins", () => {
     const run = await sendChatRun(actor, {
       agentId,
       prompt: "generate an image in web chat",
-      modelSelection: {
-        modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-        selectedModel: "gpt-5.4",
-      },
+      model: "gpt-5.4",
     });
     const { claim } = await claimChatRun(runnerGroup, run.runId);
     const appendSystemPrompt = claim.appendSystemPrompt ?? "";
@@ -1511,21 +1509,27 @@ describe("CHAT-02: explicit provider pins", () => {
     await cancelChatRun(actor, run.runId);
   });
 
-  it("routes explicit provider pins into the runner claim", async () => {
+  it("routes model policy providers into the runner claim", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     const { providerId: deepseekId } = await upsertOrgModelProvider(actor, {
       type: "deepseek-api-key",
       secret: "selected-deepseek-key",
     });
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "deepseek-v4-pro",
+        isDefault: true,
+        defaultProviderType: "deepseek-api-key",
+        credentialScope: "org",
+        modelProviderId: deepseekId,
+      },
+    ]);
 
     const run = await sendChatRun(actor, {
       agentId,
       prompt: "run with the selected deepseek provider",
-      modelSelection: {
-        modelProviderId: deepseekId,
-        selectedModel: "deepseek-v4-pro",
-      },
+      model: "deepseek-v4-pro",
     });
 
     const { claim, sandboxHeaders } = await claimChatRun(
@@ -1596,16 +1600,19 @@ describe("CHAT-02: explicit provider pins", () => {
     // database: 503 when no vm0 execution key exists (no public provisioning
     // surface), 201 when another suite's alive legacy test has seeded a
     // global vm0 key. Both prove the credits-ok admission arm.
-    const { providerId: vm0Id } = await upsertOrgModelProvider(actor, {
-      type: "vm0",
-    });
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "claude-sonnet-4-6",
+        isDefault: true,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+        modelProviderId: null,
+      },
+    ]);
     const vm0Send = await requestSendMessageRaw(actor, {
       agentId,
       prompt: "vm0-backed admission with spendable credits",
-      modelSelection: {
-        modelProviderId: vm0Id,
-        selectedModel: "claude-sonnet-4-6",
-      },
+      model: "claude-sonnet-4-6",
     });
     expect([201, 503]).toContain(vm0Send.status);
     if (vm0Send.status === 503) {
@@ -1663,10 +1670,7 @@ describe("CHAT-02: explicit provider pins", () => {
         agentId,
         prompt: "run codex fast with switch off",
         clientThreadId: switchOffThreadId,
-        modelSelection: {
-          modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-          selectedModel: "gpt-5.5",
-        },
+        model: "gpt-5.5",
         runOptions: { codexServiceTier: "fast" },
       },
       [400],
@@ -1684,10 +1688,7 @@ describe("CHAT-02: explicit provider pins", () => {
     const fast = await sendChatRun(actor, {
       agentId,
       prompt: "run codex fast",
-      modelSelection: {
-        modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-        selectedModel: "gpt-5.5",
-      },
+      model: "gpt-5.5",
       runOptions: { codexServiceTier: "fast" },
     });
     expect((await chat.readThread(actor, fast.threadId)).codexServiceTier).toBe(
@@ -1712,10 +1713,7 @@ describe("CHAT-02: explicit provider pins", () => {
     const invalidFastPatch = await chat.requestUpdateThreadModelSelection(
       actor,
       fast.threadId,
-      {
-        modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-        selectedModel: "gpt-5.4",
-      },
+      "gpt-5.4",
       [400],
       { codexServiceTier: "fast" },
     );
@@ -1727,15 +1725,9 @@ describe("CHAT-02: explicit provider pins", () => {
       "fast",
     );
 
-    await chat.updateThreadModelSelection(
-      actor,
-      fast.threadId,
-      {
-        modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-        selectedModel: "gpt-5.4",
-      },
-      { codexServiceTier: null },
-    );
+    await chat.updateThreadModelSelection(actor, fast.threadId, "gpt-5.4", {
+      codexServiceTier: null,
+    });
     const updatedFastThread = await chat.readThread(actor, fast.threadId);
     expect(updatedFastThread).not.toHaveProperty("selectedModel");
     expect(updatedFastThread.codexServiceTier).toBeNull();
@@ -1760,10 +1752,7 @@ describe("CHAT-02: explicit provider pins", () => {
       agentId,
       threadId: fast.threadId,
       prompt: "run codex standard",
-      modelSelection: {
-        modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-        selectedModel: "gpt-5.5",
-      },
+      model: "gpt-5.5",
     });
     expect(
       (await chat.readThread(actor, standard.threadId)).codexServiceTier,
@@ -1784,10 +1773,7 @@ describe("CHAT-02: explicit provider pins", () => {
         agentId,
         prompt: "5.4 cannot fast",
         clientThreadId: rejectedThreadId,
-        modelSelection: {
-          modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-          selectedModel: "gpt-5.4",
-        },
+        model: "gpt-5.4",
         runOptions: { codexServiceTier: "fast" },
       },
       [400],
@@ -1806,14 +1792,20 @@ describe("CHAT-02: explicit provider pins", () => {
       type: "openrouter-api-key",
       secret: "test-openrouter-key",
     });
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "claude-opus-4-7",
+        isDefault: true,
+        defaultProviderType: "openrouter-api-key",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+    ]);
 
     const run = await sendChatRun(actor, {
       agentId,
       prompt: "run with the selected openrouter provider",
-      modelSelection: {
-        modelProviderId: providerId,
-        selectedModel: "claude-opus-4-7",
-      },
+      model: "claude-opus-4-7",
     });
 
     const { claim, sandboxHeaders } = await claimChatRun(
@@ -1913,17 +1905,20 @@ describe("CHAT-02: explicit provider pins", () => {
     };
 
     await (async () => {
-      const { providerId } = await upsertOrgModelProvider(actor, {
-        type: "vm0",
-      });
+      await api.updateOrgModelPolicies(actor, [
+        {
+          model: "kimi-k2.7-code",
+          isDefault: true,
+          defaultProviderType: "vm0",
+          credentialScope: "org",
+          modelProviderId: null,
+        },
+      ]);
 
       const run = await sendChatRun(actor, {
         agentId,
         prompt: "run with the selected vm0 kimi provider",
-        modelSelection: {
-          modelProviderId: providerId,
-          selectedModel: "kimi-k2.7-code",
-        },
+        model: "kimi-k2.7-code",
       });
       runId = run.runId;
 
@@ -1965,17 +1960,20 @@ describe("CHAT-02: explicit provider pins", () => {
       ],
     });
 
-    const { providerId } = await upsertOrgModelProvider(actor, {
-      type: "vm0",
-    });
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "glm-5.2",
+        isDefault: true,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+        modelProviderId: null,
+      },
+    ]);
 
     const run = await sendChatRun(actor, {
       agentId,
       prompt: "run with the selected vm0 provider",
-      modelSelection: {
-        modelProviderId: providerId,
-        selectedModel: "glm-5.2",
-      },
+      model: "glm-5.2",
     });
 
     const { claim, sandboxHeaders } = await claimChatRun(
@@ -2015,6 +2013,59 @@ describe("CHAT-02: explicit provider pins", () => {
       model: "glm-5.2",
     });
   }, 90_000);
+  it("rejects legacy blank OpenRouter provider secrets during firewall auth", async () => {
+    const fw = createFirewallApi(context);
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    const { providerId } = await upsertOrgModelProvider(actor, {
+      type: "openrouter-api-key",
+      secret: "test-openrouter-key",
+    });
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "claude-opus-4-7",
+        isDefault: true,
+        defaultProviderType: "openrouter-api-key",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+    ]);
+    await overwriteModelProviderSecretForTests(context.signal, {
+      providerId,
+      secretName: "OPENROUTER_API_KEY",
+      secret: "   ",
+    });
+
+    const run = await sendChatRun(actor, {
+      agentId,
+      prompt: "run with a legacy blank openrouter provider",
+      model: "claude-opus-4-7",
+    });
+    const { claim, sandboxHeaders } = await claimChatRun(
+      runnerGroup,
+      run.runId,
+    );
+    if (!claim.encryptedSecrets) {
+      throw new Error("Expected OpenRouter claim to carry encrypted secrets");
+    }
+
+    const rejected = await fw.requestFirewallAuth(
+      sandboxHeaders,
+      {
+        encryptedSecrets: claim.encryptedSecrets,
+        authHeaders: {
+          Authorization: `Bearer ${secretTemplate("OPENROUTER_API_KEY")}`,
+        },
+        secretConnectorMap: claim.secretConnectorMap ?? undefined,
+        secretConnectorMetadataMap:
+          claim.secretConnectorMetadataMap ?? undefined,
+      },
+      [424],
+    );
+    expectApiError(rejected.body);
+    expect(rejected.body.error.code).toBe("CONNECTOR_NOT_CONFIGURED");
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+  }, 60_000);
 });
 
 describe("CHAT-02: run-level model overrides", () => {
@@ -2043,10 +2094,7 @@ describe("CHAT-02: run-level model overrides", () => {
     const first = await sendChatRun(actor, {
       agentId,
       prompt: firstPrompt,
-      modelSelection: {
-        modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-        selectedModel: "claude-opus-4-6",
-      },
+      model: "claude-opus-4-6",
     });
     const firstClaim = await claimChatRun(runnerGroup, first.runId);
     expect(claimEnvironment(firstClaim.claim).ANTHROPIC_MODEL).toBe(
@@ -2076,10 +2124,7 @@ describe("CHAT-02: run-level model overrides", () => {
       agentId,
       threadId: first.threadId,
       prompt: "switch to sonnet",
-      modelSelection: {
-        modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-        selectedModel: "claude-sonnet-4-6",
-      },
+      model: "claude-sonnet-4-6",
     });
     const secondRun = await api.readRun(actor, second.runId);
     const appended = secondRun.appendSystemPrompt ?? "";
@@ -2125,10 +2170,7 @@ describe("CHAT-02: run-level model overrides", () => {
     const first = await sendChatRun(actor, {
       agentId,
       prompt: "pin sonnet model-first",
-      modelSelection: {
-        modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-        selectedModel: "claude-sonnet-4-6",
-      },
+      model: "claude-sonnet-4-6",
     });
     const firstClaim = await claimChatRun(runnerGroup, first.runId);
     chatCallbacks.mockChatOutputEvents([]);
@@ -2183,34 +2225,7 @@ describe("CHAT-02: run-level model overrides", () => {
       displayName: "Invalid model selection agent",
     });
 
-    // A provider id from another workspace is unknown here.
-    const outsider = bdd.user();
-    const foreign = await upsertOrgModelProvider(outsider, {
-      type: "anthropic-api-key",
-      secret: "foreign-org-key",
-    });
-    const foreignThreadId = randomUUID();
-    const foreignPin = await chat.requestSendMessage(
-      actor,
-      {
-        agentId: agent.agentId,
-        prompt: "use a foreign provider",
-        clientThreadId: foreignThreadId,
-        modelSelection: {
-          modelProviderId: foreign.providerId,
-          selectedModel: "claude-sonnet-4-6",
-        },
-      },
-      [400],
-    );
-    expectApiError(foreignPin.body);
-    expect(foreignPin.body.error.message).toBe(
-      "Unknown model provider for this workspace",
-    );
-    await chat.requestReadThread(actor, foreignThreadId, [404]);
-
-    // A vm0 provider pin only accepts supported run models.
-    const vm0Provider = await upsertOrgModelProvider(actor, { type: "vm0" });
+    // Chat send only accepts supported run models.
     const vm0ThreadId = randomUUID();
     const invalidVm0Model = await chat.requestSendMessage(
       actor,
@@ -2218,15 +2233,14 @@ describe("CHAT-02: run-level model overrides", () => {
         agentId: agent.agentId,
         prompt: "use an unsupported vm0 model",
         clientThreadId: vm0ThreadId,
-        modelSelection: {
-          modelProviderId: vm0Provider.providerId,
-          selectedModel: "codex",
-        },
+        model: "codex",
       },
       [400],
     );
     expectApiError(invalidVm0Model.body);
-    expect(invalidVm0Model.body.error.message).toBe("Invalid model selection");
+    expect(invalidVm0Model.body.error.message).toBe(
+      "model: Invalid model selection",
+    );
     await chat.requestReadThread(actor, vm0ThreadId, [404]);
 
     // Removed sentinel models fail contract validation.
@@ -2241,17 +2255,14 @@ describe("CHAT-02: run-level model overrides", () => {
           agentId: agent.agentId,
           prompt: `removed ${selectedModel}`,
           clientThreadId: removedThreadId,
-          modelSelection: {
-            modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-            selectedModel,
-          },
+          model: selectedModel,
         },
         [400],
       );
       expectApiError(removed.body);
       expect(removed.body.error).toMatchObject({
         code: "BAD_REQUEST",
-        message: "modelSelection.selectedModel: Invalid model selection",
+        message: "model: Invalid model selection",
       });
       await chat.requestReadThread(actor, removedThreadId, [404]);
     }

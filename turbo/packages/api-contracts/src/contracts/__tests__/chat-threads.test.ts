@@ -4,8 +4,140 @@ import {
   artifactItemSchema,
   artifactsContract,
   artifactsListResponseSchema,
+  chatMessagesContract,
+  chatThreadModelSelectionContract,
+  chatThreadsContract,
   generationTemplateRequestSchema,
+  MODEL_FIRST_SELECTION_PROVIDER_ID,
 } from "../chat-threads";
+
+const legacyModelSelection = {
+  modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+  selectedModel: "claude-sonnet-4-6",
+};
+
+const legacyProviderPinnedModelSelection = {
+  modelProviderId: "11111111-1111-4111-8111-111111111111",
+  selectedModel: "claude-sonnet-4-6",
+};
+
+describe("chat thread model request compatibility", () => {
+  it("normalizes legacy thread create modelSelection bodies to model", () => {
+    const parsed = chatThreadsContract.create.body.safeParse({
+      agentId: "agent-1",
+      modelSelection: legacyModelSelection,
+      title: "Launch plan",
+    });
+
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) {
+      return;
+    }
+    expect(parsed.data).toMatchObject({
+      agentId: "agent-1",
+      model: "claude-sonnet-4-6",
+      title: "Launch plan",
+    });
+    expect(parsed.data).not.toHaveProperty("modelSelection");
+  });
+
+  it("normalizes legacy thread model update bodies to model", () => {
+    const parsed = chatThreadModelSelectionContract.update.body.safeParse({
+      modelSelection: legacyModelSelection,
+    });
+
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) {
+      return;
+    }
+    expect(parsed.data).toStrictEqual({ model: "claude-sonnet-4-6" });
+  });
+
+  it("normalizes legacy thread model clears to model null", () => {
+    const parsed = chatThreadModelSelectionContract.update.body.safeParse({
+      modelSelection: null,
+    });
+
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) {
+      return;
+    }
+    expect(parsed.data).toStrictEqual({ model: null });
+  });
+
+  it("normalizes legacy chat send modelSelection bodies to model", () => {
+    const parsed = chatMessagesContract.send.body.safeParse({
+      agentId: "agent-1",
+      prompt: "Build a launch plan",
+      modelProvider: "anthropic-api-key",
+      modelSelection: legacyModelSelection,
+    });
+
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) {
+      return;
+    }
+    expect(parsed.data).toMatchObject({
+      agentId: "agent-1",
+      prompt: "Build a launch plan",
+      model: "claude-sonnet-4-6",
+    });
+    expect(parsed.data).not.toHaveProperty("modelProvider");
+    expect(parsed.data).not.toHaveProperty("modelSelection");
+  });
+
+  it("normalizes legacy thread create bodies pinned to a concrete provider", () => {
+    const parsed = chatThreadsContract.create.body.safeParse({
+      agentId: "agent-1",
+      modelSelection: legacyProviderPinnedModelSelection,
+      title: "Launch plan",
+    });
+
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) {
+      return;
+    }
+    expect(parsed.data).toMatchObject({
+      agentId: "agent-1",
+      model: "claude-sonnet-4-6",
+      title: "Launch plan",
+    });
+    expect(parsed.data).not.toHaveProperty("modelSelection");
+  });
+
+  it("normalizes legacy thread model updates pinned to a concrete provider", () => {
+    const parsed = chatThreadModelSelectionContract.update.body.safeParse({
+      modelSelection: legacyProviderPinnedModelSelection,
+    });
+
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) {
+      return;
+    }
+    expect(parsed.data).toStrictEqual({ model: "claude-sonnet-4-6" });
+  });
+
+  it("normalizes legacy chat send bodies pinned to a concrete provider", () => {
+    const parsed = chatMessagesContract.send.body.safeParse({
+      agentId: "agent-1",
+      prompt: "Build a launch plan",
+      modelProvider: "anthropic-api-key",
+      modelSelection: legacyProviderPinnedModelSelection,
+    });
+
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) {
+      return;
+    }
+    expect(parsed.data).toMatchObject({
+      agentId: "agent-1",
+      prompt: "Build a launch plan",
+      model: "claude-sonnet-4-6",
+    });
+    expect(parsed.data).not.toHaveProperty("modelProvider");
+    expect(parsed.data).not.toHaveProperty("modelSelection");
+  });
+});
 
 describe("chat thread generation template contract", () => {
   it("accepts presentation template selections", () => {

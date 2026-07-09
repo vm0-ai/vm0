@@ -85,6 +85,49 @@ disable_codex_beta() {
     return 0
 }
 
+configure_codex_zero_model_policy() {
+    local model="$1"
+    local provider_type="$2"
+    local provider_id="$3"
+    local current payload
+
+    current=$(_codex_zero_curl "/api/zero/model-policies")
+    payload=$(printf '%s' "$current" | jq -c \
+        --arg model "$model" \
+        --arg providerType "$provider_type" \
+        --arg providerId "$provider_id" \
+        '
+        (.policies // [])
+        | map({
+            model,
+            isDefault,
+            defaultProviderType,
+            credentialScope,
+            modelProviderId
+          }) as $existing
+        | ($existing | map(select(.model != $model))) as $others
+        | (
+            ($existing | map(select(.model == $model)) | first)
+            // {model: $model, isDefault: false}
+          ) as $target
+        | {
+            policies: (
+              $others
+              + [
+                  $target
+                  + {
+                      defaultProviderType: $providerType,
+                      credentialScope: "org",
+                      modelProviderId: $providerId
+                    }
+                ]
+            )
+          }
+        ')
+
+    _codex_zero_curl "/api/zero/model-policies" -X PUT -d "$payload" >/dev/null
+}
+
 # Poll /api/zero/chat-threads/:id/messages until the current run has a terminal
 # assistant lifecycle marker (the paged message API no longer exposes agent run
 # status; terminal runs append a null-content lifecycle marker row instead).
@@ -189,17 +232,12 @@ send_chat_run_message() {
     # USE_MOCK_CODEX=true env var causes guest-mock-codex to echo the prompt
     # verbatim — see crates/runner/src/executor.rs (insert_codex_env) and
     # guest_mock_codex::build_events.
-    # Model-first selection can carry either the sentinel provider id for an org
-    # policy route, or a concrete provider id for an explicit model/provider pin.
-    # BYOK smoke tests use a concrete id so they do not mutate shared org policy.
     local selected_model="${CODEX_ZERO_SELECTED_MODEL:-gpt-5.5}"
-    local model_provider_id="${CODEX_ZERO_MODEL_PROVIDER_ID:-00000000-0000-4000-8000-000000000000}"
     payload=$(jq -nc \
         --arg agentId "$agent_id" \
         --arg prompt "$prompt" \
-        --arg modelProviderId "$model_provider_id" \
         --arg selectedModel "$selected_model" \
-        '{agentId: $agentId, prompt: $prompt, modelSelection: {modelProviderId: $modelProviderId, selectedModel: $selectedModel}, hasTextContent: true, realAgentInPreview: true}')
+        '{agentId: $agentId, prompt: $prompt, model: $selectedModel, hasTextContent: true, realAgentInPreview: true}')
     body=$(_codex_zero_curl "/api/zero/chat/messages" \
         -X POST \
         -d "$payload")

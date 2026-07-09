@@ -1,9 +1,6 @@
 import chalk from "chalk";
 import { Command } from "commander";
-import {
-  MODEL_FIRST_SELECTION_PROVIDER_ID,
-  type ChatThreadMetadata,
-} from "@vm0/api-contracts/contracts/chat-threads";
+import type { ChatThreadMetadata } from "@vm0/api-contracts/contracts/chat-threads";
 import type { OrgModelPolicy } from "@vm0/api-contracts/contracts/model-providers";
 
 import {
@@ -107,10 +104,7 @@ async function switchModel(threadId: string, model: string): Promise<void> {
 
   const updated = await updateZeroChatThreadModelSelection({
     threadId,
-    modelSelection: {
-      modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-      selectedModel: model,
-    },
+    model,
   });
 
   console.log(chalk.green("✓ Chat model updated"));

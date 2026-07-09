@@ -3,7 +3,6 @@ import { randomUUID } from "node:crypto";
 import {
   chatThreadMetadataContract,
   chatThreadModelSelectionContract,
-  MODEL_FIRST_SELECTION_PROVIDER_ID,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import { createStore } from "ccstate";
@@ -93,10 +92,7 @@ describe("POST /api/zero/chat-threads/:id/model-selection", () => {
         headers: { authorization: `Bearer ${token}` },
         params: { id: fixture.threadId },
         body: {
-          modelSelection: {
-            modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-            selectedModel: "claude-sonnet-5",
-          },
+          model: "claude-sonnet-5",
         },
       }),
       [204],
@@ -130,10 +126,7 @@ describe("POST /api/zero/chat-threads/:id/model-selection", () => {
         headers: { authorization: `Bearer ${token}` },
         params: { id: fixture.threadId },
         body: {
-          modelSelection: {
-            modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-            selectedModel: "claude-sonnet-5",
-          },
+          model: "claude-sonnet-5",
         },
       }),
       [403],

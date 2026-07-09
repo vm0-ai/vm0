@@ -3568,6 +3568,26 @@ describe("chat lifecycle", () => {
     );
   });
 
+  it("opens the current chat rename dialog by double-clicking the header title", async () => {
+    mockResizeObserver();
+    mockKeyboardNavigationThreads();
+
+    detachedSetupPage({
+      context,
+      path: "/chats/b0000000-0000-4000-a000-000000000708",
+    });
+
+    const headerTitle = await screen.findByTestId("chat-thread-header-title");
+    expect(headerTitle).toHaveTextContent("Current keyboard thread");
+
+    fireEvent.doubleClick(headerTitle);
+
+    const dialog = await screen.findByRole("dialog", { name: "Rename chat" });
+    expect(within(dialog).getByPlaceholderText("Chat title")).toHaveValue(
+      "Current keyboard thread",
+    );
+  });
+
   it("keeps F2 rename available after renaming the current chat", async () => {
     const user = userEvent.setup({ delay: null });
     mockResizeObserver();

@@ -105,7 +105,7 @@ interface NormalSendBody {
   readonly clientThreadId?: string;
   readonly chatThreadEventId?: string;
   readonly chatThreadSortEventId?: string;
-  readonly modelProvider?: string;
+  readonly model?: string;
   readonly modelSelection?: {
     readonly modelProviderId: string;
     readonly selectedModel: string;
@@ -461,6 +461,33 @@ function isInterruptSendBody(body: SendBody): body is InterruptSendBody {
 
 function isNormalSendBody(body: SendBody): body is NormalSendBody {
   return "prompt" in body && body.prompt !== undefined;
+}
+
+function modelFirstSelection(
+  selectedModel: string,
+): NonNullable<NormalSendBody["modelSelection"]> {
+  return {
+    modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+    selectedModel,
+  };
+}
+
+function normalizeNormalSendBody(body: NormalSendBody):
+  | { readonly ok: true; readonly data: NormalSendBody }
+  | {
+      readonly ok: false;
+      readonly response: ReturnType<typeof badRequestMessage>;
+    } {
+  if (body.model === undefined) {
+    return { ok: true, data: body };
+  }
+  return {
+    ok: true,
+    data: {
+      ...body,
+      modelSelection: modelFirstSelection(body.model),
+    },
+  };
 }
 
 function hasAgentSessionId(
@@ -1251,7 +1278,7 @@ async function validateCodexServiceTierBeforeThread(params: {
     orgId: params.orgId,
     userId: params.userId,
     modelPin,
-    requestedModelProvider: requestedModelProviderFor(params.body),
+    requestedModelProvider: undefined,
   });
   const codexServiceTierError = validateCodexServiceTier({
     body: params.body,
@@ -2644,12 +2671,6 @@ async function resolveTimedRunModelPin(
   );
 }
 
-function requestedModelProviderFor(body: NormalSendBody): string | undefined {
-  return body.modelProvider && body.modelProvider !== "default"
-    ? body.modelProvider
-    : undefined;
-}
-
 async function resolveTimedProviderAdmission(params: {
   readonly args: NormalSendArgs;
   readonly prepared: PreparedNormalSend;
@@ -2820,7 +2841,7 @@ const createNormalChatRun$ = command(
       args,
       prepared,
       modelPin,
-      requestedModelProvider: requestedModelProviderFor(args.body),
+      requestedModelProvider: undefined,
     });
     signal.throwIfAborted();
     if (providerAdmission.error) {
@@ -3037,13 +3058,17 @@ const sendChatMessageInner$ = command(
     if (!isNormalSendBody(body.data)) {
       return badRequestMessage("Prompt is required");
     }
+    const normalizedBody = normalizeNormalSendBody(body.data);
+    if (!normalizedBody.ok) {
+      return normalizedBody.response;
+    }
 
     const apiStartTime = now();
     const timing = new ApiDispatchTimingCollector();
     return await set(
       sendNormalMessage$,
       {
-        body: body.data,
+        body: normalizedBody.data,
         auth,
         userId: auth.userId,
         orgId: auth.orgId,

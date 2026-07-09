@@ -355,6 +355,15 @@ export {
   type TestZeroAgentStateContract,
 } from "./test-zero-agent-state";
 export {
+  testModelProviderStateActionBodySchema,
+  testModelProviderStateActionResponseSchema,
+  testModelProviderStateContract,
+  testModelProviderStateErrorSchema,
+  type TestModelProviderStateActionBody,
+  type TestModelProviderStateActionResponse,
+  type TestModelProviderStateContract,
+} from "./test-model-provider-state";
+export {
   testUsageInsightStateActionBodySchema,
   testUsageInsightStateActionResponseSchema,
   testUsageInsightStateContract,
@@ -618,7 +627,6 @@ export {
   chatThreadMetadataSchema,
   chatThreadDraftSchema,
   MODEL_FIRST_SELECTION_PROVIDER_ID,
-  modelSelectionRequestSchema,
   generationTemplateRequestSchema,
   presentationGenerationTemplateRequestSchema,
   websiteGenerationTemplateRequestSchema,
@@ -633,7 +641,6 @@ export {
   chatThreadArtifactGoogleDriveSyncSchema,
   chatThreadArtifactRunSchema,
   htmlArtifactEditSnapshotSchema,
-  type ModelSelectionRequest,
   type GenerationTemplateRequest,
   type PresentationGenerationTemplateRequest,
   type WebsiteGenerationTemplateRequest,
