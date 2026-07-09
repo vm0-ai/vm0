@@ -14,7 +14,10 @@ interface GmailMemoryDocumentInput {
   readonly reason: string;
 }
 
-function gmailDocumentContent(input: GmailMemoryDocumentInput): string {
+function gmailDocumentContent(
+  input: GmailMemoryDocumentInput,
+  bodyText: string,
+): string {
   return [
     input.subject ? `# ${input.subject}` : "# Gmail message",
     "",
@@ -23,7 +26,7 @@ function gmailDocumentContent(input: GmailMemoryDocumentInput): string {
     input.cc.length > 0 ? `Cc: ${input.cc.join(", ")}` : null,
     `Direction: ${input.direction}`,
     "",
-    input.bodyText ?? "",
+    bodyText,
   ]
     .filter((line): line is string => {
       return line !== null;
@@ -34,7 +37,8 @@ function gmailDocumentContent(input: GmailMemoryDocumentInput): string {
 export function gmailMemoryDocumentAdapter(
   input: GmailMemoryDocumentInput,
 ): ReturnType<MemoryConnectorDocumentAdapter<GmailMemoryDocumentInput>> {
-  if (!input.bodyText?.trim()) {
+  const bodyText = input.bodyText;
+  if (!bodyText?.trim()) {
     return null;
   }
   const conversationId = input.threadId ?? input.messageId;
@@ -43,7 +47,7 @@ export function gmailMemoryDocumentAdapter(
     sourceType: "gmail_message",
     externalId: input.messageId,
     title: input.subject,
-    content: gmailDocumentContent(input),
+    content: gmailDocumentContent(input, bodyText),
     occurredAt: input.occurredAt,
     contextSpace: {
       type: "user",

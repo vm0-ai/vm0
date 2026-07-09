@@ -181,6 +181,15 @@ function buildDocumentChunks(content: string): readonly DocumentChunkInput[] {
   });
 }
 
+// Citation and document metadata share one external URL. The citation URL is
+// authoritative; the metadata URL only fills in when the adapter did not set a
+// citation URL.
+function documentExternalUrl(
+  args: MemoryDocumentIngestionInput,
+): string | null {
+  return args.citation?.url ?? args.metadata?.externalUrl ?? null;
+}
+
 function buildCitation(
   args: MemoryDocumentIngestionInput & {
     readonly title: string | null;
@@ -192,7 +201,7 @@ function buildCitation(
     sourceId: args.sourceId ?? "",
     externalId: args.externalId,
     title: args.title,
-    url: args.citation?.url ?? args.metadata?.externalUrl ?? null,
+    url: documentExternalUrl(args),
     locator: args.citation?.locator ?? null,
     occurredAt: args.occurredAt?.toISOString() ?? null,
   };
@@ -215,7 +224,7 @@ function prepareMemoryDocument(
       ...args.metadata,
       provider: args.provider,
       sourceType: args.sourceType,
-      externalUrl: args.metadata?.externalUrl ?? args.citation?.url ?? null,
+      externalUrl: documentExternalUrl(args),
     },
   };
 }

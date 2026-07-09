@@ -33,8 +33,11 @@ function slackConversationTitle(channelType: SlackMemoryChannelType): string {
   }
 }
 
-function slackDocumentContent(input: SlackMemoryDocumentInput): string {
-  const files = (input.files ?? []).flatMap((file) => {
+function slackDocumentContent(
+  input: SlackMemoryDocumentInput,
+  files: readonly SlackFile[],
+): string {
+  const fileLines = files.flatMap((file) => {
     return file.name ? [`File: ${file.name}`] : [];
   });
   return [
@@ -44,7 +47,7 @@ function slackDocumentContent(input: SlackMemoryDocumentInput): string {
     `Message timestamp: ${input.messageTs}`,
     "",
     input.messageText,
-    ...files,
+    ...fileLines,
   ].join("\n");
 }
 
@@ -56,7 +59,8 @@ function slackMessageDate(messageTs: string): Date | null {
 export function slackMemoryDocumentAdapter(
   input: SlackMemoryDocumentInput,
 ): ReturnType<MemoryConnectorDocumentAdapter<SlackMemoryDocumentInput>> {
-  if (!input.messageText.trim() && (input.files ?? []).length === 0) {
+  const files = input.files ?? [];
+  if (!input.messageText.trim() && files.length === 0) {
     return null;
   }
   const conversationTs = input.threadTs ?? input.messageTs;
@@ -68,7 +72,7 @@ export function slackMemoryDocumentAdapter(
     sourceType: "slack_message",
     externalId,
     title: slackConversationTitle(input.channelType),
-    content: slackDocumentContent(input),
+    content: slackDocumentContent(input, files),
     occurredAt: slackMessageDate(input.messageTs),
     contextSpace: {
       type: "project",
