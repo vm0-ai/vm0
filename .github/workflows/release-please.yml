@@ -799,6 +799,7 @@ jobs:
           name: runtime-api-schema
           path: turbo/runtime-api-schema.json
           if-no-files-found: error
+          overwrite: true
           retention-days: 14
 
       - name: Install neonctl
@@ -888,6 +889,7 @@ jobs:
           name: api-production-build-output
           path: /tmp/api-production-build-output.tgz
           if-no-files-found: error
+          overwrite: true
           retention-days: 1
 
       - name: Deploy API Staged Production Deployment
