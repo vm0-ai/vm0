@@ -486,9 +486,11 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
     // before our day; the re-aggregation then empties the window's stats, so
     // the strict empty read is safe even against colliding leftovers.
     mockNow(dayStart + 33 * DAY_MS + 4 * HOUR_MS);
-    const retention = await api.requestAggregateModelStats("valid", undefined, [
-      200,
-    ]);
+    const retention = await api.requestAggregateModelStats(
+      "valid",
+      undefined,
+      [200],
+    );
     expect(retention.body.success).toBeTruthy();
 
     mockNow(aggregateAt);
@@ -596,9 +598,11 @@ describe("OPS-01: run log search via /api/logs/search", () => {
     context.mocks.axiom.query.mockResolvedValueOnce([
       axiomEvent(runId, 3, "Error: OOM killed"),
     ]);
-    const matched = await api.requestSearchLogs(actor, { keyword: "OOM" }, [
-      200,
-    ]);
+    const matched = await api.requestSearchLogs(
+      actor,
+      { keyword: "OOM" },
+      [200],
+    );
     expect(matched.body.results).toHaveLength(1);
     expect(matched.body.results[0]?.runId).toBe(runId);
     expect(matched.body.results[0]?.agentName).toBe("BDD ops-logs agent");
@@ -817,9 +821,10 @@ describe("OPS-01: user data export", () => {
     const postUnauthenticated = await api.requestPostUserExport(null, [401]);
     expect(postUnauthenticated.body).toStrictEqual(expectedError);
 
-    const orgless = await api.requestPostUserExport(bdd.user({ orgId: null }), [
-      401,
-    ]);
+    const orgless = await api.requestPostUserExport(
+      bdd.user({ orgId: null }),
+      [401],
+    );
     expect(orgless.body).toStrictEqual(expectedError);
   });
 

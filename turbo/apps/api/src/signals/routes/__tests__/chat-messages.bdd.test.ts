@@ -1730,9 +1730,11 @@ describe("CHAT-02: explicit provider pins", () => {
     const updatedFastThread = await chat.readThread(actor, fast.threadId);
     expect(updatedFastThread).not.toHaveProperty("selectedModel");
     expect(updatedFastThread.codexServiceTier).toBeNull();
-    const updatedFastThreadEvents = await chat.requestThreadEvents(actor, {}, [
-      200,
-    ]);
+    const updatedFastThreadEvents = await chat.requestThreadEvents(
+      actor,
+      {},
+      [200],
+    );
     expect(updatedFastThreadEvents.status).toBe(200);
     if (updatedFastThreadEvents.status !== 200) {
       throw new Error("Expected chat thread events to load");

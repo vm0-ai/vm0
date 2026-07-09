@@ -222,9 +222,10 @@ describe("GET /api/zero/usage/runs", () => {
   });
 
   it("returns 401 when not authenticated", async () => {
-    const response = await accept(apiClient().get({ query: {}, headers: {} }), [
-      401,
-    ]);
+    const response = await accept(
+      apiClient().get({ query: {}, headers: {} }),
+      [401],
+    );
 
     expect(response.body).toStrictEqual({
       error: { message: "Not authenticated", code: "UNAUTHORIZED" },

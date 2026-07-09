@@ -1720,9 +1720,11 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
       .toBe(true);
     context.mocks.axiom.query.mockClear();
     context.mocks.ably.publish.mockClear();
-    await webhooks.requestAgentHeartbeat({ runId: first.runId }, firstHeaders, [
-      200,
-    ]);
+    await webhooks.requestAgentHeartbeat(
+      { runId: first.runId },
+      firstHeaders,
+      [200],
+    );
 
     expect(routeRequests()).toBe(0);
     expect(context.mocks.axiom.query).not.toHaveBeenCalled();
@@ -2483,9 +2485,11 @@ describe("CHAT-02: thread deletion while a run is active", () => {
       `chatThreadMessageCreated:${run.threadId}`,
       null,
     );
-    const deletedRead = await chat.requestReadThread(actor, run.threadId, [
-      404,
-    ]);
+    const deletedRead = await chat.requestReadThread(
+      actor,
+      run.threadId,
+      [404],
+    );
     expect(deletedRead.status).toBe(404);
   }, 60_000);
 });

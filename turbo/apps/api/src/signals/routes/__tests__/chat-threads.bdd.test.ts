@@ -249,9 +249,11 @@ async function completeChatRunOk(
     sandboxHeaders,
     [200],
   );
-  await webhooks.requestAgentComplete({ runId, exitCode: 0 }, sandboxHeaders, [
-    200,
-  ]);
+  await webhooks.requestAgentComplete(
+    { runId, exitCode: 0 },
+    sandboxHeaders,
+    [200],
+  );
 }
 
 async function cancelChatRun(actor: ApiTestUser, runId: string): Promise<void> {
@@ -992,9 +994,11 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     const peer = bdd.user({ orgId: actor.orgId });
 
-    const unauthenticated = await chat.requestDeleteThread(null, randomUUID(), [
-      401,
-    ]);
+    const unauthenticated = await chat.requestDeleteThread(
+      null,
+      randomUUID(),
+      [401],
+    );
     expectApiError(unauthenticated.body);
     expect(unauthenticated.body.error.code).toBe("UNAUTHORIZED");
 
@@ -1005,9 +1009,11 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       code: "NOT_FOUND",
     });
 
-    const malformed = await chat.requestDeleteThread(actor, "not-a-uuid", [
-      400,
-    ]);
+    const malformed = await chat.requestDeleteThread(
+      actor,
+      "not-a-uuid",
+      [400],
+    );
     expectApiError(malformed.body);
     expect(malformed.body.error.message).toContain("id");
 
@@ -1045,9 +1051,11 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       prompt: "other thread stays active",
     });
 
-    const peerDelete = await chat.requestDeleteThread(peer, main.threadId, [
-      404,
-    ]);
+    const peerDelete = await chat.requestDeleteThread(
+      peer,
+      main.threadId,
+      [404],
+    );
     expectApiError(peerDelete.body);
     expect(peerDelete.body.error.code).toBe("NOT_FOUND");
     await expect(chat.readThread(actor, main.threadId)).resolves.toStrictEqual({
@@ -1303,9 +1311,11 @@ describe("CHAT-01 chat thread read state", () => {
     await connectorsApi.updateFeatureSwitches(owner, {
       [FeatureSwitchKey.AgentUnreadIndicators]: false,
     });
-    const disabled = await chat.requestMarkAgentThreadsRead(owner, agentA, [
-      403,
-    ]);
+    const disabled = await chat.requestMarkAgentThreadsRead(
+      owner,
+      agentA,
+      [403],
+    );
     expectApiError(disabled.body);
     expect(disabled.body.error.code).toBe("FORBIDDEN");
 
@@ -1646,9 +1656,12 @@ describe("CHAT-03 run usage messages", () => {
 
 describe("CHAT-01 chat search", () => {
   it("rejects search without an org session or the chat-message:read capability", async () => {
-    const unauthenticated = await chat.requestSearchChat(null, "hello", {}, [
-      401,
-    ]);
+    const unauthenticated = await chat.requestSearchChat(
+      null,
+      "hello",
+      {},
+      [401],
+    );
     expectApiError(unauthenticated.body);
     expect(unauthenticated.body.error.code).toBe("UNAUTHORIZED");
 
@@ -2286,9 +2299,11 @@ describe("CHAT-01 v1 chat threads for personal access tokens", () => {
 
     // 401 matrix: missing header (web's phrasing), opaque bearer, revoked
     // and expired PATs.
-    const missingHeader = await chat.requestV1Thread(undefined, randomUUID(), [
-      401,
-    ]);
+    const missingHeader = await chat.requestV1Thread(
+      undefined,
+      randomUUID(),
+      [401],
+    );
     expectApiError(missingHeader.body);
     expect(missingHeader.body.error).toStrictEqual({
       message: "API key required",
@@ -2332,9 +2347,11 @@ describe("CHAT-01 v1 chat threads for personal access tokens", () => {
 
     // Sandbox tokens are rejected by token type.
     const sandboxBearer = `Bearer ${api.sandboxTokenForRun(owner, randomUUID())}`;
-    const sandboxThread = await chat.requestV1Thread(sandboxBearer, threadId, [
-      403,
-    ]);
+    const sandboxThread = await chat.requestV1Thread(
+      sandboxBearer,
+      threadId,
+      [403],
+    );
     expectApiError(sandboxThread.body);
     expect(sandboxThread.body.error.code).toBe("FORBIDDEN");
 
@@ -2346,9 +2363,11 @@ describe("CHAT-01 v1 chat threads for personal access tokens", () => {
       createdAt: expect.any(String),
       updatedAt: expect.any(String),
     });
-    const missingThread = await chat.requestV1Thread(bearer, randomUUID(), [
-      404,
-    ]);
+    const missingThread = await chat.requestV1Thread(
+      bearer,
+      randomUUID(),
+      [404],
+    );
     expectApiError(missingThread.body);
 
     const intruder = bdd.user();
@@ -2575,9 +2594,12 @@ describe("CHAT-01 v1 chat threads for personal access tokens", () => {
       });
     });
 
-    const v1Page = await chat.requestV1ThreadMessages(bearer, thread.id, {}, [
-      200,
-    ]);
+    const v1Page = await chat.requestV1ThreadMessages(
+      bearer,
+      thread.id,
+      {},
+      [200],
+    );
     if (v1Page.status !== 200) {
       throw new Error("Expected the v1 messages page after the send");
     }
