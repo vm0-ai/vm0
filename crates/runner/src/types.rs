@@ -155,7 +155,7 @@ pub struct SecretConnectorMetadata {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "kind")]
 pub enum FirewallEntry {
-    /// Built-in firewall resolved by the Python addon from its generated catalog.
+    /// Built-in firewall resolved by the Python addon from the runner-written catalog cache.
     #[serde(rename = "builtin", rename_all = "camelCase")]
     Builtin {
         name: String,
