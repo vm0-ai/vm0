@@ -358,25 +358,32 @@ async fn write_files_rejects_aggregate_content_above_batch_limit_before_sending_
 async fn write_files_rejects_invalid_path_before_sending_frame() {
     let (host, guest) = setup_host_and_guest().await;
     let write_start_count = Arc::new(AtomicUsize::new(0));
+    let writer_guard = host.shared.writer.lock().await;
 
-    let err = host
-        .write_files_with_write_observer(
-            &[WriteFileEntry {
-                path: "/tmp/has\0nul",
-                content: b"hello",
-            }],
-            FrameWriteObserver::new({
-                let write_start_count = Arc::clone(&write_start_count);
-                move || {
-                    write_start_count.fetch_add(1, Ordering::SeqCst);
-                    Ok(())
-                }
-            }),
+    for path in ["", "/tmp/has\0nul"] {
+        let err = tokio::time::timeout(
+            Duration::from_secs(5),
+            host.write_files_with_write_observer(
+                &[WriteFileEntry {
+                    path,
+                    content: b"hello",
+                }],
+                FrameWriteObserver::new({
+                    let write_start_count = Arc::clone(&write_start_count);
+                    move || {
+                        write_start_count.fetch_add(1, Ordering::SeqCst);
+                        Ok(())
+                    }
+                }),
+            ),
         )
         .await
+        .expect("path-invalid write_files should return before waiting for the writer")
         .unwrap_err();
 
-    assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+    }
+
     assert_eq!(write_start_count.load(Ordering::SeqCst), 0);
     match guest.try_read(&mut [0u8; 1]) {
         Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
@@ -388,6 +395,7 @@ async fn write_files_rejects_invalid_path_before_sending_frame() {
         normal_operation_readiness(&host),
         NormalOperationReadiness::Idle
     );
+    drop(writer_guard);
 }
 
 #[tokio::test]
