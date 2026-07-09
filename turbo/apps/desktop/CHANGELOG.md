@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.26.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.25.0...desktop-v0.26.0) (2026-07-09)
+
+
+### Features
+
+* generic mcp plugin manager for desktop computer use ([#20740](https://github.com/vm0-ai/vm0/issues/20740)) ([8a2e43e](https://github.com/vm0-ai/vm0/commit/8a2e43ed2c558cc75ea2df127915deaae8a9cde8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.173.0
+
 ## [0.25.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.24.6...desktop-v0.25.0) (2026-07-08)
 
 

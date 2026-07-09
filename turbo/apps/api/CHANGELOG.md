@@ -1,5 +1,35 @@
 # Changelog
 
+## [1.250.0](https://github.com/vm0-ai/vm0/compare/api-v1.249.0...api-v1.250.0) (2026-07-09)
+
+
+### Features
+
+* add r2-backed website template packages ([#20700](https://github.com/vm0-ai/vm0/issues/20700)) ([2c9c4d4](https://github.com/vm0-ai/vm0/commit/2c9c4d43a96ee11abc8a25268cd8910af1f538de))
+* add semantic structured memory recall ([#20742](https://github.com/vm0-ai/vm0/issues/20742)) ([70de301](https://github.com/vm0-ai/vm0/commit/70de3018bf33e44db076172316597513e9b0be1a))
+* route mcp plugin commands and add plugin mcp cli ([#20756](https://github.com/vm0-ai/vm0/issues/20756)) ([89d4e76](https://github.com/vm0-ai/vm0/commit/89d4e76f2eda168c2d9012e93b4f00bb260f2bd4))
+
+
+### Bug Fixes
+
+* accept notion data source parent webhooks ([#20709](https://github.com/vm0-ai/vm0/issues/20709)) ([b5b478c](https://github.com/vm0-ai/vm0/commit/b5b478c358765746efc8b13021dcc2a539572195))
+* exempt external webhooks from preview automation bypass guard ([#20754](https://github.com/vm0-ai/vm0/issues/20754)) ([8df2f80](https://github.com/vm0-ai/vm0/commit/8df2f80e34c174da079adf08e7b598c2c0e235f0))
+
+
+### Performance Improvements
+
+* coalesce slack user info lookups ([#20724](https://github.com/vm0-ai/vm0/issues/20724)) ([7bd020c](https://github.com/vm0-ai/vm0/commit/7bd020c2b0f989bfcd3070f0b1b3a75e1495b9a2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.173.0
+    * @vm0/connectors bumped to 1.150.1
+    * @vm0/core bumped to 8.417.0
+    * @vm0/db bumped to 1.101.0
+
 ## [1.249.0](https://github.com/vm0-ai/vm0/compare/api-v1.248.0...api-v1.249.0) (2026-07-08)
 
 
