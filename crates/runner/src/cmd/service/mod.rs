@@ -6,7 +6,7 @@ use crate::error::{RunnerError, RunnerResult};
 use crate::live_runner_instances::{self, LiveRunnerInstance};
 use crate::paths::{HomePaths, touch_mtime};
 use crate::status_file::{self, StatusFileReadError, StatusForReadiness};
-use clap::{Args, Subcommand};
+use clap::{Args, Subcommand, ValueEnum};
 use sha2::{Digest, Sha256};
 use tokio::time::{Duration as TokioDuration, Instant as TokioInstant};
 use tracing::{info, warn};
@@ -27,7 +27,10 @@ pub(crate) use unit_config::read_unit_config_path;
 use drain_override::{remove_drain_restart_override, write_drain_restart_override};
 use gate::{check_active_jobs_gate, read_runner_status, runner_base_dir};
 use signal::{ServiceSignalOutcome, signal_service_main};
-use systemctl::{get_service_restart_policy, journalctl_logs_status, run_systemctl};
+use systemctl::{
+    BoundedSystemctlOutcome, CleanupUnitActiveState, cleanup_unit_active_state,
+    get_service_restart_policy, journalctl_logs_status, run_systemctl, run_systemctl_bounded,
+};
 use unit_file::{
     RUNNER_SERVICE_NOFILE_LIMIT_DIRECTIVE, cleanup_unit_staging_files, generate_unit_file,
     remove_unit_file_if_exists, resolve_config_path, validate_current_exe_path, validate_env_vars,
@@ -89,6 +92,23 @@ struct ServiceStopArgs {
     /// Skip active-jobs pre-check and force stop (active jobs will be killed).
     #[arg(long)]
     force: bool,
+    /// Use bounded cleanup recovery semantics.
+    #[arg(long, value_enum)]
+    cleanup: Option<StopCleanupPolicy>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+enum StopCleanupPolicy {
+    /// Cleanup a failed production target service and disable it.
+    FailedStart,
+    /// Cleanup a partially started transient CI service without disabling it.
+    PartialStart,
+}
+
+impl StopCleanupPolicy {
+    fn disables_service(self) -> bool {
+        matches!(self, Self::FailedStart)
+    }
 }
 
 #[derive(Args)]
@@ -209,6 +229,52 @@ fn ensure_drain_restart_policy_applied(
 
 type ServiceFuture<'a, T> = Pin<Box<dyn Future<Output = RunnerResult<T>> + 'a>>;
 
+const STOP_CLEANUP_LOCK_TIMEOUT: TokioDuration = TokioDuration::from_secs(5);
+const STOP_CLEANUP_LOCK_POLL_INTERVAL: TokioDuration = TokioDuration::from_millis(250);
+const STOP_CLEANUP_STOP_TIMEOUT: TokioDuration = TokioDuration::from_secs(20);
+const STOP_CLEANUP_VERIFY_TIMEOUT: TokioDuration = TokioDuration::from_secs(10);
+const STOP_CLEANUP_VERIFY_INTERVAL: TokioDuration = TokioDuration::from_secs(1);
+
+trait ServiceStopOps {
+    type LockGuard;
+
+    fn acquire_lock<'a>(
+        &'a mut self,
+        unit: &'a RunnerServiceUnit,
+        home: &'a HomePaths,
+        cleanup: Option<StopCleanupPolicy>,
+    ) -> ServiceFuture<'a, Self::LockGuard>
+    where
+        Self::LockGuard: 'a;
+
+    fn check_active_jobs_gate<'a>(
+        &'a mut self,
+        unit: &'a RunnerServiceUnit,
+        force: bool,
+    ) -> ServiceFuture<'a, ()>;
+
+    fn is_active<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, bool>;
+    fn stop<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, ()>;
+    fn stop_bounded<'a>(
+        &'a mut self,
+        unit: &'a RunnerServiceUnit,
+        duration: TokioDuration,
+    ) -> ServiceFuture<'a, BoundedSystemctlOutcome>;
+    fn cleanup_active_state<'a>(
+        &'a mut self,
+        unit: &'a RunnerServiceUnit,
+    ) -> ServiceFuture<'a, CleanupUnitActiveState>;
+    fn kill_all_sigkill<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, ()>;
+    fn stop_no_block<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, ()>;
+    fn reset_failed<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, ()>;
+    fn disable<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, ()>;
+    fn cleanup_drain_restart_override<'a>(
+        &'a mut self,
+        unit: &'a RunnerServiceUnit,
+    ) -> ServiceFuture<'a, ()>;
+    fn sleep(&mut self, duration: TokioDuration) -> ServiceFuture<'_, ()>;
+}
+
 trait ServiceDrainOps {
     fn is_active<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, bool>;
     fn write_restart_override(&mut self, unit: &RunnerServiceUnit) -> RunnerResult<()>;
@@ -234,6 +300,133 @@ trait ServiceResumeOps {
 
 struct RealServiceDrainOps;
 struct RealServiceResumeOps;
+struct RealServiceStopOps;
+
+async fn acquire_cleanup_service_lock(
+    unit: &RunnerServiceUnit,
+    home: &HomePaths,
+) -> RunnerResult<nix::fcntl::Flock<std::fs::File>> {
+    let path = home.service_lock(unit.unit_name());
+    let deadline = TokioInstant::now() + STOP_CLEANUP_LOCK_TIMEOUT;
+
+    loop {
+        match crate::lock::try_acquire_or_busy(path.clone()).await? {
+            crate::lock::TryLock::Acquired(lock) => return Ok(lock),
+            crate::lock::TryLock::Busy => {
+                let now = TokioInstant::now();
+                if now >= deadline {
+                    return Err(RunnerError::Internal(format!(
+                        "timed out waiting {}s for {} service lock during cleanup",
+                        STOP_CLEANUP_LOCK_TIMEOUT.as_secs(),
+                        unit.unit_name()
+                    )));
+                }
+                tokio::time::sleep(std::cmp::min(
+                    STOP_CLEANUP_LOCK_POLL_INTERVAL,
+                    deadline - now,
+                ))
+                .await;
+            }
+        }
+    }
+}
+
+impl ServiceStopOps for RealServiceStopOps {
+    type LockGuard = nix::fcntl::Flock<std::fs::File>;
+
+    fn acquire_lock<'a>(
+        &'a mut self,
+        unit: &'a RunnerServiceUnit,
+        home: &'a HomePaths,
+        cleanup: Option<StopCleanupPolicy>,
+    ) -> ServiceFuture<'a, Self::LockGuard>
+    where
+        Self::LockGuard: 'a,
+    {
+        Box::pin(async move {
+            if cleanup.is_some() {
+                acquire_cleanup_service_lock(unit, home).await
+            } else {
+                acquire_service_lock(unit, home).await
+            }
+        })
+    }
+
+    fn check_active_jobs_gate<'a>(
+        &'a mut self,
+        unit: &'a RunnerServiceUnit,
+        force: bool,
+    ) -> ServiceFuture<'a, ()> {
+        Box::pin(async move { check_active_jobs_gate(unit, force, "stop").await })
+    }
+
+    fn is_active<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, bool> {
+        Box::pin(async move { is_unit_active(unit).await })
+    }
+
+    fn stop<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, ()> {
+        Box::pin(async move { run_systemctl(&["stop", unit.service_name()]).await })
+    }
+
+    fn stop_bounded<'a>(
+        &'a mut self,
+        unit: &'a RunnerServiceUnit,
+        duration: TokioDuration,
+    ) -> ServiceFuture<'a, BoundedSystemctlOutcome> {
+        Box::pin(
+            async move { run_systemctl_bounded(&["stop", unit.service_name()], duration).await },
+        )
+    }
+
+    fn cleanup_active_state<'a>(
+        &'a mut self,
+        unit: &'a RunnerServiceUnit,
+    ) -> ServiceFuture<'a, CleanupUnitActiveState> {
+        Box::pin(async move { cleanup_unit_active_state(unit).await })
+    }
+
+    fn kill_all_sigkill<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, ()> {
+        Box::pin(async move {
+            run_systemctl(&[
+                "kill",
+                "--kill-whom=all",
+                "--signal=SIGKILL",
+                unit.service_name(),
+            ])
+            .await
+        })
+    }
+
+    fn stop_no_block<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, ()> {
+        Box::pin(async move { run_systemctl(&["stop", "--no-block", unit.service_name()]).await })
+    }
+
+    fn reset_failed<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, ()> {
+        Box::pin(async move { run_systemctl(&["reset-failed", unit.service_name()]).await })
+    }
+
+    fn disable<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, ()> {
+        Box::pin(async move { run_systemctl(&["disable", unit.service_name()]).await })
+    }
+
+    fn cleanup_drain_restart_override<'a>(
+        &'a mut self,
+        unit: &'a RunnerServiceUnit,
+    ) -> ServiceFuture<'a, ()> {
+        Box::pin(async move {
+            reload_systemd_if_drain_restart_override_removed(unit)
+                .await
+                .map(|_| ())
+        })
+    }
+
+    fn sleep(&mut self, duration: TokioDuration) -> ServiceFuture<'_, ()> {
+        Box::pin(async move {
+            tokio::time::sleep(duration).await;
+            Ok(())
+        })
+    }
+}
 
 impl ServiceDrainOps for RealServiceDrainOps {
     fn is_active<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, bool> {
@@ -741,35 +934,134 @@ async fn start(args: ServiceRunArgs) -> RunnerResult<()> {
 async fn stop(args: ServiceStopArgs) -> RunnerResult<()> {
     let unit = RunnerServiceUnit::from_suffix(&args.name)?;
     let home = HomePaths::new()?;
-    let _service_lock = acquire_service_lock(&unit, &home).await?;
+    let mut ops = RealServiceStopOps;
+    stop_with_ops(&unit, &home, args.force, args.cleanup, &mut ops).await
+}
 
-    check_active_jobs_gate(&unit, args.force, "stop").await?;
+async fn stop_with_ops(
+    unit: &RunnerServiceUnit,
+    home: &HomePaths,
+    force: bool,
+    cleanup: Option<StopCleanupPolicy>,
+    ops: &mut impl ServiceStopOps,
+) -> RunnerResult<()> {
+    if let Some(cleanup) = cleanup {
+        ops.check_active_jobs_gate(unit, force).await?;
+        let _service_lock = ops.acquire_lock(unit, home, Some(cleanup)).await?;
+        stop_cleanup_with_ops(unit, cleanup, ops).await
+    } else {
+        let _service_lock = ops.acquire_lock(unit, home, cleanup).await?;
+        ops.check_active_jobs_gate(unit, force).await?;
+        stop_default_with_ops(unit, ops).await
+    }
+}
+
+async fn stop_default_with_ops(
+    unit: &RunnerServiceUnit,
+    ops: &mut impl ServiceStopOps,
+) -> RunnerResult<()> {
     let svc = unit.service_name();
 
-    if is_unit_active(&unit).await? {
+    if ops.is_active(unit).await? {
         // Active unit: stop must succeed — failure means the runner process
         // (and its Firecracker VMs) would keep running.
-        run_systemctl(&["stop", svc]).await?;
+        ops.stop(unit).await?;
         info!(unit = %unit.unit_name(), "stopped");
     } else {
         // Unit may be loaded but inactive (residual transient unit).
         // Try stop to trigger systemd GC.  Ignore errors — the unit may
         // not exist at all (first run on this host).
-        let _ = run_systemctl(&["stop", svc]).await;
+        let _ = ops.stop(unit).await;
         info!(unit = %unit.unit_name(), "no active service found");
     }
 
     // Clear "failed" latch so systemd fully unloads the transient unit.
     // (stop alone does not clear the failed state.)
-    let _ = run_systemctl(&["reset-failed", svc]).await;
-    if let Err(e) = reload_systemd_if_drain_restart_override_removed(&unit).await {
+    let _ = ops.reset_failed(unit).await;
+    if let Err(e) = ops.cleanup_drain_restart_override(unit).await {
         warn!(unit = %unit.unit_name(), error = %e, "failed to remove drain restart override after stop");
         eprintln!(
             "WARNING: stop could not remove the drain restart override for {}: {e}.",
-            unit.service_name()
+            svc
         );
     }
     Ok(())
+}
+
+async fn stop_cleanup_with_ops(
+    unit: &RunnerServiceUnit,
+    cleanup: StopCleanupPolicy,
+    ops: &mut impl ServiceStopOps,
+) -> RunnerResult<()> {
+    let stop_outcome = ops.stop_bounded(unit, STOP_CLEANUP_STOP_TIMEOUT).await?;
+    let stop_needs_escalation = !matches!(&stop_outcome, BoundedSystemctlOutcome::Success);
+    match stop_outcome {
+        BoundedSystemctlOutcome::Success => {}
+        BoundedSystemctlOutcome::Failed(status) => {
+            warn!(unit = %unit.unit_name(), %status, "bounded systemctl stop failed during cleanup");
+        }
+        BoundedSystemctlOutcome::TimedOut => {
+            warn!(unit = %unit.unit_name(), "bounded systemctl stop timed out during cleanup");
+        }
+    }
+
+    let state = ops.cleanup_active_state(unit).await?;
+    if stop_needs_escalation && state.is_active_like() {
+        warn!(
+            unit = %unit.unit_name(),
+            active_state = state.active_state(),
+            "runner service remains active-like after stop; escalating cleanup"
+        );
+        if let Err(e) = ops.kill_all_sigkill(unit).await {
+            warn!(unit = %unit.unit_name(), error = %e, "failed to SIGKILL runner service during cleanup");
+        }
+        if let Err(e) = ops.stop_no_block(unit).await {
+            warn!(unit = %unit.unit_name(), error = %e, "failed to queue no-block stop during cleanup");
+        }
+    }
+
+    if cleanup.disables_service()
+        && let Err(e) = ops.disable(unit).await
+    {
+        warn!(unit = %unit.unit_name(), error = %e, "failed to disable runner service during cleanup");
+    }
+
+    if let Err(e) = ops.reset_failed(unit).await {
+        warn!(unit = %unit.unit_name(), error = %e, "failed to reset failed service state during cleanup");
+    }
+    if let Err(e) = ops.cleanup_drain_restart_override(unit).await {
+        warn!(unit = %unit.unit_name(), error = %e, "failed to remove drain restart override during cleanup");
+    }
+
+    verify_cleanup_inactive(unit, ops).await
+}
+
+async fn verify_cleanup_inactive(
+    unit: &RunnerServiceUnit,
+    ops: &mut impl ServiceStopOps,
+) -> RunnerResult<()> {
+    let deadline = TokioInstant::now() + STOP_CLEANUP_VERIFY_TIMEOUT;
+
+    loop {
+        let state = ops.cleanup_active_state(unit).await?;
+        if !state.is_active_like() {
+            info!(unit = %unit.unit_name(), "runner service cleanup verified inactive");
+            return Ok(());
+        }
+
+        let now = TokioInstant::now();
+        if now >= deadline {
+            return Err(RunnerError::Internal(format!(
+                "failed to stop {}; ActiveState={} after {}s cleanup verification",
+                unit.service_name(),
+                state.active_state(),
+                STOP_CLEANUP_VERIFY_TIMEOUT.as_secs()
+            )));
+        }
+
+        ops.sleep(std::cmp::min(STOP_CLEANUP_VERIFY_INTERVAL, deadline - now))
+            .await?;
+    }
 }
 
 /// `service install` — persistent unit file (production).
@@ -1334,6 +1626,10 @@ profiles:
         RunnerServiceUnit::from_suffix("test").unwrap()
     }
 
+    fn fake_home() -> HomePaths {
+        HomePaths::with_root(PathBuf::from("/tmp/vm0-runner-test"))
+    }
+
     fn live_runner_instance(runner_name: &str, base_dir: PathBuf) -> LiveRunnerInstance {
         LiveRunnerInstance {
             pid: 123,
@@ -1370,6 +1666,22 @@ profiles:
         signal_outcome: ServiceSignalOutcome,
     }
 
+    struct FakeStopOps {
+        events: Vec<&'static str>,
+        acquire_lock_error: bool,
+        gate_error: bool,
+        active_results: VecDeque<RunnerResult<bool>>,
+        stop_results: VecDeque<RunnerResult<()>>,
+        bounded_stop_results: VecDeque<RunnerResult<BoundedSystemctlOutcome>>,
+        cleanup_states: VecDeque<RunnerResult<CleanupUnitActiveState>>,
+        kill_error: bool,
+        stop_no_block_error: bool,
+        reset_failed_error: bool,
+        disable_error: bool,
+        cleanup_drain_error: bool,
+        advance_time_on_sleep: bool,
+    }
+
     impl Default for FakeDrainOps {
         fn default() -> Self {
             Self {
@@ -1401,8 +1713,403 @@ profiles:
         }
     }
 
+    impl Default for FakeStopOps {
+        fn default() -> Self {
+            Self {
+                events: Vec::new(),
+                acquire_lock_error: false,
+                gate_error: false,
+                active_results: VecDeque::from([Ok(true)]),
+                stop_results: VecDeque::from([Ok(())]),
+                bounded_stop_results: VecDeque::from([Ok(BoundedSystemctlOutcome::Success)]),
+                cleanup_states: VecDeque::from([Ok(CleanupUnitActiveState::for_test(
+                    "inactive", false,
+                ))]),
+                kill_error: false,
+                stop_no_block_error: false,
+                reset_failed_error: false,
+                disable_error: false,
+                cleanup_drain_error: false,
+                advance_time_on_sleep: false,
+            }
+        }
+    }
+
     fn fake_error(message: &str) -> RunnerError {
         RunnerError::Internal(message.to_string())
+    }
+
+    impl ServiceStopOps for FakeStopOps {
+        type LockGuard = ();
+
+        fn acquire_lock<'a>(
+            &'a mut self,
+            _unit: &'a RunnerServiceUnit,
+            _home: &'a HomePaths,
+            cleanup: Option<StopCleanupPolicy>,
+        ) -> ServiceFuture<'a, Self::LockGuard>
+        where
+            Self::LockGuard: 'a,
+        {
+            self.events.push(if cleanup.is_some() {
+                "acquire_cleanup_lock"
+            } else {
+                "acquire_lock"
+            });
+            Box::pin(std::future::ready(if self.acquire_lock_error {
+                Err(fake_error("lock busy"))
+            } else {
+                Ok(())
+            }))
+        }
+
+        fn check_active_jobs_gate<'a>(
+            &'a mut self,
+            _unit: &'a RunnerServiceUnit,
+            _force: bool,
+        ) -> ServiceFuture<'a, ()> {
+            self.events.push("check_gate");
+            Box::pin(std::future::ready(if self.gate_error {
+                Err(fake_error("active jobs"))
+            } else {
+                Ok(())
+            }))
+        }
+
+        fn is_active<'a>(&'a mut self, _unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, bool> {
+            self.events.push("is_active");
+            Box::pin(std::future::ready(
+                self.active_results.pop_front().unwrap_or(Ok(false)),
+            ))
+        }
+
+        fn stop<'a>(&'a mut self, _unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, ()> {
+            self.events.push("stop");
+            Box::pin(std::future::ready(
+                self.stop_results.pop_front().unwrap_or(Ok(())),
+            ))
+        }
+
+        fn stop_bounded<'a>(
+            &'a mut self,
+            _unit: &'a RunnerServiceUnit,
+            _duration: TokioDuration,
+        ) -> ServiceFuture<'a, BoundedSystemctlOutcome> {
+            self.events.push("stop_bounded");
+            Box::pin(std::future::ready(
+                self.bounded_stop_results
+                    .pop_front()
+                    .unwrap_or(Ok(BoundedSystemctlOutcome::Success)),
+            ))
+        }
+
+        fn cleanup_active_state<'a>(
+            &'a mut self,
+            _unit: &'a RunnerServiceUnit,
+        ) -> ServiceFuture<'a, CleanupUnitActiveState> {
+            self.events.push("cleanup_active_state");
+            Box::pin(std::future::ready(
+                self.cleanup_states
+                    .pop_front()
+                    .unwrap_or(Ok(CleanupUnitActiveState::for_test("inactive", false))),
+            ))
+        }
+
+        fn kill_all_sigkill<'a>(
+            &'a mut self,
+            _unit: &'a RunnerServiceUnit,
+        ) -> ServiceFuture<'a, ()> {
+            self.events.push("kill_all_sigkill");
+            Box::pin(std::future::ready(if self.kill_error {
+                Err(fake_error("kill failed"))
+            } else {
+                Ok(())
+            }))
+        }
+
+        fn stop_no_block<'a>(&'a mut self, _unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, ()> {
+            self.events.push("stop_no_block");
+            Box::pin(std::future::ready(if self.stop_no_block_error {
+                Err(fake_error("stop no-block failed"))
+            } else {
+                Ok(())
+            }))
+        }
+
+        fn reset_failed<'a>(&'a mut self, _unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, ()> {
+            self.events.push("reset_failed");
+            Box::pin(std::future::ready(if self.reset_failed_error {
+                Err(fake_error("reset failed"))
+            } else {
+                Ok(())
+            }))
+        }
+
+        fn disable<'a>(&'a mut self, _unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, ()> {
+            self.events.push("disable");
+            Box::pin(std::future::ready(if self.disable_error {
+                Err(fake_error("disable failed"))
+            } else {
+                Ok(())
+            }))
+        }
+
+        fn cleanup_drain_restart_override<'a>(
+            &'a mut self,
+            _unit: &'a RunnerServiceUnit,
+        ) -> ServiceFuture<'a, ()> {
+            self.events.push("cleanup_drain_restart_override");
+            Box::pin(std::future::ready(if self.cleanup_drain_error {
+                Err(fake_error("cleanup drain failed"))
+            } else {
+                Ok(())
+            }))
+        }
+
+        fn sleep(&mut self, duration: TokioDuration) -> ServiceFuture<'_, ()> {
+            self.events.push("sleep");
+            let advance_time = self.advance_time_on_sleep;
+            Box::pin(async move {
+                if advance_time {
+                    tokio::time::advance(duration).await;
+                }
+                Ok(())
+            })
+        }
+    }
+
+    fn cleanup_state(
+        active_state: &str,
+        active_like: bool,
+    ) -> RunnerResult<CleanupUnitActiveState> {
+        Ok(CleanupUnitActiveState::for_test(active_state, active_like))
+    }
+
+    #[tokio::test]
+    async fn stop_default_active_service_preserves_existing_sequence() {
+        let unit = service_unit();
+        let home = fake_home();
+        let mut ops = FakeStopOps::default();
+
+        stop_with_ops(&unit, &home, false, None, &mut ops)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            ops.events,
+            [
+                "acquire_lock",
+                "check_gate",
+                "is_active",
+                "stop",
+                "reset_failed",
+                "cleanup_drain_restart_override",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn stop_force_without_cleanup_does_not_escalate_or_disable() {
+        let unit = service_unit();
+        let home = fake_home();
+        let mut ops = FakeStopOps::default();
+
+        stop_with_ops(&unit, &home, true, None, &mut ops)
+            .await
+            .unwrap();
+
+        assert!(!ops.events.contains(&"stop_bounded"));
+        assert!(!ops.events.contains(&"kill_all_sigkill"));
+        assert!(!ops.events.contains(&"disable"));
+    }
+
+    #[tokio::test]
+    async fn stop_partial_start_cleanup_uses_bounded_stop_without_disable() {
+        let unit = service_unit();
+        let home = fake_home();
+        let mut ops = FakeStopOps::default();
+
+        stop_with_ops(
+            &unit,
+            &home,
+            true,
+            Some(StopCleanupPolicy::PartialStart),
+            &mut ops,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            ops.events,
+            [
+                "check_gate",
+                "acquire_cleanup_lock",
+                "stop_bounded",
+                "cleanup_active_state",
+                "reset_failed",
+                "cleanup_drain_restart_override",
+                "cleanup_active_state",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn stop_failed_start_cleanup_disables_service() {
+        let unit = service_unit();
+        let home = fake_home();
+        let mut ops = FakeStopOps::default();
+
+        stop_with_ops(
+            &unit,
+            &home,
+            true,
+            Some(StopCleanupPolicy::FailedStart),
+            &mut ops,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            ops.events,
+            [
+                "check_gate",
+                "acquire_cleanup_lock",
+                "stop_bounded",
+                "cleanup_active_state",
+                "disable",
+                "reset_failed",
+                "cleanup_drain_restart_override",
+                "cleanup_active_state",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn stop_cleanup_escalates_when_stop_times_out_and_state_remains_active_like() {
+        let unit = service_unit();
+        let home = fake_home();
+        let mut ops = FakeStopOps {
+            bounded_stop_results: VecDeque::from([Ok(BoundedSystemctlOutcome::TimedOut)]),
+            cleanup_states: VecDeque::from([
+                cleanup_state("deactivating", true),
+                cleanup_state("inactive", false),
+            ]),
+            ..FakeStopOps::default()
+        };
+
+        stop_with_ops(
+            &unit,
+            &home,
+            true,
+            Some(StopCleanupPolicy::PartialStart),
+            &mut ops,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            ops.events,
+            [
+                "check_gate",
+                "acquire_cleanup_lock",
+                "stop_bounded",
+                "cleanup_active_state",
+                "kill_all_sigkill",
+                "stop_no_block",
+                "reset_failed",
+                "cleanup_drain_restart_override",
+                "cleanup_active_state",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn stop_cleanup_success_does_not_escalate_while_verify_waits_for_inactive() {
+        let unit = service_unit();
+        let home = fake_home();
+        let mut ops = FakeStopOps {
+            cleanup_states: VecDeque::from([
+                cleanup_state("deactivating", true),
+                cleanup_state("deactivating", true),
+                cleanup_state("inactive", false),
+            ]),
+            ..FakeStopOps::default()
+        };
+
+        stop_with_ops(
+            &unit,
+            &home,
+            true,
+            Some(StopCleanupPolicy::PartialStart),
+            &mut ops,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            ops.events,
+            [
+                "check_gate",
+                "acquire_cleanup_lock",
+                "stop_bounded",
+                "cleanup_active_state",
+                "reset_failed",
+                "cleanup_drain_restart_override",
+                "cleanup_active_state",
+                "sleep",
+                "cleanup_active_state",
+            ]
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn stop_cleanup_verify_timeout_fails_when_unit_stays_active_like() {
+        let unit = service_unit();
+        let home = fake_home();
+        let active_states = std::iter::repeat_with(|| cleanup_state("active", true))
+            .take(16)
+            .collect();
+        let mut ops = FakeStopOps {
+            cleanup_states: active_states,
+            advance_time_on_sleep: true,
+            ..FakeStopOps::default()
+        };
+
+        let err = stop_with_ops(
+            &unit,
+            &home,
+            true,
+            Some(StopCleanupPolicy::PartialStart),
+            &mut ops,
+        )
+        .await
+        .unwrap_err();
+
+        assert!(err.to_string().contains("ActiveState=active"));
+        assert!(ops.events.contains(&"sleep"));
+    }
+
+    #[tokio::test]
+    async fn stop_cleanup_lock_failure_returns_before_systemctl() {
+        let unit = service_unit();
+        let home = fake_home();
+        let mut ops = FakeStopOps {
+            acquire_lock_error: true,
+            ..FakeStopOps::default()
+        };
+
+        let err = stop_with_ops(
+            &unit,
+            &home,
+            true,
+            Some(StopCleanupPolicy::PartialStart),
+            &mut ops,
+        )
+        .await
+        .unwrap_err();
+
+        assert!(err.to_string().contains("lock busy"));
+        assert_eq!(ops.events, ["check_gate", "acquire_cleanup_lock"]);
     }
 
     impl ServiceDrainOps for FakeDrainOps {

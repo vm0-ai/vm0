@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::process::{ExitStatus, Output};
+use std::time::Duration;
 
 use crate::error::{RunnerError, RunnerResult};
 
@@ -42,6 +43,42 @@ pub(super) async fn run_systemctl(args: &[&str]) -> RunnerResult<()> {
     Ok(())
 }
 
+#[derive(Debug)]
+pub(super) enum BoundedSystemctlOutcome {
+    Success,
+    Failed(ExitStatus),
+    TimedOut,
+}
+
+/// Run `systemctl <args>` with a caller-supplied deadline.
+///
+/// Timeout is a cleanup policy boundary, not normal service behavior. Existing
+/// service commands should keep using [`run_systemctl`] unless they explicitly
+/// need bounded recovery semantics.
+pub(super) async fn run_systemctl_bounded(
+    args: &[&str],
+    duration: Duration,
+) -> RunnerResult<BoundedSystemctlOutcome> {
+    let mut child = tokio::process::Command::new("systemctl")
+        .args(args)
+        .kill_on_drop(true)
+        .spawn()
+        .map_err(|e| RunnerError::Internal(format!("spawn systemctl: {e}")))?;
+
+    match tokio::time::timeout(duration, child.wait()).await {
+        Ok(Ok(status)) if status.success() => Ok(BoundedSystemctlOutcome::Success),
+        Ok(Ok(status)) => Ok(BoundedSystemctlOutcome::Failed(status)),
+        Ok(Err(e)) => Err(RunnerError::Internal(format!("wait systemctl: {e}"))),
+        Err(_) => {
+            child
+                .kill()
+                .await
+                .map_err(|e| RunnerError::Internal(format!("kill timed-out systemctl: {e}")))?;
+            Ok(BoundedSystemctlOutcome::TimedOut)
+        }
+    }
+}
+
 /// Check whether a systemd unit is active (running or activating).
 pub(crate) async fn is_unit_active(unit: &RunnerServiceUnit) -> RunnerResult<bool> {
     let svc = unit.service_name();
@@ -49,6 +86,52 @@ pub(crate) async fn is_unit_active(unit: &RunnerServiceUnit) -> RunnerResult<boo
     let output = run_systemctl_show(svc, &properties).await?;
     let values = parse_systemctl_show_output(svc, &properties, &output)?;
     unit_active_from_systemctl_show(svc, &properties, &output.status, &values, &output.stderr)
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct CleanupUnitActiveState {
+    active_state: String,
+    active_like: bool,
+}
+
+impl CleanupUnitActiveState {
+    pub(super) fn active_state(&self) -> &str {
+        &self.active_state
+    }
+
+    pub(super) fn is_active_like(&self) -> bool {
+        self.active_like
+    }
+
+    #[cfg(test)]
+    pub(super) fn for_test(active_state: &str, active_like: bool) -> Self {
+        Self {
+            active_state: active_state.to_string(),
+            active_like,
+        }
+    }
+}
+
+/// Read the systemd ActiveState using cleanup semantics.
+///
+/// Normal health checks intentionally treat `deactivating` as inactive because
+/// a service that has started shutdown is not runnable. Cleanup must treat
+/// `deactivating` as still active-like so recovery waits or escalates instead
+/// of reporting success too early.
+pub(super) async fn cleanup_unit_active_state(
+    unit: &RunnerServiceUnit,
+) -> RunnerResult<CleanupUnitActiveState> {
+    let svc = unit.service_name();
+    let properties = ["LoadState", "ActiveState"];
+    let output = run_systemctl_show(svc, &properties).await?;
+    let values = parse_systemctl_show_output(svc, &properties, &output)?;
+    cleanup_unit_active_state_from_systemctl_show(
+        svc,
+        &properties,
+        &output.status,
+        &values,
+        &output.stderr,
+    )
 }
 
 /// Check whether a systemd unit is enabled for boot.
@@ -185,6 +268,20 @@ fn classify_unit_active(svc: &str, load_state: &str, active_state: &str) -> Runn
     }
 }
 
+fn classify_cleanup_unit_active_like(
+    svc: &str,
+    load_state: &str,
+    active_state: &str,
+) -> RunnerResult<bool> {
+    match active_state {
+        "active" | "activating" | "reloading" | "refreshing" | "deactivating" => Ok(true),
+        "inactive" | "failed" | "maintenance" => Ok(false),
+        _ => Err(RunnerError::Internal(format!(
+            "unknown ActiveState for cleanup of {svc}: {active_state} (LoadState={load_state})"
+        ))),
+    }
+}
+
 fn unit_active_from_systemctl_show(
     svc: &str,
     properties: &[&str],
@@ -198,6 +295,24 @@ fn unit_active_from_systemctl_show(
     let missing_unit = load_state == "not-found" && !active;
     ensure_systemctl_show_status(svc, properties, status, stderr, missing_unit)?;
     Ok(active)
+}
+
+fn cleanup_unit_active_state_from_systemctl_show(
+    svc: &str,
+    properties: &[&str],
+    status: &ExitStatus,
+    values: &BTreeMap<String, String>,
+    stderr: &[u8],
+) -> RunnerResult<CleanupUnitActiveState> {
+    let load_state = required_systemctl_property(svc, values, "LoadState")?;
+    let active_state = required_systemctl_property(svc, values, "ActiveState")?;
+    let active_like = classify_cleanup_unit_active_like(svc, load_state, active_state)?;
+    let missing_unit = load_state == "not-found" && !active_like;
+    ensure_systemctl_show_status(svc, properties, status, stderr, missing_unit)?;
+    Ok(CleanupUnitActiveState {
+        active_state: active_state.to_string(),
+        active_like,
+    })
 }
 
 fn service_pid_from_systemctl_show(
@@ -517,6 +632,67 @@ mod tests {
         let message = err.to_string();
 
         assert!(message.contains("unknown ActiveState"));
+    }
+
+    #[test]
+    fn classify_cleanup_unit_active_like_keeps_deactivating_active_like() {
+        for active_state in [
+            "active",
+            "activating",
+            "reloading",
+            "refreshing",
+            "deactivating",
+        ] {
+            assert!(
+                classify_cleanup_unit_active_like(
+                    "vm0-runner-test.service",
+                    "loaded",
+                    active_state,
+                )
+                .unwrap(),
+                "{active_state} should be active-like during cleanup"
+            );
+        }
+    }
+
+    #[test]
+    fn classify_cleanup_unit_active_like_accepts_inactive_states() {
+        for active_state in ["inactive", "failed", "maintenance"] {
+            assert!(
+                !classify_cleanup_unit_active_like(
+                    "vm0-runner-test.service",
+                    "loaded",
+                    active_state,
+                )
+                .unwrap(),
+                "{active_state} should be inactive-like during cleanup"
+            );
+        }
+    }
+
+    #[test]
+    fn cleanup_unit_active_state_allows_not_found_inactive_on_failed_status() {
+        use std::os::unix::process::ExitStatusExt;
+
+        let properties = ["LoadState", "ActiveState"];
+        let values = parse_systemctl_show_properties(
+            "vm0-runner-test.service",
+            &properties,
+            b"LoadState=not-found\nActiveState=inactive\n",
+        )
+        .unwrap();
+        let status = ExitStatus::from_raw(0x100);
+        let state = cleanup_unit_active_state_from_systemctl_show(
+            "vm0-runner-test.service",
+            &properties,
+            &status,
+            &values,
+            b"Unit not found\n",
+        )
+        .unwrap();
+
+        assert_eq!(state.active_state(), "inactive");
+        assert!(!state.is_active_like());
     }
 
     #[test]

@@ -1941,12 +1941,11 @@ jobs:
             for HOST in $(echo "$METAL_HOSTS" | tr ',' ' '); do
               HOST_INDEX=$((HOST_INDEX + 1))
               local RUNNER_NAME="${JOB_REF}-${HOST_INDEX}"
-              local UNIT="vm0-runner-${RUNNER_NAME}.service"
               local REMOTE="${METAL_USER}@${HOST}"
               echo "::warning::Requesting stop for partially started runner ${RUNNER_NAME} on ${HOST}"
               (
                 # shellcheck disable=SC2029
-                timeout 45s ssh "$REMOTE" "UNIT='${UNIT}'; timeout 20s sudo systemctl stop \"\$UNIT\" 2>/dev/null || true; STATE=\$(sudo systemctl show \"\$UNIT\" --property=ActiveState --value 2>/dev/null || true); case \"\$STATE\" in active|activating|reloading|refreshing|deactivating) sudo systemctl kill --kill-whom=all --signal=SIGKILL \"\$UNIT\" 2>/dev/null || true; sudo systemctl stop --no-block \"\$UNIT\" 2>/dev/null || true ;; esac; sudo systemctl reset-failed \"\$UNIT\" 2>/dev/null || true; for _ in \$(seq 1 10); do STATE=\$(sudo systemctl show \"\$UNIT\" --property=ActiveState --value 2>/dev/null || true); case \"\$STATE\" in active|activating|reloading|refreshing|deactivating) sleep 1 ;; *) exit 0 ;; esac; done; echo \"::warning::Runner service \$UNIT still \$STATE after cleanup\" >&2" >/dev/null || true
+                timeout 45s ssh "$REMOTE" "sudo ${BIN_DIR}/runner service stop --name '${RUNNER_NAME}' --force --cleanup partial-start" >/dev/null || true
               ) &
               STOP_PIDS+=($!)
             done
