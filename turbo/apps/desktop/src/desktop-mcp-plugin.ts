@@ -606,7 +606,7 @@ export class DesktopMcpPluginManager {
         try {
           await transport.close();
         } catch (closeError) {
-          console.warn(`Unable to close MCP server ${name}`, closeError);
+          console.warn("Unable to close MCP server", name, closeError);
         }
       }
       if (this.serverShouldRun(this.preferences.servers[name])) {
@@ -638,12 +638,12 @@ export class DesktopMcpPluginManager {
     try {
       await runtime.client.close();
     } catch (error) {
-      console.warn(`Unable to close MCP client ${name}`, error);
+      console.warn("Unable to close MCP client", name, error);
     }
     try {
       await runtime.transport.close();
     } catch (error) {
-      console.warn(`Unable to close MCP server ${name}`, error);
+      console.warn("Unable to close MCP server", name, error);
     }
   }
 }
