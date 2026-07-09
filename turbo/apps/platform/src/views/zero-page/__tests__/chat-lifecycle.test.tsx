@@ -3353,7 +3353,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: "/chats/b0000000-0000-4000-a000-000000000708",
-      featureSwitches: { [FeatureSwitchKey.ChatThreadEmoji]: true },
     });
 
     await waitFor(() => {
@@ -3520,36 +3519,6 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("hides the chat emoji shortcut when the feature switch is off", async () => {
-    mockResizeObserver();
-    mockKeyboardNavigationThreads();
-
-    detachedSetupPage({
-      context,
-      path: "/chats/b0000000-0000-4000-a000-000000000708",
-      featureSwitches: { [FeatureSwitchKey.ChatThreadEmoji]: false },
-    });
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("Current thread launch note"),
-      ).toBeInTheDocument();
-      expect(
-        screen.getAllByText("Current keyboard thread").length,
-      ).toBeGreaterThan(0);
-    });
-
-    expect(screen.queryByLabelText("Change icon")).not.toBeInTheDocument();
-
-    const threadRegion = screen.getByLabelText("Chat thread");
-    threadRegion.focus();
-    fireEvent.keyDown(threadRegion, { key: "F2", shiftKey: true });
-
-    await waitFor(() => {
-      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
-    });
-  });
-
   it("opens the current chat rename dialog with F2", async () => {
     mockResizeObserver();
     mockKeyboardNavigationThreads();
@@ -3557,7 +3526,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: "/chats/b0000000-0000-4000-a000-000000000708",
-      featureSwitches: { [FeatureSwitchKey.ChatThreadEmoji]: true },
     });
 
     await waitFor(() => {
@@ -3841,7 +3809,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: "/chats/b0000000-0000-4000-a000-000000000708",
-      featureSwitches: { [FeatureSwitchKey.ChatThreadEmoji]: true },
     });
 
     await waitFor(() => {
@@ -3883,7 +3850,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: "/chats/b0000000-0000-4000-a000-000000000708",
-      featureSwitches: { [FeatureSwitchKey.ChatThreadEmoji]: true },
     });
 
     await waitFor(() => {
@@ -3925,7 +3891,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: "/chats/b0000000-0000-4000-a000-000000000708?sidebar=b0000000-0000-4000-a000-000000000709",
-      featureSwitches: { [FeatureSwitchKey.ChatThreadEmoji]: true },
     });
 
     await waitFor(() => {
@@ -3970,7 +3935,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: "/chats/b0000000-0000-4000-a000-000000000708",
-      featureSwitches: { [FeatureSwitchKey.ChatThreadEmoji]: true },
     });
 
     await waitFor(() => {
@@ -4013,7 +3977,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: "/chats/b0000000-0000-4000-a000-000000000708",
-      featureSwitches: { [FeatureSwitchKey.ChatThreadEmoji]: true },
     });
 
     await waitFor(() => {
@@ -4053,7 +4016,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: "/chats/b0000000-0000-4000-a000-000000000708",
-      featureSwitches: { [FeatureSwitchKey.ChatThreadEmoji]: true },
     });
 
     await waitFor(() => {
@@ -4080,7 +4042,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: "/chats/b0000000-0000-4000-a000-000000000708",
-      featureSwitches: { [FeatureSwitchKey.ChatThreadEmoji]: true },
     });
 
     await waitFor(() => {
@@ -4142,7 +4103,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: "/chats/b0000000-0000-4000-a000-000000000708",
-      featureSwitches: { [FeatureSwitchKey.ChatThreadEmoji]: true },
     });
 
     await waitFor(() => {
@@ -4186,7 +4146,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: "/chats/b0000000-0000-4000-a000-000000000708",
-      featureSwitches: { [FeatureSwitchKey.ChatThreadEmoji]: true },
     });
 
     await waitFor(() => {
@@ -4223,7 +4182,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: "/chats/b0000000-0000-4000-a000-000000000708",
-      featureSwitches: { [FeatureSwitchKey.ChatThreadEmoji]: true },
     });
 
     await waitFor(() => {

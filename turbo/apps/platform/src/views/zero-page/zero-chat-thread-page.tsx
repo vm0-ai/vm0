@@ -106,9 +106,7 @@ import type {
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import type { PublicConnectorCatalogPermissionDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { emptyArtifactImg, emptyChatImg } from "./platform-assets.ts";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import type { FirewallPolicyValue } from "@vm0/connectors/firewall-types";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { Markdown } from "../components/markdown.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
@@ -431,14 +429,10 @@ function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
   const threadMetaLoadable = useLastLoadable(thread.threadMeta$);
   const threadTitleEmoji = useLastResolved(thread.threadTitleEmoji$);
   const threadTitleText = useLastResolved(thread.threadTitleText$) ?? "";
-  const features = useLastResolved(featureSwitch$);
-  const chatThreadEmojiEnabled =
-    features?.[FeatureSwitchKey.ChatThreadEmoji] ?? false;
   const threadTitle =
     threadMetaLoadable.state === "hasData"
       ? (threadMetaLoadable.data?.title?.trim() ?? "")
       : "";
-  const displayTitle = chatThreadEmojiEnabled ? threadTitleText : threadTitle;
 
   return (
     <header className="hidden sm:flex shrink-0 bg-transparent px-6 py-3 items-center justify-between">
@@ -447,16 +441,14 @@ function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
           <Skeleton className="h-5 w-48 rounded" />
         ) : (
           <>
-            {chatThreadEmojiEnabled && (
-              <ChatThreadEmojiMenuButton
-                threadId={thread.threadId}
-                title={threadTitle}
-                emoji={threadTitleEmoji}
-              />
-            )}
-            {displayTitle && (
+            <ChatThreadEmojiMenuButton
+              threadId={thread.threadId}
+              title={threadTitle}
+              emoji={threadTitleEmoji}
+            />
+            {threadTitleText && (
               <span className="min-w-0 truncate text-sm font-medium text-foreground">
-                {displayTitle}
+                {threadTitleText}
               </span>
             )}
           </>
