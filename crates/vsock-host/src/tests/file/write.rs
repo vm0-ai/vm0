@@ -124,6 +124,42 @@ async fn write_files_empty_batch_is_noop() {
 }
 
 #[tokio::test]
+async fn write_files_sends_empty_file_content() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let write_task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move {
+            host.write_files(&[WriteFileEntry {
+                path: "/tmp/empty.txt",
+                content: b"",
+            }])
+            .await
+        })
+    };
+
+    let write = tokio::time::timeout(Duration::from_secs(5), expect_write_files(&mut guest))
+        .await
+        .expect("write_files with empty file content should send a frame");
+    assert_eq!(
+        write.files,
+        vec![("/tmp/empty.txt".to_string(), Vec::new())]
+    );
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Busy
+    );
+
+    send_write_files_success(&mut guest, write.seq()).await;
+
+    write_task.await.unwrap().unwrap();
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+}
+
+#[tokio::test]
 async fn write_files_accepts_file_count_at_batch_limit() {
     let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
