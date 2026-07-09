@@ -4,6 +4,12 @@ import { initContract } from "./base";
 
 const c = initContract();
 
+const testRelationshipStateSqlIdentifierSchema = z
+  .string()
+  .min(1)
+  .max(63)
+  .regex(/^[A-Za-z_][A-Za-z0-9_]*$/);
+
 export const testRelationshipStateErrorSchema = z.object({
   error: z.string(),
 });
@@ -32,6 +38,19 @@ export const testRelationshipStateActionBodySchema = z.discriminatedUnion(
     z.object({
       action: z.literal("seed-runtime-injection-window-memories"),
       fixture: testRelationshipStateFixtureSchema,
+    }),
+    z.object({
+      action: z.literal("create-alias-race-trigger"),
+      fixture: testRelationshipStateFixtureSchema,
+      display_name: z.string().min(1),
+      identity_key: z.string().min(1),
+      function_name: testRelationshipStateSqlIdentifierSchema,
+      trigger_name: testRelationshipStateSqlIdentifierSchema,
+    }),
+    z.object({
+      action: z.literal("delete-alias-race-trigger"),
+      function_name: testRelationshipStateSqlIdentifierSchema,
+      trigger_name: testRelationshipStateSqlIdentifierSchema,
     }),
   ],
 );

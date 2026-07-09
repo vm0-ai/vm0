@@ -12,7 +12,7 @@ import {
   memoryProfiles,
   memorySources,
 } from "@vm0/db/schema/memory-substrate";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 
 import { bodyResultOf } from "../context/request";
 import { request$ } from "../context/hono";
@@ -289,6 +289,111 @@ async function seedRelationshipsForAction(
   return actionOk();
 }
 
+function quoteSqlIdentifier(value: string): string {
+  return `"${value.replaceAll('"', '""')}"`;
+}
+
+function quoteSqlString(value: string): string {
+  return `'${value.replaceAll("'", "''")}'`;
+}
+
+async function createAliasRaceTriggerForAction(
+  db: Db,
+  body: RelationshipAction<"create-alias-race-trigger">,
+  signal: AbortSignal,
+) {
+  const functionName = quoteSqlIdentifier(body.function_name);
+  const triggerName = quoteSqlIdentifier(body.trigger_name);
+  const displayName = quoteSqlString(body.display_name);
+  const identityKey = quoteSqlString(body.identity_key);
+
+  await db.execute(
+    sql.raw(`
+      CREATE FUNCTION ${functionName}()
+      RETURNS trigger
+      LANGUAGE plpgsql
+      AS $$
+      DECLARE
+        canonical_id uuid;
+      BEGIN
+        IF NEW.display_name <> ${displayName} THEN
+          RETURN NEW;
+        END IF;
+
+        INSERT INTO "memory_entities" (
+          "org_id",
+          "user_id",
+          "type",
+          "display_name",
+          "created_at",
+          "updated_at"
+        )
+        VALUES (
+          NEW.org_id,
+          NEW.user_id,
+          NEW.type,
+          'Alias Race Winner',
+          now(),
+          now()
+        )
+        RETURNING "id" INTO canonical_id;
+
+        INSERT INTO "memory_entity_aliases" (
+          "org_id",
+          "user_id",
+          "entity_id",
+          "provider",
+          "alias_type",
+          "alias_value",
+          "created_at",
+          "updated_at"
+        )
+        VALUES (
+          NEW.org_id,
+          NEW.user_id,
+          canonical_id,
+          NULL,
+          'relationship_identity',
+          ${identityKey},
+          now(),
+          now()
+        );
+
+        RETURN NEW;
+      END
+      $$;
+    `),
+  );
+  signal.throwIfAborted();
+  await db.execute(
+    sql.raw(`
+      CREATE TRIGGER ${triggerName}
+      AFTER INSERT ON "memory_entities"
+      FOR EACH ROW
+      EXECUTE FUNCTION ${functionName}();
+    `),
+  );
+  signal.throwIfAborted();
+  return actionOk();
+}
+
+async function deleteAliasRaceTriggerForAction(
+  db: Db,
+  body: RelationshipAction<"delete-alias-race-trigger">,
+  signal: AbortSignal,
+) {
+  const functionName = quoteSqlIdentifier(body.function_name);
+  const triggerName = quoteSqlIdentifier(body.trigger_name);
+
+  await db.execute(
+    sql.raw(`DROP TRIGGER IF EXISTS ${triggerName} ON "memory_entities";`),
+  );
+  signal.throwIfAborted();
+  await db.execute(sql.raw(`DROP FUNCTION IF EXISTS ${functionName}();`));
+  signal.throwIfAborted();
+  return actionOk();
+}
+
 interface RuntimeInjectionSeedRow {
   readonly kind: MemoryKind;
   readonly text: string;
@@ -473,6 +578,12 @@ const mutateRelationshipState$ = command(
           body,
           signal,
         );
+      }
+      case "create-alias-race-trigger": {
+        return await createAliasRaceTriggerForAction(db, body, signal);
+      }
+      case "delete-alias-race-trigger": {
+        return await deleteAliasRaceTriggerForAction(db, body, signal);
       }
     }
   },
