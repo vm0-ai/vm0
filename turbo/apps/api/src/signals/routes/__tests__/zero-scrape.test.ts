@@ -223,6 +223,42 @@ describe("zero scrape route", () => {
     expect(firecrawlRequests).toBe(0);
   });
 
+  it("blocks special-use IPv4 literal targets before calling Firecrawl", async () => {
+    const actor = scrapeEnabledActor();
+    let firecrawlRequests = 0;
+    configureProvider();
+    server.use(
+      http.post(FIRECRAWL_SCRAPE_URL, () => {
+        firecrawlRequests += 1;
+        return HttpResponse.json({ success: true, data: {} });
+      }),
+    );
+
+    for (const url of [
+      "http://192.0.2.10/page",
+      "http://198.51.100.10/page",
+      "http://203.0.113.10/page",
+      "http://224.0.0.1/page",
+      "http://240.0.0.1/page",
+    ]) {
+      const response = await accept(
+        client()(zeroScrapeContract).scrape({
+          headers: authenticate(actor),
+          body: {
+            url,
+            format: "markdown",
+            mode: "standard",
+          },
+        }),
+        [400],
+      );
+
+      expectApiError(response.body);
+      expect(response.body.error.code).toBe("INVALID_SCRAPE_TARGET");
+    }
+    expect(firecrawlRequests).toBe(0);
+  });
+
   it("blocks non-public IPv6 literal targets before calling Firecrawl", async () => {
     const actor = scrapeEnabledActor();
     let firecrawlRequests = 0;
