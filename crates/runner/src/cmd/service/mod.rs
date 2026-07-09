@@ -28,7 +28,7 @@ use drain_override::{remove_drain_restart_override, write_drain_restart_override
 use gate::{check_active_jobs_gate, read_runner_status, runner_base_dir};
 use signal::{ServiceSignalOutcome, signal_service_main};
 use systemctl::{
-    BoundedSystemctlOutcome, CleanupUnitActiveState, cleanup_unit_active_state,
+    BoundedSystemctlOutcome, CleanupUnitActiveState, cleanup_unit_active_state_bounded,
     get_service_restart_policy, journalctl_logs_status, run_systemctl, run_systemctl_bounded,
 };
 use unit_file::{
@@ -232,6 +232,7 @@ type ServiceFuture<'a, T> = Pin<Box<dyn Future<Output = RunnerResult<T>> + 'a>>;
 const STOP_CLEANUP_LOCK_TIMEOUT: TokioDuration = TokioDuration::from_secs(5);
 const STOP_CLEANUP_LOCK_POLL_INTERVAL: TokioDuration = TokioDuration::from_millis(250);
 const STOP_CLEANUP_STOP_TIMEOUT: TokioDuration = TokioDuration::from_secs(20);
+const STOP_CLEANUP_ACTION_TIMEOUT: TokioDuration = TokioDuration::from_secs(10);
 const STOP_CLEANUP_VERIFY_TIMEOUT: TokioDuration = TokioDuration::from_secs(10);
 const STOP_CLEANUP_VERIFY_INTERVAL: TokioDuration = TokioDuration::from_secs(1);
 
@@ -267,8 +268,14 @@ trait ServiceStopOps {
     fn kill_all_sigkill<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, ()>;
     fn stop_no_block<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, ()>;
     fn reset_failed<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, ()>;
+    fn reset_failed_bounded<'a>(&'a mut self, unit: &'a RunnerServiceUnit)
+    -> ServiceFuture<'a, ()>;
     fn disable<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, ()>;
     fn cleanup_drain_restart_override<'a>(
+        &'a mut self,
+        unit: &'a RunnerServiceUnit,
+    ) -> ServiceFuture<'a, ()>;
+    fn cleanup_drain_restart_override_bounded<'a>(
         &'a mut self,
         unit: &'a RunnerServiceUnit,
     ) -> ServiceFuture<'a, ()>;
@@ -331,6 +338,63 @@ async fn acquire_cleanup_service_lock(
     }
 }
 
+async fn run_cleanup_systemctl(args: &[&str], duration: TokioDuration) -> RunnerResult<()> {
+    match run_systemctl_bounded(args, duration).await? {
+        BoundedSystemctlOutcome::Success => Ok(()),
+        BoundedSystemctlOutcome::Failed(status) => Err(RunnerError::Internal(format!(
+            "systemctl {args:?} exited with {status} during cleanup"
+        ))),
+        BoundedSystemctlOutcome::TimedOut => Err(RunnerError::Internal(format!(
+            "systemctl {args:?} timed out after {}s during cleanup",
+            duration.as_secs()
+        ))),
+    }
+}
+
+async fn reload_systemd_if_drain_restart_override_removed_bounded(
+    unit: &RunnerServiceUnit,
+) -> RunnerResult<bool> {
+    if !remove_drain_restart_override(unit)? {
+        return Ok(false);
+    }
+
+    if let Err(reload_error) =
+        run_cleanup_systemctl(&["daemon-reload"], STOP_CLEANUP_ACTION_TIMEOUT).await
+    {
+        if let Err(restore_error) =
+            restore_drain_restart_override_after_failed_cleanup_bounded(unit, "remove_reload").await
+        {
+            return Err(drain_override_cleanup_reload_error(
+                unit,
+                reload_error,
+                restore_error,
+            ));
+        }
+        return Err(reload_error);
+    }
+
+    Ok(true)
+}
+
+async fn restore_drain_restart_override_after_failed_cleanup_bounded(
+    unit: &RunnerServiceUnit,
+    context: &str,
+) -> RunnerResult<()> {
+    if let Err(e) = write_drain_restart_override(unit) {
+        return Err(RunnerError::Internal(format!(
+            "failed to restore drain restart override for {} after cleanup reload failure ({context}): {e}",
+            unit.unit_name()
+        )));
+    }
+    if let Err(e) = run_cleanup_systemctl(&["daemon-reload"], STOP_CLEANUP_ACTION_TIMEOUT).await {
+        return Err(RunnerError::Internal(format!(
+            "failed to reload systemd after restoring drain restart override for {} ({context}): {e}",
+            unit.unit_name()
+        )));
+    }
+    Ok(())
+}
+
 impl ServiceStopOps for RealServiceStopOps {
     type LockGuard = nix::fcntl::Flock<std::fs::File>;
 
@@ -382,31 +446,61 @@ impl ServiceStopOps for RealServiceStopOps {
         &'a mut self,
         unit: &'a RunnerServiceUnit,
     ) -> ServiceFuture<'a, CleanupUnitActiveState> {
-        Box::pin(async move { cleanup_unit_active_state(unit).await })
+        Box::pin(async move {
+            cleanup_unit_active_state_bounded(unit, STOP_CLEANUP_ACTION_TIMEOUT).await
+        })
     }
 
     fn kill_all_sigkill<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, ()> {
         Box::pin(async move {
-            run_systemctl(&[
-                "kill",
-                "--kill-whom=all",
-                "--signal=SIGKILL",
-                unit.service_name(),
-            ])
+            run_cleanup_systemctl(
+                &[
+                    "kill",
+                    "--kill-whom=all",
+                    "--signal=SIGKILL",
+                    unit.service_name(),
+                ],
+                STOP_CLEANUP_ACTION_TIMEOUT,
+            )
             .await
         })
     }
 
     fn stop_no_block<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, ()> {
-        Box::pin(async move { run_systemctl(&["stop", "--no-block", unit.service_name()]).await })
+        Box::pin(async move {
+            run_cleanup_systemctl(
+                &["stop", "--no-block", unit.service_name()],
+                STOP_CLEANUP_ACTION_TIMEOUT,
+            )
+            .await
+        })
     }
 
     fn reset_failed<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, ()> {
         Box::pin(async move { run_systemctl(&["reset-failed", unit.service_name()]).await })
     }
 
+    fn reset_failed_bounded<'a>(
+        &'a mut self,
+        unit: &'a RunnerServiceUnit,
+    ) -> ServiceFuture<'a, ()> {
+        Box::pin(async move {
+            run_cleanup_systemctl(
+                &["reset-failed", unit.service_name()],
+                STOP_CLEANUP_ACTION_TIMEOUT,
+            )
+            .await
+        })
+    }
+
     fn disable<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, ()> {
-        Box::pin(async move { run_systemctl(&["disable", unit.service_name()]).await })
+        Box::pin(async move {
+            run_cleanup_systemctl(
+                &["disable", unit.service_name()],
+                STOP_CLEANUP_ACTION_TIMEOUT,
+            )
+            .await
+        })
     }
 
     fn cleanup_drain_restart_override<'a>(
@@ -415,6 +509,17 @@ impl ServiceStopOps for RealServiceStopOps {
     ) -> ServiceFuture<'a, ()> {
         Box::pin(async move {
             reload_systemd_if_drain_restart_override_removed(unit)
+                .await
+                .map(|_| ())
+        })
+    }
+
+    fn cleanup_drain_restart_override_bounded<'a>(
+        &'a mut self,
+        unit: &'a RunnerServiceUnit,
+    ) -> ServiceFuture<'a, ()> {
+        Box::pin(async move {
+            reload_systemd_if_drain_restart_override_removed_bounded(unit)
                 .await
                 .map(|_| ())
         })
@@ -1026,10 +1131,10 @@ async fn stop_cleanup_with_ops(
         warn!(unit = %unit.unit_name(), error = %e, "failed to disable runner service during cleanup");
     }
 
-    if let Err(e) = ops.reset_failed(unit).await {
+    if let Err(e) = ops.reset_failed_bounded(unit).await {
         warn!(unit = %unit.unit_name(), error = %e, "failed to reset failed service state during cleanup");
     }
-    if let Err(e) = ops.cleanup_drain_restart_override(unit).await {
+    if let Err(e) = ops.cleanup_drain_restart_override_bounded(unit).await {
         warn!(unit = %unit.unit_name(), error = %e, "failed to remove drain restart override during cleanup");
     }
 
@@ -1845,6 +1950,18 @@ profiles:
             }))
         }
 
+        fn reset_failed_bounded<'a>(
+            &'a mut self,
+            _unit: &'a RunnerServiceUnit,
+        ) -> ServiceFuture<'a, ()> {
+            self.events.push("reset_failed");
+            Box::pin(std::future::ready(if self.reset_failed_error {
+                Err(fake_error("reset failed"))
+            } else {
+                Ok(())
+            }))
+        }
+
         fn disable<'a>(&'a mut self, _unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, ()> {
             self.events.push("disable");
             Box::pin(std::future::ready(if self.disable_error {
@@ -1855,6 +1972,18 @@ profiles:
         }
 
         fn cleanup_drain_restart_override<'a>(
+            &'a mut self,
+            _unit: &'a RunnerServiceUnit,
+        ) -> ServiceFuture<'a, ()> {
+            self.events.push("cleanup_drain_restart_override");
+            Box::pin(std::future::ready(if self.cleanup_drain_error {
+                Err(fake_error("cleanup drain failed"))
+            } else {
+                Ok(())
+            }))
+        }
+
+        fn cleanup_drain_restart_override_bounded<'a>(
             &'a mut self,
             _unit: &'a RunnerServiceUnit,
         ) -> ServiceFuture<'a, ()> {

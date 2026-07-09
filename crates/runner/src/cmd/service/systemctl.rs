@@ -1,8 +1,9 @@
 use std::collections::BTreeMap;
-use std::process::{ExitStatus, Output};
+use std::process::{ExitStatus, Output, Stdio};
 use std::time::Duration;
 
 use crate::error::{RunnerError, RunnerResult};
+use tokio::io::AsyncReadExt;
 
 use super::diagnostic::status_field_preview;
 use super::target::RunnerServiceUnit;
@@ -59,24 +60,110 @@ pub(super) async fn run_systemctl_bounded(
     args: &[&str],
     duration: Duration,
 ) -> RunnerResult<BoundedSystemctlOutcome> {
-    let mut child = tokio::process::Command::new("systemctl")
+    run_command_bounded("systemctl", args, duration).await
+}
+
+async fn run_command_bounded(
+    program: &str,
+    args: &[&str],
+    duration: Duration,
+) -> RunnerResult<BoundedSystemctlOutcome> {
+    let mut child = tokio::process::Command::new(program)
         .args(args)
         .kill_on_drop(true)
         .spawn()
-        .map_err(|e| RunnerError::Internal(format!("spawn systemctl: {e}")))?;
+        .map_err(|e| RunnerError::Internal(format!("spawn {program}: {e}")))?;
 
     match tokio::time::timeout(duration, child.wait()).await {
         Ok(Ok(status)) if status.success() => Ok(BoundedSystemctlOutcome::Success),
         Ok(Ok(status)) => Ok(BoundedSystemctlOutcome::Failed(status)),
-        Ok(Err(e)) => Err(RunnerError::Internal(format!("wait systemctl: {e}"))),
+        Ok(Err(e)) => Err(RunnerError::Internal(format!("wait {program}: {e}"))),
         Err(_) => {
-            child
-                .kill()
-                .await
-                .map_err(|e| RunnerError::Internal(format!("kill timed-out systemctl: {e}")))?;
+            let _ = child.start_kill();
+            let wait_error = child.wait().await.err();
+            if let Some(e) = wait_error {
+                return Err(RunnerError::Internal(format!(
+                    "wait timed-out {program}: {e}"
+                )));
+            }
             Ok(BoundedSystemctlOutcome::TimedOut)
         }
     }
+}
+
+async fn run_command_output_bounded(
+    program: &str,
+    args: &[&str],
+    duration: Duration,
+) -> RunnerResult<Output> {
+    let mut child = tokio::process::Command::new(program)
+        .args(args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()
+        .map_err(|e| RunnerError::Internal(format!("spawn {program}: {e}")))?;
+
+    let Some(stdout) = child.stdout.take() else {
+        let _ = child.start_kill();
+        let _ = child.wait().await;
+        return Err(RunnerError::Internal(format!(
+            "{program} stdout pipe unavailable"
+        )));
+    };
+    let Some(stderr) = child.stderr.take() else {
+        let _ = child.start_kill();
+        let _ = child.wait().await;
+        return Err(RunnerError::Internal(format!(
+            "{program} stderr pipe unavailable"
+        )));
+    };
+    let stdout_task = tokio::spawn(read_child_output(stdout));
+    let stderr_task = tokio::spawn(read_child_output(stderr));
+
+    let status = match tokio::time::timeout(duration, child.wait()).await {
+        Ok(Ok(status)) => status,
+        Ok(Err(e)) => {
+            let _ = child.start_kill();
+            let _ = child.wait().await;
+            let _ = stdout_task.await;
+            let _ = stderr_task.await;
+            return Err(RunnerError::Internal(format!("wait {program}: {e}")));
+        }
+        Err(_) => {
+            let _ = child.start_kill();
+            let _ = child.wait().await;
+            let _ = stdout_task.await;
+            let _ = stderr_task.await;
+            return Err(RunnerError::Internal(format!(
+                "{program} timed out after {}ms",
+                duration.as_millis()
+            )));
+        }
+    };
+    let stdout = stdout_task
+        .await
+        .map_err(|e| RunnerError::Internal(format!("{program} stdout task failed: {e}")))?
+        .map_err(|e| RunnerError::Internal(format!("read {program} stdout: {e}")))?;
+    let stderr = stderr_task
+        .await
+        .map_err(|e| RunnerError::Internal(format!("{program} stderr task failed: {e}")))?
+        .map_err(|e| RunnerError::Internal(format!("read {program} stderr: {e}")))?;
+
+    Ok(Output {
+        status,
+        stdout,
+        stderr,
+    })
+}
+
+async fn read_child_output<R>(mut reader: R) -> std::io::Result<Vec<u8>>
+where
+    R: tokio::io::AsyncRead + Unpin,
+{
+    let mut output = Vec::new();
+    reader.read_to_end(&mut output).await?;
+    Ok(output)
 }
 
 /// Check whether a systemd unit is active (running or activating).
@@ -118,16 +205,25 @@ impl CleanupUnitActiveState {
 /// a service that has started shutdown is not runnable. Cleanup must treat
 /// `deactivating` as still active-like so recovery waits or escalates instead
 /// of reporting success too early.
-pub(super) async fn cleanup_unit_active_state(
+pub(super) async fn cleanup_unit_active_state_bounded(
     unit: &RunnerServiceUnit,
+    duration: Duration,
 ) -> RunnerResult<CleanupUnitActiveState> {
     let svc = unit.service_name();
     let properties = ["LoadState", "ActiveState"];
-    let output = run_systemctl_show(svc, &properties).await?;
-    let values = parse_systemctl_show_output(svc, &properties, &output)?;
+    let output = run_systemctl_show_bounded(svc, &properties, duration).await?;
+    cleanup_unit_active_state_from_output(svc, &properties, &output)
+}
+
+fn cleanup_unit_active_state_from_output(
+    svc: &str,
+    properties: &[&str],
+    output: &Output,
+) -> RunnerResult<CleanupUnitActiveState> {
+    let values = parse_systemctl_show_output(svc, properties, output)?;
     cleanup_unit_active_state_from_systemctl_show(
         svc,
-        &properties,
+        properties,
         &output.status,
         &values,
         &output.stderr,
@@ -178,6 +274,19 @@ async fn run_systemctl_show(svc: &str, properties: &[&str]) -> RunnerResult<Outp
     cmd.output()
         .await
         .map_err(|e| RunnerError::Internal(format!("spawn systemctl show: {e}")))
+}
+
+async fn run_systemctl_show_bounded(
+    svc: &str,
+    properties: &[&str],
+    duration: Duration,
+) -> RunnerResult<Output> {
+    let mut args = vec!["show".to_string(), svc.to_string()];
+    for property in properties {
+        args.push(format!("--property={property}"));
+    }
+    let arg_refs = args.iter().map(String::as_str).collect::<Vec<_>>();
+    run_command_output_bounded("systemctl", &arg_refs, duration).await
 }
 
 fn parse_systemctl_show_output(
@@ -478,6 +587,24 @@ mod tests {
         let status = ExitStatus::from_raw(libc::SIGPIPE);
 
         assert!(journalctl_logs_status("vm0-runner-test.service", status).is_ok());
+    }
+
+    #[tokio::test]
+    async fn run_command_bounded_times_out_and_reaps_child() {
+        let outcome = run_command_bounded("sleep", &["60"], Duration::from_millis(1))
+            .await
+            .unwrap();
+
+        assert!(matches!(outcome, BoundedSystemctlOutcome::TimedOut));
+    }
+
+    #[tokio::test]
+    async fn run_command_output_bounded_times_out_and_reaps_child() {
+        let err = run_command_output_bounded("sleep", &["60"], Duration::from_millis(1))
+            .await
+            .unwrap_err();
+
+        assert!(err.to_string().contains("timed out"));
     }
 
     #[test]
