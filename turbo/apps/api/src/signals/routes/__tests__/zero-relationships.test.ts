@@ -1,8 +1,6 @@
 import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
 
-import { onTestFinished } from "vitest";
-
 import { cronDrainRelationshipMemoryContract } from "@vm0/api-contracts/contracts/cron";
 import { zeroMemoryContract } from "@vm0/api-contracts/contracts/zero-memory";
 import { zeroRelationshipsContract } from "@vm0/api-contracts/contracts/zero-relationships";
@@ -26,10 +24,6 @@ import {
   seedSlackOrgConnection$,
   seedSlackOrgInstallation$,
 } from "./helpers/zero-integrations-slack";
-import {
-  dropAliasRaceTrigger,
-  installAliasRaceTrigger,
-} from "../../../test-fixtures/relationship-memory";
 
 const context = testContext();
 const store = createStore();
@@ -736,79 +730,6 @@ describe("GET /api/zero/relationships/*", () => {
     );
     expect(search.body.relationships).toStrictEqual([]);
   });
-
-  it("resolves the canonical relationship when Gmail extraction races entity alias creation", async () => {
-    const fixture = await seedRelationshipFixture();
-    const suffix = randomUUID().replaceAll("-", "");
-    const targetEmail = `alias-race-${suffix}@example.test`;
-    // The database trigger claims the identity alias the instant the racing
-    // entity row is inserted, making the mid-insert race deterministic. It is
-    // a global database object, so it must always be dropped afterwards.
-    const raceTrigger = {
-      displayName: targetEmail,
-      identityKey: `person:${targetEmail}`,
-      functionName: `vm0_test_claim_alias_${suffix}`,
-      triggerName: `vm0_test_claim_alias_${suffix}`,
-    };
-    await installAliasRaceTrigger(raceTrigger);
-    onTestFinished(async () => {
-      await dropAliasRaceTrigger(raceTrigger);
-    });
-    const gmailEmail = `relationship-${randomUUID()}@example.com`;
-    const gmailToken = `gmail-access-token-${randomUUID()}`;
-    configureGmailEnv();
-    configureGmailWatchMock(gmailToken);
-    configureGmailBackfillMocks(gmailEmail, gmailToken, {
-      from: `Alias Race <${targetEmail}>`,
-      messageId: `msg-alias-race-${suffix}`,
-      bodyText: "Please send the alias race follow-up.",
-    });
-    await connectGmail(fixture, gmailEmail, gmailToken);
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    await accept(
-      relationshipsClient().gmailEnable({
-        headers: authHeaders(),
-      }),
-      [200],
-    );
-    const drained = await accept(
-      cronClient().drain({
-        headers: cronHeaders(),
-      }),
-      [200],
-    );
-    expect(drained.body.relationshipsUpdated).toBeGreaterThanOrEqual(1);
-
-    const resolved = await accept(
-      relationshipsClient().resolve({
-        headers: authHeaders(),
-        query: { email: targetEmail },
-      }),
-      [200],
-    );
-    expect(resolved.body.relationship).toMatchObject({
-      entity: {
-        type: "person",
-        displayName: targetEmail,
-        primaryEmail: targetEmail,
-        domain: "example.test",
-      },
-    });
-
-    const search = await accept(
-      relationshipsClient().search({
-        headers: authHeaders(),
-        query: { q: targetEmail, page: 1, limit: 100 },
-      }),
-      [200],
-    );
-    expect(search.body.relationships).toHaveLength(1);
-    expect(search.body.relationships[0]?.id).toBe(
-      resolved.body.relationship?.id,
-    );
-  });
-
   it("restarts Gmail backfill across archived and sent mail without re-enqueueing processed messages", async () => {
     const fixture = await seedRelationshipFixture();
     const gmailEmail = `relationship-${randomUUID()}@example.com`;

@@ -16,8 +16,8 @@ import { nowDate } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import {
   ensureUsagePricingRow,
-  upsertUsagePricingRows,
-} from "../../../test-fixtures/usage-pricing";
+  seedUsagePricingRows,
+} from "../../../test-fixtures/system-config-seeds";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
@@ -138,7 +138,7 @@ async function reportRunUsage(
       quantity: spec.quantity,
     };
   });
-  await upsertUsagePricingRows(
+  await seedUsagePricingRows(
     events.map((event, index) => {
       const spec = specs[index];
       if (!spec) {

@@ -5,9 +5,11 @@ import { describe, expect, it, onTestFinished } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { clearMockNow, mockNow, now, nowDate } from "../../../lib/time";
-import { upsertOrgMetadataFixture } from "../../../test-fixtures/org-metadata";
-import { upsertUsageAllowanceEntitlementFixture } from "../../../test-fixtures/usage-allowance";
-import { upsertUsagePricingRows } from "../../../test-fixtures/usage-pricing";
+import {
+  seedOrgMetadata,
+  seedUsageAllowanceEntitlement,
+  seedUsagePricingRows,
+} from "../../../test-fixtures/system-config-seeds";
 import {
   createBddApi,
   expectApiError,
@@ -76,7 +78,7 @@ async function vm0AllowanceActor(args: {
   bdd.acceptAgentStorageWrites();
   api.configureRunnerGroup();
   await bdd.setupOnboarding(actor, { displayName: "Usage allowance agent" });
-  await upsertOrgMetadataFixture({ orgId, tier: "pro", credits: args.credits });
+  await seedOrgMetadata({ orgId, tier: "pro", credits: args.credits });
   if (args.allowance) {
     await seedAllowanceEntitlement(orgId, args.allowance);
   }
@@ -91,7 +93,7 @@ async function seedAllowanceEntitlement(
   orgId: string,
   args: AllowanceEntitlementArgs,
 ): Promise<void> {
-  await upsertUsageAllowanceEntitlementFixture({
+  await seedUsageAllowanceEntitlement({
     orgId,
     shortWindowSeconds: args.shortWindowSeconds ?? 5 * 60 * 60,
     shortWindowUnits: args.shortWindowUnits,
@@ -121,7 +123,7 @@ async function recordPendingUsage(args: {
 }): Promise<void> {
   const api = createRunsAutomationsApi(context);
   const webhooks = createWebhookCallbackApi(context);
-  await upsertUsagePricingRows([
+  await seedUsagePricingRows([
     {
       kind: "connector",
       provider: args.provider,
@@ -448,7 +450,7 @@ describe("Usage Allowance", () => {
     api.configureRunnerGroup();
     await api.grantProEntitlement(actor);
     await api.ensureOrgModelProvider(actor);
-    await upsertOrgMetadataFixture({ orgId, tier: "pro", credits: 100 });
+    await seedOrgMetadata({ orgId, tier: "pro", credits: 100 });
     await seedAllowanceEntitlement(orgId, {
       shortWindowUnits: 100,
       weeklyWindowUnits: 200,
@@ -531,7 +533,7 @@ describe("Usage Allowance", () => {
       shortWindowUnits: 2,
       weeklyWindowUnits: 2,
     });
-    await upsertOrgMetadataFixture({ orgId, tier: "pro", credits: 0 });
+    await seedOrgMetadata({ orgId, tier: "pro", credits: 0 });
     const client = setupApp({ context })(webhookFirewallAuthContract);
     const headers = {
       authorization: `Bearer ${api.sandboxTokenForRun(actor, run.runId)}`,

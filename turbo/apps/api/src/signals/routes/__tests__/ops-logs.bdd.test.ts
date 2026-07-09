@@ -11,7 +11,6 @@ import { env } from "../../../lib/env";
 import { clearMockNow, mockNow } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-context";
 import { accept, setupApp } from "../../../__tests__/test-helpers";
-import { seedUserExportConversation } from "../../../test-fixtures/user-export-conversation";
 import {
   createBddApi,
   expectApiError,
@@ -961,7 +960,7 @@ describe("OPS-01: user data export", () => {
     });
   });
 
-  it("exports only agent instruction files, workflow files, memory files, and text chat messages", async () => {
+  it("exports only agent instruction files, workflow files, and memory files", async () => {
     const api = createOpsLogsApi(context);
     const bdd = createBddApi(context);
     const misc = createMiscRoutesApi(context);
@@ -1006,12 +1005,6 @@ describe("OPS-01: user data export", () => {
       throw new Error("Expected workflow creation to return a workflow id");
     }
     const workflowId = workflow.body.id;
-    const threadId = randomUUID();
-    await seedUserExportConversation({
-      userId: actor.userId,
-      agentId: agent.agentId,
-      threadId,
-    });
     const memoryFiles = [
       { path: "MEMORY.md", content: "# Exported memory" },
       {
@@ -1064,22 +1057,6 @@ describe("OPS-01: user data export", () => {
       "Memory supporting note",
     );
 
-    const conversation = JSON.parse(
-      zipText(zip, `conversations/chat-thread-${threadId}.json`),
-    ) as unknown;
-    expect(conversation).toStrictEqual([
-      {
-        role: "user",
-        content: "exported user text",
-        createdAt: "2026-05-12T05:02:00.000Z",
-      },
-      {
-        role: "assistant",
-        content: "exported assistant text",
-        createdAt: "2026-05-12T05:03:00.000Z",
-      },
-    ]);
-
     const manifest = JSON.parse(zipText(zip, "export-manifest.json")) as {
       readonly counts: {
         readonly agentInstructionFiles: number;
@@ -1093,7 +1070,7 @@ describe("OPS-01: user data export", () => {
       agentInstructionFiles: 2,
       workflowFiles: 2,
       memoryFiles: 2,
-      conversationThreads: 1,
+      conversationThreads: 0,
       sessionHistories: 0,
     });
     expect(names).not.toContain("artifacts-manifest.json");

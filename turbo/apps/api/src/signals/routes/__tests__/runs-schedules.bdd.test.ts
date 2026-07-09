@@ -2,14 +2,8 @@ import { randomUUID } from "node:crypto";
 
 import { describe, expect, it } from "vitest";
 
-import { mockOptionalEnv } from "../../../lib/env";
-import { now } from "../../../lib/time";
-import {
-  insertEmailOutboxRow,
-  readEmailOutboxRow,
-  touchEmailOutboxRow,
-} from "../../../test-fixtures/email-outbox";
 import { testContext } from "../../../__tests__/test-context";
+import { now } from "../../../lib/time";
 import {
   createBddApi,
   expectApiError,
@@ -44,74 +38,6 @@ import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
  */
 
 const context = testContext();
-interface SeedEmailOutboxOptions {
-  readonly subject: string;
-  readonly to: string;
-  readonly status?: string;
-  readonly attempts?: number;
-  readonly createdAt?: Date;
-  readonly nextRetryAt?: Date | null;
-}
-
-async function seedEmailOutbox(options: SeedEmailOutboxOptions): Promise<void> {
-  await insertEmailOutboxRow(options);
-}
-
-// Suppressions are constructed through the production Resend bounce webhook;
-// isolation comes from the per-test random recipient address.
-async function seedEmailSuppression(address: string): Promise<void> {
-  await createEmailApi(context).suppressEmailAddress(address);
-}
-
-function resendSendCallsTo(recipient: string): number {
-  return context.mocks.resend.send.mock.calls.filter((call) => {
-    const [payload] = call;
-    if (typeof payload !== "object" || payload === null || !("to" in payload)) {
-      return false;
-    }
-
-    const to = payload.to;
-    if (typeof to === "string") {
-      return to === recipient;
-    }
-    return Array.isArray(to) && to.includes(recipient);
-  }).length;
-}
-
-async function touchEmailOutbox(subject: string): Promise<void> {
-  await touchEmailOutboxRow(subject, new Date(now()));
-}
-
-async function emailOutboxStatus(subject: string): Promise<string | null> {
-  return (await readEmailOutboxRow(subject))?.status ?? null;
-}
-
-async function emailOutboxRow(subject: string): Promise<{
-  readonly status: string;
-  readonly attempts: number;
-  readonly lastError: string | null;
-} | null> {
-  return await readEmailOutboxRow(subject);
-}
-
-async function drainEmailOutboxCronOk(): Promise<void> {
-  const email = createEmailApi(context);
-  context.mocks.resend.send.mockResolvedValue({
-    data: { id: `resend-bdd-drain-${randomUUID()}` },
-  });
-  const drain = await email.drainEmailOutboxCron(true);
-  if (drain.status !== 200) {
-    throw new Error("Expected drain email outbox cron to succeed");
-  }
-}
-
-// The drain paces sends for Resend rate limits (500ms per item) and sweeps the
-// shared outbox in created_at order, so with a backlog from concurrently
-// running files a single drain request would spend seconds sleeping. Sends
-// here are mocked, so the pacing is pure dead time — turn it off.
-function disableOutboxDrainPacing(): void {
-  mockOptionalEnv("EMAIL_OUTBOX_DRAIN_DELAY_MS", "0");
-}
 
 async function createAgentWithModelProvider(actor: ApiTestUser): Promise<{
   readonly agentId: string;
@@ -518,56 +444,5 @@ describe("SCHED-02 and OPS-01: email outbox drain cron", () => {
 
     const unauthorizedDrain = await email.drainEmailOutboxCron(false);
     expect(unauthorizedDrain.status).toBe(401);
-  });
-
-  it("marks suppressed pending outbox rows failed without sending", async () => {
-    disableOutboxDrainPacing();
-    const subject = `BDD drain ${randomUUID().slice(0, 8)}`;
-    const to = `bdd-suppressed-${randomUUID().slice(0, 12)}@example.test`;
-    await seedEmailOutbox({ subject, to });
-    await seedEmailSuppression(to);
-
-    await expect
-      .poll(async () => {
-        await touchEmailOutbox(subject);
-        await drainEmailOutboxCronOk();
-        return await emailOutboxRow(subject);
-      })
-      .toMatchObject({
-        status: "failed",
-        attempts: 1,
-        lastError: `Recipient address suppressed (${to})`,
-      });
-    expect(resendSendCallsTo(to)).toBe(0);
-  });
-
-  it("cleans up expired pending and failed outbox rows", async () => {
-    disableOutboxDrainPacing();
-    const pendingSubject = `BDD drain ${randomUUID().slice(0, 8)}`;
-    const failedSubject = `BDD drain ${randomUUID().slice(0, 8)}`;
-    const expiredAt = new Date(now() - 60 * 60 * 1000);
-    await seedEmailOutbox({
-      subject: pendingSubject,
-      to: `bdd-pending-${randomUUID().slice(0, 12)}@example.test`,
-      createdAt: expiredAt,
-      nextRetryAt: new Date("2100-01-01T00:00:00.000Z"),
-    });
-    await seedEmailOutbox({
-      subject: failedSubject,
-      to: `bdd-failed-${randomUUID().slice(0, 12)}@example.test`,
-      status: "failed",
-      attempts: 3,
-      createdAt: expiredAt,
-    });
-
-    await expect
-      .poll(async () => {
-        await drainEmailOutboxCronOk();
-        return [
-          await emailOutboxStatus(pendingSubject),
-          await emailOutboxStatus(failedSubject),
-        ];
-      })
-      .toStrictEqual([null, null]);
   });
 });

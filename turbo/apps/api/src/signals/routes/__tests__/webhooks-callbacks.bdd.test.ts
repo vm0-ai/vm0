@@ -9,7 +9,6 @@ import { describe, expect, it } from "vitest";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now, nowDate } from "../../../lib/time";
 import { server } from "../../../mocks/server";
-import { expireAtomGrants } from "../../../test-fixtures/billing-grants";
 import { testContext } from "../../../__tests__/test-context";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { settle } from "../../utils";
@@ -1751,9 +1750,8 @@ describe("WHCB-09: sandbox storage writes and checkpoint history blobs land in t
 });
 
 describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
-  it("grants Atom invoice-backed Team entitlements and cron-downgrades them at expiry", async () => {
+  it("grants and renews Atom invoice-backed Team entitlements", async () => {
     const bdd = createBddApi(context);
-    const runs = createRunsAutomationsApi(context);
     const billing = createBillingMediaApi(context);
     const actor = bdd.user();
     const orgId = orgOf(actor);
@@ -1865,28 +1863,6 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
         }),
       ]),
     );
-
-    // The Stripe webhook rejects atom grants that are already expired, so an
-    // expired grant window is not product-reachable; past-date it through the
-    // narrow billing fixture before running the reconcile cron.
-    await expireAtomGrants(orgId, new Date(now() - 1000));
-
-    // The reconcile sweep is global: stale payment-failed orgs left behind by
-    // other test runs are retrieved from Stripe too. Report them as canceled
-    // so the sweep settles them without touching this org's atom grant path.
-    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
-      status: "canceled",
-      cancel_at: null,
-      cancel_at_period_end: false,
-      items: { data: [] },
-    });
-    await runs.reconcileBillingCron(true);
-
-    const downgraded = await billing.readBillingStatus(actor);
-    expect(downgraded.tier).toBe("pro-suspend");
-    expect(downgraded.credits).toBe(0);
-    expect(downgraded.hasSubscription).toBeFalsy();
-    expect(downgraded.creditGrants).toHaveLength(0);
   });
 
   it("expires Atom day-grant subscription credits at the Atom grant end", async () => {

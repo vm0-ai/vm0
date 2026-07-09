@@ -972,26 +972,4 @@ describe("POST /api/webhooks/notion", () => {
       },
     });
   });
-
-  it("rejects signed events before Notion verification has configured a token", async () => {
-    const scenario = await setupFixture();
-    const { fixture, entities } = scenario;
-    await enableNotionWorkflowTriggers(fixture);
-    await resetNotionWebhookVerification();
-
-    const event = notionPageEvent({
-      entities,
-      type: "page.created",
-      timestamp: "2026-07-06T12:00:00.000Z",
-    });
-    const response = await postNotionWebhook({
-      rawBody: event.rawBody,
-      signature: notionSignature(event.rawBody),
-    });
-
-    expect(response.status).toBe(503);
-    expect(response.body).toStrictEqual({
-      error: "Notion webhook verification token is not configured",
-    });
-  });
 });

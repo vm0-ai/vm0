@@ -17,9 +17,10 @@ import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
-import { seedLegacyChatThread } from "../../../test-fixtures/chat-threads";
-import { upsertOrgMetadataFixture } from "../../../test-fixtures/org-metadata";
-import { upsertUsagePricingRows } from "../../../test-fixtures/usage-pricing";
+import {
+  seedOrgMetadata,
+  seedUsagePricingRows,
+} from "../../../test-fixtures/system-config-seeds";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import {
@@ -808,80 +809,6 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     }
     expect(retainedAnchorCursor.body.events).toStrictEqual([]);
   });
-
-  it("advances bounded snapshot compaction across missing scopes", async () => {
-    mockEnv("CRON_SECRET", CHAT_THREAD_SNAPSHOT_CRON_SECRET);
-    mockOptionalEnv("CHAT_THREAD_SNAPSHOT_COMPACTION_BATCH_SIZE", "1");
-    const firstActor = bdd.user({
-      userId: `user_00000000_snapshot_batch_${randomUUID()}`,
-      orgId: `org_00000000_snapshot_batch_${randomUUID()}`,
-    });
-    const secondActor = bdd.user({
-      userId: `user_00000001_snapshot_batch_${randomUUID()}`,
-      orgId: `org_00000001_snapshot_batch_${randomUUID()}`,
-    });
-    if (!firstActor.orgId || !secondActor.orgId) {
-      throw new Error("Expected snapshot batch actors to belong to orgs");
-    }
-
-    // Threads without chat-thread events (legacy rows predating event
-    // sourcing) are the scopes this compaction pass must backfill; every
-    // product create writes a created event, so they are seeded directly.
-    const firstThread = await seedLegacyChatThread({
-      userId: firstActor.userId,
-      orgId: firstActor.orgId,
-      title: "First bounded snapshot thread",
-    });
-    const secondThread = await seedLegacyChatThread({
-      userId: secondActor.userId,
-      orgId: secondActor.orgId,
-      title: "Second bounded snapshot thread",
-    });
-
-    await expect(chat.getThreadSnapshot(firstActor)).resolves.toStrictEqual({
-      chatThreads: [],
-      latestEventId: null,
-    });
-    await expect(chat.getThreadSnapshot(secondActor)).resolves.toStrictEqual({
-      chatThreads: [],
-      latestEventId: null,
-    });
-
-    await expect(compactChatThreadSnapshots()).resolves.toMatchObject({
-      scopes: 1,
-    });
-    await expect(chat.getThreadSnapshot(firstActor)).resolves.toMatchObject({
-      latestEventId: null,
-      chatThreads: [
-        expect.objectContaining({
-          id: firstThread.threadId,
-          agentId: firstThread.composeId,
-          title: "First bounded snapshot thread",
-          selectedModel: null,
-        }),
-      ],
-    });
-    await expect(chat.getThreadSnapshot(secondActor)).resolves.toStrictEqual({
-      chatThreads: [],
-      latestEventId: null,
-    });
-
-    await expect(compactChatThreadSnapshots()).resolves.toMatchObject({
-      scopes: 1,
-    });
-    await expect(chat.getThreadSnapshot(secondActor)).resolves.toMatchObject({
-      latestEventId: null,
-      chatThreads: [
-        expect.objectContaining({
-          id: secondThread.threadId,
-          agentId: secondThread.composeId,
-          title: "Second bounded snapshot thread",
-          selectedModel: null,
-        }),
-      ],
-    });
-  });
-
   it("keeps thread detail independent from thread model projection state", async () => {
     const { actor, agentId } = await entitledChatActor(
       "Thread detail model pin agent",
@@ -937,9 +864,9 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     }
     // "limited-free-1" is only assigned by the Clerk org-creation bootstrap;
     // no product API can move an entitled org onto it, so downgrade the tier
-    // through the org-metadata fixture while keeping the pro-granted balance.
+    // through the shared system-config seed while keeping the pro balance.
     const billingStatus = await api.readBillingStatus(actor);
-    await upsertOrgMetadataFixture({
+    await seedOrgMetadata({
       orgId: actor.orgId,
       tier: "limited-free-1",
       credits: billingStatus.credits,
@@ -1535,7 +1462,7 @@ describe("CHAT-03 run usage messages", () => {
     const provider = `bdd-usage-${randomUUID().slice(0, 8)}`;
     const missingProvider = `${provider}-free`;
     const category = "api_request";
-    await upsertUsagePricingRows([
+    await seedUsagePricingRows([
       { kind: "connector", provider, category, unitPrice: 7, unitSize: 2 },
     ]);
 

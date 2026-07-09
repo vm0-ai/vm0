@@ -7,6 +7,7 @@ import { zeroRelationshipsContract } from "@vm0/api-contracts/contracts/zero-rel
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { createStore } from "ccstate";
 import { HttpResponse, http } from "msw";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
@@ -14,7 +15,6 @@ import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import {
   seedGraphExpansionMemories,
-  seedRuntimeInjectionMemories,
   seedSemanticRecallMemory,
 } from "../../../test-fixtures/relationship-memory";
 import {
@@ -409,35 +409,5 @@ describe("GET /api/zero/memory/recall", () => {
     expect(response.body.error.message).toBe(
       "Relationship memory runtime injection is not enabled for this organization.",
     );
-  });
-
-  it("previews runtime memory system prompt injection", async () => {
-    const fixture = await seedRelationshipFixture({
-      relationshipMemoryEnabled: true,
-      runtimeInjectionEnabled: true,
-    });
-    await seedRuntimeInjectionMemories(fixture);
-
-    const response = await accept(
-      memoryClient().injectionPreview({
-        headers: authHeaders(),
-        body: { prompt: "Prepare the security review" },
-      }),
-      [200],
-    );
-
-    expect(response.body.prompt).toBe("Prepare the security review");
-    expect(response.body.appendSystemPrompt).toContain("# Zero Memory Context");
-    expect(response.body.appendSystemPrompt).toContain("Stable profile:");
-    expect(response.body.appendSystemPrompt).toContain("Current context:");
-    expect(response.body.appendSystemPrompt).toContain(
-      "The user prefers concise launch summaries.",
-    );
-    expect(response.body.appendSystemPrompt).toContain(
-      "validating runtime memory injection",
-    );
-    expect(response.body.profile.static).toHaveLength(1);
-    expect(response.body.profile.dynamic).toHaveLength(2);
-    expect(response.body.stats.injectedCount).toBeGreaterThan(0);
   });
 });

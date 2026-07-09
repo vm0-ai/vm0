@@ -12,8 +12,8 @@ import { clearMockNow, mockNow } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import {
   ensureUsagePricingRow,
-  upsertUsagePricingRows,
-} from "../../../test-fixtures/usage-pricing";
+  seedUsagePricingRows,
+} from "../../../test-fixtures/system-config-seeds";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
@@ -113,7 +113,7 @@ async function reportRunCredits(
 ): Promise<void> {
   const webhooks = createWebhookCallbackApi(context);
   const provider = `bdd-insights-${randomUUID().slice(0, 8)}`;
-  await upsertUsagePricingRows([
+  await seedUsagePricingRows([
     {
       kind: "connector",
       provider,

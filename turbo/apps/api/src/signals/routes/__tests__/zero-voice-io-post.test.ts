@@ -15,12 +15,12 @@ import { zeroBillingStatusRoutes } from "../zero-billing-status";
 import { zeroVoiceIoSpeechRoutes } from "../zero-voice-io-speech";
 import { zeroVoiceIoSttRoutes } from "../zero-voice-io-stt";
 import { zeroVoiceIoQuotaRoutes } from "../zero-voice-io-quota";
-import { upsertOrgMetadataFixture } from "../../../test-fixtures/org-metadata";
 import { seedUserBehaviorCount } from "../../../test-fixtures/user-behavior-count";
 import {
   deleteUsagePricingRows,
   ensureUsagePricingRow,
-} from "../../../test-fixtures/usage-pricing";
+  seedOrgMetadata,
+} from "../../../test-fixtures/system-config-seeds";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import { seedCompose$, seedRun$ } from "./helpers/zero-usage-insight";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
@@ -257,7 +257,7 @@ async function seedVoiceFixture(options: {
     userId: `user_${randomUUID()}`,
   };
 
-  await upsertOrgMetadataFixture({
+  await seedOrgMetadata({
     orgId: fixture.orgId,
     tier: options.tier ?? "free",
     credits: options.credits ?? 10_000,
@@ -825,7 +825,7 @@ describe("POST /api/zero/voice-io/*", () => {
     // The lifetime counter is only product-visible at free tier (the quota
     // surface always reports 0 for pro/team). Downgrading the org to free
     // exposes it: had the pro requests incremented it, count would be 2.
-    await upsertOrgMetadataFixture({
+    await seedOrgMetadata({
       orgId: fixture.orgId,
       tier: "free",
       credits: 10_000,

@@ -5,7 +5,7 @@ import { zeroUsageRunsContract } from "@vm0/api-contracts/contracts/zero-usage-d
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { clearMockNow, mockNow, nowDate } from "../../../lib/time";
-import { upsertUsagePricingRows } from "../../../test-fixtures/usage-pricing";
+import { seedUsagePricingRows } from "../../../test-fixtures/system-config-seeds";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
@@ -129,7 +129,7 @@ async function createBillableRun(
 // Unit pricing (1 credit per token) keeps webhook-recorded quantities and
 // cron-computed credits aligned one-to-one for readable assertions.
 async function seedModelPricing(model: string): Promise<void> {
-  await upsertUsagePricingRows(
+  await seedUsagePricingRows(
     Object.values(MODEL_TOKEN_CATEGORIES).map((category) => {
       return {
         kind: "model",
@@ -143,7 +143,7 @@ async function seedModelPricing(model: string): Promise<void> {
 }
 
 async function seedConnectorPricing(provider: string): Promise<void> {
-  await upsertUsagePricingRows([
+  await seedUsagePricingRows([
     {
       kind: "connector",
       provider,

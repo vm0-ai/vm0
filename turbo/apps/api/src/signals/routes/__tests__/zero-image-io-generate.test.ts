@@ -17,13 +17,13 @@ import { zeroBillingStatusRoutes } from "../zero-billing-status";
 import { zeroBuiltInGenerationRoutes } from "../zero-built-in-generation";
 import { zeroImageIoGenerateRoutes } from "../zero-image-io-generate";
 import { zeroUsageRecordRoutes } from "../zero-usage-record";
-import { upsertOrgMetadataFixture } from "../../../test-fixtures/org-metadata";
 import {
   deleteUsagePricingRows,
   ensureUsagePricingRow,
-  upsertUsagePricingRows,
+  seedOrgMetadata,
+  seedUsagePricingRows,
   type UsagePricingRow,
-} from "../../../test-fixtures/usage-pricing";
+} from "../../../test-fixtures/system-config-seeds";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import { seedCompose$, seedRun$ } from "./helpers/zero-usage-insight";
 import {
@@ -342,7 +342,7 @@ async function ensureImagePricing(): Promise<{
 }
 
 async function upsertFalImagePricing(): Promise<void> {
-  await upsertUsagePricingRows([
+  await seedUsagePricingRows([
     {
       kind: "image",
       provider: "fal-ai/qwen-image",
@@ -354,7 +354,7 @@ async function upsertFalImagePricing(): Promise<void> {
 }
 
 async function upsertFluxImagePricing(): Promise<void> {
-  await upsertUsagePricingRows([
+  await seedUsagePricingRows([
     {
       kind: "image",
       provider: "fal-ai/flux-pro/v1.1",
@@ -366,7 +366,7 @@ async function upsertFluxImagePricing(): Promise<void> {
 }
 
 async function upsertNanoBanana2ImagePricing(): Promise<void> {
-  await upsertUsagePricingRows([
+  await seedUsagePricingRows([
     {
       kind: "image",
       provider: "fal-ai/nano-banana-2",
@@ -378,7 +378,7 @@ async function upsertNanoBanana2ImagePricing(): Promise<void> {
 }
 
 async function upsertBirefnetImagePricing(): Promise<void> {
-  await upsertUsagePricingRows([
+  await seedUsagePricingRows([
     {
       kind: "image",
       provider: "fal-ai/birefnet/v2",
@@ -390,7 +390,7 @@ async function upsertBirefnetImagePricing(): Promise<void> {
 }
 
 async function upsertClarityUpscalerImagePricing(): Promise<void> {
-  await upsertUsagePricingRows([
+  await seedUsagePricingRows([
     {
       kind: "image",
       provider: "fal-ai/clarity-upscaler",
@@ -402,7 +402,7 @@ async function upsertClarityUpscalerImagePricing(): Promise<void> {
 }
 
 async function upsertFalMiniImagePricing(): Promise<void> {
-  await upsertUsagePricingRows([
+  await seedUsagePricingRows([
     {
       kind: "image",
       provider: "gpt-image-1-mini",
@@ -449,7 +449,7 @@ async function upsertFalMiniImagePricing(): Promise<void> {
 }
 
 async function upsertFalGptImage15Pricing(): Promise<void> {
-  await upsertUsagePricingRows([
+  await seedUsagePricingRows([
     {
       kind: "image",
       provider: "gpt-image-1.5",
@@ -508,7 +508,7 @@ async function deleteImagePricingRows(
 async function restoreImagePricingRows(
   snapshot: DeletedPricingSnapshot,
 ): Promise<void> {
-  await upsertUsagePricingRows(snapshot);
+  await seedUsagePricingRows(snapshot);
 }
 
 // Isolation comes from random org/user IDs; no teardown is needed.
@@ -521,7 +521,7 @@ async function seedImageFixture(options: {
     userId: `user_${randomUUID()}`,
   };
 
-  await upsertOrgMetadataFixture({
+  await seedOrgMetadata({
     orgId: fixture.orgId,
     tier: "free",
     credits: options.credits ?? 10_000,
