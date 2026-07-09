@@ -71,6 +71,7 @@ import {
 import { normalizeRecommendedFollowups } from "./zero-chat-recommended-followups.service";
 import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
 import { excludeGoalMarkerCondition } from "./zero-chat-goal-marker.service";
+import { nonEmptyGoalObjectiveBrief } from "./zero-goal-objective-brief-normalization.service";
 import { cancelRun$, type CancelRunResult } from "./zero-run-cancel.service";
 import { buildWorkflowScheduleTriggerBrief } from "./zero-workflow-trigger-brief.service";
 
@@ -574,6 +575,33 @@ function workflowSnapshotFromRow(
   };
 }
 
+function goalEventFromRow(
+  event: ChatMessageGoalEvent | null,
+): ChatMessageGoalEvent | undefined {
+  if (!event) {
+    return undefined;
+  }
+  if (event.type === "state" && event.status === "active") {
+    return {
+      ...event,
+      objectiveBrief: nonEmptyGoalObjectiveBrief(event.objectiveBrief),
+    };
+  }
+  return event;
+}
+
+function goalSnapshotFromRow(
+  snapshot: ChatMessageGoalSnapshot | null,
+): ChatMessageGoalSnapshot | undefined {
+  if (!snapshot) {
+    return undefined;
+  }
+  return {
+    ...snapshot,
+    objectiveBrief: nonEmptyGoalObjectiveBrief(snapshot.objectiveBrief),
+  };
+}
+
 function toPagedMessage(
   userId: string,
   row: ChatMessageRow,
@@ -593,8 +621,8 @@ function toPagedMessage(
       isGoalRun: row.isGoalRun || undefined,
       usage: normalizeUsagePayload(row.usagePayload),
       runEventId: row.runEventId ?? undefined,
-      goalEvent: row.goalEvent ?? undefined,
-      goalSnapshot: row.goalSnapshot ?? undefined,
+      goalEvent: goalEventFromRow(row.goalEvent),
+      goalSnapshot: goalSnapshotFromRow(row.goalSnapshot),
       revokesMessageId: row.revokesMessageId ?? undefined,
       interruptsRunId: row.interruptsRunId ?? undefined,
       error: row.error ?? undefined,

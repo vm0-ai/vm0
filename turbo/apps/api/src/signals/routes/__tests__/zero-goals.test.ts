@@ -264,6 +264,38 @@ describe("zero goals", () => {
     });
   });
 
+  it("keeps markdown-only goal objective briefs non-empty", async () => {
+    const fixture = await seedGoalApiFixture();
+    const chat = createChatFilesBddApi(context);
+    const created = await createGoal(fixture, "---");
+
+    expect(created.body).toStrictEqual({
+      objective: "---",
+      objectiveBrief: "---",
+      status: "active",
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+    const messages = await chat.listThreadMessages(
+      {
+        userId: fixture.userId,
+        orgId: fixture.orgId,
+        orgRole: "org:member",
+        email: "goal-user@example.com",
+      },
+      fixture.threadId,
+    );
+    expect(messages.messages).toContainEqual(
+      expect.objectContaining({
+        role: "assistant",
+        goalEvent: {
+          type: "state",
+          status: "active",
+          objectiveBrief: "---",
+        },
+      }),
+    );
+  });
+
   it("clears the current goal and writes a cleared marker", async () => {
     const fixture = await seedGoalApiFixture();
     await createGoal(fixture, "ship thread goals");

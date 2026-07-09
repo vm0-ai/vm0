@@ -19,6 +19,7 @@ import {
   clearedGoalEvent,
   hiddenGoalStateEvent,
 } from "./zero-chat-goal-marker.service";
+import { normalizeGoalObjectiveBrief } from "./zero-goal-objective-brief-normalization.service";
 import { generateGoalObjectiveBrief } from "./zero-goal-objective-brief.service";
 import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
 import {
@@ -84,7 +85,10 @@ function hasUserControlCapability(auth: GoalAuth): boolean {
 function goalResponse(row: GoalRow): ZeroGoalResponse {
   return {
     objective: row.objective,
-    objectiveBrief: row.objectiveBrief,
+    objectiveBrief: normalizeGoalObjectiveBrief({
+      objective: row.objective,
+      objectiveBrief: row.objectiveBrief,
+    }),
     status: row.status as ZeroGoalStatus,
   };
 }
@@ -610,7 +614,12 @@ export async function resumeCurrentGoal(
     });
     await appendGoalEventMarker(tx, {
       chatThreadId: goal.threadId,
-      event: activeGoalEvent(current.objectiveBrief),
+      event: activeGoalEvent(
+        normalizeGoalObjectiveBrief({
+          objective: current.objective,
+          objectiveBrief: current.objectiveBrief,
+        }),
+      ),
     });
     return row;
   });

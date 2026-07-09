@@ -20,6 +20,7 @@ import {
   loadActiveGoalForThread,
   type GoalBootstrap,
 } from "./zero-goal.service";
+import { normalizeGoalObjectiveBrief } from "./zero-goal-objective-brief-normalization.service";
 import {
   resolveModelFirstProviderAdmission,
   type ModelFirstPin,
@@ -346,8 +347,16 @@ const runGoalNow$ = command(
     }
     const { modelPin, effectiveModelProvider } = modelContext;
 
-    const prompt = buildGoalContinuationPrompt(goal);
-    const memoryRuntimeRetrievalQuery = buildGoalMemoryRetrievalQuery(goal);
+    const normalizedGoal = {
+      ...goal,
+      objectiveBrief: normalizeGoalObjectiveBrief({
+        objective: goal.objective,
+        objectiveBrief: goal.objectiveBrief,
+      }),
+    };
+    const prompt = buildGoalContinuationPrompt(normalizedGoal);
+    const memoryRuntimeRetrievalQuery =
+      buildGoalMemoryRetrievalQuery(normalizedGoal);
     const result = await set(
       createZeroRun$,
       {
@@ -396,7 +405,7 @@ const runGoalNow$ = command(
       prompt,
       appendQueueMarker: result.body.status === "queued",
       runGroupId: goal.goalId,
-      goalSnapshot: { objectiveBrief: goal.objectiveBrief },
+      goalSnapshot: { objectiveBrief: normalizedGoal.objectiveBrief },
     });
     signal.throwIfAborted();
 
