@@ -363,7 +363,11 @@ function createArtifact(overrides: Partial<ArtifactItem> = {}): ArtifactItem {
 
 function mockArtifacts(artifacts: readonly ArtifactItem[]): void {
   context.mocks.api(artifactsContract.list, ({ respond }) => {
-    return respond(200, { artifacts: [...artifacts], truncated: false });
+    return respond(200, {
+      artifacts: [...artifacts],
+      truncated: false,
+      nextCursor: null,
+    });
   });
 }
 
@@ -452,7 +456,11 @@ describe("artifacts page", () => {
     let requested = false;
     context.mocks.api(artifactsContract.list, ({ respond }) => {
       requested = true;
-      return respond(200, { artifacts: [], truncated: false });
+      return respond(200, {
+        artifacts: [],
+        truncated: false,
+        nextCursor: null,
+      });
     });
 
     setupArtifactsPage({ scope, enabled: false });
@@ -544,6 +552,7 @@ describe("artifacts page", () => {
           }),
         ],
         truncated: false,
+        nextCursor: null,
       });
     });
 
@@ -735,6 +744,7 @@ describe("artifacts page", () => {
           }),
         ],
         truncated: true,
+        nextCursor: "next-page-token",
       });
     });
 
