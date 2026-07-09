@@ -2001,11 +2001,17 @@ describe("CHAT-02: failed chat callbacks", () => {
       "INSUFFICIENT_CREDITS: Insufficient credits. Please add credits to continue.",
     );
 
-    const page = await waitForThreadMessages(actor, run.threadId, (messages) => {
-      return lifecycleMarkers(messages, run.runId, "failed").some((message) => {
-        return message.error === "insufficient_credits";
-      });
-    });
+    const page = await waitForThreadMessages(
+      actor,
+      run.threadId,
+      (messages) => {
+        return lifecycleMarkers(messages, run.runId, "failed").some(
+          (message) => {
+            return message.error === "insufficient_credits";
+          },
+        );
+      },
+    );
     const marker = lifecycleMarkers(page.messages, run.runId, "failed")[0];
     expect(marker?.error).toBe("insufficient_credits");
     expect(marker?.content).toBe("insufficient_credits");
