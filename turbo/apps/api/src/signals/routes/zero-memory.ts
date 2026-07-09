@@ -25,6 +25,19 @@ import {
   restartSlackMemoryBackfill,
   stopSlackMemoryBackfill,
 } from "../services/slack-memory-backfill.service";
+import {
+  configureGithubMemory,
+  getGithubMemoryStatus,
+  listGithubMemoryContributors,
+  listGithubMemoryRepositories,
+  restartGithubMemoryBackfill,
+  stopGithubMemoryBackfill,
+} from "../services/github-memory-backfill.service";
+import {
+  getNotionMemoryStatus,
+  restartNotionMemoryBackfill,
+  stopNotionMemoryBackfill,
+} from "../services/notion-memory-backfill.service";
 
 const memoryAuthOptions = {
   requireOrganization: true,
@@ -108,6 +121,11 @@ const memoryInjectionPreviewBody$ = bodyResultOf(
 const memorySourcesQuery$ = queryOf(zeroMemoryContract.sources);
 const memorySourceParams$ = pathParamsOf(zeroMemoryContract.source);
 const slackBackfillBody$ = bodyResultOf(zeroMemoryContract.slackBackfill);
+const githubRepositoriesQuery$ = queryOf(zeroMemoryContract.githubRepositories);
+const githubContributorsQuery$ = queryOf(zeroMemoryContract.githubContributors);
+const githubConfigureBody$ = bodyResultOf(zeroMemoryContract.githubConfigure);
+const githubBackfillBody$ = bodyResultOf(zeroMemoryContract.githubBackfill);
+const notionBackfillBody$ = bodyResultOf(zeroMemoryContract.notionBackfill);
 
 const memoryRecallInner$ = computed(async (get): Promise<unknown> => {
   const auth = get(organizationAuthContext$);
@@ -292,6 +310,216 @@ const slackStopBackfillInner$ = command(
   },
 );
 
+function badRequest(message: string): unknown {
+  return {
+    status: 400 as const,
+    body: {
+      error: {
+        message,
+        code: "BAD_REQUEST",
+      },
+    },
+  };
+}
+
+const githubStatusInner$ = computed(async (get): Promise<unknown> => {
+  const auth = get(organizationAuthContext$);
+  if (!(await isMemorySourceEnabled(get(db$), auth.orgId, auth.userId))) {
+    return memorySourceDisabled;
+  }
+
+  const result = await getGithubMemoryStatus(get(db$), {
+    orgId: auth.orgId,
+    userId: auth.userId,
+  });
+  return { status: 200 as const, body: result };
+});
+
+const githubRepositoriesInner$ = command(
+  async ({ get }, signal: AbortSignal): Promise<unknown> => {
+    const auth = get(organizationAuthContext$);
+    if (!(await isMemorySourceEnabled(get(db$), auth.orgId, auth.userId))) {
+      return memorySourceDisabled;
+    }
+    const query = get(githubRepositoriesQuery$);
+    const result = await listGithubMemoryRepositories({
+      db: get(db$),
+      orgId: auth.orgId,
+      userId: auth.userId,
+      page: query.page,
+      limit: query.limit,
+      signal,
+    });
+    signal.throwIfAborted();
+    return { status: 200 as const, body: result };
+  },
+);
+
+const githubContributorsInner$ = command(
+  async ({ get }, signal: AbortSignal): Promise<unknown> => {
+    const auth = get(organizationAuthContext$);
+    if (!(await isMemorySourceEnabled(get(db$), auth.orgId, auth.userId))) {
+      return memorySourceDisabled;
+    }
+    const query = get(githubContributorsQuery$);
+    const result = await listGithubMemoryContributors({
+      db: get(db$),
+      orgId: auth.orgId,
+      userId: auth.userId,
+      repository: query.repository,
+      page: query.page,
+      limit: query.limit,
+      signal,
+    });
+    signal.throwIfAborted();
+    return { status: 200 as const, body: result };
+  },
+);
+
+const githubConfigureInner$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<unknown> => {
+    const auth = get(organizationAuthContext$);
+    if (!(await isMemorySourceEnabled(get(db$), auth.orgId, auth.userId))) {
+      return memorySourceDisabled;
+    }
+
+    const bodyResult = await get(githubConfigureBody$);
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+
+    const result = await configureGithubMemory({
+      db: set(writeDb$),
+      orgId: auth.orgId,
+      userId: auth.userId,
+      options: bodyResult.data,
+      signal,
+    });
+    signal.throwIfAborted();
+    if (result.kind !== "ok") {
+      return badRequest(result.message);
+    }
+
+    return { status: 200 as const, body: result.status };
+  },
+);
+
+const githubBackfillInner$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<unknown> => {
+    const auth = get(organizationAuthContext$);
+    if (!(await isMemorySourceEnabled(get(db$), auth.orgId, auth.userId))) {
+      return memorySourceDisabled;
+    }
+
+    const bodyResult = await get(githubBackfillBody$);
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+
+    const result = await restartGithubMemoryBackfill({
+      db: set(writeDb$),
+      orgId: auth.orgId,
+      userId: auth.userId,
+      options: bodyResult.data,
+      signal,
+    });
+    signal.throwIfAborted();
+    if (result.kind !== "ok") {
+      return badRequest(result.message);
+    }
+
+    return { status: 200 as const, body: result.status };
+  },
+);
+
+const githubStopBackfillInner$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<unknown> => {
+    const auth = get(organizationAuthContext$);
+    if (!(await isMemorySourceEnabled(get(db$), auth.orgId, auth.userId))) {
+      return memorySourceDisabled;
+    }
+
+    const result = await stopGithubMemoryBackfill({
+      db: set(writeDb$),
+      orgId: auth.orgId,
+      userId: auth.userId,
+      signal,
+    });
+    signal.throwIfAborted();
+    if (result.kind !== "ok") {
+      return badRequest(result.message);
+    }
+
+    return { status: 200 as const, body: result.status };
+  },
+);
+
+const notionStatusInner$ = computed(async (get): Promise<unknown> => {
+  const auth = get(organizationAuthContext$);
+  if (!(await isMemorySourceEnabled(get(db$), auth.orgId, auth.userId))) {
+    return memorySourceDisabled;
+  }
+
+  const result = await getNotionMemoryStatus(get(db$), {
+    orgId: auth.orgId,
+    userId: auth.userId,
+  });
+  return { status: 200 as const, body: result };
+});
+
+const notionBackfillInner$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<unknown> => {
+    const auth = get(organizationAuthContext$);
+    if (!(await isMemorySourceEnabled(get(db$), auth.orgId, auth.userId))) {
+      return memorySourceDisabled;
+    }
+
+    const bodyResult = await get(notionBackfillBody$);
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+
+    const result = await restartNotionMemoryBackfill({
+      db: set(writeDb$),
+      orgId: auth.orgId,
+      userId: auth.userId,
+      options: bodyResult.data,
+      signal,
+    });
+    signal.throwIfAborted();
+    if (result.kind !== "ok") {
+      return badRequest(result.message);
+    }
+
+    return { status: 200 as const, body: result.status };
+  },
+);
+
+const notionStopBackfillInner$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<unknown> => {
+    const auth = get(organizationAuthContext$);
+    if (!(await isMemorySourceEnabled(get(db$), auth.orgId, auth.userId))) {
+      return memorySourceDisabled;
+    }
+
+    const result = await stopNotionMemoryBackfill({
+      db: set(writeDb$),
+      orgId: auth.orgId,
+      userId: auth.userId,
+      signal,
+    });
+    signal.throwIfAborted();
+    if (result.kind !== "ok") {
+      return badRequest(result.message);
+    }
+
+    return { status: 200 as const, body: result.status };
+  },
+);
+
 export const zeroMemoryRoutes: readonly RouteEntry[] = [
   {
     route: zeroMemoryContract.get,
@@ -328,5 +556,41 @@ export const zeroMemoryRoutes: readonly RouteEntry[] = [
   {
     route: zeroMemoryContract.slackStopBackfill,
     handler: authRoute(memoryAuthOptions, slackStopBackfillInner$),
+  },
+  {
+    route: zeroMemoryContract.githubStatus,
+    handler: authRoute(memoryAuthOptions, githubStatusInner$),
+  },
+  {
+    route: zeroMemoryContract.githubRepositories,
+    handler: authRoute(memoryAuthOptions, githubRepositoriesInner$),
+  },
+  {
+    route: zeroMemoryContract.githubContributors,
+    handler: authRoute(memoryAuthOptions, githubContributorsInner$),
+  },
+  {
+    route: zeroMemoryContract.githubConfigure,
+    handler: authRoute(memoryAuthOptions, githubConfigureInner$),
+  },
+  {
+    route: zeroMemoryContract.githubBackfill,
+    handler: authRoute(memoryAuthOptions, githubBackfillInner$),
+  },
+  {
+    route: zeroMemoryContract.githubStopBackfill,
+    handler: authRoute(memoryAuthOptions, githubStopBackfillInner$),
+  },
+  {
+    route: zeroMemoryContract.notionStatus,
+    handler: authRoute(memoryAuthOptions, notionStatusInner$),
+  },
+  {
+    route: zeroMemoryContract.notionBackfill,
+    handler: authRoute(memoryAuthOptions, notionBackfillInner$),
+  },
+  {
+    route: zeroMemoryContract.notionStopBackfill,
+    handler: authRoute(memoryAuthOptions, notionStopBackfillInner$),
   },
 ];

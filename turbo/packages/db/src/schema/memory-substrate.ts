@@ -14,10 +14,18 @@ import { sql } from "drizzle-orm";
 import type { MemorySourceMetadata } from "@vm0/db/jsonb-contracts/memory-substrate";
 export type { MemorySourceMetadata } from "@vm0/db/jsonb-contracts/memory-substrate";
 
-export const MEMORY_PROVIDERS = ["gmail", "slack"] as const;
+export const MEMORY_PROVIDERS = ["gmail", "slack", "github", "notion"] as const;
 export type MemoryProvider = (typeof MEMORY_PROVIDERS)[number];
 
-export const MEMORY_SOURCE_TYPES = ["gmail_message", "slack_message"] as const;
+export const MEMORY_SOURCE_TYPES = [
+  "gmail_message",
+  "slack_message",
+  "github_issue",
+  "github_pull_request",
+  "github_issue_comment",
+  "notion_page",
+  "notion_page_event",
+] as const;
 export type MemorySourceType = (typeof MEMORY_SOURCE_TYPES)[number];
 
 export const MEMORY_ENTITY_TYPES = [
@@ -35,6 +43,10 @@ export const MEMORY_ALIAS_TYPES = [
   "slack_user",
   "slack_workspace",
   "slack_channel",
+  "github_user",
+  "github_repository",
+  "notion_workspace",
+  "notion_page",
 ] as const;
 export type MemoryAliasType = (typeof MEMORY_ALIAS_TYPES)[number];
 

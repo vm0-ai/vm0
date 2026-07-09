@@ -1,11 +1,15 @@
 import { screen, waitFor } from "@testing-library/react";
 import {
   zeroMemoryContract,
+  type GithubMemoryRepositoriesResponse,
+  type GithubMemoryStatusResponse,
   type MemoryDetailResponse,
   type MemoryInjectionPreviewResponse,
   type MemoryRecallResponse,
   type MemorySourceDetailResponse,
   type MemorySourceListResponse,
+  type MemorySourceProvider,
+  type NotionMemoryStatusResponse,
   type SlackMemoryStatusResponse,
 } from "@vm0/api-contracts/contracts/zero-memory";
 import { zeroMemoryDevRefreshContract } from "@vm0/api-contracts/contracts/zero-memory-dev-refresh";
@@ -162,8 +166,75 @@ function slackMemoryStatus(
   };
 }
 
+function githubMemoryStatus(
+  overrides: Partial<GithubMemoryStatusResponse> = {},
+): GithubMemoryStatusResponse {
+  return {
+    provider: "github",
+    connected: true,
+    installationId: "github-installation-1",
+    targetName: "vm0-ai",
+    selectedRepositoryCount: 1,
+    trustedContributorCount: 1,
+    backfill: {
+      status: "done",
+      estimatedTotal: null,
+      scannedCount: 4,
+      recordedCount: 2,
+      lastError: null,
+      updatedAt: `${localDateDaysAgo(0)}T12:00:00Z`,
+      completedAt: `${localDateDaysAgo(0)}T12:00:00Z`,
+    },
+    ...overrides,
+  };
+}
+
+function githubMemoryRepositories(): GithubMemoryRepositoriesResponse {
+  return {
+    provider: "github",
+    connected: true,
+    installationId: "github-installation-1",
+    targetName: "vm0-ai",
+    repositories: [
+      {
+        id: 123,
+        name: "vm0",
+        fullName: "vm0-ai/vm0",
+        private: true,
+        defaultBranch: "main",
+        selected: true,
+        includeIssues: true,
+        includePullRequests: true,
+        includeComments: true,
+        trustedContributors: [{ githubUserId: "101", login: "lancy" }],
+      },
+    ],
+    pagination: { page: 1, pageSize: 50, hasMore: false },
+  };
+}
+
+function notionMemoryStatus(
+  overrides: Partial<NotionMemoryStatusResponse> = {},
+): NotionMemoryStatusResponse {
+  return {
+    provider: "notion",
+    connected: true,
+    workspaceName: "Memory Workspace",
+    backfill: {
+      status: "idle",
+      estimatedTotal: null,
+      scannedCount: 0,
+      recordedCount: 0,
+      lastError: null,
+      updatedAt: null,
+      completedAt: null,
+    },
+    ...overrides,
+  };
+}
+
 function memorySourceListPage(
-  provider?: "gmail" | "slack",
+  provider?: MemorySourceProvider,
 ): MemorySourceListResponse {
   const allSources: MemorySourceListResponse["sources"] = [
     {
@@ -1002,7 +1073,7 @@ describe("memory page", () => {
     context.mocks.api(zeroMemoryContract.get, ({ respond }) => {
       return respond(200, memoryDetailResponse());
     });
-    const sourceQueries: ("gmail" | "slack" | undefined)[] = [];
+    const sourceQueries: (MemorySourceProvider | undefined)[] = [];
     context.mocks.api(zeroMemoryContract.sources, ({ query, respond }) => {
       sourceQueries.push(query.provider);
       return respond(200, memorySourceListPage(query.provider));
@@ -1015,6 +1086,15 @@ describe("memory page", () => {
     let status = slackMemoryStatus();
     context.mocks.api(zeroMemoryContract.slackStatus, ({ respond }) => {
       return respond(200, status);
+    });
+    context.mocks.api(zeroMemoryContract.githubStatus, ({ respond }) => {
+      return respond(200, githubMemoryStatus());
+    });
+    context.mocks.api(zeroMemoryContract.githubRepositories, ({ respond }) => {
+      return respond(200, githubMemoryRepositories());
+    });
+    context.mocks.api(zeroMemoryContract.notionStatus, ({ respond }) => {
+      return respond(200, notionMemoryStatus());
     });
     context.mocks.api(zeroMemoryContract.slackBackfill, ({ body, respond }) => {
       expect(body).toStrictEqual({

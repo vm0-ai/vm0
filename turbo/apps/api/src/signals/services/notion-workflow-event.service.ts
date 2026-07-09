@@ -21,6 +21,7 @@ import {
   notionWebhookEvents,
   notionWebhookSecrets,
   notionWorkflowPendingEvents,
+  type NotionWorkflowPendingEventFamily,
   type NotionWorkflowPendingEventContext,
 } from "@vm0/db/schema/notion-event";
 import { secrets as secretsTable } from "@vm0/db/schema/secret";
@@ -49,12 +50,13 @@ import {
   type RunWorkflowTriggerResult,
   type TriggerRow,
 } from "./zero-workflow-trigger-run.service";
+import { recordNotionPageMemorySource } from "./notion-memory-source.service";
 
 const NOTION_ACCESS_TOKEN_SECRET = "NOTION_ACCESS_TOKEN";
 const NOTION_REFRESH_TOKEN_SECRET = "NOTION_REFRESH_TOKEN";
 const CONNECTOR_SECRET_TYPE = "connector";
-const NOTION_API_BASE = "https://api.notion.com/v1";
-const NOTION_VERSION = "2026-03-11";
+export const NOTION_API_BASE = "https://api.notion.com/v1";
+export const NOTION_VERSION = "2026-03-11";
 const TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000;
 const NOTION_CHILD_PAGE_SETTLE_MS = 15 * 60 * 1000;
 const NOTION_PENDING_RETRY_MS = 5 * 60 * 1000;
@@ -189,7 +191,7 @@ const notionDatabaseResponseSchema = z
   .passthrough();
 
 type NotionWebhookEvent = z.infer<typeof notionWebhookEventSchema>;
-type NotionPageResponse = z.infer<typeof notionPageResponseSchema>;
+export type NotionPageResponse = z.infer<typeof notionPageResponseSchema>;
 type NotionDataSourceResponse = z.infer<typeof notionDataSourceResponseSchema>;
 type NotionDatabaseResponse = z.infer<typeof notionDatabaseResponseSchema>;
 type NotionPendingRow = typeof notionWorkflowPendingEvents.$inferSelect;
@@ -210,12 +212,12 @@ interface NotionConnectorSecrets {
   readonly refreshSecret: ConnectorSecretRow | null;
 }
 
-interface NotionAccess {
+export interface NotionAccess {
   readonly connectorId: string;
   readonly accessToken: string;
 }
 
-type NotionAccessResult =
+export type NotionAccessResult =
   | { readonly kind: "ok"; readonly access: NotionAccess }
   | { readonly kind: "bad_request"; readonly message: string };
 
@@ -260,6 +262,13 @@ type NotionRunStarter = (
   args: RunWorkflowTriggerNowArgs,
   signal: AbortSignal,
 ) => Promise<RunWorkflowTriggerResult>;
+interface ProcessClaimedNotionPendingEventArgs {
+  readonly db: Db;
+  readonly row: DueNotionTriggerRow;
+  readonly pending: NotionPendingRow;
+  readonly signal: AbortSignal;
+  readonly startRun: NotionRunStarter;
+}
 
 function tokenNeedsRefresh(tokenExpiresAt: Date | null, currentTime: Date) {
   if (tokenExpiresAt === null) {
@@ -320,7 +329,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function notionTitleFromProperties(
+export function notionTitleFromProperties(
   properties: Record<string, unknown> | undefined,
 ): string | null {
   for (const property of Object.values(properties ?? {})) {
@@ -396,7 +405,7 @@ function notionPageParentDataSourceId(page: NotionPageResponse): string | null {
     : null;
 }
 
-function pageIsUsable(page: NotionPageResponse): boolean {
+export function pageIsUsable(page: NotionPageResponse): boolean {
   return page.archived !== true && page.in_trash !== true;
 }
 
@@ -589,7 +598,7 @@ async function refreshNotionAccessToken(args: {
   };
 }
 
-async function resolveNotionAccess(args: {
+export async function resolveNotionAccess(args: {
   readonly db: Db;
   readonly orgId: string;
   readonly userId: string;
@@ -2005,6 +2014,75 @@ function notionRunFailureMessage(
     : result.response.body.error.message;
 }
 
+function notionMemoryEventType(
+  eventFamily: NotionWorkflowPendingEventFamily,
+): "page.created" | "page.content_updated" | "page.properties_updated" {
+  return eventFamily === "page_content_updated"
+    ? "page.content_updated"
+    : "page.created";
+}
+
+async function recordNotionPendingPageMemorySource(args: {
+  readonly db: Db;
+  readonly row: DueNotionTriggerRow;
+  readonly pending: NotionPendingRow;
+  readonly connectorId: string;
+  readonly page: NotionPageResponse;
+  readonly parent: {
+    readonly title: string | null;
+    readonly url: string | null;
+  };
+}): Promise<boolean> {
+  const context = args.pending.latestEventContext;
+  return await recordNotionPageMemorySource({
+    db: args.db,
+    orgId: args.row.trigger.orgId,
+    userId: args.row.trigger.ownerUserId,
+    connectorId: args.connectorId,
+    page: {
+      id: args.page.id,
+      title: notionTitleFromProperties(args.page.properties),
+      url: args.page.url ?? null,
+      createdTime: args.page.created_time ?? null,
+      lastEditedTime: args.page.last_edited_time ?? null,
+    },
+    parent: args.parent,
+    workspaceId: context?.workspaceId ?? null,
+    workspaceName: context?.workspaceName ?? null,
+    eventId: args.pending.latestNotionEventId,
+    eventFamily: args.pending.eventFamily,
+    eventType: notionMemoryEventType(args.pending.eventFamily),
+    scopeType: args.pending.scopeType,
+    scopeId: args.pending.scopeId,
+    authorIds:
+      context?.authors.map((author) => {
+        return author.id;
+      }) ?? [],
+    occurredAt: args.pending.latestEventAt,
+    reason: `notion_${args.pending.eventFamily}`,
+  });
+}
+
+async function recordNotionMemorySourceForPending(
+  args: ProcessClaimedNotionPendingEventArgs,
+  connectorId: string,
+  page: NotionPageResponse,
+  parent: {
+    readonly title: string | null;
+    readonly url: string | null;
+  },
+): Promise<void> {
+  await recordNotionPendingPageMemorySource({
+    db: args.db,
+    row: args.row,
+    pending: args.pending,
+    connectorId,
+    page,
+    parent,
+  });
+  args.signal.throwIfAborted();
+}
+
 async function resolveCurrentParentReference(args: {
   readonly accessToken: string;
   readonly config: NotionChildPageCreatedEventConfig;
@@ -2118,13 +2196,9 @@ function notionTriggerIsActive(
   );
 }
 
-async function processClaimedNotionChildPagePendingEvent(args: {
-  readonly db: Db;
-  readonly row: DueNotionTriggerRow;
-  readonly pending: NotionPendingRow;
-  readonly signal: AbortSignal;
-  readonly startRun: NotionRunStarter;
-}): Promise<"executed" | "skipped"> {
+async function processClaimedNotionChildPagePendingEvent(
+  args: ProcessClaimedNotionPendingEventArgs,
+): Promise<"executed" | "skipped"> {
   if (
     !notionTriggerIsActive(args.row, "notion-child-page-created") ||
     !args.row.chatThreadId
@@ -2172,32 +2246,17 @@ async function processClaimedNotionChildPagePendingEvent(args: {
     return "skipped";
   }
 
-  const childResult = await retrieveNotionPage({
+  const childPage = await retrieveUsablePendingNotionPage({
+    db: args.db,
+    pending: args.pending,
     accessToken: accessResult.access.accessToken,
-    pageId: args.pending.pageId,
     signal: args.signal,
   });
-  args.signal.throwIfAborted();
-  if (childResult.kind === "transient_error") {
-    await retryPendingEvent({
-      db: args.db,
-      pending: args.pending,
-      message: childResult.message,
-      signal: args.signal,
-    });
-    return "skipped";
-  }
-  if (childResult.kind !== "ok" || !pageIsUsable(childResult.value)) {
-    await skipPendingEvent({
-      db: args.db,
-      pendingId: args.pending.id,
-      reason: "Notion page is no longer accessible",
-      signal: args.signal,
-    });
+  if (!childPage) {
     return "skipped";
   }
 
-  if (notionPageParentPageId(childResult.value) !== config.data.parentPage.id) {
+  if (notionPageParentPageId(childPage) !== config.data.parentPage.id) {
     await skipPendingEvent({
       db: args.db,
       pendingId: args.pending.id,
@@ -2212,19 +2271,26 @@ async function processClaimedNotionChildPagePendingEvent(args: {
     config: config.data,
     signal: args.signal,
   });
+  await recordNotionMemorySourceForPending(
+    args,
+    config.data.connectorId,
+    childPage,
+    parent,
+  );
+
   const result = await startNotionWorkflowRun({
     row: args.row,
     chatThreadId: args.row.chatThreadId,
     appendSystemPrompt: buildNotionChildPageWorkflowEventSystemPrompt({
       triggerId: args.row.trigger.id,
       config: config.data,
-      page: childResult.value,
+      page: childPage,
       parent,
       firstEventAt: args.pending.firstEventAt,
       latestEventAt: args.pending.latestEventAt,
     }),
     triggerBrief: buildNotionChildPageWorkflowTriggerBrief({
-      page: childResult.value,
+      page: childPage,
       parent,
     }),
     signal: args.signal,
@@ -2244,20 +2310,16 @@ async function processClaimedNotionChildPagePendingEvent(args: {
   await markPendingEventProcessed({
     db: args.db,
     pendingId: args.pending.id,
-    page: childResult.value,
+    page: childPage,
     parent,
     signal: args.signal,
   });
   return "executed";
 }
 
-async function processClaimedNotionDatabaseItemPendingEvent(args: {
-  readonly db: Db;
-  readonly row: DueNotionTriggerRow;
-  readonly pending: NotionPendingRow;
-  readonly signal: AbortSignal;
-  readonly startRun: NotionRunStarter;
-}): Promise<"executed" | "skipped"> {
+async function processClaimedNotionDatabaseItemPendingEvent(
+  args: ProcessClaimedNotionPendingEventArgs,
+): Promise<"executed" | "skipped"> {
   if (
     !notionTriggerIsActive(args.row, "notion-database-item-created") ||
     !args.row.chatThreadId
@@ -2307,32 +2369,17 @@ async function processClaimedNotionDatabaseItemPendingEvent(args: {
     return "skipped";
   }
 
-  const pageResult = await retrieveNotionPage({
+  const page = await retrieveUsablePendingNotionPage({
+    db: args.db,
+    pending: args.pending,
     accessToken: accessResult.access.accessToken,
-    pageId: args.pending.pageId,
     signal: args.signal,
   });
-  args.signal.throwIfAborted();
-  if (pageResult.kind === "transient_error") {
-    await retryPendingEvent({
-      db: args.db,
-      pending: args.pending,
-      message: pageResult.message,
-      signal: args.signal,
-    });
-    return "skipped";
-  }
-  if (pageResult.kind !== "ok" || !pageIsUsable(pageResult.value)) {
-    await skipPendingEvent({
-      db: args.db,
-      pendingId: args.pending.id,
-      reason: "Notion page is no longer accessible",
-      signal: args.signal,
-    });
+  if (!page) {
     return "skipped";
   }
 
-  if (notionPageParentDataSourceId(pageResult.value) !== dataSourceId) {
+  if (notionPageParentDataSourceId(page) !== dataSourceId) {
     await skipPendingEvent({
       db: args.db,
       pendingId: args.pending.id,
@@ -2347,19 +2394,26 @@ async function processClaimedNotionDatabaseItemPendingEvent(args: {
     config: config.data,
     signal: args.signal,
   });
+  await recordNotionMemorySourceForPending(
+    args,
+    config.data.connectorId,
+    page,
+    dataSource,
+  );
+
   const result = await startNotionWorkflowRun({
     row: args.row,
     chatThreadId: args.row.chatThreadId,
     appendSystemPrompt: buildNotionDatabaseItemWorkflowEventSystemPrompt({
       triggerId: args.row.trigger.id,
       config: config.data,
-      page: pageResult.value,
+      page,
       dataSource,
       firstEventAt: args.pending.firstEventAt,
       latestEventAt: args.pending.latestEventAt,
     }),
     triggerBrief: buildNotionDatabaseItemWorkflowTriggerBrief({
-      page: pageResult.value,
+      page,
       dataSource,
     }),
     signal: args.signal,
@@ -2379,7 +2433,7 @@ async function processClaimedNotionDatabaseItemPendingEvent(args: {
   await markPendingEventProcessed({
     db: args.db,
     pendingId: args.pending.id,
-    page: pageResult.value,
+    page,
     parent: dataSource,
     signal: args.signal,
   });
@@ -2419,13 +2473,9 @@ async function retrieveUsablePendingNotionPage(args: {
   return pageResult.value;
 }
 
-async function processClaimedNotionPageContentUpdatedPendingEvent(args: {
-  readonly db: Db;
-  readonly row: DueNotionTriggerRow;
-  readonly pending: NotionPendingRow;
-  readonly signal: AbortSignal;
-  readonly startRun: NotionRunStarter;
-}): Promise<"executed" | "skipped"> {
+async function processClaimedNotionPageContentUpdatedPendingEvent(
+  args: ProcessClaimedNotionPendingEventArgs,
+): Promise<"executed" | "skipped"> {
   if (
     !notionTriggerIsActive(args.row, "notion-page-content-updated") ||
     !args.row.chatThreadId
@@ -2505,6 +2555,13 @@ async function processClaimedNotionPageContentUpdatedPendingEvent(args: {
     scope: config.data.scope,
     signal: args.signal,
   });
+  await recordNotionMemorySourceForPending(
+    args,
+    config.data.connectorId,
+    page,
+    pageContentUpdatedScopeParent(scope),
+  );
+
   const result = await startNotionWorkflowRun({
     row: args.row,
     chatThreadId: args.row.chatThreadId,

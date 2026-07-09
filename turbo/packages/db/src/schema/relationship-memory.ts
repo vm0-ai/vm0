@@ -31,7 +31,12 @@ export const RELATIONSHIP_ITEM_KINDS = [
 ] as const;
 export type RelationshipItemKind = (typeof RELATIONSHIP_ITEM_KINDS)[number];
 
-export const RELATIONSHIP_MEMORY_PROVIDERS = ["gmail", "slack"] as const;
+export const RELATIONSHIP_MEMORY_PROVIDERS = [
+  "gmail",
+  "slack",
+  "github",
+  "notion",
+] as const;
 export type RelationshipMemoryProvider =
   (typeof RELATIONSHIP_MEMORY_PROVIDERS)[number];
 
