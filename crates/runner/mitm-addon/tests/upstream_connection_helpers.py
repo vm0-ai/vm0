@@ -1,6 +1,11 @@
 """Shared helpers for connected upstream mitmproxy test state."""
 
-from mitmproxy import connection, http
+from typing import cast
+
+from mitmproxy import certs, connection, http
+
+_NO_CONNECTED_CLIENT_SOCKNAME = ("", 0)
+_TLS_CERTIFICATE_PROOF = cast(certs.Cert, object())
 
 
 def mark_connected_tls_upstream(
@@ -14,9 +19,11 @@ def mark_connected_tls_upstream(
     """Mark a real flow as connected to an upstream with verified TLS evidence."""
     flow.server_conn.address = server_address
     flow.server_conn.peername = peername
-    flow.client_conn.sockname = client_sockname
+    flow.client_conn.sockname = (
+        client_sockname if client_sockname is not None else _NO_CONNECTED_CLIENT_SOCKNAME
+    )
     flow.server_conn.state = connection.ConnectionState.OPEN
     flow.server_conn.sni = sni
     flow.server_conn.timestamp_tls_setup = 1.0
-    flow.server_conn.certificate_list = (object(),)
+    flow.server_conn.certificate_list = (_TLS_CERTIFICATE_PROOF,)
     flow.server_conn.error = None
