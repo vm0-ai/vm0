@@ -568,6 +568,7 @@ describe("FILE-03 desktop computer-use runtime", () => {
         computerUseMcpServerCapability("apple-notes"),
       ],
     });
+    mockClerkMembership(context, actor, "org:admin");
 
     const bound = zeroComputerUseToken({
       userId: actor.userId,
@@ -575,12 +576,9 @@ describe("FILE-03 desktop computer-use runtime", () => {
       capabilities: ["computer-use:write"],
       computerUseHostId: host.hostId,
     });
-    const listed = await api.requestListComputerUseHosts(
-      { bearer: bound.token },
-      [200],
-    );
-    expect(listed.body.hosts).toHaveLength(1);
-    expect(listed.body.hosts[0]).toMatchObject({
+    const listed = await api.listComputerUseHosts({ bearer: bound.token });
+    expect(listed.hosts).toHaveLength(1);
+    expect(listed.hosts[0]).toMatchObject({
       id: host.hostId,
       hostName: "Apple Notes Desktop",
       supportedCapabilities: [
