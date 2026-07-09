@@ -265,14 +265,17 @@ describe("model-first canonical catalog", () => {
     expect(getProvidersForModel("gpt-5.6-sol")).toEqual([
       "vm0",
       "openai-api-key",
+      "codex-oauth-token",
     ]);
     expect(getProvidersForModel("gpt-5.6-terra")).toEqual([
       "vm0",
       "openai-api-key",
+      "codex-oauth-token",
     ]);
     expect(getProvidersForModel("gpt-5.6-luna")).toEqual([
       "vm0",
       "openai-api-key",
+      "codex-oauth-token",
     ]);
     expect(getProvidersForModel("openai/gpt-5.6-sol")).toEqual([]);
     expect(getProvidersForModel("deepseek/deepseek-v4-pro")).toContain(
@@ -328,7 +331,7 @@ describe("model-first canonical catalog", () => {
       true,
     );
     expect(isModelSupportedByProvider("gpt-5.6-sol", "codex-oauth-token")).toBe(
-      false,
+      true,
     );
     expect(isModelSupportedByProvider("gpt-5.6-sol", "openrouter-codex")).toBe(
       false,
@@ -1150,11 +1153,13 @@ describe("codex-oauth-token codex provider", () => {
 
   it("offers gpt-5.x models with gpt-5.5 default", () => {
     expect(getModels("codex-oauth-token")).toEqual([
+      "gpt-5.6-sol",
+      "gpt-5.6-terra",
+      "gpt-5.6-luna",
       "gpt-5.5",
       "gpt-5.4",
       "gpt-5.4-mini",
     ]);
-    expect(getModels("codex-oauth-token")).not.toContain("gpt-5.6-sol");
     expect(getDefaultModel("codex-oauth-token")).toBe("gpt-5.5");
   });
 

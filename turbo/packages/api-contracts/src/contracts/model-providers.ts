@@ -876,7 +876,14 @@ export const MODEL_PROVIDER_TYPES = {
       CHATGPT_ACCOUNT_ID: "$secrets.CHATGPT_ACCOUNT_ID",
       OPENAI_MODEL: "$model",
     } satisfies ModelProviderEnvBindings,
-    models: ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini"] as string[],
+    models: [
+      "gpt-5.6-sol",
+      "gpt-5.6-terra",
+      "gpt-5.6-luna",
+      "gpt-5.5",
+      "gpt-5.4",
+      "gpt-5.4-mini",
+    ] as string[],
     defaultModel: "gpt-5.5",
   },
   "azure-foundry": {
@@ -1032,9 +1039,9 @@ const MODEL_FIRST_PROVIDER_COMPATIBILITY = {
     "openrouter-api-key",
     "vercel-ai-gateway",
   ],
-  "gpt-5.6-sol": ["vm0", "openai-api-key"],
-  "gpt-5.6-terra": ["vm0", "openai-api-key"],
-  "gpt-5.6-luna": ["vm0", "openai-api-key"],
+  "gpt-5.6-sol": ["vm0", "openai-api-key", "codex-oauth-token"],
+  "gpt-5.6-terra": ["vm0", "openai-api-key", "codex-oauth-token"],
+  "gpt-5.6-luna": ["vm0", "openai-api-key", "codex-oauth-token"],
   "gpt-5.5": [
     "vm0",
     "openai-api-key",
