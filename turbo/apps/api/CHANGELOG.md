@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.254.0](https://github.com/vm0-ai/vm0/compare/api-v1.253.0...api-v1.254.0) (2026-07-09)
+
+
+### Features
+
+* add gpt-5.6 model support ([#20841](https://github.com/vm0-ai/vm0/issues/20841)) ([70d551f](https://github.com/vm0-ai/vm0/commit/70d551f731976130af4a640d571ac2aa2708e100))
+* add zero memory document rag substrate ([#20846](https://github.com/vm0-ai/vm0/issues/20846)) ([52f1e35](https://github.com/vm0-ai/vm0/commit/52f1e35b51a72850a5d4a5d0e1cfba89b9382944))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.177.0
+    * @vm0/core bumped to 8.421.0
+    * @vm0/db bumped to 1.106.0
+
 ## [1.253.0](https://github.com/vm0-ai/vm0/compare/api-v1.252.0...api-v1.253.0) (2026-07-09)
 
 

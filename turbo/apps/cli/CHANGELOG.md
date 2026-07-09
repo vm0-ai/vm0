@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.234.0](https://github.com/vm0-ai/vm0/compare/cli-v9.233.1...cli-v9.234.0) (2026-07-09)
+
+
+### Features
+
+* add zero memory document rag substrate ([#20846](https://github.com/vm0-ai/vm0/issues/20846)) ([52f1e35](https://github.com/vm0-ai/vm0/commit/52f1e35b51a72850a5d4a5d0e1cfba89b9382944))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.177.0
+    * @vm0/core bumped to 8.421.0
+
 ## [9.233.1](https://github.com/vm0-ai/vm0/compare/cli-v9.233.0...cli-v9.233.1) (2026-07-09)
 
 
