@@ -238,7 +238,12 @@ where
         }
 
         let attempt = attempt_index + 1;
-        match refresh().await {
+        let result = tokio::select! {
+            biased;
+            () = cancel.cancelled() => return Err(initial_refresh_cancelled_error()),
+            result = refresh() => result,
+        };
+        match result {
             Ok(()) => {
                 if attempt > 1 {
                     info!(
@@ -548,6 +553,42 @@ mod tests {
         cancel.cancel();
         let error = future.await.unwrap_err();
         assert_eq!(attempts.load(Ordering::SeqCst), 1);
+        assert!(
+            error.to_string().contains("refresh cancelled"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[tokio::test]
+    async fn initial_refresh_cancels_in_flight_attempt() {
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let cancel = CancellationToken::new();
+        let cache_path = PathBuf::from("builtin-firewall-catalog-cache.json");
+        let attempts_for_refresh = Arc::clone(&attempts);
+        let refresh = move || {
+            let attempts = Arc::clone(&attempts_for_refresh);
+            async move {
+                attempts.fetch_add(1, Ordering::SeqCst);
+                std::future::pending::<RunnerResult<()>>().await
+            }
+        };
+
+        let retry_delays = [Duration::from_secs(60)];
+        let future = run_initial_refresh_with_delays(refresh, &cache_path, &cancel, &retry_delays);
+        tokio::pin!(future);
+
+        tokio::select! {
+            biased;
+            _ = &mut future => panic!("initial refresh should wait for the in-flight attempt"),
+            () = tokio::task::yield_now() => {}
+        }
+        assert_eq!(attempts.load(Ordering::SeqCst), 1);
+
+        cancel.cancel();
+        let error = tokio::time::timeout(Duration::from_secs(1), future)
+            .await
+            .expect("initial refresh should stop after cancellation")
+            .unwrap_err();
         assert!(
             error.to_string().contains("refresh cancelled"),
             "unexpected error: {error}"

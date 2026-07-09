@@ -183,6 +183,16 @@ struct LiveRunnerPublishResources<'a> {
     status: &'a StatusTracker,
 }
 
+struct StartupFailureResources<'a> {
+    provider: &'a dyn JobProvider,
+    runtime: Option<&'a mut dyn SandboxRuntime>,
+    mitm: &'a mut proxy::MitmProxy,
+    kmsg_handle: kmsg_log::KmsgHandle,
+    dns_handle: dns::DnsProxy,
+    memory_prefetch: &'a mut prefetch::MemoryPrefetchTasks,
+    status: &'a StatusTracker,
+}
+
 async fn publish_live_runner_instance_or_shutdown_startup_resources(
     home: &HomePaths,
     metadata: crate::live_runner_instances::LiveRunnerInstanceMetadata,
@@ -211,23 +221,21 @@ async fn publish_live_runner_instance_or_shutdown_startup_resources(
 }
 
 async fn shutdown_startup_resources_after_startup_failure(
-    provider: &dyn JobProvider,
-    mitm: &mut proxy::MitmProxy,
-    kmsg_handle: kmsg_log::KmsgHandle,
-    dns_handle: dns::DnsProxy,
-    memory_prefetch: &mut prefetch::MemoryPrefetchTasks,
-    status: &StatusTracker,
+    resources: StartupFailureResources<'_>,
     context: &'static str,
 ) {
-    memory_prefetch.cancel();
-    provider.shutdown().await;
-    if let Err(e) = mitm.kill_now().await {
+    resources.memory_prefetch.cancel();
+    resources.provider.shutdown().await;
+    if let Some(runtime) = resources.runtime {
+        runtime.shutdown().await;
+    }
+    if let Err(e) = resources.mitm.kill_now().await {
         warn!(error = %e, context, "failed to kill proxy after startup failed");
     }
-    kmsg_handle.stop().await;
-    dns_handle.stop().await;
-    memory_prefetch.drain().await;
-    status.set_mode(RunnerMode::Stopped).await;
+    resources.kmsg_handle.stop().await;
+    resources.dns_handle.stop().await;
+    resources.memory_prefetch.drain().await;
+    resources.status.set_mode(RunnerMode::Stopped).await;
 }
 
 async fn abort_signal_handler_task(handler_task: SignalHandlerTask, context: &'static str) {
@@ -1171,12 +1179,15 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
 
     if let Err(e) = provider_state.provider.prepare_startup_readiness().await {
         shutdown_startup_resources_after_startup_failure(
-            provider_state.provider.as_ref(),
-            &mut mitm,
-            kmsg_handle,
-            dns_handle,
-            &mut memory_prefetch,
-            shared.status.as_ref(),
+            StartupFailureResources {
+                provider: provider_state.provider.as_ref(),
+                runtime: Some(runtime.as_mut()),
+                mitm: &mut mitm,
+                kmsg_handle,
+                dns_handle,
+                memory_prefetch: &mut memory_prefetch,
+                status: shared.status.as_ref(),
+            },
             "provider_startup_readiness_failure",
         )
         .await;
@@ -1198,12 +1209,15 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         Ok(factories) => factories,
         Err(e) => {
             shutdown_startup_resources_after_startup_failure(
-                provider_state.provider.as_ref(),
-                &mut mitm,
-                kmsg_handle,
-                dns_handle,
-                &mut memory_prefetch,
-                shared.status.as_ref(),
+                StartupFailureResources {
+                    provider: provider_state.provider.as_ref(),
+                    runtime: None,
+                    mitm: &mut mitm,
+                    kmsg_handle,
+                    dns_handle,
+                    memory_prefetch: &mut memory_prefetch,
+                    status: shared.status.as_ref(),
+                },
                 "factory_startup_failure",
             )
             .await;

@@ -338,7 +338,12 @@ async fn startup_readiness_blocks_running_and_discovery() {
 
 #[tokio::test]
 async fn startup_readiness_failure_stops_status_and_cleans_startup_resources() {
-    let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
+    let runtime_shutdowns = Arc::new(AtomicUsize::new(0));
+    let runtime = ShutdownRecordingRuntime {
+        shutdowns: Arc::clone(&runtime_shutdowns),
+    };
+    let (config, env) =
+        mock_run_config_with_runtime(test_profiles(), 8, 32768, 4, Box::new(runtime));
     env.handle
         .fail_startup_readiness("provider readiness failed");
     let status_path = env._temp_dir.path().join("status.json");
@@ -357,6 +362,7 @@ async fn startup_readiness_failure_stops_status_and_cleans_startup_resources() {
         0,
         "provider discovery must not start after startup readiness failure",
     );
+    assert_eq!(runtime_shutdowns.load(Ordering::SeqCst), 1);
     wait_status_mode(&status_path, "stopped", Duration::from_secs(5)).await;
 }
 

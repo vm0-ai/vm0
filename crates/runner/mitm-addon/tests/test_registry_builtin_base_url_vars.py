@@ -28,7 +28,6 @@ def _registry_ctx(monkeypatch):
 
 
 def install_test_builtin_firewall(
-    _monkeypatch=None,
     *,
     name: str,
     base: str,
@@ -255,11 +254,8 @@ class TestRegistryBuiltinBaseUrlVars:
             assert compiled_firewalls is not None
             assert vm_info["firewalls"][0]["apis"][0]["base"] == f"https://{host}"
 
-    def test_builtin_provider_owned_rejects_unsafe_idna_compatibility_host(
-        self, tmp_path, monkeypatch
-    ):
+    def test_builtin_provider_owned_rejects_unsafe_idna_compatibility_host(self, tmp_path):
         install_test_builtin_firewall(
-            monkeypatch,
             name="unsafe-provider-host",
             base="https://fa\u212a.example.com",
             host_policy={"kind": "providerOwned", "suffixes": ["example.com"]},
@@ -282,9 +278,8 @@ class TestRegistryBuiltinBaseUrlVars:
         assert invalid_vm.reason == "invalid_firewalls"
         assert "catalog cache unavailable: cache_invalid" in invalid_vm.message
 
-    def test_builtin_provider_owned_accepts_percent_encoded_idna_host(self, tmp_path, monkeypatch):
+    def test_builtin_provider_owned_accepts_percent_encoded_idna_host(self, tmp_path):
         install_test_builtin_firewall(
-            monkeypatch,
             name="encoded-provider-host",
             base="https://${{ vars.API_HOST }}",
             host_policy={"kind": "providerOwned", "suffixes": ["example.com"]},
@@ -304,11 +299,8 @@ class TestRegistryBuiltinBaseUrlVars:
         assert compiled_firewalls is not None
         assert vm_info["firewalls"][0]["apis"][0]["base"] == ("https://b%C3%BCcher.example.com")
 
-    def test_builtin_public_destination_rejects_unsafe_idna_compatibility_host(
-        self, tmp_path, monkeypatch
-    ):
+    def test_builtin_public_destination_rejects_unsafe_idna_compatibility_host(self, tmp_path):
         install_test_builtin_firewall(
-            monkeypatch,
             name="unsafe-public-host",
             base="https://fa\u212a.example.com",
             host_policy={"kind": "publicDestination"},
@@ -331,9 +323,8 @@ class TestRegistryBuiltinBaseUrlVars:
         assert invalid_vm.reason == "invalid_firewalls"
         assert "catalog cache unavailable: cache_invalid" in invalid_vm.message
 
-    def test_builtin_public_destination_rejects_empty_port_authority(self, tmp_path, monkeypatch):
+    def test_builtin_public_destination_rejects_empty_port_authority(self, tmp_path):
         install_test_builtin_firewall(
-            monkeypatch,
             name="empty-port-public-host",
             base="https://example.com:",
             host_policy={"kind": "publicDestination"},
@@ -423,7 +414,7 @@ class TestRegistryBuiltinBaseUrlVars:
             assert invalid_vm.reason == "invalid_firewalls"
             assert "host policy does not allow resolved host" in invalid_vm.message
 
-    def test_builtin_rejects_invalid_host_policies(self, tmp_path, monkeypatch):
+    def test_builtin_rejects_invalid_host_policies(self, tmp_path):
         cases = [
             (
                 {"kind": "providerOwned", "exactHosts": [".api.example.com"]},
@@ -473,7 +464,6 @@ class TestRegistryBuiltinBaseUrlVars:
         for index, (host_policy, _message) in enumerate(cases):
             name = f"provider-owned-invalid-{index}"
             install_test_builtin_firewall(
-                monkeypatch,
                 name=name,
                 base="https://${{ vars.API_HOST }}",
                 host_policy=host_policy,
@@ -496,11 +486,8 @@ class TestRegistryBuiltinBaseUrlVars:
             assert invalid_vm.reason == "invalid_firewalls"
             assert "catalog cache unavailable: cache_invalid" in invalid_vm.message
 
-    def test_builtin_provider_owned_whole_authority_rejects_non_default_port(
-        self, tmp_path, monkeypatch
-    ):
+    def test_builtin_provider_owned_whole_authority_rejects_non_default_port(self, tmp_path):
         install_test_builtin_firewall(
-            monkeypatch,
             name="provider-owned-port",
             base="https://${{ vars.API_HOST }}:444/v1",
             host_policy={"kind": "providerOwned", "suffixes": ["example.com"]},
@@ -823,9 +810,8 @@ class TestRegistryBuiltinBaseUrlVars:
         assert invalid_vm.reason == "invalid_firewalls"
         assert 'base URL variable "N8N_BASE_URL"' in invalid_vm.message
 
-    def test_builtin_path_segment_var_accepts_fixed_suffix(self, tmp_path, monkeypatch):
+    def test_builtin_path_segment_var_accepts_fixed_suffix(self, tmp_path):
         install_test_builtin_firewall(
-            monkeypatch,
             name="tenant-path",
             base="https://api.example.test/accounts/${{ vars.TENANT }}/v1",
         )
@@ -846,9 +832,8 @@ class TestRegistryBuiltinBaseUrlVars:
             "https://api.example.test/accounts/acme:prod/v1"
         )
 
-    def test_builtin_path_segment_var_rejects_path_injection(self, tmp_path, monkeypatch):
+    def test_builtin_path_segment_var_rejects_path_injection(self, tmp_path):
         install_test_builtin_firewall(
-            monkeypatch,
             name="tenant-path",
             base="https://api.example.test/accounts/${{ vars.TENANT }}/v1",
         )
@@ -870,9 +855,8 @@ class TestRegistryBuiltinBaseUrlVars:
         assert invalid_vm.reason == "invalid_firewalls"
         assert 'base URL variable "TENANT"' in invalid_vm.message
 
-    def test_builtin_path_segment_var_rejects_encoded_path_separator(self, tmp_path, monkeypatch):
+    def test_builtin_path_segment_var_rejects_encoded_path_separator(self, tmp_path):
         install_test_builtin_firewall(
-            monkeypatch,
             name="tenant-path",
             base="https://api.example.test/accounts/${{ vars.TENANT }}/v1",
         )
@@ -894,9 +878,8 @@ class TestRegistryBuiltinBaseUrlVars:
         assert invalid_vm.reason == "invalid_firewalls"
         assert 'base URL variable "TENANT"' in invalid_vm.message
 
-    def test_builtin_path_segment_var_rejects_dot_segment(self, tmp_path, monkeypatch):
+    def test_builtin_path_segment_var_rejects_dot_segment(self, tmp_path):
         install_test_builtin_firewall(
-            monkeypatch,
             name="tenant-path",
             base="https://api.example.test/accounts/${{ vars.TENANT }}/v1",
         )
@@ -918,11 +901,8 @@ class TestRegistryBuiltinBaseUrlVars:
         assert invalid_vm.reason == "invalid_firewalls"
         assert 'base URL variable "TENANT"' in invalid_vm.message
 
-    def test_builtin_path_segment_var_rejects_path_parameter_dot_segment(
-        self, tmp_path, monkeypatch
-    ):
+    def test_builtin_path_segment_var_rejects_path_parameter_dot_segment(self, tmp_path):
         install_test_builtin_firewall(
-            monkeypatch,
             name="tenant-path",
             base="https://api.example.test/accounts/${{ vars.TENANT }}/v1",
         )
@@ -944,11 +924,8 @@ class TestRegistryBuiltinBaseUrlVars:
         assert invalid_vm.reason == "invalid_firewalls"
         assert 'base URL variable "TENANT"' in invalid_vm.message
 
-    def test_builtin_path_segment_var_rejects_nested_encoded_dot_segment(
-        self, tmp_path, monkeypatch
-    ):
+    def test_builtin_path_segment_var_rejects_nested_encoded_dot_segment(self, tmp_path):
         install_test_builtin_firewall(
-            monkeypatch,
             name="tenant-path",
             base="https://api.example.test/accounts/${{ vars.TENANT }}/v1",
         )
@@ -970,11 +947,8 @@ class TestRegistryBuiltinBaseUrlVars:
         assert invalid_vm.reason == "invalid_firewalls"
         assert 'base URL variable "TENANT"' in invalid_vm.message
 
-    def test_builtin_path_segment_var_rejects_compatibility_dot_segment(
-        self, tmp_path, monkeypatch
-    ):
+    def test_builtin_path_segment_var_rejects_compatibility_dot_segment(self, tmp_path):
         install_test_builtin_firewall(
-            monkeypatch,
             name="tenant-path",
             base="https://api.example.test/accounts/${{ vars.TENANT }}/v1",
         )
@@ -996,9 +970,8 @@ class TestRegistryBuiltinBaseUrlVars:
         assert invalid_vm.reason == "invalid_firewalls"
         assert 'base URL variable "TENANT"' in invalid_vm.message
 
-    def test_builtin_path_var_allows_dot_outside_dot_segment(self, tmp_path, monkeypatch):
+    def test_builtin_path_var_allows_dot_outside_dot_segment(self, tmp_path):
         install_test_builtin_firewall(
-            monkeypatch,
             name="path-fragment",
             base="https://api.example.test/v${{ vars.VERSION }}",
         )
@@ -1017,9 +990,8 @@ class TestRegistryBuiltinBaseUrlVars:
         assert compiled_firewalls is not None
         assert vm_info["firewalls"][0]["apis"][0]["base"] == ("https://api.example.test/v%2e1")
 
-    def test_builtin_path_vars_reject_combined_dot_segment(self, tmp_path, monkeypatch):
+    def test_builtin_path_vars_reject_combined_dot_segment(self, tmp_path):
         install_test_builtin_firewall(
-            monkeypatch,
             name="multi-path-segment",
             base="https://api.example.test/accounts/${{ vars.A }}${{ vars.B }}/v1",
         )
@@ -1041,9 +1013,8 @@ class TestRegistryBuiltinBaseUrlVars:
         assert invalid_vm.reason == "invalid_firewalls"
         assert "resolved base URL has unsafe path segments" in invalid_vm.message
 
-    def test_builtin_path_vars_accept_combined_safe_segment(self, tmp_path, monkeypatch):
+    def test_builtin_path_vars_accept_combined_safe_segment(self, tmp_path):
         install_test_builtin_firewall(
-            monkeypatch,
             name="multi-path-segment",
             base="https://api.example.test/accounts/${{ vars.A }}${{ vars.B }}/v1",
         )
@@ -1064,9 +1035,8 @@ class TestRegistryBuiltinBaseUrlVars:
             "https://api.example.test/accounts/v1/v1"
         )
 
-    def test_builtin_port_var_accepts_numeric_port(self, tmp_path, monkeypatch):
+    def test_builtin_port_var_accepts_numeric_port(self, tmp_path):
         install_test_builtin_firewall(
-            monkeypatch,
             name="port-api",
             base="https://api.example.test:${{ vars.API_PORT }}/v1",
         )
@@ -1085,9 +1055,8 @@ class TestRegistryBuiltinBaseUrlVars:
         assert compiled_firewalls is not None
         assert vm_info["firewalls"][0]["apis"][0]["base"] == ("https://api.example.test:8443/v1")
 
-    def test_builtin_port_var_rejects_non_numeric_port(self, tmp_path, monkeypatch):
+    def test_builtin_port_var_rejects_non_numeric_port(self, tmp_path):
         install_test_builtin_firewall(
-            monkeypatch,
             name="port-api",
             base="https://api.example.test:${{ vars.API_PORT }}/v1",
         )
