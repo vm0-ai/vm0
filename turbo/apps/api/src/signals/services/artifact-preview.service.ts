@@ -25,7 +25,6 @@ const log = logger("artifacts:preview");
 // batches are tiny.
 const PREVIEW_BATCH_SIZE = 10;
 const PREVIEW_SCAN_PAGE_SIZE = 50;
-const PREVIEW_SCAN_MAX_PAGES = 20;
 // Render at a full 1280-wide desktop layout for fidelity, but rasterize at half
 // resolution (deviceScaleFactor 0.5 -> 640x400) since the grid only shows the
 // image a few hundred px wide. WebP keeps the file small (~tens of KB).
@@ -227,10 +226,9 @@ export const generateArtifactPreviews$ = command(
     const db = set(writeDb$);
     let generated = 0;
     let cursor: PreviewCandidateCursor | undefined;
-    let pages = 0;
     const ownerFeatureEnabled = new Map<string, boolean>();
 
-    while (generated < PREVIEW_BATCH_SIZE && pages < PREVIEW_SCAN_MAX_PAGES) {
+    while (generated < PREVIEW_BATCH_SIZE) {
       const rows = await db
         .select({
           id: runUploadedFiles.id,
@@ -251,7 +249,6 @@ export const generateArtifactPreviews$ = command(
       if (rows.length === 0) {
         break;
       }
-      pages++;
 
       for (const row of rows) {
         cursor = { createdAt: row.createdAt, id: row.id };

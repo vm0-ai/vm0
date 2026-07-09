@@ -294,6 +294,7 @@ describe("GET /api/cron/artifact-preview", () => {
     for (const disabledArtifact of disabledArtifacts) {
       await markHostedArtifactEligibleForPreviewCron(context, disabledArtifact);
     }
+    const previewObjectStore = chatCallbacks.acceptChatObjectStorage();
     await updateFeatureSwitchesForUser(
       context,
       {
@@ -345,7 +346,7 @@ describe("GET /api/cron/artifact-preview", () => {
       },
     });
     expect(
-      owner.objectStore.puts.some((put) => {
+      previewObjectStore.puts.some((put) => {
         return (
           put.bucket === "test-user-artifacts" &&
           put.key.endsWith(`/preview-${artifact.deploymentId}.webp`) &&
