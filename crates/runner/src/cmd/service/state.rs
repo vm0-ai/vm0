@@ -61,7 +61,6 @@ mod tests {
     use serde_json::json;
 
     use super::*;
-    use crate::cmd::service::systemctl::NormalizedUnitState;
 
     fn service_unit(suffix: &str) -> RunnerServiceUnit {
         RunnerServiceUnit::from_suffix(suffix).unwrap()
@@ -69,13 +68,7 @@ mod tests {
 
     #[test]
     fn unit_state_output_uses_stable_wrapper_shape() {
-        let state = ServiceUnitState::for_test(
-            "loaded",
-            "deactivating",
-            "stop-sigterm",
-            "success",
-            NormalizedUnitState::ActiveLike,
-        );
+        let state = ServiceUnitState::for_test("loaded", "deactivating", "stop-sigterm", "success");
         let output = UnitStateOutput {
             services: vec![unit_state_entry(service_unit("v1.2.3"), state)],
         };
@@ -107,23 +100,11 @@ mod tests {
             services: vec![
                 unit_state_entry(
                     service_unit("v1.2.3"),
-                    ServiceUnitState::for_test(
-                        "loaded",
-                        "active",
-                        "running",
-                        "success",
-                        NormalizedUnitState::ActiveLike,
-                    ),
+                    ServiceUnitState::for_test("loaded", "active", "running", "success"),
                 ),
                 unit_state_entry(
                     service_unit("v1.2.2"),
-                    ServiceUnitState::for_test(
-                        "not-found",
-                        "inactive",
-                        "dead",
-                        "success",
-                        NormalizedUnitState::NotFound,
-                    ),
+                    ServiceUnitState::for_test("not-found", "inactive", "dead", "success"),
                 ),
             ],
         };

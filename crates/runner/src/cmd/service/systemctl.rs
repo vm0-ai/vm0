@@ -3,7 +3,8 @@ use std::process::{ExitStatus, Output, Stdio};
 use std::time::Duration;
 
 use crate::error::{RunnerError, RunnerResult};
-use serde::Serialize;
+use serde::ser::SerializeStruct;
+use serde::{Serialize, Serializer};
 use tokio::io::AsyncReadExt;
 use tokio::task::JoinHandle;
 
@@ -283,15 +284,13 @@ impl NormalizedUnitState {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct ServiceUnitState {
     load_state: String,
     active_state: String,
     sub_state: String,
     result: String,
     normalized_state: NormalizedUnitState,
-    active_like: bool,
 }
 
 impl ServiceUnitState {
@@ -301,16 +300,20 @@ impl ServiceUnitState {
         active_state: &str,
         sub_state: &str,
         result: &str,
-        normalized_state: NormalizedUnitState,
     ) -> Self {
+        let normalized_state =
+            normalize_unit_state("vm0-runner-test.service", load_state, active_state).unwrap();
         Self {
             load_state: load_state.to_string(),
             active_state: active_state.to_string(),
             sub_state: sub_state.to_string(),
             result: result.to_string(),
             normalized_state,
-            active_like: normalized_state.is_active_like(),
         }
+    }
+
+    fn active_like(&self) -> bool {
+        self.normalized_state.is_active_like()
     }
 
     #[cfg(test)]
@@ -320,7 +323,23 @@ impl ServiceUnitState {
 
     #[cfg(test)]
     fn is_active_like(&self) -> bool {
-        self.active_like
+        self.active_like()
+    }
+}
+
+impl Serialize for ServiceUnitState {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut state = serializer.serialize_struct("ServiceUnitState", 6)?;
+        state.serialize_field("loadState", &self.load_state)?;
+        state.serialize_field("activeState", &self.active_state)?;
+        state.serialize_field("subState", &self.sub_state)?;
+        state.serialize_field("result", &self.result)?;
+        state.serialize_field("normalizedState", &self.normalized_state)?;
+        state.serialize_field("activeLike", &self.active_like())?;
+        state.end()
     }
 }
 
@@ -604,7 +623,6 @@ fn service_unit_state_from_systemctl_show(
         sub_state: sub_state.to_string(),
         result: result.to_string(),
         normalized_state,
-        active_like: normalized_state.is_active_like(),
     })
 }
 
